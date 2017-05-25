@@ -355,11 +355,11 @@ void OutboundCall::SetTimedOut() {
   TRACE_TO(trace_, "Call TimedOut.");
   {
     std::lock_guard<simple_spinlock> l(lock_);
-    status_ = STATUS(TimedOut, Substitute(
-        "$0 RPC to $1 timed out after $2",
-        remote_method_.method_name(),
-        conn_id_.remote().ToString(),
-        controller_->timeout().ToString()));
+    status_ = STATUS_SUBSTITUTE(TimedOut,
+                                "$0 RPC to $1 timed out after $2",
+                                remote_method_.method_name(),
+                                yb::ToString(conn_id_.remote()),
+                                controller_->timeout().ToString());
     set_state_unlocked(TIMED_OUT);
   }
   CallCallback();
@@ -473,12 +473,12 @@ ConnectionId::ConnectionId(const ConnectionId& other) {
   DoCopyFrom(other);
 }
 
-ConnectionId::ConnectionId(const Sockaddr& remote, const UserCredentials& user_credentials) {
+ConnectionId::ConnectionId(const Endpoint& remote, const UserCredentials& user_credentials) {
   remote_ = remote;
   user_credentials_.CopyFrom(user_credentials);
 }
 
-void ConnectionId::set_remote(const Sockaddr& remote) {
+void ConnectionId::set_remote(const Endpoint& remote) {
   remote_ = remote;
 }
 
@@ -494,10 +494,10 @@ void ConnectionId::CopyFrom(const ConnectionId& other) {
 
 string ConnectionId::ToString() const {
   // Does not print the password.
-  return StringPrintf("{remote=%s, user_credentials=%s, idx=%d}",
-      remote_.ToString().c_str(),
-      user_credentials_.ToString().c_str(),
-      idx_);
+  return Substitute("{remote=$0, user_credentials=$1, idx=$2}",
+                    yb::ToString(remote_),
+                    user_credentials_.ToString(),
+                    idx_);
 }
 
 void ConnectionId::DoCopyFrom(const ConnectionId& other) {
@@ -508,7 +508,7 @@ void ConnectionId::DoCopyFrom(const ConnectionId& other) {
 
 size_t ConnectionId::HashCode() const {
   size_t seed = 0;
-  boost::hash_combine(seed, remote_.HashCode());
+  boost::hash_combine(seed, hash_value(remote_));
   boost::hash_combine(seed, user_credentials_.HashCode());
   boost::hash_combine(seed, idx_);
   return seed;

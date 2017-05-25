@@ -114,11 +114,10 @@ void TestRedisService::StopServer() {
 }
 
 void TestRedisService::StartClient() {
-  Sockaddr remote;
-  CHECK_OK(remote.ParseString("0.0.0.0", server_port()));
+  Endpoint remote(IpAddress(), server_port());
   CHECK_OK(client_sock_.Init(0));
   CHECK_OK(client_sock_.SetNoDelay(false));
-  LOG(INFO) << "Connecting to " << remote.ToString();
+  LOG(INFO) << "Connecting to " << remote;
   CHECK_OK(client_sock_.Connect(remote));
 }
 

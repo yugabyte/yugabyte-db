@@ -27,10 +27,16 @@ namespace rpc {
 using std::shared_ptr;
 using namespace std::placeholders;
 
+MessengerOptions MakeMessengerOptions() {
+  auto result = kDefaultClientMessengerOptions;
+  result.n_reactors = 4;
+  return result;
+}
+
 class ReactorTest : public RpcTestBase {
  public:
   ReactorTest()
-    : messenger_(CreateMessenger("my_messenger", 4)),
+    : messenger_(CreateMessenger("my_messenger", MakeMessengerOptions())),
       latch_(1) {
   }
 

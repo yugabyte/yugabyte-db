@@ -23,11 +23,11 @@
 #include "yb/gutil/macros.h"
 #include "yb/util/async_util.h"
 #include "yb/util/status.h"
+#include "yb/util/net/net_fwd.h"
 
 namespace yb {
 
 class HostPort;
-class Sockaddr;
 class ThreadPool;
 
 // DNS Resolver which supports async address resolution.
@@ -50,7 +50,7 @@ class DnsResolver {
   // NOTE: in some rare cases, the callback may also be called inline
   // from this function call, on the caller's thread.
   void ResolveAddresses(const HostPort& hostport,
-                        std::vector<Sockaddr>* addresses,
+                        std::vector<Endpoint>* addresses,
                         const StatusCallback& cb);
 
  private:

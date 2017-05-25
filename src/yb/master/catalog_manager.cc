@@ -4734,7 +4734,7 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
 
 Status CatalogManager::PeerStateDump(const vector<RaftPeerPB>& peers, bool on_disk) {
   std::unique_ptr<MasterServiceProxy> peer_proxy;
-  Sockaddr sockaddr;
+  Endpoint sockaddr;
   MonoTime timeout = MonoTime::Now(MonoTime::FINE);
   DumpMasterStateRequestPB req;
   rpc::RpcController rpc;
@@ -4745,7 +4745,7 @@ Status CatalogManager::PeerStateDump(const vector<RaftPeerPB>& peers, bool on_di
 
   for (RaftPeerPB peer : peers) {
     HostPort hostport(peer.last_known_addr().host(), peer.last_known_addr().port());
-    RETURN_NOT_OK(SockaddrFromHostPort(hostport, &sockaddr));
+    RETURN_NOT_OK(EndpointFromHostPort(hostport, &sockaddr));
     peer_proxy.reset(new MasterServiceProxy(master_->messenger(), sockaddr));
 
     DumpMasterStateResponsePB resp;

@@ -153,8 +153,12 @@ Status InboundCall::AddRpcSidecar(util::RefCntBuffer car, int* idx) {
   return Status::OK();
 }
 
-const Sockaddr& InboundCall::remote_address() const {
+const Endpoint& InboundCall::remote_address() const {
   return conn_->remote();
+}
+
+const Endpoint& InboundCall::local_address() const {
+  return conn_->local();
 }
 
 ConnectionPtr InboundCall::connection() const {

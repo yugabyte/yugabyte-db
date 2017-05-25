@@ -22,7 +22,11 @@
 #include <netdb.h>
 #include <stdio.h>
 #include <string.h>
+
 #include <string>
+
+#include <boost/lexical_cast.hpp>
+#include <boost/functional/hash.hpp>
 
 #include "yb/gutil/endian.h"
 #include "yb/gutil/macros.h"
@@ -35,102 +39,80 @@ namespace yb {
 
 using strings::Substitute;
 
-///
-/// Sockaddr
-///
-Sockaddr::Sockaddr() {
-  memset(&addr_, 0, sizeof(addr_));
-  addr_.sin_family = AF_INET;
-  addr_.sin_addr.s_addr = INADDR_ANY;
+std::string ToString(const Endpoint& endpoint) {
+  return boost::lexical_cast<std::string>(endpoint);
 }
 
-Sockaddr::Sockaddr(const struct sockaddr_in& addr) {
-  memcpy(&addr_, &addr, sizeof(struct sockaddr_in));
-}
+std::size_t hash_value(const IpAddress& address) {
+  size_t seed = 0;
 
-Status Sockaddr::ParseString(const std::string& s, uint16_t default_port) {
-  HostPort hp;
-  RETURN_NOT_OK(hp.ParseString(s, default_port));
-
-  if (inet_pton(AF_INET, hp.host().c_str(), &addr_.sin_addr) != 1) {
-    return STATUS(InvalidArgument, "Invalid IP address", hp.host());
+  if (address.is_v4()) {
+    boost::hash_combine(seed, address.to_v4().to_ulong());
+  } else {
+    boost::hash_combine(seed, address.to_v6().to_bytes());
   }
-  set_port(hp.port());
-  return Status::OK();
+
+  return seed;
 }
 
-Sockaddr& Sockaddr::operator=(const struct sockaddr_in &addr) {
-  memcpy(&addr_, &addr, sizeof(struct sockaddr_in));
-  return *this;
+std::size_t hash_value(const Endpoint& endpoint) {
+  size_t seed = 0;
+
+  boost::hash_combine(seed, hash_value(endpoint.address()));
+  boost::hash_combine(seed, endpoint.port());
+
+  return seed;
 }
 
-bool Sockaddr::operator==(const Sockaddr& other) const {
-  return memcmp(&other.addr_, &addr_, sizeof(addr_)) == 0;
-}
-
-bool Sockaddr::operator<(const Sockaddr &rhs) const {
-  return addr_.sin_addr.s_addr < rhs.addr_.sin_addr.s_addr;
-}
-
-uint32_t Sockaddr::HashCode() const {
-  uint32_t ret = addr_.sin_addr.s_addr % 59534743;
-  ret ^= (addr_.sin_port * 7919);
-  return ret;
-}
-
-void Sockaddr::set_port(int port) {
-  addr_.sin_port = htons(port);
-}
-
-int Sockaddr::port() const {
-  return ntohs(addr_.sin_port);
-}
-
-std::string Sockaddr::host() const {
-  char str[INET_ADDRSTRLEN];
-  ::inet_ntop(AF_INET, &addr_.sin_addr, str, INET_ADDRSTRLEN);
-  return str;
-}
-
-const struct sockaddr_in& Sockaddr::addr() const {
-  return addr_;
-}
-
-std::string Sockaddr::ToString() const {
-  char str[INET_ADDRSTRLEN];
-  ::inet_ntop(AF_INET, &addr_.sin_addr, str, INET_ADDRSTRLEN);
-  return StringPrintf("%s:%d", str, port());
-}
-
-bool Sockaddr::IsWildcard() const {
-  return addr_.sin_addr.s_addr == 0;
-}
-
-bool Sockaddr::IsAnyLocalAddress() const {
-  return (NetworkByteOrder::FromHost32(addr_.sin_addr.s_addr) >> 24) == 127;
-}
-
-Status Sockaddr::LookupHostname(string* hostname) const {
-  char host[NI_MAXHOST];
-  int flags = 0;
-
-  int rc = 0;
-  LOG_SLOW_EXECUTION(WARNING, 200,
-                     Substitute("DNS reverse-lookup for $0", ToString())) {
-    rc = getnameinfo((struct sockaddr *) &addr_, sizeof(sockaddr_in),
-                     host, NI_MAXHOST,
-                     nullptr, 0, flags);
+Result<Endpoint> ParseEndpoint(const std::string& input, uint16_t default_port) {
+  boost::system::error_code ec;
+  // First of all we try to parse whole string as address w/o port.
+  // Important for IPv6 addesses like fe80::1:1.
+  auto address = IpAddress::from_string(input, ec);
+  if (!ec) {
+    return Endpoint(address, default_port);
   }
-  if (PREDICT_FALSE(rc != 0)) {
-    if (rc == EAI_SYSTEM) {
-      int errno_saved = errno;
-      return STATUS(NetworkError, Substitute("getnameinfo: $0", gai_strerror(rc)),
-                                  strerror(errno_saved), errno_saved);
+
+  std::string::size_type pos = 0;
+  std::string::size_type address_begin, address_end;
+
+  if (!input.empty() && input[0] == '[') {
+    pos = input.find(']');
+    if (pos != std::string::npos) {
+      address_begin = 1;
+      address_end = pos;
+      if (++pos >= input.size()) {
+        pos = std::string::npos;
+      }
+    } else {
+      return STATUS_SUBSTITUTE(NetworkError, "']' missing in $0", input);
     }
-    return STATUS(NetworkError, "getnameinfo", gai_strerror(rc), rc);
+  } else {
+    address_begin = 0;
+    pos = input.find(':');
+    address_end = pos != std::string::npos ? pos : input.size();
   }
-  *hostname = host;
-  return Status::OK();
+  auto address_str = input.substr(address_begin, address_end - address_begin);
+  address = IpAddress::from_string(address_str, ec);
+  if (ec) {
+    return STATUS_SUBSTITUTE(NetworkError, "Failed to parse $0: $1", input, ec.message());
+  }
+  if (pos == std::string::npos) {
+    return Endpoint(address, default_port);
+  }
+  if (input[pos] != ':') {
+    return STATUS_SUBSTITUTE(NetworkError, "':' missing after ']' in $0", input);
+  }
+  ++pos;
+  if (pos == input.size()) {
+    return STATUS_SUBSTITUTE(NetworkError, "Port not specified in $0", input);
+  }
+  char *end = nullptr;
+  auto port = strtoul(input.c_str() + pos, &end, 10);
+  if (port > 0xffff || end != input.c_str() + input.size()) {
+    return STATUS_SUBSTITUTE(NetworkError, "Invalid port in $0", input);
+  }
+  return Endpoint(address, port);
 }
 
 } // namespace yb

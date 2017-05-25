@@ -92,7 +92,7 @@ class Result {
     return success_;
   }
 
-  const Status& status() const {
+  const Status& status() const& {
 #ifndef NDEBUG
     CHECK(success_checked_);
 #endif
@@ -100,7 +100,7 @@ class Result {
     return status_;
   }
 
-  Status& status() {
+  Status& status() & {
 #ifndef NDEBUG
     CHECK(success_checked_);
 #endif
@@ -108,7 +108,15 @@ class Result {
     return status_;
   }
 
-  const TValue& operator*() const {
+  Status&& status() && {
+#ifndef NDEBUG
+    CHECK(success_checked_);
+#endif
+    CHECK(!success_);
+    return status_;
+  }
+
+  const TValue& operator*() const& {
 #ifndef NDEBUG
     CHECK(success_checked_);
 #endif
@@ -116,7 +124,15 @@ class Result {
     return value_;
   }
 
-  TValue& operator*() {
+  TValue& operator*() & {
+#ifndef NDEBUG
+    CHECK(success_checked_);
+#endif
+    CHECK(success_);
+    return value_;
+  }
+
+  TValue&& operator*() && {
 #ifndef NDEBUG
     CHECK(success_checked_);
 #endif
@@ -133,6 +149,22 @@ class Result {
   }
 
   TValue* operator->() {
+#ifndef NDEBUG
+    CHECK(success_checked_);
+#endif
+    CHECK(success_);
+    return &value_;
+  }
+
+  const TValue* get_ptr() const {
+#ifndef NDEBUG
+    CHECK(success_checked_);
+#endif
+    CHECK(success_);
+    return &value_;
+  }
+
+  TValue* get_ptr() {
 #ifndef NDEBUG
     CHECK(success_checked_);
 #endif
@@ -162,22 +194,22 @@ class Result {
 template<>
 class Result<bool> {
  public:
-  Result(const Status& status) : state_(State::FAILED), status_(status) {} // NOLINT
-  Result(Status&& status) : state_(State::FAILED), status_(std::move(status)) {} // NOLINT
-  Result(bool value) : state_(value ? State::TRUE : State::FALSE) {} // NOLINT
+  Result(const Status& status) : state_(State::kFailed), status_(status) {} // NOLINT
+  Result(Status&& status) : state_(State::kFailed), status_(std::move(status)) {} // NOLINT
+  Result(bool value) : state_(value ? State::kTrue : State::kFalse) {} // NOLINT
 
   bool ok() const {
 #ifndef NDEBUG
     success_checked_ = true;
 #endif
-    return state_ != State::FAILED;
+    return state_ != State::kFailed;
   }
 
   const Status& status() const {
 #ifndef NDEBUG
     CHECK(success_checked_);
 #endif
-    CHECK(state_ == State::FAILED);
+    CHECK(state_ == State::kFailed);
     return status_;
   }
 
@@ -185,7 +217,7 @@ class Result<bool> {
 #ifndef NDEBUG
     CHECK(success_checked_);
 #endif
-    CHECK(state_ == State::FAILED);
+    CHECK(state_ == State::kFailed);
     return status_;
   }
 
@@ -193,27 +225,37 @@ class Result<bool> {
 #ifndef NDEBUG
     CHECK(success_checked_);
 #endif
-    CHECK(state_ != State::FAILED);
-    return state_ != State::FALSE;
+    CHECK(state_ != State::kFailed);
+    return state_ != State::kFalse;
   }
 
  private:
   enum class State : uint8_t {
-    FALSE,
-    TRUE,
-    FAILED
+    kFalse,
+    kTrue,
+    kFailed,
   };
 
   State state_;
 #ifndef NDEBUG
   mutable bool success_checked_ = false;
 #endif
-  Status status_; // Don't use optional, because default Status is cheap.
+  Status status_; // Don't use Result, because default Status is cheap.
 };
 
 template<class TValue>
-Status&& MoveStatus(Result<TValue>* result) {
-  return std::move(result->status());
+Status&& MoveStatus(Result<TValue>&& result) {
+  return std::move(result.status());
+}
+
+template<class TValue>
+const Status& MoveStatus(const Result<TValue>& result) {
+  return result.status();
+}
+
+template<class TValue>
+inline std::string StatusToString(const Result<TValue>& result) {
+  return result.status().ToString();
 }
 
 } // namespace yb

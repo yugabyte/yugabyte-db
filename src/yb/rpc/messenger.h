@@ -24,6 +24,7 @@
 #include <list>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <gtest/gtest_prod.h>
@@ -124,7 +125,7 @@ class Messenger {
   void Shutdown();
 
   // Setup messenger to listen connections on given address.
-  CHECKED_STATUS ListenAddress(const Sockaddr& accept_addr, Sockaddr* bound_addr = nullptr);
+  CHECKED_STATUS ListenAddress(const Endpoint& accept_endpoint, Endpoint* bound_endpoint = nullptr);
 
   // Stop accepting connections.
   void ShutdownAcceptor();
@@ -149,7 +150,7 @@ class Messenger {
   void QueueInboundCall(InboundCallPtr call);
 
   // Take ownership of the socket via Socket::Release
-  void RegisterInboundSocket(Socket *new_socket, const Sockaddr &remote);
+  void RegisterInboundSocket(Socket *new_socket, const Endpoint& remote);
 
   CHECKED_STATUS QueueEventOnAllReactors(scoped_refptr<ServerEvent> server_event);
 
@@ -177,11 +178,6 @@ class Messenger {
     return name_;
   }
 
-  bool closing() const {
-    shared_lock<rw_spinlock> guard(lock_.get_lock());
-    return closing_;
-  }
-
   scoped_refptr<MetricEntity> metric_entity() const { return metric_entity_; }
 
   const scoped_refptr<RpcService> rpc_service(const std::string& service_name) const;
@@ -190,21 +186,28 @@ class Messenger {
 
   size_t number_of_reactors() const { return reactors_.size(); }
   size_t max_concurrent_requests() const;
+
+  const IpAddress& outbound_address_v4() const { return outbound_address_v4_; }
+  const IpAddress& outbound_address_v6() const { return outbound_address_v6_; }
+
+  void BreakConnectivityWith(const IpAddress& address);
+  void RestoreConnectivityWith(const IpAddress& address);
+
  private:
   FRIEND_TEST(TestRpc, TestConnectionKeepalive);
   friend class DelayedTask;
 
   explicit Messenger(const MessengerBuilder &bld);
 
-  Reactor* RemoteToReactor(const Sockaddr &remote, uint32_t idx = 0);
+  Reactor* RemoteToReactor(const Endpoint& remote, uint32_t idx = 0);
   CHECKED_STATUS Init();
-  void RunTimeoutThread();
-  void UpdateCurTime();
   void UpdateServicesCache(std::lock_guard<percpu_rwlock>* guard);
 
   // Called by external-facing shared_ptr when the user no longer holds
   // any references. See 'retain_self_' for more info.
   void AllExternalReferencesDropped();
+
+  bool IsArtificiallyDisconnectedFrom(const IpAddress& remote);
 
   const std::string name_;
 
@@ -231,6 +234,8 @@ class Messenger {
 
   // Acceptor which is listening on behalf of this messenger.
   std::unique_ptr<Acceptor> acceptor_;
+  IpAddress outbound_address_v4_;
+  IpAddress outbound_address_v6_;
 
   // The ownership of the Messenger object is somewhat subtle. The pointer graph
   // looks like this:
@@ -283,6 +288,11 @@ class Messenger {
 
   std::unordered_map<int64_t, std::shared_ptr<DelayedTask>> scheduled_tasks_;
 
+  // Flag that we have at least on address with artificially broken connectivity.
+  std::atomic<bool> has_broken_connectivity_ = {false};
+
+  // Set of addresses with artificially broken connectivity.
+  std::unordered_set<IpAddress, IpAddressHash> broken_connectivity_;
 
   DISALLOW_COPY_AND_ASSIGN(Messenger);
 };

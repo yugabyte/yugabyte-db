@@ -69,11 +69,10 @@ void TestCQLService::SetUp() {
   CHECK_OK(server_->Start());
   LOG(INFO) << "CQL server successfully started.";
 
-  Sockaddr remote;
-  CHECK_OK(remote.ParseString("0.0.0.0", server_port()));
+  Endpoint remote(IpAddress(), server_port());
   CHECK_OK(client_sock_.Init(0));
   CHECK_OK(client_sock_.SetNoDelay(false));
-  LOG(INFO) << "Connecting to CQL server " << remote.ToString();
+  LOG(INFO) << "Connecting to CQL server " << remote;
   CHECK_OK(client_sock_.Connect(remote));
 }
 

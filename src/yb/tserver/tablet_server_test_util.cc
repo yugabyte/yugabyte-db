@@ -30,7 +30,7 @@ using consensus::ConsensusServiceProxy;
 using rpc::Messenger;
 using std::shared_ptr;
 
-void CreateTsClientProxies(const Sockaddr& addr,
+void CreateTsClientProxies(const Endpoint& addr,
                            const shared_ptr<Messenger>& messenger,
                            gscoped_ptr<TabletServerServiceProxy>* proxy,
                            gscoped_ptr<TabletServerAdminServiceProxy>* admin_proxy,

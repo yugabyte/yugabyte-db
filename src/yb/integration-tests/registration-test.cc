@@ -75,9 +75,8 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
   void CheckTabletServersPage() {
     EasyCurl c;
     faststring buf;
-    string addr = cluster_->mini_master()->bound_http_addr().ToString();
-    ASSERT_OK(c.FetchURL(strings::Substitute("http://$0/tablet-servers", addr),
-                                &buf));
+    std::string addr = yb::ToString(cluster_->mini_master()->bound_http_addr());
+    ASSERT_OK(c.FetchURL(strings::Substitute("http://$0/tablet-servers", addr), &buf));
 
     // Should include the TS UUID
     string expected_uuid =

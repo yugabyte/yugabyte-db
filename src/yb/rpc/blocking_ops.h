@@ -32,7 +32,6 @@ namespace yb {
 class faststring;
 class MonoTime;
 class Slice;
-class Sockaddr;
 class Socket;
 class Status;
 

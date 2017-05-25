@@ -109,7 +109,7 @@ RaftConfigPB MiniTabletServer::CreateLocalConfig() const {
   RaftConfigPB config;
   RaftPeerPB* peer = config.add_peers();
   peer->set_permanent_uuid(server_->instance_pb().permanent_uuid());
-  peer->mutable_last_known_addr()->set_host(bound_rpc_addr().host());
+  peer->mutable_last_known_addr()->set_host(bound_rpc_addr().address().to_string());
   peer->mutable_last_known_addr()->set_port(bound_rpc_addr().port());
   return config;
 }
@@ -138,12 +138,12 @@ void MiniTabletServer::FailHeartbeats() {
   server_->set_fail_heartbeats_for_tests(true);
 }
 
-const Sockaddr MiniTabletServer::bound_rpc_addr() const {
+Endpoint MiniTabletServer::bound_rpc_addr() const {
   CHECK(started_);
   return server_->first_rpc_address();
 }
 
-const Sockaddr MiniTabletServer::bound_http_addr() const {
+Endpoint MiniTabletServer::bound_http_addr() const {
   CHECK(started_);
   return server_->first_http_address();
 }

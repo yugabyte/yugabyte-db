@@ -30,7 +30,6 @@
 namespace yb {
 
 class NodeInstancePB;
-class Sockaddr;
 
 namespace consensus {
 class ConsensusServiceProxy;
@@ -149,8 +148,8 @@ class TSDescriptor {
 
   explicit TSDescriptor(std::string perm_id);
 
-  // Uses DNS to resolve registered hosts to a single Sockaddr.
-  CHECKED_STATUS ResolveSockaddr(Sockaddr* addr) const;
+  // Uses DNS to resolve registered hosts to a single endpoint.
+  CHECKED_STATUS ResolveEndpoint(Endpoint* addr) const;
 
   void DecayRecentReplicaCreationsUnlocked();
 

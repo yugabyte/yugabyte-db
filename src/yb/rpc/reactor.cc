@@ -23,11 +23,12 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <ev++.h>
 
 #include <functional>
 #include <mutex>
 #include <string>
+
+#include <ev++.h>
 
 #include <glog/logging.h>
 
@@ -61,6 +62,7 @@
 using std::string;
 using std::shared_ptr;
 
+DECLARE_string(local_ip_for_outbound_sockets);
 DECLARE_int32(num_connections_to_server);
 DEFINE_int64(rpc_negotiation_timeout_ms, 3000,
              "Timeout for negotiating an RPC connection.");
@@ -95,7 +97,7 @@ ConnectionContext* MakeNewConnectionContext(ConnectionType connection_type) {
 
 ConnectionPtr MakeNewConnection(ConnectionType connection_type,
                               ReactorThread* reactor_thread,
-                              const Sockaddr& remote,
+                              const Endpoint& remote,
                               int socket,
                               Connection::Direction direction) {
   std::unique_ptr<ConnectionContext> context(MakeNewConnectionContext(connection_type));
@@ -406,6 +408,28 @@ void ReactorThread::RunThread() {
   reactor_->messenger_.reset();
 }
 
+namespace {
+
+Result<Socket> CreateClientSocket(const Endpoint& remote) {
+  int flags = Socket::FLAG_NONBLOCKING;
+  if (remote.address().is_v6()) {
+    flags |= Socket::FLAG_IPV6;
+  }
+  Socket socket;
+  Status status = socket.Init(flags);
+  if (status.ok()) {
+    status = socket.SetNoDelay(true);
+  }
+  LOG_IF(WARNING, !status.ok()) << "failed to create an "
+      "outbound connection because a new socket could not "
+      "be created: " << status.ToString();
+  if (!status.ok())
+    return status;
+  return std::move(socket);
+}
+
+} // namespace
+
 Status ReactorThread::FindOrStartConnection(const ConnectionId &conn_id,
                                             const MonoTime &deadline,
                                             ConnectionPtr* conn) {
@@ -418,19 +442,30 @@ Status ReactorThread::FindOrStartConnection(const ConnectionId &conn_id,
 
   // No connection to this remote. Need to create one.
   VLOG(2) << name() << " FindOrStartConnection: creating "
-          << "new connection for " << conn_id.remote().ToString();
+          << "new connection for " << conn_id.remote();
 
   // Create a new socket and start connecting to the remote.
-  Socket sock;
-  RETURN_NOT_OK(CreateClientSocket(&sock));
+  auto sock = CreateClientSocket(conn_id.remote());
+  RETURN_NOT_OK(sock);
+  if (FLAGS_local_ip_for_outbound_sockets.empty()) {
+    auto outbound_address = conn_id.remote().address().is_v6()
+        ? reactor_->messenger()->outbound_address_v6()
+        : reactor_->messenger()->outbound_address_v4();
+    if (!outbound_address.is_unspecified()) {
+      auto status = sock->Bind(Endpoint(outbound_address, 0), /* explain_addr_in_use */ false);
+      if (!status.ok()) {
+        LOG(WARNING) << "Bind " << outbound_address << " failed: " << status.ToString();
+      }
+    }
+  }
   bool connect_in_progress;
-  RETURN_NOT_OK(StartConnect(&sock, conn_id.remote(), &connect_in_progress));
+  RETURN_NOT_OK(StartConnect(sock.get_ptr(), conn_id.remote(), &connect_in_progress));
 
   // Register the new connection in our map.
   *conn = MakeNewConnection(reactor_->connection_type_,
                             this,
                             conn_id.remote(),
-                            sock.Release(),
+                            sock->Release(),
                             ConnectionDirection::CLIENT);
   (*conn)->set_user_credentials(conn_id.user_credentials());
 
@@ -450,8 +485,45 @@ Status ReactorThread::FindOrStartConnection(const ConnectionId &conn_id,
   return Status::OK();
 }
 
+namespace {
+
+void ShutdownIfRemoteAddressIs(const ConnectionPtr& conn, const IpAddress& address) {
+  auto socket = conn->socket();
+  Endpoint peer;
+  auto status = socket->GetPeerAddress(&peer);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to get peer address" << socket->GetFd() << ": " << status.ToString();
+    return;
+  }
+
+  if (peer.address() != address) {
+    return;
+  }
+
+  status = socket->Shutdown(/* shut_read */ true, /* shut_write */ true);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to shutdown " << socket->GetFd() << ": " << status.ToString();
+    return;
+  }
+  LOG(INFO) << "Dropped connection: " << conn->ToString();
+}
+
+} // namespace
+
+void ReactorThread::DropWithRemoteAddress(const IpAddress& address) {
+  DCHECK(IsCurrentThread());
+
+  for (auto& conn : server_conns_) {
+    ShutdownIfRemoteAddressIs(conn, address);
+  }
+
+  for (auto& pair : client_conns_) {
+    ShutdownIfRemoteAddressIs(pair.second, address);
+  }
+}
+
 Status ReactorThread::StartConnectionNegotiation(const ConnectionPtr& conn,
-    const MonoTime &deadline) {
+                                                 const MonoTime& deadline) {
   DCHECK(IsCurrentThread());
 
   scoped_refptr<Trace> trace(new Trace());
@@ -481,21 +553,10 @@ void ReactorThread::CompleteConnectionNegotiation(const ConnectionPtr& conn,
   conn->EpollRegister(loop_);
 }
 
-Status ReactorThread::CreateClientSocket(Socket *sock) {
-  Status ret = sock->Init(Socket::FLAG_NONBLOCKING);
-  if (ret.ok()) {
-    ret = sock->SetNoDelay(true);
-  }
-  LOG_IF(WARNING, !ret.ok()) << "failed to create an "
-    "outbound connection because a new socket could not "
-    "be created: " << ret.ToString();
-  return ret;
-}
-
-Status ReactorThread::StartConnect(Socket *sock, const Sockaddr &remote, bool *in_progress) {
+Status ReactorThread::StartConnect(Socket *sock, const Endpoint& remote, bool *in_progress) {
   Status ret = sock->Connect(remote);
   if (ret.ok()) {
-    VLOG(3) << "StartConnect: connect finished immediately for " << remote.ToString();
+    VLOG(3) << "StartConnect: connect finished immediately for " << remote;
     *in_progress = false; // connect() finished immediately.
     return ret;
   }
@@ -503,10 +564,10 @@ Status ReactorThread::StartConnect(Socket *sock, const Sockaddr &remote, bool *i
   if (Socket::IsTemporarySocketError(ret)) {
     // The connect operation is in progress.
     *in_progress = true;
-    VLOG(3) << "StartConnect: connect in progress for " << remote.ToString();
+    VLOG(3) << "StartConnect: connect in progress for " << remote;
     return Status::OK();
   } else {
-    LOG(WARNING) << "failed to create an outbound connection to " << remote.ToString()
+    LOG(WARNING) << "Failed to create an outbound connection to " << remote
                  << " because connect failed: " << ret.ToString();
     return ret;
   }
@@ -581,7 +642,7 @@ void ReactorThread::ProcessOutboundQueue() {
 
 void ReactorThread::QueueOutboundCall(OutboundCallPtr call) {
   DVLOG(3) << "Queueing outbound call "
-           << call->ToString() << " to remote " << call->conn_id().remote().ToString();
+           << call->ToString() << " to remote " << call->conn_id().remote();
 
   bool was_empty = false;
   bool closing = false;
@@ -805,8 +866,8 @@ void Reactor::QueueEventOnAllConnections(scoped_refptr<ServerEvent> server_event
   ScheduleReactorTask(std::make_shared<QueueServerEventTask>(server_event));
 }
 
-void Reactor::RegisterInboundSocket(Socket *socket, const Sockaddr &remote) {
-  VLOG(3) << name_ << ": new inbound connection to " << remote.ToString();
+void Reactor::RegisterInboundSocket(Socket *socket, const Endpoint& remote) {
+  VLOG(3) << name_ << ": new inbound connection to " << remote;
   auto conn = MakeNewConnection(connection_type_,
                                 &thread_,
                                 remote,

@@ -156,7 +156,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
 
   EasyCurl c;
   faststring buf;
-  string addr = mini_server_->bound_http_addr().ToString();
+  string addr = yb::ToString(mini_server_->bound_http_addr());
 
   // Tablets page should list tablet.
   ASSERT_OK(c.FetchURL(Substitute("http://$0/tablets", addr),
@@ -1793,10 +1793,9 @@ TEST_F(TabletServerTest, TestDeleteTablet) {
   // Verify that fetching metrics doesn't crash. Regression test for KUDU-638.
   EasyCurl c;
   faststring buf;
-  ASSERT_OK(c.FetchURL(strings::Substitute(
-                                "http://$0/jsonmetricz",
-                                mini_server_->bound_http_addr().ToString()),
-                              &buf));
+  ASSERT_OK(c.FetchURL(strings::Substitute("http://$0/jsonmetricz",
+                                           ToString(mini_server_->bound_http_addr())),
+                                           &buf));
 
   // Verify that after restarting the TS, the tablet is still not in the tablet manager.
   // This ensures that the on-disk metadata got removed.

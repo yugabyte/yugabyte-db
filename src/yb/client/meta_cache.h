@@ -19,7 +19,6 @@
 #ifndef YB_CLIENT_META_CACHE_H
 #define YB_CLIENT_META_CACHE_H
 
-#include <boost/function.hpp>
 #include <map>
 #include <string>
 #include <memory>
@@ -92,7 +91,7 @@ class RemoteTabletServer {
  private:
   // Internal callback for DNS resolution.
   void DnsResolutionFinished(const HostPort& hp,
-                             std::vector<Sockaddr>* addrs,
+                             std::vector<Endpoint>* addrs,
                              YBClient* client,
                              const StatusCallback& user_callback,
                              const Status &result_status);
@@ -128,9 +127,9 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   }
 
   // Updates this tablet's replica locations.
-  void Refresh(const TabletServerMap& tservers,
-               const google::protobuf::RepeatedPtrField
-                 <master::TabletLocationsPB_ReplicaPB>& replicas);
+  void Refresh(
+      const TabletServerMap& tservers,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB_ReplicaPB>& replicas);
 
   // Mark this tablet as stale, indicating that the cached tablet metadata is
   // out of date. Staleness is checked by the MetaCache when

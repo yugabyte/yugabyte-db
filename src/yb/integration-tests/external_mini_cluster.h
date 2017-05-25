@@ -47,7 +47,6 @@ class HostPort;
 class MetricPrototype;
 class MetricEntityPrototype;
 class NodeInstancePB;
-class Sockaddr;
 class Subprocess;
 
 namespace master {
@@ -331,7 +330,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   virtual CHECKED_STATUS DoCreateClient(client::YBClientBuilder* builder,
       std::shared_ptr<client::YBClient>* client);
 
-  virtual Sockaddr DoGetLeaderMasterBoundRpcAddr();
+  virtual Endpoint DoGetLeaderMasterBoundRpcAddr();
 
   CHECKED_STATUS StartMasters();
 
@@ -401,7 +400,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
     std::vector<std::string> extra_flags);
 
   HostPort bound_rpc_hostport() const;
-  Sockaddr bound_rpc_addr() const;
+  Endpoint bound_rpc_addr() const;
   HostPort bound_http_hostport() const;
   const NodeInstancePB& instance_id() const;
   const std::string& uuid() const;

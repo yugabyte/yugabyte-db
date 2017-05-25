@@ -50,7 +50,7 @@ class ServicePool : public RpcService {
  public:
   ServicePool(size_t max_tasks,
               ThreadPool* thread_pool,
-              gscoped_ptr<ServiceIf> service,
+              std::unique_ptr<ServiceIf> service,
               const scoped_refptr<MetricEntity>& metric_entity);
   virtual ~ServicePool();
 

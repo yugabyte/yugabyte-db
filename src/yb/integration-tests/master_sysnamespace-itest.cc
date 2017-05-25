@@ -45,7 +45,7 @@ class MasterSysNamespaceTest : public YBTest {
     ASSERT_EQ(3, locs_pb.replicas_size());
     for (const TabletLocationsPB::ReplicaPB& replica : locs_pb.replicas()) {
       if (replica.role() == consensus::RaftPeerPB::LEADER) {
-        ASSERT_EQ(cluster_->leader_mini_master()->bound_rpc_addr().host(),
+        ASSERT_EQ(cluster_->leader_mini_master()->bound_rpc_addr().address().to_string(),
                   replica.ts_info().rpc_addresses(0).host());
         ASSERT_EQ(cluster_->leader_mini_master()->bound_rpc_addr().port(),
                   replica.ts_info().rpc_addresses(0).port());
@@ -56,7 +56,7 @@ class MasterSysNamespaceTest : public YBTest {
         int i;
         for (i = 0; i < cluster_->num_masters(); i++) {
           if (cluster_->mini_master(i)->permanent_uuid() == replica.ts_info().permanent_uuid()) {
-            ASSERT_EQ(cluster_->mini_master(i)->bound_rpc_addr().host(),
+            ASSERT_EQ(cluster_->mini_master(i)->bound_rpc_addr().address().to_string(),
                       replica.ts_info().rpc_addresses(0).host());
             ASSERT_EQ(cluster_->mini_master(i)->bound_rpc_addr().port(),
                       replica.ts_info().rpc_addresses(0).port());

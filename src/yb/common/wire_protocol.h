@@ -26,6 +26,7 @@
 #include "yb/gutil/endian.h"
 #include "yb/util/cast.h"
 #include "yb/util/status.h"
+#include "yb/util/net/net_fwd.h"
 
 namespace yb {
 
@@ -39,7 +40,6 @@ class RowBlockRow;
 class RowChangeList;
 class Schema;
 class Slice;
-class Sockaddr;
 
 // Convert the given C++ Status object into the equivalent Protobuf.
 void StatusToPB(const Status& status, AppStatusPB* pb);
@@ -56,8 +56,8 @@ Status HostPortFromPB(const HostPortPB& host_port_pb, HostPort* host_port);
 // Adds addresses in 'addrs' to 'pbs'. If an address is a wildcard
 // (e.g., "0.0.0.0"), then the local machine's hostname is used in
 // its place.
-Status AddHostPortPBs(const std::vector<Sockaddr>& addrs,
-                      google::protobuf::RepeatedPtrField<HostPortPB>* pbs);
+CHECKED_STATUS AddHostPortPBs(const std::vector<Endpoint>& addrs,
+                              google::protobuf::RepeatedPtrField<HostPortPB>* pbs);
 
 enum SchemaPBConversionFlags {
   SCHEMA_PB_WITHOUT_IDS = 1 << 0,

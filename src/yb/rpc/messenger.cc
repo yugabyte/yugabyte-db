@@ -45,6 +45,7 @@
 #include "yb/rpc/sasl_common.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/socket.h"
@@ -177,16 +178,22 @@ void Messenger::Shutdown() {
   }
 }
 
-Status Messenger::ListenAddress(const Sockaddr &accept_addr, Sockaddr* bound_addr) {
+Status Messenger::ListenAddress(const Endpoint& accept_endpoint, Endpoint* bound_endpoint) {
   Acceptor* acceptor;
   {
     std::lock_guard<percpu_rwlock> guard(lock_);
     if (!acceptor_) {
       acceptor_.reset(new Acceptor(this));
     }
+    auto accept_host = accept_endpoint.address();
+    auto& outbound_address = accept_host.is_v6() ? outbound_address_v6_
+                                                 : outbound_address_v4_;
+    if (outbound_address.is_unspecified() && !accept_host.is_unspecified()) {
+      outbound_address = accept_host;
+    }
     acceptor = acceptor_.get();
   }
-  return acceptor->Listen(accept_addr, bound_addr);
+  return acceptor->Listen(accept_endpoint, bound_endpoint);
 }
 
 Status Messenger::StartAcceptor() {
@@ -196,6 +203,50 @@ Status Messenger::StartAcceptor() {
   } else {
     return STATUS(IllegalState, "Trying to start acceptor w/o active addresses");
   }
+}
+
+void Messenger::BreakConnectivityWith(const IpAddress& address) {
+  LOG(INFO) << "TEST: Break connectivity with: " << address;
+
+  std::unique_ptr<CountDownLatch> latch;
+  {
+    std::lock_guard<percpu_rwlock> guard(lock_);
+    if (broken_connectivity_.empty()) {
+      has_broken_connectivity_.store(true, std::memory_order_release);
+    }
+    if (broken_connectivity_.insert(address).second) {
+      latch.reset(new CountDownLatch(reactors_.size()));
+      for (auto* reactor : reactors_) {
+        reactor->ScheduleReactorTask(MakeFunctorReactorTask(
+            [&latch, address](ReactorThread* thread) {
+              thread->DropWithRemoteAddress(address);
+              latch->CountDown();
+            }));
+      }
+    }
+  }
+
+  if (latch) {
+    latch->Wait();
+  }
+}
+
+void Messenger::RestoreConnectivityWith(const IpAddress& address) {
+  LOG(INFO) << "TEST: Restore connectivity with: " << address;
+
+  std::lock_guard<percpu_rwlock> guard(lock_);
+  broken_connectivity_.erase(address);
+  if (broken_connectivity_.empty()) {
+    has_broken_connectivity_.store(false, std::memory_order_release);
+  }
+}
+
+bool Messenger::IsArtificiallyDisconnectedFrom(const IpAddress& remote) {
+  if (has_broken_connectivity_.load(std::memory_order_acquire)) {
+    shared_lock<rw_spinlock> guard(lock_.get_lock());
+    return broken_connectivity_.count(remote) != 0;
+  }
+  return false;
 }
 
 void Messenger::ShutdownAcceptor() {
@@ -218,7 +269,7 @@ Status Messenger::RegisterService(const string& service_name,
     UpdateServicesCache(&guard);
     return Status::OK();
   } else {
-    return STATUS(AlreadyPresent, "This service is already present");
+    return STATUS_SUBSTITUTE(AlreadyPresent, "Service $0 is already present", service_name);
   }
 }
 
@@ -247,7 +298,17 @@ Status Messenger::UnregisterService(const string& service_name) {
 }
 
 void Messenger::QueueOutboundCall(OutboundCallPtr call) {
-  Reactor *reactor = RemoteToReactor(call->conn_id().remote(), call->conn_id().idx());
+  const auto& remote = call->conn_id().remote();
+  Reactor *reactor = RemoteToReactor(remote, call->conn_id().idx());
+
+  if (IsArtificiallyDisconnectedFrom(remote.address())) {
+    LOG(INFO) << "TEST: Rejected connection to " << remote;
+    reactor->ScheduleReactorTask(MakeFunctorReactorTask([call](ReactorThread*) {
+      call->Transferred(STATUS(NetworkError, "TEST: Connectivity is broken"));
+    }));
+    return;
+  }
+
   reactor->QueueOutboundCall(std::move(call));
 }
 
@@ -265,7 +326,14 @@ void Messenger::QueueInboundCall(InboundCallPtr call) {
   service->QueueInboundCall(std::move(call));
 }
 
-void Messenger::RegisterInboundSocket(Socket *new_socket, const Sockaddr &remote) {
+void Messenger::RegisterInboundSocket(Socket *new_socket, const Endpoint& remote) {
+  if (IsArtificiallyDisconnectedFrom(remote.address())) {
+    auto status = new_socket->Close();
+    LOG(INFO) << "TEST: Rejected connection from " << remote
+              << ", close status: " << status.ToString();
+    return;
+  }
+
   int idx = num_connections_accepted_.fetch_add(1) % FLAGS_num_connections_to_server;
   Reactor *reactor = RemoteToReactor(remote, idx);
   reactor->RegisterInboundSocket(new_socket, remote);
@@ -295,8 +363,8 @@ size_t Messenger::max_concurrent_requests() const {
   return FLAGS_num_connections_to_server;
 }
 
-Reactor* Messenger::RemoteToReactor(const Sockaddr &remote, uint32_t idx) {
-  uint32_t hashCode = remote.HashCode();
+Reactor* Messenger::RemoteToReactor(const Endpoint& remote, uint32_t idx) {
+  uint32_t hashCode = hash_value(remote);
   int reactor_idx = (hashCode + idx) % reactors_.size();
   // This is just a static partitioning; where each connection
   // to a remote is assigned to a particular reactor. We could
@@ -381,7 +449,7 @@ int64_t Messenger::ScheduleOnReactor(const std::function<void(const Status&)>& f
 }
 
 void Messenger::UpdateServicesCache(std::lock_guard<percpu_rwlock>* guard) {
-  assert(guard != nullptr);
+  DCHECK_ONLY_NOTNULL(guard);
 
   auto* new_cache = !rpc_services_.empty() ? new RpcServicesMap(rpc_services_) : nullptr;
   auto* old = rpc_services_cache_.exchange(new_cache);

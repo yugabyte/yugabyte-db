@@ -392,12 +392,12 @@ namespace {
 Status CreateConsensusServiceProxyForHost(const shared_ptr<Messenger>& messenger,
                                           const HostPort& hostport,
                                           gscoped_ptr<ConsensusServiceProxy>* new_proxy) {
-  vector<Sockaddr> addrs;
+  std::vector<Endpoint> addrs;
   RETURN_NOT_OK(hostport.ResolveAddresses(&addrs));
   if (addrs.size() > 1) {
-    LOG(WARNING)<< "Peer address '" << hostport.ToString() << "' "
-    << "resolves to " << addrs.size() << " different addresses. Using "
-    << addrs[0].ToString();
+    LOG(WARNING) << "Peer address '" << hostport.ToString() << "' "
+                 << "resolves to " << addrs.size() << " different addresses. Using "
+                 << addrs[0];
   }
   new_proxy->reset(new ConsensusServiceProxy(messenger, addrs[0]));
   return Status::OK();

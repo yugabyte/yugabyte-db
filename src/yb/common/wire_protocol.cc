@@ -180,15 +180,15 @@ Status HostPortFromPB(const HostPortPB& host_port_pb, HostPort* host_port) {
   return Status::OK();
 }
 
-Status AddHostPortPBs(const vector<Sockaddr>& addrs,
+Status AddHostPortPBs(const std::vector<Endpoint>& addrs,
                       RepeatedPtrField<HostPortPB>* pbs) {
-  for (const Sockaddr& addr : addrs) {
+  for (const auto& addr : addrs) {
     HostPortPB* pb = pbs->Add();
     pb->set_port(addr.port());
-    if (addr.IsWildcard()) {
+    if (addr.address().is_unspecified()) {
       auto status = GetFQDN(pb->mutable_host());
       if (!status.ok()) {
-        std::vector<Sockaddr> locals;
+        std::vector<IpAddress> locals;
         if (!GetLocalAddresses(&locals, AddressFilter::EXTERNAL).ok() || locals.empty()) {
           return status;
         }
@@ -197,12 +197,12 @@ Status AddHostPortPBs(const vector<Sockaddr>& addrs,
             pb = pbs->Add();
             pb->set_port(addr.port());
           }
-          pb->set_host(address.host());
+          pb->set_host(address.to_string());
           pb = nullptr;
         }
       }
     } else {
-      pb->set_host(addr.host());
+      pb->set_host(addr.address().to_string());
     }
   }
   return Status::OK();

@@ -611,7 +611,7 @@ Status YBClient::Data::WaitForAlterTableToFinish(YBClient* client,
 }
 
 Status YBClient::Data::InitLocalHostNames() {
-  vector<Sockaddr> addresses;
+  std::vector<IpAddress> addresses;
   auto status = GetLocalAddresses(&addresses, AddressFilter::EXTERNAL);
   if (!status.ok()) {
     LOG(WARNING) << "Failed to enumerate network interfaces" << status.ToString();
@@ -628,12 +628,18 @@ Status YBClient::Data::InitLocalHostNames() {
       VLOG(1) << "Considering host " << hostname << " local";
     }
 
-    status = HostPort(hostname, 0).ResolveAddresses(&addresses);
+    std::vector<Endpoint> endpoints;
+    status = HostPort(hostname, 0).ResolveAddresses(&endpoints);
     if (!status.ok()) {
       const auto message = Substitute("Could not resolve local host name '$0'", hostname);
       LOG(WARNING) << message;
       if (addresses.empty()) {
         return status.CloneAndPrepend(message);
+      }
+    } else {
+      addresses.reserve(addresses.size() + endpoints.size());
+      for (const auto& endpoint : endpoints) {
+        addresses.push_back(endpoint.address());
       }
     }
   } else {
@@ -643,13 +649,12 @@ Status YBClient::Data::InitLocalHostNames() {
     }
   }
 
-  for (const Sockaddr& addr : addresses) {
+  for (const auto& addr : addresses) {
     // Similar to above, ignore local or wildcard addresses.
-    if (addr.IsWildcard()) continue;
-    if (addr.IsAnyLocalAddress()) continue;
+    if (addr.is_unspecified() || addr.is_loopback()) continue;
 
-    VLOG(1) << "Considering host " << addr.host() << " local";
-    local_host_names_.insert(addr.host());
+    VLOG(1) << "Considering host " << addr << " local";
+    local_host_names_.insert(addr.to_string());
   }
 
   return Status::OK();
@@ -862,10 +867,10 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
 
 void YBClient::Data::LeaderMasterDetermined(const Status& status,
                                               const HostPort& host_port) {
-  Sockaddr leader_sock_addr;
+  Endpoint leader_sock_addr;
   Status new_status = status;
   if (new_status.ok()) {
-    new_status = SockaddrFromHostPort(host_port, &leader_sock_addr);
+    new_status = EndpointFromHostPort(host_port, &leader_sock_addr);
   }
 
   vector<StatusCallback> cbs;
@@ -897,7 +902,7 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
                                                  const StatusCallback& cb) {
   DCHECK(deadline.Initialized());
 
-  vector<Sockaddr> master_sockaddrs;
+  vector<Endpoint> master_sockaddrs;
   // Refresh the value of 'master_server_addrs_' if needed.
   Status s = ReinitializeMasterAddresses();
   if (!s.ok() && master_server_addrs_.empty()) {
@@ -905,7 +910,7 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
     return;
   }
   for (const string& master_server_addr : master_server_addrs_) {
-    vector<Sockaddr> addrs;
+    vector<Endpoint> addrs;
     // TODO: Do address resolution asynchronously as well.
     s = ParseAddressList(master_server_addr, master::kMasterDefaultPort, &addrs);
     if (!s.ok()) {
@@ -970,8 +975,8 @@ Status YBClient::Data::SetMasterAddresses(const string& addrs) {
 }
 
 // Add a given master to the master address list
-Status YBClient::Data::AddMasterAddress(const Sockaddr& sockaddr) {
-  HostPort host_port(sockaddr.host(), sockaddr.port());
+Status YBClient::Data::AddMasterAddress(const Endpoint& sockaddr) {
+  HostPort host_port(sockaddr);
   master_server_addrs_.push_back(host_port.ToString());
   return Status::OK();
 }
@@ -1006,7 +1011,7 @@ Status YBClient::Data::ReinitializeMasterAddresses() {
 }
 
 // Remove a given master from the list of master_server_addrs_
-Status YBClient::Data::RemoveMasterAddress(const Sockaddr& sockaddr) {
+Status YBClient::Data::RemoveMasterAddress(const Endpoint& sockaddr) {
   vector<HostPort> new_list;
 
   RETURN_NOT_OK(HostPort::RemoveAndGetHostPortList(

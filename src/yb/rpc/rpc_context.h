@@ -33,7 +33,6 @@ class Message;
 
 namespace yb {
 
-class Sockaddr;
 class Trace;
 
 namespace util {
@@ -157,8 +156,10 @@ class RpcContext {
   // Return the credentials of the remote user who made this call.
   const UserCredentials& user_credentials() const;
 
-  // Return the remote IP address and port which sent the current RPC call.
-  const Sockaddr& remote_address() const;
+  // Return the remote endpoint which sent the current RPC call.
+  const Endpoint& remote_address() const;
+  // Return the local endpoint which received the current RPC call.
+  const Endpoint& local_address() const;
 
   // A string identifying the requestor -- both the user info and the IP address.
   // Suitable for use in log messages.

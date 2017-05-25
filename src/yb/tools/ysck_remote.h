@@ -42,10 +42,10 @@ namespace tools {
 class RemoteYsckTabletServer : public YsckTabletServer {
  public:
   explicit RemoteYsckTabletServer(const std::string& id,
-                                  const Sockaddr& address,
+                                  const Endpoint& address,
                                   const std::shared_ptr<rpc::Messenger>& messenger)
       : YsckTabletServer(id),
-        address_(address.ToString()),
+        address_(yb::ToString(address)),
         messenger_(messenger),
         generic_proxy_(new server::GenericServiceProxy(messenger, address)),
         ts_proxy_(new tserver::TabletServerServiceProxy(messenger, address)) {
@@ -77,7 +77,7 @@ class RemoteYsckTabletServer : public YsckTabletServer {
 class RemoteYsckMaster : public YsckMaster {
  public:
 
-  static CHECKED_STATUS Build(const Sockaddr& address, std::shared_ptr<YsckMaster>* master);
+  static CHECKED_STATUS Build(const Endpoint& address, std::shared_ptr<YsckMaster>* master);
 
   virtual ~RemoteYsckMaster() { }
 
@@ -92,7 +92,7 @@ class RemoteYsckMaster : public YsckMaster {
 
  private:
   explicit RemoteYsckMaster(
-      const Sockaddr& address, const std::shared_ptr<rpc::Messenger>& messenger)
+      const Endpoint& address, const std::shared_ptr<rpc::Messenger>& messenger)
       : messenger_(messenger),
         generic_proxy_(new server::GenericServiceProxy(messenger, address)),
         proxy_(new master::MasterServiceProxy(messenger, address)) {}

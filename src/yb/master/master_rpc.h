@@ -46,7 +46,7 @@ class GetMasterRegistrationRpc : public rpc::Rpc {
   // pointer for the lifetime of this object.
   //
   // Invokes 'user_cb' upon failure or success of the RPC call.
-  GetMasterRegistrationRpc(StatusCallback user_cb, Sockaddr addr,
+  GetMasterRegistrationRpc(StatusCallback user_cb, const Endpoint& addr,
                            const MonoTime& deadline,
                            const std::shared_ptr<rpc::Messenger>& messenger,
                            ServerEntryPB* out);
@@ -61,7 +61,7 @@ class GetMasterRegistrationRpc : public rpc::Rpc {
   virtual void SendRpcCb(const Status& status) override;
 
   StatusCallback user_cb_;
-  Sockaddr addr_;
+  Endpoint addr_;
 
   ServerEntryPB* out_;
 
@@ -96,7 +96,8 @@ class GetLeaderMasterRpc : public rpc::Rpc,
   //
   // Calls 'user_cb' when the leader is found, or if no leader can be
   // found until 'deadline' passes.
-  GetLeaderMasterRpc(LeaderCallback user_cb, std::vector<Sockaddr> addrs,
+  GetLeaderMasterRpc(LeaderCallback user_cb,
+                     std::vector<Endpoint> addrs,
                      const MonoTime& deadline,
                      const std::shared_ptr<rpc::Messenger>& messenger);
 
@@ -115,12 +116,12 @@ class GetLeaderMasterRpc : public rpc::Rpc,
   // Invokes SendRpcCb if the response indicates that the specified
   // master is a leader, or if responses have been received from all
   // of the Masters.
-  void GetMasterRegistrationRpcCbForNode(const Sockaddr& node_addr,
+  void GetMasterRegistrationRpcCbForNode(const Endpoint& node_addr,
                                          const ServerEntryPB& resp,
                                          const Status& status);
 
   LeaderCallback user_cb_;
-  std::vector<Sockaddr> addrs_;
+  std::vector<Endpoint> addrs_;
 
   HostPort leader_master_;
 

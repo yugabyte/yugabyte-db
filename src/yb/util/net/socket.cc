@@ -131,8 +131,9 @@ bool Socket::IsTemporarySocketError(const Status& status) {
 #if defined(__linux__)
 
 Status Socket::Init(int flags) {
+  auto family = flags & FLAG_IPV6 ? AF_INET6 : AF_INET;
   int nonblocking_flag = (flags & FLAG_NONBLOCKING) ? SOCK_NONBLOCK : 0;
-  Reset(::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | nonblocking_flag, 0));
+  Reset(::socket(family, SOCK_STREAM | SOCK_CLOEXEC | nonblocking_flag, 0));
   if (fd_ < 0) {
     int err = errno;
     return STATUS(NetworkError, std::string("error opening socket: ") +
@@ -145,7 +146,7 @@ Status Socket::Init(int flags) {
 #else
 
 Status Socket::Init(int flags) {
-  Reset(::socket(AF_INET, SOCK_STREAM, 0));
+  Reset(::socket(flags & FLAG_IPV6 ? AF_INET6 : AF_INET, SOCK_STREAM, 0));
   if (fd_ < 0) {
     int err = errno;
     return STATUS(NetworkError, std::string("error opening socket: ") +
@@ -249,7 +250,7 @@ Status Socket::SetReuseAddr(bool flag) {
   return Status::OK();
 }
 
-Status Socket::BindAndListen(const Sockaddr &sockaddr,
+Status Socket::BindAndListen(const Endpoint& sockaddr,
                              int listenQueueSize) {
   RETURN_NOT_OK(SetReuseAddr(true));
   RETURN_NOT_OK(Bind(sockaddr));
@@ -265,46 +266,56 @@ Status Socket::Listen(int listen_queue_size) {
   return Status::OK();
 }
 
-Status Socket::GetSocketAddress(Sockaddr *cur_addr) const {
-  struct sockaddr_in sin;
-  socklen_t len = sizeof(sin);
-  DCHECK_GE(fd_, 0);
-  if (::getsockname(fd_, (struct sockaddr *)&sin, &len) == -1) {
+namespace {
+
+enum class EndpointType {
+  REMOTE,
+  LOCAL,
+};
+
+Status GetEndpoint(EndpointType type, int fd, Endpoint* out) {
+  Endpoint temp;
+  DCHECK_GE(fd, 0);
+  socklen_t len = temp.capacity();
+  auto result = type == EndpointType::LOCAL ? getsockname(fd, temp.data(), &len)
+                                            : getpeername(fd, temp.data(), &len);
+  if (result == -1) {
     int err = errno;
-    return STATUS(NetworkError, string("getsockname error: ") +
-                                ErrnoToString(err), Slice(), err);
+    const std::string prefix = type == EndpointType::LOCAL ? "getsockname" : "getpeername";
+    return STATUS(NetworkError,
+                  prefix + " error: " + ErrnoToString(err),
+                  Slice(),
+                  err);
   }
-  *cur_addr = sin;
+  temp.resize(len);
+  *out = temp;
   return Status::OK();
 }
 
-Status Socket::GetPeerAddress(Sockaddr *cur_addr) const {
-  struct sockaddr_in sin;
-  socklen_t len = sizeof(sin);
-  DCHECK_GE(fd_, 0);
-  if (::getpeername(fd_, (struct sockaddr *)&sin, &len) == -1) {
-    int err = errno;
-    return STATUS(NetworkError, string("getpeername error: ") +
-                                ErrnoToString(err), Slice(), err);
-  }
-  *cur_addr = sin;
-  return Status::OK();
+} // namespace
+
+Status Socket::GetSocketAddress(Endpoint* out) const {
+  return GetEndpoint(EndpointType::LOCAL, fd_, out);
 }
 
-Status Socket::Bind(const Sockaddr& bind_addr, bool explain_addr_in_use) {
-  struct sockaddr_in addr = bind_addr.addr();
+Status Socket::GetPeerAddress(Endpoint* out) const {
+  return GetEndpoint(EndpointType::REMOTE, fd_, out);
+}
 
+Status Socket::Bind(const Endpoint& endpoint, bool explain_addr_in_use) {
   DCHECK_GE(fd_, 0);
-  if (PREDICT_FALSE(::bind(fd_, (struct sockaddr*) &addr, sizeof(addr)))) {
+  if (PREDICT_FALSE(::bind(fd_, endpoint.data(), endpoint.size()))) {
     int err = errno;
     Status s = STATUS(NetworkError,
-        strings::Substitute("error binding socket to $0: $1",
-                            bind_addr.ToString(), ErrnoToString(err)),
-        Slice(), err);
+                      strings::Substitute("Error binding socket to $0: $1",
+                                          ToString(endpoint),
+                                          ErrnoToString(err)),
+                      Slice(),
+                      err);
 
     if (s.IsNetworkError() && s.posix_code() == EADDRINUSE && explain_addr_in_use &&
-        bind_addr.port() != 0) {
-      TryRunLsof(bind_addr);
+        endpoint.port() != 0) {
+      TryRunLsof(endpoint);
     }
     return s;
   }
@@ -312,25 +323,24 @@ Status Socket::Bind(const Sockaddr& bind_addr, bool explain_addr_in_use) {
   return Status::OK();
 }
 
-Status Socket::Accept(Socket *new_conn, Sockaddr *remote, int flags) {
+Status Socket::Accept(Socket *new_conn, Endpoint* remote, int flags) {
   TRACE_EVENT0("net", "Socket::Accept");
-  struct sockaddr_in addr;
-  socklen_t olen = sizeof(addr);
+  Endpoint temp;
+  socklen_t olen = temp.capacity();
   DCHECK_GE(fd_, 0);
 #if defined(__linux__)
   int accept_flags = SOCK_CLOEXEC;
   if (flags & FLAG_NONBLOCKING) {
     accept_flags |= SOCK_NONBLOCK;
   }
-  new_conn->Reset(::accept4(fd_, (struct sockaddr*)&addr,
-                  &olen, accept_flags));
+  new_conn->Reset(::accept4(fd_, temp.data(), &olen, accept_flags));
   if (new_conn->GetFd() < 0) {
     int err = errno;
     return STATUS(NetworkError, std::string("accept4(2) error: ") +
                                 ErrnoToString(err), Slice(), err);
   }
 #else
-  new_conn->Reset(::accept(fd_, (struct sockaddr*)&addr, &olen));
+  new_conn->Reset(::accept(fd_, temp.data(), &olen));
   if (new_conn->GetFd() < 0) {
     int err = errno;
     return STATUS(NetworkError, std::string("accept(2) error: ") +
@@ -339,35 +349,34 @@ Status Socket::Accept(Socket *new_conn, Sockaddr *remote, int flags) {
   RETURN_NOT_OK(new_conn->SetNonBlocking(flags & FLAG_NONBLOCKING));
   RETURN_NOT_OK(new_conn->SetCloseOnExec());
 #endif // defined(__linux__)
+  temp.resize(olen);
 
-  *remote = addr;
+  *remote = temp;
   TRACE_EVENT_INSTANT1("net", "Accepted", TRACE_EVENT_SCOPE_THREAD,
-                       "remote", remote->ToString());
+                       "remote", ToString(*remote));
   return Status::OK();
 }
 
 Status Socket::BindForOutgoingConnection() {
-  Sockaddr bind_host;
-  Status s = bind_host.ParseString(FLAGS_local_ip_for_outbound_sockets, 0);
-  CHECK(s.ok() && bind_host.port() == 0)
+  boost::system::error_code ec;
+  auto bind_address = IpAddress::from_string(FLAGS_local_ip_for_outbound_sockets, ec);
+  CHECK(!ec)
     << "Invalid local IP set for 'local_ip_for_outbound_sockets': '"
-    << FLAGS_local_ip_for_outbound_sockets << "': " << s.ToString();
+    << FLAGS_local_ip_for_outbound_sockets << "': " << ec;
 
-  RETURN_NOT_OK(Bind(bind_host));
+  RETURN_NOT_OK(Bind(Endpoint(bind_address, 0)));
   return Status::OK();
 }
 
-Status Socket::Connect(const Sockaddr &remote) {
-  TRACE_EVENT1("net", "Socket::Connect",
-               "remote", remote.ToString());
+Status Socket::Connect(const Endpoint& remote) {
+  TRACE_EVENT1("net", "Socket::Connect", "remote", ToString(remote));
+
   if (PREDICT_FALSE(!FLAGS_local_ip_for_outbound_sockets.empty())) {
     RETURN_NOT_OK(BindForOutgoingConnection());
   }
 
-  struct sockaddr_in addr;
-  memcpy(&addr, &remote.addr(), sizeof(sockaddr_in));
   DCHECK_GE(fd_, 0);
-  if (::connect(fd_, (const struct sockaddr*)&addr, sizeof(addr)) < 0) {
+  if (::connect(fd_, remote.data(), remote.size()) < 0) {
     int err = errno;
     return STATUS(NetworkError, std::string("connect(2) error: ") +
                                 ErrnoToString(err), Slice(), err);

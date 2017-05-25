@@ -100,9 +100,10 @@ TabletServer::~TabletServer() {
   Shutdown();
 }
 
-string TabletServer::ToString() const {
+std::string TabletServer::ToString() const {
   return strings::Substitute("TabletServer : rpc=$0, uuid=$1",
-                             first_rpc_address().ToString(), fs_manager_->uuid());
+                             yb::ToString(first_rpc_address()),
+                             fs_manager_->uuid());
 }
 
 Status TabletServer::ValidateMasterAddressResolution() const {
@@ -214,23 +215,23 @@ void TabletServer::AutoInitServiceFlags() {
 Status TabletServer::Start() {
   CHECK(initted_);
 
-  gscoped_ptr<ServiceIf> ts_service(new TabletServiceImpl(this));
-  gscoped_ptr<ServiceIf> admin_service(new TabletServiceAdminImpl(this));
-  gscoped_ptr<ServiceIf> consensus_service(new ConsensusServiceImpl(metric_entity(),
-                                                                    tablet_manager_.get()));
-  gscoped_ptr<ServiceIf> remote_bootstrap_service(
+  std::unique_ptr<ServiceIf> ts_service(new TabletServiceImpl(this));
+  std::unique_ptr<ServiceIf> admin_service(new TabletServiceAdminImpl(this));
+  std::unique_ptr<ServiceIf> consensus_service(new ConsensusServiceImpl(metric_entity(),
+                                                                        tablet_manager_.get()));
+  std::unique_ptr<ServiceIf> remote_bootstrap_service(
       new RemoteBootstrapServiceImpl(fs_manager_.get(), tablet_manager_.get(), metric_entity()));
 
   AutoInitServiceFlags();
 
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_tablet_server_svc_queue_length,
-                                                     ts_service.Pass()));
+                                                     std::move(ts_service)));
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_admin_svc_queue_length,
-                                                     admin_service.Pass()));
+                                                     std::move(admin_service)));
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_consensus_svc_queue_length,
-                                                     consensus_service.Pass()));
+                                                     std::move(consensus_service)));
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_remote_bootstrap_svc_queue_length,
-                                                     remote_bootstrap_service.Pass()));
+                                                     std::move(remote_bootstrap_service)));
   RETURN_NOT_OK(RpcAndWebServerBase::Start());
 
   RETURN_NOT_OK(heartbeater_->Start());

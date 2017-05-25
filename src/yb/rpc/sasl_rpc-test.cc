@@ -15,13 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "yb/rpc/rpc-test-base.h"
+#include <sasl/sasl.h>
 
 #include <string>
 
 #include <boost/thread/thread.hpp>
 #include <gtest/gtest.h>
-#include <sasl/sasl.h>
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/rpc/constants.h"
@@ -29,6 +28,7 @@
 #include "yb/rpc/sasl_client.h"
 #include "yb/rpc/sasl_common.h"
 #include "yb/rpc/sasl_server.h"
+#include "yb/rpc/rpc-test-base.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
@@ -61,7 +61,7 @@ typedef void (*socket_callable_t)(Socket*);
 // Call Accept() on the socket, then pass the connection to the server runner
 static void RunAcceptingDelegator(Socket* acceptor, socket_callable_t server_runner) {
   Socket conn;
-  Sockaddr remote;
+  Endpoint remote;
   CHECK_OK(acceptor->Accept(&conn, &remote, 0));
   server_runner(&conn);
 }
@@ -70,8 +70,8 @@ static void RunAcceptingDelegator(Socket* acceptor, socket_callable_t server_run
 static void RunNegotiationTest(socket_callable_t server_runner, socket_callable_t client_runner) {
   Socket server_sock;
   CHECK_OK(server_sock.Init(0));
-  ASSERT_OK(server_sock.BindAndListen(Sockaddr(), 1));
-  Sockaddr server_bind_addr;
+  ASSERT_OK(server_sock.BindAndListen(Endpoint(), 1));
+  Endpoint server_bind_addr;
   ASSERT_OK(server_sock.GetSocketAddress(&server_bind_addr));
   boost::thread server(RunAcceptingDelegator, &server_sock, server_runner);
 

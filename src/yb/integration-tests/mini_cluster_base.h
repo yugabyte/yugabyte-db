@@ -23,7 +23,7 @@ class MiniClusterBase {
     return DoCreateClient(builder, client);
   }
 
-  Sockaddr GetLeaderMasterBoundRpcAddr() {
+  Endpoint GetLeaderMasterBoundRpcAddr() {
     return DoGetLeaderMasterBoundRpcAddr();
   }
 
@@ -33,7 +33,7 @@ class MiniClusterBase {
  private:
   virtual CHECKED_STATUS DoCreateClient(client::YBClientBuilder* builder,
       std::shared_ptr<client::YBClient>* client) = 0;
-  virtual Sockaddr DoGetLeaderMasterBoundRpcAddr() = 0;
+  virtual Endpoint DoGetLeaderMasterBoundRpcAddr() = 0;
 };
 
 }  // namespace yb

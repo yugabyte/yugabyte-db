@@ -141,7 +141,7 @@ void CQLInboundCall::LogTrace() const {
 std::string CQLInboundCall::ToString() const {
   return strings::Substitute("CQL Call $0 from $1",
                              remote_method_.ToString(),
-                             connection()->remote().ToString());
+                             yb::ToString(connection()->remote()));
 }
 
 void CQLInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) {

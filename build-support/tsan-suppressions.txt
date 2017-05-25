@@ -111,3 +111,6 @@ race:yb::ExternalDaemon::LogTailerThread::LogTailerThread
 
 # Known well implemented lock-free containers
 race:boost::lockfree
+
+# std::locale is thread safe
+race:std::locale::classic

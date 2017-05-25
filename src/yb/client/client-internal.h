@@ -168,8 +168,8 @@ class YBClient::Data {
 
   // API's to add/remove/set the master address list in the client
   CHECKED_STATUS SetMasterAddresses(const std::string& addresses);
-  CHECKED_STATUS RemoveMasterAddress(const Sockaddr& sockaddr);
-  CHECKED_STATUS AddMasterAddress(const Sockaddr& sockaddr);
+  CHECKED_STATUS RemoveMasterAddress(const Endpoint& sockaddr);
+  CHECKED_STATUS AddMasterAddress(const Endpoint& sockaddr);
   // This method reads the master address from the remote endpoint or a file depending on which is
   // specified, and re-initializes the 'master_server_addrs_' variable.
   CHECKED_STATUS ReinitializeMasterAddresses();

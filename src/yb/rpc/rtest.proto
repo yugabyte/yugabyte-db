@@ -104,6 +104,16 @@ message DisconnectRequestPB {}
 
 message DisconnectResponsePB {}
 
+// Used to test connectivity between servers. Client asks one server to forward request to another.
+message ForwardRequestPB {
+  optional string host = 1;
+  optional uint32 port = 2;
+}
+
+message ForwardResponsePB {
+  optional string name = 1; // Name of server that handled this request.
+}
+
 service CalculatorService {
   rpc Add(AddRequestPB) returns(AddResponsePB);
   rpc Sleep(SleepRequestPB) returns(SleepResponsePB);
@@ -114,4 +124,5 @@ service CalculatorService {
   rpc Panic(PanicRequestPB) returns (PanicResponsePB);
   rpc Ping(PingRequestPB) returns (PingResponsePB);
   rpc Disconnect(DisconnectRequestPB) returns (DisconnectResponsePB);
+  rpc Forward(ForwardRequestPB) returns (ForwardResponsePB);
 }

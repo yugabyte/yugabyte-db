@@ -39,7 +39,7 @@ CQLServiceImpl::CQLServiceImpl(
     const CQLServerOptions& opts)
     : CQLServerServiceIf(server->metric_entity()),
       messenger_(messenger),
-      cql_rpcserver_env_(new rpc::CQLRpcServerEnv(server->first_rpc_address().host(),
+      cql_rpcserver_env_(new rpc::CQLRpcServerEnv(server->first_rpc_address().address().to_string(),
                                                   opts.broadcast_rpc_address)) {
   // TODO(ENG-446): Handle metrics for all the methods individually.
   // Setup client.

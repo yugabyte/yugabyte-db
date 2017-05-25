@@ -930,10 +930,10 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     case TableType::YQL_TABLE_TYPE: {
       for (const YQLReadRequestPB& yql_read_req : req->yql_batch()) {
         // Update the remote endpoint.
-        const Sockaddr& remote_address = context->remote_address();
+        const auto& remote_address = context->remote_address();
         HostPortPB *hostPortPB =
             const_cast<YQLReadRequestPB&>(yql_read_req).mutable_remote_endpoint();
-        hostPortPB->set_host(remote_address.host());
+        hostPortPB->set_host(remote_address.address().to_string());
         hostPortPB->set_port(remote_address.port());
 
         YQLResponsePB yql_response;

@@ -115,7 +115,7 @@ class CQLMessage {
   //   StringList -> std::vector<String>
   //   Bytes      -> std::string
   //   ShortBytes -> std::string
-  //   Inet       -> Sockaddr
+  //   Inet       -> Endpoint
   //   Consistency    -> uint16_t
   //   StringMap      -> std::unordered_map<std::string, std::string>
   //   StringMultiMap -> std::unordered_map<std::string, std::vector<String>>
@@ -125,7 +125,6 @@ class CQLMessage {
   static constexpr size_t kByteSize  = 1;
   static constexpr size_t kShortSize = 2;
   static constexpr size_t kUUIDSize  = 16;
-  static constexpr size_t kIPv4Size  = 4;
   static constexpr size_t kConsistencySize = 2;
   enum class Consistency : uint16_t {
     ANY          = 0x0000,
@@ -254,7 +253,7 @@ class CQLRequest : public CQLMessage {
   CHECKED_STATUS ParseStringList(std::vector<std::string>* list);
   CHECKED_STATUS ParseBytes(std::string* value);
   CHECKED_STATUS ParseShortBytes(std::string* value);
-  CHECKED_STATUS ParseInet(Sockaddr* value);
+  CHECKED_STATUS ParseInet(Endpoint* value);
   CHECKED_STATUS ParseConsistency(Consistency* consistency);
   CHECKED_STATUS ParseStringMap(std::unordered_map<std::string, std::string>* map);
   CHECKED_STATUS ParseStringMultiMap(
@@ -769,7 +768,7 @@ class TopologyChangeEventResponse : public EventResponse {
   static constexpr const char* const kMovedNode = "MOVED_NODE";
   static constexpr const char* const kNewNode = "NEW_NODE";
   virtual ~TopologyChangeEventResponse() override;
-  TopologyChangeEventResponse(const std::string& topology_change_type, const Sockaddr& node);
+  TopologyChangeEventResponse(const std::string& topology_change_type, const Endpoint& node);
 
  protected:
   virtual void SerializeEventBody(faststring* mesg) const override;
@@ -777,7 +776,7 @@ class TopologyChangeEventResponse : public EventResponse {
 
  private:
   const std::string topology_change_type_;
-  const Sockaddr node_;
+  const Endpoint node_;
 };
 
 //------------------------------------------------------------
@@ -790,10 +789,10 @@ class StatusChangeEventResponse : public EventResponse {
   std::string BodyToString() const override;
 
  private:
-  StatusChangeEventResponse(const std::string& status_change_type, const Sockaddr& node);
+  StatusChangeEventResponse(const std::string& status_change_type, const Endpoint& node);
 
   const std::string status_change_type_;
-  const Sockaddr node_;
+  const Endpoint node_;
 };
 
 //------------------------------------------------------------

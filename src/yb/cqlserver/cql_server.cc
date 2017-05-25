@@ -45,9 +45,8 @@ CQLServer::CQLServer(const CQLServerOptions& opts,
 Status CQLServer::Start() {
   RETURN_NOT_OK(server::RpcAndWebServerBase::Init());
 
-  gscoped_ptr<ServiceIf> cql_service(
-      new CQLServiceImpl(this, messenger_, opts_));
-  RETURN_NOT_OK(RegisterService(FLAGS_cql_service_queue_length, cql_service.Pass()));
+  std::unique_ptr<ServiceIf> cql_service(new CQLServiceImpl(this, messenger_, opts_));
+  RETURN_NOT_OK(RegisterService(FLAGS_cql_service_queue_length, std::move(cql_service)));
 
   RETURN_NOT_OK(server::RpcAndWebServerBase::Start());
 
@@ -107,10 +106,10 @@ void CQLServer::CQLNodeListRefresh(const boost::system::error_code &e) {
 
         // Use only the first rpc address.
         const yb::HostPortPB& hostport_pb = ts_info.registration().common().rpc_addresses(0);
-        Sockaddr addr;
-        s = addr.ParseString(hostport_pb.host(), hostport_pb.port());
-        if (!s.ok()) {
-          LOG (WARNING) << s.ToString();
+        boost::system::error_code ec;
+        Endpoint addr(IpAddress::from_string(hostport_pb.host(), ec), hostport_pb.port());
+        if (ec) {
+          LOG(WARNING) << ec;
           continue;
         }
 

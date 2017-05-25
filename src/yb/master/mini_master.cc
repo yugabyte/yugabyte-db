@@ -122,8 +122,8 @@ Status MiniMaster::Restart() {
   CHECK(running_);
   is_creating_ = false;
 
-  Sockaddr prev_rpc = bound_rpc_addr();
-  Sockaddr prev_http = bound_http_addr();
+  Endpoint prev_rpc = bound_rpc_addr();
+  Endpoint prev_http = bound_http_addr();
   Shutdown();
 
   MasterOptions opts(std::make_shared<std::vector<HostPort>>(), is_creating_);
@@ -141,12 +141,12 @@ Status MiniMaster::WaitUntilCatalogManagerIsLeaderAndReadyForTests() {
   return master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests();
 }
 
-const Sockaddr MiniMaster::bound_rpc_addr() const {
+Endpoint MiniMaster::bound_rpc_addr() const {
   CHECK(running_);
   return master_->first_rpc_address();
 }
 
-const Sockaddr MiniMaster::bound_http_addr() const {
+Endpoint MiniMaster::bound_http_addr() const {
   CHECK(running_);
   return master_->first_http_address();
 }
@@ -157,7 +157,7 @@ std::string MiniMaster::permanent_uuid() const {
 }
 
 std::string MiniMaster::bound_rpc_addr_str() const {
-  return bound_rpc_addr().ToString();
+  return yb::ToString(bound_rpc_addr());
 }
 
 size_t MiniMaster::NumSystemTables() const {

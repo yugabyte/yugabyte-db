@@ -734,9 +734,9 @@ Status SysCatalogTable::UpdateClusterConfigInfo(ClusterConfigInfo* config_info) 
 
 void SysCatalogTable::InitLocalRaftPeerPB() {
   local_peer_pb_.set_permanent_uuid(master_->fs_manager()->uuid());
-  Sockaddr addr = master_->first_rpc_address();
+  auto addr = master_->first_rpc_address();
   HostPort hp;
-  CHECK_OK(HostPortFromSockaddrReplaceWildcard(addr, &hp));
+  CHECK_OK(HostPortFromEndpointReplaceWildcard(addr, &hp));
   CHECK_OK(HostPortToPB(hp, local_peer_pb_.mutable_last_known_addr()));
 }
 

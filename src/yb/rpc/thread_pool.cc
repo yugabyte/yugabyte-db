@@ -235,8 +235,19 @@ ThreadPool::ThreadPool(ThreadPoolOptions options)
     : impl_(new Impl(std::move(options))) {
 }
 
-ThreadPool::~ThreadPool() {
+ThreadPool::ThreadPool(ThreadPool&& rhs)
+    : impl_(std::move(rhs.impl_)) {}
+
+ThreadPool& ThreadPool::operator=(ThreadPool&& rhs) {
   impl_->Shutdown();
+  impl_ = std::move(rhs.impl_);
+  return *this;
+}
+
+ThreadPool::~ThreadPool() {
+  if (impl_) {
+    impl_->Shutdown();
+  }
 }
 
 bool ThreadPool::Enqueue(ThreadPoolTask* task) {

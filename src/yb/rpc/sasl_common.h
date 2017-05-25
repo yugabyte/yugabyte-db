@@ -19,18 +19,15 @@
 #define YB_RPC_SASL_COMMON_H
 
 #include <stdint.h> // Required for sasl/sasl.h
+#include <sasl/sasl.h>
 
 #include <string>
 #include <set>
 
-#include <sasl/sasl.h>
-
 #include "yb/util/status.h"
+#include "yb/util/net/net_fwd.h"
 
 namespace yb {
-
-class Sockaddr;
-
 namespace rpc {
 
 using std::string;
@@ -59,7 +56,7 @@ Status SaslInit(const char* const app_name);
 string SaslErrDesc(int status, sasl_conn_t* conn);
 
 // Return <ip>;<port> string formatted for SASL library use.
-string SaslIpPortString(const Sockaddr& addr);
+string SaslIpPortString(const Endpoint& addr);
 
 // Return available plugin mechanisms for the given connection.
 std::set<string> SaslListAvailableMechs();
@@ -97,4 +94,4 @@ struct SaslMechanism {
 } // namespace rpc
 } // namespace yb
 
-#endif
+#endif // YB_RPC_SASL_COMMON_H

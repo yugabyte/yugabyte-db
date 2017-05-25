@@ -79,21 +79,21 @@ HostPort::HostPort()
 HostPort::HostPort(std::string host, uint16_t port)
     : host_(std::move(host)), port_(port) {}
 
-HostPort::HostPort(const Sockaddr& addr)
-  : host_(addr.host()),
-    port_(addr.port()) {
+HostPort::HostPort(const Endpoint& endpoint)
+    : host_(endpoint.address().to_string()), port_(endpoint.port()) {
 }
 
 Status HostPort::RemoveAndGetHostPortList(
-    const Sockaddr& remove,
-    const std::vector<string>& multiple_server_addresses,
+    const Endpoint& remove,
+    const std::vector<std::string>& multiple_server_addresses,
     uint16_t default_port,
     std::vector<HostPort> *res) {
   bool found = false;
   // Note that this outer loop is over a vector of comma-separated strings.
   for (const string& master_server_addr : multiple_server_addresses) {
-    vector<string> addr_strings = strings::Split(master_server_addr, ",", strings::SkipEmpty());
-    for (const string& single_addr : addr_strings) {
+    std::vector<std::string> addr_strings =
+        strings::Split(master_server_addr, ",", strings::SkipEmpty());
+    for (const auto& single_addr : addr_strings) {
       HostPort host_port;
       RETURN_NOT_OK(host_port.ParseString(single_addr, default_port));
       if (host_port.equals(remove)) {
@@ -114,8 +114,10 @@ Status HostPort::RemoveAndGetHostPortList(
     }
     LOG(ERROR) << out.str();
 
-    return STATUS(NotFound, Substitute("Cannot find $0 in master addresses.",
-      remove.ToString()));
+    return STATUS_SUBSTITUTE(NotFound,
+                             "Cannot find $0 in addresses: $1",
+                             yb::ToString(remove),
+                             out.str());
   }
 
   return Status::OK();
@@ -163,7 +165,7 @@ const string getaddrinfo_rc_to_string(int rc) {
 }
 }  // namespace
 
-Status HostPort::ResolveAddresses(vector<Sockaddr>* addresses) const {
+Status HostPort::ResolveAddresses(std::vector<Endpoint>* addresses) const {
   TRACE_EVENT1("net", "HostPort::ResolveAddresses",
                "host", host_);
   struct addrinfo hints;
@@ -188,21 +190,21 @@ Status HostPort::ResolveAddresses(vector<Sockaddr>* addresses) const {
     CHECK_EQ(res->ai_family, AF_INET);
     struct sockaddr_in* addr = reinterpret_cast<struct sockaddr_in*>(res->ai_addr);
     addr->sin_port = htons(port_);
-    Sockaddr sockaddr(*addr);
+    Endpoint sockaddr;
+    memcpy(sockaddr.data(), addr, sizeof(*addr));
     if (addresses) {
       addresses->push_back(sockaddr);
     }
-    VLOG(2) << "Resolved address " << sockaddr.ToString()
-            << " for host/port " << ToString();
+    VLOG(2) << "Resolved address " << sockaddr << " for host/port " << ToString();
   }
   return Status::OK();
 }
 
 Status HostPort::ParseStrings(const string& comma_sep_addrs,
                               uint16_t default_port,
-                              vector<HostPort>* res) {
-  vector<string> addr_strings = strings::Split(comma_sep_addrs, ",", strings::SkipEmpty());
-  vector<HostPort> host_ports;
+                              std::vector<HostPort>* res) {
+  std::vector<string> addr_strings = strings::Split(comma_sep_addrs, ",", strings::SkipEmpty());
+  std::vector<HostPort> host_ports;
   for (const string& addr_string : addr_strings) {
     HostPort host_port;
     RETURN_NOT_OK(host_port.ParseString(addr_string, default_port));
@@ -216,7 +218,7 @@ string HostPort::ToString() const {
   return Substitute("$0:$1", host_, port_);
 }
 
-string HostPort::ToCommaSeparatedString(const vector<HostPort>& hostports) {
+string HostPort::ToCommaSeparatedString(const std::vector<HostPort>& hostports) {
   vector<string> hostport_strs;
   for (const HostPort& hostport : hostports) {
     hostport_strs.push_back(hostport.ToString());
@@ -230,22 +232,22 @@ bool IsPrivilegedPort(uint16_t port) {
 
 Status ParseAddressList(const std::string& addr_list,
                         uint16_t default_port,
-                        std::vector<Sockaddr>* addresses) {
-  vector<HostPort> host_ports;
+                        std::vector<Endpoint>* addresses) {
+  std::vector<HostPort> host_ports;
   RETURN_NOT_OK(HostPort::ParseStrings(addr_list, default_port, &host_ports));
-  unordered_set<Sockaddr> uniqued;
+  std::unordered_set<Endpoint, EndpointHash> uniqued;
 
   for (const HostPort& host_port : host_ports) {
-    vector<Sockaddr> this_addresses;
+    std::vector<Endpoint> this_addresses;
     RETURN_NOT_OK(host_port.ResolveAddresses(&this_addresses));
 
     // Only add the unique ones -- the user may have specified
     // some IP addresses in multiple ways
-    for (const Sockaddr& addr : this_addresses) {
+    for (const auto& addr : this_addresses) {
       if (InsertIfNotPresent(&uniqued, addr)) {
         addresses->push_back(addr);
       } else {
-        LOG(INFO) << "Address " << addr.ToString() << " for " << host_port.ToString()
+        LOG(INFO) << "Address " << addr << " for " << host_port.ToString()
                   << " duplicates an earlier resolved entry.";
       }
     }
@@ -266,7 +268,7 @@ Status GetHostname(string* hostname) {
   return Status::OK();
 }
 
-Status GetLocalAddresses(std::vector<Sockaddr>* result, AddressFilter filter) {
+Status GetLocalAddresses(std::vector<IpAddress>* result, AddressFilter filter) {
   ifaddrs* addresses;
   if (getifaddrs(&addresses)) {
     return STATUS(NetworkError,
@@ -276,19 +278,29 @@ Status GetLocalAddresses(std::vector<Sockaddr>* result, AddressFilter filter) {
   }
 
   BOOST_SCOPE_EXIT(addresses) {
-      freeifaddrs(addresses);
+    freeifaddrs(addresses);
   } BOOST_SCOPE_EXIT_END
 
   for (auto address = addresses; address; address = address->ifa_next) {
-    if (address->ifa_addr != nullptr && address->ifa_addr->sa_family == AF_INET) {
-      Sockaddr temp(*pointer_cast<sockaddr_in*>(address->ifa_addr));
+    if (address->ifa_addr != nullptr) {
+      Endpoint temp;
+      auto family = address->ifa_addr->sa_family;
+      size_t size;
+      if (family == AF_INET) {
+        size = sizeof(sockaddr_in);
+      } else if (family == AF_INET6) {
+        size = sizeof(sockaddr_in6);
+      } else {
+        continue;
+      }
+      memcpy(temp.data(), address->ifa_addr, size);
       switch (filter) {
         case AddressFilter::ANY:
-          result->push_back(temp);
+          result->push_back(temp.address());
           break;
         case AddressFilter::EXTERNAL:
-          if (!temp.IsWildcard() && !temp.IsAnyLocalAddress()) {
-            result->push_back(temp);
+          if (!temp.address().is_unspecified() && !temp.address().is_loopback()) {
+            result->push_back(temp.address());
           }
           break;
       }
@@ -325,42 +337,42 @@ Status GetFQDN(string* hostname) {
   return Status::OK();
 }
 
-Status SockaddrFromHostPort(const HostPort& host_port, Sockaddr* addr) {
-  vector<Sockaddr> addrs;
+Status EndpointFromHostPort(const HostPort& host_port, Endpoint* endpoint) {
+  vector<Endpoint> addrs;
   RETURN_NOT_OK(host_port.ResolveAddresses(&addrs));
   if (addrs.empty()) {
     return STATUS(NetworkError, "Unable to resolve address", host_port.ToString());
   }
-  *addr = addrs[0];
+  *endpoint = addrs[0];
   if (addrs.size() > 1) {
     VLOG(1) << "Hostname " << host_port.host() << " resolved to more than one address. "
-            << "Using address: " << addr->ToString();
+            << "Using address: " << *endpoint;
   }
   return Status::OK();
 }
 
-Status HostPortFromSockaddrReplaceWildcard(const Sockaddr& addr, HostPort* hp) {
+Status HostPortFromEndpointReplaceWildcard(const Endpoint& addr, HostPort* hp) {
   string host;
-  if (addr.IsWildcard()) {
+  if (addr.address().is_unspecified()) {
     auto status = GetFQDN(&host);
     if (!status.ok()) {
-      std::vector<Sockaddr> locals;
+      std::vector<IpAddress> locals;
       if (GetLocalAddresses(&locals, AddressFilter::EXTERNAL).ok() && !locals.empty()) {
-        hp->set_host(locals.front().host());
+        hp->set_host(locals.front().to_string());
         hp->set_port(addr.port());
         return Status::OK();
       }
       return status;
     }
   } else {
-    host = addr.host();
+    host = addr.address().to_string();
   }
   hp->set_host(host);
   hp->set_port(addr.port());
   return Status::OK();
 }
 
-void TryRunLsof(const Sockaddr& addr, vector<string>* log) {
+void TryRunLsof(const Endpoint& addr, vector<string>* log) {
 #if defined(__APPLE__)
   string cmd = strings::Substitute(
       "lsof -n -i 'TCP:$0' -sTCP:LISTEN ; "
@@ -385,7 +397,7 @@ void TryRunLsof(const Sockaddr& addr, vector<string>* log) {
       addr.port());
 #endif // defined(__APPLE__)
 
-  LOG_STRING(WARNING, log) << "Failed to bind to " << addr.ToString() << ". "
+  LOG_STRING(WARNING, log) << "Failed to bind to " << addr << ". "
                            << "Trying to use lsof to find any processes listening "
                            << "on the same port:";
   LOG_STRING(INFO, log) << "$ " << cmd;
@@ -419,12 +431,11 @@ uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock) {
     const uint16_t random_port = kMinPort + rand.Next() % (kMaxPort - kMinPort + 1);
     VLOG(1) << "Trying to bind to port " << random_port;
 
-    Sockaddr sock_addr;
-    CHECK_OK(sock_addr.ParseString("127.0.0.1", random_port));
+    Endpoint sock_addr(boost::asio::ip::address_v4::loopback(), random_port);
     Socket sock;
     const Status init_status = sock.Init(0);
     if (!init_status.ok()) {
-      VLOG(1) << "Failed to call Init() on socket ith address " << sock_addr.ToString();
+      VLOG(1) << "Failed to call Init() on socket ith address " << sock_addr;
       continue;
     }
 
@@ -457,8 +468,8 @@ uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock) {
   return 0;  // never reached
 }
 
-bool HostPort::equals(const Sockaddr& sockaddr) const {
-  return sockaddr.host() == host() && sockaddr.port() == port();
+bool HostPort::equals(const Endpoint& endpoint) const {
+  return endpoint.address().to_string() == host() && endpoint.port() == port();
 }
 
 } // namespace yb

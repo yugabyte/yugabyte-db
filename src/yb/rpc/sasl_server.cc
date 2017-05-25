@@ -17,12 +17,14 @@
 
 #include "yb/rpc/sasl_server.h"
 
-#include <glog/logging.h>
-#include <google/protobuf/message_lite.h>
-#include <limits>
 #include <sasl/sasl.h>
+
+#include <limits>
 #include <set>
 #include <string>
+
+#include <glog/logging.h>
+#include <google/protobuf/message_lite.h>
 
 #include "yb/gutil/endian.h"
 #include "yb/gutil/map-util.h"
@@ -92,12 +94,12 @@ const std::string& SaslServer::plain_auth_user() const {
   return plain_auth_user_;
 }
 
-void SaslServer::set_local_addr(const Sockaddr& addr) {
+void SaslServer::set_local_addr(const Endpoint& addr) {
   DCHECK_EQ(server_state_, SaslNegotiationState::NEW);
   helper_.set_local_addr(addr);
 }
 
-void SaslServer::set_remote_addr(const Sockaddr& addr) {
+void SaslServer::set_remote_addr(const Endpoint& addr) {
   DCHECK_EQ(server_state_, SaslNegotiationState::NEW);
   helper_.set_remote_addr(addr);
 }
@@ -323,7 +325,7 @@ Status SaslServer::HandleInitiateRequest(const SaslMessagePB& request) {
   TRACE("SASL Server: Client requested to use mechanism: $0", auth.mechanism());
 
   // Security issue to display this. Commented out but left for debugging purposes.
-  //DVLOG(3) << "SASL server: Client token: " << request.token();
+  // DVLOG(3) << "SASL server: Client token: " << request.token();
 
   const char* server_out = nullptr;
   uint32_t server_out_len = 0;

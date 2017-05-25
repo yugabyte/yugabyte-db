@@ -276,7 +276,7 @@ void UpdateScanDeltaCompactionTest::ScanRows(CountDownLatch* stop_latch) const {
 
 void UpdateScanDeltaCompactionTest::CurlWebPages(CountDownLatch* stop_latch) const {
   vector<string> urls;
-  string base_url = cluster_->mini_tablet_server(0)->bound_http_addr().ToString();
+  string base_url = yb::ToString(cluster_->mini_tablet_server(0)->bound_http_addr());
   urls.push_back(base_url + "/scans");
   urls.push_back(base_url + "/transactions");
 

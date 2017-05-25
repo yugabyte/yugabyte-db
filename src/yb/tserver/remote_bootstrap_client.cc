@@ -169,12 +169,14 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   CHECK(!started_);
   start_time_micros_ = GetCurrentTimeMicros();
 
-  Sockaddr addr;
-  RETURN_NOT_OK(SockaddrFromHostPort(bootstrap_peer_addr, &addr));
-  if (addr.IsWildcard()) {
-    return STATUS(InvalidArgument, "Invalid wildcard address to remote bootstrap from",
-                                   Substitute("$0 (resolved to $1)",
-                                              bootstrap_peer_addr.host(), addr.host()));
+  Endpoint addr;
+  RETURN_NOT_OK(EndpointFromHostPort(bootstrap_peer_addr, &addr));
+  if (addr.address().is_unspecified()) {
+    return STATUS_SUBSTITUTE(
+        InvalidArgument,
+        "Invalid wildcard address to remote bootstrap from: $0 (resolved to $1)",
+        bootstrap_peer_addr.host(),
+        addr.address().to_string());
   }
   LOG_WITH_PREFIX(INFO) << "Beginning remote bootstrap session"
                         << " from remote peer at address " << bootstrap_peer_addr.ToString();

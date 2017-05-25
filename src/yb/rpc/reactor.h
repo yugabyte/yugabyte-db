@@ -240,6 +240,9 @@ class ReactorThread {
   // This may be called from another thread.
   Reactor *reactor();
 
+  // Drop all connections with remote address. Used in tests with broken connectivity.
+  void DropWithRemoteAddress(const IpAddress& address);
+
   // Return true if this reactor thread is the thread currently
   // running. Should be used in DCHECK assertions.
   bool IsCurrentThread() const;
@@ -297,12 +300,9 @@ class ReactorThread {
   // connection_keepalive_time_
   void ScanIdleConnections();
 
-  // Create a new client socket (non-blocking, NODELAY)
-  static CHECKED_STATUS CreateClientSocket(Socket *sock);
-
   // Initiate a new connection on the given socket, setting *in_progress
   // to true if the connection is still pending upon return.
-  static CHECKED_STATUS StartConnect(Socket *sock, const Sockaddr &remote, bool *in_progress);
+  static CHECKED_STATUS StartConnect(Socket *sock, const Endpoint& remote, bool *in_progress);
 
   // Assign a new outbound call to the appropriate connection object.
   // If this fails, the call is marked failed and completed.
@@ -399,7 +399,7 @@ class Reactor {
   // Queue a new incoming connection. Takes ownership of the underlying fd from
   // 'socket', but not the Socket object itself.
   // If the reactor is already shut down, takes care of closing the socket.
-  void RegisterInboundSocket(Socket *socket, const Sockaddr &remote);
+  void RegisterInboundSocket(Socket *socket, const Endpoint& remote);
 
   // Queue a new call to be sent. If the reactor is already shut down, marks
   // the call as failed.

@@ -22,7 +22,6 @@
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
-#include <sasl/sasl.h>
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/once.h"
@@ -179,8 +178,8 @@ string SaslErrDesc(int status, sasl_conn_t* conn) {
   return StringPrintf("SASL result code: %s", sasl_errstring(status, nullptr, nullptr));
 }
 
-string SaslIpPortString(const Sockaddr& addr) {
-  string addr_str = addr.ToString();
+string SaslIpPortString(const Endpoint& addr) {
+  string addr_str = ToString(addr);
   size_t colon_pos = addr_str.find(':');
   if (colon_pos != string::npos) {
     addr_str[colon_pos] = ';';

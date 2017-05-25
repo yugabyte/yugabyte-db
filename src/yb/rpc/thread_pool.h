@@ -40,7 +40,11 @@ class ThreadPool {
       : ThreadPool(ThreadPoolOptions{std::forward<Args>(args)...}) {
 
   }
+
   ~ThreadPool();
+
+  ThreadPool(ThreadPool&& rhs);
+  ThreadPool& operator=(ThreadPool&& rhs);
 
   const ThreadPoolOptions& options() const;
 

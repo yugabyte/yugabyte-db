@@ -50,7 +50,6 @@ using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
 using yb::server::ServerStatusPB;
-using yb::Sockaddr;
 using yb::client::YBScanBatch;
 using yb::tablet::TabletStatusPB;
 using yb::tserver::DeleteTabletRequestPB;
@@ -153,7 +152,7 @@ class TsAdminClient {
   Status GetStatus(ServerStatusPB* pb);
  private:
   std::string addr_;
-  vector<Sockaddr> addrs_;
+  std::vector<yb::Endpoint> addrs_;
   MonoDelta timeout_;
   bool initted_;
   shared_ptr<server::GenericServiceProxy> generic_proxy_;

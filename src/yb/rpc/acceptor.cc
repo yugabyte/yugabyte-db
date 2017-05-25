@@ -64,13 +64,13 @@ Acceptor::~Acceptor() {
   Shutdown();
 }
 
-Status Acceptor::Listen(const Sockaddr &address, Sockaddr* bound_address) {
+Status Acceptor::Listen(const Endpoint& endpoint, Endpoint* bound_endpoint) {
   Socket socket;
-  RETURN_NOT_OK(socket.Init(0));
+  RETURN_NOT_OK(socket.Init(endpoint.address().is_v6() ? Socket::FLAG_IPV6 : 0));
   RETURN_NOT_OK(socket.SetReuseAddr(true));
-  RETURN_NOT_OK(socket.Bind(address));
-  if (bound_address) {
-    RETURN_NOT_OK(socket.GetSocketAddress(bound_address));
+  RETURN_NOT_OK(socket.Bind(endpoint));
+  if (bound_endpoint) {
+    RETURN_NOT_OK(socket.GetSocketAddress(bound_endpoint));
   }
   RETURN_NOT_OK(socket.SetNonBlocking(true));
   RETURN_NOT_OK(socket.Listen(FLAGS_rpc_acceptor_listen_backlog));
@@ -111,10 +111,12 @@ void Acceptor::Shutdown() {
     closing_ = true;
   }
 
-  async_.send();
+  if (thread_) {
+    async_.send();
 
-  CHECK_OK(ThreadJoiner(thread_.get()).Join());
-  thread_.reset();
+    CHECK_OK(ThreadJoiner(thread_.get()).Join());
+    thread_.reset();
+  }
 }
 
 void Acceptor::IoHandler(ev::io& io, int events) {
@@ -126,7 +128,7 @@ void Acceptor::IoHandler(ev::io& io, int events) {
   Socket& socket = it->second.socket;
   if (events & EV_ERROR) {
     LOG(INFO) << "Acceptor socket failure: " << socket.GetFd()
-              << ", address: " << it->second.address.ToString();
+              << ", endpoint: " << it->second.endpoint;
     sockets_.erase(it);
     return;
   }
@@ -134,7 +136,7 @@ void Acceptor::IoHandler(ev::io& io, int events) {
   if (events & EV_READ) {
     for (;;) {
       Socket new_sock;
-      Sockaddr remote;
+      Endpoint remote;
       VLOG(2) << "calling accept() on socket " << socket.GetFd();
       Status s = socket.Accept(&new_sock, &remote, Socket::FLAG_NONBLOCKING);
       if (!s.ok()) {
@@ -145,7 +147,7 @@ void Acceptor::IoHandler(ev::io& io, int events) {
       }
       s = new_sock.SetNoDelay(true);
       if (!s.ok()) {
-        LOG(WARNING) << "Acceptor with remote = " << remote.ToString()
+        LOG(WARNING) << "Acceptor with remote = " << remote
                      << " failed to set TCP_NODELAY on a newly accepted socket: "
                      << s.ToString();
         continue;
@@ -173,16 +175,16 @@ void Acceptor::AsyncHandler(ev::async& async, int events) {
 
   while (!processing_sockets_to_add_.empty()) {
     auto& socket = processing_sockets_to_add_.back();
-    Sockaddr address;
-    auto status = socket.GetSocketAddress(&address);
+    Endpoint endpoint;
+    auto status = socket.GetSocketAddress(&endpoint);
     if (!status.ok()) {
       LOG(WARNING) << "Failed to get address for socket: "
                    << socket.GetFd() << ": " << status.ToString();
     }
-    LOG(INFO) << "Adding " << socket.GetFd() << " at " << address.ToString();
+    LOG(INFO) << "Adding " << socket.GetFd() << " at " << endpoint;
     AcceptingSocket ac{ std::unique_ptr<ev::io>(new ev::io),
                         Socket(std::move(socket)),
-                        address };
+                        endpoint };
     processing_sockets_to_add_.pop_back();
     ac.io->set(loop_);
     ac.io->set<Acceptor, &Acceptor::IoHandler>(this);

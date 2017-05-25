@@ -49,7 +49,6 @@ namespace yb {
 class HostPort;
 class MonoDelta;
 class Schema;
-class Sockaddr;
 class Status;
 
 namespace client {

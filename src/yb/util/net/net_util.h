@@ -23,17 +23,16 @@
 
 #include "yb/util/env.h"
 #include "yb/util/status.h"
+#include "yb/util/net/net_fwd.h"
 
 namespace yb {
-
-class Sockaddr;
 
 // A container for a host:port pair.
 class HostPort {
  public:
   HostPort();
   HostPort(std::string host, uint16_t port);
-  explicit HostPort(const Sockaddr& addr);
+  explicit HostPort(const Endpoint& endpoint);
 
   // Parse a "host:port" pair into this object.
   // If there is no port specified in the string, then 'default_port' is used.
@@ -44,7 +43,7 @@ class HostPort {
   //
   // 'addresses' may be NULL, in which case this function simply checks that
   // the host/port pair can be resolved, without returning anything.
-  CHECKED_STATUS ResolveAddresses(std::vector<Sockaddr>* addresses) const;
+  CHECKED_STATUS ResolveAddresses(std::vector<Endpoint>* addresses) const;
 
   std::string ToString() const;
 
@@ -68,12 +67,12 @@ class HostPort {
   static std::string ToCommaSeparatedString(const std::vector<HostPort>& host_ports);
 
   // Checks if the host/port are same as the sockaddr
-  bool equals(const Sockaddr& sockaddr) const;
+  bool equals(const Endpoint& endpoint) const;
 
   // Remove a given host/port from a vector of comma separated server multiple addresses, each in
   // [host:port,]+ format and returns a final list as a remaining vector of hostports.
   static CHECKED_STATUS RemoveAndGetHostPortList(
-    const Sockaddr& remove,
+    const Endpoint& remove,
     const std::vector<std::string>& multiple_server_addresses,
     uint16_t default_port,
     std::vector<HostPort> *res);
@@ -101,7 +100,7 @@ struct HostPortHash {
 // Any elements which do not include a port will be assigned 'default_port'.
 CHECKED_STATUS ParseAddressList(const std::string& addr_list,
                                 uint16_t default_port,
-                                std::vector<Sockaddr>* addresses);
+                                std::vector<Endpoint>* addresses);
 
 // Return true if the given port is likely to need root privileges to bind to.
 bool IsPrivilegedPort(uint16_t port);
@@ -115,14 +114,14 @@ CHECKED_STATUS GetFQDN(std::string* fqdn);
 // Returns a single socket address from a HostPort.
 // If the hostname resolves to multiple addresses, returns the first in the
 // list and logs a message in verbose mode.
-CHECKED_STATUS SockaddrFromHostPort(const HostPort& host_port, Sockaddr* addr);
+CHECKED_STATUS EndpointFromHostPort(const HostPort& host_port, Endpoint* endpoint);
 
-// Converts the given Sockaddr into a HostPort, substituting the FQDN
+// Converts the given Endpoint into a HostPort, substituting the FQDN
 // in the case that the provided address is the wildcard.
 //
 // In the case of other addresses, the returned HostPort will contain just the
 // stringified form of the IP.
-CHECKED_STATUS HostPortFromSockaddrReplaceWildcard(const Sockaddr& addr, HostPort* hp);
+CHECKED_STATUS HostPortFromEndpointReplaceWildcard(const Endpoint& addr, HostPort* hp);
 
 // Try to run 'lsof' to determine which process is preventing binding to
 // the given 'addr'. If pids can be determined, outputs full 'ps' and 'pstree'
@@ -130,7 +129,7 @@ CHECKED_STATUS HostPortFromSockaddrReplaceWildcard(const Sockaddr& addr, HostPor
 //
 // Output is issued to the log at WARNING level, or appended to 'log' if it
 // is non-NULL (mostly useful for testing).
-void TryRunLsof(const Sockaddr& addr, std::vector<std::string>* log = NULL);
+void TryRunLsof(const Endpoint& addr, std::vector<std::string>* log = NULL);
 
 // Get a free port that a local server could listen to. For use in tests. Tries up to a 1000 times
 // and fatals after that.
@@ -139,10 +138,10 @@ void TryRunLsof(const Sockaddr& addr, std::vector<std::string>* log = NULL);
 uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock);
 
 enum class AddressFilter {
-  ANY, // all IPv4 interfaces would be listed.
+  ANY, // all interfaces would be listed.
   EXTERNAL, // don't list local loopbacks
 };
-Status GetLocalAddresses(std::vector<Sockaddr>* result, AddressFilter filter);
+Status GetLocalAddresses(std::vector<IpAddress>* result, AddressFilter filter);
 
 } // namespace yb
 #endif  // YB_UTIL_NET_NET_UTIL_H

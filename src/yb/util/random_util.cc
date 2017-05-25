@@ -17,8 +17,6 @@
 
 #include "yb/util/random_util.h"
 
-#include <sys/types.h>
-#include <unistd.h>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>

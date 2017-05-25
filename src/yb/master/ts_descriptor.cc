@@ -191,18 +191,18 @@ void TSDescriptor::GetNodeInstancePB(NodeInstancePB* instance_pb) const {
   instance_pb->set_instance_seqno(latest_seqno_);
 }
 
-Status TSDescriptor::ResolveSockaddr(Sockaddr* addr) const {
+Status TSDescriptor::ResolveEndpoint(Endpoint* addr) const {
   vector<HostPort> hostports;
   {
     std::lock_guard<simple_spinlock> l(lock_);
     for (const HostPortPB& addr : registration_->common().rpc_addresses()) {
-      hostports.push_back(HostPort(addr.host(), addr.port()));
+      hostports.emplace_back(addr.host(), addr.port());
     }
   }
 
   // Resolve DNS outside the lock.
   HostPort last_hostport;
-  vector<Sockaddr> addrs;
+  std::vector<Endpoint> addrs;
   for (const HostPort& hostport : hostports) {
     RETURN_NOT_OK(hostport.ResolveAddresses(&addrs));
     if (!addrs.empty()) {
@@ -218,7 +218,7 @@ Status TSDescriptor::ResolveSockaddr(Sockaddr* addr) const {
   if (addrs.size() > 1) {
     LOG(WARNING) << "TS address " << last_hostport.ToString()
                   << " resolves to " << addrs.size() << " different addresses. Using "
-                  << addrs[0].ToString();
+                  << addrs[0];
   }
   *addr = addrs[0];
   return Status::OK();
@@ -234,8 +234,8 @@ Status TSDescriptor::GetTSAdminProxy(const shared_ptr<rpc::Messenger>& messenger
     }
   }
 
-  Sockaddr addr;
-  RETURN_NOT_OK(ResolveSockaddr(&addr));
+  Endpoint addr;
+  RETURN_NOT_OK(ResolveEndpoint(&addr));
 
   std::lock_guard<simple_spinlock> l(lock_);
   if (!ts_admin_proxy_) {
@@ -255,8 +255,8 @@ Status TSDescriptor::GetConsensusProxy(const shared_ptr<rpc::Messenger>& messeng
     }
   }
 
-  Sockaddr addr;
-  RETURN_NOT_OK(ResolveSockaddr(&addr));
+  Endpoint addr;
+  RETURN_NOT_OK(ResolveEndpoint(&addr));
 
   std::lock_guard<simple_spinlock> l(lock_);
   if (!consensus_proxy_) {
@@ -276,8 +276,8 @@ Status TSDescriptor::GetTSServiceProxy(const shared_ptr<rpc::Messenger>& messeng
     }
   }
 
-  Sockaddr addr;
-  RETURN_NOT_OK(ResolveSockaddr(&addr));
+  Endpoint addr;
+  RETURN_NOT_OK(ResolveEndpoint(&addr));
 
   std::lock_guard<simple_spinlock> l(lock_);
   if (!ts_service_proxy_) {

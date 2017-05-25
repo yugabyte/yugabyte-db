@@ -86,10 +86,10 @@ class ServicePoolImpl {
  public:
   ServicePoolImpl(size_t max_tasks,
        ThreadPool* thread_pool,
-       gscoped_ptr<ServiceIf> service,
+       std::unique_ptr<ServiceIf> service,
        const scoped_refptr<MetricEntity>& entity)
       : thread_pool_(thread_pool),
-        service_(service.Pass()),
+        service_(std::move(service)),
         incoming_queue_time_(METRIC_rpc_incoming_queue_time.Instantiate(entity)),
         rpcs_timed_out_in_queue_(METRIC_rpcs_timed_out_in_queue.Instantiate(entity)),
         rpcs_queue_overflow_(METRIC_rpcs_queue_overflow.Instantiate(entity)),
@@ -138,10 +138,10 @@ class ServicePoolImpl {
   void Overflow(const InboundCallPtr& call, const char* type, size_t limit) {
     const auto err_msg =
         Substitute("$0 request on $1 from $2 dropped due to backpressure. "
-                "The $3 queue is full, it has $4 items.",
+                   "The $3 queue is full, it has $4 items.",
             call->remote_method().method_name(),
             service_->service_name(),
-            call->remote_address().ToString(),
+            yb::ToString(call->remote_address()),
             type,
             limit);
     LOG(WARNING) << err_msg;
@@ -159,7 +159,7 @@ class ServicePoolImpl {
       return;
     }
     LOG(WARNING) << call->remote_method().method_name() << " request on "
-                 << service_->service_name() << " from " << call->remote_address().ToString()
+                 << service_->service_name() << " from " << call->remote_address()
                  << " dropped because of: " << status.ToString();
     const auto response_status = STATUS(ServiceUnavailable, "Service is shutting down");
     call->RespondFailure(ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN, response_status);
@@ -193,7 +193,7 @@ class ServicePoolImpl {
 
  private:
   ThreadPool* thread_pool_;
-  gscoped_ptr<ServiceIf> service_;
+  std::unique_ptr<ServiceIf> service_;
   scoped_refptr<Histogram> incoming_queue_time_;
   scoped_refptr<Counter> rpcs_timed_out_in_queue_;
   scoped_refptr<Counter> rpcs_queue_overflow_;
@@ -216,9 +216,9 @@ void InboundCallTask::Done(const Status& status) {
 
 ServicePool::ServicePool(size_t max_tasks,
                          ThreadPool* thread_pool,
-                         gscoped_ptr<ServiceIf> service,
+                         std::unique_ptr<ServiceIf> service,
                          const scoped_refptr<MetricEntity>& metric_entity)
-    : impl_(new ServicePoolImpl(max_tasks, thread_pool, service.Pass(), metric_entity)) {
+    : impl_(new ServicePoolImpl(max_tasks, thread_pool, std::move(service), metric_entity)) {
 }
 
 ServicePool::~ServicePool() {

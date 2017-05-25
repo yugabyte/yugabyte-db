@@ -62,8 +62,8 @@ class MiniMaster {
   // Requires that the master is currently started.
   CHECKED_STATUS Restart();
 
-  const Sockaddr bound_rpc_addr() const;
-  const Sockaddr bound_http_addr() const;
+  Endpoint bound_rpc_addr() const;
+  Endpoint bound_http_addr() const;
 
   const Master* master() const { return master_.get(); }
   Master* master() { return master_.get(); }

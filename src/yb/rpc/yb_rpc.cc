@@ -227,9 +227,10 @@ Status YBInboundCall::SerializeResponseBuffer(const google::protobuf::MessageLit
 }
 
 string YBInboundCall::ToString() const {
-  return strings::Substitute("Call $0 from $1 (request call id $2)",
+  return strings::Substitute("Call $0 $1 => $2 (request call id $3)",
       remote_method_.ToString(),
-      remote_address().ToString(),
+      yb::ToString(remote_address()),
+      yb::ToString(local_address()),
       header_.call_id());
 }
 

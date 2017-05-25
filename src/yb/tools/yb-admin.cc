@@ -196,7 +196,7 @@ class ClusterAdminClient {
     const string& tablet_id,
     PeerMode mode,
     string* peer_uuid,
-    Sockaddr* peer_socket);
+    Endpoint* peer_socket);
 
   // Fetch the latest list of tablet servers from the Master.
   Status ListTabletServers(RepeatedPtrField<ListTabletServersResponsePB::Entry>* servers);
@@ -204,9 +204,9 @@ class ClusterAdminClient {
   // Look up the RPC address of the server with the specified UUID from the Master.
   Status GetFirstRpcAddressForTS(const std::string& uuid, HostPort* hp);
 
-  Status GetSockAddrForHostPort(const HostPort& hp, Sockaddr* addr);
+  Status GetEndpointForHostPort(const HostPort& hp, Endpoint* addr);
 
-  Status GetSockAddrForTS(const std::string& ts_uuid, Sockaddr* ts_addr);
+  Status GetEndpointForTS(const std::string& ts_uuid, Endpoint* ts_addr);
 
   Status LeaderStepDown(
     const string& leader_uuid,
@@ -220,7 +220,7 @@ class ClusterAdminClient {
 
   const std::string master_addr_list_;
   const MonoDelta timeout_;
-  Sockaddr leader_sock_;
+  Endpoint leader_sock_;
   bool initted_;
   std::shared_ptr<rpc::Messenger> messenger_;
   gscoped_ptr<MasterServiceProxy> master_proxy_;
@@ -282,7 +282,7 @@ Status ClusterAdminClient::LeaderStepDown(
 
 // Force start an election on a randomly chosen non-leader peer of this tablet's raft quorum.
 Status ClusterAdminClient::StartElection(const string& tablet_id) {
-  Sockaddr non_leader_addr;
+  Endpoint non_leader_addr;
   string non_leader_uuid;
   RETURN_NOT_OK(SetTabletPeerInfo(tablet_id, FOLLOWER, &non_leader_uuid, &non_leader_addr));
   std::unique_ptr<ConsensusServiceProxy>
@@ -306,14 +306,14 @@ Status ClusterAdminClient::SetTabletPeerInfo(
     const string& tablet_id,
     PeerMode mode,
     string* peer_uuid,
-    Sockaddr* peer_socket) {
+    Endpoint* peer_socket) {
   TSInfoPB peer_ts_info;
   RETURN_NOT_OK(GetTabletPeer(tablet_id, mode, &peer_ts_info));
   CHECK_GT(peer_ts_info.rpc_addresses_size(), 0) << peer_ts_info.ShortDebugString();
 
   HostPort peer_hostport;
   RETURN_NOT_OK(HostPortFromPB(peer_ts_info.rpc_addresses(0), &peer_hostport));
-  vector<Sockaddr> peer_addrs;
+  std::vector<Endpoint> peer_addrs;
   RETURN_NOT_OK(peer_hostport.ResolveAddresses(&peer_addrs));
   CHECK(!peer_addrs.empty()) << "Unable to resolve IP address for tablet leader host: "
     << peer_hostport.ToString();
@@ -381,7 +381,7 @@ Status ClusterAdminClient::ChangeConfig(
   }
 
   // Look up the location of the tablet leader from the Master.
-  Sockaddr leader_addr;
+  Endpoint leader_addr;
   string leader_uuid;
   RETURN_NOT_OK(SetTabletPeerInfo(tablet_id, LEADER, &leader_uuid, &leader_addr));
 
@@ -562,7 +562,7 @@ Status ClusterAdminClient::ChangeMasterConfig(
 
   // If removing the leader master, then first make it step down and that
   // starts an election and gets a new leader master.
-  Sockaddr changed_leader_sock = leader_sock_;
+  auto changed_leader_sock = leader_sock_;
   if (cc_type == consensus::REMOVE_SERVER &&
       leader_uuid == peer_uuid) {
     string old_leader_uuid = leader_uuid;
@@ -787,8 +787,8 @@ Status ClusterAdminClient::ListTabletServersLogLocations() {
   for (const ListTabletServersResponsePB::Entry& server : servers) {
     auto ts_uuid = server.instance_id().permanent_uuid();
 
-    Sockaddr ts_addr;
-    RETURN_NOT_OK(GetSockAddrForTS(ts_uuid, &ts_addr));
+    Endpoint ts_addr;
+    RETURN_NOT_OK(GetEndpointForTS(ts_uuid, &ts_addr));
 
     std::unique_ptr<TabletServerServiceProxy> ts_proxy(
         new TabletServerServiceProxy(messenger_, ts_addr));
@@ -799,7 +799,7 @@ Status ClusterAdminClient::ListTabletServersLogLocations() {
     tserver::GetLogLocationResponsePB resp;
     ts_proxy.get()->GetLogLocation(req, &resp, &rpc);
 
-    std::cout << ts_uuid << "\t" << ts_addr.ToString() << "\t" << resp.log_location() << std::endl;
+    std::cout << ts_uuid << "\t" << ts_addr << "\t" << resp.log_location() << std::endl;
   }
 
   return Status::OK();
@@ -873,8 +873,8 @@ Status ClusterAdminClient::DeleteTable(const YBTableName& table_name) {
   return Status::OK();
 }
 
-Status ClusterAdminClient::GetSockAddrForHostPort(const HostPort& hp, Sockaddr* addr) {
-  vector<Sockaddr> sock_addrs;
+Status ClusterAdminClient::GetEndpointForHostPort(const HostPort& hp, Endpoint* addr) {
+  std::vector<Endpoint> sock_addrs;
   RETURN_NOT_OK(hp.ResolveAddresses(&sock_addrs));
   if (sock_addrs.empty()) {
     return STATUS(IllegalState,
@@ -890,17 +890,17 @@ Status ClusterAdminClient::GetSockAddrForHostPort(const HostPort& hp, Sockaddr* 
   return Status::OK();
 }
 
-Status ClusterAdminClient::GetSockAddrForTS(const std::string& ts_uuid, Sockaddr* ts_addr) {
+Status ClusterAdminClient::GetEndpointForTS(const std::string& ts_uuid, Endpoint* ts_addr) {
   HostPort hp;
   RETURN_NOT_OK(GetFirstRpcAddressForTS(ts_uuid, &hp));
-  RETURN_NOT_OK(GetSockAddrForHostPort(hp, ts_addr));
+  RETURN_NOT_OK(GetEndpointForHostPort(hp, ts_addr));
 
   return Status::OK();
 }
 
 Status ClusterAdminClient::ListTabletsForTabletServer(const std::string& ts_uuid) {
-  Sockaddr ts_addr;
-  RETURN_NOT_OK(GetSockAddrForTS(ts_uuid, &ts_addr));
+  Endpoint ts_addr;
+  RETURN_NOT_OK(GetEndpointForTS(ts_uuid, &ts_addr));
 
   std::unique_ptr<TabletServerServiceProxy> ts_proxy(
       new TabletServerServiceProxy(messenger_, ts_addr));
@@ -943,8 +943,8 @@ Status ClusterAdminClient::SetLoadBalancerEnabled(const bool is_enabled) {
     } else {
       HostPortPB hp_pb = list_resp.masters(i).registration().rpc_addresses(0);
       HostPort hp(hp_pb.host(), hp_pb.port());
-      Sockaddr master_addr;
-      RETURN_NOT_OK(GetSockAddrForHostPort(hp, &master_addr));
+      Endpoint master_addr;
+      RETURN_NOT_OK(GetEndpointForHostPort(hp, &master_addr));
 
       auto proxy =
           std::unique_ptr<MasterServiceProxy>(new MasterServiceProxy(messenger_, master_addr));

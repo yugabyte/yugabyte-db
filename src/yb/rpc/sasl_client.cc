@@ -24,7 +24,6 @@
 #include <string>
 
 #include <glog/logging.h>
-#include <sasl/sasl.h>
 
 #include "yb/gutil/endian.h"
 #include "yb/gutil/map-util.h"
@@ -118,12 +117,12 @@ SaslMechanism::Type SaslClient::negotiated_mechanism() const {
   return negotiated_mech_;
 }
 
-void SaslClient::set_local_addr(const Sockaddr& addr) {
+void SaslClient::set_local_addr(const Endpoint& addr) {
   DCHECK_EQ(client_state_, SaslNegotiationState::NEW);
   helper_.set_local_addr(addr);
 }
 
-void SaslClient::set_remote_addr(const Sockaddr& addr) {
+void SaslClient::set_remote_addr(const Endpoint& addr) {
   DCHECK_EQ(client_state_, SaslNegotiationState::NEW);
   helper_.set_remote_addr(addr);
 }

@@ -110,11 +110,11 @@ class ConnectionId {
   ConnectionId(const ConnectionId& other);
 
   // Convenience constructor.
-  ConnectionId(const Sockaddr& remote, const UserCredentials& user_credentials);
+  ConnectionId(const Endpoint& remote, const UserCredentials& user_credentials);
 
   // The remote address.
-  void set_remote(const Sockaddr& remote);
-  const Sockaddr& remote() const { return remote_; }
+  void set_remote(const Endpoint& remote);
+  const Endpoint& remote() const { return remote_; }
 
   // The credentials of the user associated with this connection, if any.
   void set_user_credentials(const UserCredentials& user_credentials);
@@ -135,7 +135,7 @@ class ConnectionId {
 
  private:
   // Remember to update HashCode() and Equals() when new fields are added.
-  Sockaddr remote_;
+  Endpoint remote_;
   UserCredentials user_credentials_;
   uint8_t idx_ = 0;  // Connection index, used to support multiple connections to the same server.
 

@@ -17,9 +17,9 @@
 
 #include "yb/util/net/dns_resolver.h"
 
-#include <boost/bind.hpp>
-#include <gtest/gtest.h>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "yb/gutil/strings/util.h"
 #include "yb/util/countdown_latch.h"
@@ -37,7 +37,7 @@ class DnsResolverTest : public YBTest {
 };
 
 TEST_F(DnsResolverTest, TestResolution) {
-  vector<Sockaddr> addrs;
+  vector<Endpoint> addrs;
   Synchronizer s;
   {
     HostPort hp("localhost", 12345);
@@ -45,10 +45,10 @@ TEST_F(DnsResolverTest, TestResolution) {
   }
   ASSERT_OK(s.Wait());
   ASSERT_TRUE(!addrs.empty());
-  for (const Sockaddr& addr : addrs) {
-    LOG(INFO) << "Address: " << addr.ToString();
-    EXPECT_TRUE(HasPrefixString(addr.ToString(), "127."));
-    EXPECT_TRUE(HasSuffixString(addr.ToString(), ":12345"));
+  for (const auto& addr : addrs) {
+    LOG(INFO) << "Address: " << addr;
+    EXPECT_TRUE(HasPrefixString(ToString(addr), "127."));
+    EXPECT_TRUE(HasSuffixString(ToString(addr), ":12345"));
   }
 }
 

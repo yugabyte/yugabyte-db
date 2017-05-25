@@ -15,10 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <string>
+
 #include <boost/ptr_container/ptr_vector.hpp>
 #include <boost/thread/thread.hpp>
 #include <gtest/gtest.h>
-#include <string>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/rpc/rpc-test-base.h"
@@ -41,7 +42,7 @@ class RpcBench : public RpcTestBase {
  protected:
   friend class ClientThread;
 
-  Sockaddr server_addr_;
+  Endpoint server_endpoint_;
   shared_ptr<Messenger> client_messenger_;
   Atomic32 should_run_;
 };
@@ -64,10 +65,10 @@ class ClientThread {
   void Run() {
     shared_ptr<Messenger> client_messenger = bench_->CreateMessenger("Client");
 
-    CalculatorServiceProxy p(client_messenger, bench_->server_addr_);
+    rpc_test::CalculatorServiceProxy p(client_messenger, bench_->server_endpoint_);
 
-    AddRequestPB req;
-    AddResponsePB resp;
+    rpc_test::AddRequestPB req;
+    rpc_test::AddResponsePB resp;
     while (Acquire_Load(&bench_->should_run_)) {
       req.set_x(request_count_);
       req.set_y(request_count_);
@@ -87,14 +88,17 @@ class ClientThread {
 
 // Test making successful RPC calls.
 TEST_F(RpcBench, BenchmarkCalls) {
-  n_worker_threads_ = 1;
+  TestServerOptions options;
+  options.n_worker_threads = 1;
 
   // Set up server.
-  StartTestServerWithGeneratedCode(&server_addr_);
+  StartTestServerWithGeneratedCode(&server_endpoint_);
 
   // Set up client.
-  LOG(INFO) << "Connecting to " << server_addr_.ToString();
-  client_messenger_ = CreateMessenger("Client", 2);
+  LOG(INFO) << "Connecting to " << server_endpoint_;
+  MessengerOptions client_options = kDefaultClientMessengerOptions;
+  client_options.n_reactors = 2;
+  client_messenger_ = CreateMessenger("Client", client_options);
 
   Stopwatch sw(Stopwatch::ALL_THREADS);
   sw.start();

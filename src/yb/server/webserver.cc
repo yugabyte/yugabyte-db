@@ -125,13 +125,13 @@ bool Webserver::IsSecure() const {
 }
 
 Status Webserver::BuildListenSpec(string* spec) const {
-  vector<Sockaddr> addrs;
+  std::vector<Endpoint> addrs;
   RETURN_NOT_OK(ParseAddressList(http_address_, 80, &addrs));
 
-  vector<string> parts;
-  for (const Sockaddr& addr : addrs) {
+  std::vector<string> parts;
+  for (const auto& addr : addrs) {
     // Mongoose makes sockets with 's' suffixes accept SSL traffic only
-    parts.push_back(addr.ToString() + (IsSecure() ? "s" : ""));
+    parts.push_back(ToString(addr) + (IsSecure() ? "s" : ""));
   }
 
   JoinStrings(parts, ",", spec);
@@ -212,9 +212,7 @@ Status Webserver::Start() {
   if (context_ == nullptr) {
     stringstream error_msg;
     error_msg << "Webserver: Could not start on address " << http_address_;
-    Sockaddr addr;
-    addr.set_port(opts_.port);
-    TryRunLsof(addr);
+    TryRunLsof(Endpoint(IpAddress(), opts_.port));
     return STATUS(NetworkError, error_msg.str());
   }
 
@@ -223,14 +221,14 @@ Status Webserver::Start() {
 
   RegisterPathHandler("/", "Home", default_callback);
 
-  vector<Sockaddr> addrs;
+  std::vector<Endpoint> addrs;
   RETURN_NOT_OK(GetBoundAddresses(&addrs));
   string bound_addresses_str;
-  for (const Sockaddr& addr : addrs) {
+  for (const auto& addr : addrs) {
     if (!bound_addresses_str.empty()) {
       bound_addresses_str += ", ";
     }
-    bound_addresses_str += "http://" + addr.ToString() + "/";
+    bound_addresses_str += "http://" + ToString(addr) + "/";
   }
 
   LOG(INFO) << "Webserver started. Bound to: " << bound_addresses_str;
@@ -244,7 +242,7 @@ void Webserver::Stop() {
   }
 }
 
-Status Webserver::GetBoundAddresses(std::vector<Sockaddr>* addrs) const {
+Status Webserver::GetBoundAddresses(std::vector<Endpoint>* addrs_ptr) const {
   if (!context_) {
     return STATUS(IllegalState, "Not started");
   }
@@ -256,10 +254,11 @@ Status Webserver::GetBoundAddresses(std::vector<Sockaddr>* addrs) const {
     return STATUS(NetworkError, "Unable to get bound addresses from Mongoose");
   }
 
-  addrs->reserve(num_addrs);
+  auto& addrs = *addrs_ptr;
+  addrs.resize(num_addrs);
 
   for (int i = 0; i < num_addrs; i++) {
-    addrs->push_back(Sockaddr(*sockaddrs[i]));
+    memcpy(addrs[i].data(), sockaddrs[i], sizeof(*sockaddrs[i]));
     free(sockaddrs[i]);
   }
   free(sockaddrs);

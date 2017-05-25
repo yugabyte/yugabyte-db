@@ -406,7 +406,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   void CreateClient(std::shared_ptr<client::YBClient>* client) {
     // Connect to the cluster.
     ASSERT_OK(client::YBClientBuilder()
-                     .add_master_server_addr(cluster_->master()->bound_rpc_addr().ToString())
+                     .add_master_server_addr(yb::ToString(cluster_->master()->bound_rpc_addr()))
                      .Build(client));
   }
 

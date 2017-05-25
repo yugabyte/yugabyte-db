@@ -15,11 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <gtest/gtest.h>
-
 #include <algorithm>
 #include <string>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/util.h"
@@ -28,19 +28,20 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 
 class NetUtilTest : public YBTest {
  protected:
   Status DoParseBindAddresses(const string& input, string* result) {
-    vector<Sockaddr> addrs;
+    std::vector<Endpoint> addrs;
     RETURN_NOT_OK(ParseAddressList(input, kDefaultPort, &addrs));
     std::sort(addrs.begin(), addrs.end());
 
-    vector<string> addr_strs;
-    for (const Sockaddr& addr : addrs) {
-      addr_strs.push_back(addr.ToString());
+    std::vector<string> addr_strs;
+    for (const auto& addr : addrs) {
+      addr_strs.push_back(ToString(addr));
     }
     *result = JoinStrings(addr_strs, ",");
     return Status::OK();
@@ -50,9 +51,12 @@ class NetUtilTest : public YBTest {
 };
 
 TEST(SockaddrTest, Test) {
-  Sockaddr addr;
-  ASSERT_OK(addr.ParseString("1.1.1.1:12345", 12345));
-  ASSERT_EQ(12345, addr.port());
+  boost::system::error_code ec;
+  auto address = IpAddress::from_string("1.1.1.1", ec);
+  ASSERT_FALSE(ec);
+  Endpoint endpoint(address, 12345);
+  ASSERT_EQ("1.1.1.1:12345", ToString(endpoint));
+  ASSERT_EQ(12345, endpoint.port());
 }
 
 TEST_F(NetUtilTest, TestParseAddresses) {
@@ -79,14 +83,14 @@ TEST_F(NetUtilTest, TestParseAddresses) {
 
 TEST_F(NetUtilTest, TestResolveAddresses) {
   HostPort hp("localhost", 12345);
-  vector<Sockaddr> addrs;
+  std::vector<Endpoint> addrs;
   ASSERT_OK(hp.ResolveAddresses(&addrs));
   ASSERT_TRUE(!addrs.empty());
-  for (const Sockaddr& addr : addrs) {
-    LOG(INFO) << "Address: " << addr.ToString();
-    EXPECT_TRUE(HasPrefixString(addr.ToString(), "127."));
-    EXPECT_TRUE(HasSuffixString(addr.ToString(), ":12345"));
-    EXPECT_TRUE(addr.IsAnyLocalAddress());
+  for (const auto& addr : addrs) {
+    LOG(INFO) << "Address: " << addr;
+    EXPECT_TRUE(HasPrefixString(ToString(addr), "127."));
+    EXPECT_TRUE(HasSuffixString(ToString(addr), ":12345"));
+    EXPECT_TRUE(addr.address().is_loopback());
   }
 
   ASSERT_OK(hp.ResolveAddresses(nullptr));
@@ -96,17 +100,16 @@ TEST_F(NetUtilTest, TestResolveAddresses) {
 // The reverse lookups should never fail, but may return numeric strings.
 TEST_F(NetUtilTest, TestReverseLookup) {
   string host;
-  Sockaddr addr;
+  Endpoint addr(boost::asio::ip::address_v4(), 12345);
   HostPort hp;
-  ASSERT_OK(addr.ParseString("0.0.0.0:12345", 0));
   EXPECT_EQ(12345, addr.port());
-  ASSERT_OK(HostPortFromSockaddrReplaceWildcard(addr, &hp));
+  ASSERT_OK(HostPortFromEndpointReplaceWildcard(addr, &hp));
   EXPECT_NE("0.0.0.0", hp.host());
   EXPECT_NE("", hp.host());
   EXPECT_EQ(12345, hp.port());
 
-  ASSERT_OK(addr.ParseString("127.0.0.1:12345", 0));
-  ASSERT_OK(HostPortFromSockaddrReplaceWildcard(addr, &hp));
+  addr = Endpoint(boost::asio::ip::address_v4::loopback(), 12345);
+  ASSERT_OK(HostPortFromEndpointReplaceWildcard(addr, &hp));
   EXPECT_EQ("127.0.0.1", hp.host());
   EXPECT_EQ(12345, hp.port());
 }
@@ -115,7 +118,7 @@ TEST_F(NetUtilTest, TestLsof) {
   Socket s;
   ASSERT_OK(s.Init(0));
 
-  Sockaddr addr; // wildcard
+  Endpoint addr; // wildcard
   ASSERT_OK(s.BindAndListen(addr, 1));
 
   ASSERT_OK(s.GetSocketAddress(&addr));
@@ -132,6 +135,15 @@ TEST_F(NetUtilTest, TestGetFQDN) {
   string fqdn;
   ASSERT_OK(GetFQDN(&fqdn));
   LOG(INFO) << "fqdn is " << fqdn;
+}
+
+TEST_F(NetUtilTest, LocalAddresses) {
+  std::vector<IpAddress> addresses, external_addresses;
+  ASSERT_OK(GetLocalAddresses(&addresses, AddressFilter::ANY));
+  LOG(INFO) << "Any addresses: " << util::ToString(addresses);
+  ASSERT_OK(GetLocalAddresses(&external_addresses, AddressFilter::EXTERNAL));
+  LOG(INFO) << "External addresses: " << util::ToString(external_addresses);
+  ASSERT_GT(addresses.size(), external_addresses.size());
 }
 
 } // namespace yb

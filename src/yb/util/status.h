@@ -35,8 +35,8 @@
 
 // Return the given status if it is not OK.
 #define YB_RETURN_NOT_OK(s) do { \
-    auto _s = (s); \
-    if (PREDICT_FALSE(!_s.ok())) return MoveStatus(&_s); \
+    auto&& _s = (s); \
+    if (PREDICT_FALSE(!_s.ok())) return MoveStatus(std::move(_s)); \
   } while (false)
 
 // Return the given status if it is not OK, but first clone it and
@@ -73,7 +73,7 @@
 // of 'msg' followed by the status.
 #define YB_CHECK_OK_PREPEND(to_call, msg) do { \
   const auto _s = (to_call); \
-  YB_CHECK(_s.ok()) << (msg) << ": " << _s.ToString(); \
+  YB_CHECK(_s.ok()) << (msg) << ": " << StatusToString(_s); \
   } while (0);
 
 // If the status is bad, CHECK immediately, appending the status to the
@@ -287,8 +287,16 @@ inline void Status::operator=(Status&& s) {
   state_ = std::move(s.state_);
 }
 
-inline Status&& MoveStatus(Status* status) {
-  return std::move(*status);
+inline Status&& MoveStatus(Status&& status) {
+  return std::move(status);
+}
+
+inline const Status& MoveStatus(const Status& status) {
+  return status;
+}
+
+inline std::string StatusToString(const Status& status) {
+  return status.ToString();
 }
 
 }  // namespace yb
@@ -321,10 +329,10 @@ inline Status&& MoveStatus(Status* status) {
     } while(false)
 
 #ifdef YB_HEADERS_NO_STUBS
-#define CHECKED_STATUS MUST_USE_RESULT yb::Status
+#define CHECKED_STATUS MUST_USE_RESULT ::yb::Status
 #else
 // Only for the build using client headers. MUST_USE_RESULT is undefined in that case.
-#define CHECKED_STATUS yb::Status
+#define CHECKED_STATUS ::yb::Status
 #endif
 
 #endif  // YB_UTIL_STATUS_H_

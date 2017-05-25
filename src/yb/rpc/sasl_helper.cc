@@ -54,16 +54,18 @@ SaslHelper::SaslHelper(PeerType peer_type)
 SaslHelper::~SaslHelper() {
 }
 
-void SaslHelper::set_local_addr(const Sockaddr& addr) {
+void SaslHelper::set_local_addr(const Endpoint& addr) {
   local_addr_ = SaslIpPortString(addr);
 }
+
 const char* SaslHelper::local_addr_string() const {
   return local_addr_.empty() ? nullptr : local_addr_.c_str();
 }
 
-void SaslHelper::set_remote_addr(const Sockaddr& addr) {
+void SaslHelper::set_remote_addr(const Endpoint& addr) {
   remote_addr_ = SaslIpPortString(addr);
 }
+
 const char* SaslHelper::remote_addr_string() const {
   return remote_addr_.empty() ? nullptr : remote_addr_.c_str();
 }
@@ -182,11 +184,11 @@ Status SaslHelper::SendSaslMessage(Socket* sock, const MessageLite& header, cons
 
   // Write connection header, if needed
   if (PREDICT_FALSE(peer_type_ == CLIENT && !conn_header_exchanged_)) {
-    const uint8_t buflen = kMagicNumberLength + kHeaderFlagsLength;
-    uint8_t buf[buflen];
+    const uint8_t kBufLen = kMagicNumberLength + kHeaderFlagsLength;
+    uint8_t buf[kBufLen];
     serialization::SerializeConnHeader(buf);
     size_t nsent;
-    RETURN_NOT_OK(sock->BlockingWrite(buf, buflen, &nsent, deadline));
+    RETURN_NOT_OK(sock->BlockingWrite(buf, kBufLen, &nsent, deadline));
     conn_header_exchanged_ = true;
   }
 

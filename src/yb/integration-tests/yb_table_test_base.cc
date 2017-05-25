@@ -218,7 +218,7 @@ void YBTableTestBase::FetchTSMetricsPage() {
     }
   } else {
     if (mini_cluster_->num_tablet_servers() > 0) {
-      addr = mini_cluster_->mini_tablet_server(0)->bound_http_addr().ToString();
+      addr = ToString(mini_cluster_->mini_tablet_server(0)->bound_http_addr());
     }
   }
 

@@ -18,11 +18,11 @@
 #ifndef YB_RPC_SASL_CLIENT_H
 #define YB_RPC_SASL_CLIENT_H
 
+#include <sasl/sasl.h>
+
 #include <set>
 #include <string>
 #include <vector>
-
-#include <sasl/sasl.h>
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/rpc/sasl_common.h"
@@ -62,11 +62,11 @@ class SaslClient {
 
   // Specify IP:port of local side of connection.
   // Call before Init(). Required for some mechanisms.
-  void set_local_addr(const Sockaddr& addr);
+  void set_local_addr(const Endpoint& addr);
 
   // Specify IP:port of remote side of connection.
   // Call before Init(). Required for some mechanisms.
-  void set_remote_addr(const Sockaddr& addr);
+  void set_remote_addr(const Endpoint& addr);
 
   // Specify the fully-qualified domain name of the remote server.
   // Call before Init(). Required for some mechanisms.

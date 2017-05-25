@@ -26,8 +26,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef YB_UTIL_WEBSERVER_H
-#define YB_UTIL_WEBSERVER_H
+#ifndef YB_SERVER_WEBSERVER_H
+#define YB_SERVER_WEBSERVER_H
 
 #include <map>
 #include <string>
@@ -64,7 +64,7 @@ class Webserver : public WebCallbackRegistry {
 
   // Return the addresses that this server has successfully
   // bound to. Requires that the server has been Start()ed.
-  CHECKED_STATUS GetBoundAddresses(std::vector<Sockaddr>* addrs) const;
+  CHECKED_STATUS GetBoundAddresses(std::vector<Endpoint>* addrs) const;
 
   virtual void RegisterPathHandler(const std::string& path, const std::string& alias,
                                    const PathHandlerCallback& callback,
@@ -168,4 +168,4 @@ class Webserver : public WebCallbackRegistry {
 
 } // namespace yb
 
-#endif // YB_UTIL_WEBSERVER_H
+#endif // YB_SERVER_WEBSERVER_H

@@ -17,7 +17,7 @@ namespace util {
 
 #define HAS_MEMBER_FUNCTION(function) \
     template<class T> \
-    struct BOOST_PP_CAT(HasMemberFunction, function) { \
+    struct BOOST_PP_CAT(HasMemberFunction_, function) { \
       typedef int Yes; \
       typedef struct { Yes array[2]; } No; \
       typedef typename std::remove_reference<T>::type StrippedT; \
@@ -28,18 +28,25 @@ namespace util {
 
 // If class has ToString member function - use it.
 HAS_MEMBER_FUNCTION(ToString);
+HAS_MEMBER_FUNCTION(to_string);
 
 template <class T>
-typename std::enable_if<HasMemberFunctionToString<T>::value, std::string>::type
+typename std::enable_if<HasMemberFunction_ToString<T>::value, std::string>::type
 ToString(const T& value) {
   return value.ToString();
+}
+
+template <class T>
+typename std::enable_if<HasMemberFunction_to_string<T>::value, std::string>::type
+ToString(const T& value) {
+  return value.to_string();
 }
 
 // If class has ShortDebugString member function - use it. For protobuf classes mostly.
 HAS_MEMBER_FUNCTION(ShortDebugString);
 
 template <class T>
-typename std::enable_if<HasMemberFunctionShortDebugString<T>::value, std::string>::type
+typename std::enable_if<HasMemberFunction_ShortDebugString<T>::value, std::string>::type
 ToString(const T& value) {
   return value.ShortDebugString();
 }

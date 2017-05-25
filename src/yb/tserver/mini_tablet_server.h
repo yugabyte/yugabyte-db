@@ -17,13 +17,13 @@
 #ifndef YB_TSERVER_MINI_TABLET_SERVER_H
 #define YB_TSERVER_MINI_TABLET_SERVER_H
 
+#include <string>
+
 #include "yb/common/schema.h"
 #include "yb/gutil/macros.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
-
-#include <string>
 
 namespace yb {
 
@@ -83,8 +83,8 @@ class MiniTabletServer {
   // tablet on the given tablet server.
   consensus::RaftConfigPB CreateLocalConfig() const;
 
-  const Sockaddr bound_rpc_addr() const;
-  const Sockaddr bound_http_addr() const;
+  Endpoint bound_rpc_addr() const;
+  Endpoint bound_http_addr() const;
 
   const TabletServer* server() const { return server_.get(); }
   TabletServer* server() { return server_.get(); }
@@ -104,4 +104,5 @@ class MiniTabletServer {
 
 } // namespace tserver
 } // namespace yb
-#endif
+
+#endif // YB_TSERVER_MINI_TABLET_SERVER_H

@@ -76,12 +76,12 @@ namespace {
 Status MasterServiceProxyForHostPort(const HostPort& hostport,
                                      const shared_ptr<rpc::Messenger>& messenger,
                                      gscoped_ptr<MasterServiceProxy>* proxy) {
-  vector<Sockaddr> addrs;
+  std::vector<Endpoint> addrs;
   RETURN_NOT_OK(hostport.ResolveAddresses(&addrs));
   if (addrs.size() > 1) {
     LOG(WARNING) << "Master address '" << hostport.ToString() << "' "
                  << "resolves to " << addrs.size() << " different addresses. Using "
-                 << addrs[0].ToString();
+                 << yb::ToString(addrs[0]);
   }
   proxy->reset(new MasterServiceProxy(messenger, addrs[0]));
   return Status::OK();
@@ -232,9 +232,9 @@ Status Heartbeater::Thread::FindLeaderMaster(const MonoTime& deadline,
     *leader_hostport = (*master_addresses)[0];
     return Status::OK();
   }
-  vector<Sockaddr> master_sock_addrs;
+  std::vector<Endpoint> master_sock_addrs;
   for (const HostPort& master_addr : *master_addresses) {
-    vector<Sockaddr> addrs;
+    std::vector<Endpoint> addrs;
     Status s = master_addr.ResolveAddresses(&addrs);
     if (!s.ok()) {
       LOG(WARNING) << "Unable to resolve address '" << master_addr.ToString()
@@ -244,7 +244,7 @@ Status Heartbeater::Thread::FindLeaderMaster(const MonoTime& deadline,
     if (addrs.size() > 1) {
       LOG(WARNING) << "Master address '" << master_addr.ToString() << "' "
                    << "resolves to " << addrs.size() << " different addresses. Using "
-                   << addrs[0].ToString();
+                   << addrs[0];
     }
     master_sock_addrs.push_back(addrs[0]);
   }
@@ -264,7 +264,7 @@ Status Heartbeater::Thread::FindLeaderMaster(const MonoTime& deadline,
 }
 
 Status Heartbeater::Thread::ConnectToMaster() {
-  vector<Sockaddr> addrs;
+  std::vector<Endpoint> addrs;
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(MonoDelta::FromMilliseconds(FLAGS_heartbeat_rpc_timeout_ms));
   // TODO send heartbeats without tablet reports to non-leader masters.
@@ -286,7 +286,7 @@ Status Heartbeater::Thread::ConnectToMaster() {
   RpcController rpc;
   rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_heartbeat_rpc_timeout_ms));
   RETURN_NOT_OK_PREPEND(new_proxy->Ping(req, &resp, &rpc),
-                        Substitute("Failed to ping master at $0", addrs[0].ToString()));
+                        Substitute("Failed to ping master at $0", yb::ToString(addrs[0])));
   LOG(INFO) << "Connected to a leader master server at " << leader_master_hostport_.ToString();
 
   // Save state in the instance.

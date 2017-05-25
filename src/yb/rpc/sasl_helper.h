@@ -18,10 +18,10 @@
 #ifndef YB_RPC_SASL_HELPER_H
 #define YB_RPC_SASL_HELPER_H
 
+#include <sasl/sasl.h>
+
 #include <set>
 #include <string>
-
-#include <sasl/sasl.h>
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
@@ -36,7 +36,6 @@ class MessageLite;
 namespace yb {
 
 class MonoTime;
-class Sockaddr;
 class Status;
 
 namespace rpc {
@@ -58,11 +57,11 @@ class SaslHelper {
   ~SaslHelper();
 
   // Specify IP:port of local side of connection.
-  void set_local_addr(const Sockaddr& addr);
+  void set_local_addr(const Endpoint& addr);
   const char* local_addr_string() const;
 
   // Specify IP:port of remote side of connection.
-  void set_remote_addr(const Sockaddr& addr);
+  void set_remote_addr(const Endpoint& addr);
   const char* remote_addr_string() const;
 
   // Specify the fully-qualified domain name of the remote server.

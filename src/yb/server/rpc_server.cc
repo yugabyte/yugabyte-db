@@ -84,10 +84,9 @@ Status RpcServer::Init(const shared_ptr<Messenger>& messenger) {
   RETURN_NOT_OK(ParseAddressList(options_.rpc_bind_addresses,
                                  options_.default_port,
                                  &rpc_bind_addresses_));
-  for (const Sockaddr& addr : rpc_bind_addresses_) {
+  for (const auto& addr : rpc_bind_addresses_) {
     if (IsPrivilegedPort(addr.port())) {
-      LOG(WARNING) << "May be unable to bind to privileged port for address "
-                   << addr.ToString();
+      LOG(WARNING) << "May be unable to bind to privileged port for address " << addr;
     }
 
     // Currently, we can't support binding to ephemeral ports outside of
@@ -95,7 +94,7 @@ Status RpcServer::Init(const shared_ptr<Messenger>& messenger) {
     // across restarts. See KUDU-334.
     if (addr.port() == 0 && !FLAGS_rpc_server_allow_ephemeral_ports) {
       LOG(FATAL) << "Binding to ephemeral ports not supported (RPC address "
-                 << "configured to " << addr.ToString() << ")";
+                 << "configured to " << addr << ")";
     }
   }
 
@@ -103,13 +102,13 @@ Status RpcServer::Init(const shared_ptr<Messenger>& messenger) {
   return Status::OK();
 }
 
-Status RpcServer::RegisterService(size_t queue_limit, gscoped_ptr<rpc::ServiceIf> service) {
+Status RpcServer::RegisterService(size_t queue_limit, std::unique_ptr<rpc::ServiceIf> service) {
   CHECK(server_state_ == INITIALIZED ||
         server_state_ == BOUND) << "bad state: " << server_state_;
   const scoped_refptr<MetricEntity>& metric_entity = messenger_->metric_entity();
   string service_name = service->service_name();
   scoped_refptr<rpc::ServicePool> service_pool =
-    new rpc::ServicePool(queue_limit, thread_pool_.get(), service.Pass(), metric_entity);
+    new rpc::ServicePool(queue_limit, thread_pool_.get(), std::move(service), metric_entity);
   RETURN_NOT_OK(messenger_->RegisterService(service_name, service_pool));
   return Status::OK();
 }
@@ -135,9 +134,9 @@ Status RpcServer::Start() {
 
   RETURN_NOT_OK(messenger_->StartAcceptor());
   string bound_addrs_str;
-  for (const Sockaddr& bind_addr : rpc_bound_addresses_) {
+  for (const auto& bind_addr : rpc_bound_addresses_) {
     if (!bound_addrs_str.empty()) bound_addrs_str += ", ";
-    bound_addrs_str += bind_addr.ToString();
+    bound_addrs_str += yb::ToString(bind_addr);
   }
   LOG(INFO) << "RPC server started. Bound to: " << bound_addrs_str;
 

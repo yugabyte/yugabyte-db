@@ -45,19 +45,18 @@ namespace master {
 ////////////////////////////////////////////////////////////
 
 GetMasterRegistrationRpc::GetMasterRegistrationRpc(
-    StatusCallback user_cb, Sockaddr addr, const MonoTime& deadline,
+    StatusCallback user_cb, const Endpoint& addr, const MonoTime& deadline,
     const shared_ptr<Messenger>& messenger, ServerEntryPB* out)
     : Rpc(deadline, messenger),
       user_cb_(std::move(user_cb)),
-      addr_(std::move(addr)),
+      addr_(addr),
       out_(DCHECK_NOTNULL(out)) {}
 
 GetMasterRegistrationRpc::~GetMasterRegistrationRpc() {
 }
 
 void GetMasterRegistrationRpc::SendRpc() {
-  MasterServiceProxy proxy(retrier().messenger(),
-                           addr_);
+  MasterServiceProxy proxy(retrier().messenger(), addr_);
   GetMasterRegistrationRequestPB req;
   proxy.GetMasterRegistrationAsync(
       req, &resp_, mutable_retrier()->mutable_controller(),
@@ -66,7 +65,7 @@ void GetMasterRegistrationRpc::SendRpc() {
 
 string GetMasterRegistrationRpc::ToString() const {
   return strings::Substitute("GetMasterRegistrationRpc(address: $0, num_attempts: $1)",
-                             addr_.ToString(), num_attempts());
+                             yb::ToString(addr_), num_attempts());
 }
 
 void GetMasterRegistrationRpc::SendRpcCb(const Status& status) {
@@ -101,7 +100,7 @@ void GetMasterRegistrationRpc::SendRpcCb(const Status& status) {
 ////////////////////////////////////////////////////////////
 
 GetLeaderMasterRpc::GetLeaderMasterRpc(LeaderCallback user_cb,
-                                       vector<Sockaddr> addrs,
+                                       vector<Endpoint> addrs,
                                        const MonoTime& deadline,
                                        const shared_ptr<Messenger>& messenger)
     : Rpc(deadline, messenger),
@@ -120,9 +119,9 @@ GetLeaderMasterRpc::~GetLeaderMasterRpc() {
 }
 
 string GetLeaderMasterRpc::ToString() const {
-  vector<string> sockaddr_str;
-  for (const Sockaddr& addr : addrs_) {
-    sockaddr_str.push_back(addr.ToString());
+  std::vector<std::string> sockaddr_str;
+  for (const auto& addr : addrs_) {
+    sockaddr_str.push_back(yb::ToString(addr));
   }
   return strings::Substitute("GetLeaderMasterRpc(addrs: $0, num_attempts: $1)",
                              JoinStrings(sockaddr_str, ","),
@@ -165,7 +164,7 @@ void GetLeaderMasterRpc::SendRpcCb(const Status& status) {
   user_cb_.Run(status, leader_master_);
 }
 
-void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(const Sockaddr& node_addr,
+void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(const Endpoint& node_addr,
                                                            const ServerEntryPB& resp,
                                                            const Status& status) {
   // TODO: handle the situation where one Master is partitioned from

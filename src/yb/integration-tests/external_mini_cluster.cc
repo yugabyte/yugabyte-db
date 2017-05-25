@@ -382,14 +382,14 @@ Status ExternalMiniCluster::RemoveMaster(ExternalMaster* master) {
 }
 
 std::shared_ptr<ConsensusServiceProxy> ExternalMiniCluster::GetLeaderConsensusProxy() {
-  Sockaddr leader_master_sock = GetLeaderMaster()->bound_rpc_addr();
+  auto leader_master_sock = GetLeaderMaster()->bound_rpc_addr();
 
   return std::make_shared<ConsensusServiceProxy>(messenger_, leader_master_sock);
 }
 
 std::shared_ptr<ConsensusServiceProxy> ExternalMiniCluster::GetConsensusProxy(
     scoped_refptr<ExternalMaster> master) {
-  Sockaddr master_sock = master->bound_rpc_addr();
+  auto master_sock = master->bound_rpc_addr();
 
   return std::make_shared<ConsensusServiceProxy>(messenger_, master_sock);
 }
@@ -413,7 +413,7 @@ Status ExternalMiniCluster::StepDownMasterLeader(TabletServerErrorPB::Code* erro
     return StatusFromPB(lsd_resp.error().status());
   }
 
-  LOG(INFO) << "Leader at host/port '" << host_port.ToString() << "' step down complete.";
+  LOG(INFO) << "Leader at host/port '" << host_port << "' step down complete.";
 
   return Status::OK();
 }
@@ -423,7 +423,7 @@ Status ExternalMiniCluster::StepDownMasterLeaderAndWaitForNewLeader() {
   string old_leader_uuid = leader->uuid();
   string leader_uuid = old_leader_uuid;
   TabletServerErrorPB::Code error_code = TabletServerErrorPB::UNKNOWN_ERROR;
-  LOG(INFO) << "Starting step down of leader " << leader->bound_rpc_addr().ToString();
+  LOG(INFO) << "Starting step down of leader " << leader->bound_rpc_addr();
 
   // while loop will not be needed once JIRA ENG-49 is fixed.
   int iter = 1;
@@ -436,7 +436,7 @@ Status ExternalMiniCluster::StepDownMasterLeaderAndWaitForNewLeader() {
     sleep(3);  // TODO: add wait for election api.
     leader = GetLeaderMaster();
     leader_uuid = leader->uuid();
-    LOG(INFO) << "Got new leader " << leader->bound_rpc_addr().ToString() << ", iter=" << iter;
+    LOG(INFO) << "Got new leader " << leader->bound_rpc_addr() << ", iter=" << iter;
     iter++;
   }
 
@@ -680,7 +680,7 @@ Status ExternalMiniCluster::GetIsMasterLeaderServiceReady(ExternalMaster* master
 
 Status ExternalMiniCluster::GetLastOpIdForLeader(OpId* opid) {
   ExternalMaster* leader = GetLeaderMaster();
-  Sockaddr leader_master_sock = leader->bound_rpc_addr();
+  auto leader_master_sock = leader->bound_rpc_addr();
   std::shared_ptr<ConsensusServiceProxy> leader_proxy =
     std::make_shared<ConsensusServiceProxy>(messenger_, leader_master_sock);
 
@@ -901,7 +901,7 @@ Status ExternalMiniCluster::GetLeaderMasterIndex(int* idx) {
 Status ExternalMiniCluster::GetPeerMasterIndex(int* idx, bool is_leader) {
   scoped_refptr<GetLeaderMasterRpc> rpc;
   Synchronizer sync;
-  vector<Sockaddr> addrs;
+  std::vector<Endpoint> addrs;
   HostPort leader_master_hp;
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(MonoDelta::FromSeconds(5));
@@ -1026,7 +1026,7 @@ Status ExternalMiniCluster::DoCreateClient(client::YBClientBuilder* builder,
   return builder->Build(client);
 }
 
-Sockaddr ExternalMiniCluster::DoGetLeaderMasterBoundRpcAddr() {
+Endpoint ExternalMiniCluster::DoGetLeaderMasterBoundRpcAddr() {
   return GetLeaderMaster()->bound_rpc_addr();
 }
 
@@ -1059,7 +1059,7 @@ uint16_t ExternalMiniCluster::AllocateFreePort() {
 }
 
 Status ExternalMiniCluster::StartElection(ExternalMaster* master) {
-  Sockaddr master_sock = master->bound_rpc_addr();
+  auto master_sock = master->bound_rpc_addr();
   std::shared_ptr<ConsensusServiceProxy> master_proxy =
     std::make_shared<ConsensusServiceProxy>(messenger_, master_sock);
 
@@ -1388,9 +1388,9 @@ HostPort ExternalDaemon::bound_rpc_hostport() const {
   return ret;
 }
 
-Sockaddr ExternalDaemon::bound_rpc_addr() const {
+Endpoint ExternalDaemon::bound_rpc_addr() const {
   HostPort hp = bound_rpc_hostport();
-  vector<Sockaddr> addrs;
+  std::vector<Endpoint> addrs;
   CHECK_OK(hp.ResolveAddresses(&addrs));
   CHECK(!addrs.empty());
   return addrs[0];
@@ -1561,8 +1561,6 @@ Status ExternalTabletServer::Start() {
   flags.push_back("--fs_data_dirs=" + data_dir_);
   flags.push_back(Substitute("--rpc_bind_addresses=$0:$1",
                              bind_host_, rpc_port_));
-  flags.push_back(Substitute("--local_ip_for_outbound_sockets=$0",
-                             bind_host_));
   flags.push_back(Substitute("--webserver_interface=$0",
                              bind_host_));
   flags.push_back(Substitute("--webserver_port=$0", http_port_));

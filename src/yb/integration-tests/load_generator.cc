@@ -316,10 +316,11 @@ void ConfigureRedisSessions(
   SplitStringUsing(redis_server_addresses, ",", &addresses);
   for (auto& addr : addresses) {
     shared_ptr<RedisClient> client(new RedisClient());
-    Sockaddr remote;
-    CHECK_OK(remote.ParseString(addr, 6379));
-    client->connect(remote.host(), remote.port(), [&remote](RedisClient&) {
-      LOG(ERROR) << "client disconnected (disconnection handler) from " << remote.ToString();
+    auto remote = ParseEndpoint(addr, 6379);
+    CHECK_OK(remote);
+    auto endpoint = *remote;
+    client->connect(remote->address().to_string(), remote->port(), [endpoint](RedisClient&) {
+      LOG(ERROR) << "client disconnected (disconnection handler) from " << endpoint;
     });
     clients->push_back(client);
   }

@@ -21,6 +21,13 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <ctype.h>
+
+#include <iostream>
+#include <map>
+#include <memory>
+#include <sstream>
+#include <string>
+
 #include <glog/logging.h>
 #include <google/protobuf/compiler/code_generator.h>
 #include <google/protobuf/compiler/plugin.h>
@@ -28,11 +35,6 @@
 #include <google/protobuf/io/printer.h>
 #include <google/protobuf/io/zero_copy_stream.h>
 #include <google/protobuf/stubs/common.h>
-#include <iostream>
-#include <map>
-#include <memory>
-#include <sstream>
-#include <string>
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/strings/split.h"
@@ -555,8 +557,8 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       "\n"
       "#include \"yb/rpc/proxy.h\"\n"
       "#include \"yb/util/status.h\"\n"
+      "#include \"yb/util/net/net_fwd.h\"\n"
       "\n"
-      "namespace yb { class Sockaddr; }\n"
       "namespace yb { namespace rpc { class UserCredentials; } }\n"
       "$open_namespace$"
       "\n"
@@ -572,7 +574,7 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         "class $service_name$Proxy {\n"
         " public:\n"
         "  $service_name$Proxy(const std::shared_ptr< ::yb::rpc::Messenger>\n"
-        "                &messenger, const ::yb::Sockaddr &sockaddr);\n"
+        "                &messenger, const ::yb::Endpoint &endpoint);\n"
         "  ~$service_name$Proxy();\n"
         "\n"
         "  // Set the user information for the connection.\n"
@@ -635,7 +637,7 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       Print(printer, *subs,
         "$service_name$Proxy::$service_name$Proxy(\n"
         "   const std::shared_ptr< ::yb::rpc::Messenger> &messenger,\n"
-        "   const ::yb::Sockaddr &remote)\n"
+        "   const ::yb::Endpoint &remote)\n"
         "  : proxy_(messenger, remote, \"$full_service_name$\") {\n"
         "}\n"
         "\n"

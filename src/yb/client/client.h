@@ -43,6 +43,7 @@
 #include "yb/util/yb_export.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
+#include "yb/util/net/net_fwd.h"
 
 template<class T> class scoped_refptr;
 
@@ -50,7 +51,6 @@ namespace yb {
 
 class LinkedListTester;
 class PartitionSchema;
-class Sockaddr;
 class MetricEntity;
 
 namespace master {
@@ -302,16 +302,16 @@ class YB_EXPORT YBClient : public std::enable_shared_from_this<YBClient> {
   std::shared_ptr<YBSession> NewSession(bool read_only = false);
 
   // Return the socket address of the master leader for this client
-  CHECKED_STATUS SetMasterLeaderSocket(Sockaddr* leader_socket);
+  CHECKED_STATUS SetMasterLeaderSocket(Endpoint* leader_socket);
 
   // Caller knows that the existing leader might have died or stepped down, so it can use this API
   // to reset the client state to point to new master leader.
-  CHECKED_STATUS RefreshMasterLeaderSocket(Sockaddr* leader_socket);
+  CHECKED_STATUS RefreshMasterLeaderSocket(Endpoint* leader_socket);
 
   // Once a config change is completed to add/remove a master, update the client to add/remove it
   // from its own master address list.
-  CHECKED_STATUS AddMasterToClient(const Sockaddr& add);
-  CHECKED_STATUS RemoveMasterFromClient(const Sockaddr& remove);
+  CHECKED_STATUS AddMasterToClient(const Endpoint& add);
+  CHECKED_STATUS RemoveMasterFromClient(const Endpoint& remove);
 
   // Policy with which to choose amongst multiple replicas.
   enum ReplicaSelection {

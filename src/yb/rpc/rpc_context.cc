@@ -176,13 +176,16 @@ const UserCredentials& RpcContext::user_credentials() const {
   return call_->user_credentials();
 }
 
-const Sockaddr& RpcContext::remote_address() const {
+const Endpoint& RpcContext::remote_address() const {
   return call_->remote_address();
 }
 
+const Endpoint& RpcContext::local_address() const {
+  return call_->local_address();
+}
+
 std::string RpcContext::requestor_string() const {
-  return call_->user_credentials().ToString() + " at " +
-    call_->remote_address().ToString();
+  return call_->user_credentials().ToString() + " at " + yb::ToString(call_->remote_address());
 }
 
 MonoTime RpcContext::GetClientDeadline() const {

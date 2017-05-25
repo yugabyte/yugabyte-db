@@ -244,10 +244,6 @@ static inline const char* ToChar(const uint8_t* data) {
   return reinterpret_cast<const char*>(data);
 }
 
-static inline const char* ToChar(const in_addr_t* data) {
-  return reinterpret_cast<const char*>(data);
-}
-
 Status CQLRequest::ParseInt(int32_t* value) {
   static_assert(sizeof(int32_t) == kIntSize, "inconsistent int size");
   return ParseNum("CQL int", NetworkByteOrder::Load32, value);
@@ -312,24 +308,28 @@ Status CQLRequest::ParseShortBytes(string* value) {
   return ParseBytes("CQL short bytes", &CQLRequest::ParseShort, value);
 }
 
-Status CQLRequest::ParseInet(Sockaddr* value) {
-  string ipaddr;
+Status CQLRequest::ParseInet(Endpoint* value) {
+  std::string ipaddr;
   int32_t port = 0;
   RETURN_NOT_OK(ParseBytes("CQL ipaddr", &CQLRequest::ParseByte, &ipaddr));
   RETURN_NOT_OK(ParseInt(&port));
-  // TODO(Robert): support IPv6
-  if (ipaddr.size() != kIPv4Size) {
-    return STATUS(NetworkError, "Implementation restriction: only IPv4 inet is supported");
-  }
   if (port < 0 || port > 65535) {
     return STATUS(NetworkError, "Invalid inet port");
   }
-  sockaddr_in addr;
-  addr.sin_family = AF_INET;
-  memcpy(&addr.sin_addr.s_addr, ipaddr.data(), ipaddr.size());
-  addr.sin_port = htons(static_cast<uint16_t>(port));
-  *value = addr;
-  DVLOG(4) << "CQL inet " << value->ToString();
+  IpAddress address;
+  if (ipaddr.size() == boost::asio::ip::address_v4::bytes_type().size()) {
+    boost::asio::ip::address_v4::bytes_type bytes;
+    memcpy(bytes.data(), ipaddr.data(), ipaddr.size());
+    address = boost::asio::ip::address_v4(bytes);
+  } else if (ipaddr.size() == boost::asio::ip::address_v6::bytes_type().size()) {
+    boost::asio::ip::address_v6::bytes_type bytes;
+    memcpy(bytes.data(), ipaddr.data(), ipaddr.size());
+    address = boost::asio::ip::address_v6(bytes);
+  } else {
+    return STATUS_SUBSTITUTE(NetworkError, "Invalid size of ipaddr: $0", ipaddr.size());
+  }
+  *value = Endpoint(address, port);
+  DVLOG(4) << "CQL inet " << *value;
   return Status::OK();
 }
 
@@ -786,12 +786,18 @@ void SerializeShortBytes(const string& value, faststring* mesg) {
   SerializeBytes(&SerializeShort, value, mesg);
 }
 
-void SerializeInet(const Sockaddr& value, faststring* mesg) {
-  // TODO(Robert): support IPv6
-  SerializeByte(CQLMessage::kIPv4Size, mesg);
-  const auto& addr = value.addr();
-  mesg->append(ToChar(&addr.sin_addr.s_addr), CQLMessage::kIPv4Size);
-  const uint16_t port = ntohs(addr.sin_port);
+void SerializeInet(const Endpoint& value, faststring* mesg) {
+  auto address = value.address();
+  if (address.is_v4()) {
+    auto bytes = address.to_v4().to_bytes();
+    SerializeByte(bytes.size(), mesg);
+    mesg->append(bytes.data(), bytes.size());
+  } else {
+    auto bytes = address.to_v6().to_bytes();
+    SerializeByte(bytes.size(), mesg);
+    mesg->append(bytes.data(), bytes.size());
+  }
+  const uint16_t port = value.port();
   SerializeInt(port, mesg);
 }
 
@@ -1469,7 +1475,7 @@ std::string EventResponse::ToString() const {
 
 //----------------------------------------------------------------------------------------
 TopologyChangeEventResponse::TopologyChangeEventResponse(const string& topology_change_type,
-                                                         const Sockaddr& node)
+                                                         const Endpoint& node)
     : EventResponse("TOPOLOGY_CHANGE"), topology_change_type_(topology_change_type),
       node_(node) {
 }
@@ -1488,7 +1494,7 @@ std::string TopologyChangeEventResponse::BodyToString() const {
 
 //----------------------------------------------------------------------------------------
 StatusChangeEventResponse::StatusChangeEventResponse(const string& status_change_type,
-                                                     const Sockaddr& node)
+                                                     const Endpoint& node)
     : EventResponse("STATUS_CHANGE"), status_change_type_(status_change_type),
       node_(node) {
 }

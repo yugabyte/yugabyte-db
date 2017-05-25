@@ -17,7 +17,8 @@
 #ifndef YB_UTIL_MONOTIME_H
 #define YB_UTIL_MONOTIME_H
 
-#include <stdint.h>
+#include <chrono>
+#include <cstdint>
 #include <string>
 
 #ifdef YB_HEADERS_NO_STUBS
@@ -53,6 +54,11 @@ class YB_EXPORT MonoDelta {
   static const MonoDelta kZero;
 
   MonoDelta();
+
+  template<class Rep, class Period>
+  MonoDelta(const std::chrono::duration<Rep, Period>& duration) // NOLINT
+      : nano_delta_(std::chrono::nanoseconds(duration).count()) {}
+
   bool Initialized() const;
   bool LessThan(const MonoDelta &rhs) const;
   bool MoreThan(const MonoDelta &rhs) const;

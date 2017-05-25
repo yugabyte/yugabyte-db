@@ -17,10 +17,10 @@
 
 #include "yb/util/net/dns_resolver.h"
 
-#include <boost/bind.hpp>
+#include <vector>
+
 #include <gflags/gflags.h>
 #include <glog/logging.h>
-#include <vector>
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/threadpool.h"
@@ -45,14 +45,15 @@ DnsResolver::~DnsResolver() {
 }
 
 namespace {
-static void DoResolution(const HostPort &hostport, vector<Sockaddr>* addresses,
+static void DoResolution(const HostPort &hostport,
+                         std::vector<Endpoint>* addresses,
                          StatusCallback cb) {
   cb.Run(hostport.ResolveAddresses(addresses));
 }
 } // anonymous namespace
 
 void DnsResolver::ResolveAddresses(const HostPort& hostport,
-                                   vector<Sockaddr>* addresses,
+                                   std::vector<Endpoint>* addresses,
                                    const StatusCallback& cb) {
   Status s = pool_->SubmitFunc(std::bind(&DoResolution, hostport, addresses, cb));
   if (!s.ok()) {

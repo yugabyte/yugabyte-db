@@ -18,8 +18,10 @@
 #ifndef YB_UTIL_RANDOM_UTIL_H
 #define YB_UTIL_RANDOM_UTIL_H
 
-#include <stdint.h>
+#include <algorithm>
+#include <cstdint>
 #include <cstdlib>
+#include <random>
 #include <string>
 
 namespace yb {
@@ -36,6 +38,24 @@ void RandomString(void* dest, size_t n, Random* rng);
 uint32_t GetRandomSeed32();
 
 std::string RandomHumanReadableString(int len, Random* rnd);
+
+class RandomDeviceSequence {
+ public:
+  template<class It>
+  void generate(It begin, const It& end) {
+    std::generate(begin, end, [this] { return device_(); });
+  }
+ private:
+  std::random_device device_;
+};
+
+// Correct seeding of random number generator.
+// It is quite futile to use 32bit seed for generator with 19968bit state, like mt19937.
+template<class Engine>
+void Seed(Engine* engine) {
+  RandomDeviceSequence sequence;
+  engine->seed(sequence);
+}
 
 } // namespace yb
 

@@ -126,8 +126,8 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
 
     // Connect to the cluster.
     ASSERT_OK(YBClientBuilder()
-                     .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr().ToString())
-                     .Build(&client_));
+        .add_master_server_addr(yb::ToString(cluster_->mini_master()->bound_rpc_addr()))
+        .Build(&client_));
 
     // Create a keyspace;
     ASSERT_OK(client_->CreateNamespace(kKeyspaceName));
@@ -410,15 +410,14 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
       MiniTabletServer* ts = cluster_->mini_tablet_server(i);
       if (ts->server()->instance_pb().permanent_uuid() == uuid) {
         if (restart) {
-          LOG(INFO) << "Restarting TS at " << ts->bound_rpc_addr().ToString();
+          LOG(INFO) << "Restarting TS at " << ts->bound_rpc_addr();
           RETURN_NOT_OK(ts->Restart());
           if (wait_started) {
-            LOG(INFO) << "Waiting for TS " << ts->bound_rpc_addr().ToString()
-                << " to finish bootstrapping";
+            LOG(INFO) << "Waiting for TS " << ts->bound_rpc_addr() << " to finish bootstrapping";
             RETURN_NOT_OK(ts->WaitStarted());
           }
         } else {
-          LOG(INFO) << "Killing TS " << uuid << " at " << ts->bound_rpc_addr().ToString();
+          LOG(INFO) << "Killing TS " << uuid << " at " << ts->bound_rpc_addr();
           ts->Shutdown();
         }
         ts_found = true;
@@ -488,7 +487,7 @@ TEST_F(ClientTest, TestListTabletServers) {
   ASSERT_EQ(1, tss.size());
   ASSERT_EQ(cluster_->mini_tablet_server(0)->server()->instance_pb().permanent_uuid(),
             tss[0]->uuid());
-  ASSERT_EQ(cluster_->mini_tablet_server(0)->server()->first_rpc_address().host(),
+  ASSERT_EQ(cluster_->mini_tablet_server(0)->server()->first_rpc_address().address().to_string(),
             tss[0]->hostname());
 }
 
@@ -2205,7 +2204,7 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
   rpc::RpcController controller;
 
   LOG(INFO) << "Promoting server at index " << new_leader_idx << " listening at "
-            << new_leader->bound_rpc_addr().ToString() << " ...";
+            << new_leader->bound_rpc_addr() << " ...";
   req.set_dest_uuid(new_leader->server()->fs_manager()->uuid());
   req.set_tablet_id(rt->tablet_id());
   ASSERT_OK(new_leader_proxy->RunLeaderElection(req, &resp, &controller));
@@ -2487,7 +2486,7 @@ TEST_F(ClientTest, TestDeadlockSimulation) {
   // in reverse order. Separate client used so rpc calls come in at same time.
   shared_ptr<YBClient> rev_client;
   ASSERT_OK(YBClientBuilder()
-                   .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr().ToString())
+                   .add_master_server_addr(ToString(cluster_->mini_master()->bound_rpc_addr()))
                    .Build(&rev_client));
   shared_ptr<YBTable> rev_table;
   ASSERT_OK(client_->OpenTable(kTableName, &rev_table));
@@ -2611,7 +2610,7 @@ TEST_F(ClientTest, TestLatestObservedHybridTime) {
   shared_ptr<YBClient> client;
   shared_ptr<YBTable> table;
   ASSERT_OK(YBClientBuilder()
-      .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr().ToString())
+      .add_master_server_addr(ToString(cluster_->mini_master()->bound_rpc_addr()))
       .Build(&client));
   ASSERT_EQ(client->GetLatestObservedHybridTime(), YBClient::kNoHybridTime);
   ASSERT_OK(client->OpenTable(client_table_->name(), &table));

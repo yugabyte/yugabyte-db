@@ -113,7 +113,7 @@ TEST_F(AdminCliTest, TestChangeConfig) {
   string exe_path = GetAdminToolPath();
   string arg_str = Substitute("$0 -master_addresses $1 change_config $2 ADD_SERVER $3 PRE_VOTER",
                               exe_path,
-                              cluster_->master()->bound_rpc_addr().ToString(),
+                              ToString(cluster_->master()->bound_rpc_addr()),
                               tablet_id_, new_node->uuid());
   ASSERT_OK(Subprocess::Call(arg_str));
 
@@ -147,7 +147,7 @@ TEST_F(AdminCliTest, TestChangeConfig) {
   LOG(INFO) << "Removing tserver with uuid " << new_node->uuid() << " from the config...";
   arg_str = Substitute("$0 -master_addresses $1 change_config $2 REMOVE_SERVER $3",
                        exe_path,
-                       cluster_->master()->bound_rpc_addr().ToString(),
+                       ToString(cluster_->master()->bound_rpc_addr()),
                        tablet_id_, new_node->uuid());
 
   ASSERT_OK(Subprocess::Call(arg_str));
@@ -164,7 +164,7 @@ TEST_F(AdminCliTest, TestDeleteTable) {
 
   vector<string> ts_flags, master_flags;
   BuildAndStart(ts_flags, master_flags);
-  string master_address = cluster_->master()->bound_rpc_addr().ToString();
+  string master_address = ToString(cluster_->master()->bound_rpc_addr());
 
   shared_ptr<YBClient> client;
   CHECK_OK(YBClientBuilder()

@@ -123,7 +123,7 @@ RpcServerBase::~RpcServerBase() {
   mem_tracker_->UnregisterFromParent();
 }
 
-Sockaddr RpcServerBase::first_rpc_address() const {
+Endpoint RpcServerBase::first_rpc_address() const {
   const auto& addrs = rpc_server_->GetBoundAddresses();
   CHECK(!addrs.empty()) << "Not bound";
   return addrs[0];
@@ -178,7 +178,7 @@ Status RpcServerBase::Init() {
 }
 
 std::string RpcServerBase::ToString() const {
-  return strings::Substitute("$0 : rpc=$1", name_, first_rpc_address().ToString());
+  return strings::Substitute("$0 : rpc=$1", name_, yb::ToString(first_rpc_address()));
 }
 
 void RpcServerBase::GetStatusPB(ServerStatusPB* status) const {
@@ -187,9 +187,9 @@ void RpcServerBase::GetStatusPB(ServerStatusPB* status) const {
 
   // RPC ports
   {
-    for (const Sockaddr& addr : rpc_server_->GetBoundAddresses()) {
+    for (const auto& addr : rpc_server_->GetBoundAddresses()) {
       HostPortPB* pb = status->add_bound_rpc_addresses();
-      pb->set_host(addr.host());
+      pb->set_host(addr.address().to_string());
       pb->set_port(addr.port());
     }
   }
@@ -217,8 +217,9 @@ Status RpcServerBase::DumpServerInfo(const string& path,
   return Status::OK();
 }
 
-Status RpcServerBase::RegisterService(size_t queue_limit, gscoped_ptr<rpc::ServiceIf> rpc_impl) {
-  return rpc_server_->RegisterService(queue_limit, rpc_impl.Pass());
+Status RpcServerBase::RegisterService(size_t queue_limit,
+                                      std::unique_ptr<rpc::ServiceIf> rpc_impl) {
+  return rpc_server_->RegisterService(queue_limit, std::move(rpc_impl));
 }
 
 Status RpcServerBase::StartMetricsLogging() {
@@ -274,8 +275,8 @@ void RpcServerBase::MetricsLoggingThread() {
 }
 
 Status RpcServerBase::Start() {
-  gscoped_ptr<rpc::ServiceIf> gsvc_impl(new GenericServiceImpl(this));
-  RETURN_NOT_OK(RegisterService(FLAGS_generic_svc_queue_length, gsvc_impl.Pass()));
+  std::unique_ptr<rpc::ServiceIf> gsvc_impl(new GenericServiceImpl(this));
+  RETURN_NOT_OK(RegisterService(FLAGS_generic_svc_queue_length, std::move(gsvc_impl)));
 
   RETURN_NOT_OK(StartRpcServer());
 
@@ -321,8 +322,8 @@ RpcAndWebServerBase::~RpcAndWebServerBase() {
   Shutdown();
 }
 
-Sockaddr RpcAndWebServerBase::first_http_address() const {
-  vector<Sockaddr> addrs;
+Endpoint RpcAndWebServerBase::first_http_address() const {
+  std::vector<Endpoint> addrs;
   WARN_NOT_OK(web_server_->GetBoundAddresses(&addrs),
               "Couldn't get bound webserver addresses");
   CHECK(!addrs.empty()) << "Not bound";
@@ -359,18 +360,18 @@ void RpcAndWebServerBase::GetStatusPB(ServerStatusPB* status) const {
 
   // HTTP ports
   {
-    vector<Sockaddr> addrs;
+    std::vector<Endpoint> addrs;
     CHECK_OK(web_server_->GetBoundAddresses(&addrs));
-    for (const Sockaddr& addr : addrs) {
+    for (const auto& addr : addrs) {
       HostPortPB* pb = status->add_bound_http_addresses();
-      pb->set_host(addr.host());
+      pb->set_host(addr.address().to_string());
       pb->set_port(addr.port());
     }
   }
 }
 
 Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg) const {
-  vector<Sockaddr> addrs = CHECK_NOTNULL(rpc_server())->GetBoundAddresses();
+  auto addrs = CHECK_NOTNULL(rpc_server())->GetBoundAddresses();
   RETURN_NOT_OK_PREPEND(
       AddHostPortPBs(addrs, reg->mutable_rpc_addresses()),
       "Failed to add RPC addresses to registration");

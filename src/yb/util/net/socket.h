@@ -22,16 +22,17 @@
 
 #include "yb/gutil/macros.h"
 #include "yb/util/status.h"
+#include "yb/util/net/sockaddr.h"
 
 namespace yb {
 
 class MonoDelta;
 class MonoTime;
-class Sockaddr;
 
 class Socket {
  public:
   static const int FLAG_NONBLOCKING = 0x1;
+  static const int FLAG_IPV6 = 0x02;
 
   // Create a new invalid Socket object.
   Socket();
@@ -86,29 +87,29 @@ class Socket {
   // 1) SetReuseAddr(true)
   // 2) Bind()
   // 3) Listen()
-  CHECKED_STATUS BindAndListen(const Sockaddr &sockaddr, int listen_queue_size);
+  CHECKED_STATUS BindAndListen(const Endpoint& endpoint, int listen_queue_size);
 
   // Start listening for new connections, with the given backlog size.
   // Requires that the socket has already been bound using Bind().
   CHECKED_STATUS Listen(int listen_queue_size);
 
   // Call getsockname to get the address of this socket.
-  CHECKED_STATUS GetSocketAddress(Sockaddr *cur_addr) const;
+  CHECKED_STATUS GetSocketAddress(Endpoint* out) const;
 
   // Call getpeername to get the address of the connected peer.
-  CHECKED_STATUS GetPeerAddress(Sockaddr *cur_addr) const;
+  CHECKED_STATUS GetPeerAddress(Endpoint* out) const;
 
   // Call bind() to bind the socket to a given address.
   // If bind() fails and indicates that the requested port is already in use,
   // and if explain_addr_in_use is set to true, generates an informative log message by calling
   // 'lsof' if available.
-  CHECKED_STATUS Bind(const Sockaddr& bind_addr, bool explain_addr_in_use = true);
+  CHECKED_STATUS Bind(const Endpoint& bind_addr, bool explain_addr_in_use = true);
 
   // Call accept(2) to get a new connection.
-  CHECKED_STATUS Accept(Socket *new_conn, Sockaddr *remote, int flags);
+  CHECKED_STATUS Accept(Socket *new_conn, Endpoint* remote, int flags);
 
   // start connecting this socket to a remote address.
-  CHECKED_STATUS Connect(const Sockaddr &remote);
+  CHECKED_STATUS Connect(const Endpoint& remote);
 
   // get the error status using getsockopt(2)
   CHECKED_STATUS GetSockError() const;

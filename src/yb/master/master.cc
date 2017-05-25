@@ -128,7 +128,7 @@ string Master::ToString() const {
   if (state_ != kRunning) {
     return "Master (stopped)";
   }
-  return strings::Substitute("Master@$0", first_rpc_address().ToString());
+  return strings::Substitute("Master@$0", yb::ToString(first_rpc_address()));
 }
 
 Status Master::Init() {
@@ -158,21 +158,22 @@ Status Master::StartAsync() {
 
   RETURN_NOT_OK(maintenance_manager_->Init());
 
-  gscoped_ptr<ServiceIf> impl(new MasterServiceImpl(this));
-  gscoped_ptr<ServiceIf> master_tserver_impl(
+  std::unique_ptr<ServiceIf> impl(new MasterServiceImpl(this));
+  std::unique_ptr<ServiceIf> master_tserver_impl(
       new MasterTabletServiceImpl(master_tablet_server_.get(), this));
-  gscoped_ptr<ServiceIf> consensus_service(
-    new ConsensusServiceImpl(metric_entity(), catalog_manager_.get()));
-  gscoped_ptr<ServiceIf> remote_bootstrap_service(
-    new RemoteBootstrapServiceImpl(fs_manager_.get(), catalog_manager_.get(), metric_entity()));
+  std::unique_ptr<ServiceIf> consensus_service(
+      new ConsensusServiceImpl(metric_entity(), catalog_manager_.get()));
+  std::unique_ptr<ServiceIf> remote_bootstrap_service(
+      new RemoteBootstrapServiceImpl(fs_manager_.get(), catalog_manager_.get(), metric_entity()));
 
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_svc_queue_length, impl.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_svc_queue_length,
+                                                     std::move(impl)));
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_tserver_svc_queue_length,
-                                                     master_tserver_impl.Pass()));
+                                                     std::move(master_tserver_impl)));
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_consensus_svc_queue_length,
-                                                     consensus_service.Pass()));
+                                                     std::move(consensus_service)));
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_remote_bootstrap_svc_queue_length,
-                                                     remote_bootstrap_service.Pass()));
+                                                     std::move(remote_bootstrap_service)));
   RETURN_NOT_OK(RpcAndWebServerBase::Start());
 
   // Now that we've bound, construct our ServerRegistrationPB.
@@ -338,8 +339,8 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
 
 Status Master::InformRemovedMaster(const HostPortPB& hp_pb) {
   HostPort hp(hp_pb.host(), hp_pb.port());
-  Sockaddr master_addr;
-  RETURN_NOT_OK(SockaddrFromHostPort(hp, &master_addr));
+  Endpoint master_addr;
+  RETURN_NOT_OK(EndpointFromHostPort(hp, &master_addr));
   MasterServiceProxy proxy(messenger_, master_addr);
   RemovedMasterUpdateRequestPB req;
   RemovedMasterUpdateResponsePB resp;

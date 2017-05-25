@@ -94,6 +94,7 @@ DEFINE_string(table_name, "lineitem",
               "The table name to write/read");
 
 namespace yb {
+namespace {
 
 using client::YBColumnSchema;
 using client::YBRowResult;
@@ -236,6 +237,7 @@ void Tpch1(RpcLineItemDAO *dao) {
   CHECK_EQ(matching_rows, FLAGS_tpch_expected_matching_rows) << "Wrong number of rows returned";
 }
 
+} // namespace
 } // namespace yb
 
 int main(int argc, char **argv) {

@@ -25,8 +25,8 @@ RedisServer::RedisServer(const RedisServerOptions& opts)
 Status RedisServer::Start() {
   RETURN_NOT_OK(server::RpcAndWebServerBase::Init());
 
-  gscoped_ptr<ServiceIf> redis_service(new RedisServiceImpl(this, opts_.master_addresses_flag));
-  RETURN_NOT_OK(RegisterService(FLAGS_redis_svc_queue_length, redis_service.Pass()));
+  std::unique_ptr<ServiceIf> redis_service(new RedisServiceImpl(this, opts_.master_addresses_flag));
+  RETURN_NOT_OK(RegisterService(FLAGS_redis_svc_queue_length, std::move(redis_service)));
 
   RETURN_NOT_OK(server::RpcAndWebServerBase::Start());
 

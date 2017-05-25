@@ -56,17 +56,21 @@ METRIC_DEFINE_histogram(
 /// Connection
 ///
 Connection::Connection(ReactorThread* reactor_thread,
-                       Sockaddr remote,
+                       const Endpoint& remote,
                        int socket,
                        Direction direction,
                        std::unique_ptr<ConnectionContext> context)
     : reactor_thread_(reactor_thread),
       socket_(socket),
-      remote_(std::move(remote)),
+      remote_(remote),
       direction_(direction),
       last_activity_time_(MonoTime::Now(MonoTime::FINE)),
       read_buffer_(FLAGS_rpc_initial_buffer_size, context->BufferLimit()),
       context_(move(context)) {
+  auto status = socket_.GetSocketAddress(&local_);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to get local address for: " << socket;
+  }
   const auto metric_entity = reactor_thread->reactor()->messenger()->metric_entity();
   handler_latency_outbound_transfer_ = metric_entity ?
       METRIC_handler_latency_outbound_transfer.Instantiate(metric_entity) : nullptr;
@@ -463,10 +467,12 @@ std::string Connection::ToString() const {
   // This may be called from other threads, so we cannot
   // include anything in the output about the current state,
   // which might concurrently change from another thread.
-  return strings::Substitute(
-    "Connection ($0) $1 $2", this,
-    direction_ == Direction::SERVER ? "server connection from" : "client connection to",
-    remote_.ToString());
+  static const char* format = "Connection ($0) $1 $2 => $3";
+  if (direction_ == Direction::SERVER) {
+    return strings::Substitute(format, this, "server", yb::ToString(remote_), yb::ToString(local_));
+  } else {
+    return strings::Substitute(format, this, "client", yb::ToString(local_), yb::ToString(remote_));
+  }
 }
 
 // Reactor task that transitions this Connection from connection negotiation to
@@ -511,7 +517,7 @@ void Connection::RunNegotiation(const MonoTime& deadline) {
 Status Connection::DumpPB(const DumpRunningRpcsRequestPB& req,
                           RpcConnectionPB* resp) {
   DCHECK(reactor_thread_->IsCurrentThread());
-  resp->set_remote_ip(remote_.ToString());
+  resp->set_remote_ip(yb::ToString(remote_));
   if (negotiation_complete_) {
     resp->set_state(RpcConnectionPB::OPEN);
     resp->set_remote_user_credentials(user_credentials_.ToString());

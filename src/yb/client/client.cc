@@ -513,9 +513,9 @@ Status YBClient::GetTablets(const YBTableName& table_name,
   return Status::OK();
 }
 
-Status YBClient::SetMasterLeaderSocket(Sockaddr* leader_socket) {
+Status YBClient::SetMasterLeaderSocket(Endpoint* leader_socket) {
   HostPort leader_hostport = data_->leader_master_hostport();
-  vector<Sockaddr> leader_addrs;
+  std::vector<Endpoint> leader_addrs;
   RETURN_NOT_OK(leader_hostport.ResolveAddresses(&leader_addrs));
   if (leader_addrs.empty() || leader_addrs.size() > 1) {
     return STATUS(IllegalState,
@@ -557,7 +557,7 @@ Status YBClient::ListMasters(
   return Status::OK();
 }
 
-Status YBClient::RefreshMasterLeaderSocket(Sockaddr* leader_socket) {
+Status YBClient::RefreshMasterLeaderSocket(Endpoint* leader_socket) {
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(default_admin_operation_timeout());
   RETURN_NOT_OK(data_->SetMasterServerProxy(this, deadline));
@@ -565,11 +565,11 @@ Status YBClient::RefreshMasterLeaderSocket(Sockaddr* leader_socket) {
   return SetMasterLeaderSocket(leader_socket);
 }
 
-Status YBClient::RemoveMasterFromClient(const Sockaddr& remove) {
+Status YBClient::RemoveMasterFromClient(const Endpoint& remove) {
   return data_->RemoveMasterAddress(remove);
 }
 
-Status YBClient::AddMasterToClient(const Sockaddr& add) {
+Status YBClient::AddMasterToClient(const Endpoint& add) {
   return data_->AddMasterAddress(add);
 }
 
@@ -714,7 +714,7 @@ bool YBClient::IsMultiMaster() const {
     return true;
   }
   // For single entry case, check if it is a list of host/ports.
-  vector<Sockaddr> addrs;
+  vector<Endpoint> addrs;
   const auto status = ParseAddressList(data_->master_server_addrs_[0],
                                        yb::master::kMasterDefaultPort,
                                        &addrs);

@@ -72,7 +72,7 @@ class RemoteYsckTest : public YBTest {
 
     // Connect to the cluster.
     ASSERT_OK(client::YBClientBuilder()
-                     .add_master_server_addr(master_rpc_addr_.ToString())
+                     .add_master_server_addr(ToString(master_rpc_addr_))
                      .Build(&client_));
 
     // Create one table.
@@ -171,7 +171,7 @@ class RemoteYsckTest : public YBTest {
   shared_ptr<client::YBClient> client_;
 
  private:
-  Sockaddr master_rpc_addr_;
+  Endpoint master_rpc_addr_;
   std::shared_ptr<MiniCluster> mini_cluster_;
   client::YBSchema schema_;
   shared_ptr<client::YBTable> client_table_;

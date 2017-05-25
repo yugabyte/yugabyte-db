@@ -68,11 +68,11 @@ RemoteTabletServer::RemoteTabletServer(const master::TSInfoPB& pb)
 }
 
 void RemoteTabletServer::DnsResolutionFinished(const HostPort& hp,
-                                               vector<Sockaddr>* addrs,
+                                               vector<Endpoint>* addrs,
                                                YBClient* client,
                                                const StatusCallback& user_callback,
                                                const Status &result_status) {
-  gscoped_ptr<vector<Sockaddr> > scoped_addrs(addrs);
+  gscoped_ptr<vector<Endpoint> > scoped_addrs(addrs);
 
   Status s = result_status;
 
@@ -88,7 +88,7 @@ void RemoteTabletServer::DnsResolutionFinished(const HostPort& hp,
 
   if (VLOG_IS_ON(1)) {
     const auto host_port_as_str = hp.ToString();
-    const auto resolved_to = (*addrs)[0].ToString();
+    const auto resolved_to = yb::ToString((*addrs)[0]);
     if (host_port_as_str != resolved_to) {
       VLOG(1) << "Successfully resolved " << host_port_as_str << ": " << resolved_to;
     }
@@ -119,7 +119,7 @@ void RemoteTabletServer::InitProxy(YBClient* client, const StatusCallback& cb) {
     hp = rpc_hostports_[0];
   }
 
-  auto addrs = new vector<Sockaddr>();
+  auto addrs = new vector<Endpoint>();
   client->data_->dns_resolver_->ResolveAddresses(
     hp, addrs, Bind(&RemoteTabletServer::DnsResolutionFinished,
                     Unretained(this), hp, addrs, client, cb));

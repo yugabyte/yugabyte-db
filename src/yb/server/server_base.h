@@ -39,7 +39,6 @@ class MetricRegistry;
 class NodeInstancePB;
 class RpcServer;
 class ScopedGLogMetrics;
-class Sockaddr;
 class Thread;
 class Webserver;
 
@@ -58,7 +57,7 @@ class RpcServerBase {
 
   // Return the first RPC address that this server has bound to.
   // FATALs if the server is not started.
-  Sockaddr first_rpc_address() const;
+  Endpoint first_rpc_address() const;
 
   // Return the instance identifier of this server.
   // This may not be called until after the server is Initted.
@@ -85,7 +84,7 @@ class RpcServerBase {
   virtual ~RpcServerBase();
 
   CHECKED_STATUS Init();
-  CHECKED_STATUS RegisterService(size_t queue_limit, gscoped_ptr<rpc::ServiceIf> rpc_impl);
+  CHECKED_STATUS RegisterService(size_t queue_limit, std::unique_ptr<rpc::ServiceIf> rpc_impl);
   CHECKED_STATUS Start();
   CHECKED_STATUS StartRpcServer();
   void Shutdown();
@@ -135,7 +134,7 @@ class RpcAndWebServerBase : public RpcServerBase {
 
   // Return the first HTTP address that this server has bound to.
   // FATALs if the server is not started.
-  Sockaddr first_http_address() const;
+  Endpoint first_http_address() const;
 
   // Return a PB describing the status of the server (version info, bound ports, etc)
   void GetStatusPB(ServerStatusPB* status) const override;

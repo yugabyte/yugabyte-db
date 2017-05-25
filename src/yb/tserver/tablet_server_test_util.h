@@ -21,9 +21,9 @@
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/util/net/net_fwd.h"
 
 namespace yb {
-class Sockaddr;
 
 namespace consensus {
 class ConsensusServiceProxy;
@@ -38,7 +38,7 @@ class TabletServerAdminServiceProxy;
 class TabletServerServiceProxy;
 
 // Create tablet server client proxies for tests.
-void CreateTsClientProxies(const Sockaddr& addr,
+void CreateTsClientProxies(const Endpoint& addr,
                            const std::shared_ptr<rpc::Messenger>& messenger,
                            gscoped_ptr<TabletServerServiceProxy>* proxy,
                            gscoped_ptr<TabletServerAdminServiceProxy>* admin_proxy,

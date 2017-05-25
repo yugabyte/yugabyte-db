@@ -48,7 +48,7 @@ class YqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
 
     // Connect to the cluster.
     ASSERT_OK(YBClientBuilder()
-        .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr().ToString())
+        .add_master_server_addr(yb::ToString(cluster_->mini_master()->bound_rpc_addr()))
         .Build(&client_));
 
     // Create test table

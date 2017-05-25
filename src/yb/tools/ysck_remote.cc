@@ -223,7 +223,7 @@ Status RemoteYsckMaster::Connect() const {
   return generic_proxy_->Ping(req, &resp, &rpc);
 }
 
-Status RemoteYsckMaster::Build(const Sockaddr& address, shared_ptr<YsckMaster>* master) {
+Status RemoteYsckMaster::Build(const Endpoint& address, shared_ptr<YsckMaster>* master) {
   shared_ptr<Messenger> messenger;
   MessengerBuilder builder(kMessengerName);
   RETURN_NOT_OK(builder.Build(&messenger));
@@ -241,7 +241,7 @@ Status RemoteYsckMaster::RetrieveTabletServers(TSMap* tablet_servers) {
   tablet_servers->clear();
   for (const master::ListTabletServersResponsePB_Entry& e : resp.servers()) {
     HostPortPB addr = e.registration().common().rpc_addresses(0);
-    vector<Sockaddr> addresses;
+    std::vector<Endpoint> addresses;
     RETURN_NOT_OK(ParseAddressList(HostPort(addr.host(), addr.port()).ToString(),
                                    tserver::TabletServer::kDefaultPort, &addresses));
     shared_ptr<YsckTabletServer> ts(

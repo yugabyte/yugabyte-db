@@ -67,7 +67,6 @@ namespace rpc {
 
 class DumpRunningRpcsRequestPB;
 class RpcCallInProgressPB;
-class ServicePool;
 class UserCredentials;
 
 struct InboundCallTiming {
@@ -126,7 +125,8 @@ class InboundCall : public RpcCall {
 
   virtual const UserCredentials& user_credentials() const;
 
-  const Sockaddr& remote_address() const;
+  const Endpoint& remote_address() const;
+  const Endpoint& local_address() const;
 
   ConnectionPtr connection() const;
 

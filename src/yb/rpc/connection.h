@@ -18,16 +18,16 @@
 #ifndef YB_RPC_CONNECTION_H_
 #define YB_RPC_CONNECTION_H_
 
-#include <stdint.h>
-#include <ev++.h>
 #include <atomic>
-#include <memory>
-#include <unordered_map>
-
+#include <cstdint>
 #include <limits>
+#include <memory>
 #include <queue>
 #include <string>
+#include <unordered_map>
 #include <vector>
+
+#include <ev++.h>
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
@@ -120,7 +120,7 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   // context: context for this connection. Context is used by connection to handle
   // protocol specific actions, such as parsing of incoming data into calls.
   Connection(ReactorThread* reactor_thread,
-             Sockaddr remote,
+             const Endpoint& remote,
              int socket,
              Direction direction,
              std::unique_ptr<ConnectionContext> context);
@@ -163,7 +163,10 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   void QueueOutboundCall(const OutboundCallPtr& call);
 
   // The address of the remote end of the connection.
-  const Sockaddr& remote() const { return remote_; }
+  const Endpoint& remote() const { return remote_; }
+
+  // The address of the local end of the connection.
+  const Endpoint& local() const { return local_; }
 
   // libev callback when there are some events in socket.
   void Handler(ev::io& watcher, int revents); // NOLINT
@@ -234,8 +237,11 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   // The socket we're communicating on.
   Socket socket_;
 
+  // The remote address we're talking from.
+  Endpoint local_;
+
   // The remote address we're talking to.
-  const Sockaddr remote_;
+  const Endpoint remote_;
 
   // whether we are client or server
   Direction direction_;

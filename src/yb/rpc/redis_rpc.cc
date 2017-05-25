@@ -374,7 +374,7 @@ void RedisInboundCall::LogTrace() const {
 string RedisInboundCall::ToString() const {
   return strings::Substitute("Redis Call $0 from $1",
       remote_method_.ToString(),
-      connection()->remote().ToString());
+      yb::ToString(connection()->remote()));
 }
 
 void RedisInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,

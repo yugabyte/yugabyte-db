@@ -49,7 +49,7 @@ namespace yb {
 namespace rpc {
 
 Proxy::Proxy(const std::shared_ptr<Messenger>& messenger,
-             const Sockaddr& remote, string service_name)
+             const Endpoint& remote, string service_name)
     : service_name_(std::move(service_name)),
       messenger_(messenger),
       outbound_call_metrics_(messenger && messenger->metric_entity() ?
@@ -63,7 +63,7 @@ Proxy::Proxy(const std::shared_ptr<Messenger>& messenger,
   Status s = GetLoggedInUser(&real_user);
   if (!s.ok()) {
     LOG(WARNING) << "Proxy for " << service_name_ << ": Unable to get logged-in user name: "
-        << s.ToString() << " before connecting to remote: " << remote.ToString();
+                 << s.ToString() << " before connecting to remote: " << remote;
   }
 
   conn_id_.set_remote(remote);

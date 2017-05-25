@@ -47,12 +47,12 @@ class RpcServer {
   CHECKED_STATUS Init(const std::shared_ptr<rpc::Messenger>& messenger);
   // Services need to be registered after Init'ing, but before Start'ing.
   // The service's ownership will be given to a ServicePool.
-  CHECKED_STATUS RegisterService(size_t queue_limit, gscoped_ptr<rpc::ServiceIf> service);
+  CHECKED_STATUS RegisterService(size_t queue_limit, std::unique_ptr<rpc::ServiceIf> service);
   CHECKED_STATUS Bind();
   CHECKED_STATUS Start();
   void Shutdown();
 
-  const std::vector<Sockaddr>& GetBoundAddresses() const {
+  const std::vector<Endpoint>& GetBoundAddresses() const {
     return rpc_bound_addresses_;
   }
 
@@ -78,8 +78,8 @@ class RpcServer {
   std::shared_ptr<rpc::Messenger> messenger_;
 
   // Parsed addresses to bind RPC to. Set by Init()
-  std::vector<Sockaddr> rpc_bind_addresses_;
-  std::vector<Sockaddr> rpc_bound_addresses_;
+  std::vector<Endpoint> rpc_bind_addresses_;
+  std::vector<Endpoint> rpc_bound_addresses_;
 
   DISALLOW_COPY_AND_ASSIGN(RpcServer);
 };

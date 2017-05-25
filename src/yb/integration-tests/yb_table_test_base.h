@@ -92,7 +92,7 @@ class YBTableTestBase : public YBTest {
       auto sock_addr = use_external_mini_cluster()
                            ? external_mini_cluster()->master(i)->bound_rpc_addr()
                            : mini_cluster()->mini_master(i)->bound_rpc_addr();
-      host_ports.push_back(sock_addr.ToString());
+      host_ports.push_back(ToString(sock_addr));
     }
     return host_ports;
   }

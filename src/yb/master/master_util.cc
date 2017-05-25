@@ -18,8 +18,8 @@ Status MasterUtil::GetMasterEntryForHost(const std::shared_ptr<rpc::Messenger>& 
                                          const HostPort& hostport,
                                          int timeout,
                                          ServerEntryPB* e) {
-  Sockaddr sockaddr;
-  RETURN_NOT_OK(SockaddrFromHostPort(hostport, &sockaddr));
+  Endpoint sockaddr;
+  RETURN_NOT_OK(EndpointFromHostPort(hostport, &sockaddr));
   MasterServiceProxy proxy(messenger, sockaddr);
   GetMasterRegistrationRequestPB req;
   GetMasterRegistrationResponsePB resp;

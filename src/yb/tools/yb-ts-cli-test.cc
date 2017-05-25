@@ -83,7 +83,7 @@ TEST_F(YBTsCliTest, TestDeleteTablet) {
   vector<string> argv;
   argv.push_back(exe_path);
   argv.push_back("--server_address");
-  argv.push_back(cluster_->tablet_server(0)->bound_rpc_addr().ToString());
+  argv.push_back(yb::ToString(cluster_->tablet_server(0)->bound_rpc_addr()));
   argv.push_back("delete_tablet");
   argv.push_back(tablet_id);
   argv.push_back("Deleting for yb-ts-cli-test");

@@ -76,7 +76,7 @@ static string GetYsckUsage(const char* progname) {
 // Error information is appended to the provided vector.
 // If the vector is empty upon completion, ysck ran successfully.
 static void RunYsck(vector<string>* error_messages) {
-  vector<Sockaddr> master_addrs;
+  std::vector<Endpoint> master_addrs;
   PUSH_PREPEND_NOT_OK(ParseAddressList(FLAGS_master_address,
                                        master::kMasterDefaultPort,
                                        &master_addrs),

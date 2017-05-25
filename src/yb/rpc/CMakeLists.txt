@@ -108,8 +108,9 @@ YRPC_GENERATE(
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES rtest.proto)
-add_library(rtest_yrpc ${RTEST_YRPC_SRCS} ${RTEST_YRPC_HDRS})
+add_library(rtest_yrpc rpc-test-base.cc ${RTEST_YRPC_SRCS} ${RTEST_YRPC_HDRS})
 target_link_libraries(rtest_yrpc
+  yb_test_util
   yrpc
   rpc_header_proto
   rtest_diff_package_proto)
