@@ -768,7 +768,7 @@ Status RaftConsensus::Replicate(const scoped_refptr<ConsensusRound>& round) {
     RETURN_NOT_OK(AppendNewRoundToQueueUnlocked(round));
   }
 
-  peer_manager_->SignalRequest();
+  peer_manager_->SignalRequest(RequestTriggerMode::NON_EMPTY_ONLY);
   RETURN_NOT_OK(ExecuteHook(POST_REPLICATE));
   return Status::OK();
 }
@@ -830,17 +830,13 @@ void RaftConsensus::UpdateMajorityReplicated(const OpId& majority_replicated,
         << s.ToString();
     return;
   }
-  UpdateMajorityReplicatedUnlocked(majority_replicated, committed_index);
-}
 
-void RaftConsensus::UpdateMajorityReplicatedUnlocked(const OpId& majority_replicated,
-                                                     OpId* committed_index) {
   VLOG_WITH_PREFIX_UNLOCKED(1) << "Marking majority replicated up to "
       << majority_replicated.ShortDebugString();
   TRACE("Marking majority replicated up to $0", majority_replicated.ShortDebugString());
   bool committed_index_changed = false;
-  Status s = state_->UpdateMajorityReplicatedUnlocked(majority_replicated, committed_index,
-                                                      &committed_index_changed);
+  s = state_->UpdateMajorityReplicatedUnlocked(majority_replicated, committed_index,
+                                               &committed_index_changed);
   if (PREDICT_FALSE(!s.ok())) {
     string msg = Substitute("Unable to mark committed up to $0: $1",
                             majority_replicated.ShortDebugString(),
@@ -852,7 +848,9 @@ void RaftConsensus::UpdateMajorityReplicatedUnlocked(const OpId& majority_replic
 
   if (committed_index_changed &&
       state_->GetActiveRoleUnlocked() == RaftPeerPB::LEADER) {
-    peer_manager_->SignalRequest(false);
+    lock.unlock();
+    // No need to hold the lock while calling SignalRequest.
+    peer_manager_->SignalRequest(RequestTriggerMode::NON_EMPTY_ONLY);
   }
 }
 
@@ -1858,7 +1856,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
                                            client_cb)));
   }
 
-  peer_manager_->SignalRequest();
+  peer_manager_->SignalRequest(RequestTriggerMode::NON_EMPTY_ONLY);
 
   return Status::OK();
 }

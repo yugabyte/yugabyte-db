@@ -20,6 +20,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "yb/consensus/consensus_util.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -41,16 +42,14 @@ class PeerMessageQueue;
 class PeerProxyFactory;
 class RaftConfigPB;
 
-// Manages the set of local and remote peers that pull data from the
-// queue into the local log/remote machines.
-// Methods are virtual to ease mocking.
+// Manages the set of local and remote peers that pull data from the queue into the local log/remote
+// machines.  Methods are virtual to ease mocking.
 class PeerManager {
  public:
-  // All of the raw pointer arguments are not owned by the PeerManager
-  // and must live at least as long as the PeerManager.
+  // All of the raw pointer arguments are not owned by the PeerManager and must live at least as
+  // long as the PeerManager.
   //
-  // 'request_thread_pool' is the pool used to construct requests to send
-  // to the peers.
+  // 'request_thread_pool' is the pool used to construct requests to send to the peers.
   PeerManager(const std::string tablet_id,
               const std::string local_uuid,
               PeerProxyFactory* peer_proxy_factory,
@@ -64,7 +63,7 @@ class PeerManager {
   virtual CHECKED_STATUS UpdateRaftConfig(const RaftConfigPB& config);
 
   // Signals all peers of the current configuration that there is a new request pending.
-  virtual void SignalRequest(bool force_if_queue_empty = false);
+  virtual void SignalRequest(RequestTriggerMode trigger_mode);
 
   // Closes all peers.
   virtual void Close();
@@ -88,8 +87,7 @@ class PeerManager {
   DISALLOW_COPY_AND_ASSIGN(PeerManager);
 };
 
-
-
 } // namespace consensus
 } // namespace yb
+
 #endif /* YB_CONSENSUS_PEER_MANAGER_H */

@@ -14,6 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
+//
+// Portions Copyright (c) YugaByte, Inc.
 
 #include "yb/consensus/consensus_peers.h"
 
@@ -105,7 +107,7 @@ Peer::Peer(
       sem_(1),
       heartbeater_(
           peer_pb.permanent_uuid(), MonoDelta::FromMilliseconds(FLAGS_raft_heartbeat_interval_ms),
-          std::bind(&Peer::SignalRequest, this, true)),
+          std::bind(&Peer::SignalRequest, this, RequestTriggerMode::ALWAYS_SEND)),
       thread_pool_(thread_pool),
       state_(kPeerCreated) {}
 
@@ -121,7 +123,7 @@ Status Peer::Init() {
   return Status::OK();
 }
 
-Status Peer::SignalRequest(bool even_if_queue_empty) {
+Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
   // If the peer is currently sending, return Status::OK().
   // If there are new requests in the queue we'll get them on ProcessResponse().
   if (!sem_.TryAcquire()) {
@@ -135,40 +137,38 @@ Status Peer::SignalRequest(bool even_if_queue_empty) {
       return STATUS(IllegalState, "Peer was closed.");
     }
 
-    // For the first request sent by the peer, we send it even if the queue is empty,
-    // which it will always appear to be for the first request, since this is the
-    // negotiation round.
+    // For the first request sent by the peer, we send it even if the queue is empty, which it will
+    // always appear to be for the first request, since this is the negotiation round.
     if (PREDICT_FALSE(state_ == kPeerStarted)) {
-      even_if_queue_empty = true;
+      trigger_mode = RequestTriggerMode::ALWAYS_SEND;
       state_ = kPeerRunning;
     }
     DCHECK_EQ(state_, kPeerRunning);
 
-    // If our last request generated an error, and this is not a normal
-    // heartbeat request, then don't send the "per-RPC" request. Instead,
-    // we'll wait for the heartbeat.
+    // If our last request generated an error, and this is not a normal heartbeat request (i.e.
+    // we're not forcing a request even if the queue is empty, unlike we do during heartbeats),
+    // then don't send the "per-RPC" request. Instead, we'll wait for the heartbeat.
     //
-    // TODO: we could consider looking at the number of consecutive failed
-    // attempts, and instead of ignoring the signal, ask the heartbeater
-    // to "expedite" the next heartbeat in order to achieve something like
-    // exponential backoff after an error. As it is implemented today, any
-    // transient error will result in a latency blip as long as the heartbeat
-    // period.
-    if (failed_attempts_ > 0 && !even_if_queue_empty) {
+    // TODO: we could consider looking at the number of consecutive failed attempts, and instead of
+    // ignoring the signal, ask the heartbeater to "expedite" the next heartbeat in order to achieve
+    // something like exponential backoff after an error. As it is implemented today, any transient
+    // error will result in a latency blip as long as the heartbeat period.
+    if (failed_attempts_ > 0 && trigger_mode == RequestTriggerMode::NON_EMPTY_ONLY) {
       sem_.Release();
       return Status::OK();
     }
   }
 
   auto status = thread_pool_->SubmitClosure(
-      Bind(&Peer::SendNextRequest, Unretained(this), even_if_queue_empty));
+      Bind(&Peer::SendNextRequest, Unretained(this), trigger_mode));
   if (!status.ok()) {
     sem_.Release();
   }
   return status;
 }
 
-void Peer::SendNextRequest(bool even_if_queue_empty) {
+void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
+  DCHECK_EQ(sem_.GetValue(), 0);
   // The peer has no pending request nor is sending: send the request.
   bool needs_remote_bootstrap = false;
   int64_t commit_index_before = request_.has_committed_index() ?
@@ -199,16 +199,16 @@ void Peer::SendNextRequest(bool even_if_queue_empty) {
   request_.set_caller_uuid(leader_uuid_);
   request_.set_dest_uuid(peer_pb_.permanent_uuid());
 
-  bool req_has_ops = request_.ops_size() > 0 || (commit_index_after > commit_index_before);
-  // If the queue is empty, check if we were told to send a status-only
-  // message, if not just return.
-  if (PREDICT_FALSE(!req_has_ops && !even_if_queue_empty)) {
+  const bool req_has_ops = (request_.ops_size() > 0) || (commit_index_after > commit_index_before);
+
+  // If the queue is empty, check if we were told to send a status-only message (which is what
+  // happens during heartbeats). If not, just return.
+  if (PREDICT_FALSE(!req_has_ops && trigger_mode == RequestTriggerMode::NON_EMPTY_ONLY)) {
     sem_.Release();
     return;
   }
 
-  // If we're actually sending ops there's no need to heartbeat for a while,
-  // reset the heartbeater
+  // If we're actually sending ops there's no need to heartbeat for a while, reset the heartbeater.
   if (req_has_ops) {
     heartbeater_.Reset();
   }
@@ -227,12 +227,11 @@ void Peer::ProcessResponse() {
 
   if (!controller_.status().ok()) {
     if (controller_.status().IsRemoteError()) {
-      // Most controller errors are caused by network issues or corner cases
-      // like shutdown and failure to serialize a protobuf. Therefore, we
-      // generally consider these errors to indicate an unreachable peer.
-      // However, a RemoteError wraps some other error propagated from the
-      // remote peer, so we know the remote is alive. Therefore, we will let
-      // the queue know that the remote is responsive.
+      // Most controller errors are caused by network issues or corner cases like shutdown and
+      // failure to serialize a protobuf. Therefore, we generally consider these errors to indicate
+      // an unreachable peer.  However, a RemoteError wraps some other error propagated from the
+      // remote peer, so we know the remote is alive. Therefore, we will let the queue know that the
+      // remote is responsive.
       queue_->NotifyPeerIsResponsiveDespiteError(peer_pb_.permanent_uuid());
     }
     ProcessResponseError(controller_.status());
@@ -245,17 +244,16 @@ void Peer::ProcessResponse() {
       response_.error().code() != tserver::TabletServerErrorPB::TABLET_NOT_FOUND) ||
       (response_.status().has_error() &&
           response_.status().error().code() == consensus::ConsensusErrorPB::CANNOT_PREPARE)) {
-    // Again, let the queue know that the remote is still responsive, since we
-    // will not be sending this error response through to the queue.
+    // Again, let the queue know that the remote is still responsive, since we will not be sending
+    // this error response through to the queue.
     queue_->NotifyPeerIsResponsiveDespiteError(peer_pb_.permanent_uuid());
     ProcessResponseError(StatusFromPB(response_.error().status()));
     return;
   }
 
-  // The queue's handling of the peer response may generate IO (reads against
-  // the WAL) and SendNextRequest() may do the same thing. So we run the rest
-  // of the response handling logic on our thread pool and not on the reactor
-  // thread.
+  // The queue's handling of the peer response may generate IO (reads against the WAL) and
+  // SendNextRequest() may do the same thing. So we run the rest of the response handling logic on
+  // our thread pool and not on the reactor thread.
   Status s = thread_pool_->SubmitClosure(Bind(&Peer::DoProcessResponse, Unretained(this)));
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Unable to process peer response: " << s.ToString()
@@ -274,7 +272,7 @@ void Peer::DoProcessResponse() {
   // the worst thing that could happen is that we'll make one more request before
   // noticing a close.
   if (more_pending && ANNOTATE_UNPROTECTED_READ(state_) != kPeerClosed) {
-    SendNextRequest(true);
+    SendNextRequest(RequestTriggerMode::ALWAYS_SEND);
   } else {
     sem_.Release();
   }
@@ -331,9 +329,9 @@ void Peer::Close() {
   }
   LOG_WITH_PREFIX_UNLOCKED(INFO) << "Closing peer: " << peer_pb_.permanent_uuid();
 
-  // Acquire the semaphore to wait for any concurrent request to finish.
-  // They will see the state_ == kPeerClosed and not start any new requests,
-  // but we can't currently cancel the already-sent ones. (see KUDU-699)
+  // Acquire the semaphore to wait for any concurrent request to finish.  They will see the state_
+  // == kPeerClosed and not start any new requests, but we can't currently cancel the already-sent
+  // ones. (see KUDU-699)
   std::lock_guard<Semaphore> l(sem_);
   queue_->UntrackPeer(peer_pb_.permanent_uuid());
   // We don't own the ops (the queue does).
@@ -433,9 +431,8 @@ Status SetPermanentUuidForRemotePeer(const shared_ptr<Messenger>& messenger,
   GetNodeInstanceResponsePB resp;
   rpc::RpcController controller;
 
-  // TODO generalize this exponential backoff algorithm, as we do the
-  // same thing in catalog_manager.cc
-  // (AsyncTabletRequestTask::RpcCallBack).
+  // TODO generalize this exponential backoff algorithm, as we do the same thing in
+  // catalog_manager.cc (AsyncTabletRequestTask::RpcCallBack).
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(MonoDelta::FromMilliseconds(FLAGS_raft_get_node_instance_timeout_ms));
   int attempt = 1;

@@ -25,6 +25,7 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/ref_counted_replicate.h"
+#include "yb/consensus/consensus_util.h"
 #include "yb/rpc/response_callback.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/util/countdown_latch.h"
@@ -54,19 +55,18 @@ class VoteResponsePB;
 //
 // Leaders use peers to update the local Log and remote replicas.
 //
-// Peers are owned by the consensus implementation and do not keep
-// state aside from whether there are requests pending or if requests
-// are being processed.
+// Peers are owned by the consensus implementation and do not keep state aside from whether there
+// are requests pending or if requests are being processed.
 //
 // There are two external actions that trigger a state change:
 //
-// SignalRequest(): Called by the consensus implementation, notifies
-// that the queue contains messages to be processed.
+// SignalRequest(): Called by the consensus implementation, notifies that the queue contains
+// messages to be processed. This function takes a parameter allowing to send requests only if
+// the queue is not empty, or to force-send a request even if it is empty.
 //
 // ProcessResponse() Called a response from a peer is received.
 //
-// The following state diagrams describe what happens when a state
-// changing method is called.
+// The following state diagrams describe what happens when a state changing method is called.
 //
 //                        +
 //                        |
@@ -107,10 +107,7 @@ class Peer {
   CHECKED_STATUS Init();
 
   // Signals that this peer has a new request to replicate/store.
-  // 'force_if_queue_empty' indicates whether the peer should force
-  // send the request even if the queue is empty. This is used for
-  // status-only requests.
-  CHECKED_STATUS SignalRequest(bool force_if_queue_empty = false);
+  CHECKED_STATUS SignalRequest(RequestTriggerMode trigger_mode);
 
   const RaftPeerPB& peer_pb() const { return peer_pb_; }
 
@@ -127,39 +124,38 @@ class Peer {
 
   // Creates a new remote peer and makes the queue track it.'
   //
-  // Requests to this peer (which may end up doing IO to read non-cached
-  // log entries) are assembled on 'thread_pool'.
-  // Response handling may also involve IO related to log-entry lookups and is
+  // Requests to this peer (which may end up doing IO to read non-cached log entries) are assembled
+  // on 'thread_pool'.  Response handling may also involve IO related to log-entry lookups and is
   // also done on 'thread_pool'.
-  static CHECKED_STATUS NewRemotePeer(const RaftPeerPB& peer_pb,
-                              const std::string& tablet_id,
-                              const std::string& leader_uuid,
-                              PeerMessageQueue* queue,
-                              ThreadPool* thread_pool,
-                              gscoped_ptr<PeerProxy> proxy,
-                              gscoped_ptr<Peer>* peer);
+  static CHECKED_STATUS NewRemotePeer(
+      const RaftPeerPB& peer_pb,
+      const std::string& tablet_id,
+      const std::string& leader_uuid,
+      PeerMessageQueue* queue,
+      ThreadPool* thread_pool,
+      gscoped_ptr<PeerProxy> proxy,
+      gscoped_ptr<Peer>* peer);
 
  private:
   Peer(const RaftPeerPB& peer, std::string tablet_id, std::string leader_uuid,
        gscoped_ptr<PeerProxy> proxy, PeerMessageQueue* queue,
        ThreadPool* thread_pool);
 
-  void SendNextRequest(bool even_if_queue_empty);
+  void SendNextRequest(RequestTriggerMode trigger_mode);
 
-  // Signals that a response was received from the peer.
-  // This method is called from the reactor thread and calls
-  // DoProcessResponse() on thread_pool_ to do any work that requires IO or
+  // Signals that a response was received from the peer.  This method is called from the reactor
+  // thread and calls DoProcessResponse() on thread_pool_ to do any work that requires IO or
   // lock-taking.
   void ProcessResponse();
 
   // Run on 'thread_pool'. Does response handling that requires IO or may block.
   void DoProcessResponse();
 
-  // Fetch the desired remote bootstrap request from the queue and send it
-  // to the peer. The callback goes to ProcessRemoteBootstrapResponse().
+  // Fetch the desired remote bootstrap request from the queue and send it to the peer. The callback
+  // goes to ProcessRemoteBootstrapResponse().
   //
-  // Returns a bad Status if remote bootstrap is disabled, or if the
-  // request cannot be generated for some reason.
+  // Returns a bad Status if remote bootstrap is disabled, or if the request cannot be generated for
+  // some reason.
   CHECKED_STATUS SendRemoteBootstrapRequest();
 
   // Handle RPC callback from initiating remote bootstrap.
@@ -190,25 +186,20 @@ class Peer {
   StartRemoteBootstrapRequestPB rb_request_;
   StartRemoteBootstrapResponsePB rb_response_;
 
-  // Reference-counted pointers to any ReplicateMsgs which are in-flight to the peer. We
-  // may have loaded these messages from the LogCache, in which case we are potentially
-  // sharing the same object as other peers. Since the PB request_ itself can't hold
-  // reference counts, this holds them.
+  // Reference-counted pointers to any ReplicateMsgs which are in-flight to the peer. We may have
+  // loaded these messages from the LogCache, in which case we are potentially sharing the same
+  // object as other peers. Since the PB request_ itself can't hold reference counts, this holds
+  // them.
   std::vector<ReplicateRefPtr> replicate_msg_refs_;
 
   rpc::RpcController controller_;
 
-  // Held if there is an outstanding request.
-  // This is used in order to ensure that we only have a single request
-  // oustanding at a time, and to wait for the outstanding requests
-  // at Close().
+  // Held if there is an outstanding request.  This is used in order to ensure that we only have a
+  // single request oustanding at a time, and to wait for the outstanding requests at Close().
   Semaphore sem_;
 
-
-  // Heartbeater for remote peer implementations.
-  // This will send status only requests to the remote peers
-  // whenever we go more than 'FLAGS_raft_heartbeat_interval_ms'
-  // without sending actual data.
+  // Heartbeater for remote peer implementations.  This will send status only requests to the remote
+  // peers whenever we go more than 'FLAGS_raft_heartbeat_interval_ms' without sending actual data.
   ResettableHeartbeater heartbeater_;
 
   // Thread pool used to construct requests to this peer.
@@ -221,14 +212,14 @@ class Peer {
     kPeerClosed
   };
 
-  // lock that protects Peer state changes, initialization, etc.
-  // Must not try to acquire sem_ while holding peer_lock_.
+  // Lock that protects Peer state changes, initialization, etc.  Must not try to acquire sem_ while
+  // holding peer_lock_.
   mutable simple_spinlock peer_lock_;
   State state_;
 };
 
-// A proxy to another peer. Usually a thin wrapper around an rpc proxy but can
-// be replaced for tests.
+// A proxy to another peer. Usually a thin wrapper around an rpc proxy but can be replaced for
+// tests.
 class PeerProxy {
  public:
 
@@ -270,8 +261,8 @@ class PeerProxy {
   virtual ~PeerProxy() {}
 };
 
-// A peer proxy factory. Usually just obtains peers through the rpc implementation
-// but can be replaced for tests.
+// A peer proxy factory. Usually just obtains peers through the rpc implementation but can be
+// replaced for tests.
 class PeerProxyFactory {
  public:
 
@@ -332,9 +323,8 @@ class RpcPeerProxyFactory : public PeerProxyFactory {
   std::shared_ptr<rpc::Messenger> messenger_;
 };
 
-// Query the consensus service at last known host/port that is
-// specified in 'remote_peer' and set the 'permanent_uuid' field based
-// on the response.
+// Query the consensus service at last known host/port that is specified in 'remote_peer' and set
+// the 'permanent_uuid' field based on the response.
 Status SetPermanentUuidForRemotePeer(const std::shared_ptr<rpc::Messenger>& messenger,
                                      RaftPeerPB* remote_peer);
 

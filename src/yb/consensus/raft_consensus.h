@@ -359,9 +359,6 @@ class RaftConsensus : public Consensus,
   CHECKED_STATUS RequestVoteRespondVoteGranted(const VoteRequestPB* request,
                                        VoteResponsePB* response);
 
-  void UpdateMajorityReplicatedUnlocked(const OpId& majority_replicated,
-                                        OpId* committed_index);
-
   // Callback for leader election driver. ElectionCallback is run on the
   // reactor thread, so it simply defers its work to DoElectionCallback.
   void ElectionCallback(const std::string& originator_uuid, const ElectionResult& result);

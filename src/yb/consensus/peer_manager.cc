@@ -83,11 +83,10 @@ Status PeerManager::UpdateRaftConfig(const RaftConfigPB& config) {
   return Status::OK();
 }
 
-void PeerManager::SignalRequest(bool force_if_queue_empty) {
+void PeerManager::SignalRequest(RequestTriggerMode trigger_mode) {
   std::lock_guard<simple_spinlock> lock(lock_);
-  auto iter = peers_.begin();
-  for (; iter != peers_.end();) {
-    Status s = (*iter).second->SignalRequest(force_if_queue_empty);
+  for (auto iter = peers_.begin(); iter != peers_.end();) {
+    Status s = iter->second->SignalRequest(trigger_mode);
     if (PREDICT_FALSE(!s.ok())) {
       LOG(WARNING) << GetLogPrefix()
                    << "Peer was closed, removing from peers. Peer: "
