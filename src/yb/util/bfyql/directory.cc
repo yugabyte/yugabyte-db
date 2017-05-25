@@ -81,10 +81,18 @@ const vector<BFDecl> kBFDirectory = {
   { "AddStringString", "+", STRING, {STRING, STRING} },
   { "AddStringDouble", "+", STRING, {STRING, DOUBLE} },
   { "AddDoubleString", "+", STRING, {DOUBLE, STRING} },
+  { "AddMapMap", "+", MAP, {MAP, MAP} },
+  { "AddMapSet", "+", MAP, {MAP, SET} }, // only needed to allow adding empty set '{}' to a Map
+  { "AddSetSet", "+", SET, {SET, SET} },
+  { "AddListList", "+", LIST, {LIST, LIST} },
 
   // "-".
   { "SubI64I64", "-", INT64,  {INT64, INT64} },
   { "SubDoubleDouble", "-", DOUBLE, {DOUBLE, DOUBLE} },
+  { "SubMapSet", "-", MAP, {MAP, SET} },
+  { "SubSetSet", "-", SET, {SET, SET} },
+  { "SubListList", "-", LIST, {LIST, LIST} },
+
 };
 
 } // namespace bfyql

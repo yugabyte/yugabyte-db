@@ -281,6 +281,9 @@ Status SetColumn(YBPartialRow* row, const int32 column_id, const YQLExpressionPB
     case YQLExpressionPB::ExprCase::kColumnId:
       return STATUS(RuntimeError, "unexpected column reference");
 
+    case YQLExpressionPB::ExprCase::kSubscriptedCol:
+      return STATUS(RuntimeError, "unexpected subscripted-column reference");
+
     case YQLExpressionPB::ExprCase::kCondition:
       return STATUS(RuntimeError, "unexpected relational expression");
 

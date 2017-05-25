@@ -128,7 +128,7 @@ class DocWriteBatch {
       const HybridTime& current_time,
       const rocksdb::QueryId query_id,
       MonoDelta table_ttl = Value::kMaxTtl,
-      MonoDelta ttl = Value::kMaxTtl,
+      MonoDelta write_ttl = Value::kMaxTtl,
       InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL);
 
   CHECKED_STATUS DeleteSubDoc(

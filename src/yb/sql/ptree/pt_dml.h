@@ -51,12 +51,14 @@ class WhereExprState {
  public:
   WhereExprState(MCList<ColumnOp> *ops,
                  MCVector<ColumnOp> *key_ops,
+                 MCList<SubscriptedColumnOp> *subscripted_col_ops,
                  MCList<PartitionKeyOp> *partition_key_ops,
                  MCVector<ColumnOpCounter> *op_counters,
                  ColumnOpCounter *partition_key_counter,
                  bool write_only)
       : ops_(ops),
         key_ops_(key_ops),
+        subscripted_col_ops_(subscripted_col_ops),
         partition_key_ops_(partition_key_ops),
         op_counters_(op_counters),
         partition_key_counter_(partition_key_counter),
@@ -66,7 +68,8 @@ class WhereExprState {
   CHECKED_STATUS AnalyzeColumnOp(SemContext *sem_context,
                                  const PTRelationExpr *expr,
                                  const ColumnDesc *col_desc,
-                                 PTExpr::SharedPtr value);
+                                 PTExpr::SharedPtr value,
+                                 PTExprListNode::SharedPtr args = nullptr);
 
 
   CHECKED_STATUS AnalyzePartitionKeyOp(SemContext *sem_context,
@@ -79,6 +82,9 @@ class WhereExprState {
 
   // Operators on key columns.
   MCVector<ColumnOp> *key_ops_;
+
+  // Operators on subscripted columns (e.g. mp['x'] or lst[2]['x'])
+  MCList<SubscriptedColumnOp> *subscripted_col_ops_;
 
   MCList<PartitionKeyOp> *partition_key_ops_;
 
@@ -182,6 +188,10 @@ class PTDmlStmt : public PTCollection {
     return where_ops_;
   }
 
+  const MCList<SubscriptedColumnOp>& subscripted_col_where_ops() const {
+    return subscripted_col_where_ops_;
+  }
+
   const MCList<PartitionKeyOp>& partition_key_ops() const {
     return partition_key_ops_;
   }
@@ -241,6 +251,12 @@ class PTDmlStmt : public PTCollection {
     return static_column_refs_;
   }
 
+  // Access for column_args.
+  const MCVector<SubscriptedColumnArg>& subscripted_col_args() const {
+    CHECK(subscripted_col_args_ != nullptr) << "subscripted-column arguments not set up";
+    return *subscripted_col_args_;
+  }
+
   // Reset to clear and release previous semantics analysis results.
   virtual void Reset() override;
 
@@ -257,7 +273,7 @@ class PTDmlStmt : public PTCollection {
   // Does column_args_ contain static columns only (i.e. writing static column only)?
   bool StaticColumnArgsOnly() const;
 
-  // The sematic analyzer will decorate this node with the following information.
+  // The semantic analyzer will decorate this node with the following information.
   std::shared_ptr<client::YBTable> table_;
 
   // Is the table a system table?
@@ -276,6 +292,7 @@ class PTDmlStmt : public PTCollection {
   // CREATE TABLE statement.
   MCVector<ColumnOp> key_where_ops_;
   MCList<ColumnOp> where_ops_;
+  MCList<SubscriptedColumnOp> subscripted_col_where_ops_;
 
   // restrictions involving all hash/partition columns -- i.e. read requests using Token builtin
   MCList<PartitionKeyOp> partition_key_ops_;
@@ -292,6 +309,7 @@ class PTDmlStmt : public PTCollection {
 
   // Semantic phase will decorate the following fields.
   MCSharedPtr<MCVector<ColumnArg>> column_args_;
+  MCSharedPtr<MCVector<SubscriptedColumnArg>> subscripted_col_args_;
 
   // Columns that are being referenced by this statement. The tservers will need to read these
   // columns when processing the statements. These are different from selected columns whose values

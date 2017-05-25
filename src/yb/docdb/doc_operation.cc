@@ -917,16 +917,114 @@ Status YQLWriteOperation::Apply(
                 << "column id missing: " << column_value.DebugString();
             const ColumnId column_id(column_value.column_id());
             const auto& column = schema_.column_by_id(column_id);
-            const DocPath sub_path(
+            DocPath sub_path(
                 column.is_static() ?
                 hashed_doc_path_->encoded_doc_key() : pk_doc_path_->encoded_doc_key(),
                 PrimitiveValue(column_id));
-            const auto sub_doc = SubDocument::FromYQLExpressionPB(column.type(),
-                                                                  column_value.expr(),
-                                                                  column.sorting_type(),
-                                                                  value_map);
-            RETURN_NOT_OK(doc_write_batch->InsertSubDocument(
-                sub_path, sub_doc, InitMarkerBehavior::OPTIONAL, ttl));
+
+            auto yql_type = column.type();
+
+            SubDocument::WriteAction write_action = SubDocument::REPLACE; // default
+            SubDocument sub_doc;
+            RETURN_NOT_OK(SubDocument::FromYQLExpressionPB(column_value.expr(),
+                                                           column,
+                                                           value_map,
+                                                           &sub_doc,
+                                                           &write_action));
+
+            // Typical case, setting a columns value
+            if (column_value.subscript_args().empty()) {
+              switch (write_action) {
+                case SubDocument::REPLACE:
+                  RETURN_NOT_OK(doc_write_batch->InsertSubDocument(sub_path,
+                                                                   sub_doc,
+                                                                   InitMarkerBehavior::OPTIONAL,
+                                                                   ttl));
+                  break;
+                case SubDocument::EXTEND:
+                  RETURN_NOT_OK(doc_write_batch->ExtendSubDocument(sub_path,
+                                                                   sub_doc,
+                                                                   InitMarkerBehavior::OPTIONAL,
+                                                                   ttl));
+                  break;
+                case SubDocument::APPEND:
+                  RETURN_NOT_OK(doc_write_batch->ExtendList(sub_path,
+                                                            sub_doc,
+                                                            ListExtendOrder::APPEND,
+                                                            InitMarkerBehavior::OPTIONAL,
+                                                            ttl));
+                  break;
+                case SubDocument::PREPEND:
+                  RETURN_NOT_OK(doc_write_batch->ExtendList(sub_path,
+                                                            sub_doc,
+                                                            ListExtendOrder::PREPEND,
+                                                            InitMarkerBehavior::OPTIONAL,
+                                                            ttl));
+                  break;
+                case SubDocument::REMOVE_KEYS:
+                  RETURN_NOT_OK(doc_write_batch->ExtendSubDocument(sub_path,
+                                                                   sub_doc,
+                                                                   InitMarkerBehavior::OPTIONAL,
+                                                                   ttl));
+                  break;
+                case SubDocument::REMOVE_VALUES:
+                  LOG(ERROR) << "Unsupported operation";
+                  // TODO(akashnil or mihnea) this should call RemoveFromList once thats implemented
+                  // Currently list subtraction is computed in memory using builtin call so this
+                  // case should never be reached. Once it is implemented the corresponding case
+                  // from EvalYQLExpressionPB should be uncommented to enable this optimization.
+                  break;
+              }
+            } else {
+              // Setting the value for a sub-column
+              // Currently we only support two cases here: `map['key'] = v` and `list[index] = v`)
+              // Any other case should be rejected by the semantic analyser before getting here
+              // Later when we support frozen or nested collections this code may need refactoring
+              DCHECK_EQ(column_value.subscript_args().size(), 1);
+              DCHECK_EQ(write_action, SubDocument::REPLACE);
+
+              switch (column.type()->main()) {
+                case MAP: {
+                  const PrimitiveValue &pv = PrimitiveValue::FromYQLExpressionPB(
+                      column_value.subscript_args(0), ColumnSchema::SortingType::kNotSpecified);
+
+                  sub_path.AddSubKey(pv);
+                  RETURN_NOT_OK(doc_write_batch->InsertSubDocument(sub_path,
+                                                                   sub_doc,
+                                                                   InitMarkerBehavior::OPTIONAL,
+                                                                   ttl));
+                  break;
+                }
+                case LIST: {
+                  MonoDelta table_ttl = schema_.table_properties().HasDefaultTimeToLive() ?
+                      MonoDelta::FromMilliseconds(schema_.table_properties().DefaultTimeToLive()) :
+                      MonoDelta::kMax;
+
+                  int index = column_value.subscript_args(0).value().int32_value();
+                  Status st = doc_write_batch->ReplaceInList(sub_path, {index}, {sub_doc},
+                      hybrid_time,
+                      request_.query_id(),
+                      table_ttl,
+                      ttl,
+                      InitMarkerBehavior::OPTIONAL);
+
+                  // Don't crash tserver if this is index-out-of-bounds error
+                  if (st.IsSqlError()) {
+                    response_->set_status(YQLResponsePB::YQL_STATUS_USAGE_ERROR);
+                    response_->set_error_message(st.ToString());
+                    return Status::OK();
+                  } else if (!st.ok()) {
+                    return st;
+                  }
+
+                  break;
+                }
+                default:
+                  LOG(ERROR) << "Unexpected type for setting subcolumn: "
+                             << column.type()->ToString();
+              }
+
+            }
           }
         }
         break;
@@ -954,8 +1052,6 @@ Status YQLWriteOperation::Apply(
       }
     }
 
-    // In all cases, something should be written so the write batch shouldn't be empty.
-    CHECK(!doc_write_batch->IsEmpty()) << "Empty write batch " << request_.type();
   }
 
   response_->set_status(YQLResponsePB::YQL_STATUS_OK);

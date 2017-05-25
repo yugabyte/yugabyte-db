@@ -77,13 +77,15 @@ CHECKED_STATUS PTExpr::CheckExpectedTypeCompatibility(SemContext *sem_context) {
   CHECK(has_valid_internal_type() && has_valid_yql_type_id());
 
   // Check if RHS support counter update.
-  if (sem_context->updating_counter() != nullptr) {
+  if (sem_context->processing_set_clause() &&
+      sem_context->lhs_col() != nullptr &&
+      sem_context->lhs_col()->is_counter()) {
     RETURN_NOT_OK(this->CheckCounterUpdateSupport(sem_context));
   }
 
   // Check if RHS is convertible to LHS.
   if (!sem_context->expr_expected_yql_type()->IsUnknown()) {
-    if (!sem_context->IsConvertible(this, sem_context->expr_expected_yql_type())) {
+    if (!sem_context->IsConvertible(sem_context->expr_expected_yql_type(), yql_type_)) {
       return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
     }
   }
@@ -99,16 +101,26 @@ CHECKED_STATUS PTExpr::CheckExpectedTypeCompatibility(SemContext *sem_context) {
 }
 
 //--------------------------------------------------------------------------------------------------
-
-CHECKED_STATUS PTExpr::AnalyzeLeftRightOperands(SemContext *sem_context,
-                                                PTExpr::SharedPtr lhs,
-                                                PTExpr::SharedPtr rhs) {
+CHECKED_STATUS PTExpr::CheckInequalityOperands(SemContext *sem_context,
+                                               PTExpr::SharedPtr lhs,
+                                               PTExpr::SharedPtr rhs) {
   if (!sem_context->IsComparable(lhs->yql_type_id(), rhs->yql_type_id())) {
     return sem_context->Error(loc(), "Cannot compare values of these datatypes",
                               ErrorCode::INCOMPARABLE_DATATYPES);
   }
   return Status::OK();
 }
+
+CHECKED_STATUS PTExpr::CheckEqualityOperands(SemContext *sem_context,
+                                             PTExpr::SharedPtr lhs,
+                                             PTExpr::SharedPtr rhs) {
+  if (YQLType::IsNull(lhs->yql_type_id()) || YQLType::IsNull(rhs->yql_type_id())) {
+    return Status::OK();
+  } else {
+    return CheckInequalityOperands(sem_context, lhs, rhs);
+  }
+}
+
 
 CHECKED_STATUS PTExpr::CheckLhsExpr(SemContext *sem_context) {
   if (op_ != ExprOperator::kRef && op_ != ExprOperator::kBcall) {
@@ -205,12 +217,42 @@ CHECKED_STATUS PTLiteralString::ToInetaddress(InetAddress *value) const {
 }
 
 //--------------------------------------------------------------------------------------------------
-// Collection constants.
+// Collections.
+
+CHECKED_STATUS PTEmptyMapOrSetExpr::Analyze(SemContext *sem_context) {
+      RETURN_NOT_OK(CheckOperator(sem_context));
+
+  // If no expected type is given, this is assumed to be a Set
+  if (sem_context->expr_expected_yql_type()->main() == DataType::UNKNOWN_DATA) {
+    yql_type_ = YQLType::Create(SET);
+    internal_type_ = InternalType::kSetValue;
+    return CheckExpectedTypeCompatibility(sem_context);
+  }
+
+  const shared_ptr<YQLType>& expected_type = sem_context->expr_expected_yql_type();
+  if (expected_type->main() != DataType::MAP && expected_type->main() != DataType::SET) {
+    return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
+  }
+
+  // Assign correct datatype.
+  yql_type_ = expected_type;
+  internal_type_ = sem_context->expr_expected_internal_type();
+
+  return CheckExpectedTypeCompatibility(sem_context);
+}
+
 CHECKED_STATUS PTMapExpr::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(CheckOperator(sem_context));
 
   // Run semantic analysis on collection elements.
   const shared_ptr<YQLType>& expected_type = sem_context->expr_expected_yql_type();
+
+  if (expected_type->main() == DataType::UNKNOWN_DATA) {
+    yql_type_ = YQLType::Create(MAP);
+    internal_type_ = InternalType::kMapValue;
+    return CheckExpectedTypeCompatibility(sem_context);
+  }
+
   if (expected_type->main() != DataType::MAP) {
     return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
   }
@@ -218,26 +260,24 @@ CHECKED_STATUS PTMapExpr::Analyze(SemContext *sem_context) {
   // Analyze key and value.
   SemState sem_state(sem_context);
 
-  // TODO(mihnea) Need to take care of expected InternalType here also.
   const shared_ptr<YQLType>& key_type = expected_type->param_type(0);
   sem_state.SetExprState(key_type, YBColumnSchema::ToInternalDataType(key_type));
   for (auto& key : keys_) {
     RETURN_NOT_OK(key->Analyze(sem_context));
   }
 
-  // TODO(mihnea) Need to take care of expected InternalType here also.
   const shared_ptr<YQLType>& value_type = expected_type->param_type(1);
   sem_state.SetExprState(value_type, YBColumnSchema::ToInternalDataType(value_type));
   for (auto& value : values_) {
     RETURN_NOT_OK(value->Analyze(sem_context));
   }
 
+  sem_state.ResetContextState();
+
   // Assign correct datatype.
   yql_type_ = expected_type;
+  internal_type_ = sem_context->expr_expected_internal_type();
 
-  // TODO(mihnea) Destructor ~SemState() will reset the state, but if you need to reset the state
-  // before returning, call ResetContextState() (see the usage in pt_expr.h).
-  sem_state.ResetContextState();
   return CheckExpectedTypeCompatibility(sem_context);
 }
 
@@ -246,8 +286,14 @@ CHECKED_STATUS PTSetExpr::Analyze(SemContext *sem_context) {
 
   // Run semantic analysis on collection elements.
   const shared_ptr<YQLType> &expected_type = sem_context->expr_expected_yql_type();
-  if (expected_type->main() != DataType::SET &&
-      (expected_type->main() != DataType::MAP || value_.size() != 0)) {
+
+  if (expected_type->main() == DataType::UNKNOWN_DATA) {
+    yql_type_ = YQLType::Create(SET);
+    internal_type_ = InternalType::kSetValue;
+    return CheckExpectedTypeCompatibility(sem_context);
+  }
+
+  if (expected_type->main() != DataType::SET) {
     return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
   }
 
@@ -257,17 +303,12 @@ CHECKED_STATUS PTSetExpr::Analyze(SemContext *sem_context) {
   for (auto& elem : value_) {
     RETURN_NOT_OK(elem->Analyze(sem_context));
   }
-
-  // TODO(Mihnea) Because our current code (including executor) typecast this expression based on
-  // its datatype, I cannot change its expected type from SET to MAP. The following if block
-  // only allow type-switching between SETs but not between SET and MAP.
-  if (expected_type->main() == DataType::SET) {
-    yql_type_ = expected_type;
-  }
-
-  // TODO(mihnea) Destructor ~SemState() will reset the state, but if you need to reset the state
-  // before returning, call ResetContextState() (see the usage in pt_expr.h).
   sem_state.ResetContextState();
+
+  // Assign correct datatype.
+  yql_type_ = expected_type;
+  internal_type_ = sem_context->expr_expected_internal_type();
+
   return CheckExpectedTypeCompatibility(sem_context);
 }
 
@@ -276,6 +317,13 @@ CHECKED_STATUS PTListExpr::Analyze(SemContext *sem_context) {
 
   // Run semantic analysis on collection elements.
   const shared_ptr<YQLType>& expected_type = sem_context->expr_expected_yql_type();
+
+  if (expected_type->main() == DataType::UNKNOWN_DATA) {
+    yql_type_ = YQLType::Create(LIST);
+    internal_type_ = InternalType::kListValue;
+    return CheckExpectedTypeCompatibility(sem_context);
+  }
+
   if (expected_type->main() != DataType::LIST) {
     return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
   }
@@ -286,11 +334,12 @@ CHECKED_STATUS PTListExpr::Analyze(SemContext *sem_context) {
   for (auto& elem : value_) {
     RETURN_NOT_OK(elem->Analyze(sem_context));
   }
-  yql_type_ = expected_type;
-
-  // TODO(mihnea) Destructor ~SemState() will reset the state, but if you need to reset the state
-  // before returning, call ResetContextState() (see the usage in pt_expr.h).
   sem_state.ResetContextState();
+
+  // Assign correct datatype.
+  yql_type_ = expected_type;
+  internal_type_ = sem_context->expr_expected_internal_type();
+
   return CheckExpectedTypeCompatibility(sem_context);
 }
 
@@ -304,7 +353,7 @@ CHECKED_STATUS PTListExpr::Analyze(SemContext *sem_context) {
 
 CHECKED_STATUS PTLogicExpr::SetupSemStateForOp1(SemState *sem_state) {
   // Expect "bool" datatype for logic expression.
-  sem_state->SetExprState(DataType::BOOL, InternalType::kBoolValue);
+  sem_state->SetExprState(YQLType::Create(BOOL), InternalType::kBoolValue);
 
   // If this is OP_AND, we need to pass down the state variables for where clause "where_state".
   if (yql_op_ == YQL_OP_AND) {
@@ -315,7 +364,7 @@ CHECKED_STATUS PTLogicExpr::SetupSemStateForOp1(SemState *sem_state) {
 
 CHECKED_STATUS PTLogicExpr::SetupSemStateForOp2(SemState *sem_state) {
   // Expect "bool" datatype for logic expression.
-  sem_state->SetExprState(DataType::BOOL, InternalType::kBoolValue);
+  sem_state->SetExprState(YQLType::Create(BOOL), InternalType::kBoolValue);
 
   // If this is OP_AND, we need to pass down the state variables for where clause "where_state".
   if (yql_op_ == YQL_OP_AND) {
@@ -385,7 +434,7 @@ CHECKED_STATUS PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
     sem_state->SetExprState(ref->yql_type(),
                             ref->internal_type(),
                             ref->bindvar_name(),
-                            ref->desc()->is_hash() ? ref->desc() : nullptr);
+                            ref->desc());
   } else {
     sem_state->SetExprState(operand1->yql_type(), operand1->internal_type());
   }
@@ -436,7 +485,12 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
                                                PTExpr::SharedPtr op2) {
   // "op1" and "op2" must have been analyzed before getting here
   switch (yql_op_) {
-    case YQL_OP_EQUAL: FALLTHROUGH_INTENDED;
+    case YQL_OP_EQUAL:
+      RETURN_NOT_OK(op1->CheckLhsExpr(sem_context));
+      RETURN_NOT_OK(op2->CheckRhsExpr(sem_context));
+      RETURN_NOT_OK(CheckEqualityOperands(sem_context, op1, op2));
+      internal_type_ = yb::InternalType::kBoolValue;
+      break;
     case YQL_OP_LESS_THAN: FALLTHROUGH_INTENDED;
     case YQL_OP_GREATER_THAN: FALLTHROUGH_INTENDED;
     case YQL_OP_LESS_THAN_EQUAL: FALLTHROUGH_INTENDED;
@@ -444,7 +498,7 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
     case YQL_OP_NOT_EQUAL:
       RETURN_NOT_OK(op1->CheckLhsExpr(sem_context));
       RETURN_NOT_OK(op2->CheckRhsExpr(sem_context));
-      RETURN_NOT_OK(AnalyzeLeftRightOperands(sem_context, op1, op2));
+      RETURN_NOT_OK(CheckInequalityOperands(sem_context, op1, op2));
       internal_type_ = yb::InternalType::kBoolValue;
       break;
 
@@ -456,10 +510,15 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
   WhereExprState *where_state = sem_context->where_state();
   if (where_state != nullptr) {
     // CheckLhsExpr already checks that this is either kRef or kBcall
-    DCHECK(op1->expr_op() == ExprOperator::kRef || op1->expr_op() == ExprOperator::kBcall);
+    DCHECK(op1->expr_op() == ExprOperator::kRef ||
+           op1->expr_op() == ExprOperator::kSubColRef ||
+           op1->expr_op() == ExprOperator::kBcall);
     if (op1->expr_op() == ExprOperator::kRef) {
       const PTRef *ref = static_cast<const PTRef *>(op1.get());
       return where_state->AnalyzeColumnOp(sem_context, this, ref->desc(), op2);
+    } else if (op1->expr_op() == ExprOperator::kSubColRef) {
+      const PTSubscriptedColumn *ref = static_cast<const PTSubscriptedColumn *>(op1.get());
+      return where_state->AnalyzeColumnOp(sem_context, this, ref->desc(), op2, ref->args());
     } else if (op1->expr_op() == ExprOperator::kBcall) {
       const PTBcall *bcall = static_cast<const PTBcall *>(op1.get());
       if (strcmp(bcall->name()->c_str(), "token") == 0) {
@@ -490,13 +549,13 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
       RETURN_NOT_OK(op1->CheckLhsExpr(sem_context));
       RETURN_NOT_OK(op2->CheckRhsExpr(sem_context));
       RETURN_NOT_OK(op3->CheckRhsExpr(sem_context));
-      RETURN_NOT_OK(AnalyzeLeftRightOperands(sem_context, op1, op2));
-      RETURN_NOT_OK(AnalyzeLeftRightOperands(sem_context, op1, op3));
+      RETURN_NOT_OK(CheckInequalityOperands(sem_context, op1, op2));
+      RETURN_NOT_OK(CheckInequalityOperands(sem_context, op1, op3));
       internal_type_ = yb::InternalType::kBoolValue;
       break;
 
     default:
-      LOG(FATAL) << "Invalid operator";
+      LOG(FATAL) << "Invalid operator " << YQLOperator_Name(yql_op_);
   }
 
   return Status::OK();
@@ -509,8 +568,9 @@ CHECKED_STATUS PTOperatorExpr::SetupSemStateForOp1(SemState *sem_state) {
     case ExprOperator::kUMinus:
       sem_state->CopyPreviousStates();
       break;
+
     default:
-      LOG(FATAL) << "Invalid operator" << int(op_);
+      LOG(FATAL) << "Invalid operator " << int(op_);
   }
 
   return Status::OK();
@@ -593,6 +653,79 @@ CHECKED_STATUS PTRef::CheckLhsExpr(SemContext *sem_context) {
 }
 
 void PTRef::PrintSemanticAnalysisResult(SemContext *sem_context) {
+  VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << "Not yet avail";
+}
+
+//--------------------------------------------------------------------------------------------------
+
+PTSubscriptedColumn::PTSubscriptedColumn(MemoryContext *memctx,
+             YBLocation::SharedPtr loc,
+             const PTQualifiedName::SharedPtr& name,
+             const PTExprListNode::SharedPtr& args)
+    : PTOperator0(memctx, loc, ExprOperator::kSubColRef, yb::YQLOperator::YQL_OP_NOOP),
+      name_(name),
+      args_(args),
+      desc_(nullptr) {
+}
+
+PTSubscriptedColumn::~PTSubscriptedColumn() {
+}
+
+CHECKED_STATUS PTSubscriptedColumn::AnalyzeOperator(SemContext *sem_context) {
+
+  // Check if this refers to the whole table (SELECT *).
+  if (name_ == nullptr) {
+    return sem_context->Error(loc(), "Cannot do type resolution for wildcard reference (SELECT *)");
+  }
+
+  // Look for a column descriptor from symbol table.
+  RETURN_NOT_OK(name_->Analyze(sem_context));
+
+  desc_ = sem_context->GetColumnDesc(name_->last_name(), true /* reading column */);
+  if (desc_ == nullptr) {
+    return sem_context->Error(loc(), "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
+  }
+
+  SemState sem_state(sem_context);
+
+  auto curr_ytype = desc_->yql_type();
+  auto curr_itype = desc_->internal_type();
+
+  if (args_ != nullptr) {
+    for (const auto &arg : args_->node_list()) {
+      if (curr_ytype->keys_type() == nullptr) {
+        return sem_context->Error(loc(),
+            "Columns with elementary types cannot take arguments",
+            ErrorCode::CQL_STATEMENT_INVALID);
+      }
+
+      sem_state.SetExprState(curr_ytype->keys_type(),
+          client::YBColumnSchema::ToInternalDataType(curr_ytype->keys_type()));
+          RETURN_NOT_OK(arg->Analyze(sem_context));
+
+      curr_ytype = curr_ytype->values_type();
+      curr_itype = client::YBColumnSchema::ToInternalDataType(curr_ytype);
+    }
+  }
+
+  // Type resolution: Ref(x) should have the same datatype as (x).
+  yql_type_ = curr_ytype;
+  internal_type_ = curr_itype;
+
+  return Status::OK();
+}
+
+CHECKED_STATUS PTSubscriptedColumn::CheckLhsExpr(SemContext *sem_context) {
+  // If where_state is null, we are processing the IF clause. In that case, disallow reference to
+  // primary key columns.
+  if (sem_context->where_state() == nullptr && desc_->is_primary()) {
+    return sem_context->Error(loc(), "Primary key column reference is not allowed in if expression",
+        ErrorCode::CQL_STATEMENT_INVALID);
+  }
+  return Status::OK();
+}
+
+void PTSubscriptedColumn::PrintSemanticAnalysisResult(SemContext *sem_context) {
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << "Not yet avail";
 }
 

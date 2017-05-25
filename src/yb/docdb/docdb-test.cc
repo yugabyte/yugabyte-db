@@ -635,8 +635,8 @@ SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(3); HT(p=0, l=200
 SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(4); HT(p=0, l=200, w=1)]) -> "3"
 SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(5); HT(p=0, l=200, w=2)]) -> 2
 SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(6); HT(p=0, l=200, w=3)]) -> 2
-SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(-8); HT(p=0, l=300, w=1)]) -> 2
-SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(-7); HT(p=0, l=300)]) -> 5
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(-8); HT(p=0, l=300, w=1)]) -> 5
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(-7); HT(p=0, l=300)]) -> 2
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(1); HT(p=0, l=100, w=1)]) -> 10
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(2); HT(p=0, l=100, w=2)]) -> 2
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(9); HT(p=0, l=400)]) -> 7
@@ -665,8 +665,8 @@ SubDocKey(DocKey([], ["list_test", 231]), ["other"; HT(p=0, l=100, w=3)]) -> "ot
       ArrayIndex(6): 2
     },
     "list2": {
-      ArrayIndex(-8): 2,
-      ArrayIndex(-7): 5,
+      ArrayIndex(-8): 5,
+      ArrayIndex(-7): 2,
       ArrayIndex(1): 10,
       ArrayIndex(2): 2,
       ArrayIndex(9): 7,
@@ -689,9 +689,9 @@ SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(3); HT(p=0, l=200
 SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(4); HT(p=0, l=200, w=1)]) -> "3"
 SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(5); HT(p=0, l=200, w=2)]) -> 2
 SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(6); HT(p=0, l=200, w=3)]) -> 2
-SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(-8); HT(p=0, l=300, w=1)]) -> 2
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(-8); HT(p=0, l=300, w=1)]) -> 5
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(-7); HT(p=0, l=500)]) -> DEL
-SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(-7); HT(p=0, l=300)]) -> 5
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(-7); HT(p=0, l=300)]) -> 2
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(1); HT(p=0, l=100, w=1)]) -> 10
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(2); HT(p=0, l=500, w=1)]) -> 17
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(2); HT(p=0, l=100, w=2)]) -> 2
@@ -710,7 +710,7 @@ SubDocKey(DocKey([], ["list_test", 231]), ["other"; HT(p=0, l=100, w=3)]) -> "ot
       ArrayIndex(6): 2
     },
     "list2": {
-      ArrayIndex(-8): 2,
+      ArrayIndex(-8): 5,
       ArrayIndex(1): 10,
       ArrayIndex(2): 17,
       ArrayIndex(9): 7,
@@ -720,6 +720,57 @@ SubDocKey(DocKey([], ["list_test", 231]), ["other"; HT(p=0, l=100, w=3)]) -> "ot
   }
         )#");
 
+  SubDocKey sub_doc_key(doc_key, PrimitiveValue("list3"));
+  KeyBytes encoded_sub_doc_key = sub_doc_key.Encode();
+  SubDocument list3({PrimitiveValue(31), PrimitiveValue(32)});
+
+  ASSERT_OK(InsertSubDocument(
+      DocPath(encoded_sub_doc_key), list3, HybridTime(100), InitMarkerBehavior::OPTIONAL));
+
+  AssertDocDbDebugDumpStrEq(
+      R"#(
+SubDocKey(DocKey([], ["list_test", 231]), [HT(p=0, l=100)]) -> {}
+SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(3); HT(p=0, l=200)]) -> 1
+SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(4); HT(p=0, l=200, w=1)]) -> "3"
+SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(5); HT(p=0, l=200, w=2)]) -> 2
+SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(6); HT(p=0, l=200, w=3)]) -> 2
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(-8); HT(p=0, l=300, w=1)]) -> 5
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(-7); HT(p=0, l=500)]) -> DEL
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(-7); HT(p=0, l=300)]) -> 2
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(1); HT(p=0, l=100, w=1)]) -> 10
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(2); HT(p=0, l=500, w=1)]) -> 17
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(2); HT(p=0, l=100, w=2)]) -> 2
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(9); HT(p=0, l=400)]) -> 7
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(10); HT(p=0, l=400, w=1)]) -> 4
+SubDocKey(DocKey([], ["list_test", 231]), ["list3"; HT(p=0, l=100)]) -> []
+SubDocKey(DocKey([], ["list_test", 231]), ["list3", ArrayIndex(11); HT(p=0, l=100, w=1)]) -> 31
+SubDocKey(DocKey([], ["list_test", 231]), ["list3", ArrayIndex(12); HT(p=0, l=100, w=2)]) -> 32
+SubDocKey(DocKey([], ["list_test", 231]), ["other"; HT(p=0, l=100, w=3)]) -> "other_value"
+        )#");
+
+  VerifySubDocument(SubDocKey(doc_key), HybridTime(550),
+      R"#(
+  {
+    "list1": {
+      ArrayIndex(3): 1,
+      ArrayIndex(4): "3",
+      ArrayIndex(5): 2,
+      ArrayIndex(6): 2
+    },
+    "list2": {
+      ArrayIndex(-8): 5,
+      ArrayIndex(1): 10,
+      ArrayIndex(2): 17,
+      ArrayIndex(9): 7,
+      ArrayIndex(10): 4
+    },
+    "list3": {
+      ArrayIndex(11): 31,
+      ArrayIndex(12): 32
+    },
+    "other": "other_value"
+  }
+        )#");
 }
 
 TEST_F(DocDBTest, ExpiredValueCompactionTest) {

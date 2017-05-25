@@ -51,10 +51,17 @@ message YQLMapValuePB {
   repeated YQLValuePB values = 2;
 }
 
-// A column value
+// A column value, optionally with subscripts, e.g. m['x'] or l[2]['x']
 message YQLColumnValuePB {
   optional int32 column_id = 1;
+  repeated YQLExpressionPB subscript_args = 3;
   optional YQLExpressionPB expr = 2;
+}
+
+// Reference to a subcolumn, e.g. m['x'] or l[2]['x']
+message YQLSubscriptedColPB {
+  optional int32 column_id = 1;
+  repeated YQLExpressionPB subscript_args = 2;
 }
 
 // An expression in a WHERE condition
@@ -64,6 +71,7 @@ message YQLExpressionPB {
     int32 column_id = 2;
     YQLConditionPB condition = 3;
     YQLBFCallPB bfcall = 4;
+    YQLSubscriptedColPB subscripted_col = 5;
   }
 }
 
@@ -276,6 +284,7 @@ message YQLResponsePB {
     YQL_STATUS_OK = 0;
     YQL_STATUS_SCHEMA_VERSION_MISMATCH = 1;
     YQL_STATUS_RUNTIME_ERROR = 2;
+    YQL_STATUS_USAGE_ERROR = 3;
   }
 
   // Status and error message

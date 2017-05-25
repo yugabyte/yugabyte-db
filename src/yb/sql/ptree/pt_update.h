@@ -29,7 +29,8 @@ class PTAssign : public TreeNode {
   PTAssign(MemoryContext *memctx,
            YBLocation::SharedPtr loc,
            const PTQualifiedName::SharedPtr& lhs_,
-           const PTExpr::SharedPtr& rhs_);
+           const PTExpr::SharedPtr& rhs_,
+           const PTExprListNode::SharedPtr& = nullptr);
   virtual ~PTAssign();
 
   template<typename... TypeArgs>
@@ -51,6 +52,14 @@ class PTAssign : public TreeNode {
     return col_desc_;
   }
 
+  const PTExprListNode::SharedPtr subscript_args() const {
+    return subscript_args_;
+  }
+
+  bool has_subscripted_column() const {
+    return subscript_args_ != nullptr && subscript_args_->size() > 0;
+  }
+
   PTExpr::SharedPtr rhs() {
     return rhs_;
   }
@@ -61,7 +70,11 @@ class PTAssign : public TreeNode {
 
  private:
   PTQualifiedName::SharedPtr lhs_;
+
   PTExpr::SharedPtr rhs_;
+
+  // for assigning specific indexes for collection columns: e.g.: lhs[key1][key2] = value
+  PTExprListNode::SharedPtr subscript_args_;
 
   // Semantic phase will fill in this value.
   const ColumnDesc *col_desc_;
@@ -125,6 +138,10 @@ class PTUpdateStmt : public PTDmlStmt {
 
   bool require_column_read() const {
     return require_column_read_;
+  }
+
+  const PTAssignListNode::SharedPtr& set_clause() const {
+    return set_clause_;
   }
 
  private:

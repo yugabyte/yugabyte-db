@@ -279,7 +279,7 @@ Status DocWriteBatch::InsertSubDocument(
     MonoDelta ttl) {
   if (!value.IsPrimitive() && value.value_type() != ValueType::kTombstone) {
     RETURN_NOT_OK(SetPrimitive(
-        doc_path, Value(PrimitiveValue(value.value_type())), use_init_marker));
+        doc_path, Value(PrimitiveValue(value.value_type()), ttl), use_init_marker));
   }
   return ExtendSubDocument(doc_path, value, use_init_marker, ttl);
 }
@@ -311,12 +311,20 @@ Status DocWriteBatch::ExtendList(
   // No additional lock is required.
   int64_t index =
       std::atomic_fetch_add(monotonic_counter_, static_cast<int64_t>(list.size()));
-  for (size_t i = 0; i < list.size(); i++) {
-    DocPath child_doc_path = doc_path;
-    index++;
-    const int write_index = extend_order == ListExtendOrder::APPEND ? index : -index;
-    child_doc_path.AddSubKey(PrimitiveValue::ArrayIndex(write_index));
-    RETURN_NOT_OK(ExtendSubDocument(child_doc_path, list[i], use_init_marker, ttl));
+  if (extend_order == ListExtendOrder::APPEND) {
+    for (size_t i = 0; i < list.size(); i++) {
+      DocPath child_doc_path = doc_path;
+      index++;
+      child_doc_path.AddSubKey(PrimitiveValue::ArrayIndex(index));
+      RETURN_NOT_OK(ExtendSubDocument(child_doc_path, list[i], use_init_marker, ttl));
+    }
+  } else { // PREPEND - adding in reverse order with negated index
+    for (size_t i = list.size(); i > 0; i--) {
+      DocPath child_doc_path = doc_path;
+      index++;
+      child_doc_path.AddSubKey(PrimitiveValue::ArrayIndex(-index));
+      RETURN_NOT_OK(ExtendSubDocument(child_doc_path, list[i - 1], use_init_marker, ttl));
+    }
   }
   return Status::OK();
 }
@@ -328,7 +336,7 @@ Status DocWriteBatch::ReplaceInList(
     const HybridTime& current_time,
     const rocksdb::QueryId query_id,
     MonoDelta table_ttl,
-    MonoDelta ttl,
+    MonoDelta write_ttl,
     InitMarkerBehavior use_init_marker) {
   SubDocKey sub_doc_key;
   RETURN_NOT_OK(sub_doc_key.FromDocPath(doc_path));
@@ -336,6 +344,8 @@ Status DocWriteBatch::ReplaceInList(
   SubDocKey found_key;
   Value found_value;
   KeyBytes key_bytes = sub_doc_key.Encode( /*include_hybrid_time =*/ false);
+  // Ensure we seek directly to indexes and skip init marker if it exists
+  key_bytes.AppendValueType(ValueType::kArrayIndex);
   rocksdb::Slice seek_key = key_bytes.AsSlice();
   int current_index = 0;
   int replace_index = 0;
@@ -344,25 +354,23 @@ Status DocWriteBatch::ReplaceInList(
     SubDocKey found_key;
     Value doc_value;
 
-    if (!iter->Valid() || !iter->key().starts_with(seek_key)) {
+    if (indexes[replace_index] <= 0 || !iter->Valid() || !iter->key().starts_with(seek_key)) {
       return STATUS_SUBSTITUTE(
-          IllegalState,
-          "Unable to replace items into list, expecting index $1, reached end of list with size $0",
+          SqlError,
+          "Unable to replace items into list, expecting index $0, reached end of list with size $1",
           indexes[replace_index],
           current_index);
     }
 
     RETURN_NOT_OK(found_key.FullyDecodeFrom(iter->key()));
+    MonoDelta entry_ttl;
+    rocksdb::Slice rocksdb_value = iter->value();
+    RETURN_NOT_OK(Value::DecodeTTL(&rocksdb_value, &entry_ttl));
+    entry_ttl = ComputeTTL(entry_ttl, table_ttl);
 
-    MonoDelta ttl;
-    rocksdb::Slice rocksdb_value;
-
-    RETURN_NOT_OK(Value::DecodeTTL(&rocksdb_value, &ttl));
-    ttl = ComputeTTL(ttl, table_ttl);
-
-    if (!ttl.Equals(Value::kMaxTtl)) {
+    if (!entry_ttl.Equals(Value::kMaxTtl)) {
       const HybridTime expiry =
-          server::HybridClock::AddPhysicalTimeToHybridTime(found_key.hybrid_time(), ttl);
+          server::HybridClock::AddPhysicalTimeToHybridTime(found_key.hybrid_time(), entry_ttl);
       if (current_time > expiry) {
         found_key.KeepPrefix(sub_doc_key.num_subkeys()+1);
         SeekPastSubKey(found_key, iter.get());
@@ -375,7 +383,8 @@ Status DocWriteBatch::ReplaceInList(
     if (current_index == indexes[replace_index]) {
       DocPath child_doc_path = doc_path;
       child_doc_path.AddSubKey(found_key.subkeys()[sub_doc_key.num_subkeys()]);
-      RETURN_NOT_OK(InsertSubDocument(child_doc_path, values[replace_index], use_init_marker, ttl));
+      RETURN_NOT_OK(InsertSubDocument(child_doc_path, values[replace_index], use_init_marker,
+          write_ttl));
       replace_index++;
       if (replace_index == indexes.size()) {
         return Status::OK();
@@ -741,12 +750,14 @@ yb::Status BuildSubDocument(
       // We have found some key that matches our entire subdocument_key, i.e. we didn't skip ahead
       // to a lower level key (with optional object init markers).
       if (doc_value.value_type() == ValueType::kObject ||
+          doc_value.value_type() == ValueType::kArray ||
           doc_value.value_type() == ValueType::kRedisSet ||
           doc_value.value_type() == ValueType::kTombstone) {
         if (low_ts < write_time) {
           low_ts = write_time;
         }
         if (doc_value.value_type() == ValueType::kObject ||
+            doc_value.value_type() == ValueType::kArray ||
             doc_value.value_type() == ValueType::kRedisSet) {
           *subdocument = SubDocument(doc_value.value_type());
         }

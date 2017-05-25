@@ -135,10 +135,12 @@ class YBColumnSchema {
         return InternalType::kSetValue;
       case LIST:
         return InternalType::kListValue;
+      case VARINT:
+        return InternalType::kVarintValue;
       case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
       case UNKNOWN_DATA:
         return InternalType::VALUE_NOT_SET;
-      case VARINT: FALLTHROUGH_INTENDED;
+
       case TUPLE: FALLTHROUGH_INTENDED;
       case TYPEARGS: FALLTHROUGH_INTENDED;
       case UINT8: FALLTHROUGH_INTENDED;

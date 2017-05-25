@@ -170,73 +170,9 @@ const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name, bool readi
 
 //--------------------------------------------------------------------------------------------------
 
-bool SemContext::IsConvertible(const PTExpr *expr, const std::shared_ptr<YQLType>& type) const {
-  // TODO(Mihnea) Compatibility type check for collections might need further thoughts.
-  switch (type->main()) {
-    // Collection types : we only use conversion table for their elements
-    case MAP: {
-      // the empty set "{}" is a valid map expression
-      if (expr->yql_type_id() == SET) {
-        const PTSetExpr *set_expr = static_cast<const PTSetExpr *>(expr);
-        return set_expr->elems().empty();
-      }
-
-      if (expr->yql_type_id() != MAP) {
-        return expr->yql_type_id() == NULL_VALUE_TYPE;
-      }
-      shared_ptr<YQLType> keys_type = type->param_type(0);
-      shared_ptr<YQLType> values_type = type->param_type(1);
-      const PTMapExpr *map_expr = static_cast<const PTMapExpr *>(expr);
-      for (auto &key : map_expr->keys()) {
-        if (!IsConvertible(key, keys_type)) {
-          return false;
-        }
-      }
-      for (auto &value : map_expr->values()) {
-        if (!IsConvertible(value, values_type)) {
-          return false;
-        }
-      }
-
-      return true;
-    }
-
-    case SET: {
-      if (expr->yql_type_id() != SET) {
-        return expr->yql_type_id() == NULL_VALUE_TYPE;
-      }
-      shared_ptr<YQLType> elem_type = type->params()[0];
-      const PTSetExpr *set_expr = static_cast<const PTSetExpr*>(expr);
-      for (auto &elem : set_expr->elems()) {
-        if (!IsConvertible(elem, elem_type)) {
-          return false;
-        }
-      }
-      return true;
-    }
-
-    case LIST: {
-      if (expr->yql_type_id() != LIST) {
-        return expr->yql_type_id() == NULL_VALUE_TYPE;
-      }
-      shared_ptr<YQLType> elem_type = type->params()[0];
-      const PTListExpr *list_expr = static_cast<const PTListExpr*>(expr);
-      for (auto &elem : list_expr->elems()) {
-        if (!IsConvertible(elem, elem_type)) {
-          return false;
-        }
-      }
-      return true;
-    }
-
-    case TUPLE:
-      LOG(FATAL) << "Tuple type not support yet";
-      return false;
-
-    // Elementary types : we directly check conversion table
-    default:
-      return YQLType::IsImplicitlyConvertible(type->main(), expr->yql_type_id());
-  }
+bool SemContext::IsConvertible(const std::shared_ptr<YQLType>& lhs_type,
+                               const std::shared_ptr<YQLType>& rhs_type) const {
+  return YQLType::IsImplicitlyConvertible(lhs_type, rhs_type);
 }
 
 bool SemContext::IsComparable(DataType lhs_type, DataType rhs_type) const {

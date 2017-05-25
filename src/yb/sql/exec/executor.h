@@ -115,6 +115,7 @@ class Executor {
   CHECKED_STATUS PTExprToPB(const PTConstBool *const_pt, YQLValuePB *const_pb);
   CHECKED_STATUS PTExprToPB(const PTConstUuid *const_pt, YQLValuePB *const_pb);
   CHECKED_STATUS PTExprToPB(const PTConstBinary *const_pt, YQLValuePB *const_pb);
+  CHECKED_STATUS PTExprToPB(const PTEmptyMapOrSetExpr *const_pt, YQLValuePB *const_pb);
   CHECKED_STATUS PTExprToPB(const PTMapExpr *const_pt, YQLValuePB *const_pb);
   CHECKED_STATUS PTExprToPB(const PTSetExpr *const_pt, YQLValuePB *const_pb);
   CHECKED_STATUS PTExprToPB(const PTListExpr *const_pt, YQLValuePB *const_pb);
@@ -126,6 +127,7 @@ class Executor {
 
   // Column types.
   CHECKED_STATUS PTExprToPB(const PTRef *ref_pt, YQLExpressionPB *ref_pb);
+  CHECKED_STATUS PTExprToPB(const PTSubscriptedColumn *ref_pt, YQLExpressionPB *ref_pb);
 
   // Operators.
   // There's only one, so call it PTUMinus for now.
@@ -147,6 +149,10 @@ class Executor {
 
  private:
   //------------------------------------------------------------------------------------------------
+
+  // Set the time to live for the values affected by the current write request
+  CHECKED_STATUS SetTtlToWriteRequestPB(const PTDmlStmt *tnode, YQLWriteRequestPB *req);
+
   // Convert column arguments to protobuf.
   CHECKED_STATUS ColumnArgsToWriteRequestPB(const std::shared_ptr<client::YBTable>& table,
                                             const PTDmlStmt *tnode,
@@ -163,16 +169,21 @@ class Executor {
                                  YBPartialRow *row,
                                  const MCVector<ColumnOp>& key_where_ops,
                                  const MCList<ColumnOp>& where_ops,
+                                 const MCList<SubscriptedColumnOp>& subcol_where_ops,
                                  const MCList<PartitionKeyOp>& partition_key_ops);
 
   // Convert where clause to protobuf for write request.
   CHECKED_STATUS WhereClauseToPB(YQLWriteRequestPB *req,
                                  YBPartialRow *row,
                                  const MCVector<ColumnOp>& key_where_ops,
-                                 const MCList<ColumnOp>& where_ops);
+                                 const MCList<ColumnOp>& where_ops,
+                                 const MCList<SubscriptedColumnOp>& subcol_where_ops);
 
   // Convert an expression op in where clause to protobuf.
   CHECKED_STATUS WhereOpToPB(YQLConditionPB *condition, const ColumnOp& col_op);
+
+  CHECKED_STATUS WhereSubColOpToPB(YQLConditionPB *condition, const SubscriptedColumnOp& subcol_op);
+
 
   void SelectAsyncDone(
       const PTSelectStmt *tnode, StatementExecutedCallback cb, RowsResult::SharedPtr current_result,

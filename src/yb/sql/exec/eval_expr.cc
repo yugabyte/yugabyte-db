@@ -29,6 +29,9 @@ Status Executor::PTExprToPB(const PTExpr::SharedPtr& expr, YQLExpressionPB *expr
     case ExprOperator::kRef:
       return PTExprToPB(static_cast<const PTRef*>(expr.get()), expr_pb);
 
+    case ExprOperator::kSubColRef:
+      return PTExprToPB(static_cast<const PTSubscriptedColumn*>(expr.get()), expr_pb);
+
     case ExprOperator::kBindVar:
       return PTExprToPB(static_cast<const PTBindVar*>(expr.get()), expr_pb);
 
@@ -87,6 +90,17 @@ CHECKED_STATUS Executor::GetBindVariable(const PTBindVar* var, YQLValue *value) 
 CHECKED_STATUS Executor::PTExprToPB(const PTRef *ref_pt, YQLExpressionPB *ref_pb) {
   const ColumnDesc *col_desc = ref_pt->desc();
   ref_pb->set_column_id(col_desc->id());
+  return Status::OK();
+}
+
+CHECKED_STATUS Executor::PTExprToPB(const PTSubscriptedColumn *ref_pt, YQLExpressionPB *expr_pb) {
+  const ColumnDesc *col_desc = ref_pt->desc();
+  auto col_pb = expr_pb->mutable_subscripted_col();
+  col_pb->set_column_id(col_desc->id());
+  for (auto& arg : ref_pt->args()->node_list()) {
+    RETURN_NOT_OK(PTExprToPB(arg, col_pb->add_subscript_args()));
+  }
+
   return Status::OK();
 }
 

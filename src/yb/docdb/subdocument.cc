@@ -293,66 +293,57 @@ void SubDocument::EnsureContainerAllocated() {
   }
 }
 
-SubDocument SubDocument::FromYQLValuePB(const shared_ptr<YQLType>& yql_type,
-                                        const YQLValuePB& value,
-                                        ColumnSchema::SortingType sorting_type) {
-  if (YQLValue::IsNull(value)) {
-    return SubDocument(ValueType::kTombstone);
-  }
-
-  switch (yql_type->main()) {
-    case MAP: {
+SubDocument SubDocument::FromYQLValuePB(const YQLValuePB& value,
+                                        ColumnSchema::SortingType sorting_type,
+                                        WriteAction write_action) {
+  switch (value.value_case()) {
+    case YQLValuePB::kMapValue: {
       YQLMapValuePB map = YQLValue::map_value(value);
       // this equality should be ensured by checks before getting here
       DCHECK_EQ(map.keys_size(), map.values_size());
 
-      const shared_ptr<YQLType>& keys_type = yql_type->params()[0];
-      const shared_ptr<YQLType>& values_type = yql_type->params()[1];
       SubDocument map_doc;
       for (int i = 0; i < map.keys_size(); i++) {
-        PrimitiveValue pv_key = PrimitiveValue::FromYQLValuePB(keys_type, map.keys(i),
-            sorting_type);
-        SubDocument pv_value = SubDocument::FromYQLValuePB(values_type, map.values(i),
-            sorting_type);
-        map_doc.SetChild(pv_key, std::move(pv_value));
+        PrimitiveValue pv_key = PrimitiveValue::FromYQLValuePB(map.keys(i), sorting_type);
+        SubDocument pv_val = SubDocument::FromYQLValuePB(map.values(i), sorting_type, write_action);
+        map_doc.SetChild(pv_key, std::move(pv_val));
       }
       // ensure container allocated even if map is empty
       map_doc.EnsureContainerAllocated();
       return map_doc;
     }
-    case SET: {
+    case YQLValuePB::kSetValue: {
       YQLSeqValuePB set = YQLValue::set_value(value);
-      const shared_ptr<YQLType>& elems_type = yql_type->params()[0];
       SubDocument set_doc;
       for (auto& elem : set.elems()) {
-        // representing sets elems as keys pointing to empty (null) values
-        PrimitiveValue pv_key = PrimitiveValue::FromYQLValuePB(elems_type, elem, sorting_type);
-        set_doc.SetChildPrimitive(pv_key, PrimitiveValue());
+        PrimitiveValue pv_key = PrimitiveValue::FromYQLValuePB(elem, sorting_type);
+        if (write_action == REMOVE_KEYS) {
+          // representing sets elems as keys pointing to tombstones to remove those entries
+          set_doc.SetChildPrimitive(pv_key, PrimitiveValue(ValueType::kTombstone));
+        }  else {
+          // representing sets elems as keys pointing to empty (null) values
+          set_doc.SetChildPrimitive(pv_key, PrimitiveValue());
+        }
       }
       // ensure container allocated even if set is empty
       set_doc.EnsureContainerAllocated();
       return set_doc;
     }
-    case LIST: {
+    case YQLValuePB::kListValue: {
       YQLSeqValuePB list = YQLValue::list_value(value);
-      const shared_ptr<YQLType>& elems_type = yql_type->params()[0];
       SubDocument list_doc(ValueType::kArray);
       // ensure container allocated even if list is empty
       list_doc.EnsureContainerAllocated();
       for (int i = 0; i < list.elems_size(); i++) {
-        SubDocument pv_value = SubDocument::FromYQLValuePB(elems_type, list.elems(i),
-            sorting_type);
-        list_doc.AddListElement(std::move(pv_value));
+        SubDocument pv_val = SubDocument::FromYQLValuePB(list.elems(i), sorting_type, write_action);
+        list_doc.AddListElement(std::move(pv_val));
       }
       return list_doc;
     }
-    case TUPLE:
-      break;
 
     default:
-      return SubDocument(PrimitiveValue::FromYQLValuePB(yql_type, value, sorting_type));
+      return SubDocument(PrimitiveValue::FromYQLValuePB(value, sorting_type));
   }
-  LOG(FATAL) << "Unsupported datatype in SubDocument: " << yql_type->ToString();
 }
 
 void SubDocument::ToYQLValuePB(SubDocument doc,
@@ -414,21 +405,29 @@ void SubDocument::ToYQLExpressionPB(SubDocument doc,
   ToYQLValuePB(doc, yql_type, yql_expr->mutable_value());
 }
 
-SubDocument SubDocument::FromYQLExpressionPB(const shared_ptr<YQLType>& yql_type,
-                                             const YQLExpressionPB& yql_expr,
-                                             ColumnSchema::SortingType sorting_type,
-                                             const YQLValueMap& value_map) {
+
+CHECKED_STATUS SubDocument::FromYQLExpressionPB(const YQLExpressionPB& yql_expr,
+                                                const ColumnSchema& column_schema,
+                                                const YQLValueMap& value_map,
+                                                SubDocument* sub_doc,
+                                                WriteAction* write_action) {
   switch (yql_expr.expr_case()) {
     case YQLExpressionPB::ExprCase::kValue:  // Scenarios: SET column = constant.
-      return FromYQLValuePB(yql_type, yql_expr.value(), sorting_type);
+      *sub_doc = FromYQLValuePB(yql_expr.value(), column_schema.sorting_type(), *write_action);
+      return Status::OK();
 
     case YQLExpressionPB::ExprCase::kColumnId:  // Scenarios: SET column = column.
       FALLTHROUGH_INTENDED;
 
+    case YQLExpressionPB::ExprCase::kSubscriptedCol:  // Scenarios: SET column = column[key].
+      FALLTHROUGH_INTENDED;
+
     case YQLExpressionPB::ExprCase::kBfcall: {  // Scenarios: SET column = func().
       YQLValueWithPB result;
-      EvalYQLExpressionPB(yql_expr, value_map, &result);
-      return FromYQLValuePB(yql_type, result.value(), sorting_type);
+      RETURN_NOT_OK(EvalYQLExpressionPB(yql_expr, value_map, &result, write_action));
+      // Type of the result could be changed for some write actions (e.g. REMOVE_KEYS from map)
+      *sub_doc = FromYQLValuePB(result.value(), column_schema.sorting_type(), *write_action);
+      return Status::OK();
     }
 
     case YQLExpressionPB::ExprCase::kCondition:
@@ -445,21 +444,59 @@ SubDocument SubDocument::FromYQLExpressionPB(const shared_ptr<YQLType>& yql_type
 // the expression evaluating process. The intermediate / temporary YQLValue should be allocated
 // in the pool. Currently, the argument structures are on stack, but their contents are in the
 // heap memory.
-void SubDocument::EvalYQLExpressionPB(const YQLExpressionPB& yql_expr,
-                                      const YQLValueMap& value_map,
-                                      YQLValueWithPB *result) {
+CHECKED_STATUS SubDocument::EvalYQLExpressionPB(const YQLExpressionPB& yql_expr,
+                                   const YQLValueMap& value_map,
+                                   YQLValueWithPB *result,
+                                   WriteAction* write_action) {
   switch (yql_expr.expr_case()) {
     case YQLExpressionPB::ExprCase::kValue:
       result->Assign(yql_expr.value());
       break;
 
     case YQLExpressionPB::ExprCase::kBfcall: {
-      // First evaluate the arguments.
+
       const YQLBFCallPB& bfcall = yql_expr.bfcall();
+      // Special cases: for collection operations of the form "cref = cref +/- <value>" we avoid
+      // reading column cref and instead tell doc writer to modify it in-place
+      const bfyql::BFOperator::SharedPtr bf_op = bfyql::kBFOperators[bfcall.bfopcode()];
+      if (strcmp(bf_op->op_decl()->cpp_name(), "AddMapMap") == 0 ||
+          strcmp(bf_op->op_decl()->cpp_name(), "AddMapSet") == 0 ||
+          strcmp(bf_op->op_decl()->cpp_name(), "AddSetSet") == 0) {
+        *write_action = WriteAction::EXTEND;
+        return EvalYQLExpressionPB(bfcall.operands(1), value_map, result, write_action);
+      }
+
+      if (strcmp(bf_op->op_decl()->cpp_name(), "SubMapSet") == 0 ||
+          strcmp(bf_op->op_decl()->cpp_name(), "SubSetSet") == 0) {
+        *write_action = WriteAction::REMOVE_KEYS;
+        RETURN_NOT_OK(EvalYQLExpressionPB(bfcall.operands(1), value_map, result, write_action));
+
+        return Status::OK();
+      }
+
+      if (strcmp(bf_op->op_decl()->cpp_name(), "AddListList") == 0) {
+        if (bfcall.operands(0).has_column_id()) {
+          *write_action = WriteAction::APPEND;
+          return EvalYQLExpressionPB(bfcall.operands(1), value_map, result, write_action);
+        } else {
+          *write_action = WriteAction::PREPEND;
+          return EvalYQLExpressionPB(bfcall.operands(0), value_map, result, write_action);
+        }
+      }
+
+      // TODO (akashnil or mihnea) this should be enabled when RemoveFromList is implemented
+      /*
+      if (strcmp(bf_op->op_decl()->cpp_name(), "SubListList") == 0) {
+        *write_action = WriteAction::REMOVE_VALUES;
+        return EvalYQLExpressionPB(bfcall.operands(1), value_map, result, write_action);
+      }
+      */
+
+      // Default case: First evaluate the arguments.
       vector<YQLValueWithPB> args(bfcall.operands().size());
       int arg_index = 0;
       for (auto operand : bfcall.operands()) {
-        EvalYQLExpressionPB(operand, value_map, &args[arg_index]);
+        RETURN_NOT_OK(EvalYQLExpressionPB(operand, value_map, &args[arg_index], write_action));
         arg_index++;
       }
 
@@ -478,6 +515,10 @@ void SubDocument::EvalYQLExpressionPB(const YQLExpressionPB& yql_expr,
       break;
     }
 
+    case YQLExpressionPB::ExprCase::kSubscriptedCol:
+      LOG(FATAL) << "Internal error: Subscripted column is not allowed in this context";
+      break;
+
     case YQLExpressionPB::ExprCase::kCondition:
       LOG(FATAL) << "Internal error: Conditional expression is not allowed in this context";
       break;
@@ -485,6 +526,7 @@ void SubDocument::EvalYQLExpressionPB(const YQLExpressionPB& yql_expr,
     case YQLExpressionPB::ExprCase::EXPR_NOT_SET:
       break;
   }
+  return Status::OK();
 }
 
 }  // namespace docdb

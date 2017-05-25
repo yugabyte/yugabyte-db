@@ -99,8 +99,18 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
   empty_row_block = processor->row_block();
   CHECK_EQ(empty_row_block->row_count(), 0);
 
-  // Check for valid allow filtering clause.
+  // Check for valid allow filtering clauses.
   CHECK_VALID_STMT("SELECT * FROM test_table WHERE h1 = 0 AND h2 = '' ALLOW FILTERING");
+  empty_row_block = processor->row_block();
+  CHECK_EQ(empty_row_block->row_count(), 0);
+
+  CHECK_VALID_STMT("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
+      "  WHERE h1 = 7 AND h2 = 'h7' AND v1 = 1007 ALLOW FILTERING");
+  empty_row_block = processor->row_block();
+  CHECK_EQ(empty_row_block->row_count(), 0);
+
+  CHECK_VALID_STMT("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
+      "  WHERE h1 = 7 AND h2 = 'h7' AND v1 = 100 ALLOW FILTERING");
   empty_row_block = processor->row_block();
   CHECK_EQ(empty_row_block->row_count(), 0);
 
@@ -114,14 +124,6 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
     CHECK_VALID_STMT(stmt);
   }
   LOG(INFO) << kNumRows << " rows inserted";
-
-  //------------------------------------------------------------------------------------------------
-  // Basic negative cases.
-  // Test simple query and result.
-  CHECK_INVALID_STMT("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
-                     "  WHERE h1 = 7 AND h2 = 'h7' AND v1 = 1007;");
-  CHECK_INVALID_STMT("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
-                     "  WHERE h1 = 7 AND h2 = 'h7' AND v1 = 100;");
 
   //------------------------------------------------------------------------------------------------
   // Test simple query and result.
@@ -664,20 +666,11 @@ TEST_F(YbSqlQuery, TestSqlQueryPartialHash) {
   LOG(INFO) << kNumRows << " rows inserted";
 
   //------------------------------------------------------------------------------------------------
-  // Basic negative cases.
-  // Test simple query and result.
-  CHECK_INVALID_STMT("SELECT h1, h2, h3, h4, r1, r2, v1, v2 FROM test_table "
-                     "  WHERE h1 = 7 AND h2 = 'h7' AND v1 = 10007;");
-  CHECK_INVALID_STMT("SELECT h1, h2, h3, h4, r1, r2, v1, v2 FROM test_table "
-                     "  WHERE h1 = 7 AND h2 = 'h7' AND v2 = 'v10007';");
-
-  //------------------------------------------------------------------------------------------------
   // Check invalid case for using other operators for hash keys.
   CHECK_INVALID_STMT("SELECT h1, h2, h3, h4, r1, r2, v1, v2 FROM test_table "
                      "  WHERE h1 < 7;");
   CHECK_INVALID_STMT("SELECT h1, h2, h3, h4, r1, r2, v1, v2 FROM test_table "
                      "  WHERE h1 > 7 AND h2 > 'h7';");
-
 
   //------------------------------------------------------------------------------------------------
   // Test partial hash keys and results.

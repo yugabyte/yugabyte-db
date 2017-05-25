@@ -94,6 +94,41 @@ class YQLType {
     return params_;
   }
 
+  std::shared_ptr<YQLType> keys_type() const {
+    switch (id_) {
+      case MAP:
+        return params_[0];
+      case LIST:
+        return YQLType::Create(INT32);
+      case SET:
+        // set has no keys, only values
+        return nullptr;
+      case TUPLE:
+        LOG(FATAL) << "Tuple type not implemented yet";
+
+      default:
+        // elementary types have no keys or values
+        return nullptr;
+    }
+  }
+
+  std::shared_ptr<YQLType> values_type() const {
+    switch (id_) {
+      case MAP:
+        return params_[1];
+      case LIST:
+        return params_[0];
+      case SET:
+        return params_[0];
+      case TUPLE:
+        LOG(FATAL) << "Tuple type not implemented yet";
+
+      default:
+        // elementary types have no keys or values
+        return nullptr;
+    }
+  }
+
   const std::shared_ptr<YQLType>& param_type(int member_index = 0) const {
     DCHECK_LT(member_index, params_.size());
     return params_[member_index];
@@ -210,8 +245,9 @@ class YQLType {
     kIdentical = 0,
     kSimilar = 1,
     kImplicit = 2,
-    kExplicit = 3,
-    kNotAllowed = 4,
+    kFurtherCheck = 3,
+    kExplicit = 4,
+    kNotAllowed = 5,
   };
 
   static ConversionMode GetConversionMode(DataType left, DataType right) {
@@ -220,6 +256,7 @@ class YQLType {
     static const ConversionMode kID = ConversionMode::kIdentical;
     static const ConversionMode kSI = ConversionMode::kSimilar;
     static const ConversionMode kIM = ConversionMode::kImplicit;
+    static const ConversionMode kFC = ConversionMode::kFurtherCheck;
     static const ConversionMode kEX = ConversionMode::kExplicit;
     static const ConversionMode kNA = ConversionMode::kNotAllowed;
     static const ConversionMode kConversionMode[kMaxTypeIndex][kMaxTypeIndex] = {
@@ -239,12 +276,12 @@ class YQLType {
         /* dec */{ kIM,  kIM,  kIM,  kIM,  kIM,  kNA,  kNA,  kSI,  kSI,  kNA,  kNA,  kID,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
         /* vit */{ kIM,  kSI,  kSI,  kSI,  kSI,  kNA,  kNA,  kEX,  kEX,  kNA,  kEX,  kEX,  kID,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
         /* ine */{ kIM,  kNA,  kNA,  kNA,  kNA,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kID,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
-        /* lst */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
-        /* map */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
-        /* set */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
+        /* lst */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kFC,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
+        /* map */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kFC,  kNA,  kNA,  kNA,  kNA,  kNA },
+        /* set */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kFC,  kNA,  kNA,  kNA,  kNA },
         /* uid */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kID,  kIM,  kNA,  kNA },
         /* tui */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kIM,  kID,  kNA,  kNA },
-        /* tup */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
+        /* tup */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kFC,  kNA },
         /* arg */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kID },
     };
     return kConversionMode[left][right];
@@ -260,6 +297,35 @@ class YQLType {
 
   static bool IsImplicitlyConvertible(DataType left, DataType right) {
     return GetConversionMode(left, right) <= ConversionMode::kImplicit;
+  }
+
+  static bool IsImplicitlyConvertible(const std::shared_ptr<YQLType>& lhs_type,
+                                      const std::shared_ptr<YQLType>& rhs_type) {
+    switch (YQLType::GetConversionMode(lhs_type->main(), rhs_type->main())) {
+      case YQLType::ConversionMode::kIdentical: FALLTHROUGH_INTENDED;
+      case YQLType::ConversionMode::kSimilar: FALLTHROUGH_INTENDED;
+      case YQLType::ConversionMode::kImplicit:
+        return true;
+
+      case YQLType::ConversionMode::kFurtherCheck:
+        // checking params convertibility
+        if (lhs_type->params().size() != rhs_type->params().size()) {
+          return false;
+        }
+        for (int i = 0; i < lhs_type->params().size(); i++) {
+          if (!IsImplicitlyConvertible(lhs_type->params().at(i), rhs_type->params().at(i))) {
+            return false;
+          }
+        }
+        return true;
+
+      case YQLType::ConversionMode::kExplicit: FALLTHROUGH_INTENDED;
+      case YQLType::ConversionMode::kNotAllowed:
+        return false;
+    }
+
+    LOG(FATAL) << "Unsupported conversion mode in switch statement";
+    return false;
   }
 
   static bool IsComparable(DataType left, DataType right) {

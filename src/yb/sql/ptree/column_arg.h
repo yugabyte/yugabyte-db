@@ -90,6 +90,70 @@ class ColumnOp : public ColumnArg {
   yb::YQLOperator yb_op_;
 };
 
+// This class represents a sub-column argument (e.g. "SET l[1] = 'b'")
+class SubscriptedColumnArg : public ColumnArg {
+ public:
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef std::shared_ptr<SubscriptedColumnArg> SharedPtr;
+  typedef std::shared_ptr<const SubscriptedColumnArg> SharedPtrConst;
+
+  SubscriptedColumnArg(const ColumnDesc *desc = nullptr,
+                 const PTExprListNode::SharedPtr& args = nullptr,
+                 const PTExpr::SharedPtr& expr = nullptr)
+      : ColumnArg(desc, expr), args_(args) {
+  }
+
+  SubscriptedColumnArg(const SubscriptedColumnArg &sval)
+      : SubscriptedColumnArg(sval.desc_, sval.args_, sval.expr_) { }
+
+  virtual ~SubscriptedColumnArg() {
+  }
+
+  const PTExprListNode::SharedPtr& args() const {
+    return args_;
+  }
+
+ protected:
+  PTExprListNode::SharedPtr args_;
+};
+
+// This class represents an operation on a sub-column (e.g. "WHERE l[1] = 'b'").
+class SubscriptedColumnOp : public SubscriptedColumnArg {
+ public:
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef std::shared_ptr<SubscriptedColumnOp> SharedPtr;
+  typedef std::shared_ptr<const SubscriptedColumnOp> SharedPtrConst;
+
+  SubscriptedColumnOp(const ColumnDesc *desc = nullptr,
+              const PTExprListNode::SharedPtr& args = nullptr,
+              const PTExpr::SharedPtr& expr = nullptr,
+              yb::YQLOperator yb_op = yb::YQLOperator::YQL_OP_NOOP)
+      : SubscriptedColumnArg(desc, args, expr), yb_op_(yb_op) {
+  }
+  SubscriptedColumnOp(const SubscriptedColumnOp &subcol_op)
+      : SubscriptedColumnOp(subcol_op.desc_, subcol_op.args_, subcol_op.expr_, subcol_op.yb_op_) {
+  }
+  virtual ~SubscriptedColumnOp() {
+  }
+
+  void Init(const ColumnDesc *desc, const PTExprListNode::SharedPtr& args,
+            const PTExpr::SharedPtr& expr, yb::YQLOperator yb_op) {
+    desc_ = desc;
+    args_ = args;
+    expr_ = expr;
+    yb_op_ = yb_op;
+  }
+
+  yb::YQLOperator yb_op() const {
+    return yb_op_;
+  }
+
+ private:
+  yb::YQLOperator yb_op_;
+};
+
 class PartitionKeyOp {
  public:
   PartitionKeyOp(yb::YQLOperator yb_op, PTExpr::SharedPtr expr)

@@ -158,6 +158,37 @@ YQLValuePB EvaluateValue(const YQLExpressionPB& expr, const YQLValueMap& row) {
       const auto it = row.find(column_id);
       return it != row.end() ? it->second : YQLValuePB();
     }
+    case YQLExpressionPB::ExprCase::kSubscriptedCol: {
+      const auto column_id = ColumnId(expr.subscripted_col().column_id());
+      const auto it = row.find(column_id);
+      if (it == row.end()) {
+        return YQLValuePB();
+      } else {
+        if (it->second.has_map_value()) { // map['key']
+          auto& map = it->second.map_value();
+          auto key = EvaluateValue(expr.subscripted_col().subscript_args(0), row);
+          for (int i = 0; i < map.keys_size(); i++) {
+            if (map.keys(i) == key) {
+              return map.values(i);
+            }
+          }
+        } else if (it->second.has_list_value()) { // list[index]
+          auto& list = it->second.list_value();
+          auto index_pb = EvaluateValue(expr.subscripted_col().subscript_args(0), row);
+
+          if (index_pb.has_int32_value()) {
+            int index = index_pb.int32_value();
+            // YQL list index starts from 1 not 0
+            if (index > 0 && index <= list.elems_size()) {
+              return list.elems(index - 1);
+            } // otherwise we return null below
+          }
+        }
+      }
+
+      // default (if collection entry not found) is to return null value
+      return YQLValuePB();
+    }
     case YQLExpressionPB::ExprCase::kValue:
       return expr.value();
     case YQLExpressionPB::ExprCase::kBfcall:

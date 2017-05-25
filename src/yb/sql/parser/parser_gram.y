@@ -99,6 +99,7 @@ typedef MCSharedPtr<MCString>          PString;
 typedef TreeNode::SharedPtr            PTreeNode;
 typedef PTListNode::SharedPtr          PListNode;
 typedef PTExpr::SharedPtr              PExpr;
+typedef PTRef::SharedPtr               PRef;
 typedef PTExprListNode::SharedPtr      PExprListNode;
 typedef PTConstInt::SharedPtr          PConstInt;
 typedef PTMapExpr::SharedPtr           PMapExpr;
@@ -246,10 +247,12 @@ using namespace yb::sql;
                           alter_table_op alter_table_ops
 
 %type <PExpr>             // Expressions.
-                          a_expr b_expr ctext_expr c_expr AexprConst columnref bindvar
+                          a_expr b_expr ctext_expr c_expr AexprConst bindvar
                           collection_expr target_el in_expr
                           func_expr func_application func_arg_expr
                           inactive_a_expr inactive_c_expr
+
+%type <PRef>              columnref
 
 %type <PMapExpr>          // An expression of type Map.
                           map_elems map_expr
@@ -261,7 +264,7 @@ using namespace yb::sql;
                           list_elems list_expr
 
 %type <PExprListNode>     // A list of expressions.
-                          ctext_row ctext_expr_list func_arg_list
+                          ctext_row ctext_expr_list func_arg_list col_arg_list
 
 %type <PType>             // Datatype nodes.
                           Typename SimpleTypename ParametricTypename Numeric
@@ -2528,6 +2531,20 @@ single_set_clause:
   set_target '=' ctext_expr {
     $$ = MAKE_NODE(@1, PTAssign, $1, $3);
   }
+  | set_target col_arg_list '=' ctext_expr {
+    $$ = MAKE_NODE(@1, PTAssign, $1, $4, $2);
+  }
+;
+
+col_arg_list:
+  '[' c_expr ']' {
+    $$ = MAKE_NODE(@1, PTExprListNode);
+    $$->Append($2);
+  }
+  | col_arg_list '[' c_expr ']' {
+    $1->Append($3);
+    $$ = $1;
+  }
 ;
 
 // Ideally, we'd accept any row-valued a_expr as RHS of a multiple_set_clause.
@@ -2902,6 +2919,10 @@ a_expr:
   }
   | '-' a_expr                                                 %prec UMINUS {
     $$ = MAKE_NODE(@1, PTOperator1, ExprOperator::kUMinus, YQL_OP_NOOP, $2);
+  }
+  | columnref '[' a_expr ']' {
+    PTExprListNode::SharedPtr args = MAKE_NODE(@1, PTExprListNode, $3);
+    $$ = MAKE_NODE(@1, PTSubscriptedColumn, $1->name(), args);
   }
 
   // Logical expression.
@@ -3885,12 +3906,6 @@ indirection_el:
   | '.' '*' {
     $$ = MAKE_NODE(@1, PTNameAll);
   }
-  | '[' a_expr ']' {
-    PARSER_UNSUPPORTED(@1);
-  }
-  | '[' a_expr ':' a_expr ']' {
-    PARSER_UNSUPPORTED(@1);
-  }
 ;
 
 indirection:
@@ -4025,8 +4040,6 @@ map_expr:
   '{' map_elems '}' {
     $$ = $2;
   }
-  // we don't allow empty maps in the grammar so that '{ }' gets parsed as a set (set_expr) which is
-  // the more specific type. Then, the executor does the type conversion when appropriate.
 ;
 
 set_elems:
@@ -4043,9 +4056,6 @@ set_elems:
 set_expr:
   '{' set_elems '}' {
     $$ = $2;
-  }
-  | '{' '}' {
-      $$ = MAKE_NODE(@1, PTSetExpr);
   }
 ;
 
@@ -4070,7 +4080,12 @@ list_expr:
 ;
 
 collection_expr:
-  map_expr {
+ // '{ }' can mean either (empty) map or set so we treat it separately here and infer the expected
+ // type (i.e. map or set) during type analysis
+ '{' '}' {
+      $$ = MAKE_NODE(@1, PTEmptyMapOrSetExpr);
+  }
+  | map_expr {
     $$ = $1;
   }
   | set_expr {

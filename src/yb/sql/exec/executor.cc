@@ -443,12 +443,7 @@ CHECKED_STATUS Executor::SetupPartialRow(const ColumnDesc *col_desc,
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::ColumnArgsToWriteRequestPB(const shared_ptr<client::YBTable>& table,
-                                                    const PTDmlStmt *tnode,
-                                                    YQLWriteRequestPB *req,
-                                                    YBPartialRow *row) {
-  const MCVector<ColumnArg>& column_args = tnode->column_args();
-  // Set the ttl.
+CHECKED_STATUS Executor::SetTtlToWriteRequestPB(const PTDmlStmt *tnode, YQLWriteRequestPB *req) {
   if (tnode->has_ttl()) {
     YQLExpressionPB ttl_pb;
     RETURN_NOT_OK(PTExprToPB(tnode->ttl_seconds(), &ttl_pb));
@@ -473,7 +468,14 @@ CHECKED_STATUS Executor::ColumnArgsToWriteRequestPB(const shared_ptr<client::YBT
     }
     req->set_ttl(static_cast<uint64_t>(ttl_seconds * MonoTime::kMillisecondsPerSecond));
   }
+  return Status::OK();
+}
 
+CHECKED_STATUS Executor::ColumnArgsToWriteRequestPB(const shared_ptr<client::YBTable>& table,
+                                                    const PTDmlStmt *tnode,
+                                                    YQLWriteRequestPB *req,
+                                                    YBPartialRow *row) {
+  const MCVector<ColumnArg>& column_args = tnode->column_args();
   for (const ColumnArg& col : column_args) {
     if (!col.IsInitialized()) {
       // This column is not assigned a value, ignore it. We don't support default value yet.
@@ -506,6 +508,19 @@ CHECKED_STATUS Executor::ColumnArgsToWriteRequestPB(const shared_ptr<client::YBT
     }
   }
 
+  const MCVector<SubscriptedColumnArg>& subcol_args = tnode->subscripted_col_args();
+  for (const SubscriptedColumnArg& col : subcol_args) {
+    const ColumnDesc *col_desc = col.desc();
+    YQLColumnValuePB *col_pb = req->add_column_values();
+    col_pb->set_column_id(col_desc->id());
+    YQLExpressionPB *expr_pb = col_pb->mutable_expr();
+    RETURN_NOT_OK(PTExprToPB(col.expr(), expr_pb));
+    for (auto& col_arg : col.args()->node_list()) {
+      YQLExpressionPB *arg_pb = col_pb->add_subscript_args();
+      RETURN_NOT_OK(PTExprToPB(col_arg, arg_pb));
+    }
+  }
+
   return Status::OK();
 }
 
@@ -514,7 +529,8 @@ CHECKED_STATUS Executor::ColumnArgsToWriteRequestPB(const shared_ptr<client::YBT
 CHECKED_STATUS Executor::WhereClauseToPB(YQLWriteRequestPB *req,
                                          YBPartialRow *row,
                                          const MCVector<ColumnOp>& key_where_ops,
-                                         const MCList<ColumnOp>& where_ops) {
+                                         const MCList<ColumnOp>& where_ops,
+                                         const MCList<SubscriptedColumnOp>& subcol_where_ops) {
   // Setup the key columns.
   for (const auto& op : key_where_ops) {
     const ColumnDesc *col_desc = op.desc();
@@ -548,6 +564,17 @@ CHECKED_STATUS Executor::WhereClauseToPB(YQLWriteRequestPB *req,
     RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb->mutable_expr()));
   }
 
+  for (const auto& op : subcol_where_ops) {
+    const ColumnDesc *col_desc = op.desc();
+    YQLColumnValuePB *col_pb;
+    col_pb = req->add_column_values();
+    col_pb->set_column_id(col_desc->id());
+    for (auto& arg : op.args()->node_list()) {
+      RETURN_NOT_OK(PTExprToPB(arg, col_pb->add_subscript_args()));
+    }
+    RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb->mutable_expr()));
+  }
+
   return Status::OK();
 }
 
@@ -555,6 +582,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(YQLReadRequestPB *req,
                                          YBPartialRow *row,
                                          const MCVector<ColumnOp>& key_where_ops,
                                          const MCList<ColumnOp>& where_ops,
+                                         const MCList<SubscriptedColumnOp>& subcol_where_ops,
                                          const MCList<PartitionKeyOp>& partition_key_ops) {
 
   // Setup the lower/upper bounds on the partition key -- if any
@@ -605,22 +633,36 @@ CHECKED_STATUS Executor::WhereClauseToPB(YQLReadRequestPB *req,
   }
 
   // Not generate any code if where clause is empty.
-  if (where_ops.empty()) {
+  if (where_ops.empty() && subcol_where_ops.empty()) {
     return Status::OK();
   }
 
   // Setup the rest of the where clause.
   YQLConditionPB *cond_pb = req->mutable_where_expr()->mutable_condition();
   for (const auto& col_op : where_ops) {
-    if (&col_op == &where_ops.back()) {
+    if (&col_op == &where_ops.back() && subcol_where_ops.empty()) {
       // This is the last operator. Use the current ConditionPB.
       RETURN_NOT_OK(WhereOpToPB(cond_pb, col_op));
-
     } else {
       // Current ConditionPB would be AND of this op and the next one.
       cond_pb->set_op(YQL_OP_AND);
       YQLExpressionPB *op = cond_pb->add_operands();
       RETURN_NOT_OK(WhereOpToPB(op->mutable_condition(), col_op));
+
+      // Create a new the ConditionPB for the next operand.
+      cond_pb = cond_pb->add_operands()->mutable_condition();
+    }
+  }
+
+  for (const auto& col_op : subcol_where_ops) {
+    if (&col_op == &subcol_where_ops.back()) {
+      // This is the last operator. Use the current ConditionPB.
+      RETURN_NOT_OK(WhereSubColOpToPB(cond_pb, col_op));
+    } else {
+      // Current ConditionPB would be AND of this op and the next one.
+      cond_pb->set_op(YQL_OP_AND);
+      YQLExpressionPB *op = cond_pb->add_operands();
+      RETURN_NOT_OK(WhereSubColOpToPB(op->mutable_condition(), col_op));
 
       // Create a new the ConditionPB for the next operand.
       cond_pb = cond_pb->add_operands()->mutable_condition();
@@ -640,6 +682,25 @@ CHECKED_STATUS Executor::WhereOpToPB(YQLConditionPB *condition, const ColumnOp& 
   VLOG(3) << "WHERE condition, column id = " << col_desc->id();
   expr_pb->set_column_id(col_desc->id());
 
+  // Operand 2: The expression.
+  expr_pb = condition->add_operands();
+  return PTExprToPB(col_op.expr(), expr_pb);
+}
+
+CHECKED_STATUS Executor::WhereSubColOpToPB(YQLConditionPB *condition,
+                                           const SubscriptedColumnOp& col_op) {
+  // Set the operator.
+  condition->set_op(col_op.yb_op());
+
+  // Operand 1: The column.
+  const ColumnDesc *col_desc = col_op.desc();
+  YQLExpressionPB *expr_pb = condition->add_operands();
+  VLOG(3) << "WHERE condition, sub-column with id = " << col_desc->id();
+  auto col_pb = expr_pb->mutable_subscripted_col();
+  col_pb->set_column_id(col_desc->id());
+  for (auto& arg : col_op.args()->node_list()) {
+    RETURN_NOT_OK(PTExprToPB(arg, col_pb->add_subscript_args()));
+  }
   // Operand 2: The expression.
   expr_pb = condition->add_operands();
   return PTExprToPB(col_op.expr(), expr_pb);
@@ -699,7 +760,7 @@ void Executor::ExecPTNodeAsync(
   YBPartialRow *row = select_op->mutable_row();
 
   Status st = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops(),
-                              tnode->partition_key_ops());
+                              tnode->subscripted_col_where_ops(), tnode->partition_key_ops());
   if (!st.ok()) {
     CB_RETURN(
         cb,
@@ -843,6 +904,9 @@ void Executor::ExecPTNodeAsync(const PTInsertStmt *tnode, StatementExecutedCallb
   shared_ptr<YBqlWriteOp> insert_op(table->NewYQLInsert());
   YQLWriteRequestPB *req = insert_op->mutable_request();
 
+  // Set the ttl
+  CB_RETURN_NOT_OK(cb, SetTtlToWriteRequestPB(tnode, insert_op->mutable_request()));
+
   // Set the values for columns.
   Status st = ColumnArgsToWriteRequestPB(table, tnode, req, insert_op->mutable_row());
   if (!st.ok()) {
@@ -884,7 +948,8 @@ void Executor::ExecPTNodeAsync(const PTDeleteStmt *tnode, StatementExecutedCallb
   // Where clause - Hash, range, and regular columns.
   // NOTE: Currently, where clause for write op doesn't allow regular columns.
   YBPartialRow *row = delete_op->mutable_row();
-  Status st = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops());
+  Status st = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops(),
+      tnode->subscripted_col_where_ops());
   if (!st.ok()) {
     CB_RETURN(
         cb,
@@ -924,18 +989,23 @@ void Executor::ExecPTNodeAsync(const PTUpdateStmt *tnode, StatementExecutedCallb
   // Where clause - Hash, range, and regular columns.
   // NOTE: Currently, where clause for write op doesn't allow regular columns.
   YBPartialRow *row = update_op->mutable_row();
-  Status st = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops());
+  Status st = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops(),
+      tnode->subscripted_col_where_ops());
   if (!st.ok()) {
     CB_RETURN(
         cb,
         exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
   }
 
+  // Set the ttl
+  CB_RETURN_NOT_OK(cb, SetTtlToWriteRequestPB(tnode, update_op->mutable_request()));
+
   // Setup the columns' new values.
   st = ColumnArgsToWriteRequestPB(table,
                                   tnode,
                                   update_op->mutable_request(),
                                   update_op->mutable_row());
+
   if (!st.ok()) {
     CB_RETURN(
         cb,

@@ -21,8 +21,7 @@ CHECKED_STATUS YQLKeyColumnValuesToPrimitiveValues(
     }
 
     components->push_back(PrimitiveValue::FromYQLExpressionPB(
-        schema.column(column_idx).type(), column_value.expr(),
-        schema.column(column_idx).sorting_type()));
+        column_value.expr(), schema.column(column_idx).sorting_type()));
     column_idx++;
   }
   return Status::OK();

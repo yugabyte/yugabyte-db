@@ -161,6 +161,30 @@ Status AddDoubleString(PTypePtr x, PTypePtr y, RTypePtr result) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
+Status AddMapMap(PTypePtr x, PTypePtr y, RTypePtr result) {
+  // All calls allowed for this builtin are optimized away to avoid evaluating such expressions
+  return STATUS(RuntimeError, "Arbitrary collection expressions are not supported");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status AddMapSet(PTypePtr x, PTypePtr y, RTypePtr result) {
+  // All calls allowed for this builtin are optimized away to avoid evaluating such expressions
+  return STATUS(RuntimeError, "Arbitrary collection expressions are not supported");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status AddSetSet(PTypePtr x, PTypePtr y, RTypePtr result) {
+  // All calls allowed for this builtin are optimized away to avoid evaluating such expressions
+  return STATUS(RuntimeError, "Arbitrary collection expressions are not supported");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status AddListList(PTypePtr x, PTypePtr y, RTypePtr result) {
+  // All calls allowed for this builtin are optimized away to avoid evaluating such expressions
+  return STATUS(RuntimeError, "Arbitrary collection expressions are not supported");
+}
+
+template<typename PTypePtr, typename RTypePtr>
 Status SubI64I64(PTypePtr x, PTypePtr y, RTypePtr result) {
   if (x->IsNull() || y->IsNull()) {
     result->SetNull();
@@ -176,6 +200,47 @@ Status SubDoubleDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
     result->SetNull();
   } else {
     result->set_double_value(x->double_value() - y->double_value());
+  }
+  return Status::OK();
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status SubMapSet(PTypePtr x, PTypePtr y, RTypePtr result) {
+  // All calls allowed for this builtin are optimized away to avoid evaluating such expressions
+  return STATUS(RuntimeError, "Arbitrary collection expressions are not supported");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status SubSetSet(PTypePtr x, PTypePtr y, RTypePtr result) {
+  // All calls allowed for this builtin are optimized away to avoid evaluating such expressions
+  return STATUS(RuntimeError, "Arbitrary collection expressions are not supported");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status SubListList(PTypePtr x, PTypePtr y, RTypePtr result) {
+  // TODO All calls allowed for this builtin should be optimized away to avoid evaluating here.
+  // But this is not yet implemented in DocDB so evaluating inefficiently and in-memory for now.
+  // For clarity, this implementation should be removed (see e.g. SubSetSet above) as soon as
+  // RemoveFromList is implemented in DocDB.
+  result->set_list_value();
+  if (x->IsNull() || y->IsNull()) {
+    return Status::OK();
+  }
+
+  YQLSeqValuePB xl = x->list_value();
+  YQLSeqValuePB yl = y->list_value();
+  for (const YQLValuePB& x_elem : xl.elems()) {
+    bool should_remove = false;
+    for (const YQLValuePB& y_elem : yl.elems()) {
+      if (x_elem == y_elem) {
+        should_remove = true;
+        break;
+      }
+    }
+    if (!should_remove) {
+      auto elem = result->add_list_elem();
+      elem->CopyFrom(x_elem);
+    }
   }
   return Status::OK();
 }

@@ -66,10 +66,16 @@ CHECKED_STATUS Executor::PTConstToPB(const PTExpr::SharedPtr& expr,
     }
     case DataType::MAP: {
       DCHECK(!negate) << "Invalid datatype for negation";
+      if (const_pt->is_empty_collection()) {
+        return PTExprToPB(static_cast<const PTEmptyMapOrSetExpr*>(const_pt), const_pb);
+      }
       return PTExprToPB(static_cast<const PTMapExpr*>(const_pt), const_pb);
     }
     case DataType::SET: {
       DCHECK(!negate) << "Invalid datatype for negation";
+      if (const_pt->is_empty_collection()) {
+        return PTExprToPB(static_cast<const PTEmptyMapOrSetExpr*>(const_pt), const_pb);
+      }
       return PTExprToPB(static_cast<const PTSetExpr*>(const_pt), const_pb);
     }
     case DataType::LIST: {
@@ -309,15 +315,22 @@ CHECKED_STATUS Executor::PTExprToPB(const PTMapExpr *const_pt, YQLValuePB *const
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::PTExprToPB(const PTSetExpr *const_pt, YQLValuePB *const_pb) {
-  // Check if this expr is a null map.
-  if (const_pt->expected_internal_type() == InternalType::kMapValue) {
-    DCHECK_EQ(const_pt->elems().size(), 0) << "Not an empty map";
-    YQLValue::set_map_value(const_pb);
-    return Status::OK();
-  }
+CHECKED_STATUS Executor::PTExprToPB(const PTEmptyMapOrSetExpr *const_pt, YQLValuePB *const_pb) {
+  switch (const_pt->expected_internal_type()) {
+    case InternalType::kMapValue:
+      YQLValue::set_map_value(const_pb);
+      break;
+    case InternalType::kSetValue:
+      YQLValue::set_set_value(const_pb);
+      break;
 
-  // This is a set.
+    default:
+      LOG(FATAL) << "Illegal datatype conversion";
+  }
+  return Status::OK();
+}
+
+CHECKED_STATUS Executor::PTExprToPB(const PTSetExpr *const_pt, YQLValuePB *const_pb) {
   YQLValue::set_set_value(const_pb);
   for (auto &elem : const_pt->elems()) {
     // Expected elem to be constant because CQL only allows collection of constants.

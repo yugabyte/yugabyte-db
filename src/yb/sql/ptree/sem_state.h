@@ -42,15 +42,8 @@ class WhereExprState;
 class SemState {
  public:
   // Constructor: Create a new sem_state to use and save the existing state to previous_state_.
-  // TODO(mihnea) Remove the overload after working with YQLType for collection.
   SemState(SemContext *sem_context,
-           DataType expected_yql_type_id = DataType::UNKNOWN_DATA,
-           InternalType expected_internal_type = InternalType::VALUE_NOT_SET,
-           const MCSharedPtr<MCString>& bindvar_name = nullptr,
-           const ColumnDesc *lhs_col = nullptr);
-
-  SemState(SemContext *sem_context,
-           const std::shared_ptr<YQLType>& expected_yql_type,
+           const std::shared_ptr<YQLType>& expected_yql_type = YQLType::Create(UNKNOWN_DATA),
            InternalType expected_internal_type = InternalType::VALUE_NOT_SET,
            const MCSharedPtr<MCString>& bindvar_name = nullptr,
            const ColumnDesc *lhs_col = nullptr);
@@ -67,11 +60,6 @@ class SemState {
   }
 
   // Update the expr states.
-  // TODO(mihnea) Remove the overload after working with YQLType for collection.
-  void SetExprState(DataType yql_type_id,
-                    InternalType internal_type,
-                    const MCSharedPtr<MCString>& bindvar_name = nullptr,
-                    const ColumnDesc *lhs_col = nullptr);
   void SetExprState(const std::shared_ptr<YQLType>& yql_type,
                     InternalType internal_type,
                     const MCSharedPtr<MCString>& bindvar_name = nullptr,
@@ -95,13 +83,11 @@ class SemState {
     return lhs_col_ != nullptr && lhs_col_->is_hash() ? lhs_col_ : nullptr;
   }
 
-  // Return the counter column descriptor on LHS if available.
-  const ColumnDesc *updating_counter() const {
-    return lhs_col_ != nullptr && lhs_col_->is_counter() ? lhs_col_ : nullptr;
-  }
-
   bool processing_if_clause() const { return processing_if_clause_; }
   void set_processing_if_clause(bool value) { processing_if_clause_ = value; }
+
+  bool processing_set_clause() const { return processing_set_clause_; }
+  void set_processing_set_clause(bool value) { processing_set_clause_ = value; }
 
   void set_processing_column_definition(bool val) {
     processing_column_definition_ = val;
@@ -138,6 +124,10 @@ class SemState {
 
   // State variables for if clause.
   bool processing_if_clause_;
+
+  // State variable for set clause.
+  bool processing_set_clause_;
+
 };
 
 }  // namespace sql

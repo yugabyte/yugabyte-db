@@ -28,6 +28,7 @@ enum class ExprOperator : int {
   kConst,
   kAlias,
   kRef,
+  kSubColRef,
   kBindVar,
   kBcall,
 
@@ -140,8 +141,13 @@ class PTExpr : public TreeNode {
   }
 
   // Predicate for null.
-  virtual bool is_null() {
+  virtual bool is_null() const {
     return yql_type_->main() == DataType::NULL_VALUE_TYPE;
+  }
+
+  // Predicate for empty (null) collections -- to be overriden by subclasses where needed
+  virtual bool is_empty_collection() const {
+    return false;
   }
 
   // Returns the operands of an expression.
@@ -202,9 +208,13 @@ class PTExpr : public TreeNode {
   virtual CHECKED_STATUS CheckRhsExpr(SemContext *sem_context);
 
   // Check if left and right values are compatible.
-  virtual CHECKED_STATUS AnalyzeLeftRightOperands(SemContext *sem_context,
-                                                  PTExpr::SharedPtr lhs,
-                                                  PTExpr::SharedPtr rhs);
+  virtual CHECKED_STATUS CheckInequalityOperands(SemContext *sem_context,
+                                                 PTExpr::SharedPtr lhs,
+                                                 PTExpr::SharedPtr rhs);
+  // Check if left and right values are compatible.
+  virtual CHECKED_STATUS CheckEqualityOperands(SemContext *sem_context,
+                                               PTExpr::SharedPtr lhs,
+                                               PTExpr::SharedPtr rhs);
 
   // Compare this node datatype with the expected type from the parent treenode.
   virtual CHECKED_STATUS CheckExpectedTypeCompatibility(SemContext *sem_context);
@@ -222,6 +232,37 @@ using PTExprListNode = TreeListNode<PTExpr>;
 //--------------------------------------------------------------------------------------------------
 // Tree Nodes for Collections -- treated as expressions with flexible arity
 //--------------------------------------------------------------------------------------------------
+
+
+class PTEmptyMapOrSetExpr : public PTExpr {
+ public:
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef MCSharedPtr<PTEmptyMapOrSetExpr> SharedPtr;
+  typedef MCSharedPtr<const PTEmptyMapOrSetExpr> SharedPtrConst;
+
+  //------------------------------------------------------------------------------------------------
+  // Constructor and destructor.
+  PTEmptyMapOrSetExpr(MemoryContext *memctx, YBLocation::SharedPtr loc) :
+  PTExpr(memctx, loc, ExprOperator::kCollection, yb::YQLOperator::YQL_OP_NOOP,
+      InternalType::VALUE_NOT_SET) { }
+
+  virtual ~PTEmptyMapOrSetExpr() { }
+
+  virtual bool is_empty_collection() const override {
+    return true;
+  }
+
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+
+  // Support for shared_ptr.
+  template<typename... TypeArgs>
+  inline static PTEmptyMapOrSetExpr::SharedPtr MakeShared(MemoryContext *memctx,
+                                                          TypeArgs &&... args) {
+    return MCMakeShared<PTEmptyMapOrSetExpr>(memctx, std::forward<TypeArgs>(args)...);
+  }
+
+};
 
 class PTMapExpr : public PTExpr {
  public:
@@ -338,6 +379,10 @@ class PTListExpr : public PTExpr {
 
   const MCList<PTExpr::SharedPtr>& elems() const {
     return value_;
+  }
+
+  virtual bool is_empty_collection() const override {
+    return value_.empty();
   }
 
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
@@ -848,6 +893,71 @@ class PTRef : public PTOperator0 {
 
  private:
   PTQualifiedName::SharedPtr name_;
+
+  // Fields that should be resolved by semantic analysis.
+  const ColumnDesc *desc_;
+};
+
+// SubColumn Reference. The datatype of this expression would need to be resolved by the analyzer.
+class PTSubscriptedColumn : public PTOperator0 {
+ public:
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef MCSharedPtr<PTSubscriptedColumn> SharedPtr;
+  typedef MCSharedPtr<const PTSubscriptedColumn> SharedPtrConst;
+
+  //------------------------------------------------------------------------------------------------
+  // Constructor and destructor.
+  PTSubscriptedColumn(MemoryContext *memctx,
+        YBLocation::SharedPtr loc,
+        const PTQualifiedName::SharedPtr& name,
+        const PTExprListNode::SharedPtr& args);
+  virtual ~PTSubscriptedColumn();
+
+  // Support for shared_ptr.
+  template<typename... TypeArgs>
+  inline static PTSubscriptedColumn::SharedPtr MakeShared(MemoryContext *memctx,
+                                                          TypeArgs&&... args) {
+    return MCMakeShared<PTSubscriptedColumn>(memctx, std::forward<TypeArgs>(args)...);
+  }
+
+  // Node semantics analysis.
+  void PrintSemanticAnalysisResult(SemContext *sem_context);
+
+  using PTOperatorExpr::AnalyzeOperator;
+  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context) override;
+
+  // Access function for name.
+  const PTQualifiedName::SharedPtr& name() const {
+    return name_;
+  }
+
+  // Access function for name.
+  const PTExprListNode::SharedPtr& args() const {
+    return args_;
+  }
+
+  // Construct bind variable name from the name of this column.
+  const MCSharedPtr<MCString>& bindvar_name() const {
+    return name_->bindvar_name();
+  }
+
+  // Access function for descriptor.
+  const ColumnDesc *desc() const {
+    return desc_;
+  }
+
+  // Node type.
+  virtual TreeNodeOpcode opcode() const override {
+    return TreeNodeOpcode::kPTSubscript;
+  }
+
+  // Analyze LHS expression.
+  virtual CHECKED_STATUS CheckLhsExpr(SemContext *sem_context) override;
+
+ private:
+  PTQualifiedName::SharedPtr name_;
+  PTExprListNode::SharedPtr args_;
 
   // Fields that should be resolved by semantic analysis.
   const ColumnDesc *desc_;

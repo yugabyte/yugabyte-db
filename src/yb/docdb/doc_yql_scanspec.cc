@@ -77,8 +77,7 @@ std::vector<PrimitiveValue> DocYQLScanSpec::range_components(const bool lower_bo
     size_t column_idx = schema_.num_hash_key_columns();
     for (const auto& value : range_values) {
       const auto& column = schema_.column(column_idx);
-      result.emplace_back(PrimitiveValue::FromYQLValuePB(
-          column.type(), value, column.sorting_type()));
+      result.emplace_back(PrimitiveValue::FromYQLValuePB(value, column.sorting_type()));
       column_idx++;
     }
   }

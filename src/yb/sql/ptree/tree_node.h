@@ -37,6 +37,7 @@ enum class TreeNodeOpcode {
   // Expressions.
   kPTExpr,
   kPTRef,
+  kPTSubscript,
   kPTAssign,
   kPTBindVar,
 };

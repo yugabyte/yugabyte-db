@@ -219,6 +219,7 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kTrue: FALLTHROUGH_INTENDED;
     case ValueType::kTombstone: FALLTHROUGH_INTENDED;
     case ValueType::kObject: FALLTHROUGH_INTENDED;
+    case ValueType::kArray: FALLTHROUGH_INTENDED;
     case ValueType::kRedisSet: return result;
 
     case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
@@ -273,7 +274,6 @@ string PrimitiveValue::ToValue() const {
       // Hashes are not allowed in a value.
       break;
 
-    case ValueType::kArray: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
@@ -527,6 +527,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
     case ValueType::kTrue: FALLTHROUGH_INTENDED;
     case ValueType::kObject: FALLTHROUGH_INTENDED;
+    case ValueType::kArray: FALLTHROUGH_INTENDED;
     case ValueType::kRedisSet: FALLTHROUGH_INTENDED;
     case ValueType::kTombstone:
       type_ = value_type;
@@ -597,9 +598,6 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       type_ = value_type;
       return Status::OK();
     }
-
-    case ValueType::kArray:
-      return STATUS(IllegalState, "Arrays are currently not supported");
 
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
     case ValueType::kUInt16Hash: FALLTHROUGH_INTENDED;
@@ -798,64 +796,58 @@ PrimitiveValue PrimitiveValue::FromKuduValue(DataType data_type, Slice slice) {
     }
 }
 
-PrimitiveValue PrimitiveValue::FromYQLValuePB(const std::shared_ptr<YQLType>& yql_type,
-                                              const YQLValuePB& value,
+PrimitiveValue PrimitiveValue::FromYQLValuePB(const YQLValuePB& value,
                                               ColumnSchema::SortingType sorting_type) {
-  if (YQLValue::IsNull(value)) {
-    return PrimitiveValue(ValueType::kTombstone);
-  }
-
   const auto sort_order = SortOrderFromColumnSchemaSortingType(sorting_type);
 
-  switch (yql_type->main()) {
-    case INT8:    return PrimitiveValue(YQLValue::int8_value(value), sort_order);
-    case INT16:   return PrimitiveValue(YQLValue::int16_value(value), sort_order);
-    case INT32:   return PrimitiveValue(YQLValue::int32_value(value), sort_order);
-    case INT64:   return PrimitiveValue(YQLValue::int64_value(value), sort_order);
-    case FLOAT:
+  switch (value.value_case()) {
+    case YQLValuePB::kInt8Value:    return PrimitiveValue(YQLValue::int8_value(value), sort_order);
+    case YQLValuePB::kInt16Value:   return PrimitiveValue(YQLValue::int16_value(value), sort_order);
+    case YQLValuePB::kInt32Value:   return PrimitiveValue(YQLValue::int32_value(value), sort_order);
+    case YQLValuePB::kInt64Value:   return PrimitiveValue(YQLValue::int64_value(value), sort_order);
+    case YQLValuePB::kFloatValue:
       if (sort_order != SortOrder::kAscending) {
         LOG(ERROR) << "Ignoring invalid sort order for FLOAT. Using SortOrder::kAscending.";
       }
       return PrimitiveValue::Double(YQLValue::float_value(value));
-    case DOUBLE:
+    case YQLValuePB::kDoubleValue:
       if (sort_order != SortOrder::kAscending) {
         LOG(ERROR) << "Ignoring invalid sort order for DOUBLE. Using SortOrder::kAscending.";
       }
       return PrimitiveValue::Double(YQLValue::double_value(value));
-    case DECIMAL: return PrimitiveValue::Decimal(YQLValue::decimal_value(value), sort_order);
-    case STRING:  return PrimitiveValue(YQLValue::string_value(value), sort_order);
-    case BINARY:
+    case YQLValuePB::kDecimalValue:
+      return PrimitiveValue::Decimal(YQLValue::decimal_value(value), sort_order);
+    case YQLValuePB::kStringValue:
+      return PrimitiveValue(YQLValue::string_value(value), sort_order);
+    case YQLValuePB::kBinaryValue:
       // TODO consider using dedicated encoding for binary (not string) to avoid overhead of
       // zero-encoding for keys (since zero-bytes could be common for binary)
       return PrimitiveValue(YQLValue::binary_value(value), sort_order);
-    case BOOL:
+    case YQLValuePB::kBoolValue:
       if (sort_order != SortOrder::kAscending) {
         LOG(ERROR) << "Ignoring invalid sort order for BOOL. Using SortOrder::kAscending.";
       }
       return PrimitiveValue(YQLValue::bool_value(value) ? ValueType::kTrue : ValueType::kFalse);
-    case TIMESTAMP: return PrimitiveValue(YQLValue::timestamp_value(value), sort_order);
-    case INET: return PrimitiveValue(YQLValue::inetaddress_value(value), sort_order);
-    case UUID: return PrimitiveValue(YQLValue::uuid_value(value), sort_order);
-    case TIMEUUID: return PrimitiveValue(YQLValue::timeuuid_value(value), sort_order);
+    case YQLValuePB::kTimestampValue:
+      return PrimitiveValue(YQLValue::timestamp_value(value), sort_order);
+    case YQLValuePB::kInetaddressValue:
+      return PrimitiveValue(YQLValue::inetaddress_value(value), sort_order);
+    case YQLValuePB::kUuidValue: return PrimitiveValue(YQLValue::uuid_value(value), sort_order);
+    case YQLValuePB::kTimeuuidValue:
+      return PrimitiveValue(YQLValue::timeuuid_value(value), sort_order);
+    case YQLValuePB::VALUE_NOT_SET:
+      return PrimitiveValue(ValueType::kTombstone);
 
-    case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
-    case VARINT: FALLTHROUGH_INTENDED;
-    case MAP: FALLTHROUGH_INTENDED;
-    case SET: FALLTHROUGH_INTENDED;
-    case LIST: FALLTHROUGH_INTENDED;
-    case TUPLE: FALLTHROUGH_INTENDED;
-    case TYPEARGS: FALLTHROUGH_INTENDED;
-    case UINT8:  FALLTHROUGH_INTENDED;
-    case UINT16: FALLTHROUGH_INTENDED;
-    case UINT32: FALLTHROUGH_INTENDED;
-    case UINT64: FALLTHROUGH_INTENDED;
-    case UNKNOWN_DATA:
+    case YQLValuePB::kMapValue: FALLTHROUGH_INTENDED;
+    case YQLValuePB::kSetValue: FALLTHROUGH_INTENDED;
+    case YQLValuePB::kListValue: FALLTHROUGH_INTENDED;
+    case YQLValuePB::kVarintValue:
       break;
 
     // default: fall through
   }
 
-  LOG(FATAL) << "Unsupported datatype in PrimitiveValue: " << yql_type->ToString();
+  LOG(FATAL) << "Unsupported datatype in PrimitiveValue: " << value.value_case();
 }
 
 void PrimitiveValue::ToYQLValuePB(const PrimitiveValue& primitive_value,
@@ -934,14 +926,14 @@ void PrimitiveValue::ToYQLValuePB(const PrimitiveValue& primitive_value,
   LOG(FATAL) << "Unsupported datatype " << yql_type->ToString();
 }
 
-PrimitiveValue PrimitiveValue::FromYQLExpressionPB(const std::shared_ptr<YQLType>& yql_type,
-                                                   const YQLExpressionPB& yql_expr,
+PrimitiveValue PrimitiveValue::FromYQLExpressionPB(const YQLExpressionPB& yql_expr,
                                                    ColumnSchema::SortingType sorting_type) {
   switch (yql_expr.expr_case()) {
     case YQLExpressionPB::ExprCase::kValue:
-      return FromYQLValuePB(yql_type, yql_expr.value(), sorting_type);
+      return FromYQLValuePB(yql_expr.value(), sorting_type);
     case YQLExpressionPB::ExprCase::kBfcall: FALLTHROUGH_INTENDED;
     case YQLExpressionPB::ExprCase::kColumnId: FALLTHROUGH_INTENDED;
+    case YQLExpressionPB::ExprCase::kSubscriptedCol: FALLTHROUGH_INTENDED;
     case YQLExpressionPB::ExprCase::kCondition: FALLTHROUGH_INTENDED;
     case YQLExpressionPB::ExprCase::EXPR_NOT_SET:
       break;

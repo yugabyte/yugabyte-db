@@ -126,7 +126,7 @@ CHECKED_STATUS PTSelectStmt::AnalyzeLimitClause(SemContext *sem_context) {
 
   RETURN_NOT_OK(limit_clause_->CheckRhsExpr(sem_context));
 
-  SemState sem_state(sem_context, DataType::INT64, InternalType::kInt64Value);
+  SemState sem_state(sem_context, YQLType::Create(INT64), InternalType::kInt64Value);
   sem_state.set_bindvar_name(PTBindVar::limit_bindvar_name());
   RETURN_NOT_OK(limit_clause_->Analyze(sem_context));
 

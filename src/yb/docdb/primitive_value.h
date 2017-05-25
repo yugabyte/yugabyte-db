@@ -161,8 +161,7 @@ class PrimitiveValue {
   static PrimitiveValue FromKuduValue(DataType data_type, Slice slice);
 
   // Construct a primitive value from a YQLValuePB.
-  static PrimitiveValue FromYQLValuePB(const std::shared_ptr<YQLType>& yql_type,
-                                       const YQLValuePB& value,
+  static PrimitiveValue FromYQLValuePB(const YQLValuePB& value,
                                        ColumnSchema::SortingType sorting_type);
 
   // Set a primitive value in a YQLValuePB.
@@ -171,8 +170,7 @@ class PrimitiveValue {
                            YQLValuePB* yql_val);
 
   // Construct a primitive value from a YQLExpressionPB.
-  static PrimitiveValue FromYQLExpressionPB(const std::shared_ptr<YQLType>& yql_type,
-                                            const YQLExpressionPB& yql_expr,
+  static PrimitiveValue FromYQLExpressionPB(const YQLExpressionPB& yql_expr,
                                             ColumnSchema::SortingType sorting_type);
 
   // Set a primitive value in a YQLExpressionPB.

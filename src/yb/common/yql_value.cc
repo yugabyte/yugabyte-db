@@ -552,14 +552,26 @@ bool operator <(const YQLValuePB& lhs, const YQLValuePB& rhs) { YQL_COMPARE(lhs,
 bool operator >(const YQLValuePB& lhs, const YQLValuePB& rhs) { YQL_COMPARE(lhs, rhs, >); }
 bool operator <=(const YQLValuePB& lhs, const YQLValuePB& rhs) { YQL_COMPARE(lhs, rhs, <=); }
 bool operator >=(const YQLValuePB& lhs, const YQLValuePB& rhs) { YQL_COMPARE(lhs, rhs, >=); }
-bool operator ==(const YQLValuePB& lhs, const YQLValuePB& rhs) { YQL_COMPARE(lhs, rhs, ==); }
+bool operator ==(const YQLValuePB& lhs, const YQLValuePB& rhs) {
+  // Equality holds for null values
+  if (YQLValue::IsNull(lhs) && YQLValue::IsNull(rhs)) {
+    return true;
+  }
+  YQL_COMPARE(lhs, rhs, ==);
+}
 bool operator !=(const YQLValuePB& lhs, const YQLValuePB& rhs) { YQL_COMPARE(lhs, rhs, !=); }
 
 bool operator <(const YQLValuePB& lhs, const YQLValue& rhs) { YQL_COMPARE(lhs, rhs, <); }
 bool operator >(const YQLValuePB& lhs, const YQLValue& rhs) { YQL_COMPARE(lhs, rhs, >); }
 bool operator <=(const YQLValuePB& lhs, const YQLValue& rhs) { YQL_COMPARE(lhs, rhs, <=); }
 bool operator >=(const YQLValuePB& lhs, const YQLValue& rhs) { YQL_COMPARE(lhs, rhs, >=); }
-bool operator ==(const YQLValuePB& lhs, const YQLValue& rhs) { YQL_COMPARE(lhs, rhs, ==); }
+bool operator ==(const YQLValuePB& lhs, const YQLValue& rhs) {
+  // Equality holds for null values
+  if (YQLValue::IsNull(lhs) && rhs.IsNull()) {
+    return true;
+  }
+  YQL_COMPARE(lhs, rhs, ==);
+}
 bool operator !=(const YQLValuePB& lhs, const YQLValue& rhs) { YQL_COMPARE(lhs, rhs, !=); }
 
 #undef YQL_COMPARE

@@ -141,10 +141,19 @@ class SubDocument : public PrimitiveValue {
     return static_cast<int>(object_container().size());
   }
 
+  enum WriteAction {
+    REPLACE, // default
+    EXTEND, // plus for map and set
+    APPEND, // plus for lists
+    PREPEND, // plus for lists
+    REMOVE_KEYS, // minus for map and set
+    REMOVE_VALUES, // minus for lists
+  };
+
   // Construct a SubDocument from a YQLValuePB.
-  static SubDocument FromYQLValuePB(const std::shared_ptr<YQLType>& yql_type,
-                                    const YQLValuePB& value,
-                                    ColumnSchema::SortingType sorting_type);
+  static SubDocument FromYQLValuePB(const YQLValuePB& value,
+                                    ColumnSchema::SortingType sorting_type,
+                                    WriteAction write_action);
 
   // Construct a YQLValuePB from a SubDocument.
   static void ToYQLValuePB(SubDocument doc,
@@ -156,16 +165,20 @@ class SubDocument : public PrimitiveValue {
                                 const std::shared_ptr<YQLType>& yql_type,
                                 YQLExpressionPB* yql_expr);
 
+
+
   // Construct a SubDocument from a YQLExpressionPB.
-  static SubDocument FromYQLExpressionPB(const std::shared_ptr<YQLType>& yql_type,
-                                         const YQLExpressionPB& yql_expr,
-                                         ColumnSchema::SortingType sorting_type,
-                                         const YQLValueMap& value_map);
+  static CHECKED_STATUS FromYQLExpressionPB(const YQLExpressionPB& yql_expr,
+                                            const ColumnSchema& column_schema,
+                                            const YQLValueMap& value_map,
+                                            SubDocument* subdoc,
+                                            WriteAction* write_action);
 
   // Evaluate the given YQLExpressionPB into YQLValue.
-  static void EvalYQLExpressionPB(const YQLExpressionPB& yql_expr,
-                                         const YQLValueMap& value_map,
-                                         YQLValueWithPB *result);
+  static CHECKED_STATUS EvalYQLExpressionPB(const YQLExpressionPB& yql_expr,
+                                            const YQLValueMap& value_map,
+                                            YQLValueWithPB *result,
+                                            WriteAction* write_action);
 
  private:
 
