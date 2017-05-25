@@ -303,7 +303,7 @@ char *LexProcessor::litbuf_udeescape(unsigned char escape) {
 
   // This relies on the subtle assumption that a UTF-8 expansion
   // cannot be longer than its escaped representation.
-  new_litbuf = static_cast<char *>(PTempMem()->Malloc(literallen_ + 1));
+  new_litbuf = static_cast<char *>(PTempMem()->AllocateBytes(literallen_ + 1));
 
   in = litbuf;
   out = new_litbuf;

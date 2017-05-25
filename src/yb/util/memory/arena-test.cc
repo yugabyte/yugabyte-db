@@ -28,6 +28,7 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/memory/memory.h"
+#include "yb/util/memory/mc_types.h"
 #include "yb/util/mem_tracker.h"
 
 DEFINE_int32(num_threads, 16, "Number of threads to test");
@@ -38,8 +39,56 @@ namespace yb {
 
 using std::shared_ptr;
 
+namespace {
+
+// Updates external counter when object is created/destroyed.
+// So one could check whether all objects is destoyed.
+class Trackable {
+ public:
+  explicit Trackable(int* counter)
+    : counter_(counter) {
+    ++*counter_;
+  }
+
+  Trackable(const Trackable& rhs)
+    : counter_(rhs.counter_) {
+    ++*counter_;
+  }
+
+  Trackable& operator=(const Trackable& rhs) {
+    --*counter_;
+    counter_ = rhs.counter_;
+    ++*counter_;
+    return *this;
+  }
+
+  ~Trackable() {
+    --*counter_;
+  }
+
+ private:
+  int* counter_;
+};
+
+// Checks that counter is zero on destruction, so all objects is destroyed.
+class CounterHolder {
+ public:
+  int counter = 0;
+
+  ~CounterHolder() {
+    CheckCounter();
+  }
+ private:
+  void CheckCounter() {
+    ASSERT_EQ(0, counter);
+  }
+};
+
+class CountedArena : public CounterHolder, public Arena {
+};
+
 template<class ArenaType>
-static void AllocateThread(ArenaType *arena, uint8_t thread_index) {
+void AllocateThread(ArenaType *arena, uint8_t thread_index) {
   std::vector<void *> ptrs;
   ptrs.reserve(FLAGS_allocs_per_thread);
 
@@ -62,18 +111,19 @@ static void AllocateThread(ArenaType *arena, uint8_t thread_index) {
 
 // Non-templated function to forward to above -- simplifies
 // boost::thread creation
-static void AllocateThreadTSArena(ThreadSafeArena *arena, uint8_t thread_index) {
+void AllocateThreadTSArena(ThreadSafeArena *arena, uint8_t thread_index) {
   AllocateThread(arena, thread_index);
 }
 
+constexpr size_t component_size = sizeof(internal::ArenaComponent<internal::ArenaTraits>);
+
+} // namespace
 
 TEST(TestArena, TestSingleThreaded) {
   Arena arena(128, 128);
 
   AllocateThread(&arena, 0);
 }
-
-
 
 TEST(TestArena, TestMultiThreaded) {
   CHECK_LT(FLAGS_num_threads, 256);
@@ -103,8 +153,7 @@ TEST(TestArena, TestAlignment) {
   }
 }
 
-void TestAllocations(const shared_ptr<MemTracker>& tracker, ArenaBase<false>* arena) {
-  const size_t component_size = sizeof(ArenaComponent<false>);
+void TestAllocations(const shared_ptr<MemTracker>& tracker, Arena* arena) {
   // Try some child operations.
   ASSERT_EQ(256, tracker->consumption());
   void *allocated = arena->AllocateBytes(256 - component_size);
@@ -131,7 +180,7 @@ TEST(TestArena, TestMemoryTrackerParentReferences) {
   }
   shared_ptr<MemoryTrackingBufferAllocator> allocator(
       new MemoryTrackingBufferAllocator(HeapBufferAllocator::Get(), child_tracker));
-  MemoryTrackingArena arena(256, 1024, allocator);
+  Arena arena(allocator.get(), 256, 1024);
 
   TestAllocations(child_tracker, &arena);
 }
@@ -140,7 +189,7 @@ TEST(TestArena, TestMemoryTrackingDontEnforce) {
   shared_ptr<MemTracker> mem_tracker = MemTracker::CreateTracker(1024, "arena-test-tracker");
   shared_ptr<MemoryTrackingBufferAllocator> allocator(
       new MemoryTrackingBufferAllocator(HeapBufferAllocator::Get(), mem_tracker));
-  MemoryTrackingArena arena(256, 1024, allocator);
+  Arena arena(allocator.get(), 256, 1024);
   TestAllocations(mem_tracker, &arena);
 
   // In DEBUG mode after Reset() the last component of an arena is
@@ -153,7 +202,7 @@ TEST(TestArena, TestMemoryTrackingDontEnforce) {
 
   // Allocate beyond allowed consumption. This should still go
   // through, since enforce_limit is false.
-  auto allocated = arena.AllocateBytes(1024 - sizeof(ArenaComponent<false>));
+  auto allocated = arena.AllocateBytes(1024 - component_size);
   ASSERT_TRUE(allocated);
 
   ASSERT_EQ(1536, mem_tracker->consumption());
@@ -165,9 +214,8 @@ TEST(TestArena, TestMemoryTrackingEnforced) {
       new MemoryTrackingBufferAllocator(HeapBufferAllocator::Get(), mem_tracker,
                                         // enforce limit
                                         true));
-  MemoryTrackingArena arena(256, 1024, allocator);
+  Arena arena(allocator.get(), 256, 1024);
   ASSERT_EQ(256, mem_tracker->consumption());
-  const size_t component_size = sizeof(ArenaComponent<false>);
   void *allocated = arena.AllocateBytes(256 - component_size);
   ASSERT_TRUE(allocated);
   ASSERT_EQ(256, mem_tracker->consumption());
@@ -178,8 +226,8 @@ TEST(TestArena, TestMemoryTrackingEnforced) {
 
 TEST(TestArena, TestSTLAllocator) {
   Arena a(256, 256 * 1024);
-  typedef vector<int, ArenaAllocator<int, false> > ArenaVector;
-  ArenaAllocator<int, false> alloc(&a);
+  typedef vector<int, ArenaAllocator<int>> ArenaVector;
+  ArenaAllocator<int> alloc(&a);
   ArenaVector v(alloc);
   for (int i = 0; i < 10000; i++) {
     v.push_back(i);
@@ -187,6 +235,71 @@ TEST(TestArena, TestSTLAllocator) {
   for (int i = 0; i < 10000; i++) {
     ASSERT_EQ(i, v[i]);
   }
+}
+
+TEST(TestArena, TestUniquePtr) {
+  CountedArena ca;
+  MCUniPtr<Trackable> trackable(ca.NewObject<Trackable>(&ca.counter));
+  ASSERT_EQ(1, ca.counter);
+}
+
+TEST(TestArena, TestAllocateShared) {
+  CountedArena ca;
+  auto trackable = ca.AllocateShared<Trackable>(&ca.counter);
+  ASSERT_EQ(1, ca.counter);
+}
+
+TEST(TestArena, TestToShared) {
+  CountedArena ca;
+  auto trackable = ca.ToShared(ca.NewObject<Trackable>(&ca.counter));
+  ASSERT_EQ(1, ca.counter);
+}
+
+TEST(TestArena, TestVector) {
+  CountedArena ca;
+  MCVector<Trackable> vector(&ca);
+  vector.emplace_back(&ca.counter);
+  ASSERT_EQ(1, ca.counter);
+}
+
+TEST(TestArena, TestList) {
+  CountedArena ca;
+  MCList<Trackable> list(&ca);
+  list.emplace_back(&ca.counter);
+  ASSERT_EQ(1, ca.counter);
+}
+
+TEST(TestArena, TestMap) {
+  CountedArena ca;
+  MCMap<int, Trackable> map(&ca);
+  map.emplace(1, Trackable(&ca.counter));
+  ASSERT_EQ(1, ca.counter);
+}
+
+TEST(TestArena, TestString) {
+  CountedArena ca;
+  MCMap<MCString, Trackable> map(&ca);
+  MCString one("1", &ca);
+  MCString ten("10", &ca);
+  map.emplace(one, Trackable(&ca.counter));
+  ASSERT_EQ(1, ca.counter);
+
+  // Check correctness of comparison operators.
+  ASSERT_LT(one, ten);
+  ASSERT_FALSE(one < one);
+  ASSERT_FALSE(ten < one);
+
+  ASSERT_LE(one, ten);
+  ASSERT_LE(one, one);
+  ASSERT_FALSE(ten <= one);
+
+  ASSERT_GE(ten, one);
+  ASSERT_GE(one, one);
+  ASSERT_FALSE(one >= ten);
+
+  ASSERT_GT(ten, one);
+  ASSERT_FALSE(one > one);
+  ASSERT_FALSE(one > ten);
 }
 
 } // namespace yb

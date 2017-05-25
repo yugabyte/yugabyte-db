@@ -150,7 +150,7 @@ class MRSRow {
 };
 
 struct MSBTreeTraits : public btree::BTreeTraits {
-  typedef ThreadSafeMemoryTrackingArena ArenaType;
+  typedef ThreadSafeArena ArenaType;
 };
 
 // Define an MRSRow instance using on-stack storage.
@@ -277,7 +277,7 @@ class MemRowSet : public RowSet,
                                     gscoped_ptr<CompactionInput>* out) const override;
 
   // Return the Schema for the rows in this memrowset.
-   const Schema &schema() const {
+  const Schema &schema() const {
     return schema_;
   }
 
@@ -350,7 +350,7 @@ class MemRowSet : public RowSet,
   std::shared_ptr<MemTracker> parent_tracker_;
   std::shared_ptr<MemTracker> mem_tracker_;
   std::shared_ptr<MemoryTrackingBufferAllocator> allocator_;
-  std::shared_ptr<ThreadSafeMemoryTrackingArena> arena_;
+  std::shared_ptr<ThreadSafeArena> arena_;
 
   typedef btree::CBTreeIterator<MSBTreeTraits> MSBTIter;
 
@@ -514,4 +514,4 @@ inline const Schema* MRSRow::schema() const {
 } // namespace tablet
 } // namespace yb
 
-#endif
+#endif // YB_TABLET_MEMROWSET_H

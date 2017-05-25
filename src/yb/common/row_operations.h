@@ -24,11 +24,12 @@
 #include "yb/common/row_changelist.h"
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/gutil/macros.h"
+
+#include "yb/util/memory/arena_fwd.h"
 #include "yb/util/status.h"
 
 namespace yb {
 
-class Arena;
 class YBPartialRow;
 class Schema;
 

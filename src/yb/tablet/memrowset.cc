@@ -17,10 +17,11 @@
 
 #include "yb/tablet/memrowset.h"
 
-#include <gflags/gflags.h>
-#include <glog/logging.h>
 #include <string>
 #include <vector>
+
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 
 #include "yb/common/common.pb.h"
 #include "yb/common/generic_iterators.h"
@@ -85,8 +86,7 @@ MemRowSet::MemRowSet(int64_t id,
     parent_tracker_(parent_tracker),
     mem_tracker_(CreateMemTrackerForMemRowSet(id, parent_tracker)),
     allocator_(new MemoryTrackingBufferAllocator(HeapBufferAllocator::Get(), mem_tracker_)),
-    arena_(new ThreadSafeMemoryTrackingArena(kInitialArenaSize, kMaxArenaBufferSize,
-                                             allocator_)),
+    arena_(new ThreadSafeArena(allocator_.get(), kInitialArenaSize, kMaxArenaBufferSize)),
     tree_(arena_),
     debug_insert_count_(0),
     debug_update_count_(0),

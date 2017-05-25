@@ -24,12 +24,13 @@
 #include "yb/common/rowblock.h"
 #include "yb/common/schema.h"
 #include "yb/common/iterator_stats.h"
+
+#include "yb/util/memory/arena_fwd.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 
 namespace yb {
 
-class Arena;
 class RowBlock;
 class ScanSpec;
 
@@ -114,4 +115,5 @@ class ColumnwiseIterator : public virtual IteratorBase {
 };
 
 } // namespace yb
-#endif
+
+#endif // YB_COMMON_ITERATOR_H

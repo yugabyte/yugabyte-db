@@ -59,8 +59,8 @@ DeltaMemStore::DeltaMemStore(int64_t id,
   }
   allocator_.reset(new MemoryTrackingBufferAllocator(
       HeapBufferAllocator::Get(), mem_tracker_));
-  arena_.reset(new ThreadSafeMemoryTrackingArena(
-      kInitialArenaSize, kMaxArenaBufferSize, allocator_));
+  arena_.reset(new ThreadSafeArena(
+      allocator_.get(), kInitialArenaSize, kMaxArenaBufferSize));
   tree_.reset(new DMSTree(arena_));
 }
 

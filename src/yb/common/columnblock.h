@@ -26,7 +26,6 @@
 
 namespace yb {
 
-class Arena;
 class ColumnBlockCell;
 
 // A block of data all belonging to a single column.
@@ -239,4 +238,5 @@ class ScopedColumnBlock : public ColumnBlock {
 };
 
 } // namespace yb
-#endif
+
+#endif // YB_COMMON_COLUMNBLOCK_H

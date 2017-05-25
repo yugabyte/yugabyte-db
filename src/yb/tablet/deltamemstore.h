@@ -17,12 +17,12 @@
 #ifndef YB_TABLET_DELTAMEMSTORE_H
 #define YB_TABLET_DELTAMEMSTORE_H
 
-#include <boost/thread/mutex.hpp>
 #include <deque>
-#include <gtest/gtest_prod.h>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include <gtest/gtest_prod.h>
 
 #include "yb/common/columnblock.h"
 #include "yb/common/rowblock.h"
@@ -52,7 +52,7 @@ class DMSIterator;
 class Mutation;
 
 struct DMSTreeTraits : public btree::BTreeTraits {
-  typedef ThreadSafeMemoryTrackingArena ArenaType;
+  typedef ThreadSafeArena ArenaType;
 };
 
 // In-memory storage for data which has been recently updated.
@@ -153,7 +153,7 @@ class DeltaMemStore : public DeltaStore,
   std::shared_ptr<MemTracker> mem_tracker_;
   std::shared_ptr<MemoryTrackingBufferAllocator> allocator_;
 
-  std::shared_ptr<ThreadSafeMemoryTrackingArena> arena_;
+  std::shared_ptr<ThreadSafeArena> arena_;
 
   // Concurrent B-Tree storing <key index> -> RowChangeList
   gscoped_ptr<DMSTree> tree_;
@@ -205,7 +205,6 @@ class DMSIterator : public DeltaIterator {
   virtual bool HasNext() override;
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(DMSIterator);
   FRIEND_TEST(TestDeltaMemStore, TestIteratorDoesUpdates);
   FRIEND_TEST(TestDeltaMemStore, TestCollectMutations);
   friend class DeltaMemStore;
@@ -272,9 +271,10 @@ class DMSIterator : public DeltaIterator {
   // Temporary buffer used for RowChangeList projection.
   faststring delta_buf_;
 
+  DISALLOW_COPY_AND_ASSIGN(DMSIterator);
 };
 
 } // namespace tablet
 } // namespace yb
 
-#endif
+#endif // YB_TABLET_DELTAMEMSTORE_H

@@ -20,9 +20,8 @@ using std::string;
 ProcessContextBase::ProcessContextBase(const char *stmt, size_t stmt_len)
     : stmt_(stmt),
       stmt_len_(stmt_len),
-      ptemp_mem_(new MemoryContext()),
       error_code_(ErrorCode::SUCCESS),
-      error_msgs_(ptemp_mem_.get()) {
+      error_msgs_(&ptemp_mem_) {
 }
 
 ProcessContextBase::~ProcessContextBase() {

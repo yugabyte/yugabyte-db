@@ -10,7 +10,9 @@
 #include "yb/cqlserver/cql_server.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/cql_rpc.h"
+
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/mem_tracker.h"
 
 DEFINE_int64(cql_service_max_prepared_statement_size_bytes, 0,
              "The maximum amount of memory the CQL proxy should use to maintain prepared "

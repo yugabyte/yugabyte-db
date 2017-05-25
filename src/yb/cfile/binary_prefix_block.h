@@ -21,10 +21,10 @@
 
 #include "yb/cfile/block_encodings.h"
 #include "yb/common/rowid.h"
+#include "yb/util/memory/arena_fwd.h"
 
 namespace yb {
 
-class Arena;
 class ColumnDataView;
 
 namespace cfile {

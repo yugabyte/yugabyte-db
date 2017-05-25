@@ -39,9 +39,76 @@ DEFINE_int64(arena_warn_threshold_bytes, 256*1024*1024,
 TAG_FLAG(arena_warn_threshold_bytes, hidden);
 
 namespace yb {
+namespace internal {
 
-template <bool THREADSAFE>
-ArenaBase<THREADSAFE>::ArenaBase(
+template <class Traits>
+uint8_t* ArenaComponent<Traits>::AllocateBytesAligned(const size_t size, const size_t alignment) {
+  // Special case check the allowed alignments. Currently, we only ensure
+  // the allocated buffer components are 16-byte aligned, and the code path
+  // doesn't support larger alignment.
+  DCHECK(alignment == 1 || alignment == 2 || alignment == 4 ||
+         alignment == 8 || alignment == 16)
+    << "bad alignment: " << alignment;
+
+  for (;;) {
+    uint8_t* position = position_;
+
+    const auto aligned = align_up(position, alignment);
+    const auto new_position = aligned + size;
+
+    if (PREDICT_TRUE(new_position <= end_)) {
+      bool success = Traits::CompareExchange(new_position, &position_, &position);
+      if (PREDICT_TRUE(success)) {
+        AsanUnpoison(aligned, size);
+        return aligned;
+      }
+    } else {
+      return nullptr;
+    }
+  }
+}
+
+template <class Traits>
+inline void ArenaComponent<Traits>::AsanUnpoison(const void* addr, size_t size) {
+#ifdef ADDRESS_SANITIZER
+  std::lock_guard<mutex_type> l(asan_lock_);
+  ASAN_UNPOISON_MEMORY_REGION(addr, size);
+#endif
+}
+
+// Fast-path allocation should get inlined, and fall-back
+// to non-inline function call for allocation failure
+template <class Traits>
+inline void *ArenaBase<Traits>::AllocateBytesAligned(const size_t size, const size_t align) {
+  void* result = AcquireLoadCurrent()->AllocateBytesAligned(size, align);
+  if (PREDICT_TRUE(result != nullptr)) return result;
+  return AllocateBytesFallback(size, align);
+}
+
+template <class Traits>
+inline uint8_t* ArenaBase<Traits>::AddSlice(const Slice& value) {
+  return reinterpret_cast<uint8_t *>(AddBytes(value.data(), value.size()));
+}
+
+template <class Traits>
+inline void *ArenaBase<Traits>::AddBytes(const void *data, size_t len) {
+  void* destination = AllocateBytes(len);
+  if (destination == nullptr) return nullptr;
+  memcpy(destination, data, len);
+  return destination;
+}
+
+template <class Traits>
+inline bool ArenaBase<Traits>::RelocateSlice(const Slice &src, Slice *dst) {
+  void* destination = AllocateBytes(src.size());
+  if (destination == nullptr) return false;
+  memcpy(destination, src.data(), src.size());
+  *dst = Slice(reinterpret_cast<uint8_t *>(destination), src.size());
+  return true;
+}
+
+template <class Traits>
+ArenaBase<Traits>::ArenaBase(
   BufferAllocator* const buffer_allocator,
   size_t initial_buffer_size,
   size_t max_buffer_size)
@@ -50,20 +117,20 @@ ArenaBase<THREADSAFE>::ArenaBase(
   AddComponentUnlocked(NewBuffer(initial_buffer_size, 0));
 }
 
-template <bool THREADSAFE>
-ArenaBase<THREADSAFE>::ArenaBase(size_t initial_buffer_size, size_t max_buffer_size)
+template <class Traits>
+ArenaBase<Traits>::ArenaBase(size_t initial_buffer_size, size_t max_buffer_size)
     : buffer_allocator_(HeapBufferAllocator::Get()),
       max_buffer_size_(max_buffer_size) {
   AddComponentUnlocked(NewBuffer(initial_buffer_size, 0));
 }
 
-template <bool THREADSAFE>
-ArenaBase<THREADSAFE>::~ArenaBase() {
+template <class Traits>
+ArenaBase<Traits>::~ArenaBase() {
   AcquireLoadCurrent()->Destroy(buffer_allocator_);
 }
 
-template <bool THREADSAFE>
-void *ArenaBase<THREADSAFE>::AllocateBytesFallback(const size_t size, const size_t align) {
+template <class Traits>
+void *ArenaBase<Traits>::AllocateBytesFallback(const size_t size, const size_t align) {
   std::lock_guard<mutex_type> lock(component_lock_);
 
   // It's possible another thread raced with us and already allocated
@@ -104,8 +171,8 @@ void *ArenaBase<THREADSAFE>::AllocateBytesFallback(const size_t size, const size
   return result;
 }
 
-template <bool THREADSAFE>
-Buffer ArenaBase<THREADSAFE>::NewBufferInTwoAttempts(size_t requested_size,
+template <class Traits>
+Buffer ArenaBase<Traits>::NewBufferInTwoAttempts(size_t requested_size,
                                                      size_t mid_size,
                                                      size_t min_size) {
   Buffer buffer = NewBuffer(requested_size, mid_size);
@@ -115,8 +182,8 @@ Buffer ArenaBase<THREADSAFE>::NewBufferInTwoAttempts(size_t requested_size,
   return buffer;
 }
 
-template <bool THREADSAFE>
-Buffer ArenaBase<THREADSAFE>::NewBuffer(size_t requested_size, size_t minimum_size) {
+template <class Traits>
+Buffer ArenaBase<Traits>::NewBuffer(size_t requested_size, size_t minimum_size) {
   const size_t min_possible = sizeof(Component) * 2;
   requested_size = std::max(requested_size, min_possible);
   minimum_size = std::max(minimum_size, min_possible);
@@ -133,8 +200,8 @@ Buffer ArenaBase<THREADSAFE>::NewBuffer(size_t requested_size, size_t minimum_si
 }
 
 // LOCKING: component_lock_ must be held by the current thread.
-template <bool THREADSAFE>
-void ArenaBase<THREADSAFE>::AddComponentUnlocked(Buffer buffer, Component* component) {
+template <class Traits>
+void ArenaBase<Traits>::AddComponentUnlocked(Buffer buffer, Component* component) {
   if (!component) {
     ASAN_UNPOISON_MEMORY_REGION(buffer.data(), sizeof(Component));
     component = new (buffer.data()) Component(buffer.size(), AcquireLoadCurrent());
@@ -152,8 +219,8 @@ void ArenaBase<THREADSAFE>::AddComponentUnlocked(Buffer buffer, Component* compo
   }
 }
 
-template <bool THREADSAFE>
-void ArenaBase<THREADSAFE>::Reset() {
+template <class Traits>
+void ArenaBase<Traits>::Reset() {
   std::lock_guard<mutex_type> lock(component_lock_);
 
   auto* current = CHECK_NOTNULL(AcquireLoadCurrent());
@@ -172,15 +239,15 @@ void ArenaBase<THREADSAFE>::Reset() {
 #endif
 }
 
-template <bool THREADSAFE>
-size_t ArenaBase<THREADSAFE>::memory_footprint() const {
+template <class Traits>
+size_t ArenaBase<Traits>::memory_footprint() const {
   std::lock_guard<mutex_type> lock(component_lock_);
   return arena_footprint_;
 }
 
 // Explicit instantiation.
-template class ArenaBase<true>;
-template class ArenaBase<false>;
+template class ArenaBase<ThreadSafeArenaTraits>;
+template class ArenaBase<ArenaTraits>;
 
-
+}  // namespace internal
 }  // namespace yb

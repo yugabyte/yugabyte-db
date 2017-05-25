@@ -18,10 +18,9 @@
 #ifndef YB_CFILE_CFILE_WRITER_H
 #define YB_CFILE_CFILE_WRITER_H
 
-#include <boost/utility.hpp>
-#include <unordered_map>
-#include <stdint.h>
+#include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -37,12 +36,13 @@
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/stringpiece.h"
+
 #include "yb/util/env.h"
 #include "yb/util/rle-encoding.h"
 #include "yb/util/status.h"
+#include "yb/util/memory/arena_fwd.h"
 
 namespace yb {
-class Arena;
 
 namespace cfile {
 using std::unordered_map;
@@ -159,8 +159,6 @@ class CFileWriter {
   }
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(CFileWriter);
-
   friend class IndexTreeBuilder;
 
   // Append the given block into the file.
@@ -217,10 +215,12 @@ class CFileWriter {
     kWriterFinished
   };
   State state_;
+
+  DISALLOW_COPY_AND_ASSIGN(CFileWriter);
 };
 
 
 } // namespace cfile
 } // namespace yb
 
-#endif
+#endif // YB_CFILE_CFILE_WRITER_H

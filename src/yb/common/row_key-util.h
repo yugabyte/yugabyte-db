@@ -21,9 +21,10 @@
 
 #include "yb/gutil/port.h"
 
+#include "yb/util/memory/arena_fwd.h"
+
 namespace yb {
 
-class Arena;
 class ContiguousRow;
 
 namespace row_key_util {

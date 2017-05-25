@@ -12,7 +12,7 @@
 #include "yb/sql/parser/parse_context.h"
 #include "yb/sql/parser/scanner.h"
 #include "yb/sql/util/errcodes.h"
-#include "yb/util/memory/memory_context.h"
+#include "yb/util/memory/arena.h"
 
 namespace yb {
 namespace sql {

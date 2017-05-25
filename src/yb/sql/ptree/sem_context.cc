@@ -19,7 +19,7 @@ SemContext::SemContext(const char *sql_stmt,
                        SqlEnv *sql_env,
                        bool refresh_cache)
     : ProcessContext(sql_stmt, stmt_len, move(parse_tree)),
-      symtab_(ptemp_mem_.get()),
+      symtab_(&ptemp_mem_),
       sql_env_(sql_env),
       refresh_cache_(refresh_cache),
       cache_used_(false),

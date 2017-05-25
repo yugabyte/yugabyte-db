@@ -663,7 +663,6 @@ other                     .
 
 <xdolq>{dolqdelim} {
   if (strcmp(yytext, dolqstart_) == 0) {
-    PTempMem()->Free(dolqstart_);
     dolqstart_ = NULL;
     BEGIN(INITIAL);
     return GramProcessor::make_SCONST(ScanLiteral(), cursor_);

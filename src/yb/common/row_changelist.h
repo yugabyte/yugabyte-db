@@ -20,19 +20,21 @@
 #ifndef YB_COMMON_ROW_CHANGELIST_H
 #define YB_COMMON_ROW_CHANGELIST_H
 
-#include <gtest/gtest_prod.h>
 #include <string>
 #include <vector>
 
+#include <gtest/gtest_prod.h>
+
 #include "yb/common/row.h"
 #include "yb/gutil/casts.h"
+
 #include "yb/util/bitmap.h"
+#include "yb/util/memory/arena_fwd.h"
 
 namespace yb {
 
 class faststring;
 
-class Arena;
 class ColumnBlock;
 class RowBlockRow;
 class Schema;
@@ -385,4 +387,4 @@ MAKE_ENUM_LIMITS(yb::RowChangeList::ChangeType,
                  yb::RowChangeList::ChangeType_min,
                  yb::RowChangeList::ChangeType_max);
 
-#endif
+#endif // YB_COMMON_ROW_CHANGELIST_H

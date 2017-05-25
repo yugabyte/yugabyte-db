@@ -27,7 +27,9 @@
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/threading/thread_collision_warner.h"
+
 #include "yb/util/locks.h"
+#include "yb/util/memory/arena_fwd.h"
 
 // Adopt a Trace on the current thread for the duration of the current
 // scope. The old current Trace is restored when the scope is exited.
@@ -57,7 +59,6 @@
 
 namespace yb {
 
-class ThreadSafeArena;
 struct TraceEntry;
 
 // A trace for a request or other process. This supports collecting trace entries

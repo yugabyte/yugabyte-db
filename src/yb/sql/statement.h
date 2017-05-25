@@ -15,6 +15,8 @@
 
 #include "yb/common/yql_value.h"
 
+#include "yb/util/monotime.h"
+
 namespace yb {
 namespace sql {
 

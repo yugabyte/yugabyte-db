@@ -41,8 +41,8 @@ namespace yb {
 // If buf_[0] == 0xff:
 //   buf_[1..sizeof(uint8_t *)] == pointer to indirect data, minus the MSB.
 //   buf_[sizeof(uint8_t *)..] = unused
-//     TODO: we could store a prefix of the indirect data in this unused space
-//     in the future, which might be able to short-circuit some comparisons
+// TODO: we could store a prefix of the indirect data in this unused space
+// in the future, which might be able to short-circuit some comparisons
 //
 // The indirect data which is pointed to is stored as a 4 byte length followed by
 // the actual data.
@@ -120,7 +120,8 @@ class InlineSlice {
 
       // Set up the pointed-to data before setting a pointer to it. This ensures that readers
       // never see a pointer to an invalid region (i.e one without a proper length header).
-      void *in_arena = CHECK_NOTNULL(alloc_arena->AllocateBytes(len + sizeof(uint32_t)));
+      void *in_arena = CHECK_NOTNULL(alloc_arena->AllocateBytesAligned(len + sizeof(uint32_t),
+                                                                       alignof(uint32_t)));
       *reinterpret_cast<uint32_t *>(in_arena) = len;
       memcpy(reinterpret_cast<uint8_t *>(in_arena) + sizeof(uint32_t), src, len);
       set_ptr(in_arena);
@@ -179,4 +180,4 @@ class InlineSlice {
 
 } // namespace yb
 
-#endif
+#endif // YB_UTIL_INLINE_SLICE_H

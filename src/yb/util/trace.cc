@@ -210,7 +210,7 @@ void Trace::SubstituteAndTrace(const char* file_path,
 
 TraceEntry* Trace::NewEntry(int msg_len, const char* file_path, int line_number) {
   int size = sizeof(TraceEntry) + msg_len;
-  uint8_t* dst = reinterpret_cast<uint8_t*>(arena_->AllocateBytes(size));
+  uint8_t* dst = static_cast<uint8_t*>(arena_->AllocateBytesAligned(size, alignof(TraceEntry)));
   if (dst == nullptr) {
     LOG(ERROR) << "NewEntry(msg_len, " << file_path << ", " << line_number
         << ") received nullptr from AllocateBytes.\n So far:" << DumpToString(true);

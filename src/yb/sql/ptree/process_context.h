@@ -50,7 +50,7 @@ class ProcessContextBase {
 
   // Memory pool for allocating and deallocating operating memory spaces during a process.
   MemoryContext *PTempMem() const {
-    return ptemp_mem_.get();
+    return &ptemp_mem_;
   }
 
   // Access function for stmt_.
@@ -84,7 +84,7 @@ class ProcessContextBase {
 
   // Temporary memory pool is used during a process. This pool is deleted as soon as the process is
   // completed.
-  MemoryContext::UniPtr ptemp_mem_;
+  mutable Arena ptemp_mem_;
 
   // Latest parsing or scanning error code.
   ErrorCode error_code_;

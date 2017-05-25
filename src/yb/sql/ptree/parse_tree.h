@@ -41,30 +41,32 @@ class ParseTree {
 
   // Access function to ptree_mem_.
   MemoryContext *PTreeMem() const {
-    return ptree_mem_.get();
+    return &ptree_mem_;
   }
 
   // Access function to psem_mem_.
   MemoryContext *PSemMem() const {
-    return psem_mem_.get();
+    return &psem_mem_;
   }
 
  private:
-  //------------------------------------------------------------------------------------------------
-  // Private data members.
-  TreeNode::SharedPtr root_;
+  std::shared_ptr<BufferAllocator> buffer_allocator_;
 
   // Parse tree memory pool. This pool is used to allocate parse tree and its nodes. This pool
   // should be part of the generated parse tree that is stored within parse_context. Once the
   // parse tree is destructed, it's also gone.
-  MemoryContext::UniPtr ptree_mem_;
+  mutable Arena ptree_mem_;
 
   // Semantic analysis memory pool. This pool is used to allocate memory for storing semantic
   // analysis results in the parse tree. When a parse tree is analyzed, the parse tree is reset to
   // release the previous analysis result and this pool should be reset to free the associated
   // memory. This pool should be part of the generated parse tree also that is stored within
   // sem_context. Once the parse tree is destructed, it's also gone too.
-  MemoryContext::UniPtr psem_mem_;
+  mutable Arena psem_mem_;
+
+  //------------------------------------------------------------------------------------------------
+  // Private data members.
+  TreeNode::SharedPtr root_;
 };
 
 }  // namespace sql

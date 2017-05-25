@@ -14,23 +14,25 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_COMMON_MERGE_ITERATOR_H
-#define YB_COMMON_MERGE_ITERATOR_H
+#ifndef YB_COMMON_GENERIC_ITERATORS_H
+#define YB_COMMON_GENERIC_ITERATORS_H
 
 #include <deque>
-#include <gtest/gtest_prod.h>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include <gtest/gtest_prod.h>
+
 #include "yb/common/iterator.h"
 #include "yb/common/scan_spec.h"
+
 #include "yb/util/object_pool.h"
+#include "yb/util/memory/arena_fwd.h"
 
 namespace yb {
 
-class Arena;
 class MergeIterState;
 
 // An iterator which merges the results of other iterators, comparing
@@ -223,4 +225,5 @@ class PredicateEvaluatingIterator : public RowwiseIterator {
 };
 
 } // namespace yb
-#endif
+
+#endif // YB_COMMON_GENERIC_ITERATORS_H

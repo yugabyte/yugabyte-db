@@ -11,9 +11,6 @@
 // pointers of the unique pointers.
 //
 // Examples:
-// - Memory context.
-//     MemoryContext::UniPtr mem_ctx = unique_ptr<MemoryContext>(new MemoryContext());
-//
 // - String type.
 //     MCString mc_string(memctx.get(), "abc");
 //     mc_string += "xyz";
@@ -43,27 +40,27 @@
 
 #include <boost/tti/has_type.hpp>
 
-#include "yb/util/memory/memory_context.h"
+#include "yb/util/memory/arena.h"
 
 namespace yb {
 
 //--------------------------------------------------------------------------------------------------
 // Buffer (char*) support.
-char *MCStrdup(MemoryContext *memctx, const char *str);
+char *MCStrdup(Arena *arena, const char *str);
 
 // Class MCList.
-template<class MCObject> using MCList = std::list<MCObject, MCAllocator<MCObject>>;
+template<class MCObject> using MCList = std::list<MCObject, ArenaAllocator<MCObject>>;
 
 // Class MCVector.
-template<class MCObject> using MCVector = std::vector<MCObject, MCAllocator<MCObject>>;
+template<class MCObject> using MCVector = std::vector<MCObject, ArenaAllocator<MCObject>>;
 
 // Class MCSet.
 template<class MCObject, class Compare = std::less<MCObject>>
-using MCSet = std::set<MCObject, Compare, MCAllocator<MCObject>>;
+using MCSet = std::set<MCObject, Compare, ArenaAllocator<MCObject>>;
 
 // Class MCMap.
 template<class MCKey, class MCObject, class Compare = std::less<MCKey>>
-using MCMap = std::map<MCKey, MCObject, Compare, MCAllocator<MCObject>>;
+using MCMap = std::map<MCKey, MCObject, Compare, ArenaAllocator<MCObject>>;
 
 //--------------------------------------------------------------------------------------------------
 // String support.
@@ -71,7 +68,14 @@ using MCMap = std::map<MCKey, MCObject, Compare, MCAllocator<MCObject>>;
 //   MCString s(memctx);
 //   MCSharedPtr<MCString> s = MCMakeSharedString(memctx);
 
-typedef std::basic_string<char, std::char_traits<char>, MCAllocator<char>> MCString;
+typedef std::basic_string<char, std::char_traits<char>, ArenaAllocator<char>> MCString;
+
+typedef Arena MemoryContext;
+
+//--------------------------------------------------------------------------------------------------
+// Context-control shared_ptr and unique_ptr
+template<class MCObject> using MCUniPtr = std::unique_ptr<MCObject, ArenaObjectDeleter>;
+template<class MCObject> using MCSharedPtr = std::shared_ptr<MCObject>;
 
 //--------------------------------------------------------------------------------------------------
 // User-defined object support.
@@ -83,20 +87,20 @@ BOOST_TTI_HAS_TYPE(allocator_type);
 
 template<class MCObject, typename... TypeArgs>
 typename std::enable_if<!has_type_allocator_type<MCObject>::value, MCSharedPtr<MCObject>>::type
-MCAllocateSharedHelper(MCObject*, MCAllocator<MCObject> allocator, TypeArgs&&... args) {
+MCAllocateSharedHelper(MCObject*, ArenaAllocator<MCObject> allocator, TypeArgs&&... args) {
   return std::allocate_shared<MCObject>(allocator,
-                                        allocator.memory_context(),
+                                        allocator.arena(),
                                         std::forward<TypeArgs>(args)...);
 }
 
 template<class MCObject, typename... TypeArgs>
 typename std::enable_if<has_type_allocator_type<MCObject>::value, MCSharedPtr<MCObject>>::type
-MCAllocateSharedHelper(MCObject*, MCAllocator<MCObject> allocator, TypeArgs&&... args) {
+MCAllocateSharedHelper(MCObject*, ArenaAllocator<MCObject> allocator, TypeArgs&&... args) {
   return std::allocate_shared<MCObject>(allocator, std::forward<TypeArgs>(args)..., allocator);
 }
 
 template<class MCObject, typename... TypeArgs>
-MCSharedPtr<MCObject> MCAllocateShared(MCAllocator<MCObject> allocator, TypeArgs&&... args) {
+MCSharedPtr<MCObject> MCAllocateShared(ArenaAllocator<MCObject> allocator, TypeArgs&&... args) {
   return MCAllocateSharedHelper(static_cast<MCObject*>(nullptr),
                                 allocator,
                                 std::forward<TypeArgs>(args)...);
@@ -104,14 +108,9 @@ MCSharedPtr<MCObject> MCAllocateShared(MCAllocator<MCObject> allocator, TypeArgs
 
 // Construct a shared_ptr to any MC object.
 template<class MCObject, typename... TypeArgs>
-MCSharedPtr<MCObject> MCMakeShared(MemoryContext *memctx, TypeArgs&&... args) {
-  MCAllocator<MCObject> allocator(memctx);
+MCSharedPtr<MCObject> MCMakeShared(Arena *arena, TypeArgs&&... args) {
+  ArenaAllocator<MCObject> allocator(arena);
   return MCAllocateShared<MCObject>(allocator, std::forward<TypeArgs>(args)...);
-}
-
-template<class MCObject>
-MCSharedPtr<MCObject> MCToShared(MemoryContext *memctx, MCObject *raw_ptr) {
-  return memctx->ToShared<MCObject>(raw_ptr);
 }
 
 // MC base class.
@@ -123,39 +122,25 @@ class MCBase {
   typedef MCSharedPtr<const MCBase> SharedPtrConst;
 
   // Constructors.
-  explicit MCBase(MemoryContext *memctx = nullptr);
+  explicit MCBase(Arena *arena = nullptr);
   virtual ~MCBase();
 
-  // Delete operator is a NO-OP. The custom allocator (e.g. Arena) will free it when the associated
-  // memory context is deleted.
-  void operator delete(void *ptr);
-
-  // Operator new with placement allocate an object of any derived classes of MCBase.
-  void *operator new(size_t bytes, MemoryContext *mem_ctx) throw(std::bad_alloc);
-
-  // Allocate an array of objects of any derived classes of MCBase. Do not use this feature
-  // as it is still experimental.
-  void *operator new[](size_t bytes, MemoryContext *mem_ctx)
-    throw(std::bad_alloc) __attribute__((deprecated));
-
   template<typename... TypeArgs>
-  inline static MCBase::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
-    return MCMakeShared<MCBase>(memctx, std::forward<TypeArgs>(args)...);
+  inline static MCBase::SharedPtr MakeShared(Arena *arena, TypeArgs&&... args) {
+    return MCMakeShared<MCBase>(arena, std::forward<TypeArgs>(args)...);
   }
+
+  void operator delete(void* ptr) noexcept;
+  void *operator new(size_t bytes, Arena* arena) noexcept;
 
  private:
   //------------------------------------------------------------------------------------------------
   // The following functions are deprecated and not supported for MC objects.
 
-  // Delete[] operator is a NO-OP. The custom allocator (Arena) will free it when the associated
-  // memory context is deleted.
-  void operator delete[](void* ptr) __attribute__((deprecated));
-
-  // Operator new without placement is disabled.
-  void *operator new(size_t bytes) throw() __attribute__((deprecated));
-
-  // Operator new[] without placement is disabled.
-  void *operator new[](size_t bytes) throw() __attribute__((deprecated));
+  // Default new/delete operators are disabled.
+  void operator delete[](void* ptr) noexcept = delete;
+  void *operator new(size_t bytes) noexcept = delete;
+  void *operator new[](size_t bytes) noexcept = delete;
 };
 
 }  // namespace yb

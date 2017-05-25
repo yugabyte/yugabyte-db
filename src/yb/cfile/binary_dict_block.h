@@ -51,7 +51,6 @@
 #include "yb/util/memory/arena.h"
 
 namespace yb {
-class Arena;
 namespace cfile {
 
 struct WriterOptions;

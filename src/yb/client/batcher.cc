@@ -418,6 +418,7 @@ void Batcher::FlushBuffer(RemoteTablet* tablet, const vector<InFlightOp*>& ops) 
   }
 }
 
+
 using tserver::ReadResponsePB;
 
 void Batcher::AddOpCountMismatchError() {
