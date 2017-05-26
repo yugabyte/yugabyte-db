@@ -53,3 +53,8 @@ core*
 # Temporary files
 .DS_Store
 .\#*.proto
+
+# C# Object files
+*.userprefs
+java/yb-loadtester/src/main/csharp/*/obj/
+java/yb-loadtester/src/main/csharp/*/packages/
