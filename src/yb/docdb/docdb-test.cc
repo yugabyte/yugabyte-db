@@ -266,6 +266,11 @@ class DocDBTest : public DocDBTestBase {
 
 };
 
+class DocDBTestWithoutBlockCache : public DocDBTest {
+ protected:
+  size_t block_cache_size() const override { return 0; }
+};
+
 // Static constant initialization should be completely independent (cannot initialize one using the
 // other).
 const DocKey DocDBTest::kDocKey1(PrimitiveValues("row1", 11111));

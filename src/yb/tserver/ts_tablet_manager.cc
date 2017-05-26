@@ -96,7 +96,14 @@ DEFINE_double(fault_crash_after_rb_files_fetched, 0.0,
               "(For testing only!)");
 TAG_FLAG(fault_crash_after_rb_files_fetched, unsafe);
 
-DEFINE_int64(db_block_cache_size_bytes, -1,
+namespace {
+
+constexpr int kDbCacheSizeUsePercentage = -1;
+constexpr int kDbCacheSizeCacheDisabled = -2;
+
+} // namespace
+
+DEFINE_int64(db_block_cache_size_bytes, kDbCacheSizeUsePercentage,
              "Size of cross-tablet shared RocksDB block cache (in bytes). "
              "This defaults to -1 for system auto-generated default, which would use "
              "FLAGS_db_block_cache_ram_percentage to select a percentage of the total memory as "
@@ -161,13 +168,6 @@ using tablet::TabletPeer;
 using tablet::TabletStatusListener;
 using tablet::TabletStatusPB;
 using tserver::RemoteBootstrapClient;
-
-namespace {
-
-constexpr int kDbCacheSizeUsePercentage = -1;
-constexpr int kDbCacheSizeCacheDisabled = -2;
-
-} // namespace
 
 TSTabletManager::TSTabletManager(FsManager* fs_manager,
                                  TabletServer* server,

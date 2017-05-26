@@ -285,11 +285,6 @@ void LogicalRocksDBDebugSnapshot::RestoreTo(rocksdb::DB *rocksdb) const {
 
 DocDBRocksDBFixture::DocDBRocksDBFixture()
     : retention_policy_(make_shared<FixedHybridTimeRetentionPolicy>(HybridTime::kMin)) {
-  InitRocksDBOptions(&rocksdb_options_, "mytablet", rocksdb::CreateDBStatistics(), nullptr);
-  InitRocksDBWriteOptions(&write_options_);
-  rocksdb_options_.compaction_filter_factory =
-      make_shared<DocDBCompactionFilterFactory>(retention_policy_, schema_);
-
   string test_dir;
   CHECK_OK(Env::Default()->GetTestDirectory(&test_dir));
   rocksdb_dir_ = JoinPathSegments(test_dir, StringPrintf("mytestdb-%d", rand()));
@@ -299,6 +294,18 @@ DocDBRocksDBFixture::DocDBRocksDBFixture()
 }
 
 DocDBRocksDBFixture::~DocDBRocksDBFixture() {
+}
+
+void DocDBRocksDBFixture::InitRocksDBTestOptions() {
+  const size_t cache_size = block_cache_size();
+  if (cache_size > 0) {
+    block_cache_ = rocksdb::NewLRUCache(cache_size);
+  }
+  docdb::InitRocksDBOptions(&rocksdb_options_, "mytablet", rocksdb::CreateDBStatistics(),
+      block_cache_);
+  InitRocksDBWriteOptions(&write_options_);
+  rocksdb_options_.compaction_filter_factory =
+      make_shared<DocDBCompactionFilterFactory>(retention_policy_, schema_);
 }
 
 rocksdb::DB* DocDBRocksDBFixture::rocksdb() {

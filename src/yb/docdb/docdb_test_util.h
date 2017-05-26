@@ -101,7 +101,14 @@ class LogicalRocksDBDebugSnapshot {
 class DocDBRocksDBFixture {
  public:
   DocDBRocksDBFixture();
-  ~DocDBRocksDBFixture();
+  virtual ~DocDBRocksDBFixture();
+
+  // Initializes RocksDB options, should be called after constructor, because it uses virtual
+  // function BlockCacheSize.
+  void InitRocksDBTestOptions();
+
+  // Size of block cache for RocksDB, 0 means don't use block cache.
+  virtual size_t block_cache_size() const { return 16 * 1024 * 1024; }
 
   rocksdb::DB* rocksdb();
 
@@ -186,6 +193,7 @@ class DocDBRocksDBFixture {
   }
 
  private:
+  std::shared_ptr<rocksdb::Cache> block_cache_;
   std::unique_ptr<rocksdb::DB> rocksdb_;
   std::shared_ptr<HistoryRetentionPolicy> retention_policy_;
   Schema schema_;

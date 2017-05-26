@@ -5,6 +5,7 @@
 
 #include "rocksdb/cache.h"
 #include "rocksdb/db.h"
+#include "rocksdb/include/rocksdb/cache.h"
 #include "rocksdb/include/rocksdb/options.h"
 #include "rocksdb/slice.h"
 

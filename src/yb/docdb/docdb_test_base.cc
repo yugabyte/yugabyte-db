@@ -16,6 +16,7 @@ DocDBTestBase::~DocDBTestBase() {
 
 void DocDBTestBase::SetUp() {
   YBTest::SetUp();
+  InitRocksDBTestOptions();
   OpenRocksDB();
 }
 
