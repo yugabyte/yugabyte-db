@@ -161,20 +161,23 @@ class PrimitiveValue {
   static PrimitiveValue FromKuduValue(DataType data_type, Slice slice);
 
   // Construct a primitive value from a YQLValuePB.
-  static PrimitiveValue FromYQLValuePB(const YQLType& yql_type, const YQLValuePB& value,
+  static PrimitiveValue FromYQLValuePB(const std::shared_ptr<YQLType>& yql_type,
+                                       const YQLValuePB& value,
                                        ColumnSchema::SortingType sorting_type);
 
   // Set a primitive value in a YQLValuePB.
-  static void ToYQLValuePB(const PrimitiveValue& pv, const YQLType& yql_type, YQLValuePB* yql_val);
+  static void ToYQLValuePB(const PrimitiveValue& pv,
+                           const std::shared_ptr<YQLType>& yql_type,
+                           YQLValuePB* yql_val);
 
   // Construct a primitive value from a YQLExpressionPB.
-  static PrimitiveValue FromYQLExpressionPB(const YQLType& yql_type,
+  static PrimitiveValue FromYQLExpressionPB(const std::shared_ptr<YQLType>& yql_type,
                                             const YQLExpressionPB& yql_expr,
                                             ColumnSchema::SortingType sorting_type);
 
   // Set a primitive value in a YQLExpressionPB.
   static void ToYQLExpressionPB(const PrimitiveValue& pv,
-                                const YQLType& yql_type,
+                                const std::shared_ptr<YQLType>& yql_type,
                                 YQLExpressionPB* yql_expr);
 
   ValueType value_type() const { return type_; }

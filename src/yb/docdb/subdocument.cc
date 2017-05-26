@@ -10,6 +10,7 @@ using std::endl;
 using std::make_pair;
 using std::map;
 using std::ostringstream;
+using std::shared_ptr;
 using std::string;
 using std::vector;
 
@@ -213,20 +214,21 @@ void SubDocument::EnsureContainerAllocated() {
   }
 }
 
-SubDocument SubDocument::FromYQLValuePB(YQLType yql_type, const YQLValuePB& value,
+SubDocument SubDocument::FromYQLValuePB(const shared_ptr<YQLType>& yql_type,
+                                        const YQLValuePB& value,
                                         ColumnSchema::SortingType sorting_type) {
   if (YQLValue::IsNull(value)) {
     return SubDocument(ValueType::kTombstone);
   }
 
-  switch (yql_type.main()) {
+  switch (yql_type->main()) {
     case MAP: {
       YQLMapValuePB map = YQLValue::map_value(value);
       // this equality should be ensured by checks before getting here
       DCHECK_EQ(map.keys_size(), map.values_size());
 
-      YQLType keys_type = yql_type.params()->at(0);
-      YQLType values_type = yql_type.params()->at(1);
+      const shared_ptr<YQLType>& keys_type = yql_type->params()[0];
+      const shared_ptr<YQLType>& values_type = yql_type->params()[1];
       SubDocument map_doc;
       for (int i = 0; i < map.keys_size(); i++) {
         PrimitiveValue pv_key = PrimitiveValue::FromYQLValuePB(keys_type, map.keys(i),
@@ -241,7 +243,7 @@ SubDocument SubDocument::FromYQLValuePB(YQLType yql_type, const YQLValuePB& valu
     }
     case SET: {
       YQLSeqValuePB set = YQLValue::set_value(value);
-      YQLType elems_type = yql_type.params()->at(0);
+      const shared_ptr<YQLType>& elems_type = yql_type->params()[0];
       SubDocument set_doc;
       for (auto& elem : set.elems()) {
         // representing sets elems as keys pointing to empty (null) values
@@ -254,7 +256,7 @@ SubDocument SubDocument::FromYQLValuePB(YQLType yql_type, const YQLValuePB& valu
     }
     case LIST: {
       YQLSeqValuePB list = YQLValue::list_value(value);
-      YQLType elems_type = yql_type.params()->at(0);
+      const shared_ptr<YQLType>& elems_type = yql_type->params()[0];
       SubDocument list_doc;
       for (int i = 0; i < list.elems_size(); i++) {
         // representing list elems as values with generated indexes as keys for preserving ordering
@@ -275,21 +277,23 @@ SubDocument SubDocument::FromYQLValuePB(YQLType yql_type, const YQLValuePB& valu
     default:
       return SubDocument(PrimitiveValue::FromYQLValuePB(yql_type, value, sorting_type));
   }
-  LOG(FATAL) << "Unsupported datatype in SubDocument: " << yql_type.ToString();
+  LOG(FATAL) << "Unsupported datatype in SubDocument: " << yql_type->ToString();
 }
 
-void SubDocument::ToYQLValuePB(SubDocument doc, YQLType yql_type, YQLValuePB* yql_value) {
+void SubDocument::ToYQLValuePB(SubDocument doc,
+                               const shared_ptr<YQLType>& yql_type,
+                               YQLValuePB* yql_value) {
   // interpreting empty collections as null values following Cassandra semantics
-  if (yql_type.IsParametric() && (!doc.has_valid_object_container() ||
+  if (yql_type->IsParametric() && (!doc.has_valid_object_container() ||
                                   doc.object_num_keys() == 0)) {
     YQLValue::SetNull(yql_value);
     return;
   }
 
-  switch (yql_type.main()) {
+  switch (yql_type->main()) {
     case MAP: {
-      YQLType keys_type = yql_type.params()->at(0);
-      YQLType values_type = yql_type.params()->at(1);
+      const shared_ptr<YQLType>& keys_type = yql_type->params()[0];
+      const shared_ptr<YQLType>& values_type = yql_type->params()[1];
       YQLValue::set_map_value(yql_value);
       for (auto &pair : doc.object_container()) {
         YQLValuePB *key = YQLValue::add_map_key(yql_value);
@@ -300,7 +304,7 @@ void SubDocument::ToYQLValuePB(SubDocument doc, YQLType yql_type, YQLValuePB* yq
       return;
     }
     case SET: {
-      YQLType elems_type = yql_type.params()->at(0);
+      const shared_ptr<YQLType>& elems_type = yql_type->params()[0];
       YQLValue::set_set_value(yql_value);
       for (auto &pair : doc.object_container()) {
         YQLValuePB *elem = YQLValue::add_set_elem(yql_value);
@@ -310,7 +314,7 @@ void SubDocument::ToYQLValuePB(SubDocument doc, YQLType yql_type, YQLValuePB* yq
       return;
     }
     case LIST: {
-      YQLType elems_type = yql_type.params()->at(0);
+      const shared_ptr<YQLType>& elems_type = yql_type->params()[0];
       YQLValue::set_list_value(yql_value);
       for (auto &pair : doc.object_container()) {
         // list elems are represented as subdocument values with keys only used for ordering
@@ -326,10 +330,11 @@ void SubDocument::ToYQLValuePB(SubDocument doc, YQLType yql_type, YQLValuePB* yq
       return PrimitiveValue::ToYQLValuePB(doc, yql_type, yql_value);
     }
   }
-  LOG(FATAL) << "Unsupported datatype in SubDocument: " << yql_type.ToString();
+  LOG(FATAL) << "Unsupported datatype in SubDocument: " << yql_type->ToString();
 }
 
-SubDocument SubDocument::FromYQLExpressionPB(YQLType yql_type, const YQLExpressionPB& yql_expr,
+SubDocument SubDocument::FromYQLExpressionPB(const shared_ptr<YQLType>& yql_type,
+                                             const YQLExpressionPB& yql_expr,
                                              ColumnSchema::SortingType sorting_type) {
   switch (yql_expr.expr_case()) {
     case YQLExpressionPB::ExprCase::kValue:
@@ -349,7 +354,9 @@ SubDocument SubDocument::FromYQLExpressionPB(YQLType yql_type, const YQLExpressi
   LOG(FATAL) << "Internal error: invalid column or value expression: " << yql_expr.expr_case();
 }
 
-void SubDocument::ToYQLExpressionPB(SubDocument doc, YQLType yql_type, YQLExpressionPB* yql_expr) {
+void SubDocument::ToYQLExpressionPB(SubDocument doc,
+                                    const shared_ptr<YQLType>& yql_type,
+                                    YQLExpressionPB* yql_expr) {
   ToYQLValuePB(doc, yql_type, yql_expr->mutable_value());
 }
 

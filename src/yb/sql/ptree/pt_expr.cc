@@ -13,6 +13,7 @@ namespace yb {
 namespace sql {
 
 using client::YBColumnSchema;
+using std::shared_ptr;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -73,7 +74,7 @@ CHECKED_STATUS PTExpr::SetupSemStateForOp3(SemState *sem_state) {
 
 CHECKED_STATUS PTExpr::CheckExpectedTypeCompatibility(SemContext *sem_context) {
   CHECK(has_valid_internal_type() && has_valid_yql_type_id());
-  if (!sem_context->expr_expected_yql_type().IsUnknown()) {
+  if (!sem_context->expr_expected_yql_type()->IsUnknown()) {
     if (!sem_context->IsConvertible(this, sem_context->expr_expected_yql_type())) {
       return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
     }
@@ -196,8 +197,8 @@ CHECKED_STATUS PTMapExpr::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(CheckOperator(sem_context));
 
   // Run semantic analysis on collection elements.
-  const YQLType &expected_type = sem_context->expr_expected_yql_type();
-  if (expected_type.main() != DataType::MAP) {
+  const shared_ptr<YQLType>& expected_type = sem_context->expr_expected_yql_type();
+  if (expected_type->main() != DataType::MAP) {
     return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
   }
 
@@ -205,20 +206,21 @@ CHECKED_STATUS PTMapExpr::Analyze(SemContext *sem_context) {
   SemState sem_state(sem_context);
 
   // TODO(mihnea) Need to take care of expected InternalType here also.
-  const YQLType& key_type = expected_type.param_type(0);
+  const shared_ptr<YQLType>& key_type = expected_type->param_type(0);
   sem_state.SetExprState(key_type, YBColumnSchema::ToInternalDataType(key_type));
   for (auto& key : keys_) {
     RETURN_NOT_OK(key->Analyze(sem_context));
   }
-  yql_type_.set_param_type(0, key_type);
 
   // TODO(mihnea) Need to take care of expected InternalType here also.
-  const YQLType& value_type = expected_type.param_type(1);
+  const shared_ptr<YQLType>& value_type = expected_type->param_type(1);
   sem_state.SetExprState(value_type, YBColumnSchema::ToInternalDataType(value_type));
   for (auto& value : values_) {
     RETURN_NOT_OK(value->Analyze(sem_context));
   }
-  yql_type_.set_param_type(1, value_type);
+
+  // Assign correct datatype.
+  yql_type_ = expected_type;
 
   // TODO(mihnea) Destructor ~SemState() will reset the state, but if you need to reset the state
   // before returning, call ResetContextState() (see the usage in pt_expr.h).
@@ -230,19 +232,25 @@ CHECKED_STATUS PTSetExpr::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(CheckOperator(sem_context));
 
   // Run semantic analysis on collection elements.
-  const YQLType &expected_type = sem_context->expr_expected_yql_type();
-  if (expected_type.main() != DataType::SET &&
-      (expected_type.main() != DataType::MAP || value_.size() != 0)) {
+  const shared_ptr<YQLType> &expected_type = sem_context->expr_expected_yql_type();
+  if (expected_type->main() != DataType::SET &&
+      (expected_type->main() != DataType::MAP || value_.size() != 0)) {
     return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
   }
 
   SemState sem_state(sem_context);
-  const YQLType& value_type = expected_type.param_type(0);
+  const shared_ptr<YQLType>& value_type = expected_type->param_type(0);
   sem_state.SetExprState(value_type, YBColumnSchema::ToInternalDataType(value_type));
   for (auto& elem : value_) {
     RETURN_NOT_OK(elem->Analyze(sem_context));
   }
-  yql_type_.set_param_type(0, value_type);
+
+  // TODO(Mihnea) Because our current code (including executor) typecast this expression based on
+  // its datatype, I cannot change its expected type from SET to MAP. The following if block
+  // only allow type-switching between SETs but not between SET and MAP.
+  if (expected_type->main() == DataType::SET) {
+    yql_type_ = expected_type;
+  }
 
   // TODO(mihnea) Destructor ~SemState() will reset the state, but if you need to reset the state
   // before returning, call ResetContextState() (see the usage in pt_expr.h).
@@ -254,18 +262,18 @@ CHECKED_STATUS PTListExpr::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(CheckOperator(sem_context));
 
   // Run semantic analysis on collection elements.
-  const YQLType &expected_type = sem_context->expr_expected_yql_type();
-  if (expected_type.main() != DataType::LIST) {
+  const shared_ptr<YQLType>& expected_type = sem_context->expr_expected_yql_type();
+  if (expected_type->main() != DataType::LIST) {
     return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
   }
 
   SemState sem_state(sem_context);
-  const YQLType& value_type = expected_type.param_type(0);
+  const shared_ptr<YQLType>& value_type = expected_type->param_type(0);
   sem_state.SetExprState(value_type, YBColumnSchema::ToInternalDataType(value_type));
   for (auto& elem : value_) {
     RETURN_NOT_OK(elem->Analyze(sem_context));
   }
-  yql_type_.set_param_type(0, value_type);
+  yql_type_ = expected_type;
 
   // TODO(mihnea) Destructor ~SemState() will reset the state, but if you need to reset the state
   // before returning, call ResetContextState() (see the usage in pt_expr.h).

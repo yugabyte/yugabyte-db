@@ -49,7 +49,7 @@ class SemState {
            const MCSharedPtr<MCString>& bindvar_name = nullptr);
 
   SemState(SemContext *sem_context,
-           const YQLType& expected_yql_type,
+           const std::shared_ptr<YQLType>& expected_yql_type,
            InternalType expected_internal_type = InternalType::VALUE_NOT_SET,
            const MCSharedPtr<MCString>& bindvar_name = nullptr);
 
@@ -69,7 +69,7 @@ class SemState {
   void SetExprState(DataType yql_type_id,
                     InternalType internal_type,
                     const MCSharedPtr<MCString>& bindvar_name = nullptr);
-  void SetExprState(const YQLType& yql_type,
+  void SetExprState(const std::shared_ptr<YQLType>& yql_type,
                     InternalType internal_type,
                     const MCSharedPtr<MCString>& bindvar_name = nullptr);
 
@@ -80,7 +80,7 @@ class SemState {
   void CopyPreviousWhereState();
 
   // Access function for expression states.
-  const YQLType& expected_yql_type() const { return expected_yql_type_; }
+  const std::shared_ptr<YQLType>& expected_yql_type() const { return expected_yql_type_; }
   InternalType expected_internal_type() const { return expected_internal_type_; }
   WhereExprState *where_state() const { return where_state_; }
   const MCSharedPtr<MCString>& bindvar_name() const { return bindvar_name_; }
@@ -96,8 +96,8 @@ class SemState {
   bool was_reset;
 
   // States to process an expression node.
-  YQLType expected_yql_type_;       // The expected sql type of an expression.
-  InternalType expected_internal_type_; // The expected internal type of an expression.
+  std::shared_ptr<YQLType> expected_yql_type_; // The expected sql type of an expression.
+  InternalType expected_internal_type_;        // The expected internal type of an expression.
 
   MCSharedPtr<MCString> bindvar_name_;
 

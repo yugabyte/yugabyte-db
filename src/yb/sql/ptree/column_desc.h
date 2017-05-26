@@ -31,7 +31,7 @@ class ColumnDesc {
         is_hash_(false),
         is_primary_(false),
         is_static_(false),
-        yql_type_(DataType::UNKNOWN_DATA),
+        yql_type_(YQLType::Create(DataType::UNKNOWN_DATA)),
         internal_type_(InternalType::VALUE_NOT_SET) {
   }
 
@@ -40,7 +40,7 @@ class ColumnDesc {
             bool is_hash,
             bool is_primary,
             bool is_static,
-            YQLType yql_type,
+            const std::shared_ptr<YQLType>& yql_type,
             InternalType internal_type) {
     index_ = index,
     id_ = id;
@@ -75,7 +75,7 @@ class ColumnDesc {
     return is_static_;
   }
 
-  const YQLType& yql_type() const {
+  std::shared_ptr<YQLType> yql_type() const {
     return yql_type_;
   }
 
@@ -89,7 +89,7 @@ class ColumnDesc {
   bool is_hash_;
   bool is_primary_;
   bool is_static_;
-  YQLType yql_type_;
+  std::shared_ptr<YQLType> yql_type_;
   InternalType internal_type_;
 };
 

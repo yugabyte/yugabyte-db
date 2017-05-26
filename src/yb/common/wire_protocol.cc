@@ -235,7 +235,7 @@ Status SchemaFromPB(const SchemaPB& pb, Schema *schema) {
 void ColumnSchemaToPB(const ColumnSchema& col_schema, ColumnSchemaPB *pb, int flags) {
   pb->Clear();
   pb->set_name(col_schema.name());
-  col_schema.type().ToYQLTypePB(pb->mutable_type());
+  col_schema.type()->ToYQLTypePB(pb->mutable_type());
   pb->set_is_nullable(col_schema.is_nullable());
   pb->set_is_static(col_schema.is_static());
   pb->set_sorting_type(col_schema.sorting_type());
@@ -307,8 +307,9 @@ ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
   }
   // Only "is_hash_key" is used to construct ColumnSchema. The field "is_key" will be read when
   // processing SchemaPB.
-  return ColumnSchema(pb.name(), YQLType(pb.type()), pb.is_nullable(), pb.is_hash_key(),
-                      pb.is_static(), ColumnSchema::SortingType(pb.sorting_type()),
+  return ColumnSchema(pb.name(), YQLType::FromYQLTypePB(pb.type()), pb.is_nullable(),
+                      pb.is_hash_key(), pb.is_static(),
+                      ColumnSchema::SortingType(pb.sorting_type()),
                       read_default_ptr, write_default_ptr, attributes);
 }
 

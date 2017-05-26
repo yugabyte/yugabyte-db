@@ -16,7 +16,7 @@ Status YQLColumnsVTable::PopulateColumnInformation(const Schema& schema,
                                                    const YQLValuePB& table_name,
                                                    const size_t col_idx,
                                                    YQLRow* const row) const {
-  using namespace util;
+  using util::GetStringValue;
   RETURN_NOT_OK(SetColumnValue(kKeyspaceName, keyspace_name, row));
   RETURN_NOT_OK(SetColumnValue(kTableName, table_name, row));
   RETURN_NOT_OK(SetColumnValue(kColumnName, GetStringValue(schema.column(col_idx).name()),
@@ -25,14 +25,16 @@ Status YQLColumnsVTable::PopulateColumnInformation(const Schema& schema,
                                GetStringValue(schema.column(col_idx).sorting_type_string()),
                                row));
   RETURN_NOT_OK(SetColumnValue(kType,
-                               GetStringValue(schema.column(col_idx).type().ToString()),
+                               GetStringValue(schema.column(col_idx).type()->ToString()),
                                row));
   return Status::OK();
 }
 
 Status YQLColumnsVTable::RetrieveData(const YQLReadRequestPB& request,
                                       std::unique_ptr<YQLRowBlock>* vtable) const {
-  using namespace util;
+  using util::GetStringValue;
+  using util::GetIntValue;
+
   vtable->reset(new YQLRowBlock(schema_));
   std::vector<scoped_refptr<TableInfo> > tables;
   master_->catalog_manager()->GetAllTables(&tables, true);

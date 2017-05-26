@@ -47,8 +47,10 @@ class StatementParameters {
 
   // Retrieve a bind variable for the execution of the statement. To be overridden by subclasses
   // to return actual bind variables.
-  virtual CHECKED_STATUS GetBindVariable(
-      const std::string* name, int64_t pos, YQLType type, YQLValue* value) const {
+  virtual CHECKED_STATUS GetBindVariable(const std::string* name,
+                                         int64_t pos,
+                                         const std::shared_ptr<YQLType>& type,
+                                         YQLValue* value) const {
     return STATUS(RuntimeError, "no bind variable available");
   }
 

@@ -12,13 +12,12 @@ YQLIndexesVTable::YQLIndexesVTable(const Master* const master)
 
 Schema YQLIndexesVTable::CreateSchema() const {
   SchemaBuilder builder;
-  CHECK_OK(builder.AddKeyColumn("keyspace_name", DataType::STRING));
-  CHECK_OK(builder.AddKeyColumn("table_name", DataType::STRING));
-  CHECK_OK(builder.AddKeyColumn("index_name", DataType::STRING));
-  CHECK_OK(builder.AddColumn("kind", DataType::STRING));
-  CHECK_OK(builder.AddColumn(
-      "options",
-      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
+  CHECK_OK(builder.AddKeyColumn("keyspace_name", YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddKeyColumn("table_name", YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddKeyColumn("index_name", YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn("kind", YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn("options",
+                             YQLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
   return builder.Build();
 }
 

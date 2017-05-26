@@ -181,7 +181,7 @@ class PTColumnDefinition : public TreeNode {
     return datatype_;
   }
 
-  YQLType yql_type() const {
+  std::shared_ptr<YQLType> yql_type() const {
     return datatype_->yql_type();
   }
 

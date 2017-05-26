@@ -97,6 +97,9 @@ YQLClient GetClientFromOp(const YBqlOp& op) {
     // default: fallthrough
   }
   LOG(FATAL) << "Internal error: invalid or unknown YQL operation: " << op.type();
+
+  // Inactive code: It's only meant to avoid compilation warning.
+  return YQLClient();
 }
 
 } // namespace

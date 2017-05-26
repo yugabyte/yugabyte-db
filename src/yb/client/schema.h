@@ -99,8 +99,8 @@ class YBColumnStorageAttributes {
 
 class YBColumnSchema {
  public:
-  static InternalType ToInternalDataType(YQLType yql_type) {
-    switch (yql_type.main()) {
+  static InternalType ToInternalDataType(const std::shared_ptr<YQLType>& yql_type) {
+    switch (yql_type->main()) {
       case INT8:
         return InternalType::kInt8Value;
       case INT16:
@@ -147,7 +147,7 @@ class YBColumnSchema {
       case UINT64:
         break;
     }
-    LOG(FATAL) << "Internal error: unsupported type " << yql_type.ToString();
+    LOG(FATAL) << "Internal error: unsupported type " << yql_type->ToString();
     return InternalType::VALUE_NOT_SET;
   }
 
@@ -157,7 +157,7 @@ class YBColumnSchema {
   // TODO(KUDU-809): make this hard-to-use constructor private. Clients should use
   // the Builder API. Currently only the Python API uses this old API.
   YBColumnSchema(const std::string &name,
-                 YQLType type,
+                 const std::shared_ptr<YQLType>& type,
                  bool is_nullable = false,
                  bool is_hash_key = false,
                  bool is_static = false,
@@ -175,7 +175,7 @@ class YBColumnSchema {
 
   // Getters to expose column schema information.
   const std::string& name() const;
-  YQLType type() const;
+  const std::shared_ptr<YQLType>& type() const;
   bool is_hash_key() const;
   bool is_nullable() const;
   bool is_static() const;
@@ -270,11 +270,11 @@ class YBColumnSpec {
 
   // Set the type of this column.
   // Column types may not be changed once a table is created.
-  YBColumnSpec* Type(YQLType type);
+  YBColumnSpec* Type(const std::shared_ptr<YQLType>& type);
 
   // Convenience function for setting a simple (i.e. non-parametric) data type.
   YBColumnSpec* Type(DataType type) {
-    return Type(YQLType(type));
+    return Type(YQLType::Create(type));
   }
 
   // Specify the user-defined order of the column.

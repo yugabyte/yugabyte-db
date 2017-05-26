@@ -19,6 +19,7 @@
 #include "yb/client/value-internal.h"
 #include "yb/gutil/strings/substitute.h"
 
+using std::shared_ptr;
 using std::string;
 using strings::Substitute;
 
@@ -95,9 +96,9 @@ YBValue* YBValue::CopyString(Slice s) {
 }
 
 Status YBValue::Data::CheckTypeAndGetPointer(const string& col_name,
-                                             yb::YQLType tp,
+                                             const shared_ptr<YQLType>& tp,
                                              void** val_void) {
-  const TypeInfo* ti = tp.type_info();
+  const TypeInfo* ti = tp->type_info();
   switch (ti->physical_type()) {
     case yb::INT8:
     case yb::INT16:

@@ -29,6 +29,7 @@
 
 namespace yb {
 
+using std::shared_ptr;
 using std::set;
 using std::unordered_map;
 using std::unordered_set;
@@ -438,16 +439,24 @@ void SchemaBuilder::Reset(const Schema& schema) {
   table_properties_ = schema.table_properties_;
 }
 
+Status SchemaBuilder::AddKeyColumn(const string& name, const shared_ptr<YQLType>& type) {
+  return AddColumn(ColumnSchema(name, type), /* is_nullable */ true);
+}
+
 Status SchemaBuilder::AddKeyColumn(const string& name, DataType type) {
-  return AddColumn(ColumnSchema(name, YQLType(type)), /* is_nullable */ true);
+  return AddColumn(ColumnSchema(name, YQLType::Create(type)), /* is_nullable */ true);
+}
+
+Status SchemaBuilder::AddHashKeyColumn(const string& name, const shared_ptr<YQLType>& type) {
+  return AddColumn(ColumnSchema(name, type, false, true), true);
 }
 
 Status SchemaBuilder::AddHashKeyColumn(const string& name, DataType type) {
-  return AddColumn(ColumnSchema(name, YQLType(type), false, true), true);
+  return AddColumn(ColumnSchema(name, YQLType::Create(type), false, true), true);
 }
 
 Status SchemaBuilder::AddColumn(const string& name,
-                                YQLType type,
+                                const std::shared_ptr<YQLType>& type,
                                 bool is_nullable,
                                 bool is_hash_key,
                                 bool is_static,

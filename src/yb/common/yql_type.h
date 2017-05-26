@@ -17,78 +17,94 @@ namespace yb {
 
 class YQLType {
  public:
-  YQLType(DataType main = DataType::UNKNOWN_DATA, vector<YQLType> params = {})
-      : main_(main), params_(std::make_shared<vector<YQLType>>(params)) {
-    DCHECK(IsValid());
+  //------------------------------------------------------------------------------------------------
+  // The Create() functions are to construct YQLType objects.
+  template<DataType data_type>
+  static const std::shared_ptr<YQLType>& CreatePrimitiveType() {
+    static std::shared_ptr<YQLType> yql_type = std::make_shared<YQLType>(data_type);
+    return yql_type;
   }
 
-  YQLType(const YQLType& source)
-      : main_(source.main_), params_(source.params_) {
-    DCHECK(IsValid());
+  template<DataType data_type>
+  static std::shared_ptr<YQLType> CreateCollectionType(
+      const vector<std::shared_ptr<YQLType>>& params) {
+    return std::make_shared<YQLType>(data_type, params);
   }
 
-  YQLType& operator=(const YQLType& source) {
-    main_ = source.main_;
-    params_ = source.params_;
-    return *this;
+  // Create all builtin types including collection.
+  static std::shared_ptr<YQLType> Create(DataType data_type,
+                                         const vector<std::shared_ptr<YQLType>>& params);
+
+  // Create primitive types, all builtin types except collection.
+  static std::shared_ptr<YQLType> Create(DataType data_type);
+
+  // Create map datatype.
+  static std::shared_ptr<YQLType> CreateTypeMap(DataType key_type, DataType value_type);
+  static std::shared_ptr<YQLType> CreateTypeMap() {
+    // Create default map type: MAP <UNKNOWN -> UNKNOWN>.
+    static const std::shared_ptr<YQLType> default_map =
+      CreateTypeMap(DataType::UNKNOWN_DATA, DataType::UNKNOWN_DATA);
+    return default_map;
   }
 
-  explicit YQLType(YQLTypePB pb_type) : main_(pb_type.main()),
-                                        params_(std::make_shared<vector<YQLType>>()) {
-    for (auto &param : pb_type.params()) {
-      params_->push_back(YQLType(param));
-    }
-    DCHECK(IsValid());
+  // Create list datatype.
+  static std::shared_ptr<YQLType> CreateTypeList(DataType value_type);
+  static std::shared_ptr<YQLType> CreateTypeList() {
+    // Create default list type: LIST <UNKNOWN>.
+    static const std::shared_ptr<YQLType> default_list = CreateTypeList(DataType::UNKNOWN_DATA);
+    return default_list;
   }
 
-  ~YQLType() {
-    params_ = nullptr;
+  // Create set datatype.
+  static std::shared_ptr<YQLType> CreateTypeSet(DataType value_type);
+  static std::shared_ptr<YQLType> CreateTypeSet() {
+    // Create default set type: SET <UNKNOWN>.
+    static const std::shared_ptr<YQLType> default_set = CreateTypeSet(DataType::UNKNOWN_DATA);
+    return default_set;
   }
 
-  void ToYQLTypePB(YQLTypePB *pb_type) const {
-    pb_type->set_main(main_);
-    for (auto &param : *params_) {
-      param.ToYQLTypePB(pb_type->add_params());
-    }
+  // Constructors.
+  explicit YQLType(DataType yql_typeid) : id_(yql_typeid), params_(0) {
   }
 
-  static YQLType CreateTypeMap(DataType key_type = DataType::UNKNOWN_DATA,
-                               DataType value_type = DataType::UNKNOWN_DATA) {
-    return YQLType(DataType::MAP, vector<YQLType>({key_type, value_type}));
+  YQLType(DataType yql_typeid, const vector<std::shared_ptr<YQLType>>& params)
+      : id_(yql_typeid), params_(params) {
   }
 
-  static YQLType CreateTypeList(DataType value_type = DataType::UNKNOWN_DATA) {
-    return YQLType(DataType::LIST, vector<YQLType>(1, value_type));
+  virtual ~YQLType() {
   }
 
-  static YQLType CreateTypeSet(DataType value_type = DataType::UNKNOWN_DATA) {
-    return YQLType(DataType::SET, vector<YQLType>(1, value_type));
-  }
+  //------------------------------------------------------------------------------------------------
+  // Protobuf support.
+
+  void ToYQLTypePB(YQLTypePB *pb_type) const;
+  static std::shared_ptr<YQLType> FromYQLTypePB(const YQLTypePB& pb_type);
+
+  //------------------------------------------------------------------------------------------------
+  // Access functions.
 
   const DataType main() const {
-    return main_;
+    return id_;
   }
 
-  const std::shared_ptr<const vector<YQLType>> params() const {
+  const vector<std::shared_ptr<YQLType>>& params() const {
     return params_;
   }
 
-  const YQLType& param_type(int member_index = 0) const {
-    DCHECK_LT(member_index, params_->size());
-    return (*params_)[member_index];
-  }
-
-  void set_param_type(int member_index, const YQLType& yql_type) {
-    DCHECK_LT(member_index, params_->size());
-    (*params_)[member_index] = yql_type;
+  const std::shared_ptr<YQLType>& param_type(int member_index = 0) const {
+    DCHECK_LT(member_index, params_.size());
+    return params_[member_index];
   }
 
   const TypeInfo* type_info() const {
-    return GetTypeInfo(main_);
+    return GetTypeInfo(id_);
   }
 
+  //------------------------------------------------------------------------------------------------
+  // Predicates.
+
   bool IsParametric() const {
-    return main_ == MAP || main_ == SET || main_ == LIST || main_ == TUPLE;
+    return id_ == MAP || id_ == SET || id_ == LIST || id_ == TUPLE;
   }
 
   bool IsElementary() const {
@@ -96,98 +112,59 @@ class YQLType {
   }
 
   bool IsUnknown() const {
-    return IsUnknown(main_);
+    return IsUnknown(id_);
   }
 
   bool IsInteger() const {
-    return IsInteger(main_);
+    return IsInteger(id_);
   }
 
   bool IsNumeric() const {
-    return IsNumeric(main_);
+    return IsNumeric(id_);
   }
 
   bool IsValid() const {
     if (IsElementary()) {
-      return params_->empty();
+      return params_.empty();
     } else {
       // checking number of params
-      if (main_ == MAP && params_->size() != 2) {
+      if (id_ == MAP && params_.size() != 2) {
         return false; // expect two type parameters for maps
-      } else if ((main_ == SET || main_ == LIST) && params_->size() != 1) {
+      } else if ((id_ == SET || id_ == LIST) && params_.size() != 1) {
         return false; // expect one type parameters for set and list
-      } else if (main_ == TUPLE && params_->size() == 0) {
+      } else if (id_ == TUPLE && params_.size() == 0) {
         return false; // expect at least one type parameters for tuples
       }
       // recursively checking params
-      for (const auto &param : *params_) {
-        if (!param.IsValid()) return false;
+      for (const auto &param : params_) {
+        if (!param->IsValid()) return false;
       }
       return true;
     }
   }
 
-  bool operator ==(const YQLType &other) const {
-    return main_ == other.main_ &&
-        *params_ == *other.params_;
-  }
-
-  const string ToString() const {
-    std::stringstream ss;
-    ToString(ss);
-    return ss.str();
-  }
-
-  const string ToCQLString(const DataType& datatype) const {
-    switch (datatype) {
-      case DataType::UNKNOWN_DATA: return "unknown";
-      case DataType::NULL_VALUE_TYPE: return "null";
-      case DataType::INT8: return "tinyint";
-      case DataType::INT16: return "smallint";
-      case DataType::INT32: return "int";
-      case DataType::INT64: return "bigint";
-      case DataType::STRING: return "text";
-      case DataType::BOOL: return "boolean";
-      case DataType::FLOAT: return "float";
-      case DataType::DOUBLE: return "double";
-      case DataType::BINARY: return "blob";
-      case DataType::TIMESTAMP: return "timestamp";
-      case DataType::DECIMAL: return "decimal";
-      case DataType::VARINT: return "varint";
-      case DataType::INET: return "inet";
-      case DataType::LIST: return "list";
-      case DataType::MAP: return "map";
-      case DataType::SET: return "set";
-      case DataType::UUID: return "uuid";
-      case DataType::TIMEUUID: return "timeuuid";
-      case DataType::TUPLE: return "tuple";
-      case DataType::TYPEARGS: return "typeargs";
-      case DataType::UINT8: return "uint8";
-      case DataType::UINT16: return "uint16";
-      case DataType::UINT32: return "uint32";
-      case DataType::UINT64: return "uint64";
-    }
-    LOG (FATAL) << "Invalid datatype: " << datatype;
-    return "Undefined Type";
-  }
-
-  void ToString(std::stringstream& os) const {
-    os << ToCQLString(main_);
-    if (!params_->empty()) {
-      os << "<";
-      for (int i = 0; i < params_->size(); i++) {
-        if (i > 0) {
-          os << ", ";
+  bool operator ==(const YQLType& other) const {
+    if (id_ == other.id_ && params_.size() == other.params_.size()) {
+      for (int i = 0; i < params_.size(); i++) {
+        if (*params_[i] == *other.params_[i]) {
+          continue;
         }
-        params_->at(i).ToString(os);
+        return false;
       }
-      os << ">";
+      return true;
     }
+
+    return false;
   }
+
+  //------------------------------------------------------------------------------------------------
+  // Logging supports.
+  const string ToString() const;
+  void ToString(std::stringstream& os) const;
+  static const string ToCQLString(const DataType& datatype);
 
   //------------------------------------------------------------------------------------------------
   // static methods
-  //------------------------------------------------------------------------------------------------
   static const int kMaxTypeIndex = DataType::TYPEARGS + 1;
 
   // When a new type is added in the enum "DataType", kMaxTypeIndex should be updated for this
@@ -315,11 +292,11 @@ class YQLType {
     return kCompareMode[left][right];
   }
 
-  //------------------------------------------------------------------------------------------------
-
  private:
-  DataType main_;
-  std::shared_ptr<vector<YQLType>> params_;
+  //------------------------------------------------------------------------------------------------
+  // Data members.
+  DataType id_;
+  vector<std::shared_ptr<YQLType>> params_;
 };
 
 } // namespace yb

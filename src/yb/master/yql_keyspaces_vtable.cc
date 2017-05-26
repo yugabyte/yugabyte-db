@@ -14,7 +14,9 @@ YQLKeyspacesVTable::YQLKeyspacesVTable(const Master* const master)
 
 Status YQLKeyspacesVTable::RetrieveData(const YQLReadRequestPB& request,
                                         std::unique_ptr<YQLRowBlock>* vtable) const {
-  using namespace util;
+  using util::GetStringValue;
+  using util::GetBoolValue;
+
   vtable->reset(new YQLRowBlock(schema_));
   std::vector<scoped_refptr<NamespaceInfo> > namespaces;
   master_->catalog_manager()->GetAllNamespaces(&namespaces);
@@ -29,12 +31,11 @@ Status YQLKeyspacesVTable::RetrieveData(const YQLReadRequestPB& request,
 
 Schema YQLKeyspacesVTable::CreateSchema() const {
   SchemaBuilder builder;
-  CHECK_OK(builder.AddKeyColumn(kKeyspaceName, DataType::STRING));
-  CHECK_OK(builder.AddColumn(kDurableWrites, DataType::BOOL));
+  CHECK_OK(builder.AddKeyColumn(kKeyspaceName, YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kDurableWrites, YQLType::Create(DataType::BOOL)));
   // TODO: replication needs to be a frozen map.
-  CHECK_OK(builder.AddColumn(
-      kReplication,
-      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
+  CHECK_OK(builder.AddColumn(kReplication,
+                             YQLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
   return builder.Build();
 }
 

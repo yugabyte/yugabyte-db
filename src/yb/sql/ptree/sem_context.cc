@@ -96,8 +96,9 @@ const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name) const {
 
 //--------------------------------------------------------------------------------------------------
 
-bool SemContext::IsConvertible(const PTExpr *expr, YQLType type) const {
-  switch (type.main()) {
+bool SemContext::IsConvertible(const PTExpr *expr, const std::shared_ptr<YQLType>& type) const {
+  // TODO(Mihnea) Compatibility type check for collections might need further thoughts.
+  switch (type->main()) {
     // Collection types : we only use conversion table for their elements
     case MAP: {
       // the empty set "{}" is a valid map expression
@@ -109,8 +110,8 @@ bool SemContext::IsConvertible(const PTExpr *expr, YQLType type) const {
       if (expr->yql_type_id() != MAP) {
         return expr->yql_type_id() == NULL_VALUE_TYPE;
       }
-      YQLType keys_type = type.param_type(0);
-      YQLType values_type = type.param_type(1);
+      shared_ptr<YQLType> keys_type = type->param_type(0);
+      shared_ptr<YQLType> values_type = type->param_type(1);
       const PTMapExpr *map_expr = static_cast<const PTMapExpr *>(expr);
       for (auto &key : map_expr->keys()) {
         if (!IsConvertible(key, keys_type)) {
@@ -130,7 +131,7 @@ bool SemContext::IsConvertible(const PTExpr *expr, YQLType type) const {
       if (expr->yql_type_id() != SET) {
         return expr->yql_type_id() == NULL_VALUE_TYPE;
       }
-      YQLType elem_type = type.params()->at(0);
+      shared_ptr<YQLType> elem_type = type->params()[0];
       const PTSetExpr *set_expr = static_cast<const PTSetExpr*>(expr);
       for (auto &elem : set_expr->elems()) {
         if (!IsConvertible(elem, elem_type)) {
@@ -144,7 +145,7 @@ bool SemContext::IsConvertible(const PTExpr *expr, YQLType type) const {
       if (expr->yql_type_id() != LIST) {
         return expr->yql_type_id() == NULL_VALUE_TYPE;
       }
-      YQLType elem_type = type.params()->at(0);
+      shared_ptr<YQLType> elem_type = type->params()[0];
       const PTListExpr *list_expr = static_cast<const PTListExpr*>(expr);
       for (auto &elem : list_expr->elems()) {
         if (!IsConvertible(elem, elem_type)) {
@@ -160,7 +161,7 @@ bool SemContext::IsConvertible(const PTExpr *expr, YQLType type) const {
 
     // Elementary types : we directly check conversion table
     default:
-      return YQLType::IsImplicitlyConvertible(type.main(), expr->yql_type_id());
+      return YQLType::IsImplicitlyConvertible(type->main(), expr->yql_type_id());
   }
 }
 

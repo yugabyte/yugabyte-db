@@ -786,7 +786,8 @@ PrimitiveValue PrimitiveValue::FromKuduValue(DataType data_type, Slice slice) {
     }
 }
 
-PrimitiveValue PrimitiveValue::FromYQLValuePB(const YQLType& yql_type, const YQLValuePB& value,
+PrimitiveValue PrimitiveValue::FromYQLValuePB(const std::shared_ptr<YQLType>& yql_type,
+                                              const YQLValuePB& value,
                                               ColumnSchema::SortingType sorting_type) {
   if (YQLValue::IsNull(value)) {
     return PrimitiveValue(ValueType::kTombstone);
@@ -794,7 +795,7 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const YQLType& yql_type, const YQL
 
   const auto sort_order = SortOrderFromColumnSchemaSortingType(sorting_type);
 
-  switch (yql_type.main()) {
+  switch (yql_type->main()) {
     case INT8:    return PrimitiveValue(YQLValue::int8_value(value), sort_order);
     case INT16:   return PrimitiveValue(YQLValue::int16_value(value), sort_order);
     case INT32:   return PrimitiveValue(YQLValue::int32_value(value), sort_order);
@@ -842,10 +843,11 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const YQLType& yql_type, const YQL
     // default: fall through
   }
 
-  LOG(FATAL) << "Unsupported datatype in PrimitiveValue: " << yql_type.ToString();
+  LOG(FATAL) << "Unsupported datatype in PrimitiveValue: " << yql_type->ToString();
 }
 
-void PrimitiveValue::ToYQLValuePB(const PrimitiveValue& primitive_value, const YQLType& yql_type,
+void PrimitiveValue::ToYQLValuePB(const PrimitiveValue& primitive_value,
+                                  const std::shared_ptr<YQLType>& yql_type,
                                   YQLValuePB* yql_value) {
   // DocDB sets type to kInvalidValueType for SubDocuments that don't exist. That's why they need
   // to be set to Null in YQLValue.
@@ -855,7 +857,7 @@ void PrimitiveValue::ToYQLValuePB(const PrimitiveValue& primitive_value, const Y
     return;
   }
 
-  switch (yql_type.main()) {
+  switch (yql_type->main()) {
     case INT8:
       YQLValue::set_int8_value(static_cast<int8_t>(primitive_value.GetInt64()), yql_value);
       return;
@@ -917,10 +919,10 @@ void PrimitiveValue::ToYQLValuePB(const PrimitiveValue& primitive_value, const Y
     // default: fall through
   }
 
-  LOG(FATAL) << "Unsupported datatype " << yql_type.ToString();
+  LOG(FATAL) << "Unsupported datatype " << yql_type->ToString();
 }
 
-PrimitiveValue PrimitiveValue::FromYQLExpressionPB(const YQLType& yql_type,
+PrimitiveValue PrimitiveValue::FromYQLExpressionPB(const std::shared_ptr<YQLType>& yql_type,
                                                    const YQLExpressionPB& yql_expr,
                                                    ColumnSchema::SortingType sorting_type) {
   switch (yql_expr.expr_case()) {
@@ -938,7 +940,7 @@ PrimitiveValue PrimitiveValue::FromYQLExpressionPB(const YQLType& yql_type,
 }
 
 void PrimitiveValue::ToYQLExpressionPB(const PrimitiveValue& pv,
-                                       const YQLType& yql_type,
+                                       const std::shared_ptr<YQLType>& yql_type,
                                        YQLExpressionPB* yql_expr) {
   ToYQLValuePB(pv, yql_type, yql_expr->mutable_value());
 }

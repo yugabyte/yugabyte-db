@@ -122,8 +122,12 @@ class YQLValue {
   virtual bool operator !=(const YQLValue& v) const { return BothNotNull(v) && CompareTo(v) != 0; }
 
   //----------------------------- serializer / deserializer ---------------------------------
-  virtual void Serialize(YQLType yql_type, YQLClient client, faststring* buffer) const;
-  virtual CHECKED_STATUS Deserialize(YQLType yql_type, YQLClient client, Slice* data);
+  virtual void Serialize(const std::shared_ptr<YQLType>& yql_type,
+                         const YQLClient& client,
+                         faststring* buffer) const;
+  virtual CHECKED_STATUS Deserialize(const std::shared_ptr<YQLType>& yql_type,
+                                     const YQLClient& client,
+                                     Slice* data);
 
   //------------------------------------ debug string ---------------------------------------
   // Return a string for debugging.

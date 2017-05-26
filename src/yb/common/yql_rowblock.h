@@ -28,7 +28,7 @@ class YQLRow {
   size_t column_count() const { return schema_->num_columns(); }
 
   // Column's datatype
-  YQLType column_type(const size_t col_idx) const {
+  const std::shared_ptr<YQLType>& column_type(const size_t col_idx) const {
     return schema_->column(col_idx).type();
   }
 

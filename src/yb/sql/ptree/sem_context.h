@@ -98,10 +98,10 @@ class SemContext : public ProcessContext {
   const ColumnDesc *GetColumnDesc(const MCString& col_name) const;
 
   // Check if the expression `expr` can be implicitly converted to type `type`
-  bool IsConvertible(PTExpr::SharedPtr expr, YQLType type) const {
+  bool IsConvertible(PTExpr::SharedPtr expr, const std::shared_ptr<YQLType>& type) const {
     return IsConvertible(expr.get(), type);
   }
-  bool IsConvertible(const PTExpr *expr, YQLType type) const;
+  bool IsConvertible(const PTExpr *expr, const std::shared_ptr<YQLType>& type) const;
 
   // Check if two types are comparable -- parametric types are never comparable so we only take
   // DataType not YQLType as arguments
@@ -119,7 +119,7 @@ class SemContext : public ProcessContext {
     return sem_state_;
   }
 
-  const YQLType& expr_expected_yql_type() const {
+  const std::shared_ptr<YQLType>& expr_expected_yql_type() const {
     DCHECK(sem_state_) << "State variable is not set for the expression";
     return sem_state_->expected_yql_type();
   }

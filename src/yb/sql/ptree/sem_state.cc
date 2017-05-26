@@ -20,7 +20,7 @@ SemState::SemState(SemContext *sem_context,
     : sem_context_(sem_context),
       previous_state_(nullptr),
       was_reset(false),
-      expected_yql_type_(expected_yql_type_id),
+      expected_yql_type_(YQLType::Create(expected_yql_type_id)),
       expected_internal_type_(expected_internal_type),
       bindvar_name_(bindvar_name),
       where_state_(nullptr) {
@@ -29,7 +29,7 @@ SemState::SemState(SemContext *sem_context,
 }
 
 SemState::SemState(SemContext *sem_context,
-                   const YQLType& expected_yql_type,
+                   const std::shared_ptr<YQLType>& expected_yql_type,
                    InternalType expected_internal_type,
                    const MCSharedPtr<MCString>& bindvar_name)
     : sem_context_(sem_context),
@@ -59,12 +59,12 @@ void SemState::ResetContextState() {
 void SemState::SetExprState(DataType yql_type_id,
                             InternalType internal_type,
                             const MCSharedPtr<MCString>& bindvar_name) {
-  expected_yql_type_ = YQLType(yql_type_id);
+  expected_yql_type_ = YQLType::Create(yql_type_id);
   expected_internal_type_ = internal_type;
   bindvar_name_ = bindvar_name;
 }
 
-void SemState::SetExprState(const YQLType& yql_type,
+void SemState::SetExprState(const std::shared_ptr<YQLType>& yql_type,
                             InternalType internal_type,
                             const MCSharedPtr<MCString>& bindvar_name) {
   expected_yql_type_ = yql_type;

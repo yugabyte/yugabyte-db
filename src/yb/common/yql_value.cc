@@ -31,6 +31,7 @@
 namespace yb {
 
 using std::string;
+using std::shared_ptr;
 using std::to_string;
 using util::Decimal;
 using util::FormatBytesAsStr;
@@ -92,14 +93,14 @@ int YQLValue::CompareTo(const YQLValue& other) const {
 }
 
 void YQLValue::Serialize(
-    const YQLType yql_type, const YQLClient client, faststring* buffer) const {
+    const std::shared_ptr<YQLType>& yql_type, const YQLClient& client, faststring* buffer) const {
   CHECK_EQ(client, YQL_CLIENT_CQL);
   if (IsNull()) {
     CQLEncodeLength(-1, buffer);
     return;
   }
 
-  switch (yql_type.main()) {
+  switch (yql_type->main()) {
     case INT8:
       CQLEncodeNum(Store8, int8_value(), buffer);
       return;
@@ -170,8 +171,8 @@ void YQLValue::Serialize(
       int32_t start_pos = CQLStartCollection(buffer);
       int32_t length = static_cast<int32_t>(map.keys_size());
       CQLEncodeLength(length, buffer);
-      YQLType keys_type = yql_type.params()->at(0);
-      YQLType values_type = yql_type.params()->at(1);
+      const shared_ptr<YQLType>& keys_type = yql_type->params()[0];
+      const shared_ptr<YQLType>& values_type = yql_type->params()[1];
       for (int i = 0; i < length; i++) {
         YQLValueWithPB(map.keys(i)).Serialize(keys_type, client, buffer);
         YQLValueWithPB(map.values(i)).Serialize(values_type, client, buffer);
@@ -184,7 +185,7 @@ void YQLValue::Serialize(
       int32_t start_pos = CQLStartCollection(buffer);
       int32_t length = static_cast<int32_t>(set.elems_size());
       CQLEncodeLength(length, buffer); // number of elements in collection
-      YQLType elems_type = yql_type.params()->at(0);
+      const shared_ptr<YQLType>& elems_type = yql_type->params()[0];
       for (auto& elem : set.elems()) {
         YQLValueWithPB(elem).Serialize(elems_type, client, buffer);
       }
@@ -196,7 +197,7 @@ void YQLValue::Serialize(
       int32_t start_pos = CQLStartCollection(buffer);
       int32_t length = static_cast<int32_t>(list.elems_size());
       CQLEncodeLength(length, buffer);
-      YQLType elems_type = yql_type.params()->at(0);
+      const shared_ptr<YQLType>& elems_type = yql_type->params()[0];
       for (auto& elem : list.elems()) {
         YQLValueWithPB(elem).Serialize(elems_type, client, buffer);
       }
@@ -212,10 +213,11 @@ void YQLValue::Serialize(
     // default: fall through
   }
 
-  LOG(FATAL) << "Internal error: unsupported type " << yql_type.ToString();
+  LOG(FATAL) << "Internal error: unsupported type " << yql_type->ToString();
 }
 
-Status YQLValue::Deserialize(const YQLType yql_type, const YQLClient client, Slice* data) {
+Status YQLValue::Deserialize(
+    const std::shared_ptr<YQLType>& yql_type, const YQLClient& client, Slice* data) {
   CHECK_EQ(client, YQL_CLIENT_CQL);
   int32_t len = 0;
   RETURN_NOT_OK(CQLDecodeNum(sizeof(len), NetworkByteOrder::Load32, data, &len));
@@ -224,7 +226,7 @@ Status YQLValue::Deserialize(const YQLType yql_type, const YQLClient client, Sli
     return Status::OK();
   }
 
-  switch (yql_type.main()) {
+  switch (yql_type->main()) {
     case INT8:
       return CQLDeserializeNum(
           len, Load8, static_cast<void (YQLValue::*)(int8_t)>(&YQLValue::set_int8_value), data);
@@ -306,8 +308,8 @@ Status YQLValue::Deserialize(const YQLType yql_type, const YQLClient client, Sli
       return Status::OK();
     }
     case MAP: {
-      YQLType keys_type = yql_type.params()->at(0);
-      YQLType values_type = yql_type.params()->at(1);
+      const shared_ptr<YQLType>& keys_type = yql_type->params()[0];
+      const shared_ptr<YQLType>& values_type = yql_type->params()[1];
       set_map_value();
       int32_t nr_elems = 0;
       RETURN_NOT_OK(CQLDecodeNum(sizeof(nr_elems), NetworkByteOrder::Load32, data, &nr_elems));
@@ -323,7 +325,7 @@ Status YQLValue::Deserialize(const YQLType yql_type, const YQLClient client, Sli
       return Status::OK();
     }
     case SET: {
-      YQLType elems_type = yql_type.params()->at(0);
+      const shared_ptr<YQLType>& elems_type = yql_type->params()[0];
       set_set_value();
       int32_t nr_elems = 0;
       RETURN_NOT_OK(CQLDecodeNum(sizeof(nr_elems), NetworkByteOrder::Load32, data, &nr_elems));
@@ -335,7 +337,7 @@ Status YQLValue::Deserialize(const YQLType yql_type, const YQLClient client, Sli
       return Status::OK();
     }
     case LIST: {
-      YQLType elems_type = yql_type.params()->at(0);
+      const shared_ptr<YQLType>& elems_type = yql_type->params()[0];
       set_list_value();
       int32_t nr_elems = 0;
       RETURN_NOT_OK(CQLDecodeNum(sizeof(nr_elems), NetworkByteOrder::Load32, data, &nr_elems));
@@ -356,7 +358,7 @@ Status YQLValue::Deserialize(const YQLType yql_type, const YQLClient client, Sli
     // default: fall through
   }
 
-  LOG(FATAL) << "Internal error: unsupported type " << yql_type.ToString();
+  LOG(FATAL) << "Internal error: unsupported type " << yql_type->ToString();
   return STATUS(InternalError, "unsupported type");
 }
 

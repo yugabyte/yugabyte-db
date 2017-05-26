@@ -27,6 +27,7 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 
+using std::shared_ptr;
 using std::unordered_map;
 using std::vector;
 using strings::Substitute;
@@ -45,7 +46,7 @@ YBColumnSpec::~YBColumnSpec() {
   delete data_;
 }
 
-YBColumnSpec* YBColumnSpec::Type(YQLType type) {
+YBColumnSpec* YBColumnSpec::Type(const std::shared_ptr<YQLType>& type) {
   data_->has_type = true;
   data_->type = type;
   return this;
@@ -350,7 +351,7 @@ std::string YBColumnSchema::DataTypeToString(DataType type) {
 }
 
 YBColumnSchema::YBColumnSchema(const std::string &name,
-                               YQLType type,
+                               const shared_ptr<YQLType>& type,
                                bool is_nullable,
                                bool is_hash_key,
                                bool is_static,
@@ -414,7 +415,7 @@ bool YBColumnSchema::is_static() const {
   return DCHECK_NOTNULL(col_)->is_static();
 }
 
-YQLType YBColumnSchema::type() const {
+const shared_ptr<YQLType>& YBColumnSchema::type() const {
   return DCHECK_NOTNULL(col_)->type();
 }
 

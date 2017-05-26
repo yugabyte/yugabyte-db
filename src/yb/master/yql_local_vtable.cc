@@ -13,6 +13,11 @@ LocalVTable::LocalVTable(const Master* const master)
 
 Status LocalVTable::RetrieveData(const YQLReadRequestPB& request,
                                  std::unique_ptr<YQLRowBlock>* vtable) const {
+  using util::GetStringValue;
+  using util::GetUuidValue;
+  using util::GetInetValue;
+  using util::GetIntValue;
+
   vector<std::shared_ptr<TSDescriptor> > descs;
   master_->ts_manager()->GetAllDescriptors(&descs);
   vtable->reset(new YQLRowBlock(schema_));
@@ -83,27 +88,26 @@ Status LocalVTable::RetrieveData(const YQLReadRequestPB& request,
 
 Schema LocalVTable::CreateSchema() const {
   SchemaBuilder builder;
-  CHECK_OK(builder.AddKeyColumn(kSystemLocalKeyColumn, DataType::STRING));
-  CHECK_OK(builder.AddColumn(kSystemLocalBootstrappedColumn, DataType::STRING));
-  CHECK_OK(builder.AddColumn(kSystemLocalBroadcastAddressColumn, DataType::INET));
-  CHECK_OK(builder.AddColumn(kSystemLocalClusterNameColumn, DataType::STRING));
-  CHECK_OK(builder.AddColumn(kSystemLocalCQLVersionColumn, DataType::STRING));
-  CHECK_OK(builder.AddColumn(kSystemLocalDataCenterColumn, DataType::STRING));
-  CHECK_OK(builder.AddColumn(kSystemLocalGossipGenerationColumn, DataType::INT32));
-  CHECK_OK(builder.AddColumn(kSystemLocalHostIdColumn, DataType::UUID));
-  CHECK_OK(builder.AddColumn(kSystemLocalListenAddressColumn, DataType::INET));
-  CHECK_OK(builder.AddColumn(kSystemLocalNativeProtocolVersionColumn, DataType::STRING));
-  CHECK_OK(builder.AddColumn(kSystemLocalPartitionerColumn, DataType::STRING));
-  CHECK_OK(builder.AddColumn(kSystemLocalRackColumn, DataType::STRING));
-  CHECK_OK(builder.AddColumn(kSystemLocalReleaseVersionColumn, DataType::STRING));
-  CHECK_OK(builder.AddColumn(kSystemLocalRpcAddressColumn, DataType::INET));
-  CHECK_OK(builder.AddColumn(kSystemLocalSchemaVersionColumn, DataType::UUID));
-  CHECK_OK(builder.AddColumn(kSystemLocalThriftVersionColumn, DataType::STRING));
-  CHECK_OK(builder.AddColumn(kSystemLocalTokensColumn,
-                                  YQLType(DataType::SET, { YQLType(DataType::STRING) })));
-  CHECK_OK(builder.AddColumn(
-      kSystemLocalTruncatedAtColumn,
-      YQLType(DataType::MAP, { YQLType(DataType::UUID), YQLType(DataType::BINARY) })));
+  CHECK_OK(builder.AddKeyColumn(kSystemLocalKeyColumn, YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSystemLocalBootstrappedColumn, YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSystemLocalBroadcastAddressColumn, YQLType::Create(DataType::INET)));
+  CHECK_OK(builder.AddColumn(kSystemLocalClusterNameColumn, YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSystemLocalCQLVersionColumn, YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSystemLocalDataCenterColumn, YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSystemLocalGossipGenerationColumn, YQLType::Create(DataType::INT32)));
+  CHECK_OK(builder.AddColumn(kSystemLocalHostIdColumn, YQLType::Create(DataType::UUID)));
+  CHECK_OK(builder.AddColumn(kSystemLocalListenAddressColumn, YQLType::Create(DataType::INET)));
+  CHECK_OK(builder.AddColumn(kSystemLocalNativeProtocolVersionColumn,
+                             YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSystemLocalPartitionerColumn, YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSystemLocalRackColumn, YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSystemLocalReleaseVersionColumn, YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSystemLocalRpcAddressColumn, YQLType::Create(DataType::INET)));
+  CHECK_OK(builder.AddColumn(kSystemLocalSchemaVersionColumn, YQLType::Create(DataType::UUID)));
+  CHECK_OK(builder.AddColumn(kSystemLocalThriftVersionColumn, YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSystemLocalTokensColumn, YQLType::CreateTypeSet(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSystemLocalTruncatedAtColumn,
+                             YQLType::CreateTypeMap(DataType::UUID, DataType::BINARY)));
   return builder.Build();
 }
 

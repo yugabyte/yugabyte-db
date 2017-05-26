@@ -10,6 +10,7 @@
 namespace yb {
 namespace sql {
 
+using std::shared_ptr;
 using std::to_string;
 using client::YBColumnSchema;
 
@@ -133,7 +134,7 @@ CHECKED_STATUS PTCreateTable::AppendHashColumn(SemContext *sem_context,
 
 CHECKED_STATUS PTCreateTable::CheckPrimaryType(SemContext *sem_context,
                                                const PTBaseType::SharedPtr& datatype) {
-  if (!IsValidPrimaryType(datatype->yql_type().main())) {
+  if (!IsValidPrimaryType(datatype->yql_type()->main())) {
     return sem_context->Error(datatype->loc(), ErrorCode::INVALID_PRIMARY_COLUMN_TYPE);
   }
 
@@ -157,13 +158,13 @@ bool PTCreateTable::IsValidPrimaryType(DataType type) const {
 }
 
 CHECKED_STATUS PTCreateTable::CheckType(SemContext *sem_context,
-                                               const PTBaseType::SharedPtr& datatype) {
-  auto main = datatype->yql_type().main();
-  auto params = datatype->yql_type().params();
+                                        const PTBaseType::SharedPtr& datatype) {
+  const DataType main = datatype->yql_type()->main();
+  const vector<shared_ptr<YQLType>>& params = datatype->yql_type()->params();
 
   // check that type params (if any) are not parametric types -- i.e. no nested collections
-  for (auto& param : *params) {
-    if (param.IsParametric()) {
+  for (auto& param : params) {
+    if (param->IsParametric()) {
       return sem_context->Error(datatype->loc(), ErrorCode::INVALID_TABLE_DEFINITION,
                                 "Nested Collections Are Not Supported Yet");
     }
@@ -172,7 +173,7 @@ CHECKED_STATUS PTCreateTable::CheckType(SemContext *sem_context,
   // data types of map keys or set elements must be valid primary key types since they are encoded
   // as keys in DocDB
   if (main == MAP || main == SET) {
-    if (!IsValidPrimaryType(params->at(0).main())) {
+    if (!IsValidPrimaryType(params[0]->main())) {
       return sem_context->Error(datatype->loc(), ErrorCode::INVALID_TABLE_DEFINITION,
           "Invalid datatype for map key or set element, must be valid primary key type");
     }
@@ -201,7 +202,7 @@ void PTCreateTable::PrintSemanticAnalysisResult(SemContext *sem_context) {
     } else {
       sem_output += " <Type = ";
     }
-    sem_output += column->yql_type().ToString().c_str();
+    sem_output += column->yql_type()->ToString().c_str();
     sem_output += ">";
   }
 

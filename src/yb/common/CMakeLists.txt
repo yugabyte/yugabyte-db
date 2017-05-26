@@ -82,6 +82,7 @@ set(COMMON_SRCS
   doc_hybrid_time.cc
   types.cc
   wire_protocol.cc
+  yql_type.cc
   yql_value.cc
   yql_bfunc.cc
   yql_scanspec.cc

@@ -74,29 +74,34 @@ PTBlob::PTBlob(MemoryContext *memctx, YBLocation::SharedPtr loc)
 PTBlob::~PTBlob() {
 }
 
-PTMap::PTMap(MemoryContext *memctx, YBLocation::SharedPtr loc,
-    YQLType keys_type, YQLType values_type)
+PTMap::PTMap(MemoryContext *memctx,
+             YBLocation::SharedPtr loc,
+             const std::shared_ptr<YQLType>& keys_type,
+             const std::shared_ptr<YQLType>& values_type)
     : PTPrimitiveType<InternalType::kMapValue, DataType::MAP>(memctx, loc) {
-  type_params_.push_back(keys_type);
-  type_params_.push_back(values_type);
+  yql_type_ = YQLType::CreateTypeMap(keys_type->main(), values_type->main());
 }
 
 PTMap::~PTMap() {
 }
 
 
-PTSet::PTSet(MemoryContext *memctx, YBLocation::SharedPtr loc, YQLType elems_type)
+PTSet::PTSet(MemoryContext *memctx,
+             YBLocation::SharedPtr loc,
+             const std::shared_ptr<YQLType>& elems_type)
     : PTPrimitiveType<InternalType::kSetValue, DataType::SET>(memctx, loc) {
-  type_params_.push_back(elems_type);
+  yql_type_ = YQLType::CreateTypeSet(elems_type->main());
 }
 
 PTSet::~PTSet() {
 }
 
 
-PTList::PTList(MemoryContext *memctx, YBLocation::SharedPtr loc, YQLType elems_type)
+PTList::PTList(MemoryContext *memctx,
+               YBLocation::SharedPtr loc,
+               const std::shared_ptr<YQLType>& elems_type)
     : PTPrimitiveType<InternalType::kListValue, DataType::LIST>(memctx, loc) {
-  type_params_.push_back(elems_type);
+  yql_type_ = YQLType::CreateTypeList(elems_type->main());
 }
 
 PTList::~PTList() {

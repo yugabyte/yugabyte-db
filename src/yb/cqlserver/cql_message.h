@@ -176,8 +176,10 @@ class CQLMessage {
 
     QueryParameters() : sql::StatementParameters() { }
 
-    virtual CHECKED_STATUS GetBindVariable(
-        const std::string* name, int64_t pos, YQLType type, YQLValue* value) const override;
+    virtual CHECKED_STATUS GetBindVariable(const std::string* name,
+                                           int64_t pos,
+                                           const std::shared_ptr<YQLType>& type,
+                                           YQLValue* value) const override;
   };
 
   // Accessors for header fields
@@ -623,7 +625,7 @@ class ResultResponse : public CQLResponse {
       explicit Type(std::shared_ptr<const UDTType> udt_type);
       explicit Type(std::shared_ptr<const TupleComponentTypes> tuple_component_types);
       explicit Type(const Type& t);
-      explicit Type(YQLType type);
+      explicit Type(const std::shared_ptr<YQLType>& type);
       ~Type();
     };
     struct ColSpec {

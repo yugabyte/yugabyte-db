@@ -81,7 +81,7 @@ class PTExpr : public TreeNode {
         op_(op),
         yql_op_(yql_op),
         internal_type_(internal_type),
-        yql_type_(yql_type_id),
+        yql_type_(YQLType::Create(yql_type_id)),
         expected_internal_type_(InternalType::VALUE_NOT_SET) {
   }
   virtual ~PTExpr() {
@@ -94,7 +94,7 @@ class PTExpr : public TreeNode {
 
   bool has_valid_internal_type() {
     // internal_type_ is not set in case of PTNull.
-    return yql_type_.main() == DataType::NULL_VALUE_TYPE ||
+    return yql_type_->main() == DataType::NULL_VALUE_TYPE ||
            internal_type_ != InternalType::VALUE_NOT_SET;
   }
 
@@ -103,29 +103,29 @@ class PTExpr : public TreeNode {
   }
 
   // Expression return type in YQL format.
-  virtual const YQLType& yql_type() const {
+  virtual std::shared_ptr<YQLType> yql_type() const {
     return yql_type_;
   }
 
-  virtual void set_yql_type(YQLType yql_type) {
+  virtual void set_yql_type(const std::shared_ptr<YQLType>& yql_type) {
     yql_type_ = yql_type;
   }
 
   virtual void set_yql_type(DataType type_id) {
-    yql_type_ = YQLType(type_id);
+    yql_type_ = YQLType::Create(type_id);
   }
 
   // TODO(neil or mihnea) Remove or replace all yql_type_id API & comments with YQLType.
   virtual DataType yql_type_id() const {
-    return yql_type_.main();
+    return yql_type_->main();
   }
 
   virtual void set_yql_type_id(DataType type_id) {
-    yql_type_ = YQLType(type_id);
+    yql_type_ = YQLType::Create(type_id);
   }
 
   bool has_valid_yql_type_id() {
-    return yql_type_.main() != DataType::UNKNOWN_DATA;
+    return yql_type_->main() != DataType::UNKNOWN_DATA;
   }
 
   // Node type.
@@ -144,7 +144,7 @@ class PTExpr : public TreeNode {
 
   // Predicate for null.
   virtual bool is_null() {
-    return yql_type_.main() == DataType::NULL_VALUE_TYPE;
+    return yql_type_->main() == DataType::NULL_VALUE_TYPE;
   }
 
   // Returns the operands of an expression.
@@ -213,7 +213,7 @@ class PTExpr : public TreeNode {
   ExprOperator op_;
   yb::YQLOperator yql_op_;
   InternalType internal_type_;
-  YQLType yql_type_;
+  std::shared_ptr<YQLType> yql_type_;
   InternalType expected_internal_type_;
 };
 
@@ -949,15 +949,6 @@ class PTBindVar : public PTExpr {
   // Expression return type in DocDB format.
   virtual InternalType internal_type() const override {
     return internal_type_;
-  }
-
-  // Expression return type in Cassandra format.
-  virtual const YQLType& yql_type() const override {
-    return yql_type_;
-  }
-
-  virtual DataType yql_type_id() const override {
-    return yql_type_.main();
   }
 
   // Node type.

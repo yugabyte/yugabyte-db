@@ -28,8 +28,10 @@ using strings::Substitute;
     }                                                       \
   } while (0)
 
-Status CQLMessage::QueryParameters::GetBindVariable(
-    const std::string* name, const int64_t pos, const YQLType type, YQLValue* value) const {
+Status CQLMessage::QueryParameters::GetBindVariable(const std::string* name,
+                                                    const int64_t pos,
+                                                    const shared_ptr<YQLType>& type,
+                                                    YQLValue* value) const {
   const Value* v = nullptr;
   if (!value_map.empty()) {
     if (name == nullptr) {
@@ -51,7 +53,7 @@ Status CQLMessage::QueryParameters::GetBindVariable(
   switch (v->kind) {
     case Value::Kind::NOT_NULL: {
       if (v->value.empty()) {
-        switch (type.main()) {
+        switch (type->main()) {
           case DataType::STRING:
             value->set_string_value("");
             return Status::OK();
@@ -87,7 +89,7 @@ Status CQLMessage::QueryParameters::GetBindVariable(
             break;
         }
         return STATUS_SUBSTITUTE(
-            RuntimeError, "Unsupported datatype $0", static_cast<int>(type.main()));
+            RuntimeError, "Unsupported datatype $0", static_cast<int>(type->main()));
       }
       Slice data(v->value);
       return value->Deserialize(type, YQL_CLIENT_CQL, &data);
@@ -1088,8 +1090,8 @@ ResultResponse::RowsMetadata::Type::Type(const Type& t) : id(t.id) {
   LOG(ERROR) << "Internal error: unknown type id " << static_cast<uint32_t>(id);
 }
 
-ResultResponse::RowsMetadata::Type::Type(const YQLType type) {
-  switch (type.main()) {
+ResultResponse::RowsMetadata::Type::Type(const shared_ptr<YQLType>& type) {
+  switch (type->main()) {
     case DataType::INT8:
       id = Id::TINYINT;
       return;
@@ -1132,17 +1134,17 @@ ResultResponse::RowsMetadata::Type::Type(const YQLType type) {
     case DataType::LIST:
       id = Id::LIST;
       new (&element_type) shared_ptr<const Type>(
-          std::make_shared<const Type>(Type(type.params()->at(0))));
+          std::make_shared<const Type>(Type(type->params()[0])));
       return;
     case DataType::SET:
       id = Id::SET;
       new (&element_type) shared_ptr<const Type>(
-          std::make_shared<const Type>(Type(type.params()->at(0))));
+          std::make_shared<const Type>(Type(type->params()[0])));
       return;
     case DataType::MAP: {
       id = Id::MAP;
-      auto key = std::make_shared<const Type>(Type(type.params()->at(0)));
-      auto value = std::make_shared<const Type>(Type(type.params()->at(1)));
+      auto key = std::make_shared<const Type>(Type(type->params()[0]));
+      auto value = std::make_shared<const Type>(Type(type->params()[1]));
       new (&map_type) shared_ptr<const MapType>(std::make_shared<MapType>(MapType{key, value}));
       return;
     }
@@ -1165,7 +1167,7 @@ ResultResponse::RowsMetadata::Type::Type(const YQLType type) {
     // default: fall through
   }
 
-  LOG(ERROR) << "Internal error: invalid/unsupported type " << type.ToString();
+  LOG(ERROR) << "Internal error: invalid/unsupported type " << type->ToString();
 }
 
 ResultResponse::RowsMetadata::Type::~Type() {

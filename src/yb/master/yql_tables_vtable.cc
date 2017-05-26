@@ -13,7 +13,9 @@ YQLTablesVTable::YQLTablesVTable(const Master* const master)
 
 Status YQLTablesVTable::RetrieveData(const YQLReadRequestPB& request,
                                      std::unique_ptr<YQLRowBlock>* vtable) const {
-  using namespace util;
+  using util::GetStringValue;
+  using util::GetUuidValue;
+
   vtable->reset(new YQLRowBlock(schema_));
   std::vector<scoped_refptr<TableInfo> > tables;
   master_->catalog_manager()->GetAllTables(&tables, true);
@@ -49,36 +51,29 @@ Status YQLTablesVTable::RetrieveData(const YQLReadRequestPB& request,
 
 Schema YQLTablesVTable::CreateSchema() const {
   SchemaBuilder builder;
-  CHECK_OK(builder.AddKeyColumn(kKeyspaceName, DataType::STRING));
-  CHECK_OK(builder.AddKeyColumn(kTableName, DataType::STRING));
-  CHECK_OK(builder.AddColumn(kBloomFilterChance, DataType::DOUBLE));
-  CHECK_OK(builder.AddColumn(
-      kCaching,
-      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
-  CHECK_OK(builder.AddColumn(kCdc, DataType::BOOL));
-  CHECK_OK(builder.AddColumn(kComment, DataType::STRING));
-  CHECK_OK(builder.AddColumn(
-      kCompaction,
-      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
-  CHECK_OK(builder.AddColumn(
-      kCompression,
-      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
-  CHECK_OK(builder.AddColumn(kCrcCheck, DataType::DOUBLE));
-  CHECK_OK(builder.AddColumn(kLocalReadRepair, DataType::DOUBLE));
-  CHECK_OK(builder.AddColumn(kDefaultTimeToLive, DataType::INT32));
-  CHECK_OK(builder.AddColumn(
-      kExtensions,
-      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::BINARY) })));
-  CHECK_OK(builder.AddColumn(
-      kFlags,
-      YQLType(DataType::SET, { YQLType(DataType::STRING) })));
-  CHECK_OK(builder.AddColumn(kGcGraceSeconds, DataType::INT32));
-  CHECK_OK(builder.AddColumn(kId, DataType::UUID));
-  CHECK_OK(builder.AddColumn(kMaxIndexInterval, DataType::INT32));
-  CHECK_OK(builder.AddColumn(kMemTableFlushPeriod, DataType::INT32));
-  CHECK_OK(builder.AddColumn(kMinIndexInterval, DataType::INT32));
-  CHECK_OK(builder.AddColumn(kReadRepairChance, DataType::DOUBLE));
-  CHECK_OK(builder.AddColumn(kSpeculativeRetry, DataType::STRING));
+  CHECK_OK(builder.AddKeyColumn(kKeyspaceName, YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddKeyColumn(kTableName, YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kBloomFilterChance, YQLType::Create(DataType::DOUBLE)));
+  CHECK_OK(builder.AddColumn(kCaching, YQLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kCdc, YQLType::Create(DataType::BOOL)));
+  CHECK_OK(builder.AddColumn(kComment, YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kCompaction,
+                             YQLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kCompression,
+                             YQLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kCrcCheck, YQLType::Create(DataType::DOUBLE)));
+  CHECK_OK(builder.AddColumn(kLocalReadRepair, YQLType::Create(DataType::DOUBLE)));
+  CHECK_OK(builder.AddColumn(kDefaultTimeToLive, YQLType::Create(DataType::INT32)));
+  CHECK_OK(builder.AddColumn(kExtensions,
+                             YQLType::CreateTypeMap(DataType::STRING, DataType::BINARY)));
+  CHECK_OK(builder.AddColumn(kFlags, YQLType::CreateTypeSet(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kGcGraceSeconds, YQLType::Create(DataType::INT32)));
+  CHECK_OK(builder.AddColumn(kId, YQLType::Create(DataType::UUID)));
+  CHECK_OK(builder.AddColumn(kMaxIndexInterval, YQLType::Create(DataType::INT32)));
+  CHECK_OK(builder.AddColumn(kMemTableFlushPeriod, YQLType::Create(DataType::INT32)));
+  CHECK_OK(builder.AddColumn(kMinIndexInterval, YQLType::Create(DataType::INT32)));
+  CHECK_OK(builder.AddColumn(kReadRepairChance, YQLType::Create(DataType::DOUBLE)));
+  CHECK_OK(builder.AddColumn(kSpeculativeRetry, YQLType::Create(DataType::STRING)));
   return builder.Build();
 }
 

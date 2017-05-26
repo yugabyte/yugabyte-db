@@ -52,8 +52,8 @@ class YBValue::Data {
   // The returned pointer in *val_void is only guaranteed to live as long
   // as this YBValue object.
   CHECKED_STATUS CheckTypeAndGetPointer(const std::string& col_name,
-                                YQLType tp,
-                                void** val_void);
+                                        const std::shared_ptr<YQLType>& tp,
+                                        void** val_void);
 
  private:
   // Check that this value has the expected type 'type', returning

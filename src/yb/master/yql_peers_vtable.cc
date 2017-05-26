@@ -18,6 +18,11 @@ PeersVTable::PeersVTable(const Master* const master)
 
 Status PeersVTable::RetrieveData(const YQLReadRequestPB& request,
                                  unique_ptr<YQLRowBlock>* vtable) const {
+  using util::GetInetValue;
+  using util::GetIntValue;
+  using util::GetUuidValue;
+  using util::GetStringValue;
+
   // Retrieve all lives nodes known by the master.
   // TODO: Ideally we would like to populate this table with all valid nodes of the cluster, but
   // currently the master just has a list of all nodes it has heard from and which one of those
@@ -88,15 +93,15 @@ Status PeersVTable::RetrieveData(const YQLReadRequestPB& request,
 
 Schema PeersVTable::CreateSchema() const {
   SchemaBuilder builder;
-  CHECK_OK(builder.AddKeyColumn(kPeer, DataType::INET));
-  CHECK_OK(builder.AddColumn(kDataCenter, DataType::STRING));
-  CHECK_OK(builder.AddColumn(kHostId, DataType::UUID));
-  CHECK_OK(builder.AddColumn(kPreferredIp, DataType::INET));
-  CHECK_OK(builder.AddColumn(kRack, DataType::STRING));
-  CHECK_OK(builder.AddColumn(kReleaseVersion, DataType::STRING));
-  CHECK_OK(builder.AddColumn(kRPCAddress, DataType::INET));
-  CHECK_OK(builder.AddColumn(kSchemaVersion, DataType::UUID));
-  CHECK_OK(builder.AddColumn(kTokens, YQLType(DataType::SET, { YQLType(DataType::STRING) })));
+  CHECK_OK(builder.AddKeyColumn(kPeer, YQLType::Create(DataType::INET)));
+  CHECK_OK(builder.AddColumn(kDataCenter, YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kHostId, YQLType::Create(DataType::UUID)));
+  CHECK_OK(builder.AddColumn(kPreferredIp, YQLType::Create(DataType::INET)));
+  CHECK_OK(builder.AddColumn(kRack, YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kReleaseVersion, YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kRPCAddress, YQLType::Create(DataType::INET)));
+  CHECK_OK(builder.AddColumn(kSchemaVersion, YQLType::Create(DataType::UUID)));
+  CHECK_OK(builder.AddColumn(kTokens, YQLType::CreateTypeSet(DataType::STRING)));
   return builder.Build();
 }
 

@@ -775,7 +775,7 @@ TEST_F(ClientTest, TestScanPredicateKeyColNotProjected) {
   YBScanner scanner(client_table_.get());
   ASSERT_OK(scanner.SetProjectedColumns({ "int_val" }));
   ASSERT_EQ(scanner.GetProjectionSchema().num_columns(), 1);
-  ASSERT_EQ(scanner.GetProjectionSchema().Column(0).type(), YQLType(INT32));
+  ASSERT_EQ(scanner.GetProjectionSchema().Column(0).type(), YQLType::Create(INT32));
   ASSERT_OK(scanner.AddConjunctPredicate(
                 client_table_->NewComparisonPredicate("key", YBPredicate::GREATER_EQUAL,
                                                       YBValue::FromInt(5))));

@@ -173,7 +173,7 @@ void PTInsertStmt::PrintSemanticAnalysisResult(SemContext *sem_context) {
       VLOG(3) << "ARG: " << col_desc->id()
               << ", Hash: " << col_desc->is_hash()
               << ", Primary: " << col_desc->is_primary()
-              << ", Expected Type: " << col_desc->yql_type().ToString()
+              << ", Expected Type: " << col_desc->yql_type()->ToString()
               << ", Expr Type: " << arg.expr()->yql_type_id();
     }
   }
