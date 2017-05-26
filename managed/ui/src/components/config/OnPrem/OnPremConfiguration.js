@@ -2,11 +2,13 @@
 
 import React, { Component } from 'react';
 import { Alert } from 'react-bootstrap';
+import _ from 'lodash';
+import { isValidObject } from 'utils/ObjectUtils';
 import { OnPremConfigWizardContainer, OnPremConfigJSONContainer } from '../../config';
 import { YBButton } from '../../common/forms/fields';
 import emptyDataCenterConfig from '../templates/EmptyDataCenterConfig.json';
-import { isValidObject } from '../../../utils/ObjectUtils';
-import _ from 'lodash';
+import './OnPremConfiguration.scss';
+
 const PROVIDER_TYPE = "onprem";
 
 export default class OnPremConfiguration extends Component {
