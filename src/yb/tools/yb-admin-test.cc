@@ -89,8 +89,11 @@ TEST_F(AdminCliTest, TestChangeConfig) {
   }
   ASSERT_TRUE(new_node != nullptr);
 
+  int cur_log_index = 0;
   // Elect the leader (still only a consensus config size of 2).
   ASSERT_OK(StartElection(leader, tablet_id_, MonoDelta::FromSeconds(10)));
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(++cur_log_index, leader, tablet_id_,
+                                          MonoDelta::FromSeconds(30)));
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(30), active_tablet_servers,
                                   tablet_id_, 1));
 

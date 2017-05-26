@@ -236,7 +236,7 @@ void RemoteBootstrapITest::CrashTestVerify() {
                                &crash_test_leader_ts_));
 
     Status s = RemoveServer(crash_test_leader_ts_, crash_test_tablet_id_, dead_leader, boost::none,
-                            MonoDelta::FromSeconds(1));
+                            MonoDelta::FromSeconds(1), NULL, false /* retry */);
     if (s.ok()) {
       break;
     }
@@ -852,7 +852,7 @@ void RemoteBootstrapITest::DisableRemoteBootstrap_NoTightLoopWhenTabletDeleted(
 }
 
 void RemoteBootstrapITest::LeaderCrashesWhileFetchingData(YBTableType table_type) {
-  crash_test_timeout_ = MonoDelta::FromSeconds(20);
+  crash_test_timeout_ = MonoDelta::FromSeconds(30);
   CrashTestSetUp(table_type);
 
   // Cause the leader to crash when a follower tries to fetch data from it.
@@ -863,8 +863,12 @@ void RemoteBootstrapITest::LeaderCrashesWhileFetchingData(YBTableType table_type
   // Add our TS 0 to the config and wait for the leader to crash.
   ASSERT_OK(cluster_->tablet_server(crash_test_tserver_index_)->Restart());
   TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
+
   ASSERT_OK(itest::AddServer(crash_test_leader_ts_, crash_test_tablet_id_, ts,
-                             RaftPeerPB::PRE_VOTER, boost::none, crash_test_timeout_));
+                             RaftPeerPB::PRE_VOTER, boost::none, crash_test_timeout_,
+                             NULL /* error code */,
+                             true /* retry */));
+
   ASSERT_OK(cluster_->WaitForTSToCrash(crash_test_leader_index_));
 
   CrashTestVerify();

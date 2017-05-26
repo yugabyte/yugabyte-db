@@ -731,7 +731,11 @@ const OpId& ReplicaState::GetCommittedOpIdUnlocked() const {
 bool ReplicaState::AreCommittedAndCurrentTermsSameUnlocked() const {
   int64_t term = GetCurrentTermUnlocked();
   const OpId &opid = GetCommittedOpIdUnlocked();
-  return opid.term() == term;
+  if (opid.term() != term) {
+    LOG(INFO) << "committed term=" << opid.term() << ", current term=" << term;
+    return false;
+  }
+  return true;
 }
 
 void ReplicaState::UpdateLastReceivedOpIdUnlocked(const OpId& op_id) {

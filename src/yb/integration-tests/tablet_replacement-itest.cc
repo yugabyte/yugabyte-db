@@ -107,7 +107,8 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneEvictedReplica) {
   }
   // This will time out, but should take effect.
   Status s = itest::AddServer(leader_ts, tablet_id, follower_ts, RaftPeerPB::PRE_VOTER,
-                              boost::none, MonoDelta::FromSeconds(5));
+                              boost::none, MonoDelta::FromSeconds(5), NULL,
+                              false /* retry */);
   ASSERT_TRUE(s.IsTimedOut());
   ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(kFollowerIndex, tablet_id, TABLET_DATA_READY,
                                                  timeout));

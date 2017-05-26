@@ -276,7 +276,8 @@ Status AddServer(const TServerDetails* leader,
                  consensus::RaftPeerPB::MemberType member_type,
                  const boost::optional<int64_t>& cas_config_opid_index,
                  const MonoDelta& timeout,
-                 tserver::TabletServerErrorPB::Code* error_code = NULL);
+                 tserver::TabletServerErrorPB::Code* error_code = NULL,
+                 bool retry = true);
 
 // Run a ConfigChange to REMOVE_SERVER on 'replica_to_remove'.
 // The RPC request is sent to 'leader'.
@@ -285,7 +286,8 @@ Status RemoveServer(const TServerDetails* leader,
                     const TServerDetails* replica_to_remove,
                     const boost::optional<int64_t>& cas_config_opid_index,
                     const MonoDelta& timeout,
-                    tserver::TabletServerErrorPB::Code* error_code = NULL);
+                    tserver::TabletServerErrorPB::Code* error_code = NULL,
+                    bool retry = true);
 
 // Get the list of tablets from the remote server.
 Status ListTablets(const TServerDetails* ts,

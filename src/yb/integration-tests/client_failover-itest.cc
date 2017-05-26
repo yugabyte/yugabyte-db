@@ -150,7 +150,8 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
       // Do a config change to remove the old replica and add a new one.
       // Cause the new replica to become leader, then do the scan again.
       // Since old_leader is not changed in loop we would not remove more than one node.
-      auto result = RemoveServer(leader, tablet_id, old_leader, boost::none, kTimeout);
+      auto result = RemoveServer(leader, tablet_id, old_leader, boost::none, kTimeout, NULL,
+                                 false /* retry */);
       if (result.ok()) {
         break;
       } else if (retries_left <= 0) {

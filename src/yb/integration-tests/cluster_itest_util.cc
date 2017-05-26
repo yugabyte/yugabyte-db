@@ -696,13 +696,42 @@ Status WriteSimpleTestRow(const TServerDetails* replica,
   return Status::OK();
 }
 
+namespace {
+  Status SendAddRemoveServerRequest(const TServerDetails* leader,
+                                    const ChangeConfigRequestPB& req,
+                                    ChangeConfigResponsePB* resp,
+                                    RpcController* rpc,
+                                    const MonoDelta& timeout,
+                                    TabletServerErrorPB::Code* error_code,
+                                    bool retry) {
+    Status status = Status::OK();
+    MonoTime start = MonoTime::Now(MonoTime::FINE);
+    do {
+      RETURN_NOT_OK(leader->consensus_proxy->ChangeConfig(req, resp, rpc));
+      if (!resp->has_error()) {
+        break;
+      }
+      if (error_code) *error_code = resp->error().code();
+      status = StatusFromPB(resp->error().status());
+      if (!retry) {
+        break;
+      }
+      if (resp->error().code() != TabletServerErrorPB::LEADER_NOT_READY_CHANGE_CONFIG) {
+        break;
+      }
+    } while (MonoTime::Now(MonoTime::FINE).GetDeltaSince(start).LessThan(timeout));
+    return status;
+  }
+} // namespace
+
 Status AddServer(const TServerDetails* leader,
                  const std::string& tablet_id,
                  const TServerDetails* replica_to_add,
                  consensus::RaftPeerPB::MemberType member_type,
                  const boost::optional<int64_t>& cas_config_opid_index,
                  const MonoDelta& timeout,
-                 TabletServerErrorPB::Code* error_code) {
+                 TabletServerErrorPB::Code* error_code,
+                 bool retry) {
   ChangeConfigRequestPB req;
   ChangeConfigResponsePB resp;
   RpcController rpc;
@@ -719,12 +748,7 @@ Status AddServer(const TServerDetails* leader,
     req.set_cas_config_opid_index(*cas_config_opid_index);
   }
 
-  RETURN_NOT_OK(leader->consensus_proxy->ChangeConfig(req, &resp, &rpc));
-  if (resp.has_error()) {
-    if (error_code) *error_code = resp.error().code();
-    return StatusFromPB(resp.error().status());
-  }
-  return Status::OK();
+  return SendAddRemoveServerRequest(leader, req, &resp, &rpc, timeout, error_code, retry);
 }
 
 Status RemoveServer(const TServerDetails* leader,
@@ -732,7 +756,8 @@ Status RemoveServer(const TServerDetails* leader,
                     const TServerDetails* replica_to_remove,
                     const boost::optional<int64_t>& cas_config_opid_index,
                     const MonoDelta& timeout,
-                    TabletServerErrorPB::Code* error_code) {
+                    TabletServerErrorPB::Code* error_code,
+                    bool retry) {
   ChangeConfigRequestPB req;
   ChangeConfigResponsePB resp;
   RpcController rpc;
@@ -747,12 +772,7 @@ Status RemoveServer(const TServerDetails* leader,
   RaftPeerPB* peer = req.mutable_server();
   peer->set_permanent_uuid(replica_to_remove->uuid());
 
-  RETURN_NOT_OK(leader->consensus_proxy->ChangeConfig(req, &resp, &rpc));
-  if (resp.has_error()) {
-    if (error_code) *error_code = resp.error().code();
-    return StatusFromPB(resp.error().status());
-  }
-  return Status::OK();
+  return SendAddRemoveServerRequest(leader, req, &resp, &rpc, timeout, error_code, retry);
 }
 
 Status ListTablets(const TServerDetails* ts,

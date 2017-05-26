@@ -768,7 +768,8 @@ void RaftConsensusITest::TestAddRemoveServer(RaftPeerPB::MemberType member_type)
   ASSERT_OK(WaitUntilCommittedOpIdIndexIs(1, leader_tserver, tablet_id_, kTimeout));
 
   // Make sure the server rejects removal of itself from the configuration.
-  Status s = RemoveServer(leader_tserver, tablet_id_, leader_tserver, boost::none, kTimeout);
+  Status s = RemoveServer(leader_tserver, tablet_id_, leader_tserver, boost::none, kTimeout, NULL,
+                          false /* retry */);
   ASSERT_TRUE(s.IsInvalidArgument()) << "Should not be able to remove self from config: "
                                      << s.ToString();
 
@@ -922,7 +923,7 @@ void RaftConsensusITest::TestRemoveTserverFailsWhenServerInTransition(
   // Now try to remove server 1 from the configuration. This should fail.
   LOG(INFO) << "Removing tserver with uuid " << tservers[1]->uuid();
   auto status = RemoveServer(initial_leader, tablet_id_, tservers[1], boost::none,
-                             MonoDelta::FromSeconds(10));
+                             MonoDelta::FromSeconds(10), NULL, false /* retry */);
   ASSERT_TRUE(status.IsIllegalState());
   ASSERT_STR_CONTAINS(status.ToString(), "Leader is not ready for Config Change");
 }
@@ -1826,7 +1827,7 @@ TEST_F(RaftConsensusITest, TestReplaceChangeConfigOperation) {
   TabletServerErrorPB::Code error_code;
   Status s = RemoveServer(leader_tserver, tablet_id_, tservers[1],
                           -1, MonoDelta::FromSeconds(1),
-                          &error_code);
+                          &error_code, false /* retry */);
   ASSERT_TRUE(s.IsTimedOut());
 
   LOG(INFO) << "Pause the leader, and restart the other servers.";
@@ -1880,7 +1881,7 @@ TEST_F(RaftConsensusITest, TestAtomicAddRemoveServer) {
   TabletServerErrorPB::Code error_code;
   Status s = RemoveServer(leader_tserver, tablet_id_, follower_ts,
                           invalid_committed_opid_index, MonoDelta::FromSeconds(10),
-                          &error_code);
+                          &error_code, false /* retry */);
   ASSERT_EQ(TabletServerErrorPB::CAS_FAILED, error_code);
   ASSERT_STR_CONTAINS(s.ToString(), "of 7 but the committed config has opid_index of -1");
 
@@ -1898,7 +1899,7 @@ TEST_F(RaftConsensusITest, TestAtomicAddRemoveServer) {
   invalid_committed_opid_index = -1;  // The old one is no longer valid.
   s = AddServer(leader_tserver, tablet_id_, follower_ts, RaftPeerPB::VOTER,
                 invalid_committed_opid_index, MonoDelta::FromSeconds(10),
-                &error_code);
+                &error_code, false /* retry */);
   ASSERT_EQ(TabletServerErrorPB::CAS_FAILED, error_code);
   ASSERT_STR_CONTAINS(s.ToString(), "of -1 but the committed config has opid_index of 2");
 
@@ -2633,7 +2634,9 @@ TEST_F(RaftConsensusITest, TestChangeConfigRejectedUnlessNoopReplicated) {
                                  tablet_id_,
                                  tablet_servers_[cluster_->tablet_server(1)->uuid()].get(),
                                  boost::none,
-                                 timeout);
+                                 timeout,
+                                 NULL,
+                                 false /* retry */);
   ASSERT_TRUE(!s.ok()) << s.ToString();
   ASSERT_STR_CONTAINS(s.ToString(), "Leader is not ready for Config Change");
 }
