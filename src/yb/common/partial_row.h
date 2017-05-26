@@ -201,13 +201,20 @@ class YBPartialRow {
   // Utility code
   //------------------------------------------------------------
 
-  // Return true if all one of the following condition is true.
-  // - Has hash keys and all hash keys are set.
-  // - Has primary keys and all primary keys are set.
-  // NOTE: It'd return false if the schema doesn't have any primary or hash keys.
+  // Returns true if there are hash key columns and values for all of them have been specified.
+  bool IsHashKeySet() const;
+
+  // Returns true if there are primary key (hash plus range) columns and values for all of them
+  // have been specified.
   bool IsKeySet() const;
 
-  // Return true if all columns have been specified.
+  // Returns true if either hash key or primary key exist and are set.
+  // In practice this means that either:
+  //  - hash key columns exist and are set
+  //  - no hash key column exist but primary key columns exist and are set (i.e. range portion only)
+  bool IsHashOrPrimaryKeySet() const;
+
+  // Return true if values for all columns have been specified.
   bool AllColumnsSet() const;
 
   std::string ToString() const;

@@ -464,11 +464,15 @@ CHECKED_STATUS Executor::ColumnArgsToWriteRequestPB(const shared_ptr<client::YBT
     VLOG(3) << "WRITE request, column id = " << col_desc->id();
     col_pb->set_column_id(col_desc->id());
     YQLExpressionPB *expr_pb = col_pb->mutable_expr();
+    RETURN_NOT_OK(PTExprToPB(col.expr(), expr_pb));
+    // null values not allowed for primary key: checking here catches nulls introduced by bind
+    if (col_desc->is_primary() && expr_pb->has_value() && YQLValue::IsNull(expr_pb->value())) {
+      LOG(INFO) << "Unexpected null value. Current request: " << req->DebugString();
+      return exec_context_->Error(tnode->loc(), ErrorCode::NULL_ARGUMENT_FOR_PRIMARY_KEY);
+    }
+
     if (col_desc->is_hash()) {
-      RETURN_NOT_OK(PTExprToPB(col.expr(), expr_pb));
       RETURN_NOT_OK(SetupPartialRow(col_desc, expr_pb, row));
-    } else {
-      RETURN_NOT_OK(PTExprToPB(col.expr(), expr_pb));
     }
   }
 
@@ -495,7 +499,9 @@ CHECKED_STATUS Executor::WhereClauseToPB(YQLWriteRequestPB *req,
     VLOG(3) << "WRITE request, column id = " << col_desc->id();
     col_pb->set_column_id(col_desc->id());
     RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb->mutable_expr()));
-    RETURN_NOT_OK(SetupPartialRow(col_desc, col_pb->mutable_expr(), row));
+    if (col_desc->is_hash()) {
+      RETURN_NOT_OK(SetupPartialRow(col_desc, col_pb->mutable_expr(), row));
+    }
   }
 
   // Setup the rest of the columns.

@@ -556,12 +556,12 @@ Status YQLWriteOperation::InitializeKeys(const bool hashed_key, const bool prima
   const auto& range_column_values = request_.range_column_values();
   vector<PrimitiveValue> hashed_components;
   vector<PrimitiveValue> range_components;
-  RETURN_NOT_OK(YQLColumnValuesToPrimitiveValues(
+  RETURN_NOT_OK(YQLKeyColumnValuesToPrimitiveValues(
       hashed_column_values, schema_, 0,
       schema_.num_hash_key_columns(), &hashed_components));
-  RETURN_NOT_OK(YQLColumnValuesToPrimitiveValues(
+  RETURN_NOT_OK(YQLKeyColumnValuesToPrimitiveValues(
       range_column_values, schema_, schema_.num_hash_key_columns(),
-      schema_.num_key_columns() - schema_.num_hash_key_columns(), &range_components));
+      schema_.num_range_key_columns(), &range_components));
 
   // We need the hash key if writing to the static columns.
   if (hashed_key && hashed_doc_key_ == nullptr) {

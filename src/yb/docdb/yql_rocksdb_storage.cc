@@ -40,7 +40,7 @@ CHECKED_STATUS YQLRocksDBStorage::BuildYQLScanSpec(const YQLReadRequestPB& reque
       static_cast<docdb::DocKeyHash>(request.max_hash_code()) : -1;
 
   vector<PrimitiveValue> hashed_components;
-  RETURN_NOT_OK(YQLColumnValuesToPrimitiveValues(
+  RETURN_NOT_OK(YQLKeyColumnValuesToPrimitiveValues(
       request.hashed_column_values(), schema, 0, schema.num_hash_key_columns(),
       &hashed_components));
 

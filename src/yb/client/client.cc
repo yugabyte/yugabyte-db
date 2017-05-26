@@ -1178,7 +1178,7 @@ Status YBSession::Apply(std::shared_ptr<YBOperation> yb_op) {
   CHECK_EQ(yb_op->read_only(), read_only_);
 
   // Check if the operations have the hashed keys. Read operations do not require key sets.
-  if (!yb_op->row().IsKeySet() && yb_op->type() != YBOperation::YQL_READ) {
+  if (!yb_op->row().IsHashOrPrimaryKeySet() && yb_op->type() != YBOperation::YQL_READ) {
     Status status = STATUS(IllegalState, "Key not specified", yb_op->ToString());
     data_->error_collector_->AddError(
         gscoped_ptr<YBError>(new YBError(shared_ptr<YBOperation>(yb_op), status)));

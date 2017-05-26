@@ -36,7 +36,7 @@ public class TestBindVariable extends BaseCQLTest {
     try {
       session.execute(stmt, values);
       fail("Statement \"" + stmt + "\" did not fail");
-    } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+    } catch (com.datastax.driver.core.exceptions.QueryValidationException e) {
       LOG.info("Expected exception", e);
     }
   }
@@ -45,7 +45,7 @@ public class TestBindVariable extends BaseCQLTest {
     try {
       session.execute(stmt, values);
       fail("Statement \"" + stmt + "\" did not fail");
-    } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+    } catch (com.datastax.driver.core.exceptions.QueryValidationException e) {
       LOG.info("Expected exception", e);
     }
   }
@@ -1063,6 +1063,42 @@ public class TestBindVariable extends BaseCQLTest {
     testInvalidBindStatement("SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                              " WHERE h1 = (- ?) AND h2 = :2 AND r1 = :3;",
                              new Integer(7), "h7", new Integer(107));
+
+    // Insert nulls not allowed in primary key: hash with bind-by-position
+    testInvalidBindStatement("INSERT INTO test_bind(h1, h2, r1, r2, v1, v2) " +
+                             " values(?,?,?,?,?,?);",
+                             null, "x",
+                             new Integer(11), "y",
+                             new Integer(17), "z" );
+
+    // Insert nulls not allowed in primary key: range with bind-by-position
+    testInvalidBindStatement("INSERT INTO test_bind(h1, h2, r1, r2, v1, v2) " +
+                              " values(?,?,?,?,?,?);",
+                             new Integer(5), "x",
+                             new Integer(11), null,
+                             new Integer(17), "z" );
+
+    // Insert nulls not allowed in primary key: range with bind-by-name
+    Map<String, Object> valueMap = new HashMap<>();
+    valueMap.put("h1", new Integer(5));
+    valueMap.put("h2", null);
+    valueMap.put("r1", new Integer(11));
+    valueMap.put("r2", "y");
+    valueMap.put("v1", new Integer(17));
+    valueMap.put("v2", "z");
+    testInvalidBindStatement("INSERT INTO test_bind(h1, h2, r1, r2, v1, v2) " +
+                             " values(:h1,:h2,:r1,:r2,:v1,:v2);", valueMap);
+
+    // Insert nulls not allowed in primary key: range with bind-by-name
+    valueMap.clear();
+    valueMap.put("h1", new Integer(5));
+    valueMap.put("h2", "x");
+    valueMap.put("r1", null);
+    valueMap.put("r2", "y");
+    valueMap.put("v1", new Integer(17));
+    valueMap.put("v2", "z");
+    testInvalidBindStatement("INSERT INTO test_bind(h1, h2, r1, r2, v1, v2) " +
+                             " values(:h1,:h2,:r1,:r2,:v1,:v2);", valueMap);
 
     LOG.info("End test");
   }

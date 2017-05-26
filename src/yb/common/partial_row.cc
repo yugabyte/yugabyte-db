@@ -728,16 +728,23 @@ string YBPartialRow::ToEncodedRowKeyOrDie() const {
 // Utility code
 //------------------------------------------------------------
 
-bool YBPartialRow::AllColumnsSet() const {
-  return BitMapIsAllSet(isset_bitmap_, 0, schema_->num_columns());
+bool YBPartialRow::IsHashKeySet() const {
+  return schema_->num_hash_key_columns() > 0 &&
+         BitMapIsAllSet(isset_bitmap_, 0, schema_->num_hash_key_columns());
 }
 
 bool YBPartialRow::IsKeySet() const {
-  return
-    (schema_->num_hash_key_columns() > 0 &&
-     BitMapIsAllSet(isset_bitmap_, 0, schema_->num_hash_key_columns())) ||
-    (schema_->num_key_columns() > 0 &&
-     BitMapIsAllSet(isset_bitmap_, 0, schema_->num_key_columns()));
+  return schema_->num_key_columns() > 0 &&
+         BitMapIsAllSet(isset_bitmap_, 0, schema_->num_key_columns());
+}
+
+bool YBPartialRow::IsHashOrPrimaryKeySet() const {
+  return IsHashKeySet() || IsKeySet();
+}
+
+bool YBPartialRow::AllColumnsSet() const {
+  return schema_->num_columns() > 0 &&
+         BitMapIsAllSet(isset_bitmap_, 0, schema_->num_columns());
 }
 
 std::string YBPartialRow::ToString() const {
