@@ -82,13 +82,13 @@ const char* GenericCalculatorService::kFirstString =
 const char* GenericCalculatorService::kSecondString =
     "2222222222222222222222222222222222222222222222222222222222222222222222";
 
-void GenericCalculatorService::Handle(InboundCall* incoming) {
+void GenericCalculatorService::Handle(InboundCallPtr incoming) {
   if (incoming->remote_method().method_name() == kAddMethodName) {
-    DoAdd(incoming);
+    DoAdd(incoming.get());
   } else if (incoming->remote_method().method_name() == kSleepMethodName) {
-    DoSleep(incoming);
+    DoSleep(incoming.get());
   } else if (incoming->remote_method().method_name() == kSendStringsMethodName) {
-    DoSendStrings(incoming);
+    DoSendStrings(incoming.get());
   } else {
     incoming->RespondFailure(ErrorStatusPB::ERROR_NO_SUCH_METHOD,
         STATUS(InvalidArgument, "bad method"));

@@ -356,7 +356,7 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         " public:\n"
         "  explicit $service_name$If(const scoped_refptr<MetricEntity>& entity);\n"
         "  virtual ~$service_name$If();\n"
-        "  virtual void Handle(::yb::rpc::InboundCall *call);\n"
+        "  virtual void Handle(::yb::rpc::InboundCallPtr call);\n"
         "  virtual std::string service_name() const;\n"
         "  static std::string static_service_name();\n"
         "\n"
@@ -477,7 +477,7 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         "$service_name$If::~$service_name$If() {\n"
         "}\n"
         "\n"
-        "void $service_name$If::Handle(::yb::rpc::InboundCall *call) {\n"
+        "void $service_name$If::Handle(::yb::rpc::InboundCallPtr call) {\n"
         "  {\n");
 
       for (int method_idx = 0; method_idx < service->method_count();
@@ -488,14 +488,14 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         Print(printer, *subs,
         "    if (call->remote_method().method_name() == \"$rpc_name$\") {\n"
         "      $request$ *req = new $request$;\n"
-        "      if (PREDICT_FALSE(!ParseParam(call, req))) {\n"
+        "      if (PREDICT_FALSE(!ParseParam(call.get(), req))) {\n"
         "        delete req;\n"
         "        return;\n"
         "      }\n"
         "      $response$ *resp = new $response$;\n"
         "      $rpc_name$(req, resp,\n"
-        "          new ::yb::rpc::RpcContext(call, req, resp,\n"
-        "                                      metrics_[$metric_enum_key$]));\n"
+        "          new ::yb::rpc::RpcContext(std::move(call), req, resp,\n"
+        "                                    metrics_[$metric_enum_key$]));\n"
         "      return;\n"
         "    }\n"
         "\n");
@@ -503,7 +503,7 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       }
       Print(printer, *subs,
         "  }\n"
-        "  RespondBadMethod(call);\n"
+        "  RespondBadMethod(call.get());\n"
         "}\n"
         "\n"
         "std::string $service_name$If::service_name() const {\n"

@@ -18,6 +18,8 @@ class ServerEvent : public OutboundData {
   virtual std::string ToString() const = 0;
 };
 
+typedef std::shared_ptr<ServerEvent> ServerEventPtr;
+
 }  // namespace rpc
 }  // namespace yb
 #endif // YB_RPC_SERVER_EVENT_H

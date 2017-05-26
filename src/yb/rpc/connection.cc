@@ -211,9 +211,9 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
 
   auto now = MonoTime::FineNow();
   while (!expiration_queue_.empty() && expiration_queue_.top().first <= now) {
-    auto call = expiration_queue_.top().second;
+    auto call = expiration_queue_.top().second.lock();
     expiration_queue_.pop();
-    if (!call->IsFinished()) {
+    if (call && !call->IsFinished()) {
       call->SetTimedOut();
       auto i = awaiting_response_.find(call->call_id());
       if (i != awaiting_response_.end()) {
@@ -434,7 +434,7 @@ Status Connection::DoWrite() {
       sending_outbound_datas_.pop_front();
       if (call) {
         if (direction_ == Direction::CLIENT) {
-          OutboundCallPtr outbound_call(down_cast<OutboundCall*>(call.get()));
+          OutboundCallPtr outbound_call = std::static_pointer_cast<OutboundCall>(call);
           CallSent(std::move(outbound_call));
         }
         call->Transferred(Status::OK());

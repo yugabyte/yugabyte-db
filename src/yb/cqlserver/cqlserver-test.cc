@@ -209,9 +209,9 @@ TEST_F(TestCQLService, TestCQLServerEventConst) {
   std::unique_ptr<SchemaChangeEventResponse> response(
       new SchemaChangeEventResponse("", "", "", "", {}));
   constexpr size_t kSize = sizeof(CQLServerEvent);
-  CQLServerEvent* event = new CQLServerEvent(std::move(response));
-  yb::rpc::OutboundDataPtr data(event);
-  void* ptr = event;
+  auto event = std::make_shared<CQLServerEvent>(std::move(response));
+  rpc::OutboundData* data = event.get();
+  void* ptr = event.get();
   char buffer[kSize];
   memcpy(buffer, ptr, kSize);
   data->Transferred(Status::OK());

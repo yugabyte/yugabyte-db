@@ -4,8 +4,7 @@
 #define YB_RPC_OUTBOUND_DATA_H
 
 #include <deque>
-
-#include "yb/gutil/ref_counted.h"
+#include <memory>
 
 #include "yb/util/ref_cnt_buffer.h"
 
@@ -16,7 +15,7 @@ class Status;
 namespace rpc {
 
 // Interface for outbound transfers from the RPC framework.
-class OutboundData : public RefCountedThreadSafe<OutboundData> {
+class OutboundData : public std::enable_shared_from_this<OutboundData> {
  public:
   virtual void Transferred(const Status& status) = 0;
 
@@ -26,7 +25,7 @@ class OutboundData : public RefCountedThreadSafe<OutboundData> {
   virtual std::string ToString() const = 0;
 };
 
-typedef scoped_refptr<OutboundData> OutboundDataPtr;
+typedef std::shared_ptr<OutboundData> OutboundDataPtr;
 
 }  // namespace rpc
 }  // namespace yb

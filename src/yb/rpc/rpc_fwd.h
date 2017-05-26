@@ -21,10 +21,10 @@ class Connection;
 typedef std::shared_ptr<Connection> ConnectionPtr;
 
 class InboundCall;
-typedef scoped_refptr<InboundCall> InboundCallPtr;
+typedef std::shared_ptr<InboundCall> InboundCallPtr;
 
 class OutboundCall;
-typedef scoped_refptr<OutboundCall> OutboundCallPtr;
+typedef std::shared_ptr<OutboundCall> OutboundCallPtr;
 
 struct RedisClientCommand;
 

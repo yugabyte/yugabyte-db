@@ -74,10 +74,10 @@ void CQLServiceImpl::SetUpYBClient(
   table_cache_ = std::make_shared<YBTableCache>(client_);
 }
 
-void CQLServiceImpl::Handle(InboundCall* inbound_call) {
+void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {
   TRACE("Handling the CQL call");
   // Collect the call.
-  CQLInboundCall* cql_call = down_cast<CQLInboundCall*>(CHECK_NOTNULL(inbound_call));
+  CQLInboundCall* cql_call = down_cast<CQLInboundCall*>(CHECK_NOTNULL(inbound_call.get()));
   if (cql_call->TryResume()) {
     // This is a continuation/callback from a previous request.
     // Call the call back, and we are done.
@@ -92,7 +92,7 @@ void CQLServiceImpl::Handle(InboundCall* inbound_call) {
   MonoTime got_processor = MonoTime::Now(MonoTime::FINE);
   cql_metrics_->time_to_get_cql_processor_->Increment(
       got_processor.GetDeltaSince(start).ToMicroseconds());
-  processor->ProcessCall(cql_call);
+  processor->ProcessCall(std::move(inbound_call));
 }
 
 CQLProcessor *CQLServiceImpl::GetProcessor() {

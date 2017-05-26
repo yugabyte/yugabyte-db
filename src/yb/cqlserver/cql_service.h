@@ -48,7 +48,7 @@ class CQLServiceImpl : public CQLServerServiceIf {
       const CQLServerOptions& opts);
 
   // Processing all incoming request from RPC and sending response back.
-  void Handle(yb::rpc::InboundCall* call) override;
+  void Handle(yb::rpc::InboundCallPtr call) override;
 
   // Either gets an available processor or creates a new one.
   CQLProcessor *GetProcessor();

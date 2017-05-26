@@ -66,7 +66,7 @@ void CQLServer::Shutdown() {
 }
 
 Status CQLServer::QueueEventForAllClients(std::unique_ptr<EventResponse> event_response) {
-  scoped_refptr<CQLServerEvent> server_event(new CQLServerEvent(std::move(event_response)));
+  auto server_event = std::make_shared<CQLServerEvent>(std::move(event_response));
   RETURN_NOT_OK(messenger_->QueueEventOnAllReactors(server_event));
   return Status::OK();
 }

@@ -165,7 +165,7 @@ class ServicePoolImpl {
     call->RespondFailure(ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN, response_status);
   }
 
-  void Handle(const InboundCallPtr& incoming) {
+  void Handle(InboundCallPtr incoming) {
     incoming->RecordHandlingStarted(incoming_queue_time_);
     ADOPT_TRACE(incoming->trace());
 
@@ -184,7 +184,7 @@ class ServicePoolImpl {
 
     TRACE_TO(incoming->trace(), "Handling call");
 
-    service_->Handle(incoming.get());
+    service_->Handle(std::move(incoming));
   }
 
   void Released(InboundCallTask* task) {

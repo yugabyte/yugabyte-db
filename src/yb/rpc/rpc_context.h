@@ -64,11 +64,11 @@ class RpcContext {
  public:
   // Create an RpcContext. This is called only from generated code
   // and is not a public API.
-  RpcContext(scoped_refptr<InboundCall> call,
+  RpcContext(InboundCallPtr call,
              const google::protobuf::Message *request_pb,
              const google::protobuf::Message *response_pb,
              RpcMethodMetrics metrics);
-  RpcContext(scoped_refptr<InboundCall> call,
+  RpcContext(InboundCallPtr call,
              RpcMethodMetrics metrics);
 
   ~RpcContext();
@@ -184,6 +184,11 @@ class RpcContext {
   // Closes connection that received this request.
   void CloseConnection();
  private:
+  RpcContext(InboundCallPtr call,
+             std::shared_ptr<const google::protobuf::Message> request_pb,
+             std::shared_ptr<const google::protobuf::Message> response_pb,
+             RpcMethodMetrics metrics);
+
   InboundCallPtr call_;
   const std::shared_ptr<const google::protobuf::Message> request_pb_;
   const std::shared_ptr<const google::protobuf::Message> response_pb_;

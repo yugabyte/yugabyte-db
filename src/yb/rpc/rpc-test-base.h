@@ -67,7 +67,7 @@ class GenericCalculatorService : public ServiceIf {
     // this test doesn't generate metrics, so we ignore the argument.
   }
 
-  virtual void Handle(InboundCall *incoming) override;
+  virtual void Handle(InboundCallPtr incoming) override;
   std::string service_name() const override { return kFullServiceName; }
   static std::string static_service_name() { return kFullServiceName; }
 

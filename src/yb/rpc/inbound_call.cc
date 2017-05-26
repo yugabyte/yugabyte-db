@@ -128,7 +128,7 @@ void InboundCall::Respond(const MessageLite& response,
   TRACE_TO(trace_, "Queueing $0 response", is_success ? "success" : "failure");
 
   LogTrace();
-  conn_->QueueOutboundData(InboundCallPtr(this));
+  conn_->QueueOutboundData(shared_from_this());
 }
 
 void InboundCall::NotifyTransferred(const Status& status) {

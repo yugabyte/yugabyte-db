@@ -152,7 +152,7 @@ class Messenger {
   // Take ownership of the socket via Socket::Release
   void RegisterInboundSocket(Socket *new_socket, const Endpoint& remote);
 
-  CHECKED_STATUS QueueEventOnAllReactors(scoped_refptr<ServerEvent> server_event);
+  CHECKED_STATUS QueueEventOnAllReactors(ServerEventPtr server_event);
 
   // Dump the current RPCs into the given protobuf.
   CHECKED_STATUS DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,

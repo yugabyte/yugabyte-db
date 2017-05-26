@@ -267,14 +267,13 @@ class ReactorThread {
 
   void Join() { thread_->Join(); }
 
+  // Queues a server event on all the connections, such that every client receives it.
+  CHECKED_STATUS QueueEventOnAllConnections(ServerEventPtr server_event);
+
  private:
   friend class AssignOutboundCallTask;
   friend class RegisterConnectionTask;
-  friend class QueueServerEventTask;
   friend class DelayedTask;
-
-  // Queues a server event on all the connections, such that every client receives it.
-  CHECKED_STATUS QueueEventOnAllConnections(scoped_refptr<ServerEvent> server_event);
 
   // Run the main event loop of the reactor.
   void RunThread();
@@ -394,7 +393,7 @@ class Reactor {
                          DumpRunningRpcsResponsePB* resp);
 
   // Queues a server event on all the connections, such that every client receives it.
-  void QueueEventOnAllConnections(scoped_refptr<ServerEvent> server_event);
+  void QueueEventOnAllConnections(ServerEventPtr server_event);
 
   // Queue a new incoming connection. Takes ownership of the underlying fd from
   // 'socket', but not the Socket object itself.
@@ -412,6 +411,11 @@ class Reactor {
   // If the reactor shuts down before it is run, the Abort method will be
   // called.
   void ScheduleReactorTask(std::shared_ptr<ReactorTask> task);
+
+  template<class F>
+  void ScheduleReactorFunctor(const F& f) {
+    ScheduleReactorTask(MakeFunctorReactorTask(f));
+  }
 
   CHECKED_STATUS RunOnReactorThread(std::function<Status()>&& f);
 

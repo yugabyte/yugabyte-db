@@ -120,8 +120,7 @@ Status YBConnectionContext::HandleInboundCall(const ConnectionPtr& connection, S
   DCHECK(reactor_thread->IsCurrentThread());
 
   auto call_processed_listener = std::bind(&YBConnectionContext::EraseCall, this, _1);
-  YBInboundCall * call;
-  InboundCallPtr call_ptr(call = new YBInboundCall(connection, call_processed_listener));
+  auto call = std::make_shared<YBInboundCall>(connection, call_processed_listener);
 
   Status s = call->ParseFrom(call_data);
   if (!s.ok()) {
@@ -130,13 +129,13 @@ Status YBConnectionContext::HandleInboundCall(const ConnectionPtr& connection, S
 
   // call_id exists only for YB. Not for Redis.
   auto id = call->call_id();
-  if (!InsertIfNotPresent(&calls_being_handled_, id, call)) {
+  if (!InsertIfNotPresent(&calls_being_handled_, id, call.get())) {
     LOG(WARNING) << connection->ToString() << ": received call ID " << call->call_id()
                  << " but was already processing this ID! Ignoring";
     return STATUS_SUBSTITUTE(NetworkError, "Received duplicate call id: $0", call->call_id());
   }
 
-  reactor_thread->reactor()->messenger()->QueueInboundCall(call_ptr);
+  reactor_thread->reactor()->messenger()->QueueInboundCall(call);
 
   return Status::OK();
 }

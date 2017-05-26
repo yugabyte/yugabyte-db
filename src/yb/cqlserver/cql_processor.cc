@@ -164,7 +164,7 @@ void CQLProcessor::SendResponse(rpc::InboundCallPtr call, CQLResponse* response)
   rpc::CQLInboundCall* cql_call = down_cast<rpc::CQLInboundCall*>(call.get());
   cql_call->response_msg_buf() = util::RefCntBuffer(temp);
   delete response;
-  RpcContext* context = new RpcContext(call.get(), cql_metrics_->rpc_method_metrics_);
+  RpcContext* context = new RpcContext(std::move(call), cql_metrics_->rpc_method_metrics_);
   context->RespondSuccess();
 }
 

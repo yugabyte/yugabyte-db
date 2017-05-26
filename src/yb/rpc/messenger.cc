@@ -391,7 +391,7 @@ Status Messenger::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
   return Status::OK();
 }
 
-Status Messenger::QueueEventOnAllReactors(scoped_refptr<ServerEvent> server_event) {
+Status Messenger::QueueEventOnAllReactors(ServerEventPtr server_event) {
   shared_lock<rw_spinlock> guard(lock_.get_lock());
   for (Reactor* reactor : reactors_) {
     reactor->QueueEventOnAllConnections(server_event);

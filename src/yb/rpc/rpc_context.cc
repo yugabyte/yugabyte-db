@@ -71,12 +71,12 @@ scoped_refptr<debug::ConvertableToTraceFormat> TracePb(const Message& msg) {
 }  // anonymous namespace
 
 RpcContext::RpcContext(InboundCallPtr call,
-                       const google::protobuf::Message *request_pb,
-                       const google::protobuf::Message *response_pb,
+                       std::shared_ptr<const google::protobuf::Message> request_pb,
+                       std::shared_ptr<const google::protobuf::Message> response_pb,
                        RpcMethodMetrics metrics)
   : call_(std::move(call)),
-    request_pb_(request_pb),
-    response_pb_(response_pb),
+    request_pb_(std::move(request_pb)),
+    response_pb_(std::move(response_pb)),
     metrics_(metrics) {
   VLOG(4) << call_->remote_method().service_name()
           << ": Received RPC request for " << call_->ToString()
@@ -92,28 +92,24 @@ RpcContext::RpcContext(InboundCallPtr call,
                            "request", TracePb(*request_pb_));
 }
 
-static const shared_ptr<const Message> EMPTY_MESSAGE =
-    shared_ptr<const Message>(new EmptyMessagePB());
+namespace {
+
+const std::shared_ptr<const Message> EMPTY_MESSAGE = std::make_shared<EmptyMessagePB>();
+
+}
 
 RpcContext::RpcContext(InboundCallPtr call,
                        RpcMethodMetrics metrics)
-  : call_(std::move(call)),
-    request_pb_(EMPTY_MESSAGE),
-    response_pb_(EMPTY_MESSAGE),
-    metrics_(metrics) {
-  VLOG(4) << call_->remote_method().service_name()
-          << ": Received RPC request for " << call_->ToString()
-          << std::endl
-          << " request_pb_ : "
-          << (request_pb_.get() != nullptr ? request_pb_->DebugString() : "nullptr")
-          << std::endl
-          << " response_pb_ : "
-          << (response_pb_.get() != nullptr ? response_pb_->DebugString() : "nullptr")
-          << std::endl;
-  TRACE_EVENT_ASYNC_BEGIN2("rpc_call", "RPC", this,
-                           "call", call_->ToString(),
-                           "request", TracePb(*request_pb_));
-}
+    : RpcContext(std::move(call), EMPTY_MESSAGE, EMPTY_MESSAGE, metrics) {}
+
+RpcContext::RpcContext(InboundCallPtr call,
+                       const google::protobuf::Message *request_pb,
+                       const google::protobuf::Message *response_pb,
+                       RpcMethodMetrics metrics)
+    : RpcContext(std::move(call),
+                 std::shared_ptr<const google::protobuf::Message>(request_pb),
+                 std::shared_ptr<const google::protobuf::Message>(response_pb),
+                 metrics) {}
 
 RpcContext::~RpcContext() {
 }

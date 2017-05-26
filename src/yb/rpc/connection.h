@@ -284,7 +284,7 @@ class Connection final : public std::enable_shared_from_this<Connection> {
     }
   };
 
-  typedef std::pair<MonoTime, OutboundCallPtr> ExpirationPair;
+  typedef std::pair<MonoTime, std::weak_ptr<OutboundCall>> ExpirationPair;
 
   std::priority_queue<ExpirationPair,
                       std::vector<ExpirationPair>,

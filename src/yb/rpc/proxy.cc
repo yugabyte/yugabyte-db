@@ -86,12 +86,12 @@ void Proxy::AsyncRequest(const string& method,
   auto indexed_conn_id = conn_id_;
   indexed_conn_id.set_idx(idx);
 
-  controller->call_ = new OutboundCall(indexed_conn_id,
-                                       RemoteMethod(service_name_, method),
-                                       outbound_call_metrics_,
-                                       response,
-                                       controller,
-                                       std::move(callback));
+  controller->call_ = std::make_shared<OutboundCall>(indexed_conn_id,
+                                                     RemoteMethod(service_name_, method),
+                                                     outbound_call_metrics_,
+                                                     response,
+                                                     controller,
+                                                     std::move(callback));
   auto call = controller->call_.get();
   Status s = call->SetRequestParam(req);
   if (PREDICT_FALSE(!s.ok())) {

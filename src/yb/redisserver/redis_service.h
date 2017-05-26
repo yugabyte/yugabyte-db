@@ -33,7 +33,7 @@ class RedisServiceImpl : public RedisServerServiceIf {
  public:
   RedisServiceImpl(RedisServer* server, string yb_tier_master_address);
 
-  void Handle(yb::rpc::InboundCall* call) override;
+  void Handle(yb::rpc::InboundCallPtr call) override;
 
   void GetCommand(yb::rpc::InboundCallPtr call, yb::rpc::RedisClientCommand* c);
 

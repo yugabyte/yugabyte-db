@@ -312,15 +312,14 @@ Status RedisConnectionContext::HandleInboundCall(const ConnectionPtr& connection
   auto reactor_thread = connection->reactor_thread();
   DCHECK(reactor_thread->IsCurrentThread());
 
-  RedisInboundCall* call;
-  InboundCallPtr call_ptr(call = new RedisInboundCall(connection, call_processed_listener()));
+  auto call = std::make_shared<RedisInboundCall>(connection, call_processed_listener());
 
   Status s = call->ParseFrom(redis_command);
   if (!s.ok()) {
     return s;
   }
 
-  Enqueue(std::move(call_ptr));
+  Enqueue(std::move(call));
 
   return Status::OK();
 }

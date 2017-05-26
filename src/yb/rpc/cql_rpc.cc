@@ -70,10 +70,9 @@ Status CQLConnectionContext::HandleInboundCall(const ConnectionPtr& connection, 
   auto reactor_thread = connection->reactor_thread();
   DCHECK(reactor_thread->IsCurrentThread());
 
-  CQLInboundCall* call;
-  InboundCallPtr call_ptr(call = new CQLInboundCall(connection,
-                                                    call_processed_listener(),
-                                                    sql_session_));
+  auto call = std::make_shared<CQLInboundCall>(connection,
+                                               call_processed_listener(),
+                                               sql_session_);
 
   Status s = call->ParseFrom(slice);
   if (!s.ok()) {
@@ -81,7 +80,7 @@ Status CQLConnectionContext::HandleInboundCall(const ConnectionPtr& connection, 
     return STATUS_SUBSTITUTE(NetworkError, "Bad data: $0", s.ToString());
   }
 
-  Enqueue(std::move(call_ptr));
+  Enqueue(std::move(call));
 
   return Status::OK();
 }
