@@ -56,8 +56,11 @@ class OnPremListRegionsAndZones extends Component {
         })
         }
         <Row>
-          <Col lg={1} lgOffset={1}>
+          <Col lg={1}>
             <i className="fa fa-plus-circle fa-2x on-prem-row-add-btn" onClick={this.addRegionZoneTypeRow}/>
+          </Col>
+          <Col lg={3}>
+            <a className="on-prem-add-link" onClick={this.addRegionZoneTypeRow}>Add Region</a>
           </Col>
         </Row>
       </div>
@@ -77,14 +80,12 @@ export default class OnPremRegionsAndZones extends Component {
   render() {
     const {handleSubmit, switchToJsonEntry} = this.props;
     return (
-      <div>
-        <div className="machine-type-form-container">
-          <form name="onPremRegionsAndZonesForm" onSubmit={handleSubmit(this.createOnPremRegionsAndZones)}>
-            <Row className="on-prem-provider-form-container">
-
-            <Row>
-              <Col lgOffset={1} className="on-prem-form-text">Add One or More Regions, each with one or more zones.</Col>
-            </Row>
+      <div className="on-prem-provider-form-container">
+        <form name="onPremRegionsAndZonesForm" onSubmit={handleSubmit(this.createOnPremRegionsAndZones)}>
+          <div className="on-prem-form-text">
+            Add One or More Regions, each with one or more zones.
+          </div>
+          <div className="form-field-grid">
             <Row>
               <Col lg={3} lgOffset={1}>
                 Region Name
@@ -99,19 +100,13 @@ export default class OnPremRegionsAndZones extends Component {
             <div className="on-prem-form-grid-container">
               <FieldArray name="regionsZonesList" component={OnPremListRegionsAndZones}/>
             </div>
-            </Row>
-            <Row>
-              <Col lg={12}>
-                {switchToJsonEntry}
-                <ButtonGroup className="pull-right">
-                  <YBButton btnText={"Previous"}  btnClass={"btn btn-default save-btn "} onClick={this.props.prevPage}/>
-                  <YBButton btnText={"Next"} btnType={"submit"} btnClass={"btn btn-default save-btn"}/>
-                </ButtonGroup>
-              </Col>
-            </Row>
-          </form>
-        </div>
-
+          </div>
+          <div className="form-action-button-container">
+            {switchToJsonEntry}
+            <YBButton btnText={"Next"} btnType={"submit"} btnClass={"btn btn-default save-btn"}/>
+            <YBButton btnText={"Previous"}  btnClass={"btn btn-default back-btn"} onClick={this.props.prevPage}/>
+          </div>
+        </form>
       </div>
     )
   }

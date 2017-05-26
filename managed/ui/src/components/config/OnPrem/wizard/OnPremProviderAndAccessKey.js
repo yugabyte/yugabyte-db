@@ -60,27 +60,25 @@ export default class OnPremProviderAndAccessKey extends Component {
       hostOptionsIndicator = <i className="fa fa-chevron-up"/>;
     }
     return (
-      <div>
+      <div className="on-prem-provider-form-container">
         <form name="onPremProviderConfigForm" onSubmit={handleSubmit(this.submitProviderKeyForm)}>
-          <Row className="on-prem-provider-form-container">
+          <Row>
             <Col lg={5}>
-            <div className="form-right-aligned-labels">
-              <Field name="name" component={YBInputField} label="Provider Name" className=""/>
-              <Field name="keyCode" component={YBInputField} label="Key Code" className=""/>
-              <Field name="privateKeyContent" component={YBTextArea} label="SSH Key" className="ssh-key-container"/>
-            </div>
-            <div className="add-host-options-container" onClick={this.toggleAdditionalHostOptions}>
-              {hostOptionsIndicator} Additional Host Options
-            </div>
-          </Col>
+              <div className="form-right-aligned-labels">
+                <Field name="name" component={YBInputField} label="Provider Name" className=""/>
+                <Field name="keyCode" component={YBInputField} label="Key Code" className=""/>
+                <Field name="privateKeyContent" component={YBTextArea} label="SSH Key" className="ssh-key-container"/>
+              </div>
+              <div className="add-host-options-container" onClick={this.toggleAdditionalHostOptions}>
+                {hostOptionsIndicator} Additional Host Options
+              </div>
+            </Col>
             {additionalHostOptions}
           </Row>
-          <Row>
-            <Col lg={12}>
-              {switchToJsonEntry}
-              <YBButton btnText={"Continue"} btnType={"submit"} btnClass={"btn btn-default save-btn pull-right"}/>
-            </Col>
-          </Row>
+          <div className="form-action-button-container">
+            {switchToJsonEntry}
+            <YBButton btnText={"Next"} btnType={"submit"} btnClass={"btn btn-default save-btn"}/>
+          </div>
         </form>
       </div>
     )

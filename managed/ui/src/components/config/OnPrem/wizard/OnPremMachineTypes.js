@@ -54,7 +54,7 @@ class OnPremListMachineTypes extends Component {
               <Col lg={1}>
                 <Field name={`${fieldItem}.volumeType`} component={YBSelect} options={volumeTypeOptions}/>
               </Col>
-              <Col lg={3}>
+              <Col lg={4}>
                 <Field name={`${fieldItem}.mountPath`} component={YBInputField}/>
               </Col>
             </Row>
@@ -62,8 +62,11 @@ class OnPremListMachineTypes extends Component {
         })
         }
         <Row>
-          <Col lg={1} lgOffset={1}>
+          <Col lg={1}>
             <i className="fa fa-plus-circle fa-2x on-prem-row-add-btn" onClick={this.addMachineTypeRow}/>
+          </Col>
+          <Col lg={3}>
+            <a className="on-prem-add-link" onClick={this.addMachineTypeRow}>Add Machine Type</a>
           </Col>
         </Row>
       </div>
@@ -83,14 +86,13 @@ export default class OnPremMachineTypes extends Component {
   render() {
     const {handleSubmit, switchToJsonEntry} = this.props;
     return (
-      <div>
-        <div className="machine-type-form-container">
-          <form name="onPremMachineTypesConfigForm" onSubmit={handleSubmit(this.props.submitOnPremMachineTypes)}>
-            <Row className="on-prem-provider-form-container">
-              <Row>
-                <Col lgOffset={1} className="on-prem-form-text">Add One or More Machine Types to define your hardware configuration</Col>
-              </Row>
-              <Row>
+      <div className="on-prem-provider-form-container">
+        <form name="onPremMachineTypesConfigForm" onSubmit={handleSubmit(this.props.submitOnPremMachineTypes)}>
+          <div className="on-prem-form-text">
+            Add one or more machine types to define your hardware configuration.
+          </div>
+          <div className="form-field-grid">
+            <Row>
               <Col lg={3} lgOffset={1}>
                 Machine Type
               </Col>
@@ -101,32 +103,27 @@ export default class OnPremMachineTypes extends Component {
                 Mem Size GB
               </Col>
               <Col lg={1}>
-                Volume Size GB
+                Vol Size GB
               </Col>
               <Col lg={1}>
                 Volume Type
               </Col>
-              <Col lg={3}>
+              <Col lg={4}>
                 Mount Paths <span className="row-head-subscript">Comma Separated</span>
               </Col>
             </Row>
-              <div className="on-prem-form-grid-container">
+            <div className="on-prem-form-grid-container">
               <FieldArray name="machineTypeList" component={OnPremListMachineTypes}/>
             </div>
-            </Row>
-            <Row>
-              <Col lg={12}>
-                {switchToJsonEntry}
-                <ButtonGroup className="pull-right">
-                <YBButton btnText={"Previous"}  btnClass={"btn btn-default save-btn "} onClick={this.props.prevPage}/>
-                <YBButton btnText={"Next"} btnType={"submit"} btnClass={"btn btn-default save-btn"}/>
-              </ButtonGroup>
-              </Col>
-            </Row>
-          </form>
-        </div>
+          </div>
+          <div className="form-action-button-container">
+            {switchToJsonEntry}
+            <YBButton btnText={"Next"} btnType={"submit"} btnClass={"btn btn-default save-btn"}/>
+            <YBButton btnText={"Previous"}  btnClass={"btn btn-default back-btn"} onClick={this.props.prevPage}/>
+          </div>
+        </form>
       </div>
-    )
+    );
   }
 }
 

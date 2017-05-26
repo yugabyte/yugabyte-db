@@ -30,7 +30,7 @@ class InstanceTypeForRegion extends Component {
     return (
       <div className="instance-row-container">
         <Row>
-          <Col lg={3}>
+          <Col lg={3} lgOffset={1}>
             Zone
           </Col>
           <Col lg={3}>
@@ -44,6 +44,9 @@ class InstanceTypeForRegion extends Component {
           fields.map(function(instanceTypeItem, instanceTypeIdx){
             return (
               <Row key={instanceTypeIdx}>
+                <Col lg={1}>
+                  <i className="fa fa-minus-circle on-prem-row-delete-btn" onClick={self.removeRow.bind(self, instanceTypeIdx)}/>
+                </Col>
                 <Col lg={3}>
                   <Field name={`${instanceTypeItem}.zone`} component={YBSelect} options={zoneOptions}/>
                 </Col>
@@ -53,17 +56,16 @@ class InstanceTypeForRegion extends Component {
                 <Col lg={5}>
                   <Field name={`${instanceTypeItem}.instanceTypeIPs`} component={YBInputField}/>
                 </Col>
-                <Col lg={1}>
-                  <YBButton btnIcon="fa fa-minus" onClick={self.removeRow.bind(self, instanceTypeIdx)}/>
-                </Col>
               </Row>
             )
           })
         }
         <Row>
-          <Col lg={12} onClick={this.addRow}>
-            <i className="fa fa-plus-circle add-instance-btn"/>
-            Add Zone
+          <Col lg={1}>
+            <i className="fa fa-plus-circle fa-2x on-prem-row-add-btn" onClick={this.addRow} />
+          </Col>
+          <Col lg={3}>
+            <a className="on-prem-add-link" onClick={this.addRow}>Add Zone or Machine Type</a>
           </Col>
         </Row>
       </div>
@@ -99,34 +101,30 @@ export default class OnPremInstances extends Component {
       var machineTypeOptions = onPremJsonFormData.instanceTypes.map(function(machineTypeItem, mcIdx){
         return <option key={machineTypeItem+mcIdx} value={machineTypeItem.instanceTypeCode}>{machineTypeItem.instanceTypeCode}</option>;
       });
-      zoneOptions.push(<option key={-1} value={""}>Select</option>);
-      machineTypeOptions.push(<option key={-1} value={""}>Select</option>);
+      zoneOptions.unshift(<option key={-1} value={""}>Select</option>);
+      machineTypeOptions.unshift(<option key={-1} value={""}>Select</option>);
       return (
-        <Row key={regionItem.code}>
-          <Col lg={12}><div className="instance-region-type">{regionItem.code}</div></Col>
-          <FieldArray name={`instances.${regionItem.code}`} component={InstanceTypeForRegion}
-                      zoneOptions={zoneOptions} machineTypeOptions={machineTypeOptions}/>
-        </Row>
+        <div>
+          <div className="instance-region-type">{regionItem.code}</div>
+          <div className="form-field-grid">
+            <FieldArray name={`instances.${regionItem.code}`} component={InstanceTypeForRegion}
+                        zoneOptions={zoneOptions} machineTypeOptions={machineTypeOptions}/>
+          </div>
+        </div>
       )
     }) : null;
     return (
-      <div>
+      <div className="on-prem-provider-form-container">
         <form name="onPremInstancesConfigForm" onSubmit={handleSubmit(this.props.setOnPremInstances)}>
-          <Row className="on-prem-provider-form-container">
-            <Row>
-              <Col lgOffset={1} className="on-prem-form-text">Enter IP Addresses for the instances of each zone and machine type.</Col>
-            </Row>
-            {regionFormTemplate}
-            </Row>
-            <Row>
-              <Col lg={12}>
-                {switchToJsonEntry}
-                <ButtonGroup className="pull-right">
-                  <YBButton btnText={"Previous"}  btnClass={"btn btn-default save-btn "} onClick={this.props.prevPage}/>
-                  <YBButton btnText={"Next"} btnType={"submit"} btnClass={"btn btn-default save-btn"}/>
-                </ButtonGroup>
-              </Col>
-            </Row>
+          <div className="on-prem-form-text">
+            Enter IP Addresses for the instances of each zone and machine type.
+          </div>
+          {regionFormTemplate}
+          <div className="form-action-button-container">
+            {switchToJsonEntry}
+            <YBButton btnText={"Finish"} btnType={"submit"} btnClass={"btn btn-default save-btn"}/>
+            <YBButton btnText={"Previous"}  btnClass={"btn btn-default back-btn"} onClick={this.props.prevPage}/>
+          </div>
         </form>
       </div>
     )

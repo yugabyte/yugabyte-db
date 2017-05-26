@@ -4,18 +4,23 @@
 @import "_style/colors.scss";
 
 .on-prem-provider-form-container {
-  margin-top: 20px;
-
-  width: 90%;
-  margin-left: 5%;
+  margin-top: 30px;
+  padding: 0 40px;
   min-height: 550px;
   height: auto;
   overflow-y: auto;
-  padding: 0;
   overflow-x: hidden;
+
+  .form-field-grid .form-group {
+    margin-bottom: 0;
+
+    .yb-field-group {
+      padding-bottom: 5px;
+    }
+  }
 }
 
-label textarea{
+label textarea {
   vertical-align: top;
 }
 
@@ -32,12 +37,8 @@ label textarea{
 }
 
 .on-prem-form-text {
-  padding: 2px 14px;
-  color: $YB_DARK_GREY;
-}
-
-.machine-type-form-container {
-  margin-top: 10px;
+  padding-bottom: 20px;
+  font-size: 16px;
 }
 
 .on-prem-row-delete-btn {
@@ -46,10 +47,21 @@ label textarea{
   font-size: 26px;
   float: right;
   padding-top: 4px;
+  margin-right: 10px;
 }
 
 .on-prem-row-add-btn {
+  float: right;
+  margin: 4px 10px 0 0;
   color: $YB_ORANGE;
+}
+
+.on-prem-add-link {
+  cursor: pointer;
+  margin-left: -2px;
+  line-height: 32px;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .on-prem-form-grid-container {
@@ -57,15 +69,10 @@ label textarea{
 }
 
 .row-head-subscript {
-  font-size: 10px;
+  padding-left: 5px;
+  font-size: 12px;
+  font-style: italic;
   color: $YB_DARK_GREY;
-}
-
-.instance-row-container {
-  padding: 0px;
-  width: 90%;
-  margin-left: 5%;
-  cursor: pointer;
 }
 
 .add-instance-btn {
@@ -75,14 +82,13 @@ label textarea{
 }
 
 .instance-region-type {
-  font-size: 16px;
-  font-weight: 500;
-  padding: 6px 10px;
+  font-size: 18px;
+  font-weight: 600;
+  padding: 6px 0;
 }
 
 .stepper-container {
-  width: 90%;
-  margin-left: 5%;
+  padding: 0 20px;
   color: $YB_DARK_GREY;
   font-size: 16px;
   text-align: center;
@@ -90,10 +96,11 @@ label textarea{
 }
 
 .stepper-cell {
-  padding-bottom: 10px;
-  border-bottom: 1px solid $YB_DARK_GREY;
+  padding-bottom: 12px;
+  border-bottom: 1px solid $YB_GRAY_20;
 }
 .active-stepper-cell {
   color: black;
-  border-bottom: 2px solid $YB_ORANGE;
+  padding-bottom: 10px;
+  border-bottom: 3px solid $YB_ORANGE;
 }
