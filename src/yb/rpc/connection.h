@@ -54,7 +54,6 @@ class DumpRunningRpcsRequestPB;
 class GrowableBuffer;
 class Reactor;
 class ReactorTask;
-class ReactorThread;
 class RpcConnectionPB;
 
 // ConnectionContext class is used by connection for doing protocol
@@ -85,6 +84,10 @@ class ConnectionContext {
   // The reading buffer will never be larger than this limit.
   virtual size_t BufferLimit() = 0;
 
+  // We could limit receiving of too big amount of data, if packet is big enough to avoid moving
+  // of remainder of the next packet.
+  virtual size_t MaxReceive(Slice existing_data) { return std::numeric_limits<size_t>::max(); }
+
   // Type of this connection context, i.e. YB, Redis, CQL etc.
   virtual ConnectionType Type() = 0;
 };
@@ -105,21 +108,21 @@ YB_DEFINE_ENUM(ConnectionDirection, (CLIENT)(SERVER));
 // If a pair of servers are making bidirectional RPCs, they will use two separate
 // TCP connections (and Connection objects).
 //
-// This class is not fully thread-safe.  It is accessed only from the context of a
-// single ReactorThread except where otherwise specified.
+// This class is not fully thread-safe. It is accessed only from the context of a
+// single Reactor except where otherwise specified.
 //
 class Connection final : public std::enable_shared_from_this<Connection> {
  public:
   typedef ConnectionDirection Direction;
 
   // Create a new Connection.
-  // reactor_thread: the reactor that owns us.
+  // reactor: the reactor that owns us.
   // remote: the address of the remote end
   // socket: the socket to take ownership of.
   // direction: whether we are the client or server side
   // context: context for this connection. Context is used by connection to handle
   // protocol specific actions, such as parsing of incoming data into calls.
-  Connection(ReactorThread* reactor_thread,
+  Connection(Reactor* reactor,
              const Endpoint& remote,
              int socket,
              Direction direction,
@@ -197,7 +200,7 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   // This may be called from a non-reactor thread.
   void QueueOutboundData(OutboundDataPtr outbound_data);
 
-  ReactorThread* reactor_thread() const { return reactor_thread_; }
+  Reactor* reactor() const { return reactor_; }
 
   CHECKED_STATUS DumpPB(const DumpRunningRpcsRequestPB& req,
                 RpcConnectionPB* resp);
@@ -232,7 +235,7 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   CHECKED_STATUS TryProcessCalls(bool* had_calls);
 
   // The reactor thread that created this connection.
-  ReactorThread* const reactor_thread_;
+  Reactor* const reactor_;
 
   // The socket we're communicating on.
   Socket socket_;

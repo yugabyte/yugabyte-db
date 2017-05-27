@@ -65,7 +65,11 @@ std::shared_ptr<Messenger> CreateMessenger(const std::string& name,
   return messenger;
 }
 
+#ifdef THREAD_SANITIZER
+constexpr std::chrono::milliseconds kDefaultKeepAlive = 15s;
+#else
 constexpr std::chrono::milliseconds kDefaultKeepAlive = 1s;
+#endif
 
 } // namespace
 

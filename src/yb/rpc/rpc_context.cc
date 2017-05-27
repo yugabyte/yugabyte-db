@@ -213,15 +213,14 @@ void RpcContext::Panic(const char* filepath, int line_number, const string& mess
 
 void RpcContext::CloseConnection() {
   auto connection = call_->connection();
-  connection->reactor_thread()->reactor()->ScheduleReactorTask(
-      MakeFunctorReactorTask([connection](ReactorThread*) {
-        if (connection->socket()->GetFd() >= 0) {
-          auto status = connection->socket()->Shutdown(true, true);
-          if (!status.ok()) {
-            LOG(INFO) << "Failed to shutdown socket: " << status.ToString();
-          }
-        }
-      }));
+  connection->reactor()->ScheduleReactorFunctor([connection](Reactor*) {
+    if (connection->socket()->GetFd() >= 0) {
+      auto status = connection->socket()->Shutdown(true, true);
+      if (!status.ok()) {
+        LOG(INFO) << "Failed to shutdown socket: " << status.ToString();
+      }
+    }
+  });
 }
 
 }  // namespace rpc

@@ -30,6 +30,12 @@ DECLARE_int32(rpc_slow_query_threshold_ms);
 namespace yb {
 namespace rpc {
 
+namespace {
+
+constexpr size_t kBigPacket = 128_KB;
+
+} // namespace
+
 YBConnectionContext::YBConnectionContext() {}
 
 YBConnectionContext::~YBConnectionContext() {}
@@ -72,6 +78,15 @@ Status YBConnectionContext::ProcessCalls(const ConnectionPtr& connection,
   *consumed = pos - slice.data();
   return Status::OK();
 }
+
+size_t YBConnectionContext::MaxReceive(Slice existing_data) {
+  if (existing_data.size() >= kMsgLengthPrefixLength) {
+    const size_t data_length = NetworkByteOrder::Load32(existing_data.data());
+    return std::max(kBigPacket, data_length + kMsgLengthPrefixLength);
+  }
+  return kBigPacket;
+}
+
 
 Status YBConnectionContext::HandleCall(const ConnectionPtr& connection, Slice call_data) {
   const auto direction = connection->direction();
@@ -116,8 +131,8 @@ Status YBConnectionContext::InitSaslServer(Connection* connection) {
 }
 
 Status YBConnectionContext::HandleInboundCall(const ConnectionPtr& connection, Slice call_data) {
-  auto reactor_thread = connection->reactor_thread();
-  DCHECK(reactor_thread->IsCurrentThread());
+  auto reactor = connection->reactor();
+  DCHECK(reactor->IsCurrentThread());
 
   auto call_processed_listener = std::bind(&YBConnectionContext::EraseCall, this, _1);
   auto call = std::make_shared<YBInboundCall>(connection, call_processed_listener);
@@ -135,7 +150,7 @@ Status YBConnectionContext::HandleInboundCall(const ConnectionPtr& connection, S
     return STATUS_SUBSTITUTE(NetworkError, "Received duplicate call id: $0", call->call_id());
   }
 
-  reactor_thread->reactor()->messenger()->QueueInboundCall(call);
+  reactor->messenger()->QueueInboundCall(call);
 
   return Status::OK();
 }

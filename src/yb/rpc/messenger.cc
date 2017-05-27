@@ -218,8 +218,8 @@ void Messenger::BreakConnectivityWith(const IpAddress& address) {
       latch.reset(new CountDownLatch(reactors_.size()));
       for (auto* reactor : reactors_) {
         reactor->ScheduleReactorTask(MakeFunctorReactorTask(
-            [&latch, address](ReactorThread* thread) {
-              thread->DropWithRemoteAddress(address);
+            [&latch, address](Reactor* reactor) {
+              reactor->DropWithRemoteAddress(address);
               latch->CountDown();
             }));
       }
@@ -303,7 +303,7 @@ void Messenger::QueueOutboundCall(OutboundCallPtr call) {
 
   if (IsArtificiallyDisconnectedFrom(remote.address())) {
     LOG(INFO) << "TEST: Rejected connection to " << remote;
-    reactor->ScheduleReactorTask(MakeFunctorReactorTask([call](ReactorThread*) {
+    reactor->ScheduleReactorTask(MakeFunctorReactorTask([call](Reactor*) {
       call->Transferred(STATUS(NetworkError, "TEST: Connectivity is broken"));
     }));
     return;

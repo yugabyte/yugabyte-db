@@ -67,8 +67,8 @@ size_t CQLConnectionContext::BufferLimit() {
 }
 
 Status CQLConnectionContext::HandleInboundCall(const ConnectionPtr& connection, Slice slice) {
-  auto reactor_thread = connection->reactor_thread();
-  DCHECK(reactor_thread->IsCurrentThread());
+  auto reactor = connection->reactor();
+  DCHECK(reactor->IsCurrentThread());
 
   auto call = std::make_shared<CQLInboundCall>(connection,
                                                call_processed_listener(),

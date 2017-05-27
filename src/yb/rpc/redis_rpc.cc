@@ -309,8 +309,8 @@ Status RedisConnectionContext::ProcessCalls(const ConnectionPtr& connection,
 
 Status RedisConnectionContext::HandleInboundCall(const ConnectionPtr& connection,
                                                  Slice redis_command) {
-  auto reactor_thread = connection->reactor_thread();
-  DCHECK(reactor_thread->IsCurrentThread());
+  auto reactor = connection->reactor();
+  DCHECK(reactor->IsCurrentThread());
 
   auto call = std::make_shared<RedisInboundCall>(connection, call_processed_listener());
 

@@ -20,8 +20,6 @@
 #include <thread>
 #include <vector>
 
-#include <boost/ptr_container/ptr_vector.hpp>
-
 #include <gtest/gtest.h>
 
 #include "yb/gutil/stl_util.h"
@@ -65,7 +63,6 @@ using yb::rpc_test::DisconnectResponsePB;
 using yb::rpc_test_diff_package::ReqDiffPackagePB;
 using yb::rpc_test_diff_package::RespDiffPackagePB;
 
-using boost::ptr_vector;
 using std::shared_ptr;
 using std::vector;
 
@@ -209,7 +206,7 @@ TEST_F(RpcStubTest, TestBigCallData) {
   latch.Wait();
 
   for (RpcController &c : controllers) {
-    ASSERT_OK(c.status());
+    EXPECT_OK(c.status());
   }
 }
 

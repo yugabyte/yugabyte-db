@@ -26,24 +26,24 @@ bool ConnectionContextWithQueue::Idle() {
 }
 
 void ConnectionContextWithQueue::Enqueue(InboundCallPtr call) {
-  auto reactor_thread = call->connection()->reactor_thread();
-  DCHECK(reactor_thread->IsCurrentThread());
+  auto reactor = call->connection()->reactor();
+  DCHECK(reactor->IsCurrentThread());
 
   calls_queue_.push_back(call);
   if (calls_queue_.size() == 1) {
-    reactor_thread->reactor()->messenger()->QueueInboundCall(call);
+    reactor->messenger()->QueueInboundCall(call);
   }
 }
 
 void ConnectionContextWithQueue::CallProcessed(InboundCall* call) {
   DCHECK(!calls_queue_.empty() && calls_queue_.front().get() == call);
-  auto reactor_thread = call->connection()->reactor_thread();
-  DCHECK(reactor_thread->IsCurrentThread());
+  auto reactor = call->connection()->reactor();
+  DCHECK(reactor->IsCurrentThread());
 
   calls_queue_.pop_front();
   if (!calls_queue_.empty()) {
     auto call_ptr = calls_queue_.front();
-    reactor_thread->reactor()->messenger()->QueueInboundCall(call_ptr);
+    reactor->messenger()->QueueInboundCall(call_ptr);
   }
 }
 

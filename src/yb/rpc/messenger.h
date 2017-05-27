@@ -54,14 +54,12 @@ class InboundCall;
 class Messenger;
 class OutboundCall;
 class Reactor;
-class ReactorThread;
 class RpcService;
 
 // Used to construct a Messenger.
 class MessengerBuilder {
  public:
   friend class Messenger;
-  friend class ReactorThread;
 
   explicit MessengerBuilder(std::string name);
 
@@ -87,6 +85,8 @@ class MessengerBuilder {
 
   CHECKED_STATUS Build(std::shared_ptr<Messenger> *msgr);
 
+  MonoDelta connection_keepalive_time() const { return connection_keepalive_time_; }
+  MonoDelta coarse_timer_granularity() const { return coarse_timer_granularity_; }
  private:
   CHECKED_STATUS Build(Messenger **msgr);
   const std::string name_;

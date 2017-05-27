@@ -48,6 +48,8 @@ class YBConnectionContext : public ConnectionContext {
 
   ConnectionType Type() override { return ConnectionType::YB; }
 
+  size_t MaxReceive(Slice existing_data) override;
+
   void EraseCall(InboundCall* call);
   CHECKED_STATUS HandleCall(const ConnectionPtr& connection, Slice call_data);
   CHECKED_STATUS HandleInboundCall(const ConnectionPtr& connection, Slice call_data);
