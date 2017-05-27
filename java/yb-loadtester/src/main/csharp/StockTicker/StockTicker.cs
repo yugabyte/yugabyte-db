@@ -18,6 +18,7 @@ namespace YB
     Thread [] threads;
     readonly CLIOptions cliOptions;
     readonly String StockTickerTbl = "stock_ticker_1min";
+    readonly int NUM_CURRENCIES = 30;
 
     public static void Main (string [] args)
     {
@@ -39,7 +40,7 @@ namespace YB
 
       switch (cliOptions.Command) {
         case "create-table":
-          dbUtil.CreateTable (StockTickerTbl);
+          CreateTable (StockTickerTbl);
           break;
         case "drop-table":
           dbUtil.DropTable (StockTickerTbl);
@@ -58,16 +59,30 @@ namespace YB
       dbUtil.Disconnect ();
     }
 
-    private PreparedStatement GetInsertStatement ()
+    private void CreateTable (String TableName)
     {
-      return dbUtil.GetOrAddQuery ($"INSERT INTO {StockTickerTbl} (ticker_id, ts, value) " +
-                                   "VALUES (?, ?, ?)").Result;
+      Console.WriteLine ("Creating Stock Ticker table {0}", TableName);
+      String statementStr = $"CREATE TABLE IF NOT EXISTS {TableName} (identifier_id int, " +
+                            "time_stamp timestamp, first float, last float, high float, low float, " +
+                            "volume float, vwap float, twap float, trades bigint, currency int, " +
+                            "primary key ((identifier_id), time_stamp)) " +
+                            "WITH CLUSTERING ORDER BY (time_stamp DESC)";
+      dbUtil.ExecuteQuery (statementStr);
     }
 
+    // We cache the prepared statement and using prepared statement yields higher performance
+    private PreparedStatement GetInsertStatement ()
+    {
+      return dbUtil.GetOrAddQuery ($"INSERT INTO {StockTickerTbl} (identifier_id, time_stamp, first, " +
+                                   "last, high, low, volume, vwap, twap, trades, currency) " +
+                                   "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").Result;
+    }
+
+    // We cache the prepared statement and using prepared statement yields higher performance
     private PreparedStatement GetSelectStatement ()
     {
-        return dbUtil.GetOrAddQuery ($"SELECT * FROM {StockTickerTbl} WHERE ticker_id = ? " +
-                                     "AND ts > ? AND ts < ? LIMIT 1").Result;
+        return dbUtil.GetOrAddQuery ($"SELECT * FROM {StockTickerTbl} WHERE identifier_id = ? " +
+                                     "AND time_stamp > ? AND time_stamp < ?").Result;
     }
 
     void Initalize ()
@@ -92,6 +107,16 @@ namespace YB
       var random = new Random ();
       while (!writeDone) {
         int randomIdx = random.Next (tickers.Count);
+        float first = (float) random.NextDouble ();
+        float last = (float) random.NextDouble ();
+        float high = (float) random.NextDouble ();
+        float low = (float) random.NextDouble ();
+        float volume = (float) random.NextDouble ();
+        float vwap = (float) random.NextDouble ();
+        float twap = (float) random.NextDouble ();
+        long trades = (long)random.Next ();
+        int currency = random.Next (NUM_CURRENCIES);
+
         if (tickers.TryRemove (randomIdx, out TickerInfo dataSource)) {
           long ts = dataSource.GetDataEmitTs ();
           if (ts == -1) {
@@ -103,7 +128,8 @@ namespace YB
           if (cliOptions.NumKeysToWrite > 0 && counter >= cliOptions.NumKeysToWrite) break;
           BoundStatement stmt = GetInsertStatement ().Bind (dataSource.GetTickerId (),
                                                             dataSource.GetDataEmitTime (),
-                                                            "value-" + ts);
+                                                            first, last, high, low, volume,
+                                                            vwap, twap, trades, currency);
           dbUtil.ExecuteQuery (stmt);
           dataSource.SetLastEmittedTs (ts);
           tickers.TryAdd (randomIdx, dataSource);

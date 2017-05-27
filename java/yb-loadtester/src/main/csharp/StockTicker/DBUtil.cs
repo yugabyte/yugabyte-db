@@ -12,7 +12,7 @@ namespace YB
 {
   public class DBUtil
   {
-    readonly String KeyspaceName = "test";
+    readonly String KeyspaceName = "ybdemo";
     protected List<IPEndPoint> hostIpAndPorts = new List<IPEndPoint> ();
     protected ISession dbSession;
     protected Cluster dbCluster;
@@ -51,7 +51,15 @@ namespace YB
     {
       if (dbSession == null) {
         Console.WriteLine ("Connect To Cluster");
-        dbSession = dbCluster.Connect (KeyspaceName);
+        try {
+          dbSession = dbCluster.Connect (KeyspaceName);
+        } catch (InvalidQueryException e) {
+          if (e.Message.Contains ("Keyspace Not Found")) {
+            Console.WriteLine ($"Keyspace {KeyspaceName} not found creating..");
+            CreateKeyspaceAndConnect ();
+          }
+        }
+
       }
       return dbSession;
     }
@@ -62,18 +70,24 @@ namespace YB
       dbCluster.Shutdown ();
     }
 
+    public RowSet ExecuteQuery (String queryStr)
+    {
+      return dbSession.Execute (queryStr);
+    }
+
     public RowSet ExecuteQuery (BoundStatement statement)
     {
       return dbSession.Execute (statement);
     }
 
-    public void CreateTable(String TableName)
+    private void CreateKeyspaceAndConnect()
     {
-      Console.WriteLine ("Creating Stock Ticker table {0}", TableName);
-      String statementStr = $"CREATE TABLE IF NOT EXISTS {TableName} (ticker_id int, " +
-                            "ts timestamp, value varchar, primary key ((ticker_id), ts)) " +
-                            "WITH CLUSTERING ORDER BY (ts DESC)";
-      dbSession.Execute (statementStr);
+      dbSession = dbCluster.Connect ();
+      dbSession.CreateKeyspace (KeyspaceName, new Dictionary<string, string> {
+          { "class", "SimpleStrategy" },
+          { "replication_factor", "3" }
+      });
+      dbSession = dbCluster.Connect (KeyspaceName);
     }
 
     public void DropTable (String TableName)
