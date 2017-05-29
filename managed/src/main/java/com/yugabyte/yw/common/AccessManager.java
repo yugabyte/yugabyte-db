@@ -106,6 +106,12 @@ public class AccessManager extends DevopsBase {
     } else {
       keyInfo.privateKey = destination.toAbsolutePath().toString();
     }
+    JsonNode vaultResponse = createVault(regionUUID, keyInfo.privateKey);
+    if (vaultResponse.has("error")) {
+      throw new RuntimeException(vaultResponse.get("error").asText());
+    }
+    keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
+    keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
     return AccessKey.create(region.provider.uuid, keyCode, keyInfo);
   }
 
