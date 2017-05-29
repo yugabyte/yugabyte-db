@@ -79,10 +79,18 @@ import static org.mockito.Mockito.when;
   }
 
   private JsonNode uploadKeyCommand(UUID regionUUID, boolean mimicError) {
+    ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
     if (mimicError) {
+      response.message = "{\"error\": \"Unknown Error\"}";
+      response.code = 99;
+      when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(response);
       return Json.toJson(accessManager.uploadKeyFile(regionUUID,
           new File("foo"), TEST_KEY_CODE, AccessManager.KeyType.PRIVATE));
     } else {
+      response.code = 0;
+      response.message = "{\"vault_file\": \"/path/to/vault_file\"," +
+          "\"vault_password\": \"/path/to/vault_password\"}";
+      when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(response);
       String tmpFile = createTempFile("SOME DATA");
       return Json.toJson(accessManager.uploadKeyFile(regionUUID,
           new File(tmpFile), TEST_KEY_CODE, AccessManager.KeyType.PRIVATE));

@@ -99,7 +99,7 @@ public class AccessKeyController extends AuthenticatedController {
         // Upload temp file to create the access key and return success/failure
         accessKey = accessManager.uploadKeyFile(regionUUID, tempFile.toFile(), keyCode, keyType);
       } else {
-        accessKey = accessManager.addKey(region.uuid, keyCode);
+        accessKey = accessManager.addKey(regionUUID, keyCode);
       }
     } catch(RuntimeException | IOException e) {
       LOG.error(e.getMessage());
