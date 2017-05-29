@@ -7,6 +7,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#ifndef ROCKSDB_DB_COMPACTION_H
+#define ROCKSDB_DB_COMPACTION_H
+
 #pragma once
 
 #include <atomic>
@@ -14,7 +17,7 @@
 #include "util/arena.h"
 #include "util/autovector.h"
 #include "util/mutable_cf_options.h"
-#include "db/version_set.h"
+#include "db/version_edit.h"
 
 namespace rocksdb {
 
@@ -33,6 +36,50 @@ class Version;
 class ColumnFamilyData;
 class VersionStorageInfo;
 class CompactionFilter;
+
+struct LightweightBoundaries {
+  Slice key;
+  size_t num_user_values;
+  UserBoundaryTag* user_tags;
+  Slice* user_values;
+
+  Slice user_key() const { return ExtractUserKey(key); }
+
+  // Allocates appropriate objects in provided arena, so arena should live longer than this object.
+  LightweightBoundaries(Arena* arena, const FileMetaData::BoundaryValues& source);
+
+  const Slice* user_value_with_tag(UserBoundaryTag tag) const {
+    for (size_t i = 0; i != num_user_values; ++i) {
+      if (user_tags[i] == tag) {
+        return user_values + i;
+      }
+    }
+    return nullptr;
+  }
+};
+
+// A compressed copy of file meta data that just contain
+// smallest and largest key's slice
+struct FdWithBoundaries {
+  FileDescriptor fd;
+  LightweightBoundaries smallest; // smallest boundaries in this file
+  LightweightBoundaries largest;  // largest boundaries in this file
+
+  explicit FdWithBoundaries(Arena* arena, const FileMetaData& source)
+    : fd(source.fd), smallest(arena, source.smallest), largest(arena, source.largest) {}
+};
+
+// Data structure to store an array of FdWithKeyRange in one level
+// Actual data is guaranteed to be stored closely
+struct LevelFilesBrief {
+  size_t num_files;
+  FdWithBoundaries* files;
+
+  LevelFilesBrief() {
+    num_files = 0;
+    files = nullptr;
+  }
+};
 
 // A Compaction encapsulates information about a compaction.
 class Compaction {
@@ -306,3 +353,5 @@ class Compaction {
 extern uint64_t TotalFileSize(const std::vector<FileMetaData*>& files);
 
 }  // namespace rocksdb
+
+#endif // ROCKSDB_DB_COMPACTION_H

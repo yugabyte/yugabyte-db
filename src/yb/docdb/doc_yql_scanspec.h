@@ -3,6 +3,8 @@
 #ifndef YB_DOCDB_DOC_YQL_SCANSPEC_H
 #define YB_DOCDB_DOC_YQL_SCANSPEC_H
 
+#include "rocksdb/options.h"
+
 #include "yb/common/yql_scanspec.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/primitive_value.h"
@@ -32,15 +34,23 @@ class DocYQLScanSpec : public common::YQLScanSpec {
     return GetBoundKey(true /* lower_bound */, key);
   }
 
-  CHECKED_STATUS upper_bound(DocKey* key) const  {
+  CHECKED_STATUS upper_bound(DocKey* key) const {
     return GetBoundKey(false /* upper_bound */, key);
   }
+
+  // Create file filter based on range components.
+  rocksdb::ReadFileFilter CreateFileFilter() const;
+
  private:
   // Return inclusive lower/upper range doc key considering the start_doc_key.
   CHECKED_STATUS GetBoundKey(const bool lower_bound, DocKey* key) const;
 
   // Returns the lower/upper doc key based on the range components.
   DocKey bound_key(const bool lower_bound) const;
+
+  // Returns the lower/upper range components of the key.
+  std::vector<PrimitiveValue> range_components(const bool lower_bound,
+                                               const bool allow_null) const;
 
   // The scan range within the hash key when a WHERE condition is specified.
   const std::unique_ptr<const common::YQLScanRange> range_;

@@ -166,5 +166,22 @@ TEST_F(ToStringTest, TestCustomNonIntrusive) {
   ASSERT_EQ("[ToStringableNonIntrusive, ToStringableNonIntrusive]", ToString(v));
 }
 
+struct Outputable {
+  int value;
+
+  explicit Outputable(int v) : value(v) {}
+};
+
+std::ostream& operator<<(std::ostream& out, const Outputable& outputable) {
+  return out << "Outputable(" << outputable.value << ")";
+}
+
+TEST_F(ToStringTest, LexicalCast) {
+  std::vector<Outputable> v = { Outputable(1), Outputable(2) };
+
+  ASSERT_EQ("Outputable(1)", ToString(v[0]));
+  ASSERT_EQ("[Outputable(1), Outputable(2)]", ToString(v));
+}
+
 } // namespace util_test
 } // namespace yb

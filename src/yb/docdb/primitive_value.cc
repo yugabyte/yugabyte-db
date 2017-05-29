@@ -534,6 +534,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       return Status::OK();
 
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
+    case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kArrayIndex: FALLTHROUGH_INTENDED;
     case ValueType::kDouble:
       if (slice.size() != sizeof(int64_t)) {
@@ -602,7 +603,6 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kSystemColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kHybridTime: FALLTHROUGH_INTENDED;
     case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
     case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
     case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;

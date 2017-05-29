@@ -1321,6 +1321,9 @@ enum ReadTier {
                           // Get and MultiGet and does not support iterators.
 };
 
+struct FdWithBoundaries;
+typedef std::function<bool(const FdWithBoundaries&)> ReadFileFilter;
+
 // Options that control read operations
 struct ReadOptions {
   // If true, all data read from underlying storage will be
@@ -1421,6 +1424,8 @@ struct ReadOptions {
   // If true, this will check the bloom filters for the scan key and, iff the file might match the
   // key, then we include the file in the iterator merge. Otherwise, the files are ignored.
   bool use_bloom_on_scan = false;
+
+  ReadFileFilter file_filter;
 
   static const ReadOptions kDefault;
 

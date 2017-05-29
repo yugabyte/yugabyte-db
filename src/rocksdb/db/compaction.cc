@@ -14,14 +14,41 @@
 #endif
 
 #include <inttypes.h>
+
 #include <vector>
 
 #include "rocksdb/compaction_filter.h"
 #include "db/column_family.h"
+#include "db/version_set.h"
 #include "util/logging.h"
 #include "util/sync_point.h"
 
 namespace rocksdb {
+
+namespace {
+
+Slice SliceDup(Arena* arena, Slice input) {
+  auto* mem = arena->AllocateAligned(input.size());
+  memcpy(mem, input.data(), input.size());
+  return Slice(mem, input.size());
+}
+
+}
+
+LightweightBoundaries::LightweightBoundaries(Arena* arena,
+                                             const FileMetaData::BoundaryValues& source) {
+  key = SliceDup(arena, source.key.Encode());
+  num_user_values = source.user_values.size();
+  user_tags = reinterpret_cast<UserBoundaryTag*>(
+    arena->AllocateAligned(sizeof(UserBoundaryTag) * num_user_values));
+  user_values = reinterpret_cast<Slice*>(
+    arena->AllocateAligned(sizeof(Slice) * num_user_values));
+  for (size_t i = 0; i != num_user_values; ++i) {
+    UserBoundaryValue& value = *source.user_values[i];
+    new (user_tags + i) UserBoundaryTag(value.Tag());
+    new (user_values + i) Slice(SliceDup(arena, value.Encode()));
+  }
+}
 
 uint64_t TotalFileSize(const std::vector<FileMetaData*>& files) {
   uint64_t sum = 0;

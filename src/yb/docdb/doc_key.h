@@ -15,7 +15,6 @@
 #include "yb/common/encoded_key.h"
 #include "yb/common/schema.h"
 #include "yb/docdb/primitive_value.h"
-#include "yb/util/tostring.h"
 
 namespace yb {
 namespace docdb {

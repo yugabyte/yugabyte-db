@@ -229,5 +229,9 @@ Status GetDocHybridTime(const rocksdb::UserBoundaryValues& values, DocHybridTime
   return time_value->value(out);
 }
 
+rocksdb::UserBoundaryTag TagForRangeComponent(size_t index) {
+  return PrimitiveBoundaryValue::TagForIndex(index);
+}
+
 } // namespace docdb
 } // namespace yb

@@ -198,6 +198,8 @@ InternalIterator* TableCache::NewIterator(
     bool for_compaction, Arena* arena, bool skip_filters) {
   PERF_TIMER_GUARD(new_table_iterator_nanos);
 
+  RecordTick(ioptions_.statistics, NO_TABLE_CACHE_ITERATORS);
+
   if (table_reader_ptr != nullptr) {
     *table_reader_ptr = nullptr;
   }

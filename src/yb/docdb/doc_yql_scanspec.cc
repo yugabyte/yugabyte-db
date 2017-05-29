@@ -1,5 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
+#include "rocksdb/db/compaction.h"
+
 #include "yb/docdb/doc_yql_scanspec.h"
 
 namespace yb {
@@ -42,19 +44,26 @@ DocKey DocYQLScanSpec::bound_key(const bool lower_bound) const {
   if (hashed_components_->empty()) {
     return DocKey();
   }
-  std::vector<PrimitiveValue> range_components;
+  return DocKey(hash_code_,
+                *hashed_components_,
+                range_components(lower_bound, /* allow_null */ false));
+}
+
+std::vector<PrimitiveValue> DocYQLScanSpec::range_components(const bool lower_bound,
+                                                             const bool allow_null) const {
+  std::vector<PrimitiveValue> result;
   if (range_.get() != nullptr) {
-    const std::vector<YQLValuePB> range_values = range_->range_values(lower_bound);
-    range_components.reserve(range_values.size());
+    const std::vector<YQLValuePB> range_values = range_->range_values(lower_bound, allow_null);
+    result.reserve(range_values.size());
     size_t column_idx = schema_.num_hash_key_columns();
     for (const auto& value : range_values) {
       const auto& column = schema_.column(column_idx);
-      range_components.emplace_back(PrimitiveValue::FromYQLValuePB(
+      result.emplace_back(PrimitiveValue::FromYQLValuePB(
           column.type(), value, column.sorting_type()));
       column_idx++;
     }
   }
-  return DocKey(hash_code_, *hashed_components_, range_components);
+  return result;
 }
 
 Status DocYQLScanSpec::GetBoundKey(const bool lower_bound, DocKey* key) const {
@@ -95,6 +104,70 @@ Status DocYQLScanSpec::GetBoundKey(const bool lower_bound, DocKey* key) const {
     *key = upper_doc_key_;
   }
   return Status::OK();
+}
+
+rocksdb::UserBoundaryTag TagForRangeComponent(size_t index);
+
+namespace {
+
+std::vector<KeyBytes> EncodePrimitiveValues(const std::vector<PrimitiveValue>& source,
+                                            size_t min_size) {
+  size_t size = source.size();
+  std::vector<KeyBytes> result(std::max(min_size, size));
+  for (size_t i = 0; i != size; ++i) {
+    if (source[i].value_type() != ValueType::kTombstone) {
+      source[i].AppendToKey(&result[i]);
+    }
+  }
+  return result;
+}
+
+Slice ValueOrEmpty(const Slice* slice) { return slice ? *slice : Slice(); }
+
+// Checks that lhs >= rhs, empty values means positive and negative infinity appropriately.
+bool GreaterOrEquals(const Slice& lhs, const Slice& rhs) {
+  if (lhs.empty() || rhs.empty()) {
+    return true;
+  }
+  return lhs.compare(rhs) >= 0;
+}
+
+class RangeBasedFileFilter {
+ public:
+  RangeBasedFileFilter(const std::vector<PrimitiveValue>& lower_bounds,
+                       const std::vector<PrimitiveValue>& upper_bounds)
+      : lower_bounds_(EncodePrimitiveValues(lower_bounds, upper_bounds.size())),
+        upper_bounds_(EncodePrimitiveValues(upper_bounds, lower_bounds.size())) {
+  }
+
+  bool operator()(const rocksdb::FdWithBoundaries& file) const {
+    for (size_t i = 0; i != lower_bounds_.size(); ++i) {
+      auto lower_bound = lower_bounds_[i].AsSlice();
+      auto upper_bound = upper_bounds_[i].AsSlice();
+      rocksdb::UserBoundaryTag tag = TagForRangeComponent(i);
+      auto smallest = ValueOrEmpty(file.smallest.user_value_with_tag(tag));
+      auto largest = ValueOrEmpty(file.largest.user_value_with_tag(tag));
+      if (!GreaterOrEquals(upper_bound, smallest) || !GreaterOrEquals(largest, lower_bound)) {
+        return false;
+      }
+    }
+    return true;
+  }
+ private:
+  std::vector<KeyBytes> lower_bounds_;
+  std::vector<KeyBytes> upper_bounds_;
+};
+
+} // namespace
+
+rocksdb::ReadFileFilter DocYQLScanSpec::CreateFileFilter() const {
+  auto lower_bound = range_components(true, true);
+  auto upper_bound = range_components(false, true);
+  if (lower_bound.empty() && upper_bound.empty()) {
+    return rocksdb::ReadFileFilter();
+  } else {
+    return RangeBasedFileFilter(std::move(lower_bound), std::move(upper_bound));
+  }
 }
 
 }  // namespace docdb

@@ -14,6 +14,8 @@
 
 #include <boost/container/small_vector.hpp>
 
+#include "yb/util/slice.h"
+
 #include "rocksdb/types.h"
 
 namespace rocksdb {
@@ -60,7 +62,7 @@ typedef uint32_t UserBoundaryTag;
 class UserBoundaryValue {
  public:
   virtual UserBoundaryTag Tag() = 0;
-  virtual Slice Encode() = 0;
+  virtual yb::Slice Encode() = 0;
   virtual int CompareTo(const UserBoundaryValue& rhs) = 0;
  protected:
   ~UserBoundaryValue() {}

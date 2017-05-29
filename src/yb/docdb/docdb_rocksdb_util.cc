@@ -18,6 +18,7 @@
 #include "yb/util/logging.h"
 
 DEFINE_int32(rocksdb_max_background_flushes, 1, "Number threads to do background flushes.");
+DEFINE_bool(rocksdb_disable_compactions, false, "Disable background compactions.");
 DEFINE_int32(rocksdb_base_background_compactions, 2,
              "Number threads to do background compactions.");
 DEFINE_int32(rocksdb_max_background_compactions, 4,
@@ -239,13 +240,16 @@ void PerformRocksDBSeek(
       seek_count);
 }
 
-unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(rocksdb::DB* rocksdb,
-    BloomFilterMode bloom_filter_mode) {
+unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(
+    rocksdb::DB* rocksdb,
+    BloomFilterMode bloom_filter_mode,
+    rocksdb::ReadFileFilter file_filter) {
   // TODO: avoid instantiating ReadOptions every time. Pre-create it once and use for all iterators.
   //       We'll need some sort of a stateful wrapper class around RocksDB for that.
   rocksdb::ReadOptions read_opts;
   read_opts.use_bloom_on_scan = FLAGS_use_docdb_aware_bloom_filter &&
       bloom_filter_mode == BloomFilterMode::USE_BLOOM_FILTER;
+  read_opts.file_filter = std::move(file_filter);
   return unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_opts));
 }
 
@@ -284,26 +288,32 @@ void InitRocksDBOptions(
   // Compaction related options.
 
   // Enable universal style compactions.
-  options->compaction_style = rocksdb::CompactionStyle::kCompactionStyleUniversal;
+  bool compactions_enabled = !FLAGS_rocksdb_disable_compactions;
+  options->compaction_style = compactions_enabled
+    ? rocksdb::CompactionStyle::kCompactionStyleUniversal
+    : rocksdb::CompactionStyle::kCompactionStyleNone;
   // Set the number of levels to 1.
   options->num_levels = 1;
 
-  options->base_background_compactions = FLAGS_rocksdb_base_background_compactions;
-  options->max_background_compactions = FLAGS_rocksdb_max_background_compactions;
-  options->max_background_flushes = FLAGS_rocksdb_max_background_flushes;
-  options->level0_file_num_compaction_trigger = FLAGS_rocksdb_level0_file_num_compaction_trigger;
-  options->level0_slowdown_writes_trigger = FLAGS_rocksdb_level0_slowdown_writes_trigger;
-  options->level0_stop_writes_trigger = FLAGS_rocksdb_level0_stop_writes_trigger;
-  // This determines the algo used to compute which files will be included. The "total size" based
-  // computation compares the size of every new file with the sum of all files included so far.
-  options->compaction_options_universal.stop_style =
-      rocksdb::CompactionStopStyle::kCompactionStopStyleTotalSize;
-  options->compaction_options_universal.size_ratio = FLAGS_rocksdb_universal_compaction_size_ratio;
-  options->compaction_options_universal.min_merge_width =
-      FLAGS_rocksdb_universal_compaction_min_merge_width;
-  if (FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec > 0) {
-    options->rate_limiter.reset(
-        rocksdb::NewGenericRateLimiter(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec));
+  if (compactions_enabled) {
+    options->base_background_compactions = FLAGS_rocksdb_base_background_compactions;
+    options->max_background_compactions = FLAGS_rocksdb_max_background_compactions;
+    options->max_background_flushes = FLAGS_rocksdb_max_background_flushes;
+    options->level0_file_num_compaction_trigger = FLAGS_rocksdb_level0_file_num_compaction_trigger;
+    options->level0_slowdown_writes_trigger = FLAGS_rocksdb_level0_slowdown_writes_trigger;
+    options->level0_stop_writes_trigger = FLAGS_rocksdb_level0_stop_writes_trigger;
+    // This determines the algo used to compute which files will be included. The "total size" based
+    // computation compares the size of every new file with the sum of all files included so far.
+    options->compaction_options_universal.stop_style =
+        rocksdb::CompactionStopStyle::kCompactionStopStyleTotalSize;
+    options->compaction_options_universal.size_ratio =
+        FLAGS_rocksdb_universal_compaction_size_ratio;
+    options->compaction_options_universal.min_merge_width =
+        FLAGS_rocksdb_universal_compaction_min_merge_width;
+    if (FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec > 0) {
+      options->rate_limiter.reset(
+          rocksdb::NewGenericRateLimiter(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec));
+    }
   }
 }
 

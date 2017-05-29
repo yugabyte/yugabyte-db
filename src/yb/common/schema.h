@@ -56,15 +56,33 @@ using std::vector;
 using std::unordered_map;
 using std::unordered_set;
 
+template<char digit1, char... digits>
+struct ColumnIdHelper {
+  typedef ColumnIdHelper<digit1> Current;
+  typedef ColumnIdHelper<digits...> Next;
+  static constexpr int mul = Next::mul * 10;
+  static constexpr int value = Current::value * mul + Next::value;
+  static_assert(value <= std::numeric_limits<int32_t>::max(), "Too big constant");
+};
+
+template<char digit>
+struct ColumnIdHelper<digit> {
+  static_assert(digit >= '0' && digit <= '9', "Only digits is allowed");
+  static constexpr int value = digit - '0';
+  static constexpr int mul = 1;
+};
+
 // The ID of a column. Each column in a table has a unique ID.
 typedef int32_t ColumnIdRep;
 struct ColumnId {
-  explicit ColumnId(ColumnIdRep t_) {
+  explicit ColumnId(ColumnIdRep t_) : t(t_) {
     DCHECK_GE(t_, 0);
-    t = t_;
   }
+  template<char... digits>
+  constexpr explicit ColumnId(ColumnIdHelper<digits...>) : t(ColumnIdHelper<digits...>::value) {}
+
   ColumnId() : t() {}
-  ColumnId(const ColumnId& t_) : t(t_.t) {}
+  constexpr ColumnId(const ColumnId& t_) : t(t_.t) {}
   ColumnId& operator=(const ColumnId& rhs) { t = rhs.t; return *this; }
   ColumnId& operator=(const ColumnIdRep& rhs) { DCHECK_GE(rhs, 0); t = rhs; return *this; }
   operator const ColumnIdRep() const { return t; }
@@ -103,6 +121,11 @@ struct ColumnId {
   ColumnIdRep t;
 };
 static const ColumnId kInvalidColumnId = ColumnId(std::numeric_limits<ColumnIdRep>::max());
+
+template<char... digits>
+ColumnId operator"" _ColId() {
+  return ColumnId(ColumnIdHelper<digits...>());
+}
 
 // Class for storing column attributes such as compression and
 // encoding.  Column attributes describe the physical storage and

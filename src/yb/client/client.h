@@ -845,6 +845,11 @@ class YB_EXPORT YBSession : public std::enable_shared_from_this<YBSession> {
   // Set the timeout for writes made in this session.
   void SetTimeoutMillis(int millis);
 
+  template<class Rep, class Period>
+  void SetTimeout(const std::chrono::duration<Rep, Period>& timeout) {
+    SetTimeoutMillis(std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count());
+  }
+
   CHECKED_STATUS ReadSync(std::shared_ptr<YBOperation> yb_op) WARN_UNUSED_RESULT;
 
   void ReadAsync(std::shared_ptr<YBOperation> yb_op, YBStatusCallback* cb);

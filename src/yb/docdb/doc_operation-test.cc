@@ -1,17 +1,39 @@
 // Copyright (c) YugaByte, Inc.
 
+#include "rocksdb/statistics.h"
+
 #include "yb/common/partial_row.h"
+
 #include "yb/docdb/yql_rocksdb_storage.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_yql_scanspec.h"
+
 #include "yb/server/hybrid_clock.h"
+
+#include "yb/util/random_util.h"
+#include "yb/util/tostring.h"
+
+DECLARE_bool(rocksdb_disable_compactions);
 
 namespace yb {
 namespace docdb {
 
 using server::HybridClock;
+
+namespace {
+
+std::vector<ColumnId> CreateColumnIds(size_t count) {
+  std::vector<ColumnId> result;
+  result.reserve(count);
+  for (size_t i = 0; i != count; ++i) {
+    result.emplace_back(i);
+  }
+  return result;
+}
+
+} // namespace
 
 class DocOperationTest : public DocDBTestBase {
  public:
@@ -26,8 +48,7 @@ class DocOperationTest : public DocDBTestBase {
     ColumnSchema column3_schema("c3", INT32, false, false);
     const vector<ColumnSchema> columns({hash_column_schema, column1_schema, column2_schema,
                                            column3_schema});
-    const vector<ColumnId> col_ids({ColumnId(0), ColumnId(1), ColumnId(2), ColumnId(3)});
-    Schema schema(columns, col_ids, 1);
+    Schema schema(columns, CreateColumnIds(columns.size()), 1);
     return schema;
   }
 
@@ -37,12 +58,19 @@ class DocOperationTest : public DocDBTestBase {
     hashed_column->mutable_expr()->mutable_value()->set_int32_value(value);
   }
 
-  void AddColumnValues(yb::YQLWriteRequestPB* yql_writereq_pb,
-                       const vector<int32_t>& column_values) {
-    ASSERT_EQ(3, column_values.size());
-    for (int i = 0; i < 3; i++) {
+  void AddRangeKeyColumn(int32_t column_id, int32_t value, yb::YQLWriteRequestPB* yql_writereq_pb) {
+    auto hashed_column = yql_writereq_pb->add_range_column_values();
+    hashed_column->set_column_id(column_id);
+    hashed_column->mutable_expr()->mutable_value()->set_int32_value(value);
+  }
+
+  void AddColumnValues(const Schema& schema,
+                       const vector<int32_t>& column_values,
+                       yb::YQLWriteRequestPB* yql_writereq_pb) {
+    ASSERT_EQ(schema.num_columns() - schema.num_key_columns(), column_values.size());
+    for (int i = 0; i < column_values.size(); i++) {
       auto column = yql_writereq_pb->add_column_values();
-      column->set_column_id(i + 1);
+      column->set_column_id(schema.num_key_columns() + i);
       column->mutable_expr()->mutable_value()->set_int32_value(column_values[i]);
     }
   }
@@ -102,7 +130,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=2)]) -> 4
     AddPrimaryKeyColumn(&yql_writereq_pb, 1);
     yql_writereq_pb.set_hash_code(0);
 
-    AddColumnValues(&yql_writereq_pb, vector<int32_t>({2, 3, 4}));
+    AddColumnValues(schema, {2, 3, 4}, &yql_writereq_pb);
 
     if (ttl != -1) {
       yql_writereq_pb.set_ttl(ttl);
@@ -119,17 +147,23 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=2)]) -> 4
   }
 
   void WriteYQLRow(YQLWriteRequestPB_YQLStmtType stmt_type, const Schema& schema,
-                const vector<int32_t>& column_values, int64_t ttl, const HybridTime& hybrid_time,
-                const vector<int> column_ids = {1, 2, 3}) {
+                const vector<int32_t>& column_values, int64_t ttl, const HybridTime& hybrid_time) {
     yb::YQLWriteRequestPB yql_writereq_pb;
     yb::YQLResponsePB yql_writeresp_pb;
     yql_writereq_pb.set_type(stmt_type);
 
     // Add primary key column.
     yql_writereq_pb.set_hash_code(0);
-    AddPrimaryKeyColumn(&yql_writereq_pb, column_values[0]);
-    AddColumnValues(&yql_writereq_pb, vector<int32_t>(column_values.begin() + 1,
-                                                      column_values.end()));
+    for (size_t i = 0; i != schema.num_key_columns(); ++i) {
+      if (i < schema.num_hash_key_columns()) {
+        AddPrimaryKeyColumn(&yql_writereq_pb, column_values[i]);
+      } else {
+        AddRangeKeyColumn(i, column_values[i], &yql_writereq_pb);
+      }
+    }
+    std::vector<int32_t> values(column_values.begin() + schema.num_key_columns(),
+                                column_values.end());
+    AddColumnValues(schema, values, &yql_writereq_pb);
     yql_writereq_pb.set_ttl(ttl);
 
     // Write to docdb.
@@ -396,6 +430,161 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
   EXPECT_TRUE(YQLValue::IsNull(value_map_system.at(ColumnId(3))));
 }
 
+namespace {
+
+int32_t NewInt(std::mt19937_64* rng, std::unordered_set<int32_t>* existing) {
+  std::uniform_int_distribution<int32_t> distribution(std::numeric_limits<int32_t>::min());
+  for (;;) {
+    auto result = distribution(*rng);
+    if (existing->insert(result).second) {
+      return result;
+    }
+  }
+}
+
+template<class It>
+std::pair<It, It> GetIteratorRange(It begin, It end, It it, YQLOperator op) {
+  switch (op) {
+    case YQL_OP_EQUAL:
+      return std::make_pair(it, it + 1);
+    case YQL_OP_LESS_THAN:
+      return std::make_pair(begin, it);
+    case YQL_OP_LESS_THAN_EQUAL:
+      return std::make_pair(begin, it + 1);
+    case YQL_OP_GREATER_THAN:
+      return std::make_pair(it + 1, end);
+    case YQL_OP_GREATER_THAN_EQUAL:
+      return std::make_pair(it, end);
+    default: // We should not handle all cases here
+      LOG(FATAL) << "Unexpected op: " << YQLOperator_Name(op);
+      return std::make_pair(begin, end);
+  }
+}
+
+struct RowData {
+  int32_t k;
+  int32_t r;
+  int32_t v;
+};
+
+bool operator==(const RowData& lhs, const RowData& rhs) {
+  return lhs.k == rhs.k && lhs.r == rhs.r && lhs.v == rhs.v;
+}
+
+bool operator<(const RowData& lhs, const RowData& rhs) {
+  return lhs.k == rhs.k ? lhs.r < rhs.r : lhs.k < rhs.k;
+}
+
+std::ostream& operator<<(std::ostream& out, const RowData& row) {
+  return out << "{ k = " << row.k << ", r = " << row.r << ", v = " << row.v << " }";
+}
+
+class DocOperationRangeFilterTest : public DocOperationTest {
+ public:
+  void TestWithSortingType(ColumnSchema::SortingType type);
+ private:
+};
+
+void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType type) {
+  DisableCompactions();
+
+  ColumnSchema hash_column("k", INT32, false, true);
+  ColumnSchema range_column("r", INT32, false, false, false, type);
+  ColumnSchema value_column("v", INT32, false, false);
+  auto columns = { hash_column, range_column, value_column };
+  Schema schema(columns, CreateColumnIds(columns.size()), 2);
+
+  auto t = HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 0);
+
+  std::mt19937_64 rng;
+  Seed(&rng);
+  std::unordered_set<int32_t> used_ints;
+  int32_t key = NewInt(&rng, &used_ints);
+  std::vector<RowData> rows;
+  constexpr int32_t kNumRows = 20;
+  for (int32_t i = 0; i != kNumRows; ++i) {
+    RowData row = {key,
+                   NewInt(&rng, &used_ints),
+                   NewInt(&rng, &used_ints)};
+    rows.push_back(row);
+
+    WriteYQLRow(YQLWriteRequestPB_YQLStmtType_YQL_STMT_INSERT,
+                schema,
+                { row.k, row.r, row.v },
+                1000,
+                t);
+    FlushRocksDB();
+  }
+  std::vector<rocksdb::LiveFileMetaData> live_files;
+  rocksdb()->GetLiveFilesMetaData(&live_files);
+  ASSERT_EQ(kNumRows, live_files.size());
+
+  std::shuffle(rows.begin(), rows.end(), rng);
+  auto ordered_rows = rows;
+  std::sort(ordered_rows.begin(), ordered_rows.end());
+
+  LOG(INFO) << "Dump:\n" << DocDBDebugDumpToStr();
+
+  std::vector<YQLOperator> operators = {
+    YQL_OP_EQUAL,
+    YQL_OP_LESS_THAN_EQUAL,
+    YQL_OP_GREATER_THAN_EQUAL,
+  };
+
+  auto old_iterators =
+      rocksdb()->GetDBOptions().statistics->getTickerCount(rocksdb::NO_TABLE_CACHE_ITERATORS);
+  for (auto op : operators) {
+    LOG(INFO) << "Testing: " << YQLOperator_Name(op);
+    for (auto& row : rows) {
+      std::vector<PrimitiveValue> hashed_components = { PrimitiveValue(key) };
+      YQLConditionPB condition;
+      condition.add_operands()->set_column_id(1_ColId);
+      condition.set_op(op);
+      condition.add_operands()->mutable_value()->set_int32_value(row.r);
+
+      auto it = std::lower_bound(ordered_rows.begin(), ordered_rows.end(), row);
+      auto range = GetIteratorRange(ordered_rows.begin(), ordered_rows.end(), it, op);
+
+      std::vector<RowData> expected_rows(range.first, range.second);
+      DocYQLScanSpec yql_scan_spec(schema, 0, hashed_components, &condition);
+      DocRowwiseIterator yql_iter(schema, schema, rocksdb(),
+          HybridClock::HybridTimeFromMicroseconds(3000));
+      ASSERT_OK(yql_iter.Init(yql_scan_spec));
+      LOG(INFO) << "Expected rows: " << util::ToString(expected_rows);
+
+      while(yql_iter.HasNext()) {
+        YQLValueMap value_map;
+        ASSERT_OK(yql_iter.NextRow(schema, &value_map));
+        ASSERT_EQ(3, value_map.size());
+
+        RowData fetched_row = { value_map[0_ColId].int32_value(),
+                                value_map[1_ColId].int32_value(),
+                                value_map[2_ColId].int32_value() };
+        LOG(INFO) << "Fetched row: " << fetched_row;
+        it = std::lower_bound(expected_rows.begin(), expected_rows.end(), fetched_row);
+        ASSERT_NE(it, expected_rows.end());
+        ASSERT_EQ(*it, fetched_row);
+        expected_rows.erase(it);
+      }
+      ASSERT_TRUE(expected_rows.empty());
+      auto new_iterators =
+          rocksdb()->GetDBOptions().statistics->getTickerCount(rocksdb::NO_TABLE_CACHE_ITERATORS);
+      ASSERT_EQ(range.second - range.first, new_iterators - old_iterators);
+      old_iterators = new_iterators;
+    }
+  }
+}
+
+} // namespace
+
+TEST_F_EX(DocOperationTest, YQLRangeFilterAscending, DocOperationRangeFilterTest) {
+  TestWithSortingType(ColumnSchema::kAscending);
+}
+
+TEST_F_EX(DocOperationTest, YQLRangeFiltervDescending, DocOperationRangeFilterTest) {
+  TestWithSortingType(ColumnSchema::kDescending);
+}
+
 TEST_F(DocOperationTest, TestYQLCompactions) {
   yb::YQLWriteRequestPB yql_writereq_pb;
   yb::YQLResponsePB yql_writeresp_pb;
@@ -440,7 +629,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(p=1000, w=3)]) -> 3; ttl: 1.
 
   yql_writereq_pb.set_hash_code(0);
   AddPrimaryKeyColumn(&yql_writereq_pb, 1);
-  AddColumnValues(&yql_writereq_pb, vector<int32_t>({10, 20, 30}));
+  AddColumnValues(schema, {10, 20, 30}, &yql_writereq_pb);
   yql_writereq_pb.set_ttl(2000);
 
   // Write to docdb at the same physical time and a bumped-up logical time.

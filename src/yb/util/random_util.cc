@@ -20,10 +20,10 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <random>
 
 #include "yb/util/env.h"
 #include "yb/util/random.h"
-#include "yb/gutil/walltime.h"
 
 namespace yb {
 
@@ -42,10 +42,8 @@ void RandomString(void* dest, size_t n, Random* rng) {
 }
 
 uint32_t GetRandomSeed32() {
-  uint32_t seed = static_cast<uint32_t>(GetCurrentTimeMicros());
-  seed *= getpid();
-  seed *= Env::Default()->gettid();
-  return seed;
+  std::random_device device;
+  return device();
 }
 
 std::string RandomHumanReadableString(int len, Random* rnd) {

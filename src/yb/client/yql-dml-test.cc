@@ -1,7 +1,21 @@
 // Copyright (c) YugaByte, Inc.
 
+#include <thread>
+
 #include "yb/client/yql-dml-base.h"
+
+#include "yb/util/curl_util.h"
+#include "yb/util/jsonreader.h"
+#include "yb/util/random.h"
+#include "yb/util/random_util.h"
+#include "yb/util/tostring.h"
+
 #include "yb/sql/util/statement_result.h"
+
+DECLARE_bool(mini_cluster_reuse_data);
+DECLARE_bool(rocksdb_disable_compactions);
+DECLARE_int32(yb_num_shards_per_tserver);
+DECLARE_int64(db_block_cache_size_bytes);
 
 namespace yb {
 namespace client {
@@ -138,6 +152,153 @@ TEST_F(YqlDmlTest, TestInsertUpdateAndSelect) {
     const auto& row = rowblock->row(0);
     EXPECT_EQ(row.column(0).int32_value(), 4);
     EXPECT_EQ(row.column(1).string_value(), "d");
+  }
+}
+
+namespace {
+
+std::string RandomValueAt(int32_t idx) {
+  Random rng(idx);
+  return RandomHumanReadableString(2000, &rng);
+}
+
+class YqlDmlRangeFilterBase: public YqlDmlTest {
+ public:
+  void SetUp() override {
+    FLAGS_rocksdb_disable_compactions = true;
+    FLAGS_yb_num_shards_per_tserver = 1;
+    YqlDmlTest::SetUp();
+  }
+};
+
+#define EXPECT_OK_OR_CONTINUE(expr) \
+    { \
+      auto&& status = (expr); \
+      EXPECT_OK(status); \
+      if (!status.ok()) { continue; } \
+    }
+
+size_t CountIterators(const std::vector<uint16_t>& web_ports) {
+  EasyCurl curl;
+  faststring buffer;
+  size_t result = 0;
+  for (auto port : web_ports) {
+    std::string url = strings::Substitute("http://localhost:$0/metrics", port);
+    buffer.clear();
+    EXPECT_OK_OR_CONTINUE(curl.FetchURL(url, &buffer));
+    JsonReader json(buffer.ToString());
+    // Example of parsed data:
+    // [
+    // {
+    //    "type": "server",
+    //    "id": "yb.tabletserver",
+    //    "attributes": {},
+    //    "metrics": [
+    //        {
+    //            "name": "scanners_expired",
+    //            "value": 0
+    //        },
+    //        .....
+    //        {
+    //            "name": "rocksdb.no.table.cache.iterators",
+    //            "value": 100500
+    //        }
+    EXPECT_OK_OR_CONTINUE(json.Init());
+    std::vector<const rapidjson::Value*> objs;
+    EXPECT_OK_OR_CONTINUE(json.ExtractObjectArray(json.root(), nullptr, &objs));
+    for (auto obj : objs) {
+      std::string type;
+      EXPECT_OK_OR_CONTINUE(json.ExtractString(obj, "type", &type));
+      if (type != "tablet") {
+        continue;
+      }
+      std::vector<const rapidjson::Value*> metrics;
+      EXPECT_OK_OR_CONTINUE(json.ExtractObjectArray(obj, "metrics", &metrics));
+      for (auto metric : metrics) {
+        std::string name;
+        EXPECT_OK_OR_CONTINUE(json.ExtractString(metric, "name", &name));
+        if (name != "rocksdb.no.table.cache.iterators") {
+          continue;
+        }
+        int64_t value;
+        EXPECT_OK_OR_CONTINUE(json.ExtractInt64(metric, "value", &value));
+        result += value;
+      }
+    }
+  }
+  return result;
+}
+
+} // namespace
+
+TEST_F_EX(YqlDmlTest, RangeFilter, YqlDmlRangeFilterBase) {
+  using namespace std::chrono_literals;
+
+  const int32_t kHashInt = 42;
+  const std::string kHashStr = "all_records_have_same_id";
+  constexpr size_t kTotalLines = 25000;
+  constexpr auto kTimeout = 30s;
+  if (!FLAGS_mini_cluster_reuse_data) {
+    constexpr size_t kTotalThreads = 8;
+
+    std::vector<std::thread> threads;
+    std::atomic<int32_t> idx(0);
+    for (size_t t = 0; t != kTotalThreads; ++t) {
+      threads.emplace_back([this, &idx, kTimeout, kTotalLines, kHashInt, kHashStr] {
+        shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
+        session->SetTimeout(kTimeout);
+        for(;;) {
+          int32_t i = idx++;
+          if (i >= kTotalLines) {
+            break;
+          }
+          const shared_ptr<YBqlWriteOp> op = InsertRow(session,
+                                                       kHashInt,
+                                                       kHashStr,
+                                                       i,
+                                                       "range_" + std::to_string(i),
+                                                       -i,
+                                                       RandomValueAt(i));
+          EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
+          if (i % 5000 == 0) {
+            LOG(WARNING) << "Inserted " << i << " rows";
+          }
+        }
+      });
+    }
+    for (auto& thread : threads) {
+      thread.join();
+    }
+    LOG(WARNING) << "Finished creating DB";
+  }
+  FLAGS_db_block_cache_size_bytes = -2;
+  ASSERT_OK(cluster_->RestartSync());
+  {
+    auto session = client_->NewSession(true /* read_only */);
+    session->SetTimeout(kTimeout);
+    constexpr size_t kTotalProbes = 100;
+    Random rng(GetRandomSeed32());
+    size_t old_iterators = CountIterators(cluster_->tserver_web_ports());
+    for (size_t i = 0; i != kTotalProbes; ++i) {
+      int32_t idx = rng.Uniform(kTotalLines);
+      auto op = SelectRow(session,
+                          {"c1", "c2"},
+                          kHashInt,
+                          kHashStr,
+                          idx,
+                          "range_" + std::to_string(idx));
+
+      EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
+      unique_ptr<YQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+      EXPECT_EQ(rowblock->row_count(), 1);
+      const auto& row = rowblock->row(0);
+      EXPECT_EQ(row.column(0).int32_value(), -idx);
+      EXPECT_EQ(row.column(1).string_value(), RandomValueAt(idx));
+
+      size_t new_iterators = CountIterators(cluster_->tserver_web_ports());
+      ASSERT_EQ(old_iterators + 1, new_iterators);
+      old_iterators = new_iterators;
+    }
   }
 }
 

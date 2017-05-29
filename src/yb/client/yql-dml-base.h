@@ -20,6 +20,8 @@
 #include "yb/util/async_util.h"
 #include "yb/util/test_util.h"
 
+DECLARE_bool(mini_cluster_reuse_data);
+
 namespace yb {
 namespace client {
 
@@ -59,12 +61,14 @@ class YqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
     addColumns(&b);
     CHECK_OK(b.Build(&schema));
 
-    unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-    ASSERT_OK(table_creator->table_name(kTableName)
-        .table_type(YBTableType::YQL_TABLE_TYPE)
-        .schema(&schema)
-        .num_replicas(3)
-        .Create());
+    if (!FLAGS_mini_cluster_reuse_data) {
+      unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+      ASSERT_OK(table_creator->table_name(kTableName)
+          .table_type(YBTableType::YQL_TABLE_TYPE)
+          .schema(&schema)
+          .num_replicas(3)
+          .Create());
+    }
 
     ASSERT_OK(client_->OpenTable(kTableName, &table_));
 
@@ -75,6 +79,8 @@ class YqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
   }
 
   virtual void DoTearDown() override {
+    // If we enable this, it will break FLAGS_mini_cluster_reuse_data
+    //
     // This DeleteTable clean up seems to cause a crash because the delete may not succeed
     // immediately and is retried after the master is restarted (see ENG-663). So disable it for
     // now.

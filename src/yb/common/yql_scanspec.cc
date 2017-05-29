@@ -239,7 +239,8 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
 // Return the lower/upper range components for the scan. We can use the range group as the bounds
 // in DocRowwiseIterator only when all the range columns have bounded values. So return an empty
 // group if any of the range column does not have a bound.
-vector<YQLValuePB> YQLScanRange::range_values(const bool lower_bound) const {
+vector<YQLValuePB> YQLScanRange::range_values(const bool lower_bound,
+                                              const bool allow_null) const {
   vector<YQLValuePB> range_values;
   range_values.reserve(schema_.num_range_key_columns());
   for (size_t i = 0; i < schema_.num_key_columns(); i++) {
@@ -249,7 +250,7 @@ vector<YQLValuePB> YQLScanRange::range_values(const bool lower_bound) const {
       // lower bound for ASC column and upper bound for DESC column -> min value
       // otherwise -> max value
       const auto& value = lower_bound ^ desc_col ? range.min_value : range.max_value;
-      if (YQLValue::IsNull(value)) {
+      if (!allow_null && YQLValue::IsNull(value)) {
         range_values.clear();
         break;
       }

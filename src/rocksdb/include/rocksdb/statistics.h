@@ -3,8 +3,8 @@
 // LICENSE file in the root directory of this source tree. An additional grant
 // of patent rights can be found in the PATENTS file in the same directory.
 
-#ifndef STORAGE_ROCKSDB_INCLUDE_STATISTICS_H_
-#define STORAGE_ROCKSDB_INCLUDE_STATISTICS_H_
+#ifndef ROCKSDB_INCLUDE_ROCKSDB_STATISTICS_H
+#define ROCKSDB_INCLUDE_ROCKSDB_STATISTICS_H
 
 #include <atomic>
 #include <cstddef>
@@ -175,6 +175,9 @@ enum Tickers : uint32_t {
   ROW_CACHE_HIT,
   ROW_CACHE_MISS,
 
+  // Table cache.
+  NO_TABLE_CACHE_ITERATORS,
+
   TICKER_ENUM_MAX
 };
 
@@ -258,6 +261,7 @@ const std::vector<std::pair<Tickers, std::string>> TickersNameMap = {
     {FILTER_OPERATION_TOTAL_TIME, "rocksdb.filter.operation.time.nanos"},
     {ROW_CACHE_HIT, "rocksdb.row.cache.hit"},
     {ROW_CACHE_MISS, "rocksdb.row.cache.miss"},
+    {NO_TABLE_CACHE_ITERATORS, "rocksdb.no.table.cache.iterators"}
 };
 
 /**
@@ -383,4 +387,4 @@ std::shared_ptr<Statistics> CreateDBStatistics();
 
 }  // namespace rocksdb
 
-#endif  // STORAGE_ROCKSDB_INCLUDE_STATISTICS_H_
+#endif // ROCKSDB_INCLUDE_ROCKSDB_STATISTICS_H

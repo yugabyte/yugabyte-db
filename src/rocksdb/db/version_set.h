@@ -37,7 +37,6 @@
 #include "db/version_edit.h"
 #include "port/port.h"
 #include "db/table_cache.h"
-#include "db/compaction.h"
 #include "db/compaction_picker.h"
 #include "db/column_family.h"
 #include "db/log_reader.h"
@@ -739,8 +738,7 @@ class VersionSet {
   uint64_t ApproximateSizeLevel0(Version* v, const LevelFilesBrief& files_brief,
                                  const Slice& start, const Slice& end);
 
-  uint64_t ApproximateSize(Version* v, const FdWithKeyRange& f,
-                           const Slice& key);
+  uint64_t ApproximateSize(Version* v, const FdWithBoundaries& f, const Slice& key);
 
   // Save current contents to *log
   Status WriteSnapshot(log::Writer* log);

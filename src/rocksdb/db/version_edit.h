@@ -123,34 +123,6 @@ struct FileMetaData {
   void UpdateBoundariesExceptKey(const FileBoundaryValuesBase& source, UpdateBoundariesType type);
 };
 
-// A compressed copy of file meta data that just contain
-// smallest and largest key's slice
-struct FdWithKeyRange {
-  FileDescriptor fd;
-  Slice smallest_key;    // slice that contain smallest key
-  Slice largest_key;     // slice that contain largest key
-
-  FdWithKeyRange()
-      : fd(),
-        smallest_key(),
-        largest_key() {
-  }
-
-  FdWithKeyRange(FileDescriptor _fd, Slice _smallest_key, Slice _largest_key)
-      : fd(_fd), smallest_key(_smallest_key), largest_key(_largest_key) {}
-};
-
-// Data structure to store an array of FdWithKeyRange in one level
-// Actual data is guaranteed to be stored closely
-struct LevelFilesBrief {
-  size_t num_files;
-  FdWithKeyRange* files;
-  LevelFilesBrief() {
-    num_files = 0;
-    files = nullptr;
-  }
-};
-
 class VersionEdit {
  public:
   VersionEdit() { Clear(); }

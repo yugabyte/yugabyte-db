@@ -806,7 +806,8 @@ Status DocDBDebugDump(rocksdb::DB* rocksdb, ostream& out, const bool include_bin
     Value value;
     Status value_decode_status = value.Decode(iter->value());
     if (!value_decode_status.ok()) {
-      out << "Error: failed to decode value for key " << subdoc_key.ToString() << endl;
+      out << "Error: failed to decode value for key " << subdoc_key.ToString()
+          << ": " << value_decode_status.ToString() << endl;
       if (result_status.ok()) {
         result_status = value_decode_status;
       }

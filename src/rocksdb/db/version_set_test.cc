@@ -264,33 +264,21 @@ class FindLevelFileTest : public testing::Test {
   }
 
   void LevelFileInit(size_t num = 0) {
-    char* mem = arena_.AllocateAligned(num * sizeof(FdWithKeyRange));
-    file_level_.files = new (mem)FdWithKeyRange[num];
+    char* mem = arena_.AllocateAligned(num * sizeof(FdWithBoundaries));
+    file_level_.files = reinterpret_cast<FdWithBoundaries*>(mem);
     file_level_.num_files = 0;
   }
 
   void Add(const char* smallest, const char* largest,
            SequenceNumber smallest_seq = 100,
            SequenceNumber largest_seq = 100) {
-    InternalKey smallest_key = InternalKey(smallest, smallest_seq, kTypeValue);
-    InternalKey largest_key = InternalKey(largest, largest_seq, kTypeValue);
-
-    Slice smallest_slice = smallest_key.Encode();
-    Slice largest_slice = largest_key.Encode();
-
-    char* mem = arena_.AllocateAligned(
-        smallest_slice.size() + largest_slice.size());
-    memcpy(mem, smallest_slice.data(), smallest_slice.size());
-    memcpy(mem + smallest_slice.size(), largest_slice.data(),
-        largest_slice.size());
-
     // add to file_level_
     size_t num = file_level_.num_files;
-    auto& file = file_level_.files[num];
-    file.fd = FileDescriptor(num + 1, 0, 0, 0);
-    file.smallest_key = Slice(mem, smallest_slice.size());
-    file.largest_key = Slice(mem + smallest_slice.size(),
-        largest_slice.size());
+    FileMetaData meta;
+    meta.fd = FileDescriptor(num + 1, 0, 0, 0);
+    meta.smallest.key = InternalKey(smallest, smallest_seq, kTypeValue);
+    meta.largest.key = InternalKey(largest, largest_seq, kTypeValue);
+    new (file_level_.files + num) FdWithBoundaries(&arena_, meta);
     file_level_.num_files++;
   }
 

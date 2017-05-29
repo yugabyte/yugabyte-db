@@ -373,21 +373,21 @@ void CompactionJob::GenSubcompactionBoundaries() {
         // For level 0 add the starting and ending key of each file since the
         // files may have greatly differing key ranges (not range-partitioned)
         for (size_t i = 0; i < num_files; i++) {
-          bounds.emplace_back(flevel->files[i].smallest_key);
-          bounds.emplace_back(flevel->files[i].largest_key);
+          bounds.emplace_back(flevel->files[i].smallest.key);
+          bounds.emplace_back(flevel->files[i].largest.key);
         }
       } else {
         // For all other levels add the smallest/largest key in the level to
         // encompass the range covered by that level
-        bounds.emplace_back(flevel->files[0].smallest_key);
-        bounds.emplace_back(flevel->files[num_files - 1].largest_key);
+        bounds.emplace_back(flevel->files[0].smallest.key);
+        bounds.emplace_back(flevel->files[num_files - 1].largest.key);
         if (lvl == out_lvl) {
           // For the last level include the starting keys of all files since
           // the last level is the largest and probably has the widest key
           // range. Since it's range partitioned, the ending key of one file
           // and the starting key of the next are very close (or identical).
           for (size_t i = 1; i < num_files; i++) {
-            bounds.emplace_back(flevel->files[i].smallest_key);
+            bounds.emplace_back(flevel->files[i].smallest.key);
           }
         }
       }

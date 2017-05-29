@@ -180,6 +180,11 @@ class DocDBRocksDBFixture {
 
   void SetTableTTL(uint64_t ttl_msec);
 
+  void DisableCompactions() {
+    rocksdb_options_.compaction_style = rocksdb::kCompactionStyleNone;
+    ReopenRocksDB();
+  }
+
  private:
   std::unique_ptr<rocksdb::DB> rocksdb_;
   std::shared_ptr<HistoryRetentionPolicy> retention_policy_;

@@ -1,5 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
+#include <rocksdb/db/compaction.h>
 #include "yb/docdb/doc_rowwise_iterator.h"
 
 #include "yb/common/iterator.h"
@@ -97,7 +98,8 @@ Status DocRowwiseIterator::Init(const common::YQLScanSpec& spec) {
       upper_doc_key.HashedComponentsEqual(lower_doc_key);
   const auto mode = is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER :
       BloomFilterMode::DONT_USE_BLOOM_FILTER;
-  db_iter_ = CreateRocksDBIterator(db_, mode);
+
+  db_iter_ = CreateRocksDBIterator(db_, mode, doc_spec.CreateFileFilter());
 
   // Start scan with the lower bound doc key.
   row_key_ = std::move(lower_doc_key);

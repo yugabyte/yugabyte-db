@@ -28,8 +28,8 @@ size_t CompactedDBImpl::FindFile(const Slice& key) {
   size_t right = files_.num_files - 1;
   while (left < right) {
     size_t mid = (left + right) >> 1;
-    const FdWithKeyRange& f = files_.files[mid];
-    if (user_comparator_->Compare(ExtractUserKey(f.largest_key), key) < 0) {
+    const FdWithBoundaries& f = files_.files[mid];
+    if (user_comparator_->Compare(ExtractUserKey(f.largest.key), key) < 0) {
       // Key at "mid.largest" is < "target".  Therefore all
       // files at or before "mid" are uninteresting.
       left = mid + 1;
@@ -61,8 +61,8 @@ std::vector<Status> CompactedDBImpl::MultiGet(const ReadOptions& options,
     const std::vector<Slice>& keys, std::vector<std::string>* values) {
   autovector<TableReader*, 16> reader_list;
   for (const auto& key : keys) {
-    const FdWithKeyRange& f = files_.files[FindFile(key)];
-    if (user_comparator_->Compare(key, ExtractUserKey(f.smallest_key)) < 0) {
+    const FdWithBoundaries& f = files_.files[FindFile(key)];
+    if (user_comparator_->Compare(key, ExtractUserKey(f.smallest.key)) < 0) {
       reader_list.push_back(nullptr);
     } else {
       LookupKey lkey(key, kMaxSequenceNumber);

@@ -37,6 +37,10 @@
 
 using strings::Substitute;
 
+
+DEFINE_string(mini_cluster_base_dir, "", "Directory for master/ts data");
+DEFINE_bool(mini_cluster_reuse_data, false, "Reuse data of mini cluster");
+DEFINE_int32(mini_cluster_base_port, 0, "Allocate RPC ports starting from this one");
 DECLARE_int32(master_svc_num_threads);
 DECLARE_int32(master_consensus_svc_num_threads);
 DECLARE_int32(master_remote_bootstrap_svc_num_threads);
@@ -63,6 +67,16 @@ using tserver::TabletServer;
 
 static const std::vector<uint16_t> EMPTY_MASTER_RPC_PORTS = {};
 
+std::string GetFsRoot(const MiniClusterOptions& options) {
+  if (!options.data_root.empty()) {
+    return options.data_root;
+  }
+  if (!FLAGS_mini_cluster_base_dir.empty()) {
+    return FLAGS_mini_cluster_base_dir;
+  }
+  return JoinPathSegments(GetTestDataDirectory(), "minicluster-data");
+}
+
 MiniClusterOptions::MiniClusterOptions()
   : num_masters(1),
     num_tablet_servers(1) {
@@ -70,13 +84,12 @@ MiniClusterOptions::MiniClusterOptions()
 
 MiniCluster::MiniCluster(Env* env, const MiniClusterOptions& options)
     : running_(false),
-      is_creating_(true),
+      is_creating_(!FLAGS_mini_cluster_reuse_data),
       env_(env),
-      fs_root_(!options.data_root.empty()
-                   ? options.data_root
-                   : JoinPathSegments(GetTestDataDirectory(), "minicluster-data")),
+      fs_root_(GetFsRoot(options)),
       num_masters_initial_(options.num_masters),
-      num_ts_initial_(options.num_tablet_servers) {
+      num_ts_initial_(options.num_tablet_servers),
+      next_port_(FLAGS_mini_cluster_base_port) {
   mini_masters_.resize(num_masters_initial_);
 }
 
@@ -362,13 +375,25 @@ void MiniCluster::EnsurePortsAllocated(int new_num_masters, int new_num_tservers
   if (new_num_masters == 0) {
     new_num_masters = std::max(num_masters_initial_, num_masters());
   }
-  AllocatePortsForDaemonType("master", new_num_masters, "RPC", &master_rpc_ports_);
+  if (next_port_) {
+    while (master_rpc_ports_.size() < new_num_masters) {
+      master_rpc_ports_.push_back(next_port_++);
+    }
+  } else {
+    AllocatePortsForDaemonType("master", new_num_masters, "RPC", &master_rpc_ports_);
+  }
   AllocatePortsForDaemonType("master", new_num_masters, "web", &master_web_ports_);
 
   if (new_num_tservers == 0) {
     new_num_tservers = std::max(num_ts_initial_, num_tablet_servers());
   }
-  AllocatePortsForDaemonType("tablet server", new_num_tservers, "RPC", &tserver_rpc_ports_);
+  if (next_port_) {
+    while (tserver_rpc_ports_.size() < new_num_tservers) {
+      tserver_rpc_ports_.push_back(next_port_++);
+    }
+  } else {
+    AllocatePortsForDaemonType("tablet server", new_num_tservers, "RPC", &tserver_rpc_ports_);
+  }
   AllocatePortsForDaemonType("tablet server", new_num_tservers, "web", &tserver_web_ports_);
 }
 

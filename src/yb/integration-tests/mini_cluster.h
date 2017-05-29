@@ -118,6 +118,8 @@ class MiniCluster : public MiniClusterBase {
 
   int num_tablet_servers() const { return mini_tablet_servers_.size(); }
 
+  const std::vector<uint16_t>& tserver_web_ports() const { return tserver_web_ports_;}
+
   std::string GetMasterFsRoot(int indx);
 
   std::string GetTabletServerFsRoot(int idx);
@@ -183,6 +185,7 @@ class MiniCluster : public MiniClusterBase {
   std::vector<uint16_t> master_web_ports_;
   std::vector<uint16_t> tserver_rpc_ports_;
   std::vector<uint16_t> tserver_web_ports_;
+  uint16_t next_port_;
 
   std::vector<std::shared_ptr<master::MiniMaster> > mini_masters_;
   std::vector<std::shared_ptr<tserver::MiniTabletServer> > mini_tablet_servers_;
