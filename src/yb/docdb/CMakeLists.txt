@@ -8,7 +8,7 @@ PROTOBUF_GENERATE_CPP(
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES docdb.proto)
 
-ADD_EXPORTABLE_LIBRARY(docdb_proto
+ADD_YB_LIBRARY(docdb_proto
   SRCS ${DOCDB_PROTO_SRCS}
   DEPS protobuf
   NONLINK_DEPS ${DOCDB_PROTO_TGTS})
@@ -42,7 +42,7 @@ set(DOCDB_DEPS
     docdb_proto
     server_common)
 
-ADD_EXPORTABLE_LIBRARY(yb_docdb
+ADD_YB_LIBRARY(yb_docdb
                        SRCS ${DOCDB_SRCS}
                        DEPS ${DOCDB_DEPS})
 

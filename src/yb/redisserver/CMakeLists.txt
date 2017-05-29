@@ -17,7 +17,7 @@ set(REDISSERVER_YRPC_LIBS
   rpc_header_proto
   redis_protocol_proto
   wire_protocol_proto)
-ADD_EXPORTABLE_LIBRARY(redis_service_proto
+ADD_YB_LIBRARY(redis_service_proto
   SRCS ${REDISSERVER_YRPC_SRCS}
   DEPS ${REDISSERVER_YRPC_LIBS}
   NONLINK_DEPS ${REDISSERVER_YRPC_TGTS})

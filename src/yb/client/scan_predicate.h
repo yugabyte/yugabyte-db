@@ -25,12 +25,12 @@
 #endif
 
 #include "yb/client/schema.h"
-#include "yb/util/yb_export.h"
+
 
 namespace yb {
 namespace client {
 
-class YB_EXPORT YBPredicate {
+class YBPredicate {
  public:
   enum ComparisonOp {
     LESS_EQUAL,
@@ -45,7 +45,7 @@ class YB_EXPORT YBPredicate {
 
   // The PIMPL class has to be public since it's actually just an interface,
   // and gcc gives an error trying to derive from a private nested class.
-  class YB_NO_EXPORT Data;
+  class Data;
  private:
   friend class YBScanner;
   friend class YBTable;

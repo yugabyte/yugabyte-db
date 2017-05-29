@@ -24,7 +24,7 @@
 #else
 #include "yb/client/stubs.h"
 #endif
-#include "yb/util/yb_export.h"
+
 
 namespace yb {
 
@@ -41,7 +41,7 @@ enum YBLogSeverity {
 };
 
 // Interface for all logging callbacks.
-class YB_EXPORT YBLoggingCallback {
+class YBLoggingCallback {
  public:
   YBLoggingCallback() {
   }
@@ -63,7 +63,7 @@ class YB_EXPORT YBLoggingCallback {
 
 // Logging callback that invokes a member function pointer.
 template <typename T>
-class YB_EXPORT YBLoggingMemberCallback : public YBLoggingCallback {
+class YBLoggingMemberCallback : public YBLoggingCallback {
  public:
   typedef void (T::*MemberType)(
       YBLogSeverity severity,
@@ -95,7 +95,7 @@ class YB_EXPORT YBLoggingMemberCallback : public YBLoggingCallback {
 
 // Logging callback that invokes a function pointer with a single argument.
 template <typename T>
-class YB_EXPORT YBLoggingFunctionCallback : public YBLoggingCallback {
+class YBLoggingFunctionCallback : public YBLoggingCallback {
  public:
   typedef void (*FunctionType)(T arg,
       YBLogSeverity severity,
@@ -126,7 +126,7 @@ class YB_EXPORT YBLoggingFunctionCallback : public YBLoggingCallback {
 };
 
 // Interface for all status callbacks.
-class YB_EXPORT YBStatusCallback {
+class YBStatusCallback {
  public:
   YBStatusCallback() {
   }
@@ -142,7 +142,7 @@ class YB_EXPORT YBStatusCallback {
 
 // Status callback that invokes a member function pointer.
 template <typename T>
-class YB_EXPORT YBStatusMemberCallback : public YBStatusCallback {
+class YBStatusMemberCallback : public YBStatusCallback {
  public:
   typedef void (T::*MemberType)(const Status& s);
 
@@ -162,7 +162,7 @@ class YB_EXPORT YBStatusMemberCallback : public YBStatusCallback {
 
 // Status callback that invokes a function pointer with a single argument.
 template <typename T>
-class YB_EXPORT YBStatusFunctionCallback : public YBStatusCallback {
+class YBStatusFunctionCallback : public YBStatusCallback {
  public:
   typedef void (*FunctionType)(T arg, const Status& s);
 

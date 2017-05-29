@@ -28,7 +28,7 @@ set(MASTER_YRPC_LIBS
   tablet_proto
   tserver_proto
   wire_protocol_proto)
-ADD_EXPORTABLE_LIBRARY(master_proto
+ADD_YB_LIBRARY(master_proto
   SRCS ${MASTER_YRPC_SRCS}
   DEPS ${MASTER_YRPC_LIBS}
   NONLINK_DEPS ${MASTER_YRPC_TGTS})
@@ -88,13 +88,13 @@ set(MASTER_RPC_LIBS
   yb_util
   master_proto
   rpc_header_proto)
-ADD_EXPORTABLE_LIBRARY(master_rpc
+ADD_YB_LIBRARY(master_rpc
   SRCS ${MASTER_RPC_SRCS}
   DEPS ${MASTER_RPC_LIBS})
 
 set(MASTER_UTIL_SRCS
   master_util.cc)
-ADD_EXPORTABLE_LIBRARY(master_util
+ADD_YB_LIBRARY(master_util
   SRCS ${MASTER_UTIL_SRCS}
   DEPS ${MASTER_RPC_LIBS})
 

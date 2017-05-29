@@ -62,7 +62,7 @@ if (NOT APPLE)
     rt) # clock_gettime() requires -lrt
 endif()
 
-ADD_EXPORTABLE_LIBRARY(gutil
+ADD_YB_LIBRARY(gutil
   SRCS ${GUTIL_SRCS}
   DEPS ${GUTIL_LIBS}
   # Disable warnings which trigger a lot in the Google code:

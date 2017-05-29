@@ -30,7 +30,7 @@ set(METADATA_PROTO_LIBS
   yb_common_proto
   fs_proto
   protobuf)
-ADD_EXPORTABLE_LIBRARY(consensus_metadata_proto
+ADD_YB_LIBRARY(consensus_metadata_proto
   SRCS ${METADATA_PROTO_SRCS}
   DEPS ${METADATA_PROTO_LIBS}
   NONLINK_DEPS ${METADATA_PROTO_TGTS})
@@ -56,7 +56,7 @@ set(CONSENSUS_YRPC_LIBS
   tserver_admin_proto
   wire_protocol_proto)
 
-ADD_EXPORTABLE_LIBRARY(consensus_proto
+ADD_YB_LIBRARY(consensus_proto
   SRCS ${CONSENSUS_YRPC_SRCS}
   DEPS ${CONSENSUS_YRPC_LIBS}
   NONLINK_DEPS ${CONSENSUS_YRPC_TGTS})

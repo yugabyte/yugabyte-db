@@ -70,7 +70,7 @@ set(TABLET_PROTO_LIBS
   fs_proto
   consensus_metadata_proto
   yb_common)
-ADD_EXPORTABLE_LIBRARY(tablet_proto
+ADD_YB_LIBRARY(tablet_proto
   SRCS ${TABLET_PROTO_SRCS}
   DEPS ${TABLET_PROTO_LIBS}
   NONLINK_DEPS ${TABLET_PROTO_TGTS})

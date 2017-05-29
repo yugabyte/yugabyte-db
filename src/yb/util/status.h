@@ -29,7 +29,7 @@
 #include "yb/client/stubs.h"
 #endif
 
-#include "yb/util/yb_export.h"
+
 #include "yb/util/slice.h"
 #include "yb/gutil/strings/substitute.h"
 
@@ -154,7 +154,7 @@ enum class TimeoutError {
   kLockLimit = 3,
 };
 
-class YB_EXPORT Status {
+class Status {
  public:
   // Create a success status.
   Status() {}

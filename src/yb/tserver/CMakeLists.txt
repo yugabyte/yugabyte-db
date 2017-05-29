@@ -31,7 +31,7 @@ set(REMOTE_BOOTSTRAP_YRPC_LIBS
   rpc_header_proto
   tablet_proto
   wire_protocol_proto)
-ADD_EXPORTABLE_LIBRARY(remote_bootstrap_proto
+ADD_YB_LIBRARY(remote_bootstrap_proto
   SRCS ${REMOTE_BOOTSTRAP_YRPC_SRCS}
   DEPS ${REMOTE_BOOTSTRAP_YRPC_LIBS}
   NONLINK_DEPS ${REMOTE_BOOTSTRAP_YRPC_TGTS})
@@ -53,7 +53,7 @@ set(TSERVER_PROTO_LIBS
   redis_protocol_proto
   yql_protocol_proto
   docdb_proto)
-ADD_EXPORTABLE_LIBRARY(tserver_proto
+ADD_YB_LIBRARY(tserver_proto
   SRCS ${TSERVER_PROTO_SRCS}
   DEPS ${TSERVER_PROTO_LIBS}
   NONLINK_DEPS ${TSERVER_PROTO_TGTS})
@@ -73,7 +73,7 @@ set(TSERVER_ADMIN_YRPC_LIBS
   rpc_header_proto
   tserver_proto
   wire_protocol_proto)
-ADD_EXPORTABLE_LIBRARY(tserver_admin_proto
+ADD_YB_LIBRARY(tserver_admin_proto
   SRCS ${TSERVER_ADMIN_YRPC_SRCS}
   DEPS ${TSERVER_ADMIN_YRPC_LIBS}
   NONLINK_DEPS ${TSERVER_ADMIN_YRPC_TGTS})
@@ -95,7 +95,7 @@ set(TSERVER_YRPC_LIBS
   rpc_header_proto
   tserver_proto
   wire_protocol_proto)
-ADD_EXPORTABLE_LIBRARY(tserver_service_proto
+ADD_YB_LIBRARY(tserver_service_proto
   SRCS ${TSERVER_YRPC_SRCS}
   DEPS ${TSERVER_YRPC_LIBS}
   NONLINK_DEPS ${TSERVER_YRPC_TGTS})

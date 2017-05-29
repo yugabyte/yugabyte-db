@@ -22,7 +22,7 @@
 
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
-#include "yb/util/yb_export.h"
+
 
 namespace yb {
 
@@ -56,7 +56,7 @@ class YBTable;
 //
 // YBOperation also holds shared ownership of its YBTable to allow client's
 // scope to end while the YBOperation is still alive.
-class YB_EXPORT YBOperation {
+class YBOperation {
  public:
   enum Type {
     INSERT = 1,
@@ -107,7 +107,7 @@ class YB_EXPORT YBOperation {
 // Row operation is defined by what's in the PartialRow instance here.
 // Use mutable_row() to change the row being inserted
 // An insert requires all key columns from the table schema to be defined.
-class YB_EXPORT YBInsert : public YBOperation {
+class YBInsert : public YBOperation {
  public:
   virtual ~YBInsert();
 
@@ -134,7 +134,7 @@ class YB_EXPORT YBInsert : public YBOperation {
 // Use mutable_row() to change the row being updated.
 // An update requires the key columns and at least one other column
 // in the schema to be defined.
-class YB_EXPORT YBUpdate : public YBOperation {
+class YBUpdate : public YBOperation {
  public:
   virtual ~YBUpdate();
 
@@ -161,7 +161,7 @@ class YB_EXPORT YBUpdate : public YBOperation {
 // Row operation is defined by what's in the PartialRow instance here.
 // Use mutable_row() to change the row being deleted
 // A delete requires just the key columns to be defined.
-class YB_EXPORT YBDelete : public YBOperation {
+class YBDelete : public YBOperation {
  public:
   virtual ~YBDelete();
 
@@ -183,7 +183,7 @@ class YB_EXPORT YBDelete : public YBOperation {
   explicit YBDelete(const std::shared_ptr<YBTable>& table);
 };
 
-class YB_EXPORT YBRedisWriteOp : public YBOperation {
+class YBRedisWriteOp : public YBOperation {
  public:
   virtual ~YBRedisWriteOp();
 
@@ -215,7 +215,7 @@ class YB_EXPORT YBRedisWriteOp : public YBOperation {
 };
 
 
-class YB_EXPORT YBRedisReadOp : public YBOperation {
+class YBRedisReadOp : public YBOperation {
  public:
   virtual ~YBRedisReadOp();
 
@@ -247,7 +247,7 @@ class YB_EXPORT YBRedisReadOp : public YBOperation {
 };
 
 
-class YB_EXPORT YBqlOp : public YBOperation {
+class YBqlOp : public YBOperation {
  public:
   virtual ~YBqlOp();
 
@@ -271,7 +271,7 @@ class YB_EXPORT YBqlOp : public YBOperation {
   std::string rows_data_;
 };
 
-class YB_EXPORT YBqlWriteOp : public YBqlOp {
+class YBqlWriteOp : public YBqlOp {
  public:
   explicit YBqlWriteOp(const std::shared_ptr<YBTable>& table);
   virtual ~YBqlWriteOp();
@@ -301,7 +301,7 @@ class YB_EXPORT YBqlWriteOp : public YBqlOp {
   std::unique_ptr<YQLWriteRequestPB> yql_write_request_;
 };
 
-class YB_EXPORT YBqlReadOp : public YBqlOp {
+class YBqlReadOp : public YBqlOp {
  public:
   virtual ~YBqlReadOp();
 

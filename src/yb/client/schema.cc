@@ -181,7 +181,7 @@ Status YBColumnSpec::ToColumnSchema(YBColumnSchema* col) const {
 // YBSchemaBuilder
 ////////////////////////////////////////////////////////////
 
-class YB_NO_EXPORT YBSchemaBuilder::Data {
+class YBSchemaBuilder::Data {
  public:
   Data()
       : has_key_col_names(false),

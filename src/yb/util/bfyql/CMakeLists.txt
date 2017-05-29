@@ -27,7 +27,7 @@ set(YB_BFYQL_SRCS
 set(YB_BFYQL_LIBS
     yb_util)
 
-ADD_EXPORTABLE_LIBRARY(yb_bfyql
+ADD_YB_LIBRARY(yb_bfyql
                        SRCS ${YB_BFYQL_SRCS}
                        DEPS ${YB_BFYQL_LIBS})
 

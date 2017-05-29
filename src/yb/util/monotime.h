@@ -29,7 +29,7 @@
 #include "yb/client/stubs.h"
 #endif
 
-#include "yb/util/yb_export.h"
+
 
 struct timeval;
 struct timespec;
@@ -42,7 +42,7 @@ class MonoTime;
 //
 // A MonoDelta built with the default constructor is "uninitialized" and
 // may not be used for any operation.
-class YB_EXPORT MonoDelta {
+class MonoDelta {
  public:
   static MonoDelta FromSeconds(double seconds);
   static MonoDelta FromMilliseconds(int64_t ms);
@@ -104,7 +104,7 @@ std::string FormatForComparisonFailureMessage(const MonoDelta& op, const MonoDel
 //
 // This time is monotonic, meaning that if the user changes his or her system
 // clock, the monotime does not change.
-class YB_EXPORT MonoTime {
+class MonoTime {
  public:
   enum Granularity {
     COARSE,
@@ -185,7 +185,7 @@ inline bool operator>=(const MonoTime& lhs, const MonoTime& rhs) { return !(lhs 
 // This is preferred over sleep(3), usleep(3), and nanosleep(3). It's less prone to mixups with
 // units since it uses a MonoDelta. It also ignores EINTR, so will reliably sleep at least the
 // MonoDelta duration.
-void YB_EXPORT SleepFor(const MonoDelta& delta);
+void SleepFor(const MonoDelta& delta);
 
 } // namespace yb
 

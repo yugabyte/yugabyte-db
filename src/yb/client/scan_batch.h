@@ -26,7 +26,7 @@
 #include "yb/client/stubs.h"
 #endif
 
-#include "yb/util/yb_export.h"
+
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 
@@ -61,7 +61,7 @@ class YBSchema;
 //
 // Note that, in the above example, NumRows() is only called once at the
 // beginning of the loop to avoid extra calls to the non-inlined method.
-class YB_EXPORT YBScanBatch {
+class YBScanBatch {
  public:
   class RowPtr;
   class const_iterator;
@@ -85,7 +85,7 @@ class YB_EXPORT YBScanBatch {
   const YBSchema* projection_schema() const;
 
  private:
-  class YB_NO_EXPORT Data;
+  class Data;
   friend class YBScanner;
   friend class yb::tools::TsAdminClient;
 
@@ -96,7 +96,7 @@ class YB_EXPORT YBScanBatch {
 // A single row result from a scan. Note that this object acts as a pointer into
 // a YBScanBatch, and therefore is valid only as long as the batch it was constructed
 // from.
-class YB_EXPORT YBScanBatch::RowPtr {
+class YBScanBatch::RowPtr {
  public:
   // Construct an invalid RowPtr. Before use, you must assign
   // a properly-initialized value.
@@ -185,7 +185,7 @@ class YB_EXPORT YBScanBatch::RowPtr {
 // This iterator yields YBScanBatch::RowPtr objects which point inside the row batch
 // itself. Thus, the iterator and any objects obtained from it are invalidated if the
 // YBScanBatch is destroyed or used for a new NextBatch() call.
-class YB_EXPORT YBScanBatch::const_iterator
+class YBScanBatch::const_iterator
     : public std::iterator<std::forward_iterator_tag, YBScanBatch::RowPtr> {
  public:
   ~const_iterator() {}

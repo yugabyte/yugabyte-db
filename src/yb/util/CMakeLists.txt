@@ -24,7 +24,7 @@ PROTOBUF_GENERATE_CPP(
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES histogram.proto)
-ADD_EXPORTABLE_LIBRARY(histogram_proto
+ADD_YB_LIBRARY(histogram_proto
   SRCS ${HISTOGRAM_PROTO_SRCS}
   DEPS protobuf
   NONLINK_DEPS ${HISTOGRAM_PROTO_TGTS})
@@ -38,7 +38,7 @@ PROTOBUF_GENERATE_CPP(
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES pb_util.proto)
-ADD_EXPORTABLE_LIBRARY(pb_util_proto
+ADD_YB_LIBRARY(pb_util_proto
   SRCS ${PB_UTIL_PROTO_SRCS}
   DEPS protobuf
   NONLINK_DEPS ${PB_UTIL_PROTO_TGTS})
@@ -52,7 +52,7 @@ PROTOBUF_GENERATE_CPP(
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES version_info.proto)
-ADD_EXPORTABLE_LIBRARY(version_info_proto
+ADD_YB_LIBRARY(version_info_proto
   SRCS ${VERSION_INFO_PROTO_SRCS}
   DEPS protobuf
   NONLINK_DEPS ${VERSION_INFO_PROTO_TGTS})
@@ -211,18 +211,16 @@ if(NOT APPLE)
     libbacktrace)
 endif()
 
-# We use MallocExtension, but not in the exported version of the library.
-set(EXPORTED_UTIL_LIBS ${UTIL_LIBS})
 if(${YB_TCMALLOC_AVAILABLE})
   list(APPEND UTIL_LIBS tcmalloc)
 endif()
+
 # We need libdl for accessing library load addresses.
 list(APPEND UTIL_LIBS curl dl)
 
-ADD_EXPORTABLE_LIBRARY(yb_util
+ADD_YB_LIBRARY(yb_util
   SRCS ${UTIL_SRCS}
-  DEPS ${UTIL_LIBS}
-  EXPORTED_DEPS ${EXPORTED_UTIL_LIBS})
+  DEPS ${UTIL_LIBS})
 
 add_dependencies(yb_util gen_version_info)
 

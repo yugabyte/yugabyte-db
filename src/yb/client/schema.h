@@ -38,7 +38,7 @@
 #include "yb/client/value.h"
 #include "yb/common/schema.h"
 #include "yb/common/yql_value.h"
-#include "yb/util/yb_export.h"
+
 #include "yb/util/status.h"
 
 namespace yb {
@@ -69,7 +69,7 @@ class YBSchema;
 class YBSchemaBuilder;
 class YBOperation;
 
-class YB_EXPORT YBColumnStorageAttributes {
+class YBColumnStorageAttributes {
  public:
   // NOTE: this constructor is deprecated for external use, and will
   // be made private in a future release.
@@ -97,7 +97,7 @@ class YB_EXPORT YBColumnStorageAttributes {
   int32_t block_size_;
 };
 
-class YB_EXPORT YBColumnSchema {
+class YBColumnSchema {
  public:
   static InternalType ToInternalDataType(YQLType yql_type) {
     switch (yql_type.main()) {
@@ -202,7 +202,7 @@ class YB_EXPORT YBColumnSchema {
 // YBSchemaBuilder::AddColumn() to specify a column within a Schema.
 //
 // TODO(KUDU-861): this API will also be used for an improved AlterTable API.
-class YB_EXPORT YBColumnSpec {
+class YBColumnSpec {
  public:
   // Set the default value for this column.
   //
@@ -295,7 +295,7 @@ class YB_EXPORT YBColumnSpec {
   YBColumnSpec* RenameTo(const std::string& new_name);
 
  private:
-  class YB_NO_EXPORT Data;
+  class Data;
   friend class YBSchemaBuilder;
   friend class YBTableAlterer;
 
@@ -328,7 +328,7 @@ class YB_EXPORT YBColumnSpec {
 //   t.AddColumn("a")->Type(YBColumnSchema::FLOAT)->Default(YBValue::FromFloat(1.5));
 //   YBSchema schema;
 //   t.Build(&schema);
-class YB_EXPORT YBSchemaBuilder {
+class YBSchemaBuilder {
  public:
   YBSchemaBuilder();
   ~YBSchemaBuilder();
@@ -352,12 +352,12 @@ class YB_EXPORT YBSchemaBuilder {
   CHECKED_STATUS Build(YBSchema* schema);
 
  private:
-  class YB_NO_EXPORT Data;
+  class Data;
   // Owned.
   Data* data_;
 };
 
-class YB_EXPORT YBSchema {
+class YBSchema {
  public:
   YBSchema();
 

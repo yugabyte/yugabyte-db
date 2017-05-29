@@ -30,7 +30,7 @@
 #include "yb/client/stubs.h"
 #endif
 
-#include "yb/util/yb_export.h"
+
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 
@@ -49,7 +49,7 @@ class PartialRowPB;
 // This type contains a normal contiguous row, plus a bitfield indicating
 // which columns have been set. Additionally, this type may optionally own
 // copies of indirect data for variable length columns.
-class YB_EXPORT YBPartialRow {
+class YBPartialRow {
  public:
   // The given Schema object must remain valid for the lifetime of this
   // row.

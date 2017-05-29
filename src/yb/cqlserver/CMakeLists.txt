@@ -16,7 +16,7 @@ set(CQLSERVER_YRPC_LIBS
   remote_bootstrap_proto
   rpc_header_proto
   wire_protocol_proto)
-ADD_EXPORTABLE_LIBRARY(cql_service_proto
+ADD_YB_LIBRARY(cql_service_proto
   SRCS ${CQLSERVER_YRPC_SRCS}
   DEPS ${CQLSERVER_YRPC_LIBS}
   NONLINK_DEPS ${CQLSERVER_YRPC_TGTS})

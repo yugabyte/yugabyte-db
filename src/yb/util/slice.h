@@ -36,14 +36,14 @@
 #include "yb/util/faststring.h"
 #endif
 #include "yb/util/cast.h"
-#include "yb/util/yb_export.h"
+
 
 namespace yb {
 
 class Status;
 struct SliceParts;
 
-class YB_EXPORT Slice {
+class Slice {
  public:
   // Create an empty slice.
   Slice() : data_(reinterpret_cast<const uint8_t *>("")),

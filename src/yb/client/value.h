@@ -24,13 +24,13 @@
 #include "yb/client/stubs.h"
 #endif
 #include "yb/util/slice.h"
-#include "yb/util/yb_export.h"
+
 
 namespace yb {
 namespace client {
 
 // A constant cell value with a specific type.
-class YB_EXPORT YBValue {
+class YBValue {
  public:
   // Return a new identical YBValue object.
   YBValue* Clone() const;
@@ -55,7 +55,7 @@ class YB_EXPORT YBValue {
   friend class ComparisonPredicateData;
   friend class YBColumnSpec;
 
-  class YB_NO_EXPORT Data;
+  class Data;
   explicit YBValue(Data* d);
 
   // Owned.

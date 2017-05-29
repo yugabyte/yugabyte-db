@@ -10,7 +10,7 @@
 #else
 #include "yb/client/stubs.h"
 #endif
-#include "yb/util/yb_export.h"
+
 
 namespace yb {
 
@@ -24,7 +24,7 @@ namespace client {
 DECLARE_bool(yb_system_namespace_readonly);
 
 // The class is used to store a table name, which can include namespace name as a suffix.
-class YB_EXPORT YBTableName {
+class YBTableName {
  public:
   // Empty (undefined) name.
   YBTableName() {}

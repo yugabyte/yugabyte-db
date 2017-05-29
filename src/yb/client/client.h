@@ -40,7 +40,7 @@
 #endif
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
-#include "yb/util/yb_export.h"
+
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/net/net_fwd.h"
@@ -90,7 +90,7 @@ enum YBTableType {
 
 // This needs to be called by a client app before performing any operations that could result in
 // logging.
-void YB_EXPORT InitLogging();
+void InitLogging();
 
 //
 // Installs a callback for internal client logging. It is invoked for a
@@ -102,7 +102,7 @@ void YB_EXPORT InitLogging();
 //
 // Before a callback is registered, all internal client log events are
 // logged to stderr.
-void YB_EXPORT InstallLoggingCallback(YBLoggingCallback* cb);
+void InstallLoggingCallback(YBLoggingCallback* cb);
 
 // Removes a callback installed via InstallLoggingCallback().
 //
@@ -110,7 +110,7 @@ void YB_EXPORT InstallLoggingCallback(YBLoggingCallback* cb);
 // a no-op.
 //
 // Should be called before unloading the client library.
-void YB_EXPORT UninstallLoggingCallback();
+void UninstallLoggingCallback();
 
 // Set the logging verbosity of the client library. By default, this is 0. Logs become
 // progressively more verbose as the level is increased. Empirically, the highest
@@ -121,18 +121,18 @@ void YB_EXPORT UninstallLoggingCallback();
 // Logs are emitted to stderr, or to the configured log callback at SEVERITY_INFO.
 //
 // This may be called safely at any point during usage of the library.
-void YB_EXPORT SetVerboseLogLevel(int level);
+void SetVerboseLogLevel(int level);
 
 // The YB client library uses signals internally in some cases. By default, it uses
 // SIGUSR2. If your application makes use of SIGUSR2, this advanced API can help
 // workaround conflicts.
-Status YB_EXPORT SetInternalSignalNumber(int signum);
+Status SetInternalSignalNumber(int signum);
 
 // Creates a new YBClient with the desired options.
 //
 // Note that YBClients are shared amongst multiple threads and, as such,
 // are stored in shared pointers.
-class YB_EXPORT YBClientBuilder {
+class YBClientBuilder {
  public:
   YBClientBuilder();
   ~YBClientBuilder();
@@ -178,7 +178,7 @@ class YB_EXPORT YBClientBuilder {
   // returned.
   CHECKED_STATUS Build(std::shared_ptr<YBClient>* client);
  private:
-  class YB_NO_EXPORT Data;
+  class Data;
 
   // Owned.
   Data* data_;
@@ -210,7 +210,7 @@ class YB_EXPORT YBClientBuilder {
 // as well.
 //
 // This class is thread-safe.
-class YB_EXPORT YBClient : public std::enable_shared_from_this<YBClient> {
+class YBClient : public std::enable_shared_from_this<YBClient> {
  public:
   ~YBClient();
 
@@ -353,7 +353,7 @@ class YB_EXPORT YBClient : public std::enable_shared_from_this<YBClient> {
   std::string client_id() const { return client_id_; }
 
  private:
-  class YB_NO_EXPORT Data;
+  class Data;
 
   friend class YBClientBuilder;
   friend class YBNoOp;
@@ -418,7 +418,7 @@ class YBTableCache {
 };
 
 // Creates a new table with the desired options.
-class YB_EXPORT YBTableCreator {
+class YBTableCreator {
  public:
   ~YBTableCreator();
 
@@ -504,7 +504,7 @@ class YB_EXPORT YBTableCreator {
   // returned.
   CHECKED_STATUS Create();
  private:
-  class YB_NO_EXPORT Data;
+  class Data;
 
   friend class YBClient;
 
@@ -527,7 +527,7 @@ class YB_EXPORT YBTableCreator {
 // and the schema fetched for introspection.
 //
 // This class is thread-safe.
-class YB_EXPORT YBTable : public std::enable_shared_from_this<YBTable> {
+class YBTable : public std::enable_shared_from_this<YBTable> {
  public:
   ~YBTable();
 
@@ -586,7 +586,7 @@ class YB_EXPORT YBTable : public std::enable_shared_from_this<YBTable> {
   const PartitionSchema& partition_schema() const;
 
  private:
-  class YB_NO_EXPORT Data;
+  class Data;
 
   friend class YBClient;
 
@@ -610,7 +610,7 @@ class YB_EXPORT YBTable : public std::enable_shared_from_this<YBTable> {
 //   alterer->AlterColumn("bar")->Compression(YBColumnStorageAttributes::LZ4);
 //   Status s = alterer->Alter();
 //   delete alterer;
-class YB_EXPORT YBTableAlterer {
+class YBTableAlterer {
  public:
   ~YBTableAlterer();
 
@@ -650,7 +650,7 @@ class YB_EXPORT YBTableAlterer {
   CHECKED_STATUS Alter();
 
  private:
-  class YB_NO_EXPORT Data;
+  class Data;
   friend class YBClient;
 
   YBTableAlterer(YBClient* client, const YBTableName& name);
@@ -663,7 +663,7 @@ class YB_EXPORT YBTableAlterer {
 
 // An error which occurred in a given operation. This tracks the operation
 // which caused the error, along with whatever the actual error was.
-class YB_EXPORT YBError {
+class YBError {
  public:
   ~YBError();
 
@@ -684,7 +684,7 @@ class YB_EXPORT YBError {
   bool was_possibly_successful() const;
 
  private:
-  class YB_NO_EXPORT Data;
+  class Data;
 
   friend class internal::Batcher;
   friend class YBSession;
@@ -754,7 +754,7 @@ class YB_EXPORT YBError {
 // concept of a Session familiar.
 //
 // This class is not thread-safe except where otherwise specified.
-class YB_EXPORT YBSession : public std::enable_shared_from_this<YBSession> {
+class YBSession : public std::enable_shared_from_this<YBSession> {
  public:
   ~YBSession();
 
@@ -964,7 +964,7 @@ class YB_EXPORT YBSession : public std::enable_shared_from_this<YBSession> {
   bool is_read_only() { return read_only_; }
 
  private:
-  class YB_NO_EXPORT Data;
+  class Data;
 
   friend class YBClient;
   friend class internal::Batcher;
@@ -982,7 +982,7 @@ class YB_EXPORT YBSession : public std::enable_shared_from_this<YBSession> {
 
 // This class is not thread-safe, though different YBNoOp objects on
 // different threads may share a single YBTable object.
-class YB_EXPORT YBNoOp {
+class YBNoOp {
  public:
   // Initialize the NoOp request object. The given 'table' object must remain valid
   // for the lifetime of this object.
@@ -1000,7 +1000,7 @@ class YB_EXPORT YBNoOp {
 
 // A single scanner. This class is not thread-safe, though different
 // scanners on different threads may share a single YBTable object.
-class YB_EXPORT YBScanner {
+class YBScanner {
  public:
   // The possible read modes for scanners.
   enum ReadMode {
@@ -1219,7 +1219,7 @@ class YB_EXPORT YBScanner {
   // Returns a string representation of this scan.
   std::string ToString() const;
  private:
-  class YB_NO_EXPORT Data;
+  class Data;
 
   FRIEND_TEST(ClientTest, TestScanCloseProxy);
   FRIEND_TEST(ClientTest, TestScanFaultTolerance);
@@ -1233,7 +1233,7 @@ class YB_EXPORT YBScanner {
 };
 
 // In-memory representation of a remote tablet server.
-class YB_EXPORT YBTabletServer {
+class YBTabletServer {
  public:
   ~YBTabletServer();
 
@@ -1246,7 +1246,7 @@ class YB_EXPORT YBTabletServer {
   const std::string& hostname() const;
 
  private:
-  class YB_NO_EXPORT Data;
+  class Data;
 
   friend class YBClient;
   friend class YBScanner;

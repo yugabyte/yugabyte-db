@@ -16,7 +16,7 @@ set(ROCKSUTIL_LIBS
     rocksdb
     yb_util)
 
-ADD_EXPORTABLE_LIBRARY(yb_rocksutil
+ADD_YB_LIBRARY(yb_rocksutil
                        SRCS ${ROCKSUTIL_SRCS}
                        DEPS ${ROCKSUTIL_LIBS})
 
