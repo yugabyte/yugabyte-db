@@ -30,8 +30,9 @@
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_queue.h"
-#include "yb/util/atomic.h"
+
 #include "yb/util/failure_detector.h"
+#include "yb/util/result.h"
 
 namespace yb {
 
@@ -465,6 +466,21 @@ class RaftConsensus : public Consensus,
   // That woule be more robust, since it handles also situation when we tried to stepdown
   // to the same node twice, and first retry was delayed, but second procedure is on the way.
   void WithholdElectionAfterStepDown(const std::string& protege_uuid);
+
+  // Steps of UpdateReplica.
+  CHECKED_STATUS EarlyCommitUnlocked(const ConsensusRequestPB& request,
+                                     const LeaderRequest& deduped_req);
+  Result<bool> EnqueuePreparesUnlocked(const ConsensusRequestPB& request,
+                                       LeaderRequest* deduped_req,
+                                       ConsensusResponsePB* response);
+  // Returns last op id received from leader.
+  OpId EnqueueWritesUnlocked(const LeaderRequest& deduped_req,
+                             const StatusCallback& sync_status_cb);
+  CHECKED_STATUS MarkTransactionsAsCommittedUnlocked(const ConsensusRequestPB& request,
+                                                     const LeaderRequest& deduped_req,
+                                                     OpId last_from_leader);
+  CHECKED_STATUS WaitWritesUnlocked(const LeaderRequest& deduped_req,
+                                    Synchronizer* log_synchronizer);
 
   // Threadpool for constructing requests to peers, handling RPC callbacks,
   // etc.

@@ -1183,8 +1183,13 @@ Status RaftConsensus::CheckLeaderRequestUnlocked(ConsensusRequestPB* request,
   // received message or it replaces some in-flight.
   if (!deduped_req->messages.empty()) {
 
+    OpId first_id = deduped_req->messages[0]->get()->id();
     bool term_mismatch;
-    CHECK(!state_->IsOpCommittedOrPending(deduped_req->messages[0]->get()->id(), &term_mismatch));
+    if (state_->IsOpCommittedOrPending(first_id, &term_mismatch)) {
+      return STATUS_FORMAT(IllegalState,
+                           "First deduped message $0 is committed or pending",
+                           first_id);
+    }
 
     // If the index is in our log but the terms are not the same abort down to the leader's
     // preceding id.
@@ -1330,157 +1335,23 @@ Status RaftConsensus::UpdateReplica(ConsensusRequestPB* request,
     RETURN_NOT_OK(SnoozeFailureDetectorUnlocked());
 
     // Also prohibit voting for anyone for the minimum election timeout.
-    withhold_votes_until_ = MonoTime::Now(MonoTime::FINE);
-    withhold_votes_until_.AddDelta(MinimumElectionTimeout());
+    withhold_votes_until_ = MonoTime::FineNow() + MinimumElectionTimeout();
 
     // 1 - Early commit pending (and committed) transactions
-
-    // What should we commit?
-    // 1. As many pending transactions as we can, except...
-    // 2. ...if we commit beyond the preceding index, we'd regress KUDU-639
-    //    ("Leader doesn't overwrite demoted follower's log properly"), and...
-    // 3. ...the leader's committed index is always our upper bound.
-    OpId early_apply_up_to = state_->GetLastPendingTransactionOpIdUnlocked();
-    CopyIfOpIdLessThan(*deduped_req.preceding_opid, &early_apply_up_to);
-    CopyIfOpIdLessThan(request->committed_index(), &early_apply_up_to);
-
-    VLOG_WITH_PREFIX_UNLOCKED(1) << "Early marking committed up to " <<
-        early_apply_up_to.ShortDebugString();
-    TRACE("Early marking committed up to $0",
-          early_apply_up_to.ShortDebugString());
-    CHECK_OK(state_->AdvanceCommittedIndexUnlocked(early_apply_up_to));
+    RETURN_NOT_OK(EarlyCommitUnlocked(*request, deduped_req));
 
     // 2 - Enqueue the prepares
-
-    TRACE("Triggering prepare for $0 ops", deduped_req.messages.size());
-
-    Status prepare_status;
-    auto iter = deduped_req.messages.begin();
-
-    if (PREDICT_TRUE(deduped_req.messages.size() > 0)) {
-      // TODO Temporary until the leader explicitly propagates the safe hybrid_time.
-      // TODO: what if there is a failure here because the updated time is too far in the future?
-      RETURN_NOT_OK(clock_->Update(HybridTime(deduped_req.messages.back()->get()->hybrid_time())));
-
-      // This request contains at least one message, and is likely to increase
-      // our memory pressure.
-      double capacity_pct;
-      if (parent_mem_tracker_->AnySoftLimitExceeded(&capacity_pct)) {
-        follower_memory_pressure_rejections_->Increment();
-        string msg = StringPrintf(
-            "Soft memory limit exceeded (at %.2f%% of capacity)",
-            capacity_pct);
-        if (capacity_pct >= FLAGS_memory_limit_warn_threshold_percentage) {
-          YB_LOG_EVERY_N_SECS(WARNING, 1) << "Rejecting consensus request: " << msg
-                                        << THROTTLE_MSG;
-        } else {
-          YB_LOG_EVERY_N_SECS(INFO, 1) << "Rejecting consensus request: " << msg
-                                     << THROTTLE_MSG;
-        }
-        return STATUS(ServiceUnavailable, msg);
-      }
+    auto result = EnqueuePreparesUnlocked(*request, &deduped_req, response);
+    RETURN_NOT_OK(result);
+    if (!result.get()) {
+      return Status::OK();
     }
 
-    while (iter != deduped_req.messages.end()) {
-      prepare_status = StartReplicaTransactionUnlocked(*iter);
-      if (PREDICT_FALSE(!prepare_status.ok())) {
-        LOG(WARNING) << "StartReplicaTransactionUnlocked failed: " << prepare_status.ToString();
-        break;
-      }
-      ++iter;
-    }
-
-    // If we stopped before reaching the end we failed to prepare some message(s) and need
-    // to perform cleanup, namely trimming deduped_req.messages to only contain the messages
-    // that were actually prepared, and deleting the other ones since we've taken ownership
-    // when we first deduped.
-    if (iter != deduped_req.messages.end()) {
-      bool need_to_warn = true;
-      while (iter != deduped_req.messages.end()) {
-        const ReplicateRefPtr msg = (*iter);
-        iter = deduped_req.messages.erase(iter);
-        if (need_to_warn) {
-          need_to_warn = false;
-          LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Could not prepare transaction for op: "
-              << msg->get()->id() << ". Suppressed " << deduped_req.messages.size() <<
-              " other warnings. Status for this op: " << prepare_status.ToString();
-        }
-      }
-
-      // If this is empty, it means we couldn't prepare a single de-duped message. There is nothing
-      // else we can do. The leader will detect this and retry later.
-      if (deduped_req.messages.empty()) {
-        string msg = Substitute("Rejecting Update request from peer $0 for term $1. "
-                                "Could not prepare a single transaction due to: $2",
-                                request->caller_uuid(),
-                                request->caller_term(),
-                                prepare_status.ToString());
-        LOG_WITH_PREFIX_UNLOCKED(INFO) << msg;
-        FillConsensusResponseError(response, ConsensusErrorPB::CANNOT_PREPARE,
-                                   STATUS(IllegalState, msg));
-        FillConsensusResponseOKUnlocked(response);
-        return Status::OK();
-      }
-    }
-
-    OpId last_from_leader;
     // 3 - Enqueue the writes.
-    // Now that we've triggered the prepares enqueue the operations to be written
-    // to the WAL.
-    if (PREDICT_TRUE(!deduped_req.messages.empty())) {
-      last_from_leader = deduped_req.messages.back()->get()->id();
-      // Trigger the log append asap, if fsync() is on this might take a while
-      // and we can't reply until this is done.
-      //
-      // Since we've prepared, we need to be able to append (or we risk trying to apply
-      // later something that wasn't logged). We crash if we can't.
-      CHECK_OK(queue_->AppendOperations(deduped_req.messages, sync_status_cb));
-    } else {
-      last_from_leader = *deduped_req.preceding_opid;
-    }
+    OpId last_from_leader = EnqueueWritesUnlocked(deduped_req, sync_status_cb);
 
     // 4 - Mark transactions as committed
-
-    // Choose the last operation to be applied. This will either be 'committed_index', if
-    // no prepare enqueuing failed, or the minimum between 'committed_index' and the id of
-    // the last successfully enqueued prepare, if some prepare failed to enqueue.
-    OpId apply_up_to;
-    if (last_from_leader.index() < request->committed_index().index()) {
-      // we should never apply anything later than what we received in this request
-      apply_up_to = last_from_leader;
-
-      VLOG_WITH_PREFIX_UNLOCKED(2) << "Received commit index "
-          << request->committed_index() << " from the leader but only"
-          << " marked up to " << apply_up_to << " as committed.";
-    } else {
-      apply_up_to = request->committed_index();
-    }
-
-    // We can now update the last received watermark.
-    //
-    // We do it here (and before we actually hear back from the wal whether things
-    // are durable) so that, if we receive another, possible duplicate, message
-    // that exercises this path we don't handle these messages twice.
-    //
-    // If any messages failed to be started locally, then we already have removed them
-    // from 'deduped_req' at this point. So, we can simply update our last-received
-    // watermark to the last message that remains in 'deduped_req'.
-    //
-    // It's possible that the leader didn't send us any new data -- it might be a completely
-    // duplicate request. In that case, we don't need to update LastReceived at all.
-    if (!deduped_req.messages.empty()) {
-      OpId last_appended = deduped_req.messages.back()->get()->id();
-      TRACE(Substitute("Updating last received op as $0", last_appended.ShortDebugString()));
-      state_->UpdateLastReceivedOpIdUnlocked(last_appended);
-    } else {
-      CHECK_GE(state_->GetLastReceivedOpIdUnlocked().index(),
-               deduped_req.preceding_opid->index())
-          << "Committed index: " << state_->GetCommittedOpIdUnlocked();
-    }
-
-    VLOG_WITH_PREFIX_UNLOCKED(1) << "Marking committed up to " << apply_up_to.ShortDebugString();
-    TRACE(Substitute("Marking committed up to $0", apply_up_to.ShortDebugString()));
-    CHECK_OK(state_->AdvanceCommittedIndexUnlocked(apply_up_to));
+    RETURN_NOT_OK(MarkTransactionsAsCommittedUnlocked(*request, deduped_req, last_from_leader));
 
     // Fill the response with the current state. We will not mutate anymore state until
     // we actually reply to the leader, we'll just wait for the messages to be durable.
@@ -1494,28 +1365,7 @@ Status RaftConsensus::UpdateReplica(ConsensusRequestPB* request,
   // Release the lock while we wait for the log append to finish so that commits can go through.
   // We'll re-acquire it before we update the state again.
 
-  // Update the last replicated op id
-  if (deduped_req.messages.size() > 0) {
-
-    // 5 - We wait for the writes to be durable.
-
-    // Note that this is safe because dist consensus now only supports a single outstanding
-    // request at a time and this way we can allow commits to proceed while we wait.
-    TRACE("Waiting on the replicates to finish logging");
-    TRACE_EVENT0("consensus", "Wait for log");
-    Status s;
-    do {
-      s = log_synchronizer.WaitFor(
-        MonoDelta::FromMilliseconds(FLAGS_raft_heartbeat_interval_ms));
-      // If just waiting for our log append to finish lets snooze the timer.
-      // We don't want to fire leader election because we're waiting on our own log.
-      if (s.IsTimedOut()) {
-        RETURN_NOT_OK(SnoozeFailureDetectorUnlocked());
-      }
-    } while (s.IsTimedOut());
-    RETURN_NOT_OK(s);
-    TRACE("finished");
-  }
+  RETURN_NOT_OK(WaitWritesUnlocked(deduped_req, &log_synchronizer));
 
   if (PREDICT_FALSE(VLOG_IS_ON(2))) {
     VLOG_WITH_PREFIX(2) << "Replica updated."
@@ -1531,6 +1381,191 @@ Status RaftConsensus::UpdateReplica(ConsensusRequestPB* request,
 
   TRACE("UpdateReplicas() finished");
   return Status::OK();
+}
+
+Status RaftConsensus::EarlyCommitUnlocked(const ConsensusRequestPB& request,
+                                          const LeaderRequest& deduped_req) {
+  // What should we commit?
+  // 1. As many pending transactions as we can, except...
+  // 2. ...if we commit beyond the preceding index, we'd regress KUDU-639
+  //    ("Leader doesn't overwrite demoted follower's log properly"), and...
+  // 3. ...the leader's committed index is always our upper bound.
+  OpId early_apply_up_to = state_->GetLastPendingTransactionOpIdUnlocked();
+  CopyIfOpIdLessThan(*deduped_req.preceding_opid, &early_apply_up_to);
+  CopyIfOpIdLessThan(request.committed_index(), &early_apply_up_to);
+
+  VLOG_WITH_PREFIX_UNLOCKED(1) << "Early marking committed up to " <<
+                               early_apply_up_to.ShortDebugString();
+  TRACE("Early marking committed up to $0",
+      early_apply_up_to.ShortDebugString());
+  return state_->AdvanceCommittedIndexUnlocked(early_apply_up_to);
+}
+
+Result<bool> RaftConsensus::EnqueuePreparesUnlocked(const ConsensusRequestPB& request,
+                                                    LeaderRequest* deduped_req_ptr,
+                                                    ConsensusResponsePB* response) {
+  LeaderRequest& deduped_req = *deduped_req_ptr;
+  TRACE("Triggering prepare for $0 ops", deduped_req.messages.size());
+
+  Status prepare_status;
+  auto iter = deduped_req.messages.begin();
+
+  if (PREDICT_TRUE(deduped_req.messages.size() > 0)) {
+    // TODO Temporary until the leader explicitly propagates the safe hybrid_time.
+    // TODO: what if there is a failure here because the updated time is too far in the future?
+    RETURN_NOT_OK(clock_->Update(HybridTime(deduped_req.messages.back()->get()->hybrid_time())));
+
+    // This request contains at least one message, and is likely to increase
+    // our memory pressure.
+    double capacity_pct;
+    if (parent_mem_tracker_->AnySoftLimitExceeded(&capacity_pct)) {
+      follower_memory_pressure_rejections_->Increment();
+      string msg = StringPrintf(
+          "Soft memory limit exceeded (at %.2f%% of capacity)",
+          capacity_pct);
+      if (capacity_pct >= FLAGS_memory_limit_warn_threshold_percentage) {
+        YB_LOG_EVERY_N_SECS(WARNING, 1) << "Rejecting consensus request: " << msg
+                                      << THROTTLE_MSG;
+      } else {
+        YB_LOG_EVERY_N_SECS(INFO, 1) << "Rejecting consensus request: " << msg
+                                   << THROTTLE_MSG;
+      }
+      return STATUS(ServiceUnavailable, msg);
+    }
+  }
+
+  while (iter != deduped_req.messages.end()) {
+    prepare_status = StartReplicaTransactionUnlocked(*iter);
+    if (PREDICT_FALSE(!prepare_status.ok())) {
+      LOG(WARNING) << "StartReplicaTransactionUnlocked failed: " << prepare_status.ToString();
+      break;
+    }
+    ++iter;
+  }
+
+  // If we stopped before reaching the end we failed to prepare some message(s) and need
+  // to perform cleanup, namely trimming deduped_req.messages to only contain the messages
+  // that were actually prepared, and deleting the other ones since we've taken ownership
+  // when we first deduped.
+  if (iter != deduped_req.messages.end()) {
+    {
+      const ReplicateRefPtr msg = *iter;
+      LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Could not prepare transaction for op: "
+          << msg->get()->id() << ". Suppressed " << (deduped_req.messages.end() - iter - 1) <<
+          " other warnings. Status for this op: " << prepare_status.ToString();
+      deduped_req.messages.erase(iter, deduped_req.messages.end());
+    }
+
+    // If this is empty, it means we couldn't prepare a single de-duped message. There is nothing
+    // else we can do. The leader will detect this and retry later.
+    if (deduped_req.messages.empty()) {
+      auto msg = Format("Rejecting Update request from peer $0 for term $1. "
+                        "Could not prepare a single transaction due to: $2",
+                        request.caller_uuid(),
+                        request.caller_term(),
+                        prepare_status);
+      LOG_WITH_PREFIX_UNLOCKED(INFO) << msg;
+      FillConsensusResponseError(response, ConsensusErrorPB::CANNOT_PREPARE,
+                                 STATUS(IllegalState, msg));
+      FillConsensusResponseOKUnlocked(response);
+      return false;
+    }
+  }
+
+  return true;
+}
+
+OpId RaftConsensus::EnqueueWritesUnlocked(const LeaderRequest& deduped_req,
+                                          const StatusCallback& sync_status_cb) {
+  // Now that we've triggered the prepares enqueue the operations to be written
+  // to the WAL.
+  if (PREDICT_TRUE(!deduped_req.messages.empty())) {
+    // Trigger the log append asap, if fsync() is on this might take a while
+    // and we can't reply until this is done.
+    //
+    // Since we've prepared, we need to be able to append (or we risk trying to apply
+    // later something that wasn't logged). We crash if we can't.
+    CHECK_OK(queue_->AppendOperations(deduped_req.messages, sync_status_cb));
+
+    return deduped_req.messages.back()->get()->id();
+  } else {
+    return *deduped_req.preceding_opid;
+  }
+}
+
+Status RaftConsensus::WaitWritesUnlocked(const LeaderRequest& deduped_req,
+                                         Synchronizer* log_synchronizer) {
+  // Update the last replicated op id
+  if (deduped_req.messages.size() > 0) {
+
+    // 5 - We wait for the writes to be durable.
+
+    // Note that this is safe because dist consensus now only supports a single outstanding
+    // request at a time and this way we can allow commits to proceed while we wait.
+    TRACE("Waiting on the replicates to finish logging");
+    TRACE_EVENT0("consensus", "Wait for log");
+    for (;;) {
+      Status s = log_synchronizer->WaitFor(
+        MonoDelta::FromMilliseconds(FLAGS_raft_heartbeat_interval_ms));
+      // If just waiting for our log append to finish lets snooze the timer.
+      // We don't want to fire leader election because we're waiting on our own log.
+      if (!s.IsTimedOut()) {
+        if (s.ok()) {
+          break;
+        }
+        return s;
+      }
+      RETURN_NOT_OK(SnoozeFailureDetectorUnlocked());
+    }
+    TRACE("finished");
+  }
+  return Status::OK();
+}
+
+Status RaftConsensus::MarkTransactionsAsCommittedUnlocked(const ConsensusRequestPB& request,
+                                                          const LeaderRequest& deduped_req,
+                                                          OpId last_from_leader) {
+  // Choose the last operation to be applied. This will either be 'committed_index', if
+  // no prepare enqueuing failed, or the minimum between 'committed_index' and the id of
+  // the last successfully enqueued prepare, if some prepare failed to enqueue.
+  OpId apply_up_to;
+  if (last_from_leader.index() < request.committed_index().index()) {
+    // we should never apply anything later than what we received in this request
+    apply_up_to = last_from_leader;
+
+    VLOG_WITH_PREFIX_UNLOCKED(2) << "Received commit index "
+        << request.committed_index() << " from the leader but only"
+        << " marked up to " << apply_up_to << " as committed.";
+  } else {
+    apply_up_to = request.committed_index();
+  }
+
+  // We can now update the last received watermark.
+  //
+  // We do it here (and before we actually hear back from the wal whether things
+  // are durable) so that, if we receive another, possible duplicate, message
+  // that exercises this path we don't handle these messages twice.
+  //
+  // If any messages failed to be started locally, then we already have removed them
+  // from 'deduped_req' at this point. So, we can simply update our last-received
+  // watermark to the last message that remains in 'deduped_req'.
+  //
+  // It's possible that the leader didn't send us any new data -- it might be a completely
+  // duplicate request. In that case, we don't need to update LastReceived at all.
+  if (!deduped_req.messages.empty()) {
+    OpId last_appended = deduped_req.messages.back()->get()->id();
+    TRACE(Substitute("Updating last received op as $0", last_appended.ShortDebugString()));
+    state_->UpdateLastReceivedOpIdUnlocked(last_appended);
+  } else if (state_->GetLastReceivedOpIdUnlocked().index() < deduped_req.preceding_opid->index()) {
+    return STATUS_FORMAT(InvalidArgument,
+                         "Bad preceding_opid: $0, last received: $1",
+                         *deduped_req.preceding_opid,
+                         state_->GetLastReceivedOpIdUnlocked());
+  }
+
+  VLOG_WITH_PREFIX_UNLOCKED(1) << "Marking committed up to " << apply_up_to.ShortDebugString();
+  TRACE(Substitute("Marking committed up to $0", apply_up_to.ShortDebugString()));
+  return state_->AdvanceCommittedIndexUnlocked(apply_up_to);
 }
 
 void RaftConsensus::FillConsensusResponseOKUnlocked(ConsensusResponsePB* response) {
@@ -1916,9 +1951,12 @@ OpId RaftConsensus::GetLatestOpIdFromLog() {
 
 Status RaftConsensus::StartConsensusOnlyRoundUnlocked(const ReplicateRefPtr& msg) {
   OperationType op_type = msg->get()->op_type();
-  CHECK(IsConsensusOnlyOperation(op_type))
-      << "Expected a consensus-only op type, got " << OperationType_Name(op_type)
-      << ": " << msg->get()->ShortDebugString();
+  if (!IsConsensusOnlyOperation(op_type)) {
+    return STATUS_FORMAT(InvalidArgument,
+                         "Expected a consensus-only op type, got $0: $1",
+                         OperationType_Name(op_type),
+                         *msg->get());
+  }
   VLOG_WITH_PREFIX_UNLOCKED(1) << "Starting consensus round: "
                                << msg->get()->id().ShortDebugString();
   scoped_refptr<ConsensusRound> round(new ConsensusRound(this, msg));
@@ -2130,8 +2168,7 @@ Status RaftConsensus::ReplicateConfigChangeUnlocked(const ReplicateRefPtr& repli
 
   // Set as pending.
   RETURN_NOT_OK(RefreshConsensusQueueAndPeersUnlocked());
-  CHECK_OK(AppendNewRoundToQueueUnlocked(round));
-  return Status::OK();
+  return AppendNewRoundToQueueUnlocked(round);
 }
 
 Status RaftConsensus::RefreshConsensusQueueAndPeersUnlocked() {
@@ -2324,7 +2361,10 @@ void RaftConsensus::DoElectionCallback(const std::string& originator_uuid,
   // TODO: BecomeLeaderUnlocked() can fail due to state checks during shutdown.
   // It races with the above state check.
   // This could be a problem during tablet deletion.
-  CHECK_OK(BecomeLeaderUnlocked());
+  auto status = BecomeLeaderUnlocked();
+  if (!status.ok()) {
+    LOG_WITH_PREFIX_UNLOCKED(DFATAL) << "Failed to become leader: " << status.ToString();
+  }
 }
 
 Status RaftConsensus::GetLastOpId(OpIdType type, OpId* id) {
@@ -2360,7 +2400,10 @@ void RaftConsensus::NonTxRoundReplicationFinished(ConsensusRound* round,
   DCHECK(state_->IsLocked());
   OperationType op_type = round->replicate_msg()->op_type();
   string op_type_str = OperationType_Name(op_type);
-  CHECK(IsConsensusOnlyOperation(op_type)) << "Unexpected op type: " << op_type_str;
+  if (!IsConsensusOnlyOperation(op_type)) {
+    LOG(ERROR) << "Unexpected op type: " << op_type_str;
+    return;
+  }
   if (!status.ok()) {
     // TODO: Do something with the status on failure?
     LOG(INFO) << state_->LogPrefixThreadSafe() << op_type_str << " replication failed: "

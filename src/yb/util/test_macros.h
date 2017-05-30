@@ -67,7 +67,7 @@
   } while (0)
 
 #ifdef THREAD_SANITIZER
-#define ASSERT_PERF_LE(lhs, rhs) do { (void)lhs; (void)rhs; } while(0)
+#define ASSERT_PERF_LE(lhs, rhs) do { (void)(lhs); (void)(rhs); } while(false)
 #else
 #define ASSERT_PERF_LE(lhs, rhs) ASSERT_LE(lhs, rhs)
 #endif

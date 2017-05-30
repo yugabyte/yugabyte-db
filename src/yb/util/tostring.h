@@ -12,6 +12,8 @@
 #include <boost/mpl/and.hpp>
 #include <boost/tti/has_type.hpp>
 
+#include "yb/gutil/strings/numbers.h"
+
 // This utility actively use SFINAE (http://en.cppreference.com/w/cpp/language/sfinae)
 // technique to route ToString to correct implementation.
 namespace yb {
@@ -101,7 +103,27 @@ typename std::enable_if<std::is_integral<typename std::remove_reference<Int>::ty
 }
 
 template <class Pointer>
-std::string PointerToString(Pointer&& ptr);
+class PointerToString {
+ public:
+  template<class P>
+  static std::string Apply(P&& ptr);
+};
+
+template <>
+class PointerToString<void*> {
+ public:
+  static std::string Apply(const void* ptr) {
+    if (ptr) {
+      char buffer[kFastToBufferSize]; // kFastToBufferSize has enough extra capacity for 0x
+      buffer[0] = '0';
+      buffer[1] = 'x';
+      FastHex64ToBuffer(reinterpret_cast<size_t>(ptr), buffer + 2);
+      return buffer;
+    } else {
+      return "<NULL>";
+    }
+  }
+};
 
 // This class is used to determine whether T is similar to pointer.
 // We suppose that if class provides * and -> operators so it is pointer.
@@ -136,7 +158,8 @@ class IsPointerLike : public IsPointerLikeImpl<
 template <class Pointer>
 typename std::enable_if<IsPointerLike<Pointer>::value, std::string>::type
     ToString(Pointer&& value) {
-  return PointerToString(value);
+  typedef typename std::remove_cv<typename std::remove_reference<Pointer>::type>::type CleanedT;
+  return PointerToString<CleanedT>::Apply(value);
 }
 
 inline const std::string& ToString(const std::string& str) { return str; }
@@ -177,13 +200,14 @@ ToString(T&& value) {
 
 // Definition of functions that use ToString chaining should be declared after all declarations.
 template <class Pointer>
-std::string PointerToString(Pointer&& ptr) {
+template <class P>
+std::string PointerToString<Pointer>::Apply(P&& ptr) {
   if (ptr) {
     char buffer[kFastToBufferSize]; // kFastToBufferSize has enough extra capacity for 0x and ->
     buffer[0] = '0';
     buffer[1] = 'x';
     FastHex64ToBuffer(reinterpret_cast<size_t>(&*ptr), buffer + 2);
-    char * end = buffer + strlen(buffer);
+    char* end = buffer + strlen(buffer);
     memcpy(end, " -> ", 4);
     return buffer + ToString(*ptr);
   } else {

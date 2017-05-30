@@ -31,6 +31,7 @@
 
 
 #include "yb/util/slice.h"
+#include "yb/util/format.h"
 #include "yb/gutil/strings/substitute.h"
 
 // Return the given status if it is not OK.
@@ -308,6 +309,12 @@ inline std::string StatusToString(const Status& status) {
             __FILE__, \
             __LINE__, \
             strings::Substitute(__VA_ARGS__)))
+
+#define STATUS_FORMAT(status_type, ...) \
+    (::yb::Status(::yb::Status::BOOST_PP_CAT(k, status_type), \
+            __FILE__, \
+            __LINE__, \
+            ::yb::Format(__VA_ARGS__)))
 
 // Utility macros to perform the appropriate check. If the check fails,
 // returns the specified (error) Status, with the given message.
