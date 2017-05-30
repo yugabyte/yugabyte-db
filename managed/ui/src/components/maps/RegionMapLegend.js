@@ -1,8 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import {ListGroup, ListGroupItem, Checkbox} from 'react-bootstrap';
-import { isNonEmptyArray, isEmptyArray } from 'utils/ObjectUtils';
+import { isEmptyArray } from 'utils/ObjectUtils';
 import './stylesheets/RegionMapLegend.scss'
 import SelectList from 'react-widgets/lib/SelectList';
 import _ from 'lodash';

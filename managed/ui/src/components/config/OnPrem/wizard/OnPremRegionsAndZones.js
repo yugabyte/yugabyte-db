@@ -1,9 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import {Row, Col, ButtonGroup} from 'react-bootstrap';
-import {Field, FieldArray} from 'redux-form';
-import {YBInputField, YBButton, YBSelect} from '../../../common/forms/fields';
+import { Row, Col } from 'react-bootstrap';
+import { Field, FieldArray } from 'redux-form';
+import { YBInputField, YBButton, YBSelect } from '../../../common/forms/fields';
 import _ from 'lodash';
 
 class OnPremListRegionsAndZones extends Component {
