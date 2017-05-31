@@ -7,4 +7,9 @@ fi
 
 . "$DEVOPS_HOME/bin/"/common.sh
 activate_virtualenv
+# We don't want to add this to the python_virtualenv since the virtual env is used in multiple
+# places and installing the cassandra-driver takes quite a bit of time.
+echo "Installing cassandra-driver..."
+pip install cassandra-driver
+echo "Done installing cassandra-driver, running itest now"
 "$( dirname "${BASH_SOURCE[0]}" )"/src/itest/itest.py "$@"
