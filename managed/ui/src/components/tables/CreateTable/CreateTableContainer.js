@@ -43,7 +43,7 @@ const mapDispatchToProps = (dispatch) => {
           "isClusteringKey": false
         };
       });
-      const tableDetails = partitionKeyList.concat(clusteringColumnList, otherColumnList);
+      const allColumns = partitionKeyList.concat(clusteringColumnList, otherColumnList);
 
       let payload = {};
       payload.cloud = currentUniverse.universeDetails.cloud;
@@ -52,7 +52,8 @@ const mapDispatchToProps = (dispatch) => {
       payload.tableType = "YQL_TABLE_TYPE";
       payload.tableDetails = {
         "tableName": values.tableName,
-        "columns": tableDetails,
+        "keyspace": values.keyspace,
+        "columns": allColumns,
         "ttlInSeconds": values.ttlInSeconds
       };
       const universeUUID = currentUniverse.universeUUID;
@@ -94,6 +95,9 @@ const validate = (values, props) => {
   errors.partitionKeyColumns = [];
   errors.clusteringColumns = [];
   errors.otherColumns = [];
+  if (!isDefinedNotNull(values.keyspace)) {
+    errors.keyspace = 'Keyspace is Required';
+  }
   if (!isDefinedNotNull(values.tableName)) {
     errors.tableName = 'Table Name Is Required';
   }

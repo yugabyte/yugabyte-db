@@ -237,6 +237,7 @@ public class TablesControllerTest extends WithApplication {
           "\"tableType\":\"YQL_TABLE_TYPE\"," +
           "\"tableDetails\":{" +
             "\"tableName\":\"test_table\"," +
+            "\"keyspace\":\"test_ks\"," +
             "\"columns\":[" +
               "{" +
                 "\"columnOrder\":1," +
@@ -299,6 +300,7 @@ public class TablesControllerTest extends WithApplication {
     Schema schema = new Schema(columnSchemas);
     when(mockSchemaResponse.getSchema()).thenReturn(schema);
     when(mockSchemaResponse.getTableName()).thenReturn("mock_table");
+    when(mockSchemaResponse.getNamespace()).thenReturn("mock_ks");
     when(mockSchemaResponse.getTableType()).thenReturn(TableType.YQL_TABLE_TYPE);
     when(mockSchemaResponse.getTableId()).thenReturn(tableUUID.toString().replace("-", ""));
 
@@ -315,6 +317,7 @@ public class TablesControllerTest extends WithApplication {
     assertEquals(tableUUID.toString(), json.get("tableUUID").asText());
     assertEquals("YQL_TABLE_TYPE", json.get("tableType").asText());
     assertEquals("mock_table", json.at("/tableDetails/tableName").asText());
+    assertEquals("mock_ks", json.at("/tableDetails/keyspace").asText());
     assertEquals("mock_column", json.at("/tableDetails/columns/0/name").asText());
   }
 

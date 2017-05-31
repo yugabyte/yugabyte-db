@@ -2,11 +2,9 @@
 
 package com.yugabyte.yw.controllers;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
@@ -14,6 +12,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
+import com.yugabyte.yw.models.helpers.TableDetails;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.GetTableSchemaResponse;
@@ -69,9 +68,10 @@ public class TablesController extends AuthenticatedController {
       TableDefinitionTaskParams taskParams = formData.get();
 
       // Submit the task to create the table.
+      TableDetails tableDetails = taskParams.tableDetails;
       UUID taskUUID = commissioner.submit(TaskInfo.Type.CreateCassandraTable, taskParams);
       LOG.info("Submitted create table for {}:{}, task uuid = {}.",
-        taskParams.tableUUID, taskParams.tableDetails.tableName, taskUUID);
+        taskParams.tableUUID, tableDetails.tableName, taskUUID);
 
       // Add this task uuid to the user universe.
       // TODO: check as to why we aren't populating the tableUUID from middleware
@@ -81,9 +81,9 @@ public class TablesController extends AuthenticatedController {
         taskUUID,
         CustomerTask.TargetType.Table,
         CustomerTask.TaskType.Create,
-        taskParams.tableDetails.tableName);
-      LOG.info("Saved task uuid {} in customer tasks table for table {}:{}",
-        taskUUID, taskParams.tableUUID, taskParams.tableDetails.tableName);
+        tableDetails.tableName);
+      LOG.info("Saved task uuid {} in customer tasks table for table {}:{}.{}", taskUUID,
+          taskParams.tableUUID, tableDetails.keyspace, tableDetails.tableName);
 
       ObjectNode resultNode = Json.newObject();
       resultNode.put("taskUUID", taskUUID.toString());
