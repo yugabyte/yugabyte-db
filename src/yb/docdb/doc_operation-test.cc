@@ -1,5 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
+#include <thread>
+
 #include "rocksdb/statistics.h"
 
 #include "yb/common/partial_row.h"
@@ -13,9 +15,10 @@
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/util/random_util.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/tostring.h"
 
-DECLARE_bool(rocksdb_disable_compactions);
+DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 
 namespace yb {
 namespace docdb {
@@ -661,6 +664,53 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(p=1000, l=1, w=2)]) -> 30; t
   EXPECT_EQ(10, row_block.row(0).column(1).int32_value());
   EXPECT_EQ(20, row_block.row(0).column(2).int32_value());
   EXPECT_EQ(30, row_block.row(0).column(3).int32_value());
+}
+
+TEST_F(DocOperationTest, MaxFileSizeForCompaction) {
+  google::FlagSaver flag_saver;
+
+  DisableCompactions();
+  auto schema = CreateSchema();
+
+  auto t0 = HybridTime::FromMicrosecondsAndLogicalValue(1000, 0);
+  const int kTotalBatches = 20;
+  const int kBigFileFrequency = 7;
+  const int kBigFileRows = 10000;
+  size_t expected_files = 0;
+  bool first = true;
+  for (int i = 0; i != kTotalBatches; ++i) {
+    int base = i * kBigFileRows;
+    int count;
+    if (i % kBigFileFrequency == 0) {
+      count = kBigFileRows;
+      ++expected_files;
+      first = true;
+    } else {
+      count = 1;
+      if (first) {
+        ++expected_files;
+        first = false;
+      }
+    }
+    for (int j = base; j != base + count; ++j) {
+      WriteYQLRow(YQLWriteRequestPB_YQLStmtType_YQL_STMT_INSERT, schema, {j, j, j, j}, 1000000, t0);
+    }
+    FlushRocksDB();
+  }
+
+  std::vector<rocksdb::LiveFileMetaData> files;
+  rocksdb()->GetLiveFilesMetaData(&files);
+  ASSERT_EQ(kTotalBatches, files.size());
+
+  FLAGS_rocksdb_max_file_size_for_compaction = 100_KB;
+  ReinitDBOptions();
+
+  // Wait some time for background compactions to happen.
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+
+  files.clear();
+  rocksdb()->GetLiveFilesMetaData(&files);
+  ASSERT_EQ(expected_files, files.size());
 }
 
 }  // namespace docdb

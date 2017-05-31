@@ -483,6 +483,11 @@ void DocDBRocksDBFixture::FlushRocksDB() {
   ASSERT_OK(rocksdb()->Flush(flush_options));
 }
 
+void DocDBRocksDBFixture::ReinitDBOptions() {
+  InitRocksDBOptions(&rocksdb_options_, "mytablet", rocksdb_options_.statistics, nullptr);
+  ReopenRocksDB();
+}
+
 // ------------------------------------------------------------------------------------------------
 
 DocDBLoadGenerator::DocDBLoadGenerator(DocDBRocksDBFixture* fixture,

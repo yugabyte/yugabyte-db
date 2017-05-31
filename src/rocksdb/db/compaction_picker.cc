@@ -1151,6 +1151,38 @@ bool UniversalCompactionPicker::NeedsCompaction(
   return vstorage->CompactionScore(kLevel0) >= 1;
 }
 
+struct UniversalCompactionPicker::SortedRun {
+  SortedRun(int _level, FileMetaData* _file, uint64_t _size,
+            uint64_t _compensated_file_size, bool _being_compacted)
+      : level(_level),
+        file(_file),
+        size(_size),
+        compensated_file_size(_compensated_file_size),
+        being_compacted(_being_compacted) {
+    assert(compensated_file_size > 0);
+    // Allowed either one of level and file.
+    assert((level != 0) != (file != nullptr));
+  }
+
+  void Dump(char* out_buf, size_t out_buf_size,
+            bool print_path = false) const;
+
+  // sorted_run_count is added into the string to print
+  void DumpSizeInfo(char* out_buf, size_t out_buf_size,
+                    size_t sorted_run_count) const;
+
+  int level;
+  // `file` Will be null for level > 0. For level = 0, the sorted run is
+  // for this file.
+  FileMetaData* file;
+  // For level > 0, `size` and `compensated_file_size` are sum of sizes all
+  // files in the level. `being_compacted` should be the same for all files
+  // in a non-zero level. Use the value here.
+  uint64_t size;
+  uint64_t compensated_file_size;
+  bool being_compacted;
+};
+
 void UniversalCompactionPicker::SortedRun::Dump(char* out_buf,
                                                 size_t out_buf_size,
                                                 bool print_path) const {
@@ -1188,14 +1220,22 @@ void UniversalCompactionPicker::SortedRun::DumpSizeInfo(
   }
 }
 
-std::vector<UniversalCompactionPicker::SortedRun>
-UniversalCompactionPicker::CalculateSortedRuns(
-    const VersionStorageInfo& vstorage, const ImmutableCFOptions& ioptions) {
-  std::vector<UniversalCompactionPicker::SortedRun> ret;
+std::vector<std::vector<UniversalCompactionPicker::SortedRun>>
+    UniversalCompactionPicker::CalculateSortedRuns(const VersionStorageInfo& vstorage,
+                                                   const ImmutableCFOptions& ioptions,
+                                                   uint64_t max_file_size) {
+  std::vector<std::vector<SortedRun>> ret(1);
   for (FileMetaData* f : vstorage.LevelFiles(0)) {
-    ret.emplace_back(0, f, f->fd.GetTotalFileSize(), f->compensated_file_size,
-                     f->being_compacted);
+    if (f->fd.GetTotalFileSize() <= max_file_size) {
+      ret.back().emplace_back(0, f, f->fd.GetTotalFileSize(), f->compensated_file_size,
+          f->being_compacted);
+    // If last sequence is empty it means that there are multiple too-large-to-compact files in
+    // a row. So we just don't start new sequence in this case.
+    } else if (!ret.back().empty()) {
+      ret.emplace_back();
+    }
   }
+
   for (int level = 1; level < vstorage.num_levels(); level++) {
     uint64_t total_compensated_size = 0U;
     uint64_t total_size = 0U;
@@ -1222,10 +1262,14 @@ UniversalCompactionPicker::CalculateSortedRuns(
       }
     }
     if (total_compensated_size > 0) {
-      ret.emplace_back(level, nullptr, total_size, total_compensated_size,
-                       being_compacted);
+      ret.back().emplace_back(level, nullptr, total_size, total_compensated_size, being_compacted);
     }
   }
+
+  // If last sequence is empty, it means that we don't have files after too-large-to-compact file.
+  // So just drop this sequence.
+  if (ret.back().empty())
+    ret.pop_back();
   return ret;
 }
 
@@ -1305,12 +1349,32 @@ bool CompactionPicker::IsInputNonOverlapping(Compaction* c) {
 // time-range to compact.
 //
 Compaction* UniversalCompactionPicker::PickCompaction(
-    const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
-    VersionStorageInfo* vstorage, LogBuffer* log_buffer) {
+    const std::string& cf_name,
+    const MutableCFOptions& mutable_cf_options,
+    VersionStorageInfo* vstorage,
+    LogBuffer* log_buffer) {
+  std::vector<std::vector<SortedRun>> sorted_runs = CalculateSortedRuns(
+      *vstorage,
+      ioptions_,
+      mutable_cf_options.max_file_size_for_compaction);
+
+  for (const auto& block : sorted_runs) {
+    Compaction* result = DoPickCompaction(cf_name, mutable_cf_options, vstorage, log_buffer, block);
+    if (result != nullptr) {
+      return result;
+    }
+  }
+  return nullptr;
+}
+
+Compaction* UniversalCompactionPicker::DoPickCompaction(
+    const std::string& cf_name,
+    const MutableCFOptions& mutable_cf_options,
+    VersionStorageInfo* vstorage,
+    LogBuffer* log_buffer,
+    const std::vector<UniversalCompactionPicker::SortedRun>& sorted_runs) {
   const int kLevel0 = 0;
   double score = vstorage->CompactionScore(kLevel0);
-  std::vector<SortedRun> sorted_runs =
-      CalculateSortedRuns(*vstorage, ioptions_);
 
   if (sorted_runs.size() == 0 ||
       sorted_runs.size() <

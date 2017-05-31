@@ -243,36 +243,14 @@ class UniversalCompactionPicker : public CompactionPicker {
       override;
 
  private:
-  struct SortedRun {
-    SortedRun(int _level, FileMetaData* _file, uint64_t _size,
-              uint64_t _compensated_file_size, bool _being_compacted)
-        : level(_level),
-          file(_file),
-          size(_size),
-          compensated_file_size(_compensated_file_size),
-          being_compacted(_being_compacted) {
-      assert(compensated_file_size > 0);
-      assert(level != 0 || file != nullptr);
-    }
+  struct SortedRun;
 
-    void Dump(char* out_buf, size_t out_buf_size,
-              bool print_path = false) const;
-
-    // sorted_run_count is added into the string to print
-    void DumpSizeInfo(char* out_buf, size_t out_buf_size,
-                      size_t sorted_run_count) const;
-
-    int level;
-    // `file` Will be null for level > 0. For level = 0, the sorted run is
-    // for this file.
-    FileMetaData* file;
-    // For level > 0, `size` and `compensated_file_size` are sum of sizes all
-    // files in the level. `being_compacted` should be the same for all files
-    // in a non-zero level. Use the value here.
-    uint64_t size;
-    uint64_t compensated_file_size;
-    bool being_compacted;
-  };
+  Compaction* DoPickCompaction(
+      const std::string& cf_name,
+      const MutableCFOptions& mutable_cf_options,
+      VersionStorageInfo* vstorage,
+      LogBuffer* log_buffer,
+      const std::vector<SortedRun>& sorted_runs);
 
   // Pick Universal compaction to limit read amplification
   Compaction* PickCompactionUniversalReadAmp(
@@ -287,8 +265,16 @@ class UniversalCompactionPicker : public CompactionPicker {
       VersionStorageInfo* vstorage, double score,
       const std::vector<SortedRun>& sorted_runs, LogBuffer* log_buffer);
 
-  static std::vector<SortedRun> CalculateSortedRuns(
-      const VersionStorageInfo& vstorage, const ImmutableCFOptions& ioptions);
+  // At level 0 we could compact only continuous sequence of files.
+  // Since there could be too-large-to-compact files, we could get several such sequences.
+  // Files from one sequence are compacted together, and files from different sequences are not
+  // compacted.
+  // One sequence is std::vector<SortedRun>.
+  // Several sequences are std::vector<std::vector<SortedRun>>.
+  static std::vector<std::vector<SortedRun>> CalculateSortedRuns(
+      const VersionStorageInfo& vstorage,
+      const ImmutableCFOptions& ioptions,
+      uint64_t max_file_size);
 
   // Pick a path ID to place a newly generated file, with its estimated file
   // size.

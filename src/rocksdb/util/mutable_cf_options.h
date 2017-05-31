@@ -3,6 +3,9 @@
 // LICENSE file in the root directory of this source tree. An additional grant
 // of patent rights can be found in the PATENTS file in the same directory.
 
+#ifndef ROCKSDB_UTIL_MUTABLE_CF_OPTIONS_H
+#define ROCKSDB_UTIL_MUTABLE_CF_OPTIONS_H
+
 #pragma once
 
 #include <vector>
@@ -47,11 +50,11 @@ struct MutableCFOptions {
         max_sequential_skip_in_iterations(
             options.max_sequential_skip_in_iterations),
         paranoid_file_checks(options.paranoid_file_checks),
-        compaction_measure_io_stats(options.compaction_measure_io_stats)
-
-  {
+        compaction_measure_io_stats(options.compaction_measure_io_stats),
+        max_file_size_for_compaction(options.max_file_size_for_compaction) {
     RefreshDerivedOptions(ioptions);
   }
+
   MutableCFOptions()
       : write_buffer_size(0),
         max_write_buffer_number(0),
@@ -136,6 +139,7 @@ struct MutableCFOptions {
   uint64_t max_sequential_skip_in_iterations;
   bool paranoid_file_checks;
   bool compaction_measure_io_stats;
+  uint64_t max_file_size_for_compaction;
 
   // Derived options
   // Per-level target file size.
@@ -145,3 +149,5 @@ struct MutableCFOptions {
 uint64_t MultiplyCheckOverflow(uint64_t op1, int op2);
 
 }  // namespace rocksdb
+
+#endif // ROCKSDB_UTIL_MUTABLE_CF_OPTIONS_H

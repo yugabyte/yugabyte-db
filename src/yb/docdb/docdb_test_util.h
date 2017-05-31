@@ -192,6 +192,8 @@ class DocDBRocksDBFixture {
     ReopenRocksDB();
   }
 
+  void ReinitDBOptions();
+
  private:
   std::shared_ptr<rocksdb::Cache> block_cache_;
   std::unique_ptr<rocksdb::DB> rocksdb_;

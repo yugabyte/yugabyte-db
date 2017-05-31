@@ -1279,6 +1279,9 @@ struct DBOptions {
   // Boundary extractor is used to retrieve user defined values for record.
   // Also it decodes those values during load of metafile.
   std::shared_ptr<BoundaryValuesExtractor> boundary_extractor;
+
+  // Max file size for compaction. Supported only for level0 of universal style compactions.
+  uint64_t max_file_size_for_compaction = std::numeric_limits<uint64_t>::max();
 };
 
 // Options to control the behavior of a database (passed to DB::Open)
