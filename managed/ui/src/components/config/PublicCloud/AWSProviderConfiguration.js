@@ -65,11 +65,14 @@ class AWSProviderConfiguration extends Component {
         case "provider":
           this.setState({providerUUID: response.uuid, accountName: response.name});
           const { hostInfo } = this.props;
+          var regionFormVals = {};
           if (isValidObject(hostInfo) && hostInfo["error"] === undefined) {
-            this.props.createRegion(response.uuid, hostInfo["region"], hostInfo["vpc-id"]);
+            regionFormVals = { "code": hostInfo["region"], "hostVPCId": hostInfo["vpc-id"], "name": hostInfo["region"]};
+            this.props.createRegion(response.uuid, regionFormVals);
           } else {
             // TODO: Temporary change to it work locally.
-            this.props.createRegion(response.uuid, "us-west-2", "");
+            regionFormVals = { "code": "us-west-2", "hostVPCId": "", "name": "us-west-2"};
+            this.props.createRegion(response.uuid, regionFormVals);
           }
           break;
         case "region":

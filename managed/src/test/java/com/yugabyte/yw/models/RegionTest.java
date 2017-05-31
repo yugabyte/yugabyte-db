@@ -43,6 +43,18 @@ public class RegionTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateWithLocation() {
+    Region region =
+      Region.create(defaultProvider, "region-1", "Awesome PlacementRegion", "default-image", 100, 100);
+    assertEquals(region.code, "region-1");
+    assertEquals(region.name, "Awesome PlacementRegion");
+    assertEquals(region.provider.name, "Amazon");
+    assertEquals(region.latitude, 100, 0);
+    assertEquals(region.longitude, 100, 0);
+    assertTrue(region.isActive());
+  }
+
+  @Test
   public void testCreateDuplicateRegion() {
     Region.create(defaultProvider, "region-1", "region 1", "default-image");
     try {
