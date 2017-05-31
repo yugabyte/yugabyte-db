@@ -78,13 +78,19 @@ class CreateTable extends Component {
         <h3>Create Table</h3>
         <form name="CreateTableForm" className="create-table-form" onSubmit={onFormSubmit}>
           <Row className="create-table-name-container">
-            <Col md={5}>
+            <Col md={3}>
+              <div className="form-right-aligned-labels">
+                <Field name="keyspace" component={YBInputField} className={`table-name-cell`}
+                       label="Keyspace" placeHolder={"Keyspace"} normalize={tableNameTest} />
+              </div>
+            </Col>
+            <Col md={3}>
               <div className="form-right-aligned-labels">
                 <Field name="tableName" component={YBInputField} className={`table-name-cell`}
                        label="Name" placeHolder={"Table Name"} normalize={tableNameTest} />
               </div>
             </Col>
-            <Col md={4}>
+            <Col md={3}>
               <div className="form-right-aligned-labels">
                 <div className="form-group">
                   <label className="form-item-label">
