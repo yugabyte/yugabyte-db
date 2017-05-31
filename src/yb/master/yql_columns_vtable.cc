@@ -12,29 +12,21 @@ YQLColumnsVTable::YQLColumnsVTable(const Master* const master)
 }
 
 Status YQLColumnsVTable::PopulateColumnInformation(const Schema& schema,
-                                                   const YQLValuePB& keyspace_name,
-                                                   const YQLValuePB& table_name,
+                                                   const string& keyspace_name,
+                                                   const string& table_name,
                                                    const size_t col_idx,
                                                    YQLRow* const row) const {
-  using util::GetStringValue;
   RETURN_NOT_OK(SetColumnValue(kKeyspaceName, keyspace_name, row));
   RETURN_NOT_OK(SetColumnValue(kTableName, table_name, row));
-  RETURN_NOT_OK(SetColumnValue(kColumnName, GetStringValue(schema.column(col_idx).name()),
+  RETURN_NOT_OK(SetColumnValue(kColumnName, schema.column(col_idx).name(), row));
+  RETURN_NOT_OK(SetColumnValue(kClusteringOrder, schema.column(col_idx).sorting_type_string(),
                                row));
-  RETURN_NOT_OK(SetColumnValue(kClusteringOrder,
-                               GetStringValue(schema.column(col_idx).sorting_type_string()),
-                               row));
-  RETURN_NOT_OK(SetColumnValue(kType,
-                               GetStringValue(schema.column(col_idx).type()->ToString()),
-                               row));
+  RETURN_NOT_OK(SetColumnValue(kType, schema.column(col_idx).type()->ToString(), row));
   return Status::OK();
 }
 
 Status YQLColumnsVTable::RetrieveData(const YQLReadRequestPB& request,
                                       std::unique_ptr<YQLRowBlock>* vtable) const {
-  using util::GetStringValue;
-  using util::GetIntValue;
-
   vtable->reset(new YQLRowBlock(schema_));
   std::vector<scoped_refptr<TableInfo> > tables;
   master_->catalog_manager()->GetAllTables(&tables, true);
@@ -48,41 +40,39 @@ Status YQLColumnsVTable::RetrieveData(const YQLReadRequestPB& request,
     scoped_refptr<NamespaceInfo> nsInfo;
     RETURN_NOT_OK(master_->catalog_manager()->FindNamespace(nsId, &nsInfo));
 
-    YQLValuePB keyspace_name;
-    YQLValuePB table_name;
-    YQLValue::set_string_value(nsInfo->name(), &keyspace_name);
-    YQLValue::set_string_value(table->name(), &table_name);
+    const string& keyspace_name = nsInfo->name();
+    const string& table_name = table->name();
 
     // Fill in the hash keys first.
-    size_t num_hash_columns = schema.num_hash_key_columns();
-    for (size_t i = 0; i < num_hash_columns; i++) {
+    int32_t num_hash_columns = schema.num_hash_key_columns();
+    for (int32_t i = 0; i < num_hash_columns; i++) {
       YQLRow& row = (*vtable)->Extend();
       RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i,
                                               &row));
       // kind (always partition_key for hash columns)
-      RETURN_NOT_OK(SetColumnValue(kKind, GetStringValue("partition_key"), &row));
-      RETURN_NOT_OK(SetColumnValue(kPosition, GetIntValue(i), &row));
+      RETURN_NOT_OK(SetColumnValue(kKind, "partition_key", &row));
+      RETURN_NOT_OK(SetColumnValue(kPosition, i, &row));
     }
 
     // Now fill in the range columns
-    size_t num_range_columns = schema.num_range_key_columns();
-    for (size_t i = num_hash_columns; i < num_hash_columns + num_range_columns; i++) {
+    int32_t num_range_columns = schema.num_range_key_columns();
+    for (int32_t i = num_hash_columns; i < num_hash_columns + num_range_columns; i++) {
       YQLRow& row = (*vtable)->Extend();
       RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i,
                                               &row));
       // kind (always clustering for range columns)
-      RETURN_NOT_OK(SetColumnValue(kKind, GetStringValue("clustering"), &row));
-      RETURN_NOT_OK(SetColumnValue(kPosition, GetIntValue(i - num_hash_columns), &row));
+      RETURN_NOT_OK(SetColumnValue(kKind, "clustering", &row));
+      RETURN_NOT_OK(SetColumnValue(kPosition, i - num_hash_columns, &row));
     }
 
     // Now fill in the rest of the columns.
-    for (size_t i = num_hash_columns + num_range_columns; i < schema.num_columns(); i++) {
+    for (int32_t i = num_hash_columns + num_range_columns; i < schema.num_columns(); i++) {
       YQLRow &row = (*vtable)->Extend();
       RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i,
                                               &row));
       // kind (always regular for regular columns)
-      RETURN_NOT_OK(SetColumnValue(kKind, GetStringValue("regular"), &row));
-      RETURN_NOT_OK(SetColumnValue(kPosition, GetIntValue(-1), &row));
+      RETURN_NOT_OK(SetColumnValue(kKind, "regular", &row));
+      RETURN_NOT_OK(SetColumnValue(kPosition, -1, &row));
     }
   }
 

@@ -44,8 +44,15 @@ class YQLVirtualTable : public common::YQLStorageIf {
  protected:
   // Finds the given column name in the schema and updates the specified column in the given row
   // with the provided value.
-  CHECKED_STATUS SetColumnValue(const std::string& col_name, const YQLValuePB& value_pb,
-                                YQLRow* row) const;
+  template<class T>
+  CHECKED_STATUS SetColumnValue(const std::string& col_name, const T& value, YQLRow* row) const {
+    int column_index = schema_.find_column(col_name);
+    if (column_index == Schema::kColumnNotFound) {
+      return STATUS_SUBSTITUTE(NotFound, "Couldn't find column $0 in schema", col_name);
+    }
+    *(row->mutable_column(column_index)) = util::GetValue(value);
+    return Status::OK();
+  }
   const Master* const master_;
   TableName table_name_;
   Schema schema_;

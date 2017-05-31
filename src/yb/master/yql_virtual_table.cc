@@ -45,16 +45,5 @@ CHECKED_STATUS YQLVirtualTable::BuildYQLScanSpec(const YQLReadRequestPB& request
   return Status::OK();
 }
 
-CHECKED_STATUS YQLVirtualTable::SetColumnValue(const std::string& col_name,
-                                               const YQLValuePB& value_pb,
-                                               YQLRow* row) const {
-  int column_index = schema_.find_column(col_name);
-  if (column_index == Schema::kColumnNotFound) {
-    return STATUS_SUBSTITUTE(NotFound, "Couldn't find column $0 in schema", col_name);
-  }
-  *(row->mutable_column(column_index)) = value_pb;
-  return Status::OK();
-}
-
 }  // namespace master
 }  // namespace yb

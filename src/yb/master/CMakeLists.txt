@@ -38,6 +38,7 @@ set(MASTER_SRCS
   system_tables_handler.cc
   yql_virtual_table.cc
   yql_vtable_iterator.cc
+  util/yql_vtable_helpers.cc
   yql_aggregates_vtable.cc
   yql_columns_vtable.cc
   yql_empty_vtable.cc

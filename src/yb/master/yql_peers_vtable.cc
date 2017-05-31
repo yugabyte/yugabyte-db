@@ -18,11 +18,6 @@ PeersVTable::PeersVTable(const Master* const master)
 
 Status PeersVTable::RetrieveData(const YQLReadRequestPB& request,
                                  unique_ptr<YQLRowBlock>* vtable) const {
-  using util::GetInetValue;
-  using util::GetIntValue;
-  using util::GetUuidValue;
-  using util::GetStringValue;
-
   // Retrieve all lives nodes known by the master.
   // TODO: Ideally we would like to populate this table with all valid nodes of the cluster, but
   // currently the master just has a list of all nodes it has heard from and which one of those
@@ -34,6 +29,8 @@ Status PeersVTable::RetrieveData(const YQLReadRequestPB& request,
 
   // Collect all unique ip addresses.
   map<InetAddress, TSInformationPB> peers;
+  InetAddress remote_endpoint;
+  RETURN_NOT_OK(remote_endpoint.FromString(request.remote_endpoint().host()));
   for (const shared_ptr<TSDescriptor>& desc : descs) {
     TSInformationPB ts_info;
     // This is thread safe since all operations are reads.
@@ -45,15 +42,15 @@ Status PeersVTable::RetrieveData(const YQLReadRequestPB& request,
                                desc->permanent_uuid());
     }
 
-    // Need to use only 1 rpc address per node since system.peers has only 1 entry for each host,
-    // so pick the first one.
-    const string& ts_host = ts_info.registration().common().rpc_addresses(0).host();
     // The system.peers table has one entry for each of its peers, whereas there is no entry for
     // the node that the CQL client connects to. In this case, this node is the 'remote_endpoint'
     // in YQLReadRequestPB since that is address of the CQL proxy which sent this request. As a
     // result, skip 'remote_endpoint' in the results.
-    if (ts_host != request.remote_endpoint().host()) {
+    if(!util::RemoteEndpointMatchesTServer(ts_info, remote_endpoint)) {
       InetAddress addr;
+      // Need to use only 1 rpc address per node since system.peers has only 1 entry for each host,
+      // so pick the first one.
+      const string& ts_host = ts_info.registration().common().rpc_addresses(0).host();
       RETURN_NOT_OK(addr.FromString(ts_host));
       peers[addr] = ts_info;
     }
@@ -62,7 +59,7 @@ Status PeersVTable::RetrieveData(const YQLReadRequestPB& request,
   // Populate the YQL rows.
   vtable->reset(new YQLRowBlock(schema_));
   for (const auto& kv : peers) {
-    YQLValuePB inet_addr = util::GetInetValue(kv.first);
+    const InetAddress& inet_addr = kv.first;
 
     YQLRow& row = (*vtable)->Extend();
     RETURN_NOT_OK(SetColumnValue(kPeer, inet_addr, &row));
@@ -71,19 +68,18 @@ Status PeersVTable::RetrieveData(const YQLReadRequestPB& request,
 
     // Datacenter and rack.
     CloudInfoPB cloud_info = kv.second.registration().common().cloud_info();
-    RETURN_NOT_OK(SetColumnValue(kDataCenter,
-                                 util::GetStringValue(cloud_info.placement_region()), &row));
-    RETURN_NOT_OK(SetColumnValue(kRack, util::GetStringValue(cloud_info.placement_zone()), &row));
+    RETURN_NOT_OK(SetColumnValue(kDataCenter, cloud_info.placement_region(), &row));
+    RETURN_NOT_OK(SetColumnValue(kRack, cloud_info.placement_zone(), &row));
 
     // HostId.
     Uuid host_id;
     RETURN_NOT_OK(host_id.FromHexString(kv.second.tserver_instance().permanent_uuid()));
-    RETURN_NOT_OK(SetColumnValue(kHostId, util::GetUuidValue(host_id), &row));
+    RETURN_NOT_OK(SetColumnValue(kHostId, host_id, &row));
 
     // schema_version.
     Uuid schema_version;
     CHECK_OK(schema_version.FromString(master::kDefaultSchemaVersion));
-    RETURN_NOT_OK(SetColumnValue(kSchemaVersion, util::GetUuidValue(schema_version), &row));
+    RETURN_NOT_OK(SetColumnValue(kSchemaVersion, schema_version, &row));
 
     // Tokens.
     RETURN_NOT_OK(SetColumnValue(kTokens, util::GetTokensValue(), &row));

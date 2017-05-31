@@ -19,8 +19,8 @@ class YQLColumnsVTable : public YQLVirtualTable {
   Schema CreateSchema() const;
  private:
   CHECKED_STATUS PopulateColumnInformation(const Schema& schema,
-                                           const YQLValuePB& keyspace_name,
-                                           const YQLValuePB& table_name,
+                                           const std::string& keyspace_name,
+                                           const std::string& table_name,
                                            const size_t col_idx,
                                            YQLRow* const row) const;
   static constexpr const char* const kKeyspaceName = "keyspace_name";

@@ -14,18 +14,14 @@ YQLKeyspacesVTable::YQLKeyspacesVTable(const Master* const master)
 
 Status YQLKeyspacesVTable::RetrieveData(const YQLReadRequestPB& request,
                                         std::unique_ptr<YQLRowBlock>* vtable) const {
-  using util::GetStringValue;
-  using util::GetBoolValue;
-  using util::GetReplicationValue;
-
   vtable->reset(new YQLRowBlock(schema_));
   std::vector<scoped_refptr<NamespaceInfo> > namespaces;
   master_->catalog_manager()->GetAllNamespaces(&namespaces);
   for (scoped_refptr<NamespaceInfo> ns : namespaces) {
     YQLRow& row = (*vtable)->Extend();
-    RETURN_NOT_OK(SetColumnValue(kKeyspaceName, GetStringValue(ns->name()), &row));
-    RETURN_NOT_OK(SetColumnValue(kDurableWrites, GetBoolValue(true), &row));
-    RETURN_NOT_OK(SetColumnValue(kReplication, GetReplicationValue(), &row));
+    RETURN_NOT_OK(SetColumnValue(kKeyspaceName, ns->name(), &row));
+    RETURN_NOT_OK(SetColumnValue(kDurableWrites, true, &row));
+    RETURN_NOT_OK(SetColumnValue(kReplication, util::GetReplicationValue(), &row));
   }
 
   return Status::OK();
