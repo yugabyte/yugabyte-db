@@ -27,6 +27,7 @@ ADD_YB_LIBRARY(cql_service_proto
 
 set(CQLSERVER_SRCS
   cql_message.cc
+  cql_statement.cc
   cql_processor.cc
   cql_service.cc
   cql_server.cc

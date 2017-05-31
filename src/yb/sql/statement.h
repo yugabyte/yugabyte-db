@@ -28,32 +28,24 @@ class Statement {
   typedef std::unique_ptr<Statement> UniPtr;
   typedef std::unique_ptr<const Statement> UniPtrConst;
 
-  // No last-prepare time.
-  static const MonoTime kNoLastPrepareTime;
-
   // Constructors.
-  explicit Statement(const std::string& keyspace, const std::string& text);
+  Statement(const std::string& keyspace, const std::string& text);
   virtual ~Statement();
 
-  // Returns statement text.
+  // Returns the keyspace and statement text.
+  const std::string& keyspace() const { return keyspace_; }
   const std::string& text() const { return text_; }
 
-  // Prepare the statement for execution. Reprepare it if it hasn't been since last_prepare_time.
-  // Use kNoLastPrepareTime if it doesn't need to be reprepared. Optionally return prepared result
-  // if requested.
-  CHECKED_STATUS Prepare(SqlProcessor *processor,
-                         const MonoTime& last_prepare_time = kNoLastPrepareTime,
-                         bool refresh_cache = false,
-                         std::shared_ptr<MemTracker> mem_tracker = nullptr,
-                         PreparedResult::UniPtr *result = nullptr);
+  // Prepare the statement for execution. Optionally return prepared result if requested.
+  CHECKED_STATUS Prepare(
+      SqlProcessor *processor, std::shared_ptr<MemTracker> mem_tracker = nullptr,
+      PreparedResult::UniPtr *result = nullptr);
 
-  // Execute the prepared statement.
-  void ExecuteAsync(
-      SqlProcessor* processor, const StatementParameters& params, StatementExecutedCallback cb);
-
-  // Run the statement (i.e. prepare and execute).
-  void RunAsync(
-      SqlProcessor* processor, const StatementParameters& params, StatementExecutedCallback cb);
+  // Execute the prepared statement. Returns false if the statement has not been prepared
+  // successfully.
+  bool ExecuteAsync(
+      SqlProcessor* processor, const StatementParameters& params, StatementExecutedCallback cb)
+      WARN_UNUSED_RESULT;
 
  protected:
   // The keyspace this statement is parsed in.
@@ -63,29 +55,6 @@ class Statement {
   const std::string text_;
 
  private:
-  struct Request {
-    Request(SqlProcessor* processor, const StatementParameters* params)
-        : processor(processor), params(params) {}
-    SqlProcessor* const processor;
-    const StatementParameters* const params;
-  };
-
-  // Execute the prepared statement. Don't reprepare.
-  void DoExecuteAsync(SqlProcessor* processor,
-                      const StatementParameters& params,
-                      const MonoTime &last_prepare_time,
-                      Callback<void(const MonoTime &last_prepare_time,
-                                    bool new_analysis_needed,
-                                    const Status &s,
-                                    ExecutedResult::SharedPtr result)> cb);
-
-  void ExecuteAsyncDone(
-      Request req, StatementExecutedCallback cb, const MonoTime &updated_last_prepare_time,
-      bool new_analysis_needed, const Status &s, ExecutedResult::SharedPtr result);
-
-  // The prepare time.
-  MonoTime prepare_time_;
-
   // The parse tree.
   ParseTree::UniPtr parse_tree_;
 

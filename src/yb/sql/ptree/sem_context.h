@@ -48,8 +48,7 @@ class SemContext : public ProcessContext {
   SemContext(const char *sql_stmt,
              size_t stmt_len,
              ParseTree::UniPtr parse_tree,
-             SqlEnv *sql_env,
-             bool refresh_cache);
+             SqlEnv *sql_env);
   virtual ~SemContext();
 
   // Memory pool for semantic analysis of the parse tree of a statement.
@@ -166,9 +165,6 @@ class SemContext : public ProcessContext {
 
   // Session.
   SqlEnv *sql_env_;
-
-  // Force to refresh cache.
-  const bool refresh_cache_;
 
   // Is metadata cache used?
   bool cache_used_;

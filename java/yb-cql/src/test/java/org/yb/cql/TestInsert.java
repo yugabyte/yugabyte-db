@@ -6,7 +6,9 @@ import com.datastax.driver.core.Row;
 import org.junit.Test;
 
 import java.net.InetAddress;
+import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.TimeZone;
 import java.util.Map;
 import java.util.UUID;
 
@@ -49,7 +51,6 @@ public class TestInsert extends BaseCQLTest {
       assertEquals(date_value, row.getTimestamp(5));
     }
   }
-
 
   private void runInvalidInsertWithTimestamp(String tableName, String ts) {
     String insert_stmt = String.format(
@@ -367,5 +368,28 @@ public class TestInsert extends BaseCQLTest {
   public void testInsertIntoSystemNamespace() throws Exception {
     runInvalidStmt("INSERT INTO system.peers (h1, h2, r1, r2) VALUES (1, '1', 1, '1');");
     runInvalidStmt("DELETE FROM system.peers WHERE h1 = 1 AND h2 = '1' AND r1 = 1 AND r2 = '1';");
+  }
+
+  @Test
+  public void testInsertIntoRecreatedTable() throws Exception {
+    // Create table with a TIMESTAMP column and insert a value.
+    SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ssZ");
+    df.setTimeZone(TimeZone.getTimeZone("+0000"));
+    Date timestamp = df.parse("2017-01-01 00:00:00+0000");
+    session.execute("CREATE TABLE t (h int PRIMARY KEY, c timestamp);");
+    session.execute(String.format("INSERT INTO t (h, c) VALUES (1, '%s');", df.format(timestamp)));
+
+    // Verify the timestamp is inserted.
+    Row row = runSelect("SELECT * FROM t;").next();
+    assertEquals(1, row.getInt(0));
+    assertEquals(df.format(timestamp), df.format(row.getTimestamp(1)));
+
+    // Drop and create a new table of the same name but different column datatype. Insert a value.
+    session.execute("DROP TABLE t;");
+    session.execute("CREATE TABLE t (h int PRIMARY KEY, c varchar);");
+    session.execute("INSERT INTO t (h, c) VALUES (1, 'hello');");
+
+    // Verify the value is inserted.
+    assertQuery("SELECT * FROM t;", "Row[1, hello]");
   }
 }

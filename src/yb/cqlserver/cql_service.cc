@@ -162,6 +162,18 @@ shared_ptr<CQLStatement> CQLServiceImpl::GetPreparedStatement(const CQLMessage::
   return stmt;
 }
 
+void CQLServiceImpl::DeletePreparedStatement(const shared_ptr<CQLStatement>& stmt) {
+  // Get exclusive lock before deleting the prepared statement.
+  std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
+
+  prepared_stmts_map_.erase(stmt->query_id());
+  prepared_stmts_list_.erase(stmt->pos());
+
+  VLOG(1) << "DeletePreparedStatement: CQL prepared statement cache count = "
+          << prepared_stmts_map_.size() << "/" << prepared_stmts_list_.size()
+          << ", memory usage = " << prepared_stmts_mem_tracker_->consumption();
+}
+
 void CQLServiceImpl::InsertLruPreparedStatementUnlocked(const shared_ptr<CQLStatement>& stmt) {
   // Insert the statement at the front of the LRU list.
   stmt->set_pos(prepared_stmts_list_.insert(prepared_stmts_list_.begin(), stmt));
@@ -182,7 +194,7 @@ void CQLServiceImpl::DeleteLruPreparedStatement() {
     prepared_stmts_list_.pop_back();
   }
 
-  VLOG(1) << "DeletePreparedStatement: CQL prepared statement cache count = "
+  VLOG(1) << "DeleteLruPreparedStatement: CQL prepared statement cache count = "
           << prepared_stmts_map_.size() << "/" << prepared_stmts_list_.size()
           << ", memory usage = " << prepared_stmts_mem_tracker_->consumption();
 }

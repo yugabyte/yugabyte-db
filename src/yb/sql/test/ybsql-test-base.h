@@ -160,7 +160,7 @@ class YbSqlTestBase : public YBTest {
                               ParseTree::UniPtr *parse_tree) {
     SqlProcessor *processor = GetSqlProcessor();
     RETURN_NOT_OK(processor->Parse(sql_stmt, parse_tree, nullptr /* mem_tracker */));
-    RETURN_NOT_OK(processor->Analyze(sql_stmt, parse_tree, false /* refresh_cache */));
+    RETURN_NOT_OK(processor->Analyze(sql_stmt, parse_tree));
     return Status::OK();
   }
 

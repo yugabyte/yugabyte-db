@@ -7,9 +7,9 @@
 #define YB_CQLSERVER_CQL_SERVICE_H_
 
 #include <vector>
-#include <list>
 
 #include "yb/cqlserver/cql_message.h"
+#include "yb/cqlserver/cql_statement.h"
 #include "yb/cqlserver/cql_service.service.h"
 #include "yb/cqlserver/cql_server_options.h"
 #include "yb/rpc/cql_rpcserver_env.h"
@@ -29,16 +29,6 @@ namespace cqlserver {
 class CQLMetrics;
 class CQLProcessor;
 class CQLServer;
-class CQLStatement;
-
-// A map of CQL query id to the prepared statement for caching the prepared statments. Shared_ptr
-// is used so that a prepared statement can be aged out and removed from the cache here without
-// deleting one that is being executed by another client in another thread.
-using CQLStatementMap = std::unordered_map<CQLMessage::QueryId, std::shared_ptr<CQLStatement>>;
-
-// A LRU list of CQL statements and position in the list.
-using CQLStatementList = std::list<std::shared_ptr<CQLStatement>>;
-using CQLStatementListPos = CQLStatementList::iterator;
 
 class CQLServiceImpl : public CQLServerServiceIf {
  public:
@@ -62,6 +52,9 @@ class CQLServiceImpl : public CQLServerServiceIf {
 
   // Look up a prepared statement by its id. Nullptr will be returned if the statement is not found.
   std::shared_ptr<CQLStatement> GetPreparedStatement(const CQLMessage::QueryId& id);
+
+  // Delete the prepared statement from the cache.
+  void DeletePreparedStatement(const std::shared_ptr<CQLStatement>& stmt);
 
   // Return the memory tracker for prepared statements.
   std::shared_ptr<MemTracker> prepared_stmts_mem_tracker() const {
@@ -101,7 +94,6 @@ class CQLServiceImpl : public CQLServerServiceIf {
   // Delete the least recently used prepared statement from the cache to free up memory.
   void DeleteLruPreparedStatement();
 
-
   // YBClient is to communicate with either master or tserver.
   std::shared_ptr<client::YBClient> client_;
   // A cache to reduce opening tables again and again.
@@ -110,7 +102,7 @@ class CQLServiceImpl : public CQLServerServiceIf {
   // Processors.
   vector<std::unique_ptr<CQLProcessor>> processors_;
 
-  // Mutex that protects the creation of client_ and processor_.
+  // Mutex that protects the creation of client_ and processors_.
   std::mutex process_mutex_;
 
   // Prepared statements cache.

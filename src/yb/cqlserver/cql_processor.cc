@@ -87,21 +87,6 @@ CQLMetrics::CQLMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity)
 }
 
 //------------------------------------------------------------------------------------------------
-CQLStatement::CQLStatement(const string& keyspace, const string& sql_stmt)
-    : Statement(keyspace, sql_stmt) {
-}
-
-CQLMessage::QueryId CQLStatement::GetQueryId(const string& keyspace, const string& sql_stmt) {
-  unsigned char md5[16];
-  MD5_CTX md5ctx;
-  _sasl_MD5Init(&md5ctx);
-  _sasl_MD5Update(&md5ctx, util::to_uchar_ptr(keyspace.data()), keyspace.length());
-  _sasl_MD5Update(&md5ctx, util::to_uchar_ptr(sql_stmt.data()), sql_stmt.length());
-  _sasl_MD5Final(md5, &md5ctx);
-  return CQLMessage::QueryId(util::to_char_ptr(md5), sizeof(md5));
-}
-
-//------------------------------------------------------------------------------------------------
 CQLProcessor::CQLProcessor(CQLServiceImpl* service_impl)
     : SqlProcessor(
           service_impl->messenger(), service_impl->client(), service_impl->table_cache(),
@@ -181,10 +166,9 @@ CQLResponse *CQLProcessor::ProcessPrepare(const PrepareRequest& req) {
   shared_ptr<CQLStatement> stmt = service_impl_->AllocatePreparedStatement(
       query_id, sql_env_->CurrentKeyspace(), req.query());
   PreparedResult::UniPtr result;
-  const Status s = stmt->Prepare(
-      this, Statement::kNoLastPrepareTime, false /* refresh_cache */,
-      service_impl_->prepared_stmts_mem_tracker(), &result);
+  const Status s = stmt->Prepare(this, service_impl_->prepared_stmts_mem_tracker(), &result);
   if (!s.ok()) {
+    service_impl_->DeletePreparedStatement(stmt);
     return new ErrorResponse(req, ErrorResponse::Code::SYNTAX_ERROR, s.ToString());
   }
 
@@ -194,21 +178,20 @@ CQLResponse *CQLProcessor::ProcessPrepare(const PrepareRequest& req) {
 void CQLProcessor::ProcessExecute(const ExecuteRequest& req, Callback<void(CQLResponse*)> cb) {
   VLOG(1) << "EXECUTE " << b2a_hex(req.query_id());
   shared_ptr<CQLStatement> stmt = service_impl_->GetPreparedStatement(req.query_id());
-  if (stmt == nullptr) {
-    // If the query is not found, it may have been aged out. Return UNPREPARED error. Upon receiving
-    // the error, the client will reprepare the query and execute again.
+  if (stmt == nullptr ||
+      !stmt->ExecuteAsync(
+          this, req.params(),
+          Bind(&CQLProcessor::ProcessExecuteDone, Unretained(this), &req, stmt, cb))) {
+    // If the query is not found or it is not prepared successfully, return UNPREPARED error. Upon
+    // receiving the error, the client will reprepare the query and execute again.
     cb.Run(new UnpreparedErrorResponse(req, req.query_id()));
-    return;
   }
-  stmt->ExecuteAsync(
-      this, req.params(),
-      Bind(&CQLProcessor::ProcessExecuteDone, Unretained(this), &req, stmt, cb));
 }
 
 void CQLProcessor::ProcessExecuteDone(
     const ExecuteRequest* req, shared_ptr<CQLStatement> stmt, Callback<void(CQLResponse*)> cb,
     const Status& s, ExecutedResult::SharedPtr result) {
-  cb.Run(ReturnResponse(*req, s, result));
+  cb.Run(ReturnResponse(*req, stmt, s, result));
 }
 
 void CQLProcessor::ProcessQuery(const QueryRequest& req, Callback<void(CQLResponse*)> cb) {
@@ -221,11 +204,12 @@ void CQLProcessor::ProcessQuery(const QueryRequest& req, Callback<void(CQLRespon
 void CQLProcessor::ProcessQueryDone(
     const QueryRequest* req, Callback<void(CQLResponse*)> cb, const Status& s,
     ExecutedResult::SharedPtr result) {
-  cb.Run(ReturnResponse(*req, s, result));
+  cb.Run(ReturnResponse(*req, nullptr /* stmt */, s, result));
 }
 
 CQLResponse* CQLProcessor::ReturnResponse(
-    const CQLRequest& req, Status s, ExecutedResult::SharedPtr result) {
+    const CQLRequest& req, shared_ptr<CQLStatement> stmt, Status s,
+    ExecutedResult::SharedPtr result) {
   if (!s.ok()) {
     if (s.IsSqlError()) {
       switch (GetErrorCode(s)) {
@@ -277,6 +261,20 @@ CQLResponse* CQLProcessor::ReturnResponse(
         case ErrorCode::FAILURE: FALLTHROUGH_INTENDED;
         case ErrorCode::EXEC_ERROR:
           return new ErrorResponse(req, ErrorResponse::Code::SERVER_ERROR, s.ToString());
+
+        case ErrorCode::STALE_PREPARED_STATEMENT:
+          if (stmt != nullptr) {
+            // The prepared statement is stale. Delete it and return UNPREPARED error to tell the
+            // client to reprepare it.
+            service_impl_->DeletePreparedStatement(stmt);
+            return new UnpreparedErrorResponse(req, stmt->query_id());
+          } else {
+            // This is an internal error as the caller should always provide the statement that is
+            // stale.
+            return new ErrorResponse(
+                req, ErrorResponse::Code::SERVER_ERROR,
+                "internal error: stale prepared statement not provided");
+          }
 
         case ErrorCode::SUCCESS:
           break;

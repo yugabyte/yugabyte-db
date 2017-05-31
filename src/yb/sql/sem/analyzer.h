@@ -30,14 +30,15 @@ class Analyzer {
   // as datatype or object-type of a database object.
   CHECKED_STATUS Analyze(const std::string& sql_stmt,
                          ParseTree::UniPtr ptree,
-                         SqlEnv *sql_env,
-                         bool refresh_cache);
+                         SqlEnv *sql_env);
+
+  // Returns decorated parse tree from the semantic analysis and destroys the context.
+  ParseTree::UniPtr Done();
 
   // Return if metadata cache is used during semantic analysis.
-  bool cache_used() const { return sem_context_->cache_used(); }
-
-  // Returns decorated parse tree from the semantic analysis.
-  ParseTree::UniPtr Done();
+  bool cache_used() const {
+    return sem_context_->cache_used();
+  }
 
   // Access to error code.
   ErrorCode error_code() {

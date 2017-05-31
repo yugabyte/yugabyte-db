@@ -51,20 +51,21 @@ class SqlProcessor {
   virtual ~SqlProcessor();
 
   // Parse a SQL statement and generate a parse tree.
-  CHECKED_STATUS Parse(const string& sql_stmt,
-                       ParseTree::UniPtr* parse_tree,
-                       std::shared_ptr<MemTracker> mem_tracker);
+  CHECKED_STATUS Parse(
+      const string& sql_stmt, ParseTree::UniPtr* parse_tree,
+      std::shared_ptr<MemTracker> mem_tracker);
 
-  // Semantically analyze a parse tree.
-  CHECKED_STATUS Analyze(const string& sql_stmt,
-                         ParseTree::UniPtr* parse_tree,
-                         bool refresh_cache);
+  // Semantically analyze a parse tree. Return "reparse" if an error was encountered that may be
+  // attributed to stale metadata cache. If that happens, the metadata cache will be purged and the
+  // statement should be reparsed and re-analyzed. When the statement is parsed for the first time,
+  // caller should check if the statement needs to be "reparsed".
+  CHECKED_STATUS Analyze(
+      const string& sql_stmt, ParseTree::UniPtr* parse_tree, bool* reparse = nullptr);
 
   // Execute a parse tree.
   void ExecuteAsync(
       const string& sql_stmt, const ParseTree& parse_tree, const StatementParameters& params,
-      Callback<void(
-          bool new_analysis_needed, const Status& s, ExecutedResult::SharedPtr result)> cb);
+      StatementExecutedCallback cb, bool reparsed = false);
 
   // Execute a SQL statement.
   void RunAsync(
@@ -109,20 +110,12 @@ class SqlProcessor {
   MonoTime start_time_;
 
  private:
-  struct Request {
-    Request(
-        const std::string& sql_stmt, const ParseTree& parse_tree, const StatementParameters& params)
-        : sql_stmt(sql_stmt), parse_tree(parse_tree), params(params) {}
-
-    const std::string& sql_stmt;
-    const ParseTree& parse_tree;
-    const StatementParameters& params;
-  };
-
-  void ProcessExecuteResponse(
-      const MonoTime& begin_time,
-      Callback<void(bool, const Status& s, ExecutedResult::SharedPtr result)> cb,
-      const Status& s, ExecutedResult::SharedPtr result);
+  void ExecuteAsyncDone(
+      const MonoTime& begin_time, const ParseTree *parse_tree, StatementExecutedCallback cb,
+      bool reparsed, const Status& s, ExecutedResult::SharedPtr result);
+  void RunAsyncDone(
+      const std::string& sql_stmt, const StatementParameters* params, ParseTree *parse_tree,
+      StatementExecutedCallback cb, const Status& s, ExecutedResult::SharedPtr result);
 };
 
 }  // namespace sql

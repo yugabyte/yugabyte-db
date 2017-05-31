@@ -36,26 +36,6 @@ class CQLMetrics : public sql::SqlMetrics {
   yb::rpc::RpcMethodMetrics rpc_method_metrics_;
 };
 
-// A CQL statement that is prepared and cached.
-class CQLStatement : public sql::Statement {
- public:
-  explicit CQLStatement(const std::string& keyspace, const std::string& sql_stmt);
-
-  // Return the query id.
-  CQLMessage::QueryId query_id() const { return GetQueryId(keyspace_, text_); }
-
-  // Get/set position of the statement in the LRU.
-  CQLStatementListPos pos() const { return pos_; }
-  void set_pos(CQLStatementListPos pos) { pos_ = pos; }
-
-  // Return the query id of a statement.
-  static CQLMessage::QueryId GetQueryId(const std::string& keyspace, const std::string& sql_stmt);
-
- private:
-  // Position of the statement in the LRU.
-  CQLStatementListPos pos_;
-};
-
 class CQLProcessor : public sql::SqlProcessor {
  public:
   // Constructor and destructor.
@@ -87,7 +67,8 @@ class CQLProcessor : public sql::SqlProcessor {
       CQLResponse* response);
 
   CQLResponse* ReturnResponse(
-      const CQLRequest& req, Status s, sql::ExecutedResult::SharedPtr result);
+      const CQLRequest& req, std::shared_ptr<CQLStatement> stmt, Status s,
+      sql::ExecutedResult::SharedPtr result);
   void SendResponse(rpc::InboundCallPtr call, CQLResponse* response);
 
   // Pointer to the containing CQL service implementation.

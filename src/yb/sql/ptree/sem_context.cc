@@ -16,12 +16,10 @@ using client::YBTable;
 SemContext::SemContext(const char *sql_stmt,
                        size_t stmt_len,
                        ParseTree::UniPtr parse_tree,
-                       SqlEnv *sql_env,
-                       bool refresh_cache)
+                       SqlEnv *sql_env)
     : ProcessContext(sql_stmt, stmt_len, move(parse_tree)),
       symtab_(&ptemp_mem_),
       sql_env_(sql_env),
-      refresh_cache_(refresh_cache),
       cache_used_(false),
       current_table_(nullptr),
       sem_state_(nullptr) {
@@ -60,12 +58,13 @@ CHECKED_STATUS SemContext::MapSymbol(const MCString& name, ColumnDesc *entry) {
 
 shared_ptr<YBTable> SemContext::GetTableDesc(const client::YBTableName& table_name) {
   bool cache_used = false;
-  shared_ptr<YBTable> table = sql_env_->GetTableDesc(table_name,
-                                                     refresh_cache_,
-                                                     &cache_used);
-  if (cache_used) {
-    // Remember cache was used.
-    cache_used_ = true;
+  shared_ptr<YBTable> table = sql_env_->GetTableDesc(table_name, &cache_used);
+  if (table != nullptr) {
+    parse_tree_->AddAnalyzedTable(table_name);
+    if (cache_used) {
+      // Remember cache was used.
+      cache_used_ = true;
+    }
   }
   return table;
 }

@@ -396,15 +396,14 @@ class YBTableCache {
  public:
   explicit YBTableCache(std::shared_ptr<YBClient> client) : client_(client) {}
 
-  // Opens the table with the given name. If the table has been opened before,
-  // and force_refresh is false, then it returns the previously opened table
-  // from cached_tables_. If the table has not been opened before
-  // in this client, or if force_refresh is true, this will do an RPC to ensure
-  // that the table exists and look up its schema.
-  CHECKED_STATUS GetTable(const YBTableName& table_name,
-                          std::shared_ptr<YBTable>* table,
-                          bool force_refresh,
-                          bool* cache_used);
+  // Opens the table with the given name. If the table has been opened before, returns the
+  // previously opened table from cached_tables_. If the table has not been opened before
+  // in this client, this will do an RPC to ensure that the table exists and look up its schema.
+  CHECKED_STATUS GetTable(
+      const YBTableName& table_name, std::shared_ptr<YBTable>* table, bool* cache_used);
+
+  // Remove the table from cached_tables_ if it is in the cache.
+  void RemoveCachedTable(const YBTableName& table_name);
 
  private:
   std::shared_ptr<YBClient> client_;

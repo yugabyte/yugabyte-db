@@ -1342,13 +1342,13 @@ void VoidResultResponse::SerializeResultBody(faststring* mesg) const {
 //----------------------------------------------------------------------------------------
 RowsResultResponse::RowsResultResponse(
     const QueryRequest& request, sql::RowsResult::SharedPtr result)
-    : ResultResponse(request, Kind::ROWS), result_(std::move(result)),
+    : ResultResponse(request, Kind::ROWS), result_(result),
       skip_metadata_(request.params_.flags & CQLMessage::QueryParameters::kSkipMetadataFlag) {
 }
 
 RowsResultResponse::RowsResultResponse(
     const ExecuteRequest& request, sql::RowsResult::SharedPtr result)
-    : ResultResponse(request, Kind::ROWS), result_(std::move(result)),
+    : ResultResponse(request, Kind::ROWS), result_(result),
       skip_metadata_(request.params_.flags & CQLMessage::QueryParameters::kSkipMetadataFlag) {
 }
 

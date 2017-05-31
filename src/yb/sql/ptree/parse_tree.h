@@ -10,7 +10,9 @@
 #ifndef YB_SQL_PTREE_PARSE_TREE_H_
 #define YB_SQL_PTREE_PARSE_TREE_H_
 
+#include "yb/client/yb_table_name.h"
 #include "yb/sql/ptree/tree_node.h"
+#include "yb/sql/util/sql_env.h"
 
 namespace yb {
 namespace sql {
@@ -49,8 +51,17 @@ class ParseTree {
     return &psem_mem_;
   }
 
+  // Add table to the set of tables used during semantic analysis.
+  void AddAnalyzedTable(const client::YBTableName& table_name);
+
+  // Clear the metadata cache of the tables used to analyze this parse tree.
+  void ClearAnalyzedTableCache(SqlEnv *sql_env) const;
+
  private:
   std::shared_ptr<BufferAllocator> buffer_allocator_;
+
+  // Set of tables used during semantic analysis.
+  std::unordered_set<client::YBTableName, boost::hash<client::YBTableName>> analyzed_tables_;
 
   // Parse tree memory pool. This pool is used to allocate parse tree and its nodes. This pool
   // should be part of the generated parse tree that is stored within parse_context. Once the

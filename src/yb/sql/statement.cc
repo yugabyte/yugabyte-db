@@ -9,54 +9,34 @@
 namespace yb {
 namespace sql {
 
+using std::list;
 using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
 
-const MonoTime Statement::kNoLastPrepareTime = MonoTime::Min();
-
-// Runs the StatementExecutedCallback cb and returns if the status s is not OK.
-#define CB_RETURN_NOT_OK(cb, s)    \
-  do {                             \
-    ::yb::Status _s = (s);         \
-    if (PREDICT_FALSE(!_s.ok())) { \
-      (cb).Run(_s, nullptr);       \
-      return;                      \
-    }                              \
-  } while (0)
-
 Statement::Statement(const string& keyspace, const string& text)
-    : keyspace_(keyspace), text_(text), prepare_time_(kNoLastPrepareTime) {
+    : keyspace_(keyspace), text_(text) {
 }
 
 Statement::~Statement() {
 }
 
-CHECKED_STATUS Statement::Prepare(SqlProcessor *processor,
-                                  const MonoTime& last_prepare_time,
-                                  bool refresh_cache,
-                                  shared_ptr<MemTracker> mem_tracker,
-                                  PreparedResult::UniPtr *result) {
-  // Prepare the statement or reprepare if it hasn't been since last_prepare_time. Do so within an
-  // exclusive lock.
+CHECKED_STATUS Statement::Prepare(
+    SqlProcessor *processor, shared_ptr<MemTracker> mem_tracker, PreparedResult::UniPtr *result) {
+  // Prepare the statement (parse and semantically analysis). Do so within an exclusive lock.
   {
     boost::lock_guard<boost::shared_mutex> l(lock_);
-    if (prepare_time_.Equals(last_prepare_time)) {
-      // Clear last prepare time to reinitialize the statement to unprepared state. Otherwise, if
-      // the statement needs to be reprepared and the semantic analysis fails, the statement may be
-      // treated as prepared when accessed next time, but semantic analysis info has been purged.
-      prepare_time_ = kNoLastPrepareTime;
+    if (parse_tree_ == nullptr) {
 
-      // Parse the statement if the parse tree hasn't been generated (not parsed) yet.
-      if (parse_tree_.get() == nullptr) {
-        RETURN_NOT_OK(processor->Parse(text_, &parse_tree_, mem_tracker));
+      ParseTree::UniPtr parse_tree;
+      bool reparse = false;
+      RETURN_NOT_OK(processor->Parse(text_, &parse_tree, mem_tracker));
+      RETURN_NOT_OK(processor->Analyze(text_, &parse_tree, &reparse));
+      if (reparse) {
+        RETURN_NOT_OK(processor->Parse(text_, &parse_tree, mem_tracker));
+        RETURN_NOT_OK(processor->Analyze(text_, &parse_tree));
       }
-
-      // Analyze the statement (or re-analyze with new metadata).
-      RETURN_NOT_OK(processor->Analyze(text_, &parse_tree_, refresh_cache));
-
-      // Update parse time.
-      prepare_time_ = MonoTime::Now(MonoTime::FINE);
+      parse_tree_ = std::move(parse_tree);
     }
   }
 
@@ -86,74 +66,21 @@ CHECKED_STATUS Statement::Prepare(SqlProcessor *processor,
   return Status::OK();
 }
 
-void Statement::ExecuteAsync(
+bool Statement::ExecuteAsync(
     SqlProcessor* processor, const StatementParameters& params, StatementExecutedCallback cb) {
-  // Execute the statement.
-  DoExecuteAsync(processor, params, kNoLastPrepareTime,
-                 Bind(&Statement::ExecuteAsyncDone, Unretained(this),
-                      Request(processor, &params), cb));
-}
-
-void RedoExecuteAsyncDone(
-    StatementExecutedCallback cb, const MonoTime& ignored1, bool ignored2,
-    const Status& s, ExecutedResult::SharedPtr result) {
-  cb.Run(s, result);
-}
-
-void Statement::ExecuteAsyncDone(
-    Request req, StatementExecutedCallback cb, const MonoTime &updated_last_prepare_time,
-    bool new_analysis_needed, const Status &s, ExecutedResult::SharedPtr result) {
-  // If new analysis is needed, reprepare the statement with new metadata and re-execute.
-  if (new_analysis_needed) {
-    CB_RETURN_NOT_OK(cb,
-                     Prepare(
-                         req.processor, updated_last_prepare_time, true /* refresh_cache */,
-                         nullptr /* mem_tracker */, nullptr /* result */));
-    // Re-execute the statement.
-    DoExecuteAsync(req.processor, *req.params, updated_last_prepare_time,
-                   Bind(&RedoExecuteAsyncDone, cb));
-  } else {
-    cb.Run(s, result);
-  }
-}
-
-void DoExecuteAsyncDone(
-    Callback<void(const MonoTime&, bool, const Status&, ExecutedResult::SharedPtr)> cb,
-    const MonoTime& last_prepare_time, bool new_analysis_needed, const Status& s,
-    ExecutedResult::SharedPtr result) {
-  cb.Run(last_prepare_time, new_analysis_needed, s, result);
-}
-
-void Statement::DoExecuteAsync(SqlProcessor* processor,
-                               const StatementParameters& params,
-                               const MonoTime &last_prepare_time,
-                               Callback<void(const MonoTime &last_prepare_time,
-                                             bool new_analysis_needed,
-                                             const Status &s,
-                                             ExecutedResult::SharedPtr result)> cb) {
   {
-    // Save the last prepare time and execute the parse tree. Do so within a shared lock until
-    // SqlProcessor::ExecuteAsync() returns by when we are done with the parse tree and the execute
-    // request has been queued.
+    // Ensure the statement has been prepared successfully and parse tree is present. Do so within
+    // a shared lock.
     boost::shared_lock<boost::shared_mutex> l(lock_);
 
-    // Execute if the statement has been prepared. Otherwise, fall through below to prepare the
-    // statement before executing it.
-    if (!prepare_time_.Equals(kNoLastPrepareTime)) {
-      processor->ExecuteAsync(text_, *parse_tree_.get(), params,
-                              Bind(&DoExecuteAsyncDone, cb, prepare_time_));
-      return;
+    // Return false if there is no parse tree.
+    if (parse_tree_ == nullptr) {
+      return false;
     }
   }
 
-  // Prepare the statement and execute it.
-  cb.Run(kNoLastPrepareTime, true /* new_analysis_needed */, Status::OK(), nullptr /* result */);
-}
-
-void Statement::RunAsync(
-    SqlProcessor* processor, const StatementParameters& params, StatementExecutedCallback cb) {
-  CB_RETURN_NOT_OK(cb, Prepare(processor));
-  ExecuteAsync(processor, params, cb);
+  processor->ExecuteAsync(text_, *parse_tree_.get(), params, cb);
+  return true;
 }
 
 }  // namespace sql

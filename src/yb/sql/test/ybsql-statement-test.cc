@@ -28,9 +28,9 @@ class YbSqlStatement : public YbSqlTestBase {
     cb.Run(s);
   }
 
-  void ExecuteAsync(Statement *stmt, SqlProcessor *processor, Callback<void(const Status&)> cb) {
-    stmt->ExecuteAsync(processor, StatementParameters(),
-                       Bind(&YbSqlStatement::ExecuteAsyncDone, Unretained(this), cb));
+  bool ExecuteAsync(Statement *stmt, SqlProcessor *processor, Callback<void(const Status&)> cb) {
+    return stmt->ExecuteAsync(processor, StatementParameters(),
+                              Bind(&YbSqlStatement::ExecuteAsyncDone, Unretained(this), cb));
   }
 
 };
@@ -54,17 +54,12 @@ TEST_F(YbSqlStatement, TestExecutePrepareAfterTableDrop) {
   // Drop table.
   EXEC_VALID_STMT("drop table t;");
 
-  // Try executing and repreparing the statement a few times.
-  for (int i = 0; i < 3; i++) {
-    // Execute the prepared statement. Expect failure.
-    Synchronizer s;
-    ExecuteAsync(&stmt, processor, Bind(&Synchronizer::StatusCB, Unretained(&s)));
-    CHECK(!s.Wait().ok());
-
-    // Reprepare the statement and ask for prepared result explicitly this time. Expect failure.
-    PreparedResult::UniPtr result;
-    CHECK(!stmt.Prepare(processor, Statement::kNoLastPrepareTime, false, nullptr, &result).ok());
-  }
+  // Try executing the statement. Should return STALE_PREPARED_STATEMENT error.
+  Synchronizer sync;
+  CHECK(ExecuteAsync(&stmt, processor, Bind(&Synchronizer::StatusCB, Unretained(&sync))));
+  Status s = sync.Wait();
+  CHECK(s.IsSqlError() && GetErrorCode(s) == ErrorCode::STALE_PREPARED_STATEMENT)
+      << "Expect STALE_PREPARED_STATEMENT but got " << s.ToString();
 
   LOG(INFO) << "Done.";
 }

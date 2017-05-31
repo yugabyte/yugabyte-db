@@ -7,12 +7,13 @@ import java.util.Vector;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.PreparedStatement;
+import com.datastax.driver.core.exceptions.NoHostAvailableException;
 
 import org.junit.BeforeClass;
 import org.junit.Test;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertEquals;
-
+import static org.junit.Assert.fail;
 
 public class TestPrepareExecute extends BaseCQLTest {
 
@@ -94,6 +95,30 @@ public class TestPrepareExecute extends BaseCQLTest {
         assertEquals(i + 1, row.getInt("v1"));
         assertEquals("c", row.getString("v2"));
       }
+    }
+
+    LOG.info("End test");
+  }
+
+  @Test
+  public void testExecuteAfterTableDrop() throws Exception {
+    LOG.info("Begin test");
+
+    // Setup table.
+    setupTable("test_prepare", 1 /* num_rows */);
+
+    // Prepare statement.
+    PreparedStatement stmt = session.prepare("select * from test_prepare;");
+
+    // Drop the table.
+    session.execute("drop table test_prepare;");
+
+    // Execute the prepared statement. Expect failure because of the table drop.
+    try {
+      ResultSet rs = session.execute(stmt.bind());
+      fail("Prepared statement did not fail to execute after table is dropped");
+    } catch (NoHostAvailableException e) {
+      LOG.info("Expected exception caught: " + e.getMessage());
     }
 
     LOG.info("End test");

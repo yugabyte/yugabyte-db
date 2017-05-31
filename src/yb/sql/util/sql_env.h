@@ -48,9 +48,10 @@ class SqlEnv {
       std::shared_ptr<client::YBqlReadOp> yb_op, Callback<void(const Status&)> callback);
 
 
-  virtual std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name,
-                                                        bool refresh_cache,
-                                                        bool *cache_used);
+  virtual std::shared_ptr<client::YBTable> GetTableDesc(
+      const client::YBTableName& table_name, bool *cache_used);
+
+  virtual void RemoveCachedTableDesc(const client::YBTableName& table_name);
 
   // Keyspace related methods.
 

@@ -72,6 +72,7 @@ const unordered_map<int64_t, const char*> kYbSqlErrorMessage {
   { static_cast<int64_t>(ErrorCode::KEYSPACE_ALREADY_EXISTS), "Keyspace Already Exists" },
   { static_cast<int64_t>(ErrorCode::KEYSPACE_NOT_FOUND), "Keyspace Not Found" },
   { static_cast<int64_t>(ErrorCode::TABLET_NOT_FOUND), "Tablet Not Found" },
+  { static_cast<int64_t>(ErrorCode::STALE_PREPARED_STATEMENT), "Stale Prepared Statement" },
 
   //------------------------------------------------------------------------------------------------
   { static_cast<int64_t>(ErrorCode::SUCCESS), "Success" },

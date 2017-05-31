@@ -52,5 +52,15 @@ CHECKED_STATUS ParseTree::Analyze(SemContext *sem_context) {
   return root_->Analyze(sem_context);
 }
 
+void ParseTree::AddAnalyzedTable(const client::YBTableName& table_name) {
+  analyzed_tables_.insert(table_name);
+}
+
+void ParseTree::ClearAnalyzedTableCache(SqlEnv* sql_env) const {
+  for (const auto& table_name : analyzed_tables_) {
+    sql_env->RemoveCachedTableDesc(table_name);
+  }
+}
+
 }  // namespace sql
 }  // namespace yb

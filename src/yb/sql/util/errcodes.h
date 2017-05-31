@@ -73,6 +73,7 @@ enum class ErrorCode : int64_t {
   KEYSPACE_ALREADY_EXISTS = -307,
   KEYSPACE_NOT_FOUND = -308,
   TABLET_NOT_FOUND = -309,
+  STALE_PREPARED_STATEMENT = -310,
 
   //------------------------------------------------------------------------------------------------
   // All error codes < SUCCESS

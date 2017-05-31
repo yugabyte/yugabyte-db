@@ -59,6 +59,16 @@ using client::YBClient;
 using client::YBSession;
 using client::YBTableCache;
 
+// Runs the StatementExecutedCallback cb and returns if the status s is not OK.
+#define CB_RETURN_NOT_OK(cb, s)    \
+  do {                             \
+    ::yb::Status _s = (s);         \
+    if (PREDICT_FALSE(!_s.ok())) { \
+      (cb).Run(_s, nullptr);       \
+      return;                      \
+    }                              \
+  } while (0)
+
 SqlMetrics::SqlMetrics(const scoped_refptr<yb::MetricEntity> &metric_entity) {
   time_to_parse_sql_query_ =
       METRIC_handler_latency_yb_cqlserver_SQLProcessor_ParseRequest.Instantiate(metric_entity);
@@ -115,38 +125,34 @@ CHECKED_STATUS SqlProcessor::Parse(const string& sql_stmt,
   return Status::OK();
 }
 
-CHECKED_STATUS SqlProcessor::Analyze(const string& sql_stmt,
-                                     ParseTree::UniPtr* parse_tree,
-                                     bool refresh_cache) {
-  Status s = Status::OK();
-
+CHECKED_STATUS SqlProcessor::Analyze(
+    const string& sql_stmt, ParseTree::UniPtr* parse_tree, bool* reparse) {
   // Semantic analysis - traverse, error-check, and decorate the parse tree nodes with datatypes.
-  // In case of error and re-analysis with new table descriptor is needed, retry at most once.
-  for (int i = 0; i < 2; i++) {
-    const MonoTime begin_time = MonoTime::Now(MonoTime::FINE);
-    s = analyzer_->Analyze(sql_stmt, move(*parse_tree), sql_env_.get(), refresh_cache);
-    const MonoTime end_time = MonoTime::Now(MonoTime::FINE);
-    if (sql_metrics_ != nullptr) {
-      const MonoDelta elapsed_time = end_time.GetDeltaSince(begin_time);
-      sql_metrics_->time_to_analyze_sql_query_->Increment(elapsed_time.ToMicroseconds());
-      sql_metrics_->num_rounds_to_analyze_sql_->Increment(1);
-    }
+  const MonoTime begin_time = MonoTime::Now(MonoTime::FINE);
+  const Status s = analyzer_->Analyze(sql_stmt, move(*parse_tree), sql_env_.get());
+  const MonoTime end_time = MonoTime::Now(MonoTime::FINE);
+  if (sql_metrics_ != nullptr) {
+    const MonoDelta elapsed_time = end_time.GetDeltaSince(begin_time);
+    sql_metrics_->time_to_analyze_sql_query_->Increment(elapsed_time.ToMicroseconds());
+    sql_metrics_->num_rounds_to_analyze_sql_->Increment(1);
+  }
 
-    const ErrorCode sem_errcode = analyzer_->error_code();
-    const bool cache_used = analyzer_->cache_used();
-    *parse_tree = analyzer_->Done();
-    CHECK(parse_tree->get() != nullptr) << "Parse tree is null";
+  const ErrorCode sem_errcode = analyzer_->error_code();
+  const bool cache_used = analyzer_->cache_used();
+  *parse_tree = analyzer_->Done();
+  CHECK(parse_tree->get() != nullptr) << "Parse tree is null";
 
-    // If no error occurs or the table is not found or no cache is used, no need to retry.
-    if (sem_errcode == ErrorCode::SUCCESS ||
-        sem_errcode == ErrorCode::TABLE_NOT_FOUND ||
-        !cache_used) {
-      break;
-    }
-
-    // Otherwise, the error can be due to the cached table descriptor being stale. In that case,
-    // reload the table descriptor and analyze the statement again.
-    refresh_cache = true;
+  // When "reparse" out-parameter is provided, the statement has not been reparsed. When a statement
+  // is parsed for the first time, semantic analysis may fail because stale table metadata cache was
+  // used. If that happens, clear the cache and tell the caller to reparse. The only exception is
+  // when the table is not found in which case no cache is used.
+  if (reparse != nullptr &&
+      sem_errcode != ErrorCode::SUCCESS &&
+      sem_errcode != ErrorCode::TABLE_NOT_FOUND &&
+      cache_used) {
+    (*parse_tree)->ClearAnalyzedTableCache(sql_env_.get());
+    *reparse = true;
+    return Status::OK();
   }
 
   return s;
@@ -155,52 +161,104 @@ CHECKED_STATUS SqlProcessor::Analyze(const string& sql_stmt,
 void SqlProcessor::ExecuteAsync(const string& sql_stmt,
                                 const ParseTree& parse_tree,
                                 const StatementParameters& params,
-                                Callback<void(bool new_analysis_needed, const Status &s,
-                                              ExecutedResult::SharedPtr result)> cb) {
+                                StatementExecutedCallback cb,
+                                const bool reparsed) {
   sql_env_->Reset();
   // Code execution.
   const MonoTime begin_time = MonoTime::Now(MonoTime::FINE);
   executor_->ExecuteAsync(sql_stmt, parse_tree, params, sql_env_.get(),
-                          Bind(&SqlProcessor::ProcessExecuteResponse, Unretained(this),
-                               begin_time, cb));
+                          Bind(&SqlProcessor::ExecuteAsyncDone, Unretained(this), begin_time,
+                               &parse_tree, cb, reparsed));
 }
 
-void SqlProcessor::ProcessExecuteResponse(const MonoTime &begin_time,
-                                          Callback<void(bool, const Status &s,
-                                                        ExecutedResult::SharedPtr result)> cb,
-                                          const Status &s,
-                                          ExecutedResult::SharedPtr result) {
+void SqlProcessor::ExecuteAsyncDone(const MonoTime &begin_time,
+                                    const ParseTree *parse_tree,
+                                    StatementExecutedCallback cb,
+                                    const bool reparsed,
+                                    const Status &s,
+                                    ExecutedResult::SharedPtr result) {
   const MonoTime end_time = MonoTime::Now(MonoTime::FINE);
   if (sql_metrics_ != nullptr) {
     const MonoDelta elapsed_time = end_time.GetDeltaSince(begin_time);
     sql_metrics_->time_to_execute_sql_query_->Increment(elapsed_time.ToMicroseconds());
   }
-  // If the failure occurs because of stale metadata cache, the parse tree needs to be re-analyzed
-  // with new metadata. Symptoms of stale metadata can be TABLET_NOT_FOUND when the tserver fails
-  // to execute the YBSqlOp because the tablet is not found (ENG-945), or WRONG_METADATA_VERSION
-  // when the schema version the tablet holds is different from the one used by the semantic
-  // analyzer.
-  bool new_analysis_needed =
-      (executor_->error_code() == ErrorCode::TABLET_NOT_FOUND ||
-       executor_->error_code() == ErrorCode::WRONG_METADATA_VERSION);
+  const ErrorCode exec_errcode = executor_->error_code();
   executor_->Done();
-  cb.Run(new_analysis_needed, s, result);
+
+  if (!reparsed) {
+    // If execution fails because the statement was analyzed with stale metadata cache, the
+    // statement needs to be reparsed and re-analyzed. Symptoms of stale metadata are as listed
+    // below. Expand the list in future as new cases arise.
+    switch (exec_errcode) {
+
+      // TABLET_NOT_FOUND when the tserver fails to execute the YBSqlOp because the tablet is not
+      // found (ENG-945).
+      case ErrorCode::TABLET_NOT_FOUND: FALLTHROUGH_INTENDED;
+      // WRONG_METADATA_VERSION when the schema version the tablet holds is different from the one
+      // used by the semantic analyzer.
+      case ErrorCode::WRONG_METADATA_VERSION: FALLTHROUGH_INTENDED;
+      // INVALID_ARGUMENTS when the column datatype is inconsistent with the supplied value in an
+      // INSERT or UPDATE statement.
+      case ErrorCode::INVALID_ARGUMENTS: {
+
+        // Clear the metadata cache before invoking callback so that the statement can be reprepared
+        // with new metadata.
+        parse_tree->ClearAnalyzedTableCache(sql_env_.get());
+
+        cb.Run(STATUS(SqlError, ErrorText(ErrorCode::STALE_PREPARED_STATEMENT), Slice(),
+                      static_cast<int64_t>(ErrorCode::STALE_PREPARED_STATEMENT)), result);
+        return;
+      }
+
+      default:
+        break;
+    }
+  }
+
+  cb.Run(s, result);
 }
 
-// RunAsync callback added to keep the Statement object (first parameter) in-scope while it is
-// being run asynchronously. WHen called, just forward the status and result to the actual
-// callback cb.
-void RunAsyncDone(
-    shared_ptr<Statement> stmt, StatementExecutedCallback cb, const Status& s,
+// ReRunAsync callback added to keep the parse tree in-scope while it is being run asynchronously.
+// When called, just forward the status and result to the actual callback cb.
+void ReRunAsyncDone(
+    ParseTree *parse_tree, StatementExecutedCallback cb, const Status& s,
     ExecutedResult::SharedPtr result) {
+  cb.Run(s, result);
+}
+
+// RunAsync callback added to keep the parse tree in-scope while it is being run asynchronously.
+// When called, just forward the status and result to the actual callback cb.
+void SqlProcessor::RunAsyncDone(
+    const string& sql_stmt, const StatementParameters* params, ParseTree *parse_tree,
+    StatementExecutedCallback cb, const Status& s, ExecutedResult::SharedPtr result) {
+  if (s.IsSqlError() && GetErrorCode(s) == ErrorCode::STALE_PREPARED_STATEMENT) {
+    ParseTree::UniPtr new_parse_tree;
+    bool reparse = false;
+    CB_RETURN_NOT_OK(cb, Parse(sql_stmt, &new_parse_tree, nullptr /* mem_tracker */));
+    CB_RETURN_NOT_OK(cb, Analyze(sql_stmt, &new_parse_tree, &reparse));
+    const ParseTree* ptree = new_parse_tree.get();  // copy the pointer before releasing below.
+    ExecuteAsync(sql_stmt, *ptree, *params,
+                 Bind(&ReRunAsyncDone, Owned(new_parse_tree.release()), cb), true /* reparsed */);
+    return;
+  }
   cb.Run(s, result);
 }
 
 void SqlProcessor::RunAsync(
     const string& sql_stmt, const StatementParameters& params, StatementExecutedCallback cb) {
   sql_env_->Reset();
-  shared_ptr<Statement> stmt = std::make_shared<Statement>(sql_env_->CurrentKeyspace(), sql_stmt);
-  stmt->RunAsync(this, params, Bind(&RunAsyncDone, stmt, cb));
+  ParseTree::UniPtr parse_tree;
+  bool reparse = false;
+  CB_RETURN_NOT_OK(cb, Parse(sql_stmt, &parse_tree, nullptr /* mem_tracker */));
+  CB_RETURN_NOT_OK(cb, Analyze(sql_stmt, &parse_tree, &reparse));
+  if (reparse) {
+    CB_RETURN_NOT_OK(cb, Parse(sql_stmt, &parse_tree, nullptr /* mem_tracker */));
+    CB_RETURN_NOT_OK(cb, Analyze(sql_stmt, &parse_tree));
+  }
+  const ParseTree* ptree = parse_tree.get();  // copy the pointer before releasing below.
+  ExecuteAsync(sql_stmt, *ptree, params,
+               Bind(&SqlProcessor::RunAsyncDone, Unretained(this), sql_stmt, &params,
+                    Owned(parse_tree.release()), cb));
 }
 
 void SqlProcessor::SetCurrentCall(rpc::InboundCallPtr call) {
