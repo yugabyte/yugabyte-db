@@ -4,6 +4,7 @@ import { connect } from 'react-redux';
 import { reduxForm } from 'redux-form';
 import {OnPremProviderAndAccessKey} from '../../../config';
 import {setOnPremConfigData} from '../../../../actions/cloud';
+import {isDefinedNotNull} from 'utils/ObjectUtils';
 
 const mapDispatchToProps = (dispatch, ownProps) => {
   return {
@@ -21,8 +22,23 @@ const mapStateToProps = (state) => {
   };
 }
 
+const validate = values => {
+  const errors = {};
+  if (!isDefinedNotNull(values.name)) {
+    errors.name = 'Provider Name is Required';
+  }
+  if (!isDefinedNotNull(values.keyCode)) {
+    errors.keyCode = 'Key Code is Required';
+  }
+  if (!isDefinedNotNull(values.privateKeyContent)) {
+    errors.privateKeyContent = 'Private Key Content is Required';
+  }
+  return errors;
+};
+
 var onPremProviderConfigForm = reduxForm({
-  form: 'onPremProviderConfigForm',
+  form: 'onPremConfigForm',
+  validate,
   destroyOnUnmount: false
 });
 

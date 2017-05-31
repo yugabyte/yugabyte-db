@@ -26,18 +26,19 @@ class OnPremListMachineTypes extends Component {
   render() {
     const {fields} = this.props;
     var self = this;
-    var volumeTypeOptions = [
-      <option key={1} value="">Select</option>,
-      <option key={2} value="EBS">EBS</option>,
-      <option key={3} value="SSD">SSD</option>
-    ]
+    var removeRowButton = function(fieldIdx) {
+      if (fieldIdx >= 1) {
+        return <i className="fa fa-minus-circle on-prem-row-delete-btn" onClick={self.removeMachineTypeRow.bind(self, fieldIdx)}/>;
+      }
+      return <span/>;
+    }
     return (
       <div>
         { fields.map(function(fieldItem, fieldIdx){
           return (
             <Row key={`fieldMap${fieldIdx}`}>
               <Col lg={1}>
-                <i className="fa fa-minus-circle on-prem-row-delete-btn" onClick={self.removeMachineTypeRow.bind(self, fieldIdx)}/>
+                {removeRowButton(fieldIdx)}
               </Col>
               <Col lg={3}>
                 <Field name={`${fieldItem}.code`} component={YBInputField}/>
@@ -50,9 +51,6 @@ class OnPremListMachineTypes extends Component {
               </Col>
               <Col lg={1}>
                 <Field name={`${fieldItem}.volumeSizeGB`} component={YBInputField}/>
-              </Col>
-              <Col lg={1}>
-                <Field name={`${fieldItem}.volumeType`} component={YBSelect} options={volumeTypeOptions}/>
               </Col>
               <Col lg={4}>
                 <Field name={`${fieldItem}.mountPath`} component={YBInputField}/>
@@ -104,9 +102,6 @@ export default class OnPremMachineTypes extends Component {
               </Col>
               <Col lg={1}>
                 Vol Size GB
-              </Col>
-              <Col lg={1}>
-                Volume Type
               </Col>
               <Col lg={4}>
                 Mount Paths <span className="row-head-subscript">Comma Separated</span>

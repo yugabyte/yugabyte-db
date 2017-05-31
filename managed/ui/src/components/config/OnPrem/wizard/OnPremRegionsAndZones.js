@@ -80,6 +80,7 @@ export default class OnPremRegionsAndZones extends Component {
   render() {
     const {handleSubmit, switchToJsonEntry} = this.props;
     return (
+
       <div className="on-prem-provider-form-container">
         <form name="onPremRegionsAndZonesForm" onSubmit={handleSubmit(this.createOnPremRegionsAndZones)}>
           <div className="on-prem-form-text">
@@ -97,7 +98,7 @@ export default class OnPremRegionsAndZones extends Component {
                 Zone Names <span className="row-head-subscript">Comma Separated</span>
               </Col>
             </Row>
-            <div className="on-prem-form-grid-container">
+              <div className="on-prem-form-grid-container">
               <FieldArray name="regionsZonesList" component={OnPremListRegionsAndZones}/>
             </div>
           </div>

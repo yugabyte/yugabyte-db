@@ -14,12 +14,6 @@ class InstanceTypeForRegion extends Component {
   addRow() {
     this.props.fields.push({});
   }
-  componentWillMount() {
-    const {fields} = this.props;
-    if (fields.length === 0) {
-      this.props.fields.push({});
-    }
-  }
   removeRow(instanceTypeIdx) {
     this.props.fields.remove(instanceTypeIdx);
   }
@@ -103,7 +97,7 @@ export default class OnPremInstances extends Component {
       zoneOptions.unshift(<option key={-1} value={""}>Select</option>);
       machineTypeOptions.unshift(<option key={-1} value={""}>Select</option>);
       return (
-        <div>
+        <div key={`instance${idx}`}>
           <div className="instance-region-type">{regionItem.code}</div>
           <div className="form-field-grid">
             <FieldArray name={`instances.${regionItem.code}`} component={InstanceTypeForRegion}

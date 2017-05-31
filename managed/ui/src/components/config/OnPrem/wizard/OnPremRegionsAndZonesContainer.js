@@ -5,6 +5,7 @@ import { reduxForm } from 'redux-form';
 import {OnPremRegionsAndZones} from '../../../config';
 import {setOnPremConfigData} from '../../../../actions/cloud';
 import _ from 'lodash';
+import {isDefinedNotNull, isNonEmptyArray} from 'utils/ObjectUtils';
 
 const mapDispatchToProps = (dispatch, ownProps) => {
   return {
@@ -34,8 +35,27 @@ const mapStateToProps = (state) => {
   };
 }
 
+const validate = values => {
+  const errors = {regionsZonesList: []};
+  if (values.regionsZonesList && isNonEmptyArray(values.regionsZonesList)) {
+    values.regionsZonesList.forEach(function(regionZoneItem, rowIdx){
+      if (!isDefinedNotNull(regionZoneItem.code)) {
+        errors.regionsZonesList[rowIdx] = {'code': 'Required'};
+      }
+      if (!isDefinedNotNull(regionZoneItem.location)) {
+        errors.regionsZonesList[rowIdx] = {'location': 'Required'};
+      }
+      if (!isDefinedNotNull(regionZoneItem.zones)) {
+        errors.regionsZonesList[rowIdx] = {'zones': 'Required'};
+      }
+    });
+  }
+  return errors;
+};
+
 var onPremRegionsAndZonesForm = reduxForm({
-  form: 'onPremRegionsAndZonesForm',
+  form: 'onPremConfigForm',
+  validate,
   destroyOnUnmount: false
 });
 

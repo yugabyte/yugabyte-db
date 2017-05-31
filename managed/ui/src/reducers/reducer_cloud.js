@@ -32,7 +32,7 @@ const INITIAL_STATE = {
   },
   selectedProvider: null,
   error: null,
-  accessKeys: {},
+  accessKeys: [],
   bootstrap: getInitialState({}),
   dockerBootstrap: {},
   status : 'init',
