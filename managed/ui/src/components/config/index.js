@@ -24,3 +24,5 @@ export { default as OnPremProviderAndAccessKeyContainer} from './OnPrem/wizard/O
 export { default as OnPremMachineTypesContainer } from './OnPrem/wizard/OnPremMachineTypesContainer';
 export { default as OnPremRegionsAndZonesContainer } from './OnPrem/wizard/OnPremRegionsAndZonesContainer';
 export { default as OnPremInstancesContainer} from './OnPrem/wizard/OnPremInstancesContainer';
+export { default as OnPremSuccess} from './OnPrem/OnPremSuccess';
+export { default as OnPremSuccessContainer } from './OnPrem/OnPremSuccessContainer';

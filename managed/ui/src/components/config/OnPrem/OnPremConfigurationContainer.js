@@ -6,12 +6,16 @@ import { OnPremConfiguration } from '../../config';
 import { createProvider, createProviderResponse, createInstanceType, createInstanceTypeResponse,
   createRegion, createRegionResponse, createZone, createZoneResponse, createNodeInstance,
   createNodeInstanceResponse, createAccessKey, createAccessKeyResponse, resetProviderBootstrap,
-  fetchCloudMetadata } from '../../../actions/cloud';
+  fetchCloudMetadata, getProviderList, getProviderListResponse } from '../../../actions/cloud';
 import { isNonEmptyArray } from 'utils/ObjectUtils';
+import {reset} from 'redux-form';
 
 const mapStateToProps = (state) => {
   return {
-    cloud: state.cloud, // the state populated by "reducer_cloud.js"
+    cloud: state.cloud,
+    configuredProviders: state.cloud.providers,
+    configuredRegions: state.cloud.supportedRegionList,
+    accessKeys: state.cloud.accessKeys,
     cloudBootstrap: state.cloud.bootstrap,
     onPremJsonFormData: state.cloud.onPremJsonFormData
   };
@@ -88,7 +92,16 @@ const mapDispatchToProps = (dispatch) => {
           }
         })
       }
-    }
+    },
+    resetConfigForm: () => {
+      dispatch(reset("onPremConfigForm"));
+    },
+    fetchProviderList: () => {
+      dispatch(getProviderList()).then((response) => {
+        dispatch(getProviderListResponse(response.payload));
+      })
+    },
+
   }
 };
 

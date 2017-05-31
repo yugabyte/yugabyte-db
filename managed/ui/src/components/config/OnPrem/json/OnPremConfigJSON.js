@@ -8,6 +8,7 @@ import AceEditor from 'react-ace';
 import 'brace/theme/github';
 import {YBPanelItem} from '../../../panels'
 import { YBButton } from '../../../common/forms/fields';
+import {isDefinedNotNull} from 'utils/ObjectUtils';
 import sampleDataCenterConfig from '../../templates/SampleDataCenterConfig.json';
 
 class ConfigFormTitle extends Component {
@@ -34,7 +35,7 @@ export default class OnPremConfigJSON extends Component {
   }
 
   componentWillUnmount() {
-    if (this.props.configJsonVal.length > 0) {
+    if (isDefinedNotNull(this.props.configJsonVal)) {
       this.props.setOnPremJsonData(JSON.parse(this.props.configJsonVal));
     }
   }

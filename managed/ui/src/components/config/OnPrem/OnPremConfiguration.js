@@ -3,13 +3,14 @@
 import React, { Component } from 'react';
 import { Alert } from 'react-bootstrap';
 import _ from 'lodash';
-import { isValidObject } from 'utils/ObjectUtils';
-import { OnPremConfigWizardContainer, OnPremConfigJSONContainer } from '../../config';
+import { isValidObject, isDefinedNotNull } from 'utils/ObjectUtils';
+import { OnPremConfigWizardContainer, OnPremConfigJSONContainer, OnPremSuccessContainer } from '../../config';
 import { YBButton } from '../../common/forms/fields';
 import emptyDataCenterConfig from '../templates/EmptyDataCenterConfig.json';
 import './OnPremConfiguration.scss';
-
 const PROVIDER_TYPE = "onprem";
+import {getPromiseState} from 'utils/PromiseUtils';
+import {YBLoadingIcon} from '../../common/indicators';
 
 export default class OnPremConfiguration extends Component {
 
@@ -43,8 +44,15 @@ export default class OnPremConfiguration extends Component {
     this.submitWizardJson = this.submitWizardJson.bind(this);
   }
 
+  componentWillMount() {
+    this.props.resetConfigForm();
+  }
+
   componentWillReceiveProps(nextProps) {
     const { cloudBootstrap: {data: { response, type }, error, promiseState}} = nextProps;
+    if (response !== null && type === "provider" &&  this.props.cloudBootstrap.data.response === null) {
+      // Change Bootstrap logic
+    }
     let bootstrapSteps = this.state.bootstrapSteps;
     let currentStepIndex = bootstrapSteps.findIndex( (step) => step.type === type );
     if (currentStepIndex !== -1) {
@@ -155,24 +163,28 @@ export default class OnPremConfiguration extends Component {
   }
 
   render() {
-    const { cloudBootstrap } = this.props;
+    const { configuredProviders } = this.props;
+    if (getPromiseState(configuredProviders).isInit() || getPromiseState(configuredProviders).isError()) {
+      return <span/>;
+    }
+    else if (getPromiseState(configuredProviders).isLoading()) {
+      return <YBLoadingIcon/>;
+    } else if (getPromiseState(configuredProviders).isSuccess()) {
+      var providerFound = configuredProviders.data.find(provider => provider.code === 'onprem');
+      if (isDefinedNotNull(providerFound)) {
+        return <OnPremSuccessContainer/>;
+      }
+    }
     var switchToJsonEntry = <YBButton btnText={"Switch to JSON View"} btnClass={"btn btn-default pull-left"} onClick={this.toggleJsonEntry}/>;
     var switchToWizardEntry = <YBButton btnText={"Switch to Wizard View"} btnClass={"btn btn-default pull-left"} onClick={this.toggleJsonEntry}/>;
     let ConfigurationDataForm = <OnPremConfigWizardContainer switchToJsonEntry={switchToJsonEntry} submitWizardJson={this.submitWizardJson}/>;
     if (this.state.isJsonEntry) {
       ConfigurationDataForm = <OnPremConfigJSONContainer updateConfigJsonVal={this.updateConfigJsonVal}
-                                                         configJsonVal={this.state.configJsonVal} switchToWizardEntry={switchToWizardEntry} submitJson={this.submitJson}/>
+                                                         configJsonVal={_.isString(this.state.configJsonVal) ? this.state.configJsonVal : JSON.stringify(JSON.parse(JSON.stringify(this.state.configJsonVal)), null, 2)}
+                                                         switchToWizardEntry={switchToWizardEntry} submitJson={this.submitJson}/>
     }
-    let message = "";
-    if (this.state.succeeded) {
-      message = <Alert bsStyle="success">Create On Premise Provider Succeeded</Alert>
-    } else if (cloudBootstrap && cloudBootstrap.error) {
-      message = <Alert bsStyle="danger">Create On Premise Provider Failed</Alert>
-    }
-
     return (
       <div className="on-prem-provider-container">
-        {message}
         {ConfigurationDataForm}
       </div>
     )
