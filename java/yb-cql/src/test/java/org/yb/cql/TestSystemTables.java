@@ -22,7 +22,11 @@ import static org.junit.Assert.assertNotNull;
 
 public class TestSystemTables extends BaseCQLTest {
 
-  private void verifyPeersTable(List<Row> rows) throws Exception {
+  private static final String DEFAULT_SCHEMA_VERSION = "00000000-0000-0000-0000-000000000000";
+  private static final String MURMUR_PARTITIONER = "org.apache.cassandra.dht.Murmur3Partitioner";
+  private static final String RELEASE_VERSION = "3.9-SNAPSHOT";
+
+  private void verifyPeersTable(List<Row> rows, boolean addressesOnly) throws Exception {
     List<InetSocketAddress> contactPoints = miniCluster.getCQLContactPoints();
     // One of the contact points will be missing, since that is the node we connected to.
     assertEquals(contactPoints.size() - 1, rows.size());
@@ -34,9 +38,12 @@ public class TestSystemTables extends BaseCQLTest {
           found = true;
         }
       }
-      assertNotNull(row.getUUID("host_id"));
-      assertNotNull(row.getString("data_center"));
-      assertNotNull(row.getString("rack"));
+
+      if (!addressesOnly) {
+        assertNotNull(row.getUUID("host_id"));
+        assertNotNull(row.getString("data_center"));
+        assertNotNull(row.getString("rack"));
+      }
       assertTrue(found);
     }
   }
@@ -61,10 +68,16 @@ public class TestSystemTables extends BaseCQLTest {
 
     ResultSet rs = session.execute("SELECT * FROM system.peers;");
     List <Row> rows = rs.all();
-    verifyPeersTable(rows);
+    verifyPeersTable(rows, false);
 
     rs = session.execute("SELECT * FROM system.peers WHERE peer = '181.123.12.1'");
     assertEquals(0, rs.all().size());
+
+    rows = session.execute("SELECT peer, rpc_address, schema_version FROM system.peers").all();
+    verifyPeersTable(rows, true);
+    for (Row row : rows) {
+      assertEquals(UUID.fromString(DEFAULT_SCHEMA_VERSION), row.getUUID("schema_version"));
+    }
 
     // Now kill a tablet server and verify peers table has one less entry.
     miniCluster.killTabletServerOnHostPort(
@@ -117,12 +130,15 @@ public class TestSystemTables extends BaseCQLTest {
     assertTrue(found);
   }
 
+  private Row getSingleRow(String stmt) {
+    List <Row> results = session.execute(stmt).all();
+    assertEquals(1, results.size());
+    return results.get(0);
+  }
+
   @Test
   public void testSystemLocalTables() throws Exception {
-    List <Row> results = session.execute(
-      "SELECT * FROM system.local;").all();
-    assertEquals(1, results.size());
-    Row row = results.get(0);
+    Row row = getSingleRow("SELECT * FROM system.local WHERE key = 'local';");
     assertEquals("local", row.getString("key"));
     assertEquals("COMPLETED", row.getString("bootstrapped"));
     checkContactPoints("broadcast_address", row);
@@ -132,20 +148,19 @@ public class TestSystemTables extends BaseCQLTest {
     assertEquals(0, row.getInt("gossip_generation"));
     checkContactPoints("listen_address", row);
     assertEquals("4", row.getString("native_protocol_version"));
-    assertEquals("org.apache.cassandra.dht.Murmur3Partitioner", row.getString("partitioner"));
+    assertEquals(MURMUR_PARTITIONER, row.getString("partitioner"));
     assertEquals("rack", row.getString("rack"));
-    assertEquals("3.9-SNAPSHOT", row.getString("release_version"));
+    assertEquals(RELEASE_VERSION, row.getString("release_version"));
+    assertEquals(UUID.fromString(DEFAULT_SCHEMA_VERSION), row.getUUID("schema_version"));
     checkContactPoints("rpc_address", row);
     assertEquals("20.1.0", row.getString("thrift_version"));
     // no expectations on exact token values, but column must be set
     assertFalse(row.isNull("tokens"));
 
     // Verify where clauses and projections work.
-    results = session.execute("SELECT tokens, partitioner, key FROM system.local;").all();
-    assertEquals(1, results.size());
-    row = results.get(0);
+    row = getSingleRow("SELECT tokens, partitioner, key FROM system.local;");
     assertEquals("local", row.getString("key"));
-    assertEquals("org.apache.cassandra.dht.Murmur3Partitioner", row.getString("partitioner"));
+    assertEquals(MURMUR_PARTITIONER, row.getString("partitioner"));
     // no expectations on exact token values, but column must be set
     assertFalse(row.isNull("tokens"));
     assertFalse(row.getColumnDefinitions().contains("cluster_name"));
@@ -164,13 +179,20 @@ public class TestSystemTables extends BaseCQLTest {
     assertFalse(row.getColumnDefinitions().contains("thrift_version"));
     assertFalse(row.getColumnDefinitions().contains("truncated_at"));
 
-    results = session.execute("SELECT * FROM system.local WHERE key = 'randomkey';").all();
+    List <Row> results = session.execute(
+      "SELECT * FROM system.local WHERE key = 'randomkey';").all();
     assertEquals(0, results.size());
 
-    results = session.execute("SELECT partitioner FROM system.local WHERE key = 'local';").all();
-    assertEquals(1, results.size());
-    row = results.get(0);
-    assertEquals("org.apache.cassandra.dht.Murmur3Partitioner", row.getString("partitioner"));
+    row = getSingleRow("SELECT partitioner FROM system.local WHERE key = 'local';");
+    assertEquals(MURMUR_PARTITIONER, row.getString("partitioner"));
+
+    row = getSingleRow("SELECT schema_version FROM system.local WHERE key='local'");
+    assertEquals(UUID.fromString(DEFAULT_SCHEMA_VERSION), row.getUUID("schema_version"));
+
+    // Where clause is intentionally missing here, since the system.local table should contain
+    // only one row.
+    row = getSingleRow("SELECT release_version FROM system.local");
+    assertEquals(RELEASE_VERSION, row.getString("release_version"));
   }
 
   @Test
@@ -299,6 +321,10 @@ public class TestSystemTables extends BaseCQLTest {
       "none");
     verifyColumnSchema(results.get(7), "many_columns", "c8", "regular", -1, "list<text>", "none");
     verifyColumnSchema(results.get(8), "many_columns", "c9", "regular", -1, "set<int>", "none");
+
+    // Verify SELECT * works.
+    results = session.execute("SELECT * FROM system_schema.columns").all();
+    assertTrue(results.size() > 9);
   }
 
   @Test
