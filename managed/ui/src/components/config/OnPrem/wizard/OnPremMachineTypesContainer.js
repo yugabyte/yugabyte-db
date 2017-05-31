@@ -5,6 +5,7 @@ import { reduxForm } from 'redux-form';
 import {OnPremMachineTypes} from '../../../config';
 import {setOnPremConfigData} from '../../../../actions/cloud';
 import _ from 'lodash';
+import {isNonEmptyArray, isEmptyArray, isDefinedNotNull} from 'utils/ObjectUtils';
 
 const mapDispatchToProps = (dispatch, ownProps) => {
   return {
@@ -15,7 +16,7 @@ const mapDispatchToProps = (dispatch, ownProps) => {
           numCores: item.numCores, memSizeGB: item.memSizeGB,
           volumeDetailsList: item.mountPath.split(",").map(function(mountPathItem, mpIdx){
             return {volumeSizeGB: item.volumeSizeGB, volumeType: item.volumeType, mountPath: mountPathItem}
-          })}
+          }), volumeType: 'SSD'}
       });
       payloadObject.instanceTypes = instanceTypesList;
       dispatch(setOnPremConfigData(payloadObject));
@@ -30,8 +31,35 @@ const mapStateToProps = (state) => {
   };
 }
 
+
+const validate = values => {
+  const errors = {machineTypeList: []};
+  if (values.machineTypeList && isNonEmptyArray(values.machineTypeList)) {
+    values.machineTypeList.forEach(function(machineTypeItem, rowIdx){
+      if (!isDefinedNotNull(machineTypeItem.code)) {
+        errors.machineTypeList[rowIdx] =  {code: 'Required'}
+      }
+      if (!isDefinedNotNull(machineTypeItem.numCores)) {
+        errors.machineTypeList[rowIdx] =  {numCores: 'Required'}
+      }
+      if (!isDefinedNotNull(machineTypeItem.memSizeGB)) {
+        errors.machineTypeList[rowIdx] =  {memSizeGB: 'Required'}
+      }
+      if (!isDefinedNotNull(machineTypeItem.volumeSizeGB)) {
+        errors.machineTypeList[rowIdx] =  {volumeSizeGB: 'Required'}
+      }
+
+      if (!isDefinedNotNull(machineTypeItem.mountPath)) {
+        errors.machineTypeList[rowIdx] =  {mountPath: 'Required'}
+      }
+    });
+  }
+  return errors;
+};
+
 var onPremMachineTypesConfigForm = reduxForm({
-  form: 'onPremMachineTypesConfigForm',
+  form: 'onPremConfigForm',
+  validate,
   destroyOnUnmount: false
 });
 
