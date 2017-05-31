@@ -183,8 +183,7 @@ export function createProviderResponse(result) {
   };
 }
 
-export function createRegion(providerUUID, regionCode, hostVPCId) {
-  const formValues = { "code": regionCode, "hostVPCId": hostVPCId, "name": regionCode };
+export function createRegion(providerUUID, formValues) {
   const url = getProviderEndpoint(providerUUID) + '/regions';
   const request = axios.post(url, formValues);
   return {

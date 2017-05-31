@@ -55,7 +55,8 @@ const mapDispatchToProps = (dispatch) => {
     createOnPremRegions: (providerUUID, config) => {
       if (isObject(config) && isNonEmptyArray(config.regions)) {
         config.regions.forEach((region) => {
-          dispatch(createRegion(providerUUID, region.code, "")).then((response) => {
+          let formValues = { "code": region.code, "hostVPCId": "", "name": region.code, "latitude": region.latitude, "longitude": region.longitude};
+          dispatch(createRegion(providerUUID, formValues)).then((response) => {
             dispatch(createRegionResponse(response.payload));
           })
         })
