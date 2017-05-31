@@ -537,6 +537,31 @@ TEST_F(RaftConsensusITest, MultiThreadedMutateAndInsertThroughConsensus) {
   ASSERT_ALL_REPLICAS_AGREE(FLAGS_client_inserts_per_thread * FLAGS_num_client_threads);
 }
 
+TEST_F(RaftConsensusITest, TestReadOnNonLeader) {
+  ASSERT_NO_FATALS(BuildAndStart(vector<string>()));
+
+  // Wait for the initial leader election to complete.
+  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_,
+                                  tablet_id_, 1));
+
+  // By default reads should be allowed only on the leader.
+  ReadRequestPB req;
+  ReadResponsePB resp;
+  RpcController rpc;
+  req.set_tablet_id(tablet_id_);
+
+  // Perform a read on one of the followers.
+  vector<TServerDetails*> followers;
+  GetOnlyLiveFollowerReplicas(tablet_id_, &followers);
+
+  for (const auto& follower : followers) {
+    rpc.Reset();
+    ASSERT_OK(follower->tserver_proxy->Read(req, &resp, &rpc));
+    ASSERT_TRUE(resp.has_error());
+    ASSERT_EQ(TabletServerErrorPB_Code_NOT_THE_LEADER, resp.error().code());
+  }
+}
+
 TEST_F(RaftConsensusITest, TestInsertOnNonLeader) {
   ASSERT_NO_FATALS(BuildAndStart(vector<string>()));
 

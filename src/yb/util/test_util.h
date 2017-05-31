@@ -25,6 +25,7 @@
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/util/env.h"
+#include "yb/util/monotime.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/port_picker.h"
 
@@ -136,6 +137,9 @@ void LogVectorDiff(const std::vector<T>& expected, const std::vector<T>& actual)
   }
 }
 
+// Waits for the given condition to be true or until the provided timeout has expired.
+Status WaitFor(std::function<bool()> lambda_condition, const MonoDelta& timeout,
+               const string& description);
 } // namespace yb
 
 #define TEST_F_EX(test_case_name, test_name, parent_class) \

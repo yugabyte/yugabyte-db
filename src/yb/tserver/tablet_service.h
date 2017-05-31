@@ -120,10 +120,16 @@ class TabletServiceImpl : public TabletServerServiceIf {
   CHECKED_STATUS CheckPeerIsLeaderAndReady(const tablet::TabletPeer& tablet_peer,
                                            TabletServerErrorPB::Code* error_code);
 
-  virtual bool GetLeaderTabletOrRespond(const ReadRequestPB* req,
-                                        ReadResponsePB* resp,
-                                        rpc::RpcContext* context,
-                                        std::shared_ptr<tablet::AbstractTablet>* tablet);
+  CHECKED_STATUS CheckPeerIsLeader(const tablet::TabletPeer& tablet_peer,
+                                   TabletServerErrorPB::Code* error_code);
+
+  CHECKED_STATUS CheckPeerIsReady(const tablet::TabletPeer& tablet_peer,
+                                  TabletServerErrorPB::Code* error_code);
+
+  virtual bool GetTabletOrRespond(const ReadRequestPB* req,
+                                  ReadResponsePB* resp,
+                                  rpc::RpcContext* context,
+                                  std::shared_ptr<tablet::AbstractTablet>* tablet);
 
   TabletServerIf *const server_;
 };

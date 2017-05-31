@@ -175,4 +175,19 @@ string GetTestDataDirectory() {
   return dir;
 }
 
+Status WaitFor(std::function<bool()> lambda_condition, const MonoDelta& timeout,
+               const string& description) {
+  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  deadline.AddDelta(timeout);
+  while (!lambda_condition()) {
+    MonoDelta remaining = deadline.GetDeltaSince(MonoTime::Now(MonoTime::FINE));
+    if (remaining.ToNanoseconds() <= 0) {
+      return STATUS(TimedOut, "Operation '$0' didn't complete within $1ms", description,
+                    timeout.ToMilliseconds());
+    }
+    SleepFor(MonoDelta::FromMilliseconds(1));
+  }
+  return Status::OK();
+}
+
 } // namespace yb

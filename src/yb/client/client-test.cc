@@ -47,7 +47,9 @@
 #include "yb/master/mini_master.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/rpc/messenger.h"
+#include "yb/server/metadata.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/sql/util/statement_result.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transactions/write_transaction.h"
 #include "yb/tserver/mini_tablet_server.h"
@@ -98,6 +100,7 @@ using master::CatalogManager;
 using master::GetTableLocationsRequestPB;
 using master::GetTableLocationsResponsePB;
 using master::TabletLocationsPB;
+using master::TSInfoPB;
 using std::shared_ptr;
 using tablet::TabletPeer;
 using tserver::MiniTabletServer;
@@ -381,7 +384,8 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
   void CreateTable(const YBTableName& table_name_orig,
                    int num_replicas,
                    const vector<const YBPartialRow*>& split_rows,
-                   shared_ptr<YBTable>* table) {
+                   shared_ptr<YBTable>* table,
+                   YBTableType table_type = YBTableType::KUDU_COLUMNAR_TABLE_TYPE) {
     // The implementation allows table name without a keyspace.
     YBTableName table_name(table_name_orig.has_namespace() ?
         table_name_orig.namespace_name() : kKeyspaceName, table_name_orig.table_name());
@@ -402,6 +406,7 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
                             .schema(&schema_)
                             .num_replicas(num_replicas)
                             .split_rows(split_rows)
+                            .table_type(table_type)
                             .Create());
 
     ASSERT_OK(client_->OpenTable(table_name, table));
@@ -2742,6 +2747,83 @@ TEST_F(ClientTest, TestLastErrorEmbeddedInScanTimeoutStatus) {
     auto message = s.ToString(false);
     ASSERT_STR_CONTAINS(message, "Illegal state (");
     ASSERT_STR_CONTAINS(message, "): Tablet not RUNNING");
+  }
+}
+
+TEST_F(ClientTest, TestReadFromFollower) {
+  // Create table and write some rows.
+  const YBTableName kReadFromFollowerTable("TestReadFromFollower");
+  shared_ptr<YBTable> table;
+  ASSERT_NO_FATALS(CreateTable(kReadFromFollowerTable, 3, vector<const YBPartialRow*>(), &table,
+                               YBTableType::YQL_TABLE_TYPE));
+  ASSERT_NO_FATALS(InsertTestRows(table.get(), FLAGS_test_scan_num_rows));
+
+  // Find the followers.
+  GetTableLocationsRequestPB req;
+  GetTableLocationsResponsePB resp;
+  table->name().SetIntoTableIdentifierPB(req.mutable_table());
+  CHECK_OK(cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(&req, &resp));
+  ASSERT_EQ(1, resp.tablet_locations_size());
+  ASSERT_EQ(3, resp.tablet_locations(0).replicas_size());
+  const string& tablet_id = resp.tablet_locations(0).tablet_id();
+
+  vector<TSInfoPB> followers;
+  for (const auto& replica : resp.tablet_locations(0).replicas()) {
+    if (replica.role() == consensus::RaftPeerPB_Role_FOLLOWER) {
+      followers.push_back(replica.ts_info());
+    }
+  }
+  ASSERT_EQ(cluster_->num_tablet_servers() - 1, followers.size());
+
+  std::shared_ptr<rpc::Messenger> client_messenger;
+  rpc::MessengerBuilder bld("client");
+  ASSERT_OK(bld.Build(&client_messenger));
+  for (const TSInfoPB& ts_info : followers) {
+    // Try to read from followers.
+    auto endpoint = ParseEndpoint(ts_info.rpc_addresses(0).host(),
+                                  ts_info.rpc_addresses(0).port());
+    ASSERT_TRUE(endpoint.ok());
+    std::unique_ptr<tserver::TabletServerServiceProxy> tserver_proxy;
+    tserver_proxy.reset(
+        new tserver::TabletServerServiceProxy(client_messenger, *endpoint));
+
+    YQLRowBlock *rowBlock;
+    ASSERT_OK(WaitFor([&]() -> bool {
+      // Setup read request.
+      tserver::ReadRequestPB req;
+      tserver::ReadResponsePB resp;
+      rpc::RpcController controller;
+      req.set_tablet_id(tablet_id);
+      req.set_consistency_level(tserver::ReadRequestPB_ConsistencyLevel_CONSTANT_PREFIX);
+      YQLReadRequestPB *yql_read = req.mutable_yql_batch()->Add();
+      for (int i = 0; i < schema_.num_columns(); i++) {
+        yql_read->add_column_ids(yb::kFirstColumnId + i);
+      }
+      EXPECT_OK(tserver_proxy->Read(req, &resp, &controller));
+
+      // Verify response.
+      EXPECT_FALSE(resp.has_error());
+      EXPECT_EQ(1, resp.yql_batch_size());
+      const YQLResponsePB &yql_resp = resp.yql_batch(0);
+      EXPECT_EQ(YQLResponsePB_YQLStatus_YQL_STATUS_OK, yql_resp.status());
+      EXPECT_TRUE(yql_resp.has_rows_data_sidecar());
+
+      Slice rows_data;
+      EXPECT_TRUE(controller.finished());
+      EXPECT_OK(controller.GetSidecar(yql_resp.rows_data_sidecar(), &rows_data));
+      yb::sql::RowsResult
+          rowsResult(kReadFromFollowerTable, schema_.columns(), rows_data.ToBuffer());
+      rowBlock = rowsResult.GetRowBlock();
+      return FLAGS_test_scan_num_rows == rowBlock->row_count();
+    }, MonoDelta::FromSeconds(30), "Waiting for replication to followers"));
+
+    for (int i = 0; i < rowBlock->row_count(); i++) {
+      const YQLRow& row = rowBlock->row(i);
+      ASSERT_EQ(i, row.column(0).int32_value());
+      ASSERT_EQ(i * 2, row.column(1).int32_value());
+      ASSERT_EQ(StringPrintf("hello %d", i), row.column(2).string_value());
+      ASSERT_EQ(i * 3, row.column(3).int32_value());
+    }
   }
 }
 

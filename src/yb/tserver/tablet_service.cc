@@ -844,20 +844,30 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context_ptr.get());
 }
 
-Status TabletServiceImpl::CheckPeerIsLeaderAndReady(const TabletPeer& tablet_peer,
-                                                    TabletServerErrorPB::Code* error_code) {
-
+Status TabletServiceImpl::CheckPeerIsReady(const TabletPeer& tablet_peer,
+                                           TabletServerErrorPB::Code* error_code) {
   scoped_refptr<consensus::Consensus> consensus = tablet_peer.shared_consensus();
   if (!consensus) {
     *error_code = TabletServerErrorPB::TABLET_NOT_RUNNING;
     return STATUS_SUBSTITUTE(IllegalState,
-        "Consensus not available for tablet $0.", tablet_peer.tablet_id());
+                             "Consensus not available for tablet $0.", tablet_peer.tablet_id());
   }
 
+  Status s = tablet_peer.CheckRunning();
+  if (!s.ok()) {
+    *error_code = TabletServerErrorPB::TABLET_NOT_RUNNING;
+    return s;
+  }
+  return Status::OK();
+}
+
+Status TabletServiceImpl::CheckPeerIsLeader(const TabletPeer& tablet_peer,
+                                            TabletServerErrorPB::Code* error_code) {
+  scoped_refptr<consensus::Consensus> consensus = tablet_peer.shared_consensus();
   const Consensus::LeaderStatus leader_status = consensus->leader_status();
   const string details = Substitute("tablet $0 peer $1. Peer role is $2. Leader status is $3.",
-      tablet_peer.tablet_id(), tablet_peer.permanent_uuid(), consensus->role(),
-      static_cast<int>(leader_status));
+                                    tablet_peer.tablet_id(), tablet_peer.permanent_uuid(),
+                                    consensus->role(), static_cast<int>(leader_status));
   VLOG(1) << "Check for " << details;
 
   switch (leader_status) {
@@ -875,13 +885,20 @@ Status TabletServiceImpl::CheckPeerIsLeaderAndReady(const TabletPeer& tablet_pee
 
   LOG(FATAL) << "Unknown leader status = " << static_cast<int>(leader_status);
   return STATUS_SUBSTITUTE(InternalError,
-      "Unknown leader status $0.", static_cast<int>(leader_status));
+                           "Unknown leader status $0.", static_cast<int>(leader_status));
 }
 
-bool TabletServiceImpl::GetLeaderTabletOrRespond(const ReadRequestPB* req,
-                                                 ReadResponsePB* resp,
-                                                 rpc::RpcContext* context,
-                                                 shared_ptr<tablet::AbstractTablet>* tablet) {
+Status TabletServiceImpl::CheckPeerIsLeaderAndReady(const TabletPeer& tablet_peer,
+                                                    TabletServerErrorPB::Code* error_code) {
+  RETURN_NOT_OK(CheckPeerIsReady(tablet_peer, error_code));
+
+  return CheckPeerIsLeader(tablet_peer, error_code);
+}
+
+bool TabletServiceImpl::GetTabletOrRespond(const ReadRequestPB* req,
+                                           ReadResponsePB* resp,
+                                           rpc::RpcContext* context,
+                                           shared_ptr<tablet::AbstractTablet>* tablet) {
   scoped_refptr<TabletPeer> tablet_peer;
   if (!LookupTabletPeerOrRespond(server_->tablet_manager(), req->tablet_id(), resp, context,
                                  &tablet_peer)) {
@@ -889,10 +906,19 @@ bool TabletServiceImpl::GetLeaderTabletOrRespond(const ReadRequestPB* req,
   }
 
   TabletServerErrorPB::Code error_code;
-  Status s = CheckPeerIsLeaderAndReady(*tablet_peer.get(), &error_code);
+  Status s = CheckPeerIsReady(*tablet_peer.get(), &error_code);
   if (PREDICT_FALSE(!s.ok())) {
     SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
     return false;
+  }
+
+  // Check for leader only in strong consistency level.
+  if (req->consistency_level() == ReadRequestPB_ConsistencyLevel_STRONG) {
+    s = CheckPeerIsLeader(*tablet_peer.get(), &error_code);
+    if (PREDICT_FALSE(!s.ok())) {
+      SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
+      return false;
+    }
   }
 
   shared_ptr<tablet::Tablet> ptr;
@@ -914,7 +940,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   DVLOG(3) << "Received Read RPC: " << req->DebugString();
 
   shared_ptr<tablet::AbstractTablet> tablet;
-  if (!GetLeaderTabletOrRespond(req, resp, &context, &tablet)) {
+  if (!GetTabletOrRespond(req, resp, &context, &tablet)) {
     return;
   }
 
@@ -943,10 +969,10 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
         YQLResponsePB yql_response;
         gscoped_ptr<faststring> rows_data;
         int rows_data_sidecar_idx = 0;
-        TRACE("Start HandleYBLReadRequest");
+        TRACE("Start HandleYQLReadRequest");
         s = tablet->HandleYQLReadRequest(
             read_tx.GetReadTimestamp(), yql_read_req, &yql_response, &rows_data);
-        TRACE("Done HandleYBLReadRequest");
+        TRACE("Done HandleYQLReadRequest");
         RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
         if (rows_data.get() != nullptr) {
           s = context.AddRpcSidecar(util::RefCntBuffer(*rows_data), &rows_data_sidecar_idx);

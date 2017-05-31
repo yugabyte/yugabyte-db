@@ -34,18 +34,6 @@ using std::set;
 using std::unordered_map;
 using std::unordered_set;
 
-// In a new schema, we typically would start assigning column IDs at 0. However, this
-// makes it likely that in many test cases, the column IDs and the column indexes are
-// equal to each other, and it's easy to accidentally pass an index where we meant to pass
-// an ID, without having any issues. So, in DEBUG builds, we start assigning columns at ID
-// 10, ensuring that if we accidentally mix up IDs and indexes, we're likely to fire an
-// assertion or bad memory access.
-#ifdef NDEBUG
-static const ColumnId kFirstColumnId(0);
-#else
-static const ColumnId kFirstColumnId(10);
-#endif
-
 string ColumnStorageAttributes::ToString() const {
   return strings::Substitute("encoding=$0, compression=$1, cfile_block_size=$2",
                              EncodingType_Name(encoding),

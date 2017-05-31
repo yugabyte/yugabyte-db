@@ -34,7 +34,7 @@ void MasterTabletServiceImpl::Read(const tserver::ReadRequestPB* req, tserver::R
   tserver::TabletServiceImpl::Read(req, resp, std::move(context));
 }
 
-bool MasterTabletServiceImpl::GetLeaderTabletOrRespond(
+bool MasterTabletServiceImpl::GetTabletOrRespond(
     const tserver::ReadRequestPB* req,
     tserver::ReadResponsePB* resp,
     rpc::RpcContext* context,

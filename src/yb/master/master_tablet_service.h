@@ -54,7 +54,7 @@ class MasterTabletServiceImpl : public yb::tserver::TabletServiceImpl {
                 rpc::RpcContext context) override;
 
  private:
-  bool GetLeaderTabletOrRespond(
+  bool GetTabletOrRespond(
       const tserver::ReadRequestPB* req,
       tserver::ReadResponsePB* resp,
       rpc::RpcContext* context,
