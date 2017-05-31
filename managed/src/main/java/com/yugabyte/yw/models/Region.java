@@ -87,11 +87,17 @@ public class Region extends Model {
    * @return instance of PlacementRegion
    */
   public static Region create(Provider provider, String code, String name, String ybImage) {
+    return create(provider, code, name, ybImage, 0.0, 0.0);
+  }
+  // Overload create function with lat, long values for OnPrem case
+  public static Region create(Provider provider, String code, String name, String ybImage, double latitude, double longitude) {
     Region region = new Region();
     region.provider = provider;
     region.code = code;
     region.name = name;
     region.ybImage = ybImage;
+    region.latitude = latitude;
+    region.longitude = longitude;
     region.save();
     return region;
   }

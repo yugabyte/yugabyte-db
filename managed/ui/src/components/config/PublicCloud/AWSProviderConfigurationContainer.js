@@ -42,8 +42,8 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
 
-    createRegion: (providerUUID, regionCode, hostVPCId) => {
-      dispatch(createRegion(providerUUID, regionCode, hostVPCId)).then((response) => {
+    createRegion: (providerUUID, formVals) => {
+      dispatch(createRegion(providerUUID, formVals)).then((response) => {
         dispatch(createRegionResponse(response.payload));
       });
     },

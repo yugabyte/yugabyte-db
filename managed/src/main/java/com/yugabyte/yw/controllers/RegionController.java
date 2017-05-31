@@ -126,7 +126,7 @@ public class RegionController extends AuthenticatedController {
           region.zones.add(AvailabilityZone.create(region, zone, zone, subnet));
         });
       } else {
-        region = Region.create(provider, regionCode, formData.get().name, formData.get().ybImage);
+        region = Region.create(provider, regionCode, formData.get().name, formData.get().ybImage, formData.get().latitude, formData.get().longitude);
       }
       return ApiResponse.success(region);
     } catch (Exception e) {
