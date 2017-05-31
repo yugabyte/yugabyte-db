@@ -44,7 +44,7 @@ docker version
 - Login to Docker from your command line. Detailed instructions [here](https://docs.docker.com/engine/reference/commandline/login/). 
 
 ```sh
-docker login --username samwalton
+docker login --username <your-dockerhub-username>
 ```
 
 - Pull the YugaByte DB docker image

@@ -4,7 +4,7 @@ title: Develop
 weight: 30
 ---
 
-## Run a sample app
+## Run sample apps
 
 YugaWare ships with sample apps for the most common use cases powered by YugaByte. You can see the instructions on how to run these apps by simply clicking on the **Apps** button in the Overview tab of the Universe detail page.
 
