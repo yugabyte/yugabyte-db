@@ -110,7 +110,8 @@ void CQLServer::CQLNodeListRefresh(const boost::system::error_code &e) {
         boost::system::error_code ec;
         Endpoint addr(IpAddress::from_string(hostport_pb.host(), ec), hostport_pb.port());
         if (ec) {
-          LOG(WARNING) << ec;
+          LOG(WARNING) << strings::Substitute("Couldn't parse host $0, error: $1",
+                                              hostport_pb.host(), ec.message());
           continue;
         }
 
