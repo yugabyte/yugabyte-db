@@ -44,6 +44,14 @@ public class TableDetails {
     return tableDetails;
   }
 
+  public String getCQLCreateKeyspaceString() {
+    return "CREATE KEYSPACE IF NOT EXISTS \"" + keyspace + "\"";
+  }
+
+  public String getCQLUseKeyspaceString() {
+    return "USE \"" + keyspace + "\"";
+  }
+
   /**
    * This method produces a CQL statement of the following format to create a table from the
    * TableDetails representation of it from the UI:
@@ -58,7 +66,7 @@ public class TableDetails {
    *
    * @return a CQL CREATE TABLE statement for the table represented by this TableDetails object
    */
-  public String toCQLCreateString() {
+  public String getCQLCreateTableString() {
     List<String> partitionKeys = new ArrayList<>();
     List<String> clusteringKeys = new ArrayList<>();
     Map<String, String> sortOrderColumns = new HashMap<>();

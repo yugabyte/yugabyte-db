@@ -71,8 +71,13 @@ public class CreateTable extends AbstractTaskBase {
     if (StringUtils.isEmpty(taskParams().tableName) || taskParams().tableDetails == null) {
       throw new IllegalArgumentException("No name specified for table.");
     }
-    getCassandraSession().execute(taskParams().tableDetails.toCQLCreateString());
-    LOG.info("Created table '{}' of type {}.", taskParams().tableName, taskParams().tableType);
+    TableDetails tableDetails = taskParams().tableDetails;
+    Session session = getCassandraSession();
+    session.execute(tableDetails.getCQLCreateKeyspaceString());
+    session.execute(tableDetails.getCQLUseKeyspaceString());
+    session.execute(tableDetails.getCQLCreateTableString());
+    LOG.info("Created table '{}.{}' of type {}.", tableDetails.keyspace, taskParams().tableName,
+        taskParams().tableType);
   }
 
   private void createRedisTable() throws Exception {

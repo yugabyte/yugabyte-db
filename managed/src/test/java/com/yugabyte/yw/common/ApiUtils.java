@@ -128,6 +128,7 @@ public class ApiUtils {
                                                   long ttl, SortOrder sortOrder) {
     TableDetails table = new TableDetails();
     table.tableName = "dummy_table";
+    table.keyspace = "dummy_ks";
     table.ttlInSeconds = ttl;
     table.columns = new LinkedList<>();
     for (int i = 0; i < partitionKeyCount + clusteringKeyCount; ++i) {
