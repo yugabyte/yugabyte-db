@@ -223,11 +223,11 @@ void RedisServiceImpl::Handle(InboundCallPtr call_ptr) {
 }
 
 void RedisServiceImpl::EchoCommand(InboundCallPtr call, RedisClientCommand* c) {
-  RedisResponsePB* echo_response = new RedisResponsePB();
+  auto echo_response = std::make_shared<RedisResponsePB>();
   echo_response->set_string_response(c->cmd_args[1].ToString());
   VLOG(4) << "Responding to Echo with " << c->cmd_args[1].ToString();
-  RpcContext* context = new RpcContext(std::move(call), nullptr, echo_response, metrics_["echo"]);
-  context->RespondSuccess();
+  RpcContext context(std::move(call), nullptr, std::move(echo_response), metrics_["echo"]);
+  context.RespondSuccess();
   VLOG(4) << "Done Responding to Echo.";
 }
 
@@ -262,12 +262,12 @@ void ReadCommandCb::Run(const Status& status) {
   VLOG(3) << "Received status from call " << status.ToString(true);
 
   if (status.ok()) {
-    RedisResponsePB* ok_response = new RedisResponsePB(read_op_->response());
-    RpcContext* context = new RpcContext(std::move(redis_call_), nullptr, ok_response, metrics_);
-    context->RespondSuccess();
+    auto ok_response = std::make_shared<RedisResponsePB>(read_op_->response());
+    RpcContext context(std::move(redis_call_), nullptr, std::move(ok_response), metrics_);
+    context.RespondSuccess();
   } else {
-    RpcContext* context = new RpcContext(std::move(redis_call_), nullptr, nullptr, metrics_);
-    context->RespondFailure(status);
+    RpcContext context(std::move(redis_call_), nullptr, nullptr, metrics_);
+    context.RespondFailure(status);
   }
 
   delete this;
@@ -349,9 +349,9 @@ void WriteCommandCb::Run(const Status& status) {
   VLOG(3) << "Received status from call " << status.ToString(true);
 
   if (status.ok()) {
-    RedisResponsePB* ok_response = new RedisResponsePB(write_op_->response());
-    RpcContext* context = new RpcContext(std::move(redis_call_), nullptr, ok_response, metrics_);
-    context->RespondSuccess();
+    auto ok_response = std::make_shared<RedisResponsePB>(write_op_->response());
+    RpcContext context(std::move(redis_call_), nullptr, std::move(ok_response), metrics_);
+    context.RespondSuccess();
   } else {
     std::vector<client::YBError*> errors;
     bool overflowed;
@@ -363,8 +363,8 @@ void WriteCommandCb::Run(const Status& status) {
       }
     }
 
-    RpcContext* context = new RpcContext(std::move(redis_call_), nullptr, nullptr, metrics_);
-    context->RespondFailure(status);
+    RpcContext context(std::move(redis_call_), nullptr, nullptr, metrics_);
+    context.RespondFailure(status);
   }
 
   delete this;
@@ -436,8 +436,8 @@ void RedisServiceImpl::RespondWithFailure(
   // Send the result.
   DVLOG(4) << "Responding to call " << call->ToString() << " with failure " << error;
   string cmd = c->cmd_args[0].ToString();
-  RpcContext* context = new RpcContext(std::move(call), nullptr, nullptr, metrics_["error"]);
-  context->RespondFailure(STATUS(
+  RpcContext context(std::move(call), nullptr, nullptr, metrics_["error"]);
+  context.RespondFailure(STATUS(
       RuntimeError, StringPrintf("%s : %s", error.c_str(),  cmd.c_str())));
 }
 

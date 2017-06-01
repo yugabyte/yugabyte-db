@@ -19,39 +19,39 @@ class MasterTabletServiceImpl : public yb::tserver::TabletServiceImpl {
 
   MasterTabletServiceImpl(MasterTabletServer* server, Master* master);
   void Read(const tserver::ReadRequestPB* req, tserver::ReadResponsePB* resp,
-                    rpc::RpcContext* context) override;
+                    rpc::RpcContext context) override;
 
   void Write(const tserver::WriteRequestPB* req,
              tserver::WriteResponsePB* resp,
-             rpc::RpcContext* context) override;
+             rpc::RpcContext context) override;
 
   void Scan(const tserver::ScanRequestPB* req,
             tserver::ScanResponsePB* resp,
-            rpc::RpcContext* context) override;
+            rpc::RpcContext context) override;
 
   void NoOp(const tserver::NoOpRequestPB* req,
             tserver::NoOpResponsePB* resp,
-            rpc::RpcContext* context) override;
+            rpc::RpcContext context) override;
 
   void ScannerKeepAlive(const tserver::ScannerKeepAliveRequestPB *req,
                         tserver::ScannerKeepAliveResponsePB *resp,
-                        rpc::RpcContext *context) override;
+                        rpc::RpcContext context) override;
 
   void ListTablets(const tserver::ListTabletsRequestPB* req,
                    tserver::ListTabletsResponsePB* resp,
-                   rpc::RpcContext *context) override;
+                   rpc::RpcContext context) override;
 
   void ListTabletsForTabletServer(const tserver::ListTabletsForTabletServerRequestPB* req,
                                   tserver::ListTabletsForTabletServerResponsePB* resp,
-                                  rpc::RpcContext *context) override;
+                                  rpc::RpcContext context) override;
 
   void GetLogLocation(const tserver::GetLogLocationRequestPB* req,
                       tserver::GetLogLocationResponsePB* resp,
-                      rpc::RpcContext *context) override;
+                      rpc::RpcContext context) override;
 
   void Checksum(const tserver::ChecksumRequestPB* req,
                 tserver::ChecksumResponsePB* resp,
-                rpc::RpcContext *context) override;
+                rpc::RpcContext context) override;
 
  private:
   bool GetLeaderTabletOrRespond(
@@ -59,13 +59,6 @@ class MasterTabletServiceImpl : public yb::tserver::TabletServiceImpl {
       tserver::ReadResponsePB* resp,
       rpc::RpcContext* context,
       std::shared_ptr<tablet::AbstractTablet>* tablet) override;
-
-  template<typename ResponsePB>
-  void HandleUnsupportedMethod(
-      const char* method_name,
-      ResponsePB* resp,
-      rpc::RpcContext* context);
-
 
   Master *const master_;
   DISALLOW_COPY_AND_ASSIGN(MasterTabletServiceImpl);

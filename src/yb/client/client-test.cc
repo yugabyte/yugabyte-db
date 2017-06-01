@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <thread>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -77,6 +78,8 @@ DECLARE_int32(tablet_server_svc_queue_length);
 DEFINE_int32(test_scan_num_rows, 1000, "Number of rows to insert and scan");
 
 METRIC_DECLARE_counter(rpcs_queue_overflow);
+
+using namespace std::literals;
 
 namespace yb {
 namespace client {
@@ -346,6 +349,9 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
   int CountRowsFromClient(YBTable* table, YBClient::ReplicaSelection selection,
                           int32_t lower_bound, int32_t upper_bound) {
     YBScanner scanner(table);
+#ifndef NDEBUG
+    EXPECT_OK(scanner.SetTimeoutMillis(30000));
+#endif
     CHECK_OK(scanner.SetSelection(selection));
     CHECK_OK(scanner.SetProjectedColumns(vector<string>()));
     if (lower_bound != kNoBound) {
@@ -1229,10 +1235,20 @@ int64_t SumResults(const YBScanBatch& batch) {
 } // anonymous namespace
 
 TEST_F(ClientTest, TestScannerKeepAlive) {
+  google::FlagSaver saver;
+
+#ifndef __APPLE__
+  std::chrono::milliseconds kScannerTtl = 100ms;
+#else
+  // MAC OS X could just don't notify waiting socket that there is some data recieved for 100+ ms.
+  std::chrono::milliseconds kScannerTtl = 400ms;
+#endif
+
   ASSERT_NO_FATALS(InsertTestRows(client_table_.get(), 1000));
   // Set the scanner ttl really low
   ANNOTATE_BENIGN_RACE(&FLAGS_scanner_ttl_ms, "Set at runtime, for tests.");
-  FLAGS_scanner_ttl_ms = 100; // 100 milliseconds
+  FLAGS_scanner_ttl_ms = kScannerTtl.count();
+
   // Start a scan but don't get the whole data back
   YBScanner scanner(client_table_.get());
   // This will make sure we have to do multiple NextBatch calls to the second tablet.
@@ -1267,7 +1283,7 @@ TEST_F(ClientTest, TestScannerKeepAlive) {
   // Now loop while keeping the scanner alive. Each time we loop we sleep 1/2 a scanner
   // ttl interval (the garbage collector is running each 50 msecs too.).
   for (int i = 0; i < 5; i++) {
-    SleepFor(MonoDelta::FromMilliseconds(50));
+    std::this_thread::sleep_for(kScannerTtl / 2);
     ASSERT_OK(scanner.KeepAlive());
   }
 
@@ -1281,7 +1297,7 @@ TEST_F(ClientTest, TestScannerKeepAlive) {
 
   ASSERT_TRUE(scanner.HasMoreRows());
   for (int i = 0; i < 5; i++) {
-    SleepFor(MonoDelta::FromMilliseconds(50));
+    std::this_thread::sleep_for(kScannerTtl / 2);
     ASSERT_OK(scanner.KeepAlive());
   }
   sum += SumResults(batch);

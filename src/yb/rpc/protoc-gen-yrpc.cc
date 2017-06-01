@@ -330,15 +330,12 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       "\n"
       "#include <string>\n"
       "\n"
+      "#include \"yb/rpc/rpc_fwd.h\"\n"
       "#include \"yb/rpc/rpc_header.pb.h\"\n"
       "#include \"yb/rpc/service_if.h\"\n"
       "\n"
       "namespace yb {\n"
       "class MetricEntity;\n"
-      "namespace rpc {\n"
-      "class Messenger;\n"
-      "class RpcContext;\n"
-      "} // namespace rpc\n"
       "} // namespace yb\n"
       "\n"
       "$open_namespace$"
@@ -368,8 +365,10 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         subs->PushMethod(method);
 
         Print(printer, *subs,
-        "  virtual void $rpc_name$(const $request$ *req,\n"
-        "     $response$ *resp, ::yb::rpc::RpcContext *context) = 0;\n"
+        "  virtual void $rpc_name$(\n"
+        "      const $request$ *req,\n"
+        "      $response$ *resp,\n"
+        "      ::yb::rpc::RpcContext context) = 0;\n"
         );
 
         subs->Pop();
@@ -487,15 +486,21 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
 
         Print(printer, *subs,
         "    if (call->remote_method().method_name() == \"$rpc_name$\") {\n"
-        "      $request$ *req = new $request$;\n"
-        "      if (PREDICT_FALSE(!ParseParam(call.get(), req))) {\n"
-        "        delete req;\n"
+        "      auto req = std::make_shared<$request$>();\n"
+        "      if (PREDICT_FALSE(!ParseParam(call.get(), req.get()))) {\n"
         "        return;\n"
         "      }\n"
-        "      $response$ *resp = new $response$;\n"
-        "      $rpc_name$(req, resp,\n"
-        "          new ::yb::rpc::RpcContext(std::move(call), req, resp,\n"
-        "                                    metrics_[$metric_enum_key$]));\n"
+        "      auto resp = std::make_shared<$response$>();\n"
+        "      const $request$* request = req.get();\n"
+        "      $response$* response = resp.get();\n"
+        "      $rpc_name$(\n"
+        "          request,\n"
+        "          response,\n"
+        "          ::yb::rpc::RpcContext(\n"
+        "              std::move(call),\n"
+        "              std::move(req),\n"
+        "              std::move(resp),\n"
+        "              metrics_[$metric_enum_key$]));\n"
         "      return;\n"
         "    }\n"
         "\n");

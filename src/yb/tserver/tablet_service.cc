@@ -241,17 +241,21 @@ void HandleUnknownError(const Status& s, RespType* resp, RpcContext* context) {
 }
 
 template <class ReqType, class RespType>
-void HandleResponse(const ReqType* req, RespType* resp,
-                    RpcContext* context, const Status& s) {
+void HandleResponse(const ReqType* req,
+                    RespType* resp,
+                    const std::shared_ptr<RpcContext>& context,
+                    const Status& s) {
   if (PREDICT_FALSE(!s.ok())) {
-    HandleUnknownError(s, resp, context);
+    HandleUnknownError(s, resp, context.get());
     return;
   }
   context->RespondSuccess();
 }
 
 template <class ReqType, class RespType>
-static StatusCallback BindHandleResponse(const ReqType* req, RespType* resp, RpcContext* context) {
+static StatusCallback BindHandleResponse(const ReqType* req,
+                                         RespType* resp,
+                                         const std::shared_ptr<RpcContext>& context) {
   return Bind(&HandleResponse<ReqType, RespType>, req, resp, context);
 }
 
@@ -294,14 +298,14 @@ void HandleErrorResponse(const ReqType* req, RespType* resp, RpcContext* context
 template<class Response>
 class RpcTransactionCompletionCallback : public TransactionCompletionCallback {
  public:
-  RpcTransactionCompletionCallback(rpc::RpcContext* const context, Response* const response)
-      : context_(context), response_(response) { }
+  RpcTransactionCompletionCallback(rpc::RpcContext context, Response* const response)
+      : context_(std::move(context)), response_(response) {}
 
   void TransactionCompleted() override {
     if (!status_.ok()) {
-      SetupErrorAndRespond(get_error(), status_, code_, context_);
+      SetupErrorAndRespond(get_error(), status_, code_, &context_);
     } else {
-      context_->RespondSuccess();
+      context_.RespondSuccess();
     }
   };
 
@@ -311,20 +315,20 @@ class RpcTransactionCompletionCallback : public TransactionCompletionCallback {
     return response_->mutable_error();
   }
 
-  rpc::RpcContext* const context_;
+  rpc::RpcContext context_;
   Response* const response_;
 };
 
 class WriteTransactionCompletionCallback : public TransactionCompletionCallback {
  public:
   WriteTransactionCompletionCallback(
-      rpc::RpcContext* const context, WriteResponsePB* const response,
-      tablet::WriteTransactionState* const state, bool trace = false)
-      : context_(context), response_(response), state_(state), include_trace_(trace) { }
+      std::shared_ptr<rpc::RpcContext> context, WriteResponsePB* response,
+      tablet::WriteTransactionState* state, bool trace = false)
+      : context_(std::move(context)), response_(response), state_(state), include_trace_(trace) {}
 
   void TransactionCompleted() override {
     if (!status_.ok()) {
-      SetupErrorAndRespond(get_error(), status_, code_, context_);
+      SetupErrorAndRespond(get_error(), status_, code_, context_.get());
     } else {
       // Retrieve the rowblocks returned from the YQL write operations and return them as RPC
       // sidecars. Populate the row schema also.
@@ -334,14 +338,14 @@ class WriteTransactionCompletionCallback : public TransactionCompletionCallback 
         const YQLRowBlock* rowblock = yql_write_op->rowblock();
         RETURN_UNKNOWN_ERROR_IF_NOT_OK(
             SchemaToColumnPBs(rowblock->schema(), yql_write_resp->mutable_column_schemas()),
-            response_, context_);
+            response_, context_.get());
         faststring rows_data;
         rowblock->Serialize(yql_write_req.client(), &rows_data);
         int rows_data_sidecar_idx = 0;
         RETURN_UNKNOWN_ERROR_IF_NOT_OK(
             context_->AddRpcSidecar(util::RefCntBuffer(rows_data), &rows_data_sidecar_idx),
             response_,
-            context_);
+            context_.get());
         yql_write_resp->set_rows_data_sidecar(rows_data_sidecar_idx);
       }
       if (include_trace_ && Trace::CurrentTrace() != nullptr) {
@@ -357,7 +361,7 @@ class WriteTransactionCompletionCallback : public TransactionCompletionCallback 
     return response_->mutable_error();
   }
 
-  rpc::RpcContext* const context_;
+  const std::shared_ptr<rpc::RpcContext> context_;
   WriteResponsePB* const response_;
   tablet::WriteTransactionState* const state_;
   const bool include_trace_;
@@ -559,14 +563,14 @@ TabletServiceAdminImpl::TabletServiceAdminImpl(TabletServer* server)
 
 void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
                                          AlterSchemaResponsePB* resp,
-                                         rpc::RpcContext* context) {
-  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "AlterSchema", req, resp, context)) {
+                                         rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "AlterSchema", req, resp, &context)) {
     return;
   }
   DVLOG(3) << "Received Alter Schema RPC: " << req->DebugString();
 
   scoped_refptr<TabletPeer> tablet_peer;
-  if (!LookupTabletPeerOrRespond(server_->tablet_manager(), req->tablet_id(), resp, context,
+  if (!LookupTabletPeerOrRespond(server_->tablet_manager(), req->tablet_id(), resp, &context,
                                  &tablet_peer)) {
     return;
   }
@@ -581,13 +585,13 @@ void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
     Status s = SchemaFromPB(req->schema(), &req_schema);
     if (!s.ok()) {
       SetupErrorAndRespond(resp->mutable_error(), s,
-                           TabletServerErrorPB::INVALID_SCHEMA, context);
+                           TabletServerErrorPB::INVALID_SCHEMA, &context);
       return;
     }
 
     Schema tablet_schema = tablet_peer->tablet_metadata()->schema();
     if (req_schema.Equals(tablet_schema)) {
-      context->RespondSuccess();
+      context.RespondSuccess();
       return;
     }
 
@@ -600,7 +604,7 @@ void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
                  << " (corruption)";
       SetupErrorAndRespond(resp->mutable_error(),
                            STATUS(Corruption, "got a different schema for the same version number"),
-                           TabletServerErrorPB::MISMATCHED_SCHEMA, context);
+                           TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
       return;
     }
   }
@@ -609,7 +613,7 @@ void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
   if (schema_version > req->schema_version()) {
     SetupErrorAndRespond(resp->mutable_error(),
                          STATUS(InvalidArgument, "Tablet has a newer schema"),
-                         TabletServerErrorPB::TABLET_HAS_A_NEWER_SCHEMA, context);
+                         TabletServerErrorPB::TABLET_HAS_A_NEWER_SCHEMA, &context);
     return;
   }
 
@@ -617,18 +621,18 @@ void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
       new AlterSchemaTransactionState(tablet_peer.get(), req, resp));
 
   tx_state->set_completion_callback(gscoped_ptr<TransactionCompletionCallback>(
-      new RpcTransactionCompletionCallback<AlterSchemaResponsePB>(context,
+      new RpcTransactionCompletionCallback<AlterSchemaResponsePB>(std::move(context),
                                                                   resp)).Pass());
 
   // Submit the alter schema op. The RPC will be responded to asynchronously.
   Status s = tablet_peer->SubmitAlterSchema(tx_state.Pass());
-  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
+  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
 }
 
 void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
                                           CreateTabletResponsePB* resp,
-                                          rpc::RpcContext* context) {
-  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "CreateTablet", req, resp, context)) {
+                                          rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "CreateTablet", req, resp, &context)) {
     return;
   }
   TRACE_EVENT1("tserver", "CreateTablet",
@@ -640,7 +644,7 @@ void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
   if (!s.ok()) {
     SetupErrorAndRespond(resp->mutable_error(),
                          STATUS(InvalidArgument, "Invalid Schema."),
-                         TabletServerErrorPB::INVALID_SCHEMA, context);
+                         TabletServerErrorPB::INVALID_SCHEMA, &context);
     return;
   }
 
@@ -649,7 +653,7 @@ void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
   if (!s.ok()) {
     SetupErrorAndRespond(resp->mutable_error(),
                          STATUS(InvalidArgument, "Invalid PartitionSchema."),
-                         TabletServerErrorPB::INVALID_SCHEMA, context);
+                         TabletServerErrorPB::INVALID_SCHEMA, &context);
     return;
   }
 
@@ -671,16 +675,16 @@ void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
     } else {
       code = TabletServerErrorPB::UNKNOWN_ERROR;
     }
-    SetupErrorAndRespond(resp->mutable_error(), s, code, context);
+    SetupErrorAndRespond(resp->mutable_error(), s, code, &context);
     return;
   }
-  context->RespondSuccess();
+  context.RespondSuccess();
 }
 
 void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
                                           DeleteTabletResponsePB* resp,
-                                          rpc::RpcContext* context) {
-  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "DeleteTablet", req, resp, context)) {
+                                          rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "DeleteTablet", req, resp, &context)) {
     return;
   }
   TRACE_EVENT2("tserver", "DeleteTablet",
@@ -694,7 +698,7 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
   LOG(INFO) << "Processing DeleteTablet for tablet " << req->tablet_id()
             << " with delete_type " << TabletDataState_Name(delete_type)
             << (req->has_reason() ? (" (" + req->reason() + ")") : "")
-            << " from " << context->requestor_string();
+            << " from " << context.requestor_string();
   VLOG(1) << "Full request: " << req->DebugString();
 
   boost::optional<int64_t> cas_config_opid_index_less_or_equal;
@@ -707,10 +711,10 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
                                                      cas_config_opid_index_less_or_equal,
                                                      &error_code);
   if (PREDICT_FALSE(!s.ok())) {
-    HandleErrorResponse(req, resp, context, error_code, s);
+    HandleErrorResponse(req, resp, &context, error_code, s);
     return;
   }
-  context->RespondSuccess();
+  context.RespondSuccess();
 }
 
 Status TabletServiceImpl::TakeReadSnapshot(Tablet* tablet,
@@ -751,14 +755,14 @@ Status TabletServiceImpl::TakeReadSnapshot(Tablet* tablet,
 
 void TabletServiceImpl::Write(const WriteRequestPB* req,
                               WriteResponsePB* resp,
-                              rpc::RpcContext* context) {
+                              rpc::RpcContext context) {
   TRACE("Start Write");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Write",
                "tablet_id", req->tablet_id());
   DVLOG(3) << "Received Write RPC: " << req->DebugString();
 
   scoped_refptr<TabletPeer> tablet_peer;
-  if (!LookupTabletPeerOrRespond(server_->tablet_manager(), req->tablet_id(), resp, context,
+  if (!LookupTabletPeerOrRespond(server_->tablet_manager(), req->tablet_id(), resp, &context,
                                  &tablet_peer)) {
     return;
   }
@@ -767,7 +771,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   TabletServerErrorPB::Code error_code;
   Status s = GetTabletRef(tablet_peer, &tablet, &error_code);
   if (PREDICT_FALSE(!s.ok())) {
-    SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
+    SetupErrorAndRespond(resp->mutable_error(), s, error_code, &context);
     return;
   }
 
@@ -787,7 +791,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     }
     SetupErrorAndRespond(resp->mutable_error(), STATUS(ServiceUnavailable, msg),
                          TabletServerErrorPB::UNKNOWN_ERROR,
-                         context);
+                         &context);
     return;
   }
 
@@ -796,7 +800,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
         " required consistency mode.");
     SetupErrorAndRespond(resp->mutable_error(), s,
                          TabletServerErrorPB::UNKNOWN_ERROR,
-                         context);
+                         &context);
     return;
   }
 
@@ -806,7 +810,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     HybridTime ts(req->propagated_hybrid_time());
     s = server_->Clock()->Update(ts);
   }
-  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
+  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
 
   if (PREDICT_FALSE(req->has_write_batch())) {
     Status s = STATUS(NotSupported, "Write Request contains write batch. This field should be "
@@ -814,30 +818,30 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
         "Raft replication.");
     SetupErrorAndRespond(resp->mutable_error(), s,
                          TabletServerErrorPB::INVALID_MUTATION,
-                         context);
+                         &context);
     return;
   }
 
   if (!req->has_row_operations() && tablet->table_type() != TableType::REDIS_TABLE_TYPE) {
     // An empty request. This is fine, can just exit early with ok status instead of working hard.
     // This doesn't need to go to Raft log.
-    RpcTransactionCompletionCallback<WriteResponsePB> rpc(context, resp);
+    RpcTransactionCompletionCallback<WriteResponsePB> rpc(std::move(context), resp);
     rpc.TransactionCompleted();
     return;
   }
 
-  auto tx_state = unique_ptr<WriteTransactionState>(
-      new WriteTransactionState(tablet_peer.get(), req, resp));
+  auto tx_state = std::make_unique<WriteTransactionState>(tablet_peer.get(), req, resp);
 
+  auto context_ptr = std::make_shared<RpcContext>(std::move(context));
   tx_state->set_completion_callback(gscoped_ptr<TransactionCompletionCallback>(
-      new WriteTransactionCompletionCallback(context, resp,
+      new WriteTransactionCompletionCallback(context_ptr, resp,
                                              tx_state.get(), req->include_trace())).Pass());
 
   // Submit the write. The RPC will be responded to asynchronously.
   s = tablet_peer->SubmitWrite(tx_state.release());
 
   // Check that we could submit the write
-  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
+  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context_ptr.get());
 }
 
 Status TabletServiceImpl::CheckPeerIsLeaderAndReady(const TabletPeer& tablet_peer,
@@ -903,14 +907,14 @@ bool TabletServiceImpl::GetLeaderTabletOrRespond(const ReadRequestPB* req,
 
 void TabletServiceImpl::Read(const ReadRequestPB* req,
                              ReadResponsePB* resp,
-                             rpc::RpcContext* context) {
+                             rpc::RpcContext context) {
   TRACE("Start Read");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Read",
                "tablet_id", req->tablet_id());
   DVLOG(3) << "Received Read RPC: " << req->DebugString();
 
   shared_ptr<tablet::AbstractTablet> tablet;
-  if (!GetLeaderTabletOrRespond(req, resp, context, &tablet)) {
+  if (!GetLeaderTabletOrRespond(req, resp, &context, &tablet)) {
     return;
   }
 
@@ -922,7 +926,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
         RedisResponsePB redis_response;
         s = tablet->HandleRedisReadRequest(
             read_tx.GetReadTimestamp(), redis_read_req, &redis_response);
-        RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
         *(resp->add_redis_batch()) = redis_response;
       }
       break;
@@ -930,7 +934,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     case TableType::YQL_TABLE_TYPE: {
       for (const YQLReadRequestPB& yql_read_req : req->yql_batch()) {
         // Update the remote endpoint.
-        const auto& remote_address = context->remote_address();
+        const auto& remote_address = context.remote_address();
         HostPortPB *hostPortPB =
             const_cast<YQLReadRequestPB&>(yql_read_req).mutable_remote_endpoint();
         hostPortPB->set_host(remote_address.address().to_string());
@@ -943,10 +947,10 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
         s = tablet->HandleYQLReadRequest(
             read_tx.GetReadTimestamp(), yql_read_req, &yql_response, &rows_data);
         TRACE("Done HandleYBLReadRequest");
-        RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
         if (rows_data.get() != nullptr) {
-          s = context->AddRpcSidecar(util::RefCntBuffer(*rows_data), &rows_data_sidecar_idx);
-          RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
+          s = context.AddRpcSidecar(util::RefCntBuffer(*rows_data), &rows_data_sidecar_idx);
+          RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
           yql_response.set_rows_data_sidecar(rows_data_sidecar_idx);
         }
         *(resp->add_yql_batch()) = yql_response;
@@ -964,7 +968,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   if (req->include_trace() && Trace::CurrentTrace() != nullptr) {
     resp->set_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
   }
-  RpcTransactionCompletionCallback<ReadResponsePB> rpc(context, resp);
+  RpcTransactionCompletionCallback<ReadResponsePB> rpc(std::move(context), resp);
   rpc.TransactionCompleted();
   TRACE("Done Read");
 }
@@ -980,19 +984,19 @@ ConsensusServiceImpl::~ConsensusServiceImpl() {
 
 void ConsensusServiceImpl::UpdateConsensus(const ConsensusRequestPB* req,
                                            ConsensusResponsePB* resp,
-                                           rpc::RpcContext* context) {
+                                           rpc::RpcContext context) {
   DVLOG(3) << "Received Consensus Update RPC: " << req->ShortDebugString();
-  if (!CheckUuidMatchOrRespond(tablet_manager_, "UpdateConsensus", req, resp, context)) {
+  if (!CheckUuidMatchOrRespond(tablet_manager_, "UpdateConsensus", req, resp, &context)) {
     return;
   }
   scoped_refptr<TabletPeer> tablet_peer;
-  if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, context, &tablet_peer)) {
+  if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, &context, &tablet_peer)) {
     return;
   }
 
   // Submit the update directly to the TabletPeer's Consensus instance.
   scoped_refptr<Consensus> consensus;
-  if (!GetConsensusOrRespond(tablet_peer, resp, context, &consensus)) return;
+  if (!GetConsensusOrRespond(tablet_peer, resp, &context, &consensus)) return;
 
   // Unfortunately, we have to use const_cast here, because the protobuf-generated interface only
   // gives us a const request, but we need to be able to move messages out of the request for
@@ -1006,57 +1010,58 @@ void ConsensusServiceImpl::UpdateConsensus(const ConsensusRequestPB* req,
 
     SetupErrorAndRespond(resp->mutable_error(), s,
                          TabletServerErrorPB::UNKNOWN_ERROR,
-                         context);
+                         &context);
     return;
   }
-  context->RespondSuccess();
+  context.RespondSuccess();
 }
 
 void ConsensusServiceImpl::RequestConsensusVote(const VoteRequestPB* req,
                                                 VoteResponsePB* resp,
-                                                rpc::RpcContext* context) {
+                                                rpc::RpcContext context) {
   DVLOG(3) << "Received Consensus Request Vote RPC: " << req->DebugString();
-  if (!CheckUuidMatchOrRespond(tablet_manager_, "RequestConsensusVote", req, resp, context)) {
+  if (!CheckUuidMatchOrRespond(tablet_manager_, "RequestConsensusVote", req, resp, &context)) {
     return;
   }
   scoped_refptr<TabletPeer> tablet_peer;
-  if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, context, &tablet_peer)) {
+  if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, &context, &tablet_peer)) {
     return;
   }
 
   // Submit the vote request directly to the consensus instance.
   scoped_refptr<Consensus> consensus;
-  if (!GetConsensusOrRespond(tablet_peer, resp, context, &consensus)) return;
+  if (!GetConsensusOrRespond(tablet_peer, resp, &context, &consensus)) return;
   Status s = consensus->RequestVote(req, resp);
-  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
-  context->RespondSuccess();
+  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
+  context.RespondSuccess();
 }
 
 void ConsensusServiceImpl::ChangeConfig(const ChangeConfigRequestPB* req,
                                         ChangeConfigResponsePB* resp,
-                                        RpcContext* context) {
+                                        RpcContext context) {
   VLOG(1) << "Received ChangeConfig RPC: " << req->ShortDebugString();
   // If the destination uuid is empty string, it means the client was retrying after a leader
   // stepdown and did not have a chance to update the uuid inside the request.
   // TODO: Note that this can be removed once Java YBClient will reset change config's uuid
   // correctly after leader step down.
   if (req->dest_uuid() != "" &&
-      !CheckUuidMatchOrRespond(tablet_manager_, "ChangeConfig", req, resp, context)) {
+      !CheckUuidMatchOrRespond(tablet_manager_, "ChangeConfig", req, resp, &context)) {
     return;
   }
   scoped_refptr<TabletPeer> tablet_peer;
-  if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, context,
+  if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, &context,
                                  &tablet_peer)) {
     return;
   }
 
   scoped_refptr<Consensus> consensus;
-  if (!GetConsensusOrRespond(tablet_peer, resp, context, &consensus)) return;
+  if (!GetConsensusOrRespond(tablet_peer, resp, &context, &consensus)) return;
   boost::optional<TabletServerErrorPB::Code> error_code;
-  Status s = consensus->ChangeConfig(*req, BindHandleResponse(req, resp, context), &error_code);
+  std::shared_ptr<RpcContext> context_ptr = std::make_shared<RpcContext>(std::move(context));
+  Status s = consensus->ChangeConfig(*req, BindHandleResponse(req, resp, context_ptr), &error_code);
   VLOG(1) << "Sent ChangeConfig req " << req->ShortDebugString() << " to consensus layer.";
   if (PREDICT_FALSE(!s.ok())) {
-    HandleErrorResponse(req, resp, context, error_code, s);
+    HandleErrorResponse(req, resp, context_ptr.get(), error_code, s);
     return;
   }
   // The success case is handled when the callback fires.
@@ -1064,10 +1069,10 @@ void ConsensusServiceImpl::ChangeConfig(const ChangeConfigRequestPB* req,
 
 void ConsensusServiceImpl::GetNodeInstance(const GetNodeInstanceRequestPB* req,
                                            GetNodeInstanceResponsePB* resp,
-                                           rpc::RpcContext* context) {
+                                           rpc::RpcContext context) {
   DVLOG(3) << "Received Get Node Instance RPC: " << req->DebugString();
   resp->mutable_node_instance()->CopyFrom(tablet_manager_->NodeInstance());
-  context->RespondSuccess();
+  context.RespondSuccess();
 }
 
 namespace {
@@ -1130,9 +1135,9 @@ class RpcScope {
 
 void ConsensusServiceImpl::RunLeaderElection(const RunLeaderElectionRequestPB* req,
                                              RunLeaderElectionResponsePB* resp,
-                                             rpc::RpcContext* context) {
+                                             rpc::RpcContext context) {
   DVLOG(3) << "Received Run Leader Election RPC: " << req->DebugString();
-  RpcScope scope(tablet_manager_, "RunLeaderElection", req, resp, context);
+  RpcScope scope(tablet_manager_, "RunLeaderElection", req, resp, &context);
   if (!scope) {
     return;
   }
@@ -1146,9 +1151,9 @@ void ConsensusServiceImpl::RunLeaderElection(const RunLeaderElectionRequestPB* r
 
 void ConsensusServiceImpl::LeaderElectionLost(const consensus::LeaderElectionLostRequestPB *req,
                                               consensus::LeaderElectionLostResponsePB *resp,
-                                              ::yb::rpc::RpcContext *context) {
+                                              ::yb::rpc::RpcContext context) {
   LOG(INFO) << "LeaderElectionLost, req: " << req->ShortDebugString();
-  RpcScope scope(tablet_manager_, "LeaderElectionLost", req, resp, context);
+  RpcScope scope(tablet_manager_, "LeaderElectionLost", req, resp, &context);
   if (!scope) {
     return;
   }
@@ -1160,10 +1165,10 @@ void ConsensusServiceImpl::LeaderElectionLost(const consensus::LeaderElectionLos
 
 void ConsensusServiceImpl::LeaderStepDown(const LeaderStepDownRequestPB* req,
                                           LeaderStepDownResponsePB* resp,
-                                          RpcContext* context) {
+                                          RpcContext context) {
   LOG(INFO) << "Received Leader stepdown RPC: " << req->ShortDebugString();
 
-  RpcScope scope(tablet_manager_, "LeaderStepDown", req, resp, context);
+  RpcScope scope(tablet_manager_, "LeaderStepDown", req, resp, &context);
   if (!scope) {
     return;
   }
@@ -1175,40 +1180,40 @@ void ConsensusServiceImpl::LeaderStepDown(const LeaderStepDownRequestPB* req,
 
 void ConsensusServiceImpl::GetLastOpId(const consensus::GetLastOpIdRequestPB *req,
                                        consensus::GetLastOpIdResponsePB *resp,
-                                       rpc::RpcContext *context) {
+                                       rpc::RpcContext context) {
   DVLOG(3) << "Received GetLastOpId RPC: " << req->DebugString();
-  if (!CheckUuidMatchOrRespond(tablet_manager_, "GetLastOpId", req, resp, context)) {
+  if (!CheckUuidMatchOrRespond(tablet_manager_, "GetLastOpId", req, resp, &context)) {
     return;
   }
   scoped_refptr<TabletPeer> tablet_peer;
-  if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, context, &tablet_peer)) {
+  if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, &context, &tablet_peer)) {
     return;
   }
 
   if (tablet_peer->state() != tablet::RUNNING) {
     SetupErrorAndRespond(resp->mutable_error(),
                          STATUS(ServiceUnavailable, "Tablet Peer not in RUNNING state"),
-                         TabletServerErrorPB::TABLET_NOT_RUNNING, context);
+                         TabletServerErrorPB::TABLET_NOT_RUNNING, &context);
     return;
   }
   scoped_refptr<Consensus> consensus;
-  if (!GetConsensusOrRespond(tablet_peer, resp, context, &consensus)) return;
+  if (!GetConsensusOrRespond(tablet_peer, resp, &context, &consensus)) return;
   if (PREDICT_FALSE(req->opid_type() == consensus::UNKNOWN_OPID_TYPE)) {
     HandleUnknownError(STATUS(InvalidArgument, "Invalid opid_type specified to GetLastOpId()"),
-                       resp, context);
+                       resp, &context);
     return;
   }
   Status s = consensus->GetLastOpId(req->opid_type(), resp->mutable_opid());
-  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
-  context->RespondSuccess();
+  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
+  context.RespondSuccess();
 }
 
 void ConsensusServiceImpl::GetConsensusState(const consensus::GetConsensusStateRequestPB *req,
                                              consensus::GetConsensusStateResponsePB *resp,
-                                             rpc::RpcContext *context) {
+                                             rpc::RpcContext context) {
   DVLOG(3) << "Received GetConsensusState RPC: " << req->DebugString();
 
-  RpcScope scope(tablet_manager_, "GetConsensusState", req, resp, context);
+  RpcScope scope(tablet_manager_, "GetConsensusState", req, resp, &context);
   if (!scope) {
     return;
   }
@@ -1217,7 +1222,7 @@ void ConsensusServiceImpl::GetConsensusState(const consensus::GetConsensusStateR
     HandleUnknownError(
         STATUS(InvalidArgument, Substitute("Unsupported ConsensusConfigType $0 ($1)",
                                            ConsensusConfigType_Name(type), type)),
-        resp, context);
+        resp, &context);
     return;
   }
   *resp->mutable_cstate() = scope->ConsensusState(req->type());
@@ -1225,46 +1230,49 @@ void ConsensusServiceImpl::GetConsensusState(const consensus::GetConsensusStateR
 
 void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB* req,
                                                 StartRemoteBootstrapResponsePB* resp,
-                                                rpc::RpcContext* context) {
-  if (!CheckUuidMatchOrRespond(tablet_manager_, "StartRemoteBootstrap", req, resp, context)) {
+                                                rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(tablet_manager_, "StartRemoteBootstrap", req, resp, &context)) {
     return;
   }
   Status s = tablet_manager_->StartRemoteBootstrap(*req);
-  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
-  context->RespondSuccess();
+  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
+  context.RespondSuccess();
 }
 
 void TabletServiceImpl::ScannerKeepAlive(const ScannerKeepAliveRequestPB *req,
                                          ScannerKeepAliveResponsePB *resp,
-                                         rpc::RpcContext *context) {
-  DCHECK(req->has_scanner_id());
+                                         rpc::RpcContext context) {
+  if(!req->has_scanner_id()) {
+    context.RespondFailure(STATUS(InvalidArgument, "Scanner not specified"));
+    return;
+  }
   SharedScanner scanner;
   if (!server_->scanner_manager()->LookupScanner(req->scanner_id(), &scanner)) {
     resp->mutable_error()->set_code(TabletServerErrorPB::SCANNER_EXPIRED);
-    StatusToPB(STATUS(NotFound, "Scanner not found"),
+    StatusToPB(STATUS(NotFound, "Scanner not found", req->scanner_id()),
                resp->mutable_error()->mutable_status());
-    return;
+  } else {
+    scanner->UpdateAccessTime();
   }
-  scanner->UpdateAccessTime();
-  context->RespondSuccess();
+  context.RespondSuccess();
 }
 
 void TabletServiceImpl::NoOp(const NoOpRequestPB *req,
                              NoOpResponsePB *resp,
-                             rpc::RpcContext *context) {
-  context->RespondSuccess();
+                             rpc::RpcContext context) {
+  context.RespondSuccess();
 }
 
 void TabletServiceImpl::Scan(const ScanRequestPB* req,
                              ScanResponsePB* resp,
-                             rpc::RpcContext* context) {
+                             rpc::RpcContext context) {
   TRACE_EVENT0("tserver", "TabletServiceImpl::Scan");
   // Validate the request: user must pass a new_scan_request or
   // a scanner ID, but not both.
   if (PREDICT_FALSE(req->has_scanner_id() &&
                     req->has_new_scan_request())) {
-    context->RespondFailure(STATUS(InvalidArgument,
-                                   "Must not pass both a scanner_id and new_scan_request"));
+    context.RespondFailure(STATUS(InvalidArgument,
+                                  "Must not pass both a scanner_id and new_scan_request"));
     return;
   }
 
@@ -1279,17 +1287,17 @@ void TabletServiceImpl::Scan(const ScanRequestPB* req,
   if (req->has_new_scan_request()) {
     const NewScanRequestPB& scan_pb = req->new_scan_request();
     scoped_refptr<TabletPeer> tablet_peer;
-    if (!LookupTabletPeerOrRespond(server_->tablet_manager(), scan_pb.tablet_id(), resp, context,
+    if (!LookupTabletPeerOrRespond(server_->tablet_manager(), scan_pb.tablet_id(), resp, &context,
                                    &tablet_peer)) {
       return;
     }
     string scanner_id;
     HybridTime scan_hybrid_time;
-    Status s = HandleNewScanRequest(tablet_peer.get(), req, context,
+    Status s = HandleNewScanRequest(tablet_peer.get(), req, &context,
                                     &collector, &scanner_id, &scan_hybrid_time, &has_more_results,
                                     &error_code);
     if (PREDICT_FALSE(!s.ok())) {
-      SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
+      SetupErrorAndRespond(resp->mutable_error(), s, error_code, &context);
       return;
     }
 
@@ -1303,12 +1311,12 @@ void TabletServiceImpl::Scan(const ScanRequestPB* req,
   } else if (req->has_scanner_id()) {
     Status s = HandleContinueScanRequest(req, &collector, &has_more_results, &error_code);
     if (PREDICT_FALSE(!s.ok())) {
-      SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
+      SetupErrorAndRespond(resp->mutable_error(), s, error_code, &context);
       return;
     }
   } else {
-    context->RespondFailure(STATUS(InvalidArgument,
-                                   "Must pass either a scanner_id or new_scan_request"));
+    context.RespondFailure(STATUS(InvalidArgument,
+                                  "Must pass either a scanner_id or new_scan_request"));
     return;
   }
   resp->set_has_more_results(has_more_results);
@@ -1319,13 +1327,13 @@ void TabletServiceImpl::Scan(const ScanRequestPB* req,
 
     // Add sidecar data to context and record the returned indices.
     int rows_idx;
-    CHECK_OK(context->AddRpcSidecar(util::RefCntBuffer(rows_data), &rows_idx));
+    CHECK_OK(context.AddRpcSidecar(util::RefCntBuffer(rows_data), &rows_idx));
     resp->mutable_data()->set_rows_sidecar(rows_idx);
 
     // Add indirect data as a sidecar, if applicable.
     if (indirect_data.size() > 0) {
       int indirect_idx;
-      CHECK_OK(context->AddRpcSidecar(util::RefCntBuffer(indirect_data), &indirect_idx));
+      CHECK_OK(context.AddRpcSidecar(util::RefCntBuffer(indirect_data), &indirect_idx));
       resp->mutable_data()->set_indirect_data_sidecar(indirect_idx);
     }
 
@@ -1338,13 +1346,13 @@ void TabletServiceImpl::Scan(const ScanRequestPB* req,
     }
   }
 
-  context->RespondSuccess();
+  context.RespondSuccess();
 }
 
 void TabletServiceImpl::ListTablets(const ListTabletsRequestPB* req,
                                     ListTabletsResponsePB* resp,
-                                    rpc::RpcContext* context) {
-  vector<scoped_refptr<TabletPeer> > peers;
+                                    rpc::RpcContext context) {
+  std::vector<scoped_refptr<TabletPeer> > peers;
   server_->tablet_manager()->GetTabletPeers(&peers);
   RepeatedPtrField<StatusAndSchemaPB>* peer_status = resp->mutable_status_and_schema();
   for (const scoped_refptr<TabletPeer>& peer : peers) {
@@ -1354,22 +1362,22 @@ void TabletServiceImpl::ListTablets(const ListTabletsRequestPB* req,
                         status->mutable_schema()));
     peer->tablet_metadata()->partition_schema().ToPB(status->mutable_partition_schema());
   }
-  context->RespondSuccess();
+  context.RespondSuccess();
 }
 
 void TabletServiceImpl::GetLogLocation(
     const GetLogLocationRequestPB* req,
     GetLogLocationResponsePB* resp,
-    rpc::RpcContext* context) {
+    rpc::RpcContext context) {
   resp->set_log_location(FLAGS_log_dir);
-  context->RespondSuccess();
+  context.RespondSuccess();
 }
 
 void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletServerRequestPB* req,
                                                    ListTabletsForTabletServerResponsePB* resp,
-                                                   rpc::RpcContext* context) {
+                                                   rpc::RpcContext context) {
   // Replicating logic from path-handlers.
-  vector<scoped_refptr<TabletPeer> > peers;
+  std::vector<scoped_refptr<TabletPeer> > peers;
   server_->tablet_manager()->GetTabletPeers(&peers);
   for (const scoped_refptr<TabletPeer>& peer : peers) {
     TabletStatusPB status;
@@ -1384,20 +1392,20 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
     data_entry->set_state(status.state());
   }
 
-  context->RespondSuccess();
+  context.RespondSuccess();
 }
 
 void TabletServiceImpl::Checksum(const ChecksumRequestPB* req,
                                  ChecksumResponsePB* resp,
-                                 rpc::RpcContext* context) {
+                                 rpc::RpcContext context) {
   VLOG(1) << "Full request: " << req->DebugString();
 
   // Validate the request: user must pass a new_scan_request or
   // a scanner ID, but not both.
   if (PREDICT_FALSE(req->has_new_request() &&
                     req->has_continue_request())) {
-    context->RespondFailure(STATUS(InvalidArgument,
-                                   "Must not pass both a scanner_id and new_scan_request"));
+    context.RespondFailure(STATUS(InvalidArgument,
+                                  "Must not pass both a scanner_id and new_scan_request"));
     return;
   }
 
@@ -1414,18 +1422,18 @@ void TabletServiceImpl::Checksum(const ChecksumRequestPB* req,
     scan_req.mutable_new_scan_request()->CopyFrom(req->new_request());
     const NewScanRequestPB& new_req = req->new_request();
     scoped_refptr<TabletPeer> tablet_peer;
-    if (!LookupTabletPeerOrRespond(server_->tablet_manager(), new_req.tablet_id(), resp, context,
+    if (!LookupTabletPeerOrRespond(server_->tablet_manager(), new_req.tablet_id(), resp, &context,
                                    &tablet_peer)) {
       return;
     }
 
     string scanner_id;
     HybridTime snap_hybrid_time;
-    Status s = HandleNewScanRequest(tablet_peer.get(), &scan_req, context,
+    Status s = HandleNewScanRequest(tablet_peer.get(), &scan_req, &context,
                                     &collector, &scanner_id, &snap_hybrid_time, &has_more,
                                     &error_code);
     if (PREDICT_FALSE(!s.ok())) {
-      SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
+      SetupErrorAndRespond(resp->mutable_error(), s, error_code, &context);
       return;
     }
     resp->set_scanner_id(scanner_id);
@@ -1438,19 +1446,19 @@ void TabletServiceImpl::Checksum(const ChecksumRequestPB* req,
     scan_req.set_scanner_id(continue_req.scanner_id());
     Status s = HandleContinueScanRequest(&scan_req, &collector, &has_more, &error_code);
     if (PREDICT_FALSE(!s.ok())) {
-      SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
+      SetupErrorAndRespond(resp->mutable_error(), s, error_code, &context);
       return;
     }
   } else {
-    context->RespondFailure(STATUS(InvalidArgument,
-                                   "Must pass either new_request or continue_request"));
+    context.RespondFailure(STATUS(InvalidArgument,
+                                  "Must pass either new_request or continue_request"));
     return;
   }
 
   resp->set_checksum(collector.agg_checksum());
   resp->set_has_more_results(has_more);
 
-  context->RespondSuccess();
+  context.RespondSuccess();
 }
 
 void TabletServiceImpl::Shutdown() {
@@ -1535,7 +1543,7 @@ static Status DecodeEncodedKeyRange(const NewScanRequestPB& scan_pb,
 static Status SetupScanSpec(const NewScanRequestPB& scan_pb,
                             const Schema& tablet_schema,
                             const Schema& projection,
-                            vector<ColumnSchema>* missing_cols,
+                            std::vector<ColumnSchema>* missing_cols,
                             gscoped_ptr<ScanSpec>* spec,
                             const SharedScanner& scanner) {
   gscoped_ptr<ScanSpec> ret(new ScanSpec);
@@ -1666,7 +1674,7 @@ Status TabletServiceImpl::HandleNewScanRequest(TabletPeer* tablet_peer,
   // Missing columns will contain the columns that are not mentioned in the client
   // projection but are actually needed for the scan, such as columns referred to by
   // predicates or key columns (if this is an ORDERED scan).
-  vector<ColumnSchema> missing_cols;
+  std::vector<ColumnSchema> missing_cols;
   s = SetupScanSpec(scan_pb, tablet_schema, projection, &missing_cols, &spec, scanner);
   if (PREDICT_FALSE(!s.ok())) {
     *error_code = TabletServerErrorPB::INVALID_SCAN_SPEC;
@@ -1680,7 +1688,7 @@ Status TabletServiceImpl::HandleNewScanRequest(TabletPeer* tablet_peer,
   // Build a new projection with the projection columns and the missing columns. Make
   // sure to set whether the column is a key column appropriately.
   SchemaBuilder projection_builder;
-  vector<ColumnSchema> projection_columns = projection.columns();
+  std::vector<ColumnSchema> projection_columns = projection.columns();
   for (const ColumnSchema& col : missing_cols) {
     projection_columns.push_back(col);
   }

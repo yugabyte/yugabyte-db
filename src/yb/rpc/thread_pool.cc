@@ -146,6 +146,7 @@ class ThreadPool::Impl {
         queue_full_status_(STATUS_SUBSTITUTE(ServiceUnavailable,
                                              "Queue is full, max items: $0",
                                              share_.options.queue_limit)) {
+    workers_.reserve(share_.options.max_workers);
     while (workers_.size() != share_.options.max_workers) {
       workers_.emplace_back(nullptr);
     }
@@ -179,7 +180,7 @@ class ThreadPool::Impl {
     // a new worker. And after that, we will just increment it doing nothing after that.
     // So we could be lock free here.
     auto index = created_workers_++;
-    if (index < workers_.size()) {
+    if (index < share_.options.max_workers) {
       std::lock_guard<std::mutex> lock(mutex_);
       if (!closing_) {
         workers_[index].reset(new Worker(&share_, index));

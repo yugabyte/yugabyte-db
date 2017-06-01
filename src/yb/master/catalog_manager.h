@@ -517,7 +517,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   //
   //   Status s = server_->catalog_manager()->CreateTable(req, resp, rpc);
   //   CheckRespErrorOrSetUnknown(s, resp);
-  //   rpc->RespondSuccess();
+  //   rpc.RespondSuccess();
   // }
   //
   class ScopedLeaderSharedLock {
@@ -593,8 +593,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
   CHECKED_STATUS CreateTable(const CreateTableRequestPB* req,
-                     CreateTableResponsePB* resp,
-                     rpc::RpcContext* rpc);
+                             CreateTableResponsePB* resp,
+                             rpc::RpcContext* rpc);
 
   // Get the information about an in-progress create operation
   CHECKED_STATUS IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
@@ -605,8 +605,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
   CHECKED_STATUS DeleteTable(const DeleteTableRequestPB* req,
-                     DeleteTableResponsePB* resp,
-                     rpc::RpcContext* rpc);
+                             DeleteTableResponsePB* resp,
+                             rpc::RpcContext* rpc);
 
   // Get the information about an in-progress delete operation
   CHECKED_STATUS IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
@@ -617,16 +617,16 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
   CHECKED_STATUS AlterTable(const AlterTableRequestPB* req,
-                    AlterTableResponsePB* resp,
-                    rpc::RpcContext* rpc);
+                            AlterTableResponsePB* resp,
+                            rpc::RpcContext* rpc);
 
   // Get the information about an in-progress alter operation
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
   CHECKED_STATUS IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
-                          IsAlterTableDoneResponsePB* resp,
-                          rpc::RpcContext* rpc);
+                                  IsAlterTableDoneResponsePB* resp,
+                                  rpc::RpcContext* rpc);
 
   // Get the information about the specified table
   CHECKED_STATUS GetTableSchema(const GetTableSchemaRequestPB* req,
@@ -658,25 +658,25 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
   CHECKED_STATUS ProcessTabletReport(TSDescriptor* ts_desc,
-                             const TabletReportPB& report,
-                             TabletReportUpdatesPB *report_update,
-                             rpc::RpcContext* rpc);
+                                     const TabletReportPB& report,
+                                     TabletReportUpdatesPB *report_update,
+                                     rpc::RpcContext* rpc);
 
   // Create a new Namespace with the specified attributes.
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
   CHECKED_STATUS CreateNamespace(const CreateNamespaceRequestPB* req,
-                         CreateNamespaceResponsePB* resp,
-                         rpc::RpcContext* rpc);
+                                 CreateNamespaceResponsePB* resp,
+                                 rpc::RpcContext* rpc);
 
   // Delete the specified Namespace.
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
   CHECKED_STATUS DeleteNamespace(const DeleteNamespaceRequestPB* req,
-                         DeleteNamespaceResponsePB* resp,
-                         rpc::RpcContext* rpc);
+                                 DeleteNamespaceResponsePB* resp,
+                                 rpc::RpcContext* rpc);
 
   // List all the current namespaces.
   CHECKED_STATUS ListNamespaces(const ListNamespacesRequestPB* req,

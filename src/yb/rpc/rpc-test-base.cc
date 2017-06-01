@@ -2,6 +2,8 @@
 // Copyright (c) YugaByte, Inc.
 //
 
+#include <thread>
+
 #include "yb/rpc/rpc-test-base.h"
 
 using namespace std::chrono_literals;
@@ -164,16 +166,16 @@ class CalculatorService: public CalculatorServiceIf {
     messenger_ = messenger;
   }
 
-  void Add(const AddRequestPB* req, AddResponsePB* resp, RpcContext* context) override {
+  void Add(const AddRequestPB* req, AddResponsePB* resp, RpcContext context) override {
     resp->set_result(req->x() + req->y());
-    context->RespondSuccess();
+    context.RespondSuccess();
   }
 
-  void Sleep(const SleepRequestPB* req, SleepResponsePB* resp, RpcContext* context) override {
+  void Sleep(const SleepRequestPB* req, SleepResponsePB* resp, RpcContext context) override {
     if (req->return_app_error()) {
       CalculatorError my_error;
       my_error.set_extra_error_data("some application-specific error data");
-      context->RespondApplicationError(CalculatorError::app_error_ext.number(),
+      context.RespondApplicationError(CalculatorError::app_error_ext.number(),
           "Got some error", my_error);
       return;
     }
@@ -181,11 +183,11 @@ class CalculatorService: public CalculatorServiceIf {
     // Respond w/ error if the RPC specifies that the client deadline is set,
     // but it isn't.
     if (req->client_timeout_defined()) {
-      MonoTime deadline = context->GetClientDeadline();
+      MonoTime deadline = context.GetClientDeadline();
       if (deadline.Equals(MonoTime::Max())) {
         CalculatorError my_error;
         my_error.set_extra_error_data("Timeout not set");
-        context->RespondApplicationError(CalculatorError::app_error_ext.number(),
+        context.RespondApplicationError(CalculatorError::app_error_ext.number(),
             "Missing required timeout", my_error);
         return;
       }
@@ -193,56 +195,56 @@ class CalculatorService: public CalculatorServiceIf {
 
     if (req->deferred()) {
       // Spawn a new thread which does the sleep and responds later.
-      scoped_refptr<Thread> thread;
-      CHECK_OK(Thread::Create("rpc-test", "deferred",
-          &CalculatorService::DoSleep, this, req, context,
-          &thread));
+      std::thread thread([this, req, context = std::move(context)]() mutable {
+        DoSleep(req, std::move(context));
+      });
+      thread.detach();
       return;
     }
-    DoSleep(req, context);
+    DoSleep(req, std::move(context));
   }
 
-  void Echo(const EchoRequestPB* req, EchoResponsePB* resp, RpcContext* context) override {
+  void Echo(const EchoRequestPB* req, EchoResponsePB* resp, RpcContext context) override {
     resp->set_data(req->data());
-    context->RespondSuccess();
+    context.RespondSuccess();
   }
 
-  void WhoAmI(const WhoAmIRequestPB* req, WhoAmIResponsePB* resp, RpcContext* context) override {
-    const UserCredentials& creds = context->user_credentials();
+  void WhoAmI(const WhoAmIRequestPB* req, WhoAmIResponsePB* resp, RpcContext context) override {
+    const UserCredentials& creds = context.user_credentials();
     if (creds.has_effective_user()) {
       resp->mutable_credentials()->set_effective_user(creds.effective_user());
     }
     resp->mutable_credentials()->set_real_user(creds.real_user());
-    resp->set_address(yb::ToString(context->remote_address()));
-    context->RespondSuccess();
+    resp->set_address(yb::ToString(context.remote_address()));
+    context.RespondSuccess();
   }
 
   void TestArgumentsInDiffPackage(
-      const ReqDiffPackagePB* req, RespDiffPackagePB* resp, RpcContext* context) override {
-    context->RespondSuccess();
+      const ReqDiffPackagePB* req, RespDiffPackagePB* resp, RpcContext context) override {
+    context.RespondSuccess();
   }
 
-  void Panic(const PanicRequestPB* req, PanicResponsePB* resp, RpcContext* context) override {
+  void Panic(const PanicRequestPB* req, PanicResponsePB* resp, RpcContext context) override {
     TRACE("Got panic request");
-    PANIC_RPC(context, "Test method panicking!");
+    PANIC_RPC(&context, "Test method panicking!");
   }
 
-  void Ping(const PingRequestPB* req, PingResponsePB* resp, RpcContext* context) override {
+  void Ping(const PingRequestPB* req, PingResponsePB* resp, RpcContext context) override {
     auto now = MonoTime::Now(MonoTime::FINE);
     resp->set_time(now.ToUint64());
-    context->RespondSuccess();
+    context.RespondSuccess();
   }
 
   void Disconnect(
-      const DisconnectRequestPB* peq, DisconnectResponsePB* resp, RpcContext* context) override {
-    context->CloseConnection();
-    context->RespondSuccess();
+      const DisconnectRequestPB* peq, DisconnectResponsePB* resp, RpcContext context) override {
+    context.CloseConnection();
+    context.RespondSuccess();
   }
 
-  void Forward(const ForwardRequestPB* req, ForwardResponsePB* resp, RpcContext* context) override {
+  void Forward(const ForwardRequestPB* req, ForwardResponsePB* resp, RpcContext context) override {
     if (!req->has_host() || !req->has_port()) {
       resp->set_name(name_);
-      context->RespondSuccess();
+      context.RespondSuccess();
       return;
     }
     auto messenger = messenger_.lock();
@@ -250,7 +252,7 @@ class CalculatorService: public CalculatorServiceIf {
     boost::system::error_code ec;
     Endpoint endpoint(IpAddress::from_string(req->host(), ec), req->port());
     if (ec) {
-      context->RespondFailure(STATUS_SUBSTITUTE(NetworkError, "Invalid host: $0", ec.message()));
+      context.RespondFailure(STATUS_SUBSTITUTE(NetworkError, "Invalid host: $0", ec.message()));
       return;
     }
     rpc_test::CalculatorServiceProxy proxy(messenger, endpoint);
@@ -260,17 +262,17 @@ class CalculatorService: public CalculatorServiceIf {
     RpcController controller;
     auto status = proxy.Forward(forwarded_req, &forwarded_resp, &controller);
     if (!status.ok()) {
-      context->RespondFailure(status);
+      context.RespondFailure(status);
     } else {
       resp->set_name(forwarded_resp.name());
-      context->RespondSuccess();
+      context.RespondSuccess();
     }
   }
 
  private:
-  void DoSleep(const SleepRequestPB* req, RpcContext* context) {
+  void DoSleep(const SleepRequestPB* req, RpcContext context) {
     SleepFor(MonoDelta::FromMicroseconds(req->sleep_micros()));
-    context->RespondSuccess();
+    context.RespondSuccess();
   }
 
   std::string name_;

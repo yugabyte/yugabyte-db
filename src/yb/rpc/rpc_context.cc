@@ -102,16 +102,15 @@ RpcContext::RpcContext(InboundCallPtr call,
                        RpcMethodMetrics metrics)
     : RpcContext(std::move(call), EMPTY_MESSAGE, EMPTY_MESSAGE, metrics) {}
 
-RpcContext::RpcContext(InboundCallPtr call,
-                       const google::protobuf::Message *request_pb,
-                       const google::protobuf::Message *response_pb,
-                       RpcMethodMetrics metrics)
-    : RpcContext(std::move(call),
-                 std::shared_ptr<const google::protobuf::Message>(request_pb),
-                 std::shared_ptr<const google::protobuf::Message>(response_pb),
-                 metrics) {}
-
 RpcContext::~RpcContext() {
+  if (call_ && !responded_) {
+#ifndef NDEBUG
+    LOG(FATAL)
+#else
+    LOG(ERROR)
+#endif
+        << "RpcContext is destroyed, but response did not send, for call: " << call_->ToString();
+  }
 }
 
 void RpcContext::RespondSuccess() {
@@ -122,7 +121,7 @@ void RpcContext::RespondSuccess() {
                          "response", TracePb(*response_pb_),
                          "trace", trace()->DumpToString(true));
   call_->RespondSuccess(*response_pb_);
-  delete this;
+  responded_ = true;
 }
 
 void RpcContext::RespondFailure(const Status &status) {
@@ -134,7 +133,7 @@ void RpcContext::RespondFailure(const Status &status) {
                          "trace", trace()->DumpToString(true));
   call_->RespondFailure(ErrorStatusPB::ERROR_APPLICATION,
                         status);
-  delete this;
+  responded_ = true;
 }
 
 void RpcContext::RespondRpcFailure(ErrorStatusPB_RpcErrorCodePB err, const Status& status) {
@@ -145,7 +144,7 @@ void RpcContext::RespondRpcFailure(ErrorStatusPB_RpcErrorCodePB err, const Statu
                          "status", status.ToString(),
                          "trace", trace()->DumpToString(true));
   call_->RespondFailure(err, status);
-  delete this;
+  responded_ = true;
 }
 
 void RpcContext::RespondApplicationError(int error_ext_id, const std::string& message,
@@ -161,7 +160,7 @@ void RpcContext::RespondApplicationError(int error_ext_id, const std::string& me
                            "trace", trace()->DumpToString(true));
   }
   call_->RespondApplicationError(error_ext_id, message, app_error_pb);
-  delete this;
+  responded_ = true;
 }
 
 Status RpcContext::AddRpcSidecar(util::RefCntBuffer car, int* idx) {
@@ -221,6 +220,14 @@ void RpcContext::CloseConnection() {
       }
     }
   });
+}
+
+void PanicRpc(RpcContext* context, const char* file, int line_number, const std::string& message) {
+  if (context) {
+    context->Panic(file, line_number, message);
+  } else {
+    google::LogMessage(file, line_number, google::GLOG_FATAL).stream() << message;
+  }
 }
 
 }  // namespace rpc

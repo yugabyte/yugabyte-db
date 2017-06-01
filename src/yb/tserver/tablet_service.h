@@ -52,39 +52,39 @@ class TabletServiceImpl : public TabletServerServiceIf {
   explicit TabletServiceImpl(TabletServerIf* server);
 
   virtual void Write(const WriteRequestPB* req, WriteResponsePB* resp,
-                     rpc::RpcContext* context) override;
+                     rpc::RpcContext context) override;
 
   virtual void Read(
-      const ReadRequestPB* req, ReadResponsePB* resp, rpc::RpcContext* context) override;
+      const ReadRequestPB* req, ReadResponsePB* resp, rpc::RpcContext context) override;
 
   virtual void Scan(const ScanRequestPB* req,
                     ScanResponsePB* resp,
-                    rpc::RpcContext* context) override;
+                    rpc::RpcContext context) override;
 
   virtual void NoOp(const NoOpRequestPB* req,
                     NoOpResponsePB* resp,
-                    rpc::RpcContext* context) override;
+                    rpc::RpcContext context) override;
 
   virtual void ScannerKeepAlive(const ScannerKeepAliveRequestPB *req,
                                 ScannerKeepAliveResponsePB *resp,
-                                rpc::RpcContext *context) override;
+                                rpc::RpcContext context) override;
 
   virtual void ListTablets(const ListTabletsRequestPB* req,
                            ListTabletsResponsePB* resp,
-                           rpc::RpcContext* context) override;
+                           rpc::RpcContext context) override;
 
   virtual void ListTabletsForTabletServer(const ListTabletsForTabletServerRequestPB* req,
                                           ListTabletsForTabletServerResponsePB* resp,
-                                          rpc::RpcContext* context) override;
+                                          rpc::RpcContext context) override;
 
   virtual void GetLogLocation(
       const GetLogLocationRequestPB* req,
       GetLogLocationResponsePB* resp,
-      rpc::RpcContext* context) override;
+      rpc::RpcContext context) override;
 
   virtual void Checksum(const ChecksumRequestPB* req,
                         ChecksumResponsePB* resp,
-                        rpc::RpcContext* context) override;
+                        rpc::RpcContext context) override;
 
   virtual void Shutdown() override;
 
@@ -133,15 +133,15 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   explicit TabletServiceAdminImpl(TabletServer* server);
   virtual void CreateTablet(const CreateTabletRequestPB* req,
                             CreateTabletResponsePB* resp,
-                            rpc::RpcContext* context) override;
+                            rpc::RpcContext context) override;
 
   virtual void DeleteTablet(const DeleteTabletRequestPB* req,
                             DeleteTabletResponsePB* resp,
-                            rpc::RpcContext* context) override;
+                            rpc::RpcContext context) override;
 
   virtual void AlterSchema(const AlterSchemaRequestPB* req,
                            AlterSchemaResponsePB* resp,
-                           rpc::RpcContext* context) override;
+                           rpc::RpcContext context) override;
 
  private:
   TabletServer* server_;
@@ -156,43 +156,43 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
 
   virtual void UpdateConsensus(const consensus::ConsensusRequestPB *req,
                                consensus::ConsensusResponsePB *resp,
-                               rpc::RpcContext *context) override;
+                               rpc::RpcContext context) override;
 
   virtual void RequestConsensusVote(const consensus::VoteRequestPB* req,
                                     consensus::VoteResponsePB* resp,
-                                    rpc::RpcContext* context) override;
+                                    rpc::RpcContext context) override;
 
   virtual void ChangeConfig(const consensus::ChangeConfigRequestPB* req,
                             consensus::ChangeConfigResponsePB* resp,
-                            rpc::RpcContext* context) override;
+                            rpc::RpcContext context) override;
 
   virtual void GetNodeInstance(const consensus::GetNodeInstanceRequestPB* req,
                                consensus::GetNodeInstanceResponsePB* resp,
-                               rpc::RpcContext* context) override;
+                               rpc::RpcContext context) override;
 
   virtual void RunLeaderElection(const consensus::RunLeaderElectionRequestPB* req,
                                  consensus::RunLeaderElectionResponsePB* resp,
-                                 rpc::RpcContext* context) override;
+                                 rpc::RpcContext context) override;
 
   virtual void LeaderElectionLost(const consensus::LeaderElectionLostRequestPB *req,
                                   consensus::LeaderElectionLostResponsePB *resp,
-                                  ::yb::rpc::RpcContext *context) override;
+                                  ::yb::rpc::RpcContext context) override;
 
   virtual void LeaderStepDown(const consensus::LeaderStepDownRequestPB* req,
                               consensus::LeaderStepDownResponsePB* resp,
-                              rpc::RpcContext* context) override;
+                              rpc::RpcContext context) override;
 
   virtual void GetLastOpId(const consensus::GetLastOpIdRequestPB *req,
                            consensus::GetLastOpIdResponsePB *resp,
-                           rpc::RpcContext *context) override;
+                           rpc::RpcContext context) override;
 
   virtual void GetConsensusState(const consensus::GetConsensusStateRequestPB *req,
                                  consensus::GetConsensusStateResponsePB *resp,
-                                 rpc::RpcContext *context) override;
+                                 rpc::RpcContext context) override;
 
   virtual void StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB* req,
                                     consensus::StartRemoteBootstrapResponsePB* resp,
-                                    rpc::RpcContext* context) override;
+                                    rpc::RpcContext context) override;
 
  private:
   TabletPeerLookupIf* tablet_manager_;

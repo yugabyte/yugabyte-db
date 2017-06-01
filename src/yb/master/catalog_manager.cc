@@ -517,7 +517,7 @@ void CatalogManagerBgTasks::Run() {
 
 namespace {
 
-string RequestorString(RpcContext* rpc) {
+std::string RequestorString(RpcContext* rpc) {
   if (rpc) {
     return rpc->requestor_string();
   } else {
@@ -677,7 +677,7 @@ Status CatalogManager::VisitSysCatalog() {
   // Abort any outstanding tasks. All TableInfos are orphaned below, so
   // it's important to end their tasks now; otherwise Shutdown() will
   // destroy master state used by these tasks.
-  vector<scoped_refptr<TableInfo>> tables;
+  std::vector<scoped_refptr<TableInfo>> tables;
   AppendValuesFromMap(table_ids_map_, &tables);
   AbortAndWaitForAllTasks(tables);
 
@@ -1324,8 +1324,8 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
                                            const Schema& schema,
                                            const PartitionSchema& partition_schema,
                                            const NamespaceId& namespace_id,
-                                           const vector<Partition>& partitions,
-                                           vector<TabletInfo*>* tablets,
+                                           const std::vector<Partition>& partitions,
+                                           std::vector<TabletInfo*>* tablets,
                                            CreateTableResponsePB* resp,
                                            scoped_refptr<TableInfo>* table) {
   // Verify we have catalog manager lock.

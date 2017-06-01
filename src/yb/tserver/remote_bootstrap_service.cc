@@ -41,7 +41,7 @@
 // Note, this macro assumes the existence of a local var named 'context'.
 #define RPC_RETURN_APP_ERROR(app_err, message, s) \
   do { \
-    SetupErrorAndRespond(context, app_err, message, s); \
+    SetupErrorAndRespond(&context, app_err, message, s); \
     return; \
   } while (false)
 
@@ -131,7 +131,7 @@ RemoteBootstrapServiceImpl::RemoteBootstrapServiceImpl(
 void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
         const BeginRemoteBootstrapSessionRequestPB* req,
         BeginRemoteBootstrapSessionResponsePB* resp,
-        rpc::RpcContext* context) {
+        rpc::RpcContext context) {
   const string& requestor_uuid = req->requestor_uuid();
   const string& tablet_id = req->tablet_id();
 
@@ -150,7 +150,7 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
     boost::lock_guard<simple_spinlock> l(sessions_lock_);
     if (!FindCopy(sessions_, session_id, &session)) {
       LOG(INFO) << "Beginning new remote bootstrap session on tablet " << tablet_id
-                << " from peer " << requestor_uuid << " at " << context->requestor_string()
+                << " from peer " << requestor_uuid << " at " << context.requestor_string()
                 << ": session id = " << session_id;
       session.reset(new RemoteBootstrapSession(tablet_peer, session_id,
                                                requestor_uuid, fs_manager_));
@@ -161,7 +161,7 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
       InsertOrDie(&sessions_, session_id, session);
     } else {
       LOG(INFO) << "Re-initializing existing remote bootstrap session on tablet " << tablet_id
-                << " from peer " << requestor_uuid << " at " << context->requestor_string()
+                << " from peer " << requestor_uuid << " at " << context.requestor_string()
                 << ": session id = " << session_id;
       RPC_RETURN_NOT_OK(session->Init(),
                         RemoteBootstrapErrorPB::UNKNOWN_ERROR,
@@ -180,13 +180,13 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
     resp->add_wal_segment_seqnos(segment->header().sequence_number());
   }
 
-  context->RespondSuccess();
+  context.RespondSuccess();
 }
 
 void RemoteBootstrapServiceImpl::CheckSessionActive(
         const CheckRemoteBootstrapSessionActiveRequestPB* req,
         CheckRemoteBootstrapSessionActiveResponsePB* resp,
-        rpc::RpcContext* context) {
+        rpc::RpcContext context) {
   const string& session_id = req->session_id();
 
   // Look up and validate remote bootstrap session.
@@ -199,11 +199,11 @@ void RemoteBootstrapServiceImpl::CheckSessionActive(
       ResetSessionExpirationUnlocked(session_id);
     }
     resp->set_session_is_active(true);
-    context->RespondSuccess();
+    context.RespondSuccess();
     return;
   } else if (app_error == RemoteBootstrapErrorPB::NO_SESSION) {
     resp->set_session_is_active(false);
-    context->RespondSuccess();
+    context.RespondSuccess();
     return;
   } else {
     RPC_RETURN_NOT_OK(status, app_error,
@@ -213,7 +213,7 @@ void RemoteBootstrapServiceImpl::CheckSessionActive(
 
 void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
                                            FetchDataResponsePB* resp,
-                                           rpc::RpcContext* context) {
+                                           rpc::RpcContext context) {
   const string& session_id = req->session_id();
   // Look up and validate remote bootstrap session.
   scoped_refptr<RemoteBootstrapSession> session;
@@ -268,23 +268,23 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
   uint32_t crc32 = Crc32c(data->data(), data->length());
   data_chunk->set_crc32(crc32);
 
-  context->RespondSuccess();
+  context.RespondSuccess();
 }
 
 void RemoteBootstrapServiceImpl::EndRemoteBootstrapSession(
         const EndRemoteBootstrapSessionRequestPB* req,
         EndRemoteBootstrapSessionResponsePB* resp,
-        rpc::RpcContext* context) {
+        rpc::RpcContext context) {
   {
     boost::lock_guard<simple_spinlock> l(sessions_lock_);
     RemoteBootstrapErrorPB::Code app_error;
     LOG(INFO) << "Request end of remote bootstrap session " << req->session_id()
-      << " received from " << context->requestor_string();
+      << " received from " << context.requestor_string();
     RPC_RETURN_NOT_OK(DoEndRemoteBootstrapSessionUnlocked(req->session_id(), req->is_success(),
                                                           &app_error),
                       app_error, "No such session");
   }
-  context->RespondSuccess();
+  context.RespondSuccess();
 }
 
 void RemoteBootstrapServiceImpl::Shutdown() {

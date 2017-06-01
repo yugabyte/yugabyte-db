@@ -50,19 +50,19 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
 
   virtual void BeginRemoteBootstrapSession(const BeginRemoteBootstrapSessionRequestPB* req,
                                            BeginRemoteBootstrapSessionResponsePB* resp,
-                                           rpc::RpcContext* context) override;
+                                           rpc::RpcContext context) override;
 
   virtual void CheckSessionActive(const CheckRemoteBootstrapSessionActiveRequestPB* req,
                                   CheckRemoteBootstrapSessionActiveResponsePB* resp,
-                                  rpc::RpcContext* context) override;
+                                  rpc::RpcContext context) override;
 
   virtual void FetchData(const FetchDataRequestPB* req,
                          FetchDataResponsePB* resp,
-                         rpc::RpcContext* context) override;
+                         rpc::RpcContext context) override;
 
   virtual void EndRemoteBootstrapSession(const EndRemoteBootstrapSessionRequestPB* req,
                                          EndRemoteBootstrapSessionResponsePB* resp,
-                                         rpc::RpcContext* context) override;
+                                         rpc::RpcContext context) override;
 
   virtual void Shutdown() override;
 

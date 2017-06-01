@@ -78,12 +78,12 @@ MasterServiceImpl::MasterServiceImpl(Master* server)
 
 void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
                                     TSHeartbeatResponsePB* resp,
-                                    rpc::RpcContext* rpc) {
+                                    rpc::RpcContext rpc) {
   // If CatalogManager is not initialized don't even know whether
   // or not we will be a leader (so we can't tell whether or not we can
   // accept tablet reports).
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedOrRespond(resp, &rpc)) {
     return;
   }
 
@@ -99,7 +99,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
     LOG(WARNING) << "Received a heartbeat, but this Master instance is not a leader or a "
                  << "single Master: " << l.leader_status().ToString();
     resp->set_leader_master(false);
-    rpc->RespondSuccess();
+    rpc.RespondSuccess();
     return;
   }
   resp->set_leader_master(true);
@@ -125,10 +125,10 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
                                                  req->registration(),
                                                  &ts_desc);
     if (!s.ok()) {
-      LOG(WARNING) << "Unable to register tablet server (" << rpc->requestor_string() << "): "
+      LOG(WARNING) << "Unable to register tablet server (" << rpc.requestor_string() << "): "
                    << s.ToString();
       // TODO: add service-specific errors
-      rpc->RespondFailure(s);
+      rpc.RespondFailure(s);
       return;
     }
   }
@@ -142,17 +142,17 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   if (s.IsNotFound()) {
     LOG(INFO) << "Got heartbeat from  unknown tablet server { "
               << req->common().ts_instance().ShortDebugString()
-              << " } as " << rpc->requestor_string()
+              << " } as " << rpc.requestor_string()
               << "; Asking this server to re-register.";
     resp->set_needs_reregister(true);
     resp->set_needs_full_tablet_report(true);
-    rpc->RespondSuccess();
+    rpc.RespondSuccess();
     return;
   } else if (!s.ok()) {
     LOG(WARNING) << "Unable to look up tablet server for heartbeat request "
-                 << req->DebugString() << " from " << rpc->requestor_string()
+                 << req->DebugString() << " from " << rpc.requestor_string()
                  << "\nStatus: " << s.ToString();
-    rpc->RespondFailure(s.CloneAndPrepend("Unable to lookup TS"));
+    rpc.RespondFailure(s.CloneAndPrepend("Unable to lookup TS"));
     return;
   }
 
@@ -161,9 +161,9 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
 
   if (req->has_tablet_report()) {
     s = server_->catalog_manager()->ProcessTabletReport(
-      ts_desc.get(), req->tablet_report(), resp->mutable_tablet_report(), rpc);
+      ts_desc.get(), req->tablet_report(), resp->mutable_tablet_report(), &rpc);
     if (!s.ok()) {
-      rpc->RespondFailure(s.CloneAndPrepend("Failed to process tablet report"));
+      rpc.RespondFailure(s.CloneAndPrepend("Failed to process tablet report"));
       return;
     }
   }
@@ -173,20 +173,20 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   }
 
   // Retrieve all the nodes known by the master.
-  vector<std::shared_ptr<TSDescriptor> > descs;
+  std::vector<std::shared_ptr<TSDescriptor> > descs;
   server_->ts_manager()->GetAllLiveDescriptors(&descs);
   for (const auto& desc : descs) {
     desc->GetTSInformationPB(resp->add_tservers());
   }
 
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* req,
                                            GetTabletLocationsResponsePB* resp,
-                                           rpc::RpcContext* rpc) {
+                                           rpc::RpcContext rpc) {
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
 
@@ -194,7 +194,7 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_master_inject_latency_on_tablet_lookups_ms));
   }
 
-  vector<TSDescriptor*> locs;
+  std::vector<TSDescriptor*> locs;
   for (const string& tablet_id : req->tablet_ids()) {
     // TODO: once we have catalog data. ACL checks would also go here, probably.
     TabletLocationsPB* locs_pb = resp->add_tablet_locations();
@@ -208,105 +208,105 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
     }
   }
 
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::CreateTable(const CreateTableRequestPB* req,
                                     CreateTableResponsePB* resp,
-                                    rpc::RpcContext* rpc) {
+                                    rpc::RpcContext rpc) {
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
 
-  Status s = server_->catalog_manager()->CreateTable(req, resp, rpc);
+  Status s = server_->catalog_manager()->CreateTable(req, resp, &rpc);
   CheckRespErrorOrSetUnknown(s, resp);
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
                                           IsCreateTableDoneResponsePB* resp,
-                                          rpc::RpcContext* rpc) {
+                                          rpc::RpcContext rpc) {
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
 
   Status s = server_->catalog_manager()->IsCreateTableDone(req, resp);
   CheckRespErrorOrSetUnknown(s, resp);
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::DeleteTable(const DeleteTableRequestPB* req,
                                     DeleteTableResponsePB* resp,
-                                    rpc::RpcContext* rpc) {
+                                    rpc::RpcContext rpc) {
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
 
-  Status s = server_->catalog_manager()->DeleteTable(req, resp, rpc);
+  Status s = server_->catalog_manager()->DeleteTable(req, resp, &rpc);
   CheckRespErrorOrSetUnknown(s, resp);
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
                                           IsDeleteTableDoneResponsePB* resp,
-                                          rpc::RpcContext* rpc) {
+                                          rpc::RpcContext rpc) {
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
 
   Status s = server_->catalog_manager()->IsDeleteTableDone(req, resp);
   CheckRespErrorOrSetUnknown(s, resp);
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::AlterTable(const AlterTableRequestPB* req,
                                    AlterTableResponsePB* resp,
-                                   rpc::RpcContext* rpc) {
+                                   rpc::RpcContext rpc) {
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
 
-  Status s = server_->catalog_manager()->AlterTable(req, resp, rpc);
+  Status s = server_->catalog_manager()->AlterTable(req, resp, &rpc);
   CheckRespErrorOrSetUnknown(s, resp);
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
                                          IsAlterTableDoneResponsePB* resp,
-                                         rpc::RpcContext* rpc) {
+                                         rpc::RpcContext rpc) {
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
 
-  Status s = server_->catalog_manager()->IsAlterTableDone(req, resp, rpc);
+  Status s = server_->catalog_manager()->IsAlterTableDone(req, resp, &rpc);
   CheckRespErrorOrSetUnknown(s, resp);
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::ListTables(const ListTablesRequestPB* req,
                                    ListTablesResponsePB* resp,
-                                   rpc::RpcContext* rpc) {
+                                   rpc::RpcContext rpc) {
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
 
   Status s = server_->catalog_manager()->ListTables(req, resp);
   CheckRespErrorOrSetUnknown(s, resp);
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::GetTableLocations(const GetTableLocationsRequestPB* req,
                                           GetTableLocationsResponsePB* resp,
-                                          rpc::RpcContext* rpc) {
+                                          rpc::RpcContext rpc) {
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
   if (PREDICT_FALSE(FLAGS_master_inject_latency_on_tablet_lookups_ms > 0)) {
@@ -314,70 +314,70 @@ void MasterServiceImpl::GetTableLocations(const GetTableLocationsRequestPB* req,
   }
   Status s = server_->catalog_manager()->GetTableLocations(req, resp);
   CheckRespErrorOrSetUnknown(s, resp);
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::GetTableSchema(const GetTableSchemaRequestPB* req,
                                        GetTableSchemaResponsePB* resp,
-                                       rpc::RpcContext* rpc) {
+                                       rpc::RpcContext rpc) {
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
 
   Status s = server_->catalog_manager()->GetTableSchema(req, resp);
   CheckRespErrorOrSetUnknown(s, resp);
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::CreateNamespace(const CreateNamespaceRequestPB* req,
                                         CreateNamespaceResponsePB* resp,
-                                        rpc::RpcContext* rpc) {
+                                        rpc::RpcContext rpc) {
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
 
-  Status s = server_->catalog_manager()->CreateNamespace(req, resp, rpc);
+  Status s = server_->catalog_manager()->CreateNamespace(req, resp, &rpc);
   CheckRespErrorOrSetUnknown(s, resp);
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::DeleteNamespace(const DeleteNamespaceRequestPB* req,
                                         DeleteNamespaceResponsePB* resp,
-                                        rpc::RpcContext* rpc) {
+                                        rpc::RpcContext rpc) {
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
 
-  Status s = server_->catalog_manager()->DeleteNamespace(req, resp, rpc);
+  Status s = server_->catalog_manager()->DeleteNamespace(req, resp, &rpc);
   CheckRespErrorOrSetUnknown(s, resp);
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::ListNamespaces(const ListNamespacesRequestPB* req,
                                        ListNamespacesResponsePB* resp,
-                                       rpc::RpcContext* rpc) {
+                                       rpc::RpcContext rpc) {
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
 
   Status s = server_->catalog_manager()->ListNamespaces(req, resp);
   CheckRespErrorOrSetUnknown(s, resp);
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::ListTabletServers(const ListTabletServersRequestPB* req,
                                           ListTabletServersResponsePB* resp,
-                                          rpc::RpcContext* rpc) {
+                                          rpc::RpcContext rpc) {
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
 
-  vector<std::shared_ptr<TSDescriptor> > descs;
+  std::vector<std::shared_ptr<TSDescriptor> > descs;
   server_->ts_manager()->GetAllDescriptors(&descs);
   for (const std::shared_ptr<TSDescriptor>& desc : descs) {
     ListTabletServersResponsePB::Entry* entry = resp->add_servers();
@@ -385,69 +385,69 @@ void MasterServiceImpl::ListTabletServers(const ListTabletServersRequestPB* req,
     desc->GetRegistration(entry->mutable_registration());
     entry->set_millis_since_heartbeat(desc->TimeSinceHeartbeat().ToMilliseconds());
   }
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::ListMasters(
     const ListMastersRequestPB* req,
     ListMastersResponsePB* resp,
-    rpc::RpcContext* rpc) {
-  vector<ServerEntryPB> masters;
+    rpc::RpcContext rpc) {
+  std::vector<ServerEntryPB> masters;
   Status s = server_->ListMasters(&masters);
   if (s.ok()) {
     for (const ServerEntryPB& master : masters) {
       resp->add_masters()->CopyFrom(master);
     }
-    rpc->RespondSuccess();
+    rpc.RespondSuccess();
   } else {
-    SetupErrorAndRespond(resp->mutable_error(), s, MasterErrorPB_Code_UNKNOWN_ERROR,  rpc);
+    SetupErrorAndRespond(resp->mutable_error(), s, MasterErrorPB_Code_UNKNOWN_ERROR, &rpc);
   }
 }
 
 void MasterServiceImpl::ListMasterRaftPeers(
     const ListMasterRaftPeersRequestPB* req,
     ListMasterRaftPeersResponsePB* resp,
-    rpc::RpcContext* rpc) {
-  vector<RaftPeerPB> masters;
+    rpc::RpcContext rpc) {
+  std::vector<RaftPeerPB> masters;
   Status s = server_->ListRaftConfigMasters(&masters);
   if (s.ok()) {
     for (const RaftPeerPB& master : masters) {
       resp->add_masters()->CopyFrom(master);
     }
-    rpc->RespondSuccess();
+    rpc.RespondSuccess();
   } else {
-    SetupErrorAndRespond(resp->mutable_error(), s, MasterErrorPB_Code_UNKNOWN_ERROR,  rpc);
+    SetupErrorAndRespond(resp->mutable_error(), s, MasterErrorPB_Code_UNKNOWN_ERROR, &rpc);
   }
 }
 
 void MasterServiceImpl::GetMasterRegistration(const GetMasterRegistrationRequestPB* req,
                                               GetMasterRegistrationResponsePB* resp,
-                                              rpc::RpcContext* rpc) {
+                                              rpc::RpcContext rpc) {
   // instance_id must always be set in order for status pages to be useful.
   resp->mutable_instance_id()->CopyFrom(server_->instance_pb());
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedOrRespond(resp, &rpc)) {
     return;
   }
   Status s = server_->GetMasterRegistration(resp->mutable_registration());
   CheckRespErrorOrSetUnknown(s, resp);
   resp->set_role(server_->catalog_manager()->Role());
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::DumpState(
     const DumpMasterStateRequestPB* req,
     DumpMasterStateResponsePB* resp,
-    rpc::RpcContext* rpc) {
+    rpc::RpcContext rpc) {
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedOrRespond(resp, &rpc)) {
     return;
   }
 
   server_->catalog_manager()->DumpState(&LOG(INFO), req->on_disk());
 
   if (req->has_peers_also() && req->peers_also()) {
-    vector<RaftPeerPB> masters_raft;
+    std::vector<RaftPeerPB> masters_raft;
     Status s = server_->ListRaftConfigMasters(&masters_raft);
     CheckRespErrorOrSetUnknown(s, resp);
 
@@ -477,28 +477,28 @@ void MasterServiceImpl::DumpState(
     CheckRespErrorOrSetUnknown(s, resp);
   }
 
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::RemovedMasterUpdate(const RemovedMasterUpdateRequestPB* req,
                                             RemovedMasterUpdateResponsePB* resp,
-                                            rpc::RpcContext* rpc) {
+                                            rpc::RpcContext rpc) {
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedOrRespond(resp, &rpc)) {
     return;
   }
 
   Status s = server_->GoIntoShellMode();
   CheckRespErrorOrSetUnknown(s, resp);
 
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::ChangeLoadBalancerState(
     const ChangeLoadBalancerStateRequestPB* req, ChangeLoadBalancerStateResponsePB* resp,
-    rpc::RpcContext* rpc) {
+    rpc::RpcContext rpc) {
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
 
@@ -507,68 +507,68 @@ void MasterServiceImpl::ChangeLoadBalancerState(
     server_->catalog_manager()->SetLoadBalancerEnabled(req->is_enabled());
   }
 
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::GetMasterClusterConfig(
     const GetMasterClusterConfigRequestPB* req, GetMasterClusterConfigResponsePB* resp,
-    rpc::RpcContext* rpc) {
+    rpc::RpcContext rpc) {
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
   Status s = server_->catalog_manager()->GetClusterConfig(resp->mutable_cluster_config());
   CheckRespErrorOrSetUnknown(s, resp);
 
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::ChangeMasterClusterConfig(
     const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp,
-    rpc::RpcContext* rpc) {
+    rpc::RpcContext rpc) {
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
   Status s = server_->catalog_manager()->SetClusterConfig(req, resp);
   CheckRespErrorOrSetUnknown(s, resp);
 
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::GetLoadMoveCompletion(
     const GetLoadMovePercentRequestPB* req, GetLoadMovePercentResponsePB* resp,
-    rpc::RpcContext* rpc) {
+    rpc::RpcContext rpc) {
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
   Status s = server_->catalog_manager()->GetLoadMoveCompletionPercent(resp);
   CheckRespErrorOrSetUnknown(s, resp);
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::IsMasterLeaderServiceReady(
     const IsMasterLeaderReadyRequestPB* req, IsMasterLeaderReadyResponsePB* resp,
-    rpc::RpcContext* rpc) {
+    rpc::RpcContext rpc) {
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
 
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::IsLoadBalanced(
     const IsLoadBalancedRequestPB* req, IsLoadBalancedResponsePB* resp,
-    rpc::RpcContext* rpc) {
+    rpc::RpcContext rpc) {
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
   Status s = server_->catalog_manager()->IsLoadBalanced(req, resp);
   CheckRespErrorOrSetUnknown(s, resp);
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 } // namespace master

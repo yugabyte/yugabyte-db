@@ -17,9 +17,10 @@
 
 #include "yb/server/generic_service.h"
 
-#include <gflags/gflags.h>
 #include <string>
 #include <unordered_set>
+
+#include <gflags/gflags.h>
 
 #include "yb/gutil/map-util.h"
 #include "yb/rpc/rpc_context.h"
@@ -52,14 +53,14 @@ GenericServiceImpl::~GenericServiceImpl() {
 
 void GenericServiceImpl::SetFlag(const SetFlagRequestPB* req,
                                  SetFlagResponsePB* resp,
-                                 rpc::RpcContext* rpc) {
+                                 rpc::RpcContext rpc) {
 
   // Validate that the flag exists and get the current value.
   string old_val;
   if (!google::GetCommandLineOption(req->flag().c_str(),
                                     &old_val)) {
     resp->set_result(SetFlagResponsePB::NO_SUCH_FLAG);
-    rpc->RespondSuccess();
+    rpc.RespondSuccess();
     return;
   }
 
@@ -68,12 +69,12 @@ void GenericServiceImpl::SetFlag(const SetFlagRequestPB* req,
   GetFlagTags(req->flag(), &tags);
   if (!ContainsKey(tags, "runtime")) {
     if (req->force()) {
-      LOG(WARNING) << rpc->requestor_string() << " forcing change of "
+      LOG(WARNING) << rpc.requestor_string() << " forcing change of "
                    << "non-runtime-safe flag " << req->flag();
     } else {
       resp->set_result(SetFlagResponsePB::NOT_SAFE);
       resp->set_msg("Flag is not safe to change at runtime");
-      rpc->RespondSuccess();
+      rpc.RespondSuccess();
       return;
     }
   }
@@ -88,41 +89,41 @@ void GenericServiceImpl::SetFlag(const SetFlagRequestPB* req,
     resp->set_result(SetFlagResponsePB::BAD_VALUE);
     resp->set_msg("Unable to set flag: bad value");
   } else {
-    LOG(INFO) << rpc->requestor_string() << " changed flags via RPC: "
+    LOG(INFO) << rpc.requestor_string() << " changed flags via RPC: "
               << req->flag() << " from '" << old_val << "' to '"
               << req->value() << "'";
     resp->set_result(SetFlagResponsePB::SUCCESS);
     resp->set_msg(ret);
   }
 
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void GenericServiceImpl::FlushCoverage(const FlushCoverageRequestPB* req,
                                        FlushCoverageResponsePB* resp,
-                                       rpc::RpcContext* rpc) {
+                                       rpc::RpcContext rpc) {
 #ifdef COVERAGE_BUILD
   __gcov_flush();
-  LOG(INFO) << "Flushed coverage info. (request from " << rpc->requestor_string() << ")";
+  LOG(INFO) << "Flushed coverage info. (request from " << rpc.requestor_string() << ")";
   resp->set_success(true);
 #else
   LOG(WARNING) << "Non-coverage build cannot flush coverage (request from "
-               << rpc->requestor_string() << ")";
+               << rpc.requestor_string() << ")";
   resp->set_success(false);
 #endif
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void GenericServiceImpl::ServerClock(const ServerClockRequestPB* req,
                                      ServerClockResponsePB* resp,
-                                     rpc::RpcContext* rpc) {
+                                     rpc::RpcContext rpc) {
   resp->set_hybrid_time(server_->clock()->Now().ToUint64());
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void GenericServiceImpl::SetServerWallClockForTests(const SetServerWallClockForTestsRequestPB *req,
-                                                   SetServerWallClockForTestsResponsePB *resp,
-                                                   rpc::RpcContext *context) {
+                                                    SetServerWallClockForTestsResponsePB *resp,
+                                                    rpc::RpcContext rpc) {
   if (!FLAGS_use_hybrid_clock || !FLAGS_use_mock_wall_clock) {
     LOG(WARNING) << "Error setting wall clock for tests. Server is not using HybridClock"
         "or was not started with '--use_mock_wall_clock= true'";
@@ -137,19 +138,19 @@ void GenericServiceImpl::SetServerWallClockForTests(const SetServerWallClockForT
     clock->SetMockMaxClockErrorForTests(req->max_error_usec());
   }
   resp->set_success(true);
-  context->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void GenericServiceImpl::GetStatus(const GetStatusRequestPB* req,
                                    GetStatusResponsePB* resp,
-                                   rpc::RpcContext* rpc) {
+                                   rpc::RpcContext rpc) {
   server_->GetStatusPB(resp->mutable_status());
-  rpc->RespondSuccess();
+  rpc.RespondSuccess();
 }
 
 void GenericServiceImpl::Ping(
-    const PingRequestPB* req, PingResponsePB* resp, rpc::RpcContext* rpc) {
-  rpc->RespondSuccess();
+    const PingRequestPB* req, PingResponsePB* resp, rpc::RpcContext rpc) {
+  rpc.RespondSuccess();
 }
 
 } // namespace server

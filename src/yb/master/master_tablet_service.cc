@@ -11,8 +11,10 @@ MasterTabletServiceImpl::MasterTabletServiceImpl(MasterTabletServer* server, Mas
       master_(master) {
 }
 
+namespace {
+
 template<typename ResponsePB>
-void MasterTabletServiceImpl::HandleUnsupportedMethod(
+void HandleUnsupportedMethod(
     const char* method_name,
     ResponsePB* resp,
     rpc::RpcContext* context) {
@@ -21,13 +23,15 @@ void MasterTabletServiceImpl::HandleUnsupportedMethod(
                              STATUS_SUBSTITUTE(NotSupported, "$0 Not Supported!", method_name));
 }
 
+} // namespace
+
 void MasterTabletServiceImpl::Read(const tserver::ReadRequestPB* req, tserver::ReadResponsePB* resp,
-                                   rpc::RpcContext* context) {
+                                   rpc::RpcContext context) {
   CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, context)) {
+  if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, &context)) {
     return;
   }
-  tserver::TabletServiceImpl::Read(req, resp, context);
+  tserver::TabletServiceImpl::Read(req, resp, std::move(context));
 }
 
 bool MasterTabletServiceImpl::GetLeaderTabletOrRespond(
@@ -49,53 +53,53 @@ bool MasterTabletServiceImpl::GetLeaderTabletOrRespond(
 
 void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
                                     tserver::WriteResponsePB* resp,
-                                    rpc::RpcContext* context)  {
-  HandleUnsupportedMethod("Write", resp, context);
+                                    rpc::RpcContext context)  {
+  HandleUnsupportedMethod("Write", resp, &context);
 }
 
 void MasterTabletServiceImpl::Scan(const tserver::ScanRequestPB* req,
                                    tserver::ScanResponsePB* resp,
-                                   rpc::RpcContext* context)  {
-  HandleUnsupportedMethod("Scan", resp, context);
+                                   rpc::RpcContext context)  {
+  HandleUnsupportedMethod("Scan", resp, &context);
 }
 
 void MasterTabletServiceImpl::NoOp(const tserver::NoOpRequestPB* req,
                                    tserver::NoOpResponsePB* resp,
-                                   rpc::RpcContext* context)  {
-  HandleUnsupportedMethod("NoOp", resp, context);
+                                   rpc::RpcContext context)  {
+  HandleUnsupportedMethod("NoOp", resp, &context);
 }
 
 void MasterTabletServiceImpl::ScannerKeepAlive(const tserver::ScannerKeepAliveRequestPB *req,
                                                tserver::ScannerKeepAliveResponsePB *resp,
-                                               rpc::RpcContext *context)  {
-  HandleUnsupportedMethod("ScannerKeepAlive", resp, context);
+                                               rpc::RpcContext context)  {
+  HandleUnsupportedMethod("ScannerKeepAlive", resp, &context);
 }
 
 void MasterTabletServiceImpl::ListTablets(const tserver::ListTabletsRequestPB* req,
                                           tserver::ListTabletsResponsePB* resp,
-                                          rpc::RpcContext *context)  {
-  HandleUnsupportedMethod("ListTablets", resp, context);
+                                          rpc::RpcContext context)  {
+  HandleUnsupportedMethod("ListTablets", resp, &context);
 }
 
 void MasterTabletServiceImpl::ListTabletsForTabletServer(
     const tserver::ListTabletsForTabletServerRequestPB* req,
     tserver::ListTabletsForTabletServerResponsePB* resp,
-    rpc::RpcContext *context)  {
-  context->RespondRpcFailure(rpc::ErrorStatusPB::ERROR_APPLICATION,
-                             STATUS(NotSupported, "ListTabletsForTabletServer Not Supported!"));
+    rpc::RpcContext context)  {
+  context.RespondRpcFailure(rpc::ErrorStatusPB::ERROR_APPLICATION,
+                            STATUS(NotSupported, "ListTabletsForTabletServer Not Supported!"));
 }
 
 void MasterTabletServiceImpl::GetLogLocation(const tserver::GetLogLocationRequestPB* req,
                                              tserver::GetLogLocationResponsePB* resp,
-                                             rpc::RpcContext *context)  {
-  context->RespondRpcFailure(rpc::ErrorStatusPB::ERROR_APPLICATION,
-                             STATUS(NotSupported, "GetLogLocation Not Supported!"));
+                                             rpc::RpcContext context)  {
+  context.RespondRpcFailure(rpc::ErrorStatusPB::ERROR_APPLICATION,
+                            STATUS(NotSupported, "GetLogLocation Not Supported!"));
 }
 
 void MasterTabletServiceImpl::Checksum(const tserver::ChecksumRequestPB* req,
                                        tserver::ChecksumResponsePB* resp,
-                                       rpc::RpcContext *context)  {
-  HandleUnsupportedMethod("Checksum", resp, context);
+                                       rpc::RpcContext context)  {
+  HandleUnsupportedMethod("Checksum", resp, &context);
 }
 
 } // namespace master

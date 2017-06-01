@@ -45,15 +45,6 @@ namespace rpc {
 
 class UserCredentials;
 
-#define PANIC_RPC(rpc_context, message) \
-  do { \
-    if (rpc_context) {                              \
-      rpc_context->Panic(__FILE__, __LINE__, (message));  \
-    } else { \
-      LOG(FATAL) << message; \
-    } \
-  } while (0)
-
 // The context provided to a generated ServiceIf. This provides
 // methods to respond to the RPC. In the future, this will also
 // include methods to access information about the caller: e.g
@@ -65,11 +56,22 @@ class RpcContext {
   // Create an RpcContext. This is called only from generated code
   // and is not a public API.
   RpcContext(InboundCallPtr call,
-             const google::protobuf::Message *request_pb,
-             const google::protobuf::Message *response_pb,
+             std::shared_ptr<const google::protobuf::Message> request_pb,
+             std::shared_ptr<const google::protobuf::Message> response_pb,
              RpcMethodMetrics metrics);
   RpcContext(InboundCallPtr call,
              RpcMethodMetrics metrics);
+
+  RpcContext(RpcContext&& rhs)
+      : call_(std::move(rhs.call_)),
+        request_pb_(std::move(rhs.request_pb_)),
+        response_pb_(std::move(rhs.response_pb_)),
+        metrics_(std::move(rhs.metrics_)),
+        responded_(rhs.responded_) {
+  }
+
+  RpcContext(const RpcContext&) = delete;
+  void operator=(const RpcContext&) = delete;
 
   ~RpcContext();
 
@@ -184,16 +186,20 @@ class RpcContext {
   // Closes connection that received this request.
   void CloseConnection();
  private:
-  RpcContext(InboundCallPtr call,
-             std::shared_ptr<const google::protobuf::Message> request_pb,
-             std::shared_ptr<const google::protobuf::Message> response_pb,
-             RpcMethodMetrics metrics);
 
   InboundCallPtr call_;
-  const std::shared_ptr<const google::protobuf::Message> request_pb_;
-  const std::shared_ptr<const google::protobuf::Message> response_pb_;
+  std::shared_ptr<const google::protobuf::Message> request_pb_;
+  std::shared_ptr<const google::protobuf::Message> response_pb_;
   RpcMethodMetrics metrics_;
+  bool responded_ = false;
 };
+
+void PanicRpc(RpcContext* context, const char* file, int line_number, const std::string& message);
+
+#define PANIC_RPC(rpc_context, message) \
+  do { \
+    yb::rpc::PanicRpc((rpc_context), __FILE__, __LINE__, (message)); \
+  } while (false)
 
 } // namespace rpc
 } // namespace yb
