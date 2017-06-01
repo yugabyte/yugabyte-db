@@ -2,8 +2,10 @@
 
 package com.yugabyte.yw.forms;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.Objects;
@@ -56,7 +58,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // reset each time a new operation on the universe starts, and is set at the very end of that
   // operation.
   public boolean updateSucceeded = true;
-  
+
   /**
    * The user defined intent for the universe.
    */
@@ -102,6 +104,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     public String accessKeyCode;
 
     public DeviceInfo deviceInfo;
+
+    // Info of all the gflags that the user would like to save to the universe. These will be
+    // used during edit universe, for example, to set the flags on new nodes to match
+    // existing nodes' settings.
+    public Map<String, String> gflags = new HashMap<String, String>();
 
     @Override
     public String toString() {
