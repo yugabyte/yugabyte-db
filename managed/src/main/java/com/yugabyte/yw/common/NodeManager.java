@@ -26,6 +26,7 @@ import play.libs.Json;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Singleton
 public class NodeManager extends DevopsBase {
@@ -164,8 +165,12 @@ public class NodeManager extends DevopsBase {
         }
         subcommand.add("--package");
         subcommand.add(ybServerPackage);
-        subcommand.add("--durable_wal_write");
-        subcommand.add(taskParam.durableWalWrite ? "true" : "false");
+        Map<String, String> extra_gflags =
+           Universe.get(taskParam.universeUUID).getUniverseDetails().userIntent.gflags;
+        if (!extra_gflags.isEmpty()) {
+          subcommand.add("--extra_gflags");
+          subcommand.add(Json.stringify(Json.toJson(extra_gflags)));
+        }
         break;
       case Software:
         {

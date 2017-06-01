@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import java.util.Collection;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +19,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SwamperTargetsFileUpdate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateSucceeded;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistGFlags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.forms.ITaskParams;
@@ -346,6 +348,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       task.initialize(params);
       taskList.addTask(task);
     }
+    taskListQueue.add(taskList);
+    return taskList;
+  }
+
+  /**
+   * Creates a task to persist customized gflags to be used by server processes.
+   */
+  public TaskList updateGFlagsPersistTasks(Map<String, String> newGflags) {
+    TaskList taskList = new TaskList("UpdateAndPersistGFlags", executor);
+    UpdateAndPersistGFlags.Params params = new UpdateAndPersistGFlags.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.newGflags = newGflags;
+    UpdateAndPersistGFlags task = new UpdateAndPersistGFlags();
+    task.initialize(params);
+    taskList.addTask(task);
     taskListQueue.add(taskList);
     return taskList;
   }

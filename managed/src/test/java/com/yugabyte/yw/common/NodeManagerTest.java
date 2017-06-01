@@ -126,7 +126,6 @@ public class NodeManagerTest extends FakeDBApplication {
     UUID uuid = UUID.randomUUID();
     return Universe.create("Test universe " + uuid.toString(), uuid, 1L);
   }
-
   private void buildValidParams(TestData testData, NodeTaskParams params, Universe universe) {
     params.cloud = testData.cloudType;
     params.azUuid = testData.zone.uuid;
@@ -228,11 +227,6 @@ public class NodeManagerTest extends FakeDBApplication {
               expectedCommand.add("--tags");
               expectedCommand.add("install-software");
               break;
-          }
-        } else {
-          if (configureParams.gflags.isEmpty()) {
-            expectedCommand.add("--durable_wal_write");
-            expectedCommand.add("true");
           }
         }
 

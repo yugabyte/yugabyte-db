@@ -312,4 +312,18 @@ public class UniverseTest extends FakeDBApplication {
     JsonNode providerNode = universeJson.get("provider");
     assertNull(providerNode);
   }
+
+  @Test
+  public void testToJSONOfGFlags() {
+    Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+
+    JsonNode universeJson = u.toJson();
+    assertThat(universeJson.get("universeUUID").asText(),
+               allOf(notNullValue(), equalTo(u.universeUUID.toString())));
+    JsonNode univDetailsGflagsJson =
+        universeJson.get("universeDetails").get("userIntent").get("gflags");
+    assertThat(univDetailsGflagsJson, is(notNullValue()));
+    assertEquals(0, univDetailsGflagsJson.size());
+  }
 }
