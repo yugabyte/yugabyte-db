@@ -1238,5 +1238,15 @@ TEST_F(YbSqlQuery, TestScanWithBounds) {
 
 }
 
+TEST_F(YbSqlQuery, TestSelectOne) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  YbSqlProcessor *processor = GetSqlProcessor();
+
+  CHECK_INVALID_STMT("SELECT 1;");
+}
+
 } // namespace sql
 } // namespace yb

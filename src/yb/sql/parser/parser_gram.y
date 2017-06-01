@@ -2435,6 +2435,7 @@ set_target_list:
 
 from_clause:
   /* EMPTY */ {
+    PARSER_UNSUPPORTED(@0);
     $$ = nullptr;
   }
   | FROM from_list {
