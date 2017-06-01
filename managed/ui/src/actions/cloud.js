@@ -63,6 +63,9 @@ export const FETCH_CLOUD_METADATA = 'FETCH_CLOUD_METADATA';
 
 export const SET_ON_PREM_CONFIG_DATA = 'SET_ON_PREM_CONFIG_DATA';
 
+export const GET_NODE_INSTANCE_LIST = 'GET_NODE_INSTANCE';
+export const GET_NODE_INSTANCE_LIST_RESPONSE = 'GET_NODE_INSTANCE_RESPONSE';
+
 export function getProviderList() {
   const cUUID = localStorage.getItem("customer_id");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers`);
@@ -366,4 +369,20 @@ export function setOnPremConfigData(configData) {
     type: SET_ON_PREM_CONFIG_DATA,
     payload: configData
   };
+}
+
+export function getNodeInstancesForProvider(pUUID) {
+  var cUUID = localStorage.getItem("customer_id");
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers/${pUUID}/nodes/list`);
+  return {
+    type: GET_NODE_INSTANCE_LIST,
+    payload: request
+  }
+}
+
+export function getNodesInstancesForProviderResponse(response) {
+  return {
+    type: GET_NODE_INSTANCE_LIST_RESPONSE,
+    payload: response
+  }
 }
