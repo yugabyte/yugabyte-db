@@ -6,7 +6,9 @@ import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.avaje.ebean.Query;
 import com.avaje.ebean.Model;
 import com.avaje.ebean.ExpressionList;
-
+import com.avaje.ebean.RawSqlBuilder;
+import com.avaje.ebean.RawSql;
+import com.avaje.ebean.Ebean;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
@@ -92,6 +94,16 @@ public class NodeInstance extends Model {
     }
     nodes = exp.findList();
     return nodes;
+  }
+
+  public static List<NodeInstance> listByProvider(UUID providerUUID) {
+    String nodeQuery = "select DISTINCT n.*   from node_instance n, availability_zone az, region r, provider p " +
+      " where n.zone_uuid = az.uuid and az.region_uuid = r.uuid and r.provider_uuid = " + "'"+ providerUUID + "'";
+    RawSql rawSql = RawSqlBuilder.unparsed(nodeQuery).columnMapping("node_uuid",  "nodeUuid").create();
+    Query<NodeInstance> query = Ebean.find(NodeInstance.class);
+    query.setRawSql(rawSql);
+    List<NodeInstance> list = query.findList();
+    return list;
   }
 
   public static synchronized Map<String, NodeInstance> pickNodes(

@@ -4,7 +4,8 @@ import { connect } from 'react-redux';
 import { isObject } from 'lodash';
 import {reset} from 'redux-form';
 import { OnPremSuccess } from '../../config';
-import { deleteProvider, deleteProviderSuccess, deleteProviderFailure, fetchCloudMetadata, listAccessKeysResponse, listAccessKeys } from '../../../actions/cloud';
+import { deleteProvider, deleteProviderSuccess, deleteProviderFailure, fetchCloudMetadata,
+         listAccessKeysResponse, listAccessKeys, getNodeInstancesForProvider, getNodesInstancesForProviderResponse } from '../../../actions/cloud';
 import { isNonEmptyArray } from 'utils/ObjectUtils';
 import {openDialog, closeDialog} from '../../../actions/universe';
 
@@ -15,7 +16,8 @@ const mapStateToProps = (state) => {
     configuredRegions: state.cloud.supportedRegionList,
     accessKeys: state.cloud.accessKeys,
     cloudBootstrap: state.cloud.bootstrap,
-    visibleModal: state.universe.visibleModal
+    visibleModal: state.universe.visibleModal,
+    cloud: state.cloud
   };
 };
 
@@ -51,6 +53,11 @@ const mapDispatchToProps = (dispatch) => {
 
     resetConfigForm: () => {
       dispatch(reset("onPremConfigForm"));
+    },
+    fetchConfiguredNodeList: (pUUID) => {
+      dispatch(getNodeInstancesForProvider(pUUID)).then((response) => {
+        dispatch(getNodesInstancesForProviderResponse(response.payload));
+      });
     }
   }
 };

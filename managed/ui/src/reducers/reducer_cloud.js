@@ -9,7 +9,8 @@ import { GET_REGION_LIST, GET_REGION_LIST_RESPONSE, GET_PROVIDER_LIST, GET_PROVI
   RESET_PROVIDER_BOOTSTRAP, LIST_ACCESS_KEYS, LIST_ACCESS_KEYS_RESPONSE, GET_EBS_TYPE_LIST,
   GET_EBS_TYPE_LIST_RESPONSE, CREATE_DOCKER_PROVIDER, CREATE_DOCKER_PROVIDER_RESPONSE,
   CREATE_INSTANCE_TYPE, CREATE_INSTANCE_TYPE_RESPONSE, FETCH_CLOUD_METADATA, CREATE_ZONE,
-  CREATE_ZONE_RESPONSE, CREATE_NODE_INSTANCE, CREATE_NODE_INSTANCE_RESPONSE, SET_ON_PREM_CONFIG_DATA
+  CREATE_ZONE_RESPONSE, CREATE_NODE_INSTANCE, CREATE_NODE_INSTANCE_RESPONSE, SET_ON_PREM_CONFIG_DATA,
+  GET_NODE_INSTANCE_LIST, GET_NODE_INSTANCE_LIST_RESPONSE
 } from '../actions/cloud';
 
 import { getInitialState, setInitialState, setSuccessState, setFailureState, setLoadingState, setPromiseResponse }
@@ -36,7 +37,8 @@ const INITIAL_STATE = {
   bootstrap: getInitialState({}),
   dockerBootstrap: {},
   status : 'init',
-  fetchMetadata: false
+  fetchMetadata: false,
+  nodeInstanceList: getInitialState([])
 };
 
 export default function(state = INITIAL_STATE, action) {
@@ -168,6 +170,10 @@ export default function(state = INITIAL_STATE, action) {
     case SET_ON_PREM_CONFIG_DATA:
       return {...state, onPremJsonFormData: action.payload};
 
+    case GET_NODE_INSTANCE_LIST:
+      return setLoadingState(state, "nodeInstanceList", []);
+    case GET_NODE_INSTANCE_LIST_RESPONSE:
+      return setPromiseResponse(state, "nodeInstanceList", action);
     default:
       return state;
   }
