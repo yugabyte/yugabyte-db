@@ -10,6 +10,7 @@ import java.util.ConcurrentModificationException;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
@@ -35,6 +36,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
 import play.data.validation.Constraints;
@@ -91,22 +93,27 @@ public class Universe extends Model {
     json.put("creationDate", creationDate.toString());
     json.set("universeDetails", Json.parse(universeDetailsJson));
     json.put("version", version);
+    UserIntent userIntent = getUniverseDetails().userIntent;
     try {
-      json.set("resources", Json.toJson(getUniverseResourcesUtil(getNodes(), getUniverseDetails().userIntent)));
+      json.set("resources", Json.toJson(getUniverseResourcesUtil(getNodes(), userIntent)));
     } catch (Exception e) {
       json.set("resources", null);
     }
-    if (getUniverseDetails().userIntent != null &&
-        getUniverseDetails().userIntent.regionList != null &&
-        !getUniverseDetails().userIntent.regionList.isEmpty()) {
+    if (userIntent != null &&
+        userIntent.regionList != null &&
+        !userIntent.regionList.isEmpty()) {
       List<Region> regions =
-        Region.find.where().idIn(getUniverseDetails().userIntent.regionList).findList();
+        Region.find.where().idIn(userIntent.regionList).findList();
 
       if (!regions.isEmpty()) {
         json.set("regions", Json.toJson(regions));
         // TODO: change this when we want to deploy across clouds.
         json.set("provider", Json.toJson(regions.get(0).provider));
       }
+    }
+
+    if (userIntent != null && !userIntent.gflags.isEmpty()) {
+      json.set("gflags", Json.toJson(userIntent.gflags));
     }
 
     return json;

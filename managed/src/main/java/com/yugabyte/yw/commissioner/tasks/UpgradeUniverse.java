@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistGFlags;
 import com.yugabyte.yw.forms.RollingRestartParams;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
@@ -95,6 +96,12 @@ public class UpgradeUniverse extends UniverseTaskBase {
       // Update the software version on success.
       if (taskParams().taskType == UpgradeTaskType.Software) {
         createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion);
+      }
+
+      // Update the list of parameter key/values in the universe with the new ones.
+      if (taskParams().taskType == UpgradeTaskType.GFlags) {
+        updateGFlagsPersistTasks(taskParams().getGFlagsAsMap())
+            .setUserSubTask(SubTaskType.UpdatingGFlags);
       }
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
