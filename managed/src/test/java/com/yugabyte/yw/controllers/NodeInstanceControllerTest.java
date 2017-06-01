@@ -62,6 +62,11 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     return FakeApiHelper.doRequest("GET", uri);
   }
 
+  private Result listByProvider(UUID providerUUID) {
+    String uri = "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/nodes/list";
+    return FakeApiHelper.doRequest("GET", uri);
+  }
+
   private Result createNode(UUID zoneUuid) {
     String uri = "/api/customers/" + customer.uuid + "/zones/" + zoneUuid + "/nodes";
     JsonNode body = Json.parse(node.getDetailsJson());
@@ -113,6 +118,15 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     checkNodeValid(json.get(0));
   }
 
+  @Test
+  public void testListByProviderSuccess() {
+    Result r = listByProvider(provider.uuid);
+    checkOk(r);
+    JsonNode json = parseResult(r);
+    assertTrue(json.isArray());
+    assertEquals(1, json.size());
+    checkNodeValid(json.get(0));
+  }
   @Test
   public void testListByZoneWrongZone() {
     UUID wrongUuid = UUID.randomUUID();

@@ -25,6 +25,7 @@ export default class OnPremSuccess extends Component {
     let currentProvider = configuredProviders.data.find(provider => provider.code === 'onprem');
     if (isDefinedNotNull(currentProvider)) {
       this.props.fetchAccessKeysList(currentProvider.uuid);
+      this.props.fetchConfiguredNodeList(currentProvider.uuid);
     }
   }
   componentWillReceiveProps(nextProps) {
@@ -36,7 +37,7 @@ export default class OnPremSuccess extends Component {
     }
   }
   render() {
-    const {configuredRegions, configuredProviders, accessKeys, universeList} = this.props;
+    const {configuredRegions, configuredProviders, accessKeys, universeList, cloud: {nodeInstanceList}} = this.props;
     const onPremRegions = configuredRegions.data.filter(
       (configuredRegion) => configuredRegion.provider.code === PROVIDER_TYPE
     );
@@ -49,9 +50,13 @@ export default class OnPremSuccess extends Component {
       accessKeyList = accessKeys.data.map( (accessKey) => accessKey.idKey.keyCode ).join(", ")
     }
     let universeExistsForProvider = universeList.data.some(universe => universe.provider && (universe.provider.uuid === currentProvider.uuid));
+    var nodeListString = getPromiseState(nodeInstanceList).isEmpty() ? "No Nodes Configured" : nodeInstanceList.data.map(function(nodeItem){
+      return nodeItem.details.ip
+    }).join(", ");
     const providerInfo = [
       {name: "Account Name", data: currentProvider.name},
       {name: "Key Pair", data: accessKeyList},
+      {name: "Nodes", data: nodeListString}
     ];
     return (
       <div>

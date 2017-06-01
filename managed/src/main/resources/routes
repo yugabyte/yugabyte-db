@@ -81,6 +81,7 @@ GET    /api/customers/:cUUID/universes/:uniUUID/tasks com.yugabyte.yw.controller
 # Node Management API
 GET    /api/customers/:cUUID/nodes/:nodeUUID/list                      com.yugabyte.yw.controllers.NodeInstanceController.get(cUUID: java.util.UUID, nodeUUID: java.util.UUID)
 GET    /api/customers/:cUUID/zones/:azUUID/nodes/list                  com.yugabyte.yw.controllers.NodeInstanceController.listByZone(cUUID: java.util.UUID, azUUID: java.util.UUID)
+GET    /api/customers/:cUUID/providers/:pUUID/nodes/list               com.yugabyte.yw.controllers.NodeInstanceController.listByProvider(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST   /api/customers/:cUUID/zones/:azUUID/nodes                       com.yugabyte.yw.controllers.NodeInstanceController.create(cUUID: java.util.UUID, azUUID: java.util.UUID)
 
 # Metadata API

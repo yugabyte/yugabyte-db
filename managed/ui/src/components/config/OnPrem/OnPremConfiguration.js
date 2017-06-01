@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import { Alert } from 'react-bootstrap';
 import _ from 'lodash';
-import { isValidObject, isDefinedNotNull } from 'utils/ObjectUtils';
+import { isValidObject, isDefinedNotNull, isNonEmptyArray } from 'utils/ObjectUtils';
 import { OnPremConfigWizardContainer, OnPremConfigJSONContainer, OnPremSuccessContainer } from '../../config';
 import { YBButton } from '../../common/forms/fields';
 import emptyDataCenterConfig from '../templates/EmptyDataCenterConfig.json';
@@ -108,7 +108,12 @@ export default class OnPremConfiguration extends Component {
           // Launch configuration of node instances once all availability zones are bootstrapped
           if (Object.keys(zonesMap).length === this.state.numZones) {
             bootstrapSteps[currentStepIndex + 1].status = "Running";
-            this.props.createOnPremNodes(zonesMap, config);
+            // If nodes specified create nodes, else jump to access key
+            if (isNonEmptyArray(this.state.configJsonVal.nodes)) {
+              this.props.createOnPremNodes(zonesMap, config);
+            } else {
+              this.props.createOnPremAccessKeys(this.state.providerUUID, this.state.regionsMap, config);
+            }
           }
           break;
         case "node":

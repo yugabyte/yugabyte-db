@@ -4,20 +4,20 @@ package com.yugabyte.yw.controllers;
 
 import java.util.List;
 import java.util.UUID;
-
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Customer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.models.AvailabilityZone;
 
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.NodeInstance;
 
 import play.data.Form;
 import play.data.FormFactory;
+import play.libs.Json;
 import play.mvc.Result;
 
 public class NodeInstanceController extends AuthenticatedController {
@@ -62,6 +62,15 @@ public class NodeInstanceController extends AuthenticatedController {
     }
   }
 
+  public Result listByProvider(UUID customerUUID, UUID providerUUID) {
+    List<NodeInstance> regionList;
+    try {
+       regionList = NodeInstance.listByProvider(providerUUID);
+    } catch (Exception e) {
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
+    return ApiResponse.success(regionList);
+  }
   /**
    * POST endpoint for creating a new Node
    * @param customerUuid the customer UUID
