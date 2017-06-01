@@ -1163,6 +1163,56 @@ public class TestBindVariable extends BaseCQLTest {
   }
 
   @Test
+  public void testBindWithLimit() throws Exception {
+    LOG.info("Begin test");
+
+    // Setup test table.
+    setupTable("test_bind", 10 /* num_rows */);
+
+    {
+      // Simple bind (by position) for limit.
+      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind where r1 <= ? LIMIT ?;";
+      ResultSet rs = session.execute(select_stmt, new Integer(109), new Long(7));
+
+      // Checking result.
+      assertEquals(7, rs.getAvailableWithoutFetching());
+    }
+
+    {
+      // Prepare named bind (referenced by name).
+      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind WHERE r1 > :b1 LIMIT :b2;";
+      PreparedStatement stmt = session.prepare(select_stmt);
+      ResultSet rs = session.execute(stmt.bind().setInt("b1", 102).setLong("b2", 5));
+
+      // Checking result.
+      assertEquals(5, rs.getAvailableWithoutFetching());
+    }
+
+    {
+      // Prepare named bind (referenced by position).
+      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind WHERE r1 > :b1 LIMIT :b2;";
+      PreparedStatement stmt = session.prepare(select_stmt);
+      ResultSet rs = session.execute(stmt.bind(new Integer(106), new Long(6)));
+
+      // Checking result: only 3 rows (107, 108, 109) satisfy condition so limit is redundant.
+      assertEquals(3, rs.getAvailableWithoutFetching());
+    }
+
+    {
+      // Prepare unnamed bind (but referenced by name).
+      // should be invalid since there is no default name for non-column binds.
+      testInvalidBindStatement("SELECT h1, h2, r1, r2, v1, v2 FROM test_bind where r1 > ? LIMIT ?;",
+              new HashMap<String, Object>() {{
+                put("r1", new Long(97));
+                put("lm", new Long(7));
+              }});
+
+    }
+
+     LOG.info("End test");
+  }
+
+  @Test
   public void testBindWithToken() throws Exception {
     LOG.info("Begin test");
 

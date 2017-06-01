@@ -29,12 +29,16 @@ using strings::Substitute;
   } while (0)
 
 Status CQLMessage::QueryParameters::GetBindVariable(
-    const std::string& name, const int64_t pos, const YQLType type, YQLValue* value) const {
+    const std::string* name, const int64_t pos, const YQLType type, YQLValue* value) const {
   const Value* v = nullptr;
   if (!value_map.empty()) {
-    const auto itr = value_map.find(name);
+    if (name == nullptr) {
+      return STATUS(RuntimeError, "Bind variable at position $0 not found: "
+          "bind variable is un-named but bound values given by name");
+    }
+    const auto itr = value_map.find(*name);
     if (itr == value_map.end()) {
-      return STATUS_SUBSTITUTE(RuntimeError, "Bind variable \"$0\" not found", name);
+      return STATUS_SUBSTITUTE(RuntimeError, "Bind variable \"$0\" not found", *name);
     }
     v = &values.at(itr->second);
   } else {

@@ -123,10 +123,8 @@ CHECKED_STATUS PTSelectStmt::AnalyzeLimitClause(SemContext *sem_context) {
   if (limit_clause_ == nullptr) {
     return Status::OK();
   }
-  if (limit_clause_->expr_op() != ExprOperator::kConst) {
-    return sem_context->Error(loc(), "Limit value must be an integer literal",
-                              ErrorCode::INVALID_DATATYPE);
-  }
+
+  RETURN_NOT_OK(limit_clause_->CheckRhsExpr(sem_context));
 
   SemState sem_state(sem_context, DataType::INT64, InternalType::kInt64Value);
   RETURN_NOT_OK(limit_clause_->Analyze(sem_context));

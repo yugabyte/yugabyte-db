@@ -177,7 +177,7 @@ class CQLMessage {
     QueryParameters() : sql::StatementParameters() { }
 
     virtual CHECKED_STATUS GetBindVariable(
-        const std::string& name, int64_t pos, YQLType type, YQLValue* value) const override;
+        const std::string* name, int64_t pos, YQLType type, YQLValue* value) const override;
   };
 
   // Accessors for header fields
