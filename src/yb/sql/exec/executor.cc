@@ -420,7 +420,28 @@ CHECKED_STATUS Executor::ColumnArgsToWriteRequestPB(const shared_ptr<client::YBT
   const MCVector<ColumnArg>& column_args = tnode->column_args();
   // Set the ttl.
   if (tnode->has_ttl()) {
-    req->set_ttl(tnode->ttl_msec());
+    YQLExpressionPB ttl_pb;
+    RETURN_NOT_OK(PTExprToPB(tnode->ttl_seconds(), &ttl_pb));
+    if (ttl_pb.has_value() && YQLValue::IsNull(ttl_pb.value())) {
+      return exec_context_->Error(tnode->loc(),
+                                  "TTL value cannot be null.",
+                                  ErrorCode::INVALID_ARGUMENTS);
+    }
+
+    // this should be ensured by checks before getting here
+    DCHECK(ttl_pb.has_value() && ttl_pb.value().has_int64_value())
+        << "Integer constant expected for USING TTL clause";
+
+    int64_t ttl_seconds = ttl_pb.value().int64_value();
+
+    if (!yb::common::IsValidTTLSeconds(ttl_seconds)) {
+      return exec_context_->Error(tnode->ttl_seconds()->loc(),
+          strings::Substitute("Valid ttl range : [$0, $1]",
+              yb::common::kMinTtlSeconds,
+              yb::common::kMaxTtlSeconds).c_str(),
+          ErrorCode::INVALID_ARGUMENTS);
+    }
+    req->set_ttl(static_cast<uint64_t>(ttl_seconds * MonoTime::kMillisecondsPerSecond));
   }
 
   for (const ColumnArg& col : column_args) {
@@ -678,7 +699,15 @@ void Executor::ExecPTNodeAsync(
   if (tnode->has_limit()) {
     YQLExpressionPB limit_pb;
     CB_RETURN_NOT_OK(cb, PTExprToPB(tnode->limit(), &limit_pb));
-    DCHECK(limit_pb.has_value()) << "Integer constant expected";
+    if (limit_pb.has_value() && YQLValue::IsNull(limit_pb.value())) {
+      CB_RETURN(cb, exec_context_->Error(tnode->loc(),
+                                         "LIMIT value cannot be null.",
+                                         ErrorCode::INVALID_ARGUMENTS));
+    }
+
+    // this should be ensured by checks before getting here
+    DCHECK(limit_pb.has_value() && limit_pb.value().has_int64_value())
+        << "Integer constant expected for LIMIT clause";
 
     int64_t limit = limit_pb.value().int64_value();
     if (limit < 0) {

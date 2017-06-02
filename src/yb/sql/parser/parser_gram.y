@@ -223,6 +223,7 @@ DECLARE_bool(yql_experiment_support_expression);
                           where_clause opt_where_clause
                           where_or_current_clause opt_where_or_current_clause
                           opt_select_limit select_limit limit_clause select_limit_value
+                          using_ttl_clause opt_using_ttl_clause
 
 %type <PListNode>         // Clauses as list of tree nodes.
                           target_list opt_target_list into_clause
@@ -238,9 +239,6 @@ DECLARE_bool(yql_experiment_support_expression);
                           collection_expr target_el in_expr
                           func_expr func_application func_arg_expr
                           inactive_a_expr inactive_c_expr
-
-%type <PConstInt>         // Const Int.
-                          using_ttl_clause opt_using_ttl_clause
 
 %type <PMapExpr>          // An expression of type Map.
                           map_elems map_expr
@@ -2304,8 +2302,8 @@ opt_using_ttl_clause:
 ;
 
 using_ttl_clause:
-  USING TTL Iconst {
-    $$ = MAKE_NODE(@3, PTConstInt, $3);
+  USING TTL c_expr {
+    $$ = $3;
   }
 ;
 

@@ -379,7 +379,7 @@ CHECKED_STATUS PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
   if (operand1->expr_op() == ExprOperator::kBcall) {
     PTBcall* bcall = static_cast<PTBcall *>(operand1.get());
     if (strcmp(bcall->name()->c_str(), "token") == 0) {
-      sem_state->set_bindvar_name(PTToken::bindvar_name);
+      sem_state->set_bindvar_name(PTBindVar::token_bindvar_name());
     }
   }
 
@@ -683,8 +683,6 @@ CHECKED_STATUS PTToken::CheckOperator(SemContext *sem_context) {
 
   return Status::OK();
 }
-
-const string& PTToken::bindvar_name = "partition key token";
 
 }  // namespace sql
 }  // namespace yb

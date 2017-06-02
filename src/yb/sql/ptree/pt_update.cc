@@ -56,7 +56,7 @@ PTUpdateStmt::PTUpdateStmt(MemoryContext *memctx,
                            PTAssignListNode::SharedPtr set_clause,
                            PTExpr::SharedPtr where_clause,
                            PTExpr::SharedPtr if_clause,
-                           PTConstInt::SharedPtr ttl_seconds)
+                           PTExpr::SharedPtr ttl_seconds)
     : PTDmlStmt(memctx, loc, true, ttl_seconds),
       relation_(relation),
       set_clause_(set_clause),

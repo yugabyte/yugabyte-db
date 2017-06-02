@@ -126,7 +126,7 @@ class PTDmlStmt : public PTCollection {
   explicit PTDmlStmt(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
                      bool write_only,
-                     PTConstInt::SharedPtr ttl_seconds = nullptr);
+                     PTExpr::SharedPtr ttl_seconds = nullptr);
   virtual ~PTDmlStmt();
 
   template<typename... TypeArgs>
@@ -189,9 +189,9 @@ class PTDmlStmt : public PTCollection {
     return ttl_seconds_ != nullptr;
   }
 
-  int64_t ttl_msec() const {
+  PTExpr::SharedPtr ttl_seconds() const {
     CHECK_NOTNULL(ttl_seconds_.get());
-    return ttl_seconds_->Eval() * MonoTime::kMillisecondsPerSecond;
+    return ttl_seconds_;
   }
 
   const MCVector<PTBindVar*> &bind_variables() const {
@@ -245,7 +245,7 @@ class PTDmlStmt : public PTCollection {
 
   // Predicate for write operator (UPDATE & DELETE).
   bool write_only_;
-  PTConstInt::SharedPtr ttl_seconds_;
+  PTExpr::SharedPtr ttl_seconds_;
 
   // Bind variables set up by during parsing.
   MCVector<PTBindVar*> bind_variables_;

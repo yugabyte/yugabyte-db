@@ -143,12 +143,10 @@ CHECKED_STATUS Executor::PTExprToPB(const PTBindVar *bind_pt, YQLExpressionPB *e
 }
 
 CHECKED_STATUS Executor::GetBindVariable(const PTBindVar* var, YQLValue *value) const {
-  if (var->name() == nullptr) {
-    return params_->GetBindVariable(nullptr, var->pos(), var->yql_type(), value);
-  } else {
-    string name(var->name()->c_str());
-    return params_->GetBindVariable(&name, var->pos(), var->yql_type(), value);
-  }
+  return params_->GetBindVariable(string(var->name()->c_str()),
+                                  var->pos(),
+                                  var->yql_type(),
+                                  value);
 }
 
 //--------------------------------------------------------------------------------------------------

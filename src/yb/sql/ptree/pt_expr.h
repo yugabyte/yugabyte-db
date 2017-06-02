@@ -961,6 +961,25 @@ class PTBindVar : public PTExpr {
     return ExprOperator::kBindVar;
   }
 
+  // The name Cassandra uses for the virtual column when binding LIMIT clause
+  static const string& limit_bindvar_name() {
+    static string limit_bindvar_name = "[limit]";
+    return limit_bindvar_name;
+  }
+
+  // The name Cassandra uses for the virtual column when binding USING TTL clause
+  static const string& ttl_bindvar_name() {
+    static string ttl_bindvar_name = "[ttl]";
+    return ttl_bindvar_name;
+  }
+
+
+  // The name Cassandra uses for the virtual column when binding the partition key (i.e. with token)
+  static const string& token_bindvar_name() {
+    static string token_bindvar_name = "partition key token";
+    return token_bindvar_name;
+  }
+
  private:
   // 0-based position.
   int64_t pos_;
@@ -1062,9 +1081,6 @@ class PTToken : public PTBcall {
   bool is_partition_key_ref() const {
     return is_partition_key_ref_;
   }
-
-  // The name Cassandra uses for the virtual column when binding token ("partition key token")
-  static const string& bindvar_name;
 
  private:
   // true if this token call is just reference to the partition key, e.g.: "token(h1, h2, h3)"

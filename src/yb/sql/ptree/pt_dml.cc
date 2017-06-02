@@ -22,7 +22,7 @@ using client::YBColumnSchema;
 PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
                      bool write_only,
-                     PTConstInt::SharedPtr ttl_seconds)
+                     PTExpr::SharedPtr ttl_seconds)
   : PTCollection(memctx, loc),
     is_system_(false),
     table_columns_(memctx),
@@ -196,13 +196,12 @@ CHECKED_STATUS PTDmlStmt::AnalyzeUsingClause(SemContext *sem_context) {
     return Status::OK();
   }
 
-  if (!yb::common::IsValidTTLSeconds(ttl_seconds_->Eval())) {
-    return sem_context->Error(ttl_seconds_->loc(),
-                              strings::Substitute("Valid ttl range : [$0, $1]",
-                                                  yb::common::kMinTtlSeconds,
-                                                  yb::common::kMaxTtlSeconds).c_str(),
-                              ErrorCode::INVALID_ARGUMENTS);
-  }
+  RETURN_NOT_OK(ttl_seconds_->CheckRhsExpr(sem_context));
+
+  SemState sem_state(sem_context, DataType::INT64, InternalType::kInt64Value);
+  sem_state.set_bindvar_name(PTBindVar::ttl_bindvar_name());
+  RETURN_NOT_OK(ttl_seconds_->Analyze(sem_context));
+
   return Status::OK();
 }
 

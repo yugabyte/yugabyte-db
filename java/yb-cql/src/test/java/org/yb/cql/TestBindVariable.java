@@ -1163,8 +1163,11 @@ public class TestBindVariable extends BaseCQLTest {
   }
 
   @Test
-  public void testBindWithLimit() throws Exception {
+  public void testBindingLimit() throws Exception {
     LOG.info("Begin test");
+
+    // this is the (virtual column) name CQL uses for binding the LIMIT clause
+    String limit_vcol_name = "[limit]";
 
     // Setup test table.
     setupTable("test_bind", 10 /* num_rows */);
@@ -1173,6 +1176,17 @@ public class TestBindVariable extends BaseCQLTest {
       // Simple bind (by position) for limit.
       String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind where r1 <= ? LIMIT ?;";
       ResultSet rs = session.execute(select_stmt, new Integer(109), new Long(7));
+
+      // Checking result.
+      assertEquals(7, rs.getAvailableWithoutFetching());
+    }
+
+    {
+      // Simple bind (by position) for limit.
+      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind where r1 <= ? LIMIT ?;";
+      PreparedStatement stmt = session.prepare(select_stmt);
+
+      ResultSet rs = session.execute(stmt.bind(new Integer(109), new Long(7)));
 
       // Checking result.
       assertEquals(7, rs.getAvailableWithoutFetching());
@@ -1199,21 +1213,160 @@ public class TestBindVariable extends BaseCQLTest {
     }
 
     {
-      // Prepare unnamed bind (but referenced by name).
-      // should be invalid since there is no default name for non-column binds.
-      testInvalidBindStatement("SELECT h1, h2, r1, r2, v1, v2 FROM test_bind where r1 > ? LIMIT ?;",
-              new HashMap<String, Object>() {{
-                put("r1", new Long(97));
-                put("lm", new Long(7));
-              }});
+      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind where r1 > ? LIMIT ?;";
+      PreparedStatement stmt = session.prepare(select_stmt);
+      ResultSet rs = session.execute(stmt.bind()
+                                         .setInt("r1", 99)
+                                         .setLong(limit_vcol_name, 8));
 
+      // Checking result.
+      assertEquals(8, rs.getAvailableWithoutFetching());
     }
 
-     LOG.info("End test");
+    // Negative test: limit values should be non-null
+    testInvalidBindStatement("SELECT * FROM test_bind WHERE h2 = ? LIMIT ?", "1", null);
+
+    LOG.info("End test");
   }
 
   @Test
-  public void testBindWithToken() throws Exception {
+  public void testBindingTTL() throws Exception {
+    LOG.info("Begin test");
+
+    // this is the (virtual column) name CQL uses for binding the USING TTL clause
+    String ttl_vcol_name = "[ttl]";
+
+    // Setup test table.
+    CreateTable("test_bind");
+
+    String select_stmt = "SELECT v1, v2 FROM test_bind WHERE " +
+            "h1 = 1 AND h2 = '1' AND r1 = 1 AND r2 = '1'";
+
+    //---------------------------------- Testing Insert ------------------------------------------\\
+
+    // simple bind
+    {
+      String insert_stmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
+              "VALUES (1, '1', 1, '1', ?, ?) USING TTL ?";
+      session.execute(insert_stmt, new Integer(2), "2", new Long(1));
+
+      // checking result
+      ResultSet rs = session.execute(select_stmt);
+      assertEquals(1, rs.getAvailableWithoutFetching());
+      Row row = rs.one();
+      assertEquals(2, row.getInt("v1"));
+      assertEquals("2", row.getString("v2"));
+
+      // checking value expires
+      Thread.sleep(1100);
+      rs = session.execute(select_stmt);
+      assertEquals(0, rs.getAvailableWithoutFetching());
+    }
+
+    // named bind -- using default names
+    {
+      String insert_stmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
+              "VALUES (1, '1', 1, '1', ?, ?) USING TTL ?";
+      PreparedStatement stmt = session.prepare(insert_stmt);
+      session.execute(stmt.bind()
+                          .setInt("v1", 3)
+                          .setString("v2", "3")
+                          .setLong(ttl_vcol_name, 1));
+
+      // checking result
+      ResultSet rs = session.execute(select_stmt);
+      assertEquals(1, rs.getAvailableWithoutFetching());
+      Row row = rs.one();
+      assertEquals(3, row.getInt("v1"));
+      assertEquals("3", row.getString("v2"));
+
+      // checking value expires
+      Thread.sleep(1100);
+      rs = session.execute(select_stmt);
+      assertEquals(0, rs.getAvailableWithoutFetching());
+    }
+
+    //---------------------------------- Testing Update ------------------------------------------\\
+
+    // prepare bind
+    {
+      // setting up row to be updated
+      String insert_stmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
+              "VALUES (1, '1', 1, '1', 0, '0')";
+      session.execute(insert_stmt);
+
+      String update_stmt = "UPDATE test_bind USING TTL ? SET v1 = ?, v2 = ? " +
+              "WHERE h1 = 1 AND h2 = '1' AND r1 = 1 and r2 = '1'";
+      PreparedStatement stmt = session.prepare(update_stmt);
+      session.execute(stmt.bind(new Long(2), new Integer(4), "4"));
+
+      // checking row is updated
+      ResultSet rs = session.execute(select_stmt);
+      assertEquals(1, rs.getAvailableWithoutFetching());
+      Row row = rs.one();
+      assertEquals(4, row.getInt("v1"));
+      assertEquals("4", row.getString("v2"));
+
+      // checking updated values expire (row should remain, values should be null)
+      Thread.sleep(2100);
+      rs = session.execute(select_stmt);
+      assertEquals(1, rs.getAvailableWithoutFetching());
+      row = rs.one();
+      assertTrue(row.isNull("v1"));
+      assertTrue(row.isNull("v2"));
+    }
+
+    // named bind -- using given names
+    {
+      // setting up row to be updated
+      String insert_stmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
+              "VALUES (1, '1', 1, '1', 0, '0')";
+      session.execute(insert_stmt);
+
+      String update_stmt = "UPDATE test_bind USING TTL :b1 SET v1 = :b2, v2 = :b3 " +
+              "WHERE h1 = 1 AND h2 = '1' AND r1 = 1 and r2 = '1'";
+
+      PreparedStatement stmt = session.prepare(update_stmt);
+      session.execute(stmt.bind()
+                          .setLong("b1", 1)
+                          .setInt("b2", 5)
+                          .setString("b3", "5"));
+
+      // checking row is update
+      ResultSet rs = session.execute(select_stmt);
+      assertEquals(1, rs.getAvailableWithoutFetching());
+      Row row = rs.one();
+      assertEquals(5, row.getInt("v1"));
+      assertEquals("5", row.getString("v2"));
+
+      // checking updated values expire (row should remain, values should be null)
+      Thread.sleep(1100);
+      rs = session.execute(select_stmt);
+      assertEquals(1, rs.getAvailableWithoutFetching());
+      row = rs.one();
+      assertTrue(row.isNull("v1"));
+      assertTrue(row.isNull("v2"));
+    }
+
+    //------------------------------- Testing Invalid Stmts --------------------------------------\\
+
+    // null ttl values
+    testInvalidBindStatement("INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
+            "VALUES (0, '0', 0, '0', 0, ?) USING TTL ?", "0", null);
+
+    // ttl values below minimum allowed (i.e. below 0)
+    testInvalidBindStatement("INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
+            "VALUES (0, '0', 0, '0', 0, ?) USING TTL ?", "0", new Long(-1));
+
+    // ttl value above maximum allowed
+    testInvalidBindStatement("INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
+            "VALUES (0, '0', 0, '0', 0, ?) USING TTL ?", "0", new Long(MAX_TTL_SEC + 1));
+
+    LOG.info("End test");
+  }
+
+  @Test
+  public void testBindingToken() throws Exception {
     LOG.info("Begin test");
 
     // this is the name CQL uses for the virtual column that token() references
