@@ -67,7 +67,7 @@ public class IOPSThread extends Thread {
     try {
       LOG.debug("Starting " + ioType.toString() + " IOPS thread #" + threadIdx);
       int numConsecutiveExceptions = 0;
-      while(!app.hasFinished()) {
+      while (!app.hasFinished()) {
         try {
           switch (ioType) {
             case Write: app.performWrite(); break;

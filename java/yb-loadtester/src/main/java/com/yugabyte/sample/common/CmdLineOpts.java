@@ -150,6 +150,10 @@ public class CmdLineOpts {
     return reuseExistingTable;
   }
 
+  public boolean doErrorChecking() {
+    return AppBase.appConfig.sanityCheckAtEnd;
+  }
+
   private static Class<? extends AppBase> getAppClass(AppName workloadType)
       throws ClassNotFoundException{
     // Get the workload class.
@@ -207,12 +211,16 @@ public class CmdLineOpts {
     if (cmd.hasOption("use_ascii_values")) {
       AppBase.appConfig.restrictValuesToAscii = true;
     }
+    if (cmd.hasOption("sanity_check_at_end")) {
+      AppBase.appConfig.sanityCheckAtEnd = true;
+    }
     LOG.info("Num unique keys to insert: " + AppBase.appConfig.numUniqueKeysToWrite);
     LOG.info("Num keys to update: " +
         (AppBase.appConfig.numKeysToWrite - AppBase.appConfig.numUniqueKeysToWrite));
     LOG.info("Num keys to read: " + AppBase.appConfig.numKeysToRead);
     LOG.info("Value size: " + AppBase.appConfig.valueSize);
     LOG.info("Restrict values to ASCII strings: " + AppBase.appConfig.restrictValuesToAscii);
+    LOG.info("Perform sanity check at end of app run: " + AppBase.appConfig.sanityCheckAtEnd);
   }
 
   private void initializeTableProperties(CommandLine cmd) {
@@ -266,6 +274,8 @@ public class CmdLineOpts {
     options.addOption("use_ascii_values", false, "[RedisKeyValue] If " +
         "specified, values are restricted to ASCII strings.");
     options.addOption("table_ttl_seconds", true, "The TTL in seconds to create the table with.");
+    options.addOption("sanity_check_at_end", false,
+        "Add FATAL logs to ensure no failures before terminating the app.");
 
     // Options for CassandraTimeseries workload.
     options.addOption("num_users", true, "[CassandraTimeseries] The total number of users.");

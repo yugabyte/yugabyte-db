@@ -56,5 +56,9 @@ public class AppConfig {
   // The table level TTL in seconds. No TTL is applied if this value is set to -1.
   public long tableTTLSeconds = -1;
 
+  // Batch size to send from client for redis pipeline app.
   public int redisPipelineLength = 1;
+
+  // Perform sanity checks at the termination of app.
+  public boolean sanityCheckAtEnd = false;
 }

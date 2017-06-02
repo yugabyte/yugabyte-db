@@ -105,6 +105,20 @@ public class Main {
     return AppBase.numOps();
   }
 
+  private void terminate() {
+    if (cmdLineOpts.doErrorChecking()) {
+      if (numOps() == 0) {
+        LOG.fatal("Expected non-zero number of IOPS.");
+      }
+
+      if (hasFailures()) {
+        LOG.fatal("Hit failures during workload.");
+      }
+    }
+
+    app.terminate();
+  }
+
   public void run() {
     // Disable extended peer check, to ensure "SELECT * FROM system.peers" works without
     // all columns.
@@ -154,7 +168,7 @@ public class Main {
         }
       }
     } finally {
-      app.terminate();
+      terminate();
     }
   }
 

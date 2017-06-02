@@ -35,7 +35,7 @@ public class CassandraKeyValue extends AppBase {
     appConfig.numKeysToWrite = -1;
     // The number of unique keys to write. This determines the number of inserts (as opposed to
     // updates).
-    appConfig.numUniqueKeysToWrite = 1000000;
+    appConfig.numUniqueKeysToWrite = NUM_UNIQUE_KEYS;
   }
 
   // The table name.
