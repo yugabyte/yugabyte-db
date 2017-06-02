@@ -30,8 +30,6 @@
 #include "yb/rpc/service_pool.h"
 #include "yb/server/rpc_server.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
 using yb::rpc::Messenger;
@@ -80,6 +78,10 @@ string RpcServer::ToString() const {
 Status RpcServer::Init(const shared_ptr<Messenger>& messenger) {
   CHECK_EQ(server_state_, UNINITIALIZED);
   messenger_ = messenger;
+
+  RETURN_NOT_OK(HostPort::ParseStrings(options_.rpc_bind_addresses,
+                                       options_.default_port,
+                                       &rpc_host_port_));
 
   RETURN_NOT_OK(ParseAddressList(options_.rpc_bind_addresses,
                                  options_.default_port,

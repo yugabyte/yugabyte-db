@@ -82,6 +82,8 @@ using strings::Substitute;
 namespace yb {
 namespace server {
 
+static const string kWildCardHostAddress = "0.0.0.0";
+
 namespace {
 
 // Disambiguates between servers when in a minicluster.
@@ -371,17 +373,24 @@ void RpcAndWebServerBase::GetStatusPB(ServerStatusPB* status) const {
 }
 
 Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg) const {
-  auto addrs = CHECK_NOTNULL(rpc_server())->GetBoundAddresses();
-  RETURN_NOT_OK_PREPEND(
-      AddHostPortPBs(addrs, reg->mutable_rpc_addresses()),
-      "Failed to add RPC addresses to registration");
+  std::vector<HostPort> addrs = CHECK_NOTNULL(rpc_server())->GetRpcHostPort();
 
-  addrs.clear();
-  RETURN_NOT_OK_PREPEND(
-      CHECK_NOTNULL(web_server())->GetBoundAddresses(&addrs), "Unable to get bound HTTP addresses");
-  RETURN_NOT_OK_PREPEND(
-      AddHostPortPBs(addrs, reg->mutable_http_addresses()),
-      "Failed to add HTTP addresses to registration");
+  // Fall back to hostname resolution if the rpc hostname is a wildcard.
+  if (addrs.size() > 1 || addrs.at(0).host() == kWildCardHostAddress || addrs.at(0).port() == 0) {
+    auto addrs = CHECK_NOTNULL(rpc_server())->GetBoundAddresses();
+    RETURN_NOT_OK_PREPEND(AddHostPortPBs(addrs, reg->mutable_rpc_addresses()),
+                          "Failed to add RPC endpoints to registration");
+  } else {
+    RETURN_NOT_OK_PREPEND(HostPortsToPBs(addrs, reg->mutable_rpc_addresses()),
+                          "Failed to add RPC addresses to registration");
+    LOG(INFO) << "Using private ip address " << reg->rpc_addresses(0).host();
+  }
+
+  std::vector<Endpoint> web_addrs;
+  RETURN_NOT_OK_PREPEND(CHECK_NOTNULL(web_server())->GetBoundAddresses(&web_addrs),
+                        "Unable to get bound HTTP addresses");
+  RETURN_NOT_OK_PREPEND(AddHostPortPBs(web_addrs, reg->mutable_http_addresses()),
+                        "Failed to add HTTP addresses to registration");
 
   reg->mutable_cloud_info()->set_placement_cloud(options_.placement_cloud);
   reg->mutable_cloud_info()->set_placement_region(options_.placement_region);

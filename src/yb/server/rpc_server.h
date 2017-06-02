@@ -25,6 +25,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/service_pool.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
@@ -56,6 +57,10 @@ class RpcServer {
     return rpc_bound_addresses_;
   }
 
+  const std::vector<HostPort>& GetRpcHostPort() const {
+    return rpc_host_port_;
+  }
+
   std::string ToString() const;
 
   const rpc::ServicePool* service_pool(const std::string& service_name) const;
@@ -77,9 +82,12 @@ class RpcServer {
   std::unique_ptr<rpc::ThreadPool> thread_pool_;
   std::shared_ptr<rpc::Messenger> messenger_;
 
-  // Parsed addresses to bind RPC to. Set by Init()
+  // Parsed addresses to bind RPC to. Set by Init().
   std::vector<Endpoint> rpc_bind_addresses_;
   std::vector<Endpoint> rpc_bound_addresses_;
+
+  // This saves the rpc host port flag's ip and port information (and no dns name lookup is done).
+  std::vector<HostPort> rpc_host_port_;
 
   DISALLOW_COPY_AND_ASSIGN(RpcServer);
 };

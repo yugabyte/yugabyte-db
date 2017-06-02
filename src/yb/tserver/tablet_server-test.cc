@@ -52,6 +52,7 @@ DEFINE_int32(single_threaded_insert_latency_bench_insert_rows, 1000,
 DECLARE_int32(scanner_batch_size_rows);
 DECLARE_int32(metrics_retirement_age_ms);
 DECLARE_string(block_manager);
+DECLARE_string(rpc_bind_addresses);
 
 // Declare these metrics prototypes for simpler unit testing of their behavior.
 METRIC_DECLARE_counter(rows_inserted);
@@ -1919,6 +1920,60 @@ TEST_F(TabletServerTest, TestRpcServerCreateDestroy) {
     ASSERT_OK(mb.Build(&messenger));
     ASSERT_OK(server2.Init(messenger));
   }
+}
+
+// Simple test to ensure we can create RpcServer with different bind address options.
+TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
+  FLAGS_rpc_bind_addresses = "0.0.0.0:2000";
+  RpcServerOptions opts;
+  ServerRegistrationPB reg;
+  TabletServerOptions tbo;
+  MessengerBuilder mb("foo");
+  shared_ptr<Messenger> messenger;
+  ASSERT_OK(mb.Build(&messenger));
+
+  RpcServer server1("server1", opts);
+  ASSERT_OK(server1.Init(messenger));
+
+  if (false) {
+    // TODO: crashes during tserver destruct as some fields not set, will fix later.
+    tbo.rpc_opts = opts;
+    TabletServer tserver(tbo);
+    ASSERT_NO_FATALS(WARN_NOT_OK(tserver.Init(), "Ignore"));
+    // This call will fail for http binding, but this test is for rpc.
+    ASSERT_NO_FATALS(WARN_NOT_OK(tserver.GetRegistration(&reg), "Ignore"));
+    ASSERT_EQ(2000, reg.rpc_addresses(0).port());
+  }
+
+  FLAGS_rpc_bind_addresses = "0.0.0.0:2000,0.0.0.1:2001";
+  RpcServerOptions opts2;
+  RpcServer server2("server2", opts2);
+  ASSERT_OK(server2.Init(messenger));
+
+  FLAGS_rpc_bind_addresses = "10.20.30.40:2017";
+  RpcServerOptions opts3;
+  RpcServer server3("server3", opts3);
+  ASSERT_OK(server3.Init(messenger));
+
+  reg.Clear();
+  tbo.rpc_opts = opts3;
+  TabletServer server(tbo);
+  ASSERT_NO_FATALS(WARN_NOT_OK(server.Init(), "Ignore"));
+  // This call will fail for http binding, but this test is for rpc.
+  ASSERT_NO_FATALS(WARN_NOT_OK(server.GetRegistration(&reg), "Ignore"));
+  ASSERT_EQ(1, reg.rpc_addresses().size());
+  ASSERT_EQ("10.20.30.40", reg.rpc_addresses(0).host());
+  ASSERT_EQ(2017, reg.rpc_addresses(0).port());
+
+  reg.Clear();
+  FLAGS_rpc_bind_addresses = "10.20.30.40:2017,20.30.40.50:2018";
+  RpcServerOptions opts4;
+  tbo.rpc_opts = opts4;
+  TabletServer tserver2(tbo);
+  ASSERT_NO_FATALS(WARN_NOT_OK(tserver2.Init(), "Ignore"));
+  // This call will fail for http binding, but this test is for rpc.
+  ASSERT_NO_FATALS(WARN_NOT_OK(tserver2.GetRegistration(&reg), "Ignore"));
+  ASSERT_EQ(2, reg.rpc_addresses().size());
 }
 
 TEST_F(TabletServerTest, TestWriteOutOfBounds) {

@@ -180,6 +180,14 @@ Status HostPortFromPB(const HostPortPB& host_port_pb, HostPort* host_port) {
   return Status::OK();
 }
 
+Status HostPortsToPBs(const std::vector<HostPort>& addrs,
+                      RepeatedPtrField<HostPortPB>* pbs) {
+  for (const auto& addr : addrs) {
+    RETURN_NOT_OK(HostPortToPB(addr, pbs->Add()));
+  }
+  return Status::OK();
+}
+
 Status AddHostPortPBs(const std::vector<Endpoint>& addrs,
                       RepeatedPtrField<HostPortPB>* pbs) {
   for (const auto& addr : addrs) {

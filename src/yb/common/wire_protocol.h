@@ -53,10 +53,13 @@ Status HostPortToPB(const HostPort& host_port, HostPortPB* host_port_pb);
 // Returns the HostPort created from the specified protobuf.
 Status HostPortFromPB(const HostPortPB& host_port_pb, HostPort* host_port);
 
-// Adds addresses in 'addrs' to 'pbs'. If an address is a wildcard
-// (e.g., "0.0.0.0"), then the local machine's hostname is used in
-// its place.
+// Adds addresses in 'addrs' to 'pbs'. If an address is a wildcard (e.g., "0.0.0.0"),
+// then the local machine's FQDN or its network interface address is used in its place.
 CHECKED_STATUS AddHostPortPBs(const std::vector<Endpoint>& addrs,
+                              google::protobuf::RepeatedPtrField<HostPortPB>* pbs);
+
+// Simply convert the list of host ports into a repeated list of corresponding PB's.
+CHECKED_STATUS HostPortsToPBs(const std::vector<HostPort>& addrs,
                               google::protobuf::RepeatedPtrField<HostPortPB>* pbs);
 
 enum SchemaPBConversionFlags {
