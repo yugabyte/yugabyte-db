@@ -1,5 +1,6 @@
 3.0.2
 -- Allow maintenance background worker to restart itself if it crashes. Previously if the main background worker process exited for any reason, the only way to restart it was to restart the whole postgresql instance. Now it will try to restart itself every 10 minutes. A warning will be issued into the logs if this event occurs. (Github Issue #180).
+    -- NOTE: You will have to restart the PostgreSQL cluster to load the new library with the auto-restart option.
 -- Remove internal version checking function and use simpler comparison method using integer based version number (Pull Request #183).
 -- Apply fixes from running plpgsql_check (https://github.com/okbob/plpgsql_check/)
 
