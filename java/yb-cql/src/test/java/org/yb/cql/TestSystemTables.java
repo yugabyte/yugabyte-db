@@ -4,6 +4,7 @@ import java.net.InetSocketAddress;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -45,7 +46,7 @@ public class TestSystemTables extends BaseCQLTest {
                                            String table_name) {
     for (Row row : results) {
       if (row.getString("keyspace_name").equals(namespace_name)
-        && row.getString("table_name") == table_name) {
+        && row.getString("table_name").equals(table_name)) {
         return true;
       }
     }
@@ -183,23 +184,27 @@ public class TestSystemTables extends BaseCQLTest {
     for (Row row : results) {
       assertTrue(row.getBool("durable_writes"));
       assertTrue(expectedKeySpaces.remove(row.getString("keyspace_name")));
+      Map<String, String> repl_map = row.getMap("replication", String.class, String.class);
+      // No expectation on exact values, but properties must be set.
+      assertTrue(repl_map.containsKey("class"));
+      assertTrue(repl_map.containsKey("replication_factor"));
     }
     assertEquals(0, expectedKeySpaces.size());
 
     results = session.execute(
       "SELECT * FROM system_schema.tables;").all();
     assertEquals(11, results.size());
-    verifySystemSchemaTables(results, "system_schema", "aggregates");
-    verifySystemSchemaTables(results, "system_schema", "columns");
-    verifySystemSchemaTables(results, "system_schema", "functions");
-    verifySystemSchemaTables(results, "system_schema", "indexes");
-    verifySystemSchemaTables(results, "system_schema", "triggers");
-    verifySystemSchemaTables(results, "system_schema", "types");
-    verifySystemSchemaTables(results, "system_schema", "views");
-    verifySystemSchemaTables(results, "system_schema", "keyspaces");
-    verifySystemSchemaTables(results, "system_schema", "tables");
-    verifySystemSchemaTables(results, "system", "peers");
-    verifySystemSchemaTables(results, "system", "local");
+    assertTrue(verifySystemSchemaTables(results, "system_schema", "aggregates"));
+    assertTrue(verifySystemSchemaTables(results, "system_schema", "columns"));
+    assertTrue(verifySystemSchemaTables(results, "system_schema", "functions"));
+    assertTrue(verifySystemSchemaTables(results, "system_schema", "indexes"));
+    assertTrue(verifySystemSchemaTables(results, "system_schema", "triggers"));
+    assertTrue(verifySystemSchemaTables(results, "system_schema", "types"));
+    assertTrue(verifySystemSchemaTables(results, "system_schema", "views"));
+    assertTrue(verifySystemSchemaTables(results, "system_schema", "keyspaces"));
+    assertTrue(verifySystemSchemaTables(results, "system_schema", "tables"));
+    assertTrue(verifySystemSchemaTables(results, "system", "peers"));
+    assertTrue(verifySystemSchemaTables(results, "system", "local"));
 
     // Create keyspace and table and verify it shows up.
     session.execute("CREATE KEYSPACE my_keyspace;");

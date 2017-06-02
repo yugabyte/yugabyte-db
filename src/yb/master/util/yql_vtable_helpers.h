@@ -47,6 +47,26 @@ inline YQLValuePB GetTokensValue() {
   return value_pb;
 }
 
+// TODO (mihnea) when partitioning issue is solved use the right values here
+inline YQLValuePB GetReplicationValue() {
+  YQLValuePB value_pb;
+  YQLValue::set_map_value(&value_pb);
+
+  // replication strategy
+  YQLValuePB *elem = YQLValue::add_map_key(&value_pb);
+  elem->set_string_value("class");
+  elem = YQLValue::add_map_value(&value_pb);
+  elem->set_string_value("org.apache.cassandra.locator.SimpleStrategy");
+
+  // replication factor
+  elem = YQLValue::add_map_key(&value_pb);
+  elem->set_string_value("replication_factor");
+  elem = YQLValue::add_map_value(&value_pb);
+  elem->set_string_value("1");
+
+  return value_pb;
+}
+
 }  // namespace util
 }  // namespace master
 }  // namespace yb

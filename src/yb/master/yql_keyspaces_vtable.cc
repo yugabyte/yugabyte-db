@@ -16,6 +16,7 @@ Status YQLKeyspacesVTable::RetrieveData(const YQLReadRequestPB& request,
                                         std::unique_ptr<YQLRowBlock>* vtable) const {
   using util::GetStringValue;
   using util::GetBoolValue;
+  using util::GetReplicationValue;
 
   vtable->reset(new YQLRowBlock(schema_));
   std::vector<scoped_refptr<NamespaceInfo> > namespaces;
@@ -24,6 +25,7 @@ Status YQLKeyspacesVTable::RetrieveData(const YQLReadRequestPB& request,
     YQLRow& row = (*vtable)->Extend();
     RETURN_NOT_OK(SetColumnValue(kKeyspaceName, GetStringValue(ns->name()), &row));
     RETURN_NOT_OK(SetColumnValue(kDurableWrites, GetBoolValue(true), &row));
+    RETURN_NOT_OK(SetColumnValue(kReplication, GetReplicationValue(), &row));
   }
 
   return Status::OK();
