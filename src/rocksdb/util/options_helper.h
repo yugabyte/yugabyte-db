@@ -3,6 +3,9 @@
 // LICENSE file in the root directory of this source tree. An additional grant
 // of patent rights can be found in the PATENTS file in the same directory.
 
+#ifndef ROCKSDB_UTIL_OPTIONS_HELPER_H
+#define ROCKSDB_UTIL_OPTIONS_HELPER_H
+
 #pragma once
 
 #include <string>
@@ -316,7 +319,11 @@ static std::unordered_map<std::string, OptionTypeInfo> db_options_type_info = {
       OptionVerificationType::kNormal}},
     {"set_last_seq_based_on_sstable_metadata",
      {offsetof(struct DBOptions, set_last_seq_based_on_sstable_metadata), OptionType::kBoolean,
-      OptionVerificationType::kNormal}}};
+      OptionVerificationType::kNormal}},
+    {"max_file_size_for_compaction",
+     {offsetof(struct DBOptions, max_file_size_for_compaction),
+      OptionType::kUInt64T, OptionVerificationType::kNormal}},
+};
 
 static std::unordered_map<std::string, OptionTypeInfo> cf_options_type_info = {
     /* not yet supported
@@ -613,3 +620,5 @@ static std::unordered_map<std::string, InfoLogLevel> info_log_level_string_map =
 }  // namespace rocksdb
 
 #endif  // !ROCKSDB_LITE
+
+#endif // ROCKSDB_UTIL_OPTIONS_HELPER_H

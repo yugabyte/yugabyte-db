@@ -220,6 +220,33 @@ std::string ToString(const std::pair<First, Second>& pair) {
   return "{" + ToString(pair.first) + ", " + ToString(pair.second) + "}";
 }
 
+template<class Tuple, size_t index, bool exist>
+class TupleToString {
+ public:
+  static void Apply(const Tuple& tuple, std::string* out) {
+    if (index) {
+      *out += ", ";
+    }
+    *out += ToString(std::get<index>(tuple));
+    TupleToString<Tuple, index + 1, (index + 1 < std::tuple_size<Tuple>::value)>::Apply(tuple, out);
+  }
+};
+
+template<class Tuple, size_t index>
+class TupleToString<Tuple, index, false> {
+ public:
+  static void Apply(const Tuple& tuple, std::string* out) {}
+};
+
+template <class... Args>
+std::string ToString(const std::tuple<Args...>& tuple) {
+  typedef std::tuple<Args...> Tuple;
+  std::string result = "{";
+  TupleToString<Tuple, 0, (0 < std::tuple_size<Tuple>::value)>::Apply(tuple, &result);
+  result += "}";
+  return result;
+}
+
 template <class Collection>
 std::string CollectionToString(const Collection& collection) {
   std::string result = "[";
