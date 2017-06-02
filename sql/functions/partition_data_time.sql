@@ -28,13 +28,10 @@ v_partition_expression      text;
 v_partition_interval        interval;
 v_partition_suffix          text;
 v_partition_timestamp       timestamptz[];
-v_quarter                   text;
 v_rowcount                  bigint;
 v_start_control             timestamptz;
-v_time_position             int;
 v_total_rows                bigint := 0;
 v_type                      text;
-v_year                      text;
 
 BEGIN
 /*
@@ -142,7 +139,7 @@ FOR i IN 1..p_batch_count LOOP
                     END IF;
                 EXCEPTION WHEN datetime_field_overflow THEN
                     RAISE EXCEPTION 'Attempted partition time interval is outside PostgreSQL''s supported time range. 
-                        Unable to create partition with interval before timestamp % ', v_min_partition_interval;
+                        Unable to create partition with interval before timestamp % ', v_min_partition_timestamp;
                 END;
             END IF;
         END LOOP;

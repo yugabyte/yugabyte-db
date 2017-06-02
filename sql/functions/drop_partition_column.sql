@@ -6,7 +6,6 @@ CREATE FUNCTION drop_partition_column(p_parent_table text, p_column text) RETURN
     AS $$
 DECLARE
 
-v_child_oid         oid;
 v_parent_oid        oid;
 v_parent_schema     text;
 v_parent_tablename  text;
@@ -40,5 +39,4 @@ END LOOP;
 
 END
 $$;
-
 

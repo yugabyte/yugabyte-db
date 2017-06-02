@@ -286,7 +286,7 @@ void pg_partman_bgw_main(Datum main_arg) {
 
                 elog(DEBUG1, "Registering dynamic background worker...");
                 if (!RegisterDynamicBackgroundWorker(&worker, &handle)) {
-                    elog(ERROR, "Unable to register dynamic background worker for pg_partman. Consider increasing max_worker_processes if you see this frequently.");
+                    elog(ERROR, "Unable to register dynamic background worker for pg_partman. Consider increasing max_worker_processes if you see this frequently. Main background worker process will try restarting in 10 minutes.");
                 }
 
                 elog(DEBUG1, "Waiting for BGW startup...");

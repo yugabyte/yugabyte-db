@@ -74,7 +74,7 @@ IF position('.' in p_parent_table) = 0  THEN
 END IF;
 
 IF p_upsert <> '' THEN
-    IF @extschema@.check_version('9.5.0') = 'false' THEN
+    IF current_setting('server_version_num')::int < 90500 THEN
         RAISE EXCEPTION 'INSERT ... ON CONFLICT (UPSERT) feature is only supported in PostgreSQL 9.5 and later';
     END IF;
     IF p_type = 'native' THEN
@@ -116,7 +116,7 @@ END IF;
 
 IF p_type = 'native' THEN
 
-    IF NOT @extschema@.check_version('10.0') THEN
+    IF current_setting('server_version_num')::int < 100000 THEN
         RAISE EXCEPTION 'Native partitioning only available in PostgreSQL versions 10.0+';
     END IF;
     -- Check if given parent table has been already set up as a partitioned table and is ranged
@@ -156,7 +156,7 @@ IF p_type = 'native' THEN
 
 ELSE
 
-    IF @extschema@.check_version('10.0') THEN
+    IF current_setting('server_version_num')::int >= 100000 THEN
         SELECT p.partstrat INTO v_partstrat
         FROM pg_catalog.pg_partitioned_table p
         JOIN pg_catalog.pg_class c ON p.partrelid = c.oid

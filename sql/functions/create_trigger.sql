@@ -4,7 +4,6 @@ CREATE FUNCTION create_trigger(p_parent_table text) RETURNS void
 DECLARE
 
 v_function_name         text;
-v_new_length            int;
 v_new_search_path       text := '@extschema@,pg_temp';
 v_old_search_path       text;
 v_parent_schema         text;
@@ -49,5 +48,4 @@ EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path
 
 END
 $$;
-
 

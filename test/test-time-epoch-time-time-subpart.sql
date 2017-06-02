@@ -195,14 +195,14 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'|
     ARRAY[10], 'Check count from time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY')||'. Data should have gone here since monthly subpartition for it does not exist. This test may fail in January since that monthly partition should exist.');
 -- Move data from yearly parent table and create appropriate monthly child for it
 SELECT results_eq('SELECT partition_data_time(''partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY')||''')::int', 
-    ARRAY[10], 'Check that partitioning function returns correct count of rows moved from time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY')||'. This test may fail in January since that monthly partition should exist.');
+    ARRAY[10], 'Check that partitioning function returns correct count of rows moved from time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY')||'. This test may fail in January or the first of any month since that monthly/daily partition should exist.');
 SELECT is_empty('SELECT * FROM ONLY partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY'), 
     'Check new data did not go into subparent time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY'));
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY_MM'),
     ARRAY[10], 'Check count from time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY_MM')||'. Data should have gone here since daily subpartition for it does not exist.');
 -- Move data from monthly parent table and create appropriate daily child for it
 SELECT results_eq('SELECT partition_data_time(''partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY_MM')||''')::int', 
-    ARRAY[10], 'Check that partitioning function returns correct count of rows moved from time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY_MM'));
+    ARRAY[10], 'Check that partitioning function returns correct count of rows moved from time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY_MM')||'. This test may fail in January or the first of any month since that monthly/daily partition should exist.');
 SELECT is_empty('SELECT * FROM ONLY partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY_MM'), 
     'Check new data did not go into subparent time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY_MM'));
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY_MM')||'_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY_MM_DD'), 

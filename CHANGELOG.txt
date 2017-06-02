@@ -1,3 +1,9 @@
+3.0.2
+-- Allow maintenance background worker to restart itself if it crashes. Previously if the main background worker process exited for any reason, the only way to restart it was to restart the whole postgresql instance. Now it will try to restart itself every 10 minutes. A warning will be issued into the logs if this event occurs. (Github Issue #180).
+-- Remove internal version checking function and use simpler comparison method using integer based version number (Pull Request #183).
+-- Apply fixes from running plpgsql_check (https://github.com/okbob/plpgsql_check/)
+
+
 3.0.0 & 3.0.1
 -- IMPORTANT NOTE: The initial version of pg_partman 3 had to be split into two updates due to changing both the data in the config table as well as adding constraints on that data. Depending on the data contained in the config table, doing this in a single-transaction update may not work (you may see an error about pending trigger events). If this is the case, please update to version 3.0.1 in a separate transaction from your update to 3.0.0. Example:
     

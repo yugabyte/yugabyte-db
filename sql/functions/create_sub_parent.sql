@@ -83,7 +83,7 @@ IF p_type = 'native' AND (lower(p_native_check) <> 'yes' OR p_native_check IS NU
 END IF;
 
 IF p_upsert <> '' THEN
-    IF @extschema@.check_version('9.5.0') = 'false' THEN
+    IF current_setting('server_version_num')::int < 90500 THEN
         RAISE EXCEPTION 'INSERT ... ON CONFLICT (UPSERT) feature is only supported in PostgreSQL 9.5 and later';
     END IF;
     IF p_type = 'native' THEN
@@ -205,8 +205,8 @@ LOOP
             FROM pg_attribute a
             JOIN pg_class c ON a.attrelid = c.oid
             JOIN pg_namespace n ON c.relnamespace = n.oid
-            WHERE n.nspname = v_child_schema::name
-            AND c.relname = v_child_tablename::name
+            WHERE n.nspname = v_row.child_schema::name
+            AND c.relname = v_row.child_tablename::name
             AND attnum IN (SELECT unnest(partattrs) FROM pg_partitioned_table p WHERE a.attrelid = p.partrelid);
 
             IF p_control <> v_part_col THEN

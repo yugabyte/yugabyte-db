@@ -26,7 +26,7 @@ AND c.relname = p_parent_tablename;
 IF v_relkind = 'p' THEN
     RAISE EXCEPTION 'This function cannot run on natively partitioned tables';
 ELSIF v_relkind IS NULL THEN
-    RAISE EXCEPTION 'Unable to find given table in system catalogs: %.%', v_parent_schema, v_parent_tablename;
+    RAISE EXCEPTION 'Unable to find given table in system catalogs: %.%', p_parent_schema, p_parent_tablename;
 END IF;
 
 WITH parent_info AS (
@@ -69,5 +69,3 @@ EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path
 
 END;
 $$;
-
-

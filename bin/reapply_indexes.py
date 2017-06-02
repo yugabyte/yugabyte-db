@@ -9,7 +9,7 @@ parser = argparse.ArgumentParser(description="Script for reapplying indexes on c
 parser.add_argument('-p', '--parent', help="Parent table of an already created partition set. (Required)")
 parser.add_argument('-c','--connection', default="host=", help="""Connection string for use by psycopg. Defaults to "host=" (local socket).""")
 parser.add_argument('--concurrent', action="store_true", help="Create indexes with the CONCURRENTLY option. Note this does not work on primary keys when --primary is given.")
-parser.add_argument('--drop_concurrent', action="store_true", help="If an index is dropped (because it doesn't exist on the parent or because you set them to be recreated), do it concurrently (PostgreSQL >= v9.2 only). Note this does not work on primary keys when --primary is given.")
+parser.add_argument('--drop_concurrent', action="store_true", help="If an index is dropped (because it doesn't exist on the parent or because you set them to be recreated), do it concurrently. Note this does not work on primary keys when --primary is given.")
 parser.add_argument('-R', '--recreate_all', action="store_true", help="By default, if an index exists on a child and matches the parent, it will not be touched. Setting this option will force all child indexes to be dropped & recreated. Will obey the --concurrent & --drop_concurrent options if given. Will not recreate primary keys unless --primary option is also given.")
 parser.add_argument('--primary', action="store_true", help="By default the primary key is not recreated. Set this option if that is needed. Note this will cause an exclusive lock on the child table.")
 parser.add_argument('-j', '--jobs', type=int, default=0, help="Use the python multiprocessing library to recreate indexes in parallel. Value for -j is number of simultaneous jobs to run. Note that this is per table, not per index. Be very careful setting this option if load is a concern on your systems.")
@@ -19,19 +19,6 @@ parser.add_argument('-q', '--quiet', action="store_true", help="Turn off all out
 parser.add_argument('--nonpartman', action="store_true", help="If the partition set you are running this on is not managed by pg_partman, set this flag otherwise this script may not work. Note that the pg_partman extension is still required to be installed for this to work since it uses certain internal functions. When this is set the order that the tables are reindexed is alphabetical instead of logical.")
 parser.add_argument('--version', action="store_true", help="Print out the minimum version of pg_partman this script is meant to work with. The version of pg_partman installed may be greater than this.")
 args = parser.parse_args()
-
-
-# Add any checks for version specific features to this function
-def check_version(conn, partman_schema):
-    cur = conn.cursor()
-    if args.drop_concurrent:
-        sql = "SELECT " + partman_schema + ".check_version('9.2.0')"
-        cur.execute(sql)
-        if cur.fetchone()[0] == False:
-            print("ERROR: --drop_concurrent option requires PostgreSQL minimum version 9.2.0")
-            sys.exit(2)
-    cur.close()
-
 
 def create_conn():
     conn = psycopg2.connect(args.connection)
@@ -291,10 +278,15 @@ if __name__ == "__main__":
         sys.exit(2)
 
     conn = create_conn()
+
     cur = conn.cursor()
+    cur.execute("SELECT current_setting('server_version_num')::int > 90400")
+    if cur.fetchone()[0] == False:
+        print("ERROR: This script requires PostgreSQL minimum version of 9.4.0")
+        sys.exit(2)
+    cur.close()
+
     partman_schema = get_partman_schema(conn)
-    # Script now states it only works for pg_partman 2.x and hence postgres 9.4+. Leaving this here in case future version checks are needed
-    # check_version(conn, partman_schema)
     quoted_parent_table = get_quoted_parent_table(conn)
     parent_index_list = get_parent_index_list(conn)
     child_list = get_children(conn, partman_schema)

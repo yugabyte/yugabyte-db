@@ -12,9 +12,7 @@ v_old_search_path       text;
 v_parent_schema         text;
 v_parent_tablename      text;
 v_partition_interval    text;
-v_quarter               text;
 v_type                  text;
-v_year                  text;
 
 BEGIN
 /*
@@ -99,5 +97,4 @@ EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path
 
 END
 $$;
-
 

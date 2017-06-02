@@ -19,7 +19,7 @@ v_higher_parent_schema          text := split_part(p_parent_table, '.', 1);
 v_higher_parent_table           text := split_part(p_parent_table, '.', 2);
 v_id_position                   int;
 v_job_id                        bigint;
-v_jobmon                        text;
+v_jobmon                        boolean;
 v_jobmon_schema                 text;
 v_last_partition                text;
 v_max                           bigint;
