@@ -31,18 +31,27 @@ class DeleteTableRequest extends YRpc<DeleteTableResponse> {
   static final String DELETE_TABLE = "DeleteTable";
 
   private final String name;
+  private final String keyspace;
 
-  DeleteTableRequest(YBTable table, String name) {
+  DeleteTableRequest(YBTable table, String name, String keyspace) {
     super(table);
     this.name = name;
+    this.keyspace = keyspace;
   }
 
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
     final Master.DeleteTableRequestPB.Builder builder = Master.DeleteTableRequestPB.newBuilder();
-    Master.TableIdentifierPB tableID =
-       Master.TableIdentifierPB.newBuilder().setTableName(name).build();
+    Master.TableIdentifierPB.Builder tbuilder = Master.TableIdentifierPB.newBuilder();
+    Master.TableIdentifierPB tableID;
+    tbuilder.setTableName(name);
+    if (this.keyspace != null) {
+      tableID = tbuilder
+          .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName(this.keyspace)).build();
+    } else {
+      tableID = tbuilder.build();
+    }
     builder.setTable(tableID);
     return toChannelBuffer(header, builder.build());
   }

@@ -20,6 +20,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.yb.Common.HostPortPB;
@@ -253,23 +254,32 @@ public class TestYBClient extends BaseYBClientTest {
   @Test(timeout = 100000)
   public void testRedisTable() throws Exception {
     LOG.info("Starting testRedisTable");
-    CreateTableOptions cto = YBClient.getRedisTableOptions(16);
-    // Check that we can create a redis table.
-    YBTable table = syncClient.createTable(tableName, redisSchema, cto);
+    String redisTableName = YBClient.REDIS_DEFAULT_TABLE_NAME;
+    YBTable table = syncClient.createRedisTable(redisTableName, 16);
     assertFalse(syncClient.getTablesList().getTablesList().isEmpty());
-    assertTrue(syncClient.getTablesList().getTablesList().contains(tableName));
+    assertTrue(syncClient.getTablesList().getTablesList().contains(redisTableName));
     assertEquals(TableType.REDIS_TABLE_TYPE, table.getTableType());
     assertEquals(16, table.getTabletsLocations(100000).size());
 
-    // Check that we can open a table and see that it has the new schema.
-    table = syncClient.openTable(tableName);
+    table = syncClient.openTable(redisTableName, YBClient.REDIS_KEYSPACE_NAME);
     assertEquals(redisSchema.getColumnCount(), table.getSchema().getColumnCount());
     assertEquals(TableType.REDIS_TABLE_TYPE, table.getTableType());
+    assertEquals(YBClient.REDIS_KEYSPACE_NAME, table.getKeySpace());
 
-    // Check that we can delete it.
-    syncClient.deleteTable(tableName);
+    syncClient.deleteTable(redisTableName, YBClient.REDIS_KEYSPACE_NAME);
     assertFalse(syncClient.getTablesList().getTablesList().contains(tableName));
   }
+
+  /**
+   * Test creating a CQL keyspace through a YBClient.
+   */
+  @Test(timeout = 100000)
+  public void testKeySpace() throws Exception {
+    LOG.info("Starting KeySpaceTable");
+    // Check that we can create a keyspace.
+    CreateKeyspaceResponse resp = syncClient.createKeyspace("testKeySpace");
+    assertFalse(resp.hasError());
+ }
 
   /**
    * Test creating and deleting a table through a YBClient.
@@ -278,12 +288,13 @@ public class TestYBClient extends BaseYBClientTest {
   public void testCreateDeleteTable() throws Exception {
     LOG.info("Starting testCreateDeleteTable");
     // Check that we can create a table.
-    syncClient.createTable(tableName, basicSchema);
+    syncClient.createTable(tableName, basicSchema, new CreateTableOptions(),
+                           YBClient.DEFAULT_KEYSPACE_NAME);
     assertFalse(syncClient.getTablesList().getTablesList().isEmpty());
     assertTrue(syncClient.getTablesList().getTablesList().contains(tableName));
 
     // Check that we can delete it.
-    syncClient.deleteTable(tableName);
+    syncClient.deleteTable(tableName, YBClient.DEFAULT_KEYSPACE_NAME);
     assertFalse(syncClient.getTablesList().getTablesList().contains(tableName));
 
     // Check that we can re-recreate it, with a different schema.

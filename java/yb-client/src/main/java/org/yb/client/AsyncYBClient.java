@@ -291,7 +291,7 @@ public class AsyncYBClient implements AutoCloseable {
    * an object to communicate with the created table
    */
   public Deferred<YBTable> createTable(String name, Schema schema) {
-    return this.createTable(name, schema, new CreateTableOptions());
+    return this.createTable(name, schema, new CreateTableOptions(), null);
   }
 
   /**
@@ -302,32 +302,53 @@ public class AsyncYBClient implements AutoCloseable {
    * @return a deferred object to track the progress of the createTable command that gives
    * an object to communicate with the created table
    */
-  public Deferred<YBTable> createTable(final String name, Schema schema,
-                                         CreateTableOptions builder) {
+  public Deferred<YBTable> createTable(final String name,
+                                       Schema schema,
+                                       CreateTableOptions builder) {
+    return createTable(name, schema, builder, null);
+  }
+
+  public Deferred<YBTable> createTable(final String name,
+                                       Schema schema,
+                                       CreateTableOptions builder,
+                                       final String keySpace) {
     checkIsClosed();
     if (builder == null) {
       builder = new CreateTableOptions();
     }
     CreateTableRequest create = new CreateTableRequest(this.masterTable, name, schema,
-        builder);
+        builder, keySpace);
     create.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(create).addCallbackDeferring(
         new Callback<Deferred<YBTable>, CreateTableResponse>() {
       @Override
       public Deferred<YBTable> call(CreateTableResponse createTableResponse) throws Exception {
-        return openTable(name);
+        return openTable(name, keySpace);
       }
     });
+  }
+
+  /*
+   * Create a CQL keyspace.
+   * @param name of the keyspace.
+   */
+  public Deferred<CreateKeyspaceResponse> createKeyspace(String keySpace)
+      throws Exception {
+    checkIsClosed();
+    CreateKeyspaceRequest keyspace = new CreateKeyspaceRequest(this.masterTable, keySpace);
+    keyspace.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(keyspace);
   }
 
   /**
    * Delete a table on the cluster with the specified name.
    * @param name the table's name
+   * @param keyspace CQL keyspace to which this table belongs, if available
    * @return a deferred object to track the progress of the deleteTable command
    */
-  public Deferred<DeleteTableResponse> deleteTable(String name) {
+  public Deferred<DeleteTableResponse> deleteTable(final String name, final String keyspace) {
     checkIsClosed();
-    DeleteTableRequest delete = new DeleteTableRequest(this.masterTable, name);
+    DeleteTableRequest delete = new DeleteTableRequest(this.masterTable, name, keyspace);
     delete.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(delete);
   }
@@ -509,11 +530,21 @@ public class AsyncYBClient implements AutoCloseable {
 
   /**
    * Get the schema for a specific table given that table's name.
-   * @param name the name of the table to get a schema of
+   * @param name the name of the table to get a schema of.
    * @return a deferred object that yields the schema of the specified table
    */
-  Deferred<GetTableSchemaResponse> getTableSchema(String name) {
-    GetTableSchemaRequest rpc = new GetTableSchemaRequest(this.masterTable, name, null);
+  private Deferred<GetTableSchemaResponse> getTableSchema(String name) {
+    return getTableSchema(name, null);
+  }
+
+  /**
+   * Get the schema for a specific table given that table's name.
+   * @param name the name of the table to get a schema of.
+   * @param keyspace the keyspace name to which this table belongs.
+   * @return a deferred object that yields the schema of the specified table
+   */
+  Deferred<GetTableSchemaResponse> getTableSchema(String name, final String keyspace) {
+    GetTableSchemaRequest rpc = new GetTableSchemaRequest(this.masterTable, name, null, keyspace);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
   }
@@ -523,7 +554,7 @@ public class AsyncYBClient implements AutoCloseable {
    * @param tableUUID the uuid of the table to get a schema of
    * @return a deferred object that yields the schema of the specified table
    */
-  Deferred<GetTableSchemaResponse> getTableSchemaByUUID(String tableUUID) {
+  Deferred<GetTableSchemaResponse> getTableSchemaByUUID(final String tableUUID) {
     GetTableSchemaRequest rpc = new GetTableSchemaRequest(this.masterTable, null, tableUUID);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
@@ -592,11 +623,22 @@ public class AsyncYBClient implements AutoCloseable {
    * @return a YBTable if the table exists, else a MasterErrorException
    */
   public Deferred<YBTable> openTable(final String name) {
+    return openTable(name, null);
+  }
+
+  /**
+   * Open the table with the given name. If the table was just created, the Deferred will only get
+   * called back when all the tablets have been successfully created.
+   * @param name table to open
+   * @param keyspace the keyspace name, if available
+   * @return a YBTable if the table exists, else a MasterErrorException
+   */
+  public Deferred<YBTable> openTable(final String name, final String keyspace) {
     checkIsClosed();
 
     final OpenTableHelperRPC helper = new OpenTableHelperRPC();
 
-    return getTableSchema(name).addCallbackDeferring(new Callback<Deferred<YBTable>,
+    return getTableSchema(name, keyspace).addCallbackDeferring(new Callback<Deferred<YBTable>,
         GetTableSchemaResponse>() {
       @Override
       public Deferred<YBTable> call(GetTableSchemaResponse response) throws Exception {
@@ -605,7 +647,8 @@ public class AsyncYBClient implements AutoCloseable {
             response.getTableId(),
             response.getSchema(),
             response.getPartitionSchema(),
-            response.getTableType());
+            response.getTableType(),
+            response.getNamespace());
         return helper.attemptOpen(response.isCreateTableDone(), table, name);
       }
     });
@@ -622,8 +665,8 @@ public class AsyncYBClient implements AutoCloseable {
 
     final OpenTableHelperRPC helper = new OpenTableHelperRPC();
 
-    return getTableSchemaByUUID(tableUUID).addCallbackDeferring(new Callback<Deferred<YBTable>,
-        GetTableSchemaResponse>() {
+    return getTableSchemaByUUID(tableUUID)
+        .addCallbackDeferring(new Callback<Deferred<YBTable>, GetTableSchemaResponse>() {
       @Override
       public Deferred<YBTable> call(GetTableSchemaResponse response) throws Exception {
         YBTable table = new YBTable(AsyncYBClient.this,
@@ -631,7 +674,8 @@ public class AsyncYBClient implements AutoCloseable {
             tableUUID,
             response.getSchema(),
             response.getPartitionSchema(),
-            response.getTableType());
+            response.getTableType(),
+            response.getNamespace());
         return helper.attemptOpen(response.isCreateTableDone(), table, tableUUID);
       }
     });

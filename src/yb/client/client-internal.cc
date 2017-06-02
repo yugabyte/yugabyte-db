@@ -40,6 +40,7 @@
 #include "yb/master/master_rpc.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
+#include "yb/redisserver/redis_constants.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/util/net/dns_resolver.h"
@@ -395,8 +396,10 @@ Status YBClient::Data::CreateTable(
       YBSchema actual_schema;
       string table_id;
       PartitionSchema actual_partition_schema;
-      const YBTableName table_name(req.has_namespace_()
-          ? YBTableName(req.namespace_().name(), req.name()) : YBTableName(req.name()));
+      string keyspace = req.has_namespace_() ? req.namespace_().name() :
+                        (req.name() == kRedisTableName ? kRedisKeyspaceName : "");
+      const YBTableName table_name(!keyspace.empty()
+          ? YBTableName(keyspace, req.name()) : YBTableName(req.name()));
 
       // A fix for https://yugabyte.atlassian.net/browse/ENG-529:
       // If we've been retrying table creation, and the table is now in the process is being

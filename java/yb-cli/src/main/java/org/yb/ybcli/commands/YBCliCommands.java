@@ -148,11 +148,12 @@ public class YBCliCommands implements CommandMarker {
     try {
       ListTablesResponse resp = ybClient.getTablesList();
       StringBuilder sb = new StringBuilder();
-      sb.append("Got " + resp.getTablesList().size() + " tables [(index) name uuid type]:\n");
+      sb.append("Got " + resp.getTablesList().size() +
+                " tables [(index) keyspace name uuid type]:\n");
       int idx = 1;
       for (Master.ListTablesResponsePB.TableInfo table : resp.getTableInfoList()) {
-        sb.append("\t(" + idx + ") " + table.getName() + " " + table.getId().toStringUtf8() + " " +
-                  table.getTableType() + "\n");
+        sb.append("\t(" + idx + ") " + table.getNamespace().getName() + " " + table.getName() +
+                  " " + table.getId().toStringUtf8() + " " + table.getTableType() + "\n");
         idx++;
       }
       sb.append("Time taken: " + resp.getElapsedMillis() + " ms.");
@@ -234,14 +235,18 @@ public class YBCliCommands implements CommandMarker {
       @CliOption(key = { "table", "t" },
                  mandatory = true,
                  help = "table identifier (name)")
-      final String tableName) {
+      final String tableName,
+      @CliOption(key = { "keyspace", "k" },
+                 mandatory = true,
+                 help = "keyspace name")
+      final String keyspace) {
     StringBuilder sb = new StringBuilder();
     try {
       ListTablesResponse resp = ybClient.getTablesList();
       for (Master.ListTablesResponsePB.TableInfo table : resp.getTableInfoList()) {
         if (table.getName().equals(tableName)) {
           printTableInfo(table, sb);
-          printSchemaInfo(ybClient.getTableSchema(tableName), sb);
+          printSchemaInfo(ybClient.getTableSchema(tableName, keyspace), sb);
           sb.append("Time taken: ");
           sb.append(resp.getElapsedMillis());
           sb.append(" ms.");

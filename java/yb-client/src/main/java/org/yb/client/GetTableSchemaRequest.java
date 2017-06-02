@@ -33,12 +33,17 @@ public class GetTableSchemaRequest extends YRpc<GetTableSchemaResponse> {
   static final String GET_TABLE_SCHEMA = "GetTableSchema";
   private final String name;
   private final String uuid;
-
+  private final String keySpace;
 
   GetTableSchemaRequest(YBTable masterTable, String name, String uuid) {
+    this(masterTable, name, uuid, null);
+  }
+
+  GetTableSchemaRequest(YBTable masterTable, String name, String uuid, String keySpace) {
     super(masterTable);
     this.name = name;
     this.uuid = uuid;
+    this.keySpace = keySpace;
   }
 
   @Override
@@ -47,13 +52,17 @@ public class GetTableSchemaRequest extends YRpc<GetTableSchemaResponse> {
     assert name != null || uuid != null;
     final GetTableSchemaRequestPB.Builder builder = GetTableSchemaRequestPB.newBuilder();
     TableIdentifierPB tableID;
+    TableIdentifierPB.Builder tbuilder = TableIdentifierPB.newBuilder();
     if (name == null) {
-      tableID = TableIdentifierPB.newBuilder()
-                                 .setTableId(ByteString.copyFrom(Bytes.fromString(uuid)))
-                                 .build();
+      tbuilder.setTableId(ByteString.copyFrom(Bytes.fromString(uuid)));
     } else {
-      tableID = TableIdentifierPB.newBuilder().setTableName(name).build();
+      tbuilder.setTableName(name);
     }
+    if (this.keySpace != null) {
+      tbuilder.setNamespace(NamespaceIdentifierPB.newBuilder().setName(this.keySpace));
+    }
+    tableID = tbuilder.build();
+
     builder.setTable(tableID);
     return toChannelBuffer(header, builder.build());
   }
