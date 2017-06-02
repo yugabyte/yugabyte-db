@@ -973,8 +973,10 @@ endfunction()
 
 # Compose ctest prefix and test binary name based on test filename and directory
 # REL_TEST_NAME is the name of the test (see ADD_YB_TEST function).
-# CTEST_PREFIX_RV - ctest prefix will be put to variable with name ${CTEST_PREFIX_RV}.
-# TEST_BINARY_NAME_RV - test binary name will be put to variable with name ${TEST_BINARY_NAME_RV}.
+# CTEST_PREFIX_RV - ctest prefix will be stored in a variable with name ${CTEST_PREFIX_RV}.
+# TEST_BINARY_NAME_RV - test binary name will be stored in a variable with name
+#                       ${TEST_BINARY_NAME_RV}.
+# (Note: "RV" means "return value" here).
 function(GET_TEST_PREFIX_AND_BINARY_NAME CTEST_PREFIX_RV TEST_BINARY_NAME_RV REL_TEST_NAME)
   set(DIR ${CMAKE_CURRENT_LIST_DIR})
   while (true)
@@ -982,7 +984,7 @@ function(GET_TEST_PREFIX_AND_BINARY_NAME CTEST_PREFIX_RV TEST_BINARY_NAME_RV REL
     # We want to use parent directory name as a prefix if test is located in "test" or "tests"
     # directory, so tests from 'src/sql/test' will be compiled into 'tests-sql' rather than
     # 'tests-test'.
-    if (NOT "${DIR_NAME}" MATCHES "^test|tests$")
+    if (NOT "${DIR_NAME}" MATCHES "^(test|tests)$")
       set(${CTEST_PREFIX_RV} "${DIR_NAME}" PARENT_SCOPE)
       break()
     endif()
@@ -1038,6 +1040,7 @@ function(ADD_YB_TEST REL_TEST_NAME)
 
   add_test("${CTEST_PREFIX}_${TEST_BINARY_NAME}"
     ${BUILD_SUPPORT_DIR}/run-test.sh ${TEST_PATH})
+
   if(ARGN)
     set_tests_properties(${TEST_NAME} PROPERTIES ${ARGN})
   endif()

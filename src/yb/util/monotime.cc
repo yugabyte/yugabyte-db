@@ -189,6 +189,9 @@ void MonoDelta::ToTimeSpec(struct timespec *ts) const {
 /// MonoTime
 ///
 
+const MonoTime MonoTime::kMin = MonoTime::Min();
+const MonoTime MonoTime::kMax = MonoTime::Max();
+
 MonoTime MonoTime::Now(enum Granularity granularity) {
 #if defined(__APPLE__)
   return MonoTime(walltime_internal::GetMonoTimeNanos());
@@ -283,6 +286,14 @@ double MonoTime::ToSeconds() const {
   d /= MonoTime::kNanosecondsPerSecond;
   return d;
 }
+
+void MonoTime::MakeAtLeast(MonoTime rhs) {
+  if (rhs.Initialized() && (!Initialized() || nanos_ < rhs.nanos_)) {
+    nanos_ = rhs.nanos_;
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
 
 std::string FormatForComparisonFailureMessage(const MonoDelta& op, const MonoDelta& other) {
   return op.ToString();

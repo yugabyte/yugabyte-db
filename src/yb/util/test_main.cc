@@ -34,6 +34,8 @@ using testing::UnitTest;
 using yb::GetStackTrace;
 using yb::StackTraceLineFormat;
 
+using std::string;
+
 DEFINE_int32(test_timeout_after, 0,
              "Maximum total seconds allowed for all unit tests in the suite. Default: disabled");
 
@@ -48,8 +50,21 @@ class MinimalistPrinter : public EmptyTestEventListener{
   // Called after a failed assertion or a SUCCEED() invocation.
   virtual void OnTestPartResult(const TestPartResult& test_part_result) {
     if (test_part_result.failed()) {
-      std::cerr << "Test failure stack trace:\n"
-                << GetStackTrace(StackTraceLineFormat::CLION_CLICKABLE, 4) << std::endl;
+      string stack_trace = GetStackTrace(StackTraceLineFormat::CLION_CLICKABLE, 4);
+
+      // Remove the common part of all Google Test tests from the stack trace.
+      const char* kDontShowLinesStartingWith =
+          "void testing::internal::HandleSehExceptionsInMethodIfSupported<testing::Test, void>("
+          "testing::Test*, void (testing::Test::*)(), char const*)";
+      size_t cutoff_pos = stack_trace.find(kDontShowLinesStartingWith, 0);
+      if (cutoff_pos != string::npos) {
+        cutoff_pos = stack_trace.find_last_of('\n', cutoff_pos);
+        if (cutoff_pos != string::npos) {
+          stack_trace = stack_trace.substr(0, cutoff_pos);
+        }
+      }
+
+      std::cerr << "Test failure stack trace:\n" << stack_trace << std::endl;
     }
   }
 };

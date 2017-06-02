@@ -3,6 +3,8 @@
 #ifndef YB_UTIL_ENUMS_H_
 #define YB_UTIL_ENUMS_H_
 
+#include <string>
+
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/expr_if.hpp>
 #include <boost/preprocessor/if.hpp>
@@ -21,12 +23,27 @@ constexpr typename std::underlying_type<E>::type to_underlying(E e) {
   return static_cast<typename std::underlying_type<E>::type>(e);
 }
 
+// A convenient way to define enums along with string conversion functions.
+// Example:
+//
+//   YB_DEFINE_ENUM(MyEnum, (FOO)(BAR)(BAZ))
+//
+// This will define
+// - An enum class MyEnum with values FOO, BAR, and BAZ.
+// - A ToString() function converting a value of MyEnum to std::string, including a diagnostic
+//   string for invalid values.
+// - A stream output operator for MyEnum using the above ToString function.
+// - A ToCString() function converting an enum value to a C string, or nullptr for invalid values.
+
 #define YB_ENUM_ITEM_NAME(elem) \
     BOOST_PP_IF(BOOST_PP_IS_BEGIN_PARENS(elem), BOOST_PP_TUPLE_ELEM(2, 0, elem), elem)
+
 #define YB_ENUM_ITEM_VALUE(elem) \
     BOOST_PP_EXPR_IF(BOOST_PP_IS_BEGIN_PARENS(elem), = BOOST_PP_TUPLE_ELEM(2, 1, elem))
+
 #define YB_ENUM_ITEM(s, data, elem) \
-  BOOST_PP_CAT(BOOST_PP_APPLY(data), YB_ENUM_ITEM_NAME(elem)) YB_ENUM_ITEM_VALUE(elem),
+    BOOST_PP_CAT(BOOST_PP_APPLY(data), YB_ENUM_ITEM_NAME(elem)) YB_ENUM_ITEM_VALUE(elem),
+
 #define YB_ENUM_CASE_NAME(s, data, elem) \
   case BOOST_PP_TUPLE_ELEM(2, 0, data):: \
       BOOST_PP_CAT(BOOST_PP_APPLY(BOOST_PP_TUPLE_ELEM(2, 1, data)), elem): \
@@ -37,13 +54,20 @@ constexpr typename std::underlying_type<E>::type to_underlying(E e) {
     BOOST_PP_SEQ_FOR_EACH(YB_ENUM_ITEM, prefix, list) \
   }; \
   \
-  inline const char * ToString(enum_name value) { \
+  inline const char* ToCString(enum_name value) { \
     switch(value) { \
     BOOST_PP_SEQ_FOR_EACH(YB_ENUM_CASE_NAME, (enum_name, prefix), list); \
     } \
-    return "unknown " BOOST_PP_STRINGIZE(enum_name); \
+    return nullptr; \
   } \
   \
+  inline std::string ToString(enum_name value) { \
+    const char* c_str = ToCString(value); \
+    if (c_str != nullptr) \
+      return c_str; \
+    return "<unknown " BOOST_PP_STRINGIZE(enum_name) " : " + \
+           std::to_string(::yb::util::to_underlying(value)) + ">"; \
+  } \
   inline std::ostream& operator<<(std::ostream& out, enum_name value) { \
     return out << ToString(value); \
   } \

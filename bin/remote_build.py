@@ -77,7 +77,7 @@ def main():
                         type=str,
                         default=default_path,
                         help='path used for build')
-    parser.add_argument('--branch', type=str, default='master', help='base branch for build')
+    parser.add_argument('--branch', type=str, default='origin/master', help='base branch for build')
     parser.add_argument('--build-type', type=str, default='debug', help='build type')
     parser.add_argument('--build-java',
                         action='store_const',

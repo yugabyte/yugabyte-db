@@ -283,6 +283,15 @@ while [ $# -gt 0 ]; do
       log "'$1' looks like a C++ test name, assuming --cxx-test"
       setup_vars_for_cxx_test "$1"
     ;;
+    yb-master)
+      make_targets+=( "yb-master" )
+    ;;
+    yb-tserver)
+      make_targets+=( "yb-tserver" )
+    ;;
+    daemons)
+      make_targets+=( "yb-master" "yb-tserver" )
+    ;;
     *)
       echo "Invalid option: '$1'" >&2
       exit 1
@@ -477,9 +486,10 @@ if [[ -n $cxx_test_name ]]; then
       export YB_CTEST_VERBOSE=1
 
       # --verbose: enable verbose output from tests.  Test output is normally suppressed and only
-      # summary information is displayed.  This option will show all test output.--output-on-failure
-      # is unnecessary when --verbose is specified. In fact, adding --output-on-failure will result
-      # in duplicate output in case of a failure.
+      # summary information is displayed.  This option will show all test output.
+      # --output-on-failure is unnecessary when --verbose is specified. In fact, adding
+      # --output-on-failure will result in duplicate output in case of a failure.
+      set -x
       ctest --verbose -R ^"$cxx_test_name"$
     )
   else

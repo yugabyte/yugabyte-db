@@ -38,7 +38,7 @@ INCREASED_TEST_TIMEOUT_SEC=1200
 # We grep for these log lines and show them in the main log on test failure. This regular expression
 # is used with egrep.
 RELEVANT_LOG_LINES_RE="^[[:space:]]*(Value of|Actual|Expected):|^Expected|^Failed|^Which is:"
-RELEVANT_LOG_LINES_RE+="|: Failure$|ThreadSanitizer: data race"
+RELEVANT_LOG_LINES_RE+="|: Failure$|ThreadSanitizer: data race|Check failure"
 readonly RELEVANT_LOG_LINES_RE
 
 # Some functions use this to output to stdout/stderr along with a file.
@@ -619,9 +619,16 @@ handle_xml_output() {
     # update_test_result_xml.py to mark test as failed in XML in case test produced XML without
     # errors, but just returned non-zero exit code (for example under Address/Thread Sanitizer).
 
-    # Converting path to local file URL (may be useful for local debugging purposes).
-    test_log_url=`python -c "import six; print six.moves.urllib_parse.urljoin(\"file://\", \
-      six.moves.urllib.request.pathname2url('$test_log_path'))"`
+    # Converting path to local file URL (may be useful for local debugging purposes). However,
+    # don't fail if the "six" Python module is not available.
+    if python -c "import six" &>/dev/null; then
+      test_log_url=$(
+        python -c "import six; print six.moves.urllib_parse.urljoin(\"file://\", \
+        six.moves.urllib.request.pathname2url('$test_log_path'))"
+      )
+    else
+      test_log_url="http://i-would-put-local-file-url-here-but-could-not-import-python-six-module"
+    fi
   fi
 
   if "$test_failed"; then
@@ -829,7 +836,7 @@ handle_test_failure() {
       if [[ -f $test_log_path ]]; then
         if egrep -q "$RELEVANT_LOG_LINES_RE" "$test_log_path"; then
           echo "Relevant log lines:"
-          egrep "$RELEVANT_LOG_LINES_RE" "$test_log_path"
+          egrep -C 2 "$RELEVANT_LOG_LINES_RE" "$test_log_path"
         fi
       fi
     ) >&2

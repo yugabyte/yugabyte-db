@@ -118,6 +118,9 @@ class MonoTime {
   static const int64_t kMicrosecondsPerSecond = 1000000L;
   static const int64_t kMillisecondsPerSecond = 1000L;
 
+  static const MonoTime kMin;
+  static const MonoTime kMax;
+
   // The coarse monotonic time is faster to retrieve, but "only"
   // accurate to within a millisecond or two.  The speed difference will
   // depend on your timer hardware.
@@ -146,6 +149,9 @@ class MonoTime {
 
   uint64_t ToUint64() const { return nanos_; }
   static MonoTime FromUint64(uint64_t value) { return MonoTime(value); }
+
+  // Set this time to the given value if it is lower than that or uninitialized.
+  void MakeAtLeast(MonoTime rhs);
 
  private:
   friend class MonoDelta;
@@ -179,6 +185,9 @@ inline bool operator<(const MonoTime& lhs, const MonoTime& rhs) {
 inline bool operator>(const MonoTime& lhs, const MonoTime& rhs) { return rhs < lhs; }
 inline bool operator<=(const MonoTime& lhs, const MonoTime& rhs) { return !(rhs < lhs); }
 inline bool operator>=(const MonoTime& lhs, const MonoTime& rhs) { return !(lhs < rhs); }
+
+inline bool operator==(const MonoTime& lhs, const MonoTime& rhs) { return lhs.Equals(rhs); }
+inline bool operator!=(const MonoTime& lhs, const MonoTime& rhs) { return !(lhs == rhs); }
 
 // Sleep for a MonoDelta duration.
 //
