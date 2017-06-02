@@ -11,6 +11,7 @@
 #include "yb/benchmarks/tpch/line_item_tsv_importer.h"
 #include "yb/benchmarks/tpch/rpc_line_item_dao.h"
 #include "yb/client/client.h"
+#include "yb/redisserver/redis_constants.h"
 #include "yb/redisserver/redis_parser.h"
 #include "yb/common/common.pb.h"
 #include "yb/gutil/stl_util.h"
@@ -222,11 +223,14 @@ shared_ptr<YBClient> CreateYBClient() {
 }
 
 void SetupYBTable(const shared_ptr<YBClient> &client) {
+  string keyspace = "my_keyspace";
   if (!FLAGS_target_redis_server_addresses.empty()) {
-    LOG(INFO) << "Ignoring FLAGS_table_name. Redis proxy expects table name to be .redis";
-    FLAGS_table_name = ".redis";
+    LOG(INFO) << "Ignoring FLAGS_table_name. Redis proxy expects table name to be "
+              << kRedisKeyspaceName << '.' << kRedisTableName;
+    FLAGS_table_name = kRedisTableName;
+    keyspace = kRedisKeyspaceName;
   }
-  const YBTableName table_name("my_keyspace", FLAGS_table_name);
+  const YBTableName table_name(keyspace, FLAGS_table_name);
   CHECK_OK(client->CreateNamespaceIfNotExists(table_name.namespace_name()));
 
   if (!YBTableExistsAlready(client, table_name) || DropTableIfNecessary(client, table_name)) {
