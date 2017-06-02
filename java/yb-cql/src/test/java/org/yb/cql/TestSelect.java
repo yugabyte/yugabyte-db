@@ -351,7 +351,7 @@ public class TestSelect extends BaseCQLTest {
 
   private void runInvalidSelectWithTimestamp(String tableName, String ts) {
     String sel_stmt = String.format(
-            "SELECT * from %s WHERE h1 = 1 AND h2 = %s" +
+            "SELECT * from %s WHERE h1 = 1 AND h2 = '%s'" +
                     " AND r1 = 2 AND r2 = %s;", tableName, ts, "0");
     runInvalidStmt(sel_stmt);
   }

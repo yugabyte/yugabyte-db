@@ -85,34 +85,98 @@ Status Token(const vector<PTypePtr>& params, RTypePtr result) {
 }
 
 //--------------------------------------------------------------------------------------------------
+// Special ops for counter: "+counter" and "-counter".
+
+template<typename PTypePtr, typename RTypePtr>
+Status IncCounter(PTypePtr x, PTypePtr y, RTypePtr result) {
+  if (x->IsNull()) {
+    result->set_int64_value(y->int64_value());
+  } else {
+    result->set_int64_value(x->int64_value() + y->int64_value());
+  }
+  return Status::OK();
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status DecCounter(PTypePtr x, PTypePtr y, RTypePtr result) {
+  if (x->IsNull()) {
+    result->set_int64_value(-y->int64_value());
+  } else {
+    result->set_int64_value(x->int64_value() - y->int64_value());
+  }
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+// "+" and "-".
 
 template<typename PTypePtr, typename RTypePtr>
 Status AddI64I64(PTypePtr x, PTypePtr y, RTypePtr result) {
-  result->set_int64_value(x->int64_value() + y->int64_value());
+  if (x->IsNull() || y->IsNull()) {
+    result->SetNull();
+  } else {
+    result->set_int64_value(x->int64_value() + y->int64_value());
+  }
   return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
 Status AddDoubleDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
-  result->set_double_value(x->double_value() + y->double_value());
+  if (x->IsNull() || y->IsNull()) {
+    result->SetNull();
+  } else {
+    result->set_double_value(x->double_value() + y->double_value());
+  }
   return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
 Status AddStringString(PTypePtr x, PTypePtr y, RTypePtr result) {
-  result->set_string_value(x->string_value() + y->string_value());
+  if (x->IsNull() || y->IsNull()) {
+    result->SetNull();
+  } else {
+    result->set_string_value(x->string_value() + y->string_value());
+  }
   return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
 Status AddStringDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
-  result->set_string_value(x->string_value() + std::to_string(y->double_value()));
+  if (x->IsNull() || y->IsNull()) {
+    result->SetNull();
+  } else {
+    result->set_string_value(x->string_value() + std::to_string(y->double_value()));
+  }
   return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
 Status AddDoubleString(PTypePtr x, PTypePtr y, RTypePtr result) {
-  result->set_string_value(std::to_string(x->double_value()) + y->string_value());
+  if (x->IsNull() || y->IsNull()) {
+    result->SetNull();
+  } else {
+    result->set_string_value(std::to_string(x->double_value()) + y->string_value());
+  }
+  return Status::OK();
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status SubI64I64(PTypePtr x, PTypePtr y, RTypePtr result) {
+  if (x->IsNull() || y->IsNull()) {
+    result->SetNull();
+  } else {
+    result->set_int64_value(x->int64_value() - y->int64_value());
+  }
+  return Status::OK();
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status SubDoubleDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
+  if (x->IsNull() || y->IsNull()) {
+    result->SetNull();
+  } else {
+    result->set_double_value(x->double_value() - y->double_value());
+  }
   return Status::OK();
 }
 

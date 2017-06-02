@@ -166,6 +166,9 @@ class PTExpr : public TreeNode {
             (expr_op() == ExprOperator::kUMinus && op1()->expr_op() == ExprOperator::kConst));
   }
 
+  // Predicate for updating counter.  Only '+' and '-' expression support counter update.
+  virtual CHECKED_STATUS CheckCounterUpdateSupport(SemContext *sem_context) const;
+
   // All expressions must define this Analyze() function, which does the following steps.
   // - Call Analyze() on child treenodes to run semantic analysis on the child nodes. The child
   //   nodes will then call their own child nodes and so forth. In short, we traverse the expression
@@ -985,108 +988,6 @@ class PTBindVar : public PTExpr {
   int64_t pos_;
   // Variable name.
   MCSharedPtr<MCString> name_;
-};
-
-//--------------------------------------------------------------------------------------------------
-
-// Expression node that represents builtin function calls.
-class PTBcall : public PTExpr {
- public:
-  //------------------------------------------------------------------------------------------------
-  // Public types.
-  typedef MCSharedPtr<PTBcall> SharedPtr;
-  typedef MCSharedPtr<const PTBcall> SharedPtrConst;
-
-  //------------------------------------------------------------------------------------------------
-  // Constructor and destructor.
-  PTBcall(MemoryContext *memctx,
-          YBLocation::SharedPtr loc,
-          const MCSharedPtr<MCString>& name,
-          PTExprListNode::SharedPtr args);
-  virtual ~PTBcall();
-
-  // Support for shared_ptr.
-  template<typename... TypeArgs>
-  inline static PTBcall::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
-    return MCMakeShared<PTBcall>(memctx, std::forward<TypeArgs>(args)...);
-  }
-
-  // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
-
-  // Access API for arguments.
-  const MCList<PTExpr::SharedPtr>& args() const {
-    return args_->node_list();
-  }
-
-  // Access API for opcode.
-  bfyql::BFOpcode bf_opcode() const {
-    return bf_opcode_;
-  }
-
-  // Access API for cast opcodes.
-  const MCVector<yb::bfyql::BFOpcode>& cast_ops() const {
-    return cast_ops_;
-  }
-
-  const MCSharedPtr<MCString>& name() const {
-    return name_;
-  }
-
- private:
-  // Find opcode to convert actual to formal yql_type_id.
-  Status FindCastOpcode(DataType source, DataType target, yb::bfyql::BFOpcode *opcode);
-
-  // Builtin function name.
-  MCSharedPtr<MCString> name_;
-
-  // Arguments to builtin call.
-  PTExprListNode::SharedPtr args_;
-
-  // Builtin opcode.
-  bfyql::BFOpcode bf_opcode_;
-
-  // Casting arguments to correct datatype before calling the builtin-function.
-  MCVector<yb::bfyql::BFOpcode> cast_ops_;
-};
-
-class PTToken : public PTBcall {
- public:
-  //------------------------------------------------------------------------------------------------
-  // Public types.
-  typedef MCSharedPtr<PTToken> SharedPtr;
-  typedef MCSharedPtr<const PTToken> SharedPtrConst;
-
-  //------------------------------------------------------------------------------------------------
-  // Constructor and destructor.
-  PTToken(MemoryContext *memctx,
-          YBLocation::SharedPtr loc,
-          const MCSharedPtr<MCString>& name,
-          PTExprListNode::SharedPtr args) : PTBcall(memctx, loc, name, args) { }
-
-  virtual ~PTToken() { }
-
-  // Support for shared_ptr.
-  template<typename... TypeArgs>
-  inline static PTToken::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
-    return MCMakeShared<PTToken>(memctx, std::forward<TypeArgs>(args)...);
-  }
-
-  // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
-
-  // Check if token call is well formed before analyzing it
-  virtual CHECKED_STATUS CheckOperator(SemContext *sem_context) override;
-
-  bool is_partition_key_ref() const {
-    return is_partition_key_ref_;
-  }
-
- private:
-  // true if this token call is just reference to the partition key, e.g.: "token(h1, h2, h3)"
-  // TODO not supported yet: false for regular builtin calls to be evaluated, e.g.: "token(2,3,4)"
-  bool is_partition_key_ref_ = false;
-
 };
 
 }  // namespace sql

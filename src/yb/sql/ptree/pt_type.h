@@ -30,17 +30,30 @@ class PTBaseType : public TreeNode {
   virtual ~PTBaseType() {
   }
 
+  virtual CHECKED_STATUS IsValid(SemContext *sem_context) {
+    return Status::OK();
+  }
+
+  virtual bool IsApplicableForPrimaryKey() {
+    return true;
+  }
+
+  virtual bool is_counter() const {
+    return false;
+  }
+
   virtual InternalType internal_type() const = 0;
   virtual std::shared_ptr<YQLType> yql_type() const = 0;
 };
 
-template<InternalType itype_, DataType data_type_>
+template<InternalType itype_, DataType data_type_, bool applicable_for_primary_key_>
 class PTPrimitiveType : public PTBaseType {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
-  typedef MCSharedPtr<PTPrimitiveType<itype_, data_type_>> SharedPtr;
-  typedef MCSharedPtr<const PTPrimitiveType<itype_, data_type_>> SharedPtrConst;
+  typedef MCSharedPtr<PTPrimitiveType<itype_, data_type_, applicable_for_primary_key_>> SharedPtr;
+  typedef MCSharedPtr<const PTPrimitiveType<itype_, data_type_, applicable_for_primary_key_>>
+      SharedPtrConst;
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
@@ -69,11 +82,15 @@ class PTPrimitiveType : public PTBaseType {
     // "Create" to get the shared object.
     return YQLType::Create(data_type_);
   }
+
+  virtual bool IsApplicableForPrimaryKey() {
+    return applicable_for_primary_key_;
+  }
 };
 
 // types with no type arguments
-template<InternalType itype_, DataType data_type_>
-class PTSimpleType : public PTPrimitiveType<itype_, data_type_> {
+template<InternalType itype_, DataType data_type_, bool applicable_for_primary_key_ = true>
+class PTSimpleType : public PTPrimitiveType<itype_, data_type_, applicable_for_primary_key_> {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
@@ -83,7 +100,8 @@ class PTSimpleType : public PTPrimitiveType<itype_, data_type_> {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   explicit PTSimpleType(MemoryContext *memctx = nullptr,
-      YBLocation::SharedPtr loc = nullptr) : PTPrimitiveType<itype_, data_type_>(memctx, loc) {
+                        YBLocation::SharedPtr loc = nullptr)
+      : PTPrimitiveType<itype_, data_type_, applicable_for_primary_key_>(memctx, loc) {
   }
   virtual ~PTSimpleType() {
   }
@@ -91,22 +109,22 @@ class PTSimpleType : public PTPrimitiveType<itype_, data_type_> {
 
 //--------------------------------------------------------------------------------------------------
 // Numeric Types.
-using PTBoolean = PTSimpleType<InternalType::kBoolValue, DataType::BOOL>;
+using PTBoolean = PTSimpleType<InternalType::kBoolValue, DataType::BOOL, false>;
 using PTTinyInt = PTSimpleType<InternalType::kInt8Value, DataType::INT8>;
 using PTSmallInt = PTSimpleType<InternalType::kInt16Value, DataType::INT16>;
 using PTInt = PTSimpleType<InternalType::kInt32Value, DataType::INT32>;
 using PTBigInt = PTSimpleType<InternalType::kInt64Value, DataType::INT64>;
 
-using PTVarInt = PTPrimitiveType<InternalType::kVarintValue, DataType::VARINT>;
-using PTDecimal = PTPrimitiveType<InternalType::kDecimalValue, DataType::DECIMAL>;
+using PTVarInt = PTSimpleType<InternalType::kVarintValue, DataType::VARINT>;
+using PTDecimal = PTSimpleType<InternalType::kDecimalValue, DataType::DECIMAL>;
 
-class PTFloat : public PTSimpleType<InternalType::kFloatValue, DataType::FLOAT> {
+class PTFloat : public PTSimpleType<InternalType::kFloatValue, DataType::FLOAT, false> {
  public:
   typedef MCSharedPtr<PTFloat> SharedPtr;
   typedef MCSharedPtr<const PTFloat> SharedPtrConst;
 
-  explicit PTFloat(MemoryContext *memctx = nullptr,
-                   YBLocation::SharedPtr loc = nullptr,
+  explicit PTFloat(MemoryContext *memctx,
+                   YBLocation::SharedPtr loc,
                    int8_t precision = 24);
   virtual ~PTFloat();
 
@@ -123,13 +141,13 @@ class PTFloat : public PTSimpleType<InternalType::kFloatValue, DataType::FLOAT> 
   int8_t precision_;
 };
 
-class PTDouble : public PTSimpleType<InternalType::kDoubleValue, DataType::DOUBLE> {
+class PTDouble : public PTSimpleType<InternalType::kDoubleValue, DataType::DOUBLE, false> {
  public:
   typedef MCSharedPtr<PTDouble> SharedPtr;
   typedef MCSharedPtr<const PTDouble> SharedPtrConst;
 
-  explicit PTDouble(MemoryContext *memctx = nullptr,
-                    YBLocation::SharedPtr loc = nullptr,
+  explicit PTDouble(MemoryContext *memctx,
+                    YBLocation::SharedPtr loc,
                     int8_t precision = 24);
   virtual ~PTDouble();
 
@@ -144,6 +162,26 @@ class PTDouble : public PTSimpleType<InternalType::kDoubleValue, DataType::DOUBL
 
  private:
   int8_t precision_;
+};
+
+//--------------------------------------------------------------------------------------------------
+// Counter Types.
+class PTCounter : public PTSimpleType<InternalType::kInt64Value, DataType::INT64, false> {
+ public:
+  typedef MCSharedPtr<PTCounter> SharedPtr;
+  typedef MCSharedPtr<const PTCounter> SharedPtrConst;
+
+  explicit PTCounter(MemoryContext *memctx, YBLocation::SharedPtr loc);
+  virtual ~PTCounter();
+
+  template<typename... TypeArgs>
+  inline static PTCounter::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
+    return MCMakeShared<PTCounter>(memctx, std::forward<TypeArgs>(args)...);
+  }
+
+  bool is_counter() const {
+    return true;
+  }
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -211,100 +249,30 @@ class PTVarchar : public PTCharBaseType {
   }
 };
 
-class PTInet : public PTPrimitiveType<InternalType::kInetaddressValue, DataType::INET> {
- public:
-  typedef MCSharedPtr<PTInet> SharedPtr;
-  typedef MCSharedPtr<const PTInet> SharedPtrConst;
-
-  explicit PTInet(MemoryContext *memctx = nullptr,
-                       YBLocation::SharedPtr loc = nullptr);
-
-  virtual ~PTInet();
-
-  template<typename... TypeArgs>
-  inline static PTInet::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
-    return MCMakeShared<PTInet>(memctx, std::forward<TypeArgs>(args)...);
-  }
-};
-
-class PTBlob : public PTPrimitiveType<InternalType::kBinaryValue, DataType::BINARY> {
- public:
-  typedef MCSharedPtr<PTBlob> SharedPtr;
-  typedef MCSharedPtr<const PTBlob> SharedPtrConst;
-
-  explicit PTBlob(MemoryContext *memctx = nullptr,
-                  YBLocation::SharedPtr loc = nullptr);
-
-  virtual ~PTBlob();
-
-  template<typename... TypeArgs>
-  inline static PTBlob::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
-    return MCMakeShared<PTBlob>(memctx, std::forward<TypeArgs>(args)...);
-  }
-};
+// Other char-based types.
+using PTInet = PTSimpleType<InternalType::kInetaddressValue, DataType::INET>;
+using PTBlob = PTSimpleType<InternalType::kBinaryValue, DataType::BINARY>;
 
 //--------------------------------------------------------------------------------------------------
 // UUID types.
-class PTUuid : public PTPrimitiveType<InternalType::kUuidValue, DataType::UUID> {
- public:
-  typedef MCSharedPtr<PTUuid> SharedPtr;
-  typedef MCSharedPtr<const PTUuid> SharedPtrConst;
-
-  explicit PTUuid(MemoryContext *memctx = nullptr, YBLocation::SharedPtr loc = nullptr);
-
-  virtual ~PTUuid();
-
-  template<typename... TypeArgs>
-  inline static PTUuid::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
-    return MCMakeShared<PTUuid>(memctx, std::forward<TypeArgs>(args)...);
-  }
-};
-
-class PTTimeUuid : public PTPrimitiveType<InternalType::kTimeuuidValue, DataType::TIMEUUID> {
- public:
-  typedef MCSharedPtr<PTTimeUuid> SharedPtr;
-  typedef MCSharedPtr<const PTTimeUuid> SharedPtrConst;
-
-  explicit PTTimeUuid(MemoryContext *memctx = nullptr, YBLocation::SharedPtr loc = nullptr);
-
-  virtual ~PTTimeUuid();
-
-  template<typename... TypeArgs>
-  inline static PTTimeUuid::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
-    return MCMakeShared<PTTimeUuid>(memctx, std::forward<TypeArgs>(args)...);
-  }
-};
+using PTUuid = PTSimpleType<InternalType::kUuidValue, DataType::UUID>;
+using PTTimeUuid = PTSimpleType<InternalType::kTimeuuidValue, DataType::TIMEUUID>;
 
 //--------------------------------------------------------------------------------------------------
 // Datetime types.
-
-class PTTimestamp : public PTSimpleType<InternalType::kTimestampValue, DataType::TIMESTAMP> {
- public:
-  typedef MCSharedPtr<PTTimestamp> SharedPtr;
-  typedef MCSharedPtr<const PTTimestamp> SharedPtrConst;
-
-  explicit PTTimestamp(MemoryContext *memctx = nullptr,
-                       YBLocation::SharedPtr loc = nullptr);
-
-  virtual ~PTTimestamp();
-
-  template<typename... TypeArgs>
-  inline static PTTimestamp::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
-    return MCMakeShared<PTTimestamp>(memctx, std::forward<TypeArgs>(args)...);
-  }
-};
+using PTTimestamp = PTSimpleType<InternalType::kTimestampValue, DataType::TIMESTAMP>;
 
 //--------------------------------------------------------------------------------------------------
 // Collection types.
-class PTMap : public PTPrimitiveType<InternalType::kMapValue, DataType::MAP> {
+class PTMap : public PTPrimitiveType<InternalType::kMapValue, DataType::MAP, false> {
  public:
   typedef MCSharedPtr<PTMap> SharedPtr;
   typedef MCSharedPtr<const PTMap> SharedPtrConst;
 
   PTMap(MemoryContext *memctx,
         YBLocation::SharedPtr loc,
-        const std::shared_ptr<YQLType>& keys_type = YQLType::Create(UNKNOWN_DATA),
-        const std::shared_ptr<YQLType>& values_type = YQLType::Create(UNKNOWN_DATA));
+        const PTBaseType::SharedPtr& keys_type,
+        const PTBaseType::SharedPtr& values_type);
 
   virtual ~PTMap();
 
@@ -317,18 +285,22 @@ class PTMap : public PTPrimitiveType<InternalType::kMapValue, DataType::MAP> {
     return yql_type_;
   }
 
+  virtual CHECKED_STATUS IsValid(SemContext *sem_context);
+
  protected:
+  PTBaseType::SharedPtr keys_type_;
+  PTBaseType::SharedPtr values_type_;
   std::shared_ptr<YQLType> yql_type_;
 };
 
-class PTSet : public PTPrimitiveType<InternalType::kSetValue, DataType::SET> {
+class PTSet : public PTPrimitiveType<InternalType::kSetValue, DataType::SET, false> {
  public:
   typedef MCSharedPtr<PTSet> SharedPtr;
   typedef MCSharedPtr<const PTSet> SharedPtrConst;
 
   PTSet(MemoryContext *memctx,
         YBLocation::SharedPtr loc,
-        const std::shared_ptr<YQLType>& elems_type = YQLType::Create(UNKNOWN_DATA));
+        const PTBaseType::SharedPtr& elems_type);
 
   virtual ~PTSet();
 
@@ -341,18 +313,21 @@ class PTSet : public PTPrimitiveType<InternalType::kSetValue, DataType::SET> {
     return yql_type_;
   }
 
+  virtual CHECKED_STATUS IsValid(SemContext *sem_context);
+
  protected:
+  PTBaseType::SharedPtr elems_type_;
   std::shared_ptr<YQLType> yql_type_;
 };
 
-class PTList : public PTPrimitiveType<InternalType::kListValue, DataType::LIST> {
+class PTList : public PTPrimitiveType<InternalType::kListValue, DataType::LIST, false> {
  public:
   typedef MCSharedPtr<PTList> SharedPtr;
   typedef MCSharedPtr<const PTList> SharedPtrConst;
 
   PTList(MemoryContext *memctx,
          YBLocation::SharedPtr loc,
-         const std::shared_ptr<YQLType>& elems_type = YQLType::Create(UNKNOWN_DATA));
+         const PTBaseType::SharedPtr& elems_type);
 
   virtual ~PTList();
 
@@ -365,7 +340,10 @@ class PTList : public PTPrimitiveType<InternalType::kListValue, DataType::LIST> 
     return yql_type_;
   }
 
+  virtual CHECKED_STATUS IsValid(SemContext *sem_context);
+
  protected:
+  PTBaseType::SharedPtr elems_type_;
   std::shared_ptr<YQLType> yql_type_;
 };
 

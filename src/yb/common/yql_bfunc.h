@@ -38,6 +38,22 @@ class YQLBfunc {
   static Status Exec(bfyql::BFOpcode opcode,
                      const std::vector<YQLValue*>& params,
                      YQLValue *result);
+
+  static Status Exec(bfyql::BFOpcode opcode,
+                     std::vector<YQLValue> *params,
+                     YQLValue *result);
+
+  static Status Exec(bfyql::BFOpcode opcode,
+                     const std::vector<std::shared_ptr<YQLValueWithPB>>& params,
+                     const std::shared_ptr<YQLValueWithPB>& result);
+
+  static Status Exec(bfyql::BFOpcode opcode,
+                     const std::vector<YQLValueWithPB*>& params,
+                     YQLValueWithPB *result);
+
+  static Status Exec(bfyql::BFOpcode opcode,
+                     std::vector<YQLValueWithPB> *params,
+                     YQLValueWithPB *result);
 };
 
 } // namespace yb

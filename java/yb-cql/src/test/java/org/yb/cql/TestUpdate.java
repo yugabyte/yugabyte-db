@@ -109,7 +109,7 @@ public class TestUpdate extends BaseCQLTest {
 
     // testing WHERE clause
     String upd_stmt2 = String.format(
-      "UPDATE %s SET v2 = '%s' WHERE h1 = 1 AND h2 = %s" +
+      "UPDATE %s SET v2 = %s WHERE h1 = 1 AND h2 = '%s'" +
         " AND r1 = 2 AND r2 = %s;", tableName, "0", ts, "0");
     runInvalidStmt(upd_stmt2);
   }

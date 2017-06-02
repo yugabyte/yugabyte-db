@@ -42,6 +42,7 @@ class YBColumnSpec::Data {
         static_column(false),
         has_default(false),
         default_val(NULL),
+        is_counter(false),
         remove_default(false),
         has_rename_to(false) {
   }
@@ -79,6 +80,8 @@ class YBColumnSpec::Data {
 
   bool has_default;
   YBValue* default_val; // Owned.
+
+  bool is_counter;
 
   // For ALTER
   bool remove_default;

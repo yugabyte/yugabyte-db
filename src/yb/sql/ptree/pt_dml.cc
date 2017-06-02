@@ -34,7 +34,9 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
     write_only_(write_only),
     ttl_seconds_(ttl_seconds),
     bind_variables_(memctx),
-    column_args_(nullptr) {
+    column_args_(nullptr),
+    column_refs_(memctx),
+    static_column_refs_(memctx) {
 }
 
 PTDmlStmt::~PTDmlStmt() {
@@ -77,6 +79,7 @@ CHECKED_STATUS PTDmlStmt::LookupTable(SemContext *sem_context) {
                              idx < num_hash_key_columns_,
                              idx < num_key_columns_,
                              col.is_static(),
+                             col.is_counter(),
                              col.type(),
                              YBColumnSchema::ToInternalDataType(col.type()));
 
@@ -90,6 +93,7 @@ CHECKED_STATUS PTDmlStmt::LookupTable(SemContext *sem_context) {
 
 // Node semantics analysis.
 CHECKED_STATUS PTDmlStmt::Analyze(SemContext *sem_context) {
+  sem_context->set_current_dml_stmt(this);
   MemoryContext *psem_mem = sem_context->PSemMem();
   column_args_ = MCMakeShared<MCVector<ColumnArg>>(psem_mem);
   return Status::OK();
@@ -186,6 +190,7 @@ CHECKED_STATUS PTDmlStmt::AnalyzeIfClause(SemContext *sem_context,
                                           const PTExpr::SharedPtr& if_clause) {
   if (if_clause != nullptr) {
     SemState sem_state(sem_context, DataType::BOOL, InternalType::kBoolValue);
+    sem_state.set_processing_if_clause(true);
     return if_clause->Analyze(sem_context);
   }
   return Status::OK();

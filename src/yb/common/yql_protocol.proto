@@ -158,6 +158,14 @@ message YQLPagingStatePB {
   optional uint64 total_num_rows_read = 4;
 }
 
+//-------------------------------------- Column request --------------------------------------
+
+// These columns must be read by DocDB before a read or write request can be executed.
+message YQLReferencedColumnsPB {
+  repeated int32 ids = 1;
+  repeated int32 static_ids = 2;
+}
+
 //-------------------------------------- Write request ---------------------------------------
 
 message YQLWriteRequestPB {
@@ -198,6 +206,10 @@ message YQLWriteRequestPB {
 
   // Time to live in millisecondss.
   optional uint64 ttl = 10;
+
+  // Listing of all columns that this write operation is referencing. TServers will need to read
+  // these columns when processing the write request.
+  optional YQLReferencedColumnsPB column_refs = 11;
 }
 
 //-------------------------------------- Read request ----------------------------------------
@@ -243,6 +255,10 @@ message YQLReadRequestPB {
 
   // the upper limit for partition (hash) key scan ranges
   optional uint32 max_hash_code = 14;
+
+  // Listing of all columns that this operation is referencing. TServers will need to read these
+  // columns when processing this read request.
+  optional YQLReferencedColumnsPB column_refs = 15;
 }
 
 //------------------------------ Response (for both read and write) -----------------------------

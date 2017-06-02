@@ -10,8 +10,6 @@
 #include "yb/util/date_time.h"
 #include "yb/util/net/inetaddress.h"
 
-DECLARE_bool(yql_experiment_support_expression);
-
 namespace yb {
 namespace sql {
 

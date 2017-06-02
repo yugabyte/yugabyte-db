@@ -335,7 +335,7 @@ Status YQLValue::Deserialize(
       int32_t nr_elems = 0;
       RETURN_NOT_OK(CQLDecodeNum(sizeof(nr_elems), NetworkByteOrder::Load32, data, &nr_elems));
       for (int i = 0; i < nr_elems; i++) {
-        YQLValueWithPB elem;;
+        YQLValueWithPB elem;
         RETURN_NOT_OK(elem.Deserialize(elems_type, client, data));
         add_list_elem()->CopyFrom(elem.value());
       }

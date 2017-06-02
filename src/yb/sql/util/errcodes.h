@@ -60,6 +60,8 @@ enum class ErrorCode : int64_t {
   SYSTEM_NAMESPACE_READONLY = -213,
   INVALID_FUNCTION_CALL = -214,
   NO_NAMESPACE_USED = -215,
+  INSERT_TABLE_OF_COUNTERS = -216,
+  INVALID_COUNTING_EXPR = -217,
 
   //------------------------------------------------------------------------------------------------
   // Execution errors [-300, x).

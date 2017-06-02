@@ -168,6 +168,11 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
         "Bad schema", strings::Substitute("Static key columns are not "
                                           "allowed: $0", cols_[i].name()));
     }
+    if (PREDICT_FALSE(cols_[i].is_counter())) {
+      return STATUS(InvalidArgument,
+        "Bad schema", strings::Substitute("Counter key columns are not allowed: $0",
+                                          cols_[i].name()));
+    }
   }
 
   // Calculate the offset of each column in the row format.
@@ -448,11 +453,12 @@ Status SchemaBuilder::AddColumn(const string& name,
                                 bool is_nullable,
                                 bool is_hash_key,
                                 bool is_static,
+                                bool is_counter,
                                 ColumnSchema::SortingType sorting_type,
                                 const void *read_default,
                                 const void *write_default) {
-  return AddColumn(ColumnSchema(name, type, is_nullable, is_hash_key, is_static, sorting_type,
-                                read_default, write_default), false);
+  return AddColumn(ColumnSchema(name, type, is_nullable, is_hash_key, is_static, is_counter,
+                                sorting_type, read_default, write_default), false);
 }
 
 Status SchemaBuilder::RemoveColumn(const string& name) {

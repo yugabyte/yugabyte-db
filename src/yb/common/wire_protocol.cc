@@ -246,6 +246,7 @@ void ColumnSchemaToPB(const ColumnSchema& col_schema, ColumnSchemaPB *pb, int fl
   col_schema.type()->ToYQLTypePB(pb->mutable_type());
   pb->set_is_nullable(col_schema.is_nullable());
   pb->set_is_static(col_schema.is_static());
+  pb->set_is_counter(col_schema.is_counter());
   pb->set_sorting_type(col_schema.sorting_type());
   // We only need to process the *hash* primary key here. The regular primary key is set by the
   // conversion for SchemaPB. The reason is that ColumnSchema and ColumnSchemaPB are not matching
@@ -316,7 +317,7 @@ ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
   // Only "is_hash_key" is used to construct ColumnSchema. The field "is_key" will be read when
   // processing SchemaPB.
   return ColumnSchema(pb.name(), YQLType::FromYQLTypePB(pb.type()), pb.is_nullable(),
-                      pb.is_hash_key(), pb.is_static(),
+                      pb.is_hash_key(), pb.is_static(), pb.is_counter(),
                       ColumnSchema::SortingType(pb.sorting_type()),
                       read_default_ptr, write_default_ptr, attributes);
 }

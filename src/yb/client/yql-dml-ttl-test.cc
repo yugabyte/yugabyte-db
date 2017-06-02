@@ -64,6 +64,12 @@ TEST_F(YqlDmlTTLTest, TestInsertWithTTL) {
     req->add_column_ids(ColumnId("c2"));
     req->add_column_ids(ColumnId("c3"));
     req->add_column_ids(ColumnId("c4"));
+
+    req->mutable_column_refs()->add_ids(ColumnId("k"));
+    req->mutable_column_refs()->add_ids(ColumnId("c1"));
+    req->mutable_column_refs()->add_ids(ColumnId("c2"));
+    req->mutable_column_refs()->add_ids(ColumnId("c3"));
+    req->mutable_column_refs()->add_ids(ColumnId("c4"));
     const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
     CHECK_OK(session->Apply(op));
 
@@ -93,6 +99,12 @@ TEST_F(YqlDmlTTLTest, TestInsertWithTTL) {
     req->add_column_ids(ColumnId("c2"));
     req->add_column_ids(ColumnId("c3"));
     req->add_column_ids(ColumnId("c4"));
+
+    req->mutable_column_refs()->add_ids(ColumnId("k"));
+    req->mutable_column_refs()->add_ids(ColumnId("c1"));
+    req->mutable_column_refs()->add_ids(ColumnId("c2"));
+    req->mutable_column_refs()->add_ids(ColumnId("c3"));
+    req->mutable_column_refs()->add_ids(ColumnId("c4"));
     const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
     CHECK_OK(session->Apply(op));
 
@@ -122,6 +134,12 @@ TEST_F(YqlDmlTTLTest, TestInsertWithTTL) {
     req->add_column_ids(ColumnId("c2"));
     req->add_column_ids(ColumnId("c3"));
     req->add_column_ids(ColumnId("c4"));
+
+    req->mutable_column_refs()->add_ids(ColumnId("k"));
+    req->mutable_column_refs()->add_ids(ColumnId("c1"));
+    req->mutable_column_refs()->add_ids(ColumnId("c2"));
+    req->mutable_column_refs()->add_ids(ColumnId("c3"));
+    req->mutable_column_refs()->add_ids(ColumnId("c4"));
     const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
     CHECK_OK(session->Apply(op));
 

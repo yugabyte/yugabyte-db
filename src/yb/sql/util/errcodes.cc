@@ -59,6 +59,10 @@ const unordered_map<int64_t, const char*> kYbSqlErrorMessage {
   { static_cast<int64_t>(ErrorCode::SYSTEM_NAMESPACE_READONLY), "System Namespace is Read-Only" },
   { static_cast<int64_t>(ErrorCode::INVALID_FUNCTION_CALL), "Invalid Function Call" },
   { static_cast<int64_t>(ErrorCode::NO_NAMESPACE_USED), "No Namespace Used" },
+  { static_cast<int64_t>(ErrorCode::INSERT_TABLE_OF_COUNTERS),
+      "Insert into table of counters not allowed" },
+  { static_cast<int64_t>(ErrorCode::INVALID_COUNTING_EXPR),
+      "Counters can only be incremented or decremented" },
 
   //------------------------------------------------------------------------------------------------
   // Execution errors [-300, x).

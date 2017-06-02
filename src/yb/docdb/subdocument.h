@@ -147,15 +147,21 @@ class SubDocument : public PrimitiveValue {
                            const std::shared_ptr<YQLType>& yql_type,
                            YQLValuePB* v);
 
-  // Construct a SubDocument from a YQLExpressionPB.
-  static SubDocument FromYQLExpressionPB(const std::shared_ptr<YQLType>& yql_type,
-                                         const YQLExpressionPB& yql_expr,
-                                         ColumnSchema::SortingType sorting_type);
-
   // Construct a YQLExpressionPB from a SubDocument.
   static void ToYQLExpressionPB(SubDocument doc,
                                 const std::shared_ptr<YQLType>& yql_type,
                                 YQLExpressionPB* yql_expr);
+
+  // Construct a SubDocument from a YQLExpressionPB.
+  static SubDocument FromYQLExpressionPB(const std::shared_ptr<YQLType>& yql_type,
+                                         const YQLExpressionPB& yql_expr,
+                                         ColumnSchema::SortingType sorting_type,
+                                         const YQLValueMap& value_map);
+
+  // Evaluate the given YQLExpressionPB into YQLValue.
+  static void EvalYQLExpressionPB(const YQLExpressionPB& yql_expr,
+                                         const YQLValueMap& value_map,
+                                         YQLValueWithPB *result);
 
  private:
 

@@ -81,7 +81,7 @@ DEFINE_int32(test_scan_num_rows, 1000, "Number of rows to insert and scan");
 
 METRIC_DECLARE_counter(rpcs_queue_overflow);
 
-using namespace std::literals;
+using namespace std::literals; // NOLINT
 
 namespace yb {
 namespace client {
@@ -2798,6 +2798,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
       YQLReadRequestPB *yql_read = req.mutable_yql_batch()->Add();
       for (int i = 0; i < schema_.num_columns(); i++) {
         yql_read->add_column_ids(yb::kFirstColumnId + i);
+        yql_read->mutable_column_refs()->add_ids(yb::kFirstColumnId + i);
       }
       EXPECT_OK(tserver_proxy->Read(req, &resp, &controller));
 

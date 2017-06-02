@@ -41,35 +41,39 @@ const vector<BFDecl> kBFDirectory = {
   { "NoOp", "NO_OP", VOID, {} },
 
   // Numeric conversion.
-  { "ConvertI8ToI16", "cast", VOID, {INT8, INT16} },
-  { "ConvertI8ToI32", "cast", VOID, {INT8, INT32} },
-  { "ConvertI8ToI64", "cast", VOID, {INT8, INT64} },
-  { "ConvertI8ToFloat", "cast", VOID, {INT8, FLOAT} },
-  { "ConvertI8ToDouble", "cast", VOID, {INT8, DOUBLE} },
+  { "ConvertI8ToI16", "cast", INT16, {INT8, INT16} },
+  { "ConvertI8ToI32", "cast", INT32, {INT8, INT32} },
+  { "ConvertI8ToI64", "cast", INT64, {INT8, INT64} },
+  { "ConvertI8ToFloat", "cast", FLOAT, {INT8, FLOAT} },
+  { "ConvertI8ToDouble", "cast", DOUBLE, {INT8, DOUBLE} },
 
-  { "ConvertI16ToI8", "cast", VOID, {INT16, INT16} },
-  { "ConvertI16ToI32", "cast", VOID, {INT16, INT32} },
-  { "ConvertI16ToI64", "cast", VOID, {INT16, INT64} },
-  { "ConvertI16ToFloat", "cast", VOID, {INT16, FLOAT} },
-  { "ConvertI16ToDouble", "cast", VOID, {INT16, DOUBLE} },
+  { "ConvertI16ToI8", "cast", INT8, {INT16, INT8} },
+  { "ConvertI16ToI32", "cast", INT32, {INT16, INT32} },
+  { "ConvertI16ToI64", "cast", INT64, {INT16, INT64} },
+  { "ConvertI16ToFloat", "cast", FLOAT, {INT16, FLOAT} },
+  { "ConvertI16ToDouble", "cast", DOUBLE, {INT16, DOUBLE} },
 
-  { "ConvertI32ToI8", "cast", VOID, {INT32, INT16} },
-  { "ConvertI32ToI16", "cast", VOID, {INT32, INT16} },
-  { "ConvertI32ToI64", "cast", VOID, {INT32, INT64} },
-  { "ConvertI32ToFloat", "cast", VOID, {INT32, FLOAT} },
-  { "ConvertI32ToDouble", "cast", VOID, {INT32, DOUBLE} },
+  { "ConvertI32ToI8", "cast", INT8, {INT32, INT8} },
+  { "ConvertI32ToI16", "cast", INT16, {INT32, INT16} },
+  { "ConvertI32ToI64", "cast", INT64, {INT32, INT64} },
+  { "ConvertI32ToFloat", "cast", FLOAT, {INT32, FLOAT} },
+  { "ConvertI32ToDouble", "cast", DOUBLE, {INT32, DOUBLE} },
 
-  { "ConvertI64ToI8", "cast", VOID, {INT64, INT8} },
-  { "ConvertI64ToI16", "cast", VOID, {INT64, INT16} },
-  { "ConvertI64ToI32", "cast", VOID, {INT64, INT32} },
-  { "ConvertI64ToFloat", "cast", VOID, {INT64, FLOAT} },
-  { "ConvertI64ToDouble", "cast", VOID, {INT64, DOUBLE} },
+  { "ConvertI64ToI8", "cast", INT8, {INT64, INT8} },
+  { "ConvertI64ToI16", "cast", INT16, {INT64, INT16} },
+  { "ConvertI64ToI32", "cast", INT32, {INT64, INT32} },
+  { "ConvertI64ToFloat", "cast", FLOAT, {INT64, FLOAT} },
+  { "ConvertI64ToDouble", "cast", DOUBLE, {INT64, DOUBLE} },
 
-  { "ConvertFloatToDouble", "cast", VOID, {FLOAT, DOUBLE} },
-  { "ConvertDoubleToFloat", "cast", VOID, {DOUBLE, FLOAT} },
+  { "ConvertFloatToDouble", "cast", DOUBLE, {FLOAT, DOUBLE} },
+  { "ConvertDoubleToFloat", "cast", FLOAT, {DOUBLE, FLOAT} },
 
   // Token().
   { "Token", "token", INT64, {TYPEARGS} },
+
+  // Counter functions.
+  { "IncCounter", "+counter", INT64,  {INT64, INT64} },
+  { "DecCounter", "-counter", INT64,  {INT64, INT64} },
 
   // "+".
   { "AddI64I64", "+", INT64,  {INT64, INT64} },
@@ -77,6 +81,10 @@ const vector<BFDecl> kBFDirectory = {
   { "AddStringString", "+", STRING, {STRING, STRING} },
   { "AddStringDouble", "+", STRING, {STRING, DOUBLE} },
   { "AddDoubleString", "+", STRING, {DOUBLE, STRING} },
+
+  // "-".
+  { "SubI64I64", "-", INT64,  {INT64, INT64} },
+  { "SubDoubleDouble", "-", DOUBLE, {DOUBLE, DOUBLE} },
 };
 
 } // namespace bfyql

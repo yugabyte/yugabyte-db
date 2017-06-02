@@ -5,6 +5,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/sql/ptree/pt_expr.h"
+#include "yb/sql/ptree/pt_bcall.h"
 #include "yb/sql/ptree/sem_context.h"
 #include "yb/util/decimal.h"
 #include "yb/util/net/inetaddress.h"
@@ -74,12 +75,20 @@ CHECKED_STATUS PTExpr::SetupSemStateForOp3(SemState *sem_state) {
 
 CHECKED_STATUS PTExpr::CheckExpectedTypeCompatibility(SemContext *sem_context) {
   CHECK(has_valid_internal_type() && has_valid_yql_type_id());
+
+  // Check if RHS support counter update.
+  if (sem_context->updating_counter() != nullptr) {
+    RETURN_NOT_OK(this->CheckCounterUpdateSupport(sem_context));
+  }
+
+  // Check if RHS is convertible to LHS.
   if (!sem_context->expr_expected_yql_type()->IsUnknown()) {
     if (!sem_context->IsConvertible(this, sem_context->expr_expected_yql_type())) {
       return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
     }
   }
 
+  // Resolve internal type.
   const InternalType expected_itype = sem_context->expr_expected_internal_type();
   if (expected_itype == InternalType::VALUE_NOT_SET) {
     expected_internal_type_ = internal_type_;
@@ -125,6 +134,10 @@ CHECKED_STATUS PTExpr::CheckRhsExpr(SemContext *sem_context) {
                                 ErrorCode::CQL_STATEMENT_INVALID);
   }
   return Status::OK();
+}
+
+CHECKED_STATUS PTExpr::CheckCounterUpdateSupport(SemContext *sem_context) const {
+  return sem_context->Error(loc(), ErrorCode::INVALID_COUNTING_EXPR);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -551,7 +564,7 @@ CHECKED_STATUS PTRef::AnalyzeOperator(SemContext *sem_context) {
 
   // Look for a column descriptor from symbol table.
   RETURN_NOT_OK(name_->Analyze(sem_context));
-  desc_ = sem_context->GetColumnDesc(name_->last_name());
+  desc_ = sem_context->GetColumnDesc(name_->last_name(), true /* reading_column */);
   if (desc_ == nullptr) {
     return sem_context->Error(loc(), "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
   }
@@ -564,11 +577,16 @@ CHECKED_STATUS PTRef::AnalyzeOperator(SemContext *sem_context) {
 }
 
 CHECKED_STATUS PTRef::CheckLhsExpr(SemContext *sem_context) {
-  // If where_state is null, we are processing the IF clause. In that case, disallow reference to
-  // primary key columns.
-  if (sem_context->where_state() == nullptr && desc_->is_primary()) {
-    return sem_context->Error(loc(), "Primary key column reference is not allowed in if expression",
-                              ErrorCode::CQL_STATEMENT_INVALID);
+  // When CQL IF clause is being processed. In that case, disallow reference to primary key columns
+  // and counters.
+  if (sem_context->processing_if_clause()) {
+    if (desc_->is_primary()) {
+      return sem_context->Error(loc(), "Primary key column reference is not allowed in if clause",
+                                ErrorCode::CQL_STATEMENT_INVALID);
+    } else if (desc_->is_counter()) {
+      return sem_context->Error(loc(), "Counter column reference is not allowed in if clause",
+                                ErrorCode::CQL_STATEMENT_INVALID);
+    }
   }
   return Status::OK();
 }
@@ -635,53 +653,6 @@ CHECKED_STATUS PTBindVar::Analyze(SemContext *sem_context) {
 
 void PTBindVar::PrintSemanticAnalysisResult(SemContext *sem_context) {
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << "Not yet avail";
-}
-
-//--------------------------------------------------------------------------------------------------
-
-// Collection constants.
-CHECKED_STATUS PTToken::Analyze(SemContext *sem_context) {
-  if (sem_context->sem_state()->where_state() == nullptr) {
-    return sem_context->Error(loc(), "Token builtin call currently only allowed in where clause",
-        ErrorCode::FEATURE_NOT_SUPPORTED);
-  }
-
-  RETURN_NOT_OK(PTBcall::Analyze(sem_context));
-  RETURN_NOT_OK(CheckOperator(sem_context));
-
-  return CheckExpectedTypeCompatibility(sem_context);
-}
-
-CHECKED_STATUS PTToken::CheckOperator(SemContext *sem_context) {
-  size_t size = sem_context->current_table()->schema().num_hash_key_columns();
-  is_partition_key_ref_ = true;
-  if (args().size() != size) {
-    is_partition_key_ref_ = false;
-  } else {
-    int index = 0;
-    for (const PTExpr::SharedPtr &arg : args()) {
-      if (arg->expr_op() != ExprOperator::kRef) {
-        is_partition_key_ref_ = false;
-        break;
-      }
-      PTRef *col_ref = static_cast<PTRef *>(arg.get());
-      RETURN_NOT_OK(col_ref->Analyze(sem_context));
-      if (col_ref->desc()->index() != index) {
-        is_partition_key_ref_ = false;
-        break;
-      }
-      index++;
-    }
-  }
-
-  // TODO (mihnea) add support for this later
-  if (!is_partition_key_ref_) {
-    return sem_context->Error(loc(),
-        "Token call only allowed as reference to partition key as virtual column",
-        ErrorCode::FEATURE_NOT_SUPPORTED);
-  }
-
-  return Status::OK();
 }
 
 }  // namespace sql

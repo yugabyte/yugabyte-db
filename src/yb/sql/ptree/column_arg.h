@@ -11,6 +11,7 @@
 #include "yb/common/yql_value.h"
 #include "yb/common/types.h"
 #include "yb/sql/ptree/pt_expr.h"
+#include "yb/sql/ptree/pt_bcall.h"
 #include "yb/util/memory/mc_types.h"
 
 namespace yb {

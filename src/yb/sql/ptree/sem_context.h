@@ -28,6 +28,10 @@ struct SymbolEntry {
   // Column description. It's used for DML statements including select.
   // Not part of a parse tree, but it is allocated within the parse tree pool because it us
   // persistent metadata. It represents a column during semantic and execution phases.
+  //
+  // TODO(neil) Add "column_read_count_" and potentially "column_write_count_" and use them for
+  // error check wherever needed. Symbol tables and entries are destroyed after compilation, so
+  // data that are used during compilation but not execution should be declared here.
   ColumnDesc *column_desc_;
 
   SymbolEntry() : column_(nullptr), table_(nullptr), column_desc_(nullptr) {
@@ -91,10 +95,12 @@ class SemContext : public ProcessContext {
   std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name);
 
   // Find column descriptor from symbol table.
-  PTColumnDefinition *GetColumnDefinition(const MCString& col_name) const;
+  PTColumnDefinition *GetColumnDefinition(const MCString& col_name);
 
   // Find column descriptor from symbol table.
-  const ColumnDesc *GetColumnDesc(const MCString& col_name) const;
+  // The parameter "reading_column" is to indicate if the column value is to be read by the
+  // when executin the YQL statement before its execution.
+  const ColumnDesc *GetColumnDesc(const MCString& col_name, bool reading_column);
 
   // Check if the expression `expr` can be implicitly converted to type `type`
   bool IsConvertible(PTExpr::SharedPtr expr, const std::shared_ptr<YQLType>& type) const {
@@ -143,6 +149,16 @@ class SemContext : public ProcessContext {
     return sem_state_->bindvar_name();
   }
 
+  const ColumnDesc *updating_counter() const {
+    DCHECK(sem_state_) << "State variable is not set for the expression";
+    return sem_state_->updating_counter();
+  }
+
+  bool processing_if_clause() const {
+    DCHECK(sem_state_) << "State variable is not set for the expression";
+    return sem_state_->processing_if_clause();
+  }
+
   void set_sem_state(SemState *new_state, SemState **existing_state_holder) {
     *existing_state_holder = sem_state_;
     sem_state_ = new_state;
@@ -150,6 +166,14 @@ class SemContext : public ProcessContext {
 
   void reset_sem_state(SemState *previous_state) {
     sem_state_ = previous_state;
+  }
+
+  PTDmlStmt *current_dml_stmt() const {
+    return current_dml_stmt_;
+  }
+
+  void set_current_dml_stmt(PTDmlStmt *stmt) {
+    current_dml_stmt_ = stmt;
   }
 
   std::shared_ptr<client::YBTable> current_table() { return current_table_; }
@@ -160,7 +184,7 @@ class SemContext : public ProcessContext {
 
  private:
   // Find symbol.
-  const SymbolEntry *SeekSymbol(const MCString& name) const;
+  SymbolEntry *SeekSymbol(const MCString& name);
 
   // Symbol table.
   MCMap<MCString, SymbolEntry> symtab_;
@@ -173,6 +197,9 @@ class SemContext : public ProcessContext {
 
   // Is metadata cache used?
   bool cache_used_;
+
+  // The current dml statement being processed.
+  PTDmlStmt *current_dml_stmt_;
 
   // The semantic analyzer will set the current table for dml queries.
   std::shared_ptr<client::YBTable> current_table_;

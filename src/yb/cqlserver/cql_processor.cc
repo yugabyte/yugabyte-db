@@ -290,6 +290,8 @@ CQLResponse* CQLProcessor::ReturnResponse(
         case ErrorCode::TOO_FEW_ARGUMENTS: FALLTHROUGH_INTENDED;
         case ErrorCode::TOO_MANY_ARGUMENTS: FALLTHROUGH_INTENDED;
         case ErrorCode::INVALID_FUNCTION_CALL: FALLTHROUGH_INTENDED;
+        case ErrorCode::INSERT_TABLE_OF_COUNTERS: FALLTHROUGH_INTENDED;
+        case ErrorCode::INVALID_COUNTING_EXPR: FALLTHROUGH_INTENDED;
 
         // Execution errors that are not server errors.
         case ErrorCode::TABLE_NOT_FOUND: FALLTHROUGH_INTENDED;

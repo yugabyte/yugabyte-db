@@ -13,6 +13,7 @@
 #include "yb/sql/ptree/list_node.h"
 #include "yb/sql/ptree/tree_node.h"
 #include "yb/sql/ptree/pt_expr.h"
+#include "yb/sql/ptree/pt_bcall.h"
 #include "yb/sql/ptree/column_arg.h"
 #include "yb/common/table_properties_constants.h"
 
@@ -207,6 +208,25 @@ class PTDmlStmt : public PTCollection {
     return *column_args_;
   }
 
+  // Add column ref to be read.
+  void AddColumnRef(const ColumnDesc& col_desc) {
+    if (col_desc.is_static()) {
+      static_column_refs_.insert(col_desc.id());
+    } else {
+      column_refs_.insert(col_desc.id());
+    }
+  }
+
+  // Access for column_args.
+  const MCSet<int32>& column_refs() const {
+    return column_refs_;
+  }
+
+  // Access for column_args.
+  const MCSet<int32>& static_column_refs() const {
+    return static_column_refs_;
+  }
+
   // Reset to clear and release previous semantics analysis results.
   virtual void Reset() override;
 
@@ -252,6 +272,12 @@ class PTDmlStmt : public PTCollection {
 
   // Semantic phase will decorate the following fields.
   MCSharedPtr<MCVector<ColumnArg>> column_args_;
+
+  // Columns that are being referenced by this statement. The tservers will need to read these
+  // columns when processing the statements. These are different from selected columns whose values
+  // must be sent back to the proxy from the tservers.
+  MCSet<int32> column_refs_;
+  MCSet<int32> static_column_refs_;
 };
 
 }  // namespace sql

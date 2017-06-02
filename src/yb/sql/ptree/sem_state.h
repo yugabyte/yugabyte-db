@@ -68,10 +68,12 @@ class SemState {
   // TODO(mihnea) Remove the overload after working with YQLType for collection.
   void SetExprState(DataType yql_type_id,
                     InternalType internal_type,
-                    const MCSharedPtr<MCString>& bindvar_name = nullptr);
+                    const MCSharedPtr<MCString>& bindvar_name = nullptr,
+                    const ColumnDesc *updating_counter = nullptr);
   void SetExprState(const std::shared_ptr<YQLType>& yql_type,
                     InternalType internal_type,
-                    const MCSharedPtr<MCString>& bindvar_name = nullptr);
+                    const MCSharedPtr<MCString>& bindvar_name = nullptr,
+                    const ColumnDesc *updating_counter = nullptr);
 
   // Set the current state using previous state's values.
   void CopyPreviousStates();
@@ -84,6 +86,10 @@ class SemState {
   InternalType expected_internal_type() const { return expected_internal_type_; }
   WhereExprState *where_state() const { return where_state_; }
   const MCSharedPtr<MCString>& bindvar_name() const { return bindvar_name_; }
+  const ColumnDesc *updating_counter() const { return updating_counter_; }
+
+  bool processing_if_clause() const { return processing_if_clause_; }
+  void set_processing_if_clause(bool value) { processing_if_clause_ = value; }
 
   void set_processing_column_definition(bool val) {
     processing_column_definition_ = val;
@@ -114,6 +120,12 @@ class SemState {
 
   // Predicate for processing a column definition in a table.
   bool processing_column_definition_ = false;
+
+  // State variables for counters.
+  const ColumnDesc *updating_counter_;
+
+  // State variables for if clause.
+  bool processing_if_clause_;
 };
 
 }  // namespace sql

@@ -117,6 +117,11 @@ YBColumnSpec* YBColumnSpec::Nullable() {
   return this;
 }
 
+YBColumnSpec* YBColumnSpec::Counter() {
+  data_->is_counter = true;
+  return this;
+}
+
 YBColumnSpec* YBColumnSpec::RemoveDefault() {
   data_->remove_default = true;
   return this;
@@ -172,7 +177,7 @@ Status YBColumnSpec::ToColumnSchema(YBColumnSchema* col) const {
   }
 
   *col = YBColumnSchema(data_->name, data_->type, nullable, data_->hash_primary_key,
-                        data_->static_column, data_->sorting_type, default_val,
+                        data_->static_column, data_->is_counter, data_->sorting_type, default_val,
                         YBColumnStorageAttributes(encoding, compression, block_size));
 
   return Status::OK();
@@ -355,13 +360,14 @@ YBColumnSchema::YBColumnSchema(const std::string &name,
                                bool is_nullable,
                                bool is_hash_key,
                                bool is_static,
+                               bool is_counter,
                                ColumnSchema::SortingType sorting_type,
                                const void* default_value,
                                YBColumnStorageAttributes attributes) {
   ColumnStorageAttributes attr_private;
   attr_private.encoding = attributes.encoding();
   attr_private.compression = attributes.compression();
-  col_ = new ColumnSchema(name, type, is_nullable, is_hash_key, is_static, sorting_type,
+  col_ = new ColumnSchema(name, type, is_nullable, is_hash_key, is_static, is_counter, sorting_type,
                           default_value, default_value, attr_private);
 }
 
@@ -423,6 +429,10 @@ ColumnSchema::SortingType YBColumnSchema::sorting_type() const {
   return DCHECK_NOTNULL(col_)->sorting_type();
 }
 
+bool YBColumnSchema::is_counter() const {
+  return DCHECK_NOTNULL(col_)->is_counter();
+}
+
 ////////////////////////////////////////////////////////////
 // YBSchema
 ////////////////////////////////////////////////////////////
@@ -475,11 +485,16 @@ bool YBSchema::Equals(const YBSchema& other) const {
       (schema_ && other.schema_ && schema_->Equals(*other.schema_));
 }
 
+const TableProperties& YBSchema::table_properties() const {
+  return schema_->table_properties();
+}
+
 YBColumnSchema YBSchema::Column(size_t idx) const {
   ColumnSchema col(schema_->column(idx));
   YBColumnStorageAttributes attrs(col.attributes().encoding, col.attributes().compression);
   return YBColumnSchema(col.name(), col.type(), col.is_nullable(), col.is_hash_key(),
-                        col.is_static(), col.sorting_type(), col.read_default_value(), attrs);
+                        col.is_static(), col.is_counter(), col.sorting_type(),
+                        col.read_default_value(), attrs);
 }
 
 YBColumnSchema YBSchema::ColumnById(int32_t column_id) const {

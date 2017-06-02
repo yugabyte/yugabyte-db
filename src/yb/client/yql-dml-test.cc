@@ -17,7 +17,7 @@ DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_int64(db_block_cache_size_bytes);
 
-using namespace std::chrono_literals;
+using namespace std::chrono_literals; // NOLINT
 
 namespace yb {
 namespace client {
@@ -92,6 +92,7 @@ class YqlDmlTest : public YqlDmlBase {
     AddStringCondition(condition, "r2", YQL_OP_EQUAL, r2);
     for (const auto column : columns) {
       req->add_column_ids(ColumnId(column));
+      req->mutable_column_refs()->add_ids(ColumnId(column));
     }
     CHECK_OK(session->Apply(op));
     return op;
@@ -394,6 +395,13 @@ TEST_F(YqlDmlTest, TestInsertMultipleRows) {
     req->add_column_ids(ColumnId("r2"));
     req->add_column_ids(ColumnId("c1"));
     req->add_column_ids(ColumnId("c2"));
+
+    req->mutable_column_refs()->add_ids(ColumnId("h1"));
+    req->mutable_column_refs()->add_ids(ColumnId("h2"));
+    req->mutable_column_refs()->add_ids(ColumnId("r1"));
+    req->mutable_column_refs()->add_ids(ColumnId("r2"));
+    req->mutable_column_refs()->add_ids(ColumnId("c1"));
+    req->mutable_column_refs()->add_ids(ColumnId("c2"));
     {
       const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
       CHECK_OK(session->Apply(op));
@@ -459,6 +467,13 @@ TEST_F(YqlDmlTest, TestSelectMultipleRows) {
     req->add_column_ids(ColumnId("r2"));
     req->add_column_ids(ColumnId("c1"));
     req->add_column_ids(ColumnId("c2"));
+
+    req->mutable_column_refs()->add_ids(ColumnId("h1"));
+    req->mutable_column_refs()->add_ids(ColumnId("h2"));
+    req->mutable_column_refs()->add_ids(ColumnId("r1"));
+    req->mutable_column_refs()->add_ids(ColumnId("r2"));
+    req->mutable_column_refs()->add_ids(ColumnId("c1"));
+    req->mutable_column_refs()->add_ids(ColumnId("c2"));
     const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
     CHECK_OK(session->Apply(op));
 
@@ -491,6 +506,13 @@ TEST_F(YqlDmlTest, TestSelectMultipleRows) {
     req->add_column_ids(ColumnId("r2"));
     req->add_column_ids(ColumnId("c1"));
     req->add_column_ids(ColumnId("c2"));
+
+    req->mutable_column_refs()->add_ids(ColumnId("h1"));
+    req->mutable_column_refs()->add_ids(ColumnId("h2"));
+    req->mutable_column_refs()->add_ids(ColumnId("r1"));
+    req->mutable_column_refs()->add_ids(ColumnId("r2"));
+    req->mutable_column_refs()->add_ids(ColumnId("c1"));
+    req->mutable_column_refs()->add_ids(ColumnId("c2"));
     const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
     CHECK_OK(session->Apply(op));
 
@@ -540,6 +562,13 @@ TEST_F(YqlDmlTest, TestSelectWithoutConditionWithLimit) {
     req->add_column_ids(ColumnId("r2"));
     req->add_column_ids(ColumnId("c1"));
     req->add_column_ids(ColumnId("c2"));
+
+    req->mutable_column_refs()->add_ids(ColumnId("h1"));
+    req->mutable_column_refs()->add_ids(ColumnId("h2"));
+    req->mutable_column_refs()->add_ids(ColumnId("r1"));
+    req->mutable_column_refs()->add_ids(ColumnId("r2"));
+    req->mutable_column_refs()->add_ids(ColumnId("c1"));
+    req->mutable_column_refs()->add_ids(ColumnId("c2"));
     req->set_limit(5);
     const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
     CHECK_OK(session->Apply(op));
@@ -776,6 +805,7 @@ TEST_F(YqlDmlTest, TestConditionalInsert) {
     condition->set_op(YQL_OP_OR);
     AddCondition(condition, YQL_OP_NOT_EXISTS);
     AddStringCondition(condition, "c2", YQL_OP_EQUAL, "d");
+    req->mutable_column_refs()->add_ids(ColumnId("c2"));
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     CHECK_OK(session->Apply(op));
 
@@ -821,6 +851,7 @@ TEST_F(YqlDmlTest, TestConditionalInsert) {
     condition->set_op(YQL_OP_OR);
     AddCondition(condition, YQL_OP_NOT_EXISTS);
     AddStringCondition(condition, "c2", YQL_OP_EQUAL, "c");
+    req->mutable_column_refs()->add_ids(ColumnId("c2"));
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     CHECK_OK(session->Apply(op));
 
@@ -1002,6 +1033,7 @@ TEST_F(YqlDmlTest, TestConditionalDelete) {
     SetStringColumnValue(req->add_range_column_values(), "r2", "b");
     SetColumn(req->add_column_values(), "c1");
     SetInt32Condition(req->mutable_if_expr()->mutable_condition(), "c1", YQL_OP_EQUAL, 4);
+    req->mutable_column_refs()->add_ids(ColumnId("c1"));
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     CHECK_OK(session->Apply(op));
 
@@ -1047,6 +1079,7 @@ TEST_F(YqlDmlTest, TestConditionalDelete) {
     condition->set_op(YQL_OP_AND);
     AddCondition(condition, YQL_OP_EXISTS);
     AddInt32Condition(condition, "c1", YQL_OP_EQUAL, 3);
+    req->mutable_column_refs()->add_ids(ColumnId("c1"));
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     CHECK_OK(session->Apply(op));
 
@@ -1136,6 +1169,9 @@ TEST_F(YqlDmlTest, TestError) {
     AddStringCondition(condition, "r2", YQL_OP_NOT_EQUAL, "b");
     req->add_column_ids(ColumnId("c1"));
     req->add_column_ids(ColumnId("c2"));
+
+    req->mutable_column_refs()->add_ids(ColumnId("c1"));
+    req->mutable_column_refs()->add_ids(ColumnId("c2"));
     const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
     CHECK_OK(session->Apply(op));
 

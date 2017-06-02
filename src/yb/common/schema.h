@@ -197,6 +197,7 @@ class ColumnSchema {
                bool is_nullable = false,
                bool is_hash_key = false,
                bool is_static = false,
+               bool is_counter = false,
                SortingType sorting_type = SortingType::kNotSpecified,
                const void* read_default = NULL,
                const void* write_default = NULL,
@@ -206,6 +207,7 @@ class ColumnSchema {
         is_nullable_(is_nullable),
         is_hash_key_(is_hash_key),
         is_static_(is_static),
+        is_counter_(is_counter),
         sorting_type_(sorting_type),
         read_default_(read_default ? new Variant(type->main(), read_default) : NULL),
         attributes_(std::move(attributes)) {
@@ -223,11 +225,12 @@ class ColumnSchema {
                bool is_nullable = false,
                bool is_hash_key = false,
                bool is_static = false,
+               bool is_counter = false,
                SortingType sorting_type = SortingType::kNotSpecified,
                const void* read_default = NULL,
                const void* write_default = NULL,
                ColumnStorageAttributes attributes = ColumnStorageAttributes())
-      : ColumnSchema(name, YQLType::Create(type), is_nullable, is_hash_key, is_static,
+      : ColumnSchema(name, YQLType::Create(type), is_nullable, is_hash_key, is_static, is_counter,
                      sorting_type, read_default, write_default, attributes) { }
 
   const std::shared_ptr<YQLType>& type() const {
@@ -248,6 +251,10 @@ class ColumnSchema {
 
   bool is_static() const {
     return is_static_;
+  }
+
+  bool is_counter() const {
+    return is_counter_;
   }
 
   SortingType sorting_type() const {
@@ -405,6 +412,7 @@ class ColumnSchema {
   bool is_nullable_;
   bool is_hash_key_;
   bool is_static_;
+  bool is_counter_;
   SortingType sorting_type_;
   // use shared_ptr since the ColumnSchema is always copied around.
   std::shared_ptr<Variant> read_default_;
@@ -416,15 +424,18 @@ class ContiguousRow;
 
 class TableProperties {
  public:
-  TableProperties() : default_time_to_live_(kNoDefaultTtl) {
+  TableProperties() : default_time_to_live_(kNoDefaultTtl), contain_counters_(false) {
   }
 
   TableProperties(const TableProperties& other) {
     default_time_to_live_ = other.default_time_to_live_;
+    contain_counters_ = other.contain_counters_;
   }
 
+  // Containing counters is a internal property instead of a user-defined property, so we don't use
+  // it when comparing table properties.
   bool operator==(const TableProperties& other) const {
-    return default_time_to_live_ == other.default_time_to_live_;
+    return (default_time_to_live_ == other.default_time_to_live_);
   }
 
   bool operator!=(const TableProperties& other) const {
@@ -443,10 +454,19 @@ class TableProperties {
     return default_time_to_live_;
   }
 
+  bool contain_counters() const {
+    return contain_counters_;
+  }
+
+  void SetContainCounters(bool contain_counters) {
+    contain_counters_ = contain_counters;
+  }
+
   void ToTablePropertiesPB(TablePropertiesPB *pb) const {
     if (HasDefaultTimeToLive()) {
       pb->set_default_time_to_live(default_time_to_live_);
     }
+    pb->set_contain_counters(contain_counters_);
   }
 
   static TableProperties FromTablePropertiesPB(const TablePropertiesPB& pb) {
@@ -454,16 +474,21 @@ class TableProperties {
     if (pb.has_default_time_to_live()) {
       table_properties.SetDefaultTimeToLive(pb.default_time_to_live());
     }
+    if (pb.has_contain_counters()) {
+      table_properties.SetContainCounters(pb.contain_counters());
+    }
     return table_properties;
   }
 
   void Reset() {
     default_time_to_live_ = kNoDefaultTtl;
+    contain_counters_ = false;
   }
 
  private:
   static const int kNoDefaultTtl = -1;
   int64_t default_time_to_live_;
+  bool contain_counters_;
 };
 
 // The schema for a set of rows.
@@ -1096,8 +1121,8 @@ class SchemaBuilder {
   CHECKED_STATUS AddColumn(const ColumnSchema& column, bool is_key);
 
   CHECKED_STATUS AddColumn(const string& name, const std::shared_ptr<YQLType>& type) {
-    return AddColumn(name, type, false, false, false, ColumnSchema::SortingType::kNotSpecified,
-                     NULL, NULL);
+    return AddColumn(name, type, false, false, false, false,
+                     ColumnSchema::SortingType::kNotSpecified, NULL, NULL);
   }
 
   // convenience function for adding columns with simple (non-parametric) data types
@@ -1106,8 +1131,8 @@ class SchemaBuilder {
   }
 
   CHECKED_STATUS AddNullableColumn(const string& name, const std::shared_ptr<YQLType>& type) {
-    return AddColumn(name, type, true, false, false, ColumnSchema::SortingType::kNotSpecified, NULL,
-                     NULL);
+    return AddColumn(name, type, true, false, false, false,
+                     ColumnSchema::SortingType::kNotSpecified, NULL, NULL);
   }
 
   // convenience function for adding columns with simple (non-parametric) data types
@@ -1120,6 +1145,7 @@ class SchemaBuilder {
                            bool is_nullable,
                            bool is_hash_key,
                            bool is_static,
+                           bool is_counter,
                            yb::ColumnSchema::SortingType sorting_type,
                            const void *read_default,
                            const void *write_default);
@@ -1130,11 +1156,12 @@ class SchemaBuilder {
                            bool is_nullable,
                            bool is_hash_key,
                            bool is_static,
+                           bool is_counter,
                            yb::ColumnSchema::SortingType sorting_type,
                            const void *read_default,
                            const void *write_default) {
-    return AddColumn(name, YQLType::Create(type), is_nullable, is_hash_key, is_static, sorting_type,
-                     read_default, write_default);
+    return AddColumn(name, YQLType::Create(type), is_nullable, is_hash_key, is_static, is_counter,
+                     sorting_type, read_default, write_default);
   }
 
   CHECKED_STATUS RemoveColumn(const string& name);

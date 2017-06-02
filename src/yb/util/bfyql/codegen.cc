@@ -49,6 +49,15 @@ class BFCodegen {
   static const int kHasParamOnly = 1;
   static const int kHasResultOnly = 1;
 
+  // Because SQL functions might need to support IN/OUT parameters, we won't provide const& option.
+  // Each argument is either a shared_ptr, raw pointer, or reference.
+  enum class BFApiParamOption {
+    kSharedPtr, // Both arguments and returned-result are shared_ptr.
+    kRawPtr,    // Both arguments and returned-result are raw pointers.
+    kRefAndRaw, // Arguments are references (Type &arg), and returned-result is a raw pointer.
+  };
+
+  // Typeargs datatype.
   void GenerateOpcodes(string build_dir) {
     ofstream fopcode;
     fopcode.open(build_dir + "/gen_opcodes.h");
@@ -192,34 +201,69 @@ class BFCodegen {
             << "  }" << endl
             << endl;
 
-    GenerateExecFunc(entry, foper_h, true /* use_shared_ptr */);
+    GenerateExecFunc(entry, foper_h, BFApiParamOption::kSharedPtr);
     foper_h << endl;
-    GenerateExecFunc(entry, foper_h, false /* use_shared_ptr */);
+    GenerateExecFunc(entry, foper_h, BFApiParamOption::kRawPtr);
+    foper_h << endl;
+    GenerateExecFunc(entry, foper_h, BFApiParamOption::kRefAndRaw);
 
     // End operator class.
     foper_h << "};" << endl
             << endl;
   }
 
-  void GenerateExecFunc(BFDecl entry, ofstream &foper_h, bool use_shared_ptr) {
+  void GenerateExecFunc(BFDecl entry, ofstream &foper_h, BFApiParamOption param_option) {
     // Print function call. Four possible cases
     // - No parameter & no result:     func()
+    //
     // - No result:                    func(params[0])
+    //                              OR func(&params[0])
+    //
     // - No parameter:                 func(result)
+    //
     // - Has parameter & result:       func(params[0], params[1], result)
-    if (use_shared_ptr) {
-      // For shared_ptr, the parameter would be "const std::shared_ptr<>&".
-      foper_h << "  template<typename PType, typename RType>" << endl
-              << "  static Status Exec(const std::vector<std::shared_ptr<PType>>& params," << endl
-              << "                     const std::shared_ptr<RType>& result) {" << endl
-              << "    return "
-              << entry.cpp_name() << "<std::shared_ptr<PType>, const std::shared_ptr<RType>&>(";
-    } else {
-      // For other datatypes, use the given template typename.
-      foper_h << "  template<typename PType, typename RType>" << endl
-              << "  static Status ExecRaw(const std::vector<PType*>& params," << endl
-              << "                        RType *result) {" << endl
-              << "    return " << entry.cpp_name() << "<PType*, RType*>(";
+    //                              OR func(&params[0], &params[1], result)
+
+    // When arguments are ref, character "&" is used to convert it to pointer. For argument that
+    // are already pointers, no conversion is needed.
+    const char *param_pointer = "params";
+
+    switch (param_option) {
+      case BFApiParamOption::kSharedPtr:
+        // For shared_ptr, the parameter would be "const std::shared_ptr<>&".
+        foper_h << "  template<typename PType, typename RType>" << endl
+                << "  static Status Exec(const std::vector<std::shared_ptr<PType>>& params," << endl
+                << "                     const std::shared_ptr<RType>& result) {" << endl
+                << "    return "
+                << entry.cpp_name() << "<std::shared_ptr<PType>, const std::shared_ptr<RType>&>(";
+        break;
+      case BFApiParamOption::kRawPtr:
+        // Raw pointer.
+        foper_h << "  template<typename PType, typename RType>" << endl
+                << "  static Status ExecRaw(const std::vector<PType*>& params," << endl
+                << "                        RType *result) {" << endl
+                << "    return " << entry.cpp_name() << "<PType*, RType*>(";
+        break;
+      case BFApiParamOption::kRefAndRaw:
+        // Reference of object.
+        foper_h << "  template<typename PType, typename RType>" << endl
+                << "  static Status ExecRefAndRaw(std::vector<PType> *params," << endl
+                << "                              RType *result) {" << endl;
+
+        if (entry.param_types().size() == 1 && entry.param_types()[0] == DataType::TYPEARGS) {
+          // If the caller used the kRefAndRaw option, we'll have to convert the params vector from
+          // vector<object> to vector<object*>.
+          param_pointer = "local_params";
+          foper_h << "    const int count = params->size();" << endl
+                  << "    std::vector<PType*> local_params(count);"
+                  << "    for (int i = 0; i < count; i++) {" << endl
+                  << "      local_params[i] = &(*params)[i];" << endl
+                  << "    }" << endl;
+          foper_h << "    return " << entry.cpp_name() << "<PType*, RType*>(";
+        } else {
+          param_pointer = "&(*params)";
+          foper_h << "    return " << entry.cpp_name() << "<PType*, RType*>(";
+        }
     }
 
     string param_end;
@@ -230,13 +274,20 @@ class BFCodegen {
 
       if (param_type == DataType::TYPEARGS) {
         // Break from the loop as we don't allow other argument to be use to TYPE_ARGS.
-        foper_h << "params";
+        foper_h << param_pointer;
         break;
       }
 
       // Deref the parameters and pass them.
-      foper_h << "params[" << pindex << "]";
+      foper_h << param_pointer << "[" << pindex << "]";
       pindex++;
+
+      // SPECIAL CASE: For CAST operator, at compile time, we need two input parameter for type
+      // resolution. However, at runtime, the associated function would take one parameter and
+      // convert the value to proper result, so break the loop here.
+      if (strcmp(entry.yql_name(), "cast") == 0) {
+        break;
+      }
     }
     if (!YQLType::IsNull(entry.return_type())) {
       foper_h << param_end << "result";
@@ -323,6 +374,20 @@ class BFCodegen {
     for (int op_index = 0; op_index < operator_ids_.size(); op_index++) {
       const BFClassInfo& bfclass = operator_ids_[op_index];
       ftable << "  " << bfclass.class_name << "::" << "ExecRaw<PType, RType>," << endl;
+    }
+    ftable << "};" << endl
+           << endl;
+
+    // Generating table of functions whose outputs are raw pointers.
+    ftable << "template<typename PType, typename RType," << endl
+           << "         template<typename, typename> class CType," << endl
+           << "         template<typename> class AType>" << endl
+           << "const vector<std::function<Status(std::vector<PType>*, RType*)>>"
+           << endl
+           << "    BFExecApi<PType, RType, CType, AType>::kBFExecFuncsRefAndRaw = {" << endl;
+    for (int op_index = 0; op_index < operator_ids_.size(); op_index++) {
+      const BFClassInfo& bfclass = operator_ids_[op_index];
+      ftable << "  " << bfclass.class_name << "::" << "ExecRefAndRaw<PType, RType>," << endl;
     }
     ftable << "};" << endl
            << endl;

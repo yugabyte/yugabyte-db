@@ -175,6 +175,9 @@ CHECKED_STATUS PTSelectStmt::AnalyzeTarget(TreeNode *target, SemContext *sem_con
         RETURN_NOT_OK(AnalyzeDistinctColumn(target, col_desc, sem_context));
       }
       selected_columns_->push_back(col_desc);
+
+      // Inform the executor that we need to read this column.
+      AddColumnRef(*col_desc);
     }
   } else { // Add the column descriptor to selected_columns_.
     // Set expected type to UNKNOWN as we don't expected any datatype.

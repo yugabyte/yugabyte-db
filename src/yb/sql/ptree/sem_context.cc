@@ -69,15 +69,15 @@ shared_ptr<YBTable> SemContext::GetTableDesc(const client::YBTableName& table_na
   return table;
 }
 
-const SymbolEntry *SemContext::SeekSymbol(const MCString& name) const {
-  auto iter = symtab_.find(name);
+SymbolEntry *SemContext::SeekSymbol(const MCString& name) {
+  MCMap<MCString, SymbolEntry>::iterator iter = symtab_.find(name);
   if (iter != symtab_.end()) {
     return &iter->second;
   }
   return nullptr;
 }
 
-PTColumnDefinition *SemContext::GetColumnDefinition(const MCString& col_name) const {
+PTColumnDefinition *SemContext::GetColumnDefinition(const MCString& col_name) {
   const SymbolEntry * entry = SeekSymbol(col_name);
   if (entry == nullptr) {
     return nullptr;
@@ -85,11 +85,24 @@ PTColumnDefinition *SemContext::GetColumnDefinition(const MCString& col_name) co
   return entry->column_;
 }
 
-const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name) const {
-  const SymbolEntry * entry = SeekSymbol(col_name);
+const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name, bool reading_column) {
+  SymbolEntry * entry = SeekSymbol(col_name);
   if (entry == nullptr) {
     return nullptr;
   }
+
+  // To indicate that DocDB must read a columm value to execute an expression, the column is added
+  // to the column_refs list.
+  if (reading_column) {
+    // TODO(neil) Currently AddColumnRef() relies on MCSet datatype to guarantee that we have a
+    // unique list of IDs, but we should take advantage to "symbol table" when collecting data
+    // for execution. Symbol table and "column_read_count_" need to be corrected so that we can
+    // use MCList instead.
+
+    // Indicate that this column must be read for the statement execution.
+    current_dml_stmt_->AddColumnRef(*entry->column_desc_);
+  }
+
   return entry->column_desc_;
 }
 

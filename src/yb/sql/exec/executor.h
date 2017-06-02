@@ -65,6 +65,8 @@ class Executor {
   // Runs the execution on all of the entries in the list node.
   void ExecPTNodeAsync(const PTListNode *tnode, StatementExecutedCallback cb, int idx = 0);
 
+  CHECKED_STATUS ColumnRefsToPB(const PTDmlStmt *tnode, YQLReferencedColumnsPB *columns_pb);
+
   // Creates table.
   void ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCallback cb);
 

@@ -182,6 +182,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=2)]) -> 4
 
     for (int i = 1; i <= 3 ; i++) {
       yql_read_req.add_column_ids(i);
+      yql_read_req.mutable_column_refs()->add_ids(i);
     }
 
     YQLReadOperation read_op(yql_read_req);
@@ -492,7 +493,7 @@ void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType 
   DisableCompactions();
 
   ColumnSchema hash_column("k", INT32, false, true);
-  ColumnSchema range_column("r", INT32, false, false, false, type);
+  ColumnSchema range_column("r", INT32, false, false, false, false, type);
   ColumnSchema value_column("v", INT32, false, false);
   auto columns = { hash_column, range_column, value_column };
   Schema schema(columns, CreateColumnIds(columns.size()), 2);

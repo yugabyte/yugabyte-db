@@ -934,9 +934,7 @@ PrimitiveValue PrimitiveValue::FromYQLExpressionPB(const std::shared_ptr<YQLType
   switch (yql_expr.expr_case()) {
     case YQLExpressionPB::ExprCase::kValue:
       return FromYQLValuePB(yql_type, yql_expr.value(), sorting_type);
-    case YQLExpressionPB::ExprCase::kBfcall:
-      LOG(FATAL) << "Builtin call execution is not yet supported";
-      break;
+    case YQLExpressionPB::ExprCase::kBfcall: FALLTHROUGH_INTENDED;
     case YQLExpressionPB::ExprCase::kColumnId: FALLTHROUGH_INTENDED;
     case YQLExpressionPB::ExprCase::kCondition: FALLTHROUGH_INTENDED;
     case YQLExpressionPB::ExprCase::EXPR_NOT_SET:

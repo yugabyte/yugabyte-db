@@ -162,6 +162,20 @@ class BFCompileApi {
     VLOG(3) << "Compiled function call " << yql_name << ". Status: " << s.ToString();
     return s;
   }
+
+  // Seeks CAST opcode from one type to another.
+  static Status FindCastOpcode(DataType source, DataType target, BFOpcode *opcode) {
+    if (source == target) {
+      *opcode = yb::bfyql::OPCODE_NOOP;
+      return Status::OK();
+    }
+
+    // Find conversion opcode.
+    const BFDecl *found_decl = nullptr;
+    std::vector<DataType> actual_types = { source, target };
+    DataType return_type = DataType::UNKNOWN_DATA;
+    return FindYqlOpcode(bfyql::kCastFuncName, actual_types, opcode, &found_decl, &return_type);
+  }
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -215,15 +229,20 @@ template<typename PType,
          template<typename> class AType = std::allocator>
 class BFExecApi {
  public:
-  // Declare table of function pointers that take shared_ptr as inputs.
+  // Declare table of function pointers that take shared_ptr as arguments and returned-result.
   static const vector<std::function<Status(const std::vector<std::shared_ptr<PType>>&,
                                            const std::shared_ptr<RType>&)>>
       kBFExecFuncs;
 
-  // Declare table of function pointers that take raw pointers as inputs.
+  // Declare table of function pointers that take raw pointers as arguments and returned-result.
   static const vector<std::function<Status(const std::vector<PType*>&, RType*)>>
       kBFExecFuncsRaw;
 
+  // Declare table of function pointers that take ref as arguments and raw pointers as result
+  static const vector<std::function<Status(std::vector<PType>*, RType*)>>
+      kBFExecFuncsRefAndRaw;
+
+  //------------------------------------------------------------------------------------------------
   // Runs the associated entry in the table of function pointers on the given shared_ptrs.
   //   kBFExecFuncs[opcode](args)
   static Status ExecYqlOpcode(BFOpcode opcode,
@@ -232,18 +251,6 @@ class BFExecApi {
     // TODO(neil) There has to be some sanity error check here.
     RETURN_NOT_OK(CheckError(opcode, params, result));
     Status s = kBFExecFuncs[static_cast<int>(opcode)](params, result);
-    VLOG(3) << "Executed builtin call(" << int(opcode) << "). Status: " << s.ToString();
-    return s;
-  }
-
-  // Runs the associated entry in the table of function pointers on the given raw pointers.
-  //   kBFExecFuncs[opcode](args)
-  static Status ExecYqlOpcode(BFOpcode opcode,
-                              const std::vector<PType*>& params,
-                              RType *result) {
-    // TODO(neil) There has to be some sanity error check here.
-    RETURN_NOT_OK(CheckError(opcode, params, result));
-    Status s = kBFExecFuncsRaw[static_cast<int>(opcode)](params, result);
     VLOG(3) << "Executed builtin call(" << int(opcode) << "). Status: " << s.ToString();
     return s;
   }
@@ -261,8 +268,45 @@ class BFExecApi {
     return Status::OK();
   }
 
+  //------------------------------------------------------------------------------------------------
+  // Runs the associated entry in the table of function pointers on the given raw pointers.
+  //   kBFExecFuncsRaw[opcode](args)
+  static Status ExecYqlOpcode(BFOpcode opcode,
+                              const std::vector<PType*>& params,
+                              RType *result) {
+    // TODO(neil) There has to be some sanity error check here.
+    RETURN_NOT_OK(CheckError(opcode, params, result));
+    Status s = kBFExecFuncsRaw[static_cast<int>(opcode)](params, result);
+    VLOG(3) << "Executed builtin call(" << int(opcode) << "). Status: " << s.ToString();
+    return s;
+  }
+
   static Status CheckError(BFOpcode opcode,
                            const std::vector<PType*>& params,
+                           RType *result) {
+    // TODO(neil) Currently, the execution phase is not yet implemented, so it'd be immature to
+    // code for error-check here. Once it is implemented, we'll know what to check.
+    if (VLOG_IS_ON(3)) {
+      LOG(INFO) << "Executing opcode " << int(opcode);
+    }
+    return Status::OK();
+  }
+
+  //------------------------------------------------------------------------------------------------
+  // Runs the associated entry in the table of function pointers on the given raw pointers.
+  //   kBFExecFuncsRefAndRaw[opcode](args)
+  static Status ExecYqlOpcode(BFOpcode opcode,
+                              std::vector<PType> *params,
+                              RType *result) {
+    // TODO(neil) There has to be some sanity error check here.
+    RETURN_NOT_OK(CheckError(opcode, params, result));
+    Status s = kBFExecFuncsRefAndRaw[static_cast<int>(opcode)](params, result);
+    VLOG(3) << "Executed builtin call(" << int(opcode) << "). Status: " << s.ToString();
+    return s;
+  }
+
+  static Status CheckError(BFOpcode opcode,
+                           std::vector<PType> *params,
                            RType *result) {
     // TODO(neil) Currently, the execution phase is not yet implemented, so it'd be immature to
     // code for error-check here. Once it is implemented, we'll know what to check.

@@ -55,12 +55,19 @@ class PTAssign : public TreeNode {
     return rhs_;
   }
 
+  bool require_column_read() const {
+    return require_column_read_;
+  }
+
  private:
   PTQualifiedName::SharedPtr lhs_;
   PTExpr::SharedPtr rhs_;
 
   // Semantic phase will fill in this value.
   const ColumnDesc *col_desc_;
+
+  // Indicate if a column read is required to execute this assign statement.
+  bool require_column_read_ = false;
 };
 
 using PTAssignListNode = TreeListNode<PTAssign>;
@@ -116,11 +123,18 @@ class PTUpdateStmt : public PTDmlStmt {
     return if_clause_;
   }
 
+  bool require_column_read() const {
+    return require_column_read_;
+  }
+
  private:
   PTTableRef::SharedPtr relation_;
   PTAssignListNode::SharedPtr set_clause_;
   PTExpr::SharedPtr where_clause_;
   PTExpr::SharedPtr if_clause_;
+
+  // Indicate if a column read is required to execute this update statement.
+  bool require_column_read_ = false;
 };
 
 }  // namespace sql

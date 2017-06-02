@@ -201,6 +201,10 @@ class PTColumnDefinition : public TreeNode {
     return datatype_->yql_type();
   }
 
+  bool is_counter() const {
+    return datatype_->is_counter();
+  }
+
  private:
   const MCSharedPtr<MCString> name_;
   PTBaseType::SharedPtr datatype_;
@@ -275,8 +279,6 @@ class PTCreateTable : public TreeNode {
 
   CHECKED_STATUS CheckPrimaryType(SemContext *sem_context, const PTBaseType::SharedPtr& datatype);
 
-  bool IsValidPrimaryType(DataType type) const;
-
   // Table name.
   client::YBTableName yb_table_name() const {
     return relation_->ToTableName();
@@ -307,6 +309,7 @@ class PTCreateTable : public TreeNode {
   MCList<PTColumnDefinition *> hash_columns_;
 
   bool create_if_not_exists_;
+  bool contain_counters_;
   const PTTablePropertyListNode::SharedPtr table_properties_;
 };
 

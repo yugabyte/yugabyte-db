@@ -117,22 +117,24 @@ message ColumnSchemaPB {
   required string name = 2;
   required YQLTypePB type = 3;
   optional bool is_key = 4 [default = false];
-  optional bool is_hash_key = 11 [default = false];
-  optional bool is_nullable = 5 [default = false];
-  optional bool is_static = 13 [default = false];
-  optional uint32 sorting_type = 12 [default = 0];
-  optional bytes read_default_value = 6;
-  optional bytes write_default_value = 7;
+  optional bool is_hash_key = 5 [default = false];
+  optional bool is_nullable = 6 [default = false];
+  optional bool is_static = 7 [default = false];
+  optional bool is_counter = 8 [default = false];
+  optional uint32 sorting_type = 9 [default = 0];
+  optional bytes read_default_value = 10;
+  optional bytes write_default_value = 11;
 
   // The following attributes refer to the on-disk storage of the column.
   // They won't always be set, depending on context.
-  optional EncodingType encoding = 8 [default=AUTO_ENCODING];
-  optional CompressionType compression = 9 [default=DEFAULT_COMPRESSION];
-  optional int32 cfile_block_size = 10 [default=0];
+  optional EncodingType encoding = 12 [default=AUTO_ENCODING];
+  optional CompressionType compression = 13 [default=DEFAULT_COMPRESSION];
+  optional int32 cfile_block_size = 14 [default=0];
 }
 
 message TablePropertiesPB {
   optional uint64 default_time_to_live = 1;
+  optional bool contain_counters = 2;
 }
 
 message SchemaPB {

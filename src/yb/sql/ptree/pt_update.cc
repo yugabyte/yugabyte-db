@@ -31,13 +31,14 @@ CHECKED_STATUS PTAssign::Analyze(SemContext *sem_context) {
   // Analyze left value (column name).
   RETURN_NOT_OK(lhs_->Analyze(sem_context));
 
-  col_desc_ = sem_context->GetColumnDesc(lhs_->last_name());
+  col_desc_ = sem_context->GetColumnDesc(lhs_->last_name(), false /* reading_column */);
   if (col_desc_ == nullptr) {
     return sem_context->Error(loc(), "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
   }
 
   // Setup the expected datatypes, and analyze the rhs value.
-  sem_state.SetExprState(col_desc_->yql_type(), col_desc_->internal_type(), lhs_->bindvar_name());
+  sem_state.SetExprState(col_desc_->yql_type(), col_desc_->internal_type(), lhs_->bindvar_name(),
+                         col_desc_->is_counter() ? col_desc_ : nullptr);
   RETURN_NOT_OK(rhs_->Analyze(sem_context));
   RETURN_NOT_OK(rhs_->CheckRhsExpr(sem_context));
 
@@ -68,7 +69,6 @@ PTUpdateStmt::~PTUpdateStmt() {
 }
 
 CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
-
   RETURN_NOT_OK(PTDmlStmt::Analyze(sem_context));
 
   RETURN_NOT_OK(relation_->Analyze(sem_context));
@@ -107,11 +107,13 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
 CHECKED_STATUS PTUpdateStmt::AnalyzeSetExpr(PTAssign *assign_expr, SemContext *sem_context) {
   // Analyze the expression.
   RETURN_NOT_OK(assign_expr->Analyze(sem_context));
+  if (!require_column_read_ && assign_expr->require_column_read()) {
+    require_column_read_ = true;
+  }
 
   // Form the column args for protobuf.
   const ColumnDesc *col_desc = assign_expr->col_desc();
   column_args_->at(col_desc->index()).Init(col_desc, assign_expr->rhs());
-
   return Status::OK();
 }
 

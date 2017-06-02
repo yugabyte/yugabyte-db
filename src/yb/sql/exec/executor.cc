@@ -179,6 +179,23 @@ void Executor::PTNodeAsyncDone(
 
 //--------------------------------------------------------------------------------------------------
 
+CHECKED_STATUS Executor::ColumnRefsToPB(const PTDmlStmt *tnode,
+                                        YQLReferencedColumnsPB *columns_pb) {
+  // Write a list of columns to be read before executing the statement.
+  const MCSet<int32>& column_refs = tnode->column_refs();
+  for (auto column_ref : column_refs) {
+    columns_pb->add_ids(column_ref);
+  }
+
+  const MCSet<int32>& static_column_refs = tnode->static_column_refs();
+  for (auto column_ref : static_column_refs) {
+    columns_pb->add_static_ids(column_ref);
+  }
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
 void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCallback cb) {
   YBTableName table_name = tnode->yb_table_name();
 
@@ -231,6 +248,9 @@ void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCall
                                                               ->Order(column->order());
     if (column->is_static()) {
       column_spec->StaticColumn();
+    }
+    if (column->is_counter()) {
+      column_spec->Counter();
     }
   }
 
@@ -693,6 +713,14 @@ void Executor::ExecPTNodeAsync(
     req->add_column_ids(col_desc->id());
   }
 
+  // Setup the column values that need to be read.
+  st = ColumnRefsToPB(tnode, req->mutable_column_refs());
+  if (!st.ok()) {
+    CB_RETURN(
+        cb,
+        exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+  }
+
   // Specify distinct columns or non.
   req->set_distinct(tnode->distinct());
 
@@ -803,24 +831,31 @@ void Executor::ExecPTNodeAsync(const PTInsertStmt *tnode, StatementExecutedCallb
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
   shared_ptr<YBqlWriteOp> insert_op(table->NewYQLInsert());
+  YQLWriteRequestPB *req = insert_op->mutable_request();
 
   // Set the values for columns.
-  Status s = ColumnArgsToWriteRequestPB(table,
-                                        tnode,
-                                        insert_op->mutable_request(),
-                                        insert_op->mutable_row());
-  if (!s.ok()) {
+  Status st = ColumnArgsToWriteRequestPB(table, tnode, req, insert_op->mutable_row());
+  if (!st.ok()) {
     CB_RETURN(
-        cb, exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+        cb,
+        exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+  }
+
+  // Setup the column values that need to be read.
+  st = ColumnRefsToPB(tnode, req->mutable_column_refs());
+  if (!st.ok()) {
+    CB_RETURN(
+        cb,
+        exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
   }
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
-    s = PTExprToPB(tnode->if_clause(), insert_op->mutable_request()->mutable_if_expr());
-    if (!s.ok()) {
+    st = PTExprToPB(tnode->if_clause(), insert_op->mutable_request()->mutable_if_expr());
+    if (!st.ok()) {
       CB_RETURN(
           cb,
-          exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+          exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
     }
   }
 
@@ -846,13 +881,21 @@ void Executor::ExecPTNodeAsync(const PTDeleteStmt *tnode, StatementExecutedCallb
         exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
   }
 
+  // Setup the column values that need to be read.
+  st = ColumnRefsToPB(tnode, req->mutable_column_refs());
+  if (!st.ok()) {
+    CB_RETURN(
+        cb,
+        exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+  }
+
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
-    Status s = PTExprToPB(tnode->if_clause(), delete_op->mutable_request()->mutable_if_expr());
-    if (!s.ok()) {
+    st = PTExprToPB(tnode->if_clause(), delete_op->mutable_request()->mutable_if_expr());
+    if (!st.ok()) {
       CB_RETURN(
           cb,
-          exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+          exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
     }
   }
 
@@ -883,6 +926,14 @@ void Executor::ExecPTNodeAsync(const PTUpdateStmt *tnode, StatementExecutedCallb
                                   tnode,
                                   update_op->mutable_request(),
                                   update_op->mutable_row());
+  if (!st.ok()) {
+    CB_RETURN(
+        cb,
+        exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+  }
+
+  // Setup the column values that need to be read.
+  st = ColumnRefsToPB(tnode, req->mutable_column_refs());
   if (!st.ok()) {
     CB_RETURN(
         cb,

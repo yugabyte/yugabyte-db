@@ -75,6 +75,7 @@
 #include "yb/sql/ptree/pt_type.h"
 #include "yb/sql/ptree/pt_name.h"
 #include "yb/sql/ptree/pt_expr.h"
+#include "yb/sql/ptree/pt_bcall.h"
 #include "yb/sql/ptree/pt_select.h"
 #include "yb/sql/ptree/pt_insert.h"
 #include "yb/sql/ptree/pt_delete.h"
@@ -171,7 +172,6 @@ using namespace yb::sql;
 #define PARSER_CQL_INVALID(loc) parser_->Error(loc, ErrorCode::CQL_STATEMENT_INVALID)
 #define PARSER_CQL_INVALID_MSG(loc, msg) parser_->Error(loc, msg, ErrorCode::CQL_STATEMENT_INVALID)
 
-DECLARE_bool(yql_experiment_support_expression);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -500,7 +500,7 @@ DECLARE_bool(yql_experiment_support_expression);
                           CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE CLUSTER CLUSTERING
                           COALESCE COLLATE COLLATION COLUMN COMMENT COMMENTS COMMIT COMMITTED
                           CONCURRENTLY CONFIGURATION CONFLICT CONNECTION CONSTRAINT CONSTRAINTS
-                          CONTENT_P CONTINUE_P CONVERSION_P COPY COST CREATE CROSS CSV CUBE
+                          CONTENT_P CONTINUE_P CONVERSION_P COPY COST COUNTER CREATE CROSS CSV CUBE
                           CURRENT_P CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE CURRENT_SCHEMA
                           CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
 
@@ -2858,14 +2858,16 @@ a_expr:
   | collection_expr {
     $$ = $1;
   }
-  // Experimental or not supported.
   | a_expr '+' a_expr {
-    if (!FLAGS_yql_experiment_support_expression) {
-      PARSER_CQL_INVALID(@2);
-    }
     PTExprListNode::SharedPtr args = MAKE_NODE(@1, PTExprListNode, $1);
     args->Append($3);
     auto name = parser_->MakeString("+");
+    $$ = MAKE_NODE(@2, PTBcall, name, args);
+  }
+  | a_expr '-' a_expr {
+    PTExprListNode::SharedPtr args = MAKE_NODE(@1, PTExprListNode, $1);
+    args->Append($3);
+    auto name = parser_->MakeString("-");
     $$ = MAKE_NODE(@2, PTBcall, name, args);
   }
   | inactive_a_expr {
@@ -2887,9 +2889,6 @@ inactive_a_expr:
   //
   // If you add more explicitly-known operators, be sure to add them
   // also to b_expr and to the MathOp list below.
-  | a_expr '-' a_expr {
-    PARSER_CQL_INVALID(@2);
-  }
   | a_expr '*' a_expr {
     PARSER_CQL_INVALID(@2);
   }
@@ -4098,13 +4097,13 @@ Typename:
 
 ParametricTypename:
   MAP '<' Typename ',' Typename '>' {
-    $$ = MAKE_NODE(@1, PTMap, $3->yql_type(), $5->yql_type());
+    $$ = MAKE_NODE(@1, PTMap, $3, $5);
   }
   | SET '<' Typename '>' {
-    $$ = MAKE_NODE(@1, PTSet, $3->yql_type());
+    $$ = MAKE_NODE(@1, PTSet, $3);
   }
   | LIST '<' Typename '>' {
-    $$ = MAKE_NODE(@1, PTList, $3->yql_type());
+    $$ = MAKE_NODE(@1, PTList, $3);
   }
 ;
 
@@ -4219,6 +4218,9 @@ Numeric:
   }
   | BIGINT {
     $$ = MAKE_NODE(@1, PTBigInt);
+  }
+  | COUNTER {
+    $$ = MAKE_NODE(@1, PTCounter);
   }
   | REAL {
     $$ = MAKE_NODE(@1, PTFloat, 24);
@@ -4737,6 +4739,7 @@ col_name_keyword:
   | CHAR_P { $$ = $1; }
   | CHARACTER { $$ = $1; }
   | COALESCE { $$ = $1; }
+  | COUNTER { $$ = $1; }
   | DEC { $$ = $1; }
   | DECIMAL_P { $$ = $1; }
   | DOUBLE_P { $$ = $1; }

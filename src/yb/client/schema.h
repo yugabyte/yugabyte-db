@@ -135,9 +135,9 @@ class YBColumnSchema {
         return InternalType::kSetValue;
       case LIST:
         return InternalType::kListValue;
+      case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
       case UNKNOWN_DATA:
         return InternalType::VALUE_NOT_SET;
-      case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
       case VARINT: FALLTHROUGH_INTENDED;
       case TUPLE: FALLTHROUGH_INTENDED;
       case TYPEARGS: FALLTHROUGH_INTENDED;
@@ -161,6 +161,7 @@ class YBColumnSchema {
                  bool is_nullable = false,
                  bool is_hash_key = false,
                  bool is_static = false,
+                 bool is_counter = false,
                  ColumnSchema::SortingType sorting_type = ColumnSchema::SortingType::kNotSpecified,
                  const void* default_value = NULL,
                  YBColumnStorageAttributes attributes = YBColumnStorageAttributes());
@@ -179,6 +180,7 @@ class YBColumnSchema {
   bool is_hash_key() const;
   bool is_nullable() const;
   bool is_static() const;
+  bool is_counter() const;
   yb::ColumnSchema::SortingType sorting_type() const;
 
   // TODO: Expose default column value and attributes?
@@ -281,8 +283,10 @@ class YBColumnSpec {
   YBColumnSpec* Order(int32_t order);
 
   // Specify the user-defined sorting direction.
-
   YBColumnSpec* SetSortingType(ColumnSchema::SortingType sorting_type);
+
+  // Identify this column as counter.
+  YBColumnSpec* Counter();
 
     // Operations only relevant for Alter Table
   // ------------------------------------------------------------
@@ -372,6 +376,9 @@ class YBSchema {
                        const TableProperties& table_properties) WARN_UNUSED_RESULT;
 
   bool Equals(const YBSchema& other) const;
+
+  const TableProperties& table_properties() const;
+
   YBColumnSchema Column(size_t idx) const;
   YBColumnSchema ColumnById(int32_t id) const;
 

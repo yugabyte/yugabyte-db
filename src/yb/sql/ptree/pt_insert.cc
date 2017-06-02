@@ -43,9 +43,12 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
 
   // Get table descriptor.
   RETURN_NOT_OK(LookupTable(sem_context));
-  const int num_cols = num_columns();
+  if (table_->schema().table_properties().contain_counters()) {
+    return sem_context->Error(relation_->loc(), ErrorCode::INSERT_TABLE_OF_COUNTERS);
+  }
 
   // Check the selected columns. Cassandra only supports inserting one tuple / row at a time.
+  const int num_cols = num_columns();
   PTValues *value_clause = static_cast<PTValues *>(value_clause_.get());
   if (value_clause->TupleCount() == 0) {
     return sem_context->Error(value_clause_->loc(), ErrorCode::TOO_FEW_ARGUMENTS);
@@ -70,7 +73,8 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
     // Mismatch between arguments and columns.
     MCList<PTExpr::SharedPtr>::const_iterator iter = exprs.begin();
     for (PTQualifiedName::SharedPtr name : names) {
-      const ColumnDesc *col_desc = sem_context->GetColumnDesc(name->last_name());
+      const ColumnDesc *col_desc = sem_context->GetColumnDesc(name->last_name(),
+                                                              false /* reading_column */);
 
       // Check that the column exists.
       if (col_desc == nullptr) {

@@ -95,7 +95,7 @@ class BfYqlTest : public YBTest {
         // Converting params.
         cast_params[0] = params[pindex];
         cast_params[1] = converted_param;
-        BFExecApiTest::ExecYqlFunc(bfyql::kCastFuncName, cast_params, nullptr);
+        BFExecApiTest::ExecYqlFunc(bfyql::kCastFuncName, cast_params, converted_param);
 
         // Save converted value.
         (*converted_params)[pindex] = converted_param;
@@ -184,10 +184,10 @@ TEST_F(BfYqlTest, TestExactMatchSignature) {
   ASSERT_EQ(temp_result->yql_type_id(), DataType::INT64);
   ASSERT_OK(BFExecApiTest::ExecYqlOpcode(opcode, params, temp_result));
 
-  // Convert int64 to int16 value.
+  // Convert int64 value (temp_result) to int16 value (result).
   result->set_yql_type_id(DataType::INT16);
   vector<BFTestValue::SharedPtr> temp_params = { temp_result, result };
-  BFExecApiTest::ExecYqlFunc(bfyql::kCastFuncName, temp_params, nullptr);
+  BFExecApiTest::ExecYqlFunc(bfyql::kCastFuncName, temp_params, result);
 
   // Check result.
   expected_int_result = int_val1 + int_val2;
@@ -238,11 +238,11 @@ TEST_F(BfYqlTest, TestExactMatchSignature) {
   param0->set_double_value(d_val1);
   param1->set_double_value(d_val2);
 
-  // Execute and convert.
+  // Execute (double + double) and convert double(temp_result) to float(result).
   result->set_yql_type_id(DataType::FLOAT);
   temp_result->set_yql_type_id(DataType::DOUBLE);
   ASSERT_OK(BFExecApiTest::ExecYqlFunc("+", params, temp_result));
-  ASSERT_OK(BFExecApiTest::ExecYqlFunc("cast", temp_params, nullptr));
+  ASSERT_OK(BFExecApiTest::ExecYqlFunc("cast", temp_params, result));
 
   expected_int_result = d_val1 + d_val2;
   return_int_result = result->float_value();

@@ -6,6 +6,8 @@
 #include <sstream>
 #include <vector>
 
+#include "yb/common/yql_bfunc.h"
+
 using std::endl;
 using std::make_pair;
 using std::map;
@@ -376,31 +378,83 @@ void SubDocument::ToYQLValuePB(SubDocument doc,
   LOG(FATAL) << "Unsupported datatype in SubDocument: " << yql_type->ToString();
 }
 
+void SubDocument::ToYQLExpressionPB(SubDocument doc,
+                                    const shared_ptr<YQLType>& yql_type,
+                                    YQLExpressionPB* yql_expr) {
+  ToYQLValuePB(doc, yql_type, yql_expr->mutable_value());
+}
+
 SubDocument SubDocument::FromYQLExpressionPB(const shared_ptr<YQLType>& yql_type,
                                              const YQLExpressionPB& yql_expr,
-                                             ColumnSchema::SortingType sorting_type) {
+                                             ColumnSchema::SortingType sorting_type,
+                                             const YQLValueMap& value_map) {
   switch (yql_expr.expr_case()) {
-    case YQLExpressionPB::ExprCase::kValue:
+    case YQLExpressionPB::ExprCase::kValue:  // Scenarios: SET column = constant.
       return FromYQLValuePB(yql_type, yql_expr.value(), sorting_type);
-    case YQLExpressionPB::ExprCase::kBfcall:
-      LOG(FATAL) << "Builtin call execution is not yet supported";
-      break;
-    case YQLExpressionPB::ExprCase::kColumnId:
-      LOG(FATAL) << "Internal error: Column reference is not allowed in this context";
-      break;
+
+    case YQLExpressionPB::ExprCase::kColumnId:  // Scenarios: SET column = column.
+      FALLTHROUGH_INTENDED;
+
+    case YQLExpressionPB::ExprCase::kBfcall: {  // Scenarios: SET column = func().
+      YQLValueWithPB result;
+      EvalYQLExpressionPB(yql_expr, value_map, &result);
+      return FromYQLValuePB(yql_type, result.value(), sorting_type);
+    }
+
     case YQLExpressionPB::ExprCase::kCondition:
       LOG(FATAL) << "Internal error: Conditional expression is not allowed in this context";
       break;
+
     case YQLExpressionPB::ExprCase::EXPR_NOT_SET:
       break;
   }
   LOG(FATAL) << "Internal error: invalid column or value expression: " << yql_expr.expr_case();
 }
 
-void SubDocument::ToYQLExpressionPB(SubDocument doc,
-                                    const shared_ptr<YQLType>& yql_type,
-                                    YQLExpressionPB* yql_expr) {
-  ToYQLValuePB(doc, yql_type, yql_expr->mutable_value());
+// TODO(neil) When memory pool is implemented in DocDB, we should run some perf tool to optimize
+// the expression evaluating process. The intermediate / temporary YQLValue should be allocated
+// in the pool. Currently, the argument structures are on stack, but their contents are in the
+// heap memory.
+void SubDocument::EvalYQLExpressionPB(const YQLExpressionPB& yql_expr,
+                                      const YQLValueMap& value_map,
+                                      YQLValueWithPB *result) {
+  switch (yql_expr.expr_case()) {
+    case YQLExpressionPB::ExprCase::kValue:
+      result->Assign(yql_expr.value());
+      break;
+
+    case YQLExpressionPB::ExprCase::kBfcall: {
+      // First evaluate the arguments.
+      const YQLBFCallPB& bfcall = yql_expr.bfcall();
+      vector<YQLValueWithPB> args(bfcall.operands().size());
+      int arg_index = 0;
+      for (auto operand : bfcall.operands()) {
+        EvalYQLExpressionPB(operand, value_map, &args[arg_index]);
+        arg_index++;
+      }
+
+      // Execute the builtin call associated with the given opcode.
+      YQLBfunc::Exec(static_cast<bfyql::BFOpcode>(bfcall.bfopcode()), &args, result);
+      break;
+    }
+
+    case YQLExpressionPB::ExprCase::kColumnId: {
+      auto iter = value_map.find(ColumnId(yql_expr.column_id()));
+      if (iter != value_map.end()) {
+        result->Assign(iter->second);
+      } else {
+        result->SetNull();
+      }
+      break;
+    }
+
+    case YQLExpressionPB::ExprCase::kCondition:
+      LOG(FATAL) << "Internal error: Conditional expression is not allowed in this context";
+      break;
+
+    case YQLExpressionPB::ExprCase::EXPR_NOT_SET:
+      break;
+  }
 }
 
 }  // namespace docdb

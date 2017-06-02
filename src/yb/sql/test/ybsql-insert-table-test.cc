@@ -5,8 +5,6 @@
 #include "yb/common/table_properties_constants.h"
 #include "yb/sql/test/ybsql-test-base.h"
 
-DECLARE_bool(yql_experiment_support_expression);
-
 namespace yb {
 namespace sql {
 
@@ -129,19 +127,8 @@ TEST_F(YbSqlInsertTable, TestSqlInsertTableWithExpression) {
       "CREATE TABLE human_resource(id int, name varchar, salary int, primary key(id, name));");
 
   //------------------------------------------------------------------------------------------------
-  // INSERT: Using builtin functions for experimental cases.
-  FLAGS_yql_experiment_support_expression = true;
-
-  // Test '+', the only supported operator during experimental period.
-  // EXEC_VALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(7 + 9, 'valid +', 100);");
-
-  // Invalid statements for using undefined functions.
-  // EXEC_INVALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(7 + 9, Foo(), 100);");
-
-  //------------------------------------------------------------------------------------------------
   // INSERT: Using builtin functions in normal exec environment.
   // Error should be raised as builtins are not yet supported.
-  FLAGS_yql_experiment_support_expression = false;
   EXEC_INVALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(777, token(4), 100);");
   EXEC_INVALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(7 + 9, token(4), 100);");
 }

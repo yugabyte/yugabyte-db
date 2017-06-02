@@ -395,81 +395,28 @@ const RedisResponsePB& RedisReadOperation::response() {
 
 namespace {
 
-CHECKED_STATUS GetNonKeyColumns(
-    const Schema& schema, const google::protobuf::RepeatedPtrField<yb::YQLExpressionPB>& operands,
-    set<ColumnId>* static_columns, set<ColumnId>* non_static_columns);
-
-// Get all non-key columns referenced in a condition.
-CHECKED_STATUS GetNonKeyColumns(
-    const Schema& schema, const YQLConditionPB& condition,
-    set<ColumnId>* static_columns, set<ColumnId>* non_static_columns) {
-  return GetNonKeyColumns(schema, condition.operands(), static_columns, non_static_columns);
-}
-
-// Get all non-key columns referenced in a list of operands.
-CHECKED_STATUS GetNonKeyColumns(
-    const Schema& schema, const google::protobuf::RepeatedPtrField<yb::YQLExpressionPB>& operands,
-    set<ColumnId>* static_columns, set<ColumnId>* non_static_columns) {
-  for (const auto& operand : operands) {
-    switch (operand.expr_case()) {
-      case YQLExpressionPB::ExprCase::kValue:
-        continue;
-      case YQLExpressionPB::ExprCase::kColumnId: {
-        const auto column_id = ColumnId(operand.column_id());
-        if (!schema.is_key_column(column_id)) {
-          if (schema.column_by_id(column_id).is_static()) {
-            static_columns->insert(column_id);
-          } else {
-            non_static_columns->insert(column_id);
-          }
-        }
-        continue;
-      }
-      case YQLExpressionPB::ExprCase::kCondition:
-        RETURN_NOT_OK(
-            GetNonKeyColumns(schema, operand.condition(), static_columns, non_static_columns));
-        continue;
-      case YQLExpressionPB::ExprCase::kBfcall:
-        LOG(FATAL) << "NEIL: Read & double check this code";
-        continue;
-      case YQLExpressionPB::ExprCase::EXPR_NOT_SET:
-        return STATUS(Corruption, "expression not set");
-    }
-    return STATUS(
-        RuntimeError, Substitute("Expression type $0 not supported", operand.expr_case()));
-  }
-  return Status::OK();
-}
-
 // Create projection schemas of static and non-static columns from a rowblock projection schema
 // (for read) and a WHERE / IF condition (for read / write). "schema" is the full table schema
 // and "rowblock_schema" is the selected columns from which we are splitting into static and
 // non-static column portions.
-CHECKED_STATUS CreateProjections(
-    const Schema& schema, const Schema* rowblock_schema, const YQLConditionPB* condition,
-    Schema* static_projection, Schema* non_static_projection) {
+CHECKED_STATUS CreateProjections(const Schema& schema, const YQLReferencedColumnsPB& column_refs,
+                                 Schema* static_projection, Schema* non_static_projection) {
   // The projection schemas are used to scan docdb. Keep the columns to fetch in sorted order for
   // more efficient scan in the iterator.
   set<ColumnId> static_columns, non_static_columns;
 
-  // Note that we use "schema" instead of "rowblock_schema" to fetch column metadata below. This
-  // is necessary because rowblock_schema is not populated with column ids. Also when we support
-  // expressions in select-list, those expression columns do not have column ids.
-  if (rowblock_schema != nullptr) {
-    for (size_t idx = 0; idx < rowblock_schema->num_columns(); idx++) {
-      const auto column_id = rowblock_schema->column_id(idx);
-      if (!schema.is_key_column(column_id)) {
-        if (schema.column_by_id(column_id).is_static()) {
-          static_columns.insert(column_id);
-        } else {
-          non_static_columns.insert(column_id);
-        }
-      }
+  // Add regular columns.
+  for (int32 id : column_refs.ids()) {
+    const ColumnId column_id(id);
+    if (!schema.is_key_column(column_id)) {
+      non_static_columns.insert(column_id);
     }
   }
 
-  if (condition != nullptr) {
-    RETURN_NOT_OK(GetNonKeyColumns(schema, *condition, &static_columns, &non_static_columns));
+  // Add static columns.
+  for (int32 id : column_refs.static_ids()) {
+    const ColumnId column_id(id);
+    static_columns.insert(column_id);
   }
 
   RETURN_NOT_OK(
@@ -584,7 +531,13 @@ Status YQLWriteOperation::InitializeKeys(const bool hashed_key, const bool prima
 }
 
 bool YQLWriteOperation::RequireReadSnapshot() const {
-  return request_.has_if_expr();
+  // Because "IF EXISTS" and "IF NOT EXISTS" require reading primary key columns, we must require
+  // a snapshot. The "column_refs" only contains the IDs that YQL statements refers to. This field
+  // does not contains columns that DocDB itself chooses to read.
+  return
+      request_.has_if_expr() ||
+      (request_.has_column_refs() && (!request_.column_refs().ids().empty() ||
+                                      !request_.column_refs().static_ids().empty()));
 }
 
 list<DocPath> YQLWriteOperation::DocPathsToLock() const {
@@ -596,52 +549,74 @@ list<DocPath> YQLWriteOperation::DocPathsToLock() const {
   return paths;
 }
 
-Status YQLWriteOperation::IsConditionSatisfied(
-    const YQLConditionPB& condition, rocksdb::DB *rocksdb, const HybridTime& hybrid_time,
-    bool* should_apply, std::unique_ptr<YQLRowBlock>* rowblock) {
+Status YQLWriteOperation::ReadColumns(rocksdb::DB *rocksdb,
+                                      const HybridTime& hybrid_time,
+                                      Schema *param_static_projection,
+                                      Schema *param_non_static_projection,
+                                      YQLValueMap *value_map) {
+  Schema *static_projection = param_static_projection;
+  Schema *non_static_projection = param_non_static_projection;
+
+  Schema local_static_projection;
+  Schema local_non_static_projection;
+  if (static_projection == nullptr) {
+    static_projection = &local_static_projection;
+  }
+  if (non_static_projection == nullptr) {
+    non_static_projection = &local_non_static_projection;
+  }
 
   // Create projections to scan docdb.
-  Schema static_projection, non_static_projection;
-  RETURN_NOT_OK(CreateProjections(
-      schema_, nullptr /* rowblock_schema */, &condition,
-      &static_projection, &non_static_projection));
+  RETURN_NOT_OK(CreateProjections(schema_, request_.column_refs(),
+                                  static_projection, non_static_projection));
 
   // Generate hashed / primary key depending on if static / non-static columns are referenced in
   // the if-condition.
   RETURN_NOT_OK(InitializeKeys(
-      !static_projection.columns().empty(), !non_static_projection.columns().empty()));
+      !static_projection->columns().empty(), !non_static_projection->columns().empty()));
 
   // Scan docdb for the static and non-static columns of the row using the hashed / primary key.
-  YQLValueMap value_map;
   if (hashed_doc_key_ != nullptr) {
-    DocYQLScanSpec spec(static_projection, *hashed_doc_key_);
-    DocRowwiseIterator iterator(static_projection, schema_, rocksdb, hybrid_time);
+    DocYQLScanSpec spec(*static_projection, *hashed_doc_key_);
+    DocRowwiseIterator iterator(*static_projection, schema_, rocksdb, hybrid_time);
     RETURN_NOT_OK(iterator.Init(spec));
     if (iterator.HasNext()) {
-      RETURN_NOT_OK(iterator.NextRow(static_projection, &value_map));
+      RETURN_NOT_OK(iterator.NextRow(*static_projection, value_map));
     }
   }
   if (pk_doc_key_ != nullptr) {
-    DocYQLScanSpec spec(non_static_projection, *pk_doc_key_);
-    DocRowwiseIterator iterator(non_static_projection, schema_, rocksdb, hybrid_time);
+    DocYQLScanSpec spec(*non_static_projection, *pk_doc_key_);
+    DocRowwiseIterator iterator(*non_static_projection, schema_, rocksdb, hybrid_time);
     RETURN_NOT_OK(iterator.Init(spec));
     if (iterator.HasNext()) {
-      RETURN_NOT_OK(iterator.NextRow(non_static_projection, &value_map));
+      RETURN_NOT_OK(iterator.NextRow(*non_static_projection, value_map));
     } else {
       // If no non-static column is found, the row does not exist and we should clear the static
       // columns in the map to indicate the row does not exist.
-      value_map.clear();
+      value_map->clear();
     }
   }
 
+  return Status::OK();
+}
+
+Status YQLWriteOperation::IsConditionSatisfied(
+    const YQLConditionPB& condition, rocksdb::DB *rocksdb, const HybridTime& hybrid_time,
+    bool* should_apply, std::unique_ptr<YQLRowBlock>* rowblock, YQLValueMap* value_map) {
+
+  // Read column values.
+  Schema static_projection, non_static_projection;
+  RETURN_NOT_OK(ReadColumns(rocksdb, hybrid_time, &static_projection,
+                            &non_static_projection, value_map));
+
   // See if the if-condition is satisfied.
-  RETURN_NOT_OK(EvaluateCondition(condition, value_map, should_apply));
+  RETURN_NOT_OK(EvaluateCondition(condition, *value_map, should_apply));
 
   // Populate the result set to return the "applied" status, and optionally the present column
   // values if the condition is not satisfied and the row does exist (value_map is not empty).
   vector<ColumnSchema> columns;
   columns.emplace_back(ColumnSchema("[applied]", BOOL));
-  if (!*should_apply && !value_map.empty()) {
+  if (!*should_apply && !value_map->empty()) {
     columns.insert(columns.end(),
                    static_projection.columns().begin(), static_projection.columns().end());
     columns.insert(columns.end(),
@@ -650,9 +625,9 @@ Status YQLWriteOperation::IsConditionSatisfied(
   rowblock->reset(new YQLRowBlock(Schema(columns, 0)));
   YQLRow& row = rowblock->get()->Extend();
   row.mutable_column(0)->set_bool_value(*should_apply);
-  if (!*should_apply && !value_map.empty()) {
-    PopulateRow(value_map, static_projection, 1 /* begin col_idx */, &row);
-    PopulateRow(value_map, non_static_projection, 1 + static_projection.num_columns(), &row);
+  if (!*should_apply && !value_map->empty()) {
+    PopulateRow(*value_map, static_projection, 1 /* begin col_idx */, &row);
+    PopulateRow(*value_map, non_static_projection, 1 + static_projection.num_columns(), &row);
   }
 
   return Status::OK();
@@ -662,12 +637,16 @@ Status YQLWriteOperation::Apply(
     DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) {
 
   bool should_apply = true;
+  YQLValueMap value_map;
   if (request_.has_if_expr()) {
     RETURN_NOT_OK(IsConditionSatisfied(request_.if_expr().condition(),
                                        rocksdb,
                                        hybrid_time,
                                        &should_apply,
-                                       &rowblock_));
+                                       &rowblock_,
+                                       &value_map));
+  } else if (RequireReadSnapshot()) {
+    RETURN_NOT_OK(ReadColumns(rocksdb, hybrid_time, nullptr, nullptr, &value_map));
   }
 
   if (should_apply) {
@@ -703,7 +682,8 @@ Status YQLWriteOperation::Apply(
                 PrimitiveValue(column_id));
             const auto sub_doc = SubDocument::FromYQLExpressionPB(column.type(),
                                                                   column_value.expr(),
-                                                                  column.sorting_type());
+                                                                  column.sorting_type(),
+                                                                  value_map);
             RETURN_NOT_OK(doc_write_batch->InsertSubDocument(
                 sub_path, sub_doc, InitMarkerBehavior::OPTIONAL, ttl));
           }
@@ -762,10 +742,8 @@ Status YQLReadOperation::Execute(
   // projection only to scan sub-documents. YQLRowBlock's own projection schema is used to populate
   // the row block, including key columns if any.
   Schema static_projection, non_static_projection;
-  RETURN_NOT_OK(CreateProjections(
-      schema, &rowblock->schema(),
-      request_.has_where_expr() ? &request_.where_expr().condition() : nullptr,
-      &static_projection, &non_static_projection));
+  RETURN_NOT_OK(CreateProjections(schema, request_.column_refs(),
+                                  &static_projection, &non_static_projection));
   const bool read_static_columns = !static_projection.columns().empty();
   const bool read_distinct_columns = request_.distinct();
 

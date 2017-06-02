@@ -40,6 +40,7 @@ class ColumnDesc {
             bool is_hash,
             bool is_primary,
             bool is_static,
+            bool is_counter,
             const std::shared_ptr<YQLType>& yql_type,
             InternalType internal_type) {
     index_ = index,
@@ -47,6 +48,7 @@ class ColumnDesc {
     is_hash_ = is_hash;
     is_primary_ = is_primary;
     is_static_ = is_static;
+    is_counter_ = is_counter;
     yql_type_ = yql_type;
     internal_type_ = internal_type;
   }
@@ -75,6 +77,10 @@ class ColumnDesc {
     return is_static_;
   }
 
+  bool is_counter() const {
+    return is_counter_;
+  }
+
   std::shared_ptr<YQLType> yql_type() const {
     return yql_type_;
   }
@@ -89,6 +95,7 @@ class ColumnDesc {
   bool is_hash_;
   bool is_primary_;
   bool is_static_;
+  bool is_counter_;
   std::shared_ptr<YQLType> yql_type_;
   InternalType internal_type_;
 };

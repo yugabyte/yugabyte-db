@@ -124,9 +124,15 @@ class YQLWriteOperation : public DocOperation {
   // Initialize hashed_doc_key_ and/or pk_doc_key_.
   CHECKED_STATUS InitializeKeys(bool hashed_key, bool primary_key);
 
+  CHECKED_STATUS ReadColumns(rocksdb::DB *rocksdb,
+                             const HybridTime& hybrid_time,
+                             Schema *static_projection,
+                             Schema *non_static_projection,
+                             YQLValueMap *value_map);
+
   CHECKED_STATUS IsConditionSatisfied(
       const YQLConditionPB& condition, rocksdb::DB *rocksdb, const HybridTime& hybrid_time,
-      bool* should_apply, std::unique_ptr<YQLRowBlock>* rowblock);
+      bool* should_apply, std::unique_ptr<YQLRowBlock>* rowblock, YQLValueMap *value_map);
 
   const Schema& schema_;
 

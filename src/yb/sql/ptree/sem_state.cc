@@ -23,7 +23,14 @@ SemState::SemState(SemContext *sem_context,
       expected_yql_type_(YQLType::Create(expected_yql_type_id)),
       expected_internal_type_(expected_internal_type),
       bindvar_name_(bindvar_name),
-      where_state_(nullptr) {
+      where_state_(nullptr),
+      updating_counter_(nullptr),
+      processing_if_clause_(false) {
+  // Passing down state variables that stay the same until they are set or reset.
+  if (sem_context->sem_state() != nullptr) {
+    processing_if_clause_ = sem_context_->processing_if_clause();
+  }
+
   // Use this new state for semantic analysis.
   sem_context_->set_sem_state(this, &previous_state_);
 }
@@ -38,7 +45,14 @@ SemState::SemState(SemContext *sem_context,
       expected_yql_type_(expected_yql_type),
       expected_internal_type_(expected_internal_type),
       bindvar_name_(bindvar_name),
-      where_state_(nullptr) {
+      where_state_(nullptr),
+      updating_counter_(nullptr),
+      processing_if_clause_(false) {
+  // Passing down state variables that stay the same until they are set or reset.
+  if (sem_context->sem_state() != nullptr) {
+    processing_if_clause_ = sem_context_->processing_if_clause();
+  }
+
   // Use this new state for semantic analysis.
   sem_context_->set_sem_state(this, &previous_state_);
 }
@@ -58,18 +72,22 @@ void SemState::ResetContextState() {
 
 void SemState::SetExprState(DataType yql_type_id,
                             InternalType internal_type,
-                            const MCSharedPtr<MCString>& bindvar_name) {
+                            const MCSharedPtr<MCString>& bindvar_name,
+                            const ColumnDesc *updating_counter) {
   expected_yql_type_ = YQLType::Create(yql_type_id);
   expected_internal_type_ = internal_type;
   bindvar_name_ = bindvar_name;
+  updating_counter_ = updating_counter;
 }
 
 void SemState::SetExprState(const std::shared_ptr<YQLType>& yql_type,
                             InternalType internal_type,
-                            const MCSharedPtr<MCString>& bindvar_name) {
+                            const MCSharedPtr<MCString>& bindvar_name,
+                            const ColumnDesc *updating_counter) {
   expected_yql_type_ = yql_type;
   expected_internal_type_ = internal_type;
   bindvar_name_ = bindvar_name;
+  updating_counter_ = updating_counter;
 }
 
 void SemState::CopyPreviousStates() {

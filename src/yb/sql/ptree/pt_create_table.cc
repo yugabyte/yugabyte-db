@@ -29,6 +29,7 @@ PTCreateTable::PTCreateTable(MemoryContext *memctx,
       primary_columns_(memctx),
       hash_columns_(memctx),
       create_if_not_exists_(create_if_not_exists),
+      contain_counters_(false),
       table_properties_(table_properties) {
 }
 
@@ -76,6 +77,11 @@ CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
       }
       iter = columns_.erase(iter);
     } else {
+      if (contain_counters_ != coldef->is_counter()) {
+        return sem_context->Error(coldef->loc(),
+                                  "Table cannot contain both counter and non-counter columns",
+                                  ErrorCode::INVALID_TABLE_DEFINITION);
+      }
       iter++;
     }
   }
@@ -122,6 +128,10 @@ CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
 CHECKED_STATUS PTCreateTable::AppendColumn(SemContext *sem_context, PTColumnDefinition *column) {
   RETURN_NOT_OK(CheckType(sem_context, column->datatype()));
   columns_.push_back(column);
+
+  if (column->is_counter()) {
+    contain_counters_ = true;
+  }
   return Status::OK();
 }
 
@@ -141,52 +151,18 @@ CHECKED_STATUS PTCreateTable::AppendHashColumn(SemContext *sem_context,
 
 CHECKED_STATUS PTCreateTable::CheckPrimaryType(SemContext *sem_context,
                                                const PTBaseType::SharedPtr& datatype) {
-  if (!IsValidPrimaryType(datatype->yql_type()->main())) {
+  if (!datatype->IsApplicableForPrimaryKey()) {
     return sem_context->Error(datatype->loc(), ErrorCode::INVALID_PRIMARY_COLUMN_TYPE);
   }
 
   return Status::OK();
 }
 
-bool PTCreateTable::IsValidPrimaryType(DataType type) const {
-  switch (type) {
-    case DataType::DOUBLE: FALLTHROUGH_INTENDED;
-    case DataType::FLOAT: FALLTHROUGH_INTENDED;
-    case DataType::BOOL:FALLTHROUGH_INTENDED;
-    case DataType::MAP: FALLTHROUGH_INTENDED;
-    case DataType::SET: FALLTHROUGH_INTENDED;
-    case DataType::LIST:
-      return false;
-    default:
-      // Let all other types go. Because we already process column datatype before getting here,
-      // just assume that they are all valid types.
-      return true;
-  }
-}
-
 CHECKED_STATUS PTCreateTable::CheckType(SemContext *sem_context,
                                         const PTBaseType::SharedPtr& datatype) {
-  const DataType main = datatype->yql_type()->main();
-  const vector<shared_ptr<YQLType>>& params = datatype->yql_type()->params();
-
-  // check that type params (if any) are not parametric types -- i.e. no nested collections
-  for (auto& param : params) {
-    if (param->IsParametric()) {
-      return sem_context->Error(datatype->loc(), ErrorCode::INVALID_TABLE_DEFINITION,
-                                "Nested Collections Are Not Supported Yet");
-    }
-  }
-
-  // data types of map keys or set elements must be valid primary key types since they are encoded
-  // as keys in DocDB
-  if (main == MAP || main == SET) {
-    if (!IsValidPrimaryType(params[0]->main())) {
-      return sem_context->Error(datatype->loc(), ErrorCode::INVALID_TABLE_DEFINITION,
-          "Invalid datatype for map key or set element, must be valid primary key type");
-    }
-  }
-
-  return Status::OK();
+  // Although simple datatypes don't need further checking, complex datatypes such as collections,
+  // tuples, and user-defined datatypes need to be analyzed because they have members.
+  return datatype->IsValid(sem_context);
 }
 
 void PTCreateTable::PrintSemanticAnalysisResult(SemContext *sem_context) {
@@ -223,6 +199,8 @@ CHECKED_STATUS PTCreateTable::ToTableProperties(TableProperties *table_propertie
       RETURN_NOT_OK(table_property->SetTableProperty(table_properties));
     }
   }
+
+  table_properties->SetContainCounters(contain_counters_);
   return Status::OK();
 }
 
