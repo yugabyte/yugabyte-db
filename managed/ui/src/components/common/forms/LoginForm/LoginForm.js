@@ -45,7 +45,7 @@ class LoginForm extends Component {
             </div>
 
             <div className="form-right-aligned-labels">
-              <Field name="email" type="email" component={YBInputField} label="Email" />
+              <Field name="email" type="text" component={YBInputField} label="Username" />
               <Field name="password" type="password" component={YBInputField} label="Password" />
             </div>
             <div className="clearfix">
