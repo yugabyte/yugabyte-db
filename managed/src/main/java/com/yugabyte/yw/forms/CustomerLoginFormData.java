@@ -9,11 +9,10 @@ import play.data.validation.Constraints;
  */
 public class CustomerLoginFormData {
   @Constraints.Required()
-  @Constraints.Email
   @Constraints.MinLength(5)
   public String email;
 
   @Constraints.Required()
-  @Constraints.MinLength(6)
+  @Constraints.MinLength(5)
   public String password;
 }
