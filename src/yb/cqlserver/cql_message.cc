@@ -606,7 +606,7 @@ Status BatchRequest::ParseBody() {
     }
     uint16_t value_count = 0;
     RETURN_NOT_OK(ParseShort(&value_count));
-    for (uint16_t j = 0; i < value_count; ++j) {
+    for (uint16_t j = 0; j < value_count; ++j) {
       Value value;
       // with_name is not possible in the protocol due to a design flaw. See JIRA CASSANDRA-10246.
       RETURN_NOT_OK(ParseValue(false /* with_name */, &value));
