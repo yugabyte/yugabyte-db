@@ -71,7 +71,7 @@ public class TestKeyspace extends BaseCQLTest {
   }
 
   public int getTestMethodTimeoutSec() {
-    return 180;
+    return 300;
   }
 
   @Test
@@ -122,7 +122,6 @@ public class TestKeyspace extends BaseCQLTest {
     LOG.info("--- TEST CQL: CREATE & DROP KEYSPACE TIMEOUTS - End");
   }
 
-  @Ignore("Enable after ENG-1468 fixed.")
   @Test
   public void testNoKeyspace() throws Exception {
     LOG.info("--- TEST CQL: NO KEYSPACE - Start");
@@ -144,6 +143,8 @@ public class TestKeyspace extends BaseCQLTest {
     createKeyspace(keyspaceName);
     useKeyspace(keyspaceName);
     dropKeyspace(keyspaceName);
+
+    useKeyspace("cql_test_keyspace");
 
     LOG.info("Test the table with a short name again.");
     setupTable(tableName);
@@ -272,6 +273,41 @@ public class TestKeyspace extends BaseCQLTest {
     dropKeyspace(keyspaceName1);
 
     LOG.info("--- TEST CQL: TWO KEYSPACES - End");
+  }
+
+  @Test
+  public void testDriverBugWithTwoKeyspaces() throws Exception {
+    LOG.info("--- TEST CQL: DRIVER BUG WITH TWO KEYSPACES - Start");
+
+    String keyspaceName1 = "my_keyspace1";
+    String keyspaceName2 = "my_keyspace2";
+    String tableName = "test_table";
+    String longTableName2 = keyspaceName2 + "." + tableName;
+
+    // Create keyspaces.
+    createKeyspace(keyspaceName1);
+    createKeyspace(keyspaceName2);
+
+    // Create a table in the second keyspace.
+    setupTable(longTableName2); // my_keyspace2.test_table
+
+    // Start call 'USE keyspace' to break the driver.
+    useKeyspace(keyspaceName2);
+    useKeyspace(keyspaceName1);
+    useKeyspace(keyspaceName2);
+
+    // Table2 (my_keyspace2.test_table).
+    insertRow(tableName, 5 /* id */);
+
+    // Try to delete the table. The command can fail on the broken driver.
+    // With the broken driver it will try to delete my_keyspace1.test_table
+    // instead of my_keyspace2.test_table.
+    dropTable(tableName);
+
+    dropKeyspace(keyspaceName2);
+    dropKeyspace(keyspaceName1);
+
+    LOG.info("--- TEST CQL: DRIVER BUG WITH TWO KEYSPACES - End");
   }
 
   @Test
