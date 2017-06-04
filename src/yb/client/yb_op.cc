@@ -326,7 +326,9 @@ void YBqlWriteOp::SetHashCode(const uint16_t hash_code) {
 // YBqlReadOp -----------------------------------------------------------------
 
 YBqlReadOp::YBqlReadOp(const shared_ptr<YBTable>& table)
-    : YBqlOp(table), yql_read_request_(new YQLReadRequestPB()) {
+    : YBqlOp(table),
+      yql_read_request_(new YQLReadRequestPB()),
+      yb_consistency_level_(YBConsistencyLevel::STRONG) {
 }
 
 YBqlReadOp::~YBqlReadOp() {}

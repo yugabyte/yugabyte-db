@@ -345,6 +345,14 @@ class YBqlReadOp : public YBqlOp {
   // Returns the partition key of the read request if it exists.
   virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
 
+  const YBConsistencyLevel yb_consistency_level() {
+    return yb_consistency_level_;
+  }
+
+  void set_yb_consistency_level(const YBConsistencyLevel yb_consistency_level) {
+    yb_consistency_level_ = yb_consistency_level;
+  }
+
  protected:
   virtual Type type() const override { return YQL_READ; }
 
@@ -352,6 +360,7 @@ class YBqlReadOp : public YBqlOp {
   friend class YBTable;
   explicit YBqlReadOp(const std::shared_ptr<YBTable>& table);
   std::unique_ptr<YQLReadRequestPB> yql_read_request_;
+  YBConsistencyLevel yb_consistency_level_;
 };
 
 

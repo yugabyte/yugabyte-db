@@ -175,62 +175,13 @@ public class TestClusterBase extends BaseCQLTest {
     }
   }
 
-  private JsonElement getMetricsJson(String host, int port) throws Exception {
-    // Retrieve metrics json.
-    URL metrics = new URL(String.format("http://%s:%d/metrics", host, port));
-    URLConnection yc = metrics.openConnection();
-
-    BufferedReader in = new BufferedReader(new InputStreamReader(yc.getInputStream()));
-    String json = "";
-    try {
-      String inputLine;
-      while ((inputLine = in.readLine()) != null) {
-        json += inputLine;
-      }
-    } finally {
-      in.close();
-    }
-    JsonParser parser = new JsonParser();
-    return parser.parse(json);
-  }
-
   private void verifyMetrics(int minOps) throws Exception {
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-
       // Wait for the webserver to be up.
       TestUtils.waitForServer(ts.getLocalhostIP(), ts.getCqlWebPort(), WEBSERVER_TIMEOUT_MS);
+      long numOps = getTServerMetric(ts.getLocalhostIP(), ts.getCqlWebPort(),
+        "handler_latency_yb_cqlserver_SQLProcessor_ExecuteRequest");
 
-      // This is what the json looks likes:
-      //[
-      //  {
-      //    "type": "server",
-      //    "id": "yb.cqlserver",
-      //    "attributes": {},
-      //    "metrics": [
-      //      {
-      //        "name": "handler_latency_yb_cqlserver_SQLProcessor_SelectStmt",
-      //        "total_count": 0,
-      //        ...
-      //      },
-      //      {
-      //        "name": "handler_latency_yb_cqlserver_SQLProcessor_InsertStmt",
-      //        "total_count": 0,
-      //        ...
-      //      }
-      //    ]
-      //  }
-      //]
-      // Now parse the json.
-      JsonElement jsonTree = getMetricsJson(ts.getLocalhostIP(), ts.getCqlWebPort());
-      JsonObject jsonObject = jsonTree.getAsJsonArray().get(0).getAsJsonObject();
-      int numOps = 0;
-      for (JsonElement jsonElement : jsonObject.getAsJsonArray("metrics")) {
-        JsonObject jsonMetric = jsonElement.getAsJsonObject();
-        String metric_name = jsonMetric.get("name").getAsString();
-        if (metric_name.equals("handler_latency_yb_cqlserver_SQLProcessor_ExecuteRequest")) {
-          numOps += jsonMetric.get("total_count").getAsInt();
-        }
-      }
       LOG.info("TSERVER: " + ts.getLocalhostIP() + ", num_ops: " + numOps + ", min_ops: " + minOps);
       assertTrue(numOps >= minOps);
     }

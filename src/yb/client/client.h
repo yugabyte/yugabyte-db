@@ -86,6 +86,7 @@ class MetaCache;
 class RemoteTablet;
 class RemoteTabletServer;
 class AsyncRpc;
+class ConsistentPrefixTabletInvoker;
 }  // namespace internal
 
 // This must match TableType in common.proto.
@@ -416,6 +417,7 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   friend class internal::RemoteTablet;
   friend class internal::RemoteTabletServer;
   friend class internal::AsyncRpc;
+  friend class internal::ConsistentPrefixTabletInvoker;
 
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);
   FRIEND_TEST(ClientTest, TestMasterDown);

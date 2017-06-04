@@ -14,6 +14,7 @@ namespace yb {
 namespace client {
 
 class YBTable;
+class YBClient;
 
 namespace internal {
 
@@ -44,15 +45,16 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
  public:
   AsyncRpc(const scoped_refptr<Batcher> &batcher,
            RemoteTablet *const tablet,
-           InFlightOps ops);
+           InFlightOps ops,
+           YBConsistencyLevel yb_consistency_level = YBConsistencyLevel::STRONG);
 
   virtual ~AsyncRpc();
 
-  void SendRpc() override;
-  std::string ToString() const override;
+  virtual void SendRpc() override;
+  virtual string ToString() const override;
 
   const YBTable* table() const;
-  const RemoteTablet& tablet() const { return tablet_invoker_.tablet(); }
+  const RemoteTablet& tablet() const { return tablet_invoker_->tablet(); }
   const InFlightOps& ops() const { return ops_; }
 
  protected:
@@ -78,7 +80,7 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   // The trace buffer.
   scoped_refptr<Trace> trace_;
 
-  TabletInvoker tablet_invoker_;
+  std::unique_ptr<TabletInvoker> tablet_invoker_;
 
   // Operations which were batched into this RPC.
   // These operations are in kRequestSent state.
@@ -119,7 +121,8 @@ class ReadRpc : public AsyncRpc {
  public:
   ReadRpc(const scoped_refptr<Batcher>& batcher,
           RemoteTablet* const tablet,
-          InFlightOps ops);
+          InFlightOps ops,
+          YBConsistencyLevel yb_consistency_level = YBConsistencyLevel::STRONG);
 
   virtual ~ReadRpc();
 
@@ -135,6 +138,7 @@ class ReadRpc : public AsyncRpc {
     return resp_.has_error() ? &resp_.error() : nullptr;
   }
 
+ protected:
   // Request body.
   tserver::ReadRequestPB req_;
 

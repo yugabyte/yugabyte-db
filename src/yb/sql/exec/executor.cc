@@ -899,6 +899,14 @@ void Executor::ExecPTNodeAsync(
     paging_state->set_total_num_rows_read(paging_params->total_num_rows_read());
   }
 
+  // Set the correct consistency level for the operation.
+  if (tnode->is_system()) {
+    // Always use strong consistency for system tables.
+    select_op->set_yb_consistency_level(YBConsistencyLevel::STRONG);
+  } else {
+    select_op->set_yb_consistency_level(params_->yb_consistency_level());
+  }
+
   // Apply the operator. Call SelectAsyncDone when done to try to fetch more rows and buffer locally
   // before returning the result to the client.
   exec_context_->ApplyReadAsync(select_op, tnode,

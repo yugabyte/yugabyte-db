@@ -5,10 +5,8 @@
 namespace yb {
 namespace master {
 
-MasterTabletServer::MasterTabletServer()
-    : metric_registry_(new MetricRegistry()),
-      metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(),
-                                                      "yb.master.tabletserver")) {
+MasterTabletServer::MasterTabletServer(scoped_refptr<MetricEntity> metric_entity)
+    : metric_entity_(metric_entity) {
 }
 
 tserver::TSTabletManager* MasterTabletServer::tablet_manager() {

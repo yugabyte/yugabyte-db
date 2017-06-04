@@ -32,6 +32,10 @@ public class BaseCQLTest extends BaseMiniClusterTest {
 
   protected static final String DEFAULT_TEST_KEYSPACE = "cql_test_keyspace";
 
+  protected static final String TSERVER_READ_METRIC =
+    "handler_latency_yb_tserver_TabletServerService_Read";
+
+
   protected Cluster cluster;
   protected Session session;
 
@@ -68,6 +72,10 @@ public class BaseCQLTest extends BaseMiniClusterTest {
 
     // Create and use test keyspace to be able using short table names later.
     createKeyspaceIfNotExists(DEFAULT_TEST_KEYSPACE);
+    useKeyspace();
+  }
+
+  public void useKeyspace() throws Exception{
     useKeyspace(DEFAULT_TEST_KEYSPACE);
   }
 
@@ -155,12 +163,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
       // Drop all non-system tables.
       String namespaceName = tableInfo.getNamespace().getName();
       if (!IsSystemKeyspace(namespaceName)) {
-        if (namespaceName.equals(DEFAULT_KEYSPACE)) {
-          // Don't need namespace name for default namespace.
-          DropTable(tableInfo.getName());
-        } else {
-          DropTable(namespaceName + "." + tableInfo.getName());
-        }
+        DropTable(namespaceName + "." + tableInfo.getName());
       }
     }
   }

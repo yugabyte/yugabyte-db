@@ -123,7 +123,7 @@ class YBClient::Data {
   //
   // Returns NULL if there are no valid tablet servers.
   internal::RemoteTabletServer* SelectTServer(
-      const scoped_refptr<internal::RemoteTablet>& rt,
+      const internal::RemoteTablet* rt,
       const ReplicaSelection selection,
       const std::set<std::string>& blacklist,
       std::vector<internal::RemoteTabletServer*>* candidates) const;

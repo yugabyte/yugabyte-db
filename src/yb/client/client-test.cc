@@ -2791,7 +2791,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
       tserver::ReadResponsePB resp;
       rpc::RpcController controller;
       req.set_tablet_id(tablet_id);
-      req.set_consistency_level(tserver::ReadRequestPB_ConsistencyLevel_CONSTANT_PREFIX);
+      req.set_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
       YQLReadRequestPB *yql_read = req.mutable_yql_batch()->Add();
       for (int i = 0; i < schema_.num_columns(); i++) {
         yql_read->add_column_ids(yb::kFirstColumnId + i);

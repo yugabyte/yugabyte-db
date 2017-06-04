@@ -43,6 +43,7 @@ import static org.junit.Assert.fail;
  * without any significant impact to a running load test.
  */
 public class TestClusterEdits extends TestClusterBase {
+
   @Test(timeout = TEST_TIMEOUT_SEC * 1000) // 10 minutes.
   public void testClusterFullMove() throws Exception {
     // Wait for load tester to generate traffic.

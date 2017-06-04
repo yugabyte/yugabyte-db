@@ -60,6 +60,15 @@ class StatementParameters {
     return STATUS(RuntimeError, "no bind variable available");
   }
 
+  const YBConsistencyLevel yb_consistency_level() const {
+    return yb_consistency_level_;
+  }
+
+ protected:
+  void set_yb_consistency_level(const YBConsistencyLevel yb_consistency_level) {
+    yb_consistency_level_ = yb_consistency_level;
+  }
+
  private:
   const YQLPagingStatePB& paging_state() const {
     return paging_state_ != nullptr ? *paging_state_ : YQLPagingStatePB::default_instance();
@@ -70,6 +79,9 @@ class StatementParameters {
 
   // Paging State.
   std::unique_ptr<YQLPagingStatePB> paging_state_;
+
+  // Consistency level for YB.
+  YBConsistencyLevel yb_consistency_level_;
 };
 
 } // namespace sql

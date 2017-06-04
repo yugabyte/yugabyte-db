@@ -257,19 +257,7 @@ message ReadRequestPB {
 
   optional bool include_trace = 5 [ default = false ];
 
-  enum ConsistencyLevel {
-    // This consistency level provides Linearizability guarantees and is the default for our
-    // system.
-    STRONG = 1;
-
-    // Constant Prefix consistency means that we always see consistent snapshot of the database
-    // in a well defined order. If operations A, B and C take place, we will either see A, AB
-    // or ABC. Note that reads might still go back in time since we might see ABC on one
-    // replica and AB on another.
-    CONSTANT_PREFIX = 2;
-  }
-
-  optional ConsistencyLevel consistency_level = 6 [ default = STRONG ];
+  optional YBConsistencyLevel consistency_level = 6 [ default = STRONG ];
   // TODO: add hybrid_time in future
 }
 

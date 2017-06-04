@@ -350,3 +350,15 @@ message TransactionMetadataPB {
   optional bytes transaction_id = 1; // 16 byte uuid
   optional IsolationLevel isolation = 2 [default=NON_TRANSACTIONAL];
 }
+
+enum YBConsistencyLevel {
+  // This consistency level provides Linearizability guarantees and is the default for our
+  // system.
+  STRONG = 1;
+
+  // Consistent Prefix consistency means that we always see consistent snapshot of the database
+  // in a well defined order. If operations A, B and C take place, we will either see A, AB
+  // or ABC. Note that reads might still go back in time since we might see ABC on one
+  // replica and AB on another.
+  CONSISTENT_PREFIX = 2;
+}

@@ -169,7 +169,7 @@ class YqlTabletTest : public YqlDmlTestBase {
           rpc::RpcController controller;
           controller.set_timeout(MonoDelta::FromSeconds(1));
           req.set_tablet_id(tablet.tablet_id());
-          req.set_consistency_level(tserver::ReadRequestPB_ConsistencyLevel_CONSTANT_PREFIX);
+          req.set_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
           proxy->Read(req, &resp, &controller);
 
           const auto& yql_batch = resp.yql_batch(0);

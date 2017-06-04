@@ -14,7 +14,7 @@ namespace master {
 // server interface to support virtual tables.
 class MasterTabletServer : public tserver::TabletServerIf {
  public:
-  MasterTabletServer();
+  explicit MasterTabletServer(scoped_refptr<MetricEntity> metric_entity);
   tserver::TSTabletManager* tablet_manager() override;
 
   tserver::ScannerManager* scanner_manager() override;

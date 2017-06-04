@@ -115,7 +115,7 @@ Master::Master(const MasterOptions& opts)
     maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
     metric_entity_cluster_(METRIC_ENTITY_cluster.Instantiate(metric_registry_.get(),
                                                              "yb.cluster")),
-    master_tablet_server_(new MasterTabletServer()) {
+    master_tablet_server_(new MasterTabletServer(metric_entity())) {
 }
 
 Master::~Master() {

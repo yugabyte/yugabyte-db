@@ -329,10 +329,10 @@ YBClient::Data::~Data() {
   dns_resolver_.reset();
 }
 
-RemoteTabletServer* YBClient::Data::SelectTServer(const scoped_refptr<RemoteTablet>& rt,
-                                                    const ReplicaSelection selection,
-                                                    const set<string>& blacklist,
-                                                    vector<RemoteTabletServer*>* candidates) const {
+RemoteTabletServer* YBClient::Data::SelectTServer(const RemoteTablet* rt,
+                                                  const ReplicaSelection selection,
+                                                  const set<string>& blacklist,
+                                                  vector<RemoteTabletServer*>* candidates) const {
   RemoteTabletServer* ret = nullptr;
   candidates->clear();
   switch (selection) {
@@ -393,7 +393,7 @@ Status YBClient::Data::GetTabletServer(YBClient* client,
                                          vector<RemoteTabletServer*>* candidates,
                                          RemoteTabletServer** ts) {
   // TODO: write a proper async version of this for async client.
-  RemoteTabletServer* ret = SelectTServer(rt, selection, blacklist, candidates);
+  RemoteTabletServer* ret = SelectTServer(rt.get(), selection, blacklist, candidates);
   if (PREDICT_FALSE(ret == nullptr)) {
     // Construct a blacklist string if applicable.
     string blacklist_string = "";

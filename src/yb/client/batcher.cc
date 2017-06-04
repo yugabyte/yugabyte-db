@@ -450,14 +450,35 @@ void Batcher::FlushBuffer(RemoteTablet* tablet, const InFlightOps& ops) {
   //
   // The RPC object takes ownership of the in flight ops.
   // The underlying YB OP is not directly owned, only a reference is kept.
-  AsyncRpc* rpc;
   if (read_only_) {
-    rpc = new ReadRpc(this, tablet, ops);
-  } else {
-    rpc = new WriteRpc(this, tablet, ops);
-  }
+    // Split the read operations according to consistency levels since based on consistency
+    // levels the read algorithm would differ.
+    InFlightOps leader_only_reads;
+    InFlightOps consistent_prefix_reads;
+    for (InFlightOpPtr op : ops) {
+      if (op->yb_op->type() == YBOperation::Type::YQL_READ &&
+          std::static_pointer_cast<YBqlReadOp>(op->yb_op)->yb_consistency_level() ==
+              YBConsistencyLevel::CONSISTENT_PREFIX) {
+        consistent_prefix_reads.push_back(op);
+      } else {
+        leader_only_reads.push_back(op);
+      }
+    }
 
-  rpc->SendRpc();
+    if (!leader_only_reads.empty()) {
+      ReadRpc* rpc = new ReadRpc(this, tablet, leader_only_reads);
+      rpc->SendRpc();
+    }
+
+    if (!consistent_prefix_reads.empty()) {
+      ReadRpc* consistent_prefix_rpc =
+          new ReadRpc(this, tablet, consistent_prefix_reads, YBConsistencyLevel::CONSISTENT_PREFIX);
+      consistent_prefix_rpc->SendRpc();
+    }
+  } else {
+    AsyncRpc* rpc = new WriteRpc(this, tablet, ops);
+    rpc->SendRpc();
+  }
 }
 
 

@@ -10,13 +10,16 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-import com.codahale.metrics.MetricRegistryListener;
+import com.google.common.net.HostAndPort;
+import org.junit.After;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
+import org.yb.client.YBClient;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.master.Master;
+import org.yb.minicluster.MiniYBDaemon;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -32,6 +35,23 @@ public class TestSystemTables extends BaseCQLTest {
   private static final String RELEASE_VERSION = "3.9-SNAPSHOT";
   private static final String PLACEMENT_REGION = "region1";
   private static final String PLACEMENT_ZONE = "zone1";
+
+  @After
+  public void verifyMasterReads() throws Exception {
+    // Verify all reads went to the leader master.
+    YBClient client = miniCluster.getClient();
+    HostAndPort leaderMaster = client.getLeaderMasterHostAndPort();
+    Map<HostAndPort, MiniYBDaemon> masters = miniCluster.getMasters();
+    for (Map.Entry<HostAndPort, MiniYBDaemon> master : masters.entrySet()) {
+      if (leaderMaster.equals(master.getKey())) {
+        assertTrue(getTServerMetric(master.getKey().getHostText(), master.getValue().getWebPort()
+          , TSERVER_READ_METRIC) > 0);
+      } else {
+        assertEquals(0, getTServerMetric(master.getKey().getHostText(), master.getValue()
+            .getWebPort(), TSERVER_READ_METRIC));
+      }
+    }
+  }
 
   private void verifyPeersTable(List<Row> rows, boolean addressesOnly) throws Exception {
     List<InetSocketAddress> contactPoints = miniCluster.getCQLContactPoints();

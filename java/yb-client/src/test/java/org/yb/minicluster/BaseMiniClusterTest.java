@@ -4,6 +4,10 @@
 package org.yb.minicluster;
 
 import com.google.common.net.HostAndPort;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import org.apache.commons.io.IOUtils;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.slf4j.Logger;
@@ -11,6 +15,10 @@ import org.slf4j.LoggerFactory;
 import org.yb.BaseYBTest;
 import org.yb.client.TestUtils;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.URL;
+import java.net.URLConnection;
 import java.util.List;
 
 import static org.junit.Assert.fail;
@@ -112,5 +120,56 @@ public class BaseMiniClusterTest extends BaseYBTest {
   public static void tearDownAfterClass() throws Exception {
     LOG.info("BaseMiniClusterTest.tearDownAfterClass is running");
     destroyMiniCluster();
+  }
+
+  public long getTServerMetric(String host, int port, String metricName) throws Exception {
+    // This is what a sample json looks likes:
+    //[
+    //  {
+    //    "type": "server",
+    //    "id": "yb.cqlserver",
+    //    "attributes": {},
+    //    "metrics": [
+    //      {
+    //        "name": "handler_latency_yb_cqlserver_SQLProcessor_SelectStmt",
+    //        "total_count": 0,
+    //        ...
+    //      },
+    //      {
+    //        "name": "handler_latency_yb_cqlserver_SQLProcessor_InsertStmt",
+    //        "total_count": 0,
+    //        ...
+    //      }
+    //    ]
+    //  }
+    //]
+    // Now parse the json.
+    JsonElement jsonTree = getMetricsJson(host, port);
+    for (JsonElement metricsArray : jsonTree.getAsJsonArray()) {
+      for (JsonElement jsonElement : metricsArray.getAsJsonObject().getAsJsonArray("metrics")) {
+        JsonObject jsonMetric = jsonElement.getAsJsonObject();
+        String jsonMetricName = jsonMetric.get("name").getAsString();
+        if (jsonMetricName.equals(metricName)) {
+          return jsonMetric.get("total_count").getAsLong();
+        }
+      }
+    }
+    throw new Exception("Couldn't find metric: " + metricName + ", json: " + jsonTree.toString());
+  }
+
+  public JsonElement getMetricsJson(String host, int port) throws Exception {
+    // Retrieve metrics json.
+    URL metrics = new URL(String.format("http://%s:%d/metrics", host, port));
+    URLConnection yc = metrics.openConnection();
+
+    BufferedReader in = new BufferedReader(new InputStreamReader(yc.getInputStream()));
+    String json = null;
+    try {
+      json = IOUtils.toString(in);
+    } finally {
+      in.close();
+    }
+    JsonParser parser = new JsonParser();
+    return parser.parse(json);
   }
 }

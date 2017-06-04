@@ -103,6 +103,31 @@ Status CQLMessage::QueryParameters::GetBindVariable(const std::string& name,
       RuntimeError, "Invalid bind variable kind $0", static_cast<int>(v->kind));
 }
 
+Status CQLMessage::QueryParameters::ValidateConsistency() {
+  switch(consistency) {
+    case Consistency::LOCAL_ONE: FALLTHROUGH_INTENDED;
+    case Consistency::QUORUM: {
+      // We are repurposing cassandra's "QUORUM" consistency level to indicate "STRONG"
+      // consistency for YB. Although, by default the datastax client uses "LOCAL_ONE" as its
+      // consistency level and since by default we want to support STRONG consistency, we use
+      // STRONG consistency even for LOCAL_ONE. This way existing cassandra clients don't need
+      // any changes.
+      set_yb_consistency_level(YBConsistencyLevel::STRONG);
+      break;
+    }
+    case Consistency::ONE: {
+      // Here we repurpose cassandra's ONE consistency level to be CONSISTENT_PREFIX for us since
+      // that seems to be the most appropriate.
+      set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
+      break;
+    }
+    default:
+      return STATUS_SUBSTITUTE(InvalidArgument, "Consistency level $0 is not supported",
+                               static_cast<uint16_t>(consistency));
+  }
+  return Status::OK();
+}
+
 namespace {
 
 template<class Type>
@@ -384,6 +409,7 @@ Status CQLRequest::ParseValue(const bool with_name, Value* value) {
 Status CQLRequest::ParseQueryParameters(QueryParameters* params) {
   DVLOG(4) << "CQL query parameters ...";
   RETURN_NOT_OK(ParseConsistency(&params->consistency));
+  RETURN_NOT_OK(params->ValidateConsistency());
   RETURN_NOT_OK(ParseByte(&params->flags));
   if (params->flags & CQLMessage::QueryParameters::kWithValuesFlag) {
     const bool with_name = (params->flags & CQLMessage::QueryParameters::kWithNamesForValuesFlag);

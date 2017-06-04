@@ -902,7 +902,7 @@ bool TabletServiceImpl::GetTabletOrRespond(const ReadRequestPB* req,
   }
 
   // Check for leader only in strong consistency level.
-  if (req->consistency_level() == ReadRequestPB_ConsistencyLevel_STRONG) {
+  if (req->consistency_level() == YBConsistencyLevel::STRONG) {
     s = CheckPeerIsLeader(*tablet_peer.get(), &error_code);
     if (PREDICT_FALSE(!s.ok())) {
       SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);

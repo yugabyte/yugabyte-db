@@ -66,11 +66,16 @@ AsyncRpcMetrics::AsyncRpcMetrics(const scoped_refptr<yb::MetricEntity>& entity)
 }
 
 AsyncRpc::AsyncRpc(
-    const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet, InFlightOps ops)
+    const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet, InFlightOps ops,
+    YBConsistencyLevel yb_consistency_level)
     : Rpc(batcher->deadline(), batcher->messenger()),
       batcher_(batcher),
       trace_(new Trace),
-      tablet_invoker_(batcher->client_, this, this, tablet, mutable_retrier(), trace_.get()),
+      tablet_invoker_(yb_consistency_level == YBConsistencyLevel::CONSISTENT_PREFIX
+              ? std::make_unique<ConsistentPrefixTabletInvoker>(
+              batcher->client_, this, this, tablet, mutable_retrier(), trace_.get())
+              : std::make_unique<TabletInvoker>(
+              batcher->client_, this, this, tablet, mutable_retrier(), trace_.get())),
       ops_(std::move(ops)),
       start_(MonoTime::Now(MonoTime::FINE)),
       async_rpc_metrics_(batcher->async_rpc_metrics()) {
@@ -91,13 +96,13 @@ AsyncRpc::~AsyncRpc() {
 void AsyncRpc::SendRpc() {
   TRACE_TO(trace_, "SendRpc() called.");
 
-  tablet_invoker_.Execute();
+  tablet_invoker_->Execute();
 }
 
 std::string AsyncRpc::ToString() const {
   return Substitute("$0(tablet: $1, num_ops: $2, num_attempts: $3)",
                     batcher_->read_only_ ? "Read" : "Write",
-                    tablet_invoker_.tablet().tablet_id(), ops_.size(), num_attempts());
+                    tablet_invoker_->tablet().tablet_id(), ops_.size(), num_attempts());
 }
 
 const YBTable* AsyncRpc::table() const {
@@ -108,7 +113,7 @@ const YBTable* AsyncRpc::table() const {
 
 void AsyncRpc::SendRpcCb(const Status& status) {
   Status new_status = status;
-  if (tablet_invoker_.Done(&new_status)) {
+  if (tablet_invoker_->Done(&new_status)) {
     ProcessResponseFromTserver(new_status);
     batcher_->RemoveInFlightOps(ops_);
     batcher_->CheckForFinishedFlush();
@@ -155,7 +160,7 @@ void AsyncRpc::Failed(const Status& status) {
 }
 
 bool AsyncRpc::IsLocalCall() const {
-  return tablet_invoker_.IsLocalCall();
+  return tablet_invoker_->IsLocalCall();
 }
 
 void AsyncRpc::SendRpcToTserver() {
@@ -283,7 +288,7 @@ void WriteRpc::CallRemoteMethod() {
   TRACE_TO(trace, "SendRpcToTserver");
   ADOPT_TRACE(trace.get());
 
-  tablet_invoker_.proxy()->WriteAsync(
+  tablet_invoker_->proxy()->WriteAsync(
       req_, &resp_, mutable_retrier()->mutable_controller(),
       std::bind(&WriteRpc::SendRpcCb, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
@@ -370,9 +375,11 @@ void WriteRpc::ProcessResponseFromTserver(Status status) {
 }
 
 ReadRpc::ReadRpc(
-    const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet, InFlightOps ops)
-    : AsyncRpc(batcher, tablet, ops) {
+    const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet, InFlightOps ops,
+    YBConsistencyLevel yb_consistency_level)
+    : AsyncRpc(batcher, tablet, ops, yb_consistency_level) {
   TRACE_TO(trace_, "ReadRpc initiated to $0", tablet->tablet_id());
+  req_.set_consistency_level(yb_consistency_level);
   req_.set_tablet_id(tablet->tablet_id());
   req_.set_include_trace(IsTracingEnabled());
   int ctr = 0;
@@ -434,7 +441,7 @@ void ReadRpc::CallRemoteMethod() {
                        // Detailed explanation in WriteRpc::SendRpcToTserver.
   TRACE_TO(trace, "SendRpcToTserver");
   ADOPT_TRACE(trace.get());
-  tablet_invoker_.proxy()->ReadAsync(
+  tablet_invoker_->proxy()->ReadAsync(
       req_, &resp_, mutable_retrier()->mutable_controller(),
       std::bind(&ReadRpc::SendRpcCb, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");

@@ -177,6 +177,8 @@ class CQLMessage {
                                            int64_t pos,
                                            const std::shared_ptr<YQLType>& type,
                                            YQLValue* value) const override;
+
+    CHECKED_STATUS ValidateConsistency();
   };
 
   // Accessors for header fields

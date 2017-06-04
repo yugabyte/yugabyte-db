@@ -15,7 +15,7 @@ namespace yb {
 namespace client {
 namespace internal {
 
-void TabletInvoker::Execute() {
+void TabletInvoker::SelectTabletServer()  {
   // Choose a destination TS according to the following algorithm:
   // 1. Select the leader, provided:
   //    a. One exists, and
@@ -67,6 +67,11 @@ void TabletInvoker::Execute() {
       tablet_->MarkTServerAsLeader(current_ts_);
     }
   }
+}
+
+void TabletInvoker::Execute() {
+  // Sets current_ts_.
+  SelectTabletServer();
 
   // If we've tried all replicas, force a lookup to the master to find the
   // new leader. This relies on some properties of LookupTabletByKey():
