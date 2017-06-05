@@ -45,7 +45,7 @@ DEFINE_int32(log_segment_size_mb, 64,
              "The default segment size for log roll-overs, in MB");
 TAG_FLAG(log_segment_size_mb, advanced);
 
-DEFINE_bool(durable_wal_write, true,
+DEFINE_bool(durable_wal_write, false,
             "Whether the Log/WAL should explicitly call fsync() after each write.");
 TAG_FLAG(durable_wal_write, stable);
 
