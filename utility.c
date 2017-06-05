@@ -132,8 +132,6 @@ dbms_utility_format_call_stack(char mode)
 					p1[p2i] = '\0';
 					line = pstrdup(p1);
 					p1[p2i] = c;
-
-					start = p1 + p2i;
 				}
 			}
 
