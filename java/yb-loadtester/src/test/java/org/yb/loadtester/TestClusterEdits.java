@@ -124,7 +124,7 @@ public class TestClusterEdits extends BaseCQLTest {
     private volatile boolean testRunnerFailed = false;
 
     public LoadTester(String workload, String cqlContactPoints) throws Exception {
-      String args[] = {"--verbose", "--workload", workload, "--nodes", cqlContactPoints};
+      String args[] = {"--workload", workload, "--nodes", cqlContactPoints};
       CmdLineOpts configuration = CmdLineOpts.createFromArgs(args);
       testRunner = new Main(configuration);
     }
