@@ -98,11 +98,11 @@ EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 /*+Parallel(p1 8 hard) IndexScan(p2) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 
--- seqscan doesn't harm parallelism
+-- Parallel sequential scan
 /*+Parallel(p1 8 hard) SeqScan(p1) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 
--- Index partial scan is not handled yet.
+-- Parallel index scan
 /*+Parallel(p1 8 hard) IndexScan(p1) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 

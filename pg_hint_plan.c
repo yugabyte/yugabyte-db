@@ -4433,50 +4433,24 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 		return;
 
 	/* Here, we regenerate paths with the current hint restriction */
-
-	if (found_hints & HINT_BM_SCAN_METHOD)
+	if (found_hints & HINT_BM_SCAN_METHOD || found_hints & HINT_BM_PARALLEL)
 	{
-		/*
-		 * With scan hints, we regenerate paths for this relation from the
-		 * first under the restricion.
-		 */
+		/* Just discard all the paths considered so far */
 		list_free_deep(rel->pathlist);
 		rel->pathlist = NIL;
 
-		set_plain_rel_pathlist(root, rel, rte);
-	}
-
-	if (found_hints & HINT_BM_PARALLEL)
-	{
-		Assert (phint);
-
-		/* the partial_pathlist may be for different parameters, discard it */
-		if (rel->partial_pathlist)
+		/* Remove all the partial paths if Parallel hint is specfied */
+		if ((found_hints & HINT_BM_PARALLEL) && rel->partial_pathlist)
 		{
 			list_free_deep(rel->partial_pathlist);
 			rel->partial_pathlist = NIL;
 		}
 
-		/* also remove gather path */
-		if (rel->pathlist)
-		{
-			ListCell *cell, *prev = NULL, *next;
+		/* Regenerate paths with the current enforcement */
+		set_plain_rel_pathlist(root, rel, rte);
 
-			for (cell = list_head(rel->pathlist) ; cell; cell = next)
-			{
-				Path *path = (Path *) lfirst(cell);
-
-				next = lnext(cell);
-				if (IsA(path, GatherPath))
-					rel->pathlist = list_delete_cell(rel->pathlist,
-													 cell, prev);
-				else
-					prev = cell;
-			}
-		}
-
-		/* then generate new paths if needed */
-		if (phint->nworkers > 0)
+		/* Additional work to enforce parallel query execution */
+		if (phint && phint->nworkers > 0)
 		{
 			/* Lower the priorities of non-parallel paths */
 			foreach (l, rel->pathlist)
@@ -4489,15 +4463,6 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 					path->total_cost += disable_cost;
 				}
 			}
-
-			/*
-			 * generate partial paths with enforcement, this is affected by
-			 * scan method enforcement. Specifically, the cost of this partial
-			 * seqscan path will be disabled_cost if seqscan is inhibited by
-			 * hint or GUC parameters.
-			 */
-			Assert (rel->partial_pathlist == NIL);
-			create_plain_partial_paths(root, rel);
 
 			/* enforce number of workers if requested */
 			if (phint->force_parallel)

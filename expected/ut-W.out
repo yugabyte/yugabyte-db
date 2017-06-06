@@ -494,7 +494,7 @@ error hint:
                      ->  Parallel Seq Scan on p1_c3_c2
 (25 rows)
 
--- seqscan doesn't harm parallelism
+-- Parallel sequential scan
 /*+Parallel(p1 8 hard) SeqScan(p1) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 LOG:  pg_hint_plan:
@@ -534,7 +534,7 @@ error hint:
                      ->  Seq Scan on p2_c3_c2
 (25 rows)
 
--- Index partial scan is not handled yet.
+-- Parallel index scan
 /*+Parallel(p1 8 hard) IndexScan(p1) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 LOG:  pg_hint_plan:
@@ -545,32 +545,34 @@ not used hint:
 duplication hint:
 error hint:
 
-                       QUERY PLAN                       
---------------------------------------------------------
- Hash Join
-   Hash Cond: (p1.id = p2.id)
-   ->  Append
-         ->  Index Scan using p1_pkey on p1
-         ->  Index Scan using p1_c1_pkey on p1_c1
-         ->  Index Scan using p1_c2_pkey on p1_c2
-         ->  Index Scan using p1_c3_pkey on p1_c3
-         ->  Index Scan using p1_c4_pkey on p1_c4
-         ->  Index Scan using p1_c1_c1_pkey on p1_c1_c1
-         ->  Index Scan using p1_c1_c2_pkey on p1_c1_c2
-         ->  Index Scan using p1_c3_c1_pkey on p1_c3_c1
-         ->  Index Scan using p1_c3_c2_pkey on p1_c3_c2
-   ->  Hash
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Gather
+   Workers Planned: 8
+   ->  Hash Join
+         Hash Cond: (p1.id = p2.id)
          ->  Append
-               ->  Seq Scan on p2
-               ->  Seq Scan on p2_c1
-               ->  Seq Scan on p2_c2
-               ->  Seq Scan on p2_c3
-               ->  Seq Scan on p2_c4
-               ->  Seq Scan on p2_c1_c1
-               ->  Seq Scan on p2_c1_c2
-               ->  Seq Scan on p2_c3_c1
-               ->  Seq Scan on p2_c3_c2
-(23 rows)
+               ->  Parallel Index Scan using p1_pkey on p1
+               ->  Parallel Index Scan using p1_c1_pkey on p1_c1
+               ->  Parallel Index Scan using p1_c2_pkey on p1_c2
+               ->  Parallel Index Scan using p1_c3_pkey on p1_c3
+               ->  Parallel Index Scan using p1_c4_pkey on p1_c4
+               ->  Parallel Index Scan using p1_c1_c1_pkey on p1_c1_c1
+               ->  Parallel Index Scan using p1_c1_c2_pkey on p1_c1_c2
+               ->  Parallel Index Scan using p1_c3_c1_pkey on p1_c3_c1
+               ->  Parallel Index Scan using p1_c3_c2_pkey on p1_c3_c2
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on p2
+                     ->  Seq Scan on p2_c1
+                     ->  Seq Scan on p2_c2
+                     ->  Seq Scan on p2_c3
+                     ->  Seq Scan on p2_c4
+                     ->  Seq Scan on p2_c1_c1
+                     ->  Seq Scan on p2_c1_c2
+                     ->  Seq Scan on p2_c3_c1
+                     ->  Seq Scan on p2_c3_c2
+(25 rows)
 
 -- This hint doesn't turn on parallel, so the Parallel hint is ignored
 set max_parallel_workers_per_gather TO 0;
