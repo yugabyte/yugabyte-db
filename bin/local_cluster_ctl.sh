@@ -16,6 +16,10 @@ Options:
     Which zone this instance is started in.
   --yb_num_shards_per_tserver <num_shards>
     If specified, passed to tserver process. Otherwise tserver will use its own default.
+  --tserver_db_block_cache_size_bytes <size in bytes>
+    If specified, passed to tserver process. Otherwise tserver will use its own default.
+  --default_num_replicas <num_replicas>
+    If specified, passed to master process. Otherwise master will use its own default.
 Commands:
   create
     Creates a brand new cluster. Starts the master and tablet server processes after creating
@@ -281,6 +285,7 @@ start_master() {
       --placement_cloud "$placement_cloud" \
       --placement_region "$placement_region" \
       --placement_zone "$placement_zone" \
+      $master_optional_params \
       >"$master_base_dir/master.out" \
       2>"$master_base_dir/master.err" &
   )
@@ -446,10 +451,13 @@ placement_cloud=""
 placement_region=""
 placement_zone=""
 yb_num_shards_per_tserver=""
+tserver_db_block_cache_size_bytes=""
+default_num_replicas=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --placement_cloud|--placement_region|--placement_zone|--yb_num_shards_per_tserver)
+    --placement_cloud|--placement_region|--placement_zone|--yb_num_shards_per_tserver|\
+    --tserver_db_block_cache_size_bytes|--default_num_replicas)
       eval "${1#--}=$2"
       shift
     ;;
@@ -525,9 +533,17 @@ redis_rpc_port=10100
 # By default cqlsh contact the server via this port base although it's configurable in cqlsh.
 cql_rpc_port=9042
 
+master_optional_params=""
+if [[ -n "$default_num_replicas" ]]; then
+  master_optional_params+=" --default_num_replicas $default_num_replicas"
+fi
+
 tserver_optional_params=""
 if [[ -n "$yb_num_shards_per_tserver" ]]; then
   tserver_optional_params+=" --yb_num_shards_per_tserver $yb_num_shards_per_tserver"
+fi
+if [[ -n "$tserver_db_block_cache_size_bytes" ]]; then
+  tserver_optional_params+=" --db_block_cache_size_bytes $tserver_db_block_cache_size_bytes"
 fi
 
 master_binary="$build_root/bin/yb-master"
