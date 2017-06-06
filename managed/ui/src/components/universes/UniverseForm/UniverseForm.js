@@ -507,7 +507,7 @@ export default class UniverseForm extends Component {
     return (
       <YBModal visible={visible} onHide={this.hideModal} title={title} error={universe.error}
                submitLabel={submitLabel} showCancelButton={true}
-               onFormSubmit={submitAction} formName={"UniverseForm"} footerAccessory={configDetailItem} size="large">
+               onFormSubmit={submitAction} formName={"UniverseForm"} footerAccessory={configDetailItem} size="large" normalizeFooter={true}>
         <Row className={"no-margin-row"}>
           <Col md={6}>
             <h4>Cloud Configuration</h4>

@@ -29,14 +29,16 @@ class DockerProviderConfiguration extends Component {
   }
 
   componentWillReceiveProps(nextProps) {
-    if ( this.props.dockerBootstrap !== nextProps.dockerBootstrap ||
-         this.props.cloudBootstrap !== nextProps.cloudBootstrap) {
-        const { dockerBootstrap, cloudBootstrap } = nextProps;
-        if ((!isEmptyObject(dockerBootstrap) && !dockerBootstrap.loading) ||
-            (!isEmptyObject(cloudBootstrap) && !cloudBootstrap.loading && cloudBootstrap.type === "cleanup")) {
-          this.props.reloadCloudMetadata();
-        }
+    const { dockerBootstrap, cloudBootstrap } = nextProps;
+    // Reload Metadata for Provider Create
+    if (getPromiseState(dockerBootstrap).isSuccess() && getPromiseState(this.props.dockerBootstrap).isLoading()) {
+      this.props.reloadCloudMetadata();
     }
+    // Reload Metadata For Provider Delete
+    if (cloudBootstrap.promiseState !== this.props.cloudBootstrap.promiseState && cloudBootstrap.data.type === "cleanup") {
+      this.props.reloadCloudMetadata();
+    }
+
   }
 
   render() {

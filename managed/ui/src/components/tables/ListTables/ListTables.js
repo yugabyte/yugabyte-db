@@ -105,7 +105,7 @@ class ListTableGrid extends Component {
 
   render(){
     var self = this;
-    const {universe: {currentUniverse: {data: {universeUUID}, universeTasks}}} = this.props;
+    const {universe: {currentUniverse: {data: {universeUUID}}, universeTasks}} = this.props;
     var getTableIcon = function(tableType) {
       return <Image src={tableType === "YQL_TABLE_TYPE" ? cassandraLogo : redisLogo} className="table-type-logo" />;
     }
