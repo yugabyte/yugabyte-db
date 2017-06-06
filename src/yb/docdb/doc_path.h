@@ -58,21 +58,6 @@ class DocPath {
     return subkeys_.back();
   }
 
-  // Return prefix strings upto each prefix of the docpath.
-  // Consider a docpath p1.s1.s2.s3; We will logically return the strings:
-  // p1, p1.s1, p1.s1.s2, p1.s1.s2.s3
-  // (Of course the parts are glued by 01 encoding and not .'s).
-  std::vector<std::string> GetLockPrefixKeys() const {
-    std::vector<std::string> prefix_list;
-    KeyBytes current_prefix = encoded_doc_key_;
-    prefix_list.push_back(current_prefix.ToString());
-    for (PrimitiveValue v : subkeys_) {
-      current_prefix.Append(v.ToKeyBytes());
-      prefix_list.push_back(current_prefix.AsStringRef());
-    }
-    return prefix_list;
-  }
-
   // Note: the hash is supposed to be uint16_t, but protobuf only supports uint32.
   // So this function takes in uint32_t.
   // TODO (akashnil): Add uint16 data type in docdb.

@@ -62,18 +62,19 @@ void PrepareDocWriteTransaction(const vector<unique_ptr<DocOperation>>& doc_writ
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
     const list<DocPath> doc_paths = doc_op->DocPathsToLock();
     for (const auto& doc_path : doc_paths) {
-      // TODO(akashnil): avoid materializing the vector, do the work of the called function in
-      // place.
-      const vector<string> doc_op_locks = doc_path.GetLockPrefixKeys();
-      assert(doc_op_locks.size() > 0);
-      for (int i = 0; i < doc_op_locks.size(); i++) {
-        auto iter = lock_type_map.find(doc_op_locks[i]);
+      KeyBytes current_prefix = doc_path.encoded_doc_key();
+      string lock_string;
+      for (int i = 0; i < doc_path.num_subkeys(); i++) {
+        lock_string = current_prefix.AsStringRef(); // Copy the lock_key.
+        auto iter = lock_type_map.find(lock_string);
         if (iter == lock_type_map.end()) {
-          lock_type_map[doc_op_locks[i]] = LockType::SHARED;
-          keys_locked->push_back(doc_op_locks[i]);
+          lock_type_map[lock_string] = LockType::SHARED;
+          keys_locked->push_back(lock_string);
         }
+        doc_path.subkey(i).AppendToKey(&current_prefix);
       }
-      lock_type_map[doc_op_locks[doc_op_locks.size() - 1]] = LockType::EXCLUSIVE;
+      lock_string = current_prefix.AsStringRef();
+      lock_type_map[lock_string] = LockType::EXCLUSIVE;
     }
     if (doc_op->RequireReadSnapshot()) {
       *need_read_snapshot = true;
