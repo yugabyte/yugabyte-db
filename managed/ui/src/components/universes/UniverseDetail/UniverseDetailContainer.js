@@ -5,6 +5,7 @@ import { UniverseDetail } from '../../universes';
 import {fetchUniverseInfo, fetchUniverseInfoResponse, resetUniverseInfo,
         fetchUniverseTasks, fetchUniverseTasksSuccess, fetchUniverseTasksFailure,
         resetUniverseTasks, openDialog, closeDialog } from '../../../actions/universe';
+import {listAccessKeys, listAccessKeysResponse} from '../../../actions/cloud';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -44,6 +45,11 @@ const mapDispatchToProps = (dispatch) => {
     },
     closeModal: () => {
       dispatch(closeDialog());
+    },
+    fetchAccessKeys: (providerUUID) => {
+      dispatch(listAccessKeys(providerUUID)).then((response) => {
+        dispatch(listAccessKeysResponse(response.payload));
+      })
     }
   }
 }
