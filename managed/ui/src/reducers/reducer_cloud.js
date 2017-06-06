@@ -33,9 +33,9 @@ const INITIAL_STATE = {
   },
   selectedProvider: null,
   error: null,
-  accessKeys: [],
+  accessKeys: getInitialState([]),
   bootstrap: getInitialState({}),
-  dockerBootstrap: {},
+  dockerBootstrap: getInitialState({}),
   status : 'init',
   fetchMetadata: false,
   nodeInstanceList: getInitialState([])

@@ -3,7 +3,8 @@
 import React, { Component, PropTypes } from 'react';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBModal, YBButton } from '../../common/forms/fields';
-import { isValidObject, isNonEmptyArray } from 'utils/ObjectUtils';
+import { isEmptyArray } from 'utils/ObjectUtils';
+import {getPromiseState} from 'utils/PromiseUtils';
 import { connect } from 'react-redux';
 
 import './NodeConnectModal.scss';
@@ -25,9 +26,8 @@ class NodeConnectModal extends Component {
 
   render() {
     const { nodeIPs, hostInfo, accessKeys } = this.props;
-    if (!isNonEmptyArray(nodeIPs) || !isValidObject(accessKeys) ||
-      accessKeys.loading || !isNonEmptyArray(accessKeys.data)
-    ) {
+    if (isEmptyArray(nodeIPs) || !getPromiseState(accessKeys).isSuccess())
+     {
       return <span />;
     }
 
