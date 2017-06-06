@@ -16,10 +16,9 @@ import java.util.Random;
 import java.util.TreeSet;
 
 public class TestDecimalDataType extends BaseCQLTest {
-  private String getRandomVarInt(boolean withSign) {
+  private String getRandomVarInt(boolean withSign, int length) {
     String digits = "0123456789";
     final Random random = new Random();
-    int length = random.nextInt(100) + 20;
 
     String s = "";
     for (int j = 0; j < length; j++) {
@@ -40,12 +39,63 @@ public class TestDecimalDataType extends BaseCQLTest {
     return s;
   }
 
+  private String getRandomVarInt(boolean withSign) {
+    final Random random = new Random();
+    int length = random.nextInt(100) + 20;
+    return getRandomVarInt(withSign, length);
+  }
+
   private String getRandomDecimal() {
-    return getRandomVarInt(true) + "." + getRandomVarInt(false);
+    String decimal = getRandomVarInt(true) + "." + getRandomVarInt(false);
+    final Random random = new Random();
+    int r = random.nextInt(10);
+    if (r < 3) {
+      return decimal + "E" + getRandomVarInt(true, 6);
+    } else if (r < 5) {
+      return decimal + "e" + getRandomVarInt(true, 6);
+    }
+    return decimal;
   }
 
   @Test
   public void testDecimalDataTypeInHash() throws Exception {
+    BigDecimal hash = new BigDecimal("-0.2");
+    TreeSet<BigDecimal> decimals = new TreeSet<BigDecimal>();
+    decimals.add(new BigDecimal("-100.02"));
+    decimals.add(new BigDecimal("-43.030016"));
+    decimals.add(new BigDecimal("-6.00001"));
+    decimals.add(new BigDecimal("-6.000001"));
+    decimals.add(new BigDecimal("-6"));
+    decimals.add(new BigDecimal("-5.99999956"));
+    decimals.add(new BigDecimal("-5.8999999"));
+    decimals.add(new BigDecimal("-1.2"));
+    decimals.add(new BigDecimal("-1.15"));
+    decimals.add(new BigDecimal("-.05"));
+    decimals.add(new BigDecimal("0"));
+    decimals.add(new BigDecimal("0.05"));
+    decimals.add(new BigDecimal("1.05"));
+    decimals.add(new BigDecimal("1.15"));
+    decimals.add(new BigDecimal("1.2"));
+    testDecimalDataTypeInHash(hash, decimals);
+   }
+
+  @Test
+  public void testDecimalDataTypeInHashRandom() throws Exception {
+    final Random random = new Random();
+    BigDecimal hashDecimal = new BigDecimal(getRandomDecimal());
+    TreeSet<BigDecimal> decimals = new TreeSet<BigDecimal>();
+    for (int i = 0; i < 100; i++) {
+      BigDecimal decimal;
+      do {
+        decimal = new BigDecimal(getRandomDecimal());
+      } while (!decimals.add(decimal));
+    }
+
+    testDecimalDataTypeInHash(hashDecimal, decimals);
+  }
+
+  private void testDecimalDataTypeInHash(BigDecimal hashDecimal, TreeSet<BigDecimal> decimals)
+      throws Exception {
     LOG.info("TEST CQL DECIMAL TYPE IN HASH - Start");
 
     // Create table
@@ -55,19 +105,13 @@ public class TestDecimalDataType extends BaseCQLTest {
         "primary key((h1, h2), r1, r2));", tableName);
     session.execute(createStmt);
 
-    final Random random = new Random();
-    BigDecimal hashDecimal = new BigDecimal(getRandomDecimal());
-    TreeSet<BigDecimal> decimals = new TreeSet<BigDecimal>();
-    for (int i = 0; i < 100; i++) {
-      BigDecimal decimal;
-      do {
-        decimal = new BigDecimal(getRandomDecimal());
-      } while (!decimals.add(decimal));
+
+    for (BigDecimal decimal : decimals) {
       // Insert one row. Deliberately insert with same hash key but different range column values.
       final String insertStmt =
           String.format("INSERT INTO %s (h1, h2, r1, r2, v1, v2) VALUES (%s, 1, %s, %d, %s, 2);",
-                        tableName, hashDecimal.toString(), decimal.toString(), decimal.intValue(),
-                        decimal.toString());
+              tableName, hashDecimal.toString(), decimal.toString(), decimal.intValue(),
+              decimal.toString());
       LOG.info("insertStmt: " + insertStmt);
       session.execute(insertStmt);
     }
@@ -89,40 +133,6 @@ public class TestDecimalDataType extends BaseCQLTest {
       assertEquals(decimal.intValue(), row.getInt("r2"));
       assertEquals(0, row.getDecimal("v1").compareTo(decimal));
       assertEquals(2, row.getInt("v2"));
-    }
-
-    final String insertStmt =
-        String.format("INSERT INTO %s (h1, h2, r1, r2, v1, v2) VALUES (10.1, 1, 2.0, 5, 3.0, 30);",
-                      tableName);
-
-    LOG.info("insertStmt: " + insertStmt);
-    session.execute(insertStmt);
-
-    final String[] d = { "10.1",
-                         ".101E2",
-                         "1.01E1",
-                         ".101E+2",
-                         "1.01E+1",
-                         ".101e2",
-                         "1.01e1",
-                         ".101e+2",
-                         "1.01e+1",
-                         "0.101E2",
-                         "0.101E+2",
-                         "0.101e2",
-                         "0.101e+2" };
-
-    // Test that we can query by using different representations of the same decimal value.
-    for (String dec : d) {
-      final String selectStmt2 = String.format("SELECT h1, h2, r1, r2, v1, v2 FROM %s " +
-                                               "WHERE h1 = %s AND h2 = 1;", tableName, dec);
-      LOG.info("selectStmt: " + selectStmt2);
-
-      rs = session.execute(selectStmt2);
-      if (rs.getAvailableWithoutFetching() != 1) {
-        LOG.info("Failed select: " + selectStmt2);
-      }
-      assertEquals(1, rs.getAvailableWithoutFetching());
     }
 
     // Test UPDATE with hash and range decimal keys.
@@ -158,8 +168,8 @@ public class TestDecimalDataType extends BaseCQLTest {
 
       final String deleteStmt =
           String.format("DELETE FROM %s WHERE h1 = %s AND h2 = 1 and r1 = %s and r2 = %d",
-                        tableName, hashDecimal.toString(), rangeDecimal.toString(),
-                        rangeDecimal.intValue());
+              tableName, hashDecimal.toString(), rangeDecimal.toString(),
+              rangeDecimal.intValue());
       rs = session.execute(deleteStmt);
 
       final String selectStmt3 = String.format("SELECT h1, h2, r1, r2, v1, v2 FROM %s " +
@@ -174,9 +184,85 @@ public class TestDecimalDataType extends BaseCQLTest {
     LOG.info("TEST CQL DECIMAL TYPE IN HASH - End");
   }
 
-  private void decimalDataTypeInRange(boolean sortIsAscending) throws Exception {
-    LOG.info("TEST CQL DECIMAL TYPE IN RANGE - Start");
+  @Test
+  public void testCanonicalDecimalInHash() throws Exception {
+    LOG.info("TEST CQL CANONICAL DECIMAL IN HASH - Start");
 
+    // Create table
+    String createStmt =
+        "CREATE TABLE test_decimal(h1 decimal, h2 int, r1 decimal, primary key((h1, h2), r1));";
+    session.execute(createStmt);
+
+    String insertStmt = "INSERT INTO test_decimal (h1, h2, r1) VALUES (10.1, 1, 2.0);";
+    LOG.info("insertStmt: " + insertStmt);
+    session.execute(insertStmt);
+
+    insertStmt = "INSERT INTO test_decimal (h1, h2, r1) VALUES (-10.1, 1, 2.0);";
+    LOG.info("insertStmt: " + insertStmt);
+    session.execute(insertStmt);
+
+    final String[] positiveDecimals = { "10.1",
+                                        ".101E2",
+                                        "1.01E1",
+                                        ".101E+2",
+                                        "1.01E+1",
+                                        ".101e2",
+                                        "1.01e1",
+                                        ".101e+2",
+                                        "1.01e+1",
+                                        "0.101E2",
+                                        "0.101E+2",
+                                        "0.101e2",
+                                        "0.101e+2" };
+
+    final String[] negativeDecimals = { "-10.1",
+                                        "-.101E2",
+                                        "-1.01E1",
+                                        "-.101E+2",
+                                        "-1.01E+1",
+                                        "-.101e2",
+                                        "-1.01e1",
+                                        "-.101e+2",
+                                        "-1.01e+1",
+                                        "-0.101E2",
+                                        "-0.101E+2",
+                                        "-0.101e2",
+                                        "-0.101e+2" };
+
+    // Test that we can query by using different representations of the same decimal value.
+    for (String dec : positiveDecimals) {
+      final String selectStmt2 = String.format("SELECT h1, h2, r1 FROM test_decimal " +
+                                               "WHERE h1 = %s AND h2 = 1;", dec);
+      LOG.info("selectStmt: " + selectStmt2);
+
+      ResultSet rs = session.execute(selectStmt2);
+      if (rs.getAvailableWithoutFetching() != 1) {
+        LOG.info("Failed select: " + selectStmt2);
+      }
+      assertEquals(1, rs.getAvailableWithoutFetching());
+    }
+
+    for (String dec : negativeDecimals) {
+      final String selectStmt2 = String.format("SELECT h1, h2, r1 FROM test_decimal " +
+                                               "WHERE h1 = %s AND h2 = 1;", dec);
+      LOG.info("selectStmt: " + selectStmt2);
+
+      ResultSet rs = session.execute(selectStmt2);
+      if (rs.getAvailableWithoutFetching() != 1) {
+        LOG.info("Failed select: " + selectStmt2);
+      }
+      assertEquals(1, rs.getAvailableWithoutFetching());
+    }
+
+
+    final String dropStmt = "DROP TABLE test_decimal;";
+    session.execute(dropStmt);
+
+    LOG.info("TEST CQL CANONICAL DECIMAL IN HASH - End");
+  }
+
+  private void decimalDataTypeInRange(TreeSet<BigDecimal> decimals,
+                                      boolean sortIsAscending) throws Exception {
     String sortOrder = "ASC";
     if (!sortIsAscending) {
       sortOrder = "DESC";
@@ -187,14 +273,7 @@ public class TestDecimalDataType extends BaseCQLTest {
         sortOrder);
     session.execute(createStmt);
 
-    final Random random = new Random();
-    TreeSet<BigDecimal> decimals = new TreeSet<BigDecimal>();
-    for (int i = 0; i < 100; i++) {
-      BigDecimal decimal;
-      do {
-        decimal = new BigDecimal(getRandomDecimal());
-      } while (!decimals.add(decimal));
-
+    for (BigDecimal decimal : decimals) {
       // Insert one row. Deliberately insert with same hash key but different range column values.
       final String insertStmt = String.format("INSERT INTO test_decimal (h1, r1, v1) " +
                                               "VALUES ('bob', %s, 1);", decimal.toString());
@@ -216,22 +295,81 @@ public class TestDecimalDataType extends BaseCQLTest {
     }
     while (iter.hasNext()) {
       Row row = rs.one();
-      assertEquals(0, row.getDecimal("r1").compareTo(iter.next()));
+      BigDecimal nextDecimal = iter.next();
+      assertEquals(0, row.getDecimal("r1").compareTo(nextDecimal));
     }
 
     final String dropStmt = "DROP TABLE test_decimal;";
     session.execute(dropStmt);
-    LOG.info("TEST CQL DECIMAL TYPE IN RANGE - End");
+  }
+
+  private TreeSet<BigDecimal> getRandomDecimalSet() {
+    final Random random = new Random();
+    TreeSet<BigDecimal> decimals = new TreeSet<BigDecimal>();
+    for (int i = 0; i < 100; i++) {
+      BigDecimal decimal;
+      do {
+        decimal = new BigDecimal(getRandomDecimal());
+      } while (!decimals.add(decimal));
+    }
+    return decimals;
   }
 
   @Test
-  public void testDecimalDataTypeInRange() throws Exception {
-    decimalDataTypeInRange(true);
+  public void testAscendingDecimalDataTypeInRangeRandom() throws Exception {
+    LOG.info("TEST CQL RANDOM ASCENDING DECIMAL TYPE IN RANGE - Start");
+    decimalDataTypeInRange(getRandomDecimalSet(), true);
+    LOG.info("TEST CQL RANDOM ASCENDING DECIMAL TYPE IN RANGE - End");
   }
 
   @Test
-  public void testDecimalDescendingDataTypeInRange() throws Exception {
-    decimalDataTypeInRange(false);
+  public void testDescendingDecimalDataTypeInRangeRandom() throws Exception {
+    LOG.info("TEST CQL RANDOM DESCENDING DECIMAL TYPE IN RANGE - Start");
+    decimalDataTypeInRange(getRandomDecimalSet(), false);
+    LOG.info("TEST CQL RANDOM DESCENDING DECIMAL TYPE IN RANGE - End");
+  }
+
+  private TreeSet<BigDecimal> getDecimalSet() {
+    TreeSet<BigDecimal> decimals = new TreeSet<BigDecimal>();
+    decimals.add(new BigDecimal("-100.1"));
+    decimals.add(new BigDecimal("-83.21"));
+    decimals.add(new BigDecimal("-83.2"));
+    decimals.add(new BigDecimal("-83.1999"));
+    decimals.add(new BigDecimal("-27.9"));
+    decimals.add(new BigDecimal("-1.2"));
+    decimals.add(new BigDecimal("-1.199999"));
+    decimals.add(new BigDecimal("-1.15"));
+    decimals.add(new BigDecimal("-1.0"));
+    decimals.add(new BigDecimal("-0.99"));
+    decimals.add(new BigDecimal("0"));
+    decimals.add(new BigDecimal("0.005"));
+    decimals.add(new BigDecimal("0.05"));
+    decimals.add(new BigDecimal("0.5"));
+    decimals.add(new BigDecimal("0.75"));
+    decimals.add(new BigDecimal("0.99"));
+    decimals.add(new BigDecimal("1.0"));
+    decimals.add(new BigDecimal("1.15"));
+    decimals.add(new BigDecimal("1.2"));
+    decimals.add(new BigDecimal("1.200000001"));
+    decimals.add(new BigDecimal("3.2"));
+    decimals.add(new BigDecimal("12.7"));
+    decimals.add(new BigDecimal("55.13435"));
+    decimals.add(new BigDecimal("189.327"));
+    return decimals;
+  }
+
+  @Test
+  public void testAscendingDecimalDataTypeInRange() throws Exception {
+    LOG.info("TEST CQL ASCENDING DECIMAL TYPE IN RANGE - Start");
+    decimalDataTypeInRange(getDecimalSet(), false);
+    LOG.info("TEST CQL ASCENDING DECIMAL TYPE IN RANGE - End");
+  }
+
+  @Test
+  public void testDescendingDecimalDataTypeInRange() throws Exception {
+    LOG.info("TEST CQL DESCENDING DECIMAL TYPE IN RANGE - Start");
+    decimalDataTypeInRange(getDecimalSet(), true);
+    LOG.info("TEST CQL DESCENDING DECIMAL TYPE IN RANGE - End");
   }
 
   @Test
@@ -292,16 +430,33 @@ public class TestDecimalDataType extends BaseCQLTest {
 
   @Test
   public void testDecimalMultipleComparisonInRange() throws Exception {
-    LOG.info("TEST CQL DECIMAL TYPE IN RANGE - Start");
+    BigDecimal decimal1 = new BigDecimal("1.2");
+    BigDecimal decimal2 = new BigDecimal("3.4");
+    BigDecimal delta = new BigDecimal(".05");
 
+    LOG.info("TEST CQL DECIMAL TYPE IN RANGE - Start");
+    testDecimalMultipleComparisonInRange(decimal1, decimal2, delta);
+    LOG.info("TEST CQL DECIMAL TYPE IN RANGE - End");
+  }
+
+  @Test
+  public void testDecimalMultipleComparisonInRangeRandom() throws Exception {
+    final Random random = new Random();
+    BigDecimal decimal1 = new BigDecimal(getRandomDecimal());
+    BigDecimal decimal2 = new BigDecimal(getRandomDecimal());
+    BigDecimal delta = new BigDecimal(".05");
+
+    LOG.info("TEST CQL DECIMAL TYPE IN RANGE RANDOM - Start");
+    testDecimalMultipleComparisonInRange(decimal1, decimal2, delta);
+    LOG.info("TEST CQL DECIMAL TYPE IN RANGE RANDOM - End");
+  }
+
+  private void testDecimalMultipleComparisonInRange(BigDecimal decimal1, BigDecimal decimal2,
+                                                    BigDecimal delta) throws Exception {
     // Create table
     String createStmt = "CREATE TABLE test_decimal" +
                          "(h1 varchar, r1 decimal, r2 decimal, v1 int, primary key(h1, r1, r2));";
     session.execute(createStmt);
-
-    final Random random = new Random();
-    BigDecimal decimal1 = new BigDecimal(getRandomDecimal());
-    BigDecimal decimal2 = new BigDecimal(getRandomDecimal());
 
     final String insertStmt =
         String.format("INSERT INTO test_decimal (h1, r1, r2, v1) " +
@@ -309,7 +464,6 @@ public class TestDecimalDataType extends BaseCQLTest {
     LOG.info("insertStmt: " + insertStmt);
     session.execute(insertStmt);
 
-    BigDecimal delta = new BigDecimal(".05");
     BigDecimal smallerDecimal1 = decimal1.subtract(delta);
     BigDecimal smallerDecimal2 = decimal2.subtract(delta);
     BigDecimal largerDecimal1 = decimal1.add(delta);
@@ -345,18 +499,17 @@ public class TestDecimalDataType extends BaseCQLTest {
 
     final String dropStmt = "DROP TABLE test_decimal;";
     session.execute(dropStmt);
-    LOG.info("TEST CQL DECIMAL TYPE IN RANGE - End");
   }
 
   @Test
-  public void testConversions() throws Exception {
+  public void testConversionsRandom() throws Exception {
     // Test the conversions from varint -> (tinyint, smallint, int, bigint, decimal, double, float)
     // and decimal -> (double, float).
-    LOG.info("TEST CQL CONVERSIONS - Start");
+    LOG.info("TEST CQL CONVERSIONS RANDOM - Start");
 
     String createStmt = "CREATE TABLE test_decimal" +
-                         "(h1 decimal, r1 decimal, v1 tinyint, v2 smallint, v3 int, v4 bigint, " +
-                         "v5 float, v6 double, v7 float, v8 double, primary key(h1, r1));";
+                        "(h1 decimal, r1 decimal, v1 tinyint, v2 smallint, v3 int, v4 bigint, " +
+                        "v5 float, v6 double, v7 float, v8 double, primary key(h1, r1));";
     session.execute(createStmt);
 
     TreeSet<BigDecimal> decimals = new TreeSet<BigDecimal>();
@@ -404,6 +557,27 @@ public class TestDecimalDataType extends BaseCQLTest {
       assertEquals(yqlDouble, row.getDouble("v8"), 1e-5);
     }
 
+    final String dropStmt = "DROP TABLE test_decimal;";
+    session.execute(dropStmt);
+
+    LOG.info("TEST CQL CONVERSIONS RANDOM - End");
+  }
+
+  @Test
+  public void testConversionsLimits() throws Exception {
+    // Test the numeric data types limits. This process includes conversions from varint ->
+    // (tinyint, smallint, int, bigint, decimal, double, float) and decimal -> (double, float).
+    LOG.info("TEST CQL CONVERSIONS LIMITS - Start");
+
+    String createStmt = "CREATE TABLE test_decimal" +
+        "(h1 decimal, r1 decimal, v1 tinyint, v2 smallint, v3 int, v4 bigint, " +
+        "v5 float, v6 double, primary key(h1, r1));";
+    session.execute(createStmt);
+
+    TreeSet<BigDecimal> decimals = new TreeSet<BigDecimal>();
+
+    BigDecimal decimalHash;
+
     // Create a unique decimal hash.
     do {
       decimalHash = new BigDecimal(getRandomDecimal());
@@ -411,16 +585,18 @@ public class TestDecimalDataType extends BaseCQLTest {
 
     // Test the minimum values allowed for each integer type.
     final String insertStmtFmt =
-        "INSERT INTO test_decimal (h1, r1, v1, v2, v3, v4, v5, v6, v7, v8) " +
-        "VALUES (%s, 1, %d, %d, %d, %d, 1.0, 2.0, 1.0, 2.0);";
+        "INSERT INTO test_decimal (h1, r1, v1, v2, v3, v4, v5, v6) " +
+        "VALUES (%s, 1, %d, %d, %d, %d, %e, %e);";
 
     String insertStmt = String.format(insertStmtFmt, decimalHash.toString(), -128, -32768,
-                                      Integer.MIN_VALUE, Long.MIN_VALUE);
+                                      Integer.MIN_VALUE, Long.MIN_VALUE, Float.MIN_VALUE,
+                                      Double.MIN_VALUE);
     session.execute(insertStmt);
 
-    final String selectStmtFmt = "SELECT h1, v1, v2, v3, v4 FROM test_decimal WHERE h1 = %s;";
+    final String selectStmtFmt =
+        "SELECT h1, v1, v2, v3, v4, v5, v6 FROM test_decimal WHERE h1 = %s;";
     String selectStmt = String.format(selectStmtFmt, decimalHash.toString());
-    LOG.info("::selectStmt: " + selectStmt);
+    LOG.info("selectStmt: " + selectStmt);
 
     ResultSet rs = session.execute(selectStmt);
     assertEquals(1, rs.getAvailableWithoutFetching());
@@ -431,10 +607,12 @@ public class TestDecimalDataType extends BaseCQLTest {
     assertEquals(-32768, row.getShort("v2"));
     assertEquals(Integer.MIN_VALUE, row.getInt("v3"));
     assertEquals(Long.MIN_VALUE, row.getLong("v4"));
+    assertEquals(Float.MIN_VALUE, row.getFloat("v5"), Float.MIN_VALUE);
+    assertEquals(Double.MIN_VALUE, row.getDouble("v6"), Double.MIN_VALUE);
 
     // Test the maximum values allowed for each integer type.
     insertStmt = String.format(insertStmtFmt, decimalHash.toString(), 127, 32767, Integer.MAX_VALUE,
-                               Long.MAX_VALUE);
+                               Long.MAX_VALUE, Float.MAX_VALUE, Double.MAX_VALUE);
     session.execute(insertStmt);
 
     selectStmt = String.format(selectStmtFmt, decimalHash.toString());
@@ -448,10 +626,12 @@ public class TestDecimalDataType extends BaseCQLTest {
     assertEquals(32767, row.getShort("v2"));
     assertEquals(Integer.MAX_VALUE, row.getInt("v3"));
     assertEquals(Long.MAX_VALUE, row.getLong("v4"));
+    assertEquals(Float.MAX_VALUE, row.getFloat("v5"), Float.MAX_VALUE / 1e5);
+    assertEquals(Double.MAX_VALUE, row.getDouble("v6"), Double.MAX_VALUE / 1e5);
 
     final String dropStmt = "DROP TABLE test_decimal;";
     session.execute(dropStmt);
 
-    LOG.info("TEST CQL CONVERSIONS - End");
+    LOG.info("TEST CQL CONVERSIONS LIMITS - End");
   }
 }

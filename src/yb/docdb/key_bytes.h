@@ -61,6 +61,13 @@ class KeyBytes {
 
   void AppendDecimalDescending(const std::string& encoded_decimal_str) {
     // Flipping all the bits negates the decimal number this string represents.
+
+    // 0 is a special case because the first two bits are always 10.
+    if ((unsigned char)encoded_decimal_str[0] == 128) {
+      data_.push_back(encoded_decimal_str[0]);
+      return;
+    }
+
     for (auto c : encoded_decimal_str) {
       data_.push_back(~c);
     }
