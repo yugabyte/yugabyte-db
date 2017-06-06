@@ -17,6 +17,7 @@
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/params.h"
+#include "nodes/relation.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/geqo.h"
@@ -28,6 +29,7 @@
 #include "optimizer/prep.h"
 #include "optimizer/restrictinfo.h"
 #include "parser/analyze.h"
+#include "parser/parsetree.h"
 #include "parser/scansup.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
@@ -344,7 +346,10 @@ struct HintState
 	/* Initial values of parameters  */
 	int				init_scan_mask;		/* enable_* mask */
 	int				init_nworkers;		/* max_parallel_workers_per_gather */
-	int				init_min_para_size;	/* min_parallel_relation_size*/
+	/* min_parallel_table_scan_size*/
+	int				init_min_para_tablescan_size;
+	/* min_parallel_index_scan_size*/
+	int				init_min_para_indexscan_size;
 	int				init_paratup_cost;	/* parallel_tuple_cost */
 	int				init_parasetup_cost;/* parallel_setup_cost */
 
@@ -454,8 +459,8 @@ void pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 								   Index rti, RangeTblEntry *rte);
 static void create_plain_partial_paths(PlannerInfo *root,
 													RelOptInfo *rel);
-static int compute_parallel_worker(RelOptInfo *rel, BlockNumber pages);
-
+static void add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
+									List *live_childrels);
 static void make_rels_by_clause_joins(PlannerInfo *root, RelOptInfo *old_rel,
 									  ListCell *other_rels);
 static void make_rels_by_clauseless_joins(PlannerInfo *root,
@@ -467,8 +472,9 @@ static void set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 static void set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 									Index rti, RangeTblEntry *rte);
 static void generate_mergeappend_paths(PlannerInfo *root, RelOptInfo *rel,
-						   List *live_childrels,
-						   List *all_child_pathkeys);
+									   List *live_childrels,
+									   List *all_child_pathkeys,
+									   List *partitioned_rels);
 static Path *get_cheapest_parameterized_child_path(PlannerInfo *root,
 									  RelOptInfo *rel,
 									  Relids required_outer);
@@ -962,7 +968,8 @@ HintStateCreate(void)
 	hstate->scan_hints = NULL;
 	hstate->init_scan_mask = 0;
 	hstate->init_nworkers = 0;
-	hstate->init_min_para_size = 0;
+	hstate->init_min_para_tablescan_size = 0;
+	hstate->init_min_para_indexscan_size = 0;
 	hstate->init_paratup_cost = 0;
 	hstate->init_parasetup_cost = 0;
 	hstate->parent_relid = 0;
@@ -2623,7 +2630,9 @@ setup_parallel_plan_enforcement(ParallelHint *hint, HintState *state)
 	{
 		set_config_int32_option("parallel_tuple_cost", 0, state->context);
 		set_config_int32_option("parallel_setup_cost", 0, state->context);
-		set_config_int32_option("min_parallel_relation_size", 0,
+		set_config_int32_option("min_parallel_table_scan_size", 0,
+								state->context);
+		set_config_int32_option("min_parallel_index_scan_size", 0,
 								state->context);
 	}
 	else
@@ -2632,8 +2641,12 @@ setup_parallel_plan_enforcement(ParallelHint *hint, HintState *state)
 								state->init_paratup_cost, state->context);
 		set_config_int32_option("parallel_setup_cost",
 								state->init_parasetup_cost, state->context);
-		set_config_int32_option("min_parallel_relation_size",
-								state->init_min_para_size, state->context);
+		set_config_int32_option("min_parallel_table_scan_size",
+								state->init_min_para_tablescan_size,
+								state->context);
+		set_config_int32_option("min_parallel_index_scan_size",
+								state->init_min_para_indexscan_size,
+								state->context);
 	}
 }
 
@@ -2963,7 +2976,10 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	
 	current_hint_state->init_scan_mask = get_current_scan_mask();
 	current_hint_state->init_join_mask = get_current_join_mask();
-	current_hint_state->init_min_para_size = min_parallel_relation_size;
+	current_hint_state->init_min_para_tablescan_size =
+		min_parallel_table_scan_size;
+	current_hint_state->init_min_para_indexscan_size =
+		min_parallel_index_scan_size;
 	current_hint_state->init_paratup_cost = parallel_tuple_cost;
 	current_hint_state->init_parasetup_cost = parallel_setup_cost;
 

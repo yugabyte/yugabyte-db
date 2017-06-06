@@ -16,6 +16,7 @@
  *	static functions:
  *	   set_plain_rel_pathlist()
  *     set_append_rel_pathlist()
+ *     add_paths_to_append_rel()
  *     generate_mergeappend_paths()
  *     get_cheapest_parameterized_child_path()
  *     accumulate_append_subpath()
@@ -80,6 +81,7 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	create_tidscan_paths(root, rel);
 }
 
+
 /*
  * set_append_rel_pathlist
  *	  Build access paths for an "append relation"
@@ -90,19 +92,11 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 {
 	int			parentRTindex = rti;
 	List	   *live_childrels = NIL;
-	List	   *subpaths = NIL;
-	bool		subpaths_valid = true;
-	List	   *partial_subpaths = NIL;
-	bool		partial_subpaths_valid = true;
-	List	   *all_child_pathkeys = NIL;
-	List	   *all_child_outers = NIL;
 	ListCell   *l;
 
 	/*
 	 * Generate access paths for each member relation, and remember the
-	 * cheapest path for each one.  Also, identify all pathkeys (orderings)
-	 * and parameterizations (required_outer sets) available for the member
-	 * relations.
+	 * non-dummy children.
 	 */
 	foreach(l, root->append_rel_list)
 	{
@@ -110,7 +104,6 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		int			childRTindex;
 		RangeTblEntry *childRTE;
 		RelOptInfo *childrel;
-		ListCell   *lcp;
 
 		/* append_rel_list contains all append rels; ignore others */
 		if (appinfo->parent_relid != parentRTindex)
@@ -145,6 +138,54 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		 * Child is live, so add it to the live_childrels list for use below.
 		 */
 		live_childrels = lappend(live_childrels, childrel);
+	}
+
+	/* Add paths to the "append" relation. */
+	add_paths_to_append_rel(root, rel, live_childrels);
+}
+
+/*
+ * add_paths_to_append_rel
+ *		Generate paths for given "append" relation given the set of non-dummy
+ *		child rels.
+ *
+ * The function collects all parameterizations and orderings supported by the
+ * non-dummy children. For every such parameterization or ordering, it creates
+ * an append path collecting one path from each non-dummy child with given
+ * parameterization or ordering. Similarly it collects partial paths from
+ * non-dummy children to create partial append paths.
+ */
+static void
+add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
+						List *live_childrels)
+{
+	List	   *subpaths = NIL;
+	bool		subpaths_valid = true;
+	List	   *partial_subpaths = NIL;
+	bool		partial_subpaths_valid = true;
+	List	   *all_child_pathkeys = NIL;
+	List	   *all_child_outers = NIL;
+	ListCell   *l;
+	List	   *partitioned_rels = NIL;
+	RangeTblEntry *rte;
+
+	rte = planner_rt_fetch(rel->relid, root);
+	if (rte->relkind == RELKIND_PARTITIONED_TABLE)
+	{
+		partitioned_rels = get_partitioned_child_rels(root, rel->relid);
+		/* The root partitioned table is included as a child rel */
+		Assert(list_length(partitioned_rels) >= 1);
+	}
+
+	/*
+	 * For every non-dummy child, remember the cheapest path.  Also, identify
+	 * all pathkeys (orderings) and parameterizations (required_outer sets)
+	 * available for the non-dummy member relations.
+	 */
+	foreach(l, live_childrels)
+	{
+		RelOptInfo *childrel = lfirst(l);
+		ListCell   *lcp;
 
 		/*
 		 * If child has an unparameterized cheapest-total path, add that to
@@ -235,7 +276,8 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	 * if we have zero or one live subpath due to constraint exclusion.)
 	 */
 	if (subpaths_valid)
-		add_path(rel, (Path *) create_append_path(rel, subpaths, NULL, 0));
+		add_path(rel, (Path *) create_append_path(rel, subpaths, NULL, 0,
+												  partitioned_rels));
 
 	/*
 	 * Consider an append of partial unordered, unparameterized partial paths.
@@ -262,7 +304,7 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 
 		/* Generate a partial append path. */
 		appendpath = create_append_path(rel, partial_subpaths, NULL,
-										parallel_workers);
+										parallel_workers, partitioned_rels);
 		add_partial_path(rel, (Path *) appendpath);
 	}
 
@@ -272,7 +314,8 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	 */
 	if (subpaths_valid)
 		generate_mergeappend_paths(root, rel, live_childrels,
-								   all_child_pathkeys);
+								   all_child_pathkeys,
+								   partitioned_rels);
 
 	/*
 	 * Build Append paths for each parameterization seen among the child rels.
@@ -314,9 +357,11 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 
 		if (subpaths_valid)
 			add_path(rel, (Path *)
-					 create_append_path(rel, subpaths, required_outer, 0));
+					 create_append_path(rel, subpaths, required_outer, 0,
+										partitioned_rels));
 	}
 }
+
 
 /*
  * generate_mergeappend_paths
@@ -344,7 +389,8 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 static void
 generate_mergeappend_paths(PlannerInfo *root, RelOptInfo *rel,
 						   List *live_childrels,
-						   List *all_child_pathkeys)
+						   List *all_child_pathkeys,
+						   List *partitioned_rels)
 {
 	ListCell   *lcp;
 
@@ -368,12 +414,14 @@ generate_mergeappend_paths(PlannerInfo *root, RelOptInfo *rel,
 				get_cheapest_path_for_pathkeys(childrel->pathlist,
 											   pathkeys,
 											   NULL,
-											   STARTUP_COST);
+											   STARTUP_COST,
+											   false);
 			cheapest_total =
 				get_cheapest_path_for_pathkeys(childrel->pathlist,
 											   pathkeys,
 											   NULL,
-											   TOTAL_COST);
+											   TOTAL_COST,
+											   false);
 
 			/*
 			 * If we can't find any paths with the right order just use the
@@ -406,15 +454,18 @@ generate_mergeappend_paths(PlannerInfo *root, RelOptInfo *rel,
 														rel,
 														startup_subpaths,
 														pathkeys,
-														NULL));
+														NULL,
+														partitioned_rels));
 		if (startup_neq_total)
 			add_path(rel, (Path *) create_merge_append_path(root,
 															rel,
 															total_subpaths,
 															pathkeys,
-															NULL));
+															NULL,
+															partitioned_rels));
 	}
 }
+
 
 /*
  * get_cheapest_parameterized_child_path
@@ -438,7 +489,8 @@ get_cheapest_parameterized_child_path(PlannerInfo *root, RelOptInfo *rel,
 	cheapest = get_cheapest_path_for_pathkeys(rel->pathlist,
 											  NIL,
 											  required_outer,
-											  TOTAL_COST);
+											  TOTAL_COST,
+											  false);
 	Assert(cheapest != NULL);
 	if (bms_equal(PATH_REQ_OUTER(cheapest), required_outer))
 		return cheapest;
@@ -489,6 +541,7 @@ get_cheapest_parameterized_child_path(PlannerInfo *root, RelOptInfo *rel,
 	return cheapest;
 }
 
+
 /*
  * accumulate_append_subpath
  *		Add a subpath to the list being built for an Append or MergeAppend
@@ -523,6 +576,7 @@ accumulate_append_subpath(List *subpaths, Path *path)
 	else
 		return lappend(subpaths, path);
 }
+
 
 /*
  * standard_join_search
@@ -637,7 +691,7 @@ create_plain_partial_paths(PlannerInfo *root, RelOptInfo *rel)
 {
 	int			parallel_workers;
 
-	parallel_workers = compute_parallel_worker(rel, rel->pages);
+	parallel_workers = compute_parallel_worker(rel, rel->pages, -1);
 
 	/* If any limit was set to zero, the user doesn't want a parallel scan. */
 	if (parallel_workers <= 0)
@@ -645,63 +699,6 @@ create_plain_partial_paths(PlannerInfo *root, RelOptInfo *rel)
 
 	/* Add an unordered partial path based on a parallel sequential scan. */
 	add_partial_path(rel, create_seqscan_path(root, rel, NULL, parallel_workers));
-}
-
-/*
- * Compute the number of parallel workers that should be used to scan a
- * relation.  "pages" is the number of pages from the relation that we
- * expect to scan.
- */
-static int
-compute_parallel_worker(RelOptInfo *rel, BlockNumber pages)
-{
-	int			parallel_workers;
-
-	/*
-	 * If the user has set the parallel_workers reloption, use that; otherwise
-	 * select a default number of workers.
-	 */
-	if (rel->rel_parallel_workers != -1)
-		parallel_workers = rel->rel_parallel_workers;
-	else
-	{
-		int			parallel_threshold;
-
-		/*
-		 * If this relation is too small to be worth a parallel scan, just
-		 * return without doing anything ... unless it's an inheritance child.
-		 * In that case, we want to generate a parallel path here anyway.  It
-		 * might not be worthwhile just for this relation, but when combined
-		 * with all of its inheritance siblings it may well pay off.
-		 */
-		if (pages < (BlockNumber) min_parallel_relation_size &&
-			rel->reloptkind == RELOPT_BASEREL)
-			return 0;
-
-		/*
-		 * Select the number of workers based on the log of the size of the
-		 * relation.  This probably needs to be a good deal more
-		 * sophisticated, but we need something here for now.  Note that the
-		 * upper limit of the min_parallel_relation_size GUC is chosen to
-		 * prevent overflow here.
-		 */
-		parallel_workers = 1;
-		parallel_threshold = Max(min_parallel_relation_size, 1);
-		while (pages >= (BlockNumber) (parallel_threshold * 3))
-		{
-			parallel_workers++;
-			parallel_threshold *= 3;
-			if (parallel_threshold > INT_MAX / 3)
-				break;			/* avoid overflow */
-		}
-	}
-
-	/*
-	 * In no case use more than max_parallel_workers_per_gather workers.
-	 */
-	parallel_workers = Min(parallel_workers, max_parallel_workers_per_gather);
-
-	return parallel_workers;
 }
 
 
@@ -907,6 +904,7 @@ join_search_one_level(PlannerInfo *root, int level)
 	}
 }
 
+
 /*
  * make_rels_by_clause_joins
  *	  Build joins between the given relation 'old_rel' and other relations
@@ -947,6 +945,7 @@ make_rels_by_clause_joins(PlannerInfo *root,
 	}
 }
 
+
 /*
  * make_rels_by_clauseless_joins
  *	  Given a relation 'old_rel' and a list of other relations
@@ -978,6 +977,7 @@ make_rels_by_clauseless_joins(PlannerInfo *root,
 		}
 	}
 }
+
 
 /*
  * join_is_legal
@@ -1307,6 +1307,7 @@ join_is_legal(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 	return true;
 }
 
+
 /*
  * has_join_restriction
  *		Detect whether the specified relation has join-order restrictions,
@@ -1357,6 +1358,7 @@ has_join_restriction(PlannerInfo *root, RelOptInfo *rel)
 	return false;
 }
 
+
 /*
  * is_dummy_rel --- has relation been proven empty?
  */
@@ -1365,6 +1367,7 @@ is_dummy_rel(RelOptInfo *rel)
 {
 	return IS_DUMMY_REL(rel);
 }
+
 
 /*
  * Mark a relation as proven empty.
@@ -1401,13 +1404,14 @@ mark_dummy_rel(RelOptInfo *rel)
 	rel->partial_pathlist = NIL;
 
 	/* Set up the dummy path */
-	add_path(rel, (Path *) create_append_path(rel, NIL, NULL, 0));
+	add_path(rel, (Path *) create_append_path(rel, NIL, NULL, 0, NIL));
 
 	/* Set or update cheapest_total_path and related fields */
 	set_cheapest(rel);
 
 	MemoryContextSwitchTo(oldcontext);
 }
+
 
 /*
  * restriction_is_constant_false --- is a restrictlist just FALSE?
@@ -1433,9 +1437,8 @@ restriction_is_constant_false(List *restrictlist, bool only_pushed_down)
 	 */
 	foreach(lc, restrictlist)
 	{
-		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
 
-		Assert(IsA(rinfo, RestrictInfo));
 		if (only_pushed_down && !rinfo->is_pushed_down)
 			continue;
 

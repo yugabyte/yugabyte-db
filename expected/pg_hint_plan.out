@@ -1283,15 +1283,16 @@ error hint:
 (3 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
-               QUERY PLAN                
------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
    ->  Tid Scan on t1
          TID Cond: (ctid = '(1,1)'::tid)
-   ->  Tid Scan on t2
-         TID Cond: (ctid = '(1,1)'::tid)
-(6 rows)
+   ->  Materialize
+         ->  Tid Scan on t2
+               TID Cond: (ctid = '(1,1)'::tid)
+(7 rows)
 
 /*+SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
@@ -1306,10 +1307,10 @@ error hint:
 -----------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
-   ->  Seq Scan on t1
-         Filter: (ctid = '(1,1)'::tid)
    ->  Tid Scan on t2
          TID Cond: (ctid = '(1,1)'::tid)
+   ->  Seq Scan on t1
+         Filter: (ctid = '(1,1)'::tid)
 (6 rows)
 
 /*+SeqScan(t2)*/
@@ -1427,10 +1428,10 @@ error hint:
 -----------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
-   ->  Seq Scan on t1
-         Filter: (ctid = '(1,1)'::tid)
    ->  Tid Scan on t2
          TID Cond: (ctid = '(1,1)'::tid)
+   ->  Seq Scan on t1
+         Filter: (ctid = '(1,1)'::tid)
 (6 rows)
 
 /*+SeqScan(t1) NoIndexScan(t2)*/
@@ -1447,10 +1448,10 @@ error hint:
 -----------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
-   ->  Seq Scan on t1
-         Filter: (ctid = '(1,1)'::tid)
    ->  Tid Scan on t2
          TID Cond: (ctid = '(1,1)'::tid)
+   ->  Seq Scan on t1
+         Filter: (ctid = '(1,1)'::tid)
 (6 rows)
 
 /*+SeqScan(t1) NoBitmapScan(t2)*/
@@ -1467,10 +1468,10 @@ error hint:
 -----------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
-   ->  Seq Scan on t1
-         Filter: (ctid = '(1,1)'::tid)
    ->  Tid Scan on t2
          TID Cond: (ctid = '(1,1)'::tid)
+   ->  Seq Scan on t1
+         Filter: (ctid = '(1,1)'::tid)
 (6 rows)
 
 /*+SeqScan(t1) NoTidScan(t2)*/
@@ -1486,10 +1487,10 @@ error hint:
               QUERY PLAN               
 ---------------------------------------
  Nested Loop
-   ->  Seq Scan on t1
+   Join Filter: (t1.id = t2.id)
+   ->  Seq Scan on t2
          Filter: (ctid = '(1,1)'::tid)
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
+   ->  Seq Scan on t1
          Filter: (ctid = '(1,1)'::tid)
 (6 rows)
 
@@ -1945,9 +1946,9 @@ error hint:
 -----------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
-   ->  Tid Scan on t1
-         TID Cond: (ctid = '(1,1)'::tid)
    ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t1
          TID Cond: (ctid = '(1,1)'::tid)
 (6 rows)
 
@@ -2066,9 +2067,9 @@ error hint:
 -----------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
-   ->  Tid Scan on t1
-         TID Cond: (ctid = '(1,1)'::tid)
    ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t1
          TID Cond: (ctid = '(1,1)'::tid)
 (6 rows)
 
@@ -2086,9 +2087,9 @@ error hint:
 -----------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
-   ->  Tid Scan on t1
-         TID Cond: (ctid = '(1,1)'::tid)
    ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t1
          TID Cond: (ctid = '(1,1)'::tid)
 (6 rows)
 
@@ -2106,9 +2107,9 @@ error hint:
 -----------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
-   ->  Tid Scan on t1
-         TID Cond: (ctid = '(1,1)'::tid)
    ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t1
          TID Cond: (ctid = '(1,1)'::tid)
 (6 rows)
 
@@ -2141,15 +2142,16 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN                
------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
    ->  Tid Scan on t1
          TID Cond: (ctid = '(1,1)'::tid)
-   ->  Tid Scan on t2
-         TID Cond: (ctid = '(1,1)'::tid)
-(6 rows)
+   ->  Materialize
+         ->  Tid Scan on t2
+               TID Cond: (ctid = '(1,1)'::tid)
+(7 rows)
 
 /*+NoSeqScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
@@ -2160,15 +2162,16 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN                
------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
    ->  Tid Scan on t1
          TID Cond: (ctid = '(1,1)'::tid)
-   ->  Tid Scan on t2
-         TID Cond: (ctid = '(1,1)'::tid)
-(6 rows)
+   ->  Materialize
+         ->  Tid Scan on t2
+               TID Cond: (ctid = '(1,1)'::tid)
+(7 rows)
 
 /*+NoSeqScan(t1) SeqScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
@@ -2262,15 +2265,16 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN                
------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
    ->  Tid Scan on t1
          TID Cond: (ctid = '(1,1)'::tid)
-   ->  Tid Scan on t2
-         TID Cond: (ctid = '(1,1)'::tid)
-(6 rows)
+   ->  Materialize
+         ->  Tid Scan on t2
+               TID Cond: (ctid = '(1,1)'::tid)
+(7 rows)
 
 /*+NoSeqScan(t1) NoIndexScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
@@ -2282,15 +2286,16 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN                
------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
    ->  Tid Scan on t1
          TID Cond: (ctid = '(1,1)'::tid)
-   ->  Tid Scan on t2
-         TID Cond: (ctid = '(1,1)'::tid)
-(6 rows)
+   ->  Materialize
+         ->  Tid Scan on t2
+               TID Cond: (ctid = '(1,1)'::tid)
+(7 rows)
 
 /*+NoSeqScan(t1) NoBitmapScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
@@ -2302,15 +2307,16 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN                
------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
    ->  Tid Scan on t1
          TID Cond: (ctid = '(1,1)'::tid)
-   ->  Tid Scan on t2
-         TID Cond: (ctid = '(1,1)'::tid)
-(6 rows)
+   ->  Materialize
+         ->  Tid Scan on t2
+               TID Cond: (ctid = '(1,1)'::tid)
+(7 rows)
 
 /*+NoSeqScan(t1) NoTidScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
@@ -2341,15 +2347,16 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN                
------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
    ->  Tid Scan on t1
          TID Cond: (ctid = '(1,1)'::tid)
-   ->  Tid Scan on t2
-         TID Cond: (ctid = '(1,1)'::tid)
-(6 rows)
+   ->  Materialize
+         ->  Tid Scan on t2
+               TID Cond: (ctid = '(1,1)'::tid)
+(7 rows)
 
 /*+NoIndexScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
@@ -2360,15 +2367,16 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN                
------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
    ->  Tid Scan on t1
          TID Cond: (ctid = '(1,1)'::tid)
-   ->  Tid Scan on t2
-         TID Cond: (ctid = '(1,1)'::tid)
-(6 rows)
+   ->  Materialize
+         ->  Tid Scan on t2
+               TID Cond: (ctid = '(1,1)'::tid)
+(7 rows)
 
 /*+NoIndexScan(t1) SeqScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
@@ -2462,15 +2470,16 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN                
------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
    ->  Tid Scan on t1
          TID Cond: (ctid = '(1,1)'::tid)
-   ->  Tid Scan on t2
-         TID Cond: (ctid = '(1,1)'::tid)
-(6 rows)
+   ->  Materialize
+         ->  Tid Scan on t2
+               TID Cond: (ctid = '(1,1)'::tid)
+(7 rows)
 
 /*+NoIndexScan(t1) NoIndexScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
@@ -2482,15 +2491,16 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN                
------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
    ->  Tid Scan on t1
          TID Cond: (ctid = '(1,1)'::tid)
-   ->  Tid Scan on t2
-         TID Cond: (ctid = '(1,1)'::tid)
-(6 rows)
+   ->  Materialize
+         ->  Tid Scan on t2
+               TID Cond: (ctid = '(1,1)'::tid)
+(7 rows)
 
 /*+NoIndexScan(t1) NoBitmapScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
@@ -2502,15 +2512,16 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN                
------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
    ->  Tid Scan on t1
          TID Cond: (ctid = '(1,1)'::tid)
-   ->  Tid Scan on t2
-         TID Cond: (ctid = '(1,1)'::tid)
-(6 rows)
+   ->  Materialize
+         ->  Tid Scan on t2
+               TID Cond: (ctid = '(1,1)'::tid)
+(7 rows)
 
 /*+NoIndexScan(t1) NoTidScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
@@ -2541,15 +2552,16 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN                
------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
    ->  Tid Scan on t1
          TID Cond: (ctid = '(1,1)'::tid)
-   ->  Tid Scan on t2
-         TID Cond: (ctid = '(1,1)'::tid)
-(6 rows)
+   ->  Materialize
+         ->  Tid Scan on t2
+               TID Cond: (ctid = '(1,1)'::tid)
+(7 rows)
 
 /*+NoBitmapScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
@@ -2560,15 +2572,16 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN                
------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
    ->  Tid Scan on t1
          TID Cond: (ctid = '(1,1)'::tid)
-   ->  Tid Scan on t2
-         TID Cond: (ctid = '(1,1)'::tid)
-(6 rows)
+   ->  Materialize
+         ->  Tid Scan on t2
+               TID Cond: (ctid = '(1,1)'::tid)
+(7 rows)
 
 /*+NoBitmapScan(t1) SeqScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
@@ -2662,15 +2675,16 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN                
------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
    ->  Tid Scan on t1
          TID Cond: (ctid = '(1,1)'::tid)
-   ->  Tid Scan on t2
-         TID Cond: (ctid = '(1,1)'::tid)
-(6 rows)
+   ->  Materialize
+         ->  Tid Scan on t2
+               TID Cond: (ctid = '(1,1)'::tid)
+(7 rows)
 
 /*+NoBitmapScan(t1) NoIndexScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
@@ -2682,15 +2696,16 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN                
------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
    ->  Tid Scan on t1
          TID Cond: (ctid = '(1,1)'::tid)
-   ->  Tid Scan on t2
-         TID Cond: (ctid = '(1,1)'::tid)
-(6 rows)
+   ->  Materialize
+         ->  Tid Scan on t2
+               TID Cond: (ctid = '(1,1)'::tid)
+(7 rows)
 
 /*+NoBitmapScan(t1) NoBitmapScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
@@ -2702,15 +2717,16 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN                
------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
    ->  Tid Scan on t1
          TID Cond: (ctid = '(1,1)'::tid)
-   ->  Tid Scan on t2
-         TID Cond: (ctid = '(1,1)'::tid)
-(6 rows)
+   ->  Materialize
+         ->  Tid Scan on t2
+               TID Cond: (ctid = '(1,1)'::tid)
+(7 rows)
 
 /*+NoBitmapScan(t1) NoTidScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
@@ -2934,17 +2950,18 @@ error hint:
 
 -- additional test
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)' AND t1.id < 10 AND t2.id < 10;
-               QUERY PLAN                
------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Nested Loop
    Join Filter: (t1.id = t2.id)
    ->  Tid Scan on t1
          TID Cond: (ctid = '(1,1)'::tid)
          Filter: (id < 10)
-   ->  Tid Scan on t2
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: (id < 10)
-(8 rows)
+   ->  Materialize
+         ->  Tid Scan on t2
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: (id < 10)
+(9 rows)
 
 /*+BitmapScan(t1) BitmapScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)' AND t1.id < 10 AND t2.id < 10;
@@ -3011,10 +3028,10 @@ error hint:
           QUERY PLAN          
 ------------------------------
  Hash Full Join
-   Hash Cond: (t1.id = t2.id)
-   ->  Seq Scan on t1
+   Hash Cond: (t2.id = t1.id)
+   ->  Seq Scan on t2
    ->  Hash
-         ->  Seq Scan on t2
+         ->  Seq Scan on t1
 (5 rows)
 
 -- inheritance tables test
@@ -3599,32 +3616,32 @@ not used hint:
 duplication hint:
 error hint:
 
-                                 QUERY PLAN                                  
------------------------------------------------------------------------------
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
  Nested Loop
    Join Filter: (p1.id = t1.id)
-   ->  Append
-         ->  Seq Scan on p1
-               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c1
-               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c2
-               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c3
-               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c4
-               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c1_c1
-               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c1_c2
-               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c3_c1
-               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Seq Scan on p1_c3_c2
-               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
    ->  Materialize
-         ->  Index Scan using t1_pkey on t1
-               Index Cond: (id < 10)
+         ->  Append
+               ->  Seq Scan on p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c2
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c4
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c2
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3_c1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3_c2
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
 (24 rows)
 
 /*+MergeJoin(p1 t1)*/
@@ -4010,11 +4027,12 @@ error hint:
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Nested Loop
+   Join Filter: (p1.id = t1.id)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
    ->  Seq Scan on p1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id = p1.id) AND (id < 10))
-(5 rows)
+(6 rows)
 
 /*+MergeJoin(p1 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
@@ -4135,11 +4153,12 @@ error hint:
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Nested Loop
+   Join Filter: (p1.id = t1.id)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
    ->  Seq Scan on p1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id = p1.id) AND (id < 10))
-(5 rows)
+(6 rows)
 
 /*+MergeJoin(p1 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
@@ -4187,22 +4206,24 @@ EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 5
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Nested Loop
+   Join Filter: (p1.id = t1.id)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
    ->  Seq Scan on p1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id = p1.id) AND (id < 10))
-(5 rows)
+(6 rows)
 
 SET constraint_exclusion TO on;
 EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Nested Loop
+   Join Filter: (p1.id = t1.id)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
    ->  Seq Scan on p1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id = p1.id) AND (id < 10))
-(5 rows)
+(6 rows)
 
 SET constraint_exclusion TO off;
 /*+SeqScan(p1)*/
@@ -4217,11 +4238,12 @@ error hint:
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Nested Loop
+   Join Filter: (p1.id = t1.id)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
    ->  Seq Scan on p1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id = p1.id) AND (id < 10))
-(5 rows)
+(6 rows)
 
 /*+IndexScan(p1)*/
 EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
@@ -4232,15 +4254,16 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN                    
---------------------------------------------------
- Nested Loop
+                   QUERY PLAN                    
+-------------------------------------------------
+ Merge Join
+   Merge Cond: (p1.id = t1.id)
    ->  Index Scan using p1_pkey on p1
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
    ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id = p1.id) AND (id < 10))
-(6 rows)
+         Index Cond: (id < 10)
+(7 rows)
 
 /*+BitmapScan(p1)*/
 EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
@@ -4251,17 +4274,19 @@ not used hint:
 duplication hint:
 error hint:
 
-                      QUERY PLAN                       
--------------------------------------------------------
+                         QUERY PLAN                          
+-------------------------------------------------------------
  Nested Loop
-   ->  Bitmap Heap Scan on p1
-         Recheck Cond: ((id >= 50) AND (id <= 51))
-         Filter: (ctid = '(1,1)'::tid)
-         ->  Bitmap Index Scan on p1_pkey
-               Index Cond: ((id >= 50) AND (id <= 51))
+   Join Filter: (p1.id = t1.id)
    ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id = p1.id) AND (id < 10))
-(8 rows)
+         Index Cond: (id < 10)
+   ->  Materialize
+         ->  Bitmap Heap Scan on p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+(10 rows)
 
 /*+TidScan(p1)*/
 EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
@@ -4272,15 +4297,17 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN                    
---------------------------------------------------
+                    QUERY PLAN                     
+---------------------------------------------------
  Nested Loop
-   ->  Tid Scan on p1
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((id >= 50) AND (id <= 51))
+   Join Filter: (p1.id = t1.id)
    ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id = p1.id) AND (id < 10))
-(6 rows)
+         Index Cond: (id < 10)
+   ->  Materialize
+         ->  Tid Scan on p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+(8 rows)
 
 SET constraint_exclusion TO on;
 /*+SeqScan(p1)*/
@@ -4295,11 +4322,12 @@ error hint:
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Nested Loop
+   Join Filter: (p1.id = t1.id)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
    ->  Seq Scan on p1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id = p1.id) AND (id < 10))
-(5 rows)
+(6 rows)
 
 /*+IndexScan(p1)*/
 EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
@@ -4310,15 +4338,16 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN                    
---------------------------------------------------
- Nested Loop
+                   QUERY PLAN                    
+-------------------------------------------------
+ Merge Join
+   Merge Cond: (p1.id = t1.id)
    ->  Index Scan using p1_pkey on p1
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
    ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id = p1.id) AND (id < 10))
-(6 rows)
+         Index Cond: (id < 10)
+(7 rows)
 
 /*+BitmapScan(p1)*/
 EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
@@ -4329,17 +4358,19 @@ not used hint:
 duplication hint:
 error hint:
 
-                      QUERY PLAN                       
--------------------------------------------------------
+                         QUERY PLAN                          
+-------------------------------------------------------------
  Nested Loop
-   ->  Bitmap Heap Scan on p1
-         Recheck Cond: ((id >= 50) AND (id <= 51))
-         Filter: (ctid = '(1,1)'::tid)
-         ->  Bitmap Index Scan on p1_pkey
-               Index Cond: ((id >= 50) AND (id <= 51))
+   Join Filter: (p1.id = t1.id)
    ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id = p1.id) AND (id < 10))
-(8 rows)
+         Index Cond: (id < 10)
+   ->  Materialize
+         ->  Bitmap Heap Scan on p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+(10 rows)
 
 /*+TidScan(p1)*/
 EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
@@ -4350,15 +4381,17 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN                    
---------------------------------------------------
+                    QUERY PLAN                     
+---------------------------------------------------
  Nested Loop
-   ->  Tid Scan on p1
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((id >= 50) AND (id <= 51))
+   Join Filter: (p1.id = t1.id)
    ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id = p1.id) AND (id < 10))
-(6 rows)
+         Index Cond: (id < 10)
+   ->  Materialize
+         ->  Tid Scan on p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+(8 rows)
 
 -- quote test
 /*+SeqScan("""t1 )	")IndexScan("t	2 """)HashJoin("""t1 )	"T3"t	2 """)Leading("""t1 )	"T3"t	2 """)Set(application_name"a	a	a""	a	A")*/
@@ -6053,7 +6086,6 @@ error hint:
                     QUERY PLAN                    
 --------------------------------------------------
  Nested Loop
-   Join Filter: (t3.id = t4.id)
    ->  Nested Loop
          Join Filter: (t1.val = t3.val)
          ->  Hash Join
@@ -6063,7 +6095,8 @@ error hint:
                ->  Hash
                      ->  Seq Scan on t2
          ->  Seq Scan on t3
-   ->  Seq Scan on t4
+   ->  Index Scan using t4_pkey on t4
+         Index Cond: (id = t3.id)
 (12 rows)
 
 /*+Leading(((t1 t2) t3)) MergeJoin(t1 t2 t3 t4)*/
@@ -6601,7 +6634,9 @@ EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
 (19 rows)
 
-/*+IndexScan(p2 p2_val)*/
+-- Inhibit parallel exection to avoid interfaring the hint
+set max_parallel_workers_per_gather to 0;
+/*+ IndexScan(p2 p2_val)*/
 EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
 LOG:  available indexes for IndexScan(p2):
 LOG:  available indexes for IndexScan(p2_c1):
@@ -8402,6 +8437,7 @@ duplication hint:
 error hint:
 
 \o
+set max_parallel_workers_per_gather to DEFAULT;
 \! sql/maskout.sh results/pg_hint_plan.tmpout
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------

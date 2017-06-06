@@ -36,7 +36,6 @@ CREATE INDEX p2_id_val_idx ON p2 (id, val);
 CREATE UNIQUE INDEX p2_val_idx ON p2 (val);
 CREATE INDEX p2_ununi_id_val_idx ON p2 (val);
 CREATE INDEX p2_val_idx_1 ON p2 USING hash (val);
-WARNING:  hash indexes are not WAL-logged and their use is discouraged
 CREATE INDEX p2_val_id_idx ON p2 (val, id);
 CREATE INDEX p2_val_idx2 ON p2 (val COLLATE "ja_JP");
 CREATE INDEX p2_val_idx3 ON p2 (val varchar_ops);
@@ -49,35 +48,27 @@ CREATE INDEX p2_val_idx7 ON p2 (val) WHERE id < 120;
 CREATE TABLE p2_c1 (LIKE p2 INCLUDING ALL, CHECK (id <= 100)) INHERITS(p2);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-WARNING:  hash indexes are not WAL-logged and their use is discouraged
 CREATE TABLE p2_c2 (LIKE p2 INCLUDING ALL, CHECK (id > 100 AND id <= 200)) INHERITS(p2);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-WARNING:  hash indexes are not WAL-logged and their use is discouraged
 CREATE TABLE p2_c3 (LIKE p2 INCLUDING ALL, CHECK (id > 200 AND id <= 300)) INHERITS(p2);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-WARNING:  hash indexes are not WAL-logged and their use is discouraged
 CREATE TABLE p2_c4 (LIKE p2 INCLUDING ALL, CHECK (id > 300)) INHERITS(p2);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-WARNING:  hash indexes are not WAL-logged and their use is discouraged
 CREATE TABLE p2_c1_c1 (LIKE p2 INCLUDING ALL, CHECK (id <= 50)) INHERITS(p2_c1);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-WARNING:  hash indexes are not WAL-logged and their use is discouraged
 CREATE TABLE p2_c1_c2 (LIKE p2 INCLUDING ALL, CHECK (id > 50 AND id <= 100)) INHERITS(p2_c1);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-WARNING:  hash indexes are not WAL-logged and their use is discouraged
 CREATE TABLE p2_c3_c1 (LIKE p2 INCLUDING ALL, CHECK (id > 200 AND id <= 250)) INHERITS(p2_c3);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-WARNING:  hash indexes are not WAL-logged and their use is discouraged
 CREATE TABLE p2_c3_c2 (LIKE p2 INCLUDING ALL, CHECK (id > 250 AND id <= 300)) INHERITS(p2_c3);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-WARNING:  hash indexes are not WAL-logged and their use is discouraged
 CREATE TABLE s0.t1 (id int PRIMARY KEY, val int);
 INSERT INTO t1 SELECT i, i % 100 FROM (SELECT generate_series(1, 10000) i) t;
 INSERT INTO t2 SELECT i, i % 10 FROM (SELECT generate_series(1, 1000) i) t;
@@ -168,42 +159,44 @@ SELECT name, setting, category
     OR name = 'client_min_messages'
  ORDER BY category, name;
 SELECT * FROM settings;
-            name            |  setting  |                  category                   
-----------------------------+-----------+---------------------------------------------
- geqo                       | on        | Query Tuning / Genetic Query Optimizer
- geqo_effort                | 5         | Query Tuning / Genetic Query Optimizer
- geqo_generations           | 0         | Query Tuning / Genetic Query Optimizer
- geqo_pool_size             | 0         | Query Tuning / Genetic Query Optimizer
- geqo_seed                  | 0         | Query Tuning / Genetic Query Optimizer
- geqo_selection_bias        | 2         | Query Tuning / Genetic Query Optimizer
- geqo_threshold             | 12        | Query Tuning / Genetic Query Optimizer
- constraint_exclusion       | partition | Query Tuning / Other Planner Options
- cursor_tuple_fraction      | 0.1       | Query Tuning / Other Planner Options
- default_statistics_target  | 100       | Query Tuning / Other Planner Options
- force_parallel_mode        | off       | Query Tuning / Other Planner Options
- from_collapse_limit        | 8         | Query Tuning / Other Planner Options
- join_collapse_limit        | 8         | Query Tuning / Other Planner Options
- cpu_index_tuple_cost       | 0.005     | Query Tuning / Planner Cost Constants
- cpu_operator_cost          | 0.0025    | Query Tuning / Planner Cost Constants
- cpu_tuple_cost             | 0.01      | Query Tuning / Planner Cost Constants
- effective_cache_size       | 16384     | Query Tuning / Planner Cost Constants
- min_parallel_relation_size | 1024      | Query Tuning / Planner Cost Constants
- parallel_setup_cost        | 1000      | Query Tuning / Planner Cost Constants
- parallel_tuple_cost        | 0.1       | Query Tuning / Planner Cost Constants
- random_page_cost           | 4         | Query Tuning / Planner Cost Constants
- seq_page_cost              | 1         | Query Tuning / Planner Cost Constants
- enable_bitmapscan          | on        | Query Tuning / Planner Method Configuration
- enable_hashagg             | on        | Query Tuning / Planner Method Configuration
- enable_hashjoin            | on        | Query Tuning / Planner Method Configuration
- enable_indexonlyscan       | on        | Query Tuning / Planner Method Configuration
- enable_indexscan           | on        | Query Tuning / Planner Method Configuration
- enable_material            | on        | Query Tuning / Planner Method Configuration
- enable_mergejoin           | on        | Query Tuning / Planner Method Configuration
- enable_nestloop            | on        | Query Tuning / Planner Method Configuration
- enable_seqscan             | on        | Query Tuning / Planner Method Configuration
- enable_sort                | on        | Query Tuning / Planner Method Configuration
- enable_tidscan             | on        | Query Tuning / Planner Method Configuration
- client_min_messages        | notice    | Reporting and Logging / When to Log
-(34 rows)
+             name             |  setting  |                  category                   
+------------------------------+-----------+---------------------------------------------
+ geqo                         | on        | Query Tuning / Genetic Query Optimizer
+ geqo_effort                  | 5         | Query Tuning / Genetic Query Optimizer
+ geqo_generations             | 0         | Query Tuning / Genetic Query Optimizer
+ geqo_pool_size               | 0         | Query Tuning / Genetic Query Optimizer
+ geqo_seed                    | 0         | Query Tuning / Genetic Query Optimizer
+ geqo_selection_bias          | 2         | Query Tuning / Genetic Query Optimizer
+ geqo_threshold               | 12        | Query Tuning / Genetic Query Optimizer
+ constraint_exclusion         | partition | Query Tuning / Other Planner Options
+ cursor_tuple_fraction        | 0.1       | Query Tuning / Other Planner Options
+ default_statistics_target    | 100       | Query Tuning / Other Planner Options
+ force_parallel_mode          | off       | Query Tuning / Other Planner Options
+ from_collapse_limit          | 8         | Query Tuning / Other Planner Options
+ join_collapse_limit          | 8         | Query Tuning / Other Planner Options
+ cpu_index_tuple_cost         | 0.005     | Query Tuning / Planner Cost Constants
+ cpu_operator_cost            | 0.0025    | Query Tuning / Planner Cost Constants
+ cpu_tuple_cost               | 0.01      | Query Tuning / Planner Cost Constants
+ effective_cache_size         | 16384     | Query Tuning / Planner Cost Constants
+ min_parallel_index_scan_size | 64        | Query Tuning / Planner Cost Constants
+ min_parallel_table_scan_size | 1024      | Query Tuning / Planner Cost Constants
+ parallel_setup_cost          | 1000      | Query Tuning / Planner Cost Constants
+ parallel_tuple_cost          | 0.1       | Query Tuning / Planner Cost Constants
+ random_page_cost             | 4         | Query Tuning / Planner Cost Constants
+ seq_page_cost                | 1         | Query Tuning / Planner Cost Constants
+ enable_bitmapscan            | on        | Query Tuning / Planner Method Configuration
+ enable_gathermerge           | on        | Query Tuning / Planner Method Configuration
+ enable_hashagg               | on        | Query Tuning / Planner Method Configuration
+ enable_hashjoin              | on        | Query Tuning / Planner Method Configuration
+ enable_indexonlyscan         | on        | Query Tuning / Planner Method Configuration
+ enable_indexscan             | on        | Query Tuning / Planner Method Configuration
+ enable_material              | on        | Query Tuning / Planner Method Configuration
+ enable_mergejoin             | on        | Query Tuning / Planner Method Configuration
+ enable_nestloop              | on        | Query Tuning / Planner Method Configuration
+ enable_seqscan               | on        | Query Tuning / Planner Method Configuration
+ enable_sort                  | on        | Query Tuning / Planner Method Configuration
+ enable_tidscan               | on        | Query Tuning / Planner Method Configuration
+ client_min_messages          | notice    | Reporting and Logging / When to Log
+(36 rows)
 
 ANALYZE;

@@ -13,7 +13,8 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1;
 
 SET parallel_setup_cost to 0;
 SET parallel_tuple_cost to 0;
-SET min_parallel_relation_size to 0;
+SET min_parallel_table_scan_size to 0;
+SET min_parallel_index_scan_size to 0;
 SET max_parallel_workers_per_gather to DEFAULT;
 
 /*+Parallel(t1 8)*/
@@ -28,12 +29,14 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1;
 -- Queries on inheritance tables
 SET parallel_setup_cost to 0;
 SET parallel_tuple_cost to 0;
-SET min_parallel_relation_size to 0;
+SET min_parallel_table_scan_size to 0;
+SET min_parallel_index_scan_size to 0;
 /*+Parallel(p1 8)*/
 EXPLAIN (COSTS false) SELECT * FROM p1;
 SET parallel_setup_cost to DEFAULT;
 SET parallel_tuple_cost to DEFAULT;
-SET min_parallel_relation_size to DEFAULT;
+SET min_parallel_table_scan_size to DEFAULT;
+SET min_parallel_index_scan_size to DEFAULT;
 
 /*+Parallel(p1 8 hard)*/
 EXPLAIN (COSTS false) SELECT * FROM p1;
@@ -51,7 +54,8 @@ EXPLAIN (COSTS false) SELECT * FROM p1_c1_c1 join p2_c1_c1 on p1_c1_c1.id = p2_c
 
 SET parallel_setup_cost to 0;
 SET parallel_tuple_cost to 0;
-SET min_parallel_relation_size to 0;
+SET min_parallel_table_scan_size to 0;
+SET min_parallel_index_scan_size to 0;
 
 /*+Parallel(p1_c1_c1 8 soft) Parallel(p2_c1_c1 0)*/
 EXPLAIN (COSTS false) SELECT * FROM p1_c1_c1 join p2_c1_c1 on p1_c1_c1.id = p2_c1_c1.id;
@@ -66,7 +70,8 @@ EXPLAIN (COSTS false) SELECT * FROM p1_c1_c1 join p2_c1_c1 on p1_c1_c1.id = p2_c
 -- Joins on inheritance tables
 SET parallel_setup_cost to 0;
 SET parallel_tuple_cost to 0;
-SET min_parallel_relation_size to 0;
+SET min_parallel_table_scan_size to 0;
+SET min_parallel_index_scan_size to 0;
 /*+Parallel(p1 8)*/
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 
@@ -75,7 +80,8 @@ EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 
 SET parallel_setup_cost to DEFAULT;
 SET parallel_tuple_cost to DEFAULT;
-SET min_parallel_relation_size to DEFAULT;
+SET min_parallel_table_scan_size to DEFAULT;
+SET min_parallel_index_scan_size to DEFAULT;
 
 /*+Parallel(p2 8 soft)*/
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
@@ -96,12 +102,12 @@ EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 /*+Parallel(p1 8 hard) SeqScan(p1) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 
--- we don't have parallel over index scans so far
+-- Index partial scan is not handled yet.
 /*+Parallel(p1 8 hard) IndexScan(p1) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 
 -- This hint doesn't turn on parallel, so the Parallel hint is ignored
-show max_parallel_workers_per_gather;
+set max_parallel_workers_per_gather TO 0;
 /*+Parallel(p1 0 hard) IndexScan(p1) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 
@@ -112,7 +118,8 @@ EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
 -- parallel hinting on any relation enables parallel
 SET parallel_setup_cost to 0;
 SET parallel_tuple_cost to 0;
-SET min_parallel_relation_size to 0;
+SET min_parallel_table_scan_size to 0;
+SET min_parallel_index_scan_size to 0;
 SET max_parallel_workers_per_gather to 0;
 
 /*+Parallel(p1 8) */
@@ -125,7 +132,8 @@ EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
 -- applies largest number of workers on merged parallel paths
 SET parallel_setup_cost to DEFAULT;
 SET parallel_tuple_cost to DEFAULT;
-SET min_parallel_relation_size to DEFAULT;
+SET min_parallel_table_scan_size to DEFAULT;
+SET min_parallel_index_scan_size to DEFAULT;
 SET max_parallel_workers_per_gather to 8;
 /*+Parallel(p1 5 hard)Parallel(p2 6 hard) */
 EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
@@ -134,7 +142,8 @@ EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
 -- num of workers of non-hinted relations should be default value
 SET parallel_setup_cost to 0;
 SET parallel_tuple_cost to 0;
-SET min_parallel_relation_size to 0;
+SET min_parallel_table_scan_size to 0;
+SET min_parallel_index_scan_size to 0;
 SET max_parallel_workers_per_gather to 3;
 SET enable_indexscan to false;
 
@@ -145,7 +154,8 @@ EXPLAIN (COSTS false) SELECT * FROM p1 join t1 on p1.id = t1.id;
 SET enable_indexscan to DEFAULT;
 SET parallel_setup_cost to 0;
 SET parallel_tuple_cost to 0;
-SET min_parallel_relation_size to 0;
+SET min_parallel_table_scan_size to 0;
+SET min_parallel_index_scan_size to 0;
 SET max_parallel_workers_per_gather to 5;
 EXPLAIN (COSTS false) SELECT * FROM p1;
 
