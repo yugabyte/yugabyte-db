@@ -96,27 +96,15 @@ public class CassandraStockTicker extends AppBase {
   @Override
   public void dropTable() {
     // Drop the raw table.
-    try {
-      String drop_stmt = String.format("DROP TABLE %s;", tickerTableRaw);
-      getCassandraClient().execute(drop_stmt);
-      LOG.info("Dropped Cassandra table " + tickerTableRaw + " using query: [" + drop_stmt + "]");
-    } catch (Exception e) {
-      LOG.info("Ignoring exception dropping table: " + e.getMessage());
-    }
+    dropCassandraTable(tickerTableRaw);
     // Drop the minutely table.
-    try {
-      String drop_stmt = String.format("DROP TABLE %s;", tickerTableMin);
-      getCassandraClient().execute(drop_stmt);
-      LOG.info("Dropped Cassandra table " + tickerTableMin + " using query: [" + drop_stmt + "]");
-    } catch (Exception e) {
-      LOG.info("Ignoring exception dropping table: " + e.getMessage());
-    }
+    dropCassandraTable(tickerTableMin);
   }
 
   @Override
   public void createTableIfNeeded() {
     // Create the raw table.
-    String create_stmt = "CREATE TABLE " + tickerTableRaw + " (" +
+    String create_stmt = "CREATE TABLE IF NOT EXISTS " + tickerTableRaw + " (" +
                          "  ticker_id varchar" +
                          ", ts timestamp" +
                          ", value varchar" +

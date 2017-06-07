@@ -128,18 +128,12 @@ public class CassandraTimeseries extends AppBase {
 
   @Override
   public void dropTable() {
-    try {
-      String drop_stmt = String.format("DROP TABLE %s;", metricsTable);
-      getCassandraClient().execute(drop_stmt);
-      LOG.info("Dropped Cassandra table " + metricsTable + " using query: [" + drop_stmt + "]");
-    } catch (Exception e) {
-      LOG.info("Ignoring exception dropping table: " + e.getMessage());
-    }
+    dropCassandraTable(metricsTable);
   }
 
   @Override
   public void createTableIfNeeded() {
-    String create_stmt = "CREATE TABLE " + metricsTable + " (" +
+    String create_stmt = "CREATE TABLE IF NOT EXISTS " + metricsTable + " (" +
                          "  user_id varchar" +
                          ", metric_id varchar" +
                          ", node_id varchar" +

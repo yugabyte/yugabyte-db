@@ -56,13 +56,7 @@ public class CassandraKeyValue extends AppBase {
    */
   @Override
   public void dropTable() {
-    try {
-      String drop_stmt = String.format("DROP TABLE %s;", tableName);
-      getCassandraClient().execute(drop_stmt);
-      LOG.info("Dropped Cassandra table " + tableName + " using query: [" + drop_stmt + "]");
-    } catch (Exception e) {
-      LOG.info("Ignoring exception dropping table: " + e.getMessage());
-    }
+    dropCassandraTable(tableName);
   }
 
   @Override

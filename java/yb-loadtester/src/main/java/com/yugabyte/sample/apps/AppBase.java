@@ -33,7 +33,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   // Instance of the workload configuration.
   public static AppConfig appConfig = new AppConfig();
   // The configuration of the load tester.
-  private CmdLineOpts configuration;
+  protected CmdLineOpts configuration;
   // The number of keys written so far.
   protected static AtomicLong numKeysWritten = new AtomicLong(0);
   // The number of keys that have been read so far.
@@ -49,7 +49,8 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   private Jedis jedisClient;
   // Instance of the load generator.
   private static SimpleLoadGenerator loadGenerator = null;
-
+  // Keyspace name.
+  private static String keyspace = "ybdemo_keyspace";
 
   //////////// Helper methods to return the client objects (Redis, Cassandra, etc). ////////////////
 
@@ -67,6 +68,16 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     return cassandra_session;
   }
 
+  protected void createKeyspace(Session session, String ks) {
+    String create_keyspace_stmt = "CREATE KEYSPACE IF NOT EXISTS " + ks +
+      " WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor' : 1};";
+    cassandra_session.execute(create_keyspace_stmt);
+    LOG.debug("Created a keyspace " + ks + " using query: [" + create_keyspace_stmt + "]");
+    String use_keyspace_stmt = "USE " + ks + ";";
+    cassandra_session.execute(use_keyspace_stmt);
+    LOG.debug("Used the new keyspace " + ks + " using query: [" + use_keyspace_stmt + "]");
+  }
+
   /**
    * Private method that is thread-safe and creates the Cassandra client. Exactly one calling thread
    * will succeed in creating the client. This method does nothing for the other threads.
@@ -81,13 +92,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     if (cassandra_session == null) {
       LOG.debug("Creating a session...");
       cassandra_session = cassandra_cluster.connect();
-
-      String create_keyspace_stmt = "CREATE KEYSPACE IF NOT EXISTS my_keyspace;";
-      cassandra_session.execute(create_keyspace_stmt);
-      LOG.debug("Created a keyspace my_keyspace using query: [" + create_keyspace_stmt + "]");
-      String use_keyspace_stmt = "USE my_keyspace;";
-      cassandra_session.execute(use_keyspace_stmt);
-      LOG.debug("Used the new keyspace my_keyspace using query: [" + use_keyspace_stmt + "]");
+      createKeyspace(cassandra_session, keyspace);
     }
   }
 
@@ -117,6 +122,16 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    * The apps extending this base should drop all the tables they create when this method is called.
    */
   public void dropTable() {}
+
+  public void dropCassandraTable(String tableName) {
+    try {
+      String drop_stmt = String.format("DROP TABLE %s;", tableName);
+      getCassandraClient().execute(drop_stmt);
+      LOG.info("Dropped Cassandra table " + tableName + " using query: [" + drop_stmt + "]");
+    } catch (Exception e) {
+      LOG.info("Ignoring exception dropping table: " + e.getMessage());
+    }
+  }
 
   /**
    * The apps extending this base should create all the necessary tables in this method.

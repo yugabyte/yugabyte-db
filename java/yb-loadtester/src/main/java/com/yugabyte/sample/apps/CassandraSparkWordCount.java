@@ -83,12 +83,14 @@ public class CassandraSparkWordCount extends AppBase {
       // Setting up sample table
       Session session = getCassandraClient();
 
-      // Create the keyspace if it doesn't already exist
-      session.execute("CREATE KEYSPACE IF NOT EXISTS " + inputKeyspace);
+      // Create keyspace and use it.
+      createKeyspace(session, inputKeyspace);
       // Drop the sample table if it already exists.
-      session.execute("DROP TABLE IF EXISTS " + inputKeyspace + "." + inputTableName);
+      if (!configuration.getReuseExistingTable()) {
+        dropCassandraTable(inputKeyspace + "." + inputTableName);
+      }
       // Create the input table.
-      executeAndLog(session, "CREATE TABLE " + inputKeyspace + "." + inputTableName +
+      executeAndLog(session, "CREATE TABLE IF NOT EXISTS " + inputKeyspace + "." + inputTableName +
               " (id int, line varchar, primary key(id));");
 
       // Insert some rows.
@@ -156,12 +158,13 @@ public class CassandraSparkWordCount extends AppBase {
             .reduceByKey((x, y) ->  x +  y);
 
     //------------------------------------------- Output -----------------------------------------\\
-    // Create keyspace if it doesn't already exist.
-    session.execute("CREATE KEYSPACE IF NOT EXISTS " + outputKeyspace);
+    createKeyspace(session, outputKeyspace);
     // Drop the output table if it already exists.
-    session.execute("DROP TABLE IF EXISTS " + outputKeyspace + "." + outputTableName);
+    if (!this.configuration.getReuseExistingTable()) {
+      dropCassandraTable(outputKeyspace + "." + outputTableName);
+    }
     // Create the output table.
-    session.execute("CREATE TABLE " + outputKeyspace + "." + outputTableName +
+    session.execute("CREATE TABLE IF NOT EXISTS " + outputKeyspace + "." + outputTableName +
             " (word VARCHAR PRIMARY KEY, count INT);");
 
     // Save the output to the CQL table.
