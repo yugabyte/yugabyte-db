@@ -109,7 +109,7 @@ export default class OnPremConfiguration extends Component {
           if (Object.keys(zonesMap).length === this.state.numZones) {
             bootstrapSteps[currentStepIndex + 1].status = "Running";
             // If nodes specified create nodes, else jump to access key
-            if (isNonEmptyArray(this.state.configJsonVal.nodes)) {
+            if (isNonEmptyArray(config.nodes)) {
               this.props.createOnPremNodes(zonesMap, config);
             } else {
               this.props.createOnPremAccessKeys(this.state.providerUUID, this.state.regionsMap, config);
