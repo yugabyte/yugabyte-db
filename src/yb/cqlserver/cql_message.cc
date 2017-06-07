@@ -294,10 +294,9 @@ Status CQLRequest::ParseStringList(vector<string>* list) {
   DVLOG(4) << "CQL string list ...";
   uint16_t count = 0;
   RETURN_NOT_OK(ParseShort(&count));
+  list->resize(count);
   for (uint16_t i = 0; i < count; ++i) {
-    string value;
-    RETURN_NOT_OK(ParseString(&value));
-    list->push_back(value);
+    RETURN_NOT_OK(ParseString(&list->at(i)));
   }
   return Status::OK();
 }
@@ -423,13 +422,13 @@ Status CQLRequest::ParseQueryParameters(QueryParameters* params) {
     const bool with_name = (params->flags & CQLMessage::QueryParameters::kWithNamesForValuesFlag);
     uint16_t count = 0;
     RETURN_NOT_OK(ParseShort(&count));
+    params->values.resize(count);
     for (uint16_t i = 0; i < count; ++i) {
-      Value value;
+      Value& value = params->values[i];
       RETURN_NOT_OK(ParseValue(with_name, &value));
       if (with_name) {
-        params->value_map[value.name] = params->values.size();
+        params->value_map[value.name] = i;
       }
-      params->values.push_back(value);
     }
   }
   if (params->flags & CQLMessage::QueryParameters::kWithPageSizeFlag) {
@@ -587,8 +586,9 @@ Status BatchRequest::ParseBody() {
   type_ = static_cast<Type>(type);
   uint16_t query_count = 0;
   RETURN_NOT_OK(ParseShort(&query_count));
+  queries_.resize(query_count);
   for (uint16_t i = 0; i < query_count; ++i) {
-    Query query;
+    Query& query = queries_[i];
     uint8_t is_prepared_query;
     RETURN_NOT_OK(ParseByte(&is_prepared_query));
     switch (is_prepared_query) {
@@ -606,13 +606,11 @@ Status BatchRequest::ParseBody() {
     }
     uint16_t value_count = 0;
     RETURN_NOT_OK(ParseShort(&value_count));
+    query.values.resize(value_count);
     for (uint16_t j = 0; j < value_count; ++j) {
-      Value value;
       // with_name is not possible in the protocol due to a design flaw. See JIRA CASSANDRA-10246.
-      RETURN_NOT_OK(ParseValue(false /* with_name */, &value));
-      query.values.push_back(value);
+      RETURN_NOT_OK(ParseValue(false /* with_name */, &query.values[j]));
     }
-    queries_.push_back(query);
   }
   RETURN_NOT_OK(ParseConsistency(&consistency_));
   RETURN_NOT_OK(ParseByte(&flags_));

@@ -77,15 +77,13 @@ class CQLProcessor : public sql::SqlProcessor {
  private:
   // Run in response to ProcessQuery, ProcessExecute and ProcessCall
   void ProcessQueryDone(
-      const QueryRequest& req, Callback<void(CQLResponse*)> cb, const Status& s,
+      const QueryRequest* req, Callback<void(CQLResponse*)> cb, const Status& s,
       sql::ExecutedResult::SharedPtr result);
   void ProcessExecuteDone(
-      const ExecuteRequest& req, std::shared_ptr<CQLStatement> stmt,
+      const ExecuteRequest* req, std::shared_ptr<CQLStatement> stmt,
       Callback<void(CQLResponse*)> cb, const Status& s, sql::ExecutedResult::SharedPtr result);
   void ProcessCallDone(
-      rpc::InboundCallPtr call,
-      const CQLRequest* request,
-      const MonoTime& start,
+      rpc::InboundCallPtr call, const CQLRequest* request, const MonoTime& start,
       CQLResponse* response);
 
   CQLResponse* ReturnResponse(

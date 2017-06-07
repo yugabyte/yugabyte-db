@@ -202,26 +202,26 @@ void CQLProcessor::ProcessExecute(const ExecuteRequest& req, Callback<void(CQLRe
   }
   stmt->ExecuteAsync(
       this, req.params(),
-      Bind(&CQLProcessor::ProcessExecuteDone, Unretained(this), req, stmt, cb));
+      Bind(&CQLProcessor::ProcessExecuteDone, Unretained(this), &req, stmt, cb));
 }
 
 void CQLProcessor::ProcessExecuteDone(
-    const ExecuteRequest& req, shared_ptr<CQLStatement> stmt, Callback<void(CQLResponse*)> cb,
+    const ExecuteRequest* req, shared_ptr<CQLStatement> stmt, Callback<void(CQLResponse*)> cb,
     const Status& s, ExecutedResult::SharedPtr result) {
-  cb.Run(ReturnResponse(req, s, result));
+  cb.Run(ReturnResponse(*req, s, result));
 }
 
 void CQLProcessor::ProcessQuery(const QueryRequest& req, Callback<void(CQLResponse*)> cb) {
   VLOG(1) << "QUERY " << req.query();
   RunAsync(
       req.query(), req.params(),
-      Bind(&CQLProcessor::ProcessQueryDone, Unretained(this), req, cb));
+      Bind(&CQLProcessor::ProcessQueryDone, Unretained(this), &req, cb));
 }
 
 void CQLProcessor::ProcessQueryDone(
-    const QueryRequest& req, Callback<void(CQLResponse*)> cb, const Status& s,
+    const QueryRequest* req, Callback<void(CQLResponse*)> cb, const Status& s,
     ExecutedResult::SharedPtr result) {
-  cb.Run(ReturnResponse(req, s, result));
+  cb.Run(ReturnResponse(*req, s, result));
 }
 
 CQLResponse* CQLProcessor::ReturnResponse(
