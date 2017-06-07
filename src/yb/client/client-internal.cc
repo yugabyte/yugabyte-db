@@ -907,26 +907,29 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
   vector<Endpoint> master_sockaddrs;
   // Refresh the value of 'master_server_addrs_' if needed.
   Status s = ReinitializeMasterAddresses();
-  if (!s.ok() && master_server_addrs_.empty()) {
-    cb.Run(s);
-    return;
-  }
-  for (const string& master_server_addr : master_server_addrs_) {
-    vector<Endpoint> addrs;
-    // TODO: Do address resolution asynchronously as well.
-    s = ParseAddressList(master_server_addr, master::kMasterDefaultPort, &addrs);
-    if (!s.ok()) {
+  {
+    std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
+    if (!s.ok() && master_server_addrs_.empty()) {
       cb.Run(s);
       return;
     }
-    if (addrs.empty()) {
-      cb.Run(STATUS(InvalidArgument, Substitute("No master address specified by '$0'",
-                                                master_server_addr)));
-      return;
-    }
+    for (const string &master_server_addr : master_server_addrs_) {
+      vector<Endpoint> addrs;
+      // TODO: Do address resolution asynchronously as well.
+      s = ParseAddressList(master_server_addr, master::kMasterDefaultPort, &addrs);
+      if (!s.ok()) {
+        cb.Run(s);
+        return;
+      }
+      if (addrs.empty()) {
+        cb.Run(STATUS(InvalidArgument, Substitute("No master address specified by '$0'",
+                                                  master_server_addr)));
+        return;
+      }
 
-    for (auto addr : addrs) {
-      master_sockaddrs.push_back(addr);
+      for (auto addr : addrs) {
+        master_sockaddrs.push_back(addr);
+      }
     }
   }
 
@@ -959,6 +962,7 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
 
 // API to clear and reset master addresses, used during master config change
 Status YBClient::Data::SetMasterAddresses(const string& addrs) {
+  std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
   if (addrs.empty()) {
     std::ostringstream out;
     out.str("Invalid empty master address cannot be set. Current list is: ");
@@ -978,6 +982,7 @@ Status YBClient::Data::SetMasterAddresses(const string& addrs) {
 
 // Add a given master to the master address list
 Status YBClient::Data::AddMasterAddress(const Endpoint& sockaddr) {
+  std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
   HostPort host_port(sockaddr);
   master_server_addrs_.push_back(host_port.ToString());
   return Status::OK();
@@ -986,6 +991,7 @@ Status YBClient::Data::AddMasterAddress(const Endpoint& sockaddr) {
 // Read the master addresses (from a remote endpoint or a file depending on which is specified), and
 // re-initialize the 'master_server_addrs_' variable.
 Status YBClient::Data::ReinitializeMasterAddresses() {
+  std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
   if (!master_server_endpoint_.empty()) {
     faststring buf;
     RETURN_NOT_OK(EasyCurl().FetchURL(master_server_endpoint_, &buf));
@@ -1025,11 +1031,14 @@ Status YBClient::Data::ReinitializeMasterAddresses() {
 Status YBClient::Data::RemoveMasterAddress(const Endpoint& sockaddr) {
   vector<HostPort> new_list;
 
-  RETURN_NOT_OK(HostPort::RemoveAndGetHostPortList(
-    sockaddr,
-    master_server_addrs_,
-    0, // defaultPort
-    &new_list));
+  {
+    std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
+    RETURN_NOT_OK(HostPort::RemoveAndGetHostPortList(
+      sockaddr,
+      master_server_addrs_,
+      0, // defaultPort
+      &new_list));
+  }
 
   RETURN_NOT_OK(SetMasterAddresses(HostPort::ToCommaSeparatedString(new_list)));
 

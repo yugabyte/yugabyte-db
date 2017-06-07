@@ -30,10 +30,7 @@ import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Field;
 
-import java.net.InetAddress;
-import java.net.ServerSocket;
-import java.net.URL;
-import java.net.URLDecoder;
+import java.net.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -311,6 +308,10 @@ public class TestUtils {
     while (System.currentTimeMillis() - startTimeMs < timeoutMs && !condition.get()) {
       Thread.sleep(SLEEP_TIME_MS);
     }
+
+    if (!condition.get()) {
+      throw new Exception(String.format("Operation timed out after %dms", timeoutMs));
+    }
   }
 
   public static void printHorizontalLine(PrintStream out) {
@@ -330,5 +331,23 @@ public class TestUtils {
   public static String getClassAndMethodStr(Description description) {
     return "class=\"" + description.getClassName() +
         "\", method=\"" + description.getMethodName() + "\"";
+  }
+
+  /**
+   * Tries to connect to the given host and port until the provided timeout has expired.
+   * @param host host to connect to.
+   * @param port port to connect to.
+   * @param timeoutMs timeout in milliseconds to wait for a successful connection.
+   * @throws Exception
+   */
+  public static void waitForServer(String host, int port, long timeoutMs) throws Exception {
+    TestUtils.waitFor(() -> {
+      try {
+        new Socket(host, port);
+      } catch (IOException ie) {
+        return false;
+      }
+      return true;
+    }, timeoutMs);
   }
 }

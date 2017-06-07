@@ -23,12 +23,15 @@ import org.yb.cql.BaseCQLTest;
 import org.yb.minicluster.MiniYBDaemon;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.Socket;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.*;
 
 import static junit.framework.TestCase.assertFalse;
+import static junit.framework.TestCase.assertNotNull;
 import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
@@ -68,6 +71,12 @@ public class TestClusterEdits extends BaseCQLTest {
 
   // Timeout to wait for a new master to come up.
   private static final int NEW_MASTER_TIMEOUT_MS = 10000; // 10 seconds.
+
+  // Timeout to wait for webservers to be up.
+  private static final int WEBSERVER_TIMEOUT_MS = 10000; // 10 seconds.
+
+  // Timeout to wait for a master leader.
+  private static final int MASTER_LEADER_TIMEOUT_MS = 10000; // 10 seconds.
 
   // The total number of ops seen so far.
   private static long totalOps = 0;
@@ -185,6 +194,9 @@ public class TestClusterEdits extends BaseCQLTest {
   private void verifyMetrics(int minOps) throws Exception {
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
 
+      // Wait for the webserver to be up.
+      TestUtils.waitForServer(ts.getLocalhostIP(), ts.getCqlWebPort(), WEBSERVER_TIMEOUT_MS);
+
       // This is what the json looks likes:
       //[
       //  {
@@ -225,10 +237,17 @@ public class TestClusterEdits extends BaseCQLTest {
     // Wait for metrics to be submitted.
     Thread.sleep(2 * MiniYBCluster.CATALOG_MANAGER_BG_TASK_WAIT_MS);
 
-    // Now verify leader master has expected number of live tservers.
+    client.waitForMasterLeader(MASTER_LEADER_TIMEOUT_MS);
+
+    // Retrieve web address for leader master.
     HostAndPort masterHostAndPort = client.getLeaderMasterHostAndPort();
-    int masterLeaderWebPort =
-      miniCluster.getMasters().get(masterHostAndPort).getWebPort();
+    assertNotNull(masterHostAndPort);
+    Map<HostAndPort, MiniYBDaemon> masters = miniCluster.getMasters();
+    assertTrue(String.format("Couldn't find master %s in list %s", masterHostAndPort,
+      masters.keySet().toString()), masters.containsKey(masterHostAndPort));
+    int masterLeaderWebPort = masters.get(masterHostAndPort).getWebPort();
+
+    // Now verify leader master has expected number of live tservers.
     JsonElement jsonTree = getMetricsJson(masterHostAndPort.getHostText(), masterLeaderWebPort);
     for (JsonElement element : jsonTree.getAsJsonArray()) {
       JsonObject object = element.getAsJsonObject();
@@ -283,7 +302,8 @@ public class TestClusterEdits extends BaseCQLTest {
       LOG.info("Done waiting for new leader");
 
       // Verify no load tester errors.
-      assertFalse(loadTesterRunnable.hasFailures());
+      assertFalse(String.format("Number of exceptions: %d", loadTesterRunnable.getNumExceptions()),
+        loadTesterRunnable.hasFailures());
     }
   }
 
@@ -302,7 +322,8 @@ public class TestClusterEdits extends BaseCQLTest {
     loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
 
     // Verify no failures in load tester.
-    assertFalse(loadTesterRunnable.hasFailures());
+    assertFalse(String.format("Number of exceptions: %d", loadTesterRunnable.getNumExceptions()),
+      loadTesterRunnable.hasFailures());
 
     // Verify metrics for all tservers.
     verifyMetrics(0);
@@ -373,7 +394,8 @@ public class TestClusterEdits extends BaseCQLTest {
     verifyExpectedLiveTServers(NUM_TABLET_SERVERS);
 
     // Verify no failures in the load tester.
-    assertFalse(loadTesterRunnable.hasFailures());
+    assertFalse(String.format("Number of exceptions: %d", loadTesterRunnable.getNumExceptions()),
+      loadTesterRunnable.hasFailures());
   }
 
   private void performTServerExpandShrink(boolean fullMove) throws Exception {
@@ -408,7 +430,8 @@ public class TestClusterEdits extends BaseCQLTest {
 
     // Wait for some ops and verify no failures in load tester.
     loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
-    assertFalse(loadTesterRunnable.hasFailures());
+    assertFalse(String.format("Number of exceptions: %d", loadTesterRunnable.getNumExceptions()),
+      loadTesterRunnable.hasFailures());
 
     // Now perform a full tserver move.
     performTServerExpandShrink(true);

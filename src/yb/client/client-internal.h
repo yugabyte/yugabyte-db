@@ -217,6 +217,7 @@ class YBClient::Data {
   // This vector holds the list of master server addresses. Note that each entry in this vector
   // can either be a single 'host:port' or a comma separated list of 'host1:port1,host2:port2,...'.
   std::vector<std::string> master_server_addrs_;
+  mutable simple_spinlock master_server_addrs_lock_;
 
   MonoDelta default_admin_operation_timeout_;
   MonoDelta default_rpc_timeout_;

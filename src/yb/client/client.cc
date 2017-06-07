@@ -697,6 +697,7 @@ shared_ptr<YBSession> YBClient::NewSession(bool read_only) {
 }
 
 bool YBClient::IsMultiMaster() const {
+  std::lock_guard<simple_spinlock> l(data_->master_server_addrs_lock_);
   if (data_->master_server_addrs_.size() > 1) {
     return true;
   }
