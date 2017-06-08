@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import { Alert } from 'react-bootstrap';
 import _ from 'lodash';
-import { isValidObject, isDefinedNotNull, isNonEmptyArray } from 'utils/ObjectUtils';
+import { isValidObject, isDefinedNotNull, isNonEmptyArray, isNonEmptyObject } from 'utils/ObjectUtils';
 import { OnPremConfigWizardContainer, OnPremConfigJSONContainer, OnPremSuccessContainer } from '../../config';
 import { YBButton } from '../../common/forms/fields';
 import emptyDataCenterConfig from '../templates/EmptyDataCenterConfig.json';
@@ -50,9 +50,6 @@ export default class OnPremConfiguration extends Component {
 
   componentWillReceiveProps(nextProps) {
     const { cloudBootstrap: {data: { response, type }, error, promiseState}} = nextProps;
-    if (response !== null && type === "provider" &&  this.props.cloudBootstrap.data.response === null) {
-      // Change Bootstrap logic
-    }
     let bootstrapSteps = this.state.bootstrapSteps;
     let currentStepIndex = bootstrapSteps.findIndex( (step) => step.type === type );
     if (currentStepIndex !== -1) {
@@ -82,12 +79,13 @@ export default class OnPremConfiguration extends Component {
             numAccessKeysConfigured: 0
           });
           bootstrapSteps[currentStepIndex + 1].status = "Running";
+          this.props.createOnPremRegions(response.uuid, config);
           this.props.createOnPremInstanceTypes(PROVIDER_TYPE, response.uuid, config);
           break;
         case "instanceType":
           // Launch configuration of regions
           bootstrapSteps[currentStepIndex + 1].status = "Running";
-          this.props.createOnPremRegions(this.state.providerUUID, config);
+
           break;
         case "region":
           // Update regionsMap until done
@@ -124,7 +122,9 @@ export default class OnPremConfiguration extends Component {
           // Launch configuration of access keys once all node instances are bootstrapped
           if (numNodesConfigured === config.nodes.length) {
             bootstrapSteps[currentStepIndex + 1].status = "Running";
-            this.props.createOnPremAccessKeys(this.state.providerUUID, this.state.regionsMap, config);
+            if (config.key && isNonEmptyObject(config.key.privateKeyContent)) {
+              this.props.createOnPremAccessKeys(this.state.providerUUID, this.state.regionsMap, config);
+            }
           }
           break;
         case "accessKey":

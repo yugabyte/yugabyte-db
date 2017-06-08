@@ -1,12 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 
 import { connect } from 'react-redux';
-import { isObject } from 'lodash';
 import {reset} from 'redux-form';
 import { OnPremSuccess } from '../../config';
 import { deleteProvider, deleteProviderSuccess, deleteProviderFailure, fetchCloudMetadata,
          listAccessKeysResponse, listAccessKeys, getNodeInstancesForProvider, getNodesInstancesForProviderResponse } from '../../../actions/cloud';
-import { isNonEmptyArray } from 'utils/ObjectUtils';
 import {openDialog, closeDialog} from '../../../actions/universe';
 
 const mapStateToProps = (state) => {
