@@ -368,14 +368,6 @@ class ExecuteRequest : public CQLRequest {
 //------------------------------------------------------------
 class BatchRequest : public CQLRequest {
  public:
-  BatchRequest(const Header& header, const Slice& body);
-  virtual ~BatchRequest() override;
-  virtual CQLResponse* Execute(CQLProcessor *processor) override;
-
- protected:
-  virtual CHECKED_STATUS ParseBody() override;
-
- private:
   enum class Type : uint8_t {
     LOGGED   = 0x00,
     UNLOGGED = 0x01,
@@ -385,15 +377,23 @@ class BatchRequest : public CQLRequest {
     bool is_prepared = false;
     QueryId query_id;
     std::string query;
-    std::vector<Value> values;
+    QueryParameters params;
   };
+
+  BatchRequest(const Header& header, const Slice& body);
+  virtual ~BatchRequest() override;
+  virtual CQLResponse* Execute(CQLProcessor *processor) override;
+  virtual void ExecuteAsync(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) override;
+
+  const std::vector<Query>& queries() const { return queries_; }
+
+ protected:
+  virtual CHECKED_STATUS ParseBody() override;
+
+ private:
 
   Type type_ = Type::LOGGED;
   std::vector<Query> queries_;
-  Consistency consistency_ = Consistency::ANY;
-  QueryParameters::Flags flags_ = 0;
-  Consistency serial_consistency_ = Consistency::ANY;
-  int64_t default_timestamp_ = 0;
 };
 
 //------------------------------------------------------------

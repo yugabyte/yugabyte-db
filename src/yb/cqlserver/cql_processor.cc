@@ -207,6 +207,41 @@ void CQLProcessor::ProcessQueryDone(
   cb.Run(ReturnResponse(*req, nullptr /* stmt */, s, result));
 }
 
+void CQLProcessor::ProcessBatch(const BatchRequest& req, Callback<void(CQLResponse*)> cb, int idx) {
+  VLOG(1) << "BATCH " << idx << "/" << req.queries().size();
+  if (idx >= req.queries().size()) {
+    cb.Run(ReturnResponse(req, nullptr /* stmt */, Status::OK(), nullptr /* result */));
+    return;
+  }
+  const BatchRequest::Query& query = req.queries()[idx];
+  if (query.is_prepared) {
+    shared_ptr<CQLStatement> stmt = service_impl_->GetPreparedStatement(query.query_id);
+    if (stmt == nullptr ||
+        !stmt->ExecuteAsync(
+            this, query.params,
+            Bind(&CQLProcessor::ProcessBatchDone, Unretained(this), &req, idx, stmt, cb))) {
+      // If the query is not found or it is not prepared successfully, return UNPREPARED error. Upon
+      // receiving the error, the client will reprepare the query and execute again.
+      cb.Run(new UnpreparedErrorResponse(req, query.query_id));
+      return;
+    }
+  } else {
+    RunAsync(
+        query.query, query.params,
+        Bind(&CQLProcessor::ProcessBatchDone, Unretained(this), &req, idx, nullptr /* stmt */, cb));
+  }
+}
+
+void CQLProcessor::ProcessBatchDone(
+    const BatchRequest* req, const int idx, shared_ptr<CQLStatement> stmt,
+    Callback<void(CQLResponse*)> cb, const Status& s, ExecutedResult::SharedPtr result) {
+  if (PREDICT_FALSE(!s.ok())) {
+    cb.Run(ReturnResponse(*req, stmt, s, result));
+    return;
+  }
+  ProcessBatch(*req, cb, idx + 1);
+}
+
 CQLResponse* CQLProcessor::ReturnResponse(
     const CQLRequest& req, shared_ptr<CQLStatement> stmt, Status s,
     ExecutedResult::SharedPtr result) {

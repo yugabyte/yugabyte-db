@@ -54,13 +54,19 @@ class CQLProcessor : public sql::SqlProcessor {
   // Process a QUERY request.
   void ProcessQuery(const QueryRequest& req, Callback<void(CQLResponse*)> cb);
 
+  // Process a BATCH request.
+  void ProcessBatch(const BatchRequest& req, Callback<void(CQLResponse*)> cb, int idx = 0);
+
  private:
-  // Run in response to ProcessQuery, ProcessExecute and ProcessCall
+  // Run in response to ProcessExecute, PrepareQuery, ProcessBatch and ProcessCall
+  void ProcessExecuteDone(
+      const ExecuteRequest* req, std::shared_ptr<CQLStatement> stmt,
+      Callback<void(CQLResponse*)> cb, const Status& s, sql::ExecutedResult::SharedPtr result);
   void ProcessQueryDone(
       const QueryRequest* req, Callback<void(CQLResponse*)> cb, const Status& s,
       sql::ExecutedResult::SharedPtr result);
-  void ProcessExecuteDone(
-      const ExecuteRequest* req, std::shared_ptr<CQLStatement> stmt,
+  void ProcessBatchDone(
+      const BatchRequest* req, int idx, std::shared_ptr<CQLStatement> stmt,
       Callback<void(CQLResponse*)> cb, const Status& s, sql::ExecutedResult::SharedPtr result);
   void ProcessCallDone(
       rpc::InboundCallPtr call, const CQLRequest* request, const MonoTime& start,

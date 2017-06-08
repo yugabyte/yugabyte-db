@@ -1,26 +1,28 @@
 // Copyright (c) YugaByte, Inc.
 package org.yb.cql;
 
+import org.junit.After;
+import org.junit.Before;
+import org.junit.BeforeClass;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-import com.datastax.driver.core.exceptions.QueryValidationException;
+import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.BeforeClass;
+import com.datastax.driver.core.SimpleStatement;
+import com.datastax.driver.core.Statement;
+import com.datastax.driver.core.Session;
+import com.datastax.driver.core.SocketOptions;
+import com.datastax.driver.core.exceptions.QueryValidationException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.minicluster.BaseMiniClusterTest;
 
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.Session;
-import com.datastax.driver.core.SocketOptions;
 import org.yb.master.Master;
+import org.yb.minicluster.BaseMiniClusterTest;
 
 import java.nio.ByteBuffer;
 import java.util.*;
@@ -178,13 +180,17 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     return iter;
   }
 
-  protected void runInvalidStmt(String stmt) {
+  protected void runInvalidStmt(Statement stmt) {
     try {
       session.execute(stmt);
       fail(String.format("Statement did not fail: %s", stmt));
     } catch (QueryValidationException qv) {
       LOG.info("Expected exception", qv);
     }
+  }
+
+  protected void runInvalidStmt(String stmt) {
+    runInvalidStmt(new SimpleStatement(stmt));
   }
 
   // generates a comprehensive map from valid date-time inputs to corresponding Date values
@@ -252,6 +258,15 @@ public class BaseCQLTest extends BaseMiniClusterTest {
       actualResult += row.toString();
     }
     assertEquals(expectedResult, actualResult);
+  }
+
+  protected void assertQuery(String stmt, Set<String> expectedRows) {
+    ResultSet rs = session.execute(stmt);
+    HashSet<String> actualRows = new HashSet<String>();
+    for (Row row : rs) {
+      actualRows.add(row.toString());
+    }
+    assertEquals(expectedRows, actualRows);
   }
 
   // blob type utils

@@ -606,26 +606,43 @@ Status BatchRequest::ParseBody() {
     }
     uint16_t value_count = 0;
     RETURN_NOT_OK(ParseShort(&value_count));
-    query.values.resize(value_count);
+    query.params.values.resize(value_count);
     for (uint16_t j = 0; j < value_count; ++j) {
       // with_name is not possible in the protocol due to a design flaw. See JIRA CASSANDRA-10246.
-      RETURN_NOT_OK(ParseValue(false /* with_name */, &query.values[j]));
+      RETURN_NOT_OK(ParseValue(false /* with_name */, &query.params.values[j]));
     }
   }
-  RETURN_NOT_OK(ParseConsistency(&consistency_));
-  RETURN_NOT_OK(ParseByte(&flags_));
-  if (flags_ & CQLMessage::QueryParameters::kWithSerialConsistencyFlag) {
-    RETURN_NOT_OK(ParseConsistency(&serial_consistency_));
+
+  Consistency consistency = Consistency::ANY;
+  QueryParameters::Flags flags = 0;
+  Consistency serial_consistency = Consistency::ANY;
+  int64_t default_timestamp = 0;
+  RETURN_NOT_OK(ParseConsistency(&consistency));
+  RETURN_NOT_OK(ParseByte(&flags));
+  if (flags & CQLMessage::QueryParameters::kWithSerialConsistencyFlag) {
+    RETURN_NOT_OK(ParseConsistency(&serial_consistency));
   }
-  if (flags_ & CQLMessage::QueryParameters::kWithDefaultTimestampFlag) {
-    RETURN_NOT_OK(ParseLong(&default_timestamp_));
+  if (flags & CQLMessage::QueryParameters::kWithDefaultTimestampFlag) {
+    RETURN_NOT_OK(ParseLong(&default_timestamp));
+  }
+
+  for (Query& query : queries_) {
+    QueryParameters& params = query.params;
+    params.consistency = consistency;
+    params.flags = flags;
+    params.serial_consistency = serial_consistency;
+    params.default_timestamp = default_timestamp;
   }
   return Status::OK();
 }
 
 CQLResponse* BatchRequest::Execute(CQLProcessor *processor) {
-  // TODO(Robert)
-  return new ErrorResponse(*this, ErrorResponse::Code::PROTOCOL_ERROR, "Not implemented yet");
+  LOG(FATAL) << "Execute should only be used asynchrounsly on BatchRequest";
+  return nullptr;
+}
+
+void BatchRequest::ExecuteAsync(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) {
+  processor->ProcessBatch(*this, cb);
 }
 
 //----------------------------------------------------------------------------------------
