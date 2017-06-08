@@ -65,7 +65,7 @@ public class NodeInstanceController extends AuthenticatedController {
   public Result listByProvider(UUID customerUUID, UUID providerUUID) {
     List<NodeInstance> regionList;
     try {
-       regionList = NodeInstance.listByProvider(providerUUID);
+      regionList = NodeInstance.listByProvider(providerUUID);
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }
@@ -84,8 +84,8 @@ public class NodeInstanceController extends AuthenticatedController {
     Form<NodeInstanceFormData> formData = formFactory.form(NodeInstanceFormData.class).bindFromRequest();
     try {
       NodeInstance node = NodeInstance.create(
-          zoneUuid,
-          formData.get());
+        zoneUuid,
+        formData.get());
       return ApiResponse.success(node);
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());

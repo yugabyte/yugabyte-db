@@ -70,8 +70,8 @@ public class NodeInstance extends Model {
   public NodeInstanceFormData getDetails() {
     if (nodeDetails == null) {
       nodeDetails = Json.fromJson(
-          Json.parse(nodeDetailsJson),
-          NodeInstanceFormData.class);
+        Json.parse(nodeDetailsJson),
+        NodeInstanceFormData.class);
     }
     return nodeDetails;
   }
@@ -107,7 +107,7 @@ public class NodeInstance extends Model {
   }
 
   public static synchronized Map<String, NodeInstance> pickNodes(
-      Map<UUID, List<String>> onpremAzToNodes, String instanceTypeCode) {
+    Map<UUID, List<String>> onpremAzToNodes, String instanceTypeCode) {
     Map<String, NodeInstance> outputMap = new HashMap<String, NodeInstance>();
     Throwable error = null;
     try {
@@ -117,7 +117,7 @@ public class NodeInstance extends Model {
         List<NodeInstance> nodes = listByZone(zoneUuid, instanceTypeCode);
         if (nodes.size() < nodeNames.size()) {
           LOG.error("AZ {} has {} nodes of instance type {} but needs {}.",
-              zoneUuid, nodes.size(), instanceTypeCode, nodeNames.size());
+            zoneUuid, nodes.size(), instanceTypeCode, nodeNames.size());
           throw new RuntimeException("Not enough nodes in AZ " + zoneUuid);
         }
         int index = 0;

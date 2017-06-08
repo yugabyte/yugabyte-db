@@ -2,7 +2,7 @@
 
 import { reduxForm, formValueSelector } from 'redux-form';
 import { connect } from 'react-redux';
-import {  fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure } from '../../../actions/tasks';
+import { fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure } from '../../../actions/tasks';
 import UniverseForm from './UniverseForm';
 import { getInstanceTypeList, getRegionList, getRegionListResponse, getInstanceTypeListResponse, listAccessKeys, listAccessKeysResponse  } from 'actions/cloud';
 import { createUniverse, createUniverseResponse, editUniverse, editUniverseResponse, closeDialog,
@@ -11,8 +11,6 @@ import { createUniverse, createUniverseResponse, editUniverse, editUniverseRespo
          checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration,
          fetchUniverseInfo, fetchUniverseInfoResponse, fetchUniverseMetadata } from 'actions/universe';
 import { isDefinedNotNull, isNonEmptyObject } from 'utils/ObjectUtils';
-
-
 
 const mapDispatchToProps = (dispatch) => {
   return {

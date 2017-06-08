@@ -22,6 +22,5 @@ public class NodeInstanceFormData {
   @Constraints.Required()
   public String instanceType;
 
-  @Constraints.Required()
   public String nodeName;
 }
