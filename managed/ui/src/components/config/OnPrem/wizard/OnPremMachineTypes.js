@@ -3,8 +3,7 @@
 import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Field, FieldArray } from 'redux-form';
-import { YBInputField, YBButton, YBSelect } from '../../../common/forms/fields';
-
+import { YBInputField, YBButton } from '../../../common/forms/fields';
 
 class OnPremListMachineTypes extends Component {
   constructor(props) {
