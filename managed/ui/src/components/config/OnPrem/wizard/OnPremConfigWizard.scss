@@ -105,3 +105,16 @@ label textarea {
   padding-bottom: 10px;
   border-bottom: 3px solid $YB_ORANGE;
 }
+
+.node-list-heading {
+  font-size: 16px;
+  font-weight: 600;
+  padding-top: 6px;
+}
+.horizontal-border {
+  border: 1px solid $YB_GRAY_20;
+  margin-bottom: 10px;
+}
+.add-node-save-btn {
+  float: right;
+}
