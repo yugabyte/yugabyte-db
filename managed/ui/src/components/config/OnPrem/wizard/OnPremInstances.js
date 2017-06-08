@@ -1,11 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Row, Col } from 'react-bootstrap';
-import { YBSelect, YBButton, YBInputField } from '../../../common/forms/fields';
-import { Field, FieldArray } from 'redux-form';
+import { YBButton } from '../../../common/forms/fields';
+import { FieldArray } from 'redux-form';
 import InstanceTypeForRegion from './InstanceTypeForRegion';
-import _ from 'lodash';
 
 export default class OnPremInstances extends Component {
   constructor(props) {

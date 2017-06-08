@@ -1,18 +1,15 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Alert } from 'react-bootstrap';
-import { OnPremConfigWizardContainer, OnPremConfigJSONContainer } from '../../config';
 import { YBButton } from '../../common/forms/fields';
 import { Row, Col } from 'react-bootstrap';
 import {getPromiseState} from 'utils/PromiseUtils';
-import {YBLoadingIcon} from '../../common/indicators';
-import {isValidObject, isNonEmptyArray, isDefinedNotNull} from 'utils/ObjectUtils';
+
+import {isNonEmptyArray, isDefinedNotNull} from 'utils/ObjectUtils';
 import { YBConfirmModal } from '../../modals';
 import { DescriptionList } from '../../common/descriptors';
 import { RegionMap } from '../../maps';
 const PROVIDER_TYPE = "onprem";
-import {Link} from 'react-router';
 import OnPremNodesListContainer from './OnPremNodesListContainer';
 
 export default class OnPremSuccess extends Component {
