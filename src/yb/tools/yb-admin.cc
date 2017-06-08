@@ -309,10 +309,12 @@ Status ClusterAdminClient::SetTabletPeerInfo(
     Endpoint* peer_socket) {
   TSInfoPB peer_ts_info;
   RETURN_NOT_OK(GetTabletPeer(tablet_id, mode, &peer_ts_info));
-  CHECK_GT(peer_ts_info.rpc_addresses_size(), 0) << peer_ts_info.ShortDebugString();
+  auto rpc_addresses = peer_ts_info.rpc_addresses();
+  CHECK_GT(rpc_addresses.size(), 0) << peer_ts_info
+        .ShortDebugString();
 
   HostPort peer_hostport;
-  RETURN_NOT_OK(HostPortFromPB(peer_ts_info.rpc_addresses(0), &peer_hostport));
+  RETURN_NOT_OK(HostPortFromPB(rpc_addresses.Get(0), &peer_hostport));
   std::vector<Endpoint> peer_addrs;
   RETURN_NOT_OK(peer_hostport.ResolveAddresses(&peer_addrs));
   CHECK(!peer_addrs.empty()) << "Unable to resolve IP address for tablet leader host: "

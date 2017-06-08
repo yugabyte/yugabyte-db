@@ -97,7 +97,7 @@ MiniCluster::~MiniCluster() {
   CHECK(!running_);
 }
 
-Status MiniCluster::Start() {
+Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra_tserver_options) {
   CHECK(!fs_root_.empty()) << "No Fs root was provided";
   CHECK(!running_);
 
@@ -126,9 +126,20 @@ Status MiniCluster::Start() {
   RETURN_NOT_OK_PREPEND(StartMasters(),
                         "Couldn't start distributed masters");
 
+  if (!extra_tserver_options.empty() && extra_tserver_options.size() != num_ts_initial_) {
+    return STATUS_SUBSTITUTE(InvalidArgument, "num tserver options: $0 doesn't match with num "
+        "tservers: $1", extra_tserver_options.size(), num_ts_initial_);
+  }
+
   for (int i = 0; i < num_ts_initial_; i++) {
-    RETURN_NOT_OK_PREPEND(AddTabletServer(),
-                          Substitute("Error adding TS $0", i));
+    if (!extra_tserver_options.empty()) {
+      RETURN_NOT_OK_PREPEND(AddTabletServer(extra_tserver_options[i]),
+                            Substitute("Error adding TS $0", i));
+    } else {
+      RETURN_NOT_OK_PREPEND(AddTabletServer(),
+                            Substitute("Error adding TS $0", i));
+    }
+
   }
 
   RETURN_NOT_OK_PREPEND(WaitForTabletServerCount(num_ts_initial_),
@@ -198,7 +209,7 @@ Status MiniCluster::RestartSync() {
   return Status::OK();
 }
 
-Status MiniCluster::AddTabletServer() {
+Status MiniCluster::AddTabletServer(const tserver::TabletServerOptions& extra_opts) {
   if (mini_masters_.empty()) {
     return STATUS(IllegalState, "Master not yet initialized");
   }
@@ -207,7 +218,7 @@ Status MiniCluster::AddTabletServer() {
   EnsurePortsAllocated(0 /* num_masters (will pick default) */, new_idx + 1);
   const uint16_t ts_rpc_port = tserver_rpc_ports_[new_idx];
   gscoped_ptr<MiniTabletServer> tablet_server(
-    new MiniTabletServer(GetTabletServerFsRoot(new_idx), ts_rpc_port));
+    new MiniTabletServer(GetTabletServerFsRoot(new_idx), ts_rpc_port, extra_opts));
 
   // set the master addresses
   auto master_addr = std::make_shared<vector<HostPort>>();

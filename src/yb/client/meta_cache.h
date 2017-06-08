@@ -28,6 +28,7 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/partition.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/consensus/metadata.pb.h"
 
 #include "yb/gutil/macros.h"
@@ -72,9 +73,9 @@ class LookupByIdRpc;
 // This class is thread-safe.
 class RemoteTabletServer {
  public:
-  explicit RemoteTabletServer(const master::TSInfoPB& pb);
   explicit RemoteTabletServer(
       const std::string& uuid, const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy);
+  explicit RemoteTabletServer(const master::TSInfoPB& pb);
 
   // Initialize the RPC proxy to this tablet server, if it is not already set up.
   // This will involve a DNS lookup if there is not already an active proxy.
@@ -108,6 +109,7 @@ class RemoteTabletServer {
   const std::string uuid_;
 
   std::vector<HostPort> rpc_hostports_;
+  yb::CloudInfoPB cloud_info_pb_;
   std::shared_ptr<tserver::TabletServerServiceProxy> proxy_;
 
   DISALLOW_COPY_AND_ASSIGN(RemoteTabletServer);

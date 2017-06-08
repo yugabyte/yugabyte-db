@@ -462,6 +462,8 @@ message TSInfoPB {
   required bytes permanent_uuid = 1;
 
   repeated HostPortPB rpc_addresses = 2;
+
+  optional CloudInfoPB cloud_info = 3;
 }
 
 message GetTabletLocationsRequestPB {

@@ -57,8 +57,10 @@ namespace yb {
 namespace tserver {
 
 MiniTabletServer::MiniTabletServer(const string& fs_root,
-                                   uint16_t rpc_port)
-  : started_(false) {
+                                   uint16_t rpc_port,
+                                   const TabletServerOptions& extra_opts)
+  : started_(false),
+    opts_(extra_opts) {
 
   // Start RPC server on loopback.
   FLAGS_rpc_server_allow_ephemeral_ports = true;

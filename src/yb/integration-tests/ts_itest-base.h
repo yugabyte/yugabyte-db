@@ -152,7 +152,8 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
 
       for (const master::TabletLocationsPB& location : resp.tablet_locations()) {
         for (const master::TabletLocationsPB_ReplicaPB& replica : location.replicas()) {
-          auto server = FindOrDie(tablet_servers_, replica.ts_info().permanent_uuid()).get();
+          auto server = FindOrDie(tablet_servers_,
+                                  replica.ts_info().permanent_uuid()).get();
           tablet_replicas.emplace(location.tablet_id(), server);
         }
 

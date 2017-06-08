@@ -139,6 +139,7 @@ void RemoteTabletServer::Update(const master::TSInfoPB& pb) {
   for (const HostPortPB& hostport_pb : pb.rpc_addresses()) {
     rpc_hostports_.push_back(HostPort(hostport_pb.host(), hostport_pb.port()));
   }
+  cloud_info_pb_ = pb.cloud_info();
 }
 
 string RemoteTabletServer::permanent_uuid() const {
@@ -310,16 +311,17 @@ void MetaCache::AddTabletServerProxy(const string& permanent_uuid,
   CHECK(ts_cache_.emplace(permanent_uuid, new RemoteTabletServer(permanent_uuid, proxy)).second);
 }
 
-void MetaCache::UpdateTabletServer(const TSInfoPB& pb) {
+void MetaCache::UpdateTabletServer(const master::TSInfoPB& pb) {
   DCHECK(lock_.is_write_locked());
-  RemoteTabletServer* ts = FindPtrOrNull(ts_cache_, pb.permanent_uuid());
+  const std::string& permanent_uuid = pb.permanent_uuid();
+  RemoteTabletServer* ts = FindPtrOrNull(ts_cache_, permanent_uuid);
   if (ts) {
     ts->Update(pb);
     return;
   }
 
-  VLOG(1) << "Client caching new TabletServer " << pb.permanent_uuid();
-  InsertOrDie(&ts_cache_, pb.permanent_uuid(), new RemoteTabletServer(pb));
+  VLOG(1) << "Client caching new TabletServer " << permanent_uuid;
+  InsertOrDie(&ts_cache_, permanent_uuid, new RemoteTabletServer(pb));
 }
 
 // A (table, partition_key) --> tablet lookup. May be in-flight to a master, or

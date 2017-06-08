@@ -4870,12 +4870,15 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
     for (const TabletInfo::ReplicaMap::value_type& replica : locs) {
       TabletLocationsPB_ReplicaPB* replica_pb = locs_pb->add_replicas();
       replica_pb->set_role(replica.second.role);
+      TSInformationPB tsinfo_pb;
+      replica.second.ts_desc->GetTSInformationPB(&tsinfo_pb);
 
-      TSInfoPB* tsinfo_pb = replica_pb->mutable_ts_info();
-      tsinfo_pb->set_permanent_uuid(replica.second.ts_desc->permanent_uuid());
-
-      replica.second.ts_desc->GetRegistration(&reg);
-      tsinfo_pb->mutable_rpc_addresses()->Swap(reg.mutable_common()->mutable_rpc_addresses());
+      replica_pb->mutable_ts_info()->set_permanent_uuid(
+          tsinfo_pb.tserver_instance().permanent_uuid());
+      replica_pb->mutable_ts_info()->mutable_rpc_addresses()->Swap(
+          tsinfo_pb.mutable_registration()->mutable_common()->mutable_rpc_addresses());
+      replica_pb->mutable_ts_info()->mutable_cloud_info()->Swap(
+          tsinfo_pb.mutable_registration()->mutable_common()->mutable_cloud_info());
     }
     return Status::OK();
   }

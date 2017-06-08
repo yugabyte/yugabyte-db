@@ -144,7 +144,8 @@ TEST_F(RegistrationTest, TestTabletReports) {
   TabletLocationsPB locs;
   ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_1, 1, &locs));
   ASSERT_EQ(1, locs.replicas_size());
-  LOG(INFO) << "Tablet successfully reported on " << locs.replicas(0).ts_info().permanent_uuid();
+  LOG(INFO) << "Tablet successfully reported on " <<
+            locs.replicas(0).ts_info().permanent_uuid();
 
   // Add another tablet, make sure it is reported via incremental.
   CreateTabletForTesting(cluster_->mini_master(), YBTableName("my_keyspace", "fake-table2"),

@@ -24,6 +24,7 @@
 
 #include "yb/integration-tests/mini_cluster_base.h"
 #include "yb/gutil/macros.h"
+#include "yb/tserver/tablet_server_options.h"
 #include "yb/util/env.h"
 #include "yb/util/port_picker.h"
 
@@ -70,7 +71,9 @@ class MiniCluster : public MiniClusterBase {
 
   // Start a cluster with a Master and 'num_tablet_servers' TabletServers.
   // All servers run on the loopback interface with ephemeral ports.
-  CHECKED_STATUS Start();
+  CHECKED_STATUS Start(
+      const std::vector<tserver::TabletServerOptions>& extra_tserver_options =
+      std::vector<tserver::TabletServerOptions>());
 
   // Like the previous method but performs initialization synchronously, i.e.
   // this will wait for all TS's to be started and initialized. Tests should
@@ -94,7 +97,8 @@ class MiniCluster : public MiniClusterBase {
 
   // Add a new TS to the cluster. The new TS is started.
   // Requires that the master is already running.
-  CHECKED_STATUS AddTabletServer();
+  CHECKED_STATUS AddTabletServer(
+      const tserver::TabletServerOptions& extra_opts = tserver::TabletServerOptions());
 
   // If this cluster is configured for a single non-distributed
   // master, return the single master. Exits with a CHECK failure if

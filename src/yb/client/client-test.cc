@@ -2764,7 +2764,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
   ASSERT_EQ(3, resp.tablet_locations(0).replicas_size());
   const string& tablet_id = resp.tablet_locations(0).tablet_id();
 
-  vector<TSInfoPB> followers;
+  vector<master::TSInfoPB> followers;
   for (const auto& replica : resp.tablet_locations(0).replicas()) {
     if (replica.role() == consensus::RaftPeerPB_Role_FOLLOWER) {
       followers.push_back(replica.ts_info());
@@ -2775,7 +2775,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
   std::shared_ptr<rpc::Messenger> client_messenger;
   rpc::MessengerBuilder bld("client");
   ASSERT_OK(bld.Build(&client_messenger));
-  for (const TSInfoPB& ts_info : followers) {
+  for (const master::TSInfoPB& ts_info : followers) {
     // Try to read from followers.
     auto endpoint = ParseEndpoint(ts_info.rpc_addresses(0).host(),
                                   ts_info.rpc_addresses(0).port());
