@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Alert } from 'react-bootstrap';
 import _ from 'lodash';
 import { isValidObject, isDefinedNotNull, isNonEmptyArray, isNonEmptyObject } from 'utils/ObjectUtils';
 import { OnPremConfigWizardContainer, OnPremConfigJSONContainer, OnPremSuccessContainer } from '../../config';

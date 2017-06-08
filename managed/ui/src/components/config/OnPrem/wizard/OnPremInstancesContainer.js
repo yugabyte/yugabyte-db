@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import { connect } from 'react-redux';
-import { reduxForm, reset } from 'redux-form';
+import { reduxForm } from 'redux-form';
 import OnPremInstances from './OnPremInstances';
 import _ from 'lodash';
 import {setOnPremConfigData} from '../../../../actions/cloud';

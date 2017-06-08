@@ -4,7 +4,7 @@ import React, {Component} from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
 import { YBButton } from '../../common/forms/fields';
 import {withRouter} from 'react-router';
-import {isEmptyObject, isValidObject} from 'utils/ObjectUtils';
+import {isValidObject} from 'utils/ObjectUtils';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { YBConfirmModal } from '../../modals';
 import { RegionMap } from '../../maps';
