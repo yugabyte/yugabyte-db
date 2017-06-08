@@ -52,7 +52,9 @@ namespace {
 // RUCache::Release (to move into state 2) or LRUCache::Erase (for state 3)
 //
 // LRU also supports scan resistant access by allowing it to be one of two
-// caches. query_id == kInMultiTouchId means that the handle is in the multi
+// caches. query_id is to detect that multiple touches from the same query will not
+// upgrade the cache element from single touch LRU into the multiple touch LRU.
+// query_id == kInMultiTouchId means that the handle is in the multi
 // touch cache, which means that this item will be evicted only for new values
 // that are accessed multiple times by different queries.
 // query_id == kNoCacheQueryId means that this Handle is not going to be added
@@ -403,6 +405,11 @@ bool LRUCache::Unref(LRUHandle* e) {
 }
 
 LRUSubCache* LRUCache::GetSubCache(const SubCacheType subcache_type) {
+  if (FLAGS_cache_single_touch_ratio == 0) {
+    return &multi_touch_sub_cache_;
+  } else if (FLAGS_cache_single_touch_ratio == 1) {
+    return &single_touch_sub_cache_;
+  }
   return (subcache_type == SubCacheType::MULTI_TOUCH) ? &multi_touch_sub_cache_ :
                                                         &single_touch_sub_cache_;
 }
@@ -486,13 +493,16 @@ Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash, const QueryId q
     // Increase the number of references and move to state 1. (in cache and not in LRU)
     e->refs++;
 
-    // Now the handle will be added to the multi touch pool.
-    if (e->GetSubCacheType() != MULTI_TOUCH && e->query_id != query_id) {
+    // Now the handle will be added to the multi touch pool only if it exists.
+    if (FLAGS_cache_single_touch_ratio < 1 && e->GetSubCacheType() != MULTI_TOUCH &&
+        e->query_id != query_id) {
       autovector<LRUHandle*> multi_touch_eviction_list;
       EvictFromLRU(e->charge, &multi_touch_eviction_list, MULTI_TOUCH);
       for (auto entry : multi_touch_eviction_list) {
         entry->Free();
       }
+      // Cannot have any single touch elements in this case.
+      assert(FLAGS_cache_single_touch_ratio != 0);
       if (!strict_capacity_limit_ ||
           multi_touch_sub_cache_.Usage() - multi_touch_sub_cache_.LRU_Usage() + e->charge <=
           multi_touch_sub_cache_.Capacity()) {
@@ -575,8 +585,17 @@ Status LRUCache::Insert(const Slice& key, uint32_t hash, const QueryId query_id,
     MutexLock l(&mutex_);
 
     // Free the space following strict LRU policy until enough space
-    // is freed or the lru list is empty
-    const SubCacheType subcache_type = table_.GetSubCacheTypeCandidate(e);
+    // is freed or the lru list is empty.
+    SubCacheType subcache_type;
+    // Check if there
+    if (FLAGS_cache_single_touch_ratio == 0) {
+      e->query_id = kInMultiTouchId;
+      subcache_type = MULTI_TOUCH;
+    } else if (FLAGS_cache_single_touch_ratio == 1) {
+      subcache_type = SINGLE_TOUCH;
+    } else {
+      subcache_type = table_.GetSubCacheTypeCandidate(e);
+    }
     EvictFromLRU(charge, &last_reference_list, subcache_type);
     LRUSubCache* sub_cache = GetSubCache(subcache_type);
     // If the cache no longer has any more space in the given pool.

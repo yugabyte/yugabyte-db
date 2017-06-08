@@ -78,12 +78,14 @@ class CacheTest : public testing::Test {
   }
 
   bool LookupAndCheckInMultiTouch(shared_ptr<Cache> cache, int key,
+                                  int expected_value,
                                   QueryId query_id = kTestQueryId) {
     Cache::Handle* handle = cache->Lookup(EncodeKey(key), query_id);
     if (handle != nullptr) {
+      const int r = (handle == nullptr) ? -1 : DecodeValue(cache->Value(handle));
       SubCacheType subcache_type = cache->GetSubCacheType(handle);
       cache->Release(handle);
-      return subcache_type == MULTI_TOUCH;
+      return (subcache_type == MULTI_TOUCH && r == expected_value);
     } else {
       return false;
     }
@@ -104,8 +106,8 @@ class CacheTest : public testing::Test {
     return Lookup(cache_, key, query_id);
   }
 
-  int LookupAndCheckInMultiTouch(int key, QueryId query_id = kTestQueryId) {
-    return LookupAndCheckInMultiTouch(cache_, key, query_id);
+  int LookupAndCheckInMultiTouch(int key, int expected_value, QueryId query_id = kTestQueryId) {
+    return LookupAndCheckInMultiTouch(cache_, key, expected_value, query_id);
   }
 
   Status Insert(int key, int value, int charge = 1, QueryId query_id = kTestQueryId) {
@@ -372,18 +374,58 @@ TEST_F(CacheTest, ErasedHandleState) {
   cache_->Release(h2);
 }
 
+TEST_F(CacheTest, EvictionPolicyAllSingleTouch) {
+  FLAGS_cache_single_touch_ratio = 1;
+  const int kCapacity = 100;
+  auto cache = NewLRUCache(kCapacity , 0, true);
+  Status s;
+  for (int i = 0; i < kCapacity; i++) {
+    Insert(cache, i, i + 1, kTestQueryId);
+  }
+
+  // Check that all values are in the cache and are all single touch.
+  for (int i = 0; i < kCapacity; i++) {
+    ASSERT_EQ(i + 1, Lookup(cache, i, kTestQueryId));
+    ASSERT_FALSE(LookupAndCheckInMultiTouch(cache, i, i + 1));
+  }
+  ASSERT_EQ(kCapacity, cache->GetUsage());
+
+  // Returning the flag back.
+  FLAGS_cache_single_touch_ratio = 0.2;
+}
+
+TEST_F(CacheTest, EvictionPolicyNoSingleTouch) {
+  FLAGS_cache_single_touch_ratio = 0;
+  const int kCapacity = 100;
+  auto cache = NewLRUCache(kCapacity , 0, true);
+  Status s;
+  for (int i = 0; i < kCapacity; i++) {
+    Insert(cache, i, i + 1, kTestQueryId);
+  }
+
+  // Check that all values are in the cache and are all single touch.
+  for (int i = 0; i < kCapacity; i++) {
+    ASSERT_EQ(i + 1, Lookup(cache, i, kTestQueryId));
+    ASSERT_TRUE(LookupAndCheckInMultiTouch(cache, i, i + 1));
+  }
+  ASSERT_EQ(kCapacity, cache->GetUsage());
+
+  // Returning the flag back.
+  FLAGS_cache_single_touch_ratio = 0.2;
+}
+
 TEST_F(CacheTest, MultiTouch) {
   ASSERT_EQ(-1, Lookup(100));
-  ASSERT_FALSE(LookupAndCheckInMultiTouch(100));
+  ASSERT_FALSE(LookupAndCheckInMultiTouch(100, -1));
 
   // Use two different query ids.
   QueryId qid1 = 1000;
   QueryId qid2 = 1001;
 
   ASSERT_OK(Insert(100, 101, 1, qid1));
-  ASSERT_FALSE(LookupAndCheckInMultiTouch(100, qid1));
+  ASSERT_FALSE(LookupAndCheckInMultiTouch(100, 101, qid1));
   ASSERT_OK(Insert(100, 101, 1, qid2));
-  ASSERT_TRUE(LookupAndCheckInMultiTouch(100, qid2));
+  ASSERT_TRUE(LookupAndCheckInMultiTouch(100, 101, qid2));
 }
 
 TEST_F(CacheTest, EvictionPolicyMultiTouch) {
@@ -392,9 +434,9 @@ TEST_F(CacheTest, EvictionPolicyMultiTouch) {
   QueryId qid3 = 1002;
   Insert(100, 101, 1, qid1);
   Insert(100, 101, 1, qid2);
-  ASSERT_TRUE(LookupAndCheckInMultiTouch(100, qid2));
+  ASSERT_TRUE(LookupAndCheckInMultiTouch(100, 101, qid2));
   Insert(200, 201, 1, qid3);
-  ASSERT_FALSE(LookupAndCheckInMultiTouch(200, qid3));
+  ASSERT_FALSE(LookupAndCheckInMultiTouch(200, 201, qid3));
 
   // We are adding a single element (key: 100, value: 101) to multi touch cache.
   // Even if we overload the cache with single touch items, multi touch item should not be evicted.
@@ -402,8 +444,9 @@ TEST_F(CacheTest, EvictionPolicyMultiTouch) {
     Insert(1000 + i, 2000 + i);
     ASSERT_EQ(2000 + i, Lookup(1000 + i));
   }
-  ASSERT_EQ(101, Lookup(100));
+  ASSERT_TRUE(LookupAndCheckInMultiTouch(100, 101, qid2));
   ASSERT_EQ(-1, Lookup(200));
+  ASSERT_LT(kCacheSize * FLAGS_cache_single_touch_ratio, cache_->GetUsage());
 }
 
 TEST_F(CacheTest, HeavyEntries) {
