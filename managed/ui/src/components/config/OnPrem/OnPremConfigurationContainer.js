@@ -30,13 +30,9 @@ const mapDispatchToProps = (dispatch) => {
 
     createOnPremAccessKeys: (providerUUID, regionsMap, config) => {
       if (isObject(config) && isNonEmptyArray(config.regions) && isObject(config.key)) {
-        config.regions.forEach((region) => {
-          if (isObject(region)) {
-            dispatch(createAccessKey(providerUUID, regionsMap[region.code], config.key)).then((response) => {
-              dispatch(createAccessKeyResponse(response.payload));
-            });
-          }
-        })
+        dispatch(createAccessKey(providerUUID, regionsMap[config.regions[0].code], config.key)).then((response) => {
+          dispatch(createAccessKeyResponse(response.payload));
+        });
       }
     },
 
