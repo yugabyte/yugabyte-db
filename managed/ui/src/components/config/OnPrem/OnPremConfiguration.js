@@ -71,16 +71,21 @@ export default class OnPremConfiguration extends Component {
             zonesMap: {},
             providerUUID: response.uuid,
             numZones: numZones,
-            numNodesConfigured: 0
+            numNodesConfigured: 0,
+            numInstanceTypesConfigured: 0
           });
           bootstrapSteps[currentStepIndex + 1].status = "Running";
-          this.props.createOnPremRegions(response.uuid, config);
           this.props.createOnPremInstanceTypes(PROVIDER_TYPE, response.uuid, config);
           break;
         case "instanceType":
           // Launch configuration of regions
-          bootstrapSteps[currentStepIndex + 1].status = "Running";
-
+          let numInstanceTypesConfigured = this.state.numInstanceTypesConfigured;
+          numInstanceTypesConfigured++;
+          this.setState({numInstanceTypesConfigured: numInstanceTypesConfigured})
+          if (numInstanceTypesConfigured === config.instanceTypes.length) {
+            bootstrapSteps[currentStepIndex + 1].status = "Running";
+            this.props.createOnPremRegions(this.state.providerUUID, config);
+          }
           break;
         case "region":
           // Update regionsMap until done

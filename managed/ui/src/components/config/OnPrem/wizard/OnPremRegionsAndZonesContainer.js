@@ -16,7 +16,7 @@ const mapDispatchToProps = (dispatch, ownProps) => {
         return {
           code: regionItem.code,
           zones: regionItem.zones.split(",").map(function(zoneItem){
-            return zoneItem;
+            return zoneItem.trim();
           }),
           latitude: regionLocation[0],
           longitude: regionLocation[1]
