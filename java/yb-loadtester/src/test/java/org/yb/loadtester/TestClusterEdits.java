@@ -78,6 +78,9 @@ public class TestClusterEdits extends BaseCQLTest {
   // Timeout to wait for a master leader.
   private static final int MASTER_LEADER_TIMEOUT_MS = 10000; // 10 seconds.
 
+  // Timeout to wait expected number of tservers to be alive.
+  private static final int EXPECTED_TSERVERS_TIMEOUT_MS = 30000; // 30 seconds.
+
   // The total number of ops seen so far.
   private static long totalOps = 0;
 
@@ -237,32 +240,36 @@ public class TestClusterEdits extends BaseCQLTest {
     // Wait for metrics to be submitted.
     Thread.sleep(2 * MiniYBCluster.CATALOG_MANAGER_BG_TASK_WAIT_MS);
 
-    client.waitForMasterLeader(MASTER_LEADER_TIMEOUT_MS);
+    // Wait for expected number of live tservers to be present since leader elections could
+    // result in the metric not being correct momentarily.
+    TestUtils.waitFor(() -> {
+      client.waitForMasterLeader(MASTER_LEADER_TIMEOUT_MS);
 
-    // Retrieve web address for leader master.
-    HostAndPort masterHostAndPort = client.getLeaderMasterHostAndPort();
-    assertNotNull(masterHostAndPort);
-    Map<HostAndPort, MiniYBDaemon> masters = miniCluster.getMasters();
-    assertTrue(String.format("Couldn't find master %s in list %s", masterHostAndPort,
-      masters.keySet().toString()), masters.containsKey(masterHostAndPort));
-    int masterLeaderWebPort = masters.get(masterHostAndPort).getWebPort();
+      // Retrieve web address for leader master.
+      HostAndPort masterHostAndPort = client.getLeaderMasterHostAndPort();
+      assertNotNull(masterHostAndPort);
+      Map<HostAndPort, MiniYBDaemon> masters = miniCluster.getMasters();
+      assertTrue(String.format("Couldn't find master %s in list %s", masterHostAndPort,
+        masters.keySet().toString()), masters.containsKey(masterHostAndPort));
+      int masterLeaderWebPort = masters.get(masterHostAndPort).getWebPort();
 
-    // Now verify leader master has expected number of live tservers.
-    JsonElement jsonTree = getMetricsJson(masterHostAndPort.getHostText(), masterLeaderWebPort);
-    for (JsonElement element : jsonTree.getAsJsonArray()) {
-      JsonObject object = element.getAsJsonObject();
-      if (object.get("type").getAsString().equals("cluster")) {
-        for (JsonElement metric : object.getAsJsonArray("metrics")) {
-          JsonObject metric_object = metric.getAsJsonObject();
-          if (metric_object.get("name").getAsString().equals("num_tablet_servers_live")) {
-            assertEquals(expected_live, metric_object.get("value").getAsInt());
-            LOG.info("Found live tservers: " + expected_live);
-            return;
+      // Now verify leader master has expected number of live tservers.
+      JsonElement jsonTree = getMetricsJson(masterHostAndPort.getHostText(), masterLeaderWebPort);
+      for (JsonElement element : jsonTree.getAsJsonArray()) {
+        JsonObject object = element.getAsJsonObject();
+        if (object.get("type").getAsString().equals("cluster")) {
+          for (JsonElement metric : object.getAsJsonArray("metrics")) {
+            JsonObject metric_object = metric.getAsJsonObject();
+            if (metric_object.get("name").getAsString().equals("num_tablet_servers_live")) {
+              int live_tservers = metric_object.get("value").getAsInt();
+              LOG.info("Found live tservers: " + live_tservers);
+              return live_tservers == expected_live;
+            }
           }
         }
       }
-    }
-    fail("Didn't find live tserver metric");
+      return false;
+    }, EXPECTED_TSERVERS_TIMEOUT_MS);
   }
 
   private void performFullMasterMove() throws Exception {
