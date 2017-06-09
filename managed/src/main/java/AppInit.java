@@ -49,7 +49,7 @@ public class AppInit {
       }
 
       // Check if we have provider data, if not, we need to seed the database
-      if (Provider.find.where().findRowCount() == 0 &&
+      if (Customer.find.where().findRowCount() == 0 &&
           appConfig.getBoolean("yb.seedData", false)) {
         Logger.debug("Seed the Yugaware DB");
 
