@@ -16,7 +16,7 @@ const mapDispatchToProps = (dispatch, ownProps) => {
           formVals.instances[key].forEach(function (instanceTypeItem) {
             instanceTypeItem.instanceTypeIPs.split(",").forEach(function (ipItem, ipIdx) {
               nodePayload.push({
-                ip: ipItem,
+                ip: ipItem.trim(),
                 zone: instanceTypeItem.zone,
                 region: key,
                 instanceType: instanceTypeItem.machineType
