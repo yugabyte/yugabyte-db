@@ -7,9 +7,10 @@ import { OnPremConfigWizardContainer, OnPremConfigJSONContainer, OnPremSuccessCo
 import { YBButton } from '../../common/forms/fields';
 import emptyDataCenterConfig from '../templates/EmptyDataCenterConfig.json';
 import './OnPremConfiguration.scss';
+import { getPromiseState } from 'utils/PromiseUtils';
+import { YBLoadingIcon } from '../../common/indicators';
+
 const PROVIDER_TYPE = "onprem";
-import {getPromiseState} from 'utils/PromiseUtils';
-import {YBLoadingIcon} from '../../common/indicators';
 
 export default class OnPremConfiguration extends Component {
 
@@ -81,7 +82,7 @@ export default class OnPremConfiguration extends Component {
           // Launch configuration of regions
           let numInstanceTypesConfigured = this.state.numInstanceTypesConfigured;
           numInstanceTypesConfigured++;
-          this.setState({numInstanceTypesConfigured: numInstanceTypesConfigured})
+          this.setState({numInstanceTypesConfigured: numInstanceTypesConfigured});
           if (numInstanceTypesConfigured === config.instanceTypes.length) {
             bootstrapSteps[currentStepIndex + 1].status = "Running";
             this.props.createOnPremRegions(this.state.providerUUID, config);
@@ -117,12 +118,12 @@ export default class OnPremConfiguration extends Component {
         case "node":
           // Update numNodesConfigured until done
           let numNodesConfigured = this.state.numNodesConfigured;
-          numNodesConfigured ++;
+          numNodesConfigured++;
           this.setState({numNodesConfigured: numNodesConfigured});
           // Launch configuration of access keys once all node instances are bootstrapped
           if (numNodesConfigured === config.nodes.length) {
             bootstrapSteps[currentStepIndex + 1].status = "Running";
-            if (config.key && isNonEmptyObject(config.key.privateKeyContent)) {
+            if (config.key && _.isString(config.key.privateKeyContent)) {
               this.props.createOnPremAccessKeys(this.state.providerUUID, this.state.regionsMap, config);
             }
           }
