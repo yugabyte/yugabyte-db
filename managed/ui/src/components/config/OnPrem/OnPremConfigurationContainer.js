@@ -89,9 +89,11 @@ const mapDispatchToProps = (dispatch) => {
         })
       }
     },
+
     resetConfigForm: () => {
       dispatch(reset("onPremConfigForm"));
     },
+
     fetchProviderList: () => {
       dispatch(getProviderList()).then((response) => {
         dispatch(getProviderListResponse(response.payload));
