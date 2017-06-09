@@ -20,7 +20,6 @@ export default class OnPremConfiguration extends Component {
       isJsonEntry: false,
       isAdditionalHostOptionsOpen: false,
       configJsonVal: emptyJsonPretty,
-      succeeded: false,
       bootstrapSteps: [
         {type: "provider", name: "Create Provider", status: "Initializing"},
         {type: "instanceType", name: "Create Instance Types", status: "Initializing"},
@@ -33,8 +32,7 @@ export default class OnPremConfiguration extends Component {
       zonesMap: {},
       providerUUID: null,
       numZones: 0,
-      numNodesConfigured: 0,
-      numAccessKeysConfigured: 0
+      numNodesConfigured: 0
     };
     this.toggleJsonEntry = this.toggleJsonEntry.bind(this);
     this.toggleAdditionalOptionsModal = this.toggleAdditionalOptionsModal.bind(this);
@@ -69,13 +67,11 @@ export default class OnPremConfiguration extends Component {
         case "provider":
           // Launch configuration of instance types
           this.setState({
-            succeeded: false,
             regionsMap: {},
             zonesMap: {},
             providerUUID: response.uuid,
             numZones: numZones,
-            numNodesConfigured: 0,
-            numAccessKeysConfigured: 0
+            numNodesConfigured: 0
           });
           bootstrapSteps[currentStepIndex + 1].status = "Running";
           this.props.createOnPremRegions(response.uuid, config);
@@ -116,7 +112,7 @@ export default class OnPremConfiguration extends Component {
         case "node":
           // Update numNodesConfigured until done
           let numNodesConfigured = this.state.numNodesConfigured;
-          numNodesConfigured++;
+          numNodesConfigured ++;
           this.setState({numNodesConfigured: numNodesConfigured});
           // Launch configuration of access keys once all node instances are bootstrapped
           if (numNodesConfigured === config.nodes.length) {
@@ -127,15 +123,7 @@ export default class OnPremConfiguration extends Component {
           }
           break;
         case "accessKey":
-          // Update numAccessKeysConfigured until done
-          let numAccessKeysConfigured = this.state.numAccessKeysConfigured;
-          numAccessKeysConfigured++;
-          const succeeded = this.state.succeeded || numAccessKeysConfigured === config.regions.length;
-          this.setState({numAccessKeysConfigured: numAccessKeysConfigured, succeeded: succeeded});
-          // When finished, display success message & update app's provider list
-          if (succeeded) {
-            this.props.onPremConfigSuccess();
-          }
+          this.props.onPremConfigSuccess();
           break;
         default:
           break;
