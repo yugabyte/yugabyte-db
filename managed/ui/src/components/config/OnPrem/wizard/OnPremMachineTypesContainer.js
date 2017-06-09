@@ -15,7 +15,7 @@ const mapDispatchToProps = (dispatch, ownProps) => {
         return {instanceTypeCode: item.code,
           numCores: item.numCores, memSizeGB: item.memSizeGB,
           volumeDetailsList: item.mountPath.split(",").map(function(mountPathItem, mpIdx){
-            return {volumeSizeGB: item.volumeSizeGB, volumeType: item.volumeType, mountPath: mountPathItem}
+            return {volumeSizeGB: item.volumeSizeGB, volumeType: item.volumeType, mountPath: mountPathItem.trim()}
           }), volumeType: 'SSD'}
       });
       payloadObject.instanceTypes = instanceTypesList;
