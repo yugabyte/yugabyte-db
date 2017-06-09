@@ -21,17 +21,17 @@ ExecContext::~ExecContext() {
 void ExecContext::ApplyWriteAsync(
     std::shared_ptr<client::YBqlWriteOp> yb_op, const TreeNode *tnode,
     StatementExecutedCallback cb) {
-  sql_env_->ApplyWriteAsync(
-      yb_op,
-      Bind(&ExecContext::ApplyAsyncDone, Unretained(this), yb_op, Unretained(tnode), cb));
+  async_callback_ =
+      Bind(&ExecContext::ApplyAsyncDone, Unretained(this), yb_op, Unretained(tnode), std::move(cb));
+  sql_env_->ApplyWriteAsync(yb_op, &async_callback_);
 }
 
 void ExecContext::ApplyReadAsync(
     std::shared_ptr<client::YBqlReadOp> yb_op, const TreeNode *tnode,
     StatementExecutedCallback cb) {
-  sql_env_->ApplyReadAsync(
-      yb_op,
-      Bind(&ExecContext::ApplyAsyncDone, Unretained(this), yb_op, Unretained(tnode), cb));
+  async_callback_ =
+      Bind(&ExecContext::ApplyAsyncDone, Unretained(this), yb_op, Unretained(tnode), std::move(cb));
+  sql_env_->ApplyReadAsync(yb_op, &async_callback_);
 }
 
 void ExecContext::ApplyAsyncDone(

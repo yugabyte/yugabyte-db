@@ -33,7 +33,7 @@ using client::YBqlWriteOp;
   do {                             \
     ::yb::Status _s = (s);         \
     if (PREDICT_FALSE(!_s.ok())) { \
-      (cb).Run(_s);                \
+      (cb)->Run(_s);               \
       return;                      \
     }                              \
   } while (0)
@@ -93,7 +93,7 @@ void SqlEnv::SetCurrentCall(rpc::InboundCallPtr cql_call) {
 }
 
 void SqlEnv::ApplyWriteAsync(
-    std::shared_ptr<YBqlWriteOp> yb_op, Callback<void(const Status &)> cb) {
+    std::shared_ptr<YBqlWriteOp> yb_op, Callback<void(const Status &)>* cb) {
   // The previous result must have been cleared.
   DCHECK(current_read_op_ == nullptr);
   DCHECK(current_write_op_ == nullptr);
@@ -107,7 +107,7 @@ void SqlEnv::ApplyWriteAsync(
 }
 
 void SqlEnv::ApplyReadAsync(
-    std::shared_ptr<YBqlReadOp> yb_op, Callback<void(const Status &)> cb) {
+    std::shared_ptr<YBqlReadOp> yb_op, Callback<void(const Status &)>* cb) {
   // The previous result must have been cleared.
   DCHECK(current_read_op_ == nullptr);
   DCHECK(current_write_op_ == nullptr);
@@ -144,10 +144,10 @@ void SqlEnv::ResumeCQLCall(const Status &s) {
   TRACE("Resuming CQL Call");
   if (current_write_op_.get() != nullptr) {
     DCHECK(current_read_op_ == nullptr);
-    requested_callback_.Run(ProcessWriteResult(s));
+    requested_callback_->Run(ProcessWriteResult(s));
   } else {
     DCHECK(current_write_op_ == nullptr);
-    requested_callback_.Run(ProcessReadResult(s));
+    requested_callback_->Run(ProcessReadResult(s));
   }
 }
 

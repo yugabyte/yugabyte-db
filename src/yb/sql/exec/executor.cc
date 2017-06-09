@@ -64,7 +64,7 @@ void Executor::ExecuteAsync(
   // Execute the parse tree.
   ExecPTreeAsync(
       parse_tree, Bind(&Executor::ExecuteDone, Unretained(this), Unretained(&parse_tree),
-      MonoTime::Now(MonoTime::FINE), cb));
+                       MonoTime::Now(MonoTime::FINE), std::move(cb)));
 }
 
 void Executor::ExecuteDone(
@@ -110,7 +110,7 @@ void Executor::Done() {
 //--------------------------------------------------------------------------------------------------
 
 void Executor::ExecPTreeAsync(const ParseTree &ptree, StatementExecutedCallback cb) {
-  ExecTreeNodeAsync(ptree.root().get(), cb);
+  ExecTreeNodeAsync(ptree.root().get(), std::move(cb));
 }
 
 void Executor::ExecTreeNodeAsync(const TreeNode *tnode, StatementExecutedCallback cb) {
@@ -118,34 +118,34 @@ void Executor::ExecTreeNodeAsync(const TreeNode *tnode, StatementExecutedCallbac
 
   switch (tnode->opcode()) {
     case TreeNodeOpcode::kPTListNode:
-      return ExecPTNodeAsync(static_cast<const PTListNode *>(tnode), cb);
+      return ExecPTNodeAsync(static_cast<const PTListNode *>(tnode), std::move(cb));
 
     case TreeNodeOpcode::kPTCreateTable:
-      return ExecPTNodeAsync(static_cast<const PTCreateTable *>(tnode), cb);
+      return ExecPTNodeAsync(static_cast<const PTCreateTable *>(tnode), std::move(cb));
 
     case TreeNodeOpcode::kPTDropStmt:
-      return ExecPTNodeAsync(static_cast<const PTDropStmt *>(tnode), cb);
+      return ExecPTNodeAsync(static_cast<const PTDropStmt *>(tnode), std::move(cb));
 
     case TreeNodeOpcode::kPTSelectStmt:
-      return ExecPTNodeAsync(static_cast<const PTSelectStmt *>(tnode), cb);
+      return ExecPTNodeAsync(static_cast<const PTSelectStmt *>(tnode), std::move(cb));
 
     case TreeNodeOpcode::kPTInsertStmt:
-      return ExecPTNodeAsync(static_cast<const PTInsertStmt *>(tnode), cb);
+      return ExecPTNodeAsync(static_cast<const PTInsertStmt *>(tnode), std::move(cb));
 
     case TreeNodeOpcode::kPTDeleteStmt:
-      return ExecPTNodeAsync(static_cast<const PTDeleteStmt *>(tnode), cb);
+      return ExecPTNodeAsync(static_cast<const PTDeleteStmt *>(tnode), std::move(cb));
 
     case TreeNodeOpcode::kPTUpdateStmt:
-      return ExecPTNodeAsync(static_cast<const PTUpdateStmt *>(tnode), cb);
+      return ExecPTNodeAsync(static_cast<const PTUpdateStmt *>(tnode), std::move(cb));
 
     case TreeNodeOpcode::kPTCreateKeyspace:
-      return ExecPTNodeAsync(static_cast<const PTCreateKeyspace *>(tnode), cb);
+      return ExecPTNodeAsync(static_cast<const PTCreateKeyspace *>(tnode), std::move(cb));
 
     case TreeNodeOpcode::kPTUseKeyspace:
-      return ExecPTNodeAsync(static_cast<const PTUseKeyspace *>(tnode), cb);
+      return ExecPTNodeAsync(static_cast<const PTUseKeyspace *>(tnode), std::move(cb));
 
     default:
-      return ExecPTNodeAsync(tnode, cb);
+      return ExecPTNodeAsync(tnode, std::move(cb));
   }
 }
 
@@ -164,7 +164,7 @@ void Executor::ExecPTNodeAsync(const PTListNode *lnode, StatementExecutedCallbac
   }
   ExecTreeNodeAsync(
       lnode->element(idx).get(),
-      Bind(&Executor::PTNodeAsyncDone, Unretained(this), Unretained(lnode), idx, cb));
+      Bind(&Executor::PTNodeAsyncDone, Unretained(this), Unretained(lnode), idx, std::move(cb)));
 }
 
 void Executor::PTNodeAsyncDone(
@@ -173,7 +173,7 @@ void Executor::PTNodeAsyncDone(
   CB_RETURN_NOT_OK(cb, s);
   cb.Run(Status::OK(), result);
   if (++index < lnode->size()) {
-    ExecPTNodeAsync(lnode, cb, index);
+    ExecPTNodeAsync(lnode, std::move(cb), index);
   }
 }
 
@@ -742,8 +742,8 @@ void Executor::ExecPTNodeAsync(
   // Apply the operator. Call SelectAsyncDone when done to try to fetch more rows and buffer locally
   // before returning the result to the client.
   exec_context_->ApplyReadAsync(select_op, tnode,
-                                Bind(&Executor::SelectAsyncDone, Unretained(this), tnode, cb,
-                                     current_result));
+                                Bind(&Executor::SelectAsyncDone, Unretained(this),
+                                     Unretained(tnode), std::move(cb), current_result));
 }
 
 void Executor::SelectAsyncDone(
@@ -784,7 +784,7 @@ void Executor::SelectAsyncDone(
   // If there is a paging state, try fetching more rows and buffer locally. ExecPTNodeAsync() will
   // ensure we do not exceed the page size.
   if (current_result != nullptr && !current_result->paging_state().empty()) {
-    ExecPTNodeAsync(tnode, cb, current_result);
+    ExecPTNodeAsync(tnode, std::move(cb), current_result);
     return;
   }
 
@@ -819,7 +819,7 @@ void Executor::ExecPTNodeAsync(const PTInsertStmt *tnode, StatementExecutedCallb
   }
 
   // Apply the operator.
-  exec_context_->ApplyWriteAsync(insert_op, tnode, cb);
+  exec_context_->ApplyWriteAsync(insert_op, tnode, std::move(cb));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -851,7 +851,7 @@ void Executor::ExecPTNodeAsync(const PTDeleteStmt *tnode, StatementExecutedCallb
   }
 
   // Apply the operator.
-  exec_context_->ApplyWriteAsync(delete_op, tnode, cb);
+  exec_context_->ApplyWriteAsync(delete_op, tnode, std::move(cb));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -894,7 +894,7 @@ void Executor::ExecPTNodeAsync(const PTUpdateStmt *tnode, StatementExecutedCallb
   }
 
   // Apply the operator.
-  exec_context_->ApplyWriteAsync(update_op, tnode, cb);
+  exec_context_->ApplyWriteAsync(update_op, tnode, std::move(cb));
 }
 
 //--------------------------------------------------------------------------------------------------

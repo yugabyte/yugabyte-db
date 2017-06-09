@@ -168,7 +168,7 @@ void SqlProcessor::ExecuteAsync(const string& sql_stmt,
   const MonoTime begin_time = MonoTime::Now(MonoTime::FINE);
   executor_->ExecuteAsync(sql_stmt, parse_tree, params, sql_env_.get(),
                           Bind(&SqlProcessor::ExecuteAsyncDone, Unretained(this), begin_time,
-                               &parse_tree, cb, reparsed));
+                               Unretained(&parse_tree), std::move(cb), reparsed));
 }
 
 void SqlProcessor::ExecuteAsyncDone(const MonoTime &begin_time,
@@ -238,7 +238,8 @@ void SqlProcessor::RunAsyncDone(
     CB_RETURN_NOT_OK(cb, Analyze(sql_stmt, &new_parse_tree, &reparse));
     const ParseTree* ptree = new_parse_tree.get();  // copy the pointer before releasing below.
     ExecuteAsync(sql_stmt, *ptree, *params,
-                 Bind(&ReRunAsyncDone, Owned(new_parse_tree.release()), cb), true /* reparsed */);
+                 Bind(&ReRunAsyncDone, Owned(new_parse_tree.release()), std::move(cb)),
+                 true /* reparsed */);
     return;
   }
   cb.Run(s, result);
@@ -257,8 +258,8 @@ void SqlProcessor::RunAsync(
   }
   const ParseTree* ptree = parse_tree.get();  // copy the pointer before releasing below.
   ExecuteAsync(sql_stmt, *ptree, params,
-               Bind(&SqlProcessor::RunAsyncDone, Unretained(this), sql_stmt, &params,
-                    Owned(parse_tree.release()), cb));
+               Bind(&SqlProcessor::RunAsyncDone, Unretained(this), sql_stmt, Unretained(&params),
+                    Owned(parse_tree.release()), std::move(cb)));
 }
 
 void SqlProcessor::SetCurrentCall(rpc::InboundCallPtr call) {

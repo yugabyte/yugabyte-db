@@ -42,10 +42,10 @@ class SqlEnv {
   virtual CHECKED_STATUS DeleteTable(const client::YBTableName& name);
 
   virtual void ApplyWriteAsync(
-      std::shared_ptr<client::YBqlWriteOp> yb_op, Callback<void(const Status&)> callback);
+      std::shared_ptr<client::YBqlWriteOp> yb_op, Callback<void(const Status&)>* callback);
 
   virtual void ApplyReadAsync(
-      std::shared_ptr<client::YBqlReadOp> yb_op, Callback<void(const Status&)> callback);
+      std::shared_ptr<client::YBqlReadOp> yb_op, Callback<void(const Status&)>* callback);
 
 
   virtual std::shared_ptr<client::YBTable> GetTableDesc(
@@ -121,7 +121,7 @@ class SqlEnv {
   std::shared_ptr<client::YBqlReadOp> current_read_op_;
   rpc::InboundCallPtr current_call_ = nullptr;
 
-  Callback<void(const Status&)> requested_callback_;
+  Callback<void(const Status&)>* requested_callback_;
   Callback<void(void)> resume_execution_;
 
   // The current keyspace. Used only in test environment when there is no current call.

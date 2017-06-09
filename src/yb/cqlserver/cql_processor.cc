@@ -181,7 +181,8 @@ void CQLProcessor::ProcessExecute(const ExecuteRequest& req, Callback<void(CQLRe
   if (stmt == nullptr ||
       !stmt->ExecuteAsync(
           this, req.params(),
-          Bind(&CQLProcessor::ProcessExecuteDone, Unretained(this), &req, stmt, cb))) {
+          Bind(&CQLProcessor::ProcessExecuteDone, Unretained(this), ConstRef(req), stmt,
+               std::move(cb)))) {
     // If the query is not found or it is not prepared successfully, return UNPREPARED error. Upon
     // receiving the error, the client will reprepare the query and execute again.
     cb.Run(new UnpreparedErrorResponse(req, req.query_id()));
@@ -189,22 +190,22 @@ void CQLProcessor::ProcessExecute(const ExecuteRequest& req, Callback<void(CQLRe
 }
 
 void CQLProcessor::ProcessExecuteDone(
-    const ExecuteRequest* req, shared_ptr<CQLStatement> stmt, Callback<void(CQLResponse*)> cb,
+    const ExecuteRequest& req, shared_ptr<CQLStatement> stmt, Callback<void(CQLResponse*)> cb,
     const Status& s, ExecutedResult::SharedPtr result) {
-  cb.Run(ReturnResponse(*req, stmt, s, result));
+  cb.Run(ReturnResponse(req, stmt, s, result));
 }
 
 void CQLProcessor::ProcessQuery(const QueryRequest& req, Callback<void(CQLResponse*)> cb) {
   VLOG(1) << "QUERY " << req.query();
   RunAsync(
       req.query(), req.params(),
-      Bind(&CQLProcessor::ProcessQueryDone, Unretained(this), &req, cb));
+      Bind(&CQLProcessor::ProcessQueryDone, Unretained(this), ConstRef(req), std::move(cb)));
 }
 
 void CQLProcessor::ProcessQueryDone(
-    const QueryRequest* req, Callback<void(CQLResponse*)> cb, const Status& s,
+    const QueryRequest& req, Callback<void(CQLResponse*)> cb, const Status& s,
     ExecutedResult::SharedPtr result) {
-  cb.Run(ReturnResponse(*req, nullptr /* stmt */, s, result));
+  cb.Run(ReturnResponse(req, nullptr /* stmt */, s, result));
 }
 
 void CQLProcessor::ProcessBatch(const BatchRequest& req, Callback<void(CQLResponse*)> cb, int idx) {
@@ -219,7 +220,8 @@ void CQLProcessor::ProcessBatch(const BatchRequest& req, Callback<void(CQLRespon
     if (stmt == nullptr ||
         !stmt->ExecuteAsync(
             this, query.params,
-            Bind(&CQLProcessor::ProcessBatchDone, Unretained(this), &req, idx, stmt, cb))) {
+            Bind(&CQLProcessor::ProcessBatchDone, Unretained(this), ConstRef(req),
+                 idx, stmt, std::move(cb)))) {
       // If the query is not found or it is not prepared successfully, return UNPREPARED error. Upon
       // receiving the error, the client will reprepare the query and execute again.
       cb.Run(new UnpreparedErrorResponse(req, query.query_id));
@@ -228,18 +230,19 @@ void CQLProcessor::ProcessBatch(const BatchRequest& req, Callback<void(CQLRespon
   } else {
     RunAsync(
         query.query, query.params,
-        Bind(&CQLProcessor::ProcessBatchDone, Unretained(this), &req, idx, nullptr /* stmt */, cb));
+        Bind(&CQLProcessor::ProcessBatchDone, Unretained(this), ConstRef(req),
+             idx, nullptr /* stmt */, std::move(cb)));
   }
 }
 
 void CQLProcessor::ProcessBatchDone(
-    const BatchRequest* req, const int idx, shared_ptr<CQLStatement> stmt,
+    const BatchRequest& req, const int idx, shared_ptr<CQLStatement> stmt,
     Callback<void(CQLResponse*)> cb, const Status& s, ExecutedResult::SharedPtr result) {
   if (PREDICT_FALSE(!s.ok())) {
-    cb.Run(ReturnResponse(*req, stmt, s, result));
+    cb.Run(ReturnResponse(req, stmt, s, result));
     return;
   }
-  ProcessBatch(*req, cb, idx + 1);
+  ProcessBatch(req, std::move(cb), idx + 1);
 }
 
 CQLResponse* CQLProcessor::ReturnResponse(

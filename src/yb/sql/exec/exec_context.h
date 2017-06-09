@@ -82,6 +82,9 @@ class ExecContext : public ProcessContextBase {
 
   // SQL environment.
   SqlEnv *sql_env_;
+
+  // Async callback for ApplyRead/Write.
+  Callback<void(const Status&)> async_callback_;
 };
 
 }  // namespace sql
