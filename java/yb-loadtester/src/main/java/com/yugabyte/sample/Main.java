@@ -117,7 +117,7 @@ public class Main {
       if (!cmdLineOpts.getReuseExistingTable()) {
         app.dropTable();
       }
-      app.createTableIfNeeded();
+      app.createTablesIfNeeded();
 
       // Create the reader and writer threads.
       int idx = 0;

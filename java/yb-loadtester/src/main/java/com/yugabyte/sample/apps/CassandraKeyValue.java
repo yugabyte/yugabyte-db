@@ -2,6 +2,7 @@
 
 package com.yugabyte.sample.apps;
 
+import java.util.Arrays;
 import java.util.List;
 
 import org.apache.log4j.Logger;
@@ -60,20 +61,15 @@ public class CassandraKeyValue extends AppBase {
   }
 
   @Override
-  public void createTableIfNeeded() {
-    try {
-      String create_stmt = String.format(
-          "CREATE TABLE IF NOT EXISTS %s (k varchar, v varchar, primary key (k))",
-          tableName);
-      if (appConfig.tableTTLSeconds > 0) {
-        create_stmt += " WITH default_time_to_live = " + appConfig.tableTTLSeconds;
-      }
-      create_stmt += ";";
-      getCassandraClient().execute(create_stmt);
-      LOG.info("Created a Cassandra table " + tableName + " using query: [" + create_stmt + "]");
-    } catch (Exception e) {
-      LOG.info("Ignoring exception creating table: " + e.getMessage());
+  public List<String> getCreateTableStatements() {
+    String create_stmt = String.format(
+      "CREATE TABLE IF NOT EXISTS %s (k varchar, v varchar, primary key (k))",
+      tableName);
+    if (appConfig.tableTTLSeconds > 0) {
+      create_stmt += " WITH default_time_to_live = " + appConfig.tableTTLSeconds;
     }
+    create_stmt += ";";
+    return Arrays.asList(create_stmt);
   }
 
   private PreparedStatement getPreparedSelect()  {

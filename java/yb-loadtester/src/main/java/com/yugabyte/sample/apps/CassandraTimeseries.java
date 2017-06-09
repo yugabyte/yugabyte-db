@@ -2,10 +2,7 @@
 
 package com.yugabyte.sample.apps;
 
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -132,7 +129,7 @@ public class CassandraTimeseries extends AppBase {
   }
 
   @Override
-  public void createTableIfNeeded() {
+  protected List<String> getCreateTableStatements() {
     String create_stmt = "CREATE TABLE IF NOT EXISTS " + metricsTable + " (" +
                          "  user_id varchar" +
                          ", metric_id varchar" +
@@ -144,12 +141,7 @@ public class CassandraTimeseries extends AppBase {
       create_stmt += " WITH default_time_to_live = " + appConfig.tableTTLSeconds;
     }
     create_stmt += ";";
-    try{
-      getCassandraClient().execute(create_stmt);
-    } catch (Exception e) {
-      LOG.info("Ignoring exception when creating table: " + e.getMessage());
-    }
-    LOG.info("Created a Cassandra table " + metricsTable + " using query: [" + create_stmt + "]");
+    return Arrays.asList(create_stmt);
   }
 
   private PreparedStatement getPreparedSelect()  {

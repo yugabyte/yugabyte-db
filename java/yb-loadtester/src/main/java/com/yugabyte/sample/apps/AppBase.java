@@ -4,6 +4,7 @@ package com.yugabyte.sample.apps;
 
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -136,7 +137,16 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   /**
    * The apps extending this base should create all the necessary tables in this method.
    */
-  public void createTableIfNeeded() {}
+  public void createTablesIfNeeded() {
+    for (String create_stmt : getCreateTableStatements()) {
+      getCassandraClient().execute(create_stmt);
+      LOG.info("Created a Cassandra table using query: [" + create_stmt + "]");
+    }
+  }
+
+  protected List<String> getCreateTableStatements() {
+    return Arrays.asList();
+  }
 
   /**
    * This call models an OLTP read for the app to perform read operations.

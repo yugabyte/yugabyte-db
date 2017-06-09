@@ -2,6 +2,7 @@
 
 package com.yugabyte.sample.apps;
 
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Random;
@@ -102,43 +103,31 @@ public class CassandraStockTicker extends AppBase {
   }
 
   @Override
-  public void createTableIfNeeded() {
+  public List<String> getCreateTableStatements() {
     // Create the raw table.
-    String create_stmt = "CREATE TABLE IF NOT EXISTS " + tickerTableRaw + " (" +
-                         "  ticker_id varchar" +
-                         ", ts timestamp" +
-                         ", value varchar" +
-                         ", primary key ((ticker_id), ts))" +
-                         " WITH CLUSTERING ORDER BY (ts DESC)";
+    String create_stmt_raw = "CREATE TABLE IF NOT EXISTS " + tickerTableRaw + " (" +
+                             "  ticker_id varchar" +
+                             ", ts timestamp" +
+                             ", value varchar" +
+                             ", primary key ((ticker_id), ts))" +
+                             " WITH CLUSTERING ORDER BY (ts DESC)";
     if (appConfig.tableTTLSeconds > 0) {
-      create_stmt += " AND default_time_to_live = " + appConfig.tableTTLSeconds;
+      create_stmt_raw += " AND default_time_to_live = " + appConfig.tableTTLSeconds;
     }
-    create_stmt += ";";
-    try {
-      getCassandraClient().execute(create_stmt);
-    } catch (Exception e) {
-      LOG.info("Ignoring exception when creating table: " + e.getMessage());
-    }
-    LOG.info("Created a Cassandra table " + tickerTableRaw + " using query: [" + create_stmt + "]");
+    create_stmt_raw += ";";
 
     // Create the minutely table.
-    create_stmt = "CREATE TABLE " + tickerTableMin + " (" +
-                  "  ticker_id varchar" +
-                  ", ts timestamp" +
-                  ", value varchar" +
-                  ", primary key ((ticker_id), ts))" +
-                  " WITH CLUSTERING ORDER BY (ts DESC)";
+    String create_stmt_min = "CREATE TABLE IF NOT EXISTS " + tickerTableMin + " (" +
+                             "  ticker_id varchar" +
+                             ", ts timestamp" +
+                             ", value varchar" +
+                             ", primary key ((ticker_id), ts))" +
+                             " WITH CLUSTERING ORDER BY (ts DESC)";
     if (appConfig.tableTTLSeconds > 0) {
-    create_stmt += " AND default_time_to_live = " + (60 * appConfig.tableTTLSeconds);
+    create_stmt_min += " AND default_time_to_live = " + (60 * appConfig.tableTTLSeconds);
     }
-    create_stmt += ";";
-    try {
-      getCassandraClient().execute(create_stmt);
-    } catch (Exception e) {
-      LOG.info("Ignoring exception when creating table: " + e.getMessage());
-    }
-    LOG.info("Created a Cassandra table " + tickerTableMin +
-             " using query: [" + create_stmt + "]");
+    create_stmt_min += ";";
+    return Arrays.asList(create_stmt_raw, create_stmt_min);
   }
 
   private PreparedStatement getPreparedSelectLatest()  {
