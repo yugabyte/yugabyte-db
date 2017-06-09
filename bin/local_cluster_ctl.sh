@@ -316,6 +316,7 @@ start_tserver() {
        --redis_proxy_bind_address 127.0.0.$tserver_index:$(( $redis_rpc_port )) \
        --cql_proxy_webserver_port $(( $cql_http_port_base + $tserver_index )) \
        --cql_proxy_bind_address 127.0.0.$tserver_index:$(( $cql_rpc_port )) \
+       --local_ip_for_outbound_sockets 127.0.0.$tserver_index \
       --placement_cloud "$placement_cloud" \
       --placement_region "$placement_region" \
       --placement_zone "$placement_zone" \
