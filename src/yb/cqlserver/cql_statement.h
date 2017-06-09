@@ -30,7 +30,7 @@ using CQLStatementListPos = CQLStatementList::iterator;
 // A CQL statement that is prepared and cached.
 class CQLStatement : public sql::Statement {
  public:
-  CQLStatement(const std::string& keyspace, const std::string& sql_stmt);
+  CQLStatement(const std::string& keyspace, const std::string& sql_stmt, CQLStatementListPos pos);
   ~CQLStatement();
 
   // Return the query id.

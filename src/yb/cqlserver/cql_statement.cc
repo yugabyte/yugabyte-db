@@ -11,8 +11,9 @@ namespace yb {
 namespace cqlserver {
 
 //------------------------------------------------------------------------------------------------
-CQLStatement::CQLStatement(const string& keyspace, const string& sql_stmt)
-    : Statement(keyspace, sql_stmt) {
+CQLStatement::CQLStatement(
+    const string& keyspace, const string& sql_stmt, const CQLStatementListPos pos)
+    : Statement(keyspace, sql_stmt), pos_(pos) {
 }
 
 CQLStatement::~CQLStatement() {

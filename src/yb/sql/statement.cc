@@ -40,26 +40,24 @@ CHECKED_STATUS Statement::Prepare(
     }
   }
 
-  // Return prepared result if requested and the statement is a SELECT statement. Do so within a
-  // shared lock.
-  {
-    boost::shared_lock<boost::shared_mutex> l(lock_);
-    if (result != nullptr) {
-      const TreeNode *root = parse_tree_->root().get();
-      if (root->opcode() != TreeNodeOpcode::kPTListNode) {
-        return STATUS(Corruption, "Internal error: statement list expected");
-      }
-      const PTListNode *stmts = static_cast<const PTListNode*>(root);
-      if (stmts->size() != 1) {
-        return STATUS(Corruption, "Internal error: only one statement expected");
-      }
-      const TreeNode *stmt = stmts->element(0).get();
-      if (stmt->opcode() == TreeNodeOpcode::kPTSelectStmt ||
-          stmt->opcode() == TreeNodeOpcode::kPTInsertStmt ||
-          stmt->opcode() == TreeNodeOpcode::kPTUpdateStmt ||
-          stmt->opcode() == TreeNodeOpcode::kPTDeleteStmt) {
-        result->reset(new PreparedResult(static_cast<const PTDmlStmt*>(stmt)));
-      }
+  // Return prepared result if requested and the statement is a SELECT statement. Do not need a
+  // lock here because we have verified that the parse tree is either present already or we have
+  // successfully prepared the statement above. The parse tree is guaranteed read-only afterwards.
+  if (result != nullptr) {
+    const TreeNode *root = parse_tree_->root().get();
+    if (root->opcode() != TreeNodeOpcode::kPTListNode) {
+      return STATUS(Corruption, "Internal error: statement list expected");
+    }
+    const PTListNode *stmts = static_cast<const PTListNode*>(root);
+    if (stmts->size() != 1) {
+      return STATUS(Corruption, "Internal error: only one statement expected");
+    }
+    const TreeNode *stmt = stmts->element(0).get();
+    if (stmt->opcode() == TreeNodeOpcode::kPTSelectStmt ||
+        stmt->opcode() == TreeNodeOpcode::kPTInsertStmt ||
+        stmt->opcode() == TreeNodeOpcode::kPTUpdateStmt ||
+        stmt->opcode() == TreeNodeOpcode::kPTDeleteStmt) {
+      result->reset(new PreparedResult(static_cast<const PTDmlStmt*>(stmt)));
     }
   }
 
@@ -70,7 +68,8 @@ bool Statement::ExecuteAsync(
     SqlProcessor* processor, const StatementParameters& params, StatementExecutedCallback cb) {
   {
     // Ensure the statement has been prepared successfully and parse tree is present. Do so within
-    // a shared lock.
+    // a shared lock. Once verified, we do not need the lock when executing the statement below
+    // because the parse-tree is guaranteed read-only after having been prepared successfully.
     boost::shared_lock<boost::shared_mutex> l(lock_);
 
     // Return false if there is no parse tree.

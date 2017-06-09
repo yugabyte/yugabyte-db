@@ -133,7 +133,8 @@ shared_ptr<CQLStatement> CQLServiceImpl::AllocatePreparedStatement(
     // statement to contend on. The statement will then be prepared by one client while the rest
     // wait for the results.
     stmt = prepared_stmts_map_.emplace(
-        query_id, std::make_shared<CQLStatement>(keyspace, sql_stmt)).first->second;
+        query_id, std::make_shared<CQLStatement>(
+            keyspace, sql_stmt, prepared_stmts_list_.end())).first->second;
     InsertLruPreparedStatementUnlocked(stmt);
   } else {
     // Return existing statement if found.
@@ -167,7 +168,10 @@ void CQLServiceImpl::DeletePreparedStatement(const shared_ptr<CQLStatement>& stm
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
 
   prepared_stmts_map_.erase(stmt->query_id());
-  prepared_stmts_list_.erase(stmt->pos());
+  if (stmt->pos() != prepared_stmts_list_.end()) {
+    prepared_stmts_list_.erase(stmt->pos());
+    stmt->set_pos(prepared_stmts_list_.end());
+  }
 
   VLOG(1) << "DeletePreparedStatement: CQL prepared statement cache count = "
           << prepared_stmts_map_.size() << "/" << prepared_stmts_list_.size()
@@ -190,8 +194,11 @@ void CQLServiceImpl::DeleteLruPreparedStatement() {
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
 
   if (!prepared_stmts_list_.empty()) {
-    prepared_stmts_map_.erase(prepared_stmts_list_.back()->query_id());
-    prepared_stmts_list_.pop_back();
+    const shared_ptr<CQLStatement>& stmt = prepared_stmts_list_.back();
+    prepared_stmts_map_.erase(stmt->query_id());
+    DCHECK(std::next(stmt->pos()) == prepared_stmts_list_.end()) << "invalid end-stmt pos";
+    prepared_stmts_list_.erase(stmt->pos());
+    stmt->set_pos(prepared_stmts_list_.end());
   }
 
   VLOG(1) << "DeleteLruPreparedStatement: CQL prepared statement cache count = "
