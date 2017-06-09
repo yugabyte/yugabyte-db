@@ -82,7 +82,7 @@ class CacheTest : public testing::Test {
                                   QueryId query_id = kTestQueryId) {
     Cache::Handle* handle = cache->Lookup(EncodeKey(key), query_id);
     if (handle != nullptr) {
-      const int r = (handle == nullptr) ? -1 : DecodeValue(cache->Value(handle));
+      const int r = DecodeValue(cache->Value(handle));
       SubCacheType subcache_type = cache->GetSubCacheType(handle);
       cache->Release(handle);
       return (subcache_type == MULTI_TOUCH && r == expected_value);
@@ -106,7 +106,7 @@ class CacheTest : public testing::Test {
     return Lookup(cache_, key, query_id);
   }
 
-  int LookupAndCheckInMultiTouch(int key, int expected_value, QueryId query_id = kTestQueryId) {
+  bool LookupAndCheckInMultiTouch(int key, int expected_value, QueryId query_id = kTestQueryId) {
     return LookupAndCheckInMultiTouch(cache_, key, expected_value, query_id);
   }
 
@@ -403,7 +403,7 @@ TEST_F(CacheTest, EvictionPolicyNoSingleTouch) {
     Insert(cache, i, i + 1, kTestQueryId);
   }
 
-  // Check that all values are in the cache and are all single touch.
+  // Check that all values are in the cache and are all multi touch.
   for (int i = 0; i < kCapacity; i++) {
     ASSERT_EQ(i + 1, Lookup(cache, i, kTestQueryId));
     ASSERT_TRUE(LookupAndCheckInMultiTouch(cache, i, i + 1));
