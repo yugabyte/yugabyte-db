@@ -11,15 +11,6 @@ namespace util {
 
 namespace {
 
-// VarInt encoding of -2^63. This is a special case because it will cause an overflow if we try to
-// negate this number and go through the positive codepath.
-//
-// Explanation of this particular encoding: when negated, the first two three bytes of the encoded
-// representation of -2^63 become 11111111 11000000 10000000, which means it takes 10 bytes, and the
-// absolute value is exactly 2^63 (with 7 zero bytes following).
-const uint8_t kInt64MinValueEncoding[10] {
-    0x00, 0x3f, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
-
 struct VarIntSizeTable {
   char varint_size[256];
 
@@ -48,16 +39,13 @@ inline Status NotEnoughEncodedBytes(int decoded_varint_size, int bytes_provided)
 
 }  // anonymous namespace
 
-int SignedPositiveVarIntLength(int64_t v) {
+int SignedPositiveVarIntLength(uint64_t v) {
   // Compute the number of bytes needed to represent this number.
-  uint64_t tmp = static_cast<uint64_t>(v) << 1;
-  int n = 0;
-  while (tmp != 0) {
-    tmp >>= 7;
+  v >>= 6;
+  int n = 1;
+  while (v != 0) {
+    v >>= 7;
     n += 1;
-  }
-  if (n == 0) {
-    n = 1;
   }
   return n;
 }
@@ -83,22 +71,14 @@ int SignedPositiveVarIntLength(int64_t v) {
  *   10      2^69-1               11111111 110[v]   00000000 001{-v}
  */
 void FastEncodeSignedVarInt(int64_t v, uint8_t *dest, size_t *size) {
-  int sign = 1;
-  if (v == numeric_limits<int64_t>::min()) {
-    // This is a special case because we can't use the positive value codepath (negating this value
-    // yields the same value in an int64_t).
-    *size = sizeof(kInt64MinValueEncoding);
-    memcpy(dest, kInt64MinValueEncoding, sizeof(kInt64MinValueEncoding));
-    return;
+  bool negative = v < 0;
+
+  uint64_t uv = static_cast<uint64_t>(v);
+  if (negative) {
+    uv = 1 + ~uv;
   }
 
-  if (v < 0) {
-    sign = -1;
-    v = -v;
-  }
-  const uint64_t uv = static_cast<uint64_t>(v);
-
-  const int n = SignedPositiveVarIntLength(v);
+  const int n = SignedPositiveVarIntLength(uv);
   *size = n;
 
   // For n = 1 we should get 128 (10000000) as the first byte.
@@ -142,15 +122,15 @@ void FastEncodeSignedVarInt(int64_t v, uint8_t *dest, size_t *size) {
   for (; i < n; ++i) {
     dest[i] = uv >> (8 * (n - 1 - i));
   }
-  if (sign == -1) {
-    for (int i = 0; i < n; ++i) {
+  if (negative) {
+    for (i = 0; i < n; ++i) {
       dest[i] = ~dest[i];
     }
   }
 }
 
 void FastAppendSignedVarIntToStr(int64_t v, std::string* dest) {
-  char buf[kMaxSignedVarIntBufferSize];
+  char buf[kMaxVarIntBufferSize];
   size_t len = 0;
   FastEncodeSignedVarInt(v, to_uchar_ptr(buf), &len);
   DCHECK_LE(len, 10);
@@ -163,7 +143,7 @@ std::string FastEncodeSignedVarIntToStr(int64_t v) {
   return s;
 }
 
-Status FastDecodeVarInt(const uint8_t* src, int src_size, int64_t* v, int* decoded_size) {
+Status FastDecodeSignedVarInt(const uint8_t* src, int src_size, int64_t* v, int* decoded_size) {
   uint8_t buf[16];
   if (src_size == 0) {
     return STATUS(Corruption, "Cannot decode a variable-length integer of zero size");
@@ -171,11 +151,11 @@ Status FastDecodeVarInt(const uint8_t* src, int src_size, int64_t* v, int* decod
 
   const uint8_t* const orig_src = src;
 
-  int sign;
+  bool negative;
   int n_bytes;
   uint8_t first_byte = static_cast<uint8_t>(src[0]);
   if (first_byte & 0x80) {
-    sign = 2;
+    negative = false;
 
     n_bytes = kVarIntSizeTable.varint_size[first_byte];
     if (src_size < n_bytes) {
@@ -188,7 +168,7 @@ Status FastDecodeVarInt(const uint8_t* src, int src_size, int64_t* v, int* decod
       return Status::OK();
     }
   } else {
-    sign = -1;
+    negative = true;
     first_byte = ~first_byte;
     n_bytes = kVarIntSizeTable.varint_size[first_byte];
     if (src_size < n_bytes) {
@@ -236,7 +216,7 @@ Status FastDecodeVarInt(const uint8_t* src, int src_size, int64_t* v, int* decod
     i = 1;
   }
 
-  if (sign == -1) {
+  if (negative) {
     // In this case src is already pointing to the local buffer. Copy negated bytes into our local
     // buffer so we can decode them using the same logic as for positive VarInts.
     memcpy(buf, orig_src, n_bytes);
@@ -250,7 +230,7 @@ Status FastDecodeVarInt(const uint8_t* src, int src_size, int64_t* v, int* decod
   }
 
   int64_t signed_result = static_cast<int64_t>(result);
-  if (sign < 0 && signed_result != std::numeric_limits<int64_t>::min()) {
+  if (negative && signed_result != std::numeric_limits<int64_t>::min()) {
     signed_result = -signed_result;
   }
 
@@ -259,16 +239,109 @@ Status FastDecodeVarInt(const uint8_t* src, int src_size, int64_t* v, int* decod
   return Status::OK();
 }
 
-Status FastDecodeVarInt(std::string encoded, int64_t* v, int* decoded_size) {
-  return FastDecodeVarInt(to_uchar_ptr(encoded.c_str()), encoded.size(), v, decoded_size);
+Status FastDecodeSignedVarInt(const std::string& encoded, int64_t* v, int* decoded_size) {
+  return FastDecodeSignedVarInt(to_uchar_ptr(encoded.c_str()), encoded.size(), v, decoded_size);
 }
 
-Status FastDecodeDescendingVarInt(yb::Slice *slice, int64_t *dest) {
+Status FastDecodeDescendingSignedVarInt(yb::Slice *slice, int64_t *dest) {
   int decoded_size = 0;
-  RETURN_NOT_OK(FastDecodeVarInt(slice->data(), slice->size(), dest, &decoded_size));
+  RETURN_NOT_OK(FastDecodeSignedVarInt(slice->data(), slice->size(), dest, &decoded_size));
   *dest = -*dest;
   slice->remove_prefix(decoded_size);
   return Status::OK();
+}
+
+size_t UnsignedVarIntLength(uint64_t v) {
+  size_t result = 1;
+  v >>= 7;
+  while (v != 0) {
+    v >>= 7;
+    ++result;
+  }
+  return result;
+}
+
+void FastEncodeUnsignedVarInt(uint64_t v, uint8_t *dest, size_t *size) {
+  const size_t n = UnsignedVarIntLength(v);
+  *size = n;
+
+  size_t i;
+  if (n == 10) {
+    dest[0] = 0xff;
+    // With a 10-byte encoding we are using 8 whole bytes to represent the number, which takes 63
+    // bits or fewer, so no bits from the second byte are used, and it is always 11000000 (binary).
+    dest[1] = 0x80;
+    i = 2;
+  } else if (n == 9) {
+    dest[0] = 0xff;
+    // With 9-byte encoding bits 56-61 (6 bits) of the number go into the lower 6 bits of the second
+    // byte, so it becomes 10xxxxxx where xxxxxx are the said 6 bits.
+    dest[1] = (v >> 56);
+    i = 2;
+  } else {
+    // In these cases
+    dest[0] = ~((1 << (9 - n)) - 1) | (v >> (8 * (n - 1)));
+    i = 1;
+  }
+  for (; i < n; ++i) {
+    dest[i] = v >> (8 * (n - 1 - i));
+  }
+}
+
+CHECKED_STATUS FastDecodeUnsignedVarInt(
+    const uint8_t* src, size_t src_size, uint64_t* v, size_t* decoded_size) {
+  if (src_size == 0) {
+    return STATUS(Corruption, "Cannot decode a variable-length integer of zero size");
+  }
+
+  uint8_t first_byte = src[0];
+  size_t n_bytes = kVarIntSizeTable.varint_size[first_byte] + 1;
+  if (src_size < n_bytes) {
+    return NotEnoughEncodedBytes(n_bytes, src_size);
+  }
+  if (n_bytes == 1) {
+    // Fast path for single-byte decoding.
+    *v = first_byte & 0x7f;
+    *decoded_size = 1;
+    return Status::OK();
+  }
+
+  uint64_t result = 0;
+  int i = 0;
+  if (n_bytes == 9) {
+    if (src[1] & 0x80) {
+      n_bytes = 10;
+      result = src[1] & 0x3f;
+      i = 2;
+    }
+    if (src_size < n_bytes) {
+      return NotEnoughEncodedBytes(n_bytes, src_size);
+    }
+  } else {
+    result = src[0] & ((1 << (8 - n_bytes)) - 1);
+    i = 1;
+  }
+
+  for (; i < n_bytes; ++i) {
+    result = (result << 8) | static_cast<uint8_t>(src[i]);
+  }
+
+  *v = result;
+  *decoded_size = n_bytes;
+  return Status::OK();
+}
+
+Result<uint64_t> FastDecodeUnsignedVarInt(const Slice& slice) {
+  size_t size = 0;
+  uint64_t value = 0;
+  auto status = FastDecodeUnsignedVarInt(slice.data(), slice.size(), &value, &size);
+  if (!status.ok()) {
+    return status;
+  }
+  if (size != slice.size()) {
+    return STATUS(Corruption, "Slice not fully decoded");
+  }
+  return value;
 }
 
 }  // namespace util

@@ -23,6 +23,13 @@ class VarIntTest : public YBTest {
   std::string EncodeToDigitPairs(const VarInt& v) {
     return v.EncodeToDigitPairsBytes().ToDebugStringFromBase256();
   }
+
+  void CheckComparable(const std::string& expected, const VarInt& v, bool is_signed = true) {
+    for (int radix = 2; radix <= 256; ++radix) {
+      EXPECT_EQ(expected, EncodeToComparable(v.ConvertToBase(radix), is_signed))
+        << "Radix: " << radix << ", value: " << v.ToString();
+    }
+  }
 };
 
 TEST_F(VarIntTest, TestBaseConversion) {
@@ -143,20 +150,20 @@ TEST_F(VarIntTest, TestComparableEncoding) {
   VarInt positive_small("38");
   VarInt positive_big("8429024091289482183283928321");
 
-  EXPECT_EQ("[ 10000000 ]", EncodeToComparable(negative_decimal_zero));
-  EXPECT_EQ("[ 10000000 ]", EncodeToComparable(positive_binary_zero));
-  EXPECT_EQ("[ 01101000 ]", EncodeToComparable(negative_small));
-  EXPECT_EQ("[ 00000000 00000111 11100000 11100001 11110001 11011101 00000001 00110000 "
+  CheckComparable("[ 10000000 ]", negative_decimal_zero);
+  CheckComparable("[ 10000000 ]", positive_binary_zero);
+  CheckComparable("[ 01101000 ]", negative_small);
+  CheckComparable("[ 00000000 00000111 11100000 11100001 11110001 11011101 00000001 00110000 "
           "11011100 11111011 11101101 01011101 11111100 ]",
-      EncodeToComparable(negative_big));
-  EXPECT_EQ("[ 10100110 ]", EncodeToComparable(positive_small));
-  EXPECT_EQ("[ 00100110 ]", EncodeToComparable(positive_small, false));
-  EXPECT_EQ("[ 11111111 11111100 00011011 00111100 01010011 01000111 10010101 11011111 "
+      negative_big);
+  CheckComparable("[ 10100110 ]", positive_small);
+  CheckComparable("[ 00100110 ]", positive_small, false);
+  CheckComparable("[ 11111111 11111100 00011011 00111100 01010011 01000111 10010101 11011111 "
           "00011011 00001010 01111011 11111101 01101101 00000001 ]",
-      EncodeToComparable(positive_big));
-  EXPECT_EQ("[ 11111111 11111000 00011011 00111100 01010011 01000111 10010101 11011111 "
+      positive_big);
+  CheckComparable("[ 11111111 11111000 00011011 00111100 01010011 01000111 10010101 11011111 "
       "00011011 00001010 01111011 11111101 01101101 00000001 ]",
-      EncodeToComparable(positive_big, false));
+      positive_big, false);
 
   VarInt decoded;
   size_t size;

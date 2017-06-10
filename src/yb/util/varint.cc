@@ -20,11 +20,15 @@ VarInt::VarInt(const std::string& string_val) {
 }
 
 VarInt::VarInt(int64_t int64_val) {
-  CHECK_OK(FromInt64(int64_val));
+  FromInt64(int64_val);
+}
+
+VarInt::VarInt(uint64_t uint64_val) {
+  FromUInt64(uint64_val);
 }
 
 void VarInt::clear() {
-  digits_ = {};
+  digits_.clear();
   radix_ = 2;
   is_positive_ = true;
 }
@@ -100,15 +104,34 @@ Status VarInt::FromString(const Slice &slice) {
   return Status::OK();
 }
 
-Status VarInt::ExtractDigits(uint64_t val, int radix) {
-  while (val > 0) {
-    digits_.push_back(static_cast<uint8_t> (val % radix));
-    val /= radix;
+std::array<uint8_t, 257> RadixShift() {
+  std::array<uint8_t, 257> result;
+  memset(result.data(), 0, result.size());
+  for (size_t i = 0; i <= 8; ++i) {
+    result[1 << i] = i;
   }
-  return Status::OK();
+  return result;
 }
 
-Status VarInt::FromInt64(std::int64_t int64_val, int radix) {
+void VarInt::ExtractDigits(uint64_t val, int radix) {
+  static auto radix_shift = RadixShift();
+  digits_.clear();
+  int shift = radix_shift[radix];
+  if (shift != 0) {
+    int mask = radix - 1;
+    while (val > 0) {
+      digits_.push_back(static_cast<uint8_t> (val & mask));
+      val >>= shift;
+    }
+  } else {
+    while (val > 0) {
+      digits_.push_back(static_cast<uint8_t> (val % radix));
+      val /= radix;
+    }
+  }
+}
+
+void VarInt::FromInt64(std::int64_t int64_val, int radix) {
   DCHECK(radix > 0) << "Radix of VarInt found to be non-positive";
   radix_ = radix;
   is_positive_ = int64_val >= 0;
@@ -118,7 +141,14 @@ Status VarInt::FromInt64(std::int64_t int64_val, int radix) {
   } else {
     val = is_positive_ ? static_cast<uint64_t> (int64_val) : static_cast<uint64_t> (-int64_val);
   }
-  return ExtractDigits(val, radix);
+  ExtractDigits(val, radix);
+}
+
+void VarInt::FromUInt64(std::uint64_t uint64_val, int radix) {
+  DCHECK(radix > 0) << "Radix of VarInt found to be non-positive";
+  radix_ = radix;
+  is_positive_ = true;
+  ExtractDigits(uint64_val, radix);
 }
 
 VarInt VarInt::add(const vector<VarInt> &inputs) {
@@ -165,7 +195,57 @@ VarInt VarInt::ConvertToBase(int radix) const {
   if (radix == radix_) {
     return VarInt(*this);
   }
-  VarInt output = VarInt(vector<uint8_t >(), radix);
+  VarInt output({}, radix);
+  if (digits_.empty()) {
+    return output;
+  }
+  static auto radix_shift = RadixShift();
+  size_t shift = radix_shift[radix_];
+  if (shift) {
+    size_t new_shift = radix_shift[radix];
+    if (new_shift) {
+      if (shift % new_shift == 0) {
+        output.is_positive_ = is_positive_;
+        size_t mul = shift / new_shift;
+        output.digits_.reserve(digits_.size() * mul);
+        uint8_t mask = static_cast<uint8_t>(radix - 1);
+        for (auto digit : digits_) {
+          auto d = digit;
+          for (size_t i = 0; i != mul; ++i) {
+            output.digits_.push_back(d & mask);
+            d >>= new_shift;
+          }
+        }
+        output.trim();
+        return output;
+      } else if (new_shift % shift == 0) {
+        output.is_positive_ = is_positive_;
+        size_t mul = new_shift / shift;
+        size_t new_size = (digits_.size() + mul - 1) / mul;
+        output.digits_.reserve(new_size);
+        --new_size;
+        for (size_t i = 0; i != new_size; ++i) {
+          uint8_t digit = 0;
+          size_t base = i * mul;
+          size_t digit_shift = 0;
+          for (size_t j = base; j != base + mul; ++j) {
+            digit |= digits_[j] << digit_shift;
+            digit_shift += shift;
+          }
+          output.digits_.push_back(digit);
+        }
+        uint8_t digit = 0;
+        size_t digit_shift = 0;
+        for (size_t j = new_size * mul; j != digits_.size(); ++j) {
+          digit |= digits_[j] << digit_shift;
+          digit_shift += shift;
+        }
+        output.digits_.push_back(digit);
+        output.trim();
+        return output;
+      }
+    }
+  }
   for (auto itr = digits_.rbegin(); itr != digits_.rend(); ++itr) {
     output = output.MultiplyAndAdd(radix_, *itr);
   }
@@ -409,18 +489,14 @@ VarInt VarInt::MultiplyAndAdd(int factor, int carry) {
 }
 
 void VarInt::AppendDigits(size_t n, uint8_t digit) {
-  for (size_t i = 0; i < n; i++) {
-    digits_.push_back(digit);
-  }
+  size_t size = digits_.size();
+  digits_.resize(size + n);
+  memset(digits_.data() + size, digit, n);
 }
 
 string VarInt::ToStringFromBase256() const {
   DCHECK_EQ(radix_, 256);
-  string output;
-  for (auto itr = digits_.begin(); itr != digits_.end(); ++itr) {
-    output += static_cast<uint8_t>(*itr);
-  }
-  return output;
+  return std::string(digits_.begin(), digits_.end());
 }
 
 string VarInt::ToDebugStringFromBase256() const {

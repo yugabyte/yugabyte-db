@@ -29,11 +29,11 @@
 // RocksDB's Status types.
 
 #define ASSERT_OK(status) do { \
-    const auto _s = (status); \
+    auto&& _s = (status); \
     if (_s.ok()) { \
       SUCCEED(); \
     } else { \
-      FAIL() << "Bad status: " << _s.ToString();  \
+      FAIL() << "Bad status: " << StatusToString(_s);  \
     } \
   } while (0)
 

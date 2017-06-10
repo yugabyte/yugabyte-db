@@ -10,8 +10,8 @@
 #include "yb/util/fast_varint.h"
 
 using yb::util::VarInt;
-using yb::util::FastEncodeDescendingVarInt;
-using yb::util::FastDecodeDescendingVarInt;
+using yb::util::FastEncodeDescendingSignedVarInt;
+using yb::util::FastDecodeDescendingSignedVarInt;
 using yb::util::FormatBytesAsStr;
 using yb::util::FormatSliceAsStr;
 using yb::util::QuotesType;
@@ -38,10 +38,10 @@ char* DocHybridTime::EncodedInDocDbFormat(char* dest) const {
   // the "YugaByte epoch" as a signed operation, so that we can still represent hybrid times earlier
   // than the YugaByte epoch.
   char* out = dest;
-  out = FastEncodeDescendingVarInt(
+  out = FastEncodeDescendingSignedVarInt(
       static_cast<int64_t>(hybrid_time_.GetPhysicalValueMicros() - kYugaByteMicrosecondEpoch),
       out);
-  out = FastEncodeDescendingVarInt(hybrid_time_.GetLogicalValue(), out);
+  out = FastEncodeDescendingSignedVarInt(hybrid_time_.GetLogicalValue(), out);
 
   // We add one to write_id to ensure the negated value used in the encoding is always negative
   // (i.e. is never zero).  Then we shift it left by kNumBitsForHybridTimeSize bits so that we
@@ -51,7 +51,7 @@ char* DocHybridTime::EncodedInDocDbFormat(char* dest) const {
   //
   // It is important that we cast to int64_t before adding 1, otherwise WriteId might overflow.
   // (As of 04/17/2017 we're using a 32-bit unsigned int for WriteId).
-  out = FastEncodeDescendingVarInt(
+  out = FastEncodeDescendingSignedVarInt(
       (static_cast<int64_t>(write_id_) + 1) << kNumBitsForHybridTimeSize, out);
 
   // Store the encoded DocHybridTime size in the last kNumBitsForHybridTimeSize bits so we
@@ -69,18 +69,18 @@ Status DocHybridTime::DecodeFrom(Slice *slice) {
   const size_t previous_size = slice->size();
   {
     int64_t decoded_micros = 0;
-    RETURN_NOT_OK(FastDecodeDescendingVarInt(slice, &decoded_micros));
+    RETURN_NOT_OK(FastDecodeDescendingSignedVarInt(slice, &decoded_micros));
     decoded_micros += kYugaByteMicrosecondEpoch;
 
     int64_t decoded_logical = 0;
-    RETURN_NOT_OK(FastDecodeDescendingVarInt(slice, &decoded_logical));
+    RETURN_NOT_OK(FastDecodeDescendingSignedVarInt(slice, &decoded_logical));
 
     hybrid_time_ = HybridTime::FromMicrosecondsAndLogicalValue(decoded_micros, decoded_logical);
   }
 
   int64_t decoded_shifted_write_id = 0;
   const auto ptr_before_decoding_write_id = slice->data();
-  RETURN_NOT_OK(FastDecodeDescendingVarInt(slice, &decoded_shifted_write_id));
+  RETURN_NOT_OK(FastDecodeDescendingSignedVarInt(slice, &decoded_shifted_write_id));
 
   if (decoded_shifted_write_id < 0) {
     return STATUS_SUBSTITUTE(

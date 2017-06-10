@@ -7,10 +7,12 @@
 #include "yb/util/cast.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/random.h"
+#include "yb/util/random_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/varint.h"
 
+using namespace std::literals;
 using strings::Substitute;
 using yb::util::FormatBytesAsStr;
 
@@ -31,7 +33,7 @@ void CheckEncoding(int64_t v) {
   ASSERT_EQ(correct_encoded, string(to_char_ptr(buf), encoded_size));
   int64_t decoded = 0;
   int decoded_size = 0;
-  ASSERT_OK(FastDecodeVarInt(correct_encoded, &decoded, &decoded_size));
+  ASSERT_OK(FastDecodeSignedVarInt(correct_encoded, &decoded, &decoded_size));
   ASSERT_EQ(v, decoded);
   ASSERT_EQ(decoded_size, correct_encoded.size());
 
@@ -43,9 +45,9 @@ void CheckEncoding(int64_t v) {
 
     constexpr bool kGenerateInvalidDecodingExamples = false;
     if (kGenerateInvalidDecodingExamples &&
-        !FastDecodeVarInt(
+        !FastDecodeSignedVarInt(
             buf + 1, encoded_size - 1, &unused_decoded_value, &unused_decoded_size).ok()) {
-      std::cout << "ASSERT_FALSE(FastDecodeVarInt("
+      std::cout << "ASSERT_FALSE(FastDecodeSignedVarInt("
                 << FormatBytesAsStr(to_char_ptr(buf) + 1, encoded_size - 1) << ", "
                 << encoded_size - 1 << ", "
                 << "&v, &n).ok());" << std::endl;
@@ -58,14 +60,14 @@ void CheckEncoding(int64_t v) {
     // Our "descending varint" encoding is simply the encoding of the negated argument.
     static const string kPrefix = "some_prefix";
     string encoded_dest = kPrefix;
-    FastEncodeDescendingVarInt(-v, &encoded_dest);
+    FastEncodeDescendingSignedVarInt(-v, &encoded_dest);
     const int encoded_size = encoded_dest.size() - kPrefix.size();
     ASSERT_EQ(correct_encoded,
               encoded_dest.substr(kPrefix.size(), encoded_size));
 
     Slice slice_for_decoding(encoded_dest.c_str() + kPrefix.size(), encoded_size);
     int64_t decoded_value = 0;
-    ASSERT_OK(FastDecodeDescendingVarInt(&slice_for_decoding, &decoded_value));
+    ASSERT_OK(FastDecodeDescendingSignedVarInt(&slice_for_decoding, &decoded_value));
     ASSERT_EQ(0, slice_for_decoding.size());
     ASSERT_EQ(-v, decoded_value);
   }
@@ -106,21 +108,35 @@ TEST(FastVarintTest, TestEncodeDecode) {
   ASSERT_EQ(BINARY_STRING("\xdf\xff"), FastEncodeSignedVarIntToStr(8191));
 }
 
-TEST(FastVarIntTest, TestEncodePerformance) {
-  Random rng(SeedRandom());
-  uint8_t buf[16];
-  const MonoTime start_time = MonoTime::Now(MonoTime::Granularity::FINE);
-  for (int i = 1; i < 63; ++i) {
-    int64_t max_value = static_cast<int64_t>((1ull << i) - 1);
-    for (int j = 0; j < 500000; ++j) {
-      int64_t v = rng.Next64() % max_value + 1;
-      size_t encoded_size = v;
-      FastEncodeSignedVarInt(v, buf, &encoded_size);
+template<class T>
+std::vector<T> GenerateRandomValues() {
+  std::mt19937_64 rng(123456);
+  const int kMaxLength = 62;
+  const int kValuesPerLength = 500000;
+  std::vector<T> values;
+  values.reserve(kMaxLength * kValuesPerLength);
+  for (int i = 1; i <= kMaxLength; ++i) {
+    uint64_t max_value = (1ull << i) - 1;
+    std::uniform_int_distribution<T> distribution(0, max_value);
+    for (int j = 0; j < kValuesPerLength; ++j) {
+      values.push_back(distribution(rng));
     }
   }
-  LOG(INFO) << "Elapsed time: "
-            << MonoTime::Now(
-                MonoTime::Granularity::FINE).GetDeltaSince(start_time).ToMilliseconds() << " ms";
+  return values;
+}
+
+TEST(FastVarIntTest, TestEncodePerformance) {
+  const std::vector<int64_t> values = GenerateRandomValues<int64_t>();
+
+  uint8_t buf[kMaxVarIntBufferSize];
+  size_t encoded_size = 0;
+  std::clock_t start_time = std::clock();
+  for (auto value : values) {
+    FastEncodeSignedVarInt(value, buf, &encoded_size);
+  }
+  std::clock_t end_time = std::clock();
+  LOG(INFO) << std::fixed << std::setprecision(2) << "CPU time used: "
+            << 1000.0 * (end_time - start_time) / CLOCKS_PER_SEC << " ms\n";
 }
 
 TEST(FastVarIntTest, TestSignedPositiveVarIntLength) {
@@ -137,153 +153,242 @@ TEST(FastVarIntTest, TestSignedPositiveVarIntLength) {
   }
 }
 
+const std::vector<std::string>& IncorrectValues() {
+  static std::vector<std::string> result = {
+      ""s,
+      "0"s,
+      "1"s,
+      "<"s,
+      "="s,
+      ">"s,
+      " "s,
+      "-"s,
+      ","s,
+      ";"s,
+      ":"s,
+      "!"s,
+      "?"s,
+      "/"s,
+      "."s,
+      "'"s,
+      "("s,
+      ")"s,
+      "$"s,
+      "*"s,
+      "\""s,
+      "&"s,
+      "#"s,
+      "%"s,
+      "+"s,
+      "2"s,
+      "3"s,
+      "4"s,
+      "5"s,
+      "6"s,
+      "7"s,
+      "8"s,
+      "9"s,
+      "\x00"s,
+      "\x00\x00"s,
+      "\x00\x00\x00"s,
+      "\x00\x00\x00\x00"s,
+      "\x00\x00\x00\x00\x00"s,
+      "\x00\x00\x00\x00\x01"s,
+      "\x00\x00\x00\x01"s,
+      "\x00\x00\x01"s,
+      "\x00\x01"s,
+      "\x01"s,
+      "\x02"s,
+      "\x03"s,
+      "\x04"s,
+      "\x05"s,
+      "\x06"s,
+      "\x07"s,
+      "\x08"s,
+      "\x09"s,
+      "\x0a"s,
+      "\x0b"s,
+      "\x0c"s,
+      "\x0d"s,
+      "\x0e"s,
+      "\x0f"s,
+      "\x10"s,
+      "\x11"s,
+      "\x12"s,
+      "\x13"s,
+      "\x14"s,
+      "\x15"s,
+      "\x16"s,
+      "\x17"s,
+      "\x18"s,
+      "\x19"s,
+      "\x1a"s,
+      "\x1b"s,
+      "\x1c"s,
+      "\x1d"s,
+      "\x1e"s,
+      "\x1f"s,
+      "\xc0"s,
+      "\xc1"s,
+      "\xc2"s,
+      "\xc3"s,
+      "\xc4"s,
+      "\xc5"s,
+      "\xc6"s,
+      "\xc7"s,
+      "\xc8"s,
+      "\xc9"s,
+      "\xca"s,
+      "\xcb"s,
+      "\xcc"s,
+      "\xcd"s,
+      "\xce"s,
+      "\xcf"s,
+      "\xd0"s,
+      "\xd1"s,
+      "\xd2"s,
+      "\xd3"s,
+      "\xd4"s,
+      "\xd5"s,
+      "\xd6"s,
+      "\xd7"s,
+      "\xd8"s,
+      "\xd9"s,
+      "\xda"s,
+      "\xdb"s,
+      "\xdc"s,
+      "\xdd"s,
+      "\xde"s,
+      "\xdf"s,
+      "\xe0"s,
+      "\xe1"s,
+      "\xe2"s,
+      "\xe3"s,
+      "\xe4"s,
+      "\xe5"s,
+      "\xe6"s,
+      "\xe7"s,
+      "\xe8"s,
+      "\xe9"s,
+      "\xea"s,
+      "\xeb"s,
+      "\xec"s,
+      "\xed"s,
+      "\xee"s,
+      "\xef"s,
+      "\xf0"s,
+      "\xf1"s,
+      "\xf2"s,
+      "\xf3"s,
+      "\xf4"s,
+      "\xf5"s,
+      "\xf6"s,
+      "\xf7"s,
+      "\xf8"s,
+      "\xf9"s,
+      "\xfa"s,
+      "\xfb"s,
+      "\xfc"s,
+      "\xfd"s,
+      "\xfe"s,
+      "\xff"s,
+      "\xff\xff"s,
+      "\xff\xff\xff"s,
+      "\xff\xff\xff\xff"s,
+      "\xff\xff\xff\xff\xff"s,
+      "\xff\xff\xff\xff\xff\xff"s,
+      "\x00\x00\x00\x00\x00+g!J"s
+  };
+  return result;
+}
+
 TEST(FastVarIntTest, TestDecodeIncorrectValues) {
   int64_t v;
   int n;
+  const auto& incorrect_values = IncorrectValues();
+  for (const auto& value : incorrect_values) {
+    ASSERT_NOK(FastDecodeSignedVarInt(value, &v, &n))
+        << "Input: " << Slice(value).ToDebugHexString();
+  }
+}
 
-  ASSERT_FALSE(FastDecodeVarInt("", 0, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("0", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("1", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("<", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("=", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt(">", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt(" ", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("-", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt(",", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt(";", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt(":", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("!", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("?", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("/", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt(".", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("'", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("(", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt(")", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("$", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("*", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\"", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("&", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("#", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("%", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("+", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("2", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("3", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("4", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("5", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("6", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("7", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("8", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("9", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x00", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x00\x00", 2, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x00\x00\x00", 3, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x00\x00\x00\x00", 4, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x00\x00\x00\x00\x00", 5, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x00\x00\x00\x00\x01", 5, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x00\x00\x00\x01", 4, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x00\x00\x01", 3, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x00\x01", 2, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x01", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x02", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x03", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x04", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x05", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x06", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x07", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x08", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x09", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x0a", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x0b", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x0c", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x0d", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x0e", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x0f", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x10", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x11", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x12", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x13", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x14", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x15", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x16", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x17", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x18", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x19", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x1a", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x1b", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x1c", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x1d", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x1e", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\x1f", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xc0", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xc1", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xc2", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xc3", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xc4", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xc5", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xc6", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xc7", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xc8", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xc9", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xca", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xcb", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xcc", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xcd", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xce", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xcf", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xd0", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xd1", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xd2", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xd3", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xd4", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xd5", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xd6", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xd7", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xd8", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xd9", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xda", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xdb", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xdc", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xdd", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xde", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xdf", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xe0", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xe1", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xe2", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xe3", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xe4", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xe5", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xe6", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xe7", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xe8", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xe9", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xea", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xeb", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xec", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xed", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xee", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xef", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xf0", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xf1", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xf2", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xf3", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xf4", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xf5", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xf6", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xf7", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xf8", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xf9", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xfa", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xfb", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xfc", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xfd", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xfe", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xff", 1, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xff\xff", 2, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xff\xff\xff", 3, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xff\xff\xff\xff", 4, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xff\xff\xff\xff\xff", 5, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt("\xff\xff\xff\xff\xff\xff", 6, &v, &n).ok());
-  ASSERT_FALSE(FastDecodeVarInt(BINARY_STRING("\x00\x00\x00\x00\x00+g!J"), &v, &n).ok());
+void CheckUnsignedEncoding(uint64_t value) {
+  uint8_t buf[kMaxVarIntBufferSize];
+  size_t size = 0;
+  FastEncodeUnsignedVarInt(value, buf, &size);
+  uint64_t decoded_value;
+  size_t decoded_size = 0;
+  ASSERT_OK(FastDecodeUnsignedVarInt(buf, size, &decoded_value, &decoded_size));
+  ASSERT_EQ(value, decoded_value);
+  ASSERT_EQ(size, decoded_size) << "Value is: " << value;
+}
+
+TEST(FastVarIntTest, Unsigned) {
+  std::mt19937_64 rng(123456);
+  const int kTotalValues = 1000000;
+
+  std::vector<uint64_t> values(kTotalValues);
+  std::vector<uint8_t> big_buffer(kTotalValues * kMaxVarIntBufferSize);
+  std::vector<Slice> encoded_values(kTotalValues);
+
+  VarInt varint;
+  for (int i = 0; i != kTotalValues; ++i) {
+    uint64_t len = std::uniform_int_distribution<uint64_t>(1, 10)(rng);
+    uint64_t max_value = len == 10 ? std::numeric_limits<uint64_t>::max() : (1ULL << (7 * len)) - 1;
+    uint64_t value = std::uniform_int_distribution<uint64_t>(0, max_value)(rng);
+    values[i] = value;
+    uint8_t* buf = big_buffer.data() + kMaxVarIntBufferSize * i;
+    size_t size = 0;
+    FastEncodeUnsignedVarInt(value, buf, &size);
+    encoded_values[i] = Slice(buf, size);
+    uint64_t decoded_value;
+    size_t decoded_size = 0;
+    ASSERT_OK(FastDecodeUnsignedVarInt(buf, size, &decoded_value, &decoded_size));
+    ASSERT_EQ(value, decoded_value);
+    ASSERT_EQ(size, decoded_size) << "Value is: " << value;
+
+    varint.FromUInt64(value);
+    auto encoded_varint = varint.EncodeToComparable(false, 0);
+    ASSERT_EQ(encoded_varint, std::string(buf, buf + size)) << "Value is: " << value;
+  }
+  CheckUnsignedEncoding(numeric_limits<uint64_t>::max());
+  CheckUnsignedEncoding(numeric_limits<uint64_t>::max() - 1);
+
+  std::sort(values.begin(), values.end());
+  auto compare_slices = [](const Slice& lhs, const Slice& rhs) {
+    return lhs.compare(rhs) < 0;
+  };
+  std::sort(encoded_values.begin(), encoded_values.end(), compare_slices);
+  for (size_t i = 0; i != kTotalValues; ++i) {
+    auto decoded_value = FastDecodeUnsignedVarInt(encoded_values[i]);
+    ASSERT_OK(decoded_value);
+    ASSERT_EQ(values[i], *decoded_value);
+  }
+}
+
+TEST(FastVarIntTest, DecodeUnsignedIncorrect) {
+  const auto& incorrect_values = IncorrectValues();
+  for (const auto& value : incorrect_values) {
+    // Values with leading zero bit are correctly decoded in unsigned mode.
+    if (value.size() == 1 && (value[0] & 0x80) == 0) {
+      continue;
+    }
+    ASSERT_NOK(FastDecodeUnsignedVarInt(value)) << "Input: " << Slice(value).ToDebugHexString();
+  }
+}
+
+TEST(FastVarIntTest, EncodeUnsignedPerformance) {
+  const std::vector<uint64_t> values = GenerateRandomValues<uint64_t>();
+
+  uint8_t buf[kMaxVarIntBufferSize];
+  size_t encoded_size = 0;
+  std::clock_t start_time = std::clock();
+  for (auto value : values) {
+    FastEncodeUnsignedVarInt(value, buf, &encoded_size);
+  }
+  std::clock_t end_time = std::clock();
+  LOG(INFO) << std::fixed << std::setprecision(2) << "CPU time used: "
+            << 1000.0 * (end_time - start_time) / CLOCKS_PER_SEC << " ms\n";
 }
 
 }  // namespace util

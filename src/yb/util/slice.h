@@ -165,6 +165,7 @@ class Slice {
   std::string ToString(bool hex) const __attribute__ ((deprecated));
 
   std::string ToDebugString(size_t max_len = 0) const;
+  std::string ToDebugHexString() const;
 
   // Three-way comparison.  Returns value:
   //   <  0 iff "*this" <  "b",

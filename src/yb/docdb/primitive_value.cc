@@ -23,7 +23,7 @@ using yb::util::Decimal;
 using yb::util::FormatBytesAsStr;
 using yb::util::CompareUsingLessThan;
 using yb::util::FastAppendSignedVarIntToStr;
-using yb::util::FastDecodeVarInt;
+using yb::util::FastDecodeSignedVarInt;
 
 // We're listing all non-primitive value types at the end of switch statement instead of using a
 // default clause so that we can ensure that we're handling all possible primitive value types
@@ -470,8 +470,8 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
         int64_t column_id_as_int64 = 0;
         ColumnId dummy_column_id;
         ColumnId& column_id_ref = out ? out->column_id_val_ : dummy_column_id;
-        RETURN_NOT_OK(FastDecodeVarInt(slice->data(), slice->size(), &column_id_as_int64 ,
-                                       &num_bytes_in_encoded_varint));
+        RETURN_NOT_OK(FastDecodeSignedVarInt(slice->data(), slice->size(), &column_id_as_int64 ,
+                                             &num_bytes_in_encoded_varint));
         RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id_ref));
       }
 

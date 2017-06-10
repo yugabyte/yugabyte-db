@@ -22,6 +22,14 @@ namespace util {
 //
 // Two other ways to encode VarInt are also provided, which are used for Decimal encodings.
 
+// For signed int this metafunction returns int64_t, for unsigned - uint64_t.
+template<class T>
+class CoveringInt {
+ public:
+  typedef typename std::decay<T>::type CleanedT;
+  typedef typename std::conditional<std::is_signed<CleanedT>::value, int64_t, uint64_t>::type type;
+};
+
 class VarInt {
 
   friend class VarIntTest;
@@ -41,7 +49,14 @@ class VarInt {
   explicit VarInt(const std::string& string_val);
 
   // int64's are always convertible to varint.
-  explicit VarInt(std::int64_t int64_val);
+  explicit VarInt(int64_t int64_val);
+  explicit VarInt(uint64_t uint64_val);
+
+  template<class T,
+           class U = typename std::enable_if<std::is_integral<
+                         typename std::decay<T>::type>::value>::type>
+  explicit VarInt(const T& value)
+      : VarInt(static_cast<typename CoveringInt<T>::type>(value)) {}
 
   void clear();
 
@@ -57,7 +72,8 @@ class VarInt {
   // The input is expected to be of the form (-)?[0-9]+, whitespace is not allowed. Use this
   // after removing whitespace.
   CHECKED_STATUS FromString(const Slice &slice);
-  CHECKED_STATUS FromInt64(std::int64_t int64_val, int radix = 256);
+  void FromInt64(int64_t int64_val, int radix = 256);
+  void FromUInt64(uint64_t uint64_val, int radix = 256);
 
   // Arithmetic functions will probaly not be needed. Here for testing big numbers for consistency
   // or just in case we need them in future.
@@ -218,7 +234,7 @@ class VarInt {
 
   // Given a uint64_t and a radix, populates digits_ with the appropriate digits for the given
   // radix.
-  CHECKED_STATUS ExtractDigits(uint64_t val, int radix);
+  void ExtractDigits(uint64_t val, int radix);
 
   // Remove all trailing zeros from the digits vector (most significant end).
   // VarInt should be trimmed by default, most of the input VarInts in the API are

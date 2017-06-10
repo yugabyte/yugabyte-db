@@ -36,9 +36,10 @@ std::string Slice::ToBuffer() const {
 }
 
 std::string Slice::ToString(bool hex) const {
-  if (!hex) {
-    return ToString();
-  }
+  return hex ? ToDebugHexString() : ToString();
+}
+
+std::string Slice::ToDebugHexString() const {
   std::string result;
   char buf[10];
   for (size_t i = 0; i < size_; i++) {
