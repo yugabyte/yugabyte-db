@@ -5,6 +5,8 @@
  * This program is open source, licensed under the PostgreSQL license.
  * For license terms, see the LICENSE file.
  *
+ * Copyright (c) 2008-2017, PostgreSQL Global Development Group
+ *
  *-------------------------------------------------------------------------
  */
 
