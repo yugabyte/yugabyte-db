@@ -89,6 +89,10 @@ DEFINE_int32(max_wait_for_safe_time_ms, 5000,
              "Maximum time in milliseconds to wait for the safe time to advance when trying to "
              "scan at the given hybrid_time.");
 
+DEFINE_bool(tserver_noop_read_write, false, "Respond NOOP to read/write.");
+TAG_FLAG(tserver_noop_read_write, unsafe);
+TAG_FLAG(tserver_noop_read_write, hidden);
+
 namespace yb {
 namespace tserver {
 
@@ -756,6 +760,13 @@ Status TabletServiceImpl::TakeReadSnapshot(Tablet* tablet,
 void TabletServiceImpl::Write(const WriteRequestPB* req,
                               WriteResponsePB* resp,
                               rpc::RpcContext context) {
+  if (FLAGS_tserver_noop_read_write) {
+    for (int i = 0; i < req->yql_write_batch_size(); ++i) {
+      resp->add_yql_response_batch();
+    }
+    context.RespondSuccess();
+    return;
+  }
   TRACE("Start Write");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Write",
                "tablet_id", req->tablet_id());
@@ -934,6 +945,10 @@ bool TabletServiceImpl::GetTabletOrRespond(const ReadRequestPB* req,
 void TabletServiceImpl::Read(const ReadRequestPB* req,
                              ReadResponsePB* resp,
                              rpc::RpcContext context) {
+  if (FLAGS_tserver_noop_read_write) {
+    context.RespondSuccess();
+    return;
+  }
   TRACE("Start Read");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Read",
                "tablet_id", req->tablet_id());
