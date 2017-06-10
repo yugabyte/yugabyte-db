@@ -376,16 +376,18 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
     switch (op->yb_op->type()) {
       case YBOperation::Type::REDIS_WRITE: {
         CHECK_EQ(table()->table_type(), YBTableType::REDIS_TABLE_TYPE);
-        RedisWriteRequestPB* redis_req = req_.mutable_redis_write_batch()->Add();
-        // We are copying the redis request for now. In future it may be prevented.
-        *redis_req = down_cast<YBRedisWriteOp*>(op->yb_op.get())->request();
+        // Move Redis write request PB into tserver write request PB for performance. Will restore
+        // in ProcessResponseFromTserver.
+        auto* redis_op = down_cast<YBRedisWriteOp*>(op->yb_op.get());
+        req_.add_redis_write_batch()->Swap(redis_op->mutable_request());
         break;
       }
       case YBOperation::Type::YQL_WRITE: {
         CHECK_EQ(table()->table_type(), YBTableType::YQL_TABLE_TYPE);
-        YQLWriteRequestPB* yql_req = req_.mutable_yql_write_batch()->Add();
-        // We are copying the YQL request for now. In future it may be prevented.
-        *yql_req = down_cast<YBqlWriteOp*>(op->yb_op.get())->request();
+        // Move YQL write request PB into tserver write request PB for performance. Will restore
+        // in ProcessResponseFromTserver.
+        auto* yql_op = down_cast<YBqlWriteOp*>(op->yb_op.get());
+        req_.add_yql_write_batch()->Swap(yql_op->mutable_request());
         break;
       }
       case YBOperation::Type::INSERT: FALLTHROUGH_INTENDED;
@@ -471,8 +473,10 @@ void WriteRpc::ProcessResponseFromTserver(Status status) {
           batcher_->AddOpCountMismatchError();
           return;
         }
-        *(down_cast<YBRedisWriteOp*>(yb_op)->mutable_response()) =
-            std::move(resp_.redis_response_batch(redis_idx));
+        auto* redis_op = down_cast<YBRedisWriteOp*>(yb_op);
+        // Restore Redis write request PB and extract response.
+        redis_op->mutable_request()->Swap(req_.mutable_redis_write_batch(redis_idx));
+        redis_op->mutable_response()->Swap(resp_.mutable_redis_response_batch(redis_idx));
         redis_idx++;
         break;
       }
@@ -481,9 +485,11 @@ void WriteRpc::ProcessResponseFromTserver(Status status) {
           batcher_->AddOpCountMismatchError();
           return;
         }
-        *(down_cast<YBqlWriteOp*>(yb_op)->mutable_response()) =
-            std::move(resp_.yql_response_batch(yql_idx));
-        const auto& yql_response = down_cast<YBqlWriteOp*>(yb_op)->response();
+        // Restore YQL write request PB and extract response.
+        auto* yql_op = down_cast<YBqlWriteOp*>(yb_op);
+        yql_op->mutable_request()->Swap(req_.mutable_yql_write_batch(yql_idx));
+        yql_op->mutable_response()->Swap(resp_.mutable_yql_response_batch(yql_idx));
+        const auto& yql_response = yql_op->response();
         if (yql_response.has_rows_data_sidecar()) {
           Slice rows_data;
           CHECK_OK(retrier().controller().GetSidecar(
@@ -532,14 +538,18 @@ ReadRpc::ReadRpc(
     switch (op->yb_op->type()) {
       case YBOperation::Type::REDIS_READ: {
         CHECK_EQ(table()->table_type(), YBTableType::REDIS_TABLE_TYPE);
-        RedisReadRequestPB* redis_req = req_.mutable_redis_batch()->Add();
-        *redis_req = down_cast<YBRedisReadOp*>(op->yb_op.get())->request();
+        // Move Redis read request PB into tserver read request PB for performance. Will restore
+        // in ProcessResponseFromTserver.
+        auto* redis_op = down_cast<YBRedisReadOp*>(op->yb_op.get());
+        req_.add_redis_batch()->Swap(redis_op->mutable_request());
         break;
       }
       case YBOperation::Type::YQL_READ: {
         CHECK_EQ(table()->table_type(), YBTableType::YQL_TABLE_TYPE);
-        YQLReadRequestPB* yql_req = req_.mutable_yql_batch()->Add();
-        *yql_req = down_cast<YBqlReadOp*>(op->yb_op.get())->request();
+        // Move YQL read request PB into tserver read request PB for performance. Will restore
+        // in ProcessResponseFromTserver.
+        auto* yql_op = down_cast<YBqlReadOp*>(op->yb_op.get());
+        req_.add_yql_batch()->Swap(yql_op->mutable_request());
         break;
       }
       case YBOperation::Type::INSERT: FALLTHROUGH_INTENDED;
@@ -607,8 +617,10 @@ void ReadRpc::ProcessResponseFromTserver(Status status) {
           batcher_->AddOpCountMismatchError();
           return;
         }
-        *(down_cast<YBRedisReadOp*>(yb_op)->mutable_response()) =
-            std::move(resp_.redis_batch(redis_idx));
+        // Restore Redis read request PB and extract response.
+        auto* redis_op = down_cast<YBRedisReadOp*>(yb_op);
+        redis_op->mutable_request()->Swap(req_.mutable_redis_batch(redis_idx));
+        redis_op->mutable_response()->Swap(resp_.mutable_redis_batch(redis_idx));
         redis_idx++;
         break;
       }
@@ -617,9 +629,11 @@ void ReadRpc::ProcessResponseFromTserver(Status status) {
           batcher_->AddOpCountMismatchError();
           return;
         }
-        *(down_cast<YBqlReadOp*>(yb_op)->mutable_response()) =
-            std::move(resp_.yql_batch(yql_idx));
-        const auto& yql_response = down_cast<YBqlReadOp*>(yb_op)->response();
+        // Restore YQL read request PB and extract response.
+        auto* yql_op = down_cast<YBqlReadOp*>(yb_op);
+        yql_op->mutable_request()->Swap(req_.mutable_yql_batch(yql_idx));
+        yql_op->mutable_response()->Swap(resp_.mutable_yql_batch(yql_idx));
+        const auto& yql_response = yql_op->response();
         if (yql_response.has_rows_data_sidecar()) {
           Slice rows_data;
           CHECK_OK(retrier().controller().GetSidecar(

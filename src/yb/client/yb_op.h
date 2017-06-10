@@ -187,6 +187,9 @@ class YBRedisWriteOp : public YBOperation {
  public:
   virtual ~YBRedisWriteOp();
 
+  // Note: to avoid memory copy, this RedisWriteRequestPB is moved into tserver WriteRequestPB
+  // when the request is sent to tserver. It is restored after response is received from tserver
+  // (see WriteRpc's constructor).
   const RedisWriteRequestPB& request() const { return *redis_write_request_; }
 
   RedisWriteRequestPB* mutable_request() { return redis_write_request_.get(); }
@@ -219,6 +222,9 @@ class YBRedisReadOp : public YBOperation {
  public:
   virtual ~YBRedisReadOp();
 
+  // Note: to avoid memory copy, this RedisReadRequestPB is moved into tserver ReadRequestPB
+  // when the request is sent to tserver. It is restored after response is received from tserver
+  // (see ReadRpc's constructor).
   const RedisReadRequestPB& request() const { return *redis_read_request_; }
 
   RedisReadRequestPB* mutable_request() { return redis_read_request_.get(); }
@@ -276,6 +282,9 @@ class YBqlWriteOp : public YBqlOp {
   explicit YBqlWriteOp(const std::shared_ptr<YBTable>& table);
   virtual ~YBqlWriteOp();
 
+  // Note: to avoid memory copy, this YQLWriteRequestPB is moved into tserver WriteRequestPB
+  // when the request is sent to tserver. It is restored after response is received from tserver
+  // (see WriteRpc's constructor).
   const YQLWriteRequestPB& request() const { return *yql_write_request_; }
 
   YQLWriteRequestPB* mutable_request() { return yql_write_request_.get(); }
@@ -307,6 +316,9 @@ class YBqlReadOp : public YBqlOp {
 
   static YBqlReadOp *NewSelect(const std::shared_ptr<YBTable>& table);
 
+  // Note: to avoid memory copy, this YQLReadRequestPB is moved into tserver ReadRequestPB
+  // when the request is sent to tserver. It is restored after response is received from tserver
+  // (see ReadRpc's constructor).
   const YQLReadRequestPB& request() const { return *yql_read_request_; }
 
   YQLReadRequestPB* mutable_request() { return yql_read_request_.get(); }
