@@ -91,6 +91,10 @@ class CQLServiceImpl : public CQLServerServiceIf {
   // locked before this call.
   void MoveLruPreparedStatementUnlocked(const std::shared_ptr<CQLStatement>& stmt);
 
+  // Delete a prepared statement from the cache and the LRU list. "prepared_stmts_mutex_" needs to
+  // be locked before this call.
+  void DeletePreparedStatementUnlocked(const std::shared_ptr<CQLStatement>& stmt);
+
   // Delete the least recently used prepared statement from the cache to free up memory.
   void DeleteLruPreparedStatement();
 

@@ -167,11 +167,7 @@ void CQLServiceImpl::DeletePreparedStatement(const shared_ptr<CQLStatement>& stm
   // Get exclusive lock before deleting the prepared statement.
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
 
-  prepared_stmts_map_.erase(stmt->query_id());
-  if (stmt->pos() != prepared_stmts_list_.end()) {
-    prepared_stmts_list_.erase(stmt->pos());
-    stmt->set_pos(prepared_stmts_list_.end());
-  }
+  DeletePreparedStatementUnlocked(stmt);
 
   VLOG(1) << "DeletePreparedStatement: CQL prepared statement cache count = "
           << prepared_stmts_map_.size() << "/" << prepared_stmts_list_.size()
@@ -188,17 +184,27 @@ void CQLServiceImpl::MoveLruPreparedStatementUnlocked(const shared_ptr<CQLStatem
   prepared_stmts_list_.splice(prepared_stmts_list_.begin(), prepared_stmts_list_, stmt->pos());
 }
 
+void CQLServiceImpl::DeletePreparedStatementUnlocked(const std::shared_ptr<CQLStatement>& stmt) {
+  // Remove statement from cache by looking it up by query ID and only when it is same statement
+  // object.
+  const auto itr = prepared_stmts_map_.find(stmt->query_id());
+  if (itr != prepared_stmts_map_.end() && itr->second == stmt) {
+    prepared_stmts_map_.erase(itr);
+  }
+  // Remove statement from LRU list only when it is in the list, i.e. pos() != end().
+  if (stmt->pos() != prepared_stmts_list_.end()) {
+    prepared_stmts_list_.erase(stmt->pos());
+    stmt->set_pos(prepared_stmts_list_.end());
+  }
+}
+
 void CQLServiceImpl::DeleteLruPreparedStatement() {
   // Get exclusive lock before deleting the least recently used statement at the end of the LRU
   // list from the cache.
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
 
   if (!prepared_stmts_list_.empty()) {
-    const shared_ptr<CQLStatement>& stmt = prepared_stmts_list_.back();
-    prepared_stmts_map_.erase(stmt->query_id());
-    DCHECK(std::next(stmt->pos()) == prepared_stmts_list_.end()) << "invalid end-stmt pos";
-    prepared_stmts_list_.erase(stmt->pos());
-    stmt->set_pos(prepared_stmts_list_.end());
+    DeletePreparedStatementUnlocked(prepared_stmts_list_.back());
   }
 
   VLOG(1) << "DeleteLruPreparedStatement: CQL prepared statement cache count = "
