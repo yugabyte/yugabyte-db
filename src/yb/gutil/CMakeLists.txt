@@ -67,5 +67,6 @@ ADD_YB_LIBRARY(gutil
   DEPS ${GUTIL_LIBS}
   # Disable warnings which trigger a lot in the Google code:
   COMPILE_FLAGS "-funsigned-char -Wno-deprecated -Wno-char-subscripts")
+cotire(gutil)
 
 add_yb_test(strings/string_util-test)

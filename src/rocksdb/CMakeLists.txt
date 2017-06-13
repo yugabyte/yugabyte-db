@@ -205,8 +205,8 @@ if (${YB_USE_ASAN})
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_MALLOC_USABLE_SIZE")
 endif()
 
-add_library(rocksdb ${ROCKSDB_SRCS} precompiled_header.h)
-add_precompiled_header(rocksdb precompiled_header.h FORCEINCLUDE)
+add_library(rocksdb ${ROCKSDB_SRCS})
+cotire(rocksdb)
 target_link_libraries(rocksdb gflags gutil snappy bz2 z yb_util)
 
 add_library(rocksdb_tools

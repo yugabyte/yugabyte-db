@@ -43,8 +43,9 @@ set(DOCDB_DEPS
     server_common)
 
 ADD_YB_LIBRARY(yb_docdb
-                       SRCS ${DOCDB_SRCS}
-                       DEPS ${DOCDB_DEPS})
+               SRCS ${DOCDB_SRCS}
+               DEPS ${DOCDB_DEPS})
+cotire(yb_docdb)
 
 # A library with common code shared between DocDB tests.
 set(DOCDB_TEST_COMMON_SRCS

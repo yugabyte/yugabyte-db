@@ -924,6 +924,10 @@ include_directories(src src/rocksdb src/rocksdb/include)
 # For generate_export_header() and add_compiler_export_flags().
 include(GenerateExportHeader)
 
+# Compile TIme REducer
+# See https://github.com/sakra/cotire
+include(cotire)
+
 # add_library() wrapper that adds a second variant of the library for use in the
 # exported YB C++ client. This variant is suffixed with "_exported" and is
 # compiled with special visibility flags to hide all symbols except those that

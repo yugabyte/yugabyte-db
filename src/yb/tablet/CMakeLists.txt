@@ -76,6 +76,8 @@ ADD_YB_LIBRARY(tablet_proto
   NONLINK_DEPS ${TABLET_PROTO_TGTS})
 
 add_library(tablet ${TABLET_SRCS})
+cotire(tablet)
+
 target_link_libraries(tablet
   tablet_proto
   yb_common
