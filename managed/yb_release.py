@@ -98,7 +98,9 @@ try:
             if args.publish:
                 log_message(logging.INFO, "Tag Yugaware and Yugaware UI with replicated urls")
                 docker_push_to_registry("yugaware", "1.0-SNAPSHOT", args.tag)
+                docker_push_to_registry("yugaware", "1.0-SNAPSHOT", "latest")
                 docker_push_to_registry("yugaware-ui", "latest", args.tag)
+                docker_push_to_registry("yugaware-ui", "latest", "latest")
         except YBOpsRuntimeError as ye:
             log_message(logging.ERROR, ye)
             log_message(logging.ERROR, "Invalid release tag provided.")

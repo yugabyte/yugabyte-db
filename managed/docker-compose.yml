@@ -2,7 +2,7 @@ version: '2'
 
 services:
   yugaware:
-    image: yugaware:1.0-SNAPSHOT
+    image: quay.io/yugabyte/yugaware:latest 
     volumes:
       - $HOME/.yugabyte:/root/.yugabyte
       - /var/run/docker.sock:/var/run/docker.sock:rw
@@ -22,11 +22,19 @@ services:
     network_mode: bridge
 
   yugaware-ui:
-    image: yugaware-ui:latest
+    image: quay.io/yugabyte/yugaware-ui:latest
     expose:
       - 4000
     ports:
       - 4000:4000
+    network_mode: bridge
+  
+  yugabyte-docs:
+    image: quay.io/yugabyte/docs:latest
+    expose: 
+      - 1313
+    ports:
+      - 1313:1313
     network_mode: bridge
 
   postgres:
@@ -50,6 +58,7 @@ services:
     links:
       - yugaware
       - yugaware-ui
+      - yugabyte-docs
     ports:
       - "80:80"
     expose:
@@ -57,7 +66,7 @@ services:
     network_mode: bridge
 
   prometheus:
-    image: prom/prometheus
+    image: prom/prometheus:v1.5.2
     volumes:
       - ./docker/prometheus/:/etc/prometheus
       - /etc/prometheus/tgroups
@@ -72,7 +81,7 @@ services:
     network_mode: bridge
 
   node-exporter:
-    image: prom/node-exporter
+    image: prom/node-exporter:v0.13.0
     expose:
       - 9100
     ports:
@@ -80,7 +89,7 @@ services:
     network_mode: bridge
 
   alertmanager:
-    image: prom/alertmanager
+    image: prom/alertmanager:v0.5.1
     ports:
       - 9093:9093
     volumes:
