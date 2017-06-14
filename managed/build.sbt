@@ -49,6 +49,7 @@ topLevelDirectory := None
 dockerExposedPorts := Seq(9000)
 defaultLinuxInstallLocation in Docker := "/opt/yugabyte/yugaware"
 dockerEntrypoint := Seq("bin/yugaware", "-Dconfig.file=conf/application.docker.conf")
+mappings in Docker ++= directory("docker")
 
 dockerCommands ++= Seq(
   Cmd("USER", "root"),
@@ -59,5 +60,6 @@ dockerCommands ++= Seq(
   Cmd("RUN", "export USER=root && /opt/yugabyte/devops/bin/install_ansible_requirements.sh"),
   Cmd("ADD", "packages/yugabyte /opt/yugabyte/releases/"),
   Cmd("ADD", "packages/java/yb-sample-apps.jar /opt/yugabyte/utils/"),
-  Cmd("ADD", "packages/java/yb-sample-apps-sources.jar /opt/yugabyte/utils/")
+  Cmd("ADD", "packages/java/yb-sample-apps-sources.jar /opt/yugabyte/utils/"),
+  Cmd("ADD", "docker /etc/yugaware")
 )
