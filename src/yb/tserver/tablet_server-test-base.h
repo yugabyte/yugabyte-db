@@ -136,6 +136,8 @@ class TabletServerTestBase : public YBTest {
     // Sometimes the disk can be really slow and hence we need a high timeout to wait for consensus.
     RETURN_NOT_OK(tablet_peer->WaitUntilConsensusRunning(MonoDelta::FromSeconds(60)));
 
+    RETURN_NOT_OK(tablet_peer->consensus()->EmulateElection());
+
     // Wait to ensure there are no pending transitions for the tablet.
     const MonoDelta timeout(MonoDelta::FromSeconds(10));
     const MonoTime start(MonoTime::Now(MonoTime::FINE));

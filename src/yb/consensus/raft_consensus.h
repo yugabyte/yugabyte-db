@@ -224,9 +224,6 @@ class RaftConsensus : public Consensus,
 
   std::string LogPrefix();
 
-  // Return true if the peer could become a leader during RAFT consensus start.
-  bool ShouldBecomeLeaderOnStart();
-
   // Set the leader UUID of the configuration and mark the tablet config dirty for
   // reporting to the master.
   void SetLeaderUuidUnlocked(const std::string& uuid);

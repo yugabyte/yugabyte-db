@@ -261,6 +261,10 @@ class ClusterLoadBalancer {
   const CHECKED_STATUS GetTabletsForTable(const TableId& table_uuid,
                                   vector<scoped_refptr<TabletInfo>>* tablets) const;
 
+  // Returns true when not choosing a leader as victim during normal load balance move operation.
+  // Currently skips leader for RF=1 case only.
+  bool SkipLeaderAsVictim(const TabletId& tablet_id) const;
+
   //
   // Generic load information methods.
   //

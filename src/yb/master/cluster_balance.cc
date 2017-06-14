@@ -784,15 +784,6 @@ bool ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
       get_total_running_tablets(), get_total_over_replication(), get_total_starting_tablets(),
       get_total_wrong_placement(), get_total_blacklisted_servers());
 
-  // Temp log to get info when there are blacklisted.
-  if (get_total_blacklisted_servers() != 0) {
-    LOG(INFO) << Substitute(
-        "Total running tablets: $0. Total overreplication: $1. Total starting tablets: $2. "
-        "Wrong placement: $3. BlackListed: $4.",
-        get_total_running_tablets(), get_total_over_replication(), get_total_starting_tablets(),
-        get_total_wrong_placement(), get_total_blacklisted_servers());
-  }
-
   for (const auto& tablet : tablets) {
     const auto& tablet_id = tablet->id();
     if (state_->pending_remove_replica_tasks_[table_uuid].count(tablet_id) > 0) {
@@ -989,6 +980,28 @@ bool ClusterLoadBalancer::GetLoadToMove(
   return false;
 }
 
+bool ClusterLoadBalancer::SkipLeaderAsVictim(const TabletId& tablet_id) const {
+  auto tablet = GetTabletMap().at(tablet_id);
+  int num_replicas = 0;
+  {
+    TableMetadataLock l(tablet->table().get(), TableMetadataLock::READ);
+    // If we have a custom per-table placement policy, use that.
+    if (l.data().pb.replication_info().has_live_replicas()) {
+      num_replicas = l.data().pb.replication_info().live_replicas().num_replicas();
+    } else {
+      // Otherwise, default to cluster policy.
+      num_replicas = GetClusterPlacementInfo().num_replicas();
+    }
+  }
+
+  // If replication factor is > 1, skip picking the leader as the victim for the move.
+  if (num_replicas > 1) {
+    return true;
+  }
+
+  return false;
+}
+
 bool ClusterLoadBalancer::GetTabletToMove(
     const TabletServerId& from_ts, const TabletServerId& to_ts, TabletId* moving_tablet_id) {
   const auto& from_ts_meta = state_->per_ts_meta_[from_ts];
@@ -1025,8 +1038,9 @@ bool ClusterLoadBalancer::GetTabletToMove(
       continue;
     }
     // Skip this tablet if we are trying to move away from the leader, as we would like to avoid
-    // extra leader stepdowns.
-    if (state_->per_tablet_meta_[tablet_id].leader_uuid == from_ts) {
+    // extra leader stepdowns. If table is in RF > 1 universe only, we skip leader as victim here.
+    if (state_->per_tablet_meta_[tablet_id].leader_uuid == from_ts &&
+        SkipLeaderAsVictim(tablet_id)) {
       continue;
     }
     // If we got here, it means we either have no placement, in which case we can pick any TS, or

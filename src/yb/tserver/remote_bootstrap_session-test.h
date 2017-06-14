@@ -145,6 +145,8 @@ class RemoteBootstrapTest : public YBTabletTest {
     CHECK_OK(tablet_peer_->Start(boot_info));
 
     ASSERT_OK(tablet_peer_->WaitUntilConsensusRunning(MonoDelta::FromSeconds(2)));
+
+    ASSERT_OK(tablet_peer_->consensus()->EmulateElection());
   }
 
   void TabletPeerStateChangedCallback(const string& tablet_id,

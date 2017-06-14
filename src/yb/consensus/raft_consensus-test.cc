@@ -357,6 +357,7 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenInSameTerm) {
 
   ConsensusBootstrapInfo info;
   ASSERT_OK(consensus_->Start(info));
+  ASSERT_OK(consensus_->EmulateElection());
 
   // Commit the first noop round, created on EmulateElection();
   OpId committed_index;
@@ -392,6 +393,7 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenTermsChange) {
 
   ConsensusBootstrapInfo info;
   ASSERT_OK(consensus_->Start(info));
+  ASSERT_OK(consensus_->EmulateElection());
 
   OpId committed_index;
   consensus_->UpdateMajorityReplicated(rounds_[0]->id(), &committed_index);

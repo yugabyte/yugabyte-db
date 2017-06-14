@@ -332,13 +332,7 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
       RETURN_NOT_OK(ExpireFailureDetectorUnlocked());
     }
 
-    // Now assume follower duties, unless we are the only peer, then become leader.
-    if (ShouldBecomeLeaderOnStart()) {
-      SetLeaderUuidUnlocked(state_->GetPeerUuid());
-      RETURN_NOT_OK(BecomeLeaderUnlocked());
-    } else {
-      RETURN_NOT_OK(BecomeReplicaUnlocked());
-    }
+    RETURN_NOT_OK(BecomeReplicaUnlocked());
   }
 
   RETURN_NOT_OK(ExecuteHook(POST_START));
@@ -351,11 +345,6 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
   MarkDirty(context);
 
   return Status::OK();
-}
-
-bool RaftConsensus::ShouldBecomeLeaderOnStart() {
-  const RaftConfigPB& config = state_->GetActiveConfigUnlocked();
-  return CountVoters(config) == 1 && IsRaftConfigVoter(state_->GetPeerUuid(), config);
 }
 
 bool RaftConsensus::IsRunning() const {
@@ -1198,7 +1187,6 @@ Status RaftConsensus::CheckLeaderRequestUnlocked(ConsensusRequestPB* request,
   // If the first of the messages to apply is not in our log, either it follows the last
   // received message or it replaces some in-flight.
   if (!deduped_req->messages.empty()) {
-
     OpId first_id = deduped_req->messages[0]->id();
     bool term_mismatch;
     if (state_->IsOpCommittedOrPending(first_id, &term_mismatch)) {
@@ -1225,7 +1213,7 @@ Status RaftConsensus::CheckLeaderRequestUnlocked(ConsensusRequestPB* request,
         << "new leader UUID: " << caller_uuid;
   }
   if (PREDICT_FALSE(!state_->HasLeaderUnlocked())) {
-    SetLeaderUuidUnlocked(request->caller_uuid());
+    SetLeaderUuidUnlocked(caller_uuid);
   }
 
   return Status::OK();

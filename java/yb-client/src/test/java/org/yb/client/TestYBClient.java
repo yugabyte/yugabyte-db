@@ -249,6 +249,48 @@ public class TestYBClient extends BaseYBClientTest {
   }
 
   /**
+   * Test for changing the universe config's replication factor.
+   * @throws Exception
+   */
+  @Test(timeout = 100000)
+  public void testChangeClusterConfigRF() throws Exception {
+    GetMasterClusterConfigResponse resp = syncClient.getMasterClusterConfig();
+    assertFalse(resp.hasError());
+    // Config starts at 0 and gets bumped with every write.
+    assertEquals(0, resp.getConfig().getVersion());
+    assertEquals(0, resp.getConfig().getReplicationInfo().getLiveReplicas().getNumReplicas());
+
+    // Change the RF of the config.
+    ModifyClusterConfigReplicationFactor operation =
+        new ModifyClusterConfigReplicationFactor(syncClient, 5);
+    try {
+      operation.doCall();
+    } catch (Exception e) {
+      LOG.warn("Failed with error:", e);
+      assertTrue(false);
+    }
+    // Check the new config info.
+    resp = syncClient.getMasterClusterConfig();
+    assertFalse(resp.hasError());
+    assertEquals(1, resp.getConfig().getVersion());
+    assertEquals(5, resp.getConfig().getReplicationInfo().getLiveReplicas().getNumReplicas());
+
+    // Reduce the RF of the config.
+    operation = new ModifyClusterConfigReplicationFactor(syncClient, 3);
+    try {
+      operation.doCall();
+    } catch (Exception e) {
+      LOG.warn("Failed with error:", e);
+      assertTrue(false);
+    }
+    // Check the new config info.
+    resp = syncClient.getMasterClusterConfig();
+    assertFalse(resp.hasError());
+    assertEquals(2, resp.getConfig().getVersion());
+    assertEquals(3, resp.getConfig().getReplicationInfo().getLiveReplicas().getNumReplicas());
+  }
+
+  /**
    * Test creating, opening and deleting a redis table through a YBClient.
    */
   @Test(timeout = 100000)

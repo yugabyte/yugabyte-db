@@ -15,13 +15,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.Common;
 import org.yb.client.ChangeConfigResponse;
-import org.yb.minicluster.MiniYBCluster;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ModifyMasterClusterConfigBlacklist;
 import org.yb.client.ModifyClusterConfigReplicationFactor;
 import org.yb.client.TestUtils;
 import org.yb.client.YBClient;
 import org.yb.cql.BaseCQLTest;
+import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBDaemon;
 
 import java.io.BufferedReader;
@@ -39,42 +39,36 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
 /**
- * This is an integration test that ensures we can expand, shrink and fully move a YB cluster
- * without any significant impact to a running load test.
+ * This is an integration test that is specific to RF=1 case, so that we can default to
+ * creating and deleting RF=1 cluster in the setup phase.
  */
-public class TestClusterEdits extends TestClusterBase {
-  @Test(timeout = TEST_TIMEOUT_SEC * 1000) // 10 minutes.
-  public void testClusterFullMove() throws Exception {
-    // Wait for load tester to generate traffic.
-    loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
+public class TestRF1Cluster extends TestClusterBase {
+  private static final Logger LOG = LoggerFactory.getLogger(TestRF1Cluster.class);
 
-    // First try to move all the masters.
-    performFullMasterMove();
-
-    // Wait for some ops and verify no failures in load tester.
-    loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
-    assertFalse(String.format("Number of exceptions: %d", loadTesterRunnable.getNumExceptions()),
-      loadTesterRunnable.hasFailures());
-
-    // Now perform a full tserver move.
-    performTServerExpandShrink(true);
-
-    verifyClusterHealth();
+  @Override
+  public void setUpBefore() throws Exception {
+    MiniYBCluster.setNumShardsPerTserver(12);
+    createMiniCluster(1, 1);
+    updateConfigReplicationFactor(1);
   }
 
   @Test(timeout = TEST_TIMEOUT_SEC * 1000) // 10 minutes.
-  public void testClusterExpandAndShrink() throws Exception {
-    // Wait for load tester to generate traffic.
-    loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
-
-    // Now perform a tserver expand and shrink.
-    performTServerExpandShrink(false);
-
-    verifyClusterHealth();
+  public void testRF1toRF3() throws Exception {
+    performRFChange(1, 3);
   }
 
   @Test(timeout = TEST_TIMEOUT_SEC * 1000) // 10 minutes.
-  public void testRF3toRF5() throws Exception {
-    performRFChange(3, 5);
+  public void testRF1LoadBalance() throws Exception {
+    // Wait for load tester to generate traffic.
+    loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
+    LOG.info("WaitOps Done.");
+
+    // Now perform a tserver expand.
+    addNewTServers(2);
+    LOG.info("Add Tservers Done.");
+
+    // Wait for load to balance across the three tservers.
+    assertTrue(client.waitForLoadBalance(LOADBALANCE_TIMEOUT_MS, 3));
+    LOG.info("Load Balance Done.");
   }
 }

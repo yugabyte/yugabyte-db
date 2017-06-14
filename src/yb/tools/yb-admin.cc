@@ -970,7 +970,7 @@ static void SetUsage(const char* argv0) {
                 << "[PRE_VOTER|PRE_OBSERVER]" << std::endl
       << " 2. " << kListTabletServersOp << " <tablet_id> " << std::endl
       << " 3. " << kListTablesOp << std::endl
-      << " 4. " << kListTabletsOp << " <table_name>"  << " [max_tablets]"
+      << " 4. " << kListTabletsOp << "<keyspace> " << "<table_name>" << " [max_tablets]"
                 << " (default 10, set 0 for max)" << std::endl
       << " 5. " << kDeleteTableOp << " <table_name>" << std::endl
       << " 6. " << kListAllTabletServersOp << std::endl
@@ -1049,13 +1049,13 @@ static int ClusterAdminCliMain(int argc, char** argv) {
       return 1;
     }
   } else if (op == kListTabletsOp) {
-    if (argc < 3) {
+    if (argc < 4) {
       UsageAndExit(argv[0]);
     }
-    const YBTableName table_name("my_keyspace", argv[2]);
+    const YBTableName table_name(argv[2], argv[3]);
     int max = -1;
-    if (argc > 3) {
-      max = std::stoi(argv[3]);
+    if (argc > 4) {
+      max = std::stoi(argv[4]);
     }
     Status s = client.ListTablets(table_name, max);
     if (!s.ok()) {

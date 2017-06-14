@@ -60,20 +60,29 @@ public class BaseMiniClusterTest extends BaseYBTest {
       return;
     }
 
+    createMiniCluster(NUM_MASTERS, NUM_TABLET_SERVERS);
+  }
+
+  /**
+   * Creates a new cluster with the requested number of masters and tservers.
+   */
+  public void createMiniCluster(int numMasters, int numTservers) throws Exception {
     miniCluster = new MiniYBClusterBuilder()
-        .numMasters(NUM_MASTERS)
-        .numTservers(NUM_TABLET_SERVERS)
-        .defaultTimeoutMs(DEFAULT_SLEEP)
-        .testClassName(getClass().getName())
-        .masterArgs(masterArgs)
-        .tserverArgs(tserverArgs)
-        .build();
+                      .numMasters(numMasters)
+                      .numTservers(numTservers)
+                      .defaultTimeoutMs(DEFAULT_SLEEP)
+                      .testClassName(getClass().getName())
+                      .masterArgs(masterArgs)
+                      .tserverArgs(tserverArgs)
+                      .build();
     masterAddresses = miniCluster.getMasterAddresses();
     masterHostPorts = miniCluster.getMasterHostPorts();
 
-    LOG.info("Waiting for tablet servers...");
-    if (!miniCluster.waitForTabletServers(NUM_TABLET_SERVERS)) {
-      fail("Couldn't get " + NUM_TABLET_SERVERS + " tablet servers running, aborting");
+    LOG.info("Started cluster with {} masters and {} tservers. " +
+             "Waiting for all tablet servers to hearbeat to masters...",
+             numMasters, numTservers);
+    if (!miniCluster.waitForTabletServers(numTservers)) {
+      fail("Couldn't get " + numTservers + " tablet servers running, aborting.");
     }
 
     afterStartingMiniCluster();
@@ -98,6 +107,4 @@ public class BaseMiniClusterTest extends BaseYBTest {
     LOG.info("BaseMiniClusterTest.tearDownAfterClass is running");
     destroyMiniCluster();
   }
-
-
 }

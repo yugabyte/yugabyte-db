@@ -113,6 +113,13 @@ public class MiniYBCluster implements AutoCloseable {
   private AtomicInteger nextMasterIndex = new AtomicInteger(0);
   private AtomicInteger nextTServerIndex = new AtomicInteger(0);
 
+  private static final int DEFAULT_NUM_SHARDS_PER_TSERVER = 3;
+  private static int numShardsPerTserver = DEFAULT_NUM_SHARDS_PER_TSERVER;
+
+  public static void setNumShardsPerTserver(int numShards) {
+    numShardsPerTserver = numShards;
+  }
+
   /**
    * Not to be invoked directly, but through a {@link MiniYBClusterBuilder}.
    */
@@ -299,7 +306,7 @@ public class MiniYBCluster implements AutoCloseable {
         "--redis_proxy_bind_address=" + tserverBindAddress + ":" + redisPort,
         "--redis_proxy_webserver_port=" + redisWebPort,
         "--cql_proxy_bind_address=" + tserverBindAddress + ":" + CQL_PORT,
-        "--yb_num_shards_per_tserver=3",
+        "--yb_num_shards_per_tserver=" + numShardsPerTserver,
         "--cql_nodelist_refresh_interval_secs=" + CQL_NODE_LIST_REFRESH_SECS,
         "--heartbeat_interval_ms=" + TSERVER_HEARTBEAT_INTERVAL_MS,
         "--rpc_slow_query_threshold_ms=" + RPC_SLOW_QUERY_THRESHOLD,
@@ -441,9 +448,7 @@ public class MiniYBCluster implements AutoCloseable {
         masterBindAddress, masterRpcPort, masterWebPort);
       masterCmdLine.add(1, "--create_cluster");
       masterCmdLine.addAll(getCommonDaemonFlags());
-      if (numMasters > 1) {
-        masterCmdLine.add("--master_addresses=" + masterAddresses);
-      }
+      masterCmdLine.add("--master_addresses=" + masterAddresses);
       if (extraMasterArgs != null) {
         masterCmdLine.addAll(extraMasterArgs);
       }
