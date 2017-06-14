@@ -10,10 +10,8 @@ import play.data.validation.Constraints;
  */
 public class RegionFormData {
   @Constraints.Required()
-  @Constraints.MinLength(5)
   public String code;
 
-  @Constraints.MinLength(5)
   public String name;
 
   public String ybImage;
