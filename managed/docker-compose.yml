@@ -7,6 +7,8 @@ services:
       - $HOME/.yugabyte:/root/.yugabyte
       - /var/run/docker.sock:/var/run/docker.sock:rw
       - /usr/bin/docker:/usr/bin/docker
+      - /etc/yugaware
+      - /opt/yugabyte
     expose:
       - 9000
     ports:
@@ -15,8 +17,6 @@ services:
       - JVM_OPTS=-XX:PermSize=1024m -XX:MaxPermSize=1024m
     depends_on:
       - postgres
-    volumes_from:
-      - prometheus
     links:
       - postgres
     network_mode: bridge
@@ -36,6 +36,9 @@ services:
     ports:
       - 1313:1313
     network_mode: bridge
+
+  yugabyte-base:
+    image: quay.io/yugabyte/base-image:latest
 
   postgres:
     image: postgres:latest
@@ -67,17 +70,18 @@ services:
 
   prometheus:
     image: prom/prometheus:v1.5.2
-    volumes:
-      - ./docker/prometheus/:/etc/prometheus
-      - /etc/prometheus/tgroups
+    volumes_from:
+      - yugaware
     command:
-      - '-config.file=/etc/prometheus/prometheus.yml'
-      - '-storage.local.path=./docker/prometheus'
+      - '-config.file=/etc/yugaware/prometheus/prometheus.yml'
+      - '-storage.local.path=/opt/yugabyte/prometheus'
       - '-alertmanager.url=http://alertmanager:9093'
     expose:
       - 9090
     ports:
       - 9090:9090
+    depends_on:
+      - yugaware
     network_mode: bridge
 
   node-exporter:
@@ -92,10 +96,12 @@ services:
     image: prom/alertmanager:v0.5.1
     ports:
       - 9093:9093
-    volumes:
-      - ./docker/alertmanager/:/etc/alertmanager/
+    volumes_from:
+      - yugaware
+    depends_on:
+      - yugaware
     command:
-      - '-config.file=/etc/alertmanager/alertmanager.yml'
-      - '-storage.path=./docker/alertmanager'
+      - '-config.file=/etc/yugaware/alertmanager/alertmanager.yml'
+      - '-storage.path=/opt/yugabyte/alertmanager'
     network_mode: bridge
 
