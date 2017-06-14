@@ -39,7 +39,7 @@ parser.add_argument('--tag', help='Release tag name')
 args = parser.parse_args()
 
 output = None
-SECRET_CHOICE = string.ascii_lowercase + string.digits + string.punctuation
+SECRET_CHOICE = string.ascii_lowercase + string.digits + '!@#$%^&*(-_=+)'
 
 try:
     init_env(logging.INFO)
