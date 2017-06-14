@@ -30,6 +30,9 @@ class NodeConnectModal extends Component {
      {
       return <span />;
     }
+    if (!hostInfo || hostInfo.error) {
+      return <span/>;
+    }
 
     var accessKey = accessKeys.data[0];
     var accessKeyCode = accessKey.idKey.keyCode;
