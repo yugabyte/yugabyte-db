@@ -26,4 +26,4 @@ scrape_configs:
   - job_name: "node"
     file_sd_configs:
       - files:
-        - '/etc/prometheus/tgroups/*.json'
+        - '/etc/yugaware/prometheus/tgroups/*.json'
