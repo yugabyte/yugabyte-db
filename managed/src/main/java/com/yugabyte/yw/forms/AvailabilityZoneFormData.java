@@ -9,11 +9,9 @@ import play.data.validation.Constraints;
  */
 public class AvailabilityZoneFormData {
   @Constraints.Required()
-  @Constraints.MinLength(5)
   public String code;
 
   @Constraints.Required()
-  @Constraints.MinLength(5)
   public String name;
 
   public String subnet;
