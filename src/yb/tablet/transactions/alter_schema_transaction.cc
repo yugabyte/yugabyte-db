@@ -68,10 +68,11 @@ AlterSchemaTransaction::AlterSchemaTransaction(AlterSchemaTransactionState* stat
       state_(state) {
 }
 
-void AlterSchemaTransaction::NewReplicateMsg(gscoped_ptr<ReplicateMsg>* replicate_msg) {
-  replicate_msg->reset(new ReplicateMsg);
-  (*replicate_msg)->set_op_type(ALTER_SCHEMA_OP);
-  (*replicate_msg)->mutable_alter_schema_request()->CopyFrom(*state()->request());
+consensus::ReplicateMsgPtr AlterSchemaTransaction::NewReplicateMsg() {
+  auto result = std::make_shared<ReplicateMsg>();
+  result->set_op_type(ALTER_SCHEMA_OP);
+  result->mutable_alter_schema_request()->CopyFrom(*state()->request());
+  return result;
 }
 
 Status AlterSchemaTransaction::Prepare() {

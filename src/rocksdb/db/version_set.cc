@@ -23,6 +23,8 @@
 #include <vector>
 #include <string>
 
+#include <glog/logging.h>
+
 #include "yb/gutil/casts.h"
 
 #include "db/filename.h"
@@ -2034,6 +2036,8 @@ struct VersionSet::ManifestWriter {
       : done(false), cv(mu), cfd(_cfd), edit(e) {}
 };
 
+constexpr uint64_t VersionSet::kInitialNextFileNumber;
+
 VersionSet::VersionSet(const std::string& dbname, const DBOptions* db_options,
                        const EnvOptions& storage_options, Cache* table_cache,
                        WriteBuffer* write_buffer,
@@ -2044,13 +2048,6 @@ VersionSet::VersionSet(const std::string& dbname, const DBOptions* db_options,
       env_(db_options->env),
       dbname_(dbname),
       db_options_(db_options),
-      next_file_number_(2),
-      manifest_file_number_(0),  // Filled by Recover()
-      pending_manifest_file_number_(0),
-      last_sequence_(0),
-      prev_log_number_(0),
-      current_version_number_(0),
-      manifest_file_size_(0),
       env_options_(storage_options),
       env_options_compactions_(env_options_) {}
 
@@ -2305,6 +2302,9 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
     manifest_file_number_ = pending_manifest_file_number_;
     manifest_file_size_ = new_manifest_file_size;
     prev_log_number_ = edit->prev_log_number_.get_value_or(0);
+    if (edit->flushed_op_id_) {
+      SetFlushedOpId(edit->flushed_op_id_);
+    }
   } else {
     RLOG(InfoLogLevel::ERROR_LEVEL, db_options_->info_log,
         "Error in committing version %" PRIu64 " to [%s]",
@@ -2344,7 +2344,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
 void VersionSet::LogAndApplyCFHelper(VersionEdit* edit) {
   assert(edit->IsColumnFamilyManipulation());
   edit->SetNextFile(next_file_number_.load());
-  edit->SetLastSequence(last_sequence_);
+  edit->SetLastSequence(LastSequence());
   if (edit->is_column_family_drop_) {
     // if we drop column family, we have to make sure to save max column family,
     // so that we don't reuse existing ID
@@ -2367,7 +2367,7 @@ void VersionSet::LogAndApplyHelper(ColumnFamilyData* cfd,
     edit->SetPrevLogNumber(prev_log_number_);
   }
   edit->SetNextFile(next_file_number_.load());
-  edit->SetLastSequence(last_sequence_);
+  edit->SetLastSequence(LastSequence());
 
   builder->Apply(edit);
 }
@@ -2431,6 +2431,7 @@ Status VersionSet::Recover(
   bool have_prev_log_number = false;
   bool have_next_file = false;
   bool have_last_sequence = false;
+  OpId flushed_op_id;
   uint64_t next_file = 0;
   uint64_t last_sequence = 0;
   uint64_t log_number = 0;
@@ -2579,6 +2580,10 @@ Status VersionSet::Recover(
         last_sequence = *edit.last_sequence_;
         have_last_sequence = true;
       }
+
+      if (edit.flushed_op_id_) {
+        flushed_op_id = edit.flushed_op_id_;
+      }
     }
   }
 
@@ -2641,19 +2646,21 @@ Status VersionSet::Recover(
 
     manifest_file_size_ = current_manifest_file_size;
     next_file_number_.store(next_file + 1);
-    last_sequence_ = last_sequence;
+    SetLastSequenceNoSanityChecking(last_sequence);
     prev_log_number_ = previous_log_number;
+    SetFlushedOpIdNoSanityChecking(flushed_op_id);
 
     RLOG(InfoLogLevel::INFO_LEVEL, db_options_->info_log,
         "Recovered from manifest file:%s succeeded,"
         "manifest_file_number is %" PRIu64 ", next_file_number is %lu, "
         "last_sequence is %" PRIu64 ", log_number is %" PRIu64 ","
         "prev_log_number is %" PRIu64 ","
-        "max_column_family is %u\n",
+        "max_column_family is %u, last_op_id is " OP_ID_FORMAT "\n",
         manifest_filename.c_str(), manifest_file_number_,
-        next_file_number_.load(), last_sequence_.load(),
+        next_file_number_.load(), LastSequence(),
         log_number, prev_log_number_,
-        column_family_set_->GetMaxColumnFamily());
+        column_family_set_->GetMaxColumnFamily(),
+        flushed_op_id.term, flushed_op_id.index);
 
     for (auto cfd : *column_family_set_) {
       if (cfd->IsDropped()) {
@@ -2849,6 +2856,7 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
   uint64_t next_file = 0;
   uint64_t last_sequence = 0;
   uint64_t previous_log_number = 0;
+  OpId flushed_op_id;
   int count = 0;
   std::unordered_map<uint32_t, std::string> comparators;
   std::unordered_map<uint32_t, BaseReferencedVersionBuilder*> builders;
@@ -2954,6 +2962,10 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
         have_last_sequence = true;
       }
 
+      if (edit.flushed_op_id_) {
+        flushed_op_id = edit.flushed_op_id_;
+      }
+
       if (edit.max_column_family_) {
         column_family_set_->UpdateMaxColumnFamily(*edit.max_column_family_);
       }
@@ -3007,14 +3019,17 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
     }
 
     next_file_number_.store(next_file + 1);
-    last_sequence_ = last_sequence;
+    SetLastSequenceNoSanityChecking(last_sequence);
+    SetFlushedOpIdNoSanityChecking(flushed_op_id);
     prev_log_number_ = previous_log_number;
 
     printf(
         "next_file_number %" PRIu64 " last_sequence "
-        "%" PRIu64 " prev_log_number %" PRIu64 " max_column_family %u\n",
+        "%" PRIu64 " prev_log_number %" PRIu64 " max_column_family %u"
+        OP_ID_FORMAT "\n",
         next_file_number_.load(), last_sequence, previous_log_number,
-        column_family_set_->GetMaxColumnFamily());
+        column_family_set_->GetMaxColumnFamily(),
+        flushed_op_id.term, flushed_op_id.index);
   }
 
   return s;
@@ -3462,6 +3477,13 @@ void VersionSet::EnsureIncreasingLastSequence(
         "New last sequence id %" PRIu64 " is lower than or equal to "
         "the previous last sequence id %" PRIu64,
         new_last_seq, prev_last_seq);
+  }
+}
+
+void VersionSet::EnsureIncreasingFlushedOpId(const OpId& prev_value, const OpId& new_value) {
+  if (new_value.term < prev_value.term || new_value.index <= prev_value.index) {
+    LOG(FATAL) << "New last last op id " << new_value << " is lower than or equal to "
+               << "the previous last op id " << prev_value;
   }
 }
 #endif

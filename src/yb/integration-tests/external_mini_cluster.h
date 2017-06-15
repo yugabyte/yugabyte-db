@@ -27,6 +27,7 @@
 #include "yb/client/client.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
+#include "yb/consensus/opid_util.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -59,7 +60,6 @@ class ServerStatusPB;
 
 using yb::consensus::ChangeConfigType;
 using yb::consensus::ConsensusServiceProxy;
-using yb::consensus::OpId;
 
 struct ExternalMiniClusterOptions {
   ExternalMiniClusterOptions();
@@ -199,7 +199,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   CHECKED_STATUS GetNumMastersAsSeenBy(ExternalMaster* master, int* num_peers);
 
   // Get the last committed opid for the current leader master.
-  CHECKED_STATUS GetLastOpIdForLeader(OpId* opid);
+  CHECKED_STATUS GetLastOpIdForLeader(consensus::OpId* opid);
 
   // The leader master sometimes does not commit the config in time on first setup, causing
   // CheckHasCommittedOpInCurrentTermUnlocked check - that the current term
@@ -358,7 +358,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   CHECKED_STATUS GetLastOpIdForEachMasterPeer(
       const MonoDelta& timeout,
       consensus::OpIdType opid_type,
-      vector<OpId>* op_ids);
+      std::vector<consensus::OpId>* op_ids);
 
   // Ensure that the leader server is allowed to process a config change (by having at least one
   // commit in the current term as leader).

@@ -81,6 +81,8 @@ class MiniCluster : public MiniClusterBase {
   CHECKED_STATUS RestartSync();
 
   void Shutdown();
+  void FlushTablets();
+  void CleanTabletLogs();
 
   // Shuts down masters only.
   void ShutdownMasters();

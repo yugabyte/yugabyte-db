@@ -25,24 +25,8 @@
 namespace yb {
 namespace consensus {
 
-// A simple ref-counted wrapper around ReplicateMsg.
-class RefCountedReplicate : public RefCountedThreadSafe<RefCountedReplicate> {
- public:
-  explicit RefCountedReplicate(ReplicateMsg* msg) : msg_(msg) {}
-
-  ReplicateMsg* get() {
-    return msg_.get();
-  }
-
- private:
-  gscoped_ptr<ReplicateMsg> msg_;
-};
-
-typedef scoped_refptr<RefCountedReplicate> ReplicateRefPtr;
-
-inline ReplicateRefPtr make_scoped_refptr_replicate(ReplicateMsg* replicate) {
-  return ReplicateRefPtr(new RefCountedReplicate(replicate));
-}
+typedef std::shared_ptr<ReplicateMsg> ReplicateMsgPtr;
+typedef std::vector<ReplicateMsgPtr> ReplicateMsgs;
 
 } // namespace consensus
 } // namespace yb

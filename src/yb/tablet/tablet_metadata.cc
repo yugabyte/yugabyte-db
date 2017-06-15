@@ -26,7 +26,6 @@
 #include "rocksdb/db.h"
 #include "rocksdb/include/rocksdb/options.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/consensus/opid.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/gutil/atomicops.h"
@@ -60,7 +59,6 @@ using base::subtle::Barrier_AtomicIncrement;
 using strings::Substitute;
 
 using yb::consensus::MinimumOpId;
-using yb::consensus::OpId;
 using yb::consensus::RaftConfigPB;
 
 namespace yb {
@@ -195,7 +193,7 @@ void TabletMetadata::CollectBlockIdPBs(const TabletSuperBlockPB& superblock,
 }
 
 Status TabletMetadata::DeleteTabletData(TabletDataState delete_type,
-                                        const boost::optional<OpId>& last_logged_opid) {
+                                        const boost::optional<consensus::OpId>& last_logged_opid) {
   CHECK(delete_type == TABLET_DATA_DELETED ||
         delete_type == TABLET_DATA_TOMBSTONED)
       << "DeleteTabletData() called with unsupported delete_type on tablet "
@@ -609,7 +607,7 @@ Status TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* super_block,
                         "Couldn't serialize schema into superblock");
 
   pb.set_tablet_data_state(tablet_data_state_);
-  if (!OpIdEquals(tombstone_last_logged_opid_, MinimumOpId())) {
+  if (!consensus::OpIdEquals(tombstone_last_logged_opid_, MinimumOpId())) {
     *pb.mutable_tombstone_last_logged_opid() = tombstone_last_logged_opid_;
   }
 

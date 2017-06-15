@@ -59,19 +59,19 @@ namespace consensus {
 using log::Log;
 using strings::Substitute;
 
-static gscoped_ptr<ReplicateMsg> CreateDummyReplicate(int term,
-                                                      int index,
-                                                      const HybridTime& hybrid_time,
-                                                      int payload_size) {
-    gscoped_ptr<ReplicateMsg> msg(new ReplicateMsg);
-    OpId* id = msg->mutable_id();
-    id->set_term(term);
-    id->set_index(index);
+inline ReplicateMsgPtr CreateDummyReplicate(int term,
+                                            int index,
+                                            const HybridTime& hybrid_time,
+                                            int payload_size) {
+  auto msg = std::make_shared<ReplicateMsg>();
+  OpId* id = msg->mutable_id();
+  id->set_term(term);
+  id->set_index(index);
 
-    msg->set_op_type(NO_OP);
-    msg->mutable_noop_request()->mutable_payload_for_tests()->resize(payload_size);
-    msg->set_hybrid_time(hybrid_time.ToUint64());
-    return msg.Pass();
+  msg->set_op_type(NO_OP);
+  msg->mutable_noop_request()->mutable_payload_for_tests()->resize(payload_size);
+  msg->set_hybrid_time(hybrid_time.ToUint64());
+  return msg;
 }
 
 // Returns RaftPeerPB with given UUID and obviously-fake hostname / port combo.
@@ -98,8 +98,7 @@ static inline void AppendReplicateMessagesToQueue(
   for (int i = first; i < first + count; i++) {
     int term = i / 7;
     int index = i;
-    CHECK_OK(queue->AppendOperation(make_scoped_refptr_replicate(
-        CreateDummyReplicate(term, index, clock->Now(), payload_size).release())));
+    CHECK_OK(queue->AppendOperation(CreateDummyReplicate(term, index, clock->Now(), payload_size)));
   }
 }
 

@@ -44,7 +44,6 @@ class Log;
 
 namespace consensus {
 class ConsensusServiceProxy;
-class OpId;
 class PeerProxy;
 class PeerProxyFactory;
 class PeerMessageQueue;
@@ -190,7 +189,7 @@ class Peer {
   // loaded these messages from the LogCache, in which case we are potentially sharing the same
   // object as other peers. Since the PB request_ itself can't hold reference counts, this holds
   // them.
-  std::vector<ReplicateRefPtr> replicate_msg_refs_;
+  ReplicateMsgs replicate_msg_refs_;
 
   rpc::RpcController controller_;
 

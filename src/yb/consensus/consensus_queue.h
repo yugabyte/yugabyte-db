@@ -155,7 +155,7 @@ class PeerMessageQueue {
   //
   // This is thread-safe against all of the read methods, but not thread-safe with concurrent Append
   // calls.
-  virtual CHECKED_STATUS AppendOperation(const ReplicateRefPtr& msg);
+  virtual CHECKED_STATUS AppendOperation(const ReplicateMsgPtr& msg);
 
   // Appends a vector of messages to be replicated to the peers.  Returns OK unless the message
   // could not be added to the queue for some reason (e.g. the queue reached max size). Calls
@@ -166,7 +166,7 @@ class PeerMessageQueue {
   // This is thread-safe against all of the read methods, but not thread-safe with concurrent Append
   // calls.
   virtual CHECKED_STATUS AppendOperations(
-      const std::vector<ReplicateRefPtr>& msgs,
+      const ReplicateMsgs& msgs,
       const StatusCallback& log_append_callback);
 
   // Assembles a request for a peer, adding entries past 'op_id' up to
@@ -187,7 +187,7 @@ class PeerMessageQueue {
   virtual CHECKED_STATUS RequestForPeer(
       const std::string& uuid,
       ConsensusRequestPB* request,
-      std::vector<ReplicateRefPtr>* msg_refs,
+      ReplicateMsgs* msg_refs,
       bool* needs_remote_bootstrap);
 
   // Fill in a StartRemoteBootstrapRequest for the specified peer.  If that peer should not remotely

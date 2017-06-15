@@ -474,8 +474,7 @@ Status TabletPeer::GetEarliestNeededLogIndex(int64_t* min_index) const {
   }
 
   if (tablet_->table_type() != KUDU_COLUMNAR_TABLE_TYPE) {
-    *min_index = std::min(*min_index,
-                          static_cast<int64_t>(tablet_->LargestFlushedSequenceNumber()));
+    *min_index = std::min(*min_index, tablet_->MaxPersistentOpId().index);
     // We keep at least one committed operation in the log so that we can always recover safe time
     // during bootstrap.
     OpId committed_op_id;
@@ -516,7 +515,7 @@ Status TabletPeer::StartReplicaTransaction(const scoped_refptr<ConsensusRound>& 
     }
   }
 
-  consensus::ReplicateMsg* replicate_msg = round->replicate_msg();
+  consensus::ReplicateMsg* replicate_msg = round->replicate_msg().get();
   DCHECK(replicate_msg->has_hybrid_time());
   gscoped_ptr<Transaction> transaction;
   switch (replicate_msg->op_type()) {

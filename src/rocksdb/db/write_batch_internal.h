@@ -7,6 +7,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#ifndef ROCKSDB_DB_WRITE_BATCH_INTERNAL_H
+#define ROCKSDB_DB_WRITE_BATCH_INTERNAL_H
+
 #pragma once
 #include <vector>
 #include "db/write_thread.h"
@@ -89,10 +92,10 @@ class WriteBatchInternal {
                     const SliceParts& key, const SliceParts& value);
 
   // Return the number of entries in the batch.
-  static int Count(const WriteBatch* batch);
+  static uint32_t Count(const WriteBatch* batch);
 
   // Set the count for the number of entries in the batch.
-  static void SetCount(WriteBatch* batch, int n);
+  static void SetCount(WriteBatch* batch, uint32_t n);
 
   // Return the seqeunce number for the start of this batch.
   static SequenceNumber Sequence(const WriteBatch* batch);
@@ -158,9 +161,8 @@ class WriteBatchInternal {
   // Returns the byte size of appending a WriteBatch with ByteSize
   // leftByteSize and a WriteBatch with ByteSize rightByteSize
   static size_t AppendedByteSize(size_t leftByteSize, size_t rightByteSize);
-
-  // Return user sequence numbers by value. This can be used for logging;
-  static std::vector<SequenceNumber> GetUserSequenceNumbers(const WriteBatch& b);
 };
 
 }  // namespace rocksdb
+
+#endif // ROCKSDB_DB_WRITE_BATCH_INTERNAL_H

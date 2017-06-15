@@ -62,8 +62,8 @@ class TransactionTrackerTest : public YBTest {
         state_(state) {
     }
 
-    void NewReplicateMsg(gscoped_ptr<consensus::ReplicateMsg>* replicate_msg) override {
-      replicate_msg->reset(new consensus::ReplicateMsg());
+    consensus::ReplicateMsgPtr NewReplicateMsg() override {
+      return std::make_shared<consensus::ReplicateMsg>();
     }
 
     Status Prepare() override { return Status::OK(); }

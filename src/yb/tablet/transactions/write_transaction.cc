@@ -64,10 +64,11 @@ WriteTransaction::WriteTransaction(WriteTransactionState* state, DriverType type
   start_time_ = MonoTime::Now(MonoTime::FINE);
 }
 
-void WriteTransaction::NewReplicateMsg(gscoped_ptr<ReplicateMsg>* replicate_msg) {
-  replicate_msg->reset(new ReplicateMsg);
-  (*replicate_msg)->set_op_type(WRITE_OP);
-  (*replicate_msg)->mutable_write_request()->CopyFrom(*state()->request());
+consensus::ReplicateMsgPtr WriteTransaction::NewReplicateMsg() {
+  auto result = std::make_shared<ReplicateMsg>();
+  result->set_op_type(WRITE_OP);
+  result->mutable_write_request()->CopyFrom(*state()->request());
+  return result;
 }
 
 Status WriteTransaction::Prepare() {

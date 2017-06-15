@@ -248,6 +248,10 @@ ADD_CXX_YB_COMMON_FLAGS("-fno-strict-aliasing -msse4.2 -Wall -Wno-sign-compare -
 ADD_CXX_YB_COMMON_FLAGS("-Winvalid-pch")
 ADD_CXX_YB_COMMON_FLAGS("-pthread -Wno-parentheses -DBOOST_BIND_NO_PLACEHOLDERS")
 ADD_CXX_YB_COMMON_FLAGS("-DROCKSDB_PLATFORM_POSIX")
+if (NOT IS_CLANG)
+  # To enable 16-byte atomics support in GCC we should specify appropriate architecture.
+  ADD_CXX_YB_COMMON_FLAGS("-march=native")
+endif()
 
 # CXX_GLOBAL_COMMON_FLAGS are flags that are common to C++ code in both the YB and RocksDB parts of
 # the codebase.
@@ -689,7 +693,8 @@ elseif(USING_LINUXBREW AND IS_CLANG)
 endif()
 
 if (USING_LINUXBREW AND IS_CLANG)
-  ADD_CXX_GLOBAL_COMMON_FLAGS("-I${LINUXBREW_DIR}/include")
+  ADD_CXX_GLOBAL_COMMON_FLAGS("-isystem ${LINUXBREW_DIR}/include")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -latomic")
 endif()
 
 # Sanity check -- to be removed.

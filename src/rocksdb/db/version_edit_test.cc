@@ -32,12 +32,21 @@ void TestEncodeDecode(const VersionEdit &edit) {
   ASSERT_EQ(encoded, encoded2);
 }
 
+const uint64_t kBig = 1ull << 50;
+
 } // namespace
 
 class VersionEditTest : public testing::Test {};
 
+void SetupVersionEdit(VersionEdit* edit) {
+  edit->SetComparatorName("foo");
+  edit->SetLogNumber(kBig + 100);
+  edit->SetNextFile(kBig + 200);
+  edit->SetLastSequence(kBig + 1000);
+  edit->SetFlushedOpId(kBig + 100, kBig + 2000);
+}
+
 TEST_F(VersionEditTest, EncodeDecode) {
-  static const uint64_t kBig = 1ull << 50;
   static const uint32_t kBig32Bit = 1ull << 30;
 
   VersionEdit edit;
@@ -55,10 +64,7 @@ TEST_F(VersionEditTest, EncodeDecode) {
     edit.DeleteFile(4, kBig + 700 + i);
   }
 
-  edit.SetComparatorName("foo");
-  edit.SetLogNumber(kBig + 100);
-  edit.SetNextFile(kBig + 200);
-  edit.SetLastSequence(kBig + 1000);
+  SetupVersionEdit(&edit);
   TestEncodeDecode(edit);
 }
 
@@ -84,10 +90,7 @@ TEST_F(VersionEditTest, EncodeDecodeNewFile4) {
 
   edit.DeleteFile(4, 700);
 
-  edit.SetComparatorName("foo");
-  edit.SetLogNumber(kBig + 100);
-  edit.SetNextFile(kBig + 200);
-  edit.SetLastSequence(kBig + 1000);
+  SetupVersionEdit(&edit);
   TestEncodeDecode(edit);
 
   auto extractor = test::MakeBoundaryValuesExtractor();
@@ -120,10 +123,7 @@ TEST_F(VersionEditTest, ForwardCompatibleNewFile4) {
                false);
   edit.DeleteFile(4, 700);
 
-  edit.SetComparatorName("foo");
-  edit.SetLogNumber(kBig + 100);
-  edit.SetNextFile(kBig + 200);
-  edit.SetLastSequence(kBig + 1000);
+  SetupVersionEdit(&edit);
 
   std::string encoded;
 
@@ -150,10 +150,7 @@ TEST_F(VersionEditTest, NewFile4NotSupportedField) {
                MakeFileBoundaryValues("zoo", kBig + 600, kTypeDeletion),
                true);
 
-  edit.SetComparatorName("foo");
-  edit.SetLogNumber(kBig + 100);
-  edit.SetNextFile(kBig + 200);
-  edit.SetLastSequence(kBig + 1000);
+  SetupVersionEdit(&edit);
 
   std::string encoded;
 

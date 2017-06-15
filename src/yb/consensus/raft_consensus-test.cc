@@ -70,17 +70,17 @@ class MockQueue : public PeerMessageQueue {
                                    int64_t current_term,
                                    const RaftConfigPB& active_config));
   MOCK_METHOD0(SetNonLeaderMode, void());
-  virtual Status AppendOperations(const vector<ReplicateRefPtr>& msgs,
+  virtual Status AppendOperations(const ReplicateMsgs& msgs,
                                   const StatusCallback& callback) override {
     return AppendOperationsMock(msgs, callback);
   }
-  MOCK_METHOD2(AppendOperationsMock, Status(const vector<ReplicateRefPtr>& msgs,
+  MOCK_METHOD2(AppendOperationsMock, Status(const ReplicateMsgs& msgs,
                                             const StatusCallback& callback));
   MOCK_METHOD1(TrackPeer, void(const string&));
   MOCK_METHOD1(UntrackPeer, void(const string&));
   MOCK_METHOD4(RequestForPeer, Status(const std::string& uuid,
                                       ConsensusRequestPB* request,
-                                      std::vector<ReplicateRefPtr>* msg_refs,
+                                      ReplicateMsgs* msg_refs,
                                       bool* needs_remote_bootstrap));
   MOCK_METHOD3(ResponseFromPeer, void(const std::string& peer_uuid,
                                       const ConsensusResponsePB& response,
@@ -141,8 +141,8 @@ class RaftConsensusSpy : public RaftConsensus {
     return RaftConsensus::AppendNewRoundToQueueUnlocked(round);
   }
 
-  MOCK_METHOD1(StartConsensusOnlyRoundUnlocked, Status(const ReplicateRefPtr& msg));
-  Status StartNonLeaderConsensusRoundUnlockedConcrete(const ReplicateRefPtr& msg) {
+  MOCK_METHOD1(StartConsensusOnlyRoundUnlocked, Status(const ReplicateMsgPtr& msg));
+  Status StartNonLeaderConsensusRoundUnlockedConcrete(const ReplicateMsgPtr& msg) {
     return RaftConsensus::StartConsensusOnlyRoundUnlocked(msg);
   }
 
@@ -233,7 +233,7 @@ class RaftConsensusTest : public YBTest {
         .WillByDefault(Invoke(this, &RaftConsensusTest::MockAppendNewRound));
   }
 
-  Status AppendToLog(const vector<ReplicateRefPtr>& msgs,
+  Status AppendToLog(const ReplicateMsgs& msgs,
                      const StatusCallback& callback) {
     return log_->AsyncAppendReplicates(msgs,
                                        Bind(LogAppendCallback, callback));
@@ -273,10 +273,11 @@ class RaftConsensusTest : public YBTest {
   void AddNoOpToConsensusRequest(ConsensusRequestPB* request, const OpId& noop_opid);
 
   scoped_refptr<ConsensusRound> AppendNoOpRound() {
-    ReplicateRefPtr replicate_ptr(make_scoped_refptr_replicate(new ReplicateMsg));
-    replicate_ptr->get()->set_op_type(NO_OP);
-    replicate_ptr->get()->set_hybrid_time(clock_->Now().ToUint64());
-    scoped_refptr<ConsensusRound> round(new ConsensusRound(consensus_.get(), replicate_ptr));
+    auto replicate_ptr = std::make_shared<ReplicateMsg>();
+    replicate_ptr->set_op_type(NO_OP);
+    replicate_ptr->set_hybrid_time(clock_->Now().ToUint64());
+    scoped_refptr<ConsensusRound> round(new ConsensusRound(consensus_.get(),
+                                                           std::move(replicate_ptr)));
     round->SetConsensusReplicatedCallback(
         Bind(&RaftConsensusSpy::NonTxRoundReplicationFinished,
              Unretained(consensus_.get()), Unretained(round.get()), Bind(&DoNothingStatusCB)));
@@ -440,7 +441,7 @@ TEST_F(RaftConsensusTest, TestPendingTransactions) {
   ConsensusBootstrapInfo info;
   info.last_id.set_term(10);
   for (int i = 0; i < 10; i++) {
-    auto replicate = new ReplicateMsg();
+    auto replicate = std::make_shared<ReplicateMsg>();
     replicate->set_op_type(NO_OP);
     info.last_id.set_index(100 + i);
     replicate->mutable_id()->CopyFrom(info.last_id);

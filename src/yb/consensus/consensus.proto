@@ -21,7 +21,7 @@ option java_package = "org.yb.consensus";
 import "yb/common/common.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
-import "yb/consensus/opid.proto";
+import "yb/util/opid.proto";
 import "yb/tablet/metadata.proto";
 import "yb/tablet/tablet.proto";
 import "yb/tserver/tserver_admin.proto";
@@ -165,7 +165,7 @@ message ChangeConfigResponsePB {
 // commit.
 message ReplicateMsg {
   // The Raft operation ID (term and index) being replicated.
-  required OpId id = 1;
+  required OpIdPB id = 1;
   // The (hybrid or logical) hybrid_time assigned to this message.
   required fixed64 hybrid_time = 2;
   // optional ExternalConsistencyMode external_consistency_mode = 3 [default = NO_CONSISTENCY];
@@ -175,7 +175,7 @@ message ReplicateMsg {
   optional ChangeConfigRecordPB change_config_record = 7;
   // The Raft operation ID known to the leader to be committed at the time this message was sent.
   // This is used during tablet bootstrap for RocksDB-backed tables.
-  optional OpId committed_op_id = 8;
+  optional OpIdPB committed_op_id = 8;
 
   optional NoOpRequestPB noop_request = 999;
 }
@@ -187,7 +187,7 @@ message ReplicateMsg {
 message CommitMsg {
   required OperationType op_type = 1;
   // the id of the message this commit pertains to
-  optional OpId commited_op_id = 2;
+  optional OpIdPB commited_op_id = 2;
   // The operations that were applied and/or failed in this transaction.
   optional tablet.TxResultPB result = 3;
 }
@@ -210,7 +210,7 @@ message NoOpResponsePB {
 
 message PerOpErrorPB {
   // The id of the operation that failed in the other peer.
-  required OpId id = 1;
+  required OpIdPB id = 1;
   // The Status explaining why the operation failed.
   required AppStatusPB status = 2;
 }
@@ -219,7 +219,7 @@ message PerOpErrorPB {
 message ConsensusStatusPB {
 
   // The last message received (and replicated) by the peer.
-  required OpId last_received = 1;
+  required OpIdPB last_received = 1;
 
   // The id of the last op that was replicated by the current leader.
   // This doesn't necessarily mean that the term of this op equals the current
@@ -230,7 +230,7 @@ message ConsensusStatusPB {
   // (PRECEDING_ENTRY_DIDNT_MATCH), this field is important and may still be
   // set, since the leader queue uses this field in conjuction with
   // last_received to decide on the next id to send to the follower.
-  optional OpId last_received_current_leader = 4;
+  optional OpIdPB last_received_current_leader = 4;
 
   // The last committed index that is known to the peer.
   optional int64 last_committed_idx = 2;
@@ -319,14 +319,14 @@ message ConsensusRequestPB {
   // last operation.
   //
   // This must be set if 'ops' is non-empty.
-  optional OpId preceding_id = 4;
+  optional OpIdPB preceding_id = 4;
 
   // The id of the last committed operation in the configuration. This is the
   // id of the last operation the leader deemed committed from a consensus
   // standpoint (not the last operation the leader applied).
   //
   // Raft calls this field 'leaderCommit'.
-  required OpId committed_index = 5;
+  required OpIdPB committed_index = 5;
 
   // Sequence of operations to be replicated by this peer.
   // These will be committed when committed_index advances above their
@@ -355,7 +355,7 @@ message ConsensusResponsePB {
 
 // A message reflecting the status of an in-flight transaction.
 message TransactionStatusPB {
-  required OpId op_id = 1;
+  required OpIdPB op_id = 1;
   required OperationType tx_type = 2;
   // Time the transaction has been in flight.
   required int64 running_for_micros = 3;
@@ -386,7 +386,7 @@ message RunLeaderElectionRequestPB {
   // The id of the last operation the current leader has committed to its log.
   // When specified, the peer must wait till the operation has been committed
   // to its log before starting the election to be qualified as a leader.
-  optional OpId committed_index = 3;
+  optional OpIdPB committed_index = 3;
 
   // UUID of old leader, that requested this election.
   // If we lost election, we would notify originator about this fact.
@@ -450,7 +450,7 @@ message GetLastOpIdRequestPB {
 }
 
 message GetLastOpIdResponsePB {
-  optional OpId opid = 1;
+  optional OpIdPB opid = 1;
     // A generic error message (such as tablet not found).
   optional tserver.TabletServerErrorPB error = 2;
 }

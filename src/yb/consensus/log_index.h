@@ -21,6 +21,8 @@
 #include <map>
 
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/opid_util.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/locks.h"

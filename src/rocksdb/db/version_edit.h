@@ -145,9 +145,17 @@ class VersionEdit {
   void SetLastSequence(SequenceNumber seq) {
     last_sequence_ = seq;
   }
+  void SetFlushedOpId(const OpId& value) {
+    flushed_op_id_ = value;
+  }
+  void SetFlushedOpId(int64_t term, int64_t index) {
+    SetFlushedOpId(OpId(term, index));
+  }
   void SetMaxColumnFamily(uint32_t max_column_family) {
     max_column_family_ = max_column_family;
   }
+
+  void InitNewDB();
 
   // Add the specified file at the specified number.
   // REQUIRES: This version has not been saved (see VersionSet::SaveTo)
@@ -246,6 +254,7 @@ class VersionEdit {
   boost::optional<uint64_t> next_file_number_;
   boost::optional<uint32_t> max_column_family_;
   boost::optional<SequenceNumber> last_sequence_;
+  OpId flushed_op_id_;
 
   DeletedFileSet deleted_files_;
   std::vector<std::pair<int, FileMetaData>> new_files_;

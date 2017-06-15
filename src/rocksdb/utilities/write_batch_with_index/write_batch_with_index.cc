@@ -489,7 +489,7 @@ void WriteBatchWithIndex::Rep::AddNewEntry(uint32_t column_family_id) {
     input.remove_prefix(offset);
 
     // Loop through all entries in Rep and add each one to the index
-    int found = 0;
+    size_t found = 0;
     while (s.ok() && !input.empty()) {
       Slice key, value, blob;
       uint32_t column_family_id = 0;  // default

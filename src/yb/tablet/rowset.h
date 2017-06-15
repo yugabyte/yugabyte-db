@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "yb/cfile/cfile_util.h"
+#include "yb/consensus/opid_util.h"
 #include "yb/common/iterator.h"
 #include "yb/common/rowid.h"
 #include "yb/common/schema.h"
@@ -36,10 +37,6 @@
 namespace yb {
 
 class RowChangeList;
-
-namespace consensus {
-class OpId;
-}
 
 namespace tablet {
 

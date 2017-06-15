@@ -24,8 +24,7 @@ PROTOBUF_GENERATE_CPP(
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES
-    metadata.proto
-    opid.proto)
+    metadata.proto)
 set(METADATA_PROTO_LIBS
   yb_common_proto
   fs_proto

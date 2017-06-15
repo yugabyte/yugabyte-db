@@ -72,7 +72,7 @@ set(TABLET_PROTO_LIBS
   yb_common)
 ADD_YB_LIBRARY(tablet_proto
   SRCS ${TABLET_PROTO_SRCS}
-  DEPS ${TABLET_PROTO_LIBS}
+  DEPS ${TABLET_PROTO_LIBS} opid_proto
   NONLINK_DEPS ${TABLET_PROTO_TGTS})
 
 add_library(tablet ${TABLET_SRCS})

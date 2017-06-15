@@ -424,9 +424,7 @@ DBImpl::~DBImpl() {
 
 Status DBImpl::NewDB() {
   VersionEdit new_db;
-  new_db.SetLogNumber(0);
-  new_db.SetNextFile(2);
-  new_db.SetLastSequence(0);
+  new_db.InitNewDB();
 
   Status s;
 
@@ -1362,8 +1360,7 @@ Status DBImpl::RecoverLogFiles(const std::vector<uint64_t>& log_numbers,
     }
 
     flush_scheduler_.Clear();
-    if ((*max_sequence != kMaxSequenceNumber) &&
-        (versions_->LastSequence() < *max_sequence)) {
+    if ((*max_sequence != kMaxSequenceNumber) && (versions_->LastSequence() < *max_sequence)) {
       versions_->SetLastSequence(*max_sequence);
     }
   }
@@ -4267,11 +4264,6 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
 
   Status status;
 
-  status = my_batch->ValidateUserSequenceNumbers();
-  if (!status.ok()) {
-    return status;
-  }
-
   bool xfunc_attempted_write = false;
   XFUNC_TEST("transaction", "transaction_xftest_write_impl",
              xf_transaction_write1, xf_transaction_write, write_options,
@@ -4431,6 +4423,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
   }
 
   uint64_t last_sequence = versions_->LastSequence();
+  OpId last_op_id;
   WriteThread::Writer* last_writer = &w;
   autovector<WriteThread::Writer*> write_group;
   bool need_log_sync = !write_options.disableWAL && write_options.sync;
@@ -4479,39 +4472,18 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
     // more than once to a particular key.
     bool parallel =
         db_options_.allow_concurrent_memtable_write && write_group.size() > 1;
-    int total_count = 0;
+    size_t total_count = 0;
     uint64_t total_byte_size = 0;
-    bool has_user_sequence_numbers = false;
-#ifndef NDEBUG
-    bool has_auto_sequence_numbers = false;
-#endif
-    SequenceNumber min_user_sequence_number = kMaxSequenceNumber;
-    SequenceNumber max_user_sequence_number = 0;
     for (auto writer : write_group) {
       if (writer->CheckCallback(this)) {
         total_count += WriteBatchInternal::Count(writer->batch);
         total_byte_size = WriteBatchInternal::AppendedByteSize(
             total_byte_size, WriteBatchInternal::ByteSize(writer->batch));
         parallel = parallel && !writer->batch->HasMerge();
-        if (writer->batch->HasUserSequenceNumbers()) {
-          has_user_sequence_numbers = true;
-          min_user_sequence_number = std::min(min_user_sequence_number,
-            writer->batch->MinUserSequenceNumber());
-          max_user_sequence_number = std::max(max_user_sequence_number,
-            writer->batch->MaxUserSequenceNumber());
-          parallel = false;
-        } else if (writer->batch->Count() > 0) {
-#ifndef NDEBUG
-          has_auto_sequence_numbers = true;
-#endif
-        }
       }
     }
-    // Only one of the two modes of specifying sequence numbers is allowed.
-    assert(!has_user_sequence_numbers || !has_auto_sequence_numbers);
 
-    const SequenceNumber current_sequence =
-      has_user_sequence_numbers ? min_user_sequence_number : last_sequence + 1;
+    const SequenceNumber current_sequence = last_sequence + 1;
 
 #ifndef NDEBUG
     if (current_sequence <= last_sequence) {
@@ -4521,15 +4493,9 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
     }
 #endif
 
-    if (has_user_sequence_numbers) {
-      // YugaByte use case: we are assuming that we are applying batches in the order they appear
-      // in the Raft log one by one. Each batch has user-specified sequence numbers for all updates
-      // (puts, deletes, etc.) within it.
-      last_sequence = max_user_sequence_number;
-    } else {
-      // Reserve sequence numbers for all individual updates in this batch group.
-      last_sequence += total_count;
-    }
+    // Reserve sequence numbers for all individual updates in this batch group.
+    last_sequence += total_count;
+    last_op_id = my_batch->UserOpId();
 
     // Record statistics
     RecordTick(stats_, NUMBER_KEYS_WRITTEN, total_count);
@@ -4543,8 +4509,6 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
 
     uint64_t log_size = 0;
     if (!write_options.disableWAL) {
-      // User-defined sequence numbers currently can only be used with disabled WAL.
-      assert(!has_user_sequence_numbers);
       PERF_TIMER_GUARD(write_wal_time);
 
       WriteBatch* merged_batch = nullptr;
@@ -4563,7 +4527,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
       }
       WriteBatchInternal::SetSequence(merged_batch, current_sequence);
 
-      assert(WriteBatchInternal::Count(merged_batch) == total_count);
+      CHECK_EQ(WriteBatchInternal::Count(merged_batch), total_count);
 
       Slice log_entry = WriteBatchInternal::Contents(merged_batch);
       log::Writer* log_writer = nullptr;
@@ -4645,13 +4609,11 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
         }
 
       } else {
-        // User-defined sequence numbers are currently incompatible with parallel memstore
-        // insertion.
-        assert(!has_user_sequence_numbers);
         WriteThread::ParallelGroup pg;
         pg.leader = &w;
         pg.last_writer = last_writer;
         pg.last_sequence = last_sequence;
+        pg.last_op_id = last_op_id;
         pg.early_exit_allowed = !need_log_sync;
         pg.running.store(static_cast<uint32_t>(write_group.size()),
                          std::memory_order_relaxed);
@@ -5352,6 +5314,11 @@ Status DBImpl::DeleteFilesInRange(ColumnFamilyHandle* column_family,
 void DBImpl::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
   InstrumentedMutexLock l(&mutex_);
   versions_->GetLiveFilesMetaData(metadata);
+}
+
+OpId DBImpl::GetFlushedOpId() {
+  InstrumentedMutexLock l(&mutex_);
+  return versions_->FlushedOpId();
 }
 
 void DBImpl::GetColumnFamilyMetaData(

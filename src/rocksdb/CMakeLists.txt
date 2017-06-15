@@ -207,7 +207,7 @@ endif()
 
 add_library(rocksdb ${ROCKSDB_SRCS})
 cotire(rocksdb)
-target_link_libraries(rocksdb gflags gutil snappy bz2 z yb_util)
+target_link_libraries(rocksdb gflags gutil snappy bz2 z yb_util opid_proto)
 
 add_library(rocksdb_tools
   tools/ldb_cmd.cc
@@ -264,6 +264,7 @@ ADD_YB_TEST(db/perf_context_test)
 ADD_YB_TEST(db/prefix_test)
 ADD_YB_TEST(db/skiplist_test)
 ADD_YB_TEST(db/table_properties_collector_test)
+ADD_YB_TEST(db/user_op_id_test)
 ADD_YB_TEST(db/version_builder_test)
 ADD_YB_TEST(db/version_set_test)
 ADD_YB_TEST(db/wal_manager_test)

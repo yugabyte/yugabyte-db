@@ -53,6 +53,8 @@ TAG_FLAG(fault_crash_during_log_replay, unsafe);
 
 DECLARE_int32(max_clock_sync_error_usec);
 
+using namespace std::placeholders;
+
 namespace yb {
 namespace tablet {
 
@@ -235,11 +237,11 @@ class TabletBootstrap {
   void DumpReplayStateToLog(const ReplayState& state);
 
   // Handlers for each type of message seen in the log during replay.
-  Status HandleEntry(ReplayState* state, LogEntryPB* entry);
-  Status HandleReplicateMessage(ReplayState* state, LogEntryPB* replicate_entry);
-  Status HandleCommitMessage(ReplayState* state, LogEntryPB* commit_entry);
-  Status ApplyCommitMessage(ReplayState* state, LogEntryPB* commit_entry);
-  Status HandleEntryPair(LogEntryPB* replicate_entry, LogEntryPB* commit_entry);
+  Status HandleEntry(ReplayState* state, std::unique_ptr<LogEntryPB>* entry);
+  Status HandleReplicateMessage(ReplayState* state, std::unique_ptr<LogEntryPB>* replicate_entry);
+  Status HandleCommitMessage(ReplayState* state, std::unique_ptr<LogEntryPB>* commit_entry);
+  Status ApplyCommitMessage(ReplayState* state, const LogEntryPB& commit_entry);
+  Status HandleEntryPair(LogEntryPB* replicate_entry, const LogEntryPB* commit_entry);
 
   // Checks that an orphaned commit message is actually irrelevant, i.e that the
   // data stores it refers to are already flushed.
@@ -394,7 +396,7 @@ TabletBootstrap::TabletBootstrap(
       metric_registry_(metric_registry),
       listener_(listener),
       log_anchor_registry_(log_anchor_registry),
-      block_cache_(block_cache) {}
+      block_cache_(std::move(block_cache)) {}
 
 Status TabletBootstrap::Bootstrap(shared_ptr<Tablet>* rebuilt_tablet,
                                   scoped_refptr<Log>* rebuilt_log,
@@ -647,21 +649,13 @@ Status TabletBootstrap::OpenNewLog() {
   return Status::OK();
 }
 
-typedef map<int64_t, LogEntryPB*> OpIndexToEntryMap;
+typedef std::map<int64_t, std::unique_ptr<LogEntryPB>> OpIndexToEntryMap;
 
 // State kept during replay.
 struct ReplayState {
-  explicit ReplayState(int64_t rocksdb_max_persistent_index_arg)
-      : prev_op_id(MinimumOpId()),
-        committed_op_id(MinimumOpId()),
-        rocksdb_max_persistent_index(rocksdb_max_persistent_index_arg),
-        rocksdb_applied_index(rocksdb_max_persistent_index_arg),
-        num_entries_applied_to_rocksdb(0) {}
-
-  ~ReplayState() {
-    STLDeleteValues(&pending_replicates);
-    STLDeleteValues(&pending_commits);
-  }
+  explicit ReplayState(const OpId& last_op_id)
+      : last_stored_op_id(last_op_id),
+        rocksdb_applied_index(last_op_id.term() == 0 ? -1 : last_op_id.index()) {}
 
   // Return true if 'b' is allowed to immediately follow 'a' in the log.
   static bool IsValidSequence(const OpId& a, const OpId& b) {
@@ -698,14 +692,14 @@ struct ReplayState {
   }
 
   void UpdateCommittedOpId(const OpId& id) {
-    if (OpIdLessThan(committed_op_id, id)) {
+    if (consensus::OpIdLessThan(committed_op_id, id)) {
       committed_op_id = id;
     }
   }
 
   void AddEntriesToStrings(const OpIndexToEntryMap& entries, vector<string>* strings) const {
     for (const OpIndexToEntryMap::value_type& map_entry : entries) {
-      LogEntryPB* entry = DCHECK_NOTNULL(map_entry.second);
+      LogEntryPB* entry = DCHECK_NOTNULL(map_entry.second.get());
       strings->push_back(Substitute("   [$0] $1", map_entry.first, entry->ShortDebugString()));
     }
   }
@@ -735,12 +729,35 @@ struct ReplayState {
     }
   }
 
+  bool CanApply(int64_t index, LogEntryPB* entry) {
+    if (rocksdb_applied_index != -1) {
+      if (index != rocksdb_applied_index + 1) {
+        return false;
+      }
+    }
+    return consensus::OpIdCompare(entry->replicate().id(), committed_op_id) <= 0;
+  }
+
+  template<class Handler>
+  void ApplyCommittedPendingReplicates(const Handler& handler) {
+    auto iter = pending_replicates.begin();
+    while (iter != pending_replicates.end() && CanApply(iter->first, iter->second.get())) {
+      std::unique_ptr<LogEntryPB> entry = std::move(iter->second);
+      handler(entry.get());
+      iter = pending_replicates.erase(iter);  // erase and advance the iterator (C++11)
+      if (rocksdb_applied_index != -1) {
+        ++rocksdb_applied_index;
+      }
+      ++num_entries_applied_to_rocksdb;
+    }
+  }
+
   // The last replicate message's ID.
-  OpId prev_op_id;
+  OpId prev_op_id = MinimumOpId();
 
   // The last operation known to be committed.
   // All other operations with lower IDs are also committed.
-  OpId committed_op_id;
+  OpId committed_op_id = MinimumOpId();
 
   // For Kudu's columnar tables: REPLICATE log entries whose corresponding COMMIT record has
   // not yet been seen.
@@ -759,16 +776,14 @@ struct ReplayState {
   // ----------------------------------------------------------------------------------------------
   // State specific to RocksDB-backed tables
 
-  // Maximum sequence number (equal to a Raft index) persistent in RocksDB. This is initialized once
-  // and does not change during the bootstrap.
-  const int64_t rocksdb_max_persistent_index;
+  const OpId last_stored_op_id;
 
   // Last index applied to RocksDB. This gets incremented as we apply more entries to RocksDB as
   // part of bootstrap.
   int64_t rocksdb_applied_index;
 
   // Total number of log entries applied to RocksDB.
-  int64_t num_entries_applied_to_rocksdb;
+  int64_t num_entries_applied_to_rocksdb = 0;
 
   // If we encounter the last entry flushed to a RocksDB SSTable (as identified by the max
   // persistent sequence number), we remember the hybrid time of that entry in this field.
@@ -779,47 +794,50 @@ struct ReplayState {
 
 // Handle the given log entry. If OK is returned, then takes ownership of 'entry'.
 // Otherwise, caller frees.
-Status TabletBootstrap::HandleEntry(ReplayState* state, LogEntryPB* entry) {
+Status TabletBootstrap::HandleEntry(ReplayState* state, std::unique_ptr<LogEntryPB>* entry_ptr) {
+  auto& entry = **entry_ptr;
   if (VLOG_IS_ON(1)) {
-    VLOG_WITH_PREFIX(1) << "Handling entry: " << entry->ShortDebugString();
+    VLOG_WITH_PREFIX(1) << "Handling entry: " << entry.ShortDebugString();
   }
 
-  switch (entry->type()) {
+  switch (entry.type()) {
     case log::REPLICATE:
-      RETURN_NOT_OK(HandleReplicateMessage(state, entry));
+      RETURN_NOT_OK(HandleReplicateMessage(state, entry_ptr));
       break;
     case log::COMMIT:
       if (tablet_->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
         // check the unpaired ops for the matching replicate msg, abort if not found
-        RETURN_NOT_OK(HandleCommitMessage(state, entry));
-      } else if (entry->has_commit() && entry->commit().op_type() == NO_OP) {
+        RETURN_NOT_OK(HandleCommitMessage(state, entry_ptr));
+      } else if (entry.has_commit() && entry.commit().op_type() == NO_OP) {
         // These entry types are still expected to appear when a no-op is replicated. We should
         // eventually get rid of them too for non-Kudu tables.
-        delete entry;
+        entry_ptr->reset();
       } else {
         LOG(FATAL) << "COMMIT entries other than no-ops should not be used by non-Kudu tables: "
-            << entry->ShortDebugString();
+            << entry.ShortDebugString();
       }
       break;
     default:
-      return STATUS(Corruption, Substitute("Unexpected log entry type: $0", entry->type()));
+      return STATUS(Corruption, Substitute("Unexpected log entry type: $0", entry.type()));
   }
   MAYBE_FAULT(FLAGS_fault_crash_during_log_replay);
   return Status::OK();
 }
 
 // Takes ownership of 'replicate_entry' on OK status.
-Status TabletBootstrap::HandleReplicateMessage(ReplayState* state, LogEntryPB* replicate_entry) {
+Status TabletBootstrap::HandleReplicateMessage(ReplayState* state,
+                                               std::unique_ptr<LogEntryPB>* replicate_entry_ptr) {
+  auto& replicate_entry = **replicate_entry_ptr;
   stats_.ops_read++;
 
-  const ReplicateMsg& replicate = replicate_entry->replicate();
+  const ReplicateMsg& replicate = replicate_entry.replicate();
   RETURN_NOT_OK(state->CheckSequentialReplicateId(replicate));
   DCHECK(replicate.has_hybrid_time());
   CHECK_OK(UpdateClock(replicate.hybrid_time()));
 
-  int64_t index = replicate_entry->replicate().id().index();
-  if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE &&
-      index == state->rocksdb_max_persistent_index) {
+  const bool non_kudu = tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE;
+  const OpId op_id = replicate_entry.replicate().id();
+  if (non_kudu && op_id.index() == state->last_stored_op_id.index()) {
     // We need to set the committed OpId to be at least what's been applied to RocksDB. The reason
     // we could not do it before starting log replay is that we don't know the term number of the
     // last write operation flushed into a RocksDB SSTable, even though we know its Raft index
@@ -839,7 +857,7 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state, LogEntryPB* r
     // rocksdb_max_persistent_index, and we only ever apply entries with an index greater than that.
     //
     // Also see the other place where we update state->committed_op_id in the end of this function.
-    state->UpdateCommittedOpId(replicate_entry->replicate().id());
+    state->UpdateCommittedOpId(replicate.id());
 
     // We also update the MVCC safe time to make sure this committed entry is visible to readers
     // as every committed entry should be. Unlike the committed op id, though, we can't just update
@@ -848,49 +866,39 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state, LogEntryPB* r
     // Instead, we only keep the last value of hybrid time of the entry at this index, and update
     // safe time based on it in the end. We do require that we keep at least one committed entry
     // in the log, though.
-    state->rocksdb_last_entry_hybrid_time = HybridTime(replicate_entry->replicate().hybrid_time());
+    state->rocksdb_last_entry_hybrid_time = HybridTime(replicate.hybrid_time());
   }
 
   // Append the replicate message to the log as is
-  RETURN_NOT_OK(log_->Append(replicate_entry));
+  RETURN_NOT_OK(log_->Append(replicate_entry_ptr->get()));
 
-  if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE &&
-      index <= state->rocksdb_max_persistent_index) {
+  if (non_kudu && op_id.index() <= state->last_stored_op_id.index()) {
     // Do not update the bootstrap in-memory state for log records that have already been applied
     // to RocksDB, or were overwritten by a later entry with a higher term that has already been
     // applied to RocksDB.
-    delete replicate_entry;
+    replicate_entry_ptr->reset();
     return Status::OK();
   }
 
-  LogEntryPB** const existing_entry_ptr = InsertOrReturnExisting(
-      &state->pending_replicates, index, replicate_entry);
+  auto iter = state->pending_replicates.lower_bound(op_id.index());
 
   // If there was a entry with the same index we're overwriting then we need to delete
   // that entry and all entries with higher indexes.
-  if (existing_entry_ptr) {
-    LogEntryPB* existing_entry = *existing_entry_ptr;
-
-    auto iter = state->pending_replicates.lower_bound(index);
-    DCHECK(OpIdEquals((*iter).second->replicate().id(), existing_entry->replicate().id()));
-
-    LogEntryPB* last_entry = (*state->pending_replicates.rbegin()).second;
+  if (iter != state->pending_replicates.end() && iter->first == op_id.index()) {
+    auto& existing_entry = iter->second;
+    auto& last_entry = state->pending_replicates.rbegin()->second;
 
     LOG_WITH_PREFIX(INFO) << "Overwriting operations starting at: "
                           << existing_entry->replicate().id()
                           << " up to: " << last_entry->replicate().id()
-                          << " with operation: " << replicate_entry->replicate().id();
-
-    while (iter != state->pending_replicates.end()) {
-      delete (*iter).second;
-      state->pending_replicates.erase(iter++);
-      stats_.ops_overwritten++;
-    }
-
-    InsertOrDie(&state->pending_replicates, index, replicate_entry);
+                          << " with operation: " << replicate.id();
+    stats_.ops_overwritten += std::distance(iter, state->pending_replicates.end());
+    state->pending_replicates.erase(iter, state->pending_replicates.end());
   }
 
-  if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+  CHECK(state->pending_replicates.emplace(op_id.index(), std::move(*replicate_entry_ptr)).second);
+
+  if (non_kudu) {
     CHECK(replicate.has_committed_op_id())
         << "Replicate message has no committed_op_id for table type "
         << TableType_Name(tablet_->table_type()) << ". Replicate message:\n"
@@ -901,29 +909,22 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state, LogEntryPB* r
     // REPLICATE entry during bootstrap without Kudu's local COMMIT messages.
     state->UpdateCommittedOpId(replicate.committed_op_id());
 
-    auto iter = state->pending_replicates.begin();
-    while (iter != state->pending_replicates.end() &&
-           iter->first == state->rocksdb_applied_index + 1 &&
-           OpIdCompare(iter->second->replicate().id(), state->committed_op_id) <= 0) {
-      LogEntryPB* entry = iter->second;
-      HandleEntryPair(entry, /* commit_entry = */ nullptr);
-      iter = state->pending_replicates.erase(iter);  // erase and advance the iterator (C++11)
-      delete entry;
-      ++state->rocksdb_applied_index;
-      ++state->num_entries_applied_to_rocksdb;
-    }
+    state->ApplyCommittedPendingReplicates(
+        std::bind(&TabletBootstrap::HandleEntryPair, this, _1, nullptr));
   }
   return Status::OK();
 }
 
 // Takes ownership of 'commit_entry' on OK status.
-Status TabletBootstrap::HandleCommitMessage(ReplayState* state, LogEntryPB* commit_entry) {
+Status TabletBootstrap::HandleCommitMessage(ReplayState* state,
+                                            std::unique_ptr<LogEntryPB>* commit_entry_ptr) {
+  LogEntryPB& commit_entry = **commit_entry_ptr;
   // We don't use COMMIT messages at all for RocksDB-backed tables.
   CHECK_EQ(tablet_->table_type(), TableType::KUDU_COLUMNAR_TABLE_TYPE);
-  DCHECK(commit_entry->has_commit()) << "Not a commit message: " << commit_entry->DebugString();
+  DCHECK(commit_entry.has_commit()) << "Not a commit message: " << commit_entry.DebugString();
 
   // Match up the COMMIT record with the original entry that it's applied to.
-  const OpId& committed_op_id = commit_entry->commit().commited_op_id();
+  const OpId& committed_op_id = commit_entry.commit().commited_op_id();
   state->UpdateCommittedOpId(committed_op_id);
 
   // If there are no pending replicates, or if this commit's index is lower than the
@@ -931,9 +932,9 @@ Status TabletBootstrap::HandleCommitMessage(ReplayState* state, LogEntryPB* comm
   if (state->pending_replicates.empty() ||
       (*state->pending_replicates.begin()).first > committed_op_id.index()) {
     VLOG_WITH_PREFIX(2) << "Found orphaned commit for " << committed_op_id;
-    RETURN_NOT_OK(CheckOrphanedCommitAlreadyFlushed(commit_entry->commit()));
+    RETURN_NOT_OK(CheckOrphanedCommitAlreadyFlushed(commit_entry.commit()));
     stats_.orphaned_commits++;
-    delete commit_entry;
+    commit_entry_ptr->reset();
     return Status::OK();
   }
 
@@ -942,25 +943,26 @@ Status TabletBootstrap::HandleCommitMessage(ReplayState* state, LogEntryPB* comm
   if ((*state->pending_replicates.begin()).first != committed_op_id.index()) {
     if (!ContainsKey(state->pending_replicates, committed_op_id.index())) {
       return STATUS(Corruption, Substitute("Could not find replicate for commit: $0",
-                                           commit_entry->ShortDebugString()));
+                                           commit_entry.ShortDebugString()));
     }
     VLOG_WITH_PREFIX(2) << "Adding pending commit for " << committed_op_id;
-    InsertOrDie(&state->pending_commits, committed_op_id.index(), commit_entry);
+    CHECK(state->pending_commits.emplace(committed_op_id.index(),
+                                         std::move(*commit_entry_ptr)).second);
     return Status::OK();
   }
 
   // ... if it does, we apply it and all the commits that immediately follow in the sequence.
-  OpId last_applied = commit_entry->commit().commited_op_id();
+  OpId last_applied = commit_entry.commit().commited_op_id();
   RETURN_NOT_OK(ApplyCommitMessage(state, commit_entry));
-  delete commit_entry;
+  commit_entry_ptr->reset();
 
   auto iter = state->pending_commits.begin();
   while (iter != state->pending_commits.end()) {
     if ((*iter).first == last_applied.index() + 1) {
-      gscoped_ptr<LogEntryPB> buffered_commit_entry((*iter).second);
+      std::unique_ptr<LogEntryPB> buffered_commit_entry = std::move(iter->second);
       state->pending_commits.erase(iter++);
       last_applied = buffered_commit_entry->commit().commited_op_id();
-      RETURN_NOT_OK(ApplyCommitMessage(state, buffered_commit_entry.get()));
+      RETURN_NOT_OK(ApplyCommitMessage(state, *buffered_commit_entry));
       continue;
     }
     break;
@@ -1002,18 +1004,16 @@ Status TabletBootstrap::CheckOrphanedCommitAlreadyFlushed(const CommitMsg& commi
   return Status::OK();
 }
 
-Status TabletBootstrap::ApplyCommitMessage(ReplayState* state, LogEntryPB* commit_entry) {
-
-  const OpId& committed_op_id = commit_entry->commit().commited_op_id();
+Status TabletBootstrap::ApplyCommitMessage(ReplayState* state, const LogEntryPB& commit_entry) {
+  const OpId& committed_op_id = commit_entry.commit().commited_op_id();
   VLOG_WITH_PREFIX(2) << "Applying commit for " << committed_op_id;
-  gscoped_ptr<LogEntryPB> pending_replicate_entry;
-
   // They should also have an associated replicate index (it may have been in a
   // deleted log segment though).
-  pending_replicate_entry.reset(EraseKeyReturnValuePtr(&state->pending_replicates,
-                                                       committed_op_id.index()));
+  auto it = state->pending_replicates.find(committed_op_id.index());
 
-  if (pending_replicate_entry != nullptr) {
+  if (it != state->pending_replicates.end()) {
+    std::unique_ptr<LogEntryPB> pending_replicate_entry = std::move(it->second);
+    state->pending_replicates.erase(it);
     // We found a replicate with the same index, make sure it also has the same
     // term.
     if (!OpIdEquals(committed_op_id, pending_replicate_entry->replicate().id())) {
@@ -1022,22 +1022,23 @@ Status TabletBootstrap::ApplyCommitMessage(ReplayState* state, LogEntryPB* commi
           pending_replicate_entry->replicate().id().ShortDebugString(),
           committed_op_id.ShortDebugString(),
           pending_replicate_entry->replicate().ShortDebugString(),
-          commit_entry->commit().ShortDebugString());
+          commit_entry.commit().ShortDebugString());
       LOG_WITH_PREFIX(DFATAL) << error_msg;
       return STATUS(Corruption, error_msg);
     }
-    RETURN_NOT_OK(HandleEntryPair(pending_replicate_entry.get(), commit_entry));
+    RETURN_NOT_OK(HandleEntryPair(pending_replicate_entry.get(), &commit_entry));
     stats_.ops_committed++;
   } else {
     stats_.orphaned_commits++;
-    RETURN_NOT_OK(CheckOrphanedCommitAlreadyFlushed(commit_entry->commit()));
+    RETURN_NOT_OK(CheckOrphanedCommitAlreadyFlushed(commit_entry.commit()));
   }
 
   return Status::OK();
 }
 
 // Never deletes 'replicate_entry' or 'commit_entry'.
-Status TabletBootstrap::HandleEntryPair(LogEntryPB* replicate_entry, LogEntryPB* commit_entry) {
+Status TabletBootstrap::HandleEntryPair(LogEntryPB* replicate_entry,
+                                        const LogEntryPB* commit_entry) {
   const char* error_fmt = "Failed to play $0 request. ReplicateMsg: { $1 }, CommitMsg: { $2 }";
 
 #define RETURN_NOT_OK_REPLAY(ReplayMethodName, replicate, commit) \
@@ -1138,12 +1139,18 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   // all committed entries in the right order, even when the Raft index of entries we encounter in
   // the log jumps back and the term gets increased due to leader changes and logical log
   // "truncation".
-  ReplayState state(tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE ?
-                    tablet_->MaxPersistentSequenceNumber() : 0);
+  bool non_kudu = tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE;
+  auto persistent_op_id = MinimumOpId();
+  if (non_kudu) {
+    auto flushed_op_id = tablet_->MaxPersistentOpId();
+    persistent_op_id.set_term(flushed_op_id.term);
+    persistent_op_id.set_index(flushed_op_id.index);
+  }
+  ReplayState state(persistent_op_id);
 
-  if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+  if (non_kudu) {
     LOG_WITH_PREFIX(INFO) << "Max persistent index in RocksDB's SSTables before bootstrap: "
-                          << state.rocksdb_max_persistent_index;
+                          << state.last_stored_op_id.ShortDebugString();
   }
 
   log::SegmentSequence segments;
@@ -1173,26 +1180,19 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
 
   int segment_count = 0;
   for (const scoped_refptr<ReadableLogSegment>& segment : segments) {
-    vector<LogEntryPB*> entries;
-    ElementDeleter deleter(&entries);
+    log::LogEntries entries;
     // TODO: Optimize this to not read the whole thing into memory?
     Status read_status = segment->ReadEntries(&entries);
     for (int entry_idx = 0; entry_idx < entries.size(); ++entry_idx) {
-      LogEntryPB* entry = entries[entry_idx];
-      Status s = HandleEntry(&state, entry);
+      Status s = HandleEntry(&state, &entries[entry_idx]);
       if (!s.ok()) {
         LOG(INFO) << "Dumping replay state to log";
         DumpReplayStateToLog(state);
         RETURN_NOT_OK_PREPEND(s, DebugInfo(tablet_->tablet_id(),
                                            segment->header().sequence_number(),
                                            entry_idx, segment->path(),
-                                           *entry));
+                                           *entries[entry_idx]));
       }
-
-      // If HandleEntry returns OK, then it has taken ownership of the entry.
-      // So, we have to remove it from the entries vector to avoid it getting
-      // freed by ElementDeleter.
-      entries[entry_idx] = nullptr;
     }
 
     // If the LogReader failed to read for some reason, we'll still try to
@@ -1294,7 +1294,7 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
     // not been persisted into RocksDB.
     if (tablet_->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE ||
         e.first > state.rocksdb_applied_index) {
-      consensus_info->orphaned_replicates.push_back(e.second->release_replicate());
+      consensus_info->orphaned_replicates.emplace_back(e.second->release_replicate());
     }
   }
   if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {

@@ -124,7 +124,7 @@ class RowsResult : public ExecutedResult {
 
   // Parse the rows data and return it as a row block. It is the caller's responsibility to free
   // the row block after use.
-  YQLRowBlock *GetRowBlock() const;
+  std::unique_ptr<YQLRowBlock> GetRowBlock() const;
 
  private:
   const client::YBTableName table_name_;
