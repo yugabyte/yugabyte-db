@@ -23,6 +23,7 @@ import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -276,6 +277,15 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add(Integer.toString(deviceInfo.diskIops));
         }
       }
+
+      String packagePath = mockAppConfig.getString("yb.thirdparty.packagePath");
+      if (type == NodeManager.NodeCommandType.Provision && packagePath != null) {
+        expectedCommand.add("--local_package_path");
+        expectedCommand.add(packagePath);
+        if (params.cloud.equals(Common.CloudType.onprem)) {
+          expectedCommand.add("--air_gap");
+        }
+      }
     }
 
     expectedCommand.add(params.nodeName);
@@ -296,6 +306,29 @@ public class NodeManagerTest extends FakeDBApplication {
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
+  }
+
+  @Test
+  public void testProvisionNodeCommandWithLocalPackage() {
+    String packagePath = "/tmp/third-party";
+    new File(packagePath).mkdir();
+    when(mockAppConfig.getString("yb.thirdparty.packagePath")).thenReturn(packagePath);
+
+    for (TestData t : testData) {
+      AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
+      buildValidParams(t, params, createUniverse());
+      addValidDeviceInfo(t, params);
+      params.subnetId = t.zone.subnet;
+
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params));
+
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
+    }
+
+    File file = new File(packagePath);
+    file.delete();
   }
 
   @Test

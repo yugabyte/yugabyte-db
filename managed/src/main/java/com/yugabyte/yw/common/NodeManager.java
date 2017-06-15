@@ -23,6 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -124,6 +125,18 @@ public class NodeManager extends DevopsBase {
       args.add(Integer.toString(params.deviceInfo.volumeSize));
     }
     return args;
+  }
+
+  private String getThirdpartyPackagePath() {
+    String packagePath = appConfig.getString("yb.thirdparty.packagePath");
+    if (packagePath != null && !packagePath.isEmpty()) {
+      File thirdpartyPackagePath = new File(packagePath);
+      if (thirdpartyPackagePath.exists() && thirdpartyPackagePath.isDirectory()) {
+        return packagePath;
+      }
+    }
+
+    return null;
   }
 
   private List<String> getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
@@ -232,6 +245,16 @@ public class NodeManager extends DevopsBase {
               commandArgs.add("--disk_iops");
               commandArgs.add(Integer.toString(deviceInfo.diskIops));
             }
+          }
+        }
+
+        String localPackagePath = getThirdpartyPackagePath();
+        if (localPackagePath != null) {
+          commandArgs.add("--local_package_path");
+          commandArgs.add(localPackagePath);
+
+          if (nodeTaskParam.cloud == Common.CloudType.onprem) {
+            commandArgs.add("--air_gap");
           }
         }
         break;
