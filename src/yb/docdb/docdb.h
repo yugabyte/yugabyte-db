@@ -138,7 +138,9 @@ class DocWriteBatch {
   void Clear();
   bool IsEmpty() const { return put_batch_.empty(); }
 
-  const std::vector<std::pair<std::string, std::string>> key_value_pairs() const {
+  size_t size() const { return put_batch_.size(); }
+
+  const std::vector<std::pair<std::string, std::string>>& key_value_pairs() const {
     return put_batch_;
   }
 

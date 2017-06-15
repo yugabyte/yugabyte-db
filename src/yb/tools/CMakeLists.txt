@@ -95,6 +95,21 @@ target_link_libraries(yb-generate_partitions_main
   yb-generate_partitions
 )
 
+add_library(bulk_load_docdb_util bulk_load_docdb_util.cc)
+target_link_libraries(bulk_load_docdb_util
+  yb_docdb
+)
+
+add_executable(yb-bulk_load yb-bulk_load.cc)
+target_link_libraries(yb-bulk_load
+  gutil
+  rocksdb
+  yql_protocol_proto
+  yb_client
+  bulk_load_docdb_util
+  yb-generate_partitions
+)
+
 add_executable(yb-pbc-dump pbc-dump.cc)
 target_link_libraries(yb-pbc-dump
   ${LINK_LIBS}
@@ -105,11 +120,13 @@ set(YB_TEST_LINK_LIBS
   yb_tools_util
   yb-generate_partitions
   integration-tests
+  yb_docdb_test_common
   ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(ysck-test)
-ADD_YB_TEST(yb-generate_partitions-test)
-ADD_YB_TEST_DEPENDENCIES(yb-generate_partitions-test
-  yb-generate_partitions_main)
+ADD_YB_TEST(yb-bulk_load-test)
+ADD_YB_TEST_DEPENDENCIES(yb-bulk_load-test
+  yb-generate_partitions_main
+  yb-bulk_load)
 ADD_YB_TEST(ysck_remote-test)
 ADD_YB_TEST(yb-admin-test)
 ADD_YB_TEST_DEPENDENCIES(yb-admin-test

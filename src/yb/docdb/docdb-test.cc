@@ -302,8 +302,10 @@ void DocDBTest::TestInsertion(
   // Set write id to zero on the write path.
   ASSERT_OK(dwb.SetPrimitive(doc_path, value));
   ASSERT_OK(WriteToRocksDB(dwb, hybrid_time));
+  string dwb_str;
+  ASSERT_OK(FormatDocWriteBatch(dwb, &dwb_str));
   EXPECT_STR_EQ_VERBOSE_TRIMMED(ApplyEagerLineContinuation(expected_write_batch_str),
-                                FormatDocWriteBatch(dwb));
+                                dwb_str);
 }
 
 void DocDBTest::TestDeletion(
@@ -314,8 +316,10 @@ void DocDBTest::TestDeletion(
   // Set write id to zero on the write path.
   ASSERT_OK(dwb.DeleteSubDoc(doc_path));
   ASSERT_OK(WriteToRocksDB(dwb, hybrid_time));
+  string dwb_str;
+  ASSERT_OK(FormatDocWriteBatch(dwb, &dwb_str));
   EXPECT_STR_EQ_VERBOSE_TRIMMED(ApplyEagerLineContinuation(expected_write_batch_str),
-                                FormatDocWriteBatch(dwb));
+                                dwb_str);
 }
 
 void DocDBTest::CheckExpectedLatestDBState() {
@@ -323,8 +327,10 @@ void DocDBTest::CheckExpectedLatestDBState() {
 
   // Verify that the latest state of the document as seen by our "document walking" facility has
   // not changed.
+  string doc_str;
+  ASSERT_OK(DebugWalkDocument(subdoc_key.Encode(), &doc_str));
   ASSERT_STR_EQ_VERBOSE_TRIMMED(kPredefinedDocumentDebugDumpStr,
-                                DebugWalkDocument(subdoc_key.Encode()));
+                                doc_str);
 
   SubDocument subdoc;
   bool doc_found = false;
@@ -1102,8 +1108,10 @@ TEST_F(DocDBTest, BasicTest) {
 
   // Check the final state of the database.
   AssertDocDbDebugDumpStrEq(kPredefinedDBStateDebugDumpStr);
+  string doc_str;
+  ASSERT_OK(DebugWalkDocument(encoded_doc_key, &doc_str));
   ASSERT_STR_EQ_VERBOSE_TRIMMED(kPredefinedDocumentDebugDumpStr,
-                                DebugWalkDocument(encoded_doc_key));
+                                doc_str);
   CheckExpectedLatestDBState();
 
   // Compaction cleanup testing.
@@ -1176,11 +1184,13 @@ TEST_F(DocDBTest, BasicTest) {
           !', '{')
         )#");
 
+    string doc_str;
+    ASSERT_OK(DebugWalkDocument(encoded_doc_key, &doc_str));
     ASSERT_STR_EQ_VERBOSE_TRIMMED(
         "StartSubDocument(SubDocKey(DocKey([], [\"mydockey\", 123456]), [HT(p=8000)]))\n"
         "StartObject\n"
         "EndObject\n"
-        "EndSubDocument\n", DebugWalkDocument(encoded_doc_key));
+        "EndSubDocument\n", doc_str);
   }
 
   // Reset our collection of snapshots now that we've performed one more operation.
@@ -1247,6 +1257,8 @@ TEST_F(DocDBTest, MultiOperationDocWriteBatch) {
       SubDocKey(DocKey([], ["a"]), ["c", "e"; HT(p=1000, w=4)]) -> "v3"
       )#");
 
+  string dwb_str;
+  ASSERT_OK(FormatDocWriteBatch(dwb, &dwb_str));
   EXPECT_STR_EQ_VERBOSE_TRIMMED(
       R"#(
           1. PutCF('$a\x00\x00!', '{')
@@ -1254,7 +1266,7 @@ TEST_F(DocDBTest, MultiOperationDocWriteBatch) {
           3. PutCF('$a\x00\x00!$c\x00\x00', '{')
           4. PutCF('$a\x00\x00!$c\x00\x00$d\x00\x00', '$v2')
           5. PutCF('$a\x00\x00!$c\x00\x00$e\x00\x00', '$v3')
-      )#", FormatDocWriteBatch(dwb));
+      )#", dwb_str);
 }
 
 TEST_F(DocDBTest, DocRowwiseIteratorTest) {
@@ -1308,7 +1320,9 @@ TEST_F(DocDBTest, DocRowwiseIteratorTest) {
       InitMarkerBehavior::OPTIONAL));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
-  SCOPED_TRACE("\nWrite batch:\n" + FormatDocWriteBatch(dwb));
+  string dwb_str;
+  ASSERT_OK(FormatDocWriteBatch(dwb, &dwb_str));
+  SCOPED_TRACE("\nWrite batch:\n" + dwb_str);
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(1000)));
 
   AssertDocDbDebugDumpStrEq(R"#(
@@ -1426,7 +1440,7 @@ class DocDBTestBoundaryValues : public DocDBTest {
     for (int i = 0; i != kTotalRows; ++i) {
       if (i % flush_rate == 0) {
         trackers.emplace_back();
-        FlushRocksDB();
+        ASSERT_OK(FlushRocksDB());
       }
       auto key_str = "key_" + std::to_string(distribution(rng));
       auto key_int = distribution(rng);
@@ -1440,13 +1454,15 @@ class DocDBTestBoundaryValues : public DocDBTest {
       trackers.back().times(time);
     }
 
-    SCOPED_TRACE("\nWrite batch:\n" + FormatDocWriteBatch(dwb));
+    string dwb_str;
+    ASSERT_OK(FormatDocWriteBatch(dwb, &dwb_str));
+    SCOPED_TRACE("\nWrite batch:\n" + dwb_str);
     ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(1000)));
-    FlushRocksDB();
+    ASSERT_OK(FlushRocksDB());
 
     for (auto i = 0; i != 2; ++i) {
       if (i) {
-        ReopenRocksDB();
+        ASSERT_OK(ReopenRocksDB());
       }
       std::vector<rocksdb::LiveFileMetaData> files;
       rocksdb()->GetLiveFilesMetaData(&files);
@@ -1556,7 +1572,7 @@ TEST_F(DocDBTest, BloomFilterTest) {
   FLAGS_max_nexts_to_avoid_seek = 0;
   // Write batch and flush options.
   DocWriteBatch dwb(rocksdb());
-  FlushRocksDB();
+  ASSERT_OK(FlushRocksDB());
 
   DocKey key1(0, PrimitiveValues("key1"), PrimitiveValues());
   DocKey key2(0, PrimitiveValues("key2"), PrimitiveValues());
@@ -1590,7 +1606,7 @@ TEST_F(DocDBTest, BloomFilterTest) {
   ASSERT_OK(dwb.SetPrimitive(DocPath(key1.Encode()), PrimitiveValue("value")));
   ASSERT_OK(dwb.SetPrimitive(DocPath(key3.Encode()), PrimitiveValue("value")));
   ASSERT_OK(WriteToRocksDB(dwb, ht));
-  FlushRocksDB();
+  ASSERT_OK(FlushRocksDB());
 
   auto get_doc = [this, &doc_from_rocksdb, &subdoc_found_in_rocksdb](const DocKey& key) {
     ASSERT_OK(GetSubDocument(rocksdb(), SubDocKey(key), &doc_from_rocksdb, &subdoc_found_in_rocksdb,
@@ -1618,7 +1634,7 @@ TEST_F(DocDBTest, BloomFilterTest) {
   ASSERT_OK(dwb.SetPrimitive(DocPath(key1.Encode()), PrimitiveValue("value")));
   ASSERT_OK(dwb.SetPrimitive(DocPath(key2.Encode()), PrimitiveValue("value")));
   ASSERT_OK(WriteToRocksDB(dwb, ht));
-  FlushRocksDB();
+  ASSERT_OK(FlushRocksDB());
   ASSERT_NO_FATALS(get_doc(key1));
   ASSERT_NO_FATALS(CheckBloom(0, &total_bloom_useful));
   ASSERT_NO_FATALS(get_doc(key2));
@@ -1631,7 +1647,7 @@ TEST_F(DocDBTest, BloomFilterTest) {
   ASSERT_OK(dwb.SetPrimitive(DocPath(key2.Encode()), PrimitiveValue("value")));
   ASSERT_OK(dwb.SetPrimitive(DocPath(key3.Encode()), PrimitiveValue("value")));
   ASSERT_OK(WriteToRocksDB(dwb, ht));
-  FlushRocksDB();
+  ASSERT_OK(FlushRocksDB());
   ASSERT_NO_FATALS(get_doc(key1));
   ASSERT_NO_FATALS(CheckBloom(2, &total_bloom_useful));
   ASSERT_NO_FATALS(get_doc(key2));
@@ -1654,7 +1670,7 @@ TEST_F(DocDBTest, MergingIterator) {
   DocWriteBatch dwb(rocksdb());
   ASSERT_OK(dwb.SetPrimitive(DocPath(key1.Encode()), PrimitiveValue("value1")));
   ASSERT_OK(WriteToRocksDB(dwb, ht));
-  FlushRocksDB();
+  ASSERT_OK(FlushRocksDB());
 
   // Put bigger key into memtable.
   DocKey key2(234, PrimitiveValues("key2"), PrimitiveValues());

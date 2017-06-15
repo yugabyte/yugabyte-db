@@ -6,6 +6,7 @@
 #include "yb/common/common.pb.h"
 #include "yb/tools/yb-generate_partitions.h"
 #include "yb/util/date_time.h"
+#include "yb/util/enums.h"
 #include "yb/util/status.h"
 #include "yb/util/timestamp.h"
 
@@ -20,29 +21,6 @@ using std::map;
 using std::stoi;
 using std::string;
 using std::vector;
-
-static constexpr const char* kNullString = "null";
-static constexpr const char* kNullStringEscaped = "\\n";
-
-namespace {
-
-CHECKED_STATUS CheckNumber(const string& str) {
-  for (int i = 0; i < str.size(); i++) {
-    const char c = str.at(i);
-    if ((c < '0' || c > '9') && (c != '-' || i != 0)) {
-      return STATUS_SUBSTITUTE(InvalidArgument, "$0 isn't a valid number", str);
-    }
-  }
-  return Status::OK();
-}
-
-bool IsNull(string str) {
-  // Copy string for transformation.
-  boost::to_lower(str);
-  return str == kNullString || str == kNullStringEscaped;
-}
-
-} // Anonymous namespace
 
 YBPartitionGenerator::YBPartitionGenerator(const YBTableName& table_name,
                                            const vector<string>& master_addresses) :
@@ -72,12 +50,17 @@ Status YBPartitionGenerator::BuildTabletMap(const RepeatedPtrField<TabletLocatio
 
 Status YBPartitionGenerator::LookupTabletId(const string& row, string* tablet_id,
                                             string* partition_key) {
-  const YBSchema& schema = table_->schema();
-  vector<string> tokens;
-  boost::split(tokens, row, boost::is_any_of(","));
-  if (tokens.size() < schema.num_hash_key_columns()) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "row '$0' doesn't have enough tokens for primary "
-        "key, need atleast $1", row, schema.num_hash_key_columns());
+  CsvTokenizer tokenizer = Tokenize(row);
+  return LookupTabletIdWithTokenizer(tokenizer, tablet_id, partition_key);
+}
+
+Status YBPartitionGenerator::LookupTabletIdWithTokenizer(const CsvTokenizer& tokenizer,
+                                                         string* tablet_id, string* partition_key) {
+  const Schema &schema = table_->InternalSchema();
+  size_t ncolumns = std::distance(tokenizer.begin(), tokenizer.end());
+  if (ncolumns < schema.num_hash_key_columns()) {
+    return STATUS_SUBSTITUTE(InvalidArgument, "row doesn't have enough columns for primary "
+        "key, found: $0 need atleast $1", ncolumns, schema.num_hash_key_columns());
   }
 
   std::unique_ptr<client::YBqlReadOp> yb_op(table_->NewYQLRead());
@@ -88,35 +71,38 @@ Status YBPartitionGenerator::LookupTabletId(const string& row, string* tablet_id
   YQLReadRequestPB* yql_read = yb_op->mutable_request();
   yql_read->add_hashed_column_values();
 
-  for (int i = 0; i < schema.num_hash_key_columns(); i++) {
-    if (IsNull(tokens[i])) {
-      return STATUS_SUBSTITUTE(IllegalState, "Primary key cannot be null: $0", tokens[i]);
+  auto it = tokenizer.begin();
+  for (int i = 0; i < schema.num_hash_key_columns(); i++, it++) {
+    if (IsNull(*it)) {
+      return STATUS_SUBSTITUTE(IllegalState, "Primary key cannot be null: $0", *it);
     }
 
-    switch(schema.Column(i).type()->type_info()->type()) {
+    DataType column_type = schema.column(i).type_info()->type();
+    int32_t int_val;
+    int64_t long_val;
+    switch(column_type) {
       case DataType::INT8:
-        RETURN_NOT_OK(CheckNumber(tokens[i]));
-        RETURN_NOT_OK(partial_row->SetInt8(i, stoi(tokens[i])));
+        RETURN_NOT_OK(CheckedStoi(*it, &int_val));
+        RETURN_NOT_OK(partial_row->SetInt8(i, int_val));
         break;
       case DataType::INT16:
-        RETURN_NOT_OK(CheckNumber(tokens[i]));
-        RETURN_NOT_OK(partial_row->SetInt16(i, stoi(tokens[i])));
+        RETURN_NOT_OK(CheckedStoi(*it, &int_val));
+        RETURN_NOT_OK(partial_row->SetInt16(i, int_val));
         break;
       case DataType::INT32:
-        RETURN_NOT_OK(CheckNumber(tokens[i]));
-        RETURN_NOT_OK(partial_row->SetInt32(i, stoi(tokens[i])));
+        RETURN_NOT_OK(CheckedStoi(*it, &int_val));
+        RETURN_NOT_OK(partial_row->SetInt32(i, int_val));
         break;
       case DataType::INT64:
-        RETURN_NOT_OK(CheckNumber(tokens[i]));
-        RETURN_NOT_OK(partial_row->SetInt64(i, stol(tokens[i])));
+        RETURN_NOT_OK(CheckedStol(*it, &long_val));
+        RETURN_NOT_OK(partial_row->SetInt64(i, long_val));
+        break;
+      case DataType::STRING:
+        RETURN_NOT_OK(partial_row->SetStringCopy(i, *it));
         break;
       case DataType::TIMESTAMP: {
         Timestamp ts;
-        if (CheckNumber(tokens[i]).ok()) {
-          ts = DateTime::TimestampFromInt(stol(tokens[i]));
-        } else {
-          RETURN_NOT_OK(DateTime::TimestampFromString(tokens[i], &ts));
-        }
+        RETURN_NOT_OK(TimestampFromString(*it, &ts));
         RETURN_NOT_OK(partial_row->SetTimestamp(i, ts.ToInt64()));
         break;
       }
@@ -126,9 +112,9 @@ Status YBPartitionGenerator::LookupTabletId(const string& row, string* tablet_id
       case DataType::MAP: FALLTHROUGH_INTENDED;
       case DataType::SET: FALLTHROUGH_INTENDED;
       case DataType::LIST:
-        LOG(FATAL) << "Invalid datatype for partition column";
+        LOG(FATAL) << "Invalid datatype for partition column: " << column_type;
       default:
-        LOG(FATAL) << "DataType not yet supported";
+        FATAL_INVALID_ENUM_VALUE(DataType, column_type);
     }
   }
 

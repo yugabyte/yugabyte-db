@@ -16,13 +16,14 @@ DocDBTestBase::~DocDBTestBase() {
 
 void DocDBTestBase::SetUp() {
   YBTest::SetUp();
-  InitRocksDBTestOptions();
-  OpenRocksDB();
+  ASSERT_OK(InitRocksDBOptions());
+  ASSERT_OK(InitRocksDBDir());
+  ASSERT_OK(OpenRocksDB());
   ResetMonotonicCounter();
 }
 
 void DocDBTestBase::TearDown() {
-  DestroyRocksDB();
+  ASSERT_OK(DestroyRocksDB());
   YBTest::TearDown();
 }
 

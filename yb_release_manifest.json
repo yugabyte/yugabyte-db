@@ -17,6 +17,7 @@
           "bin/clean_cores.sh",
           "bin/bulk_load_helper.sh",
           "build/latest/bin/yb-generate_partitions_main",
+          "build/latest/bin/yb-bulk_load",
           "thirdparty/installed/uninstrumented/bin/*",
           "thirdparty/build/common/cqlsh/bin/*"],
   "lib"      : ["thirdparty/build/common/cqlsh/lib/*"],

@@ -13,15 +13,15 @@
 
 DEFINE_string(master_addresses, "", "Comma-separated list of YB Master server addresses");
 DEFINE_string(table_name, "", "Name of the table to generate partitions for");
-DEFINE_string(namespace_name, yb::master::kDefaultNamespaceName, "Namespace of the table");
+DEFINE_string(namespace_name, "", "Namespace of the table");
 
 using std::string;
 
 int main(int argc, char** argv) {
   yb::ParseCommandLineFlags(&argc, &argv, true);
   yb::InitGoogleLoggingSafe(argv[0]);
-  if (FLAGS_master_addresses.empty() || FLAGS_table_name.empty()) {
-    LOG(ERROR) << "Need to specify both --master_addresses and --table_name";
+  if (FLAGS_master_addresses.empty() || FLAGS_table_name.empty() || FLAGS_namespace_name.empty()) {
+    LOG (ERROR) << "Need to specify both --master_addresses, --table_name and --namespace_name";
     return 1;
   }
 

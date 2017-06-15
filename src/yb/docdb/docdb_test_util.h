@@ -12,6 +12,7 @@
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb.h"
+#include "yb/docdb/docdb_util.h"
 #include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/in_mem_docdb.h"
 #include "yb/docdb/primitive_value.h"
@@ -58,33 +59,6 @@ const T& RandomElementOf(const std::vector<T>& v, RandomNumberGenerator* rng) {
   return v[(*rng)() % v.size()];
 }
 
-// Perform a major compaction on the given database.
-void FullyCompactDB(rocksdb::DB* rocksdb);
-
-// An implementation of the document node visitor interface that dumps all events (document
-// start/end, object keys and values, etc.) to a string as separate lines.
-class DebugDocVisitor : public DocVisitor {
- public:
-  DebugDocVisitor();
-  virtual ~DebugDocVisitor();
-
-  CHECKED_STATUS StartSubDocument(const SubDocKey &key) override;
-
-  CHECKED_STATUS VisitKey(const PrimitiveValue& key) override;
-  CHECKED_STATUS VisitValue(const PrimitiveValue& value) override;
-
-  CHECKED_STATUS EndSubDocument() override;
-  CHECKED_STATUS StartObject() override;
-  CHECKED_STATUS EndObject() override;
-  CHECKED_STATUS StartArray() override;
-  CHECKED_STATUS EndArray() override;
-
-  std::string ToString();
-
- private:
-  std::stringstream out_;
-};
-
 class LogicalRocksDBDebugSnapshot {
  public:
   LogicalRocksDBDebugSnapshot() {}
@@ -95,146 +69,27 @@ class LogicalRocksDBDebugSnapshot {
   string docdb_debug_dump_str;
 };
 
-// A wrapper around a RocksDB instance and provides utility functions on top of it, such as
-// compacting the history until a certain point. This is also a convenient base class for GTest test
-// classes, because it exposes member functions such as rocksdb() and write_oiptions().
-class DocDBRocksDBFixture {
-
+class DocDBRocksDBFixtureTest : public DocDBRocksDBUtil {
  public:
-  DocDBRocksDBFixture();
-  virtual ~DocDBRocksDBFixture();
-
-  // Initializes RocksDB options, should be called after constructor, because it uses virtual
-  // function BlockCacheSize.
-  void InitRocksDBTestOptions();
-
-  // Size of block cache for RocksDB, 0 means don't use block cache.
-  virtual size_t block_cache_size() const { return 16 * 1024 * 1024; }
-
-  rocksdb::DB* rocksdb();
-
-  const rocksdb::WriteOptions& write_options() const { return write_options_; }
-
-  const rocksdb::Options& options() const { return rocksdb_options_; }
-
-  void OpenRocksDB();
-  void ReopenRocksDB();
-  void DestroyRocksDB();
-  void ResetMonotonicCounter();
-
-  // Populates the given RocksDB write batch from the given DocWriteBatch. If a valid hybrid_time is
-  // specified, it is appended to every key.
-  void PopulateRocksDBWriteBatch(
-      const DocWriteBatch& dwb,
-      rocksdb::WriteBatch *rocksdb_write_batch,
-      HybridTime hybrid_time = HybridTime::kInvalidHybridTime) const;
-
-  // Writes the given DocWriteBatch to RocksDB. We substitue the hybrid time, if provided.
-  CHECKED_STATUS WriteToRocksDB(const DocWriteBatch& write_batch, const HybridTime& hybrid_time);
-
-  // The same as WriteToRocksDB but also clears the write batch afterwards.
-  CHECKED_STATUS WriteToRocksDBAndClear(DocWriteBatch* dwb, const HybridTime& hybrid_time);
-
-  std::string FormatDocWriteBatch(const DocWriteBatch& dwb);
-
-  void SetHistoryCutoffHybridTime(HybridTime history_cutoff);
-  void CompactHistoryBefore(HybridTime history_cutoff);
-
-  // Produces a string listing the contents of the entire RocksDB database, with every key and value
-  // decoded as a DocDB key/value and converted to a human-readable string representation.
-  std::string DocDBDebugDumpToStr();
-
-  // Checks that contents of the entire RocksDB database is exactly as expected.
   void AssertDocDbDebugDumpStrEq(const string &expected);
-
+  void CompactHistoryBefore(HybridTime history_cutoff);
+  CHECKED_STATUS InitRocksDBDir() override;
+  CHECKED_STATUS InitRocksDBOptions() override;
+  std::string tablet_id() override;
+  CHECKED_STATUS FormatDocWriteBatch(const DocWriteBatch& dwb, std::string* dwb_str);
   // "Walks" the latest state of the given document using using DebugDocVisitor and returns a string
   // that lists all "events" encountered (document start/end, object start/end/keys/values, etc.)
-  std::string DebugWalkDocument(const KeyBytes& encoded_doc_key);
-
-  // ----------------------------------------------------------------------------------------------
-  // SetPrimitive taking a Value
-
-  CHECKED_STATUS SetPrimitive(
-      const DocPath& doc_path,
-      const Value& value,
-      HybridTime hybrid_time,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED);
-
-  CHECKED_STATUS SetPrimitive(
-      const DocPath& doc_path,
-      const PrimitiveValue& value,
-      HybridTime hybrid_time,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED);
-
-  CHECKED_STATUS InsertSubDocument(
-      const DocPath& doc_path,
-      const SubDocument& value,
-      HybridTime hybrid_time,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL);
-
-  CHECKED_STATUS ExtendSubDocument(
-      const DocPath& doc_path,
-      const SubDocument& value,
-      HybridTime hybrid_time,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL);
-
-  CHECKED_STATUS ExtendList(
-      const DocPath& doc_path,
-      const SubDocument& value,
-      const ListExtendOrder extend_order,
-      HybridTime hybrid_time,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL);
-
-  CHECKED_STATUS ReplaceInList(
-      const DocPath &doc_path,
-      const std::vector<int>& indexes,
-      const std::vector<SubDocument>& values,
-      const HybridTime& current_time, // Used for reading.
-      const HybridTime& hybrid_time,
-      const rocksdb::QueryId query_id,
-      MonoDelta table_ttl = Value::kMaxTtl,
-      MonoDelta ttl = Value::kMaxTtl,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL);
-
-  CHECKED_STATUS DeleteSubDoc(
-      const DocPath& doc_path,
-      HybridTime hybrid_time,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED);
-
-  void DocDBDebugDumpToConsole();
-
-  void FlushRocksDB();
-
-  void SetTableTTL(uint64_t ttl_msec);
-
-  void DisableCompactions() {
-    rocksdb_options_.compaction_style = rocksdb::kCompactionStyleNone;
-    ReopenRocksDB();
-  }
-
-  void ReinitDBOptions();
-
-  std::atomic<int64_t>* monotonic_counter() {
-    return &monotonic_counter_;
-  }
-
- private:
-  std::shared_ptr<rocksdb::Cache> block_cache_;
-  std::unique_ptr<rocksdb::DB> rocksdb_;
-  std::atomic<int64_t> monotonic_counter_;
-  std::shared_ptr<HistoryRetentionPolicy> retention_policy_;
-  Schema schema_;
-  rocksdb::Options rocksdb_options_;
-  rocksdb::WriteOptions write_options_;
-  string rocksdb_dir_;
-  rocksdb::OpId op_id_ = {1, 42};
+  CHECKED_STATUS DebugWalkDocument(const KeyBytes& encoded_doc_key, std::string* doc_str);
 };
+
+// Perform a major compaction on the given database.
+CHECKED_STATUS FullyCompactDB(rocksdb::DB* rocksdb);
 
 class DocDBLoadGenerator {
  public:
   static constexpr uint64_t kDefaultRandomSeed = 23874297385L;
 
-  DocDBLoadGenerator(DocDBRocksDBFixture* fixture,
+  DocDBLoadGenerator(DocDBRocksDBFixtureTest* fixture,
                      int num_doc_keys,
                      int num_unique_subkeys,
                      bool use_hash,
@@ -302,7 +157,7 @@ class DocDBLoadGenerator {
  private:
   rocksdb::DB* rocksdb() { return fixture_->rocksdb(); }
 
-  DocDBRocksDBFixture* fixture_;
+  DocDBRocksDBFixtureTest* fixture_;
   RandomNumberGenerator random_;  // Using default seed.
   std::vector<DocKey> doc_keys_;
   std::vector<PrimitiveValue> possible_subkeys_;

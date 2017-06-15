@@ -5,9 +5,10 @@
 
 #include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
-#include "yb/master/master.pb.h"
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
+#include "yb/master/master.pb.h"
+#include "yb/tools/bulk_load_utils.h"
 
 namespace yb {
 namespace tools {
@@ -29,6 +30,8 @@ class YBPartitionGenerator {
   // columns of the table.
   CHECKED_STATUS LookupTabletId(const std::string &row, std::string *tablet_id,
                                 std::string* partition_key);
+  CHECKED_STATUS LookupTabletIdWithTokenizer(const CsvTokenizer& tokenizer, std::string *tablet_id,
+                                             std::string* partition_key);
 
  private:
   CHECKED_STATUS BuildTabletMap(

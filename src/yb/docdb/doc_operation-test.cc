@@ -492,7 +492,7 @@ class DocOperationRangeFilterTest : public DocOperationTest {
 };
 
 void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType type) {
-  DisableCompactions();
+  ASSERT_OK(DisableCompactions());
 
   ColumnSchema hash_column("k", INT32, false, true);
   ColumnSchema range_column("r", INT32, false, false, false, false, type);
@@ -519,7 +519,7 @@ void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType 
                 { row.k, row.r, row.v },
                 1000,
                 t);
-    FlushRocksDB();
+    ASSERT_OK(FlushRocksDB());
   }
   std::vector<rocksdb::LiveFileMetaData> live_files;
   rocksdb()->GetLiveFilesMetaData(&live_files);
@@ -673,7 +673,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(p=1000, l=1, w=2)]) -> 30; t
 TEST_F(DocOperationTest, MaxFileSizeForCompaction) {
   google::FlagSaver flag_saver;
 
-  DisableCompactions();
+  ASSERT_OK(DisableCompactions());
   auto schema = CreateSchema();
 
   auto t0 = HybridTime::FromMicrosecondsAndLogicalValue(1000, 0);
@@ -699,7 +699,7 @@ TEST_F(DocOperationTest, MaxFileSizeForCompaction) {
     for (int j = base; j != base + count; ++j) {
       WriteYQLRow(YQLWriteRequestPB_YQLStmtType_YQL_STMT_INSERT, schema, {j, j, j, j}, 1000000, t0);
     }
-    FlushRocksDB();
+    ASSERT_OK(FlushRocksDB());
   }
 
   std::vector<rocksdb::LiveFileMetaData> files;
@@ -707,7 +707,7 @@ TEST_F(DocOperationTest, MaxFileSizeForCompaction) {
   ASSERT_EQ(kTotalBatches, files.size());
 
   FLAGS_rocksdb_max_file_size_for_compaction = 100_KB;
-  ReinitDBOptions();
+  ASSERT_OK(ReinitDBOptions());
 
   // Wait some time for background compactions to happen.
   std::this_thread::sleep_for(std::chrono::seconds(2));

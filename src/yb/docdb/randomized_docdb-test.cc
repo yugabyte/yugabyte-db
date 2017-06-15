@@ -59,8 +59,8 @@ class RandomizedDocDBTest : public DocDBTestBase {
   void Init(const bool use_hash) {
     if (load_gen_.get() != nullptr) {
       ClearLogicalSnapshots();
-      DestroyRocksDB();
-      ReopenRocksDB();
+      ASSERT_OK(DestroyRocksDB());
+      ASSERT_OK(ReopenRocksDB());
     }
     load_gen_.reset(new DocDBLoadGenerator(this, kNumDocKeys, kNumUniqueSubKeys, use_hash));
     SeedRandom();
@@ -101,7 +101,7 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
     }
     ASSERT_NO_FATALS(load_gen_->PerformOperation()) << "at iteration " << current_iteration;
     if (current_iteration % kFlushFrequency == 0) {
-      ASSERT_NO_FATALS(FlushRocksDB());
+      ASSERT_OK(FlushRocksDB());
     }
     if (current_iteration % snapshot_frequency == 0) {
       load_gen_->CaptureDocDbSnapshot();
