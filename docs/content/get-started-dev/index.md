@@ -10,9 +10,9 @@ Getting started with YugaByte in a developer's **localhost** environment is easy
 
 ### Docker
 
-#### Mac OS
+#### Mac OS or Windows Desktop
 
-- Install [Docker for Mac](https://docs.docker.com/docker-for-mac/install/). Please check carefully that all prerequisites are met.
+- Install [Docker for Mac](https://docs.docker.com/docker-for-mac/install/) or [Docker for Windows](https://store.docker.com/editions/community/docker-ce-desktop-windows). Please check carefully that all prerequisites are met.
 
 - Confirm that the Docker daemon is running in the background. If you don't see the daemon running, start the Docker application
 
@@ -93,7 +93,7 @@ cqlsh>
 ```sh
 cqlsh> describe keyspaces;
 
-system_schema  system  "$$$_DEFAULT"
+system_schema  system  default_keyspace
 
 cqlsh> 
 
@@ -143,7 +143,7 @@ log4j:WARN See http://logging.apache.org/log4j/1.2/faq.html#noconfig for more in
 2017-04-26 15:33:15,539 [INFO|com.yugabyte.sample.common.metrics.MetricsTracker|MetricsTracker] Read: 0.00 ops/sec (0.00 ms/op), 0 total ops  |  Write: 0.00 ops/sec (0.00 ms/op), 0 total ops  |  Uptime: 5079 ms | Verification: ON | 
 2017-04-26 15:33:16,326 [INFO|com.yugabyte.sample.apps.CassandraTimeseries|CassandraTimeseries] Ignoring exception dropping table: SQL error (yb/sql/ptree/process_context.cc:36): SQL Error (1.11): Table Not Found - Not found (yb/common/wire_protocol.cc:119): The table does not exist: table_name: "ts_metrics_raw"
 namespace {
-  name: "$$$_DEFAULT"
+  name: default_keyspace
 }
 
 	ts_metrics_raw;
