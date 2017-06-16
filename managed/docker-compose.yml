@@ -1,3 +1,4 @@
+# Copyright (c) YugaByte, Inc.
 version: '2'
 
 services:
@@ -10,6 +11,7 @@ services:
       - /etc/yugaware
       - /opt/yugabyte
       - thirdparty-deps:/opt/yugabyte/third-party
+      - nginx-conf:/etc/yugaware/nginx
     expose:
       - 9000
     ports:
@@ -43,7 +45,7 @@ services:
 
   thirdparty-deps:
     volumes:
-      - thirdparty-deps:/opt/yugabyte/third-party
+      - thirdparty-deps:/opt/third-party
     image: quay.io/yugabyte/thirdparty-deps:latest
     network_mode: bridge
 
@@ -64,7 +66,7 @@ services:
   nginx:
     image: nginx:latest
     volumes:
-      - ./docker/nginx/:/etc/nginx/conf.d/
+      - nginx-conf:/etc/nginx/conf.d/
     links:
       - yugaware
       - yugaware-ui
@@ -114,4 +116,4 @@ services:
 
 volumes:
   thirdparty-deps:
-
+  nginx-conf:
