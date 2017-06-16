@@ -28,6 +28,7 @@
 #include "yb/util/random.h"
 #include "yb/util/spinlock_profiling.h"
 #include "yb/util/thread.h"
+#include "yb/util/logging.h"
 
 DEFINE_string(test_leave_files, "on_failure",
               "Whether to leave test files around after the test run. "
@@ -80,6 +81,7 @@ YBTest::~YBTest() {
 
 void YBTest::SetUp() {
   InitSpinLockContentionProfiling();
+  InitGoogleLoggingSafeBasic("yb_test");
 }
 
 string YBTest::GetTestPath(const string& relative_path) {

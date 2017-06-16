@@ -29,17 +29,22 @@
 
 #include "yb/util/logging.h"
 
+#include <stdio.h>
+
+#include <sstream>
+#include <iostream>
+#include <fstream>
+
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/uuid/uuid_generators.hpp>
-#include <sstream>
-#include <stdio.h>
-#include <iostream>
-#include <fstream>
+
 #include <glog/logging.h>
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/spinlock.h"
+
+#include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
 
 DEFINE_string(log_filename, "",
@@ -123,6 +128,23 @@ void UnregisterLoggingCallbackUnlocked() {
   registered_sink = nullptr;
 }
 
+void DumpStackTraceAndExit() {
+  const auto stack_trace = GetStackTrace();
+  if (write(STDERR_FILENO, stack_trace.c_str(), stack_trace.length()) < 0) {
+    // Ignore errors.
+  }
+
+  // Set the default signal handler for SIGABRT, to avoid invoking our
+  // own signal handler installed by InstallFailedSignalHandler().
+  struct sigaction sig_action;
+  memset(&sig_action, 0, sizeof(sig_action));
+  sigemptyset(&sig_action.sa_mask);
+  sig_action.sa_handler = SIG_DFL;
+  sigaction(SIGABRT, &sig_action, NULL);
+
+  abort();
+}
+
 } // anonymous namespace
 
 void InitGoogleLoggingSafe(const char* arg) {
@@ -168,6 +190,8 @@ void InitGoogleLoggingSafe(const char* arg) {
 
   google::InitGoogleLogging(arg);
 
+  google::InstallFailureFunction(DumpStackTraceAndExit);
+
   // Needs to be done after InitGoogleLogging
   if (FLAGS_log_filename.empty()) {
     CHECK_STRNE(google::ProgramInvocationShortName(), "UNKNOWN")
@@ -187,6 +211,8 @@ void InitGoogleLoggingSafeBasic(const char* arg) {
   if (logging_initialized) return;
 
   google::InitGoogleLogging(arg);
+
+  google::InstallFailureFunction(DumpStackTraceAndExit);
 
   // This also disables file-based logging.
   google::LogToStderr();
