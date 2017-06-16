@@ -184,9 +184,11 @@ void CQLServiceImpl::MoveLruPreparedStatementUnlocked(const shared_ptr<CQLStatem
   prepared_stmts_list_.splice(prepared_stmts_list_.begin(), prepared_stmts_list_, stmt->pos());
 }
 
-void CQLServiceImpl::DeletePreparedStatementUnlocked(const std::shared_ptr<CQLStatement>& stmt) {
+void CQLServiceImpl::DeletePreparedStatementUnlocked(const std::shared_ptr<CQLStatement> stmt) {
   // Remove statement from cache by looking it up by query ID and only when it is same statement
-  // object.
+  // object. Note that the "stmt" parameter above is not a ref ("&") intentionally so that we have
+  // a separate copy of the shared_ptr and not the very shared_ptr in prepared_stmts_map_ or
+  // prepared_stmt_list_ we are deleting.
   const auto itr = prepared_stmts_map_.find(stmt->query_id());
   if (itr != prepared_stmts_map_.end() && itr->second == stmt) {
     prepared_stmts_map_.erase(itr);
