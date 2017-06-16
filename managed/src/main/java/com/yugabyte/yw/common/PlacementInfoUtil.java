@@ -34,6 +34,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
@@ -136,7 +137,6 @@ public class PlacementInfoUtil {
       return null;
     }
     NodeDetails node = nodes.iterator().next();
-    LOG.info("NODE {} {}", node.azUuid, node.nodeName);
     Provider cloud = AvailabilityZone.find.byId(node.azUuid).region.provider;
     return cloud.uuid;
   }
@@ -194,6 +194,25 @@ public class PlacementInfoUtil {
       return true;
     }
     return getAzUuidToNumNodes(taskParams.placementInfo).size() > 1;
+  }
+
+  // Helper API to catch duplicated node names in the given set of nodes.
+  public static void ensureUniqueNodeNames(Collection<NodeDetails> nodes) {
+    boolean foundDups = false;
+    Set<String> nodeNames = new HashSet<String>();
+
+    for (NodeDetails node : nodes) {
+      if (nodeNames.contains(node.nodeName)) {
+        LOG.error("Duplicate nodeName {}.", node.nodeName);
+        foundDups = true;
+      } else {
+        nodeNames.add(node.nodeName);
+      }
+    }
+
+    if (foundDups) {
+      throw new RuntimeException("Found duplicated node names, error info in logs just above.");
+    }
   }
 
   /**
@@ -287,6 +306,7 @@ public class PlacementInfoUtil {
     configureNodeStates(taskParams, universe, mode);
 
     LOG.info("Set of nodes after updating placement:{}.", taskParams.nodeDetailsSet);
+    ensureUniqueNodeNames(taskParams.nodeDetailsSet);
     LOG.info("Placement info:{}.", taskParams.placementInfo);
   }
 
@@ -650,11 +670,11 @@ public class PlacementInfoUtil {
   }
 
   private static void configureNodesUsingPlacementInfo(UniverseDefinitionTaskParams taskParams,
-                                                       boolean isEditUniverse,
-                                                       int startIndex) {
+                                                       boolean isEditUniverse) {
     LinkedHashSet<PlacementIndexes> indexes =
         getDeltaPlacementIndices(taskParams.placementInfo, taskParams.nodeDetailsSet);
     Set<NodeDetails> deltaNodesSet = new HashSet<NodeDetails>();
+    int startIndex = getNextIndexToConfigure(taskParams.nodeDetailsSet);
     int iter = 0;
     for (PlacementIndexes index : indexes) {
       if (index.action == Action.ADD) {
@@ -682,8 +702,7 @@ public class PlacementInfoUtil {
   }
 
   private static void configureNodesUsingUserIntent(UniverseDefinitionTaskParams taskParams,
-                                                    boolean isEditUniverse,
-                                                    int startIndex) {
+                                                    boolean isEditUniverse) {
     int numDeltaNodes = taskParams.userIntent.numNodes - taskParams.nodeDetailsSet.size();
     Map<String, NodeDetails> deltaNodesMap = new HashMap<String, NodeDetails>();
     Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(taskParams.nodeDetailsSet);
@@ -711,13 +730,14 @@ public class PlacementInfoUtil {
     } else {
       LinkedHashSet<PlacementIndexes> indexes =
           findPlacementsOfAZUuid(sortByValues(azUuidToNumNodes, true), taskParams.placementInfo);
+      int startIndex = getNextIndexToConfigure(taskParams.nodeDetailsSet);
       addNodeDetailSetToTaskParams(indexes, startIndex, numDeltaNodes, taskParams, deltaNodesMap);
     }
   }
 
   private static void configureDefaultNodeStates(UniverseDefinitionTaskParams taskParams,
                                                  Universe universe) {
-    int startIndex = universe != null ? getStartIndex(universe.getNodes()) : 1;
+    int startIndex = universe != null ? getNextIndexToConfigure(universe.getNodes()) : 1;
     int numNodes = taskParams.userIntent.numNodes;
     int numMastersToChoose =  taskParams.userIntent.replicationFactor;
     Map<String, NodeDetails> deltaNodesMap = new HashMap<String, NodeDetails>();
@@ -756,12 +776,12 @@ public class PlacementInfoUtil {
         break;
       case UPDATE_CONFIG_FROM_PLACEMENT_INFO:
         // The case where there are custom expand/shrink in the placement info.
-        configureNodesUsingPlacementInfo(taskParams, universe != null, taskParams.nodeDetailsSet.size() + 1);
+        configureNodesUsingPlacementInfo(taskParams, universe != null);
         break;
       case UPDATE_CONFIG_FROM_USER_INTENT:
         // Case where userIntent numNodes has to be favored - as it is different from the
         // sum of all per AZ node counts).
-        configureNodesUsingUserIntent(taskParams, universe != null, taskParams.nodeDetailsSet.size() + 1);
+        configureNodesUsingUserIntent(taskParams, universe != null);
         break;
      }
 
@@ -918,9 +938,21 @@ public class PlacementInfoUtil {
     }
   }
 
+  // Returns the start index for provisioning new nodes based on the current maximum node index
+  // across existing nodes. If called for a new universe being created, then it will return a
+  // start index of 1.
+  public static int getStartIndex(Collection<NodeDetails> nodes) {
+    int maxNodeIdx = 0;
+    for (NodeDetails node : nodes) {
+      if (node.state != NodeDetails.NodeState.ToBeAdded && node.nodeIdx > maxNodeIdx) {
+        maxNodeIdx = node.nodeIdx;
+      }
+    }
+    return maxNodeIdx + 1;
+  }
+
   // Returns the start index for provisioning new nodes based on the current maximum node index.
-  // If this is called for a new universe being created, then the start index will be 1.
-  private static int getStartIndex(Collection<NodeDetails> existingNodes) {
+  public static int getNextIndexToConfigure(Collection<NodeDetails> existingNodes) {
     int maxNodeIdx = 0;
     if (existingNodes != null) {
       for (NodeDetails node : existingNodes) {

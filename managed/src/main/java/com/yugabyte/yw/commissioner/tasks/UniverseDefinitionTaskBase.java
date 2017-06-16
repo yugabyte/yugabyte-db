@@ -91,31 +91,63 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return universe;
   }
 
-  // Fix up the name of all the nodes.
+  // Helper data structure to save the new name and index of nodes for quick lookup using the
+  // old name of nodes.
+  private class NameAndIndex {
+    String name;
+    int index;
+
+    public NameAndIndex(String name, int index) {
+      this.name = name;
+      this.index = index;
+    }
+    
+    public String toString() {
+      return "{name: " + name + ", index: " + index + "}";
+    }
+  }
+
+  // Fix up the name of all the nodes. This fixes the name and the node index for the newly created nodes.
   public void updateNodeNames() {
+    Collection<NodeDetails> nodes = taskParams().nodeDetailsSet;
+    int iter = 0;
+    int startIndex =
+        PlacementInfoUtil.getStartIndex(Universe.get(taskParams().universeUUID).getNodes());
+
+    final Map<String, NameAndIndex> oldToNewName = new HashMap<String, NameAndIndex>();
+    for (NodeDetails node : nodes) {
+      if (node.state == NodeDetails.NodeState.ToBeAdded) {
+        node.nodeIdx = startIndex + iter;
+        String newName = taskParams().nodePrefix + "-n" + node.nodeIdx;
+        LOG.info("Changing in-memory node name from {} to {}.", node.nodeName , newName);
+        oldToNewName.put(node.nodeName, new NameAndIndex(newName, node.nodeIdx));
+        node.nodeName = newName;
+        iter++;
+      }
+    }
+
+    PlacementInfoUtil.ensureUniqueNodeNames(taskParams().nodeDetailsSet);
+
     // Persist the desired node information into the DB.
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
       public void run(Universe universe) {
-        for (NodeDetails node : universe.getNodes()) {
-          // Since we have already set the 'updateInProgress' flag on this universe in the DB and
-          // this step is single threaded, we are guaranteed no one else will be modifying it.
-          // Replace the entire node value.
-          String newName = taskParams().nodePrefix + "-n" + node.nodeIdx;
-          LOG.info("Changing node name from {} to {}.", node.nodeName, newName);
-          node.nodeName = newName;
+        Collection<NodeDetails> univNodes = universe.getNodes();
+        for (NodeDetails node : univNodes) {
+          if (node.state == NodeDetails.NodeState.ToBeAdded) {
+            // Since we have already set the 'updateInProgress' flag on this universe in the DB and
+            // this step is single threaded, we are guaranteed no one else will be modifying it.
+            NameAndIndex newInfo = oldToNewName.get(node.nodeName);
+            LOG.info("Changing node name from {} to newInfo={}.", node.nodeName, newInfo);
+            node.nodeName = newInfo.name;
+            node.nodeIdx = newInfo.index;
+          }
         }
       }
     };
     Universe universe = Universe.saveDetails(taskParams().universeUUID, updater);
     LOG.debug("Updated {} nodes in universe {}.",
               taskParams().nodeDetailsSet.size(), taskParams().universeUUID);
-
-    for (NodeDetails node : taskParams().nodeDetailsSet) {
-      String newName = taskParams().nodePrefix + "-n" + node.nodeIdx;
-      LOG.info("Changing in-memory node name from " + node.nodeName + " to " + newName);
-      node.nodeName = newName;
-    }
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     if (universeDetails.cloud == CloudType.onprem) {
