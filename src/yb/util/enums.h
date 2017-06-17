@@ -13,6 +13,8 @@
 #include <boost/preprocessor/punctuation/is_begin_parens.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 
+#include "yb/util/debug-util.h"
+
 namespace yb {
 namespace util {
 
@@ -77,6 +79,42 @@ constexpr typename std::underlying_type<E>::type to_underlying(E e) {
 
 #define YB_DEFINE_ENUM(enum_name, list) YB_DEFINE_ENUM_IMPL(enum_name, BOOST_PP_NIL, list)
 #define YB_DEFINE_ENUM_EX(enum_name, prefix, list) YB_DEFINE_ENUM_IMPL(enum_name, (prefix), list)
+
+// This macro can be used after exhaustive (compile-time-checked) switches on enums without a
+// default clause to handle invalid values due to memory corruption.
+//
+// switch (my_enum_value) {
+//   case MyEnum::FOO:
+//     // some handling
+//     return;
+//   . . .
+//   case MyEnum::BAR:
+//     // some handling
+//     return;
+// }
+// FATAL_INVALID_ENUM_VALUE(MyEnum, my_enum_value);
+//
+// This uses a function marked with [[noreturn]] so that the compiler will not complain about
+// functions not returning a value.
+//
+// We need to specify the enum name because there does not seem to be an non-RTTI way to get
+// a type name string from a type in a template.
+#define FATAL_INVALID_ENUM_VALUE(enum_type, value_macro_arg) \
+    do { \
+      auto _value_copy = (value_macro_arg); \
+      static_assert( \
+          std::is_same<decltype(_value_copy), enum_type>::value, \
+          "Type of enum value passed to FATAL_INVALID_ENUM_VALUE must be " \
+          BOOST_PP_STRINGIZE(enum_type)); \
+      ::yb::util::FatalInvalidEnumValueInternal<enum_type>( \
+          BOOST_PP_STRINGIZE(enum_type), _value_copy); \
+    } while (0)
+
+template<typename Enum>
+[[noreturn]] void FatalInvalidEnumValueInternal(const std::string& enum_name, Enum value) {
+  LOG(FATAL) << "Invalid value of " << enum_name << ": " << to_underlying(value);
+  abort();  // Never reached.
+}
 
 }  // namespace util
 }  // namespace yb

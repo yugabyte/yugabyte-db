@@ -741,7 +741,7 @@ const char* PeerMessageQueue::ModeToStr(Mode mode) {
     case Mode::LEADER: return "LEADER";
     case Mode::NON_LEADER: return "NON_LEADER";
   }
-  LOG(FATAL) << "Invalid PeerMessageQueue::Mode: " << to_underlying(mode);
+  FATAL_INVALID_ENUM_VALUE(PeerMessageQueue::Mode, mode);
 }
 
 const char* PeerMessageQueue::StateToStr(State state) {
@@ -754,7 +754,7 @@ const char* PeerMessageQueue::StateToStr(State state) {
       return "QUEUE_CLOSED";
 
   }
-  LOG(FATAL) << "Invalid PeerMessageQueue::State: " << to_underlying(state);
+  FATAL_INVALID_ENUM_VALUE(PeerMessageQueue::State, state);
 }
 
 bool PeerMessageQueue::IsOpInLog(const OpId& desired_op) const {
