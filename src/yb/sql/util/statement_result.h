@@ -70,7 +70,7 @@ class ExecutedResult {
 // Callback to be called after a statement is executed. When execution fails, a not-ok status is
 // passed. When it succeeds, an ok status and the execution result are passed. When there is no
 // result (i.e. void), a nullptr is passed.
-typedef Callback<void(const Status&, ExecutedResult::SharedPtr)> StatementExecutedCallback;
+typedef Callback<void(const Status&, const ExecutedResult::SharedPtr&)> StatementExecutedCallback;
 
 //------------------------------------------------------------------------------------------------
 // Result of "USE <keyspace>" statement.

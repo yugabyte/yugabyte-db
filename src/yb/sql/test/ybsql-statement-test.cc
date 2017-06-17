@@ -24,7 +24,7 @@ class YbSqlStatement : public YbSqlTestBase {
   }
 
   void ExecuteAsyncDone(
-      Callback<void(const Status&)> cb, const Status& s, ExecutedResult::SharedPtr result) {
+      Callback<void(const Status&)> cb, const Status& s, const ExecutedResult::SharedPtr& result) {
     cb.Run(s);
   }
 

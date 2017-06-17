@@ -170,15 +170,15 @@ class Executor {
 
   void SelectAsyncDone(
       const PTSelectStmt *tnode, StatementExecutedCallback cb, RowsResult::SharedPtr current_result,
-      const Status &s, ExecutedResult::SharedPtr new_result);
+      const Status &s, const ExecutedResult::SharedPtr& new_result);
 
   void PTNodeAsyncDone(
       const PTListNode *lnode, int index, StatementExecutedCallback cb, const Status &s,
-      ExecutedResult::SharedPtr result);
+      const ExecutedResult::SharedPtr& result);
 
   void ExecuteDone(
       const ParseTree *ptree, MonoTime start, StatementExecutedCallback cb, const Status &s,
-      ExecutedResult::SharedPtr result);
+      const ExecutedResult::SharedPtr& result);
 
   //------------------------------------------------------------------------------------------------
   // Execution context which are created and destroyed for each execution.

@@ -18,7 +18,7 @@ SemContext::SemContext(const char *sql_stmt,
                        ParseTree::UniPtr parse_tree,
                        SqlEnv *sql_env)
     : ProcessContext(sql_stmt, stmt_len, move(parse_tree)),
-      symtab_(&ptemp_mem_),
+      symtab_(PTempMem()),
       sql_env_(sql_env),
       cache_used_(false),
       current_table_(nullptr),

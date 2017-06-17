@@ -20,8 +20,7 @@ using std::string;
 ProcessContextBase::ProcessContextBase(const char *stmt, size_t stmt_len)
     : stmt_(stmt),
       stmt_len_(stmt_len),
-      error_code_(ErrorCode::SUCCESS),
-      error_msgs_(&ptemp_mem_) {
+      error_code_(ErrorCode::SUCCESS) {
 }
 
 ProcessContextBase::~ProcessContextBase() {
@@ -29,10 +28,17 @@ ProcessContextBase::~ProcessContextBase() {
 
 //--------------------------------------------------------------------------------------------------
 
+MCString* ProcessContextBase::error_msgs() {
+  if (error_msgs_ == nullptr) {
+    error_msgs_.reset(new MCString(PTempMem()));
+  }
+  return error_msgs_.get();
+}
+
 CHECKED_STATUS ProcessContextBase::GetStatus() {
   // Erroneous index is negative while successful index is non-negative.
   if (error_code_ < ErrorCode::SUCCESS) {
-    return STATUS(SqlError, error_msgs_.c_str(), Slice(), static_cast<int64_t>(error_code_));
+    return STATUS(SqlError, error_msgs()->c_str(), Slice(), static_cast<int64_t>(error_code_));
   }
   return Status::OK();
 }
@@ -84,7 +90,7 @@ CHECKED_STATUS ProcessContextBase::Error(const YBLocation& l,
   msg += "\n";
 
   // Append this error message to the context.
-  error_msgs_.append(msg);
+  error_msgs()->append(msg);
   VLOG(3) << msg;
   return STATUS(SqlError, msg.c_str(), Slice(), static_cast<int64_t>(error_code_));
 }

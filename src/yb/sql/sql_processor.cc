@@ -176,7 +176,7 @@ void SqlProcessor::ExecuteAsyncDone(const MonoTime &begin_time,
                                     StatementExecutedCallback cb,
                                     const bool reparsed,
                                     const Status &s,
-                                    ExecutedResult::SharedPtr result) {
+                                    const ExecutedResult::SharedPtr& result) {
   const MonoTime end_time = MonoTime::Now(MonoTime::FINE);
   if (sql_metrics_ != nullptr) {
     const MonoDelta elapsed_time = end_time.GetDeltaSince(begin_time);
@@ -222,7 +222,7 @@ void SqlProcessor::ExecuteAsyncDone(const MonoTime &begin_time,
 // When called, just forward the status and result to the actual callback cb.
 void ReRunAsyncDone(
     ParseTree *parse_tree, StatementExecutedCallback cb, const Status& s,
-    ExecutedResult::SharedPtr result) {
+    const ExecutedResult::SharedPtr& result) {
   cb.Run(s, result);
 }
 
@@ -230,7 +230,7 @@ void ReRunAsyncDone(
 // When called, just forward the status and result to the actual callback cb.
 void SqlProcessor::RunAsyncDone(
     const string& sql_stmt, const StatementParameters* params, ParseTree *parse_tree,
-    StatementExecutedCallback cb, const Status& s, ExecutedResult::SharedPtr result) {
+    StatementExecutedCallback cb, const Status& s, const ExecutedResult::SharedPtr& result) {
   if (s.IsSqlError() && GetErrorCode(s) == ErrorCode::STALE_PREPARED_STATEMENT) {
     ParseTree::UniPtr new_parse_tree;
     bool reparse = false;

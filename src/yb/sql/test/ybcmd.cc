@@ -110,7 +110,7 @@ TEST_F(YbSqlCmd, TestSqlCmd) {
       if (!s.ok()) {
         cout << s.ToString(false);
       } else {
-        ExecutedResult::SharedPtr result = processor->result();
+        const ExecutedResult::SharedPtr& result = processor->result();
         if (result != nullptr) {
           // Check result.
           switch (result->type()) {

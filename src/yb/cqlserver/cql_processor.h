@@ -61,20 +61,22 @@ class CQLProcessor : public sql::SqlProcessor {
   // Run in response to ProcessExecute, PrepareQuery, ProcessBatch and ProcessCall
   void ProcessExecuteDone(
       const ExecuteRequest& req, std::shared_ptr<CQLStatement> stmt,
-      Callback<void(CQLResponse*)> cb, const Status& s, sql::ExecutedResult::SharedPtr result);
+      Callback<void(CQLResponse*)> cb, const Status& s,
+      const sql::ExecutedResult::SharedPtr& result);
   void ProcessQueryDone(
       const QueryRequest& req, Callback<void(CQLResponse*)> cb, const Status& s,
-      sql::ExecutedResult::SharedPtr result);
+      const sql::ExecutedResult::SharedPtr& result);
   void ProcessBatchDone(
       const BatchRequest& req, int idx, std::shared_ptr<CQLStatement> stmt,
-      Callback<void(CQLResponse*)> cb, const Status& s, sql::ExecutedResult::SharedPtr result);
+      Callback<void(CQLResponse*)> cb, const Status& s,
+      const sql::ExecutedResult::SharedPtr& result);
   void ProcessCallDone(
       rpc::InboundCallPtr call, const CQLRequest* request, const MonoTime& start,
       CQLResponse* response);
 
   CQLResponse* ReturnResponse(
       const CQLRequest& req, std::shared_ptr<CQLStatement> stmt, Status s,
-      sql::ExecutedResult::SharedPtr result);
+      const sql::ExecutedResult::SharedPtr& result);
   void SendResponse(rpc::InboundCallPtr call, CQLResponse* response);
 
   // Pointer to the containing CQL service implementation.

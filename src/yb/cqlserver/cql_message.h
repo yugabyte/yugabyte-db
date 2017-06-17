@@ -677,8 +677,8 @@ class VoidResultResponse : public ResultResponse {
 //------------------------------------------------------------
 class RowsResultResponse : public ResultResponse {
  public:
-  RowsResultResponse(const QueryRequest& request, sql::RowsResult::SharedPtr result);
-  RowsResultResponse(const ExecuteRequest& request, sql::RowsResult::SharedPtr result);
+  RowsResultResponse(const QueryRequest& request, const sql::RowsResult::SharedPtr& result);
+  RowsResultResponse(const ExecuteRequest& request, const sql::RowsResult::SharedPtr& result);
   virtual ~RowsResultResponse() override;
 
  protected:

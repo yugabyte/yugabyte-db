@@ -191,7 +191,7 @@ void CQLProcessor::ProcessExecute(const ExecuteRequest& req, Callback<void(CQLRe
 
 void CQLProcessor::ProcessExecuteDone(
     const ExecuteRequest& req, shared_ptr<CQLStatement> stmt, Callback<void(CQLResponse*)> cb,
-    const Status& s, ExecutedResult::SharedPtr result) {
+    const Status& s, const ExecutedResult::SharedPtr& result) {
   cb.Run(ReturnResponse(req, stmt, s, result));
 }
 
@@ -204,7 +204,7 @@ void CQLProcessor::ProcessQuery(const QueryRequest& req, Callback<void(CQLRespon
 
 void CQLProcessor::ProcessQueryDone(
     const QueryRequest& req, Callback<void(CQLResponse*)> cb, const Status& s,
-    ExecutedResult::SharedPtr result) {
+    const ExecutedResult::SharedPtr& result) {
   cb.Run(ReturnResponse(req, nullptr /* stmt */, s, result));
 }
 
@@ -237,7 +237,7 @@ void CQLProcessor::ProcessBatch(const BatchRequest& req, Callback<void(CQLRespon
 
 void CQLProcessor::ProcessBatchDone(
     const BatchRequest& req, const int idx, shared_ptr<CQLStatement> stmt,
-    Callback<void(CQLResponse*)> cb, const Status& s, ExecutedResult::SharedPtr result) {
+    Callback<void(CQLResponse*)> cb, const Status& s, const ExecutedResult::SharedPtr& result) {
   if (PREDICT_FALSE(!s.ok())) {
     cb.Run(ReturnResponse(req, stmt, s, result));
     return;
@@ -247,7 +247,7 @@ void CQLProcessor::ProcessBatchDone(
 
 CQLResponse* CQLProcessor::ReturnResponse(
     const CQLRequest& req, shared_ptr<CQLStatement> stmt, Status s,
-    ExecutedResult::SharedPtr result) {
+    const ExecutedResult::SharedPtr& result) {
   if (!s.ok()) {
     if (s.IsSqlError()) {
       switch (GetErrorCode(s)) {
@@ -336,7 +336,7 @@ CQLResponse* CQLProcessor::ReturnResponse(
       return new SetKeyspaceResultResponse(req, *set_keyspace_result);
     }
     case ExecutedResult::Type::ROWS: {
-      RowsResult::SharedPtr rows_result = std::static_pointer_cast<RowsResult>(result);
+      const RowsResult::SharedPtr& rows_result = std::static_pointer_cast<RowsResult>(result);
       cql_metrics_->sql_response_size_bytes_->Increment(rows_result->rows_data().size());
       switch (req.opcode()) {
         case CQLMessage::Opcode::EXECUTE:

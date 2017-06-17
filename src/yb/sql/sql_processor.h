@@ -112,10 +112,10 @@ class SqlProcessor {
  private:
   void ExecuteAsyncDone(
       const MonoTime& begin_time, const ParseTree *parse_tree, StatementExecutedCallback cb,
-      bool reparsed, const Status& s, ExecutedResult::SharedPtr result);
+      bool reparsed, const Status& s, const ExecutedResult::SharedPtr& result);
   void RunAsyncDone(
       const std::string& sql_stmt, const StatementParameters* params, ParseTree *parse_tree,
-      StatementExecutedCallback cb, const Status& s, ExecutedResult::SharedPtr result);
+      StatementExecutedCallback cb, const Status& s, const ExecutedResult::SharedPtr& result);
 };
 
 }  // namespace sql

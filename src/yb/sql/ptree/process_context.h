@@ -50,7 +50,10 @@ class ProcessContextBase {
 
   // Memory pool for allocating and deallocating operating memory spaces during a process.
   MemoryContext *PTempMem() const {
-    return &ptemp_mem_;
+    if (ptemp_mem_ == nullptr) {
+      ptemp_mem_.reset(new Arena());
+    }
+    return ptemp_mem_.get();
   }
 
   // Access function for stmt_.
@@ -75,6 +78,8 @@ class ProcessContextBase {
   CHECKED_STATUS GetStatus();
 
  protected:
+  MCString* error_msgs();
+
   //------------------------------------------------------------------------------------------------
   // SQL statement to be scanned.
   const char *stmt_;
@@ -84,13 +89,16 @@ class ProcessContextBase {
 
   // Temporary memory pool is used during a process. This pool is deleted as soon as the process is
   // completed.
-  mutable Arena ptemp_mem_;
+  //
+  // For performance, the temp arena and the error message that depends on it are created only when
+  // needed.
+  mutable std::unique_ptr<Arena> ptemp_mem_;
 
   // Latest parsing or scanning error code.
   ErrorCode error_code_;
 
   // Error messages. All reported error messages will be concatenated to the end.
-  MCString error_msgs_;
+  std::unique_ptr<MCString> error_msgs_;
 };
 
 //--------------------------------------------------------------------------------------------------

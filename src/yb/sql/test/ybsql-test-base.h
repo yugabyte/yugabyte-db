@@ -79,7 +79,7 @@ class YbSqlProcessor : public SqlProcessor {
   virtual ~YbSqlProcessor() { }
 
   void RunAsyncDone(
-      Callback<void(const Status&)> cb, const Status& s, ExecutedResult::SharedPtr result) {
+      Callback<void(const Status&)> cb, const Status& s, const ExecutedResult::SharedPtr& result) {
     result_ = result;
     cb.Run(s);
   }

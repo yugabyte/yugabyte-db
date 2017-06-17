@@ -69,7 +69,7 @@ void Executor::ExecuteAsync(
 
 void Executor::ExecuteDone(
     const ParseTree *ptree, MonoTime start, StatementExecutedCallback cb, const Status &s,
-    ExecutedResult::SharedPtr result) {
+    const ExecutedResult::SharedPtr& result) {
   if (!s.ok()) {
     // Before leaving the execution step, collect all errors and place them in return status.
     VLOG(3) << "Failed to execute parse-tree <" << ptree << ">";
@@ -169,7 +169,7 @@ void Executor::ExecPTNodeAsync(const PTListNode *lnode, StatementExecutedCallbac
 
 void Executor::PTNodeAsyncDone(
     const PTListNode *lnode, int index, StatementExecutedCallback cb, const Status &s,
-    ExecutedResult::SharedPtr result) {
+    const ExecutedResult::SharedPtr& result) {
   CB_RETURN_NOT_OK(cb, s);
   cb.Run(Status::OK(), result);
   if (++index < lnode->size()) {
@@ -754,7 +754,7 @@ void Executor::ExecPTNodeAsync(
 
 void Executor::SelectAsyncDone(
     const PTSelectStmt *tnode, StatementExecutedCallback cb, RowsResult::SharedPtr current_result,
-    const Status &s, ExecutedResult::SharedPtr new_result) {
+    const Status &s, const ExecutedResult::SharedPtr& new_result) {
 
   // If an error occurs, return current result if present and ignore the error. Otherwise, return
   // the error.

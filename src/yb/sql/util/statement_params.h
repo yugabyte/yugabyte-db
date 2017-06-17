@@ -24,6 +24,7 @@ class StatementParameters {
 
   // Constructors
   StatementParameters();
+  StatementParameters(const StatementParameters& other);
   virtual ~StatementParameters();
 
   // Accessor functions for page_size.
@@ -32,18 +33,23 @@ class StatementParameters {
 
   // Set paging state.
   CHECKED_STATUS set_paging_state(const std::string& paging_state) {
-    return paging_state_.ParseFromString(paging_state) ?
+    // For performance, create YQLPagingStatePB by demand only when setting paging state because
+    // only SELECT statements continuing from a previous page carry a paging state.
+    if (paging_state_ == nullptr) {
+      paging_state_.reset(new YQLPagingStatePB());
+    }
+    return paging_state_->ParseFromString(paging_state) ?
         Status::OK() : STATUS(Corruption, "invalid paging state");
   }
 
   // Accessor functions for paging state fields.
-  const std::string& table_id() const { return paging_state_.table_id(); }
+  const std::string& table_id() const { return paging_state().table_id(); }
 
-  const std::string& next_partition_key() const { return paging_state_.next_partition_key(); }
+  const std::string& next_partition_key() const { return paging_state().next_partition_key(); }
 
-  const std::string& next_row_key() const { return paging_state_.next_row_key(); }
+  const std::string& next_row_key() const { return paging_state().next_row_key(); }
 
-  int64_t total_num_rows_read() const { return paging_state_.total_num_rows_read(); }
+  int64_t total_num_rows_read() const { return paging_state().total_num_rows_read(); }
 
   // Retrieve a bind variable for the execution of the statement. To be overridden by subclasses
   // to return actual bind variables.
@@ -55,11 +61,15 @@ class StatementParameters {
   }
 
  private:
+  const YQLPagingStatePB& paging_state() const {
+    return paging_state_ != nullptr ? *paging_state_ : YQLPagingStatePB::default_instance();
+  }
+
   // Limit of the number of rows to return set as page size.
   uint64_t page_size_;
 
   // Paging State.
-  YQLPagingStatePB paging_state_;
+  std::unique_ptr<YQLPagingStatePB> paging_state_;
 };
 
 } // namespace sql
