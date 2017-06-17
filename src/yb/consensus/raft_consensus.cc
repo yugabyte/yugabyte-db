@@ -759,7 +759,6 @@ Status RaftConsensus::Replicate(const scoped_refptr<ConsensusRound>& round) {
 
   RETURN_NOT_OK(ExecuteHook(PRE_REPLICATE));
 
-  std::lock_guard<simple_spinlock> lock(update_lock_);
   {
     ReplicaState::UniqueLock lock;
     RETURN_NOT_OK(state_->LockForReplicate(&lock, *round->replicate_msg()));
