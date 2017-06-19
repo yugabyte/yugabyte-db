@@ -29,18 +29,20 @@ Status LocalVTable::RetrieveData(const YQLReadRequestPB& request,
     // to and hence we need to look for the 'remote_endpoint' here.
     if (util::RemoteEndpointMatchesTServer(ts_info, remote_endpoint)) {
       YQLRow& row = (*vtable)->Extend();
+      CloudInfoPB cloud_info = ts_info.registration().common().cloud_info();
       RETURN_NOT_OK(SetColumnValue(kSystemLocalKeyColumn, "local", &row));
       RETURN_NOT_OK(SetColumnValue(kSystemLocalBootstrappedColumn, "COMPLETED", &row));
       RETURN_NOT_OK(SetColumnValue(kSystemLocalBroadcastAddressColumn, remote_endpoint, &row));
       RETURN_NOT_OK(SetColumnValue(kSystemLocalClusterNameColumn, "local cluster", &row));
       RETURN_NOT_OK(SetColumnValue(kSystemLocalCQLVersionColumn, "3.4.2", &row));
-      RETURN_NOT_OK(SetColumnValue(kSystemLocalDataCenterColumn, "", &row));
+      RETURN_NOT_OK(SetColumnValue(kSystemLocalDataCenterColumn, cloud_info.placement_region(),
+                                   &row));
       RETURN_NOT_OK(SetColumnValue(kSystemLocalGossipGenerationColumn, 0, &row));
       RETURN_NOT_OK(SetColumnValue(kSystemLocalListenAddressColumn, remote_endpoint, &row));
       RETURN_NOT_OK(SetColumnValue(kSystemLocalNativeProtocolVersionColumn, "4", &row));
       RETURN_NOT_OK(SetColumnValue(kSystemLocalPartitionerColumn,
                                    "org.apache.cassandra.dht.Murmur3Partitioner", &row));
-      RETURN_NOT_OK(SetColumnValue(kSystemLocalRackColumn, "rack", &row));
+      RETURN_NOT_OK(SetColumnValue(kSystemLocalRackColumn, cloud_info.placement_zone(), &row));
       RETURN_NOT_OK(SetColumnValue(kSystemLocalReleaseVersionColumn, "3.9-SNAPSHOT", &row));
       RETURN_NOT_OK(SetColumnValue(kSystemLocalRpcAddressColumn,
                                    remote_endpoint, &row));

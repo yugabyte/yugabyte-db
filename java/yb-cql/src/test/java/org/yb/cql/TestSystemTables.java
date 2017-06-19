@@ -8,6 +8,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import com.codahale.metrics.MetricRegistryListener;
+import org.junit.BeforeClass;
 import org.junit.Test;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
@@ -25,6 +27,8 @@ public class TestSystemTables extends BaseCQLTest {
   private static final String DEFAULT_SCHEMA_VERSION = "00000000-0000-0000-0000-000000000000";
   private static final String MURMUR_PARTITIONER = "org.apache.cassandra.dht.Murmur3Partitioner";
   private static final String RELEASE_VERSION = "3.9-SNAPSHOT";
+  private static final String PLACEMENT_REGION = "region1";
+  private static final String PLACEMENT_ZONE = "zone1";
 
   private void verifyPeersTable(List<Row> rows, boolean addressesOnly) throws Exception {
     List<InetSocketAddress> contactPoints = miniCluster.getCQLContactPoints();
@@ -58,6 +62,12 @@ public class TestSystemTables extends BaseCQLTest {
       }
     }
     return false;
+  }
+
+  @BeforeClass
+  public static void setUpBeforeClass() throws Exception {
+    BaseCQLTest.tserverArgs = Arrays.asList(String.format("--placement_region=%s",
+      PLACEMENT_REGION), String.format("--placement_zone=%s", PLACEMENT_ZONE));
   }
 
   @Test
@@ -144,12 +154,12 @@ public class TestSystemTables extends BaseCQLTest {
     checkContactPoints("broadcast_address", row);
     assertEquals("local cluster", row.getString("cluster_name"));
     assertEquals("3.4.2", row.getString("cql_version"));
-    assertEquals("", row.getString("data_center"));
+    assertEquals(PLACEMENT_REGION, row.getString("data_center"));
     assertEquals(0, row.getInt("gossip_generation"));
     checkContactPoints("listen_address", row);
     assertEquals("4", row.getString("native_protocol_version"));
     assertEquals(MURMUR_PARTITIONER, row.getString("partitioner"));
-    assertEquals("rack", row.getString("rack"));
+    assertEquals(PLACEMENT_ZONE, row.getString("rack"));
     assertEquals(RELEASE_VERSION, row.getString("release_version"));
     assertEquals(UUID.fromString(DEFAULT_SCHEMA_VERSION), row.getUUID("schema_version"));
     checkContactPoints("rpc_address", row);
