@@ -149,6 +149,7 @@ class DiskRowSetCompactionInput : public CompactionInput {
 
   Status Init() override {
     ScanSpec spec;
+    spec.set_query_id(rocksdb::kDefaultQueryId);
     spec.set_cache_blocks(false);
     RETURN_NOT_OK(base_iter_->Init(&spec));
     RETURN_NOT_OK(redo_delta_iter_->Init(&spec));

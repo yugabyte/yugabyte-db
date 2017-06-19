@@ -62,7 +62,8 @@ Status GetRedisValue(
   SubDocument doc;
   bool doc_found = false;
 
-  RETURN_NOT_OK(GetSubDocument(rocksdb, doc_key, &doc, &doc_found, hybrid_time));
+  RETURN_NOT_OK(GetSubDocument(rocksdb, doc_key, &doc, &doc_found,
+                               rocksdb::kNoCacheQueryId, hybrid_time));
 
   if (!doc_found) {
     *type = REDIS_TYPE_NONE;
@@ -553,7 +554,8 @@ Status YQLWriteOperation::ReadColumns(rocksdb::DB *rocksdb,
                                       const HybridTime& hybrid_time,
                                       Schema *param_static_projection,
                                       Schema *param_non_static_projection,
-                                      YQLValueMap *value_map) {
+                                      YQLValueMap *value_map,
+                                      const rocksdb::QueryId query_id) {
   Schema *static_projection = param_static_projection;
   Schema *non_static_projection = param_non_static_projection;
 
@@ -577,7 +579,7 @@ Status YQLWriteOperation::ReadColumns(rocksdb::DB *rocksdb,
 
   // Scan docdb for the static and non-static columns of the row using the hashed / primary key.
   if (hashed_doc_key_ != nullptr) {
-    DocYQLScanSpec spec(*static_projection, *hashed_doc_key_);
+    DocYQLScanSpec spec(*static_projection, *hashed_doc_key_, query_id);
     DocRowwiseIterator iterator(*static_projection, schema_, rocksdb, hybrid_time);
     RETURN_NOT_OK(iterator.Init(spec));
     if (iterator.HasNext()) {
@@ -585,7 +587,7 @@ Status YQLWriteOperation::ReadColumns(rocksdb::DB *rocksdb,
     }
   }
   if (pk_doc_key_ != nullptr) {
-    DocYQLScanSpec spec(*non_static_projection, *pk_doc_key_);
+    DocYQLScanSpec spec(*non_static_projection, *pk_doc_key_, query_id);
     DocRowwiseIterator iterator(*non_static_projection, schema_, rocksdb, hybrid_time);
     RETURN_NOT_OK(iterator.Init(spec));
     if (iterator.HasNext()) {
@@ -600,14 +602,18 @@ Status YQLWriteOperation::ReadColumns(rocksdb::DB *rocksdb,
   return Status::OK();
 }
 
-Status YQLWriteOperation::IsConditionSatisfied(
-    const YQLConditionPB& condition, rocksdb::DB *rocksdb, const HybridTime& hybrid_time,
-    bool* should_apply, std::unique_ptr<YQLRowBlock>* rowblock, YQLValueMap* value_map) {
+Status YQLWriteOperation::IsConditionSatisfied(const YQLConditionPB& condition,
+                                               rocksdb::DB *rocksdb,
+                                               const HybridTime& hybrid_time,
+                                               bool* should_apply,
+                                               std::unique_ptr<YQLRowBlock>* rowblock,
+                                               YQLValueMap* value_map,
+                                               const rocksdb::QueryId query_id) {
 
   // Read column values.
   Schema static_projection, non_static_projection;
   RETURN_NOT_OK(ReadColumns(rocksdb, hybrid_time, &static_projection,
-                            &non_static_projection, value_map));
+                            &non_static_projection, value_map, query_id));
 
   // See if the if-condition is satisfied.
   RETURN_NOT_OK(EvaluateCondition(condition, *value_map, should_apply));
@@ -644,9 +650,11 @@ Status YQLWriteOperation::Apply(
                                        hybrid_time,
                                        &should_apply,
                                        &rowblock_,
-                                       &value_map));
+                                       &value_map,
+                                       request_.query_id()));
   } else if (RequireReadSnapshot()) {
-    RETURN_NOT_OK(ReadColumns(rocksdb, hybrid_time, nullptr, nullptr, &value_map));
+    RETURN_NOT_OK(ReadColumns(rocksdb, hybrid_time, nullptr, nullptr, &value_map,
+                              request_.query_id()));
   }
 
   if (should_apply) {

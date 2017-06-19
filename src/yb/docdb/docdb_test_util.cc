@@ -429,7 +429,7 @@ void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEq(const string &expected) {
 
 string DocDBRocksDBFixture::DebugWalkDocument(const KeyBytes& encoded_doc_key) {
   DebugDocVisitor doc_visitor;
-  CHECK_OK(ScanSubDocument(rocksdb(), encoded_doc_key, &doc_visitor));
+  CHECK_OK(ScanSubDocument(rocksdb(), encoded_doc_key, &doc_visitor, rocksdb::kDefaultQueryId));
   return doc_visitor.ToString();
 }
 
@@ -488,12 +488,13 @@ Status DocDBRocksDBFixture::ReplaceInList(
     const std::vector<SubDocument>& values,
     const HybridTime& current_time,
     const HybridTime& hybrid_time,
+    const rocksdb::QueryId query_id,
     MonoDelta table_ttl,
     MonoDelta ttl,
     InitMarkerBehavior use_init_marker) {
   DocWriteBatch dwb(rocksdb_.get(), &monotonic_counter_);
   RETURN_NOT_OK(dwb.ReplaceInList(
-      doc_path, indexes, values, current_time, table_ttl, ttl, use_init_marker));
+      doc_path, indexes, values, current_time, query_id, table_ttl, ttl, use_init_marker));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -625,7 +626,8 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
     SubDocument doc_from_rocksdb;
     bool doc_found_in_rocksdb = false;
     ASSERT_OK(
-        GetSubDocument(rocksdb(), SubDocKey(doc_key), &doc_from_rocksdb, &doc_found_in_rocksdb));
+        GetSubDocument(rocksdb(), SubDocKey(doc_key), &doc_from_rocksdb, &doc_found_in_rocksdb,
+                       rocksdb::kDefaultQueryId));
     if (is_deletion && (
             doc_path.num_subkeys() == 0 ||  // Deleted the entire sub-document,
             !doc_already_exists_in_mem)) {  // or the document did not exist in the first place.

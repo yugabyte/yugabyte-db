@@ -182,7 +182,9 @@ static YBqlWriteOp *NewYBqlWriteOp(const shared_ptr<YBTable>& table,
   YQLWriteRequestPB *req = op->mutable_request();
   req->set_type(stmt_type);
   req->set_client(YQL_CLIENT_CQL);
+  // TODO: Request ID should be filled with CQL stream ID. Query ID should be replaced too.
   req->set_request_id(reinterpret_cast<uint64_t>(op));
+  req->set_query_id(reinterpret_cast<int64_t>(op));
 
   // TODO(neil): When ALTER TABLE is supported, we'll need to set schema version of 'table'.
   VLOG(4) << "TODO: Schema version is not being used";
@@ -328,7 +330,9 @@ YBqlReadOp *YBqlReadOp::NewSelect(const shared_ptr<YBTable>& table) {
   YBqlReadOp *op = new YBqlReadOp(table);
   YQLReadRequestPB *req = op->mutable_request();
   req->set_client(YQL_CLIENT_CQL);
+  // TODO: Request ID should be filled with CQL stream ID. Query ID should be replaced too.
   req->set_request_id(reinterpret_cast<uint64_t>(op));
+  req->set_query_id(reinterpret_cast<int64_t>(op));
 
   // TODO(neil): When ALTER TABLE is supported, we'll need to set schema version of 'table'.
   VLOG(4) << "TODO: Schema version is not being used";

@@ -22,6 +22,7 @@ KeyValueIterator::~KeyValueIterator() {
 
 Status KeyValueIterator::Init(ScanSpec* spec) {
   rocksdb::ReadOptions read_options;
+  read_options.query_id = spec->query_id();
   db_iter_.reset(db_->NewIterator(read_options));
 
   if (spec->lower_bound_key() != nullptr) {
@@ -128,5 +129,5 @@ void KeyValueIterator::GetIteratorStats(std::vector<IteratorStats>* stats) const
   // being called.
 }
 
-}
-}
+} // namespace tablet
+} // namespace yb

@@ -858,8 +858,7 @@ Status BlockBasedTableBuilder::InsertBlockInCache(const Slice& block_contents,
         static_cast<size_t> (end - writer_info->compressed_cache_key_prefix.data));
 
     // Insert into compressed block cache.
-    // TODO: Defaults to multi touch cache. Need to update with real query id.
-    block_cache_compressed->Insert(key, kInMultiTouchId, block, block->usable_size(),
+    block_cache_compressed->Insert(key, kDefaultQueryId, block, block->usable_size(),
                                    &DeleteCachedBlock);
 
     // Invalidate OS cache.

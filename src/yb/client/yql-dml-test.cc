@@ -598,6 +598,7 @@ TEST_F(YqlDmlTest, TestUpsert) {
     req->set_type(YQLWriteRequestPB::YQL_STMT_INSERT);
     req->set_client(YQL_CLIENT_CQL);
     req->set_request_id(0);
+    req->set_query_id(reinterpret_cast<int64_t>(op.get()));
     req->set_schema_version(0);
     req->set_hash_code(0);
     SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);

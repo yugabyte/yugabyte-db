@@ -101,6 +101,7 @@ class YqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
     req->set_type(type);
     req->set_client(YQL_CLIENT_CQL);
     req->set_request_id(0);
+    req->set_query_id(reinterpret_cast<int64_t>(op.get()));
     req->set_schema_version(0);
     return op;
   }
@@ -110,6 +111,7 @@ class YqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
     auto *req = op->mutable_request();
     req->set_client(YQL_CLIENT_CQL);
     req->set_request_id(0);
+    req->set_query_id(reinterpret_cast<int64_t>(op.get()));
     req->set_schema_version(0);
     return op;
   }

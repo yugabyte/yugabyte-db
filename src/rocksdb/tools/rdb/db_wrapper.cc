@@ -1,10 +1,13 @@
+// Copyright (c) YugaByte, Inc.
+
+#include "rocksdb/tools/rdb/db_wrapper.h"
+
+#include <v8.h>
+#include <node.h>
 #include <iostream>
 #include <memory>
 #include <vector>
-#include <v8.h>
-#include <node.h>
 
-#include "db_wrapper.h"
 #include "rocksdb/db.h"
 #include "rocksdb/slice.h"
 #include "rocksdb/options.h"
@@ -24,7 +27,7 @@ namespace {
     return obj->Has(String::NewSymbol(key.c_str())) &&
         obj->Get(String::NewSymbol(key.c_str()))->IsArray();
   }
-}
+} // namespace
 
 using namespace v8;
 
@@ -447,12 +450,12 @@ Handle<Value> DBWrapper::CompactOptions(const Arguments& args) {
 
   if (options->Has(String::NewSymbol("target_level")) &&
       options->Get(String::NewSymbol("target_level"))->IsInt32()) {
-    target_level = (int)(options->Get(
+    target_level = static_cast<int>(options->Get(
         String::NewSymbol("target_level"))->ToInt32()->Value());
 
     if (options->Has(String::NewSymbol("target_path_id")) ||
         options->Get(String::NewSymbol("target_path_id"))->IsInt32()) {
-      target_path_id = (int)(options->Get(
+      target_path_id = static_cast<int>(options->Get(
           String::NewSymbol("target_path_id"))->ToInt32()->Value());
     }
   }
@@ -481,12 +484,12 @@ Handle<Value> DBWrapper::CompactAll(const Arguments& args) {
 
   if (options->Has(String::NewSymbol("target_level")) &&
       options->Get(String::NewSymbol("target_level"))->IsInt32()) {
-    target_level = (int)(options->Get(
+    target_level = static_cast<int>(options->Get(
         String::NewSymbol("target_level"))->ToInt32()->Value());
 
     if (options->Has(String::NewSymbol("target_path_id")) ||
         options->Get(String::NewSymbol("target_path_id"))->IsInt32()) {
-      target_path_id = (int)(options->Get(
+      target_path_id = static_cast<int>(options->Get(
           String::NewSymbol("target_path_id"))->ToInt32()->Value());
     }
   }

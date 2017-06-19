@@ -60,15 +60,15 @@ CHECKED_STATUS YQLRocksDBStorage::BuildYQLScanSpec(const YQLReadRequestPB& reque
     const DocKey& start_doc_key = start_sub_doc_key.doc_key();
     if (include_static_columns && !start_doc_key.range_group().empty()) {
       const DocKey hashed_doc_key(start_doc_key.hash(), start_doc_key.hashed_group());
-      static_row_spec->reset(new DocYQLScanSpec(static_projection, hashed_doc_key));
+      static_row_spec->reset(new DocYQLScanSpec(static_projection, hashed_doc_key,
+                                                request.query_id()));
     }
   }
 
   // Construct the scan spec basing on the WHERE condition.
-  spec->reset(new DocYQLScanSpec(
-      schema, hash_code, max_hash_code, hashed_components,
+  spec->reset(new DocYQLScanSpec(schema, hash_code, max_hash_code, hashed_components,
       request.has_where_expr() ? &request.where_expr().condition() : nullptr,
-      include_static_columns, start_sub_doc_key.doc_key()));
+      request.query_id(), include_static_columns, start_sub_doc_key.doc_key()));
   return Status::OK();
 }
 

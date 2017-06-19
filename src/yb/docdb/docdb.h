@@ -126,6 +126,7 @@ class DocWriteBatch {
       const std::vector<int>& indexes,
       const std::vector<SubDocument>& values,
       const HybridTime& current_time,
+      const rocksdb::QueryId query_id,
       MonoDelta table_ttl = Value::kMaxTtl,
       MonoDelta ttl = Value::kMaxTtl,
       InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL);
@@ -241,9 +242,10 @@ class DocVisitor {
 
 // Note: subdocument_key should be an encoded SubDocument without the hybrid_time.
 yb::Status ScanSubDocument(rocksdb::DB *rocksdb,
-    const KeyBytes &subdocument_key,
-    DocVisitor *visitor,
-    HybridTime scan_ts = HybridTime::kMax);
+                           const KeyBytes &subdocument_key,
+                           DocVisitor *visitor,
+                           const rocksdb::QueryId query_id,
+                           HybridTime scan_ts = HybridTime::kMax);
 
 // Returns the whole SubDocument below some node identified by subdocument_key.
 // subdocument_key should not have a timestamp.
@@ -266,11 +268,12 @@ yb::Status GetSubDocument(rocksdb::Iterator *iterator,
 // This version of GetSubDocument creates a new iterator every time. This is not recommended for
 // multiple calls to subdocs that are sequential or near each other, in eg. doc_rowwise_iterator.
 yb::Status GetSubDocument(rocksdb::DB *db,
-    const SubDocKey& subdocument_key,
-    SubDocument *result,
-    bool *doc_found,
-    HybridTime scan_ts = HybridTime::kMax,
-    MonoDelta table_ttl = Value::kMaxTtl);
+                          const SubDocKey& subdocument_key,
+                          SubDocument *result,
+                          bool *doc_found,
+                          const rocksdb::QueryId query_id,
+                          HybridTime scan_ts = HybridTime::kMax,
+                          MonoDelta table_ttl = Value::kMaxTtl);
 
 // Create a debug dump of the document database. Tries to decode all keys/values despite failures.
 // Reports all errors to the output stream and returns the status of the first failed operation,

@@ -375,7 +375,8 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
       )#");
 
   vector<PrimitiveValue> hashed_components({PrimitiveValue(100)});
-  DocYQLScanSpec yql_scan_spec(schema, -1, -1, hashed_components, /* request = */ nullptr);
+  DocYQLScanSpec yql_scan_spec(schema, -1, -1, hashed_components, /* request = */ nullptr,
+                               rocksdb::kDefaultQueryId);
   DocRowwiseIterator yql_iter(schema, schema, rocksdb(),
                               HybridClock::HybridTimeFromMicroseconds(3000));
   ASSERT_OK(yql_iter.Init(yql_scan_spec));
@@ -420,7 +421,8 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
       )#");
 
   vector<PrimitiveValue> hashed_components_system({PrimitiveValue(101)});
-  DocYQLScanSpec yql_scan_spec_system(schema, -1, -1, hashed_components_system, nullptr);
+  DocYQLScanSpec yql_scan_spec_system(schema, -1, -1, hashed_components_system, nullptr,
+                                      rocksdb::kDefaultQueryId);
   DocRowwiseIterator yql_iter_system(schema, schema, rocksdb(),
                                      HybridClock::HybridTimeFromMicroseconds(3000));
   ASSERT_OK(yql_iter_system.Init(yql_scan_spec_system));
@@ -550,7 +552,8 @@ void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType 
       auto range = GetIteratorRange(ordered_rows.begin(), ordered_rows.end(), it, op);
 
       std::vector<RowData> expected_rows(range.first, range.second);
-      DocYQLScanSpec yql_scan_spec(schema, -1, -1, hashed_components, &condition);
+      DocYQLScanSpec yql_scan_spec(schema, -1, -1, hashed_components, &condition,
+                                   rocksdb::kDefaultQueryId);
       DocRowwiseIterator yql_iter(schema, schema, rocksdb(),
           HybridClock::HybridTimeFromMicroseconds(3000));
       ASSERT_OK(yql_iter.Init(yql_scan_spec));

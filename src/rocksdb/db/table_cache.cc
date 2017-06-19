@@ -154,15 +154,15 @@ Status TableCache::GetTableReader(
 }
 
 Status TableCache::FindTable(const EnvOptions& env_options,
-    const InternalKeyComparator& internal_comparator,
-    const FileDescriptor& fd, Cache::Handle** handle,
-    const bool no_io, bool record_read_stats,
-    HistogramImpl* file_read_hist, bool skip_filters) {
+                             const InternalKeyComparator& internal_comparator,
+                             const FileDescriptor& fd, Cache::Handle** handle,
+                             const QueryId query_id, const bool no_io, bool record_read_stats,
+                             HistogramImpl* file_read_hist, bool skip_filters) {
   PERF_TIMER_GUARD(find_table_nanos);
   Status s;
   uint64_t number = fd.GetNumber();
   Slice key = GetSliceForFileNumber(&number);
-  *handle = cache_->Lookup(key, kInMultiTouchId);
+  *handle = cache_->Lookup(key, query_id);
   TEST_SYNC_POINT_CALLBACK("TableCache::FindTable:0",
       const_cast<bool*>(&no_io));
 
@@ -180,9 +180,7 @@ Status TableCache::FindTable(const EnvOptions& env_options,
       // We do not cache error results so that if the error is transient,
       // or somebody repairs the file, we recover automatically.
     } else {
-      // TODO: Defaults to multi touch cache. Need to update with real query id.
-      s = cache_->Insert(key, kInMultiTouchId, table_reader.get(), 1, &DeleteEntry<TableReader>,
-          handle);
+      s = cache_->Insert(key, query_id, table_reader.get(), 1, &DeleteEntry<TableReader>, handle);
       if (s.ok()) {
         // Release ownership of table reader.
         table_reader.release();
@@ -222,9 +220,8 @@ InternalIterator* TableCache::NewIterator(
     table_reader = fd.table_reader;
     if (table_reader == nullptr) {
       Status s = FindTable(env_options, icomparator, fd, &handle,
-          options.read_tier == kBlockCacheTier /* no_io */,
-          !for_compaction /* record read_stats */,
-          file_read_hist, skip_filters);
+                           options.query_id, options.read_tier == kBlockCacheTier /* no_io */,
+                           !for_compaction /* record read_stats */, file_read_hist, skip_filters);
       if (!s.ok()) {
         return NewErrorInternalIterator(s, arena);
       }
@@ -287,7 +284,7 @@ Status TableCache::Get(const ReadOptions& options,
     row_cache_key.TrimAppend(row_cache_key.Size(), user_key.cdata(),
         user_key.size());
 
-    if (auto row_handle = ioptions_.row_cache->Lookup(row_cache_key.GetKey(), kInMultiTouchId)) {
+    if (auto row_handle = ioptions_.row_cache->Lookup(row_cache_key.GetKey(), options.query_id)) {
       auto found_row_cache_entry = static_cast<const std::string*>(
           ioptions_.row_cache->Value(row_handle));
       replayGetContextLog(*found_row_cache_entry, user_key, get_context);
@@ -304,8 +301,8 @@ Status TableCache::Get(const ReadOptions& options,
 
   if (!t) {
     s = FindTable(env_options_, internal_comparator, fd, &handle,
-        options.read_tier == kBlockCacheTier /* no_io */,
-        true /* record_read_stats */, file_read_hist, skip_filters);
+                  options.query_id, options.read_tier == kBlockCacheTier /* no_io */,
+                  true /* record_read_stats */, file_read_hist, skip_filters);
     if (s.ok()) {
       t = GetTableReaderFromHandle(handle);
     }
@@ -329,9 +326,8 @@ Status TableCache::Get(const ReadOptions& options,
     size_t charge =
         row_cache_key.Size() + row_cache_entry->size() + sizeof(std::string);
     void* row_ptr = new std::string(std::move(*row_cache_entry));
-    // TODO: Defaults to multi touch cache. Need to update with real query id.
-    ioptions_.row_cache->Insert(row_cache_key.GetKey(), kInMultiTouchId, row_ptr, charge,
-        &DeleteEntry<std::string>);
+    ioptions_.row_cache->Insert(row_cache_key.GetKey(), options.query_id, row_ptr, charge,
+                                &DeleteEntry<std::string>);
   }
 #endif  // ROCKSDB_LITE
 
@@ -352,7 +348,7 @@ Status TableCache::GetTableProperties(
   }
 
   Cache::Handle* table_handle = nullptr;
-  s = FindTable(env_options, internal_comparator, fd, &table_handle, no_io);
+  s = FindTable(env_options, internal_comparator, fd, &table_handle, kDefaultQueryId, no_io);
   if (!s.ok()) {
     return s;
   }
@@ -375,7 +371,7 @@ size_t TableCache::GetMemoryUsageByTableReader(
   }
 
   Cache::Handle* table_handle = nullptr;
-  s = FindTable(env_options, internal_comparator, fd, &table_handle, true);
+  s = FindTable(env_options, internal_comparator, fd, &table_handle, kDefaultQueryId, true);
   if (!s.ok()) {
     return 0;
   }

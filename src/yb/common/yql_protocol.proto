@@ -210,6 +210,9 @@ message YQLWriteRequestPB {
   // Listing of all columns that this write operation is referencing. TServers will need to read
   // these columns when processing the write request.
   optional YQLReferencedColumnsPB column_refs = 11;
+
+  // Id used to track different queries.
+  optional int64 query_id = 12;
 }
 
 //-------------------------------------- Read request ----------------------------------------
@@ -259,6 +262,9 @@ message YQLReadRequestPB {
   // Listing of all columns that this operation is referencing. TServers will need to read these
   // columns when processing this read request.
   optional YQLReferencedColumnsPB column_refs = 15;
+
+  // Id used to track different queries.
+  optional int64 query_id = 16;
 }
 
 //------------------------------ Response (for both read and write) -----------------------------

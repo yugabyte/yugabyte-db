@@ -50,11 +50,13 @@ extern shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits);
 extern shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits,
                                      bool strict_capacity_limit);
 
-using QueryId = int32_t;
+using QueryId = int64_t;
+// Query ids to represent values for the default query id.
+constexpr QueryId kDefaultQueryId = 0;
 // Query ids to represent values that should be in multi-touch cache.
 constexpr QueryId kInMultiTouchId = -1;
 // Query ids to represent values that should not be in any cache.
-constexpr QueryId kNoCacheQueryId = 0;
+constexpr QueryId kNoCacheQueryId = -2;
 
 class Cache {
  public:

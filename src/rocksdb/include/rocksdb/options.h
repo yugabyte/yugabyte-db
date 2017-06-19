@@ -17,6 +17,7 @@
 #include <limits>
 #include <unordered_map>
 
+#include "rocksdb/cache.h"
 #include "rocksdb/version.h"
 #include "rocksdb/listener.h"
 #include "rocksdb/slice.h"
@@ -1422,6 +1423,9 @@ struct ReadOptions {
   // return 1.
   // Default: false
   bool pin_data;
+
+  // Query id designated for the read.
+  QueryId query_id;
 
   // When scanning, choose whether to use the bloom filters for pruning the files to open or not.
   // If true, this will check the bloom filters for the scan key and, iff the file might match the

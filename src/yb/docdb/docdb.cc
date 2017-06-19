@@ -217,7 +217,7 @@ Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
   const bool is_deletion = value.primitive_value().value_type() == ValueType::kTombstone;
 
   InternalDocIterator doc_iter(rocksdb_, &cache_, BloomFilterMode::USE_BLOOM_FILTER,
-                               &num_rocksdb_seeks_);
+                               rocksdb::kDefaultQueryId, &num_rocksdb_seeks_);
 
   if (num_subkeys > 0 || is_deletion) {
     doc_iter.SetDocumentKey(encoded_doc_key);
@@ -325,12 +325,13 @@ Status DocWriteBatch::ReplaceInList(
     const vector<int>& indexes,
     const vector<SubDocument>& values,
     const HybridTime& current_time,
+    const rocksdb::QueryId query_id,
     MonoDelta table_ttl,
     MonoDelta ttl,
     InitMarkerBehavior use_init_marker) {
   SubDocKey sub_doc_key;
   RETURN_NOT_OK(sub_doc_key.FromDocPath(doc_path));
-  auto iter = CreateRocksDBIterator(rocksdb_, BloomFilterMode::USE_BLOOM_FILTER);
+  auto iter = CreateRocksDBIterator(rocksdb_, BloomFilterMode::USE_BLOOM_FILTER, query_id);
   SubDocKey found_key;
   Value found_value;
   KeyBytes key_bytes = sub_doc_key.Encode( /*include_hybrid_time =*/ false);
@@ -561,10 +562,11 @@ static yb::Status ScanSubDocument(const SubDocKey& higher_level_key,
 }  // anonymous namespace
 
 yb::Status ScanSubDocument(rocksdb::DB *rocksdb,
-    const KeyBytes &subdocument_key,
-    DocVisitor *visitor,
-    HybridTime scan_ht) {
-  auto rocksdb_iter = CreateRocksDBIterator(rocksdb, BloomFilterMode::USE_BLOOM_FILTER);
+                           const KeyBytes &subdocument_key,
+                           DocVisitor *visitor,
+                           const rocksdb::QueryId query_id,
+                           HybridTime scan_ht) {
+  auto rocksdb_iter = CreateRocksDBIterator(rocksdb, BloomFilterMode::USE_BLOOM_FILTER, query_id);
 
   // TODO: Use a SubDocKey API to build the proper seek key without assuming anything about the
   //       internal structure of SubDocKey here.
@@ -782,12 +784,13 @@ yb::Status BuildSubDocument(
 }  // namespace
 
 yb::Status GetSubDocument(rocksdb::DB *db,
-    const SubDocKey& subdocument_key,
-    SubDocument *result,
-    bool *doc_found,
-    HybridTime scan_ht,
-    MonoDelta table_ttl) {
-  auto iter = CreateRocksDBIterator(db, BloomFilterMode::USE_BLOOM_FILTER);
+                          const SubDocKey& subdocument_key,
+                          SubDocument *result,
+                          bool *doc_found,
+                          const rocksdb::QueryId query_id,
+                          HybridTime scan_ht,
+                          MonoDelta table_ttl) {
+  auto iter = CreateRocksDBIterator(db, BloomFilterMode::USE_BLOOM_FILTER, query_id);
   iter->SeekToFirst();
   return GetSubDocument(iter.get(), subdocument_key, result, doc_found, scan_ht, table_ttl);
 }
@@ -868,6 +871,8 @@ yb::Status GetSubDocument(
 
 Status DocDBDebugDump(rocksdb::DB* rocksdb, ostream& out, const bool include_binary) {
   rocksdb::ReadOptions read_opts;
+  // Do not cache for debug dumps.
+  read_opts.query_id = rocksdb::kNoCacheQueryId;
   auto iter = unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_opts));
   iter->SeekToFirst();
   auto result_status = Status::OK();

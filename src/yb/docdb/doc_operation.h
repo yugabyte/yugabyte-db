@@ -128,11 +128,16 @@ class YQLWriteOperation : public DocOperation {
                              const HybridTime& hybrid_time,
                              Schema *static_projection,
                              Schema *non_static_projection,
-                             YQLValueMap *value_map);
+                             YQLValueMap *value_map,
+                             const rocksdb::QueryId query_id);
 
-  CHECKED_STATUS IsConditionSatisfied(
-      const YQLConditionPB& condition, rocksdb::DB *rocksdb, const HybridTime& hybrid_time,
-      bool* should_apply, std::unique_ptr<YQLRowBlock>* rowblock, YQLValueMap *value_map);
+  CHECKED_STATUS IsConditionSatisfied(const YQLConditionPB& condition,
+                                      rocksdb::DB *rocksdb,
+                                      const HybridTime& hybrid_time,
+                                      bool* should_apply,
+                                      std::unique_ptr<YQLRowBlock>* rowblock,
+                                      YQLValueMap *value_map,
+                                      const rocksdb::QueryId query_id);
 
   const Schema& schema_;
 

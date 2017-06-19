@@ -1722,6 +1722,9 @@ Status TabletServiceImpl::HandleNewScanRequest(TabletPeer* tablet_peer,
     return s;
   }
 
+  // Set the query_id from the request.
+  spec->set_query_id(reinterpret_cast<int64_t>(req));
+
   // Store the original projection.
   gscoped_ptr<Schema> orig_projection(new Schema(projection));
   scanner->set_client_projection_schema(orig_projection.Pass());

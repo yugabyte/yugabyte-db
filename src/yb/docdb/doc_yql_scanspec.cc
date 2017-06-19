@@ -7,7 +7,8 @@
 namespace yb {
 namespace docdb {
 
-DocYQLScanSpec::DocYQLScanSpec(const Schema& schema, const DocKey& doc_key)
+DocYQLScanSpec::DocYQLScanSpec(const Schema& schema, const DocKey& doc_key,
+                               const rocksdb::QueryId query_id)
     : YQLScanSpec(nullptr),
       range_(nullptr),
       schema_(schema),
@@ -18,14 +19,18 @@ DocYQLScanSpec::DocYQLScanSpec(const Schema& schema, const DocKey& doc_key)
       start_doc_key_(DocKey()),
       lower_doc_key_(DocKey()),
       upper_doc_key_(DocKey()),
-      include_static_columns_(false) {
+      include_static_columns_(false),
+      query_id_(query_id) {
   }
 
 
-DocYQLScanSpec::DocYQLScanSpec(
-    const Schema& schema, const int32_t hash_code, const int32_t max_hash_code,
-    const std::vector<PrimitiveValue>& hashed_components, const YQLConditionPB* condition,
-    const bool include_static_columns, const DocKey& start_doc_key)
+DocYQLScanSpec::DocYQLScanSpec(const Schema& schema, const int32_t hash_code,
+                               const int32_t max_hash_code,
+                               const std::vector<PrimitiveValue>& hashed_components,
+                               const YQLConditionPB* condition,
+                               const rocksdb::QueryId query_id,
+                               const bool include_static_columns,
+                               const DocKey& start_doc_key)
     : YQLScanSpec(condition),
       range_(condition ? new common::YQLScanRange(schema, *condition) : nullptr),
       schema_(schema),
@@ -36,7 +41,8 @@ DocYQLScanSpec::DocYQLScanSpec(
       start_doc_key_(start_doc_key),
       lower_doc_key_(bound_key(true)),
       upper_doc_key_(bound_key(false)),
-      include_static_columns_(include_static_columns) {
+      include_static_columns_(include_static_columns),
+      query_id_(query_id) {
   // Initialize the upper and lower doc keys.
   CHECK(hashed_components_ != nullptr) << "hashed primary key columns missing";
 }

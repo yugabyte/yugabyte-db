@@ -893,10 +893,9 @@ Status BlockBasedTable::GetDataBlockFromCache(
     assert(block->value->compression_type() == kNoCompression);
     if (block_cache != nullptr && block->value->cachable() &&
         read_options.fill_cache) {
-      // TODO: Defaults to multi touch cache. Need to update with real query id.
-      s = block_cache->Insert(
-          block_cache_key, kInMultiTouchId, block->value, block->value->usable_size(),
-          &DeleteCachedEntry<Block>, &(block->cache_handle));
+      s = block_cache->Insert(block_cache_key, read_options.query_id, block->value,
+                              block->value->usable_size(), &DeleteCachedEntry<Block>,
+                              &(block->cache_handle));
       if (s.ok()) {
         RecordTick(statistics, BLOCK_CACHE_ADD);
       } else {
@@ -943,10 +942,8 @@ Status BlockBasedTable::PutDataBlockToCache(
   // Release the hold on the compressed cache entry immediately.
   if (block_cache_compressed != nullptr && raw_block != nullptr &&
       raw_block->cachable()) {
-    // TODO: Defaults to multi touch cache. Need to update with real query id.
-    s = block_cache_compressed->Insert(compressed_block_cache_key, kInMultiTouchId, raw_block,
-                                       raw_block->usable_size(),
-                                       &DeleteCachedEntry<Block>);
+    s = block_cache_compressed->Insert(compressed_block_cache_key, read_options.query_id, raw_block,
+                                       raw_block->usable_size(), &DeleteCachedEntry<Block>);
     if (s.ok()) {
       // Avoid the following code to delete this cached block.
       raw_block = nullptr;

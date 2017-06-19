@@ -216,8 +216,8 @@ class DocDBTest : public DocDBTestBase {
     SCOPED_TRACE("\n" + GetStackTrace(StackTraceLineFormat::CLION_CLICKABLE) + "\n" +
                  DocDBDebugDumpToStr());
 
-    EXPECT_OK(GetSubDocument(
-        rocksdb(), subdoc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb, ht));
+    EXPECT_OK(GetSubDocument(rocksdb(), subdoc_key, &doc_from_rocksdb,
+                             &subdoc_found_in_rocksdb, rocksdb::kDefaultQueryId, ht));
     if (subdoc_string.empty()) {
       EXPECT_FALSE(subdoc_found_in_rocksdb);
       return;
@@ -328,7 +328,8 @@ void DocDBTest::CheckExpectedLatestDBState() {
 
   SubDocument subdoc;
   bool doc_found = false;
-  ASSERT_OK(GetSubDocument(rocksdb(), subdoc_key, &subdoc, &doc_found));
+  ASSERT_OK(GetSubDocument(rocksdb(), subdoc_key, &subdoc, &doc_found,
+                           rocksdb::kDefaultQueryId));
   ASSERT_TRUE(doc_found);
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       R"#(
@@ -679,7 +680,7 @@ SubDocKey(DocKey([], ["list_test", 231]), ["other"; HT(p=0, l=100, w=3)]) -> "ot
   vector<SubDocument> values = {
       SubDocument(PrimitiveValue(ValueType::kTombstone)), SubDocument(PrimitiveValue(17))};
   ASSERT_OK(ReplaceInList(DocPath(encoded_doc_key, PrimitiveValue("list2")),
-      indexes, values, HybridTime(460), HybridTime(500)));
+      indexes, values,  HybridTime(460), HybridTime(500), rocksdb::kDefaultQueryId));
 
   AssertDocDbDebugDumpStrEq(
         R"#(
@@ -1541,8 +1542,8 @@ TEST_F(DocDBTest, BloomFilterTest) {
   FlushRocksDB();
 
   auto get_doc = [this, &doc_from_rocksdb, &subdoc_found_in_rocksdb](const DocKey& key) {
-    ASSERT_OK(GetSubDocument(
-        rocksdb(), SubDocKey(key), &doc_from_rocksdb, &subdoc_found_in_rocksdb));
+    ASSERT_OK(GetSubDocument(rocksdb(), SubDocKey(key), &doc_from_rocksdb, &subdoc_found_in_rocksdb,
+                             rocksdb::kDefaultQueryId));
   };
 
   ASSERT_NO_FATALS(CheckBloom(0, &total_bloom_useful));
@@ -1993,7 +1994,8 @@ TEST_F(DocDBTest, TestDisambiguationOnWriteId) {
   SubDocKey subdoc_key(kDocKey1);
   SubDocument subdoc;
   bool doc_found = false;
-  GetSubDocument(rocksdb(), SubDocKey(kDocKey1), &subdoc, &doc_found);
+  GetSubDocument(rocksdb(), SubDocKey(kDocKey1), &subdoc, &doc_found,
+                 rocksdb::kDefaultQueryId);
   ASSERT_FALSE(doc_found);
 
   CaptureLogicalSnapshot();
@@ -2002,7 +2004,8 @@ TEST_F(DocDBTest, TestDisambiguationOnWriteId) {
 
     // The row should still be absent after a compaction.
     CompactHistoryBefore(HybridTime::FromMicros(cutoff_time_ms));
-    GetSubDocument(rocksdb(), SubDocKey(kDocKey1), &subdoc, &doc_found);
+    GetSubDocument(rocksdb(), SubDocKey(kDocKey1), &subdoc, &doc_found,
+                   rocksdb::kDefaultQueryId);
     ASSERT_FALSE(doc_found);
     AssertDocDbDebugDumpStrEq("");
   }
@@ -2015,7 +2018,8 @@ TEST_F(DocDBTest, TestDisambiguationOnWriteId) {
       DocPath(kEncodedDocKey2, PrimitiveValue(ColumnId(10))),
       PrimitiveValue("value2"), InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2000)));
-  GetSubDocument(rocksdb(), SubDocKey(kDocKey2), &subdoc, &doc_found);
+  GetSubDocument(rocksdb(), SubDocKey(kDocKey2), &subdoc, &doc_found,
+                 rocksdb::kDefaultQueryId);
   ASSERT_TRUE(doc_found);
 
   // The row should still exist after a compaction. The deletion marker should be compacted away.
@@ -2023,7 +2027,8 @@ TEST_F(DocDBTest, TestDisambiguationOnWriteId) {
   for (int cutoff_time_ms = 2000; cutoff_time_ms <= 2001; ++cutoff_time_ms) {
     RestoreToLastLogicalRocksDBSnapshot();
     CompactHistoryBefore(HybridTime::FromMicros(cutoff_time_ms));
-    GetSubDocument(rocksdb(), SubDocKey(kDocKey2), &subdoc, &doc_found);
+    GetSubDocument(rocksdb(), SubDocKey(kDocKey2), &subdoc, &doc_found,
+                   rocksdb::kDefaultQueryId);
     ASSERT_TRUE(doc_found);
     AssertDocDbDebugDumpStrEq(R"#(
         SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT(p=2000, w=1)]) -> "value2"

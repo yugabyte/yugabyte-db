@@ -17,7 +17,6 @@ int main() {
 // Block forward_iterator_bench under MAC and Windows
 int main() { return 0; }
 #else
-#include <gflags/gflags.h>
 #include <semaphore.h>
 #include <atomic>
 #include <bitset>
@@ -29,6 +28,7 @@ int main() { return 0; }
 #include <queue>
 #include <random>
 #include <thread>
+#include <gflags/gflags.h>
 
 #include "rocksdb/cache.h"
 #include "rocksdb/db.h"

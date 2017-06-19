@@ -30,7 +30,8 @@ class InMemDocDbState {
 
   // Capture all documents present in the given RocksDB database at the given hybrid_time and save
   // them into this in-memory DocDB. All current contents of this object are overwritten.
-  void CaptureAt(rocksdb::DB* rocksdb, HybridTime hybrid_time);
+  void CaptureAt(rocksdb::DB* rocksdb, HybridTime hybrid_time,
+                 rocksdb::QueryId = rocksdb::kDefaultQueryId);
 
   void SetCaptureHybridTime(HybridTime hybrid_time);
 

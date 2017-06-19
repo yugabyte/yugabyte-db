@@ -73,6 +73,7 @@ class TableCache {
   Status FindTable(const EnvOptions& toptions,
                    const InternalKeyComparator& internal_comparator,
                    const FileDescriptor& file_fd, Cache::Handle**,
+                   const QueryId query_id,
                    const bool no_io = false, bool record_read_stats = true,
                    HistogramImpl* file_read_hist = nullptr,
                    bool skip_filters = false);

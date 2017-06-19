@@ -22,6 +22,7 @@
 
 #include "yb/common/scan_predicate.h"
 #include "yb/common/encoded_key.h"
+#include "rocksdb/cache.h"
 
 namespace yb {
 
@@ -94,6 +95,14 @@ class ScanSpec {
     cache_blocks_ = cache_blocks;
   }
 
+  const rocksdb::QueryId query_id() const {
+    return query_id_;
+  }
+
+  void set_query_id(const rocksdb::QueryId query_id) {
+    query_id_ = query_id;
+  }
+
   std::string ToString() const;
   std::string ToStringWithSchema(const Schema& s) const;
 
@@ -107,6 +116,7 @@ class ScanSpec {
   std::string lower_bound_partition_key_;
   std::string exclusive_upper_bound_partition_key_;
   bool cache_blocks_ = true;
+  rocksdb::QueryId query_id_ = rocksdb::kDefaultQueryId;
 };
 
 } // namespace yb

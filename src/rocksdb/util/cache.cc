@@ -688,6 +688,10 @@ class ShardedLRUCache : public Cache {
     return (num_shard_bits_ > 0) ? (hash >> (32 - num_shard_bits_)) : 0;
   }
 
+  bool IsValidQueryId(const QueryId query_id) {
+    return query_id >= 0 || query_id == kInMultiTouchId || query_id == kNoCacheQueryId;
+  }
+
  public:
   ShardedLRUCache(size_t capacity, int num_shard_bits,
                   bool strict_capacity_limit)
@@ -728,6 +732,7 @@ class ShardedLRUCache : public Cache {
   virtual Status Insert(const Slice& key, const QueryId query_id, void* value, size_t charge,
                         void (*deleter)(const Slice& key, void* value),
                         Handle** handle) override {
+    DCHECK(IsValidQueryId(query_id));
     // Queries with no cache query ids are not cached.
     if (query_id == kNoCacheQueryId) {
       return Status::OK();
@@ -737,6 +742,7 @@ class ShardedLRUCache : public Cache {
   }
 
   Handle* Lookup(const Slice& key, const QueryId query_id) override {
+    DCHECK(IsValidQueryId(query_id));
     const uint32_t hash = HashSlice(key);
     return shards_[Shard(hash)].Lookup(key, hash, query_id);
   }

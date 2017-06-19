@@ -44,6 +44,7 @@ class InternalDocIterator {
   InternalDocIterator(rocksdb::DB* rocksdb,
                       DocWriteBatchCache* doc_write_batch_cache,
                       BloomFilterMode bloom_filter_mode,
+                      rocksdb::QueryId query_id,
                       int* seek_counter = nullptr);
 
   // Positions this iterator at the root of a document identified by the given encoded document key.
@@ -138,6 +139,9 @@ class InternalDocIterator {
   DocHybridTime subdoc_ht_;
 
   Trilean subdoc_exists_;
+
+  // Query id that created this iterator.
+  const rocksdb::QueryId query_id_;
 
   // A count to increment to count RocksDB seeks. Not using an atomic here because this is not
   // thread-safe.

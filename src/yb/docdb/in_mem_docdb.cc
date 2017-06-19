@@ -98,11 +98,13 @@ const SubDocument* InMemDocDbState::GetSubDocument(const SubDocKey& subdoc_key) 
   return current;
 }
 
-void InMemDocDbState::CaptureAt(rocksdb::DB* rocksdb, HybridTime hybrid_time) {
+void InMemDocDbState::CaptureAt(rocksdb::DB* rocksdb, HybridTime hybrid_time,
+                                rocksdb::QueryId query_id) {
   // Clear the internal state.
   root_ = SubDocument();
 
-  auto rocksdb_iter = CreateRocksDBIterator(rocksdb, BloomFilterMode::DONT_USE_BLOOM_FILTER);
+  auto rocksdb_iter = CreateRocksDBIterator(rocksdb, BloomFilterMode::DONT_USE_BLOOM_FILTER,
+                                            query_id);
   rocksdb_iter->SeekToFirst();
   KeyBytes prev_key;
   while (rocksdb_iter->Valid()) {
@@ -123,7 +125,7 @@ void InMemDocDbState::CaptureAt(rocksdb::DB* rocksdb, HybridTime hybrid_time) {
     //       to extract document key out of a subdocument key.
     auto encoded_doc_key = subdoc_key.doc_key().Encode();
     const Status get_doc_status =
-        yb::docdb::GetSubDocument(rocksdb, subdoc_key, &subdoc, &doc_found, hybrid_time);
+        yb::docdb::GetSubDocument(rocksdb, subdoc_key, &subdoc, &doc_found, query_id, hybrid_time);
     if (!get_doc_status.ok()) {
       // This will help with debugging the GetSubDocument failure.
       LOG(WARNING) << "DocDB state:\n" << DocDBDebugDumpToStr(rocksdb, /* include_binary = */ true);

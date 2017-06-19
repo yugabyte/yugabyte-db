@@ -245,12 +245,14 @@ void PerformRocksDBSeek(
 unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(
     rocksdb::DB* rocksdb,
     BloomFilterMode bloom_filter_mode,
+    const rocksdb::QueryId query_id,
     rocksdb::ReadFileFilter file_filter) {
   // TODO: avoid instantiating ReadOptions every time. Pre-create it once and use for all iterators.
   //       We'll need some sort of a stateful wrapper class around RocksDB for that.
   rocksdb::ReadOptions read_opts;
   read_opts.use_bloom_on_scan = FLAGS_use_docdb_aware_bloom_filter &&
       bloom_filter_mode == BloomFilterMode::USE_BLOOM_FILTER;
+  read_opts.query_id = query_id;
   read_opts.file_filter = std::move(file_filter);
   return unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_opts));
 }

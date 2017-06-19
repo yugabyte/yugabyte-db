@@ -97,6 +97,8 @@ Status MajorDeltaCompaction::FlushRowSetAndDeltas() {
 
   ScanSpec spec;
   spec.set_cache_blocks(false);
+  spec.set_query_id(rocksdb::kDefaultQueryId);
+
   RETURN_NOT_OK_PREPEND(
       old_base_data_rwise->Init(&spec),
       "Unable to open iterator for specified columns (" + partial_schema_.ToString() + ")");

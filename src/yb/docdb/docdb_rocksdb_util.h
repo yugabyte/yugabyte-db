@@ -63,6 +63,7 @@ enum class BloomFilterMode {
 std::unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(
     rocksdb::DB* rocksdb,
     BloomFilterMode bloom_filter_mode,
+    const rocksdb::QueryId query_id,
     rocksdb::ReadFileFilter file_filter = rocksdb::ReadFileFilter());
 
 // Initialize the RocksDB 'options' object for tablet identified by 'tablet_id'. The

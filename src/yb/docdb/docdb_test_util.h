@@ -191,6 +191,7 @@ class DocDBRocksDBFixture {
       const std::vector<SubDocument>& values,
       const HybridTime& current_time, // Used for reading.
       const HybridTime& hybrid_time,
+      const rocksdb::QueryId query_id,
       MonoDelta table_ttl = Value::kMaxTtl,
       MonoDelta ttl = Value::kMaxTtl,
       InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL);
