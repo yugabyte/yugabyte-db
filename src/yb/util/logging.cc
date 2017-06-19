@@ -29,6 +29,7 @@
 
 #include "yb/util/logging.h"
 
+#include <signal.h>
 #include <stdio.h>
 
 #include <sstream>
