@@ -73,73 +73,57 @@ CHECKED_STATUS Executor::PTExprToPB(const PTBindVar *bind_pt, YQLExpressionPB *e
     return STATUS(RuntimeError, "no bind variable supplied");
   }
 
-  YQLValueWithPB value;
-  YQLValuePB *bind_pb = expr_pb->mutable_value();
+  std::unique_ptr<YQLValueWithPB> value(new YQLValueWithPB());
+  RETURN_NOT_OK(GetBindVariable(bind_pt, value.get()));
 
-  // TODO (mihnea or robert) GetBindVariable should take "YQLValuePB" as input, so we don't have to
-  // copy from bind to YQLValue and then to YQLValuePB.
-  RETURN_NOT_OK(GetBindVariable(bind_pt, &value));
-  if (value.IsNull()) {
+  if (value->IsNull()) {
+    expr_pb->set_allocated_value(value.release());
     return Status::OK();
   }
 
   switch (bind_pt->yql_type_id()) {
-    case DataType::INT8:
-      bind_pb->set_int8_value(value.int8_value());
-      break;
-    case DataType::INT16:
-      bind_pb->set_int16_value(value.int16_value());
-      break;
-    case DataType::INT32:
-      bind_pb->set_int32_value(value.int32_value());
-      break;
-    case DataType::INT64:
-      bind_pb->set_int64_value(value.int64_value());
-      break;
-    case DataType::FLOAT:
-      bind_pb->set_float_value(value.float_value());
-      break;
-    case DataType::DOUBLE:
-      bind_pb->set_double_value(value.double_value());
-      break;
-    case DataType::DECIMAL: {
-      const string& dbind = value.decimal_value();
-      util::Decimal d;
-      RETURN_NOT_OK(d.DecodeFromSerializedBigDecimal(Slice(dbind.data(), dbind.size())));
-      bind_pb->set_decimal_value(d.EncodeToComparable());
-      break;
-    }
-    case DataType::BOOL:
-      bind_pb->set_bool_value(value.bool_value());
-      break;
-    case DataType::STRING:
-      bind_pb->set_string_value(value.string_value());
-      break;
-    case DataType::BINARY:
-      bind_pb->set_binary_value(value.binary_value());
-      break;
-    case DataType::TIMESTAMP:
-      bind_pb->set_timestamp_value(value.timestamp_value().ToInt64());
-      break;
-    case DataType::INET:
-      YQLValue::set_inetaddress_value(value.inetaddress_value(), bind_pb);
-      break;
-    case DataType::UUID:
-      YQLValue::set_uuid_value(value.uuid_value(), bind_pb);
-      break;
-    case DataType::TIMEUUID:
-      YQLValue::set_timeuuid_value(value.timeuuid_value(), bind_pb);
-      break;
+    case DataType::INT8: FALLTHROUGH_INTENDED;
+    case DataType::INT16: FALLTHROUGH_INTENDED;
+    case DataType::INT32: FALLTHROUGH_INTENDED;
+    case DataType::INT64: FALLTHROUGH_INTENDED;
+    case DataType::FLOAT: FALLTHROUGH_INTENDED;
+    case DataType::DOUBLE: FALLTHROUGH_INTENDED;
+    case DataType::BOOL: FALLTHROUGH_INTENDED;
+    case DataType::STRING: FALLTHROUGH_INTENDED;
+    case DataType::BINARY: FALLTHROUGH_INTENDED;
+    case DataType::TIMESTAMP: FALLTHROUGH_INTENDED;
+    case DataType::INET: FALLTHROUGH_INTENDED;
+    case DataType::UUID: FALLTHROUGH_INTENDED;
+    case DataType::TIMEUUID: FALLTHROUGH_INTENDED;
     case DataType::MAP: FALLTHROUGH_INTENDED;
     case DataType::SET: FALLTHROUGH_INTENDED;
     case DataType::LIST:
-      // TODO (mihnea) refactor YQLValue to avoid copying here and below
-      bind_pb->CopyFrom(value.value());
+      expr_pb->set_allocated_value(value.release());
+      return Status::OK();
+
+    case DataType::DECIMAL: {
+      const string& dbind = value->decimal_value();
+      util::Decimal d;
+      RETURN_NOT_OK(d.DecodeFromSerializedBigDecimal(Slice(dbind.data(), dbind.size())));
+      expr_pb->mutable_value()->set_decimal_value(d.EncodeToComparable());
+      return Status::OK();
+    }
+
+    case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
+    case DataType::VARINT: FALLTHROUGH_INTENDED;
+    case DataType::TUPLE: FALLTHROUGH_INTENDED;
+    case DataType::TYPEARGS: FALLTHROUGH_INTENDED;
+    case DataType::UINT8: FALLTHROUGH_INTENDED;
+    case DataType::UINT16: FALLTHROUGH_INTENDED;
+    case DataType::UINT32: FALLTHROUGH_INTENDED;
+    case DataType::UINT64: FALLTHROUGH_INTENDED;
+    case DataType::UNKNOWN_DATA:
       break;
-    default:
-      LOG(FATAL) << "Unexpected integer type " << bind_pt->yql_type_id();
+
+    // default: fall through below
   }
-  return Status::OK();
+
+  return STATUS_SUBSTITUTE(InternalError, "Unexpected bind type $0", bind_pt->yql_type_id());
 }
 
 CHECKED_STATUS Executor::GetBindVariable(const PTBindVar* var, YQLValue *value) const {

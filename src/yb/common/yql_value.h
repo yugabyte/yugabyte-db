@@ -338,130 +338,130 @@ bool operator !=(const YQLValuePB& lhs, const YQLValuePB& rhs);
 
 //-------------------------------------------------------------------------------------------
 // A class that implements YQLValue interface using YQLValuePB.
-class YQLValueWithPB : public YQLValue {
+class YQLValueWithPB : public YQLValue, public YQLValuePB {
  public:
   YQLValueWithPB() { }
-  explicit YQLValueWithPB(const YQLValuePB& val) : value_(val) { }
-  virtual ~YQLValueWithPB() { }
+  explicit YQLValueWithPB(const YQLValuePB& val) { *mutable_value() = val; }
+  virtual ~YQLValueWithPB() override { }
 
-  virtual InternalType type() const override { return YQLValue::type(value_); }
+  virtual InternalType type() const override { return YQLValue::type(value()); }
 
-  const YQLValuePB& value() const { return value_; }
+  const YQLValuePB& value() const { return *static_cast<const YQLValuePB*>(this); }
+  YQLValuePB* mutable_value() { return static_cast<YQLValuePB*>(this); }
 
   //------------------------------------ Nullness methods -----------------------------------
-  virtual bool IsNull() const override { return YQLValue::IsNull(value_); }
-  virtual void SetNull() override { YQLValue::SetNull(&value_); }
+  virtual bool IsNull() const override { return YQLValue::IsNull(value()); }
+  virtual void SetNull() override { YQLValue::SetNull(mutable_value()); }
 
   //----------------------------------- get value methods -----------------------------------
-  virtual int8_t int8_value() const override { return YQLValue::int8_value(value_); }
-  virtual int16_t int16_value() const override { return YQLValue::int16_value(value_); }
-  virtual int32_t int32_value() const override { return YQLValue::int32_value(value_); }
-  virtual int64_t int64_value() const override { return YQLValue::int64_value(value_); }
-  virtual float float_value() const override { return YQLValue::float_value(value_); }
-  virtual double double_value() const override { return YQLValue::double_value(value_); }
+  virtual int8_t int8_value() const override { return YQLValue::int8_value(value()); }
+  virtual int16_t int16_value() const override { return YQLValue::int16_value(value()); }
+  virtual int32_t int32_value() const override { return YQLValue::int32_value(value()); }
+  virtual int64_t int64_value() const override { return YQLValue::int64_value(value()); }
+  virtual float float_value() const override { return YQLValue::float_value(value()); }
+  virtual double double_value() const override { return YQLValue::double_value(value()); }
   virtual const std::string& decimal_value() const override {
-    return YQLValue::decimal_value(value_);
+    return YQLValue::decimal_value(value());
   }
-  virtual bool bool_value() const override { return YQLValue::bool_value(value_); }
-  virtual const std::string& string_value() const override {
-    return YQLValue::string_value(value_);
-  }
-  virtual Timestamp timestamp_value() const override { return YQLValue::timestamp_value(value_); }
+  virtual bool bool_value() const override { return YQLValue::bool_value(value()); }
+  virtual const string& string_value() const override { return YQLValue::string_value(value()); }
+  virtual Timestamp timestamp_value() const override { return YQLValue::timestamp_value(value()); }
   virtual const std::string& binary_value() const override {
-    return YQLValue::binary_value(value_);
+    return YQLValue::binary_value(value());
   }
   virtual InetAddress inetaddress_value() const override {
-    return YQLValue::inetaddress_value(value_);
+    return YQLValue::inetaddress_value(value());
   }
-  virtual const YQLMapValuePB map_value() const override {
-    return YQLValue::map_value(value_);
-  }
-  virtual const YQLSeqValuePB set_value() const override {
-    return YQLValue::set_value(value_);
-  }
-  virtual const YQLSeqValuePB list_value() const override {
-    return YQLValue::list_value(value_);
-  }
-  virtual Uuid uuid_value() const override {
-    return YQLValue::uuid_value(value_);
-  }
-  virtual Uuid timeuuid_value() const override {
-    return YQLValue::timeuuid_value(value_);
-  }
+  virtual const YQLMapValuePB map_value() const override { return YQLValue::map_value(value()); }
+  virtual const YQLSeqValuePB set_value() const override { return YQLValue::set_value(value()); }
+  virtual const YQLSeqValuePB list_value() const override { return YQLValue::list_value(value()); }
+  virtual Uuid uuid_value() const override { return YQLValue::uuid_value(value()); }
+  virtual Uuid timeuuid_value() const override { return YQLValue::timeuuid_value(value()); }
 
   //----------------------------------- set value methods -----------------------------------
-  virtual void set_int8_value(int8_t val) override { YQLValue::set_int8_value(val, &value_); }
-  virtual void set_int16_value(int16_t val) override { YQLValue::set_int16_value(val, &value_); }
-  virtual void set_int32_value(int32_t val) override { YQLValue::set_int32_value(val, &value_); }
-  virtual void set_int64_value(int64_t val) override { YQLValue::set_int64_value(val, &value_); }
-  virtual void set_float_value(float val) override { YQLValue::set_float_value(val, &value_); }
-  virtual void set_double_value(double val) override { YQLValue::set_double_value(val, &value_); }
-  virtual void set_decimal_value(const std::string& val) override {
-    YQLValue::set_decimal_value(val, &value_);
+  virtual void set_int8_value(const int8_t val) override {
+    YQLValue::set_int8_value(val, mutable_value());
   }
-  virtual void set_bool_value(bool val) override { YQLValue::set_bool_value(val, &value_); }
-  virtual void set_string_value(const std::string& val) override {
-    YQLValue::set_string_value(val, &value_);
+  virtual void set_int16_value(const int16_t val) override {
+    YQLValue::set_int16_value(val, mutable_value());
+  }
+  virtual void set_int32_value(const int32_t val) override {
+    YQLValue::set_int32_value(val, mutable_value());
+  }
+  virtual void set_int64_value(const int64_t val) override {
+    YQLValue::set_int64_value(val, mutable_value());
+  }
+  virtual void set_float_value(const float val) override {
+    YQLValue::set_float_value(val, mutable_value());
+  }
+  virtual void set_double_value(const double val) override {
+    YQLValue::set_double_value(val, mutable_value());
+  }
+  virtual void set_decimal_value(const std::string& val) override {
+    YQLValue::set_decimal_value(val, mutable_value());
+  }
+  virtual void set_bool_value(const bool val) override {
+    YQLValue::set_bool_value(val, mutable_value());
+  }
+  virtual void set_string_value(const string& val) override {
+    YQLValue::set_string_value(val, mutable_value());
   }
   virtual void set_string_value(const char* val) override {
-    YQLValue::set_string_value(val, &value_);
+    YQLValue::set_string_value(val, mutable_value());
   }
   virtual void set_string_value(const char* val, const size_t size) override {
-    YQLValue::set_string_value(val, size, &value_);
+    YQLValue::set_string_value(val, size, mutable_value());
   }
   virtual void set_timestamp_value(const Timestamp& val) override {
-    YQLValue::set_timestamp_value(val, &value_);
+    YQLValue::set_timestamp_value(val, mutable_value());
   }
   virtual void set_inetaddress_value(const InetAddress& val) override {
-    YQLValue::set_inetaddress_value(val, &value_);
+    YQLValue::set_inetaddress_value(val, mutable_value());
   }
   virtual void set_timestamp_value(const int64_t val) override {
-    YQLValue::set_timestamp_value(val, &value_);
+    YQLValue::set_timestamp_value(val, mutable_value());
   }
   virtual void set_uuid_value(const Uuid& val) override {
-    YQLValue::set_uuid_value(val, &value_);
+    YQLValue::set_uuid_value(val, mutable_value());
   }
   virtual void set_timeuuid_value(const Uuid& val) override {
-    YQLValue::set_timeuuid_value(val, &value_);
+    YQLValue::set_timeuuid_value(val, mutable_value());
   }
   virtual void set_binary_value(const std::string& val) override {
-    YQLValue::set_binary_value(val, &value_);
+    YQLValue::set_binary_value(val, mutable_value());
   }
   virtual void set_binary_value(const void* val, const size_t size) override {
-    YQLValue::set_binary_value(val, size, &value_);
+    YQLValue::set_binary_value(val, size, mutable_value());
   }
   virtual void set_map_value() override {
-    YQLValue::set_map_value(&value_);
+    YQLValue::set_map_value(mutable_value());
   }
   virtual void set_set_value() override {
-    YQLValue::set_set_value(&value_);
+    YQLValue::set_set_value(mutable_value());
   }
   virtual void set_list_value() override {
-    YQLValue::set_list_value(&value_);
+    YQLValue::set_list_value(mutable_value());
   }
   virtual YQLValuePB* add_map_key() override {
-    return YQLValue::add_map_key(&value_);
+    return YQLValue::add_map_key(mutable_value());
   }
   virtual YQLValuePB* add_map_value() override {
-    return YQLValue::add_map_value(&value_);
+    return YQLValue::add_map_value(mutable_value());
   }
   virtual YQLValuePB* add_set_elem() override {
-    return YQLValue::add_set_elem(&value_);
+    return YQLValue::add_set_elem(mutable_value());
   }
   virtual YQLValuePB* add_list_elem() override {
-    return YQLValue::add_list_elem(&value_);
+    return YQLValue::add_list_elem(mutable_value());
   }
 
   //----------------------------------- assignment methods ----------------------------------
   virtual void Assign(const YQLValuePB& other) override {
-    value_ = other;
+    CopyFrom(other);
   }
   virtual void AssignMove(YQLValuePB&& other) override {
-    value_ = std::move(other);
+    Swap(&other);
   }
-
- private:
-  YQLValuePB value_;
 };
 
 } // namespace yb
