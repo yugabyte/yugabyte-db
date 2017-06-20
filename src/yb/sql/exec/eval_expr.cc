@@ -76,54 +76,8 @@ CHECKED_STATUS Executor::PTExprToPB(const PTBindVar *bind_pt, YQLExpressionPB *e
   std::unique_ptr<YQLValueWithPB> value(new YQLValueWithPB());
   RETURN_NOT_OK(GetBindVariable(bind_pt, value.get()));
 
-  if (value->IsNull()) {
-    expr_pb->set_allocated_value(value.release());
-    return Status::OK();
-  }
-
-  switch (bind_pt->yql_type_id()) {
-    case DataType::INT8: FALLTHROUGH_INTENDED;
-    case DataType::INT16: FALLTHROUGH_INTENDED;
-    case DataType::INT32: FALLTHROUGH_INTENDED;
-    case DataType::INT64: FALLTHROUGH_INTENDED;
-    case DataType::FLOAT: FALLTHROUGH_INTENDED;
-    case DataType::DOUBLE: FALLTHROUGH_INTENDED;
-    case DataType::BOOL: FALLTHROUGH_INTENDED;
-    case DataType::STRING: FALLTHROUGH_INTENDED;
-    case DataType::BINARY: FALLTHROUGH_INTENDED;
-    case DataType::TIMESTAMP: FALLTHROUGH_INTENDED;
-    case DataType::INET: FALLTHROUGH_INTENDED;
-    case DataType::UUID: FALLTHROUGH_INTENDED;
-    case DataType::TIMEUUID: FALLTHROUGH_INTENDED;
-    case DataType::MAP: FALLTHROUGH_INTENDED;
-    case DataType::SET: FALLTHROUGH_INTENDED;
-    case DataType::LIST:
-      expr_pb->set_allocated_value(value.release());
-      return Status::OK();
-
-    case DataType::DECIMAL: {
-      const string& dbind = value->decimal_value();
-      util::Decimal d;
-      RETURN_NOT_OK(d.DecodeFromSerializedBigDecimal(Slice(dbind.data(), dbind.size())));
-      expr_pb->mutable_value()->set_decimal_value(d.EncodeToComparable());
-      return Status::OK();
-    }
-
-    case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
-    case DataType::VARINT: FALLTHROUGH_INTENDED;
-    case DataType::TUPLE: FALLTHROUGH_INTENDED;
-    case DataType::TYPEARGS: FALLTHROUGH_INTENDED;
-    case DataType::UINT8: FALLTHROUGH_INTENDED;
-    case DataType::UINT16: FALLTHROUGH_INTENDED;
-    case DataType::UINT32: FALLTHROUGH_INTENDED;
-    case DataType::UINT64: FALLTHROUGH_INTENDED;
-    case DataType::UNKNOWN_DATA:
-      break;
-
-    // default: fall through below
-  }
-
-  return STATUS_SUBSTITUTE(InternalError, "Unexpected bind type $0", bind_pt->yql_type_id());
+  expr_pb->set_allocated_value(value.release());
+  return Status::OK();
 }
 
 CHECKED_STATUS Executor::GetBindVariable(const PTBindVar* var, YQLValue *value) const {

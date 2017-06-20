@@ -707,27 +707,33 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     case ValueType::kNull: return 0;
     case ValueType::kFalse: return 0;
     case ValueType::kTrue: return 0;
-    case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kStringDescending:
+      return other.str_val_.compare(str_val_);
     case ValueType::kString:
       return str_val_.compare(other.str_val_);
-    case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
+    case ValueType::kInt64Descending:
+      return CompareUsingLessThan(other.int64_val_, int64_val_);
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
     case ValueType::kArrayIndex:
       return CompareUsingLessThan(int64_val_, other.int64_val_);
     case ValueType::kDouble:
       return CompareUsingLessThan(double_val_, other.double_val_);
-    case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kDecimalDescending:
+      return other.decimal_val_.compare(decimal_val_);
     case ValueType::kDecimal:
       return decimal_val_.compare(other.decimal_val_);
     case ValueType::kUInt16Hash:
       return CompareUsingLessThan(uint16_val_, other.uint16_val_);
-    case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kTimestampDescending:
+      return CompareUsingLessThan(other.timestamp_val_, timestamp_val_);
     case ValueType::kTimestamp:
       return CompareUsingLessThan(timestamp_val_, other.timestamp_val_);
-    case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kInetaddressDescending:
+      return CompareUsingLessThan(*(other.inetaddress_val_), *inetaddress_val_);
     case ValueType::kInetaddress:
       return CompareUsingLessThan(*inetaddress_val_, *(other.inetaddress_val_));
-    case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kUuidDescending:
+      return CompareUsingLessThan(other.uuid_val_, uuid_val_);
     case ValueType::kUuid:
       return CompareUsingLessThan(uuid_val_, other.uuid_val_);
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;

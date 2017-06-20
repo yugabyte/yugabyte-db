@@ -99,7 +99,7 @@ do {                                                                            
   CHECK_EQ(row_block->row_count(), 1);                                                             \
   CHECK_EQ(row_block->row(0).column(0).string_value(), name);                                      \
   util::Decimal expected_decimal(balance), ret_decimal;                                            \
-  auto s = ret_decimal.DecodeFromSerializedBigDecimal(row_block->row(0).column(1).decimal_value());\
+  auto s = ret_decimal.DecodeFromComparable(row_block->row(0).column(1).decimal_value());          \
   CHECK(s.ok());                                                                                   \
   CHECK_EQ(ret_decimal, expected_decimal);                                                         \
   CHECK_EQ(row_block->row(0).column(2).double_value(), rate);                                      \

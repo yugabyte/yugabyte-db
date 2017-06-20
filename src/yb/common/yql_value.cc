@@ -253,7 +253,9 @@ Status YQLValue::Deserialize(
     case DECIMAL: {
       string value;
       RETURN_NOT_OK(CQLDecodeBytes(len, data, &value));
-      set_decimal_value(value);
+      Decimal decimal;
+      RETURN_NOT_OK(decimal.DecodeFromSerializedBigDecimal(value));
+      set_decimal_value(decimal.EncodeToComparable());
       return Status::OK();
     }
     case STRING: {

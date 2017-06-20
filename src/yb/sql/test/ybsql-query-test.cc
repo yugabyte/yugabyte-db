@@ -406,6 +406,227 @@ TEST_F(YbSqlQuery, TestPagingState) {
   }
 }
 
+
+#define RUN_PAGINATION_WITH_DESC_TEST(processor, type, values, rows)                               \
+do {                                                                                               \
+  /* Creating the table. */                                                                        \
+  string create_stmt = Substitute("CREATE TABLE t_$0 (h int, r1 $1, r2 $2, v int, "                \
+      "primary key((h), r1, r2)) WITH CLUSTERING ORDER BY (r1 DESC, r2 ASC);", type, type, type);  \
+  CHECK_VALID_STMT(create_stmt);                                                                   \
+                                                                                                   \
+  /* Inserting the values. */                                                                      \
+  for (auto& value : values) {                                                                     \
+    string stmt = Substitute("INSERT INTO t_$0 (h, r1, r2, v) VALUES (1, $1, $2, $3);",            \
+        type, value, value, 0);                                                                  \
+    CHECK_VALID_STMT(stmt);                                                                        \
+  }                                                                                                \
+  /* Seting up low page size for reading to test paging. */                                        \
+  StatementParameters params;                                                                      \
+  int kPageSize = 5;                                                                               \
+  params.set_page_size(kPageSize);                                                                 \
+  /* Setting up range query, will include all values except minimum and maximum */                 \
+  int num_rows = values.size();                                                                    \
+  auto min_val = values[0];                                                                        \
+  auto max_val = values[num_rows - 1];                                                             \
+  int page_count = 0;                                                                              \
+  string select_stmt = Substitute("SELECT h, r1, r2, v FROM t_$0 WHERE h = 1 AND "                 \
+    "r1 > $1 AND r2 > $2 AND r1 < $3 AND r2 < $4;", type, min_val, min_val, max_val, max_val );    \
+  /* Reading rows, loading the rows vector to be checked later for each case */                    \
+  do {                                                                                             \
+    CHECK_OK(processor->Run(select_stmt, params));                                                 \
+    std::shared_ptr<YQLRowBlock> row_block = processor->row_block();                               \
+    for (int j = 0; j < row_block->row_count(); j++) {                                             \
+    const YQLRow& row = row_block->row(j);                                                         \
+      rows->push_back(row);                                                                        \
+    }                                                                                              \
+    page_count++;                                                                                  \
+    if (processor->rows_result()->paging_state().empty()) {                                        \
+      break;                                                                                       \
+    }                                                                                              \
+    CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));                   \
+  } while (true);                                                                                  \
+  /* Page count should be at least "<nrRowsRead> / kPageSize". */                                  \
+  /* Can be more since some pages may not be fully filled depending on hash key distribution. */   \
+  CHECK_GE(page_count, (num_rows - 2) / kPageSize);                                                \
+} while(0)
+
+TEST_F(YbSqlQuery, TestPaginationWithDescSort) {
+
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  YbSqlProcessor *processor = GetSqlProcessor();
+
+  LOG(INFO) << "Running paging state test.";
+
+  //------------------------------------------------------------------------------------------------
+  // Testing integer types.
+  //------------------------------------------------------------------------------------------------
+  {
+    std::vector<int> values;
+    for (int i = 1; i <= 100; i++) {
+      values.push_back(i);
+    }
+    std::vector<YQLRow> rows;
+    auto rows_ptr = &rows;
+    RUN_PAGINATION_WITH_DESC_TEST(processor, "int", values, rows_ptr);
+    // Checking rows values -- expecting results in descending order except for min and max values.
+    CHECK_EQ(rows.size(), values.size() - 2);
+    // Results should start from second-largest value.
+    size_t curr_row_no = values.size() - 2;
+    for (auto& row : rows) {
+      CHECK_EQ(row.column(0).int32_value(), 1);
+      // Expecting results in descending order.
+      CHECK_EQ(row.column(1).int32_value(), values[curr_row_no]);
+      CHECK_EQ(row.column(2).int32_value(), values[curr_row_no]);
+      CHECK_EQ(row.column(3).int32_value(), 0);
+      curr_row_no--;
+    }
+  }
+
+  //------------------------------------------------------------------------------------------------
+  // Testing timestamp type.
+  //------------------------------------------------------------------------------------------------
+  {
+    std::vector<int> values;
+    for (int i = 1; i <= 100; i++) {
+      values.push_back(i);
+    }
+    std::vector<YQLRow> rows;
+    auto rows_ptr = &rows;
+    RUN_PAGINATION_WITH_DESC_TEST(processor, "timestamp", values, rows_ptr);
+    // Checking rows values -- expecting results in descending order except for min and max values.
+    CHECK_EQ(rows.size(), values.size() - 2);
+    // Results should start from second-largest value.
+    size_t curr_row_no = values.size() - 2;
+    int kMicrosPerMilli = 1000;
+
+    for (auto& row : rows) {
+      CHECK_EQ(row.column(0).int32_value(), 1);
+      // Expecting results in descending order.
+      CHECK_EQ(row.column(1).timestamp_value().ToInt64(), values[curr_row_no] * kMicrosPerMilli);
+      CHECK_EQ(row.column(2).timestamp_value().ToInt64(), values[curr_row_no] * kMicrosPerMilli);
+      CHECK_EQ(row.column(3).int32_value(), 0);
+      curr_row_no--;
+    }
+  }
+
+  //------------------------------------------------------------------------------------------------
+  // Testing inet type.
+  //------------------------------------------------------------------------------------------------
+  {
+    std::vector<string> values;
+    std::vector<string> input_values;
+    // Insert 100 rows of the same hash key into the table.
+    for (int i = 1; i <= 100; i++) {
+      string value = "127.0.0." + std::to_string(i);
+      values.push_back(value);
+      input_values.push_back("'" + value + "'");
+    }
+    std::vector<YQLRow> rows;
+    auto rows_ptr = &rows;
+    RUN_PAGINATION_WITH_DESC_TEST(processor, "inet", input_values, rows_ptr);
+    // Checking rows values -- expecting results in descending order except for min and max values.
+    CHECK_EQ(rows.size(), values.size() - 2);
+    // Results should start from second-largest value.
+    size_t curr_row_no = values.size() - 2;
+    for (auto& row : rows) {
+      CHECK_EQ(row.column(0).int32_value(), 1);
+      // Expecting results in descending order.
+      CHECK_EQ(row.column(1).inetaddress_value().ToString(), values[curr_row_no]);
+      CHECK_EQ(row.column(2).inetaddress_value().ToString(), values[curr_row_no]);
+      CHECK_EQ(row.column(3).int32_value(), 0);
+      curr_row_no--;
+    }
+  }
+
+  //------------------------------------------------------------------------------------------------
+  // Testing uuid types.
+  //------------------------------------------------------------------------------------------------
+  {
+    std::vector<string> values;
+    // Uuid prefix value -- missing last two digits.
+    string uuid_prefix = "123e4567-e89b-02d3-a456-4266554400";
+    // Insert 90 rows (two digit numbers) of the same hash key into the table.
+    for (int i = 10; i < 100; i++) {
+      values.push_back(uuid_prefix + std::to_string(i));
+    }
+    std::vector<YQLRow> rows;
+    auto rows_ptr = &rows;
+    RUN_PAGINATION_WITH_DESC_TEST(processor, "uuid", values, rows_ptr);
+    // Checking rows values -- expecting results in descending order except for min and max values.
+    CHECK_EQ(rows.size(), values.size() - 2);
+    // Results should start from second-largest value.
+    size_t curr_row_no = values.size() - 2;
+    for (auto &row : rows) {
+      CHECK_EQ(row.column(0).int32_value(), 1);
+      // Expecting results in descending order.
+      CHECK_EQ(row.column(1).uuid_value().ToString(), values[curr_row_no]);
+      CHECK_EQ(row.column(2).uuid_value().ToString(), values[curr_row_no]);
+      CHECK_EQ(row.column(3).int32_value(), 0);
+      curr_row_no--;
+    }
+  }
+
+  //------------------------------------------------------------------------------------------------
+  // Testing decimal type.
+  //------------------------------------------------------------------------------------------------
+  {
+    std::vector<string> values;
+    // Insert 100 rows of the same hash key into the table.
+    for (int i = 10; i <= 100; i++) {
+      values.push_back(std::to_string(i) + ".25");
+    }
+    std::vector<YQLRow> rows;
+    auto rows_ptr = &rows;
+    RUN_PAGINATION_WITH_DESC_TEST(processor, "decimal", values, rows_ptr);
+    // Checking rows values -- expecting results in descending order except for min and max values.
+    CHECK_EQ(rows.size(), values.size() - 2);
+    // Results should start from second-largest value.
+    size_t curr_row_no = values.size() - 2;
+    for (auto &row : rows) {
+      CHECK_EQ(row.column(0).int32_value(), 1);
+      // Expecting results in descending order.
+      util::Decimal dec;
+      CHECK_OK(dec.DecodeFromComparable(row.column(1).decimal_value()));
+      CHECK_EQ(dec.ToString(), values[curr_row_no]);
+      CHECK_OK(dec.DecodeFromComparable(row.column(2).decimal_value()));
+      CHECK_EQ(dec.ToString(), values[curr_row_no]);
+      CHECK_EQ(row.column(3).int32_value(), 0);
+      curr_row_no--;
+    }
+  }
+
+  //------------------------------------------------------------------------------------------------
+  // Testing string types.
+  //------------------------------------------------------------------------------------------------
+  {
+    std::vector<string> values;
+    std::vector<string> input_values;
+    // Insert 90 rows (two digit numbers) of the same hash key into the table.
+    for (int i = 10; i < 100; i++) {
+      values.push_back(std::to_string(i));
+      input_values.push_back("'" + std::to_string(i) + "'");
+    }
+    std::vector<YQLRow> rows;
+    auto rows_ptr = &rows;
+    RUN_PAGINATION_WITH_DESC_TEST(processor, "varchar", input_values, rows_ptr);
+    // Checking rows values -- expecting results in descending order except for min and max values.
+    CHECK_EQ(rows.size(), values.size() - 2);
+    // Results should start from second-largest value.
+    size_t curr_row_no = values.size() - 2;
+    for (auto &row : rows) {
+      CHECK_EQ(row.column(0).int32_value(), 1);
+      // Expecting results in descending order.
+      CHECK_EQ(row.column(1).string_value(), values[curr_row_no]);
+      CHECK_EQ(row.column(2).string_value(), values[curr_row_no]);
+      CHECK_EQ(row.column(3).int32_value(), 0);
+      curr_row_no--;
+    }
+  }
+}
+
 TEST_F(YbSqlQuery, TestSqlQueryPartialHash) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
