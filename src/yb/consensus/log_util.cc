@@ -60,6 +60,7 @@ TAG_FLAG(log_async_preallocate_segments, advanced);
 namespace yb {
 namespace log {
 
+using consensus::OpId;
 using env_util::ReadFully;
 using std::vector;
 using std::shared_ptr;
@@ -187,14 +188,15 @@ Status ReadableLogSegment::RebuildFooterByScanning() {
                "path", path_);
 
   DCHECK(!footer_.IsInitialized());
-  std::vector<std::unique_ptr<LogEntryPB>> entries;
+  vector<LogEntryPB*> entries;
+  ElementDeleter deleter(&entries);
   int64_t end_offset = 0;
   RETURN_NOT_OK(ReadEntries(&entries, &end_offset));
 
   footer_.set_num_entries(entries.size());
 
   // Rebuild the min/max replicate index (by scanning)
-  for (const auto& entry : entries) {
+  for (const LogEntryPB* entry : entries) {
     if (entry->has_replicate()) {
       int64_t index = entry->replicate().id().index();
       // TODO: common code with Log::UpdateFooterForBatch
@@ -253,13 +255,13 @@ Status ReadableLogSegment::ReadHeader() {
                    header_size, kLogSegmentMaxHeaderOrFooterSize));
   }
 
-  std::vector<uint8_t> header_space(header_size);
+  uint8_t header_space[header_size];
   Slice header_slice;
   LogSegmentHeaderPB header;
 
   // Read and parse the log segment header.
   RETURN_NOT_OK_PREPEND(ReadFully(readable_file_.get(), kLogSegmentHeaderMagicAndHeaderLength,
-                                  header_size, &header_slice, header_space.data()),
+                                  header_size, &header_slice, header_space),
                         "Unable to read fully");
 
   RETURN_NOT_OK_PREPEND(pb_util::ParseFromArray(&header,
@@ -356,7 +358,7 @@ Status ReadableLogSegment::ReadFooter() {
         "Decoded footer length pointed at a footer before the first entry.");
   }
 
-  std::vector<uint8_t> footer_space(footer_size);
+  uint8_t footer_space[footer_size];
   Slice footer_slice;
 
   int64_t footer_offset = file_size() - kLogSegmentFooterMagicAndFooterLength - footer_size;
@@ -365,7 +367,7 @@ Status ReadableLogSegment::ReadFooter() {
 
   // Read and parse the log segment footer.
   RETURN_NOT_OK_PREPEND(ReadFully(readable_file_.get(), footer_offset,
-                                  footer_size, &footer_slice, footer_space.data()),
+                                  footer_size, &footer_slice, footer_space),
                         "Footer not found. Could not read fully.");
 
   RETURN_NOT_OK_PREPEND(pb_util::ParseFromArray(&footer,
@@ -406,11 +408,12 @@ Status ReadableLogSegment::ParseFooterMagicAndFooterLength(const Slice &data,
   return Status::OK();
 }
 
-Status ReadableLogSegment::ReadEntries(LogEntries* entries, int64_t* end_offset) {
+Status ReadableLogSegment::ReadEntries(vector<LogEntryPB*>* entries,
+                                       int64_t* end_offset) {
   TRACE_EVENT1("log", "ReadableLogSegment::ReadEntries",
                "path", path_);
 
-  std::vector<int64_t> recent_offsets(4, -1);
+  vector<int64_t> recent_offsets(4, -1);
   int batches_read = 0;
 
   int64_t offset = first_entry_offset();
@@ -435,7 +438,7 @@ Status ReadableLogSegment::ReadEntries(LogEntries* entries, int64_t* end_offset)
     const int64_t this_batch_offset = offset;
     recent_offsets[batches_read++ % recent_offsets.size()] = offset;
 
-    LogEntryBatchPB current_batch;
+    gscoped_ptr<LogEntryBatchPB> current_batch;
 
     // Read and validate the entry header first.
     Status s;
@@ -486,15 +489,15 @@ Status ReadableLogSegment::ReadEntries(LogEntries* entries, int64_t* end_offset)
     }
 
     if (VLOG_IS_ON(3)) {
-      VLOG(3) << "Read Log entry batch: " << current_batch.DebugString();
+      VLOG(3) << "Read Log entry batch: " << current_batch->DebugString();
     }
-    for (size_t i = 0; i < current_batch.entry_size(); ++i) {
-      entries->emplace_back(current_batch.mutable_entry(i));
+    for (size_t i = 0; i < current_batch->entry_size(); ++i) {
+      entries->push_back(current_batch->mutable_entry(i));
       num_entries_read++;
     }
-    current_batch.mutable_entry()->ExtractSubrange(0,
-                                                   current_batch.entry_size(),
-                                                   nullptr);
+    current_batch->mutable_entry()->ExtractSubrange(0,
+                                                    current_batch->entry_size(),
+                                                    nullptr);
     if (end_offset != nullptr) {
       *end_offset = offset;
     }
@@ -553,12 +556,10 @@ Status ReadableLogSegment::ScanForValidEntryHeaders(int64_t offset, bool* has_va
   return Status::OK();
 }
 
-Status ReadableLogSegment::MakeCorruptionStatus(
-    int batch_number,
-    int64_t batch_offset,
-    std::vector<int64_t>* recent_offsets,
-    const std::vector<std::unique_ptr<LogEntryPB>>& entries,
-    const Status& status) const {
+Status ReadableLogSegment::MakeCorruptionStatus(int batch_number, int64_t batch_offset,
+                                                vector<int64_t>* recent_offsets,
+                                                const std::vector<LogEntryPB*>& entries,
+                                                const Status& status) const {
 
   string err = "Log file corruption detected. ";
   SubstituteAndAppend(&err, "Failed trying to read batch #$0 at offset $1 for log segment $2: ",
@@ -575,13 +576,13 @@ Status ReadableLogSegment::MakeCorruptionStatus(
     const int kNumEntries = 4; // Include up to the last 4 entries in the segment.
     for (int i = std::max(0, static_cast<int>(entries.size()) - kNumEntries);
         i < entries.size(); i++) {
-      LogEntryPB* entry = entries[i].get();
+      LogEntryPB* entry = entries[i];
       LogEntryTypePB type = entry->type();
       string opid_str;
       if (type == log::REPLICATE && entry->has_replicate()) {
-        opid_str = consensus::OpIdToString(entry->replicate().id());
+        opid_str = OpIdToString(entry->replicate().id());
       } else if (entry->has_commit() && entry->commit().has_commited_op_id()) {
-        opid_str = consensus::OpIdToString(entry->commit().commited_op_id());
+        opid_str = OpIdToString(entry->commit().commited_op_id());
       } else {
         opid_str = "<unknown>";
       }
@@ -593,7 +594,7 @@ Status ReadableLogSegment::MakeCorruptionStatus(
 }
 
 Status ReadableLogSegment::ReadEntryHeaderAndBatch(int64_t* offset, faststring* tmp_buf,
-                                                   LogEntryBatchPB* batch) {
+                                                   gscoped_ptr<LogEntryBatchPB>* batch) {
   EntryHeader header;
   RETURN_NOT_OK(ReadEntryHeader(offset, &header));
   RETURN_NOT_OK(ReadEntryBatch(offset, header, tmp_buf, batch));
@@ -630,7 +631,7 @@ bool ReadableLogSegment::DecodeEntryHeader(const Slice& data, EntryHeader* heade
 Status ReadableLogSegment::ReadEntryBatch(int64_t *offset,
                                           const EntryHeader& header,
                                           faststring *tmp_buf,
-                                          LogEntryBatchPB* entry_batch) {
+                                          gscoped_ptr<LogEntryBatchPB> *entry_batch) {
   TRACE_EVENT2("log", "ReadableLogSegment::ReadEntryBatch",
                "path", path_,
                "range", Substitute("offset=$0 entry_len=$1",
@@ -670,8 +671,8 @@ Status ReadableLogSegment::ReadEntryBatch(int64_t *offset,
   }
 
 
-  LogEntryBatchPB read_entry_batch;
-  s = pb_util::ParseFromArray(&read_entry_batch,
+  gscoped_ptr<LogEntryBatchPB> read_entry_batch(new LogEntryBatchPB());
+  s = pb_util::ParseFromArray(read_entry_batch.get(),
                               entry_batch_slice.data(),
                               header.msg_length);
 
@@ -679,7 +680,7 @@ Status ReadableLogSegment::ReadEntryBatch(int64_t *offset,
                                                     s.ToString()));
 
   *offset += entry_batch_slice.size();
-  entry_batch->Swap(&read_entry_batch);
+  entry_batch->reset(read_entry_batch.release());
   return Status::OK();
 }
 
@@ -772,16 +773,16 @@ Status WritableLogSegment::WriteEntryBatch(const Slice& data) {
 }
 
 
-void CreateBatchFromAllocatedOperations(const ReplicateMsgs& msgs,
-                                        LogEntryBatchPB* batch) {
-  LogEntryBatchPB entry_batch;
-  entry_batch.mutable_entry()->Reserve(msgs.size());
+void CreateBatchFromAllocatedOperations(const vector<consensus::ReplicateRefPtr>& msgs,
+                                        gscoped_ptr<LogEntryBatchPB>* batch) {
+  gscoped_ptr<LogEntryBatchPB> entry_batch(new LogEntryBatchPB);
+  entry_batch->mutable_entry()->Reserve(msgs.size());
   for (const auto& msg : msgs) {
-    LogEntryPB* entry_pb = entry_batch.add_entry();
+    LogEntryPB* entry_pb = entry_batch->add_entry();
     entry_pb->set_type(log::REPLICATE);
-    entry_pb->set_allocated_replicate(msg.get());
+    entry_pb->set_allocated_replicate(msg->get());
   }
-  batch->Swap(&entry_batch);
+  batch->reset(entry_batch.release());
 }
 
 bool IsLogFileName(const string& fname) {

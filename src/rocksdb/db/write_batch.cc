@@ -83,10 +83,6 @@ struct BatchContentClassifier : public WriteBatch::Handler {
     content_flags |= ContentFlags::HAS_MERGE;
     return Status::OK();
   }
-
-  Status UserOpId(const OpId& op_id) override {
-    return Status::OK();
-  }
 };
 
 }  // anon namespace
@@ -96,9 +92,8 @@ static const size_t kHeader = 12;
 
 struct SavePoint {
   size_t size;  // size of rep_
-  uint32_t count;    // count of elements in rep_
+  int count;    // count of elements in rep_
   uint32_t content_flags;
-  OpId user_op_id;
 };
 
 struct SavePoints {
@@ -106,29 +101,29 @@ struct SavePoints {
 };
 
 WriteBatch::WriteBatch(size_t reserved_bytes)
-    : content_flags_(0) {
-  rep_.reserve(std::max(reserved_bytes, kHeader));
+    : save_points_(nullptr),
+      content_flags_(0),
+      rep_() {
+  rep_.reserve((reserved_bytes > kHeader) ? reserved_bytes : kHeader);
   rep_.resize(kHeader);
 }
 
 WriteBatch::WriteBatch(const std::string& rep)
-    : content_flags_(ContentFlags::DEFERRED),
+    : save_points_(nullptr),
+      content_flags_(ContentFlags::DEFERRED),
       rep_(rep) {}
 
 WriteBatch::WriteBatch(const WriteBatch& src)
-    : content_flags_(src.content_flags_.load(std::memory_order_relaxed)),
-      rep_(src.rep_),
-      user_op_id_(src.user_op_id_) {
-  if (src.save_points_) {
-    save_points_.reset(new SavePoints(*src.save_points_));
-  }
-}
+    : save_points_(src.save_points_),
+      content_flags_(src.content_flags_.load(std::memory_order_relaxed)),
+      user_sequence_numbers_(src.user_sequence_numbers_),
+      rep_(src.rep_) {}
 
 WriteBatch::WriteBatch(WriteBatch&& src)
     : save_points_(std::move(src.save_points_)),
       content_flags_(src.content_flags_.load(std::memory_order_relaxed)),
-      rep_(std::move(src.rep_)),
-      user_op_id_(src.user_op_id_) {}
+      user_sequence_numbers_(std::move(src.user_sequence_numbers_)),
+      rep_(std::move(src.rep_)) {}
 
 WriteBatch& WriteBatch::operator=(const WriteBatch& src) {
   if (&src != this) {
@@ -146,7 +141,7 @@ WriteBatch& WriteBatch::operator=(WriteBatch&& src) {
   return *this;
 }
 
-WriteBatch::~WriteBatch() {}
+WriteBatch::~WriteBatch() { delete save_points_; }
 
 WriteBatch::Handler::~Handler() { }
 
@@ -171,10 +166,10 @@ void WriteBatch::Clear() {
     }
   }
 
-  user_op_id_ = OpId();
+  user_sequence_numbers_.clear();
 }
 
-uint32_t WriteBatch::Count() const {
+int WriteBatch::Count() const {
   return WriteBatchInternal::Count(this);
 }
 
@@ -272,16 +267,19 @@ Status WriteBatch::Iterate(Handler* handler) const {
 
   input.remove_prefix(kHeader);
   Slice key, value, blob;
-  size_t found = 0;
+  int found = 0;
   Status s;
 
-  if (user_op_id_) {
-    s = handler->UserOpId(user_op_id_);
-  }
+  bool has_user_sequence_numbers = HasUserSequenceNumbers();
+  auto user_sequence_number_iter = user_sequence_numbers_.begin();
+
   while (s.ok() && !input.empty() && handler->Continue()) {
     char tag = 0;
     uint32_t column_family = 0;  // default
 
+    if (has_user_sequence_numbers) {
+      handler->SetUserSequenceNumber(*(user_sequence_number_iter++));
+    }
     s = ReadRecordFromWriteBatch(&input, &tag, &column_family, &key, &value,
                                  &blob);
     if (!s.ok()) {
@@ -334,11 +332,11 @@ Status WriteBatch::Iterate(Handler* handler) const {
   }
 }
 
-uint32_t WriteBatchInternal::Count(const WriteBatch* b) {
+int WriteBatchInternal::Count(const WriteBatch* b) {
   return DecodeFixed32(b->rep_.data() + 8);
 }
 
-void WriteBatchInternal::SetCount(WriteBatch* b, uint32_t n) {
+void WriteBatchInternal::SetCount(WriteBatch* b, int n) {
   EncodeFixed32(&b->rep_[8], n);
 }
 
@@ -525,11 +523,11 @@ void WriteBatch::PutLogData(const Slice& blob) {
 
 void WriteBatch::SetSavePoint() {
   if (save_points_ == nullptr) {
-    save_points_.reset(new SavePoints());
+    save_points_ = new SavePoints();
   }
   // Record length and count of current batch of writes.
-  save_points_->stack.push(
-     {GetDataSize(), Count(), content_flags_.load(std::memory_order_relaxed), user_op_id_});
+  save_points_->stack.push(SavePoint{
+      GetDataSize(), Count(), content_flags_.load(std::memory_order_relaxed)});
 }
 
 Status WriteBatch::RollbackToSavePoint() {
@@ -541,20 +539,43 @@ Status WriteBatch::RollbackToSavePoint() {
   SavePoint savepoint = save_points_->stack.top();
   save_points_->stack.pop();
 
-  DCHECK_LE(savepoint.size, rep_.size());
-  DCHECK_LE(savepoint.count, Count());
+  assert(savepoint.size <= rep_.size());
+  assert(savepoint.count <= Count());
 
   if (savepoint.size == rep_.size()) {
     // No changes to rollback
   } else if (savepoint.size == 0) {
     // Rollback everything
     Clear();
+    user_sequence_numbers_.clear();
   } else {
+    if (HasUserSequenceNumbers()) {
+      Status validation_status = ValidateUserSequenceNumbers();
+      if (!validation_status.ok()) {
+        return validation_status;
+      }
+      user_sequence_numbers_.resize(savepoint.count);
+    }
     rep_.resize(savepoint.size);
     WriteBatchInternal::SetCount(this, savepoint.count);
     content_flags_.store(savepoint.content_flags, std::memory_order_relaxed);
   }
-  user_op_id_ = savepoint.user_op_id;
+
+  return Status::OK();
+}
+
+Status WriteBatch::ValidateUserSequenceNumbers() {
+  if (user_sequence_numbers_.empty()) {
+    return Status::OK();
+  }
+
+  if (static_cast<int64_t>(user_sequence_numbers_.size()) !=
+      static_cast<int64_t>(Count())) {
+    std::stringstream ss;
+    ss << "num_user_sequence_numbers=" << user_sequence_numbers_.size() << ", "
+      << "count=" << Count();
+    return STATUS(Corruption, ss.str());
+  }
 
   return Status::OK();
 }
@@ -571,6 +592,11 @@ class MemTableInserter : public WriteBatch::Handler {
   const bool dont_filter_deletes_;
   const bool concurrent_memtable_writes_;
 
+  // User-defined sequence number for the next operation to be processed. This is set using
+  // SetUserSequenceNumber.
+  SequenceNumber user_sequence_number_;
+  bool has_user_sequence_number_;
+
   // cf_mems should not be shared with concurrent inserters
   MemTableInserter(SequenceNumber sequence, ColumnFamilyMemTables* cf_mems,
                    FlushScheduler* flush_scheduler,
@@ -584,7 +610,9 @@ class MemTableInserter : public WriteBatch::Handler {
         log_number_(log_number),
         db_(reinterpret_cast<DBImpl*>(db)),
         dont_filter_deletes_(dont_filter_deletes),
-        concurrent_memtable_writes_(concurrent_memtable_writes) {
+        concurrent_memtable_writes_(concurrent_memtable_writes),
+        user_sequence_number_(kMaxSequenceNumber),
+        has_user_sequence_number_(false) {
     assert(cf_mems_);
     if (!dont_filter_deletes_) {
       assert(db_);
@@ -801,15 +829,6 @@ class MemTableInserter : public WriteBatch::Handler {
     return Status::OK();
   }
 
-  Status UserOpId(const OpId& op_id) override {
-    Status seek_status;
-    if (!SeekToColumnFamily(0, &seek_status)) {
-      return seek_status;
-    }
-    cf_mems_->GetMemTable()->SetLastOpId(op_id);
-    return Status::OK();
-  }
-
   void CheckMemtableFull() {
     if (flush_scheduler_ != nullptr) {
       auto* cfd = cf_mems_->current();
@@ -823,9 +842,26 @@ class MemTableInserter : public WriteBatch::Handler {
     }
   }
 
+  void SetUserSequenceNumber(SequenceNumber user_sequence_number) override {
+    assert(user_sequence_number != kMaxSequenceNumber);
+    user_sequence_number_ = user_sequence_number;
+    has_user_sequence_number_ = true;
+  }
+
  private:
   SequenceNumber CurrentSequenceNumber() {
-    return sequence_;
+    if (has_user_sequence_number_) {
+      assert(user_sequence_number_ != kMaxSequenceNumber);
+      SequenceNumber seq = user_sequence_number_;
+#ifndef NDEBUG
+      // Don't allow the user sequence number set by the same SetUserSequenceNumber call to be used
+      // more than once.
+      user_sequence_number_ = kMaxSequenceNumber;
+#endif
+      return seq;
+    } else {
+      return sequence_;
+    }
   }
 };
 
@@ -871,19 +907,22 @@ Status WriteBatchInternal::InsertInto(const WriteBatch* batch,
 }
 
 void WriteBatchInternal::SetContents(WriteBatch* b, const Slice& contents) {
-  DCHECK_GE(contents.size(), kHeader);
+  assert(contents.size() >= kHeader);
   b->rep_.assign(contents.cdata(), contents.size());
   b->content_flags_.store(ContentFlags::DEFERRED, std::memory_order_relaxed);
 }
 
 void WriteBatchInternal::Append(WriteBatch* dst, const WriteBatch* src) {
   SetCount(dst, Count(dst) + Count(src));
-  DCHECK_GE(src->rep_.size(), kHeader);
+  assert(src->rep_.size() >= kHeader);
   dst->rep_.append(src->rep_.data() + kHeader, src->rep_.size() - kHeader);
   dst->content_flags_.store(
       dst->content_flags_.load(std::memory_order_relaxed) |
           src->content_flags_.load(std::memory_order_relaxed),
       std::memory_order_relaxed);
+  assert(dst->HasUserSequenceNumbers() == src->HasUserSequenceNumbers());
+  std::copy(src->user_sequence_numbers_.begin(), src->user_sequence_numbers_.end(),
+    std::back_inserter(dst->user_sequence_numbers_));
 }
 
 size_t WriteBatchInternal::AppendedByteSize(size_t leftByteSize,
@@ -895,9 +934,8 @@ size_t WriteBatchInternal::AppendedByteSize(size_t leftByteSize,
   }
 }
 
-void WriteBatch::SetUserOpId(const OpId& op_id) {
-  DCHECK_EQ(Count(), 0);
-  user_op_id_ = op_id;
+std::vector<SequenceNumber> WriteBatchInternal::GetUserSequenceNumbers(const WriteBatch& b) {
+  return b.user_sequence_numbers_;
 }
 
 }  // namespace rocksdb

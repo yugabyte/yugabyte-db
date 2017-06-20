@@ -14,14 +14,14 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-package yb;
+package yb.consensus;
 
-option java_package = "org.yb";
+option java_package = "org.yb.consensus";
 
 // An id for a generic state machine operation. Composed of the leaders' term
 // plus the index of the operation in that term, e.g., the <index>th operation
 // of the <term>th leader.
-message OpIdPB {
+message OpId {
   // The term of an operation or the leader's sequence id.
   required int64 term = 1;
   required int64 index = 2;

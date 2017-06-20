@@ -449,7 +449,7 @@ Status WaitUntilCommittedOpIdIndex(TServerDetails* replica,
     auto passed = MonoTime::Now(MonoTime::FINE).GetDeltaSince(start);
     if (passed.MoreThan(timeout)) {
       auto name = config ? "config" : "consensus";
-      auto last_value = config ? cstate.ShortDebugString() : consensus::OpIdToString(op_id);
+      auto last_value = config ? cstate.ShortDebugString() : OpIdToString(op_id);
       return STATUS(TimedOut,
                     Substitute("Committed $0 opid_index does not equal $1 "
                                "after waiting for $2. Last value: $3, Last status: $4",

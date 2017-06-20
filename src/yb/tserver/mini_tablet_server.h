@@ -59,8 +59,6 @@ class MiniTabletServer {
   CHECKED_STATUS WaitStarted();
 
   void Shutdown();
-  void FlushTablets();
-  void CleanTabletLogs();
 
   // Restart a tablet server on the same RPC and webserver ports.
   CHECKED_STATUS Restart();

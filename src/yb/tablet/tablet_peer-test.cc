@@ -360,7 +360,7 @@ TEST_P(TabletPeerTest, TestMRSAnchorPreventsLogGC) {
   // The last is anchored due to the commit in the last segment being the last
   // OpId in the log.
   int32_t earliest_needed = table_type_ == KUDU_COLUMNAR_TABLE_TYPE ?
-      2 : static_cast<int32_t>(tablet_peer_->tablet()->MaxPersistentOpId().index);
+      2 : static_cast<int32_t>(tablet_peer_->tablet()->LargestFlushedSequenceNumber());
   auto total_segments = log->GetLogReader()->num_segments();
   ASSERT_OK(tablet_peer_->GetEarliestNeededLogIndex(&min_log_index));
   ASSERT_OK(log->GC(min_log_index, &num_gced));
@@ -392,7 +392,7 @@ TEST_P(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   ASSERT_OK(tablet_peer_->tablet()->Flush());
 
   int32_t earliest_needed = table_type_ == KUDU_COLUMNAR_TABLE_TYPE ?
-      1 : static_cast<int32_t>(tablet_peer_->tablet()->MaxPersistentOpId().index);
+      1 : static_cast<int32_t>(tablet_peer_->tablet()->LargestFlushedSequenceNumber());
   auto total_segments = log->GetLogReader()->num_segments();
   int64_t min_log_index = -1;
   ASSERT_OK(tablet_peer_->GetEarliestNeededLogIndex(&min_log_index));
@@ -432,16 +432,14 @@ TEST_P(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   // Execute another couple inserts, but Flush it so it doesn't anchor.
   ASSERT_OK(ExecuteInsertsAndRollLogs(2));
   total_segments += 2;
-  if (table_type_ == KUDU_COLUMNAR_TABLE_TYPE) {
-    ASSERT_OK(tablet_peer_->tablet()->Flush());
-  }
+  ASSERT_OK(tablet_peer_->tablet()->Flush());
   ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(total_segments, segments.size());
 
   // Ensure the delta and last insert remain in the logs, anchored by the delta.
   // Note that this will allow GC of the 2nd insert done above.
   earliest_needed = table_type_ == KUDU_COLUMNAR_TABLE_TYPE ?
-      1 : tablet_peer_->tablet()->MaxPersistentOpId().index;
+      1 : tablet_peer_->tablet()->LargestFlushedSequenceNumber();
   ASSERT_OK(tablet_peer_->GetEarliestNeededLogIndex(&min_log_index));
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   ASSERT_EQ(earliest_needed, num_gced);
@@ -455,7 +453,7 @@ TEST_P(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   AssertNoLogAnchors();
 
   earliest_needed = table_type_ == KUDU_COLUMNAR_TABLE_TYPE ?
-      3 : static_cast<int32_t>(tablet_peer_->tablet()->MaxPersistentOpId().index);
+      3 : static_cast<int32_t>(tablet_peer_->tablet()->LargestFlushedSequenceNumber());
   total_segments = log->GetLogReader()->num_segments();
   // We should only hang onto one segment due to no anchors.
   // The last log OpId is the commit in the last segment, so it only anchors

@@ -99,7 +99,9 @@ class LogCacheTest : public YBTest {
     for (int i = first; i < first + count; i++) {
       int term = i / 7;
       int index = i;
-      ReplicateMsgs msgs = { CreateDummyReplicate(term, index, clock_->Now(), payload_size) };
+      vector<ReplicateRefPtr> msgs;
+      msgs.push_back(make_scoped_refptr_replicate(
+                       CreateDummyReplicate(term, index, clock_->Now(), payload_size).release()));
       RETURN_NOT_OK(cache_->AppendOperations(msgs, Bind(&FatalOnError)));
     }
     return Status::OK();
@@ -123,7 +125,7 @@ TEST_F(LogCacheTest, TestAppendAndGetMessages) {
   ASSERT_GE(cache_->metrics_.log_cache_size->value(), 500);
   ASSERT_OK(log_->WaitUntilAllFlushed());
 
-  ReplicateMsgs messages;
+  vector<ReplicateRefPtr> messages;
   OpId preceding;
   ASSERT_OK(cache_->ReadOps(0, 8 * 1024 * 1024, &messages, &preceding));
   EXPECT_EQ(100, messages.size());
@@ -134,7 +136,7 @@ TEST_F(LogCacheTest, TestAppendAndGetMessages) {
   ASSERT_OK(cache_->ReadOps(70, 8 * 1024 * 1024, &messages, &preceding));
   EXPECT_EQ(30, messages.size());
   EXPECT_EQ("10.70", OpIdToString(preceding));
-  EXPECT_EQ("10.71", OpIdToString(messages[0]->id()));
+  EXPECT_EQ("10.71", OpIdToString(messages[0]->get()->id()));
 
   // Get at the end of the cache
   messages.clear();
@@ -151,7 +153,7 @@ TEST_F(LogCacheTest, TestAppendAndGetMessages) {
   ASSERT_OK(cache_->ReadOps(20, 8 * 1024 * 1024, &messages, &preceding));
   EXPECT_EQ(80, messages.size());
   EXPECT_EQ("2.20", OpIdToString(preceding));
-  EXPECT_EQ("3.21", OpIdToString(messages[0]->id()));
+  EXPECT_EQ("3.21", OpIdToString(messages[0]->get()->id()));
 }
 
 
@@ -168,7 +170,7 @@ TEST_F(LogCacheTest, TestAlwaysYieldsAtLeastOneMessage) {
   ASSERT_OK(log_->WaitUntilAllFlushed());
 
   // We should get one of them, even though we only ask for 100 bytes
-  ReplicateMsgs messages;
+  vector<ReplicateRefPtr> messages;
   OpId preceding;
   ASSERT_OK(cache_->ReadOps(0, 100, &messages, &preceding));
   ASSERT_EQ(1, messages.size());
@@ -182,7 +184,7 @@ TEST_F(LogCacheTest, TestCacheEdgeCases) {
   ASSERT_OK(AppendReplicateMessagesToCache(1, 1));
   ASSERT_OK(log_->WaitUntilAllFlushed());
 
-  ReplicateMsgs messages;
+  std::vector<ReplicateRefPtr> messages;
   OpId preceding;
 
   // Test when the searched index is MinimumOpId().index().

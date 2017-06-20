@@ -195,8 +195,8 @@ class DBImpl : public DB {
   Status DeleteFilesInRange(ColumnFamilyHandle* column_family,
                             const Slice* begin, const Slice* end);
 
-  void GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) override;
-  OpId GetFlushedOpId() override;
+  virtual void GetLiveFilesMetaData(
+      std::vector<LiveFileMetaData>* metadata) override;
 
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have

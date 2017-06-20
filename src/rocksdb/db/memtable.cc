@@ -794,22 +794,6 @@ size_t MemTable::CountSuccessiveMergeEntries(const LookupKey& key) {
   return num_successive_merges;
 }
 
-void MemTable::SetLastOpId(const OpId& op_id) {
-  for (;;) {
-    OpId old_value = last_op_id_.load(std::memory_order_acquire);
-    if (old_value.term > op_id.term || old_value.index >= op_id.index) {
-      LOG(DFATAL) << "Non-increasing last op id: " << old_value << " => " << op_id;
-      return;
-    }
-    if (last_op_id_.compare_exchange_weak(old_value,
-                                          op_id,
-                                          std::memory_order_release,
-                                          std::memory_order_relaxed)) {
-      return;
-    }
-  }
-}
-
 void MemTableRep::Get(const LookupKey& k, void* callback_args,
                       bool (*callback_func)(void* arg, const char* entry)) {
   auto iter = GetDynamicPrefixIterator();

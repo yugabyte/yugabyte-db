@@ -52,7 +52,9 @@ class FlushJobTest : public testing::Test {
 
   void NewDB() {
     VersionEdit new_db;
-    new_db.InitNewDB();
+    new_db.SetLogNumber(0);
+    new_db.SetNextFile(2);
+    new_db.SetLastSequence(0);
 
     const std::string manifest = DescriptorFileName(dbname_, 1);
     unique_ptr<WritableFile> file;

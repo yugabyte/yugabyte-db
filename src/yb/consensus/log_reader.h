@@ -14,15 +14,14 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_CONSENSUS_LOG_READER_H
-#define YB_CONSENSUS_LOG_READER_H
+#ifndef YB_LOG_LOG_READER_H_
+#define YB_LOG_LOG_READER_H_
 
+#include <gtest/gtest.h>
 #include <map>
 #include <string>
 #include <utility>
 #include <vector>
-
-#include <gtest/gtest.h>
 
 #include "yb/consensus/log_metrics.h"
 #include "yb/consensus/log_util.h"
@@ -109,7 +108,7 @@ class LogReader {
       const int64_t starting_at,
       const int64_t up_to,
       int64_t max_bytes_to_read,
-      ReplicateMsgs* replicates) const;
+      std::vector<consensus::ReplicateMsg*>* replicates) const;
   static const int kNoSizeLimit;
 
   // Look up the OpId for the given operation index.
@@ -170,8 +169,8 @@ class LogReader {
   // Read the LogEntryBatch pointed to by the provided index entry.
   // 'tmp_buf' is used as scratch space to avoid extra allocation.
   CHECKED_STATUS ReadBatchUsingIndexEntry(const LogIndexEntry& index_entry,
-                                          faststring* tmp_buf,
-                                          LogEntryBatchPB* batch) const;
+                                  faststring* tmp_buf,
+                                  gscoped_ptr<LogEntryBatchPB>* batch) const;
 
   LogReader(FsManager* fs_manager, const scoped_refptr<LogIndex>& index,
             std::string tablet_name,
@@ -206,4 +205,4 @@ class LogReader {
 }  // namespace log
 }  // namespace yb
 
-#endif // YB_CONSENSUS_LOG_READER_H
+#endif /* YB_LOG_LOG_READER_H_ */

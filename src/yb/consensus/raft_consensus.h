@@ -194,7 +194,7 @@ class RaftConsensus : public Consensus,
 
   // As a follower, start a consensus round not associated with a Transaction.
   // Only virtual and protected for mocking purposes.
-  virtual CHECKED_STATUS StartConsensusOnlyRoundUnlocked(const ReplicateMsgPtr& msg);
+  virtual CHECKED_STATUS StartConsensusOnlyRoundUnlocked(const ReplicateRefPtr& msg);
 
  private:
   friend class ReplicaState;
@@ -212,7 +212,7 @@ class RaftConsensus : public Consensus,
   struct LeaderRequest {
     std::string leader_uuid;
     const OpId* preceding_opid;
-    ReplicateMsgs messages;
+    std::vector<ReplicateRefPtr> messages;
     // The positional index of the first message selected to be appended, in the
     // original leader's request message sequence.
     int64_t first_message_idx;
@@ -233,10 +233,10 @@ class RaftConsensus : public Consensus,
 
   // Replicate (as leader) a pre-validated config change. This includes
   // updating the peers and setting the new_configuration as pending.
-  CHECKED_STATUS ReplicateConfigChangeUnlocked(const ReplicateMsgPtr& replicate_ref,
-                                               const RaftConfigPB& new_config,
-                                               ChangeConfigType type,
-                                               const StatusCallback& client_cb);
+  CHECKED_STATUS ReplicateConfigChangeUnlocked(const ReplicateRefPtr& replicate_ref,
+                                       const RaftConfigPB& new_config,
+                                       ChangeConfigType type,
+                                       const StatusCallback& client_cb);
 
   // Update the peers and queue to be consistent with a new active configuration.
   // Should only be called by the leader.
@@ -305,7 +305,7 @@ class RaftConsensus : public Consensus,
 
   // Begin a replica transaction. If the type of message in 'msg' is not a type
   // that uses transactions, delegates to StartConsensusOnlyRoundUnlocked().
-  CHECKED_STATUS StartReplicaTransactionUnlocked(const ReplicateMsgPtr& msg);
+  CHECKED_STATUS StartReplicaTransactionUnlocked(const ReplicateRefPtr& msg);
 
   // Return header string for RequestVote log messages. The ReplicaState lock must be held.
   std::string GetRequestVoteLogPrefixUnlocked() const;

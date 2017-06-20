@@ -34,8 +34,6 @@
 #include "util/thread_status_util.h"
 #include "util/xfunc.h"
 
-#include "yb/util/logging.h"
-
 namespace rocksdb {
 
 ColumnFamilyHandleImpl::ColumnFamilyHandleImpl(
@@ -1005,7 +1003,7 @@ uint64_t ColumnFamilyMemTablesImpl::GetLogNumber() const {
 }
 
 MemTable* ColumnFamilyMemTablesImpl::GetMemTable() const {
-  DCHECK_ONLY_NOTNULL(current_);
+  assert(current_ != nullptr);
   return current_->mem();
 }
 

@@ -57,20 +57,6 @@ ADD_YB_LIBRARY(version_info_proto
   DEPS protobuf
   NONLINK_DEPS ${VERSION_INFO_PROTO_TGTS})
 
-#######################################
-# version_info_proto
-#######################################
-
-PROTOBUF_GENERATE_CPP(
-  OP_ID_PROTO_SRCS OP_ID_PROTO_HDRS OP_ID_PROTO_TGTS
-  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
-  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES opid.proto)
-ADD_YB_LIBRARY(opid_proto
-  SRCS ${OP_ID_PROTO_SRCS}
-  DEPS protobuf
-  NONLINK_DEPS ${OP_ID_PROTO_TGTS})
-
 ############################################################
 # Version stamp
 ############################################################
@@ -154,7 +140,6 @@ set(UTIL_SRCS
   net/socket.cc
   oid_generator.cc
   once.cc
-  opid.cc
   os-util.cc
   path_util.cc
   pb_util.cc

@@ -82,7 +82,7 @@ class Transaction {
   TransactionType tx_type() const { return tx_type_; }
 
   // Builds the ReplicateMsg for this transaction.
-  virtual consensus::ReplicateMsgPtr NewReplicateMsg() = 0;
+  virtual void NewReplicateMsg(gscoped_ptr<consensus::ReplicateMsg>* replicate_msg) = 0;
 
   // Executes the prepare phase of this transaction. The actual actions of this phase depend on the
   // transaction type, but usually are limited to what can be done without actually changing shared

@@ -108,8 +108,8 @@ class Log : public RefCountedThreadSafe<Log> {
   // WARNING: the caller _must_ call AsyncAppend() or else the log
   // will "stall" and will never be able to make forward progress.
   CHECKED_STATUS Reserve(LogEntryTypePB type,
-                         LogEntryBatchPB* entry_batch,
-                         LogEntryBatch** reserved_entry);
+                 gscoped_ptr<LogEntryBatchPB> entry_batch,
+                 LogEntryBatch** reserved_entry);
 
   // Asynchronously appends 'entry' to the log. Once the append
   // completes and is synced, 'callback' will be invoked.
@@ -123,8 +123,8 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Append the given set of replicate messages, asynchronously.
   // This requires that the replicates have already been assigned OpIds.
-  CHECKED_STATUS AsyncAppendReplicates(const ReplicateMsgs& replicates,
-                                       const StatusCallback& callback);
+  CHECKED_STATUS AsyncAppendReplicates(const vector<consensus::ReplicateRefPtr>& replicates,
+                               const StatusCallback& callback);
 
   // Append the given commit message, asynchronously.
   //
@@ -427,7 +427,8 @@ class LogEntryBatch {
   friend struct LogEntryBatchLogicalSize;
   friend class MultiThreadedLogTest;
 
-  LogEntryBatch(LogEntryTypePB type, LogEntryBatchPB* entry_batch_pb, size_t count);
+  LogEntryBatch(LogEntryTypePB type,
+                gscoped_ptr<LogEntryBatchPB> entry_batch_pb, size_t count);
 
   // Serializes contents of the entry to an internal buffer.
   CHECKED_STATUS Serialize();
@@ -479,12 +480,12 @@ class LogEntryBatch {
   // Requires that this be a REPLICATE batch.
   consensus::OpId MaxReplicateOpId() const {
     DCHECK_EQ(REPLICATE, type_);
-    int idx = entry_batch_pb_.entry_size() - 1;
-    DCHECK(entry_batch_pb_.entry(idx).replicate().IsInitialized());
-    return entry_batch_pb_.entry(idx).replicate().id();
+    int idx = entry_batch_pb_->entry_size() - 1;
+    DCHECK(entry_batch_pb_->entry(idx).replicate().IsInitialized());
+    return entry_batch_pb_->entry(idx).replicate().id();
   }
 
-  void SetReplicates(const ReplicateMsgs& replicates) {
+  void SetReplicates(const vector<consensus::ReplicateRefPtr>& replicates) {
     replicates_ = replicates;
   }
 
@@ -492,7 +493,7 @@ class LogEntryBatch {
   const LogEntryTypePB type_;
 
   // Contents of the log entries that will be written to disk.
-  LogEntryBatchPB entry_batch_pb_;
+  gscoped_ptr<LogEntryBatchPB> entry_batch_pb_;
 
   // Total size in bytes of all entries
   const uint32_t total_size_bytes_;
@@ -504,7 +505,7 @@ class LogEntryBatch {
   // Used only when type is REPLICATE, this makes sure there's at
   // least a reference to each replicate message until we're finished
   // appending.
-  ReplicateMsgs replicates_;
+  vector<consensus::ReplicateRefPtr> replicates_;
 
   // Callback to be invoked upon the entries being written and
   // synced to disk.

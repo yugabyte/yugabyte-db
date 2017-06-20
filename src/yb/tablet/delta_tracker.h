@@ -14,18 +14,16 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_TABLET_DELTA_TRACKER_H
-#define YB_TABLET_DELTA_TRACKER_H
+#ifndef YB_TABLET_DELTATRACKER_H
+#define YB_TABLET_DELTATRACKER_H
 
+#include <gtest/gtest_prod.h>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include <gtest/gtest_prod.h>
-
 #include "yb/common/iterator.h"
 #include "yb/common/rowid.h"
-#include "yb/consensus/opid_util.h"
 #include "yb/gutil/macros.h"
 #include "yb/server/metadata.h"
 #include "yb/tablet/delta_store.h"
@@ -35,6 +33,10 @@
 namespace yb {
 
 class MemTracker;
+
+namespace consensus {
+class OpId;
+}
 
 namespace log {
 class LogAnchorRegistry;
@@ -176,6 +178,8 @@ class DeltaTracker {
  private:
   friend class DiskRowSet;
 
+  DISALLOW_COPY_AND_ASSIGN(DeltaTracker);
+
   FRIEND_TEST(TestRowSet, TestRowSetUpdate);
   FRIEND_TEST(TestRowSet, TestDMSFlush);
   FRIEND_TEST(TestRowSet, TestMakeDeltaIteratorMergerUnlocked);
@@ -256,12 +260,10 @@ class DeltaTracker {
   //
   // TODO(perf): this needs to be more fine grained
   mutable Mutex compact_flush_lock_;
-
-  DISALLOW_COPY_AND_ASSIGN(DeltaTracker);
 };
 
 
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_DELTA_TRACKER_H
+#endif

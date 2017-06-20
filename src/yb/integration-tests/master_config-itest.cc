@@ -179,7 +179,7 @@ Status MasterChangeConfigTest::WaitForMasterLeaderToBeReady(
 }
 
 void MasterChangeConfigTest::SetCurLogIndex() {
-  consensus::OpId op_id;
+  OpId op_id;
   ASSERT_OK(cluster_->GetLastOpIdForLeader(&op_id));
   cur_log_index_ = op_id.index();
   LOG(INFO) << "cur_log_index_ " << cur_log_index_;

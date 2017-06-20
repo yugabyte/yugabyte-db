@@ -99,10 +99,10 @@ class CompactionJobTest : public testing::Test {
     assert(contents.size() > 0);
 
     bool first_key = true;
-    FileMetaData::BoundaryValues smallest_values, largest_values;
-    smallest_values.seqno = kMaxSequenceNumber;
-    largest_values.seqno = 0;
     std::string smallest, largest;
+    InternalKey smallest_key, largest_key;
+    SequenceNumber smallest_seqno = kMaxSequenceNumber;
+    SequenceNumber largest_seqno = 0;
     test::BoundaryTestValues user_values;
     for (auto kv : contents) {
       ParsedInternalKey key;
@@ -113,18 +113,18 @@ class CompactionJobTest : public testing::Test {
 
       user_values.Feed(key.user_key);
 
-      smallest_values.seqno = std::min(smallest_values.seqno, key.sequence);
-      largest_values.seqno = std::max(largest_values.seqno, key.sequence);
+      smallest_seqno = std::min(smallest_seqno, key.sequence);
+      largest_seqno = std::max(largest_seqno, key.sequence);
 
       if (first_key ||
           cfd_->user_comparator()->Compare(key.user_key, smallest) < 0) {
         smallest = key.user_key.ToBuffer();
-        smallest_values.key = InternalKey::DecodeFrom(skey);
+        smallest_key = InternalKey::DecodeFrom(skey);
       }
       if (first_key ||
           cfd_->user_comparator()->Compare(key.user_key, largest) > 0) {
         largest = key.user_key.ToBuffer();
-        largest_values.key = InternalKey::DecodeFrom(skey);
+        largest_key = InternalKey::DecodeFrom(skey);
       }
 
       first_key = false;
@@ -135,8 +135,13 @@ class CompactionJobTest : public testing::Test {
         env_, GenerateFileName(file_number), std::move(contents)));
 
     VersionEdit edit;
+    FileMetaData::BoundaryValues smallest_values, largest_values;
+    smallest_values.key = smallest_key;
+    smallest_values.seqno = smallest_seqno;
     smallest_values.user_values.push_back(test::MakeIntBoundaryValue(user_values.min_int));
     smallest_values.user_values.push_back(test::MakeStringBoundaryValue(user_values.min_string));
+    largest_values.key = largest_key;
+    largest_values.seqno = largest_seqno;
     largest_values.user_values.push_back(test::MakeIntBoundaryValue(user_values.max_int));
     largest_values.user_values.push_back(test::MakeStringBoundaryValue(user_values.max_string));
     edit.AddFile(level,
@@ -153,7 +158,6 @@ class CompactionJobTest : public testing::Test {
 
   void SetLastSequence(const SequenceNumber sequence_number) {
     versions_->SetLastSequence(sequence_number + 1);
-    versions_->SetFlushedOpId(OpId(sequence_number / 10, sequence_number + 1));
   }
 
   // returns expected result after compaction
@@ -201,7 +205,9 @@ class CompactionJobTest : public testing::Test {
 
   void NewDB() {
     VersionEdit new_db;
-    new_db.InitNewDB();
+    new_db.SetLogNumber(0);
+    new_db.SetNextFile(2);
+    new_db.SetLastSequence(0);
 
     const std::string manifest = DescriptorFileName(dbname_, 1);
     unique_ptr<WritableFile> file;

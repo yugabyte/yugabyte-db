@@ -286,22 +286,12 @@ Status MemTableList::InstallMemtableFlushResults(
   mu->AssertHeld();
 
   // flush was successful
-  OpId last_op_id;
   for (size_t i = 0; i < mems.size(); ++i) {
     // All the edits are associated with the first memtable of this batch.
     assert(i == 0 || mems[i]->GetEdits()->NumEntries() == 0);
 
     mems[i]->flush_completed_ = true;
-    auto op_id = mems[i]->last_op_id_.load(std::memory_order_acquire);
-    if (op_id) {
-      DCHECK_GE(op_id.term, last_op_id.term);
-      DCHECK_GT(op_id.index, last_op_id.index);
-      last_op_id = op_id;
-    }
     mems[i]->file_number_ = file_number;
-  }
-  if (last_op_id) {
-    mems[0]->edit_.SetFlushedOpId(last_op_id);
   }
 
   // if some other thread is already committing, then return

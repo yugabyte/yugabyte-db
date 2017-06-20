@@ -29,7 +29,6 @@
 #include "yb/tablet/tablet_bootstrap.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet_metadata.h"
-#include "yb/util/tostring.h"
 
 using std::shared_ptr;
 using std::string;
@@ -52,7 +51,8 @@ using consensus::kMinimumTerm;
 using consensus::MakeOpId;
 using consensus::OpId;
 using consensus::ReplicateMsg;
-using consensus::ReplicateMsgPtr;
+using consensus::ReplicateRefPtr;
+using consensus::make_scoped_refptr_replicate;
 using log::Log;
 using log::LogAnchorRegistry;
 using log::LogTestBase;
@@ -320,8 +320,7 @@ TEST_F(BootstrapTest, TestOrphanedReplicate) {
   ASSERT_EQ(0, results.size());
 
   // The consensus bootstrap info should include the orphaned REPLICATE.
-  ASSERT_EQ(1, boot_info.orphaned_replicates.size())
-      << util::ToString(boot_info.orphaned_replicates);
+  ASSERT_EQ(1, boot_info.orphaned_replicates.size());
   ASSERT_STR_CONTAINS(boot_info.orphaned_replicates[0]->ShortDebugString(),
                       "this is a test mutate");
 
@@ -385,16 +384,17 @@ TEST_F(BootstrapTest, TestOperationOverwriting) {
 TEST_F(BootstrapTest, TestOutOfOrderCommits) {
   BuildLog();
 
-  auto replicate = std::make_shared<consensus::ReplicateMsg>();
-  replicate->set_op_type(consensus::WRITE_OP);
-  tserver::WriteRequestPB* batch_request = replicate->mutable_write_request();
+  consensus::ReplicateRefPtr replicate = consensus::make_scoped_refptr_replicate(
+      new consensus::ReplicateMsg());
+  replicate->get()->set_op_type(consensus::WRITE_OP);
+  tserver::WriteRequestPB* batch_request = replicate->get()->mutable_write_request();
   ASSERT_OK(SchemaToPB(schema_, batch_request->mutable_schema()));
   batch_request->set_tablet_id(log::kTestTablet);
 
   // This appends Insert(1) with op 10.10
   OpId insert_opid = MakeOpId(10, 10);
-  replicate->mutable_id()->CopyFrom(insert_opid);
-  replicate->set_hybrid_time(clock_->Now().ToUint64());
+  replicate->get()->mutable_id()->CopyFrom(insert_opid);
+  replicate->get()->set_hybrid_time(clock_->Now().ToUint64());
   AddTestRowToPB(RowOperationsPB::INSERT, schema_, 10, 1,
                  "this is a test insert", batch_request->mutable_row_operations());
   AppendReplicateBatch(replicate, true);
@@ -402,8 +402,8 @@ TEST_F(BootstrapTest, TestOutOfOrderCommits) {
   // This appends Mutate(1) with op 10.11
   OpId mutate_opid = MakeOpId(10, 11);
   batch_request->mutable_row_operations()->Clear();
-  replicate->mutable_id()->CopyFrom(mutate_opid);
-  replicate->set_hybrid_time(clock_->Now().ToUint64());
+  replicate->get()->mutable_id()->CopyFrom(mutate_opid);
+  replicate->get()->set_hybrid_time(clock_->Now().ToUint64());
   AddTestRowToPB(RowOperationsPB::UPDATE, schema_,
                  10, 2, "this is a test mutate",
                  batch_request->mutable_row_operations());
@@ -448,16 +448,17 @@ TEST_F(BootstrapTest, TestOutOfOrderCommits) {
 TEST_F(BootstrapTest, TestMissingCommitMessage) {
   BuildLog();
 
-  auto replicate = std::make_shared<consensus::ReplicateMsg>();
-  replicate->set_op_type(consensus::WRITE_OP);
-  tserver::WriteRequestPB* batch_request = replicate->mutable_write_request();
+  consensus::ReplicateRefPtr replicate = consensus::make_scoped_refptr_replicate(
+      new consensus::ReplicateMsg());
+  replicate->get()->set_op_type(consensus::WRITE_OP);
+  tserver::WriteRequestPB* batch_request = replicate->get()->mutable_write_request();
   ASSERT_OK(SchemaToPB(schema_, batch_request->mutable_schema()));
   batch_request->set_tablet_id(log::kTestTablet);
 
   // This appends Insert(1) with op 10.10
   OpId insert_opid = MakeOpId(10, 10);
-  replicate->mutable_id()->CopyFrom(insert_opid);
-  replicate->set_hybrid_time(clock_->Now().ToUint64());
+  replicate->get()->mutable_id()->CopyFrom(insert_opid);
+  replicate->get()->set_hybrid_time(clock_->Now().ToUint64());
   AddTestRowToPB(RowOperationsPB::INSERT, schema_, 10, 1,
                  "this is a test insert", batch_request->mutable_row_operations());
   AppendReplicateBatch(replicate, true);
@@ -465,8 +466,8 @@ TEST_F(BootstrapTest, TestMissingCommitMessage) {
   // This appends Mutate(1) with op 10.11
   OpId mutate_opid = MakeOpId(10, 11);
   batch_request->mutable_row_operations()->Clear();
-  replicate->mutable_id()->CopyFrom(mutate_opid);
-  replicate->set_hybrid_time(clock_->Now().ToUint64());
+  replicate->get()->mutable_id()->CopyFrom(mutate_opid);
+  replicate->get()->set_hybrid_time(clock_->Now().ToUint64());
   AddTestRowToPB(RowOperationsPB::UPDATE, schema_,
                  10, 2, "this is a test mutate",
                  batch_request->mutable_row_operations());
@@ -502,21 +503,21 @@ TEST_F(BootstrapTest, TestConsensusOnlyOperationOutOfOrderHybridTime) {
   BuildLog();
 
   // Append NO_OP.
-  auto noop_replicate = std::make_shared<ReplicateMsg>();
-  noop_replicate->set_op_type(consensus::NO_OP);
-  *noop_replicate->mutable_id() = MakeOpId(1, 1);
-  noop_replicate->set_hybrid_time(2);
+  ReplicateRefPtr noop_replicate = make_scoped_refptr_replicate(new ReplicateMsg());
+  noop_replicate->get()->set_op_type(consensus::NO_OP);
+  *noop_replicate->get()->mutable_id() = MakeOpId(1, 1);
+  noop_replicate->get()->set_hybrid_time(2);
 
   AppendReplicateBatch(noop_replicate, true);
 
   // Append WRITE_OP with higher OpId and lower hybrid_time.
-  auto write_replicate = std::make_shared<ReplicateMsg>();
-  write_replicate->set_op_type(consensus::WRITE_OP);
-  WriteRequestPB* batch_request = write_replicate->mutable_write_request();
+  ReplicateRefPtr write_replicate = make_scoped_refptr_replicate(new ReplicateMsg());
+  write_replicate->get()->set_op_type(consensus::WRITE_OP);
+  WriteRequestPB* batch_request = write_replicate->get()->mutable_write_request();
   ASSERT_OK(SchemaToPB(schema_, batch_request->mutable_schema()));
   batch_request->set_tablet_id(log::kTestTablet);
-  *write_replicate->mutable_id() = MakeOpId(1, 2);
-  write_replicate->set_hybrid_time(1);
+  *write_replicate->get()->mutable_id() = MakeOpId(1, 2);
+  write_replicate->get()->set_hybrid_time(1);
   AddTestRowToPB(RowOperationsPB::INSERT, schema_, 1, 1, "foo",
                  batch_request->mutable_row_operations());
 
@@ -526,14 +527,14 @@ TEST_F(BootstrapTest, TestConsensusOnlyOperationOutOfOrderHybridTime) {
   // NO_OP...
   gscoped_ptr<consensus::CommitMsg> mutate_commit(new consensus::CommitMsg);
   mutate_commit->set_op_type(consensus::NO_OP);
-  *mutate_commit->mutable_commited_op_id() = noop_replicate->id();
+  *mutate_commit->mutable_commited_op_id() = noop_replicate->get()->id();
 
   AppendCommit(mutate_commit.Pass());
 
   // ...and WRITE_OP...
   mutate_commit.reset(new consensus::CommitMsg);
   mutate_commit->set_op_type(consensus::WRITE_OP);
-  *mutate_commit->mutable_commited_op_id() = write_replicate->id();
+  *mutate_commit->mutable_commited_op_id() = write_replicate->get()->id();
   TxResultPB* result = mutate_commit->mutable_result();
   OperationResultPB* mutate = result->add_ops();
   MemStoreTargetPB* target = mutate->add_mutated_stores();
@@ -545,7 +546,7 @@ TEST_F(BootstrapTest, TestConsensusOnlyOperationOutOfOrderHybridTime) {
   shared_ptr<Tablet> tablet;
   ASSERT_OK(BootstrapTestTablet(-1, -1, &tablet, &boot_info));
   ASSERT_EQ(boot_info.orphaned_replicates.size(), 0);
-  ASSERT_OPID_EQ(boot_info.last_committed_id, write_replicate->id());
+  ASSERT_OPID_EQ(boot_info.last_committed_id, write_replicate->get()->id());
 
   // Confirm that the insert op was applied.
   vector<string> results;

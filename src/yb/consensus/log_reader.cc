@@ -278,7 +278,7 @@ scoped_refptr<ReadableLogSegment> LogReader::GetSegmentBySequenceNumber(int64_t 
 
 Status LogReader::ReadBatchUsingIndexEntry(const LogIndexEntry& index_entry,
                                            faststring* tmp_buf,
-                                           LogEntryBatchPB* batch) const {
+                                           gscoped_ptr<LogEntryBatchPB>* batch) const {
   const int index = index_entry.op_id.index();
 
   scoped_refptr<ReadableLogSegment> segment = GetSegmentBySequenceNumber(
@@ -301,28 +301,28 @@ Status LogReader::ReadBatchUsingIndexEntry(const LogIndexEntry& index_entry,
 
   if (bytes_read_) {
     bytes_read_->IncrementBy(kEntryHeaderSize + tmp_buf->length());
-    entries_read_->IncrementBy(batch->entry_size());
+    entries_read_->IncrementBy((**batch).entry_size());
   }
 
   return Status::OK();
 }
 
-Status LogReader::ReadReplicatesInRange(
-    const int64_t starting_at,
-    const int64_t up_to,
-    int64_t max_bytes_to_read,
-    ReplicateMsgs* replicates) const {
+Status LogReader::ReadReplicatesInRange(const int64_t starting_at,
+                                        const int64_t up_to,
+                                        int64_t max_bytes_to_read,
+                                        vector<ReplicateMsg*>* replicates) const {
   DCHECK_GT(starting_at, 0);
   DCHECK_GE(up_to, starting_at);
   DCHECK(log_index_) << "Require an index to random-read logs";
 
-  ReplicateMsgs replicates_tmp;
+  vector<ReplicateMsg*> replicates_tmp;
+  ElementDeleter d(&replicates_tmp);
   LogIndexEntry prev_index_entry;
 
   int64_t total_size = 0;
   bool limit_exceeded = false;
   faststring tmp_buf;
-  LogEntryBatchPB batch;
+  gscoped_ptr<LogEntryBatchPB> batch;
   for (int index = starting_at; index <= up_to && !limit_exceeded; index++) {
     LogIndexEntry index_entry;
     RETURN_NOT_OK_PREPEND(log_index_->GetEntry(index, &index_entry),
@@ -339,21 +339,21 @@ Status LogReader::ReadReplicatesInRange(
 
       // Sanity-check the property that a batch should only have increasing indexes.
       int64_t prev_index = 0;
-      for (int i = 0; i < batch.entry_size(); ++i) {
-        LogEntryPB* entry = batch.mutable_entry(i);
+      for (int i = 0; i < batch->entry_size(); ++i) {
+        LogEntryPB* entry = batch->mutable_entry(i);
         if (!entry->has_replicate()) continue;
         int64_t this_index = entry->replicate().id().index();
         CHECK_GT(this_index, prev_index)
           << "Expected that an entry batch should only include increasing log indexes: "
           << index_entry.ToString()
-          << "\nBatch: " << batch.DebugString();
+          << "\nBatch: " << batch->DebugString();
         prev_index = this_index;
       }
     }
 
     bool found = false;
-    for (int i = 0; i < batch.entry_size(); ++i) {
-      LogEntryPB* entry = batch.mutable_entry(i);
+    for (int i = 0; i < batch->entry_size(); ++i) {
+      LogEntryPB* entry = batch->mutable_entry(i);
       if (!entry->has_replicate()) {
         continue;
       }
@@ -367,7 +367,7 @@ Status LogReader::ReadReplicatesInRange(
           max_bytes_to_read <= 0 ||
           total_size + space_required < max_bytes_to_read) {
         total_size += space_required;
-        replicates_tmp.emplace_back(entry->release_replicate());
+        replicates_tmp.push_back(entry->release_replicate());
       } else {
         limit_exceeded = true;
       }

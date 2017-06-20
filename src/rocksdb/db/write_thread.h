@@ -3,9 +3,6 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 
-#ifndef ROCKSDB_DB_WRITE_THREAD_H
-#define ROCKSDB_DB_WRITE_THREAD_H
-
 #pragma once
 
 #include <assert.h>
@@ -71,7 +68,6 @@ class WriteThread {
     Writer* leader;
     Writer* last_writer;
     SequenceNumber last_sequence;
-    OpId last_op_id;
     bool early_exit_allowed;
     // before running goes to zero, status needs leader->StateMutex()
     Status status;
@@ -283,5 +279,3 @@ class WriteThread {
 };
 
 }  // namespace rocksdb
-
-#endif // ROCKSDB_DB_WRITE_THREAD_H

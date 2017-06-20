@@ -155,7 +155,7 @@ Status RowsResult::Append(const RowsResult& other) {
   return Status::OK();
 }
 
-std::unique_ptr<YQLRowBlock> RowsResult::GetRowBlock() const {
+YQLRowBlock *RowsResult::GetRowBlock() const {
   Schema schema(column_schemas_, 0);
   unique_ptr<YQLRowBlock> rowblock(new YQLRowBlock(schema));
   Slice data(rows_data_);
@@ -163,7 +163,7 @@ std::unique_ptr<YQLRowBlock> RowsResult::GetRowBlock() const {
     // TODO: a better way to handle errors here?
     CHECK_OK(rowblock->Deserialize(client_, &data));
   }
-  return rowblock;
+  return rowblock.release();
 }
 
 //------------------------------------------------------------------------------------------------

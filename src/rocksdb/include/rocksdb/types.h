@@ -3,12 +3,10 @@
 // LICENSE file in the root directory of this source tree. An additional grant
 // of patent rights can be found in the PATENTS file in the same directory.
 
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_TYPES_H
-#define ROCKSDB_INCLUDE_ROCKSDB_TYPES_H
+#ifndef STORAGE_ROCKSDB_INCLUDE_TYPES_H_
+#define STORAGE_ROCKSDB_INCLUDE_TYPES_H_
 
 #include <stdint.h>
-
-#include "yb/util/opid.h"
 
 namespace rocksdb {
 
@@ -16,8 +14,7 @@ namespace rocksdb {
 
 // Represents a sequence number in a WAL file.
 typedef uint64_t SequenceNumber;
-using yb::OpId;
 
 }  //  namespace rocksdb
 
-#endif // ROCKSDB_INCLUDE_ROCKSDB_TYPES_H
+#endif //  STORAGE_ROCKSDB_INCLUDE_TYPES_H_

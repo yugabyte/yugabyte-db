@@ -236,17 +236,17 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
   callback.Run(status);
 }
 
-Status PeerMessageQueue::AppendOperation(const ReplicateMsgPtr& msg) {
+Status PeerMessageQueue::AppendOperation(const ReplicateRefPtr& msg) {
   return AppendOperations({ msg }, Bind(DoNothingStatusCB));
 }
 
-Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
+Status PeerMessageQueue::AppendOperations(const vector<ReplicateRefPtr>& msgs,
                                           const StatusCallback& log_append_callback) {
 
   DFAKE_SCOPED_LOCK(append_fake_lock_);
   std::unique_lock<simple_spinlock> lock(queue_lock_);
 
-  OpId last_id = msgs.back()->id();
+  OpId last_id = msgs.back()->get()->id();
 
   if (last_id.term() > queue_state_.current_term) {
     queue_state_.current_term = last_id.term();
@@ -271,7 +271,7 @@ Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
 
 Status PeerMessageQueue::RequestForPeer(const string& uuid,
                                         ConsensusRequestPB* request,
-                                        ReplicateMsgs* msg_refs,
+                                        vector<ReplicateRefPtr>* msg_refs,
                                         bool* needs_remote_bootstrap) {
   TrackedPeer* peer = nullptr;
   OpId preceding_id;
@@ -323,7 +323,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   if (!peer->is_new) {
 
     // The batch of messages to send to the peer.
-    ReplicateMsgs messages;
+    vector<ReplicateRefPtr> messages;
     int max_batch_size = FLAGS_consensus_max_batch_size_bytes - request->ByteSize();
 
     // We try to get the follower's next_index from our log.
@@ -359,8 +359,8 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     // "all replicated" point. At some point we may want to allow partially loading
     // (and not pinning) earlier messages. At that point we'll need to do something
     // smarter here, like copy or ref-count.
-    for (const auto& msg : messages) {
-      request->mutable_ops()->AddAllocated(msg.get());
+    for (const ReplicateRefPtr& msg : messages) {
+      request->mutable_ops()->AddAllocated(msg->get());
     }
     msg_refs->swap(messages);
     DCHECK_LE(request->ByteSize(), FLAGS_consensus_max_batch_size_bytes);

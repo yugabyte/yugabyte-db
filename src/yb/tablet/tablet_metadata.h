@@ -17,16 +17,15 @@
 #ifndef YB_TABLET_TABLET_METADATA_H
 #define YB_TABLET_TABLET_METADATA_H
 
+#include <boost/optional/optional_fwd.hpp>
 #include <memory>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
-#include <boost/optional/optional_fwd.hpp>
-
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
-#include "yb/consensus/opid_util.h"
+#include "yb/consensus/opid.pb.h"
 #include "yb/fs/block_id.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/callback.h"
@@ -34,9 +33,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/tablet/metadata.pb.h"
-
 #include "yb/util/mutex.h"
-#include "yb/util/opid.pb.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
 

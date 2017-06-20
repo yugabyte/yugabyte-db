@@ -263,7 +263,7 @@ class WriteTransaction : public Transaction {
   virtual WriteTransactionState* state() override { return state_.get(); }
   virtual const WriteTransactionState* state() const override { return state_.get(); }
 
-  consensus::ReplicateMsgPtr NewReplicateMsg() override;
+  void NewReplicateMsg(gscoped_ptr<consensus::ReplicateMsg>* replicate_msg) override;
 
   // Executes a Prepare for a write transaction
   //

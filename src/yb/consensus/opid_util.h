@@ -25,13 +25,10 @@
 #include <utility>
 
 namespace yb {
-
-class OpIdPB;
-
 namespace consensus {
 
 class ConsensusRequestPB;
-typedef yb::OpIdPB OpId;
+class OpId;
 
 // Minimum possible term.
 extern const int64_t kMinimumTerm;
@@ -112,9 +109,6 @@ std::string OpsRangeString(const ConsensusRequestPB& req);
 OpId MakeOpId(int term, int index);
 
 }  // namespace consensus
-
-using consensus::operator<<;
-
 }  // namespace yb
 
 #endif /* YB_CONSENSUS_OPID_UTIL_H_ */

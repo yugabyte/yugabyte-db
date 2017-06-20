@@ -342,8 +342,6 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);
 };
 
-typedef scoped_refptr<TabletPeer> TabletPeerPtr;
-
 // A callback to wait for the in-flight transactions to complete and to flush
 // the Log when they do.
 // Tablet is passed as a raw pointer as this callback is set in TabletMetadata and
@@ -363,6 +361,7 @@ class FlushInflightsToLogCallback : public RefCountedThreadSafe<FlushInflightsTo
   Tablet* tablet_;
   scoped_refptr<log::Log> log_;
 };
+
 
 }  // namespace tablet
 }  // namespace yb

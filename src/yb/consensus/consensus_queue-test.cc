@@ -90,10 +90,11 @@ class ConsensusQueueTest : public YBTest {
   }
 
   Status AppendReplicateMsg(int term, int index, int payload_size) {
-    return queue_->AppendOperation(CreateDummyReplicate(term,
-                                                        index,
-                                                        clock_->Now(),
-                                                        payload_size));
+    return queue_->AppendOperation(
+        make_scoped_refptr_replicate(CreateDummyReplicate(term,
+                                                          index,
+                                                          clock_->Now(),
+                                                          payload_size).release()));
   }
 
   // Updates the peer's watermark in the queue so that it matches
@@ -112,7 +113,7 @@ class ConsensusQueueTest : public YBTest {
 
     // Ask for a request. The queue assumes the peer is up-to-date so
     // this should contain no operations.
-    ReplicateMsgs refs;
+    vector<ReplicateRefPtr> refs;
     bool needs_remote_bootstrap;
     ASSERT_OK(queue_->RequestForPeer(kPeerUuid, request, &refs, &needs_remote_bootstrap));
     ASSERT_FALSE(needs_remote_bootstrap);
@@ -219,7 +220,7 @@ TEST_F(ConsensusQueueTest, TestStartTrackingAfterStart) {
   ASSERT_TRUE(more_pending);
 
   // Getting a new request should get all operations after 7.50
-  ReplicateMsgs refs;
+  vector<ReplicateRefPtr> refs;
   bool needs_remote_bootstrap;
   ASSERT_OK(queue_->RequestForPeer(kPeerUuid, &request, &refs, &needs_remote_bootstrap));
   ASSERT_FALSE(needs_remote_bootstrap);
@@ -244,34 +245,25 @@ TEST_F(ConsensusQueueTest, TestGetPagedMessages) {
   queue_->Init(MinimumOpId());
   queue_->SetLeaderMode(MinimumOpId(), MinimumOpId().term(), BuildRaftConfigPBForTests(2));
 
+  // helper to estimate request size so that we can set the max batch size appropriately
+  ConsensusRequestPB page_size_estimator;
+  page_size_estimator.set_caller_term(14);
+  OpId* committed_index = page_size_estimator.mutable_committed_index();
+  OpId* preceding_id = page_size_estimator.mutable_preceding_id();
+  committed_index->CopyFrom(MinimumOpId());
+  preceding_id->CopyFrom(MinimumOpId());
+
+  // We're going to add 100 messages to the queue so we make each page fetch 9 of those,
+  // for a total of 12 pages. The last page should have a single op.
   const int kOpsPerRequest = 9;
-  int32_t page_size_estimate;
-  {
-    // helper to estimate request size so that we can set the max batch size appropriately
-    ConsensusRequestPB page_size_estimator;
-    page_size_estimator.set_caller_term(14);
-    OpId* committed_index = page_size_estimator.mutable_committed_index();
-    OpId* preceding_id = page_size_estimator.mutable_preceding_id();
-    committed_index->CopyFrom(MinimumOpId());
-    preceding_id->CopyFrom(MinimumOpId());
-
-    // We're going to add 100 messages to the queue so we make each page fetch 9 of those,
-    // for a total of 12 pages. The last page should have a single op.
-    ReplicateMsgs replicates;
-    for (int i = 0; i < kOpsPerRequest; i++) {
-      replicates.push_back(CreateDummyReplicate(0, 0, clock_->Now(), 0));
-      page_size_estimator.mutable_ops()->AddAllocated(replicates.back().get());
-    }
-
-    page_size_estimate = page_size_estimator.ByteSize();
-    page_size_estimator.mutable_ops()->ExtractSubrange(0,
-                                                       page_size_estimator.ops_size(),
-                                                       /* elements */ nullptr);
+  for (int i = 0; i < kOpsPerRequest; i++) {
+    page_size_estimator.mutable_ops()->AddAllocated(
+        CreateDummyReplicate(0, 0, clock_->Now(), 0).release());
   }
+
   // Save the current flag state.
   google::FlagSaver saver;
-  FLAGS_consensus_max_batch_size_bytes = page_size_estimate;
-
+  FLAGS_consensus_max_batch_size_bytes = page_size_estimator.ByteSize();
 
   ConsensusRequestPB request;
   ConsensusResponsePB response;
@@ -289,7 +281,7 @@ TEST_F(ConsensusQueueTest, TestGetPagedMessages) {
   OpId last;
   for (int i = 0; i < 11; i++) {
     VLOG(1) << "Making request " << i;
-    ReplicateMsgs refs;
+    vector<ReplicateRefPtr> refs;
     bool needs_remote_bootstrap;
     ASSERT_OK(queue_->RequestForPeer(kPeerUuid, &request, &refs, &needs_remote_bootstrap));
     ASSERT_FALSE(needs_remote_bootstrap);
@@ -300,7 +292,7 @@ TEST_F(ConsensusQueueTest, TestGetPagedMessages) {
     queue_->ResponseFromPeer(response.responder_uuid(), response, &more_pending);
     ASSERT_TRUE(more_pending);
   }
-  ReplicateMsgs refs;
+  vector<ReplicateRefPtr> refs;
   bool needs_remote_bootstrap;
   ASSERT_OK(queue_->RequestForPeer(kPeerUuid, &request, &refs, &needs_remote_bootstrap));
   ASSERT_FALSE(needs_remote_bootstrap);
@@ -345,7 +337,7 @@ TEST_F(ConsensusQueueTest, TestPeersDontAckBeyondWatermarks) {
   ASSERT_OPID_EQ(queue_->GetAllReplicatedIndexForTests(), MinimumOpId());
   ASSERT_OPID_EQ(queue_->GetMajorityReplicatedOpIdForTests(), MinimumOpId());
 
-  ReplicateMsgs refs;
+  vector<ReplicateRefPtr> refs;
   bool needs_remote_bootstrap;
   ASSERT_OK(queue_->RequestForPeer(kPeerUuid, &request, &refs, &needs_remote_bootstrap));
   ASSERT_FALSE(needs_remote_bootstrap);
@@ -507,7 +499,7 @@ TEST_F(ConsensusQueueTest, TestQueueLoadsOperationsForPeer) {
 
   // When we get another request for the peer the queue should load
   // the missing operations.
-  ReplicateMsgs refs;
+  vector<ReplicateRefPtr> refs;
   bool needs_remote_bootstrap;
   ASSERT_OK(queue_->RequestForPeer(kPeerUuid, &request, &refs, &needs_remote_bootstrap));
   ASSERT_FALSE(needs_remote_bootstrap);
@@ -559,7 +551,7 @@ TEST_F(ConsensusQueueTest, TestQueueHandlesOperationOverwriting) {
   // and send it operations starting at the old leader's committed index.
   ConsensusRequestPB request;
   ConsensusResponsePB response;
-  ReplicateMsgs refs;
+  vector<ReplicateRefPtr> refs;
   response.set_responder_uuid(kPeerUuid);
   bool more_pending = false;
 
@@ -599,8 +591,8 @@ TEST_F(ConsensusQueueTest, TestQueueHandlesOperationOverwriting) {
 
   // Test even when a correct peer responds (meaning we actually get to execute
   // watermark advancement) we sill have the same all-replicated watermark.
-  auto replicate = CreateDummyReplicate(2, 21, clock_->Now(), 0);
-  ASSERT_OK(queue_->AppendOperation(replicate));
+  ReplicateMsg* replicate = CreateDummyReplicate(2, 21, clock_->Now(), 0).release();
+  ASSERT_OK(queue_->AppendOperation(make_scoped_refptr(new RefCountedReplicate(replicate))));
   WaitForLocalPeerToAckIndex(21);
 
   ASSERT_OPID_EQ(queue_->GetAllReplicatedIndexForTests(), MinimumOpId());
@@ -637,7 +629,8 @@ TEST_F(ConsensusQueueTest, TestQueueMovesWatermarksBackward) {
   // Now rewrite some of the operations and wait for the log to append.
   Synchronizer synch;
   CHECK_OK(queue_->AppendOperations(
-      { CreateDummyReplicate(2, 5, clock_->Now(), 0) },
+        { make_scoped_refptr(new RefCountedReplicate(
+              CreateDummyReplicate(2, 5, clock_->Now(), 0).release())) },
       synch.AsStatusCallback()));
 
   // Wait for the operation to be in the log.
@@ -647,7 +640,8 @@ TEST_F(ConsensusQueueTest, TestQueueMovesWatermarksBackward) {
   // in log cache.
   synch.Reset();
   CHECK_OK(queue_->AppendOperations(
-      { CreateDummyReplicate(2, 6, clock_->Now(), 0) },
+        { make_scoped_refptr(new RefCountedReplicate(
+              CreateDummyReplicate(2, 6, clock_->Now(), 0).release())) },
       synch.AsStatusCallback()));
 
   // Wait for the operation to be in the log.
@@ -690,7 +684,7 @@ TEST_F(ConsensusQueueTest, TestOnlyAdvancesWatermarkWhenPeerHasAPrefixOfOurLog) 
 
   ConsensusRequestPB request;
   ConsensusResponsePB response;
-  ReplicateMsgs refs;
+  vector<ReplicateRefPtr> refs;
 
   bool more_pending;
   // We expect the majority replicated watermark to star at the committed index.
@@ -793,7 +787,7 @@ TEST_F(ConsensusQueueTest, TestTriggerRemoteBootstrapIfTabletNotFound) {
   queue_->TrackPeer(kPeerUuid);
 
   // Create request for new peer.
-  ReplicateMsgs refs;
+  vector<ReplicateRefPtr> refs;
   bool needs_remote_bootstrap;
   ASSERT_OK(queue_->RequestForPeer(kPeerUuid, &request, &refs, &needs_remote_bootstrap));
   ASSERT_FALSE(needs_remote_bootstrap);

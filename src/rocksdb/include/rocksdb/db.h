@@ -767,9 +767,8 @@ class DB {
 
   // Returns a list of all table files with their level, start key
   // and end key
-  virtual void GetLiveFilesMetaData(std::vector<LiveFileMetaData>* /*metadata*/) {}
-
-  virtual OpId GetFlushedOpId() { return OpId(); }
+  virtual void GetLiveFilesMetaData(
+      std::vector<LiveFileMetaData>* /*metadata*/) {}
 
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have

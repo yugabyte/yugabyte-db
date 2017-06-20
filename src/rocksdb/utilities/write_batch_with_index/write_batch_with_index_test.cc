@@ -44,7 +44,8 @@ struct Entry {
 
 struct TestHandler : public WriteBatch::Handler {
   std::map<uint32_t, std::vector<Entry>> seen;
-  Status PutCF(uint32_t column_family_id, const Slice& key, const Slice& value) override {
+  virtual Status PutCF(uint32_t column_family_id, const Slice& key,
+                       const Slice& value) {
     Entry e;
     e.key = key.ToBuffer();
     e.value = value.ToBuffer();
@@ -52,7 +53,8 @@ struct TestHandler : public WriteBatch::Handler {
     seen[column_family_id].push_back(e);
     return Status::OK();
   }
-  Status MergeCF(uint32_t column_family_id, const Slice& key, const Slice& value) override {
+  virtual Status MergeCF(uint32_t column_family_id, const Slice& key,
+                         const Slice& value) {
     Entry e;
     e.key = key.ToBuffer();
     e.value = value.ToBuffer();
@@ -60,8 +62,8 @@ struct TestHandler : public WriteBatch::Handler {
     seen[column_family_id].push_back(e);
     return Status::OK();
   }
-  void LogData(const Slice& blob) override {}
-  Status DeleteCF(uint32_t column_family_id, const Slice& key) override {
+  virtual void LogData(const Slice& blob) {}
+  virtual Status DeleteCF(uint32_t column_family_id, const Slice& key) {
     Entry e;
     e.key = key.ToBuffer();
     e.value = "";

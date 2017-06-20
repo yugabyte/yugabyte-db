@@ -18,6 +18,8 @@ namespace yb {
 // </pre>
 class WriteBatchFormatter : public rocksdb::WriteBatch::Handler {
  public:
+  WriteBatchFormatter();
+
   virtual rocksdb::Status PutCF(
       uint32_t column_family_id,
       const rocksdb::Slice& key,
@@ -36,7 +38,7 @@ class WriteBatchFormatter : public rocksdb::WriteBatch::Handler {
       const rocksdb::Slice& key,
       const rocksdb::Slice& value) override;
 
-  Status UserOpId(const OpId& op_id) override;
+  virtual void SetUserSequenceNumber(rocksdb::SequenceNumber user_sequence_number) override;
 
   std::string str() { return out_.str(); }
 
@@ -46,11 +48,12 @@ class WriteBatchFormatter : public rocksdb::WriteBatch::Handler {
   void OutputField(const rocksdb::Slice& value);
   void FinishOutputLine();
 
-  bool need_separator_ = false;
+  bool need_separator_;
   std::stringstream out_;
-  int update_index_ = 0;
+  rocksdb::SequenceNumber user_sequence_number_;
+  int update_index_;
 };
 
-} // namespace yb
+}
 
-#endif // YB_ROCKSUTIL_WRITE_BATCH_FORMATTER_H
+#endif

@@ -19,7 +19,7 @@ package yb.tablet;
 option java_package = "org.yb.tablet";
 
 import "yb/common/common.proto";
-import "yb/util/opid.proto";
+import "yb/consensus/opid.proto";
 import "yb/fs/fs.proto";
 
 // ============================================================================
@@ -131,7 +131,7 @@ message TabletSuperBlockPB {
   // For tablets that have been tombstoned, stores the last OpId stored in the
   // WAL before tombstoning.
   // Only relevant for TOMBSTONED tablets.
-  optional OpIdPB tombstone_last_logged_opid = 12;
+  optional consensus.OpId tombstone_last_logged_opid = 12;
 }
 
 message RocksDBFilePB {
