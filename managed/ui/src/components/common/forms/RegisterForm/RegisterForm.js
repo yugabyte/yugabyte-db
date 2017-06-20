@@ -3,21 +3,19 @@
 import React, { Component, PropTypes } from 'react';
 import { PageHeader } from 'react-bootstrap';
 import { Field } from 'redux-form';
-import { YBInputField } from '../fields';
+import { YBButton, YBInputField } from '../fields';
 import YBLogo from '../../YBLogo/YBLogo';
+import {browserHistory} from 'react-router';
 
 class RegisterForm extends Component {
   constructor(props) {
     super(props);
     this.submitRegister = this.submitRegister.bind(this);
   }
-  static contextTypes = {
-    router: PropTypes.object
-  };
 
   componentWillReceiveProps(nextProps) {
     if(nextProps.customer.status === 'authenticated' && nextProps.customer.customer && !nextProps.customer.error) {
-      this.context.router.push('/');
+      browserHistory.push('/');
     }
   }
 
@@ -47,8 +45,7 @@ class RegisterForm extends Component {
               <Field name="confirmPassword" type="password" component={YBInputField} label="Confirm Password"/>
             </div>
             <div className="clearfix">
-              <button type="submit" className="btn btn-default bg-orange pull-right"
-                      disabled={submitting} >Submit</button>
+              <YBButton btnType="submit" btnDisabled={submitting} btnClass="btn btn-default bg-orange pull-right" btnText="Register"/>
             </div>
           </form>
         </div>
