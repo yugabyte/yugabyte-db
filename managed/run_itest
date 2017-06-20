@@ -1,15 +1,6 @@
 #!/bin/bash
-set -e
-if [[ -z "$DEVOPS_HOME" ]]; then
-  echo "DEVOPS_HOME not set" >&2
-  exit 1
-fi
+# Copyright (c) YugaByte, Inc.
 
-. "$DEVOPS_HOME/bin/"/common.sh
-activate_virtualenv
-# We don't want to add this to the python_virtualenv since the virtual env is used in multiple
-# places and installing the cassandra-driver takes quite a bit of time.
-echo "Installing cassandra-driver..."
-pip install cassandra-driver
-echo "Done installing cassandra-driver, running itest now"
+. ./common_itest
+echo "Done installing cassandra-driver, running integration test now..."
 "$( dirname "${BASH_SOURCE[0]}" )"/src/itest/itest.py "$@"
