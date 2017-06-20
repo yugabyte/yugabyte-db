@@ -1,14 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
+import com.avaje.ebean.*;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 
-import com.avaje.ebean.Query;
-import com.avaje.ebean.Model;
-import com.avaje.ebean.ExpressionList;
-import com.avaje.ebean.RawSqlBuilder;
-import com.avaje.ebean.RawSql;
-import com.avaje.ebean.Ebean;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
@@ -104,6 +99,14 @@ public class NodeInstance extends Model {
     query.setRawSql(rawSql);
     List<NodeInstance> list = query.findList();
     return list;
+  }
+
+  public static int deleteByProvider(UUID providerUUID) {
+    String deleteNodeQuery = "delete from node_instance where zone_uuid in" +
+                             " (select az.uuid from availability_zone az join region r on az.region_uuid = r.uuid and r.provider_uuid=:provider_uuid)";
+    SqlUpdate deleteStmt = Ebean.createSqlUpdate(deleteNodeQuery);
+    deleteStmt.setParameter("provider_uuid",  providerUUID);
+    return deleteStmt.execute();
   }
 
   public static synchronized Map<String, NodeInstance> pickNodes(

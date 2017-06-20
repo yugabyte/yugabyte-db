@@ -9,6 +9,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 
 import java.util.List;
+import java.util.UUID;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -82,6 +83,29 @@ public class NodeInstanceTest extends FakeDBApplication {
     node.save();
     nodes = NodeInstance.listByZone(zone.uuid, null);
     assertEquals(nodes.size(), 0);
+  }
+
+  @Test
+  public void testDeleteNodeInstanceByProviderWithValidProvider() {
+    NodeInstance node = createNode();
+    List<NodeInstance> nodesListInitial = NodeInstance.listByZone(zone.uuid, null);
+    int response = NodeInstance.deleteByProvider(provider.uuid);
+    List<NodeInstance> nodesListFinal = NodeInstance.listByZone(zone.uuid, null);
+    assertEquals(nodesListInitial.size(), 1);
+    assertEquals(nodesListFinal.size(), 0);
+    assertEquals(response, 1);
+  }
+
+  @Test
+  public void testDeleteNodeInstanceByProviderWithInvalidProvider() {
+    NodeInstance node = createNode();
+    List<NodeInstance> nodesListInitial = NodeInstance.listByZone(zone.uuid, null);
+    UUID invalidProviderUUID = UUID.randomUUID();
+    int response = NodeInstance.deleteByProvider(invalidProviderUUID);
+    List<NodeInstance> nodesListFinal = NodeInstance.listByZone(zone.uuid, null);
+    assertEquals(nodesListInitial.size(), 1);
+    assertEquals(nodesListFinal.size(), 1);
+    assertEquals(response, 0);
   }
 
   // TODO: add tests for pickNodes
