@@ -1,0 +1,33 @@
+Vagrant.configure(2) do |config|
+    config.vm.box = "bento/centos-7.3"
+
+    config.vm.provider :virtualbox do |vb|
+        vb.name = "pgaudit-centos7-test"
+    end
+
+    # Provision the VM
+    config.vm.provision "shell", inline: <<-SHELL
+        # Install PostgreSQL
+        rpm -ivh http://yum.postgresql.org/9.6/redhat/rhel-7-x86_64/pgdg-centos96-9.6-3.noarch.rpm
+        yum install -y postgresql96-server
+
+        # Compile & install pgaudit
+        yum install -y postgresql96-devel gcc openssl-devel
+        bash -c 'export PATH="$PATH:/usr/pgsql-9.6/bin" && make -C /pgaudit install USE_PGXS=1'
+
+        # Create PostgreSQL cluster
+        sudo -u postgres /usr/pgsql-9.6/bin/initdb -A trust -k /var/lib/pgsql/9.6/data
+        echo "shared_preload_libraries = 'pgaudit'" >> /var/lib/pgsql/9.6/data/postgresql.conf
+        systemctl start postgresql-9.6
+        sudo -u postgres psql -X -c 'create user vagrant superuser'
+
+        # Test pgaudit
+        sudo -u vagrant bash -c 'export PATH="$PATH:/usr/pgsql-9.6/bin" && make -C /pgaudit installcheck USE_PGXS=1'
+    SHELL
+
+  # Don't share the default vagrant folder
+  config.vm.synced_folder ".", "/vagrant", disabled: true
+
+  # Mount project path for testing
+  config.vm.synced_folder "..", "/pgaudit"
+end
