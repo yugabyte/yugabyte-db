@@ -72,21 +72,6 @@ class SqlProcessor {
       const std::string& sql_stmt, const StatementParameters& params,
       StatementExecutedCallback cb);
 
-  // Claim this processor for a request.
-  void used() {
-    start_time_ = MonoTime::Now(MonoTime::FINE);
-    is_used_.store(true);
-  }
-  // Unclaim this processor.
-  void unused() {
-    SetCurrentCall(nullptr);
-    is_used_.store(false);
-  }
-  // Check if the processor is currently working on a statement.
-  bool is_used() const {
-    return is_used_.load();
-  }
-
  protected:
   void SetCurrentCall(rpc::InboundCallPtr call);
   //------------------------------------------------------------------------------------------------
@@ -104,10 +89,6 @@ class SqlProcessor {
 
   // SQL metrics.
   SqlMetrics* const sql_metrics_;
-
-  // Processing state.
-  std::atomic<bool> is_used_;
-  MonoTime start_time_;
 
  private:
   void ExecuteAsyncDone(

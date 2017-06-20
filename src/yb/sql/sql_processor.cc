@@ -103,8 +103,8 @@ SqlProcessor::SqlProcessor(
       analyzer_(new Analyzer()),
       executor_(new Executor(sql_metrics)),
       sql_env_(new SqlEnv(messenger, client, cache, cql_rpcserver_env)),
-      sql_metrics_(sql_metrics),
-      is_used_(false) {}
+      sql_metrics_(sql_metrics) {
+}
 
 SqlProcessor::~SqlProcessor() {
 }

@@ -40,6 +40,7 @@ CQLServiceImpl::CQLServiceImpl(
     CQLServer* server, shared_ptr<rpc::Messenger> messenger,
     const CQLServerOptions& opts)
     : CQLServerServiceIf(server->metric_entity()),
+      next_available_processor_(processors_.end()),
       messenger_(messenger),
       cql_rpcserver_env_(new rpc::CQLRpcServerEnv(server->first_rpc_address().address().to_string(),
                                                   opts.broadcast_rpc_address)) {
@@ -47,12 +48,6 @@ CQLServiceImpl::CQLServiceImpl(
   // Setup client.
   SetUpYBClient(opts.master_addresses_flag, server->metric_entity());
   cql_metrics_ = std::make_shared<CQLMetrics>(server->metric_entity());
-
-  // Setup processors.
-  processors_.reserve(FLAGS_cql_service_num_threads);
-  for (unique_ptr<CQLProcessor>& processor : processors_) {
-    processor.reset(new CQLProcessor(this));
-  }
 
   // Setup prepared statements' memory tracker. Add garbage-collect function to delete least
   // recently used statements when limit is hit.
@@ -98,27 +93,26 @@ void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {
 }
 
 CQLProcessor *CQLServiceImpl::GetProcessor() {
-  // Must guard the processors_ pool as each processor can handle one and only one call at a time.
-  std::lock_guard<std::mutex> guard(process_mutex_);
-
-  CQLProcessor *cql_processor = nullptr;
-  for (unique_ptr<CQLProcessor>& processor : processors_) {
-    if (!processor->is_used()) {
-      cql_processor = processor.get();
-    }
+  CQLProcessorListPos pos;
+  {
+    // Retrieve the next available processor. If none is available, allocate a new slot in the list.
+    // Then create the processor outside the mutex below.
+    std::lock_guard<std::mutex> guard(processors_mutex_);
+    pos = (next_available_processor_ != processors_.end() ?
+           next_available_processor_++ : processors_.emplace(processors_.end()));
   }
 
-  // Create a new processor if needed.
-  if (cql_processor == nullptr) {
-    const int size = processors_.size();
-    cql_processor = new CQLProcessor(this);
-    processors_.reserve(std::max<int>(size * 2, size + 10));
-    processors_.emplace_back(cql_processor);
+  if (pos->get() == nullptr) {
+    pos->reset(new CQLProcessor(this, pos));
   }
+  return pos->get();
+}
 
-  // Make this processor used and return.
-  cql_processor->used();
-  return cql_processor;
+void CQLServiceImpl::ReturnProcessor(const CQLProcessorListPos& pos) {
+  // Put the processor back before the next available one.
+  std::lock_guard<std::mutex> guard(processors_mutex_);
+  processors_.splice(next_available_processor_, processors_, pos);
+  next_available_processor_ = pos;
 }
 
 shared_ptr<CQLStatement> CQLServiceImpl::AllocatePreparedStatement(

@@ -11,7 +11,7 @@
 
 #include "yb/client/client.h"
 #include "yb/cqlserver/cql_message.h"
-#include "yb/cqlserver/cql_service.h"
+#include "yb/cqlserver/cql_statement.h"
 #include "yb/sql/sql_processor.h"
 #include "yb/sql/statement.h"
 #include "yb/rpc/cql_rpc.h"
@@ -36,10 +36,16 @@ class CQLMetrics : public sql::SqlMetrics {
   yb::rpc::RpcMethodMetrics rpc_method_metrics_;
 };
 
+
+// A list of CQL processors and position in the list.
+class CQLProcessor;
+using CQLProcessorList = std::list<std::unique_ptr<CQLProcessor>>;
+using CQLProcessorListPos = CQLProcessorList::iterator;
+
 class CQLProcessor : public sql::SqlProcessor {
  public:
   // Constructor and destructor.
-  explicit CQLProcessor(CQLServiceImpl* service_impl);
+  explicit CQLProcessor(CQLServiceImpl* service_impl, const CQLProcessorListPos& pos);
   ~CQLProcessor();
 
   // Processing an inbound call.
@@ -84,6 +90,9 @@ class CQLProcessor : public sql::SqlProcessor {
 
   // CQL metrics.
   std::shared_ptr<CQLMetrics> cql_metrics_;
+
+  // Position in the CQL processor list.
+  const CQLProcessorListPos pos_;
 };
 
 }  // namespace cqlserver

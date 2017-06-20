@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "yb/cqlserver/cql_message.h"
+#include "yb/cqlserver/cql_processor.h"
 #include "yb/cqlserver/cql_statement.h"
 #include "yb/cqlserver/cql_service.service.h"
 #include "yb/cqlserver/cql_server_options.h"
@@ -40,11 +41,8 @@ class CQLServiceImpl : public CQLServerServiceIf {
   // Processing all incoming request from RPC and sending response back.
   void Handle(yb::rpc::InboundCallPtr call) override;
 
-  // Either gets an available processor or creates a new one.
-  CQLProcessor *GetProcessor();
-
-  // Reply to a call request.
-  void SendResponse(rpc::InboundCallPtr cql_call, CQLResponse *response);
+  // Return CQL processor at pos as available.
+  void ReturnProcessor(const CQLProcessorListPos& pos);
 
   // Allocate a prepared statement. If the statement already exists, return it instead.
   std::shared_ptr<CQLStatement> AllocatePreparedStatement(
@@ -83,6 +81,9 @@ class CQLServiceImpl : public CQLServerServiceIf {
   void SetUpYBClient(
       const std::string& yb_master_address, const scoped_refptr<MetricEntity>& metric_entity);
 
+  // Either gets an available processor or creates a new one.
+  CQLProcessor *GetProcessor();
+
   // Insert a prepared statement at the front of the LRU list. "prepared_stmts_mutex_" needs to be
   // locked before this call.
   void InsertLruPreparedStatementUnlocked(const std::shared_ptr<CQLStatement>& stmt);
@@ -103,11 +104,15 @@ class CQLServiceImpl : public CQLServerServiceIf {
   // A cache to reduce opening tables again and again.
   std::shared_ptr<client::YBTableCache> table_cache_;
 
-  // Processors.
-  vector<std::unique_ptr<CQLProcessor>> processors_;
+  // List of CQL processors (in-use and available). In-use ones are at the beginning and available
+  // ones at the end.
+  CQLProcessorList processors_;
 
-  // Mutex that protects the creation of client_ and processors_.
-  std::mutex process_mutex_;
+  // Next available CQL processor.
+  CQLProcessorListPos next_available_processor_;
+
+  // Mutex that protects access to processors_.
+  std::mutex processors_mutex_;
 
   // Prepared statements cache.
   CQLStatementMap prepared_stmts_map_;

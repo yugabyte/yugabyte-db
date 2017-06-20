@@ -75,15 +75,7 @@ YbSqlProcessor *YbSqlTestBase::GetSqlProcessor() {
     CreateSimulatedCluster();
   }
 
-  for (const YbSqlProcessor::UniPtr& processor : sql_processors_) {
-    if (!processor->is_used()) {
-      return processor.get();
-    }
-  }
-
   std::weak_ptr<rpc::Messenger> messenger;
-  const int size = sql_processors_.size();
-  sql_processors_.reserve(std::max<int>(size * 2, size + 10));
   sql_processors_.emplace_back(new YbSqlProcessor(messenger, client_, table_cache_));
   CallUseKeyspace(sql_processors_.back(), kDefaultKeyspaceName);
   return sql_processors_.back().get();

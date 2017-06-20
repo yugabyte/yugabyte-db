@@ -87,12 +87,14 @@ CQLMetrics::CQLMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity)
 }
 
 //------------------------------------------------------------------------------------------------
-CQLProcessor::CQLProcessor(CQLServiceImpl* service_impl)
+CQLProcessor::CQLProcessor(CQLServiceImpl* service_impl, const CQLProcessorListPos& pos)
     : SqlProcessor(
           service_impl->messenger(), service_impl->client(), service_impl->table_cache(),
           service_impl->cql_metrics().get(), service_impl->cql_rpc_env()),
       service_impl_(service_impl),
-      cql_metrics_(service_impl->cql_metrics()) {}
+      cql_metrics_(service_impl->cql_metrics()),
+      pos_(pos) {
+}
 
 CQLProcessor::~CQLProcessor() {
 }
@@ -107,7 +109,7 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr cql_call) {
   if (!CQLRequest::ParseRequest(msg, &request, &response)) {
     cql_metrics_->num_errors_parsing_cql_->Increment();
     SendResponse(cql_call, response.release());
-    this->unused();
+    service_impl_->ReturnProcessor(pos_);
     return;
   }
 
@@ -134,10 +136,11 @@ void CQLProcessor::ProcessCallDone(rpc::InboundCallPtr call,
   // Release the processor.
   MonoTime response_done = MonoTime::Now(MonoTime::FINE);
   cql_metrics_->time_to_process_request_->Increment(
-      response_done.GetDeltaSince(start_time_).ToMicroseconds());
+      response_done.GetDeltaSince(start).ToMicroseconds());
   cql_metrics_->time_to_queue_cql_response_->Increment(
       response_done.GetDeltaSince(begin_response).ToMicroseconds());
-  this->unused();
+  SetCurrentCall(nullptr);
+  service_impl_->ReturnProcessor(pos_);
 }
 
 void CQLProcessor::SendResponse(rpc::InboundCallPtr call, CQLResponse* response) {
