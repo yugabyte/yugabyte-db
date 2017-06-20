@@ -243,7 +243,8 @@ Tablet::Tablet(
       state_(kInitialized),
       rocksdb_statistics_(nullptr),
       block_cache_(block_cache),
-      shutdown_requested_(false) {
+      shutdown_requested_(false),
+      monotonic_counter_(0) {
   CHECK(schema()->has_column_ids());
   compaction_policy_.reset(CreateCompactionPolicy());
 
@@ -1449,6 +1450,19 @@ Status Tablet::RewindSchemaForBootstrap(const Schema& new_schema,
   return Status::OK();
 }
 
+void Tablet::UpdateMonotonicCounter(int64_t value) {
+  int64_t counter = monotonic_counter_;
+  while (true) {
+    if (counter >= value) {
+      break;
+    }
+    if (monotonic_counter_.compare_exchange_weak(counter, value)) {
+      break;
+    }
+  }
+}
+
+
 void Tablet::SetCompactionHooksForTests(
     const shared_ptr<Tablet::CompactionFaultHooks> &hooks) {
   compaction_hooks_ = hooks;
@@ -2211,7 +2225,8 @@ Status Tablet::StartDocWriteTransaction(const vector<unique_ptr<DocOperation>> &
   }
   // We expect all read operations for this transaction to be done in ApplyDocWriteTransaction.
   // Once read_txn goes out of scope, the read point is deregistered.
-  return docdb::ApplyDocWriteTransaction(doc_ops, hybrid_time, rocksdb_.get(), write_batch);
+  return docdb::ApplyDocWriteTransaction(
+      doc_ops, hybrid_time, rocksdb_.get(), write_batch, &monotonic_counter_);
 }
 
 Status Tablet::CountRows(uint64_t *count) const {

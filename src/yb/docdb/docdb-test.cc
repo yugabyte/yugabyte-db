@@ -261,7 +261,7 @@ class DocDBTest : public DocDBTestBase {
     ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(GetInetAddress(strval))),
                            PrimitiveValue(),
                            HybridTime::FromMicros(1000),
-                           InitMarkerBehavior::kOptional));
+                           InitMarkerBehavior::OPTIONAL));
   }
 
 };
@@ -387,7 +387,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT(p=3000)]) -> "value3"
 
 TEST_F(DocDBTest, SetPrimitiveYQL) {
   const DocKey doc_key(PrimitiveValues("mydockey", 123456));
-  SetupRocksDBState(doc_key.Encode(), InitMarkerBehavior::kOptional);
+  SetupRocksDBState(doc_key.Encode(), InitMarkerBehavior::OPTIONAL);
   AssertDocDbDebugDumpStrEq(
       R"#(
           SubDocKey(DocKey([], ["mydockey", 123456]), [HT(p=1000)]) -> DEL
@@ -411,7 +411,7 @@ TEST_F(DocDBTest, SetPrimitiveYQL) {
 // This tests GetSubDocument without init markers. Basic Test tests with init markers.
 TEST_F(DocDBTest, GetSubDocumentTest) {
   const DocKey doc_key(PrimitiveValues("mydockey", 123456));
-  SetupRocksDBState(doc_key.Encode(), InitMarkerBehavior::kOptional);
+  SetupRocksDBState(doc_key.Encode(), InitMarkerBehavior::OPTIONAL);
 
   // We will test the state of the entire document after every operation, using timestamps
   // 500, 1500, 2500, 3500, 4500, 5500.
@@ -565,6 +565,162 @@ TEST_F(DocDBTest, GetSubDocumentTest) {
 
 }
 
+TEST_F(DocDBTest, ListInsertAndGetTest) {
+  SubDocument parent;
+  SubDocument list({PrimitiveValue(10), PrimitiveValue(2)});
+  DocKey doc_key(PrimitiveValues("list_test", 231));
+  KeyBytes encoded_doc_key = doc_key.Encode();
+  parent.SetChild(PrimitiveValue("other"), SubDocument(PrimitiveValue("other_value")));
+  parent.SetChild(PrimitiveValue("list2"), SubDocument(list));
+  ASSERT_OK(InsertSubDocument(
+      DocPath(encoded_doc_key), parent, HybridTime(100), InitMarkerBehavior::OPTIONAL));
+
+  // GetSubDocument Doesn't know that this is an array so it is returned as an object for now.
+  VerifySubDocument(SubDocKey(doc_key), HybridTime(250),
+        R"#(
+  {
+    "list2": {
+      ArrayIndex(1): 10,
+      ArrayIndex(2): 2
+    },
+    "other": "other_value"
+  }
+        )#");
+
+  ASSERT_OK(ExtendSubDocument(DocPath(encoded_doc_key, PrimitiveValue("list1")),
+      SubDocument({PrimitiveValue(1), PrimitiveValue("3"), PrimitiveValue(2), PrimitiveValue(2)}),
+      HybridTime(200), InitMarkerBehavior::OPTIONAL));
+
+  VerifySubDocument(SubDocKey(doc_key), HybridTime(250),
+        R"#(
+  {
+    "list1": {
+      ArrayIndex(3): 1,
+      ArrayIndex(4): "3",
+      ArrayIndex(5): 2,
+      ArrayIndex(6): 2
+    },
+    "list2": {
+      ArrayIndex(1): 10,
+      ArrayIndex(2): 2
+    },
+    "other": "other_value"
+  }
+        )#");
+
+  AssertDocDbDebugDumpStrEq(
+        R"#(
+SubDocKey(DocKey([], ["list_test", 231]), [HT(p=0, l=100)]) -> DEL
+SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(3); HT(p=0, l=200)]) -> 1
+SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(4); HT(p=0, l=200, w=1)]) -> "3"
+SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(5); HT(p=0, l=200, w=2)]) -> 2
+SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(6); HT(p=0, l=200, w=3)]) -> 2
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(1); HT(p=0, l=100, w=1)]) -> 10
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(2); HT(p=0, l=100, w=2)]) -> 2
+SubDocKey(DocKey([], ["list_test", 231]), ["other"; HT(p=0, l=100, w=3)]) -> "other_value"
+        )#");
+
+  ASSERT_OK(ExtendList(DocPath(encoded_doc_key, PrimitiveValue("list2")),
+    SubDocument({PrimitiveValue(5), PrimitiveValue(2)}), ListExtendOrder::PREPEND,
+    HybridTime(300), InitMarkerBehavior::OPTIONAL));
+  ASSERT_OK(ExtendList(DocPath(encoded_doc_key, PrimitiveValue("list2")),
+    SubDocument({PrimitiveValue(7), PrimitiveValue(4)}), ListExtendOrder::APPEND,
+    HybridTime(400), InitMarkerBehavior::OPTIONAL));
+
+AssertDocDbDebugDumpStrEq(
+        R"#(
+SubDocKey(DocKey([], ["list_test", 231]), [HT(p=0, l=100)]) -> DEL
+SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(3); HT(p=0, l=200)]) -> 1
+SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(4); HT(p=0, l=200, w=1)]) -> "3"
+SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(5); HT(p=0, l=200, w=2)]) -> 2
+SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(6); HT(p=0, l=200, w=3)]) -> 2
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(-8); HT(p=0, l=300, w=1)]) -> 2
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(-7); HT(p=0, l=300)]) -> 5
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(1); HT(p=0, l=100, w=1)]) -> 10
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(2); HT(p=0, l=100, w=2)]) -> 2
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(9); HT(p=0, l=400)]) -> 7
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(10); HT(p=0, l=400, w=1)]) -> 4
+SubDocKey(DocKey([], ["list_test", 231]), ["other"; HT(p=0, l=100, w=3)]) -> "other_value"
+        )#");
+
+  VerifySubDocument(SubDocKey(doc_key), HybridTime(150),
+        R"#(
+  {
+    "list2": {
+      ArrayIndex(1): 10,
+      ArrayIndex(2): 2
+    },
+    "other": "other_value"
+  }
+        )#");
+
+  VerifySubDocument(SubDocKey(doc_key), HybridTime(450),
+        R"#(
+  {
+    "list1": {
+      ArrayIndex(3): 1,
+      ArrayIndex(4): "3",
+      ArrayIndex(5): 2,
+      ArrayIndex(6): 2
+    },
+    "list2": {
+      ArrayIndex(-8): 2,
+      ArrayIndex(-7): 5,
+      ArrayIndex(1): 10,
+      ArrayIndex(2): 2,
+      ArrayIndex(9): 7,
+      ArrayIndex(10): 4
+    },
+    "other": "other_value"
+  }
+        )#");
+
+  vector<int> indexes = {2, 4};
+  vector<SubDocument> values = {
+      SubDocument(PrimitiveValue(ValueType::kTombstone)), SubDocument(PrimitiveValue(17))};
+  ASSERT_OK(ReplaceInList(DocPath(encoded_doc_key, PrimitiveValue("list2")),
+      indexes, values, HybridTime(460), HybridTime(500)));
+
+  AssertDocDbDebugDumpStrEq(
+        R"#(
+SubDocKey(DocKey([], ["list_test", 231]), [HT(p=0, l=100)]) -> DEL
+SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(3); HT(p=0, l=200)]) -> 1
+SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(4); HT(p=0, l=200, w=1)]) -> "3"
+SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(5); HT(p=0, l=200, w=2)]) -> 2
+SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(6); HT(p=0, l=200, w=3)]) -> 2
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(-8); HT(p=0, l=300, w=1)]) -> 2
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(-7); HT(p=0, l=500)]) -> DEL
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(-7); HT(p=0, l=300)]) -> 5
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(1); HT(p=0, l=100, w=1)]) -> 10
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(2); HT(p=0, l=500, w=1)]) -> 17
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(2); HT(p=0, l=100, w=2)]) -> 2
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(9); HT(p=0, l=400)]) -> 7
+SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(10); HT(p=0, l=400, w=1)]) -> 4
+SubDocKey(DocKey([], ["list_test", 231]), ["other"; HT(p=0, l=100, w=3)]) -> "other_value"
+        )#");
+
+  VerifySubDocument(SubDocKey(doc_key), HybridTime(550),
+        R"#(
+  {
+    "list1": {
+      ArrayIndex(3): 1,
+      ArrayIndex(4): "3",
+      ArrayIndex(5): 2,
+      ArrayIndex(6): 2
+    },
+    "list2": {
+      ArrayIndex(-8): 2,
+      ArrayIndex(1): 10,
+      ArrayIndex(2): 17,
+      ArrayIndex(9): 7,
+      ArrayIndex(10): 4
+    },
+    "other": "other_value"
+  }
+        )#");
+
+}
+
 TEST_F(DocDBTest, ExpiredValueCompactionTest) {
   const DocKey doc_key(PrimitiveValues("k1"));
   const MonoDelta one_ms = MonoDelta::FromMilliseconds(1);
@@ -613,32 +769,32 @@ TEST_F(DocDBTest, TTLCompactionTest) {
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key,
                                  PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn)),
                          Value(PrimitiveValue(), MonoDelta::FromMilliseconds(1)), t0,
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(0))),
                          Value(PrimitiveValue("v1"), MonoDelta::FromMilliseconds(2)), t0,
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
                          Value(PrimitiveValue("v2"), MonoDelta::FromMilliseconds(3)), t0,
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
                          Value(PrimitiveValue("v3"), Value::kMaxTtl), t0,
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
                          Value(PrimitiveValue("v4"), Value::kMaxTtl), t0,
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
   // Second row.
   const DocKey doc_key_row2(PrimitiveValues("k2"));
   KeyBytes encoded_doc_key_row2(doc_key_row2.Encode());
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key_row2,
                                  PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn)),
                          Value(PrimitiveValue(), MonoDelta::FromMilliseconds(3)), t0,
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key_row2, PrimitiveValue(ColumnId(0))),
                          Value(PrimitiveValue("v1"), MonoDelta::FromMilliseconds(2)), t0,
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key_row2, PrimitiveValue(ColumnId(1))),
                          Value(PrimitiveValue("v2"), MonoDelta::FromMilliseconds(1)), t0,
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
   AssertDocDbDebugDumpStrEq(
       R"#(
 SubDocKey(DocKey([], ["k1"]), [SystemColumnId(0); HT(p=1000)]) -> null; ttl: 0.001s
@@ -686,10 +842,10 @@ SubDocKey(DocKey([], ["k1"]), [ColumnId(3); HT(p=1000)]) -> "v4"
   // Delete values.
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
                          Value(PrimitiveValue(ValueType::kTombstone), Value::kMaxTtl), t1,
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
                          Value(PrimitiveValue(ValueType::kTombstone), Value::kMaxTtl), t1,
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
 
   // Values are now marked with tombstones.
   AssertDocDbDebugDumpStrEq(
@@ -1056,22 +1212,22 @@ TEST_F(DocDBTest, DocRowwiseIteratorTest) {
   // We don't need any seeks for writes, where column values are primitives.
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(30))),
-      PrimitiveValue("row1_c"), HybridTime::FromMicros(1000), InitMarkerBehavior::kOptional));
+      PrimitiveValue("row1_c"), HybridTime::FromMicros(1000), InitMarkerBehavior::OPTIONAL));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(40))),
-      PrimitiveValue(10000), HybridTime::FromMicros(1000), InitMarkerBehavior::kOptional));
+      PrimitiveValue(10000), HybridTime::FromMicros(1000), InitMarkerBehavior::OPTIONAL));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(50))),
-      PrimitiveValue("row1_e"), HybridTime::FromMicros(1000), InitMarkerBehavior::kOptional));
+      PrimitiveValue("row1_e"), HybridTime::FromMicros(1000), InitMarkerBehavior::OPTIONAL));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
   // Row 2: one null column, one column that gets deleted and overwritten, another that just gets
   // overwritten. No seeks needed for writes.
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey2, PrimitiveValue(ColumnId(40))),
-      PrimitiveValue(20000), HybridTime::FromMicros(2000), InitMarkerBehavior::kOptional));
+      PrimitiveValue(20000), HybridTime::FromMicros(2000), InitMarkerBehavior::OPTIONAL));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
   // Deletions normally perform a lookup of the key to see whether it's already there. We will use
@@ -1080,24 +1236,24 @@ TEST_F(DocDBTest, DocRowwiseIteratorTest) {
   // perform any reads for this deletion.
   ASSERT_OK(DeleteSubDoc(
       DocPath(kEncodedDocKey2, PrimitiveValue(ColumnId(40))),
-      HybridTime::FromMicros(2500), InitMarkerBehavior::kOptional));
+      HybridTime::FromMicros(2500), InitMarkerBehavior::OPTIONAL));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
   // The entire subdocument under DocPath(encoded_doc_key2, 40) just got deleted, and that fact
   // should still be in the write batch's cache, so we should not perform a seek to overwrite it.
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey2, PrimitiveValue(ColumnId(40))),
-      PrimitiveValue(30000), HybridTime::FromMicros(3000), InitMarkerBehavior::kOptional));
+      PrimitiveValue(30000), HybridTime::FromMicros(3000), InitMarkerBehavior::OPTIONAL));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey2, PrimitiveValue(ColumnId(50))),
-      PrimitiveValue("row2_e"), HybridTime::FromMicros(2000), InitMarkerBehavior::kOptional));
+      PrimitiveValue("row2_e"), HybridTime::FromMicros(2000), InitMarkerBehavior::OPTIONAL));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey2, PrimitiveValue(ColumnId(50))),
       PrimitiveValue("row2_e_prime"), HybridTime::FromMicros(4000),
-      InitMarkerBehavior::kOptional));
+      InitMarkerBehavior::OPTIONAL));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
   SCOPED_TRACE("\nWrite batch:\n" + FormatDocWriteBatch(dwb));
@@ -1226,7 +1382,7 @@ class DocDBTestBoundaryValues : public DocDBTest {
       auto time = HybridTime::FromMicros(distribution(rng));
       auto key = DocKey(PrimitiveValues(key_str, key_int)).Encode();
       DocPath path(key);
-      ASSERT_OK(SetPrimitive(path, PrimitiveValue(value_str), time, InitMarkerBehavior::kOptional));
+      ASSERT_OK(SetPrimitive(path, PrimitiveValue(value_str), time, InitMarkerBehavior::OPTIONAL));
       trackers.back().key_ints(key_int);
       trackers.back().key_strs(key_str);
       trackers.back().times(time);
@@ -1289,21 +1445,21 @@ TEST_F_EX(DocDBTest, BoundaryValuesMultiFiles, DocDBTestBoundaryValues) {
 TEST_F(DocDBTest, DocRowwiseIteratorDeletedDocumentTest) {
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(30))),
-      PrimitiveValue("row1_c"), HybridTime::FromMicros(1000), InitMarkerBehavior::kOptional));
+      PrimitiveValue("row1_c"), HybridTime::FromMicros(1000), InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(40))),
-      PrimitiveValue(10000), HybridTime::FromMicros(1000), InitMarkerBehavior::kOptional));
+      PrimitiveValue(10000), HybridTime::FromMicros(1000), InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(50))),
-      PrimitiveValue("row1_e"), HybridTime::FromMicros(1000), InitMarkerBehavior::kOptional));
+      PrimitiveValue("row1_e"), HybridTime::FromMicros(1000), InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey2, PrimitiveValue(ColumnId(40))),
-      PrimitiveValue(20000),  HybridTime::FromMicros(2000), InitMarkerBehavior::kOptional));
+      PrimitiveValue(20000),  HybridTime::FromMicros(2000), InitMarkerBehavior::OPTIONAL));
 
   // Delete entire row1 document to test that iterator can successfully jump to next document
   // when it finds deleted document.
   ASSERT_OK(DeleteSubDoc(
-      DocPath(kEncodedDocKey1), HybridTime::FromMicros(2500), InitMarkerBehavior::kOptional));
+      DocPath(kEncodedDocKey1), HybridTime::FromMicros(2500), InitMarkerBehavior::OPTIONAL));
 
   AssertDocDbDebugDumpStrEq(R"#(
       SubDocKey(DocKey([], ["row1", 11111]), [HT(p=2500)]) -> DEL
@@ -1437,7 +1593,7 @@ TEST_F(DocDBTest, SetPrimitiveWithInitMarker) {
   // Both required and optional init marker should be ok.
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1), PrimitiveValue(ValueType::kObject)));
   ASSERT_OK(dwb.SetPrimitive(
-      DocPath(kEncodedDocKey1), PrimitiveValue(ValueType::kObject), InitMarkerBehavior::kOptional));
+      DocPath(kEncodedDocKey1), PrimitiveValue(ValueType::kObject), InitMarkerBehavior::OPTIONAL));
 }
 
 TEST_F(DocDBTest, DocRowwiseIteratorTestRowDeletes) {
@@ -1445,23 +1601,23 @@ TEST_F(DocDBTest, DocRowwiseIteratorTestRowDeletes) {
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(30))),
                              PrimitiveValue("row1_c"),
-                             InitMarkerBehavior::kOptional));
+                             InitMarkerBehavior::OPTIONAL));
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(40))),
                              PrimitiveValue(10000),
-                             InitMarkerBehavior::kOptional));
+                             InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000)));
 
-  ASSERT_OK(dwb.DeleteSubDoc(DocPath(kEncodedDocKey1), InitMarkerBehavior::kOptional));
+  ASSERT_OK(dwb.DeleteSubDoc(DocPath(kEncodedDocKey1), InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2500)));
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(50))),
                              PrimitiveValue("row1_e"),
-                             InitMarkerBehavior::kOptional));
+                             InitMarkerBehavior::OPTIONAL));
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, PrimitiveValue(ColumnId(40))),
                              PrimitiveValue(20000),
-                             InitMarkerBehavior::kOptional));
+                             InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(2800)));
 
   AssertDocDbDebugDumpStrEq(R"#(
@@ -1513,13 +1669,13 @@ TEST_F(DocDBTest, DocRowwiseIteratorHasNextIdempotence) {
 
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(40))),
-      PrimitiveValue(10000), HybridTime::FromMicros(1000), InitMarkerBehavior::kOptional));
+      PrimitiveValue(10000), HybridTime::FromMicros(1000), InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(50))),
-      PrimitiveValue("row1_e"), HybridTime::FromMicros(2800), InitMarkerBehavior::kOptional));
+      PrimitiveValue("row1_e"), HybridTime::FromMicros(2800), InitMarkerBehavior::OPTIONAL));
 
   ASSERT_OK(DeleteSubDoc(DocPath(kEncodedDocKey1), HybridTime::FromMicros(2500),
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
 
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(1000)));
 
@@ -1564,11 +1720,11 @@ TEST_F(DocDBTest, DocRowwiseIteratorIncompleteProjection) {
 
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(40))),
-                             PrimitiveValue(10000), InitMarkerBehavior::kOptional));
+                             PrimitiveValue(10000), InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(50))),
-                             PrimitiveValue("row1_e"), InitMarkerBehavior::kOptional));
+                             PrimitiveValue("row1_e"), InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, PrimitiveValue(ColumnId(40))),
-                             PrimitiveValue(20000), InitMarkerBehavior::kOptional));
+                             PrimitiveValue(20000), InitMarkerBehavior::OPTIONAL));
 
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(1000)));
 
@@ -1620,31 +1776,31 @@ TEST_F(DocDBTest, DocRowwiseIteratorMultipleDeletes) {
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(30))),
                              PrimitiveValue("row1_c"),
-                             InitMarkerBehavior::kOptional));
+                             InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(40))),
                              PrimitiveValue(10000),
-                             InitMarkerBehavior::kOptional));
+                             InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000)));
 
   // Deletes.
-  ASSERT_OK(dwb.DeleteSubDoc(DocPath(kEncodedDocKey1), InitMarkerBehavior::kOptional));
-  ASSERT_OK(dwb.DeleteSubDoc(DocPath(kEncodedDocKey2), InitMarkerBehavior::kOptional));
+  ASSERT_OK(dwb.DeleteSubDoc(DocPath(kEncodedDocKey1), InitMarkerBehavior::OPTIONAL));
+  ASSERT_OK(dwb.DeleteSubDoc(DocPath(kEncodedDocKey2), InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2500)));
   dwb.Clear();
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(50))),
                              Value(PrimitiveValue("row1_e"), ttl),
-                             InitMarkerBehavior::kOptional));
+                             InitMarkerBehavior::OPTIONAL));
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, PrimitiveValue(ColumnId(30))),
                              PrimitiveValue(ValueType::kTombstone),
-                             InitMarkerBehavior::kOptional));
+                             InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, PrimitiveValue(ColumnId(40))),
                              PrimitiveValue(20000),
-                             InitMarkerBehavior::kOptional));
+                             InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, PrimitiveValue(ColumnId(50))),
                              Value(PrimitiveValue("row2_e"), MonoDelta::FromMilliseconds(3)),
-                             InitMarkerBehavior::kOptional));
+                             InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2800)));
 
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(1000)));
@@ -1692,26 +1848,26 @@ TEST_F(DocDBTest, DocRowwiseIteratorValidColumnNotInProjection) {
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(40))),
                              PrimitiveValue(10000),
-                             InitMarkerBehavior::kOptional));
+                             InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, PrimitiveValue(ColumnId(40))),
                              PrimitiveValue(20000),
-                             InitMarkerBehavior::kOptional));
+                             InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000)));
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, PrimitiveValue(ColumnId(50))),
                              PrimitiveValue("row2_e"),
-                             InitMarkerBehavior::kOptional));
+                             InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, PrimitiveValue(ColumnId(30))),
                              PrimitiveValue("row2_c"),
-                             InitMarkerBehavior::kOptional));
+                             InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2000)));
 
-  ASSERT_OK(dwb.DeleteSubDoc(DocPath(kEncodedDocKey1), InitMarkerBehavior::kOptional));
+  ASSERT_OK(dwb.DeleteSubDoc(DocPath(kEncodedDocKey1), InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2500)));
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(50))),
                              PrimitiveValue("row1_e"),
-                             InitMarkerBehavior::kOptional));
+                             InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2800)));
 
 
@@ -1762,10 +1918,10 @@ TEST_F(DocDBTest, DocRowwiseIteratorKeyProjection) {
   // Row 1
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(40))),
                              PrimitiveValue(10000),
-                             InitMarkerBehavior::kOptional));
+                             InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(50))),
                              PrimitiveValue("row1_e"),
-                             InitMarkerBehavior::kOptional));
+                             InitMarkerBehavior::OPTIONAL));
 
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(1000)));
 
@@ -1828,10 +1984,10 @@ TEST_F(DocDBTest, TestDisambiguationOnWriteId) {
   DocWriteBatch dwb(rocksdb());
   ASSERT_OK(dwb.SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(10))),
-      PrimitiveValue("value1"), InitMarkerBehavior::kOptional));
+      PrimitiveValue("value1"), InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(dwb.SetPrimitive(
       DocPath(kEncodedDocKey1), PrimitiveValue(ValueType::kTombstone),
-      InitMarkerBehavior::kOptional));
+      InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000)));
 
   SubDocKey subdoc_key(kDocKey1);
@@ -1854,10 +2010,10 @@ TEST_F(DocDBTest, TestDisambiguationOnWriteId) {
   // Delete the row first, and then set a column. This row will exist.
   ASSERT_OK(dwb.SetPrimitive(
       DocPath(kEncodedDocKey2), PrimitiveValue(ValueType::kTombstone),
-      InitMarkerBehavior::kOptional));
+      InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(dwb.SetPrimitive(
       DocPath(kEncodedDocKey2, PrimitiveValue(ColumnId(10))),
-      PrimitiveValue("value2"), InitMarkerBehavior::kOptional));
+      PrimitiveValue("value2"), InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2000)));
   GetSubDocument(rocksdb(), SubDocKey(kDocKey2), &subdoc, &doc_found);
   ASSERT_TRUE(doc_found);
@@ -1891,47 +2047,47 @@ TEST_F(DocDBTest, StaticColumnCompaction) {
 
   // Add some static columns: s1 and s2 with TTL, s3 and s4 without.
   ASSERT_OK(SetPrimitive(DocPath(encoded_hk, PrimitiveValue("s1")),
-      Value(PrimitiveValue("v1"), one_ms), t0, InitMarkerBehavior::kOptional));
+      Value(PrimitiveValue("v1"), one_ms), t0, InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_hk, PrimitiveValue("s2")),
-      Value(PrimitiveValue("v2"), two_ms), t0, InitMarkerBehavior::kOptional));
+      Value(PrimitiveValue("v2"), two_ms), t0, InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_hk, PrimitiveValue("s3")),
-      Value(PrimitiveValue("v3old")), t0, InitMarkerBehavior::kOptional));
+      Value(PrimitiveValue("v3old")), t0, InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_hk, PrimitiveValue("s4")),
-      Value(PrimitiveValue("v4")), t0, InitMarkerBehavior::kOptional));
+      Value(PrimitiveValue("v4")), t0, InitMarkerBehavior::OPTIONAL));
 
   // Add some non-static columns for pk1: c5 and c6 with TTL, c7 and c8 without.
   ASSERT_OK(SetPrimitive(DocPath(encoded_pk1, PrimitiveValue("c5")),
-      Value(PrimitiveValue("v51"), one_ms), t0, InitMarkerBehavior::kOptional));
+      Value(PrimitiveValue("v51"), one_ms), t0, InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_pk1, PrimitiveValue("c6")),
-      Value(PrimitiveValue("v61"), two_ms), t0, InitMarkerBehavior::kOptional));
+      Value(PrimitiveValue("v61"), two_ms), t0, InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_pk1, PrimitiveValue("c7")),
-      Value(PrimitiveValue("v71old")), t0, InitMarkerBehavior::kOptional));
+      Value(PrimitiveValue("v71old")), t0, InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_pk1, PrimitiveValue("c8")),
-      Value(PrimitiveValue("v81")), t0, InitMarkerBehavior::kOptional));
+      Value(PrimitiveValue("v81")), t0, InitMarkerBehavior::OPTIONAL));
 
   // More non-static columns for another primary key pk2.
   ASSERT_OK(SetPrimitive(DocPath(encoded_pk2, PrimitiveValue("c5")),
-      Value(PrimitiveValue("v52"), one_ms), t0, InitMarkerBehavior::kOptional));
+      Value(PrimitiveValue("v52"), one_ms), t0, InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_pk2, PrimitiveValue("c6")),
-      Value(PrimitiveValue("v62"), two_ms), t0, InitMarkerBehavior::kOptional));
+      Value(PrimitiveValue("v62"), two_ms), t0, InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_pk2, PrimitiveValue("c7")),
-      Value(PrimitiveValue("v72")), t0, InitMarkerBehavior::kOptional));
+      Value(PrimitiveValue("v72")), t0, InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_pk2, PrimitiveValue("c8")),
-      Value(PrimitiveValue("v82")), t0, InitMarkerBehavior::kOptional));
+      Value(PrimitiveValue("v82")), t0, InitMarkerBehavior::OPTIONAL));
 
   // Update s3 and delete s4 at t1.
   ASSERT_OK(SetPrimitive(DocPath(encoded_hk, PrimitiveValue("s3")),
-      Value(PrimitiveValue("v3new")), t1, InitMarkerBehavior::kOptional));
+      Value(PrimitiveValue("v3new")), t1, InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_hk, PrimitiveValue("s4")),
-      Value(PrimitiveValue(ValueType::kTombstone)), t1, InitMarkerBehavior::kOptional));
+      Value(PrimitiveValue(ValueType::kTombstone)), t1, InitMarkerBehavior::OPTIONAL));
 
   // Update c7 of pk1 at t1 also.
   ASSERT_OK(SetPrimitive(DocPath(encoded_pk1, PrimitiveValue("c7")),
-      Value(PrimitiveValue("v71new")), t1, InitMarkerBehavior::kOptional));
+      Value(PrimitiveValue("v71new")), t1, InitMarkerBehavior::OPTIONAL));
 
   // Delete c8 of pk2 at t2.
   ASSERT_OK(SetPrimitive(DocPath(encoded_pk2, PrimitiveValue("c8")),
-      Value(PrimitiveValue(ValueType::kTombstone)), t2, InitMarkerBehavior::kOptional));
+      Value(PrimitiveValue(ValueType::kTombstone)), t2, InitMarkerBehavior::OPTIONAL));
 
   // Verify before compaction.
   AssertDocDbDebugDumpStrEq(R"#(

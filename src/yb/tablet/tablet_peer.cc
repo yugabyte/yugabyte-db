@@ -551,6 +551,9 @@ Status TabletPeer::StartReplicaTransaction(const scoped_refptr<ConsensusRound>& 
   state->set_hybrid_time(ht);
   RETURN_NOT_OK(clock_->Update(ht));
 
+  // This sets the monotonic counter to at least replicate_msg.monotonic_counter() atomically.
+  tablet_->UpdateMonotonicCounter(replicate_msg->monotonic_counter());
+
   scoped_refptr<TransactionDriver> driver;
   RETURN_NOT_OK(NewReplicaTransactionDriver(transaction.Pass(), &driver));
 

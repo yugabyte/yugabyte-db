@@ -168,6 +168,8 @@ message ReplicateMsg {
   required OpId id = 1;
   // The (hybrid or logical) hybrid_time assigned to this message.
   required fixed64 hybrid_time = 2;
+  // A counter that is forever increasing in a tablet (like hybrid time). Used for list indexing.
+  optional int64 monotonic_counter = 9;
   // optional ExternalConsistencyMode external_consistency_mode = 3 [default = NO_CONSISTENCY];
   required OperationType op_type = 4;
   optional tserver.WriteRequestPB write_request = 5;

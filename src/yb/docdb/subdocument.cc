@@ -39,7 +39,9 @@ SubDocument::~SubDocument() {
 }
 
 SubDocument::SubDocument(const SubDocument& other) {
-  if (IsPrimitiveValueType(other.type_) || other.type_ == ValueType::kInvalidValueType) {
+  if (IsPrimitiveValueType(other.type_) ||
+      other.type_ == ValueType::kInvalidValueType ||
+      other.type_ == ValueType::kTombstone) {
     new(this) PrimitiveValue(other);
   } else {
     type_ = other.type_;
@@ -86,7 +88,7 @@ bool SubDocument::operator ==(const SubDocument& other) const {
                                      : other.array_container().empty();
       }
       if (has_valid_container()) {
-        return array_container() == other.array_container();;
+        return array_container() == other.array_container();
       } else {
         return true;
       }
@@ -95,6 +97,28 @@ bool SubDocument::operator ==(const SubDocument& other) const {
   }
   // We'll get here if both container pointers are null.
   return true;
+}
+
+Status SubDocument::ConvertToArray() {
+  if (type_ != ValueType::kObject) {
+    return STATUS_SUBSTITUTE(
+        InvalidArgument, "Expected kObject Subdocument, found $0", ValueTypeToStr(type_));
+  }
+  if (!has_valid_object_container()) {
+    return STATUS(InvalidArgument, "Subdocument doesn't have valid object container");
+  }
+  const ObjectContainer& map = object_container();
+  ArrayContainer* list = new ArrayContainer();
+  list->reserve(map.size());
+  // Elements in std::map are ordered by operator< on the key.
+  // So iteration goes through sorted key order.
+  for (auto ent : map) {
+    list->emplace_back(std::move(ent.second));
+  }
+  type_ = ValueType::kArray;
+  delete &object_container();
+  complex_data_structure_ = list;
+  return Status::OK();
 }
 
 SubDocument* SubDocument::GetChild(const PrimitiveValue& key) {
@@ -124,7 +148,7 @@ const SubDocument* SubDocument::GetChild(const PrimitiveValue& key) const {
 }
 
 pair<SubDocument*, bool> SubDocument::GetOrAddChild(const PrimitiveValue& key) {
-  CHECK_EQ(ValueType::kObject, type_);
+  DCHECK_EQ(ValueType::kObject, type_);
   EnsureContainerAllocated();
   auto& obj_container = object_container();
   auto iter = obj_container.find(key);
@@ -135,6 +159,12 @@ pair<SubDocument*, bool> SubDocument::GetOrAddChild(const PrimitiveValue& key) {
   } else {
     return make_pair(&iter->second, false);  // No new subdocument created.
   }
+}
+
+void SubDocument::AddListElement(SubDocument&& value) {
+  DCHECK_EQ(ValueType::kArray, type_);
+  EnsureContainerAllocated();
+  array_container().emplace_back(std::move(value));
 }
 
 void SubDocument::SetChild(const PrimitiveValue& key, SubDocument&& value) {
@@ -171,7 +201,9 @@ ostream& operator <<(ostream& out, const SubDocument& subdoc) {
 void SubDocumentToStreamInternal(ostream& out,
                                  const SubDocument& subdoc,
                                  const int indent) {
-  if (subdoc.IsPrimitive() || subdoc.value_type() == ValueType::kInvalidValueType) {
+  if (subdoc.IsPrimitive() ||
+      subdoc.value_type() == ValueType::kInvalidValueType ||
+      subdoc.value_type() == ValueType::kTombstone) {
     out << static_cast<const PrimitiveValue*>(&subdoc)->ToString();
     return;
   }
@@ -196,7 +228,22 @@ void SubDocumentToStreamInternal(ostream& out,
       break;
     }
     case ValueType::kArray: {
-      LOG(FATAL) << "Arrays not supported yet.";
+      out << "[";
+      if (subdoc.container_allocated()) {
+        const auto& list = subdoc.array_container();
+        int i = 0;
+        for (; i < list.size(); i++) {
+          if (i != 0) {
+            out << ",";
+          }
+          out << "\n" << string(indent + 2, ' ') << i << ": ";
+          SubDocumentToStreamInternal(out, list[i], indent + 2);
+        }
+        if (i > 0) {
+          out << "\n" << string(indent, ' ');
+        }
+      }
+      out << "]";
       break;
     }
     default:
@@ -257,18 +304,14 @@ SubDocument SubDocument::FromYQLValuePB(const shared_ptr<YQLType>& yql_type,
     case LIST: {
       YQLSeqValuePB list = YQLValue::list_value(value);
       const shared_ptr<YQLType>& elems_type = yql_type->params()[0];
-      SubDocument list_doc;
-      for (int i = 0; i < list.elems_size(); i++) {
-        // representing list elems as values with generated indexes as keys for preserving ordering
-        // TODO (mihnea) for now we use list position as key (index), but this is just temporary
-        // It will need to be changed when we start supporting append/prepend operations later
-        PrimitiveValue pv_key = PrimitiveValue(i, SortOrder::kAscending);
-        SubDocument pv_value = SubDocument::FromYQLValuePB(elems_type, list.elems(i),
-            sorting_type);
-        list_doc.SetChild(pv_key, std::move(pv_value));
-      }
+      SubDocument list_doc(ValueType::kArray);
       // ensure container allocated even if list is empty
       list_doc.EnsureContainerAllocated();
+      for (int i = 0; i < list.elems_size(); i++) {
+        SubDocument pv_value = SubDocument::FromYQLValuePB(elems_type, list.elems(i),
+            sorting_type);
+        list_doc.AddListElement(std::move(pv_value));
+      }
       return list_doc;
     }
     case TUPLE:

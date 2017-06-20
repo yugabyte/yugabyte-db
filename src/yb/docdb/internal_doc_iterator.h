@@ -113,6 +113,10 @@ class InternalDocIterator {
   // not that document/subdocument actually exists.
   CHECKED_STATUS SeekToKeyPrefix();
 
+  rocksdb::Iterator* iterator() {
+    return iter_.get();
+  }
+
  private:
 
   rocksdb::DB* db_;

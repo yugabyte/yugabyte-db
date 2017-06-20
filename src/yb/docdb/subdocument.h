@@ -28,6 +28,15 @@ class SubDocument : public PrimitiveValue {
   // Copy constructor. This is potentially very expensive!
   SubDocument(const SubDocument& other);
 
+  explicit SubDocument(const std::vector<PrimitiveValue> &elements) {
+    type_ = ValueType::kArray;
+    complex_data_structure_ = new ArrayContainer();
+    array_container().reserve(elements.size());
+    for (auto& elt : elements) {
+      array_container().emplace_back(elt);
+    }
+  }
+
   // Don't need this for now.
   SubDocument& operator =(const SubDocument& other) = delete;
 
@@ -81,6 +90,10 @@ class SubDocument : public PrimitiveValue {
     return *reinterpret_cast<ArrayContainer*>(complex_data_structure_);
   }
 
+  // Interpret the SubDocument as a list.
+  // Assume current subdocument is of map type (kObject type)
+  CHECKED_STATUS ConvertToArray();
+
   // @return The child subdocument of an object at the given key, or nullptr if this subkey does not
   //         exist or this subdocument is not an object.
   SubDocument* GetChild(const PrimitiveValue& key);
@@ -92,6 +105,9 @@ class SubDocument : public PrimitiveValue {
   // @return A pair of the child at the requested subkey, and a boolean flag indicating whether a
   //         new child subdocument has been added.
   std::pair<SubDocument*, bool> GetOrAddChild(const PrimitiveValue& key);
+
+  // Add a list element child of the given value.
+  void AddListElement(SubDocument&& value);
 
   // Set the child subdocument of an object to the given value.
   void SetChild(const PrimitiveValue& key, SubDocument&& value);

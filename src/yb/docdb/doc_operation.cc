@@ -32,7 +32,7 @@ list<DocPath> KuduWriteOperation::DocPathsToLock() const {
 
 Status KuduWriteOperation::Apply(
     DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) {
-  return doc_write_batch->SetPrimitive(doc_path_, value_, InitMarkerBehavior::kOptional);
+  return doc_write_batch->SetPrimitive(doc_path_, value_, InitMarkerBehavior::OPTIONAL);
 }
 
 list<DocPath> RedisWriteOperation::DocPathsToLock() const {
@@ -689,7 +689,7 @@ Status YQLWriteOperation::Apply(
                                  PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
           const auto value = Value(PrimitiveValue(), ttl);
           RETURN_NOT_OK(doc_write_batch->SetPrimitive(sub_path, value,
-              InitMarkerBehavior::kOptional));
+              InitMarkerBehavior::OPTIONAL));
         }
         if (request_.column_values_size() > 0) {
           for (const auto& column_value : request_.column_values()) {
@@ -705,7 +705,7 @@ Status YQLWriteOperation::Apply(
                                                                   column_value.expr(),
                                                                   column.sorting_type());
             RETURN_NOT_OK(doc_write_batch->InsertSubDocument(
-                sub_path, sub_doc, InitMarkerBehavior::kOptional, ttl));
+                sub_path, sub_doc, InitMarkerBehavior::OPTIONAL, ttl));
           }
         }
         break;
@@ -723,11 +723,11 @@ Status YQLWriteOperation::Apply(
                 column.is_static() ?
                 hashed_doc_path_->encoded_doc_key() : pk_doc_path_->encoded_doc_key(),
                 PrimitiveValue(column_id));
-            RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path, InitMarkerBehavior::kOptional));
+            RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path, InitMarkerBehavior::OPTIONAL));
           }
         } else {
           RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(
-              *pk_doc_path_, InitMarkerBehavior::kOptional));
+              *pk_doc_path_, InitMarkerBehavior::OPTIONAL));
         }
         break;
       }

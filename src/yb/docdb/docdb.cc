@@ -50,6 +50,16 @@ namespace {
 // This a zero-terminated string for safety, even though we only intend to use one byte.
 const char kObjectValueType[] = { static_cast<char>(ValueType::kObject), 0 };
 
+// When we replace HybridTime::kMin in the end of seek key, next seek will skip older versions of
+// this key, but will not skip any subkeys in its subtree. If the iterator is already positioned far
+// enough, does not perform a seek.
+void SeekPastSubKey(const SubDocKey& sub_doc_key, rocksdb::Iterator* iter) {
+  KeyBytes key_bytes = sub_doc_key.Encode(/* include_hybrid_time */ false);
+  key_bytes.AppendValueType(ValueType::kHybridTime);
+  DocHybridTime::kMin.AppendEncodedInDocDbFormat(key_bytes.mutable_data());
+  SeekForward(key_bytes, iter);
+}
+
 }  // namespace
 
 
@@ -90,8 +100,9 @@ void PrepareDocWriteTransaction(const vector<unique_ptr<DocOperation>>& doc_writ
 Status ApplyDocWriteTransaction(const vector<unique_ptr<DocOperation>>& doc_write_ops,
                                 const HybridTime& hybrid_time,
                                 rocksdb::DB *rocksdb,
-                                KeyValueWriteBatchPB* write_batch) {
-  DocWriteBatch doc_write_batch(rocksdb);
+                                KeyValueWriteBatchPB* write_batch,
+                                std::atomic<int64_t>* monotonic_counter) {
+  DocWriteBatch doc_write_batch(rocksdb, monotonic_counter);
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
     RETURN_NOT_OK(doc_op->Apply(&doc_write_batch, rocksdb, hybrid_time));
   }
@@ -103,8 +114,9 @@ Status ApplyDocWriteTransaction(const vector<unique_ptr<DocOperation>>& doc_writ
 // DocWriteBatch
 // ------------------------------------------------------------------------------------------------
 
-DocWriteBatch::DocWriteBatch(rocksdb::DB* rocksdb)
+DocWriteBatch::DocWriteBatch(rocksdb::DB* rocksdb, std::atomic<int64_t>* monotonic_counter)
     : rocksdb_(rocksdb),
+      monotonic_counter_(monotonic_counter),
       num_rocksdb_seeks_(0) {
 }
 
@@ -130,15 +142,11 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
 
   for (int subkey_index = 0; subkey_index < num_subkeys; ++subkey_index) {
     const PrimitiveValue& subkey = doc_path.subkey(subkey_index);
-    if (subkey.value_type() == ValueType::kArrayIndex) {
-      // TODO: possibly get rid of this. This is not how we set elements in an array anyway.
-      return STATUS(NotSupported, "Setting values at a given array index is not supported yet");
-    }
     // We don't need to check if intermediate documents already exist if init markers are optional,
     // or if we already know they exist (either from previous reads or our own writes in the same
     // single-shard txn.)
-    if (use_init_marker == InitMarkerBehavior::kOptional || doc_iter->subdoc_exists()) {
-      if (use_init_marker == InitMarkerBehavior::kRequired &&
+    if (use_init_marker == InitMarkerBehavior::OPTIONAL || doc_iter->subdoc_exists()) {
+      if (use_init_marker == InitMarkerBehavior::REQUIRED &&
           doc_iter->subdoc_type() != ValueType::kObject) {
         // We raise this error only if init markers are mandatory.
         return STATUS_SUBSTITUTE(IllegalState,
@@ -146,13 +154,13 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
                                  ValueTypeToStr(doc_iter->subdoc_type()));
       }
       if ((subkey_index == num_subkeys - 1 && !is_deletion) ||
-          use_init_marker == InitMarkerBehavior::kOptional) {
+          use_init_marker == InitMarkerBehavior::OPTIONAL) {
         // We don't need to perform a RocksDB read at the last level for upserts, we just overwrite
         // the value within the last subdocument with what we're trying to write. We still perform
         // the read for deletions, because we try to avoid writing a new tombstone if the data is
         // not there anyway. Apart from the above case, if init markers are optional, there is no
         // point in seeking to intermediate document levels to verify their existence.
-        if (use_init_marker == InitMarkerBehavior::kOptional) {
+        if (use_init_marker == InitMarkerBehavior::OPTIONAL) {
           // In the case where init markers are optional, we don't need to check existence of
           // the current subdocument.
           doc_iter->AppendToPrefix(subkey);
@@ -222,7 +230,7 @@ Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
 
   if (num_subkeys > 0 || is_deletion) {
     doc_iter.SetDocumentKey(encoded_doc_key);
-    if (use_init_marker == InitMarkerBehavior::kRequired) {
+    if (use_init_marker == InitMarkerBehavior::REQUIRED) {
       // Navigate to the root of the document. We don't yet know whether the document exists or when
       // it was last updated.
       RETURN_NOT_OK(doc_iter.SeekToKeyPrefix());
@@ -260,9 +268,7 @@ Status DocWriteBatch::ExtendSubDocument(
       RETURN_NOT_OK(ExtendSubDocument(child_doc_path, ent.second, use_init_marker, ttl));
     }
   } else if (value.value_type() == ValueType::kArray) {
-    // In future ExtendSubDocument will also support List types, will call ExtendList in this case.
-    // For now it is not supported because it's clunky to pass monotonic counters in every function.
-    return STATUS(InvalidArgument, "Cannot insert subdocument of list type");
+      RETURN_NOT_OK(ExtendList(doc_path, value, ListExtendOrder::APPEND, use_init_marker, ttl));
   } else {
     if (!value.IsPrimitive() && value.value_type() != ValueType::kTombstone) {
       return STATUS_SUBSTITUTE(InvalidArgument,
@@ -290,6 +296,100 @@ Status DocWriteBatch::DeleteSubDoc(
     const DocPath& doc_path,
     InitMarkerBehavior use_init_marker) {
   return SetPrimitive(doc_path, PrimitiveValue(ValueType::kTombstone), use_init_marker);
+}
+
+Status DocWriteBatch::ExtendList(
+    const DocPath& doc_path,
+    const SubDocument& value,
+    ListExtendOrder extend_order,
+    InitMarkerBehavior use_init_marker,
+    MonoDelta ttl) {
+  if (monotonic_counter_ == nullptr) {
+    return STATUS(IllegalState, "List cannot be extended if monotonic_counter_ is uninitialized");
+  }
+  if (value.value_type() != ValueType::kArray) {
+    return STATUS_SUBSTITUTE(
+        InvalidArgument,
+        "Expecting Subdocument of type kArray, found $0",
+        ValueTypeToStr(value.value_type()));
+  }
+  const std::vector<SubDocument>& list = value.array_container();
+  // It is assumed that there is an exclusive lock on the list key.
+  // The lock ensures that there isn't another thread picking ArrayIndexes for the same list.
+  // No additional lock is required.
+  int64_t index =
+      std::atomic_fetch_add(monotonic_counter_, static_cast<int64_t>(list.size()));
+  for (size_t i = 0; i < list.size(); i++) {
+    DocPath child_doc_path = doc_path;
+    index++;
+    const int write_index = extend_order == ListExtendOrder::APPEND ? index : -index;
+    child_doc_path.AddSubKey(PrimitiveValue::ArrayIndex(write_index));
+    RETURN_NOT_OK(ExtendSubDocument(child_doc_path, list[i], use_init_marker, ttl));
+  }
+  return Status::OK();
+}
+
+Status DocWriteBatch::ReplaceInList(
+    const DocPath &doc_path,
+    const vector<int>& indexes,
+    const vector<SubDocument>& values,
+    const HybridTime& current_time,
+    MonoDelta table_ttl,
+    MonoDelta ttl,
+    InitMarkerBehavior use_init_marker) {
+  SubDocKey sub_doc_key;
+  RETURN_NOT_OK(sub_doc_key.FromDocPath(doc_path));
+  auto iter = CreateRocksDBIterator(rocksdb_, BloomFilterMode::USE_BLOOM_FILTER);
+  SubDocKey found_key;
+  Value found_value;
+  KeyBytes key_bytes = sub_doc_key.Encode( /*include_hybrid_time =*/ false);
+  rocksdb::Slice seek_key = key_bytes.AsSlice();
+  int current_index = 0;
+  int replace_index = 0;
+  ROCKSDB_SEEK(iter.get(), seek_key);
+  while (true) {
+    SubDocKey found_key;
+    Value doc_value;
+
+    if (!iter->Valid() || !iter->key().starts_with(seek_key)) {
+      return STATUS_SUBSTITUTE(
+          IllegalState,
+          "Unable to replace items into list, expecting index $1, reached end of list with size $0",
+          indexes[replace_index],
+          current_index);
+    }
+
+    RETURN_NOT_OK(found_key.FullyDecodeFrom(iter->key()));
+
+    MonoDelta ttl;
+    rocksdb::Slice rocksdb_value;
+
+    RETURN_NOT_OK(Value::DecodeTTL(&rocksdb_value, &ttl));
+    ttl = ComputeTTL(ttl, table_ttl);
+
+    if (!ttl.Equals(Value::kMaxTtl)) {
+      const HybridTime expiry =
+          server::HybridClock::AddPhysicalTimeToHybridTime(found_key.hybrid_time(), ttl);
+      if (current_time > expiry) {
+        found_key.KeepPrefix(sub_doc_key.num_subkeys()+1);
+        SeekPastSubKey(found_key, iter.get());
+        continue;
+      }
+    }
+    current_index++;
+    // Should we verify that the subkeys are indeed numbers as list indexes should be?
+    // Or just go in order for the index'th largest key in any subdocument?
+    if (current_index == indexes[replace_index]) {
+      DocPath child_doc_path = doc_path;
+      child_doc_path.AddSubKey(found_key.subkeys()[sub_doc_key.num_subkeys()]);
+      RETURN_NOT_OK(InsertSubDocument(child_doc_path, values[replace_index], use_init_marker, ttl));
+      replace_index++;
+      if (replace_index == indexes.size()) {
+        return Status::OK();
+      }
+    }
+    SeekPastSubKey(found_key, iter.get());
+  }
 }
 
 void DocWriteBatch::Clear() {
@@ -547,9 +647,9 @@ Status FindLastWriteTime(
 
   if (iter->Valid()) {
     bool only_lacks_ht = false;
-    RETURN_NOT_OK(key_bytes.OnlyLacksHybridTimeFrom(iter->key(), &only_lacks_ht));
+        RETURN_NOT_OK(key_bytes.OnlyLacksHybridTimeFrom(iter->key(), &only_lacks_ht));
     if (only_lacks_ht) {
-      RETURN_NOT_OK(DecodeHybridTimeFromEndOfKey(iter->key(), hybrid_time));
+          RETURN_NOT_OK(DecodeHybridTimeFromEndOfKey(iter->key(), hybrid_time));
       // TODO when we support TTL on non-leaf nodes, we need to take that into account here.
       return Status::OK();
     }
@@ -557,16 +657,6 @@ Status FindLastWriteTime(
 
   *hybrid_time = DocHybridTime::kMin;
   return Status::OK();
-}
-
-// When we replace HybridTime::kMin in the end of seek key, next seek will skip older versions of
-// this key, but will not skip any subkeys in its subtree. If the iterator is already positioned far
-// enough, does not perform a seek.
-void SeekPastSubKey(const SubDocKey& sub_doc_key, rocksdb::Iterator* iter) {
-  KeyBytes key_bytes = sub_doc_key.Encode(/* include_hybrid_time */ false);
-  key_bytes.AppendValueType(ValueType::kHybridTime);
-  DocHybridTime::kMin.AppendEncodedInDocDbFormat(key_bytes.mutable_data());
-  SeekForward(key_bytes, iter);
 }
 
 // This works similar to the ScanSubDocument function, but doesn't assume that object init_markers

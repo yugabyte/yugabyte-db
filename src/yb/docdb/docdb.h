@@ -22,6 +22,7 @@
 #include "yb/docdb/internal_doc_iterator.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value.h"
+#include "yb/docdb/subdocument.h"
 #include "yb/tablet/mvcc.h"
 #include "yb/util/shared_lock_manager.h"
 #include "yb/util/status.h"
@@ -63,8 +64,14 @@ namespace yb {
 namespace docdb {
 
 enum class InitMarkerBehavior {
-  kRequired = 0,
-  kOptional = 1
+  REQUIRED = 0,
+  OPTIONAL = 1
+};
+
+// Used for extending a list:
+enum class ListExtendOrder {
+  APPEND = 0,
+  PREPEND = 1
 };
 
 // The DocWriteBatch class is used to build a RocksDB write batch for a DocDB batch of operations
@@ -74,18 +81,18 @@ enum class InitMarkerBehavior {
 // Take ownership of it using std::move if it needs to live longer than this DocWriteBatch.
 class DocWriteBatch {
  public:
-  explicit DocWriteBatch(rocksdb::DB* rocksdb);
+  explicit DocWriteBatch(rocksdb::DB* rocksdb, std::atomic<int64_t>* monotonic_counter = nullptr);
 
   // Set the primitive at the given path to the given value. Intermediate subdocuments are created
   // if necessary and possible.
   CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path, const Value& value,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kRequired);
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED);
 
   CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path,
       const PrimitiveValue& value,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kRequired) {
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED) {
     return SetPrimitive(doc_path, Value(value), use_init_marker);
   }
 
@@ -96,18 +103,35 @@ class DocWriteBatch {
   CHECKED_STATUS ExtendSubDocument(
       const DocPath& doc_path,
       const SubDocument& value,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kOptional,
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL,
       MonoDelta ttl = Value::kMaxTtl);
 
   CHECKED_STATUS InsertSubDocument(
       const DocPath& doc_path,
       const SubDocument& value,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kOptional,
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL,
       MonoDelta ttl = Value::kMaxTtl);
+
+  CHECKED_STATUS ExtendList(
+      const DocPath& doc_path,
+      const SubDocument& value,
+      ListExtendOrder extend_order = ListExtendOrder::APPEND,
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL,
+      MonoDelta ttl = Value::kMaxTtl);
+
+  // 'indexes' must be sorted. List indexes are not zero indexed, the first element is list[1].
+  CHECKED_STATUS ReplaceInList(
+      const DocPath &doc_path,
+      const std::vector<int>& indexes,
+      const std::vector<SubDocument>& values,
+      const HybridTime& current_time,
+      MonoDelta table_ttl = Value::kMaxTtl,
+      MonoDelta ttl = Value::kMaxTtl,
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL);
 
   CHECKED_STATUS DeleteSubDoc(
       const DocPath& doc_path,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kRequired);
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED);
 
   void Clear();
   bool IsEmpty() const { return put_batch_.empty(); }
@@ -140,6 +164,7 @@ class DocWriteBatch {
   DocWriteBatchCache cache_;
 
   rocksdb::DB* rocksdb_;
+  std::atomic<int64_t>* monotonic_counter_;
   std::vector<std::pair<std::string, std::string>> put_batch_;
 
   int num_rocksdb_seeks_;
@@ -177,7 +202,8 @@ void PrepareDocWriteTransaction(const std::vector<std::unique_ptr<DocOperation>>
 Status ApplyDocWriteTransaction(const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
                                 const HybridTime& hybrid_time,
                                 rocksdb::DB *rocksdb,
-                                KeyValueWriteBatchPB* write_batch);
+                                KeyValueWriteBatchPB* write_batch,
+                                std::atomic<int64_t>* monotonic_counter);
 
 // A visitor class that could be overridden to consume results of scanning SubDocuments.
 // See e.g. SubDocumentBuildingVisitor (used in implementing GetSubDocument) as example usage.

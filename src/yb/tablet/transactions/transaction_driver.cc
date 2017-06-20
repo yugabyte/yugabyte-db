@@ -167,6 +167,8 @@ void TransactionDriver::HandleConsensusAppend() {
   auto* const replicate_msg = transaction_->state()->consensus_round()->replicate_msg();
   CHECK(!replicate_msg->has_hybrid_time());
   replicate_msg->set_hybrid_time(transaction_->state()->hybrid_time().ToUint64());
+  replicate_msg->set_monotonic_counter(
+      *transaction_->state()->tablet_peer()->tablet()->monotonic_counter());
 }
 
 void TransactionDriver::PrepareAndStartTask() {

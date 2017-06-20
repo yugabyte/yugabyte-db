@@ -301,13 +301,13 @@ TEST_F(DocOperationTest, TestYQLReadWithoutLivenessColumn) {
   KeyBytes encoded_doc_key(doc_key.Encode());
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
                          Value(PrimitiveValue(2)), HybridTime(1000),
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
                          Value(PrimitiveValue(3)), HybridTime(2000),
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
                          Value(PrimitiveValue(4)), HybridTime(3000),
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
 
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT(p=0, l=1000)]) -> 2
@@ -331,13 +331,13 @@ TEST_F(DocOperationTest, TestYQLReadWithTombstone) {
   KeyBytes encoded_doc_key(doc_key.Encode());
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
                          Value(PrimitiveValue(ValueType::kTombstone)), HybridTime(1000),
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
                          Value(PrimitiveValue(ValueType::kTombstone)), HybridTime(2000),
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
                          Value(PrimitiveValue(ValueType::kTombstone)), HybridTime(3000),
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
 
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT(p=0, l=1000)]) -> DEL
@@ -356,13 +356,13 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
   encoded_doc_key = doc_key.Encode();
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
                          Value(PrimitiveValue(ValueType::kTombstone)), HybridTime(1001),
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
                          Value(PrimitiveValue(2), MonoDelta::FromMilliseconds(1)), HybridTime(2001),
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
                          Value(PrimitiveValue(101)), HybridTime(3001),
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
 
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT(p=0, l=1001)]) -> DEL
@@ -394,16 +394,16 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
                                  PrimitiveValue::SystemColumnId(
                                      SystemColumnIds::kLivenessColumn)),
                          Value(PrimitiveValue(ValueType::kNull)),
-                         HybridTime(1000), InitMarkerBehavior::kOptional));
+                         HybridTime(1000), InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
                          Value(PrimitiveValue(ValueType::kTombstone)), HybridTime(1000),
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
                          Value(PrimitiveValue(2), MonoDelta::FromMilliseconds(1)), HybridTime(2000),
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
                          Value(PrimitiveValue(ValueType::kTombstone)), HybridTime(3000),
-                         InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::OPTIONAL));
 
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT(p=0, l=1001)]) -> DEL

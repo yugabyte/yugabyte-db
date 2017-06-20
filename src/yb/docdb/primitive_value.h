@@ -348,7 +348,7 @@ class PrimitiveValue {
       // it.
       memset(other, 0xab, sizeof(PrimitiveValue));
       // Restore the type. There should be no deallocation for non-string types anyway.
-      other->type_ = type_;
+      other->type_ = ValueType::kNull;
 #endif
     }
   }

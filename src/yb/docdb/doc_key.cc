@@ -8,6 +8,7 @@
 #include "rocksdb/util/string_util.h"
 
 #include "yb/docdb/doc_kv_util.h"
+#include "yb/docdb/doc_path.h"
 #include "yb/docdb/value_type.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/yb_rocksdb.h"
@@ -465,6 +466,12 @@ string SubDocKey::ToString() const {
   }
   result << "])";
   return result.str();
+}
+
+Status SubDocKey::FromDocPath(const DocPath& doc_path) {
+  RETURN_NOT_OK(doc_key_.FullyDecodeFrom(doc_path.encoded_doc_key().AsSlice()));
+  subkeys_ = doc_path.subkeys();
+  return Status::OK();
 }
 
 void SubDocKey::Clear() {

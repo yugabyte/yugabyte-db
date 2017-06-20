@@ -406,6 +406,11 @@ class Tablet : public AbstractTablet {
 
   yb::util::SharedLockManager* shared_lock_manager() { return &shared_lock_manager_; }
 
+  std::atomic<int64_t>* monotonic_counter() { return &monotonic_counter_; }
+
+  // Set the conter to at least 'value'.
+  void UpdateMonotonicCounter(int64_t value);
+
   const TabletMetadata *metadata() const { return metadata_.get(); }
   TabletMetadata *metadata() { return metadata_.get(); }
 
@@ -733,6 +738,13 @@ class Tablet : public AbstractTablet {
   // A lightweight way to reject new operations when the tablet is shutting down. This is used to
   // prevent race conditions between destroying the RocksDB instance and read/write operations.
   std::atomic_bool shutdown_requested_;
+
+  // This is a special atomic counter per tablet that increases monotonically.
+  // It is like timestamp, but doesn't need locks to read or update.
+  // This is raft replicated as well. Each replicate message contains the current number.
+  // It is guaranteed to keep increasing for committed entries even across tablet server
+  // restarts and leader changes.
+  std::atomic<int64_t> monotonic_counter_;
 
   // Number of pending operations. We use this to make sure we don't shut down RocksDB before all
   // pending operations are finished. We don't have a strict definition of an "operation" for the

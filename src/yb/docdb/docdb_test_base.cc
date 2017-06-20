@@ -18,6 +18,7 @@ void DocDBTestBase::SetUp() {
   YBTest::SetUp();
   InitRocksDBTestOptions();
   OpenRocksDB();
+  ResetMonotonicCounter();
 }
 
 void DocDBTestBase::TearDown() {

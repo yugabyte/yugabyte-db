@@ -69,6 +69,10 @@ class DocPath {
     return doc_path;
   }
 
+  const std::vector<PrimitiveValue>& subkeys() const {
+    return subkeys_;
+  }
+
  private:
   // Encoded key identifying the document. This key can itself contain multiple components
   // (hash bucket, hashed components, range components).

@@ -21,6 +21,8 @@ namespace docdb {
 
 using DocKeyHash = uint16_t;
 
+class DocPath;
+
 // ------------------------------------------------------------------------------------------------
 // DocKey
 // ------------------------------------------------------------------------------------------------
@@ -220,6 +222,8 @@ class SubDocKey {
     AppendSubKeysAndMaybeHybridTime(subkeys_and_maybe_hybrid_time...);
   }
 
+  CHECKED_STATUS FromDocPath(const DocPath& doc_path);
+
   // Return the subkeys within this SubDocKey
   const std::vector<PrimitiveValue>& subkeys() const {
     return subkeys_;
@@ -252,6 +256,12 @@ class SubDocKey {
   void RemoveLastSubKey() {
     DCHECK(!subkeys_.empty());
     subkeys_.pop_back();
+  }
+
+  void KeepPrefix(int num_sub_keys_to_keep) {
+    if (subkeys_.size() > num_sub_keys_to_keep) {
+      subkeys_.resize(num_sub_keys_to_keep);
+    }
   }
 
   void remove_hybrid_time() {

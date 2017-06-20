@@ -74,7 +74,7 @@ std::string ValueTypeToStr(ValueType value_type);
 constexpr inline bool IsPrimitiveValueType(const ValueType value_type) {
   return kMinPrimitiveValueType <= value_type && value_type <= kMaxPrimitiveValueType &&
          value_type != ValueType::kObject &&
-         value_type != ValueType::kArrayIndex &&
+         value_type != ValueType::kArray &&
          value_type != ValueType::kTombstone;
 }
 

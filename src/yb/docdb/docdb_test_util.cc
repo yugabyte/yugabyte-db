@@ -331,6 +331,10 @@ void DocDBRocksDBFixture::DestroyRocksDB() {
   CHECK_OK(rocksdb::DestroyDB(rocksdb_dir_, rocksdb_options_));
 }
 
+void DocDBRocksDBFixture::ResetMonotonicCounter() {
+  monotonic_counter_ = 0;
+}
+
 void DocDBRocksDBFixture::PopulateRocksDBWriteBatch(
     const DocWriteBatch& dwb,
     rocksdb::WriteBatch *rocksdb_write_batch,
@@ -432,7 +436,7 @@ Status DocDBRocksDBFixture::SetPrimitive(
     const Value& value,
     const HybridTime hybrid_time,
     InitMarkerBehavior use_init_marker) {
-  DocWriteBatch local_doc_write_batch(rocksdb_.get());
+  DocWriteBatch local_doc_write_batch(rocksdb_.get(), &monotonic_counter_);
   RETURN_NOT_OK(local_doc_write_batch.SetPrimitive(doc_path, value, use_init_marker));
   return WriteToRocksDB(local_doc_write_batch, hybrid_time);
 }
@@ -450,7 +454,7 @@ Status DocDBRocksDBFixture::InsertSubDocument(
     const SubDocument& value,
     const HybridTime hybrid_time,
     InitMarkerBehavior use_init_marker) {
-  DocWriteBatch dwb(rocksdb_.get());
+  DocWriteBatch dwb(rocksdb_.get(), &monotonic_counter_);
   RETURN_NOT_OK(dwb.InsertSubDocument(doc_path, value, use_init_marker));
   return WriteToRocksDB(dwb, hybrid_time);
 }
@@ -460,8 +464,34 @@ Status DocDBRocksDBFixture::ExtendSubDocument(
     const SubDocument& value,
     const HybridTime hybrid_time,
     InitMarkerBehavior use_init_marker) {
-  DocWriteBatch dwb(rocksdb_.get());
+  DocWriteBatch dwb(rocksdb_.get(), &monotonic_counter_);
   RETURN_NOT_OK(dwb.ExtendSubDocument(doc_path, value, use_init_marker));
+  return WriteToRocksDB(dwb, hybrid_time);
+}
+
+Status DocDBRocksDBFixture::ExtendList(
+    const DocPath& doc_path,
+    const SubDocument& value,
+    const ListExtendOrder extend_order,
+    HybridTime hybrid_time,
+    InitMarkerBehavior use_init_marker) {
+  DocWriteBatch dwb(rocksdb_.get(), &monotonic_counter_);
+  RETURN_NOT_OK(dwb.ExtendList(doc_path, value, extend_order, use_init_marker));
+  return WriteToRocksDB(dwb, hybrid_time);
+}
+
+Status DocDBRocksDBFixture::ReplaceInList(
+    const DocPath &doc_path,
+    const std::vector<int>& indexes,
+    const std::vector<SubDocument>& values,
+    const HybridTime& current_time,
+    const HybridTime& hybrid_time,
+    MonoDelta table_ttl,
+    MonoDelta ttl,
+    InitMarkerBehavior use_init_marker) {
+  DocWriteBatch dwb(rocksdb_.get(), &monotonic_counter_);
+  RETURN_NOT_OK(dwb.ReplaceInList(
+      doc_path, indexes, values, current_time, table_ttl, ttl, use_init_marker));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -469,7 +499,7 @@ Status DocDBRocksDBFixture::DeleteSubDoc(
     const DocPath& doc_path,
     HybridTime hybrid_time,
     InitMarkerBehavior use_init_marker) {
-  DocWriteBatch dwb(rocksdb());
+  DocWriteBatch dwb(rocksdb(), &monotonic_counter_);
   RETURN_NOT_OK(dwb.DeleteSubDoc(doc_path, use_init_marker));
   return WriteToRocksDB(dwb, hybrid_time);
 }
@@ -519,7 +549,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   ++iteration_;
 
   DOCDB_DEBUG_LOG("Starting iteration i=$0", current_iteration);
-  DocWriteBatch dwb(fixture_->rocksdb());
+  DocWriteBatch dwb(fixture_->rocksdb(), fixture_->monotonic_counter());
   const auto& doc_key = RandomElementOf(doc_keys_, &random_);
   const KeyBytes encoded_doc_key(doc_key.Encode());
 

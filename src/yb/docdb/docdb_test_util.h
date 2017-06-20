@@ -99,6 +99,7 @@ class LogicalRocksDBDebugSnapshot {
 // compacting the history until a certain point. This is also a convenient base class for GTest test
 // classes, because it exposes member functions such as rocksdb() and write_oiptions().
 class DocDBRocksDBFixture {
+
  public:
   DocDBRocksDBFixture();
   virtual ~DocDBRocksDBFixture();
@@ -119,6 +120,7 @@ class DocDBRocksDBFixture {
   void OpenRocksDB();
   void ReopenRocksDB();
   void DestroyRocksDB();
+  void ResetMonotonicCounter();
 
   // Populates the given RocksDB write batch from the given DocWriteBatch. If a valid hybrid_time is
   // specified, it is appended to every key.
@@ -156,30 +158,47 @@ class DocDBRocksDBFixture {
       const DocPath& doc_path,
       const Value& value,
       HybridTime hybrid_time,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kRequired);
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED);
 
   CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path,
       const PrimitiveValue& value,
       HybridTime hybrid_time,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kRequired);
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED);
 
   CHECKED_STATUS InsertSubDocument(
       const DocPath& doc_path,
       const SubDocument& value,
       HybridTime hybrid_time,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kOptional);
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL);
 
   CHECKED_STATUS ExtendSubDocument(
       const DocPath& doc_path,
       const SubDocument& value,
       HybridTime hybrid_time,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kOptional);
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL);
+
+  CHECKED_STATUS ExtendList(
+      const DocPath& doc_path,
+      const SubDocument& value,
+      const ListExtendOrder extend_order,
+      HybridTime hybrid_time,
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL);
+
+  CHECKED_STATUS ReplaceInList(
+      const DocPath &doc_path,
+      const std::vector<int>& indexes,
+      const std::vector<SubDocument>& values,
+      const HybridTime& current_time, // Used for reading.
+      const HybridTime& hybrid_time,
+      MonoDelta table_ttl = Value::kMaxTtl,
+      MonoDelta ttl = Value::kMaxTtl,
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL);
 
   CHECKED_STATUS DeleteSubDoc(
       const DocPath& doc_path,
       HybridTime hybrid_time,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kRequired);
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED);
 
   void DocDBDebugDumpToConsole();
 
@@ -194,9 +213,14 @@ class DocDBRocksDBFixture {
 
   void ReinitDBOptions();
 
+  std::atomic<int64_t>* monotonic_counter() {
+    return &monotonic_counter_;
+  }
+
  private:
   std::shared_ptr<rocksdb::Cache> block_cache_;
   std::unique_ptr<rocksdb::DB> rocksdb_;
+  std::atomic<int64_t> monotonic_counter_;
   std::shared_ptr<HistoryRetentionPolicy> retention_policy_;
   Schema schema_;
   rocksdb::Options rocksdb_options_;

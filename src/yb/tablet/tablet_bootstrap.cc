@@ -817,6 +817,9 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state, LogEntryPB* r
   DCHECK(replicate.has_hybrid_time());
   CHECK_OK(UpdateClock(replicate.hybrid_time()));
 
+  // This sets the monotonic counter to at least replicate.monotonic_counter() atomically.
+  tablet_->UpdateMonotonicCounter(replicate.monotonic_counter());
+
   int64_t index = replicate_entry->replicate().id().index();
   if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE &&
       index == state->rocksdb_max_persistent_index) {
