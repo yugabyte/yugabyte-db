@@ -8,8 +8,8 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "util/thread_posix.h"
-#include <atomic>
 #include <unistd.h>
+#include <atomic>
 #ifdef OS_LINUX
 #include <sys/syscall.h>
 #endif
@@ -176,7 +176,7 @@ void ThreadPool::SetBackgroundThreads(int num) {
 
 void ThreadPool::StartBGThreads() {
   // Start background thread if necessary
-  while ((int)bgthreads_.size() < total_threads_limit_) {
+  while (static_cast<int>(bgthreads_.size()) < total_threads_limit_) {
     pthread_t t;
     PthreadCall("create thread",
                 pthread_create(&t, nullptr, &BGThreadWrapper,
@@ -186,8 +186,8 @@ void ThreadPool::StartBGThreads() {
 #if defined(_GNU_SOURCE) && defined(__GLIBC_PREREQ)
 #if __GLIBC_PREREQ(2, 12)
     char name_buf[16];
-    snprintf(name_buf, sizeof name_buf, "rocksdb:bg%" ROCKSDB_PRIszt,
-             bgthreads_.size());
+    snprintf(name_buf, sizeof name_buf, "rocksdb:%s:bg%" ROCKSDB_PRIszt,
+             GetThreadPriority() == Env::Priority::HIGH ? "high" : "low", bgthreads_.size());
     name_buf[sizeof name_buf - 1] = '\0';
     pthread_setname_np(t, name_buf);
 #endif
