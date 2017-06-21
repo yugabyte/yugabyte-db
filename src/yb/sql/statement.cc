@@ -24,8 +24,9 @@ Statement::~Statement() {
 CHECKED_STATUS Statement::Prepare(
     SqlProcessor *processor, shared_ptr<MemTracker> mem_tracker, PreparedResult::UniPtr *result) {
   // Prepare the statement (parse and semantically analysis). Do so within an exclusive lock.
-  {
-    boost::lock_guard<boost::shared_mutex> l(lock_);
+  if (!prepared_.load(std::memory_order_acquire)) {
+    std::lock_guard<std::mutex> guard(parse_tree_mutex_);
+
     if (parse_tree_ == nullptr) {
 
       ParseTree::UniPtr parse_tree;
@@ -37,6 +38,7 @@ CHECKED_STATUS Statement::Prepare(
         RETURN_NOT_OK(processor->Analyze(text_, &parse_tree));
       }
       parse_tree_ = std::move(parse_tree);
+      prepared_.store(true, std::memory_order_release);
     }
   }
 
@@ -66,18 +68,12 @@ CHECKED_STATUS Statement::Prepare(
 
 bool Statement::ExecuteAsync(
     SqlProcessor* processor, const StatementParameters& params, StatementExecutedCallback cb) {
-  {
-    // Ensure the statement has been prepared successfully and parse tree is present. Do so within
-    // a shared lock. Once verified, we do not need the lock when executing the statement below
-    // because the parse-tree is guaranteed read-only after having been prepared successfully.
-    boost::shared_lock<boost::shared_mutex> l(lock_);
-
-    // Return false if there is no parse tree.
-    if (parse_tree_ == nullptr) {
-      return false;
-    }
+  // Return false if the statement has not been prepared.
+  if (!prepared_.load(std::memory_order_acquire)) {
+    return false;
   }
 
+  DCHECK(parse_tree_ != nullptr) << "Parse tree missing";
   processor->ExecuteAsync(text_, *parse_tree_.get(), params, cb);
   return true;
 }

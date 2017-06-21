@@ -7,8 +7,6 @@
 #ifndef YB_SQL_STATEMENT_H_
 #define YB_SQL_STATEMENT_H_
 
-#include <boost/thread/shared_mutex.hpp>
-
 #include "yb/sql/ptree/parse_tree.h"
 #include "yb/sql/util/statement_params.h"
 #include "yb/sql/util/statement_result.h"
@@ -58,8 +56,11 @@ class Statement {
   // The parse tree.
   ParseTree::UniPtr parse_tree_;
 
-  // Shared/exclusive lock on the parse tree and parse time.
-  boost::shared_mutex lock_;
+  // Mutex that protects the generation of the parse tree.
+  std::mutex parse_tree_mutex_;
+
+  // Atomic bool to indicate if the statement has been prepared.
+  std::atomic<bool> prepared_ = {false};
 };
 
 }  // namespace sql
