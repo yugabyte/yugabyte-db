@@ -58,6 +58,27 @@ public class InstanceTypeTest extends FakeDBApplication {
   }
 
   @Test
+  public void testDeleteByProviderWithValidProviderCode() {
+    Provider newProvider = ModelFactory.gceProvider(defaultCustomer);
+    InstanceType.upsert(newProvider.code, "bar", 2, 10.0, defaultDetails);
+    int response = InstanceType.deleteInstanceTypesForProvider(newProvider.code);
+    List<InstanceType> instanceTypeList = InstanceType.findByProvider(newProvider);
+    assertEquals(1, response);
+    assertEquals(0, instanceTypeList.size());
+
+  }
+
+  @Test
+  public void testDeleteByProviderWithInvalidProviderCode() {
+    Provider newProvider = ModelFactory.gceProvider(defaultCustomer);
+    InstanceType.upsert(newProvider.code, "bar", 2, 10.0, defaultDetails);
+    int response = InstanceType.deleteInstanceTypesForProvider("abcd");
+    List<InstanceType> instanceTypeList = InstanceType.findByProvider(newProvider);
+    assertEquals(0, response);
+    assertEquals(1, instanceTypeList.size());
+  }
+
+  @Test
   public void testCreateWithValidMetadata() {
     ObjectNode metaData = Json.newObject();
     metaData.put("numCores", 4);

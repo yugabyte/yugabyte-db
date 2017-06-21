@@ -11,6 +11,7 @@ import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
 
+import com.avaje.ebean.Update;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -163,6 +164,15 @@ public class InstanceType extends Model {
     if (modifiedCount == 0) {
       LOG.warn("Failed to update any SQL row");
     }
+  }
+
+  /**
+   * Delete Instance Types corresponding to given provider
+   */
+  public static int deleteInstanceTypesForProvider(String providerCode) {
+    SqlUpdate deleteStmt = Ebean.createSqlUpdate("DELETE from instance_type WHERE provider_code= :provider_code");
+    deleteStmt.setParameter("provider_code",  providerCode);
+    return deleteStmt.execute();
   }
 
   /**
