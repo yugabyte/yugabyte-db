@@ -11,7 +11,7 @@ build_zlib() {
     set -x
     set_thirdparty_flags_for_autotools_projects
     export CFLAGS+=" -fPIC"
-    ./configure --prefix=$PREFIX
+    run_configure --prefix=$PREFIX
     run_make install
   )
 }

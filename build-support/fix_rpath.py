@@ -21,7 +21,9 @@ import re
 import subprocess
 import sys
 
-sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'python'))
+BUILD_SUPPORT_DIR = os.path.dirname(os.path.realpath(__file__))
+
+sys.path.append(os.path.join(BUILD_SUPPORT_DIR, '..', 'python'))
 
 # "noqa" silences the code style warning in the following line.
 from yb.command_util import run_program  # noqa
@@ -29,12 +31,20 @@ from yb.command_util import run_program  # noqa
 READELF_RPATH_RE = re.compile(r'Library (?:rpath|runpath): \[(.+)\]')
 
 # We have to update paths to Linuxbrew libraries dependent on the home directory. We are using a
-# special location for a Linuxbrew installation used for building the YB codebase.
-LINUXBREW_PATH_RE = re.compile(r'/home/[^/]+/([.]linuxbrew-yb-build/.*)$')
-
+# set of special possible locations for a Linuxbrew installation used for building the YB codebase.
+POSSIBLE_HOME_DIRS_FOR_LINUXBREW = [
+        r'/home/[^/]+',
+        r'/n/users/[^/]+',
+        r'/var/lib/jenkins',
+        r'/n/jenkins'
+        ]
+LINUXBREW_PATH_RE = re.compile(
+        r'(?:' + '|'.join(POSSIBLE_HOME_DIRS_FOR_LINUXBREW) + ')/[.]linuxbrew-yb-build/(.*)$')
 HOME_DIR = os.path.expanduser('~')
 
-patchelf_path = None  # This is set in main().
+# These variables are set in main().
+patchelf_path = None
+linuxbrew_dir = None
 
 
 def run_ldd(elf_file_path, report_missing_libs=False):
@@ -100,7 +110,7 @@ def update_interpreter(binary_path):
     interpreter_path = print_interpreter_result.stdout.strip()
     linuxbrew_interpreter_path_suffix = '.linuxbrew-yb-build/lib/ld.so'
     if interpreter_path.endswith('/' + linuxbrew_interpreter_path_suffix):
-        new_interpreter_path = os.path.join(HOME_DIR, linuxbrew_interpreter_path_suffix)
+        new_interpreter_path = os.path.join(linuxbrew_dir, 'lib', 'ld.so')
         if new_interpreter_path != interpreter_path:
             logging.debug(
                 "Setting interpreter to '{}' on '{}'".format(new_interpreter_path, binary_path))
@@ -158,6 +168,11 @@ def main():
             for prefix_rel_dir in ['installed', 'installed-deps', 'installed-deps-tsan']
             ]
 
+    find_linuxbrew_result = run_program(os.path.join(BUILD_SUPPORT_DIR, 'find_linuxbrew.sh'))
+    global linuxbrew_dir
+    linuxbrew_dir = find_linuxbrew_result.stdout.strip()
+    assert linuxbrew_dir
+
     # We need patchelf as it is more flexible than chrpath and can in fact increase the length of
     # rpath if there is enough space. This could happen if rpath used to be longer but was reduced
     # by a previous patchelf / chrpath command. Another reason we need patchelf is to set the
@@ -165,9 +180,7 @@ def main():
     # installed in a different location.
     global patchelf_path
 
-    patchelf_possible_paths = [
-            '/usr/bin/patchelf',
-            os.path.join(HOME_DIR, '.linuxbrew-yb-build', 'bin', 'patchelf')]
+    patchelf_possible_paths = ['/usr/bin/patchelf', os.path.join(linuxbrew_dir, 'bin', 'patchelf')]
     for patchelf_path_candidate in patchelf_possible_paths:
         if os.path.isfile(patchelf_path_candidate):
             patchelf_path = patchelf_path_candidate
@@ -176,9 +189,6 @@ def main():
         logging.error("Could not find patchelf in any of the paths: {}".format(
             patchelf_possible_paths))
         return False
-
-    change_rpath_cmd = patchelf_path + ' --set-rpath'
-    logging.info("Command for updating rpath: {}".format(change_rpath_cmd))
 
     num_binaries_no_rpath_change = 0
     num_binaries_updated_rpath = 0
@@ -212,7 +222,7 @@ def main():
                     readelf_stdout, readelf_stderr = readelf_subprocess.communicate()
 
                     if 'Not an ELF file' in readelf_stderr:
-                        logging.warn("Not an ELF file: '%s', skipping" % binary_path)
+                        logging.debug("Not an ELF file: '%s', skipping" % binary_path)
                         continue
 
                     if not update_interpreter(binary_path):
@@ -266,8 +276,9 @@ def main():
                         if linuxbrew_rpath_match:
                             # This is a Linuxbrew directory relative to the home directory of the
                             # user that built the third-party package. We need to substitute the
-                            # current user's home directory into that instead.
-                            new_rpath_entry = os.path.join(HOME_DIR,
+                            # current user's home directory, or the directory containing the
+                            # .linuxbrew-yb-build directory, into that instead.
+                            new_rpath_entry = os.path.join(linuxbrew_dir,
                                                            linuxbrew_rpath_match.group(1))
                         else:
                             rel_path = os.path.relpath(real_rpath_entry, os.path.realpath(file_dir))
@@ -295,21 +306,31 @@ def main():
                         num_binaries_no_rpath_change += 1
                         continue
 
+                    add_if_absent(new_relative_rpath_entries, os.path.join(linuxbrew_dir, 'lib'))
                     new_rpath_str = ':'.join(new_relative_rpath_entries)
+
                     # When using patchelf, this will actually set RUNPATH as a newer replacement
                     # for RPATH, with the difference being that RUNPATH can be overwritten by
                     # LD_LIBRARY_PATH, but we're OK with it.
                     # Note: pipes.quote is a way to escape strings for inclusion in shell
                     # commands.
-                    set_rpath_exit_code = os.system(
-                        "%s %s %s" % (change_rpath_cmd,
-                                      pipes.quote(new_rpath_str),
-                                      binary_path)
-                    ) >> 8
+                    set_rpath_cmd = [patchelf_path, '--set-rpath',
+                                     new_rpath_str,
+                                     binary_path]
                     logging.debug("Setting rpath on '%s' to '%s'" % (binary_path, new_rpath_str))
-                    if set_rpath_exit_code != 0:
-                        logging.warn("Could not set rpath on '%s': exit code %d" % (
-                                     binary_path, set_rpath_exit_code))
+                    for i in range(10):
+                        set_rpath_result = run_program(set_rpath_cmd, error_ok=True)
+                        if set_rpath_result.returncode == 0 or \
+                           'open: Resource temporarily unavailable' not in set_rpath_result.stderr:
+                            break
+                        logging.info(
+                                "Re-trying to set rpath on '{}' (resource temporarily unavailable)",
+                                binary_path)
+                    if set_rpath_result.returncode != 0:
+                        logging.warn(
+                                "Could not set rpath on '{}': exit code {}, command: {}",
+                                binary_path, set_rpath_result.returncode, set_rpath_cmd)
+                        logging.warn("patchelf stderr: " + set_rpath_result.stderr)
                         is_success = False
                     num_binaries_updated_rpath += 1
 

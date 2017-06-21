@@ -102,6 +102,8 @@ for dep_name in "${dependency_names_to_clean[@]}"; do
 
     if [[ -n $src_dir_name ]]; then
       delete_dir "$top_build_dir/$src_dir_name"
+      delete_dir "$top_build_dir/${src_dir_name}_static"
+      delete_dir "$top_build_dir/${src_dir_name}_shared"
     fi
   done
 done

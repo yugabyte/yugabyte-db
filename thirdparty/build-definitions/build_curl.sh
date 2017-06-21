@@ -12,7 +12,7 @@ build_curl() {
     set_build_env_vars
     set_thirdparty_flags_for_autotools_projects
     set -x
-    ./configure --prefix=$PREFIX \
+    run_configure --prefix=$PREFIX \
       --disable-ftp \
       --disable-file \
       --disable-ldap \

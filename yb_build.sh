@@ -80,6 +80,10 @@ Options:
     Run a clean build without asking for confirmation even if a clean build was recently done.
   --with-assembly
     Build the java code with assembly (basically builds the yb-sample-apps.jar as well)
+  -j <parallelism>
+    Build using the given number of concurrent jobs (defaults to the number of CPUs).
+  --remote
+    Prefer a remote build on an auto-scaling cluster of build workers.
   --
     Pass all arguments after -- to repeat_unit_test.
 
@@ -139,6 +143,7 @@ repeat_unit_test_inherited_args=()
 forward_args_to_repeat_unit_test=false
 original_args=( "$@" )
 java_with_assembly=false
+declare -i default_parallelism=0
 
 export YB_EXTRA_GTEST_FLAGS=""
 
@@ -273,6 +278,20 @@ while [ $# -gt 0 ]; do
       build_descriptor_path=$2
       shift
     ;;
+    -j)
+      export YB_MAKE_PARALLELISM=$2
+      shift
+    ;;
+    --remote)
+      export YB_REMOTE_BUILD=1
+      if [[ ! -f "$YB_BUILD_WORKERS_FILE" ]]; then
+        fatal "--remote specified but $YB_BUILD_WORKERS_FILE not found"
+      fi
+      declare -i num_build_workers=$( wc -l "$YB_BUILD_WORKERS_FILE" | awk '{print $1}' )
+      # Add one to the number of workers so that we cause the auto-scaling group to scale up a bit.
+      declare -i default_parallelism=$((
+        ( $num_build_workers + 1 ) * $YB_NUM_CORES_PER_BUILD_WORKER ))
+    ;;
     --)
       if [[ $num_test_repetitions -lt 2 ]]; then
         fatal "Forward to arguments to repeat_unit_test.sh without multiple repetitions"
@@ -357,6 +376,13 @@ set_build_root
 validate_cmake_build_type "$cmake_build_type"
 
 export YB_COMPILER_TYPE
+
+if [[ -z ${YB_MAKE_PARALLELISM:-} && $default_parallelism -gt 0 ]]; then
+  export YB_MAKE_PARALLELISM=$default_parallelism
+fi
+if [[ -n ${YB_MAKE_PARALLELISM:-} ]]; then
+  log "Using parallelism of $YB_MAKE_PARALLELISM"
+fi
 
 if "$verbose"; then
   # http://stackoverflow.com/questions/22803607/debugging-cmakelists-txt
@@ -448,7 +474,7 @@ if "$build_cxx"; then
   set +u +e  # "set -u" may cause failures on empty lists
   time (
     set -x
-    make -j"$YB_NUM_CPUS" "${make_opts[@]}" "${make_targets[@]}"
+    make "-j$YB_MAKE_PARALLELISM" "${make_opts[@]}" "${make_targets[@]}"
   )
 
   exit_code=$?

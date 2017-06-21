@@ -9,7 +9,7 @@ build_gflags() {
   (
     set_build_env_vars
     set_thirdparty_flags_for_cmake_projects
-    cmake \
+    run_cmake \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_POSITION_INDEPENDENT_CODE=On \
       -DCMAKE_INSTALL_PREFIX=$PREFIX \

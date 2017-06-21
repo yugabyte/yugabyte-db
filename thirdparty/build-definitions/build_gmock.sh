@@ -6,25 +6,43 @@ TP_NAME_TO_SRC_DIR["gmock"]=$GMOCK_DIR
 
 build_gmock() {
   create_build_dir_and_prepare "$GMOCK_DIR"
-  for SHARED in OFF ON; do
-    remove_cmake_cache
+  local shared
+  local build_dir=$PWD
+  log "Build directory for gmock to be copied to separate static/shared build dirs: $build_dir"
+  for shared in OFF ON; do
+    local cur_build_dir=$build_dir
+    if [[ $shared == "ON" ]]; then
+      cur_build_dir+="_shared"
+    else
+      cur_build_dir+="_static"
+    fi
+    ( set -x; mkdir -p "$cur_build_dir" )
+    log "Building gmock with shared libraries turned $shared using build directory $cur_build_dir"
     (
-      set_build_env_vars
-      set_thirdparty_flags_for_cmake_projects
-      set -x
-      cmake \
-        -DCMAKE_BUILD_TYPE=Debug \
-        -DCMAKE_POSITION_INDEPENDENT_CODE=On \
-        -DBUILD_SHARED_LIBS=$SHARED .
-      run_make
+      cd "$cur_build_dir"
+      remove_cmake_cache
+      (
+        set_build_env_vars
+        set_thirdparty_flags_for_cmake_projects
+        YB_REMOTE_BUILD=0 cmake \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DCMAKE_POSITION_INDEPENDENT_CODE=On \
+          -DBUILD_SHARED_LIBS=$shared \
+          "$GMOCK_DIR"
+        run_make
+      )
+
+      log "Installing gmock (shared=$shared)"
+      (
+        set_build_env_vars
+        if [[ $shared == "OFF" ]]; then
+          cp -a libgmock.a "$PREFIX/lib/"
+        else
+          cp -a "libgmock.$DYLIB_SUFFIX" "$PREFIX/lib/"
+          rsync -av "$GMOCK_DIR/include/" "$PREFIX/include/"
+          rsync -av "$GMOCK_DIR/gtest/include/" "$PREFIX/include/"
+        fi
+      )
     )
   done
-  log Installing gmock...
-  (
-    set_build_env_vars
-    set -x
-    cp -a "libgmock.$DYLIB_SUFFIX" libgmock.a "$PREFIX/lib/"
-    rsync -av include/ "$PREFIX/include/"
-    rsync -av gtest/include/ "$PREFIX/include/"
-  )
 }

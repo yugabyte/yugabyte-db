@@ -5,11 +5,19 @@
 # A wrapper script that pretends to be a C/C++ compiler and does some pre-processing of arguments
 # and error checking on the output. Invokes GCC or Clang internally.
 
+. "${0%/*}/../common-build-env.sh"
 set -euo pipefail
 
-# We'll sometimes generate scripts in this directory that could be re-run when debugging build
-# issues.
-GENERATED_BUILD_DEBUG_SCRIPT_DIR=$HOME/.yb-build-debug-scripts
+# -------------------------------------------------------------------------------------------------
+# Constants
+
+# We'll generate scripts in this directory on request. Those scripts could be re-run when debugging
+# build issues.
+readonly GENERATED_BUILD_DEBUG_SCRIPT_DIR=$HOME/.yb-build-debug-scripts
+readonly SCRIPT_NAME="compiler-wrapper.sh"
+
+# -------------------------------------------------------------------------------------------------
+# Functions
 
 fatal_error() {
   echo -e "$RED_COLOR[FATAL] $SCRIPT_NAME: $*$NO_COLOR"
@@ -97,21 +105,6 @@ generate_build_debug_script() {
   fi
 }
 
-SCRIPT_NAME="compiler-wrapper.sh"
-
-fatal_error() {
-  echo -e "$RED_COLOR[FATAL] $SCRIPT_NAME: $*$NO_COLOR"
-  exit 1
-}
-
-treat_warning_pattern_as_error() {
-  local pattern=$1
-  # We are redirecting grep output to /dev/null, because it has already been shown in stderr.
-  if egrep "$pattern" "$stderr_path" >/dev/null; then
-    fatal_error "treating warning pattern as an error: '$pattern'."
-  fi
-}
-
 should_skip_error_checking_by_input_file_pattern() {
   expect_num_args 1 "$@"
   local pattern=$1
@@ -140,12 +133,78 @@ should_skip_error_checking_by_input_file_pattern() {
   return 0
 }
 
-. "${0%/*}/../common-build-env.sh"
+# -------------------------------------------------------------------------------------------------
+# Remote build
+
+cmd_line_str="$*"
+
+arg_str=""
+output_file=""
+nonexistent_file_args=()
+local_build_only=false
+for arg in "$@"; do
+  if [[ $arg =~ *CMakeTmp* || $arg == "-" ]]; then
+    local_build_only=true
+  fi
+  # From StackOverflow: https://goo.gl/sTKReB
+  # Using this approach: "Put the whole string in single quotes. This works for all chars except
+  # single quote itself. To escape the single quote, close the quoting before it, insert the single
+  # quote, and re-open the quoting."
+  #
+  # The quadruple backslash encodes one backslash in the replacement string.
+  arg_str+=" $( echo -n "$arg" | sed -e "s/'/'\\\\''/g; 1s/^/'/; \$s/\$/'/" )"
+done
+
+is_build_worker=false
+if [[ $HOSTNAME == build-worker* ]]; then
+  is_build_worker=true
+fi
+
+if [[ $local_build_only == "false" &&
+      ${YB_REMOTE_BUILD:-} == "1" &&
+      $is_build_worker == "false" ]]; then
+  current_dir=$PWD
+  declare -i attempt=1
+  declare -i no_worker_count=0
+  while [[ $attempt -lt 100 ]]; do
+    build_worker_name=$( shuf -n 1 "$YB_BUILD_WORKERS_FILE" )
+    if [[ -z $build_worker_name ]]; then
+      let no_worker_count+=1
+      if [[ $no_worker_count -ge 100 ]]; then
+        fatal "Found no live workers in "$YB_BUILD_WORKERS_FILE" in $no_worker_count attempts"
+      fi
+      continue
+    fi
+    build_host=$build_worker_name.c.yugabyte.internal
+    set +e
+    ssh "$build_host" "'$YB_SRC_ROOT/build-support/remote_cmd.sh' '$PWD' '$PATH' '$0' $arg_str"
+    exit_code=$?
+    set -e
+    if [[ $exit_code -eq 255 ]]; then
+      log "Host $build_host seems to be down, retrying on a different host" \
+          "(this was attempt $attempt)"
+      sleep 0.1
+      let attempt+=1
+      continue
+    fi
+    break
+  done
+  if [[ $exit_code -ne 0 ]]; then
+    log_empty_line
+    log "COMMAND FAILED: $0 $*"
+    log_empty_line
+  fi
+  exit $exit_code
+elif [[ ${YB_DEBUG_REMOTE_BUILD:-} == "1" ]] && ! $is_build_worker; then
+  log "Not doing remote build: local_build_only=$local_build_only," \
+    "YB_REMOTE_BUILD=$YB_REMOTE_BUILD," \
+    "HOSTNAME=$HOSTNAME"
+fi
+
+# -------------------------------------------------------------------------------------------------
+# Local build
+
 # The above script ensures that YB_COMPILER_TYPE is set and is valid for the OS type. Also sets
-# YB_SRC_ROOT.
-
-thirdparty_install_dir=$YB_SRC_ROOT/thirdparty/installed/bin
-
 # This script is invoked through symlinks called "cc" or "c++".
 cc_or_cxx=${0##*/}
 
@@ -232,7 +291,9 @@ else
   fi
 fi
 
-cmd+=( "${compiler_args[@]}" )
+if [[ ${#compiler_args[@]} -gt 0 ]]; then
+  cmd+=( "${compiler_args[@]}" )
+fi
 
 exit_handler() {
   local exit_code=$?

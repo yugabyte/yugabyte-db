@@ -10,7 +10,7 @@ build_gperftools() {
     set_build_env_vars
     set_thirdparty_flags_for_autotools_projects
     set -x
-    ./configure --enable-frame-pointers --enable-heap-checker --with-pic "--prefix=$PREFIX"
+    run_configure --enable-frame-pointers --enable-heap-checker --with-pic "--prefix=$PREFIX"
     make clean
     run_make install
   )

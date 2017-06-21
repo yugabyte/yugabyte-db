@@ -14,7 +14,7 @@ build_protobuf() {
     # If we don't clean in between, we may end up mixing modes.
     autoreconf --force --install
     test -f Makefile && make distclean
-    ./configure \
+    YB_REMOTE_BUILD=0 run_configure \
       --with-pic \
       --enable-shared \
       --enable-static \

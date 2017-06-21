@@ -241,6 +241,10 @@ create_build_dir_and_prepare() {
     elif [[ $src_dir_basename =~ ^gcc- ]]; then
       log "$src_dir_basename is using an out-of-source build. Simply creating an empty directory."
       mkdir -p "$build_dir"
+    elif [[ $src_dir_basename =~ ^gmock- ]]; then
+      log "$src_dir_basename is using an out-of-source build and will create its own build dirs."
+      # Create the directory anyway as we cd into it later.
+      mkdir -p "$build_dir"
     else
       log "$build_dir does not exist, bootstrapping it from $src_dir"
       mkdir -p "$build_dir"
@@ -278,7 +282,28 @@ create_build_dir_and_prepare() {
 run_make() {
   (
     set -x
-    make -j"$YB_NUM_CPUS" "$@"
+    make -j"$YB_MAKE_PARALLELISM" "$@"
+  )
+}
+
+set_configure_or_cmake_env() {
+  # For configure or cmake (not the following make), don't use remote compilation, because these
+  # tools probe the compiler with many quick invocations.
+  export YB_REMOTE_BUILD=0
+}
+
+run_configure() {
+  (
+    set_configure_or_cmake_env
+    ./configure "$@"
+  )
+}
+
+run_cmake() {
+  (
+    set_configure_or_cmake_env
+    set -x
+    cmake "$@"
   )
 }
 

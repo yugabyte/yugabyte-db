@@ -58,3 +58,7 @@ core*
 *.userprefs
 java/yb-loadtester/src/main/csharp/*/obj/
 java/yb-loadtester/src/main/csharp/*/packages/
+
+# These files might appear when applying patches.
+*.orig
+*.rej

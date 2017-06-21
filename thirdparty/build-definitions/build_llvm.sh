@@ -104,7 +104,7 @@ build_llvm() {
 
   (
     set_build_env_vars
-    cmake \
+    YB_REMOTE_BUILD=0 cmake \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=$PREFIX \
       -DLLVM_INCLUDE_DOCS=OFF \
@@ -117,7 +117,6 @@ build_llvm() {
       -DPYTHON_EXECUTABLE=$PYTHON_EXECUTABLE \
       $TOOLS_ARGS \
       "$LLVM_SOURCE"
-
     run_make install
   )
 

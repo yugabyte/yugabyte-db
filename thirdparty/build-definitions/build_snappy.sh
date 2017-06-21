@@ -10,7 +10,7 @@ build_snappy() {
     set_build_env_vars
     set_thirdparty_flags_for_autotools_projects
     set -x
-    ./configure --with-pic --prefix=$PREFIX
+    run_configure --with-pic --prefix=$PREFIX
     run_make install
    mkdir -p "include" "lib"
    # Copy over all the headers into a generic include/ directory.

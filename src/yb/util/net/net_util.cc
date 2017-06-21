@@ -427,20 +427,21 @@ uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock) {
   constexpr uint16_t kMinPort = 15000;
   constexpr uint16_t kMaxPort = 30000;
   static yb::Random rand(GetCurrentTimeMicros());
+  Status s;
   for (int i = 0; i < 1000; ++i) {
     const uint16_t random_port = kMinPort + rand.Next() % (kMaxPort - kMinPort + 1);
     VLOG(1) << "Trying to bind to port " << random_port;
 
     Endpoint sock_addr(boost::asio::ip::address_v4::loopback(), random_port);
     Socket sock;
-    const Status init_status = sock.Init(0);
-    if (!init_status.ok()) {
+    s = sock.Init(0);
+    if (!s.ok()) {
       VLOG(1) << "Failed to call Init() on socket ith address " << sock_addr;
       continue;
     }
 
-    const auto bind_status = sock.Bind(sock_addr, /* explain_addr_in_use */ false);
-    if (bind_status.ok()) {
+    s = sock.Bind(sock_addr, /* explain_addr_in_use */ false);
+    if (s.ok()) {
       // We found an unused port.
 
       // Now, lock this "port" for use by the current process before 'sock' goes out of scope.
@@ -449,22 +450,22 @@ uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock) {
       // we want. In that case, we'll just try another port.
       const string lock_file = lock_file_dir + "/" + std::to_string(random_port) + ".lck";
       FileLock *lock = nullptr;
-      const Status lock_status = env->LockFile(lock_file, &lock, false /* recursive_lock_ok */);
-      if (lock_status.ok()) {
+      s = env->LockFile(lock_file, &lock, false /* recursive_lock_ok */);
+      if (s.ok()) {
         CHECK(lock) << "Lock should not be NULL";
         file_lock->reset(lock);
         LOG(INFO) << "Selected random free RPC port " << random_port;
         return random_port;
       } else {
-        VLOG(1) << "Could not lock file " << lock_file << ": " << lock_status.ToString();
+        VLOG(1) << "Could not lock file " << lock_file << ": " << s.ToString();
       }
     } else {
-      VLOG(1) << "Failed to bind to port " << random_port << ": " << bind_status.ToString();
+      VLOG(1) << "Failed to bind to port " << random_port << ": " << s.ToString();
     }
   }
 
   LOG(FATAL) << "Could not find a free random port between " <<  kMinPort << " and "
-             << kMaxPort << " inclusively";
+             << kMaxPort << " inclusively" << ": " << s.ToString();
   return 0;  // never reached
 }
 

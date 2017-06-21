@@ -12,7 +12,7 @@ build_libbacktrace() {
     set -x
     CFLAGS="$EXTRA_CFLAGS" \
       CXXFLAGS="$EXTRA_CXXFLAGS" \
-      ./configure --with-pic --prefix=$PREFIX
+      run_configure --with-pic --prefix=$PREFIX
     run_make install
   )
 }

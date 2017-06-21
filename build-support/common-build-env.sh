@@ -27,7 +27,25 @@ MVN_OUTPUT_FILTER_REGEX+='[^ ]+ already added, skipping$)|'
 MVN_OUTPUT_FILTER_REGEX+='^Generating .*[.]html[.][.][.]$'
 MVN_SETTINGS_PATH=$HOME/.m2/settings.xml
 S3CFG_PATHS=( "$HOME/.s3cfg" "$HOME/.s3cfg-jenkins-slave" )
+
+readonly YB_JENKINS_NFS_HOME_DIR=/n/jenkins
+
+# We look for the list of distributed build worker nodes in this file. This gets populated by
+# a cronjob on buildmaster running under the jenkins user (as of 06/20/2017).
+readonly YB_BUILD_WORKERS_FILE=$YB_JENKINS_NFS_HOME_DIR/run/build-workers
+
+# The assumed number of cores per build worker. This is used in the default make parallelism level
+# calculation in yb_build.sh. This does not have to be the exact number of cores per worker, but
+# will affect whether or not we force the auto-scaling group of workers to expand.
+readonly YB_NUM_CORES_PER_BUILD_WORKER=8
+
 readonly MVN_OUTPUT_FILTER_REGEX
+
+readonly YB_LINUXBREW_DIR_CANDIDATES=(
+  "$HOME/.linuxbrew-yb-build"
+  "$YB_JENKINS_NFS_HOME_DIR/.linuxbrew-yb-build"
+)
+
 
 # -------------------------------------------------------------------------------------------------
 # Functions used in initializing some constants
@@ -834,15 +852,18 @@ detect_linuxbrew() {
   if ! is_linux; then
     return
   fi
-  local d=$HOME/.linuxbrew-yb-build
-  if [[ -d "$d" &&
-        -d "$d/bin" &&
-        -d "$d/lib" &&
-        -d "$d/include" ]]; then
-    export YB_LINUXBREW_DIR=$d
-    YB_USING_LINUXBREW=true
-    YB_LINUXBREW_LIB_DIR=$YB_LINUXBREW_DIR/lib
-  fi
+  local d
+  for d in "${YB_LINUXBREW_DIR_CANDIDATES[@]}"; do
+    if [[ -d "$d" &&
+          -d "$d/bin" &&
+          -d "$d/lib" &&
+          -d "$d/include" ]]; then
+      export YB_LINUXBREW_DIR=$d
+      YB_USING_LINUXBREW=true
+      YB_LINUXBREW_LIB_DIR=$YB_LINUXBREW_DIR/lib
+      break
+    fi
+  done
 }
 
 using_linuxbrew() {
@@ -878,6 +899,11 @@ detect_num_cpus() {
   if [[ ! $YB_NUM_CPUS =~ ^[0-9]+$ ]]; then
     fatal "Invalid number of CPUs detected: '$YB_NUM_CPUS' (expected a number)."
   fi
+
+  if [[ -z ${YB_MAKE_PARALLELISM:-} ]]; then
+    YB_MAKE_PARALLELISM=$YB_NUM_CPUS
+  fi
+  export YB_MAKE_PARALLELISM
 }
 
 run_sha256sum_on_mac() {

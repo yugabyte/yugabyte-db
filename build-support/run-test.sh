@@ -44,6 +44,12 @@ if [[ -n ${YB_CHECK_TEST_EXISTENCE_ONLY:-} ]]; then
   exit 0
 fi
 
+# Used for invoking a specific test within a test program, e.g. as part of a Spark-based test run.
+exact_test=""
+if [[ $# -ge 2 ]]; then
+  exact_test=$2
+fi
+
 if [[ ! -x $TEST_PATH ]]; then
   fatal "Test binary '$TEST_PATH' is not executable"
 fi
@@ -85,10 +91,14 @@ tests=()
 rel_test_binary="$TEST_DIR_BASENAME/$TEST_NAME"
 total_num_tests=0
 num_tests=0
-collect_gtest_tests
+if [[ -z $exact_test ]]; then
+  collect_gtest_tests
 
-if [[ ${#tests[@]} -eq 0 ]]; then
-  fatal "No tests found in $rel_test_binary."
+  if [[ ${#tests[@]} -eq 0 ]]; then
+    fatal "No tests found in $rel_test_binary."
+  fi
+else
+  tests=( "$TEST_NAME:::$exact_test" )
 fi
 
 set_test_log_url_prefix

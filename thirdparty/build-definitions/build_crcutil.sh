@@ -18,7 +18,7 @@ build_crcutil() {
     set_thirdparty_flags_for_autotools_projects
     set -x
     ./autogen.sh
-    ./configure --prefix=$PREFIX
+    run_configure --prefix=$PREFIX
     run_make install
   )
 }

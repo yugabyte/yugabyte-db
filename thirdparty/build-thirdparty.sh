@@ -497,7 +497,9 @@ add_linuxbrew_flags
 
 EXTRA_CFLAGS="$CFLAGS $EXTRA_CFLAGS"
 EXTRA_CXXFLAGS="$CXXFLAGS $EXTRA_CXXFLAGS -I${PREFIX_COMMON}/include -O2"
-add_c_cxx_flags "-fno-omit-frame-pointer"
+
+# -fPIC is there to always generate position-independent code, even for static libraries.
+add_c_cxx_flags "-fno-omit-frame-pointer -fPIC"
 
 EXTRA_LDFLAGS="$LDFLAGS $EXTRA_LDFLAGS -L${PREFIX_COMMON}/lib"
 EXTRA_LIBS="$LIBS $EXTRA_LIBS"

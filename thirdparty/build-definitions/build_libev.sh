@@ -10,7 +10,7 @@ build_libev() {
     set_build_env_vars
     set_thirdparty_flags_for_autotools_projects
     set -x
-    ./configure --with-pic --prefix=$PREFIX
+    run_configure --with-pic --prefix=$PREFIX
     run_make install
   )
 }

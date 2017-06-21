@@ -11,7 +11,7 @@ build_glog() {
     set_thirdparty_flags_for_autotools_projects
     set -x
     autoreconf --force --install
-    ./configure --with-pic --prefix=$PREFIX --with-gflags=$PREFIX
+    run_configure --with-pic --prefix=$PREFIX --with-gflags=$PREFIX
     run_make install
   )
 }

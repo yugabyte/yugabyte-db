@@ -92,7 +92,10 @@ function(DETECT_LINUXBREW)
   # common-build-env.sh.
   set(USING_LINUXBREW FALSE)
   if(NOT APPLE)
-    set(LINUXBREW_DIR "$ENV{HOME}/.linuxbrew-yb-build")
+    set(LINUXBREW_DIR "$ENV{YB_LINUXBREW_DIR}")
+    if("${LINUXBREW_DIR}" STREQUAL "")
+      set(LINUXBREW_DIR "$ENV{HOME}/.linuxbrew-yb-build")
+    endif()
     if(EXISTS "${LINUXBREW_DIR}/bin" AND
        EXISTS "${LINUXBREW_DIR}/lib")
       message("Linuxbrew found at ${LINUXBREW_DIR}")
@@ -104,23 +107,6 @@ function(DETECT_LINUXBREW)
   endif()
   if(NOT USING_LINUXBREW)
     set(LINUXBREW_DIR "/tmp/not-using-linuxbrew")
-  endif()
-
-  # A sanity check to make sure we are consistent with the YB_LINUXBREW_DIR environment variable
-  # passed down from common-build-env.sh. It is OK if that variable is not set, e.g. that would be
-  # the case when the build is invoked from CLion. But if it is set, it has to match the directory
-  # we've detected here.
-  if (NOT "$ENV{YB_LINUXBREW_DIR}" STREQUAL "")
-    if (NOT USING_LINUXBREW)
-      message(FATAL_ERROR
-              "The YB_LINUXBREW_DIR environment variable is set to '$ENV{YB_LINUXBREW_DIR}' "
-              "but we could not find a Linuxbrew installation here.")
-    endif()
-    if (NOT "$ENV{YB_LINUXBREW_DIR}" STREQUAL "${LINUXBREW_DIR}")
-      message(FATAL_ERROR
-              "The YB_LINUXBREW_DIR environment variable is set to '$ENV{YB_LINUXBREW_DIR}' "
-              "but we found Linuxbrew in '${LINUXBREW_DIR}' in our CMake build.")
-    endif()
   endif()
 
   set(USING_LINUXBREW "${USING_LINUXBREW}" PARENT_SCOPE)

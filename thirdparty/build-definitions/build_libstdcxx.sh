@@ -17,9 +17,12 @@ build_libstdcxx() {
     set_build_env_vars
     set_thirdparty_flags_for_autotools_projects
     set -x
-    $GCC_DIR/libstdc++-v3/configure \
-      --enable-multilib=no \
-      --prefix="$PREFIX"
+    (
+      set_configure_or_cmake_env
+      $GCC_DIR/libstdc++-v3/configure \
+        --enable-multilib=no \
+        --prefix="$PREFIX"
+    )
     run_make install
   )
 }

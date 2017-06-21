@@ -12,7 +12,7 @@ build_libunwind() {
     set -x
     # Disable minidebuginfo, which depends on liblzma, until/unless we decide to
     # add liblzma to thirdparty.
-    ./configure --disable-minidebuginfo --with-pic "--prefix=$PREFIX"
+    run_configure --disable-minidebuginfo --with-pic "--prefix=$PREFIX"
     run_make install
   )
 }
