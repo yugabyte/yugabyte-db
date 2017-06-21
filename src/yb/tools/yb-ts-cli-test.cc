@@ -48,12 +48,7 @@ class YBTsCliTest : public ExternalMiniClusterITestBase {
 };
 
 string YBTsCliTest::GetTsCliToolPath() const {
-  string exe;
-  CHECK_OK(Env::Default()->GetExecutablePath(&exe));
-  string binroot = DirName(exe) + "/../bin/";
-  string tool_path = JoinPathSegments(binroot, kTsCliToolName);
-  CHECK(Env::Default()->FileExists(tool_path)) << "yb-admin tool not found at " << tool_path;
-  return tool_path;
+  return GetToolPath(kTsCliToolName);
 }
 
 // Test deleting a tablet.

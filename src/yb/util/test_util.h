@@ -140,6 +140,10 @@ void LogVectorDiff(const std::vector<T>& expected, const std::vector<T>& actual)
 // Waits for the given condition to be true or until the provided timeout has expired.
 Status WaitFor(std::function<bool()> lambda_condition, const MonoDelta& timeout,
                const string& description);
+
+// Return the path of a yb-tool.
+std::string GetToolPath(const std::string& tool_name);
+
 } // namespace yb
 
 // Gives ability to define custom parent class for test fixture.

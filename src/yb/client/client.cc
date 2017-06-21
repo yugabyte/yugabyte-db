@@ -97,6 +97,7 @@ using yb::tserver::ScanResponsePB;
 using std::set;
 using std::string;
 using std::vector;
+using google::protobuf::RepeatedPtrField;
 
 MAKE_ENUM_LIMITS(yb::client::YBSession::FlushMode,
                  yb::client::YBSession::AUTO_FLUSH_SYNC,
@@ -467,38 +468,47 @@ Status YBClient::ListTabletServers(vector<YBTabletServer*>* tablet_servers) {
 }
 
 Status YBClient::GetTablets(const YBTableName& table_name,
-                            const int max_tablets,
-                            vector<string>* tablet_uuids,
-                            vector<string>* ranges) {
+                            const int32_t max_tablets,
+                            RepeatedPtrField<TabletLocationsPB>* tablets) {
   GetTableLocationsRequestPB req;
   GetTableLocationsResponsePB resp;
   table_name.SetIntoTableIdentifierPB(req.mutable_table());
 
   if (max_tablets == 0) {
-    req.set_max_returned_locations(std::numeric_limits<int>::max());
+    req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
   } else if (max_tablets > 0) {
     req.set_max_returned_locations(max_tablets);
   }
 
+
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(default_admin_operation_timeout());
   Status s =
-    data_->SyncLeaderMasterRpc<GetTableLocationsRequestPB, GetTableLocationsResponsePB>(
-      deadline,
-      this,
-      req,
-      &resp,
-      nullptr,
-      "GetTableLocations",
-      &MasterServiceProxy::GetTableLocations);
-  RETURN_NOT_OK(s);
+      data_->SyncLeaderMasterRpc<GetTableLocationsRequestPB, GetTableLocationsResponsePB>(
+          deadline,
+          this,
+          req,
+          &resp,
+          nullptr,
+          "GetTableLocations",
+          &MasterServiceProxy::GetTableLocations);
+      RETURN_NOT_OK(s);
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
-  tablet_uuids->clear();
-  ranges->clear();
-  for (int i = 0; i < resp.tablet_locations_size(); i++) {
-    TabletLocationsPB tablet = resp.tablet_locations(i);
+  *tablets = resp.tablet_locations();
+  return Status::OK();
+}
+
+Status YBClient::GetTablets(const YBTableName& table_name,
+                            const int32_t max_tablets,
+                            vector<string>* tablet_uuids,
+                            vector<string>* ranges) {
+  RepeatedPtrField<TabletLocationsPB> tablets;
+  RETURN_NOT_OK(GetTablets(table_name, max_tablets, &tablets));
+  tablet_uuids->reserve(tablets.size());
+  ranges->reserve(tablets.size());
+  for (const TabletLocationsPB& tablet : tablets) {
     PartitionPB partition = tablet.partition();
     tablet_uuids->push_back(tablet.tablet_id());
     ranges->push_back(partition.ShortDebugString());

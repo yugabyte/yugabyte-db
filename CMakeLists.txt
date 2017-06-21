@@ -403,7 +403,7 @@ if(NOT APPLE)
   # (-mno-abm and -mno-movbe) that are not recognized by some clang versions we are using, so they
   # are being added in the gcc-specific section below.  We have also found that these flags don't
   # work on Mac OS X, so we're not using them there.
-  ADD_CXX_GLOBAL_COMMON_FLAGS("-mno-avx2 -mno-bmi -mno-bmi2 -mno-fma")
+  ADD_CXX_GLOBAL_COMMON_FLAGS("-mno-avx -mno-bmi -mno-bmi2 -mno-fma")
 endif()
 
 # We want access to the PRI* print format macros.

@@ -194,4 +194,13 @@ Status WaitFor(std::function<bool()> lambda_condition, const MonoDelta& timeout,
   return Status::OK();
 }
 
+string GetToolPath(const string& tool_name) {
+  string exe;
+  CHECK_OK(Env::Default()->GetExecutablePath(&exe));
+  string binroot = DirName(exe) + "/../bin/";
+  string tool_path = JoinPathSegments(binroot, tool_name);
+  CHECK(Env::Default()->FileExists(tool_path)) << tool_name << " tool not found at " << tool_path;
+  return tool_path;
+}
+
 } // namespace yb

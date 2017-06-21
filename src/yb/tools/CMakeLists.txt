@@ -83,6 +83,18 @@ target_link_libraries(yb-ysck
   ysck
 )
 
+add_library(yb-generate_partitions yb-generate_partitions.cc)
+target_link_libraries(yb-generate_partitions
+  yb_client
+  yb_util
+  master_proto
+)
+
+add_executable(yb-generate_partitions_main yb-generate_partitions_main.cc)
+target_link_libraries(yb-generate_partitions_main
+  yb-generate_partitions
+)
+
 add_executable(yb-pbc-dump pbc-dump.cc)
 target_link_libraries(yb-pbc-dump
   ${LINK_LIBS}
@@ -91,9 +103,13 @@ target_link_libraries(yb-pbc-dump
 set(YB_TEST_LINK_LIBS
   ysck
   yb_tools_util
+  yb-generate_partitions
   integration-tests
   ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(ysck-test)
+ADD_YB_TEST(yb-generate_partitions-test)
+ADD_YB_TEST_DEPENDENCIES(yb-generate_partitions-test
+  yb-generate_partitions_main)
 ADD_YB_TEST(ysck_remote-test)
 ADD_YB_TEST(yb-admin-test)
 ADD_YB_TEST_DEPENDENCIES(yb-admin-test

@@ -5249,7 +5249,7 @@ void TableInfo::AddTabletUnlocked(TabletInfo* tablet) {
 void TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req,
                                   vector<scoped_refptr<TabletInfo> > *ret) const {
   std::lock_guard<simple_spinlock> l(lock_);
-  int max_returned_locations = req->max_returned_locations();
+  int32_t max_returned_locations = req->max_returned_locations();
 
   TableInfo::TabletInfoMap::const_iterator it, it_end;
   if (req->has_partition_key_start()) {
@@ -5264,7 +5264,7 @@ void TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req,
     it_end = tablet_map_.end();
   }
 
-  int count = 0;
+  int32_t count = 0;
   for (; it != it_end && count < max_returned_locations; ++it) {
     ret->push_back(make_scoped_refptr(it->second));
     count++;

@@ -14,6 +14,7 @@
           "build/latest/bin/log-dump",
           "build/latest/bin/yb_load_test_tool",
           "bin/zip_purge_yb_logs.sh",
+          "build/latest/bin/yb-generate_partitions_main",
           "thirdparty/installed/uninstrumented/bin/*",
           "thirdparty/build/common/cqlsh/bin/*"],
   "lib"      : ["thirdparty/build/common/cqlsh/lib/*"],
