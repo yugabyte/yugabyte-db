@@ -36,6 +36,8 @@ PTCreateTable::~PTCreateTable() {
 }
 
 CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
+  SemState sem_state(sem_context);
+
   // Processing table name.
   RETURN_NOT_OK(relation_->Analyze(sem_context));
 
@@ -44,6 +46,11 @@ CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
   sem_context->set_current_create_table_stmt(this);
 
   // Processing table elements.
+  // - First, process all column definitions to collect all symbols.
+  // - Process all other elements afterward.
+  sem_state.set_processing_column_definition(true);
+  RETURN_NOT_OK(elements_->Analyze(sem_context));
+  sem_state.set_processing_column_definition(false);
   RETURN_NOT_OK(elements_->Analyze(sem_context));
 
   // Move the all partition and primary columns from columns list to appropriate list.
@@ -241,6 +248,10 @@ PTColumnDefinition::~PTColumnDefinition() {
 }
 
 CHECKED_STATUS PTColumnDefinition::Analyze(SemContext *sem_context) {
+  if (!sem_context->processing_column_definition()) {
+    return Status::OK();
+  }
+
   // Save context state, and set "this" as current column in the context.
   SymbolEntry cached_entry = *sem_context->current_processing_id();
   sem_context->set_current_column(this);
@@ -273,6 +284,10 @@ PTPrimaryKey::~PTPrimaryKey() {
 }
 
 CHECKED_STATUS PTPrimaryKey::Analyze(SemContext *sem_context) {
+  if (sem_context->processing_column_definition() != is_column_element()) {
+    return Status::OK();
+  }
+
   // Check if primary key is defined more than one time.
   PTCreateTable *table = sem_context->current_create_table_stmt();
   if (table->primary_columns().size() > 0 || table->hash_columns().size() > 0) {

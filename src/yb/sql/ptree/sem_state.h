@@ -85,6 +85,14 @@ class SemState {
   WhereExprState *where_state() const { return where_state_; }
   const MCSharedPtr<MCString>& bindvar_name() const { return bindvar_name_; }
 
+  void set_processing_column_definition(bool val) {
+    processing_column_definition_ = val;
+  }
+
+  bool processing_column_definition() const {
+    return processing_column_definition_;
+  }
+
   void set_bindvar_name(string bindvar_name);
 
  private:
@@ -103,6 +111,9 @@ class SemState {
 
   // State variables for where expression.
   WhereExprState *where_state_;
+
+  // Predicate for processing a column definition in a table.
+  bool processing_column_definition_ = false;
 };
 
 }  // namespace sql

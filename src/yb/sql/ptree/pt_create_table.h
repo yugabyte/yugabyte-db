@@ -73,6 +73,22 @@ class PTPrimaryKey : public PTConstraint {
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
 
+  // Predicate whether this PTPrimary node is a column constraint or a table constraint.
+  // - Besides the datatype, certain constraints can also be specified when defining a column in
+  //   the table. Those constraints are column constraints. The following key is column constraint.
+  //     CREATE TABLE t(i int primary key, j int);
+  //
+  // - When creating table, besides column definitions, other elements of the table can also be
+  //   specified. Those elements are table constraints. The following key is table constraint.
+  //     CREATE TABLE t(i int, j int, primary key(i));
+  bool is_table_element() const {
+    return columns_ != nullptr;
+  }
+
+  bool is_column_element() const {
+    return columns_ == nullptr;
+  }
+
  private:
   PTListNode::SharedPtr columns_;
 };

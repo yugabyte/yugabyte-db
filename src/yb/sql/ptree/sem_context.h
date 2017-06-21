@@ -133,6 +133,11 @@ class SemContext : public ProcessContext {
     return sem_state_->where_state();
   }
 
+  bool processing_column_definition() const {
+    DCHECK(sem_state_) << "State variable is not set";
+    return sem_state_->processing_column_definition();
+  }
+
   const MCSharedPtr<MCString>& bindvar_name() const {
     DCHECK(sem_state_) << "State variable is not set for the expression";
     return sem_state_->bindvar_name();

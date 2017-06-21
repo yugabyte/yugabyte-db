@@ -64,6 +64,10 @@ TEST_F(YbSqlCreateTable, TestSqlCreateTableSimple) {
   const string table12 =
       "human_resource12(id int, name varchar, salary int, primary key((id, name), salary));";
 
+  // Define primary key before defining columns.
+  const string table13 =
+      "human_resource13(id int, primary key((id, name), salary), name varchar, salary int);";
+
   // Create the table 1.
   EXEC_VALID_STMT(CreateStmt(table1));
 
@@ -99,6 +103,9 @@ TEST_F(YbSqlCreateTable, TestSqlCreateTableSimple) {
 
   // Create the table 12. Use both "id" and "name" as hash primary key.
   EXEC_VALID_STMT(CreateIfNotExistsStmt(table12));
+
+  // Create the table 13. Define primary key before the columns.
+  EXEC_VALID_STMT(CreateIfNotExistsStmt(table13));
 
   // Verify that all 'CREATE TABLE' statements fail for tables that have already been created.
   EXEC_DUPLICATE_TABLE_CREATE_STMT(CreateStmt(table1));
