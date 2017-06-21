@@ -153,9 +153,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (universeDetails.cloud == CloudType.onprem) {
       Map<UUID, List<String>> onpremAzToNodes = new HashMap<UUID, List<String>>();
       for (NodeDetails node : universeDetails.nodeDetailsSet) {
-        List<String> nodeNames = onpremAzToNodes.getOrDefault(node.azUuid, new ArrayList<String>());
-        nodeNames.add(node.nodeName);
-        onpremAzToNodes.put(node.azUuid, nodeNames);
+        if (node.state == NodeDetails.NodeState.ToBeAdded) {
+          List<String> nodeNames = onpremAzToNodes.getOrDefault(node.azUuid, new ArrayList<String>());
+          nodeNames.add(node.nodeName);
+          onpremAzToNodes.put(node.azUuid, nodeNames);
+        }
       }
       // Update in-memory map.
       Map<String, NodeInstance> nodeMap =
@@ -163,7 +165,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       for (NodeDetails node : taskParams().nodeDetailsSet) {
         // TODO: use the UUID to select the node, but this requires a refactor of the tasks/params
         // to more easily trickle down this uuid into all locations.
-        node.nodeUuid = nodeMap.get(node.nodeName).nodeUuid;
+        NodeInstance n = nodeMap.get(node.nodeName);
+        if (n != null) {
+          node.nodeUuid = n.nodeUuid;
+        }
       }
     }
   }
