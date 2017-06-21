@@ -217,13 +217,7 @@ export default class UniverseForm extends Component {
       });
     }
   }
-
-  componentWillUpdate(newProps) {
-    if (newProps.universe.formSubmitSuccess) {
-      this.props.reset();
-    }
-  }
-
+  
   componentDidUpdate(prevProps, prevState) {
     if (!_.isEqual(this.state, prevState)
       && prevProps.universe.showModal && this.props.universe.showModal && this.props.universe.visibleModal === "universeModal") {
@@ -339,6 +333,7 @@ export default class UniverseForm extends Component {
     // Form Actions on Create Universe Success
     if (getPromiseState(this.props.universe.createUniverse).isLoading() && getPromiseState(nextProps.universe.createUniverse).isSuccess()) {
       this.props.closeUniverseDialog();
+      this.props.reset();
       this.props.fetchUniverseMetadata();
       this.props.fetchCustomerTasks();
     }
