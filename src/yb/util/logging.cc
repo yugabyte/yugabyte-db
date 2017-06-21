@@ -60,7 +60,6 @@ bool logging_initialized = false;
 using namespace std; // NOLINT(*)
 using namespace boost::uuids; // NOLINT(*)
 
-using base::SpinLock;
 using base::SpinLockHolder;
 
 namespace yb {
@@ -103,7 +102,7 @@ class SimpleSink : public google::LogSink {
   LoggingCallback cb_;
 };
 
-SpinLock logging_mutex(base::LINKER_INITIALIZED);
+base::SpinLock logging_mutex(base::LINKER_INITIALIZED);
 
 // There can only be a single instance of a SimpleSink.
 //

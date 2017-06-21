@@ -83,7 +83,12 @@ Options:
   -j <parallelism>
     Build using the given number of concurrent jobs (defaults to the number of CPUs).
   --remote
-    Prefer a remote build on an auto-scaling cluster of build workers.
+    Prefer a remote build on an auto-scaling cluster of build workers. The parallelism is picked
+    automatically based on the current number of build workers.
+  --thirdparty-dir <thirdparty_dir>
+    Use a third-party directory other than <source_tree_root>/thirdparty. This is useful when using
+    multiple build directories with different versions of YB code so we can avoid building
+    third-party code multiple times.
   --
     Pass all arguments after -- to repeat_unit_test.
 
@@ -277,6 +282,11 @@ while [ $# -gt 0 ]; do
     --write-build-descriptor)
       build_descriptor_path=$2
       shift
+    ;;
+    --thirdparty-dir)
+      export YB_THIRDPARTY_DIR=$2
+      shift
+      validate_thirdparty_dir
     ;;
     -j)
       export YB_MAKE_PARALLELISM=$2

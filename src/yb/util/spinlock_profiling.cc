@@ -46,7 +46,6 @@ METRIC_DEFINE_gauge_uint64(server, spinlock_contention_time,
     "internals triggered by a particular workload and warrant investigation.",
     yb::EXPOSE_AS_COUNTER);
 
-using base::SpinLock;
 using base::SpinLockHolder;
 
 namespace yb {
@@ -100,7 +99,7 @@ class ContentionStacks {
     }
 
     // Protects all other entries.
-    SpinLock lock;
+    base::SpinLock lock;
 
     // The number of times we've experienced contention with a stack trace equal
     // to 'trace'.

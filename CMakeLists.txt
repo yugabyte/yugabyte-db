@@ -254,7 +254,11 @@ endfunction()
 
 set(YB_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 message("YB_SRC_DIR: ${YB_SRC_DIR}")
-set(YB_THIRDPARTY_DIR "${YB_SRC_DIR}/thirdparty")
+
+set(YB_THIRDPARTY_DIR "$ENV{YB_THIRDPARTY_DIR}")
+if("${YB_THIRDPARTY_DIR}" STREQUAL "")
+  set(YB_THIRDPARTY_DIR "${YB_SRC_DIR}/thirdparty")
+endif()
 
 set(YB_BUILD_ROOT "${CMAKE_CURRENT_BINARY_DIR}")
 message("YB_BUILD_ROOT: ${YB_BUILD_ROOT}")

@@ -337,11 +337,19 @@ ensure_build_root_is_set() {
   fi
 }
 
+ensure_directory_exists() {
+  expect_num_args 1 "$@"
+  local directory_path=$1
+  if [[ ! -d $directory_path ]]; then
+    fatal "Directory '$directory_path' does not exist or is not a directory"
+  fi
+}
+
 ensure_file_exists() {
   expect_num_args 1 "$@"
   local file_name=$1
   if [[ ! -f $file_name ]]; then
-    fatal "File '$file_name' does not exist"
+    fatal "File '$file_name' does not exist or is not a file"
   fi
 }
 
@@ -450,7 +458,7 @@ build_compiler_if_necessary() {
   # Sometimes we have to build the compiler before we can run CMake.
   if is_clang && is_linux; then
     log "Building clang before we can run CMake with compiler pointing to clang"
-    $YB_THIRDPARTY_DIR/build-thirdparty.sh llvm
+    "$YB_THIRDPARTY_DIR/build-thirdparty.sh" llvm
   fi
 }
 
@@ -995,6 +1003,12 @@ EOT
 
 }
 
+validate_thirdparty_dir() {
+  ensure_directory_exists "$YB_THIRDPARTY_DIR/build-definitions"
+  ensure_directory_exists "$YB_THIRDPARTY_DIR/patches"
+  ensure_file_exists "$YB_THIRDPARTY_DIR/build-thirdparty.sh"
+}
+
 # -------------------------------------------------------------------------------------------------
 # Initialization
 # -------------------------------------------------------------------------------------------------
@@ -1007,7 +1021,10 @@ if [[ ! -d $YB_SRC_ROOT/build-support ]]; then
         "$YB_SRC_ROOT/build-support does not exist."
 fi
 
-readonly YB_THIRDPARTY_DIR=$YB_SRC_ROOT/thirdparty
+if [[ -z ${YB_THIRDPARTY_DIR:-} ]]; then
+  YB_THIRDPARTY_DIR=$YB_SRC_ROOT/thirdparty
+fi
+
 readonly YB_COMPILER_WRAPPER_CC=$YB_SRC_ROOT/build-support/compiler-wrappers/cc
 readonly YB_COMPILER_WRAPPER_CXX=$YB_SRC_ROOT/build-support/compiler-wrappers/c++
 
