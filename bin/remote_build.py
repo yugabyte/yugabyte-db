@@ -128,7 +128,16 @@ def main():
     print("Total files: {0}".format(len(files)))
 
     if files:
-        rsync_args = ['rsync', '-avR']
+        # From this StackOverflow thread: https://goo.gl/xzhBUC
+        # The -a option is equivalent to -rlptgoD. You need to remove the -t. -t tells rsync to
+        # transfer modification times along with the files and update them on the remote system.
+        #
+        # Another relevant one -- how to make rsync preserve timestamps of unchanged files:
+        # https://goo.gl/czD96F
+        #
+        # We are using "rlpcgoD" instead of "rlptgoD" (with "t" replaced with "c").
+        # The goal is to use checksums for deciding what files to skip.
+        rsync_args = ['rsync', '-rlpcgoDvR']
         rsync_args += files
         rsync_args += ["{0}:{1}".format(args.host, args.remote_path)]
         proc = subprocess.Popen(rsync_args, shell=False)
