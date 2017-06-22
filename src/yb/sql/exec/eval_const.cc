@@ -122,10 +122,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, YQLValuePB *c
       break;
     }
     case InternalType::kDecimalValue: {
-      std::string value;
-      RETURN_NOT_OK(const_pt->ToDecimal(&value, negate));
-      const_pb->set_decimal_value(value);
-      break;
+      return const_pt->ToDecimal(const_pb->mutable_decimal_value(), negate);
     }
     case InternalType::kTimestampValue: {
       int64_t value;
@@ -143,10 +140,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstDecimal *const_pt, YQLValuePB *
                                     bool negate) {
   switch (const_pt->expected_internal_type()) {
     case InternalType::kDecimalValue: {
-      string svalue;
-      RETURN_NOT_OK(const_pt->ToDecimal(&svalue, negate));
-      const_pb->set_decimal_value(svalue);
-      break;
+      return const_pt->ToDecimal(const_pb->mutable_decimal_value(), negate);
     }
     case InternalType::kFloatValue: {
       long double value;
@@ -225,12 +219,8 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstDouble *const_pt, YQLValuePB *c
 
 CHECKED_STATUS Executor::PTExprToPB(const PTConstText *const_pt, YQLValuePB *const_pb) {
   switch (const_pt->expected_internal_type()) {
-    case InternalType::kStringValue: {
-      string value;
-      RETURN_NOT_OK(const_pt->ToString(&value));
-      const_pb->set_string_value(value);
-      break;
-    }
+    case InternalType::kStringValue:
+      return const_pt->ToString(const_pb->mutable_string_value());
     case InternalType::kTimestampValue: {
       int64_t value;
       RETURN_NOT_OK(const_pt->ToTimestamp(&value));

@@ -103,7 +103,7 @@ class PTExpr : public TreeNode {
   }
 
   // Expression return type in YQL format.
-  virtual std::shared_ptr<YQLType> yql_type() const {
+  virtual const std::shared_ptr<YQLType>& yql_type() const {
     return yql_type_;
   }
 

@@ -79,6 +79,11 @@ class YQLValue {
   virtual void set_uuid_value(const Uuid& val) = 0;
   virtual void set_timeuuid_value(const Uuid& val) = 0;
 
+  //--------------------------------- mutable value methods ---------------------------------
+  virtual std::string* mutable_decimal_value() = 0;
+  virtual std::string* mutable_string_value() = 0;
+  virtual std::string* mutable_binary_value() = 0;
+
   // for collections the setters just allocate the message and set the correct value type
   virtual void set_map_value() = 0;
   virtual void set_set_value() = 0;
@@ -282,6 +287,11 @@ class YQLValue {
     return v->mutable_list_value()->add_elems();
   }
 
+  //--------------------------------- mutable value methods ----------------------------------
+  static std::string* mutable_decimal_value(YQLValuePB *v) { return v->mutable_decimal_value(); }
+  static std::string* mutable_string_value(YQLValuePB *v) { return v->mutable_string_value(); }
+  static std::string* mutable_binary_value(YQLValuePB *v) { return v->mutable_binary_value(); }
+
   //----------------------------------- comparison methods -----------------------------------
   static bool Comparable(const YQLValuePB& lhs, const YQLValuePB& rhs) {
     return lhs.value_case() == rhs.value_case() || EitherIsNull(lhs, rhs);
@@ -453,6 +463,17 @@ class YQLValueWithPB : public YQLValue, public YQLValuePB {
   }
   virtual YQLValuePB* add_list_elem() override {
     return YQLValue::add_list_elem(mutable_value());
+  }
+
+  //--------------------------------- mutable value methods ---------------------------------
+  virtual std::string* mutable_decimal_value() override {
+    return YQLValue::mutable_decimal_value(mutable_value());
+  }
+  virtual std::string* mutable_string_value() override {
+    return YQLValue::mutable_string_value(mutable_value());
+  }
+  virtual std::string* mutable_binary_value() override {
+    return YQLValue::mutable_binary_value(mutable_value());
   }
 
   //----------------------------------- assignment methods ----------------------------------

@@ -78,7 +78,6 @@ int YQLValue::CompareTo(const YQLValue& other) const {
     case YQLValuePB::kListValue:
       LOG(FATAL) << "Internal error: collection types are not comparable";
       return 0;
-    case InternalType::kVarintStringValue: FALLTHROUGH_INTENDED;
     case InternalType::kVarintValue:
       LOG(FATAL) << "Internal error: varint not implemented";
     case InternalType::VALUE_NOT_SET:
@@ -258,24 +257,16 @@ Status YQLValue::Deserialize(
       set_decimal_value(decimal.EncodeToComparable());
       return Status::OK();
     }
-    case STRING: {
-      string value;
-      RETURN_NOT_OK(CQLDecodeBytes(len, data, &value));
-      set_string_value(value);
-      return Status::OK();
-    }
+    case STRING:
+      return CQLDecodeBytes(len, data, mutable_string_value());
     case BOOL: {
       uint8_t value = 0;
       RETURN_NOT_OK(CQLDecodeNum(len, Load8, data, &value));
       set_bool_value(value != 0);
       return Status::OK();
     }
-    case BINARY: {
-      string value;
-      RETURN_NOT_OK(CQLDecodeBytes(len, data, &value));
-      set_binary_value(value);
-      return Status::OK();
-    }
+    case BINARY:
+      return CQLDecodeBytes(len, data, mutable_binary_value());
     case TIMESTAMP: {
       int64_t value = 0;
       RETURN_NOT_OK(CQLDecodeNum(len, NetworkByteOrder::Load64, data, &value));
@@ -427,7 +418,6 @@ string YQLValue::ToString() const {
       return ss.str();
     }
 
-    case InternalType::kVarintStringValue: FALLTHROUGH_INTENDED;
     case InternalType::kVarintValue:
       LOG(FATAL) << "Internal error: varint not implemented";
     case InternalType::VALUE_NOT_SET:
@@ -460,7 +450,6 @@ void YQLValue::SetNull(YQLValuePB* v) {
     case YQLValuePB::kMapValue:    v->clear_map_value(); return;
     case YQLValuePB::kSetValue:    v->clear_set_value(); return;
     case YQLValuePB::kListValue:   v->clear_list_value(); return;
-    case YQLValuePB::kVarintStringValue: FALLTHROUGH_INTENDED;
     case YQLValuePB::kVarintValue:
       LOG(FATAL) << "Internal error: varint not implemented";
     case YQLValuePB::VALUE_NOT_SET: return;
@@ -498,7 +487,6 @@ int YQLValue::CompareTo(const YQLValuePB& lhs, const YQLValuePB& rhs) {
     case YQLValuePB::kListValue:
       LOG(FATAL) << "Internal error: collection types are not comparable";
       return 0;
-    case InternalType::kVarintStringValue: FALLTHROUGH_INTENDED;
     case InternalType::kVarintValue:
       LOG(FATAL) << "Internal error: varint not implemented";
     case YQLValuePB::VALUE_NOT_SET:
