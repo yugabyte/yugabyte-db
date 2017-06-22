@@ -79,11 +79,6 @@ def main():
                         help='path used for build')
     parser.add_argument('--branch', type=str, default='origin/master', help='base branch for build')
     parser.add_argument('--build-type', type=str, default='debug', help='build type')
-    parser.add_argument('--build-java',
-                        action='store_const',
-                        const=True,
-                        default=False,
-                        help='build java, skipped by default')
     parser.add_argument('--skip-build',
                         action='store_const',
                         const=True,
@@ -151,8 +146,6 @@ def main():
         sys.exit(0)
 
     ybd_args = [args.build_type]
-    if not args.build_java:
-        ybd_args.append("--sj")
     if len(args.args) != 0 and args.args[0] == '--':
         ybd_args += args.args[1:]
     else:
