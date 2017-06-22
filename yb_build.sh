@@ -312,13 +312,13 @@ while [ $# -gt 0 ]; do
       log "'$1' looks like a C++ test name, assuming --cxx-test"
       setup_vars_for_cxx_test "$1"
     ;;
-    yb-master)
+    master|yb-master)
       make_targets+=( "yb-master" )
     ;;
-    yb-tserver)
+    tserver|yb-tserver)
       make_targets+=( "yb-tserver" )
     ;;
-    daemons)
+    daemons|yb-daemons)
       make_targets+=( "yb-master" "yb-tserver" )
     ;;
     *)

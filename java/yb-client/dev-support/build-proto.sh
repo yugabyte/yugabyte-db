@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 #
 # Licensed to the Apache Software Foundation (ASF) under one
@@ -22,20 +22,25 @@
 # Should be used exclusively by Maven.
 #
 
-YB_DIR=`dirname $0`/../../..
-PROTOC_BIN=$YB_DIR/thirdparty/installed/uninstrumented/bin/protoc
+# Portions Copyright (c) YugaByte, Inc.
+
+. "${BASH_SOURCE%/*}/../../../build-support/common-build-env.sh"
+
+PROTOC_BIN=$YB_THIRDPARTY_DIR/installed/uninstrumented/bin/protoc
 if [[ ! -f $PROTOC_BIN ]]; then
-  # Try the old location, before moving to the new third-party dependency installation directory
-  # layout.
-  PROTOC_BIN=$YB_DIR/thirdparty/installed-deps/bin/protoc
-  if [[ ! -f $PROTOC_BIN ]]; then
-    if which protoc > /dev/null; then
-      PROTOC_BIN=`which protoc`
-    else
-      echo 'Error: protoc is missing from the 3rd party folder and on the PATH' >&2
-      exit 1
-    fi
+  if which protoc > /dev/null; then
+    PROTOC_BIN=$( which protoc )
+  else
+    fatal 'Error: protoc is missing from the 3rd party folder and on the PATH'
   fi
 fi
 
-$PROTOC_BIN "$@"
+set +e
+"$PROTOC_BIN" "$@"
+exit_code=$?
+set -e
+
+if [[ $exit_code -ne 0 ]]; then
+  log "protoc command failed with exit code $exit_code: ( cd \"$PWD\" && \"$PROTOC_BIN\" $* )"
+fi
+exit "$exit_code"

@@ -140,12 +140,12 @@
             <!-- We list directories corresponding to both new and old thirdparty
                  layout. Both of these directories have to exist. -->
             <additionalProtoPathElement>
-              ${project.basedir}/../../thirdparty/installed/uninstrumented/include
+              ${yb.thirdparty.dir}/installed/uninstrumented/include
             </additionalProtoPathElement>
             <!-- Old location, to be removed after fully migrating to new thirdparty
                  directory layout. -->
             <additionalProtoPathElement>
-              ${project.basedir}/../../thirdparty/installed-deps/include
+              ${yb.thirdparty.dir}/installed-deps/include
             </additionalProtoPathElement>
           </additionalProtoPathElements>
           <excludes>

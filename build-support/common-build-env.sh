@@ -22,9 +22,10 @@ YB_COMMON_BUILD_ENV_SOURCED=1
 declare -i MAX_JAVA_BUILD_ATTEMPTS=5
 
 # What matches these expressions will be filtered out of Maven output.
-MVN_OUTPUT_FILTER_REGEX='\[INFO\] (Download(ing|ed): |'
-MVN_OUTPUT_FILTER_REGEX+='[^ ]+ already added, skipping$)|'
-MVN_OUTPUT_FILTER_REGEX+='^Generating .*[.]html[.][.][.]$'
+MVN_OUTPUT_FILTER_REGEX='\[INFO\] (Download(ing|ed): '
+MVN_OUTPUT_FILTER_REGEX+='|[^ ]+ already added, skipping$)'
+MVN_OUTPUT_FILTER_REGEX+='|^Generating .*[.]html[.][.][.]$'
+MVN_OUTPUT_FILTER_REGEX+='|^\[INFO\] Copying .*[.]jar to .*[.]jar$'
 MVN_SETTINGS_PATH=$HOME/.m2/settings.xml
 S3CFG_PATHS=( "$HOME/.s3cfg" "$HOME/.s3cfg-jenkins-slave" )
 
@@ -616,7 +617,7 @@ build_yb_java_code_filter_save_output() {
     local java_build_output_path=/tmp/yb-java-build-$( get_timestamp ).$$.tmp
     has_local_output=true
   fi
-  local mvn_opts=( --batch-mode )
+  local mvn_opts=( --batch-mode -Dyb.thirdparty.dir=$YB_THIRDPARTY_DIR )
   if ! is_jenkins; then
     mvn_opts+=( -Dmaven.javadoc.skip )
   fi

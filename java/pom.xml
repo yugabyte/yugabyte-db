@@ -74,6 +74,7 @@
       -Djava.security.egd=file:/dev/./urandom -Djava.net.preferIPv4Stack=true
       -Djava.awt.headless=true
     </testArgLine>
+    <yb.thirdparty.dir>${project.basedir}/../thirdparty</yb.thirdparty.dir>
   </properties>
 
   <modules>
