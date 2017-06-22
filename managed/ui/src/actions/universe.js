@@ -42,8 +42,7 @@ export const CLOSE_DIALOG = 'CLOSE_DIALOG';
 
 // Submit G-Flag Tasks
 export const ROLLING_UPGRADE = 'ROLLING_UPGRADE';
-export const ROLLING_UPGRADE_SUCCESS = 'ROLLING_UPGRADE_SUCCESS';
-export const ROLLING_UPGRADE_FAILURE = 'ROLLING_UPGRADE_FAILURE';
+export const ROLLING_UPGRADE_RESPONSE = 'ROLLING_UPGRADE_RESPONSE';
 export const RESET_ROLLING_UPGRADE = 'RESET_ROLLING_UPGRADE';
 
 // Universe Template Tasks
@@ -242,18 +241,11 @@ export function rollingUpgrade(values, universeUUID) {
   };
 }
 
-export function rollingUpgradeSuccess(result) {
+export function rollingUpgradeResponse(response) {
   return {
-    type: ROLLING_UPGRADE_SUCCESS,
-    payload: result
+    type: ROLLING_UPGRADE_RESPONSE,
+    payload: response
   };
-}
-
-export function rollingUpgradeFailure(error) {
-  return {
-    type: ROLLING_UPGRADE_FAILURE,
-    payload: error
-  }
 }
 
 export function configureUniverseTemplate(values) {
