@@ -10,7 +10,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import play.data.validation.Constraints;
 
-public class RollingRestartParams extends UniverseTaskParams {
+public class RollingRestartParams extends UniverseDefinitionTaskParams {
 
   // TODO: try to switch to Map<String, String>
   public static class GFlag {

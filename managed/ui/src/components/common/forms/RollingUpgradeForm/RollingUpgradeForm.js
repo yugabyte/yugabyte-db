@@ -65,10 +65,11 @@ export default class RollingUpgradeForm extends Component {
   }
 
   setRollingUpgradeProperties(values) {
-    const { universe: {visibleModal, currentUniverse: {data: {universeDetails: {nodeDetailsSet}, universeUUID}}}} = this.props;
-    var nodeNames = [];
-    var payload = {};
-    nodeDetailsSet.forEach(function(item, idx){
+    const { universe: {visibleModal, currentUniverse: {data: {universeDetails: {nodeDetailsSet,
+      userIntent}, universeUUID}}}} = this.props;
+    let nodeNames = [];
+    let payload = {};
+    nodeDetailsSet.forEach((item) => {
       if (!isValidObject(values[item.nodeName]) || values[item.nodeName] !== false) {
         nodeNames.push(item.nodeName);
       }
@@ -83,6 +84,7 @@ export default class RollingUpgradeForm extends Component {
     payload.ybSoftwareVersion = values.ybSoftwareVersion;
     payload.nodeNames = nodeNames;
     payload.universeUUID = universeUUID;
+    payload.userIntent = userIntent;
     if (isNonEmptyArray(values.gflags)) {
       payload.gflags = values.gflags;
     }

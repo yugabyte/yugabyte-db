@@ -172,7 +172,9 @@ public class UpgradeUniverse extends UniverseTaskBase {
                                                    UpgradeTaskSubType taskSubType) {
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     // Set the cloud name.
-    params.cloud = Common.CloudType.aws;
+    params.cloud = Common.CloudType.valueOf(node.cloudInfo.cloud);
+    // Set the device information (numVolumes, volumeSize, etc.)
+    params.deviceInfo = taskParams().userIntent.deviceInfo;
     // Add the node name.
     params.nodeName = node.nodeName;
     // Add the universe uuid.

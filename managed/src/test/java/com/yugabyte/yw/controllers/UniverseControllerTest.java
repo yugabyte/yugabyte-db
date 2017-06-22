@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.PlacementInfoUtil.LOG;
 import static com.yugabyte.yw.common.PlacementInfoUtil.getAzUuidToNumNodes;
 
 import static org.hamcrest.CoreMatchers.allOf;
@@ -449,6 +450,9 @@ public class UniverseControllerTest extends WithApplication {
     bodyJson.put("taskType", "Software");
     bodyJson.put("nodeNames",  "[\"host-n1\",\"host-n3\",\"host-n2\"]");
     bodyJson.put("ybSoftwareVersion", "0.0.1");
+    UserIntent userIntent = getDefaultUserIntent();
+    userIntent.universeName = universe.name;
+    bodyJson.set("userIntent", Json.toJson(userIntent));
 
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
       "/universes/" + universe.universeUUID + "/upgrade")
@@ -478,6 +482,9 @@ public class UniverseControllerTest extends WithApplication {
     bodyJson.put("universeUUID", universe.universeUUID.toString());
     bodyJson.put("taskType", "Software");
     bodyJson.put("nodeNames", "[\"host-n1\",\"host-n3\",\"host-n2\"]");
+    UserIntent userIntent = getDefaultUserIntent();
+    userIntent.universeName = universe.name;
+    bodyJson.set("userIntent", Json.toJson(userIntent));
 
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
       "/universes/" + universe.universeUUID + "/upgrade")
@@ -505,6 +512,9 @@ public class UniverseControllerTest extends WithApplication {
     bodyJson.put("taskType", "GFlags");
     bodyJson.set("nodeNames", nodes);
     bodyJson.set("gflags", Json.parse("[{ \"name\": \"gflag1\", \"value\": \"123\"}]"));
+    UserIntent userIntent = getDefaultUserIntent();
+    userIntent.universeName = universe.name;
+    bodyJson.set("userIntent", Json.toJson(userIntent));
 
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
       "/universes/" + universe.universeUUID + "/upgrade")
@@ -534,6 +544,9 @@ public class UniverseControllerTest extends WithApplication {
     bodyJson.put("universeUUID", universe.universeUUID.toString());
     bodyJson.put("taskType", "GFlags");
     bodyJson.put("nodeNames", "[\"host-n1\",\"host-n3\",\"host-n2\"]");
+    UserIntent userIntent = getDefaultUserIntent();
+    userIntent.universeName = universe.name;
+    bodyJson.set("userIntent", Json.toJson(userIntent));
 
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
       "/universes/" + universe.universeUUID + "/upgrade")
