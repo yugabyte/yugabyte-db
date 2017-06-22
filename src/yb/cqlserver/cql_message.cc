@@ -1380,6 +1380,9 @@ void RowsResultResponse::SerializeResultBody(faststring* mesg) const {
 }
 
 //----------------------------------------------------------------------------------------
+PreparedResultResponse::PreparedMetadata::PreparedMetadata() {
+}
+
 PreparedResultResponse::PreparedMetadata::PreparedMetadata(
     const client::YBTableName& table_name, const vector<ColumnSchema>& bind_variable_schemas)
     : flags(kHasGlobalTableSpec),
@@ -1391,13 +1394,17 @@ PreparedResultResponse::PreparedMetadata::PreparedMetadata(
   }
 }
 
+PreparedResultResponse::PreparedResultResponse(const CQLRequest& request, const QueryId& query_id)
+    : ResultResponse(request, Kind::PREPARED), query_id_(query_id) {
+}
+
 PreparedResultResponse::PreparedResultResponse(
-    const CQLRequest& request, const QueryId& query_id, const sql::PreparedResult* result)
+    const CQLRequest& request, const QueryId& query_id, const sql::PreparedResult& result)
     : ResultResponse(request, Kind::PREPARED), query_id_(query_id),
-      prepared_metadata_(result->table_name(), result->bind_variable_schemas()),
-      rows_metadata_(result != nullptr && !result->column_schemas().empty() ?
+      prepared_metadata_(result.table_name(), result.bind_variable_schemas()),
+      rows_metadata_(!result.column_schemas().empty() ?
                      RowsMetadata(
-                         result->table_name(), result->column_schemas(),
+                         result.table_name(), result.column_schemas(),
                          "" /* paging_state */, false /* no_metadata */) :
                      RowsMetadata()) {
 }

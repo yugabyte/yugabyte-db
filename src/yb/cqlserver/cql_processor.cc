@@ -175,7 +175,9 @@ CQLResponse *CQLProcessor::ProcessPrepare(const PrepareRequest& req) {
     return new ErrorResponse(req, ErrorResponse::Code::SYNTAX_ERROR, s.ToString());
   }
 
-  return new PreparedResultResponse(req, query_id, result.get());
+  return result != nullptr ?
+      new PreparedResultResponse(req, query_id, *result) :
+      new PreparedResultResponse(req, query_id);
 }
 
 void CQLProcessor::ProcessExecute(const ExecuteRequest& req, Callback<void(CQLResponse*)> cb) {

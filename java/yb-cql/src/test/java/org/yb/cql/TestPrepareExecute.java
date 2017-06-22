@@ -8,6 +8,7 @@ import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.exceptions.NoHostAvailableException;
+import com.datastax.driver.core.exceptions.QueryValidationException;
 
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -123,4 +124,58 @@ public class TestPrepareExecute extends BaseCQLTest {
 
     LOG.info("End test");
   }
+
+  private void testPreparedDDL(String stmt) {
+    session.execute(session.prepare(stmt).bind());
+  }
+
+  private void testInvalidDDL(String stmt) {
+    try {
+      session.execute(session.prepare(stmt).bind());
+      fail("Prepared statement did not fail to execute");
+    } catch (QueryValidationException e) {
+      LOG.info("Expected exception caught: " + e.getMessage());
+    }
+  }
+
+  @Test
+  public void testDDL() throws Exception {
+    LOG.info("Begin test");
+
+    // Test execute prepared CREATE/DROP KEYSPACE and TABLE.
+    testPreparedDDL("CREATE KEYSPACE k;");
+    assertQuery("SELECT keyspace_name FROM system_schema.keyspaces " +
+                "WHERE keyspace_name = 'k';",
+                "Row[k]");
+
+    testPreparedDDL("CREATE TABLE k.t (k int PRIMARY KEY);");
+    assertQuery("SELECT keyspace_name, table_name FROM system_schema.tables "+
+                "WHERE keyspace_name = 'k' AND table_name = 't';",
+                "Row[k, t]");
+
+    testPreparedDDL("DROP TABLE k.t;");
+    assertQuery("SELECT keyspace_name, table_name FROM system_schema.tables "+
+                "WHERE keyspace_name = 'k' AND table_name = 't';",
+                "");
+
+    testPreparedDDL("DROP KEYSPACE k;");
+    assertQuery("SELECT keyspace_name FROM system_schema.keyspaces " +
+                "WHERE keyspace_name = 'k';",
+                "");
+
+    // Test USE keyspace.
+    testPreparedDDL("CREATE KEYSPACE k;");
+    testPreparedDDL("USE k;");
+    testPreparedDDL("CREATE TABLE t (k int PRIMARY KEY);");
+    assertQuery("SELECT keyspace_name, table_name FROM system_schema.tables "+
+                "WHERE keyspace_name = 'k' AND table_name = 't';",
+                "Row[k, t]");
+
+    // Test invalid DDL: invalid syntax and non-existent keyspace.
+    testInvalidDDL("CREATE TABLE k.t2;");
+    testInvalidDDL("CREATE TABLE k2.t (k int PRIMARY KEY);");
+
+    LOG.info("End test");
+  }
+
 }

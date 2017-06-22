@@ -552,6 +552,7 @@ class ResultResponse : public CQLResponse {
       std::string keyspace;
       std::string table;
 
+      GlobalTableSpec() { }
       GlobalTableSpec(const std::string& keyspace, const std::string& table)
           : keyspace(keyspace), table(table) { }
     };
@@ -703,8 +704,9 @@ class SetKeyspaceResultResponse : public ResultResponse {
 //------------------------------------------------------------
 class PreparedResultResponse : public ResultResponse {
  public:
+  PreparedResultResponse(const CQLRequest& request, const QueryId& query_id);
   PreparedResultResponse(
-      const CQLRequest& request, const QueryId& query_id, const sql::PreparedResult* result);
+      const CQLRequest& request, const QueryId& query_id, const sql::PreparedResult& result);
   virtual ~PreparedResultResponse() override;
 
  protected:
@@ -720,6 +722,7 @@ class PreparedResultResponse : public ResultResponse {
     RowsMetadata::GlobalTableSpec global_table_spec;
     std::vector<RowsMetadata::ColSpec> col_specs;
 
+    PreparedMetadata();
     PreparedMetadata(const client::YBTableName& table_name,
                      const std::vector<ColumnSchema>& bind_variable_schemas);
   };
