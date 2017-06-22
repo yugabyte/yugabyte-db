@@ -30,6 +30,9 @@
 
   <artifactId>yb-client</artifactId>
   <name>YB Java Client</name>
+  <properties>
+    <yb.thirdparty.dir>${project.basedir}/../../thirdparty</yb.thirdparty.dir>
+  </properties>
 
   <distributionManagement>
     <repository>
