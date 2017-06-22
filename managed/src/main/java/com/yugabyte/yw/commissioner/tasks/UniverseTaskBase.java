@@ -247,7 +247,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     TaskList taskList = new TaskList("AnsibleClusterServerCtl", executor);
     AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
     // Set the cloud name.
-    params.cloud = CloudType.aws;
+    params.cloud = CloudType.valueOf(node.cloudInfo.cloud);
     // Add the node name.
     params.nodeName = node.nodeName;
     // Add the universe uuid.

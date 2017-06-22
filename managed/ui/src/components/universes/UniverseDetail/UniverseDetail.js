@@ -25,7 +25,7 @@ import './UniverseDetail.scss';
 export default class UniverseDetail extends Component {
   state = {
     dimensions: {},
-  }
+  };
 
   componentWillUnmount() {
     this.props.resetUniverseInfo();
@@ -33,11 +33,9 @@ export default class UniverseDetail extends Component {
   }
 
   componentDidMount() {
-    var uuid ;
+    let uuid = this.props.uuid;
     if (typeof this.props.universeSelectionId !== "undefined") {
       uuid = this.props.universeUUID;
-    } else {
-      uuid = this.props.uuid;
     }
     this.props.getUniverseInfo(uuid);
     this.props.fetchUniverseTasks(uuid);
@@ -153,13 +151,13 @@ export default class UniverseDetail extends Component {
             </ButtonGroup>
           </Col>
           <UniverseFormContainer type="Edit"
-                                 visible={showModal===true && visibleModal==="universeModal"}
+                                 visible={showModal && visibleModal==="universeModal"}
                                  onHide={this.props.closeModal} title="Edit Universe" />
-          <RollingUpgradeFormContainer modalVisible={showModal === true &&
+          <RollingUpgradeFormContainer modalVisible={showModal &&
           (visibleModal === "gFlagsModal" || visibleModal ==="softwareUpgradesModal")}
                                        onHide={this.props.closeModal} />
-          <DeleteUniverseContainer visible={showModal===true && visibleModal==="deleteUniverseModal"}
-                                       onHide={this.props.closeModal} title="Delete Universe"/>
+          <DeleteUniverseContainer visible={showModal && visibleModal==="deleteUniverseModal"}
+                                   onHide={this.props.closeModal} title="Delete Universe"/>
         </Row>
 
         <Measure onMeasure={this.onResize.bind(this)}>
