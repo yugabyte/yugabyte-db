@@ -7,7 +7,7 @@
 #include "yb/cqlserver/cql_message.h"
 
 #include "yb/rpc/connection.h"
-#include "yb/rpc/rpc_with_queue.h"
+#include "yb/rpc/rpc_with_call_id.h"
 #include "yb/rpc/server_event.h"
 
 #include "yb/sql/sql_session.h"
@@ -15,11 +15,12 @@
 namespace yb {
 namespace rpc {
 
-class CQLConnectionContext : public ConnectionContextWithQueue {
+class CQLConnectionContext : public ConnectionContextWithCallId {
  public:
   CQLConnectionContext();
 
  private:
+  uint64_t ExtractCallId(InboundCall* call) override;
   void RunNegotiation(ConnectionPtr connection, const MonoTime& deadline) override;
   CHECKED_STATUS ProcessCalls(const ConnectionPtr& connection,
                               Slice slice,
@@ -74,12 +75,15 @@ class CQLInboundCall : public InboundCall {
 
   bool TryResume();
 
+  uint16_t stream_id() const { return stream_id_; }
+
  private:
   void RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time) override;
 
   Callback<void(void)>* resume_from_ = nullptr;
   util::RefCntBuffer response_msg_buf_;
   sql::SqlSession::SharedPtr sql_session_;
+  uint16_t stream_id_;
 };
 
 } // namespace rpc

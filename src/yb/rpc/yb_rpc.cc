@@ -99,17 +99,6 @@ Status YBConnectionContext::HandleCall(const ConnectionPtr& connection, Slice ca
   LOG(FATAL) << "Invalid direction: " << direction;
 }
 
-void YBConnectionContext::DumpPB(const DumpRunningRpcsRequestPB& req,
-                                 RpcConnectionPB* resp) {
-  for (const auto &entry : calls_being_handled_) {
-    entry.second->DumpPB(req, resp->add_calls_in_flight());
-  }
-}
-
-bool YBConnectionContext::Idle() {
-  return calls_being_handled_.empty();
-}
-
 Status YBConnectionContext::InitSaslClient(Connection* connection) {
   sasl_client_.reset(new SaslClient(kSaslAppName, connection->socket()->GetFd()));
   RETURN_NOT_OK(sasl_client().Init(kSaslProtoName));
@@ -134,20 +123,16 @@ Status YBConnectionContext::HandleInboundCall(const ConnectionPtr& connection, S
   auto reactor = connection->reactor();
   DCHECK(reactor->IsCurrentThread());
 
-  auto call_processed_listener = std::bind(&YBConnectionContext::EraseCall, this, _1);
-  auto call = std::make_shared<YBInboundCall>(connection, call_processed_listener);
+  auto call = std::make_shared<YBInboundCall>(connection, call_processed_listener());
 
   Status s = call->ParseFrom(call_data);
   if (!s.ok()) {
     return s;
   }
 
-  // call_id exists only for YB. Not for Redis.
-  auto id = call->call_id();
-  if (!InsertIfNotPresent(&calls_being_handled_, id, call.get())) {
-    LOG(WARNING) << connection->ToString() << ": received call ID " << call->call_id()
-                 << " but was already processing this ID! Ignoring";
-    return STATUS_SUBSTITUTE(NetworkError, "Received duplicate call id: $0", call->call_id());
+  s = Store(call.get());
+  if (!s.ok()) {
+    return s;
   }
 
   reactor->messenger()->QueueInboundCall(call);
@@ -155,12 +140,8 @@ Status YBConnectionContext::HandleInboundCall(const ConnectionPtr& connection, S
   return Status::OK();
 }
 
-void YBConnectionContext::EraseCall(InboundCall* call) {
-  auto* yb_call = down_cast<YBInboundCall*>(call);
-  // Remove the call from the map.
-  InboundCall* call_from_map = EraseKeyReturnValuePtr(
-      &calls_being_handled_, yb_call->call_id());
-  DCHECK_EQ(call_from_map, call);
+uint64_t YBConnectionContext::ExtractCallId(InboundCall* call) {
+  return down_cast<YBInboundCall*>(call)->call_id();
 }
 
 YBInboundCall::YBInboundCall(ConnectionPtr conn, CallProcessedListener call_processed_listener)

@@ -80,9 +80,18 @@ Status CQLConnectionContext::HandleInboundCall(const ConnectionPtr& connection, 
     return STATUS_SUBSTITUTE(NetworkError, "Bad data: $0", s.ToString());
   }
 
-  Enqueue(std::move(call));
+  s = Store(call.get());
+  if (!s.ok()) {
+    return s;
+  }
+
+  reactor->messenger()->QueueInboundCall(call);
 
   return Status::OK();
+}
+
+uint64_t CQLConnectionContext::ExtractCallId(InboundCall* call) {
+  return down_cast<CQLInboundCall*>(call)->stream_id();
 }
 
 CQLInboundCall::CQLInboundCall(ConnectionPtr conn,
@@ -103,6 +112,7 @@ Status CQLInboundCall::ParseFrom(Slice source) {
   // Fill the service name method name to transfer the call to. The method name is for debug
   // tracing only. Inside CQLServiceImpl::Handle, we rely on the opcode to dispatch the execution.
   remote_method_ = RemoteMethod("yb.cqlserver.CQLServerService", "ExecuteRequest");
+  stream_id_ = cqlserver::CQLRequest::ParseStreamId(serialized_request_);
 
   return Status::OK();
 }

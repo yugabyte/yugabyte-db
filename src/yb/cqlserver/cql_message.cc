@@ -101,18 +101,31 @@ Status CQLMessage::QueryParameters::GetBindVariable(const std::string& name,
       RuntimeError, "Invalid bind variable kind $0", static_cast<int>(v->kind));
 }
 
+namespace {
+
+template<class Type>
+Type LoadByte(const Slice& slice, size_t offset) {
+  return static_cast<Type>(Load8(slice.data() + offset));
+}
+
+template<class Type>
+Type LoadShort(const Slice& slice, size_t offset) {
+  return static_cast<Type>(NetworkByteOrder::Load16(slice.data() + offset));
+}
+
+template<class Type>
+Type LoadInt(const Slice& slice, size_t offset) {
+  return static_cast<Type>(NetworkByteOrder::Load32(slice.data() + offset));
+}
+
+} // namespace
+
 // ------------------------------------ CQL request -----------------------------------
 bool CQLRequest::ParseRequest(
   const Slice& mesg, unique_ptr<CQLRequest>* request, unique_ptr<CQLResponse>* error_response) {
 
   *request = nullptr;
   *error_response = nullptr;
-
-// Short-hand macros for parsing fields in the message header
-#define PARSE_BYTE(buf, pos, type)  static_cast<type>(Load8(&buf[pos]))
-#define PARSE_SHORT(buf, pos, type) static_cast<type>(NetworkByteOrder::Load16(&buf[pos]))
-#define PARSE_INT(buf, pos, type)   static_cast<type>(NetworkByteOrder::Load32(&buf[pos]))
-#define PARSE_LONG(buf, pos, type)  static_cast<type>(NetworkByteOrder::Load64(&buf[pos]))
 
   if (mesg.size() < kMessageHeaderLength) {
     error_response->reset(
@@ -122,22 +135,18 @@ bool CQLRequest::ParseRequest(
   }
 
   Header header(
-      PARSE_BYTE(mesg, kHeaderPosVersion, Version),
-      PARSE_BYTE(mesg, kHeaderPosFlags, Flags),
-      PARSE_SHORT(mesg, kHeaderPosStreamId, StreamId),
-      PARSE_BYTE(mesg, kHeaderPosOpcode, Opcode));
-  uint32_t length = PARSE_INT(mesg, kHeaderPosLength, uint32_t);
+      LoadByte<Version>(mesg, kHeaderPosVersion),
+      LoadByte<Flags>(mesg, kHeaderPosFlags),
+      ParseStreamId(mesg),
+      LoadByte<Opcode>(mesg, kHeaderPosOpcode));
+
+  uint32_t length = LoadInt<uint32_t>(mesg, kHeaderPosLength);
   DVLOG(4) << "CQL message "
            << "version 0x" << std::hex << static_cast<uint32_t>(header.version)   << " "
            << "flags 0x"   << std::hex << static_cast<uint32_t>(header.flags)     << " "
            << "stream id " << std::dec << static_cast<uint32_t>(header.stream_id) << " "
            << "opcode 0x"  << std::hex << static_cast<uint32_t>(header.opcode)    << " "
            << "length "    << std::dec << static_cast<uint32_t>(length);
-
-#undef PARSE_BYTE
-#undef PARSE_SHORT
-#undef PARSE_INT
-#undef PARSE_LONG
 
   // Verify proper version that the response bit is not set in the request protocol version and
   // the protocol version is one we support.

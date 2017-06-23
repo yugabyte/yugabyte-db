@@ -61,6 +61,7 @@ set(YRPC_SRCS
     rpc.cc
     rpc_context.cc
     rpc_controller.cc
+    rpc_with_call_id.cc
     rpc_with_queue.cc
     sasl_common.cc
     sasl_client.cc

@@ -6,6 +6,7 @@
 #define YB_RPC_YB_RPC_H
 
 #include "yb/rpc/connection.h"
+#include "yb/rpc/rpc_with_call_id.h"
 
 namespace yb {
 namespace rpc {
@@ -13,7 +14,7 @@ namespace rpc {
 class SaslClient;
 class SaslServer;
 
-class YBConnectionContext : public ConnectionContext {
+class YBConnectionContext : public ConnectionContextWithCallId {
  public:
   YBConnectionContext();
   ~YBConnectionContext();
@@ -31,6 +32,8 @@ class YBConnectionContext : public ConnectionContext {
   CHECKED_STATUS InitSaslServer(Connection* connection);
 
  private:
+  uint64_t ExtractCallId(InboundCall* call) override;
+
   size_t BufferLimit() override;
 
   void RunNegotiation(ConnectionPtr connection, const MonoTime& deadline) override;
@@ -39,18 +42,10 @@ class YBConnectionContext : public ConnectionContext {
                               Slice slice,
                               size_t* consumed) override;
 
-  void DumpPB(const DumpRunningRpcsRequestPB& req,
-              RpcConnectionPB* resp) override;
-
-  bool Idle() override;
-
-  bool ReadyToStop() override { return calls_being_handled_.empty(); }
-
   ConnectionType Type() override { return ConnectionType::YB; }
 
   size_t MaxReceive(Slice existing_data) override;
 
-  void EraseCall(InboundCall* call);
   CHECKED_STATUS HandleCall(const ConnectionPtr& connection, Slice call_data);
   CHECKED_STATUS HandleInboundCall(const ConnectionPtr& connection, Slice call_data);
 
@@ -59,10 +54,6 @@ class YBConnectionContext : public ConnectionContext {
 
   // SASL server instance used for connection negotiation when Direction == SERVER.
   std::unique_ptr<SaslServer> sasl_server_;
-
-  // Calls which have been received on the server and are currently
-  // being handled.
-  std::unordered_map<uint64_t, InboundCall*> calls_being_handled_;
 };
 
 class YBInboundCall : public InboundCall {
