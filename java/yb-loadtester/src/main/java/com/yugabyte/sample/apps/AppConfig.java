@@ -43,6 +43,9 @@ public class AppConfig {
   // The size of the value to be written.
   public int valueSize;
 
+  // Use ASCII strings as values.
+  public boolean restrictValuesToAscii;
+
   // The number of unique keys to write, once these are written, the subsequent writes will be
   // updates to existing keys.
   public long numUniqueKeysToWrite;
