@@ -28,8 +28,6 @@ import "yb/common/common.proto";
 message RaftPeerPB {
   // The possible roles for peers.
   enum Role {
-    UNKNOWN_ROLE = 999;
-
     // Indicates this node is a follower in the configuration, i.e. that it participates
     // in majorities and accepts Consensus::Update() calls.
     FOLLOWER = 0;
@@ -48,6 +46,8 @@ message RaftPeerPB {
     // participate in elections or majorities. This is usually the role of a node
     // that leaves the configuration.
     NON_PARTICIPANT = 3;
+
+    UNKNOWN_ROLE = 7;
   };
 
   enum MemberType {

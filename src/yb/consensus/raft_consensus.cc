@@ -773,9 +773,27 @@ Status RaftConsensus::Replicate(const scoped_refptr<ConsensusRound>& round) {
 }
 
 Status RaftConsensus::CheckLeadershipAndBindTerm(const scoped_refptr<ConsensusRound>& round) {
-  ReplicaState::UniqueLock lock;
-  RETURN_NOT_OK(state_->LockForReplicate(&lock, *round->replicate_msg()));
-  round->BindToTerm(state_->GetCurrentTermUnlocked());
+  // We are using a lock-free GetRoleAndTerm, and therefore we might be in the middle of an
+  // operation that is holding the consensus state lock and is about to modify the role + term
+  // atomic field (e.g. if we've stopped being leader, and optionally, if the term has increased).
+  // However, we'll handle that in CheckBoundTerm, which is only executed while holding the state
+  // lock, and that error should be a rare occurrence.
+  const auto role_and_term = state_->GetRoleAndTerm();
+  const auto role = role_and_term.first;
+  const auto term = role_and_term.second;
+  if (role != RaftPeerPB::Role::RaftPeerPB_Role_LEADER) {
+    // OK to take the lock here, because this error case should be rare.
+    ReplicaState::UniqueLock lock;
+    RETURN_NOT_OK(state_->LockForReplicate(&lock, *round->replicate_msg()));
+    const ConsensusStatePB cstate = ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE);
+    return STATUS(IllegalState, Substitute("Replica $0 is not leader of this config. Role: $1. "
+                                           "Consensus state: $2",
+                                           peer_uuid(),
+                                           RaftPeerPB::Role_Name(role),
+                                           cstate.ShortDebugString()));
+  }
+
+  round->BindToTerm(term);
   return Status::OK();
 }
 

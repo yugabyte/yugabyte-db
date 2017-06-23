@@ -45,6 +45,29 @@ using std::string;
 using strings::Substitute;
 using strings::SubstituteAndAppend;
 
+namespace {
+
+const int kBitsPerPackedRole = 3;
+static_assert(0 <= RaftPeerPB_Role_Role_MIN, "RaftPeerPB_Role_Role_MIN must be non-negative.");
+static_assert(RaftPeerPB_Role_Role_MAX < (1 << kBitsPerPackedRole),
+              "RaftPeerPB_Role_Role_MAX must fit in kBitsPerPackedRole bits.");
+
+ReplicaState::PackedRoleAndTerm PackRoleAndTerm(RaftPeerPB::Role role, int64_t term) {
+  // Ensure we've had no more than 2305843009213693952 terms in this tablet.
+  CHECK_LT(term, 1ull << (8 * sizeof(ReplicaState::PackedRoleAndTerm) - kBitsPerPackedRole));
+  return util::to_underlying(role) | (term << kBitsPerPackedRole);
+}
+
+int64_t UnpackTerm(ReplicaState::PackedRoleAndTerm role_and_term) {
+  return role_and_term >> kBitsPerPackedRole;
+}
+
+RaftPeerPB::Role UnpackRole(ReplicaState::PackedRoleAndTerm role_and_term) {
+  return static_cast<RaftPeerPB::Role>(role_and_term & ((1 << kBitsPerPackedRole) - 1));
+}
+
+} // anonymous namespace
+
 //////////////////////////////////////////////////
 // ReplicaState
 //////////////////////////////////////////////////
@@ -62,6 +85,7 @@ ReplicaState::ReplicaState(ConsensusOptions options, string peer_uuid,
       last_committed_index_(MinimumOpId()),
       state_(kInitialized) {
   CHECK(cmeta_) << "ConsensusMeta passed as NULL";
+  StoreRoleAndTerm(cmeta_->active_role(), cmeta_->current_term());
 }
 
 Status ReplicaState::StartUnlocked(const OpId& last_id_in_wal) {
@@ -325,8 +349,11 @@ Status ReplicaState::SetCurrentTermUnlocked(int64_t new_term) {
   }
   cmeta_->set_current_term(new_term);
   cmeta_->clear_voted_for();
+  // OK to flush before clearing the leader, because the leader UUID is not part of
+  // ConsensusMetadataPB.
   CHECK_OK(cmeta_->Flush());
   ClearLeaderUnlocked();
+  // No need to call StoreRoleAndTerm here, because ClearLeaderUnlocked already calls it.
   last_received_op_id_current_leader_ = MinimumOpId();
   return Status::OK();
 }
@@ -339,6 +366,7 @@ const int64_t ReplicaState::GetCurrentTermUnlocked() const {
 void ReplicaState::SetLeaderUuidUnlocked(const std::string& uuid) {
   DCHECK(update_lock_.is_locked());
   cmeta_->set_leader_uuid(uuid);
+  StoreRoleAndTerm(cmeta_->active_role(), cmeta_->current_term());
 }
 
 const string& ReplicaState::GetLeaderUuidUnlocked() const {
@@ -554,6 +582,10 @@ void ReplicaState::SetLastCommittedIndexUnlocked(const OpId& committed_index) {
   DCHECK(update_lock_.is_locked());
   CHECK_GE(last_received_op_id_.index(), committed_index.index());
   last_committed_index_ = committed_index;
+}
+
+void ReplicaState::StoreRoleAndTerm(RaftPeerPB::Role role, int64_t term) {
+  role_and_term_.store(PackRoleAndTerm(role, term), std::memory_order_release);
 }
 
 Status ReplicaState::InitCommittedIndexUnlocked(const OpId& committed_index) {
@@ -815,6 +847,11 @@ string ReplicaState::LogPrefixThreadSafe() const {
 ReplicaState::State ReplicaState::state() const {
   DCHECK(update_lock_.is_locked());
   return state_;
+}
+
+std::pair<RaftPeerPB::Role, int64_t> ReplicaState::GetRoleAndTerm() const {
+  const auto packed_role_and_term = role_and_term_.load(std::memory_order_acquire);
+  return std::make_pair(UnpackRole(packed_role_and_term), UnpackTerm(packed_role_and_term));
 }
 
 string ReplicaState::ToString() const {

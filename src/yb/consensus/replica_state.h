@@ -17,6 +17,7 @@
 #ifndef YB_CONSENSUS_REPLICA_STATE_H
 #define YB_CONSENSUS_REPLICA_STATE_H
 
+#include <atomic>
 #include <map>
 #include <mutex>
 #include <set>
@@ -32,6 +33,7 @@
 #include "yb/gutil/port.h"
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
+#include "yb/util/enums.h"
 
 namespace yb {
 
@@ -86,6 +88,9 @@ class ReplicaState {
   typedef std::unique_lock<simple_spinlock> UniqueLock;
 
   typedef std::map<int64_t, scoped_refptr<ConsensusRound> > IndexToRoundMap;
+
+  // Used internally for storing the role + term combination atomically.
+  using PackedRoleAndTerm = uint64;
 
   ReplicaState(ConsensusOptions options, std::string peer_uuid,
                gscoped_ptr<ConsensusMetadata> cmeta,
@@ -319,7 +324,11 @@ class ReplicaState {
   // The update_lock_ must be held.
   ReplicaState::State state() const;
 
+  // A lock-free way to read role and term atomically.
+  std::pair<RaftPeerPB::Role, int64_t> GetRoleAndTerm() const;
+
  private:
+
   // To maintain safety, we need to check that the committed entry is actually
   // present in our log (and as a result, is either already committed locally, which means there
   // is nothing to do, or present in the pending transactions map).
@@ -332,6 +341,10 @@ class ReplicaState {
 
   void SetLastCommittedIndexUnlocked(const OpId& committed_index);
 
+  // Store role and term in a lock-free way. This is normally only called when the lock is being
+  // held anyway, but read without the lock.
+  void StoreRoleAndTerm(RaftPeerPB::Role role, int64_t term);
+
   const ConsensusOptions options_;
 
   // The UUID of the local peer.
@@ -341,6 +354,10 @@ class ReplicaState {
 
   // Consensus metadata persistence object.
   gscoped_ptr<ConsensusMetadata> cmeta_;
+
+  // Active role and term. Stored as a separate atomic field for fast read-only access. This is
+  // still only modified under the lock.
+  std::atomic<PackedRoleAndTerm> role_and_term_;
 
   // Used by the LEADER. This is the index of the next operation generated
   // by this LEADER.
