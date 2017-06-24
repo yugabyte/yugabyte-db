@@ -145,8 +145,7 @@ TEST_F(LogTest, TestMultipleEntriesInABatch) {
   // RollOver() the batch so that we have a properly formed footer.
   ASSERT_OK(log_->AllocateSegmentAndRollOver());
 
-  vector<LogEntryPB*> entries;
-  ElementDeleter deleter(&entries);
+  LogEntries entries;
   SegmentSequence segments;
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
 
@@ -176,9 +175,9 @@ TEST_F(LogTest, TestMultipleEntriesInABatch) {
   {
     OpId loaded_op;
     ASSERT_OK(log_->GetLogReader()->LookupOpId(1, &loaded_op));
-    ASSERT_EQ("1.1", OpIdToString(loaded_op));
+    ASSERT_EQ("1.1", consensus::OpIdToString(loaded_op));
     ASSERT_OK(log_->GetLogReader()->LookupOpId(2, &loaded_op));
-    ASSERT_EQ("1.2", OpIdToString(loaded_op));
+    ASSERT_EQ("1.2", consensus::OpIdToString(loaded_op));
     Status s = log_->GetLogReader()->LookupOpId(3, &loaded_op);
     ASSERT_TRUE(s.IsNotFound()) << "unexpected status: " << s.ToString();
   }
@@ -237,8 +236,7 @@ TEST_F(LogTest, TestLogNotTrimmed) {
 
   ASSERT_OK(AppendNoOp(&opid));
 
-  vector<LogEntryPB*> entries;
-  ElementDeleter deleter(&entries);
+  LogEntries entries;
   SegmentSequence segments;
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
 
@@ -259,8 +257,7 @@ TEST_F(LogTest, TestBlankLogFile) {
   ASSERT_EQ(log_->GetLogReader()->num_segments(), 1);
 
   // ...and we're able to read from it.
-  vector<LogEntryPB*> entries;
-  ElementDeleter deleter(&entries);
+  LogEntries entries;
   SegmentSequence segments;
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
 
@@ -392,7 +389,7 @@ TEST_F(LogTest, TestWriteAndReadToAndFromInProgressSegment) {
   ASSERT_GT(header_size, 0);
   readable_segment->UpdateReadableToOffset(header_size);
 
-  vector<LogEntryPB*> entries;
+  LogEntries entries;
 
   // Reading the readable segment now should return OK but yield no
   // entries.
@@ -423,7 +420,7 @@ TEST_F(LogTest, TestWriteAndReadToAndFromInProgressSegment) {
   readable_segment->UpdateReadableToOffset(header_size + single_entry_size);
   ASSERT_OK(readable_segment->ReadEntries(&entries));
   ASSERT_EQ(entries.size(), 1);
-  STLDeleteElements(&entries);
+  entries.clear();
 
   // Now append another entry so that the Log sets the correct readable offset
   // on the reader.
@@ -432,7 +429,7 @@ TEST_F(LogTest, TestWriteAndReadToAndFromInProgressSegment) {
   // Now the reader should be able to read all 5 entries.
   ASSERT_OK(readable_segment->ReadEntries(&entries));
   ASSERT_EQ(entries.size(), 5);
-  STLDeleteElements(&entries);
+  entries.clear();
 
   // Offset should get updated for an additional entry.
   ASSERT_EQ(single_entry_size * (kNumEntries + 1) + header_size,
@@ -451,7 +448,7 @@ TEST_F(LogTest, TestWriteAndReadToAndFromInProgressSegment) {
   readable_segment = segments[0];
   ASSERT_OK(readable_segment->ReadEntries(&entries));
   ASSERT_EQ(entries.size(), 5);
-  STLDeleteElements(&entries);
+  entries.clear();
 
   // Offset should get updated for an additional entry, again.
   ASSERT_OK(AppendNoOp(&op_id, &written_entries_size));
@@ -521,8 +518,7 @@ TEST_F(LogTest, TestGCWithLogRunning) {
 
   // Check that we get a NotFound if we try to read before the GCed point.
   {
-    vector<ReplicateMsg*> repls;
-    ElementDeleter d(&repls);
+    ReplicateMsgs repls;
     Status s = log_->GetLogReader()->ReadReplicatesInRange(
       1, 2, LogReader::kNoSizeLimit, &repls);
     ASSERT_TRUE(s.IsNotFound()) << s.ToString();
@@ -569,7 +565,7 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
   // the GC index was higher.
   OpId loaded_op;
   ASSERT_OK(log_->GetLogReader()->LookupOpId(999995, &loaded_op));
-  ASSERT_EQ("1.999995", OpIdToString(loaded_op));
+  ASSERT_EQ("1.999995", consensus::OpIdToString(loaded_op));
 
   // If we drop the retention count down to 1, we can now GC, and the log index
   // chunk should also be GCed.
@@ -705,7 +701,7 @@ TEST_F(LogTest, TestWriteManyBatches) {
     ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
 
     for (const scoped_refptr<ReadableLogSegment> entry : segments) {
-      STLDeleteElements(&entries_);
+      entries_.clear();
       ASSERT_OK(entry->ReadEntries(&entries_));
       num_entries += entries_.size();
     }
@@ -790,8 +786,7 @@ TEST_F(LogTest, TestLogReaderReturnsLatestSegmentIfIndexEmpty) {
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(segments.size(), 1);
 
-  vector<LogEntryPB*> entries;
-  ElementDeleter deleter(&entries);
+  LogEntries entries;
   ASSERT_OK(segments[0]->ReadEntries(&entries));
   ASSERT_EQ(2, entries.size());
 }
@@ -949,13 +944,12 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
       int end_index = RandInRange(&rng, start_index, max_repl_index);
       {
         SCOPED_TRACE(Substitute("Reading $0-$1", start_index, end_index));
-        vector<ReplicateMsg*> repls;
-        ElementDeleter d(&repls);
+        consensus::ReplicateMsgs repls;
         ASSERT_OK(reader->ReadReplicatesInRange(
                     start_index, end_index, LogReader::kNoSizeLimit, &repls));
         ASSERT_EQ(end_index - start_index + 1, repls.size());
         int expected_index = start_index;
-        for (const ReplicateMsg* repl : repls) {
+        for (const auto& repl : repls) {
           ASSERT_EQ(expected_index, repl->id().index());
           ASSERT_EQ(terms_by_index[expected_index], repl->id().term());
           expected_index++;
@@ -974,13 +968,12 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
       {
         SCOPED_TRACE(Substitute("Reading $0-$1 with size limit $2",
                                 start_index, end_index, size_limit));
-        vector<ReplicateMsg*> repls;
-        ElementDeleter d(&repls);
+        ReplicateMsgs repls;
         ASSERT_OK(reader->ReadReplicatesInRange(start_index, end_index, size_limit, &repls));
         ASSERT_LE(repls.size(), end_index - start_index + 1);
         int total_size = 0;
         int expected_index = start_index;
-        for (const ReplicateMsg* repl : repls) {
+        for (const auto& repl : repls) {
           ASSERT_EQ(expected_index, repl->id().index());
           ASSERT_EQ(terms_by_index[expected_index], repl->id().term());
           expected_index++;

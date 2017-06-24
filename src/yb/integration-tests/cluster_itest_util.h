@@ -38,6 +38,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
+#include "yb/consensus/opid_util.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/server/server_base.pb.h"
@@ -58,10 +59,6 @@ class YBTable;
 class YBTableName;
 }
 
-namespace consensus {
-class OpId;
-}
-
 namespace tserver {
 class ListTabletsResponsePB_StatusAndSchemaPB;
 class TabletServerErrorPB;
@@ -69,7 +66,6 @@ class TabletServerErrorPB;
 
 using consensus::ConsensusServiceProxy;
 using consensus::OpIdType;
-using consensus::OpId;
 
 namespace itest {
 
@@ -362,7 +358,7 @@ Status GetLastOpIdForMasterReplica(const std::shared_ptr<ConsensusServiceProxy>&
                                    const std::string& dest_uuid,
                                    const OpIdType opid_type,
                                    const MonoDelta& timeout,
-                                   OpId* op_id);
+                                   consensus::OpId* op_id);
 
 } // namespace itest
 } // namespace yb

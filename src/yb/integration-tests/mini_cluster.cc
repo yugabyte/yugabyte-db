@@ -250,6 +250,18 @@ void MiniCluster::Shutdown() {
   running_ = false;
 }
 
+void MiniCluster::FlushTablets() {
+  for (const auto& tablet_server : mini_tablet_servers_) {
+    tablet_server->FlushTablets();
+  }
+}
+
+void MiniCluster::CleanTabletLogs() {
+  for (const auto& tablet_server : mini_tablet_servers_) {
+    tablet_server->CleanTabletLogs();
+  }
+}
+
 void MiniCluster::ShutdownMasters() {
   for (shared_ptr<MiniMaster>& master_server : mini_masters_) {
     master_server->Shutdown();

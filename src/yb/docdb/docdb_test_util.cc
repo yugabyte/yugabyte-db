@@ -372,6 +372,8 @@ Status DocDBRocksDBFixture::WriteToRocksDB(
   CHECK(hybrid_time.is_valid());
 
   rocksdb::WriteBatch rocksdb_write_batch;
+  ++op_id_.index;
+  rocksdb_write_batch.SetUserOpId(op_id_);
   PopulateRocksDBWriteBatch(doc_write_batch, &rocksdb_write_batch, hybrid_time);
   const rocksdb::Status rocksdb_write_status =
       rocksdb_->Write(write_options(), &rocksdb_write_batch);

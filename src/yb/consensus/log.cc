@@ -114,7 +114,6 @@ namespace log {
 
 using consensus::CommitMsg;
 using consensus::OpId;
-using consensus::ReplicateRefPtr;
 using env_util::OpenFileForRandom;
 using std::shared_ptr;
 using strings::Substitute;
@@ -379,7 +378,7 @@ Status Log::RollOver() {
 }
 
 Status Log::Reserve(LogEntryTypePB type,
-                    gscoped_ptr<LogEntryBatchPB> entry_batch,
+                    LogEntryBatchPB* entry_batch,
                     LogEntryBatch** reserved_entry) {
   TRACE_EVENT0("log", "Log::Reserve");
   DCHECK(reserved_entry != nullptr);
@@ -397,7 +396,7 @@ Status Log::Reserve(LogEntryTypePB type,
   #endif
 
   int num_ops = entry_batch->entry_size();
-  gscoped_ptr<LogEntryBatch> new_entry_batch(new LogEntryBatch(type, entry_batch.Pass(), num_ops));
+  gscoped_ptr<LogEntryBatch> new_entry_batch(new LogEntryBatch(type, entry_batch, num_ops));
   new_entry_batch->MarkReserved();
 
   if (PREDICT_FALSE(!entry_batch_queue_.BlockingPut(new_entry_batch.get()))) {
@@ -429,13 +428,13 @@ Status Log::AsyncAppend(LogEntryBatch* entry_batch, const StatusCallback& callba
   return Status::OK();
 }
 
-Status Log::AsyncAppendReplicates(const vector<ReplicateRefPtr>& msgs,
+Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs,
                                   const StatusCallback& callback) {
-  gscoped_ptr<LogEntryBatchPB> batch;
+  LogEntryBatchPB batch;
   CreateBatchFromAllocatedOperations(msgs, &batch);
 
   LogEntryBatch* reserved_entry_batch;
-  RETURN_NOT_OK(Reserve(REPLICATE, batch.Pass(), &reserved_entry_batch));
+  RETURN_NOT_OK(Reserve(REPLICATE, &batch, &reserved_entry_batch));
   // If we're able to reserve set the vector of replicate scoped ptrs in
   // the LogEntryBatch. This will make sure there's a reference for each
   // replicate while we're appending.
@@ -449,13 +448,13 @@ Status Log::AsyncAppendCommit(gscoped_ptr<consensus::CommitMsg> commit_msg,
                               const StatusCallback& callback) {
   MAYBE_FAULT(FLAGS_fault_crash_before_append_commit);
 
-  gscoped_ptr<LogEntryBatchPB> batch(new LogEntryBatchPB);
-  LogEntryPB* entry = batch->add_entry();
+  LogEntryBatchPB batch;
+  LogEntryPB* entry = batch.add_entry();
   entry->set_type(COMMIT);
   entry->set_allocated_commit(commit_msg.release());
 
   LogEntryBatch* reserved_entry_batch;
-  RETURN_NOT_OK(Reserve(COMMIT, batch.Pass(), &reserved_entry_batch));
+  RETURN_NOT_OK(Reserve(COMMIT, &batch, &reserved_entry_batch));
 
   RETURN_NOT_OK(AsyncAppend(reserved_entry_batch, callback));
   return Status::OK();
@@ -530,8 +529,8 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, bool caller_owns_operation) {
   // For REPLICATE batches, we expect the caller to free the actual entries if
   // caller_owns_operation is set.
   if (entry_batch->type_ == REPLICATE && caller_owns_operation) {
-    for (int i = 0; i < entry_batch->entry_batch_pb_->entry_size(); i++) {
-      LogEntryPB* entry_pb = entry_batch->entry_batch_pb_->mutable_entry(i);
+    for (int i = 0; i < entry_batch->entry_batch_pb_.entry_size(); i++) {
+      LogEntryPB* entry_pb = entry_batch->entry_batch_pb_.mutable_entry(i);
       entry_pb->release_replicate();
     }
   }
@@ -545,7 +544,7 @@ Status Log::UpdateIndexForBatch(const LogEntryBatch& batch,
     return Status::OK();
   }
 
-  for (const LogEntryPB& entry_pb : batch.entry_batch_pb_->entry()) {
+  for (const LogEntryPB& entry_pb : batch.entry_batch_pb_.entry()) {
     LogIndexEntry index_entry;
 
     index_entry.op_id = entry_pb.replicate().id();
@@ -566,7 +565,7 @@ void Log::UpdateFooterForBatch(LogEntryBatch* batch) {
   // immediately.
   if (batch->type_ == REPLICATE) {
     // Update the index bounds for the current segment.
-    for (const LogEntryPB& entry_pb : batch->entry_batch_pb_->entry()) {
+    for (const LogEntryPB& entry_pb : batch->entry_batch_pb_.entry()) {
       int64_t index = entry_pb.replicate().id().index();
       if (!footer_builder_.has_min_replicate_index() ||
           index < footer_builder_.min_replicate_index()) {
@@ -667,9 +666,9 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
 }
 
 Status Log::Append(LogEntryPB* phys_entry) {
-  gscoped_ptr<LogEntryBatchPB> entry_batch_pb(new LogEntryBatchPB);
-  entry_batch_pb->mutable_entry()->AddAllocated(phys_entry);
-  LogEntryBatch entry_batch(phys_entry->type(), entry_batch_pb.Pass(), 1);
+  LogEntryBatchPB entry_batch_pb;
+  entry_batch_pb.mutable_entry()->AddAllocated(phys_entry);
+  LogEntryBatch entry_batch(phys_entry->type(), &entry_batch_pb, 1);
   entry_batch.state_ = LogEntryBatch::kEntryReserved;
   Status s = entry_batch.Serialize();
   if (s.ok()) {
@@ -679,17 +678,17 @@ Status Log::Append(LogEntryPB* phys_entry) {
       s = Sync();
     }
   }
-  entry_batch.entry_batch_pb_->mutable_entry()->ExtractSubrange(0, 1, nullptr);
+  entry_batch.entry_batch_pb_.mutable_entry()->ExtractSubrange(0, 1, nullptr);
   return s;
 }
 
 Status Log::WaitUntilAllFlushed() {
   // In order to make sure we empty the queue we need to use
   // the async api.
-  gscoped_ptr<LogEntryBatchPB> entry_batch(new LogEntryBatchPB);
-  entry_batch->add_entry()->set_type(log::FLUSH_MARKER);
+  LogEntryBatchPB entry_batch;
+  entry_batch.add_entry()->set_type(log::FLUSH_MARKER);
   LogEntryBatch* reserved_entry_batch;
-  RETURN_NOT_OK(Reserve(FLUSH_MARKER, entry_batch.Pass(), &reserved_entry_batch));
+  RETURN_NOT_OK(Reserve(FLUSH_MARKER, &entry_batch, &reserved_entry_batch));
   Synchronizer s;
   RETURN_NOT_OK(AsyncAppend(reserved_entry_batch, s.AsStatusCallback()));
   return s.Wait();
@@ -972,15 +971,14 @@ Log::~Log() {
   WARN_NOT_OK(Close(), "Error closing log");
 }
 
-LogEntryBatch::LogEntryBatch(LogEntryTypePB type,
-                             gscoped_ptr<LogEntryBatchPB> entry_batch_pb, size_t count)
+LogEntryBatch::LogEntryBatch(LogEntryTypePB type, LogEntryBatchPB* entry_batch_pb, size_t count)
     : type_(type),
-      entry_batch_pb_(entry_batch_pb.Pass()),
       total_size_bytes_(
-          PREDICT_FALSE(count == 1 && entry_batch_pb_->entry(0).type() == FLUSH_MARKER) ?
-          0 : entry_batch_pb_->ByteSize()),
+          PREDICT_FALSE(count == 1 && entry_batch_pb->entry(0).type() == FLUSH_MARKER) ?
+          0 : entry_batch_pb->ByteSize()),
       count_(count),
       state_(kEntryInitialized) {
+  entry_batch_pb_.Swap(entry_batch_pb);
 }
 
 LogEntryBatch::~LogEntryBatch() {
@@ -996,15 +994,15 @@ Status LogEntryBatch::Serialize() {
   DCHECK_EQ(state_, kEntryReserved);
   buffer_.clear();
   // FLUSH_MARKER LogEntries are markers and are not serialized.
-  if (PREDICT_FALSE(count() == 1 && entry_batch_pb_->entry(0).type() == FLUSH_MARKER)) {
+  if (PREDICT_FALSE(count() == 1 && entry_batch_pb_.entry(0).type() == FLUSH_MARKER)) {
     state_ = kEntrySerialized;
     return Status::OK();
   }
   buffer_.reserve(total_size_bytes_);
 
-  if (!pb_util::AppendToString(*entry_batch_pb_, &buffer_)) {
+  if (!pb_util::AppendToString(entry_batch_pb_, &buffer_)) {
     return STATUS(IOError, Substitute("unable to serialize the entry batch, contents: $1",
-                                      entry_batch_pb_->DebugString()));
+                                      entry_batch_pb_.DebugString()));
   }
 
   state_ = kEntrySerialized;

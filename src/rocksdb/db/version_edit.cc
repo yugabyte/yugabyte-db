@@ -78,6 +78,7 @@ void VersionEdit::Clear() {
   column_family_ = 0;
   column_family_name_.reset();
   is_column_family_drop_ = false;
+  flushed_op_id_ = OpId();
 }
 
 void EncodeBoundaryValues(const FileBoundaryValues<InternalKey>& values, BoundaryValuesPB* out) {
@@ -145,6 +146,11 @@ bool VersionEdit::EncodeTo(VersionEditPB* dst) const {
   if (last_sequence_) {
     pb.set_last_sequence(*last_sequence_);
   }
+  if (flushed_op_id_) {
+    auto& op_id = *pb.mutable_last_op_id();
+    op_id.set_term(flushed_op_id_.term);
+    op_id.set_index(flushed_op_id_.index);
+  }
   if (max_column_family_) {
     pb.set_max_column_family(*max_column_family_);
   }
@@ -173,6 +179,9 @@ bool VersionEdit::EncodeTo(VersionEditPB* dst) const {
     if (f.marked_for_compaction) {
       new_file.set_marked_for_compaction(true);
     }
+    auto& op_id = *new_file.mutable_last_op_id();
+    op_id.set_term(f.last_op_id.term);
+    op_id.set_index(f.last_op_id.index);
   }
 
   // 0 is default and does not need to be explicitly written
@@ -213,6 +222,9 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
   if (pb.has_last_sequence()) {
     last_sequence_ = pb.last_sequence();
   }
+  if (pb.has_last_op_id()) {
+    flushed_op_id_ = OpId(pb.last_op_id().term(), pb.last_op_id().index());
+  }
   if (pb.has_max_column_family()) {
     max_column_family_ = pb.max_column_family();
   }
@@ -243,6 +255,9 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
     meta.marked_for_compaction = source.has_marked_for_compaction() &&
                                  source.marked_for_compaction();
     max_level_ = std::max(max_level_, level);
+    if (source.has_last_op_id()) {
+      meta.last_op_id = OpId(source.last_op_id().term(), source.last_op_id().index());
+    }
   }
 
   column_family_ = pb.has_column_family() ? pb.column_family() : 0;
@@ -280,6 +295,13 @@ std::string VersionEdit::DebugJSON(int edit_num, bool hex_key) const {
   }
   if (last_sequence_) {
     jw << "LastSeq" << *last_sequence_;
+  }
+  if (flushed_op_id_) {
+    jw << "FlushedOpId";
+    jw.StartObject();
+    jw << "Term" << flushed_op_id_.term;
+    jw << "Index" << flushed_op_id_.index;
+    jw.EndObject();
   }
 
   if (!deleted_files_.empty()) {
@@ -331,6 +353,13 @@ std::string VersionEdit::DebugJSON(int edit_num, bool hex_key) const {
   jw.EndObject();
 
   return jw.Get();
+}
+
+void VersionEdit::InitNewDB() {
+  log_number_ = 0;
+  next_file_number_ = VersionSet::kInitialNextFileNumber;
+  last_sequence_ = 0;
+  flushed_op_id_ = OpId();
 }
 
 }  // namespace rocksdb

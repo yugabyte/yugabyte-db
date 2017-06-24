@@ -18,13 +18,14 @@
 #ifndef YB_CONSENSUS_LOG_UTIL_H_
 #define YB_CONSENSUS_LOG_UTIL_H_
 
-#include <gtest/gtest.h>
 #include <iosfwd>
 #include <map>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "yb/consensus/log.pb.h"
 #include "yb/consensus/ref_counted_replicate.h"
@@ -39,6 +40,7 @@ DECLARE_bool(durable_wal_write);
 namespace yb {
 
 namespace consensus {
+class ReplicateMsg;
 struct OpIdBiggerThanFunctor;
 } // namespace consensus
 
@@ -78,6 +80,7 @@ struct LogOptions {
 
 // A sequence of segments, ordered by increasing sequence number.
 typedef std::vector<scoped_refptr<ReadableLogSegment> > SegmentSequence;
+typedef std::vector<std::unique_ptr<LogEntryPB>> LogEntries;
 
 // A segment of the log can either be a ReadableLogSegment (for replay and
 // consensus catch-up) or a WritableLogSegment (where the Log actually stores
@@ -125,8 +128,8 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   //
   // If 'end_offset' is not NULL, then returns the file offset following the last
   // successfully read entry.
-  CHECKED_STATUS ReadEntries(std::vector<LogEntryPB*>* entries,
-                     int64_t* end_offset = NULL);
+  CHECKED_STATUS ReadEntries(LogEntries* entries,
+                             int64_t* end_offset = nullptr);
 
   // Rebuilds this segment's footer by scanning its entries.
   // This is an expensive operation as it reads and parses the whole segment
@@ -228,11 +231,12 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // Format a nice error message to report on a corruption in a log file.
   CHECKED_STATUS MakeCorruptionStatus(int batch_number, int64_t batch_offset,
                               std::vector<int64_t>* recent_offsets,
-                              const std::vector<LogEntryPB*>& entries,
+                              const std::vector<std::unique_ptr<LogEntryPB>>& entries,
                               const Status& status) const;
 
-  CHECKED_STATUS ReadEntryHeaderAndBatch(int64_t* offset, faststring* tmp_buf,
-                                 gscoped_ptr<LogEntryBatchPB>* batch);
+  CHECKED_STATUS ReadEntryHeaderAndBatch(int64_t* offset,
+                                         faststring* tmp_buf,
+                                         LogEntryBatchPB* batch);
 
   // Reads a log entry header from the segment.
   // Also increments the passed offset* by the length of the entry.
@@ -249,9 +253,9 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // Reads a log entry batch from the provided readable segment, which gets decoded
   // into 'entry_batch' and increments 'offset' by the batch's length.
   CHECKED_STATUS ReadEntryBatch(int64_t *offset,
-                        const EntryHeader& header,
-                        faststring* tmp_buf,
-                        gscoped_ptr<LogEntryBatchPB>* entry_batch);
+                                const EntryHeader& header,
+                                faststring* tmp_buf,
+                                LogEntryBatchPB* entry_batch);
 
   void UpdateReadableToOffset(int64_t readable_to_offset);
 
@@ -381,12 +385,14 @@ class WritableLogSegment {
   DISALLOW_COPY_AND_ASSIGN(WritableLogSegment);
 };
 
+using consensus::ReplicateMsgs;
+
 // Sets 'batch' to a newly created batch that contains the pre-allocated
 // ReplicateMsgs in 'msgs'.
 // We use C-style passing here to avoid having to allocate a vector
 // in some hot paths.
-void CreateBatchFromAllocatedOperations(const std::vector<consensus::ReplicateRefPtr>& msgs,
-                                        gscoped_ptr<LogEntryBatchPB>* batch);
+void CreateBatchFromAllocatedOperations(const ReplicateMsgs& msgs,
+                                        LogEntryBatchPB* batch);
 
 // Checks if 'fname' is a correctly formatted name of log segment file.
 bool IsLogFileName(const std::string& fname);

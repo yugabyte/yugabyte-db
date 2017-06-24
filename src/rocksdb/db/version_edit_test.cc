@@ -32,12 +32,21 @@ void TestEncodeDecode(const VersionEdit &edit) {
   ASSERT_EQ(encoded, encoded2);
 }
 
+const uint64_t kBig = 1ull << 50;
+
 } // namespace
 
 class VersionEditTest : public testing::Test {};
 
+void SetupVersionEdit(VersionEdit* edit) {
+  edit->SetComparatorName("foo");
+  edit->SetLogNumber(kBig + 100);
+  edit->SetNextFile(kBig + 200);
+  edit->SetLastSequence(kBig + 1000);
+  edit->SetFlushedOpId(kBig + 100, kBig + 2000);
+}
+
 TEST_F(VersionEditTest, EncodeDecode) {
-  static const uint64_t kBig = 1ull << 50;
   static const uint32_t kBig32Bit = 1ull << 30;
 
   VersionEdit edit;
@@ -47,18 +56,15 @@ TEST_F(VersionEditTest, EncodeDecode) {
     auto largest = MakeFileBoundaryValues("zoo", kBig + 600 + i, kTypeDeletion);
     smallest.user_values.push_back(test::MakeIntBoundaryValue(33));
     largest.user_values.push_back(test::MakeStringBoundaryValue("Hello"));
-    edit.AddFile(3,
-                 FileDescriptor(kBig + 300 + i, kBig32Bit + 400 + i, 0, 0),
-                 smallest,
-                 largest,
-                 false);
+    edit.AddTestFile(3,
+                     FileDescriptor(kBig + 300 + i, kBig32Bit + 400 + i, 0, 0),
+                     smallest,
+                     largest,
+                     false);
     edit.DeleteFile(4, kBig + 700 + i);
   }
 
-  edit.SetComparatorName("foo");
-  edit.SetLogNumber(kBig + 100);
-  edit.SetNextFile(kBig + 200);
-  edit.SetLastSequence(kBig + 1000);
+  SetupVersionEdit(&edit);
   TestEncodeDecode(edit);
 }
 
@@ -66,28 +72,25 @@ TEST_F(VersionEditTest, EncodeDecodeNewFile4) {
   static const uint64_t kBig = 1ull << 50;
 
   VersionEdit edit;
-  edit.AddFile(3,
-               FileDescriptor(300, 3, 100, 30),
-               MakeFileBoundaryValues("foo", kBig + 500, kTypeValue),
-               MakeFileBoundaryValues("zoo", kBig + 600, kTypeDeletion),
-               true);
-  edit.AddFile(4,
-               FileDescriptor(301, 3, 100, 30),
-               MakeFileBoundaryValues("foo", kBig + 501, kTypeValue),
-               MakeFileBoundaryValues("zoo", kBig + 601, kTypeDeletion),
-               false);
-  edit.AddFile(5,
-               FileDescriptor(302, 0, 100, 30),
-               MakeFileBoundaryValues("foo", kBig + 502, kTypeValue),
-               MakeFileBoundaryValues("zoo", kBig + 602, kTypeDeletion),
-               true);
+  edit.AddTestFile(3,
+                   FileDescriptor(300, 3, 100, 30),
+                   MakeFileBoundaryValues("foo", kBig + 500, kTypeValue),
+                   MakeFileBoundaryValues("zoo", kBig + 600, kTypeDeletion),
+                   true);
+  edit.AddTestFile(4,
+                   FileDescriptor(301, 3, 100, 30),
+                   MakeFileBoundaryValues("foo", kBig + 501, kTypeValue),
+                   MakeFileBoundaryValues("zoo", kBig + 601, kTypeDeletion),
+                   false);
+  edit.AddTestFile(5,
+                   FileDescriptor(302, 0, 100, 30),
+                   MakeFileBoundaryValues("foo", kBig + 502, kTypeValue),
+                   MakeFileBoundaryValues("zoo", kBig + 602, kTypeDeletion),
+                   true);
 
   edit.DeleteFile(4, 700);
 
-  edit.SetComparatorName("foo");
-  edit.SetLogNumber(kBig + 100);
-  edit.SetNextFile(kBig + 200);
-  edit.SetLastSequence(kBig + 1000);
+  SetupVersionEdit(&edit);
   TestEncodeDecode(edit);
 
   auto extractor = test::MakeBoundaryValuesExtractor();
@@ -108,22 +111,19 @@ TEST_F(VersionEditTest, EncodeDecodeNewFile4) {
 TEST_F(VersionEditTest, ForwardCompatibleNewFile4) {
   static const uint64_t kBig = 1ull << 50;
   VersionEdit edit;
-  edit.AddFile(3,
-               FileDescriptor(300, 3, 100, 30),
-               MakeFileBoundaryValues("foo", kBig + 500, kTypeValue),
-               MakeFileBoundaryValues("zoo", kBig + 600, kTypeDeletion),
-               true);
-  edit.AddFile(4,
-               FileDescriptor(301, 3, 100, 30),
-               MakeFileBoundaryValues("foo", kBig + 501, kTypeValue),
-               MakeFileBoundaryValues("zoo", kBig + 601, kTypeDeletion),
-               false);
+  edit.AddTestFile(3,
+                   FileDescriptor(300, 3, 100, 30),
+                   MakeFileBoundaryValues("foo", kBig + 500, kTypeValue),
+                   MakeFileBoundaryValues("zoo", kBig + 600, kTypeDeletion),
+                   true);
+  edit.AddTestFile(4,
+                   FileDescriptor(301, 3, 100, 30),
+                   MakeFileBoundaryValues("foo", kBig + 501, kTypeValue),
+                   MakeFileBoundaryValues("zoo", kBig + 601, kTypeDeletion),
+                   false);
   edit.DeleteFile(4, 700);
 
-  edit.SetComparatorName("foo");
-  edit.SetLogNumber(kBig + 100);
-  edit.SetNextFile(kBig + 200);
-  edit.SetLastSequence(kBig + 1000);
+  SetupVersionEdit(&edit);
 
   std::string encoded;
 
@@ -144,16 +144,13 @@ TEST_F(VersionEditTest, ForwardCompatibleNewFile4) {
 TEST_F(VersionEditTest, NewFile4NotSupportedField) {
   static const uint64_t kBig = 1ull << 50;
   VersionEdit edit;
-  edit.AddFile(3,
-               FileDescriptor(300, 3, 100, 30),
-               MakeFileBoundaryValues("foo", kBig + 500, kTypeValue),
-               MakeFileBoundaryValues("zoo", kBig + 600, kTypeDeletion),
-               true);
+  edit.AddTestFile(3,
+                   FileDescriptor(300, 3, 100, 30),
+                   MakeFileBoundaryValues("foo", kBig + 500, kTypeValue),
+                   MakeFileBoundaryValues("zoo", kBig + 600, kTypeDeletion),
+                   true);
 
-  edit.SetComparatorName("foo");
-  edit.SetLogNumber(kBig + 100);
-  edit.SetNextFile(kBig + 200);
-  edit.SetLastSequence(kBig + 1000);
+  SetupVersionEdit(&edit);
 
   std::string encoded;
 
@@ -167,11 +164,11 @@ TEST_F(VersionEditTest, NewFile4NotSupportedField) {
 
 TEST_F(VersionEditTest, EncodeEmptyFile) {
   VersionEdit edit;
-  edit.AddFile(0,
-               FileDescriptor(0, 0, 0, 0),
-               FileMetaData::BoundaryValues(),
-               FileMetaData::BoundaryValues(),
-               false);
+  edit.AddTestFile(0,
+                   FileDescriptor(0, 0, 0, 0),
+                   FileMetaData::BoundaryValues(),
+                   FileMetaData::BoundaryValues(),
+                   false);
   std::string buffer;
   ASSERT_TRUE(!edit.EncodeTo(&buffer));
 }

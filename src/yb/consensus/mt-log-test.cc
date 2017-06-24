@@ -36,8 +36,7 @@ namespace yb {
 namespace log {
 
 using std::vector;
-using consensus::ReplicateRefPtr;
-using consensus::make_scoped_refptr_replicate;
+using consensus::ReplicateMsgPtr;
 
 namespace {
 
@@ -83,7 +82,7 @@ class MultiThreadedLogTest : public LogTestBase {
     vector<Status> errors;
     for (int i = 0; i < FLAGS_num_batches_per_thread; i++) {
       LogEntryBatch* entry_batch;
-      vector<consensus::ReplicateRefPtr> batch_replicates;
+      ReplicateMsgs batch_replicates;
       int num_ops = static_cast<int>(random_.Normal(
           static_cast<double>(FLAGS_num_ops_per_batch_avg), 1.0));
       DVLOG(1) << num_ops << " ops in this batch";
@@ -91,16 +90,16 @@ class MultiThreadedLogTest : public LogTestBase {
       {
         std::lock_guard<simple_spinlock> lock_guard(lock_);
         for (int j = 0; j < num_ops; j++) {
-          ReplicateRefPtr replicate = make_scoped_refptr_replicate(new ReplicateMsg);
+          auto replicate = std::make_shared<ReplicateMsg>();
           int32_t index = current_index_++;
-          OpId* op_id = replicate->get()->mutable_id();
+          OpId* op_id = replicate->mutable_id();
           op_id->set_term(0);
           op_id->set_index(index);
 
-          replicate->get()->set_op_type(WRITE_OP);
-          replicate->get()->set_hybrid_time(clock_->Now().ToUint64());
+          replicate->set_op_type(WRITE_OP);
+          replicate->set_hybrid_time(clock_->Now().ToUint64());
 
-          tserver::WriteRequestPB* request = replicate->get()->mutable_write_request();
+          tserver::WriteRequestPB* request = replicate->mutable_write_request();
           AddTestRowToPB(RowOperationsPB::INSERT, schema_, index, 0,
                          "this is a test insert",
                          request->mutable_row_operations());
@@ -108,11 +107,10 @@ class MultiThreadedLogTest : public LogTestBase {
           batch_replicates.push_back(replicate);
         }
 
-        gscoped_ptr<log::LogEntryBatchPB> entry_batch_pb;
-        CreateBatchFromAllocatedOperations(batch_replicates,
-                                           &entry_batch_pb);
+        log::LogEntryBatchPB entry_batch_pb;
+        CreateBatchFromAllocatedOperations(batch_replicates, &entry_batch_pb);
 
-        ASSERT_OK(log_->Reserve(REPLICATE, entry_batch_pb.Pass(), &entry_batch));
+        ASSERT_OK(log_->Reserve(REPLICATE, &entry_batch_pb, &entry_batch));
       } // lock_guard scope
       auto cb = new CustomLatchCallback(&latch, &errors);
       entry_batch->SetReplicates(batch_replicates);

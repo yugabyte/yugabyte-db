@@ -2787,7 +2787,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
     tserver_proxy.reset(
         new tserver::TabletServerServiceProxy(client_messenger, *endpoint));
 
-    YQLRowBlock *rowBlock;
+    std::unique_ptr<YQLRowBlock> rowBlock;
     ASSERT_OK(WaitFor([&]() -> bool {
       // Setup read request.
       tserver::ReadRequestPB req;

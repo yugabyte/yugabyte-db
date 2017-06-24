@@ -214,6 +214,7 @@ Status FlushJob::WriteLevel0Table(const autovector<MemTable*>& mems,
       total_num_entries += m->num_entries();
       total_num_deletes += m->num_deletes();
       total_memory_usage += m->ApproximateMemoryUsage();
+      meta->last_op_id.UpdateIfGreater(m->LastOpId());
     }
 
     event_logger_->Log() << "job" << job_context_->job_id << "event"

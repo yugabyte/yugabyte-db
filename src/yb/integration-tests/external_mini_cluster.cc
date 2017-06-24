@@ -568,7 +568,7 @@ Status ExternalMiniCluster::GetNumMastersAsSeenBy(ExternalMaster* master, int* n
 }
 
 Status ExternalMiniCluster::WaitForLeaderCommitTermAdvance() {
-  OpId start_opid;
+  consensus::OpId start_opid;
   RETURN_NOT_OK(GetLastOpIdForLeader(&start_opid));
   LOG(INFO) << "Start OPID : " << start_opid.ShortDebugString();
 
@@ -579,7 +579,7 @@ Status ExternalMiniCluster::WaitForLeaderCommitTermAdvance() {
   MonoTime now = MonoTime::Now(MonoTime::FINE);
   MonoTime deadline = now;
   deadline.AddDelta(opts_.timeout_);
-  OpId opid = start_opid;
+  auto opid = start_opid;
 
   for (int i = 1; now.ComesBefore(deadline); ++i) {
     if (opid.term() > start_opid.term()) {
@@ -599,7 +599,7 @@ Status ExternalMiniCluster::WaitForLeaderCommitTermAdvance() {
 Status ExternalMiniCluster::GetLastOpIdForEachMasterPeer(
     const MonoDelta& timeout,
     consensus::OpIdType opid_type,
-    vector<OpId>* op_ids) {
+    vector<consensus::OpId>* op_ids) {
   GetLastOpIdRequestPB opid_req;
   GetLastOpIdResponsePB opid_resp;
   opid_req.set_tablet_id(yb::master::kSysCatalogTabletId);
@@ -626,12 +626,12 @@ Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int target_index) {
   deadline.AddDelta(opts_.timeout_);
 
   for (int i = 1; now.ComesBefore(deadline); i++) {
-    vector<OpId> ids;
+    vector<consensus::OpId> ids;
     Status s = GetLastOpIdForEachMasterPeer(opts_.timeout_, consensus::COMMITTED_OPID, &ids);
 
     if (s.ok()) {
       bool any_behind = false;
-      for (const OpId& id : ids) {
+      for (const auto& id : ids) {
         if (id.index() < target_index) {
           any_behind = true;
           break;
@@ -679,7 +679,7 @@ Status ExternalMiniCluster::GetIsMasterLeaderServiceReady(ExternalMaster* master
   return Status::OK();
 }
 
-Status ExternalMiniCluster::GetLastOpIdForLeader(OpId* opid) {
+Status ExternalMiniCluster::GetLastOpIdForLeader(consensus::OpId* opid) {
   ExternalMaster* leader = GetLeaderMaster();
   auto leader_master_sock = leader->bound_rpc_addr();
   std::shared_ptr<ConsensusServiceProxy> leader_proxy =

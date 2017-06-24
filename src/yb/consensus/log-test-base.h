@@ -17,14 +17,14 @@
 #ifndef YB_CONSENSUS_LOG_TEST_BASE_H
 #define YB_CONSENSUS_LOG_TEST_BASE_H
 
-#include "yb/consensus/log.h"
+#include <utility>
+#include <vector>
+#include <string>
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include <utility>
-#include <vector>
-#include <string>
+#include "yb/consensus/log.h"
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol-test-util.h"
@@ -82,10 +82,10 @@ static CHECKED_STATUS AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
                                    int count,
                                    int* size = NULL) {
 
-  vector<consensus::ReplicateRefPtr> replicates;
+  ReplicateMsgs replicates;
   for (int i = 0; i < count; i++) {
-    consensus::ReplicateRefPtr replicate = make_scoped_refptr_replicate(new ReplicateMsg());
-    ReplicateMsg* repl = replicate->get();
+    auto replicate = std::make_shared<ReplicateMsg>();
+    ReplicateMsg* repl = replicate.get();
 
     repl->mutable_id()->CopyFrom(*op_id);
     repl->set_op_type(NO_OP);
@@ -146,11 +146,6 @@ class LogTestBase : public YBTest {
     FLAGS_log_min_seconds_to_retain = 0;
   }
 
-  virtual void TearDown() override {
-    YBTest::TearDown();
-    STLDeleteElements(&entries_);
-  }
-
   void BuildLog() {
     Schema schema_with_ids = SchemaBuilder(schema_).Build();
     CHECK_OK(Log::Open(options_,
@@ -178,7 +173,7 @@ class LogTestBase : public YBTest {
   }
 
   void EntriesToIdList(vector<uint32_t>* ids) {
-    for (const LogEntryPB* entry : entries_) {
+    for (const auto& entry : entries_) {
       VLOG(2) << "Entry contents: " << entry->DebugString();
       if (entry->type() == REPLICATE) {
         ids->push_back(entry->replicate().id().index());
@@ -186,17 +181,17 @@ class LogTestBase : public YBTest {
     }
   }
 
-  static void CheckReplicateResult(const consensus::ReplicateRefPtr& msg, const Status& s) {
+  static void CheckReplicateResult(const consensus::ReplicateMsgPtr& msg, const Status& s) {
     CHECK_OK(s);
   }
 
   // Appends a batch with size 2 (1 insert, 1 mutate) to the log.
   void AppendReplicateBatch(const OpId& opid, bool sync = APPEND_SYNC) {
-    consensus::ReplicateRefPtr replicate = make_scoped_refptr_replicate(new ReplicateMsg());
-    replicate->get()->set_op_type(WRITE_OP);
-    replicate->get()->mutable_id()->CopyFrom(opid);
-    replicate->get()->set_hybrid_time(clock_->Now().ToUint64());
-    WriteRequestPB* batch_request = replicate->get()->mutable_write_request();
+    auto replicate = std::make_shared<ReplicateMsg>();
+    replicate->set_op_type(WRITE_OP);
+    replicate->mutable_id()->CopyFrom(opid);
+    replicate->set_hybrid_time(clock_->Now().ToUint64());
+    WriteRequestPB* batch_request = replicate->mutable_write_request();
     ASSERT_OK(SchemaToPB(schema_, batch_request->mutable_schema()));
     AddTestRowToPB(RowOperationsPB::INSERT, schema_,
                    opid.index(),
@@ -213,7 +208,7 @@ class LogTestBase : public YBTest {
   }
 
   // Appends the provided batch to the log.
-  void AppendReplicateBatch(const consensus::ReplicateRefPtr& replicate,
+  void AppendReplicateBatch(const consensus::ReplicateMsgPtr& replicate,
                             bool sync = APPEND_SYNC) {
     if (sync) {
       Synchronizer s;
@@ -335,7 +330,7 @@ class LogTestBase : public YBTest {
   int32_t current_index_;
   LogOptions options_;
   // Reusable entries vector that deletes the entries on destruction.
-  vector<LogEntryPB* > entries_;
+  LogEntries entries_;
   scoped_refptr<LogAnchorRegistry> log_anchor_registry_;
   scoped_refptr<Clock> clock_;
   string tablet_wal_path_;
@@ -374,4 +369,4 @@ Status CorruptLogFile(Env* env, const string& log_path,
 } // namespace log
 } // namespace yb
 
-#endif
+#endif // YB_CONSENSUS_LOG_TEST_BASE_H

@@ -7,13 +7,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#ifndef ROCKSDB_DB_MEMTABLE_H
+#define ROCKSDB_DB_MEMTABLE_H
+
 #pragma once
+
 #include <atomic>
 #include <deque>
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
+
 #include "db/dbformat.h"
 #include "db/skiplist.h"
 #include "db/version_edit.h"
@@ -303,6 +308,9 @@ class MemTable {
 
   const MemTableOptions* GetMemTableOptions() const { return &moptions_; }
 
+  void SetLastOpId(const OpId& op_id);
+  OpId LastOpId() const { return last_op_id_.load(std::memory_order_acquire); }
+
  private:
   enum FlushStateEnum { FLUSH_NOT_REQUESTED, FLUSH_REQUESTED, FLUSH_SCHEDULED };
 
@@ -352,6 +360,8 @@ class MemTable {
 
   Env* env_;
 
+  std::atomic<OpId> last_op_id_ = {OpId()};
+
   // Returns a heuristic flush decision
   bool ShouldFlushNow() const;
 
@@ -359,10 +369,12 @@ class MemTable {
   void UpdateFlushState();
 
   // No copying allowed
-  MemTable(const MemTable&);
-  MemTable& operator=(const MemTable&);
+  MemTable(const MemTable&) = delete;
+  MemTable& operator=(const MemTable&) = delete;
 };
 
 extern const char* EncodeKey(std::string* scratch, const Slice& target);
 
 }  // namespace rocksdb
+
+#endif // ROCKSDB_DB_MEMTABLE_H

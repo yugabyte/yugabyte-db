@@ -1506,8 +1506,13 @@ class InMemoryHandler : public WriteBatch::Handler {
   }
 
   void Delete(const Slice& key) override {
-    row_ <<",DELETE : ";
+    row_ << "DELETE : ";
     row_ << LDBCommand::StringToHex(key.ToString()) << " ";
+  }
+
+  Status UserOpId(const OpId& op_id) override {
+    row_ << " USER_OP_ID : " << op_id << " ";
+    return Status::OK();
   }
 
   virtual ~InMemoryHandler() {}

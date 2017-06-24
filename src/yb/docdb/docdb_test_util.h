@@ -226,6 +226,7 @@ class DocDBRocksDBFixture {
   rocksdb::Options rocksdb_options_;
   rocksdb::WriteOptions write_options_;
   string rocksdb_dir_;
+  rocksdb::OpId op_id_ = {1, 42};
 };
 
 class DocDBLoadGenerator {

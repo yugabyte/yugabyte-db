@@ -17,6 +17,8 @@ DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_int64(db_block_cache_size_bytes);
 
+using namespace std::chrono_literals;
+
 namespace yb {
 namespace client {
 
@@ -157,9 +159,9 @@ TEST_F(YqlDmlTest, TestInsertUpdateAndSelect) {
 
 namespace {
 
-std::string RandomValueAt(int32_t idx) {
+std::string RandomValueAt(int32_t idx, size_t len = 2000) {
   Random rng(idx);
-  return RandomHumanReadableString(2000, &rng);
+  return RandomHumanReadableString(len, &rng);
 }
 
 class YqlDmlRangeFilterBase: public YqlDmlTest {
@@ -229,22 +231,21 @@ size_t CountIterators(const std::vector<uint16_t>& web_ports) {
   return result;
 }
 
+constexpr int32_t kHashInt = 42;
+const std::string kHashStr = "all_records_have_same_id";
+constexpr auto kTimeout = 30s;
+
 } // namespace
 
 TEST_F_EX(YqlDmlTest, RangeFilter, YqlDmlRangeFilterBase) {
-  using namespace std::chrono_literals;
-
-  const int32_t kHashInt = 42;
-  const std::string kHashStr = "all_records_have_same_id";
   constexpr size_t kTotalLines = 25000;
-  constexpr auto kTimeout = 30s;
   if (!FLAGS_mini_cluster_reuse_data) {
     constexpr size_t kTotalThreads = 8;
 
     std::vector<std::thread> threads;
     std::atomic<int32_t> idx(0);
     for (size_t t = 0; t != kTotalThreads; ++t) {
-      threads.emplace_back([this, &idx, kTimeout, kTotalLines, kHashInt, kHashStr] {
+      threads.emplace_back([this, &idx, kTotalLines] {
         shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
         session->SetTimeout(kTimeout);
         for(;;) {
@@ -299,6 +300,63 @@ TEST_F_EX(YqlDmlTest, RangeFilter, YqlDmlRangeFilterBase) {
       ASSERT_EQ(old_iterators + 1, new_iterators);
       old_iterators = new_iterators;
     }
+  }
+}
+
+TEST_F(YqlDmlTest, FlushedOpId) {
+  constexpr size_t kTotalThreads = 8;
+  constexpr size_t kTotalRows = 10000;
+  constexpr size_t kEntryLen = 8;
+
+  std::vector<std::thread> threads;
+  std::atomic<int32_t> idx(0);
+  for (size_t t = 0; t != kTotalThreads; ++t) {
+    threads.emplace_back([this, &idx, kTotalRows] {
+      shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
+      session->SetTimeout(kTimeout);
+      for(;;) {
+        int32_t i = idx++;
+        if (i >= kTotalRows) {
+          break;
+        }
+        const shared_ptr<YBqlWriteOp> op = InsertRow(session,
+                                                     kHashInt,
+                                                     kHashStr,
+                                                     i,
+                                                     "range_" + std::to_string(i),
+                                                     -i,
+                                                     RandomValueAt(i, kEntryLen));
+        EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
+      }
+    });
+  }
+  std::this_thread::sleep_for(1s);
+  LOG(INFO) << "Flushing tablets";
+  cluster_->FlushTablets();
+  std::this_thread::sleep_for(1s);
+  LOG(INFO) << "GC logs";
+  cluster_->CleanTabletLogs();
+  for (auto& thread : threads) {
+    thread.join();
+  }
+  std::this_thread::sleep_for(5s);
+  ASSERT_OK(cluster_->RestartSync());
+
+  auto session = client_->NewSession(true /* read_only */);
+  session->SetTimeout(kTimeout);
+  const shared_ptr<YBqlReadOp> op = NewReadOp();
+  auto* const req = op->mutable_request();
+  YBPartialRow *prow = op->mutable_row();
+  SetInt32ColumnValue(req->add_hashed_column_values(), "h1", kHashInt, prow, 0);
+  SetStringColumnValue(req->add_hashed_column_values(), "h2", kHashStr, prow, 1);
+  req->add_column_ids(ColumnId("c2"));
+  ASSERT_OK(session->Apply(op));
+  ASSERT_EQ(YQLResponsePB::YQL_STATUS_OK, op->response().status());
+  auto rowblock = RowsResult(op.get()).GetRowBlock();
+  ASSERT_EQ(kTotalRows, rowblock->row_count());
+
+  for (size_t i = 0; i != kTotalRows; ++i) {
+    EXPECT_EQ(RandomValueAt(i, kEntryLen), rowblock->row(i).column(0).string_value());
   }
 }
 

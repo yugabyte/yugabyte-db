@@ -35,25 +35,17 @@ ConsensusBootstrapInfo::ConsensusBootstrapInfo()
     last_committed_id(MinimumOpId()) {
 }
 
-ConsensusBootstrapInfo::~ConsensusBootstrapInfo() {
-  STLDeleteElements(&orphaned_replicates);
-}
-
 ConsensusRound::ConsensusRound(Consensus* consensus,
-                               gscoped_ptr<ReplicateMsg> replicate_msg,
+                               ReplicateMsgPtr replicate_msg,
                                ConsensusReplicatedCallback replicated_cb)
     : consensus_(consensus),
-      replicate_msg_(new RefCountedReplicate(replicate_msg.release())),
-      replicated_cb_(std::move(replicated_cb)),
-      bound_term_(-1),
-      append_cb_(nullptr) {}
+      replicate_msg_(std::move(replicate_msg)),
+      replicated_cb_(std::move(replicated_cb)) {}
 
 ConsensusRound::ConsensusRound(Consensus* consensus,
-                               const ReplicateRefPtr& replicate_msg)
+                               ReplicateMsgPtr replicate_msg)
     : consensus_(consensus),
-      replicate_msg_(replicate_msg),
-      bound_term_(-1),
-      append_cb_(nullptr) {
+      replicate_msg_(std::move(replicate_msg)) {
   DCHECK_NOTNULL(replicate_msg_.get());
 }
 
@@ -63,7 +55,7 @@ void ConsensusRound::NotifyReplicationFinished(const Status& status) {
 }
 
 Status ConsensusRound::CheckBoundTerm(int64_t current_term) const {
-  if (PREDICT_FALSE(bound_term_ != -1 &&
+  if (PREDICT_FALSE(bound_term_ != kUnboundTerm &&
                     bound_term_ != current_term)) {
     return STATUS(Aborted,
       strings::Substitute(
@@ -74,9 +66,9 @@ Status ConsensusRound::CheckBoundTerm(int64_t current_term) const {
 }
 
 scoped_refptr<ConsensusRound> Consensus::NewRound(
-    gscoped_ptr<ReplicateMsg> replicate_msg,
+    ReplicateMsgPtr replicate_msg,
     const ConsensusReplicatedCallback& replicated_cb) {
-  return make_scoped_refptr(new ConsensusRound(this, replicate_msg.Pass(), replicated_cb));
+  return make_scoped_refptr(new ConsensusRound(this, std::move(replicate_msg), replicated_cb));
 }
 
 void Consensus::SetFaultHooks(const shared_ptr<ConsensusFaultHooks>& hooks) {

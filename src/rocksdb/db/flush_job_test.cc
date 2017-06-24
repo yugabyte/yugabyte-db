@@ -52,9 +52,7 @@ class FlushJobTest : public testing::Test {
 
   void NewDB() {
     VersionEdit new_db;
-    new_db.SetLogNumber(0);
-    new_db.SetNextFile(2);
-    new_db.SetLastSequence(0);
+    new_db.InitNewDB();
 
     const std::string manifest = DescriptorFileName(dbname_, 1);
     unique_ptr<WritableFile> file;
@@ -127,6 +125,8 @@ TEST_F(FlushJobTest, NonEmpty) {
     inserted_keys.insert({internal_key.Encode().ToString(), value});
     values.Feed(key);
   }
+  const OpId kOpId(1, 12345);
+  new_mem->SetLastOpId(kOpId);
 
   autovector<MemTable*> to_delete;
   cfd->imm()->Add(new_mem, &to_delete);
@@ -148,6 +148,7 @@ TEST_F(FlushJobTest, NonEmpty) {
   ASSERT_EQ(ToString(9999), fd.largest.key.user_key().ToString());
   ASSERT_EQ(1, fd.smallest.seqno);
   ASSERT_EQ(9999, fd.largest.seqno);
+  ASSERT_EQ(kOpId, fd.last_op_id);
   values.Check(fd.smallest, fd.largest);
   mock_table_factory_->AssertSingleFile(inserted_keys);
   job_context.Clean();

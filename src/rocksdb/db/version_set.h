@@ -578,6 +578,8 @@ class Version {
 
 class VersionSet {
  public:
+  static constexpr uint64_t kInitialNextFileNumber = 2;
+
   VersionSet(const std::string& dbname, const DBOptions* db_options,
              const EnvOptions& env_options, Cache* table_cache,
              WriteBuffer* write_buffer, WriteController* write_controller);
@@ -647,10 +649,14 @@ class VersionSet {
     return last_sequence_.load(std::memory_order_acquire);
   }
 
+  OpId FlushedOpId() const {
+    return flushed_op_id_.load(std::memory_order_acquire);
+  }
+
   // Set the last sequence number to s.
   void SetLastSequence(SequenceNumber s) {
 #ifndef NDEBUG
-    EnsureIncreasingLastSequence(last_sequence_, s);
+    EnsureIncreasingLastSequence(LastSequence(), s);
 #endif
     SetLastSequenceNoSanityChecking(s);
   }
@@ -658,6 +664,18 @@ class VersionSet {
   // Set last sequence number without verifying that it always keeps increasing.
   void SetLastSequenceNoSanityChecking(SequenceNumber s) {
     last_sequence_.store(s, std::memory_order_release);
+  }
+
+  // Set the last flushed op id to specified value.
+  void SetFlushedOpId(const OpId& value) {
+#ifndef NDEBUG
+    EnsureNonDecreasingFlushedOpId(FlushedOpId(), value);
+#endif
+    SetFlushedOpIdNoSanityChecking(value);
+  }
+
+  void SetFlushedOpIdNoSanityChecking(const OpId& value) {
+    flushed_op_id_.store(value, std::memory_order_release);
   }
 
   // Mark the specified file number as used.
@@ -750,6 +768,7 @@ class VersionSet {
 
 #ifndef NDEBUG
   void EnsureIncreasingLastSequence(SequenceNumber prev_last_seq, SequenceNumber new_last_seq);
+  void EnsureNonDecreasingFlushedOpId(const OpId& prev_value, const OpId& new_value);
 #endif
 
   std::unique_ptr<ColumnFamilySet> column_family_set_;
@@ -757,23 +776,24 @@ class VersionSet {
   Env* const env_;
   const std::string dbname_;
   const DBOptions* const db_options_;
-  std::atomic<uint64_t> next_file_number_;
-  uint64_t manifest_file_number_;
-  uint64_t pending_manifest_file_number_;
-  std::atomic<uint64_t> last_sequence_;
-  uint64_t prev_log_number_;  // 0 or backing store for memtable being compacted
+  std::atomic<uint64_t> next_file_number_ = {kInitialNextFileNumber};
+  uint64_t manifest_file_number_ = 0;
+  uint64_t pending_manifest_file_number_ = 0;
+  std::atomic<uint64_t> last_sequence_ = {0};
+  uint64_t prev_log_number_ = 0; // 0 or backing store for memtable being compacted
+  std::atomic<OpId> flushed_op_id_ = {OpId()};
 
   // Opened lazily
-  unique_ptr<log::Writer> descriptor_log_;
+  std::unique_ptr<log::Writer> descriptor_log_;
 
   // generates a increasing version number for every new version
-  uint64_t current_version_number_;
+  uint64_t current_version_number_ = 0;
 
   // Queue of writers to the manifest file
   std::deque<ManifestWriter*> manifest_writers_;
 
   // Current size of manifest file
-  uint64_t manifest_file_size_;
+  uint64_t manifest_file_size_ = 0;
 
   std::vector<FileMetaData*> obsolete_files_;
   std::vector<std::string> obsolete_manifests_;

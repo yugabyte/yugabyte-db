@@ -84,12 +84,11 @@ Status TransactionDriver::Init(gscoped_ptr<Transaction> transaction,
     replication_state_ = REPLICATING;
   } else {
     DCHECK_EQ(type, consensus::LEADER);
-    gscoped_ptr<ReplicateMsg> replicate_msg;
-    transaction_->NewReplicateMsg(&replicate_msg);
+    consensus::ReplicateMsgPtr replicate_msg = transaction_->NewReplicateMsg();
     if (consensus_) {  // sometimes NULL in tests
       // Unretained is required to avoid a refcount cycle.
       mutable_state()->set_consensus_round(
-        consensus_->NewRound(replicate_msg.Pass(),
+        consensus_->NewRound(std::move(replicate_msg),
                              Bind(&TransactionDriver::ReplicationFinished, Unretained(this))));
       if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
         mutable_state()->consensus_round()->SetAppendCallback(this);
@@ -164,7 +163,7 @@ void TransactionDriver::HandleConsensusAppend() {
   // YB tables only.
   CHECK_NE(table_type_, TableType::KUDU_COLUMNAR_TABLE_TYPE);
   transaction_->Start();
-  auto* const replicate_msg = transaction_->state()->consensus_round()->replicate_msg();
+  auto* const replicate_msg = transaction_->state()->consensus_round()->replicate_msg().get();
   CHECK(!replicate_msg->has_hybrid_time());
   replicate_msg->set_hybrid_time(transaction_->state()->hybrid_time().ToUint64());
   replicate_msg->set_monotonic_counter(
@@ -225,7 +224,7 @@ Status TransactionDriver::PrepareAndStart() {
   switch (repl_state_copy) {
     case NOT_REPLICATING:
     {
-      ReplicateMsg* replicate_msg = transaction_->state()->consensus_round()->replicate_msg();
+      ReplicateMsg* replicate_msg = transaction_->state()->consensus_round()->replicate_msg().get();
 
       if (table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
         // Kudu tables only: set the hybrid_time in the message, now that it's prepared.
@@ -402,9 +401,9 @@ Status TransactionDriver::ApplyAsync() {
       return Status::OK();
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
       return apply_pool_->SubmitClosure(Bind(&TransactionDriver::ApplyTask, Unretained(this)));
-    default:
-      LOG(FATAL) << "Invalid table type: " << table_type_;
   }
+  LOG(FATAL) << "Invalid table type: " << table_type_;
+  return STATUS_FORMAT(IllegalState, "Invalid table type: $0", table_type_);
 }
 
 void TransactionDriver::ApplyTask() {

@@ -1007,6 +1007,7 @@ Status CompactionJob::OpenCompactionOutputFile(
     for (FileMetaData *fmd : *compact_->compaction->inputs(level_idx) ) {
       out.meta.UpdateBoundariesExceptKey(fmd->smallest, UpdateBoundariesType::SMALLEST);
       out.meta.UpdateBoundariesExceptKey(fmd->largest, UpdateBoundariesType::LARGEST);
+      out.meta.last_op_id.UpdateIfGreater(fmd->last_op_id);
     }
   }
   out.finished = false;

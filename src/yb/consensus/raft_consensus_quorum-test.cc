@@ -222,7 +222,7 @@ class RaftConsensusQuorumTest : public YBTest {
 
   Status AppendDummyMessage(int peer_idx,
                             scoped_refptr<ConsensusRound>* round) {
-    gscoped_ptr<ReplicateMsg> msg(new ReplicateMsg());
+    auto msg = std::make_shared<ReplicateMsg>();
     msg->set_op_type(NO_OP);
     msg->mutable_noop_request();
     msg->set_hybrid_time(clock_->Now().ToUint64());
@@ -232,7 +232,7 @@ class RaftConsensusQuorumTest : public YBTest {
 
     // Use a latch in place of a Transaction callback.
     gscoped_ptr<Synchronizer> sync(new Synchronizer());
-    *round = peer->NewRound(msg.Pass(), sync->AsStatusCallback());
+    *round = peer->NewRound(std::move(msg), sync->AsStatusCallback());
     InsertOrDie(&syncs_, round->get(), sync.release());
     RETURN_NOT_OK_PREPEND(peer->Replicate(round->get()),
                           Substitute("Unable to replicate to peer $0", peer_idx));
@@ -328,12 +328,8 @@ class RaftConsensusQuorumTest : public YBTest {
     }
 
     // Gather the replica and leader operations for printing
-    vector<LogEntryPB*> replica_ops;
-    ElementDeleter repl0_deleter(&replica_ops);
-    GatherLogEntries(peer_idx, logs_[peer_idx], &replica_ops);
-    vector<LogEntryPB*> leader_ops;
-    ElementDeleter leader_deleter(&leader_ops);
-    GatherLogEntries(leader_idx, logs_[leader_idx], &leader_ops);
+    log::LogEntries replica_ops = GatherLogEntries(peer_idx, logs_[peer_idx]);
+    log::LogEntries leader_ops = GatherLogEntries(leader_idx, logs_[leader_idx]);
     SCOPED_TRACE(PrintOnError(replica_ops, Substitute("local peer ($0)", peer->peer_uuid())));
     SCOPED_TRACE(PrintOnError(leader_ops, Substitute("leader (peer-$0)", leader_idx)));
     FAIL() << "Replica did not commit.";
@@ -391,26 +387,25 @@ class RaftConsensusQuorumTest : public YBTest {
     }
   }
 
-  void GatherLogEntries(int idx, const scoped_refptr<Log>& log, vector<LogEntryPB* >* entries) {
-    ASSERT_OK(log->WaitUntilAllFlushed());
-    ASSERT_OK(log->Close());
+  log::LogEntries GatherLogEntries(int idx, const scoped_refptr<Log>& log) {
+    EXPECT_OK(log->WaitUntilAllFlushed());
+    EXPECT_OK(log->Close());
     gscoped_ptr<LogReader> log_reader;
-    ASSERT_OK(log::LogReader::Open(fs_managers_[idx],
+    EXPECT_OK(log::LogReader::Open(fs_managers_[idx],
                                    scoped_refptr<log::LogIndex>(),
                                    kTestTablet,
                                    fs_managers_[idx]->GetFirstTabletWalDirOrDie(kTestTablet),
                                    metric_entity_.get(),
                                    &log_reader));
-    vector<LogEntryPB*> ret;
-    ElementDeleter deleter(&ret);
+    log::LogEntries ret;
     log::SegmentSequence segments;
-    ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
+    EXPECT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
     for (const log::SegmentSequence::value_type& entry : segments) {
-      ASSERT_OK(entry->ReadEntries(&ret));
+      EXPECT_OK(entry->ReadEntries(&ret));
     }
 
-    entries->swap(ret);
+    return ret;
   }
 
   // Verifies that the replica's log match the leader's. This deletes the
@@ -429,16 +424,12 @@ class RaftConsensusQuorumTest : public YBTest {
       entry.second->Shutdown();
     }
 
-    vector<LogEntryPB*> leader_entries;
-    ElementDeleter leader_entry_deleter(&leader_entries);
-    GatherLogEntries(leader_idx, logs_[leader_idx], &leader_entries);
+    log::LogEntries leader_entries = GatherLogEntries(leader_idx, logs_[leader_idx]);
     scoped_refptr<RaftConsensus> leader;
     CHECK_OK(peers_->GetPeerByIdx(leader_idx, &leader));
 
     for (int replica_idx = first_replica_idx; replica_idx < last_replica_idx; replica_idx++) {
-      vector<LogEntryPB*> replica_entries;
-      ElementDeleter replica_entry_deleter(&replica_entries);
-      GatherLogEntries(replica_idx, logs_[replica_idx], &replica_entries);
+      log::LogEntries replica_entries = GatherLogEntries(replica_idx, logs_[replica_idx]);
 
       scoped_refptr<RaftConsensus> replica;
       CHECK_OK(peers_->GetPeerByIdx(replica_idx, &replica));
@@ -449,21 +440,21 @@ class RaftConsensusQuorumTest : public YBTest {
     }
   }
 
-  void ExtractReplicateIds(const vector<LogEntryPB*>& entries,
-                           vector<OpId>* ids) {
-    ids->reserve(entries.size() / 2);
-    for (const LogEntryPB* entry : entries) {
+  std::vector<OpId> ExtractReplicateIds(const log::LogEntries& entries) {
+    std::vector<OpId> result;
+    result.reserve(entries.size() / 2);
+    for (const auto& entry : entries) {
       if (entry->has_replicate()) {
-        ids->push_back(entry->replicate().id());
+        result.push_back(entry->replicate().id());
       }
     }
+    return result;
   }
 
-  void VerifyReplicateOrderMatches(const vector<LogEntryPB*>& leader_entries,
-                                   const vector<LogEntryPB*>& replica_entries) {
-    vector<OpId> leader_ids, replica_ids;
-    ExtractReplicateIds(leader_entries, &leader_ids);
-    ExtractReplicateIds(replica_entries, &replica_ids);
+  void VerifyReplicateOrderMatches(const log::LogEntries& leader_entries,
+                                   const log::LogEntries& replica_entries) {
+    auto leader_ids = ExtractReplicateIds(leader_entries);
+    auto replica_ids = ExtractReplicateIds(replica_entries);
     ASSERT_EQ(leader_ids.size(), replica_ids.size());
     for (int i = 0; i < leader_ids.size(); i++) {
       ASSERT_EQ(leader_ids[i].ShortDebugString(),
@@ -471,12 +462,12 @@ class RaftConsensusQuorumTest : public YBTest {
     }
   }
 
-  void VerifyNoCommitsBeforeReplicates(const vector<LogEntryPB*>& entries) {
+  void VerifyNoCommitsBeforeReplicates(const log::LogEntries& entries) {
     unordered_set<OpId,
                   OpIdHashFunctor,
                   OpIdEqualsFunctor> replication_ops;
 
-    for (const LogEntryPB* entry : entries) {
+    for (const auto& entry : entries) {
       if (entry->has_replicate()) {
         ASSERT_TRUE(InsertIfNotPresent(&replication_ops, entry->replicate().id()))
           << "REPLICATE op id showed up twice: " << entry->ShortDebugString();
@@ -487,8 +478,8 @@ class RaftConsensusQuorumTest : public YBTest {
     }
   }
 
-  void VerifyReplica(const vector<LogEntryPB*>& leader_entries,
-                     const vector<LogEntryPB*>& replica_entries,
+  void VerifyReplica(const log::LogEntries& leader_entries,
+                     const log::LogEntries& replica_entries,
                      const string& leader_name,
                      const string& replica_name) {
     SCOPED_TRACE(PrintOnError(leader_entries, Substitute("Leader: $0", leader_name)));
@@ -503,12 +494,12 @@ class RaftConsensusQuorumTest : public YBTest {
     VerifyNoCommitsBeforeReplicates(leader_entries);
   }
 
-  string PrintOnError(const vector<LogEntryPB*>& replica_entries,
+  string PrintOnError(const log::LogEntries& replica_entries,
                       const string& replica_id) {
     string ret = "";
     SubstituteAndAppend(&ret, "$1 log entries for replica $0:\n",
                         replica_id, replica_entries.size());
-    for (LogEntryPB* replica_entry : replica_entries) {
+    for (const auto& replica_entry : replica_entries) {
       StrAppend(&ret, "Replica log entry: ", replica_entry->ShortDebugString(), "\n");
     }
     return ret;

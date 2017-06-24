@@ -91,6 +91,7 @@ struct FileMetaData {
   bool being_compacted;     // Is this file undergoing compaction?
   BoundaryValues smallest;  // The smallest values in this file
   BoundaryValues largest;   // The largest values in this file
+  OpId last_op_id;          // Last op_id in file.
 
   // Needs to be disposed when refs becomes 0.
   Cache::Handle* table_reader_handle;
@@ -145,24 +146,33 @@ class VersionEdit {
   void SetLastSequence(SequenceNumber seq) {
     last_sequence_ = seq;
   }
+  void SetFlushedOpId(const OpId& value) {
+    flushed_op_id_ = value;
+  }
+  void SetFlushedOpId(int64_t term, int64_t index) {
+    SetFlushedOpId(OpId(term, index));
+  }
   void SetMaxColumnFamily(uint32_t max_column_family) {
     max_column_family_ = max_column_family;
   }
 
+  void InitNewDB();
+
   // Add the specified file at the specified number.
   // REQUIRES: This version has not been saved (see VersionSet::SaveTo)
   // REQUIRES: "smallest" and "largest" are smallest and largest keys in file
-  void AddFile(int level,
-               const FileDescriptor& fd,
-               const FileMetaData::BoundaryValues& smallest,
-               const FileMetaData::BoundaryValues& largest,
-               bool marked_for_compaction) {
+  void AddTestFile(int level,
+                   const FileDescriptor& fd,
+                   const FileMetaData::BoundaryValues& smallest,
+                   const FileMetaData::BoundaryValues& largest,
+                   bool marked_for_compaction) {
     assert(smallest.seqno <= largest.seqno);
     FileMetaData f;
     f.fd = fd;
     f.fd.table_reader = nullptr;
     f.smallest = smallest;
     f.largest = largest;
+    f.last_op_id = OpId(1, largest.seqno);
     f.marked_for_compaction = marked_for_compaction;
     new_files_.emplace_back(level, f);
   }
@@ -179,6 +189,7 @@ class VersionEdit {
     nf.fd.table_reader = nullptr;
     nf.smallest = f.smallest;
     nf.largest = f.largest;
+    nf.last_op_id = f.last_op_id;
     nf.marked_for_compaction = f.marked_for_compaction;
     new_files_.emplace_back(level, nf);
   }
@@ -246,6 +257,7 @@ class VersionEdit {
   boost::optional<uint64_t> next_file_number_;
   boost::optional<uint32_t> max_column_family_;
   boost::optional<SequenceNumber> last_sequence_;
+  OpId flushed_op_id_;
 
   DeletedFileSet deleted_files_;
   std::vector<std::pair<int, FileMetaData>> new_files_;

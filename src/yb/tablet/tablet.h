@@ -86,7 +86,6 @@ namespace tablet {
 
 class AlterSchemaTransactionState;
 class CompactionPolicy;
-class LargestFlushedSeqNumCollector;
 class MemRowSet;
 class MvccSnapshot;
 struct RowOp;
@@ -212,7 +211,7 @@ class Tablet : public AbstractTablet {
 
   // Apply a set of RocksDB row operations.
   void ApplyKeyValueRowOperations(const docdb::KeyValueWriteBatchPB& put_batch,
-                                  uint64_t raft_index,
+                                  const consensus::OpId& op_id,
                                   HybridTime hybrid_time);
 
   // Takes a Redis WriteRequestPB as input with its redis_write_batch.
@@ -460,13 +459,11 @@ class Tablet : public AbstractTablet {
   // Returns true if a RocksDB-backed tablet has any SSTables.
   bool HasSSTables() const;
 
-  // Returns the maximum persistent sequence number from all SSTables in RocksDB.
-  rocksdb::SequenceNumber MaxPersistentSequenceNumber() const;
+  // Returns the maximum persistent op id from all SSTables in RocksDB.
+  yb::OpId MaxPersistentOpId() const;
 
   // Returns the location of the last rocksdb checkpoint. Used for tests only.
   std::string GetLastRocksDBCheckpointDirForTest() { return last_rocksdb_checkpoint_dir_; }
-
-  rocksdb::SequenceNumber LargestFlushedSequenceNumber() const;
 
   // For non-kudu table type fills key-value batch in transaction state request and updates
   // request in state. Due to acquiring locks it can block the thread.
@@ -753,8 +750,6 @@ class Tablet : public AbstractTablet {
   //
   // This is marked mutable because read path member functions (which are const) are using this.
   mutable yb::util::PendingOperationCounter pending_op_counter_;
-
-  std::shared_ptr<LargestFlushedSeqNumCollector> largest_flushed_seqno_collector_;
 
   std::shared_ptr<yb::docdb::HistoryRetentionPolicy> retention_policy_;
 

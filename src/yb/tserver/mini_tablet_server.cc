@@ -95,6 +95,22 @@ void MiniTabletServer::Shutdown() {
   started_ = false;
 }
 
+void MiniTabletServer::FlushTablets() {
+  std::vector<tablet::TabletPeerPtr> tablets;
+  server_->tablet_manager()->GetTabletPeers(&tablets);
+  for (const auto& tablet : tablets) {
+    CHECK_OK(tablet->tablet()->Flush());
+  }
+}
+
+void MiniTabletServer::CleanTabletLogs() {
+  std::vector<tablet::TabletPeerPtr> tablets;
+  server_->tablet_manager()->GetTabletPeers(&tablets);
+  for (const auto& tablet : tablets) {
+    CHECK_OK(tablet->RunLogGC());
+  }
+}
+
 Status MiniTabletServer::Restart() {
   CHECK(started_);
   opts_.rpc_opts.rpc_bind_addresses = Substitute("127.0.0.1:$0", bound_rpc_addr().port());

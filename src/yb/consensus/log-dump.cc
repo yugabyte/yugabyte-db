@@ -15,10 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <gflags/gflags.h>
-#include <glog/logging.h>
 #include <iostream>
 #include <vector>
+
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 
 #include "yb/common/row_operations.h"
 #include "yb/common/wire_protocol.h"
@@ -156,7 +157,7 @@ Status PrintSegment(const scoped_refptr<ReadableLogSegment>& segment) {
   if (FLAGS_print_headers) {
     cout << "Header:\n" << segment->header().DebugString();
   }
-  vector<LogEntryPB*> entries;
+  LogEntries entries;
   RETURN_NOT_OK(segment->ReadEntries(&entries));
 
   if (print_type == DONT_PRINT) return Status::OK();
@@ -164,11 +165,11 @@ Status PrintSegment(const scoped_refptr<ReadableLogSegment>& segment) {
   Schema tablet_schema;
   RETURN_NOT_OK(SchemaFromPB(segment->header().schema(), &tablet_schema));
 
-  for (LogEntryPB* entry : entries) {
+  for (const auto& entry : entries) {
 
     if (print_type == PRINT_PB) {
       if (FLAGS_truncate_data > 0) {
-        pb_util::TruncateFields(entry, FLAGS_truncate_data);
+        pb_util::TruncateFields(entry.get(), FLAGS_truncate_data);
       }
 
       cout << "Entry:\n" << entry->DebugString();
@@ -239,8 +240,7 @@ int main(int argc, char **argv) {
     if (status.ok()) {
       return 0;
     }
-  }
-  else {
+  } else {
     status = yb::log::DumpLog(argv[1], argv[2]);
     if (status.ok()) {
       return 0;

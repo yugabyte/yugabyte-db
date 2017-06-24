@@ -25,7 +25,9 @@
 #include <boost/optional/optional_fwd.hpp>
 
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/opid_util.h"
 #include "yb/consensus/ref_counted_replicate.h"
+
 #include "yb/gutil/callback.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/stringprintf.h"
@@ -75,7 +77,6 @@ struct ConsensusOptions {
 // into the consensus implementation.
 struct ConsensusBootstrapInfo {
   ConsensusBootstrapInfo();
-  ~ConsensusBootstrapInfo();
 
   // The id of the last operation in the log
   OpId last_id;
@@ -88,7 +89,7 @@ struct ConsensusBootstrapInfo {
   // to potentially commit them.
   //
   // These are owned by the ConsensusBootstrapInfo instance.
-  std::vector<ReplicateMsg*> orphaned_replicates;
+  ReplicateMsgs orphaned_replicates;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(ConsensusBootstrapInfo);
@@ -186,7 +187,7 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   // (and later on the CommitMsg). ConsensusRound will also point to and
   // increase the reference count for the provided callbacks.
   scoped_refptr<ConsensusRound> NewRound(
-      gscoped_ptr<ReplicateMsg> replicate_msg,
+      ReplicateMsgPtr replicate_msg,
       const ConsensusReplicatedCallback& replicated_cb);
 
   // Called by a Leader to replicate an entry to the state machine.
@@ -470,35 +471,32 @@ class ReplicaTransactionFactory {
 // we also want to ensure it has a proper lifecycle when a ConsensusRound is
 // pushed that is not associated with a Tablet transaction.
 class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
-
  public:
+  static constexpr int64_t kUnboundTerm = -1;
+
   // Ctor used for leader transactions. Leader transactions can and must specify the
   // callbacks prior to initiating the consensus round.
-  ConsensusRound(Consensus* consensus, gscoped_ptr<ReplicateMsg> replicate_msg,
+  ConsensusRound(Consensus* consensus,
+                 ReplicateMsgPtr replicate_msg,
                  ConsensusReplicatedCallback replicated_cb);
 
   // Ctor used for follower/learner transactions. These transactions do not use the
   // replicate callback and the commit callback is set later, after the transaction
   // is actually started.
-  ConsensusRound(Consensus* consensus,
-                 const ReplicateRefPtr& replicate_msg);
+  ConsensusRound(Consensus* consensus, ReplicateMsgPtr replicate_msg);
 
   std::string ToString() const {
-    return replicate_msg_->get()->ShortDebugString();
+    return replicate_msg_->ShortDebugString();
   }
 
-  ReplicateMsg* replicate_msg() {
-    return replicate_msg_->get();
-  }
-
-  const ReplicateRefPtr& replicate_scoped_refptr() {
+  const ReplicateMsgPtr& replicate_msg() {
     return replicate_msg_;
   }
 
   // Returns the id of the (replicate) operation this context
   // refers to. This is only set _after_ Consensus::Replicate(context).
   OpId id() const {
-    return replicate_msg_->get()->id();
+    return replicate_msg_->id();
   }
 
   // Register a callback that is called by Consensus to notify that the round
@@ -525,7 +523,7 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
   // other than 'term'.
   // See CheckBoundTerm().
   void BindToTerm(int64_t term) {
-    DCHECK_EQ(bound_term_, -1);
+    DCHECK_EQ(bound_term_, kUnboundTerm);
     bound_term_ = term;
   }
 
@@ -547,7 +545,7 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
 
   Consensus* consensus_;
   // This round's replicate message.
-  ReplicateRefPtr replicate_msg_;
+  ReplicateMsgPtr replicate_msg_;
 
   // The continuation that will be called once the transaction is
   // deemed committed/aborted by consensus.
@@ -558,9 +556,9 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
   // changed in the meantime.
   //
   // Set to -1 if no term has been bound.
-  int64_t bound_term_;
+  int64_t bound_term_ = kUnboundTerm;
 
-  ConsensusAppendCallback* append_cb_;
+  ConsensusAppendCallback* append_cb_ = nullptr;
 };
 
 class Consensus::ConsensusFaultHooks {

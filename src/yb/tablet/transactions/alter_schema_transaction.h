@@ -108,7 +108,7 @@ class AlterSchemaTransaction : public Transaction {
   virtual AlterSchemaTransactionState* state() override { return state_.get(); }
   virtual const AlterSchemaTransactionState* state() const override { return state_.get(); }
 
-  void NewReplicateMsg(gscoped_ptr<consensus::ReplicateMsg>* replicate_msg) override;
+  consensus::ReplicateMsgPtr NewReplicateMsg() override;
 
   // Executes a Prepare for the alter schema transaction.
   //

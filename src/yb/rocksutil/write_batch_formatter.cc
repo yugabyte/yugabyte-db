@@ -13,12 +13,6 @@ using yb::util::QuotesType;
 
 namespace yb {
 
-WriteBatchFormatter::WriteBatchFormatter()
-    : need_separator_(false),
-      user_sequence_number_(0),
-      update_index_(0) {
-}
-
 rocksdb::Status WriteBatchFormatter::PutCF(
     uint32_t column_family_id,
     const rocksdb::Slice& key,
@@ -59,8 +53,11 @@ rocksdb::Status WriteBatchFormatter::MergeCF(
   return rocksdb::Status::OK();
 }
 
-void WriteBatchFormatter::SetUserSequenceNumber(SequenceNumber user_sequence_number) {
-  user_sequence_number_ = user_sequence_number;
+Status WriteBatchFormatter::UserOpId(const OpId& op_id) {
+  StartOutputLine(__FUNCTION__);
+  out_ << op_id;
+  FinishOutputLine();
+  return Status::OK();
 }
 
 void WriteBatchFormatter::StartOutputLine(const char* name) {

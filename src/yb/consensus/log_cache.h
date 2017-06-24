@@ -84,7 +84,7 @@ class LogCache {
   // of time and should not be called with important locks held, etc.
   CHECKED_STATUS ReadOps(int64_t after_op_index,
                  int max_size_bytes,
-                 std::vector<ReplicateRefPtr>* messages,
+                 ReplicateMsgs* messages,
                  OpId* preceding_op);
 
   // Append the operations into the log and the cache.
@@ -94,8 +94,8 @@ class LogCache {
   // when the callback fires.
   //
   // Returns non-OK if the Log append itself fails.
-  CHECKED_STATUS AppendOperations(const std::vector<ReplicateRefPtr>& msgs,
-                          const StatusCallback& callback);
+  CHECKED_STATUS AppendOperations(const ReplicateMsgs& msgs,
+                                  const StatusCallback& callback);
 
   // Return true if an operation with the given index has been written through
   // the cache. The operation may not necessarily be durable yet -- it could still be
@@ -146,7 +146,7 @@ class LogCache {
 
   // Update metrics and MemTracker to account for the removal of the
   // given message.
-  void AccountForMessageRemovalUnlocked(const ReplicateRefPtr& msg);
+  void AccountForMessageRemovalUnlocked(const ReplicateMsgPtr& msg);
 
   // Return a string with stats
   std::string StatsStringUnlocked() const;
@@ -172,7 +172,7 @@ class LogCache {
 
   // An ordered map that serves as the buffer for the cached messages.
   // Maps from log index -> ReplicateMsg
-  typedef std::map<uint64_t, ReplicateRefPtr> MessageCache;
+  typedef std::map<uint64_t, ReplicateMsgPtr> MessageCache;
   MessageCache cache_;
 
   // The next log index to append. Each append operation must either
