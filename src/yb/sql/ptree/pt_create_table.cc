@@ -151,7 +151,7 @@ CHECKED_STATUS PTCreateTable::AppendHashColumn(SemContext *sem_context,
 
 CHECKED_STATUS PTCreateTable::CheckPrimaryType(SemContext *sem_context,
                                                const PTBaseType::SharedPtr& datatype) {
-  if (!datatype->IsApplicableForPrimaryKey()) {
+  if (!YQLType::IsValidPrimaryType(datatype->yql_type()->main())) {
     return sem_context->Error(datatype->loc(), ErrorCode::INVALID_PRIMARY_COLUMN_TYPE);
   }
 

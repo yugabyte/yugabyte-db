@@ -10,6 +10,9 @@ namespace sql {
 
 using std::shared_ptr;
 using client::YBTable;
+using client::YBTableName;
+using client::YBColumnSchema;
+using client::YBSchema;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -30,6 +33,57 @@ SemContext::~SemContext() {
 
 //--------------------------------------------------------------------------------------------------
 
+CHECKED_STATUS SemContext::LookupTable(YBTableName name, shared_ptr<YBTable>* table,
+                                       MCVector<ColumnDesc>* table_columns,
+                                       int* num_key_columns, int* num_hash_key_columns,
+                                       bool* is_system, bool write_only, const YBLocation& loc) {
+  if (!name.has_namespace()) {
+    if (CurrentKeyspace().empty()) {
+      return Error(loc, ErrorCode::NO_NAMESPACE_USED);
+    }
+
+    name.set_namespace_name(CurrentKeyspace());
+  }
+
+  *is_system = name.is_system();
+  if (*is_system && write_only && client::FLAGS_yb_system_namespace_readonly) {
+    return Error(loc, ErrorCode::SYSTEM_NAMESPACE_READONLY);
+  }
+
+  VLOG(3) << "Loading table descriptor for " << name.ToString();
+  *table = GetTableDesc(name);
+  if (*table == nullptr) {
+    return Error(loc, ErrorCode::TABLE_NOT_FOUND);
+  }
+  set_current_table(*table);
+
+  const YBSchema& schema = (*table)->schema();
+  const int num_columns = schema.num_columns();
+  *num_key_columns = schema.num_key_columns();
+  *num_hash_key_columns = schema.num_hash_key_columns();
+
+  table_columns->resize(num_columns);
+  for (int idx = 0; idx < num_columns; idx++) {
+    // Find the column descriptor.
+    const YBColumnSchema col = schema.Column(idx);
+    (*table_columns)[idx].Init(idx,
+                             schema.ColumnId(idx),
+                             idx < *num_hash_key_columns,
+                             idx < *num_key_columns,
+                             col.is_static(),
+                             col.is_counter(),
+                             col.type(),
+                             YBColumnSchema::ToInternalDataType(col.type()));
+
+    // Insert the column descriptor to symbol table.
+    MCString col_name(col.name().c_str(), col.name().size(), PTreeMem());
+    RETURN_NOT_OK(MapSymbol(col_name, &(*table_columns)[idx]));
+  }
+
+  return Status::OK();
+
+}
+
 CHECKED_STATUS SemContext::MapSymbol(const MCString& name, PTColumnDefinition *entry) {
   if (symtab_[name].column_ != nullptr) {
     RETURN_NOT_OK(Error(entry->loc(), ErrorCode::DUPLICATE_COLUMN));
@@ -38,11 +92,19 @@ CHECKED_STATUS SemContext::MapSymbol(const MCString& name, PTColumnDefinition *e
   return Status::OK();
 }
 
+CHECKED_STATUS SemContext::MapSymbol(const MCString& name, PTAlterColumnDefinition *entry) {
+  if (symtab_[name].alter_column_ != nullptr) {
+    RETURN_NOT_OK(Error(entry->loc(), ErrorCode::DUPLICATE_COLUMN));
+  }
+  symtab_[name].alter_column_ = entry;
+  return Status::OK();
+}
+
 CHECKED_STATUS SemContext::MapSymbol(const MCString& name, PTCreateTable *entry) {
-  if (symtab_[name].table_ != nullptr) {
+  if (symtab_[name].create_table_ != nullptr) {
     RETURN_NOT_OK(Error(entry->loc(), ErrorCode::DUPLICATE_TABLE));
   }
-  symtab_[name].table_ = entry;
+  symtab_[name].create_table_ = entry;
   return Status::OK();
 }
 

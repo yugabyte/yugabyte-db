@@ -45,50 +45,8 @@ PTDmlStmt::~PTDmlStmt() {
 CHECKED_STATUS PTDmlStmt::LookupTable(SemContext *sem_context) {
   YBTableName name = table_name();
 
-  if (!name.has_namespace()) {
-    if (sem_context->CurrentKeyspace().empty()) {
-      return sem_context->Error(table_loc(), ErrorCode::NO_NAMESPACE_USED);
-    }
-
-    name.set_namespace_name(sem_context->CurrentKeyspace());
-  }
-
-  is_system_ = name.is_system();
-  if (is_system_ && write_only_ && client::FLAGS_yb_system_namespace_readonly) {
-    return sem_context->Error(table_loc(), ErrorCode::SYSTEM_NAMESPACE_READONLY);
-  }
-
-  VLOG(3) << "Loading table descriptor for " << name.ToString();
-  table_ = sem_context->GetTableDesc(name);
-  if (table_ == nullptr) {
-    return sem_context->Error(table_loc(), ErrorCode::TABLE_NOT_FOUND);
-  }
-  sem_context->set_current_table(table_);
-
-  const YBSchema& schema = table_->schema();
-  const int num_columns = schema.num_columns();
-  num_key_columns_ = schema.num_key_columns();
-  num_hash_key_columns_ = schema.num_hash_key_columns();
-
-  table_columns_.resize(num_columns);
-  for (int idx = 0; idx < num_columns; idx++) {
-    // Find the column descriptor.
-    const YBColumnSchema col = schema.Column(idx);
-    table_columns_[idx].Init(idx,
-                             schema.ColumnId(idx),
-                             idx < num_hash_key_columns_,
-                             idx < num_key_columns_,
-                             col.is_static(),
-                             col.is_counter(),
-                             col.type(),
-                             YBColumnSchema::ToInternalDataType(col.type()));
-
-    // Insert the column descriptor to symbol table.
-    MCString col_name(col.name().c_str(), col.name().size(), sem_context->PTreeMem());
-    RETURN_NOT_OK(sem_context->MapSymbol(col_name, &table_columns_[idx]));
-  }
-
-  return Status::OK();
+  return sem_context->LookupTable(name, &table_, &table_columns_, &num_key_columns_,
+                                  &num_hash_key_columns_, &is_system_, write_only_, table_loc());
 }
 
 // Node semantics analysis.
@@ -377,5 +335,5 @@ CHECKED_STATUS WhereExprState::AnalyzePartitionKeyOp(SemContext *sem_context,
   return Status::OK();
 }
 
-} // namespace sql
-} // namespace yb
+}  // namespace sql
+}  // namespace yb

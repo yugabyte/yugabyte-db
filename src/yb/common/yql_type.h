@@ -38,6 +38,9 @@ class YQLType {
   // Create primitive types, all builtin types except collection.
   static std::shared_ptr<YQLType> Create(DataType data_type);
 
+  // Check type methods.
+  static bool IsValidPrimaryType(DataType type);
+
   // Create map datatype.
   static std::shared_ptr<YQLType> CreateTypeMap(DataType key_type, DataType value_type);
   static std::shared_ptr<YQLType> CreateTypeMap() {

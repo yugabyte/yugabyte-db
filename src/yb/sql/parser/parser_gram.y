@@ -70,6 +70,7 @@
 #include "yb/sql/parser/parser_inactive_nodes.h"
 #include "yb/sql/ptree/pt_create_keyspace.h"
 #include "yb/sql/ptree/pt_use_keyspace.h"
+#include "yb/sql/ptree/pt_alter_table.h"
 #include "yb/sql/ptree/pt_create_table.h"
 #include "yb/sql/ptree/pt_drop.h"
 #include "yb/sql/ptree/pt_type.h"
@@ -208,6 +209,11 @@ using namespace yb::sql;
                           UpdateStmt
                           set_target_list
 
+                          // Alter table.
+                          AlterTableStmt
+                          addColumnDef dropColumn alterProperty
+                          renameColumn alterColumnType
+
                           // Keyspace related statements.
                           CreateSchemaStmt UseSchemaStmt
 
@@ -233,6 +239,11 @@ using namespace yb::sql;
                           // Create table clauses.
                           OptTableElementList TableElementList
                           ColQualList NestedColumnList columnList
+
+                          // Alter table commands.
+                          addColumnDefList dropColumnList alterPropertyList
+                          renameColumnList alterColumnTypeList
+                          alter_table_op alter_table_ops
 
 %type <PExpr>             // Expressions.
                           a_expr b_expr ctext_expr c_expr AexprConst columnref bindvar
@@ -348,7 +359,7 @@ using namespace yb::sql;
 %type <UndefType>         inactive_stmt inactive_schema_stmt
                           AlterEventTrigStmt AlterDatabaseStmt AlterDatabaseSetStmt AlterDomainStmt
                           AlterEnumStmt AlterFdwStmt AlterForeignServerStmt AlterObjectSchemaStmt
-                          AlterOwnerStmt AlterSeqStmt AlterSystemStmt AlterTableStmt
+                          AlterOwnerStmt AlterSeqStmt AlterSystemStmt InactiveAlterTableStmt
                           AlterTblSpcStmt AlterExtensionStmt AlterExtensionContentsStmt
                           AlterForeignTableStmt AlterCompositeTypeStmt AlterUserStmt
                           AlterUserMappingStmt AlterUserSetStmt AlterRoleStmt AlterRoleSetStmt
@@ -724,6 +735,9 @@ stmt:
     $$ = $1;
   }
   | DropStmt {
+    $$ = $1;
+  }
+  | AlterTableStmt {
     $$ = $1;
   }
   | SelectStmt {
@@ -1602,6 +1616,128 @@ type_name_list:
   Typename {
   }
   | type_name_list ',' Typename {
+  }
+;
+
+//--------------------------------------------------------------------------------------------------
+// ALTER TABLE statement.
+//--------------------------------------------------------------------------------------------------
+
+/* This structure is according to Apache Cassandra 3.0 CQL specs */
+AlterTableStmt:
+  ALTER TABLE relation_expr alter_table_ops {
+    $$ = MAKE_NODE(@1, PTAlterTable, $3, $4);
+  }
+  | InactiveAlterTableStmt {
+    PARSER_UNSUPPORTED(@1);
+  }
+;
+
+alter_table_ops:
+  alter_table_op {
+    $$ = $1;
+  }
+  | alter_table_ops alter_table_op {
+    $1->Splice($2);
+    $$ = $1;
+  }
+;
+
+alter_table_op:
+  ADD_P addColumnDefList {
+    $$ = $2;
+  }
+  | DROP dropColumnList {
+    $$ = $2;
+  }
+  | WITH alterPropertyList {
+    $$ = $2;
+  }
+  | RENAME renameColumnList {
+    $$ = $2;
+  }
+  | ALTER alterColumnTypeList {
+    $$ = $2;
+  }
+;
+
+addColumnDefList:
+  addColumnDef {
+    $$ = MAKE_NODE(@1, PTListNode, $1);
+  }
+  | addColumnDefList ',' addColumnDef {
+    $1->Append($3);
+    $$ = $1;
+  }
+;
+
+addColumnDef:
+  ColId Typename {
+    $$ = MAKE_NODE(@1, PTAlterColumnDefinition, nullptr, $1, $2, ALTER_ADD);
+  }
+;
+
+dropColumnList:
+  dropColumn {
+    $$ = MAKE_NODE(@1, PTListNode, $1);
+  }
+  | dropColumnList ',' dropColumn {
+    $1->Append($3);
+    $$ = $1;
+  }
+;
+
+dropColumn:
+  qualified_name {
+    $$ = MAKE_NODE(@1, PTAlterColumnDefinition, $1, nullptr, nullptr, ALTER_DROP);
+  }
+;
+
+renameColumnList:
+  renameColumn {
+    $$ = MAKE_NODE(@1, PTListNode, $1);
+  }
+  | renameColumnList ',' renameColumn {
+    $1->Append($3);
+    $$ = $1;
+  }
+;
+
+renameColumn:
+  qualified_name TO ColId {
+    $$ = MAKE_NODE(@1, PTAlterColumnDefinition, $1, $3, nullptr, ALTER_RENAME);
+  }
+;
+
+alterColumnTypeList:
+  alterColumnType {
+    $$ = MAKE_NODE(@1, PTListNode, $1);
+  }
+  | alterColumnTypeList ',' alterColumnType {
+    $1->Append($3);
+    $$ = $1;
+  }
+;
+
+alterColumnType:
+  qualified_name TYPE_P Typename {
+    $$ = MAKE_NODE(@1, PTAlterColumnDefinition, $1, nullptr, $3, ALTER_TYPE);
+  }
+;
+
+alterPropertyList:
+  alterProperty {
+    $$ = MAKE_NODE(@1, PTListNode, $1);
+  }
+  | alterPropertyList AND alterProperty {
+    $1->Append($3);
+    $$ = $1;
+  }
+;
+
+alterProperty:
+  property_name '=' IDENT {
+    $$ = MAKE_NODE(@1, PTAlterProperty, $1, $3);
   }
 ;
 
@@ -4939,7 +5075,6 @@ inactive_stmt:
   | AlterPolicyStmt
   | AlterSeqStmt
   | AlterSystemStmt
-  | AlterTableStmt
   | AlterTblSpcStmt
   | AlterCompositeTypeStmt
   | AlterRoleSetStmt
@@ -5441,10 +5576,8 @@ DiscardStmt:
  * out what's really legal at execution time.
  *****************************************************************************/
 
-AlterTableStmt:
-  ALTER TABLE relation_expr alter_table_cmds {
-  }
-  | ALTER TABLE IF_P EXISTS relation_expr alter_table_cmds {
+InactiveAlterTableStmt:
+  ALTER TABLE IF_P EXISTS relation_expr alter_table_cmds {
   }
   | ALTER TABLE ALL IN_P TABLESPACE name SET TABLESPACE name opt_nowait {
   }
@@ -8080,8 +8213,6 @@ RenameStmt:
   | ALTER FOREIGN TABLE relation_expr RENAME TO name {
   }
   | ALTER FOREIGN TABLE IF_P EXISTS relation_expr RENAME TO name {
-  }
-  | ALTER TABLE relation_expr RENAME opt_column name TO name {
   }
   | ALTER TABLE IF_P EXISTS relation_expr RENAME opt_column name TO name {
   }

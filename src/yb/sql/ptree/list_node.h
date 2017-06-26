@@ -54,6 +54,15 @@ class TreeListNode : public TreeNode {
     }
   }
 
+  // Move all listed entries from "tnode" to this node. The list in tnode will become empty after
+  // this call.
+  void Splice(const MCSharedPtr<TreeListNode>& tnode) {
+    if (tnode != nullptr) {
+      // tnode->node_list_ would be empty after this call to "splice".
+      node_list_.splice(node_list_.end(), tnode->node_list_);
+    }
+  }
+
   // Add a tree node at the beginning.
   void Prepend(const MCSharedPtr<NodeType>& tnode) {
     if (tnode != nullptr) {

@@ -11,6 +11,7 @@
 #include "yb/sql/ptree/process_context.h"
 #include "yb/sql/ptree/column_desc.h"
 #include "yb/sql/ptree/pt_create_table.h"
+#include "yb/sql/ptree/pt_alter_table.h"
 #include "yb/sql/ptree/sem_state.h"
 
 namespace yb {
@@ -22,8 +23,12 @@ struct SymbolEntry {
   // Parse tree node for column. It's used for table creation.
   PTColumnDefinition *column_;
 
+  // Parse tree node for column alterations.
+  PTAlterColumnDefinition *alter_column_;
+
   // Parse tree node for table. It's used for table creation.
-  PTCreateTable *table_;
+  PTCreateTable *create_table_;
+  PTAlterTable *alter_table_;
 
   // Column description. It's used for DML statements including select.
   // Not part of a parse tree, but it is allocated within the parse tree pool because it us
@@ -34,7 +39,9 @@ struct SymbolEntry {
   // data that are used during compilation but not execution should be declared here.
   ColumnDesc *column_desc_;
 
-  SymbolEntry() : column_(nullptr), table_(nullptr), column_desc_(nullptr) {
+  SymbolEntry()
+    : column_(nullptr), alter_column_(nullptr), create_table_(nullptr), alter_table_(nullptr),
+      column_desc_(nullptr) {
   }
 };
 
@@ -63,6 +70,7 @@ class SemContext : public ProcessContext {
   //------------------------------------------------------------------------------------------------
   // Symbol table support.
   CHECKED_STATUS MapSymbol(const MCString& name, PTColumnDefinition *entry);
+  CHECKED_STATUS MapSymbol(const MCString& name, PTAlterColumnDefinition *entry);
   CHECKED_STATUS MapSymbol(const MCString& name, PTCreateTable *entry);
   CHECKED_STATUS MapSymbol(const MCString& name, ColumnDesc *entry);
 
@@ -75,6 +83,13 @@ class SemContext : public ProcessContext {
   }
 
   //------------------------------------------------------------------------------------------------
+  // Load symbol table for DML and Alter Table.
+  CHECKED_STATUS LookupTable(client::YBTableName name, std::shared_ptr<client::YBTable>* table,
+                             MCVector<ColumnDesc>* table_columns,
+                             int* num_key_columns, int* num_hash_key_columns,
+                             bool* is_system, bool write_only, const YBLocation& loc);
+
+  //------------------------------------------------------------------------------------------------
   // Access functions to current processing table and column.
   PTColumnDefinition *current_column() {
     return current_processing_id_.column_;
@@ -84,11 +99,19 @@ class SemContext : public ProcessContext {
   }
 
   PTCreateTable *current_create_table_stmt() {
-    return current_processing_id_.table_;
+    return current_processing_id_.create_table_;
   }
 
   void set_current_create_table_stmt(PTCreateTable *table) {
-    current_processing_id_.table_ = table;
+    current_processing_id_.create_table_ = table;
+  }
+
+  PTAlterTable *current_alter_table() {
+    return current_processing_id_.alter_table_;
+  }
+
+  void set_current_alter_table(PTAlterTable *table) {
+    current_processing_id_.alter_table_ = table;
   }
 
   // Find table descriptor from metadata server.

@@ -12,6 +12,7 @@
 #include "yb/sql/ptree/pt_create_keyspace.h"
 #include "yb/sql/ptree/pt_use_keyspace.h"
 #include "yb/sql/ptree/pt_create_table.h"
+#include "yb/sql/ptree/pt_alter_table.h"
 #include "yb/sql/ptree/pt_drop.h"
 #include "yb/sql/ptree/pt_select.h"
 #include "yb/sql/ptree/pt_insert.h"
@@ -69,6 +70,9 @@ class Executor {
 
   // Creates table.
   void ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCallback cb);
+
+  // Alters table.
+  void ExecPTNodeAsync(const PTAlterTable *tnode, StatementExecutedCallback cb);
 
   void ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallback cb);
 

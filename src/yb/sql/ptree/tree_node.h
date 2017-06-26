@@ -27,6 +27,7 @@ enum class TreeNodeOpcode {
   kPTCreateKeyspace,
   kPTUseKeyspace,
   kPTCreateTable,
+  kPTAlterTable,
   kPTDropStmt,
   kPTSelectStmt,
   kPTInsertStmt,

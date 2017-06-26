@@ -275,9 +275,10 @@ class PTCreateTable : public TreeNode {
 
   CHECKED_STATUS AppendHashColumn(SemContext *sem_context, PTColumnDefinition *column);
 
-  CHECKED_STATUS CheckType(SemContext *sem_context, const PTBaseType::SharedPtr& datatype);
+  static CHECKED_STATUS CheckType(SemContext *sem_context, const PTBaseType::SharedPtr& datatype);
 
-  CHECKED_STATUS CheckPrimaryType(SemContext *sem_context, const PTBaseType::SharedPtr& datatype);
+  static CHECKED_STATUS CheckPrimaryType(SemContext *sem_context,
+                                         const PTBaseType::SharedPtr& datatype);
 
   // Table name.
   client::YBTableName yb_table_name() const {

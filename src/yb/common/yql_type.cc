@@ -94,6 +94,22 @@ shared_ptr<YQLType> YQLType::Create(DataType data_type) {
   }
 }
 
+bool YQLType::IsValidPrimaryType(DataType type) {
+  switch (type) {
+    case DataType::DOUBLE: FALLTHROUGH_INTENDED;
+    case DataType::FLOAT: FALLTHROUGH_INTENDED;
+    case DataType::BOOL:FALLTHROUGH_INTENDED;
+    case DataType::MAP: FALLTHROUGH_INTENDED;
+    case DataType::SET: FALLTHROUGH_INTENDED;
+    case DataType::LIST:
+      return false;
+    default:
+      // Let all other types go. Because we already process column datatype before getting here,
+      // just assume that they are all valid types.
+      return true;
+  }
+}
+
 shared_ptr<YQLType> YQLType::CreateTypeMap(DataType key_type, DataType value_type) {
   vector<shared_ptr<YQLType>> params = { YQLType::Create(key_type), YQLType::Create(value_type) };
   return CreateCollectionType<DataType::MAP>(params);
@@ -186,4 +202,4 @@ void YQLType::ToString(std::stringstream& os) const {
   }
 }
 
-} // namespace yb
+}  // namespace yb

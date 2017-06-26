@@ -123,6 +123,9 @@ void Executor::ExecTreeNodeAsync(const TreeNode *tnode, StatementExecutedCallbac
     case TreeNodeOpcode::kPTCreateTable:
       return ExecPTNodeAsync(static_cast<const PTCreateTable *>(tnode), std::move(cb));
 
+    case TreeNodeOpcode::kPTAlterTable:
+      return ExecPTNodeAsync(static_cast<const PTAlterTable *>(tnode), cb);
+
     case TreeNodeOpcode::kPTDropStmt:
       return ExecPTNodeAsync(static_cast<const PTDropStmt *>(tnode), std::move(cb));
 
@@ -296,6 +299,13 @@ void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCall
       Status::OK(),
       std::make_shared<SchemaChangeResult>(
           "CREATED", "TABLE", table_name.resolved_namespace_name(), table_name.table_name()));
+}
+
+//--------------------------------------------------------------------------------------------------
+
+void Executor::ExecPTNodeAsync(const PTAlterTable *tnode, StatementExecutedCallback cb) {
+
+  CB_RETURN(cb, Status::OK());
 }
 
 //--------------------------------------------------------------------------------------------------
