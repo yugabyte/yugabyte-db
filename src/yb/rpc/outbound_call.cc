@@ -108,7 +108,12 @@ OutboundCall::OutboundCall(
       trace_(new Trace),
       start_(MonoTime::Now(MonoTime::FINE)),
       outbound_call_metrics_(outbound_call_metrics) {
-  TRACE_TO(trace_, "Outbound Call initiated to $0", conn_id.ToString());
+  if (PREDICT_FALSE(VLOG_IS_ON(1))) {
+    TRACE_TO(trace_, "Outbound Call initiated to $0", conn_id.ToString());
+  } else {
+    // Avoid expensive conn_id.ToString() in production.
+    TRACE_TO(trace_, "Outbound Call initiated.");
+  }
   if (Trace::CurrentTrace()) {
     Trace::CurrentTrace()->AddChildTrace(trace_.get());
   }
