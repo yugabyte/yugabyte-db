@@ -7,22 +7,29 @@ Vagrant.configure(2) do |config|
 
     # Provision the VM
     config.vm.provision "shell", inline: <<-SHELL
+        # Setup environment
+        export PG_VERSION=9.6
+        export PG_VERSION_NODOT=96
+        export PG_PACKAGE=pgdg-centos${PG_VERSION_NODOT?}-${PG_VERSION?}-3.noarch.rpm
+        export PG_PATH=$PATH:/usr/pgsql-${PG_VERSION?}/bin
+
         # Install PostgreSQL
-        rpm -ivh http://yum.postgresql.org/9.6/redhat/rhel-7-x86_64/pgdg-centos96-9.6-3.noarch.rpm
-        yum install -y postgresql96-server
+        rpm -ivh http://yum.postgresql.org/${PG_VERSION?}/redhat/rhel-6-x86_64/${PG_PACKAGE?}
+        yum install -y postgresql${PG_VERSION_NODOT?}-server
 
         # Compile & install pgaudit
-        yum install -y postgresql96-devel gcc openssl-devel
-        bash -c 'export PATH="$PATH:/usr/pgsql-9.6/bin" && make -C /pgaudit install USE_PGXS=1'
+        cd /
+        yum install -y postgresql${PG_VERSION_NODOT?}-devel gcc openssl-devel
+        bash -c "export PATH='${PG_PATH?}' && make -C /pgaudit install USE_PGXS=1"
 
         # Create PostgreSQL cluster
-        sudo -u postgres /usr/pgsql-9.6/bin/initdb -A trust -k /var/lib/pgsql/9.6/data
-        echo "shared_preload_libraries = 'pgaudit'" >> /var/lib/pgsql/9.6/data/postgresql.conf
-        systemctl start postgresql-9.6
-        sudo -u postgres psql -X -c 'create user vagrant superuser'
+        sudo -u postgres /usr/pgsql-${PG_VERSION?}/bin/initdb -A trust -k /var/lib/pgsql/${PG_VERSION?}/data
+        echo "shared_preload_libraries = 'pgaudit'" >> /var/lib/pgsql/${PG_VERSION?}/data/postgresql.conf
+        systemctl start postgresql-${PG_VERSION?}
+        sudo -u postgres psql -Xc 'create user vagrant superuser' postgres
 
         # Test pgaudit
-        sudo -u vagrant bash -c 'export PATH="$PATH:/usr/pgsql-9.6/bin" && make -C /pgaudit installcheck USE_PGXS=1'
+        sudo -u vagrant bash -c "export PATH='${PG_PATH?}' && make -C /pgaudit installcheck USE_PGXS=1"
     SHELL
 
   # Don't share the default vagrant folder
