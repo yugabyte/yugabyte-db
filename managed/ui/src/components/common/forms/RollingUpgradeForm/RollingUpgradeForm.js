@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import {Field, FieldArray } from 'redux-form';
 import {Row, Col} from 'react-bootstrap';
 import { YBButton, YBModal, YBInputField, YBCheckBox, YBSelectWithLabel } from '../fields';
-import { isValidObject, isNonEmptyArray } from 'utils/ObjectUtils';
+import { isValidObject, isNonEmptyArray, isDefinedNotNull } from 'utils/ObjectUtils';
 
 class FlagInput extends Component {
   render() {
@@ -94,7 +94,7 @@ export default class RollingUpgradeForm extends Component {
   render() {
     var self = this;
     const {onHide, modalVisible, handleSubmit, universe: {visibleModal,
-           error, currentUniverse: {data: {universeDetails: {nodeDetailsSet}}}}, resetRollingUpgrade, softwareVersions} = this.props;
+           error, currentUniverse: {data: {universeDetails}}}, resetRollingUpgrade, softwareVersions} = this.props;
     const submitAction = handleSubmit(self.setRollingUpgradeProperties);
     var title = "";
     var formBody = <span/>;
@@ -123,6 +123,10 @@ export default class RollingUpgradeForm extends Component {
                  </span>
     }
 
+    let itemList = <span/>;
+    if (isDefinedNotNull(universeDetails) && isNonEmptyArray(universeDetails.nodeDetailsSet)) {
+      itemList = <ItemList nodeList={universeDetails.nodeDetailsSet}/>
+    }
     return (
       <YBModal visible={modalVisible} formName={"RollingUpgradeForm"}
                onHide={formCloseAction} title={title} onFormSubmit={submitAction} error={error}>
@@ -130,7 +134,7 @@ export default class RollingUpgradeForm extends Component {
         <Col lg={12} className="form-section-title">
           Nodes
         </Col>
-        <ItemList nodeList={nodeDetailsSet}/>
+        {itemList}
       </YBModal>
     )
   }
