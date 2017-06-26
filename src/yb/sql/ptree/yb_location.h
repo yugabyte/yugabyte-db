@@ -43,13 +43,11 @@ class YBLocation : public MCBase {
   virtual int EndColumn() const = 0;
 
   // Convert to string for printing messages.
+  // In general, we only need to record the starting location of a token where error occurs.
   template<typename StringType>
-  void ToString(StringType *msg) const {
-    // In general, we only need to record the starting location of a token where error occurs.
-    constexpr bool kRecordStartingLocationOnly = true;
-
+  void ToString(StringType *msg, bool starting_location_only = true) const {
     char temp[4096];
-    if (kRecordStartingLocationOnly) {
+    if (starting_location_only) {
       snprintf(temp, sizeof(temp), "%d.%d", BeginLine(), BeginColumn());
     } else if (BeginLine() == EndLine()) {
       if (BeginColumn() == EndColumn()) {

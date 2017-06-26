@@ -61,37 +61,90 @@ CHECKED_STATUS ProcessContextBase::Error(const YBLocation& l,
   // Form an error message.
   MCString msg(PTempMem());
 
-  // Start with location.
-  msg += "SQL Error (";
-  l.ToString<MCString>(&msg);
-  msg += "): ";
-
   // Concatenate error code.
   msg += ErrorText(error_code);
-  msg += " - ";
 
-  // Concatenate error message.
-  msg += m;
+  if (strcmp(m, "") != 0) {
+    msg += " - ";
+    // Concatenate error message.
+    msg += m;
+  }
 
   // Concantenate token.
-  msg += "\n\t";
+  msg += "\n";
   if (token == nullptr) {
-    const pair<const char *, const size_t> token_bounds = ReadToken(l);
-    if (token_bounds.first != nullptr) {
-      msg += token_bounds.first;
-      msg += "\n\t";
+    const int err_begin_line = l.BeginLine();
+    const int err_begin_column = l.BeginColumn();
+    const int err_end_line = l.EndLine();
+    const int err_end_column = l.EndColumn();
 
-      // Concantenate pointer to erroneous token.
-      msg.append(token_bounds.second, '^');
+    int curr_line = 1;
+    int curr_col = 1;
+    const char *curr_char = stmt_;
+    bool wrote_token = false;
+
+    while (curr_char <= stmt_ + stmt_len_) {
+      if (curr_char == stmt_ + stmt_len_ || *curr_char == '\n') { // end of line
+        msg += '\n';
+
+        // If in error-token range, try writing line marking error location with '^'
+        if (curr_line >= err_begin_line && curr_line <= err_end_line) {
+          const char *line_start = curr_char - curr_col + 1;
+          const char *line_end = curr_char - 1;
+
+          // finding token start - left-trim spaces
+          const char *start = line_start;
+          if (curr_line == err_begin_line) {
+            start += err_begin_column - 1;
+          }
+          if (!wrote_token) {
+            while (start < line_end && isspace(*start)) {
+              start++;
+            }
+          }
+
+          // finding token end - right-trim spaces
+          const char *end = line_end;
+          if (curr_line == err_end_line) {
+            end = line_start + err_end_column - 1;
+            while (end > start && isspace(*end - 1)) {
+              end--;
+            }
+          }
+
+          // if found a valid token range write a marker line
+          if (end > start) {
+            msg.append(start - line_start, ' ');
+            msg.append(end - start, '^');
+            msg += '\n';
+            wrote_token = true;
+          }
+        }
+
+        curr_line++;
+        curr_col = 1;
+      } else {
+        msg += *curr_char;
+        curr_col++;
+      }
+      curr_char++;
+    }
+
+    // In rare cases Bison reports the wrong error location which may contain only spaces and be
+    // skipped entirely because of the trimming done above.
+    // In that case we append the reported location directly
+    if (!wrote_token) {
+      msg += "At location: (";
+      l.ToString<MCString>(&msg, false /* starting_location_only */);
+      msg += ")\n";
     }
   } else {
     msg += token;
   }
-  msg += "\n";
 
   // Append this error message to the context.
   error_msgs()->append(msg);
-  VLOG(3) << msg;
+  LOG(ERROR) << "SQL Error: " << msg;
   return STATUS(SqlError, msg.c_str(), Slice(), static_cast<int64_t>(error_code_));
 }
 
@@ -106,51 +159,6 @@ CHECKED_STATUS ProcessContextBase::Error(const YBLocation& l,
 }
 
 //--------------------------------------------------------------------------------------------------
-
-const pair<const char *, const size_t> ProcessContextBase::ReadToken(const YBLocation& l) {
-  const int err_begin_line = l.BeginLine();
-  const int err_begin_column = l.BeginColumn();
-  const int err_end_line = l.EndLine();
-  const int err_end_column = l.EndColumn();
-
-  // Find the start of erroneous token.
-  int line = 1;
-  const char *line_start = stmt_;
-  while (line < err_begin_line) {
-    line_start = strchr(line_start, '\n');
-    if (line_start == nullptr) {
-      return make_pair(nullptr, 0);
-    }
-    line_start++;
-    line++;
-  }
-  const char *start = line_start + err_begin_column - 1;
-  if (start > stmt_ + stmt_len_) {
-    return make_pair(nullptr, 0);
-  }
-  while (isspace(*start)) {
-    start++;
-  }
-
-  // Find the end of erroneous token.
-  while (line < err_end_line) {
-    line_start = strchr(line_start, '\n');
-    if (line_start == nullptr) {
-      return make_pair(nullptr, 0);
-    }
-    line_start++;
-    line++;
-  }
-  const char *end = line_start + err_end_column - 1;
-  if (end > stmt_ + stmt_len_) {
-    return make_pair(nullptr, 0);
-  }
-  while (end > start && isspace(*(end-1))) {
-    end--;
-  }
-
-  return make_pair(start, end - start);
-}
 
 //--------------------------------------------------------------------------------------------------
 // ProcessContext

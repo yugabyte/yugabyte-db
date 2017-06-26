@@ -20,7 +20,7 @@ class YbSqlDropTable : public YbSqlTestBase {
   }
 
   inline const string CqlError(int pos, string last = "") {
-    return "SQL Error (1." + std::to_string(pos) + "): Invalid CQL Statement" + last;
+    return "Invalid CQL Statement" + last;
   }
 };
 
@@ -34,7 +34,7 @@ TEST_F(YbSqlDropTable, TestSqlDropTable) {
   const string create_stmt = "CREATE TABLE human_resource1(id int primary key, name varchar);";
   const string drop_stmt = "DROP TABLE human_resource1";
   const string drop_cond_stmt = "DROP TABLE IF EXISTS human_resource1";
-  const string not_found_drop_error = "SQL Error (1.11): Table Not Found";
+  const string not_found_drop_error = "Table Not Found";
 
   // No tables exist at this point. Verify that this statement fails.
   EXEC_INVALID_DROP_STMT(drop_stmt, not_found_drop_error);
@@ -73,8 +73,7 @@ TEST_F(YbSqlDropTable, TestSqlDropKeyspace) {
     const string create_stmt = "CREATE " + object + " test;";
     const string drop_stmt = "DROP " + object + " test;";
     const string drop_cond_stmt = "DROP " + object + " IF EXISTS test;";
-    const string not_found_drop_error = "SQL Error (1."
-        + std::to_string((string(" DROP ") + object).size()) + "): Keyspace Not Found";
+    const string not_found_drop_error = "Keyspace Not Found";
 
     // No keyspaces exist at this point. Verify that this statement fails.
     EXEC_INVALID_DROP_STMT(drop_stmt, not_found_drop_error);

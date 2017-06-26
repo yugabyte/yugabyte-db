@@ -45,8 +45,6 @@ class ProcessContextBase {
   CHECKED_STATUS Error(const YBLocation& l, const char *m, const char* token = nullptr);
   CHECKED_STATUS Error(const YBLocation& l, ErrorCode error_code, const char* token = nullptr);
 
-  // Returns the token at YBLocation 'l' of the input SQL statement stmt_.
-  const pair<const char *, const size_t> ReadToken(const YBLocation& l);
 
   // Memory pool for allocating and deallocating operating memory spaces during a process.
   MemoryContext *PTempMem() const {

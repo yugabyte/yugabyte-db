@@ -1459,14 +1459,20 @@ TEST_F(YbSqlQuery, TestScanWithBounds) {
 
 }
 
-TEST_F(YbSqlQuery, TestSelectOne) {
+TEST_F(YbSqlQuery, TestInvalidGrammar) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();
 
+  CHECK_INVALID_STMT("SELECT;");
   CHECK_INVALID_STMT("SELECT 1;");
+  CHECK_INVALID_STMT("SELECT count ;");
+  CHECK_INVALID_STMT("SELECT \n   \n;");
+  CHECK_INVALID_STMT("SELECT \n  \n from \n \n \n ;");
+  CHECK_INVALID_STMT("SELECT * \n \n \n  from \n \n ;");
+  CHECK_INVALID_STMT("SELECT * from \"long \n  multiline table  name wi\nth  spaces   \"  \n ;");
 }
 
 } // namespace sql
