@@ -5,7 +5,7 @@ import { Col } from 'react-bootstrap';
 import moment from 'moment';
 import { DescriptionItem, YBFormattedNumber } from '../../common/descriptors';
 import { getPromiseState } from 'utils/PromiseUtils';
-
+import {YBLoadingIcon} from '../../common/indicators';
 import './HighlightedStatsPanel.css'
 
 class StatsPanelComponent extends Component {
@@ -31,9 +31,13 @@ export default class HighlightedStatsPanel extends Component {
     const { universe: { universeList } } = this.props;
     var numNodes = 0;
     var totalCost = 0;
-    if (getPromiseState(universeList).isEmpty() || getPromiseState(universeList).isInit()) {
+    if (getPromiseState(universeList).isLoading()) {
+      return <YBLoadingIcon/>;
+    }
+    if (!(getPromiseState(universeList).isSuccess() || getPromiseState(universeList).isEmpty())) {
       return <span/>
     }
+
     universeList.data.forEach(function (universeItem) {
       numNodes += universeItem.universeDetails.userIntent.numNodes;
       totalCost += universeItem.pricePerHour * 24 * moment().daysInMonth();

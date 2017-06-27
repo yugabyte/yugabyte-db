@@ -59,9 +59,8 @@ var editCustomerProfile = reduxForm({
 
 
 function mapStateToProps(state) {
-
   return {
-    customer: state.customer && state.customer.customer ? state.customer.customer : null,
+    customer: state.customer.currentCustomer.data,
     customerProfile: state.customer ? state.customer.profile : null
   };
 }

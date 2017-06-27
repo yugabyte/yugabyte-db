@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import LoginForm from './LoginForm';
-import {login, loginSuccess, loginFailure } from '../../../../actions/customers';
+import {login, loginResponse } from '../../../../actions/customers';
 import { reduxForm } from 'redux-form';
 import { connect } from 'react-redux';
 
@@ -23,22 +23,19 @@ function validate(values) {
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    loginCustomer: (formValues)=> {
-      dispatch(login(formValues))
-        .then((response) => {
-          if(response.payload.status !== 200) {
-            dispatch(loginFailure(response.payload));
-          } else {
-            localStorage.setItem('customer_token', response.payload.data.authToken);
-            localStorage.setItem('customer_id',response.payload.data.customerUUID);
-            dispatch(loginSuccess(response.payload));
-          }
-        });
+    loginCustomer: (formValues) => {
+      dispatch(login(formValues)).then((response) => {
+        if (response.payload.status === 200) {
+          localStorage.setItem('customer_token', response.payload.data.authToken);
+          localStorage.setItem('customer_id',response.payload.data.customerUUID);
+        }
+        dispatch(loginResponse(response.payload));
+      });
     }
   }
 }
 
-function mapStateToProps(state, ownProps) {
+function mapStateToProps(state) {
   return {
     customer: state.customer
   };

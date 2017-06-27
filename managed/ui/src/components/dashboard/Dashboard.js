@@ -10,6 +10,7 @@ import './stylesheets/Dashboard.css'
 export default class Dashboard extends Component {
 
   render() {
+    const {universe: {universeList}} = this.props;
     return (
       <div id="page-wrapper" className="dashboard-container">
         <UniverseDisplayPanelContainer {...this.props}/>

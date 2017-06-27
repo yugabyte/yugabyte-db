@@ -2,8 +2,7 @@
 
 import React from 'react';
 import { Route, IndexRoute, browserHistory } from 'react-router';
-import { validateToken, validateTokenSuccess,
-  validateTokenFailure, fetchCustomerCount } from './actions/customers';
+import { validateToken, validateFromTokenResponse, fetchCustomerCount, resetCustomer } from './actions/customers';
 import App from './app/App';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -36,13 +35,12 @@ function validateSession(store, replacePath, callback) {
   } else {
     store.dispatch(validateToken(token))
       .then((response) => {
-        if (!response.error) {
-          store.dispatch(validateTokenSuccess(response.payload));
-        } else {
+        store.dispatch(validateFromTokenResponse(response.payload));
+        if (response.payload.status !== 200) {
+          store.dispatch(resetCustomer());
           localStorage.clear();
           browserHistory.push('/login');
           callback();
-          store.dispatch(validateTokenFailure(response.payload));
         }
       });
   }

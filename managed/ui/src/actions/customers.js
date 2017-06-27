@@ -5,18 +5,17 @@ import { ROOT_URL } from '../config';
 
 // Get current user(me) from token in localStorage
 export const VALIDATE_FROM_TOKEN = 'VALIDATE_FROM_TOKEN';
-export const VALIDATE_FROM_TOKEN_SUCCESS = 'VALIDATE_FROM_TOKEN_SUCCESS';
-export const VALIDATE_FROM_TOKEN_FAILURE = 'VALIDATE_FROM_TOKEN_FAILURE';
+export const VALIDATE_FROM_TOKEN_RESPONSE = 'VALIDATE_FROM_TOKEN_RESPONSE';
 
 // Sign Up Customer
 export const REGISTER = 'REGISTER';
-export const REGISTER_SUCCESS = 'REGISTER_SUCCESS';
-export const REGISTER_FAILURE = 'REGISTER_FAILURE';
+export const REGISTER_RESPONSE = 'REGISTER_RESPONSE';
 
 // Sign In Customer
 export const LOGIN = 'LOGIN';
-export const LOGIN_SUCCESS = 'LOGIN_SUCCESS';
-export const LOGIN_FAILURE = 'LOGIN_FAILURE';
+export const LOGIN_RESPONSE = 'LOGIN_RESPONSE';
+
+export const RESET_CUSTOMER = 'RESET_CUSTOMER';
 
 // log out Customer
 export const LOGOUT = 'LOGOUT';
@@ -50,18 +49,11 @@ export function validateToken(tokenFromStorage) {
   };
 }
 
-export function validateTokenSuccess(currentUser) {
+export function validateFromTokenResponse(response) {
   return {
-    type: VALIDATE_FROM_TOKEN_SUCCESS,
-    payload: currentUser.data
-  };
-}
-
-export function validateTokenFailure(error) {
-  return {
-    type: VALIDATE_FROM_TOKEN_FAILURE,
-    payload: error
-  };
+    type: VALIDATE_FROM_TOKEN_RESPONSE,
+    payload: response
+  }
 }
 
 export function register(formValues) {
@@ -72,44 +64,27 @@ export function register(formValues) {
   };
 }
 
-export function registerSuccess(customer) {
+export function registerResponse(response) {
   return {
-    type: REGISTER_SUCCESS,
-    payload: customer
-  };
+    type: REGISTER_RESPONSE,
+    payload: response
+  }
 }
-
-export function registerFailure(error) {
-  return {
-    type: REGISTER_FAILURE,
-    payload: error
-  };
-}
-
 
 export function login(formValues) {
   const request = axios.post(`${ROOT_URL}/login`, formValues);
-
   return {
     type: LOGIN,
     payload: request
   };
 }
 
-export function loginSuccess(customer) {
+export function loginResponse(response) {
   return {
-    type: LOGIN_SUCCESS,
-    payload: customer
-  };
+    type: LOGIN_RESPONSE,
+    payload: response
+  }
 }
-
-export function loginFailure(error) {
-  return {
-    type: LOGIN_FAILURE,
-    payload: error
-  };
-}
-
 export function logout() {
   const request = axios.get(`${ROOT_URL}/logout`);
   return {
@@ -128,6 +103,12 @@ export function logoutFailure(error) {
   return {
     type: LOGOUT_FAILURE,
     payload: error
+  }
+}
+
+export function resetCustomer() {
+  return {
+    type: RESET_CUSTOMER
   }
 }
 
