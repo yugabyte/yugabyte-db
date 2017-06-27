@@ -1,9 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, PropTypes } from 'react';
+import React, { Component } from 'react';
 import { PageHeader } from 'react-bootstrap';
 import { Field } from 'redux-form';
 import { YBButton, YBInputField } from '../fields';
+import {getPromiseState} from 'utils/PromiseUtils';
 import YBLogo from '../../YBLogo/YBLogo';
 import {browserHistory} from 'react-router';
 
@@ -19,15 +20,14 @@ class LoginForm extends Component {
   }
 
   componentWillReceiveProps(nextProps) {
-    if (nextProps.customer.status === 'authenticated' &&
-        nextProps.customer.customer &&
-        !nextProps.customer.error) {
-        browserHistory.push('/');
+    const {customer: {authToken}} =  nextProps;
+    if (getPromiseState(authToken).isSuccess()) {
+      browserHistory.push('/');
     }
   }
 
   render() {
-    const { handleSubmit, submitting } = this.props;
+    const { handleSubmit, submitting, customer: {authToken} } = this.props;
     return (
       <div className="container full-height dark-background flex-vertical-middle">
         <div className="col-sm-5 dark-form">
@@ -36,9 +36,8 @@ class LoginForm extends Component {
             <span>Admin Console</span>
           </PageHeader>
           <form onSubmit={handleSubmit(this.submitLogin)}>
-            <div className={`alert alert-danger form-error-alert
-              ${this.props.customer.error ? '': 'hide'}`}>
-                {<strong>{this.props.customer.error}</strong>}
+            <div className={`alert alert-danger form-error-alert ${authToken.error ? '': 'hide'}`}>
+              {<strong>{JSON.stringify(authToken.error)}</strong>}
             </div>
 
             <div className="form-right-aligned-labels">
@@ -46,7 +45,8 @@ class LoginForm extends Component {
               <Field name="password" type="password" component={YBInputField} label="Password" />
             </div>
             <div className="clearfix">
-              <YBButton btnType="submit" btnDisabled={submitting} btnClass="btn btn-default bg-orange pull-right" btnText="Login"/>
+              <YBButton btnType="submit" btnDisabled={submitting || getPromiseState(authToken).isLoading()}
+                        btnClass="btn btn-default bg-orange pull-right" btnText="Login"/>
             </div>
           </form>
         </div>

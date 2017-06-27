@@ -33,20 +33,21 @@ export default class UniverseRegionLocationPanel extends Component {
 
     var completeRegionList = cloud.supportedRegionList.data.filter((region) => self.state.selectedProviders.includes(region.provider.code));
     var universeListByRegions = {};
-
-    universeList.data.forEach(function(universeItem){
-      if (isNonEmptyArray(universeItem.regions)) {
-        universeItem.regions.forEach(function (regionItem) {
-          if (isValidObject(regionItem.uuid)) {
-            if (universeListByRegions.hasOwnProperty(regionItem.uuid)) {
-              universeListByRegions[regionItem.uuid].push(universeItem);
-            } else {
-              universeListByRegions[regionItem.uuid] = [universeItem];
+    if (getPromiseState(universeList).isSuccess()) {
+      universeList.data.forEach(function (universeItem) {
+        if (isNonEmptyArray(universeItem.regions)) {
+          universeItem.regions.forEach(function (regionItem) {
+            if (isValidObject(regionItem.uuid)) {
+              if (universeListByRegions.hasOwnProperty(regionItem.uuid)) {
+                universeListByRegions[regionItem.uuid].push(universeItem);
+              } else {
+                universeListByRegions[regionItem.uuid] = [universeItem];
+              }
             }
-          }
-        });
-      }
-    });
+          });
+        }
+      });
+    }
     completeRegionList.forEach(function(completeRegionItem, crIdx){
       delete completeRegionList[crIdx].universes;
       Object.keys(universeListByRegions).forEach(function(regionKey){

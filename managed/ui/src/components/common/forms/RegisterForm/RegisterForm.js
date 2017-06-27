@@ -1,11 +1,12 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, PropTypes } from 'react';
+import React, { Component } from 'react';
 import { PageHeader } from 'react-bootstrap';
 import { Field } from 'redux-form';
 import { YBButton, YBInputField } from '../fields';
 import YBLogo from '../../YBLogo/YBLogo';
 import {browserHistory} from 'react-router';
+import {getPromiseState} from 'utils/PromiseUtils';
 
 class RegisterForm extends Component {
   constructor(props) {
@@ -14,7 +15,8 @@ class RegisterForm extends Component {
   }
 
   componentWillReceiveProps(nextProps) {
-    if(nextProps.customer.status === 'authenticated' && nextProps.customer.customer && !nextProps.customer.error) {
+    const {customer: {authToken}} =  nextProps;
+    if (getPromiseState(authToken).isSuccess()) {
       browserHistory.push('/');
     }
   }
@@ -25,7 +27,8 @@ class RegisterForm extends Component {
   }
 
   render() {
-    const { handleSubmit, submitting } = this.props;
+    const { handleSubmit, submitting, customer: {authToken} } = this.props;
+
     return (
       <div className="container full-height dark-background flex-vertical-middle">
         <div className="col-sm-6 dark-form">
@@ -34,9 +37,8 @@ class RegisterForm extends Component {
             <span>Admin Console Registration</span>
           </PageHeader>
           <form onSubmit={handleSubmit(this.props.registerCustomer.bind(this))}>
-            <div className={`alert alert-danger form-error-alert
-              ${this.props.customer.error ? '': 'hide'}`}>
-                {<strong>{this.props.customer.error}</strong>}
+            <div className={`alert alert-danger form-error-alert ${authToken.error ? '': 'hide'}`}>
+                {<strong>{JSON.stringify(authToken.error)}</strong>}
             </div>
             <div className="form-right-aligned-labels">
               <Field name="name" type="text" component={YBInputField} label="Full Name"/>
@@ -45,7 +47,8 @@ class RegisterForm extends Component {
               <Field name="confirmPassword" type="password" component={YBInputField} label="Confirm Password"/>
             </div>
             <div className="clearfix">
-              <YBButton btnType="submit" btnDisabled={submitting} btnClass="btn btn-default bg-orange pull-right" btnText="Register"/>
+              <YBButton btnType="submit" btnDisabled={submitting || getPromiseState(authToken).isLoading()}
+                        btnClass="btn btn-default bg-orange pull-right" btnText="Register"/>
             </div>
           </form>
         </div>
