@@ -82,7 +82,7 @@ If the error shown above is displayed, explicitly cast the column to NCHAR VARYI
 
 **Syntax**
 
-![NVARCHAR2](gif/NVARCHAR2.gif)
+![DATE](gif/DATE.gif)
 
 
 
