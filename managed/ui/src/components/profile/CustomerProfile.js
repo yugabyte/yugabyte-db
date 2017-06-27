@@ -4,6 +4,7 @@ import React, { Component } from 'react';
 import { Col } from 'react-bootstrap';
 import {YBInputField, YBButton} from '../common/forms/fields'
 import { Field } from 'redux-form';
+import _ from 'lodash';
 
 export default class CustomerProfile extends Component {
   constructor(props) {
@@ -16,7 +17,7 @@ export default class CustomerProfile extends Component {
   }
 
   componentWillReceiveProps(nextProps) {
-    if (!this.props.customer && nextProps.customer) {
+    if (!_.isEqual(this.props.customer, nextProps.customer)) {
       this.props.change("email", nextProps.customer.email);
       this.props.change("name", nextProps.customer.name);
     }
@@ -40,7 +41,7 @@ export default class CustomerProfile extends Component {
             <div className="panel-body">
               <form name="EditCustomerProfile" onSubmit={handleSubmit(this.props.updateCustomerDetails)}>
                 <Field name="name" type="text" component={YBInputField} label="Full Name" placeHolder="Full Name"/>
-                <Field name="email" type="email" component={YBInputField} isReadOnly={true} label="Email" placeHolder="Email Address"/>
+                <Field name="email" type="text" component={YBInputField} isReadOnly={true} label="Email" placeHolder="Email Address"/>
                 <Field name="password" type="password" component={YBInputField} label="Password" placeHolder="Enter New Password"/>
                 <Field name="confirmPassword" type="password" component={YBInputField} label="Confirm Password" placeHolder="Confirm New Password"/>
                 <YBButton btnText="Save" btnType="submit" disabled={submitting} btnClass="btn btn-default bg-orange pull-right"/>

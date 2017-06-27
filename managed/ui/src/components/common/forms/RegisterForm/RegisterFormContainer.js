@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import RegisterForm from './RegisterForm';
-import {register, registerSuccess, registerFailure } from '../../../../actions/customers';
+import {register, registerResponse } from '../../../../actions/customers';
 import { reduxForm } from 'redux-form';
 import { connect } from 'react-redux';
 
@@ -42,20 +42,18 @@ const mapDispatchToProps = (dispatch) => {
   return {
     registerCustomer: (formVals)=> {
       dispatch(register(formVals)).then((response) => {
-        if(response.payload.status !== 200) {
-          dispatch(registerFailure(response.payload));
-        } else {
+        if (response.payload.status === 200) {
           localStorage.setItem('customer_token', response.payload.data.authToken);
-          localStorage.setItem('customer_id',response.payload.data.customerUUID);
-          dispatch(registerSuccess(response.payload));
+          localStorage.setItem('customer_id', response.payload.data.customerUUID);
         }
+        dispatch(registerResponse(response.payload));
       });
     }
   }
 }
 
 
-function mapStateToProps(state, ownProps) {
+function mapStateToProps(state) {
   return {
     customer: state.customer,
     validateFields: state.validateFields
