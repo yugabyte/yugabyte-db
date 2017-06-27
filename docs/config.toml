@@ -48,7 +48,7 @@ googleAnalytics = ""
 	weight = 0
 
 [[menu.main]]
-	name   = "Get started (Single node)"
+	name   = "Get started (No Admin Console)"
 	url    = "get-started-dev/"
 	weight = 10
 

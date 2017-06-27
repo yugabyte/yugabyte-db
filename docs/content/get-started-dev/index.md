@@ -1,6 +1,6 @@
 ---
 date: 2016-03-09T00:11:02+01:00
-title: Get started (Single-node)
+title: Get started (No Admin Console, manage a single node only)
 weight: 10
 ---
 
