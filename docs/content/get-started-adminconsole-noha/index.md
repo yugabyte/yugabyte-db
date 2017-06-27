@@ -103,23 +103,23 @@ Open http://localhost:8080 in your browser and login to the admin console with t
 - Review logs of the YugaWare container
 
 ```sh
-docker logs yugaware
+$ docker logs yugaware
 ```
 
 - Open a bash shell inside the YugaWare container.
 
 ```sh
-docker exec -it yugaware bash
+$ docker exec -it yugaware bash
 ```
 
 - Stop and remove all the container instances
 
 ```sh
-docker rm -f $(docker ps -aq)
+$ docker rm -f $(docker ps -aq)
 ```
 
 - Upgrade all the containers used in the YugaWare app
 
 ```sh
-docker-compose pull 
+$ docker-compose pull 
 ```
