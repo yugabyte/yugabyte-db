@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T20:08:11+01:00
 title: Learn
-weight: 40
+weight: 60
 ---
 
 ## Linearly scalable
@@ -25,7 +25,7 @@ Writes (and data replication in general) are always strongly consistent in YugaB
 
 ## Tunably consistent reads
 
-YugaByte enables a spectrum of consistency options when it comes to reads while keeping writes always strongly consistent via sync replication (based on Raft distributed consensus). The read consistency options that can be set on a per client basis are Strong (default), Bounded staleness, Session, Consistent Prefix. 
+YugaByte enables a spectrum of consistency options when it comes to reads while keeping writes always strongly consistent via sync replication (based on Raft distributed consensus). The read consistency options that can be set on a per client basis are Strong (default), Bounded staleness, Session, Consistent Prefix. Eventual consistency is not supported given that such a consistency level is not appropriate for mission-critical applications.
 
 Given the use of distributed consensus where reads are either served only by one single node (either by the leader for strong consistency level or by a follower for all other consistency levels), YugaByte reads are 3x faster compared to a traditional NoSQL database that uses quorum to establish the same consistency levels. 
 
@@ -37,5 +37,5 @@ YugaByte’s unique distributed storage and replication architecture provides hi
 
 ## YugaWare
 
-An integral part of YugaByte is YugaWare, it’s admin console responsible for all day-to-day operations. Through its built-in orchestration capabilities, YugaWare handles cluster management functions such as create, expand, shrink universe for all supported cloud providers including on-premises data centers. These operations are available via the UI for new users as well as a REST API for advanced users needing programmable deployments. It also provides performance and availability monitoring based on metrics (pulled from Prometheus metric exporters running on each instance) and health checks.
+An integral part of YugaByte is YugaWare, it’s admin console responsible for all day-to-day operations. Through its built-in orchestration capabilities, YugaWare handles cluster management functions such as create, expand, shrink universe for all supported cloud providers including on-premises datacenters. These operations are available via the UI for new users as well as a REST API for advanced users needing programmable deployments. It also provides performance and availability monitoring based on metrics (pulled from Prometheus metric exporters running on each instance) and health checks.
 

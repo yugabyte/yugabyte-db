@@ -1,10 +1,10 @@
 ---
 date: 2016-03-09T00:11:02+01:00
-title: Get started (Development)
+title: Get started (Single-node)
 weight: 10
 ---
 
-Getting started with YugaByte in a developer's **localhost** environment is easy. Simply run the YugaByte DB docker container with the instructions below and you will have a Apache Cassandra server running on your localhost's port 9042 (the default CQL port) in no time.
+Getting started with YugaByte in a developer's **localhost** environment is easy. Simply run the single-node YugaByte DB docker container with the instructions below and you will have a Apache Cassandra server running on your localhost's port 9042 (the default CQL port) in no time.
 
 ## Prerequisites
 
@@ -17,7 +17,7 @@ Getting started with YugaByte in a developer's **localhost** environment is easy
 - Confirm that the Docker daemon is running in the background. If you don't see the daemon running, start the Docker application
 
 ```sh
-docker version
+$ docker version
 ```
 
 #### Linux
@@ -31,32 +31,33 @@ Docker for Linux requires sudo privileges.
 - Confirm that the Docker daemon is running in the background. If you don't see the daemon running, start the Docker daemon.
 
 ```sh
-sudo su 
-docker version
+$ sudo su 
+$ docker version
 ```
+
 
 ## Install
 
-- Create a free Docker ID for yourself at [Docker Hub](https://hub.docker.com/), Docker's official hosted registry.
+- YugaByte's container images are stored at Quay.io, a leading container registry. Create your free Quay.io account at [Quay.io](https://quay.io/signin/).
 
-- Send email to [YugaByte Support](mailto:support@yugabyte.com) noting your Docker ID username. This is to ensure that the YugaByte DB docker image can be privately shared with you.
+- Send email to [YugaByte Support](mailto:support@yugabyte.com) noting your Quay.io username. This is to ensure that the YugaByte DB docker image can be privately shared with you.
 
-- Login to Docker from your command line. Detailed instructions [here](https://docs.docker.com/engine/reference/commandline/login/). 
+- Login to Quay.io from your command line. Detailed instructions [here](https://docs.quay.io/solution/getting-started.html). 
 
 ```sh
-docker login --username <your-dockerhub-username>
+$ docker login quay.io -u <your-quay-id> -p <your-quay-password>
 ```
 
 - Pull the YugaByte DB docker image
 
 ```sh
-docker pull ybadmin/yugabyte-db
+$ docker pull quay.io/yugabyte/local-db
 ```
 
 - Start the YugaByte DB
 
 ```sh
-docker run -p 9042:9042 -p 7001-7003:7001-7003 -p 9001-9003:9001-9003 --name yugabyte-db --rm -d ybadmin/yugabyte-db
+$ docker run -p 9042:9042 -p 7001:7001 -p 9001:9001 --name yugabyte-db --rm -d quay.io/yugabyte/local-db
 ```
 
 
@@ -64,19 +65,10 @@ docker run -p 9042:9042 -p 7001-7003:7001-7003 -p 9001-9003:9001-9003 --name yug
 
 [**cqlsh**](http://cassandra.apache.org/doc/latest/tools/cqlsh.html) is a command line shell for interacting with Cassandra through [CQL (the Cassandra Query Language)](http://cassandra.apache.org/doc/latest/cql/index.html). It is shipped with every Cassandra package, and can be found in the bin/ directory. cqlsh utilizes the Python CQL driver, and connects to the single node specified on the command line.
 
-- Download latest version of Apache Cassandra: 3.10
+- Download and run cqlsh
 
 ```sh
-cd /tmp
-wget http://mirror.stjschools.org/public/apache/cassandra/3.10/apache-cassandra-3.10-bin.tar.gz 
-tar zxvf apache-cassandra-3.10-bin.tar.gz
-sudo mv apache-cassandra-3.10 /opt/cassandra
-```
-
-- Run cqlsh and connect it to the yugabyte-db container 
-
-```sh
-/opt/cassandra/bin/cqlsh localhost
+$ docker run -it --rm quay.io/yugabyte/cqlsh $(docker inspect --format '{{ .NetworkSettings.IPAddress }}' yugabyte-db)
 ```
 
 - Output will look similar to the following
@@ -105,29 +97,29 @@ cqlsh>
 - Verify that Java is installed on your localhost.
 
 ```sh
-java -version
+$ java -version
 ```
 
 - Copy the sample app from the YugaByte DB container onto your localhost
 
 ```sh
 # copy the executable jar
-docker cp yugabyte-db:/opt/yugabyte/java/yb-sample-apps.jar /tmp
+$ docker cp yugabyte-db:/opt/yugabyte/java/yb-sample-apps.jar /tmp
 
 # copy the source jar
-docker cp yugabyte-db:/opt/yugabyte/java/yb-sample-apps-sources.jar /tmp
+$ docker cp yugabyte-db:/opt/yugabyte/java/yb-sample-apps-sources.jar /tmp
 ```
 
 - Run the Cassandra time-series sample app using the executable jar
 
 ```sh
-java -jar /tmp/yb-sample-apps.jar --workload CassandraTimeseries --nodes localhost:9042
+$ java -jar /tmp/yb-sample-apps.jar --workload CassandraTimeseries --nodes localhost:9042
 ```
 
 You will see the following output.
 
 ```sh
-15:33 $ java -jar /tmp/yb-sample-apps.jar --workload CassandraTimeseries --nodes localhost:9042
+$ java -jar /tmp/yb-sample-apps.jar --workload CassandraTimeseries --nodes localhost:9042
 2017-04-26 15:33:10,449 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Using a randomly generated UUID : a73d0655-d497-4f0f-ac47-1f7a09a40cbd
 2017-04-26 15:33:10,457 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] App: CassandraTimeseries
 2017-04-26 15:33:10,457 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Adding node: localhost:9042
@@ -161,15 +153,15 @@ As you can see above, the Cassandra time-series sample app first creates a table
 - Verify using cqlsh
 
 ```sh
-cqlsh> use "$$$_DEFAULT";
+cqlsh> use default_keyspace;
 
-cqlsh:$$$_DEFAULT> describe tables;
+cqlsh:default_keyspace> describe tables;
 
 ts_metrics_raw
 
-cqlsh:$$$_DEFAULT> describe ts_metrics_raw;
+cqlsh:default_keyspace> describe ts_metrics_raw;
 
-CREATE TABLE "$$$_DEFAULT".ts_metrics_raw (
+CREATE TABLE default_keyspace.ts_metrics_raw (
     user_id text,
     metric_id text,
     node_id text,
@@ -178,7 +170,7 @@ CREATE TABLE "$$$_DEFAULT".ts_metrics_raw (
     PRIMARY KEY ((user_id, metric_id), node_id, ts)
 ) WITH CLUSTERING ORDER BY (node_id ASC, ts ASC);
 
-cqlsh:$$$_DEFAULT> select * from ts_metrics_raw limit 10;
+cqlsh:default_keyspace> select * from ts_metrics_raw limit 10;
 
  user_id                                 | metric_id                 | node_id    | ts                              | value
 -----------------------------------------+---------------------------+------------+---------------------------------+--------------------------
@@ -194,7 +186,7 @@ cqlsh:$$$_DEFAULT> select * from ts_metrics_raw limit 10;
  31-98c6eeac-0d30-4bb6-bbab-c1d80a9d760b | metric-00008.yugabyte.com | node-00000 | 2017-04-26 23:34:46.000000+0000 | 1493249686000[B@211e5e6e
 
 (10 rows)
-cqlsh:$$$_DEFAULT>
+cqlsh:default_keyspace>
 
 ```
 
@@ -202,7 +194,7 @@ cqlsh:$$$_DEFAULT>
 
 
 ```sh
-jar xf /tmp/yb-sample-apps-sources.jar
+$ jar xf /tmp/yb-sample-apps-sources.jar
 ```
 The above command puts the sample apps Java files in `com/yugabyte/sample/apps` in the current directory.
 
@@ -211,17 +203,23 @@ The above command puts the sample apps Java files in `com/yugabyte/sample/apps` 
 - Review logs of the YugaByte DB.
 
 ```sh
-docker logs yugabyte-db 
+$ docker logs yugabyte-db
 ```
 
 - Open a bash shell inside the YugaByte DB container.
 
 ```sh
-docker exec -it yugabyte-db bash
+$ docker exec -it yugabyte-db bash
 ```
 
 - Stop the YugaByte DB.
 
 ```sh
-docker stop yugabyte-db
+$ docker stop yugabyte-db
+```
+
+- Upgrade the YugaByte DB container.
+
+```sh
+$ docker pull quay.io/yugabyte/local-db
 ```

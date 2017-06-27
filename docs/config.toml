@@ -1,6 +1,6 @@
 # Copyright (c) YugaByte, Inc.
 
-baseurl = "https://docs.yugabyte.com/"
+baseurl = "https://www.yugabyte.com/docs"
 languageCode = "en-us"
 title = "YugaByte Docs"
 theme = "hugo-material-docs"
@@ -48,29 +48,35 @@ googleAnalytics = ""
 	weight = 0
 
 [[menu.main]]
-	name   = "Get started (Development)"
+	name   = "Get started (Single node)"
 	url    = "get-started-dev/"
 	weight = 10
 
 [[menu.main]]
-	name   = "Get started (Production/Test)"
-	url    = "get-started/"
-	weight = 10
+	name   = "Get started (with Admin Console)"
+	url    = "get-started-adminconsole-noha/"
+	weight = 20
+
+
+[[menu.main]]
+	name   = "Get started (with HA Admin Console)"
+	url    = "get-started-adminconsole-ha/"
+	weight = 30
 
 [[menu.main]]
 	name   = "Administer"
 	url    = "admin/"
-	weight = 20
+	weight = 40
 
 [[menu.main]]
 	name   = "Develop"
 	url    = "develop/"
-	weight = 30
+	weight = 50
 
 [[menu.main]]
 	name   = "Learn"
 	url    = "learn/"
-	weight = 40
+	weight = 60
 
 [blackfriday]
 	smartypants	= true
