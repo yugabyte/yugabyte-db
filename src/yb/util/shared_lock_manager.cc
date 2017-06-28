@@ -2,6 +2,8 @@
 
 #include "yb/util/shared_lock_manager.h"
 
+#include <vector>
+
 #include <boost/range/adaptor/reversed.hpp>
 #include <glog/logging.h>
 

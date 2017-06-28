@@ -3,10 +3,11 @@
 #ifndef YB_UTIL_SHARED_LOCK_MANAGER_H_
 #define YB_UTIL_SHARED_LOCK_MANAGER_H_
 
+#include <map>
+#include <mutex>
 #include <string>
 #include <unordered_map>
-#include <mutex>
-#include <map>
+#include <vector>
 
 #include "yb/gutil/spinlock.h"
 #include "yb/util/shared_lock_manager_fwd.h"
