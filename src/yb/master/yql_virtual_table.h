@@ -50,7 +50,8 @@ class YQLVirtualTable : public common::YQLStorageIf {
     if (column_index == Schema::kColumnNotFound) {
       return STATUS_SUBSTITUTE(NotFound, "Couldn't find column $0 in schema", col_name);
     }
-    *(row->mutable_column(column_index)) = util::GetValue(value);
+    const DataType data_type = schema_.column(column_index).type_info()->type();
+    *(row->mutable_column(column_index)) = util::GetValue(value, data_type);
     return Status::OK();
   }
   const Master* const master_;

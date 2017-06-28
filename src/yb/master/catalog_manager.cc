@@ -89,6 +89,7 @@
 #include "yb/master/yql_triggers_vtable.h"
 #include "yb/master/yql_types_vtable.h"
 #include "yb/master/yql_views_vtable.h"
+#include "yb/master/yql_partitions_vtable.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_context.h"
@@ -759,6 +760,8 @@ Status CatalogManager::PrepareSystemTables() {
       kSystemPeersTableName, kSystemNamespaceName, kSystemNamespaceId)));
   RETURN_NOT_OK((PrepareSystemTableTemplate<LocalVTable>(
       kSystemLocalTableName, kSystemNamespaceName, kSystemNamespaceId)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLPartitionsVTable>(
+      kSystemPartitionsTableName, kSystemNamespaceName, kSystemNamespaceId)));
   RETURN_NOT_OK((PrepareSystemTableTemplate<YQLKeyspacesVTable>(
       kSystemSchemaKeyspacesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
   RETURN_NOT_OK((PrepareSystemTableTemplate<YQLTablesVTable>(

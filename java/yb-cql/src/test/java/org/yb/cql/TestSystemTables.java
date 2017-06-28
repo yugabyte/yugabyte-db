@@ -1,5 +1,7 @@
 package org.yb.cql;
 
+import java.nio.ByteBuffer;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -20,6 +22,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 
 public class TestSystemTables extends BaseCQLTest {
@@ -225,7 +228,7 @@ public class TestSystemTables extends BaseCQLTest {
 
     results = session.execute(
       "SELECT * FROM system_schema.tables;").all();
-    assertEquals(11, results.size());
+    assertEquals(12, results.size());
     assertTrue(verifySystemSchemaTables(results, "system_schema", "aggregates"));
     assertTrue(verifySystemSchemaTables(results, "system_schema", "columns"));
     assertTrue(verifySystemSchemaTables(results, "system_schema", "functions"));
@@ -237,6 +240,7 @@ public class TestSystemTables extends BaseCQLTest {
     assertTrue(verifySystemSchemaTables(results, "system_schema", "tables"));
     assertTrue(verifySystemSchemaTables(results, "system", "peers"));
     assertTrue(verifySystemSchemaTables(results, "system", "local"));
+    assertTrue(verifySystemSchemaTables(results, "system", "partitions"));
 
     // Create keyspace and table and verify it shows up.
     session.execute("CREATE KEYSPACE my_keyspace;");
@@ -365,4 +369,59 @@ public class TestSystemTables extends BaseCQLTest {
     assertNull(cluster.getMetadata().getKeyspace("test_keyspace"));
   }
 
+  @Test
+  public void testSystemPartitionsTable() throws Exception {
+    // Create test table.
+    session.execute("CREATE KEYSPACE test_keyspace;");
+    session.execute("CREATE TABLE test_keyspace.test_table (k int PRIMARY KEY);");
+
+    // Select partitions of test table.
+    List<Row> partitions = session.execute("SELECT * FROM system.partitions WHERE " +
+                                           "keyspace_name = 'test_keyspace' AND " +
+                                           "table_name = 'test_table';").all();
+    // Add 1 to account for tserver started in testSystemPeersTable().
+    assertEquals(miniCluster.getNumShardsPerTserver() * (NUM_TABLET_SERVERS + 1),
+                 partitions.size());
+
+    HashSet<InetAddress> contactPoints = new HashSet<>();
+    for (InetSocketAddress contactPoint : miniCluster.getCQLContactPoints()) {
+      contactPoints.add(contactPoint.getAddress());
+    }
+
+    ByteBuffer startKey = null;
+    ByteBuffer endKey = null;
+    for (Row partition : partitions) {
+      // Verify the first start_key is empty and subsequent ones equal the previous end_key
+      startKey = partition.getBytes("start_key");
+      if (endKey == null) {
+        assertFalse(startKey.hasRemaining());
+      } else {
+        assertEquals(startKey, endKey);
+      }
+
+      // Verify start_key and end_key of each partition are not the same.
+      endKey = partition.getBytes("end_key");
+      assertNotEquals(startKey, endKey);
+
+      int leader = 0;
+      int followers = 0;
+      Map<InetAddress, String> rpcAddresses = partition.getMap("rpc_addresses",
+                                                               InetAddress.class,
+                                                               String.class);
+      for (Map.Entry<InetAddress, String> entry : rpcAddresses.entrySet()) {
+        // Verify rpc_addresses are in the CQL contact points.
+        assertTrue(contactPoints.contains(entry.getKey()));
+        if (entry.getValue().equals("LEADER")) {
+          leader++;
+        } else if (entry.getValue().equals("FOLLOWER")) {
+          followers++;
+        }
+      }
+      // Verify there are 1 leader and 2 followers in each partition.
+      assertEquals(1, leader);
+      assertEquals(2, followers);
+    }
+    // Verify the last end_key is empty.
+    assertFalse(endKey.hasRemaining());
+  }
 }

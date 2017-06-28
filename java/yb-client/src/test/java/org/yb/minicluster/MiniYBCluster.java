@@ -682,6 +682,14 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   /**
+   * Returns the number of shards per tserver.
+   * @return number of shards per tserver.
+   */
+  public int getNumShardsPerTserver() {
+    return numShardsPerTserver;
+  }
+
+  /**
    * Returns a list of CQL contact points.
    * @return CQL contact points
    */

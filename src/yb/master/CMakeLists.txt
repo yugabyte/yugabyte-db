@@ -51,6 +51,7 @@ set(MASTER_SRCS
   yql_triggers_vtable.cc
   yql_types_vtable.cc
   yql_views_vtable.cc
+  yql_partitions_vtable.cc
   catalog_manager.cc
   cluster_balance.cc
   master.cc
