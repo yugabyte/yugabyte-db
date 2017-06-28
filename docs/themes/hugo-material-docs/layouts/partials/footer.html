@@ -43,32 +43,3 @@
 </nav>
 {{ end }}
 {{ end }}
-
-{{ if .IsHome }}
-{{ if gt (len .Site.Pages) 2 }}
-<nav class="pagination" aria-label="Footer">
-  <div class="previous">
-  </div>
-
-  {{ $title := (index (.Site.Pages.ByDate) 1).Title  }}
-  {{ $permalink := (index (.Site.Pages.ByDate) 1).Permalink }}
-  <div class="next">
-      <a href="{{ $permalink }}" title="{{ $title }}">
-        <span class="direction">
-          Next
-        </span>
-        <div class="page">
-          <div class="stretch">
-            <div class="title">
-              {{ $title }}
-            </div>
-          </div>
-          <div class="button button-next" role="button" aria-label="Next">
-            <i class="icon icon-forward"></i>
-          </div>
-        </div>
-      </a>
-  </div>
-</nav>
-{{ end }}
-{{ end }}
