@@ -36,6 +36,7 @@
   "dependencies": {
     "async": "^1.5.2",
     "axios": "^0.9.0",
+    "babel-polyfill": "^6.23.0",
     "babel-preset-react": "^6.11.1",
     "babel-preset-stage-1": "^6.1.18",
     "bootstrap": "^3.3.7",
