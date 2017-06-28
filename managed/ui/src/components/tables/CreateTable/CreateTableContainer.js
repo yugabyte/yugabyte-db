@@ -6,7 +6,7 @@ import { reduxForm } from 'redux-form';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { createUniverseTable, createUniverseTableFailure, createUniverseTableSuccess,
   toggleTableView } from '../../../actions/tables';
-import { fetchUniverseTasks, fetchUniverseTasksSuccess, fetchUniverseTasksFailure, openDialog,
+import { fetchUniverseTasks, fetchUniverseTasksResponse, openDialog,
   closeDialog } from '../../../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
@@ -65,11 +65,8 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(fetchUniverseTasks(universeUUID))
             .then((response) => {
               dispatch(toggleTableView("list"));
-              if (!response.error) {
-                dispatch(fetchUniverseTasksSuccess(response.payload));
-              } else {
-                dispatch(fetchUniverseTasksFailure(response.payload));
-              }
+              dispatch(fetchUniverseTasksResponse(response.payload));
+
             });
         }
       });

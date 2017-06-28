@@ -9,7 +9,7 @@ import { createUniverse, createUniverseResponse, editUniverse, editUniverseRespo
          configureUniverseTemplate, configureUniverseTemplateResponse, configureUniverseTemplateSuccess,
          configureUniverseResources, configureUniverseResourcesResponse,
          checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration,
-         fetchUniverseInfo, fetchUniverseInfoResponse, fetchUniverseMetadata } from 'actions/universe';
+         fetchUniverseInfo, fetchUniverseInfoResponse, fetchUniverseMetadata, fetchUniverseTasks, fetchUniverseTasksResponse } from 'actions/universe';
 import { isDefinedNotNull, isNonEmptyObject } from 'utils/ObjectUtils';
 
 const mapDispatchToProps = (dispatch) => {
@@ -89,6 +89,11 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(resetUniverseConfiguration());
     },
 
+    fetchUniverseTasks: (universeUUID) => {
+      dispatch(fetchUniverseTasks(universeUUID)).then((response) => {
+        dispatch(fetchUniverseTasksResponse(response.payload));
+      })
+    },
     getExistingUniverseConfiguration: (universeDetail) => {
       dispatch(configureUniverseTemplateSuccess({data: universeDetail}));
       dispatch(configureUniverseResources(universeDetail)).then((resourceData) => {

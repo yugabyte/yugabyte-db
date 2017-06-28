@@ -3,7 +3,7 @@
 import { connect } from 'react-redux';
 import { UniverseDetail } from '../../universes';
 import {fetchUniverseInfo, fetchUniverseInfoResponse, resetUniverseInfo,
-        fetchUniverseTasks, fetchUniverseTasksSuccess, fetchUniverseTasksFailure,
+        fetchUniverseTasks, fetchUniverseTasksResponse,
         resetUniverseTasks, openDialog, closeDialog } from '../../../actions/universe';
 import {listAccessKeys, listAccessKeysResponse} from '../../../actions/cloud';
 
@@ -21,11 +21,7 @@ const mapDispatchToProps = (dispatch) => {
     fetchUniverseTasks: (uuid) => {
       dispatch(fetchUniverseTasks(uuid))
       .then((response) => {
-        if (!response.error) {
-          dispatch(fetchUniverseTasksSuccess(response.payload));
-        } else {
-          dispatch(fetchUniverseTasksFailure(response.payload));
-        }
+        dispatch(fetchUniverseTasksResponse(response.payload));
       });
     },
     resetUniverseTasks: () => {

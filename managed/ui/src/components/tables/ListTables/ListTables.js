@@ -6,11 +6,12 @@ import { Button, Image, ProgressBar } from 'react-bootstrap';
 import cassandraLogo from '../images/cassandra.png';
 import redisLogo from '../images/redis.png';
 import './ListTables.scss';
-import { isNonEmptyArray } from 'utils/ObjectUtils';
+import { isNonEmptyArray, isDefinedNotNull } from 'utils/ObjectUtils';
 import { CreateTableContainer } from '../../tables';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import _ from 'lodash';
+import {getPromiseState} from '../../../utils/PromiseUtils';
 
 class TableTitle extends Component {
   render() {
@@ -45,6 +46,24 @@ export default class ListTables extends Component {
     this.state = {'currentView': 'listTables'}
     this.showCreateTable = this.showCreateTable.bind(this);
     this.showListTables = this.showListTables.bind(this);
+  }
+
+  componentWillMount() {
+    var universeUUID = this.props.universe.currentUniverse.data.universeUUID;
+    const {universe: {universeTasks}} = this.props;
+    // Do not send tables query if task type is create, status is pending and target is universe
+    if (getPromiseState(universeTasks).isSuccess() && isNonEmptyArray(universeTasks.data[universeUUID])) {
+      let createUniverseTask = universeTasks.data[universeUUID].find(function(task){
+        return task.target === "Universe" && task.type === "Create" && task.status === "Running" && task.percentComplete < 100;
+      })
+      if (!isDefinedNotNull(createUniverseTask)) {
+        this.props.fetchUniverseTables(universeUUID);
+      }
+    }
+  }
+
+  componentWillUnmount() {
+    this.props.resetTablesList();
   }
 
   showCreateTable() {
@@ -93,15 +112,7 @@ export default class ListTables extends Component {
 }
 
 class ListTableGrid extends Component {
-  componentWillMount() {
-    var universeUUID = this.props.universe.currentUniverse.data.universeUUID;
-    const {universe: {universeTasks}} = this.props;
-    // Do not send tables query if task type is create, status is pending and target is universe
-    if (!universeTasks || !isNonEmptyArray(universeTasks[universeUUID]) || !(universeTasks[universeUUID][0].type === "Create"
-      && universeTasks[universeUUID][0].status === "Running" && universeTasks[universeUUID][0].target === "Universe")) {
-      this.props.fetchUniverseTables(universeUUID);
-    }
-  }
+
 
   render(){
     var self = this;
@@ -154,9 +165,9 @@ class ListTableGrid extends Component {
         };
       });
     }
-
-    if (universeTasks && universeTasks[universeUUID]) {
-      var pendingTableTasks = universeTasks[universeUUID].find(function(taskItem, taskIdx){
+    let currentUniverseTasks = universeTasks.data[universeUUID];
+    if (getPromiseState(universeTasks).isSuccess() && isNonEmptyArray(currentUniverseTasks)) {
+      var pendingTableTasks = currentUniverseTasks.find(function(taskItem){
         return taskItem.target === "Table" && taskItem.status === "Running" && taskItem.percentComplete < 100
       });
       if (pendingTableTasks) {
