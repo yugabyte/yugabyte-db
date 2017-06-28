@@ -48,7 +48,7 @@ Status YQLTablesVTable::RetrieveData(const YQLReadRequestPB& request,
 
 Schema YQLTablesVTable::CreateSchema() const {
   SchemaBuilder builder;
-  CHECK_OK(builder.AddKeyColumn(kKeyspaceName, YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddHashKeyColumn(kKeyspaceName, YQLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddKeyColumn(kTableName, YQLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddColumn(kBloomFilterChance, YQLType::Create(DataType::DOUBLE)));
   CHECK_OK(builder.AddColumn(kCaching, YQLType::CreateTypeMap(DataType::STRING, DataType::STRING)));

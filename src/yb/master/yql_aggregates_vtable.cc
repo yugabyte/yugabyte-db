@@ -12,7 +12,7 @@ YQLAggregatesVTable::YQLAggregatesVTable(const Master* const master)
 
 Schema YQLAggregatesVTable::CreateSchema() const {
   SchemaBuilder builder;
-  CHECK_OK(builder.AddKeyColumn("keyspace_name", DataType::STRING));
+  CHECK_OK(builder.AddHashKeyColumn("keyspace_name", DataType::STRING));
   CHECK_OK(builder.AddKeyColumn("aggregate_name", DataType::STRING));
   // TODO: argument_types should be part of the primary key, but since we don't support the CQL
   // 'frozen' type, we can't have collections in our primary key.

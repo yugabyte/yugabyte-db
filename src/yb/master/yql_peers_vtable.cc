@@ -89,7 +89,7 @@ Status PeersVTable::RetrieveData(const YQLReadRequestPB& request,
 
 Schema PeersVTable::CreateSchema() const {
   SchemaBuilder builder;
-  CHECK_OK(builder.AddKeyColumn(kPeer, YQLType::Create(DataType::INET)));
+  CHECK_OK(builder.AddHashKeyColumn(kPeer, YQLType::Create(DataType::INET)));
   CHECK_OK(builder.AddColumn(kDataCenter, YQLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddColumn(kHostId, YQLType::Create(DataType::UUID)));
   CHECK_OK(builder.AddColumn(kPreferredIp, YQLType::Create(DataType::INET)));

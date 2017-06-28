@@ -62,7 +62,7 @@ Status LocalVTable::RetrieveData(const YQLReadRequestPB& request,
 
 Schema LocalVTable::CreateSchema() const {
   SchemaBuilder builder;
-  CHECK_OK(builder.AddKeyColumn(kSystemLocalKeyColumn, YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddHashKeyColumn(kSystemLocalKeyColumn, YQLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddColumn(kSystemLocalBootstrappedColumn, YQLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddColumn(kSystemLocalBroadcastAddressColumn, YQLType::Create(DataType::INET)));
   CHECK_OK(builder.AddColumn(kSystemLocalClusterNameColumn, YQLType::Create(DataType::STRING)));

@@ -12,7 +12,7 @@ YQLViewsVTable::YQLViewsVTable(const Master* const master)
 
 Schema YQLViewsVTable::CreateSchema() const {
   SchemaBuilder builder;
-  CHECK_OK(builder.AddKeyColumn("keyspace_name", YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddHashKeyColumn("keyspace_name", YQLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddKeyColumn("view_name", YQLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddColumn("base_table_id", YQLType::Create(DataType::UUID)));
   CHECK_OK(builder.AddColumn("base_table_name", YQLType::Create(DataType::STRING)));

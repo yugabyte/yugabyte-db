@@ -22,6 +22,32 @@ CHECKED_STATUS YQLVirtualTable::GetIterator(const YQLReadRequestPB& request,
                                             const {
   std::unique_ptr<YQLRowBlock> vtable;
   RETURN_NOT_OK(RetrieveData(request, &vtable));
+
+  // If hashed column values are specified, filter by the hash key.
+  if (!request.hashed_column_values().empty()) {
+
+    std::vector<int> hashed_column_indices;
+    for (const YQLColumnValuePB& hashed_column : request.hashed_column_values()) {
+      const ColumnId column_id(hashed_column.column_id());
+      hashed_column_indices.emplace_back(schema_.find_column_by_id(column_id));
+    }
+    const auto& hashed_column_values = request.hashed_column_values();
+
+    std::vector<YQLRow>& rows = vtable->rows();
+    auto excluded_rows = std::remove_if(
+        rows.begin(), rows.end(),
+        [&hashed_column_indices, &hashed_column_values](const YQLRow& row) -> bool {
+          for (size_t i = 0; i < hashed_column_values.size(); i++) {
+            if (hashed_column_values.Get(i).expr().value() !=
+                row.column(hashed_column_indices[i])) {
+              return true;
+            }
+          }
+          return false;
+        });
+    rows.erase(excluded_rows, rows.end());
+  }
+
   iter->reset(new YQLVTableIterator(std::move(vtable)));
   return Status::OK();
 }

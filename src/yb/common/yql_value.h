@@ -296,16 +296,24 @@ class YQLValue {
   static bool Comparable(const YQLValuePB& lhs, const YQLValuePB& rhs) {
     return lhs.value_case() == rhs.value_case() || EitherIsNull(lhs, rhs);
   }
-
   static bool BothNotNull(const YQLValuePB& lhs, const YQLValuePB& rhs) {
     return !IsNull(lhs) && !IsNull(rhs);
   }
-
   static bool EitherIsNull(const YQLValuePB& lhs, const YQLValuePB& rhs) {
     return IsNull(lhs) || IsNull(rhs);
   }
-
   static int CompareTo(const YQLValuePB& lhs, const YQLValuePB& rhs);
+
+  static bool Comparable(const YQLValuePB& lhs, const YQLValue& rhs) {
+    return type(lhs) == rhs.type() || EitherIsNull(lhs, rhs);
+  }
+  static bool BothNotNull(const YQLValuePB& lhs, const YQLValue& rhs) {
+    return !IsNull(lhs) && !rhs.IsNull();
+  }
+  static bool EitherIsNull(const YQLValuePB& lhs, const YQLValue& rhs) {
+    return IsNull(lhs) || rhs.IsNull();
+  }
+  static int CompareTo(const YQLValuePB& lhs, const YQLValue& rhs);
 
  private:
   // Deserialize a CQL number (8, 16, 32 and 64-bit integer). <num_type> is the parsed integer type.
@@ -345,6 +353,13 @@ bool operator <=(const YQLValuePB& lhs, const YQLValuePB& rhs);
 bool operator >=(const YQLValuePB& lhs, const YQLValuePB& rhs);
 bool operator ==(const YQLValuePB& lhs, const YQLValuePB& rhs);
 bool operator !=(const YQLValuePB& lhs, const YQLValuePB& rhs);
+
+bool operator <(const YQLValuePB& lhs, const YQLValue& rhs);
+bool operator >(const YQLValuePB& lhs, const YQLValue& rhs);
+bool operator <=(const YQLValuePB& lhs, const YQLValue& rhs);
+bool operator >=(const YQLValuePB& lhs, const YQLValue& rhs);
+bool operator ==(const YQLValuePB& lhs, const YQLValue& rhs);
+bool operator !=(const YQLValuePB& lhs, const YQLValue& rhs);
 
 //-------------------------------------------------------------------------------------------
 // A class that implements YQLValue interface using YQLValuePB.

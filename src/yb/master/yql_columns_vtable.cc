@@ -81,7 +81,7 @@ Status YQLColumnsVTable::RetrieveData(const YQLReadRequestPB& request,
 
 Schema YQLColumnsVTable::CreateSchema() const {
   SchemaBuilder builder;
-  CHECK_OK(builder.AddKeyColumn(kKeyspaceName, DataType::STRING));
+  CHECK_OK(builder.AddHashKeyColumn(kKeyspaceName, DataType::STRING));
   CHECK_OK(builder.AddKeyColumn(kTableName, DataType::STRING));
   CHECK_OK(builder.AddKeyColumn(kColumnName, DataType::STRING));
   CHECK_OK(builder.AddColumn(kClusteringOrder, DataType::STRING));

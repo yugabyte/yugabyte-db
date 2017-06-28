@@ -29,7 +29,7 @@ Status YQLKeyspacesVTable::RetrieveData(const YQLReadRequestPB& request,
 
 Schema YQLKeyspacesVTable::CreateSchema() const {
   SchemaBuilder builder;
-  CHECK_OK(builder.AddKeyColumn(kKeyspaceName, YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddHashKeyColumn(kKeyspaceName, YQLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddColumn(kDurableWrites, YQLType::Create(DataType::BOOL)));
   // TODO: replication needs to be a frozen map.
   CHECK_OK(builder.AddColumn(kReplication,

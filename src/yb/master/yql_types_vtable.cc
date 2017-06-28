@@ -12,7 +12,7 @@ YQLTypesVTable::YQLTypesVTable(const Master* const master)
 
 Schema YQLTypesVTable::CreateSchema() const {
   SchemaBuilder builder;
-  CHECK_OK(builder.AddKeyColumn("keyspace_name", YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddHashKeyColumn("keyspace_name", YQLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddKeyColumn("type_name", YQLType::Create(DataType::STRING)));
   // TODO: field_names should be a frozen list.
   CHECK_OK(builder.AddColumn("field_names", YQLType::CreateTypeList(DataType::STRING)));

@@ -500,6 +500,49 @@ int YQLValue::CompareTo(const YQLValuePB& lhs, const YQLValuePB& rhs) {
   return 0;
 }
 
+int YQLValue::CompareTo(const YQLValuePB& lhs, const YQLValue& rhs) {
+  CHECK(Comparable(lhs, rhs));
+  CHECK(BothNotNull(lhs, rhs));
+  switch (type(lhs)) {
+    case YQLValuePB::kInt8Value:   return GenericCompare(int8_value(lhs), rhs.int8_value());
+    case YQLValuePB::kInt16Value:  return GenericCompare(int16_value(lhs), rhs.int16_value());
+    case YQLValuePB::kInt32Value:  return GenericCompare(int32_value(lhs), rhs.int32_value());
+    case YQLValuePB::kInt64Value:  return GenericCompare(int64_value(lhs), rhs.int64_value());
+    case YQLValuePB::kFloatValue:  return GenericCompare(float_value(lhs), rhs.float_value());
+    case YQLValuePB::kDoubleValue: return GenericCompare(double_value(lhs), rhs.double_value());
+    // Encoded decimal is byte-comparable.
+    case YQLValuePB::kDecimalValue: return decimal_value(lhs).compare(rhs.decimal_value());
+    case YQLValuePB::kStringValue: return string_value(lhs).compare(rhs.string_value());
+    case YQLValuePB::kBoolValue:
+      LOG(FATAL) << "Internal error: bool type not comparable";
+      return 0;
+    case YQLValuePB::kTimestampValue:
+      return GenericCompare(timestamp_value(lhs), rhs.timestamp_value());
+    case YQLValuePB::kBinaryValue: return binary_value(lhs).compare(rhs.binary_value());
+    case YQLValuePB::kInetaddressValue:
+      return GenericCompare(inetaddress_value(lhs), rhs.inetaddress_value());
+    case YQLValuePB::kUuidValue:
+      return GenericCompare(uuid_value(lhs), rhs.uuid_value());
+    case YQLValuePB::kTimeuuidValue:
+      return GenericCompare(timeuuid_value(lhs), rhs.timeuuid_value());
+    case YQLValuePB::kMapValue: FALLTHROUGH_INTENDED;
+    case YQLValuePB::kSetValue: FALLTHROUGH_INTENDED;
+    case YQLValuePB::kListValue:
+      LOG(FATAL) << "Internal error: collection types are not comparable";
+      return 0;
+    case InternalType::kVarintValue:
+      LOG(FATAL) << "Internal error: varint not implemented";
+    case YQLValuePB::VALUE_NOT_SET:
+      LOG(FATAL) << "Internal error: value should not be null";
+      break;
+
+    // default: fall through
+  }
+
+  LOG(FATAL) << "Internal error: unknown or unsupported type " << type(lhs);
+  return 0;
+}
+
 //----------------------------------- YQLValuePB operators --------------------------------
 
 #define YQL_COMPARE(lhs, rhs, op)                                       \
@@ -511,6 +554,13 @@ bool operator <=(const YQLValuePB& lhs, const YQLValuePB& rhs) { YQL_COMPARE(lhs
 bool operator >=(const YQLValuePB& lhs, const YQLValuePB& rhs) { YQL_COMPARE(lhs, rhs, >=); }
 bool operator ==(const YQLValuePB& lhs, const YQLValuePB& rhs) { YQL_COMPARE(lhs, rhs, ==); }
 bool operator !=(const YQLValuePB& lhs, const YQLValuePB& rhs) { YQL_COMPARE(lhs, rhs, !=); }
+
+bool operator <(const YQLValuePB& lhs, const YQLValue& rhs) { YQL_COMPARE(lhs, rhs, <); }
+bool operator >(const YQLValuePB& lhs, const YQLValue& rhs) { YQL_COMPARE(lhs, rhs, >); }
+bool operator <=(const YQLValuePB& lhs, const YQLValue& rhs) { YQL_COMPARE(lhs, rhs, <=); }
+bool operator >=(const YQLValuePB& lhs, const YQLValue& rhs) { YQL_COMPARE(lhs, rhs, >=); }
+bool operator ==(const YQLValuePB& lhs, const YQLValue& rhs) { YQL_COMPARE(lhs, rhs, ==); }
+bool operator !=(const YQLValuePB& lhs, const YQLValue& rhs) { YQL_COMPARE(lhs, rhs, !=); }
 
 #undef YQL_COMPARE
 
