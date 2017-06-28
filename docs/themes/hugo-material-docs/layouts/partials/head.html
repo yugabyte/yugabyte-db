@@ -20,6 +20,11 @@
     <meta name="author" content="{{ . }}">
     {{ end }}
 
+    {{ with .Site.Params.block_indexing }}
+    <meta name="robots" content="noindex">
+    <meta name="googlebot" content="noindex">
+    {{ end }}
+
     <meta property="og:url" content="{{ .Permalink }}">
     {{ with .Site.Title }}<meta property="og:title" content="{{ . }}">{{ end }}
     {{ with .Site.Params.logo }}<meta property="og:image" content="{{ . | absURL }}">{{ end }}

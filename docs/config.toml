@@ -14,6 +14,7 @@ googleAnalytics = ""
 	author = "Team YugaByte"
 	description = "YugaByte Product Documentation"
 	# copyright = "Released under the MIT license"
+	block_indexing = true
 
 	version = "early release"
 	logo = "/images/logo.png"
