@@ -343,6 +343,7 @@ export default class UniverseForm extends Component {
       this.props.fetchCurrentUniverse(currentUniverse.data.universeUUID);
       this.props.fetchUniverseMetadata();
       this.props.fetchCustomerTasks();
+      this.props.fetchUniverseTasks(currentUniverse.data.universeUUID);
     }
     // Form Actions on Configure Universe Success
     if (getPromiseState(this.props.universe.universeConfigTemplate).isLoading() && getPromiseState(nextProps.universe.universeConfigTemplate).isSuccess()) {

@@ -32,8 +32,7 @@ export const DELETE_UNIVERSE_RESPONSE = 'DELETE_UNIVERSE_RESPONSE';
 
 // Commissioner Tasks for Universe
 export const FETCH_UNIVERSE_TASKS = 'FETCH_UNIVERSE_TASKS';
-export const FETCH_UNIVERSE_TASKS_SUCCESS = 'FETCH_UNIVERSE_TASKS_SUCCESS';
-export const FETCH_UNIVERSE_TASKS_FAILURE = 'FETCH_UNIVERSE_TASKS_FAILURE';
+export const FETCH_UNIVERSE_TASKS_RESPONSE = 'FETCH_UNIVERSE_TASKS_RESPONSE';
 export const RESET_UNIVERSE_TASKS = 'RESET_UNIVERSE_TASKS';
 
 // Universe Modal Tasks
@@ -199,17 +198,10 @@ export function fetchUniverseTasks(universeUUID) {
   };
 }
 
-export function fetchUniverseTasksSuccess(result) {
+export function fetchUniverseTasksResponse(response) {
   return {
-    type: FETCH_UNIVERSE_TASKS_SUCCESS,
-    payload: result
-  };
-}
-
-export function fetchUniverseTasksFailure(error) {
-  return {
-    type: FETCH_UNIVERSE_TASKS_FAILURE,
-    payload: error
+    type: FETCH_UNIVERSE_TASKS_RESPONSE,
+    payload: response
   }
 }
 

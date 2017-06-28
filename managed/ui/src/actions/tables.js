@@ -127,3 +127,9 @@ export function toggleTableView(currentView) {
     payload: currentView
   };
 }
+
+export function resetTablesList() {
+  return {
+    type: RESET_TABLES_LIST
+  }
+}

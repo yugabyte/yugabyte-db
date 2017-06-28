@@ -6,8 +6,7 @@ import { FETCH_TASK_PROGRESS, FETCH_TASK_PROGRESS_RESPONSE, RESET_TASK_PROGRESS,
 import { getInitialState, setInitialState, setLoadingState, setPromiseResponse }  from '../utils/PromiseUtils';
 
 const INITIAL_STATE = {
-  taskProgressData: getInitialState(),
-  currentTaskList: {},
+  taskProgressData: getInitialState({}),
   customerTaskList: []
 };
 

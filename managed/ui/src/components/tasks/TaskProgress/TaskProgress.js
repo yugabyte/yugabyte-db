@@ -54,9 +54,9 @@ export default class TaskProgress extends Component {
   render() {
     const { taskUUIDs, taskProgressData, type } = this.props;
     let taskProgressPromise = getPromiseState(taskProgressData);
-    if (taskUUIDs.length === 0 || taskProgressPromise.isInit()) {
+    if (taskUUIDs.length === 0) {
       return <span />;
-    } else if (taskProgressPromise.isLoading() || taskProgressData.data.status === "Initializing") {
+    } else if (taskProgressPromise.isLoading() || taskProgressPromise.isInit()) {
       return <YBLoadingIcon/>;
     }
     if (type === "StepBar") {

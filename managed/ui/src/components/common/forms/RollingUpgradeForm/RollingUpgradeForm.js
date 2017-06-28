@@ -94,7 +94,7 @@ export default class RollingUpgradeForm extends Component {
   render() {
     var self = this;
     const {onHide, modalVisible, handleSubmit, universe: {visibleModal,
-           error, currentUniverse: {data: {universeDetails}}}, resetRollingUpgrade, softwareVersions} = this.props;
+      error, currentUniverse: {data: {universeDetails}}}, resetRollingUpgrade, softwareVersions} = this.props;
     const submitAction = handleSubmit(self.setRollingUpgradeProperties);
     var title = "";
     var formBody = <span/>;
