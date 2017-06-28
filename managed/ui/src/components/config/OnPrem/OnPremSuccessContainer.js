@@ -1,10 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 
 import { connect } from 'react-redux';
-import {reset} from 'redux-form';
+import {destroy} from 'redux-form';
 import { OnPremSuccess } from '../../config';
-import { deleteProvider, deleteProviderSuccess, deleteProviderFailure, fetchCloudMetadata,
-         listAccessKeysResponse, listAccessKeys, getNodeInstancesForProvider, getNodesInstancesForProviderResponse } from '../../../actions/cloud';
+import { deleteProvider, deleteProviderSuccess, deleteProviderFailure, fetchCloudMetadata, setOnPremConfigData,
+         listAccessKeysResponse, listAccessKeys, getNodeInstancesForProvider, getNodesInstancesForProviderResponse,
+         getInstanceTypeList, getInstanceTypeListResponse, } from '../../../actions/cloud';
 import {openDialog, closeDialog} from '../../../actions/universe';
 
 const mapStateToProps = (state) => {
@@ -50,13 +51,21 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     resetConfigForm: () => {
-      dispatch(reset("onPremConfigForm"));
+      dispatch(destroy("onPremConfigForm"));
     },
     fetchConfiguredNodeList: (pUUID) => {
       dispatch(getNodeInstancesForProvider(pUUID)).then((response) => {
         dispatch(getNodesInstancesForProviderResponse(response.payload));
       });
-    }
+    },
+    setOnPremJsonData: (jsonData) => {
+      dispatch(setOnPremConfigData(jsonData));
+    },
+    fetchInstanceTypeList: (pUUID) => {
+      dispatch(getInstanceTypeList(pUUID)).then((response) => {
+        dispatch(getInstanceTypeListResponse(response.payload));
+      });
+    },
   }
 };
 

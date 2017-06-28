@@ -47,7 +47,7 @@ export default class OnPremInstances extends Component {
     }) : null;
     return (
       <div className="on-prem-provider-form-container">
-        <form name="onPremInstancesConfigForm" onSubmit={handleSubmit(this.props.setOnPremInstances)}>
+        <form name="onPremConfigForm" onSubmit={handleSubmit(this.props.setOnPremInstances)}>
           <div className="on-prem-form-text">
             Enter IP Addresses for the instances of each zone and machine type.
           </div>

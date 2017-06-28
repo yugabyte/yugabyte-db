@@ -66,6 +66,8 @@ export const SET_ON_PREM_CONFIG_DATA = 'SET_ON_PREM_CONFIG_DATA';
 export const GET_NODE_INSTANCE_LIST = 'GET_NODE_INSTANCE';
 export const GET_NODE_INSTANCE_LIST_RESPONSE = 'GET_NODE_INSTANCE_RESPONSE';
 
+export const RESET_ON_PREM_CONFIG_DATA = 'RESET_ON_PREM_CONFIG_DATA';
+
 export function getProviderList() {
   const cUUID = localStorage.getItem("customer_id");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers`);
@@ -384,5 +386,11 @@ export function getNodesInstancesForProviderResponse(response) {
   return {
     type: GET_NODE_INSTANCE_LIST_RESPONSE,
     payload: response
+  }
+}
+
+export function resetOnPremConfigData() {
+  return {
+    type: RESET_ON_PREM_CONFIG_DATA
   }
 }

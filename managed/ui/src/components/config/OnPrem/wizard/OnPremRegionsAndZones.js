@@ -5,24 +5,41 @@ import { Row, Col } from 'react-bootstrap';
 import { Field, FieldArray } from 'redux-form';
 import { YBInputField, YBButton, YBSelect } from '../../../common/forms/fields';
 import _ from 'lodash';
+import {isDefinedNotNull} from 'utils/ObjectUtils';
 
 class OnPremListRegionsAndZones extends Component {
   constructor(props) {
     super(props);
     this.addRegionZoneTypeRow = this.addRegionZoneTypeRow.bind(this);
+    this.isFieldReadOnly = this.isFieldReadOnly.bind(this);
   }
+
   componentWillMount() {
     const {fields} = this.props;
     if (fields.length === 0) {
       this.props.fields.push({});
     }
   }
+
   addRegionZoneTypeRow() {
-    this.props.fields.push({});
+    if (this.props.isEditProvider) {
+      this.props.fields.push({isBeingEdited: true});
+    } else {
+      this.props.fields.push({});
+    }
   }
+
   removeRegionZoneTypeRow(idx) {
-    this.props.fields.remove(idx);
+    if (!this.isFieldReadOnly(idx)) {
+      this.props.fields.remove(idx);
+    }
   }
+
+  isFieldReadOnly(fieldIdx) {
+    const {fields, isEditProvider} = this.props;
+    return isEditProvider && (!isDefinedNotNull(fields.get(fieldIdx).isBeingEdited) || !fields.get(fieldIdx).isBeingEdited);
+  }
+
   render() {
     const {fields} = this.props;
     var self = this;
@@ -37,19 +54,20 @@ class OnPremListRegionsAndZones extends Component {
     return (
       <div>
         { fields.map(function(fieldItem, fieldIdx){
+          let isReadOnly = self.isFieldReadOnly(fieldIdx);
           return (
             <Row key={`region-zone-${fieldIdx}`}>
               <Col lg={1}>
                 <i className="fa fa-minus-circle on-prem-row-delete-btn" onClick={self.removeRegionZoneTypeRow.bind(self, fieldIdx)}/>
               </Col>
               <Col lg={3}>
-                <Field name={`${fieldItem}.code`} component={YBInputField}/>
+                <Field name={`${fieldItem}.code`} component={YBInputField} isReadOnly={isReadOnly}/>
               </Col>
               <Col lg={3}>
-                <Field name={`${fieldItem}.location`} component={YBSelect} options={onPremRegionLocations}/>
+                <Field name={`${fieldItem}.location`} component={YBSelect} options={onPremRegionLocations} readOnlySelect={isReadOnly}/>
               </Col>
               <Col lg={5}>
-                <Field name={`${fieldItem}.zones`} component={YBInputField}/>
+                <Field name={`${fieldItem}.zones`} component={YBInputField} isReadOnly={isReadOnly}/>
               </Col>
             </Row>
           )
@@ -82,7 +100,7 @@ export default class OnPremRegionsAndZones extends Component {
     return (
 
       <div className="on-prem-provider-form-container">
-        <form name="onPremRegionsAndZonesForm" onSubmit={handleSubmit(this.createOnPremRegionsAndZones)}>
+        <form name="onPremConfigForm" onSubmit={handleSubmit(this.createOnPremRegionsAndZones)}>
           <div className="on-prem-form-text">
             Add One or More Regions, each with one or more zones.
           </div>
@@ -99,7 +117,7 @@ export default class OnPremRegionsAndZones extends Component {
               </Col>
             </Row>
               <div className="on-prem-form-grid-container">
-              <FieldArray name="regionsZonesList" component={OnPremListRegionsAndZones}/>
+              <FieldArray name="regionsZonesList" component={OnPremListRegionsAndZones} isEditProvider={this.props.isEditProvider}/>
             </div>
           </div>
           <div className="form-action-button-container">

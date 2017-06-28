@@ -66,7 +66,8 @@ const validate = values => {
 var onPremInstancesConfigForm = reduxForm({
   form: 'onPremConfigForm',
   destroyOnUnmount: false,
-  validate
+  validate,
+
 });
 
 

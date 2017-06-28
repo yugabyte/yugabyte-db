@@ -19,12 +19,17 @@ const mapDispatchToProps = (dispatch, ownProps) => {
             return zoneItem.trim();
           }),
           latitude: regionLocation[0],
-          longitude: regionLocation[1]
+          longitude: regionLocation[1],
+          isBeingEdited: regionItem.isBeingEdited
         }
       });
       payloadData.regions = regionsPayload;
       dispatch(setOnPremConfigData(payloadData));
-      ownProps.nextPage();
+      if (ownProps.isEditProvider) {
+        ownProps.submitEditProvider(payloadData);
+      } else {
+        ownProps.nextPage();
+      }
     }
   }
 }
@@ -56,7 +61,7 @@ const validate = values => {
 var onPremRegionsAndZonesForm = reduxForm({
   form: 'onPremConfigForm',
   validate,
-  destroyOnUnmount: false
+  destroyOnUnmount: false,
 });
 
 
