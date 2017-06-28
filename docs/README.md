@@ -18,16 +18,22 @@ Our docs are based on the Hugo framework and are using the Material Docs theme
 
 ### How do I get set up? ###
 
-
-On Mac OS X
-
+## Install Hugo ##
 ```
-cd ~/code
-git clone git@bitbucket.org:yugabyte/docs.git
-cd docs
 brew update
 brew install hugo
-hugo server
+brew install npm
+```
+
+## To run locally on your Mac ## 
+```
+npm start
+```
+
+## To publish to S3 ##
+Caution: This would publish the docs to our website which is used by customers
+```
+npm run publish
 ```
 
 The last command above starts high performance web server that continuously watches the entire docs directory. Go to [http://localhost:1313/](http://localhost:1313/)to see the docs.
