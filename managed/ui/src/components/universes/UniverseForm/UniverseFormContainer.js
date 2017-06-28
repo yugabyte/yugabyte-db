@@ -117,7 +117,7 @@ function mapStateToProps(state, ownProps) {
     "formType": "create",
     "accessKeyCode": "yugabyte-default"
   };
-  if (isNonEmptyObject(currentUniverse.data)) {
+  if (isNonEmptyObject(currentUniverse.data) && ownProps.type === "Edit") {
     let userIntent = currentUniverse.data.universeDetails && currentUniverse.data.universeDetails.userIntent;
     data.universeName = currentUniverse.data.name;
     data.formType = "edit";

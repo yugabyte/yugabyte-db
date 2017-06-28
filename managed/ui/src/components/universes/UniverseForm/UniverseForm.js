@@ -446,7 +446,7 @@ export default class UniverseForm extends Component {
     function volumeTypeFormat(num) {
       return num + ' GB';
     }
-    var isFieldReadOnly = isNonEmptyObject(universe.currentUniverse.data) ? true : false;
+    var isFieldReadOnly = isNonEmptyObject(universe.currentUniverse.data) && this.props.type === "Edit";
     if (_.isObject(self.state.deviceInfo) && isNonEmptyObject(self.state.deviceInfo)) {
       if (self.state.volumeType === 'EBS') {
         let iopsField = <span/>;

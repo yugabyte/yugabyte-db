@@ -3,7 +3,7 @@
 import { connect } from 'react-redux';
 import { TableDetail } from '../../tables';
 import {fetchTableDetail, fetchTableDetailFailure, fetchTableDetailSuccess, resetTableDetail} from '../../../actions/tables';
-import {fetchUniverseInfo, fetchUniverseInfoResponse} from '../../../actions/universe';
+import {fetchUniverseInfo, fetchUniverseInfoResponse, resetUniverseInfo} from '../../../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -24,6 +24,9 @@ const mapDispatchToProps = (dispatch) => {
     },
     resetTableDetail:() => {
       dispatch(resetTableDetail());
+    },
+    resetUniverseDetail: () => {
+      dispatch(resetUniverseInfo());
     }
   }
 };
