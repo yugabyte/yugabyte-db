@@ -6,9 +6,9 @@ import { OnPremConfiguration } from '../../config';
 import { createProvider, createProviderResponse, createInstanceType, createInstanceTypeResponse,
   createRegion, createRegionResponse, createZone, createZoneResponse, createNodeInstance,
   createNodeInstanceResponse, createAccessKey, createAccessKeyResponse, resetProviderBootstrap,
-  fetchCloudMetadata, getProviderList, getProviderListResponse } from '../../../actions/cloud';
+  fetchCloudMetadata, getProviderList, getProviderListResponse, resetOnPremConfigData, setOnPremConfigData } from '../../../actions/cloud';
 import { isNonEmptyArray } from 'utils/ObjectUtils';
-import {reset} from 'redux-form';
+import {destroy} from 'redux-form';
 
 const mapStateToProps = (state) => {
   return {
@@ -36,12 +36,14 @@ const mapDispatchToProps = (dispatch) => {
       }
     },
 
-    createOnPremInstanceTypes: (providerType, providerUUID, config) => {
+    createOnPremInstanceTypes: (providerType, providerUUID, config, isEdit) => {
       if (isObject(config) && isNonEmptyArray(config.instanceTypes)) {
         config.instanceTypes.forEach((type) => {
-          dispatch(createInstanceType(providerType, providerUUID, type)).then((response) => {
-            dispatch(createInstanceTypeResponse(response.payload));
-          })
+          if ((isEdit && type.isBeingEdited) || !isEdit) {
+            dispatch(createInstanceType(providerType, providerUUID, type)).then((response) => {
+              dispatch(createInstanceTypeResponse(response.payload));
+            })
+          }
         })
       }
     },
@@ -52,26 +54,30 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
 
-    createOnPremRegions: (providerUUID, config) => {
+    createOnPremRegions: (providerUUID, config, isEdit) => {
       if (isObject(config) && isNonEmptyArray(config.regions)) {
         config.regions.forEach((region) => {
           let formValues = { "code": region.code, "hostVPCId": "", "name": region.code, "latitude": region.latitude, "longitude": region.longitude};
-          dispatch(createRegion(providerUUID, formValues)).then((response) => {
-            dispatch(createRegionResponse(response.payload));
-          })
+          if ((isEdit && region.isBeingEdited) || !isEdit) {
+            dispatch(createRegion(providerUUID, formValues)).then((response) => {
+              dispatch(createRegionResponse(response.payload));
+            })
+          }
         })
       }
     },
 
-    createOnPremZones: (providerUUID, regionsMap, config) => {
+    createOnPremZones: (providerUUID, regionsMap, config, isEdit) => {
       if (isObject(config) && isNonEmptyArray(config.regions)) {
         config.regions.forEach((region) => {
-          if (isObject(region) && isNonEmptyArray(region.zones)) {
-            region.zones.forEach((zone) => {
-              dispatch(createZone(providerUUID, regionsMap[region.code], zone)).then((response) => {
-                dispatch(createZoneResponse(response.payload));
+          if ((isEdit && region.isBeingEdited) || !isEdit) {
+            if (isObject(region) && isNonEmptyArray(region.zones)) {
+              region.zones.forEach((zone) => {
+                dispatch(createZone(providerUUID, regionsMap[region.code], zone)).then((response) => {
+                  dispatch(createZoneResponse(response.payload));
+                })
               })
-            })
+            }
           }
         })
       }
@@ -91,15 +97,20 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     resetConfigForm: () => {
-      dispatch(reset("onPremConfigForm"));
+      dispatch(destroy("onPremConfigForm"));
     },
 
+    resetOnPremJson: () => {
+      dispatch(resetOnPremConfigData());
+    },
     fetchProviderList: () => {
       dispatch(getProviderList()).then((response) => {
         dispatch(getProviderListResponse(response.payload));
       })
     },
-
+    setConfigJsonData: (payload) => {
+      dispatch(setOnPremConfigData(payload));
+    }
   }
 };
 

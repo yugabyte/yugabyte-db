@@ -10,7 +10,7 @@ var Dropzone = require('react-dropzone');
 export default class OnPremProviderAndAccessKey extends Component {
   constructor(props) {
     super(props);
-    this.state  = {privateKeyFile: {}, hostOptionsVisible: false,}
+    this.state  = {privateKeyFile: {}, hostOptionsVisible: false}
     this.toggleAdditionalHostOptions = this.toggleAdditionalHostOptions.bind(this);
     this.privateKeyUpload = this.privateKeyUpload.bind(this);
     this.submitProviderKeyForm = this.submitProviderKeyForm.bind(this);
@@ -59,15 +59,16 @@ export default class OnPremProviderAndAccessKey extends Component {
         </Col>
       hostOptionsIndicator = <i className="fa fa-chevron-up"/>;
     }
+    let isReadOnly = this.props.isEditProvider;
     return (
       <div className="on-prem-provider-form-container">
-        <form name="onPremProviderConfigForm" onSubmit={handleSubmit(this.submitProviderKeyForm)}>
+        <form name="onPremConfigForm" onSubmit={handleSubmit(this.submitProviderKeyForm)}>
           <Row>
             <Col lg={5}>
               <div className="form-right-aligned-labels">
-                <Field name="name" component={YBInputField} label="Provider Name" className=""/>
-                <Field name="keyCode" component={YBInputField} label="Key Code" className=""/>
-                <Field name="privateKeyContent" component={YBTextArea} label="SSH Key" className="ssh-key-container"/>
+                <Field name="name" component={YBInputField} label="Provider Name" isReadOnly={isReadOnly}/>
+                <Field name="keyCode" component={YBInputField} label="Key Code" isReadOnly={isReadOnly}/>
+                <Field name="privateKeyContent" component={YBTextArea} label="SSH Key" className="ssh-key-container" isReadOnly={isReadOnly}/>
               </div>
               <div className="add-host-options-container" onClick={this.toggleAdditionalHostOptions}>
                 {hostOptionsIndicator} Additional Host Options

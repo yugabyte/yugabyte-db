@@ -11,12 +11,16 @@ const mapDispatchToProps = (dispatch, ownProps) => {
   return {
     submitOnPremMachineTypes: (formData) => {
       var payloadObject = _.clone(ownProps.onPremJsonFormData);
-      var instanceTypesList = formData.machineTypeList.map(function(item, idx){
+      var instanceTypesList = formData.machineTypeList.map(function(item){
         return {instanceTypeCode: item.code,
-          numCores: item.numCores, memSizeGB: item.memSizeGB,
-          volumeDetailsList: item.mountPath.split(",").map(function(mountPathItem, mpIdx){
-            return {volumeSizeGB: item.volumeSizeGB, volumeType: item.volumeType, mountPath: mountPathItem.trim()}
-          }), volumeType: 'SSD'}
+                numCores: item.numCores, memSizeGB: item.memSizeGB,
+                volumeDetailsList: item.mountPath.split(",").map(function(mountPathItem){
+                  return {volumeSizeGB: item.volumeSizeGB,
+                          volumeType: item.volumeType,
+                          mountPath: mountPathItem.trim()}
+                         }),
+                volumeType: 'SSD',
+                isBeingEdited: item.isBeingEdited}
       });
       payloadObject.instanceTypes = instanceTypesList;
       dispatch(setOnPremConfigData(payloadObject));
@@ -60,7 +64,8 @@ const validate = values => {
 var onPremMachineTypesConfigForm = reduxForm({
   form: 'onPremConfigForm',
   validate,
-  destroyOnUnmount: false
+  destroyOnUnmount: false,
+
 });
 
 

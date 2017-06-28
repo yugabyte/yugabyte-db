@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import _ from 'lodash';
-import { isValidObject, isDefinedNotNull, isNonEmptyArray, isNonEmptyObject } from 'utils/ObjectUtils';
+import { isValidObject, isDefinedNotNull, isNonEmptyArray } from 'utils/ObjectUtils';
 import { OnPremConfigWizardContainer, OnPremConfigJSONContainer, OnPremSuccessContainer } from '../../config';
 import { YBButton } from '../../common/forms/fields';
 import emptyDataCenterConfig from '../templates/EmptyDataCenterConfig.json';
@@ -11,43 +11,55 @@ import { getPromiseState } from 'utils/PromiseUtils';
 import { YBLoadingIcon } from '../../common/indicators';
 
 const PROVIDER_TYPE = "onprem";
+const initialState = {
+  isEditProvider: false,
+  isJsonEntry: false,
+  isAdditionalHostOptionsOpen: false,
+  configJsonVal: JSON.stringify(JSON.parse(JSON.stringify(emptyDataCenterConfig)), null, 2),
+  bootstrapSteps: [
+    {type: "provider", name: "Create Provider", status: "Initializing"},
+    {type: "instanceType", name: "Create Instance Types", status: "Initializing"},
+    {type: "region", name: "Create Regions", status: "Initializing"},
+    {type: "zone", name: "Create Zones", status: "Initializing"},
+    {type: "node", name: "Create Node Instances", status: "Initializing"},
+    {type: "accessKey", name: "Create Access Keys", status: "Initializing"}
+  ],
+  regionsMap: {},
+  zonesMap: {},
+  providerUUID: null,
+  numZones: 0,
+  numNodesConfigured: 0,
+  numRegions: 0,
+  numInstanceTypes: 0,
+  numInstanceTypesConfigured: 0
+};
 
 export default class OnPremConfiguration extends Component {
 
   constructor(props) {
     super(props);
-    const emptyJsonPretty = JSON.stringify(JSON.parse(JSON.stringify(emptyDataCenterConfig)), null, 2);
-    this.state = {
-      isJsonEntry: false,
-      isAdditionalHostOptionsOpen: false,
-      configJsonVal: emptyJsonPretty,
-      bootstrapSteps: [
-        {type: "provider", name: "Create Provider", status: "Initializing"},
-        {type: "instanceType", name: "Create Instance Types", status: "Initializing"},
-        {type: "region", name: "Create Regions", status: "Initializing"},
-        {type: "zone", name: "Create Zones", status: "Initializing"},
-        {type: "node", name: "Create Node Instances", status: "Initializing"},
-        {type: "accessKey", name: "Create Access Keys", status: "Initializing"}
-      ],
-      regionsMap: {},
-      zonesMap: {},
-      providerUUID: null,
-      numZones: 0,
-      numNodesConfigured: 0
-    };
+    this.state = _.clone(initialState, true);
     this.toggleJsonEntry = this.toggleJsonEntry.bind(this);
     this.toggleAdditionalOptionsModal = this.toggleAdditionalOptionsModal.bind(this);
     this.submitJson = this.submitJson.bind(this);
     this.updateConfigJsonVal = this.updateConfigJsonVal.bind(this);
     this.submitWizardJson = this.submitWizardJson.bind(this);
+    this.showEditProviderForm = this.showEditProviderForm.bind(this);
+    this.submitEditProvider = this.submitEditProvider.bind(this);
+    this.resetEdit = this.resetEdit.bind(this);
   }
 
   componentWillMount() {
     this.props.resetConfigForm();
   }
 
+  showEditProviderForm() {
+    this.setState({isEditProvider: true});
+  }
+
   componentWillReceiveProps(nextProps) {
     const { cloudBootstrap: {data: { response, type }, error, promiseState}} = nextProps;
+
     let bootstrapSteps = this.state.bootstrapSteps;
     let currentStepIndex = bootstrapSteps.findIndex( (step) => step.type === type );
     if (currentStepIndex !== -1) {
@@ -58,9 +70,9 @@ export default class OnPremConfiguration extends Component {
       }
       this.setState({bootstrapSteps: bootstrapSteps});
     }
-
     if (isValidObject(response)) {
       const config = _.isString(this.state.configJsonVal) ? JSON.parse(this.state.configJsonVal) : this.state.configJsonVal;
+      const isEdit = this.state.isEditProvider;
       const numZones = config.regions.reduce((total, region) => {
         return total + region.zones.length
       }, 0);
@@ -71,21 +83,27 @@ export default class OnPremConfiguration extends Component {
             regionsMap: {},
             zonesMap: {},
             providerUUID: response.uuid,
+            numRegions: config.regions.length,
+            numInstanceTypes: config.instanceTypes.length,
             numZones: numZones,
             numNodesConfigured: 0,
             numInstanceTypesConfigured: 0
           });
           bootstrapSteps[currentStepIndex + 1].status = "Running";
-          this.props.createOnPremInstanceTypes(PROVIDER_TYPE, response.uuid, config);
+          this.props.createOnPremInstanceTypes(PROVIDER_TYPE, response.uuid, config, isEdit);
           break;
         case "instanceType":
           // Launch configuration of regions
           let numInstanceTypesConfigured = this.state.numInstanceTypesConfigured;
           numInstanceTypesConfigured++;
           this.setState({numInstanceTypesConfigured: numInstanceTypesConfigured});
-          if (numInstanceTypesConfigured === config.instanceTypes.length) {
+          if (numInstanceTypesConfigured === this.state.numInstanceTypes) {
             bootstrapSteps[currentStepIndex + 1].status = "Running";
-            this.props.createOnPremRegions(this.state.providerUUID, config);
+            if (this.state.isEditProvider && this.state.numRegions === 0) {
+              this.resetEdit();
+            } else {
+              this.props.createOnPremRegions(this.state.providerUUID, config, isEdit);
+            }
           }
           break;
         case "region":
@@ -94,9 +112,9 @@ export default class OnPremConfiguration extends Component {
           regionsMap[response.code] = response.uuid;
           this.setState({regionsMap: regionsMap});
           // Launch configuration of zones once all regions are bootstrapped
-          if (Object.keys(regionsMap).length === config.regions.length) {
+          if (Object.keys(regionsMap).length === this.state.numRegions) {
             bootstrapSteps[currentStepIndex + 1].status = "Running";
-            this.props.createOnPremZones(this.state.providerUUID, regionsMap, config);
+            this.props.createOnPremZones(this.state.providerUUID, regionsMap, config, isEdit);
           }
           break;
         case "zone":
@@ -107,11 +125,13 @@ export default class OnPremConfiguration extends Component {
           // Launch configuration of node instances once all availability zones are bootstrapped
           if (Object.keys(zonesMap).length === this.state.numZones) {
             bootstrapSteps[currentStepIndex + 1].status = "Running";
-            // If nodes specified create nodes, else jump to access key
-            if (isNonEmptyArray(config.nodes)) {
-              this.props.createOnPremNodes(zonesMap, config);
+            // If Edit Case, then jump to success
+            if (this.state.isEditProvider) {
+              this.resetEdit();
+            } else if (isNonEmptyArray(config.nodes)) {
+                this.props.createOnPremNodes(zonesMap, config);
             } else {
-              this.props.createOnPremAccessKeys(this.state.providerUUID, this.state.regionsMap, config);
+                this.props.createOnPremAccessKeys(this.state.providerUUID, this.state.regionsMap, config);
             }
           }
           break;
@@ -129,12 +149,19 @@ export default class OnPremConfiguration extends Component {
           }
           break;
         case "accessKey":
+          this.setState(_.clone(initialState, true));
           this.props.onPremConfigSuccess();
           break;
         default:
           break;
       }
     }
+  }
+
+  resetEdit() {
+    this.setState(_.clone(initialState, true));
+    this.props.resetConfigForm();
+    this.props.onPremConfigSuccess();
   }
 
   toggleJsonEntry() {
@@ -155,6 +182,43 @@ export default class OnPremConfiguration extends Component {
     }
   }
 
+  submitEditProvider(payloadData) {
+    const {cloud: {providers}} = this.props;
+    let self = this;
+    let currentProvider = providers.data.find((provider)=>(provider.code === "onprem"));
+    let totalNumRegions  = 0;
+    let totalNumInstances = 0;
+    let totalNumZones = 0;
+    payloadData.regions.forEach(function(region){
+      if (region.isBeingEdited) {
+        totalNumRegions ++;
+        totalNumZones += region.zones.length;
+      }
+    })
+    payloadData.instanceTypes.forEach(function(instanceType){
+      if (instanceType.isBeingEdited) {
+        totalNumInstances ++;
+      }
+    });
+    if (totalNumInstances === 0 && totalNumRegions === 0) {
+      this.setState({configJsonVal: payloadData, isEditProvider: false});
+    } else {
+      this.setState({numRegions: totalNumRegions,
+                    numZones: totalNumZones,
+                    numInstanceTypes: totalNumInstances,
+                    configJsonVal: payloadData,
+                    providerUUID: currentProvider.uuid
+      }, function () {
+        if (totalNumInstances > 0) {
+          self.props.createOnPremInstanceTypes(currentProvider.code, currentProvider.uuid, payloadData, true);
+        } else {
+          // If configuring only regions, then directly jump to region configure
+          self.props.createOnPremRegions(currentProvider.uuid, payloadData, true);
+        }
+      });
+    }
+  }
+
   submitWizardJson(payloadData) {
     this.setState({configJsonVal: payloadData})
     this.props.createOnPremProvider(PROVIDER_TYPE, payloadData);
@@ -170,7 +234,10 @@ export default class OnPremConfiguration extends Component {
     } else if (getPromiseState(configuredProviders).isSuccess()) {
       var providerFound = configuredProviders.data.find(provider => provider.code === 'onprem');
       if (isDefinedNotNull(providerFound)) {
-        return <OnPremSuccessContainer/>;
+        if (this.state.isEditProvider) {
+          return <OnPremConfigWizardContainer submitWizardJson={this.submitWizardJson} isEditProvider={this.state.isEditProvider} submitEditProvider={this.submitEditProvider}/>;
+        }
+        return <OnPremSuccessContainer showEditProviderForm={this.showEditProviderForm}/>;
       }
     }
     var switchToJsonEntry = <YBButton btnText={"Switch to JSON View"} btnClass={"btn btn-default pull-left"} onClick={this.toggleJsonEntry}/>;
