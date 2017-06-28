@@ -17,7 +17,7 @@ import { YBTabsPanel } from '../../panels';
 import { RegionMap } from '../../maps';
 import { ListTablesContainer } from '../../tables';
 import { YBMapLegend } from '../../maps';
-import { isEmptyObject, isNonEmptyObject, isValidObject, isNonEmptyArray, isDefinedNotNull } from 'utils/ObjectUtils';
+import { isEmptyObject, isNonEmptyObject, isNonEmptyArray, isDefinedNotNull } from 'utils/ObjectUtils';
 import {getPromiseState} from 'utils/PromiseUtils';
 import {YBLoadingIcon} from '../../common/indicators';
 import './UniverseDetail.scss';
@@ -171,26 +171,34 @@ export default class UniverseDetail extends Component {
 }
 
 class UniverseTaskList extends Component {
+
   render() {
     const {universe: {universeTasks, currentUniverse}} = this.props;
     var universeTaskUUIDs = [];
     var universeTaskHistoryArray = [];
     var universeTaskHistory = <span/>;
-    if (isValidObject(universeTasks) && isNonEmptyObject(currentUniverse.data) && universeTasks[currentUniverse.data.universeUUID] !== undefined) {
-      universeTaskUUIDs = universeTasks[currentUniverse.data.universeUUID].map(function(task) {
+    if (getPromiseState(universeTasks).isLoading()) {
+      universeTaskHistory = <YBLoadingIcon/>;
+    }
+    let currentUniverseTasks = universeTasks.data[currentUniverse.data.universeUUID];
+    if (getPromiseState(universeTasks).isSuccess() && isNonEmptyObject(currentUniverse.data) && isNonEmptyArray(currentUniverseTasks)) {
+      universeTaskUUIDs = currentUniverseTasks.map(function(task) {
         if (task.status !== "Running") {
           universeTaskHistoryArray.push(task);
         }
-        return (task.status !== "Failed" && task.percentComplete !== 100) ? task.id : false;
+        return (task.status !== "Failure" && task.percentComplete !== 100) ? task.id : false;
       }).filter(Boolean);
     }
     if (isNonEmptyArray(universeTaskHistoryArray)) {
       universeTaskHistory = <TaskListTable taskList={universeTaskHistoryArray} title={"Task History"}/>
     }
-
+    let currentTaskProgress = <span/>;
+    if (isNonEmptyArray) {
+      currentTaskProgress = <TaskProgressContainer taskUUIDs={universeTaskUUIDs} type="StepBar"/>;
+    }
     return (
       <div>
-        <TaskProgressContainer taskUUIDs={universeTaskUUIDs} type="StepBar"/>
+        {currentTaskProgress}
         {universeTaskHistory}
       </div>
     )

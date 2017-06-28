@@ -2,7 +2,7 @@
 
 import { connect } from 'react-redux';
 import { ListTables } from '../../tables';
-import {fetchUniverseTables, fetchUniverseTablesSuccess, fetchUniverseTablesFailure, toggleTableView} from '../../../actions/tables';
+import {fetchUniverseTables, fetchUniverseTablesSuccess, fetchUniverseTablesFailure, toggleTableView, resetTablesList} from '../../../actions/tables';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -17,6 +17,9 @@ const mapDispatchToProps = (dispatch) => {
     },
     showCreateTable: () => {
       dispatch(toggleTableView("create"));
+    },
+    resetTablesList: () => {
+      dispatch(resetTablesList());
     }
   }
 }

@@ -27,7 +27,7 @@ export default class UniverseRegionLocationPanel extends Component {
   render() {
     const { cloud, universe: {universeList}, cloud: {providers}} = this.props;
     var self = this;
-    if (getPromiseState(providers).isEmpty()) {
+    if (getPromiseState(providers).isEmpty() || !getPromiseState(cloud.supportedRegionList).isSuccess()) {
       return <span/>;
     }
 

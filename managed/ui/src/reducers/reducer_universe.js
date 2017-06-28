@@ -3,7 +3,7 @@
 import { FETCH_UNIVERSE_INFO, RESET_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_RESPONSE, CREATE_UNIVERSE,
   CREATE_UNIVERSE_RESPONSE, EDIT_UNIVERSE, EDIT_UNIVERSE_RESPONSE, FETCH_UNIVERSE_LIST,
   FETCH_UNIVERSE_LIST_RESPONSE, RESET_UNIVERSE_LIST, DELETE_UNIVERSE, DELETE_UNIVERSE_RESPONSE,
-  FETCH_UNIVERSE_TASKS, FETCH_UNIVERSE_TASKS_SUCCESS, FETCH_UNIVERSE_TASKS_FAILURE,
+  FETCH_UNIVERSE_TASKS, FETCH_UNIVERSE_TASKS_RESPONSE,
   RESET_UNIVERSE_TASKS, OPEN_DIALOG, CLOSE_DIALOG, CONFIGURE_UNIVERSE_TEMPLATE,
   CONFIGURE_UNIVERSE_TEMPLATE_RESPONSE, CONFIGURE_UNIVERSE_TEMPLATE_SUCCESS,
   CONFIGURE_UNIVERSE_RESOURCES, CONFIGURE_UNIVERSE_RESOURCES_RESPONSE, ROLLING_UPGRADE,
@@ -13,7 +13,6 @@ import { FETCH_UNIVERSE_INFO, RESET_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_RESPONSE,
 import _ from 'lodash';
 import { getInitialState, setLoadingState, setPromiseResponse, setSuccessState } from 'utils/PromiseUtils.js';
 import { isNonEmptyArray } from 'utils/ObjectUtils.js';
-
 
 const INITIAL_STATE = {
   currentUniverse: getInitialState({}),
@@ -28,11 +27,11 @@ const INITIAL_STATE = {
   universeConfigTemplate: getInitialState({}),
   universeResourceTemplate: getInitialState({}),
   currentPlacementStatus: null,
-  fetchUniverseMetadata: false
+  fetchUniverseMetadata: false,
+  universeTasks: getInitialState([])
 };
 
 export default function(state = INITIAL_STATE, action) {
-  let error;
   switch(action.type) {
 
     // Universe CRUD Operations
@@ -71,13 +70,11 @@ export default function(state = INITIAL_STATE, action) {
 
     // Universe Tasks Operations
     case FETCH_UNIVERSE_TASKS:
-      return { ...state, universeTasks: [], error: null, loading: _.assign(state.loading, {universeTasks: true})};
-    case FETCH_UNIVERSE_TASKS_SUCCESS:
-      return { ...state, universeTasks: action.payload.data, error: null, loading: _.assign(state.loading, {universeTasks: false})};
-    case FETCH_UNIVERSE_TASKS_FAILURE:
-      return { ...state, universeTasks: [], error: error, loading: _.assign(state.loading, {universeTasks: false})};
+      return setLoadingState(state, "universeTasks", []);
+    case FETCH_UNIVERSE_TASKS_RESPONSE:
+      return setPromiseResponse(state, "universeTasks", action);
     case RESET_UNIVERSE_TASKS:
-      return { ...state, universeTasks: [], error: null, loading: false};
+      return { ...state, universeTasks: getInitialState([])};
 
     // Universe Configure Operations
     case CONFIGURE_UNIVERSE_TEMPLATE:
