@@ -125,6 +125,8 @@ ExternalMiniClusterOptions::~ExternalMiniClusterOptions() {
 
 ExternalMiniCluster::ExternalMiniCluster(const ExternalMiniClusterOptions& opts)
   : opts_(opts), add_new_master_at_(-1) {
+  opts_.extra_master_flags.push_back("--enable_tracing=true");
+  opts_.extra_tserver_flags.push_back("--enable_tracing=true");
 }
 
 ExternalMiniCluster::~ExternalMiniCluster() {

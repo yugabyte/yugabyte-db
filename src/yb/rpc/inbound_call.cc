@@ -56,7 +56,7 @@ DEFINE_int32(print_trace_every, 0,
 TAG_FLAG(print_trace_every, advanced);
 TAG_FLAG(print_trace_every, runtime);
 
-DEFINE_int32(rpc_slow_query_threshold_ms, 50,
+DEFINE_int32(rpc_slow_query_threshold_ms, 10000,
              "Traces for calls that take longer than this threshold (in ms) are logged");
 TAG_FLAG(rpc_slow_query_threshold_ms, advanced);
 TAG_FLAG(rpc_slow_query_threshold_ms, runtime);

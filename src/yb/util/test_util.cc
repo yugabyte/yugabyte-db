@@ -35,6 +35,7 @@ DEFINE_string(test_leave_files, "on_failure",
               " Valid values are 'always', 'on_failure', or 'never'");
 
 DEFINE_int32(test_random_seed, 0, "Random seed to use for randomized tests");
+DECLARE_bool(enable_tracing);
 
 using std::string;
 using strings::Substitute;
@@ -82,6 +83,7 @@ YBTest::~YBTest() {
 void YBTest::SetUp() {
   InitSpinLockContentionProfiling();
   InitGoogleLoggingSafeBasic("yb_test");
+  FLAGS_enable_tracing = true;
 }
 
 string YBTest::GetTestPath(const string& relative_path) {

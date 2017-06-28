@@ -17,9 +17,12 @@
 #ifndef YB_UTIL_TRACE_H
 #define YB_UTIL_TRACE_H
 
+#include <atomic>
 #include <iosfwd>
 #include <string>
 #include <vector>
+
+#include <gflags/gflags.h>
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/stringpiece.h"
@@ -30,6 +33,8 @@
 
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena_fwd.h"
+
+DECLARE_bool(enable_tracing);
 
 // Adopt a Trace on the current thread for the duration of the current
 // scope. The old current Trace is restored when the scope is exited.
@@ -43,19 +48,29 @@
 //  TRACE("Acquired timestamp $0", timestamp);
 #define TRACE(format, substitutions...) \
   do { \
-    yb::Trace* _trace = Trace::CurrentTrace(); \
-    if (_trace) { \
-      _trace->SubstituteAndTrace(__FILE__, __LINE__, (format),  \
-        ##substitutions); \
+    if (FLAGS_enable_tracing) { \
+      yb::Trace* _trace = Trace::CurrentTrace(); \
+      if (_trace) { \
+        _trace->SubstituteAndTrace(__FILE__, __LINE__, (format),  \
+          ##substitutions); \
+      } \
     } \
-  } while (0);
+  } while (0)
 
 // Like the above, but takes the trace pointer as an explicit argument.
 #define TRACE_TO(trace, format, substitutions...) \
-  (trace)->SubstituteAndTrace(__FILE__, __LINE__, (format), ##substitutions)
+  do { \
+    if (FLAGS_enable_tracing) { \
+      (trace)->SubstituteAndTrace(__FILE__, __LINE__, (format), ##substitutions); \
+    } \
+  } while (0)
 
 #define PLAIN_TRACE_TO(trace, message) \
-  do { (trace)->Trace(__FILE__, __LINE__, (message)); } while (0)
+  do { \
+    if (FLAGS_enable_tracing) { \
+      (trace)->Trace(__FILE__, __LINE__, (message)); \
+    } \
+  } while (0)
 
 namespace yb {
 
@@ -129,6 +144,8 @@ class Trace : public RefCountedThreadSafe<Trace> {
   friend class RefCountedThreadSafe<Trace>;
   ~Trace();
 
+  ThreadSafeArena* GetAndInitArena();
+
   // The current trace for this thread. Threads should only set this using
   // using ScopedAdoptTrace, which handles reference counting the underlying
   // object.
@@ -141,7 +158,7 @@ class Trace : public RefCountedThreadSafe<Trace> {
   // Add the entry to the linked list of entries.
   void AddEntry(TraceEntry* entry);
 
-  gscoped_ptr<ThreadSafeArena> arena_;
+  std::atomic<ThreadSafeArena*> arena_ = {nullptr};
 
   // Lock protecting the entries linked list.
   mutable simple_spinlock lock_;
@@ -170,6 +187,7 @@ class ScopedAdoptTrace {
   DFAKE_MUTEX(ctor_dtor_);
   Trace* old_trace_;
   scoped_refptr<Trace> trace_;
+  bool is_enabled_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(ScopedAdoptTrace);
 };

@@ -30,6 +30,8 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/trace.h"
 
+DECLARE_bool(enable_tracing);
+
 using std::shared_ptr;
 
 namespace yb {
@@ -42,7 +44,14 @@ static Status BuildMinMaxTestPool(int min_threads, int max_threads, gscoped_ptr<
 }
 } // anonymous namespace
 
-TEST(TestThreadPool, TestNoTaskOpenClose) {
+class TestThreadPool : public ::testing::Test {
+ public:
+  TestThreadPool() {
+    FLAGS_enable_tracing = true;
+  }
+};
+
+TEST_F(TestThreadPool, TestNoTaskOpenClose) {
   gscoped_ptr<ThreadPool> thread_pool;
   ASSERT_OK(BuildMinMaxTestPool(4, 4, &thread_pool));
   thread_pool->Shutdown();
@@ -70,7 +79,7 @@ class SimpleTask : public Runnable {
   Atomic32 *counter_;
 };
 
-TEST(TestThreadPool, TestSimpleTasks) {
+TEST_F(TestThreadPool, TestSimpleTasks) {
   gscoped_ptr<ThreadPool> thread_pool;
   ASSERT_OK(BuildMinMaxTestPool(4, 4, &thread_pool));
 
@@ -93,7 +102,7 @@ static void IssueTraceStatement() {
 
 // Test that the thread-local trace is propagated to tasks
 // submitted to the threadpool.
-TEST(TestThreadPool, TestTracePropagation) {
+TEST_F(TestThreadPool, TestTracePropagation) {
   gscoped_ptr<ThreadPool> thread_pool;
   ASSERT_OK(BuildMinMaxTestPool(1, 1, &thread_pool));
 
@@ -106,7 +115,7 @@ TEST(TestThreadPool, TestTracePropagation) {
   ASSERT_STR_CONTAINS(t->DumpToString(true), "hello from task");
 }
 
-TEST(TestThreadPool, TestSubmitAfterShutdown) {
+TEST_F(TestThreadPool, TestSubmitAfterShutdown) {
   gscoped_ptr<ThreadPool> thread_pool;
   ASSERT_OK(BuildMinMaxTestPool(1, 1, &thread_pool));
   thread_pool->Shutdown();
@@ -129,14 +138,14 @@ class SlowTask : public Runnable {
   CountDownLatch* latch_;
 };
 
-TEST(TestThreadPool, TestThreadPoolWithNoMinimum) {
+TEST_F(TestThreadPool, TestThreadPoolWithNoMinimum) {
   MonoDelta idle_timeout = MonoDelta::FromMilliseconds(1);
   gscoped_ptr<ThreadPool> thread_pool;
   ASSERT_OK(ThreadPoolBuilder("test")
       .set_min_threads(0).set_max_threads(3)
       .set_idle_timeout(idle_timeout).Build(&thread_pool));
   // There are no threads to start with.
-  ASSERT_TRUE(thread_pool->num_threads_ == 0);
+  ASSERT_EQ(0, thread_pool->num_threads_);
   // We get up to 3 threads when submitting work.
   CountDownLatch latch(1);
   ASSERT_OK(thread_pool->Submit(
@@ -161,7 +170,7 @@ TEST(TestThreadPool, TestThreadPoolWithNoMinimum) {
 
 // Regression test for a bug where a task is submitted exactly
 // as a thread is about to exit. Previously this could hang forever.
-TEST(TestThreadPool, TestRace) {
+TEST_F(TestThreadPool, TestRace) {
   alarm(10);
   MonoDelta idle_timeout = MonoDelta::FromMicroseconds(1);
   gscoped_ptr<ThreadPool> thread_pool;
@@ -179,7 +188,7 @@ TEST(TestThreadPool, TestRace) {
   }
 }
 
-TEST(TestThreadPool, TestVariableSizeThreadPool) {
+TEST_F(TestThreadPool, TestVariableSizeThreadPool) {
   MonoDelta idle_timeout = MonoDelta::FromMilliseconds(1);
   gscoped_ptr<ThreadPool> thread_pool;
   ASSERT_OK(ThreadPoolBuilder("test")
@@ -213,7 +222,7 @@ TEST(TestThreadPool, TestVariableSizeThreadPool) {
   ASSERT_EQ(0, thread_pool->num_threads_);
 }
 
-TEST(TestThreadPool, TestMaxQueueSize) {
+TEST_F(TestThreadPool, TestMaxQueueSize) {
   gscoped_ptr<ThreadPool> thread_pool;
   ASSERT_OK(ThreadPoolBuilder("test")
       .set_min_threads(1).set_max_threads(1)
@@ -236,7 +245,7 @@ TEST(TestThreadPool, TestMaxQueueSize) {
 
 // Test that setting a promise from another thread yields
 // a value on the current thread.
-TEST(TestThreadPool, TestPromises) {
+TEST_F(TestThreadPool, TestPromises) {
   gscoped_ptr<ThreadPool> thread_pool;
   ASSERT_OK(ThreadPoolBuilder("test")
       .set_min_threads(1).set_max_threads(1)
@@ -260,7 +269,7 @@ METRIC_DEFINE_histogram(test_entity, queue_time, "queue time",
 METRIC_DEFINE_histogram(test_entity, run_time, "run time",
                         MetricUnit::kMicroseconds, "run time", 1000, 1);
 
-TEST(TestThreadPool, TestMetrics) {
+TEST_F(TestThreadPool, TestMetrics) {
   MetricRegistry registry;
   scoped_refptr<MetricEntity> entity = METRIC_ENTITY_test_entity.Instantiate(
       &registry, "test entity");

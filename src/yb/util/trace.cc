@@ -33,6 +33,8 @@
 #include "yb/util/memory/arena.h"
 #include "yb/util/memory/memory.h"
 
+DEFINE_bool(enable_tracing, false, "Flag to enable/disable tracing across the code.");
+
 namespace yb {
 
 using strings::internal::SubstituteArg;
@@ -141,15 +143,19 @@ int64_t GetCurrentMicrosFast() {
 } // namespace
 
 ScopedAdoptTrace::ScopedAdoptTrace(Trace* t)
-    : old_trace_(Trace::threadlocal_trace_), trace_(t) {
-  CHECK(!t || !t->HasOneRef());
-  Trace::threadlocal_trace_ = t;
-  DFAKE_SCOPED_LOCK_THREAD_LOCKED(ctor_dtor_);
+    : old_trace_(Trace::threadlocal_trace_), trace_(t), is_enabled_(FLAGS_enable_tracing) {
+  if (is_enabled_) {
+    CHECK(!t || !t->HasOneRef());
+    Trace::threadlocal_trace_ = t;
+    DFAKE_SCOPED_LOCK_THREAD_LOCKED(ctor_dtor_);
+  }
 }
 
 ScopedAdoptTrace::~ScopedAdoptTrace() {
-  Trace::threadlocal_trace_ = old_trace_;
-  DFAKE_SCOPED_LOCK_THREAD_LOCKED(ctor_dtor_);
+  if (is_enabled_) {
+    Trace::threadlocal_trace_ = old_trace_;
+    DFAKE_SCOPED_LOCK_THREAD_LOCKED(ctor_dtor_);
+  }
 }
 
 // Struct which precedes each entry in the trace.
@@ -180,12 +186,28 @@ struct TraceEntry {
 };
 
 Trace::Trace()
-    : arena_(new ThreadSafeArena(1024, 128*1024)),
-      entries_head_(nullptr),
+    : entries_head_(nullptr),
       entries_tail_(nullptr) {
 }
 
 Trace::~Trace() {
+  auto* arena = arena_.load(std::memory_order_acquire);
+  if (arena) {
+    delete arena;
+  }
+}
+
+ThreadSafeArena* Trace::GetAndInitArena() {
+  auto* arena = arena_.load(std::memory_order_acquire);
+  if (arena == nullptr) {
+    std::lock_guard<simple_spinlock> l(lock_);
+    arena = arena_.load(std::memory_order_relaxed);
+    if (arena == nullptr) {
+      arena = new ThreadSafeArena(1024, 128 * 1024);
+      arena_.store(arena, std::memory_order_release);
+    }
+  }
+  return arena;
 }
 
 void Trace::SubstituteAndTrace(const char* file_path,
@@ -209,8 +231,9 @@ void Trace::SubstituteAndTrace(const char* file_path,
 }
 
 TraceEntry* Trace::NewEntry(int msg_len, const char* file_path, int line_number) {
+  auto* arena = GetAndInitArena();
   int size = sizeof(TraceEntry) + msg_len;
-  uint8_t* dst = static_cast<uint8_t*>(arena_->AllocateBytesAligned(size, alignof(TraceEntry)));
+  uint8_t* dst = static_cast<uint8_t*>(arena->AllocateBytesAligned(size, alignof(TraceEntry)));
   if (dst == nullptr) {
     LOG(ERROR) << "NewEntry(msg_len, " << file_path << ", " << line_number
         << ") received nullptr from AllocateBytes.\n So far:" << DumpToString(true);
