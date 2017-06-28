@@ -191,6 +191,10 @@ Status MiniCluster::RestartSync() {
     CHECK_OK(master_server->Restart());
     CHECK_OK(master_server->WaitForCatalogManagerInit());
   }
+
+  RETURN_NOT_OK_PREPEND(WaitForTabletServerCount(num_tablet_servers()),
+                        "Waiting for tablet servers to start");
+
   return Status::OK();
 }
 
