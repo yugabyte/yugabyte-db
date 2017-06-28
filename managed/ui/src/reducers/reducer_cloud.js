@@ -10,7 +10,7 @@ import { GET_REGION_LIST, GET_REGION_LIST_RESPONSE, GET_PROVIDER_LIST, GET_PROVI
   GET_EBS_TYPE_LIST_RESPONSE, CREATE_DOCKER_PROVIDER, CREATE_DOCKER_PROVIDER_RESPONSE,
   CREATE_INSTANCE_TYPE, CREATE_INSTANCE_TYPE_RESPONSE, FETCH_CLOUD_METADATA, CREATE_ZONE,
   CREATE_ZONE_RESPONSE, CREATE_NODE_INSTANCE, CREATE_NODE_INSTANCE_RESPONSE, SET_ON_PREM_CONFIG_DATA,
-  GET_NODE_INSTANCE_LIST, GET_NODE_INSTANCE_LIST_RESPONSE
+  GET_NODE_INSTANCE_LIST, GET_NODE_INSTANCE_LIST_RESPONSE, RESET_ON_PREM_CONFIG_DATA
 } from '../actions/cloud';
 
 import { getInitialState, setInitialState, setSuccessState, setFailureState, setLoadingState, setPromiseResponse }
@@ -22,7 +22,7 @@ const INITIAL_STATE = {
   providers: getInitialState([]),
   instanceTypes: getInitialState([]),
   supportedRegionList: getInitialState([]),
-  onPremJsonFormData: [],
+  onPremJsonFormData: {},
   ebsTypes: [],
   loading: {
     regions: false,
@@ -169,6 +169,8 @@ export default function(state = INITIAL_STATE, action) {
 
     case SET_ON_PREM_CONFIG_DATA:
       return {...state, onPremJsonFormData: action.payload};
+    case RESET_ON_PREM_CONFIG_DATA:
+      return {...state, onPremJsonFormData: {}};
 
     case GET_NODE_INSTANCE_LIST:
       return setLoadingState(state, "nodeInstanceList", []);

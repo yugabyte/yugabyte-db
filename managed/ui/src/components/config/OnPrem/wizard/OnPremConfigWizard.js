@@ -5,7 +5,6 @@ import './OnPremConfigWizard.scss';
 import {OnPremProviderAndAccessKeyContainer, OnPremMachineTypesContainer,
        OnPremRegionsAndZonesContainer, OnPremInstancesContainer, } from '../../../config';
 import {Row, Col} from 'react-bootstrap';
-const onPremStepperOptions = ["Provider Name And Access Info", "Machine Types", "Regions And Zones", "Instances"];
 
 export default class OnPremConfigWizard extends Component {
   constructor(props) {
@@ -30,8 +29,10 @@ export default class OnPremConfigWizard extends Component {
       currentWizardStepContainer = <OnPremRegionsAndZonesContainer {...this.props} prevPage={this.prevPage} nextPage={this.nextPage}/>;
     } else if (this.state.currentStep === 3) {
       currentWizardStepContainer = <OnPremInstancesContainer  {...this.props} prevPage={this.prevPage} nextPage={this.nextPage}/>;
-    } else if (this.state.currentStep === 4) {
-
+    }
+    let onPremStepperOptions = ["Provider Name And Access Info", "Machine Types", "Regions And Zones", "Instances"];
+    if (this.props.isEditProvider) {
+      onPremStepperOptions = ["Provider Name And Access Info", "Machine Types", "Regions And Zones"];
     }
     return (
       <div>

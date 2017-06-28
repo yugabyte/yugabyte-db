@@ -4,24 +4,40 @@ import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Field, FieldArray } from 'redux-form';
 import { YBInputField, YBButton } from '../../../common/forms/fields';
+import {isDefinedNotNull} from 'utils/ObjectUtils';
 
 class OnPremListMachineTypes extends Component {
   constructor(props) {
     super(props);
     this.addMachineTypeRow = this.addMachineTypeRow.bind(this);
   }
+
   componentWillMount() {
     const {fields} = this.props;
     if (fields.length === 0) {
       this.props.fields.push({});
     }
   }
+
   addMachineTypeRow() {
-    this.props.fields.push({});
+    if (this.props.isEditProvider) {
+      this.props.fields.push({isBeingEdited: true});
+    } else {
+      this.props.fields.push({});
+    }
   }
+
   removeMachineTypeRow(idx) {
-    this.props.fields.remove(idx);
+    if (!this.isFieldReadOnly(idx)) {
+      this.props.fields.remove(idx);
+    }
   }
+
+  isFieldReadOnly(fieldIdx) {
+    const {fields, isEditProvider} = this.props;
+    return isEditProvider && (!isDefinedNotNull(fields.get(fieldIdx).isBeingEdited) || !fields.get(fieldIdx).isBeingEdited);
+  }
+
   render() {
     const {fields} = this.props;
     var self = this;
@@ -34,25 +50,26 @@ class OnPremListMachineTypes extends Component {
     return (
       <div>
         { fields.map(function(fieldItem, fieldIdx){
+          let isReadOnly = self.isFieldReadOnly(fieldIdx);
           return (
             <Row key={`fieldMap${fieldIdx}`}>
               <Col lg={1}>
                 {removeRowButton(fieldIdx)}
               </Col>
               <Col lg={3}>
-                <Field name={`${fieldItem}.code`} component={YBInputField}/>
+                <Field name={`${fieldItem}.code`} component={YBInputField} isReadOnly={isReadOnly}/>
               </Col>
               <Col lg={1}>
-                <Field name={`${fieldItem}.numCores`}component={YBInputField}/>
+                <Field name={`${fieldItem}.numCores`}component={YBInputField} isReadOnly={isReadOnly}/>
               </Col>
               <Col lg={1}>
-                <Field name={`${fieldItem}.memSizeGB`} component={YBInputField}/>
+                <Field name={`${fieldItem}.memSizeGB`} component={YBInputField} isReadOnly={isReadOnly}/>
               </Col>
               <Col lg={1}>
-                <Field name={`${fieldItem}.volumeSizeGB`} component={YBInputField}/>
+                <Field name={`${fieldItem}.volumeSizeGB`} component={YBInputField} isReadOnly={isReadOnly}/>
               </Col>
               <Col lg={4}>
-                <Field name={`${fieldItem}.mountPath`} component={YBInputField}/>
+                <Field name={`${fieldItem}.mountPath`} component={YBInputField} isReadOnly={isReadOnly}/>
               </Col>
             </Row>
           )
@@ -84,7 +101,7 @@ export default class OnPremMachineTypes extends Component {
     const {handleSubmit, switchToJsonEntry} = this.props;
     return (
       <div className="on-prem-provider-form-container">
-        <form name="onPremMachineTypesConfigForm" onSubmit={handleSubmit(this.props.submitOnPremMachineTypes)}>
+        <form name="onPremConfigForm" onSubmit={handleSubmit(this.props.submitOnPremMachineTypes)}>
           <div className="on-prem-form-text">
             Add one or more machine types to define your hardware configuration.
           </div>
@@ -107,7 +124,7 @@ export default class OnPremMachineTypes extends Component {
               </Col>
             </Row>
             <div className="on-prem-form-grid-container">
-              <FieldArray name="machineTypeList" component={OnPremListMachineTypes}/>
+              <FieldArray name="machineTypeList" component={OnPremListMachineTypes} isEditProvider={this.props.isEditProvider}/>
             </div>
           </div>
           <div className="form-action-button-container">

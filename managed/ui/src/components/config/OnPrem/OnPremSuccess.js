@@ -5,7 +5,7 @@ import { YBButton } from '../../common/forms/fields';
 import { Row, Col } from 'react-bootstrap';
 import {getPromiseState} from 'utils/PromiseUtils';
 
-import {isNonEmptyArray, isDefinedNotNull} from 'utils/ObjectUtils';
+import {isNonEmptyArray, isDefinedNotNull, isEmptyObject} from 'utils/ObjectUtils';
 import { YBConfirmModal } from '../../modals';
 import { DescriptionList } from '../../common/descriptors';
 import { RegionMap } from '../../maps';
@@ -16,28 +16,86 @@ export default class OnPremSuccess extends Component {
   constructor(props) {
     super(props);
     this.toggleNodesView = this.toggleNodesView.bind(this);
+    this.getReadyState = this.getReadyState.bind(this);
     this.state = {nodesPageActive: false};
   }
+
   deleteProvider(uuid) {
     this.props.deleteProviderConfig(uuid);
   }
+
   componentWillMount() {
     const {configuredProviders} = this.props;
     let currentProvider = configuredProviders.data.find(provider => provider.code === 'onprem');
     if (isDefinedNotNull(currentProvider)) {
       this.props.fetchAccessKeysList(currentProvider.uuid);
       this.props.fetchConfiguredNodeList(currentProvider.uuid);
+      this.props.fetchInstanceTypeList(currentProvider.uuid);
     }
   }
+
   toggleNodesView() {
     this.setState({nodesPageActive: !this.state.nodesPageActive});
   }
+
+  getReadyState(dataObject) {
+    return getPromiseState(dataObject).isSuccess() || getPromiseState(dataObject).isEmpty();
+  }
+
   componentWillReceiveProps(nextProps) {
     if (nextProps.cloudBootstrap !== this.props.cloudBootstrap) {
       if (nextProps.cloudBootstrap.data.type === "cleanup" && isDefinedNotNull(nextProps.cloudBootstrap.data.response)) {
         this.props.resetConfigForm();
         this.props.fetchCloudMetadata();
       }
+    }
+
+    const {configuredRegions, configuredProviders, accessKeys, cloud: {nodeInstanceList, instanceTypes, onPremJsonFormData}} = nextProps;
+    // Set OnPremJSONFormData if not set
+    if (isEmptyObject(onPremJsonFormData) && this.getReadyState(nodeInstanceList) && this.getReadyState(instanceTypes) && this.getReadyState(accessKeys)) {
+      const onPremRegions = configuredRegions.data.filter(
+        (configuredRegion) => configuredRegion.provider.code === PROVIDER_TYPE
+      );
+      let currentProvider = configuredProviders.data.find(provider => provider.code === 'onprem');
+      let onPremAccessKey = {};
+      let jsonDataBlob = {};
+      if (isNonEmptyArray(accessKeys.data)) {
+        onPremAccessKey = accessKeys.data.find((accessKey) => accessKey.idKey.providerUUID === currentProvider.uuid)
+      }
+      jsonDataBlob.provider = {name: currentProvider.name};
+      jsonDataBlob.key = {
+        code: onPremAccessKey.idKey.keyCode,
+        privateKeyContent: onPremAccessKey.keyInfo.privateKey
+      };
+      jsonDataBlob.regions = onPremRegions.map(function(regionItem){
+        return {code: regionItem.code,
+                longitude: regionItem.longitude,
+                latitude: regionItem.latitude,
+                zones: regionItem.zones
+                  .map(function (zoneItem) {
+                    return zoneItem.code
+                  })
+        }
+      });
+      jsonDataBlob.instanceTypes = instanceTypes.data.map(function(instanceTypeItem){
+        return {instanceTypeCode: instanceTypeItem.instanceTypeCode,
+                numCores: instanceTypeItem.numCores,
+                memSizeGB: instanceTypeItem.memSizeGB,
+                volumeDetailsList: instanceTypeItem.instanceTypeDetails.volumeDetailsList
+                  .map(function (volumeDetailItem) {
+                    return {volumeSizeGB: volumeDetailItem.volumeSizeGB,
+                            volumeType: volumeDetailItem.volumeType,
+                            mountPath: volumeDetailItem.mountPath}})}
+      });
+      jsonDataBlob.nodes = nodeInstanceList.data.map(function(nodeItem){
+        return {
+          ip: nodeItem.details.ip,
+          region: nodeItem.details.region,
+          zone: nodeItem.details.zone,
+          instanceType: nodeItem.details.instanceType
+        }
+      });
+      this.props.setOnPremJsonData(jsonDataBlob);
     }
   }
   render() {
@@ -73,7 +131,7 @@ export default class OnPremSuccess extends Component {
             <Col md={12}>
              <span className="pull-right" title={"Delete Provider"}>
                 <YBButton btnText="Edit Configuration" disabled={false} btnIcon="fa fa-pencil"
-                          btnClass={"btn btn-default yb-button"} onClick={this.props.showDeleteProviderModal}/>
+                          btnClass={"btn btn-default yb-button"} onClick={this.props.showEditProviderForm}/>
                 <YBButton btnText="Delete Configuration" disabled={universeExistsForProvider} btnIcon="fa fa-trash"
                           btnClass={"btn btn-default yb-button"} onClick={this.props.showDeleteProviderModal}/>
                 <YBConfirmModal name="delete-aws-provider" title={"Confirm Delete"}
