@@ -82,7 +82,6 @@ static constexpr LockState ConflictsForType(LockType lock_type) {
                     LockType::SI_WRITE_STRONG
       });
   }
-  assert(0);
 }
 
 // The conflict matrix. (CONFLICTS[i] & (1 << j)) is one iff LockTypes i and j conflict.
