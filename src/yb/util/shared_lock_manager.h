@@ -6,64 +6,84 @@
 #include <string>
 #include <unordered_map>
 #include <mutex>
+#include <map>
+
 #include "yb/gutil/spinlock.h"
+#include "yb/util/shared_lock_manager_fwd.h"
 #include "yb/util/cross_thread_mutex.h"
 
 namespace yb {
 namespace util {
 
-enum class LockType {
-  EXCLUSIVE,
-  SHARED
-};
+const char* ToString(LockType lock_type);
 
-const char* LockTypeToStr(LockType lock_type);
-
-// This class manages exclusive and shared locks on string keys.
-// On each key, either there is one exclusive lock, or some shared locks.
-// Shared locks don't block each other, but exclusive locks block everything else.
+// This class manages six types of locks on string keys. On each key, the possibilities are:
+// - No locks
+// - A single SI_WRITE_STRONG
+// - Multiple SR_READ_STRONG and SR_READ_WEAK
+// - Multiple SR_WRITE_STRONG and SR_WRITE_WEAK
+// - Multiple SI_WRITE_WEAK, SR_READ_WEAK, and SR_WRITE_WEAK
 class SharedLockManager {
  public:
-  // Attempt to lock the key with certain type. The call my be blocked waiting for other
+
+  // Attempt to lock the key with certain type. The call may be blocked waiting for other
   // locks to be released. If LockEntry doesn't exist, it creates a LockEntry.
-  void Lock(std::string key, LockType lock_type);
+  void Lock(std::string key, LockType lock_type) {
+    Lock({ {std::move(key), lock_type} });
+  }
 
-  // If there is any shared lock, then releases a shared lock, else exclusive lock is released.
-  // The type of lock that was released is returned. If all locks are released, then the LockEntry
-  // is deallocated.
-  LockType Unlock(std::string key);
+  // Attempt to lock a batch of keys. The call may be blocked waiting for other locks to
+  // be released. If the entries don't exist, they are created.
+  void Lock(const LockBatch& batch);
 
-  // TODO: Add lock and unlock functions that take slice as input.
+  // Release the batch of locks. Requires that the locks are held.
+  void Unlock(const LockBatch& batch);
+
+  // Release one lock of the specified type. Requires that the lock is held by the specified
+  // type. If all locks are released, the LockEntry is deallocated.
+  void Unlock(std::string key, LockType lock_type) {
+    Unlock({ {std::move(key), lock_type} });
+  }
+
+  // Whether or not the state is possible
+  static bool VerifyState(LockState state);
 
  private:
 
   struct LockEntry {
+    // Taken only for short duration, with no blocking wait.
+    std::mutex mutex;
 
-    // The mutex is locked by the exclusive locker or the first shared locker.
-    // Waiting on the mutex is not allowed while the global mutex is taken.
-    CrossThreadMutex mutex;
+    std::condition_variable cond_var;
 
-    // Number of shared locks held.
-    // This variable can be modified only if global mutex is taken.
-    size_t num_shared;
+    // Refcounting for garbage collection. Can only be used while the global lock is held.
+    size_t num_using = 0;
 
-    // Number of waiting (exclusive) lockers.
-    // Also protected by the global mutex.
-    size_t num_waiters;
+    // Number of holders for each type
+    size_t num_holding[NUM_LOCK_TYPES] {0};
+    LockState state = 0;
 
-    LockEntry() : mutex(), num_shared(0), num_waiters(0) {}
+    void Lock(LockType lock_type);
 
-    void Lock(LockType lock_type, std::mutex* global_mutex);
-
-    LockType Unlock();
+    void Unlock(LockType lock_type);
 
   };
 
+  typedef std::unordered_map<std::string, std::unique_ptr<LockEntry>> LockEntryMap;
+
+  // Make sure the entries exist in the locks_ map and return pointers so we can access
+  // them without holding the global lock. Returns a vector with pointers in the same order
+  // as the keys in the batch.
+  std::vector<LockEntry*> Reserve(const LockBatch& batch);
+
+  // Update refcounts and maybe collect garbage.
+  void Cleanup(const LockBatch& batch);
+
   // The global mutex should be taken only for very short duration, with no blocking wait.
   std::mutex global_mutex_;
-  // Insertions or deletions of entries in the map can only be done if
-  // the global mutex is acquired.
-  std::unordered_map<std::string, LockEntry> locks_;
+
+  // Can only be modified if the global mutex is held.
+  LockEntryMap locks_;
 };
 
 }  // namespace util

@@ -33,6 +33,7 @@
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/transactions/transaction.h"
 #include "yb/util/locks.h"
+#include "yb/util/shared_lock_manager_fwd.h"
 
 namespace yb {
 struct DecodedRowOperation;
@@ -52,6 +53,8 @@ namespace tablet {
 struct RowOp;
 class RowSetKeyProbe;
 struct TabletComponents;
+
+using util::LockBatch;
 
 // A TransactionState for a batch of inserts/mutates. This class holds and
 // owns most everything related to a transaction, including:
@@ -184,9 +187,9 @@ class WriteTransactionState : public TransactionState {
     return &yql_write_ops_;
   }
 
-  void swap_docdb_locks(std::vector<std::string>* docdb_locks) {
+  void ReplaceDocDBLocks(LockBatch docdb_locks) {
     std::lock_guard<simple_spinlock> l(txn_state_lock_);
-    docdb_locks_ = std::move(*docdb_locks);
+    docdb_locks_ = std::move(docdb_locks);
   }
 
   void UpdateMetricsForOp(const RowOp& op);
@@ -226,7 +229,7 @@ class WriteTransactionState : public TransactionState {
   std::vector<std::unique_ptr<docdb::YQLWriteOperation>> yql_write_ops_;
 
   // Store the ids that have been locked for docdb transaction. They need to be released on commit.
-  std::vector<std::string> docdb_locks_;
+  LockBatch docdb_locks_;
 
   // The MVCC transaction, set up during PREPARE phase
   gscoped_ptr<ScopedWriteTransaction> mvcc_tx_;

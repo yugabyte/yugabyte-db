@@ -331,9 +331,7 @@ void WriteTransactionState::release_row_locks() {
     if (table_type != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
       CHECK(row_ops_.empty());  // Kudu-specific row_ops_ data structure must be empty in this case.
       // Free docdb multi-level locks.
-      for (const string& locked_key : docdb_locks_) {
-        tablet_peer()->tablet()->shared_lock_manager()->Unlock(locked_key);
-      }
+      tablet_peer()->tablet()->shared_lock_manager()->Unlock(docdb_locks_);
     }
   }
 }

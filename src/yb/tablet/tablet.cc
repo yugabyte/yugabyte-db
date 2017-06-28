@@ -857,7 +857,7 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
 Status Tablet::KeyValueBatchFromRedisWriteBatch(
     const WriteRequestPB& redis_write_request,
     unique_ptr<const WriteRequestPB>* redis_write_batch_pb,
-    vector<string> *keys_locked,
+    LockBatch *keys_locked,
     vector<RedisResponsePB>* responses) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
   vector<unique_ptr<DocOperation>> doc_ops;
@@ -931,7 +931,7 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const YQLReadRequestPB& yql_read
 Status Tablet::KeyValueBatchFromYQLWriteBatch(
     const WriteRequestPB& write_request,
     unique_ptr<const WriteRequestPB>* write_batch_pb,
-    vector<string> *keys_locked,
+    LockBatch *keys_locked,
     WriteResponsePB* write_response,
     WriteTransactionState* tx_state) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
@@ -963,7 +963,7 @@ Status Tablet::KeyValueBatchFromYQLWriteBatch(
 
 Status Tablet::AcquireLocksAndPerformDocOperations(WriteTransactionState *state) {
   if (table_type_ != KUDU_COLUMNAR_TABLE_TYPE) {
-    vector<string> locks_held;
+    LockBatch locks_held;
     const auto& req = *state->request();
     unique_ptr<const WriteRequestPB> key_value_write_request;
     bool invalid_table_type = true;
@@ -1000,14 +1000,14 @@ Status Tablet::AcquireLocksAndPerformDocOperations(WriteTransactionState *state)
       LOG(FATAL) << "Invalid table type: " << table_type_;
     }
     state->SetRequest(*key_value_write_request);
-    state->swap_docdb_locks(&locks_held);
+    state->ReplaceDocDBLocks(std::move(locks_held));
   }
   return Status::OK();
 }
 
 Status Tablet::KeyValueBatchFromKuduRowOps(const WriteRequestPB &kudu_write_request_pb,
                                            unique_ptr<const WriteRequestPB> *kudu_write_batch_pb,
-                                           vector<string> *keys_locked) {
+                                           LockBatch *keys_locked) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
 
   TRACE("PREPARE: Decoding operations");
@@ -1052,7 +1052,7 @@ DocPath DocPathForColumn(const KeyBytes& encoded_doc_key, ColumnId col_id) {
 
 Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> &row_ops,
                                               KeyValueWriteBatchPB* write_batch_pb,
-                                              vector<string>* keys_locked) {
+                                              LockBatch* keys_locked) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
   vector<unique_ptr<DocOperation>> doc_ops;
   for (DecodedRowOperation row_op : row_ops) {
@@ -2159,7 +2159,7 @@ Status Tablet::KuduColumnarCaptureConsistentIterators(
 }
 
 Status Tablet::StartDocWriteTransaction(const vector<unique_ptr<DocOperation>> &doc_ops,
-                                        vector<string> *keys_locked,
+                                        LockBatch *keys_locked,
                                         KeyValueWriteBatchPB* write_batch) {
   bool need_read_snapshot = false;
   HybridTime hybrid_time;

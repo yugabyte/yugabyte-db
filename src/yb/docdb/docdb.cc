@@ -7,15 +7,16 @@
 #include <unordered_map>
 #include <vector>
 
-#include "yb/common/redis_protocol.pb.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/redis_protocol.pb.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/internal_doc_iterator.h"
-#include "yb/docdb/value.h"
 #include "yb/docdb/subdocument.h"
+#include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/write_batch_formatter.h"
@@ -23,8 +24,8 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/logging.h"
+#include "yb/util/shared_lock_manager.h"
 #include "yb/util/status.h"
-#include "yb/docdb/docdb_compaction_filter.h"
 
 using std::endl;
 using std::list;
@@ -65,36 +66,26 @@ void SeekPastSubKey(const SubDocKey& sub_doc_key, rocksdb::Iterator* iter) {
 
 void PrepareDocWriteTransaction(const vector<unique_ptr<DocOperation>>& doc_write_ops,
                                 util::SharedLockManager *lock_manager,
-                                vector<string> *keys_locked,
+                                LockBatch *keys_locked,
                                 bool *need_read_snapshot) {
   *need_read_snapshot = false;
-  unordered_map<string, LockType> lock_type_map;
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
     const list<DocPath> doc_paths = doc_op->DocPathsToLock();
     for (const auto& doc_path : doc_paths) {
       KeyBytes current_prefix = doc_path.encoded_doc_key();
-      string lock_string;
       for (int i = 0; i < doc_path.num_subkeys(); i++) {
-        lock_string = current_prefix.AsStringRef(); // Copy the lock_key.
-        auto iter = lock_type_map.find(lock_string);
-        if (iter == lock_type_map.end()) {
-          lock_type_map[lock_string] = LockType::SHARED;
-          keys_locked->push_back(lock_string);
-        }
+        string lock_string = current_prefix.AsStringRef(); // Copy the lock_key.
+        keys_locked->emplace(lock_string, LockType::SI_WRITE_WEAK);
         doc_path.subkey(i).AppendToKey(&current_prefix);
       }
-      lock_string = current_prefix.AsStringRef();
-      lock_type_map[lock_string] = LockType::EXCLUSIVE;
+      string lock_string = current_prefix.AsStringRef();
+      (*keys_locked)[lock_string] = LockType::SI_WRITE_STRONG;
     }
     if (doc_op->RequireReadSnapshot()) {
       *need_read_snapshot = true;
     }
   }
-  // Sort the set of locks to be taken for this transaction, to make sure deadlocks don't occur.
-  std::sort(keys_locked->begin(), keys_locked->end());
-  for (string key : *keys_locked) {
-    lock_manager->Lock(key, lock_type_map[key]);
-  }
+  lock_manager->Lock(*keys_locked);
 }
 
 Status ApplyDocWriteTransaction(const vector<unique_ptr<DocOperation>>& doc_write_ops,

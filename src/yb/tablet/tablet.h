@@ -96,6 +96,8 @@ struct TabletComponents;
 struct TabletMetrics;
 class WriteTransactionState;
 
+using util::LockBatch;
+
 class Tablet : public AbstractTablet {
  public:
   typedef std::map<int64_t, int64_t> MaxIdxToSegmentMap;
@@ -225,8 +227,7 @@ class Tablet : public AbstractTablet {
   CHECKED_STATUS KeyValueBatchFromRedisWriteBatch(
       const tserver::WriteRequestPB& redis_write_request,
       std::unique_ptr<const tserver::WriteRequestPB>* redis_write_batch_pb,
-      vector<string> *keys_locked,
-      vector<RedisResponsePB>* responses);
+      LockBatch *keys_locked, vector<RedisResponsePB>* responses);
 
   CHECKED_STATUS HandleRedisReadRequest(
       HybridTime timestamp, const RedisReadRequestPB& redis_read_request,
@@ -244,20 +245,19 @@ class Tablet : public AbstractTablet {
   CHECKED_STATUS KeyValueBatchFromYQLWriteBatch(
       const tserver::WriteRequestPB& write_request,
       std::unique_ptr<const tserver::WriteRequestPB>* write_batch_pb,
-      vector<string> *keys_locked,
-      tserver::WriteResponsePB* write_response,
+      LockBatch *keys_locked, tserver::WriteResponsePB* write_response,
       WriteTransactionState* tx_state);
 
   // The Kudu equivalent of KeyValueBatchFromRedisWriteBatch, works similarly.
   CHECKED_STATUS KeyValueBatchFromKuduRowOps(
       const tserver::WriteRequestPB &kudu_write_request_pb,
       std::unique_ptr<const tserver::WriteRequestPB> *kudu_write_batch_pb,
-      std::vector<std::string> *keys_locked);
+      LockBatch *keys_locked);
 
   // Uses primary_key:column_name for key encoding.
   CHECKED_STATUS CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> &row_ops,
                                         yb::docdb::KeyValueWriteBatchPB* write_batch_pb,
-                                        std::vector<std::string>* keys_locked);
+                                        LockBatch* keys_locked);
 
   // Create a RocksDB checkpoint in the provided directory. Only used when table_type_ ==
   // YQL_TABLE_TYPE.
@@ -542,7 +542,7 @@ class Tablet : public AbstractTablet {
 
   CHECKED_STATUS StartDocWriteTransaction(
       const std::vector<std::unique_ptr<docdb::DocOperation>> &doc_ops,
-      std::vector<std::string> *keys_locked,
+      LockBatch *keys_locked,
       docdb::KeyValueWriteBatchPB* write_batch);
 
   CHECKED_STATUS PickRowSetsToCompact(RowSetsInCompaction *picked,
