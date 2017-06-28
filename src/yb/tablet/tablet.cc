@@ -884,6 +884,7 @@ Status Tablet::HandleRedisReadRequest(HybridTime timestamp,
                                       const RedisReadRequestPB& redis_read_request,
                                       RedisResponsePB* response) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
+  ScopedTabletMetricsTracker(metrics_->redis_read_latency);
 
   docdb::RedisReadOperation doc_op(redis_read_request);
   RETURN_NOT_OK(doc_op.Execute(rocksdb_.get(), timestamp));
@@ -895,6 +896,7 @@ Status Tablet::HandleYQLReadRequest(
     HybridTime timestamp, const YQLReadRequestPB& yql_read_request, YQLResponsePB* response,
     gscoped_ptr<faststring>* rows_data) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
+  ScopedTabletMetricsTracker(metrics_->yql_read_latency);
 
   return AbstractTablet::HandleYQLReadRequest(timestamp, yql_read_request, response, rows_data);
 }

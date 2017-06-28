@@ -64,6 +64,8 @@ struct TabletMetrics {
 
   scoped_refptr<Histogram> commit_wait_duration;
   scoped_refptr<Histogram> snapshot_read_inflight_wait_duration;
+  scoped_refptr<Histogram> redis_read_latency;
+  scoped_refptr<Histogram> yql_read_latency;
   scoped_refptr<Histogram> write_op_duration_client_propagated_consistency;
   scoped_refptr<Histogram> write_op_duration_commit_wait_consistency;
 
@@ -100,6 +102,16 @@ class ProbeStatsSubmitter {
   TabletMetrics* const metrics_;
 
   DISALLOW_COPY_AND_ASSIGN(ProbeStatsSubmitter);
+};
+
+class ScopedTabletMetricsTracker {
+ public:
+  explicit ScopedTabletMetricsTracker(scoped_refptr<Histogram> latency);
+  ~ScopedTabletMetricsTracker();
+
+ private:
+  scoped_refptr<Histogram> latency_;
+  MonoTime start_time_;
 };
 
 } // namespace tablet
