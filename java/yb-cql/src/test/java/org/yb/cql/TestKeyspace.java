@@ -100,6 +100,23 @@ public class TestKeyspace extends BaseCQLTest {
   }
 
   @Test
+  public void testCreateAndUseAndDropKeyspaceTimeout() throws Exception {
+    LOG.info("--- TEST CQL: CREATE & USE & DROP KEYSPACE TIMEOUTS - Start");
+    String keyspaceName = "test_keyspace";
+
+    for (int i = 0; i < 10; ++i) {
+      LOG.info("i={}, creating & using keyspace {}", i, keyspaceName);
+      createKeyspace(keyspaceName);
+      useKeyspace(keyspaceName);
+
+      dropKeyspace(keyspaceName);
+      LOG.info("i={}, dropped keyspace {}", i, keyspaceName);
+    }
+
+    LOG.info("--- TEST CQL: CREATE & USE & DROP KEYSPACE TIMEOUTS - End");
+  }
+
+  @Test
   public void testCreateAndDropKeyspaceTimeout() throws Exception {
     LOG.info("--- TEST CQL: CREATE & DROP KEYSPACE TIMEOUTS - Start");
     String keyspaceName = "test_keyspace";
@@ -108,15 +125,8 @@ public class TestKeyspace extends BaseCQLTest {
       LOG.info("i={}, creating keyspace {}", i, keyspaceName);
       createKeyspace(keyspaceName);
 
-      if (i < 5) {
-        LOG.info("i={}, calling useKeyspace on keyspace {}", i, keyspaceName);
-        useKeyspace(keyspaceName);
-      } else {
-        LOG.info("i={}, not calling useKeyspace on keyspace {}", i, keyspaceName);
-      }
-
-      LOG.info("i={}, dropping keyspace {}", i, keyspaceName);
       dropKeyspace(keyspaceName);
+      LOG.info("i={}, dropped keyspace {}", i, keyspaceName);
     }
 
     LOG.info("--- TEST CQL: CREATE & DROP KEYSPACE TIMEOUTS - End");
