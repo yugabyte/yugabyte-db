@@ -26,6 +26,7 @@ export default class TableDetail extends Component {
   }
 
   componentWillUnmount() {
+    this.props.resetUniverseDetail();
     this.props.resetTableDetail();
   }
   render() {
