@@ -44,6 +44,7 @@ export default class OnPremConfiguration extends Component {
     this.submitJson = this.submitJson.bind(this);
     this.updateConfigJsonVal = this.updateConfigJsonVal.bind(this);
     this.submitWizardJson = this.submitWizardJson.bind(this);
+    this.serializeStringToJson = this.serializeStringToJson.bind(this);
     this.showEditProviderForm = this.showEditProviderForm.bind(this);
     this.submitEditProvider = this.submitEditProvider.bind(this);
     this.resetEdit = this.resetEdit.bind(this);
@@ -53,13 +54,30 @@ export default class OnPremConfiguration extends Component {
     this.props.resetConfigForm();
   }
 
+  serializeStringToJson(payloadString) {
+    if (!_.isString(payloadString)) {
+      return payloadString;
+    }
+    let jsonPayload = {};
+    try {
+      jsonPayload = JSON.parse(payloadString);
+    } catch (e) {
+      // Handle case where private key contains newline characters and hence is not valid json
+      let jsonPayloadTokens = payloadString.split("\"privateKeyContent\":");
+      let privateKeyBlob = jsonPayloadTokens[1].split("}")[0].trim();
+      let privateKeyString = privateKeyBlob.replace(/\n/g, "\\n");
+      let newJsonString = jsonPayloadTokens[0] + "\"privateKeyContent\": " + privateKeyString + "\n}\n}";
+      jsonPayload = JSON.parse(newJsonString);
+    }
+    return jsonPayload;
+  }
+
   showEditProviderForm() {
     this.setState({isEditProvider: true});
   }
 
   componentWillReceiveProps(nextProps) {
     const { cloudBootstrap: {data: { response, type }, error, promiseState}} = nextProps;
-
     let bootstrapSteps = this.state.bootstrapSteps;
     let currentStepIndex = bootstrapSteps.findIndex( (step) => step.type === type );
     if (currentStepIndex !== -1) {
@@ -71,7 +89,9 @@ export default class OnPremConfiguration extends Component {
       this.setState({bootstrapSteps: bootstrapSteps});
     }
     if (isValidObject(response)) {
-      const config = _.isString(this.state.configJsonVal) ? JSON.parse(this.state.configJsonVal) : this.state.configJsonVal;
+
+      let payloadString = _.clone(this.state.configJsonVal);
+      const config = this.serializeStringToJson(payloadString);
       const isEdit = this.state.isEditProvider;
       const numZones = config.regions.reduce((total, region) => {
         return total + region.zones.length
@@ -178,7 +198,7 @@ export default class OnPremConfiguration extends Component {
 
   submitJson() {
     if (this.state.isJsonEntry) {
-      this.props.createOnPremProvider(PROVIDER_TYPE, JSON.parse(this.state.configJsonVal));
+      this.props.createOnPremProvider(PROVIDER_TYPE, this.serializeStringToJson(this.state.configJsonVal));
     }
   }
 
