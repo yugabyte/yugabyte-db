@@ -44,23 +44,32 @@ googleAnalytics = ""
 
 
 [[menu.main]]
-	name   = "YugaByte Data Platform"
+	name   = "YugaByte Database"
 	url    = "/"
 	weight = 1
 
 [[menu.main]]
-	name   = "Get started (No Admin Console)"
-	url    = "get-started-dev/"
+	name = "Get started"
+	identifier = "get-started"
+	weight = 5
+
+[[menu.main]]
+	name = "Local dev"
+	parent = "get-started"
+	identifier = "local-dev"
+	url = "get-started/local-dev/"
 	weight = 10
 
 [[menu.main]]
-	name   = "Get started (with Admin Console)"
-	url    = "get-started-adminconsole-noha/"
+	name = "Local test"
+	parent = "get-started"
+	identifier = "local-test"
+	url = "get-started/local-test/"
 	weight = 20
 
 [[menu.main]]
-	name   = "Get started (with HA Admin Console)"
-	url    = "get-started-adminconsole-ha/"
+	name = "Deploy"
+	url = "deploy/"
 	weight = 30
 
 [[menu.main]]

@@ -66,7 +66,7 @@ Now we are ready to create a YugaByte universe on AWS.
 
 ## Create universe
 
-Universe is a cluster of YugaByte instances grouped together to perform as one logical, distributed database. All instances belonging to a single Universe run on the same type of cloud provider node. 
+Universe is a cluster of YugaByte instances grouped together to perform as one logical distributed database. All instances belonging to a single Universe run on the same type of cloud provider node. 
 
 If there are no universes created yet, the Dashboard page will look like the following.
 

@@ -7,17 +7,19 @@ weight: 0
 
 ## Introduction
 
-YugaByte is a new cloud native, globally distributed database that brings together the best of both NewSQL and NoSQL. On one hand, NewSQL systems are a good fit for mission-critical applications given their strongly consistent cores but are not easy to run in highly available modes through multi-datacenter deployments. On the other hand, NoSQL systems are comparably easier to run across multi-datacenters but are incredibly difficult to develop in the context of mission-critical applications given the loose guarantees of eventual consistency. YugaByte ensures that these long-held compromises are no longer impeding the development and deployment of mission-critical applications. YugaByte has a strongly consistent core similar to NewSQL systems and is also highly available even in multi-datacenter deployments. Additionally, it adds the much needed layer of cloud native operational simplicity so that modern technical operations can easily exploit the full potential of their chosen cloud(s).
+YugaByte is a new cloud native, globally distributed database that brings together the best of both NewSQL and NoSQL. On one hand, NewSQL systems are a good fit for mission-critical applications given their strongly consistent cores but are unable to provide geo-redundant availabity derived from running across multiple datacenters. On the other hand, NoSQL systems are comparably easier to run across multi-datacenters but are incredibly difficult to develop in the context of mission-critical applications given the loose guarantees of eventual consistency. 
 
 ![YugaByte value prop](/images/value-prop.png)
+
+YugaByte ensures that the above long-held compromises are no longer impeding the development and deployment of mission-critical applications. YugaByte has a strongly consistent core similar to NewSQL systems and is also highly available even in multi-datacenter deployments. Additionally, it adds the much needed layer of cloud native operational simplicity so that modern technical operations teams can easily exploit the full potential of their chosen cloud(s).
 
 ## Key features
 
 ### 1. Multi-active availability 
 YugaByte is a Consistent & Partition tolerant (CP) database but with High Availability (HA). Reads are always highly available and writes are highly available as long as a majority of replicas are available.
 
-### 2. Multi (aka tunable) consistency
-YugaByte enables a spectrum of consistency options when it comes to reads while keeping writes always strongly consistent via sync replication (based on distributed consensus). The read consistency options that can be set on a per client basis are Strong (default), Bounded staleness, Session, Consistent Prefix.
+### 2. Tunable consistency
+YugaByte enables a spectrum of consistency options when it comes to reads while keeping writes always strongly consistent via sync replication (based on distributed consensus). The read consistency options that can be set on a per client basis are Strong (default), Session, Consistent Prefix. Bounded staleness option is on the roadmap.
 
 ### 3. Multi-API
 YugaByte currently supports 2 open APIs namely [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html) and [Redis] (https://redis.io/commands) command library. SQL support is on the roadmap.

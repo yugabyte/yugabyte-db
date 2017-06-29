@@ -1,10 +1,12 @@
 ---
 date: 2016-03-09T00:11:02+01:00
-title: Get started (with Admin Console, manage multi-node clusters)
+title: Get started for local tests
 weight: 20
 ---
 
-While the single-node approach is great for developing apps locally against the YugaByte API endpoints, deploying along with YugaWare, the YugaByte Admin Console, adds the ability to test of all operational management scenarios (incl. scale up/down). However, this deployment does not include high availabilty of YugaWare itself and hence is not recommended for production environments. For production environments, use the [Get started (with HA Admin Console)](/get-started-adminconsole-ha) mode.
+The single-node approach is great for developing apps locally against the YugaByte API endpoints. However, it doesn't include the ability to monitor the YugaByte instances as well as test of all operational management scenarios (incl. scale up/down). YugaWare, YugaByte's Admin Console, is necessary for these tasks and is available as a docker-compose application that can be run locally.
+
+Note that this docker-compose application does not include high availabilty of YugaWare itself and hence is not recommended for mission-critical environments such as production. For such environments, follow the [Deploy](/deploy) section.
 
 ## Prerequisites
 
@@ -88,14 +90,47 @@ $ cd yugabyte
 $ docker login quay.io -u <your-quay-id> -p <your-quay-password>
 ```
 
-- Start the YugaByte admin console via docker-componse
+- Start the YugaByte admin console via docker-componse (this command will first pull in all the container images from Quay.io in case the images are not yet locally available)
 
 ```sh
 $ docker-compose up -d
-
 ```
 
-Open http://localhost:8080 in your browser and login to the admin console with the default username and password (admin/admin). Follow the instructions in the [Administer](/admin) section on how to use YugaWare to create and manage YugaByte clusters.
+## Test
+
+Open http://localhost:8080 in your browser and login to the admin console with the default username and password (admin/admin). 
+
+### Create universe
+
+Universe is a cluster of YugaByte instances grouped together to perform as one logical distributed database. All instances belonging to a single Universe run on the same type of cloud provider node. 
+
+If there are no universes created yet, the Dashboard page will look like the following with **Docker** as a pre-configured [Cloud Provider](/admin/#configure-cloud-providers). 
+
+![Dashboard with No Universes](/images/ready-for-local-test.png)
+
+The above pre-configuration seeds two regions (with 3 availability zones each) on the same localhost that runs the docker-compose application, thus making it extremely easy to simulate multi-datancenter deployments. If you would like to run YugaByte on any other cloud provider such as Amazon Web Services, you can simply configure that provider on the respective tab.
+
+Click on "Create Universe" to enter your intent for the universe. As soon as **Provider**, **Regions** and **Nodes** are entered, an intelligent Node Placement Policy kicks in to specify how the nodes should be placed across all the Availability Zones so that maximum availability is guaranteed. 
+
+Here's how to create a universe on the Docker cloud provider.
+![Create Universe on Docker](/images/create-univ-docker.png)
+
+Here's how a Universe in Pending state looks like.
+
+![Detail for a Pending Universe](/images/pending-univ-detail.png)
+
+![Tasks for a Pending Universe](/images/pending-univ-tasks.png)
+
+![Nodes for a Pending Universe](/images/pending-univ-nodes.png)
+
+### Connect with cqlsh or redis-cli
+
+### Run a sample app
+
+### Expand or shrink universe
+
+\<docs coming soon\>
+
 
 
 ## Maintain

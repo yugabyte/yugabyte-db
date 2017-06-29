@@ -34,6 +34,8 @@ cqlsh>
 
 ```
 
+## Connect with redis-cli
+
 
 ## Run sample apps
 
