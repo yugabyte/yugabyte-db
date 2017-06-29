@@ -61,7 +61,7 @@ const validate = values => {
 var onPremRegionsAndZonesForm = reduxForm({
   form: 'onPremConfigForm',
   validate,
-  destroyOnUnmount: false,
+  destroyOnUnmount: false
 });
 
 

@@ -74,7 +74,8 @@ var onPremProviderConfigForm = reduxForm({
   form: 'onPremConfigForm',
   validate,
   destroyOnUnmount: false,
-
+  enableReinitialize: true,
+  keepDirtyOnReinitialize: true
 });
 
 export default connect(mapStateToProps, mapDispatchToProps)(onPremProviderConfigForm(OnPremProviderAndAccessKey));
