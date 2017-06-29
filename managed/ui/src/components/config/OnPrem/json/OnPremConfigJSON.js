@@ -4,11 +4,13 @@ import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import Highlight from 'react-highlight';
 import "highlight.js/styles/github.css";
+// eslint-disable-next-line
+import brace from 'brace';
 import AceEditor from 'react-ace';
+import 'brace/mode/json';
 import 'brace/theme/github';
 import {YBPanelItem} from '../../../panels'
 import { YBButton } from '../../../common/forms/fields';
-import {isDefinedNotNull} from 'utils/ObjectUtils';
 import sampleDataCenterConfig from '../../templates/SampleDataCenterConfig.json';
 
 class ConfigFormTitle extends Component {
@@ -34,12 +36,6 @@ export default class OnPremConfigJSON extends Component {
     this.copyTextToForm = this.copyTextToForm.bind(this);
   }
 
-  componentWillUnmount() {
-    if (isDefinedNotNull(this.props.configJsonVal)) {
-      this.props.setOnPremJsonData(JSON.parse(this.props.configJsonVal));
-    }
-  }
-
   onChange(newValue) {
     this.props.updateConfigJsonVal(newValue);
   }
@@ -49,6 +45,11 @@ export default class OnPremConfigJSON extends Component {
   }
 
   render() {
+    // Using Inline Styles because AceEditor is an SVG component
+    // https://developer.mozilla.org/en-US/docs/Web/SVG
+    const editorStyle = {
+      width: "100%"
+    }
     const configTitle = "Enter Datacenter Configuration JSON:";
     const {switchToWizardEntry, submitJson} = this.props;
     return (
@@ -66,11 +67,14 @@ export default class OnPremConfigJSON extends Component {
           <YBPanelItem name={configTitle} hideToolBox={true}>
             <AceEditor
               theme="github"
+              mode="json"
               onChange={this.onChange}
               name="dc-config-val"
               value={this.props.configJsonVal}
-              height="470px"
-              width="560px"
+              style={editorStyle}
+              editorProps={{$blockScrolling: true}}
+              showPrintMargin={false}
+              wrapEnabled={true}
             />
           </YBPanelItem>
         </Col>
