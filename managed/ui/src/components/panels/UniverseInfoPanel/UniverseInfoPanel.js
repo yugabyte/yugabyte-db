@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, PropTypes } from 'react';
+import React, { Component } from 'react';
+import PropTypes from 'prop-types';
 import { FormattedDate } from 'react-intl';
 import { ROOT_URL } from '../../../config';
 import { DescriptionList } from '../../common/descriptors';

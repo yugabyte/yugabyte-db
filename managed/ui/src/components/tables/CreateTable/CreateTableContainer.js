@@ -1,7 +1,7 @@
 // Copyright YugaByte Inc.
 
 import { connect } from 'react-redux';
-import { CreateTable } from '../../tables';
+import { CreateTable } from '..';
 import { reduxForm } from 'redux-form';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { createUniverseTable, createUniverseTableFailure, createUniverseTableSuccess,

@@ -3,8 +3,9 @@
 import React, {Component} from 'react';
 import { ListGroup, ListGroupItem } from 'react-bootstrap';
 import { YBButton } from '../../common/forms/fields';
-var Dropzone = require('react-dropzone');
 import {withRouter} from 'react-router';
+
+var Dropzone = require('react-dropzone');
 
 class GCPProviderConfiguration extends Component {
 

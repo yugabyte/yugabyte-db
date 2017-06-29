@@ -3,14 +3,15 @@
 import React, { Component } from 'react';
 import { YBButton } from '../../common/forms/fields';
 import { Row, Col } from 'react-bootstrap';
-import {getPromiseState} from 'utils/PromiseUtils';
+import { getPromiseState } from 'utils/PromiseUtils';
 
-import {isNonEmptyArray, isDefinedNotNull, isEmptyObject} from 'utils/ObjectUtils';
+import { isNonEmptyArray, isDefinedNotNull, isEmptyObject } from 'utils/ObjectUtils';
 import { YBConfirmModal } from '../../modals';
 import { DescriptionList } from '../../common/descriptors';
 import { RegionMap } from '../../maps';
-const PROVIDER_TYPE = "onprem";
 import OnPremNodesListContainer from './OnPremNodesListContainer';
+
+const PROVIDER_TYPE = "onprem";
 
 export default class OnPremSuccess extends Component {
   constructor(props) {

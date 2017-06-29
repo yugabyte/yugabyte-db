@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-if (process.env.NODE_ENV === 'production' || (location && location.hostname !== 'localhost')) {
+if (process.env.NODE_ENV === 'production' || (window.location && window.location.hostname !== 'localhost')) {
   module.exports = require('./configureStore.prod');
 } else {
   module.exports = require('./configureStore.dev');

@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, PropTypes } from 'react';
+import React, { Component } from 'react';
+import PropTypes from 'prop-types';
 import { Image, ListGroup, ListGroupItem} from 'react-bootstrap';
 
 import { YBButton } from '../common/forms/fields';
@@ -41,7 +42,7 @@ export default class YBMapLegendItem extends Component {
 }
 
 YBMapLegendItem.propTypes = {
-  regions: React.PropTypes.array.isRequired,
-  title: React.PropTypes.string.isRequired,
+  regions: PropTypes.array.isRequired,
+  title: PropTypes.string.isRequired,
   type: PropTypes.oneOf(['Root', 'Async', 'Cache'])
 }

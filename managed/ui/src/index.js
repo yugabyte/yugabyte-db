@@ -7,9 +7,10 @@ import { Router, browserHistory } from 'react-router';
 import { IntlProvider } from 'react-intl';
 import fetchRoutes from './routes';
 import configureStore from './store/configureStore.js';
-const store = configureStore();
 import 'intl';
 import 'intl/locale-data/jsonp/en.js';
+
+const store = configureStore();
 
 ReactDOM.render(
   <Provider store={store}>

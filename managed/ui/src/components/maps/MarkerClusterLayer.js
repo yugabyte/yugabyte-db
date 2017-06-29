@@ -5,12 +5,13 @@ import { Media } from 'react-bootstrap';
 import { Link } from 'react-router';
 import { MapLayer } from 'react-leaflet';
 import { isObject } from 'lodash';
-require('leaflet.markercluster');
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import { isNonEmptyArray, isValidObject, sortByLengthOfArrayProperty } from 'utils/ObjectUtils';
 import React, { Component } from 'react';
 import './stylesheets/MarkerClusterLayer.scss'
 import ReactDOMServer from 'react-dom/server';
+
+require('leaflet.markercluster');
 
 class MarkerDetail extends Component {
   render() {
