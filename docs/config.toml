@@ -46,7 +46,7 @@ googleAnalytics = ""
 [[menu.main]]
 	name   = "YugaByte Data Platform"
 	url    = "/"
-	weight = -1
+	weight = 1
 
 [[menu.main]]
 	name   = "Get started (No Admin Console)"
