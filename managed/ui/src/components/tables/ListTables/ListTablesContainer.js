@@ -1,8 +1,9 @@
 // Copyright YugaByte Inc.
 
 import { connect } from 'react-redux';
-import { ListTables } from '../../tables';
-import {fetchUniverseTables, fetchUniverseTablesSuccess, fetchUniverseTablesFailure, toggleTableView, resetTablesList} from '../../../actions/tables';
+import { ListTables } from '..';
+import { fetchUniverseTables, fetchUniverseTablesSuccess, fetchUniverseTablesFailure, toggleTableView, 
+  resetTablesList } from '../../../actions/tables';
 
 const mapDispatchToProps = (dispatch) => {
   return {

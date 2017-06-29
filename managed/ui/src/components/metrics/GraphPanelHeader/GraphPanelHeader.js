@@ -3,16 +3,17 @@
 import React, { Component } from 'react';
 import { Dropdown, MenuItem, Row, Col, Grid , FormControl} from 'react-bootstrap';
 import { DateTimePicker } from 'react-widgets';
-import { YBButton } from '../../common/forms/fields';
-require('react-widgets/dist/css/react-widgets.css');
-var moment = require('moment');
-import {getPromiseState} from 'utils/PromiseUtils';
-import { isValidObject, isNonEmptyObject } from 'utils/ObjectUtils';
-
-var momentLocalizer = require('react-widgets/lib/localizers/moment');
-import './GraphPanelHeader.scss';
 import { withRouter, browserHistory } from 'react-router';
 import _ from 'lodash';
+
+import { YBButton } from '../../common/forms/fields';
+import { getPromiseState } from 'utils/PromiseUtils';
+import { isValidObject, isNonEmptyObject } from 'utils/ObjectUtils';
+import './GraphPanelHeader.scss';
+
+require('react-widgets/dist/css/react-widgets.css');
+var moment = require('moment');
+var momentLocalizer = require('react-widgets/lib/localizers/moment');
 
 // We can define different filter types here, the type parameter should be
 // valid type that moment supports except for custom and divider.

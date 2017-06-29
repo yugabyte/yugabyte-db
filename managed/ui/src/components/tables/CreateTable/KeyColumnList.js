@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, PropTypes } from 'react';
+import React, { Component } from 'react';
+import PropTypes from 'prop-types';
 import { Row, Col } from 'react-bootstrap';
 import { YBInputField, YBButton, YBSelectWithLabel } from '../../common/forms/fields';
 import { Field } from 'redux-form';

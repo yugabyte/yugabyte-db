@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, PropTypes } from 'react';
+import React, { Component } from 'react';
+import PropTypes from 'prop-types';
 import {  ProgressBar } from 'react-bootstrap';
 
 export default class TaskProgressBar extends Component {

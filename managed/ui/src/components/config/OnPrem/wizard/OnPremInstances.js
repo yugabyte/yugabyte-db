@@ -1,9 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
+import InstanceTypeForRegion from './InstanceTypeForRegion';
 import { YBButton } from '../../../common/forms/fields';
 import { FieldArray } from 'redux-form';
-import InstanceTypeForRegion from './InstanceTypeForRegion';
 
 export default class OnPremInstances extends Component {
   constructor(props) {

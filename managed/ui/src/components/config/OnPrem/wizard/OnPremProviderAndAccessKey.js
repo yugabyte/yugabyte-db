@@ -4,7 +4,6 @@ import React, { Component } from 'react';
 import {Field} from 'redux-form';
 import {Row, Col} from 'react-bootstrap';
 import {YBInputField, YBButton, YBTextArea} from '../../../common/forms/fields';
-import _ from 'lodash';
 var Dropzone = require('react-dropzone');
 
 export default class OnPremProviderAndAccessKey extends Component {
