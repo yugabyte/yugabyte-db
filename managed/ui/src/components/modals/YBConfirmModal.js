@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, PropTypes } from 'react';
+import React, { Component } from 'react';
+import PropTypes from 'prop-types';
 import { YBModal } from '../common/forms/fields';
 
 export default class YBConfirmModal extends Component {

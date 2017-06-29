@@ -1,8 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-var Plotly = require('plotly.js/lib/core');
 import {isValidObject} from '../../../utils/ObjectUtils';
+
+var Plotly = require('plotly.js/lib/core');
 
 export default class UniverseReadWriteMetrics extends Component {
   componentWillReceiveProps(nextProps) {

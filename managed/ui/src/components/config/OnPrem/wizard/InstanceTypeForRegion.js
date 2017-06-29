@@ -10,12 +10,22 @@ export default class InstanceTypeForRegion extends Component {
     super(props);
     this.addRow = this.addRow.bind(this);
   }
+
+  componentWillMount() {
+    const {fields} = this.props;
+    if (fields.length === 0) {
+      this.props.fields.push({});
+    }
+  }
+
   addRow() {
     this.props.fields.push({});
   }
+
   removeRow(instanceTypeIdx) {
     this.props.fields.remove(instanceTypeIdx);
   }
+
   render() {
     var self = this;
     const {fields, zoneOptions, machineTypeOptions, formType} = this.props;
@@ -33,24 +43,22 @@ export default class InstanceTypeForRegion extends Component {
           </Col>
         </Row>
         {
-          fields.map(function(instanceTypeItem, instanceTypeIdx){
-            return (
-              <Row key={instanceTypeIdx}>
-                <Col lg={1}>
-                  <i className="fa fa-minus-circle on-prem-row-delete-btn" onClick={self.removeRow.bind(self, instanceTypeIdx)}/>
-                </Col>
-                <Col lg={3}>
-                  <Field name={`${instanceTypeItem}.zone`} component={YBSelect} options={zoneOptions}/>
-                </Col>
-                <Col lg={3}>
-                  <Field name={`${instanceTypeItem}.machineType`} component={YBSelect} options={machineTypeOptions}/>
-                </Col>
-                <Col lg={5}>
-                  <Field name={`${instanceTypeItem}.instanceTypeIPs`} component={YBInputField}/>
-                </Col>
-              </Row>
-            )
-          })
+          fields.map((instanceTypeItem, instanceTypeIdx) => (
+            <Row key={instanceTypeIdx}>
+              <Col lg={1}>
+                <i className="fa fa-minus-circle on-prem-row-delete-btn" onClick={self.removeRow.bind(self, instanceTypeIdx)}/>
+              </Col>
+              <Col lg={3}>
+                <Field name={`${instanceTypeItem}.zone`} component={YBSelect} options={zoneOptions}/>
+              </Col>
+              <Col lg={3}>
+                <Field name={`${instanceTypeItem}.machineType`} component={YBSelect} options={machineTypeOptions}/>
+              </Col>
+              <Col lg={5}>
+                <Field name={`${instanceTypeItem}.instanceTypeIPs`} component={YBInputField}/>
+              </Col>
+            </Row>
+          ))
         }
         <Row>
           <Col lg={1}>
@@ -61,6 +69,6 @@ export default class InstanceTypeForRegion extends Component {
           </Col>
         </Row>
       </div>
-    )
+    );
   }
 }

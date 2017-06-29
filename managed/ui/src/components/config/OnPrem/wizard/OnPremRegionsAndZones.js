@@ -4,8 +4,7 @@ import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Field, FieldArray } from 'redux-form';
 import { YBInputField, YBButton, YBSelect } from '../../../common/forms/fields';
-import _ from 'lodash';
-import {isDefinedNotNull} from 'utils/ObjectUtils';
+import { isDefinedNotNull } from 'utils/ObjectUtils';
 
 class OnPremListRegionsAndZones extends Component {
   constructor(props) {

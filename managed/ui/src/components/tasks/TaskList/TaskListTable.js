@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, PropTypes } from 'react';
+import React, { Component } from 'react';
+import PropTypes from 'prop-types';
 import { isValidObject } from '../../../utils/ObjectUtils';
 import { FormattedDate } from 'react-intl';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';

@@ -1,10 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, PropTypes } from 'react';
-var Plotly = require('plotly.js/lib/core');
-
+import React, { Component } from 'react';
+import PropTypes from 'prop-types';
 import { removeNullProperties, isValidObject, isNonEmptyArray } from 'utils/ObjectUtils';
 import './MetricsPanel.scss';
+
+var Plotly = require('plotly.js/lib/core');
 
 const WIDTH_OFFSET = 5;
 const MAX_GRAPH_WIDTH_PX = 600;

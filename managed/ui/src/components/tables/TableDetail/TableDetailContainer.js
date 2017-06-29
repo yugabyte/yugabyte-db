@@ -1,7 +1,7 @@
 // Copyright YugaByte Inc.
 
 import { connect } from 'react-redux';
-import { TableDetail } from '../../tables';
+import { TableDetail } from '..';
 import {fetchTableDetail, fetchTableDetailFailure, fetchTableDetailSuccess, resetTableDetail} from '../../../actions/tables';
 import {fetchUniverseInfo, fetchUniverseInfoResponse, resetUniverseInfo} from '../../../actions/universe';
 

@@ -3,14 +3,14 @@
 import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Field } from 'redux-form';
-import { isValidArray } from '../../../utils/ObjectUtils';
+import { isNonEmptyArray } from 'utils/ObjectUtils';
 import { YBSelectWithLabel } from '../../common/forms/fields';
 
 export default class CollectionSubtypeRow extends Component {
 
   static getTypeOptions(initValue, displayValue, dataTypes) {
     let options = [<option key={initValue} value={initValue}>{displayValue}</option>];
-    if (isValidArray(dataTypes)) {
+    if (isNonEmptyArray(dataTypes)) {
       options = options.concat(dataTypes.map((item, idx) => {
         return <option key={idx} value={item}>{item}</option>
       }));

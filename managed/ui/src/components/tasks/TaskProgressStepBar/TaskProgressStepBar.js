@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, PropTypes } from 'react';
+import React, { Component } from 'react';
+import PropTypes from 'prop-types';
 import { StepProgressBar } from '../../common/indicators';
 import { isValidObject } from '../../../utils/ObjectUtils';
 import { Row, Col } from 'react-bootstrap';
