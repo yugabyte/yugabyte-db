@@ -1,7 +1,7 @@
 import React, { Component, PropTypes } from 'react';
 import { Field } from 'redux-form';
 import { YBControlledSelect, YBControlledNumericInput } from 'components/common/forms/fields';
-import { isNonEmptyArray, isValidObject, areUniverseConfigsEqual, isNonEmptyObject } from 'utils/ObjectUtils';
+import { isNonEmptyArray, isValidObject, areUniverseConfigsEqual, isEmptyObject } from 'utils/ObjectUtils';
 import {Row, Col} from 'react-bootstrap';
 import _ from 'lodash';
 
@@ -89,7 +89,7 @@ export default class AZSelectorTable extends Component {
 
   getGroupWithCounts(universeConfigTemplate) {
     var uniConfigArray = [];
-    if (isNonEmptyArray(universeConfigTemplateData.nodeDetailsSet)) {
+    if (isNonEmptyArray(universeConfigTemplate.nodeDetailsSet)) {
       universeConfigTemplate.nodeDetailsSet.forEach(function (nodeItem) {
         if (nodeStates.activeStates.indexOf(nodeItem.state) !== -1) {
           var nodeFound = false;
