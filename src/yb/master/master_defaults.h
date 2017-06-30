@@ -43,7 +43,7 @@ static constexpr int kNumSystemNamespaces = 2;
 
 // Needs to be updated each time we add a new system table. Currently, this is only used for unit
 // tests which don't have access to the master object (for ex: unit tests which use ExternalMaster).
-static constexpr int kNumSystemTables = 11;
+static constexpr int kNumSystemTables = 12;
 
 constexpr uint16_t kMasterDefaultPort = 7051;
 constexpr uint16_t kMasterDefaultWebPort = 8051;
