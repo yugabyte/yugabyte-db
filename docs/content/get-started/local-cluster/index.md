@@ -1,12 +1,12 @@
 ---
 date: 2016-03-09T00:11:02+01:00
-title: Get started for local tests
+title: Start a local cluster
 weight: 20
 ---
 
-The single-node approach is great for developing apps locally against the YugaByte API endpoints. However, it doesn't include the ability to monitor the YugaByte instances as well as test of all operational management scenarios (incl. scale up/down). YugaWare, YugaByte's Admin Console, is necessary for these tasks and is available as a docker-compose application that can be run locally.
+The local node approach is great for developing apps locally against the YugaByte API endpoints. However, it doesn't include the ability to monitor the YugaByte instances as well as test of all operational management scenarios (including clustering). YugaWare, YugaByte's Admin Console, is necessary for these tasks and is available as a docker-compose application that can be run locally. This can be thought of as the **local cluster** approach.
 
-Note that this docker-compose application does not include high availabilty of YugaWare itself and hence is not recommended for mission-critical environments such as production. For such environments, follow the [Deploy](/deploy) section.
+Note that the local cluster approach does not include high availabilty of YugaWare itself and hence is not recommended for mission-critical environments such as production. For such environments, follow the [Deploy](/deploy) section.
 
 ## Prerequisites
 

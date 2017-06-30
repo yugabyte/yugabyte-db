@@ -54,17 +54,15 @@ googleAnalytics = ""
 	weight = 5
 
 [[menu.main]]
-	name = "Local dev"
+	name = "Local node"
 	parent = "get-started"
-	identifier = "local-dev"
-	url = "get-started/local-dev/"
+	url = "get-started/local-node/"
 	weight = 10
 
 [[menu.main]]
-	name = "Local test"
+	name = "Local cluster"
 	parent = "get-started"
-	identifier = "local-test"
-	url = "get-started/local-test/"
+	url = "get-started/local-cluster/"
 	weight = 20
 
 [[menu.main]]

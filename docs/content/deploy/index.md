@@ -3,13 +3,13 @@ date: 2016-03-09T00:11:02+01:00
 title: Deploy
 weight: 30
 ---
-Deploying YugaByte in a **production** or **pre-production test** environment is easy. First install **YugaWare**, the YugaByte admin console, in a highly available mode and then spin up YugaByte clusters on any public cloud or private datacenters in no time.
+Deploying YugaByte in a mission-critical environment such as production or pre-production test is easy. First install **YugaWare**, the YugaByte admin console, in a highly available mode and then spin up YugaByte clusters on any public cloud or private datacenters in no time.
 
 ## Prerequisites
 
 ### YugaWare
 
-YugaWare, YugaByte's Admin Console, is a containerized application that's installed and managed via [Replicated] (https://www.replicated.com/) for mission-critical environments. Replicated is purpose built for on-premises deployment and lifecycle management of containerized applications such as YugaWare. A dedicated host or VM with the following characteristics is needed for YugaWare to run via Replicated.
+YugaWare, YugaByte's Admin Console, is a containerized application that's installed and managed via [Replicated] (https://www.replicated.com/) for mission-critical environments. Replicated is a purpose-built tool for on-premises deployment and lifecycle management of containerized applications such as YugaWare. A dedicated host or VM with the following characteristics is needed for YugaWare to run via Replicated.
 
 #### Operating systems (3.10+ kernel, 64bit, ready to run Docker 1.13.1+)
 
