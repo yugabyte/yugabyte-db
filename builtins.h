@@ -121,7 +121,12 @@ extern PGDLLEXPORT Datum ora_nlssort(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum ora_set_nls_sort(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum ora_lnnvl(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum ora_decode(PG_FUNCTION_ARGS);
-extern PGDLLEXPORT Datum orafce_dump(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum ora_dump(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum ora_get_major_version(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum ora_get_major_version_num(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum ora_get_full_version_num(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum ora_get_platform(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum ora_get_status(PG_FUNCTION_ARGS);
 
 /* from pipe.c */
 extern PGDLLEXPORT Datum dbms_pipe_pack_message_text(PG_FUNCTION_ARGS);

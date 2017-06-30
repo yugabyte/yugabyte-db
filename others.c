@@ -501,3 +501,67 @@ orafce_dump(PG_FUNCTION_ARGS)
 
 	PG_RETURN_TEXT_P(cstring_to_text(str.data));
 }
+
+PG_FUNCTION_INFO_V1(ora_get_major_version);
+
+
+/*
+ * Returns current version etc, PostgreSQL 9.6, PostgreSQL 10, ..
+ */
+Datum
+ora_get_major_version(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_TEXT_P(cstring_to_text(PACKAGE_STRING));
+}
+
+PG_FUNCTION_INFO_V1(ora_get_major_version_num);
+
+/*
+ * Returns major version number 9.5, 9.6, 10, 11, ..
+ */
+Datum
+ora_get_major_version_num(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_TEXT_P(cstring_to_text(PG_MAJORVERSION));
+}
+
+PG_FUNCTION_INFO_V1(ora_get_full_version_num);
+
+/*
+ * Returns version number string - 9.5.1, 10.2, ..
+ */
+Datum
+ora_get_full_version_num(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_TEXT_P(cstring_to_text(PG_VERSION));
+}
+
+PG_FUNCTION_INFO_V1(ora_get_platform);
+
+/*
+ * 32bit, 64bit
+ */
+Datum
+ora_get_platform(PG_FUNCTION_ARGS)
+{
+#ifdef USE_FLOAT8_BYVAL
+	PG_RETURN_TEXT_P(cstring_to_text("64bit"));
+#else
+	PG_RETURN_TEXT_P(cstring_to_text("32bit"));
+#endif
+}
+
+PG_FUNCTION_INFO_V1(ora_get_status);
+
+/*
+ * Production | Debug
+ */
+Datum
+ora_get_status(PG_FUNCTION_ARGS)
+{
+#ifdef USE_ASSERT_CHECKING
+	PG_RETURN_TEXT_P(cstring_to_text("Debug"));
+#else
+	PG_RETURN_TEXT_P(cstring_to_text("Production"));
+#endif
+}

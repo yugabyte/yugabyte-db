@@ -700,6 +700,15 @@ Some byte-based string functions to be used with VARCHAR2 strings
 * strposb(VARCHAR2, VARCHAR2) - returns the location of specified substring in a given string (counting from one)
 * lengthb(VARCHAR2) - returns the length (in bytes) of a given string
 
+== Emulated views
+
+* oracle.user_tab_columns
+* oracle.user_tables
+* oracle.user_cons_columns
+* oracle.user_constraints
+* oracle.product_componenent_version
+* oracle.user_objects
+
 == TODO
 
 * better documentation                                             
