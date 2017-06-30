@@ -7,7 +7,7 @@ weight: 0
 
 ## Introduction
 
-YugaByte is a new cloud native, globally distributed database that brings together the best of both NewSQL and NoSQL. On one hand, NewSQL systems are a good fit for mission-critical applications given their strongly consistent cores but are unable to provide geo-redundant availabity derived from running across multiple datacenters. On the other hand, NoSQL systems are comparably easier to run across multi-datacenters but are incredibly difficult to develop in the context of mission-critical applications given the loose guarantees of eventual consistency. 
+YugaByte is a new cloud native, globally distributed database that brings together the best of both NewSQL and NoSQL. On one hand, NewSQL systems are a good fit for mission-critical applications given their strongly consistent cores but are unable to provide geo-redundant availability derived from running across multiple datacenters. On the other hand, NoSQL systems are comparably easier to run across multi-datacenters but are incredibly difficult to develop in the context of mission-critical applications given the loose guarantees of eventual consistency. 
 
 ![YugaByte value prop](/images/value-prop.png)
 
