@@ -525,7 +525,7 @@ Status TabletPeer::StartReplicaTransaction(const scoped_refptr<ConsensusRound>& 
       DCHECK(replicate_msg->has_write_request()) << "WRITE_OP replica"
           " transaction must receive a WriteRequestPB";
       transaction.reset(new WriteTransaction(
-          new WriteTransactionState(this, &replicate_msg->write_request()),
+          new WriteTransactionState(this),
           consensus::REPLICA));
       break;
     }
@@ -535,8 +535,7 @@ Status TabletPeer::StartReplicaTransaction(const scoped_refptr<ConsensusRound>& 
           " transaction must receive an AlterSchemaRequestPB";
       transaction.reset(
           new AlterSchemaTransaction(
-              new AlterSchemaTransactionState(this, &replicate_msg->alter_schema_request(),
-                                              nullptr),
+              new AlterSchemaTransactionState(this),
               consensus::REPLICA));
       break;
     }
@@ -546,6 +545,8 @@ Status TabletPeer::StartReplicaTransaction(const scoped_refptr<ConsensusRound>& 
 
   // TODO(todd) Look at wiring the stuff below on the driver
   TransactionState* state = transaction->state();
+  // It's imperative that we set the round here on any type of transaction, as this
+  // allows us to keep the reference to the request in the round instead of copying it.
   state->set_consensus_round(round);
   HybridTime ht(replicate_msg->hybrid_time());
   state->set_hybrid_time(ht);

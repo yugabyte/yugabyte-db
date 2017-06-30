@@ -225,8 +225,7 @@ class Tablet : public AbstractTablet {
   // via the 'keys_locked' vector, so that they may be unlocked later when the operation has been
   // committed.
   CHECKED_STATUS KeyValueBatchFromRedisWriteBatch(
-      const tserver::WriteRequestPB& redis_write_request,
-      std::unique_ptr<const tserver::WriteRequestPB>* redis_write_batch_pb,
+      tserver::WriteRequestPB* redis_write_request,
       LockBatch *keys_locked, vector<RedisResponsePB>* responses);
 
   CHECKED_STATUS HandleRedisReadRequest(
@@ -243,15 +242,13 @@ class Tablet : public AbstractTablet {
 
   // The YQL equivalent of KeyValueBatchFromRedisWriteBatch, works similarly.
   CHECKED_STATUS KeyValueBatchFromYQLWriteBatch(
-      const tserver::WriteRequestPB& write_request,
-      std::unique_ptr<const tserver::WriteRequestPB>* write_batch_pb,
+      tserver::WriteRequestPB* write_request,
       LockBatch *keys_locked, tserver::WriteResponsePB* write_response,
       WriteTransactionState* tx_state);
 
   // The Kudu equivalent of KeyValueBatchFromRedisWriteBatch, works similarly.
   CHECKED_STATUS KeyValueBatchFromKuduRowOps(
-      const tserver::WriteRequestPB &kudu_write_request_pb,
-      std::unique_ptr<const tserver::WriteRequestPB> *kudu_write_batch_pb,
+      tserver::WriteRequestPB* kudu_write_request_pb,
       LockBatch *keys_locked);
 
   // Uses primary_key:column_name for key encoding.

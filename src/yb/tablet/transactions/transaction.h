@@ -146,7 +146,12 @@ class TransactionState {
   void set_consensus_round(const scoped_refptr<consensus::ConsensusRound>& consensus_round) {
     consensus_round_ = consensus_round;
     op_id_ = consensus_round_->id();
+    UpdateRequestFromConsensusRound();
   }
+
+  // Each subclass should provide a way to update the internal reference to the Message* request,
+  // so we can avoid copying the request object all the time.
+  virtual void UpdateRequestFromConsensusRound() = 0;
 
   // Returns the ConsensusRound being used, if this transaction is being
   // executed through the consensus system or NULL if it's not.

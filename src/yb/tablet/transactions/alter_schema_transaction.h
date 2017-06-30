@@ -43,15 +43,18 @@ class AlterSchemaTransactionState : public TransactionState {
   }
 
   AlterSchemaTransactionState(TabletPeer* tablet_peer,
-                              const tserver::AlterSchemaRequestPB* request,
-                              tserver::AlterSchemaResponsePB* response)
+                              const tserver::AlterSchemaRequestPB* request = nullptr,
+                              tserver::AlterSchemaResponsePB* response = nullptr)
       : TransactionState(tablet_peer),
-        schema_(NULL),
+        schema_(nullptr),
         request_(request),
         response_(response) {
   }
 
   const tserver::AlterSchemaRequestPB* request() const override { return request_; }
+  void UpdateRequestFromConsensusRound() override {
+    request_ = consensus_round()->replicate_msg()->mutable_alter_schema_request();
+  }
   tserver::AlterSchemaResponsePB* response() override { return response_; }
 
   void set_schema(const Schema* schema) { schema_ = schema; }

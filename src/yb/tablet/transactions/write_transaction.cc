@@ -67,7 +67,7 @@ WriteTransaction::WriteTransaction(WriteTransactionState* state, DriverType type
 consensus::ReplicateMsgPtr WriteTransaction::NewReplicateMsg() {
   auto result = std::make_shared<ReplicateMsg>();
   result->set_op_type(WRITE_OP);
-  result->mutable_write_request()->CopyFrom(*state()->request());
+  result->set_allocated_write_request(state()->mutable_request());
   return result;
 }
 
@@ -220,9 +220,9 @@ WriteTransactionState::WriteTransactionState(TabletPeer* tablet_peer,
                                              const tserver::WriteRequestPB *request,
                                              tserver::WriteResponsePB *response)
     : TransactionState(tablet_peer),
-      // TODO: why do we need to copy the request here?
-      request_(request ? unique_ptr<const WriteRequestPB>(new WriteRequestPB(*request))
-                       : nullptr),
+      // We need to copy over the request from the RPC layer, as we're modifying it in the tablet
+      // layer.
+      request_(request ? new WriteRequestPB(*request) : nullptr),
       response_(response),
       mvcc_tx_(nullptr),
       schema_at_decode_time_(nullptr) {
@@ -338,6 +338,10 @@ void WriteTransactionState::release_row_locks() {
 
 WriteTransactionState::~WriteTransactionState() {
   Reset();
+  // Ownership is with the Round object, if one exists, else with us.
+  if (!consensus_round() && request_ != nullptr) {
+    delete request_;
+  }
 }
 
 void WriteTransactionState::Reset() {

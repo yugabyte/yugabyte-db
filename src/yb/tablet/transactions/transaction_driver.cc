@@ -84,9 +84,9 @@ Status TransactionDriver::Init(gscoped_ptr<Transaction> transaction,
     replication_state_ = REPLICATING;
   } else {
     DCHECK_EQ(type, consensus::LEADER);
-    consensus::ReplicateMsgPtr replicate_msg = transaction_->NewReplicateMsg();
     if (consensus_) {  // sometimes NULL in tests
       // Unretained is required to avoid a refcount cycle.
+      consensus::ReplicateMsgPtr replicate_msg = transaction_->NewReplicateMsg();
       mutable_state()->set_consensus_round(
         consensus_->NewRound(std::move(replicate_msg),
                              Bind(&TransactionDriver::ReplicationFinished, Unretained(this))));

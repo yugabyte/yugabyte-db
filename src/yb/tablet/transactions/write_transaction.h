@@ -79,9 +79,9 @@ using util::LockBatch;
 // NOTE: this class isn't thread safe.
 class WriteTransactionState : public TransactionState {
  public:
-  WriteTransactionState(TabletPeer* tablet_peer = NULL,
-                        const tserver::WriteRequestPB *request = NULL,
-                        tserver::WriteResponsePB *response = NULL);
+  WriteTransactionState(TabletPeer* tablet_peer = nullptr,
+                        const tserver::WriteRequestPB *request = nullptr,
+                        tserver::WriteResponsePB *response = nullptr);
   virtual ~WriteTransactionState();
 
   // Returns the result of this transaction in its protocol buffers form.
@@ -96,14 +96,15 @@ class WriteTransactionState : public TransactionState {
   // Returns the original client request for this transaction, if there was
   // one.
   const tserver::WriteRequestPB *request() const override {
-    return request_.get();
+    return request_;
   }
 
-  // Sets client request
-  void SetRequest(const tserver::WriteRequestPB &request) {
-    // TODO: We copy request here to implement the same behavior as in constructor,
-    // but there is an open question if we should copy request in constructor.
-    request_.reset(new tserver::WriteRequestPB(request));
+  tserver::WriteRequestPB* mutable_request() {
+    return request_;
+  }
+
+  void UpdateRequestFromConsensusRound() override {
+    request_ = consensus_round()->replicate_msg()->mutable_write_request();
   }
 
   // Returns the prepared response to the client that will be sent when this
@@ -161,7 +162,7 @@ class WriteTransactionState : public TransactionState {
   // Only one of Commit() or Abort() should be called.
   // REQUIRES: StartApplying() was called.
   //
-  // Note: request_ and response_ are set to NULL after this method returns.
+  // Note: request_ and response_ are set to nullptr after this method returns.
   void Commit();
 
   // Aborts the mvcc transaction and releases the component lock.
@@ -214,9 +215,9 @@ class WriteTransactionState : public TransactionState {
   void ResetMvccTx(std::function<void(ScopedWriteTransaction*)> txn_action);
 
   // pointers to the rpc context, request and response, lifecyle
-  // is managed by the rpc subsystem. These pointers maybe NULL if the
+  // is managed by the rpc subsystem. These pointers maybe nullptr if the
   // transaction was not initiated by an RPC call.
-  std::unique_ptr<const tserver::WriteRequestPB> request_;
+  tserver::WriteRequestPB* request_;
 
   tserver::WriteResponsePB* response_;
 

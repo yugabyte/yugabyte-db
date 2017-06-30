@@ -390,6 +390,7 @@ void DocWriteBatch::Clear() {
 }
 
 void DocWriteBatch::MoveToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) {
+  kv_pb->mutable_kv_pairs()->Reserve(put_batch_.size());
   for (auto& entry : put_batch_) {
     KeyValuePairPB* kv_pair = kv_pb->add_kv_pairs();
     kv_pair->mutable_key()->swap(entry.first);

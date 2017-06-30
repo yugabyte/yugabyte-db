@@ -53,7 +53,7 @@ class KuduWriteOperation: public DocOperation {
 
 class RedisWriteOperation: public DocOperation {
  public:
-  RedisWriteOperation(yb::RedisWriteRequestPB request, HybridTime read_hybrid_time)
+  RedisWriteOperation(const yb::RedisWriteRequestPB& request, HybridTime read_hybrid_time)
       : request_(request), response_(), read_hybrid_time_(read_hybrid_time) {}
 
   bool RequireReadSnapshot() const override { return false; }
@@ -78,14 +78,14 @@ class RedisWriteOperation: public DocOperation {
   Status ApplyAdd(DocWriteBatch *doc_write_batch);
   Status ApplyRemove(DocWriteBatch *doc_write_batch);
 
-  RedisWriteRequestPB request_;
+  const RedisWriteRequestPB& request_;
   RedisResponsePB response_;
   HybridTime read_hybrid_time_;
 };
 
 class RedisReadOperation {
  public:
-  explicit RedisReadOperation(yb::RedisReadRequestPB request) : request_(request) {}
+  explicit RedisReadOperation(const yb::RedisReadRequestPB& request) : request_(request) {}
 
   CHECKED_STATUS Execute(rocksdb::DB *rocksdb, const HybridTime& hybrid_time);
 
@@ -98,7 +98,7 @@ class RedisReadOperation {
   Status ExecuteExists(rocksdb::DB *rocksdb, HybridTime hybrid_time);
   Status ExecuteGetRange(rocksdb::DB *rocksdb, HybridTime hybrid_time);
 
-  RedisReadRequestPB request_;
+  const RedisReadRequestPB& request_;
   RedisResponsePB response_;
 };
 
@@ -152,7 +152,7 @@ class YQLWriteOperation : public DocOperation {
   std::unique_ptr<DocKey> pk_doc_key_;
   std::unique_ptr<DocPath> pk_doc_path_;
 
-  const YQLWriteRequestPB request_;
+  const YQLWriteRequestPB& request_;
   YQLResponsePB* response_;
   // The row and the column schema that is returned to the CQL client for an INSERT/UPDATE/DELETE
   // that has a "... IF <condition> ..." clause. The row contains the "[applied]" status column
@@ -163,7 +163,7 @@ class YQLWriteOperation : public DocOperation {
 
 class YQLReadOperation {
  public:
-  explicit YQLReadOperation(const YQLReadRequestPB& request);
+  explicit YQLReadOperation(const YQLReadRequestPB& request) : request_(request) {}
 
   CHECKED_STATUS Execute(
       const common::YQLStorageIf& yql_storage, const HybridTime& hybrid_time, const Schema& schema,
@@ -172,7 +172,7 @@ class YQLReadOperation {
   const YQLResponsePB& response() const;
 
  private:
-  const YQLReadRequestPB request_;
+  const YQLReadRequestPB& request_;
   YQLResponsePB response_;
 };
 

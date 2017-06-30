@@ -49,11 +49,14 @@ class TransactionTrackerTest : public YBTest {
  public:
   class NoOpTransactionState : public TransactionState {
    public:
-    NoOpTransactionState() : TransactionState(nullptr) {}
-    const google::protobuf::Message* request() const override { return &req_; }
+    NoOpTransactionState() : TransactionState(nullptr), req_(new consensus::ReplicateMsg()) {}
+    const google::protobuf::Message* request() const override { return req_.get(); }
+    void UpdateRequestFromConsensusRound() override {
+      req_ = consensus_round()->replicate_msg();
+    }
     std::string ToString() const override { return "NoOpTransactionState"; }
    private:
-    consensus::ReplicateMsg req_;
+    std::shared_ptr<consensus::ReplicateMsg> req_;
   };
   class NoOpTransaction : public Transaction {
    public:

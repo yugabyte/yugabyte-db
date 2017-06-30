@@ -855,27 +855,29 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
 }
 
 Status Tablet::KeyValueBatchFromRedisWriteBatch(
-    const WriteRequestPB& redis_write_request,
-    unique_ptr<const WriteRequestPB>* redis_write_batch_pb,
+    WriteRequestPB* redis_write_request,
     LockBatch *keys_locked,
     vector<RedisResponsePB>* responses) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
   vector<unique_ptr<DocOperation>> doc_ops;
   // Since we take exclusive locks, it's okay to use Now as the read TS for writes.
   const HybridTime read_hybrid_time = clock_->Now();
-  for (size_t i = 0; i < redis_write_request.redis_write_batch_size(); i++) {
-    RedisWriteRequestPB req = redis_write_request.redis_write_batch(i);
-    doc_ops.emplace_back(new RedisWriteOperation(req, read_hybrid_time));
+  std::unique_ptr<WriteRequestPB> copy_req(new WriteRequestPB());
+  copy_req->mutable_redis_write_batch()->Swap(redis_write_request->mutable_redis_write_batch());
+  copy_req->set_allocated_tablet_id(redis_write_request->release_tablet_id());
+  copy_req->Swap(redis_write_request);
+  const auto* write_batch = redis_write_request->mutable_redis_write_batch();
+
+  for (size_t i = 0; i < write_batch->size(); i++) {
+    doc_ops.emplace_back(new RedisWriteOperation(
+          write_batch->Get(i), read_hybrid_time));
   }
-  WriteRequestPB* const write_request_copy = new WriteRequestPB();
-  redis_write_batch_pb->reset(write_request_copy);
   RETURN_NOT_OK(StartDocWriteTransaction(
-      doc_ops, keys_locked, write_request_copy->mutable_write_batch()));
-  for (size_t i = 0; i < redis_write_request.redis_write_batch_size(); i++) {
+      doc_ops, keys_locked, redis_write_request->mutable_write_batch()));
+  for (size_t i = 0; i < write_batch->size(); i++) {
     responses->emplace_back(
         (down_cast<RedisWriteOperation*>(doc_ops[i].get()))->response());
   }
-  write_request_copy->set_tablet_id(redis_write_request.tablet_id());
 
   return Status::OK();
 }
@@ -929,25 +931,27 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const YQLReadRequestPB& yql_read
 }
 
 Status Tablet::KeyValueBatchFromYQLWriteBatch(
-    const WriteRequestPB& write_request,
-    unique_ptr<const WriteRequestPB>* write_batch_pb,
+    WriteRequestPB* yql_write_request,
     LockBatch *keys_locked,
     WriteResponsePB* write_response,
     WriteTransactionState* tx_state) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
 
   vector<unique_ptr<DocOperation>> doc_ops;
+  std::unique_ptr<WriteRequestPB> copy_req(new WriteRequestPB());
+  copy_req->mutable_yql_write_batch()->Swap(yql_write_request->mutable_yql_write_batch());
+  copy_req->set_allocated_tablet_id(yql_write_request->release_tablet_id());
+  copy_req->Swap(yql_write_request);
+  const auto* write_batch = yql_write_request->mutable_yql_write_batch();
 
-  for (size_t i = 0; i < write_request.yql_write_batch_size(); i++) {
-    const YQLWriteRequestPB& req = write_request.yql_write_batch(i);
+  for (size_t i = 0; i < write_batch->size(); i++) {
     doc_ops.emplace_back(new YQLWriteOperation(
-        req, metadata_->schema(), write_response->add_yql_response_batch()));
+        write_batch->Get(i), metadata_->schema(),
+        write_response->add_yql_response_batch()));
   }
-  WriteRequestPB* const write_request_copy = new WriteRequestPB();
-  write_batch_pb->reset(write_request_copy);
   RETURN_NOT_OK(StartDocWriteTransaction(
-      doc_ops, keys_locked, write_request_copy->mutable_write_batch()));
-  for (size_t i = 0; i < write_request.yql_write_batch_size(); i++) {
+      doc_ops, keys_locked, yql_write_request->mutable_write_batch()));
+  for (size_t i = 0; i < write_batch->size(); i++) {
     YQLWriteOperation* yql_write_op = down_cast<YQLWriteOperation*>(doc_ops[i].get());
     // If the YQL write op returns a rowblock, move the op to the transaction state to return the
     // rows data as a sidecar after the transaction completes.
@@ -956,7 +960,6 @@ Status Tablet::KeyValueBatchFromYQLWriteBatch(
       tx_state->yql_write_ops()->emplace_back(unique_ptr<YQLWriteOperation>(yql_write_op));
     }
   }
-  write_request_copy->set_tablet_id(write_request.tablet_id());
 
   return Status::OK();
 }
@@ -964,13 +967,12 @@ Status Tablet::KeyValueBatchFromYQLWriteBatch(
 Status Tablet::AcquireLocksAndPerformDocOperations(WriteTransactionState *state) {
   if (table_type_ != KUDU_COLUMNAR_TABLE_TYPE) {
     LockBatch locks_held;
-    const auto& req = *state->request();
-    unique_ptr<const WriteRequestPB> key_value_write_request;
+    WriteRequestPB* key_value_write_request = state->mutable_request();
     bool invalid_table_type = true;
     switch (table_type_) {
       case TableType::REDIS_TABLE_TYPE: {
         vector<RedisResponsePB> responses;
-        RETURN_NOT_OK(KeyValueBatchFromRedisWriteBatch(req, &key_value_write_request,
+        RETURN_NOT_OK(KeyValueBatchFromRedisWriteBatch(key_value_write_request,
             &locks_held, &responses));
         for (auto &redis_resp : responses) {
           *(state->response()->add_redis_response_batch()) = std::move(redis_resp);
@@ -979,15 +981,16 @@ Status Tablet::AcquireLocksAndPerformDocOperations(WriteTransactionState *state)
         break;
       }
       case TableType::YQL_TABLE_TYPE: {
-        CHECK_NE(req.yql_write_batch_size() > 0, req.row_operations().rows().size() > 0)
+        CHECK_NE(key_value_write_request->yql_write_batch_size() > 0,
+                 key_value_write_request->row_operations().rows().size() > 0)
             << "YQL write and Kudu row operations not supported in the same request";
-        if (req.yql_write_batch_size() > 0) {
+        if (key_value_write_request->yql_write_batch_size() > 0) {
           vector<YQLResponsePB> responses;
           RETURN_NOT_OK(KeyValueBatchFromYQLWriteBatch(
-              req, &key_value_write_request, &locks_held, state->response(), state));
+              key_value_write_request, &locks_held, state->response(), state));
         } else {
           // Kudu-compatible codepath - we'll construct a new WriteRequestPB for Raft replication.
-          RETURN_NOT_OK(KeyValueBatchFromKuduRowOps(req, &key_value_write_request, &locks_held));
+          RETURN_NOT_OK(KeyValueBatchFromKuduRowOps(key_value_write_request, &locks_held));
         }
         invalid_table_type = false;
         break;
@@ -999,18 +1002,18 @@ Status Tablet::AcquireLocksAndPerformDocOperations(WriteTransactionState *state)
     if (invalid_table_type) {
       LOG(FATAL) << "Invalid table type: " << table_type_;
     }
-    state->SetRequest(*key_value_write_request);
     state->ReplaceDocDBLocks(std::move(locks_held));
   }
   return Status::OK();
 }
 
-Status Tablet::KeyValueBatchFromKuduRowOps(const WriteRequestPB &kudu_write_request_pb,
-                                           unique_ptr<const WriteRequestPB> *kudu_write_batch_pb,
+Status Tablet::KeyValueBatchFromKuduRowOps(WriteRequestPB* kudu_write_request_pb,
                                            LockBatch *keys_locked) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
 
   TRACE("PREPARE: Decoding operations");
+
+  auto* write_batch = kudu_write_request_pb->mutable_write_batch();
 
   TRACE("Acquiring schema lock in shared mode");
   shared_lock<rw_semaphore> schema_lock(schema_lock_);
@@ -1018,26 +1021,24 @@ Status Tablet::KeyValueBatchFromKuduRowOps(const WriteRequestPB &kudu_write_requ
 
   Schema client_schema;
 
-  RETURN_NOT_OK(SchemaFromPB(kudu_write_request_pb.schema(), &client_schema));
+  RETURN_NOT_OK(SchemaFromPB(kudu_write_request_pb->schema(), &client_schema));
 
   // Allocating temporary arena for decoding.
   Arena arena(32 * 1024, 4 * 1024 * 1024);
 
   vector<DecodedRowOperation> row_ops;
-  RowOperationsPBDecoder row_operation_decoder(&kudu_write_request_pb.row_operations(),
+  RowOperationsPBDecoder row_operation_decoder(&kudu_write_request_pb->row_operations(),
                                                &client_schema,
                                                schema(),
                                                &arena);
 
   RETURN_NOT_OK(row_operation_decoder.DecodeOperations(&row_ops));
 
-  WriteRequestPB* const write_request_copy = new WriteRequestPB();
-  kudu_write_batch_pb->reset(write_request_copy);
   RETURN_NOT_OK(
       CreateWriteBatchFromKuduRowOps(
-          row_ops, write_request_copy->mutable_write_batch(), keys_locked));
-
-  write_request_copy->set_tablet_id(kudu_write_request_pb.tablet_id());
+          row_ops, write_batch, keys_locked));
+  // TODO(bogdan): setup copy/swap like in Redis/YQL cases.
+  kudu_write_request_pb->clear_row_operations();
 
   return Status::OK();
 }

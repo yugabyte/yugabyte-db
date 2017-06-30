@@ -730,9 +730,6 @@ Status YQLWriteOperation::Apply(
   return Status::OK();
 }
 
-YQLReadOperation::YQLReadOperation(const YQLReadRequestPB& request) : request_(request) {
-}
-
 Status YQLReadOperation::Execute(
     const common::YQLStorageIf& yql_storage, const HybridTime& hybrid_time, const Schema& schema,
     YQLRowBlock* rowblock) {
