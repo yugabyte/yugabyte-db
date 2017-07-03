@@ -1828,6 +1828,9 @@ TEST_P(DBCompactionTestWithParam, ManualCompaction) {
     // Verify manual compaction doesn't fill block cache
     ASSERT_EQ(prev_block_cache_add,
               options.statistics->getTickerCount(BLOCK_CACHE_ADD));
+    ASSERT_EQ(prev_block_cache_add,
+              options.statistics->getTickerCount(BLOCK_CACHE_SINGLE_TOUCH_ADD) +
+              options.statistics->getTickerCount(BLOCK_CACHE_MULTI_TOUCH_ADD));
 
     ASSERT_EQ("0,0,1", FilesPerLevel(1));
 

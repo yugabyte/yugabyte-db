@@ -2164,6 +2164,9 @@ TEST_F(DBTest, CompressedCache) {
         // both compressed and uncompressed block cache
         ASSERT_GT(TestGetTickerCount(options, BLOCK_CACHE_MISS), 0);
         ASSERT_GT(TestGetTickerCount(options, BLOCK_CACHE_HIT), 0);
+        ASSERT_EQ(TestGetTickerCount(options, BLOCK_CACHE_SINGLE_TOUCH_HIT) +
+                  TestGetTickerCount(options, BLOCK_CACHE_MULTI_TOUCH_HIT),
+                  TestGetTickerCount(options, BLOCK_CACHE_HIT));
         ASSERT_GT(TestGetTickerCount(options, BLOCK_CACHE_COMPRESSED_MISS), 0);
         // compressed doesn't have any hits since blocks are not compressed on
         // storage

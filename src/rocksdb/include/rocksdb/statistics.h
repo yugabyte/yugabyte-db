@@ -178,7 +178,18 @@ enum Tickers : uint32_t {
   // Table cache.
   NO_TABLE_CACHE_ITERATORS,
 
-  TICKER_ENUM_MAX
+  // Single-touch and multi-touch statistics.
+  BLOCK_CACHE_SINGLE_TOUCH_HIT,
+  BLOCK_CACHE_SINGLE_TOUCH_ADD,
+  BLOCK_CACHE_SINGLE_TOUCH_BYTES_READ,
+  BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE,
+  BLOCK_CACHE_MULTI_TOUCH_HIT,
+  BLOCK_CACHE_MULTI_TOUCH_ADD,
+  BLOCK_CACHE_MULTI_TOUCH_BYTES_READ,
+  BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE,
+
+  // End of ticker enum.
+  TICKER_ENUM_MAX,
 };
 
 // The order of items listed in  Tickers should be the same as
@@ -261,7 +272,15 @@ const std::vector<std::pair<Tickers, std::string>> TickersNameMap = {
     {FILTER_OPERATION_TOTAL_TIME, "rocksdb.filter.operation.time.nanos"},
     {ROW_CACHE_HIT, "rocksdb.row.cache.hit"},
     {ROW_CACHE_MISS, "rocksdb.row.cache.miss"},
-    {NO_TABLE_CACHE_ITERATORS, "rocksdb.no.table.cache.iterators"}
+    {NO_TABLE_CACHE_ITERATORS, "rocksdb.no.table.cache.iterators"},
+    {BLOCK_CACHE_SINGLE_TOUCH_HIT, "rocksdb.block.cache.single.touch.hit"},
+    {BLOCK_CACHE_SINGLE_TOUCH_ADD, "rocksdb.block.cache.single.touch.add"},
+    {BLOCK_CACHE_SINGLE_TOUCH_BYTES_READ, "rocksdb.block.cache.single.touch.bytes.read"},
+    {BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE, "rocksdb.block.cache.single.touch.bytes.write"},
+    {BLOCK_CACHE_MULTI_TOUCH_HIT, "rocksdb.block.cache.multi.touch.hit"},
+    {BLOCK_CACHE_MULTI_TOUCH_ADD, "rocksdb.block.cache.multi.touch.add"},
+    {BLOCK_CACHE_MULTI_TOUCH_BYTES_READ, "rocksdb.block.cache.multi.touch.bytes.read"},
+    {BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE, "rocksdb.block.cache.multi.touch.bytes.write"}
 };
 
 /**

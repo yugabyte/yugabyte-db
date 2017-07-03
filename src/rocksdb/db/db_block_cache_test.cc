@@ -75,12 +75,18 @@ class DBBlockCacheTest : public DBTestBase {
                           size_t expected_failures) {
     size_t new_miss_count = TestGetTickerCount(options, BLOCK_CACHE_MISS);
     size_t new_hit_count = TestGetTickerCount(options, BLOCK_CACHE_HIT);
+    size_t new_st_hit_count = TestGetTickerCount(options, BLOCK_CACHE_SINGLE_TOUCH_HIT);
+    size_t new_mt_hit_count = TestGetTickerCount(options, BLOCK_CACHE_MULTI_TOUCH_HIT);
     size_t new_insert_count = TestGetTickerCount(options, BLOCK_CACHE_ADD);
+    size_t new_st_insert_count = TestGetTickerCount(options, BLOCK_CACHE_SINGLE_TOUCH_ADD);
+    size_t new_mt_insert_count = TestGetTickerCount(options, BLOCK_CACHE_MULTI_TOUCH_ADD);
     size_t new_failure_count =
         TestGetTickerCount(options, BLOCK_CACHE_ADD_FAILURES);
     ASSERT_EQ(miss_count_ + expected_misses, new_miss_count);
     ASSERT_EQ(hit_count_ + expected_hits, new_hit_count);
+    ASSERT_EQ(new_st_hit_count + new_mt_hit_count, new_hit_count);
     ASSERT_EQ(insert_count_ + expected_inserts, new_insert_count);
+    ASSERT_EQ(new_st_insert_count + new_mt_insert_count, new_insert_count);
     ASSERT_EQ(failure_count_ + expected_failures, new_failure_count);
     miss_count_ = new_miss_count;
     hit_count_ = new_hit_count;

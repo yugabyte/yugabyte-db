@@ -110,6 +110,7 @@ Cache::Handle* GetEntryFromCache(Cache* block_cache, const Slice& key,
                                  const QueryId query_id) {
   auto cache_handle = block_cache->Lookup(key, query_id);
   if (cache_handle != nullptr) {
+    SubCacheType cache_type = block_cache->GetSubCacheType(cache_handle);
     PERF_COUNTER_ADD(block_cache_hit_count, 1);
     // overall cache hit
     RecordTick(statistics, BLOCK_CACHE_HIT);
@@ -118,6 +119,15 @@ Cache::Handle* GetEntryFromCache(Cache* block_cache, const Slice& key,
                block_cache->GetUsage(cache_handle));
     // block-type specific cache hit
     RecordTick(statistics, block_cache_hit_ticker);
+    if (cache_type == SubCacheType::SINGLE_TOUCH) {
+      RecordTick(statistics, BLOCK_CACHE_SINGLE_TOUCH_HIT);
+      RecordTick(statistics, BLOCK_CACHE_SINGLE_TOUCH_BYTES_READ,
+                 block_cache->GetUsage(cache_handle));
+    } else if (cache_type == SubCacheType::MULTI_TOUCH) {
+      RecordTick(statistics, BLOCK_CACHE_MULTI_TOUCH_HIT);
+      RecordTick(statistics, BLOCK_CACHE_MULTI_TOUCH_BYTES_READ,
+                 block_cache->GetUsage(cache_handle));
+    }
   } else {
     // overall cache miss
     RecordTick(statistics, BLOCK_CACHE_MISS);
@@ -930,7 +940,14 @@ Status BlockBasedTable::GetDataBlockFromCache(
                               block->value->usable_size(), &DeleteCachedEntry<Block>,
                               &(block->cache_handle));
       if (s.ok()) {
+        assert(block->cache_handle != nullptr);
         RecordTick(statistics, BLOCK_CACHE_ADD);
+        SubCacheType subcache_type = block_cache->GetSubCacheType(block->cache_handle);
+        if (subcache_type == SubCacheType::SINGLE_TOUCH) {
+          RecordTick(statistics, BLOCK_CACHE_SINGLE_TOUCH_ADD);
+        } else if (subcache_type == SubCacheType::MULTI_TOUCH) {
+          RecordTick(statistics, BLOCK_CACHE_MULTI_TOUCH_ADD);
+        }
       } else {
         RecordTick(statistics, BLOCK_CACHE_ADD_FAILURES);
         delete block->value;
@@ -1000,6 +1017,16 @@ Status BlockBasedTable::PutDataBlockToCache(
                  block->value->usable_size());
       assert(static_cast<Block*>(
                  block_cache->Value(block->cache_handle)) == block->value);
+      SubCacheType subcache_type = block_cache->GetSubCacheType(block->cache_handle);
+      if (subcache_type == SubCacheType::SINGLE_TOUCH) {
+        RecordTick(statistics, BLOCK_CACHE_SINGLE_TOUCH_ADD);
+        RecordTick(statistics, BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE,
+                   block->value->usable_size());
+      } else if (subcache_type == SubCacheType::MULTI_TOUCH) {
+        RecordTick(statistics, BLOCK_CACHE_MULTI_TOUCH_ADD);
+        RecordTick(statistics, BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE,
+                   block->value->usable_size());
+      }
     } else {
       RecordTick(statistics, BLOCK_CACHE_ADD_FAILURES);
       delete block->value;
@@ -1172,8 +1199,17 @@ BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(
                                      filter, filter_size,
                                      &DeleteCachedEntry<FilterBlockReader>, &cache_handle);
       if (s.ok()) {
+        assert(cache_handle != nullptr);
         RecordTick(statistics, BLOCK_CACHE_ADD);
         RecordTick(statistics, BLOCK_CACHE_BYTES_WRITE, filter_size);
+        SubCacheType subcache_type = block_cache->GetSubCacheType(cache_handle);
+        if (subcache_type == SubCacheType::SINGLE_TOUCH) {
+          RecordTick(statistics, BLOCK_CACHE_SINGLE_TOUCH_ADD);
+          RecordTick(statistics, BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE, filter_size);
+        } else if (subcache_type == SubCacheType::MULTI_TOUCH) {
+          RecordTick(statistics, BLOCK_CACHE_MULTI_TOUCH_ADD);
+          RecordTick(statistics, BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE, filter_size);
+        }
       } else {
         RecordTick(statistics, BLOCK_CACHE_ADD_FAILURES);
         delete filter;
@@ -1227,10 +1263,18 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
     }
 
     if (s.ok()) {
+      assert(cache_handle != nullptr);
       index_reader = index_reader_unique.release();
       RecordTick(statistics, BLOCK_CACHE_ADD);
-      RecordTick(statistics, BLOCK_CACHE_BYTES_WRITE,
-          index_reader->usable_size());
+      RecordTick(statistics, BLOCK_CACHE_BYTES_WRITE, index_reader->usable_size());
+      SubCacheType subcache_type = block_cache->GetSubCacheType(cache_handle);
+      if (subcache_type == SubCacheType::SINGLE_TOUCH) {
+        RecordTick(statistics, BLOCK_CACHE_SINGLE_TOUCH_ADD);
+        RecordTick(statistics, BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE, index_reader->usable_size());
+      } else if (subcache_type == SubCacheType::MULTI_TOUCH) {
+        RecordTick(statistics, BLOCK_CACHE_MULTI_TOUCH_ADD);
+        RecordTick(statistics, BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE, index_reader->usable_size());
+      }
     } else {
       RecordTick(statistics, BLOCK_CACHE_ADD_FAILURES);
       // make sure if something goes wrong, data_index_reader shall remain intact.
