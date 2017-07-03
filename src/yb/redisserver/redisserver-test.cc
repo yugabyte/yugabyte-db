@@ -224,7 +224,7 @@ TEST_F(TestRedisService, SimpleCommandMulti) {
 
 TEST_F(TestRedisService, BatchedCommandsInline) {
   SendCommandAndExpectResponse(
-      "set a 5\r\nset foo bar\r\nget foo\r\nget a\r\n", "+OK\r\n+OK\r\n+bar\r\n+5\r\n");
+      "set a 5\r\nset foo bar\r\nget foo\r\nget a\r\n", "+OK\r\n+OK\r\n$3\r\nbar\r\n$1\r\n5\r\n");
 }
 
 TEST_F(TestRedisService, BatchedCommandsInlinePartial) {
@@ -232,7 +232,7 @@ TEST_F(TestRedisService, BatchedCommandsInlinePartial) {
     ASSERT_NO_FATAL_FAILURE(
         SendCommandAndExpectResponse(
             "set a 5\r\nset foo bar\r\nget foo\r\nget a\r\n",
-            "+OK\r\n+OK\r\n+bar\r\n+5\r\n",
+            "+OK\r\n+OK\r\n$3\r\nbar\r\n$1\r\n5\r\n",
             /* partial */ true)
     );
   }
@@ -254,7 +254,7 @@ TEST_F(TestRedisService, BatchedCommandMultiPartial) {
           "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$5\r\nTEST2\r\n"
           "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$5\r\nTEST3\r\n"
           "*2\r\n$3\r\nget\r\n$3\r\nfoo\r\n",
-          "+OK\r\n+OK\r\n+OK\r\n+TEST3\r\n",
+          "+OK\r\n+OK\r\n+OK\r\n$5\r\nTEST3\r\n",
           /* partial */ true)
     );
   }
@@ -271,7 +271,7 @@ TEST_F(TestRedisService, MalformedCommandsFollowedByAGoodOne) {
   RestartClient();
   ASSERT_FALSE(SendCommandAndGetResponse("*-4\r\n.3\r\n", 1).ok());
   RestartClient();
-  SendCommandAndExpectResponse("*2\r\n$4\r\necho\r\n$3\r\nfoo\r\n", "+foo\r\n");
+  SendCommandAndExpectResponse("*2\r\n$4\r\necho\r\n$3\r\nfoo\r\n", "$3\r\nfoo\r\n");
 }
 
 TEST_F(TestRedisService, IncompleteCommandMulti) {
@@ -279,14 +279,14 @@ TEST_F(TestRedisService, IncompleteCommandMulti) {
 }
 
 TEST_F(TestRedisService, Echo) {
-  SendCommandAndExpectResponse("*2\r\n$4\r\necho\r\n$3\r\nfoo\r\n", "+foo\r\n");
-  SendCommandAndExpectResponse("*2\r\n$4\r\necho\r\n$8\r\nfoo bar \r\n", "+foo bar \r\n");
+  SendCommandAndExpectResponse("*2\r\n$4\r\necho\r\n$3\r\nfoo\r\n", "$3\r\nfoo\r\n");
+  SendCommandAndExpectResponse("*2\r\n$4\r\necho\r\n$8\r\nfoo bar \r\n", "$8\r\nfoo bar \r\n");
   SendCommandAndExpectResponse(
       EncodeAsArrays({  // The request is sent as a multi bulk array.
                          EncodeAsBulkString("echo"),
                          EncodeAsBulkString("foo bar")
                      }),
-      EncodeAsSimpleString("foo bar")  // The response is in the simple string format.
+      EncodeAsBulkString("foo bar")  // The response is in the bulk string format.
       );
 }
 
@@ -305,7 +305,7 @@ TEST_F(TestRedisService, TestCaseInsensitiveness) {
 
 TEST_F(TestRedisService, TestSetThenGet) {
   SendCommandAndExpectResponse("*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
-  SendCommandAndExpectResponse("*2\r\n$3\r\nget\r\n$3\r\nfoo\r\n", "+TEST\r\n");
+  SendCommandAndExpectResponse("*2\r\n$3\r\nget\r\n$3\r\nfoo\r\n", "$4\r\nTEST\r\n");
   SendCommandAndExpectResponse(
       EncodeAsArrays({  // The request is sent as a multi bulk array.
                          EncodeAsBulkString("set"),
@@ -319,7 +319,7 @@ TEST_F(TestRedisService, TestSetThenGet) {
                          EncodeAsBulkString("get"),
                          EncodeAsBulkString("name")
                      }),
-      EncodeAsSimpleString("yugabyte")  // The response is in the simple string format.
+      EncodeAsBulkString("yugabyte")  // The response is in the bulk string format.
   );
 }
 
@@ -338,7 +338,7 @@ TEST_F(TestRedisService, TestUsingOpenSourceClient) {
       });
 
   DoRedisTest({"GET", "hello"},
-      cpp_redis::reply::type::simple_string,
+      cpp_redis::reply::type::bulk_string,
       [](const RedisReply &reply) {
         ASSERT_EQ("42", reply.as_string());
       });
@@ -347,6 +347,36 @@ TEST_F(TestRedisService, TestUsingOpenSourceClient) {
       cpp_redis::reply::type::simple_string,
       [](const RedisReply &reply) {
         ASSERT_EQ("OK", reply.as_string());
+      });
+
+  SyncClient();
+  VerifyCallbacks();
+}
+
+TEST_F(TestRedisService, TestBinaryUsingOpenSourceClient) {
+
+  DoRedisTest({"SET", "foo", "\001\002\r\n\003\004"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply& reply) {
+        ASSERT_EQ("OK", reply.as_string());
+      });
+
+  DoRedisTest({"GET", "foo"},
+      cpp_redis::reply::type::bulk_string,
+      [](const RedisReply &reply) {
+        ASSERT_EQ("\001\002\r\n\003\004", reply.as_string());
+      });
+
+  DoRedisTest({"SET", "bar", "\013\010"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply& reply) {
+        ASSERT_EQ("OK", reply.as_string());
+      });
+
+  DoRedisTest({"GET", "bar"},
+      cpp_redis::reply::type::bulk_string,
+      [](const RedisReply &reply) {
+        ASSERT_EQ("\013\010", reply.as_string());
       });
 
   SyncClient();
@@ -380,7 +410,7 @@ TEST_F(TestRedisService, TestTtl) {
   std::this_thread::sleep_for(std::chrono::seconds(2));
 
   DoRedisTest({"GET", "k1"},
-      cpp_redis::reply::type::simple_string,
+      cpp_redis::reply::type::bulk_string,
       [](const RedisReply &reply) {
         ASSERT_EQ("v1", reply.as_string());
       });
@@ -390,7 +420,7 @@ TEST_F(TestRedisService, TestTtl) {
         ASSERT_TRUE(reply.is_null());
       });
   DoRedisTest({"GET", "k3"},
-      cpp_redis::reply::type::simple_string,
+      cpp_redis::reply::type::bulk_string,
       [](const RedisReply &reply) {
         ASSERT_EQ("v3", reply.as_string());
       });
@@ -410,7 +440,7 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   SyncClient();
 
   DoRedisTest({"HGET", "map_key", "subkey"},
-      cpp_redis::reply::type::simple_string,
+      cpp_redis::reply::type::bulk_string,
       [](const RedisReply &reply) {
         ASSERT_EQ("42", reply.as_string());
       });
@@ -424,7 +454,7 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   SyncClient();
 
   DoRedisTest({"GETSET", "key1", "val1"},
-      cpp_redis::reply::type::simple_string,
+      cpp_redis::reply::type::bulk_string,
       [](const RedisReply &reply) {
         ASSERT_EQ("30", reply.as_string());
       });
@@ -432,7 +462,7 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   SyncClient();
 
   DoRedisTest({"GET", "key1"},
-      cpp_redis::reply::type::simple_string,
+      cpp_redis::reply::type::bulk_string,
       [](const RedisReply &reply) {
         ASSERT_EQ("val1", reply.as_string());
       });
@@ -446,7 +476,7 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   SyncClient();
 
   DoRedisTest({"GET", "key1"},
-      cpp_redis::reply::type::simple_string,
+      cpp_redis::reply::type::bulk_string,
       [](const RedisReply &reply) {
         ASSERT_EQ("val1extra1", reply.as_string());
       });
@@ -466,7 +496,7 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   SyncClient();
 
   DoRedisTest({"GET", "key2"},
-      cpp_redis::reply::type::simple_string,
+      cpp_redis::reply::type::bulk_string,
       [](const RedisReply &reply) {
         ASSERT_EQ("val2", reply.as_string());
       });
@@ -496,7 +526,7 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   SyncClient();
 
   DoRedisTest({"GET", "key1"},
-      cpp_redis::reply::type::simple_string,
+      cpp_redis::reply::type::bulk_string,
       [](const RedisReply &reply) {
         ASSERT_EQ("vaxyz3tra1", reply.as_string());
       });
@@ -518,7 +548,7 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   SyncClient();
 
   DoRedisTest({"GET", "key3"},
-      cpp_redis::reply::type::simple_string,
+      cpp_redis::reply::type::bulk_string,
       [](const RedisReply &reply) {
         ASSERT_EQ("24", reply.as_string());
       });
@@ -555,7 +585,7 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
 
   DoRedisTest(
       {"GETRANGE", "key1", "1", "-1"},
-      cpp_redis::reply::type::simple_string,
+      cpp_redis::reply::type::bulk_string,
       [](const RedisReply &reply) {
         ASSERT_EQ("axyz3tra", reply.as_string());
       });

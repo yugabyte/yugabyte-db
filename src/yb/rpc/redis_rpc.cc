@@ -411,7 +411,7 @@ Status RedisInboundCall::SerializeResponseBuffer(const google::protobuf::Message
   } else {
     if (redis_response.has_string_response()) {
       response_msg_buf_ = util::RefCntBuffer(
-          EncodeAsSimpleString(redis_response.string_response()));
+          EncodeAsBulkString(redis_response.string_response()));
     } else if (redis_response.has_int_response()) {
       response_msg_buf_ = util::RefCntBuffer(EncodeAsInteger(redis_response.int_response()));
     } else {
