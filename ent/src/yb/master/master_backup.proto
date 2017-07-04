@@ -1,0 +1,54 @@
+// Copyright (c) YugaByte, Inc.
+
+package yb.master;
+
+option java_package = "org.yb.master";
+
+import "yb/master/master.proto";
+
+// The on-disk entry in the sys.catalog table ("metadata" column) for snapshots entries.
+message SysSnapshotEntryPB {
+  enum State {
+    UNKNOWN = 0;
+    CREATING = 1;
+    COMPLETE = 2;
+    DELETING = 3;
+    DELETED = 4;
+    FAILED = 5;
+  }
+
+  // Note: The id of the snapshot is not stored here as it is already part of
+  // SysRowEntry's id component.
+
+  optional State state = 1 [ default = UNKNOWN ];
+
+  message TabletSnapshotPB {
+    required bytes id = 1;
+    optional State state = 2;
+  }
+
+  repeated TabletSnapshotPB tablet_snapshots = 2;
+
+  // Stored info about snapshot (1) namespaces (2) tables (3) tablets.
+  repeated SysRowEntry entries = 3;
+}
+
+////////////////////////////////////////////////////////////
+// RPCs
+////////////////////////////////////////////////////////////
+
+message CreateSnapshotRequestPB {
+  repeated TableIdentifierPB tables = 1;
+}
+
+message CreateSnapshotResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  optional bytes snapshot_id = 2;
+}
+
+service MasterBackupService {
+  // Client->Master RPCs
+  rpc CreateSnapshot(CreateSnapshotRequestPB) returns (CreateSnapshotResponsePB);
+}

@@ -6,6 +6,11 @@
 #include "../../../../src/yb/master/async_rpc_tasks.h"
 
 namespace yb {
+
+namespace tserver {
+class TabletServerBackupServiceProxy;
+}
+
 namespace master {
 namespace enterprise {
 
@@ -20,6 +25,8 @@ class RetryingTSRpcTask : public yb::master::RetryingTSRpcTask {
 
  protected:
   Status ResetTSProxy() override;
+
+  std::shared_ptr<tserver::TabletServerBackupServiceProxy> ts_backup_proxy_;
 };
 
 } // namespace enterprise
