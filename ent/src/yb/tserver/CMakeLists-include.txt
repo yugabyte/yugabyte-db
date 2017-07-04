@@ -9,4 +9,14 @@ string(REPLACE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/ent
 
 set(TSERVER_SRCS_EXTENTIONS
   ${YB_ENT_CURRENT_SOURCE_DIR}/tablet_server_ent.cc
+  ${YB_ENT_CURRENT_SOURCE_DIR}/backup_service.cc
+  PARENT_SCOPE)
+
+# Additional tests support.
+set(YB_ENT_CURRENT_SOURCE_DIR
+  ${YB_ENT_CURRENT_SOURCE_DIR}
+  PARENT_SCOPE)
+
+set(TSERVER_EXTENTIONS_TEST1
+  backup_service-test
   PARENT_SCOPE)

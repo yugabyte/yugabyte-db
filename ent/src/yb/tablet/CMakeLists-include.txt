@@ -9,5 +9,7 @@ string(REPLACE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/ent
 
 set(TABLET_SRCS_EXTENTIONS
   ${YB_ENT_CURRENT_SOURCE_DIR}/tablet_bootstrap_ent.cc
+  ${YB_ENT_CURRENT_SOURCE_DIR}/tablet_ent.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/tablet_peer_ent.cc
+  ${YB_ENT_CURRENT_SOURCE_DIR}/operations/snapshot_operation.cc
   PARENT_SCOPE)

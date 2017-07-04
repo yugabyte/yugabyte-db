@@ -15,6 +15,9 @@ class TabletBootstrap : public yb::tablet::TabletBootstrap {
   explicit TabletBootstrap(const BootstrapTabletData& data) : super(data) {}
 
  protected:
+  Status PlayCreateTabletSnapshotRequest(consensus::ReplicateMsg* replicate_msg,
+                                         const consensus::CommitMsg* commit_msg);
+
   CHECKED_STATUS HandleOperation(consensus::OperationType op_type,
       consensus::ReplicateMsg* replicate, const consensus::CommitMsg* commit) override;
 

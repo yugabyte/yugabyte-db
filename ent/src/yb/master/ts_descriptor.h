@@ -14,6 +14,7 @@ class ConsensusServiceProxy;
 namespace tserver {
 class TabletServerAdminServiceProxy;
 class TabletServerServiceProxy;
+class TabletServerBackupServiceProxy;
 }
 
 namespace master {
@@ -21,6 +22,7 @@ namespace enterprise {
 
 typedef util::SharedPtrTuple<tserver::TabletServerAdminServiceProxy,
                              tserver::TabletServerServiceProxy,
+                             tserver::TabletServerBackupServiceProxy,
                              consensus::ConsensusServiceProxy> ProxyTuple;
 
 } // namespace enterprise
