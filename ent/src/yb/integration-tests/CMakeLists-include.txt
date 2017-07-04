@@ -1,0 +1,3 @@
+# Copyright (c) YugaByte, Inc.
+
+ADD_YB_TEST(master_snapshot-itest RESOURCE_LOCK "master-rpc-ports")
