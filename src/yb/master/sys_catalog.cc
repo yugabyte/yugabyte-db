@@ -67,6 +67,7 @@ using yb::tserver::WriteRequestPB;
 using yb::tserver::WriteResponsePB;
 using strings::Substitute;
 using yb::consensus::StateChangeContext;
+using yb::consensus::StateChangeReason;
 using yb::consensus::ChangeConfigRequestPB;
 using yb::consensus::ChangeConfigRecordPB;
 
@@ -404,17 +405,17 @@ void SysCatalogTable::SysCatalogStateChanged(
   // For the change config case, LEADER is the one which started the operation, so new role is same
   // as its old role of LEADER and hence it need not reload the sysCatalog via the callback.
   if (role == RaftPeerPB::LEADER &&
-      (context->reason == StateChangeContext::NEW_LEADER_ELECTED ||
+      (context->reason == StateChangeReason::NEW_LEADER_ELECTED ||
        (cstate.config().peers_size() == 1 &&
-        context->reason == StateChangeContext::TABLET_PEER_STARTED))) {
+        context->reason == StateChangeReason::TABLET_PEER_STARTED))) {
     CHECK_OK(leader_cb_.Run());
   }
 
   // Perform any further changes for context based reasons.
   // For config change peer update, both leader and follower need to update their in-memory state.
   // NOTE: if there are any errors, we check in debug mode, but ignore the error in non-debug case.
-  if (context->reason == StateChangeContext::LEADER_CONFIG_CHANGE_COMPLETE ||
-      context->reason == StateChangeContext::FOLLOWER_CONFIG_CHANGE_COMPLETE) {
+  if (context->reason == StateChangeReason::LEADER_CONFIG_CHANGE_COMPLETE ||
+      context->reason == StateChangeReason::FOLLOWER_CONFIG_CHANGE_COMPLETE) {
     int new_count = context->change_record.new_config().peers_size();
     int old_count = context->change_record.old_config().peers_size();
 
@@ -456,7 +457,7 @@ void SysCatalogTable::SysCatalogStateChanged(
     // Try to make the removed master, go back to shell mode so as not to ping this cluster.
     // This is best effort and should not perform any fatals or checks.
     if (FLAGS_notify_peer_of_removal_from_cluster &&
-        context->reason == StateChangeContext::LEADER_CONFIG_CHANGE_COMPLETE &&
+        context->reason == StateChangeReason::LEADER_CONFIG_CHANGE_COMPLETE &&
         context->remove_uuid != "") {
       RaftPeerPB peer;
       LOG(INFO) << "Asking " << context->remove_uuid << " to go into shell mode";

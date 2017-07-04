@@ -85,6 +85,7 @@ using consensus::ConsensusMetadata;
 using consensus::ConsensusOptions;
 using consensus::ConsensusRound;
 using consensus::StateChangeContext;
+using consensus::StateChangeReason;
 using consensus::OpId;
 using consensus::RaftConfigPB;
 using consensus::RaftPeerPB;
@@ -203,7 +204,7 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   // So mark dirty callback, e.g., consensus->ConsensusState() for master consensus callback of
   // SysCatalogStateChanged, can get the lock when needed.
   auto context =
-      std::make_shared<StateChangeContext>(StateChangeContext::TABLET_PEER_STARTED, false);
+      std::make_shared<StateChangeContext>(StateChangeReason::TABLET_PEER_STARTED, false);
   // Because we changed the tablet state, we need to re-report the tablet to the master.
   mark_dirty_clbk_.Run(context);
 

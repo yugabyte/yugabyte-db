@@ -36,6 +36,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
+#include "yb/util/enums.h"
 
 namespace yb {
 
@@ -350,19 +351,18 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   DISALLOW_COPY_AND_ASSIGN(Consensus);
 };
 
+YB_DEFINE_ENUM(StateChangeReason,
+    (INVALID_REASON)
+    (TABLET_PEER_STARTED)
+    (CONSENSUS_STARTED)
+    (NEW_LEADER_ELECTED)
+    (FOLLOWER_NO_OP_COMPLETE)
+    (LEADER_CONFIG_CHANGE_COMPLETE)
+    (FOLLOWER_CONFIG_CHANGE_COMPLETE));
+
 // Context provided for callback on master/tablet-server peer state change for post processing
 // e.g., update in-memory contents.
 struct StateChangeContext {
-
-  enum StateChangeReason {
-    INVALID_REASON = 0,
-    TABLET_PEER_STARTED,
-    CONSENSUS_STARTED,
-    NEW_LEADER_ELECTED,
-    FOLLOWER_NO_OP_COMPLETE,
-    LEADER_CONFIG_CHANGE_COMPLETE,
-    FOLLOWER_CONFIG_CHANGE_COMPLETE
-  };
 
   const StateChangeReason reason;
 
@@ -396,21 +396,21 @@ struct StateChangeContext {
 
   std::string ToString() const {
     switch (reason) {
-      case TABLET_PEER_STARTED:
+      case StateChangeReason::TABLET_PEER_STARTED:
         return "Started TabletPeer";
-      case CONSENSUS_STARTED:
+      case StateChangeReason::CONSENSUS_STARTED:
         return "RaftConsensus started";
-      case NEW_LEADER_ELECTED:
+      case StateChangeReason::NEW_LEADER_ELECTED:
         return strings::Substitute("New leader $0 elected", new_leader_uuid);
-      case FOLLOWER_NO_OP_COMPLETE:
+      case StateChangeReason::FOLLOWER_NO_OP_COMPLETE:
         return "Replicate of NO_OP complete on follower";
-      case LEADER_CONFIG_CHANGE_COMPLETE:
+      case StateChangeReason::LEADER_CONFIG_CHANGE_COMPLETE:
         return strings::Substitute("Replicated change config $0 round complete on leader",
           change_record.ShortDebugString());
-      case FOLLOWER_CONFIG_CHANGE_COMPLETE:
+      case StateChangeReason::FOLLOWER_CONFIG_CHANGE_COMPLETE:
         return strings::Substitute("Config change $0 complete on follower",
           change_record.ShortDebugString());
-      case INVALID_REASON:
+      case StateChangeReason::INVALID_REASON: FALLTHROUGH_INTENDED;
       default:
         return "INVALID REASON";
     }

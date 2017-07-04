@@ -25,6 +25,9 @@ constexpr typename std::underlying_type<E>::type to_underlying(E e) {
   return static_cast<typename std::underlying_type<E>::type>(e);
 }
 
+// YB_DEFINE_ENUM
+// -----------------------------------------------------------------------------------------------
+
 // A convenient way to define enums along with string conversion functions.
 // Example:
 //
@@ -77,6 +80,7 @@ constexpr typename std::underlying_type<E>::type to_underlying(E e) {
   constexpr size_t BOOST_PP_CAT(kElementsIn, enum_name) = BOOST_PP_SEQ_SIZE(list); \
   /**/
 
+// Please see the usage of YB_DEFINE_ENUM before the auxiliary macros above.
 #define YB_DEFINE_ENUM(enum_name, list) YB_DEFINE_ENUM_IMPL(enum_name, BOOST_PP_NIL, list)
 #define YB_DEFINE_ENUM_EX(enum_name, prefix, list) YB_DEFINE_ENUM_IMPL(enum_name, (prefix), list)
 

@@ -14,10 +14,15 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
+
+// Portions Copyright (c) YugaByte, Inc.
+
 #ifndef YB_UTIL_PROTOBUF_UTIL_H
 #define YB_UTIL_PROTOBUF_UTIL_H
 
 #include <google/protobuf/message_lite.h>
+
+#include "yb/util/enums.h"
 
 namespace yb {
 
@@ -36,4 +41,17 @@ bool AppendPBToString(const google::protobuf::MessageLite &msg, faststring *outp
 
 } // namespace yb
 
-#endif
+#define PB_ENUM_FORMATTERS(EnumType) \
+  inline std::string ToString(EnumType value) { \
+    if (BOOST_PP_CAT(EnumType, _IsValid)(value)) { \
+      return BOOST_PP_CAT(EnumType, _Name)(value); \
+    } else { \
+      return Format("<unknown " BOOST_PP_STRINGIZE(EnumType) " : $0>", \
+          yb::util::to_underlying(value)); \
+    } \
+  } \
+  inline std::ostream& operator << (std::ostream& out, EnumType value) { \
+    return out << ToString(value); \
+  }
+
+#endif  // YB_UTIL_PROTOBUF_UTIL_H

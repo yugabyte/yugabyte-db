@@ -22,3 +22,9 @@ message ProtoContainerTestPB {
   required int32 value = 2;
   optional string note = 3;
 }
+
+enum TestPBEnum {
+  FOO = 1;
+  BAR = 2;
+  BAZ = 3;
+}

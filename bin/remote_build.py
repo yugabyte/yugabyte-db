@@ -7,6 +7,9 @@ import subprocess
 import sys
 
 
+REMOTE_BUILD_HOST_ENV_VAR = 'YB_REMOTE_BUILD_HOST'
+
+
 def check_output(args):
     bytes = subprocess.check_output(args)
     return bytes.decode('utf-8')
@@ -69,7 +72,9 @@ def fetch_remote_commit(args):
 
 def main():
     parser = argparse.ArgumentParser(prog=sys.argv[0])
-    parser.add_argument('--host', type=str, default=None, help='host for build')
+    parser.add_argument('--host', type=str, default=None,
+                        help=('Host to build on. Can also be specified using the {} environment ' +
+                              'variable.').format(REMOTE_BUILD_HOST_ENV_VAR))
     home = os.path.expanduser('~')
     cwd = os.getcwd()
     default_path = '~/{0}'.format(cwd[len(home) + 1:] if cwd.startswith(home) else 'code/yugabyte')
@@ -88,12 +93,13 @@ def main():
 
     args = parser.parse_args()
 
-    if args.host is None and "YB_REMOTE_BUILD_HOST" in os.environ:
-        args.host = os.environ["YB_REMOTE_BUILD_HOST"]
+    if args.host is None and REMOTE_BUILD_HOST_ENV_VAR in os.environ:
+        args.host = os.environ[REMOTE_BUILD_HOST_ENV_VAR]
 
     if args.host is None:
         sys.stderr.write(
-            "Please specify host with --host option or YB_REMOTE_BUILD_HOST variable\n")
+            "Please specify host with --host option or {} variable\n".format(
+                REMOTE_BUILD_HOST_ENV_VAR))
         sys.exit(1)
 
     print("Host: {0}, build type: {1}, remote path: {2}".format(args.host,

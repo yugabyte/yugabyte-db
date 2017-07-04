@@ -340,7 +340,7 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
   // The context tracks that the current caller does not hold the lock for consensus state.
   // So mark dirty callback, e.g., consensus->ConsensusState() for master consensus callback of
   // SysCatalogStateChanged, can get the lock when needed.
-  auto context = std::make_shared<StateChangeContext>(StateChangeContext::CONSENSUS_STARTED, false);
+  auto context = std::make_shared<StateChangeContext>(StateChangeReason::CONSENSUS_STARTED, false);
   // Report become visible to the Master.
   MarkDirty(context);
 
@@ -1881,7 +1881,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
     cc_replicate->mutable_committed_op_id()->CopyFrom(state_->GetCommittedOpIdUnlocked());
 
     auto context =
-      std::make_shared<StateChangeContext>(StateChangeContext::LEADER_CONFIG_CHANGE_COMPLETE,
+      std::make_shared<StateChangeContext>(StateChangeReason::LEADER_CONFIG_CHANGE_COMPLETE,
                                            *cc_req,
                                            (type == REMOVE_SERVER) ? server_uuid : "");
 
@@ -1971,10 +1971,10 @@ Status RaftConsensus::StartConsensusOnlyRoundUnlocked(const ReplicateMsgPtr& msg
   // leader election term change replicate message, which keeps the same config.
   if (IsChangeConfigOperation(op_type)) {
     context =
-      std::make_shared<StateChangeContext>(StateChangeContext::FOLLOWER_CONFIG_CHANGE_COMPLETE,
+      std::make_shared<StateChangeContext>(StateChangeReason::FOLLOWER_CONFIG_CHANGE_COMPLETE,
                                            msg->change_config_record());
   } else {
-    context = std::make_shared<StateChangeContext>(StateChangeContext::FOLLOWER_NO_OP_COMPLETE);
+    context = std::make_shared<StateChangeContext>(StateChangeReason::FOLLOWER_NO_OP_COMPLETE);
   }
 
   round->SetConsensusReplicatedCallback(Bind(&RaftConsensus::NonTxRoundReplicationFinished,
@@ -2146,7 +2146,7 @@ std::string RaftConsensus::LogPrefix() {
 
 void RaftConsensus::SetLeaderUuidUnlocked(const string& uuid) {
   state_->SetLeaderUuidUnlocked(uuid);
-  auto context = std::make_shared<StateChangeContext>(StateChangeContext::NEW_LEADER_ELECTED, uuid);
+  auto context = std::make_shared<StateChangeContext>(StateChangeReason::NEW_LEADER_ELECTED, uuid);
   MarkDirty(context);
 }
 

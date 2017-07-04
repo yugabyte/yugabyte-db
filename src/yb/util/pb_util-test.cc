@@ -21,6 +21,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <sstream>
 
 #include <boost/assign.hpp>
 #include <google/protobuf/descriptor.pb.h>
@@ -36,6 +37,7 @@
 #include "yb/util/proto_container_test3.pb.h"
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
+#include "yb/util/protobuf_util.h"
 
 namespace yb {
 namespace pb_util {
@@ -418,6 +420,16 @@ TEST_F(TestPBUtil, TestOverwriteExistingPB) {
   ASSERT_TRUE(CreateKnownGoodContainerFile(NO_OVERWRITE).IsAlreadyPresent());
   ASSERT_OK(CreateKnownGoodContainerFile(OVERWRITE));
   ASSERT_OK(CreateKnownGoodContainerFile(OVERWRITE));
+}
+
+PB_ENUM_FORMATTERS(TestPBEnum)
+
+TEST_F(TestPBUtil, TestEnumToString) {
+  std::stringstream ss;
+  ss << TestPBEnum::FOO;
+  ASSERT_EQ("FOO", ss.str());
+  ASSERT_EQ("FOO", ToString(TestPBEnum::FOO));
+  ASSERT_EQ("<unknown TestPBEnum : 10>", ToString(static_cast<TestPBEnum>(10)));
 }
 
 } // namespace pb_util
