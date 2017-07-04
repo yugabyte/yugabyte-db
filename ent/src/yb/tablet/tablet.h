@@ -7,7 +7,12 @@
 
 namespace yb {
 namespace tablet {
+
+class SnapshotOperationState;
+
 namespace enterprise {
+
+static const char* const kSnapshotsDirName = "snapshots";
 
 class Tablet : public yb::tablet::Tablet {
   typedef yb::tablet::Tablet super;
@@ -24,6 +29,13 @@ class Tablet : public yb::tablet::Tablet {
       TransactionCoordinatorContext* transaction_coordinator_context)
       : super(metadata, clock, parent_mem_tracker, metric_registry, log_anchor_registry,
           tablet_options, transaction_participant_context, transaction_coordinator_context) {}
+
+  // Prepares the transaction context for the create snapshot operation.
+  CHECKED_STATUS PrepareForCreateSnapshot(SnapshotOperationState* tx_state);
+
+  // Create snapshot for this tablet.
+  // This operation will trigger a flush on the current MemRowSet.
+  CHECKED_STATUS CreateSnapshot(SnapshotOperationState* tx_state);
 
  private:
   DISALLOW_COPY_AND_ASSIGN(Tablet);
