@@ -197,6 +197,7 @@ message SysRowEntry {
     NAMESPACE = 4;
     UDTYPE = 5;
     ROLE = 6;
+    SNAPSHOT = 7;
   }
 
   // The type of entry we are storing. Since the data is serialized, we cannot

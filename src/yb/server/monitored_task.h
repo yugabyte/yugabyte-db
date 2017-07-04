@@ -86,6 +86,7 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
     ASYNC_ADD_SERVER,
     ASYNC_REMOVE_SERVER,
     ASYNC_TRY_STEP_DOWN,
+    ASYNC_CREATE_SNAPSHOT,
   };
 
   virtual Type type() const = 0;

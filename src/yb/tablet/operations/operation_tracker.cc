@@ -71,6 +71,10 @@ METRIC_DEFINE_gauge_uint64(tablet, update_transaction_operations_inflight,
                            "Update Transaction Operations In Flight",
                            yb::MetricUnit::kOperations,
                            "Number of update transaction operations currently in-flight");
+METRIC_DEFINE_gauge_uint64(tablet, snapshot_operations_inflight,
+                           "Snapshot Operations In Flight",
+                           yb::MetricUnit::kOperations,
+                           "Number of snapshot operations currently in-flight");
 
 METRIC_DEFINE_counter(tablet, operation_memory_pressure_rejections,
                       "Operation Memory Pressure Rejections",
@@ -97,7 +101,9 @@ OperationTracker::Metrics::Metrics(const scoped_refptr<MetricEntity>& entity)
       METRIC_alter_schema_operations_inflight.Instantiate(entity, 0);
   operations_inflight[Operation::UPDATE_TRANSACTION_TXN] =
       METRIC_update_transaction_operations_inflight.Instantiate(entity, 0);
-  static_assert(3 == Operation::kOperationTypes, "Init metrics for all operation types");
+  operations_inflight[Operation::SNAPSHOT_TXN] =
+      METRIC_snapshot_operations_inflight.Instantiate(entity, 0);
+  static_assert(4 == Operation::kOperationTypes, "Init metrics for all operation types");
 }
 #undef GINIT
 #undef MINIT

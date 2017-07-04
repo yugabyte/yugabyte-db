@@ -61,6 +61,7 @@ YRPC_GENERATE(
   PROTO_FILES consensus.proto)
 list(APPEND CONSENSUS_YRPC_SRCS opid_util.cc)
 set(CONSENSUS_YRPC_LIBS
+  backup_proto
   cfile_proto
   consensus_metadata_proto
   yrpc

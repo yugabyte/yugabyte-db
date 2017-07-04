@@ -4626,7 +4626,7 @@ bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrResp
   return CheckIsInitializedAndIsLeaderOrRespondInternal<RespClass, TabletServerErrorPB>(resp, rpc);
 }
 
-// Explicit specialization for callers outside this compilation unit.
+// Explicit instantiation for callers outside this compilation unit.
 #define INITTED_OR_RESPOND(RespClass) \
 template bool \
 CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedOrRespond( \

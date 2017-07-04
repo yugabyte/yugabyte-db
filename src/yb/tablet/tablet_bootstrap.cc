@@ -738,8 +738,12 @@ Status TabletBootstrap::HandleOperation(OperationType op_type,
       return PlayUpdateTransactionRequest(replicate, commit);
 
     // Unexpected cases:
+    case consensus::SNAPSHOT_OP:
+      return STATUS(IllegalState, Substitute(
+          "The operation is not supported in the community edition: $0", op_type));
+
     case consensus::UNKNOWN_OP:
-      return STATUS(IllegalState, Substitute("Unsupported commit entry type: $0", op_type));
+      return STATUS(IllegalState, Substitute("Unsupported operation type: $0", op_type));
   }
 
   FATAL_INVALID_ENUM_VALUE(consensus::OperationType, op_type);

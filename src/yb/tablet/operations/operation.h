@@ -74,6 +74,7 @@ class Operation {
     WRITE_TXN,
     ALTER_SCHEMA_TXN,
     UPDATE_TRANSACTION_TXN,
+    SNAPSHOT_TXN,
 
     kOperationTypes // Must be the last one (number of types above).
   };

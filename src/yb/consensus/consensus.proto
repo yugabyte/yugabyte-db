@@ -41,6 +41,7 @@ import "yb/consensus/metadata.proto";
 import "yb/util/opid.proto";
 import "yb/tablet/metadata.proto";
 import "yb/tablet/tablet.proto";
+import "yb/tserver/backup.proto";
 import "yb/tserver/tserver_admin.proto";
 import "yb/tserver/tserver.proto";
 
@@ -109,6 +110,7 @@ enum OperationType {
   ALTER_SCHEMA_OP = 4;
   CHANGE_CONFIG_OP = 5;
   UPDATE_TRANSACTION_OP = 6;
+  SNAPSHOT_OP = 7;
 }
 
 // The transaction driver type: indicates whether a transaction is
@@ -196,6 +198,7 @@ message ReplicateMsg {
   optional tserver.WriteRequestPB write_request = 5;
   optional tserver.AlterSchemaRequestPB alter_schema_request = 6;
   optional tserver.TransactionStatePB transaction_state = 10;
+  optional tserver.CreateTabletSnapshotRequestPB snapshot_request = 11;
   optional ChangeConfigRecordPB change_config_record = 7;
 
   // The Raft operation ID known to the leader to be committed at the time this message was sent.

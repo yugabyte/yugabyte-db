@@ -52,6 +52,7 @@ METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_gauge_uint64(all_operations_inflight);
 METRIC_DECLARE_gauge_uint64(write_operations_inflight);
 METRIC_DECLARE_gauge_uint64(alter_schema_operations_inflight);
+METRIC_DECLARE_gauge_uint64(snapshot_operations_inflight);
 METRIC_DECLARE_counter(operation_memory_pressure_rejections);
 
 using std::shared_ptr;

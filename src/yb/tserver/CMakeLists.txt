@@ -54,6 +54,23 @@ ADD_YB_LIBRARY(remote_bootstrap_proto
   NONLINK_DEPS ${REMOTE_BOOTSTRAP_YRPC_TGTS})
 
 #########################################
+# backup_proto
+#########################################
+
+YRPC_GENERATE(
+  BACKUP_YRPC_SRCS BACKUP_YRPC_HDRS BACKUP_YRPC_TGTS
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  PROTO_FILES backup.proto)
+set(BACKUP_YRPC_LIBS
+  yrpc
+  tserver_proto)
+ADD_YB_LIBRARY(backup_proto
+  SRCS ${BACKUP_YRPC_SRCS}
+  DEPS ${BACKUP_YRPC_LIBS}
+  NONLINK_DEPS ${BACKUP_YRPC_TGTS})
+
+#########################################
 # tserver_proto
 #########################################
 
@@ -139,6 +156,7 @@ set(TSERVER_SRCS
 add_library(tserver ${TSERVER_SRCS})
 target_link_libraries(tserver
   protobuf
+  backup_proto
   tserver_proto
   tserver_admin_proto
   tserver_service_proto
@@ -195,3 +213,9 @@ ADD_YB_TEST(tablet_server-test)
 ADD_YB_TEST(tablet_server-stress-test RUN_SERIAL true)
 ADD_YB_TEST(scanners-test)
 ADD_YB_TEST(ts_tablet_manager-test)
+
+if(YB_ENT_CURRENT_SOURCE_DIR)
+  # Set the test source file folder.
+  set(CMAKE_CURRENT_LIST_DIR ${YB_ENT_CURRENT_SOURCE_DIR})
+  ADD_YB_TEST(${TSERVER_EXTENTIONS_TEST1})
+endif()

@@ -106,3 +106,6 @@ ADD_YB_TEST(full_stack-insert-scan-test RUN_SERIAL true)
 ADD_YB_TEST(redis_table-test RUN_SERIAL true)
 ADD_YB_TEST(update_scan_delta_compact-test RUN_SERIAL true)
 ADD_YB_TEST(flex_partitioning-itest)
+
+# Additional tests
+YB_INCLUDE_EXTENSIONS()

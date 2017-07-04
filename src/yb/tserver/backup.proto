@@ -1,0 +1,29 @@
+// Copyright (c) YugaByte, Inc.
+
+package yb.tserver;
+
+option java_package = "org.yb.tserver";
+
+import "yb/tserver/tserver.proto";
+
+service TabletServerBackupService {
+  rpc CreateTabletSnapshot(CreateTabletSnapshotRequestPB) returns (CreateTabletSnapshotResponsePB);
+}
+
+message CreateTabletSnapshotRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 1;
+
+  required bytes snapshot_id = 2;
+
+  // Tablet to snapshot.
+  required bytes tablet_id = 3;
+}
+
+message CreateTabletSnapshotResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  // The hybrid_time chosen by the server for this tablet operation.
+  // Note: the field usage hardcoded in yb::tablet::OperationDriver::SetResponseHybridTime().
+  optional fixed64 hybrid_time = 2;
+}

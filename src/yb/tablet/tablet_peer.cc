@@ -458,6 +458,9 @@ void TabletPeer::GetInFlightOperations(Operation::TraceType trace_type,
         case Operation::UPDATE_TRANSACTION_TXN:
           status_pb.set_operation_type(consensus::UPDATE_TRANSACTION_OP);
           break;
+        case Operation::SNAPSHOT_TXN:
+          status_pb.set_operation_type(consensus::SNAPSHOT_OP);
+          break;
 
         default:
           FATAL_INVALID_ENUM_VALUE(Operation::OperationType, driver->operation_type());
@@ -578,6 +581,7 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
       return std::make_unique<UpdateTxnOperation>(
           std::make_unique<UpdateTxnOperationState>(this), consensus::REPLICA);
 
+    case consensus::SNAPSHOT_OP: FALLTHROUGH_INTENDED;
     case consensus::UNKNOWN_OP: FALLTHROUGH_INTENDED;
     case consensus::NO_OP: FALLTHROUGH_INTENDED;
     case consensus::CHANGE_CONFIG_OP:
