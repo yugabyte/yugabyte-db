@@ -127,12 +127,17 @@ public class CassandraKeyValue extends AppBase {
   @Override
   public long doWrite() {
     Key key = getSimpleLoadGenerator().getKeyToWrite();
-    // Do the write to Cassandra.
-    BoundStatement insert = getPreparedInsert().bind(key.asString(), key.getValueStr());
-    ResultSet resultSet = getCassandraClient().execute(insert);
-    LOG.debug("Wrote key: " + key.toString() + ", return code: " + resultSet.toString());
-    getSimpleLoadGenerator().recordWriteSuccess(key);
-    return 1;
+    try {
+      // Do the write to Cassandra.
+      BoundStatement insert = getPreparedInsert().bind(key.asString(), key.getValueStr());
+      ResultSet resultSet = getCassandraClient().execute(insert);
+      LOG.debug("Wrote key: " + key.toString() + ", return code: " + resultSet.toString());
+      getSimpleLoadGenerator().recordWriteSuccess(key);
+      return 1;
+    } catch (Exception e) {
+      getSimpleLoadGenerator().recordWriteFailure(key);
+      throw e;
+    }
   }
 
   @Override
