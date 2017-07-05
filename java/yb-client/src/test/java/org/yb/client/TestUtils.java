@@ -35,6 +35,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -61,6 +64,9 @@ public class TestUtils {
 
   public static final int MIN_PORT_TO_USE = 10000;
   public static final int MAX_PORT_TO_USE = 32768;
+
+  // Set of ports for the network addresses being reserved.
+  private static final Map<InetAddress, Set<Integer>> reservedPorts = new HashMap<>();
 
   /** Time to sleep in milliseconds waiting for conditions to be met. */
   private static final int SLEEP_TIME_MS = 1000;
@@ -274,6 +280,24 @@ public class TestUtils {
   }
 
   /**
+   * Check if the port for the bind interface has already been reserved.
+   */
+  private static boolean isReservedPort(InetAddress bindInterface, int port) {
+    return (reservedPorts.containsKey(bindInterface) &&
+            reservedPorts.get(bindInterface).contains(port));
+  }
+
+  /**
+   * Reserve the port for the bind interface.
+   */
+  private static void reservePort(InetAddress bindInterface, int port) {
+    if (!reservedPorts.containsKey(bindInterface)) {
+      reservedPorts.put(bindInterface, new HashSet<>());
+    }
+    reservedPorts.get(bindInterface).add(port);
+  }
+
+  /**
    * Find a free port for the given bind interface, starting with the one passed. Keep in mind the
    * time-of-check-time-of-use nature of this method, the returned port might become occupied
    * after it was checked for availability.
@@ -287,7 +311,8 @@ public class TestUtils {
     for (int attempt = 0; attempt < MAX_ATTEMPTS; ++attempt) {
       final int port = MIN_PORT_TO_USE +
           randomGenerator.nextInt(MAX_PORT_TO_USE - MIN_PORT_TO_USE);
-      if (isPortFree(bindIp, port, attempt == MAX_ATTEMPTS - 1)) {
+      if (!isReservedPort(bindIp, port) && isPortFree(bindIp, port, attempt == MAX_ATTEMPTS - 1)) {
+        reservePort(bindIp, port);
         return port;
       }
     }
