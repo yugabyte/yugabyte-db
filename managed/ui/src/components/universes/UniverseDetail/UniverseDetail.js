@@ -106,24 +106,25 @@ export default class UniverseDetail extends Component {
         <UniverseTaskList universe={universe}/>
       </Tab>
     ];
+    let currentBreadCrumb =
+      <div className="detail-label-small">
+        <Link to="/universes">
+          <YBLabelWithIcon icon="fa fa-chevron-right fa-fw">
+            Universes
+          </YBLabelWithIcon>
+        </Link>
+        <Link to={`/universes/${currentUniverse.data.universeUUID}`}>
+          <YBLabelWithIcon icon="fa fa-chevron-right fa-fw">
+            {currentUniverse.data.name}
+          </YBLabelWithIcon>
+        </Link>
+      </div>;
 
     return (
       <Grid id="page-wrapper" fluid={true}>
         <Row>
           <Col lg={10}>
-            <div className="detail-label-small">
-              <Link to="/universes">
-                <YBLabelWithIcon icon="fa fa-chevron-left fa-fw">
-                  Universes
-                </YBLabelWithIcon>
-              </Link>
-            </div>
-            <div className="universe-detail-status-container">
-              <h2>
-                { currentUniverse.data.name }
-              </h2>
-              <UniverseStatusContainer currentUniverse={currentUniverse.data} showLabelText={true} />
-            </div>
+            {currentBreadCrumb}
           </Col>
           <Col lg={2} className="page-action-buttons">
             <ButtonGroup className="universe-detail-btn-group">

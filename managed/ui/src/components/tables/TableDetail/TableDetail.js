@@ -78,9 +78,19 @@ export default class TableDetail extends Component {
                   Universes
                 </YBLabelWithIcon>
               </Link>
+              <Link to={`/universes/${currentUniverse.data.universeUUID}`}>
+                <YBLabelWithIcon icon="fa fa-chevron-right fa-fw">
+                  {currentUniverse.data.name}
+                </YBLabelWithIcon>
+              </Link>
               <Link to={`/universes/${universeUUID}?tab=tables`}>
                 <YBLabelWithIcon icon="fa fa-chevron-right fa-fw">
                   Tables
+                </YBLabelWithIcon>
+              </Link>
+              <Link to={`/universes/${universeUUID}/tables/${currentTableDetail.tableUUID}`}>
+                <YBLabelWithIcon icon="fa fa-chevron-right fa-fw">
+                  {tableName}
                 </YBLabelWithIcon>
               </Link>
             </div>
