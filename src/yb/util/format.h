@@ -205,22 +205,24 @@ template<class Tuple, class Out>
 Out DoFormat(const char* format, const Tuple& tuple, Out out) {
   Out position = out;
   const char* previous = format;
-  const char* p = format;
-  for (; *p; ++p) {
-    if (*p == '$') {
-      position = FormatCopy(previous, p, position);
-      if (std::isdigit(p[1])) {
-        position = tuple.Add(p[1] - '0', position);
-        ++p;
-      } else if (p[1] == '$') {
-        position = FormatPut('$', position);
-        ++p;  // Skip next char.
-      }
-      previous = p + 1;
+  for (;;) {
+    const char* p = strchr(previous, '$');
+    if (!p) {
+      break;
     }
-  }
-  if (previous != p) {
     position = FormatCopy(previous, p, position);
+    char ch = p[1];
+    if (ch >= '0' && ch <= '9') {
+      position = tuple.Add(ch - '0', position);
+      ++p;
+    } else if (ch == '$') {
+      position = FormatPut('$', position);
+      ++p;  // Skip next char.
+    }
+    previous = p + 1;
+  }
+  if (*previous) {
+    position = FormatCopy(previous, previous + strlen(previous), position);
   }
   return position;
 }

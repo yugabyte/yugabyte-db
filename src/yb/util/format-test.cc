@@ -54,25 +54,54 @@ class Custom {
   int value_;
 };
 
+double ClocksToMs(std::clock_t clocks) {
+  return 1000.0 * clocks / CLOCKS_PER_SEC;
+}
+
 template<class... Args>
 void CheckSpeed(const std::string& format, Args&&... args) {
+#ifdef THREAD_SANITIZER
+  const size_t kCycles = 10000;
+#else
   const size_t kCycles = 1000000;
-  auto start = std::chrono::steady_clock::now();
-  for (size_t i = 0; i != kCycles; ++i) {
-    strings::Substitute(format, std::forward<Args>(args)...);
+#endif
+  const size_t kMeasurements = 10;
+  std::vector<std::clock_t> substitute_times, format_times;
+  substitute_times.reserve(kMeasurements);
+  format_times.reserve(kMeasurements);
+  for (size_t m = 0; m != kMeasurements; ++m) {
+    const auto start = std::clock();
+    for (size_t i = 0; i != kCycles; ++i) {
+      strings::Substitute(format, std::forward<Args>(args)...);
+    }
+    const auto mid = std::clock();
+    for (size_t i = 0; i != kCycles; ++i) {
+      Format(format, std::forward<Args>(args)...);
+    }
+    const auto stop = std::clock();
+    substitute_times.push_back(mid - start);
+    format_times.push_back(stop - mid);
   }
-  auto mid = std::chrono::steady_clock::now();
-  for (size_t i = 0; i != kCycles; ++i) {
-    Format(format, std::forward<Args>(args)...);
+  std::sort(substitute_times.begin(), substitute_times.end());
+  std::sort(format_times.begin(), format_times.end());
+  std::clock_t substitute_time = 0;
+  std::clock_t format_time = 0;
+  size_t count = 0;
+  for (size_t i = kMeasurements / 4; i != kMeasurements * 3 / 4; ++i) {
+    substitute_time += substitute_times[i];
+    format_time += format_times[i];
+    ++count;
   }
-  auto end = std::chrono::steady_clock::now();
-  auto substitute_time = std::chrono::duration_cast<std::chrono::milliseconds>(mid - start);
-  auto format_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - mid);
+  substitute_time /= count;
+  format_time /= count;
+  if (format_time > substitute_time) {
+    LOG(INFO) << Format("Format times: $0, substitute times: $1", format_times, substitute_times);
+  }
   LOG(INFO) << Format(format, std::forward<Args>(args)...)
-            << ", substitute: " << substitute_time.count() << "ms, "
-            << "format: " << format_time.count() << "ms" << std::endl;
+            << ", substitute: " << ClocksToMs(substitute_time) << "ms, "
+            << "format: " << ClocksToMs(format_time) << "ms" << std::endl;
   // Check that format is at least as good as substitute
-  ASSERT_PERF_LE(format_time, substitute_time);
+  ASSERT_PERF_LE(format_time, substitute_time * 1.15);
 }
 
 } // namespace
