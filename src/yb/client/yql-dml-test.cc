@@ -351,6 +351,7 @@ TEST_F(YqlDmlTest, FlushedOpId) {
   SetInt32ColumnValue(req->add_hashed_column_values(), "h1", kHashInt, prow, 0);
   SetStringColumnValue(req->add_hashed_column_values(), "h2", kHashStr, prow, 1);
   req->add_column_ids(ColumnId("c2"));
+  req->mutable_column_refs()->add_ids(ColumnId("c2"));
   ASSERT_OK(session->Apply(op));
   ASSERT_EQ(YQLResponsePB::YQL_STATUS_OK, op->response().status());
   auto rowblock = RowsResult(op.get()).GetRowBlock();
