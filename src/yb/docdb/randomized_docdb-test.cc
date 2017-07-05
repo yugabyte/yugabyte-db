@@ -1,4 +1,4 @@
-// Copyright (c} YugaByte, Inc.
+// Copyright (c) YugaByte, Inc.
 
 #include <algorithm>
 #include <utility>
@@ -53,14 +53,24 @@ void RemoveEntriesWithSecondComponentHigherThan(vector<pair<int, int>> *v,
 
 class RandomizedDocDBTest : public DocDBTestBase {
  protected:
-  RandomizedDocDBTest() : load_gen_(this, kNumDocKeys, kNumUniqueSubKeys) {
+  RandomizedDocDBTest() : verify_history_cleanup_(true) {
+  }
+
+  void Init(const bool use_hash) {
+    if (load_gen_.get() != nullptr) {
+      ClearLogicalSnapshots();
+      DestroyRocksDB();
+      ReopenRocksDB();
+    }
+    load_gen_.reset(new DocDBLoadGenerator(this, kNumDocKeys, kNumUniqueSubKeys, use_hash));
     SeedRandom();
   }
 
   ~RandomizedDocDBTest() override {}
   void RunWorkloadWithSnaphots(bool enable_history_cleanup);
 
-  DocDBLoadGenerator load_gen_;
+  bool verify_history_cleanup_;
+  std::unique_ptr<DocDBLoadGenerator> load_gen_;
 };
 
 void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
@@ -82,28 +92,28 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
 
   const int kNumIter = FLAGS_snapshot_verification_test_num_iter;
 
-  while (load_gen_.next_iteration() <= kNumIter) {
-    const int current_iteration = load_gen_.next_iteration();
+  while (load_gen_->next_iteration() <= kNumIter) {
+    const int current_iteration = load_gen_->next_iteration();
     if (current_iteration == kIterationToSwitchToInfrequentSnapshots) {
       // This is where we make snapshot/verification less frequent so the test can actually finish.
       snapshot_frequency = kEventualSnapshotFrequency;
       verification_frequency = kEventualVerificationFrequency;
     }
-    ASSERT_NO_FATALS(load_gen_.PerformOperation()) << "at iteration " << current_iteration;
+    ASSERT_NO_FATALS(load_gen_->PerformOperation()) << "at iteration " << current_iteration;
     if (current_iteration % kFlushFrequency == 0) {
       ASSERT_NO_FATALS(FlushRocksDB());
     }
     if (current_iteration % snapshot_frequency == 0) {
-      load_gen_.CaptureDocDbSnapshot();
+      load_gen_->CaptureDocDbSnapshot();
     }
     if (current_iteration % verification_frequency == 0) {
-      ASSERT_NO_FATALS(load_gen_.VerifyRandomDocDbSnapshot());
+      ASSERT_NO_FATALS(load_gen_->VerifyRandomDocDbSnapshot());
     }
 
-    if (enable_history_cleanup && load_gen_.NextRandomInt(kHistoryCleanupChance) == 0) {
+    if (enable_history_cleanup && load_gen_->NextRandomInt(kHistoryCleanupChance) == 0) {
       // Pick a random cleanup hybrid_time from 0 to the last operation hybrid_time inclusively.
       const HybridTime cleanup_ht = HybridTime(
-          load_gen_.NextRandom() % (load_gen_.last_operation_ht().value() + 1));
+          load_gen_->NextRandom() % (load_gen_->last_operation_ht().value() + 1));
       if (cleanup_ht.CompareTo(max_history_cleanup_ht) <= 0) {
         // We are performing cleanup at an old hybrid_time, and don't expect it to have any effect.
         InMemDocDbState snapshot_before_cleanup;
@@ -116,28 +126,28 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
       } else {
         max_history_cleanup_ht = cleanup_ht;
         cleanup_ht_and_iteration.emplace_back(cleanup_ht.value(),
-                                              load_gen_.last_operation_ht().value());
+                                              load_gen_->last_operation_ht().value());
         ASSERT_NO_FATALS(CompactHistoryBefore(cleanup_ht));
 
         // We expect some snapshots at hybrid_times earlier than cleanup_ht to no longer be
         // recoverable.
-        ASSERT_NO_FATALS(load_gen_.CheckIfOldestSnapshotIsStillValid(cleanup_ht));
+        ASSERT_NO_FATALS(load_gen_->CheckIfOldestSnapshotIsStillValid(cleanup_ht));
 
-        load_gen_.RemoveSnapshotsBefore(cleanup_ht);
+        load_gen_->RemoveSnapshotsBefore(cleanup_ht);
 
         // Now that we're removed all snapshots that could have been affected by history cleanup,
         // we expect the oldest remaining snapshot to match the RocksDB-backed DocDB state.
-        ASSERT_NO_FATALS(load_gen_.VerifyOldestSnapshot());
+        ASSERT_NO_FATALS(load_gen_->VerifyOldestSnapshot());
       }
     }
   }
 
   LOG(INFO) << "Finished the primary part of the randomized DocDB test.\n"
             << "  enable_history_cleanup: " << enable_history_cleanup << "\n"
-            << "  last_operation_ht: " << load_gen_.last_operation_ht() << "\n"
+            << "  last_operation_ht: " << load_gen_->last_operation_ht() << "\n"
             << "  max_history_cleanup_ht: " << max_history_cleanup_ht.value();
 
-  if (!enable_history_cleanup) return;
+  if (!enable_history_cleanup || !verify_history_cleanup_) return;
 
   if (FLAGS_snapshot_verification_test_num_iter > kDefaultSnapshotVerificationTestNumIter) {
     LOG(WARNING)
@@ -181,15 +191,15 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
   // case we did fewer than 15000 iterations.
   RemoveEntriesWithSecondComponentHigherThan(
       &expected_cleanup_ht_and_iteration,
-      load_gen_.last_operation_ht().value());
+      load_gen_->last_operation_ht().value());
 
   ASSERT_FALSE(expected_cleanup_ht_and_iteration.empty());
   ASSERT_EQ(expected_cleanup_ht_and_iteration, cleanup_ht_and_iteration);
 
   if (kNumIter > 2000) {
-    ASSERT_GT(load_gen_.num_divergent_old_snapshot(), 0);
+    ASSERT_GT(load_gen_->num_divergent_old_snapshot(), 0);
   } else {
-    ASSERT_EQ(0, load_gen_.num_divergent_old_snapshot());
+    ASSERT_EQ(0, load_gen_->num_divergent_old_snapshot());
   }
 
   // Expected hybrid_times of snapshots invalidated by history cleanup, and actual history cutoff
@@ -212,42 +222,63 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
                                              max_history_cleanup_ht.value());
 
   ASSERT_EQ(expected_divergent_snapshot_and_cleanup_ht,
-            load_gen_.divergent_snapshot_ht_and_cleanup_ht());
+            load_gen_->divergent_snapshot_ht_and_cleanup_ht());
 }
 
 TEST_F(RandomizedDocDBTest, TestNoFlush) {
-  while (load_gen_.next_iteration() <= FLAGS_test_num_iter) {
-    ASSERT_NO_FATALS(load_gen_.PerformOperation()) << "at iteration " << load_gen_.next_iteration();
+  for (auto use_hash : {false, true}) {
+    Init(use_hash);
+    while (load_gen_->next_iteration() <= FLAGS_test_num_iter) {
+      ASSERT_NO_FATALS(load_gen_->PerformOperation()) << "at iteration " <<
+          load_gen_->next_iteration();
+    }
   }
 }
 
 TEST_F(RandomizedDocDBTest, TestWithFlush) {
-  while (load_gen_.next_iteration() <= FLAGS_test_num_iter) {
-    ASSERT_NO_FATALS(load_gen_.PerformOperation()) << "at iteration " << load_gen_.next_iteration();
-    if (load_gen_.next_iteration() % 250 == 0) {
-      ASSERT_NO_FATALS(load_gen_.FlushRocksDB());
+  for (auto use_hash : {false, true}) {
+    Init(use_hash);
+    while (load_gen_->next_iteration() <= FLAGS_test_num_iter) {
+      ASSERT_NO_FATALS(load_gen_->PerformOperation()) << "at iteration " <<
+          load_gen_->next_iteration();
+      if (load_gen_->next_iteration() % 250 == 0) {
+        ASSERT_NO_FATALS(load_gen_->FlushRocksDB());
+      }
     }
   }
 }
 
 TEST_F(RandomizedDocDBTest, Snapshots) {
-  RunWorkloadWithSnaphots(/* enable_history_cleanup = */ false);
+  for (auto use_hash : {false, true}) {
+    Init(use_hash);
+    RunWorkloadWithSnaphots(/* enable_history_cleanup = */ false);
+  }
 }
 
 TEST_F(RandomizedDocDBTest, SnapshotsWithHistoryCleanup) {
-  RunWorkloadWithSnaphots(/* enable_history_cleanup = */ true);
+  for (auto use_hash : {false, true}) {
+    Init(use_hash);
+    // Don't verify history cleanup in case we use hashed components, since hardcoded expected
+    // values doesn't work for that use case.
+    // TODO: update expected values or find a better way to test it.
+    verify_history_cleanup_ = !use_hash;
+    RunWorkloadWithSnaphots(/* enable_history_cleanup = */ true);
+  }
 }
 
 // This is a bit different from SnapshotsWithHistoryCleanup. Here, we perform history cleanup within
 // DocDBLoadGenerator::PerformOperation itself, reading the document being modified both before
 // and after the history cleanup.
 TEST_F(RandomizedDocDBTest, ImmediateHistoryCleanup) {
-  while (load_gen_.next_iteration() <= FLAGS_test_num_iter) {
-    if (load_gen_.next_iteration() % 250 == 0) {
-      ASSERT_NO_FATALS(load_gen_.FlushRocksDB());
-      ASSERT_NO_FATALS(load_gen_.PerformOperation(/* history_cleanup = */ true));
-    } else {
-      ASSERT_NO_FATALS(load_gen_.PerformOperation());
+  for (auto use_hash : {false, true}) {
+    Init(use_hash);
+    while (load_gen_->next_iteration() <= FLAGS_test_num_iter) {
+      if (load_gen_->next_iteration() % 250 == 0) {
+        ASSERT_NO_FATALS(load_gen_->FlushRocksDB());
+        ASSERT_NO_FATALS(load_gen_->PerformOperation(/* history_cleanup = */ true));
+      } else {
+        ASSERT_NO_FATALS(load_gen_->PerformOperation());
+      }
     }
   }
 }

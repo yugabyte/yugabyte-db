@@ -237,6 +237,7 @@ class DocDBLoadGenerator {
   DocDBLoadGenerator(DocDBRocksDBFixture* fixture,
                      int num_doc_keys,
                      int num_unique_subkeys,
+                     bool use_hash,
                      int deletion_chance = 100,
                      int max_nesting_level = 10,
                      uint64 random_seed = kDefaultRandomSeed,

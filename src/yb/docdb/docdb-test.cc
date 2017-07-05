@@ -1589,6 +1589,33 @@ TEST_F(DocDBTest, BloomFilterTest) {
   ASSERT_NO_FATALS(CheckBloom(2, &total_bloom_useful));
 }
 
+TEST_F(DocDBTest, MergingIterator) {
+  // Test for the case described in https://yugabyte.atlassian.net/browse/ENG-1677.
+
+  // Turn off "next instead of seek" optimization, because this test rely on DocDB to do seeks.
+  FLAGS_max_nexts_to_avoid_seek = 0;
+
+  HybridTime ht;
+  ASSERT_OK(ht.FromUint64(1000));
+
+  // Put smaller key into SST file.
+  DocKey key1(123, PrimitiveValues("key1"), PrimitiveValues());
+  DocWriteBatch dwb(rocksdb());
+  ASSERT_OK(dwb.SetPrimitive(DocPath(key1.Encode()), PrimitiveValue("value1")));
+  ASSERT_OK(WriteToRocksDB(dwb, ht));
+  FlushRocksDB();
+
+  // Put bigger key into memtable.
+  DocKey key2(234, PrimitiveValues("key2"), PrimitiveValues());
+  dwb.Clear();
+  ASSERT_OK(dwb.SetPrimitive(DocPath(key2.Encode()), PrimitiveValue("value2")));
+  ASSERT_OK(WriteToRocksDB(dwb, ht));
+
+  // Get key2 from DocDB. Bloom filter will skip SST file and it should invalidate SST file
+  // iterator in order for MergingIterator to not pickup key1 incorrectly.
+  VerifySubDocument(SubDocKey(key2), ht, "\"value2\"");
+}
+
 TEST_F(DocDBTest, SetPrimitiveWithInitMarker) {
   DocWriteBatch dwb(rocksdb());
   // Both required and optional init marker should be ok.

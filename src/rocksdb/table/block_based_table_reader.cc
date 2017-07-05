@@ -501,7 +501,7 @@ class BloomFilterAwareIterator : public ForwardingIterator {
 
   void Seek(const Slice& internal_key) override {
     if (skip_filters_) {
-      internal_iter_.Seek(internal_key);
+      InternalSeek(internal_key);
     } else {
       if (table_->rep_->filter_type == FilterType::kFixedSizeFilter) {
         auto filter_key = table_->GetFilterKey(internal_key);
@@ -510,7 +510,7 @@ class BloomFilterAwareIterator : public ForwardingIterator {
         FilterBlockReader* filter = filter_entry.value;
         if (table_->NonBlockBasedFilterKeyMayMatch(filter, filter_key)) {
           // If bloom filter was not useful, then take this file into account.
-          internal_iter_.Seek(internal_key);
+          InternalSeek(internal_key);
         } else {
           // Else, record that the bloom filter was useful.
           RecordTick(table_->rep_->ioptions.statistics, BLOOM_FILTER_USEFUL);
@@ -519,14 +519,44 @@ class BloomFilterAwareIterator : public ForwardingIterator {
           // need to seek to next key, because DocDbAwareFilterPolicy uses bloom filters only for
           // hashed components of the key. So, in this else-branch we know that there are no keys
           // in this SST with required hashed components.
+          valid_ = false;
         }
         filter_entry.Release(table_->rep_->table_options.block_cache.get());
       } else {
         // For non fixed-size filters - just seek. We are only using fixed-size bloom filters for
         // DocDB, so not need to support others.
-        internal_iter_.Seek(internal_key);
+        InternalSeek(internal_key);
       }
     }
+  }
+
+  bool Valid() const override {
+    return valid_;
+  }
+
+  void InternalSeek(const Slice& internal_key) {
+    ForwardingIterator::Seek(internal_key);
+    valid_ = internal_iter_.Valid();
+  }
+
+  void SeekToFirst() override {
+    ForwardingIterator::SeekToFirst();
+    valid_ = internal_iter_.Valid();
+  }
+
+  void SeekToLast() override {
+    ForwardingIterator::SeekToLast();
+    valid_ = internal_iter_.Valid();
+  }
+
+  void Next() override {
+    ForwardingIterator::Next();
+    valid_ = internal_iter_.Valid();
+  }
+
+  void Prev() override {
+    ForwardingIterator::Prev();
+    valid_ = internal_iter_.Valid();
   }
 
  private:
@@ -534,6 +564,7 @@ class BloomFilterAwareIterator : public ForwardingIterator {
   BlockBasedTable* table_;
   const ReadOptions read_options_;
   const bool skip_filters_;
+  bool valid_ = false;
 };
 
 namespace {
