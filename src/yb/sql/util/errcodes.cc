@@ -17,8 +17,22 @@ namespace sql {
 using std::unordered_map;
 
 const unordered_map<int64_t, const char*> kYbSqlErrorMessage {
-  // Implementation related errors [-1, -50).
-  { static_cast<int64_t>(ErrorCode::FAILURE), "" },
+  //------------------------------------------------------------------------------------------------
+  { static_cast<int64_t>(ErrorCode::SUCCESS), "Success" },
+
+  //------------------------------------------------------------------------------------------------
+  // Warning. Start with 100.
+  { static_cast<int64_t>(ErrorCode::WARNING), "Warning" },
+  { static_cast<int64_t>(ErrorCode::NOTFOUND), "Not Found" },
+
+  //------------------------------------------------------------------------------------------------
+  // System errors [-1, -9).
+  { static_cast<int64_t>(ErrorCode::FAILURE), "Internal Failure" },
+  { static_cast<int64_t>(ErrorCode::SERVER_ERROR), "Server Error" },
+
+  //------------------------------------------------------------------------------------------------
+  // Limitation related errors [-1, -50).
+  { static_cast<int64_t>(ErrorCode::LIMITATION_ERROR), "Implementation Limitation" },
   { static_cast<int64_t>(ErrorCode::SQL_STATEMENT_INVALID), "Invalid SQL Statement" },
   { static_cast<int64_t>(ErrorCode::CQL_STATEMENT_INVALID), "Invalid CQL Statement" },
   { static_cast<int64_t>(ErrorCode::FEATURE_NOT_YET_IMPLEMENTED), "Feature Not Yet Implemented" },
@@ -37,6 +51,7 @@ const unordered_map<int64_t, const char*> kYbSqlErrorMessage {
   // Syntax errors [-100, -200).
   { static_cast<int64_t>(ErrorCode::SYNTAX_ERROR), "Syntax Error" },
   { static_cast<int64_t>(ErrorCode::INVALID_PARAMETER_VALUE), "Invalid Parameter Value" },
+  { static_cast<int64_t>(ErrorCode::INVALID_COLUMN_DEFINITION), "Invalid Column Definition" },
 
   //------------------------------------------------------------------------------------------------
   // Semantic errors [-200, -300).
@@ -77,13 +92,6 @@ const unordered_map<int64_t, const char*> kYbSqlErrorMessage {
   { static_cast<int64_t>(ErrorCode::KEYSPACE_NOT_FOUND), "Keyspace Not Found" },
   { static_cast<int64_t>(ErrorCode::TABLET_NOT_FOUND), "Tablet Not Found" },
   { static_cast<int64_t>(ErrorCode::STALE_PREPARED_STATEMENT), "Stale Prepared Statement" },
-
-  //------------------------------------------------------------------------------------------------
-  { static_cast<int64_t>(ErrorCode::SUCCESS), "Success" },
-
-  //------------------------------------------------------------------------------------------------
-  // Warning. Start with 100.
-  { static_cast<int64_t>(ErrorCode::NOTFOUND), "Not Found" },
 };
 
 ErrorCode GetErrorCode(const Status& s) {

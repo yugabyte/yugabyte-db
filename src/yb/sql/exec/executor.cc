@@ -281,7 +281,7 @@ void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCall
                               .schema(&schema)
                               .Create();
   if (!exec_status.ok()) {
-    ErrorCode error_code = ErrorCode::EXEC_ERROR;
+    ErrorCode error_code = ErrorCode::SERVER_ERROR;
     if (exec_status.IsAlreadyPresent()) {
       error_code = ErrorCode::DUPLICATE_TABLE;
     } else if (exec_status.IsInvalidArgument()) {
@@ -313,7 +313,7 @@ void Executor::ExecPTNodeAsync(const PTAlterTable *tnode, StatementExecutedCallb
 void Executor::ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallback cb) {
   DCHECK_NOTNULL(exec_context_.get());
   Status exec_status;
-  ErrorCode error_not_found = ErrorCode::EXEC_ERROR;
+  ErrorCode error_not_found = ErrorCode::SERVER_ERROR;
   SchemaChangeResult::SharedPtr result;
 
   switch (tnode->drop_type()) {
@@ -347,7 +347,7 @@ void Executor::ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallbac
   }
 
   if (!exec_status.ok()) {
-    ErrorCode error_code = ErrorCode::EXEC_ERROR;
+    ErrorCode error_code = ErrorCode::SERVER_ERROR;
 
     if (exec_status.IsNotFound()) {
       // Ignore not found error for a DROP IF EXISTS statement.
@@ -971,7 +971,7 @@ void Executor::ExecPTNodeAsync(const PTCreateKeyspace *tnode, StatementExecutedC
   Status exec_status = exec_context_->CreateKeyspace(tnode->name());
 
   if (!exec_status.ok()) {
-    ErrorCode error_code = ErrorCode::EXEC_ERROR;
+    ErrorCode error_code = ErrorCode::SERVER_ERROR;
 
     if(exec_status.IsAlreadyPresent()) {
       if (tnode->create_if_not_exists()) {
@@ -995,7 +995,7 @@ void Executor::ExecPTNodeAsync(const PTUseKeyspace *tnode, StatementExecutedCall
   const Status exec_status = exec_context_->UseKeyspace(tnode->name());
 
   if (!exec_status.ok()) {
-    ErrorCode error_code = ErrorCode::EXEC_ERROR;
+    ErrorCode error_code = ErrorCode::SERVER_ERROR;
 
     if(exec_status.IsNotFound()) {
       error_code = ErrorCode::KEYSPACE_NOT_FOUND;

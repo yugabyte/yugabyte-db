@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Portions Copyright (c) YugaByte, Inc.
+// Copyright (c) YugaByte, Inc.
 // Portions Copyright (c) 1996-2015, PostgreSQL Global Development Group
 // Portions Copyright (c) 1994, Regents of the University of California
 //
@@ -140,9 +140,9 @@ class LexProcessor : public yyFlexLexer {
   // Counts number of newline characters in the current token and set token location accordingly.
   void CountNewlineInToken(const std::string& token);
 
-  // Reports error.
-  void ScanError(const char *token);
-  void ScanError(const char *message, ErrorCode errcode);
+  // Reports error and returns SCAN_ERROR to instruct the parser to stop the parsing process.
+  GramProcessor::symbol_type ScanError(const char *token);
+  GramProcessor::symbol_type ScanError(const char *message, ErrorCode errcode);
 
   // Read literal value during a scan and convert it to MCString.
   MCSharedPtr<MCString> ScanLiteral();

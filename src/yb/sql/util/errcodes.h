@@ -18,16 +18,33 @@ namespace yb {
 namespace sql {
 
 enum class ErrorCode : int64_t {
-  // Implementation related errors [-1, -50).
+  //------------------------------------------------------------------------------------------------
+  // All error codes < SUCCESS
+  // All warning codes > SUCCESS
+  SUCCESS = 0,
+
+  //------------------------------------------------------------------------------------------------
+  // Warning. [1, +)
+  WARNING = 1,
+  NOTFOUND = 100,
+
+  //------------------------------------------------------------------------------------------------
+  // System Error [-1, -9)
   // Failure with no specific reason. Most likely, this is used for a system or coding error.
   FAILURE = -1,
-  // SQL specific error codes. CQL might not support certain SQL syntax and vice versa.
-  SQL_STATEMENT_INVALID = -2,
-  // CQL specific error codes. CQL might not support certain SQL syntax and vice versa.
-  CQL_STATEMENT_INVALID = -3,
+  SERVER_ERROR = -2,
 
-  FEATURE_NOT_YET_IMPLEMENTED = -10,
-  FEATURE_NOT_SUPPORTED = -11,
+  //------------------------------------------------------------------------------------------------
+  // Limitation errors [-10, -50).
+  LIMITATION_ERROR = -10,
+
+  // SQL specific error codes. CQL might not support certain SQL syntax and vice versa.
+  SQL_STATEMENT_INVALID = -11,
+  // CQL specific error codes. CQL might not support certain SQL syntax and vice versa.
+  CQL_STATEMENT_INVALID = -12,
+
+  FEATURE_NOT_YET_IMPLEMENTED = -13,
+  FEATURE_NOT_SUPPORTED = -14,
 
   //------------------------------------------------------------------------------------------------
   // Lexical errors [-50, -100).
@@ -41,6 +58,7 @@ enum class ErrorCode : int64_t {
   // Syntax errors [-100, -200).
   SYNTAX_ERROR = -100,
   INVALID_PARAMETER_VALUE = -101,
+  INVALID_COLUMN_DEFINITION = -102,
 
   //------------------------------------------------------------------------------------------------
   // Semantic errors [-200, -300).
@@ -76,15 +94,6 @@ enum class ErrorCode : int64_t {
   KEYSPACE_NOT_FOUND = -308,
   TABLET_NOT_FOUND = -309,
   STALE_PREPARED_STATEMENT = -310,
-
-  //------------------------------------------------------------------------------------------------
-  // All error codes < SUCCESS
-  // All warning codes > SUCCESS
-  SUCCESS = 0,
-
-  //------------------------------------------------------------------------------------------------
-  // Warning. Start with 100.
-  NOTFOUND = 100,
 };
 
 // Return SQL error code from an Status if it is a SQL error. Otherwise, return FAILURE.

@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Portions Copyright (c) YugaByte, Inc.
+// Copyright (c) YugaByte, Inc.
 // Portions Copyright (c) 1996-2015, PostgreSQL Global Development Group
 // Portions Copyright (c) 1994, Regents of the University of California
 //
@@ -174,19 +174,21 @@ void LexProcessor::CountNewlineInToken(const string& token) {
 
 //--------------------------------------------------------------------------------------------------
 
-void LexProcessor::ScanError(const char *token) {
+GramProcessor::symbol_type LexProcessor::ScanError(const char *token) {
   // Flex scanner will raise exception by itself, so we don't return Status::Error here.
   Status s = parse_context_->Error(token_loc_,
                                    "Lexical error at or near ",
                                    ErrorCode::LEXICAL_ERROR,
                                    token);
   VLOG(3) << s.ToString();
+  return GramProcessor::make_SCAN_ERROR(cursor_);
 }
 
-void LexProcessor::ScanError(const char *message, ErrorCode errcode) {
+GramProcessor::symbol_type LexProcessor::ScanError(const char *message, ErrorCode errcode) {
   // Flex scanner will raise exception by itself, so we don't return Status::Error here.
   Status s = parse_context_->Error(token_loc_, message, errcode);
   VLOG(3) << s.ToString();
+  return GramProcessor::make_SCAN_ERROR(cursor_);
 }
 
 //--------------------------------------------------------------------------------------------------

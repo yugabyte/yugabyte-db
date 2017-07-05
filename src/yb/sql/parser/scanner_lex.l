@@ -54,7 +54,18 @@ using namespace yb::sql;
 /* YY_USER_ACTION is called to advance location after each time a pattern is matched. */
 #define YY_USER_ACTION cursor_.columns(yyleng);
 
-#define yyerror(msg) ScanError(msg)
+/* Lexxer "yyerror" is used only when the scanner failed to understand the input string when
+ * translating it into tokens. When this serious error occurs, the compilation stops immediately.
+ *
+ * yyerror stops the scanning process, resets the scan state to INITIAL, ignores the input string
+ * entirely, and return SCAN_ERROR. If the input string has more than one statements, all statements
+ * are ignored if one of them failes to compile.
+ */
+#define yyerror(msg) \
+do { \
+  BEGIN(INITIAL); \
+  return ScanError(msg); \
+} while (false)
 
 /* Each call to yylex must set yylloc to the location of the found token. When we parse a token
  * that requires multiple lexer rules to process, this should be done in the first such rule, else

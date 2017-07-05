@@ -255,79 +255,31 @@ CQLResponse* CQLProcessor::ReturnResponse(
     const ExecutedResult::SharedPtr& result) {
   if (!s.ok()) {
     if (s.IsSqlError()) {
-      switch (GetErrorCode(s)) {
-        // Syntax errors.
-        case ErrorCode::SQL_STATEMENT_INVALID: FALLTHROUGH_INTENDED;
-        case ErrorCode::CQL_STATEMENT_INVALID: FALLTHROUGH_INTENDED;
-        case ErrorCode::LEXICAL_ERROR: FALLTHROUGH_INTENDED;
-        case ErrorCode::CHARACTER_NOT_IN_REPERTOIRE: FALLTHROUGH_INTENDED;
-        case ErrorCode::INVALID_ESCAPE_SEQUENCE: FALLTHROUGH_INTENDED;
-        case ErrorCode::NAME_TOO_LONG: FALLTHROUGH_INTENDED;
-        case ErrorCode::NONSTANDARD_USE_OF_ESCAPE_CHARACTER: FALLTHROUGH_INTENDED;
-        case ErrorCode::SYNTAX_ERROR: FALLTHROUGH_INTENDED;
-        case ErrorCode::INVALID_PARAMETER_VALUE:
-          return new ErrorResponse(req, ErrorResponse::Code::SYNTAX_ERROR, s.ToString());
-
-        // Semantic errors.
-        case ErrorCode::FEATURE_NOT_YET_IMPLEMENTED: FALLTHROUGH_INTENDED;
-        case ErrorCode::FEATURE_NOT_SUPPORTED: FALLTHROUGH_INTENDED;
-        case ErrorCode::SEM_ERROR: FALLTHROUGH_INTENDED;
-        case ErrorCode::DATATYPE_MISMATCH: FALLTHROUGH_INTENDED;
-        case ErrorCode::DUPLICATE_TABLE: FALLTHROUGH_INTENDED;
-        case ErrorCode::UNDEFINED_COLUMN: FALLTHROUGH_INTENDED;
-        case ErrorCode::DUPLICATE_COLUMN: FALLTHROUGH_INTENDED;
-        case ErrorCode::MISSING_PRIMARY_KEY: FALLTHROUGH_INTENDED;
-        case ErrorCode::INVALID_PRIMARY_COLUMN_TYPE: FALLTHROUGH_INTENDED;
-        case ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY: FALLTHROUGH_INTENDED;
-        case ErrorCode::NULL_ARGUMENT_FOR_PRIMARY_KEY: FALLTHROUGH_INTENDED;
-        case ErrorCode::INCOMPARABLE_DATATYPES: FALLTHROUGH_INTENDED;
-        case ErrorCode::INVALID_TABLE_PROPERTY: FALLTHROUGH_INTENDED;
-        case ErrorCode::DUPLICATE_TABLE_PROPERTY: FALLTHROUGH_INTENDED;
-        case ErrorCode::INVALID_DATATYPE: FALLTHROUGH_INTENDED;
-        case ErrorCode::SYSTEM_NAMESPACE_READONLY: FALLTHROUGH_INTENDED;
-        case ErrorCode::NO_NAMESPACE_USED: FALLTHROUGH_INTENDED;
-        case ErrorCode::INVALID_ARGUMENTS: FALLTHROUGH_INTENDED;
-        case ErrorCode::TOO_FEW_ARGUMENTS: FALLTHROUGH_INTENDED;
-        case ErrorCode::TOO_MANY_ARGUMENTS: FALLTHROUGH_INTENDED;
-        case ErrorCode::INVALID_FUNCTION_CALL: FALLTHROUGH_INTENDED;
-        case ErrorCode::INSERT_TABLE_OF_COUNTERS: FALLTHROUGH_INTENDED;
-        case ErrorCode::INVALID_COUNTING_EXPR: FALLTHROUGH_INTENDED;
-
-        // Execution errors that are not server errors.
-        case ErrorCode::TABLE_NOT_FOUND: FALLTHROUGH_INTENDED;
-        case ErrorCode::INVALID_TABLE_DEFINITION: FALLTHROUGH_INTENDED;
-        case ErrorCode::KEYSPACE_ALREADY_EXISTS: FALLTHROUGH_INTENDED;
-        case ErrorCode::KEYSPACE_NOT_FOUND: FALLTHROUGH_INTENDED;
-        case ErrorCode::WRONG_METADATA_VERSION: FALLTHROUGH_INTENDED;
-        case ErrorCode::TABLET_NOT_FOUND:
-          return new ErrorResponse(req, ErrorResponse::Code::INVALID, s.ToString());
-
-        // Execution errors that are server errors.
-        case ErrorCode::FAILURE: FALLTHROUGH_INTENDED;
-        case ErrorCode::EXEC_ERROR:
+      ErrorCode yql_errcode = GetErrorCode(s);
+      if (yql_errcode == ErrorCode::STALE_PREPARED_STATEMENT) {
+        if (stmt != nullptr) {
+          // The prepared statement is stale. Delete it and return UNPREPARED error to tell the
+          // client to reprepare it.
+          service_impl_->DeletePreparedStatement(stmt);
+          return new UnpreparedErrorResponse(req, stmt->query_id());
+        } else {
+          // This is an internal error as the caller should always provide the stale statement.
+          return new ErrorResponse(req, ErrorResponse::Code::SERVER_ERROR,
+                                   "internal error: stale prepared statement not provided");
+        }
+      } else if (yql_errcode < ErrorCode::SUCCESS) {
+        if (yql_errcode > ErrorCode::LIMITATION_ERROR) {
+          // System errors, internal errors, or crashes.
           return new ErrorResponse(req, ErrorResponse::Code::SERVER_ERROR, s.ToString());
-
-        case ErrorCode::STALE_PREPARED_STATEMENT:
-          if (stmt != nullptr) {
-            // The prepared statement is stale. Delete it and return UNPREPARED error to tell the
-            // client to reprepare it.
-            service_impl_->DeletePreparedStatement(stmt);
-            return new UnpreparedErrorResponse(req, stmt->query_id());
-          } else {
-            // This is an internal error as the caller should always provide the statement that is
-            // stale.
-            return new ErrorResponse(
-                req, ErrorResponse::Code::SERVER_ERROR,
-                "internal error: stale prepared statement not provided");
-          }
-
-        case ErrorCode::SUCCESS:
-          break;
-
-        // Warnings.
-        case ErrorCode::NOTFOUND:
-          break;
+        } else if (yql_errcode > ErrorCode::SEM_ERROR) {
+          // Limitation, lexical, or parsing errors.
+          return new ErrorResponse(req, ErrorResponse::Code::SYNTAX_ERROR, s.ToString());
+        } else {
+          // Semantic or execution errors.
+          return new ErrorResponse(req, ErrorResponse::Code::INVALID, s.ToString());
+        }
       }
+
       LOG(ERROR) << "Internal error: invalid error code " << static_cast<int64_t>(GetErrorCode(s));
       return new ErrorResponse(req, ErrorResponse::Code::SERVER_ERROR, "Invalid error code");
     }

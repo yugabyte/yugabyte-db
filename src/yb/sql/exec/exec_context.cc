@@ -65,7 +65,7 @@ CHECKED_STATUS ExecContext::ProcessResponseStatus(
     case YQLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH:
       return Error(tnode->loc(), resp.error_message().c_str(), ErrorCode::WRONG_METADATA_VERSION);
     case YQLResponsePB::YQL_STATUS_RUNTIME_ERROR:
-      return Error(tnode->loc(), resp.error_message().c_str(), ErrorCode::EXEC_ERROR);
+      return Error(tnode->loc(), resp.error_message().c_str(), ErrorCode::SERVER_ERROR);
     // default: fall-through to below
   }
   LOG(FATAL) << "Unknown status: " << resp.DebugString();

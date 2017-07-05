@@ -619,7 +619,8 @@ using namespace yb::sql;
 // grammar LALR(1).
 %token                    NOT_LA NULLS_LA WITH_LA
 
-%token END                0 "end of file";
+%token                    SCAN_ERROR "incomprehensible_character_pattern"
+%token END                0 "end_of_file"
 
 //--------------------------------------------------------------------------------------------------
 // Precedence: lowest to highest.
@@ -950,7 +951,7 @@ CreateStmt:
 
 OptTableElementList:
   /*EMPTY*/ {
-    PARSER_ERROR(@0, UNDEFINED_COLUMN);
+    PARSER_ERROR(@0, INVALID_COLUMN_DEFINITION);
     $$ = nullptr;
   }
   | TableElementList {

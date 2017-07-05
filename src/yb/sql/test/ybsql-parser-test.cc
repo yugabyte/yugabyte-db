@@ -36,6 +36,9 @@ TEST_F(YbSqlTestParser, TestSqlParser) {
   PARSE_VALID_STMT("CREATE TABLE human_resource"
                    "  (id int, name varchar, salary int, PRIMARY KEY ((id, name), salary));");
 
+  // Invalid statement: CREATE with unterminated double quoted column.
+  PARSE_INVALID_STMT("CREATE TABLE human_resource(\"id# int primary key, name varchar)");
+
   // Valid statement: INSERT.
   PARSE_VALID_STMT("INSERT INTO human_resource(id, name) VALUES(7, \"Scott Tiger\");");
 
@@ -60,6 +63,9 @@ TEST_F(YbSqlTestParser, TestSqlParser) {
 
   // Invalid statement: INSERT.
   PARSE_INVALID_STMT("INSERT INTO human_resource VALUES(7, \"Scott Tiger\";");
+
+  // Invalid statement: INSERT with unterminated quoted string literal.
+  PARSE_INVALID_STMT("INSERT INTO human_resource VALUES(7, 'Scott Tiger;");
 
   // Valid statement: SELECT.
   PARSE_VALID_STMT("SELECT id, name FROM human_resource;");
