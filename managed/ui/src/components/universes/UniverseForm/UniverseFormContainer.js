@@ -4,7 +4,8 @@ import { reduxForm, formValueSelector } from 'redux-form';
 import { connect } from 'react-redux';
 import { fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure } from '../../../actions/tasks';
 import UniverseForm from './UniverseForm';
-import { getInstanceTypeList, getRegionList, getRegionListResponse, getInstanceTypeListResponse, listAccessKeys, listAccessKeysResponse  } from 'actions/cloud';
+import { getInstanceTypeList, getRegionList, getRegionListResponse, getInstanceTypeListResponse,
+         listAccessKeys, listAccessKeysResponse, getNodeInstancesForProvider, getNodesInstancesForProviderResponse } from 'actions/cloud';
 import { createUniverse, createUniverseResponse, editUniverse, editUniverseResponse, closeDialog,
          configureUniverseTemplate, configureUniverseTemplateResponse, configureUniverseTemplateSuccess,
          configureUniverseResources, configureUniverseResourcesResponse,
@@ -100,6 +101,12 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(configureUniverseResourcesResponse(resourceData.payload));
       });
     },
+
+    fetchNodeInstanceList: (providerUUID) => {
+      dispatch(getNodeInstancesForProvider(providerUUID)).then((response) => {
+        dispatch(getNodesInstancesForProviderResponse(response.payload));
+      });
+    }
   }
 };
 

@@ -38,52 +38,82 @@ export default class AZSelectorTable extends Component {
   }
 
   updatePlacementInfo(currentAZState, universeConfigTemplate) {
-    const {universe: {currentUniverse}, cloud, numNodesChangedViaAzList} = this.props;
+    const {universe: {currentUniverse}, cloud, numNodesChangedViaAzList, currentProvider, maxNumNodes, minNumNodes} = this.props;
     this.setState({azItemState: currentAZState});
     var totalNodesInConfig = 0;
     currentAZState.forEach(function(item){
       totalNodesInConfig += item.count;
     });
-    if (totalNodesInConfig !== universeConfigTemplate.userIntent.numNodes) {
-       numNodesChangedViaAzList(totalNodesInConfig);
-    }
-    var newPlacementInfo = universeConfigTemplate.placementInfo;
+    numNodesChangedViaAzList(totalNodesInConfig);
 
-    var newRegionList = [];
-    cloud.regions.data.forEach(function(regionItem){
-      var newAzList = [];
-      var zoneFoundInRegion = false;
-      regionItem.zones.forEach(function(zoneItem){
-        currentAZState.forEach(function(azItem){
-          if (zoneItem.uuid === azItem.value) {
-            zoneFoundInRegion = true;
-            newAzList.push({
-              uuid: zoneItem.uuid,
-              replicationFactor: 1,
-              subnet: zoneItem.subnet,
-              name: zoneItem.name,
-              numNodesInAZ: azItem.count
-            });
-          }
+    if (((currentProvider.code === "onprem" && totalNodesInConfig <= maxNumNodes)
+          || currentProvider.code !== "onprem") && totalNodesInConfig >= minNumNodes) {
+      var newPlacementInfo = _.clone(universeConfigTemplate.placementInfo, true);
+      var newRegionList = [];
+      cloud.regions.data.forEach(function (regionItem) {
+        var newAzList = [];
+        var zoneFoundInRegion = false;
+        regionItem.zones.forEach(function (zoneItem) {
+          currentAZState.forEach(function (azItem) {
+            if (zoneItem.uuid === azItem.value) {
+              zoneFoundInRegion = true;
+              newAzList.push({
+                uuid: zoneItem.uuid,
+                replicationFactor: 1,
+                subnet: zoneItem.subnet,
+                name: zoneItem.name,
+                numNodesInAZ: azItem.count
+              });
+            }
+          });
         });
+        if (zoneFoundInRegion) {
+          newRegionList.push({
+            uuid: regionItem.uuid,
+            code: regionItem.code,
+            name: regionItem.name,
+            azList: newAzList
+          });
+        }
       });
-      if (zoneFoundInRegion) {
-        newRegionList.push({uuid: regionItem.uuid, code: regionItem.code,
-          name: regionItem.name, azList: newAzList});
-      }
-    });
-    newPlacementInfo.cloudList[0].regionList = newRegionList;
-    var newTaskParams = _.clone(universeConfigTemplate, true);
-    newTaskParams.placementInfo = newPlacementInfo;
-    newTaskParams.userIntent.numNodes = totalNodesInConfig;
-    if (isEmptyObject(currentUniverse.data)) {
-     this.props.submitConfigureUniverse(newTaskParams);
-    } else {
-      if (!areUniverseConfigsEqual(newTaskParams, currentUniverse.data.universeDetails)) {
-        newTaskParams.universeUUID = currentUniverse.data.universeUUID;
-        newTaskParams.expectedUniverseVersion = currentUniverse.data.version;
+      newPlacementInfo.cloudList[0].regionList = newRegionList;
+      var newTaskParams = _.clone(universeConfigTemplate, true);
+      newTaskParams.placementInfo = newPlacementInfo;
+      newTaskParams.userIntent.numNodes = totalNodesInConfig;
+      if (isEmptyObject(currentUniverse.data)) {
         this.props.submitConfigureUniverse(newTaskParams);
+      } else if (!areUniverseConfigsEqual(newTaskParams, currentUniverse.data.universeDetails)) {
+          newTaskParams.universeUUID = currentUniverse.data.universeUUID;
+          newTaskParams.expectedUniverseVersion = currentUniverse.data.version;
+          this.props.submitConfigureUniverse(newTaskParams);
+      } else {
+        let placementStatusObject = {
+            error: {
+              type: "noFieldsChanged",
+              numNodes: totalNodesInConfig,
+              maxNumNodes: maxNumNodes
+            }
+          }
+          this.props.setPlacementStatus(placementStatusObject);
       }
+    } else if (totalNodesInConfig > maxNumNodes && currentProvider.code === "onprem") {
+        let placementStatusObject = {
+          error: {
+            type: "notEnoughNodesConfigured",
+            numNodes: totalNodesInConfig,
+            maxNumNodes: maxNumNodes
+          }
+        }
+        this.props.setPlacementStatus(placementStatusObject);
+    } else {
+        let placementStatusObject = {
+          error: {
+            type: "notEnoughNodes",
+            numNodes: totalNodesInConfig,
+            maxNumNodes: maxNumNodes
+          }
+        }
+        this.props.setPlacementStatus(placementStatusObject);
     }
   }
 
@@ -142,7 +172,8 @@ export default class AZSelectorTable extends Component {
         && isValidObject(universeConfigTemplate.data.placementInfo)) {
        this.setState({azItemState: azGroups});
     }
-    if (isValidObject(universeConfigTemplate.data) && isValidObject(universeConfigTemplate.data.placementInfo)) {
+    if (isValidObject(universeConfigTemplate.data) && isValidObject(universeConfigTemplate.data.placementInfo) &&
+    !_.isEqual(universeConfigTemplate, this.props.universe.universeConfigTemplate)) {
       const uniqueAZs = [ ...new Set(azGroups.map(item => item.value)) ]
       if (isValidObject(uniqueAZs)) {
         var placementStatusObject = {
