@@ -87,6 +87,11 @@ public class SimpleLoadGenerator {
             synchronized (this) {
               if (failedKeys.contains(key) || writtenKeys.remove(key)) {
                 SimpleLoadGenerator.this.maxWrittenKey.set(key);
+                if (key == endKey - 1) {
+                  // We've inserted all requested keys, no need to track
+                  // maxWrittenKey/writtenKeys anymore.
+                  break;
+                }
               } else {
                 try {
                   wait();
@@ -109,9 +114,11 @@ public class SimpleLoadGenerator {
   }
 
   public void recordWriteSuccess(Key key) {
-    synchronized (writtenKeysTracker) {
-      writtenKeys.add(key.asNumber());
-      writtenKeysTracker.notify();
+    if (key.asNumber() > maxWrittenKey.get()) {
+      synchronized (writtenKeysTracker) {
+        writtenKeys.add(key.asNumber());
+        writtenKeysTracker.notify();
+      }
     }
   }
 

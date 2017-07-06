@@ -51,7 +51,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   private Jedis jedisClient;
   private Pipeline jedisPipeline;
   // Instance of the load generator.
-  private static SimpleLoadGenerator loadGenerator = null;
+  private static volatile SimpleLoadGenerator loadGenerator = null;
   // Keyspace name.
   private static String keyspace = "ybdemo_keyspace";
 
@@ -335,7 +335,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
 
   public SimpleLoadGenerator getSimpleLoadGenerator() {
     if (loadGenerator == null) {
-      synchronized (this) {
+      synchronized (AppBase.class) {
         if (loadGenerator == null) {
           loadGenerator = new SimpleLoadGenerator(0, appConfig.numUniqueKeysToWrite,
               appConfig.maxWrittenKey);
