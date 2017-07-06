@@ -12,8 +12,11 @@ const statusTypes =
                   " universe can survive at least 1 availability zone failure", currentStatusClass: "yb-success-color"},
   multiRegion: {currentStatusIcon: "fa fa-check", currentStatusString: "Primary data placement is fully geo-redundant," +
                 " universe can survive at least 1 region failure", currentStatusClass: "yb-success-color"},
-  
+  notEnoughNodesConfigured: {currentStatusIcon: "fa fa-times", currentStatusString: "Not Enough Nodes Configured", currentStatusClass: "yb-fail-color"},
+  notEnoughNodes: {currentStatusIcon: "fa fa-times", currentStatusString: "Not Enough Nodes", currentStatusClass: "yb-fail-color"},
+  noFieldsChanged: {currentStatusIcon: "fa fa-times", currentStatusString: "At Least One Field Must Be Modified", currentStatusClass: "yb-fail-color"}
 }
+
 export default class AZSelectorTable extends Component {
   static propTypes = {
     placementInfo: PropTypes.object.isRequired
@@ -24,18 +27,16 @@ export default class AZSelectorTable extends Component {
       return <span/>;
     }
     var currentStatusType = "";
-    if (placementInfo.replicationFactor === 1) {
+    if (placementInfo.error) {
+      currentStatusType = placementInfo.error.type
+    } else if (placementInfo.replicationFactor === 1) {
       currentStatusType = "singleRF";
+    } else if (placementInfo.numUniqueAzs <= 2) {
+      currentStatusType = "azWarning";
+    } else if (placementInfo.numUniqueRegions < 2) {
+      currentStatusType = "regionWarning";
     } else {
-      if (placementInfo.numUniqueAzs <= 2) {
-        currentStatusType = "azWarning";
-      } else {
-        if (placementInfo.numUniqueRegions < 2) {
-          currentStatusType = "regionWarning";
-        } else {
-          currentStatusType = "multiRegion";
-        }
-      }
+      currentStatusType = "multiRegion";
     }
     return (
       <div>
