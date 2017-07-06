@@ -2,8 +2,7 @@ import React, { Component, PropTypes } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Field, change } from 'redux-form';
 import _ from 'lodash';
-import { isDefinedNotNull, isEmptyObject, isNonEmptyArray, isNonEmptyObject, areIntentsEqual }
-  from 'utils/ObjectUtils';
+import { isDefinedNotNull, isValidArray, isNonEmptyObject, areIntentsEqual, isEmptyObject, isNonEmptyArray } from 'utils/ObjectUtils';
 import { YBModal, YBTextInputWithLabel, YBControlledNumericInput, YBControlledNumericInputWithLabel,
   YBSelectWithLabel, YBControlledSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel
 } from 'components/common/forms/fields';
@@ -25,7 +24,8 @@ const initialState = {
   placementInfo: {},
   ybSoftwareVersion: '',
   ebsType: 'GP2',
-  accessKeyCode: 'yugabyte-default'
+  accessKeyCode: 'yugabyte-default',
+  maxNumNodes: -1 // Maximum Number of nodes currently in use OnPrem case
 };
 
 export default class UniverseForm extends Component {
@@ -53,6 +53,8 @@ export default class UniverseForm extends Component {
     this.diskIopsChanged = this.diskIopsChanged.bind(this);
     this.hideModal = this.hideModal.bind(this);
     this.configureUniverseNodeList = this.configureUniverseNodeList.bind(this);
+    this.getCurrentProvider = this.getCurrentProvider.bind(this);
+    this.hasFieldChanged = this.hasFieldChanged.bind(this);
     this.state = initialState;
   }
 
@@ -60,6 +62,10 @@ export default class UniverseForm extends Component {
     this.setState(initialState);
     this.props.reset();
     this.props.onHide();
+  }
+
+  getCurrentProvider(providerUUID) {
+    return this.props.cloud.providers.data.find((provider) => provider.uuid === providerUUID);
   }
 
   configureUniverseNodeList() {
@@ -142,6 +148,9 @@ export default class UniverseForm extends Component {
       }
       this.props.getRegionListItems(providerUUID, isMultiAZ);
       this.props.getInstanceTypeListItems(providerUUID);
+      if (this.getCurrentProvider(providerUUID).code === "onprem") {
+        this.props.fetchNodeInstanceList(providerUUID);
+      }
       // If Edit Case Set Initial Configuration
       this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
     }
@@ -156,6 +165,9 @@ export default class UniverseForm extends Component {
       this.props.getRegionListItems(providerUUID, this.state.azCheckState);
       this.props.getInstanceTypeListItems(providerUUID);
       this.props.getAccessKeys(providerUUID);
+    }
+    if (this.getCurrentProvider(value).code === "onprem") {
+      this.props.fetchNodeInstanceList(value);
     }
   }
 
@@ -218,12 +230,58 @@ export default class UniverseForm extends Component {
       });
     }
   }
-  
+
+  componentWillUpdate(newProps) {
+    if (newProps.universe.formSubmitSuccess) {
+      this.props.reset();
+    }
+  }
+
+  // Compare state variables against existing user intent
+  hasFieldChanged() {
+    const {universe: {currentUniverse}} = this.props;
+    let existingIntent = currentUniverse.data.universeDetails.userIntent;
+    if (existingIntent.provider === this.state.providerSelected && existingIntent.numNodes === this.state.numNodes
+      && _.isEqual(currentUniverse.data.universeDetails.userIntent.regionList.sort(), this.state.regionList.sort())) {
+      return false;
+    }
+    return true;
+  }
+
   componentDidUpdate(prevProps, prevState) {
+    const {universe: {currentUniverse}} = this.props;
     if (!_.isEqual(this.state, prevState)
       && prevProps.universe.showModal && this.props.universe.showModal && this.props.universe.visibleModal === "universeModal") {
-      if (this.state.numNodes >= this.state.replicationFactor && !this.state.nodeSetViaAZList) {
-        this.configureUniverseNodeList();
+      let currentProvider = this.getCurrentProvider(this.state.providerSelected);
+      if (((currentProvider.code === "onprem" && this.state.numNodes <= this.state.maxNumNodes) || currentProvider.code !== "onprem")
+          && (this.state.numNodes >= this.state.replicationFactor && !this.state.nodeSetViaAZList)) {
+        if (isNonEmptyObject(currentUniverse.data)) {
+          if (this.hasFieldChanged()) {
+            this.configureUniverseNodeList();
+          } else {
+            let placementStatusObject = {
+                  error: {
+                    type: "noFieldsChanged",
+                    numNodes: this.state.numNodes,
+                    maxNumNodes: this.state.maxNumNodes
+                  }
+                }
+            this.props.setPlacementStatus(placementStatusObject);
+          }
+        } else {
+            this.configureUniverseNodeList();
+        }
+      } else if (isNonEmptyArray(this.state.regionList) && currentProvider &&
+            currentProvider.code === "onprem" && this.state.instanceTypeSelected &&
+            this.state.numNodes >= this.state.maxNumNodes) {
+        let placementStatusObject = {
+          error: {
+            type: "notEnoughNodesConfigured",
+            numNodes: this.state.numNodes,
+            maxNumNodes: this.state.maxNumNodes
+          }
+        }
+        this.props.setPlacementStatus(placementStatusObject);
       }
     }
   }
@@ -265,7 +323,7 @@ export default class UniverseForm extends Component {
 
   componentWillReceiveProps(nextProps) {
     var self = this;
-    const {universe: {showModal, visibleModal, currentUniverse}} = nextProps;
+    const {universe: {showModal, visibleModal, currentUniverse}, cloud: {nodeInstanceList}} = nextProps;
     if (nextProps.cloud.instanceTypes.data !== this.props.cloud.instanceTypes.data
         && isNonEmptyArray(nextProps.cloud.instanceTypes.data)
         && isEmptyObject(this.state.deviceInfo)
@@ -349,6 +407,16 @@ export default class UniverseForm extends Component {
     // Form Actions on Configure Universe Success
     if (getPromiseState(this.props.universe.universeConfigTemplate).isLoading() && getPromiseState(nextProps.universe.universeConfigTemplate).isSuccess()) {
       this.props.fetchUniverseResources(nextProps.universe.universeConfigTemplate.data);
+    }
+    // If nodeInstanceList changes, fetch number of available nodes
+    if (getPromiseState(nodeInstanceList).isSuccess() && getPromiseState(this.props.cloud.nodeInstanceList).isLoading()) {
+      let numNodesAvailable = nodeInstanceList.data.reduce(function(acc, val) {
+        if (!val.inUse) {
+          acc ++;
+        }
+        return acc;
+      }, 0);
+      this.setState({maxNumNodes: numNodesAvailable});
     }
   }
 
@@ -521,7 +589,9 @@ export default class UniverseForm extends Component {
             </div>
           </Col>
           <Col md={6} className={"universe-az-selector-container"}>
-            <AZSelectorTable {...this.props} setPlacementInfo={this.setPlacementInfo} numNodesChangedViaAzList={this.numNodesChangedViaAzList}/>
+            <AZSelectorTable {...this.props} setPlacementInfo={this.setPlacementInfo}
+                             numNodesChangedViaAzList={this.numNodesChangedViaAzList} minNumNodes={this.state.replicationFactor}
+                             maxNumNodes={this.state.maxNumNodes} currentProvider={this.getCurrentProvider(this.state.providerSelected)}/>
             {placementStatus}
           </Col>
         </Row>

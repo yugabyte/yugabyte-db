@@ -692,8 +692,6 @@ public class PlacementInfoUtil {
         }
         if (placementAZ.numNodesInAZ > 0) {
           placementAZ.numNodesInAZ--;
-        } else {
-          placementRegion.azList.remove(index.azIdx);
         }
       }
       iter++;

@@ -63,25 +63,93 @@ export function sortedGroupCounts(array) {
 
 export function areIntentsEqual(userIntent1, userIntent2) {
   return (_.isEqual(userIntent1.numNodes,userIntent2.numNodes)
-          && _.isEqual(userIntent1.regionList.sort(), userIntent2.regionList.sort())
-          && _.isEqual(userIntent1.deviceInfo, userIntent2.deviceInfo)
-          && _.isEqual(userIntent1.replicationFactor, userIntent2.replicationFactor)
-          && _.isEqual(userIntent1.provider, userIntent2.provider)
-          && _.isEqual(userIntent1.universeName, userIntent2.universeName)
-          && _.isEqual(userIntent1.ybSoftwareVersion, userIntent2.ybSoftwareVersion)
-          && _.isEqual(userIntent1.accessKeyCode, userIntent2.accessKeyCode))
+  && _.isEqual(userIntent1.regionList.sort(), userIntent2.regionList.sort())
+  && _.isEqual(userIntent1.deviceInfo, userIntent2.deviceInfo)
+  && _.isEqual(userIntent1.replicationFactor, userIntent2.replicationFactor)
+  && _.isEqual(userIntent1.provider, userIntent2.provider)
+  && _.isEqual(userIntent1.universeName, userIntent2.universeName)
+  && _.isEqual(userIntent1.ybSoftwareVersion, userIntent2.ybSoftwareVersion)
+  && _.isEqual(userIntent1.accessKeyCode, userIntent2.accessKeyCode))
+}
+
+// Helper method to check if AZ objects equal
+function areAZObjectsEqual(az1, az2) {
+  if (az1.name === az2.name && az1.numNodesInAZ === az2.numNodesInAZ) {
+    return true;
+  }
+  return false;
+}
+
+// Helper methods to check if region objects equal
+function areRegionObjectsEqual(region1, region2) {
+  if (region1.code !== region2.code || region1.name !== region2.name) {
+    return false;
+  }
+  for (let az1Idx = 0; az1Idx < region1.azList.length; az1Idx ++) {
+    let azFound = false;
+    for (let az2Idx = 0; az2Idx < region2.azList.length; az2Idx ++) {
+      if (areAZObjectsEqual(region1.azList[az1Idx], region2.azList[az2Idx])) {
+        azFound = true;
+      }
+    }
+    if (!azFound) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Helper method to check if provider objects equal
+function areProviderObjectsEqual(provider1, provider2) {
+  if (provider1.code !== provider2.code) {
+    return false;
+  }
+  for (let region1Idx = 0; region1Idx < provider1.regionList.length; region1Idx ++) {
+    let providerFound = false;
+    for (let region2Idx = 0; region2Idx < provider2.regionList.length; region2Idx ++) {
+      if (areRegionObjectsEqual(provider1.regionList[region1Idx], provider2.regionList[region2Idx])) {
+        providerFound = true;
+      }
+    }
+    if (!providerFound) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Helper method to traverse through the placement info objects checking for equality
+export function arePlacementInfoEqual(placementInfo1, placementInfo2) {
+  for (let cloud1Idx = 0 ; cloud1Idx < placementInfo1.cloudList.length; cloud1Idx ++) {
+    let cloudFound = false;
+    for(let cloud2Idx = 0; cloud2Idx < placementInfo2.cloudList.length; cloud2Idx ++) {
+       if (areProviderObjectsEqual(placementInfo1.cloudList[cloud1Idx], placementInfo2.cloudList[cloud2Idx])) {
+         cloudFound = true;
+       }
+    }
+    if (!cloudFound) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export function areUniverseConfigsEqual(config1, config2) {
   var userIntentsEqual = true;
-  var dataObjectsEqual = true;
+  var placementObjectsEqual = true;
   if (config1 && config2) {
     if (config1.userIntent && config2.userIntent) {
       userIntentsEqual = areIntentsEqual(config1.userIntent, config2.userIntent);
+    } else {
+      userIntentsEqual = _.isEqual(config1.userIntent, config2.userIntent);
     }
-    dataObjectsEqual = _.isEqual(config1.nodeDetailsSet, config2.nodeDetailsSet) && _.isEqual(config1.placementInfo, config2.placementInfo);
+    if (isNonEmptyObject(config1.placementInfo) && isNonEmptyObject(config2.placementInfo)) {
+      placementObjectsEqual = arePlacementInfoEqual(config1.placementInfo, config2.placementInfo)
+    } else {
+      placementObjectsEqual = _.isEqual(config1.placementInfo, config2.placementInfo);
+    }
   }
-  return dataObjectsEqual && userIntentsEqual;
+  return userIntentsEqual && placementObjectsEqual;
 }
 
 // TODO: Move this function to NumberUtils.js?
