@@ -9,6 +9,7 @@ import org.junit.Before;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.BaseYBTest;
+import org.yb.client.TestUtils;
 
 import java.util.List;
 
@@ -56,10 +57,10 @@ public class BaseMiniClusterTest extends BaseYBTest {
    */
   @Before
   public void setUpBefore() throws Exception {
+    TestUtils.clearReservedPorts();
     if (miniCluster != null) {
       return;
     }
-
     createMiniCluster(NUM_MASTERS, NUM_TABLET_SERVERS);
   }
 

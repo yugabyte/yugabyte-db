@@ -298,6 +298,13 @@ public class TestUtils {
   }
 
   /**
+   * Clear all reserved ports.
+   */
+  public static void clearReservedPorts() {
+    reservedPorts.clear();
+  }
+
+  /**
    * Find a free port for the given bind interface, starting with the one passed. Keep in mind the
    * time-of-check-time-of-use nature of this method, the returned port might become occupied
    * after it was checked for availability.

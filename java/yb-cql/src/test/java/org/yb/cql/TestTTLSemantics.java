@@ -74,7 +74,7 @@ public class TestTTLSemantics extends BaseCQLTest {
   public void testUpdateAsUpsert() throws Exception {
     String tableName = "testUpdateAsUpsert";
     createTable(tableName);
-    session.execute(String.format("UPDATE %s USING TTL 1 SET c1 = 1, c2 = 2, c3 = 3 WHERE k1 = 1 " +
+    session.execute(String.format("UPDATE %s USING TTL 5 SET c1 = 1, c2 = 2, c3 = 3 WHERE k1 = 1 " +
       "AND k2 = 2 AND k3 = 3 AND k4 = 4", tableName));
 
     // Verify row exists.
@@ -83,7 +83,7 @@ public class TestTTLSemantics extends BaseCQLTest {
     assertEquals(2, row.getInt(1));
     assertEquals(3, row.getInt(2));
 
-    Thread.sleep(900);
+    Thread.sleep(100);
 
     // Verify row still exists.
     row = getFirstRow(tableName, 1, 2, 3, 4);
@@ -92,7 +92,7 @@ public class TestTTLSemantics extends BaseCQLTest {
     assertEquals(3, row.getInt(2));
 
     // Wait for ttl expiry.
-    Thread.sleep(150);
+    Thread.sleep(5000);
 
     // Now verify the row is completely gone.
     assertNoRow(tableName, 1, 2, 3, 4);

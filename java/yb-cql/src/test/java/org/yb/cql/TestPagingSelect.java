@@ -12,6 +12,15 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
 public class TestPagingSelect extends BaseCQLTest {
+
+  /**
+   * Override test timeout. testContinuousQuery() inserts 20100 rows and selects them back and
+   * need more time to execute in CentOS debug and asan builds.
+   */
+  public int getTestMethodTimeoutSec() {
+    return 300;
+  }
+
   @Test
   public void testContinuousQuery() throws Exception {
     LOG.info("TEST CQL CONTINUOUS SELECT QUERY - Start");
