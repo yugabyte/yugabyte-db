@@ -21,6 +21,7 @@
 #include <unordered_map>
 
 #include "yb/consensus/consensus_util.h"
+#include "yb/consensus/raft_consensus.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -59,6 +60,8 @@ class PeerManager {
 
   virtual ~PeerManager();
 
+  virtual void SetConsensus(Consensus* consensus) {consensus_ = consensus; }
+
   // Updates 'peers_' according to the new configuration config.
   virtual CHECKED_STATUS UpdateRaftConfig(const RaftConfigPB& config);
 
@@ -82,6 +85,7 @@ class PeerManager {
   ThreadPool* thread_pool_;
   scoped_refptr<log::Log> log_;
   PeersMap peers_;
+  Consensus* consensus_ = nullptr;
   mutable simple_spinlock lock_;
 
   DISALLOW_COPY_AND_ASSIGN(PeerManager);

@@ -76,6 +76,7 @@ Status PeerManager::UpdateRaftConfig(const RaftConfigPB& config) {
                                       queue_,
                                       thread_pool_,
                                       peer_proxy.Pass(),
+                                      consensus_,
                                       &remote_peer));
     InsertOrDie(&peers_, peer_pb.permanent_uuid(), remote_peer.release());
   }
@@ -124,7 +125,7 @@ void PeerManager::ClosePeersNotInConfig(const RaftConfigPB& config) {
 
     auto it = peers_in_config.find(peer->peer_pb().permanent_uuid());
     if (it == peers_in_config.end() ||
-        it->second.SerializeAsString() != peer->peer_pb().SerializeAsString()) {
+        it->second.member_type() != peer->peer_pb().member_type()) {
       peer->Close();
       iter = peers_.erase(iter);
     } else {

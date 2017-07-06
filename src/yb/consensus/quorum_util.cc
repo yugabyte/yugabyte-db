@@ -126,7 +126,7 @@ int MajoritySize(int num_voters) {
 }
 
 RaftPeerPB::Role GetConsensusRole(const std::string& permanent_uuid,
-                                    const ConsensusStatePB& cstate) {
+                                  const ConsensusStatePB& cstate) {
   if (cstate.leader_uuid() == permanent_uuid) {
     if (IsRaftConfigVoter(permanent_uuid, cstate.config())) {
       return RaftPeerPB::LEADER;

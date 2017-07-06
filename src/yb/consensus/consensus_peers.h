@@ -22,6 +22,7 @@
 #include <string>
 #include <vector>
 
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/ref_counted_replicate.h"
@@ -133,12 +134,13 @@ class Peer {
       PeerMessageQueue* queue,
       ThreadPool* thread_pool,
       gscoped_ptr<PeerProxy> proxy,
+      Consensus* consensus,
       gscoped_ptr<Peer>* peer);
 
  private:
   Peer(const RaftPeerPB& peer, std::string tablet_id, std::string leader_uuid,
        gscoped_ptr<PeerProxy> proxy, PeerMessageQueue* queue,
-       ThreadPool* thread_pool);
+       ThreadPool* thread_pool, Consensus* consensus);
 
   void SendNextRequest(RequestTriggerMode trigger_mode);
 
@@ -215,6 +217,7 @@ class Peer {
   // holding peer_lock_.
   mutable simple_spinlock peer_lock_;
   State state_;
+  Consensus* consensus_ = nullptr;
 };
 
 // A proxy to another peer. Usually a thin wrapper around an rpc proxy but can be replaced for

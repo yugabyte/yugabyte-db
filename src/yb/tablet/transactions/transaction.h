@@ -95,7 +95,7 @@ class Transaction {
   // hybrid_time is only available on the LEADER's commit message.
   // Once Started(), state might have leaked to other replicas/local log and the
   // transaction can't be cancelled without issuing an abort message.
-  virtual void Start() = 0;
+  virtual void  Start() = 0;
 
   // Executes the Apply() phase of the transaction, the actual actions of
   // this phase depend on the transaction type, but usually this is the

@@ -122,6 +122,8 @@ class RemoteBootstrapITest : public YBTest {
   void LeaderCrashesBeforeChangeRole(YBTableType table_type);
   void LeaderCrashesAfterChangeRole(YBTableType table_type);
 
+  void ClientCrashesBeforeChangeRole(YBTableType table_type);
+
   gscoped_ptr<ExternalMiniCluster> cluster_;
   gscoped_ptr<itest::ExternalMiniClusterFsInspector> inspect_;
   shared_ptr<YBClient> client_;
@@ -919,6 +921,45 @@ void RemoteBootstrapITest::LeaderCrashesAfterChangeRole(YBTableType table_type) 
   CrashTestVerify();
 }
 
+void RemoteBootstrapITest::ClientCrashesBeforeChangeRole(YBTableType table_type) {
+  crash_test_timeout_ = MonoDelta::FromSeconds(20);
+  crash_test_tserver_flags_.push_back("--return_error_on_change_config=0.60");
+  CrashTestSetUp(table_type);
+
+  // Add our TS 0 to the config and wait for it to crash.
+  ASSERT_OK(cluster_->tablet_server(crash_test_tserver_index_)->Restart());
+  // Cause the newly added tserver to crash after the transfer of files for remote bootstrap has
+  // completed but before ending the session with the leader to avoid triggering a ChangeConfig
+  // in the leader.
+  const string& fault_flag = "fault_crash_bootstrap_client_before_changing_role";
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(crash_test_tserver_index_), fault_flag,
+                              "1.0"));
+
+  TServerDetails* ts = ts_map_[cluster_->tablet_server(crash_test_tserver_index_)->uuid()].get();
+  ASSERT_OK(itest::AddServer(crash_test_leader_ts_, crash_test_tablet_id_, ts,
+                             RaftPeerPB::PRE_VOTER, boost::none, crash_test_timeout_));
+
+  ASSERT_OK(cluster_->WaitForTSToCrash(crash_test_tserver_index_, MonoDelta::FromSeconds(20)));
+
+  LOG(INFO) << "Restarting TS " << cluster_->tablet_server(crash_test_tserver_index_)->uuid();
+  cluster_->tablet_server(crash_test_tserver_index_)->Shutdown();
+  ASSERT_OK(cluster_->tablet_server(crash_test_tserver_index_)->Restart());
+
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(crash_test_tserver_index_, crash_test_tablet_id_,
+                                                 TABLET_DATA_READY));
+
+  ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(5, crash_test_leader_ts_, crash_test_tablet_id_,
+                                                crash_test_timeout_));
+
+  ClusterVerifier cluster_verifier(cluster_.get());
+  // Skip cluster_verifier.CheckCluster() because it calls ListTabletServers which gets its list
+  // from TSManager::GetAllDescriptors. This list includes the tserver that is in a crash loop, and
+  // the check will always fail.
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(crash_test_workload_->table_name(),
+                                                  ClusterVerifier::AT_LEAST,
+                                                  crash_test_workload_->rows_inserted()));
+}
+
 TEST_F(RemoteBootstrapITest, TestRejectRogueLeaderKuduTableType) {
   RejectRogueLeader(YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
 }
@@ -989,6 +1030,14 @@ TEST_F(RemoteBootstrapITest, TestLeaderCrashesAfterChangeRoleKuduTableType) {
 
 TEST_F(RemoteBootstrapITest, TestLeaderCrashesAfterChangeRoleKeyValueTableType) {
   RemoteBootstrapITest::LeaderCrashesAfterChangeRole(YBTableType::YQL_TABLE_TYPE);
+}
+
+TEST_F(RemoteBootstrapITest, TestClientCrashesBeforeChangeRoleKuduTableType) {
+  RemoteBootstrapITest::ClientCrashesBeforeChangeRole(YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
+}
+
+TEST_F(RemoteBootstrapITest, TestClientCrashesBeforeChangeRoleKeyValueTableType) {
+  RemoteBootstrapITest::ClientCrashesBeforeChangeRole(YBTableType::YQL_TABLE_TYPE);
 }
 
 }  // namespace yb

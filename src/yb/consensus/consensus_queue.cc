@@ -272,9 +272,12 @@ Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
 Status PeerMessageQueue::RequestForPeer(const string& uuid,
                                         ConsensusRequestPB* request,
                                         ReplicateMsgs* msg_refs,
-                                        bool* needs_remote_bootstrap) {
+                                        bool* needs_remote_bootstrap,
+                                        RaftPeerPB::MemberType* member_type,
+                                        bool* last_exchange_successful) {
   TrackedPeer* peer = nullptr;
   OpId preceding_id;
+  MonoDelta unreachable_time = MonoDelta::kMin;
   {
     LockGuard lock(queue_lock_);
     DCHECK_EQ(queue_state_.state, State::kQueueOpen);
@@ -293,10 +296,10 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     preceding_id = queue_state_.last_appended;
     request->mutable_committed_index()->CopyFrom(queue_state_.committed_index);
     request->set_caller_term(queue_state_.current_term);
+    unreachable_time =
+        MonoTime::Now(MonoTime::FINE).GetDeltaSince(peer->last_successful_communication_time);
   }
 
-  MonoDelta unreachable_time =
-      MonoTime::Now(MonoTime::FINE).GetDeltaSince(peer->last_successful_communication_time);
   if (unreachable_time.ToSeconds() > FLAGS_follower_unavailable_considered_failed_sec) {
     if (CountVoters(*queue_state_.active_config) > 2) {
       // We never drop from 2 to 1 automatically, at least for now. We may want
@@ -310,6 +313,8 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     }
   }
 
+  if (member_type) *member_type = peer->member_type;
+  if (last_exchange_successful) *last_exchange_successful = peer->is_last_exchange_successful;
   if (PREDICT_FALSE(peer->needs_remote_bootstrap)) {
     LOG_WITH_PREFIX_UNLOCKED(INFO) << "Peer needs remote bootstrap: " << peer->ToString();
     *needs_remote_bootstrap = true;
@@ -400,6 +405,12 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
   if (PREDICT_FALSE(!peer->needs_remote_bootstrap)) {
     return STATUS(IllegalState, "Peer does not need to remotely bootstrap", uuid);
   }
+
+  if (peer->member_type == RaftPeerPB::VOTER || peer->member_type == RaftPeerPB::OBSERVER) {
+    LOG(INFO) << "Remote bootstrapping peer " << uuid << " with type "
+              << RaftPeerPB::MemberType_Name(peer->member_type);
+  }
+
   req->Clear();
   req->set_dest_uuid(uuid);
   req->set_tablet_id(tablet_id_);
@@ -501,6 +512,16 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
                                      << peer->ToString();
       *more_pending = true;
       return;
+    }
+
+    if (queue_state_.active_config) {
+      RaftPeerPB peer_pb;
+      if (!GetRaftConfigMember(*queue_state_.active_config, peer_uuid, &peer_pb).ok()) {
+        LOG(FATAL) << "Peer " << peer_uuid << " not in active config";
+      }
+      peer->member_type = peer_pb.member_type();
+    } else {
+      peer->member_type = RaftPeerPB::UNKNOWN_MEMBER_TYPE;
     }
 
     // Sanity checks.

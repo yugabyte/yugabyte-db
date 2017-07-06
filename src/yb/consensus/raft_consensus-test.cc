@@ -78,10 +78,12 @@ class MockQueue : public PeerMessageQueue {
                                             const StatusCallback& callback));
   MOCK_METHOD1(TrackPeer, void(const string&));
   MOCK_METHOD1(UntrackPeer, void(const string&));
-  MOCK_METHOD4(RequestForPeer, Status(const std::string& uuid,
+  MOCK_METHOD6(RequestForPeer, Status(const std::string& uuid,
                                       ConsensusRequestPB* request,
                                       ReplicateMsgs* msg_refs,
-                                      bool* needs_remote_bootstrap));
+                                      bool* needs_remote_bootstrap,
+                                      RaftPeerPB::MemberType* member_type,
+                                      bool* last_exchange_successful));
   MOCK_METHOD3(ResponseFromPeer, void(const std::string& peer_uuid,
                                       const ConsensusResponsePB& response,
                                       bool* more_pending));

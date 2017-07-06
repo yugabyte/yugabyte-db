@@ -125,6 +125,12 @@ DEFINE_int32(inject_delay_leader_change_role_append_secs, 0,
 TAG_FLAG(inject_delay_leader_change_role_append_secs, unsafe);
 TAG_FLAG(inject_delay_leader_change_role_append_secs, hidden);
 
+DEFINE_double(return_error_on_change_config, 0.0,
+              "Fraction of the time when ChangeConfig will return an error."
+              "Warning! This is only intended for testing.");
+TAG_FLAG(return_error_on_change_config, unsafe);
+TAG_FLAG(return_error_on_change_config, hidden);
+
 METRIC_DEFINE_counter(tablet, follower_memory_pressure_rejections,
                       "Follower Memory Pressure Rejections",
                       yb::MetricUnit::kRequests,
@@ -266,6 +272,8 @@ RaftConsensus::RaftConsensus(
                                 peer_uuid,
                                 cmeta.Pass(),
                                 DCHECK_NOTNULL(txn_factory)));
+
+  peer_manager_->SetConsensus(this);
 }
 
 RaftConsensus::~RaftConsensus() {
@@ -1743,6 +1751,14 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
   }
   LOG(INFO) << "Received ChangeConfig request " << req.ShortDebugString();
   ChangeConfigType type = req.type();
+
+  if (PREDICT_FALSE(FLAGS_return_error_on_change_config != 0.0 && type == CHANGE_ROLE)) {
+    DCHECK(FLAGS_return_error_on_change_config >= 0.0 &&
+           FLAGS_return_error_on_change_config <= 1.0);
+    if (clock_->Now().ToUint64() % 100 < 100 * FLAGS_return_error_on_change_config) {
+      return STATUS(IllegalState, "Returning error for unit test");
+    }
+  }
   RaftPeerPB* new_peer = nullptr;
   const RaftPeerPB& server = req.server();
   if (!server.has_permanent_uuid()) {

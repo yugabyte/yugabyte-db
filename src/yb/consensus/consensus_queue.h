@@ -107,6 +107,9 @@ class PeerMessageQueue {
     // Whether the follower was detected to need remote bootstrap.
     bool needs_remote_bootstrap = false;
 
+    // Member type of this peer in the config.
+    RaftPeerPB::MemberType member_type;
+
    private:
     // The last term we saw from a given peer.
     // This is only used for sanity checking that a peer doesn't
@@ -188,7 +191,9 @@ class PeerMessageQueue {
       const std::string& uuid,
       ConsensusRequestPB* request,
       ReplicateMsgs* msg_refs,
-      bool* needs_remote_bootstrap);
+      bool* needs_remote_bootstrap,
+      RaftPeerPB::MemberType* member_type = nullptr,
+      bool* last_exchange_successful = nullptr);
 
   // Fill in a StartRemoteBootstrapRequest for the specified peer.  If that peer should not remotely
   // bootstrap, returns a non-OK status.  On success, also internally resets

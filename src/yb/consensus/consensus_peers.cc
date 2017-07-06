@@ -28,6 +28,7 @@
 #include <boost/bind.hpp>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
+#include <boost/optional.hpp>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.proxy.h"
@@ -36,11 +37,13 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/tserver/tserver.pb.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/status_callback.h"
 #include "yb/util/threadpool.h"
 
 DEFINE_int32(consensus_rpc_timeout_ms, 2000,
@@ -82,6 +85,7 @@ Status Peer::NewRemotePeer(const RaftPeerPB& peer_pb,
                            PeerMessageQueue* queue,
                            ThreadPool* thread_pool,
                            gscoped_ptr<PeerProxy> proxy,
+                           Consensus* consensus,
                            gscoped_ptr<Peer>* peer) {
 
   gscoped_ptr<Peer> new_peer(new Peer(peer_pb,
@@ -89,7 +93,8 @@ Status Peer::NewRemotePeer(const RaftPeerPB& peer_pb,
                                       leader_uuid,
                                       proxy.Pass(),
                                       queue,
-                                      thread_pool));
+                                      thread_pool,
+                                      consensus));
   RETURN_NOT_OK(new_peer->Init());
   peer->reset(new_peer.release());
   return Status::OK();
@@ -97,7 +102,7 @@ Status Peer::NewRemotePeer(const RaftPeerPB& peer_pb,
 
 Peer::Peer(
     const RaftPeerPB& peer_pb, string tablet_id, string leader_uuid, gscoped_ptr<PeerProxy> proxy,
-    PeerMessageQueue* queue, ThreadPool* thread_pool)
+    PeerMessageQueue* queue, ThreadPool* thread_pool, Consensus* consensus)
     : tablet_id_(std::move(tablet_id)),
       leader_uuid_(std::move(leader_uuid)),
       peer_pb_(peer_pb),
@@ -109,7 +114,8 @@ Peer::Peer(
           peer_pb.permanent_uuid(), MonoDelta::FromMilliseconds(FLAGS_raft_heartbeat_interval_ms),
           std::bind(&Peer::SignalRequest, this, RequestTriggerMode::ALWAYS_SEND)),
       thread_pool_(thread_pool),
-      state_(kPeerCreated) {}
+      state_(kPeerCreated),
+      consensus_(consensus) {}
 
 void Peer::SetTermForTest(int term) {
   response_.set_responder_term(term);
@@ -171,10 +177,12 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   DCHECK_EQ(sem_.GetValue(), 0);
   // The peer has no pending request nor is sending: send the request.
   bool needs_remote_bootstrap = false;
+  bool last_exchange_successful = false;
+  RaftPeerPB::MemberType member_type = RaftPeerPB::UNKNOWN_MEMBER_TYPE;
   int64_t commit_index_before = request_.has_committed_index() ?
       request_.committed_index().index() : kMinimumOpIdIndex;
   Status s = queue_->RequestForPeer(peer_pb_.permanent_uuid(), &request_,
-                                    &replicate_msg_refs_, &needs_remote_bootstrap);
+      &replicate_msg_refs_, &needs_remote_bootstrap, &member_type, &last_exchange_successful);
   int64_t commit_index_after = request_.has_committed_index() ?
       request_.committed_index().index() : kMinimumOpIdIndex;
 
@@ -193,6 +201,39 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
       sem_.Release();
     }
     return;
+  }
+
+  // If the peer doesn't need remote bootstrap, but it is a PRE_VOTER or PRE_OBSERVER in the config,
+  // we need to promote it.
+  if (last_exchange_successful &&
+      (member_type == RaftPeerPB::PRE_VOTER || member_type == RaftPeerPB::PRE_OBSERVER)) {
+    if (PREDICT_TRUE(consensus_)) {
+      sem_.Release();
+      consensus::ChangeConfigRequestPB req;
+      consensus::ChangeConfigResponsePB resp;
+
+      req.set_tablet_id(tablet_id_);
+      req.set_type(consensus::CHANGE_ROLE);
+      RaftPeerPB *peer = req.mutable_server();
+      peer->set_permanent_uuid(peer_pb_.permanent_uuid());
+
+      boost::optional<tserver::TabletServerErrorPB::Code> error_code;
+
+      // If another ChangeConfig is being processed, our request will be rejected.
+      LOG(INFO) << "Sending ChangeConfig request";
+      auto status = consensus_->ChangeConfig(req, Bind(&DoNothingStatusCB), &error_code);
+      if (PREDICT_FALSE(!status.ok())) {
+        LOG(WARNING) << "Unable to change role for peer " << peer_pb_.permanent_uuid()
+            << ": " << status.ToString(false);
+        // Since we released the semaphore, we need to call SignalRequest again to send a message
+        status = SignalRequest(RequestTriggerMode::ALWAYS_SEND);
+        if (PREDICT_FALSE(!status.ok())) {
+          LOG(WARNING) << "Unexpected error when trying to send request: "
+                       << status.ToString(false);
+        }
+      }
+      return;
+    }
   }
 
   request_.set_tablet_id(tablet_id_);

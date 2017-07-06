@@ -41,6 +41,7 @@
 #include "yb/util/crc.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
+#include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
@@ -68,6 +69,15 @@ DEFINE_int32(committed_config_change_role_timeout_sec, 30,
 TAG_FLAG(committed_config_change_role_timeout_sec, hidden);
 
 DECLARE_int32(rpc_max_message_size);
+
+DEFINE_double(fault_crash_bootstrap_client_before_changing_role, 0.0,
+              "The remote bootstrap client will crash before closing the session with the leader. "
+              "Because the session won't be closed successfully, the leader won't issue a "
+              "ChangeConfig request to change this tserver role *(from PRE_VOTER or PRE_OBSERVER "
+              "to VOTER or OBSERVER respectively). "
+              "For testing only!)");
+TAG_FLAG(fault_crash_bootstrap_client_before_changing_role, unsafe);
+TAG_FLAG(fault_crash_bootstrap_client_before_changing_role, hidden);
 
 // RETURN_NOT_OK_PREPEND() with a remote-error unwinding step.
 #define RETURN_NOT_OK_UNWIND_PREPEND(status, controller, msg) \
@@ -370,6 +380,8 @@ Status RemoteBootstrapClient::Finish() {
   }
 
   succeeded_ = true;
+
+  MAYBE_FAULT(FLAGS_fault_crash_bootstrap_client_before_changing_role);
 
   RETURN_NOT_OK_PREPEND(EndRemoteSession(), "Error closing remote bootstrap session " +
                         session_id_);

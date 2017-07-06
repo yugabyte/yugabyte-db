@@ -94,6 +94,7 @@ class ConsensusPeersTest : public YBTest {
                                  message_queue_.get(),
                                  pool_.get(),
                                  proxy.Pass(),
+                                 nullptr,
                                  peer));
     return proxy_ptr;
   }
@@ -247,6 +248,7 @@ TEST_F(ConsensusPeersTest, TestCloseWhenRemotePeerDoesntMakeProgress) {
                                 message_queue_.get(),
                                 pool_.get(),
                                 gscoped_ptr<PeerProxy>(mock_proxy),
+                                nullptr,
                                 &peer));
 
   // Make the peer respond without making any progress -- it always returns
@@ -285,6 +287,7 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
                                 message_queue_.get(),
                                 pool_.get(),
                                 gscoped_ptr<PeerProxy>(mock_proxy),
+                                nullptr,
                                 &peer));
 
   // Initial response has to be successful -- otherwise we'll consider the peer

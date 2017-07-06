@@ -134,7 +134,6 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
         rpc::RpcContext context) {
   const string& requestor_uuid = req->requestor_uuid();
   const string& tablet_id = req->tablet_id();
-
   // For now, we use the requestor_uuid with the tablet id as the session id,
   // but there is no guarantee this will not change in the future.
   MonoTime now = MonoTime::Now(MonoTime::FINE);
