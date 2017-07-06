@@ -18,7 +18,7 @@ class FlagInput extends Component {
           <Field name={`${item}.value`} component={YBInputField} className="input-sm" placeHolder="Value"/>
         </Col>
         <Col lg={1}>
-          <YBButton btnSize="sm" btnIcon="fa fa-times fa-fw" onClick={deleteRow}/>
+          <i className="fa fa-times fa-fw delete-row-btn" onClick={deleteRow}/>
         </Col>
       </Row>
     )
@@ -27,13 +27,11 @@ class FlagInput extends Component {
 
 class FlagItems extends Component {
   componentWillMount() {
+    if (this.props.fields.length === 0) {
+      this.props.fields.push({});
+    }
+  }
 
-    this.props.fields.push({});
-  }
-  componentWillUnmount() {
-    this.props.fields.removeAll();
-    this.props.resetRollingUpgrade();
-  }
   render() {
     const { fields } = this.props;
     var addFlagItem = function() {
@@ -63,6 +61,9 @@ export default class RollingUpgradeForm extends Component {
     super(props);
     this.setRollingUpgradeProperties = this.setRollingUpgradeProperties.bind(this);
   }
+  componentWillUnmount() {
+    this.props.reset();
+  }
 
   setRollingUpgradeProperties(values) {
     const { universe: {visibleModal, currentUniverse: {data: {universeDetails: {nodeDetailsSet,
@@ -89,6 +90,7 @@ export default class RollingUpgradeForm extends Component {
       payload.gflags = values.gflags;
     }
     this.props.submitRollingUpgradeForm(payload, universeUUID);
+    this.props.reset();
   }
 
   render() {
@@ -103,6 +105,7 @@ export default class RollingUpgradeForm extends Component {
     })
     var formCloseAction = function() {
       onHide();
+      self.props.reset();
     }
     if (visibleModal === "softwareUpgradesModal") {
       title="Upgrade Software";
