@@ -4,3 +4,12 @@
     color: red;
     font-size: 12px;
 }
+
+.delete-row-btn {
+    padding-top: 8px;
+    padding-bottom: 4px;
+    cursor: pointer;
+}
+.delete-row-btn:hover {
+    color: #d3d3d3;
+}

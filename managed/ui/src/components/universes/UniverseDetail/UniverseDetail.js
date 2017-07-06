@@ -140,7 +140,7 @@ export default class UniverseDetail extends Component {
                 </MenuItem>
                 <MenuItem eventKey="2" onClick={this.props.showGFlagsModal} >
                   <YBLabelWithIcon icon="fa fa-flag fa-fw">
-                    Show GFlags
+                    Edit GFlags
                   </YBLabelWithIcon>
                 </MenuItem>
                 <MenuItem eventKey="2" onClick={this.props.showDeleteUniverseModal} >
