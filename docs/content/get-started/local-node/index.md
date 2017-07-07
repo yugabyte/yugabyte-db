@@ -205,7 +205,6 @@ $ jar xf /tmp/yb-sample-apps-sources.jar
 The above command puts the sample apps Java files in `com/yugabyte/sample/apps` in the current directory.
 
 
-
 ## Maintain
 
 - Review logs of the YugaByte DB.
@@ -224,6 +223,12 @@ $ docker exec -it yugabyte-db bash
 
 ```sh
 $ docker stop yugabyte-db
+```
+
+- Stop and remove all the container instances
+
+```sh
+$ docker rm -f $(docker ps -aq)
 ```
 
 - Upgrade the YugaByte DB container.

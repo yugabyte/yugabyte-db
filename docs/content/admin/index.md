@@ -4,9 +4,11 @@ title: Administer
 weight: 40
 ---
 
+This section details how to administer YugaByte using the YugaWare admin console.
+
 ## Register customer
 
-Go to [http://yugaware-host-public-ip/register] (http://yugaware-host-public-ip/register) to register a customer (aka tenant) account. Note that by default YugaWare runs as a single-tenant application.
+Go to [http://yugaware-host-public-ip/register] (http://yugaware-host-public-ip/register) to register a customer (aka tenant) account. Note that by default YugaWare runs as a single-tenant application. If you are using YugaWare in a local node or local cluster mode, then this single tenant has already been pre-created for your convenience.
 
 ![Register](/images/register.png)
 
@@ -28,18 +30,6 @@ If no cloud providers are configured yet, the main Dashboard page highlights the
 
 ![Configure Cloud Provider](/images/configure-cloud-provider.png)
 
-### Docker Platform
-
-The [single node yugabyte-db container](/get-started-dev) is a great way to get started in a developer's localhost environment. Another approach is to spin up a multi-node YugaByte universe on the localhost using Docker containers. This is a simple approach for testing important day-to-day operational scenarios such as scale-up/scale-down and availability under node failures.
-
-Go to the Docker tab in the Configuration section and click Setup to initialize Docker as a cloud provider. Note that Docker Platform is already installed on the YugaWare host when you installed Replicated.
-
-![Configure Docker](/images/configure-docker-1.png)
-
-![Docker Configured Successfully](/images/configure-docker-2.png)
-
-As you can see above, the above initialization setup creates 2 dummy regions (US West and US East) with 3 dummy availability zones each. Now we are ready to create a containerized YugaByte universe running on the YugaWare host.
-
 ### Amazon Web Services
 
 YugaWare ensures that YugaByte instances run inside your own AWS account and are secured by a dedicated VPC and Key Pair. After you provide your [AWS Access Key ID and Secret Key](http://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html), YugaWare invokes AWS APIs to perform the following actions. Note that the AWS Account Name should be unique for each instance of YugaWare integrating with a given AWS Account.
@@ -55,6 +45,18 @@ YugaWare ensures that YugaByte instances run inside your own AWS account and are
 ![AWS Configured Successfully](/images/configure-aws-2.png)
 
 Now we are ready to create a YugaByte universe on AWS.
+
+### Docker Platform
+
+The [local node](/get-started/local-node/) is a great way to get started in a developer's localhost environment and the [local cluster] (/get-started/local-cluster/)  approach is great for testing operational scenarios including YugaByte clustering. The same local cluster approach is also possible in the highly available version of YugaWare.
+
+Go to the Docker tab in the Configuration section and click Setup to initialize Docker as a cloud provider. Note that Docker Platform is already installed on the YugaWare host when you installed Replicated.
+
+![Configure Docker](/images/configure-docker-1.png)
+
+![Docker Configured Successfully](/images/configure-docker-2.png)
+
+As you can see above, the above initialization setup creates 2 dummy regions (US West and US East) with 3 dummy availability zones each. Now we are ready to create a containerized YugaByte universe running on the YugaWare host.
 
 ### Google Cloud Platform
 

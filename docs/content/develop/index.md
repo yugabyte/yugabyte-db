@@ -36,6 +36,7 @@ cqlsh>
 
 ## Connect with redis-cli
 
+\<docs coming soon\>
 
 ## Run sample apps
 
@@ -136,7 +137,6 @@ cqlsh:default_keyspace>
 ```
 
 - Review the sample app source code
-
 
 ```sh
 jar xf /tmp/yb-sample-apps-sources.jar

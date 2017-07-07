@@ -4,7 +4,7 @@ title: Start a local cluster
 weight: 20
 ---
 
-The local node approach is great for developing apps locally against the YugaByte API endpoints. However, it doesn't include the ability to monitor the YugaByte instances as well as test of all operational management scenarios (including clustering). YugaWare, YugaByte's Admin Console, is necessary for these tasks and is available as a docker-compose application that can be run locally. This can be thought of as the **local cluster** approach.
+The local node approach is great for developing apps locally against the YugaByte Cassandra or Redis API endpoints. However, it doesn't include the ability to monitor the YugaByte instances as well as test of all operational management scenarios (including clustering). YugaWare, YugaByte's admin console, is necessary for these tasks and is available as a docker-compose application that can be run locally. This can be thought of as the **local cluster** approach.
 
 Note that the local cluster approach does not include high availability of YugaWare itself and hence is not recommended for mission-critical environments such as production. For such environments, follow the [Deploy](/deploy) section.
 
@@ -82,7 +82,7 @@ $ git clone https://yugabyte@bitbucket.org/snippets/yugabyte/M9djd/yugabyte.git
 $ cd yugabyte
 ```
 
-- YugaByte's container images are stored at Quay.io, a leading container registry. If you are starting from http://try.yugabyte.com then your Quay.io credentials are listed on the same page. For all other usage scenarios, create your free Quay.io account at [Quay.io](https://quay.io/signin/) and then email to [YugaByte Support](mailto:support@yugabyte.com) noting your Quay.io username. This is to ensure that the YugaByte DB docker image can be privately shared with you.
+- YugaByte's container images are stored at Quay.io, a leading container registry. Create your free Quay.io account at [Quay.io](https://quay.io/signin/) and then email to [YugaByte Support](mailto:support@yugabyte.com) noting your Quay.io username. This is to ensure that the YugaByte DB docker image can be privately shared with you.
 
 - Login to Quay.io from your command line. Detailed instructions [here](https://docs.quay.io/solution/getting-started.html). 
 
@@ -90,7 +90,7 @@ $ cd yugabyte
 $ docker login quay.io -u <your-quay-id> -p <your-quay-password>
 ```
 
-- Start the YugaByte admin console via docker-componse (this command will first pull in all the container images from Quay.io in case the images are not yet locally available)
+- Start the YugaByte admin console via docker-compose. This command will first pull in all the container images from Quay.io in case the images are not yet locally available. Depending on your network bandwidth, this pull process can take a while. 
 
 ```sh
 $ docker-compose up -d
@@ -98,11 +98,11 @@ $ docker-compose up -d
 
 ## Test
 
-Open http://localhost:8080 in your browser and login to the admin console with the default username and password (admin/admin). 
+Open http://localhost:8080 in your browser and login to the admin console with the default username **admin** and default password **admin**. 
 
 ### Create universe
 
-Universe is a cluster of YugaByte instances grouped together to perform as one logical distributed database. All instances belonging to a single Universe run on the same type of cloud provider node. 
+Universe is a cluster of YugaByte instances grouped together to perform as one logical distributed database. All instances belonging to a single Universe are identical to each from a client standpoint and run on the same type of cloud provider node. 
 
 If there are no universes created yet, the Dashboard page will look like the following with **Docker** as a pre-configured [Cloud Provider](/admin/#configure-cloud-providers). 
 
@@ -125,12 +125,15 @@ Here's how a Universe in Pending state looks like.
 
 ### Connect with cqlsh or redis-cli
 
+\<docs coming soon\>
+
 ### Run a sample app
+
+\<docs coming soon\>
 
 ### Expand or shrink universe
 
 \<docs coming soon\>
-
 
 
 ## Maintain
