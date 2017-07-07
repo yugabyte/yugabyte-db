@@ -512,7 +512,17 @@ class NegotiationCompletedTask : public ReactorTask {
   Status negotiation_status_;
 };
 
-void Connection::CompleteNegotiation(const Status& negotiation_status) {
+// Disable / reset socket timeouts.
+Status DisableSocketTimeouts(Connection *conn) {
+  RETURN_NOT_OK(conn->socket()->SetSendTimeout(MonoDelta::FromNanoseconds(0L)));
+  RETURN_NOT_OK(conn->socket()->SetRecvTimeout(MonoDelta::FromNanoseconds(0L)));
+  return Status::OK();
+}
+
+void Connection::CompleteNegotiation(Status negotiation_status) {
+  if (negotiation_status.ok()) {
+    negotiation_status = DisableSocketTimeouts(this);
+  }
   auto task = std::make_shared<NegotiationCompletedTask>(shared_from_this(), negotiation_status);
   reactor_->ScheduleReactorTask(task);
 }
@@ -556,6 +566,16 @@ Status Connection::DumpPB(const DumpRunningRpcsRequestPB& req,
   context_->DumpPB(req, resp);
 
   return Status::OK();
+}
+
+void Connection::QueueOutboundDataBatch(const OutboundDataBatch& batch) {
+  DCHECK(reactor_->IsCurrentThread());
+
+  for (const auto& call : batch) {
+    DoQueueOutboundData(call, /* batch */ true);
+  }
+
+  OutboundQueued();
 }
 
 void Connection::QueueOutboundData(OutboundDataPtr outbound_data) {

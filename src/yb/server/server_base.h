@@ -24,7 +24,6 @@
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/rpc/connection_types.h"
 #include "yb/rpc/service_if.h"
 #include "yb/server/server_base_options.h"
 #include "yb/util/status.h"
@@ -98,7 +97,7 @@ class RpcServerBase {
   std::shared_ptr<rpc::Messenger> messenger_;
   bool is_first_run_;
 
-  const rpc::ConnectionType connection_type_;
+  const rpc::ConnectionContextFactory connection_context_factory_;
 
   scoped_refptr<Clock> clock_;
 

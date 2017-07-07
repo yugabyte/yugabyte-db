@@ -1,8 +1,11 @@
+//
 // Copyright (c) YugaByte, Inc.
-#include "yb/rpc/redis_encoding.h"
+//
+
+#include "yb/redisserver/redis_encoding.h"
 
 namespace yb {
-namespace rpc {
+namespace redisserver {
 
 string EncodeAsInteger(string input) { return StrCat(":", input, "\r\n"); }
 
@@ -21,5 +24,5 @@ string EncodeAsArrays(vector<string> encoded_elements) {
   return StrCat("*", encoded_elements.size(), "\r\n", JoinStrings(encoded_elements, ""));
 }
 
-}  // namespace rpc
+}  // namespace redisserver
 }  // namespace yb

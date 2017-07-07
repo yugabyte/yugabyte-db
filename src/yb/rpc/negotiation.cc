@@ -29,9 +29,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/blocking_ops.h"
 #include "yb/rpc/connection.h"
-#include "yb/rpc/cql_rpc.h"
 #include "yb/rpc/reactor.h"
-#include "yb/rpc/redis_rpc.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/sasl_client.h"
 #include "yb/rpc/sasl_common.h"
@@ -191,13 +189,6 @@ Status WaitForClientConnect(Connection *conn, const MonoTime &deadline) {
   return Status::OK();
 }
 
-// Disable / reset socket timeouts.
-Status DisableSocketTimeouts(Connection *conn) {
-  RETURN_NOT_OK(conn->socket()->SetSendTimeout(MonoDelta::FromNanoseconds(0L)));
-  RETURN_NOT_OK(conn->socket()->SetRecvTimeout(MonoDelta::FromNanoseconds(0L)));
-  return Status::OK();
-}
-
 // Perform client negotiation. We don't LOG() anything, we leave that to our caller.
 Status DoClientNegotiation(Connection *conn,
                            YBConnectionContext *context,
@@ -208,7 +199,6 @@ Status DoClientNegotiation(Connection *conn,
   context->sasl_client().set_deadline(deadline);
   RETURN_NOT_OK(context->sasl_client().Negotiate());
   RETURN_NOT_OK(SendConnectionContext(conn, deadline));
-  RETURN_NOT_OK(DisableSocketTimeouts(conn));
 
   return Status::OK();
 }
@@ -222,21 +212,7 @@ static Status DoServerNegotiation(Connection *conn,
   context->sasl_server().set_deadline(deadline);
   RETURN_NOT_OK(context->sasl_server().Negotiate());
   RETURN_NOT_OK(RecvConnectionContext(conn, context, deadline));
-  RETURN_NOT_OK(DisableSocketTimeouts(conn));
 
-  return Status::OK();
-}
-
-static Status DoRedisServerNegotiation(Connection *conn,
-                                       const MonoTime &deadline) {
-  RETURN_NOT_OK(DisableSocketTimeouts(conn));
-  return Status::OK();
-}
-
-static Status DoCQLNegotiation(Connection *conn,
-                               const MonoTime &deadline) {
-  // TODO(robert) - check if options are meaningful
-  RETURN_NOT_OK(DisableSocketTimeouts(conn));
   return Status::OK();
 }
 
@@ -245,18 +221,6 @@ static Status DoCQLNegotiation(Connection *conn,
 void Negotiation::RunNegotiation(ConnectionPtr conn,
                                  const MonoTime& deadline) {
   conn->RunNegotiation(deadline);
-}
-
-void Negotiation::RedisNegotiation(ConnectionPtr conn,
-                                   const MonoTime& deadline) {
-  CHECK_EQ(conn->direction(), ConnectionDirection::SERVER);
-  conn->CompleteNegotiation(DoRedisServerNegotiation(conn.get(), deadline));
-}
-
-void Negotiation::CQLNegotiation(ConnectionPtr conn,
-                                 const MonoTime& deadline) {
-  CHECK_EQ(conn->direction(), ConnectionDirection::SERVER);
-  conn->CompleteNegotiation(DoCQLNegotiation(conn.get(), deadline));
 }
 
 void Negotiation::YBNegotiation(ConnectionPtr conn,
@@ -287,7 +251,7 @@ void Negotiation::YBNegotiation(ConnectionPtr conn,
       LOG(INFO) << "RPC negotiation tracing enabled. Trace:\n" << msg;
     }
   }
-  conn->CompleteNegotiation(s);
+  conn->CompleteNegotiation(std::move(s));
 }
 
 

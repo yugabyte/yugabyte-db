@@ -9,11 +9,14 @@
 #define YB_SQL_SQL_PROCESSOR_H_
 
 #include "yb/client/callbacks.h"
-#include "yb/rpc/cql_rpcserver_env.h"
+
+#include "yb/cqlserver/cql_rpcserver_env.h"
+
 #include "yb/sql/exec/executor.h"
 #include "yb/sql/parser/parser.h"
 #include "yb/sql/sem/analyzer.h"
 #include "yb/sql/util/sql_env.h"
+
 #include "yb/util/metrics.h"
 
 namespace yb {
@@ -47,7 +50,7 @@ class SqlProcessor {
   explicit SqlProcessor(
       std::weak_ptr<rpc::Messenger> messenger, std::shared_ptr<client::YBClient> client,
       std::shared_ptr<client::YBTableCache> cache, SqlMetrics* sql_metrics,
-      rpc::CQLRpcServerEnv* cql_rpcserver_env = nullptr);
+      cqlserver::CQLRpcServerEnv* cql_rpcserver_env = nullptr);
   virtual ~SqlProcessor();
 
   // Parse a SQL statement and generate a parse tree.

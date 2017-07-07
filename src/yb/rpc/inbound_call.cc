@@ -20,15 +20,16 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/connection.h"
 #include "yb/common/redis_protocol.pb.h"
-#include "yb/rpc/redis_encoding.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/serialization.h"
 #include "yb/rpc/service_pool.h"
+
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/trace.h"
+#include "yb/util/memory/memory.h"
 
 using google::protobuf::FieldDescriptor;
 using google::protobuf::Message;
@@ -128,7 +129,7 @@ void InboundCall::Respond(const MessageLite& response,
   TRACE_TO(trace_, "Queueing $0 response", is_success ? "success" : "failure");
 
   LogTrace();
-  conn_->QueueOutboundData(shared_from_this());
+  conn_->context().QueueResponse(conn_, shared_from(this));
 }
 
 void InboundCall::NotifyTransferred(const Status& status) {

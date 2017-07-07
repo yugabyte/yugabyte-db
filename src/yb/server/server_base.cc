@@ -109,7 +109,7 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
                                                       metric_namespace)),
       rpc_server_(new RpcServer(name_, options.rpc_opts)),
       is_first_run_(false),
-      connection_type_(options.connection_type),
+      connection_context_factory_(options.connection_context_factory),
       options_(options),
       initialized_(false),
       stop_metrics_logging_latch_(1) {
@@ -166,7 +166,7 @@ Status RpcServerBase::Init() {
 
   builder.set_num_reactors(FLAGS_num_reactor_threads);
   builder.set_metric_entity(metric_entity());
-  builder.use_connection_type(connection_type_);
+  builder.use_connection_context_factory(connection_context_factory_);
   RETURN_NOT_OK(builder.Build(&messenger_));
 
   RETURN_NOT_OK(rpc_server_->Init(messenger_));

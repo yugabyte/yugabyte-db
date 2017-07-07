@@ -29,10 +29,11 @@
 
 #include <ev++.h>
 
+#include <boost/container/small_vector.hpp>
+
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/rpc_fwd.h"
-#include "yb/rpc/connection_types.h"
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/inbound_call.h"
 #include "yb/rpc/server_event.h"
@@ -88,11 +89,16 @@ class ConnectionContext {
   // of remainder of the next packet.
   virtual size_t MaxReceive(Slice existing_data) { return std::numeric_limits<size_t>::max(); }
 
-  // Type of this connection context, i.e. YB, Redis, CQL etc.
-  virtual ConnectionType Type() = 0;
+  virtual void QueueResponse(const ConnectionPtr& connection, InboundCallPtr call) = 0;
+
+  virtual void AssignConnection(const ConnectionPtr& connection) {}
 };
 
+typedef std::function<std::unique_ptr<ConnectionContext>()> ConnectionContextFactory;
+
 YB_DEFINE_ENUM(ConnectionDirection, (CLIENT)(SERVER));
+
+typedef boost::container::small_vector_base<OutboundDataPtr> OutboundDataBatch;
 
 //
 // A connection between an endpoint and us.
@@ -190,7 +196,7 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   Socket* socket() { return &socket_; }
 
   // Go through the process of transferring control of the underlying socket back to the Reactor.
-  void CompleteNegotiation(const Status& negotiation_status);
+  void CompleteNegotiation(Status negotiation_status);
 
   // Indicate that negotiation is complete and that the Reactor is now in control of the socket.
   void MarkNegotiationComplete();
@@ -199,6 +205,8 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   //
   // This may be called from a non-reactor thread.
   void QueueOutboundData(OutboundDataPtr outbound_data);
+
+  void QueueOutboundDataBatch(const OutboundDataBatch& batch);
 
   Reactor* reactor() const { return reactor_; }
 

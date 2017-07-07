@@ -1,13 +1,13 @@
 // Copyright (c) YugaByte, Inc.
-#ifndef YB_RPC_REDIS_ENCODING_H_
-#define YB_RPC_REDIS_ENCODING_H_
+#ifndef YB_REDISSERVER_REDIS_ENCODING_H
+#define YB_REDISSERVER_REDIS_ENCODING_H
 
 #include <string>
 
 #include "yb/gutil/strings/join.h"
 
 namespace yb {
-namespace rpc {
+namespace redisserver {
 
 const char kNilResponse[] = "$-1\r\n";
 
@@ -41,7 +41,7 @@ string EncodeAsBulkString(string input);
 // For more info: http://redis.io/topics/protocol
 string EncodeAsArrays(vector<string> encoded_elements);
 
-}  // namespace rpc
+}  // namespace redisserver
 }  // namespace yb
 
-#endif  // YB_RPC_REDIS_ENCODING_H_
+#endif  // YB_REDISSERVER_REDIS_ENCODING_H

@@ -26,8 +26,6 @@ typedef std::shared_ptr<InboundCall> InboundCallPtr;
 class OutboundCall;
 typedef std::shared_ptr<OutboundCall> OutboundCallPtr;
 
-struct RedisClientCommand;
-
 class ErrorStatusPB;
 
 } // namespace rpc

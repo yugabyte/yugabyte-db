@@ -81,7 +81,10 @@ class MessengerBuilder {
   MessengerBuilder &set_metric_entity(const scoped_refptr<MetricEntity>& metric_entity);
 
   // Uses the given connection type to handle the incoming connections.
-  MessengerBuilder &use_connection_type(ConnectionType type);
+  MessengerBuilder &use_connection_context_factory(const ConnectionContextFactory& factory) {
+    connection_context_factory_ = factory;
+    return *this;
+  }
 
   CHECKED_STATUS Build(std::shared_ptr<Messenger> *msgr);
 
@@ -95,7 +98,7 @@ class MessengerBuilder {
   int num_negotiation_threads_;
   MonoDelta coarse_timer_granularity_;
   scoped_refptr<MetricEntity> metric_entity_;
-  ConnectionType connection_type_;
+  ConnectionContextFactory connection_context_factory_;
 };
 
 // A Messenger is a container for the reactor threads which run event loops
@@ -211,7 +214,7 @@ class Messenger {
 
   const std::string name_;
 
-  const ConnectionType connection_type_;
+  ConnectionContextFactory connection_context_factory_;
 
   // Protects closing_, acceptor_pools_, rpc_services_.
   mutable percpu_rwlock lock_;

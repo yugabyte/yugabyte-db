@@ -42,5 +42,10 @@ void ConnectionContextWithCallId::CallProcessed(InboundCall* call) {
   calls_being_handled_.erase(it);
 }
 
+void ConnectionContextWithCallId::QueueResponse(const ConnectionPtr& conn,
+                                                InboundCallPtr call) {
+  conn->QueueOutboundData(std::move(call));
+}
+
 } // namespace rpc
 } // namespace yb

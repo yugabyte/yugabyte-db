@@ -18,6 +18,8 @@
 #include "yb/server/server_base_options.h"
 
 #include <gflags/gflags.h>
+
+#include "yb/rpc/yb_rpc.h"
 #include "yb/util/flag_tags.h"
 
 // The following flags related to the cloud, region and availability zone that an instance is
@@ -64,7 +66,7 @@ ServerBaseOptions::ServerBaseOptions()
       placement_cloud(FLAGS_placement_cloud),
       placement_region(FLAGS_placement_region),
       placement_zone(FLAGS_placement_zone),
-      connection_type(yb::rpc::ConnectionType::YB) {}
+      connection_context_factory(&std::make_unique<rpc::YBConnectionContext>) {}
 
 ServerBaseOptions::ServerBaseOptions(const ServerBaseOptions& options)
     : env(options.env),
@@ -78,7 +80,7 @@ ServerBaseOptions::ServerBaseOptions(const ServerBaseOptions& options)
       placement_region(options.placement_region),
       placement_zone(options.placement_zone),
       master_addresses_flag(options.master_addresses_flag),
-      connection_type(options.connection_type) {
+      connection_context_factory(options.connection_context_factory) {
   SetMasterAddressesNoValidation(options.GetMasterAddresses());
 }
 

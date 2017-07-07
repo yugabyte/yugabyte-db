@@ -4,18 +4,23 @@
 
 #include <thread>
 
+#include "yb/gutil/strings/join.h"
+#include "yb/gutil/strings/substitute.h"
+
 #include "yb/client/async_rpc.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
 #include "yb/client/client_builder-internal.h"
+
+#include "yb/common/redis_protocol.pb.h"
+
 #include "yb/redisserver/redis_constants.h"
 #include "yb/redisserver/redis_parser.h"
-#include "yb/common/redis_protocol.pb.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
+#include "yb/redisserver/redis_rpc.h"
 #include "yb/redisserver/redis_server.h"
+
 #include "yb/rpc/rpc_context.h"
-#include "yb/rpc/redis_rpc.h"
+
 #include "yb/util/bytes_formatter.h"
 
 #define DEFINE_REDIS_histogram_EX(name_identifier, label_str, desc_str) \
@@ -80,9 +85,7 @@ using yb::client::YBStatusCallback;
 using yb::client::YBTableName;
 using yb::rpc::InboundCall;
 using yb::rpc::InboundCallPtr;
-using yb::rpc::RedisInboundCall;
 using yb::rpc::RpcContext;
-using yb::rpc::RedisClientCommand;
 using yb::RedisResponsePB;
 using std::shared_ptr;
 using std::unique_ptr;
@@ -216,7 +219,7 @@ void RedisServiceImpl::Handle(InboundCallPtr call_ptr) {
   auto* call = down_cast<RedisInboundCall*>(CHECK_NOTNULL(call_ptr.get()));
 
   DVLOG(4) << "Asked to handle a call " << call->ToString();
-  rpc::RedisClientCommand& c = call->GetClientCommand();
+  RedisClientCommand& c = call->GetClientCommand();
 
   auto cmd_info = FetchHandler(c.cmd_args);
   ValidateAndHandle(cmd_info, std::move(call_ptr), &c);
@@ -275,7 +278,7 @@ void ReadCommandCb::Run(const Status& status) {
 
 void RedisServiceImpl::ReadCommand(
     yb::rpc::InboundCallPtr call,
-    yb::rpc::RedisClientCommand* c,
+    RedisClientCommand* c,
     const std::string& command_name,
     Status(*parse)(YBRedisReadOp*, const std::vector<Slice>&)) {
   VLOG(1) << "Processing " << command_name << ".";

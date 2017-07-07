@@ -12,10 +12,17 @@
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/redis_table_test_base.h"
+
+#include "yb/redisserver/redis_encoding.h"
 #include "yb/redisserver/redis_server.h"
-#include "yb/rpc/redis_encoding.h"
+
 #include "yb/util/cast.h"
 #include "yb/util/test_util.h"
+
+DECLARE_uint64(redis_max_concurrent_commands);
+
+DEFINE_uint64(test_redis_max_concurrent_commands, 20,
+              "Value of redis_max_concurrent_commands for pipeline test");
 
 namespace yb {
 namespace redisserver {
@@ -27,9 +34,6 @@ using std::unique_ptr;
 using std::vector;
 using strings::Substitute;
 using yb::integration_tests::RedisTableTestBase;
-using yb::rpc::EncodeAsArrays;
-using yb::rpc::EncodeAsBulkString;
-using yb::rpc::EncodeAsSimpleString;
 
 class TestRedisService : public RedisTableTestBase {
  public:
@@ -70,8 +74,7 @@ class TestRedisService : public RedisTableTestBase {
   int redis_server_port_ = 0;
   unique_ptr<FileLock> redis_port_lock_;
   unique_ptr<FileLock> redis_webserver_lock_;
-  static constexpr size_t kBufLen = 1024;
-  uint8_t resp_[kBufLen];
+  std::vector<uint8_t> resp_;
 };
 
 void TestRedisService::SetUp() {
@@ -153,7 +156,11 @@ Status TestRedisService::SendCommandAndGetResponse(
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(MonoDelta::FromMilliseconds(timeout_in_millis));
   size_t bytes_read = 0;
-  RETURN_NOT_OK(client_sock_.BlockingRecv(resp_, expected_resp_length, &bytes_read, deadline));
+  resp_.resize(expected_resp_length);
+  RETURN_NOT_OK(client_sock_.BlockingRecv(resp_.data(),
+                                          expected_resp_length,
+                                          &bytes_read,
+                                          deadline));
   if (expected_resp_length != bytes_read) {
     return STATUS(
         IOError, Substitute("Received $1 bytes instead of $2", bytes_read, expected_resp_length));
@@ -195,7 +202,7 @@ void TestRedisService::SendCommandAndExpectResponse(const string& cmd,
 
   // Verify that the response is as expected.
 
-  ASSERT_EQ(resp, string(util::to_char_ptr(resp_), resp.length()));
+  ASSERT_EQ(resp, string(util::to_char_ptr(resp_.data()), resp.length()));
 }
 
 void TestRedisService::DoRedisTest(vector<string> command,
@@ -236,6 +243,78 @@ TEST_F(TestRedisService, BatchedCommandsInlinePartial) {
             /* partial */ true)
     );
   }
+}
+
+namespace {
+
+class TestRedisServicePipelined : public TestRedisService {
+ public:
+  void SetUp() override {
+    FLAGS_redis_max_concurrent_commands = FLAGS_test_redis_max_concurrent_commands;
+    TestRedisService::SetUp();
+  }
+};
+
+#ifndef THREAD_SANITIZER
+const size_t kPipelineKeys = 1000;
+#else
+const size_t kPipelineKeys = 100;
+#endif
+
+size_t ValueForKey(size_t key) {
+  return key * 2;
+}
+
+std::string PipelineSetCommand() {
+  std::string command;
+  for (size_t i = 0; i != kPipelineKeys; ++i) {
+    command += yb::Format("set $0 $1\r\n", i, ValueForKey(i));
+  }
+  return command;
+}
+
+std::string PipelineSetResponse() {
+  std::string response;
+  for (size_t i = 0; i != kPipelineKeys; ++i) {
+    response += "+OK\r\n";
+  }
+  return response;
+}
+
+std::string PipelineGetCommand() {
+  std::string command;
+  for (size_t i = 0; i != kPipelineKeys; ++i) {
+    command += yb::Format("get $0\r\n", i);
+  }
+  return command;
+}
+
+std::string PipelineGetResponse() {
+  std::string response;
+  for (size_t i = 0; i != kPipelineKeys; ++i) {
+    std::string value = std::to_string(ValueForKey(i));
+    response += yb::Format("$$$0\r\n$1\r\n", value.length(), value);
+  }
+  return response;
+}
+
+} // namespace
+
+TEST_F_EX(TestRedisService, Pipeline, TestRedisServicePipelined) {
+  auto start = std::chrono::steady_clock::now();
+  SendCommandAndExpectResponse(PipelineSetCommand(), PipelineSetResponse());
+  auto mid = std::chrono::steady_clock::now();
+  SendCommandAndExpectResponse(PipelineGetCommand(), PipelineGetResponse());
+  auto end = std::chrono::steady_clock::now();
+  auto set_time = std::chrono::duration_cast<std::chrono::milliseconds>(mid - start);
+  auto get_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - mid);
+  LOG(INFO) << yb::Format("Set time: $0ms, get time: $1ms", set_time.count(), get_time.count());
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+}
+
+TEST_F_EX(TestRedisService, PipelinePartial, TestRedisServicePipelined) {
+  SendCommandAndExpectResponse(PipelineSetCommand(), PipelineSetResponse(), true /* partial */);
+  SendCommandAndExpectResponse(PipelineGetCommand(), PipelineGetResponse(), true /* partial */);
 }
 
 TEST_F(TestRedisService, BatchedCommandMulti) {

@@ -6,10 +6,12 @@
 
 #include "yb/client/client.h"
 #include "yb/gutil/strings/join.h"
+
 #include "yb/cqlserver/cql_processor.h"
+#include "yb/cqlserver/cql_rpc.h"
 #include "yb/cqlserver/cql_server.h"
+
 #include "yb/rpc/rpc_context.h"
-#include "yb/rpc/cql_rpc.h"
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/mem_tracker.h"
@@ -34,7 +36,6 @@ using yb::client::YBSchema;
 using yb::client::YBSession;
 using yb::client::YBTableCache;
 using yb::rpc::InboundCall;
-using yb::rpc::CQLInboundCall;
 
 CQLServiceImpl::CQLServiceImpl(
     CQLServer* server, shared_ptr<rpc::Messenger> messenger,
@@ -42,8 +43,8 @@ CQLServiceImpl::CQLServiceImpl(
     : CQLServerServiceIf(server->metric_entity()),
       next_available_processor_(processors_.end()),
       messenger_(messenger),
-      cql_rpcserver_env_(new rpc::CQLRpcServerEnv(server->first_rpc_address().address().to_string(),
-                                                  opts.broadcast_rpc_address)) {
+      cql_rpcserver_env_(new CQLRpcServerEnv(server->first_rpc_address().address().to_string(),
+                                             opts.broadcast_rpc_address)) {
   // TODO(ENG-446): Handle metrics for all the methods individually.
   // Setup client.
   SetUpYBClient(opts.master_addresses_flag, server->metric_entity());

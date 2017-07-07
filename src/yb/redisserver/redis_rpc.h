@@ -2,31 +2,30 @@
 // Copyright (c) YugaByte, Inc.
 //
 
-#ifndef YB_RPC_REDIS_RPC_H
-#define YB_RPC_REDIS_RPC_H
+#ifndef YB_REDISSERVER_REDIS_RPC_H
+#define YB_REDISSERVER_REDIS_RPC_H
 
 #include "yb/rpc/connection.h"
 #include "yb/rpc/rpc_with_queue.h"
 
 namespace yb {
-namespace rpc {
+namespace redisserver {
 
 class RedisParser;
 
-class RedisConnectionContext : public ConnectionContextWithQueue {
+class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
  public:
   RedisConnectionContext();
   ~RedisConnectionContext();
 
  private:
-  void RunNegotiation(ConnectionPtr connection, const MonoTime& deadline) override;
-  CHECKED_STATUS ProcessCalls(const ConnectionPtr& connection,
+  void RunNegotiation(rpc::ConnectionPtr connection, const MonoTime& deadline) override;
+  CHECKED_STATUS ProcessCalls(const rpc::ConnectionPtr& connection,
                               Slice slice,
                               size_t* consumed) override;
   size_t BufferLimit() override;
-  ConnectionType Type() override { return ConnectionType::REDIS; }
 
-  CHECKED_STATUS HandleInboundCall(const ConnectionPtr& connection, Slice redis_command);
+  CHECKED_STATUS HandleInboundCall(const rpc::ConnectionPtr& connection, Slice redis_command);
 
   std::unique_ptr<RedisParser> parser_;
 };
@@ -36,9 +35,9 @@ struct RedisClientCommand {
   std::vector<Slice> cmd_args;
 };
 
-class RedisInboundCall : public InboundCall {
+class RedisInboundCall : public rpc::QueueableInboundCall {
  public:
-  explicit RedisInboundCall(ConnectionPtr conn, CallProcessedListener call_processed_listener);
+  explicit RedisInboundCall(rpc::ConnectionPtr conn, CallProcessedListener call_processed_listener);
 
   CHECKED_STATUS ParseFrom(Slice source);
 
@@ -53,7 +52,7 @@ class RedisInboundCall : public InboundCall {
                                          bool is_success) override;
   void LogTrace() const override;
   std::string ToString() const override;
-  void DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) override;
+  void DumpPB(const rpc::DumpRunningRpcsRequestPB& req, rpc::RpcCallInProgressPB* resp) override;
 
   MonoTime GetClientDeadline() const override;
   RedisClientCommand& GetClientCommand() { return client_command_; }
@@ -63,7 +62,7 @@ class RedisInboundCall : public InboundCall {
   RedisClientCommand client_command_;
 };
 
-} // namespace rpc
+} // namespace redisserver
 } // namespace yb
 
-#endif // YB_RPC_REDIS_RPC_H
+#endif // YB_REDISSERVER_REDIS_RPC_H

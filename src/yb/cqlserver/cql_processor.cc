@@ -149,7 +149,7 @@ void CQLProcessor::SendResponse(rpc::InboundCallPtr call, CQLResponse* response)
   // should still be present.
   faststring temp;
   response->Serialize(&temp);
-  rpc::CQLInboundCall* cql_call = down_cast<rpc::CQLInboundCall*>(call.get());
+  auto* cql_call = down_cast<CQLInboundCall*>(call.get());
   cql_call->response_msg_buf() = util::RefCntBuffer(temp);
   delete response;
   RpcContext context(std::move(call), cql_metrics_->rpc_method_metrics_);

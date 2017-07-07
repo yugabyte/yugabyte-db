@@ -40,7 +40,7 @@ using client::YBqlWriteOp;
 
 SqlEnv::SqlEnv(
     weak_ptr<rpc::Messenger> messenger, shared_ptr<YBClient> client,
-    shared_ptr<YBTableCache> cache, rpc::CQLRpcServerEnv* cql_rpcserver_env)
+    shared_ptr<YBTableCache> cache, cqlserver::CQLRpcServerEnv* cql_rpcserver_env)
     : client_(client),
       table_cache_(cache),
       write_session_(client_->NewSession(false /* read_only */)),

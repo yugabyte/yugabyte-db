@@ -34,8 +34,6 @@ class Negotiation {
   static void YBNegotiation(ConnectionPtr conn,
                             YBConnectionContext* context,
                             const MonoTime& deadline);
-  static void RedisNegotiation(ConnectionPtr conn, const MonoTime& deadline);
-  static void CQLNegotiation(ConnectionPtr conn, const MonoTime& deadline);
  private:
   DISALLOW_IMPLICIT_CONSTRUCTORS(Negotiation);
 };

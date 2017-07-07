@@ -108,7 +108,7 @@ class PeerMessageQueue {
     bool needs_remote_bootstrap = false;
 
     // Member type of this peer in the config.
-    RaftPeerPB::MemberType member_type;
+    RaftPeerPB::MemberType member_type = RaftPeerPB::UNKNOWN_MEMBER_TYPE;
 
    private:
     // The last term we saw from a given peer.

@@ -31,6 +31,8 @@ include_directories(../../cpp_redis/includes)
 include_directories(../../redis/deps/lua/src)
 
 set(REDISSERVER_SRCS
+  redis_encoding.cc
+  redis_rpc.cc
   redis_server.cc
   redis_service.cc
   redis_server_options.cc

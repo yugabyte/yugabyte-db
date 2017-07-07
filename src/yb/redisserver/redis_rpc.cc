@@ -1,14 +1,15 @@
 //
 // Copyright (c) YugaByte, Inc.
 //
-#include "yb/rpc/redis_rpc.h"
+#include "yb/redisserver/redis_rpc.h"
 
 #include "yb/common/redis_protocol.pb.h"
+
+#include "yb/redisserver/redis_encoding.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/negotiation.h"
 #include "yb/rpc/reactor.h"
-#include "yb/rpc/redis_encoding.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/util/logging.h"
@@ -21,12 +22,14 @@
 
 DECLARE_bool(rpc_dump_all_traces);
 DECLARE_int32(rpc_slow_query_threshold_ms);
+DEFINE_uint64(redis_max_concurrent_commands, 1,
+              "Max number of redis commands received from single connection, "
+              "that could be processed concurrently");
 
-using strings::Substitute;
-using std::placeholders::_1;
+using namespace std::placeholders;
 
 namespace yb {
-namespace rpc {
+namespace redisserver {
 
 namespace {
 
@@ -169,7 +172,7 @@ class RedisParser {
     if (!status.ok() || incomplete_) {
       return status;
     }
-    ptrdiff_t current_size;
+    ptrdiff_t current_size = 0;
     RETURN_NOT_OK(ParseNumber('$', 0, kMaxBufferSize, "Argument size", &current_size));
     state_ = State::BULK_ARGUMENT_BODY;
     token_begin_ = pos_;
@@ -244,8 +247,8 @@ class RedisParser {
                   min,
                   max,
                   Corruption,
-                  Substitute("$0 out of expected range [$1, $2] : $3",
-                      name, min, max, parsed_number));
+                  yb::Format("$0 out of expected range [$1, $2] : $3",
+                             name, min, max, parsed_number));
     *out = static_cast<ptrdiff_t>(parsed_number);
     return Status::OK();
   }
@@ -275,14 +278,18 @@ class RedisParser {
   size_t current_argument_size_ = 0;
 };
 
-RedisConnectionContext::RedisConnectionContext() {}
+RedisConnectionContext::RedisConnectionContext()
+    : ConnectionContextWithQueue(FLAGS_redis_max_concurrent_commands) {}
+
 RedisConnectionContext::~RedisConnectionContext() {}
 
-void RedisConnectionContext::RunNegotiation(ConnectionPtr connection, const MonoTime& deadline) {
-  Negotiation::RedisNegotiation(std::move(connection), deadline);
+void RedisConnectionContext::RunNegotiation(rpc::ConnectionPtr connection,
+                                            const MonoTime& deadline) {
+  CHECK_EQ(connection->direction(), rpc::ConnectionDirection::SERVER);
+  connection->CompleteNegotiation(Status::OK());
 }
 
-Status RedisConnectionContext::ProcessCalls(const ConnectionPtr& connection,
+Status RedisConnectionContext::ProcessCalls(const rpc::ConnectionPtr& connection,
                                             Slice slice,
                                             size_t* consumed) {
   if (!parser_) {
@@ -307,7 +314,7 @@ Status RedisConnectionContext::ProcessCalls(const ConnectionPtr& connection,
   return Status::OK();
 }
 
-Status RedisConnectionContext::HandleInboundCall(const ConnectionPtr& connection,
+Status RedisConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& connection,
                                                  Slice redis_command) {
   auto reactor = connection->reactor();
   DCHECK(reactor->IsCurrentThread());
@@ -328,9 +335,9 @@ size_t RedisConnectionContext::BufferLimit() {
   return kMaxBufferSize;
 }
 
-RedisInboundCall::RedisInboundCall(ConnectionPtr conn,
+RedisInboundCall::RedisInboundCall(rpc::ConnectionPtr conn,
                                    CallProcessedListener call_processed_listener)
-    : InboundCall(std::move(conn), std::move(call_processed_listener)) {
+    : QueueableInboundCall(std::move(conn), std::move(call_processed_listener)) {
 }
 
 Status RedisInboundCall::ParseFrom(Slice source) {
@@ -351,7 +358,7 @@ Status RedisInboundCall::ParseFrom(Slice source) {
                              source.size());
   }
 
-  remote_method_ = RemoteMethod("yb.redisserver.RedisServerService", "anyMethod");
+  remote_method_ = rpc::RemoteMethod("yb.redisserver.RedisServerService", "anyMethod");
 
   return Status::OK();
 }
@@ -376,8 +383,8 @@ string RedisInboundCall::ToString() const {
       yb::ToString(connection()->remote()));
 }
 
-void RedisInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
-                              RpcCallInProgressPB* resp) {
+void RedisInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
+                              rpc::RpcCallInProgressPB* resp) {
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
   }
@@ -388,7 +395,7 @@ void RedisInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
 Status RedisInboundCall::SerializeResponseBuffer(const google::protobuf::MessageLite& response,
                                                  bool is_success) {
   if (!is_success) {
-    const ErrorStatusPB& error_status = static_cast<const ErrorStatusPB&>(response);
+    const auto& error_status = static_cast<const rpc::ErrorStatusPB&>(response);
     response_msg_buf_ = util::RefCntBuffer(EncodeAsError(error_status.message()));
     return Status::OK();
   }
@@ -425,5 +432,5 @@ void RedisInboundCall::Serialize(std::deque<util::RefCntBuffer>* output) const {
   output->push_back(response_msg_buf_);
 }
 
-} // namespace rpc
+} // namespace redisserver
 } // namespace yb

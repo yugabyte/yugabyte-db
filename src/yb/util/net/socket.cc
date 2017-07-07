@@ -540,9 +540,11 @@ Status Socket::BlockingRecv(uint8_t *buf, size_t amt, size_t *nread, const MonoT
     RETURN_NOT_OK(SetRecvTimeout(timeout));
     int32_t inc_num_read = 0;
     Status s = Recv(buf, num_to_read, &inc_num_read);
-    tot_read += inc_num_read;
-    buf += inc_num_read;
-    *nread = tot_read;
+    if (inc_num_read > 0) {
+      tot_read += inc_num_read;
+      buf += inc_num_read;
+      *nread = tot_read;
+    }
 
     if (PREDICT_FALSE(!s.ok())) {
       // Continue silently when the syscall is interrupted.

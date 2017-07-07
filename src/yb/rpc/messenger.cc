@@ -37,12 +37,15 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/rpc/acceptor.h"
 #include "yb/rpc/connection.h"
 #include "yb/rpc/constants.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/rpc_service.h"
 #include "yb/rpc/sasl_common.h"
+#include "yb/rpc/yb_rpc.h"
+
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
@@ -76,7 +79,8 @@ MessengerBuilder::MessengerBuilder(std::string name)
       num_reactors_(4),
       num_negotiation_threads_(4),
       coarse_timer_granularity_(MonoDelta::FromMilliseconds(100)),
-      connection_type_(ConnectionType::YB) {}
+      connection_context_factory_(&std::make_unique<YBConnectionContext>) {
+}
 
 MessengerBuilder& MessengerBuilder::set_connection_keepalive_time(const MonoDelta &keepalive) {
   connection_keepalive_time_ = keepalive;
@@ -101,11 +105,6 @@ MessengerBuilder& MessengerBuilder::set_coarse_timer_granularity(const MonoDelta
 MessengerBuilder &MessengerBuilder::set_metric_entity(
     const scoped_refptr<MetricEntity>& metric_entity) {
   metric_entity_ = metric_entity;
-  return *this;
-}
-
-MessengerBuilder &MessengerBuilder::use_connection_type(ConnectionType type) {
-  connection_type_ = type;
   return *this;
 }
 
@@ -341,7 +340,7 @@ void Messenger::RegisterInboundSocket(Socket *new_socket, const Endpoint& remote
 
 Messenger::Messenger(const MessengerBuilder &bld)
   : name_(bld.name_),
-    connection_type_(bld.connection_type_),
+    connection_context_factory_(bld.connection_context_factory_),
     metric_entity_(bld.metric_entity_),
     retain_self_(this) {
   for (int i = 0; i < bld.num_reactors_; i++) {

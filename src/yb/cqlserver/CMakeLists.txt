@@ -27,11 +27,12 @@ ADD_YB_LIBRARY(cql_service_proto
 
 set(CQLSERVER_SRCS
   cql_message.cc
-  cql_statement.cc
   cql_processor.cc
-  cql_service.cc
+  cql_rpc.cc
   cql_server.cc
   cql_server_options.cc
+  cql_service.cc
+  cql_statement.cc
 )
 
 add_library(yb-cql ${CQLSERVER_SRCS})

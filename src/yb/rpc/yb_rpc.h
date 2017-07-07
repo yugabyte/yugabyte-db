@@ -42,8 +42,6 @@ class YBConnectionContext : public ConnectionContextWithCallId {
                               Slice slice,
                               size_t* consumed) override;
 
-  ConnectionType Type() override { return ConnectionType::YB; }
-
   size_t MaxReceive(Slice existing_data) override;
 
   CHECKED_STATUS HandleCall(const ConnectionPtr& connection, Slice call_data);

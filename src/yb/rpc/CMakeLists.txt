@@ -46,7 +46,6 @@ set(YRPC_SRCS
     blocking_ops.cc
     connection.cc
     constants.cc
-    cql_rpc.cc
     growable_buffer.cc
     inbound_call.cc
     messenger.cc
@@ -55,8 +54,6 @@ set(YRPC_SRCS
     rpc_call.cc
     proxy.cc
     reactor.cc
-    redis_encoding.cc
-    redis_rpc.cc
     remote_method.cc
     rpc.cc
     rpc_context.cc

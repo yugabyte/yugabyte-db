@@ -57,7 +57,7 @@ class ServerBaseOptions {
 
   std::string master_addresses_flag;
 
-  rpc::ConnectionType connection_type;
+  rpc::ConnectionContextFactory connection_context_factory;
 
   // This can crash the process if you pass in an invalid list of master addresses!
   void SetMasterAddresses(addresses_shared_ptr master_addresses) {

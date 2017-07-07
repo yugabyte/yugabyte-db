@@ -602,7 +602,7 @@ DEFINE_int32(test_rpc_concurrency, 20, "Number of concurrent RPC requests");
 DEFINE_int32(test_rpc_count, 50000, "Total number of RPC requests");
 
 TEST_F(RpcStubTest, TestRpcPerformance) {
-  MessengerOptions messenger_options;
+  MessengerOptions messenger_options = kDefaultClientMessengerOptions;
   messenger_options.n_reactors = 4;
   client_messenger_ = CreateMessenger("Client", messenger_options);
   CalculatorServiceProxy p(client_messenger_, server_endpoint_);

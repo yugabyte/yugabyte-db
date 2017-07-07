@@ -37,10 +37,8 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/rpc/connection.h"
-#include "yb/rpc/cql_rpc.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/negotiation.h"
-#include "yb/rpc/redis_rpc.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/sasl_client.h"
@@ -80,28 +78,20 @@ Status ShutdownError(bool aborted) {
       STATUS(ServiceUnavailable, msg, "", ESHUTDOWN);
 }
 
-ConnectionContext* MakeNewConnectionContext(ConnectionType connection_type) {
-  switch (connection_type) {
-    case ConnectionType::YB:
-      return new YBConnectionContext();
-
-    case ConnectionType::REDIS:
-      return new RedisConnectionContext();
-
-    case ConnectionType::CQL:
-      return new CQLConnectionContext();
-  }
-
-  LOG(FATAL) << "Unknown connection type " << yb::util::to_underlying(connection_type);
-}
-
-ConnectionPtr MakeNewConnection(ConnectionType connection_type,
-                              Reactor* reactor,
-                              const Endpoint& remote,
-                              int socket,
-                              Connection::Direction direction) {
-  std::unique_ptr<ConnectionContext> context(MakeNewConnectionContext(connection_type));
-  return std::make_shared<Connection>(reactor, remote, socket, direction, move(context));
+ConnectionPtr MakeNewConnection(const ConnectionContextFactory& factory,
+                                Reactor* reactor,
+                                const Endpoint& remote,
+                                int socket,
+                                Connection::Direction direction) {
+  auto context = factory();
+  auto* context_ptr = context.get();
+  auto result = std::make_shared<Connection>(reactor,
+                                             remote,
+                                             socket,
+                                             direction,
+                                             std::move(context));
+  context_ptr->AssignConnection(result);
+  return result;
 }
 
 } // anonymous namespace
@@ -469,7 +459,7 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
   RETURN_NOT_OK(StartConnect(sock.get_ptr(), conn_id.remote(), &connect_in_progress));
 
   // Register the new connection in our map.
-  *conn = MakeNewConnection(messenger_->connection_type_,
+  *conn = MakeNewConnection(messenger_->connection_context_factory_,
                             this,
                             conn_id.remote(),
                             sock->Release(),
@@ -751,7 +741,7 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
 
 void Reactor::RegisterInboundSocket(Socket *socket, const Endpoint& remote) {
   VLOG(3) << name_ << ": new inbound connection to " << remote;
-  auto conn = MakeNewConnection(messenger_->connection_type_,
+  auto conn = MakeNewConnection(messenger_->connection_context_factory_,
                                 this,
                                 remote,
                                 socket->Release(),

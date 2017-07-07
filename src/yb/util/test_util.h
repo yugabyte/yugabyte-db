@@ -142,6 +142,7 @@ Status WaitFor(std::function<bool()> lambda_condition, const MonoDelta& timeout,
                const string& description);
 } // namespace yb
 
+// Gives ability to define custom parent class for test fixture.
 #define TEST_F_EX(test_case_name, test_name, parent_class) \
   GTEST_TEST_(test_case_name, test_name, parent_class, \
               ::testing::internal::GetTypeId<test_case_name>())

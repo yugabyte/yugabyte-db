@@ -1,10 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef YB_RPC_CQL_RPCSERVER_ENV_H
-#define YB_RPC_CQL_RPCSERVER_ENV_H
+#ifndef YB_CQLSERVER_CQL_RPCSERVER_ENV_H
+#define YB_CQLSERVER_CQL_RPCSERVER_ENV_H
 
 namespace yb {
-namespace rpc {
+namespace cqlserver {
 
 class CQLRpcServerEnv {
  public:
@@ -14,9 +14,9 @@ class CQLRpcServerEnv {
                                    broadcast_rpc_address) {
   }
 
-  std::string rpc_address() const { return rpc_address_; }
+  const std::string& rpc_address() const { return rpc_address_; }
 
-  std::string broadcast_address() const { return broadcast_rpc_address_; }
+  const std::string& broadcast_address() const { return broadcast_rpc_address_; }
 
  private:
   // Cassandra equivalent of rpc_address, which is the address the node binds to.
@@ -26,6 +26,7 @@ class CQLRpcServerEnv {
   const std::string broadcast_rpc_address_;
 };
 
-}  // namespace rpc
+}  // namespace cqlserver
 }  // namespace yb
-#endif // YB_RPC_CQL_RPCSERVER_ENV_H
+
+#endif // YB_CQLSERVER_CQL_RPCSERVER_ENV_H

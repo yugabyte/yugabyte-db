@@ -30,7 +30,6 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/rpc_fwd.h"
-#include "yb/rpc/connection_types.h"
 #include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/rpc_call.h"
 #include "yb/rpc/remote_method.h"

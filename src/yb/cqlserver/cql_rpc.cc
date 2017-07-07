@@ -1,14 +1,13 @@
 //
 // Copyright (c) YugaByte, Inc.
 //
-#include "yb/rpc/cql_rpc.h"
+#include "yb/cqlserver/cql_rpc.h"
 
 #include "yb/cqlserver/cql_message.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/negotiation.h"
 #include "yb/rpc/reactor.h"
-#include "yb/rpc/redis_encoding.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/util/debug/trace_event.h"
@@ -20,17 +19,18 @@ DECLARE_bool(rpc_dump_all_traces);
 DECLARE_int32(rpc_slow_query_threshold_ms);
 
 namespace yb {
-namespace rpc {
+namespace cqlserver {
 
 CQLConnectionContext::CQLConnectionContext()
     : sql_session_(new sql::SqlSession()) {
 }
 
-void CQLConnectionContext::RunNegotiation(ConnectionPtr connection, const MonoTime& deadline) {
-  Negotiation::CQLNegotiation(std::move(connection), deadline);
+void CQLConnectionContext::RunNegotiation(rpc::ConnectionPtr connection, const MonoTime& deadline) {
+  CHECK_EQ(connection->direction(), rpc::ConnectionDirection::SERVER);
+  connection->CompleteNegotiation(Status::OK());
 }
 
-Status CQLConnectionContext::ProcessCalls(const ConnectionPtr& connection,
+Status CQLConnectionContext::ProcessCalls(const rpc::ConnectionPtr& connection,
                                           Slice slice,
                                           size_t* consumed) {
   auto pos = slice.data();
@@ -66,7 +66,7 @@ size_t CQLConnectionContext::BufferLimit() {
   return CQLMessage::kMaxMessageLength;
 }
 
-Status CQLConnectionContext::HandleInboundCall(const ConnectionPtr& connection, Slice slice) {
+Status CQLConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& connection, Slice slice) {
   auto reactor = connection->reactor();
   DCHECK(reactor->IsCurrentThread());
 
@@ -90,11 +90,11 @@ Status CQLConnectionContext::HandleInboundCall(const ConnectionPtr& connection, 
   return Status::OK();
 }
 
-uint64_t CQLConnectionContext::ExtractCallId(InboundCall* call) {
+uint64_t CQLConnectionContext::ExtractCallId(rpc::InboundCall* call) {
   return down_cast<CQLInboundCall*>(call)->stream_id();
 }
 
-CQLInboundCall::CQLInboundCall(ConnectionPtr conn,
+CQLInboundCall::CQLInboundCall(rpc::ConnectionPtr conn,
                                CallProcessedListener call_processed_listener,
                                sql::SqlSession::SharedPtr sql_session)
     : InboundCall(std::move(conn), std::move(call_processed_listener)),
@@ -111,7 +111,7 @@ Status CQLInboundCall::ParseFrom(Slice source) {
 
   // Fill the service name method name to transfer the call to. The method name is for debug
   // tracing only. Inside CQLServiceImpl::Handle, we rely on the opcode to dispatch the execution.
-  remote_method_ = RemoteMethod("yb.cqlserver.CQLServerService", "ExecuteRequest");
+  remote_method_ = rpc::RemoteMethod("yb.cqlserver.CQLServerService", "ExecuteRequest");
   stream_id_ = cqlserver::CQLRequest::ParseStreamId(serialized_request_);
 
   return Status::OK();
@@ -127,9 +127,9 @@ void CQLInboundCall::Serialize(std::deque<util::RefCntBuffer>* output) const {
 Status CQLInboundCall::SerializeResponseBuffer(const google::protobuf::MessageLite& response,
                                                bool is_success) {
   if (!is_success) {
-    const ErrorStatusPB& error_status = static_cast<const ErrorStatusPB&>(response);
+    const auto& error_status = static_cast<const rpc::ErrorStatusPB&>(response);
     // TODO proper error reporting
-    response_msg_buf_ = util::RefCntBuffer(EncodeAsError(error_status.message()));
+    response_msg_buf_ = util::RefCntBuffer(error_status.message());
     return Status::OK();
   }
 
@@ -153,7 +153,8 @@ std::string CQLInboundCall::ToString() const {
                              yb::ToString(connection()->remote()));
 }
 
-void CQLInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) {
+void CQLInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
+                            rpc::RpcCallInProgressPB* resp) {
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
   }
@@ -181,5 +182,5 @@ bool CQLInboundCall::TryResume() {
   return true;
 }
 
-} // namespace rpc
+} // namespace cqlserver
 } // namespace yb

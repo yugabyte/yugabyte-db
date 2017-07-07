@@ -10,11 +10,13 @@
 #define YB_CQLSERVER_CQL_PROCESSOR_H_
 
 #include "yb/client/client.h"
+
 #include "yb/cqlserver/cql_message.h"
+#include "yb/cqlserver/cql_rpc.h"
 #include "yb/cqlserver/cql_statement.h"
+
 #include "yb/sql/sql_processor.h"
 #include "yb/sql/statement.h"
-#include "yb/rpc/cql_rpc.h"
 
 namespace yb {
 namespace cqlserver {

@@ -1,8 +1,8 @@
 //
 // Copyright (c) YugaByte, Inc.
 //
-#ifndef YB_RPC_CQL_RPC_H
-#define YB_RPC_CQL_RPC_H
+#ifndef YB_CQLSERVER_CQL_RPC_H
+#define YB_CQLSERVER_CQL_RPC_H
 
 #include "yb/cqlserver/cql_message.h"
 
@@ -13,22 +13,21 @@
 #include "yb/sql/sql_session.h"
 
 namespace yb {
-namespace rpc {
+namespace cqlserver {
 
-class CQLConnectionContext : public ConnectionContextWithCallId {
+class CQLConnectionContext : public rpc::ConnectionContextWithCallId {
  public:
   CQLConnectionContext();
 
  private:
-  uint64_t ExtractCallId(InboundCall* call) override;
-  void RunNegotiation(ConnectionPtr connection, const MonoTime& deadline) override;
-  CHECKED_STATUS ProcessCalls(const ConnectionPtr& connection,
+  uint64_t ExtractCallId(rpc::InboundCall* call) override;
+  void RunNegotiation(rpc::ConnectionPtr connection, const MonoTime& deadline) override;
+  CHECKED_STATUS ProcessCalls(const rpc::ConnectionPtr& connection,
                               Slice slice,
                               size_t* consumed) override;
   size_t BufferLimit() override;
-  ConnectionType Type() override { return ConnectionType::CQL; }
 
-  CHECKED_STATUS HandleInboundCall(const ConnectionPtr& connection, Slice slice);
+  CHECKED_STATUS HandleInboundCall(const rpc::ConnectionPtr& connection, Slice slice);
 
   // SQL session of this CQL client connection.
   // TODO(robert): To get around the need for this RPC layer to link with the SQL layer for the
@@ -39,9 +38,9 @@ class CQLConnectionContext : public ConnectionContextWithCallId {
   sql::SqlSession::SharedPtr sql_session_;
 };
 
-class CQLInboundCall : public InboundCall {
+class CQLInboundCall : public rpc::InboundCall {
  public:
-  explicit CQLInboundCall(ConnectionPtr conn,
+  explicit CQLInboundCall(rpc::ConnectionPtr conn,
                           CallProcessedListener call_processed_listener,
                           sql::SqlSession::SharedPtr sql_session);
 
@@ -55,7 +54,7 @@ class CQLInboundCall : public InboundCall {
                                          bool is_success) override;
   void LogTrace() const override;
   std::string ToString() const override;
-  void DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) override;
+  void DumpPB(const rpc::DumpRunningRpcsRequestPB& req, rpc::RpcCallInProgressPB* resp) override;
 
   MonoTime GetClientDeadline() const override;
 
@@ -86,7 +85,7 @@ class CQLInboundCall : public InboundCall {
   uint16_t stream_id_;
 };
 
-} // namespace rpc
+} // namespace cqlserver
 } // namespace yb
 
-#endif // YB_RPC_CQL_RPC_H
+#endif // YB_CQLSERVER_CQL_RPC_H
