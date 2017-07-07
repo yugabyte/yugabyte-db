@@ -286,6 +286,26 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testEditInstanceType() {
+    for (TestData t : testData) {
+      Universe universe = t.universe;
+      UUID univUuid = t.univUuid;
+      UniverseDefinitionTaskParams ud = universe.getUniverseDetails();
+      ud.universeUUID = univUuid;
+      Universe.saveDetails(univUuid, t.setAzUUIDs());
+      t.setAzUUIDs(ud);
+      setPerAZCounts(ud.placementInfo, ud.nodeDetailsSet);
+      ud.userIntent.instanceType = "m4.medium";
+      PlacementInfoUtil.updateUniverseDefinition(ud, customer.getCustomerId());
+      Set<NodeDetails> nodes = ud.nodeDetailsSet;
+      assertEquals(REPLICATION_FACTOR, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
+      assertEquals(INITIAL_NUM_NODES, PlacementInfoUtil.getTserversToBeRemoved(nodes).size());
+      assertEquals(INITIAL_NUM_NODES, PlacementInfoUtil.getTserversToProvision(nodes).size());
+      assertEquals(REPLICATION_FACTOR, PlacementInfoUtil.getMastersToProvision(nodes).size());
+    }
+  }
+
+  @Test
   public void testPerAZShrinkPlacement() {
     for (TestData t : testData) {
       Universe universe = t.universe;
@@ -431,6 +451,35 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       testData.add(new TestData(Common.CloudType.aws, 7, 3));
     } catch (UnsupportedOperationException e) {
        assertTrue(e.getMessage().contains("nodes cannot be less than the replication"));
+    }
+  }
+
+  @Test
+  public void testCreateInstanceType() {
+    testData.clear();
+    int numMasters = 3;
+    int numTservers = 3;
+    String newType = "m4.medium";
+    customer = ModelFactory.testCustomer("b@c.com");
+    testData.add(new TestData(Common.CloudType.aws, numMasters, numTservers));
+    TestData t = testData.get(0);
+    UniverseDefinitionTaskParams ud = t.universe.getUniverseDetails();
+    t.setAzUUIDs(ud);
+    PlacementInfoUtil.updateUniverseDefinition(ud, customer.getCustomerId());
+    Set<NodeDetails> nodes = ud.nodeDetailsSet;
+    for (NodeDetails node : nodes) {
+      assertEquals(node.cloudInfo.instance_type, "m3.medium");
+    }
+    assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
+    assertEquals(3, PlacementInfoUtil.getNumMasters(nodes));
+    assertEquals(3, nodes.size());
+    ud.userIntent.instanceType = newType;
+    PlacementInfoUtil.updateUniverseDefinition(ud, customer.getCustomerId());
+    nodes = ud.nodeDetailsSet;
+    assertEquals(numMasters, PlacementInfoUtil.getMastersToProvision(nodes).size());
+    assertEquals(numTservers, PlacementInfoUtil.getTserversToProvision(nodes).size());
+    for (NodeDetails node : nodes) {
+      assertEquals(node.cloudInfo.instance_type, newType);
     }
   }
 }
