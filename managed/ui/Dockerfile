@@ -1,22 +1,16 @@
-FROM node:7.6
+FROM node:alpine
+MAINTAINER YugaByte
+ENV container=yugaware-ui
 
 # Create app directory
-RUN mkdir -p /src/app
-WORKDIR /src/app
+WORKDIR /opt/yugaware-ui
 
-# Install app dependencies
-COPY package.json /src/app/
-COPY webpack.custom-config.js /src/app
-RUN npm install && \
-    npm install -g pushstate-server
+RUN npm install -g static-server 
 
 # Bundle app source
-COPY . /src/app
-
-# Build production version
-RUN npm run build
+COPY build /opt/yugaware-ui
 
 EXPOSE 4000
 
 # Start production version via pushstate server
-CMD [ "npm", "run", "start:prod", "--port", "4000" ]
+CMD [ "static-server", "/opt/yugaware-ui", "--port", "4000" ]
