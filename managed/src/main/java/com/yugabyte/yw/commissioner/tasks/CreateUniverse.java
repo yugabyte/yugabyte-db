@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import java.util.HashSet;
 import java.util.Set;
 
 import org.slf4j.Logger;
@@ -13,7 +12,6 @@ import org.yb.client.YBClient;
 
 import com.yugabyte.yw.commissioner.TaskListQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
