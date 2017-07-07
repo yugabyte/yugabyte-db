@@ -476,7 +476,7 @@ public class Universe extends Model {
     UniverseResourceDetails universeResourceDetails = new UniverseResourceDetails();
     for (NodeDetails node : nodes) {
       if (node.isActive() && cloudType == Common.CloudType.aws) {
-        AWSResourceUtil.mergeResourceDetails(userIntent.deviceInfo, node.cloudInfo.instance_type,
+        AWSResourceUtil.mergeResourceDetails(userIntent.deviceInfo, userIntent.instanceType,
             node.cloudInfo.az, AvailabilityZone.find.byId(node.azUuid).region.code,
             AWSConstants.Tenancy.Shared, universeResourceDetails);
       }
