@@ -125,6 +125,12 @@ export default class UniverseDetail extends Component {
         <Row>
           <Col lg={10}>
             {currentBreadCrumb}
+            <div className="universe-detail-status-container">
+              <h2>
+                { currentUniverse.data.name }
+              </h2>
+              <UniverseStatusContainer currentUniverse={currentUniverse.data} showLabelText={true} />
+            </div>
           </Col>
           <Col lg={2} className="page-action-buttons">
             <ButtonGroup className="universe-detail-btn-group">
