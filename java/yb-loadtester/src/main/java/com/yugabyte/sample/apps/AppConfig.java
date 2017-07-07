@@ -55,4 +55,6 @@ public class AppConfig {
 
   // The table level TTL in seconds. No TTL is applied if this value is set to -1.
   public long tableTTLSeconds = -1;
+
+  public int redisPipelineLength = 1;
 }

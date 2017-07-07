@@ -35,7 +35,8 @@ import com.yugabyte.sample.common.IOPSThread.IOType;
  *     |__ CassandraKeyValue.java    : Simple key-value Cassandra app.
  *     |__ CassandraStockTicker.java : Sample stock-ticker app.
  *     |__ CassandraTimeseries.java  : Sample timeseries workload app/
- *     |__ RedisKeyValue.java     : Simple Redis app, good starting point for writing Redis apps.
+ *     |__ RedisKeyValue.java        : Simple Redis app, good starting point for writing Redis apps.
+ *     |__ RedisPipelinedKeyValue.java : Similar to RedisKeyValue but uses pipelined mode.
  *
  *
  * Usage

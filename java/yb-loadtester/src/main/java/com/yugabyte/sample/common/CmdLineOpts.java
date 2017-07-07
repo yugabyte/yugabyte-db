@@ -39,6 +39,7 @@ public class CmdLineOpts {
     CassandraTimeseries,
     CassandraSparkWordCount,
     RedisKeyValue,
+    RedisPipelinedKeyValue,
   }
 
   // The class type of the app needed to spawn new objects.
@@ -85,6 +86,17 @@ public class CmdLineOpts {
     // Check if we should drop existing tables.
     if (commandLine.hasOption("reuse_table")) {
       reuseExistingTable = true;
+    }
+    if (appName == AppName.RedisPipelinedKeyValue) {
+      if (commandLine.hasOption("pipeline_length")) {
+        AppBase.appConfig.redisPipelineLength =
+            Integer.parseInt(commandLine.getOptionValue("pipeline_length"));
+        if (AppBase.appConfig.redisPipelineLength > AppBase.appConfig.numUniqueKeysToWrite) {
+          LOG.fatal("The pipeline length cannot be more than the number of unique keys");
+          System.exit(-1);
+        }
+      }
+      LOG.info("RedisPipelinedKeyValue pipeline length : " + AppBase.appConfig.redisPipelineLength);
     }
   }
 
@@ -279,6 +291,10 @@ public class CmdLineOpts {
     options.addOption("wordcount_input_table", true,
                       "[CassandraSparkWordCount] Output table to write wordcounts to.");
 
+    // Options for Redis Pipelined Key Value
+    options.addOption(
+        "pipeline_length", true,
+        "[RedisPipelinedKeyValue] Number of commands to be sent out in a redis pipelined sync.");
     CommandLineParser parser = new BasicParser();
     CommandLine commandLine = null;
 

@@ -20,6 +20,7 @@ import com.yugabyte.sample.common.metrics.MetricsTracker;
 import com.yugabyte.sample.common.metrics.MetricsTracker.MetricName;
 
 import redis.clients.jedis.Jedis;
+import redis.clients.jedis.Pipeline;
 
 /**
  * Abstract base class for all apps. This class does the following:
@@ -48,6 +49,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   protected Session cassandra_session = null;
   // The Java redis client.
   private Jedis jedisClient;
+  private Pipeline jedisPipeline;
   // Instance of the load generator.
   private static SimpleLoadGenerator loadGenerator = null;
   // Keyspace name.
@@ -110,6 +112,12 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     return jedisClient;
   }
 
+  protected synchronized Pipeline getRedisPipeline() {
+    if (jedisPipeline == null) {
+      jedisPipeline = getRedisClient().pipelined();
+    }
+    return jedisPipeline;
+  }
 
   ///////////////////// The following methods are overridden by the apps ///////////////////////////
 
