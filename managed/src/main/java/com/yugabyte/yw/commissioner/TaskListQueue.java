@@ -9,6 +9,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskState;
+
 public class TaskListQueue {
 
   public static final Logger LOG = LoggerFactory.getLogger(TaskListQueue.class);
@@ -29,21 +31,21 @@ public class TaskListQueue {
   public void run() {
     boolean success = false;
     for (TaskList taskList : taskLists) {
-      taskList.setUserSubTaskState(UserTaskDetails.SubTaskState.Running);
+      taskList.setUserSubTaskState(SubTaskState.Running);
       try {
         taskList.run();
         success = taskList.waitFor();
       } catch (Throwable t) {
         // Update task state to failure
-        taskList.setUserSubTaskState(UserTaskDetails.SubTaskState.Failure);
+        taskList.setUserSubTaskState(SubTaskState.Failure);
         throw t;
       }
       if (!success) {
         LOG.error("TaskList '{}' waitFor() returned failed status.", taskList.toString());
-        taskList.setUserSubTaskState(UserTaskDetails.SubTaskState.Failure);
+        taskList.setUserSubTaskState(SubTaskState.Failure);
         throw new RuntimeException(taskList.toString() + " failed.");
       }
-      taskList.setUserSubTaskState(UserTaskDetails.SubTaskState.Success);
+      taskList.setUserSubTaskState(SubTaskState.Success);
     }
   }
 
@@ -82,29 +84,28 @@ public class TaskListQueue {
       UserTaskDetails.SubTaskDetails subTask = userTasksMap.get(subTaskType);
       if (subTask == null) {
         subTask = UserTaskDetails.createSubTask(subTaskType);
-        subTask.setState(taskListFailure ? UserTaskDetails.SubTaskState.Unknown:
+        subTask.setState(taskListFailure ? SubTaskState.Unknown:
                                            taskList.getUserSubTaskState());
         userTaskDetails.add(subTask);
-      } else {
-        // We may be combining multiple task lists into one user facing bucket. Task lists always
-        // finish in sequence.
-
+      } else if (taskList.getUserSubTaskState() == SubTaskState.Failure ||
+                 subTask.getState().equals(SubTaskState.Failure.name())) {
+        // If this subtask failed, make sure its state remains in Failure.
+        taskListFailure = true;
+        subTask.setState(SubTaskState.Failure);
+      } else if (taskListFailure) {
         // If an earlier subtask has failed, do not set a state.
-        if (taskListFailure) {
-          subTask.setState(UserTaskDetails.SubTaskState.Unknown);
-          continue;
-        }
+        subTask.setState(SubTaskState.Unknown);
+        continue;
+      } else if (taskList.getUserSubTaskState() == SubTaskState.Running) {
         // Earlier subtasks have not failed. If the current subtask is running, set the bucket to
         // running.
-        if (taskList.getUserSubTaskState() == UserTaskDetails.SubTaskState.Running) {
-          subTask.setState(UserTaskDetails.SubTaskState.Running);
-        }
+        subTask.setState(SubTaskState.Running);
       }
       userTasksMap.put(subTaskType, subTask);
 
       // If a subtask has failed, we do not need to set state of any following task. Record the fact
       // that a subtask has failed.
-      if (taskList.getUserSubTaskState() == UserTaskDetails.SubTaskState.Failure) {
+      if (taskList.getUserSubTaskState() == SubTaskState.Failure) {
         taskListFailure = true;
       }
     }
