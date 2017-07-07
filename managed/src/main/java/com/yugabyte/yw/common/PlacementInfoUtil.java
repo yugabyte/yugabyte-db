@@ -71,37 +71,34 @@ public class PlacementInfoUtil {
    * placementInfo.
    * @param universe   True iff it is an edit op, so need to honor existing nodes/tservers.
    * @param taskParams Current user task and placement info with user proposed AZ distribution.
-   * @return True iff the number of nodes change acrossed AZ's.
+   * @return If the number of nodes only are changed across AZ's in placement or if userIntent
+   *         node count only changes, returns that configure mode. Else defaults to new config.
    */
-  private static boolean isPureExpandOrShrink(Universe universe,
-                                              UniverseDefinitionTaskParams taskParams) {
-   boolean isEditUniverse = universe != null;
-   PlacementInfo placementInfo = taskParams.placementInfo;
-   Collection<NodeDetails> nodeDetailsSet = isEditUniverse ? universe.getNodes() :
-       taskParams.nodeDetailsSet;
+  private static ConfigureNodesMode getPureExpandOrShrinkMode(
+      Universe universe,
+      UniverseDefinitionTaskParams taskParams) {
+    boolean isEditUniverse = universe != null;
+    PlacementInfo placementInfo = taskParams.placementInfo;
+    Collection<NodeDetails> nodeDetailsSet = isEditUniverse ? universe.getNodes() :
+        taskParams.nodeDetailsSet;
 
-   boolean providerOrRegionListChanged = isProviderOrRegionChange(taskParams, nodeDetailsSet);
+    if (isEditUniverse) {
+      UserIntent existingIntent = universe.getUniverseDetails().userIntent;
+      UserIntent taskIntent = taskParams.userIntent;
+      LOG.info("Comparing task '{}' and existing '{}' intents.",
+               taskIntent, existingIntent);
+      UserIntent tempIntent = taskIntent.clone();
+      tempIntent.numNodes = existingIntent.numNodes;
+      boolean existingIntentsMatch = tempIntent.equals(existingIntent) &&
+                                     taskIntent.numNodes != existingIntent.numNodes;
 
-   if (providerOrRegionListChanged) {
-     return false;
-   }
+      if (!existingIntentsMatch) {
+        return ConfigureNodesMode.NEW_CONFIG;
+      }
+    }
 
-   if (isEditUniverse) {
-     UserIntent existingIntent = universe.getUniverseDetails().userIntent;
-     UserIntent taskIntent = taskParams.userIntent;
-     LOG.info("Comparing task '{}' and existing '{}' intents.",
-              taskIntent, existingIntent);
-     UserIntent tempIntent = taskIntent.clone();
-     tempIntent.numNodes = existingIntent.numNodes;
-     boolean existingIntentsMatch = tempIntent.equals(existingIntent) &&
-                                    taskIntent.numNodes != existingIntent.numNodes;
-
-     if (!existingIntentsMatch) {
-       return false;
-     }
-   }
-
-   Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodeDetailsSet);
+    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodeDetailsSet);
+    boolean atleastOneCountChanged = false;
     for (Map.Entry<UUID, Integer> azUuidToNumNode : azUuidToNumNodes.entrySet()) {
       boolean targetAZFound = false;
       for (PlacementCloud cloud : placementInfo.cloudList) {
@@ -113,10 +110,13 @@ public class PlacementInfoUtil {
               int numTservers = findCountActiveTServerOnlyInAZ(nodeDetailsSet,
                                                                azUuidToNumNode.getKey());
               int azDifference = az.numNodesInAZ - azUuidToNumNode.getValue();
-              LOG.info("AZ {} check, azDiff={}, numTservers={}.",
-                       az.name, azDifference, numTservers);
+              LOG.info("AZ {} check, azNum={}, azDiff={}, numTservers={}.",
+                       az.name, az.numNodesInAZ, azDifference, numTservers);
+              if (azDifference != 0) {
+                atleastOneCountChanged = true;
+              }
               if (isEditUniverse && azDifference < 0  && -azDifference > numTservers) {
-                return false;
+                return ConfigureNodesMode.NEW_CONFIG;
               }
             }
           }
@@ -125,10 +125,40 @@ public class PlacementInfoUtil {
       if (!targetAZFound) {
         LOG.info("AZ {} not found in placement, so not pure expand/shrink.",
                  azUuidToNumNode.getKey());
-        return false;
+        return ConfigureNodesMode.NEW_CONFIG;
       }
     }
-    return true;
+
+    int placementCount = getNodeCountInPlacement(taskParams.placementInfo);
+    if (universe != null) {
+      LOG.info("Edit taskNumNodes={}, placementNumNodes={}, numNodes={}.",
+               taskParams.userIntent.numNodes, placementCount, nodeDetailsSet.size());
+      // The nodeDetailsSet may have modified nodes based on an earlier edit intent, reset it as
+      // we want to start from existing configuration.
+      taskParams.nodeDetailsSet.clear();
+      taskParams.nodeDetailsSet.addAll(nodeDetailsSet);
+    } else {
+      LOG.info("Create taskNumNodes={}, placementNumNodes={}.", taskParams.userIntent.numNodes,
+                placementCount);
+    }
+
+    ConfigureNodesMode mode = ConfigureNodesMode.NEW_CONFIG;
+
+    if (taskParams.userIntent.numNodes == placementCount) {
+      // The user intent numNodes matches the sum of the nodes in the placement, then the
+      // user chose a custom placement across AZ's.
+      if (atleastOneCountChanged) {
+        // The user changed the count for sure on the per AZ palcement.
+        mode = ConfigureNodesMode.UPDATE_CONFIG_FROM_PLACEMENT_INFO;
+      }
+    } else {
+      // numNodes in userIntent is honored, and per AZ node counts will be ignored.
+      // Chosen AZs are honored.
+      mode = ConfigureNodesMode.UPDATE_CONFIG_FROM_USER_INTENT;
+    }
+
+    LOG.info("Pure expand/shrink in {} mode.", mode);
+    return mode;
   }
 
   // Assumes that there is only single provider across all nodes in a given set.
@@ -168,7 +198,7 @@ public class PlacementInfoUtil {
     if (!intentProvider.equals(nodeProvider)) {
       LOG.info("Provider in intent {} is different from provider in existing nodes {}.",
                intentProvider, nodeProvider);
-      return false;
+      return true;
     }
 
     Set<UUID> nodeRegionSet = getAllRegionUUIDs(nodes);
@@ -260,32 +290,8 @@ public class PlacementInfoUtil {
     LOG.info("Placement={}, nodes={}.", taskParams.placementInfo,
              taskParams.nodeDetailsSet.size());
 
-    ConfigureNodesMode mode = ConfigureNodesMode.NEW_CONFIG;
-    if (isPureExpandOrShrink(universe, taskParams)) {
-      int placementCount = getNodeCountInPlacement(taskParams.placementInfo);
-      if (universe != null) {
-        Collection<NodeDetails> existingNodes = universe.getNodes();
-        LOG.info("Edit taskNumNodes={}, placementNumNodes={}, numNodes={}.",
-                 taskParams.userIntent.numNodes, placementCount, existingNodes.size());
-        // The nodeDetailsSet may have modified nodes based on an earlier edit intent, reset it as
-        // we want to start from existing configuration.
-        taskParams.nodeDetailsSet.clear();
-        taskParams.nodeDetailsSet.addAll(existingNodes);
-      } else {
-        LOG.info("Create taskNumNodes={}, placementNumNodes={}.", taskParams.userIntent.numNodes,
-                  placementCount);
-      }
-
-      // If the user intent numNodes matches the sum of the nodes in the placement, then the
-      // user chose a custom placement across AZ's.
-      if (placementCount == taskParams.userIntent.numNodes) {
-        mode = ConfigureNodesMode.UPDATE_CONFIG_FROM_PLACEMENT_INFO;
-      } else {
-        // Here numNodes in userIntent is honored, and AZ selected counts will be ignored.
-        // Chosen AZs are honored.
-        mode = ConfigureNodesMode.UPDATE_CONFIG_FROM_USER_INTENT;
-      }
-    } else {
+    ConfigureNodesMode mode = getPureExpandOrShrinkMode(universe, taskParams);
+    if (mode == ConfigureNodesMode.NEW_CONFIG) {
       // Not a pure expand or shrink.
       boolean providerOrRegionListChanged =
           isProviderOrRegionChange(taskParams,
@@ -294,7 +300,10 @@ public class PlacementInfoUtil {
         // If the provider or region list changed, we pick a new placement.
         // This could be for a edit (full move) or create universe.
         taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
-      } // else no new placement, full move case.
+        LOG.info("Provider or region changed, getting new placement info for full move.");
+      } else {
+        LOG.info("Performing full move with existing placement info.");
+      }
 
       // Clear the nodes as it we will pick a new set of nodes.
       taskParams.nodeDetailsSet.clear();
@@ -305,9 +314,28 @@ public class PlacementInfoUtil {
     // Compute the node states that should be configured for this operation.
     configureNodeStates(taskParams, universe, mode);
 
-    LOG.info("Set of nodes after updating placement:{}.", taskParams.nodeDetailsSet);
+    LOG.info("Set of nodes after node configure:{}.", taskParams.nodeDetailsSet);
     ensureUniqueNodeNames(taskParams.nodeDetailsSet);
     LOG.info("Placement info:{}.", taskParams.placementInfo);
+  }
+
+  private static void updatePlacementAZCounts(Collection<NodeDetails> nodes,
+                                              PlacementInfo placementInfo) {
+    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodes);
+    for (Map.Entry<UUID, Integer> azUuidToNumNode : azUuidToNumNodes.entrySet()) {
+      for (PlacementCloud cloud : placementInfo.cloudList) {
+        for (PlacementRegion region : cloud.regionList) {
+          for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
+            PlacementAZ az =  region.azList.get(azIdx);
+            if (azUuidToNumNode.getKey().equals(az.uuid)) {
+              LOG.info("Changing AZ count from {} to {}.", az.numNodesInAZ,
+                       azUuidToNumNode.getValue());
+              az.numNodesInAZ = azUuidToNumNode.getValue();
+            }
+          }
+        }
+      }
+    }
   }
 
   public static Set<NodeDetails> getMastersToBeRemoved(Set<NodeDetails> nodeDetailsSet) {
@@ -545,21 +573,23 @@ public class PlacementInfoUtil {
   private static LinkedHashSet<PlacementIndexes> getBasePlacement(int numNodes,
                                                                   PlacementInfo placementInfo) {
     LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<PlacementIndexes>();
-    for (int nodeIdx = 0; nodeIdx < numNodes; nodeIdx++) {
+    int count = 0;
+    while (count < numNodes) {
       int cIdx = 0;
       for (PlacementCloud cloud : placementInfo.cloudList) {
         int rIdx = 0;
         for (PlacementRegion region : cloud.regionList) {
           for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
-            placements.add(new PlacementIndexes(azIdx, rIdx, cIdx));
+            placements.add(new PlacementIndexes(azIdx, rIdx, cIdx, true /* isAdd */));
+            LOG.info("Adding {}/{}/{} @ {}.", azIdx, rIdx, cIdx, count);
+            count++;
           }
           rIdx++;
         }
         cIdx++;
       }
     }
-
-    LOG.debug("Base placement indexes {}.", placements);
+    LOG.info("Base placement indexes {} for {} nodes.", placements, numNodes);
     return placements;
   }
 
@@ -653,7 +683,7 @@ public class PlacementInfoUtil {
   }
 
   /**
-   * Remove a node that belongs to the given AZ from the collection of nodes.
+   * Remove a tserver-only node that belongs to the given AZ from the collection of nodes.
    * @param nodes        the list of nodes from which to choose the victim.
    * @param targetAZUuid AZ in which the node should be present.
    */
@@ -662,7 +692,7 @@ public class PlacementInfoUtil {
     Iterator<NodeDetails> nodeIter = nodes.iterator();
     while (nodeIter.hasNext()) {
       NodeDetails currentNode = nodeIter.next();
-      if (currentNode.azUuid.equals(targetAZUuid)) {
+      if (currentNode.azUuid.equals(targetAZUuid) && !currentNode.isMaster) {
         nodeIter.remove();
         return;
       }
@@ -780,15 +810,16 @@ public class PlacementInfoUtil {
         // Case where userIntent numNodes has to be favored - as it is different from the
         // sum of all per AZ node counts).
         configureNodesUsingUserIntent(taskParams, universe != null);
+        updatePlacementAZCounts(taskParams.nodeDetailsSet, taskParams.placementInfo);
         break;
-     }
+    }
 
-     int numMastersToChoose = taskParams.userIntent.replicationFactor -
-         getNumMasters(taskParams.nodeDetailsSet);
-     if (numMastersToChoose > 0) {
-       LOG.info("Selecting {} masters.", numMastersToChoose);
-       selectMasters(taskParams.nodeDetailsSet, numMastersToChoose);
-     }
+    int numMastersToChoose = taskParams.userIntent.replicationFactor -
+        getNumMasters(taskParams.nodeDetailsSet);
+    if (numMastersToChoose > 0) {
+      LOG.info("Selecting {} masters.", numMastersToChoose);
+      selectMasters(taskParams.nodeDetailsSet, numMastersToChoose);
+    }
   }
 
   /**
