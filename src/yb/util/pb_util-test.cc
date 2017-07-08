@@ -429,7 +429,9 @@ TEST_F(TestPBUtil, TestEnumToString) {
   ss << TestPBEnum::FOO;
   ASSERT_EQ("FOO", ss.str());
   ASSERT_EQ("FOO", ToString(TestPBEnum::FOO));
+#if !defined(ADDRESS_SANITIZER)
   ASSERT_EQ("<unknown TestPBEnum : 10>", ToString(static_cast<TestPBEnum>(10)));
+#endif
 }
 
 } // namespace pb_util
