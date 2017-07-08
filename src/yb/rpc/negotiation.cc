@@ -244,7 +244,8 @@ void Negotiation::YBNegotiation(ConnectionPtr conn,
   bool is_bad = !s.ok() && !(s.IsNetworkError() && s.posix_code() == ECONNREFUSED);
 
   if (is_bad || FLAGS_rpc_trace_negotiation) {
-    string msg = Trace::CurrentTrace()->DumpToString(true);
+    string msg =
+      Trace::CurrentTrace() ? Trace::CurrentTrace()->DumpToString(true) : "No trace found!";
     if (is_bad) {
       LOG(WARNING) << "Failed RPC negotiation. Trace:\n" << msg;
     } else {
