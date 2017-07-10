@@ -13,6 +13,7 @@
           "build/latest/bin/yb-cqlserver",
           "build/latest/bin/log-dump",
           "build/latest/bin/yb_load_test_tool",
+          "bin/zip_purge_yb_logs.sh",
           "thirdparty/installed/uninstrumented/bin/*",
           "thirdparty/build/common/cqlsh/bin/*"],
   "lib"      : ["thirdparty/build/common/cqlsh/lib/*"],
