@@ -9,25 +9,38 @@ Deploying YugaByte in a mission-critical environment such as production or pre-p
 
 ### YugaWare
 
-YugaWare is a containerized application that's installed and managed via [Replicated] (https://www.replicated.com/) for mission-critical environments. Replicated is a purpose-built tool for on-premises deployment and lifecycle management of containerized applications such as YugaWare. A dedicated host or VM with the following characteristics is needed for YugaWare to run via Replicated.
+YugaWare is a containerized application that is installed and managed via [Replicated](https://www.replicated.com/) for mission-critical environments (such as production and pre-production testing). Replicated is a purpose-built tool for on-premises deployment and lifecycle management of containerized applications. For environments that are not mission-critical such as those needed for local development or testing, use either the [local node](/get-started/local-node) approach or the [local cluster](/get-started/local-cluster) approach.
 
-#### Operating systems (3.10+ kernel, 64bit, ready to run Docker 1.13.1+)
+A dedicated host or VM with the following characteristics is needed for YugaWare to run via Replicated.
 
-- Ubuntu 16.04+ (recommended)
+#### Operating systems supported
+
+Only Linux-based systems are supported by Replicated at this point. This Linux OS should be 3.10+ kernel, 64bit and ready to run docker-engine 1.7.1 - 17.03.1-ce (with 17.03.1-ce being the recommended version). Some of the supported OS versions are:
+
+- Ubuntu 16.04+ 
 - Red Hat Enterprise Linux 6.5+
 - CentOS 7+ 
 - Amazon AMI 2014.03 / 2014.09 / 2015.03 / 2015.09 / 2016.03 / 2016.09
+
+The complete list of operating systems supported by Replicated are listed [here](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/)
+
+#### Permissions necessary
+
+- Connectivity to the Internet, either directly or via a http proxy
+- Ability to install and configure [docker-engine](https://docs.docker.com/engine/)
+- Ability to install and configure [Replicated](https://www.replicated.com/), which is a containerized application itself and needs to pull containers from it's own Replicated.com container registry
+- Ability to pull YugaByte container images from [Quay.io](https://quay.io/) container registry, this will be done by Replicated automatically
 
 #### Additional requirements
 
 - Following ports should be open on the YugaWare host: 
 8800 (replicated ui), 80 (http for yugaware ui), 22 (ssh)
-- Attached disk storage (such as persistent EBS volumes on AWS): 40 GB minimum
+- Attached disk storage (such as persistent EBS volumes on AWS): 100 GB minimum
 - A YugaByte license file (attached to your welcome email from YugaByte Support)
 
 If you are running on AWS, all you need is a dedicated [**c4.xlarge**] (https://aws.amazon.com/ec2/instance-types/) or higher instance running Ubuntu 16.04. Use `ami-a58d0dc5` to launch a new instance if you don't already have one.
 
-### YugaByte database
+### YugaByte data nodes
 
 #### Public cloud
 
@@ -41,8 +54,41 @@ You will need to agree to the AWS Marketplace Terms [here](https://aws.amazon.co
 
 #### Private cloud or on-premises data centers
 
-Dedicated hosts or VMs running Centos 7+ with local or remote attached storage. All these hosts should be accessible over SSH from the YugaWare host
+Dedicated hosts or VMs running Centos 7+ with local or remote attached storage. All these hosts should be accessible over SSH from the YugaWare host. If your instance will not have public network access, make sure the following packages have been installed (all can be retrieved from the yum repo **epel**):
 
+- epel-release
+- libstdc++
+- collectd
+- python-pip
+- python-devel
+- python-psutil
+
+Here are all the commands to prepare a data node including configuring the centos user.
+
+```sh
+# install pre-requisite packages
+sudo yum install epel-release libstdc++ collectd python-pip python-devel python-psutil
+
+# create ‘centos’ user with passwordless sudo privileges and that accepts your SSH key
+adduser centos
+
+# add to ‘wheel’ group
+usermod -aG wheel centos
+
+# add to ‘sudoers’ file as no password required
+echo "centos ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# make sure local .ssh directory exists for the user
+mkdir /home/centos/.ssh
+
+# copy your authorized_keys file to the local directory for the user
+cp /root/.ssh/authorized_keys /home/centos/.ssh/.
+
+# make sure centos user owns .ssh directory and authorized_keys file by setting proper permissions on .ssh directory
+chmod 700 /home/centos/.ssh/.
+chown centos /home/centos/.ssh
+chown centos /home/centos/.ssh/authorized_keys
+```
 
 ## Install 
 
@@ -64,6 +110,9 @@ sudo yum remove docker \
 
 # install replicated
 curl -sSL https://get.replicated.com/docker | sudo bash
+
+# install replicated behind a proxy
+curl -x http://<proxy_address>:<proxy_port> https://get.replicated.com/docker | sudo bash
 
 # after replicated install completes, make sure it is running 
 sudo docker ps

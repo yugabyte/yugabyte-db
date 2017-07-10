@@ -21,17 +21,17 @@ All nodes in the universe are identical from a client perspective.
 
 YugaByte’s unique distributed storage and replication architecture provides high availability for most practical situations even while remaining strongly consistent. During network partitions, the replicas for the impacted tablets form two groups: majority partition that can still establish a Raft consensus and a minority partition that cannot establish such a consensus given the lack of quorum. Majority partitions are available for both reads and writes. Minority partitions are available for reads only (even if the data may get stale as time passes) but not available for writes. Requiring majority of replicas to synchronously agree on the value written is by design to ensure strong write consistency and thus obviate the need for any performance impacting anti-entropy operations.
 
-## Strongly consistent writes
+## Strong write consistency
 
 Writes (and data replication in general) are always strongly consistent in YugaByte. The foundation for this consistency comes through the use of Raft distributed consensus algorithm. Each Raft consensus group is comprised of a Raft leader and set of Raft followers. Loss of the leaders to the remaining members of the group auto-electing a new leader among them in a matter of seconds. Leader takes ownership of interacting with client for the write request and acknowledges the write as complete only after it synchronously replicates to other node. 
 
 ![Strongly consistent writes](/images/strongly-consistent-writes.png)
 
-## Tunably consistent reads
+## Tunable read consistency
 
 YugaByte enables a spectrum of consistency options when it comes to reads while keeping writes always strongly consistent via sync replication (based on Raft distributed consensus). The read consistency options that can be set on a per client basis are Strong (default), Bounded staleness, Session, Consistent Prefix. Eventual consistency is not supported given that such a consistency level is not appropriate for mission-critical applications.
 
-Given the use of distributed consensus where reads are either served only by one single node (either by the leader for strong consistency level or by a follower for all other consistency levels), YugaByte reads are 3x faster compared to a traditional NoSQL database that uses quorum to establish the same consistency levels. 
+Given the use of distributed consensus where reads are either served only by one single node (either by the leader for strong consistency level or by a follower for all other consistency levels), YugaByte reads have 3x throughput compared to a traditional NoSQL database that uses quorum to establish the same consistency levels. 
 
 ![Tunably consistent reads](/images/tunably-consistent-reads.png)
 

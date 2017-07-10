@@ -85,6 +85,11 @@ googleAnalytics = ""
 	url    = "learn/"
 	weight = 60
 
+[[menu.main]]
+	name   = "FAQs"
+	url    = "faq/"
+	weight = 70
+
 [blackfriday]
 	smartypants	= true
 	fractions = true
