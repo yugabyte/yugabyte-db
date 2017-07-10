@@ -34,7 +34,7 @@ googleAnalytics = ""
     	accent  = "brown"
 
     [params.font]
-    	text = "Ubuntu"
+    	text = "Lato"
     	code = "Ubuntu Mono"
 
 
@@ -44,7 +44,7 @@ googleAnalytics = ""
 
 
 [[menu.main]]
-	name   = "YugaByte Database"
+	name   = "Welcome"
 	url    = "/"
 	weight = 1
 

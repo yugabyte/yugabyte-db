@@ -7,7 +7,12 @@
     </div>
     <div class="stretch">
       <div class="title">
-        {{ .Title }}
+        {{ with .Site.Params.logo }}
+          <div class="logo">
+            <img src="{{ $.Site.BaseURL }}{{ . }}">
+          </div>
+        {{ end }}
+        {{ .Site.Title }}
       </div>
     </div>
 

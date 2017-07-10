@@ -1,8 +1,31 @@
 /* Copyright (c) YugaByte, Inc. */
 
+header .bar .logo {
+  display: inline-block;
+}
+
+header .bar .logo img {
+  width: 36px;
+  margin: -8px 4px -12px 0;
+}
+
+.article .wrapper {
+  padding-top: 80px !important;
+}
+
 .project .logo img {
   border-radius: 0px;
   background: transparent !important;
+}
+
+.drawer .toc li .section {
+  color: #888;
+  text-transform: uppercase;
+}
+
+.drawer .toc li a {
+  font-size: 14px;
+  font-weight: 400;
 }
 
 .drawer .scrollable .wrapper hr {
