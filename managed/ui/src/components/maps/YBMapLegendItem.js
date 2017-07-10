@@ -18,9 +18,9 @@ export default class YBMapLegendItem extends Component {
       legendItemImg = RootMarkerIcon;
       btnItem = <YBButton btnText="Add"/>;
     } else if( type === "Cache") {
-      legendItemImg = AsyncMarkerIcon;
-    } else if (type === "Async") {
       legendItemImg = CacheMarkerIcon;
+    } else if (type === "Async") {
+      legendItemImg = AsyncMarkerIcon;
     }
     return (
       <div className="map-legend-item">
