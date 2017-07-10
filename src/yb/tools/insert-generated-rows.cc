@@ -101,12 +101,11 @@ static int WriteRandomDataToTable(int argc, char** argv) {
     CHECK_OK(session->Apply(insert));
     Status s = session->Flush();
     if (PREDICT_FALSE(!s.ok())) {
-      std::vector<client::YBError*> errors;
-      ElementDeleter d(&errors);
+      client::CollectedErrors errors;
       bool overflow;
       session->GetPendingErrors(&errors, &overflow);
       CHECK(!overflow);
-      for (const client::YBError* e : errors) {
+      for (const auto& e : errors) {
         if (e->status().IsAlreadyPresent()) {
           LOG(WARNING) << "Ignoring insert error: " << e->status().ToString();
         } else {

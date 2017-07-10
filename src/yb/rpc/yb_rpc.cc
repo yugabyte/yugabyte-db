@@ -17,6 +17,7 @@
 
 #include "yb/util/size_literals.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/memory/memory.h"
 
 using yb::operator"" _MB;
 
@@ -29,6 +30,11 @@ DECLARE_int32(rpc_slow_query_threshold_ms);
 
 namespace yb {
 namespace rpc {
+
+using google::protobuf::FieldDescriptor;
+using google::protobuf::Message;
+using google::protobuf::MessageLite;
+using google::protobuf::io::CodedOutputStream;
 
 namespace {
 
@@ -273,6 +279,77 @@ void YBInboundCall::Serialize(std::deque<util::RefCntBuffer>* output) const {
   for (auto& car : sidecars_) {
     output->push_back(car);
   }
+}
+
+bool YBInboundCall::ParseParam(google::protobuf::Message *message) {
+  Slice param(serialized_request());
+  if (PREDICT_FALSE(!message->ParseFromArray(param.data(), param.size()))) {
+    string err = Format("Invalid parameter for call $0: $1",
+                        remote_method_.ToString(),
+                        message->InitializationErrorString().c_str());
+    LOG(WARNING) << err;
+    RespondFailure(ErrorStatusPB::ERROR_INVALID_REQUEST, STATUS(InvalidArgument, err));
+    return false;
+  }
+  return true;
+}
+
+void YBInboundCall::RespondBadMethod() {
+  auto err = Format("Call on service $0 received from $1 with an invalid method name: $2",
+                    remote_method_.service_name(),
+                    connection()->ToString(),
+                    remote_method_.method_name());
+  LOG(WARNING) << err;
+  RespondFailure(ErrorStatusPB::ERROR_NO_SUCH_METHOD, STATUS(InvalidArgument, err));
+}
+
+void YBInboundCall::RespondSuccess(const MessageLite& response) {
+  TRACE_EVENT0("rpc", "InboundCall::RespondSuccess");
+  Respond(response, true);
+}
+
+void YBInboundCall::RespondFailure(ErrorStatusPB::RpcErrorCodePB error_code,
+                                   const Status& status) {
+  TRACE_EVENT0("rpc", "InboundCall::RespondFailure");
+  ErrorStatusPB err;
+  err.set_message(status.ToString());
+  err.set_code(error_code);
+
+  Respond(err, false);
+}
+
+void YBInboundCall::RespondApplicationError(int error_ext_id, const std::string& message,
+                                            const MessageLite& app_error_pb) {
+  ErrorStatusPB err;
+  ApplicationErrorToPB(error_ext_id, message, app_error_pb, &err);
+  Respond(err, false);
+}
+
+void YBInboundCall::ApplicationErrorToPB(int error_ext_id, const std::string& message,
+                                         const google::protobuf::MessageLite& app_error_pb,
+                                         ErrorStatusPB* err) {
+  err->set_message(message);
+  const FieldDescriptor* app_error_field =
+      err->GetReflection()->FindKnownExtensionByNumber(error_ext_id);
+  if (app_error_field != nullptr) {
+    err->GetReflection()->MutableMessage(err, app_error_field)->CheckTypeAndMergeFrom(app_error_pb);
+  } else {
+    LOG(DFATAL) << "Unable to find application error extension ID " << error_ext_id
+                << " (message=" << message << ")";
+  }
+}
+
+void YBInboundCall::Respond(const MessageLite& response, bool is_success) {
+  TRACE_EVENT_FLOW_END0("rpc", "InboundCall", this);
+  Status s = SerializeResponseBuffer(response, is_success);
+  if (PREDICT_FALSE(!s.ok())) {
+    // TODO: test error case, serialize error response instead
+    LOG(DFATAL) << "Unable to serialize response: " << s.ToString();
+  }
+
+  TRACE_EVENT_ASYNC_END1("rpc", "InboundCall", this, "method", method_name());
+
+  QueueResponse(is_success);
 }
 
 } // namespace rpc

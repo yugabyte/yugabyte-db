@@ -333,6 +333,7 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       "#include \"yb/rpc/rpc_fwd.h\"\n"
       "#include \"yb/rpc/rpc_header.pb.h\"\n"
       "#include \"yb/rpc/service_if.h\"\n"
+      "#include \"yb/rpc/yb_rpc.h\"\n"
       "\n"
       "namespace yb {\n"
       "class MetricEntity;\n"
@@ -477,7 +478,7 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         "}\n"
         "\n"
         "void $service_name$If::Handle(::yb::rpc::InboundCallPtr call) {\n"
-        "  {\n");
+        "  auto yb_call = std::static_pointer_cast<::yb::rpc::YBInboundCall>(call);\n");
 
       for (int method_idx = 0; method_idx < service->method_count();
            ++method_idx) {
@@ -485,30 +486,29 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         subs->PushMethod(method);
 
         Print(printer, *subs,
-        "    if (call->remote_method().method_name() == \"$rpc_name$\") {\n"
-        "      auto req = std::make_shared<$request$>();\n"
-        "      if (PREDICT_FALSE(!ParseParam(call.get(), req.get()))) {\n"
-        "        return;\n"
-        "      }\n"
-        "      auto resp = std::make_shared<$response$>();\n"
-        "      const $request$* request = req.get();\n"
-        "      $response$* response = resp.get();\n"
-        "      $rpc_name$(\n"
-        "          request,\n"
-        "          response,\n"
-        "          ::yb::rpc::RpcContext(\n"
-        "              std::move(call),\n"
-        "              std::move(req),\n"
-        "              std::move(resp),\n"
-        "              metrics_[$metric_enum_key$]));\n"
+        "  if (call->method_name() == \"$rpc_name$\") {\n"
+        "    auto req = std::make_shared<$request$>();\n"
+        "    if (PREDICT_FALSE(!yb_call->ParseParam(req.get()))) {\n"
         "      return;\n"
         "    }\n"
+        "    auto resp = std::make_shared<$response$>();\n"
+        "    const $request$* request = req.get();\n"
+        "    $response$* response = resp.get();\n"
+        "    $rpc_name$(\n"
+        "        request,\n"
+        "        response,\n"
+        "        ::yb::rpc::RpcContext(\n"
+        "            std::move(yb_call),\n"
+        "            std::move(req),\n"
+        "            std::move(resp),\n"
+        "            metrics_[$metric_enum_key$]));\n"
+        "    return;\n"
+        "  }\n"
         "\n");
         subs->Pop();
       }
       Print(printer, *subs,
-        "  }\n"
-        "  RespondBadMethod(call.get());\n"
+        "  yb_call->RespondBadMethod();\n"
         "}\n"
         "\n"
         "std::string $service_name$If::service_name() const {\n"

@@ -221,6 +221,9 @@ class ScopedWatchKernelStack {
     KernelStackWatchdog::TLS::Frame* frame = &tls_data->frames_[tls_data->depth_++];
     DCHECK_LE(tls_data->depth_, KernelStackWatchdog::TLS::kMaxDepth);
     frame->start_time_ = GetMonoTimeMicros();
+#if defined(ADDRESS_SANITIZER) || defined(THREAD_SANITIZER)
+    threshold_ms *= 10;
+#endif
     frame->threshold_ms_ = threshold_ms;
     frame->status_ = label;
 

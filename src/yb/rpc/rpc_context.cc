@@ -25,6 +25,8 @@
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/reactor.h"
+#include "yb/rpc/yb_rpc.h"
+
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/metrics.h"
 #include "yb/util/trace.h"
@@ -70,7 +72,7 @@ scoped_refptr<debug::ConvertableToTraceFormat> TracePb(const Message& msg) {
 }
 }  // anonymous namespace
 
-RpcContext::RpcContext(InboundCallPtr call,
+RpcContext::RpcContext(std::shared_ptr<YBInboundCall> call,
                        std::shared_ptr<const google::protobuf::Message> request_pb,
                        std::shared_ptr<const google::protobuf::Message> response_pb,
                        RpcMethodMetrics metrics)
@@ -98,7 +100,7 @@ const std::shared_ptr<const Message> EMPTY_MESSAGE = std::make_shared<EmptyMessa
 
 }
 
-RpcContext::RpcContext(InboundCallPtr call,
+RpcContext::RpcContext(std::shared_ptr<YBInboundCall> call,
                        RpcMethodMetrics metrics)
     : RpcContext(std::move(call), EMPTY_MESSAGE, EMPTY_MESSAGE, metrics) {}
 
@@ -152,7 +154,7 @@ void RpcContext::RespondApplicationError(int error_ext_id, const std::string& me
   call_->RecordHandlingCompleted(metrics_.handler_latency);
   if (VLOG_IS_ON(4)) {
     ErrorStatusPB err;
-    InboundCall::ApplicationErrorToPB(error_ext_id, message, app_error_pb, &err);
+    YBInboundCall::ApplicationErrorToPB(error_ext_id, message, app_error_pb, &err);
     VLOG(4) << call_->remote_method().service_name() << ": Sending application error response for "
             << call_->ToString() << ":" << std::endl << err.DebugString();
     TRACE_EVENT_ASYNC_END2("rpc_call", "RPC", this,

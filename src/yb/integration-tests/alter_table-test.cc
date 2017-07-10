@@ -944,8 +944,7 @@ TEST_F(AlterTableTest, TestInsertAfterAlterTable) {
   Status s = session->Flush();
   if (!s.ok()) {
     ASSERT_EQ(1, session->CountPendingErrors());
-    vector<YBError*> errors;
-    ElementDeleter d(&errors);
+    client::CollectedErrors errors;
     bool overflow;
     session->GetPendingErrors(&errors, &overflow);
     ASSERT_FALSE(overflow);

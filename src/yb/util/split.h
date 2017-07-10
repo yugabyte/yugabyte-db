@@ -4,6 +4,9 @@
 #define YB_UTIL_SPLIT_H_
 
 #include <string>
+
+#include <boost/container/small_vector.hpp>
+
 #include "yb/util/status.h"
 #include "yb/util/slice.h"
 
@@ -32,6 +35,7 @@ namespace util {
 // Variable names have been changed to adhere to the C++ format.
 // Rest of the logic should closely follow "sdssplitargs" from src/redis/src/sds.c
 Status SplitArgs(const Slice& line, std::vector<Slice>* out_vector);
+Status SplitArgs(const Slice& line, boost::container::small_vector_base<Slice>* out_vector);
 
 }  // namespace util
 }  // namespace yb

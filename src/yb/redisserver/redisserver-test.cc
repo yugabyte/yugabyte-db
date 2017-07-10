@@ -17,12 +17,16 @@
 #include "yb/redisserver/redis_server.h"
 
 #include "yb/util/cast.h"
+#include "yb/util/enums.h"
 #include "yb/util/test_util.h"
 
 DECLARE_uint64(redis_max_concurrent_commands);
+DECLARE_uint64(redis_max_batch);
 
 DEFINE_uint64(test_redis_max_concurrent_commands, 20,
               "Value of redis_max_concurrent_commands for pipeline test");
+DEFINE_uint64(test_redis_max_batch, 50,
+              "Value of redis_max_batch for pipeline test");
 
 namespace yb {
 namespace redisserver {
@@ -34,6 +38,12 @@ using std::unique_ptr;
 using std::vector;
 using strings::Substitute;
 using yb::integration_tests::RedisTableTestBase;
+
+#if defined(ADDRESS_SANITIZER) || defined(THREAD_SANITIZER)
+constexpr int kDefaultTimeoutMs = 100000;
+#else
+constexpr int kDefaultTimeoutMs = 10000;
+#endif
 
 class TestRedisService : public RedisTableTestBase {
  public:
@@ -48,11 +58,56 @@ class TestRedisService : public RedisTableTestBase {
   void RestartClient();
   void SendCommandAndExpectTimeout(const string& cmd);
 
-  void SendCommandAndExpectResponse(const string& cmd, const string& resp, bool partial = false);
+  void SendCommandAndExpectResponse(int line,
+                                    const string& cmd,
+                                    const string& resp,
+                                    bool partial = false);
 
-  void DoRedisTest(vector<string> command,
+  template <class Callback>
+  void DoRedisTest(int line,
+                   const std::vector<std::string>& command,
                    cpp_redis::reply::type reply_type,
-                   void(*callback)(const RedisReply& reply));
+                   const Callback& callback);
+
+  void DoRedisTestString(int line,
+                         const std::vector<std::string>& command,
+                         const std::string& expected,
+                         cpp_redis::reply::type type = cpp_redis::reply::type::simple_string) {
+    DoRedisTest(line, command, type,
+        [line, expected](const RedisReply& reply) {
+          ASSERT_EQ(expected, reply.as_string()) << "Originator: " << __FILE__ << ":" << line;
+        }
+    );
+  }
+
+  void DoRedisTestBulkString(int line,
+                             const std::vector<std::string>& command,
+                             const std::string& expected) {
+    DoRedisTestString(line, command, expected, cpp_redis::reply::type::bulk_string);
+  }
+
+  void DoRedisTestOk(int line, const std::vector<std::string>& command) {
+    DoRedisTestString(line, command, "OK");
+  }
+
+  void DoRedisTestInt(int line,
+                      const std::vector<std::string>& command,
+                      int expected) {
+    DoRedisTest(line, command, cpp_redis::reply::type::integer,
+        [line, expected](const RedisReply& reply) {
+          ASSERT_EQ(expected, reply.as_integer()) << "Originator: " << __FILE__ << ":" << line;
+        }
+    );
+  }
+
+  void DoRedisTestNull(int line,
+                       const std::vector<std::string>& command) {
+    DoRedisTest(line, command, cpp_redis::reply::type::null,
+        [line](const RedisReply& reply) {
+          ASSERT_TRUE(reply.is_null()) << "Originator: " << __FILE__ << ":" << line;
+        }
+    );
+  }
 
   void SyncClient() { test_client_.sync_commit(); }
 
@@ -63,7 +118,7 @@ class TestRedisService : public RedisTableTestBase {
   Status Send(const std::string& cmd);
 
   Status SendCommandAndGetResponse(
-      const string& cmd, int expected_resp_length, int timeout_in_millis = 10000);
+      const string& cmd, int expected_resp_length, int timeout_in_millis = kDefaultTimeoutMs);
 
  private:
   RedisClient test_client_;
@@ -92,7 +147,6 @@ void TestRedisService::SetUp() {
 void TestRedisService::StartServer() {
   redis_server_port_ = GetFreePort(&redis_port_lock_);
   RedisServerOptions opts;
-  redis_server_port_ = GetFreePort(&redis_port_lock_);
   opts.rpc_opts.rpc_bind_addresses = strings::Substitute("0.0.0.0:$0", redis_server_port_);
   // No need to save the webserver port, as we don't plan on using it. Just use a unique free port.
   opts.webserver_opts.port = GetFreePort(&redis_webserver_lock_);
@@ -175,8 +229,9 @@ void TestRedisService::SendCommandAndExpectTimeout(const string& cmd) {
 
 
 
-void TestRedisService::SendCommandAndExpectResponse(const string& cmd,
-                                                    const string& resp,
+void TestRedisService::SendCommandAndExpectResponse(int line,
+                                                    const string& cmd,
+                                                    const string& expected,
                                                     bool partial) {
   if (partial) {
     auto seed = GetRandomSeed32();
@@ -195,24 +250,28 @@ void TestRedisService::SendCommandAndExpectResponse(const string& cmd,
       p = i;
       std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
-    ASSERT_OK(SendCommandAndGetResponse(cmd.substr(p), resp.length()));
+    ASSERT_OK(SendCommandAndGetResponse(cmd.substr(p), expected.length()));
   } else {
-    ASSERT_OK(SendCommandAndGetResponse(cmd, resp.length()));
+    ASSERT_OK(SendCommandAndGetResponse(cmd, expected.length()));
   }
 
   // Verify that the response is as expected.
 
-  ASSERT_EQ(resp, string(util::to_char_ptr(resp_.data()), resp.length()));
+  std::string response(util::to_char_ptr(resp_.data()), expected.length());
+  ASSERT_EQ(expected, response) << "Originator: " << __FILE__ << ":" << line;
 }
 
-void TestRedisService::DoRedisTest(vector<string> command,
+template <class Callback>
+void TestRedisService::DoRedisTest(int line,
+                                   const std::vector<std::string>& command,
                                    cpp_redis::reply::type reply_type,
-                                   void(*callback)(const RedisReply& reply)) {
+                                   const Callback& callback) {
   expected_callbacks_called_++;
-  test_client_.send(command, [this, reply_type, callback] (RedisReply& reply) {
-    LOG(INFO) << "Received response : " << reply.as_string();
+  test_client_.send(command, [this, line, reply_type, callback] (RedisReply& reply) {
+    LOG(INFO) << "Received response : " << reply.as_string() << ", of type: "
+              << util::to_underlying(reply.get_type());
     num_callbacks_called_++;
-    ASSERT_EQ(reply_type, reply.get_type());
+    ASSERT_EQ(reply_type, reply.get_type()) << "Originator: " << __FILE__ << ":" << line;
     callback(reply);
   });
 }
@@ -222,22 +281,26 @@ void TestRedisService::VerifyCallbacks() {
 }
 
 TEST_F(TestRedisService, SimpleCommandInline) {
-  SendCommandAndExpectResponse("set foo bar\r\n", "+OK\r\n");
+  SendCommandAndExpectResponse(__LINE__, "set foo bar\r\n", "+OK\r\n");
 }
 
 TEST_F(TestRedisService, SimpleCommandMulti) {
-  SendCommandAndExpectResponse("*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
+  SendCommandAndExpectResponse(
+      __LINE__, "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
 }
 
 TEST_F(TestRedisService, BatchedCommandsInline) {
   SendCommandAndExpectResponse(
-      "set a 5\r\nset foo bar\r\nget foo\r\nget a\r\n", "+OK\r\n+OK\r\n$3\r\nbar\r\n$1\r\n5\r\n");
+      __LINE__,
+      "set a 5\r\nset foo bar\r\nget foo\r\nget a\r\n",
+      "+OK\r\n+OK\r\n$3\r\nbar\r\n$1\r\n5\r\n");
 }
 
 TEST_F(TestRedisService, BatchedCommandsInlinePartial) {
   for (int i = 0; i != 1000; ++i) {
     ASSERT_NO_FATAL_FAILURE(
         SendCommandAndExpectResponse(
+            __LINE__,
             "set a 5\r\nset foo bar\r\nget foo\r\nget a\r\n",
             "+OK\r\n+OK\r\n$3\r\nbar\r\n$1\r\n5\r\n",
             /* partial */ true)
@@ -251,6 +314,7 @@ class TestRedisServicePipelined : public TestRedisService {
  public:
   void SetUp() override {
     FLAGS_redis_max_concurrent_commands = FLAGS_test_redis_max_concurrent_commands;
+    FLAGS_redis_max_batch = FLAGS_test_redis_max_batch;
     TestRedisService::SetUp();
   }
 };
@@ -302,23 +366,88 @@ std::string PipelineGetResponse() {
 
 TEST_F_EX(TestRedisService, Pipeline, TestRedisServicePipelined) {
   auto start = std::chrono::steady_clock::now();
-  SendCommandAndExpectResponse(PipelineSetCommand(), PipelineSetResponse());
+  SendCommandAndExpectResponse(__LINE__, PipelineSetCommand(), PipelineSetResponse());
   auto mid = std::chrono::steady_clock::now();
-  SendCommandAndExpectResponse(PipelineGetCommand(), PipelineGetResponse());
+  SendCommandAndExpectResponse(__LINE__, PipelineGetCommand(), PipelineGetResponse());
   auto end = std::chrono::steady_clock::now();
   auto set_time = std::chrono::duration_cast<std::chrono::milliseconds>(mid - start);
   auto get_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - mid);
   LOG(INFO) << yb::Format("Set time: $0ms, get time: $1ms", set_time.count(), get_time.count());
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
+TEST_F_EX(TestRedisService, MixedBatch, TestRedisServicePipelined) {
+  std::unordered_map<int, int> values, new_values;
+  std::unordered_set<int> requested_keys;
+  std::vector<int> keys;
+  constexpr size_t kBatches = 50;
+  constexpr size_t kMinSize = 100;
+  constexpr size_t kMaxSize = kMinSize + 127;
+  constexpr int kMinKey = 0;
+  constexpr int kMaxKey = 1023;
+  constexpr int kMinValue = 0;
+  constexpr int kMaxValue = 1023;
+  std::mt19937_64 random;
+  Seed(&random);
+  std::uniform_int_distribution<int> bool_distribution(0, 1);
+  std::uniform_int_distribution<size_t> size_distribution(kMinSize, kMaxSize);
+  std::uniform_int_distribution<int> key_distribution(kMinKey, kMaxKey);
+  std::uniform_int_distribution<int> value_distribution(kMinValue, kMaxValue);
+  for (size_t i = 0; i != kBatches; ++i) {
+    new_values.clear();
+    requested_keys.clear();
+    std::string command, response;
+    size_t size = size_distribution(random);
+    for (size_t j = 0; j != size; ++j) {
+      bool get = !keys.empty() && (bool_distribution(random) != 0);
+      if (get) {
+        int key = keys[std::uniform_int_distribution<size_t>(0, keys.size() - 1)(random)];
+        if (new_values.count(key)) {
+          continue;
+        }
+        command += yb::Format("get $0\r\n", key);
+        auto value = std::to_string(values[key]);
+        response += yb::Format("$$$0\r\n$1\r\n", value.length(), value);
+        requested_keys.insert(key);
+      } else {
+        int value = value_distribution(random);
+        for (;;) {
+          int key = key_distribution(random);
+          if (requested_keys.count(key) || !new_values.emplace(key, value).second) {
+            continue;
+          }
+          command += yb::Format("set $0 $1\r\n", key, value);
+          response += "+OK\r\n";
+          break;
+        }
+      }
+    }
+
+    SendCommandAndExpectResponse(__LINE__, command, response);
+    for (const auto& p : new_values) {
+      auto it = values.find(p.first);
+      if (it == values.end()) {
+        values.emplace(p.first, p.second);
+        keys.push_back(p.first);
+      } else {
+        it->second = p.second;
+      }
+    }
+  }
+}
 TEST_F_EX(TestRedisService, PipelinePartial, TestRedisServicePipelined) {
-  SendCommandAndExpectResponse(PipelineSetCommand(), PipelineSetResponse(), true /* partial */);
-  SendCommandAndExpectResponse(PipelineGetCommand(), PipelineGetResponse(), true /* partial */);
+  SendCommandAndExpectResponse(__LINE__,
+                               PipelineSetCommand(),
+                               PipelineSetResponse(),
+                               true /* partial */);
+  SendCommandAndExpectResponse(__LINE__,
+                               PipelineGetCommand(),
+                               PipelineGetResponse(),
+                               true /* partial */);
 }
 
 TEST_F(TestRedisService, BatchedCommandMulti) {
   SendCommandAndExpectResponse(
+      __LINE__,
       "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n"
       "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n"
       "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n",
@@ -329,6 +458,7 @@ TEST_F(TestRedisService, BatchedCommandMultiPartial) {
   for (int i = 0; i != 1000; ++i) {
     ASSERT_NO_FATAL_FAILURE(
       SendCommandAndExpectResponse(
+          __LINE__,
           "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$5\r\nTEST1\r\n"
           "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$5\r\nTEST2\r\n"
           "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$5\r\nTEST3\r\n"
@@ -350,7 +480,7 @@ TEST_F(TestRedisService, MalformedCommandsFollowedByAGoodOne) {
   RestartClient();
   ASSERT_FALSE(SendCommandAndGetResponse("*-4\r\n.3\r\n", 1).ok());
   RestartClient();
-  SendCommandAndExpectResponse("*2\r\n$4\r\necho\r\n$3\r\nfoo\r\n", "$3\r\nfoo\r\n");
+  SendCommandAndExpectResponse(__LINE__, "*2\r\n$4\r\necho\r\n$3\r\nfoo\r\n", "$3\r\nfoo\r\n");
 }
 
 TEST_F(TestRedisService, IncompleteCommandMulti) {
@@ -358,9 +488,11 @@ TEST_F(TestRedisService, IncompleteCommandMulti) {
 }
 
 TEST_F(TestRedisService, Echo) {
-  SendCommandAndExpectResponse("*2\r\n$4\r\necho\r\n$3\r\nfoo\r\n", "$3\r\nfoo\r\n");
-  SendCommandAndExpectResponse("*2\r\n$4\r\necho\r\n$8\r\nfoo bar \r\n", "$8\r\nfoo bar \r\n");
+  SendCommandAndExpectResponse(__LINE__, "*2\r\n$4\r\necho\r\n$3\r\nfoo\r\n", "$3\r\nfoo\r\n");
   SendCommandAndExpectResponse(
+      __LINE__, "*2\r\n$4\r\necho\r\n$8\r\nfoo bar \r\n", "$8\r\nfoo bar \r\n");
+  SendCommandAndExpectResponse(
+      __LINE__,
       EncodeAsArrays({  // The request is sent as a multi bulk array.
                          EncodeAsBulkString("echo"),
                          EncodeAsBulkString("foo bar")
@@ -370,22 +502,31 @@ TEST_F(TestRedisService, Echo) {
 }
 
 TEST_F(TestRedisService, TestSetOnly) {
-  SendCommandAndExpectResponse("*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
-  SendCommandAndExpectResponse("*3\r\n$3\r\nset\r\n$4\r\nfool\r\n$4\r\nBEST\r\n", "+OK\r\n");
+  SendCommandAndExpectResponse(
+      __LINE__, "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
+  SendCommandAndExpectResponse(
+      __LINE__, "*3\r\n$3\r\nset\r\n$4\r\nfool\r\n$4\r\nBEST\r\n", "+OK\r\n");
 }
 
 TEST_F(TestRedisService, TestCaseInsensitiveness) {
-  SendCommandAndExpectResponse("*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
-  SendCommandAndExpectResponse("*3\r\n$3\r\nSet\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
-  SendCommandAndExpectResponse("*3\r\n$3\r\nsEt\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
-  SendCommandAndExpectResponse("*3\r\n$3\r\nseT\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
-  SendCommandAndExpectResponse("*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
+  SendCommandAndExpectResponse(
+      __LINE__, "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
+  SendCommandAndExpectResponse(
+      __LINE__, "*3\r\n$3\r\nSet\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
+  SendCommandAndExpectResponse(
+      __LINE__, "*3\r\n$3\r\nsEt\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
+  SendCommandAndExpectResponse(
+      __LINE__, "*3\r\n$3\r\nseT\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
+  SendCommandAndExpectResponse(
+      __LINE__, "*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
 }
 
 TEST_F(TestRedisService, TestSetThenGet) {
-  SendCommandAndExpectResponse("*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
-  SendCommandAndExpectResponse("*2\r\n$3\r\nget\r\n$3\r\nfoo\r\n", "$4\r\nTEST\r\n");
+  SendCommandAndExpectResponse(__LINE__,
+      "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
+  SendCommandAndExpectResponse(__LINE__, "*2\r\n$3\r\nget\r\n$3\r\nfoo\r\n", "$4\r\nTEST\r\n");
   SendCommandAndExpectResponse(
+      __LINE__,
       EncodeAsArrays({  // The request is sent as a multi bulk array.
                          EncodeAsBulkString("set"),
                          EncodeAsBulkString("name"),
@@ -394,6 +535,7 @@ TEST_F(TestRedisService, TestSetThenGet) {
       EncodeAsSimpleString("OK")  // The response is in the simple string format.
   );
   SendCommandAndExpectResponse(
+      __LINE__,
       EncodeAsArrays({  // The request is sent as a multi bulk array.
                          EncodeAsBulkString("get"),
                          EncodeAsBulkString("name")
@@ -403,60 +545,29 @@ TEST_F(TestRedisService, TestSetThenGet) {
 }
 
 TEST_F(TestRedisService, TestUsingOpenSourceClient) {
+  DoRedisTestOk(__LINE__, {"SET", "hello", "42"});
 
-  DoRedisTest({"SET", "hello", "42"},
-      cpp_redis::reply::type::simple_string,
-      [](const RedisReply& reply) {
-        ASSERT_EQ("OK", reply.as_string());
-      });
-
-  DoRedisTest({"DECRBY", "hello", "12"},
+  DoRedisTest(__LINE__, {"DECRBY", "hello", "12"},
       cpp_redis::reply::type::error,
       [](const RedisReply &reply) {
         // TBD: ASSERT_EQ(30, reply.as_integer());
       });
 
-  DoRedisTest({"GET", "hello"},
-      cpp_redis::reply::type::bulk_string,
-      [](const RedisReply &reply) {
-        ASSERT_EQ("42", reply.as_string());
-      });
-
-  DoRedisTest({"SET", "world", "72"},
-      cpp_redis::reply::type::simple_string,
-      [](const RedisReply &reply) {
-        ASSERT_EQ("OK", reply.as_string());
-      });
+  DoRedisTestBulkString(__LINE__, {"GET", "hello"}, "42");
+  DoRedisTestOk(__LINE__, {"SET", "world", "72"});
 
   SyncClient();
   VerifyCallbacks();
 }
 
 TEST_F(TestRedisService, TestBinaryUsingOpenSourceClient) {
+  const std::string kFooValue = "\001\002\r\n\003\004";
+  const std::string kBarValue = "\013\010";
 
-  DoRedisTest({"SET", "foo", "\001\002\r\n\003\004"},
-      cpp_redis::reply::type::simple_string,
-      [](const RedisReply& reply) {
-        ASSERT_EQ("OK", reply.as_string());
-      });
-
-  DoRedisTest({"GET", "foo"},
-      cpp_redis::reply::type::bulk_string,
-      [](const RedisReply &reply) {
-        ASSERT_EQ("\001\002\r\n\003\004", reply.as_string());
-      });
-
-  DoRedisTest({"SET", "bar", "\013\010"},
-      cpp_redis::reply::type::simple_string,
-      [](const RedisReply& reply) {
-        ASSERT_EQ("OK", reply.as_string());
-      });
-
-  DoRedisTest({"GET", "bar"},
-      cpp_redis::reply::type::bulk_string,
-      [](const RedisReply &reply) {
-        ASSERT_EQ("\013\010", reply.as_string());
-      });
+  DoRedisTestOk(__LINE__, {"SET", "foo", kFooValue});
+  DoRedisTestBulkString(__LINE__, {"GET", "foo"}, kFooValue);
+  DoRedisTestOk(__LINE__, {"SET", "bar", kBarValue});
+  DoRedisTestBulkString(__LINE__, {"GET", "bar"}, kBarValue);
 
   SyncClient();
   VerifyCallbacks();
@@ -465,209 +576,78 @@ TEST_F(TestRedisService, TestBinaryUsingOpenSourceClient) {
 // This test also uses the open source client
 TEST_F(TestRedisService, TestTtl) {
 
-  DoRedisTest({"SET", "k1", "v1"},
-      cpp_redis::reply::type::simple_string,
-      [](const RedisReply &reply) {
-        ASSERT_EQ("OK", reply.as_string());
-      });
-
-  DoRedisTest({"SET", "k2", "v2", "EX", "1"},
-      cpp_redis::reply::type::simple_string,
-      [](const RedisReply &reply) {
-        ASSERT_EQ("OK", reply.as_string());
-      });
-
-  DoRedisTest({"SET", "k3", "v3", "EX", "10"},
-      cpp_redis::reply::type::simple_string,
-      [](const RedisReply &reply) {
-        ASSERT_EQ("OK", reply.as_string());
-      });
+  DoRedisTestOk(__LINE__, {"SET", "k1", "v1"});
+  DoRedisTestOk(__LINE__, {"SET", "k2", "v2", "EX", "1"});
+  DoRedisTestOk(__LINE__, {"SET", "k3", "v3", "EX", "10"});
 
   // Commands are pipelined and only sent when client.commit() is called.
   // sync_commit() waits until all responses are received.
   SyncClient();
   std::this_thread::sleep_for(std::chrono::seconds(2));
 
-  DoRedisTest({"GET", "k1"},
-      cpp_redis::reply::type::bulk_string,
-      [](const RedisReply &reply) {
-        ASSERT_EQ("v1", reply.as_string());
-      });
-  DoRedisTest({"GET", "k2"},
-      cpp_redis::reply::type::null,
-      [](const RedisReply &reply) {
-        ASSERT_TRUE(reply.is_null());
-      });
-  DoRedisTest({"GET", "k3"},
-      cpp_redis::reply::type::bulk_string,
-      [](const RedisReply &reply) {
-        ASSERT_EQ("v3", reply.as_string());
-      });
+  DoRedisTestBulkString(__LINE__, {"GET", "k1"}, "v1");
+  DoRedisTestNull(__LINE__, {"GET", "k2"});
+  DoRedisTestBulkString(__LINE__, {"GET", "k3"}, "v3");
+
   SyncClient();
   VerifyCallbacks();
-
 }
 
 TEST_F(TestRedisService, TestAdditionalCommands) {
-
-  DoRedisTest({"HSET", "map_key", "subkey", "42"},
-      cpp_redis::reply::type::simple_string,
-      [](const RedisReply &reply) {
-        ASSERT_EQ("OK", reply.as_string());
-      });
+  DoRedisTestOk(__LINE__, {"HSET", "map_key", "subkey", "42"});
 
   SyncClient();
 
-  DoRedisTest({"HGET", "map_key", "subkey"},
-      cpp_redis::reply::type::bulk_string,
-      [](const RedisReply &reply) {
-        ASSERT_EQ("42", reply.as_string());
-      });
-
-  DoRedisTest({"SET", "key1", "30"},
-      cpp_redis::reply::type::simple_string,
-      [](const RedisReply &reply) {
-        ASSERT_EQ("OK", reply.as_string());
-      });
+  DoRedisTestBulkString(__LINE__, {"HGET", "map_key", "subkey"}, "42");
+  DoRedisTestOk(__LINE__, {"SET", "key1", "30"});
 
   SyncClient();
 
-  DoRedisTest({"GETSET", "key1", "val1"},
-      cpp_redis::reply::type::bulk_string,
-      [](const RedisReply &reply) {
-        ASSERT_EQ("30", reply.as_string());
-      });
+  DoRedisTestBulkString(__LINE__, {"GETSET", "key1", "val1"}, "30");
 
   SyncClient();
 
-  DoRedisTest({"GET", "key1"},
-      cpp_redis::reply::type::bulk_string,
-      [](const RedisReply &reply) {
-        ASSERT_EQ("val1", reply.as_string());
-      });
-
-  DoRedisTest({"APPEND", "key1", "extra1"},
-      cpp_redis::reply::type::integer,
-      [](const RedisReply &reply) {
-        ASSERT_EQ(10, reply.as_integer());
-      });
+  DoRedisTestBulkString(__LINE__, {"GET", "key1"}, "val1");
+  DoRedisTestInt(__LINE__, {"APPEND", "key1", "extra1"}, 10);
 
   SyncClient();
 
-  DoRedisTest({"GET", "key1"},
-      cpp_redis::reply::type::bulk_string,
-      [](const RedisReply &reply) {
-        ASSERT_EQ("val1extra1", reply.as_string());
-      });
+  DoRedisTestBulkString(__LINE__, {"GET", "key1"}, "val1extra1");
 
-  DoRedisTest({"GET", "key2"},
-      cpp_redis::reply::type::null,
-      [](const RedisReply &reply) {
-        ASSERT_TRUE(reply.is_null());
-      });
-
-  DoRedisTest({"SET", "key2", "val2"},
-      cpp_redis::reply::type::simple_string,
-      [](const RedisReply &reply) {
-        ASSERT_EQ("OK", reply.as_string());
-      });
+  DoRedisTestNull(__LINE__, {"GET", "key2"});
+  DoRedisTestOk(__LINE__, {"SET", "key2", "val2"});
 
   SyncClient();
 
-  DoRedisTest({"GET", "key2"},
-      cpp_redis::reply::type::bulk_string,
-      [](const RedisReply &reply) {
-        ASSERT_EQ("val2", reply.as_string());
-      });
+  DoRedisTestBulkString(__LINE__, {"GET", "key2"}, "val2");
 
   SyncClient();
 
-  DoRedisTest({"DEL", "key2"},
-      cpp_redis::reply::type::integer,
-      [](const RedisReply &reply) {
-        ASSERT_EQ(1, reply.as_integer());
-      });
+  DoRedisTestInt(__LINE__, {"DEL", "key2"}, 1);
 
   SyncClient();
 
-  DoRedisTest({"GET", "key2"},
-      cpp_redis::reply::type::null,
-      [](const RedisReply &reply) {
-        ASSERT_TRUE(reply.is_null());
-      });
-
-  DoRedisTest({"SETRANGE", "key1", "2", "xyz3"},
-      cpp_redis::reply::type::simple_string,
-      [](const RedisReply &reply) {
-        ASSERT_EQ("OK", reply.as_string());
-      });
+  DoRedisTestNull(__LINE__, {"GET", "key2"});
+  DoRedisTestOk(__LINE__, {"SETRANGE", "key1", "2", "xyz3"});
 
   SyncClient();
 
-  DoRedisTest({"GET", "key1"},
-      cpp_redis::reply::type::bulk_string,
-      [](const RedisReply &reply) {
-        ASSERT_EQ("vaxyz3tra1", reply.as_string());
-      });
-
-  DoRedisTest({"SET", "key3", "23"},
-      cpp_redis::reply::type::simple_string,
-      [](const RedisReply &reply) {
-        ASSERT_EQ("OK", reply.as_string());
-      });
+  DoRedisTestBulkString(__LINE__, {"GET", "key1"}, "vaxyz3tra1");
+  DoRedisTestOk(__LINE__, {"SET", "key3", "23"});
 
   SyncClient();
 
-  DoRedisTest({"INCR", "key3"},
-      cpp_redis::reply::type::integer,
-      [](const RedisReply &reply) {
-        ASSERT_EQ(24, reply.as_integer());
-      });
+  DoRedisTestInt(__LINE__, {"INCR", "key3"}, 24);
 
   SyncClient();
 
-  DoRedisTest({"GET", "key3"},
-      cpp_redis::reply::type::bulk_string,
-      [](const RedisReply &reply) {
-        ASSERT_EQ("24", reply.as_string());
-      });
-
-  DoRedisTest({"STRLEN", "key3"},
-      cpp_redis::reply::type::integer,
-      [](const RedisReply &reply) {
-        ASSERT_EQ(2, reply.as_integer());
-      });
-
-  DoRedisTest({"STRLEN", "key1"},
-      cpp_redis::reply::type::integer,
-      [](const RedisReply &reply) {
-        ASSERT_EQ(10, reply.as_integer());
-      });
-
-  DoRedisTest({"EXISTS", "key1"},
-      cpp_redis::reply::type::integer,
-      [](const RedisReply &reply) {
-        ASSERT_EQ(1, reply.as_integer());
-      });
-
-  DoRedisTest({"EXISTS", "key2"},
-      cpp_redis::reply::type::integer,
-      [](const RedisReply &reply) {
-        ASSERT_EQ(0, reply.as_integer());
-      });
-
-  DoRedisTest({"EXISTS", "key3"},
-      cpp_redis::reply::type::integer,
-      [](const RedisReply &reply) {
-        ASSERT_EQ(1, reply.as_integer());
-      });
-
-  DoRedisTest(
-      {"GETRANGE", "key1", "1", "-1"},
-      cpp_redis::reply::type::bulk_string,
-      [](const RedisReply &reply) {
-        ASSERT_EQ("axyz3tra", reply.as_string());
-      });
+  DoRedisTestBulkString(__LINE__, {"GET", "key3"}, "24");
+  DoRedisTestInt(__LINE__, {"STRLEN", "key3"}, 2);
+  DoRedisTestInt(__LINE__, {"STRLEN", "key1"}, 10);
+  DoRedisTestInt(__LINE__, {"EXISTS", "key1"}, 1);
+  DoRedisTestInt(__LINE__, {"EXISTS", "key2"}, 0);
+  DoRedisTestInt(__LINE__, {"EXISTS", "key3"}, 1);
+  DoRedisTestBulkString(__LINE__, {"GETRANGE", "key1", "1", "-1"}, "axyz3tra");
 
   // Commands are pipelined and only sent when client.commit() is called.
   // sync_commit() waits until all responses are received.

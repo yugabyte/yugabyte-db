@@ -13,6 +13,7 @@
 #include "yb/util/debug/trace_event.h"
 
 using yb::cqlserver::CQLMessage;
+using namespace std::literals;
 using namespace std::placeholders;
 
 DECLARE_bool(rpc_dump_all_traces);
@@ -41,17 +42,17 @@ Status CQLConnectionContext::ProcessCalls(const rpc::ConnectionPtr& connection,
     size_t total_length = CQLMessage::kMessageHeaderLength + body_length;
     if (total_length > CQLMessage::kMaxMessageLength) {
       return STATUS_SUBSTITUTE(NetworkError,
-                               "the frame had a length of $0, but we only support "
-                               "messages up to $1 bytes long.",
-                               total_length,
-                               CQLMessage::kMaxMessageLength);
+          "the frame had a length of $0, but we only support "
+              "messages up to $1 bytes long.",
+          total_length,
+          CQLMessage::kMaxMessageLength);
     }
 
     if (pos + total_length > end) {
       break;
     }
 
-    RETURN_NOT_OK(HandleInboundCall(connection, Slice(pos, total_length)));
+        RETURN_NOT_OK(HandleInboundCall(connection, Slice(pos, total_length)));
     pos += total_length;
   }
 
@@ -71,8 +72,8 @@ Status CQLConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& connect
   DCHECK(reactor->IsCurrentThread());
 
   auto call = std::make_shared<CQLInboundCall>(connection,
-                                               call_processed_listener(),
-                                               sql_session_);
+      call_processed_listener(),
+      sql_session_);
 
   Status s = call->ParseFrom(slice);
   if (!s.ok()) {
@@ -111,10 +112,19 @@ Status CQLInboundCall::ParseFrom(Slice source) {
 
   // Fill the service name method name to transfer the call to. The method name is for debug
   // tracing only. Inside CQLServiceImpl::Handle, we rely on the opcode to dispatch the execution.
-  remote_method_ = rpc::RemoteMethod("yb.cqlserver.CQLServerService", "ExecuteRequest");
   stream_id_ = cqlserver::CQLRequest::ParseStreamId(serialized_request_);
 
   return Status::OK();
+}
+
+const std::string& CQLInboundCall::service_name() const {
+  static std::string result = "yb.cqlserver.CQLServerService"s;
+  return result;
+}
+
+const std::string& CQLInboundCall::method_name() const {
+  static std::string result = "ExecuteRequest"s;
+  return result;
 }
 
 void CQLInboundCall::Serialize(std::deque<util::RefCntBuffer>* output) const {
@@ -124,17 +134,19 @@ void CQLInboundCall::Serialize(std::deque<util::RefCntBuffer>* output) const {
   output->push_back(response_msg_buf_);
 }
 
-Status CQLInboundCall::SerializeResponseBuffer(const google::protobuf::MessageLite& response,
-                                               bool is_success) {
-  if (!is_success) {
-    const auto& error_status = static_cast<const rpc::ErrorStatusPB&>(response);
-    // TODO proper error reporting
-    response_msg_buf_ = util::RefCntBuffer(error_status.message());
-    return Status::OK();
-  }
+void CQLInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code,
+                                    const Status& status) {
+  response_msg_buf_ = util::RefCntBuffer(status.message().data(), status.message().size());
 
-  CHECK(response_msg_buf_) << "CQL response is absent.";
-  return Status::OK();
+  QueueResponse(false);
+}
+
+void CQLInboundCall::RespondSuccess(const util::RefCntBuffer& buffer,
+                                    const yb::rpc::RpcMethodMetrics& metrics) {
+  RecordHandlingCompleted(metrics.handler_latency);
+  response_msg_buf_ = buffer;
+
+  QueueResponse(true);
 }
 
 void CQLInboundCall::LogTrace() const {
@@ -148,9 +160,7 @@ void CQLInboundCall::LogTrace() const {
 }
 
 std::string CQLInboundCall::ToString() const {
-  return strings::Substitute("CQL Call $0 from $1",
-                             remote_method_.ToString(),
-                             yb::ToString(connection()->remote()));
+  return Format("CQL Call from $0", connection()->remote());
 }
 
 void CQLInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,

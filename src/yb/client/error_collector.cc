@@ -18,11 +18,6 @@
 #include "yb/client/client.h"
 #include "yb/client/error_collector.h"
 
-#include <mutex>
-#include <vector>
-
-#include "yb/gutil/stl_util.h"
-
 namespace yb {
 namespace client {
 namespace internal {
@@ -30,13 +25,11 @@ namespace internal {
 ErrorCollector::ErrorCollector() {
 }
 
-ErrorCollector::~ErrorCollector() {
-  STLDeleteElements(&errors_);
-}
+ErrorCollector::~ErrorCollector() {}
 
-void ErrorCollector::AddError(gscoped_ptr<YBError> error) {
+void ErrorCollector::AddError(std::unique_ptr<YBError> error) {
   std::lock_guard<simple_spinlock> l(lock_);
-  errors_.push_back(error.release());
+  errors_.push_back(std::move(error));
 }
 
 int ErrorCollector::CountErrors() const {
@@ -44,9 +37,10 @@ int ErrorCollector::CountErrors() const {
   return errors_.size();
 }
 
-void ErrorCollector::GetErrors(std::vector<YBError*>* errors, bool* overflowed) {
+void ErrorCollector::GetErrors(CollectedErrors* errors, bool* overflowed) {
   std::lock_guard<simple_spinlock> l(lock_);
   errors->swap(errors_);
+  errors_.clear();
   *overflowed = false;
 }
 

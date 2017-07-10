@@ -291,8 +291,7 @@ void Batcher::MarkInFlightOpFailed(InFlightOp* op, const Status& s) {
 void Batcher::MarkInFlightOpFailedUnlocked(InFlightOp* in_flight_op, const Status& s) {
   CHECK_EQ(1, ops_.erase(in_flight_op)) << "Could not remove op " << in_flight_op->ToString()
                                         << " from in-flight list";
-  gscoped_ptr<YBError> error(new YBError(in_flight_op->yb_op, s));
-  error_collector_->AddError(error.Pass());
+  error_collector_->AddError(std::make_unique<YBError>(in_flight_op->yb_op, s));
   had_errors_ = true;
   delete in_flight_op;
 }
@@ -448,8 +447,7 @@ void Batcher::ProcessRpcStatus(const AsyncRpc &rpc, const Status &s) {
   if (PREDICT_FALSE(!s.ok())) {
     // Mark each of the ops as failed, since the whole RPC failed.
     for (InFlightOp* in_flight_op : rpc.ops()) {
-      gscoped_ptr<YBError> error(new YBError(in_flight_op->yb_op, s));
-      error_collector_->AddError(error.Pass());
+      error_collector_->AddError(std::make_unique<YBError>(in_flight_op->yb_op, s));
     }
     MarkHadErrors();
   }
@@ -482,8 +480,7 @@ void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
     shared_ptr<YBOperation> yb_op = rpc.ops()[err_pb.row_index()]->yb_op;
     VLOG(1) << "Error on op " << yb_op->ToString() << ": " << err_pb.error().ShortDebugString();
     Status op_status = StatusFromPB(err_pb.error());
-    gscoped_ptr<YBError> error(new YBError(yb_op, op_status));
-    error_collector_->AddError(error.Pass());
+    error_collector_->AddError(std::make_unique<YBError>(yb_op, op_status));
     MarkHadErrors();
   }
 }

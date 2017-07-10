@@ -10,7 +10,8 @@ namespace util {
 using yb::Status;
 using yb::Slice;
 
-Status SplitArgs(const Slice& line, std::vector<Slice>* out_vector) {
+template<class Out>
+Status SplitArgsImpl(const Slice& line, Out* out_vector) {
   out_vector->clear();
 
   // Points to the current position we are looking at.
@@ -67,10 +68,18 @@ Status SplitArgs(const Slice& line, std::vector<Slice>* out_vector) {
         }
       }
       // Save the token. Get ready for the next one.
-      out_vector->push_back(Slice(current_token, current_token_length));
+      out_vector->emplace_back(current_token, current_token_length);
     }
   }
   return Status::OK();
+}
+
+Status SplitArgs(const Slice& line, std::vector<Slice>* out_vector) {
+  return SplitArgsImpl(line, out_vector);
+}
+
+Status SplitArgs(const Slice& line, boost::container::small_vector_base<Slice>* out_vector) {
+  return SplitArgsImpl(line, out_vector);
 }
 
 }  // namespace util

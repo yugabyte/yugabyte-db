@@ -340,6 +340,8 @@ class Reactor {
   template<class F>
   CHECKED_STATUS RunOnReactorThread(const F& f);
 
+  void CleanWaitingConnections();
+
   // parent messenger
   std::shared_ptr<Messenger> messenger_;
 

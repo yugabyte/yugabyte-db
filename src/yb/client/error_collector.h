@@ -17,13 +17,11 @@
 #ifndef YB_CLIENT_ERROR_COLLECTOR_H
 #define YB_CLIENT_ERROR_COLLECTOR_H
 
+#include <memory>
 #include <vector>
 
-#include "yb/gutil/gscoped_ptr.h"
-#include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/locks.h"
-#include "yb/util/status.h"
 
 namespace yb {
 namespace client {
@@ -37,20 +35,20 @@ class ErrorCollector : public RefCountedThreadSafe<ErrorCollector> {
  public:
   ErrorCollector();
 
-  void AddError(gscoped_ptr<YBError> error);
+  void AddError(std::unique_ptr<YBError> error);
 
   // See YBSession for details.
   int CountErrors() const;
 
   // See YBSession for details.
-  void GetErrors(std::vector<YBError*>* errors, bool* overflowed);
+  void GetErrors(CollectedErrors* errors, bool* overflowed);
 
  private:
   friend class RefCountedThreadSafe<ErrorCollector>;
-  virtual ~ErrorCollector();
+  ~ErrorCollector();
 
   mutable simple_spinlock lock_;
-  std::vector<YBError*> errors_;
+  CollectedErrors errors_;
 
   DISALLOW_COPY_AND_ASSIGN(ErrorCollector);
 };

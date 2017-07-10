@@ -80,14 +80,13 @@ class FlushCallback : public YBStatusCallback {
     int nerrs = session_->CountPendingErrors();
     if (nerrs) {
       LOG(WARNING) << nerrs << " errors occured during last batch.";
-      vector<YBError*> errors;
-      ElementDeleter d(&errors);
+      client::CollectedErrors errors;
       bool overflow;
       session_->GetPendingErrors(&errors, &overflow);
       if (overflow) {
         LOG(WARNING) << "Error overflow occured";
       }
-      for (YBError* error : errors) {
+      for (const auto& error : errors) {
         LOG(WARNING) << "FAILED: " << error->failed_op().ToString();
       }
     }

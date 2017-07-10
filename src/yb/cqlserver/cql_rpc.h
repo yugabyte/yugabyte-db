@@ -50,8 +50,6 @@ class CQLInboundCall : public rpc::InboundCall {
   // The resulting slices refer to memory in this object.
   void Serialize(std::deque<util::RefCntBuffer>* output) const override;
 
-  CHECKED_STATUS SerializeResponseBuffer(const google::protobuf::MessageLite& response,
-                                         bool is_success) override;
   void LogTrace() const override;
   std::string ToString() const override;
   void DumpPB(const rpc::DumpRunningRpcsRequestPB& req, rpc::RpcCallInProgressPB* resp) override;
@@ -75,6 +73,11 @@ class CQLInboundCall : public rpc::InboundCall {
   bool TryResume();
 
   uint16_t stream_id() const { return stream_id_; }
+
+  const std::string& service_name() const override;
+  const std::string& method_name() const override;
+  void RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code, const Status& status) override;
+  void RespondSuccess(const util::RefCntBuffer& buffer, const yb::rpc::RpcMethodMetrics& metrics);
 
  private:
   void RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time) override;

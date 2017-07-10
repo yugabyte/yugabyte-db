@@ -39,6 +39,7 @@ namespace rpc {
 
 struct RpcMethodMetrics {
   RpcMethodMetrics();
+  explicit RpcMethodMetrics(scoped_refptr<Histogram> handler_latency);
   ~RpcMethodMetrics();
 
   scoped_refptr<Histogram> handler_latency;
@@ -52,11 +53,6 @@ class ServiceIf {
 
   virtual void Shutdown();
   virtual std::string service_name() const = 0;
-
- protected:
-  bool ParseParam(InboundCall* call, google::protobuf::Message* message);
-  void RespondBadMethod(InboundCall* call);
-
 };
 
 }  // namespace rpc

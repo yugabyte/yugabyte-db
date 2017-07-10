@@ -37,8 +37,8 @@ class RemoteMethod {
   RemoteMethod& operator=(const RemoteMethod& rhs);
   RemoteMethod& operator=(RemoteMethod&& rhs);
 
-  std::string service_name() const { return service_name_; }
-  std::string method_name() const { return method_name_; }
+  const std::string& service_name() const { return service_name_; }
+  const std::string& method_name() const { return method_name_; }
 
   // Encode/decode to/from 'pb'.
   void FromPB(const RemoteMethodPB& pb);

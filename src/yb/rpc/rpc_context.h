@@ -44,6 +44,7 @@ class RefCntBuffer;
 namespace rpc {
 
 class UserCredentials;
+class YBInboundCall;
 
 // The context provided to a generated ServiceIf. This provides
 // methods to respond to the RPC. In the future, this will also
@@ -55,11 +56,11 @@ class RpcContext {
  public:
   // Create an RpcContext. This is called only from generated code
   // and is not a public API.
-  RpcContext(InboundCallPtr call,
+  RpcContext(std::shared_ptr<YBInboundCall> call,
              std::shared_ptr<const google::protobuf::Message> request_pb,
              std::shared_ptr<const google::protobuf::Message> response_pb,
              RpcMethodMetrics metrics);
-  RpcContext(InboundCallPtr call,
+  RpcContext(std::shared_ptr<YBInboundCall> call,
              RpcMethodMetrics metrics);
 
   RpcContext(RpcContext&& rhs)
@@ -88,6 +89,8 @@ class RpcContext {
   // After this method returns, this RpcContext object is destroyed. The request
   // and response protobufs are also destroyed.
   void RespondSuccess();
+
+  static void RespondSuccess(InboundCall* call);
 
   // Respond with an error to the client. This sends back an error with the code
   // ERROR_APPLICATION. Because there is no more specific error code passed back
@@ -187,7 +190,7 @@ class RpcContext {
   void CloseConnection();
  private:
 
-  InboundCallPtr call_;
+  std::shared_ptr<YBInboundCall> call_;
   std::shared_ptr<const google::protobuf::Message> request_pb_;
   std::shared_ptr<const google::protobuf::Message> response_pb_;
   RpcMethodMetrics metrics_;

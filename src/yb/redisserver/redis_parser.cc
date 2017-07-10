@@ -5,11 +5,18 @@
 
 #include "yb/client/client.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/common/redis_protocol.pb.h"
+
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/redisserver/redis_constants.h"
 #include "yb/redisserver/redis_parser.h"
+
+#include "yb/util/split.h"
 #include "yb/util/status.h"
+
+using namespace std::literals;
 
 namespace yb {
 namespace redisserver {
@@ -21,7 +28,13 @@ using std::vector;
 using std::shared_ptr;
 using std::string;
 
+namespace {
+
 constexpr int64_t kMaxTTLSec = std::numeric_limits<int64_t>::max() / 1000000;
+constexpr size_t kMaxNumberOfArgs = 1 << 20;
+constexpr size_t kLineEndLength = 2;
+
+} // namespace
 
 string to_lower_case(Slice slice) {
   string lower_string = slice.ToString();
@@ -29,7 +42,7 @@ string to_lower_case(Slice slice) {
   return lower_string;
 }
 
-Status ParseSet(YBRedisWriteOp *op, const std::vector<Slice> &args) {
+Status ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   DCHECK_EQ("set", to_lower_case(args[0]))
       << "Parsing set request where first arg is not set.";
   if (args.size() < 3) {
@@ -86,7 +99,7 @@ Status ParseSet(YBRedisWriteOp *op, const std::vector<Slice> &args) {
   return Status::OK();
 }
 
-Status ParseHSet(YBRedisWriteOp *op, const std::vector<Slice> &args) {
+Status ParseHSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   DCHECK_EQ("hset", to_lower_case(args[0]))
       << "Parsing hset request where first arg is not hset.";
   if (args.size() != 4) {
@@ -105,7 +118,7 @@ Status ParseHSet(YBRedisWriteOp *op, const std::vector<Slice> &args) {
   return Status::OK();
 }
 
-Status ParseGetSet(YBRedisWriteOp *op, const std::vector<Slice> &args) {
+Status ParseGetSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   DCHECK_EQ("getset", to_lower_case(args[0]))
       << "Parsing getset request where first arg is not getset.";
   if (args.size() != 3) {
@@ -121,7 +134,7 @@ Status ParseGetSet(YBRedisWriteOp *op, const std::vector<Slice> &args) {
   return Status::OK();
 }
 
-Status ParseAppend(YBRedisWriteOp* op, const std::vector<Slice>& args) {
+Status ParseAppend(YBRedisWriteOp* op, const RedisClientCommand& args) {
   DCHECK_EQ("append", to_lower_case(args[0]))
       << "Parsing append request where first arg is not append.";
   if (args.size() != 3) {
@@ -138,7 +151,7 @@ Status ParseAppend(YBRedisWriteOp* op, const std::vector<Slice>& args) {
 }
 
 // Note: deleting only one key is supported using one command as of now.
-Status ParseDel(YBRedisWriteOp* op, const std::vector<Slice>& args) {
+Status ParseDel(YBRedisWriteOp* op, const RedisClientCommand& args) {
   DCHECK_EQ("del", to_lower_case(args[0]))
       << "Parsing del request where first arg is not del.";
   if (args.size() != 2) {
@@ -152,7 +165,7 @@ Status ParseDel(YBRedisWriteOp* op, const std::vector<Slice>& args) {
   return Status::OK();
 }
 
-Status ParseSetRange(YBRedisWriteOp* op, const std::vector<Slice>& args) {
+Status ParseSetRange(YBRedisWriteOp* op, const RedisClientCommand& args) {
   DCHECK_EQ("setrange", to_lower_case(args[0]))
       << "Parsing setrange request where first arg is not setrange.";
   if (args.size() != 4) {
@@ -182,7 +195,7 @@ Status ParseSetRange(YBRedisWriteOp* op, const std::vector<Slice>& args) {
   return Status::OK();
 }
 
-Status ParseIncr(YBRedisWriteOp* op, const std::vector<Slice>& args) {
+Status ParseIncr(YBRedisWriteOp* op, const RedisClientCommand& args) {
   DCHECK_EQ("incr", to_lower_case(args[0]))
       << "Parsing incr request where first arg is not incr.";
   if (args.size() != 2) {
@@ -196,7 +209,7 @@ Status ParseIncr(YBRedisWriteOp* op, const std::vector<Slice>& args) {
   return Status::OK();
 }
 
-Status ParseGet(YBRedisReadOp* op, const std::vector<Slice>& args) {
+Status ParseGet(YBRedisReadOp* op, const RedisClientCommand& args) {
   DCHECK_EQ("get", to_lower_case(args[0]))
       << "Parsing get request where first arg is not get.";
   // TODO: Can remove some checks, eg. arg[0] == "GET" and key non-empty
@@ -215,7 +228,7 @@ Status ParseGet(YBRedisReadOp* op, const std::vector<Slice>& args) {
   return Status::OK();
 }
 
-Status ParseHGet(YBRedisReadOp* op, const std::vector<Slice>& args) {
+Status ParseHGet(YBRedisReadOp* op, const RedisClientCommand& args) {
   DCHECK_EQ("hget", to_lower_case(args[0]))
       << "Parsing hget request where first arg is not hget.";
   if (args.size() != 3) {
@@ -232,7 +245,7 @@ Status ParseHGet(YBRedisReadOp* op, const std::vector<Slice>& args) {
   return Status::OK();
 }
 
-Status ParseStrLen(YBRedisReadOp* op, const std::vector<Slice>& args) {
+Status ParseStrLen(YBRedisReadOp* op, const RedisClientCommand& args) {
   DCHECK_EQ("strlen", to_lower_case(args[0]))
       << "Parsing strlen request where first arg is not strlen.";
   if (args.size() != 2) {
@@ -247,7 +260,7 @@ Status ParseStrLen(YBRedisReadOp* op, const std::vector<Slice>& args) {
 }
 
 // Note: Checking existence of only one key is supported as of now.
-Status ParseExists(YBRedisReadOp* op, const std::vector<Slice>& args) {
+Status ParseExists(YBRedisReadOp* op, const RedisClientCommand& args) {
   DCHECK_EQ("exists", to_lower_case(args[0]))
       << "Parsing exists request where first arg is not exists.";
   if (args.size() != 2) {
@@ -261,7 +274,7 @@ Status ParseExists(YBRedisReadOp* op, const std::vector<Slice>& args) {
   return Status::OK();
 }
 
-Status ParseGetRange(YBRedisReadOp* op, const std::vector<Slice>& args) {
+Status ParseGetRange(YBRedisReadOp* op, const RedisClientCommand& args) {
   DCHECK_EQ("getrange", to_lower_case(args[0]))
       << "Parsing getrange request where first arg is not getrange.";
   if (args.size() != 4) {
@@ -299,6 +312,192 @@ Status ParseGetRange(YBRedisReadOp* op, const std::vector<Slice>& args) {
   }
   op->mutable_request()->mutable_get_range_request()->set_end(end_val);
 
+  return Status::OK();
+}
+
+// Begin of input is going to be consumed, so we should adjust our pointers.
+// Since the beginning of input is being consumed by shifting the remaining bytes to the
+// beginning of the buffer.
+void RedisParser::Consume(size_t count) {
+  pos_ -= count;
+  if (token_begin_ != nullptr) {
+    token_begin_ -= count;
+  }
+}
+
+// New data arrived, so update the end of available bytes.
+void RedisParser::Update(Slice source) {
+  ptrdiff_t delta = source.data() - begin_;
+  begin_ = source.data();
+  end_ = source.end();
+  pos_ += delta;
+  if (token_begin_ != nullptr) {
+    token_begin_ += delta;
+  }
+
+  DCHECK_LE(pos_, end_);
+}
+
+// Parse next command.
+Status RedisParser::NextCommand(const uint8_t** end_of_command) {
+  *end_of_command = nullptr;
+  while (pos_ != end_) {
+    incomplete_ = false;
+    Status status = AdvanceToNextToken();
+    if (!status.ok()) {
+      return status;
+    }
+    if (incomplete_) {
+      pos_ = end_;
+      *end_of_command = nullptr;
+      return Status::OK();
+    }
+    if (state_ == State::FINISHED) {
+      *end_of_command = pos_;
+      state_ = State::INITIAL;
+      return Status::OK();
+    }
+  }
+  return Status::OK();
+}
+
+Status RedisParser::AdvanceToNextToken() {
+  switch (state_) {
+    case State::INITIAL:
+      return Initial();
+    case State::SINGLE_LINE:
+      return SingleLine();
+    case State::BULK_HEADER:
+      return BulkHeader();
+    case State::BULK_ARGUMENT_SIZE:
+      return BulkArgumentSize();
+    case State::BULK_ARGUMENT_BODY:
+      return BulkArgumentBody();
+    case State::FINISHED:
+      return STATUS(IllegalState, "Should not be in FINISHED state during NextToken");
+  }
+  LOG(FATAL) << "Unexpected parser state: " << util::to_underlying(state_);
+}
+
+Status RedisParser::Initial() {
+  token_begin_ = pos_;
+  state_ = *pos_ == '*' ? State::BULK_HEADER : State::SINGLE_LINE;
+  return Status::OK();
+}
+
+Status RedisParser::SingleLine() {
+  auto status = FindEndOfLine();
+  if (!status.ok() || incomplete_) {
+    return status;
+  }
+  if (args_) {
+    RETURN_NOT_OK(util::SplitArgs(Slice(token_begin_, pos_), args_));
+  }
+  state_ = State::FINISHED;
+  return Status::OK();
+}
+
+Status RedisParser::BulkHeader() {
+  auto status = FindEndOfLine();
+  if (!status.ok() || incomplete_) {
+    return status;
+  }
+  ptrdiff_t num_args = 0;
+  RETURN_NOT_OK(ParseNumber('*', 1, kMaxNumberOfArgs, "Number of lines in multiline", &num_args));
+  if (args_) {
+    args_->clear();
+    args_->reserve(num_args);
+  }
+  state_ = State::BULK_ARGUMENT_SIZE;
+  token_begin_ = pos_;
+  arguments_left_ = num_args;
+  return Status::OK();
+}
+
+Status RedisParser::BulkArgumentSize() {
+  auto status = FindEndOfLine();
+  if (!status.ok() || incomplete_) {
+    return status;
+  }
+  ptrdiff_t current_size = 0;
+  RETURN_NOT_OK(ParseNumber('$', 0, kMaxBufferSize, "Argument size", &current_size));
+  state_ = State::BULK_ARGUMENT_BODY;
+  token_begin_ = pos_;
+  current_argument_size_ = current_size;
+  return Status::OK();
+}
+
+Status RedisParser::BulkArgumentBody() {
+  auto desired_position = token_begin_ + current_argument_size_ + kLineEndLength;
+  if (desired_position > end_) {
+    incomplete_ = true;
+    pos_ = end_;
+    return Status::OK();
+  }
+  if (desired_position[-1] != '\n' || desired_position[-2] != '\r') {
+    return STATUS(NetworkError, "No \\r\\n after bulk");
+  }
+  if (args_) {
+    args_->emplace_back(token_begin_, current_argument_size_);
+  }
+  --arguments_left_;
+  pos_ = desired_position;
+  token_begin_ = pos_;
+  if (arguments_left_ == 0) {
+    state_ = State::FINISHED;
+  } else {
+    state_ = State::BULK_ARGUMENT_SIZE;
+  }
+  return Status::OK();
+}
+
+Status RedisParser::FindEndOfLine() {
+  auto new_line = static_cast<const uint8_t *>(memchr(pos_, '\n', end_ - pos_));
+  incomplete_ = new_line == nullptr;
+  if (!incomplete_) {
+    if (new_line == token_begin_) {
+      return STATUS(NetworkError, "End of line at the beginning of a Redis command");
+    }
+    if (new_line[-1] != '\r') {
+      return STATUS(NetworkError, "\\n is not prefixed with \\r");
+    }
+    pos_ = ++new_line;
+  }
+  return Status::OK();
+}
+
+// Parses number with specified bounds.
+// Number is located in separate line, and contain prefix before actual number.
+// Line starts at token_begin_ and pos_ is a start of next line.
+Status RedisParser::ParseNumber(char prefix,
+                                ptrdiff_t min,
+                                ptrdiff_t max,
+                                const char* name,
+                                ptrdiff_t* out) {
+  if (*token_begin_ != prefix) {
+    return STATUS_SUBSTITUTE(Corruption,
+                             "Invalid character before number, expected: $0, but found: $1",
+                             prefix,
+                             static_cast<char>(*token_begin_));
+  }
+  char* token_end;
+  auto parsed_number =
+      std::strtoll(pointer_cast<const char*>(token_begin_ + 1), &token_end, 10);
+  static_assert(sizeof(parsed_number) == sizeof(*out), "Expected size");
+  const char* expected_stop = pointer_cast<const char*>(pos_ - kLineEndLength);
+  if (token_end != expected_stop) {
+    return STATUS_SUBSTITUTE(NetworkError,
+                             "$0 was failed to parse, extra data after number: $1",
+                             name,
+                             Slice(token_end, expected_stop).ToDebugString());
+  }
+  SCHECK_BOUNDS(parsed_number,
+                min,
+                max,
+                Corruption,
+                yb::Format("$0 out of expected range [$1, $2] : $3",
+                           name, min, max, parsed_number));
+  *out = static_cast<ptrdiff_t>(parsed_number);
   return Status::OK();
 }
 

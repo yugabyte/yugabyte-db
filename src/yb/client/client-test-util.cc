@@ -28,8 +28,7 @@ namespace client {
 void LogSessionErrorsAndDie(const std::shared_ptr<YBSession>& session,
                             const Status& s) {
   CHECK(!s.ok());
-  std::vector<YBError*> errors;
-  ElementDeleter d(&errors);
+  CollectedErrors errors;
   bool overflow;
   session->GetPendingErrors(&errors, &overflow);
   CHECK(!overflow);
@@ -37,7 +36,7 @@ void LogSessionErrorsAndDie(const std::shared_ptr<YBSession>& session,
   // Log only the first 10 errors.
   LOG(INFO) << errors.size() << " failed ops. First 10 errors follow";
   int i = 0;
-  for (const YBError* e : errors) {
+  for (const auto& e : errors) {
     if (i == 10) {
       break;
     }

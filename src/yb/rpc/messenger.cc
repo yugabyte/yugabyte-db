@@ -312,10 +312,12 @@ void Messenger::QueueOutboundCall(OutboundCallPtr call) {
 }
 
 void Messenger::QueueInboundCall(InboundCallPtr call) {
-  auto service = rpc_service(call->remote_method().service_name());
+  auto service = rpc_service(call->service_name());
   if (PREDICT_FALSE(!service)) {
-    Status s =  STATUS(ServiceUnavailable, Substitute("service $0 not registered on $1",
-                                                      call->remote_method().service_name(), name_));
+    Status s =  STATUS_FORMAT(ServiceUnavailable,
+                              "Service $0 not registered on $1",
+                              call->service_name(),
+                              name_);
     LOG(INFO) << s.ToString();
     call->RespondFailure(ErrorStatusPB::ERROR_NO_SUCH_SERVICE, s);
     return;

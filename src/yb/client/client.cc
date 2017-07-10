@@ -983,14 +983,6 @@ YBDelete* YBTable::NewDelete() {
   return new YBDelete(shared_from_this());
 }
 
-YBRedisWriteOp* YBTable::NewRedisWrite() {
-  return new YBRedisWriteOp(shared_from_this());
-}
-
-YBRedisReadOp* YBTable::NewRedisRead() {
-  return new YBRedisReadOp(shared_from_this());
-}
-
 YBqlWriteOp* YBTable::NewYQLWrite() {
   return new YBqlWriteOp(shared_from_this());
 }
@@ -1060,11 +1052,9 @@ bool YBError::was_possibly_successful() const {
 }
 
 YBError::YBError(shared_ptr<YBOperation> failed_op, const Status& status)
-    : data_(new YBError::Data(failed_op, status)) {}
+    : data_(new YBError::Data(std::move(failed_op), status)) {}
 
-YBError::~YBError() {
-  delete data_;
-}
+YBError::~YBError() {}
 
 ////////////////////////////////////////////////////////////
 // YBSession
@@ -1180,15 +1170,13 @@ Status YBSession::Apply(std::shared_ptr<YBOperation> yb_op) {
   // Check if the operations have the hashed keys. Read operations do not require key sets.
   if (!yb_op->row().IsHashOrPrimaryKeySet() && yb_op->type() != YBOperation::YQL_READ) {
     Status status = STATUS(IllegalState, "Key not specified", yb_op->ToString());
-    data_->error_collector_->AddError(
-        gscoped_ptr<YBError>(new YBError(shared_ptr<YBOperation>(yb_op), status)));
+    data_->error_collector_->AddError(std::make_unique<YBError>(yb_op, status));
     return status;
   }
 
-  Status s = data_->batcher_->Add(shared_ptr<YBOperation>(yb_op));
+  Status s = data_->batcher_->Add(yb_op);
   if (!PREDICT_FALSE(s.ok())) {
-    data_->error_collector_->AddError(
-        gscoped_ptr<YBError>(new YBError(shared_ptr<YBOperation>(yb_op), s)));
+    data_->error_collector_->AddError(std::make_unique<YBError>(yb_op, s));
     return s;
   }
 
@@ -1210,7 +1198,7 @@ int YBSession::CountPendingErrors() const {
   return data_->error_collector_->CountErrors();
 }
 
-void YBSession::GetPendingErrors(vector<YBError*>* errors, bool* overflowed) {
+void YBSession::GetPendingErrors(CollectedErrors* errors, bool* overflowed) {
   data_->error_collector_->GetErrors(errors, overflowed);
 }
 

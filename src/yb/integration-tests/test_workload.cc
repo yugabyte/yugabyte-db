@@ -131,12 +131,11 @@ void TestWorkload::WriteThread() {
     Status s = session->Flush();
 
     if (PREDICT_FALSE(!s.ok())) {
-      std::vector<client::YBError*> errors;
-      ElementDeleter d(&errors);
+      client::CollectedErrors errors;
       bool overflow;
       session->GetPendingErrors(&errors, &overflow);
       CHECK(!overflow);
-      for (const client::YBError* e : errors) {
+      for (const auto& e : errors) {
         if (timeout_allowed_ && e->status().IsTimedOut()) {
           continue;
         }

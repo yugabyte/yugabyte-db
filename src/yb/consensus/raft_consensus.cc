@@ -257,7 +257,7 @@ RaftConsensus::RaftConsensus(
           FLAGS_raft_heartbeat_interval_ms *
           FLAGS_leader_failure_max_missed_heartbeat_periods))),
       withhold_votes_until_(MonoTime::Min()),
-      withhold_election_start_until_(MonoTime::Min()),
+      withhold_election_start_until_(MonoTime::Min().ToUint64()),
       mark_dirty_clbk_(std::move(mark_dirty_clbk)),
       shutdown_(false),
       follower_memory_pressure_rejections_(metric_entity->FindOrCreateCounter(
@@ -334,7 +334,7 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
       // when the first one attempts an election to avoid multiple election
       // cycles on startup, while keeping that "waiting period" random.
       if (PREDICT_TRUE(FLAGS_enable_leader_failure_detection)) {
-        LOG_WITH_PREFIX_UNLOCKED(INFO) << "Consensus starting up: Expiring failure detector timer "
+        LOG_WITH_PREFIX_UNLOCKED(INFO) << "Consensus starting up: Expiring fail detector timer "
                                           "to make a prompt election more likely";
       }
       RETURN_NOT_OK(ExpireFailureDetectorUnlocked());
@@ -621,7 +621,7 @@ Status RaftConsensus::ElectionLostByProtege(const std::string& election_lost_by_
       LOG_WITH_PREFIX_UNLOCKED(INFO) << "Our protege " << election_lost_by_uuid
                                      << ", lost election. Has leader: "
                                      << state_->HasLeaderUnlocked();
-      just_stepped_down_ = false;
+      withhold_election_start_until_.store(MonoTime::Min().ToUint64(), std::memory_order_relaxed);
 
       start_election = !state_->HasLeaderUnlocked();
     }
@@ -635,13 +635,13 @@ Status RaftConsensus::ElectionLostByProtege(const std::string& election_lost_by_
 }
 
 void RaftConsensus::WithholdElectionAfterStepDown(const std::string& protege_uuid) {
-  just_stepped_down_ = true;
   protege_leader_uuid_ = protege_uuid;
-  withhold_election_start_until_ = MonoTime::Now(MonoTime::FINE);
-  withhold_election_start_until_.AddDelta(MonoDelta::FromMilliseconds(
+  auto timeout = MonoDelta::FromMilliseconds(
       FLAGS_after_stepdown_delay_election_multiplier *
       FLAGS_leader_failure_max_missed_heartbeat_periods *
-      FLAGS_raft_heartbeat_interval_ms));
+      FLAGS_raft_heartbeat_interval_ms);
+  auto deadline = MonoTime::FineNow() + timeout;
+  withhold_election_start_until_.store(deadline.ToUint64(), std::memory_order_release);
 }
 
 void RaftConsensus::RunLeaderElectionResponseRpcCallback(
@@ -662,17 +662,32 @@ void RaftConsensus::RunLeaderElectionResponseRpcCallback(
 void RaftConsensus::ReportFailureDetected(const std::string& name, const Status& msg) {
   DCHECK_EQ(name, kTimerId);
 
-  // Do not start election for an extended period of time if we were recently stepped down.
-  if (just_stepped_down_) {
-    if (MonoTime::Now(MonoTime::FINE).ComesBefore(withhold_election_start_until_)) {
+  MonoTime now;
+  const auto kMinTime = MonoTime::Min().ToUint64();
+  for (;;) {
+    // Do not start election for an extended period of time if we were recently stepped down.
+    auto old_value = withhold_election_start_until_.load(std::memory_order_acquire);
+
+    if (old_value == kMinTime) {
+      break;
+    }
+
+    if (!now.Initialized()) {
+      now = MonoTime::FineNow();
+    }
+
+    if (now < MonoTime::FromUint64(old_value)) {
       LOG(INFO) << "Skipping election due to delayed timeout.";
       return;
     }
-  }
 
-  // If we ever stepped down and then delayed election start did get scheduled, reset that we
-  // are out of that extra delay mode.
-  just_stepped_down_ = false;
+    // If we ever stepped down and then delayed election start did get scheduled, reset that we
+    // are out of that extra delay mode.
+    if (withhold_election_start_until_.compare_exchange_weak(
+        old_value, kMinTime, std::memory_order_release)) {
+      break;
+    }
+  }
 
   // Start an election.
   LOG_WITH_PREFIX(INFO) << "ReportFailureDetected: Starting NORMAL_ELECTION...";

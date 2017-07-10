@@ -191,35 +191,36 @@ TEST_F(TestRpc, TestWrongService) {
   // Remote errors always contain file name and line number.
   ASSERT_STR_CONTAINS(message, "Remote error (");
   ASSERT_STR_CONTAINS(message, "): Service unavailable (");
-  ASSERT_STR_CONTAINS(message, "): service WrongServiceName not registered on TestServer");
+  ASSERT_STR_CONTAINS(message, "): Service WrongServiceName not registered on TestServer");
 }
 
 namespace {
-int GetOpenFileLimit() {
+
+uint64_t GetOpenFileLimit() {
   struct rlimit limit;
   PCHECK(getrlimit(RLIMIT_NOFILE, &limit) == 0);
   return limit.rlim_cur;
 }
+
 } // anonymous namespace
 
 // Test that we can still make RPC connections even if many fds are in use.
 // This is a regression test for KUDU-650.
 TEST_F(TestRpc, TestHighFDs) {
   // This test can only run if ulimit is set high.
-  const int kNumFakeFiles = 3500;
-  const int kMinUlimit = kNumFakeFiles + 100;
+  const uint64_t kNumFakeFiles = 3500;
+  const uint64_t kMinUlimit = kNumFakeFiles + 100;
   if (GetOpenFileLimit() < kMinUlimit) {
     LOG(INFO) << "Test skipped: must increase ulimit -n to at least " << kMinUlimit;
     return;
   }
 
   // Open a bunch of fds just to increase our fd count.
-  std::vector<RandomAccessFile*> fake_files;
-  ElementDeleter d(&fake_files);
-  for (int i = 0; i < kNumFakeFiles; i++) {
+  std::vector<std::unique_ptr<RandomAccessFile>> fake_files;
+  for (uint64_t i = 0; i < kNumFakeFiles; i++) {
     gscoped_ptr<RandomAccessFile> f;
     CHECK_OK(Env::Default()->NewRandomAccessFile("/dev/zero", &f));
-    fake_files.push_back(f.release());
+    fake_files.emplace_back(f.release());
   }
 
   // Set up server and client, and verify we can make a successful call.

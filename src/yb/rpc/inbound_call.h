@@ -87,36 +87,6 @@ class InboundCall : public RpcCall {
     return serialized_request_;
   }
 
-  const RemoteMethod& remote_method() const {
-    return remote_method_;
-  }
-
-  // Serializes 'response' into the InboundCall's internal buffer, and marks
-  // the call as a success. Enqueues the response back to the connection
-  // that made the call.
-  //
-  // This method deletes the InboundCall object, so no further calls may be
-  // made after this one.
-  void RespondSuccess(const google::protobuf::MessageLite& response);
-
-  // Serializes a failure response into the internal buffer, marking the
-  // call as a failure. Enqueues the response back to the connection that
-  // made the call.
-  //
-  // This method deletes the InboundCall object, so no further calls may be
-  // made after this one.
-  void RespondFailure(ErrorStatusPB::RpcErrorCodePB error_code,
-                      const Status &status);
-
-  void RespondApplicationError(int error_ext_id, const std::string& message,
-                               const google::protobuf::MessageLite& app_error_pb);
-
-  // Convert an application error extension to an ErrorStatusPB.
-  // These ErrorStatusPB objects are what are returned in application error responses.
-  static void ApplicationErrorToPB(int error_ext_id, const std::string& message,
-                                   const google::protobuf::MessageLite& app_error_pb,
-                                   ErrorStatusPB* err);
-
   // See RpcContext::AddRpcSidecar()
   CHECKED_STATUS AddRpcSidecar(util::RefCntBuffer car, int* idx);
 
@@ -158,24 +128,20 @@ class InboundCall : public RpcCall {
   // If the client did not specify a deadline, returns MonoTime::Max().
   virtual MonoTime GetClientDeadline() const = 0;
 
+  virtual const std::string& method_name() const = 0;
+  virtual const std::string& service_name() const = 0;
+  virtual void RespondFailure(ErrorStatusPB::RpcErrorCodePB error_code, const Status& status) = 0;
+
  protected:
-  // Serialize and queue the response.
-  void Respond(const google::protobuf::MessageLite& response,
-               bool is_success);
-
   void NotifyTransferred(const Status& status) override;
-
-  // Serialize a response message for either success or failure. If it is a success,
-  // 'response' should be the user-defined response type for the call. If it is a
-  // failure, 'response' should be an ErrorStatusPB instance.
-  virtual CHECKED_STATUS SerializeResponseBuffer(const google::protobuf::MessageLite& response,
-                                                 bool is_success) = 0;
 
   // Log a WARNING message if the RPC response was slow enough that the
   // client likely timed out. This is based on the client-provided timeout
   // value.
   // Also can be configured to log _all_ RPC traces for help debugging.
   virtual void LogTrace() const = 0;
+
+  void QueueResponse(bool is_success);
 
   // The serialized bytes of the request param protobuf. Set by ParseFrom().
   // This references memory held by 'transfer_'.
@@ -193,10 +159,6 @@ class InboundCall : public RpcCall {
 
   // Timing information related to this RPC call.
   InboundCallTiming timing_;
-
-  // Proto service this calls belongs to. Used for routing.
-  // This field is filled in when the inbound request header is parsed.
-  RemoteMethod remote_method_;
 
  private:
   // The connection on which this inbound call arrived.

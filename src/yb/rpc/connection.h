@@ -78,9 +78,6 @@ class ConnectionContext {
   // Checks whether this connection context is idle.
   virtual bool Idle() = 0;
 
-  // Returns true if connection does not have any pending work and could be safey released.
-  virtual bool ReadyToStop() = 0;
-
   // Reading buffer limit for this connection context.
   // The reading buffer will never be larger than this limit.
   virtual size_t BufferLimit() = 0;

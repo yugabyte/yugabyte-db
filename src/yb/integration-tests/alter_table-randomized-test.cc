@@ -379,8 +379,7 @@ struct MirrorTable {
       return s;
     }
 
-    std::vector<YBError*> errors;
-    ElementDeleter d(&errors);
+    client::CollectedErrors errors;
     bool overflow;
     session->GetPendingErrors(&errors, &overflow);
     CHECK_EQ(errors.size(), 1);

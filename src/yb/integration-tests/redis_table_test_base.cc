@@ -7,6 +7,7 @@
 #include "yb/client/client.h"
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/integration-tests/yb_table_test_base.h"
+
 #include "yb/redisserver/redis_constants.h"
 #include "yb/redisserver/redis_parser.h"
 
@@ -27,6 +28,7 @@ using client::YBTableType;
 using client::YBTableName;
 using client::YBSession;
 
+using redisserver::RedisClientCommand;
 using redisserver::ParseSet;
 using redisserver::ParseGet;
 
@@ -41,8 +43,8 @@ void RedisTableTestBase::CreateTable() {
   }
 }
 
-vector<Slice> SlicesFromString(const vector<string>& args) {
-  vector<Slice> vector_slice;
+RedisClientCommand SlicesFromString(const vector<string>& args) {
+  RedisClientCommand vector_slice;
   for (const string& s : args) {
     vector_slice.emplace_back(s);
   }
@@ -50,14 +52,14 @@ vector<Slice> SlicesFromString(const vector<string>& args) {
 }
 
 void RedisTableTestBase::PutKeyValue(string key, string value) {
-  shared_ptr<YBRedisWriteOp> set_op(table_->NewRedisWrite());
+  auto set_op = std::make_shared<YBRedisWriteOp>(table_);
   ASSERT_OK(ParseSet(set_op.get(), SlicesFromString({"set", key, value})));
   ASSERT_OK(session_->Apply(set_op));
   ASSERT_OK(session_->Flush());
 }
 
 void RedisTableTestBase::PutKeyValueWithTtl(string key, string value, int64_t ttl_msec) {
-  shared_ptr<YBRedisWriteOp> set_op(table_->NewRedisWrite());
+  auto set_op = std::make_shared<YBRedisWriteOp>(table_);
   ASSERT_OK(ParseSet(set_op.get(),
       SlicesFromString({"set", key, value, "PX", std::to_string(ttl_msec)})));
   ASSERT_OK(session_->Apply(set_op));
@@ -66,7 +68,7 @@ void RedisTableTestBase::PutKeyValueWithTtl(string key, string value, int64_t tt
 
 void RedisTableTestBase::GetKeyValue(
     const string& key, const string& value, bool expect_not_found) {
-  shared_ptr<YBRedisReadOp> get_op(table_->NewRedisRead());
+  auto get_op = std::make_shared<YBRedisReadOp>(table_);
   ASSERT_OK(ParseGet(get_op.get(), SlicesFromString({"get", key})));
   ASSERT_OK(session_->ReadSync(get_op));
   if (expect_not_found) {

@@ -139,7 +139,7 @@ class ServicePoolImpl {
     const auto err_msg =
         Substitute("$0 request on $1 from $2 dropped due to backpressure. "
                    "The $3 queue is full, it has $4 items.",
-            call->remote_method().method_name(),
+            call->method_name(),
             service_->service_name(),
             yb::ToString(call->remote_address()),
             type,
@@ -158,7 +158,7 @@ class ServicePoolImpl {
       Overflow(call, "global", thread_pool_->options().queue_limit);
       return;
     }
-    LOG(WARNING) << call->remote_method().method_name() << " request on "
+    LOG(WARNING) << call->method_name() << " request on "
                  << service_->service_name() << " from " << call->remote_address()
                  << " dropped because of: " << status.ToString();
     const auto response_status = STATUS(ServiceUnavailable, "Service is shutting down");

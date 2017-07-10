@@ -160,7 +160,7 @@ void Reactor::ShutdownInternal() {
     const ConnectionPtr& conn = pair.second;
     VLOG(1) << name() << ": shutting down " << conn->ToString();
     conn->Shutdown(service_unavailable);
-    if (!conn->context().ReadyToStop()) {
+    if (!conn->context().Idle()) {
       waiting_conns_.push_back(conn);
     }
   }
@@ -171,7 +171,7 @@ void Reactor::ShutdownInternal() {
   for (const ConnectionPtr& conn : server_conns_) {
     VLOG(1) << name() << ": shutting down " << conn->ToString();
     conn->Shutdown(service_unavailable);
-    if (!conn->context().ReadyToStop()) {
+    if (!conn->context().Idle()) {
       LOG(INFO) << "Waiting for " << conn.get();
       waiting_conns_.push_back(conn);
     }
@@ -245,9 +245,19 @@ void Reactor::WakeThread() {
   async_.send();
 }
 
+void Reactor::CleanWaitingConnections() {
+  DCHECK(IsCurrentThread());
+
+  waiting_conns_.remove_if([](const ConnectionPtr& conn) { return conn->context().Idle(); });
+}
+
 void Reactor::CheckReadyToStop() {
-  waiting_conns_.remove_if([](const ConnectionPtr& conn) { return conn->context().ReadyToStop(); });
+  DCHECK(IsCurrentThread());
+
+  LOG(INFO) << "Check ready to stop: " << this << ", " << waiting_conns_.size();
+
   if (waiting_conns_.empty()) {
+    LOG(INFO) << "Reactor ready to stop, breaking loop" << this;
     loop_.break_loop(); // break the epoll loop and terminate the thread
   }
 }
@@ -330,6 +340,8 @@ void Reactor::TimerHandler(ev::timer &watcher, int revents) {
       "the timer handler.";
     return;
   }
+
+  CleanWaitingConnections();
 
   if (stopping_) {
     CheckReadyToStop();
@@ -608,6 +620,10 @@ void Reactor::DestroyConnection(Connection *conn, const Status &conn_status) {
       }
       ++it;
     }
+  }
+
+  if (!conn->Idle()) {
+    waiting_conns_.push_back(std::move(retained_conn));
   }
 }
 

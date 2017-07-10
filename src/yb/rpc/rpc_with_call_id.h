@@ -21,7 +21,6 @@ class ConnectionContextWithCallId : public ConnectionContext {
 
   CHECKED_STATUS Store(InboundCall* call);
  private:
-  bool ReadyToStop() override { return calls_being_handled_.empty(); }
   virtual uint64_t ExtractCallId(InboundCall* call) = 0;
 
   void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) override;

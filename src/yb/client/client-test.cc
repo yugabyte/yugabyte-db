@@ -1407,17 +1407,15 @@ TEST_F(ClientTest, TestScanTimeout) {
   }
 }
 
-static gscoped_ptr<YBError> GetSingleErrorFromSession(YBSession* session) {
+static std::unique_ptr<YBError> GetSingleErrorFromSession(YBSession* session) {
   CHECK_EQ(1, session->CountPendingErrors());
-  vector<YBError*> errors;
-  ElementDeleter d(&errors);
+  CollectedErrors errors;
   bool overflow;
   session->GetPendingErrors(&errors, &overflow);
   CHECK(!overflow);
   CHECK_EQ(1, errors.size());
-  YBError* error = errors[0];
-  errors.clear();
-  return gscoped_ptr<YBError>(error);
+  std::unique_ptr<YBError> result = std::move(errors.front());
+  return result;
 }
 
 // Simplest case of inserting through the client API: a single row
@@ -1439,7 +1437,7 @@ TEST_F(ClientTest, TestInsertSingleRowManualBatch) {
 
   // Get error
   ASSERT_EQ(session->CountPendingErrors(), 1) << "Should report bad key to error container";
-  gscoped_ptr<YBError> error = GetSingleErrorFromSession(session.get());
+  auto error = GetSingleErrorFromSession(session.get());
 
   // Retry
   ASSERT_OK(insert->mutable_row()->SetInt32("key", 12345));
@@ -1491,7 +1489,7 @@ TEST_F(ClientTest, TestWriteTimeout) {
     ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
     Status s = session->Flush();
     ASSERT_TRUE(s.IsIOError()) << "unexpected status: " << s.ToString();
-    gscoped_ptr<YBError> error = GetSingleErrorFromSession(session.get());
+    auto error = GetSingleErrorFromSession(session.get());
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
     ASSERT_STR_CONTAINS(error->status().ToString(),
         strings::Substitute("GetTableLocations($0, int32 key=1, 1) failed: "
@@ -1508,7 +1506,7 @@ TEST_F(ClientTest, TestWriteTimeout) {
     ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
     Status s = session->Flush();
     ASSERT_TRUE(s.IsIOError());
-    gscoped_ptr<YBError> error = GetSingleErrorFromSession(session.get());
+    auto error = GetSingleErrorFromSession(session.get());
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
     ASSERT_STR_CONTAINS(error->status().ToString(),
                         "Failed to write batch of 1 ops to tablet");
@@ -1614,7 +1612,7 @@ TEST_F(ClientTest, TestBatchWithPartialError) {
   ASSERT_STR_CONTAINS(s.ToString(), "Some errors occurred");
 
   // Fetch and verify the reported error.
-  gscoped_ptr<YBError> error = GetSingleErrorFromSession(session.get());
+  auto error = GetSingleErrorFromSession(session.get());
   ASSERT_TRUE(error->status().IsAlreadyPresent());
   ASSERT_EQ(error->failed_op().ToString(),
             "INSERT int32 key=1, int32 int_val=1, string string_val=Attempted dup");
@@ -1658,7 +1656,7 @@ void ClientTest::DoTestWriteWithDeadServer(WhichServerToKill which) {
   Status s = session->Flush();
   ASSERT_TRUE(s.IsIOError()) << s.ToString();
 
-  gscoped_ptr<YBError> error = GetSingleErrorFromSession(session.get());
+  auto error = GetSingleErrorFromSession(session.get());
   switch (which) {
     case DEAD_MASTER:
       // Only one master, so no retry for finding the new leader master.
@@ -1789,7 +1787,7 @@ TEST_F(ClientTest, TestMutateDeletedRow) {
   ASSERT_FALSE(s.ok());
   ASSERT_STR_CONTAINS(s.ToString(), "Some errors occurred");
   // verify error
-  gscoped_ptr<YBError> error = GetSingleErrorFromSession(session.get());
+  auto error = GetSingleErrorFromSession(session.get());
   ASSERT_EQ(error->failed_op().ToString(),
             "UPDATE int32 key=1, int32 int_val=2");
   ScanTableToStrings(client_table_.get(), &rows);
@@ -1819,7 +1817,7 @@ TEST_F(ClientTest, TestMutateNonexistentRow) {
   ASSERT_FALSE(s.ok());
   ASSERT_STR_CONTAINS(s.ToString(), "Some errors occurred");
   // verify error
-  gscoped_ptr<YBError> error = GetSingleErrorFromSession(session.get());
+  auto error = GetSingleErrorFromSession(session.get());
   ASSERT_EQ(error->failed_op().ToString(),
             "UPDATE int32 key=1, int32 int_val=2");
   ScanTableToStrings(client_table_.get(), &rows);
@@ -1874,7 +1872,7 @@ TEST_F(ClientTest, TestWriteWithBadSchema) {
   ASSERT_FALSE(s.ok());
 
   // Verify the specific error.
-  gscoped_ptr<YBError> error = GetSingleErrorFromSession(session.get());
+  auto error = GetSingleErrorFromSession(session.get());
   ASSERT_TRUE(error->status().IsInvalidArgument());
   ASSERT_STR_CONTAINS(error->status().ToString(),
             "Client provided column int_val[int32 NOT NULL] "

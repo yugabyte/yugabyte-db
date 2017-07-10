@@ -234,12 +234,11 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
 
       Status s = session->Flush();
       if (PREDICT_FALSE(!s.ok())) {
-        std::vector<client::YBError*> errors;
-        ElementDeleter d(&errors);
+        client::CollectedErrors errors;
         bool overflow;
         session->GetPendingErrors(&errors, &overflow);
         CHECK(!overflow);
-        for (const client::YBError* e : errors) {
+        for (const auto& e : errors) {
           CHECK(e->status().IsAlreadyPresent()) << "Unexpected error: " << e->status().ToString();
         }
         inserted -= errors.size();

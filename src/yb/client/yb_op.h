@@ -185,6 +185,7 @@ class YBDelete : public YBOperation {
 
 class YBRedisWriteOp : public YBOperation {
  public:
+  explicit YBRedisWriteOp(const std::shared_ptr<YBTable>& table);
   virtual ~YBRedisWriteOp();
 
   // Note: to avoid memory copy, this RedisWriteRequestPB is moved into tserver WriteRequestPB
@@ -212,7 +213,6 @@ class YBRedisWriteOp : public YBOperation {
 
  private:
   friend class YBTable;
-  explicit YBRedisWriteOp(const std::shared_ptr<YBTable>& table);
   std::unique_ptr<RedisWriteRequestPB> redis_write_request_;
   std::unique_ptr<RedisResponsePB> redis_response_;
 };
@@ -220,6 +220,7 @@ class YBRedisWriteOp : public YBOperation {
 
 class YBRedisReadOp : public YBOperation {
  public:
+  explicit YBRedisReadOp(const std::shared_ptr<YBTable>& table);
   virtual ~YBRedisReadOp();
 
   // Note: to avoid memory copy, this RedisReadRequestPB is moved into tserver ReadRequestPB
@@ -247,7 +248,6 @@ class YBRedisReadOp : public YBOperation {
 
  private:
   friend class YBTable;
-  explicit YBRedisReadOp(const std::shared_ptr<YBTable>& table);
   std::unique_ptr<RedisReadRequestPB> redis_read_request_;
   std::unique_ptr<RedisResponsePB> redis_response_;
 };

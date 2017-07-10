@@ -73,11 +73,10 @@ CHECKED_STATUS SqlEnv::ProcessOpStatus(const YBOperation* op,
   // Ignore overflow since there is nothing we can do but we will still search for the error for
   // the given op.
   if (s.IsIOError()) {
-    vector<client::YBError*> errors;
+    client::CollectedErrors errors;
     bool overflowed;
-    ElementDeleter d(&errors);
     session->GetPendingErrors(&errors, &overflowed);
-    for (const auto* error : errors) {
+    for (const auto& error : errors) {
       if (&error->failed_op() == op) {
         return error->status();
       }

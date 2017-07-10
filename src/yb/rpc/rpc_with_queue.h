@@ -46,7 +46,6 @@ class ConnectionContextWithQueue : public ConnectionContext {
   void AssignConnection(const ConnectionPtr& conn) override;
   void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) override;
   bool Idle() override;
-  bool ReadyToStop() override { return calls_queue_.empty(); }
   void QueueResponse(const ConnectionPtr& conn, InboundCallPtr call) override;
 
   void CallProcessed(InboundCall* call);

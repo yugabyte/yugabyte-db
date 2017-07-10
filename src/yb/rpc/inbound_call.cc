@@ -31,10 +31,6 @@
 #include "yb/util/trace.h"
 #include "yb/util/memory/memory.h"
 
-using google::protobuf::FieldDescriptor;
-using google::protobuf::Message;
-using google::protobuf::MessageLite;
-using google::protobuf::io::CodedOutputStream;
 using std::shared_ptr;
 using std::vector;
 using strings::Substitute;
@@ -77,59 +73,6 @@ InboundCall::~InboundCall() {
   TRACE_TO(trace_, "Destroying InboundCall");
   YB_LOG_IF_EVERY_N(INFO, FLAGS_print_trace_every > 0, FLAGS_print_trace_every)
       << "Tracing op: \n " << trace_->DumpToString(true);
-}
-
-void InboundCall::RespondSuccess(const MessageLite& response) {
-  TRACE_EVENT0("rpc", "InboundCall::RespondSuccess");
-  Respond(response, true);
-}
-
-void InboundCall::RespondFailure(ErrorStatusPB::RpcErrorCodePB error_code,
-                                 const Status& status) {
-  TRACE_EVENT0("rpc", "InboundCall::RespondFailure");
-  ErrorStatusPB err;
-  err.set_message(status.ToString());
-  err.set_code(error_code);
-
-  Respond(err, false);
-}
-
-void InboundCall::RespondApplicationError(int error_ext_id, const std::string& message,
-                                          const MessageLite& app_error_pb) {
-  ErrorStatusPB err;
-  ApplicationErrorToPB(error_ext_id, message, app_error_pb, &err);
-  Respond(err, false);
-}
-
-void InboundCall::ApplicationErrorToPB(int error_ext_id, const std::string& message,
-                                       const google::protobuf::MessageLite& app_error_pb,
-                                       ErrorStatusPB* err) {
-  err->set_message(message);
-  const FieldDescriptor* app_error_field =
-      err->GetReflection()->FindKnownExtensionByNumber(error_ext_id);
-  if (app_error_field != nullptr) {
-    err->GetReflection()->MutableMessage(err, app_error_field)->CheckTypeAndMergeFrom(app_error_pb);
-  } else {
-    LOG(DFATAL) << "Unable to find application error extension ID " << error_ext_id
-                << " (message=" << message << ")";
-  }
-}
-
-void InboundCall::Respond(const MessageLite& response,
-                          bool is_success) {
-  TRACE_EVENT_FLOW_END0("rpc", "InboundCall", this);
-  Status s = SerializeResponseBuffer(response, is_success);
-  if (PREDICT_FALSE(!s.ok())) {
-    // TODO: test error case, serialize error response instead
-    LOG(DFATAL) << "Unable to serialize response: " << s.ToString();
-  }
-
-  TRACE_EVENT_ASYNC_END1("rpc", "InboundCall", this,
-                         "method", remote_method_.method_name());
-  TRACE_TO(trace_, "Queueing $0 response", is_success ? "success" : "failure");
-
-  LogTrace();
-  conn_->context().QueueResponse(conn_, shared_from(this));
 }
 
 void InboundCall::NotifyTransferred(const Status& status) {
@@ -185,11 +128,11 @@ void InboundCall::RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_
 }
 
 void InboundCall::RecordHandlingCompleted(scoped_refptr<Histogram> handler_run_time) {
-  DCHECK(handler_run_time != nullptr);
   DCHECK(!timing_.time_completed.Initialized());  // Protect against multiple calls.
-  timing_.time_completed = MonoTime::Now(MonoTime::FINE);
-  handler_run_time->Increment(
-      timing_.time_completed.GetDeltaSince(timing_.time_handled).ToMicroseconds());
+  timing_.time_completed = MonoTime::FineNow();
+  if (handler_run_time) {
+    handler_run_time->Increment((timing_.time_completed - timing_.time_handled).ToMicroseconds());
+  }
 }
 
 bool InboundCall::ClientTimedOut() const {
@@ -204,6 +147,12 @@ bool InboundCall::ClientTimedOut() const {
 
 const UserCredentials& InboundCall::user_credentials() const {
   return conn_->user_credentials();
+}
+
+void InboundCall::QueueResponse(bool is_success) {
+  TRACE_TO(trace_, is_success ? "Queueing success response" : "Queueing failure response");
+  LogTrace();
+  connection()->context().QueueResponse(connection(), shared_from(this));
 }
 
 }  // namespace rpc

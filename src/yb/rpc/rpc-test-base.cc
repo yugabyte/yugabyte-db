@@ -89,11 +89,11 @@ const char* GenericCalculatorService::kSecondString =
     "2222222222222222222222222222222222222222222222222222222222222222222222";
 
 void GenericCalculatorService::Handle(InboundCallPtr incoming) {
-  if (incoming->remote_method().method_name() == kAddMethodName) {
+  if (incoming->method_name() == kAddMethodName) {
     DoAdd(incoming.get());
-  } else if (incoming->remote_method().method_name() == kSleepMethodName) {
+  } else if (incoming->method_name() == kSleepMethodName) {
     DoSleep(incoming.get());
-  } else if (incoming->remote_method().method_name() == kSendStringsMethodName) {
+  } else if (incoming->method_name() == kSendStringsMethodName) {
     DoSendStrings(incoming.get());
   } else {
     incoming->RespondFailure(ErrorStatusPB::ERROR_NO_SUCH_METHOD,
@@ -110,7 +110,7 @@ void GenericCalculatorService::GenericCalculatorService::DoAdd(InboundCall* inco
 
   AddResponsePB resp;
   resp.set_result(req.x() + req.y());
-  incoming->RespondSuccess(resp);
+  down_cast<YBInboundCall*>(incoming)->RespondSuccess(resp);
 }
 
 void GenericCalculatorService::DoSendStrings(InboundCall* incoming) {
@@ -134,7 +134,7 @@ void GenericCalculatorService::DoSendStrings(InboundCall* incoming) {
     resp.add_sidecars(idx);
   }
 
-  incoming->RespondSuccess(resp);
+  down_cast<YBInboundCall*>(incoming)->RespondSuccess(resp);
 }
 
 void GenericCalculatorService::DoSleep(InboundCall* incoming) {
@@ -150,7 +150,7 @@ void GenericCalculatorService::DoSleep(InboundCall* incoming) {
   LOG(INFO) << "got call: " << req.ShortDebugString();
   SleepFor(MonoDelta::FromMicroseconds(req.sleep_micros()));
   SleepResponsePB resp;
-  incoming->RespondSuccess(resp);
+  down_cast<YBInboundCall*>(incoming)->RespondSuccess(resp);
 }
 
 namespace {

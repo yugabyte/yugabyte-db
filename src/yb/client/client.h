@@ -548,10 +548,6 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   YBUpdate* NewUpdate();
   YBDelete* NewDelete();
 
-  // Create a new Redis operation for this table.
-  YBRedisWriteOp* NewRedisWrite();
-  YBRedisReadOp* NewRedisRead();
-
   // Create a new YQL operation for this table.
   YBqlWriteOp* NewYQLWrite();
   YBqlWriteOp* NewYQLInsert();
@@ -664,6 +660,7 @@ class YBTableAlterer {
 // which caused the error, along with whatever the actual error was.
 class YBError {
  public:
+  YBError(std::shared_ptr<YBOperation> failed_op, const Status& error);
   ~YBError();
 
   // Return the actual error which occurred.
@@ -685,17 +682,10 @@ class YBError {
  private:
   class Data;
 
-  friend class internal::Batcher;
-  friend class YBSession;
-
-  YBError(std::shared_ptr<YBOperation> failed_op, const Status& error);
-
-  // Owned.
-  Data* data_;
-
-  DISALLOW_COPY_AND_ASSIGN(YBError);
+  std::unique_ptr<Data> data_;
 };
 
+typedef std::vector<std::unique_ptr<YBError>> CollectedErrors;
 
 // A YBSession belongs to a specific YBClient, and represents a context in
 // which all read/write data access should take place. Within a session,
@@ -956,7 +946,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // Caller takes ownership of the returned errors.
   //
   // This function is thread-safe.
-  void GetPendingErrors(std::vector<YBError*>* errors, bool* overflowed);
+  void GetPendingErrors(CollectedErrors* errors, bool* overflowed);
 
   YBClient* client() const;
 

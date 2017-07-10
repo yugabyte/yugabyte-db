@@ -31,41 +31,17 @@ using strings::Substitute;
 namespace yb {
 namespace rpc {
 
-RpcMethodMetrics::RpcMethodMetrics()
-  : handler_latency(nullptr) {
-}
+RpcMethodMetrics::RpcMethodMetrics(scoped_refptr<Histogram> handler_latency_)
+    : handler_latency(std::move(handler_latency_)) {}
 
-RpcMethodMetrics::~RpcMethodMetrics() {
-}
+RpcMethodMetrics::RpcMethodMetrics() {}
+
+RpcMethodMetrics::~RpcMethodMetrics() {}
 
 ServiceIf::~ServiceIf() {
 }
 
 void ServiceIf::Shutdown() {
-}
-
-bool ServiceIf::ParseParam(InboundCall *call, google::protobuf::Message *message) {
-  Slice param(call->serialized_request());
-  if (PREDICT_FALSE(!message->ParseFromArray(param.data(), param.size()))) {
-    string err = Substitute("Invalid parameter for call $0: $1",
-                            call->remote_method().ToString(),
-                            message->InitializationErrorString().c_str());
-    LOG(WARNING) << err;
-    call->RespondFailure(ErrorStatusPB::ERROR_INVALID_REQUEST,
-                         STATUS(InvalidArgument, err));
-    return false;
-  }
-  return true;
-}
-
-void ServiceIf::RespondBadMethod(InboundCall *call) {
-  auto err = Substitute("Call on service $0 received from $1 with an invalid method name: $2",
-                        call->remote_method().service_name(),
-                        call->connection()->ToString(),
-                        call->remote_method().method_name());
-  LOG(WARNING) << err;
-  call->RespondFailure(ErrorStatusPB::ERROR_NO_SUCH_METHOD,
-                       STATUS(InvalidArgument, err));
 }
 
 } // namespace rpc

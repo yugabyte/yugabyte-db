@@ -70,15 +70,39 @@ class YBInboundCall : public InboundCall {
     return header_.call_id();
   }
 
+  const RemoteMethod& remote_method() const {
+    return remote_method_;
+  }
+
+  // Serializes 'response' into the InboundCall's internal buffer, and marks
+  // the call as a success. Enqueues the response back to the connection
+  // that made the call.
+  //
+  // This method deletes the InboundCall object, so no further calls may be
+  // made after this one.
+  void RespondSuccess(const google::protobuf::MessageLite& response);
+
+  // Serializes a failure response into the internal buffer, marking the
+  // call as a failure. Enqueues the response back to the connection that
+  // made the call.
+  //
+  // This method deletes the InboundCall object, so no further calls may be
+  // made after this one.
+  void RespondFailure(ErrorStatusPB::RpcErrorCodePB error_code,
+                      const Status &status) override;
+
+  void RespondApplicationError(int error_ext_id, const std::string& message,
+                               const google::protobuf::MessageLite& app_error_pb);
+
+  // Convert an application error extension to an ErrorStatusPB.
+  // These ErrorStatusPB objects are what are returned in application error responses.
+  static void ApplicationErrorToPB(int error_ext_id, const std::string& message,
+                                   const google::protobuf::MessageLite& app_error_pb,
+                                   ErrorStatusPB* err);
+
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
   void Serialize(std::deque<util::RefCntBuffer>* output) const override;
-
-  // Serialize a response message for either success or failure. If it is a success,
-  // 'response' should be the user-defined response type for the call. If it is a
-  // failure, 'response' should be an ErrorStatusPB instance.
-  CHECKED_STATUS SerializeResponseBuffer(const google::protobuf::MessageLite& response,
-                                         bool is_success) override;
 
   void LogTrace() const override;
   std::string ToString() const override;
@@ -86,12 +110,36 @@ class YBInboundCall : public InboundCall {
 
   MonoTime GetClientDeadline() const override;
 
+  const std::string& method_name() const override {
+    return remote_method_.method_name();
+  }
+
+  const std::string& service_name() const override {
+    return remote_method_.service_name();
+  }
+
+  bool ParseParam(google::protobuf::Message *message);
+  void RespondBadMethod();
+
  private:
+  // Serialize and queue the response.
+  void Respond(const google::protobuf::MessageLite& response, bool is_success);
+
+  // Serialize a response message for either success or failure. If it is a success,
+  // 'response' should be the user-defined response type for the call. If it is a
+  // failure, 'response' should be an ErrorStatusPB instance.
+  CHECKED_STATUS SerializeResponseBuffer(const google::protobuf::MessageLite& response,
+                                         bool is_success);
+
   // The header of the incoming call. Set by ParseFrom()
   RequestHeader header_;
 
   // The buffers for serialized response. Set by SerializeResponseBuffer().
   util::RefCntBuffer response_buf_;
+
+  // Proto service this calls belongs to. Used for routing.
+  // This field is filled in when the inbound request header is parsed.
+  RemoteMethod remote_method_;
 };
 
 } // namespace rpc
