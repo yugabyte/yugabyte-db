@@ -166,7 +166,8 @@ class BlockBasedTable : public TableReader {
   // to get the correct filter block.
   // Note: even if we check prefix match we still need to get filter based on filter_key, not its
   // prefix, because prefix for the key goes to the same filter block as key itself.
-  CachableEntry<FilterBlockReader> GetFilter(bool no_io = false,
+  CachableEntry<FilterBlockReader> GetFilter(const QueryId query_id,
+      bool no_io = false,
       const Slice* filter_key = nullptr) const;
 
   // Get the iterator from the index reader.

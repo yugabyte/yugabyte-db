@@ -106,8 +106,9 @@ void ReleaseCachedEntry(void* arg, void* h) {
 Cache::Handle* GetEntryFromCache(Cache* block_cache, const Slice& key,
                                  Tickers block_cache_miss_ticker,
                                  Tickers block_cache_hit_ticker,
-                                 Statistics* statistics) {
-  auto cache_handle = block_cache->Lookup(key, kInMultiTouchId);
+                                 Statistics* statistics,
+                                 const QueryId query_id) {
+  auto cache_handle = block_cache->Lookup(key, query_id);
   if (cache_handle != nullptr) {
     PERF_COUNTER_ADD(block_cache_hit_count, 1);
     // overall cache hit
@@ -506,7 +507,8 @@ class BloomFilterAwareIterator : public ForwardingIterator {
       if (table_->rep_->filter_type == FilterType::kFixedSizeFilter) {
         auto filter_key = table_->GetFilterKey(internal_key);
         auto filter_entry =
-            table_->GetFilter(read_options_.read_tier == kBlockCacheTier /* no_io */, &filter_key);
+            table_->GetFilter(read_options_.query_id,
+                              read_options_.read_tier == kBlockCacheTier /* no_io */, &filter_key);
         FilterBlockReader* filter = filter_entry.value;
         if (table_->NonBlockBasedFilterKeyMayMatch(filter, filter_key)) {
           // If bloom filter was not useful, then take this file into account.
@@ -723,7 +725,7 @@ Status BlockBasedTable::Open(const ImmutableCFOptions& ioptions,
             FALLTHROUGH_INTENDED;
           case FilterType::kBlockBasedFilter: {
             // Hack: Call GetFilter() to implicitly add filter to the block_cache
-            auto filter_entry = new_table->GetFilter();
+            auto filter_entry = new_table->GetFilter(kDefaultQueryId);
             filter_entry.Release(table_options.block_cache.get());
             corrupted_filter_type = false;
             break;
@@ -881,7 +883,7 @@ Status BlockBasedTable::GetDataBlockFromCache(
   if (block_cache != nullptr) {
     block->cache_handle =
         GetEntryFromCache(block_cache, block_cache_key, BLOCK_CACHE_DATA_MISS,
-                          BLOCK_CACHE_DATA_HIT, statistics);
+                          BLOCK_CACHE_DATA_HIT, statistics, read_options.query_id);
     if (block->cache_handle != nullptr) {
       block->value =
           static_cast<Block*>(block_cache->Value(block->cache_handle));
@@ -898,7 +900,7 @@ Status BlockBasedTable::GetDataBlockFromCache(
 
   assert(!compressed_block_cache_key.empty());
   block_cache_compressed_handle =
-      block_cache_compressed->Lookup(compressed_block_cache_key, kInMultiTouchId);
+      block_cache_compressed->Lookup(compressed_block_cache_key, read_options.query_id);
   // if we found in the compressed cache, then uncompress and insert into
   // uncompressed cache
   if (block_cache_compressed_handle == nullptr) {
@@ -988,8 +990,7 @@ Status BlockBasedTable::PutDataBlockToCache(
   // insert into uncompressed block cache
   assert((block->value->compression_type() == kNoCompression));
   if (block_cache != nullptr && block->value->cachable()) {
-    // TODO: Defaults to multi touch cache. Need to update with real query id.
-    s = block_cache->Insert(block_cache_key, kInMultiTouchId, block->value,
+    s = block_cache->Insert(block_cache_key, read_options.query_id, block->value,
                             block->value->usable_size(),
                             &DeleteCachedEntry<Block>, &(block->cache_handle));
     if (s.ok()) {
@@ -1089,7 +1090,9 @@ Slice BlockBasedTable::GetFilterKey(const Slice &internal_key) const {
       rep_->filter_key_transformer->Transform(user_key) : user_key;
 }
 
-BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(bool no_io,
+BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(
+    const QueryId query_id,
+    bool no_io,
     const Slice* filter_key) const {
   const bool is_fixed_size_filter = rep_->filter_type == FilterType::kFixedSizeFilter;
 
@@ -1150,7 +1153,7 @@ BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(boo
 
   Statistics* statistics = rep_->ioptions.statistics;
   auto cache_handle = GetEntryFromCache(block_cache, filter_block_cache_key,
-      BLOCK_CACHE_FILTER_MISS, BLOCK_CACHE_FILTER_HIT, statistics);
+      BLOCK_CACHE_FILTER_MISS, BLOCK_CACHE_FILTER_HIT, statistics, query_id);
 
   FilterBlockReader* filter = nullptr;
   if (cache_handle != nullptr) {
@@ -1165,10 +1168,9 @@ BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(boo
     filter = ReadFilterBlock(*filter_block_handle, rep_, &filter_size);
     if (filter != nullptr) {
       assert(filter_size > 0);
-      // TODO: Defaults to multi touch cache. Need to update with real query id.
-      Status s = block_cache->Insert(filter_block_cache_key, kInMultiTouchId, filter, filter_size,
-          &DeleteCachedEntry<FilterBlockReader>,
-          &cache_handle);
+      Status s = block_cache->Insert(filter_block_cache_key, query_id,
+                                     filter, filter_size,
+                                     &DeleteCachedEntry<FilterBlockReader>, &cache_handle);
       if (s.ok()) {
         RecordTick(statistics, BLOCK_CACHE_ADD);
         RecordTick(statistics, BLOCK_CACHE_BYTES_WRITE, filter_size);
@@ -1200,7 +1202,7 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
   Statistics* statistics = rep_->ioptions.statistics;
   auto cache_handle =
       GetEntryFromCache(block_cache, key, BLOCK_CACHE_INDEX_MISS,
-          BLOCK_CACHE_INDEX_HIT, statistics);
+          BLOCK_CACHE_INDEX_HIT, statistics, read_options.query_id);
 
   if (cache_handle == nullptr && no_io) {
     if (input_iter != nullptr) {
@@ -1219,8 +1221,7 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
     std::unique_ptr<IndexReader> index_reader_unique;
     Status s = CreateDataBlockIndexReader(&index_reader_unique);
     if (s.ok()) {
-      // TODO: Defaults to multi touch cache. Need to update with real query id.
-      s = block_cache->Insert(key, kInMultiTouchId, index_reader_unique.get(),
+      s = block_cache->Insert(key, read_options.query_id, index_reader_unique.get(),
                               index_reader_unique->usable_size(),
                               &DeleteCachedEntry<IndexReader>, &cache_handle);
     }
@@ -1426,7 +1427,7 @@ bool BlockBasedTable::PrefixMayMatch(const Slice& internal_key) {
   no_io_read_options.read_tier = kBlockCacheTier;
 
   // First check non block-based filter.
-  auto filter_entry = GetFilter(true /* no io */, &filter_key);
+  auto filter_entry = GetFilter(no_io_read_options.query_id, true /* no io */, &filter_key);
   FilterBlockReader* filter = filter_entry.value;
   const bool is_block_based_filter = rep_->filter_type == FilterType::kBlockBasedFilter;
   if (filter != nullptr && !is_block_based_filter) {
@@ -1537,7 +1538,9 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& intern
   Slice filter_key;
   if (!skip_filters) {
     filter_key = GetFilterKey(internal_key);
-    filter_entry = GetFilter(read_options.read_tier == kBlockCacheTier, &filter_key);
+    filter_entry = GetFilter(read_options.query_id,
+                             read_options.read_tier == kBlockCacheTier,
+                             &filter_key);
   }
   FilterBlockReader* filter = filter_entry.value;
 

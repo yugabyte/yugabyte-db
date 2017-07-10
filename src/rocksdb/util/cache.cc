@@ -18,6 +18,8 @@
 #include "util/hash.h"
 #include "util/mutexlock.h"
 
+// 0 value means that there exist no single_touch cache and
+// 1 means that the entire cache is treated as a multi-touch cache.
 DEFINE_double(cache_single_touch_ratio, 0.2,
               "fraction of the cache dedicated to single-touch items");
 
@@ -587,11 +589,12 @@ Status LRUCache::Insert(const Slice& key, uint32_t hash, const QueryId query_id,
     // Free the space following strict LRU policy until enough space
     // is freed or the lru list is empty.
     SubCacheType subcache_type;
-    // Check if there
+    // Check if there is a single touch cache.
     if (FLAGS_cache_single_touch_ratio == 0) {
       e->query_id = kInMultiTouchId;
       subcache_type = MULTI_TOUCH;
     } else if (FLAGS_cache_single_touch_ratio == 1) {
+      // If there is no multi touch cache, default to single cache.
       subcache_type = SINGLE_TOUCH;
     } else {
       subcache_type = table_.GetSubCacheTypeCandidate(e);
@@ -743,6 +746,9 @@ class ShardedLRUCache : public Cache {
 
   Handle* Lookup(const Slice& key, const QueryId query_id) override {
     DCHECK(IsValidQueryId(query_id));
+    if (query_id == kNoCacheQueryId) {
+      return nullptr;
+    }
     const uint32_t hash = HashSlice(key);
     return shards_[Shard(hash)].Lookup(key, hash, query_id);
   }

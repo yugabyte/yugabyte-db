@@ -138,7 +138,7 @@ TEST_F(DBBlockCacheTest, TestWithoutCompressedBlockCache) {
   size_t usage = cache->GetUsage();
   ASSERT_LT(0, usage);
   // Updating multi-touch capacity exactly equal to the usage to induce failures.
-  cache->SetCapacity(usage / (1 - FLAGS_cache_single_touch_ratio));
+  cache->SetCapacity(usage / FLAGS_cache_single_touch_ratio);
   ASSERT_EQ(usage, cache->GetPinnedUsage());
 
   // Test with strict capacity limit.

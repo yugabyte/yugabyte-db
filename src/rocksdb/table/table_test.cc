@@ -48,6 +48,8 @@
 #include "util/testharness.h"
 #include "util/testutil.h"
 
+DECLARE_double(cache_single_touch_ratio);
+
 namespace rocksdb {
 
 extern const uint64_t kLegacyBlockBasedTableMagicNumber;
@@ -1081,7 +1083,8 @@ void PrefetchRange(TableConstructor* c, Options* opt,
                    const std::vector<std::string>& keys_not_in_cache,
                    const Status expected_status = Status::OK()) {
   // reset the cache and reopen the table
-  table_options->block_cache = NewLRUCache(16 * 1024 * 1024);
+  table_options->block_cache =
+      NewLRUCache((16 * 1024 * 1024) / FLAGS_cache_single_touch_ratio);
   opt->table_factory.reset(NewBlockBasedTableFactory(*table_options));
   const ImmutableCFOptions ioptions2(*opt);
   ASSERT_OK(c->Reopen(ioptions2));
@@ -1109,7 +1112,8 @@ TEST_F(BlockBasedTableTest, PrefetchTest) {
   BlockBasedTableOptions table_options;
   table_options.block_size = 1024;
   // big enough so we don't ever lose cached values.
-  table_options.block_cache = NewLRUCache(16 * 1024 * 1024);
+  table_options.block_cache =
+      NewLRUCache((16 * 1024 * 1024) / FLAGS_cache_single_touch_ratio);
   opt.table_factory.reset(NewBlockBasedTableFactory(table_options));
 
   TableConstructor c(BytewiseComparator());
@@ -1621,7 +1625,7 @@ TEST_F(BlockBasedTableTest, FilterBlockInBlockCache) {
 
   // Enable the cache for index/filter blocks
   BlockBasedTableOptions table_options;
-  table_options.block_cache = NewLRUCache(1024);
+  table_options.block_cache = NewLRUCache(1024 / FLAGS_cache_single_touch_ratio);
   table_options.cache_index_and_filter_blocks = true;
   options.table_factory.reset(new BlockBasedTableFactory(table_options));
   std::vector<std::string> keys;
@@ -1901,7 +1905,7 @@ TEST_F(BlockBasedTableTest, BlockCacheLeak) {
   BlockBasedTableOptions table_options;
   table_options.block_size = 1024;
   // big enough so we don't ever lose cached values.
-  table_options.block_cache = NewLRUCache(16 * 1024 * 1024);
+  table_options.block_cache = NewLRUCache((16 * 1024 * 1024) / FLAGS_cache_single_touch_ratio);
   opt.table_factory.reset(NewBlockBasedTableFactory(table_options));
 
   TableConstructor c(BytewiseComparator());
@@ -1934,7 +1938,8 @@ TEST_F(BlockBasedTableTest, BlockCacheLeak) {
   }
 
   // rerun with different block cache
-  table_options.block_cache = NewLRUCache(16 * 1024 * 1024);
+  table_options.block_cache =
+    NewLRUCache((16 * 1024 * 1024) / FLAGS_cache_single_touch_ratio);
   opt.table_factory.reset(NewBlockBasedTableFactory(table_options));
   const ImmutableCFOptions ioptions2(opt);
   ASSERT_OK(c.Reopen(ioptions2));

@@ -312,6 +312,7 @@ class VersionBuilder::Rep {
         table_cache_->FindTable(env_options_,
                                 *(base_vstorage_->InternalComparator()),
                                 file_meta->fd, &file_meta->table_reader_handle,
+                                kDefaultQueryId,
                                 false /*no_io */, true /* record_read_stats */,
                                 internal_stats->GetFileReadHist(level));
         if (file_meta->table_reader_handle != nullptr) {

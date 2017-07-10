@@ -517,6 +517,7 @@ std::string DBTestBase::Get(const std::string& k, const Snapshot* snapshot) {
   ReadOptions options;
   options.verify_checksums = true;
   options.snapshot = snapshot;
+  options.query_id = kInMultiTouchId;
   std::string result;
   Status s = db_->Get(options, k, &result);
   if (s.IsNotFound()) {

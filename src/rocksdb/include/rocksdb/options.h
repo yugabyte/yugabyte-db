@@ -1425,7 +1425,7 @@ struct ReadOptions {
   bool pin_data;
 
   // Query id designated for the read.
-  QueryId query_id;
+  QueryId query_id = kDefaultQueryId;
 
   // When scanning, choose whether to use the bloom filters for pruning the files to open or not.
   // If true, this will check the bloom filters for the scan key and, iff the file might match the

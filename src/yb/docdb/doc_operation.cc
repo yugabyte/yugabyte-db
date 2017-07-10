@@ -63,7 +63,7 @@ Status GetRedisValue(
   bool doc_found = false;
 
   RETURN_NOT_OK(GetSubDocument(rocksdb, doc_key, &doc, &doc_found,
-                               rocksdb::kNoCacheQueryId, hybrid_time));
+                               rocksdb::kDefaultQueryId, hybrid_time));
 
   if (!doc_found) {
     *type = REDIS_TYPE_NONE;

@@ -872,8 +872,7 @@ yb::Status GetSubDocument(
 
 Status DocDBDebugDump(rocksdb::DB* rocksdb, ostream& out, const bool include_binary) {
   rocksdb::ReadOptions read_opts;
-  // Do not cache for debug dumps.
-  read_opts.query_id = rocksdb::kNoCacheQueryId;
+  read_opts.query_id = rocksdb::kDefaultQueryId;
   auto iter = unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_opts));
   iter->SeekToFirst();
   auto result_status = Status::OK();
