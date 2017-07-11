@@ -3,7 +3,7 @@ import PropTypes from 'prop-types';
 import { Row, Col } from 'react-bootstrap';
 import { Field, change } from 'redux-form';
 import _ from 'lodash';
-import { isDefinedNotNull, isValidArray, isNonEmptyObject, areIntentsEqual, isEmptyObject, isNonEmptyArray } from 'utils/ObjectUtils';
+import { isDefinedNotNull, isNonEmptyObject, areIntentsEqual, isEmptyObject, isNonEmptyArray } from 'utils/ObjectUtils';
 import { YBModal, YBTextInputWithLabel, YBControlledNumericInput, YBControlledNumericInputWithLabel,
   YBSelectWithLabel, YBControlledSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel
 } from 'components/common/forms/fields';
@@ -149,7 +149,7 @@ export default class UniverseForm extends Component {
       }
       this.props.getRegionListItems(providerUUID, isMultiAZ);
       this.props.getInstanceTypeListItems(providerUUID);
-      if (this.getCurrentProvider(providerUUID).code === "onprem") {
+      if (providerUUID && this.getCurrentProvider(providerUUID).code === "onprem") {
         this.props.fetchNodeInstanceList(providerUUID);
       }
       // If Edit Case Set Initial Configuration
