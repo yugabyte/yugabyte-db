@@ -3,42 +3,42 @@ us-west-1:
   name: US West (N. California)
   latitude: 36.778261
   longitude: -119.417932
-  ybImage: ami-479cdc27
+  ybImage: ami-18cc9478
 us-west-2:
   name: US West (Oregon)
   latitude: 43.804133
   longitude: -120.554201
-  ybImage: ami-b613add6
+  ybImage: ami-c60e80a6
 us-east-1:
   name: US East (N. Virginia)
   latitude: 37.478397
   longitude: -76.453077
-  ybImage: ami-bf1f8ea8
+  ybImage: ami-7b03b46d
 eu-west-1:
   name: EU (Ireland)
   latitude: 53.412910
   longitude: -8.243890
-  ybImage: ami-ee79069d
+  ybImage: ami-d1bd8db7
 eu-central-1:
   name: EU (Frankfurt)
   latitude: 50.110922
   longitude: 8.682127
-  ybImage: ami-359d6f5a
+  ybImage: ami-6d3fe902
 ap-southeast-1:
   name: Asia Pacific (Singapore)
   latitude: 1.352083
   longitude: 103.819836
-  ybImage: ami-80ba60e3
+  ybImage: ami-d6b30eb5
 ap-northeast-1:
   name: Asia Pacific (Tokyo)
   latitude: 35.689487
   longitude: 139.691706
-  ybImage: ami-397fab58
+  ybImage: ami-51633d36
 ap-southeast-2:
   name: Asia Pacific (Sydney)
   latitude: -33.868820
   longitude: 151.209296
-  ybImage: ami-50102133
+  ybImage: ami-e67e7285
 ap-northeast-2:
   name: Asia Pacific (Seoul)
   latitude: 37.566535
@@ -47,4 +47,4 @@ sa-east-1:
   name: South America (São Paulo)
   latitude: -23.550520
   longitude: -46.633309
-  ybImage: ami-1052c27c
+  ybImage: ami-1d6c0c71
