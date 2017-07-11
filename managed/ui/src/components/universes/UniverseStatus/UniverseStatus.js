@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import './UniverseStatus.scss';
 import {ProgressBar} from 'react-bootstrap';
-import { isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { isNonEmptyObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
 
 export default class UniverseStatus extends Component {
 
@@ -13,10 +13,10 @@ export default class UniverseStatus extends Component {
     var updateSucceeded = universeDetails.updateSucceeded;
     var statusClassName = "";
     var statusText = "";
-    var universePendingTask = customerTaskList.find(function(taskItem) {
+    var universePendingTask = isNonEmptyArray(customerTaskList) ? customerTaskList.find(function(taskItem) {
       return (taskItem.universeUUID === universeUUID && (taskItem.status === "Running" ||
         taskItem.status === "Initializing") && Number(taskItem.percentComplete) !== 100);
-    });
+    }) : null;
     var statusDisplay = <span/>;
     if (updateSucceeded) {
       statusClassName = 'good';

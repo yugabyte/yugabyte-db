@@ -92,8 +92,11 @@ class DockerProviderConfiguration extends Component {
               <h4>Docker Configuration</h4>
               { error && <Alert bsStyle="danger">{error}</Alert> }
               <div className="docker-config-form form-right-aligned-labels">
-                Setup<span className="heading-text"><a href="https://docs.docker.com/" target="_blank">Docker Platform </a></span>
-              in order to create yugabyte clusters as containers running on your host machine.
+                Setup<span className="heading-text">
+                <a href="https://docs.docker.com/" target="_blank" rel="noopener noreferrer">
+                  Docker Platform
+                </a></span>
+                in order to create yugabyte clusters as containers running on your host machine.
               </div>
             </Col>
           </Row>

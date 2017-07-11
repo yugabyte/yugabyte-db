@@ -15,7 +15,7 @@ class GCPProviderConfiguration extends Component {
         <ListGroup>
           <ListGroupItem>
             Configure Google Cloud Platform service access for YugaWare.
-            See <span className="heading-text"><a href="https://cloud.google.com/docs/" target="_blank">GCP documentation</a></span>.
+            See <span className="heading-text"><a href="https://cloud.google.com/docs/" target="_blank" rel="noopener noreferrer">GCP documentation</a></span>.
           </ListGroupItem>
           <ListGroupItem>
             Create a service account client for YugaWare, and download the private key to your local machine.

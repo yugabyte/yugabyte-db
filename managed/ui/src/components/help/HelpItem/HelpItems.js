@@ -21,7 +21,7 @@ export default class HelpItems extends Component {
             <h4><i className="fa fa-support"></i> Support</h4>
           </Col>
           <Col lg={9} className="help-links">
-            <p><a href="#"><i className="fa fa-slack"></i> Slack Channel</a></p>
+            <p><a href=""><i className="fa fa-slack"></i> Slack Channel</a></p>
             <p><a href="mailto:support@yugabyte.com"><i className="fa fa-envelope-o"></i> Support Email</a></p>
           </Col>
         </Row>
