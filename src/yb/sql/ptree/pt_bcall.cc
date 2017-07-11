@@ -280,40 +280,68 @@ CHECKED_STATUS PTToken::Analyze(SemContext *sem_context) {
   }
 
   RETURN_NOT_OK(PTBcall::Analyze(sem_context));
-  RETURN_NOT_OK(CheckOperator(sem_context));
 
-  return Status::OK();
-}
-
-CHECKED_STATUS PTToken::CheckOperator(SemContext *sem_context) {
+  // Analyzing the arguments: their types need to be inferred based on table schema (hash columns).
   size_t size = sem_context->current_table()->schema().num_hash_key_columns();
-  is_partition_key_ref_ = true;
   if (args().size() != size) {
-    is_partition_key_ref_ = false;
-  } else {
-    int index = 0;
+    return sem_context->Error(loc(),
+        "Invalid token call, wrong number of arguments",
+        ErrorCode::CQL_STATEMENT_INVALID);
+  }
+
+  // Check if reference to partition key.
+  if (args().front()->expr_op() == ExprOperator::kRef) {
+    size_t index = 0;
     for (const PTExpr::SharedPtr &arg : args()) {
       if (arg->expr_op() != ExprOperator::kRef) {
-        is_partition_key_ref_ = false;
-        break;
+        return sem_context->Error(arg->loc(),
+            "Invalid token call, all arguments must be either column references or literals",
+            ErrorCode::CQL_STATEMENT_INVALID);
       }
+
       PTRef *col_ref = static_cast<PTRef *>(arg.get());
       RETURN_NOT_OK(col_ref->Analyze(sem_context));
       if (col_ref->desc()->index() != index) {
-        is_partition_key_ref_ = false;
-        break;
+        return sem_context->Error(col_ref->loc(),
+            "Invalid token call, found reference to unexpected column",
+            ErrorCode::CQL_STATEMENT_INVALID);
       }
       index++;
     }
+    is_partition_key_ref_ = true;
+    return CheckExpectedTypeCompatibility(sem_context);
   }
 
-  // TODO (mihnea) add support for this later
-  if (!is_partition_key_ref_) {
-    return sem_context->Error(loc(),
-        "Token call only allowed as reference to partition key as virtual column",
-        ErrorCode::FEATURE_NOT_SUPPORTED);
-  }
+  // Otherwise, it could be a call with literal values to be evaluated.
+  size_t index = 0;
+  auto& schema = sem_context->current_table()->schema();
+  for (const PTExpr::SharedPtr &arg : args()) {
+    if (arg->expr_op() != ExprOperator::kConst &&
+        arg->expr_op() != ExprOperator::kUMinus &&
+        arg->expr_op() != ExprOperator::kCollection &&
+        arg->expr_op() != ExprOperator::kBindVar) {
+      return sem_context->Error(arg->loc(),
+          "Invalid token call, all arguments must be either column references or literals",
+          ErrorCode::CQL_STATEMENT_INVALID);
+    }
+    SemState sem_state(sem_context);
+    sem_state.SetExprState(schema.Column(index).type(),
+                           YBColumnSchema::ToInternalDataType(schema.Column(index).type()));
+    if (arg->expr_op() == ExprOperator::kBindVar) {
+      sem_state.set_bindvar_name(PTBindVar::bcall_arg_bindvar_name("token", index));
+    }
 
+    // All arguments are literals and are folded to the corresponding column type during analysis.
+    // Therefore, we don't need an explicit cast to guarantee the correct types during execution.
+    RETURN_NOT_OK(arg->Analyze(sem_context));
+    index++;
+  }
+  is_partition_key_ref_ = false;
+  return CheckExpectedTypeCompatibility(sem_context);
+}
+
+CHECKED_STATUS PTToken::CheckOperator(SemContext *sem_context) {
+  // Nothing to do.
   return Status::OK();
 }
 

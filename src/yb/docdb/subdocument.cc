@@ -328,7 +328,7 @@ SubDocument SubDocument::FromYQLValuePB(const YQLValuePB& value,
       SubDocument set_doc;
       for (auto& elem : set.elems()) {
         PrimitiveValue pv_key = PrimitiveValue::FromYQLValuePB(elem, sorting_type);
-        if (write_action == REMOVE_KEYS) {
+        if (write_action == WriteAction::REMOVE_KEYS) {
           // representing sets elems as keys pointing to tombstones to remove those entries
           set_doc.SetChildPrimitive(pv_key, PrimitiveValue(ValueType::kTombstone));
         }  else {
@@ -446,7 +446,7 @@ CHECKED_STATUS SubDocument::FromYQLExpressionPB(const YQLExpressionPB& yql_expr,
 
     case YQLExpressionPB::ExprCase::kBfcall: {  // Scenarios: SET column = func().
       YQLValueWithPB result;
-      RETURN_NOT_OK(EvalYQLExpressionPB(yql_expr, table_row, &result, write_action));
+      RETURN_NOT_OK(YQLExpression::Evaluate(yql_expr, table_row, &result, write_action));
       // Type of the result could be changed for some write actions (e.g. REMOVE_KEYS from map)
       *sub_doc = FromYQLValuePB(result.value(), column_schema.sorting_type(), *write_action);
       return Status::OK();
@@ -460,95 +460,6 @@ CHECKED_STATUS SubDocument::FromYQLExpressionPB(const YQLExpressionPB& yql_expr,
       break;
   }
   LOG(FATAL) << "Internal error: invalid column or value expression: " << yql_expr.expr_case();
-}
-
-// TODO(neil) When memory pool is implemented in DocDB, we should run some perf tool to optimize
-// the expression evaluating process. The intermediate / temporary YQLValue should be allocated
-// in the pool. Currently, the argument structures are on stack, but their contents are in the
-// heap memory.
-CHECKED_STATUS SubDocument::EvalYQLExpressionPB(const YQLExpressionPB& yql_expr,
-                                   const YQLTableRow& table_row,
-                                   YQLValueWithPB *result,
-                                   WriteAction* write_action) {
-  switch (yql_expr.expr_case()) {
-    case YQLExpressionPB::ExprCase::kValue:
-      result->Assign(yql_expr.value());
-      break;
-
-    case YQLExpressionPB::ExprCase::kBfcall: {
-
-      const YQLBFCallPB& bfcall = yql_expr.bfcall();
-      // Special cases: for collection operations of the form "cref = cref +/- <value>" we avoid
-      // reading column cref and instead tell doc writer to modify it in-place
-      const bfyql::BFOperator::SharedPtr bf_op = bfyql::kBFOperators[bfcall.bfopcode()];
-      if (strcmp(bf_op->op_decl()->cpp_name(), "AddMapMap") == 0 ||
-          strcmp(bf_op->op_decl()->cpp_name(), "AddMapSet") == 0 ||
-          strcmp(bf_op->op_decl()->cpp_name(), "AddSetSet") == 0) {
-        *write_action = WriteAction::EXTEND;
-        return EvalYQLExpressionPB(bfcall.operands(1), table_row, result, write_action);
-      }
-
-      if (strcmp(bf_op->op_decl()->cpp_name(), "SubMapSet") == 0 ||
-          strcmp(bf_op->op_decl()->cpp_name(), "SubSetSet") == 0) {
-        *write_action = WriteAction::REMOVE_KEYS;
-        RETURN_NOT_OK(EvalYQLExpressionPB(bfcall.operands(1), table_row, result, write_action));
-
-        return Status::OK();
-      }
-
-      if (strcmp(bf_op->op_decl()->cpp_name(), "AddListList") == 0) {
-        if (bfcall.operands(0).has_column_id()) {
-          *write_action = WriteAction::APPEND;
-          return EvalYQLExpressionPB(bfcall.operands(1), table_row, result, write_action);
-        } else {
-          *write_action = WriteAction::PREPEND;
-          return EvalYQLExpressionPB(bfcall.operands(0), table_row, result, write_action);
-        }
-      }
-
-      // TODO (akashnil or mihnea) this should be enabled when RemoveFromList is implemented
-      /*
-      if (strcmp(bf_op->op_decl()->cpp_name(), "SubListList") == 0) {
-        *write_action = WriteAction::REMOVE_VALUES;
-        return EvalYQLExpressionPB(bfcall.operands(1), value_map, result, write_action);
-      }
-      */
-
-      // Default case: First evaluate the arguments.
-      vector<YQLValueWithPB> args(bfcall.operands().size());
-      int arg_index = 0;
-      for (auto operand : bfcall.operands()) {
-        RETURN_NOT_OK(EvalYQLExpressionPB(operand, table_row, &args[arg_index], write_action));
-        arg_index++;
-      }
-
-      // Execute the builtin call associated with the given opcode.
-      YQLBfunc::Exec(static_cast<bfyql::BFOpcode>(bfcall.bfopcode()), &args, result);
-      break;
-    }
-
-    case YQLExpressionPB::ExprCase::kColumnId: {
-      auto iter = table_row.find(ColumnId(yql_expr.column_id()));
-      if (iter != table_row.end()) {
-        result->Assign(iter->second.value);
-      } else {
-        result->SetNull();
-      }
-      break;
-    }
-
-    case YQLExpressionPB::ExprCase::kSubscriptedCol:
-      LOG(FATAL) << "Internal error: Subscripted column is not allowed in this context";
-      break;
-
-    case YQLExpressionPB::ExprCase::kCondition:
-      LOG(FATAL) << "Internal error: Conditional expression is not allowed in this context";
-      break;
-
-    case YQLExpressionPB::ExprCase::EXPR_NOT_SET:
-      break;
-  }
-  return Status::OK();
 }
 
 }  // namespace docdb

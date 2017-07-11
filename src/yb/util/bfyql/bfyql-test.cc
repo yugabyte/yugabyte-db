@@ -347,10 +347,13 @@ TEST_F(BfYqlTest, TestVariadicBuiltin) {
   test_params[1]->set_int16_value(200);
   test_params[2]->set_int32_value(300);
   test_params[3]->set_int64_value(400);
-  test_params[4]->set_float_value(500);
-  test_params[5]->set_double_value(600);
-  test_params[6]->set_string_value("700");
-  test_params[7]->set_bool_value(true);
+  test_params[4]->set_timestamp_value(500);
+  test_params[5]->set_string_value("600");
+  test_params[7]->set_binary_value("700");
+
+  Uuid uuid;
+  ASSERT_OK(uuid.FromString("80000000-0000-0000-0000-000000000000"));
+  test_params[6]->set_uuid_value(uuid);
 
   // Convert test_params to params.
   vector<BFTestValue::SharedPtr> params(test_params.begin(), test_params.end());

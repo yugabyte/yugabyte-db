@@ -342,6 +342,7 @@ CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
       sem_state.ResetContextState();
       break;
     }
+
     case FROZEN: {
       SemState sem_state(sem_context);
       sem_state.SetExprState(expected_type->param_type(0),

@@ -584,6 +584,30 @@ public class TestSelect extends BaseCQLTest {
   }
 
   @Test
+  public void testToken() throws Exception {
+    LOG.info("TEST TOKEN - Start");
+    setupTable("token_test", 10);
+
+    // Testing only basic token call as sanity check here.
+    // Main token tests are in YbSqlQuery (C++) and TestBindVariable (Java) tests.
+    Iterator<Row> rows = session.execute("SELECT * FROM token_test WHERE " +
+            "token(h1, h2) = token(2, 'h2')").iterator();
+
+    assertTrue(rows.hasNext());
+    // Checking result.
+    Row row = rows.next();
+    assertEquals(2, row.getInt(0));
+    assertEquals("h2", row.getString(1));
+    assertEquals(102, row.getInt(2));
+    assertEquals("r102", row.getString(3));
+    assertEquals(1002, row.getInt(4));
+    assertEquals("v1002", row.getString(5));
+    assertFalse(rows.hasNext());
+
+    LOG.info("TEST TOKEN - End");
+  }
+
+  @Test
   public void testInKeyword() throws Exception {
     LOG.info("TEST IN KEYWORD - Start");
     setupTable("in_test", 10);

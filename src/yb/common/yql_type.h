@@ -320,9 +320,11 @@ class YQLType {
       if (id_ == MAP && params_.size() != 2) {
         return false; // expect two type parameters for maps
       } else if ((id_ == SET || id_ == LIST) && params_.size() != 1) {
-        return false; // expect one type parameters for set and list
+        return false; // expect one type parameter for set and list
       } else if (id_ == TUPLE && params_.size() == 0) {
         return false; // expect at least one type parameters for tuples
+      } else if (id_ == FROZEN && params_.size() != 1) {
+        return false; // expect one type parameter for frozen
       }
       // recursively checking params
       for (const auto &param : params_) {
@@ -333,6 +335,9 @@ class YQLType {
   }
 
   bool operator ==(const YQLType& other) const {
+    if (IsUserDefined()) {
+      return other.IsUserDefined() && udtype_id() == other.udtype_id();
+    }
     if (id_ == other.id_ && params_.size() == other.params_.size()) {
       for (int i = 0; i < params_.size(); i++) {
         if (*params_[i] == *other.params_[i]) {

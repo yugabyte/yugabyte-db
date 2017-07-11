@@ -13,8 +13,8 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/common/yql_expression.h"
 #include "yb/sql/exec/executor.h"
-
 #include "yb/util/yb_partition.h"
 
 namespace yb {
@@ -87,11 +87,13 @@ CHECKED_STATUS Executor::WhereClauseToPB(YQLReadRequestPB *req,
 
   // Setup the lower/upper bounds on the partition key -- if any
   for (const auto& op : partition_key_ops) {
-    YQLExpressionPB hash_code_pb;
-    RETURN_NOT_OK(PTExprToPB(op.expr(), &hash_code_pb));
-    DCHECK(hash_code_pb.has_value()) << "Integer constant expected";
-
-    uint16_t hash_code = YBPartition::CqlToYBHashCode(hash_code_pb.value().int64_value());
+    YQLExpressionPB expr_pb;
+    RETURN_NOT_OK(PTExprToPB(op.expr(), &expr_pb));
+    uint16_t hash_code;
+    YQLValueWithPB result;
+    WriteAction write_action = WriteAction::REPLACE; // default
+    RETURN_NOT_OK(YQLExpression::Evaluate(expr_pb, YQLTableRow{}, &result, &write_action));
+    hash_code = YBPartition::CqlToYBHashCode(result.int64_value());
 
     // internally we use [start, end) intervals -- start-inclusive, end-exclusive
     switch (op.yb_op()) {

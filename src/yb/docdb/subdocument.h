@@ -20,6 +20,7 @@
 #include <initializer_list>
 
 #include "yb/docdb/primitive_value.h"
+#include "yb/common/yql_expression.h"
 
 namespace yb {
 namespace docdb {
@@ -152,15 +153,6 @@ class SubDocument : public PrimitiveValue {
     return static_cast<int>(object_container().size());
   }
 
-  enum WriteAction {
-    REPLACE, // default
-    EXTEND, // plus for map and set
-    APPEND, // plus for lists
-    PREPEND, // plus for lists
-    REMOVE_KEYS, // minus for map and set
-    REMOVE_VALUES, // minus for lists
-  };
-
   // Construct a SubDocument from a YQLValuePB.
   static SubDocument FromYQLValuePB(const YQLValuePB& value,
                                     ColumnSchema::SortingType sorting_type,
@@ -183,12 +175,6 @@ class SubDocument : public PrimitiveValue {
                                             const ColumnSchema& column_schema,
                                             const YQLTableRow& table_row,
                                             SubDocument* subdoc,
-                                            WriteAction* write_action);
-
-  // Evaluate the given YQLExpressionPB into YQLValue.
-  static CHECKED_STATUS EvalYQLExpressionPB(const YQLExpressionPB& yql_expr,
-                                            const YQLTableRow& table_row,
-                                            YQLValueWithPB *result,
                                             WriteAction* write_action);
 
  private:

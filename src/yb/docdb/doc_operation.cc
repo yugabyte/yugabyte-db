@@ -1025,7 +1025,7 @@ Status YQLWriteOperation::Apply(
 
             auto yql_type = column.type();
 
-            SubDocument::WriteAction write_action = SubDocument::REPLACE; // default
+            WriteAction write_action = WriteAction::REPLACE; // default
             SubDocument sub_doc;
             RETURN_NOT_OK(SubDocument::FromYQLExpressionPB(column_value.expr(),
                                                            column,
@@ -1036,39 +1036,39 @@ Status YQLWriteOperation::Apply(
             // Typical case, setting a columns value
             if (column_value.subscript_args().empty()) {
               switch (write_action) {
-                case SubDocument::REPLACE:
+                case WriteAction::REPLACE:
                   RETURN_NOT_OK(doc_write_batch->InsertSubDocument(sub_path,
                                                                    sub_doc,
                                                                    InitMarkerBehavior::OPTIONAL,
                                                                    ttl));
                   break;
-                case SubDocument::EXTEND:
+                case WriteAction::EXTEND:
                   RETURN_NOT_OK(doc_write_batch->ExtendSubDocument(sub_path,
                                                                    sub_doc,
                                                                    InitMarkerBehavior::OPTIONAL,
                                                                    ttl));
                   break;
-                case SubDocument::APPEND:
+                case WriteAction::APPEND:
                   RETURN_NOT_OK(doc_write_batch->ExtendList(sub_path,
                                                             sub_doc,
                                                             ListExtendOrder::APPEND,
                                                             InitMarkerBehavior::OPTIONAL,
                                                             ttl));
                   break;
-                case SubDocument::PREPEND:
+                case WriteAction::PREPEND:
                   RETURN_NOT_OK(doc_write_batch->ExtendList(sub_path,
                                                             sub_doc,
                                                             ListExtendOrder::PREPEND,
                                                             InitMarkerBehavior::OPTIONAL,
                                                             ttl));
                   break;
-                case SubDocument::REMOVE_KEYS:
+                case WriteAction::REMOVE_KEYS:
                   RETURN_NOT_OK(doc_write_batch->ExtendSubDocument(sub_path,
                                                                    sub_doc,
                                                                    InitMarkerBehavior::OPTIONAL,
                                                                    ttl));
                   break;
-                case SubDocument::REMOVE_VALUES:
+                case WriteAction::REMOVE_VALUES:
                   LOG(ERROR) << "Unsupported operation";
                   // TODO(akashnil or mihnea) this should call RemoveFromList once thats implemented
                   // Currently list subtraction is computed in memory using builtin call so this
@@ -1082,7 +1082,7 @@ Status YQLWriteOperation::Apply(
               // Any other case should be rejected by the semantic analyser before getting here
               // Later when we support frozen or nested collections this code may need refactoring
               DCHECK_EQ(column_value.subscript_args().size(), 1);
-              DCHECK_EQ(write_action, SubDocument::REPLACE);
+              DCHECK(write_action == WriteAction::REPLACE);
 
               switch (column.type()->main()) {
                 case MAP: {

@@ -126,7 +126,7 @@ class PTToken : public PTBcall {
 
  private:
   // true if this token call is just reference to the partition key, e.g.: "token(h1, h2, h3)"
-  // TODO not supported yet: false for regular builtin calls to be evaluated, e.g.: "token(2,3,4)"
+  // false for regular builtin calls to be evaluated, e.g.: "token(2,3,4)"
   bool is_partition_key_ref_ = false;
 };
 

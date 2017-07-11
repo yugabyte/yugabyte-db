@@ -98,6 +98,7 @@ set(COMMON_SRCS
   transaction.cc
   types.cc
   wire_protocol.cc
+  yql_expression.cc
   yql_type.cc
   yql_value.cc
   yql_bfunc.cc

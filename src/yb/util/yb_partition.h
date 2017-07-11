@@ -18,6 +18,7 @@
 
 #include <string>
 #include "yb/util/status.h"
+#include "yb/gutil/endian.h"
 
 namespace yb {
 
@@ -42,6 +43,64 @@ class YBPartition {
     uint64 hash_code = (UINT16_MAX / node_count * index) << 48;
     int64_t cql_hash_code = static_cast<int64_t>(hash_code);
     return std::to_string(cql_hash_code);
+  }
+
+  static void AppendBytesToKey(const char *bytes, size_t len, bool is_last, string *encoded_key) {
+    if (is_last) {
+      encoded_key->append(bytes, len);
+    } else {
+      for (size_t i = 0; i < len; i++) {
+        *encoded_key += *bytes;
+        if (PREDICT_FALSE(*bytes == '\0')) {
+          *encoded_key += '\1';
+        }
+        bytes++;
+      }
+      *encoded_key += '\0';
+      *encoded_key += '\0';
+    }
+  }
+
+  template<typename signed_type, typename unsigned_type>
+  static void AppendIntToKey(signed_type val, string *encoded_key) {
+    unsigned_type uval = static_cast<unsigned_type>(val);
+    uval ^= 1UL << (sizeof(uval) * CHAR_BIT - 1);
+    switch (sizeof(uval)) {
+      case 1:
+        break; // Nothing to do.
+      case 2:
+        uval = BigEndian::FromHost16(uval);
+        break;
+      case 4:
+        uval = BigEndian::FromHost32(uval);
+        break;
+      case 8:
+        uval = BigEndian::FromHost64(uval);
+        break;
+      default:
+        LOG(FATAL) << "bad type: " << uval;
+    }
+    encoded_key->append(reinterpret_cast<char *>(&uval), sizeof(uval));
+  }
+
+  static uint16_t HashColumnCompoundValue(const string &compound) {
+    // In the future, if you wish to change the hashing behavior, you must introduce a new hashing
+    // method for your newly-created tables.  Existing tables must continue to use their hashing
+    // methods that was define by their PartitionSchema.
+
+    // At the moment, Jenkins' hash is the only method we are using. In the future, we'll keep this
+    // as the default hashing behavior. Constant 'kseed" cannot be changed as it'd yield a different
+    // hashing result.
+    static const int kseed = 97;
+    const uint64_t hash_value = Hash64StringWithSeed(compound, kseed);
+
+    // Convert the 64-bit hash value to 16 bit integer.
+    const uint64_t h1 = hash_value >> 48;
+    const uint64_t h2 = 3 * (hash_value >> 32);
+    const uint64_t h3 = 5 * (hash_value >> 16);
+    const uint64_t h4 = 7 * (hash_value & 0xffff);
+
+    return (h1 ^ h2 ^ h3 ^ h4) & 0xffff;
   }
 
 };

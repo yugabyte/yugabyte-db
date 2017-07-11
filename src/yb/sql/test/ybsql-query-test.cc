@@ -1080,6 +1080,70 @@ TEST_F(YbSqlQuery, TestPagination) {
   EXPECT_EQ(55, sum);
 }
 
+TEST_F(YbSqlQuery, TestTokenBcall) {
+  //------------------------------------------------------------------------------------------------
+  // Setting up cluster
+  //------------------------------------------------------------------------------------------------
+
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  YbSqlProcessor *processor = GetSqlProcessor();
+
+  //------------------------------------------------------------------------------------------------
+  // Testing all simple types (that are allowed in primary keys)
+  //------------------------------------------------------------------------------------------------
+  CHECK_OK(processor->Run("create table token_bcall_simple_test("
+      " h1 tinyint, h2 smallint, h3 int, h4 bigint, h5 varchar, h6 blob, h7 timestamp, "
+      " h8 decimal, h9 inet, h10 uuid, h11 timeuuid, r int, v int,"
+      " primary key((h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11), r));"));
+
+  // Sample values to check hash value computation
+  string key_values = "99, 9999, 999999, 99999999, 'foo bar', 0x12fe9a, "
+      "'1999-12-01 16:32:44 GMT', 987654.0123, '204.101.0.168', "
+      "97bda55b-6175-4c39-9e04-7c0205c709dc, 97bda55b-6175-1c39-9e04-7c0205c709dc";
+
+  string insert_stmt = "INSERT INTO token_bcall_simple_test (h1, h2, h3, h4, h5, h6, h7, h8, h9, "
+      "h10, h11, r, v) VALUES ($0, 1, 1);";
+
+  CHECK_OK(processor->Run(Substitute(insert_stmt, key_values)));
+
+  string select_stmt = Substitute("SELECT * FROM token_bcall_simple_test WHERE "
+      "token(h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11) = token($0)", key_values);
+
+  CHECK_OK(processor->Run(select_stmt));
+  auto row_block = processor->row_block();
+
+  // Checking result.
+  ASSERT_EQ(1, row_block->row_count());
+
+  //------------------------------------------------------------------------------------------------
+  // Testing parametric types (i.e. with frozen)
+  //------------------------------------------------------------------------------------------------
+  CHECK_OK(processor->Run("CREATE TYPE udt_token_test(a int, b text)"));
+
+  CHECK_OK(processor->Run("CREATE TABLE token_bcall_frozen_test("
+      " h1 frozen<map<int,text>>, h2 frozen<set<text>>, h3 frozen<list<int>>, "
+      " h4 frozen<udt_token_test>, r int, v int, PRIMARY KEY ((h1, h2, h3, h4), r))"));
+
+  // Sample values to check hash value computation
+  key_values = "{1 : 'a', 2 : 'b'}, {'x', 'y'}, [3, 1, 2], {a : 1, b : 'foo'}";
+
+  insert_stmt = Substitute("INSERT INTO token_bcall_frozen_test "
+     "(h1, h2, h3, h4, r, v) VALUES ($0, 1, 1);", key_values);
+  CHECK_OK(processor->Run(insert_stmt));
+
+  select_stmt = Substitute("SELECT * FROM token_bcall_frozen_test WHERE "
+      "token(h1, h2, h3, h4) = token($0)", key_values);
+  CHECK_OK(processor->Run(select_stmt));
+
+  // Checking result.
+  row_block = processor->row_block();
+  ASSERT_EQ(1, row_block->row_count());
+
+}
+
 TEST_F(YbSqlQuery, TestScanWithBounds) {
   //------------------------------------------------------------------------------------------------
   // Setting up cluster

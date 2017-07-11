@@ -1413,6 +1413,10 @@ public class TestBindVariable extends BaseCQLTest {
   public void testBindingToken() throws Exception {
     LOG.info("Begin test");
 
+    //----------------------------------------------------------------------------------------------
+    // Testing token as partition key reference -- e.g. "token(h1, h2, h3)"
+    //----------------------------------------------------------------------------------------------
+
     // this is the name CQL uses for the virtual column that token() references
     String token_vcol_name = "partition key token";
 
@@ -1515,6 +1519,95 @@ public class TestBindVariable extends BaseCQLTest {
       assertEquals("r107", row.getString(3));
       assertEquals(1007, row.getInt(4));
       assertEquals("v1007", row.getString(5));
+    }
+
+    //----------------------------------------------------------------------------------------------
+    // Testing token as builtin call -- e.g. "token(2, '3', 4)"
+    //----------------------------------------------------------------------------------------------
+
+    // This is the name template CQL uses for binding args of token builtin call.
+    String arg_name_template = "arg%d(system.token)";
+
+    {
+      // Bind by position for token bcall arguments.
+      String select_stmt = "SELECT * FROM test_bind WHERE token(h1, h2) = token(?, ?)";
+      Iterator<Row> rows = session.execute(select_stmt, new Integer(6), "h6").iterator();
+
+      assertTrue(rows.hasNext());
+      // Checking result.
+      Row row = rows.next();
+      assertEquals(6, row.getInt(0));
+      assertEquals("h6", row.getString(1));
+      assertEquals(106, row.getInt(2));
+      assertEquals("r106", row.getString(3));
+      assertEquals(1006, row.getInt(4));
+      assertEquals("v1006", row.getString(5));
+      assertFalse(rows.hasNext());
+    }
+
+    {
+      // Bind by name -- simple bind, all args.
+      String select_stmt = "SELECT * FROM test_bind WHERE token(h1, h2) = token(?, ?);";
+
+      Map<String, Object> bvar_map = new HashMap<>();
+      bvar_map.put(String.format(arg_name_template, 0), new Integer(5));
+      bvar_map.put(String.format(arg_name_template, 1), "h5");
+
+      Iterator<Row> rows = session.execute(select_stmt, bvar_map).iterator();
+
+      assertTrue(rows.hasNext());
+      // Checking result.
+      Row row = rows.next();
+      assertEquals(5, row.getInt(0));
+      assertEquals("h5", row.getString(1));
+      assertEquals(105, row.getInt(2));
+      assertEquals("r105", row.getString(3));
+      assertEquals(1005, row.getInt(4));
+      assertEquals("v1005", row.getString(5));
+      assertFalse(rows.hasNext());
+    }
+
+    {
+      // Bind by name -- prepare bind, some of the args.
+      String select_stmt = "SELECT * FROM test_bind WHERE token(h1, h2) = token(3, ?);";
+
+      Map<String, Object> bvar_map = new HashMap<>();
+      bvar_map.put(String.format(arg_name_template, 1), "h3");
+
+      Iterator<Row> rows = session.execute(select_stmt, bvar_map).iterator();
+
+      assertTrue(rows.hasNext());
+      // Checking result.
+      Row row = rows.next();
+      assertEquals(3, row.getInt(0));
+      assertEquals("h3", row.getString(1));
+      assertEquals(103, row.getInt(2));
+      assertEquals("r103", row.getString(3));
+      assertEquals(1003, row.getInt(4));
+      assertEquals("v1003", row.getString(5));
+      assertFalse(rows.hasNext());
+    }
+
+    {
+      // Bind by name -- prepare bind, mixed un-named and named markers.
+      String select_stmt = "SELECT * FROM test_bind WHERE token(h1, h2) = token(?, :second);";
+
+      Map<String, Object> bvar_map = new HashMap<>();
+      bvar_map.put(String.format(arg_name_template, 0), new Integer(8));
+      bvar_map.put("second", "h8");
+
+      Iterator<Row> rows = session.execute(select_stmt, bvar_map).iterator();
+
+      assertTrue(rows.hasNext());
+      // Checking result.
+      Row row = rows.next();
+      assertEquals(8, row.getInt(0));
+      assertEquals("h8", row.getString(1));
+      assertEquals(108, row.getInt(2));
+      assertEquals("r108", row.getString(3));
+      assertEquals(1008, row.getInt(4));
+      assertEquals("v1008", row.getString(5));
+      assertFalse(rows.hasNext());
     }
 
     LOG.info("End test");

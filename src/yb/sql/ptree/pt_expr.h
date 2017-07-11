@@ -1000,6 +1000,11 @@ class PTBindVar : public PTExpr {
     return token_bindvar_name;
   }
 
+  // The name Cassandra uses for binding the args of a builtin system call e.g. "token(?, ?)"
+  static const string bcall_arg_bindvar_name(const string& bcall_name, size_t arg_position) {
+    return strings::Substitute("arg$0(system.$1)", arg_position, bcall_name);
+  }
+
  private:
   // 0-based position.
   int64_t pos_;
