@@ -22,6 +22,7 @@ export default class OnPremNodesList extends Component {
   }
 
   hideModal() {
+    this.props.reset();
     this.props.hideAddNodesDialog();
   }
 
@@ -37,18 +38,29 @@ export default class OnPremNodesList extends Component {
                        }, {});
     let instanceTypeList = [];
     if (isNonEmptyObject(vals.instances)) {
-      instanceTypeList = Object.keys(vals.instances).map(function(b) {
-        return vals.instances[b].reduce(function(p, c) {
-          p[zoneList[b][c.zone.trim()]] = c.instanceTypeIPs.split(",").map(
-            function(i){
-              return {zone: c.zone, region: b, ip: i, instanceType: c.machineType}
-            });
-          return p;
-        }, {})
+      instanceTypeList = Object.keys(vals.instances).map(function(region) {
+        return vals.instances[region].reduce(function(acc, val) {
+          let currentZone = val.zone.trim();
+          let currentRegion = zoneList[region][currentZone];
+          if (acc[currentRegion]) {
+            val.instanceTypeIPs.split(",").forEach(function(ip){
+              acc[zoneList[region][currentZone]].push({
+                zone: val.zone, region: region, ip: ip.trim(), instanceType: val.machineType
+              })
+            })
+          } else {
+            acc[currentRegion] = val.instanceTypeIPs.split(",").map(
+              function (ip) {
+                return {zone: val.zone, region: region, ip: ip.trim(), instanceType: val.machineType}
+              });
+          }
+          return acc;
+        }, {});
       });
       // Submit Node Payload
       self.props.createOnPremNodes(instanceTypeList, onPremProvider.uuid);
     }
+    this.props.reset();
   }
 
   componentWillMount() {
