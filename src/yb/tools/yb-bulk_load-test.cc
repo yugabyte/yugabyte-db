@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 #include <string>
+#include <thread>
 #include <gtest/gtest.h>
 #include <boost/algorithm/string.hpp>
 
@@ -17,12 +18,18 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/mini_master.h"
 #include "yb/rpc/messenger.h"
+#include "yb/sql/util/statement_result.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tools/bulk_load_utils.h"
 #include "yb/tools/yb-generate_partitions.h"
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/mini_tablet_server.h"
 #include "yb/util/date_time.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random.h"
 #include "yb/util/subprocess.h"
+
+DECLARE_uint64(initial_seqno);
 
 namespace yb {
 namespace tools {
@@ -50,6 +57,8 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
   void SetUp() override {
     YBMiniClusterTestBase::SetUp();
     MiniClusterOptions opts;
+    // Use a high enough initial sequence number.
+    FLAGS_initial_seqno = 1 << 20;
     cluster_.reset(new MiniCluster(env_.get(), opts));
     ASSERT_OK(cluster_->Start());
 
@@ -74,6 +83,8 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(bld.Build(&client_messenger_));
     proxy_.reset(new master::MasterServiceProxy(client_messenger_,
                                                 cluster_->leader_mini_master()->bound_rpc_addr()));
+    tserver_proxy_.reset(new tserver::TabletServerServiceProxy(
+        client_messenger_, cluster_->mini_tablet_server(0)->bound_rpc_addr()));
 
     // Create the namespace.
     ASSERT_OK(client_->CreateNamespace(kNamespace));
@@ -82,6 +93,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     table_name_.reset(new YBTableName(kNamespace, kTableName));
     std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(table_creator->table_name(*table_name_.get())
+          .table_type(client::YBTableType::YQL_TABLE_TYPE)
           .schema(&schema_)
           .num_replicas(1)
           .num_tablets(kNumTablets)
@@ -169,12 +181,13 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     // Set all column ids.
     for (int i = 0; i < table_->InternalSchema().num_columns(); i++) {
       req->mutable_column_refs()->add_ids(kFirstColumnId + i);
+      req->add_column_ids(kFirstColumnId + i);
     }
     return Status::OK();
   }
 
 
-  void ValidateRowFromRocksDB(const string& row, const YQLRow& yql_row) {
+  void ValidateRow(const string& row, const YQLRow& yql_row) {
     // Get individual columns.
     CsvTokenizer tokenizer = Tokenize(row);
     auto it = tokenizer.begin();
@@ -192,6 +205,63 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
  protected:
+
+  class LoadGenerator {
+   public:
+    LoadGenerator(const string& tablet_id, tserver::TabletServerServiceProxy* tserver_proxy)
+      : tablet_id_(tablet_id),
+        running_(true),
+        random_(0),
+        tserver_proxy_(tserver_proxy) {
+    }
+
+    void RunLoad() {
+      while (running_.load()) {
+        WriteRow(tablet_id_);
+      }
+    }
+
+    void StopLoad() {
+      running_.store(false);
+    }
+
+    void WriteRow(const string& tablet_id) {
+      tserver::WriteRequestPB req;
+      tserver::WriteResponsePB resp;
+      rpc::RpcController controller;
+      controller.set_timeout(MonoDelta::FromSeconds(3));
+
+      req.set_tablet_id(tablet_id);
+      YQLWriteRequestPB* yql_write = req.add_yql_write_batch();
+      YQLColumnValuePB* hash_column = yql_write->add_hashed_column_values();
+
+      hash_column->set_column_id(kFirstColumnId);
+      hash_column->mutable_expr()->mutable_value()->set_int64_value(random_.Next64());
+
+      hash_column = yql_write->add_hashed_column_values();
+      hash_column->set_column_id(kFirstColumnId + 1);
+      hash_column->mutable_expr()->mutable_value()->set_timestamp_value(random_.Next32());
+
+      hash_column = yql_write->add_hashed_column_values();
+      hash_column->set_column_id(kFirstColumnId + 2);
+      hash_column->mutable_expr()->mutable_value()->set_string_value(
+          std::to_string(random_.Next32()));
+
+      YQLColumnValuePB* range_column = yql_write->add_range_column_values();
+      range_column->set_column_id(kFirstColumnId + 3);
+      range_column->mutable_expr()->mutable_value()->set_timestamp_value(random_.Next64());
+
+      ASSERT_OK(tserver_proxy_->Write(req, &resp, &controller));
+      ASSERT_FALSE(resp.has_error());
+    }
+
+   private:
+    string tablet_id_;
+    std::atomic<bool> running_;
+    Random random_;
+    tserver::TabletServerServiceProxy* tserver_proxy_;
+  };
+
   string GenerateRow(int index) {
     // Build the row and lookup table_id
     string timestamp_string;
@@ -244,6 +314,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
   std::unique_ptr<YBTableName> table_name_;
   std::shared_ptr<YBTable> table_;
   std::unique_ptr<master::MasterServiceProxy> proxy_;
+  std::unique_ptr<tserver::TabletServerServiceProxy> tserver_proxy_;
   std::shared_ptr<rpc::Messenger> client_messenger_;
   std::unique_ptr<YBPartitionGenerator> partition_generator_;
   std::vector<std::string> master_addresses_;
@@ -342,7 +413,7 @@ TEST_F(YBBulkLoadTest, TestCLITool) {
   string bulk_load_exec = GetToolPath(kBulkLoadToolName);
   vector<string> bulk_load_argv = {kBulkLoadToolName, "-master_addresses",
       master_addresses_comma_separated_, "-table_name", kTableName, "-namespace_name",
-      kNamespace, "-base_dir", bulk_load_data};
+      kNamespace, "-base_dir", bulk_load_data, "-initial_seqno", "0"};
 
   std::unique_ptr<Subprocess> bulk_load_process;
   ASSERT_OK(StartProcessAndGetStreams(bulk_load_exec, bulk_load_argv, &out, &in,
@@ -384,25 +455,56 @@ TEST_F(YBBulkLoadTest, TestCLITool) {
     }
     ASSERT_TRUE(found_sst);
 
-    // Open rocksdb in the relevant tablet dir and verify all rows are there.
-    docdb::DocDBRocksDBFixtureTest fixture;
-    fixture.SetRocksDBDir(tablet_path);
-    ASSERT_OK(fixture.OpenRocksDB());
+    // Start the load generator to ensure we can import files with running load.
+    LoadGenerator load_generator(tablet_id, tserver_proxy_.get());
+    std::thread load_thread(&LoadGenerator::RunLoad, &load_generator);
+    // Wait for load generator to generate some traffic.
+    SleepFor(MonoDelta::FromSeconds(5));
 
-    // Now read all the rows for this tablet and verify that they are present.
-    docdb::YQLRocksDBStorage yql_storage(fixture.rocksdb());
+    // Import the data into the tserver.
+    tserver::ImportDataRequestPB import_req;
+    import_req.set_tablet_id(tablet_id);
+    import_req.set_source_dir(tablet_path);
+    tserver::ImportDataResponsePB import_resp;
+    rpc::RpcController controller;
+    ASSERT_OK(tserver_proxy_->ImportData(import_req, &import_resp, &controller));
+    ASSERT_FALSE(import_resp.has_error());
+
     for (const string& row : tabletid_to_line[tablet_id]) {
-      YQLReadRequestPB req;
-      ASSERT_OK(CreateYQLReadRequest(row, &req));
-      docdb::YQLReadOperation read_op(req);
-      YQLRowBlock rowblock(table_->InternalSchema());
-      ASSERT_OK(read_op.Execute(yql_storage, HybridTime::kInitialHybridTime,
-                                table_->InternalSchema(), &rowblock));
-      ASSERT_EQ(1, rowblock.row_count());
-      const YQLRow& yql_row = rowblock.row(0);
+      // Build read request.
+      tserver::ReadRequestPB req;
+      req.set_tablet_id(tablet_id);
+      YQLReadRequestPB* yql_req = req.mutable_yql_batch()->Add();
+      ASSERT_OK(CreateYQLReadRequest(row, yql_req));
+
+      // Perform read.
+      tserver::ReadResponsePB resp;
+      rpc::RpcController controller;
+      controller.set_timeout(MonoDelta::FromSeconds(3));
+      ASSERT_OK(tserver_proxy_->Read(req, &resp, &controller));
+      ASSERT_FALSE(resp.has_error());
+      ASSERT_EQ(1, resp.yql_batch_size());
+      YQLResponsePB yql_resp = resp.yql_batch(0);
+      ASSERT_EQ((int)YQLResponsePB_YQLStatus_YQL_STATUS_OK, (int)yql_resp.status());
+      ASSERT_TRUE(yql_resp.has_rows_data_sidecar());
+
+      // Retrieve row.
+      Slice rows_data;
+      EXPECT_TRUE(controller.finished());
+      EXPECT_OK(controller.GetSidecar(yql_resp.rows_data_sidecar(), &rows_data));
+      yb::sql::RowsResult rowsResult(*table_name_, schema_.columns(), rows_data.ToBuffer());
+      std::unique_ptr<YQLRowBlock> rowblock = rowsResult.GetRowBlock();
+
+      // Validate row.
+      ASSERT_EQ(1, rowblock->row_count());
+      const YQLRow& yql_row = rowblock->row(0);
       ASSERT_EQ(schema_.num_columns(), yql_row.column_count());
-      ValidateRowFromRocksDB(row, yql_row);
+      ValidateRow(row, yql_row);
     }
+
+    // Stop and join load generator.
+    load_generator.StopLoad();
+    load_thread.join();
   }
 }
 

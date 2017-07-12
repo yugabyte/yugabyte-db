@@ -121,6 +121,7 @@ set(YB_TEST_LINK_LIBS
   yb-generate_partitions
   integration-tests
   yb_docdb_test_common
+  ybsql_util
   ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(ysck-test)
 ADD_YB_TEST(yb-bulk_load-test)
