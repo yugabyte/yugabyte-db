@@ -215,6 +215,20 @@ public class RegionControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateRegionsWithValidGCPRegion() {
+  	ObjectNode regionJson = Json.newObject();
+    regionJson.put("code", "us-west1");
+    regionJson.put("name", "Gcp US West 1");
+    Provider gcpProvider = ModelFactory.gcpProvider(customer);
+    Result result = createRegion(gcpProvider.uuid, regionJson);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(OK, result.status());
+    assertThat(json.get("uuid").toString(), is(notNullValue()));
+    assertValue(json, "code", "us-west1");
+    assertValue(json, "name", "Gcp US West 1");
+  }
+
+  @Test
   public void testCreateRegionWithMetadataValidVPCInfo() {
     YugawareProperty.addConfigProperty(ConfigHelper.ConfigType.AWSRegionMetadata.toString(),
         Json.parse("{\"foo-region\": {\"name\": \"Foo Region\", \"ybImage\": \"yb image\"}}"),

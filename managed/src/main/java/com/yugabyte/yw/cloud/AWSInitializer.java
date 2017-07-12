@@ -356,7 +356,7 @@ public class AWSInitializer {
       regionDetails.operatingSystem = productAttrs.get("operatingSystem");
       regionDetails.productFamily = productAttrs.get("productFamily");
       regionDetails.servicecode = productAttrs.get("servicecode");
-      regionDetails.tenancy = AWSConstants.Tenancy.valueOf(productAttrs.get("tenancy"));
+      regionDetails.tenancy = PublicCloudConstants.Tenancy.valueOf(productAttrs.get("tenancy"));
 
       // Fill up the price details, using the sku to lookup.
       regionDetails.priceDetailsList = ec2SkuToPriceDetails.get(productAttrs.get("sku"));

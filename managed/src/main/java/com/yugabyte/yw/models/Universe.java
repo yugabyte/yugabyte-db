@@ -21,8 +21,8 @@ import javax.persistence.Id;
 import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
 
-import com.yugabyte.yw.cloud.AWSConstants;
-import com.yugabyte.yw.cloud.AWSResourceUtil;
+import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.cloud.ResourceUtil;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Common;
 import org.slf4j.Logger;
@@ -471,14 +471,18 @@ public class Universe extends Model {
     return this.version;
   }
 
-  public static UniverseResourceDetails getUniverseResourcesUtil(Collection<NodeDetails> nodes, UniverseDefinitionTaskParams.UserIntent userIntent) throws Exception {
+  public static UniverseResourceDetails getUniverseResourcesUtil(Collection<NodeDetails> nodes, 
+  		UniverseDefinitionTaskParams.UserIntent userIntent) throws Exception {
     Common.CloudType cloudType = userIntent.providerType;
     UniverseResourceDetails universeResourceDetails = new UniverseResourceDetails();
     for (NodeDetails node : nodes) {
-      if (node.isActive() && cloudType == Common.CloudType.aws) {
-        AWSResourceUtil.mergeResourceDetails(userIntent.deviceInfo, userIntent.instanceType,
-            node.cloudInfo.az, AvailabilityZone.find.byId(node.azUuid).region.code,
-            AWSConstants.Tenancy.Shared, universeResourceDetails);
+      if (node.isActive()) {
+        ResourceUtil.mergeResourceDetails(userIntent.deviceInfo, 
+        																	cloudType, 
+        																	node.cloudInfo.instance_type, 
+        																	node.cloudInfo.az,
+        																	AvailabilityZone.find.byId(node.azUuid).region.code, 
+        																	universeResourceDetails);
       }
     }
     return universeResourceDetails;

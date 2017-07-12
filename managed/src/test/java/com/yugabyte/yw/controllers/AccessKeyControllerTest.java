@@ -206,8 +206,8 @@ public class AccessKeyControllerTest extends WithApplication {
 
   @Test
   public void testCreateAccessKeyWithDifferentProviderUUID() {
-    Provider gceProvider = ModelFactory.gceProvider(ModelFactory.testCustomer("foo@bar.com"));
-    Result result = createAccessKey(gceProvider.uuid, "key-code", false, false);
+    Provider gcpProvider = ModelFactory.gcpProvider(ModelFactory.testCustomer("foo@bar.com"));
+    Result result = createAccessKey(gcpProvider.uuid, "key-code", false, false);
     assertBadRequest(result, "Invalid Provider/Region UUID");
   }
 

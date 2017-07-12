@@ -8,17 +8,27 @@ import static org.hamcrest.core.AllOf.allOf;
 import static org.junit.Assert.*;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.InstanceType.VolumeType;
+
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.runners.MockitoJUnitRunner;
+
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.mock;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import play.libs.Json;
-
 
 public class InstanceTypeTest extends FakeDBApplication {
   private Provider defaultProvider;
@@ -44,10 +54,38 @@ public class InstanceTypeTest extends FakeDBApplication {
     assertEquals("aws", i1.getProviderCode());
     assertEquals("foo", i1.getInstanceTypeCode());
   }
+  
+  @Test
+  public void testSetDefaultVolumeDetailsList() {
+    InstanceType.InstanceTypeDetails d1 = new InstanceType.InstanceTypeDetails();
+    d1.setDefaultVolumeDetailsList();
+    assertNotNull(d1.volumeDetailsList);
+    for (int i = 0; i < d1.volumeDetailsList.size(); i++) {
+    	InstanceType.VolumeDetails v1 = d1.volumeDetailsList.get(i);
+    	assertEquals(250, v1.volumeSizeGB.intValue());
+    	assertEquals(InstanceType.VolumeType.EBS, v1.volumeType);
+    	assertEquals(String.format("/mnt/d%d", i), v1.mountPath); 
+    }
+  }
+  
+  @Test
+  public void testGetInstanceTypeDetails() {
+  	Map<String, List<InstanceType.InstanceTypeRegionDetails>> mockMap = mock(HashMap.class);
+  	InstanceType.InstanceTypeDetails itd1 = InstanceType.InstanceTypeDetails.getInstanceTypeDetails(mockMap);
+  	assertNotNull(itd1);
+  	assertNotNull(itd1.volumeDetailsList);
+  	assertEquals(mockMap, itd1.regionCodeToDetailsMap);
+    for (int i = 0; i < itd1.volumeDetailsList.size(); i++) {
+    	InstanceType.VolumeDetails v1 = itd1.volumeDetailsList.get(i);
+    	assertEquals(250, v1.volumeSizeGB.intValue());
+    	assertEquals(InstanceType.VolumeType.EBS, v1.volumeType);
+    	assertEquals(String.format("/mnt/d%d", i), v1.mountPath); 
+    }
+  }
 
   @Test
   public void testFindByProvider() {
-    Provider newProvider = ModelFactory.gceProvider(defaultCustomer);
+    Provider newProvider = ModelFactory.gcpProvider(defaultCustomer);
     InstanceType i1 = InstanceType.upsert(defaultProvider.code, "foo", 3, 10.0, defaultDetails);
     InstanceType.upsert(newProvider.code, "bar", 2, 10.0, defaultDetails);
     List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider);
@@ -59,7 +97,7 @@ public class InstanceTypeTest extends FakeDBApplication {
 
   @Test
   public void testDeleteByProviderWithValidProviderCode() {
-    Provider newProvider = ModelFactory.gceProvider(defaultCustomer);
+    Provider newProvider = ModelFactory.gcpProvider(defaultCustomer);
     InstanceType.upsert(newProvider.code, "bar", 2, 10.0, defaultDetails);
     int response = InstanceType.deleteInstanceTypesForProvider(newProvider.code);
     List<InstanceType> instanceTypeList = InstanceType.findByProvider(newProvider);
@@ -70,7 +108,7 @@ public class InstanceTypeTest extends FakeDBApplication {
 
   @Test
   public void testDeleteByProviderWithInvalidProviderCode() {
-    Provider newProvider = ModelFactory.gceProvider(defaultCustomer);
+    Provider newProvider = ModelFactory.gcpProvider(defaultCustomer);
     InstanceType.upsert(newProvider.code, "bar", 2, 10.0, defaultDetails);
     int response = InstanceType.deleteInstanceTypesForProvider("abcd");
     List<InstanceType> instanceTypeList = InstanceType.findByProvider(newProvider);

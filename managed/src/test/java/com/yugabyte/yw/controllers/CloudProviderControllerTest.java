@@ -98,7 +98,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   @Test
   public void testListProviders() {
     Provider p1 = ModelFactory.awsProvider(customer);
-    Provider p2 = ModelFactory.gceProvider(customer);
+    Provider p2 = ModelFactory.gcpProvider(customer);
     Result result = listProviders();
     JsonNode json = Json.parse(contentAsString(result));
 
@@ -110,7 +110,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   @Test
   public void testListProvidersWithValidCustomer() {
     Provider.create(UUID.randomUUID(), Common.CloudType.aws, "Amazon");
-    Provider p = ModelFactory.gceProvider(customer);
+    Provider p = ModelFactory.gcpProvider(customer);
     Result result = listProviders();
     JsonNode json = Json.parse(contentAsString(result));
 
