@@ -777,20 +777,22 @@ Status Tablet::CreateCheckpoint(const std::string& dir,
   }
   LOG(INFO) << "Checkpoint created in " << dir;
 
-  vector<rocksdb::Env::FileAttributes> files_attrs;
-  status = rocksdb_->GetEnv()->GetChildrenFileAttributes(dir, &files_attrs);
-  if (!status.ok()) {
-    return STATUS(IllegalState, Substitute("Unable to get RocksDB files in dir $0: $1", dir,
-                                           status.ToString()));
-  }
-
-  for (const auto& file_attrs : files_attrs) {
-    if (file_attrs.name == "." || file_attrs.name == "..") {
-      continue;
+  if (rocksdb_files != nullptr) {
+    vector<rocksdb::Env::FileAttributes> files_attrs;
+    status = rocksdb_->GetEnv()->GetChildrenFileAttributes(dir, &files_attrs);
+    if (!status.ok()) {
+      return STATUS(IllegalState, Substitute("Unable to get RocksDB files in dir $0: $1", dir,
+                                             status.ToString()));
     }
-    auto rocksdb_file_pb = rocksdb_files->Add();
-    rocksdb_file_pb->set_name(file_attrs.name);
-    rocksdb_file_pb->set_size_bytes(file_attrs.size_bytes);
+
+    for (const auto& file_attrs : files_attrs) {
+      if (file_attrs.name == "." || file_attrs.name == "..") {
+        continue;
+      }
+      auto rocksdb_file_pb = rocksdb_files->Add();
+      rocksdb_file_pb->set_name(file_attrs.name);
+      rocksdb_file_pb->set_size_bytes(file_attrs.size_bytes);
+    }
   }
 
   last_rocksdb_checkpoint_dir_ = dir;

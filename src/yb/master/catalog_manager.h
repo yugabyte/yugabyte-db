@@ -755,6 +755,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // afterwards, without changing the version number. In case the version number does not match
   // on the server, the change will fail and the client will have to retry the get, as someone
   // must have updated the config in the meantime.
+  CHECKED_STATUS GetClusterConfig(GetMasterClusterConfigResponsePB* resp);
   CHECKED_STATUS GetClusterConfig(SysClusterConfigEntryPB* config);
   CHECKED_STATUS SetClusterConfig(
       const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp);

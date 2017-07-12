@@ -37,9 +37,6 @@ class ConsensusServiceProxy;
 
 namespace tserver {
 class TabletServerAdminServiceProxy;
-}
-
-namespace tserver {
 class TabletServerServiceProxy;
 }
 
@@ -143,6 +140,11 @@ class TSDescriptor {
   void ClearPendingTabletDelete(const std::string& tablet_id);
 
  private:
+  template <class TProxy>
+  CHECKED_STATUS GetOrCreateProxy(const std::shared_ptr<rpc::Messenger>& messenger,
+                                  std::shared_ptr<TProxy>* result,
+                                  std::shared_ptr<TProxy>* result_cache);
+
   FRIEND_TEST(TestTSDescriptor, TestReplicaCreationsDecay);
   friend class TestLoadBalancer;
 

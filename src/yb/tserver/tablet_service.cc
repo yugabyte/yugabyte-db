@@ -22,8 +22,6 @@
 #include <string>
 #include <vector>
 
-#include <boost/optional.hpp>
-
 #include "yb/common/iterator.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -34,17 +32,16 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
-#include "yb/rpc/rpc_context.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/tablet_bootstrap.h"
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/tablet/metadata.pb.h"
-#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/transactions/alter_schema_transaction.h"
 #include "yb/tablet/transactions/write_transaction.h"
 #include "yb/tserver/scanners.h"
+#include "yb/tserver/service_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver.pb.h"
@@ -179,37 +176,6 @@ bool LookupTabletPeerOrRespond(TabletPeerLookupIf* tablet_manager,
   return true;
 }
 
-template<class ReqClass, class RespClass>
-bool CheckUuidMatchOrRespond(TabletPeerLookupIf* tablet_manager,
-                             const char* method_name,
-                             const ReqClass* req,
-                             RespClass* resp,
-                             rpc::RpcContext* context) {
-  const string& local_uuid = tablet_manager->NodeInstance().permanent_uuid();
-  if (PREDICT_FALSE(!req->has_dest_uuid())) {
-    // Maintain compat in release mode, but complain.
-    string msg = Substitute("$0: Missing destination UUID in request from $1: $2",
-                            method_name, context->requestor_string(), req->ShortDebugString());
-#ifdef NDEBUG
-    YB_LOG_EVERY_N(ERROR, 100) << msg;
-#else
-    LOG(DFATAL) << msg;
-#endif
-    return true;
-  }
-  if (PREDICT_FALSE(req->dest_uuid() != local_uuid)) {
-    Status s = STATUS(InvalidArgument, Substitute("$0: Wrong destination UUID requested. "
-                                                      "Local UUID: $1. Requested UUID: $2",
-                                                  method_name, local_uuid, req->dest_uuid()));
-    LOG(WARNING) << s.ToString() << ": from " << context->requestor_string()
-                 << ": " << req->ShortDebugString();
-    SetupErrorAndRespond(resp->mutable_error(), s,
-                         TabletServerErrorPB::WRONG_SERVER_UUID, context);
-    return false;
-  }
-  return true;
-}
-
 template<class RespClass>
 bool GetConsensusOrRespond(const scoped_refptr<TabletPeer>& tablet_peer,
                            RespClass* resp,
@@ -236,41 +202,14 @@ Status GetTabletRef(const scoped_refptr<TabletPeer>& tablet_peer,
   return Status::OK();
 }
 
-template <class RespType>
-void HandleUnknownError(const Status& s, RespType* resp, RpcContext* context) {
-  resp->Clear();
-  SetupErrorAndRespond(resp->mutable_error(), s,
-                       TabletServerErrorPB::UNKNOWN_ERROR,
-                       context);
-}
-
-template <class ReqType, class RespType>
-void HandleResponse(const ReqType* req,
-                    RespType* resp,
-                    const std::shared_ptr<RpcContext>& context,
-                    const Status& s) {
-  if (PREDICT_FALSE(!s.ok())) {
-    HandleUnknownError(s, resp, context.get());
-    return;
-  }
-  context->RespondSuccess();
-}
-
-template <class ReqType, class RespType>
-static StatusCallback BindHandleResponse(const ReqType* req,
-                                         RespType* resp,
-                                         const std::shared_ptr<RpcContext>& context) {
-  return Bind(&HandleResponse<ReqType, RespType>, req, resp, context);
-}
-
 }  // namespace
 
 typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
 
-static void SetupErrorAndRespond(TabletServerErrorPB* error,
-                                 const Status& s,
-                                 TabletServerErrorPB::Code code,
-                                 rpc::RpcContext* context) {
+void SetupErrorAndRespond(TabletServerErrorPB* error,
+                          const Status& s,
+                          TabletServerErrorPB::Code code,
+                          rpc::RpcContext* context) {
   // Generic "service unavailable" errors will cause the client to retry later.
   if (code == TabletServerErrorPB::UNKNOWN_ERROR && s.IsServiceUnavailable()) {
     context->RespondRpcFailure(rpc::ErrorStatusPB::ERROR_SERVER_TOO_BUSY, s);
@@ -283,18 +222,6 @@ static void SetupErrorAndRespond(TabletServerErrorPB* error,
   // "SendResponse" since we use it for application-level error
   // responses, and this just looks confusing!
   context->RespondSuccess();
-}
-
-template <class ReqType, class RespType>
-void HandleErrorResponse(const ReqType* req, RespType* resp, RpcContext* context,
-                         const boost::optional<TabletServerErrorPB::Code>& error_code,
-                         const Status& s) {
-  resp->Clear();
-  if (error_code) {
-    SetupErrorAndRespond(resp->mutable_error(), s, *error_code, context);
-  } else {
-    HandleUnknownError(s, resp, context);
-  }
 }
 
 // A transaction completion callback that responds to the client when transactions
@@ -715,7 +642,7 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
                                                      cas_config_opid_index_less_or_equal,
                                                      &error_code);
   if (PREDICT_FALSE(!s.ok())) {
-    HandleErrorResponse(req, resp, &context, error_code, s);
+    HandleErrorResponse(resp, &context, s, error_code);
     return;
   }
   context.RespondSuccess();
@@ -1099,10 +1026,10 @@ void ConsensusServiceImpl::ChangeConfig(const ChangeConfigRequestPB* req,
   if (!GetConsensusOrRespond(tablet_peer, resp, &context, &consensus)) return;
   boost::optional<TabletServerErrorPB::Code> error_code;
   std::shared_ptr<RpcContext> context_ptr = std::make_shared<RpcContext>(std::move(context));
-  Status s = consensus->ChangeConfig(*req, BindHandleResponse(req, resp, context_ptr), &error_code);
+  Status s = consensus->ChangeConfig(*req, BindHandleResponse(resp, context_ptr), &error_code);
   VLOG(1) << "Sent ChangeConfig req " << req->ShortDebugString() << " to consensus layer.";
   if (PREDICT_FALSE(!s.ok())) {
-    HandleErrorResponse(req, resp, context_ptr.get(), error_code, s);
+    HandleErrorResponse(resp, context_ptr.get(), s, error_code);
     return;
   }
   // The success case is handled when the callback fires.
@@ -1240,8 +1167,8 @@ void ConsensusServiceImpl::GetLastOpId(const consensus::GetLastOpIdRequestPB *re
   scoped_refptr<Consensus> consensus;
   if (!GetConsensusOrRespond(tablet_peer, resp, &context, &consensus)) return;
   if (PREDICT_FALSE(req->opid_type() == consensus::UNKNOWN_OPID_TYPE)) {
-    HandleUnknownError(STATUS(InvalidArgument, "Invalid opid_type specified to GetLastOpId()"),
-                       resp, &context);
+    HandleErrorResponse(resp, &context,
+                        STATUS(InvalidArgument, "Invalid opid_type specified to GetLastOpId()"));
     return;
   }
   Status s = consensus->GetLastOpId(req->opid_type(), resp->mutable_opid());
@@ -1260,10 +1187,9 @@ void ConsensusServiceImpl::GetConsensusState(const consensus::GetConsensusStateR
   }
   ConsensusConfigType type = req->type();
   if (PREDICT_FALSE(type != CONSENSUS_CONFIG_ACTIVE && type != CONSENSUS_CONFIG_COMMITTED)) {
-    HandleUnknownError(
+    HandleErrorResponse(resp, &context,
         STATUS(InvalidArgument, Substitute("Unsupported ConsensusConfigType $0 ($1)",
-                                           ConsensusConfigType_Name(type), type)),
-        resp, &context);
+                                           ConsensusConfigType_Name(type), type)));
     return;
   }
   *resp->mutable_cstate() = scope->ConsensusState(req->type());

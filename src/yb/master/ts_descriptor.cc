@@ -224,12 +224,14 @@ Status TSDescriptor::ResolveEndpoint(Endpoint* addr) const {
   return Status::OK();
 }
 
-Status TSDescriptor::GetTSAdminProxy(const shared_ptr<rpc::Messenger>& messenger,
-                                     shared_ptr<tserver::TabletServerAdminServiceProxy>* proxy) {
+template <class TProxy>
+Status TSDescriptor::GetOrCreateProxy(const shared_ptr<rpc::Messenger>& messenger,
+                                      shared_ptr<TProxy>* result,
+                                      shared_ptr<TProxy>* result_cache) {
   {
     std::lock_guard<simple_spinlock> l(lock_);
-    if (ts_admin_proxy_) {
-      *proxy = ts_admin_proxy_;
+    if (*result_cache) {
+      *result = *result_cache;
       return Status::OK();
     }
   }
@@ -238,53 +240,26 @@ Status TSDescriptor::GetTSAdminProxy(const shared_ptr<rpc::Messenger>& messenger
   RETURN_NOT_OK(ResolveEndpoint(&addr));
 
   std::lock_guard<simple_spinlock> l(lock_);
-  if (!ts_admin_proxy_) {
-    ts_admin_proxy_.reset(new tserver::TabletServerAdminServiceProxy(messenger, addr));
+  if (!(*result_cache)) {
+    result_cache->reset(new TProxy(messenger, addr));
   }
-  *proxy = ts_admin_proxy_;
+  *result = *result_cache;
   return Status::OK();
+}
+
+Status TSDescriptor::GetTSAdminProxy(const shared_ptr<rpc::Messenger>& messenger,
+                                     shared_ptr<tserver::TabletServerAdminServiceProxy>* proxy) {
+  return GetOrCreateProxy(messenger, proxy, &ts_admin_proxy_);
 }
 
 Status TSDescriptor::GetConsensusProxy(const shared_ptr<rpc::Messenger>& messenger,
                                        shared_ptr<consensus::ConsensusServiceProxy>* proxy) {
-  {
-    std::lock_guard<simple_spinlock> l(lock_);
-    if (consensus_proxy_) {
-      *proxy = consensus_proxy_;
-      return Status::OK();
-    }
-  }
-
-  Endpoint addr;
-  RETURN_NOT_OK(ResolveEndpoint(&addr));
-
-  std::lock_guard<simple_spinlock> l(lock_);
-  if (!consensus_proxy_) {
-    consensus_proxy_.reset(new consensus::ConsensusServiceProxy(messenger, addr));
-  }
-  *proxy = consensus_proxy_;
-  return Status::OK();
+  return GetOrCreateProxy(messenger, proxy, &consensus_proxy_);
 }
 
 Status TSDescriptor::GetTSServiceProxy(const shared_ptr<rpc::Messenger>& messenger,
                                        shared_ptr<tserver::TabletServerServiceProxy>* proxy) {
-  {
-    std::lock_guard<simple_spinlock> l(lock_);
-    if (ts_service_proxy_) {
-      *proxy = ts_service_proxy_;
-      return Status::OK();
-    }
-  }
-
-  Endpoint addr;
-  RETURN_NOT_OK(ResolveEndpoint(&addr));
-
-  std::lock_guard<simple_spinlock> l(lock_);
-  if (!ts_service_proxy_) {
-    ts_service_proxy_.reset(new tserver::TabletServerServiceProxy(messenger, addr));
-  }
-  *proxy = ts_service_proxy_;
-  return Status::OK();
+  return GetOrCreateProxy(messenger, proxy, &ts_service_proxy_);
 }
 
 bool TSDescriptor::HasTabletDeletePending() const {

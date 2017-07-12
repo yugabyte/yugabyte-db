@@ -1928,7 +1928,7 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
 
 Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
                                       GetTableSchemaResponsePB* resp) {
-  LOG(INFO) << "Servicing GetTableSchema request for " << req->ShortDebugString();
+  VLOG(1) << "Servicing GetTableSchema request for " << req->ShortDebugString();
 
   RETURN_NOT_OK(CheckOnline());
 
@@ -4807,6 +4807,10 @@ Status CatalogManager::GoIntoShellMode() {
   LOG(INFO) << "Done going into shell mode.";
 
   return Status::OK();
+}
+
+Status CatalogManager::GetClusterConfig(GetMasterClusterConfigResponsePB* resp) {
+  return GetClusterConfig(resp->mutable_cluster_config());
 }
 
 Status CatalogManager::GetClusterConfig(SysClusterConfigEntryPB* config) {

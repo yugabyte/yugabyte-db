@@ -290,11 +290,13 @@ Status Ysck::ChecksumData(const vector<string>& tables,
   TabletTableMap tablet_table_map;
 
   int num_tablet_replicas = 0;
+  bool there_are_non_system_tables = false;
   for (const shared_ptr<YsckTable>& table : cluster_->tables()) {
     if (table->name().is_system()) {
       // Skip the system namespace with virtual tables, since they are not assigned to tservers.
       continue;
     }
+    there_are_non_system_tables = true;
     VLOG(1) << "Table: " << table->name().ToString();
     if (!tables_filter.empty() && !ContainsKey(tables_filter, table->name().table_name())) continue;
     // TODO: remove once we have scan implemented for Redis.
@@ -306,7 +308,8 @@ Status Ysck::ChecksumData(const vector<string>& tables,
       num_tablet_replicas += tablet->replicas().size();
     }
   }
-  if (num_tablet_replicas == 0) {
+  // Number of tablet replicas can be zero if there are no user tables available.
+  if (there_are_non_system_tables && num_tablet_replicas == 0) {
     string msg = "No tablet replicas found.";
     if (!tables.empty() || !tablets.empty()) {
       msg += " Filter: ";
