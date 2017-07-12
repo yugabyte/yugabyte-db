@@ -13,6 +13,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.NetworkManager;
+import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.models.AvailabilityZone;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +39,9 @@ public class RegionController extends AuthenticatedController {
 
   @Inject
   NetworkManager networkManager;
+  
+  @Inject
+  CloudQueryHelper cloudQueryHelper;
 
   public static final Logger LOG = LoggerFactory.getLogger(RegionController.class);
   // This constant defines the minimum # of PlacementAZ we need to tag a region as Multi-PlacementAZ complaint
@@ -113,18 +117,32 @@ public class RegionController extends AuthenticatedController {
       if (regionMetadata.containsKey(regionCode)) {
         JsonNode metaData = Json.toJson(regionMetadata.get(regionCode));
         region = Region.createWithMetadata(provider, regionCode, metaData);
-        // TODO: Move this to commissioner framework, Bootstrap the region with VPC, subnet etc.
-        JsonNode vpcInfo = networkManager.bootstrap(region.uuid, formData.get().hostVPCId);
-        if (vpcInfo.has("error") || !vpcInfo.has(regionCode)) {
-          region.delete();
-          return ApiResponse.error(INTERNAL_SERVER_ERROR, "Region Bootstrap failed.");
-        }
-        Map<String, String> zoneSubnets =
-            Json.fromJson(vpcInfo.get(regionCode).get("zones"), Map.class);
-        region.zones = new HashSet<>();
-        zoneSubnets.forEach((zone, subnet) -> {
-          region.zones.add(AvailabilityZone.create(region, zone, zone, subnet));
-        });
+        
+        if (provider.code.equals("gcp")){
+        	JsonNode zoneInfo = cloudQueryHelper.getZones(region);
+        	if (zoneInfo.has("error") || !zoneInfo.has(regionCode)) {
+        		region.delete();
+        		return ApiResponse.error(INTERNAL_SERVER_ERROR, "Region Bootstrap failed. Unable to fetch zones for "+regionCode);
+        	}
+        	List<String> zones = Json.fromJson(zoneInfo.get(regionCode), List.class);
+        	region.zones = new HashSet<>();
+        	zones.forEach(zone -> {
+        		region.zones.add(AvailabilityZone.create(region, zone, zone, "subnet-"+regionCode));
+        	});
+        } else {
+        	// TODO: Move this to commissioner framework, Bootstrap the region with VPC, subnet etc.
+	        JsonNode vpcInfo = networkManager.bootstrap(region.uuid, formData.get().hostVPCId);
+	        if (vpcInfo.has("error") || !vpcInfo.has(regionCode)) {
+	          region.delete();
+	          return ApiResponse.error(INTERNAL_SERVER_ERROR, "Region Bootstrap failed.");
+	        }
+	        Map<String, String> zoneSubnets =
+	            Json.fromJson(vpcInfo.get(regionCode).get("zones"), Map.class);
+	        region.zones = new HashSet<>();
+	        zoneSubnets.forEach((zone, subnet) -> {
+	          region.zones.add(AvailabilityZone.create(region, zone, zone, subnet));
+	        });
+        } 
       } else {
         region = Region.create(provider, regionCode, formData.get().name, formData.get().ybImage, formData.get().latitude, formData.get().longitude);
       }

@@ -3,12 +3,14 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.cloud.AWSInitializer;
+import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudCleanup;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.forms.CloudBootstrapFormData;
 import com.yugabyte.yw.models.AccessKey;
@@ -17,13 +19,9 @@ import com.yugabyte.yw.models.TaskInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.yugabyte.yw.forms.OnPremFormData;
-import com.yugabyte.yw.forms.NodeInstanceFormData;
-
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 
@@ -37,6 +35,8 @@ import play.libs.Json;
 import play.mvc.Result;
 
 import javax.persistence.PersistenceException;
+
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -54,12 +54,18 @@ public class CloudProviderController extends AuthenticatedController {
 
   @Inject
   AWSInitializer awsInitializer;
+  
+  @Inject
+  GCPInitializer gcpInitializer;
 
   @Inject
   Commissioner commissioner;
 
   @Inject
   ConfigHelper configHelper;
+  
+  @Inject
+  AccessManager accessManager;
 
   /**
    * GET endpoint for listing providers
@@ -104,7 +110,7 @@ public class CloudProviderController extends AuthenticatedController {
    * POST endpoint for creating new providers
    * @return JSON response of newly created provider
    */
-  public Result create(UUID customerUUID) {
+  public Result create(UUID customerUUID) throws IOException {
     Form<CloudProviderFormData> formData = formFactory.form(CloudProviderFormData.class).bindFromRequest();
 
     if (formData.hasErrors()) {
@@ -126,6 +132,17 @@ public class CloudProviderController extends AuthenticatedController {
     }
     try {
       provider = Provider.create(customerUUID, providerCode, formData.get().name, config);
+      if (provider.code.equals("gcp") && !config.isEmpty()) {
+      	String gcpCredentialsFile = accessManager.createCredentialsFile(provider.uuid, requestBody.get("config"));
+      	
+      	Map<String, String> newConfig = new HashMap<String, String>();
+      	newConfig.put("GCE_EMAIL", config.get("client_email"));
+      	newConfig.put("GCE_PROJECT", config.get("project_id"));
+      	newConfig.put("GOOGLE_APPLICATION_CREDENTIALS", gcpCredentialsFile);
+      	
+      	provider.setConfig(newConfig);
+      	provider.save();
+      }
       return ApiResponse.success(provider);
     } catch (PersistenceException e) {
       LOG.error(e.getMessage());
@@ -169,6 +186,9 @@ public class CloudProviderController extends AuthenticatedController {
     Provider provider = Provider.get(customerUUID, providerUUID);
     if (provider == null) {
       ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
+    }
+    if (provider.code.equals("gcp")) {
+    	return gcpInitializer.initialize(customerUUID, providerUUID);
     }
     return awsInitializer.initialize(customerUUID, providerUUID);
   }

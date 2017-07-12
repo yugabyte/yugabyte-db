@@ -85,7 +85,7 @@ public class RegionTest extends FakeDBApplication {
     Region.create(defaultProvider, "region-1", "region 1", "default-image");
     Region.create(defaultProvider, "region-2", "region 2", "default-image");
 
-    Provider provider2 = ModelFactory.gceProvider(defaultCustomer);
+    Provider provider2 = ModelFactory.gcpProvider(defaultCustomer);
     Region.create(provider2, "region-3", "region 3", "default-image");
 
     Set<Region> regions = Region.find.where().eq("provider_uuid", defaultProvider.uuid).findSet();

@@ -2,10 +2,8 @@
 
 package com.yugabyte.yw.cloud;
 
-public class AWSConstants {
-  public static final String providerCode = "aws";
-
-  public enum Tenancy {
+public class PublicCloudConstants {
+	public enum Tenancy {
     Shared,
     Dedicated,
     Host

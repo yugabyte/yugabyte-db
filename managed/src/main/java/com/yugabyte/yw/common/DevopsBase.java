@@ -30,6 +30,7 @@ public abstract class DevopsBase {
   protected  JsonNode execCommand(Common.CloudType cloudType, String command, List<String> commandArgs) {
     ShellProcessHandler.ShellResponse response = execCommand(new UUID(0L, 0L), command, commandArgs,
                                                              cloudType, Collections.emptyList());
+    // WARNING: Does not pass environment variables from config. 
     return parseShellResponse(response, command);
   }
 

@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import org.junit.Before;
@@ -33,20 +34,28 @@ public class CloudQueryHelperTest extends FakeDBApplication {
 
   @Mock
   ShellProcessHandler shellProcessHandler;
+  private Customer defaultCustomer;
   private Provider defaultProvider;
   private Region defaultRegion;
   ArgumentCaptor<ArrayList> command;
   ArgumentCaptor<HashMap> cloudCredentials;
+  
+  private enum CommandType {
+  	zones,
+  	instance_types,
+  	host_info
+  };
 
   @Before
   public void beforeTest() {
-    defaultProvider = ModelFactory.awsProvider(ModelFactory.testCustomer());
+  	defaultCustomer = ModelFactory.testCustomer();
+    defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     defaultRegion = Region.create(defaultProvider, "us-west-2", "US West 2", "yb-image");
     command = ArgumentCaptor.forClass(ArrayList.class);
     cloudCredentials = ArgumentCaptor.forClass(HashMap.class);
   }
 
-  private JsonNode runCommand(UUID regionUUID, boolean mimicError) {
+  private JsonNode runCommand(UUID regionUUID, boolean mimicError, CommandType command) {
     ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
     if (mimicError) {
       response.message = "{\"error\": \"Unknown Error\"}";
@@ -56,18 +65,62 @@ public class CloudQueryHelperTest extends FakeDBApplication {
       response.message = "{\"foo\": \"bar\"}";
     }
     when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(response);
-    return cloudQueryHelper.currentHostInfo(Common.CloudType.aws, ImmutableList.of("vpc-id"));
+    
+    switch (command) {
+    	case zones: 
+    		return cloudQueryHelper.getZones(Region.get(regionUUID));
+    	case instance_types:
+    		ArrayList<Region> regionList = new ArrayList<Region>();
+    		regionList.add(Region.get(regionUUID));
+    		return cloudQueryHelper.getInstanceTypes(Common.CloudType.valueOf(Region.get(regionUUID).provider.code), regionList);
+    	default:
+    		return cloudQueryHelper.currentHostInfo(Common.CloudType.aws, ImmutableList.of("vpc-id"));
+    }
+  }
+  
+  @Test
+  public void testGetZonesSuccess() {
+  	Provider gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
+  	Region gcpRegion = Region.create(gcpProvider, "us-west1", "Gcp US West 1", "yb-image");
+  	JsonNode json = runCommand(gcpRegion.uuid, false, CommandType.zones);
+  	assertValue(json, "foo", "bar");
+  }
+  
+  @Test 
+  public void testGetZonesFailure() {
+  	Provider gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
+  	Region gcpRegion = Region.create(gcpProvider, "us-west1", "Gcp US West 1", "yb-image");
+  	JsonNode json = runCommand(gcpRegion.uuid, true, CommandType.zones);
+  	assertErrorNodeValue(json, "YBCloud command query (zones) failed to execute.");
   }
 
   @Test
+  public void testGetInstanceTypesSuccess() {
+  	Provider gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
+  	Region gcpRegion = Region.create(gcpProvider, "us-west1", "Gcp US West 1", "yb-image");
+  	ArrayList<Region> regionList = new ArrayList<>();
+  	regionList.add(gcpRegion);
+  	JsonNode json = runCommand(gcpRegion.uuid, false, CommandType.instance_types);
+  	assertValue(json, "foo", "bar");
+  }
+  
+  @Test 
+  public void testGetInstanceTypesFailure() {
+  	Provider gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
+  	Region gcpRegion = Region.create(gcpProvider, "us-west1", "Gcp US West 1", "yb-image");
+  	JsonNode json = runCommand(gcpRegion.uuid, true, CommandType.instance_types);
+  	assertErrorNodeValue(json, "YBCloud command query (instance_types) failed to execute.");
+  }
+  
+  @Test
   public void testGetHostInfoSuccess() {
-    JsonNode json = runCommand(defaultRegion.uuid, false);
+    JsonNode json = runCommand(defaultRegion.uuid, false, CommandType.host_info);
     assertValue(json, "foo", "bar");
   }
 
   @Test
   public void testGetHostInfoFailure() {
-    JsonNode json = runCommand(defaultRegion.uuid, true);
+    JsonNode json = runCommand(defaultRegion.uuid, true, CommandType.host_info);
     assertErrorNodeValue(json, "YBCloud command query (current-host) failed to execute.");
   }
 }
