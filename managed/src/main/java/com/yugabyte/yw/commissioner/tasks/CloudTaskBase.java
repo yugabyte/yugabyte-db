@@ -22,7 +22,9 @@ public abstract class CloudTaskBase extends AbstractTaskBase {
   protected Map<String, Object> regionMetadata;
 
   @Override
-  protected CloudTaskParams taskParams() { return (CloudTaskParams) taskParams; }
+  protected CloudTaskParams taskParams() {
+    return (CloudTaskParams) taskParams;
+  }
 
   @Override
   public void initialize(ITaskParams params) {

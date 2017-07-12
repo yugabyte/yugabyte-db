@@ -13,13 +13,13 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.TaskInfo;
 
 import play.libs.Json;
@@ -66,7 +66,7 @@ public class Commissioner {
   /**
    * Creates a new task runner to run the required task, and submits it to a threadpool if needed.
    */
-  public UUID submit(TaskInfo.Type taskType, ITaskParams taskParams) {
+  public UUID submit(TaskType taskType, ITaskParams taskParams) {
     try {
       // Claim the task if we can - check if we will go above the max local concurrent task
       // threshold. If we can claim it, set ourselves as the owner of the task. Otherwise, do not

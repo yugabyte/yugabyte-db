@@ -6,12 +6,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Before;
 import org.junit.Test;
 import play.Application;
@@ -85,6 +88,46 @@ public class CustomerTaskControllerTest extends WithApplication {
     responseJson.put("percent", percentComplete);
     when(mockCommissioner.getStatus(taskUUID)).thenReturn(responseJson);
     return taskUUID;
+  }
+
+  private UUID createSubTask(UUID parentUUID, int position, TaskType taskType,
+                             TaskInfo.State taskState) {
+    TaskInfo subTask = new TaskInfo(taskType);
+    subTask.setParentUuid(parentUUID);
+    subTask.setPosition(position);
+    subTask.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+    subTask.setTaskState(taskState);
+    subTask.setTaskDetails(Json.newObject());
+    subTask.setOwner("foobar");
+    subTask.save();
+    return subTask.getTaskUUID();
+  }
+
+  @Test
+  public void testFetchTaskWithFailedSubtasks() {
+    String authToken = customer.createAuthToken();
+    UUID universeUUID = UUID.randomUUID();
+    UUID taskUUID = createTaskWithStatus(universeUUID, CustomerTask.TargetType.Universe, Create,
+        "Foo", "Failed", 50);
+    UUID subTaskUUID = createSubTask(taskUUID, 0, TaskType.AnsibleSetupServer,
+        TaskInfo.State.Failure);
+
+    String url = "/api/customers/" + customer.uuid + "/tasks/" + taskUUID + "/failed";
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, authToken);
+    assertEquals(OK, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertTrue(json.isObject());
+    JsonNode failedSubTasks = json.get("failedSubTasks");
+    assertTrue(failedSubTasks.isArray());
+    assertThat(failedSubTasks.get(0).get("subTaskUUID").asText(), allOf(notNullValue(),
+        equalTo(subTaskUUID.toString())));
+    assertThat(failedSubTasks.get(0).get("subTaskType").asText(), allOf(notNullValue(),
+        equalTo(TaskType.AnsibleSetupServer.name())));
+    assertThat(failedSubTasks.get(0).get("subTaskState").asText(), allOf(notNullValue(),
+        equalTo(TaskInfo.State.Failure.toString())));
+    assertThat(failedSubTasks.get(0).get("subTaskGroupType").asText(), allOf(notNullValue(),
+        equalTo(UserTaskDetails.SubTaskGroupType.ConfigureUniverse.name())));
+    assertThat(failedSubTasks.get(0).get("creationTime").asText(), is(notNullValue()));
   }
 
   @Test

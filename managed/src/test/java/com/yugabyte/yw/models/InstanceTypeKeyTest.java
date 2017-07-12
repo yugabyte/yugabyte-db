@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
-import com.yugabyte.yw.models.InstanceTypeKey;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;

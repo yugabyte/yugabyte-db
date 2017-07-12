@@ -13,8 +13,7 @@ import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.TaskList;
 import com.yugabyte.yw.commissioner.TaskListQueue;
-import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskType;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
@@ -38,7 +37,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       verifyParams();
 
       // Create the task list sequence.
-      taskListQueue = new TaskListQueue();
+      taskListQueue = new TaskListQueue(userTaskUUID);
 
       // Update the universe DB with the changes to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
@@ -51,8 +50,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // changes the universe name before submitting.
       updateNodeNames();
 
-      LOG.info("Configure numNodes={}, numMasters={}",
-               taskParams().userIntent.numNodes, taskParams().userIntent.replicationFactor);
+      LOG.info("Configure numNodes={}, numMasters={}", taskParams().userIntent.numNodes,
+          taskParams().userIntent.replicationFactor);
 
       Collection<NodeDetails> nodesToBeRemoved =
           PlacementInfoUtil.getNodesToBeRemoved(taskParams().nodeDetailsSet);
@@ -63,60 +62,62 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Set the old nodes' state to to-be-decommissioned.
       if (!nodesToBeRemoved.isEmpty()) {
         createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.ToBeDecommissioned)
-            .setUserSubTask(SubTaskType.Provisioning);
+            .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       }
 
       if (!nodesToProvision.isEmpty()) {
         // Create the required number of nodes in the appropriate locations.
-        createSetupServerTasks(nodesToProvision).setUserSubTask(SubTaskType.Provisioning);
+        createSetupServerTasks(nodesToProvision)
+            .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
         // Get all information about the nodes of the cluster. This includes the public ip address,
         // the private ip address (in the case of AWS), etc.
-        createServerInfoTasks(nodesToProvision).setUserSubTask(SubTaskType.Provisioning);
+        createServerInfoTasks(nodesToProvision)
+            .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
         // Configures and deploys software on all the nodes (masters and tservers).
         createConfigureServerTasks(nodesToProvision, true /* isShell */)
-            .setUserSubTask(SubTaskType.InstallingSoftware);
+            .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
       }
 
       newMasters = PlacementInfoUtil.getMastersToProvision(taskParams().nodeDetailsSet);
 
       // Creates the YB cluster by starting the masters in the shell mode.
       if (!newMasters.isEmpty()) {
-        createStartMasterTasks(
-            newMasters, true /* isShell */).setUserSubTask(SubTaskType.ConfigureUniverse);
+        createStartMasterTasks(newMasters, true /* isShell */)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
         // Wait for masters to be responsive.
-        createWaitForServersTasks(
-            newMasters, ServerType.MASTER).setUserSubTask(SubTaskType.ConfigureUniverse);
+        createWaitForServersTasks(newMasters, ServerType.MASTER)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
-      Set<NodeDetails> newTservers =
-          PlacementInfoUtil.getTserversToProvision(taskParams().nodeDetailsSet);
+      Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(
+          taskParams().nodeDetailsSet);
 
       if (!newTservers.isEmpty()) {
         // Start the tservers in the clusters.
-        createStartTServersTasks(newTservers).setUserSubTask(SubTaskType.ConfigureUniverse);
+        createStartTServersTasks(newTservers)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
         // Wait for all tablet servers to be responsive.
-        createWaitForServersTasks(
-            newTservers, ServerType.TSERVER).setUserSubTask(SubTaskType.ConfigureUniverse);
+        createWaitForServersTasks(newTservers, ServerType.TSERVER)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
       if (!nodesToProvision.isEmpty()) {
         // Set the new nodes' state to running.
         createSetNodeStateTasks(nodesToProvision, NodeDetails.NodeState.Running)
-            .setUserSubTask(SubTaskType.ConfigureUniverse);
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
       if (!newMasters.isEmpty()) {
-        // Now finalize the cluster configuration change tasks.
-        createMoveMastersTasks(SubTaskType.WaitForDataMigration);
+        // Now finalize the cluster configuration change tasks. (implicitly calls setSubTaskGroupType)
+        createMoveMastersTasks(SubTaskGroupType.WaitForDataMigration);
       }
 
-      SubTaskType lastSubTaskType;
-      Collection<NodeDetails> tserversToBeRemoved =
-              PlacementInfoUtil.getTserversToBeRemoved(taskParams().nodeDetailsSet);
+      Collection<NodeDetails> tserversToBeRemoved = PlacementInfoUtil.getTserversToBeRemoved(
+          taskParams().nodeDetailsSet);
       if (!nodesToBeRemoved.isEmpty()) {
         // Add any nodes to be removed to tserver removal to be considered for blacklisting.
         tserversToBeRemoved.addAll(nodesToBeRemoved);
@@ -125,14 +126,15 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         // This is done after master config change jobs, so that the new master leader can perform
         // the auto load-balancing, and all tablet servers are heart beating to new set of masters.
         createPlacementInfoTask(tserversToBeRemoved)
-            .setUserSubTask(SubTaskType.WaitForDataMigration);
+            .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
         // Wait for %age completion of the tablet move from master.
-        createWaitForDataMoveTask().setUserSubTask(SubTaskType.WaitForDataMigration);
+        createWaitForDataMoveTask()
+            .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
         // Send destroy old set of nodes to ansible and remove them from this universe.
-        createDestroyServerTasks(nodesToBeRemoved).setUserSubTask(SubTaskType.RemovingUnusedServers);
-        lastSubTaskType = SubTaskType.RemovingUnusedServers;
+        createDestroyServerTasks(nodesToBeRemoved)
+            .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
         // Clearing the blacklist on the yb cluster master is handled on the server side.
       } else {
   	    if (!tserversToBeRemoved.isEmpty()) {
@@ -141,15 +143,16 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
   	      throw new IllegalStateException(errMsg);
   	    }
   	    // If only tservers are added, wait for load to balance across all tservers.
-        createWaitForLoadBalanceTask().setUserSubTask(SubTaskType.WaitForDataMigration);
-        lastSubTaskType = SubTaskType.WaitForDataMigration;
+        createWaitForLoadBalanceTask()
+            .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
       }
 
-      // Update the swamper target file
-      createSwamperTargetUpdateTask(false /* removeFile */, lastSubTaskType);
+      // Update the swamper target file (implicitly calls setSubTaskGroupType)
+      createSwamperTargetUpdateTask(false /* removeFile */, SubTaskGroupType.ConfigureUniverse);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
-      createMarkUniverseUpdateSuccessTasks();
+      createMarkUniverseUpdateSuccessTasks()
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
       taskListQueue.run();
@@ -168,7 +171,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
    * Fills in the series of steps needed to move the masters using the tag names of the nodes. The
    * actual node details (such as their ip addresses) are found at runtime by querying the database.
    */
-  private void createMoveMastersTasks(UserTaskDetails.SubTaskType subTask) {
+  private void createMoveMastersTasks(SubTaskGroupType subTask) {
     // Get the list of node names to add as masters.
     List<String> mastersToAdd = new ArrayList<String>();
     for (NodeDetails node : newMasters) {
@@ -209,7 +212,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
   private void createChangeConfigTask(String nodeName,
                                       boolean isAdd,
-                                      UserTaskDetails.SubTaskType subTask) {
+                                      SubTaskGroupType subTask) {
     // Create a new task list for the change config so that it happens one by one.
     String taskListName = "ChangeMasterConfig(" + nodeName + ", " + (isAdd?"add":"remove") + ")";
     TaskList taskList = new TaskList(taskListName, executor);
@@ -232,7 +235,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     // Add the task list to the task queue.
     taskListQueue.add(taskList);
     // Configure the user facing subtask for this task list.
-    taskList.setUserSubTask(subTask);
+    taskList.setSubTaskGroupType(subTask);
   }
 
   private TaskList createWaitForDataMoveTask() {

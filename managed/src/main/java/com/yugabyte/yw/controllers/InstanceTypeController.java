@@ -86,7 +86,7 @@ public class InstanceTypeController extends AuthenticatedController {
    * DELETE endpoint for deleting instance types.
    * @param customerUUID, UUID of customer
    * @param providerUUID, UUID of provider
-   * @param instanceTypeCode, Instance Type code.
+   * @param instanceTypeCode, Instance TaskType code.
    * @return JSON response to denote if the delete was successful or not.
    */
   public Result delete(UUID customerUUID, UUID providerUUID, String instanceTypeCode) {

@@ -4,10 +4,6 @@ package com.yugabyte.yw.models;
 import com.avaje.ebean.*;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,14 +11,12 @@ import java.util.Map.Entry;
 import java.util.UUID;
 
 import javax.persistence.Column;
-import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import play.data.validation.Constraints;
 import play.libs.Json;
 
 @Entity

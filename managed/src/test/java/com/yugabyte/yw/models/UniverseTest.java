@@ -3,7 +3,6 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;

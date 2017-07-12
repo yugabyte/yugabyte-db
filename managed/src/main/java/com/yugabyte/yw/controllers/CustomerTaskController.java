@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.HashMap;
 
 import com.avaje.ebean.Query;
+import com.yugabyte.yw.forms.SubTaskFormData;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,44 +36,36 @@ public class CustomerTaskController extends AuthenticatedController {
   protected static final int TASK_HISTORY_LIMIT = 6;
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskController.class);
 
-  public Result list(UUID customerUUID) {
-    Customer customer = Customer.get(customerUUID);
-
-    if (customer == null) {
-      ObjectNode responseJson = Json.newObject();
-      responseJson.put("error", "Invalid Customer UUID: " + customerUUID);
-      return badRequest(responseJson);
+  private List<SubTaskFormData> fetchFailedSubTasks(UUID parentUUID) {
+    Query<TaskInfo> subTaskQuery = TaskInfo.find.where()
+        .eq("parent_uuid", parentUUID)
+        .eq("task_state", TaskInfo.State.Failure.name())
+        .orderBy("position desc");
+    Set<TaskInfo> result = subTaskQuery.findSet();
+    List<SubTaskFormData> subTasks = new ArrayList<>();
+    for (TaskInfo taskInfo : result) {
+      SubTaskFormData subTaskData = new SubTaskFormData();
+      subTaskData.subTaskUUID = taskInfo.getTaskUUID();
+      subTaskData.subTaskType = taskInfo.getTaskType().name();
+      subTaskData.subTaskState = taskInfo.getTaskState().name();
+      subTaskData.creationTime = taskInfo.getCreationTime();
+      subTaskData.subTaskGroupType = taskInfo.getSubTaskGroupType().name();
+      subTasks.add(subTaskData);
     }
-
-    Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customerUUID, null);
-    return ApiResponse.success(taskList);
-  }
-
-  public Result universeTasks(UUID customerUUID, UUID universeUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
-    try {
-      Universe universe = Universe.get(universeUUID);
-      Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customerUUID, universe.universeUUID);
-      return ApiResponse.success(taskList);
-    } catch (RuntimeException e) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Universe UUID: " + universeUUID);
-    }
+    return subTasks;
   }
 
   private Map<UUID, List<CustomerTaskFormData>> fetchTasks(UUID customerUUID, UUID targetUUID) {
-    Query<CustomerTask> taskQuery = CustomerTask.find.where()
-      .eq("customer_uuid", customerUUID)
-      .orderBy("create_time desc")
-      .setMaxRows(TASK_HISTORY_LIMIT);
+    Query<CustomerTask> customerTaskQuery = CustomerTask.find.where()
+        .eq("customer_uuid", customerUUID)
+        .orderBy("create_time desc")
+        .setMaxRows(TASK_HISTORY_LIMIT);
 
     if (targetUUID != null) {
-      taskQuery.where().eq("target_uuid", targetUUID);
+      customerTaskQuery.where().eq("target_uuid", targetUUID);
     }
 
-    Set<CustomerTask> pendingTasks = taskQuery.findSet();
+    Set<CustomerTask> pendingTasks = customerTaskQuery.findSet();
 
     Map<UUID, List<CustomerTaskFormData>> taskListMap = new HashMap<>();
 
@@ -104,6 +98,33 @@ public class CustomerTaskController extends AuthenticatedController {
     return taskListMap;
   }
 
+  public Result list(UUID customerUUID) {
+    Customer customer = Customer.get(customerUUID);
+
+    if (customer == null) {
+      ObjectNode responseJson = Json.newObject();
+      responseJson.put("error", "Invalid Customer UUID: " + customerUUID);
+      return badRequest(responseJson);
+    }
+
+    Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customerUUID, null);
+    return ApiResponse.success(taskList);
+  }
+
+  public Result universeTasks(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+    try {
+      Universe universe = Universe.get(universeUUID);
+      Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customerUUID, universe.universeUUID);
+      return ApiResponse.success(taskList);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Universe UUID: " + universeUUID);
+    }
+  }
+
   public Result status(UUID customerUUID, UUID taskUUID) {
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
@@ -125,5 +146,25 @@ public class CustomerTaskController extends AuthenticatedController {
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, e.getMessage());
     }
+  }
+
+  public Result failedSubtasks(UUID customerUUID, UUID taskUUID) {
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+
+    CustomerTask customerTask = CustomerTask.find.where()
+        .eq("customer_uuid", customer.uuid)
+        .eq("task_uuid", taskUUID)
+        .findUnique();
+    if (customerTask == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer Task UUID: " + taskUUID);
+    }
+
+    List<SubTaskFormData> failedSubTasks = fetchFailedSubTasks(taskUUID);
+    ObjectNode responseJson = Json.newObject();
+    responseJson.put("failedSubTasks", Json.toJson(failedSubTasks));
+    return ok(responseJson);
   }
 }

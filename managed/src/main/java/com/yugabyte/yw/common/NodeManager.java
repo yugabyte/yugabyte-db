@@ -10,9 +10,7 @@ import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.NodeInstance;
@@ -279,17 +277,11 @@ public class NodeManager extends DevopsBase {
       }
       case List:
       {
-        if (!(nodeTaskParam instanceof AnsibleUpdateNodeInfo.Params)) {
-          throw new RuntimeException("NodeTaskParams is not AnsibleUpdateNodeInfo.Params");
-        }
         commandArgs.add("--as_json");
         break;
       }
       case Destroy:
       {
-        if (!(nodeTaskParam instanceof AnsibleDestroyServer.Params)) {
-          throw new RuntimeException("NodeTaskParams is not AnsibleDestroyServer.Params");
-        }
         commandArgs.add("--instance_type");
         commandArgs.add(nodeTaskParam.instanceType);
         if (nodeTaskParam.deviceInfo != null) {

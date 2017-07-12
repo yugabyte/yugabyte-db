@@ -17,7 +17,6 @@ import com.yugabyte.yw.forms.NodeInstanceFormData;
 
 import play.data.Form;
 import play.data.FormFactory;
-import play.libs.Json;
 import play.mvc.Result;
 
 public class NodeInstanceController extends AuthenticatedController {

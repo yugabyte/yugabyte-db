@@ -2,18 +2,14 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import java.util.HashMap;
 import java.util.Map;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,11 +24,6 @@ public class UpdateAndPersistGFlags extends AbstractTaskBase {
 
   protected Params taskParams() {
     return (Params)taskParams;
-  }
-
-  @Override
-  public void initialize(ITaskParams params) {
-    super.initialize(params);
   }
 
   @Override

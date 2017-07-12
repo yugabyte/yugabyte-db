@@ -2,14 +2,8 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Collection;
-import java.util.UUID;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.Common.HostPortPB;
 import org.yb.client.ChangeLoadBalancerStateResponse;
 
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
@@ -17,7 +11,6 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 
 import play.api.Play;
 
@@ -54,7 +47,7 @@ public class LoadBalancerStateChange extends UniverseTaskBase {
 
   @Override
   public void run() {
-    ChangeLoadBalancerStateResponse resp = null;
+    ChangeLoadBalancerStateResponse resp;
     try {
       Universe universe = Universe.get(taskParams().universeUUID);
       String masterHostPorts = universe.getMasterAddresses();

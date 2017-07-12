@@ -20,7 +20,6 @@ import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -29,7 +28,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.protobuf.ByteString;
 import com.google.common.collect.ImmutableSet;
@@ -38,8 +36,8 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
+import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Matchers;
@@ -215,7 +213,7 @@ public class TablesControllerTest extends WithApplication {
   @Test
   public void testCreateCassandraTableWithValidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(Matchers.any(TaskInfo.Type.class),
+    when(mockCommissioner.submit(Matchers.any(TaskType.class),
         Matchers.any(TableDefinitionTaskParams.class))).thenReturn(fakeTaskUUID);
 
     Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");

@@ -34,7 +34,7 @@ public class WaitForMasterLeader extends AbstractTaskBase {
 
   @Override
   public void initialize(ITaskParams params) {
-    this.taskParams = params;
+    super.initialize(params);
     ybService = Play.current().injector().instanceOf(YBClientService.class);
   }
 

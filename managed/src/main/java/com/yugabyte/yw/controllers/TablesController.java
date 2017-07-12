@@ -9,10 +9,10 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
+import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.GetTableSchemaResponse;
@@ -69,7 +69,7 @@ public class TablesController extends AuthenticatedController {
 
       // Submit the task to create the table.
       TableDetails tableDetails = taskParams.tableDetails;
-      UUID taskUUID = commissioner.submit(TaskInfo.Type.CreateCassandraTable, taskParams);
+      UUID taskUUID = commissioner.submit(TaskType.CreateCassandraTable, taskParams);
       LOG.info("Submitted create table for {}:{}, task uuid = {}.",
         taskParams.tableUUID, tableDetails.tableName, taskUUID);
 
