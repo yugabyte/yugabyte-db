@@ -71,7 +71,7 @@ DocKey DocYQLScanSpec::bound_key(const bool lower_bound) const {
 std::vector<PrimitiveValue> DocYQLScanSpec::range_components(const bool lower_bound,
                                                              const bool allow_null) const {
   std::vector<PrimitiveValue> result;
-  if (range_.get() != nullptr) {
+  if (range_ != nullptr) {
     const std::vector<YQLValuePB> range_values = range_->range_values(lower_bound, allow_null);
     result.reserve(range_values.size());
     size_t column_idx = schema_.num_hash_key_columns();
@@ -85,6 +85,24 @@ std::vector<PrimitiveValue> DocYQLScanSpec::range_components(const bool lower_bo
   return result;
 }
 
+namespace {
+
+bool KeyWithinRange(const DocKey& key, const DocKey& lower_key, const DocKey& upper_key) {
+  // Verify that the key is within the lower/upper bound, which is either:
+  // 1. the bound is empty
+  // 2. the bound has no range component and the key's hash components are the same as the bound's.
+  // 3. the bound is <= or >= the fully-specified bound.
+  const DocKey hash_key(key.hash(), key.hashed_group());
+  return ((lower_key.empty() ||
+           lower_key.range_group().empty() && hash_key == lower_key ||
+           lower_key <= key) &&
+          (upper_key.empty() ||
+           upper_key.range_group().empty() && hash_key == upper_key ||
+           key <= upper_key));
+}
+
+} // namespace
+
 Status DocYQLScanSpec::GetBoundKey(const bool lower_bound, DocKey* key) const {
   // If a full doc key is specified, that is the exactly doc to scan. Otherwise, compute the
   // lower/upper bound doc keys to scan from the range.
@@ -95,17 +113,13 @@ Status DocYQLScanSpec::GetBoundKey(const bool lower_bound, DocKey* key) const {
 
   // If start doc_key is set, that is the lower bound for the scan range.
   if (lower_bound && !start_doc_key_.empty()) {
-    if (range_.get() != nullptr) {
-      if (!lower_doc_key_.empty() && start_doc_key_ < lower_doc_key_ ||
-          !upper_doc_key_.empty() && start_doc_key_ > upper_doc_key_) {
-        return STATUS_SUBSTITUTE(Corruption,
-                                 "Invalid start_doc_key: $0. Range: $1, $2",
-                                 start_doc_key_.ToString(),
-                                 lower_doc_key_.ToString(),
-                                 upper_doc_key_.ToString());
-      }
+    if (range_ != nullptr && !KeyWithinRange(start_doc_key_, lower_doc_key_, upper_doc_key_)) {
+      return STATUS_SUBSTITUTE(Corruption,
+                               "Invalid start_doc_key: $0. Range: $1, $2",
+                               start_doc_key_.ToString(),
+                               lower_doc_key_.ToString(),
+                               upper_doc_key_.ToString());
     }
-    // TODO: Should we return in the case for no range component?
     *key = start_doc_key_;
     return Status::OK();
   }

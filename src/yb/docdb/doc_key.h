@@ -125,8 +125,16 @@ class DocKey {
     return CompareTo(other) < 0;
   }
 
+  bool operator <=(const DocKey& other) const {
+    return CompareTo(other) <= 0;
+  }
+
   bool operator >(const DocKey& other) const {
     return CompareTo(other) > 0;
+  }
+
+  bool operator >=(const DocKey& other) const {
+    return CompareTo(other) >= 0;
   }
 
   // Converts the given Kudu encoded key to a DocKey. It looks like Kudu's EncodedKey assumes all

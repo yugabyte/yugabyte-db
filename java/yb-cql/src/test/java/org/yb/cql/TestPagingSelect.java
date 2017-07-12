@@ -5,8 +5,10 @@ import java.util.Iterator;
 
 import org.junit.Test;
 
+import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
+import com.datastax.driver.core.SimpleStatement;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -75,5 +77,40 @@ public class TestPagingSelect extends BaseCQLTest {
     }
     assertEquals(num_rows, row_count);
     LOG.info("TEST CQL CONTINUOUS SELECT QUERY - end");
+  }
+
+  private void assertIncompleteRangeColumns(String query, String column, int total) {
+    // Set page size to 1 row and verify that all the range rows are returned ok.
+    int v = 0;
+    SimpleStatement stmt = new SimpleStatement(query);
+    stmt.setFetchSize(1);
+    for (Row row : session.execute(stmt)) {
+      assertEquals(v, row.getInt(column));
+      v++;
+    }
+    assertEquals(v, total);
+  }
+
+  @Test
+  public void testIncompleteRangeColumns() throws Exception {
+
+    // Create test table with seed data.
+    final int TOTAL_ROWS = 10;
+    session.execute("CREATE TABLE test_paging (h int, r1 int, r2 int, PRIMARY KEY ((h), r1, r2));");
+    PreparedStatement pstmt = session.prepare("INSERT INTO test_paging (h, r1, r2) " +
+                                              "VALUES (0, ?, 0);");
+    for (int r1 = 0; r1 < TOTAL_ROWS; r1++) {
+      session.execute(pstmt.bind(Integer.valueOf(r1)));
+    }
+
+    // Verify that page results are returned fine when no/incomplete range columns are specified.
+    assertIncompleteRangeColumns("SELECT r1 FROM test_paging;", "r1", TOTAL_ROWS);
+    assertIncompleteRangeColumns("SELECT r1 FROM test_paging WHERE h = 0;", "r1", TOTAL_ROWS);
+    assertIncompleteRangeColumns("SELECT r1 FROM test_paging " +
+                                 "WHERE h = 0 AND r1 >= 0 AND r1 <= 10;", "r1", TOTAL_ROWS);
+    assertIncompleteRangeColumns("SELECT r1 FROM test_paging WHERE h = 0 AND r1 >= 0;",
+                                 "r1", TOTAL_ROWS);
+    assertIncompleteRangeColumns("SELECT r1 FROM test_paging WHERE h = 0 AND r1 <= 10;",
+                                 "r1", TOTAL_ROWS);
   }
 }
