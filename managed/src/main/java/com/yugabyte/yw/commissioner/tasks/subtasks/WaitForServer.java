@@ -41,7 +41,7 @@ public class WaitForServer extends AbstractTaskBase {
 
   @Override
   public void initialize(ITaskParams params) {
-    this.taskParams = (Params)params;
+    super.initialize(params);
     ybService = Play.current().injector().instanceOf(YBClientService.class);
   }
 

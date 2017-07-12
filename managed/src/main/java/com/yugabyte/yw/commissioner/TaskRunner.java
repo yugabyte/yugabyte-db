@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,7 +26,7 @@ public class TaskRunner implements Runnable {
   public static final Logger LOG = LoggerFactory.getLogger(TaskRunner.class);
 
   // This is a map from the task types to the classes so that we can instantiate the task.
-  private static Map<TaskInfo.Type, Class<? extends ITask>> taskTypeToTaskClassMap;
+  private static Map<TaskType, Class<? extends ITask>> taskTypeToTaskClassMap;
 
   // The data underlying the task.
   private TaskInfo taskInfo;
@@ -35,10 +36,9 @@ public class TaskRunner implements Runnable {
 
   static {
     // Initialize the map which holds the task types to their task class.
-    Map<TaskInfo.Type, Class<? extends ITask>> typeMap =
-        new HashMap<TaskInfo.Type, Class<? extends ITask>>();
+    Map<TaskType, Class<? extends ITask>> typeMap = new HashMap<TaskType, Class<? extends ITask>>();
 
-    for (TaskInfo.Type taskType : TaskInfo.Type.values()) {
+    for (TaskType taskType : TaskType.values()) {
       String className = "com.yugabyte.yw.commissioner.tasks." + taskType.toString();
       Class<? extends ITask> taskClass;
       try {
@@ -62,19 +62,13 @@ public class TaskRunner implements Runnable {
    * @throws InstantiationException
    * @throws IllegalAccessException
    */
-  public static TaskRunner createTask(TaskInfo.Type taskType,
+  public static TaskRunner createTask(TaskType taskType,
                                       ITaskParams taskParams,
                                       boolean claimTask)
       throws InstantiationException, IllegalAccessException {
 
-    // Create an instance of the task.
-    ITask task = taskTypeToTaskClassMap.get(taskType).newInstance();
-
-    // Init the task.
-    task.initialize(taskParams);
-
     // Create the task runner object.
-    TaskRunner taskRunner = new TaskRunner(taskType, task);
+    TaskRunner taskRunner = new TaskRunner(taskType, taskParams);
 
     // Persist the task in the queue.
     taskRunner.save();
@@ -83,8 +77,13 @@ public class TaskRunner implements Runnable {
     return taskRunner;
   }
 
-  private TaskRunner(TaskInfo.Type taskType, ITask task) {
-    this.task = task;
+  private TaskRunner(TaskType taskType, ITaskParams taskParams)
+      throws InstantiationException, IllegalAccessException {
+
+    // Create an instance of the task.
+    task = taskTypeToTaskClassMap.get(taskType).newInstance();
+    // Init the task.
+    task.initialize(taskParams);
     // Create a new task info object.
     taskInfo = new TaskInfo(taskType);
     // Set the task details.
@@ -135,6 +134,7 @@ public class TaskRunner implements Runnable {
   @Override
   public void run() {
     LOG.info("Running task");
+    task.setUserTaskUUID(getTaskUUID());
     updateTaskState(TaskInfo.State.Running);
     try {
       // Run the task.

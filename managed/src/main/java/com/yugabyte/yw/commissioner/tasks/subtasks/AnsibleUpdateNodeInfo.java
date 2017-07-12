@@ -25,9 +25,6 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
 
   public static final Logger LOG = LoggerFactory.getLogger(AnsibleUpdateNodeInfo.class);
 
-  public static class Params extends NodeTaskParams {
-  }
-
   @Override
   public void run() {
     // Create the process to fetch information about the node from the cloud provider.
@@ -37,8 +34,8 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
 
     // TODO: log output stream somewhere.
 
-    LOG.info("Updating details uuid={}, name={}.",
-      taskParams.universeUUID, taskParams.nodeName);
+    NodeTaskParams taskParams = taskParams();
+    LOG.info("Updating details uuid={}, name={}.", taskParams.universeUUID, taskParams.nodeName);
 
     // Parse into a json object.
     JsonNode jsonNodeTmp = Json.parse(response.message);

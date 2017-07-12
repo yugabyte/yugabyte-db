@@ -10,6 +10,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
@@ -34,7 +35,7 @@ public class CloudCleanupTestTest extends CommissionerBaseTest {
     CloudCleanup.Params taskParams = new CloudCleanup.Params();
     taskParams.providerUUID = defaultProvider.uuid;
     taskParams.regionList = regionList;
-    return commissioner.submit(TaskInfo.Type.CloudCleanup, taskParams);
+    return commissioner.submit(TaskType.CloudCleanup, taskParams);
   }
 
   private void assertRegionZones(String regionCode, List<String> zones, boolean exists) {

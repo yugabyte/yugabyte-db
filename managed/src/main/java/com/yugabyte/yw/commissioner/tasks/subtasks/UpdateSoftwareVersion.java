@@ -30,11 +30,6 @@ public class UpdateSoftwareVersion extends AbstractTaskBase {
   }
 
   @Override
-  public void initialize(ITaskParams params) {
-    this.taskParams = params;
-  }
-
-  @Override
   public String getName() {
     return super.getName() + "(" + taskParams().universeUUID + ")";
   }

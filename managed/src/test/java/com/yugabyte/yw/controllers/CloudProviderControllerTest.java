@@ -8,7 +8,6 @@ import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.*;
-import static org.mockito.Mockito.*;
 import static org.mockito.Mockito.mock;
 import static play.inject.Bindings.bind;
 import static play.test.Helpers.contentAsString;

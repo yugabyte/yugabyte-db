@@ -4,12 +4,10 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.TaskList;
-import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskType;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistGFlags;
 import com.yugabyte.yw.forms.RollingRestartParams;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
@@ -50,13 +48,15 @@ public class UpgradeUniverse extends UniverseTaskBase {
   }
 
   @Override
-  protected RollingRestartParams taskParams() { return (RollingRestartParams)taskParams; }
+  protected RollingRestartParams taskParams() {
+    return (RollingRestartParams)taskParams;
+  }
 
   @Override
   public void run() {
     try {
       // Create the task list sequence.
-      taskListQueue = new TaskListQueue();
+      taskListQueue = new TaskListQueue(userTaskUUID);
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
@@ -78,34 +78,51 @@ public class UpgradeUniverse extends UniverseTaskBase {
       }
 
       if (taskParams().upgradeMasters) {
-        createAllUpgradeTasks(filterByNodeName(universe.getMasters(), taskParams().nodeNames),
-            ServerType.MASTER);
+        List<NodeDetails> nodes = filterByNodeName(universe.getMasters(), taskParams().nodeNames);
+        createAllUpgradeTasks(nodes, ServerType.MASTER); // Implicitly calls setSubTaskGroupType
       }
 
       if (taskParams().upgradeTServers) {
-        // Disable the load balancer.
-        createLoadBalancerStateChangeTask(false /*enable*/);
+        SubTaskGroupType subTaskGroupType;
+        switch (taskParams().taskType) {
+          case Software:
+            subTaskGroupType = SubTaskGroupType.DownloadingSoftware;
+            break;
+          case GFlags:
+            subTaskGroupType = SubTaskGroupType.UpdatingGFlags;
+            break;
+          default:
+            subTaskGroupType = SubTaskGroupType.Invalid;
+            break;
+        }
 
-        createAllUpgradeTasks(filterByNodeName(universe.getTServers(), taskParams().nodeNames),
-            ServerType.TSERVER);
+        // Disable the load balancer.
+        createLoadBalancerStateChangeTask(false /*enable*/)
+            .setSubTaskGroupType(subTaskGroupType);
+
+        List<NodeDetails> nodes = filterByNodeName(universe.getTServers(), taskParams().nodeNames);
+        createAllUpgradeTasks(nodes, ServerType.TSERVER); // Implicitly calls setSubTaskGroupType
 
         // Enable the load balancer.
-        createLoadBalancerStateChangeTask(true /*enable*/);
+        createLoadBalancerStateChangeTask(true /*enable*/)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
       // Update the software version on success.
       if (taskParams().taskType == UpgradeTaskType.Software) {
-        createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion);
+        createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
       // Update the list of parameter key/values in the universe with the new ones.
       if (taskParams().taskType == UpgradeTaskType.GFlags) {
         updateGFlagsPersistTasks(taskParams().getGFlagsAsMap())
-            .setUserSubTask(SubTaskType.UpdatingGFlags);
+            .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
       }
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
-      createMarkUniverseUpdateSuccessTasks();
+      createMarkUniverseUpdateSuccessTasks()
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
       taskListQueue.run();
@@ -121,51 +138,63 @@ public class UpgradeUniverse extends UniverseTaskBase {
   private void createAllUpgradeTasks(List<NodeDetails> servers,
                                      ServerType processType) {
     createUpgradeTasks(servers, processType);
-    createWaitForServersTasks(
-        servers, processType).setUserSubTask(SubTaskType.ConfigureUniverse);
+    createWaitForServersTasks(servers, processType)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
   // The first node state change should be done per node to show the rolling upgrades in action.
   private void createUpgradeTasks(List<NodeDetails> nodes, ServerType processType) {
     for (NodeDetails node : nodes) {
-      if (taskParams().taskType == UpgradeTaskType.Software) {
-        createSetNodeStateTask(node, NodeDetails.NodeState.UpgradeSoftware);
-        createSoftwareUpgradeTask(node, processType);
-      } else if (taskParams().taskType == UpgradeTaskType.GFlags) {
-        createSetNodeStateTask(node, NodeDetails.NodeState.UpdateGFlags);
-        createGFlagsUpgradeTask(node, processType);
+      SubTaskGroupType subTaskGroupType;
+      switch (taskParams().taskType) {
+        case Software:
+          subTaskGroupType = SubTaskGroupType.DownloadingSoftware;
+          createSetNodeStateTask(node, NodeDetails.NodeState.UpgradeSoftware)
+              .setSubTaskGroupType(subTaskGroupType);
+          createSoftwareUpgradeTask(node, processType); // Implicitly calls setSubTaskGroupType
+          break;
+        case GFlags:
+          subTaskGroupType = SubTaskGroupType.UpdatingGFlags;
+          createSetNodeStateTask(node, NodeDetails.NodeState.UpdateGFlags)
+              .setSubTaskGroupType(subTaskGroupType);
+          createGFlagsUpgradeTask(node, processType);
+          break;
+        default:
+          subTaskGroupType = SubTaskGroupType.Invalid;
+          break;
       }
-      createSetNodeStateTask(node, NodeDetails.NodeState.Running);
+      createSetNodeStateTask(node, NodeDetails.NodeState.Running)
+          .setSubTaskGroupType(subTaskGroupType);
     }
   }
 
   private void createSoftwareUpgradeTask(NodeDetails node, ServerType processType) {
     TaskList taskList = new TaskList("AnsibleConfigureServers (Download Software) for: " + node.nodeName, executor);
     taskList.addTask(getConfigureTask(node, processType, UpgradeTaskType.Software, UpgradeTaskSubType.Download));
-    taskList.setUserSubTask(UserTaskDetails.SubTaskType.DownloadingSoftware);
+    taskList.setSubTaskGroupType(SubTaskGroupType.DownloadingSoftware);
     taskListQueue.add(taskList);
 
-    createServerControlTask(node, processType, "stop", 0, UserTaskDetails.SubTaskType.DownloadingSoftware);
+    createServerControlTask(node, processType, "stop", 0, SubTaskGroupType.DownloadingSoftware);
 
     taskList = new TaskList("AnsibleConfigureServers (Install Software) for: " + node.nodeName, executor);
     taskList.addTask(getConfigureTask(node, processType, UpgradeTaskType.Software, UpgradeTaskSubType.Install));
-    taskList.setUserSubTask(UserTaskDetails.SubTaskType.InstallingSoftware);
+    taskList.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
     taskListQueue.add(taskList);
 
     createServerControlTask(node, processType, "start", getSleepTimeForProcess(processType),
-                            UserTaskDetails.SubTaskType.InstallingSoftware);
+                            SubTaskGroupType.InstallingSoftware);
   }
 
   private void createGFlagsUpgradeTask(NodeDetails node, ServerType processType) {
-    createServerControlTask(node, processType, "stop", 0, UserTaskDetails.SubTaskType.UpdatingGFlags);
+    createServerControlTask(node, processType, "stop", 0, SubTaskGroupType.UpdatingGFlags);
 
     String taskListName = "AnsibleConfigureServers (GFlags Update) for :" + node.nodeName;
     TaskList taskList = new TaskList(taskListName, executor);
     taskList.addTask(getConfigureTask(node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None));
-    taskList.setUserSubTask(UserTaskDetails.SubTaskType.UpdatingGFlags);
+    taskList.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
     taskListQueue.add(taskList);
     createServerControlTask(node, processType, "start", getSleepTimeForProcess(processType),
-                            UserTaskDetails.SubTaskType.UpdatingGFlags);
+                            SubTaskGroupType.UpdatingGFlags);
   }
 
   private int getSleepTimeForProcess(ServerType processType) {
@@ -210,7 +239,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
     return task;
   }
 
-  private void createLoadBalancerStateChangeTask(boolean enable) {
+  private TaskList createLoadBalancerStateChangeTask(boolean enable) {
     LoadBalancerStateChange.Params params = new LoadBalancerStateChange.Params();
     // Add the universe uuid.
     params.universeUUID = taskParams().universeUUID;
@@ -221,5 +250,6 @@ public class UpgradeUniverse extends UniverseTaskBase {
     TaskList taskList = new TaskList("LoadBalancerStateChange", executor);
     taskList.addTask(task);
     taskListQueue.add(taskList);
+    return taskList;
   }
 }

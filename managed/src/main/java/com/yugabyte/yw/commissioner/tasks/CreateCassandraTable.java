@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.TaskListQueue;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,7 +21,7 @@ public class CreateCassandraTable extends UniverseTaskBase {
   public void run() {
     try {
       // Create the task list sequence.
-      taskListQueue = new TaskListQueue();
+      taskListQueue = new TaskListQueue(userTaskUUID);
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
@@ -28,7 +29,8 @@ public class CreateCassandraTable extends UniverseTaskBase {
 
       // Create table task
       createTableTask(Common.TableType.YQL_TABLE_TYPE, taskParams().tableDetails.tableName, -1,
-                      taskParams().tableDetails);
+                      taskParams().tableDetails)
+          .setSubTaskGroupType(SubTaskGroupType.CreatingTable);
 
       // TODO: wait for table creation
 

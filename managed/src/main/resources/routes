@@ -77,6 +77,7 @@ DELETE  /api/customers/:cUUID/universes/:uniUUID/tables/:tableUUID  com.yugabyte
 GET    /api/customers/:cUUID/tasks                    com.yugabyte.yw.controllers.CustomerTaskController.list(cUUID: java.util.UUID)
 GET    /api/customers/:cUUID/tasks/:tUUID             com.yugabyte.yw.controllers.CustomerTaskController.status(cUUID: java.util.UUID, tUUID: java.util.UUID)
 GET    /api/customers/:cUUID/universes/:uniUUID/tasks com.yugabyte.yw.controllers.CustomerTaskController.universeTasks(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET    /api/customers/:cUUID/tasks/:tUUID/failed      com.yugabyte.yw.controllers.CustomerTaskController.failedSubtasks(cUUID: java.util.UUID, tUUID: java.util.UUID)
 
 # Node Management API
 GET    /api/customers/:cUUID/nodes/:nodeUUID/list                      com.yugabyte.yw.controllers.NodeInstanceController.get(cUUID: java.util.UUID, nodeUUID: java.util.UUID)

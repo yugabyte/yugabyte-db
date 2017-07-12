@@ -12,8 +12,6 @@ import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 
-import org.yb.client.ListTabletServersResponse;
-
 import play.api.Play;
 
 // Helper class to wait for a minimum number of tservers to heartbeat to the
@@ -41,7 +39,7 @@ public class WaitForTServerHeartBeats extends AbstractTaskBase {
 
   @Override
   public void initialize(ITaskParams params) {
-    this.taskParams = params;
+    super.initialize(params);
     ybService = Play.current().injector().instanceOf(YBClientService.class);
   }
 

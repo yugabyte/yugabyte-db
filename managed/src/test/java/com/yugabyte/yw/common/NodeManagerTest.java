@@ -7,9 +7,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -653,7 +651,7 @@ public class NodeManagerTest extends FakeDBApplication {
     Map<Common.CloudType, Integer> expectedInvocations = new HashMap<>();
     for (TestData t : testData) {
       expectedInvocations.put(t.cloudType, expectedInvocations.getOrDefault(t.cloudType, 0) + 1);
-      AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
+      NodeTaskParams params = new NodeTaskParams();
       buildValidParams(t, params, createUniverse());
 
       List<String> expectedCommand = t.baseCommand;
@@ -680,7 +678,7 @@ public class NodeManagerTest extends FakeDBApplication {
     Map<Common.CloudType, Integer> expectedInvocations = new HashMap<>();
     for (TestData t : testData) {
       expectedInvocations.put(t.cloudType, expectedInvocations.getOrDefault(t.cloudType, 0) + 1);
-      AnsibleUpdateNodeInfo.Params params = new AnsibleUpdateNodeInfo.Params();
+      NodeTaskParams params = new NodeTaskParams();
       buildValidParams(t, params, createUniverse());
 
       List<String> expectedCommand = t.baseCommand;
@@ -723,7 +721,7 @@ public class NodeManagerTest extends FakeDBApplication {
   @Test
   public void testDockerNodeCommandWithoutDockerNetwork() {
     for (TestData t : testData) {
-      AnsibleUpdateNodeInfo.Params params = new AnsibleUpdateNodeInfo.Params();
+      NodeTaskParams params = new NodeTaskParams();
       buildValidParams(t, params, createUniverse());
 
       try {
@@ -744,7 +742,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
     for (TestData t : testData) {
       expectedInvocations.put(t.cloudType, expectedInvocations.getOrDefault(t.cloudType, 0) + 1);
-      AnsibleUpdateNodeInfo.Params params = new AnsibleUpdateNodeInfo.Params();
+      NodeTaskParams params = new NodeTaskParams();
       buildValidParams(t, params, createUniverse());
 
       List<String> expectedCommand = t.baseCommand;

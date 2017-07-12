@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import java.util.Collection;
 import java.util.Map;
 
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,12 +44,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return (UniverseTaskParams)taskParams;
   }
 
-  private UniverseUpdater getLockingUniverseUpdater(int expectedUniverseVersion, boolean checkSuccess) {
+  private UniverseUpdater getLockingUniverseUpdater(int expectedUniverseVersion,
+                                                    boolean checkSuccess) {
     return new UniverseUpdater() {
       @Override
       public void run(Universe universe) {
-        if (expectedUniverseVersion != -1 &&
-            expectedUniverseVersion != universe.version) {
+        if (expectedUniverseVersion != -1 && expectedUniverseVersion != universe.version) {
           String msg = "Universe " + taskParams().universeUUID + " version " + universe.version +
               ", is different from the expected version of " + expectedUniverseVersion;
           LOG.error(msg);
@@ -79,8 +80,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // catch as we want to fail.
     Universe universe = Universe.saveDetails(taskParams().universeUUID, updater);
     universeLocked = true;
-    LOG.debug("Locked universe {} at version {}.",
-        taskParams().universeUUID, expectedUniverseVersion);
+    LOG.debug("Locked universe {} at version {}.", taskParams().universeUUID,
+        expectedUniverseVersion);
     // Return the universe object that we have already updated.
     return universe;
   }
@@ -186,7 +187,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public TaskList createDestroyServerTasks(Collection<NodeDetails> nodes) {
     TaskList taskList = new TaskList("AnsibleDestroyServers", executor);
     for (NodeDetails node : nodes) {
-      AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
+      NodeTaskParams params = new NodeTaskParams();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = taskParams().deviceInfo;
       // Set the cloud name.
@@ -222,6 +223,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     for (NodeDetails node : nodes) {
       SetNodeState.Params params = new SetNodeState.Params();
       params.universeUUID = taskParams().universeUUID;
+      params.azUuid = node.azUuid;
       params.nodeName = node.nodeName;
       params.state = nodeState;
       SetNodeState task = new SetNodeState();
@@ -239,13 +241,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param processType, Master/TServer process type
    * @param command, actual command (start, stop, create)
    * @param sleepAfterCmdMillis, number of seconds to sleep after the command execution
-   * @param subTask, user subtask type to use for the tasklist
+   * @param subTaskGroupType, user subtask type to use for the tasklist
    */
   public void createServerControlTask(NodeDetails node,
                                       UniverseDefinitionTaskBase.ServerType processType,
                                       String command,
                                       int sleepAfterCmdMillis,
-                                      UserTaskDetails.SubTaskType subTask) {
+                                      UserTaskDetails.SubTaskGroupType subTaskGroupType) {
     TaskList taskList = new TaskList("AnsibleClusterServerCtl", executor);
     AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
     // Set the cloud name.
@@ -266,7 +268,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     AnsibleClusterServerCtl task = new AnsibleClusterServerCtl();
     task.initialize(params);
     // Add it to the task list.
-    taskList.setUserSubTask(subTask);
+    taskList.setSubTaskGroupType(subTaskGroupType);
     taskList.addTask(task);
 
     taskListQueue.add(taskList);
@@ -278,7 +280,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param node node for which we need to update the state
    * @param nodeState State into which these nodes will be transitioned.
    */
-  public void createSetNodeStateTask(NodeDetails node, NodeDetails.NodeState nodeState) {
+  public TaskList createSetNodeStateTask(NodeDetails node, NodeDetails.NodeState nodeState) {
     TaskList taskList = new TaskList("SetNodeState", executor);
     SetNodeState.Params params = new SetNodeState.Params();
     params.universeUUID = taskParams().universeUUID;
@@ -288,6 +290,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     task.initialize(params);
     taskList.addTask(task);
     taskListQueue.add(taskList);
+    return taskList;
   }
 
   /**
@@ -296,14 +299,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param removeFile, flag to state if we want to remove the swamper or not
    * @param subTask, user subtask type to use for the tasklist
    */
-  public void createSwamperTargetUpdateTask(boolean removeFile, UserTaskDetails.SubTaskType subTask) {
+  public void createSwamperTargetUpdateTask(boolean removeFile,
+                                            UserTaskDetails.SubTaskGroupType subTask) {
     TaskList taskList = new TaskList("SwamperTargetFileUpdate", executor);
     SwamperTargetsFileUpdate.Params params = new SwamperTargetsFileUpdate.Params();
     SwamperTargetsFileUpdate task = new SwamperTargetsFileUpdate();
     params.universeUUID = taskParams().universeUUID;
     params.removeFile = removeFile;
     task.initialize(params);
-    taskList.setUserSubTask(subTask);
+    taskList.setSubTaskGroupType(subTask);
     taskList.addTask(task);
     taskListQueue.add(taskList);
   }
@@ -329,7 +333,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     taskListQueue.add(taskList);
     return taskList;
   }
-
 
   /**
    * Create a task list to ping all servers until they are up.

@@ -15,7 +15,7 @@ import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.forms.CloudBootstrapFormData;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -208,7 +208,7 @@ public class CloudProviderController extends AuthenticatedController {
     taskParams.providerUUID = providerUUID;
     taskParams.regionList = formData.get().regionList;
     taskParams.hostVPCId = formData.get().hostVPCId;
-    UUID taskUUID = commissioner.submit(TaskInfo.Type.CloudBootstrap, taskParams);
+    UUID taskUUID = commissioner.submit(TaskType.CloudBootstrap, taskParams);
 
     // TODO: add customer task
     ObjectNode resultNode = Json.newObject();
@@ -230,7 +230,7 @@ public class CloudProviderController extends AuthenticatedController {
     CloudCleanup.Params taskParams = new CloudCleanup.Params();
     taskParams.providerUUID = providerUUID;
     taskParams.regionList = formData.get().regionList;
-    UUID taskUUID = commissioner.submit(TaskInfo.Type.CloudCleanup, taskParams);
+    UUID taskUUID = commissioner.submit(TaskType.CloudCleanup, taskParams);
 
     // TODO: add customer task
     ObjectNode resultNode = Json.newObject();

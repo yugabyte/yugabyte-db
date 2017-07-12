@@ -18,44 +18,22 @@ import com.avaje.ebean.annotation.EnumValue;
 import com.avaje.ebean.annotation.UpdatedTimestamp;
 import com.fasterxml.jackson.databind.JsonNode;
 
+import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.models.helpers.TaskType;
 import play.data.validation.Constraints;
 
 @Entity
 public class TaskInfo extends Model {
 
   /**
-   * These are the various types of user tasks.
-   * Max length is 15 chars.
-   */
-  public enum Type {
-    @EnumValue("CreateUniverse")
-    CreateUniverse,
-
-    @EnumValue("DestroyUniverse")
-    DestroyUniverse,
-
-    @EnumValue("EditUniverse")
-    EditUniverse,
-
-    @EnumValue("UpgradeUniverse")
-    UpgradeUniverse,
-
-    @EnumValue("CreateCassTable")
-    CreateCassandraTable,
-
-    @EnumValue("CloudBootstrap")
-    CloudBootstrap,
-
-    @EnumValue("CloudCleanup")
-    CloudCleanup
-  }
-
-  /**
-   * These are the various states of the task.
+   * These are the various states of the task and taskgroup.
    */
   public enum State {
     @EnumValue("Created")
     Created,
+
+    @EnumValue("Initializing")
+    Initializing,
 
     @EnumValue("Running")
     Running,
@@ -65,21 +43,35 @@ public class TaskInfo extends Model {
 
     @EnumValue("Failure")
     Failure,
+
+    @EnumValue("Unknown")
+    Unknown,
   }
 
   // The task UUID.
   @Id
   private UUID uuid;
 
+  // The UUID of the parent task (if any; CustomerTasks have no parent)
+  private UUID parentUuid;
+
+  // The position within the parent task's taskQueue (-1 for a CustomerTask)
+  @Column(columnDefinition = "integer default -1")
+  private Integer position = -1;
+
   // The task type.
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
-  private Type taskType;
+  private TaskType taskType;
 
   // The task state.
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   private State taskState = State.Created;
+
+  // The subtask group type (if it is a subtask)
+  @Enumerated(EnumType.STRING)
+  private UserTaskDetails.SubTaskGroupType subTaskGroupType;
 
   // The task creation time.
   @CreatedTimestamp
@@ -105,31 +97,77 @@ public class TaskInfo extends Model {
   @Column(nullable = false)
   private String owner;
 
-  public TaskInfo(Type taskType) {
+  public TaskInfo(TaskType taskType) {
     this.taskType = taskType;
   }
 
-  public UUID getTaskUUID() { return uuid; }
+  public Date getCreationTime() {
+    return createTime;
+  }
 
-  public Type getTaskType() { return taskType; }
+  public Date getLastUpdateTime() {
+    return updateTime;
+  }
 
-  public State getTaskState() { return taskState; }
+  public UUID getParentUUID() {
+    return parentUuid;
+  }
 
-  public int getPercentDone() { return percentDone; }
+  public int getPercentDone() {
+    return percentDone;
+  }
 
-  public Date getCreationTime() { return createTime; }
+  public int getPosition() {
+    return position;
+  }
 
-  public Date getLastUpdateTime() { return updateTime; }
+  public UserTaskDetails.SubTaskGroupType getSubTaskGroupType() {
+    return subTaskGroupType;
+  }
 
-  public JsonNode getTaskDetails() { return details; }
+  public JsonNode getTaskDetails() {
+    return details;
+  }
 
-  public void setTaskState(State taskState) { this.taskState = taskState; }
+  public State getTaskState() {
+    return taskState;
+  }
 
-  public void setPercentDone(int percentDone) { this.percentDone = percentDone; }
+  public TaskType getTaskType() {
+    return taskType;
+  }
 
-  public void setTaskDetails(JsonNode details) { this.details = details; }
+  public UUID getTaskUUID() {
+    return uuid;
+  }
 
-  public void setOwner(String owner) { this.owner = owner; }
+  public void setOwner(String owner) {
+    this.owner = owner;
+  }
+
+  public void setParentUuid(UUID parentUuid) {
+    this.parentUuid = parentUuid;
+  }
+
+  public void setPercentDone(int percentDone) {
+    this.percentDone = percentDone;
+  }
+
+  public void setPosition(int position) {
+    this.position = position;
+  }
+
+  public void setSubTaskGroupType(UserTaskDetails.SubTaskGroupType subTaskGroupType) {
+    this.subTaskGroupType = subTaskGroupType;
+  }
+
+  public void setTaskState(State taskState) {
+    this.taskState = taskState;
+  }
+
+  public void setTaskDetails(JsonNode details) {
+    this.details = details;
+  }
 
   public static final Find<UUID, TaskInfo> find = new Find<UUID, TaskInfo>(){};
 
