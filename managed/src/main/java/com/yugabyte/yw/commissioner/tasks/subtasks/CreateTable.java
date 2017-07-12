@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.common.Util;
 import org.apache.commons.lang3.StringUtils;
@@ -15,7 +16,6 @@ import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Universe;
@@ -36,7 +36,7 @@ public class CreateTable extends AbstractTaskBase {
   private Session cassandraSession;
 
   // Parameters for create table task.
-  public static class Params extends NodeTaskParams {
+  public static class Params extends UniverseTaskParams {
     // The name of the table to be created.
     public String tableName;
     // The type of the table to be created (Redis, YSQL)

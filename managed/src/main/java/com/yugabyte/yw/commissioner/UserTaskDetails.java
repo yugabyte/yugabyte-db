@@ -1,5 +1,6 @@
 package com.yugabyte.yw.commissioner;
 
+import com.yugabyte.yw.models.TaskInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,8 +13,8 @@ import java.util.List;
 public class UserTaskDetails {
   public static final Logger LOG = LoggerFactory.getLogger(UserTaskDetails.class);
 
-  // The various user facing subtasks.
-  public static enum SubTaskType {
+  // The various groupings of user facing subtasks.
+  public static enum SubTaskGroupType {
     // Ignore this subtask and do not display it to the user.
     Invalid,
 
@@ -45,65 +46,67 @@ public class UserTaskDetails {
     BootstrappingCloud,
 
     // Cleanup Cloud
-    CleanupCloud
-  }
+    CleanupCloud,
 
-  // The user facing state of the various subtasks.
-  public static enum SubTaskState {
-    // The subtask has not yet started/
-    Initializing,
-
-    // The subtask is currently running.
-    Running,
-
-    // The subtask has succeeded.
-    Success,
-
-    // The subtask has failed.
-    Failure,
-
-    // The subtask state is no longer valid, for example the user task has failed before the subtask
-    // got a chance to run.
-    Unknown
+    // Creating Table
+    CreatingTable
   }
 
   public List<SubTaskDetails> taskDetails;
 
   // TODO: all the strings in this method should move into conf files eventually.
-  public static SubTaskDetails createSubTask(SubTaskType subTaskType) {
-    String title = null;
-    String description = null;
-    if (subTaskType == SubTaskType.Provisioning) {
-      title = "Provisioning";
-      description = "Deploying machines of the required config into the desired cloud and" +
-                    " fetching information about them.";
-    } else if (subTaskType == SubTaskType.InstallingSoftware) {
-      title = "Installing software";
-      description = "Configuring mount points, setting up the various directories and installing" +
-                    " the YugaByte software on the newly provisioned nodes.";
-    } else if (subTaskType == SubTaskType.ConfigureUniverse) {
-      title = "Configuring the universe";
-      description = "Creating and populating the universe config, waiting for the various" +
-                    " machines to discover one another.";
-    } else if (subTaskType == SubTaskType.WaitForDataMigration) {
-      title = "Waiting for data migration";
-      description = "Waiting for the data to get copied into the new set of machines to achieve" +
-                    " the desired configuration.";
-    } else if (subTaskType == SubTaskType.RemovingUnusedServers) {
-      title = "Removing servers no longer used";
-      description = "Removing servers that are no longer needed once the configuration change has" +
-                    " been successfully completed";
-    } else if (subTaskType == SubTaskType.DownloadingSoftware) {
-      title = "Downloading software";
-      description = "Downloading the YugaByte software on provisioned nodes.";
-    } else if (subTaskType == SubTaskType.UpdatingGFlags) {
-      title = "Updating gflags";
-      description = "Updating GFlags on provisioned nodes.";
-    }
-
-    if (title == null) {
-      LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskType);
-      return null;
+  public static SubTaskDetails createSubTask(SubTaskGroupType subTaskGroupType) {
+    String title;
+    String description;
+    switch (subTaskGroupType) {
+      case Provisioning:
+        title = "Provisioning";
+        description = "Deploying machines of the required config into the desired cloud and" +
+            " fetching information about them.";
+        break;
+      case InstallingSoftware:
+        title = "Installing software";
+        description = "Configuring mount points, setting up the various directories and installing" +
+            " the YugaByte software on the newly provisioned nodes.";
+        break;
+      case ConfigureUniverse:
+        title = "Configuring the universe";
+        description = "Creating and populating the universe config, waiting for the various" +
+            " machines to discover one another.";
+        break;
+      case WaitForDataMigration:
+        title = "Waiting for data migration";
+        description = "Waiting for the data to get copied into the new set of machines to achieve" +
+            " the desired configuration.";
+        break;
+      case RemovingUnusedServers:
+        title = "Removing servers no longer used";
+        description = "Removing servers that are no longer needed once the configuration change has" +
+            " been successfully completed";
+        break;
+      case DownloadingSoftware:
+        title = "Downloading software";
+        description = "Downloading the YugaByte software on provisioned nodes.";
+        break;
+      case UpdatingGFlags:
+        title = "Updating gflags";
+        description = "Updating GFlags on provisioned nodes.";
+        break;
+      case BootstrappingCloud:
+        title = "Bootstrapping Cloud";
+        description = "Set up AccessKey, Region, and Provider for a given cloud Provider.";
+        break;
+      case CleanupCloud:
+        title = "Cleaning Up Cloud";
+        description = "Remove AccessKey, Region, and Provider for a given cloud Provider.";
+        break;
+      case CreatingTable:
+        title = "Creating Table";
+        description = "Create a table.";
+        break;
+      default:
+        LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);
+        return null;
     }
     return new SubTaskDetails(title, description);
   }
@@ -124,22 +127,28 @@ public class UserTaskDetails {
     private String description;
 
     // The state of the task.
-    private SubTaskState state;
+    private TaskInfo.State state;
 
     private SubTaskDetails(String title, String description) {
       this.title = title;
       this.description = description;
-      this.state = SubTaskState.Unknown;
+      this.state = TaskInfo.State.Unknown;
     }
 
-    public void setState(SubTaskState state) {
+    public void setState(TaskInfo.State state) {
       this.state = state;
     }
 
-    public String getTitle() { return title; }
+    public String getTitle() {
+      return title;
+    }
 
-    public String getDescription() { return description; }
+    public String getDescription() {
+      return description;
+    }
 
-    public String getState() { return state.toString(); }
+    public String getState() {
+      return state.toString();
+    }
   }
 }

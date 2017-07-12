@@ -7,6 +7,8 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
+import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,7 +20,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.RollingRestartParams;
@@ -27,7 +28,6 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
@@ -150,7 +150,7 @@ public class UniverseController extends AuthenticatedController {
         universe.universeUUID, universe.name, customer.getCustomerId());
 
       // Submit the task to create the universe.
-      UUID taskUUID = commissioner.submit(TaskInfo.Type.CreateUniverse, taskParams);
+      UUID taskUUID = commissioner.submit(TaskType.CreateUniverse, taskParams);
       LOG.info("Submitted create universe for {}:{}, task uuid = {}.",
         universe.universeUUID, universe.name, taskUUID);
 
@@ -201,7 +201,7 @@ public class UniverseController extends AuthenticatedController {
       Universe universe = Universe.get(universeUUID);
       LOG.info("Found universe {} : name={} at version={}.",
                universe.universeUUID, universe.name, universe.version);
-      UUID taskUUID = commissioner.submit(TaskInfo.Type.EditUniverse, taskParams);
+      UUID taskUUID = commissioner.submit(TaskType.EditUniverse, taskParams);
       LOG.info("Submitted edit universe for {} : {}, task uuid = {}.",
         universe.universeUUID, universe.name, taskUUID);
 
@@ -278,14 +278,14 @@ public class UniverseController extends AuthenticatedController {
     }
 
     // Create the Commissioner task to destroy the universe.
-    DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
+    UniverseTaskParams taskParams = new UniverseTaskParams();
     taskParams.universeUUID = universeUUID;
     // There is no staleness of a delete request. Perform it even if the universe has changed.
     taskParams.expectedUniverseVersion = -1;
     taskParams.cloud = universe.getUniverseDetails().userIntent.providerType;
 
     // Submit the task to destroy the universe.
-    UUID taskUUID = commissioner.submit(TaskInfo.Type.DestroyUniverse, taskParams);
+    UUID taskUUID = commissioner.submit(TaskType.DestroyUniverse, taskParams);
     LOG.info("Submitted destroy universe for " + universeUUID + ", task uuid = " + taskUUID);
 
     // Add this task uuid to the user universe.
@@ -409,7 +409,7 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Found universe {} : name={} at version={}.",
         universe.universeUUID, universe.name, universe.version);
 
-      UUID taskUUID = commissioner.submit(TaskInfo.Type.UpgradeUniverse, taskParams);
+      UUID taskUUID = commissioner.submit(TaskType.UpgradeUniverse, taskParams);
       LOG.info("Submitted upgrade universe for {} : {}, task uuid = {}.",
         universe.universeUUID, universe.name, taskUUID);
 

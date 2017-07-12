@@ -2,12 +2,9 @@
 package com.yugabyte.yw.controllers;
 
 import static org.junit.Assert.*;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
-import java.util.HashMap;
-import java.util.List;
 import java.util.UUID;
 
 import com.yugabyte.yw.common.FakeApiHelper;

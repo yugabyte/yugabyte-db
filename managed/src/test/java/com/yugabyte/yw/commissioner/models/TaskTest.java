@@ -9,6 +9,7 @@ import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.Map;
 
+import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,7 +26,7 @@ public class TaskTest extends FakeDBApplication {
   @Test
   public void testCreateAndUpdate() {
     // Create the task and save it.
-    TaskInfo taskInfo = new TaskInfo(TaskInfo.Type.CreateUniverse);
+    TaskInfo taskInfo = new TaskInfo(TaskType.CreateUniverse);
     // Set the task details.
     Map<String, String> details = new HashMap<String, String>();
     details.put("description", "Test task");
@@ -45,7 +46,7 @@ public class TaskTest extends FakeDBApplication {
 
     // Check the various fields.
     assertNotNull(taskInfo.getTaskUUID());
-    assertEquals(taskInfo.getTaskType(), TaskInfo.Type.CreateUniverse);
+    assertEquals(taskInfo.getTaskType(), TaskType.CreateUniverse);
     assertNotNull(taskInfo.getCreationTime());
     assertNotNull(taskInfo.getLastUpdateTime());
     assertEquals(taskInfo.getLastUpdateTime(), taskInfo.getCreationTime());

@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.common.PlacementInfoUtil.LOG;
 import static com.yugabyte.yw.common.PlacementInfoUtil.getAzUuidToNumNodes;
 
 import static org.hamcrest.CoreMatchers.allOf;
@@ -30,15 +29,13 @@ import static play.test.Helpers.route;
 
 import java.util.*;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 
+import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.mockito.Matchers;
 
@@ -57,10 +54,8 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 
-import org.w3c.dom.Node;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
@@ -68,7 +63,6 @@ import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
 import play.test.WithApplication;
-import scala.Int;
 
 public class UniverseControllerTest extends WithApplication {
   private Customer customer;
@@ -215,7 +209,7 @@ public class UniverseControllerTest extends WithApplication {
   @Test
   public void testUniverseCreateWithSingleAvailabilityZones() {
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(Matchers.any(TaskInfo.Type.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+    when(mockCommissioner.submit(Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
@@ -269,7 +263,7 @@ public class UniverseControllerTest extends WithApplication {
   @Test
   public void testUniverseUpdateWithValidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(Matchers.any(TaskInfo.Type.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+    when(mockCommissioner.submit(Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
@@ -317,7 +311,7 @@ public class UniverseControllerTest extends WithApplication {
   @Test
   public void testUniverseExpand() {
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(Matchers.any(TaskInfo.Type.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+    when(mockCommissioner.submit(Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
@@ -380,7 +374,7 @@ public class UniverseControllerTest extends WithApplication {
   @Test
   public void testUniverseDestroyValidUUID() {
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(Matchers.any(TaskInfo.Type.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+    when(mockCommissioner.submit(Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
     Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
 
@@ -417,7 +411,7 @@ public class UniverseControllerTest extends WithApplication {
   @Test
   public void testUniverseUpgradeWithEmptyParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(TaskInfo.Type.class), any(UniverseDefinitionTaskParams.class)))
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
     Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
@@ -441,7 +435,7 @@ public class UniverseControllerTest extends WithApplication {
   @Test
   public void testUniverseSoftwareUpgradeValidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(TaskInfo.Type.class), any(UniverseDefinitionTaskParams.class)))
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
     Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
 
@@ -458,7 +452,7 @@ public class UniverseControllerTest extends WithApplication {
       "/universes/" + universe.universeUUID + "/upgrade")
                             .cookie(validCookie).bodyJson(bodyJson));
 
-    verify(mockCommissioner).submit(eq(TaskInfo.Type.UpgradeUniverse), any(UniverseTaskParams.class));
+    verify(mockCommissioner).submit(eq(TaskType.UpgradeUniverse), any(UniverseTaskParams.class));
 
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
@@ -474,7 +468,7 @@ public class UniverseControllerTest extends WithApplication {
   @Test
   public void testUniverseSoftwareUpgradeWithInvalidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(TaskInfo.Type.class), any(UniverseDefinitionTaskParams.class)))
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
     Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
 
@@ -498,7 +492,7 @@ public class UniverseControllerTest extends WithApplication {
   @Test
   public void testUniverseGFlagsUpgradeValidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(TaskInfo.Type.class), any(UniverseDefinitionTaskParams.class)))
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
     Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
 
@@ -522,7 +516,7 @@ public class UniverseControllerTest extends WithApplication {
 
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
-    verify(mockCommissioner).submit(eq(TaskInfo.Type.UpgradeUniverse), any(UniverseTaskParams.class));
+    verify(mockCommissioner).submit(eq(TaskType.UpgradeUniverse), any(UniverseTaskParams.class));
     assertThat(json.get("taskUUID").asText(), allOf(notNullValue(), equalTo(fakeTaskUUID.toString())));
 
     CustomerTask th = CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique();
@@ -536,7 +530,7 @@ public class UniverseControllerTest extends WithApplication {
   @Test
   public void testUniverseGFlagsUpgradeWithInvalidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(TaskInfo.Type.class), any(UniverseDefinitionTaskParams.class)))
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
     Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
 
@@ -578,7 +572,7 @@ public class UniverseControllerTest extends WithApplication {
   @Test
   public void testCustomConfigureCreateWithMultiAZMultiRegion() {
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(Matchers.any(TaskInfo.Type.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+    when(mockCommissioner.submit(Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
     Provider p = ModelFactory.awsProvider(customer);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
@@ -614,7 +608,7 @@ public class UniverseControllerTest extends WithApplication {
   @Test
   public void testCustomConfigureEditWithPureExpand() {
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(Matchers.any(TaskInfo.Type.class),
+    when(mockCommissioner.submit(Matchers.any(TaskType.class),
                                  Matchers.any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
     Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());

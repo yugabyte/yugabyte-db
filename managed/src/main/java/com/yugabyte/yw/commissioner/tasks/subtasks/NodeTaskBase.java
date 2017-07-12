@@ -20,25 +20,23 @@ import play.libs.Json;
 public abstract class NodeTaskBase extends AbstractTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(NodeTaskBase.class);
 
-  // The task params.
-  protected NodeTaskParams taskParams;
-
   private NodeManager nodeManager;
   public NodeManager getNodeManager() { return nodeManager; }
 
   @Override
   protected NodeTaskParams taskParams() {
-    return taskParams;
+    return (NodeTaskParams)taskParams;
   }
 
   @Override
   public void initialize(ITaskParams params) {
+    super.initialize(params);
     this.nodeManager = Play.current().injector().instanceOf(NodeManager.class);
-    this.taskParams = (NodeTaskParams)params;
   }
 
   @Override
   public String getName() {
+    NodeTaskParams taskParams = taskParams();
     return super.getName() + "(" + taskParams.universeUUID + ", " + taskParams.nodeName + ")";
   }
 

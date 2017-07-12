@@ -1,12 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
-import static org.hamcrest.CoreMatchers.equalTo;
-import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.hamcrest.core.AllOf.allOf;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThat;
 
 import java.util.List;
 import java.util.UUID;
@@ -17,9 +13,6 @@ import org.junit.Test;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
 
 
 public class NodeInstanceTest extends FakeDBApplication {

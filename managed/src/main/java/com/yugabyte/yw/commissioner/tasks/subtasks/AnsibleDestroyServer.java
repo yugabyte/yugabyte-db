@@ -8,7 +8,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
@@ -17,14 +16,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 
 public class AnsibleDestroyServer extends NodeTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(AnsibleDestroyServer.class);
-
-  // Params for this task.
-  public static class Params extends NodeTaskParams {}
-
-  @Override
-  protected Params taskParams() {
-    return (Params)taskParams;
-  }
 
   private void removeNodeFromUniverse(String nodeName) {
     // Persist the desired node information into the DB.

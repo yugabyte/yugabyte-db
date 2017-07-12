@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner;
 
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -27,6 +28,9 @@ public abstract class AbstractTaskBase implements ITask {
 
   // The sequence of task lists that should be executed.
   protected TaskListQueue taskListQueue;
+
+  // The UUID of the top-level user-facing task at the top of Task tree. Eg. CreateUniverse, etc.
+  protected UUID userTaskUUID;
 
   protected ITaskParams taskParams() {
     return taskParams;
@@ -75,5 +79,10 @@ public abstract class AbstractTaskBase implements ITask {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
     executor = Executors.newFixedThreadPool(numThreads, namedThreadFactory);
+  }
+
+  @Override
+  public void setUserTaskUUID(UUID userTaskUUID) {
+    this.userTaskUUID = userTaskUUID;
   }
 }

@@ -8,8 +8,6 @@ import play.libs.Json;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Map;
-import java.util.Iterator;
 
 public class MetricQueryResponse {
   public static class MetricsData {

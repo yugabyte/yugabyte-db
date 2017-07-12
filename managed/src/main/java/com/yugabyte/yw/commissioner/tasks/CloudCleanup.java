@@ -21,19 +21,23 @@ public class CloudCleanup extends CloudTaskBase {
   }
 
   @Override
-  protected CloudCleanup.Params taskParams() { return (CloudCleanup.Params) taskParams; }
-
+  protected CloudCleanup.Params taskParams() {
+    return (CloudCleanup.Params) taskParams;
+  }
 
   @Override
   public void run() {
-    taskListQueue = new TaskListQueue();
+    taskListQueue = new TaskListQueue(userTaskUUID);
 
     taskParams().regionList.forEach(regionCode -> {
-      createAccessKeyCleanupTask(regionCode).setUserSubTask(UserTaskDetails.SubTaskType.CleanupCloud);
-      createRegionCleanupTask(regionCode).setUserSubTask(UserTaskDetails.SubTaskType.CleanupCloud);
+      createAccessKeyCleanupTask(regionCode)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CleanupCloud);
+      createRegionCleanupTask(regionCode)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CleanupCloud);
     });
+    createProviderCleanupTask()
+        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CleanupCloud);
 
-    createProviderCleanupTask().setUserSubTask(UserTaskDetails.SubTaskType.CleanupCloud);
     taskListQueue.run();
   }
 

@@ -8,10 +8,10 @@ import java.util.HashSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
 
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,15 +21,12 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateSucceeded;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -110,9 +107,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   // Fix up the name of all the nodes. This fixes the name and the node index for the newly created nodes.
   public void updateNodeNames() {
     Collection<NodeDetails> nodes = taskParams().nodeDetailsSet;
+    Universe universe = Universe.get(taskParams().universeUUID);
     int iter = 0;
-    int startIndex =
-        PlacementInfoUtil.getStartIndex(Universe.get(taskParams().universeUUID).getNodes());
+    int startIndex = PlacementInfoUtil.getStartIndex(universe.getNodes());
 
     final Map<String, NameAndIndex> oldToNewName = new HashMap<String, NameAndIndex>();
     for (NodeDetails node : nodes) {
@@ -145,9 +142,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
       }
     };
-    Universe universe = Universe.saveDetails(taskParams().universeUUID, updater);
-    LOG.debug("Updated {} nodes in universe {}.",
-              taskParams().nodeDetailsSet.size(), taskParams().universeUUID);
+    universe = Universe.saveDetails(taskParams().universeUUID, updater);
+    LOG.debug("Updated {} nodes in universe {}.", taskParams().nodeDetailsSet.size(),
+        taskParams().universeUUID);
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     if (universeDetails.cloud == CloudType.onprem) {
@@ -215,7 +212,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public TaskList createServerInfoTasks(Collection<NodeDetails> nodes) {
     TaskList taskList = new TaskList("AnsibleUpdateNodeInfo", executor);
     for (NodeDetails node : nodes) {
-      AnsibleUpdateNodeInfo.Params params = new AnsibleUpdateNodeInfo.Params();
+      NodeTaskParams params = new NodeTaskParams();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = taskParams().userIntent.deviceInfo;
       // Set the cloud name.

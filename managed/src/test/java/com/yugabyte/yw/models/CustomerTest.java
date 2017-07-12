@@ -9,7 +9,6 @@ import org.junit.Test;
 import org.mindrot.jbcrypt.BCrypt;
 
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.models.Customer;
 
 import javax.persistence.PersistenceException;
 

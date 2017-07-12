@@ -28,14 +28,17 @@ public class CloudBootstrap extends CloudTaskBase {
 
   @Override
   public void run() {
-    taskListQueue = new TaskListQueue();
+    taskListQueue = new TaskListQueue(userTaskUUID);
 
     taskParams().regionList.forEach(regionCode -> {
-      createRegionSetupTask(regionCode).setUserSubTask(UserTaskDetails.SubTaskType.BootstrappingCloud);;
-      createAccessKeySetupTask(regionCode).setUserSubTask(UserTaskDetails.SubTaskType.BootstrappingCloud);
+      createRegionSetupTask(regionCode)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);;
+      createAccessKeySetupTask(regionCode)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
     });
+    createInitializerTask()
+        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
 
-    createInitializerTask().setUserSubTask(UserTaskDetails.SubTaskType.BootstrappingCloud);
     taskListQueue.run();
   }
 

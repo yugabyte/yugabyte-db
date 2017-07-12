@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
@@ -49,7 +50,7 @@ public class CloudBootstrapTestTest extends CommissionerBaseTest {
     taskParams.providerUUID = defaultProvider.uuid;
     taskParams.regionList = regionList;
     taskParams.hostVPCId = "host-vpc-id";
-    return commissioner.submit(TaskInfo.Type.CloudBootstrap, taskParams);
+    return commissioner.submit(TaskType.CloudBootstrap, taskParams);
   }
 
   @Test
