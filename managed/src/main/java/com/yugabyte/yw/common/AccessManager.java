@@ -3,8 +3,10 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +22,7 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -187,6 +190,14 @@ public class AccessManager extends DevopsBase {
       throw new RuntimeException(response.get("error").asText());
     }
     return response;
+  }
+  
+  public String createCredentialsFile(UUID providerUUID, JsonNode credentials) 
+  		throws IOException {
+  	ObjectMapper mapper = new ObjectMapper();
+  	String credentialsFilePath = getOrCreateKeyFilePath(providerUUID)+"/credentials.json";
+  	mapper.writeValue(new File(credentialsFilePath), credentials);
+  	return credentialsFilePath;
   }
 }
 

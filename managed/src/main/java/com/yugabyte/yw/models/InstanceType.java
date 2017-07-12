@@ -11,7 +11,6 @@ import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
 
-import com.avaje.ebean.Update;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,7 +19,8 @@ import com.avaje.ebean.Ebean;
 import com.avaje.ebean.Model;
 import com.avaje.ebean.SqlUpdate;
 import com.avaje.ebean.annotation.EnumValue;
-import com.yugabyte.yw.cloud.AWSConstants;
+import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Tenancy;
 
 import play.data.validation.Constraints;
 import play.libs.Json;
@@ -72,9 +72,7 @@ public class InstanceType extends Model {
     return instanceTypeDetails.regionCodeToDetailsMap.get(regionCode);
   }
 
-  public PriceDetails getPriceDetails(String regionCode,
-                                      AWSConstants.Tenancy tenancy,
-                                      String azCode) {
+  public PriceDetails getPriceDetails(String regionCode, Tenancy tenancy) {
     // Fetch the region info object.
     List<InstanceTypeRegionDetails> regionDetailsList = getRegionDetails(regionCode);
     InstanceTypeRegionDetails regionDetails = null;
@@ -85,7 +83,7 @@ public class InstanceType extends Model {
       }
     }
     if (regionDetails == null) {
-      String msg = "Tenancy " + tenancy.toString() + " not found for, region " + regionCode;
+      String msg = "Tenancy " + tenancy.toString() + " not found for region " + regionCode;
       LOG.error(msg);
       throw new RuntimeException(msg);
     }
@@ -203,6 +201,8 @@ public class InstanceType extends Model {
   }
 
   public static class InstanceTypeDetails {
+  	private static final int DEFAULT_VOLUME_COUNT = 2;
+  	
     public Map<String, List<InstanceTypeRegionDetails>> regionCodeToDetailsMap;
     public List<VolumeDetails> volumeDetailsList;
 
@@ -210,12 +210,34 @@ public class InstanceType extends Model {
       regionCodeToDetailsMap = new HashMap<String, List<InstanceTypeRegionDetails>>();
       volumeDetailsList = new LinkedList<VolumeDetails>();
     }
+    
+    public void setDefaultVolumeDetailsList() {
+    	// Hardcoded suggested defaults. Will be overwritten.
+    	for (int i = 0; i < DEFAULT_VOLUME_COUNT; i++) {
+    		VolumeDetails volumeDetails = new VolumeDetails();
+    		volumeDetails.volumeSizeGB = 250;
+    		volumeDetails.volumeType = VolumeType.EBS;
+    		volumeDetailsList.add(volumeDetails);
+    	}
+    	setDefaultMountPaths();
+    }
 
     public void setDefaultMountPaths() {
       for (int idx = 0; idx < volumeDetailsList.size(); ++idx) {
         volumeDetailsList.get(idx).mountPath = String.format("/mnt/d%d", idx);
       }
     }
+    
+    public static InstanceTypeDetails getInstanceTypeDetails(
+    		Map<String, List<InstanceTypeRegionDetails>> regionCodeToDetailsMap) {
+    	InstanceTypeDetails instanceTypeDetails = new InstanceTypeDetails();
+    	
+    	instanceTypeDetails.regionCodeToDetailsMap = regionCodeToDetailsMap;
+    	instanceTypeDetails.setDefaultVolumeDetailsList();
+    	
+    	return instanceTypeDetails;
+    }
+    
   }
 
   public static InstanceType createWithMetadata(Provider provider, String code, JsonNode metadata) {
@@ -241,7 +263,7 @@ public class InstanceType extends Model {
     public String productFamily;
 
     // The valid values here are "Host", "Dedicated" and "Shared".
-    public AWSConstants.Tenancy tenancy;
+    public PublicCloudConstants.Tenancy tenancy;
 
     // Known values are "Linux", "RHEL", "SUSE", "Windows", "NA".
     public String operatingSystem;

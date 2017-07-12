@@ -16,7 +16,7 @@ public class ModelFactory {
   public static Provider awsProvider(Customer customer) {
     return Provider.create(customer.uuid, Common.CloudType.aws, "Amazon");
   }
-  public static Provider gceProvider(Customer customer) {
+  public static Provider gcpProvider(Customer customer) {
     return Provider.create(customer.uuid, Common.CloudType.gcp, "Google");
   }
   public static Provider newProvider(Customer customer, Common.CloudType cloud) {

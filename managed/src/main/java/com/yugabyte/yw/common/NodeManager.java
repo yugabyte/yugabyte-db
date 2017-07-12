@@ -243,7 +243,7 @@ public class NodeManager extends DevopsBase {
         if (nodeTaskParam.deviceInfo != null) {
           commandArgs.addAll(getDeviceArgs(nodeTaskParam));
           DeviceInfo deviceInfo = nodeTaskParam.deviceInfo;
-          if (deviceInfo.ebsType != null) {
+          if (deviceInfo.ebsType != null && nodeTaskParam.cloud == Common.CloudType.aws) {
             commandArgs.add("--volume_type");
             commandArgs.add(deviceInfo.ebsType.toString().toLowerCase());
             if (deviceInfo.ebsType.equals(DeviceInfo.EBSType.IO1) && deviceInfo.diskIops != null) {
