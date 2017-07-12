@@ -149,7 +149,7 @@ export default class UniverseForm extends Component {
       }
       this.props.getRegionListItems(providerUUID, isMultiAZ);
       this.props.getInstanceTypeListItems(providerUUID);
-      if (providerUUID && this.getCurrentProvider(providerUUID).code === "onprem") {
+      if (currentUniverse.data.provider.code === "onprem") {
         this.props.fetchNodeInstanceList(providerUUID);
       }
       // If Edit Case Set Initial Configuration
