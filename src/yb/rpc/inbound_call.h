@@ -87,15 +87,12 @@ class InboundCall : public RpcCall {
     return serialized_request_;
   }
 
-  // See RpcContext::AddRpcSidecar()
-  CHECKED_STATUS AddRpcSidecar(util::RefCntBuffer car, int* idx);
-
   virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) = 0;
 
   virtual const UserCredentials& user_credentials() const;
 
-  const Endpoint& remote_address() const;
-  const Endpoint& local_address() const;
+  virtual const Endpoint& remote_address() const;
+  virtual const Endpoint& local_address() const;
 
   ConnectionPtr connection() const;
 
@@ -150,10 +147,6 @@ class InboundCall : public RpcCall {
   // Data source of this call.
   std::vector<char> request_data_;
 
-  // Vector of additional sidecars that are tacked on to the call's response
-  // after serialization of the protobuf. See rpc/rpc_sidecar.h for more info.
-  std::vector<util::RefCntBuffer> sidecars_;
-
   // The trace buffer.
   scoped_refptr<Trace> trace_;
 
@@ -161,8 +154,8 @@ class InboundCall : public RpcCall {
   InboundCallTiming timing_;
 
  private:
-  // The connection on which this inbound call arrived.
-  ConnectionPtr conn_;
+  // The connection on which this inbound call arrived. Can be null for LocalYBInboundCall.
+  ConnectionPtr conn_ = nullptr;
   std::function<void(InboundCall*)> call_processed_listener_;
 
   DISALLOW_COPY_AND_ASSIGN(InboundCall);

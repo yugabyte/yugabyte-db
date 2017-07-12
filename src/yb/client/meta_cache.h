@@ -67,6 +67,8 @@ class LookupRpc;
 class RemoteTabletServer {
  public:
   explicit RemoteTabletServer(const master::TSInfoPB& pb);
+  explicit RemoteTabletServer(
+      const std::string& uuid, const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy);
 
   // Initialize the RPC proxy to this tablet server, if it is not already set up.
   // This will involve a DNS lookup if there is not already an active proxy.
@@ -206,6 +208,10 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // The passed 'client' object must remain valid as long as MetaCache is alive.
   explicit MetaCache(YBClient* client);
   ~MetaCache();
+
+  // Add a tablet server proxy.
+  void AddTabletServerProxy(const std::string& permanent_uuid,
+                            const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy);
 
   // Look up which tablet hosts the given partition key for a table. When it is
   // available, the tablet is stored in 'remote_tablet' (if not NULL) and the

@@ -41,6 +41,8 @@ class CQLServer : public server::RpcAndWebServerBase {
 
   void Shutdown();
 
+  const tserver::TabletServer* tserver() const { return tserver_; }
+
  private:
   CQLServerOptions opts_;
   void CQLNodeListRefresh(const boost::system::error_code &e);

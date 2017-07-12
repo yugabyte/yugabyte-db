@@ -99,14 +99,14 @@ OutboundCall::OutboundCall(
     const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
     google::protobuf::Message* response_storage, RpcController* controller,
     ResponseCallback callback)
-    : state_(READY),
-      remote_method_(remote_method),
-      conn_id_(conn_id),
-      callback_(std::move(callback)),
+    : conn_id_(conn_id),
+      start_(MonoTime::Now(MonoTime::FINE)),
       controller_(DCHECK_NOTNULL(controller)),
       response_(DCHECK_NOTNULL(response_storage)),
+      state_(READY),
+      remote_method_(remote_method),
+      callback_(std::move(callback)),
       trace_(new Trace),
-      start_(MonoTime::Now(MonoTime::FINE)),
       outbound_call_metrics_(outbound_call_metrics) {
   if (PREDICT_FALSE(VLOG_IS_ON(1))) {
     TRACE_TO(trace_, "Outbound Call initiated to $0", conn_id.ToString());
@@ -339,6 +339,17 @@ void OutboundCall::SetSent() {
   TRACE_TO(trace_, "Call Sent.");
 }
 
+void OutboundCall::SetFinished() {
+  // Track time taken to be responded.
+  if (outbound_call_metrics_) {
+    outbound_call_metrics_->time_to_response->Increment(
+        MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_).ToMicroseconds());
+  }
+  set_state(FINISHED_SUCCESS);
+  CallCallback();
+  TRACE_TO(trace_, "Callback called.");
+}
+
 void OutboundCall::SetFailed(const Status &status,
                              ErrorStatusPB* err_pb) {
   TRACE_TO(trace_, "Call Failed.");
@@ -390,6 +401,10 @@ bool OutboundCall::IsFinished() const {
       LOG(FATAL) << "Unknown call state: " << state_;
       return false;
   }
+}
+
+Status OutboundCall::GetSidecar(int idx, Slice* sidecar) const {
+  return call_response_->GetSidecar(idx, sidecar);
 }
 
 string OutboundCall::ToString() const {

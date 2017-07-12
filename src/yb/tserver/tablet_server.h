@@ -31,6 +31,7 @@
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
@@ -108,6 +109,11 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
     return Status::OK();
   }
 
+  const std::string& permanent_uuid() const { return fs_manager_->uuid(); }
+
+  // Returns the proxy to call this tablet server locally.
+  const std::shared_ptr<TabletServerServiceProxy>& proxy() const { return proxy_; }
+
  private:
   // Auto initialize some of the service flags that are defaulted to -1.
   void AutoInitServiceFlags();
@@ -150,6 +156,9 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   // Lock to protect live_tservers_.
   mutable simple_spinlock lock_;
+
+  // Proxy to call this tablet server locally.
+  std::shared_ptr<TabletServerServiceProxy> proxy_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

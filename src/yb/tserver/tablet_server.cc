@@ -81,6 +81,11 @@ DEFINE_int32(ts_remote_bootstrap_svc_queue_length, 50,
              "RPC queue length for the TS remote bootstrap service");
 TAG_FLAG(ts_remote_bootstrap_svc_queue_length, advanced);
 
+DEFINE_bool(enable_direct_local_tablet_server_call,
+            true,
+            "Enable direct call to local tablet server");
+TAG_FLAG(enable_direct_local_tablet_server_call, advanced);
+
 namespace yb {
 namespace tserver {
 
@@ -233,6 +238,11 @@ Status TabletServer::Start() {
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_remote_bootstrap_svc_queue_length,
                                                      std::move(remote_bootstrap_service)));
   RETURN_NOT_OK(RpcAndWebServerBase::Start());
+
+  // If enabled, creates a proxy to call this tablet server locally.
+  if (FLAGS_enable_direct_local_tablet_server_call) {
+    proxy_.reset(new TabletServerServiceProxy(messenger_, Endpoint()));
+  }
 
   RETURN_NOT_OK(heartbeater_->Start());
   RETURN_NOT_OK(maintenance_manager_->Init());

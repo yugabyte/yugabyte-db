@@ -12,6 +12,7 @@
 #include "yb/cqlserver/cql_server.h"
 
 #include "yb/rpc/rpc_context.h"
+#include "yb/tserver/tablet_server.h"
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/mem_tracker.h"
@@ -37,12 +38,11 @@ using yb::client::YBSession;
 using yb::client::YBTableCache;
 using yb::rpc::InboundCall;
 
-CQLServiceImpl::CQLServiceImpl(
-    CQLServer* server, shared_ptr<rpc::Messenger> messenger,
-    const CQLServerOptions& opts)
+CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts)
     : CQLServerServiceIf(server->metric_entity()),
+      server_(server),
       next_available_processor_(processors_.end()),
-      messenger_(messenger),
+      messenger_(server->messenger()),
       cql_rpcserver_env_(new CQLRpcServerEnv(server->first_rpc_address().address().to_string(),
                                              opts.broadcast_rpc_address)) {
   // TODO(ENG-446): Handle metrics for all the methods individually.
@@ -69,6 +69,11 @@ void CQLServiceImpl::SetUpYBClient(
   client_builder.set_metric_entity(metric_entity);
   client_builder.set_num_reactors(FLAGS_cql_ybclient_reactor_threads);
   CHECK_OK(client_builder.Build(&client_));
+  // Add proxy to call local tserver if available.
+  if (server_->tserver() != nullptr && server_->tserver()->proxy() != nullptr) {
+    client_->AddTabletServerProxy(
+        server_->tserver()->permanent_uuid(), server_->tserver()->proxy());
+  }
   table_cache_ = std::make_shared<YBTableCache>(client_);
 }
 

@@ -67,6 +67,11 @@ RemoteTabletServer::RemoteTabletServer(const master::TSInfoPB& pb)
   Update(pb);
 }
 
+RemoteTabletServer::RemoteTabletServer(
+    const string& uuid, const shared_ptr<TabletServerServiceProxy>& proxy)
+    : uuid_(uuid), proxy_(proxy) {
+}
+
 void RemoteTabletServer::DnsResolutionFinished(const HostPort& hp,
                                                vector<Endpoint>* addrs,
                                                YBClient* client,
@@ -298,6 +303,11 @@ MetaCache::MetaCache(YBClient* client)
 
 MetaCache::~MetaCache() {
   STLDeleteValues(&ts_cache_);
+}
+
+void MetaCache::AddTabletServerProxy(const string& permanent_uuid,
+                                     const shared_ptr<TabletServerServiceProxy>& proxy) {
+  CHECK(ts_cache_.emplace(permanent_uuid, new RemoteTabletServer(permanent_uuid, proxy)).second);
 }
 
 void MetaCache::UpdateTabletServer(const TSInfoPB& pb) {

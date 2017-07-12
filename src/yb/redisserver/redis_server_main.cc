@@ -1,7 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
-#include <glog/logging.h>
 #include <iostream>
+
+#include <glog/logging.h>
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/redisserver/redis_server.h"
@@ -32,7 +33,7 @@ static int RedisServerMain(int argc, char** argv) {
   RedisServerOptions opts;
   opts.rpc_opts.rpc_bind_addresses = FLAGS_redis_proxy_bind_address;
   opts.master_addresses_flag = FLAGS_master_addresses;
-  RedisServer server(opts);
+  RedisServer server(opts, nullptr /* tserver */);
   LOG(INFO) << "Starting redis server...";
   CHECK_OK(server.Start());
 

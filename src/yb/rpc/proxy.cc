@@ -28,6 +28,7 @@
 
 #include <glog/logging.h>
 
+#include "yb/rpc/local_call.h"
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/remote_method.h"
@@ -53,7 +54,8 @@ Proxy::Proxy(const std::shared_ptr<Messenger>& messenger,
     : service_name_(std::move(service_name)),
       messenger_(messenger),
       outbound_call_metrics_(messenger && messenger->metric_entity() ?
-          std::make_shared<OutboundCallMetrics>(messenger_->metric_entity()) : nullptr) {
+          std::make_shared<OutboundCallMetrics>(messenger_->metric_entity()) : nullptr),
+      call_local_service_(remote == Endpoint()) {
   CHECK(messenger != nullptr);
   DCHECK(!service_name_.empty()) << "Proxy service name must not be blank";
 
@@ -77,7 +79,7 @@ Proxy::~Proxy() {
 
 void Proxy::AsyncRequest(const string& method,
                          const google::protobuf::Message& req,
-                         google::protobuf::Message* response,
+                         google::protobuf::Message* resp,
                          RpcController* controller,
                          ResponseCallback callback) const {
   CHECK(controller->call_.get() == nullptr) << "Controller should be reset";
@@ -86,12 +88,20 @@ void Proxy::AsyncRequest(const string& method,
   auto indexed_conn_id = conn_id_;
   indexed_conn_id.set_idx(idx);
 
-  controller->call_ = std::make_shared<OutboundCall>(indexed_conn_id,
-                                                     RemoteMethod(service_name_, method),
-                                                     outbound_call_metrics_,
-                                                     response,
-                                                     controller,
-                                                     std::move(callback));
+  controller->call_ =
+      call_local_service_ ?
+      std::make_shared<LocalOutboundCall>(indexed_conn_id,
+                                          RemoteMethod(service_name_, method),
+                                          outbound_call_metrics_,
+                                          resp,
+                                          controller,
+                                          std::move(callback)) :
+      std::make_shared<OutboundCall>(indexed_conn_id,
+                                     RemoteMethod(service_name_, method),
+                                     outbound_call_metrics_,
+                                     resp,
+                                     controller,
+                                     std::move(callback));
   auto call = controller->call_.get();
   Status s = call->SetRequestParam(req);
   if (PREDICT_FALSE(!s.ok())) {
@@ -101,9 +111,18 @@ void Proxy::AsyncRequest(const string& method,
     return;
   }
 
-  // If this fails to queue, the callback will get called immediately
-  // and the controller will be in an ERROR state.
-  messenger_->QueueOutboundCall(controller->call_);
+  if (call_local_service_) {
+    // For local call, the response message buffer is reused when an RPC call is retried. So clear
+    // the buffer before calling the RPC method.
+    resp->Clear();
+    call->SetQueued();
+    call->SetSent();
+    messenger_->QueueInboundCall(static_cast<LocalOutboundCall*>(call)->CreateLocalInboundCall());
+  } else {
+    // If this fails to queue, the callback will get called immediately
+    // and the controller will be in an ERROR state.
+    messenger_->QueueOutboundCall(controller->call_);
+  }
 }
 
 

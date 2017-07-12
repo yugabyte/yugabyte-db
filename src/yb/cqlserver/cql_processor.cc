@@ -54,7 +54,6 @@ using std::unique_ptr;
 using client::YBClient;
 using client::YBSession;
 using client::YBTableCache;
-using rpc::RpcContext;
 using sql::ExecutedResult;
 using sql::PreparedResult;
 using sql::RowsResult;

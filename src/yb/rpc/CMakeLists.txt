@@ -51,6 +51,7 @@ set(YRPC_SRCS
     messenger.cc
     negotiation.cc
     outbound_call.cc
+    local_call.cc
     rpc_call.cc
     proxy.cc
     reactor.cc

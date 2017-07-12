@@ -45,7 +45,7 @@ CQLServer::CQLServer(const CQLServerOptions& opts,
 Status CQLServer::Start() {
   RETURN_NOT_OK(server::RpcAndWebServerBase::Init());
 
-  std::unique_ptr<ServiceIf> cql_service(new CQLServiceImpl(this, messenger_, opts_));
+  std::unique_ptr<ServiceIf> cql_service(new CQLServiceImpl(this, opts_));
   RETURN_NOT_OK(RegisterService(FLAGS_cql_service_queue_length, std::move(cql_service)));
 
   RETURN_NOT_OK(server::RpcAndWebServerBase::Start());

@@ -24,7 +24,7 @@
 #include "yb/redisserver/redis_server.h"
 
 #include "yb/rpc/rpc_context.h"
-
+#include "yb/tserver/tablet_server.h"
 #include "yb/util/bytes_formatter.h"
 
 #define DEFINE_REDIS_histogram_EX(name_identifier, label_str, desc_str) \
@@ -325,6 +325,12 @@ Status RedisServiceImpl::Impl::SetUpYBClient() {
     client_builder.add_master_server_addr(yb_tier_master_addresses_);
     client_builder.set_metric_entity(server_->metric_entity());
     RETURN_NOT_OK(client_builder.Build(&client_));
+
+    // Add proxy to call local tserver if available.
+    if (server_->tserver() != nullptr && server_->tserver()->proxy() != nullptr) {
+      client_->AddTabletServerProxy(
+          server_->tserver()->permanent_uuid(), server_->tserver()->proxy());
+    }
 
     const YBTableName table_name(kRedisKeyspaceName, kRedisTableName);
     RETURN_NOT_OK(client_->OpenTable(table_name, &table_));

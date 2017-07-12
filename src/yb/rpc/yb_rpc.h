@@ -56,7 +56,12 @@ class YBConnectionContext : public ConnectionContextWithCallId {
 
 class YBInboundCall : public InboundCall {
  public:
-  explicit YBInboundCall(ConnectionPtr conn, CallProcessedListener call_processed_listener);
+  YBInboundCall(ConnectionPtr conn, CallProcessedListener call_processed_listener);
+  explicit YBInboundCall(const RemoteMethod& remote_method);
+  virtual ~YBInboundCall();
+
+  // Is this a local call?
+  virtual bool IsLocalCall() const { return false; }
 
   // Parse an inbound call message.
   //
@@ -73,6 +78,9 @@ class YBInboundCall : public InboundCall {
   const RemoteMethod& remote_method() const {
     return remote_method_;
   }
+
+  // See RpcContext::AddRpcSidecar()
+  CHECKED_STATUS AddRpcSidecar(util::RefCntBuffer car, int* idx);
 
   // Serializes 'response' into the InboundCall's internal buffer, and marks
   // the call as a success. Enqueues the response back to the connection
@@ -118,13 +126,19 @@ class YBInboundCall : public InboundCall {
     return remote_method_.service_name();
   }
 
-  bool ParseParam(google::protobuf::Message *message);
+  virtual CHECKED_STATUS ParseParam(google::protobuf::Message *message);
+
   void RespondBadMethod();
 
- private:
-  // Serialize and queue the response.
-  void Respond(const google::protobuf::MessageLite& response, bool is_success);
+ protected:
+  // Vector of additional sidecars that are tacked on to the call's response
+  // after serialization of the protobuf. See rpc/rpc_sidecar.h for more info.
+  std::vector<util::RefCntBuffer> sidecars_;
 
+  // Serialize and queue the response.
+  virtual void Respond(const google::protobuf::MessageLite& response, bool is_success);
+
+ private:
   // Serialize a response message for either success or failure. If it is a success,
   // 'response' should be the user-defined response type for the call. If it is a
   // failure, 'response' should be an ErrorStatusPB instance.

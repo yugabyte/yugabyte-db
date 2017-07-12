@@ -20,6 +20,8 @@
 #include <ostream>
 #include <sstream>
 
+#include <boost/core/null_deleter.hpp>
+
 #include "yb/rpc/connection.h"
 #include "yb/rpc/inbound_call.h"
 #include "yb/rpc/outbound_call.h"
@@ -72,53 +74,44 @@ scoped_refptr<debug::ConvertableToTraceFormat> TracePb(const Message& msg) {
 }
 }  // anonymous namespace
 
+RpcContext::~RpcContext() {
+  if (call_ && !responded_) {
+    LOG(DFATAL) << "RpcContext is destroyed, but response did not send, for call: "
+                << call_->ToString();
+  }
+}
+
 RpcContext::RpcContext(std::shared_ptr<YBInboundCall> call,
-                       std::shared_ptr<const google::protobuf::Message> request_pb,
-                       std::shared_ptr<const google::protobuf::Message> response_pb,
+                       std::shared_ptr<google::protobuf::Message> request_pb,
+                       std::shared_ptr<google::protobuf::Message> response_pb,
                        RpcMethodMetrics metrics)
-  : call_(std::move(call)),
-    request_pb_(std::move(request_pb)),
-    response_pb_(std::move(response_pb)),
-    metrics_(metrics) {
-  VLOG(4) << call_->remote_method().service_name()
-          << ": Received RPC request for " << call_->ToString()
-          << std::endl
-          << " request_pb_ : "
-          << (request_pb_.get() != nullptr ? request_pb_->DebugString() : "nullptr")
-          << std::endl
-          << " response_pb_ : "
-          << (response_pb_.get() != nullptr ? response_pb_->DebugString() : "nullptr")
-          << std::endl;
+    : call_(std::move(call)),
+      request_pb_(request_pb),
+      response_pb_(std::move(response_pb)),
+      metrics_(metrics) {
+  const Status s = call_->ParseParam(request_pb.get());
+  if (PREDICT_FALSE(!s.ok())) {
+    RespondRpcFailure(ErrorStatusPB::ERROR_INVALID_REQUEST, s);
+    return;
+  }
   TRACE_EVENT_ASYNC_BEGIN2("rpc_call", "RPC", this,
                            "call", call_->ToString(),
                            "request", TracePb(*request_pb_));
 }
 
-namespace {
-
-const std::shared_ptr<const Message> EMPTY_MESSAGE = std::make_shared<EmptyMessagePB>();
-
-}
-
-RpcContext::RpcContext(std::shared_ptr<YBInboundCall> call,
+RpcContext::RpcContext(std::shared_ptr<LocalYBInboundCall> call,
                        RpcMethodMetrics metrics)
-    : RpcContext(std::move(call), EMPTY_MESSAGE, EMPTY_MESSAGE, metrics) {}
-
-RpcContext::~RpcContext() {
-  if (call_ && !responded_) {
-#ifndef NDEBUG
-    LOG(FATAL)
-#else
-    LOG(ERROR)
-#endif
-        << "RpcContext is destroyed, but response did not send, for call: " << call_->ToString();
-  }
+    : call_(call),
+      request_pb_(call->request(), boost::null_deleter()),
+      response_pb_(call->response(), boost::null_deleter()),
+      metrics_(metrics) {
+  TRACE_EVENT_ASYNC_BEGIN2("rpc_call", "RPC", this,
+                           "call", call_->ToString(),
+                           "request", TracePb(*request_pb_));
 }
 
 void RpcContext::RespondSuccess() {
   call_->RecordHandlingCompleted(metrics_.handler_latency);
-  VLOG(4) << call_->remote_method().service_name() << ": Sending RPC success response for "
-          << call_->ToString() << ":" << std::endl << response_pb_->DebugString();
   TRACE_EVENT_ASYNC_END2("rpc_call", "RPC", this,
                          "response", TracePb(*response_pb_),
                          "trace", trace()->DumpToString(true));
@@ -128,20 +121,15 @@ void RpcContext::RespondSuccess() {
 
 void RpcContext::RespondFailure(const Status &status) {
   call_->RecordHandlingCompleted(metrics_.handler_latency);
-  VLOG(4) << call_->remote_method().service_name() << ": Sending RPC failure response for "
-          << call_->ToString() << ": " << status.ToString();
   TRACE_EVENT_ASYNC_END2("rpc_call", "RPC", this,
                          "status", status.ToString(),
                          "trace", trace()->DumpToString(true));
-  call_->RespondFailure(ErrorStatusPB::ERROR_APPLICATION,
-                        status);
+  call_->RespondFailure(ErrorStatusPB::ERROR_APPLICATION, status);
   responded_ = true;
 }
 
 void RpcContext::RespondRpcFailure(ErrorStatusPB_RpcErrorCodePB err, const Status& status) {
   call_->RecordHandlingCompleted(metrics_.handler_latency);
-  VLOG(4) << call_->remote_method().service_name() << ": Sending RPC failure response for "
-          << call_->ToString() << ": " << status.ToString();
   TRACE_EVENT_ASYNC_END2("rpc_call", "RPC", this,
                          "status", status.ToString(),
                          "trace", trace()->DumpToString(true));
@@ -152,15 +140,9 @@ void RpcContext::RespondRpcFailure(ErrorStatusPB_RpcErrorCodePB err, const Statu
 void RpcContext::RespondApplicationError(int error_ext_id, const std::string& message,
                                          const Message& app_error_pb) {
   call_->RecordHandlingCompleted(metrics_.handler_latency);
-  if (VLOG_IS_ON(4)) {
-    ErrorStatusPB err;
-    YBInboundCall::ApplicationErrorToPB(error_ext_id, message, app_error_pb, &err);
-    VLOG(4) << call_->remote_method().service_name() << ": Sending application error response for "
-            << call_->ToString() << ":" << std::endl << err.DebugString();
-    TRACE_EVENT_ASYNC_END2("rpc_call", "RPC", this,
-                           "response", TracePb(app_error_pb),
-                           "trace", trace()->DumpToString(true));
-  }
+  TRACE_EVENT_ASYNC_END2("rpc_call", "RPC", this,
+                         "response", TracePb(app_error_pb),
+                         "trace", trace()->DumpToString(true));
   call_->RespondApplicationError(error_ext_id, message, app_error_pb);
   responded_ = true;
 }

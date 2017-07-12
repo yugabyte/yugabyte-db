@@ -16,11 +16,17 @@
 // TODO: do we need word Redis in following two metrics? ReadRpc and WriteRpc objects emitting
 // these metrics are used not only in Redis service.
 METRIC_DEFINE_histogram(
-    server, handler_latency_yb_client_write, "yb.client.Write RPC Time",
-    yb::MetricUnit::kMicroseconds, "Microseconds spent in the WriteRpc ", 60000000LU, 2);
+    server, handler_latency_remote_yb_client_write, "yb.client.Write remote call time",
+    yb::MetricUnit::kMicroseconds, "Microseconds spent in the remote Write call ", 60000000LU, 2);
 METRIC_DEFINE_histogram(
-    server, handler_latency_yb_client_read, "yb.client.Read RPC Time",
-    yb::MetricUnit::kMicroseconds, "Microseconds spent in the ReadRpc ", 60000000LU, 2);
+    server, handler_latency_remote_yb_client_read, "yb.client.Read remote call time",
+    yb::MetricUnit::kMicroseconds, "Microseconds spent in the remote Read call ", 60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_local_yb_client_write, "yb.client.Write local call time",
+    yb::MetricUnit::kMicroseconds, "Microseconds spent in the local Write call ", 60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_local_yb_client_read, "yb.client.Read local call time",
+    yb::MetricUnit::kMicroseconds, "Microseconds spent in the local Read call ", 60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_client_time_to_send,
     "Time taken for a Write/Read rpc to be sent to the server", yb::MetricUnit::kMicroseconds,
@@ -49,8 +55,10 @@ bool IsTracingEnabled() {
 }
 
 AsyncRpcMetrics::AsyncRpcMetrics(const scoped_refptr<yb::MetricEntity>& entity)
-    : write_rpc_time(METRIC_handler_latency_yb_client_write.Instantiate(entity)),
-      read_rpc_time(METRIC_handler_latency_yb_client_read.Instantiate(entity)),
+    : remote_write_rpc_time(METRIC_handler_latency_remote_yb_client_write.Instantiate(entity)),
+      remote_read_rpc_time(METRIC_handler_latency_remote_yb_client_read.Instantiate(entity)),
+      local_write_rpc_time(METRIC_handler_latency_local_yb_client_write.Instantiate(entity)),
+      local_read_rpc_time(METRIC_handler_latency_local_yb_client_read.Instantiate(entity)),
       time_to_send(METRIC_handler_latency_yb_client_time_to_send.Instantiate(entity)) {
 }
 
@@ -332,6 +340,12 @@ void AsyncRpc::MarkOpsAsFailed(const string& error_message) {
   }
 }
 
+bool AsyncRpc::IsLocalCall() const {
+  return (current_ts_ != nullptr &&
+          current_ts_->proxy() != nullptr &&
+          current_ts_->proxy()->IsServiceLocal());
+}
+
 WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
                    RemoteTablet* const tablet,
                    vector<InFlightOp*> ops,
@@ -428,8 +442,12 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
 
 WriteRpc::~WriteRpc() {
   MonoTime end_time = MonoTime::Now(MonoTime::FINE);
-  if (async_rpc_metrics_)
-    async_rpc_metrics_->write_rpc_time->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
+  if (async_rpc_metrics_) {
+    scoped_refptr<Histogram> write_rpc_time = IsLocalCall() ?
+                                              async_rpc_metrics_->local_write_rpc_time :
+                                              async_rpc_metrics_->remote_write_rpc_time;
+    write_rpc_time->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
+  }
 }
 
 void WriteRpc::SendRpcToTserver() {
@@ -574,8 +592,12 @@ ReadRpc::ReadRpc(
 
 ReadRpc::~ReadRpc() {
   MonoTime end_time = MonoTime::Now(MonoTime::FINE);
-  if (async_rpc_metrics_)
-    async_rpc_metrics_->read_rpc_time->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
+  if (async_rpc_metrics_) {
+    scoped_refptr<Histogram> read_rpc_time = IsLocalCall() ?
+                                             async_rpc_metrics_->local_read_rpc_time :
+                                             async_rpc_metrics_->remote_read_rpc_time;
+    read_rpc_time->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
+  }
 }
 
 void ReadRpc::SendRpcToTserver() {

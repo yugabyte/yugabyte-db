@@ -43,13 +43,16 @@ namespace rpc {
 
 class Messenger;
 
-// Interface to send calls to a remote service.
+// Interface to send calls to a remote or local service.
 //
 // Proxy objects do not map one-to-one with TCP connections.  The underlying TCP
 // connection is not established until the first call, and may be torn down and
 // re-established as necessary by the messenger. Additionally, the messenger is
 // likely to multiplex many Proxy objects on the same connection. Or, split the
 // requests sent over a single proxy across different connections to the server.
+//
+// When remote endpoint is blank (i.e. Endpoint()), the proxy will attempt to
+// call the service locally in the messenger instead.
 //
 // Proxy objects are thread-safe after initialization only.
 // Setters on the Proxy are not thread-safe, and calling a setter after any RPC
@@ -108,6 +111,9 @@ class Proxy {
   // Get the user credentials which should be used to log in.
   const UserCredentials& user_credentials() const { return conn_id_.user_credentials(); }
 
+  // Is the service local?
+  bool IsServiceLocal() const { return call_local_service_; }
+
  private:
   GrowableBuffer& Buffer() const;
 
@@ -117,6 +123,7 @@ class Proxy {
   mutable std::atomic<bool> is_started_;
   mutable std::atomic_uint num_calls_;
   std::shared_ptr<OutboundCallMetrics> outbound_call_metrics_;
+  const bool call_local_service_;
 
   DISALLOW_COPY_AND_ASSIGN(Proxy);
 };

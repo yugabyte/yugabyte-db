@@ -86,22 +86,13 @@ void InboundCall::NotifyTransferred(const Status& status) {
     call_processed_listener_(this);
 }
 
-Status InboundCall::AddRpcSidecar(util::RefCntBuffer car, int* idx) {
-  // Check that the number of sidecars does not exceed the number of payload
-  // slices that are free.
-  if (sidecars_.size() >= CallResponse::kMaxSidecarSlices) {
-    return STATUS(ServiceUnavailable, "All available sidecars already used");
-  }
-  *idx = static_cast<int>(sidecars_.size());
-  sidecars_.push_back(std::move(car));
-  return Status::OK();
-}
-
 const Endpoint& InboundCall::remote_address() const {
+  CHECK_NOTNULL(conn_.get());
   return conn_->remote();
 }
 
 const Endpoint& InboundCall::local_address() const {
+  CHECK_NOTNULL(conn_.get());
   return conn_->local();
 }
 
@@ -146,6 +137,7 @@ bool InboundCall::ClientTimedOut() const {
 }
 
 const UserCredentials& InboundCall::user_credentials() const {
+  CHECK_NOTNULL(conn_.get());
   return conn_->user_credentials();
 }
 

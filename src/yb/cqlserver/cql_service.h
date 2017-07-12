@@ -36,9 +36,7 @@ class CQLServer;
 class CQLServiceImpl : public CQLServerServiceIf {
  public:
   // Constructor.
-  CQLServiceImpl(
-      CQLServer* server, std::shared_ptr<rpc::Messenger> messenger,
-      const CQLServerOptions& opts);
+  CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts);
 
   // Processing all incoming request from RPC and sending response back.
   void Handle(yb::rpc::InboundCallPtr call) override;
@@ -100,6 +98,9 @@ class CQLServiceImpl : public CQLServerServiceIf {
 
   // Delete the least recently used prepared statement from the cache to free up memory.
   void DeleteLruPreparedStatement();
+
+  // CQLServer of this service.
+  CQLServer* const server_;
 
   // YBClient is to communicate with either master or tserver.
   std::shared_ptr<client::YBClient> client_;

@@ -58,6 +58,10 @@ class ReplicationInfoPB;
 class TabletLocationsPB;
 }
 
+namespace tserver {
+class TabletServerServiceProxy;
+}
+
 namespace client {
 
 class YBLoggingCallback;
@@ -261,6 +265,9 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   CHECKED_STATUS TabletServerCount(int *tserver_count);
 
   CHECKED_STATUS ListTabletServers(std::vector<YBTabletServer*>* tablet_servers);
+
+  void AddTabletServerProxy(const std::string& ts_uuid,
+                            const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy);
 
   // List only those tables whose names pass a substring match on 'filter'.
   //

@@ -1,13 +1,21 @@
 // Copyright (c) YugaByte, Inc.
 package org.yb.cql;
 
+import java.net.URL;
+import java.net.URLConnection;
 import java.util.*;
 
 import org.junit.Test;
 
+import org.yb.minicluster.MiniYBDaemon;
+
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
@@ -371,5 +379,62 @@ public class TestSelect extends BaseCQLTest {
     runInvalidSelectWithTimestamp(tableName, "1992-13-12");
     runInvalidSelectWithTimestamp(tableName, "1992-12-12 14:23:30:31");
     runInvalidSelectWithTimestamp(tableName, "1992-12-12 14:23:30.12.32");
+  }
+
+  private int getTotalCount(JsonObject metric) {
+    return metric.get("total_count").getAsInt();
+  }
+
+  @Test
+  public void testLocalTServerCalls() throws Exception {
+    // Insert 100 rows and select them back.
+    final int NUM_KEYS = 100;
+    session.execute("CREATE TABLE test_local (k int PRIMARY KEY, v int);");
+    PreparedStatement stmt = session.prepare("INSERT INTO test_local (k, v) VALUES (?, ?);");
+    for (int i = 1; i <= 100; i++) {
+      session.execute(stmt.bind(Integer.valueOf(i), Integer.valueOf(i + 1)));
+    }
+    stmt = session.prepare("SELECT v FROM test_local WHERE k = ?");
+    for (int i = 1; i <= 100; i++) {
+      assertEquals(i + 1, session.execute(stmt.bind(Integer.valueOf(i))).one().getInt("v"));
+    }
+
+    // Check the metrics.
+    int totalLocalReadCalls = 0;
+    int totalRemoteReadCalls = 0;
+    int totalLocalWriteCalls = 0;
+    int totalRemoteWriteCalls = 0;
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      URL metrics = new URL(String.format("http://%s:%d/metrics",
+                                          ts.getLocalhostIP(), ts.getCqlWebPort()));
+      URLConnection yc = metrics.openConnection();
+      JsonParser parser = new JsonParser();
+      JsonElement tree = parser.parse(new Scanner(yc.getInputStream()).useDelimiter("\\A").next());
+      JsonObject obj = tree.getAsJsonArray().get(0).getAsJsonObject();
+      for (JsonElement elem : obj.getAsJsonArray("metrics")) {
+        JsonObject metric = elem.getAsJsonObject();
+        String metric_name = metric.get("name").getAsString();
+        if (metric_name.equals("handler_latency_local_yb_client_read")) {
+          totalLocalReadCalls += getTotalCount(metric);
+        } else if (metric_name.equals("handler_latency_local_yb_client_write")) {
+          totalLocalWriteCalls += getTotalCount(metric);
+        } else if (metric_name.equals("handler_latency_remote_yb_client_read")) {
+          totalRemoteReadCalls += getTotalCount(metric);
+        } else if (metric_name.equals("handler_latency_remote_yb_client_write")) {
+          totalRemoteWriteCalls += getTotalCount(metric);
+        }
+      }
+    }
+
+    // Verify there are some local calls and some remote calls for reads and writes.
+    assertTrue(totalLocalReadCalls > 0);
+    assertTrue(totalRemoteReadCalls > 0);
+    assertTrue(totalLocalWriteCalls > 0);
+    assertTrue(totalRemoteWriteCalls > 0);
+
+    // Verify total number of read / write calls. It is possible to have more calls than the
+    // number of keys because some calls may reach step-down leaders and need retries.
+    assertTrue(totalLocalReadCalls + totalRemoteReadCalls >= NUM_KEYS);
+    assertTrue(totalLocalWriteCalls + totalRemoteWriteCalls >= NUM_KEYS);
   }
 }

@@ -88,7 +88,7 @@ static int TabletServerMain(int argc, char** argv) {
         (tablet_server_options.dump_info_path.empty()
              ? ""
              : tablet_server_options.dump_info_path + "-redis");
-    redis_server.reset(new RedisServer(redis_server_options));
+    redis_server.reset(new RedisServer(redis_server_options, &server));
     LOG(INFO) << "Starting redis server...";
     CHECK_OK(redis_server->Start());
     LOG(INFO) << "Redis server successfully started.";

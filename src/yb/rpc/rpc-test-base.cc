@@ -126,7 +126,7 @@ void GenericCalculatorService::DoSendStrings(InboundCall* incoming) {
     auto sidecar = util::RefCntBuffer(size);
     RandomString(sidecar.udata(), size, &r);
     int idx = 0;
-    auto status = incoming->AddRpcSidecar(sidecar, &idx);
+    auto status = down_cast<YBInboundCall*>(incoming)->AddRpcSidecar(sidecar, &idx);
     if (!status.ok()) {
       incoming->RespondFailure(ErrorStatusPB::ERROR_APPLICATION, status);
       return;

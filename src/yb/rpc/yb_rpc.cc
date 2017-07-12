@@ -153,6 +153,13 @@ uint64_t YBConnectionContext::ExtractCallId(InboundCall* call) {
 YBInboundCall::YBInboundCall(ConnectionPtr conn, CallProcessedListener call_processed_listener)
     : InboundCall(std::move(conn), std::move(call_processed_listener)) {}
 
+YBInboundCall::YBInboundCall(const RemoteMethod& remote_method)
+    : YBInboundCall(nullptr /* conn */, nullptr /*call_processed_listener  */) {
+  remote_method_ = remote_method;
+}
+
+YBInboundCall::~YBInboundCall() {}
+
 MonoTime YBInboundCall::GetClientDeadline() const {
   if (!header_.has_timeout_millis() || header_.timeout_millis() == 0) {
     return MonoTime::Max();
@@ -180,6 +187,17 @@ Status YBInboundCall::ParseFrom(Slice source) {
   }
   remote_method_.FromPB(header_.remote_method());
 
+  return Status::OK();
+}
+
+Status YBInboundCall::AddRpcSidecar(util::RefCntBuffer car, int* idx) {
+  // Check that the number of sidecars does not exceed the number of payload
+  // slices that are free.
+  if (sidecars_.size() >= CallResponse::kMaxSidecarSlices) {
+    return STATUS(ServiceUnavailable, "All available sidecars already used");
+  }
+  *idx = static_cast<int>(sidecars_.size());
+  sidecars_.push_back(std::move(car));
   return Status::OK();
 }
 
@@ -281,17 +299,16 @@ void YBInboundCall::Serialize(std::deque<util::RefCntBuffer>* output) const {
   }
 }
 
-bool YBInboundCall::ParseParam(google::protobuf::Message *message) {
+Status YBInboundCall::ParseParam(google::protobuf::Message *message) {
   Slice param(serialized_request());
   if (PREDICT_FALSE(!message->ParseFromArray(param.data(), param.size()))) {
     string err = Format("Invalid parameter for call $0: $1",
                         remote_method_.ToString(),
                         message->InitializationErrorString().c_str());
     LOG(WARNING) << err;
-    RespondFailure(ErrorStatusPB::ERROR_INVALID_REQUEST, STATUS(InvalidArgument, err));
-    return false;
+    return STATUS(InvalidArgument, err);
   }
-  return true;
+  return Status::OK();
 }
 
 void YBInboundCall::RespondBadMethod() {

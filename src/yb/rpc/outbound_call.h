@@ -180,14 +180,13 @@ class OutboundCall : public RpcCall {
                const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
                google::protobuf::Message* response_storage,
                RpcController* controller, ResponseCallback callback);
-
-  ~OutboundCall();
+  virtual ~OutboundCall();
 
   // Serialize the given request PB into this call's internal storage.
   //
   // Because the data is fully serialized by this call, 'req' may be
   // subsequently mutated with no ill effects.
-  CHECKED_STATUS SetRequestParam(const google::protobuf::Message& req);
+  virtual CHECKED_STATUS SetRequestParam(const google::protobuf::Message& req);
 
   // Assign the call ID for this call. This is called from the reactor
   // thread once a connection has been assigned. Must only be called once.
@@ -205,6 +204,9 @@ class OutboundCall : public RpcCall {
 
   // Update the call state to show that the request has been sent.
   void SetSent();
+
+  // Update the call state to show that the call has finished.
+  void SetFinished();
 
   // Mark the call as failed. This also triggers the callback to notify
   // the caller. If the call failed due to a remote error, then err_pb
@@ -237,6 +239,7 @@ class OutboundCall : public RpcCall {
   const ResponseCallback &callback() const { return callback_; }
   RpcController* controller() { return controller_; }
   const RpcController* controller() const { return controller_; }
+  google::protobuf::Message* response() const { return response_; }
 
   // Return true if a call ID has been assigned to this call.
   bool call_id_assigned() const {
@@ -251,6 +254,17 @@ class OutboundCall : public RpcCall {
   Trace* trace() {
     return trace_.get();
   }
+
+ protected:
+  friend class RpcController;
+
+  virtual CHECKED_STATUS GetSidecar(int idx, Slice* sidecar) const;
+
+  ConnectionId conn_id_;
+  MonoTime start_;
+  RpcController* controller_;
+  // Pointer for the protobuf where the response should be written.
+  google::protobuf::Message* response_;
 
  private:
   friend class RpcController;
@@ -269,7 +283,7 @@ class OutboundCall : public RpcCall {
 
   static std::string StateName(State state);
 
-  void NotifyTransferred(const Status& status) override;
+  virtual void NotifyTransferred(const Status& status) override;
 
   void set_state(State new_state);
   State state() const;
@@ -304,12 +318,7 @@ class OutboundCall : public RpcCall {
   // The remote method being called.
   RemoteMethod remote_method_;
 
-  ConnectionId conn_id_;
   ResponseCallback callback_;
-  RpcController* controller_;
-
-  // Pointer for the protobuf where the response should be written.
-  google::protobuf::Message* response_;
 
   // Buffers for storing segments of the wire-format request.
   util::RefCntBuffer buffer_;
@@ -320,7 +329,6 @@ class OutboundCall : public RpcCall {
 
   // The trace buffer.
   scoped_refptr<Trace> trace_;
-  MonoTime start_;
 
   std::shared_ptr<OutboundCallMetrics> outbound_call_metrics_;
 

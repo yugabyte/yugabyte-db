@@ -467,6 +467,11 @@ Status YBClient::ListTabletServers(vector<YBTabletServer*>* tablet_servers) {
   return Status::OK();
 }
 
+void YBClient::AddTabletServerProxy(const string& ts_uuid,
+                                    const shared_ptr<tserver::TabletServerServiceProxy>& proxy) {
+  data_->meta_cache_->AddTabletServerProxy(ts_uuid, proxy);
+}
+
 Status YBClient::GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
                             RepeatedPtrField<TabletLocationsPB>* tablets) {

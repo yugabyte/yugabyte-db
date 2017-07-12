@@ -487,21 +487,20 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
 
         Print(printer, *subs,
         "  if (call->method_name() == \"$rpc_name$\") {\n"
-        "    auto req = std::make_shared<$request$>();\n"
-        "    if (PREDICT_FALSE(!yb_call->ParseParam(req.get()))) {\n"
-        "      return;\n"
-        "    }\n"
-        "    auto resp = std::make_shared<$response$>();\n"
-        "    const $request$* request = req.get();\n"
-        "    $response$* response = resp.get();\n"
-        "    $rpc_name$(\n"
-        "        request,\n"
-        "        response,\n"
+        "    auto rpc_context = yb_call->IsLocalCall() ?\n"
         "        ::yb::rpc::RpcContext(\n"
-        "            std::move(yb_call),\n"
-        "            std::move(req),\n"
-        "            std::move(resp),\n"
-        "            metrics_[$metric_enum_key$]));\n"
+        "            std::static_pointer_cast<::yb::rpc::LocalYBInboundCall>(yb_call), \n"
+        "            metrics_[$metric_enum_key$]) :\n"
+        "        ::yb::rpc::RpcContext(\n"
+        "            yb_call, \n"
+        "            std::make_shared<$request$>(),\n"
+        "            std::make_shared<$response$>(),\n"
+        "            metrics_[$metric_enum_key$]);\n"
+        "    if (!rpc_context.responded()) {\n"
+        "      const auto* req = static_cast<const $request$*>(rpc_context.request_pb());\n"
+        "      auto* resp = static_cast<$response$*>(rpc_context.response_pb());\n"
+        "      $rpc_name$(req, resp, std::move(rpc_context));\n"
+        "    }\n"
         "    return;\n"
         "  }\n"
         "\n");
@@ -576,17 +575,11 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       subs->PushService(service);
 
       Print(printer, *subs,
-        "class $service_name$Proxy {\n"
+        "class $service_name$Proxy : public ::yb::rpc::Proxy {\n"
         " public:\n"
         "  $service_name$Proxy(const std::shared_ptr< ::yb::rpc::Messenger>\n"
         "                &messenger, const ::yb::Endpoint &endpoint);\n"
         "  ~$service_name$Proxy();\n"
-        "\n"
-        "  // Set the user information for the connection.\n"
-        "  void set_user_credentials(const ::yb::rpc::UserCredentials& user_credentials);\n"
-        "\n"
-        "  // Get the current user information for the connection.\n"
-        "  const ::yb::rpc::UserCredentials& user_credentials() const;\n"
         "\n"
         );
 
@@ -606,13 +599,10 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         );
         subs->Pop();
       }
-      Print(printer, *subs,
-      " private:\n"
-      "  ::yb::rpc::Proxy proxy_;\n"
-      "};\n");
       subs->Pop();
     }
     Print(printer, *subs,
+      "};\n"
       "\n"
       "$close_namespace$"
       "\n"
@@ -643,19 +633,10 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         "$service_name$Proxy::$service_name$Proxy(\n"
         "   const std::shared_ptr< ::yb::rpc::Messenger> &messenger,\n"
         "   const ::yb::Endpoint &remote)\n"
-        "  : proxy_(messenger, remote, \"$full_service_name$\") {\n"
+        "  : ::yb::rpc::Proxy(messenger, remote, \"$full_service_name$\") {\n"
         "}\n"
         "\n"
         "$service_name$Proxy::~$service_name$Proxy() {\n"
-        "}\n"
-        "\n"
-        "void $service_name$Proxy::set_user_credentials(\n"
-        "  const ::yb::rpc::UserCredentials& user_credentials) {\n"
-        "  proxy_.set_user_credentials(user_credentials);\n"
-        "}\n"
-        "\n"
-        "const ::yb::rpc::UserCredentials& $service_name$Proxy::user_credentials() const {\n"
-        "  return proxy_.user_credentials();\n"
         "}\n"
         "\n");
       for (int method_idx = 0; method_idx < service->method_count();
@@ -665,13 +646,13 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         Print(printer, *subs,
         "::yb::Status $service_name$Proxy::$rpc_name$(const $request$ &req, $response$ *resp,\n"
         "                                     ::yb::rpc::RpcController *controller) {\n"
-        "  return proxy_.SyncRequest(\"$rpc_name$\", req, resp, controller);\n"
+        "  return SyncRequest(\"$rpc_name$\", req, resp, controller);\n"
         "}\n"
         "\n"
         "void $service_name$Proxy::$rpc_name$Async(const $request$ &req,\n"
         "                     $response$ *resp, ::yb::rpc::RpcController *controller,\n"
         "                     const ::yb::rpc::ResponseCallback &callback) {\n"
-        "  proxy_.AsyncRequest(\"$rpc_name$\", req, resp, controller, callback);\n"
+        "  AsyncRequest(\"$rpc_name$\", req, resp, controller, callback);\n"
         "}\n"
         "\n");
         subs->Pop();

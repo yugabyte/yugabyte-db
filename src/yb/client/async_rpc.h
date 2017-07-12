@@ -24,8 +24,10 @@ class RemoteTabletServer;
 struct AsyncRpcMetrics {
   explicit AsyncRpcMetrics(const scoped_refptr<MetricEntity>& metric_entity);
 
-  scoped_refptr<Histogram> write_rpc_time;
-  scoped_refptr<Histogram> read_rpc_time;
+  scoped_refptr<Histogram> remote_write_rpc_time;
+  scoped_refptr<Histogram> remote_read_rpc_time;
+  scoped_refptr<Histogram> local_write_rpc_time;
+  scoped_refptr<Histogram> local_read_rpc_time;
   scoped_refptr<Histogram> time_to_send;
 };
 
@@ -82,6 +84,9 @@ class AsyncRpc : public rpc::Rpc {
   virtual void ProcessResponseFromTserver(Status status) = 0;
 
   virtual void MarkOpsAsFailed(const std::string& error_message);
+
+  // Is this a local call?
+  bool IsLocalCall() const;
 
   // Pointer back to the batcher. Processes the write response when it
   // completes, regardless of success or failure.

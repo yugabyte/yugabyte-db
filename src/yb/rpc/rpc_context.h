@@ -20,6 +20,7 @@
 #include <string>
 
 #include "yb/gutil/gscoped_ptr.h"
+#include "yb/rpc/local_call.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/service_if.h"
 #include "yb/util/ref_cnt_buffer.h"
@@ -57,10 +58,10 @@ class RpcContext {
   // Create an RpcContext. This is called only from generated code
   // and is not a public API.
   RpcContext(std::shared_ptr<YBInboundCall> call,
-             std::shared_ptr<const google::protobuf::Message> request_pb,
-             std::shared_ptr<const google::protobuf::Message> response_pb,
+             std::shared_ptr<google::protobuf::Message> request_pb,
+             std::shared_ptr<google::protobuf::Message> response_pb,
              RpcMethodMetrics metrics);
-  RpcContext(std::shared_ptr<YBInboundCall> call,
+  RpcContext(std::shared_ptr<LocalYBInboundCall> call,
              RpcMethodMetrics metrics);
 
   RpcContext(RpcContext&& rhs)
@@ -171,7 +172,7 @@ class RpcContext {
   std::string requestor_string() const;
 
   const google::protobuf::Message *request_pb() const { return request_pb_.get(); }
-  const google::protobuf::Message *response_pb() const { return response_pb_.get(); }
+  google::protobuf::Message *response_pb() const { return response_pb_.get(); }
 
   // Return an upper bound on the client timeout deadline. This does not
   // account for transmission delays between the client and the server.
@@ -186,13 +187,15 @@ class RpcContext {
   void Panic(const char* filepath, int line_number, const std::string& message)
     __attribute__((noreturn));
 
+  // Returns true if the call has been responded.
+  bool responded() const { return responded_; }
+
   // Closes connection that received this request.
   void CloseConnection();
  private:
-
   std::shared_ptr<YBInboundCall> call_;
   std::shared_ptr<const google::protobuf::Message> request_pb_;
-  std::shared_ptr<const google::protobuf::Message> response_pb_;
+  std::shared_ptr<google::protobuf::Message> response_pb_;
   RpcMethodMetrics metrics_;
   bool responded_ = false;
 };

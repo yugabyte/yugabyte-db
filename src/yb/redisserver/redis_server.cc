@@ -19,8 +19,8 @@ TAG_FLAG(redis_svc_queue_length, advanced);
 namespace yb {
 namespace redisserver {
 
-RedisServer::RedisServer(const RedisServerOptions& opts)
-    : RpcAndWebServerBase("RedisServer", opts, "yb.redisserver"), opts_(opts) {}
+RedisServer::RedisServer(const RedisServerOptions& opts, const tserver::TabletServer* tserver)
+    : RpcAndWebServerBase("RedisServer", opts, "yb.redisserver"), opts_(opts), tserver_(tserver) {}
 
 Status RedisServer::Start() {
   RETURN_NOT_OK(server::RpcAndWebServerBase::Init());
