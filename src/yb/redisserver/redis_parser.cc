@@ -16,8 +16,6 @@
 #include "yb/util/split.h"
 #include "yb/util/status.h"
 
-using namespace std::literals;
-
 namespace yb {
 namespace redisserver {
 
@@ -99,12 +97,23 @@ Status ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   return Status::OK();
 }
 
+// TODO: support MSET
+Status ParseMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
+  DCHECK_EQ("mset", to_lower_case(args[0]))
+      << "Parsing mset request where first arg is not mset.";
+  if (args.size() < 3 || args.size() % 2 == 0) {
+    return STATUS_SUBSTITUTE(InvalidArgument,
+        "An MSET request must have at least 3, odd number of arguments, found $0", args.size());
+  }
+  return STATUS(InvalidCommand, "MSET command not yet supported");
+}
+
 Status ParseHSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   DCHECK_EQ("hset", to_lower_case(args[0]))
       << "Parsing hset request where first arg is not hset.";
   if (args.size() != 4) {
     return STATUS_SUBSTITUTE(InvalidArgument,
-        "An HSet request must have exactly 4 arguments, found $0", args.size());
+        "An HSET request must have exactly 4 arguments, found $0", args.size());
   }
   const string string_key = args[1].ToString();
   const string string_subkey = args[2].ToString();
@@ -115,6 +124,42 @@ Status ParseHSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_HASH);
   op->mutable_request()->mutable_key_value()->add_subkey(string_subkey);
   op->mutable_request()->mutable_key_value()->add_value(string_value);
+  return Status::OK();
+}
+
+Status ParseHMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
+  DCHECK_EQ("hmset", to_lower_case(args[0]))
+      << "Parsing hmset request where first arg is not hmset.";
+  if (args.size() < 4 || args.size() % 2 == 1) {
+    return STATUS_SUBSTITUTE(InvalidArgument,
+        "An HMSET request must have at least 4, even number of arguments, found $0", args.size());
+  }
+  RETURN_NOT_OK(op->SetKey(args[1].ToString()));
+  op->mutable_request()->set_allocated_set_request(new RedisSetRequestPB());
+  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_HASH);
+  op->mutable_request()->mutable_key_value()->set_key(args[1].ToString());
+  for (int i = 2; i < args.size(); i += 2) {
+    op->mutable_request()->mutable_key_value()->add_subkey(args[i].ToString());
+    op->mutable_request()->mutable_key_value()->add_value(args[i+1].ToString());
+  }
+  return Status::OK();
+}
+
+Status ParseSAdd(YBRedisWriteOp *op, const RedisClientCommand& args) {
+  DCHECK_EQ("sadd", to_lower_case(args[0]))
+      << "Parsing sadd request where first arg is not sadd.";
+  if (args.size() < 3) {
+    return STATUS_SUBSTITUTE(InvalidArgument,
+        "An SADD request must have at least 3 arguments, found $0", args.size());
+  }
+  const string string_key = args[1].ToString();
+  RETURN_NOT_OK(op->SetKey(string_key));
+  op->mutable_request()->set_allocated_add_request(new RedisAddRequestPB());
+  op->mutable_request()->mutable_key_value()->set_key(string_key);
+  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_SET);
+  for (size_t i = 2; i < args.size(); i++) {
+    op->mutable_request()->mutable_key_value()->add_subkey(args[i].ToString());
+  }
   return Status::OK();
 }
 
@@ -225,7 +270,20 @@ Status ParseGet(YBRedisReadOp* op, const RedisClientCommand& args) {
         "A SET request must have non empty value field");
   }
   op->mutable_request()->mutable_key_value()->set_key(string_key);
+  op->mutable_request()->mutable_get_request()->set_request_type(
+      RedisGetRequestPB_GetRequestType_GET);
   return Status::OK();
+}
+
+// TODO: Support MGET
+Status ParseMGet(YBRedisReadOp* op, const RedisClientCommand& args) {
+  DCHECK_EQ("mget", to_lower_case(args[0]))
+      << "Parsing mget request where first arg is not mget.";
+  if (args.size() < 2) {
+    return STATUS_SUBSTITUTE(InvalidArgument,
+        "A MGET request must have at least two arguments, found $0", args.size());
+  }
+  return STATUS(InvalidCommand, "MGET command not yet supported");;
 }
 
 Status ParseHGet(YBRedisReadOp* op, const RedisClientCommand& args) {
@@ -242,6 +300,59 @@ Status ParseHGet(YBRedisReadOp* op, const RedisClientCommand& args) {
   op->mutable_request()->mutable_key_value()->set_key(string_key);
   op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_HASH);
   op->mutable_request()->mutable_key_value()->add_subkey(string_subkey);
+  op->mutable_request()->mutable_get_request()->set_request_type(
+      RedisGetRequestPB_GetRequestType_HGET);
+  return Status::OK();
+}
+
+Status ParseHMGet(YBRedisReadOp* op, const RedisClientCommand& args) {
+  DCHECK_EQ("hmget", to_lower_case(args[0]))
+      << "Parsing hmget request where first arg is not hmget.";
+  if (args.size() < 3) {
+    return STATUS_SUBSTITUTE(InvalidArgument,
+        "A HMGET request must have at least three arguments, found $0", args.size());
+  }
+  op->mutable_request()->set_allocated_get_request(new RedisGetRequestPB());
+  RETURN_NOT_OK(op->SetKey(args[1].ToString()));
+  op->mutable_request()->mutable_key_value()->set_key(args[1].ToString());
+  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_HASH);
+  op->mutable_request()->mutable_get_request()->set_request_type(
+      RedisGetRequestPB_GetRequestType_HMGET);
+  for (int i = 2; i < args.size(); i++) {
+    op->mutable_request()->mutable_key_value()->add_subkey(args[i].ToString());
+  }
+  return Status::OK();
+}
+
+Status ParseHGetAll(YBRedisReadOp* op, const RedisClientCommand& args) {
+  DCHECK_EQ("hgetall", to_lower_case(args[0]))
+      << "Parsing hgetall request where first arg is not hgetall.";
+  if (args.size() != 2) {
+    return STATUS_SUBSTITUTE(InvalidArgument,
+        "A HGETALL request must have exactly two arguments, found $0", args.size());
+  }
+  op->mutable_request()->set_allocated_get_request(new RedisGetRequestPB());
+  RETURN_NOT_OK(op->SetKey(args[1].ToString()));
+  op->mutable_request()->mutable_key_value()->set_key(args[1].ToString());
+  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_HASH);
+  op->mutable_request()->mutable_get_request()->set_request_type(
+      RedisGetRequestPB_GetRequestType_HGETALL);
+  return Status::OK();
+}
+
+Status ParseSMembers(YBRedisReadOp* op, const RedisClientCommand& args) {
+  DCHECK_EQ("smembers", to_lower_case(args[0]))
+      << "Parsing smembers request where first arg is not smembers.";
+  if (args.size() != 2) {
+    return STATUS_SUBSTITUTE(InvalidArgument,
+        "A SMEMBERS request must have exactly two arguments, found $0", args.size());
+  }
+  op->mutable_request()->set_allocated_get_request(new RedisGetRequestPB());
+  RETURN_NOT_OK(op->SetKey(args[1].ToString()));
+  op->mutable_request()->mutable_key_value()->set_key(args[1].ToString());
+  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_SET);
+  op->mutable_request()->mutable_get_request()->set_request_type(
+      RedisGetRequestPB_GetRequestType_SMEMBERS);
   return Status::OK();
 }
 

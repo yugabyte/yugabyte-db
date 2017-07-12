@@ -100,8 +100,21 @@ message RedisSetRequestPB {
   optional RedisWriteMode mode = 3 [ default = REDIS_WRITEMODE_UPSERT ];
 }
 
-// GET, HGET, MGET, HMGET, HGETALL
+// GET, HGET, MGET, HMGET, HGETALL, SMEMBERS
 message RedisGetRequestPB {
+
+  enum GetRequestType {
+    GET = 1;
+    HGET = 2;
+    MGET = 3;
+    HMGET = 4;
+    HGETALL = 5;
+    SMEMBERS = 6;
+    UNKNOWN = 99;
+  }
+
+  optional GetRequestType request_type = 1 [ default = GET ];
+
 }
 
 // GETSET
@@ -193,16 +206,11 @@ message RedisResponsePB {
     int64 int_response = 2;
     bytes string_response = 3;
     RedisArrayPB array_response = 4;
-    RedisMapPB map_response = 5;
   }
 
   optional bytes error_message = 6;
 }
 
 message RedisArrayPB {
-  repeated bytes elements = 1;
-}
-
-message RedisMapPB {
   repeated bytes elements = 1;
 }

@@ -23,7 +23,10 @@ constexpr size_t kMaxBufferSize = 512_MB;
 constexpr int64_t kNoneTtl = -1;
 
 CHECKED_STATUS ParseSet(yb::client::YBRedisWriteOp *op, const RedisClientCommand& args);
+CHECKED_STATUS ParseMSet(yb::client::YBRedisWriteOp *op, const RedisClientCommand& args);
 CHECKED_STATUS ParseHSet(yb::client::YBRedisWriteOp *op, const RedisClientCommand& args);
+CHECKED_STATUS ParseHMSet(yb::client::YBRedisWriteOp *op, const RedisClientCommand& args);
+CHECKED_STATUS ParseSAdd(yb::client::YBRedisWriteOp *op, const RedisClientCommand& args);
 CHECKED_STATUS ParseGetSet(yb::client::YBRedisWriteOp *op, const RedisClientCommand& args);
 CHECKED_STATUS ParseAppend(yb::client::YBRedisWriteOp* op, const RedisClientCommand& args);
 CHECKED_STATUS ParseDel(yb::client::YBRedisWriteOp* op, const RedisClientCommand& args);
@@ -31,7 +34,11 @@ CHECKED_STATUS ParseSetRange(yb::client::YBRedisWriteOp* op, const RedisClientCo
 CHECKED_STATUS ParseIncr(yb::client::YBRedisWriteOp* op, const RedisClientCommand& args);
 
 CHECKED_STATUS ParseGet(yb::client::YBRedisReadOp* op, const RedisClientCommand& args);
+CHECKED_STATUS ParseMGet(yb::client::YBRedisReadOp* op, const RedisClientCommand& args);
 CHECKED_STATUS ParseHGet(yb::client::YBRedisReadOp *op, const RedisClientCommand& args);
+CHECKED_STATUS ParseHMGet(yb::client::YBRedisReadOp* op, const RedisClientCommand& args);
+CHECKED_STATUS ParseHGetAll(yb::client::YBRedisReadOp* op, const RedisClientCommand& args);
+CHECKED_STATUS ParseSMembers(yb::client::YBRedisReadOp* op, const RedisClientCommand& args);
 CHECKED_STATUS ParseStrLen(yb::client::YBRedisReadOp* op, const RedisClientCommand& args);
 CHECKED_STATUS ParseExists(yb::client::YBRedisReadOp* op, const RedisClientCommand& args);
 CHECKED_STATUS ParseGetRange(yb::client::YBRedisReadOp* op, const RedisClientCommand& args);

@@ -55,12 +55,19 @@ DEFINE_int32(redis_service_yb_client_timeout_millis, 60000,
 
 #define REDIS_COMMANDS \
     ((get, Get, 2, READ)) \
+    ((mget, MGet, -2, READ)) \
     ((hget, HGet, 3, READ)) \
+    ((hmget, HMGet, -3, READ)) \
+    ((hgetall, HGetAll, 2, READ)) \
+    ((smembers, SMembers, 2, READ)) \
     ((strlen, StrLen, 2, READ)) \
     ((exists, Exists, 2, READ)) \
     ((getrange, GetRange, 4, READ)) \
     ((set, Set, -3, WRITE)) \
+    ((mset, MSet, -3, WRITE)) \
     ((hset, HSet, 4, WRITE)) \
+    ((hmset, HMSet, -4, WRITE)) \
+    ((sadd, SAdd, -3, WRITE)) \
     ((getset, GetSet, 3, WRITE)) \
     ((append, Append, 3, WRITE)) \
     ((del, Del, 2, WRITE)) \

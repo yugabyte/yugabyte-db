@@ -28,7 +28,7 @@ DEFINE_uint64(redis_max_concurrent_commands, 1,
 DEFINE_uint64(redis_max_batch, 1, "Max number of redis commands that forms batch");
 
 
-using namespace std::literals;
+using namespace std::literals; // NOLINT
 using namespace std::placeholders;
 
 namespace yb {
@@ -204,6 +204,15 @@ util::RefCntBuffer SerializeResponseBuffer(const RedisResponsePB& redis_response
 
   if (redis_response.has_int_response()) {
     return util::RefCntBuffer(EncodeAsInteger(redis_response.int_response()));
+  }
+
+  if (redis_response.has_array_response()) {
+    const auto& resp_array = redis_response.array_response().elements();
+    vector<string> responses;
+    for (const auto& elt : resp_array) {
+      responses.push_back(elt == "" ? kNilResponse : EncodeAsBulkString(elt));
+    }
+    return util::RefCntBuffer(EncodeAsArrays(responses));
   }
 
   static util::RefCntBuffer ok_response(EncodeAsSimpleString("OK"));

@@ -32,6 +32,7 @@ string ValueTypeToStr(ValueType value_type) {
     case ValueType::kHybridTime: return "HybridTime";
     case ValueType::kUInt16Hash: return "UInt16Hash";
     case ValueType::kObject: return "Object";
+    case ValueType::kRedisSet: return "RedisSet";
     case ValueType::kArray: return "Array";
     case ValueType::kArrayIndex: return "ArrayIndex";
     case ValueType::kTombstone: return "Tombstone";

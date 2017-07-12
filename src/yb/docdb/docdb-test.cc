@@ -391,13 +391,13 @@ TEST_F(DocDBTest, SetPrimitiveYQL) {
   SetupRocksDBState(doc_key.Encode(), InitMarkerBehavior::OPTIONAL);
   AssertDocDbDebugDumpStrEq(
       R"#(
-          SubDocKey(DocKey([], ["mydockey", 123456]), [HT(p=1000)]) -> DEL
+          SubDocKey(DocKey([], ["mydockey", 123456]), [HT(p=1000)]) -> {}
           SubDocKey(DocKey([], ["mydockey", 123456]), ["a", "1"; HT(p=4000)]) -> "3"
           SubDocKey(DocKey([], ["mydockey", 123456]), ["a", "1"; HT(p=1000, w=1)]) -> "1"
           SubDocKey(DocKey([], ["mydockey", 123456]), ["a", "2"; HT(p=2000)]) -> 11
           SubDocKey(DocKey([], ["mydockey", 123456]), ["a", "2"; HT(p=1000, w=2)]) -> "2"
           SubDocKey(DocKey([], ["mydockey", 123456]), ["a", "3"; HT(p=4000, w=1)]) -> "4"
-          SubDocKey(DocKey([], ["mydockey", 123456]), ["b"; HT(p=3000)]) -> DEL
+          SubDocKey(DocKey([], ["mydockey", 123456]), ["b"; HT(p=3000)]) -> {}
           SubDocKey(DocKey([], ["mydockey", 123456]), ["b", "c", "1"; HT(p=1000, w=3)]) -> "3"
           SubDocKey(DocKey([], ["mydockey", 123456]), ["b", "d", "1"; HT(p=1000, w=4)]) -> "5"
           SubDocKey(DocKey([], ["mydockey", 123456]), ["b", "d", "2"; HT(p=1000, w=5)]) -> "6"
@@ -611,7 +611,7 @@ TEST_F(DocDBTest, ListInsertAndGetTest) {
 
   AssertDocDbDebugDumpStrEq(
         R"#(
-SubDocKey(DocKey([], ["list_test", 231]), [HT(p=0, l=100)]) -> DEL
+SubDocKey(DocKey([], ["list_test", 231]), [HT(p=0, l=100)]) -> {}
 SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(3); HT(p=0, l=200)]) -> 1
 SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(4); HT(p=0, l=200, w=1)]) -> "3"
 SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(5); HT(p=0, l=200, w=2)]) -> 2
@@ -630,7 +630,7 @@ SubDocKey(DocKey([], ["list_test", 231]), ["other"; HT(p=0, l=100, w=3)]) -> "ot
 
 AssertDocDbDebugDumpStrEq(
         R"#(
-SubDocKey(DocKey([], ["list_test", 231]), [HT(p=0, l=100)]) -> DEL
+SubDocKey(DocKey([], ["list_test", 231]), [HT(p=0, l=100)]) -> {}
 SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(3); HT(p=0, l=200)]) -> 1
 SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(4); HT(p=0, l=200, w=1)]) -> "3"
 SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(5); HT(p=0, l=200, w=2)]) -> 2
@@ -684,7 +684,7 @@ SubDocKey(DocKey([], ["list_test", 231]), ["other"; HT(p=0, l=100, w=3)]) -> "ot
 
   AssertDocDbDebugDumpStrEq(
         R"#(
-SubDocKey(DocKey([], ["list_test", 231]), [HT(p=0, l=100)]) -> DEL
+SubDocKey(DocKey([], ["list_test", 231]), [HT(p=0, l=100)]) -> {}
 SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(3); HT(p=0, l=200)]) -> 1
 SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(4); HT(p=0, l=200, w=1)]) -> "3"
 SubDocKey(DocKey([], ["list_test", 231]), ["list1", ArrayIndex(5); HT(p=0, l=200, w=2)]) -> 2

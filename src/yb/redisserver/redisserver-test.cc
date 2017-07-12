@@ -100,6 +100,27 @@ class TestRedisService : public RedisTableTestBase {
     );
   }
 
+  // Note: expected empty string will check for null instead
+  void DoRedisTestArray(int line,
+      const std::vector<std::string>& command,
+      const std::vector<std::string>& expected) {
+    DoRedisTest(line, command, cpp_redis::reply::type::array,
+        [line, expected](const RedisReply& reply) {
+          const auto& replies = reply.as_array();
+          ASSERT_EQ(expected.size(), replies.size()) << "Originator: " << __FILE__ << ":" << line;
+          for (size_t i = 0; i < expected.size(); i++) {
+            if (expected[i] == "") {
+              ASSERT_TRUE(replies[i].is_null())
+                  << "Originator: " << __FILE__ << ":" << line;
+            } else {
+              ASSERT_EQ(expected[i],  replies[i].as_string())
+                  << "Originator: " << __FILE__ << ":" << line;
+            }
+          }
+        }
+    );
+  }
+
   void DoRedisTestNull(int line,
                        const std::vector<std::string>& command) {
     DoRedisTest(line, command, cpp_redis::reply::type::null,
@@ -268,7 +289,7 @@ void TestRedisService::DoRedisTest(int line,
                                    const Callback& callback) {
   expected_callbacks_called_++;
   test_client_.send(command, [this, line, reply_type, callback] (RedisReply& reply) {
-    LOG(INFO) << "Received response : " << reply.as_string() << ", of type: "
+    VLOG(4) << "Received response : " << reply.as_string() << ", of type: "
               << util::to_underlying(reply.get_type());
     num_callbacks_called_++;
     ASSERT_EQ(reply_type, reply.get_type()) << "Originator: " << __FILE__ << ":" << line;
@@ -548,7 +569,7 @@ TEST_F(TestRedisService, TestUsingOpenSourceClient) {
   DoRedisTestOk(__LINE__, {"SET", "hello", "42"});
 
   DoRedisTest(__LINE__, {"DECRBY", "hello", "12"},
-      cpp_redis::reply::type::error,
+      cpp_redis::reply::type::error, // TODO: fix error handling
       [](const RedisReply &reply) {
         // TBD: ASSERT_EQ(30, reply.as_integer());
       });
@@ -594,11 +615,25 @@ TEST_F(TestRedisService, TestTtl) {
 }
 
 TEST_F(TestRedisService, TestAdditionalCommands) {
-  DoRedisTestOk(__LINE__, {"HSET", "map_key", "subkey", "42"});
+
+  DoRedisTestInt(__LINE__, {"HSET", "map_key", "subkey1", "42"}, 1);
+  DoRedisTestInt(__LINE__, {"HSET", "map_key", "subkey2", "12"}, 1);
 
   SyncClient();
 
-  DoRedisTestBulkString(__LINE__, {"HGET", "map_key", "subkey"}, "42");
+  // This depends on the flag emulate_redis_responses
+  // TODO: test both settings of the flag, not just default value
+  DoRedisTestInt(__LINE__, {"HSET", "map_key", "subkey1", "41"}, 0);
+
+  SyncClient();
+
+  DoRedisTestBulkString(__LINE__, {"HGET", "map_key", "subkey1"}, "41");
+
+  DoRedisTestArray(__LINE__, {"HMGET", "map_key", "subkey1", "subkey3", "subkey2"},
+      {"41", "", "12"});
+
+  DoRedisTestArray(__LINE__, {"HGETALL", "map_key"}, {"subkey1", "41", "subkey2", "12"});
+
   DoRedisTestOk(__LINE__, {"SET", "key1", "30"});
 
   SyncClient();
@@ -648,6 +683,23 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   DoRedisTestInt(__LINE__, {"EXISTS", "key2"}, 0);
   DoRedisTestInt(__LINE__, {"EXISTS", "key3"}, 1);
   DoRedisTestBulkString(__LINE__, {"GETRANGE", "key1", "1", "-1"}, "axyz3tra");
+
+  DoRedisTestOk(__LINE__, {"HMSET", "map_key", "subkey5", "19", "subkey6", "14"});
+
+  SyncClient();
+
+  DoRedisTestArray(__LINE__, {"HGETALL", "map_key"},
+      {"subkey1", "41", "subkey2", "12", "subkey5", "19", "subkey6", "14"});
+
+  DoRedisTestInt(__LINE__, {"SADD", "set1", "val1"}, 1);
+
+  SyncClient();
+
+  DoRedisTestInt(__LINE__, {"SADD", "set1", "val2", "val1", "val3"}, 2);
+
+  SyncClient();
+
+  DoRedisTestArray(__LINE__, {"SMEMBERS", "set1"}, {"val1", "val2", "val3"});
 
   // Commands are pipelined and only sent when client.commit() is called.
   // sync_commit() waits until all responses are received.

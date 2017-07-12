@@ -263,17 +263,19 @@ yb::Status GetSubDocument(rocksdb::Iterator *iterator,
     bool *doc_found,
     HybridTime scan_ts = HybridTime::kMax,
     MonoDelta table_ttl = Value::kMaxTtl,
-    const std::vector<PrimitiveValue>* projection = nullptr);
+    const std::vector<PrimitiveValue>* projection = nullptr,
+    bool return_type_only = false);
 
 // This version of GetSubDocument creates a new iterator every time. This is not recommended for
 // multiple calls to subdocs that are sequential or near each other, in eg. doc_rowwise_iterator.
 yb::Status GetSubDocument(rocksdb::DB *db,
-                          const SubDocKey& subdocument_key,
-                          SubDocument *result,
-                          bool *doc_found,
-                          const rocksdb::QueryId query_id,
-                          HybridTime scan_ts = HybridTime::kMax,
-                          MonoDelta table_ttl = Value::kMaxTtl);
+    const SubDocKey& subdocument_key,
+    SubDocument *result,
+    bool *doc_found,
+    const rocksdb::QueryId query_id,
+    HybridTime scan_ts = HybridTime::kMax,
+    MonoDelta table_ttl = Value::kMaxTtl,
+    bool return_type_only = false);
 
 // Create a debug dump of the document database. Tries to decode all keys/values despite failures.
 // Reports all errors to the output stream and returns the status of the first failed operation,

@@ -90,7 +90,11 @@ class SubDocument : public PrimitiveValue {
     return *reinterpret_cast<ArrayContainer*>(complex_data_structure_);
   }
 
-  // Interpret the SubDocument as a list.
+  // Interpret the SubDocument as a RedisSet.
+  // Assume current subdocument is of map type (kObject type)
+  CHECKED_STATUS ConvertToRedisSet();
+
+  // Interpret the SubDocument as an Array.
   // Assume current subdocument is of map type (kObject type)
   CHECKED_STATUS ConvertToArray();
 
@@ -190,7 +194,8 @@ class SubDocument : public PrimitiveValue {
   void EnsureContainerAllocated();
 
   bool container_allocated() const {
-    assert(type_ == ValueType::kObject || type_ == ValueType::kArray);
+    assert(
+        type_ == ValueType::kObject || type_ == ValueType::kRedisSet || type_ == ValueType::kArray);
     return complex_data_structure_ != nullptr;
   }
 
@@ -199,7 +204,7 @@ class SubDocument : public PrimitiveValue {
   }
 
   bool has_valid_object_container() const {
-    return type_ == ValueType::kObject && has_valid_container();
+    return (type_ == ValueType::kObject || type_ == ValueType::kRedisSet) && has_valid_container();
   }
 
   bool has_valid_array_container() const {

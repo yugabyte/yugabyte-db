@@ -58,6 +58,7 @@ enum class ValueType : char {
   kTtl = 't',  // ASCII code 116
 
   kObject = '{',  // ASCII code 123
+  kRedisSet = '(', // ASCII code 40
 
   // This is used for sanity checking. TODO: rename to kInvalid since this is an enum class.
   kInvalidValueType = 127
@@ -75,7 +76,8 @@ constexpr inline bool IsPrimitiveValueType(const ValueType value_type) {
   return kMinPrimitiveValueType <= value_type && value_type <= kMaxPrimitiveValueType &&
          value_type != ValueType::kObject &&
          value_type != ValueType::kArray &&
-         value_type != ValueType::kTombstone;
+         value_type != ValueType::kTombstone &&
+         value_type != ValueType::kRedisSet;
 }
 
 // Decode the first byte of the given slice as a ValueType.

@@ -33,6 +33,7 @@ using yb::util::FastDecodeSignedVarInt;
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED; \
     case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED; \
     case ValueType::kObject: FALLTHROUGH_INTENDED; \
+    case ValueType::kRedisSet: FALLTHROUGH_INTENDED; \
     case ValueType::kTtl: FALLTHROUGH_INTENDED; \
     case ValueType::kTombstone: \
       break
@@ -102,6 +103,8 @@ string PrimitiveValue::ToString() const {
       return Substitute("SystemColumnId($0)", column_id_val_);
     case ValueType::kObject:
       return "{}";
+    case ValueType::kRedisSet:
+      return "()";
     case ValueType::kTombstone:
       return "DEL";
     case ValueType::kArray:
@@ -211,11 +214,12 @@ string PrimitiveValue::ToValue() const {
   string result;
   result.push_back(static_cast<char>(type_));
   switch (type_) {
-    case ValueType::kNull: return result;
-    case ValueType::kFalse: return result;
-    case ValueType::kTrue: return result;
-    case ValueType::kTombstone: return result;
-    case ValueType::kObject: return result;
+    case ValueType::kNull: FALLTHROUGH_INTENDED;
+    case ValueType::kFalse: FALLTHROUGH_INTENDED;
+    case ValueType::kTrue: FALLTHROUGH_INTENDED;
+    case ValueType::kTombstone: FALLTHROUGH_INTENDED;
+    case ValueType::kObject: FALLTHROUGH_INTENDED;
+    case ValueType::kRedisSet: return result;
 
     case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kString:
@@ -523,8 +527,10 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
     case ValueType::kTrue: FALLTHROUGH_INTENDED;
     case ValueType::kObject: FALLTHROUGH_INTENDED;
+    case ValueType::kRedisSet: FALLTHROUGH_INTENDED;
     case ValueType::kTombstone:
       type_ = value_type;
+      complex_data_structure_ = nullptr;
       return Status::OK();
 
     case ValueType::kString:

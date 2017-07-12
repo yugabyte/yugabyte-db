@@ -73,7 +73,7 @@ class InternalDocIterator {
   // the iterator is positioned inside an existing subdocument.
   void AppendSubkeyInExistingSubDoc(const PrimitiveValue &subkey) {
     CHECK(subdoc_exists());
-    CHECK_EQ(ValueType::kObject, subdoc_type_);
+    CHECK(ValueType::kObject == subdoc_type_ || ValueType::kRedisSet == subdoc_type_);
     AppendToPrefix(subkey);
   }
 

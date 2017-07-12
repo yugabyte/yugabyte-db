@@ -17,6 +17,8 @@
 
 #include "yb/rpc/reactor.h"
 
+#include <ev++.h>
+
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <stdlib.h>
@@ -27,8 +29,6 @@
 #include <functional>
 #include <mutex>
 #include <string>
-
-#include <ev++.h>
 
 #include <glog/logging.h>
 
@@ -254,10 +254,10 @@ void Reactor::CleanWaitingConnections() {
 void Reactor::CheckReadyToStop() {
   DCHECK(IsCurrentThread());
 
-  LOG(INFO) << "Check ready to stop: " << this << ", " << waiting_conns_.size();
+  VLOG(4) << "Check ready to stop: " << this << ", " << waiting_conns_.size();
 
   if (waiting_conns_.empty()) {
-    LOG(INFO) << "Reactor ready to stop, breaking loop" << this;
+    VLOG(4) << "Reactor ready to stop, breaking loop" << this;
     loop_.break_loop(); // break the epoll loop and terminate the thread
   }
 }

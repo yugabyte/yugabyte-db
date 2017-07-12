@@ -25,7 +25,8 @@ SubDocument::SubDocument(ValueType value_type) : PrimitiveValue(value_type) {
 
 SubDocument::~SubDocument() {
   switch (type_) {
-    case ValueType::kObject:
+    case ValueType::kObject: FALLTHROUGH_INTENDED;
+    case ValueType::kRedisSet:
       if (has_valid_container()) {
         delete &object_container();
       }
@@ -99,6 +100,18 @@ bool SubDocument::operator ==(const SubDocument& other) const {
   }
   // We'll get here if both container pointers are null.
   return true;
+}
+
+Status SubDocument::ConvertToRedisSet() {
+  if (type_ != ValueType::kObject) {
+    return STATUS_SUBSTITUTE(
+        InvalidArgument, "Expected kObject Subdocument, found $0", ValueTypeToStr(type_));
+  }
+  if (!has_valid_object_container()) {
+    return STATUS(InvalidArgument, "Subdocument doesn't have valid object container");
+  }
+  type_ = ValueType::kRedisSet;
+  return Status::OK();
 }
 
 Status SubDocument::ConvertToArray() {
@@ -246,6 +259,23 @@ void SubDocumentToStreamInternal(ostream& out,
         }
       }
       out << "]";
+      break;
+    }
+    case ValueType::kRedisSet: {
+      out << "(";
+      if (subdoc.container_allocated()) {
+        const auto& keys = subdoc.object_container();
+        for (auto iter = keys.begin(); iter != keys.end(); iter++) {
+          if (iter != keys.begin()) {
+            out << ",";
+          }
+          out << "\n" << string(indent + 2, ' ') << (*iter).first.ToString();
+        }
+        if (!keys.empty()) {
+          out << "\n" << string(indent, ' ');
+        }
+      }
+      out << ")";
       break;
     }
     default:

@@ -138,7 +138,8 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
     // single-shard txn.)
     if (use_init_marker == InitMarkerBehavior::OPTIONAL || doc_iter->subdoc_exists()) {
       if (use_init_marker == InitMarkerBehavior::REQUIRED &&
-          doc_iter->subdoc_type() != ValueType::kObject) {
+          doc_iter->subdoc_type() != ValueType::kObject &&
+          doc_iter->subdoc_type() != ValueType::kRedisSet) {
         // We raise this error only if init markers are mandatory.
         return STATUS_SUBSTITUTE(IllegalState,
                                  "Cannot set values inside a subdocument of type $0",
@@ -251,7 +252,7 @@ Status DocWriteBatch::ExtendSubDocument(
     const SubDocument& value,
     InitMarkerBehavior use_init_marker,
     MonoDelta ttl) {
-  if (value.value_type() == ValueType::kObject) {
+  if (value.value_type() == ValueType::kObject || value.value_type() == ValueType::kRedisSet) {
     const auto& map = value.object_container();
     for (const auto& ent : map) {
       DocPath child_doc_path = doc_path;
@@ -278,7 +279,7 @@ Status DocWriteBatch::InsertSubDocument(
     MonoDelta ttl) {
   if (!value.IsPrimitive() && value.value_type() != ValueType::kTombstone) {
     RETURN_NOT_OK(SetPrimitive(
-        doc_path, Value(PrimitiveValue(ValueType::kTombstone)), use_init_marker));
+        doc_path, Value(PrimitiveValue(value.value_type())), use_init_marker));
   }
   return ExtendSubDocument(doc_path, value, use_init_marker, ttl);
 }
@@ -740,12 +741,14 @@ yb::Status BuildSubDocument(
       // We have found some key that matches our entire subdocument_key, i.e. we didn't skip ahead
       // to a lower level key (with optional object init markers).
       if (doc_value.value_type() == ValueType::kObject ||
+          doc_value.value_type() == ValueType::kRedisSet ||
           doc_value.value_type() == ValueType::kTombstone) {
         if (low_ts < write_time) {
           low_ts = write_time;
         }
-        if (doc_value.value_type() == ValueType::kObject) {
-          *subdocument = SubDocument();
+        if (doc_value.value_type() == ValueType::kObject ||
+            doc_value.value_type() == ValueType::kRedisSet) {
+          *subdocument = SubDocument(doc_value.value_type());
         }
         SeekPastSubKey(found_key, iter);
         continue;
@@ -769,7 +772,8 @@ yb::Status BuildSubDocument(
       // The document was not found in this level (maybe a tombstone was encountered).
       continue;
     }
-    if (subdocument->value_type() != ValueType::kObject) {
+    if (subdocument->value_type() != ValueType::kObject &&
+        subdocument->value_type() != ValueType::kRedisSet) {
       *subdocument = SubDocument();
     }
 
@@ -785,15 +789,17 @@ yb::Status BuildSubDocument(
 }  // namespace
 
 yb::Status GetSubDocument(rocksdb::DB *db,
-                          const SubDocKey& subdocument_key,
-                          SubDocument *result,
-                          bool *doc_found,
-                          const rocksdb::QueryId query_id,
-                          HybridTime scan_ht,
-                          MonoDelta table_ttl) {
+    const SubDocKey& subdocument_key,
+    SubDocument *result,
+    bool *doc_found,
+    const rocksdb::QueryId query_id,
+    HybridTime scan_ht,
+    MonoDelta table_ttl,
+    bool return_type_only) {
   auto iter = CreateRocksDBIterator(db, BloomFilterMode::USE_BLOOM_FILTER, query_id);
   iter->SeekToFirst();
-  return GetSubDocument(iter.get(), subdocument_key, result, doc_found, scan_ht, table_ttl);
+  return GetSubDocument(iter.get(), subdocument_key, result, doc_found, scan_ht, table_ttl,
+      nullptr, return_type_only);
 }
 
 yb::Status GetSubDocument(
@@ -803,14 +809,14 @@ yb::Status GetSubDocument(
     bool *doc_found,
     HybridTime scan_ht,
     MonoDelta table_ttl,
-    const vector<PrimitiveValue>* projection) {
+    const vector<PrimitiveValue>* projection,
+    bool return_type_only) {
   *doc_found = false;
   DOCDB_DEBUG_LOG("GetSubDocument for key $0 @ $1", subdocument_key.ToString(),
       scan_ht.ToDebugString());
   DocHybridTime max_deleted_ts(DocHybridTime::kMin);
 
   SubDocKey found_subdoc_key;
-  Value doc_value;
 
   DCHECK(!subdocument_key.has_hybrid_time());
   KeyBytes key_bytes = subdocument_key.doc_key().Encode();
@@ -830,21 +836,34 @@ yb::Status GetSubDocument(
   // By this point key_bytes is the encoded representation of the DocKey and all the subkeys of
   // subdocument_key.
 
+  // Check for init-marker / tombstones at the top level, update max_deleted_ts.
+  DocHybridTime overwrite_ts;
+  RETURN_NOT_OK(FindLastWriteTime(key_bytes, scan_ht, rocksdb_iter, &overwrite_ts));
+  Value doc_value = Value(PrimitiveValue(ValueType::kInvalidValueType));
+  if (max_deleted_ts < overwrite_ts) {
+    max_deleted_ts = overwrite_ts;
+    if (rocksdb_iter->key().starts_with(key_bytes.AsSlice())) {
+      RETURN_NOT_OK(doc_value.Decode(rocksdb_iter->value()));
+    }
+  }
+
+  if (return_type_only) {
+    *doc_found = doc_value.value_type() != ValueType::kInvalidValueType;
+    *result = SubDocument(doc_value.primitive_value());
+    return Status::OK();
+  }
+
   if (projection == nullptr) {
-    // This is only to initialize the iterator properly for BuildSubDocument call.
-    SeekForward(key_bytes, rocksdb_iter);
     *result = SubDocument(ValueType::kInvalidValueType);
     RETURN_NOT_OK(BuildSubDocument(rocksdb_iter, subdocument_key, result, scan_ht, max_deleted_ts,
         table_ttl));
     *doc_found = result->value_type() != ValueType::kInvalidValueType;
+    if (*doc_found && doc_value.value_type() == ValueType::kRedisSet) {
+      RETURN_NOT_OK(result->ConvertToRedisSet());
+    }
+    // TODO: Also could handle lists here.
 
     return Status::OK();
-  }
-  // Check for init-marker / tombstones at the top level, update max_deleted_ts.
-  DocHybridTime overwrite_ts;
-  RETURN_NOT_OK(FindLastWriteTime(key_bytes, scan_ht, rocksdb_iter, &overwrite_ts));
-  if (max_deleted_ts < overwrite_ts) {
-    max_deleted_ts = overwrite_ts;
   }
   // For each subkey in the projection, build subdocument.
   *result = SubDocument();
