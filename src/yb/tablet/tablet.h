@@ -138,6 +138,8 @@ class Tablet : public AbstractTablet {
 
   void Shutdown();
 
+  CHECKED_STATUS ImportData(const std::string& source_dir);
+
   // Decode the Write (insert/mutate) operations from within a user's request.
   // Either fills in tx_state->row_ops or tx_state->kv_write_batch depending on TableType.
   CHECKED_STATUS DecodeWriteOperations(const Schema* client_schema,

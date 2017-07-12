@@ -51,42 +51,40 @@ class TabletServiceImpl : public TabletServerServiceIf {
  public:
   explicit TabletServiceImpl(TabletServerIf* server);
 
-  virtual void Write(const WriteRequestPB* req, WriteResponsePB* resp,
-                     rpc::RpcContext context) override;
+  void Write(const WriteRequestPB* req, WriteResponsePB* resp, rpc::RpcContext context) override;
 
-  virtual void Read(
-      const ReadRequestPB* req, ReadResponsePB* resp, rpc::RpcContext context) override;
+  void Read(const ReadRequestPB* req, ReadResponsePB* resp, rpc::RpcContext context) override;
 
-  virtual void Scan(const ScanRequestPB* req,
-                    ScanResponsePB* resp,
-                    rpc::RpcContext context) override;
+  void Scan(const ScanRequestPB* req, ScanResponsePB* resp, rpc::RpcContext context) override;
 
-  virtual void NoOp(const NoOpRequestPB* req,
-                    NoOpResponsePB* resp,
-                    rpc::RpcContext context) override;
+  void NoOp(const NoOpRequestPB* req, NoOpResponsePB* resp, rpc::RpcContext context) override;
 
-  virtual void ScannerKeepAlive(const ScannerKeepAliveRequestPB *req,
-                                ScannerKeepAliveResponsePB *resp,
-                                rpc::RpcContext context) override;
+  void ScannerKeepAlive(const ScannerKeepAliveRequestPB *req,
+                        ScannerKeepAliveResponsePB *resp,
+                        rpc::RpcContext context) override;
 
-  virtual void ListTablets(const ListTabletsRequestPB* req,
-                           ListTabletsResponsePB* resp,
-                           rpc::RpcContext context) override;
+  void ListTablets(const ListTabletsRequestPB* req,
+                   ListTabletsResponsePB* resp,
+                   rpc::RpcContext context) override;
 
-  virtual void ListTabletsForTabletServer(const ListTabletsForTabletServerRequestPB* req,
-                                          ListTabletsForTabletServerResponsePB* resp,
-                                          rpc::RpcContext context) override;
+  void ListTabletsForTabletServer(const ListTabletsForTabletServerRequestPB* req,
+                                  ListTabletsForTabletServerResponsePB* resp,
+                                  rpc::RpcContext context) override;
 
-  virtual void GetLogLocation(
+  void GetLogLocation(
       const GetLogLocationRequestPB* req,
       GetLogLocationResponsePB* resp,
       rpc::RpcContext context) override;
 
-  virtual void Checksum(const ChecksumRequestPB* req,
-                        ChecksumResponsePB* resp,
-                        rpc::RpcContext context) override;
+  void Checksum(const ChecksumRequestPB* req,
+                ChecksumResponsePB* resp,
+                rpc::RpcContext context) override;
 
-  virtual void Shutdown() override;
+  void ImportData(const ImportDataRequestPB* req,
+                  ImportDataResponsePB* resp,
+                  rpc::RpcContext context) override;
+
+  void Shutdown() override;
 
  private:
   CHECKED_STATUS HandleNewScanRequest(tablet::TabletPeer* tablet_peer,

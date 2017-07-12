@@ -47,11 +47,13 @@
 #include "table/plain_table_factory.h"
 #include "table/meta_blocks.h"
 #include "table/get_context.h"
-#include "util/coding.h"
-#include "util/file_reader_writer.h"
-#include "util/logging.h"
-#include "util/stop_watch.h"
-#include "util/sync_point.h"
+
+#include "rocksdb/util/coding.h"
+#include "rocksdb/util/file_reader_writer.h"
+#include "rocksdb/util/file_util.h"
+#include "rocksdb/util/logging.h"
+#include "rocksdb/util/stop_watch.h"
+#include "rocksdb/util/sync_point.h"
 
 namespace rocksdb {
 
@@ -2372,6 +2374,103 @@ void VersionSet::LogAndApplyHelper(ColumnFamilyData* cfd,
   builder->Apply(edit);
 }
 
+namespace {
+
+struct LogReporter : public log::Reader::Reporter {
+  Status* status;
+  virtual void Corruption(size_t bytes, const Status& s) override {
+    if (this->status->ok()) *this->status = s;
+  }
+};
+
+class ManifestReader {
+ public:
+  ManifestReader(Env* env, const EnvOptions& env_options, BoundaryValuesExtractor* extractor,
+                 const std::string& dbname)
+      : env_(env), env_options_(env_options), extractor_(extractor), dbname_(dbname) {}
+
+  Status OpenManifest() {
+    auto status = ReadManifestFilename();
+    if (!status.ok()) {
+      return status;
+    }
+    FileType type;
+    bool parse_ok = ParseFileName(manifest_filename_, &manifest_file_number_, &type);
+    if (!parse_ok || type != kDescriptorFile) {
+      return STATUS(Corruption, "CURRENT file corrupted");
+    }
+
+    manifest_filename_ = dbname_ + "/" + manifest_filename_;
+    std::unique_ptr<SequentialFileReader> manifest_file_reader;
+    {
+      std::unique_ptr<SequentialFile> manifest_file;
+      status = env_->NewSequentialFile(manifest_filename_, &manifest_file, env_options_);
+      if (!status.ok()) {
+        return status;
+      }
+      manifest_file_reader.reset(new SequentialFileReader(std::move(manifest_file)));
+    }
+    status = env_->GetFileSize(manifest_filename_, &current_manifest_file_size_);
+    if (!status.ok()) {
+      return status;
+    }
+
+    reader_.emplace(nullptr, std::move(manifest_file_reader), &reporter_, true /*checksum*/,
+                    0 /*initial_offset*/, 0);
+    reporter_.status = &status_;
+
+    return Status::OK();
+  }
+
+  CHECKED_STATUS Next() {
+    Slice record;
+    if (!reader_->ReadRecord(&record, &scratch_)) {
+      return STATUS(EndOfFile, "");
+    }
+    if (!status_.ok()) {
+      return status_;
+    }
+    return edit_.DecodeFrom(extractor_, record);
+  }
+
+  VersionEdit& operator*() {
+    return edit_;
+  }
+
+  uint64_t manifest_file_number() const { return manifest_file_number_; }
+  uint64_t current_manifest_file_size() const { return current_manifest_file_size_; }
+  const std::string& manifest_filename() const { return manifest_filename_; }
+ private:
+  CHECKED_STATUS ReadManifestFilename() {
+    // Read "CURRENT" file, which contains a pointer to the current manifest file
+    Status s = ReadFileToString(env_, CurrentFileName(dbname_), &manifest_filename_);
+    if (!s.ok()) {
+      return s;
+    }
+    if (manifest_filename_.empty() || manifest_filename_.back() != '\n') {
+      return STATUS(Corruption, "CURRENT file does not end with newline");
+    }
+    // remove the trailing '\n'
+    manifest_filename_.resize(manifest_filename_.size() - 1);
+    return Status::OK();
+  }
+
+  Env* const env_;
+  const EnvOptions& env_options_;
+  BoundaryValuesExtractor* extractor_;
+  std::string dbname_;
+  std::string manifest_filename_;
+  uint64_t manifest_file_number_ = 0;
+  uint64_t current_manifest_file_size_ = 0;
+  LogReporter reporter_;
+  boost::optional<log::Reader> reader_;
+  std::string scratch_;
+  Status status_;
+  VersionEdit edit_;
+};
+
+} // namespace
+
 Status VersionSet::Recover(
     const std::vector<ColumnFamilyDescriptor>& column_families,
     bool read_only) {
@@ -2384,49 +2483,6 @@ Status VersionSet::Recover(
   // by subsequent manifest records, Recover() will return failure status
   std::unordered_map<int, std::string> column_families_not_found;
 
-  // Read "CURRENT" file, which contains a pointer to the current manifest file
-  std::string manifest_filename;
-  Status s = ReadFileToString(
-      env_, CurrentFileName(dbname_), &manifest_filename
-  );
-  if (!s.ok()) {
-    return s;
-  }
-  if (manifest_filename.empty() ||
-      manifest_filename.back() != '\n') {
-    return STATUS(Corruption, "CURRENT file does not end with newline");
-  }
-  // remove the trailing '\n'
-  manifest_filename.resize(manifest_filename.size() - 1);
-  FileType type;
-  bool parse_ok =
-      ParseFileName(manifest_filename, &manifest_file_number_, &type);
-  if (!parse_ok || type != kDescriptorFile) {
-    return STATUS(Corruption, "CURRENT file corrupted");
-  }
-
-  RLOG(InfoLogLevel::INFO_LEVEL, db_options_->info_log,
-      "Recovering from manifest file: %s\n",
-      manifest_filename.c_str());
-
-  manifest_filename = dbname_ + "/" + manifest_filename;
-  unique_ptr<SequentialFileReader> manifest_file_reader;
-  {
-    unique_ptr<SequentialFile> manifest_file;
-    s = env_->NewSequentialFile(manifest_filename, &manifest_file,
-                                env_options_);
-    if (!s.ok()) {
-      return s;
-    }
-    manifest_file_reader.reset(
-        new SequentialFileReader(std::move(manifest_file)));
-  }
-  uint64_t current_manifest_file_size;
-  s = env_->GetFileSize(manifest_filename, &current_manifest_file_size);
-  if (!s.ok()) {
-    return s;
-  }
-
   bool have_log_number = false;
   bool have_prev_log_number = false;
   bool have_next_file = false;
@@ -2437,7 +2493,7 @@ Status VersionSet::Recover(
   uint64_t log_number = 0;
   uint64_t previous_log_number = 0;
   uint32_t max_column_family = 0;
-  std::unordered_map<uint32_t, BaseReferencedVersionBuilder*> builders;
+  std::unordered_map<uint32_t, std::unique_ptr<BaseReferencedVersionBuilder>> builders;
 
   // add default column family
   auto default_cf_iter = cf_name_to_options.find(kDefaultColumnFamilyName);
@@ -2449,22 +2505,28 @@ Status VersionSet::Recover(
   default_cf_edit.SetColumnFamily(0);
   ColumnFamilyData* default_cfd =
       CreateColumnFamily(default_cf_iter->second, &default_cf_edit);
-  builders.insert({0, new BaseReferencedVersionBuilder(default_cfd)});
+  builders.emplace(0, std::make_unique<BaseReferencedVersionBuilder>(default_cfd));
 
+  Status s;
+  uint64_t current_manifest_file_size;
+  std::string current_manifest_filename;
   {
-    VersionSet::LogReporter reporter;
-    reporter.status = &s;
-    log::Reader reader(NULL, std::move(manifest_file_reader), &reporter,
-                       true /*checksum*/, 0 /*initial_offset*/, 0);
-    Slice record;
-    std::string scratch;
-    while (reader.ReadRecord(&record, &scratch) && s.ok()) {
-      VersionEdit edit;
-      s = edit.DecodeFrom(db_options_->boundary_extractor.get(), record);
+    ManifestReader manifest_reader(env_, env_options_, db_options_->boundary_extractor.get(),
+                                   dbname_);
+    auto status = manifest_reader.OpenManifest();
+    if (!status.ok()) {
+      return status;
+    }
+    current_manifest_file_size = manifest_reader.current_manifest_file_size();
+    current_manifest_filename = manifest_reader.manifest_filename();
+    manifest_file_number_ = manifest_reader.manifest_file_number();
+
+    for (;;) {
+      s = manifest_reader.Next();
       if (!s.ok()) {
         break;
       }
-
+      auto& edit = *manifest_reader;
       // Not found means that user didn't supply that column
       // family option AND we encountered column family add
       // record. Once we encounter column family drop record,
@@ -2494,14 +2556,13 @@ Status VersionSet::Recover(
           column_families_not_found.emplace(edit.column_family_, *edit.column_family_name_);
         } else {
           cfd = CreateColumnFamily(cf_options->second, &edit);
-          builders.insert(
-              {edit.column_family_, new BaseReferencedVersionBuilder(cfd)});
+          builders.emplace(edit.column_family_,
+                           std::make_unique<BaseReferencedVersionBuilder>(cfd));
         }
       } else if (edit.is_column_family_drop_) {
         if (cf_in_builders) {
           auto builder = builders.find(edit.column_family_);
           assert(builder != builders.end());
-          delete builder->second;
           builders.erase(builder);
           cfd = column_family_set_->GetColumnFamily(edit.column_family_);
           if (cfd->Unref()) {
@@ -2585,6 +2646,9 @@ Status VersionSet::Recover(
         flushed_op_id = edit.flushed_op_id_;
       }
     }
+    if (s.IsEndOfFile()) {
+      s = Status::OK();
+    }
   }
 
   if (s.ok()) {
@@ -2656,7 +2720,7 @@ Status VersionSet::Recover(
         "last_sequence is %" PRIu64 ", log_number is %" PRIu64 ","
         "prev_log_number is %" PRIu64 ","
         "max_column_family is %u, last_op_id is " OP_ID_FORMAT "\n",
-        manifest_filename.c_str(), manifest_file_number_,
+        current_manifest_filename.c_str(), manifest_file_number_,
         next_file_number_.load(), LastSequence(),
         log_number, prev_log_number_,
         column_family_set_->GetMaxColumnFamily(),
@@ -2672,18 +2736,113 @@ Status VersionSet::Recover(
     }
   }
 
-  for (auto builder : builders) {
-    delete builder.second;
+  return s;
+}
+
+Status VersionSet::Import(const std::string& source_dir,
+                          SequenceNumber seqno,
+                          VersionEdit* edit) {
+  ManifestReader manifest_reader(env_, env_options_, db_options_->boundary_extractor.get(),
+                                 source_dir);
+  auto status = manifest_reader.OpenManifest();
+  if (!status.ok()) {
+    return status;
+  }
+  std::vector<FileMetaData> files;
+  std::vector<std::pair<SequenceNumber, SequenceNumber>> segments;
+  for (;;) {
+    status = manifest_reader.Next();
+    if (!status.ok()) {
+      break;
+    }
+    auto& current = *manifest_reader;
+    if (!current.GetDeletedFiles().empty()) {
+      return STATUS(Corruption, "Deleted files should be empty");
+    }
+    for (const auto& file : current.GetNewFiles()) {
+      auto filemeta = file.second;
+      filemeta.last_op_id = OpId();
+      filemeta.imported = true;
+      if (filemeta.largest.seqno >= seqno) {
+        return STATUS_FORMAT(InvalidArgument,
+                             "Imported DB contains seqno ($0) greater than active seqno ($1)",
+                             filemeta.largest.seqno,
+                             seqno);
+      }
+      files.push_back(filemeta);
+      segments.emplace_back(filemeta.smallest.seqno, filemeta.largest.seqno);
+    }
+  }
+  if (!status.IsEndOfFile()) {
+    return status;
   }
 
-  return s;
+  if (files.empty()) {
+    return STATUS_FORMAT(NotFound, "Imported DB is empty: $0", source_dir);
+  }
+
+  std::vector<LiveFileMetaData> live_files;
+  GetLiveFilesMetaData(&live_files);
+  for (const auto& file : live_files) {
+    segments.emplace_back(file.smallest.seqno, file.largest.seqno);
+  }
+
+  std::sort(segments.begin(), segments.end(), [](const auto& lhs, const auto& rhs) {
+    return lhs.first < rhs.first;
+  });
+  auto prev = segments.front();
+  for (size_t i = 1; i != segments.size(); ++i) {
+    const auto& segment = segments[i];
+    if (segment.first <= prev.second) {
+      return STATUS_FORMAT(Corruption,
+                           "Overlapping seqno ranges: [$0, $1] and [$2, $3]",
+                           prev.first,
+                           prev.second,
+                           segment.first,
+                           segment.second);
+    }
+    prev = segment;
+  }
+
+  std::vector<std::string> revert_list;
+  for (auto file : files) {
+    auto source_base = MakeTableFileName(source_dir, file.fd.GetNumber());
+    auto source_data = TableBaseToDataFileName(source_base);
+    auto new_number = NewFileNumber();
+    auto dest_base = MakeTableFileName(dbname_, new_number);
+    auto dest_data = TableBaseToDataFileName(dest_base);
+    LOG(INFO) << "Importing: " << source_base << " => " << dest_base;
+    status = env_->LinkFile(source_base, dest_base);
+    if (!status.ok()) {
+      break;
+    }
+    revert_list.push_back(dest_base);
+    status = env_->LinkFile(source_data, dest_data);
+    if (!status.ok()) {
+      break;
+    }
+    revert_list.push_back(dest_data);
+    file.fd.packed_number_and_path_id = new_number; // path is 0
+    file.marked_for_compaction = false;
+    edit->AddCleanedFile(0, file);
+  }
+
+  if (!status.ok()) {
+    for (const auto& file : revert_list) {
+      auto delete_status = env_->DeleteFile(file);
+      LOG(ERROR) << "Failed to delete file: " << file << ", status: " << delete_status.ToString();
+    }
+    return status;
+  }
+
+  return Status::OK();
 }
 
 Status VersionSet::ListColumnFamilies(std::vector<std::string>* column_families,
                                       const std::string& dbname,
                                       BoundaryValuesExtractor* extractor,
                                       Env* env) {
-  // these are just for performance reasons, not correcntes,
+  // these are just for performance reasons, not correctness,
   // so we're fine using the defaults
   EnvOptions soptions;
   // Read "CURRENT" file, which contains a pointer to the current manifest file
@@ -2712,7 +2871,7 @@ Status VersionSet::ListColumnFamilies(std::vector<std::string>* column_families,
   std::map<uint32_t, std::string> column_family_names;
   // default column family is always implicitly there
   column_family_names.insert({0, kDefaultColumnFamilyName});
-  VersionSet::LogReporter reporter;
+  LogReporter reporter;
   reporter.status = &s;
   log::Reader reader(NULL, std::move(file_reader), &reporter, true /*checksum*/,
                      0 /*initial_offset*/, 0);
@@ -2870,7 +3029,7 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
   builders.insert({0, new BaseReferencedVersionBuilder(default_cfd)});
 
   {
-    VersionSet::LogReporter reporter;
+    LogReporter reporter;
     reporter.status = &s;
     log::Reader reader(NULL, std::move(file_reader), &reporter,
                        true /*checksum*/, 0 /*initial_offset*/, 0);
@@ -3393,6 +3552,7 @@ void VersionSet::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
         filemetadata.smallest = ConvertBoundaryValues(file->smallest);
         filemetadata.largest = ConvertBoundaryValues(file->largest);
         filemetadata.last_op_id = file->last_op_id;
+        filemetadata.imported = file->imported;
         metadata->push_back(filemetadata);
       }
     }

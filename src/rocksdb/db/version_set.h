@@ -289,9 +289,6 @@ class VersionStorageInfo {
   // file at a level >= 1.
   int64_t MaxNextLevelOverlappingBytes();
 
-  // Return a human readable string that describes this version's contents.
-  std::string DebugString(bool hex = false) const;
-
   uint64_t GetAverageValueSize() const {
     if (accumulated_num_non_deletions_ == 0) {
       return 0;
@@ -735,6 +732,8 @@ class VersionSet {
   ColumnFamilySet* GetColumnFamilySet() { return column_family_set_.get(); }
   const EnvOptions& env_options() { return env_options_; }
 
+  CHECKED_STATUS Import(const std::string& source_dir, SequenceNumber seqno, VersionEdit* edit);
+
   static uint64_t GetNumLiveVersions(Version* dummy_versions);
 
   static uint64_t GetTotalSstFilesSize(Version* dummy_versions);
@@ -744,13 +743,6 @@ class VersionSet {
 
   friend class Version;
   friend class DBImpl;
-
-  struct LogReporter : public log::Reader::Reporter {
-    Status* status;
-    virtual void Corruption(size_t bytes, const Status& s) override {
-      if (this->status->ok()) *this->status = s;
-    }
-  };
 
   // ApproximateSize helper
   uint64_t ApproximateSizeLevel0(Version* v, const LevelFilesBrief& files_brief,

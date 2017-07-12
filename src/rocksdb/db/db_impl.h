@@ -425,6 +425,12 @@ class DBImpl : public DB {
     return num_running_compactions_;
   }
 
+  // Imports data from other database dir. Source database is left unmodified.
+  // Checks that source database has appropriate seqno.
+  // I.e. seqno ranges of imported database does not overlap with seqno ranges of destination db.
+  // And max seqno of imported database is less that active seqno of destination db.
+  CHECKED_STATUS Import(const std::string& source_dir) override;
+
  protected:
   Env* const env_;
   const std::string dbname_;
@@ -886,7 +892,7 @@ class DBImpl : public DB {
   // All ColumnFamily state changes go through this function. Here we analyze
   // the new state and we schedule background work if we detect that the new
   // state needs flush or compaction.
-  SuperVersion* InstallSuperVersionAndScheduleWork(
+  std::unique_ptr<SuperVersion> InstallSuperVersionAndScheduleWork(
       ColumnFamilyData* cfd, SuperVersion* new_sv,
       const MutableCFOptions& mutable_cf_options);
 

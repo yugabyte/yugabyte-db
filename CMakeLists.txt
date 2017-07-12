@@ -1326,14 +1326,14 @@ set(Boost_NO_BOOST_CMAKE ON)
 
 # Find Boost static libraries.
 set(Boost_USE_STATIC_LIBS ON)
-find_package(Boost COMPONENTS system chrono thread REQUIRED)
+find_package(Boost COMPONENTS system chrono thread filesystem REQUIRED)
 set(BOOST_STATIC_LIBS ${Boost_LIBRARIES})
 list(LENGTH BOOST_STATIC_LIBS BOOST_STATIC_LIBS_LEN)
 list(SORT BOOST_STATIC_LIBS)
 
 # Find Boost shared libraries.
 set(Boost_USE_STATIC_LIBS OFF)
-find_package(Boost COMPONENTS system chrono thread REQUIRED)
+find_package(Boost COMPONENTS system chrono thread filesystem REQUIRED)
 set(BOOST_SHARED_LIBS ${Boost_LIBRARIES})
 list(LENGTH BOOST_SHARED_LIBS BOOST_SHARED_LIBS_LEN)
 list(SORT BOOST_SHARED_LIBS)

@@ -285,6 +285,15 @@ MiniTabletServer* MiniCluster::mini_tablet_server(int idx) {
   return mini_tablet_servers_[idx].get();
 }
 
+MiniTabletServer* MiniCluster::find_tablet_server(const std::string& uuid) {
+  for (const auto& server : mini_tablet_servers_) {
+    if (server->server()->instance_pb().permanent_uuid() == uuid) {
+      return server.get();
+    }
+  }
+  return nullptr;
+}
+
 string MiniCluster::GetMasterFsRoot(int idx) {
   return JoinPathSegments(fs_root_, Substitute("master-$0-root", idx));
 }

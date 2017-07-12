@@ -837,6 +837,10 @@ class DB {
   // Needed for StackableDB
   virtual DB* GetRootDB() { return this; }
 
+  virtual CHECKED_STATUS Import(const std::string& source_dir) {
+    return STATUS(NotSupported, "");
+  }
+
  private:
   // No copying allowed
   DB(const DB&);

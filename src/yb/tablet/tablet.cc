@@ -1237,6 +1237,11 @@ Status Tablet::FlushUnlocked() {
   return FlushInternal(input, old_mrs);
 }
 
+Status Tablet::ImportData(const std::string& source_dir) {
+  DCHECK_NE(table_type_, TableType::KUDU_COLUMNAR_TABLE_TYPE);
+  return rocksdb_->Import(source_dir);
+}
+
 Status Tablet::ReplaceMemRowSetUnlocked(RowSetsInCompaction *compaction,
                                         shared_ptr<MemRowSet> *old_ms) {
   *old_ms = components_->memrowset;
@@ -1768,6 +1773,7 @@ bool Tablet::HasSSTables() const {
 }
 
 yb::OpId Tablet::MaxPersistentOpId() const {
+  DCHECK_NE(table_type_, TableType::KUDU_COLUMNAR_TABLE_TYPE);
   return rocksdb_->GetFlushedOpId();
 }
 

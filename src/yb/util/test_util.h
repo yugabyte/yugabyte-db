@@ -24,10 +24,12 @@
 #include <gtest/gtest.h>
 
 #include "yb/gutil/gscoped_ptr.h"
+
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
-#include "yb/util/test_macros.h"
+#include "yb/util/result.h"
 #include "yb/util/port_picker.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 
@@ -137,9 +139,12 @@ void LogVectorDiff(const std::vector<T>& expected, const std::vector<T>& actual)
   }
 }
 
+// Waits for the given condition to be true or until the provided deadline happens.
+CHECKED_STATUS Wait(std::function<Result<bool>()> condition, const MonoTime& deadline,
+                    const string& description);
 // Waits for the given condition to be true or until the provided timeout has expired.
-Status WaitFor(std::function<bool()> lambda_condition, const MonoDelta& timeout,
-               const string& description);
+CHECKED_STATUS WaitFor(std::function<Result<bool>()> condition, const MonoDelta& timeout,
+                       const string& description);
 
 // Return the path of a yb-tool.
 std::string GetToolPath(const std::string& tool_name);

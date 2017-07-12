@@ -1677,8 +1677,8 @@ Status GetFromString(DBOptions* source, DBOptions* destination) {
       "write_thread_slow_yield_usec=5;"
       "write_thread_max_yield_usec=1000;"
       "access_hint_on_compaction_start=NONE;"
-      "set_last_seq_based_on_sstable_metadata=true;"
       "max_file_size_for_compaction=123;"
+      "initial_seqno=432;"
       "info_log_level=DEBUG_LEVEL;";
 
   return GetDBOptionsFromString(*source, kOptionsString, destination);

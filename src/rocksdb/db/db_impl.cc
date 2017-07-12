@@ -31,6 +31,8 @@
 #include <utility>
 #include <vector>
 
+#include <boost/container/small_vector.hpp>
+
 #include <gflags/gflags.h>
 #include "db/auto_roll_logger.h"
 #include "db/builder.h"
@@ -108,13 +110,10 @@ const char kDefaultColumnFamilyName[] = "default";
 void DumpRocksDBBuildVersion(Logger* log);
 
 struct DBImpl::WriteContext {
-  autovector<SuperVersion*> superversions_to_free_;
+  boost::container::small_vector<std::unique_ptr<SuperVersion>, 8> superversions_to_free_;
   autovector<MemTable*> memtables_to_free_;
 
   ~WriteContext() {
-    for (auto& sv : superversions_to_free_) {
-      delete sv;
-    }
     for (auto& m : memtables_to_free_) {
       delete m;
     }
@@ -425,6 +424,7 @@ DBImpl::~DBImpl() {
 Status DBImpl::NewDB() {
   VersionEdit new_db;
   new_db.InitNewDB();
+  new_db.SetLastSequence(db_options_.initial_seqno);
 
   Status s;
 
@@ -1067,22 +1067,6 @@ Status DBImpl::Recover(
                                  kMaxSequenceNumber);
         }
       }
-    }
-
-    if (db_options_.set_last_seq_based_on_sstable_metadata) {
-      std::vector<rocksdb::LiveFileMetaData> live_files_metadata;
-      versions_->GetLiveFilesMetaData(&live_files_metadata);
-      SequenceNumber max_seq_num_from_sstable_metadata = 0;
-      for (const auto& live_file_metadata : live_files_metadata) {
-        max_seq_num_from_sstable_metadata = std::max(
-            max_seq_num_from_sstable_metadata, live_file_metadata.largest.seqno);
-      }
-      RLOG(InfoLogLevel::INFO_LEVEL,
-          db_options_.info_log,
-          "Setting last_sequence based on SSTable metadata: %" PRIu64
-          " (would have been %" PRIu64 " otherwise)",
-          max_seq_num_from_sstable_metadata, versions_->LastSequence());
-      versions_->SetLastSequenceNoSanityChecking(max_seq_num_from_sstable_metadata);
     }
 
     SetTickerCount(stats_, SEQUENCE_NUMBER, versions_->LastSequence());
@@ -2179,8 +2163,8 @@ Status DBImpl::ReFitLevel(ColumnFamilyData* cfd, int level, int target_level) {
 
     status = versions_->LogAndApply(cfd, mutable_cf_options, &edit, &mutex_,
                                     directories_.GetDbDir());
-    superversion_to_free.reset(InstallSuperVersionAndScheduleWork(
-        cfd, new_superversion.release(), mutable_cf_options));
+    superversion_to_free = InstallSuperVersionAndScheduleWork(
+       cfd, new_superversion.release(), mutable_cf_options);
 
     RLOG(InfoLogLevel::DEBUG_LEVEL, db_options_.info_log,
         "[%s] LogAndApply: %s\n", cfd->GetName().c_str(),
@@ -2508,8 +2492,7 @@ Status DBImpl::EnableAutoCompaction(
       ColumnFamilyData* cfd =
           reinterpret_cast<ColumnFamilyHandleImpl*>(cf_ptr)->cfd();
       InstrumentedMutexLock guard_lock(&mutex_);
-      delete this->InstallSuperVersionAndScheduleWork(
-          cfd, nullptr, *cfd->GetLatestMutableCFOptions());
+      InstallSuperVersionAndScheduleWork(cfd, nullptr, *cfd->GetLatestMutableCFOptions());
     } else {
       s = status;
     }
@@ -3331,13 +3314,13 @@ void DBImpl::InstallSuperVersionAndScheduleWorkWrapper(
     ColumnFamilyData* cfd, JobContext* job_context,
     const MutableCFOptions& mutable_cf_options) {
   mutex_.AssertHeld();
-  SuperVersion* old_superversion = InstallSuperVersionAndScheduleWork(
+  auto old_superversion = InstallSuperVersionAndScheduleWork(
       cfd, job_context->new_superversion, mutable_cf_options);
   job_context->new_superversion = nullptr;
-  job_context->superversions_to_free.push_back(old_superversion);
+  job_context->superversions_to_free.push_back(old_superversion.release());
 }
 
-SuperVersion* DBImpl::InstallSuperVersionAndScheduleWork(
+std::unique_ptr<SuperVersion> DBImpl::InstallSuperVersionAndScheduleWork(
     ColumnFamilyData* cfd, SuperVersion* new_sv,
     const MutableCFOptions& mutable_cf_options) {
   mutex_.AssertHeld();
@@ -3350,7 +3333,7 @@ SuperVersion* DBImpl::InstallSuperVersionAndScheduleWork(
                         old_sv->mutable_cf_options.max_write_buffer_number;
   }
 
-  auto* old = cfd->InstallSuperVersion(
+  auto old = cfd->InstallSuperVersion(
       new_sv ? new_sv : new SuperVersion(), &mutex_, mutable_cf_options);
 
   // Whenever we install new SuperVersion, we might need to issue new flushes or
@@ -3789,8 +3772,7 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
     write_thread_.ExitUnbatched(&w);
 
     if (status.ok()) {
-      delete InstallSuperVersionAndScheduleWork(cfd, nullptr,
-                                                mutable_cf_options);
+      InstallSuperVersionAndScheduleWork(cfd, nullptr, mutable_cf_options);
     }
     ReleaseFileNumberFromPendingOutputs(pending_outputs_inserted_elem);
   }
@@ -3868,8 +3850,7 @@ Status DBImpl::CreateColumnFamily(const ColumnFamilyOptions& cf_options,
       auto* cfd =
           versions_->GetColumnFamilySet()->GetColumnFamily(column_family_name);
       assert(cfd != nullptr);
-      delete InstallSuperVersionAndScheduleWork(
-          cfd, nullptr, *cfd->GetLatestMutableCFOptions());
+      InstallSuperVersionAndScheduleWork(cfd, nullptr, *cfd->GetLatestMutableCFOptions());
 
       if (!cfd->mem()->IsSnapshotSupported()) {
         is_snapshot_supported_ = false;
@@ -5085,6 +5066,25 @@ ColumnFamilyHandle* DBImpl::GetColumnFamilyHandleUnlocked(
   return cf_memtables->GetColumnFamilyHandle();
 }
 
+Status DBImpl::Import(const std::string& source_dir) {
+  const auto seqno = versions_->LastSequence();
+  FlushOptions options;
+  Flush(options);
+  VersionEdit edit;
+  auto status = versions_->Import(source_dir, seqno, &edit);
+  if (!status.ok()) {
+    return status;
+  }
+  auto cfd = versions_->GetColumnFamilySet()->GetDefault();
+  InstrumentedMutexLock lock(&mutex_);
+  status = versions_->LogAndApply(cfd, *cfd->GetCurrentMutableCFOptions(), &edit, &mutex_);
+  if (!status.ok()) {
+    return status;
+  }
+  cfd->InstallSuperVersion(new SuperVersion(), &mutex_);
+  return Status::OK();
+}
+
 void DBImpl::GetApproximateSizes(ColumnFamilyHandle* column_family,
                                  const Range* range, int n, uint64_t* sizes,
                                  bool include_memtable) {
@@ -5326,7 +5326,7 @@ OpId DBImpl::GetFlushedOpId() {
     std::vector<LiveFileMetaData> files;
     versions_->GetLiveFilesMetaData(&files);
     for (auto& file : files) {
-      if (static_cast<int64_t>(file.largest.seqno) > result.index) {
+      if (!file.imported && static_cast<int64_t>(file.largest.seqno) > result.index) {
         result = OpId(OpId::kUnknownTerm, file.largest.seqno);
       }
     }
@@ -5611,8 +5611,7 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
     }
     if (s.ok()) {
       for (auto cfd : *impl->versions_->GetColumnFamilySet()) {
-        delete impl->InstallSuperVersionAndScheduleWork(
-            cfd, nullptr, *cfd->GetLatestMutableCFOptions());
+        impl->InstallSuperVersionAndScheduleWork(cfd, nullptr, *cfd->GetLatestMutableCFOptions());
       }
       impl->alive_log_files_.push_back(
           DBImpl::LogFileNumberSize(impl->logfile_number_));

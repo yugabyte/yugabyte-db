@@ -33,6 +33,7 @@ message NewFilePB {
   optional uint32 path_id = 7;
   optional bool marked_for_compaction = 8;
   optional yb.OpIdPB last_op_id = 9;
+  optional bool imported = 10;
 }
 
 message VersionEditPB {

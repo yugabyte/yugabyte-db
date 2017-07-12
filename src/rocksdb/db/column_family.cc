@@ -810,13 +810,13 @@ bool ColumnFamilyData::ReturnThreadLocalSuperVersion(SuperVersion* sv) {
   return false;
 }
 
-SuperVersion* ColumnFamilyData::InstallSuperVersion(
+std::unique_ptr<SuperVersion> ColumnFamilyData::InstallSuperVersion(
     SuperVersion* new_superversion, InstrumentedMutex* db_mutex) {
   db_mutex->AssertHeld();
   return InstallSuperVersion(new_superversion, db_mutex, mutable_cf_options_);
 }
 
-SuperVersion* ColumnFamilyData::InstallSuperVersion(
+std::unique_ptr<SuperVersion> ColumnFamilyData::InstallSuperVersion(
     SuperVersion* new_superversion, InstrumentedMutex* db_mutex,
     const MutableCFOptions& mutable_cf_options) {
   new_superversion->db_mutex = db_mutex;
@@ -833,7 +833,8 @@ SuperVersion* ColumnFamilyData::InstallSuperVersion(
 
   if (old_superversion != nullptr && old_superversion->Unref()) {
     old_superversion->Cleanup();
-    return old_superversion;  // will let caller delete outside of mutex
+    // will let caller delete outside of mutex
+    return std::unique_ptr<SuperVersion>(old_superversion);
   }
   return nullptr;
 }

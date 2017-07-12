@@ -141,6 +141,7 @@ struct SstFileMetaData {
   BoundaryValues smallest;
   BoundaryValues largest;
   OpId last_op_id;
+  bool imported = false;
   bool being_compacted;  // true if the file is currently being compacted.
 };
 

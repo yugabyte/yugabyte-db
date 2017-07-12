@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-#include "yb/client/yql-dml-base.h"
+#include "yb/client/yql-dml-test-base.h"
 #include "yb/sql/util/statement_result.h"
 
 namespace yb {
@@ -8,29 +8,40 @@ namespace client {
 
 using yb::sql::RowsResult;
 
-class YqlDmlTTLTest : public YqlDmlBase {
+
+namespace {
+
+const std::vector<std::string> kAllColumns = {"k", "c1", "c2", "c3", "c4"};
+
+}
+
+class YqlDmlTTLTest : public YqlDmlTestBase {
  public:
-  YqlDmlTTLTest() {
+  void SetUp() override {
+    YqlDmlTestBase::SetUp();
+
+    YBSchemaBuilder b;
+    b.AddColumn("k")->Type(INT32)->HashPrimaryKey()->NotNull();
+    b.AddColumn("c1")->Type(INT32);
+    b.AddColumn("c2")->Type(STRING);
+    b.AddColumn("c3")->Type(INT32);
+    b.AddColumn("c4")->Type(STRING);
+
+    table_.Create(kTableName, client_.get(), &b);
   }
 
-  void addColumns(YBSchemaBuilder *b) override {
-    b->AddColumn("k")->Type(INT32)->HashPrimaryKey()->NotNull();
-    b->AddColumn("c1")->Type(INT32);
-    b->AddColumn("c2")->Type(STRING);
-    b->AddColumn("c3")->Type(INT32);
-    b->AddColumn("c4")->Type(STRING);
-  }
+  TableHandle table_;
 };
 
 TEST_F(YqlDmlTTLTest, TestInsertWithTTL) {
   {
     // insert into t (k, c1, c2) values (1, 1, "yuga-hello") using ttl 2;
-    const shared_ptr<YBqlWriteOp> op = NewWriteOp(YQLWriteRequestPB::YQL_STMT_INSERT);
+    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(YQLWriteRequestPB::YQL_STMT_INSERT);
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "k", 1, prow, 0);
-    SetInt32ColumnValue(req->add_column_values(), "c1", 1);
-    SetStringColumnValue(req->add_column_values(), "c2", "yuga-hello");
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "k", 1, prow, 0);
+    table_.SetInt32ColumnValue(req->add_column_values(), "c1", 1);
+    table_.SetStringColumnValue(req->add_column_values(), "c2", "yuga-hello");
     req->set_ttl(2 * 1000);
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     CHECK_OK(session->Apply(op));
@@ -40,12 +51,12 @@ TEST_F(YqlDmlTTLTest, TestInsertWithTTL) {
 
   {
     // insert into t (k, c3, c4) values (1, 2, "yuga-hi") using ttl 4;
-    const shared_ptr<YBqlWriteOp> op = NewWriteOp(YQLWriteRequestPB::YQL_STMT_INSERT);
+    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(YQLWriteRequestPB::YQL_STMT_INSERT);
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "k", 1, prow, 0);
-    SetInt32ColumnValue(req->add_column_values(), "c3", 2);
-    SetStringColumnValue(req->add_column_values(), "c4", "yuga-hi");
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "k", 1, prow, 0);
+    table_.SetInt32ColumnValue(req->add_column_values(), "c3", 2);
+    table_.SetStringColumnValue(req->add_column_values(), "c4", "yuga-hi");
     req->set_ttl(4 * 1000);
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     CHECK_OK(session->Apply(op));
@@ -55,21 +66,12 @@ TEST_F(YqlDmlTTLTest, TestInsertWithTTL) {
 
   {
     // select * from t where k = 1;
-    const shared_ptr<YBqlReadOp> op = NewReadOp();
+    const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "k", 1, prow, 0);
-    req->add_column_ids(ColumnId("k"));
-    req->add_column_ids(ColumnId("c1"));
-    req->add_column_ids(ColumnId("c2"));
-    req->add_column_ids(ColumnId("c3"));
-    req->add_column_ids(ColumnId("c4"));
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "k", 1, prow, 0);
+    table_.AddColumns(kAllColumns, req);
 
-    req->mutable_column_refs()->add_ids(ColumnId("k"));
-    req->mutable_column_refs()->add_ids(ColumnId("c1"));
-    req->mutable_column_refs()->add_ids(ColumnId("c2"));
-    req->mutable_column_refs()->add_ids(ColumnId("c3"));
-    req->mutable_column_refs()->add_ids(ColumnId("c4"));
     const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
     CHECK_OK(session->Apply(op));
 
@@ -90,21 +92,12 @@ TEST_F(YqlDmlTTLTest, TestInsertWithTTL) {
 
   {
     // select * from t where k = 1;
-    const shared_ptr<YBqlReadOp> op = NewReadOp();
+    const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "k", 1, prow, 0);
-    req->add_column_ids(ColumnId("k"));
-    req->add_column_ids(ColumnId("c1"));
-    req->add_column_ids(ColumnId("c2"));
-    req->add_column_ids(ColumnId("c3"));
-    req->add_column_ids(ColumnId("c4"));
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "k", 1, prow, 0);
+    table_.AddColumns(kAllColumns, req);
 
-    req->mutable_column_refs()->add_ids(ColumnId("k"));
-    req->mutable_column_refs()->add_ids(ColumnId("c1"));
-    req->mutable_column_refs()->add_ids(ColumnId("c2"));
-    req->mutable_column_refs()->add_ids(ColumnId("c3"));
-    req->mutable_column_refs()->add_ids(ColumnId("c4"));
     const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
     CHECK_OK(session->Apply(op));
 
@@ -125,21 +118,12 @@ TEST_F(YqlDmlTTLTest, TestInsertWithTTL) {
 
   {
     // select * from t where k = 1;
-    const shared_ptr<YBqlReadOp> op = NewReadOp();
+    const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "k", 1, prow, 0);
-    req->add_column_ids(ColumnId("k"));
-    req->add_column_ids(ColumnId("c1"));
-    req->add_column_ids(ColumnId("c2"));
-    req->add_column_ids(ColumnId("c3"));
-    req->add_column_ids(ColumnId("c4"));
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "k", 1, prow, 0);
+    table_.AddColumns(kAllColumns, req);
 
-    req->mutable_column_refs()->add_ids(ColumnId("k"));
-    req->mutable_column_refs()->add_ids(ColumnId("c1"));
-    req->mutable_column_refs()->add_ids(ColumnId("c2"));
-    req->mutable_column_refs()->add_ids(ColumnId("c3"));
-    req->mutable_column_refs()->add_ids(ColumnId("c4"));
     const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
     CHECK_OK(session->Apply(op));
 

@@ -277,8 +277,7 @@ DBOptions::DBOptions()
 #ifndef ROCKSDB_LITE
       wal_filter(nullptr),
 #endif  // ROCKSDB_LITE
-      fail_if_options_file_error(false),
-      set_last_seq_based_on_sstable_metadata(false) {
+      fail_if_options_file_error(false) {
 }
 
 static const char* const access_hints[] = {
@@ -399,8 +398,7 @@ void DBOptions::Dump(Logger* log) const {
     } else {
       RHEADER(log, "                               Options.row_cache: None");
     }
-  RHEADER(log, "  Options.set_last_seq_based_on_sstable_metadata: %d",
-      set_last_seq_based_on_sstable_metadata);
+  RHEADER(log, "                           Options.initial_seqno: %" PRIu64, initial_seqno);
 #ifndef ROCKSDB_LITE
   RHEADER(log, "       Options.wal_filter: %s",
       wal_filter ? wal_filter->Name() : "None");

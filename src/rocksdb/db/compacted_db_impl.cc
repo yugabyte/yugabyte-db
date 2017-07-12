@@ -95,9 +95,8 @@ Status CompactedDBImpl::Init(const Options& options) {
                             ColumnFamilyOptions(options));
   Status s = Recover({ cf }, true /* read only */, false);
   if (s.ok()) {
-    cfd_ = reinterpret_cast<ColumnFamilyHandleImpl*>(
-              DefaultColumnFamily())->cfd();
-    delete cfd_->InstallSuperVersion(new SuperVersion(), &mutex_);
+    cfd_ = down_cast<ColumnFamilyHandleImpl*>(DefaultColumnFamily())->cfd();
+    cfd_->InstallSuperVersion(new SuperVersion(), &mutex_);
   }
   mutex_.Unlock();
   if (!s.ok()) {

@@ -609,6 +609,8 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   DISALLOW_COPY_AND_ASSIGN(YBTable);
 };
 
+typedef std::shared_ptr<YBTable> YBTablePtr;
+
 // Alters an existing table based on the provided steps.
 //
 // Sample usage:
@@ -980,6 +982,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   DISALLOW_COPY_AND_ASSIGN(YBSession);
 };
 
+typedef std::shared_ptr<YBSession> YBSessionPtr;
 
 // This class is not thread-safe, though different YBNoOp objects on
 // different threads may share a single YBTable object.

@@ -2,7 +2,7 @@
 
 #include <thread>
 
-#include "yb/client/yql-dml-base.h"
+#include "yb/client/yql-dml-test-base.h"
 
 #include "yb/util/curl_util.h"
 #include "yb/util/jsonreader.h"
@@ -36,18 +36,29 @@ using yb::sql::RowsResult;
     EXPECT_EQ(row.column(5).string_value(), c2);       \
   } while (false)
 
-class YqlDmlTest : public YqlDmlBase {
+namespace {
+
+const std::vector<std::string> kAllColumns = {"h1", "h2", "r1", "r2", "c1", "c2"};
+
+}
+
+class YqlDmlTest : public YqlDmlTestBase {
  public:
   YqlDmlTest() {
   }
 
-  void addColumns(YBSchemaBuilder *b) override {
-    b->AddColumn("h1")->Type(INT32)->HashPrimaryKey()->NotNull();
-    b->AddColumn("h2")->Type(STRING)->HashPrimaryKey()->NotNull();
-    b->AddColumn("r1")->Type(INT32)->PrimaryKey()->NotNull();
-    b->AddColumn("r2")->Type(STRING)->PrimaryKey()->NotNull();
-    b->AddColumn("c1")->Type(INT32);
-    b->AddColumn("c2")->Type(STRING);
+  void SetUp() override {
+    YqlDmlTestBase::SetUp();
+
+    YBSchemaBuilder b;
+    b.AddColumn("h1")->Type(INT32)->HashPrimaryKey()->NotNull();
+    b.AddColumn("h2")->Type(STRING)->HashPrimaryKey()->NotNull();
+    b.AddColumn("r1")->Type(INT32)->PrimaryKey()->NotNull();
+    b.AddColumn("r2")->Type(STRING)->PrimaryKey()->NotNull();
+    b.AddColumn("c1")->Type(INT32);
+    b.AddColumn("c2")->Type(STRING);
+
+    table_.Create(kTableName, client_.get(), &b);
   }
 
   // Insert a full, single row, equivalent to the insert statement below. Return a YB write op that
@@ -59,15 +70,15 @@ class YqlDmlTest : public YqlDmlBase {
       const int32 r1, const string& r2,
       const int32 c1, const string& c2) {
 
-    const shared_ptr<YBqlWriteOp> op = NewWriteOp(YQLWriteRequestPB::YQL_STMT_INSERT);
+    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(YQLWriteRequestPB::YQL_STMT_INSERT);
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", h1, prow, 0);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", h2, prow, 1);
-    SetInt32ColumnValue(req->add_range_column_values(), "r1", r1);
-    SetStringColumnValue(req->add_range_column_values(), "r2", r2);
-    SetInt32ColumnValue(req->add_column_values(), "c1", c1);
-    SetStringColumnValue(req->add_column_values(), "c2", c2);
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", h1, prow, 0);
+    table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", h2, prow, 1);
+    table_.SetInt32ColumnValue(req->add_range_column_values(), "r1", r1);
+    table_.SetStringColumnValue(req->add_range_column_values(), "r2", r2);
+    table_.SetInt32ColumnValue(req->add_column_values(), "c1", c1);
+    table_.SetStringColumnValue(req->add_column_values(), "c2", c2);
     CHECK_OK(session->Apply(op));
     return op;
   }
@@ -81,22 +92,30 @@ class YqlDmlTest : public YqlDmlBase {
       const int32 h1, const string& h2,
       const int32 r1, const string& r2) {
 
-    const shared_ptr<YBqlReadOp> op = NewReadOp();
+    const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", h1, prow, 0);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", h2, prow, 1);
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", h1, prow, 0);
+    table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", h2, prow, 1);
     auto* const condition = req->mutable_where_expr()->mutable_condition();
     condition->set_op(YQL_OP_AND);
-    AddInt32Condition(condition, "r1", YQL_OP_EQUAL, r1);
-    AddStringCondition(condition, "r2", YQL_OP_EQUAL, r2);
-    for (const auto column : columns) {
-      req->add_column_ids(ColumnId(column));
-      req->mutable_column_refs()->add_ids(ColumnId(column));
-    }
+    table_.AddInt32Condition(condition, "r1", YQL_OP_EQUAL, r1);
+    table_.AddStringCondition(condition, "r2", YQL_OP_EQUAL, r2);
+    table_.AddColumns(columns, req);
     CHECK_OK(session->Apply(op));
     return op;
   }
+
+  std::shared_ptr<YBqlReadOp> SelectRow() {
+    return SelectRow(client_->NewSession(true /* read_only */), kAllColumns, 1, "a", 2, "b");
+
+  }
+
+  void AddAllColumns(YQLReadRequestPB* req) {
+    table_.AddColumns(kAllColumns, req);
+  }
+
+  TableHandle table_;
 };
 
 TEST_F(YqlDmlTest, TestInsertUpdateAndSelect) {
@@ -111,9 +130,7 @@ TEST_F(YqlDmlTest, TestInsertUpdateAndSelect) {
   {
     // Test selecting a row.
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
-    const shared_ptr<YBqlReadOp> op =
-        SelectRow(session, {"h1", "h2", "r1", "r2", "c1", "c2"}, 1, "a", 2, "b");
+    const shared_ptr<YBqlReadOp> op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
@@ -125,15 +142,15 @@ TEST_F(YqlDmlTest, TestInsertUpdateAndSelect) {
   {
     // Test updating the row.
     // update t set c1 = 4, c2 = 'd' where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlWriteOp> op = NewWriteOp(YQLWriteRequestPB::YQL_STMT_UPDATE);
+    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(YQLWriteRequestPB::YQL_STMT_UPDATE);
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
-    SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
-    SetStringColumnValue(req->add_range_column_values(), "r2", "b");
-    SetInt32ColumnValue(req->add_column_values(), "c1", 4);
-    SetStringColumnValue(req->add_column_values(), "c2", "d");
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
+    table_.SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
+    table_.SetStringColumnValue(req->add_range_column_values(), "r2", "b");
+    table_.SetInt32ColumnValue(req->add_column_values(), "c1", 4);
+    table_.SetStringColumnValue(req->add_column_values(), "c2", "d");
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     CHECK_OK(session->Apply(op));
 
@@ -345,13 +362,14 @@ TEST_F(YqlDmlTest, FlushedOpId) {
 
   auto session = client_->NewSession(true /* read_only */);
   session->SetTimeout(kTimeout);
-  const shared_ptr<YBqlReadOp> op = NewReadOp();
+  const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
   auto* const req = op->mutable_request();
   YBPartialRow *prow = op->mutable_row();
-  SetInt32ColumnValue(req->add_hashed_column_values(), "h1", kHashInt, prow, 0);
-  SetStringColumnValue(req->add_hashed_column_values(), "h2", kHashStr, prow, 1);
-  req->add_column_ids(ColumnId("c2"));
-  req->mutable_column_refs()->add_ids(ColumnId("c2"));
+  table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", kHashInt, prow, 0);
+  table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", kHashStr, prow, 1);
+  auto c2_column_id = table_.ColumnId("c2");
+  req->add_column_ids(c2_column_id);
+  req->mutable_column_refs()->add_ids(c2_column_id);
   ASSERT_OK(session->Apply(op));
   ASSERT_EQ(YQLResponsePB::YQL_STATUS_OK, op->response().status());
   auto rowblock = RowsResult(op.get()).GetRowBlock();
@@ -381,28 +399,17 @@ TEST_F(YqlDmlTest, TestInsertMultipleRows) {
   {
     // Test selecting the first row back.
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlReadOp> op = NewReadOp();
+    const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     auto* const condition = req->mutable_where_expr()->mutable_condition();
     condition->set_op(YQL_OP_AND);
-    AddInt32Condition(condition, "r1", YQL_OP_EQUAL, 2);
-    AddStringCondition(condition, "r2", YQL_OP_EQUAL, "b");
-    req->add_column_ids(ColumnId("h1"));
-    req->add_column_ids(ColumnId("h2"));
-    req->add_column_ids(ColumnId("r1"));
-    req->add_column_ids(ColumnId("r2"));
-    req->add_column_ids(ColumnId("c1"));
-    req->add_column_ids(ColumnId("c2"));
+    table_.AddInt32Condition(condition, "r1", YQL_OP_EQUAL, 2);
+    table_.AddStringCondition(condition, "r2", YQL_OP_EQUAL, "b");
+    AddAllColumns(req);
 
-    req->mutable_column_refs()->add_ids(ColumnId("h1"));
-    req->mutable_column_refs()->add_ids(ColumnId("h2"));
-    req->mutable_column_refs()->add_ids(ColumnId("r1"));
-    req->mutable_column_refs()->add_ids(ColumnId("r2"));
-    req->mutable_column_refs()->add_ids(ColumnId("c1"));
-    req->mutable_column_refs()->add_ids(ColumnId("c2"));
     {
       const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
       CHECK_OK(session->Apply(op));
@@ -419,7 +426,8 @@ TEST_F(YqlDmlTest, TestInsertMultipleRows) {
     // Test reusing the read op and updating where clause to select the other row.
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'd';
     req->mutable_where_expr()->mutable_condition()->mutable_operands()->RemoveLast();
-    AddStringCondition(req->mutable_where_expr()->mutable_condition(), "r2", YQL_OP_EQUAL, "d");
+    table_.AddStringCondition(
+       req->mutable_where_expr()->mutable_condition(), "r2", YQL_OP_EQUAL, "d");
     {
       const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
       CHECK_OK(session->Apply(op));
@@ -453,28 +461,17 @@ TEST_F(YqlDmlTest, TestSelectMultipleRows) {
   {
     // Test selecting 2 rows with an OR condition.
     // select * from t where h1 = 1 and h2 = 'a' and r2 = 'b' or r2 = 'd';
-    const shared_ptr<YBqlReadOp> op = NewReadOp();
+    const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     auto* const condition = req->mutable_where_expr()->mutable_condition();
     condition->set_op(YQL_OP_OR);
-    AddStringCondition(condition, "r2", YQL_OP_EQUAL, "b");
-    AddStringCondition(condition, "r2", YQL_OP_EQUAL, "d");
-    req->add_column_ids(ColumnId("h1"));
-    req->add_column_ids(ColumnId("h2"));
-    req->add_column_ids(ColumnId("r1"));
-    req->add_column_ids(ColumnId("r2"));
-    req->add_column_ids(ColumnId("c1"));
-    req->add_column_ids(ColumnId("c2"));
+    table_.AddStringCondition(condition, "r2", YQL_OP_EQUAL, "b");
+    table_.AddStringCondition(condition, "r2", YQL_OP_EQUAL, "d");
+    AddAllColumns(req);
 
-    req->mutable_column_refs()->add_ids(ColumnId("h1"));
-    req->mutable_column_refs()->add_ids(ColumnId("h2"));
-    req->mutable_column_refs()->add_ids(ColumnId("r1"));
-    req->mutable_column_refs()->add_ids(ColumnId("r2"));
-    req->mutable_column_refs()->add_ids(ColumnId("c1"));
-    req->mutable_column_refs()->add_ids(ColumnId("c2"));
     const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
     CHECK_OK(session->Apply(op));
 
@@ -489,31 +486,20 @@ TEST_F(YqlDmlTest, TestSelectMultipleRows) {
   {
     // Test selecting 2 rows with AND + OR column conditions.
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and (r2 = 'b' or r2 = 'd');
-    const shared_ptr<YBqlReadOp> op = NewReadOp();
+    const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     auto* condition = req->mutable_where_expr()->mutable_condition();
     condition->set_op(YQL_OP_AND);
-    AddInt32Condition(condition, "r1", YQL_OP_EQUAL, 2);
+    table_.AddInt32Condition(condition, "r1", YQL_OP_EQUAL, 2);
     condition = condition->add_operands()->mutable_condition();
     condition->set_op(YQL_OP_OR);
-    AddStringCondition(condition, "r2", YQL_OP_EQUAL, "b");
-    AddStringCondition(condition, "r2", YQL_OP_EQUAL, "d");
-    req->add_column_ids(ColumnId("h1"));
-    req->add_column_ids(ColumnId("h2"));
-    req->add_column_ids(ColumnId("r1"));
-    req->add_column_ids(ColumnId("r2"));
-    req->add_column_ids(ColumnId("c1"));
-    req->add_column_ids(ColumnId("c2"));
+    table_.AddStringCondition(condition, "r2", YQL_OP_EQUAL, "b");
+    table_.AddStringCondition(condition, "r2", YQL_OP_EQUAL, "d");
+    AddAllColumns(req);
 
-    req->mutable_column_refs()->add_ids(ColumnId("h1"));
-    req->mutable_column_refs()->add_ids(ColumnId("h2"));
-    req->mutable_column_refs()->add_ids(ColumnId("r1"));
-    req->mutable_column_refs()->add_ids(ColumnId("r2"));
-    req->mutable_column_refs()->add_ids(ColumnId("c1"));
-    req->mutable_column_refs()->add_ids(ColumnId("c2"));
     const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
     CHECK_OK(session->Apply(op));
 
@@ -552,24 +538,13 @@ TEST_F(YqlDmlTest, TestSelectWithoutConditionWithLimit) {
   {
     // Test selecting multiple rows with a row limit.
     // select * from t where h1 = 1 and h2 = 'a' limit 5;
-    const shared_ptr<YBqlReadOp> op = NewReadOp();
+    const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
-    req->add_column_ids(ColumnId("h1"));
-    req->add_column_ids(ColumnId("h2"));
-    req->add_column_ids(ColumnId("r1"));
-    req->add_column_ids(ColumnId("r2"));
-    req->add_column_ids(ColumnId("c1"));
-    req->add_column_ids(ColumnId("c2"));
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
+    AddAllColumns(req);
 
-    req->mutable_column_refs()->add_ids(ColumnId("h1"));
-    req->mutable_column_refs()->add_ids(ColumnId("h2"));
-    req->mutable_column_refs()->add_ids(ColumnId("r1"));
-    req->mutable_column_refs()->add_ids(ColumnId("r2"));
-    req->mutable_column_refs()->add_ids(ColumnId("c1"));
-    req->mutable_column_refs()->add_ids(ColumnId("c2"));
     req->set_limit(5);
     const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
     CHECK_OK(session->Apply(op));
@@ -593,20 +568,15 @@ TEST_F(YqlDmlTest, TestUpsert) {
   {
     // Test upserting a row (update as insert).
     // update t set c1 = 3 where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlWriteOp> op(table_->NewYQLWrite());
+    const shared_ptr<YBqlWriteOp> op(table_.NewWriteOp(YQLWriteRequestPB::YQL_STMT_INSERT));
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    req->set_type(YQLWriteRequestPB::YQL_STMT_INSERT);
-    req->set_client(YQL_CLIENT_CQL);
-    req->set_request_id(0);
-    req->set_query_id(reinterpret_cast<int64_t>(op.get()));
-    req->set_schema_version(0);
     req->set_hash_code(0);
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
-    SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
-    SetStringColumnValue(req->add_range_column_values(), "r2", "b");
-    SetInt32ColumnValue(req->add_column_values(), "c1", 3);
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
+    table_.SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
+    table_.SetStringColumnValue(req->add_range_column_values(), "r2", "b");
+    table_.SetInt32ColumnValue(req->add_column_values(), "c1", 3);
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     CHECK_OK(session->Apply(op));
 
@@ -615,9 +585,7 @@ TEST_F(YqlDmlTest, TestUpsert) {
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
-    const shared_ptr<YBqlReadOp> op =
-        SelectRow(session, {"h1", "h2", "r1", "r2", "c1", "c2"}, 1, "a", 2, "b");
+    const shared_ptr<YBqlReadOp> op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, null returned
     EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
@@ -635,14 +603,14 @@ TEST_F(YqlDmlTest, TestUpsert) {
   {
     // Test upsert to "insert" an additional column ("c2").
     // update t set c2 = 'c' where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlWriteOp> op = NewWriteOp(YQLWriteRequestPB::YQL_STMT_INSERT);
+    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(YQLWriteRequestPB::YQL_STMT_INSERT);
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
-    SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
-    SetStringColumnValue(req->add_range_column_values(), "r2", "b");
-    SetStringColumnValue(req->add_column_values(), "c2", "c");
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
+    table_.SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
+    table_.SetStringColumnValue(req->add_range_column_values(), "r2", "b");
+    table_.SetStringColumnValue(req->add_column_values(), "c2", "c");
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     CHECK_OK(session->Apply(op));
 
@@ -651,9 +619,7 @@ TEST_F(YqlDmlTest, TestUpsert) {
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
-    const shared_ptr<YBqlReadOp> op =
-        SelectRow(session, {"h1", "h2", "r1", "r2", "c1", "c2"}, 1, "a", 2, "b");
+    const shared_ptr<YBqlReadOp> op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
@@ -674,14 +640,14 @@ TEST_F(YqlDmlTest, TestDelete) {
   {
     // Test deleting a column ("c1").
     // delete c1 from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlWriteOp> op = NewWriteOp(YQLWriteRequestPB::YQL_STMT_DELETE);
+    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(YQLWriteRequestPB::YQL_STMT_DELETE);
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
-    SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
-    SetStringColumnValue(req->add_range_column_values(), "r2", "b");
-    SetColumn(req->add_column_values(), "c1");
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
+    table_.SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
+    table_.SetStringColumnValue(req->add_range_column_values(), "r2", "b");
+    table_.SetColumn(req->add_column_values(), "c1");
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     CHECK_OK(session->Apply(op));
 
@@ -705,13 +671,13 @@ TEST_F(YqlDmlTest, TestDelete) {
   {
     // Test deleting the whole row.
     // delete from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlWriteOp> op = NewWriteOp(YQLWriteRequestPB::YQL_STMT_DELETE);
+    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(YQLWriteRequestPB::YQL_STMT_DELETE);
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
-    SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
-    SetStringColumnValue(req->add_range_column_values(), "r2", "b");
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
+    table_.SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
+    table_.SetStringColumnValue(req->add_range_column_values(), "r2", "b");
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     CHECK_OK(session->Apply(op));
 
@@ -740,9 +706,7 @@ TEST_F(YqlDmlTest, TestConditionalInsert) {
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
-    const shared_ptr<YBqlReadOp> op =
-        SelectRow(session, {"h1", "h2", "r1", "r2", "c1", "c2"}, 1, "a", 2, "b");
+    const shared_ptr<YBqlReadOp> op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
@@ -754,15 +718,15 @@ TEST_F(YqlDmlTest, TestConditionalInsert) {
   {
     // Test IF NOT EXISTS when the row exists
     // insert into t values (1, 'a', 2, 'b', 4, 'd') if not exists;
-    const shared_ptr<YBqlWriteOp> op = NewWriteOp(YQLWriteRequestPB::YQL_STMT_INSERT);
+    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(YQLWriteRequestPB::YQL_STMT_INSERT);
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
-    SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
-    SetStringColumnValue(req->add_range_column_values(), "r2", "b");
-    SetInt32ColumnValue(req->add_column_values(), "c1", 4);
-    SetStringColumnValue(req->add_column_values(), "c2", "d");
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
+    table_.SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
+    table_.SetStringColumnValue(req->add_range_column_values(), "r2", "b");
+    table_.SetInt32ColumnValue(req->add_column_values(), "c1", 4);
+    table_.SetStringColumnValue(req->add_column_values(), "c2", "d");
     auto* const condition = req->mutable_if_expr()->mutable_condition();
     condition->set_op(YQL_OP_NOT_EXISTS);
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
@@ -780,9 +744,7 @@ TEST_F(YqlDmlTest, TestConditionalInsert) {
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
-    const shared_ptr<YBqlReadOp> op =
-        SelectRow(session, {"h1", "h2", "r1", "r2", "c1", "c2"}, 1, "a", 2, "b");
+    const shared_ptr<YBqlReadOp> op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
@@ -794,20 +756,20 @@ TEST_F(YqlDmlTest, TestConditionalInsert) {
   {
     // Test IF NOT EXISTS AND a column condition when the row exists and column value is different.
     // insert into t values (1, 'a', 2, 'b', 4, 'd') if not exists or c2 = 'd';
-    const shared_ptr<YBqlWriteOp> op = NewWriteOp(YQLWriteRequestPB::YQL_STMT_INSERT);
+    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(YQLWriteRequestPB::YQL_STMT_INSERT);
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
-    SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
-    SetStringColumnValue(req->add_range_column_values(), "r2", "b");
-    SetInt32ColumnValue(req->add_column_values(), "c1", 4);
-    SetStringColumnValue(req->add_column_values(), "c2", "d");
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
+    table_.SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
+    table_.SetStringColumnValue(req->add_range_column_values(), "r2", "b");
+    table_.SetInt32ColumnValue(req->add_column_values(), "c1", 4);
+    table_.SetStringColumnValue(req->add_column_values(), "c2", "d");
     auto* condition = req->mutable_if_expr()->mutable_condition();
     condition->set_op(YQL_OP_OR);
-    AddCondition(condition, YQL_OP_NOT_EXISTS);
-    AddStringCondition(condition, "c2", YQL_OP_EQUAL, "d");
-    req->mutable_column_refs()->add_ids(ColumnId("c2"));
+    table_.AddCondition(condition, YQL_OP_NOT_EXISTS);
+    table_.AddStringCondition(condition, "c2", YQL_OP_EQUAL, "d");
+    req->mutable_column_refs()->add_ids(table_.ColumnId("c2"));
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     CHECK_OK(session->Apply(op));
 
@@ -826,9 +788,7 @@ TEST_F(YqlDmlTest, TestConditionalInsert) {
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
-    const shared_ptr<YBqlReadOp> op =
-        SelectRow(session, {"h1", "h2", "r1", "r2", "c1", "c2"}, 1, "a", 2, "b");
+    const shared_ptr<YBqlReadOp> op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
@@ -840,20 +800,20 @@ TEST_F(YqlDmlTest, TestConditionalInsert) {
   {
     // Test IF NOT EXISTS AND a column condition when the row exists and column value matches.
     // insert into t values (1, 'a', 2, 'b', 4, 'd') if not exists or c2 = 'c';
-    const shared_ptr<YBqlWriteOp> op = NewWriteOp(YQLWriteRequestPB::YQL_STMT_INSERT);
+    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(YQLWriteRequestPB::YQL_STMT_INSERT);
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
-    SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
-    SetStringColumnValue(req->add_range_column_values(), "r2", "b");
-    SetInt32ColumnValue(req->add_column_values(), "c1", 4);
-    SetStringColumnValue(req->add_column_values(), "c2", "d");
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
+    table_.SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
+    table_.SetStringColumnValue(req->add_range_column_values(), "r2", "b");
+    table_.SetInt32ColumnValue(req->add_column_values(), "c1", 4);
+    table_.SetStringColumnValue(req->add_column_values(), "c2", "d");
     auto* condition = req->mutable_if_expr()->mutable_condition();
     condition->set_op(YQL_OP_OR);
-    AddCondition(condition, YQL_OP_NOT_EXISTS);
-    AddStringCondition(condition, "c2", YQL_OP_EQUAL, "c");
-    req->mutable_column_refs()->add_ids(ColumnId("c2"));
+    table_.AddCondition(condition, YQL_OP_NOT_EXISTS);
+    table_.AddStringCondition(condition, "c2", YQL_OP_EQUAL, "c");
+    req->mutable_column_refs()->add_ids(table_.ColumnId("c2"));
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     CHECK_OK(session->Apply(op));
 
@@ -869,9 +829,7 @@ TEST_F(YqlDmlTest, TestConditionalInsert) {
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
-    const shared_ptr<YBqlReadOp> op =
-        SelectRow(session, {"h1", "h2", "r1", "r2", "c1", "c2"}, 1, "a", 2, "b");
+    const shared_ptr<YBqlReadOp> op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
@@ -890,9 +848,7 @@ TEST_F(YqlDmlTest, TestConditionalInsert) {
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
-    const shared_ptr<YBqlReadOp> op =
-        SelectRow(session, {"h1", "h2", "r1", "r2", "c1", "c2"}, 1, "a", 2, "b");
+    const shared_ptr<YBqlReadOp> op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 5, 'e' returned
     EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
@@ -912,9 +868,7 @@ TEST_F(YqlDmlTest, TestConditionalUpdate) {
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
-    const shared_ptr<YBqlReadOp> op =
-        SelectRow(session, {"h1", "h2", "r1", "r2", "c1", "c2"}, 1, "a", 2, "b");
+    const shared_ptr<YBqlReadOp> op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
@@ -926,14 +880,14 @@ TEST_F(YqlDmlTest, TestConditionalUpdate) {
   {
     // Test IF NOT EXISTS when the row exists.
     // update t set c1 = 6 where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b' if not exists;
-    const shared_ptr<YBqlWriteOp> op = NewWriteOp(YQLWriteRequestPB::YQL_STMT_UPDATE);
+    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(YQLWriteRequestPB::YQL_STMT_UPDATE);
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
-    SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
-    SetStringColumnValue(req->add_range_column_values(), "r2", "b");
-    SetInt32ColumnValue(req->add_column_values(), "c1", 6);
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
+    table_.SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
+    table_.SetStringColumnValue(req->add_range_column_values(), "r2", "b");
+    table_.SetInt32ColumnValue(req->add_column_values(), "c1", 6);
     auto* const condition = req->mutable_if_expr()->mutable_condition();
     condition->set_op(YQL_OP_NOT_EXISTS);
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
@@ -951,9 +905,7 @@ TEST_F(YqlDmlTest, TestConditionalUpdate) {
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
-    const shared_ptr<YBqlReadOp> op =
-        SelectRow(session, {"h1", "h2", "r1", "r2", "c1", "c2"}, 1, "a", 2, "b");
+    const shared_ptr<YBqlReadOp> op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
@@ -965,14 +917,14 @@ TEST_F(YqlDmlTest, TestConditionalUpdate) {
   {
     // Test IF EXISTS when the row exists.
     // update t set c1 = 6 where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b' if exists;
-    const shared_ptr<YBqlWriteOp> op = NewWriteOp(YQLWriteRequestPB::YQL_STMT_UPDATE);
+    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(YQLWriteRequestPB::YQL_STMT_UPDATE);
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
-    SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
-    SetStringColumnValue(req->add_range_column_values(), "r2", "b");
-    SetInt32ColumnValue(req->add_column_values(), "c1", 6);
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
+    table_.SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
+    table_.SetStringColumnValue(req->add_range_column_values(), "r2", "b");
+    table_.SetInt32ColumnValue(req->add_column_values(), "c1", 6);
     auto* const condition = req->mutable_if_expr()->mutable_condition();
     condition->set_op(YQL_OP_EXISTS);
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
@@ -990,9 +942,7 @@ TEST_F(YqlDmlTest, TestConditionalUpdate) {
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
-    const shared_ptr<YBqlReadOp> op =
-        SelectRow(session, {"h1", "h2", "r1", "r2", "c1", "c2"}, 1, "a", 2, "b");
+    const shared_ptr<YBqlReadOp> op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 6, 'c' returned
     EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
@@ -1012,9 +962,7 @@ TEST_F(YqlDmlTest, TestConditionalDelete) {
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
-    const shared_ptr<YBqlReadOp> op =
-        SelectRow(session, {"h1", "h2", "r1", "r2", "c1", "c2"}, 1, "a", 2, "b");
+    const shared_ptr<YBqlReadOp> op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
@@ -1026,16 +974,16 @@ TEST_F(YqlDmlTest, TestConditionalDelete) {
   {
     // Test IF with a column condition when the column value is different.
     // delete c1 from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b' if c1 = 4;
-    const shared_ptr<YBqlWriteOp> op = NewWriteOp(YQLWriteRequestPB::YQL_STMT_DELETE);
+    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(YQLWriteRequestPB::YQL_STMT_DELETE);
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
-    SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
-    SetStringColumnValue(req->add_range_column_values(), "r2", "b");
-    SetColumn(req->add_column_values(), "c1");
-    SetInt32Condition(req->mutable_if_expr()->mutable_condition(), "c1", YQL_OP_EQUAL, 4);
-    req->mutable_column_refs()->add_ids(ColumnId("c1"));
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
+    table_.SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
+    table_.SetStringColumnValue(req->add_range_column_values(), "r2", "b");
+    table_.SetColumn(req->add_column_values(), "c1");
+    table_.SetInt32Condition(req->mutable_if_expr()->mutable_condition(), "c1", YQL_OP_EQUAL, 4);
+    req->mutable_column_refs()->add_ids(table_.ColumnId("c1"));
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     CHECK_OK(session->Apply(op));
 
@@ -1055,9 +1003,7 @@ TEST_F(YqlDmlTest, TestConditionalDelete) {
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
-    const shared_ptr<YBqlReadOp> op =
-        SelectRow(session, {"h1", "h2", "r1", "r2", "c1", "c2"}, 1, "a", 2, "b");
+    const shared_ptr<YBqlReadOp> op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
@@ -1069,19 +1015,19 @@ TEST_F(YqlDmlTest, TestConditionalDelete) {
   {
     // Test IF EXISTS AND a column condition when the row exists and the column value matches.
     // delete c1 from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b' if exists and c1 = 3;
-    const shared_ptr<YBqlWriteOp> op = NewWriteOp(YQLWriteRequestPB::YQL_STMT_DELETE);
+    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(YQLWriteRequestPB::YQL_STMT_DELETE);
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
-    SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
-    SetStringColumnValue(req->add_range_column_values(), "r2", "b");
-    SetColumn(req->add_column_values(), "c1");
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
+    table_.SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
+    table_.SetStringColumnValue(req->add_range_column_values(), "r2", "b");
+    table_.SetColumn(req->add_column_values(), "c1");
     auto* const condition = req->mutable_if_expr()->mutable_condition();
     condition->set_op(YQL_OP_AND);
-    AddCondition(condition, YQL_OP_EXISTS);
-    AddInt32Condition(condition, "c1", YQL_OP_EQUAL, 3);
-    req->mutable_column_refs()->add_ids(ColumnId("c1"));
+    table_.AddCondition(condition, YQL_OP_EXISTS);
+    table_.AddInt32Condition(condition, "c1", YQL_OP_EQUAL, 3);
+    req->mutable_column_refs()->add_ids(table_.ColumnId("c1"));
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     CHECK_OK(session->Apply(op));
 
@@ -1097,9 +1043,7 @@ TEST_F(YqlDmlTest, TestConditionalDelete) {
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
-    const shared_ptr<YBqlReadOp> op =
-        SelectRow(session, {"h1", "h2", "r1", "r2", "c1", "c2"}, 1, "a", 2, "b");
+    const shared_ptr<YBqlReadOp> op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', null, 'c' returned
     EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
@@ -1117,13 +1061,13 @@ TEST_F(YqlDmlTest, TestConditionalDelete) {
   {
     // Test deleting the whole row with IF EXISTS when the row does not exist (wrong "r1").
     // delete from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'c' if exists;
-    const shared_ptr<YBqlWriteOp> op = NewWriteOp(YQLWriteRequestPB::YQL_STMT_DELETE);
+    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(YQLWriteRequestPB::YQL_STMT_DELETE);
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
-    SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
-    SetStringColumnValue(req->add_range_column_values(), "r2", "c");
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
+    table_.SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
+    table_.SetStringColumnValue(req->add_range_column_values(), "r2", "c");
     auto* const condition = req->mutable_if_expr()->mutable_condition();
     condition->set_op(YQL_OP_EXISTS);
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
@@ -1143,15 +1087,15 @@ TEST_F(YqlDmlTest, TestConditionalDelete) {
 TEST_F(YqlDmlTest, TestError) {
   {
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
-    const shared_ptr<YBqlWriteOp> op = NewWriteOp(YQLWriteRequestPB::YQL_STMT_INSERT);
+    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(YQLWriteRequestPB::YQL_STMT_INSERT);
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
-    SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
-    SetStringColumnValue(req->add_range_column_values(), "r2", "b");
-    SetInt32ColumnValue(req->add_column_values(), "c1", 3);
-    SetStringColumnValue(req->add_column_values(), "c2", "c");
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
+    table_.SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
+    table_.SetStringColumnValue(req->add_range_column_values(), "r2", "b");
+    table_.SetInt32ColumnValue(req->add_column_values(), "c1", 3);
+    table_.SetStringColumnValue(req->add_column_values(), "c2", "c");
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     CHECK_OK(session->Apply(op));
 
@@ -1160,20 +1104,17 @@ TEST_F(YqlDmlTest, TestError) {
   {
     // Test selecting with incomparable column condition (int32 column "r1" with a string value).
     // select c1, c2 from t where h1 = 1 and h2 = 'a' and r1 <> '2' and r2 <> 'b';
-    const shared_ptr<YBqlReadOp> op = NewReadOp();
+    const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     auto* const condition = req->mutable_where_expr()->mutable_condition();
     condition->set_op(YQL_OP_AND);
-    AddStringCondition(condition, "r1", YQL_OP_NOT_EQUAL, "2");
-    AddStringCondition(condition, "r2", YQL_OP_NOT_EQUAL, "b");
-    req->add_column_ids(ColumnId("c1"));
-    req->add_column_ids(ColumnId("c2"));
+    table_.AddStringCondition(condition, "r1", YQL_OP_NOT_EQUAL, "2");
+    table_.AddStringCondition(condition, "r2", YQL_OP_NOT_EQUAL, "b");
+    table_.AddColumns({"c1", "c2"}, req);
 
-    req->mutable_column_refs()->add_ids(ColumnId("c1"));
-    req->mutable_column_refs()->add_ids(ColumnId("c2"));
     const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
     CHECK_OK(session->Apply(op));
 

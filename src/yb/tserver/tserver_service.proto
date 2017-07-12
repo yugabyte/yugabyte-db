@@ -39,6 +39,8 @@ service TabletServerService {
 
   rpc ListTabletsForTabletServer(ListTabletsForTabletServerRequestPB)
       returns (ListTabletsForTabletServerResponsePB);
+
+  rpc ImportData(ImportDataRequestPB) returns (ImportDataResponsePB);
 }
 
 message GetLogLocationRequestPB {
@@ -94,4 +96,14 @@ message ListTabletsForTabletServerResponsePB {
   }
 
   repeated Entry entries = 1;
+}
+
+message ImportDataRequestPB {
+  optional string tablet_id = 1;
+  optional string source_dir = 2;
+}
+
+message ImportDataResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
 }

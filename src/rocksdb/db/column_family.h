@@ -301,11 +301,11 @@ class ColumnFamilyData {
   // As argument takes a pointer to allocated SuperVersion to enable
   // the clients to allocate SuperVersion outside of mutex.
   // IMPORTANT: Only call this from DBImpl::InstallSuperVersion()
-  SuperVersion* InstallSuperVersion(SuperVersion* new_superversion,
-                                    InstrumentedMutex* db_mutex,
-                                    const MutableCFOptions& mutable_cf_options);
-  SuperVersion* InstallSuperVersion(SuperVersion* new_superversion,
-                                    InstrumentedMutex* db_mutex);
+  std::unique_ptr<SuperVersion> InstallSuperVersion(SuperVersion* new_superversion,
+                                                    InstrumentedMutex* db_mutex,
+                                                    const MutableCFOptions& mutable_cf_options);
+  std::unique_ptr<SuperVersion> InstallSuperVersion(SuperVersion* new_superversion,
+                                                    InstrumentedMutex* db_mutex);
 
   void ResetThreadLocalSuperVersions();
 

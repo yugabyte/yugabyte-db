@@ -325,7 +325,8 @@ bool ReplicaState::IsOpCommittedOrPending(const OpId& op_id, bool* term_mismatch
   if (round == nullptr) {
     LOG_WITH_PREFIX_UNLOCKED(ERROR) << "Consensus round not found for op id " << op_id << ": "
                << "committed_index=" << committed_index << ", "
-               << "last_received_index=" << last_received_index << ". Current state:"
+               << "last_received_index=" << last_received_index << ", "
+               << "tablet: " << options_.tablet_id << ", current state: "
                << ToStringUnlocked();
     DumpPendingTransactionsUnlocked();
     CHECK(false);

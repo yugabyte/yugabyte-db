@@ -182,6 +182,9 @@ bool VersionEdit::EncodeTo(VersionEditPB* dst) const {
     auto& op_id = *new_file.mutable_last_op_id();
     op_id.set_term(f.last_op_id.term);
     op_id.set_index(f.last_op_id.index);
+    if (f.imported) {
+      new_file.set_imported(true);
+    }
   }
 
   // 0 is default and does not need to be explicitly written
@@ -258,6 +261,7 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
     if (source.has_last_op_id()) {
       meta.last_op_id = OpId(source.last_op_id().term(), source.last_op_id().index());
     }
+    meta.imported = source.has_imported() && source.imported();
   }
 
   column_family_ = pb.has_column_family() ? pb.column_family() : 0;

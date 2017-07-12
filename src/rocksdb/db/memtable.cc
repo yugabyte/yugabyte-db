@@ -402,7 +402,7 @@ void MemTable::Add(SequenceNumber s, ValueType type,
         earliest_seqno_.store(GetFirstSequenceNumber(),
                               std::memory_order_relaxed);
       }
-      assert(first_seqno_.load() >= earliest_seqno_.load());
+      DCHECK_GE(first_seqno_.load(), earliest_seqno_.load());
     }
   } else {
     table_->InsertConcurrently(handle);

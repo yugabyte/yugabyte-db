@@ -179,19 +179,35 @@ string GetTestDataDirectory() {
   return dir;
 }
 
-Status WaitFor(std::function<bool()> lambda_condition, const MonoDelta& timeout,
-               const string& description) {
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
-  deadline.AddDelta(timeout);
-  while (!lambda_condition()) {
-    MonoDelta remaining = deadline.GetDeltaSince(MonoTime::Now(MonoTime::FINE));
-    if (remaining.ToNanoseconds() <= 0) {
-      return STATUS(TimedOut, "Operation '$0' didn't complete within $1ms", description,
-                    timeout.ToMilliseconds());
+Status Wait(std::function<Result<bool>()> condition,
+            const MonoTime& deadline,
+            const string& description) {
+  auto start = MonoTime::FineNow();
+  for (;;) {
+    auto current = condition();
+    if (!current.ok()) {
+      return current.status();
+    }
+    if (current.get()) {
+      break;
+    }
+    auto now = MonoTime::FineNow();
+    if (now > deadline) {
+      return STATUS_FORMAT(TimedOut,
+                           "Operation '$0' didn't complete within $1ms",
+                           description,
+                           (now - start).ToMilliseconds());
     }
     SleepFor(MonoDelta::FromMilliseconds(1));
   }
   return Status::OK();
+}
+
+// Waits for the given condition to be true or until the provided timeout has expired.
+Status WaitFor(std::function<Result<bool>()> condition,
+               const MonoDelta& timeout,
+               const string& description) {
+  return Wait(condition, MonoTime::FineNow() + timeout, description);
 }
 
 string GetToolPath(const string& tool_name) {

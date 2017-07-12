@@ -15,6 +15,8 @@
 #include "table/format.h"
 #include "util/arena.h"
 
+#include "yb/util/debug-util.h"
+
 namespace rocksdb {
 
 namespace {

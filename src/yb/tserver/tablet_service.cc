@@ -1502,6 +1502,25 @@ void TabletServiceImpl::Checksum(const ChecksumRequestPB* req,
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::ImportData(const ImportDataRequestPB* req,
+                                   ImportDataResponsePB* resp,
+                                   rpc::RpcContext context) {
+  tablet::TabletPeerPtr peer;
+  if (!LookupTabletPeerOrRespond(server_->tablet_manager(), req->tablet_id(), resp, &context,
+                                 &peer)) {
+    return;
+  }
+  auto status = peer->tablet()->ImportData(req->source_dir());
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(),
+                         status,
+                         TabletServerErrorPB::UNKNOWN_ERROR,
+                         &context);
+    return;
+  }
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::Shutdown() {
 }
 

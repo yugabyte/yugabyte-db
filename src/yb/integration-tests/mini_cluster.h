@@ -118,6 +118,8 @@ class MiniCluster : public MiniClusterBase {
   // 'idx' must be between 0 and 'num_tablet_servers' -1.
   tserver::MiniTabletServer* mini_tablet_server(int idx);
 
+  tserver::MiniTabletServer* find_tablet_server(const std::string& uuid);
+
   int num_tablet_servers() const { return mini_tablet_servers_.size(); }
 
   const std::vector<uint16_t>& tserver_web_ports() const { return tserver_web_ports_;}

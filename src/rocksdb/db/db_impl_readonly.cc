@@ -150,7 +150,7 @@ Status DB::OpenForReadOnly(
   }
   if (s.ok()) {
     for (auto cfd : *impl->versions_->GetColumnFamilySet()) {
-      delete cfd->InstallSuperVersion(new SuperVersion(), &impl->mutex_);
+      cfd->InstallSuperVersion(new SuperVersion(), &impl->mutex_);
     }
   }
   impl->mutex_.Unlock();

@@ -50,6 +50,8 @@ DEFINE_int32(max_nexts_to_avoid_seek, 8,
              "The number of next calls to try before doing resorting to do a rocksdb seek.");
 DEFINE_bool(trace_docdb_calls, false, "Whether we should trace calls into the docdb.");
 
+DEFINE_uint64(initial_seqno, 0, "Initial seqno for new RocksDB instances.");
+
 using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
@@ -266,7 +268,7 @@ void InitRocksDBOptions(
   options->statistics = statistics;
   options->info_log = std::make_shared<YBRocksDBLogger>(Substitute("T $0: ", tablet_id));
   options->info_log_level = YBRocksDBLogger::ConvertToRocksDBLogLevel(FLAGS_minloglevel);
-  options->set_last_seq_based_on_sstable_metadata = true;
+  options->initial_seqno = FLAGS_initial_seqno;
   options->boundary_extractor = DocBoundaryValuesExtractorInstance();
 
   // Set block cache options.

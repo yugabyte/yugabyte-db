@@ -92,6 +92,7 @@ struct FileMetaData {
   BoundaryValues smallest;  // The smallest values in this file
   BoundaryValues largest;   // The largest values in this file
   OpId last_op_id;          // Last op_id in file.
+  bool imported = false;    // Was this file imported from another DB.
 
   // Needs to be disposed when refs becomes 0.
   Cache::Handle* table_reader_handle;
@@ -191,6 +192,7 @@ class VersionEdit {
     nf.largest = f.largest;
     nf.last_op_id = f.last_op_id;
     nf.marked_for_compaction = f.marked_for_compaction;
+    nf.imported = f.imported;
     new_files_.emplace_back(level, nf);
   }
 

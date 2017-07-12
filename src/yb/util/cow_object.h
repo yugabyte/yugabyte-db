@@ -17,8 +17,9 @@
 #ifndef YB_UTIL_COW_OBJECT_H
 #define YB_UTIL_COW_OBJECT_H
 
-#include <glog/logging.h>
 #include <algorithm>
+
+#include <glog/logging.h>
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
@@ -42,8 +43,16 @@ class CowObject {
     lock_.ReadLock();
   }
 
+  void lock_shared() const {
+    ReadLock();
+  }
+
   void ReadUnlock() const {
     lock_.ReadUnlock();
+  }
+
+  void unlock_shared() const {
+    ReadUnlock();
   }
 
   // Lock the object for write (preventing concurrent mutators), and make a safe
