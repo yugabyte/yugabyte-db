@@ -750,8 +750,9 @@ class PreparedResultResponse : public ResultResponse {
     std::vector<RowsMetadata::ColSpec> col_specs;
 
     PreparedMetadata();
-    PreparedMetadata(const client::YBTableName& table_name,
-                     const std::vector<ColumnSchema>& bind_variable_schemas);
+    PreparedMetadata(
+        const client::YBTableName& table_name, const std::vector<int64_t>& hash_col_indices,
+        const std::vector<ColumnSchema>& bind_variable_schemas);
   };
 
   void SerializePreparedMetadata(const PreparedMetadata& metadata, faststring* mesg) const;

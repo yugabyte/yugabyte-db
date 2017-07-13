@@ -38,7 +38,7 @@ CHECKED_STATUS PTAssign::Analyze(SemContext *sem_context) {
 
   // Setup the expected datatypes, and analyze the rhs value.
   sem_state.SetExprState(col_desc_->yql_type(), col_desc_->internal_type(), lhs_->bindvar_name(),
-                         col_desc_->is_counter() ? col_desc_ : nullptr);
+                         col_desc_);
   RETURN_NOT_OK(rhs_->Analyze(sem_context));
   RETURN_NOT_OK(rhs_->CheckRhsExpr(sem_context));
 

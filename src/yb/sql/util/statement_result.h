@@ -36,11 +36,13 @@ class PreparedResult {
 
   // Accessors.
   const client::YBTableName& table_name() const { return table_name_; }
+  const std::vector<int64_t>& hash_col_indices() const { return hash_col_indices_; }
   const std::vector<ColumnSchema>& bind_variable_schemas() const { return bind_variable_schemas_; }
   const std::vector<ColumnSchema>& column_schemas() const { return column_schemas_; }
 
  private:
   const client::YBTableName table_name_;
+  const std::vector<int64_t> hash_col_indices_;
   const std::vector<ColumnSchema> bind_variable_schemas_;
   const std::vector<ColumnSchema> column_schemas_;
 };

@@ -172,6 +172,11 @@ class SemContext : public ProcessContext {
     return sem_state_->bindvar_name();
   }
 
+  const ColumnDesc *hash_col() const {
+    DCHECK(sem_state_) << "State variable is not set for the expression";
+    return sem_state_->hash_col();
+  }
+
   const ColumnDesc *updating_counter() const {
     DCHECK(sem_state_) << "State variable is not set for the expression";
     return sem_state_->updating_counter();

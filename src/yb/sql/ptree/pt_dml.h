@@ -202,6 +202,15 @@ class PTDmlStmt : public PTCollection {
     return bind_variables_;
   }
 
+  std::vector<int64_t> hash_col_indices() const {
+    std::vector<int64_t> indices;
+    indices.reserve(hash_col_bindvars_.size());
+    for (const PTBindVar* bindvar : hash_col_bindvars_) {
+      indices.emplace_back(bindvar->pos());
+    }
+    return indices;
+  }
+
   // Access for column_args.
   const MCVector<ColumnArg>& column_args() const {
     CHECK(column_args_ != nullptr) << "column arguments not set up";
@@ -215,6 +224,11 @@ class PTDmlStmt : public PTCollection {
     } else {
       column_refs_.insert(col_desc.id());
     }
+  }
+
+  // Add column ref to be read.
+  void AddHashColumnBindVar(PTBindVar* bindvar) {
+    hash_col_bindvars_.insert(bindvar);
   }
 
   // Access for column_args.
@@ -236,6 +250,9 @@ class PTDmlStmt : public PTCollection {
 
   // Semantic-analyzing the USING TTL clause.
   CHECKED_STATUS AnalyzeUsingClause(SemContext *sem_context);
+
+  // Semantic-analyzing the bind variables for hash columns.
+  CHECKED_STATUS AnalyzeHashColumnBindVars(SemContext *sem_context);
 
   // Does column_args_ contain static columns only (i.e. writing static column only)?
   bool StaticColumnArgsOnly() const;
@@ -269,6 +286,9 @@ class PTDmlStmt : public PTCollection {
 
   // Bind variables set up by during parsing.
   MCVector<PTBindVar*> bind_variables_;
+
+  // List of bind variables associated with hash columns ordered by their column ids.
+  MCSet<PTBindVar*, PTBindVar::HashColCmp> hash_col_bindvars_;
 
   // Semantic phase will decorate the following fields.
   MCSharedPtr<MCVector<ColumnArg>> column_args_;

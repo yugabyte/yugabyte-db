@@ -64,5 +64,33 @@ TEST_F(YbSqlStatement, TestExecutePrepareAfterTableDrop) {
   LOG(INFO) << "Done.";
 }
 
+TEST_F(YbSqlStatement, TestPKIndices) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  YbSqlProcessor *processor = GetSqlProcessor();
+
+  // Create test table.
+  LOG(INFO) << "Create test table.";
+  EXEC_VALID_STMT("create table test_pk_indices "
+                  "(h1 int, h2 text, h3 timestamp, r int, primary key ((h1, h2, h3), r));");
+
+  // Prepare a select statement.
+  LOG(INFO) << "Prepare select statement.";
+  Statement stmt(processor->CurrentKeyspace(),
+                 "select * from test_pk_indices where h3 = ? and h1 = ? and h2 = ?;");
+  PreparedResult::UniPtr result;
+  CHECK_OK(stmt.Prepare(processor, nullptr /* mem_tracker */, &result));
+
+  const std::vector<int64_t>& hash_col_indices = result->hash_col_indices();
+  EXPECT_EQ(hash_col_indices.size(), 3);
+  EXPECT_EQ(hash_col_indices[0], 1);
+  EXPECT_EQ(hash_col_indices[1], 2);
+  EXPECT_EQ(hash_col_indices[2], 0);
+
+  LOG(INFO) << "Done.";
+}
+
 } // namespace sql
 } // namespace yb

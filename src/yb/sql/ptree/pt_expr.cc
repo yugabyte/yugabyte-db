@@ -384,7 +384,8 @@ CHECKED_STATUS PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
     const PTRef *ref = static_cast<const PTRef*>(operand1.get());
     sem_state->SetExprState(ref->yql_type(),
                             ref->internal_type(),
-                            ref->bindvar_name());
+                            ref->bindvar_name(),
+                            ref->desc()->is_hash() ? ref->desc() : nullptr);
   } else {
     sem_state->SetExprState(operand1->yql_type(), operand1->internal_type());
   }
@@ -647,6 +648,11 @@ CHECKED_STATUS PTBindVar::Analyze(SemContext *sem_context) {
   yql_type_ = sem_context->expr_expected_yql_type();
   internal_type_ = sem_context->expr_expected_internal_type();
   expected_internal_type_ = internal_type_;
+  hash_col_ = sem_context->hash_col();
+  if (hash_col_ != nullptr) {
+    DCHECK(sem_context->current_dml_stmt() != nullptr);
+    sem_context->current_dml_stmt()->AddHashColumnBindVar(this);
+  }
 
   return Status::OK();
 }

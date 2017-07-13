@@ -1351,10 +1351,14 @@ PreparedResultResponse::PreparedMetadata::PreparedMetadata() {
 }
 
 PreparedResultResponse::PreparedMetadata::PreparedMetadata(
-    const client::YBTableName& table_name, const vector<ColumnSchema>& bind_variable_schemas)
+    const client::YBTableName& table_name, const std::vector<int64_t>& hash_col_indices,
+    const vector<ColumnSchema>& bind_variable_schemas)
     : flags(kHasGlobalTableSpec),
       global_table_spec(table_name.resolved_namespace_name(), table_name.table_name()) {
-  // TODO(robert): populate primary-key indices.
+  this->pk_indices.reserve(hash_col_indices.size());
+  for (const size_t index : hash_col_indices) {
+    this->pk_indices.emplace_back(static_cast<uint16_t>(index));
+  }
   col_specs.reserve(bind_variable_schemas.size());
   for (const auto var : bind_variable_schemas) {
     col_specs.emplace_back(var.name(), RowsMetadata::Type(var.type()));
@@ -1368,7 +1372,8 @@ PreparedResultResponse::PreparedResultResponse(const CQLRequest& request, const 
 PreparedResultResponse::PreparedResultResponse(
     const CQLRequest& request, const QueryId& query_id, const sql::PreparedResult& result)
     : ResultResponse(request, Kind::PREPARED), query_id_(query_id),
-      prepared_metadata_(result.table_name(), result.bind_variable_schemas()),
+      prepared_metadata_(result.table_name(), result.hash_col_indices(),
+                         result.bind_variable_schemas()),
       rows_metadata_(!result.column_schemas().empty() ?
                      RowsMetadata(
                          result.table_name(), result.column_schemas(),

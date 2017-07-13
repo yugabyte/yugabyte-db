@@ -3,7 +3,11 @@ package org.yb.cql;
 
 import java.util.Arrays;
 import java.util.Vector;
+import java.lang.reflect.Field;
 
+import com.datastax.driver.core.ColumnDefinitions;
+import com.datastax.driver.core.DataType;
+import com.datastax.driver.core.PreparedId;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.PreparedStatement;
@@ -12,8 +16,10 @@ import com.datastax.driver.core.exceptions.QueryValidationException;
 
 import org.junit.BeforeClass;
 import org.junit.Test;
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 public class TestPrepareExecute extends BaseCQLTest {
@@ -138,6 +144,15 @@ public class TestPrepareExecute extends BaseCQLTest {
     }
   }
 
+  private void testInvalidPrepare(String stmt) {
+    try {
+      PreparedStatement pstmt = session.prepare(stmt);
+      fail("Prepared statement did not fail to prepare");
+    } catch (QueryValidationException e) {
+      LOG.info("Expected exception caught: " + e.getMessage());
+    }
+  }
+
   @Test
   public void testDDL() throws Exception {
     LOG.info("Begin test");
@@ -178,4 +193,87 @@ public class TestPrepareExecute extends BaseCQLTest {
     LOG.info("End test");
   }
 
+  // Assert metadata returned from a prepared statement.
+  private void assertHashKeysMetadata(String stmt, DataType hashKeys[]) throws Exception {
+    PreparedStatement pstmt = session.prepare(stmt);
+    PreparedId id = pstmt.getPreparedId();
+
+    // TODO: routingKeyIndexes in Cassandra's PreparedId class is not exposed (see JAVA-195).
+    // Make it accessible via an API in our fork.
+
+    // Assert routingKeyIndexes have the same number of entries as the hash columns.
+    Field f = id.getClass().getDeclaredField("routingKeyIndexes");
+    f.setAccessible(true);
+    int hashIndices[] = (int[])f.get(id);
+    if (hashKeys == null) {
+      assertNull(hashIndices);
+      return;
+    }
+    assertEquals(hashKeys.length, hashIndices.length);
+
+    // Assert routingKeyIndexes's order and datatypes in metadata are the same as in the table hash
+    // key definition.
+    ColumnDefinitions variables = pstmt.getVariables();
+    assertTrue(hashKeys.length <= variables.size());
+    for (int i = 0; i < hashKeys.length; i++) {
+      assertEquals(hashKeys[i], variables.getType(hashIndices[i]));
+    }
+  }
+
+  @Test
+  public void testHashKeysMetadata() throws Exception {
+
+    LOG.info("Create test table.");
+    session.execute("CREATE TABLE test_pk_indices " +
+                    "(h1 int, h2 text, h3 timestamp, r int, v int, " +
+                    "PRIMARY KEY ((h1, h2, h3), r));");
+
+    // Expected hash key columns in the cardinal order.
+    DataType hashKeys[] = new DataType[]{DataType.cint(), DataType.text(), DataType.timestamp()};
+
+    LOG.info("Test prepared statements.");
+
+    // Test bind markers "?" in different query and DMLs and in different hash key column orders.
+    // The hash key metadata returned should be the same regardless.
+    assertHashKeysMetadata("SELECT * FROM test_pk_indices WHERE h3 = ? AND h1 = ? AND h2 = ?;",
+                           hashKeys);
+    assertHashKeysMetadata("SELECT * FROM test_pk_indices WHERE h2 = ? AND h3 = ? AND h1 = ? " +
+                           "AND r < ?;", hashKeys);
+    assertHashKeysMetadata("INSERT INTO test_pk_indices (h2, h1, h3, r) VALUES (?, ?, ?, ?);",
+                           hashKeys);
+    assertHashKeysMetadata("UPDATE test_pk_indices SET v = ? " +
+                           "WHERE h1 = ? AND h3 = ? AND r = ? AND h2 = ?;", hashKeys);
+    assertHashKeysMetadata("DELETE FROM test_pk_indices " +
+                           "WHERE h2 = ? AND h1 = ? AND h3 = ? AND r = ?;", hashKeys);
+
+    // Test bind markers ":x" in different query and DMLs and in different hash key column orders.
+    // The hash key metadata returned should be the same regardless still.
+    assertHashKeysMetadata("SELECT * FROM test_pk_indices " +
+                           "WHERE h3 = :h3 AND h1 = :h1 AND h2 = :h2;", hashKeys);
+    assertHashKeysMetadata("SELECT * FROM test_pk_indices " +
+                           "WHERE h2 = :h2 AND h3 = :h3 AND h1 = :h1 " +
+                           "AND r < :r1;", hashKeys);
+    assertHashKeysMetadata("INSERT INTO test_pk_indices (h1, h2, h3, r) " +
+                           "VALUES (:h1, :h2, :h3, :r);", hashKeys);
+    assertHashKeysMetadata("UPDATE test_pk_indices SET v = :v " +
+                           "WHERE h1 = :h1 AND h3 = :h3 AND h2 = :h2 AND r = :r;", hashKeys);
+    assertHashKeysMetadata("DELETE FROM test_pk_indices " +
+                           "WHERE h2 = :h2 AND h1 = :h1 AND h3 = :h3 AND r = :r;", hashKeys);
+
+    // Test SELECT with partial hash column list. In this case, it becomes a full-table scan.
+    // Verify no hash key metadata is returned.
+    assertHashKeysMetadata("SELECT * FROM test_pk_indices WHERE h1 = ?;", null);
+
+    // Test with hash column list partially bound. In this case, verify an empty hash key list is
+    // returned.
+    assertHashKeysMetadata("SELECT * FROM test_pk_indices WHERE h1 = ? and h2 = ? and h3 = 1;",
+                           null);
+    assertHashKeysMetadata("INSERT INTO test_pk_indices (h1, h2, h3, r) VALUES (1, ?, ?, ?);",
+                           null);
+
+    // Test DML with incomplete hash key columns. Verify that the statements fail to prepare at all.
+    testInvalidPrepare("INSERT INTO test_pk_indices (h1, h2, r) VALUES (?, ?, ?);");
+    testInvalidPrepare("UPDATE test_pk_indices SET v = ? WHERE h1 = ?;");
+    testInvalidPrepare("DELETE FROM test_pk_indices WHERE h2 = ? AND h1 = ?;");
+  }
 }

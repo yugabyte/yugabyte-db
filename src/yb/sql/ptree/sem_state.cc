@@ -16,7 +16,8 @@ using client::YBTable;
 SemState::SemState(SemContext *sem_context,
                    DataType expected_yql_type_id,
                    InternalType expected_internal_type,
-                   const MCSharedPtr<MCString>& bindvar_name)
+                   const MCSharedPtr<MCString>& bindvar_name,
+                   const ColumnDesc *lhs_col)
     : sem_context_(sem_context),
       previous_state_(nullptr),
       was_reset(false),
@@ -24,7 +25,7 @@ SemState::SemState(SemContext *sem_context,
       expected_internal_type_(expected_internal_type),
       bindvar_name_(bindvar_name),
       where_state_(nullptr),
-      updating_counter_(nullptr),
+      lhs_col_(lhs_col),
       processing_if_clause_(false) {
   // Passing down state variables that stay the same until they are set or reset.
   if (sem_context->sem_state() != nullptr) {
@@ -38,7 +39,8 @@ SemState::SemState(SemContext *sem_context,
 SemState::SemState(SemContext *sem_context,
                    const std::shared_ptr<YQLType>& expected_yql_type,
                    InternalType expected_internal_type,
-                   const MCSharedPtr<MCString>& bindvar_name)
+                   const MCSharedPtr<MCString>& bindvar_name,
+                   const ColumnDesc *lhs_col)
     : sem_context_(sem_context),
       previous_state_(nullptr),
       was_reset(false),
@@ -46,7 +48,7 @@ SemState::SemState(SemContext *sem_context,
       expected_internal_type_(expected_internal_type),
       bindvar_name_(bindvar_name),
       where_state_(nullptr),
-      updating_counter_(nullptr),
+      lhs_col_(lhs_col),
       processing_if_clause_(false) {
   // Passing down state variables that stay the same until they are set or reset.
   if (sem_context->sem_state() != nullptr) {
@@ -73,21 +75,21 @@ void SemState::ResetContextState() {
 void SemState::SetExprState(DataType yql_type_id,
                             InternalType internal_type,
                             const MCSharedPtr<MCString>& bindvar_name,
-                            const ColumnDesc *updating_counter) {
+                            const ColumnDesc *lhs_col) {
   expected_yql_type_ = YQLType::Create(yql_type_id);
   expected_internal_type_ = internal_type;
   bindvar_name_ = bindvar_name;
-  updating_counter_ = updating_counter;
+  lhs_col_ = lhs_col;
 }
 
 void SemState::SetExprState(const std::shared_ptr<YQLType>& yql_type,
                             InternalType internal_type,
                             const MCSharedPtr<MCString>& bindvar_name,
-                            const ColumnDesc *updating_counter) {
+                            const ColumnDesc *lhs_col) {
   expected_yql_type_ = yql_type;
   expected_internal_type_ = internal_type;
   bindvar_name_ = bindvar_name;
-  updating_counter_ = updating_counter;
+  lhs_col_ = lhs_col;
 }
 
 void SemState::CopyPreviousStates() {

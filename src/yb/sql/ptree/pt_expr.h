@@ -19,9 +19,6 @@
 namespace yb {
 namespace sql {
 
-class PTRef;
-class PTBindVar;
-
 //--------------------------------------------------------------------------------------------------
 // The order of the following enum values are not important.
 enum class ExprOperator : int {
@@ -913,6 +910,15 @@ class PTBindVar : public PTExpr {
     }
   };
 
+  // Compare 2 bind variables for their hash column ids.
+  struct HashColCmp {
+    bool operator() (const PTBindVar* v1, const PTBindVar* v2) const {
+      DCHECK(v1->hash_col() != nullptr) << "bindvar pos " << v1->pos() << " is not a hash column";
+      DCHECK(v2->hash_col() != nullptr) << "bindvar pos " << v2->pos() << " is not a hash column";
+      return v1->hash_col()->id() < v2->hash_col()->id();
+    }
+  };
+
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTBindVar(MemoryContext *memctx,
@@ -949,9 +955,9 @@ class PTBindVar : public PTExpr {
     return name_;
   }
 
-  // Expression return type in DocDB format.
-  virtual InternalType internal_type() const override {
-    return internal_type_;
+  // Access function for hash column if available.
+  const ColumnDesc *hash_col() const {
+    return hash_col_;
   }
 
   // Node type.
@@ -976,7 +982,6 @@ class PTBindVar : public PTExpr {
     return ttl_bindvar_name;
   }
 
-
   // The name Cassandra uses for the virtual column when binding the partition key (i.e. with token)
   static const string& token_bindvar_name() {
     static string token_bindvar_name = "partition key token";
@@ -988,6 +993,8 @@ class PTBindVar : public PTExpr {
   int64_t pos_;
   // Variable name.
   MCSharedPtr<MCString> name_;
+  // Hash column descriptor.
+  const ColumnDesc *hash_col_ = nullptr;
 };
 
 }  // namespace sql

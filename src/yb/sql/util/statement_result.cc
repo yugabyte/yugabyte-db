@@ -107,6 +107,7 @@ YQLClient GetClientFromOp(const YBqlOp& op) {
 //------------------------------------------------------------------------------------------------
 PreparedResult::PreparedResult(const PTDmlStmt *stmt)
     : table_name_(stmt->table()->name()),
+      hash_col_indices_(stmt->hash_col_indices()),
       bind_variable_schemas_(GetBindVariableSchemasFromDmlStmt(stmt)),
       column_schemas_(stmt->opcode() == TreeNodeOpcode::kPTSelectStmt ?
                       GetColumnSchemasFromSelectStmt(static_cast<const PTSelectStmt*>(stmt)) :

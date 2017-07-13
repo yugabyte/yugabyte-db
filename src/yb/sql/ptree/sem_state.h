@@ -46,12 +46,14 @@ class SemState {
   SemState(SemContext *sem_context,
            DataType expected_yql_type_id = DataType::UNKNOWN_DATA,
            InternalType expected_internal_type = InternalType::VALUE_NOT_SET,
-           const MCSharedPtr<MCString>& bindvar_name = nullptr);
+           const MCSharedPtr<MCString>& bindvar_name = nullptr,
+           const ColumnDesc *lhs_col = nullptr);
 
   SemState(SemContext *sem_context,
            const std::shared_ptr<YQLType>& expected_yql_type,
            InternalType expected_internal_type = InternalType::VALUE_NOT_SET,
-           const MCSharedPtr<MCString>& bindvar_name = nullptr);
+           const MCSharedPtr<MCString>& bindvar_name = nullptr,
+           const ColumnDesc *lhs_col = nullptr);
 
   // Destructor: Reset sem_context back to previous_state_.
   virtual ~SemState();
@@ -69,11 +71,11 @@ class SemState {
   void SetExprState(DataType yql_type_id,
                     InternalType internal_type,
                     const MCSharedPtr<MCString>& bindvar_name = nullptr,
-                    const ColumnDesc *updating_counter = nullptr);
+                    const ColumnDesc *lhs_col = nullptr);
   void SetExprState(const std::shared_ptr<YQLType>& yql_type,
                     InternalType internal_type,
                     const MCSharedPtr<MCString>& bindvar_name = nullptr,
-                    const ColumnDesc *updating_counter = nullptr);
+                    const ColumnDesc *lhs_col = nullptr);
 
   // Set the current state using previous state's values.
   void CopyPreviousStates();
@@ -86,7 +88,17 @@ class SemState {
   InternalType expected_internal_type() const { return expected_internal_type_; }
   WhereExprState *where_state() const { return where_state_; }
   const MCSharedPtr<MCString>& bindvar_name() const { return bindvar_name_; }
-  const ColumnDesc *updating_counter() const { return updating_counter_; }
+  const ColumnDesc *lhs_col() const { return lhs_col_; }
+
+  // Return the hash column descriptor on LHS if available.
+  const ColumnDesc *hash_col() const {
+    return lhs_col_ != nullptr && lhs_col_->is_hash() ? lhs_col_ : nullptr;
+  }
+
+  // Return the counter column descriptor on LHS if available.
+  const ColumnDesc *updating_counter() const {
+    return lhs_col_ != nullptr && lhs_col_->is_counter() ? lhs_col_ : nullptr;
+  }
 
   bool processing_if_clause() const { return processing_if_clause_; }
   void set_processing_if_clause(bool value) { processing_if_clause_ = value; }
@@ -121,8 +133,8 @@ class SemState {
   // Predicate for processing a column definition in a table.
   bool processing_column_definition_ = false;
 
-  // State variables for counters.
-  const ColumnDesc *updating_counter_;
+  // Descriptor for the LHS column.
+  const ColumnDesc *lhs_col_;
 
   // State variables for if clause.
   bool processing_if_clause_;

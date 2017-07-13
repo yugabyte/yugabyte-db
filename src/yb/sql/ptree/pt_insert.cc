@@ -84,7 +84,7 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
       // Process values arguments.
       const PTExpr::SharedPtr& expr = *iter;
       SemState sem_state(sem_context, col_desc->yql_type(), col_desc->internal_type(),
-                         name->bindvar_name());
+                         name->bindvar_name(), col_desc);
       RETURN_NOT_OK(expr->Analyze(sem_context));
       RETURN_NOT_OK(expr->CheckRhsExpr(sem_context));
 
@@ -118,7 +118,7 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
 
       // Process values arguments.
       SemState sem_state(sem_context, col_desc->yql_type(), col_desc->internal_type(),
-                         (*iter)->bindvar_name());
+                         (*iter)->bindvar_name(), col_desc);
       RETURN_NOT_OK(expr->Analyze(sem_context));
       RETURN_NOT_OK(expr->CheckRhsExpr(sem_context));
 
@@ -159,6 +159,9 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
       return sem_context->Error(value_clause_->loc(), ErrorCode::NULL_ARGUMENT_FOR_PRIMARY_KEY);
     }
   }
+
+  // Analyze bind variables for hash columns in the INSERT list.
+  RETURN_NOT_OK(AnalyzeHashColumnBindVars(sem_context));
 
   // Run error checking on the IF conditions.
   RETURN_NOT_OK(AnalyzeIfClause(sem_context, if_clause_));

@@ -34,6 +34,7 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
     write_only_(write_only),
     ttl_seconds_(ttl_seconds),
     bind_variables_(memctx),
+    hash_col_bindvars_(memctx),
     column_args_(nullptr),
     column_refs_(memctx),
     static_column_refs_(memctx) {
@@ -141,6 +142,9 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr
     }
   }
 
+  // Analyze bind variables for hash columns in the WHERE clause.
+  RETURN_NOT_OK(AnalyzeHashColumnBindVars(sem_context));
+
   return Status::OK();
 }
 
@@ -164,6 +168,17 @@ CHECKED_STATUS PTDmlStmt::AnalyzeUsingClause(SemContext *sem_context) {
   SemState sem_state(sem_context, DataType::INT64, InternalType::kInt64Value);
   sem_state.set_bindvar_name(PTBindVar::ttl_bindvar_name());
   RETURN_NOT_OK(ttl_seconds_->Analyze(sem_context));
+
+  return Status::OK();
+}
+
+CHECKED_STATUS PTDmlStmt::AnalyzeHashColumnBindVars(SemContext *sem_context) {
+  // If not all hash columns are bound, clear hash_col_bindvars_ because the client driver will not
+  // be able to compute the full hash key unless it parses the SQL statement and extracts the
+  // literals also, which is not currently supported and unlikely to be.
+  if (hash_col_bindvars_.size() != num_hash_key_columns_) {
+    hash_col_bindvars_.clear();
+  }
 
   return Status::OK();
 }
