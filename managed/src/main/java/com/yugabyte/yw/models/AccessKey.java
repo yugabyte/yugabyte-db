@@ -22,6 +22,7 @@ public class AccessKey extends Model {
     public String privateKey;
     public String vaultPasswordFile;
     public String vaultFile;
+    public String sshUser;
   }
 
   @EmbeddedId

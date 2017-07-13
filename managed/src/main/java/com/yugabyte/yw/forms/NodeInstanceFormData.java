@@ -14,6 +14,9 @@ public class NodeInstanceFormData {
   public int sshPort = 22;
 
   @Constraints.Required()
+  public String sshUser;
+
+  @Constraints.Required()
   public String region;
 
   @Constraints.Required()

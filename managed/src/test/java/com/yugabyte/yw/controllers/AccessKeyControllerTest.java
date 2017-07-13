@@ -103,6 +103,7 @@ public class AccessKeyControllerTest extends WithApplication {
         bodyData.add(new Http.MultipartFormData.DataPart("keyCode", keyCode));
         bodyData.add(new Http.MultipartFormData.DataPart("regionUUID", defaultRegion.uuid.toString()));
         bodyData.add(new Http.MultipartFormData.DataPart("keyType", "PRIVATE"));
+        bodyData.add(new Http.MultipartFormData.DataPart("sshUser", "ssh-user"));
         String tmpFile = createTempFile("PRIVATE KEY DATA");
         Source<ByteString, ?> keyFile = FileIO.fromFile(new File(tmpFile));
         bodyData.add(new Http.MultipartFormData.FilePart("keyFile", "test.pem",
@@ -240,10 +241,10 @@ public class AccessKeyControllerTest extends WithApplication {
     AccessKey accessKey = AccessKey.create(defaultProvider.uuid, "key-code-1", keyInfo);
     ArgumentCaptor<File> updatedFile = ArgumentCaptor.forClass(File.class);
     when(mockAccessManager.uploadKeyFile(eq(defaultRegion.uuid), any(File.class),
-        eq("key-code-1"), eq(AccessManager.KeyType.PRIVATE))).thenReturn(accessKey);
+        eq("key-code-1"), eq(AccessManager.KeyType.PRIVATE), eq("ssh-user"))).thenReturn(accessKey);
     Result result = createAccessKey(defaultProvider.uuid, "key-code-1", true, false);
     Mockito.verify(mockAccessManager, times(1)).uploadKeyFile(eq(defaultRegion.uuid),
-        updatedFile.capture(), eq("key-code-1"), eq(AccessManager.KeyType.PRIVATE));
+        updatedFile.capture(), eq("key-code-1"), eq(AccessManager.KeyType.PRIVATE), eq("ssh-user"));
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertNotNull(json);
@@ -264,10 +265,10 @@ public class AccessKeyControllerTest extends WithApplication {
     AccessKey accessKey = AccessKey.create(defaultProvider.uuid, "key-code-1", keyInfo);
     ArgumentCaptor<File> updatedFile = ArgumentCaptor.forClass(File.class);
     when(mockAccessManager.uploadKeyFile(eq(defaultRegion.uuid), any(File.class),
-        eq("key-code-1"), eq(AccessManager.KeyType.PRIVATE))).thenReturn(accessKey);
+        eq("key-code-1"), eq(AccessManager.KeyType.PRIVATE), eq(null))).thenReturn(accessKey);
     Result result = createAccessKey(defaultProvider.uuid, "key-code-1", false, true);
     Mockito.verify(mockAccessManager, times(1)).uploadKeyFile(eq(defaultRegion.uuid),
-        updatedFile.capture(), eq("key-code-1"), eq(AccessManager.KeyType.PRIVATE));
+        updatedFile.capture(), eq("key-code-1"), eq(AccessManager.KeyType.PRIVATE), eq(null));
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertNotNull(json);

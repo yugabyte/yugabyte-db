@@ -85,7 +85,7 @@ import static org.mockito.Mockito.when;
       response.code = 99;
       when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(response);
       return Json.toJson(accessManager.uploadKeyFile(regionUUID,
-          new File("foo"), TEST_KEY_CODE, AccessManager.KeyType.PRIVATE));
+          new File("foo"), TEST_KEY_CODE, AccessManager.KeyType.PRIVATE, "some-user"));
     } else {
       response.code = 0;
       response.message = "{\"vault_file\": \"/path/to/vault_file\"," +
@@ -93,7 +93,7 @@ import static org.mockito.Mockito.when;
       when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(response);
       String tmpFile = createTempFile("SOME DATA");
       return Json.toJson(accessManager.uploadKeyFile(regionUUID,
-          new File(tmpFile), TEST_KEY_CODE, AccessManager.KeyType.PRIVATE));
+          new File(tmpFile), TEST_KEY_CODE, AccessManager.KeyType.PRIVATE, "some-user"));
     }
   }
 
@@ -275,6 +275,7 @@ import static org.mockito.Mockito.when;
     String expectedPath = String.join("/", TMP_KEYS_PATH, idKey.get("providerUUID").asText(),
         TEST_KEY_PEM);
     assertEquals(expectedPath, accessKey.getKeyInfo().privateKey);
+    assertEquals("some-user", accessKey.getKeyInfo().sshUser);
     Path keyFile = Paths.get(expectedPath);
     String permissions = PosixFilePermissions.toString(Files.getPosixFilePermissions(keyFile));
     assertEquals(PEM_PERMISSIONS, permissions);

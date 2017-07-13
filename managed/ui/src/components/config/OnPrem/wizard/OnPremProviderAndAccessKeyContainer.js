@@ -12,7 +12,9 @@ const mapDispatchToProps = (dispatch, ownProps) => {
       if (!ownProps.isEditProvider) {
         var formSubmitVals = {
           provider: {name: formData.name},
-          key: {code: formData.keyCode, privateKeyContent: formData.privateKeyContent}
+          key: {code: formData.name.toLowerCase().replace(/ /g, "-") + "-key",
+                privateKeyContent: formData.privateKeyContent,
+                sshUser: formData.sshUser }
         };
         dispatch(setOnPremConfigData(formSubmitVals));
       }
@@ -29,6 +31,7 @@ const mapStateToProps = (state, ownProps) => {
       name: onPremJsonFormData.provider.name,
       keyCode: onPremJsonFormData.key.code,
       privateKeyContent: onPremJsonFormData.key.privateKeyContent,
+      sshUser: onPremJsonFormData.key.sshUser,
       machineTypeList : onPremJsonFormData.instanceTypes.map(function (item) {
         return {
           code: item.instanceTypeCode,
@@ -61,8 +64,8 @@ const validate = values => {
   if (!isDefinedNotNull(values.name)) {
     errors.name = 'Provider Name is Required';
   }
-  if (!isDefinedNotNull(values.keyCode)) {
-    errors.keyCode = 'Key Code is Required';
+  if (!isDefinedNotNull(values.sshUser)) {
+    errors.sshUser = 'SSH User is Required';
   }
   if (!isDefinedNotNull(values.privateKeyContent)) {
     errors.privateKeyContent = 'Private Key Content is Required';

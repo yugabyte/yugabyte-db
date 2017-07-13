@@ -76,6 +76,7 @@ public class AccessKeyController extends AuthenticatedController {
     String keyCode = formData.get().keyCode;
     String keyContent = formData.get().keyContent;
     AccessManager.KeyType keyType = formData.get().keyType;
+    String sshUser =  formData.get().sshUser;
 
     AccessKey accessKey;
     // Check if a public/private key was uploaded as part of the request
@@ -87,7 +88,7 @@ public class AccessKeyController extends AuthenticatedController {
         if (keyType == null || uploadedFile == null) {
           return ApiResponse.error(BAD_REQUEST, "keyType and keyFile params required.");
         }
-        accessKey = accessManager.uploadKeyFile(region.uuid, uploadedFile, keyCode, keyType);
+        accessKey = accessManager.uploadKeyFile(region.uuid, uploadedFile, keyCode, keyType, sshUser);
       } else if (keyContent != null && !keyContent.isEmpty()) {
         if (keyType == null) {
           return ApiResponse.error(BAD_REQUEST, "keyType params required.");
@@ -97,7 +98,7 @@ public class AccessKeyController extends AuthenticatedController {
         Files.write(tempFile, keyContent.getBytes());
 
         // Upload temp file to create the access key and return success/failure
-        accessKey = accessManager.uploadKeyFile(regionUUID, tempFile.toFile(), keyCode, keyType);
+        accessKey = accessManager.uploadKeyFile(regionUUID, tempFile.toFile(), keyCode, keyType, sshUser);
       } else {
         accessKey = accessManager.addKey(regionUUID, keyCode);
       }
