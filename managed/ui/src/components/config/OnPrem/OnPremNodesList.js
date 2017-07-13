@@ -27,10 +27,14 @@ export default class OnPremNodesList extends Component {
   }
 
   submitAddNodesForm(vals) {
-    const {cloud: {supportedRegionList}} = this.props;
+    const {cloud: { supportedRegionList, accessKeys }} = this.props;
     var onPremProvider = this.props.cloud.providers.data.find((provider) => provider.code === "onprem");
     var self = this;
     let currentCloudRegions = supportedRegionList.data.filter(region => region.provider.code === "onprem");
+    let currentCloudAccessKey = accessKeys.data.filter(
+      accessKey => accessKey.idKey.providerUUID === onPremProvider.uuid
+    ).shift()
+
     let zoneList = currentCloudRegions.reduce(function(azs, r) {
                          azs[r.code] = [];
                           r.zones.map((z) => azs[r.code][z.code.trim()] = z.uuid);
@@ -45,14 +49,17 @@ export default class OnPremNodesList extends Component {
           if (acc[currentRegion]) {
             val.instanceTypeIPs.split(",").forEach(function(ip){
               acc[zoneList[region][currentZone]].push({
-                zone: val.zone, region: region, ip: ip.trim(), instanceType: val.machineType
+                zone: val.zone, region: region, ip: ip.trim(),
+                instanceType: val.machineType,
+                sshUser: currentCloudAccessKey.keyInfo.sshUser
               })
             })
           } else {
-            acc[currentRegion] = val.instanceTypeIPs.split(",").map(
-              function (ip) {
-                return {zone: val.zone, region: region, ip: ip.trim(), instanceType: val.machineType}
-              });
+            acc[currentRegion] = val.instanceTypeIPs.split(",").map((ip) =>
+              ({zone: val.zone, region: region, ip: ip.trim(),
+                instanceType: val.machineType,
+                sshUser: currentCloudAccessKey.keyInfo.sshUser})
+            );
           }
           return acc;
         }, {});

@@ -66,7 +66,8 @@ export default class OnPremSuccess extends Component {
       jsonDataBlob.provider = {name: currentProvider.name};
       jsonDataBlob.key = {
         code: onPremAccessKey.idKey.keyCode,
-        privateKeyContent: onPremAccessKey.keyInfo.privateKey
+        privateKeyContent: onPremAccessKey.keyInfo.privateKey,
+        sshUser: onPremAccessKey.keyInfo.sshUser
       };
       jsonDataBlob.regions = onPremRegions.map(function(regionItem){
         return {code: regionItem.code,

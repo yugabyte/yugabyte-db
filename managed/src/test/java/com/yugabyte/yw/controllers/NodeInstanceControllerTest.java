@@ -46,6 +46,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     formData.region = region.code;
     formData.zone = zone.code;
     formData.instanceType = "fake_instance_type";
+    formData.sshUser = "ssh-user";
     node = NodeInstance.create(zone.uuid, formData);
     // Give it a name.
     node.setNodeName("fake_name");
@@ -86,7 +87,9 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     assertEquals(dbNode.nodeUuid.toString(), queryNode.get("nodeUuid").asText());
     assertEquals(dbNode.zoneUuid.toString(), queryNode.get("zoneUuid").asText());
     assertEquals(dbNode.getDetailsJson(), queryNode.get("details").toString());
+    assertEquals(dbNode.getDetails().sshUser, queryNode.get("details").get("sshUser").asText());
   }
+
   private void checkNodeValid(JsonNode nodeAsJson) { checkNodesMatch(nodeAsJson, node); }
 
   private JsonNode parseResult(Result r) {

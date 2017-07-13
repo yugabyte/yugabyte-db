@@ -19,7 +19,8 @@ const mapDispatchToProps = (dispatch, ownProps) => {
                 ip: ipItem.trim(),
                 zone: instanceTypeItem.zone,
                 region: key,
-                instanceType: instanceTypeItem.machineType
+                instanceType: instanceTypeItem.machineType,
+                sshUser: formVals.sshUser
               });
             });
           });

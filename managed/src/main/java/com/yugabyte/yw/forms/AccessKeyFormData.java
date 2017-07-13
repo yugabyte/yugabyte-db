@@ -17,4 +17,6 @@ public class AccessKeyFormData {
     public AccessManager.KeyType keyType;
 
     public String keyContent;
+
+    public String sshUser;
 }

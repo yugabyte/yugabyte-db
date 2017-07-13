@@ -243,7 +243,8 @@ export function createAccessKey(providerUUID, regionUUID, keyInfo) {
     keyCode: keyInfo.code,
     regionUUID: regionUUID,
     keyType: "PRIVATE",
-    keyContent: keyInfo.privateKeyContent
+    keyContent: keyInfo.privateKeyContent,
+    sshUser: keyInfo.sshUser
   };
   const url = getProviderEndpoint(providerUUID) + '/access_keys';
   const request = axios.post(url, formValues);
