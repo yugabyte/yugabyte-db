@@ -14,7 +14,7 @@ import './UniverseForm.scss';
 import AZPlacementInfo from './AZPlacementInfo';
 
 const initialState = {
-  instanceTypeSelected: 'm3.medium',
+  instanceTypeSelected: '',
   azCheckState: true,
   providerSelected: '',
   regionList: [],
@@ -56,6 +56,7 @@ export default class UniverseForm extends Component {
     this.configureUniverseNodeList = this.configureUniverseNodeList.bind(this);
     this.getCurrentProvider = this.getCurrentProvider.bind(this);
     this.hasFieldChanged = this.hasFieldChanged.bind(this);
+    this.setDeviceInfo = this.setDeviceInfo.bind(this);
     this.state = initialState;
   }
 
@@ -67,6 +68,30 @@ export default class UniverseForm extends Component {
 
   getCurrentProvider(providerUUID) {
     return this.props.cloud.providers.data.find((provider) => provider.uuid === providerUUID);
+  }
+
+  setDeviceInfo(instanceTypeCode, instanceTypeList) {
+    let instanceTypeSelectedData = instanceTypeList.find(function (item) {
+      return item.instanceTypeCode === instanceTypeCode;
+    });
+    let volumesList = instanceTypeSelectedData.instanceTypeDetails.volumeDetailsList;
+    let volumeDetail = volumesList[0];
+    let mountPoints = null;
+    if (instanceTypeSelectedData.providerCode === "onprem") {
+      mountPoints = instanceTypeSelectedData.instanceTypeDetails.volumeDetailsList.map(function (item) {
+        return item.mountPath;
+      }).join(",");
+    }
+    if (volumeDetail) {
+      let deviceInfo = {
+        volumeSize: volumeDetail.volumeSizeGB,
+        numVolumes: volumesList.length,
+        mountPoints: mountPoints,
+        ebsType: volumeDetail.volumeType === "EBS" ? "GP2" : null,
+        diskIops: null
+      };
+      this.setState({nodeSetViaAZList: false, deviceInfo: deviceInfo, volumeType: volumeDetail.volumeType});
+    }
   }
 
   configureUniverseNodeList() {
@@ -109,7 +134,7 @@ export default class UniverseForm extends Component {
           this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
         }
       } else {
-        this.props.submitConfigureUniverse(universeTaskParams);
+         this.props.submitConfigureUniverse(universeTaskParams);
       }
     }
   }
@@ -176,29 +201,10 @@ export default class UniverseForm extends Component {
     this.setState({nodeSetViaAZList: false, regionList: value});
   }
 
-  instanceTypeChanged(instanceTypeValue) {
+  instanceTypeChanged(event) {
+    let instanceTypeValue = event.target.value;
     this.setState({instanceTypeSelected: instanceTypeValue});
-    let instanceTypeSelected = this.props.cloud.instanceTypes.data.find(function(item){
-      return item.instanceTypeCode ===  instanceTypeValue;
-    });
-    let volumesList = instanceTypeSelected.instanceTypeDetails.volumeDetailsList;
-    let volumeDetail = volumesList[0];
-    let mountPoints = null;
-    if (instanceTypeSelected.providerCode === "onprem") {
-      mountPoints = instanceTypeSelected.instanceTypeDetails.volumeDetailsList.map(function(item) {
-        return item.mountPath;
-      }).join(",");
-    }
-    if (volumeDetail) {
-      let deviceInfo = {
-        volumeSize: volumeDetail.volumeSizeGB,
-        numVolumes: volumesList.length,
-        mountPoints: mountPoints,
-        ebsType: volumeDetail.volumeType === "EBS" ? "GP2" : null,
-        diskIops: null
-      };
-      this.setState({nodeSetViaAZList: false, deviceInfo: deviceInfo, volumeType: volumeDetail.volumeType});
-    }
+    this.setDeviceInfo(instanceTypeValue, this.props.cloud.instanceTypes.data);
   }
 
   numNodesChanged(value) {
@@ -255,26 +261,26 @@ export default class UniverseForm extends Component {
       && prevProps.universe.showModal && this.props.universe.showModal && this.props.universe.visibleModal === "universeModal") {
       let currentProvider = this.getCurrentProvider(this.state.providerSelected);
       if (((currentProvider.code === "onprem" && this.state.numNodes <= this.state.maxNumNodes) || currentProvider.code !== "onprem")
-          && (this.state.numNodes >= this.state.replicationFactor && !this.state.nodeSetViaAZList)) {
+        && (this.state.numNodes >= this.state.replicationFactor && !this.state.nodeSetViaAZList)) {
         if (isNonEmptyObject(currentUniverse.data)) {
           if (this.hasFieldChanged()) {
             this.configureUniverseNodeList();
           } else {
             let placementStatusObject = {
-                  error: {
-                    type: "noFieldsChanged",
-                    numNodes: this.state.numNodes,
-                    maxNumNodes: this.state.maxNumNodes
-                  }
-                }
+              error: {
+                type: "noFieldsChanged",
+                numNodes: this.state.numNodes,
+                maxNumNodes: this.state.maxNumNodes
+              }
+            }
             this.props.setPlacementStatus(placementStatusObject);
           }
         } else {
-            this.configureUniverseNodeList();
+          this.configureUniverseNodeList();
         }
       } else if (isNonEmptyArray(this.state.regionList) && currentProvider &&
-            currentProvider.code === "onprem" && this.state.instanceTypeSelected &&
-            this.state.numNodes >= this.state.maxNumNodes) {
+        currentProvider.code === "onprem" && this.state.instanceTypeSelected &&
+        this.state.numNodes >= this.state.maxNumNodes) {
         let placementStatusObject = {
           error: {
             type: "notEnoughNodesConfigured",
@@ -323,33 +329,18 @@ export default class UniverseForm extends Component {
   }
 
   componentWillReceiveProps(nextProps) {
-    var self = this;
-    const {universe: {showModal, visibleModal, currentUniverse}, cloud: {nodeInstanceList}} = nextProps;
+    const {universe: {showModal, visibleModal, currentUniverse}, cloud: {nodeInstanceList, instanceTypes}} = nextProps;
+
     if (nextProps.cloud.instanceTypes.data !== this.props.cloud.instanceTypes.data
-        && isNonEmptyArray(nextProps.cloud.instanceTypes.data)
-        && isEmptyObject(this.state.deviceInfo)
-        && isDefinedNotNull(this.state.instanceTypeSelected)) {
-      let instanceTypeSelected = nextProps.cloud.instanceTypes.data.find(function(item){
-        return item.instanceTypeCode ===  self.state.instanceTypeSelected;
-      });
-      if (isNonEmptyObject(instanceTypeSelected)) {
-        let volumesList = instanceTypeSelected.instanceTypeDetails.volumeDetailsList;
-        let volumeDetail = volumesList[0];
-        let mountPoints = null;
-        if (instanceTypeSelected.providerCode === "onprem") {
-          mountPoints = instanceTypeSelected.instanceTypeDetails.volumeDetailsList.map(function(item) {
-            return item.mountPath;
-          }).join(",");
-        }
-        let deviceInfo = {
-          volumeSize: volumeDetail.volumeSizeGB,
-          numVolumes: volumesList.length,
-          mountPoints: mountPoints,
-          ebsType: volumeDetail.volumeType === "EBS" ? "GP2" : null,
-          diskIops: null,
-        };
-        this.setState({deviceInfo: deviceInfo, volumeType: volumeDetail.volumeType});
+      && isNonEmptyArray(nextProps.cloud.instanceTypes.data) && this.state.providerSelected) {
+      let instanceTypeSelected = instanceTypes.data[0].instanceTypeCode;
+      if (this.getCurrentProvider(this.state.providerSelected).code === "aws") {
+        instanceTypeSelected = "m3.medium";
+      } else if (this.getCurrentProvider(this.state.providerSelected).code === "gcp") {
+        instanceTypeSelected = "n1-standard-1";
       }
+      this.setState({instanceTypeSelected: instanceTypeSelected});
+      this.setDeviceInfo(instanceTypeSelected, instanceTypes.data);
     }
 
     // Set default ebsType once API call has completed
@@ -368,7 +359,7 @@ export default class UniverseForm extends Component {
     // If dialog has been closed and opened again in-case of edit, then repopulate current config
     if (isNonEmptyObject(currentUniverse.data) && showModal
       && !this.props.universe.showModal && visibleModal === "universeModal") {
-      var userIntent  = currentUniverse.data.universeDetails.userIntent;
+      var userIntent = currentUniverse.data.universeDetails.userIntent;
       this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
       var providerUUID = currentUniverse.data.provider.uuid;
       var isMultiAZ = true;
@@ -411,9 +402,9 @@ export default class UniverseForm extends Component {
     }
     // If nodeInstanceList changes, fetch number of available nodes
     if (getPromiseState(nodeInstanceList).isSuccess() && getPromiseState(this.props.cloud.nodeInstanceList).isLoading()) {
-      let numNodesAvailable = nodeInstanceList.data.reduce(function(acc, val) {
+      let numNodesAvailable = nodeInstanceList.data.reduce(function (acc, val) {
         if (!val.inUse) {
-          acc ++;
+          acc++;
         }
         return acc;
       }, 0);
@@ -602,10 +593,9 @@ export default class UniverseForm extends Component {
           </Col>
           <Col md={4}>
             <div className="form-right-aligned-labels">
-              <Field name="instanceType" type="select" component={YBSelectWithLabel} label="Instance Type"
-                     options={universeInstanceTypeList}
-                     defaultValue={this.state.instanceTypeSelected} onInputChanged={this.instanceTypeChanged}
-              />
+              <Field name="instanceType" type="select" component={YBControlledSelectWithLabel} label="Instance Type"
+                     options={universeInstanceTypeList} selectVal={this.state.instanceTypeSelected}
+                     onInputChanged={this.instanceTypeChanged}/>
 
             </div>
           </Col>
