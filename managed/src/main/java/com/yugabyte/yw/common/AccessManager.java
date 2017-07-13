@@ -72,7 +72,7 @@ public class AccessManager extends DevopsBase {
 
   // This method would upload the provided key file to the provider key file path.
   public AccessKey uploadKeyFile(UUID regionUUID, File uploadedFile,
-                                 String keyCode, KeyType keyType) {
+                                 String keyCode, KeyType keyType, String sshUser) {
     Region region = Region.get(regionUUID);
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
     AccessKey accessKey = AccessKey.get(region.provider.uuid, keyCode);
@@ -112,6 +112,7 @@ public class AccessManager extends DevopsBase {
     }
     keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
     keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
+    keyInfo.sshUser = sshUser;
     return AccessKey.create(region.provider.uuid, keyCode, keyInfo);
   }
 
