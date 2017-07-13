@@ -7,7 +7,7 @@ import { Image, ListGroup, ListGroupItem} from 'react-bootstrap';
 import { YBButton } from '../common/forms/fields';
 import { RootMarkerIcon, AsyncMarkerIcon, CacheMarkerIcon } from './images';
 
-import './stylesheets/YBMapLegendItem.css'
+import './stylesheets/YBMapLegendItem.scss'
 
 export default class YBMapLegendItem extends Component {
   render() {
@@ -28,7 +28,7 @@ export default class YBMapLegendItem extends Component {
           {btnItem}
         </div>
         <div className="icon-hang-left"><Image src={legendItemImg} className="legend-img"/></div>
-        <h5>{title}</h5>
+        <h5 className="map-legend-heading">{title}</h5>
         <ListGroup>
           {
             regions.map(function(item, idx){
