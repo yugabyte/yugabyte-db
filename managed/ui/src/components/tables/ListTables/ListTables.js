@@ -46,6 +46,7 @@ export default class ListTables extends Component {
     this.state = {'currentView': 'listTables'}
     this.showCreateTable = this.showCreateTable.bind(this);
     this.showListTables = this.showListTables.bind(this);
+    this.fetchUniverseTables = this.fetchUniverseTables.bind(this);
   }
 
   componentWillMount() {
@@ -53,12 +54,24 @@ export default class ListTables extends Component {
     const {universe: {universeTasks}} = this.props;
     // Do not send tables query if task type is create, status is pending and target is universe
     if (getPromiseState(universeTasks).isSuccess() && isNonEmptyArray(universeTasks.data[universeUUID])) {
-      let createUniverseTask = universeTasks.data[universeUUID].find(function(task){
-        return task.target === "Universe" && task.type === "Create" && task.status === "Running" && task.percentComplete < 100;
-      })
-      if (!isDefinedNotNull(createUniverseTask)) {
-        this.props.fetchUniverseTables(universeUUID);
-      }
+      this.fetchUniverseTables(universeTasks, universeUUID);
+    }
+  }
+
+  fetchUniverseTables(universeTasks, universeUUID) {
+    let createUniverseTask = universeTasks.data[universeUUID].find(function(task){
+      return task.target === "Universe" && task.type === "Create" && task.status === "Running" && task.percentComplete < 100;
+    })
+    if (!isDefinedNotNull(createUniverseTask)) {
+      this.props.fetchUniverseTables(universeUUID);
+    }
+  }
+
+  componentWillReceiveProps(nextProps) {
+    let {universe: {universeTasks, currentUniverse}} = nextProps;
+    let universeUUID = currentUniverse.data.universeUUID;
+    if (getPromiseState(universeTasks).isSuccess() && getPromiseState(this.props.universe.universeTasks).isLoading() && isNonEmptyArray(universeTasks.data[universeUUID])) {
+      this.fetchUniverseTables(universeTasks, universeUUID);
     }
   }
 
@@ -77,10 +90,8 @@ export default class ListTables extends Component {
   render() {
     var self = this;
     const {tables} = this.props;
-
     var numCassandraTables = 0;
     var numRedisTables = 0;
-
     if (isNonEmptyArray(self.props.tables.universeTablesList)) {
       self.props.tables.universeTablesList.forEach(function (item, idx) {
         if (item.tableType === "REDIS_TABLE_TYPE") {
