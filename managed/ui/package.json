@@ -46,6 +46,7 @@
     "fixed-data-table": "^0.6.3",
     "highlight.js": "^9.8.0",
     "intl": "^1.2.5",
+    "is-path-in-cwd": "^1.0.0",
     "jquery": "^3.1.0",
     "leaflet": "1.0.2",
     "leaflet.markercluster": "^1.0.0",
