@@ -72,6 +72,7 @@
 #include "yb/sql/ptree/pt_use_keyspace.h"
 #include "yb/sql/ptree/pt_alter_table.h"
 #include "yb/sql/ptree/pt_create_table.h"
+#include "yb/sql/ptree/pt_create_type.h"
 #include "yb/sql/ptree/pt_drop.h"
 #include "yb/sql/ptree/pt_type.h"
 #include "yb/sql/ptree/pt_name.h"
@@ -102,9 +103,7 @@ typedef PTExpr::SharedPtr              PExpr;
 typedef PTRef::SharedPtr               PRef;
 typedef PTExprListNode::SharedPtr      PExprListNode;
 typedef PTConstInt::SharedPtr          PConstInt;
-typedef PTMapExpr::SharedPtr           PMapExpr;
-typedef PTSetExpr::SharedPtr           PSetExpr;
-typedef PTListExpr::SharedPtr          PListExpr;
+typedef PTCollectionExpr::SharedPtr    PCollectionExpr;
 typedef PTCollection::SharedPtr        PCollection;
 typedef PTValues::SharedPtr            PValues;
 typedef PTSelectStmt::SharedPtr        PSelectStmt;
@@ -117,6 +116,9 @@ typedef PTKeyspacePropertyMap::SharedPtr  PKeyspacePropertyMap;
 typedef PTTableProperty::SharedPtr     PTableProperty;
 typedef PTTablePropertyListNode::SharedPtr     PTablePropertyListNode;
 typedef PTTablePropertyMap::SharedPtr  PTablePropertyMap;
+
+typedef PTTypeField::SharedPtr         PTypeField;
+typedef PTTypeFieldListNode::SharedPtr PTypeFieldListNode;
 
 typedef PTAssignListNode::SharedPtr    PAssignListNode;
 
@@ -218,6 +220,9 @@ using namespace yb::sql;
                           // Keyspace related statements.
                           CreateSchemaStmt UseSchemaStmt
 
+                          // User-defined types.
+                          CreateTypeStmt
+
 %type <PCollection>       // Select can be either statement or expression of collection types.
                           SelectStmt select_no_parens select_with_parens select_clause
 
@@ -254,14 +259,9 @@ using namespace yb::sql;
 
 %type <PRef>              columnref
 
-%type <PMapExpr>          // An expression of type Map.
-                          map_elems map_expr
-
-%type <PSetExpr>          // An expression of type Set.
-                          set_elems set_expr
-
-%type <PListExpr>         // An expression of type List.
-                          list_elems list_expr
+%type <PCollectionExpr>   // An expression for CQL collections:
+                          //  - Map/Set/List/Tuple/Froze/User-Defined Types.
+                          map_elems map_expr set_elems set_expr list_elems list_expr
 
 %type <PExprListNode>     // A list of expressions.
                           ctext_row ctext_expr_list func_arg_list col_arg_list
@@ -291,6 +291,9 @@ using namespace yb::sql;
 %type <PTablePropertyMap> property_map_list property_map
 %type <PTablePropertyListNode>   opt_table_options table_property table_properties orderingList
 
+%type <PTypeField>         TypeField
+%type <PTypeFieldListNode> TypeFieldList
+
 // Name nodes.
 %type <PName>             indirection_el columnElem
 
@@ -299,7 +302,7 @@ using namespace yb::sql;
 %type <PQualifiedName>    qualified_name indirection relation_expr
                           insert_target insert_column_item opt_indirection
                           set_target any_name attrs opt_opfamily opclass_purpose
-                          opt_collate opt_class
+                          opt_collate opt_class udt_name
 
 %type <PString>           // Identifier name.
                           ColId
@@ -348,9 +351,9 @@ using namespace yb::sql;
                           opt_lock lock_type cast_context vacuum_option_list vacuum_option_elem
                           opt_nowait_or_skip TriggerActionTime add_drop opt_asc_desc opt_nulls_order
 
-%type <PType>             GenericType ConstTypename
-                          ConstDatetime ConstInterval
+%type <PType>             ConstTypename ConstDatetime ConstInterval
                           Bit ConstBit BitWithLength BitWithoutLength
+                          UserDefinedType
 
 %type <jtype>             join_type
 %type <dbehavior>         opt_drop_behavior
@@ -478,10 +481,10 @@ using namespace yb::sql;
                           multiple_set_clause def_list
                           reloption_list TriggerFuncArgs
                           opclass_item_list opclass_drop_list
-                          transaction_mode_list_or_empty OptTableFuncElementList
+                          transaction_mode_list_or_empty
                           TableFuncElementList opt_type_modifiers prep_type_clause
-                          execute_param_clause opt_enum_val_list
-                          enum_val_list table_func_column_list create_generic_options
+                          execute_param_clause opt_enum_val_list enum_val_list
+                          table_func_column_list create_generic_options
                           alter_generic_options relation_expr_list dostmt_opt_list
                           transform_element_list transform_type_list opt_fdw_options
                           fdw_options for_locking_items
@@ -528,7 +531,7 @@ using namespace yb::sql;
                           EXTERNAL EXTRACT
 
                           FALSE_P FAMILY FETCH FILTER FILTERING FIRST_P FLOAT_P FOLLOWING FOR FORCE
-                          FOREIGN FORWARD FREEZE FROM FULL FUNCTION FUNCTIONS
+                          FOREIGN FORWARD FREEZE FROM FROZEN FULL FUNCTION FUNCTIONS
 
                           GLOBAL GRANT GRANTED GREATEST GROUP_P GROUPING
 
@@ -735,6 +738,9 @@ stmt:
   | UseSchemaStmt {
     $$ = $1;
   }
+  | CreateTypeStmt {
+    $$ = $1;
+  }
   | CreateStmt {
     $$ = $1;
   }
@@ -773,6 +779,47 @@ schema_stmt:
   | inactive_schema_stmt {
     // Report error that the syntax is not yet supported.
     PARSER_UNSUPPORTED(@1);
+  }
+;
+
+//--------------------------------------------------------------------------------------------------
+// CREATE Type statement.
+// Syntax:
+//   CREATE TYPE [ IF NOT EXISTS ] keyspace_name.type_name (
+//       field_name field_type,
+//       field_name field_type,
+//       ...
+//   )
+//--------------------------------------------------------------------------------------------------
+
+CreateTypeStmt:
+  CREATE TYPE_P qualified_name '(' TypeFieldList ')' {
+     $$ = MAKE_NODE(@1, PTCreateType, $3, $5, false /* create_if_not_exists */);
+  }
+  | CREATE TYPE_P IF_P NOT_LA EXISTS qualified_name '(' TypeFieldList ')' {
+     $$ = MAKE_NODE(@1, PTCreateType, $6, $8, true /* create_if_not_exists */);
+  }
+  | CREATE TYPE_P qualified_name AS ENUM_P '(' opt_enum_val_list ')' {
+      PARSER_UNSUPPORTED(@1);
+  }
+  | CREATE TYPE_P qualified_name AS RANGE definition {
+      PARSER_UNSUPPORTED(@1);
+  }
+;
+
+TypeFieldList:
+  TypeField {
+    $$ = MAKE_NODE(@1, PTTypeFieldListNode, $1);
+  }
+  | TypeFieldList ',' TypeField {
+    $1->Append($3);
+    $$ = $1;
+  }
+;
+
+TypeField:
+  ColId Typename {
+    $$ = MAKE_NODE(@1, PTTypeField, $1, $2);
   }
 ;
 
@@ -1533,12 +1580,6 @@ DropStmt:
   | DROP drop_type any_name_list opt_drop_behavior {
     $$ = MAKE_NODE(@1, PTDropStmt, $2, $3, false);
   }
-  | DROP TYPE_P type_name_list opt_drop_behavior {
-    PARSER_CQL_INVALID_MSG(@2, "DROP TYPE statement not supported");
-  }
-  | DROP TYPE_P IF_P EXISTS type_name_list opt_drop_behavior {
-    PARSER_CQL_INVALID_MSG(@2, "DROP TYPE IF EXISTS statement not supported");
-  }
   | DROP DOMAIN_P type_name_list opt_drop_behavior {
     PARSER_CQL_INVALID_MSG(@2, "DROP DOMAIN statement not supported");
   }
@@ -1566,6 +1607,7 @@ cql_drop_type:
   TABLE                           { $$ = OBJECT_TABLE; }
   | SCHEMA                        { $$ = OBJECT_SCHEMA; }
   | KEYSPACE                      { $$ = OBJECT_SCHEMA; }
+  | TYPE_P                        { $$ = OBJECT_TYPE; }
 ;
 
 sql_drop_type:
@@ -2858,14 +2900,6 @@ where_or_current_clause:
   }
 ;
 
-OptTableFuncElementList:
-  TableFuncElementList {
-    $$ = $1;
-  }
-  | /*EMPTY*/ {
-  }
-;
-
 TableFuncElementList:
   TableFuncElement {
   }
@@ -4027,12 +4061,12 @@ func_name:
 
 map_elems:
   map_elems ',' a_expr ':' a_expr {
-    $1->Insert($3, $5);
+    $1->AddKeyValuePair($3, $5);
     $$ = $1;
   }
   | a_expr ':' a_expr {
-    $$ = MAKE_NODE(@1, PTMapExpr);
-    $$->Insert($1, $3);
+    $$ = MAKE_NODE(@1, PTCollectionExpr, DataType::MAP);
+    $$->AddKeyValuePair($1, $3);
   }
 ;
 
@@ -4044,12 +4078,12 @@ map_expr:
 
 set_elems:
   set_elems ',' a_expr {
-    $1->Insert($3);
+    $1->AddElement($3);
     $$ = $1;
   }
   | a_expr {
-    $$ = MAKE_NODE(@1, PTSetExpr);
-    $$->Insert($1);
+    $$ = MAKE_NODE(@1, PTCollectionExpr, DataType::SET);
+    $$->AddElement($1);
   }
 ;
 
@@ -4061,12 +4095,12 @@ set_expr:
 
 list_elems:
   list_elems ',' a_expr {
-    $1->Append($3);
+    $1->AddElement($3);
     $$ = $1;
   }
   | a_expr {
-    $$ = MAKE_NODE(@1, PTListExpr);
-    $$->Append($1);
+    $$ = MAKE_NODE(@1, PTCollectionExpr, DataType::LIST);
+    $$->AddElement($1);
   }
 ;
 
@@ -4075,7 +4109,7 @@ list_expr:
     $$ = $2;
   }
   | '[' ']' {
-    $$ = MAKE_NODE(@1, PTListExpr);
+    $$ = MAKE_NODE(@1, PTCollectionExpr, DataType::LIST);
   }
 ;
 
@@ -4083,7 +4117,7 @@ collection_expr:
  // '{ }' can mean either (empty) map or set so we treat it separately here and infer the expected
  // type (i.e. map or set) during type analysis
  '{' '}' {
-      $$ = MAKE_NODE(@1, PTEmptyMapOrSetExpr);
+      $$ = MAKE_NODE(@1, PTCollectionExpr, DataType::SET);
   }
   | map_expr {
     $$ = $1;
@@ -4225,8 +4259,7 @@ Typename:
   SimpleTypename opt_array_bounds {
     $$ = $1;
   }
-  |
-  ParametricTypename {
+  | ParametricTypename {
     $$ = $1;
   }
   | SETOF SimpleTypename opt_array_bounds {
@@ -4257,6 +4290,9 @@ ParametricTypename:
   | LIST '<' Typename '>' {
     $$ = MAKE_NODE(@1, PTList, $3);
   }
+  | FROZEN '<' Typename '>' {
+    $$ = MAKE_NODE(@1, PTFrozen, $3);
+  }
 ;
 
 SimpleTypename:
@@ -4281,6 +4317,9 @@ SimpleTypename:
   | BLOB {
     $$ = MAKE_NODE(@1, PTBlob);
   }
+  | UserDefinedType {
+    $$ = $1;
+  }
   | Bit {
     PARSER_UNSUPPORTED(@1);
   }
@@ -4290,10 +4329,27 @@ SimpleTypename:
   | ConstInterval '(' Iconst ')' {
     PARSER_UNSUPPORTED(@1);
   }
-  | GenericType {
-    PARSER_UNSUPPORTED(@1);
+;
+
+// UserDefinedType covers all type names that don't have a special syntax mandated by the standard,
+// including qualified names. Currently this is used for CQL user-defined types but later scope can
+// be expanded to cover other things (e.g. PostgreSQL GenericType)
+UserDefinedType:
+  udt_name opt_type_modifiers {
+    $$ = MAKE_NODE(@1, PTUserDefinedType, $1);
   }
 ;
+
+udt_name:
+  IDENT {
+    $$ = MAKE_NODE(@1, PTQualifiedName, $1);
+  }
+  | udt_name '.' IDENT {
+    $1->Append(MAKE_NODE(@1, PTName, $3));
+    $$ = $1;
+  }
+;
+
 
 opt_array_bounds:
   opt_array_bounds '[' ']' {
@@ -4328,18 +4384,6 @@ ConstTypename:
   }
   | ConstDatetime {
     PARSER_UNSUPPORTED(@1);
-  }
-;
-
-// GenericType covers all type names that don't have special syntax mandated
-// by the standard, including qualified names.  We also allow type modifiers.
-// To avoid parsing conflicts against function invocations, the modifiers
-// have to be shown as expr_list here, but parse analysis will only accept
-// constants for them.
-GenericType:
-  type_function_name opt_type_modifiers {
-  }
-  | type_function_name attrs opt_type_modifiers {
   }
 ;
 
@@ -6914,7 +6958,7 @@ DropAssertStmt:
 /*****************************************************************************
  *
  *    QUERY :
- *        define (aggregate,operator,type)
+ *        define (aggregate,operator)
  *
  *****************************************************************************/
 
@@ -6924,16 +6968,6 @@ DefineStmt:
   | CREATE AGGREGATE func_name old_aggr_definition {
   }
   | CREATE OPERATOR any_operator definition {
-  }
-  | CREATE TYPE_P any_name definition {
-  }
-  | CREATE TYPE_P any_name {
-  }
-  | CREATE TYPE_P any_name AS '(' OptTableFuncElementList ')' {
-  }
-  | CREATE TYPE_P any_name AS ENUM_P '(' opt_enum_val_list ')' {
-  }
-  | CREATE TYPE_P any_name AS RANGE definition {
   }
   | CREATE TEXT_P SEARCH PARSER any_name definition {
   }
@@ -7789,10 +7823,6 @@ func_return:
  */
 func_type:
   Typename {
-  }
-  | type_function_name attrs '%' TYPE_P {
-  }
-  | SETOF type_function_name attrs '%' TYPE_P {
   }
 ;
 

@@ -85,6 +85,9 @@ void Executor::ExecTreeNodeAsync(const TreeNode *tnode, StatementExecutedCallbac
     case TreeNodeOpcode::kPTAlterTable:
       return ExecPTNodeAsync(static_cast<const PTAlterTable *>(tnode), cb);
 
+    case TreeNodeOpcode::kPTCreateType:
+      return ExecPTNodeAsync(static_cast<const PTCreateType *>(tnode), cb);
+
     case TreeNodeOpcode::kPTDropStmt:
       return ExecPTNodeAsync(static_cast<const PTDropStmt *>(tnode), std::move(cb));
 
@@ -181,6 +184,47 @@ CHECKED_STATUS Executor::ColumnRefsToPB(const PTDmlStmt *tnode,
     columns_pb->add_static_ids(column_ref);
   }
   return Status::OK();
+}
+
+
+//--------------------------------------------------------------------------------------------------
+void Executor::ExecPTNodeAsync(const PTCreateType *tnode, StatementExecutedCallback cb) {
+  YBTableName yb_name = tnode->yb_type_name();
+
+  const std::string& type_name = yb_name.table_name();
+  std::string keyspace_name = yb_name.namespace_name();
+  if (!yb_name.has_namespace()) {
+    if (exec_context_->CurrentKeyspace().empty()) {
+      CB_RETURN(cb, exec_context_->Error(tnode->name_loc(), ErrorCode::NO_NAMESPACE_USED));
+    }
+    keyspace_name = exec_context_->CurrentKeyspace();
+  }
+
+  std::vector<std::string> field_names;
+  std::vector<std::shared_ptr<YQLType>> field_types;
+
+  for (const PTTypeField::SharedPtr field : tnode->fields()->node_list()) {
+    field_names.emplace_back(field->yb_name());
+    field_types.push_back(field->yql_type());
+  }
+
+  Status exec_st = exec_context_->CreateUDType(keyspace_name, type_name, field_names, field_types);
+
+  if (!exec_st.ok()) {
+    ErrorCode error_code = ErrorCode::SERVER_ERROR;
+    if (exec_st.IsAlreadyPresent()) {
+      error_code = ErrorCode::DUPLICATE_TYPE;
+    }
+
+    if (tnode->create_if_not_exists() && error_code == ErrorCode::DUPLICATE_TYPE) {
+      CB_RETURN(cb, Status::OK());
+    }
+
+    CB_RETURN(
+        cb, exec_context_->Error(tnode->name_loc(), exec_st.ToString().c_str(), error_code));
+  }
+  cb.Run(Status::OK(),
+         std::make_shared<SchemaChangeResult>("CREATED", "TYPE", keyspace_name, type_name));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -321,12 +365,34 @@ void Executor::ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallbac
       break;
     }
 
-    case OBJECT_SCHEMA:
+    case OBJECT_SCHEMA: {
       // Drop the keyspace.
-      exec_status = exec_context_->DeleteKeyspace(tnode->name());
+      const string &keyspace_name(tnode->name()->last_name().c_str());
+      exec_status = exec_context_->DeleteKeyspace(keyspace_name);
       error_not_found = ErrorCode::KEYSPACE_NOT_FOUND;
-      result = std::make_shared<SchemaChangeResult>("DROPPED", "KEYSPACE", tnode->name());
+      result = std::make_shared<SchemaChangeResult>("DROPPED", "KEYSPACE", keyspace_name);
       break;
+    }
+
+    case OBJECT_TYPE: {
+      const string& type_name(tnode->name()->last_name().c_str());
+      string namespace_name(tnode->name()->first_name().c_str());
+
+      // If name has no explicit keyspace use default
+      if (tnode->name()->IsSimpleName()) {
+        if (exec_context_->CurrentKeyspace().empty()) {
+          CB_RETURN(cb, exec_context_->Error(tnode->name_loc(), ErrorCode::NO_NAMESPACE_USED));
+        }
+        namespace_name = exec_context_->CurrentKeyspace();
+      }
+
+      // Drop the type.
+      exec_status = exec_context_->DeleteUDType(namespace_name, type_name);
+      error_not_found = ErrorCode::TYPE_NOT_FOUND;
+      result = std::make_shared<SchemaChangeResult>(
+          "DROPPED", "TYPE", namespace_name, type_name);
+      break;
+    }
 
     default:
       CB_RETURN(cb, exec_context_->Error(tnode->name_loc(), ErrorCode::FEATURE_NOT_SUPPORTED));
@@ -409,6 +475,9 @@ CHECKED_STATUS Executor::SetupPartialRow(const ColumnDesc *col_desc,
     }
     case InternalType::kBinaryValue:
       RETURN_NOT_OK(row->SetBinary(col_desc->index(), YQLValue::binary_value(value_pb)));
+      break;
+    case InternalType::kFrozenValue:
+      RETURN_NOT_OK(row->SetFrozen(col_desc->index(), YQLValue::frozen_value(value_pb)));
       break;
 
     case InternalType::kBoolValue: FALLTHROUGH_INTENDED;

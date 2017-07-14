@@ -97,6 +97,14 @@ using yb::master::DeleteNamespaceRequestPB;
 using yb::master::DeleteNamespaceResponsePB;
 using yb::master::ListNamespacesRequestPB;
 using yb::master::ListNamespacesResponsePB;
+using yb::master::CreateUDTypeRequestPB;
+using yb::master::CreateUDTypeResponsePB;
+using yb::master::DeleteUDTypeRequestPB;
+using yb::master::DeleteUDTypeResponsePB;
+using yb::master::ListUDTypesRequestPB;
+using yb::master::ListUDTypesResponsePB;
+using yb::master::GetUDTypeInfoRequestPB;
+using yb::master::GetUDTypeInfoResponsePB;
 using master::MasterServiceProxy;
 using master::MasterErrorPB;
 using rpc::Rpc;
@@ -278,6 +286,30 @@ template Status YBClient::Data::SyncLeaderMasterRpc(
     ListNamespacesResponsePB* resp, int* num_attempts, const char* func_name,
     const std::function<Status(
         MasterServiceProxy*, const ListNamespacesRequestPB&, ListNamespacesResponsePB*,
+        RpcController*)>& func);
+template Status YBClient::Data::SyncLeaderMasterRpc(
+    const MonoTime& deadline, YBClient* client, const CreateUDTypeRequestPB& req,
+    CreateUDTypeResponsePB* resp, int* num_attempts, const char* func_name,
+    const std::function<Status(
+        MasterServiceProxy*, const CreateUDTypeRequestPB&, CreateUDTypeResponsePB*,
+        RpcController*)>& func);
+template Status YBClient::Data::SyncLeaderMasterRpc(
+    const MonoTime& deadline, YBClient* client, const DeleteUDTypeRequestPB& req,
+    DeleteUDTypeResponsePB* resp, int* num_attempts, const char* func_name,
+    const std::function<Status(
+        MasterServiceProxy*, const DeleteUDTypeRequestPB&, DeleteUDTypeResponsePB*,
+        RpcController*)>& func);
+template Status YBClient::Data::SyncLeaderMasterRpc(
+    const MonoTime& deadline, YBClient* client, const ListUDTypesRequestPB& req,
+    ListUDTypesResponsePB* resp, int* num_attempts, const char* func_name,
+    const std::function<Status(
+        MasterServiceProxy*, const ListUDTypesRequestPB&, ListUDTypesResponsePB*,
+        RpcController*)>& func);
+template Status YBClient::Data::SyncLeaderMasterRpc(
+    const MonoTime& deadline, YBClient* client, const GetUDTypeInfoRequestPB& req,
+    GetUDTypeInfoResponsePB* resp, int* num_attempts, const char* func_name,
+    const std::function<Status(
+        MasterServiceProxy*, const GetUDTypeInfoRequestPB&, GetUDTypeInfoResponsePB*,
         RpcController*)>& func);
 
 YBClient::Data::Data()

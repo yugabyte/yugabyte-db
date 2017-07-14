@@ -14,9 +14,9 @@ do {                                                                            
   ASSERT_FALSE(s.ToString().find(expected_error) == string::npos);                                 \
 } while (false);
 
-class YbSqlDropTable : public YbSqlTestBase {
+class YbSqlDropStmt : public YbSqlTestBase {
  public:
-  YbSqlDropTable() : YbSqlTestBase() {
+  YbSqlDropStmt() : YbSqlTestBase() {
   }
 
   inline const string CqlError(int pos, string last = "") {
@@ -24,7 +24,7 @@ class YbSqlDropTable : public YbSqlTestBase {
   }
 };
 
-TEST_F(YbSqlDropTable, TestSqlDropTable) {
+TEST_F(YbSqlDropStmt, TestSqlDropTable) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
 
@@ -61,7 +61,7 @@ TEST_F(YbSqlDropTable, TestSqlDropTable) {
   EXEC_INVALID_DROP_STMT(drop_stmt, not_found_drop_error);
 }
 
-TEST_F(YbSqlDropTable, TestSqlDropKeyspace) {
+TEST_F(YbSqlDropStmt, TestSqlDropKeyspace) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
 
@@ -70,38 +70,148 @@ TEST_F(YbSqlDropTable, TestSqlDropKeyspace) {
 
   vector<string> objects = {"KEYSPACE", "SCHEMA"};
   for (const auto& object : objects) {
-    const string create_stmt = "CREATE " + object + " test;";
-    const string drop_stmt = "DROP " + object + " test;";
-    const string drop_cond_stmt = "DROP " + object + " IF EXISTS test;";
+    const string create_keyspace = "CREATE " + object + " test;";
+    const string drop_keyspace = "DROP " + object + " test;";
+    const string drop_keyspace_cond = "DROP " + object + " IF EXISTS test;";
+    const string use_keyspace = "USE test;";
+    const string create_type = "CREATE TYPE employee (first_name text, last_name text, ssn int)";
+    const string create_table = "CREATE TABLE test(id int primary key, v int);";
+    const string drop_type = "DROP TYPE employee";
+    const string drop_table = "DROP TABLE test";
     const string not_found_drop_error = "Keyspace Not Found";
+    const string non_empty_drop_error = "Server Error";
+
+
+    //----------------------------------------------------------------------------------------------
+    // Test basic DROP KEYSPACE.
+    //----------------------------------------------------------------------------------------------
 
     // No keyspaces exist at this point. Verify that this statement fails.
-    EXEC_INVALID_DROP_STMT(drop_stmt, not_found_drop_error);
+    EXEC_INVALID_DROP_STMT(drop_keyspace, not_found_drop_error);
 
     // Although the keyspace doesn't exist, a DROP KEYSPACE IF EXISTS should succeed.
-    EXEC_VALID_STMT(drop_cond_stmt);
+    EXEC_VALID_STMT(drop_keyspace_cond);
 
     // Now create the keyspace.
-    EXEC_VALID_STMT(create_stmt);
+    EXEC_VALID_STMT(create_keyspace);
 
     // Now verify that we can drop the keyspace.
-    EXEC_VALID_STMT(drop_stmt);
+    EXEC_VALID_STMT(drop_keyspace);
 
     // Verify that the keyspace was indeed deleted.
-    EXEC_INVALID_DROP_STMT(drop_stmt, not_found_drop_error);
+    EXEC_INVALID_DROP_STMT(drop_keyspace, not_found_drop_error);
 
     // Create the keyspace again.
-    EXEC_VALID_STMT(create_stmt);
+    EXEC_VALID_STMT(create_keyspace);
 
     // Now verify that we can drop the keyspace with a DROP KEYSPACE IF EXISTS statement.
-    EXEC_VALID_STMT(drop_cond_stmt);
+    EXEC_VALID_STMT(drop_keyspace_cond);
 
     // Verify that the keyspace was indeed deleted.
-    EXEC_INVALID_DROP_STMT(drop_stmt, not_found_drop_error);
+    EXEC_INVALID_DROP_STMT(drop_keyspace, not_found_drop_error);
+
+    //----------------------------------------------------------------------------------------------
+    // Test DROP KEYSPACE for non-empty keyspace -- Containing a Table
+    //----------------------------------------------------------------------------------------------
+
+    // Create and Use the keyspace.
+    EXEC_VALID_STMT(create_keyspace);
+    EXEC_VALID_STMT(use_keyspace);
+
+    // Create a type.
+    EXEC_VALID_STMT(create_table);
+
+    // Cannot drop keyspace with type inside.
+    EXEC_INVALID_DROP_STMT(drop_keyspace, non_empty_drop_error);
+
+    // Create a type.
+    EXEC_VALID_STMT(drop_table);
+
+    // Now verify that we can drop the keyspace.
+    EXEC_VALID_STMT(drop_keyspace);
+
+    //----------------------------------------------------------------------------------------------
+    // Test DROP KEYSPACE for non-empty keyspace -- Containing a (User-defined) Type
+    //----------------------------------------------------------------------------------------------
+
+    // Create and Use the keyspace.
+    EXEC_VALID_STMT(create_keyspace);
+    EXEC_VALID_STMT(use_keyspace);
+
+    // Create a type.
+    EXEC_VALID_STMT(create_type);
+
+    // Cannot drop keyspace with type inside.
+    EXEC_INVALID_DROP_STMT(drop_keyspace, non_empty_drop_error);
+
+    // Create a type.
+    EXEC_VALID_STMT(drop_type);
+
+    // Now verify that we can drop the keyspace.
+    EXEC_VALID_STMT(drop_keyspace);
+
   }
 }
 
-TEST_F(YbSqlDropTable, TestSqlDropStmtParser) {
+TEST_F(YbSqlDropStmt, TestSqlDropType) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get an available processor.
+  YbSqlProcessor *processor = GetSqlProcessor();
+
+  const string create_type = "CREATE TYPE employee (first_name text, last_name text, ssn int)";
+  const string create_table = "CREATE TABLE test(id int primary key, emp employee);";
+  const string drop_type = "DROP TYPE employee";
+  const string drop_table = "DROP TABLE test";
+  const string drop_type_cond = "DROP TYPE IF EXISTS employee";
+  const string not_found_drop_error = "Type Not Found";
+  const string type_in_use_error = "Server Error";
+
+  //------------------------------------------------------------------------------------------------
+  // Test basic DROP TYPE.
+  //------------------------------------------------------------------------------------------------
+
+  // No types exist at this point. Verify that this statement fails.
+  EXEC_INVALID_DROP_STMT(drop_type, not_found_drop_error);
+
+  // Create the type and a table using it.
+  EXEC_VALID_STMT(create_type);
+  EXEC_VALID_STMT(create_table);
+
+  // Verify that we cannot drop the type (because the table is referencing it).
+  EXEC_INVALID_DROP_STMT(drop_type, type_in_use_error);
+
+  // Drop the table and verify we can now drop the type;
+  EXEC_VALID_STMT(drop_table);
+  EXEC_VALID_STMT(drop_type);
+
+  // Verify that the type was indeed deleted.
+  EXEC_INVALID_DROP_STMT(drop_type, not_found_drop_error);
+
+  //------------------------------------------------------------------------------------------------
+  // Test DROP TYPE with condition (IF NOT EXISTS)
+  //------------------------------------------------------------------------------------------------
+
+  // Although the type doesn't exist, a DROP TABLE IF EXISTS should succeed.
+  EXEC_VALID_STMT(drop_type_cond);
+
+  // Create the type and table again.
+  EXEC_VALID_STMT(create_type);
+  EXEC_VALID_STMT(create_table);
+
+  // Verify that DROP TYPE IF EXISTS fails because table is referencing type.
+  EXEC_INVALID_DROP_STMT(drop_type, type_in_use_error);
+
+  // Drop the table and verify we can now drop the type;
+  EXEC_VALID_STMT(drop_table);
+  EXEC_VALID_STMT(drop_type_cond);
+
+  // Verify that the type was indeed deleted.
+  EXEC_INVALID_DROP_STMT(drop_type, not_found_drop_error);
+}
+
+TEST_F(YbSqlDropStmt, TestSqlDropStmtParser) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
 
@@ -109,19 +219,18 @@ TEST_F(YbSqlDropTable, TestSqlDropStmtParser) {
   YbSqlProcessor *processor = GetSqlProcessor();
 
   vector<string> objects = {
-      "TYPE",
       "DOMAIN",
       "INDEX CONCURRENTLY",
   };
   for (const auto& object : objects) {
     const string expected_drop_error = CqlError(strlen("DROP "),
                                                 " - DROP " + object + " statement not supported");
-    auto drop_stmt = "DROP " + object + " name";
+    auto drop_stmt = "DROP " + object + " test";
     EXEC_INVALID_DROP_STMT(drop_stmt, expected_drop_error);
 
     const string expected_drop_if_exists_error =
         CqlError(strlen("DROP "), " - DROP " + object + " IF EXISTS statement not supported");
-    auto drop_if_exists_stmt = "DROP " + object + " IF EXISTS name";
+    auto drop_if_exists_stmt = "DROP " + object + " IF EXISTS test";
     EXEC_INVALID_DROP_STMT(drop_if_exists_stmt, expected_drop_if_exists_error);
   }
 
@@ -141,18 +250,18 @@ TEST_F(YbSqlDropTable, TestSqlDropStmtParser) {
       "TEXT SEARCH CONFIGURATION"
   };
   for (const auto& drop_type : drop_types) {
-    auto sql_stmt = "DROP " + drop_type + " name";
+    auto sql_stmt = "DROP " + drop_type + " test";
     EXEC_INVALID_DROP_STMT(sql_stmt, CqlError(strlen("DROP ")));
   }
 
   vector<string> opt_drop_behaviors = {"CASCADE", "RESTRICT"};
   for (const auto& opt_drop_behavior : opt_drop_behaviors) {
-    auto sql_stmt = "DROP TABLE name ";
+    auto sql_stmt = "DROP TABLE test ";
     EXEC_INVALID_DROP_STMT(sql_stmt + opt_drop_behavior, CqlError(strlen(sql_stmt)));
   }
 }
 
-TEST_F(YbSqlDropTable, TestSqlDropStmtAnalyzer) {
+TEST_F(YbSqlDropStmt, TestSqlDropStmtAnalyzer) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
 

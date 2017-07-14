@@ -2,6 +2,7 @@
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
 
+#include <yb/util/bytes_formatter.h>
 #include "yb/sql/exec/executor.h"
 #include "yb/util/logging.h"
 #include "yb/util/bfyql/bfunc.h"
@@ -64,24 +65,15 @@ CHECKED_STATUS Executor::PTConstToPB(const PTExpr::SharedPtr& expr,
       DCHECK(!negate) << "Invalid datatype for negation";
       return PTExprToPB(static_cast<const PTConstBinary*>(const_pt), const_pb);
     }
-    case DataType::MAP: {
+    case DataType::MAP: FALLTHROUGH_INTENDED;
+    case DataType::SET: FALLTHROUGH_INTENDED;
+    case DataType::LIST: FALLTHROUGH_INTENDED;
+    case DataType::FROZEN: FALLTHROUGH_INTENDED;
+    case DataType::USER_DEFINED_TYPE: {
       DCHECK(!negate) << "Invalid datatype for negation";
-      if (const_pt->is_empty_collection()) {
-        return PTExprToPB(static_cast<const PTEmptyMapOrSetExpr*>(const_pt), const_pb);
-      }
-      return PTExprToPB(static_cast<const PTMapExpr*>(const_pt), const_pb);
+      return PTExprToPB(static_cast<const PTCollectionExpr *>(const_pt), const_pb);
     }
-    case DataType::SET: {
-      DCHECK(!negate) << "Invalid datatype for negation";
-      if (const_pt->is_empty_collection()) {
-        return PTExprToPB(static_cast<const PTEmptyMapOrSetExpr*>(const_pt), const_pb);
-      }
-      return PTExprToPB(static_cast<const PTSetExpr*>(const_pt), const_pb);
-    }
-    case DataType::LIST: {
-      DCHECK(!negate) << "Invalid datatype for negation";
-      return PTExprToPB(static_cast<const PTListExpr*>(const_pt), const_pb);
-    }
+
     default:
       LOG(FATAL) << "Unknown datatype for YQL constant value";
   }
@@ -299,58 +291,80 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstUuid *const_pt, YQLValuePB *con
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::PTExprToPB(const PTMapExpr *const_pt, YQLValuePB *const_pb) {
-  YQLValue::set_map_value(const_pb);
-  for (auto &key : const_pt->keys()) {
-    // Expected key to be constant because CQL only allows collection of constants.
-    YQLValuePB *key_pb = YQLValue::add_map_key(const_pb);
-    RETURN_NOT_OK(PTConstToPB(key, key_pb));
-  }
-  for (auto &value : const_pt->values()) {
-    // Expected key to be constant because CQL only allows collection of constants.
-    YQLValuePB *value_pb = YQLValue::add_map_value(const_pb);
-    RETURN_NOT_OK(PTConstToPB(value, value_pb));
+
+CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *const_pt, YQLValuePB *const_pb) {
+  auto yql_type = const_pt->yql_type();
+  if (yql_type->IsFrozen()) {
+    yql_type = yql_type->param_type(0);
   }
 
-  return Status::OK();
-}
-
-CHECKED_STATUS Executor::PTExprToPB(const PTEmptyMapOrSetExpr *const_pt, YQLValuePB *const_pb) {
-  switch (const_pt->expected_internal_type()) {
-    case InternalType::kMapValue:
+  switch (yql_type->main()) {
+    case MAP: {
       YQLValue::set_map_value(const_pb);
+      for (auto &key : const_pt->keys()) {
+        // Expect key to be constant because CQL only allows collection of constants.
+        YQLValuePB *key_pb = YQLValue::add_map_key(const_pb);
+        RETURN_NOT_OK(PTConstToPB(key, key_pb));
+      }
+      for (auto &value : const_pt->values()) {
+        // Expect value to be constant because CQL only allows collection of constants.
+        YQLValuePB *value_pb = YQLValue::add_map_value(const_pb);
+        RETURN_NOT_OK(PTConstToPB(value, value_pb));
+      }
       break;
-    case InternalType::kSetValue:
+    }
+
+    case SET: {
       YQLValue::set_set_value(const_pb);
+      for (auto &elem : const_pt->values()) {
+        // Expected elem to be constant because CQL only allows collection of constants.
+        YQLValuePB *elem_pb = YQLValue::add_set_elem(const_pb);
+        RETURN_NOT_OK(PTConstToPB(elem, elem_pb));
+      }
       break;
+    }
+
+    case LIST: {
+      YQLValue::set_list_value(const_pb);
+      for (auto &elem : const_pt->values()) {
+        // Expected elem to be constant because CQL only allows collection of constants.
+        YQLValuePB *elem_pb = YQLValue::add_list_elem(const_pb);
+        RETURN_NOT_OK(PTConstToPB(elem, elem_pb));
+      }
+      break;
+    }
+
+    case USER_DEFINED_TYPE: {
+      // Internally UDTs are maps with field names as keys
+      YQLValue::set_map_value(const_pb);
+      auto field_values = const_pt->udtype_field_values();
+      for (int i = 0; i < field_values.size(); i++) {
+        // Skipping unset fields.
+        if (field_values[i] != nullptr) {
+          YQLValuePB *key_pb = YQLValue::add_map_key(const_pb);
+          key_pb->set_int16_value(i);
+          // Expect value to be constant because CQL only allows collection of constants.
+          YQLValuePB *value_pb = YQLValue::add_map_value(const_pb);
+          RETURN_NOT_OK(PTConstToPB(field_values[i], value_pb));
+        }
+      }
+      break;
+    }
 
     default:
       LOG(FATAL) << "Illegal datatype conversion";
   }
-  return Status::OK();
-}
 
-CHECKED_STATUS Executor::PTExprToPB(const PTSetExpr *const_pt, YQLValuePB *const_pb) {
-  YQLValue::set_set_value(const_pb);
-  for (auto &elem : const_pt->elems()) {
-    // Expected elem to be constant because CQL only allows collection of constants.
-    YQLValuePB *elem_pb = YQLValue::add_set_elem(const_pb);
-    RETURN_NOT_OK(PTConstToPB(elem, elem_pb));
+  if (const_pt->yql_type()->IsFrozen()) {
+    faststring enc_bytes;
+    YQLValueWithPB(*const_pb).Serialize(yql_type, YQL_CLIENT_CQL, &enc_bytes);
+    // skipping length
+    const_pb->set_frozen_value(enc_bytes.c_str() + 4, enc_bytes.size() - 4);
   }
 
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::PTExprToPB(const PTListExpr *const_pt, YQLValuePB *const_pb) {
-  YQLValue::set_list_value(const_pb);
-  for (auto &elem : const_pt->elems()) {
-    // Expected elem to be constant because CQL only allows collection of constants.
-    YQLValuePB *elem_pb = YQLValue::add_list_elem(const_pb);
-    RETURN_NOT_OK(PTConstToPB(elem, elem_pb));
-  }
-
-  return Status::OK();
-}
 
 }  // namespace sql
 }  // namespace yb

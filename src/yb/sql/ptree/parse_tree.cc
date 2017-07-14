@@ -62,5 +62,15 @@ void ParseTree::ClearAnalyzedTableCache(SqlEnv* sql_env) const {
   }
 }
 
+void ParseTree::AddAnalyzedUDType(const std::string& keyspace_name, const std::string& type_name) {
+  analyzed_types_.insert(std::make_pair(keyspace_name, type_name));
+}
+
+void ParseTree::ClearAnalyzedUDTypeCache(SqlEnv *sql_env) const {
+  for (const auto& type_name : analyzed_types_) {
+    sql_env->RemoveCachedUDType(type_name.first, type_name.second);
+  }
+}
+
 }  // namespace sql
 }  // namespace yb

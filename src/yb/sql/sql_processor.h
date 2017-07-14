@@ -49,7 +49,7 @@ class SqlProcessor {
   // Constructors.
   explicit SqlProcessor(
       std::weak_ptr<rpc::Messenger> messenger, std::shared_ptr<client::YBClient> client,
-      std::shared_ptr<client::YBTableCache> cache, SqlMetrics* sql_metrics,
+      std::shared_ptr<client::YBMetaDataCache> cache, SqlMetrics* sql_metrics,
       cqlserver::CQLRpcServerEnv* cql_rpcserver_env = nullptr);
   virtual ~SqlProcessor();
 

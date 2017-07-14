@@ -96,6 +96,11 @@ class NamespaceVisitor : public Visitor<PersistentNamespaceInfo> {
   NamespaceVisitor() : Visitor() {}
 };
 
+class UDTypeVisitor : public Visitor<PersistentUDTypeInfo> {
+ public:
+  UDTypeVisitor() : Visitor() {}
+};
+
 class ClusterConfigVisitor : public Visitor<PersistentClusterConfigInfo> {
  public:
   ClusterConfigVisitor() : Visitor() {}
@@ -157,6 +162,12 @@ class SysCatalogTable {
   CHECKED_STATUS AddNamespace(const NamespaceInfo *ns);
   CHECKED_STATUS UpdateNamespace(const NamespaceInfo *ns);
   CHECKED_STATUS DeleteNamespace(const NamespaceInfo *ns);
+  // ==================================================================
+  // User Defined Type related methods
+  // ==================================================================
+  CHECKED_STATUS AddUDType(const UDTypeInfo *ns);
+  CHECKED_STATUS UpdateUDType(const UDTypeInfo *ns);
+  CHECKED_STATUS DeleteUDType(const UDTypeInfo *ns);
   // ==================================================================
   // ClusterConfig related methods
   // ==================================================================

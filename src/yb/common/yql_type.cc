@@ -20,8 +20,15 @@ shared_ptr<YQLType> YQLType::Create(DataType data_type, const vector<shared_ptr<
     case DataType::SET:
       DCHECK_EQ(params.size(), 1);
       return CreateCollectionType<DataType::SET>(params);
+    case DataType::FROZEN:
+      DCHECK_EQ(params.size(), 1);
+      return CreateCollectionType<DataType::FROZEN>(params);
     case DataType::TUPLE:
       LOG(FATAL) << "Tuple datatype not supported";
+      return nullptr;
+    // User-defined types cannot be created like this
+    case DataType::USER_DEFINED_TYPE:
+      LOG(FATAL) << "Unsupported constructor for user-defined type";
       return nullptr;
     default:
       DCHECK_EQ(params.size(), 0);
@@ -66,13 +73,15 @@ shared_ptr<YQLType> YQLType::Create(DataType data_type) {
     case DataType::TIMEUUID:
       return CreatePrimitiveType<DataType::TIMEUUID>();
 
-    // Create empty collection type and raise error during semantic check.
+    // Create empty parametric types and raise error during semantic check.
     case DataType::LIST:
       return CreateTypeList();
     case DataType::MAP:
       return CreateTypeMap();
     case DataType::SET:
       return CreateTypeSet();
+    case DataType::FROZEN:
+      return CreateTypeFrozen();
 
     // Kudu datatypes.
     case UINT8:
@@ -88,6 +97,11 @@ shared_ptr<YQLType> YQLType::Create(DataType data_type) {
     case TYPEARGS:
       return CreatePrimitiveType<DataType::TYPEARGS>();
 
+    // User-defined types cannot be created like this
+    case DataType::USER_DEFINED_TYPE:
+      LOG(FATAL) << "Unsupported constructor for user-defined type";
+      return nullptr;
+
     default:
       LOG(FATAL) << "Not supported datatype " << ToCQLString(data_type);
       return nullptr;
@@ -101,8 +115,11 @@ bool YQLType::IsValidPrimaryType(DataType type) {
     case DataType::BOOL:FALLTHROUGH_INTENDED;
     case DataType::MAP: FALLTHROUGH_INTENDED;
     case DataType::SET: FALLTHROUGH_INTENDED;
-    case DataType::LIST:
+    case DataType::LIST: FALLTHROUGH_INTENDED;
+    case DataType::TUPLE: FALLTHROUGH_INTENDED;
+    case DataType::USER_DEFINED_TYPE:
       return false;
+
     default:
       // Let all other types go. Because we already process column datatype before getting here,
       // just assume that they are all valid types.
@@ -110,19 +127,37 @@ bool YQLType::IsValidPrimaryType(DataType type) {
   }
 }
 
-shared_ptr<YQLType> YQLType::CreateTypeMap(DataType key_type, DataType value_type) {
-  vector<shared_ptr<YQLType>> params = { YQLType::Create(key_type), YQLType::Create(value_type) };
+shared_ptr<YQLType> YQLType::CreateTypeMap(std::shared_ptr<YQLType> key_type,
+                                           std::shared_ptr<YQLType> value_type) {
+  vector<shared_ptr<YQLType>> params = {key_type, value_type};
   return CreateCollectionType<DataType::MAP>(params);
 }
 
-shared_ptr<YQLType> YQLType::CreateTypeList(DataType value_type) {
-  vector<shared_ptr<YQLType>> params(1, YQLType::Create(value_type));
+std::shared_ptr<YQLType>  YQLType::CreateTypeMap(DataType key_type, DataType value_type) {
+  return CreateTypeMap(YQLType::Create(key_type), YQLType::Create(value_type));
+}
+
+shared_ptr<YQLType> YQLType::CreateTypeList(std::shared_ptr<YQLType> value_type) {
+  vector<shared_ptr<YQLType>> params(1, value_type);
   return CreateCollectionType<DataType::LIST>(params);
 }
 
-shared_ptr<YQLType> YQLType::CreateTypeSet(DataType value_type) {
-  vector<shared_ptr<YQLType>> params(1, YQLType::Create(value_type));
+std::shared_ptr<YQLType>  YQLType::CreateTypeList(DataType value_type) {
+  return CreateTypeList(YQLType::Create(value_type));
+}
+
+shared_ptr<YQLType> YQLType::CreateTypeSet(std::shared_ptr<YQLType> value_type) {
+  vector<shared_ptr<YQLType>> params(1, value_type);
   return CreateCollectionType<DataType::SET>(params);
+}
+
+std::shared_ptr<YQLType>  YQLType::CreateTypeSet(DataType value_type) {
+  return CreateTypeSet(YQLType::Create(value_type));
+}
+
+shared_ptr<YQLType> YQLType::CreateTypeFrozen(shared_ptr<YQLType> value_type) {
+  vector<shared_ptr<YQLType>> params(1, value_type);
+  return CreateCollectionType<DataType::FROZEN>(params);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -133,9 +168,37 @@ void YQLType::ToYQLTypePB(YQLTypePB *pb_type) const {
   for (auto &param : params_) {
     param->ToYQLTypePB(pb_type->add_params());
   }
+
+  if (IsUserDefined()) {
+    auto udtype_info = pb_type->mutable_udtype_info();
+    udtype_info->set_keyspace_name(udtype_keyspace_name());
+    udtype_info->set_name(udtype_name());
+    udtype_info->set_id(udtype_id());
+
+    for (const auto &field_name : udtype_field_names()) {
+      udtype_info->add_field_names(field_name);
+    }
+  }
 }
 
 shared_ptr<YQLType> YQLType::FromYQLTypePB(const YQLTypePB& pb_type) {
+  if (pb_type.main() == USER_DEFINED_TYPE) {
+    auto yql_type = std::make_shared<YQLType>(pb_type.udtype_info().keyspace_name(),
+                                              pb_type.udtype_info().name());
+    std::vector<string> field_names;
+    for (const auto& field_name : pb_type.udtype_info().field_names()) {
+      field_names.push_back(field_name);
+    }
+
+    std::vector<shared_ptr<YQLType>> field_types;
+    for (const auto& field_type : pb_type.params()) {
+      field_types.push_back(YQLType::FromYQLTypePB(field_type));
+    }
+
+    yql_type->SetUDTypeFields(pb_type.udtype_info().id(), field_names, field_types);
+    return yql_type;
+  }
+
   if (pb_type.params().empty()) {
     return Create(pb_type.main());
   }
@@ -173,6 +236,8 @@ const string YQLType::ToCQLString(const DataType& datatype) {
     case DataType::TIMEUUID: return "timeuuid";
     case DataType::TUPLE: return "tuple";
     case DataType::TYPEARGS: return "typeargs";
+    case DataType::FROZEN: return "frozen";
+    case DataType::USER_DEFINED_TYPE: return "user_defined_type";
     case DataType::UINT8: return "uint8";
     case DataType::UINT16: return "uint16";
     case DataType::UINT32: return "uint32";
@@ -189,16 +254,20 @@ const string YQLType::ToString() const {
 }
 
 void YQLType::ToString(std::stringstream& os) const {
-  os << ToCQLString(id_);
-  if (!params_.empty()) {
-    os << "<";
-    for (int i = 0; i < params_.size(); i++) {
-      if (i > 0) {
-        os << ", ";
+  if (IsUserDefined()) {
+    os << udtype_keyspace_name() << "." << udtype_name();
+  } else {
+    os << ToCQLString(id_);
+    if (!params_.empty()) {
+      os << "<";
+      for (int i = 0; i < params_.size(); i++) {
+        if (i > 0) {
+          os << ", ";
         }
-      params_[i]->ToString(os);
+        params_[i]->ToString(os);
+      }
+      os << ">";
     }
-    os << ">";
   }
 }
 

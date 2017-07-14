@@ -625,5 +625,64 @@ TEST_F(SysCatalogTest, TestNamespaceInfoCommit) {
   }
 }
 
+class TestUDTypeLoader : public UDTypeVisitor {
+ public:
+  TestUDTypeLoader() {}
+  ~TestUDTypeLoader() { Reset(); }
+
+  void Reset() {
+    for (UDTypeInfo* tp : udtypes) {
+      tp->Release();
+    }
+    udtypes.clear();
+  }
+
+  Status Visit(const std::string& udtype_id, const SysUDTypeEntryPB& metadata) override {
+    // Setup the udtype info
+    UDTypeInfo* const tp = new UDTypeInfo(udtype_id);
+    UDTypeMetadataLock l(tp, UDTypeMetadataLock::WRITE);
+    l.mutable_data()->pb.CopyFrom(metadata);
+    l.Commit();
+    tp->AddRef();
+    udtypes.push_back(tp);
+    return Status::OK();
+  }
+
+  vector<UDTypeInfo*> udtypes;
+};
+
+// Test the sys-catalog udtype basic operations (add, delete, visit)
+TEST_F(SysCatalogTest, TestSysCatalogUDTypeOperations) {
+  SysCatalogTable* const sys_catalog = master_->catalog_manager()->sys_catalog();
+
+  unique_ptr<TestUDTypeLoader> loader(new TestUDTypeLoader());
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+
+  // 1. CHECK ADD_UDTYPE
+  scoped_refptr<UDTypeInfo> tp(new UDTypeInfo("deadbeafdeadbeafdeadbeafdeadbeaf"));
+  {
+    UDTypeMetadataLock l(tp.get(), UDTypeMetadataLock::WRITE);
+    l.mutable_data()->pb.set_name("test_tp");
+    l.mutable_data()->pb.set_namespace_id(kDefaultNamespaceId);
+    // Add the udtype
+    ASSERT_OK(sys_catalog->AddUDType(tp.get()));
+    l.Commit();
+  }
+
+  // Verify it showed up.
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_EQ(1, loader->udtypes.size());
+  ASSERT_TRUE(MetadatasEqual(tp.get(), loader->udtypes[0]));
+
+  // 2. CHECK DELETE_UDTYPE
+  ASSERT_OK(sys_catalog->DeleteUDType(tp.get()));
+
+  // Verify the result.
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_EQ(0, loader->udtypes.size());
+}
+
 } // namespace master
 } // namespace yb

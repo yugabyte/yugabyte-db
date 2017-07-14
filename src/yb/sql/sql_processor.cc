@@ -57,7 +57,7 @@ using std::shared_ptr;
 using std::string;
 using client::YBClient;
 using client::YBSession;
-using client::YBTableCache;
+using client::YBMetaDataCache;
 
 // Runs the StatementExecutedCallback cb and returns if the status s is not OK.
 #define CB_RETURN_NOT_OK(cb, s)    \
@@ -97,7 +97,7 @@ SqlMetrics::SqlMetrics(const scoped_refptr<yb::MetricEntity> &metric_entity) {
 
 SqlProcessor::SqlProcessor(
     std::weak_ptr<rpc::Messenger> messenger, shared_ptr<YBClient> client,
-    shared_ptr<YBTableCache> cache, SqlMetrics* sql_metrics,
+    shared_ptr<YBMetaDataCache> cache, SqlMetrics* sql_metrics,
     cqlserver::CQLRpcServerEnv* cql_rpcserver_env)
     : parser_(new Parser()),
       analyzer_(new Analyzer()),
@@ -149,8 +149,10 @@ CHECKED_STATUS SqlProcessor::Analyze(
   if (reparse != nullptr &&
       sem_errcode != ErrorCode::SUCCESS &&
       sem_errcode != ErrorCode::TABLE_NOT_FOUND &&
+      sem_errcode != ErrorCode::TYPE_NOT_FOUND &&
       cache_used) {
     (*parse_tree)->ClearAnalyzedTableCache(sql_env_.get());
+    (*parse_tree)->ClearAnalyzedUDTypeCache(sql_env_.get());
     *reparse = true;
     return Status::OK();
   }
@@ -197,6 +199,8 @@ void SqlProcessor::ExecuteAsyncDone(const MonoTime &begin_time,
       // WRONG_METADATA_VERSION when the schema version the tablet holds is different from the one
       // used by the semantic analyzer.
       case ErrorCode::WRONG_METADATA_VERSION: FALLTHROUGH_INTENDED;
+      // INVALID_TABLE_DEFINITION when a referenced user-defined type is not found.
+      case ErrorCode::INVALID_TABLE_DEFINITION: FALLTHROUGH_INTENDED;
       // INVALID_ARGUMENTS when the column datatype is inconsistent with the supplied value in an
       // INSERT or UPDATE statement.
       case ErrorCode::INVALID_ARGUMENTS: {
@@ -204,6 +208,7 @@ void SqlProcessor::ExecuteAsyncDone(const MonoTime &begin_time,
         // Clear the metadata cache before invoking callback so that the statement can be reprepared
         // with new metadata.
         parse_tree->ClearAnalyzedTableCache(sql_env_.get());
+        parse_tree->ClearAnalyzedUDTypeCache(sql_env_.get());
 
         cb.Run(STATUS(SqlError, ErrorText(ErrorCode::STALE_PREPARED_STATEMENT), Slice(),
                       static_cast<int64_t>(ErrorCode::STALE_PREPARED_STATEMENT)), result);

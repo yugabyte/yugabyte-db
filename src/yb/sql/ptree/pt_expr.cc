@@ -219,128 +219,135 @@ CHECKED_STATUS PTLiteralString::ToInetaddress(InetAddress *value) const {
 //--------------------------------------------------------------------------------------------------
 // Collections.
 
-CHECKED_STATUS PTEmptyMapOrSetExpr::Analyze(SemContext *sem_context) {
-      RETURN_NOT_OK(CheckOperator(sem_context));
-
-  // If no expected type is given, this is assumed to be a Set
-  if (sem_context->expr_expected_yql_type()->main() == DataType::UNKNOWN_DATA) {
-    yql_type_ = YQLType::Create(SET);
-    internal_type_ = InternalType::kSetValue;
-    return CheckExpectedTypeCompatibility(sem_context);
-  }
-
-  const shared_ptr<YQLType>& expected_type = sem_context->expr_expected_yql_type();
-  if (expected_type->main() != DataType::MAP && expected_type->main() != DataType::SET) {
-    return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
-  }
-
-  // Assign correct datatype.
-  yql_type_ = expected_type;
-  internal_type_ = sem_context->expr_expected_internal_type();
-
-  return CheckExpectedTypeCompatibility(sem_context);
-}
-
-CHECKED_STATUS PTMapExpr::Analyze(SemContext *sem_context) {
+CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(CheckOperator(sem_context));
-
-  // Run semantic analysis on collection elements.
   const shared_ptr<YQLType>& expected_type = sem_context->expr_expected_yql_type();
 
+  // If no expected type is given, use type inferred during parsing
   if (expected_type->main() == DataType::UNKNOWN_DATA) {
-    yql_type_ = YQLType::Create(MAP);
-    internal_type_ = InternalType::kMapValue;
     return CheckExpectedTypeCompatibility(sem_context);
   }
 
-  if (expected_type->main() != DataType::MAP) {
+  // Ensuring expected type is compatible with parsing/literal type.
+  auto conversion_mode = YQLType::GetConversionMode(expected_type->main(), yql_type_->main());
+  if (conversion_mode > YQLType::ConversionMode::kFurtherCheck) {
     return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
   }
 
-  // Analyze key and value.
-  SemState sem_state(sem_context);
+  // Checking type parameters.
+  switch (expected_type->main()) {
+    case MAP: {
+      if (yql_type_->main() == SET && values_.size() > 0) {
+        return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
+      }
+      SemState sem_state(sem_context);
 
-  const shared_ptr<YQLType>& key_type = expected_type->param_type(0);
-  sem_state.SetExprState(key_type, YBColumnSchema::ToInternalDataType(key_type));
-  for (auto& key : keys_) {
-    RETURN_NOT_OK(key->Analyze(sem_context));
+      const shared_ptr<YQLType>& key_type = expected_type->param_type(0);
+      sem_state.SetExprState(key_type, YBColumnSchema::ToInternalDataType(key_type));
+      for (auto& key : keys_) {
+        RETURN_NOT_OK(key->Analyze(sem_context));
+      }
+
+      const shared_ptr<YQLType>& value_type = expected_type->param_type(1);
+      sem_state.SetExprState(value_type, YBColumnSchema::ToInternalDataType(value_type));
+      for (auto& value : values_) {
+        RETURN_NOT_OK(value->Analyze(sem_context));
+      }
+
+      sem_state.ResetContextState();
+      break;
+    }
+    case SET: {
+      SemState sem_state(sem_context);
+      const shared_ptr<YQLType>& value_type = expected_type->param_type(0);
+      sem_state.SetExprState(value_type, YBColumnSchema::ToInternalDataType(value_type));
+      for (auto& elem : values_) {
+        RETURN_NOT_OK(elem->Analyze(sem_context));
+      }
+      sem_state.ResetContextState();
+      break;
+    }
+
+    case LIST: {
+      SemState sem_state(sem_context);
+      const shared_ptr<YQLType>& value_type = expected_type->param_type(0);
+      sem_state.SetExprState(value_type, YBColumnSchema::ToInternalDataType(value_type));
+      for (auto& elem : values_) {
+        RETURN_NOT_OK(elem->Analyze(sem_context));
+      }
+      sem_state.ResetContextState();
+      break;
+    }
+
+    case USER_DEFINED_TYPE: {
+      SemState sem_state(sem_context);
+      DCHECK_EQ(keys_.size(), values_.size());
+
+      udtype_field_values_.resize(expected_type->udtype_field_names().size());
+      // Each literal key/value pair must correspond to a field name/type pair from the UDT
+      auto values_it = values_.begin();
+      for (auto& key : keys_) {
+        // All keys must be field refs
+
+        // TODO (mihnea) Consider unifying handling of field references (for user-defined types) and
+        // column references (for tables) to simplify this path.
+        PTRef* field_ref = dynamic_cast<PTRef *>(key.get());
+        if (field_ref == nullptr) {
+          return sem_context->Error(loc(),
+              "Field names for user-defined types must be field reference",
+              ErrorCode::INVALID_ARGUMENTS);
+        }
+        if (!field_ref->name()->IsSimpleName()) {
+          return sem_context->Error(loc(),
+              "Qualified names not allowed for fields of user-defined",
+              ErrorCode::INVALID_ARGUMENTS);
+        }
+        string field_name(field_ref->name()->last_name().c_str());
+
+        // All keys must be existing field names from the UDT
+        int field_idx = expected_type->GetUDTypeFieldIdxByName(field_name);
+        if (field_idx < 0) {
+          return sem_context->Error(loc(),
+              "Invalid field name found for user defined type instance",
+              ErrorCode::INVALID_ARGUMENTS);
+        }
+
+        // Setting the corresponding field value
+        udtype_field_values_[field_idx] = *values_it;
+
+        // Each value should have the corresponding type from the UDT
+        auto& param_type = expected_type->param_type(field_idx);
+        sem_state.SetExprState(param_type, YBColumnSchema::ToInternalDataType(param_type));
+        RETURN_NOT_OK(udtype_field_values_[field_idx]->Analyze(sem_context));
+
+        values_it++;
+      }
+      sem_state.ResetContextState();
+      break;
+    }
+    case FROZEN: {
+      SemState sem_state(sem_context);
+      sem_state.SetExprState(expected_type->param_type(0),
+          YBColumnSchema::ToInternalDataType(expected_type->param_type(0)));
+      RETURN_NOT_OK(Analyze(sem_context));
+      sem_state.ResetContextState();
+      break;
+    }
+
+    case TUPLE:
+      return sem_context->Error(loc(),
+                                "Tuple type not supported yet",
+                                ErrorCode::FEATURE_NOT_SUPPORTED);
+
+    default:
+      return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
   }
-
-  const shared_ptr<YQLType>& value_type = expected_type->param_type(1);
-  sem_state.SetExprState(value_type, YBColumnSchema::ToInternalDataType(value_type));
-  for (auto& value : values_) {
-    RETURN_NOT_OK(value->Analyze(sem_context));
-  }
-
-  sem_state.ResetContextState();
 
   // Assign correct datatype.
   yql_type_ = expected_type;
   internal_type_ = sem_context->expr_expected_internal_type();
 
-  return CheckExpectedTypeCompatibility(sem_context);
-}
-
-CHECKED_STATUS PTSetExpr::Analyze(SemContext *sem_context) {
-  RETURN_NOT_OK(CheckOperator(sem_context));
-
-  // Run semantic analysis on collection elements.
-  const shared_ptr<YQLType> &expected_type = sem_context->expr_expected_yql_type();
-
-  if (expected_type->main() == DataType::UNKNOWN_DATA) {
-    yql_type_ = YQLType::Create(SET);
-    internal_type_ = InternalType::kSetValue;
-    return CheckExpectedTypeCompatibility(sem_context);
-  }
-
-  if (expected_type->main() != DataType::SET) {
-    return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
-  }
-
-  SemState sem_state(sem_context);
-  const shared_ptr<YQLType>& value_type = expected_type->param_type(0);
-  sem_state.SetExprState(value_type, YBColumnSchema::ToInternalDataType(value_type));
-  for (auto& elem : value_) {
-    RETURN_NOT_OK(elem->Analyze(sem_context));
-  }
-  sem_state.ResetContextState();
-
-  // Assign correct datatype.
-  yql_type_ = expected_type;
-  internal_type_ = sem_context->expr_expected_internal_type();
-
-  return CheckExpectedTypeCompatibility(sem_context);
-}
-
-CHECKED_STATUS PTListExpr::Analyze(SemContext *sem_context) {
-  RETURN_NOT_OK(CheckOperator(sem_context));
-
-  // Run semantic analysis on collection elements.
-  const shared_ptr<YQLType>& expected_type = sem_context->expr_expected_yql_type();
-
-  if (expected_type->main() == DataType::UNKNOWN_DATA) {
-    yql_type_ = YQLType::Create(LIST);
-    internal_type_ = InternalType::kListValue;
-    return CheckExpectedTypeCompatibility(sem_context);
-  }
-
-  if (expected_type->main() != DataType::LIST) {
-    return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
-  }
-
-  SemState sem_state(sem_context);
-  const shared_ptr<YQLType>& value_type = expected_type->param_type(0);
-  sem_state.SetExprState(value_type, YBColumnSchema::ToInternalDataType(value_type));
-  for (auto& elem : value_) {
-    RETURN_NOT_OK(elem->Analyze(sem_context));
-  }
-  sem_state.ResetContextState();
-
-  // Assign correct datatype.
-  yql_type_ = expected_type;
-  internal_type_ = sem_context->expr_expected_internal_type();
-
-  return CheckExpectedTypeCompatibility(sem_context);
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------

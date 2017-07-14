@@ -356,6 +356,41 @@ class NamespaceLoader : public NamespaceVisitor {
 };
 
 ////////////////////////////////////////////////////////////
+// User-Defined Type Loader
+////////////////////////////////////////////////////////////
+
+class UDTypeLoader : public UDTypeVisitor {
+ public:
+  explicit UDTypeLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
+
+  Status Visit(const UDTypeId& udtype_id, const SysUDTypeEntryPB& metadata) override {
+    CHECK(!ContainsKey(catalog_manager_->udtype_ids_map_, udtype_id))
+        << "Table already exists: " << udtype_id;
+
+    // Setup the table info
+    UDTypeInfo *const udtype = new UDTypeInfo(udtype_id);
+    UDTypeMetadataLock l(udtype, UDTypeMetadataLock::WRITE);
+    l.mutable_data()->pb.CopyFrom(metadata);
+
+    // Add the used-defined type to the IDs map and to the name map (if the type is not deleted)
+    catalog_manager_->udtype_ids_map_[udtype->id()] = udtype;
+    if (!l.data().name().empty()) { // If name is set (non-empty) then type is not deleted
+      catalog_manager_->udtype_names_map_[{l.data().namespace_id(), l.data().name()}] = udtype;
+    }
+
+    LOG(INFO) << "Loaded metadata for type " << udtype->ToString();
+    VLOG(1) << "Metadata for type " << udtype->ToString() << ": " << metadata.ShortDebugString();
+    l.Commit();
+    return Status::OK();
+  }
+
+ private:
+  CatalogManager *catalog_manager_;
+
+  DISALLOW_COPY_AND_ASSIGN(UDTypeLoader);
+};
+
+////////////////////////////////////////////////////////////
 // Config Loader
 ////////////////////////////////////////////////////////////
 
@@ -690,6 +725,9 @@ Status CatalogManager::VisitSysCatalog() {
   namespace_ids_map_.clear();
   namespace_names_map_.clear();
 
+  udtype_ids_map_.clear();
+  udtype_names_map_.clear();
+
   // Visit tables and tablets, load them into memory.
   unique_ptr<TableLoader> table_loader(new TableLoader(this));
   RETURN_NOT_OK_PREPEND(
@@ -701,6 +739,11 @@ Status CatalogManager::VisitSysCatalog() {
   unique_ptr<NamespaceLoader> namespace_loader(new NamespaceLoader(this));
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Visit(namespace_loader.get()),
+      "Failed while visiting namespaces in sys catalog");
+
+  unique_ptr<UDTypeLoader> udtype_loader(new UDTypeLoader(this));
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Visit(udtype_loader.get()),
       "Failed while visiting namespaces in sys catalog");
 
   // Create the system namespaces (created only if they don't already exist).
@@ -1128,6 +1171,23 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       return s;
     }
   }
+
+  // checking that referenced user-defined types (if any) exist
+  {
+    boost::shared_lock<LockType> l(lock_);
+    for (int i = 0; i < client_schema.num_columns(); i++) {
+      for (const auto &udt_id : client_schema.column(i).type()->GetUserDefinedTypeIds()) {
+        if (FindPtrOrNull(udtype_ids_map_, udt_id) == nullptr) {
+          Status s = STATUS(InvalidArgument, "Referenced user-defined type not found");
+          SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+          return s;
+        }
+      }
+    }
+  }
+  // TODO (ENG-1860) The referenced namespace and types retrieved/checked above could be deleted
+  // some time between this point and table creation below.
+
   Schema schema = client_schema.CopyWithColumnIds();
 
   // Create partitions.
@@ -2070,6 +2130,14 @@ void CatalogManager::GetAllNamespaces(std::vector<scoped_refptr<NamespaceInfo> >
   }
 }
 
+void CatalogManager::GetAllUDTypes(std::vector<scoped_refptr<UDTypeInfo> > *types) {
+  types->clear();
+  boost::shared_lock<LockType> l(lock_);
+  for (const UDTypeInfoMap::value_type& e : udtype_ids_map_) {
+    types->push_back(e.second);
+  }
+}
+
 NamespaceName CatalogManager::GetNamespaceName(const NamespaceId& id) const {
   boost::shared_lock<LockType> l(lock_);
   const scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, id);
@@ -2516,6 +2584,24 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
     }
   }
 
+  // Only empty namespace can be deleted.
+  TRACE("Looking for types in the namespace");
+  {
+    boost::shared_lock<LockType> catalog_lock(lock_);
+
+    for (const UDTypeInfoMap::value_type& entry : udtype_ids_map_) {
+      UDTypeMetadataLock ltm(entry.second.get(), UDTypeMetadataLock::READ);
+
+      if (ltm.data().namespace_id() == ns->id()) {
+        Status s = STATUS(InvalidArgument,
+            Substitute("Cannot delete namespace which has a type: $0 [id=$1]",
+                ltm.data().name(), entry.second->id()), req->DebugString());
+        SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_IS_NOT_EMPTY, s);
+        return s;
+      }
+    }
+  }
+
   TRACE("Updating metadata on disk");
   // Update sys-catalog.
   Status s = sys_catalog_->DeleteNamespace(ns.get());
@@ -2562,6 +2648,295 @@ Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
     NamespaceIdentifierPB *ns = resp->add_namespaces();
     ns->set_id(entry.second->id());
     ns->set_name(entry.second->name());
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::CreateUDType(const CreateUDTypeRequestPB* req,
+                                    CreateUDTypeResponsePB* resp,
+                                    rpc::RpcContext* rpc) {
+  LOG(INFO) << "CreateUDType from " << RequestorString(rpc)
+            << ": " << req->DebugString();
+
+      RETURN_NOT_OK(CheckOnline());
+  Status s;
+  scoped_refptr<UDTypeInfo> tp;
+  scoped_refptr<NamespaceInfo> ns;
+
+  // Lookup the namespace and verify if it exists.
+  if (req->has_namespace_()) {
+    TRACE("Looking up namespace");
+        RETURN_NOT_OK(FindNamespace(req->namespace_(), &ns));
+    if (ns == nullptr) {
+      s = STATUS(InvalidArgument, "Invalid namespace id or namespace name", req->DebugString());
+      SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+      return s;
+    }
+  }
+
+  {
+    TRACE("Acquired catalog manager lock");
+    std::lock_guard<LockType> l(lock_);
+
+    // Verify that the type does not exist
+    tp = FindPtrOrNull(udtype_names_map_, std::make_pair(ns->id(), req->name()));
+
+    if (tp != nullptr) {
+      s = STATUS(AlreadyPresent,
+          Substitute("Type $0.$1 already exists", ns->name(), req->name()),
+          tp->id());
+      SetupError(resp->mutable_error(), MasterErrorPB::TYPE_ALREADY_PRESENT, s);
+      return s;
+    }
+
+    // Construct the new type (generate fresh name and set fields)
+    UDTypeId new_id;
+    do {
+      new_id = GenerateId();
+    } while (nullptr != FindPtrOrNull(udtype_ids_map_, new_id));
+
+    tp = new UDTypeInfo(new_id);
+    tp->mutable_metadata()->StartMutation();
+    SysUDTypeEntryPB *metadata = &tp->mutable_metadata()->mutable_dirty()->pb;
+    metadata->set_name(req->name());
+    metadata->set_namespace_id(ns->id());
+    for (const string& field_name : req->field_names()) {
+      metadata->add_field_names(field_name);
+    }
+
+    for (const YQLTypePB& field_type : req->field_types()) {
+      metadata->add_field_types()->CopyFrom(field_type);
+    }
+
+    // Add the type to the in-memory maps.
+    udtype_ids_map_[tp->id()] = tp;
+    udtype_names_map_[std::make_pair(ns->id(), req->name())] = tp;
+    resp->set_id(tp->id());
+  }
+  TRACE("Inserted new user-defined type info into CatalogManager maps");
+
+  // Update the on-disk system catalog.
+  s = sys_catalog_->AddUDType(tp.get());
+  if (!s.ok()) {
+    s = s.CloneAndPrepend(Substitute(
+        "An error occurred while inserting user-defined type to sys-catalog: $0", s.ToString()));
+    LOG(WARNING) << s.ToString();
+    CheckIfNoLongerLeaderAndSetupError(s, resp);
+    return s;
+  }
+  TRACE("Wrote user-defined type to sys-catalog");
+
+  // Commit the in-memory state.
+  tp->mutable_metadata()->CommitMutation();
+  LOG(INFO) << "Created user-defined type " << tp->ToString();
+  return Status::OK();
+}
+
+Status CatalogManager::DeleteUDType(const DeleteUDTypeRequestPB* req,
+                                    DeleteUDTypeResponsePB* resp,
+                                    rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing DeleteUDType request from " << RequestorString(rpc)
+            << ": " << req->ShortDebugString();
+
+      RETURN_NOT_OK(CheckOnline());
+  scoped_refptr<UDTypeInfo> tp;
+  scoped_refptr<NamespaceInfo> ns;
+
+  if (!req->has_type()) {
+    Status s = STATUS(InvalidArgument, "No type given",
+        req->DebugString());
+    SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+    return s;
+  }
+
+  // Validate namespace.
+  if (req->type().has_namespace_()) {
+    // Lookup the namespace and verify if it exists.
+    TRACE("Looking up namespace");
+        RETURN_NOT_OK(FindNamespace(req->type().namespace_(), &ns));
+    if (ns == nullptr) {
+      Status s = STATUS(InvalidArgument, "Invalid namespace id or namespace name",
+          req->DebugString());
+      SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+      return s;
+    }
+  }
+
+  {
+    std::lock_guard<LockType> l(lock_);
+    TRACE("Acquired catalog manager lock");
+
+    if (req->type().has_type_id()) {
+      tp = FindPtrOrNull(udtype_ids_map_, req->type().type_id());
+    } else if (req->type().has_type_name()) {
+      tp = FindPtrOrNull(udtype_names_map_, {ns->id(), req->type().type_name()});
+    }
+
+    if (tp == nullptr) {
+      Status s = STATUS(NotFound, "The type does not exist", req->DebugString());
+      SetupError(resp->mutable_error(), MasterErrorPB::TYPE_NOT_FOUND, s);
+      return s;
+    }
+
+    // Checking if any table uses this type
+    // TODO this could be more efficient
+    for (const TableInfoMap::value_type& entry : table_ids_map_) {
+      TableMetadataLock ltm(entry.second.get(), TableMetadataLock::READ);
+      if (!ltm.data().started_deleting()) {
+        for (const auto &col : ltm.data().schema().columns()) {
+          if (col.type().main() == DataType::USER_DEFINED_TYPE &&
+              col.type().udtype_info().id() == tp->id()) {
+            Status s = STATUS(InvalidArgument,
+                Substitute("Cannot delete type '$0'. It is used in column $1 of table $2.$3",
+                    tp->name(), col.name(), ns->name(), ltm.data().name()), req->DebugString());
+            SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_IS_NOT_EMPTY, s);
+            return s;
+          }
+        }
+      }
+    }
+  }
+
+  UDTypeMetadataLock l(tp.get(), UDTypeMetadataLock::WRITE);
+
+  Status s = sys_catalog_->DeleteUDType(tp.get());
+  if (!s.ok()) {
+    // The mutation will be aborted when 'l' exits the scope on early return.
+    s = s.CloneAndPrepend(Substitute("An error occurred while updating sys-catalog: $0",
+        s.ToString()));
+    LOG(WARNING) << s.ToString();
+    CheckIfNoLongerLeaderAndSetupError(s, resp);
+    return s;
+  }
+
+  // Remove it from the maps.
+  {
+    TRACE("Removing from maps");
+    std::lock_guard<LockType> l_map(lock_);
+    if (udtype_ids_map_.erase(tp->id()) < 1) {
+      PANIC_RPC(rpc, "Could not remove user defined type from map, name=" + l.data().name());
+    }
+    if (udtype_names_map_.erase({ns->id(), tp->name()}) < 1) {
+      PANIC_RPC(rpc, "Could not remove user defined type from map, name=" + l.data().name());
+    }
+  }
+
+  // Update the in-memory state.
+  TRACE("Committing in-memory state");
+  l.Commit();
+
+  LOG(INFO) << "Successfully deleted user-defined type " << tp->ToString()
+            << " per request from " << RequestorString(rpc);
+
+  return Status::OK();
+}
+
+Status CatalogManager::GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
+                                     GetUDTypeInfoResponsePB* resp,
+                                     rpc::RpcContext* rpc) {
+  LOG(INFO) << "GetUDTypeInfo from " << RequestorString(rpc)
+            << ": " << req->DebugString();
+      RETURN_NOT_OK(CheckOnline());
+  Status s;
+  scoped_refptr<UDTypeInfo> tp;
+  scoped_refptr<NamespaceInfo> ns;
+
+
+  if (!req->has_type()) {
+    s = STATUS(InvalidArgument, "Cannot get type, no type identifier given", req->DebugString());
+    SetupError(resp->mutable_error(), MasterErrorPB::TYPE_NOT_FOUND, s);
+    return s;
+  }
+
+  if (req->type().has_type_id()) {
+    tp = FindPtrOrNull(udtype_ids_map_, req->type().type_id());
+  } else if (req->type().has_type_name() && req->type().has_namespace_()) {
+    // Lookup the type and verify if it exists.
+    TRACE("Looking up namespace");
+        RETURN_NOT_OK(FindNamespace(req->type().namespace_(), &ns));
+    if (ns == nullptr) {
+      s = STATUS(InvalidArgument,
+          "Invalid namespace id or name for (user-defined) type",
+          req->DebugString());
+      SetupError(resp->mutable_error(), MasterErrorPB::TYPE_NOT_FOUND, s);
+      return s;
+    }
+    tp = FindPtrOrNull(udtype_names_map_, std::make_pair(ns->id(), req->type().type_name()));
+  }
+
+  if (tp == nullptr) {
+    s = STATUS(InvalidArgument, "Couldn't find type", req->DebugString());
+    SetupError(resp->mutable_error(), MasterErrorPB::TYPE_NOT_FOUND, s);
+    return s;
+  }
+
+  {
+    UDTypeMetadataLock type_lock(tp.get(), UDTypeMetadataLock::READ);
+
+    UDTypeInfoPB* type_info = resp->mutable_udtype();
+
+    type_info->set_name(tp->name());
+    type_info->set_id(tp->id());
+    type_info->mutable_namespace_()->set_id(type_lock.data().namespace_id());
+
+    for (int i = 0; i < type_lock.data().field_names_size(); i++) {
+      type_info->add_field_names(type_lock.data().field_names(i));
+    }
+    for (int i = 0; i < type_lock.data().field_types_size(); i++) {
+      type_info->add_field_types()->CopyFrom(type_lock.data().field_types(i));
+    }
+
+    LOG(INFO) << "Retrieved user-defined type " << tp->ToString();
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
+                                   ListUDTypesResponsePB* resp) {
+
+  RETURN_NOT_OK(CheckOnline());
+
+  scoped_refptr<NamespaceInfo> ns;
+
+  // Validate namespace.
+  if (req->has_namespace_()) {
+    scoped_refptr<NamespaceInfo> ns;
+
+    // Lookup the namespace and verify that it exists.
+    RETURN_NOT_OK(FindNamespace(req->namespace_(), &ns));
+    if (ns == nullptr) {
+      Status s = STATUS(InvalidArgument,
+          "Invalid namespace id or namespace name", req->DebugString());
+      SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+      return s;
+    }
+  }
+
+  boost::shared_lock<LockType> l(lock_);
+
+  for (const UDTypeInfoByNameMap::value_type& entry : udtype_names_map_) {
+    UDTypeMetadataLock ltm(entry.second.get(), UDTypeMetadataLock::READ);
+
+    // key is a pair <namespace_id, type_name>
+    if (!ns->id().empty() && ns->id() != entry.first.first) {
+      continue; // Skip types from other namespaces
+    }
+
+    UDTypeInfoPB* udtype = resp->add_udtypes();
+    udtype->set_id(entry.second->id());
+    udtype->set_name(ltm.data().name());
+    for (size_t i = 0; i <= ltm.data().field_names_size(); i++) {
+      udtype->add_field_names(ltm.data().field_names(i));
+    }
+    for (size_t i = 0; i <= ltm.data().field_types_size(); i++) {
+      udtype->add_field_types()->CopyFrom(ltm.data().field_types(i));
+    }
+
+    if (CHECK_NOTNULL(ns.get())) {
+      NamespaceMetadataLock l(ns.get(), NamespaceMetadataLock::READ);
+      udtype->mutable_namespace_()->set_id(ns->id());
+      udtype->mutable_namespace_()->set_name(ns->name());
+    }
   }
   return Status::OK();
 }
@@ -5096,6 +5471,10 @@ INITTED_AND_LEADER_OR_RESPOND(ListTabletServersResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(CreateNamespaceResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(DeleteNamespaceResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(ListNamespacesResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(CreateUDTypeResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(DeleteUDTypeResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(ListUDTypesResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(GetUDTypeInfoResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(GetTableLocationsResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(GetTableSchemaResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(GetTabletLocationsResponsePB);
@@ -5432,6 +5811,48 @@ const NamespaceName& NamespaceInfo::name() const {
 
 std::string NamespaceInfo::ToString() const {
   return Substitute("$0 [id=$1]", name(), namespace_id_);
+}
+
+
+////////////////////////////////////////////////////////////
+// UDTypeInfo
+////////////////////////////////////////////////////////////
+
+UDTypeInfo::UDTypeInfo(UDTypeId udtype_id) : udtype_id_(std::move(udtype_id)) { }
+
+const UDTypeName& UDTypeInfo::name() const {
+  UDTypeMetadataLock l(this, UDTypeMetadataLock::READ);
+  return l.data().pb.name();
+}
+
+const NamespaceName& UDTypeInfo::namespace_id() const {
+  UDTypeMetadataLock l(this, UDTypeMetadataLock::READ);
+  return l.data().pb.namespace_id();
+}
+
+int UDTypeInfo::field_names_size() const {
+  UDTypeMetadataLock l(this, UDTypeMetadataLock::READ);
+  return l.data().pb.field_names_size();
+}
+
+const string& UDTypeInfo::field_names(int index) const {
+  UDTypeMetadataLock l(this, UDTypeMetadataLock::READ);
+  return l.data().pb.field_names(index);
+}
+
+int UDTypeInfo::field_types_size() const {
+  UDTypeMetadataLock l(this, UDTypeMetadataLock::READ);
+  return l.data().pb.field_types_size();
+}
+
+const YQLTypePB& UDTypeInfo::field_types(int index) const {
+  UDTypeMetadataLock l(this, UDTypeMetadataLock::READ);
+  return l.data().pb.field_types(index);
+}
+
+std::string UDTypeInfo::ToString() const {
+  UDTypeMetadataLock l(this, UDTypeMetadataLock::READ);
+  return Substitute("$0 [id=$1] {metadata=$2} ", name(), udtype_id_, l.data().pb.DebugString());
 }
 
 }  // namespace master

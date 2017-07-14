@@ -13,6 +13,7 @@
 #include "yb/sql/ptree/pt_use_keyspace.h"
 #include "yb/sql/ptree/pt_create_table.h"
 #include "yb/sql/ptree/pt_alter_table.h"
+#include "yb/sql/ptree/pt_create_type.h"
 #include "yb/sql/ptree/pt_drop.h"
 #include "yb/sql/ptree/pt_select.h"
 #include "yb/sql/ptree/pt_insert.h"
@@ -74,7 +75,11 @@ class Executor {
   // Alters table.
   void ExecPTNodeAsync(const PTAlterTable *tnode, StatementExecutedCallback cb);
 
+  // Drops a table.
   void ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallback cb);
+
+  // Creates (user-defined) type;
+  void ExecPTNodeAsync(const PTCreateType *tnode, StatementExecutedCallback cb);
 
   // Select statement: current_result contains accummulated rows if any that are buffered locally
   // to be returned.
@@ -115,10 +120,8 @@ class Executor {
   CHECKED_STATUS PTExprToPB(const PTConstBool *const_pt, YQLValuePB *const_pb);
   CHECKED_STATUS PTExprToPB(const PTConstUuid *const_pt, YQLValuePB *const_pb);
   CHECKED_STATUS PTExprToPB(const PTConstBinary *const_pt, YQLValuePB *const_pb);
-  CHECKED_STATUS PTExprToPB(const PTEmptyMapOrSetExpr *const_pt, YQLValuePB *const_pb);
-  CHECKED_STATUS PTExprToPB(const PTMapExpr *const_pt, YQLValuePB *const_pb);
-  CHECKED_STATUS PTExprToPB(const PTSetExpr *const_pt, YQLValuePB *const_pb);
-  CHECKED_STATUS PTExprToPB(const PTListExpr *const_pt, YQLValuePB *const_pb);
+  CHECKED_STATUS PTExprToPB(const PTCollectionExpr *const_pt, YQLValuePB *const_pb);
+
 
   // Bind variable.
   CHECKED_STATUS PTExprToPB(const PTBindVar *bind_pt, YQLExpressionPB *bind_pb);

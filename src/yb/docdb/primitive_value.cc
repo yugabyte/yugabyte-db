@@ -933,6 +933,8 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const YQLValuePB& value,
     case YQLValuePB::kUuidValue: return PrimitiveValue(YQLValue::uuid_value(value), sort_order);
     case YQLValuePB::kTimeuuidValue:
       return PrimitiveValue(YQLValue::timeuuid_value(value), sort_order);
+    case YQLValuePB::kFrozenValue:
+      return PrimitiveValue(YQLValue::frozen_value(value), sort_order);
     case YQLValuePB::VALUE_NOT_SET:
       return PrimitiveValue(ValueType::kTombstone);
 
@@ -1002,6 +1004,9 @@ void PrimitiveValue::ToYQLValuePB(const PrimitiveValue& primitive_value,
     case BINARY:
       YQLValue::set_binary_value(primitive_value.GetString(), yql_value);
       return;
+    case FROZEN:
+      YQLValue::set_frozen_value(primitive_value.GetString(), yql_value);
+      return;
 
     case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case VARINT: FALLTHROUGH_INTENDED;
@@ -1010,6 +1015,7 @@ void PrimitiveValue::ToYQLValuePB(const PrimitiveValue& primitive_value,
     case LIST: FALLTHROUGH_INTENDED;
     case TUPLE: FALLTHROUGH_INTENDED;
     case TYPEARGS: FALLTHROUGH_INTENDED;
+    case USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
 
     case UINT8:  FALLTHROUGH_INTENDED;
     case UINT16: FALLTHROUGH_INTENDED;

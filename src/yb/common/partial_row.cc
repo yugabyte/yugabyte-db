@@ -202,6 +202,10 @@ Status YBPartialRow::Set(int32_t column_idx, const uint8_t* val) {
       RETURN_NOT_OK(SetTimeUuidCopy(column_idx, *reinterpret_cast<const Slice*>(val)));
       break;
     }
+    case FROZEN: {
+      RETURN_NOT_OK(SetFrozenCopy(column_idx, *reinterpret_cast<const Slice*>(val)));
+      break;
+    };
     case DECIMAL: FALLTHROUGH_INTENDED;
     default: {
       return STATUS(InvalidArgument, "Unknown column type in schema",
@@ -272,6 +276,9 @@ Status YBPartialRow::SetString(const Slice& col_name, const Slice& val) {
 Status YBPartialRow::SetBinary(const Slice& col_name, const Slice& val) {
   return Set<TypeTraits<BINARY> >(col_name, val, false);
 }
+Status YBPartialRow::SetFrozen(const Slice& col_name, const Slice& val) {
+  return Set<TypeTraits<FROZEN> >(col_name, val, false);
+}
 Status YBPartialRow::SetInet(const Slice& col_name, const Slice& val) {
   return SetSliceCopy<TypeTraits<INET> >(col_name, val);
 }
@@ -307,6 +314,9 @@ Status YBPartialRow::SetString(int col_idx, const Slice& val) {
 }
 Status YBPartialRow::SetBinary(int col_idx, const Slice& val) {
   return Set<TypeTraits<BINARY> >(col_idx, val, false);
+}
+Status YBPartialRow::SetFrozen(int col_idx, const Slice& val) {
+  return Set<TypeTraits<FROZEN> >(col_idx, val, false);
 }
 Status YBPartialRow::SetInet(int col_idx, const Slice& val) {
   return SetSliceCopy<TypeTraits<INET> >(col_idx, val);
@@ -350,6 +360,12 @@ Status YBPartialRow::SetTimeUuidCopy(const Slice& col_name, const Slice& val) {
 }
 Status YBPartialRow::SetTimeUuidCopy(int col_idx, const Slice& val) {
   return SetSliceCopy<TypeTraits<TIMEUUID> >(col_idx, val);
+}
+Status YBPartialRow::SetFrozenCopy(const Slice& col_name, const Slice& val) {
+  return SetSliceCopy<TypeTraits<FROZEN> >(col_name, val);
+}
+Status YBPartialRow::SetFrozenCopy(int col_idx, const Slice& val) {
+  return SetSliceCopy<TypeTraits<FROZEN> >(col_idx, val);
 }
 
 template<typename T>

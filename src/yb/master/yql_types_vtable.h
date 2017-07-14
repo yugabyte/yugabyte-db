@@ -9,11 +9,19 @@ namespace yb {
 namespace master {
 
 // VTable implementation of system_schema.types.
-class YQLTypesVTable : public YQLEmptyVTable {
+class YQLTypesVTable : public YQLVirtualTable {
  public:
   explicit YQLTypesVTable(const Master* const master);
+  CHECKED_STATUS RetrieveData(const YQLReadRequestPB& request,
+                              std::unique_ptr<YQLRowBlock>* vtable) const;
  protected:
   Schema CreateSchema() const;
+ private:
+  static constexpr const char* const kKeyspaceName = "keyspace_name";
+  static constexpr const char* const kTypeName = "type_name";
+  static constexpr const char* const kFieldNames = "field_names";
+  static constexpr const char* const kFieldTypes = "field_types";
+
 };
 
 }  // namespace master

@@ -73,11 +73,13 @@ int YQLValue::CompareTo(const YQLValue& other) const {
       return GenericCompare(uuid_value(), other.uuid_value());
     case InternalType::kTimeuuidValue:
       return GenericCompare(timeuuid_value(), other.timeuuid_value());
+    case InternalType::kFrozenValue: return frozen_value().compare(other.frozen_value());
     case YQLValuePB::kMapValue: FALLTHROUGH_INTENDED;
     case YQLValuePB::kSetValue: FALLTHROUGH_INTENDED;
     case YQLValuePB::kListValue:
       LOG(FATAL) << "Internal error: collection types are not comparable";
       return 0;
+
     case InternalType::kVarintValue:
       LOG(FATAL) << "Internal error: varint not implemented";
     case InternalType::VALUE_NOT_SET:
@@ -184,7 +186,7 @@ void YQLValue::Serialize(
       int32_t start_pos = CQLStartCollection(buffer);
       int32_t length = static_cast<int32_t>(set.elems_size());
       CQLEncodeLength(length, buffer); // number of elements in collection
-      const shared_ptr<YQLType>& elems_type = yql_type->params()[0];
+      const shared_ptr<YQLType>& elems_type = yql_type->param_type(0);
       for (auto& elem : set.elems()) {
         YQLValueWithPB(elem).Serialize(elems_type, client, buffer);
       }
@@ -196,13 +198,37 @@ void YQLValue::Serialize(
       int32_t start_pos = CQLStartCollection(buffer);
       int32_t length = static_cast<int32_t>(list.elems_size());
       CQLEncodeLength(length, buffer);
-      const shared_ptr<YQLType>& elems_type = yql_type->params()[0];
+      const shared_ptr<YQLType>& elems_type = yql_type->param_type(0);
       for (auto& elem : list.elems()) {
         YQLValueWithPB(elem).Serialize(elems_type, client, buffer);
       }
       CQLFinishCollection(start_pos, buffer);
       return;
     }
+
+    case USER_DEFINED_TYPE: {
+      YQLMapValuePB map = map_value();
+      DCHECK_EQ(map.keys_size(), map.values_size());
+      int32_t start_pos = CQLStartCollection(buffer);
+
+      // For every field the UDT has, we try to find a corresponding map entry. If found we
+      // serialize the value, else null. Map keys should always be in ascending order.
+      int key_idx = 0;
+      for (int i = 0; i < yql_type->udtype_field_names().size(); i++) {
+        if (key_idx < map.keys_size() && map.keys(key_idx).int16_value() == i) {
+          YQLValueWithPB(map.values(key_idx)).Serialize(yql_type->param_type(i), client, buffer);
+          key_idx++;
+        } else { // entry not found -> writing null
+          CQLEncodeLength(-1, buffer);
+        }
+      }
+
+      CQLFinishCollection(start_pos, buffer);
+      return;
+    }
+    case FROZEN:
+      CQLEncodeBytes(frozen_value(), buffer);
+      return;
 
     YQL_UNSUPPORTED_TYPES_IN_SWITCH:
       break;
@@ -301,8 +327,8 @@ Status YQLValue::Deserialize(
       return Status::OK();
     }
     case MAP: {
-      const shared_ptr<YQLType>& keys_type = yql_type->params()[0];
-      const shared_ptr<YQLType>& values_type = yql_type->params()[1];
+      const shared_ptr<YQLType>& keys_type = yql_type->param_type(0);
+      const shared_ptr<YQLType>& values_type = yql_type->param_type(1);
       set_map_value();
       int32_t nr_elems = 0;
       RETURN_NOT_OK(CQLDecodeNum(sizeof(nr_elems), NetworkByteOrder::Load32, data, &nr_elems));
@@ -318,7 +344,7 @@ Status YQLValue::Deserialize(
       return Status::OK();
     }
     case SET: {
-      const shared_ptr<YQLType>& elems_type = yql_type->params()[0];
+      const shared_ptr<YQLType>& elems_type = yql_type->param_type(0);
       set_set_value();
       int32_t nr_elems = 0;
       RETURN_NOT_OK(CQLDecodeNum(sizeof(nr_elems), NetworkByteOrder::Load32, data, &nr_elems));
@@ -330,7 +356,7 @@ Status YQLValue::Deserialize(
       return Status::OK();
     }
     case LIST: {
-      const shared_ptr<YQLType>& elems_type = yql_type->params()[0];
+      const shared_ptr<YQLType>& elems_type = yql_type->param_type(0);
       set_list_value();
       int32_t nr_elems = 0;
       RETURN_NOT_OK(CQLDecodeNum(sizeof(nr_elems), NetworkByteOrder::Load32, data, &nr_elems));
@@ -339,6 +365,24 @@ Status YQLValue::Deserialize(
         RETURN_NOT_OK(elem.Deserialize(elems_type, client, data));
         add_list_elem()->CopyFrom(elem.value());
       }
+      return Status::OK();
+    }
+    case FROZEN:
+      return CQLDecodeBytes(len, data, mutable_frozen_value());
+
+    case USER_DEFINED_TYPE: {
+      set_map_value();
+      size_t fields_size = yql_type->udtype_field_names().size();
+      for (size_t i = 0; i < fields_size; i++) {
+        // TODO (mihnea) default to null if value missing (CQL behavior)
+        YQLValueWithPB value;
+        RETURN_NOT_OK(value.Deserialize(yql_type->param_type(i), client, data));
+        if (!YQLValue::IsNull(value)) {
+          add_map_key()->set_int16_value(i);
+          add_map_value()->CopyFrom(value.value());
+        }
+      }
+
       return Status::OK();
     }
 
@@ -376,6 +420,8 @@ string YQLValue::ToString() const {
     case InternalType::kTimeuuidValue: return "timeuuid:" + timeuuid_value().ToString();
     case InternalType::kBoolValue: return (bool_value() ? "bool:true" : "bool:false");
     case InternalType::kBinaryValue: return "binary:0x" + b2a_hex(binary_value());
+    case InternalType::kFrozenValue: return "frozen:" + b2a_hex(frozen_value());
+
     case InternalType::kMapValue: {
       std::stringstream ss;
       YQLMapValuePB map = map_value();
@@ -450,6 +496,7 @@ void YQLValue::SetNull(YQLValuePB* v) {
     case YQLValuePB::kMapValue:    v->clear_map_value(); return;
     case YQLValuePB::kSetValue:    v->clear_set_value(); return;
     case YQLValuePB::kListValue:   v->clear_list_value(); return;
+    case YQLValuePB::kFrozenValue:   v->clear_frozen_value(); return;
     case YQLValuePB::kVarintValue:
       LOG(FATAL) << "Internal error: varint not implemented";
     case YQLValuePB::VALUE_NOT_SET: return;
@@ -482,6 +529,7 @@ int YQLValue::CompareTo(const YQLValuePB& lhs, const YQLValuePB& rhs) {
       return GenericCompare(lhs.uuid_value(), rhs.uuid_value());
     case YQLValuePB::kTimeuuidValue:
       return GenericCompare(lhs.timeuuid_value(), rhs.timeuuid_value());
+    case YQLValuePB::kFrozenValue: return lhs.frozen_value().compare(rhs.frozen_value());
     case YQLValuePB::kMapValue: FALLTHROUGH_INTENDED;
     case YQLValuePB::kSetValue: FALLTHROUGH_INTENDED;
     case YQLValuePB::kListValue:
@@ -525,6 +573,7 @@ int YQLValue::CompareTo(const YQLValuePB& lhs, const YQLValue& rhs) {
       return GenericCompare(uuid_value(lhs), rhs.uuid_value());
     case YQLValuePB::kTimeuuidValue:
       return GenericCompare(timeuuid_value(lhs), rhs.timeuuid_value());
+    case YQLValuePB::kFrozenValue: return frozen_value(lhs).compare(rhs.frozen_value());
     case YQLValuePB::kMapValue: FALLTHROUGH_INTENDED;
     case YQLValuePB::kSetValue: FALLTHROUGH_INTENDED;
     case YQLValuePB::kListValue:

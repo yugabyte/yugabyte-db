@@ -118,6 +118,14 @@ CHECKED_STATUS SemContext::MapSymbol(const MCString& name, ColumnDesc *entry) {
   return Status::OK();
 }
 
+CHECKED_STATUS SemContext::MapSymbol(const MCString& name, PTTypeField *entry) {
+  if (symtab_[name].type_field_ != nullptr) {
+    RETURN_NOT_OK(Error(entry->loc(), ErrorCode::DUPLICATE_TYPE_FIELD));
+  }
+  symtab_[name].type_field_ = entry;
+  return Status::OK();
+}
+
 shared_ptr<YBTable> SemContext::GetTableDesc(const client::YBTableName& table_name) {
   bool cache_used = false;
   shared_ptr<YBTable> table = sql_env_->GetTableDesc(table_name, &cache_used);
@@ -129,6 +137,22 @@ shared_ptr<YBTable> SemContext::GetTableDesc(const client::YBTableName& table_na
     }
   }
   return table;
+}
+
+std::shared_ptr<YQLType> SemContext::GetUDType(const string &keyspace_name,
+                                               const string &type_name) {
+  bool cache_used = false;
+  shared_ptr<YQLType> type = sql_env_->GetUDType(keyspace_name, type_name, &cache_used);
+
+  if (type != nullptr) {
+    parse_tree_->AddAnalyzedUDType(keyspace_name, type_name);
+    if (cache_used) {
+      // Remember cache was used.
+      cache_used_ = true;
+    }
+  }
+
+  return type;
 }
 
 SymbolEntry *SemContext::SeekSymbol(const MCString& name) {

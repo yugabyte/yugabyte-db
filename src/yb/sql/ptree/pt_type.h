@@ -9,6 +9,7 @@
 
 #include "yb/client/client.h"
 #include "yb/sql/ptree/tree_node.h"
+#include "yb/sql/ptree/pt_name.h"
 #include "yb/common/types.h"
 #include "yb/common/yql_value.h"
 
@@ -30,7 +31,7 @@ class PTBaseType : public TreeNode {
   virtual ~PTBaseType() {
   }
 
-  virtual CHECKED_STATUS IsValid(SemContext *sem_context) {
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) {
     return Status::OK();
   }
 
@@ -285,7 +286,7 @@ class PTMap : public PTPrimitiveType<InternalType::kMapValue, DataType::MAP, fal
     return yql_type_;
   }
 
-  virtual CHECKED_STATUS IsValid(SemContext *sem_context);
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context);
 
  protected:
   PTBaseType::SharedPtr keys_type_;
@@ -313,7 +314,7 @@ class PTSet : public PTPrimitiveType<InternalType::kSetValue, DataType::SET, fal
     return yql_type_;
   }
 
-  virtual CHECKED_STATUS IsValid(SemContext *sem_context);
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context);
 
  protected:
   PTBaseType::SharedPtr elems_type_;
@@ -340,14 +341,74 @@ class PTList : public PTPrimitiveType<InternalType::kListValue, DataType::LIST, 
     return yql_type_;
   }
 
-  virtual CHECKED_STATUS IsValid(SemContext *sem_context);
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context);
 
  protected:
   PTBaseType::SharedPtr elems_type_;
   std::shared_ptr<YQLType> yql_type_;
 };
 
-}  // namespace sql
+class PTUserDefinedType : public PTPrimitiveType<InternalType::kMapValue,
+                                                 DataType::USER_DEFINED_TYPE,
+                                                 false> {
+ public:
+  typedef MCSharedPtr<PTUserDefinedType> SharedPtr;
+  typedef MCSharedPtr<const PTUserDefinedType> SharedPtrConst;
+
+  PTUserDefinedType(MemoryContext *memctx,
+                    YBLocation::SharedPtr loc,
+                    const PTQualifiedName::SharedPtr& name);
+
+  virtual ~PTUserDefinedType();
+
+  template<typename... TypeArgs>
+  inline static PTUserDefinedType::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
+    return MCMakeShared<PTUserDefinedType>(memctx, std::forward<TypeArgs>(args)...);
+  }
+
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context);
+
+  virtual std::shared_ptr<YQLType> yql_type() const {
+    return yql_type_;
+  }
+
+ private:
+  PTQualifiedName::SharedPtr name_;
+
+  // These fields will be set during analysis (retrieving type info from metadata server)
+  std::shared_ptr<YQLType> yql_type_;
+};
+
+class PTFrozen : public PTPrimitiveType<InternalType::kFrozenValue,
+                                        DataType::FROZEN,
+                                        true> {
+ public:
+  typedef MCSharedPtr<PTFrozen> SharedPtr;
+  typedef MCSharedPtr<const PTFrozen> SharedPtrConst;
+
+  PTFrozen(MemoryContext *memctx,
+           YBLocation::SharedPtr loc,
+           const PTBaseType::SharedPtr& elems_type);
+
+  virtual ~PTFrozen();
+
+  template<typename... TypeArgs>
+  inline static PTFrozen::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
+    return MCMakeShared<PTFrozen>(memctx, std::forward<TypeArgs>(args)...);
+  }
+
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context);
+
+  virtual std::shared_ptr<YQLType> yql_type() const {
+    return yql_type_;
+  }
+
+ private:
+  PTBaseType::SharedPtr elems_type_;
+  std::shared_ptr<YQLType> yql_type_;
+};
+
+};  // namespace sql
 }  // namespace yb
 
 #endif  // YB_SQL_PTREE_PT_TYPE_H_

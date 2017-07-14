@@ -72,18 +72,22 @@ PTMap::PTMap(MemoryContext *memctx,
     : PTPrimitiveType<InternalType::kMapValue, DataType::MAP, false>(memctx, loc),
       keys_type_(keys_type),
       values_type_(values_type) {
-  yql_type_ = YQLType::CreateTypeMap(keys_type->yql_type()->main(),
-                                     values_type->yql_type()->main());
+  yql_type_ = YQLType::CreateTypeMap(keys_type->yql_type(), values_type->yql_type());
 }
 
 PTMap::~PTMap() {
 }
 
-CHECKED_STATUS PTMap::IsValid(SemContext *sem_context) {
+CHECKED_STATUS PTMap::Analyze(SemContext *sem_context) {
+  RETURN_NOT_OK(keys_type_->Analyze(sem_context));
+  RETURN_NOT_OK(values_type_->Analyze(sem_context));
+  yql_type_ = YQLType::CreateTypeMap(keys_type_->yql_type(), values_type_->yql_type());
+
   // Both key and value types cannot be collection.
-  if (keys_type_->yql_type()->IsParametric() || values_type_->yql_type()->IsParametric()) {
+  if (keys_type_->yql_type()->IsCollection() || keys_type_->yql_type()->IsUserDefined() ||
+      values_type_->yql_type()->IsCollection() || values_type_->yql_type()->IsUserDefined()) {
     return sem_context->Error(loc(), ErrorCode::INVALID_TABLE_DEFINITION,
-                              "Nested Collections Are Not Supported Yet");
+        "Collection type parameters cannot be (un-frozen) collections or UDTs");
   }
 
   // Data types of map keys must be valid primary key types since they are encoded as keys in DocDB
@@ -100,17 +104,20 @@ PTSet::PTSet(MemoryContext *memctx,
              const PTBaseType::SharedPtr& elems_type)
     : PTPrimitiveType<InternalType::kSetValue, DataType::SET, false>(memctx, loc),
       elems_type_(elems_type) {
-  yql_type_ = YQLType::CreateTypeSet(elems_type->yql_type()->main());
+  yql_type_ = YQLType::CreateTypeSet(elems_type->yql_type());
 }
 
 PTSet::~PTSet() {
 }
 
-CHECKED_STATUS PTSet::IsValid(SemContext *sem_context) {
-  // Both key and value types cannot be collection.
-  if (elems_type_->yql_type()->IsParametric()) {
+CHECKED_STATUS PTSet::Analyze(SemContext *sem_context) {
+  RETURN_NOT_OK(elems_type_->Analyze(sem_context));
+  yql_type_ = YQLType::CreateTypeSet(elems_type_->yql_type());
+
+  // Elems type cannot be collection.
+  if (elems_type_->yql_type()->IsCollection() || elems_type_->yql_type()->IsUserDefined()) {
     return sem_context->Error(loc(), ErrorCode::INVALID_TABLE_DEFINITION,
-                              "Nested Collections Are Not Supported Yet");
+        "Collection type parameters cannot be (un-frozen) collections or UDTs");
   }
 
   // Data types of set elems must be valid primary key types since they are encoded as keys in DocDB
@@ -127,17 +134,74 @@ PTList::PTList(MemoryContext *memctx,
                const PTBaseType::SharedPtr& elems_type)
     : PTPrimitiveType<InternalType::kListValue, DataType::LIST, false>(memctx, loc),
       elems_type_(elems_type) {
-  yql_type_ = YQLType::CreateTypeList(elems_type->yql_type()->main());
+  yql_type_ = YQLType::CreateTypeList(elems_type->yql_type());
 }
 
 PTList::~PTList() {
 }
 
-CHECKED_STATUS PTList::IsValid(SemContext *sem_context) {
-  // Both key and value types cannot be collection.
-  if (elems_type_->yql_type()->IsParametric()) {
+CHECKED_STATUS PTList::Analyze(SemContext *sem_context) {
+  RETURN_NOT_OK(elems_type_->Analyze(sem_context));
+  yql_type_ = YQLType::CreateTypeList(elems_type_->yql_type());
+
+  // Elems type cannot be collection.
+  if (elems_type_->yql_type()->IsCollection() || elems_type_->yql_type()->IsUserDefined()) {
     return sem_context->Error(loc(), ErrorCode::INVALID_TABLE_DEFINITION,
-                              "Nested Collections Are Not Supported Yet");
+        "Collection type parameters cannot be (un-frozen) collections or UDTs");
+  }
+
+  return Status::OK();
+}
+
+PTUserDefinedType::PTUserDefinedType(MemoryContext *memctx,
+                                     YBLocation::SharedPtr loc,
+                                     const PTQualifiedName::SharedPtr& name)
+    : PTPrimitiveType<InternalType::kMapValue, DataType::USER_DEFINED_TYPE, false>(memctx, loc),
+      name_(name) {
+}
+
+PTUserDefinedType::~PTUserDefinedType() {
+}
+
+CHECKED_STATUS PTUserDefinedType::Analyze(SemContext *sem_context) {
+
+  RETURN_NOT_OK(name_->Analyze(sem_context));
+
+  auto ybname = name_->ToTableName();
+  if (!ybname.has_namespace()) {
+    if (sem_context->CurrentKeyspace().empty()) {
+      return sem_context->Error(loc(), ErrorCode::NO_NAMESPACE_USED);
+    }
+    ybname.set_namespace_name(sem_context->CurrentKeyspace());
+  }
+
+  yql_type_ = sem_context->GetUDType(ybname.namespace_name(), ybname.table_name());
+  if (yql_type_ == nullptr) {
+    return sem_context->Error(loc(), ErrorCode::INVALID_TABLE_DEFINITION,
+        "Could not find user defined type");
+  }
+
+  return Status::OK();
+}
+
+PTFrozen::PTFrozen(MemoryContext *memctx,
+                   YBLocation::SharedPtr loc,
+                   const PTBaseType::SharedPtr& elems_type)
+    : PTPrimitiveType<InternalType::kFrozenValue, DataType::FROZEN, true>(memctx, loc),
+      elems_type_(elems_type) {
+  yql_type_ = YQLType::CreateTypeFrozen(elems_type->yql_type());
+}
+
+PTFrozen::~PTFrozen() {
+}
+
+CHECKED_STATUS PTFrozen::Analyze(SemContext *sem_context) {
+  RETURN_NOT_OK(elems_type_->Analyze(sem_context));
+  yql_type_ = YQLType::CreateTypeFrozen(elems_type_->yql_type());
+
+  if (!elems_type_->yql_type()->IsCollection() && !elems_type_->yql_type()->IsUserDefined()) {
+    return sem_context->Error(loc(), ErrorCode::INVALID_TABLE_DEFINITION,
+        "Can only freeze collections or user defined types");
   }
   return Status::OK();
 }

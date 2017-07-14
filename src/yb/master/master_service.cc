@@ -336,6 +336,30 @@ void MasterServiceImpl::ListNamespaces(const ListNamespacesRequestPB* req,
   HandleIn(req, resp, &rpc, &CatalogManager::ListNamespaces);
 }
 
+void MasterServiceImpl::CreateUDType(const CreateUDTypeRequestPB* req,
+                                        CreateUDTypeResponsePB* resp,
+                                        rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::CreateUDType);
+}
+
+void MasterServiceImpl::DeleteUDType(const DeleteUDTypeRequestPB* req,
+                                        DeleteUDTypeResponsePB* resp,
+                                        rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::DeleteUDType);
+}
+
+void MasterServiceImpl::ListUDTypes(const ListUDTypesRequestPB* req,
+                                       ListUDTypesResponsePB* resp,
+                                       rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::ListUDTypes);
+}
+
+void MasterServiceImpl::GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
+                                            GetUDTypeInfoResponsePB* resp,
+                                            rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::GetUDTypeInfo);
+}
+
 void MasterServiceImpl::ListTabletServers(const ListTabletServersRequestPB* req,
                                           ListTabletServersResponsePB* resp,
                                           RpcContext rpc) {

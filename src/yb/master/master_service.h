@@ -86,6 +86,19 @@ class MasterServiceImpl : public MasterServiceIf {
                               ListNamespacesResponsePB* resp,
                               rpc::RpcContext rpc) override;
 
+  virtual void CreateUDType(const CreateUDTypeRequestPB* req,
+                               CreateUDTypeResponsePB* resp,
+                               rpc::RpcContext rpc) override;
+  virtual void DeleteUDType(const DeleteUDTypeRequestPB* req,
+                               DeleteUDTypeResponsePB* resp,
+                               rpc::RpcContext rpc) override;
+  virtual void ListUDTypes(const ListUDTypesRequestPB* req,
+                              ListUDTypesResponsePB* resp,
+                              rpc::RpcContext rpc) override;
+  virtual void GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
+                             GetUDTypeInfoResponsePB* resp,
+                           rpc::RpcContext rpc) override;
+
   virtual void ListMasters(const ListMastersRequestPB* req,
                            ListMastersResponsePB* resp,
                            rpc::RpcContext rpc) override;

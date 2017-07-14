@@ -53,7 +53,7 @@ using std::unique_ptr;
 
 using client::YBClient;
 using client::YBSession;
-using client::YBTableCache;
+using client::YBMetaDataCache;
 using sql::ExecutedResult;
 using sql::PreparedResult;
 using sql::RowsResult;
@@ -89,7 +89,7 @@ CQLMetrics::CQLMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity)
 //------------------------------------------------------------------------------------------------
 CQLProcessor::CQLProcessor(CQLServiceImpl* service_impl, const CQLProcessorListPos& pos)
     : SqlProcessor(
-          service_impl->messenger(), service_impl->client(), service_impl->table_cache(),
+          service_impl->messenger(), service_impl->client(), service_impl->metadata_cache(),
           service_impl->cql_metrics().get(), service_impl->cql_rpc_env()),
       service_impl_(service_impl),
       cql_metrics_(service_impl->cql_metrics()),

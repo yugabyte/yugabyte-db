@@ -103,6 +103,8 @@ class YBPartialRow {
   CHECKED_STATUS SetUuid(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetTimeUuid(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetTimeUuid(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetFrozen(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetFrozen(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
 
   // Copies 'val' immediately.
   CHECKED_STATUS SetStringCopy(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
@@ -115,6 +117,8 @@ class YBPartialRow {
   CHECKED_STATUS SetTimeUuidCopy(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetDecimalCopy(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetDecimalCopy(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetFrozenCopy(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetFrozenCopy(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
 
   // Set the given column to NULL. This will only succeed on nullable
   // columns. Use Unset(...) to restore a column to its default.

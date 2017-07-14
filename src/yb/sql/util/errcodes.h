@@ -80,6 +80,8 @@ enum class ErrorCode : int64_t {
   NO_NAMESPACE_USED = -215,
   INSERT_TABLE_OF_COUNTERS = -216,
   INVALID_COUNTING_EXPR = -217,
+  DUPLICATE_TYPE = -218,
+  DUPLICATE_TYPE_FIELD = -219,
 
   //------------------------------------------------------------------------------------------------
   // Execution errors [-300, x).
@@ -94,6 +96,8 @@ enum class ErrorCode : int64_t {
   KEYSPACE_NOT_FOUND = -308,
   TABLET_NOT_FOUND = -309,
   STALE_PREPARED_STATEMENT = -310,
+  TYPE_NOT_FOUND = -311,
+  INVALID_TYPE_DEFINITION = -312,
 };
 
 // Return SQL error code from an Status if it is a SQL error. Otherwise, return FAILURE.

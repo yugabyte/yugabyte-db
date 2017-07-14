@@ -12,6 +12,7 @@
 #include "yb/sql/ptree/column_desc.h"
 #include "yb/sql/ptree/pt_create_table.h"
 #include "yb/sql/ptree/pt_alter_table.h"
+#include "yb/sql/ptree/pt_create_type.h"
 #include "yb/sql/ptree/sem_state.h"
 
 namespace yb {
@@ -30,6 +31,10 @@ struct SymbolEntry {
   PTCreateTable *create_table_;
   PTAlterTable *alter_table_;
 
+  // Parser tree node for user-defined type. It's used for creating types.
+  PTCreateType *create_type_;
+  PTTypeField *type_field_;
+
   // Column description. It's used for DML statements including select.
   // Not part of a parse tree, but it is allocated within the parse tree pool because it us
   // persistent metadata. It represents a column during semantic and execution phases.
@@ -41,7 +46,7 @@ struct SymbolEntry {
 
   SymbolEntry()
     : column_(nullptr), alter_column_(nullptr), create_table_(nullptr), alter_table_(nullptr),
-      column_desc_(nullptr) {
+      create_type_(nullptr), type_field_(nullptr), column_desc_(nullptr) {
   }
 };
 
@@ -73,6 +78,7 @@ class SemContext : public ProcessContext {
   CHECKED_STATUS MapSymbol(const MCString& name, PTAlterColumnDefinition *entry);
   CHECKED_STATUS MapSymbol(const MCString& name, PTCreateTable *entry);
   CHECKED_STATUS MapSymbol(const MCString& name, ColumnDesc *entry);
+  CHECKED_STATUS MapSymbol(const MCString& name, PTTypeField *entry);
 
   // Access functions to current processing symbol.
   SymbolEntry *current_processing_id() {
@@ -114,8 +120,27 @@ class SemContext : public ProcessContext {
     current_processing_id_.alter_table_ = table;
   }
 
+  PTCreateType *current_create_type_stmt() {
+    return current_processing_id_.create_type_;
+  }
+
+  void set_current_create_type_stmt(PTCreateType *type) {
+    current_processing_id_.create_type_ = type;
+  }
+
+  PTTypeField *current_type_field() {
+    return current_processing_id_.type_field_;
+  }
+
+  void set_current_type_field(PTTypeField *field) {
+    current_processing_id_.type_field_ = field;
+  }
+
   // Find table descriptor from metadata server.
   std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name);
+
+  // Get (user-defined) type from metadata server.
+  std::shared_ptr<YQLType> GetUDType(const string &keyspace_name, const string &type_name);
 
   // Find column descriptor from symbol table.
   PTColumnDefinition *GetColumnDefinition(const MCString& col_name);

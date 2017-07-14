@@ -35,7 +35,7 @@ using std::vector;
 using yb::client::YBClientBuilder;
 using yb::client::YBSchema;
 using yb::client::YBSession;
-using yb::client::YBTableCache;
+using yb::client::YBMetaDataCache;
 using yb::rpc::InboundCall;
 
 CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts)
@@ -74,7 +74,7 @@ void CQLServiceImpl::SetUpYBClient(
     client_->AddTabletServerProxy(
         server_->tserver()->permanent_uuid(), server_->tserver()->proxy());
   }
-  table_cache_ = std::make_shared<YBTableCache>(client_);
+  metadata_cache_ = std::make_shared<YBMetaDataCache>(client_);
 }
 
 void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {

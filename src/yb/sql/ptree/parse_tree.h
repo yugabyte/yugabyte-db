@@ -57,11 +57,21 @@ class ParseTree {
   // Clear the metadata cache of the tables used to analyze this parse tree.
   void ClearAnalyzedTableCache(SqlEnv *sql_env) const;
 
+  // Add type to the set of types used during semantic analysis.
+  void AddAnalyzedUDType(const std::string& keyspace_name, const std::string& type_name);
+
+  // Clear the metadata cache of the types used to analyze this parse tree.
+  void ClearAnalyzedUDTypeCache(SqlEnv *sql_env) const;
+
  private:
   std::shared_ptr<BufferAllocator> buffer_allocator_;
 
   // Set of tables used during semantic analysis.
   std::unordered_set<client::YBTableName, boost::hash<client::YBTableName>> analyzed_tables_;
+
+  // Set of types used during semantic analysis.
+  std::unordered_set<std::pair<string, string>,
+                     boost::hash<std::pair<string, string>>> analyzed_types_;
 
   // Parse tree memory pool. This pool is used to allocate parse tree and its nodes. This pool
   // should be part of the generated parse tree that is stored within parse_context. Once the

@@ -135,26 +135,21 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
             ErrorCode::INVALID_FUNCTION_CALL);
       }
 
-      if (strcmp(bfdecl->cpp_name(), "AddMapSet") == 0 && !arg->is_empty_collection()) {
-        return sem_context->Error(loc(),
-            "Non-empty sets are not convertible to type Map",
-            ErrorCode::DATATYPE_MISMATCH);
-      }
-
       SemState state(sem_context);
-
-      // argument type is same as type of the referenced column (except for subtracting from MAP)
-      auto arg_type = col_ref->yql_type();
+      // Argument type is same as type of the referenced column (except for subtracting from MAP)
+      auto arg_ytype = col_ref->yql_type();
+      auto arg_itype = col_ref->internal_type();
       // Subtraction from MAP takes keys to be removed as param so arg type for MAP<A,B> is SET<A>
       if (strcmp(bfdecl->cpp_name(), "SubMapSet") == 0) {
-        arg_type = YQLType::CreateTypeSet(col_ref->yql_type()->param_type(0)->main());
+        arg_ytype = YQLType::CreateTypeSet(col_ref->yql_type()->param_type(0));
+        arg_itype = InternalType::kSetValue;
       }
-      state.SetExprState(arg_type, col_ref->internal_type());
+      state.SetExprState(arg_ytype, arg_itype);
       RETURN_NOT_OK(arg->Analyze(sem_context));
 
       // Type resolution (for map/set): (cref + <expr>) should have same type as (cref).
       yql_type_ = col_ref->yql_type();
-      internal_type_ = col_ref->internal_type();
+      internal_type_ = arg_itype;
 
       // return type is same as type of the referenced column
       state.SetExprState(col_ref->yql_type(), col_ref->internal_type());

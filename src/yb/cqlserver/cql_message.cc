@@ -79,6 +79,8 @@ Status CQLMessage::QueryParameters::GetBindVariable(const std::string& name,
           case DataType::UNKNOWN_DATA: FALLTHROUGH_INTENDED;
           case DataType::TUPLE: FALLTHROUGH_INTENDED;
           case DataType::TYPEARGS: FALLTHROUGH_INTENDED;
+          case DataType::USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
+          case DataType::FROZEN: FALLTHROUGH_INTENDED;
           case DataType::UINT8: FALLTHROUGH_INTENDED;
           case DataType::UINT16: FALLTHROUGH_INTENDED;
           case DataType::UINT32: FALLTHROUGH_INTENDED;
@@ -1053,7 +1055,11 @@ ResultResponse::RowsMetadata::Type::Type(const Type& t) : id(t.id) {
   LOG(ERROR) << "Internal error: unknown type id " << static_cast<uint32_t>(id);
 }
 
-ResultResponse::RowsMetadata::Type::Type(const shared_ptr<YQLType>& type) {
+ResultResponse::RowsMetadata::Type::Type(const shared_ptr<YQLType>& yql_type) {
+  auto type = yql_type;
+  if (type->IsFrozen()) {
+    type = yql_type->param_type(0);
+  }
   switch (type->main()) {
     case DataType::INT8:
       id = Id::TINYINT;
@@ -1094,27 +1100,39 @@ ResultResponse::RowsMetadata::Type::Type(const shared_ptr<YQLType>& type) {
     case DataType::BINARY:
       id = Id::BLOB;
       return;
+    case DataType::DECIMAL:
+      id = Id::DECIMAL;
+      return;
     case DataType::LIST:
       id = Id::LIST;
       new (&element_type) shared_ptr<const Type>(
-          std::make_shared<const Type>(Type(type->params()[0])));
+          std::make_shared<const Type>(Type(type->param_type(0))));
       return;
     case DataType::SET:
       id = Id::SET;
       new (&element_type) shared_ptr<const Type>(
-          std::make_shared<const Type>(Type(type->params()[0])));
+          std::make_shared<const Type>(Type(type->param_type(0))));
       return;
     case DataType::MAP: {
       id = Id::MAP;
-      auto key = std::make_shared<const Type>(Type(type->params()[0]));
-      auto value = std::make_shared<const Type>(Type(type->params()[1]));
+      auto key = std::make_shared<const Type>(Type(type->param_type(0)));
+      auto value = std::make_shared<const Type>(Type(type->param_type(1)));
       new (&map_type) shared_ptr<const MapType>(std::make_shared<MapType>(MapType{key, value}));
       return;
     }
-    case DataType::DECIMAL:
-      id = Id::DECIMAL;
+    case DataType::USER_DEFINED_TYPE: {
+      id = Id::UDT;
+      std::vector<UDTType::Field> fields;
+      for (int i = 0; i < type->params().size(); i++) {
+        auto field_type = std::make_shared<const Type>(Type(type->param_type(i)));
+        UDTType::Field field{type->udtype_field_name(i), field_type};
+        fields.push_back(std::move(field));
+      }
+      new(&udt_type) shared_ptr<const UDTType>(std::make_shared<UDTType>(
+          UDTType{type->udtype_keyspace_name(), type->udtype_name(), fields}));
       return;
-
+    }
+    case DataType::FROZEN: FALLTHROUGH_INTENDED;
     case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case DataType::VARINT: FALLTHROUGH_INTENDED;
     case DataType::TUPLE: FALLTHROUGH_INTENDED;

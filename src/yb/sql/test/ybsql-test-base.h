@@ -74,7 +74,7 @@ class YbSqlProcessor : public SqlProcessor {
   // Constructors.
   explicit YbSqlProcessor(
       std::weak_ptr<rpc::Messenger> messenger, std::shared_ptr<client::YBClient> client,
-      std::shared_ptr<client::YBTableCache> cache)
+      std::shared_ptr<client::YBMetaDataCache> cache)
       : SqlProcessor(messenger, client, cache, nullptr /* sql_metrics */) { }
   virtual ~YbSqlProcessor() { }
 
@@ -185,7 +185,7 @@ class YbSqlTestBase : public YBTest {
 
   // Simulated YB client.
   std::shared_ptr<client::YBClient> client_;
-  std::shared_ptr<client::YBTableCache> table_cache_;
+  std::shared_ptr<client::YBMetaDataCache> metadata_cache_;
 
   // Contexts to be passed to SQL engine.
   std::vector<SqlEnv::UniPtr> sql_envs_;

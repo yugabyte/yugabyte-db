@@ -88,6 +88,14 @@ using yb::master::DeleteNamespaceRequestPB;
 using yb::master::DeleteNamespaceResponsePB;
 using yb::master::ListNamespacesRequestPB;
 using yb::master::ListNamespacesResponsePB;
+using yb::master::CreateUDTypeRequestPB;
+using yb::master::CreateUDTypeResponsePB;
+using yb::master::DeleteUDTypeRequestPB;
+using yb::master::DeleteUDTypeResponsePB;
+using yb::master::ListUDTypesRequestPB;
+using yb::master::ListUDTypesResponsePB;
+using yb::master::GetUDTypeInfoRequestPB;
+using yb::master::GetUDTypeInfoResponsePB;
 using yb::master::MasterServiceProxy;
 using yb::master::ReplicationInfoPB;
 using yb::master::TabletLocationsPB;
@@ -416,6 +424,88 @@ Status YBClient::NamespaceExists(const std::string& namespace_name, bool* exists
   return Status::OK();
 }
 
+CHECKED_STATUS YBClient::GetUDType(const std::string &namespace_name,
+                                   const std::string &type_name,
+                                   std::shared_ptr<YQLType> *yql_type) {
+  // Setting up request
+  GetUDTypeInfoRequestPB req;
+  req.mutable_type()->mutable_namespace_()->set_name(namespace_name);
+  req.mutable_type()->set_type_name(type_name);
+
+  // Sending request
+  GetUDTypeInfoResponsePB resp;
+  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  deadline.AddDelta(default_admin_operation_timeout());
+  Status st = data_->SyncLeaderMasterRpc<GetUDTypeInfoRequestPB, GetUDTypeInfoResponsePB>(
+      deadline, this, req, &resp, nullptr, "GetUDTypeInfo", &MasterServiceProxy::GetUDTypeInfo);
+  RETURN_NOT_OK(st);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  // Filling in return values
+  std::vector<string> field_names;
+  for (const auto& field_name : resp.udtype().field_names()) {
+    field_names.push_back(field_name);
+  }
+
+  std::vector<shared_ptr<YQLType>> field_types;
+  for (const auto& field_type : resp.udtype().field_types()) {
+    field_types.push_back(YQLType::FromYQLTypePB(field_type));
+  }
+
+  (*yql_type)->SetUDTypeFields(resp.udtype().id(), field_names, field_types);
+
+  return Status::OK();
+}
+
+CHECKED_STATUS YBClient::CreateUDType(const std::string &namespace_name,
+                                      const std::string &type_name,
+                                      const std::vector<std::string> &field_names,
+                                      const std::vector<std::shared_ptr<YQLType>> &field_types) {
+  // Setting up request.
+  CreateUDTypeRequestPB req;
+  req.mutable_namespace_()->set_name(namespace_name);
+  req.set_name(type_name);
+  for (const string& field_name : field_names) {
+    req.add_field_names(field_name);
+  }
+  for (const std::shared_ptr<YQLType> field_type : field_types) {
+    field_type->ToYQLTypePB(req.add_field_types());
+  }
+
+  CreateUDTypeResponsePB resp;
+  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  deadline.AddDelta(default_admin_operation_timeout());
+  Status st = data_->SyncLeaderMasterRpc<CreateUDTypeRequestPB, CreateUDTypeResponsePB>(
+      deadline, this, req, &resp, nullptr, "CreateUDType", &MasterServiceProxy::CreateUDType);
+  RETURN_NOT_OK(st);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+CHECKED_STATUS YBClient::DeleteUDType(const std::string &namespace_name,
+                                      const std::string &type_name) {
+  // Setting up request.
+  DeleteUDTypeRequestPB req;
+  req.mutable_type()->mutable_namespace_()->set_name(namespace_name);
+  req.mutable_type()->set_type_name(type_name);
+
+  DeleteUDTypeResponsePB resp;
+  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  deadline.AddDelta(default_admin_operation_timeout());
+  Status st = data_->SyncLeaderMasterRpc<DeleteUDTypeRequestPB, DeleteUDTypeResponsePB>(
+      deadline, this, req, &resp, nullptr, "DeleteUDType", &MasterServiceProxy::DeleteUDType);
+  RETURN_NOT_OK(st);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+
 Status YBClient::TabletServerCount(int *tserver_count) {
   ListTabletServersRequestPB req;
   ListTabletServersResponsePB resp;
@@ -687,7 +777,7 @@ Status YBClient::TableExists(const YBTableName& table_name, bool* exists) {
   return Status::OK();
 }
 
-Status YBTableCache::GetTable(
+Status YBMetaDataCache::GetTable(
     const YBTableName& table_name, shared_ptr<YBTable>* table, bool* cache_used) {
   {
     std::lock_guard<std::mutex> lock(cached_tables_mutex_);
@@ -708,9 +798,39 @@ Status YBTableCache::GetTable(
   return Status::OK();
 }
 
-void YBTableCache::RemoveCachedTable(const YBTableName& table_name) {
+void YBMetaDataCache::RemoveCachedTable(const YBTableName& table_name) {
   std::lock_guard<std::mutex> lock(cached_tables_mutex_);
   cached_tables_.erase(table_name);
+}
+
+Status YBMetaDataCache::GetUDType(const string &keyspace_name,
+                                  const string &type_name,
+                                  shared_ptr<YQLType> *type,
+                                  bool *cache_used) {
+  auto type_path = std::make_pair(keyspace_name, type_name);
+  {
+    std::lock_guard<std::mutex> lock(cached_types_mutex_);
+    auto itr = cached_types_.find(type_path);
+    if (itr != cached_types_.end()) {
+      *type = itr->second;
+      *cache_used = true;
+      return Status::OK();
+    }
+  }
+
+  RETURN_NOT_OK(client_->GetUDType(keyspace_name, type_name, type));
+  {
+    std::lock_guard<std::mutex> lock(cached_types_mutex_);
+    cached_types_[type_path] = *type;
+  }
+  *cache_used = false;
+  return Status::OK();
+}
+
+void YBMetaDataCache::RemoveCachedUDType(const string& keyspace_name,
+                                         const string& type_name) {
+  std::lock_guard<std::mutex> lock(cached_types_mutex_);
+  cached_types_.erase(std::make_pair(keyspace_name, type_name));
 }
 
 Status YBClient::OpenTable(const YBTableName& table_name, shared_ptr<YBTable>* table) {

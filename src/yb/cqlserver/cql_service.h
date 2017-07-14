@@ -63,7 +63,7 @@ class CQLServiceImpl : public CQLServerServiceIf {
   std::shared_ptr<client::YBClient> client() const { return client_; }
 
   // Return the YBClientCache.
-  std::shared_ptr<client::YBTableCache> table_cache() const { return table_cache_; }
+  std::shared_ptr<client::YBMetaDataCache> metadata_cache() const { return metadata_cache_; }
 
   // Return the CQL metrics.
   std::shared_ptr<CQLMetrics> cql_metrics() const { return cql_metrics_; }
@@ -104,8 +104,8 @@ class CQLServiceImpl : public CQLServerServiceIf {
 
   // YBClient is to communicate with either master or tserver.
   std::shared_ptr<client::YBClient> client_;
-  // A cache to reduce opening tables again and again.
-  std::shared_ptr<client::YBTableCache> table_cache_;
+  // A cache to reduce opening tables or (user-defined) types again and again.
+  std::shared_ptr<client::YBMetaDataCache> metadata_cache_;
 
   // List of CQL processors (in-use and available). In-use ones are at the beginning and available
   // ones at the end.

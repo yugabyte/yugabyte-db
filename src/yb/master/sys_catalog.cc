@@ -719,6 +719,30 @@ Status SysCatalogTable::DeleteNamespace(const NamespaceInfo *ns) {
 }
 
 // ==================================================================
+// User Defined Type related methods
+// ==================================================================
+Status SysCatalogTable::AddUDType(const UDTypeInfo *ns) {
+  TRACE_EVENT1("master", "SysCatalogTable::AddUDType", "udtype", ns->ToString());
+  auto w = NewWriter();
+  RETURN_NOT_OK(w->MutateItem(ns, YQLWriteRequestPB::YQL_STMT_INSERT));
+  return w->Write();
+}
+
+Status SysCatalogTable::UpdateUDType(const UDTypeInfo *ns) {
+  TRACE_EVENT1("master", "SysCatalogTable::UpdateUDType", "udtype", ns->ToString());
+  auto w = NewWriter();
+  RETURN_NOT_OK(w->MutateItem(ns, YQLWriteRequestPB::YQL_STMT_UPDATE));
+  return w->Write();
+}
+
+Status SysCatalogTable::DeleteUDType(const UDTypeInfo *ns) {
+  TRACE_EVENT1("master", "SysCatalogNamespace::DeleteUDType", "udtype", ns->ToString());
+  auto w = NewWriter();
+  RETURN_NOT_OK(w->MutateItem(ns, YQLWriteRequestPB::YQL_STMT_DELETE));
+  return w->Write();
+}
+
+// ==================================================================
 // ClusterConfig related methods
 // ==================================================================
 Status SysCatalogTable::AddClusterConfigInfo(ClusterConfigInfo* config_info) {

@@ -129,6 +129,7 @@ class YBColumnSchema {
         return InternalType::kBoolValue;
       case BINARY:
         return InternalType::kBinaryValue;
+      case USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
       case MAP:
         return InternalType::kMapValue;
       case SET:
@@ -137,6 +138,9 @@ class YBColumnSchema {
         return InternalType::kListValue;
       case VARINT:
         return InternalType::kVarintValue;
+      case FROZEN:
+        return InternalType::kFrozenValue;
+
       case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
       case UNKNOWN_DATA:
         return InternalType::VALUE_NOT_SET;

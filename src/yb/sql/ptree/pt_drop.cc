@@ -42,11 +42,12 @@ void PTDropStmt::PrintSemanticAnalysisResult(SemContext *sem_context) {
   switch (drop_type()) {
     case OBJECT_TABLE: sem_output += "Table "; break;
     case OBJECT_SCHEMA: sem_output += "Keyspace "; break;
+    case OBJECT_TYPE: sem_output += "Type "; break;
 
     default: sem_output += "UNKNOWN OBJECT ";
   }
 
-  sem_output += name();
+  sem_output += name()->last_name();
   sem_output += (drop_if_exists()? " IF EXISTS" : "");
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << sem_output;
 }

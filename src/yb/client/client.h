@@ -260,6 +260,22 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // 'exists' is set only on success.
   CHECKED_STATUS NamespaceExists(const std::string& namespace_name, bool* exists);
 
+  // (User-defined) type related methods.
+
+  // Create a new (user-defined) type.
+  CHECKED_STATUS CreateUDType(const std::string &namespace_name,
+                              const std::string &type_name,
+                              const std::vector<std::string> &field_names,
+                              const std::vector<std::shared_ptr<YQLType>> &field_types);
+
+  // Delete a (user-defined) type by name.
+  CHECKED_STATUS DeleteUDType(const std::string &namespace_name, const std::string &type_name);
+
+  // Retrieve a (user-defined) type by name.
+  CHECKED_STATUS GetUDType(const std::string &namespace_name,
+                           const std::string &type_name,
+                           std::shared_ptr<YQLType> *yql_type);
+
   // Find the number of tservers. This function should not be called frequently for reading or
   // writing actual data. Currently, it is called only for SQL DDL statements.
   CHECKED_STATUS TabletServerCount(int *tserver_count);
@@ -407,9 +423,9 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   DISALLOW_COPY_AND_ASSIGN(YBClient);
 };
 
-class YBTableCache {
+class YBMetaDataCache {
  public:
-  explicit YBTableCache(std::shared_ptr<YBClient> client) : client_(client) {}
+  explicit YBMetaDataCache(std::shared_ptr<YBClient> client) : client_(client) {}
 
   // Opens the table with the given name. If the table has been opened before, returns the
   // previously opened table from cached_tables_. If the table has not been opened before
@@ -420,6 +436,17 @@ class YBTableCache {
   // Remove the table from cached_tables_ if it is in the cache.
   void RemoveCachedTable(const YBTableName& table_name);
 
+  // Opens the type with the given name. If the type has been opened before, returns the
+  // previously opened type from cached_types_. If the type has not been opened before
+  // in this client, this will do an RPC to ensure that the type exists and look up its info.
+  CHECKED_STATUS GetUDType(const string &keyspace_name,
+                           const string &type_name,
+                           std::shared_ptr<YQLType> *yql_type,
+                           bool *cache_used);
+
+  // Remove the type from cached_types_ if it is in the cache.
+  void RemoveCachedUDType(const string& keyspace_name, const string& type_name);
+
  private:
   std::shared_ptr<YBClient> client_;
 
@@ -429,6 +456,13 @@ class YBTableCache {
                              boost::hash<YBTableName>> YBTableMap;
   YBTableMap cached_tables_;
   std::mutex cached_tables_mutex_;
+
+  // Map from type-name to YQLType instances.
+  typedef std::unordered_map<std::pair<string, string>,
+                             std::shared_ptr<YQLType>,
+                             boost::hash<std::pair<string, string>>> YBTypeMap;
+  YBTypeMap cached_types_;
+  std::mutex cached_types_mutex_;
 };
 
 // Creates a new table with the desired options.

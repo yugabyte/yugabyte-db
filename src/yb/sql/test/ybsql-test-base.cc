@@ -34,7 +34,7 @@ void YbSqlTestBase::CreateSimulatedCluster() {
   builder.add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str());
   builder.default_rpc_timeout(MonoDelta::FromSeconds(30));
   ASSERT_OK(builder.Build(&client_));
-  table_cache_ = std::make_shared<client::YBTableCache>(client_);
+  metadata_cache_ = std::make_shared<client::YBMetaDataCache>(client_);
   ASSERT_OK(client_->CreateNamespaceIfNotExists(kDefaultKeyspaceName));
 }
 
@@ -51,7 +51,7 @@ SqlEnv *YbSqlTestBase::CreateSqlEnv() {
   }
 
   std::weak_ptr<rpc::Messenger> messenger;
-  SqlEnv *sql_env = new SqlEnv(messenger, client_, table_cache_);
+  SqlEnv *sql_env = new SqlEnv(messenger, client_, metadata_cache_);
   sql_envs_.emplace_back(sql_env);
   return sql_env;
 }
@@ -76,7 +76,7 @@ YbSqlProcessor *YbSqlTestBase::GetSqlProcessor() {
   }
 
   std::weak_ptr<rpc::Messenger> messenger;
-  sql_processors_.emplace_back(new YbSqlProcessor(messenger, client_, table_cache_));
+  sql_processors_.emplace_back(new YbSqlProcessor(messenger, client_, metadata_cache_));
   CallUseKeyspace(sql_processors_.back(), kDefaultKeyspaceName);
   return sql_processors_.back().get();
 }

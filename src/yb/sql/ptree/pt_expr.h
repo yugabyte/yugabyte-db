@@ -145,11 +145,6 @@ class PTExpr : public TreeNode {
     return yql_type_->main() == DataType::NULL_VALUE_TYPE;
   }
 
-  // Predicate for empty (null) collections -- to be overriden by subclasses where needed
-  virtual bool is_empty_collection() const {
-    return false;
-  }
-
   // Returns the operands of an expression.
   virtual PTExpr::SharedPtr op1() const {
     return nullptr;
@@ -233,56 +228,29 @@ using PTExprListNode = TreeListNode<PTExpr>;
 // Tree Nodes for Collections -- treated as expressions with flexible arity
 //--------------------------------------------------------------------------------------------------
 
-
-class PTEmptyMapOrSetExpr : public PTExpr {
+class PTCollectionExpr : public PTExpr {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
-  typedef MCSharedPtr<PTEmptyMapOrSetExpr> SharedPtr;
-  typedef MCSharedPtr<const PTEmptyMapOrSetExpr> SharedPtrConst;
+  typedef MCSharedPtr<PTCollectionExpr> SharedPtr;
+  typedef MCSharedPtr<const PTCollectionExpr> SharedPtrConst;
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  PTEmptyMapOrSetExpr(MemoryContext *memctx, YBLocation::SharedPtr loc) :
-  PTExpr(memctx, loc, ExprOperator::kCollection, yb::YQLOperator::YQL_OP_NOOP,
-      InternalType::VALUE_NOT_SET) { }
-
-  virtual ~PTEmptyMapOrSetExpr() { }
-
-  virtual bool is_empty_collection() const override {
-    return true;
-  }
-
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
-
-  // Support for shared_ptr.
-  template<typename... TypeArgs>
-  inline static PTEmptyMapOrSetExpr::SharedPtr MakeShared(MemoryContext *memctx,
-                                                          TypeArgs &&... args) {
-    return MCMakeShared<PTEmptyMapOrSetExpr>(memctx, std::forward<TypeArgs>(args)...);
-  }
-
-};
-
-class PTMapExpr : public PTExpr {
- public:
-  //------------------------------------------------------------------------------------------------
-  // Public types.
-  typedef MCSharedPtr<PTMapExpr> SharedPtr;
-  typedef MCSharedPtr<const PTMapExpr> SharedPtrConst;
-
-  //------------------------------------------------------------------------------------------------
-  // Constructor and destructor.
-  PTMapExpr(MemoryContext *memctx, YBLocation::SharedPtr loc)
+  PTCollectionExpr(MemoryContext *memctx, YBLocation::SharedPtr loc, DataType literal_type)
       : PTExpr(memctx, loc, ExprOperator::kCollection, yb::YQLOperator::YQL_OP_NOOP,
-               InternalType::kMapValue),
-        keys_(memctx), values_(memctx) {
-    yql_type_ = YQLType::CreateTypeMap();
+      client::YBColumnSchema::ToInternalDataType(YQLType::Create(literal_type))),
+        keys_(memctx), values_(memctx), udtype_field_values_(memctx) {
+    yql_type_ = YQLType::Create(literal_type);
   }
-  virtual ~PTMapExpr() { }
+  virtual ~PTCollectionExpr() { }
 
-  void Insert(PTExpr::SharedPtr key, PTExpr::SharedPtr value) {
+  void AddKeyValuePair(PTExpr::SharedPtr key, PTExpr::SharedPtr value) {
     keys_.emplace_back(key);
+    values_.emplace_back(value);
+  }
+
+  void AddElement(PTExpr::SharedPtr value) {
     values_.emplace_back(value);
   }
 
@@ -299,101 +267,25 @@ class PTMapExpr : public PTExpr {
     return values_;
   }
 
+  const MCVector<PTExpr::SharedPtr>& udtype_field_values() const {
+    return udtype_field_values_;
+  }
+
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
 
   // Support for shared_ptr.
   template<typename... TypeArgs>
-  inline static PTMapExpr::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
-    return MCMakeShared<PTMapExpr>(memctx, std::forward<TypeArgs>(args)...);
+  inline static PTCollectionExpr::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
+    return MCMakeShared<PTCollectionExpr>(memctx, std::forward<TypeArgs>(args)...);
   }
 
  private:
-  // this is intentionally not MCMap because we don't have the right equality relation for keys at
-  // this point which can lead to subtle bugs later
   MCList<PTExpr::SharedPtr> keys_;
   MCList<PTExpr::SharedPtr> values_;
 
-};
-
-class PTSetExpr : public PTExpr {
- public:
-  //------------------------------------------------------------------------------------------------
-  // Public types.
-  typedef MCSharedPtr<PTSetExpr> SharedPtr;
-  typedef MCSharedPtr<const PTSetExpr> SharedPtrConst;
-
-  //------------------------------------------------------------------------------------------------
-  // Constructor and destructor.
-  PTSetExpr(MemoryContext *memctx,
-             YBLocation::SharedPtr loc)
-      : PTExpr(memctx, loc, ExprOperator::kCollection, yb::YQLOperator::YQL_OP_NOOP,
-               InternalType::kSetValue),
-        value_(memctx) {
-    yql_type_ = YQLType::CreateTypeSet();
-  }
-
-  virtual ~PTSetExpr() { }
-
-  void Insert(PTExpr::SharedPtr elem) {
-    value_.emplace_back(std::move(elem));
-  }
-
-  const MCList<PTExpr::SharedPtr>& elems() const {
-    return value_;
-  }
-
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
-
-  // Support for shared_ptr.
-  template<typename... TypeArgs>
-  inline static PTSetExpr::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
-    return MCMakeShared<PTSetExpr>(memctx, std::forward<TypeArgs>(args)...);
-  }
- private:
-  // this is intentionally not MCSet because we don't have the right equality relation at this point
-  // e.g. 0 and '1970-1-1' are different expressions but would represent same value as Timestamps
-  MCList<PTExpr::SharedPtr> value_;
-};
-
-
-class PTListExpr : public PTExpr {
- public:
-  //------------------------------------------------------------------------------------------------
-  // Public types.
-  typedef MCSharedPtr<PTListExpr> SharedPtr;
-  typedef MCSharedPtr<const PTListExpr> SharedPtrConst;
-
-  //------------------------------------------------------------------------------------------------
-  // Constructor and destructor.
-  PTListExpr(MemoryContext *memctx, YBLocation::SharedPtr loc)
-      : PTExpr(memctx, loc, ExprOperator::kCollection, yb::YQLOperator::YQL_OP_NOOP,
-               InternalType::kListValue),
-        value_(memctx) {
-    yql_type_ = YQLType::CreateTypeList();
-  }
-  virtual ~PTListExpr() { }
-
-  void Append(PTExpr::SharedPtr elem) {
-    value_.emplace_back(std::move(elem));
-  }
-
-  const MCList<PTExpr::SharedPtr>& elems() const {
-    return value_;
-  }
-
-  virtual bool is_empty_collection() const override {
-    return value_.empty();
-  }
-
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
-
-  // Support for shared_ptr.
-  template<typename... TypeArgs>
-  inline static PTListExpr::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
-    return MCMakeShared<PTListExpr>(memctx, std::forward<TypeArgs>(args)...);
-  }
- private:
-  MCList<PTExpr::SharedPtr> value_;
+  // This field will be decorated during analysis if this collection represents a user-defined type
+  // It contains the field values in the order specified by the type (or nullptr for missing values)
+  MCVector<PTExpr::SharedPtr> udtype_field_values_;
 };
 
 //--------------------------------------------------------------------------------------------------

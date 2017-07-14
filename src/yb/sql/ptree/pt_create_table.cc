@@ -162,7 +162,7 @@ CHECKED_STATUS PTCreateTable::CheckType(SemContext *sem_context,
                                         const PTBaseType::SharedPtr& datatype) {
   // Although simple datatypes don't need further checking, complex datatypes such as collections,
   // tuples, and user-defined datatypes need to be analyzed because they have members.
-  return datatype->IsValid(sem_context);
+  return datatype->Analyze(sem_context);
 }
 
 void PTCreateTable::PrintSemanticAnalysisResult(SemContext *sem_context) {

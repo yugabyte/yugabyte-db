@@ -43,6 +43,7 @@ enum DataType {
   BINARY = 9;
   TIMESTAMP = 10;
   DECIMAL = 11;
+  // VARINT is not yet fully implemented, but it is a CQL type.
   VARINT = 12;
   INET = 13;
   LIST = 14;
@@ -50,10 +51,12 @@ enum DataType {
   SET = 16;
   UUID = 17;
   TIMEUUID = 18;
-  // TUPLE is not yet implemented, but it is a CQL type. It doesn't hurt
-  // if we remove them or use its slot for different datatype.
+  // TUPLE is not yet fully implemented, but it is a CQL type.
   TUPLE = 19;
   TYPEARGS = 20;
+  USER_DEFINED_TYPE = 21;
+  FROZEN = 22;
+
   // All unsigned datatypes will be removed from YQL because databases do not have these types.
   UINT8 = 100;
   UINT16 = 101;
@@ -94,18 +97,35 @@ enum TableType {
   DEFAULT_TABLE_TYPE = 1;
 }
 
-// the type used in column schemas, which may have type parameters (i.e. for collections)
-// if types have parameters they are stored in the params field, otherwise params is empty
-// e.g.:
-//   STRING                     --> {main = STRING, params = []}
-//   SET<INT>                   --> {main = SET, params = [INT]}
-//   MAP<INT, STRING>           --> {main = MAP, params = [INT, STRING]}
-//   LIST<SET<STRING>>          --> {main = LIST, params = [ {main = SET, params = [STRING]} ]}
+// The type used in column schemas, which may have type parameters (i.e. for collections)
+// If types have parameters, they are stored in the params field. Otherwise params is empty.
+// e.g. (using lower case of YQLTypes and upper case for DataType):
+//   string                     --> {main = STRING, params = []}
+//   set<int>                   --> {main = SET, params = [int]}
+//   map<int, string>           --> {main = MAP, params = [int, string]}
 // later (not implemented yet):
-//   TUPLE<INT, STRING, DOUBLE> --> {main = TUPLE, params = [INT, STRING, DOUBLE]}
+//   tuple<int, string, double> --> {main = TUPLE, params = [int, string, double]}
+// User-Defined types are identified by keyspace_name and type_name and their fields are stored in
+// field_names (for the names) and params (for the types)
+// e.g. given a declared type "ks.employee (firstname : string, lastname : string, ssn : bigint)":
+// ks.employee                  --> { main = USER_DEFINED_TYPE,
+//                                    params = [string, string, bigint],
+//                                    keyspace_name = "ks",
+//                                    type_name = "employee",
+//                                    field_names = ["firstname", "lastname", "ssn"]}
+
 message YQLTypePB {
   optional DataType main = 1;
   repeated YQLTypePB params = 2;
+
+  // Fields for user-defined types
+  message UDTypeInfo {
+    optional string keyspace_name = 1;
+    optional string name = 2;
+    optional string id = 3;
+    repeated string field_names = 4;
+  }
+  optional UDTypeInfo udtype_info = 3;
 }
 
 // TODO: Differentiate between the schema attributes

@@ -350,8 +350,8 @@ void SubDocument::ToYQLValuePB(SubDocument doc,
                                const shared_ptr<YQLType>& yql_type,
                                YQLValuePB* yql_value) {
   // interpreting empty collections as null values following Cassandra semantics
-  if (yql_type->IsParametric() && (!doc.has_valid_object_container() ||
-                                  doc.object_num_keys() == 0)) {
+  if (yql_type->HasComplexValues() && (!doc.has_valid_object_container() ||
+                                       doc.object_num_keys() == 0)) {
     YQLValue::SetNull(yql_value);
     return;
   }
@@ -386,6 +386,17 @@ void SubDocument::ToYQLValuePB(SubDocument doc,
         // list elems are represented as subdocument values with keys only used for ordering
         YQLValuePB *elem = YQLValue::add_list_elem(yql_value);
         SubDocument::ToYQLValuePB(pair.second, elems_type, elem);
+      }
+      return;
+    }
+    case USER_DEFINED_TYPE: {
+      const shared_ptr<YQLType>& keys_type = YQLType::Create(INT16);
+      YQLValue::set_map_value(yql_value);
+      for (auto &pair : doc.object_container()) {
+        YQLValuePB *key = YQLValue::add_map_key(yql_value);
+        PrimitiveValue::ToYQLValuePB(pair.first, keys_type, key);
+        YQLValuePB *value = YQLValue::add_map_value(yql_value);
+        SubDocument::ToYQLValuePB(pair.second, yql_type->param_type(key->int16_value()), value);
       }
       return;
     }

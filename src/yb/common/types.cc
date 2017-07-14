@@ -78,6 +78,8 @@ class TypeInfoResolver {
     AddMapping<DECIMAL>();
     AddMapping<UUID>();
     AddMapping<TIMEUUID>();
+    AddMapping<USER_DEFINED_TYPE>();
+    AddMapping<FROZEN>();
   }
 
   template<DataType type> void AddMapping() {

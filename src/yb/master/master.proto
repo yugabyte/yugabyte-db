@@ -82,6 +82,11 @@ message MasterErrorPB {
 
     // Indicator to client that the load balance operation can be retried.
     CAN_RETRY_LOAD_BALANCE_CHECK = 16;
+
+    // Invalid (User-Defined) Type operation
+    TYPE_NOT_FOUND = 17;
+    INVALID_TYPE = 18;
+    TYPE_ALREADY_PRESENT = 19;
   }
 
   // The error code.
@@ -176,6 +181,7 @@ message SysRowEntry {
     TABLET = 2;
     CLUSTER_CONFIG = 3;
     NAMESPACE = 4;
+    UDTYPE = 5;
   }
 
   // The type of entry we are storing. Since the data is serialized, we cannot
@@ -279,6 +285,14 @@ message SysNamespaceEntryPB {
 
   // Namespace name
   optional bytes name = 1;
+}
+
+// The data part of a SysRowEntry in the sys.catalog table for a User Defined Type.
+message SysUDTypeEntryPB {
+  optional string namespace_id = 1;
+  optional string name = 2;
+  repeated string field_names = 3;
+  repeated YQLTypePB field_types = 4;
 }
 
 // The on-disk entry in the sys.catalog table for configuration information
@@ -838,6 +852,72 @@ message ListNamespacesResponsePB {
   repeated NamespaceIdentifierPB namespaces = 2;
 }
 
+// ============================================================================
+//  (User-Defined) Type
+// ============================================================================
+
+message CreateUDTypeRequestPB {
+  optional NamespaceIdentifierPB namespace = 1;
+  optional string name = 2;
+  repeated string field_names = 3;
+  repeated YQLTypePB field_types = 4;
+}
+
+message CreateUDTypeResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+  optional bytes id = 2;
+}
+
+message DeleteUDTypeRequestPB {
+  optional UDTypeIdentifierPB type = 1;
+}
+
+message DeleteUDTypeResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
+message ListUDTypesRequestPB {
+  optional NamespaceIdentifierPB namespace = 1;
+}
+
+message ListUDTypesResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  repeated UDTypeInfoPB udtypes = 2;
+}
+
+message GetUDTypeInfoRequestPB {
+  optional UDTypeIdentifierPB type = 1;
+}
+
+message GetUDTypeInfoResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+  optional UDTypeInfoPB udtype = 2;
+}
+
+message UDTypeIdentifierPB {
+  // The table ID to fetch info.
+  optional bytes type_id = 1;
+
+  // The table name to fetch info.
+  optional string type_name = 2;
+
+  // The table namespace (if empty - using default namespace).
+  optional NamespaceIdentifierPB namespace = 3;
+}
+
+message UDTypeInfoPB {
+  optional bytes id = 1;
+  optional string name = 2;
+  repeated string field_names = 3;
+  repeated YQLTypePB field_types = 4;
+  optional NamespaceIdentifierPB namespace = 5;
+}
+
 service MasterService {
   // TS->Master RPCs
   rpc TSHeartbeat(TSHeartbeatRequestPB) returns (TSHeartbeatResponsePB);
@@ -861,6 +941,11 @@ service MasterService {
   rpc CreateNamespace(CreateNamespaceRequestPB) returns (CreateNamespaceResponsePB);
   rpc DeleteNamespace(DeleteNamespaceRequestPB) returns (DeleteNamespaceResponsePB);
   rpc ListNamespaces(ListNamespacesRequestPB) returns (ListNamespacesResponsePB);
+
+  rpc CreateUDType(CreateUDTypeRequestPB) returns (CreateUDTypeResponsePB);
+  rpc DeleteUDType(DeleteUDTypeRequestPB) returns (DeleteUDTypeResponsePB);
+  rpc ListUDTypes(ListUDTypesRequestPB) returns (ListUDTypesResponsePB);
+  rpc GetUDTypeInfo(GetUDTypeInfoRequestPB) returns (GetUDTypeInfoResponsePB);
 
   // Administrative/monitoring RPCs
   rpc ListTabletServers(ListTabletServersRequestPB) returns (ListTabletServersResponsePB);

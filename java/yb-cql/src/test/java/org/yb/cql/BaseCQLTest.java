@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package org.yb.cql;
 
+import com.datastax.driver.core.*;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -9,13 +10,6 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.Row;
-import com.datastax.driver.core.SimpleStatement;
-import com.datastax.driver.core.Statement;
-import com.datastax.driver.core.Session;
-import com.datastax.driver.core.SocketOptions;
 import com.datastax.driver.core.exceptions.QueryValidationException;
 
 import org.slf4j.Logger;
@@ -85,6 +79,9 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     // Clean up all tables before end of each test to lower high-water-mark disk usage.
     dropTables();
 
+    // Also delete all types to make sure we can delete keyspaces below.
+    dropUDTypes();
+
     // Also delete all keyspaces, because we may
     dropKeyspaces();
 
@@ -136,6 +133,19 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     session.execute(drop_stmt);
   }
 
+  protected void dropUDType(String keyspaceName, String typeName) throws Exception {
+    String drop_stmt = String.format("DROP TYPE %s.%s;", keyspaceName, typeName);
+    session.execute(drop_stmt);
+  }
+
+  protected boolean IsSystemKeyspace(String keyspaceName) {
+    return keyspaceName.equals("system") ||
+           keyspaceName.equals("system_auth") ||
+           keyspaceName.equals("system_distributed") ||
+           keyspaceName.equals("system_traces") ||
+           keyspaceName.equals("system_schema");
+  }
+
   protected void dropTables() throws Exception {
     if (miniCluster == null) {
       return;
@@ -144,16 +154,27 @@ public class BaseCQLTest extends BaseMiniClusterTest {
         miniCluster.getClient().getTablesList().getTableInfoList()) {
       // Drop all non-system tables.
       String namespaceName = tableInfo.getNamespace().getName();
-      if (!namespaceName.equals("system") &&
-          !namespaceName.equals("system_auth") &&
-          !namespaceName.equals("system_distributed") &&
-          !namespaceName.equals("system_traces") &&
-          !namespaceName.equals("system_schema")) {
+      if (!IsSystemKeyspace(namespaceName)) {
         if (namespaceName.equals(DEFAULT_KEYSPACE)) {
           // Don't need namespace name for default namespace.
           DropTable(tableInfo.getName());
         } else {
           DropTable(namespaceName + "." + tableInfo.getName());
+        }
+      }
+    }
+  }
+
+
+  protected void dropUDTypes() throws Exception {
+    if (cluster == null) {
+      return;
+    }
+
+    for (KeyspaceMetadata keyspace : cluster.getMetadata().getKeyspaces()) {
+      if (!IsSystemKeyspace(keyspace.getName())) {
+        for (UserType udt : keyspace.getUserTypes()) {
+          dropUDType(keyspace.getName(), udt.getTypeName());
         }
       }
     }

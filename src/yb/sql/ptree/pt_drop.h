@@ -58,17 +58,16 @@ class PTDropStmt : public TreeNode {
     return drop_if_exists_;
   }
 
-  // Dropping object name.
-  const char* name() const {
-    return names_->element(0)->last_name().c_str();
+  // Name of the object being dropped.
+  const PTQualifiedName::SharedPtr name() const {
+    return names_->element(0);
   }
 
   client::YBTableName yb_table_name() const {
-    DCHECK_EQ(drop_type_, OBJECT_TABLE);
     return names_->element(0)->ToTableName();
   }
 
-  // Returns location of droppping object name.
+  // Returns location of dropping object name.
   const YBLocation& name_loc() const {
     return names_->loc();
   }

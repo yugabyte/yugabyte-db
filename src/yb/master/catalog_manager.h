@@ -435,6 +435,72 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
   DISALLOW_COPY_AND_ASSIGN(NamespaceInfo);
 };
 
+
+// The data related to a User-Defined Type which is persisted on disk.
+// This portion of UDTypeInfo is managed via CowObject.
+// It wraps the underlying protobuf to add useful accessors.
+struct PersistentUDTypeInfo : public Persistent<SysUDTypeEntryPB> {
+  static int type() { return SysRowEntry::UDTYPE; }
+
+  // Return the type's name.
+  const UDTypeName& name() const {
+    return pb.name();
+  }
+
+  // Return the table's namespace id.
+  const NamespaceName& namespace_id() const {
+    return pb.namespace_id();
+  }
+
+  int field_names_size() const {
+    return pb.field_names_size();
+  }
+
+  const string& field_names(int index) const {
+    return pb.field_names(index);
+  }
+
+  int field_types_size() const {
+    return pb.field_types_size();
+  }
+
+  const YQLTypePB& field_types(int index) const {
+    return pb.field_types(index);
+  }
+};
+
+class UDTypeInfo : public RefCountedThreadSafe<UDTypeInfo>,
+                   public MemoryState<PersistentUDTypeInfo> {
+ public:
+  explicit UDTypeInfo(UDTypeId udtype_id);
+
+  // Return the user defined type's ID. Does not require synchronization.
+  virtual const std::string& id() const override { return udtype_id_; }
+
+  const UDTypeName& name() const;
+
+  const NamespaceName& namespace_id() const;
+
+  int field_names_size() const;
+
+  const string& field_names(int index) const;
+
+  int field_types_size() const;
+
+  const YQLTypePB& field_types(int index) const;
+
+  std::string ToString() const;
+
+ private:
+  friend class RefCountedThreadSafe<UDTypeInfo>;
+  ~UDTypeInfo() = default;
+
+  // The ID field is used in the sys_catalog table.
+  const UDTypeId udtype_id_;
+
+  DISALLOW_COPY_AND_ASSIGN(UDTypeInfo);
+};
+
 // This wraps around the proto containing cluster level config information. It will be used for
 // CowObject managed access.
 struct PersistentClusterConfigInfo : public Persistent<SysClusterConfigEntryPB> {
@@ -481,6 +547,7 @@ class BlacklistState {
 typedef MetadataLock<TabletInfo> TabletMetadataLock;
 typedef MetadataLock<TableInfo> TableMetadataLock;
 typedef MetadataLock<NamespaceInfo> NamespaceMetadataLock;
+typedef MetadataLock<UDTypeInfo> UDTypeMetadataLock;
 typedef MetadataLock<ClusterConfigInfo> ClusterConfigMetadataLock;
 
 typedef std::unordered_map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
@@ -488,6 +555,11 @@ typedef std::unordered_map<TableId, scoped_refptr<TableInfo>> TableInfoMap;
 typedef std::pair<NamespaceId, TableName> TableNameKey;
 typedef std::unordered_map<
     TableNameKey, scoped_refptr<TableInfo>, boost::hash<TableNameKey>> TableInfoByNameMap;
+
+typedef std::unordered_map<UDTypeId, scoped_refptr<UDTypeInfo>> UDTypeInfoMap;
+typedef std::pair<NamespaceId, UDTypeName> UDTypeNameKey;
+typedef std::unordered_map<
+    UDTypeNameKey, scoped_refptr<UDTypeInfo>, boost::hash<UDTypeNameKey>> UDTypeInfoByNameMap;
 
 // The component of the master which tracks the state and location
 // of tables/tablets in the cluster.
@@ -680,7 +752,32 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // List all the current namespaces.
   CHECKED_STATUS ListNamespaces(const ListNamespacesRequestPB* req,
-                        ListNamespacesResponsePB* resp);
+                                ListNamespacesResponsePB* resp);
+
+  // Create a new User-Defined Type with the specified attributes.
+  //
+  // The RPC context is provided for logging/tracing purposes,
+  // but this function does not itself respond to the RPC.
+  CHECKED_STATUS CreateUDType(const CreateUDTypeRequestPB* req,
+                              CreateUDTypeResponsePB* resp,
+                              rpc::RpcContext* rpc);
+
+  // Delete the specified UDType.
+  //
+  // The RPC context is provided for logging/tracing purposes,
+  // but this function does not itself respond to the RPC.
+  CHECKED_STATUS DeleteUDType(const DeleteUDTypeRequestPB* req,
+                              DeleteUDTypeResponsePB* resp,
+                              rpc::RpcContext* rpc);
+
+  // List all user defined types in given namespaces.
+  CHECKED_STATUS ListUDTypes(const ListUDTypesRequestPB* req,
+                             ListUDTypesResponsePB* resp);
+
+  // Get the info (id, name, namespace, fields names, field types) of a (user-defined) type
+  CHECKED_STATUS GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
+                               GetUDTypeInfoResponsePB* resp,
+                               rpc::RpcContext* rpc);
 
   SysCatalogTable* sys_catalog() { return sys_catalog_.get(); }
 
@@ -702,6 +799,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                     bool includeOnlyRunningTables = false);
 
   void GetAllNamespaces(std::vector<scoped_refptr<NamespaceInfo> >* namespaces);
+
+  // Return all the available (user-defined) types.
+  void GetAllUDTypes(std::vector<scoped_refptr<UDTypeInfo> > *types);
 
   NamespaceName GetNamespaceName(const NamespaceId& id) const;
 
@@ -788,6 +888,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   friend class TableLoader;
   friend class TabletLoader;
   friend class NamespaceLoader;
+  friend class UDTypeLoader;
   friend class ClusterConfigLoader;
 
   // Called by SysCatalog::SysCatalogStateChanged when this node
@@ -1093,6 +1194,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   typedef std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
   NamespaceInfoMap namespace_ids_map_;
   NamespaceInfoMap namespace_names_map_;
+
+  // User-Defined type maps: udtype-id -> UDTypeInfo and udtype-name -> UDTypeInfo
+  UDTypeInfoMap udtype_ids_map_;
+  UDTypeInfoByNameMap udtype_names_map_;
 
   // Config information
   scoped_refptr<ClusterConfigInfo> cluster_config_ = nullptr;

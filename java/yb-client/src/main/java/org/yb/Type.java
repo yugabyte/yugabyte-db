@@ -47,7 +47,10 @@ public enum Type {
   LIST (DataType.LIST, "list"),
   MAP (DataType.MAP, "map"),
   SET (DataType.SET, "set"),
-  UUID (DataType.UUID, "uuid");
+  UUID (DataType.UUID, "uuid"),
+  TIMEUUID (DataType.TIMEUUID, "timeuuid"),
+  FROZEN (DataType.FROZEN, "frozen"),
+  USER_DEFINED_TYPE (DataType.USER_DEFINED_TYPE, "user_defined_type");
 
   private final DataType dataType;
   private final String name;
@@ -107,6 +110,9 @@ public enum Type {
       case MAP:
       case SET:
       case UUID:
+      case TIMEUUID:
+      case FROZEN:
+      case USER_DEFINED_TYPE:
       // TODO(mihnea) handle the cases above properly after cleaning up Kudu-inherited code
       case STRING:
       case BINARY: return 8 + 8; // offset then string length
@@ -147,6 +153,9 @@ public enum Type {
       case MAP: return MAP;
       case SET: return SET;
       case UUID: return UUID;
+      case TIMEUUID: return TIMEUUID;
+      case FROZEN: return FROZEN;
+      case USER_DEFINED_TYPE: return USER_DEFINED_TYPE;
 
       default:
         throw new IllegalArgumentException("The provided data type doesn't map" +

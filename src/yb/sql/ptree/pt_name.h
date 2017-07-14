@@ -108,6 +108,10 @@ class PTQualifiedName : public PTName {
     return ptnames_.back()->name();
   }
 
+  bool IsSimpleName() const {
+    return ptnames_.size() == 1;
+  }
+
   // Construct bind variable name from this name.
   const MCSharedPtr<MCString>& bindvar_name() {
     return ptnames_.back()->name_ptr();

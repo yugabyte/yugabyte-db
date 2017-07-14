@@ -55,6 +55,7 @@ class YQLValue {
   virtual const YQLMapValuePB map_value() const = 0;
   virtual const YQLSeqValuePB set_value() const = 0;
   virtual const YQLSeqValuePB list_value() const = 0;
+  virtual const std::string& frozen_value() const = 0;
   virtual Uuid uuid_value() const = 0;
   virtual Uuid timeuuid_value() const = 0;
 
@@ -83,6 +84,7 @@ class YQLValue {
   virtual std::string* mutable_decimal_value() = 0;
   virtual std::string* mutable_string_value() = 0;
   virtual std::string* mutable_binary_value() = 0;
+  virtual std::string* mutable_frozen_value() = 0;
 
   // for collections the setters just allocate the message and set the correct value type
   virtual void set_map_value() = 0;
@@ -193,6 +195,10 @@ class YQLValue {
     CHECK(v.has_list_value());
     return v.list_value();
   }
+  static const std::string& frozen_value(const YQLValuePB& v) {
+    CHECK(v.has_frozen_value());
+    return v.frozen_value();
+  }
 
   static InetAddress inetaddress_value(const YQLValuePB& v) {
     CHECK(v.has_inetaddress_value());
@@ -266,6 +272,7 @@ class YQLValue {
   static void set_binary_value(const void* val, const size_t size, YQLValuePB *v) {
     v->set_binary_value(static_cast<const char *>(val), size);
   }
+  static void set_frozen_value(const std::string& val, YQLValuePB *v) { v->set_frozen_value(val); }
 
   // For collections, the call to `mutable_foo` takes care of setting the correct type to `foo`
   // internally and allocating the message if needed
@@ -291,6 +298,7 @@ class YQLValue {
   static std::string* mutable_decimal_value(YQLValuePB *v) { return v->mutable_decimal_value(); }
   static std::string* mutable_string_value(YQLValuePB *v) { return v->mutable_string_value(); }
   static std::string* mutable_binary_value(YQLValuePB *v) { return v->mutable_binary_value(); }
+  static std::string* mutable_frozen_value(YQLValuePB *v) { return v->mutable_frozen_value(); }
 
   //----------------------------------- comparison methods -----------------------------------
   static bool Comparable(const YQLValuePB& lhs, const YQLValuePB& rhs) {
@@ -400,6 +408,9 @@ class YQLValueWithPB : public YQLValue, public YQLValuePB {
   virtual const YQLMapValuePB map_value() const override { return YQLValue::map_value(value()); }
   virtual const YQLSeqValuePB set_value() const override { return YQLValue::set_value(value()); }
   virtual const YQLSeqValuePB list_value() const override { return YQLValue::list_value(value()); }
+  virtual const std::string& frozen_value() const override {
+    return YQLValue::frozen_value(value());
+  }
   virtual Uuid uuid_value() const override { return YQLValue::uuid_value(value()); }
   virtual Uuid timeuuid_value() const override { return YQLValue::timeuuid_value(value()); }
 
@@ -489,6 +500,9 @@ class YQLValueWithPB : public YQLValue, public YQLValuePB {
   }
   virtual std::string* mutable_binary_value() override {
     return YQLValue::mutable_binary_value(mutable_value());
+  }
+  virtual std::string* mutable_frozen_value() override {
+    return YQLValue::mutable_frozen_value(mutable_value());
   }
 
   //----------------------------------- assignment methods ----------------------------------

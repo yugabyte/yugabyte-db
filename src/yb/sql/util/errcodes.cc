@@ -78,6 +78,8 @@ const unordered_map<int64_t, const char*> kYbSqlErrorMessage {
       "Insert into table of counters not allowed" },
   { static_cast<int64_t>(ErrorCode::INVALID_COUNTING_EXPR),
       "Counters can only be incremented or decremented" },
+  { static_cast<int64_t>(ErrorCode::DUPLICATE_TYPE), "Duplicate Type" },
+  { static_cast<int64_t>(ErrorCode::DUPLICATE_TYPE_FIELD), "Duplicate Type Field" },
 
   //------------------------------------------------------------------------------------------------
   // Execution errors [-300, x).
@@ -92,6 +94,8 @@ const unordered_map<int64_t, const char*> kYbSqlErrorMessage {
   { static_cast<int64_t>(ErrorCode::KEYSPACE_NOT_FOUND), "Keyspace Not Found" },
   { static_cast<int64_t>(ErrorCode::TABLET_NOT_FOUND), "Tablet Not Found" },
   { static_cast<int64_t>(ErrorCode::STALE_PREPARED_STATEMENT), "Stale Prepared Statement" },
+  { static_cast<int64_t>(ErrorCode::TYPE_NOT_FOUND), "Type Not Found" },
+  { static_cast<int64_t>(ErrorCode::INVALID_TYPE_DEFINITION), "Invalid Type Definition" },
 };
 
 ErrorCode GetErrorCode(const Status& s) {

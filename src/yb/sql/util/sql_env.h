@@ -34,7 +34,7 @@ class SqlEnv {
   // Constructor & destructor.
   SqlEnv(
       std::weak_ptr<rpc::Messenger> messenger, std::shared_ptr<client::YBClient> client,
-      std::shared_ptr<client::YBTableCache> cache,
+      std::shared_ptr<client::YBMetaDataCache> cache,
       cqlserver::CQLRpcServerEnv* cql_rpcserver_env = nullptr);
   virtual ~SqlEnv();
 
@@ -51,6 +51,7 @@ class SqlEnv {
 
   virtual std::shared_ptr<client::YBTable> GetTableDesc(
       const client::YBTableName& table_name, bool *cache_used);
+
 
   virtual void RemoveCachedTableDesc(const client::YBTableName& table_name);
 
@@ -72,6 +73,27 @@ class SqlEnv {
         current_cql_call()->sql_session()->current_keyspace() :
         current_keyspace_ != nullptr ? *current_keyspace_ : kUndefinedKeyspace;
   }
+
+  // (User-defined) Type related methods.
+
+  // Create (user-defined) type with the given arguments
+  CHECKED_STATUS CreateUDType(const std::string &keyspace_name,
+                              const std::string &type_name,
+                              const std::vector<std::string> &field_names,
+                              const std::vector<std::shared_ptr<YQLType>> &field_types) {
+    return client_->CreateUDType(keyspace_name, type_name, field_names, field_types);
+  }
+
+  // Delete (user-defined) type by name.
+  virtual CHECKED_STATUS DeleteUDType(const std::string &keyspace_name,
+                                      const std::string &type_name);
+
+  // Retrieve (user-defined) type by name.
+  std::shared_ptr<YQLType> GetUDType(const std::string &keyspace_name,
+                                     const std::string &type_name,
+                                     bool *cache_used);
+
+  virtual void RemoveCachedUDType(const std::string& keyspace_name, const std::string& type_name);
 
   // Reset all env states or variables before executing the next statement.
   void Reset();
@@ -101,8 +123,8 @@ class SqlEnv {
   // YBClient, an API that SQL engine uses to communicate with all servers.
   std::shared_ptr<client::YBClient> client_;
 
-  // YBTableCache, a cache to avoid creating a new table for each call.
-  std::shared_ptr<client::YBTableCache> table_cache_;
+  // YBMetaDataCache, a cache to avoid creating a new table or type for each call.
+  std::shared_ptr<client::YBMetaDataCache> metadata_cache_;
 
   // A specific session (within YBClient) to execute a statement.
   std::shared_ptr<client::YBSession> write_session_;

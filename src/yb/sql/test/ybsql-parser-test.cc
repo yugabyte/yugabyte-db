@@ -128,9 +128,6 @@ TEST_F(YbSqlTestParser, TestSqlParser) {
 
   // Valid statement: CREATE table with inet type.
   PARSE_VALID_STMT("CREATE TABLE human_resource (c1 inet, c2 int, c3 int, PRIMARY KEY(c1));");
-
-  // Invalid statement: CREATE table with invalid type.
-  PARSE_INVALID_STMT("CREATE TABLE human_resource (c1 ine, c2 int, c3 int, PRIMARY KEY(c1));");
 }
 
 TEST_F(YbSqlTestParser, TestStaticColumn) {

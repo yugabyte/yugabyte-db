@@ -421,6 +421,28 @@ struct DataTypeTraits<LIST> : public DerivedTypeTraits<BINARY>{
 };
 
 template<>
+struct DataTypeTraits<USER_DEFINED_TYPE> : public DerivedTypeTraits<BINARY>{
+  static const char* name() {
+    return "user_defined_type";
+  }
+
+  // using the default implementation inherited from BINARY for AppendDebugStringForValue
+  // TODO much of this codepath should be retired and we should systematically use YQLValue instead
+  // of Kudu Slice [ENG-1235]
+};
+
+template<>
+struct DataTypeTraits<FROZEN> : public DerivedTypeTraits<BINARY>{
+  static const char* name() {
+    return "frozen";
+  }
+
+  // using the default implementation inherited from BINARY for AppendDebugStringForValue
+  // TODO much of this codepath should be retired and we should systematically use YQLValue instead
+  // of Kudu Slice [ENG-1235]
+};
+
+template<>
 struct DataTypeTraits<DECIMAL> : public DerivedTypeTraits<BINARY>{
   static const char* name() {
     return "decimal";
@@ -541,6 +563,7 @@ class Variant {
       case INET: FALLTHROUGH_INTENDED;
       case UUID: FALLTHROUGH_INTENDED;
       case TIMEUUID: FALLTHROUGH_INTENDED;
+      case FROZEN: FALLTHROUGH_INTENDED;
       case BINARY:
         {
           const Slice *str = static_cast<const Slice *>(value);
@@ -559,8 +582,10 @@ class Variant {
       case LIST:
         LOG(FATAL) << "Default values for collection types not supported, found: "
                    << DataType_Name(type_);
-      case DECIMAL:
+      case DECIMAL: FALLTHROUGH_INTENDED;
+      case USER_DEFINED_TYPE:
         LOG(FATAL) << "Unsupported data type: " << DataType_Name(type_);
+
       default: LOG(FATAL) << "Unknown data type: " << DataType_Name(type_);
     }
   }
@@ -611,6 +636,7 @@ class Variant {
       case INET:         FALLTHROUGH_INTENDED;
       case UUID:         FALLTHROUGH_INTENDED;
       case TIMEUUID:     FALLTHROUGH_INTENDED;
+      case FROZEN:       FALLTHROUGH_INTENDED;
       case BINARY:       return &vstr_;
       case MAP: FALLTHROUGH_INTENDED;
       case SET: FALLTHROUGH_INTENDED;
@@ -618,7 +644,10 @@ class Variant {
         LOG(FATAL) << "Default values for collection types not supported, found: "
                    << DataType_Name(type_);
 
-      case DECIMAL:      LOG(FATAL) << "Unsupported data type: " << type_;
+      case DECIMAL: FALLTHROUGH_INTENDED;
+      case USER_DEFINED_TYPE:
+        LOG(FATAL) << "Unsupported data type: " << type_;
+
       default: LOG(FATAL) << "Unknown data type: " << type_;
     }
     CHECK(false) << "not reached!";

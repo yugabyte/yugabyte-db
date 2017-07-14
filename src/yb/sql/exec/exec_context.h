@@ -57,6 +57,21 @@ class ExecContext : public ProcessContextBase {
     return sql_env_->CurrentKeyspace();
   }
 
+  // (User-defined) Type related methods.
+
+  // Create (user-defined) type with the given arguments
+  CHECKED_STATUS CreateUDType(const std::string &keyspace_name,
+                              const std::string &type_name,
+                              const std::vector<std::string> &field_names,
+                              const std::vector<std::shared_ptr<YQLType>> &field_types) {
+    return sql_env_->CreateUDType(keyspace_name, type_name, field_names, field_types);
+  }
+
+  // Delete a (user-defined) type by name.
+  CHECKED_STATUS DeleteUDType(const std::string &keyspace_name, const std::string &type_name) {
+    return sql_env_->DeleteUDType(keyspace_name, type_name);
+  }
+
   SqlEnv* sql_env() const {
     return sql_env_;
   }

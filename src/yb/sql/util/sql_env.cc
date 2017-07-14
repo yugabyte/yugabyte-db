@@ -22,7 +22,7 @@ using client::YBOperation;
 using client::YBSession;
 using client::YBStatusMemberCallback;
 using client::YBTable;
-using client::YBTableCache;
+using client::YBMetaDataCache;
 using client::YBTableCreator;
 using client::YBTableName;
 using client::YBqlReadOp;
@@ -40,9 +40,9 @@ using client::YBqlWriteOp;
 
 SqlEnv::SqlEnv(
     weak_ptr<rpc::Messenger> messenger, shared_ptr<YBClient> client,
-    shared_ptr<YBTableCache> cache, cqlserver::CQLRpcServerEnv* cql_rpcserver_env)
+    shared_ptr<YBMetaDataCache> cache, cqlserver::CQLRpcServerEnv* cql_rpcserver_env)
     : client_(client),
-      table_cache_(cache),
+      metadata_cache_(cache),
       write_session_(client_->NewSession(false /* read_only */)),
       read_session_(client->NewSession(true /* read_only */)),
       messenger_(messenger),
@@ -166,7 +166,7 @@ Status SqlEnv::ProcessReadResult(const Status &s) {
 
 shared_ptr<YBTable> SqlEnv::GetTableDesc(const YBTableName& table_name, bool* cache_used) {
   shared_ptr<YBTable> yb_table;
-  Status s = table_cache_->GetTable(table_name, &yb_table, cache_used);
+  Status s = metadata_cache_->GetTable(table_name, &yb_table, cache_used);
 
   if (!s.ok()) {
     VLOG(3) << "GetTableDesc: Server returns an error: " << s.ToString();
@@ -176,8 +176,26 @@ shared_ptr<YBTable> SqlEnv::GetTableDesc(const YBTableName& table_name, bool* ca
   return yb_table;
 }
 
+shared_ptr<YQLType> SqlEnv::GetUDType(const std::string &keyspace_name,
+                                      const std::string &type_name,
+                                      bool *cache_used) {
+  shared_ptr<YQLType> yql_type = std::make_shared<YQLType>(keyspace_name, type_name);
+  Status s = metadata_cache_->GetUDType(keyspace_name, type_name, &yql_type, cache_used);
+
+  if (!s.ok()) {
+    VLOG(3) << "GetTypeDesc: Server returned an error: " << s.ToString();
+    return nullptr;
+  }
+
+  return yql_type;
+}
+
 void SqlEnv::RemoveCachedTableDesc(const YBTableName& table_name) {
-  table_cache_->RemoveCachedTable(table_name);
+  metadata_cache_->RemoveCachedTable(table_name);
+}
+
+void SqlEnv::RemoveCachedUDType(const std::string& keyspace_name, const std::string& type_name) {
+  metadata_cache_->RemoveCachedUDType(keyspace_name, type_name);
 }
 
 void SqlEnv::Reset() {
@@ -224,6 +242,10 @@ Status SqlEnv::UseKeyspace(const string& keyspace_name) {
   }
 
   return Status::OK();
+}
+
+Status SqlEnv::DeleteUDType(const std::string &keyspace_name, const std::string &type_name) {
+  return client_->DeleteUDType(keyspace_name, type_name);
 }
 
 }  // namespace sql
