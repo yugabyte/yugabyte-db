@@ -19,7 +19,11 @@ using namespace rocksdb;
 
 namespace {
 
+#if defined(THREAD_SANITIZER)
+const int kNumKeys = 100000;
+#else
 const int kNumKeys = 1100000;
+#endif
 
 std::string Key1(int i) {
   char buf[100];
@@ -37,6 +41,7 @@ class ManualCompactionTest : public testing::Test {
     // Get rid of any state from an old run.
     dbname_ = rocksdb::test::TmpDir() + "/rocksdb_cbug_test";
     DestroyDB(dbname_, rocksdb::Options());
+    LOG(INFO) << "Starting test with " << kNumKeys;
   }
 
   std::string dbname_;
