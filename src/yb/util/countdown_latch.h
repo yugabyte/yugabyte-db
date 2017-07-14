@@ -39,8 +39,7 @@ class CountDownLatch {
   // Decrement the count of this latch by 'amount'
   // If the new count is less than or equal to zero, then all waiting threads are woken up.
   // If the count is already zero, this has no effect.
-  void CountDown(int amount) {
-    DCHECK_GE(amount, 0);
+  void CountDown(uint64_t amount) {
     MutexLock lock(lock_);
     if (count_ == 0) {
       return;

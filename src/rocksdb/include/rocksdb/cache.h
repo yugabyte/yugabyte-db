@@ -26,6 +26,7 @@
 #include <memory>
 #include "rocksdb/slice.h"
 #include "rocksdb/status.h"
+#include "yb/util/cache_metrics.h"
 
 namespace rocksdb {
 
@@ -169,6 +170,8 @@ class Cache {
   // access the cache without the lock held
   virtual void ApplyToAllCacheEntries(void (*callback)(void*, size_t),
                                       bool thread_safe) = 0;
+
+  virtual void SetMetrics(const scoped_refptr<yb::MetricEntity>& entity) = 0;
 
  private:
   void LRU_Remove(Handle* e);

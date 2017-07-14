@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <gflags/gflags.h>
 
+#include "yb/util/metrics.h"
 #include "rocksdb/cache.h"
 #include "port/port.h"
 #include "util/autovector.h"
@@ -87,10 +88,18 @@ struct LRUHandle {
     }
   }
 
-  void Free() {
+  void Free(yb::CacheMetrics* metrics) {
     assert((refs == 1 && in_cache) || (refs == 0 && !in_cache));
     (*deleter)(key(), value);
     delete[] reinterpret_cast<char*>(this);
+    if (metrics != nullptr) {
+      if (GetSubCacheType() == MULTI_TOUCH) {
+        metrics->multi_touch_cache_usage->DecrementBy(charge);
+      } else if (GetSubCacheType() == SINGLE_TOUCH) {
+        metrics->single_touch_cache_usage->DecrementBy(charge);
+      }
+      metrics->cache_usage->DecrementBy(charge);
+    }
   }
 
   SubCacheType GetSubCacheType() const {
@@ -105,7 +114,8 @@ struct LRUHandle {
 // 4.4.3's builtin hashtable.
 class HandleTable {
  public:
-  HandleTable() : length_(0), elems_(0), list_(nullptr) { Resize(); }
+  HandleTable() :
+      length_(0), elems_(0), list_(nullptr), metrics_(nullptr) { Resize(); }
 
   template <typename T>
   void ApplyToAllCacheEntries(T func) {
@@ -121,9 +131,9 @@ class HandleTable {
   }
 
   ~HandleTable() {
-    ApplyToAllCacheEntries([](LRUHandle* h) {
+    ApplyToAllCacheEntries([this](LRUHandle* h) {
       if (h->refs == 1) {
-        h->Free();
+        h->Free(metrics_.get());
       }
     });
     delete[] list_;
@@ -132,6 +142,8 @@ class HandleTable {
   LRUHandle* Lookup(const Slice& key, uint32_t hash) const {
     return *FindPointer(key, hash);
   }
+
+  void SetMetrics(shared_ptr<yb::CacheMetrics> metrics) { metrics_ = metrics; }
 
   // Checks if the newly created handle is a candidate to be inserted into the multi touch cache.
   // It checks to see if the same value is in the multi touch cache, or if it is in the single
@@ -181,6 +193,7 @@ class HandleTable {
   uint32_t length_;
   uint32_t elems_;
   LRUHandle** list_;
+  shared_ptr<yb::CacheMetrics> metrics_;
 
   // Return a pointer to slot that points to a cache entry that
   // matches key/hash.  If there is no such cache entry, return a
@@ -335,6 +348,11 @@ class LRUCache {
   // free the needed space
   void SetCapacity(size_t capacity);
 
+  void SetMetrics(shared_ptr<yb::CacheMetrics> metrics) {
+    metrics_ = metrics;
+    table_.SetMetrics(metrics);
+  }
+
   // Set the flag to reject insertion if cache if full.
   void SetStrictCapacityLimit(bool strict_capacity_limit);
 
@@ -394,6 +412,8 @@ class LRUCache {
   mutable port::Mutex mutex_;
 
   HandleTable table_;
+
+  shared_ptr<yb::CacheMetrics> metrics_;
 };
 
 LRUCache::LRUCache() {}
@@ -474,7 +494,7 @@ void LRUCache::SetCapacity(size_t capacity) {
   // we free the entries here outside of mutex for
   // performance reasons
   for (auto entry : last_reference_list) {
-    entry->Free();
+    entry->Free(metrics_.get());
   }
 }
 
@@ -501,7 +521,7 @@ Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash, const QueryId q
       autovector<LRUHandle*> multi_touch_eviction_list;
       EvictFromLRU(e->charge, &multi_touch_eviction_list, MULTI_TOUCH);
       for (auto entry : multi_touch_eviction_list) {
-        entry->Free();
+        entry->Free(metrics_.get());
       }
       // Cannot have any single touch elements in this case.
       assert(FLAGS_cache_single_touch_ratio != 0);
@@ -512,6 +532,17 @@ Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash, const QueryId q
         single_touch_sub_cache_.DecrementUsage(e->charge);
         multi_touch_sub_cache_.IncrementUsage(e->charge);
       }
+    }
+  }
+
+  // Do the metrics outside of the lock.
+  if (metrics_ != nullptr) {
+    metrics_->lookups->Increment();
+    bool was_hit = (e != nullptr);
+    if (was_hit) {
+      metrics_->cache_hits->Increment();
+    } else {
+      metrics_->cache_misses->Increment();
     }
   }
   return reinterpret_cast<Cache::Handle*>(e);
@@ -550,7 +581,7 @@ void LRUCache::Release(Cache::Handle* handle) {
 
   // free outside of mutex
   if (last_reference) {
-    e->Free();
+    e->Free(metrics_.get());
   }
 }
 
@@ -636,11 +667,18 @@ Status LRUCache::Insert(const Slice& key, uint32_t hash, const QueryId query_id,
       s = Status::OK();
     }
   }
+  if (metrics_ != nullptr) {
+    if (e->GetSubCacheType() == MULTI_TOUCH) {
+      metrics_->multi_touch_cache_usage->IncrementBy(charge);
+    } else {
+      metrics_->single_touch_cache_usage->IncrementBy(charge);
+    }
+  }
 
   // we free the entries here outside of mutex for
   // performance reasons
   for (auto entry : last_reference_list) {
-    entry->Free();
+    entry->Free(metrics_.get());
   }
 
   return s;
@@ -666,7 +704,7 @@ void LRUCache::Erase(const Slice& key, uint32_t hash) {
   // mutex not held here
   // last_reference will only be true if e != nullptr
   if (last_reference) {
-    e->Free();
+    e->Free(metrics_.get());
   }
 }
 
@@ -681,6 +719,7 @@ class ShardedLRUCache : public Cache {
   int num_shard_bits_;
   size_t capacity_;
   bool strict_capacity_limit_;
+  shared_ptr<yb::CacheMetrics> metrics_;
 
   static inline uint32_t HashSlice(const Slice& s) {
     return Hash(s.data(), s.size(), 0);
@@ -701,7 +740,8 @@ class ShardedLRUCache : public Cache {
       : last_id_(0),
         num_shard_bits_(num_shard_bits),
         capacity_(capacity),
-        strict_capacity_limit_(strict_capacity_limit) {
+        strict_capacity_limit_(strict_capacity_limit),
+        metrics_(nullptr) {
     int num_shards = 1 << num_shard_bits_;
     shards_ = new LRUCache[num_shards];
     const size_t per_shard = (capacity + (num_shards - 1)) / num_shards;
@@ -816,6 +856,14 @@ class ShardedLRUCache : public Cache {
     int num_shards = 1 << num_shard_bits_;
     for (int s = 0; s < num_shards; s++) {
       shards_[s].ApplyToAllCacheEntries(callback, thread_safe);
+    }
+  }
+
+  virtual void SetMetrics(const scoped_refptr<yb::MetricEntity>& entity) override {
+    int num_shards = 1 << num_shard_bits_;
+    metrics_ = std::make_shared<yb::CacheMetrics>(entity);
+    for (int s = 0; s < num_shards; s++) {
+      shards_[s].SetMetrics(metrics_);
     }
   }
 };

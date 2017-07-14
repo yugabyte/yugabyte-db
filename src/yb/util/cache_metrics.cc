@@ -48,7 +48,14 @@ METRIC_DEFINE_counter(server, block_cache_hits_caching,
 METRIC_DEFINE_gauge_uint64(server, block_cache_usage, "Block Cache Memory Usage",
                            yb::MetricUnit::kBytes,
                            "Memory consumed by the block cache");
-
+METRIC_DEFINE_gauge_uint64(server, block_cache_single_touch_usage,
+                           "Single Touch Block Cache Memory Usage",
+                           yb::MetricUnit::kBytes,
+                           "Memory consumed by the single touch block cache");
+METRIC_DEFINE_gauge_uint64(server, block_cache_multi_touch_usage,
+                           "Multi Cache Block Cache Memory Usage",
+                           yb::MetricUnit::kBytes,
+                           "Memory consumed by the multi cache block cache");
 namespace yb {
 
 #define MINIT(member, x) member(METRIC_##x.Instantiate(entity))
@@ -61,7 +68,9 @@ CacheMetrics::CacheMetrics(const scoped_refptr<MetricEntity>& entity)
     MINIT(cache_hits_caching, block_cache_hits_caching),
     MINIT(cache_misses, block_cache_misses),
     MINIT(cache_misses_caching, block_cache_misses_caching),
-    GINIT(cache_usage, block_cache_usage) {
+    GINIT(cache_usage, block_cache_usage),
+    GINIT(single_touch_cache_usage, block_cache_single_touch_usage),
+    GINIT(multi_touch_cache_usage, block_cache_multi_touch_usage) {
 }
 #undef MINIT
 #undef GINIT

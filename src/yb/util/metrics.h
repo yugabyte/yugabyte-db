@@ -501,7 +501,7 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   // Set a particular attribute. Replaces any current value.
   void SetAttribute(const std::string& key, const std::string& val);
 
-  int num_metrics() const {
+  size_t num_metrics() const {
     std::lock_guard<simple_spinlock> l(lock_);
     return metric_map_.size();
   }
@@ -603,7 +603,7 @@ class MetricRegistry {
   void RetireOldMetrics();
 
   // Return the number of entities in this registry.
-  int num_entities() const {
+  size_t num_entities() const {
     std::lock_guard<simple_spinlock> l(lock_);
     return entities_.size();
   }

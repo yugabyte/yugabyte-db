@@ -201,6 +201,7 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
   }
   if (FLAGS_db_block_cache_size_bytes != kDbCacheSizeCacheDisabled) {
     block_cache_ = rocksdb::NewLRUCache(block_cache_size_bytes);
+    block_cache_->SetMetrics(server_->metric_entity());
   }
 }
 

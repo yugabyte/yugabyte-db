@@ -17,6 +17,7 @@
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/callback.h"
+#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 
 #include <gtest/gtest.h>

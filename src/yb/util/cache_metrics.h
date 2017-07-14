@@ -41,6 +41,8 @@ struct CacheMetrics {
   scoped_refptr<Counter> cache_misses_caching;
 
   scoped_refptr<AtomicGauge<uint64_t> > cache_usage;
+  scoped_refptr<AtomicGauge<uint64_t> > single_touch_cache_usage;
+  scoped_refptr<AtomicGauge<uint64_t> > multi_touch_cache_usage;
 };
 
 } // namespace yb

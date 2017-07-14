@@ -10,8 +10,9 @@
 
 #include <stddef.h>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/gutil/template_util.h"
+#include "yb/gutil/type_traits.h"
 
 template <typename T>
 class ScopedVector;

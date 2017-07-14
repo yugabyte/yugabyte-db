@@ -82,7 +82,7 @@ struct Tuple1 {
   typedef A TypeA;
 
   Tuple1() {}
-  explicit Tuple1(typename TupleTraits<A>::ParamType a) : a(a) {}
+  explicit Tuple1(typename TupleTraits<A>::ParamType a_) : a(a_) {}
 
   A a;
 };
@@ -94,9 +94,9 @@ struct Tuple2 {
   typedef B TypeB;
 
   Tuple2() {}
-  Tuple2(typename TupleTraits<A>::ParamType a,
-         typename TupleTraits<B>::ParamType b)
-      : a(a), b(b) {
+  Tuple2(typename TupleTraits<A>::ParamType a_,
+         typename TupleTraits<B>::ParamType b_)
+      : a(a_), b(b_) {
   }
 
   A a;
@@ -111,10 +111,10 @@ struct Tuple3 {
   typedef C TypeC;
 
   Tuple3() {}
-  Tuple3(typename TupleTraits<A>::ParamType a,
-         typename TupleTraits<B>::ParamType b,
-         typename TupleTraits<C>::ParamType c)
-      : a(a), b(b), c(c){
+  Tuple3(typename TupleTraits<A>::ParamType a_,
+         typename TupleTraits<B>::ParamType b_,
+         typename TupleTraits<C>::ParamType c_)
+      : a(a_), b(b_), c(c_){
   }
 
   A a;
@@ -131,11 +131,11 @@ struct Tuple4 {
   typedef D TypeD;
 
   Tuple4() {}
-  Tuple4(typename TupleTraits<A>::ParamType a,
-         typename TupleTraits<B>::ParamType b,
-         typename TupleTraits<C>::ParamType c,
-         typename TupleTraits<D>::ParamType d)
-      : a(a), b(b), c(c), d(d) {
+  Tuple4(typename TupleTraits<A>::ParamType a_,
+         typename TupleTraits<B>::ParamType b_,
+         typename TupleTraits<C>::ParamType c_,
+         typename TupleTraits<D>::ParamType d_)
+      : a(a_), b(b_), c(c_), d(d_) {
   }
 
   A a;
@@ -154,12 +154,12 @@ struct Tuple5 {
   typedef E TypeE;
 
   Tuple5() {}
-  Tuple5(typename TupleTraits<A>::ParamType a,
-    typename TupleTraits<B>::ParamType b,
-    typename TupleTraits<C>::ParamType c,
-    typename TupleTraits<D>::ParamType d,
-    typename TupleTraits<E>::ParamType e)
-    : a(a), b(b), c(c), d(d), e(e) {
+  Tuple5(typename TupleTraits<A>::ParamType a_,
+    typename TupleTraits<B>::ParamType b_,
+    typename TupleTraits<C>::ParamType c_,
+    typename TupleTraits<D>::ParamType d_,
+    typename TupleTraits<E>::ParamType e_)
+    : a(a_), b(b_), c(c_), d(d_), e(e_) {
   }
 
   A a;
@@ -180,13 +180,13 @@ struct Tuple6 {
   typedef F TypeF;
 
   Tuple6() {}
-  Tuple6(typename TupleTraits<A>::ParamType a,
-    typename TupleTraits<B>::ParamType b,
-    typename TupleTraits<C>::ParamType c,
-    typename TupleTraits<D>::ParamType d,
-    typename TupleTraits<E>::ParamType e,
-    typename TupleTraits<F>::ParamType f)
-    : a(a), b(b), c(c), d(d), e(e), f(f) {
+  Tuple6(typename TupleTraits<A>::ParamType a_,
+    typename TupleTraits<B>::ParamType b_,
+    typename TupleTraits<C>::ParamType c_,
+    typename TupleTraits<D>::ParamType d_,
+    typename TupleTraits<E>::ParamType e_,
+    typename TupleTraits<F>::ParamType f_)
+    : a(a_), b(b_), c(c_), d(d_), e(e_), f(f_) {
   }
 
   A a;
@@ -209,14 +209,14 @@ struct Tuple7 {
   typedef G TypeG;
 
   Tuple7() {}
-  Tuple7(typename TupleTraits<A>::ParamType a,
-    typename TupleTraits<B>::ParamType b,
-    typename TupleTraits<C>::ParamType c,
-    typename TupleTraits<D>::ParamType d,
-    typename TupleTraits<E>::ParamType e,
-    typename TupleTraits<F>::ParamType f,
-    typename TupleTraits<G>::ParamType g)
-    : a(a), b(b), c(c), d(d), e(e), f(f), g(g) {
+  Tuple7(typename TupleTraits<A>::ParamType a_,
+    typename TupleTraits<B>::ParamType b_,
+    typename TupleTraits<C>::ParamType c_,
+    typename TupleTraits<D>::ParamType d_,
+    typename TupleTraits<E>::ParamType e_,
+    typename TupleTraits<F>::ParamType f_,
+    typename TupleTraits<G>::ParamType g_)
+    : a(a_), b(b_), c(c_), d(d_), e(e_), f(f_), g(g_) {
   }
 
   A a;
@@ -242,15 +242,15 @@ struct Tuple8 {
   typedef H TypeH;
 
   Tuple8() {}
-  Tuple8(typename TupleTraits<A>::ParamType a,
-    typename TupleTraits<B>::ParamType b,
-    typename TupleTraits<C>::ParamType c,
-    typename TupleTraits<D>::ParamType d,
-    typename TupleTraits<E>::ParamType e,
-    typename TupleTraits<F>::ParamType f,
-    typename TupleTraits<G>::ParamType g,
-    typename TupleTraits<H>::ParamType h)
-    : a(a), b(b), c(c), d(d), e(e), f(f), g(g), h(h) {
+  Tuple8(typename TupleTraits<A>::ParamType a_,
+    typename TupleTraits<B>::ParamType b_,
+    typename TupleTraits<C>::ParamType c_,
+    typename TupleTraits<D>::ParamType d_,
+    typename TupleTraits<E>::ParamType e_,
+    typename TupleTraits<F>::ParamType f_,
+    typename TupleTraits<G>::ParamType g_,
+    typename TupleTraits<H>::ParamType h_)
+    : a(a_), b(b_), c(c_), d(d_), e(e_), f(f_), g(g_), h(h_) {
   }
 
   A a;
