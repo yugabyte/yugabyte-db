@@ -152,7 +152,7 @@ TEST_F(TestRpc, TestCallToBadServer) {
   for (int i = 0; i < 5; i++) {
     Status s = DoTestSyncCall(p, GenericCalculatorService::kAddMethodName);
     LOG(INFO) << "Status: " << s.ToString();
-    ASSERT_TRUE(s.IsNetworkError()) << "unexpected status: " << s.ToString();
+    ASSERT_TRUE(s.IsRemoteError()) << "unexpected status: " << s.ToString();
   }
 }
 

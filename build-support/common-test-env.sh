@@ -32,8 +32,8 @@ VALID_TEST_BINARY_DIRS_RE="^${VALID_TEST_BINARY_DIRS_PREFIX}-[0-9a-zA-Z\-]+"
 # gdb command to print a backtrace from a core dump. Taken from:
 # http://www.commandlinefu.com/commands/view/6004/print-stack-trace-of-a-core-file-without-needing-to-enter-gdb-interactively
 
-DEFAULT_TEST_TIMEOUT_SEC=600
-INCREASED_TEST_TIMEOUT_SEC=1200
+DEFAULT_TEST_TIMEOUT_SEC=${DEFAULT_TEST_TIMEOUT_SEC:-600}
+INCREASED_TEST_TIMEOUT_SEC=$(($DEFAULT_TEST_TIMEOUT_SEC * 2))
 
 # We grep for these log lines and show them in the main log on test failure. This regular expression
 # is used with egrep.
