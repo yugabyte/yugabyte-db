@@ -70,7 +70,7 @@ def main():
             dest_dir=yb_distribution_dir)
     library_packager.package_binaries()
 
-    for release_subdir in ['bin', 'lib']:
+    for release_subdir in ['bin']:
         if release_subdir in release_manifest:
             del release_manifest[release_subdir]
     for root, dirs, files in os.walk(yb_distribution_dir):
