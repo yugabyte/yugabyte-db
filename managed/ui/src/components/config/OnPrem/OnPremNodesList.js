@@ -32,9 +32,9 @@ class OnPremNodesList extends Component {
   }
 
   submitAddNodesForm(vals) {
-    const {cloud: { supportedRegionList, accessKeys }} = this.props;
-    var onPremProvider = this.props.cloud.providers.data.find((provider) => provider.code === "onprem");
-    var self = this;
+    const {cloud: { supportedRegionList, accessKeys, providers }} = this.props;
+    const onPremProvider = providers.data.find((provider) => provider.code === "onprem");
+    const self = this;
     let currentCloudRegions = supportedRegionList.data.filter(region => region.provider.code === "onprem");
     let currentCloudAccessKey = accessKeys.data.filter(
       accessKey => accessKey.idKey.providerUUID === onPremProvider.uuid
@@ -70,7 +70,7 @@ class OnPremNodesList extends Component {
         }, {});
       });
       // Submit Node Payload
-      self.props.createOnPremNodes(instanceTypeList, onPremProvider.uuid);
+      self.props.createOnPremNodes(instanceTypeList[0], onPremProvider.uuid);
     }
     this.props.reset();
   }

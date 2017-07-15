@@ -7,11 +7,11 @@ import { GET_REGION_LIST, GET_REGION_LIST_RESPONSE, GET_PROVIDER_LIST, GET_PROVI
   CREATE_ACCESS_KEY_RESPONSE, INITIALIZE_PROVIDER, INITIALIZE_PROVIDER_SUCCESS,
   INITIALIZE_PROVIDER_FAILURE, DELETE_PROVIDER, DELETE_PROVIDER_SUCCESS, DELETE_PROVIDER_FAILURE,
   DELETE_PROVIDER_RESPONSE, RESET_PROVIDER_BOOTSTRAP, LIST_ACCESS_KEYS, LIST_ACCESS_KEYS_RESPONSE,
-  GET_EBS_TYPE_LIST, GET_EBS_TYPE_LIST_RESPONSE, CREATE_DOCKER_PROVIDER, CREATE_DOCKER_PROVIDER_RESPONSE,
-  CREATE_INSTANCE_TYPE, CREATE_INSTANCE_TYPE_RESPONSE, FETCH_CLOUD_METADATA, CREATE_ZONE,
-  CREATE_ZONE_RESPONSE, CREATE_NODE_INSTANCE, CREATE_NODE_INSTANCE_RESPONSE, SET_ON_PREM_CONFIG_DATA,
-  GET_NODE_INSTANCE_LIST, GET_NODE_INSTANCE_LIST_RESPONSE, RESET_ON_PREM_CONFIG_DATA
-} from '../actions/cloud';
+  GET_EBS_TYPE_LIST, GET_EBS_TYPE_LIST_RESPONSE, CREATE_DOCKER_PROVIDER,
+  CREATE_DOCKER_PROVIDER_RESPONSE,CREATE_INSTANCE_TYPE, CREATE_INSTANCE_TYPE_RESPONSE,
+  FETCH_CLOUD_METADATA, CREATE_ZONES, CREATE_ZONES_RESPONSE, CREATE_NODE_INSTANCES,
+  CREATE_NODE_INSTANCES_RESPONSE, SET_ON_PREM_CONFIG_DATA, GET_NODE_INSTANCE_LIST,
+  GET_NODE_INSTANCE_LIST_RESPONSE, RESET_ON_PREM_CONFIG_DATA } from '../actions/cloud';
 
 import { getInitialState, setInitialState, setSuccessState, setFailureState, setLoadingState, setPromiseResponse }
   from '../utils/PromiseUtils';
@@ -104,17 +104,17 @@ export default function(state = INITIAL_STATE, action) {
       }
       return setFailureState(state, "bootstrap", action.payload.data.error, {type: "region"});
 
-    case CREATE_ZONE:
-      return setLoadingState(state, "bootstrap", {type: "zone", response: null});
-    case CREATE_ZONE_RESPONSE:
+    case CREATE_ZONES:
+      return setLoadingState(state, "bootstrap", {type: "zones", response: null});
+    case CREATE_ZONES_RESPONSE:
       if (action.payload.status === 200) {
-        return setSuccessState(state, "bootstrap", {type: "zone", response: action.payload.data});
+        return setSuccessState(state, "bootstrap", {type: "zones", response: action.payload.data});
       }
       return setFailureState(state, "bootstrap", action.payload.data.error, {type: "zone"});
 
-    case CREATE_NODE_INSTANCE:
+    case CREATE_NODE_INSTANCES:
       return setLoadingState(state, "bootstrap", {type: "node", response: null});
-    case CREATE_NODE_INSTANCE_RESPONSE:
+    case CREATE_NODE_INSTANCES_RESPONSE:
       if (action.payload.status === 200) {
         return setSuccessState(state, "bootstrap", {type: "node", response: action.payload.data});
       }

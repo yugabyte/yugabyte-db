@@ -2,7 +2,9 @@
 
 package com.yugabyte.yw.controllers;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Customer;
@@ -14,6 +16,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
+import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 
 import play.data.Form;
 import play.data.FormFactory;
@@ -71,21 +74,24 @@ public class NodeInstanceController extends AuthenticatedController {
     return ApiResponse.success(regionList);
   }
   /**
-   * POST endpoint for creating a new Node
+   * POST endpoint for creating new Node(s)
    * @param customerUuid the customer UUID
    * @param zoneUuid the zone UUID
-   * @return JSON response of newly created Node
+   * @return JSON response of newly created Nodes
    */
   public Result create(UUID customerUuid, UUID zoneUuid) {
     String error = validateParams(customerUuid, zoneUuid);
     if (error != null) return ApiResponse.error(BAD_REQUEST, error);
 
     Form<NodeInstanceFormData> formData = formFactory.form(NodeInstanceFormData.class).bindFromRequest();
+    List<NodeInstanceData> nodeDataList = formData.get().nodes;
+    Map<String, NodeInstance> nodes = new HashMap<>();
     try {
-      NodeInstance node = NodeInstance.create(
-        zoneUuid,
-        formData.get());
-      return ApiResponse.success(node);
+      for (NodeInstanceData nodeData : nodeDataList) {
+        NodeInstance node = NodeInstance.create(zoneUuid, nodeData);
+        nodes.put(node.getDetails().ip, node);
+      }
+      return ApiResponse.success(nodes);
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }
