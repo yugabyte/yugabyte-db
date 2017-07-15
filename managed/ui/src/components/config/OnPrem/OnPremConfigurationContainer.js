@@ -4,9 +4,10 @@ import { connect } from 'react-redux';
 import { isObject } from 'lodash';
 import { OnPremConfiguration } from '../../config';
 import { createProvider, createProviderResponse, createInstanceType, createInstanceTypeResponse,
-  createRegion, createRegionResponse, createZone, createZoneResponse, createNodeInstance,
-  createNodeInstanceResponse, createAccessKey, createAccessKeyResponse, resetProviderBootstrap,
-  fetchCloudMetadata, getProviderList, getProviderListResponse, resetOnPremConfigData, setOnPremConfigData } from '../../../actions/cloud';
+  createRegion, createRegionResponse, createZones, createZonesResponse, createNodeInstances,
+  createNodeInstancesResponse, createAccessKey, createAccessKeyResponse, resetProviderBootstrap,
+  fetchCloudMetadata, getProviderList, getProviderListResponse, resetOnPremConfigData,
+  setOnPremConfigData } from '../../../actions/cloud';
 import { isNonEmptyArray } from 'utils/ObjectUtils';
 import {destroy} from 'redux-form';
 
@@ -57,7 +58,13 @@ const mapDispatchToProps = (dispatch) => {
     createOnPremRegions: (providerUUID, config, isEdit) => {
       if (isObject(config) && isNonEmptyArray(config.regions)) {
         config.regions.forEach((region) => {
-          let formValues = { "code": region.code, "hostVPCId": "", "name": region.code, "latitude": region.latitude, "longitude": region.longitude};
+          let formValues = {
+            "code": region.code,
+            "hostVPCId": "",
+            "name": region.code,
+            "latitude": region.latitude,
+            "longitude": region.longitude
+          };
           if ((isEdit && region.isBeingEdited) || !isEdit) {
             dispatch(createRegion(providerUUID, formValues)).then((response) => {
               dispatch(createRegionResponse(response.payload));
@@ -72,11 +79,9 @@ const mapDispatchToProps = (dispatch) => {
         config.regions.forEach((region) => {
           if ((isEdit && region.isBeingEdited) || !isEdit) {
             if (isObject(region) && isNonEmptyArray(region.zones)) {
-              region.zones.forEach((zone) => {
-                dispatch(createZone(providerUUID, regionsMap[region.code], zone)).then((response) => {
-                  dispatch(createZoneResponse(response.payload));
-                })
-              })
+              dispatch(createZones(providerUUID, regionsMap[region.code], region.zones)).then((response) => {
+                dispatch(createZonesResponse(response.payload));
+              });
             }
           }
         })
@@ -85,14 +90,22 @@ const mapDispatchToProps = (dispatch) => {
 
     createOnPremNodes: (zonesMap, config) => {
       if (isObject(config) && isNonEmptyArray(config.nodes)) {
+        // Get a grouping of zones to nodes
+        let zoneToNodeMap = {};
         config.nodes.forEach((node) => {
           if (isObject(node)) {
+            let zoneUuid = zonesMap[node.zone];
             node.nodeName = "yb-" + node.zone + "-n" + config.nodes.indexOf(node).toString();
-            dispatch(createNodeInstance(zonesMap[node.zone], node)).then((response) => {
-              dispatch(createNodeInstanceResponse(response.payload));
-            });
+            zoneToNodeMap[zoneUuid] = zoneToNodeMap[zoneUuid] || [];
+            zoneToNodeMap[zoneUuid].push(node);
           }
-        })
+        });
+        // dispatch for each zone
+        Object.keys(zoneToNodeMap).forEach((zoneUuid) => {
+          dispatch(createNodeInstances(zoneUuid, zoneToNodeMap[zoneUuid])).then((response) => {
+            dispatch(createNodeInstancesResponse(response.payload));
+          });
+        });
       }
     },
 

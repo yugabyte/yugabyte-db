@@ -20,12 +20,11 @@ const initialState = {
     {type: "provider", name: "Create Provider", status: "Initializing"},
     {type: "instanceType", name: "Create Instance Types", status: "Initializing"},
     {type: "region", name: "Create Regions", status: "Initializing"},
-    {type: "zone", name: "Create Zones", status: "Initializing"},
+    {type: "zones", name: "Create Zones", status: "Initializing"},
     {type: "node", name: "Create Node Instances", status: "Initializing"},
     {type: "accessKey", name: "Create Access Keys", status: "Initializing"}
   ],
   regionsMap: {},
-  zonesMap: {},
   providerUUID: null,
   numZones: 0,
   numNodesConfigured: 0,
@@ -96,14 +95,13 @@ export default class OnPremConfiguration extends Component {
       const config = this.serializeStringToJson(payloadString);
       const isEdit = this.state.isEditProvider;
       const numZones = config.regions.reduce((total, region) => {
-        return total + region.zones.length
+        return total + region.zones.length;
       }, 0);
       switch (type) {
         case "provider":
           // Launch configuration of instance types
           this.setState({
             regionsMap: {},
-            zonesMap: {},
             providerUUID: response.uuid,
             numRegions: config.regions.length,
             numInstanceTypes: config.instanceTypes.length,
@@ -139,28 +137,23 @@ export default class OnPremConfiguration extends Component {
             this.props.createOnPremZones(this.state.providerUUID, regionsMap, config, isEdit);
           }
           break;
-        case "zone":
+        case "zones":
           // Update zonesMap until done
-          let zonesMap = this.state.zonesMap;
-          zonesMap[response.code] = response.uuid;
-          this.setState({zonesMap: zonesMap});
-          // Launch configuration of node instances once all availability zones are bootstrapped
-          if (Object.keys(zonesMap).length === this.state.numZones) {
-            bootstrapSteps[currentStepIndex + 1].status = "Running";
-            // If Edit Case, then jump to success
-            if (this.state.isEditProvider) {
-              this.resetEdit();
-            } else if (isNonEmptyArray(config.nodes)) {
-                this.props.createOnPremNodes(zonesMap, config);
-            } else {
-                this.props.createOnPremAccessKeys(this.state.providerUUID, this.state.regionsMap, config);
-            }
+          let zonesMap = {};
+          Object.keys(response).forEach(zoneCode => zonesMap[zoneCode] = response[zoneCode].uuid);
+          bootstrapSteps[currentStepIndex + 1].status = "Running";
+          // If Edit Case, then jump to success
+          if (this.state.isEditProvider) {
+            this.resetEdit();
+          } else if (isNonEmptyArray(config.nodes)) {
+            this.props.createOnPremNodes(zonesMap, config);
+          } else {
+            this.props.createOnPremAccessKeys(this.state.providerUUID, this.state.regionsMap, config);
           }
           break;
         case "node":
           // Update numNodesConfigured until done
-          let numNodesConfigured = this.state.numNodesConfigured;
-          numNodesConfigured++;
+          let numNodesConfigured = this.state.numNodesConfigured + Object.keys(response).length;
           this.setState({numNodesConfigured: numNodesConfigured});
           // Launch configuration of access keys once all node instances are bootstrapped
           if (numNodesConfigured === config.nodes.length) {

@@ -2,7 +2,10 @@
 
 package com.yugabyte.yw.controllers;
 
+import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import com.yugabyte.yw.common.ApiResponse;
@@ -12,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.forms.AvailabilityZoneFormData;
+import com.yugabyte.yw.forms.AvailabilityZoneFormData.AvailabilityZoneData;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 
@@ -51,11 +55,12 @@ public class AvailabilityZoneController extends AuthenticatedController {
   }
 
   /**
-   * POST endpoint for creating new region
-   * @return JSON response of newly created region
+   * POST endpoint for creating new region(s)
+   * @return JSON response of newly created region(s)
    */
   public Result create(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
-    Form<AvailabilityZoneFormData> formData = formFactory.form(AvailabilityZoneFormData.class).bindFromRequest();
+    Form<AvailabilityZoneFormData> formData = formFactory.form(AvailabilityZoneFormData.class)
+                                                         .bindFromRequest();
     Region region = Region.get(customerUUID, providerUUID, regionUUID);
 
     if (region == null) {
@@ -66,14 +71,18 @@ public class AvailabilityZoneController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
 
-    AvailabilityZoneFormData azData = formData.get();
-
+    List<AvailabilityZoneData> azDataList = formData.get().availabilityZones;
+    Map<String, AvailabilityZone> availabilityZones = new HashMap<>();
     try {
-      AvailabilityZone az = AvailabilityZone.create(region, azData.code, azData.name, azData.subnet);
-      return ApiResponse.success(az);
+      for (AvailabilityZoneData azData : azDataList) {
+        AvailabilityZone az = AvailabilityZone.create(region, azData.code, azData.name, azData.subnet);
+        availabilityZones.put(az.code, az);
+      }
+      return ApiResponse.success(availabilityZones);
     } catch (Exception e) {
       LOG.error(e.getMessage());
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create zone: " + azData.code);
+      AvailabilityZoneData failedAz = azDataList.get(availabilityZones.size());
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create zone: " + failedAz.code);
     }
   }
 

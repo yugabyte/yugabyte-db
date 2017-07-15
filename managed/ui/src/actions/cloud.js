@@ -31,11 +31,11 @@ export const CREATE_INSTANCE_TYPE_RESPONSE = 'CREATE_INSTANCE_TYPE_RESPONSE';
 export const CREATE_REGION = 'CREATE_REGION';
 export const CREATE_REGION_RESPONSE = 'CREATE_REGION_RESPONSE';
 
-export const CREATE_ZONE = 'CREATE_AVAILABILITY_ZONE';
-export const CREATE_ZONE_RESPONSE = 'CREATE_AVAILABILITY_ZONE_RESPONSE';
+export const CREATE_ZONES = 'CREATE_ZONES';
+export const CREATE_ZONES_RESPONSE = 'CREATE_ZONES_RESPONSE';
 
-export const CREATE_NODE_INSTANCE = 'CREATE_NODE_INSTANCE';
-export const CREATE_NODE_INSTANCE_RESPONSE = 'CREATE_NODE_INSTANCE_RESPONSE';
+export const CREATE_NODE_INSTANCES = 'CREATE_NODE_INSTANCES';
+export const CREATE_NODE_INSTANCES_RESPONSE = 'CREATE_NODE_INSTANCE_RESPONSES';
 
 export const CREATE_ACCESS_KEY = 'CREATE_ACCESS_KEY';
 export const CREATE_ACCESS_KEY_RESPONSE = 'CREATE_ACCESS_KEY_RESPONSE';
@@ -205,36 +205,41 @@ export function createRegionResponse(result) {
   };
 }
 
-export function createZone(providerUUID, regionUUID, zoneCode) {
-  const formValues = { "code": zoneCode, "name": zoneCode };
+export function createZones(providerUUID, regionUUID, zones) {
+  const formValues = {
+    "availabilityZones": zones.map((zone) => {
+      return {"code": zone, "name": zone };
+    })
+  };
   const url = getProviderEndpoint(providerUUID) + '/regions/' + regionUUID + '/zones';
   const request = axios.post(url, formValues);
   return {
-    type: CREATE_ZONE,
+    type: CREATE_ZONES,
     payload: request
-  }
+  };
 }
 
-export function createZoneResponse(result) {
+export function createZonesResponse(result) {
   return {
-    type: CREATE_ZONE_RESPONSE,
+    type: CREATE_ZONES_RESPONSE,
     payload: result
   };
 }
 
-export function createNodeInstance(zoneUUID, nodeInfo) {
+export function createNodeInstances(zoneUUID, nodes) {
   const customerUUID = localStorage.getItem("customer_id");
-  const request =
-    axios.post(`${ROOT_URL}/customers/${customerUUID}/zones/${zoneUUID}/nodes`, nodeInfo);
+  const url = `${ROOT_URL}/customers/${customerUUID}/zones/${zoneUUID}/nodes`;
+  const formValues = { "nodes": nodes };
+  const request = axios.post(url, formValues);
   return {
-    type: CREATE_NODE_INSTANCE,
+    type: CREATE_NODE_INSTANCES,
     payload: request
-  }
+  };
 }
 
-export function createNodeInstanceResponse(result) {
+export function createNodeInstancesResponse(result) {
   return {
-    type: CREATE_NODE_INSTANCE_RESPONSE,
+    type: CREATE_NODE_INSTANCES_RESPONSE,
     payload: result
   }
 }
@@ -263,7 +268,7 @@ export function createAccessKeyResponse(result) {
 }
 
 export function initializeProvider(providerUUID) {
-  var url = getProviderEndpoint(providerUUID) + '/initialize';
+  const url = getProviderEndpoint(providerUUID) + '/initialize';
   const request = axios.get(url);
   return {
     type: INITIALIZE_PROVIDER,
@@ -354,7 +359,7 @@ export function getEBSTypeListResponse(responsePayload) {
 }
 
 export function createDockerProvider() {
-  var cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customer_id");
   const request = axios.post(`${ROOT_URL}/customers/${cUUID}/providers/setup_docker`);
   return {
     type: CREATE_DOCKER_PROVIDER,
@@ -383,7 +388,7 @@ export function setOnPremConfigData(configData) {
 }
 
 export function getNodeInstancesForProvider(pUUID) {
-  var cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customer_id");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers/${pUUID}/nodes/list`);
   return {
     type: GET_NODE_INSTANCE_LIST,

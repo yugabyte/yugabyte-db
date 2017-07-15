@@ -77,12 +77,12 @@ public class NodeManagerTest extends FakeDBApplication {
       region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
       zone = AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
 
-      NodeInstanceFormData formData = new NodeInstanceFormData();
-      formData.ip = "fake_ip";
-      formData.region = region.code;
-      formData.zone = zone.code;
-      formData.instanceType = instanceTypeCode;
-      node = NodeInstance.create(zone.uuid, formData);
+      NodeInstanceFormData.NodeInstanceData nodeData = new NodeInstanceFormData.NodeInstanceData();
+      nodeData.ip = "fake_ip";
+      nodeData.region = region.code;
+      nodeData.zone = zone.code;
+      nodeData.instanceType = instanceTypeCode;
+      node = NodeInstance.create(zone.uuid, nodeData);
       // Update name.
       node.setNodeName("fake_name:" + provider.code);
       node.save();

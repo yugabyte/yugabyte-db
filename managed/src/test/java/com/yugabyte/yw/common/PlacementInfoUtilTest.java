@@ -181,7 +181,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     public AvailabilityZone createAZ(Region r, Integer azIndex, Integer numNodes) {
       AvailabilityZone az = AvailabilityZone.create(r, "PlacementAZ " + azIndex, "az-" + azIndex, "subnet-" + azIndex);
       for (int i = 0; i < numNodes; ++i) {
-        NodeInstanceFormData details = new NodeInstanceFormData();
+        NodeInstanceFormData.NodeInstanceData details = new NodeInstanceFormData.NodeInstanceData();
         details.ip = "10.255." + azIndex + "." + i;
         details.region = r.code;
         details.zone = az.code;
