@@ -14,6 +14,7 @@ import static play.test.Helpers.contentAsString;
 
 import java.util.UUID;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
@@ -81,29 +82,46 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
   @Test
   public void testCreateAvailabilityZoneWithValidParams() {
     ObjectNode azRequestJson = Json.newObject();
-    azRequestJson.put("code", "foo-az-1");
-    azRequestJson.put("name", "foo az 1");
-    azRequestJson.put("subnet", "az subnet 1");
+    ArrayNode azs = Json.newArray();
+    ObjectNode az1 = Json.newObject();
+    az1.put("code", "foo-az-1");
+    az1.put("name", "foo az 1");
+    az1.put("subnet", "az subnet 1");
+    azs.add(az1);
+    ObjectNode az2 = Json.newObject();
+    az2.put("code", "foo-az-2");
+    az2.put("name", "foo az 2");
+    az2.put("subnet", "az subnet 2");
+    azs.add(az2);
+    azRequestJson.set("availabilityZones", azs);
 
-    JsonNode json =
-        doCreateAZAndVerifyResult(defaultProvider.uuid, defaultRegion.uuid, azRequestJson, OK);
+    JsonNode json = doCreateAZAndVerifyResult(defaultProvider.uuid, defaultRegion.uuid,
+        azRequestJson, OK);
 
-    assertThat(json.get("uuid").toString(), is(notNullValue()));
-    assertValue(json, "code", "foo-az-1");
-    assertValue(json, "name", "foo az 1");
-    assertValue(json, "subnet", "az subnet 1");
+    assertEquals(2, json.size());
+
+    assertThat(json.get("foo-az-1"), is(notNullValue()));
+    assertThat(json.get("foo-az-1").get("uuid").toString(), is(notNullValue()));
+    assertValue(json.get("foo-az-1"), "code", "foo-az-1");
+    assertValue(json.get("foo-az-1"), "name", "foo az 1");
+    assertValue(json.get("foo-az-1"), "subnet", "az subnet 1");
+
+    assertThat(json.get("foo-az-2"), is(notNullValue()));
+    assertThat(json.get("foo-az-2").get("uuid").toString(), is(notNullValue()));
+    assertValue(json.get("foo-az-2"), "code", "foo-az-2");
+    assertValue(json.get("foo-az-2"), "name", "foo az 2");
+    assertValue(json.get("foo-az-2"), "subnet", "az subnet 2");
   }
 
   @Test
-  public void testCreateAvailabilityZoneWithInValidParams() {
+  public void testCreateAvailabilityZoneWithInvalidTopFormParams() {
     JsonNode json = doCreateAZAndVerifyResult(defaultProvider.uuid, defaultRegion.uuid,
         Json.newObject(), BAD_REQUEST);
-    assertErrorNodeValue(json, "code", "This field is required");
-    assertErrorNodeValue(json, "name", "This field is required");
+    assertErrorNodeValue(json, "availabilityZones", "This field is required");
   }
 
   @Test
-  public void testDeleteAvailabilityZoneWithInValidParams() {
+  public void testDeleteAvailabilityZoneWithInvalidParams() {
     UUID randomUUID = UUID.randomUUID();
     JsonNode json = doDeleteAZAndVerify(defaultProvider.uuid, defaultRegion.uuid,
         randomUUID, BAD_REQUEST);

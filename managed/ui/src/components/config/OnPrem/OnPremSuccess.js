@@ -2,8 +2,7 @@
 
 import React, { Component } from 'react';
 import { Link, withRouter, browserHistory } from 'react-router';
-import queryString from 'query-string';
-import { cloneDeep, map, partialRight, pick, pluck, sortBy } from 'lodash';
+import { cloneDeep, pluck, sortBy } from 'lodash';
 
 import { YBButton } from '../../common/forms/fields';
 import { Row, Col } from 'react-bootstrap';
@@ -50,15 +49,21 @@ class OnPremSuccess extends Component {
   }
 
   componentWillReceiveProps(nextProps) {
-    if (nextProps.cloudBootstrap !== this.props.cloudBootstrap) {
-      if (nextProps.cloudBootstrap.data.type === "cleanup" && isDefinedNotNull(nextProps.cloudBootstrap.data.response)) {
-        this.props.resetConfigForm();
-        this.props.fetchCloudMetadata();
-      }
+    const {
+      accessKeys,
+      cloud: {nodeInstanceList, instanceTypes, onPremJsonFormData},
+      cloudBootstrap,
+      cloudBootstrap: {data: {type, response}},
+      configuredProviders,
+      configuredRegions,
+    } = nextProps;
+
+    if (cloudBootstrap !== this.props.cloudBootstrap && type === "cleanup"
+        && isDefinedNotNull(response)) {
+      this.props.resetConfigForm();
+      this.props.fetchCloudMetadata();
     }
 
-    const {configuredRegions, configuredProviders, accessKeys,
-      cloud: {nodeInstanceList, instanceTypes, onPremJsonFormData}} = nextProps;
     // setOnPremJSONFormData if not already set.
     if (isEmptyObject(onPremJsonFormData) && this.getReadyState(nodeInstanceList) &&
         this.getReadyState(instanceTypes) && this.getReadyState(accessKeys)) {
@@ -77,7 +82,14 @@ class OnPremSuccess extends Component {
           privateKeyContent: onPremAccessKey.keyInfo && onPremAccessKey.keyInfo.privateKey,
           sshUser: onPremAccessKey.keyInfo && onPremAccessKey.keyInfo.sshUser,
         },
-        regions: pickArray(onPremRegions, ['code', 'latitude', 'longitude']),
+        regions: onPremRegions.map((regionItem) => {
+          return {
+            code: regionItem.code,
+            longitude: regionItem.longitude,
+            latitude: regionItem.latitude,
+            zones: regionItem.zones.map(zoneItem => zoneItem.code)
+          }
+        }),
         instanceTypes: instanceTypes.data.map(instanceTypeItem => ({
           instanceTypeCode: instanceTypeItem.instanceTypeCode,
           numCores: instanceTypeItem.numCores,
@@ -92,15 +104,13 @@ class OnPremSuccess extends Component {
           instanceType: nodeItem.details.instanceType
         })),
       };
-      onPremRegions.forEach((region, index) => {
-        jsonData.regions[index].zones = pickArray(region.zones, 'code');
-      });
       this.props.setOnPremJsonData(jsonData);
     }
   }
 
   render() {
-    const {configuredRegions, configuredProviders, accessKeys, universeList, location, cloud: {nodeInstanceList}} = this.props;
+    const {configuredRegions, configuredProviders, accessKeys, universeList, location,
+      cloud: {nodeInstanceList}} = this.props;
 
     if (location.query.section === 'nodes') {
       return <OnPremNodesListContainer changeSection={this.changeSection} />;

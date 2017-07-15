@@ -28,12 +28,12 @@ public class NodeInstanceTest extends FakeDBApplication {
   }
 
   private NodeInstance createNode() {
-    NodeInstanceFormData formData = new NodeInstanceFormData();
-    formData.ip = "fake_ip";
-    formData.region = region.code;
-    formData.zone = zone.code;
-    formData.instanceType = "default_instance_type";
-    return NodeInstance.create(zone.uuid, formData);
+    NodeInstanceFormData.NodeInstanceData nodeData = new NodeInstanceFormData.NodeInstanceData();
+    nodeData.ip = "fake_ip";
+    nodeData.region = region.code;
+    nodeData.zone = zone.code;
+    nodeData.instanceType = "default_instance_type";
+    return NodeInstance.create(zone.uuid, nodeData);
   }
 
   @Test
@@ -45,7 +45,7 @@ public class NodeInstanceTest extends FakeDBApplication {
     assertEquals(defaultNodeName, node.getNodeName());
     assertEquals(zone.uuid, node.zoneUuid);
 
-    NodeInstanceFormData details = node.getDetails();
+    NodeInstanceFormData.NodeInstanceData details = node.getDetails();
     assertEquals("fake_ip", details.ip);
     assertEquals("default_instance_type", details.instanceType);
     assertEquals(region.code, details.region);

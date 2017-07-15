@@ -2,7 +2,7 @@
 package com.yugabyte.yw.models;
 
 import com.avaje.ebean.*;
-import com.yugabyte.yw.forms.NodeInstanceFormData;
+import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 
 import java.util.HashMap;
 import java.util.List;
@@ -35,7 +35,7 @@ public class NodeInstance extends Model {
   public void setNodeName(String name) {
     nodeName = name;
     // This parses the JSON if first time accessing details.
-    NodeInstanceFormData details = getDetails();
+    NodeInstanceData details = getDetails();
     details.nodeName = name;
     setDetails(details);
   }
@@ -50,17 +50,17 @@ public class NodeInstance extends Model {
   private String nodeDetailsJson;
 
   // Preserving the details into a structured class.
-  private NodeInstanceFormData nodeDetails;
+  private NodeInstanceData nodeDetails;
 
-  public void setDetails(NodeInstanceFormData details) {
+  public void setDetails(NodeInstanceData details) {
     this.nodeDetails = details;
     this.nodeDetailsJson = Json.stringify(Json.toJson(this.nodeDetails));
   }
-  public NodeInstanceFormData getDetails() {
+  public NodeInstanceData getDetails() {
     if (nodeDetails == null) {
       nodeDetails = Json.fromJson(
         Json.parse(nodeDetailsJson),
-        NodeInstanceFormData.class);
+        NodeInstanceData.class);
     }
     return nodeDetails;
   }
@@ -157,7 +157,7 @@ public class NodeInstance extends Model {
     return nodes.get(0);
   }
 
-  public static NodeInstance create(UUID zoneUuid, NodeInstanceFormData formData) {
+  public static NodeInstance create(UUID zoneUuid, NodeInstanceData formData) {
     NodeInstance node = new NodeInstance();
     node.zoneUuid = zoneUuid;
     node.inUse = false;

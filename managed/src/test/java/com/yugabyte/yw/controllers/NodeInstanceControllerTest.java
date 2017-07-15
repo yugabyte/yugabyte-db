@@ -1,10 +1,13 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.controllers;
 
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.*;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
+import java.util.LinkedList;
 import java.util.UUID;
 
 import com.yugabyte.yw.common.FakeApiHelper;
@@ -25,11 +28,12 @@ import play.libs.Json;
 import play.mvc.Result;
 
 public class NodeInstanceControllerTest extends FakeDBApplication {
-  Customer customer;
-  Provider provider;
-  Region region;
-  AvailabilityZone zone;
-  NodeInstance node;
+  private final String FAKE_IP = "fake_ip";
+  private Customer customer;
+  private Provider provider;
+  private Region region;
+  private AvailabilityZone zone;
+  private NodeInstance node;
 
   @Before
   public void setUp() {
@@ -38,13 +42,13 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
     zone = AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
 
-    NodeInstanceFormData formData = new NodeInstanceFormData();
-    formData.ip = "fake_ip";
-    formData.region = region.code;
-    formData.zone = zone.code;
-    formData.instanceType = "fake_instance_type";
-    formData.sshUser = "ssh-user";
-    node = NodeInstance.create(zone.uuid, formData);
+    NodeInstanceFormData.NodeInstanceData nodeData = new NodeInstanceFormData.NodeInstanceData();
+    nodeData.ip = FAKE_IP;
+    nodeData.region = region.code;
+    nodeData.zone = zone.code;
+    nodeData.instanceType = "fake_instance_type";
+    nodeData.sshUser = "ssh-user";
+    node = NodeInstance.create(zone.uuid, nodeData);
     // Give it a name.
     node.setNodeName("fake_name");
     node.save();
@@ -67,7 +71,10 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   private Result createNode(UUID zoneUuid) {
     String uri = "/api/customers/" + customer.uuid + "/zones/" + zoneUuid + "/nodes";
-    JsonNode body = Json.parse(node.getDetailsJson());
+    NodeInstanceFormData formData = new NodeInstanceFormData();
+    formData.nodes = new LinkedList<>();
+    formData.nodes.add(node.getDetails());
+    JsonNode body = Json.toJson(formData);
     return FakeApiHelper.doRequestWithBody("POST", uri, body);
   }
 
@@ -155,12 +162,16 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     Result r = createNode(zone.uuid);
     checkOk(r);
     JsonNode json = parseResult(r);
+    assertThat(json, is(notNullValue()));
     assertTrue(json.isObject());
+    JsonNode nodeJson = json.get(FAKE_IP);
+    assertThat(nodeJson, is(notNullValue()));
+    assertTrue(nodeJson.isObject());
 
-    UUID uuid = UUID.fromString(json.get("nodeUuid").asText());
+    UUID uuid = UUID.fromString(nodeJson.get("nodeUuid").asText());
     NodeInstance dbNode = NodeInstance.get(uuid);
     assertTrue(dbNode != null);
-    checkNodesMatch(json, dbNode);
+    checkNodesMatch(nodeJson, dbNode);
   }
 
   @Test
