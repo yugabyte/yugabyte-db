@@ -15,6 +15,7 @@
           "build/latest/bin/yb_load_test_tool",
           "bin/zip_purge_yb_logs.sh",
           "bin/clean_cores.sh",
+          "bin/bulk_load_helper.sh",
           "build/latest/bin/yb-generate_partitions_main",
           "thirdparty/installed/uninstrumented/bin/*",
           "thirdparty/build/common/cqlsh/bin/*"],
