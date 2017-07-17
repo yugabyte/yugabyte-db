@@ -145,6 +145,18 @@ Status ParseHMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   return Status::OK();
 }
 
+Status ParseHDel(YBRedisWriteOp *op, const RedisClientCommand& args) {
+  const string string_key = args[1].ToString();
+  RETURN_NOT_OK(op->SetKey(string_key));
+  op->mutable_request()->set_allocated_del_request(new RedisDelRequestPB());
+  op->mutable_request()->mutable_key_value()->set_key(string_key);
+  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_HASH);
+  for (size_t i = 2; i < args.size(); i++) {
+    op->mutable_request()->mutable_key_value()->add_subkey(args[i].ToString());
+  }
+  return Status::OK();
+}
+
 Status ParseSAdd(YBRedisWriteOp *op, const RedisClientCommand& args) {
   DCHECK_EQ("sadd", to_lower_case(args[0]))
       << "Parsing sadd request where first arg is not sadd.";
@@ -155,6 +167,18 @@ Status ParseSAdd(YBRedisWriteOp *op, const RedisClientCommand& args) {
   const string string_key = args[1].ToString();
   RETURN_NOT_OK(op->SetKey(string_key));
   op->mutable_request()->set_allocated_add_request(new RedisAddRequestPB());
+  op->mutable_request()->mutable_key_value()->set_key(string_key);
+  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_SET);
+  for (size_t i = 2; i < args.size(); i++) {
+    op->mutable_request()->mutable_key_value()->add_subkey(args[i].ToString());
+  }
+  return Status::OK();
+}
+
+Status ParseSRem(YBRedisWriteOp *op, const RedisClientCommand& args) {
+  const string string_key = args[1].ToString();
+  RETURN_NOT_OK(op->SetKey(string_key));
+  op->mutable_request()->set_allocated_del_request(new RedisDelRequestPB());
   op->mutable_request()->mutable_key_value()->set_key(string_key);
   op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_SET);
   for (size_t i = 2; i < args.size(); i++) {
@@ -207,6 +231,7 @@ Status ParseDel(YBRedisWriteOp* op, const RedisClientCommand& args) {
   RETURN_NOT_OK(op->SetKey(string_key));
   op->mutable_request()->set_allocated_del_request(new RedisDelRequestPB());
   op->mutable_request()->mutable_key_value()->set_key(string_key);
+  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_STRING);
   return Status::OK();
 }
 

@@ -303,12 +303,40 @@ Status RedisWriteOperation::ApplyAppend(DocWriteBatch* doc_write_batch) {
 //                  See ENG-807
 Status RedisWriteOperation::ApplyDel(DocWriteBatch* doc_write_batch) {
   const RedisKeyValuePB& kv = request_.key_value();
-  RETURN_NOT_OK(doc_write_batch->SetPrimitive(
-      DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()),
-      Value(PrimitiveValue(ValueType::kTombstone))));
+  RedisDataType data_type;
+  RETURN_NOT_OK(GetRedisValueType(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &data_type));
+  if (data_type != REDIS_TYPE_NONE && data_type != kv.type()) {
+    response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
+    return Status::OK();
+  }
+  SubDocument values =  SubDocument();
+  int num_keys;
+  if (kv.type() == REDIS_TYPE_STRING) {
+    values = SubDocument(ValueType::kTombstone);
+    num_keys = 1; // Currently we only support deleting one key with DEL command.
+  } else {
+    num_keys = kv.subkey_size();
+    if (FLAGS_emulate_redis_responses) {
+      for (int i = 0; i < kv.subkey_size(); i++) {
+        RedisDataType type;
+        RETURN_NOT_OK(GetRedisValueType(
+            doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, i));
+        if (type == REDIS_TYPE_STRING) {
+          values.SetChild(PrimitiveValue(kv.subkey(i)), SubDocument(ValueType::kTombstone));
+        } else {
+          num_keys--;
+        }
+      }
+    } else {
+      for (int i = 0; i < kv.subkey_size(); i++) {
+        values.SetChild(PrimitiveValue(kv.subkey(i)), SubDocument(ValueType::kTombstone));
+      }
+    }
+  }
+  DocPath doc_path = DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key());
+  RETURN_NOT_OK(doc_write_batch->ExtendSubDocument(doc_path, values, InitMarkerBehavior::REQUIRED));
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
-  // Currently we only support deleting one key
-  response_.set_int_response(1);
+  response_.set_int_response(num_keys);
   return Status::OK();
 }
 

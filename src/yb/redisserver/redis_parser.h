@@ -26,7 +26,9 @@ CHECKED_STATUS ParseSet(yb::client::YBRedisWriteOp *op, const RedisClientCommand
 CHECKED_STATUS ParseMSet(yb::client::YBRedisWriteOp *op, const RedisClientCommand& args);
 CHECKED_STATUS ParseHSet(yb::client::YBRedisWriteOp *op, const RedisClientCommand& args);
 CHECKED_STATUS ParseHMSet(yb::client::YBRedisWriteOp *op, const RedisClientCommand& args);
+CHECKED_STATUS ParseHDel(yb::client::YBRedisWriteOp *op, const RedisClientCommand& args);
 CHECKED_STATUS ParseSAdd(yb::client::YBRedisWriteOp *op, const RedisClientCommand& args);
+CHECKED_STATUS ParseSRem(yb::client::YBRedisWriteOp *op, const RedisClientCommand& args);
 CHECKED_STATUS ParseGetSet(yb::client::YBRedisWriteOp *op, const RedisClientCommand& args);
 CHECKED_STATUS ParseAppend(yb::client::YBRedisWriteOp* op, const RedisClientCommand& args);
 CHECKED_STATUS ParseDel(yb::client::YBRedisWriteOp* op, const RedisClientCommand& args);

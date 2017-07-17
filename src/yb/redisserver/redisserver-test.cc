@@ -691,6 +691,13 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   DoRedisTestArray(__LINE__, {"HGETALL", "map_key"},
       {"subkey1", "41", "subkey2", "12", "subkey5", "19", "subkey6", "14"});
 
+  // subkey7 doesn't exists
+  DoRedisTestInt(__LINE__, {"HDEL", "map_key", "subkey2", "subkey7", "subkey5"}, 2);
+
+  SyncClient();
+
+  DoRedisTestArray(__LINE__, {"HGETALL", "map_key"}, {"subkey1", "41", "subkey6", "14"});
+
   DoRedisTestInt(__LINE__, {"SADD", "set1", "val1"}, 1);
 
   SyncClient();
@@ -700,6 +707,13 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   SyncClient();
 
   DoRedisTestArray(__LINE__, {"SMEMBERS", "set1"}, {"val1", "val2", "val3"});
+
+  // val4 doesn't exist
+  DoRedisTestInt(__LINE__, {"SREM", "set1", "val1", "val3", "val4"}, 2);
+
+  SyncClient();
+
+  DoRedisTestArray(__LINE__, {"SMEMBERS", "set1"}, {"val2"});
 
   // Commands are pipelined and only sent when client.commit() is called.
   // sync_commit() waits until all responses are received.

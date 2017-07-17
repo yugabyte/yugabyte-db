@@ -67,7 +67,9 @@ DEFINE_int32(redis_service_yb_client_timeout_millis, 60000,
     ((mset, MSet, -3, WRITE)) \
     ((hset, HSet, 4, WRITE)) \
     ((hmset, HMSet, -4, WRITE)) \
+    ((hdel, HDel, -3, WRITE)) \
     ((sadd, SAdd, -3, WRITE)) \
+    ((srem, SRem, -3, WRITE)) \
     ((getset, GetSet, 3, WRITE)) \
     ((append, Append, 3, WRITE)) \
     ((del, Del, 2, WRITE)) \
