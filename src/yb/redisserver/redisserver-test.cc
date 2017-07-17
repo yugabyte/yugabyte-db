@@ -41,6 +41,7 @@ using std::vector;
 using strings::Substitute;
 using yb::integration_tests::RedisTableTestBase;
 using yb::util::ToRepeatedPtrField;
+using namespace std::literals::string_literals;  // NOLINT
 
 #if defined(ADDRESS_SANITIZER) || defined(THREAD_SANITIZER)
 constexpr int kDefaultTimeoutMs = 100000;
@@ -666,6 +667,19 @@ TEST_F(TestRedisService, TestBinaryUsingOpenSourceClient) {
   VerifyCallbacks();
 }
 
+TEST_F(TestRedisService, TestEmptyValue) {
+  DoRedisTestOk(__LINE__, {"SET", "k1", ""});
+  DoRedisTestInt(__LINE__, {"HSET", "k2", "s1", ""}, 1);
+
+  SyncClient();
+
+  DoRedisTestBulkString(__LINE__, {"GET", "k1"}, "");
+  DoRedisTestBulkString(__LINE__, {"HGET", "k2", "s1"}, "");
+
+  SyncClient();
+  VerifyCallbacks();
+}
+
 // This test also uses the open source client
 TEST_F(TestRedisService, TestTtl) {
 
@@ -740,6 +754,8 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
 
   DoRedisTestNull(__LINE__, {"GET", "key2"});
   DoRedisTestInt(__LINE__, {"SETRANGE", "key1", "2", "xyz3"}, 10);
+  DoRedisTestInt(__LINE__, {"SETRANGE", "sr1", "2", "abcd"}, 6);
+  DoRedisTestBulkString(__LINE__, {"GET", "sr1"}, "\0\0abcd"s);
 
   SyncClient();
 
@@ -753,8 +769,11 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   SyncClient();
 
   DoRedisTestBulkString(__LINE__, {"GET", "key3"}, "24");
-  DoRedisTestInt(__LINE__, {"STRLEN", "key3"}, 2);
+
   DoRedisTestInt(__LINE__, {"STRLEN", "key1"}, 10);
+  DoRedisTestInt(__LINE__, {"STRLEN", "key2"}, 0);
+  DoRedisTestInt(__LINE__, {"STRLEN", "key3"}, 2);
+
   DoRedisTestInt(__LINE__, {"EXISTS", "key1"}, 1);
   DoRedisTestInt(__LINE__, {"EXISTS", "key2"}, 0);
   DoRedisTestInt(__LINE__, {"EXISTS", "key3"}, 1);

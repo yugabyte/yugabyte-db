@@ -51,10 +51,6 @@ Status ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   const string string_value = args[2].ToBuffer();
   op->mutable_request()->mutable_key_value()->set_key(string_key);
   RETURN_NOT_OK(op->SetKey(string_key));
-  if (string_value.empty()) {
-      return STATUS_SUBSTITUTE(InvalidArgument,
-        "A SET request must have non empty value field");
-  }
   op->mutable_request()->mutable_key_value()->add_value(string_value);
   int idx = 3;
   while (idx < args.size()) {

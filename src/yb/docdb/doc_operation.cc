@@ -370,12 +370,15 @@ Status RedisWriteOperation::ApplySetRange(DocWriteBatch* doc_write_batch) {
 
   RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, &value));
 
-  if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
+  if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, type, &response_, true)) {
     // We've already set the error code in the response.
     return Status::OK();
   }
 
   // TODO (akashnil): Handle overflows.
+  if (request_.set_range_request().offset() > value.length()) {
+    value.resize(request_.set_range_request().offset(), 0);
+  }
   value.replace(request_.set_range_request().offset(), kv.value(0).length(), kv.value(0));
   response_.set_int_response(value.length());
 
@@ -643,8 +646,8 @@ Status RedisReadOperation::ExecuteStrLen(rocksdb::DB *rocksdb, HybridTime hybrid
 
   RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value));
 
-  if (VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
-    response_.set_int_response(value.length());
+  if (VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, type, &response_, true)) {
+    response_.set_int_response((type == RedisDataType::REDIS_TYPE_NONE) ? 0 : value.length());
   }
 
   return Status::OK();
