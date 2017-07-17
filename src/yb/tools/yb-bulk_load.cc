@@ -10,20 +10,27 @@
 
 #include "rocksdb/db.h"
 #include "yb/client/client.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/common/yql_protocol.pb.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/docdb/doc_operation.h"
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/tools/bulk_load_docdb_util.h"
 #include "yb/tools/bulk_load_utils.h"
 #include "yb/tools/yb-generate_partitions.h"
+#include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/path_util.h"
+#include "yb/util/subprocess.h"
 
 using std::stoi;
 using std::stol;
@@ -44,6 +51,13 @@ DEFINE_string(namespace_name, "", "Namespace of the table");
 DEFINE_string(base_dir, "", "Base directory where we will store all the SSTable files");
 DEFINE_int64(memtable_size_bytes, 1_GB, "Amount of bytes to use for the rocksdb memtable");
 DEFINE_int32(row_batch_size, 1000, "The number of rows to batch together in each rocksdb write");
+DEFINE_string(bulk_load_helper_script, "./bulk_load_helper.sh", "Relative path for bulk load helper"
+              " script");
+DEFINE_string(bulk_load_cleanup_script, "./bulk_load_cleanup.sh", "Relative path for bulk load "
+              "cleanup script");
+DEFINE_string(ssh_key_file, "", "SSH key to push SSTable files to production cluster");
+DEFINE_bool(export_files, false, "Whether or not the files should be exported to a production "
+            "cluster.");
 
 namespace yb {
 namespace tools {
@@ -65,7 +79,7 @@ static CHECKED_STATUS InitYBBulkLoad(shared_ptr<YBClient>* client,
   return Status::OK();
 }
 
-static CHECKED_STATUS InitDBUtil(const string& tablet_id,
+static CHECKED_STATUS InitDBUtil(const TabletId& tablet_id,
                                     unique_ptr<BulkLoadDocDBUtil>* db_fixture) {
   db_fixture->reset(new BulkLoadDocDBUtil(tablet_id, FLAGS_base_dir, FLAGS_memtable_size_bytes));
   RETURN_NOT_OK((*db_fixture)->InitRocksDBOptions());
@@ -183,13 +197,89 @@ static CHECKED_STATUS InsertRow(const string& row,
   return Status::OK();
 }
 
+static CHECKED_STATUS FinishTabletProcessing(const TabletId& tablet_id,
+                                             BulkLoadDocDBUtil* db_fixture,
+                                             docdb::DocWriteBatch* doc_write_batch,
+                                             YBClient* client) {
+  RETURN_NOT_OK(db_fixture->WriteToRocksDBAndClear(
+      doc_write_batch, HybridTime::kInitialHybridTime, /* decode_dockey */ false));
+  RETURN_NOT_OK(db_fixture->FlushRocksDB());
+
+  if (!FLAGS_export_files) {
+    return Status::OK();
+  }
+
+  // Find replicas for the tablet.
+  master::TabletLocationsPB tablet_locations;
+  RETURN_NOT_OK(client->GetTabletLocation(tablet_id, &tablet_locations));
+  string csv_replicas;
+  std::map<string, int32_t> host_to_rpcport;
+  for (const master::TabletLocationsPB_ReplicaPB& replica : tablet_locations.replicas()) {
+    if (!csv_replicas.empty()) {
+      csv_replicas += ",";
+    }
+    const string& host = replica.ts_info().rpc_addresses(0).host();
+    csv_replicas += host;
+    host_to_rpcport[host] = replica.ts_info().rpc_addresses(0).port();
+  }
+
+  // Invoke the bulk_load_helper script.
+  vector<string> argv =  {FLAGS_bulk_load_helper_script, "-t", tablet_id, "-r", csv_replicas, "-i",
+    FLAGS_ssh_key_file, "-d", db_fixture->rocksdb_dir()};
+  string bulk_load_helper_stdout;
+  RETURN_NOT_OK(Subprocess::Call(argv, &bulk_load_helper_stdout));
+
+  // Trim the output.
+  boost::trim(bulk_load_helper_stdout);
+  LOG(INFO) << "Helper script stdout: " << bulk_load_helper_stdout;
+
+  // Finalize the import.
+  rpc::MessengerBuilder bld("Client");
+  std::shared_ptr<rpc::Messenger> client_messenger;
+  RETURN_NOT_OK(bld.Build(&client_messenger));
+  vector<string> lines;
+  boost::split(lines, bulk_load_helper_stdout, boost::is_any_of("\n"));
+  for (const string& line : lines) {
+    vector<string> tokens;
+    boost::split(tokens, line, boost::is_any_of(","));
+    if (tokens.size() != 2) {
+      return STATUS_SUBSTITUTE(InvalidArgument, "Invalid line $0", line);
+    }
+    const string& replica_host = tokens[0];
+    const string& directory = tokens[1];
+    Endpoint endpoint(IpAddress::from_string(replica_host), host_to_rpcport[replica_host]);
+
+    tserver::TabletServerServiceProxy proxy(client_messenger, endpoint);
+    tserver::ImportDataRequestPB req;
+    req.set_tablet_id(tablet_id);
+    req.set_source_dir(directory);
+
+    tserver::ImportDataResponsePB resp;
+    rpc::RpcController controller;
+    LOG(INFO) << "Importing " << directory << " on " << replica_host << " for tablet_id: "
+              << tablet_id;
+    RETURN_NOT_OK(proxy.ImportData(req, &resp, &controller));
+    if (resp.has_error()) {
+      RETURN_NOT_OK(StatusFromPB(resp.error().status()));
+    }
+
+    // Now cleanup the files from the production tserver.
+    vector <string> cleanup_script = {FLAGS_bulk_load_cleanup_script, "-d", directory, "-t",
+      replica_host, "-i", FLAGS_ssh_key_file};
+    RETURN_NOT_OK(Subprocess::Call(cleanup_script));
+  }
+
+  // Delete the data once the import is done.
+  return yb::Env::Default()->DeleteRecursively(db_fixture->rocksdb_dir());
+}
+
 static CHECKED_STATUS RunBulkLoad() {
   shared_ptr<YBClient> client;
   shared_ptr<YBTable> table;
   unique_ptr<YBPartitionGenerator> partition_generator;
   RETURN_NOT_OK(InitYBBulkLoad(&client, &table, &partition_generator));
 
-  string current_tablet_id;
+  TabletId current_tablet_id;
 
   unique_ptr<BulkLoadDocDBUtil> db_fixture = nullptr;
   unique_ptr<docdb::DocWriteBatch> doc_write_batch;
@@ -203,16 +293,15 @@ static CHECKED_STATUS RunBulkLoad() {
     if (index == std::string::npos) {
       return STATUS_SUBSTITUTE(IllegalState, "Invalid line: $0", line);
     }
-    const string tablet_id = line.substr(0, index);
+    const TabletId tablet_id = line.substr(0, index);
     const string row = line.substr(index + 1, line.size() - (index + 1));
 
     // Reinitialize rocksdb if needed.
     if (current_tablet_id.empty() || current_tablet_id != tablet_id) {
       if (db_fixture) {
         // Flush all of the data before opening a new rocksdb.
-        RETURN_NOT_OK(db_fixture->WriteToRocksDBAndClear(
-            doc_write_batch.get(), HybridTime::kInitialHybridTime, /* decode_dockey */ false));
-        RETURN_NOT_OK(db_fixture->FlushRocksDB());
+        RETURN_NOT_OK(FinishTabletProcessing(current_tablet_id, db_fixture.get(),
+                                             doc_write_batch.get(), client.get()));
       }
       RETURN_NOT_OK(InitDBUtil(tablet_id, &db_fixture));
       doc_write_batch.reset(new docdb::DocWriteBatch(db_fixture->rocksdb()));
@@ -232,9 +321,8 @@ static CHECKED_STATUS RunBulkLoad() {
 
   if (db_fixture) {
     // Flush the last tablet.
-    RETURN_NOT_OK(db_fixture->WriteToRocksDBAndClear(
-        doc_write_batch.get(), HybridTime::kInitialHybridTime, /* decode_dockey */ false));
-    return db_fixture->FlushRocksDB();
+    RETURN_NOT_OK(FinishTabletProcessing(current_tablet_id, db_fixture.get(),
+                                         doc_write_batch.get(), client.get()));
   }
   return Status::OK();
 }
@@ -247,19 +335,22 @@ int main(int argc, char** argv) {
   yb::InitGoogleLoggingSafe(argv[0]);
   if (FLAGS_master_addresses.empty() || FLAGS_table_name.empty() || FLAGS_namespace_name.empty()
       || FLAGS_base_dir.empty()) {
-    LOG (ERROR) << "Need to specify --master_addresses, --table_name, --namespace_name and "
+    LOG(FATAL) << "Need to specify --master_addresses, --table_name, --namespace_name, "
         "--base_dir";
-    return 1;
+  }
+
+  if (FLAGS_export_files && FLAGS_ssh_key_file.empty()) {
+    LOG(FATAL) << "Need to specify --ssh_key_file with --export_files";
   }
 
   // Verify the bulk load path exists.
   if (!yb::Env::Default()->FileExists(FLAGS_base_dir)) {
-    LOG (FATAL) << "Bulk load directory doesn't exist: " << FLAGS_base_dir;
+    LOG(FATAL) << "Bulk load directory doesn't exist: " << FLAGS_base_dir;
   }
 
   yb::Status s = yb::tools::RunBulkLoad();
   if (!s.ok()) {
-    LOG (FATAL) << "Error running bulk load: " << s.ToString();
+    LOG(FATAL) << "Error running bulk load: " << s.ToString();
   }
   return 0;
 }

@@ -83,6 +83,8 @@ using master::IsDeleteTableDoneRequestPB;
 using master::IsDeleteTableDoneResponsePB;
 using master::GetTableLocationsRequestPB;
 using master::GetTableLocationsResponsePB;
+using master::GetTabletLocationsRequestPB;
+using master::GetTabletLocationsResponsePB;
 using master::ListMastersRequestPB;
 using master::ListMastersResponsePB;
 using master::ListTablesRequestPB;
@@ -246,6 +248,12 @@ template Status YBClient::Data::SyncLeaderMasterRpc(
     GetTableLocationsResponsePB* resp, int* num_attempts, const char* func_name,
     const std::function<Status(
         MasterServiceProxy*, const GetTableLocationsRequestPB&, GetTableLocationsResponsePB*,
+        RpcController*)>& func);
+template Status YBClient::Data::SyncLeaderMasterRpc(
+    const MonoTime& deadline, YBClient* client, const GetTabletLocationsRequestPB& req,
+    GetTabletLocationsResponsePB* resp, int* num_attempts, const char* func_name,
+    const std::function<Status(
+        MasterServiceProxy*, const GetTabletLocationsRequestPB&, GetTabletLocationsResponsePB*,
         RpcController*)>& func);
 template Status YBClient::Data::SyncLeaderMasterRpc(
     const MonoTime& deadline, YBClient* client, const ListMastersRequestPB& req,

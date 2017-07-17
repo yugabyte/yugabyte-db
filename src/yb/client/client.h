@@ -286,6 +286,9 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
                             const int32_t max_tablets,
                             google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets);
 
+  CHECKED_STATUS GetTabletLocation(const std::string& tablet_id,
+                                   master::TabletLocationsPB* tablet_location);
+
   // Get the list of master uuids. Can be enhanced later to also return port/host info.
   CHECKED_STATUS ListMasters(
     MonoTime deadline,

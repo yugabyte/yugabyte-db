@@ -37,5 +37,9 @@ std::string BulkLoadDocDBUtil::tablet_id() {
   return tablet_id_;
 }
 
+const std::string& BulkLoadDocDBUtil::rocksdb_dir() {
+  return rocksdb_dir_;
+}
+
 } // namespace tools
 } // namespace yb

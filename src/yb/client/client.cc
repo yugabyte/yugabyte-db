@@ -43,6 +43,7 @@
 #include "yb/client/tablet_server-internal.h"
 #include "yb/client/yb_op.h"
 #include "yb/common/common.pb.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/partition.h"
 #include "yb/common/row_operations.h"
 #include "yb/common/wire_protocol.h"
@@ -71,6 +72,8 @@ using yb::master::GetTableSchemaRequestPB;
 using yb::master::GetTableSchemaResponsePB;
 using yb::master::GetTableLocationsRequestPB;
 using yb::master::GetTableLocationsResponsePB;
+using yb::master::GetTabletLocationsRequestPB;
+using yb::master::GetTabletLocationsResponsePB;
 using yb::master::ListMastersRequestPB;
 using yb::master::ListMastersResponsePB;
 using yb::master::ListTablesRequestPB;
@@ -502,6 +505,37 @@ Status YBClient::GetTablets(const YBTableName& table_name,
     return StatusFromPB(resp.error().status());
   }
   *tablets = resp.tablet_locations();
+  return Status::OK();
+}
+
+Status YBClient::GetTabletLocation(const TabletId& tablet_id,
+                                   master::TabletLocationsPB* tablet_location) {
+  GetTabletLocationsRequestPB req;
+  GetTabletLocationsResponsePB resp;
+  req.add_tablet_ids(tablet_id);
+
+  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  deadline.AddDelta(default_admin_operation_timeout());
+  Status s =
+      data_->SyncLeaderMasterRpc<GetTabletLocationsRequestPB, GetTabletLocationsResponsePB>(
+          deadline,
+          this,
+          req,
+          &resp,
+          nullptr,
+          "GetTabletLocation",
+          &MasterServiceProxy::GetTabletLocations);
+  RETURN_NOT_OK(s);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  if (resp.tablet_locations_size() != 1) {
+    return STATUS_SUBSTITUTE(IllegalState, "Expected single tablet for $0, received $1",
+                             tablet_id, resp.tablet_locations_size());
+  }
+
+  *tablet_location = resp.tablet_locations(0);
   return Status::OK();
 }
 
