@@ -9,6 +9,7 @@
 
 #include "yb/rpc/rpc_context.h"
 #include "yb/tserver/tablet_peer_lookup.h"
+#include "yb/util/logging.h"
 
 namespace yb {
 namespace tserver {
