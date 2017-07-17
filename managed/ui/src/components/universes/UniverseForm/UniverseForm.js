@@ -56,6 +56,7 @@ export default class UniverseForm extends Component {
     this.configureUniverseNodeList = this.configureUniverseNodeList.bind(this);
     this.getCurrentProvider = this.getCurrentProvider.bind(this);
     this.hasFieldChanged = this.hasFieldChanged.bind(this);
+    this.getCurrentUserIntent = this.getCurrentUserIntent.bind(this);
     this.setDeviceInfo = this.setDeviceInfo.bind(this);
     this.state = initialState;
   }
@@ -70,6 +71,22 @@ export default class UniverseForm extends Component {
     return this.props.cloud.providers.data.find((provider) => provider.uuid === providerUUID);
   }
 
+  getCurrentUserIntent() {
+    const {formValues} = this.props;
+    return {
+      universeName: formValues.universeName,
+      numNodes: this.state.numNodes,
+      isMultiAZ: this.state.azCheckState,
+      provider: this.state.providerSelected,
+      regionList: this.state.regionList,
+      instanceType: this.state.instanceTypeSelected,
+      ybSoftwareVersion: this.state.ybSoftwareVersion,
+      replicationFactor: this.state.replicationFactor,
+      deviceInfo: this.state.deviceInfo,
+      accessKeyCode: this.state.accessKeyCode
+    }
+  }
+  
   setDeviceInfo(instanceTypeCode, instanceTypeList) {
     let instanceTypeSelectedData = instanceTypeList.find(function (item) {
       return item.instanceTypeCode === instanceTypeCode;
@@ -247,12 +264,12 @@ export default class UniverseForm extends Component {
   // Compare state variables against existing user intent
   hasFieldChanged() {
     const {universe: {currentUniverse}} = this.props;
-    let existingIntent = currentUniverse.data.universeDetails.userIntent;
-    if (existingIntent.provider === this.state.providerSelected && existingIntent.numNodes === this.state.numNodes
-      && _.isEqual(currentUniverse.data.universeDetails.userIntent.regionList.sort(), this.state.regionList.sort())) {
-      return false;
+    if (isEmptyObject(currentUniverse.data)) {
+      return true;
     }
-    return true;
+    let existingIntent = _.clone(currentUniverse.data.universeDetails.userIntent, true);
+    let currentIntent = this.getCurrentUserIntent();
+    return !areIntentsEqual(existingIntent, currentIntent);
   }
 
   componentDidUpdate(prevProps, prevState) {
