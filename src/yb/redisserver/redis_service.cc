@@ -65,7 +65,14 @@ DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
     ((hget, HGet, 3, READ)) \
     ((hmget, HMGet, -3, READ)) \
     ((hgetall, HGetAll, 2, READ)) \
+    ((hkeys, HKeys, 2, READ)) \
+    ((hvals, HVals, 2, READ)) \
+    ((hlen, HLen, 2, READ)) \
+    ((hexists, HExists, 3, READ)) \
+    ((hstrlen, HStrLen, 3, READ)) \
     ((smembers, SMembers, 2, READ)) \
+    ((sismember, SIsMember, 3, READ)) \
+    ((scard, SCard, 2, READ)) \
     ((strlen, StrLen, 2, READ)) \
     ((exists, Exists, 2, READ)) \
     ((getrange, GetRange, 4, READ)) \
@@ -81,7 +88,9 @@ DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
     ((del, Del, 2, WRITE)) \
     ((setrange, SetRange, 4, WRITE)) \
     ((incr, Incr, 2, WRITE)) \
-    ((echo, Echo, 2, ECHO)) \
+    ((echo, Echo, 2, LOCAL)) \
+    ((auth, Auth, -1, LOCAL)) \
+    ((config, Config, -1, LOCAL)) \
     /**/
 
 #define DO_DEFINE_HISTOGRAM(name, cname, arity, type) \
@@ -105,7 +114,7 @@ namespace redisserver {
 
 #define READ_OP YBRedisReadOp
 #define WRITE_OP YBRedisWriteOp
-#define ECHO_OP std::string
+#define LOCAL_OP RedisResponsePB
 
 #define DO_PARSER_FORWARD(name, cname, arity, type) \
     CHECKED_STATUS BOOST_PP_CAT(Parse, cname)( \
@@ -406,10 +415,10 @@ class RedisServiceImpl::Impl {
     command_name_to_info_map_[info.name] = info;
   }
 
-  void EchoCommand(
+  void LocalCommand(
       const RedisCommandInfo& info,
       size_t idx,
-      std::string (*parser)(const RedisClientCommand&),
+      RedisResponsePB (*parse)(const RedisClientCommand&),
       BatchContext* context);
 
   template<class Op>
@@ -443,8 +452,18 @@ class RedisServiceImpl::Impl {
   RedisServer* server_;
 };
 
-std::string ParseEcho(const RedisClientCommand& command) {
-  return command[1].ToBuffer();
+RedisResponsePB ParseEcho(const RedisClientCommand& command) {
+  RedisResponsePB responsePB;
+  responsePB.set_string_response(command[1].ToBuffer());
+  return responsePB;
+}
+
+RedisResponsePB ParseAuth(const RedisClientCommand& command) {
+  return RedisResponsePB();
+}
+
+RedisResponsePB ParseConfig(const RedisClientCommand& command) {
+  return RedisResponsePB();
 }
 
 #define REDIS_METRIC(name) \
@@ -452,7 +471,7 @@ std::string ParseEcho(const RedisClientCommand& command) {
 
 #define READ_COMMAND Command<YBRedisReadOp>
 #define WRITE_COMMAND Command<YBRedisWriteOp>
-#define ECHO_COMMAND EchoCommand
+#define LOCAL_COMMAND LocalCommand
 
 #define DO_POPULATE_HANDLER(name, cname, arity, type) \
   { \
@@ -572,16 +591,15 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
   context.Commit();
 }
 
-void RedisServiceImpl::Impl::EchoCommand(
+void RedisServiceImpl::Impl::LocalCommand(
     const RedisCommandInfo& info,
     size_t idx,
-    std::string (*parse)(const RedisClientCommand&),
+    RedisResponsePB (*parse)(const RedisClientCommand&),
     BatchContext* context) {
   const auto& command = context->command(idx);
-  RedisResponsePB echo_response;
-  echo_response.set_string_response(parse(command));
+  RedisResponsePB local_response = parse(command);
   VLOG(4) << "Responding to Echo with " << command[1].ToBuffer();
-  context->call()->RespondSuccess(idx, echo_response, info.metrics);
+  context->call()->RespondSuccess(idx, local_response, info.metrics);
   VLOG(4) << "Done Responding to Echo.";
 }
 

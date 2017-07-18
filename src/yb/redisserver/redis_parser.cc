@@ -42,12 +42,6 @@ string to_lower_case(Slice slice) {
 } // namespace
 
 Status ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
-  DCHECK_EQ("set", to_lower_case(args[0]))
-      << "Parsing set request where first arg is not set.";
-  if (args.size() < 3) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "A SET request must have at least 3 arguments, found $0", args.size());
-  }
   if (args[1].empty()) {
     return STATUS_SUBSTITUTE(InvalidArgument,
         "A SET request must have a non empty key field");
@@ -100,8 +94,6 @@ Status ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
 
 // TODO: support MSET
 Status ParseMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
-  DCHECK_EQ("mset", to_lower_case(args[0]))
-      << "Parsing mset request where first arg is not mset.";
   if (args.size() < 3 || args.size() % 2 == 0) {
     return STATUS_SUBSTITUTE(InvalidArgument,
         "An MSET request must have at least 3, odd number of arguments, found $0", args.size());
@@ -110,12 +102,6 @@ Status ParseMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
 }
 
 Status ParseHSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
-  DCHECK_EQ("hset", to_lower_case(args[0]))
-      << "Parsing hset request where first arg is not hset.";
-  if (args.size() != 4) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "An HSET request must have exactly 4 arguments, found $0", args.size());
-  }
   const string string_key = args[1].ToBuffer();
   const string string_subkey = args[2].ToBuffer();
   const string string_value = args[3].ToBuffer();
@@ -133,7 +119,7 @@ Status ParseHMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
       << "Parsing hmset request where first arg is not hmset.";
   if (args.size() < 4 || args.size() % 2 == 1) {
     return STATUS_SUBSTITUTE(InvalidArgument,
-        "An HMSET request must have at least 4, even number of arguments, found $0", args.size());
+        "wrong number of arguments for HMSET");
   }
   RETURN_NOT_OK(op->SetKey(args[1].ToString()));
   op->mutable_request()->set_allocated_set_request(new RedisSetRequestPB());
@@ -159,12 +145,6 @@ Status ParseHDel(YBRedisWriteOp *op, const RedisClientCommand& args) {
 }
 
 Status ParseSAdd(YBRedisWriteOp *op, const RedisClientCommand& args) {
-  DCHECK_EQ("sadd", to_lower_case(args[0]))
-      << "Parsing sadd request where first arg is not sadd.";
-  if (args.size() < 3) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "An SADD request must have at least 3 arguments, found $0", args.size());
-  }
   const string string_key = args[1].ToString();
   RETURN_NOT_OK(op->SetKey(string_key));
   op->mutable_request()->set_allocated_add_request(new RedisAddRequestPB());
@@ -189,12 +169,6 @@ Status ParseSRem(YBRedisWriteOp *op, const RedisClientCommand& args) {
 }
 
 Status ParseGetSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
-  DCHECK_EQ("getset", to_lower_case(args[0]))
-      << "Parsing getset request where first arg is not getset.";
-  if (args.size() != 3) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "A GETSET request must have exactly 3 arguments, found $0", args.size());
-  }
   const string string_key = args[1].ToBuffer();
   const string string_value = args[2].ToBuffer();
   RETURN_NOT_OK(op->SetKey(string_key));
@@ -205,12 +179,6 @@ Status ParseGetSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
 }
 
 Status ParseAppend(YBRedisWriteOp* op, const RedisClientCommand& args) {
-  DCHECK_EQ("append", to_lower_case(args[0]))
-      << "Parsing append request where first arg is not append.";
-  if (args.size() != 3) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "An APPEND request must have exactly 3 arguments, found $0", args.size());
-  }
   const string string_key = args[1].ToBuffer();
   const string string_value = args[2].ToBuffer();
   RETURN_NOT_OK(op->SetKey(string_key));
@@ -222,12 +190,6 @@ Status ParseAppend(YBRedisWriteOp* op, const RedisClientCommand& args) {
 
 // Note: deleting only one key is supported using one command as of now.
 Status ParseDel(YBRedisWriteOp* op, const RedisClientCommand& args) {
-  DCHECK_EQ("del", to_lower_case(args[0]))
-      << "Parsing del request where first arg is not del.";
-  if (args.size() != 2) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "A DEL request must have exactly 2 arguments, found $0", args.size());
-  }
   const string string_key = args[1].ToBuffer();
   RETURN_NOT_OK(op->SetKey(string_key));
   op->mutable_request()->set_allocated_del_request(new RedisDelRequestPB());
@@ -237,12 +199,6 @@ Status ParseDel(YBRedisWriteOp* op, const RedisClientCommand& args) {
 }
 
 Status ParseSetRange(YBRedisWriteOp* op, const RedisClientCommand& args) {
-  DCHECK_EQ("setrange", to_lower_case(args[0]))
-      << "Parsing setrange request where first arg is not setrange.";
-  if (args.size() != 4) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "A GETSET request must have exactly 4 arguments, found $0", args.size());
-  }
   const string string_key = args[1].ToString();
   const string string_value = args[3].ToString();
   RETURN_NOT_OK(op->SetKey(string_key));
@@ -267,12 +223,6 @@ Status ParseSetRange(YBRedisWriteOp* op, const RedisClientCommand& args) {
 }
 
 Status ParseIncr(YBRedisWriteOp* op, const RedisClientCommand& args) {
-  DCHECK_EQ("incr", to_lower_case(args[0]))
-      << "Parsing incr request where first arg is not incr.";
-  if (args.size() != 2) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "An INCR request must have exactly 2 arguments, found $0", args.size());
-  }
   const string string_key = args[1].ToString();
   RETURN_NOT_OK(op->SetKey(string_key));
   op->mutable_request()->set_allocated_incr_request(new RedisIncrRequestPB());
@@ -281,19 +231,12 @@ Status ParseIncr(YBRedisWriteOp* op, const RedisClientCommand& args) {
 }
 
 Status ParseGet(YBRedisReadOp* op, const RedisClientCommand& args) {
-  DCHECK_EQ("get", to_lower_case(args[0]))
-      << "Parsing get request where first arg is not get.";
-  // TODO: Can remove some checks, eg. arg[0] == "GET" and key non-empty
-  if (args.size() != 2) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "A GET request must have exactly two arguments, found $0", args.size());
-  }
   op->mutable_request()->set_allocated_get_request(new RedisGetRequestPB());
   const string string_key = args[1].ToString();
   RETURN_NOT_OK(op->SetKey(string_key));
   if (string_key.empty()) {
     return STATUS_SUBSTITUTE(InvalidArgument,
-        "A SET request must have non empty value field");
+        "A GET request must have non empty key field");
   }
   op->mutable_request()->mutable_key_value()->set_key(string_key);
   op->mutable_request()->mutable_get_request()->set_request_type(
@@ -301,94 +244,70 @@ Status ParseGet(YBRedisReadOp* op, const RedisClientCommand& args) {
   return Status::OK();
 }
 
+//  Used for HGET/HSTRLEN/HEXISTS. Also for HMGet
+//  CMD <KEY> [<SUB-KEY>]*
+Status ParseHGetLikeCommands(YBRedisReadOp* op, const RedisClientCommand& args,
+                             RedisGetRequestPB_GetRequestType request_type) {
+  op->mutable_request()->set_allocated_get_request(new RedisGetRequestPB());
+      RETURN_NOT_OK(op->SetKey(args[1].ToBuffer()));
+  op->mutable_request()->mutable_key_value()->set_key(args[1].ToBuffer());
+  op->mutable_request()->mutable_get_request()->set_request_type(request_type);
+  for (int i = 2; i < args.size(); i++) {
+    op->mutable_request()->mutable_key_value()->add_subkey(args[i].ToBuffer());
+  }
+  return Status::OK();
+}
+
 // TODO: Support MGET
 Status ParseMGet(YBRedisReadOp* op, const RedisClientCommand& args) {
-  DCHECK_EQ("mget", to_lower_case(args[0]))
-      << "Parsing mget request where first arg is not mget.";
-  if (args.size() < 2) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "A MGET request must have at least two arguments, found $0", args.size());
-  }
-  return STATUS(InvalidCommand, "MGET command not yet supported");;
+  return STATUS(InvalidCommand, "MGET command not yet supported");
 }
 
 Status ParseHGet(YBRedisReadOp* op, const RedisClientCommand& args) {
-  DCHECK_EQ("hget", to_lower_case(args[0]))
-      << "Parsing hget request where first arg is not hget.";
-  if (args.size() != 3) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "A HGET request must have exactly 3 arguments, found $0", args.size());
-  }
-  op->mutable_request()->set_allocated_get_request(new RedisGetRequestPB());
-  const string string_key = args[1].ToString();
-  const string string_subkey = args[2].ToString();
-  RETURN_NOT_OK(op->SetKey(string_key));
-  op->mutable_request()->mutable_key_value()->set_key(string_key);
-  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_HASH);
-  op->mutable_request()->mutable_key_value()->add_subkey(string_subkey);
-  op->mutable_request()->mutable_get_request()->set_request_type(
-      RedisGetRequestPB_GetRequestType_HGET);
-  return Status::OK();
+  return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_HGET);
+}
+
+Status ParseHStrLen(YBRedisReadOp* op, const RedisClientCommand& args) {
+  return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_HSTRLEN);
+}
+
+Status ParseHExists(YBRedisReadOp* op, const RedisClientCommand& args) {
+  return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_HEXISTS);
 }
 
 Status ParseHMGet(YBRedisReadOp* op, const RedisClientCommand& args) {
-  DCHECK_EQ("hmget", to_lower_case(args[0]))
-      << "Parsing hmget request where first arg is not hmget.";
-  if (args.size() < 3) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "A HMGET request must have at least three arguments, found $0", args.size());
-  }
-  op->mutable_request()->set_allocated_get_request(new RedisGetRequestPB());
-  RETURN_NOT_OK(op->SetKey(args[1].ToString()));
-  op->mutable_request()->mutable_key_value()->set_key(args[1].ToString());
-  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_HASH);
-  op->mutable_request()->mutable_get_request()->set_request_type(
-      RedisGetRequestPB_GetRequestType_HMGET);
-  for (int i = 2; i < args.size(); i++) {
-    op->mutable_request()->mutable_key_value()->add_subkey(args[i].ToString());
-  }
-  return Status::OK();
+  return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_HMGET);
 }
 
 Status ParseHGetAll(YBRedisReadOp* op, const RedisClientCommand& args) {
-  DCHECK_EQ("hgetall", to_lower_case(args[0]))
-      << "Parsing hgetall request where first arg is not hgetall.";
-  if (args.size() != 2) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "A HGETALL request must have exactly two arguments, found $0", args.size());
-  }
-  op->mutable_request()->set_allocated_get_request(new RedisGetRequestPB());
-  RETURN_NOT_OK(op->SetKey(args[1].ToString()));
-  op->mutable_request()->mutable_key_value()->set_key(args[1].ToString());
-  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_HASH);
-  op->mutable_request()->mutable_get_request()->set_request_type(
-      RedisGetRequestPB_GetRequestType_HGETALL);
-  return Status::OK();
+  return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_HGETALL);
+}
+
+Status ParseHKeys(YBRedisReadOp* op, const RedisClientCommand& args) {
+  return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_HKEYS);
+}
+
+Status ParseHVals(YBRedisReadOp* op, const RedisClientCommand& args) {
+  return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_HVALS);
+}
+
+Status ParseHLen(YBRedisReadOp* op, const RedisClientCommand& args) {
+  return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_HLEN);
 }
 
 Status ParseSMembers(YBRedisReadOp* op, const RedisClientCommand& args) {
-  DCHECK_EQ("smembers", to_lower_case(args[0]))
-      << "Parsing smembers request where first arg is not smembers.";
-  if (args.size() != 2) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "A SMEMBERS request must have exactly two arguments, found $0", args.size());
-  }
-  op->mutable_request()->set_allocated_get_request(new RedisGetRequestPB());
-  RETURN_NOT_OK(op->SetKey(args[1].ToString()));
-  op->mutable_request()->mutable_key_value()->set_key(args[1].ToString());
-  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_SET);
-  op->mutable_request()->mutable_get_request()->set_request_type(
-      RedisGetRequestPB_GetRequestType_SMEMBERS);
-  return Status::OK();
+  return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_SMEMBERS);
+}
+
+Status ParseSIsMember(YBRedisReadOp* op, const RedisClientCommand& args) {
+  return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_SISMEMBER);
+}
+
+Status ParseSCard(YBRedisReadOp* op, const RedisClientCommand& args) {
+  return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_SCARD);
 }
 
 Status ParseStrLen(YBRedisReadOp* op, const RedisClientCommand& args) {
-  DCHECK_EQ("strlen", to_lower_case(args[0]))
-      << "Parsing strlen request where first arg is not strlen.";
-  if (args.size() != 2) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "A STRLEN request must have exactly 2 arguments, found $0", args.size());
-  }
   op->mutable_request()->set_allocated_strlen_request(new RedisStrLenRequestPB());
   const string string_key = args[1].ToString();
   RETURN_NOT_OK(op->SetKey(string_key));
@@ -398,12 +317,6 @@ Status ParseStrLen(YBRedisReadOp* op, const RedisClientCommand& args) {
 
 // Note: Checking existence of only one key is supported as of now.
 Status ParseExists(YBRedisReadOp* op, const RedisClientCommand& args) {
-  DCHECK_EQ("exists", to_lower_case(args[0]))
-      << "Parsing exists request where first arg is not exists.";
-  if (args.size() != 2) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "An EXISTS request must have exactly 2 arguments, found $0", args.size());
-  }
   op->mutable_request()->set_allocated_exists_request(new RedisExistsRequestPB());
   const string string_key = args[1].ToString();
   RETURN_NOT_OK(op->SetKey(string_key));
@@ -412,12 +325,6 @@ Status ParseExists(YBRedisReadOp* op, const RedisClientCommand& args) {
 }
 
 Status ParseGetRange(YBRedisReadOp* op, const RedisClientCommand& args) {
-  DCHECK_EQ("getrange", to_lower_case(args[0]))
-      << "Parsing getrange request where first arg is not getrange.";
-  if (args.size() != 4) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "A GETRANGE request must have exactly 4 arguments, found $0", args.size());
-  }
   op->mutable_request()->set_allocated_get_range_request(new RedisGetRangeRequestPB());
   const string string_key = args[1].ToString();
   RETURN_NOT_OK(op->SetKey(string_key));

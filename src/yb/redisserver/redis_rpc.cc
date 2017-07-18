@@ -189,13 +189,13 @@ util::RefCntBuffer SerializeResponseBuffer(const RedisResponsePB& redis_response
     return util::RefCntBuffer(EncodeAsError("Request was unable to be processed from server."));
   }
 
-  // TODO(Amit): As and when we implement get/set and its h* equivalents, we would have to
-  // handle arrays, hashes etc. For now, we only support the string response.
+  if (redis_response.code() == RedisResponsePB_RedisStatusCode_NOT_FOUND) {
+      return util::RefCntBuffer(kNilResponse);
+  }
 
   if (redis_response.code() != RedisResponsePB_RedisStatusCode_OK) {
-    // We send a nil response for all non-ok statuses as of now.
-    // TODO: Follow redis error messages.
-    return util::RefCntBuffer(kNilResponse);
+    // TODO: Send meaningful error messages.
+    return util::RefCntBuffer(EncodeAsError("Error: Something wrong"));
   }
 
   if (redis_response.has_string_response()) {
@@ -207,12 +207,8 @@ util::RefCntBuffer SerializeResponseBuffer(const RedisResponsePB& redis_response
   }
 
   if (redis_response.has_array_response()) {
-    const auto& resp_array = redis_response.array_response().elements();
-    vector<string> responses;
-    for (const auto& elt : resp_array) {
-      responses.push_back(elt == "" ? kNilResponse : EncodeAsBulkString(elt));
-    }
-    return util::RefCntBuffer(EncodeAsArrays(responses));
+    return util::RefCntBuffer(EncodeAsArrays(
+        redis_response.array_response().elements()));
   }
 
   static util::RefCntBuffer ok_response(EncodeAsSimpleString("OK"));
@@ -235,6 +231,8 @@ void RedisInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_c
 // We wait until all responses are ready for batch embedded in this call.
 void RedisInboundCall::Respond(size_t idx, const util::RefCntBuffer& buffer, bool is_success) {
   // Did we set response for command at this index already?
+  VLOG(2) << "Responding to '" << client_batch_[idx][0] << "' with "
+      << string(buffer.data(), buffer.size());
   if (ready_[idx].fetch_add(1, std::memory_order_relaxed) == 0) {
     if (!is_success) {
       had_failures_.store(true, std::memory_order_release);

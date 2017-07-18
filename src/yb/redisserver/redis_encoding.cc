@@ -2,6 +2,7 @@
 // Copyright (c) YugaByte, Inc.
 //
 
+#include <google/protobuf/repeated_field.h>
 #include "yb/redisserver/redis_encoding.h"
 
 namespace yb {
@@ -20,8 +21,44 @@ string EncodeAsBulkString(const std::string& input) {
   return StrCat("$", len, "\r\n", input, "\r\n");
 }
 
-string EncodeAsArrays(const std::vector<std::string>& encoded_elements) {
-  return StrCat("*", encoded_elements.size(), "\r\n", JoinStrings(encoded_elements, ""));
+void DoAppend(size_t* out, const AlphaNum& an) {
+  *out += an.size();
+}
+
+void DoAppend(std::string* out, const AlphaNum& an) {
+  out->append(an.data(), an.size());
+}
+
+template<class Out>
+void StringAppend(Out* out, const AlphaNum& an) {
+  DoAppend(out, an);
+}
+
+template<class Out, class... Args>
+void StringAppend(Out* out, const AlphaNum& an, Args&&... args) {
+  DoAppend(out, an);
+  StringAppend(out, std::forward<Args>(args)...);
+}
+
+template<class Out>
+void DoEncodeAsArrays(const google::protobuf::RepeatedPtrField<string> &elements, Out* out) {
+  StringAppend(out, "*", elements.size(), "\r\n");
+  for (const auto& elem : elements) {
+    if (elem.length() == 0) {
+      StringAppend(out, kNilResponse);
+    } else {
+      StringAppend(out, "$", elem.size(), "\r\n", elem, "\r\n");
+    }
+  }
+}
+
+string EncodeAsArrays(const google::protobuf::RepeatedPtrField<string> &elements) {
+  size_t expected_length = 0;
+  DoEncodeAsArrays(elements, &expected_length);
+  std::string encoded;
+  encoded.reserve(expected_length);
+  DoEncodeAsArrays(elements, &encoded);
+  return encoded;
 }
 
 }  // namespace redisserver

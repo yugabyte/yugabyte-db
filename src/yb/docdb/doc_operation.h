@@ -94,6 +94,12 @@ class RedisReadOperation {
  private:
   int ApplyIndex(int32_t index, const int32_t len);
   Status ExecuteGet(rocksdb::DB *rocksdb, HybridTime hybrid_time);
+  // Used to implement HGETALL, HKEYS, HVALS, SMEMBERS, HLEN, SCARD
+  Status ExecuteHGetAllLikeCommands(rocksdb::DB *rocksdb,
+                                    HybridTime hybrid_time,
+                                    ValueType value_type,
+                                    bool add_keys,
+                                    bool add_values);
   Status ExecuteStrLen(rocksdb::DB *rocksdb, HybridTime hybrid_time);
   Status ExecuteExists(rocksdb::DB *rocksdb, HybridTime hybrid_time);
   Status ExecuteGetRange(rocksdb::DB *rocksdb, HybridTime hybrid_time);

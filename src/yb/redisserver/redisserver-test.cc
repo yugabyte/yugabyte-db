@@ -18,6 +18,7 @@
 
 #include "yb/util/cast.h"
 #include "yb/util/enums.h"
+#include "yb/util/protobuf.h"
 #include "yb/util/test_util.h"
 
 DECLARE_uint64(redis_max_concurrent_commands);
@@ -39,6 +40,7 @@ using std::unique_ptr;
 using std::vector;
 using strings::Substitute;
 using yb::integration_tests::RedisTableTestBase;
+using yb::util::ToRepeatedPtrField;
 
 #if defined(ADDRESS_SANITIZER) || defined(THREAD_SANITIZER)
 constexpr int kDefaultTimeoutMs = 100000;
@@ -584,10 +586,10 @@ TEST_F(TestRedisService, Echo) {
       __LINE__, "*2\r\n$4\r\necho\r\n$8\r\nfoo bar \r\n", "$8\r\nfoo bar \r\n");
   SendCommandAndExpectResponse(
       __LINE__,
-      EncodeAsArrays({  // The request is sent as a multi bulk array.
-                         EncodeAsBulkString("echo"),
-                         EncodeAsBulkString("foo bar")
-                     }),
+      EncodeAsArrays(ToRepeatedPtrField<string>({
+                         "echo",
+                         "foo bar"
+                     })),
       EncodeAsBulkString("foo bar")  // The response is in the bulk string format.
       );
 }
@@ -618,19 +620,19 @@ TEST_F(TestRedisService, TestSetThenGet) {
   SendCommandAndExpectResponse(__LINE__, "*2\r\n$3\r\nget\r\n$3\r\nfoo\r\n", "$4\r\nTEST\r\n");
   SendCommandAndExpectResponse(
       __LINE__,
-      EncodeAsArrays({  // The request is sent as a multi bulk array.
-                         EncodeAsBulkString("set"),
-                         EncodeAsBulkString("name"),
-                         EncodeAsBulkString("yugabyte")
-                     }),
+      EncodeAsArrays(ToRepeatedPtrField<string>({  // The request is sent as a multi bulk array.
+                        "set",
+                        "name",
+                        "yugabyte"
+                     })),
       EncodeAsSimpleString("OK")  // The response is in the simple string format.
   );
   SendCommandAndExpectResponse(
       __LINE__,
-      EncodeAsArrays({  // The request is sent as a multi bulk array.
-                         EncodeAsBulkString("get"),
-                         EncodeAsBulkString("name")
-                     }),
+      EncodeAsArrays(ToRepeatedPtrField<string>({  // The request is sent as a multi bulk array.
+                        "get",
+                        "name"
+                     })),
       EncodeAsBulkString("yugabyte")  // The response is in the bulk string format.
   );
 }
@@ -709,6 +711,7 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   SyncClient();
 
   DoRedisTestBulkString(__LINE__, {"GETSET", "key1", "val1"}, "30");
+  DoRedisTestNull(__LINE__, {"GETSET", "non_existent", "val2"});
 
   SyncClient();
 
@@ -752,6 +755,7 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   DoRedisTestInt(__LINE__, {"EXISTS", "key1"}, 1);
   DoRedisTestInt(__LINE__, {"EXISTS", "key2"}, 0);
   DoRedisTestInt(__LINE__, {"EXISTS", "key3"}, 1);
+  DoRedisTestInt(__LINE__, {"EXISTS", "map_key"}, 1);
   DoRedisTestBulkString(__LINE__, {"GETRANGE", "key1", "1", "-1"}, "axyz3tra");
 
   DoRedisTestOk(__LINE__, {"HMSET", "map_key", "subkey5", "19", "subkey6", "14"});
@@ -760,15 +764,31 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
 
   DoRedisTestArray(__LINE__, {"HGETALL", "map_key"},
       {"subkey1", "41", "subkey2", "12", "subkey5", "19", "subkey6", "14"});
-
-  // subkey7 doesn't exists
-  DoRedisTestInt(__LINE__, {"HDEL", "map_key", "subkey2", "subkey7", "subkey5"}, 2);
-
+  DoRedisTestArray(__LINE__, {"HKEYS", "map_key"},
+                   {"subkey1", "subkey2", "subkey5", "subkey6"});
+  DoRedisTestArray(__LINE__, {"HVALS", "map_key"},
+                   {"41", "12", "19", "14"});
+  DoRedisTestInt(__LINE__, {"HLEN", "map_key"}, 4);
+  DoRedisTestInt(__LINE__, {"HEXISTS", "map_key", "subkey1"}, 1);
+  DoRedisTestInt(__LINE__, {"HEXISTS", "map_key", "subkey2"}, 1);
+  DoRedisTestInt(__LINE__, {"HEXISTS", "map_key", "subkey3"}, 0);
+  DoRedisTestInt(__LINE__, {"HEXISTS", "map_key", "subkey4"}, 0);
+  DoRedisTestInt(__LINE__, {"HEXISTS", "map_key", "subkey5"}, 1);
+  DoRedisTestInt(__LINE__, {"HEXISTS", "map_key", "subkey6"}, 1);
+  // HSTRLEN
+  DoRedisTestInt(__LINE__, {"HSTRLEN", "map_key", "subkey1"}, 2);
+  DoRedisTestInt(__LINE__, {"HSTRLEN", "map_key", "does_not_exist"}, 0);
   SyncClient();
 
+  // HDEL
+  // subkey7 doesn't exists
+  DoRedisTestInt(__LINE__, {"HDEL", "map_key", "subkey2", "subkey7", "subkey5"}, 2);
+  SyncClient();
   DoRedisTestArray(__LINE__, {"HGETALL", "map_key"}, {"subkey1", "41", "subkey6", "14"});
 
+  DoRedisTestInt(__LINE__, {"EXISTS", "set1"}, 0);
   DoRedisTestInt(__LINE__, {"SADD", "set1", "val1"}, 1);
+  DoRedisTestInt(__LINE__, {"EXISTS", "set1"}, 1);
 
   SyncClient();
 
@@ -777,14 +797,23 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   SyncClient();
 
   DoRedisTestArray(__LINE__, {"SMEMBERS", "set1"}, {"val1", "val2", "val3"});
-
-  // val4 doesn't exist
-  DoRedisTestInt(__LINE__, {"SREM", "set1", "val1", "val3", "val4"}, 2);
-
+  DoRedisTestInt(__LINE__, {"SCARD", "set1"}, 3);
+  DoRedisTestInt(__LINE__, {"SISMEMBER", "set1", "val1"}, 1);
+  DoRedisTestInt(__LINE__, {"SISMEMBER", "set1", "val2"}, 1);
+  DoRedisTestInt(__LINE__, {"SISMEMBER", "set1", "val3"}, 1);
+  DoRedisTestInt(__LINE__, {"SISMEMBER", "set1", "val4"}, 0);
   SyncClient();
 
+  // SREM remove val1 and val3. val4 doesn't exist.
+  DoRedisTestInt(__LINE__, {"SREM", "set1", "val1", "val3", "val4"}, 2);
+  SyncClient();
   DoRedisTestArray(__LINE__, {"SMEMBERS", "set1"}, {"val2"});
 
+  // AUTH/CONFIG should be dummy implementations, that respond OK irrespective of the arguments
+  DoRedisTestOk(__LINE__, {"AUTH", "foo", "subkey5", "19", "subkey6", "14"});
+  DoRedisTestOk(__LINE__, {"AUTH"});
+  DoRedisTestOk(__LINE__, {"CONFIG", "foo", "subkey5", "19", "subkey6", "14"});
+  DoRedisTestOk(__LINE__, {"CONFIG"});
   // Commands are pipelined and only sent when client.commit() is called.
   // sync_commit() waits until all responses are received.
   SyncClient();

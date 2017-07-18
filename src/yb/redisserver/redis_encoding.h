@@ -39,7 +39,7 @@ string EncodeAsBulkString(const std::string& input);
 // Encode the vector of encoded elementes into a multi-bulk-array. Bulk array(s) are formatted as
 // *<num-elements>\r\n<encoded data terminating in \r\n> ... <encoded data terminating in \r\n>
 // For more info: http://redis.io/topics/protocol
-string EncodeAsArrays(const std::vector<std::string>& encoded_elements);
+string EncodeAsArrays(const google::protobuf::RepeatedPtrField<string> &encoded_elements);
 
 }  // namespace redisserver
 }  // namespace yb

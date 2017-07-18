@@ -139,21 +139,34 @@ Status GetRedisValue(
   return Status::OK();
 }
 
-// Set response based on the type match. Return whether type is unexpected.
-bool IsWrongType(
+// Set response based on the type match. Return whether the type matches what's expected.
+bool VerifyTypeAndSetCode(
     const RedisDataType expected_type,
     const RedisDataType actual_type,
-    RedisResponsePB *const response) {
+    RedisResponsePB *response,
+    bool verify_success_if_missing = false) {
   if (actual_type == RedisDataType::REDIS_TYPE_NONE) {
     response->set_code(RedisResponsePB_RedisStatusCode_NOT_FOUND);
-    return true;
+    return verify_success_if_missing;
   }
   if (actual_type != expected_type) {
     response->set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
-    return true;
+    return false;
   }
   response->set_code(RedisResponsePB_RedisStatusCode_OK);
-  return false;
+  return true;
+}
+
+bool VerifyTypeAndSetCode(
+    const docdb::ValueType expected_type,
+    const docdb::ValueType actual_type,
+    RedisResponsePB *response) {
+  if (actual_type != expected_type) {
+    response->set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
+    return false;
+  }
+  response->set_code(RedisResponsePB_RedisStatusCode_OK);
+  return true;
 }
 
 Status RedisWriteOperation::Apply(
@@ -263,7 +276,7 @@ Status RedisWriteOperation::ApplyGetSet(DocWriteBatch* doc_write_batch) {
         "Getset kv should have 1 value, found $0", kv.value_size());
   }
 
-  if (IsWrongType(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
+  if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
     // We've already set the error code in the response.
     return Status::OK();
   }
@@ -286,7 +299,7 @@ Status RedisWriteOperation::ApplyAppend(DocWriteBatch* doc_write_batch) {
 
   RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, &value));
 
-  if (IsWrongType(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
+  if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
     // We've already set the error code in the response.
     return Status::OK();
   }
@@ -351,7 +364,7 @@ Status RedisWriteOperation::ApplySetRange(DocWriteBatch* doc_write_batch) {
 
   RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, &value));
 
-  if (IsWrongType(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
+  if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
     // We've already set the error code in the response.
     return Status::OK();
   }
@@ -371,7 +384,7 @@ Status RedisWriteOperation::ApplyIncr(DocWriteBatch* doc_write_batch, int64_t in
 
   RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, &value));
 
-  if (IsWrongType(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
+  if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
     // We've already set the error code in the response.
     return Status::OK();
   }
@@ -495,31 +508,98 @@ int RedisReadOperation::ApplyIndex(int32_t index, const int32_t len) {
   return index;
 }
 
+void PopulateResponseFrom(const SubDocument::ObjectContainer &key_values,
+                          RedisResponsePB *response,
+                          bool add_keys,
+                          bool add_values) {
+  for (auto iter = key_values.begin(); iter != key_values.end(); iter++) {
+    const PrimitiveValue& first = iter->first;
+    const PrimitiveValue& second = iter->second;
+    if (add_keys) response->mutable_array_response()->add_elements(first.GetString());
+    if (add_values) response->mutable_array_response()->add_elements(second.GetString());
+  }
+}
+
+Status RedisReadOperation::ExecuteHGetAllLikeCommands(rocksdb::DB *rocksdb,
+                                                      HybridTime hybrid_time,
+                                                      ValueType value_type,
+                                                      bool add_keys,
+                                                      bool add_values) {
+  SubDocKey doc_key(
+      DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key()));
+  SubDocument doc;
+  bool doc_found = false;
+  RETURN_NOT_OK(GetSubDocument(
+  rocksdb, doc_key, &doc, &doc_found, rocksdb::kDefaultQueryId, hybrid_time));
+  if (add_keys || add_values) {
+    response_.set_allocated_array_response(new RedisArrayPB());
+  }
+  if (!doc_found) {
+    response_.set_code(RedisResponsePB_RedisStatusCode_OK);
+    return Status::OK();
+  }
+  if (VerifyTypeAndSetCode(value_type, doc.value_type(), &response_)) {
+    if (add_keys || add_values) {
+      PopulateResponseFrom(doc.object_container(), &response_, add_keys, add_values);
+    } else {
+      response_.set_int_response(doc.object_container().size());
+    }
+  }
+  return Status::OK();
+}
+
 Status RedisReadOperation::ExecuteGet(rocksdb::DB *rocksdb, HybridTime hybrid_time) {
 
   RedisDataType type;
 
-  switch (request_.get_request().request_type()) {
+  const auto request_type = request_.get_request().request_type();
+  switch (request_type) {
     case RedisGetRequestPB_GetRequestType_GET: FALLTHROUGH_INTENDED;
     case RedisGetRequestPB_GetRequestType_HGET: {
       string value;
-
       RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value));
 
-      if (IsWrongType(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
-        // We've already set the error code in the response.
-        return Status::OK();
+      // If wrong type, we set the error code in the response.
+      if (VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
+        response_.set_string_response(value);
       }
-
-      response_.set_string_response(value);
+      return Status::OK();
+    }
+    case RedisGetRequestPB_GetRequestType_HEXISTS: FALLTHROUGH_INTENDED;
+    case RedisGetRequestPB_GetRequestType_SISMEMBER: {
+      RETURN_NOT_OK(GetRedisValueType(rocksdb, hybrid_time, request_.key_value(), &type, -1));
+      if (VerifyTypeAndSetCode(
+          (request_type == RedisGetRequestPB_GetRequestType_HEXISTS
+              ? RedisDataType::REDIS_TYPE_HASH
+              : RedisDataType::REDIS_TYPE_SET),
+          type, &response_, true)) {
+        RETURN_NOT_OK(GetRedisValueType(rocksdb, hybrid_time, request_.key_value(), &type, 0));
+        response_.set_int_response((type == RedisDataType::REDIS_TYPE_NONE) ? 0 : 1);
+      }
+      return Status::OK();
+    }
+    case RedisGetRequestPB_GetRequestType_HSTRLEN: {
+      RETURN_NOT_OK(GetRedisValueType(rocksdb, hybrid_time, request_.key_value(), &type, -1));
+      if (VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_HASH, type, &response_, true)) {
+        string value;
+        RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value));
+        response_.set_int_response((type == RedisDataType::REDIS_TYPE_NONE) ? 0 : value.length());
+      }
       return Status::OK();
     }
     case RedisGetRequestPB_GetRequestType_MGET: {
       return STATUS(NotSupported, "MGET not yet supported");
     }
     case RedisGetRequestPB_GetRequestType_HMGET: {
+      RETURN_NOT_OK(GetRedisValueType(rocksdb, hybrid_time, request_.key_value(), &type));
+      if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_HASH, type, &response_, true)) {
+          return Status::OK();
+      }
+
       response_.set_allocated_array_response(new RedisArrayPB());
       for (int i = 0; i < request_.key_value().subkey_size(); i++) {
+        // TODO: ENG-1803: It is inefficient to create a new iterator for each subkey causing a
+        // new seek. Consider reusing the same iterator.
         string value;
         RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value, i));
         if (type == REDIS_TYPE_STRING) {
@@ -531,56 +611,18 @@ Status RedisReadOperation::ExecuteGet(rocksdb::DB *rocksdb, HybridTime hybrid_ti
       response_.set_code(RedisResponsePB_RedisStatusCode_OK);
       return Status::OK();
     }
-    case RedisGetRequestPB_GetRequestType_HGETALL: FALLTHROUGH_INTENDED;
-    case RedisGetRequestPB_GetRequestType_SMEMBERS: {
-      SubDocKey doc_key(
-          DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key()));
-      SubDocument doc;
-      bool doc_found = false;
-      RETURN_NOT_OK(GetSubDocument(
-          rocksdb, doc_key, &doc, &doc_found, rocksdb::kDefaultQueryId, hybrid_time));
-      response_.set_allocated_array_response(new RedisArrayPB());
-      if (!doc_found) {
-        response_.set_code(RedisResponsePB_RedisStatusCode_OK);
-        return Status::OK();
-      }
-      if (request_.get_request().request_type() == RedisGetRequestPB_GetRequestType_HGETALL) {
-        if (doc.value_type() != ValueType::kObject) {
-          response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
-          return Status::OK();
-        }
-        auto& key_values = doc.object_container();
-        for (auto iter = key_values.begin(); iter != key_values.end(); iter++) {
-          const PrimitiveValue& first = iter->first;
-          const PrimitiveValue& second = iter->second;
-          if (first.value_type() != ValueType::kString ||
-              second.value_type() != ValueType::kString) {
-            response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
-            return Status::OK();
-          }
-          response_.mutable_array_response()->add_elements(first.GetString());
-          response_.mutable_array_response()->add_elements(second.GetString());
-        }
-      } else { // SMEMBERS case
-        if (doc.value_type() != ValueType::kRedisSet) {
-          response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
-          return Status::OK();
-        }
-        auto& key_values = doc.object_container();
-        for (auto iter = key_values.begin(); iter != key_values.end(); iter++) {
-          const PrimitiveValue& first = iter->first;
-          const PrimitiveValue& second = iter->second;
-          if (first.value_type() != ValueType::kString ||
-              second.value_type() != ValueType::kNull) {
-            response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
-            return Status::OK();
-          }
-          response_.mutable_array_response()->add_elements(first.GetString());
-        }
-      }
-      response_.set_code(RedisResponsePB_RedisStatusCode_OK);
-      return Status::OK();
-    }
+    case RedisGetRequestPB_GetRequestType_HGETALL:
+      return ExecuteHGetAllLikeCommands(rocksdb, hybrid_time, ValueType::kObject, true, true);
+    case RedisGetRequestPB_GetRequestType_HKEYS:
+      return ExecuteHGetAllLikeCommands(rocksdb, hybrid_time, ValueType::kObject, true, false);
+    case RedisGetRequestPB_GetRequestType_HVALS:
+      return ExecuteHGetAllLikeCommands(rocksdb, hybrid_time, ValueType::kObject, false, true);
+    case RedisGetRequestPB_GetRequestType_HLEN:
+      return ExecuteHGetAllLikeCommands(rocksdb, hybrid_time, ValueType::kObject, false, false);
+    case RedisGetRequestPB_GetRequestType_SMEMBERS:
+      return ExecuteHGetAllLikeCommands(rocksdb, hybrid_time, ValueType::kRedisSet, true, false);
+    case RedisGetRequestPB_GetRequestType_SCARD:
+      return ExecuteHGetAllLikeCommands(rocksdb, hybrid_time, ValueType::kRedisSet, false, false);
     case RedisGetRequestPB_GetRequestType_UNKNOWN: {
       return STATUS(InvalidCommand, "Unknown Get Request not supported");
     }
@@ -594,12 +636,10 @@ Status RedisReadOperation::ExecuteStrLen(rocksdb::DB *rocksdb, HybridTime hybrid
 
   RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value));
 
-  if (IsWrongType(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
-    // We've already set the error code in the response.
-    return Status::OK();
+  if (VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
+    response_.set_int_response(value.length());
   }
 
-  response_.set_int_response(value.length());
   return Status::OK();
 }
 
@@ -628,7 +668,7 @@ Status RedisReadOperation::ExecuteGetRange(rocksdb::DB *rocksdb, HybridTime hybr
 
   RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value));
 
-  if (IsWrongType(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
+  if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
     // We've already set the error code in the response.
     return Status::OK();
   }

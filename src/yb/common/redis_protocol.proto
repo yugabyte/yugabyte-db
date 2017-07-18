@@ -101,15 +101,23 @@ message RedisSetRequestPB {
 }
 
 // GET, HGET, MGET, HMGET, HGETALL, SMEMBERS
+// HKEYS, HKEYS, HLEN
 message RedisGetRequestPB {
 
   enum GetRequestType {
     GET = 1;
-    HGET = 2;
     MGET = 3;
+    HGET = 2;
     HMGET = 4;
     HGETALL = 5;
+    HKEYS = 7;
+    HVALS = 8;
+    HLEN = 9;
+    HEXISTS = 10;
+    HSTRLEN = 11;
     SMEMBERS = 6;
+    SISMEMBER = 12;
+    SCARD = 13;
     UNKNOWN = 99;
   }
 
