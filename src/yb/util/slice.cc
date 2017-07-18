@@ -73,7 +73,13 @@ std::string Slice::ToDebugString(size_t max_len) const {
   ret.reserve(size);
   for (int i = 0; i < bytes_to_print; i++) {
     if (!isgraph(data_[i])) {
-      StringAppendF(&ret, "\\x%02x", data_[i] & 0xff);
+      if (data_[i] == '\r') {
+        ret += "\\r";
+      } else if (data_[i] == '\n') {
+        ret += "\\n";
+      } else {
+        StringAppendF(&ret, "\\x%02x", data_[i] & 0xff);
+      }
     } else {
       ret.push_back(data_[i]);
     }

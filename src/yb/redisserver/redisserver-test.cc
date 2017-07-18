@@ -22,6 +22,7 @@
 
 DECLARE_uint64(redis_max_concurrent_commands);
 DECLARE_uint64(redis_max_batch);
+DECLARE_bool(redis_safe_batch);
 
 DEFINE_uint64(test_redis_max_concurrent_commands, 20,
               "Value of redis_max_concurrent_commands for pipeline test");
@@ -236,6 +237,7 @@ Status TestRedisService::SendCommandAndGetResponse(
                                           expected_resp_length,
                                           &bytes_read,
                                           deadline));
+  resp_.resize(bytes_read);
   if (expected_resp_length != bytes_read) {
     return STATUS(
         IOError, Substitute("Received $1 bytes instead of $2", bytes_read, expected_resp_length));
@@ -273,7 +275,12 @@ void TestRedisService::SendCommandAndExpectResponse(int line,
     }
     ASSERT_OK(SendCommandAndGetResponse(cmd.substr(p), expected.length()));
   } else {
-    ASSERT_OK(SendCommandAndGetResponse(cmd, expected.length()));
+    auto status = SendCommandAndGetResponse(cmd, expected.length());
+    if (!status.ok()) {
+      LOG(INFO) << "Received: " << Slice(resp_.data(), resp_.size()).ToDebugString();
+      LOG(INFO) << "Expected: " << Slice(expected).ToDebugString();
+    }
+    ASSERT_OK(status);
   }
 
   // Verify that the response is as expected.
@@ -334,6 +341,7 @@ namespace {
 class TestRedisServicePipelined : public TestRedisService {
  public:
   void SetUp() override {
+    FLAGS_redis_safe_batch = false;
     FLAGS_redis_max_concurrent_commands = FLAGS_test_redis_max_concurrent_commands;
     FLAGS_redis_max_batch = FLAGS_test_redis_max_batch;
     TestRedisService::SetUp();
@@ -393,68 +401,9 @@ TEST_F_EX(TestRedisService, Pipeline, TestRedisServicePipelined) {
   auto end = std::chrono::steady_clock::now();
   auto set_time = std::chrono::duration_cast<std::chrono::milliseconds>(mid - start);
   auto get_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - mid);
-  LOG(INFO) << yb::Format("Set time: $0ms, get time: $1ms", set_time.count(), get_time.count());
+  LOG(INFO) << yb::Format("Unsafe set: $0ms, get: $1ms", set_time.count(), get_time.count());
 }
 
-TEST_F_EX(TestRedisService, MixedBatch, TestRedisServicePipelined) {
-  std::unordered_map<int, int> values, new_values;
-  std::unordered_set<int> requested_keys;
-  std::vector<int> keys;
-  constexpr size_t kBatches = 50;
-  constexpr size_t kMinSize = 100;
-  constexpr size_t kMaxSize = kMinSize + 127;
-  constexpr int kMinKey = 0;
-  constexpr int kMaxKey = 1023;
-  constexpr int kMinValue = 0;
-  constexpr int kMaxValue = 1023;
-  std::mt19937_64 random;
-  Seed(&random);
-  std::uniform_int_distribution<int> bool_distribution(0, 1);
-  std::uniform_int_distribution<size_t> size_distribution(kMinSize, kMaxSize);
-  std::uniform_int_distribution<int> key_distribution(kMinKey, kMaxKey);
-  std::uniform_int_distribution<int> value_distribution(kMinValue, kMaxValue);
-  for (size_t i = 0; i != kBatches; ++i) {
-    new_values.clear();
-    requested_keys.clear();
-    std::string command, response;
-    size_t size = size_distribution(random);
-    for (size_t j = 0; j != size; ++j) {
-      bool get = !keys.empty() && (bool_distribution(random) != 0);
-      if (get) {
-        int key = keys[std::uniform_int_distribution<size_t>(0, keys.size() - 1)(random)];
-        if (new_values.count(key)) {
-          continue;
-        }
-        command += yb::Format("get $0\r\n", key);
-        auto value = std::to_string(values[key]);
-        response += yb::Format("$$$0\r\n$1\r\n", value.length(), value);
-        requested_keys.insert(key);
-      } else {
-        int value = value_distribution(random);
-        for (;;) {
-          int key = key_distribution(random);
-          if (requested_keys.count(key) || !new_values.emplace(key, value).second) {
-            continue;
-          }
-          command += yb::Format("set $0 $1\r\n", key, value);
-          response += "+OK\r\n";
-          break;
-        }
-      }
-    }
-
-    SendCommandAndExpectResponse(__LINE__, command, response);
-    for (const auto& p : new_values) {
-      auto it = values.find(p.first);
-      if (it == values.end()) {
-        values.emplace(p.first, p.second);
-        keys.push_back(p.first);
-      } else {
-        it->second = p.second;
-      }
-    }
-  }
-}
 TEST_F_EX(TestRedisService, PipelinePartial, TestRedisServicePipelined) {
   SendCommandAndExpectResponse(__LINE__,
                                PipelineSetCommand(),
@@ -464,6 +413,127 @@ TEST_F_EX(TestRedisService, PipelinePartial, TestRedisServicePipelined) {
                                PipelineGetCommand(),
                                PipelineGetResponse(),
                                true /* partial */);
+}
+
+namespace {
+
+class BatchGenerator {
+ public:
+  explicit BatchGenerator(bool collisions) : collisions_(collisions), random_(293462970) {}
+
+  std::pair<std::string, std::string> Generate() {
+    new_values_.clear();
+    requested_keys_.clear();
+    std::string command, response;
+    size_t size = size_distribution_(random_);
+    for (size_t j = 0; j != size; ++j) {
+      bool get = !keys_.empty() && (bool_distribution_(random_) != 0);
+      if (get) {
+        int key = keys_[std::uniform_int_distribution<size_t>(0, keys_.size() - 1)(random_)];
+        if (!collisions_ && new_values_.count(key)) {
+          continue;
+        }
+        command += yb::Format("get $0\r\n", key);
+        auto value = std::to_string(values_[key]);
+        response += yb::Format("$$$0\r\n$1\r\n", value.length(), value);
+        requested_keys_.insert(key);
+      } else {
+        int value = value_distribution_(random_);
+        for (;;) {
+          int key = key_distribution_(random_);
+          if (collisions_) {
+            StoreValue(key, value);
+          } else if(requested_keys_.count(key) || !new_values_.emplace(key, value).second) {
+            continue;
+          }
+          command += yb::Format("set $0 $1\r\n", key, value);
+          response += "+OK\r\n";
+          break;
+        }
+      }
+    }
+
+    for (const auto& p : new_values_) {
+      StoreValue(p.first, p.second);
+    }
+    return std::make_pair(std::move(command), std::move(response));
+  }
+ private:
+  void StoreValue(int key, int value) {
+    auto it = values_.find(key);
+    if (it == values_.end()) {
+      values_.emplace(key, value);
+      keys_.push_back(key);
+    } else {
+      it->second = value;
+    }
+  }
+
+  static constexpr size_t kMinSize = 500;
+  static constexpr size_t kMaxSize = kMinSize + 511;
+  static constexpr int kMinKey = 0;
+  static constexpr int kMaxKey = 1023;
+  static constexpr int kMinValue = 0;
+  static constexpr int kMaxValue = 1023;
+
+  const bool collisions_;
+  std::mt19937_64 random_;
+  std::uniform_int_distribution<int> bool_distribution_{0, 1};
+  std::uniform_int_distribution<size_t> size_distribution_{kMinSize, kMaxSize};
+  std::uniform_int_distribution<int> key_distribution_{kMinKey, kMaxKey};
+  std::uniform_int_distribution<int> value_distribution_{kMinValue, kMaxValue};
+
+  std::unordered_map<int, int> values_;
+  std::unordered_map<int, int> new_values_;
+  std::unordered_set<int> requested_keys_;
+  std::vector<int> keys_;
+};
+
+} // namespace
+
+TEST_F_EX(TestRedisService, MixedBatch, TestRedisServicePipelined) {
+  constexpr size_t kBatches = 50;
+  BatchGenerator generator(false);
+  for (size_t i = 0; i != kBatches; ++i) {
+    auto batch = generator.Generate();
+    SendCommandAndExpectResponse(__LINE__, batch.first, batch.second);
+  }
+}
+
+class TestRedisServiceSafeBatch : public TestRedisService {
+ public:
+  void SetUp() override {
+    FLAGS_redis_max_concurrent_commands = 1;
+    FLAGS_redis_max_batch = FLAGS_test_redis_max_batch;
+    FLAGS_redis_safe_batch = true;
+    TestRedisService::SetUp();
+  }
+};
+
+
+TEST_F_EX(TestRedisService, SafeMixedBatch, TestRedisServiceSafeBatch) {
+  constexpr size_t kBatches = 50;
+  BatchGenerator generator(true);
+  std::chrono::steady_clock::duration total;
+  for (size_t i = 0; i != kBatches; ++i) {
+    auto batch = generator.Generate();
+    auto start = std::chrono::steady_clock::now();
+    SendCommandAndExpectResponse(__LINE__, batch.first, batch.second);
+    total += std::chrono::steady_clock::now() - start;
+  }
+  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(total).count() / kBatches;
+  LOG(INFO) << Format("Average: $0ms", ms);
+}
+
+TEST_F_EX(TestRedisService, SafeBatchPipeline, TestRedisServiceSafeBatch) {
+  auto start = std::chrono::steady_clock::now();
+  SendCommandAndExpectResponse(__LINE__, PipelineSetCommand(), PipelineSetResponse());
+  auto mid = std::chrono::steady_clock::now();
+  SendCommandAndExpectResponse(__LINE__, PipelineGetCommand(), PipelineGetResponse());
+  auto end = std::chrono::steady_clock::now();
+  auto set_time = std::chrono::duration_cast<std::chrono::milliseconds>(mid - start);
+  auto get_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - mid);
+  LOG(INFO) << yb::Format("Safe set: $0ms, get: $1ms", set_time.count(), get_time.count());
 }
 
 TEST_F(TestRedisService, BatchedCommandMulti) {

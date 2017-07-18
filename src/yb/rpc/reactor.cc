@@ -17,8 +17,6 @@
 
 #include "yb/rpc/reactor.h"
 
-#include <ev++.h>
-
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <stdlib.h>
@@ -30,9 +28,11 @@
 #include <mutex>
 #include <string>
 
-#include <glog/logging.h>
-
 #include <boost/scope_exit.hpp>
+
+#include <ev++.h>
+
+#include <glog/logging.h>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
@@ -257,7 +257,7 @@ void Reactor::CheckReadyToStop() {
   VLOG(4) << "Check ready to stop: " << this << ", " << waiting_conns_.size();
 
   if (waiting_conns_.empty()) {
-    VLOG(4) << "Reactor ready to stop, breaking loop" << this;
+    VLOG(4) << "Reactor ready to stop, breaking loop: " << this;
     loop_.break_loop(); // break the epoll loop and terminate the thread
   }
 }

@@ -440,7 +440,7 @@ class YBControl:
                 hint = "Upgrades the {0} to the newly copied TAR in a rolling manner."
             for service in self.all_services:
                 self.__add_command_ex(service + 's' + name_suffix,
-                                      lambda s=service, u=upgrade: self.__roll_servers([s], u),
+                                      lambda s=service, u=upgrade: self.roll_servers([s], u),
                                       hint.format(service + 's'))
             self.__add_command_ex('all' + name_suffix,
                                   lambda u=upgrade: self.roll_servers(self.all_services, u),

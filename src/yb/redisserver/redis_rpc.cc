@@ -25,7 +25,7 @@ DECLARE_int32(rpc_slow_query_threshold_ms);
 DEFINE_uint64(redis_max_concurrent_commands, 1,
               "Max number of redis commands received from single connection, "
               "that could be processed concurrently");
-DEFINE_uint64(redis_max_batch, 1, "Max number of redis commands that forms batch");
+DEFINE_uint64(redis_max_batch, 250, "Max number of redis commands that forms batch");
 
 
 using namespace std::literals; // NOLINT

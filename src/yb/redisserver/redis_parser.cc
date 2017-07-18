@@ -3,6 +3,8 @@
 #include <memory>
 #include <string>
 
+#include <boost/algorithm/string.hpp>
+
 #include "yb/client/client.h"
 #include "yb/client/yb_op.h"
 
@@ -32,13 +34,12 @@ constexpr int64_t kMaxTTLSec = std::numeric_limits<int64_t>::max() / 1000000;
 constexpr size_t kMaxNumberOfArgs = 1 << 20;
 constexpr size_t kLineEndLength = 2;
 
-} // namespace
 
 string to_lower_case(Slice slice) {
-  string lower_string = slice.ToString();
-  std::transform(lower_string.begin(), lower_string.end(), lower_string.begin(), ::tolower);
-  return lower_string;
+  return boost::to_lower_copy(slice.ToBuffer());
 }
+
+} // namespace
 
 Status ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   DCHECK_EQ("set", to_lower_case(args[0]))
@@ -52,8 +53,8 @@ Status ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
         "A SET request must have a non empty key field");
   }
   op->mutable_request()->set_allocated_set_request(new RedisSetRequestPB());
-  const string string_key = args[1].ToString();
-  const string string_value = args[2].ToString();
+  const string string_key = args[1].ToBuffer();
+  const string string_value = args[2].ToBuffer();
   op->mutable_request()->mutable_key_value()->set_key(string_key);
   RETURN_NOT_OK(op->SetKey(string_key));
   if (string_value.empty()) {
@@ -115,9 +116,9 @@ Status ParseHSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
     return STATUS_SUBSTITUTE(InvalidArgument,
         "An HSET request must have exactly 4 arguments, found $0", args.size());
   }
-  const string string_key = args[1].ToString();
-  const string string_subkey = args[2].ToString();
-  const string string_value = args[3].ToString();
+  const string string_key = args[1].ToBuffer();
+  const string string_subkey = args[2].ToBuffer();
+  const string string_value = args[3].ToBuffer();
   RETURN_NOT_OK(op->SetKey(string_key));
   op->mutable_request()->set_allocated_set_request(new RedisSetRequestPB());
   op->mutable_request()->mutable_key_value()->set_key(string_key);
@@ -194,8 +195,8 @@ Status ParseGetSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
     return STATUS_SUBSTITUTE(InvalidArgument,
         "A GETSET request must have exactly 3 arguments, found $0", args.size());
   }
-  const string string_key = args[1].ToString();
-  const string string_value = args[2].ToString();
+  const string string_key = args[1].ToBuffer();
+  const string string_value = args[2].ToBuffer();
   RETURN_NOT_OK(op->SetKey(string_key));
   op->mutable_request()->set_allocated_getset_request(new RedisGetSetRequestPB());
   op->mutable_request()->mutable_key_value()->set_key(string_key);
@@ -210,8 +211,8 @@ Status ParseAppend(YBRedisWriteOp* op, const RedisClientCommand& args) {
     return STATUS_SUBSTITUTE(InvalidArgument,
         "An APPEND request must have exactly 3 arguments, found $0", args.size());
   }
-  const string string_key = args[1].ToString();
-  const string string_value = args[2].ToString();
+  const string string_key = args[1].ToBuffer();
+  const string string_value = args[2].ToBuffer();
   RETURN_NOT_OK(op->SetKey(string_key));
   op->mutable_request()->set_allocated_append_request(new RedisAppendRequestPB());
   op->mutable_request()->mutable_key_value()->set_key(string_key);
@@ -227,7 +228,7 @@ Status ParseDel(YBRedisWriteOp* op, const RedisClientCommand& args) {
     return STATUS_SUBSTITUTE(InvalidArgument,
         "A DEL request must have exactly 2 arguments, found $0", args.size());
   }
-  const string string_key = args[1].ToString();
+  const string string_key = args[1].ToBuffer();
   RETURN_NOT_OK(op->SetKey(string_key));
   op->mutable_request()->set_allocated_del_request(new RedisDelRequestPB());
   op->mutable_request()->mutable_key_value()->set_key(string_key);
