@@ -16,6 +16,7 @@
           "bin/zip_purge_yb_logs.sh",
           "bin/clean_cores.sh",
           "bin/bulk_load_helper.sh",
+          "bin/bulk_load_cleanup.sh",
           "build/latest/bin/yb-generate_partitions_main",
           "build/latest/bin/yb-bulk_load",
           "thirdparty/installed/uninstrumented/bin/*",
