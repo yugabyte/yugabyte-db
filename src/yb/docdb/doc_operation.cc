@@ -126,6 +126,7 @@ Status GetRedisValue(
 
   if (!doc_found) {
     *type = REDIS_TYPE_NONE;
+    *value = "";
     return Status::OK();
   }
 
@@ -146,7 +147,11 @@ bool VerifyTypeAndSetCode(
     RedisResponsePB *response,
     bool verify_success_if_missing = false) {
   if (actual_type == RedisDataType::REDIS_TYPE_NONE) {
-    response->set_code(RedisResponsePB_RedisStatusCode_NOT_FOUND);
+    if (verify_success_if_missing) {
+      response->set_code(RedisResponsePB_RedisStatusCode_OK);
+    } else {
+      response->set_code(RedisResponsePB_RedisStatusCode_NOT_FOUND);
+    }
     return verify_success_if_missing;
   }
   if (actual_type != expected_type) {
@@ -299,7 +304,7 @@ Status RedisWriteOperation::ApplyAppend(DocWriteBatch* doc_write_batch) {
 
   RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, &value));
 
-  if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
+  if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, type, &response_, true)) {
     // We've already set the error code in the response.
     return Status::OK();
   }
@@ -318,15 +323,16 @@ Status RedisWriteOperation::ApplyDel(DocWriteBatch* doc_write_batch) {
   const RedisKeyValuePB& kv = request_.key_value();
   RedisDataType data_type;
   RETURN_NOT_OK(GetRedisValueType(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &data_type));
-  if (data_type != REDIS_TYPE_NONE && data_type != kv.type()) {
+  if (data_type != REDIS_TYPE_NONE && data_type != kv.type() && kv.type() != REDIS_TYPE_NONE) {
     response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
     return Status::OK();
   }
   SubDocument values =  SubDocument();
   int num_keys;
-  if (kv.type() == REDIS_TYPE_STRING) {
+  if (kv.type() == REDIS_TYPE_NONE) { // Delete any string, or container.
     values = SubDocument(ValueType::kTombstone);
-    num_keys = 1; // Currently we only support deleting one key with DEL command.
+    // Currently we only support deleting one key with DEL command.
+    num_keys = data_type == REDIS_TYPE_NONE ? 0 : 1;
   } else {
     num_keys = kv.subkey_size();
     if (FLAGS_emulate_redis_responses) {

@@ -723,7 +723,10 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   DoRedisTestBulkString(__LINE__, {"GET", "key1"}, "val1extra1");
 
   DoRedisTestNull(__LINE__, {"GET", "key2"});
-  DoRedisTestOk(__LINE__, {"SET", "key2", "val2"});
+  // Deleting an empty key should return 0
+  DoRedisTestInt(__LINE__, {"DEL", "key2"}, 0);
+  // Appending to an empty key should work
+  DoRedisTestInt(__LINE__, {"APPEND", "key2", "val2"}, 4);
 
   SyncClient();
 
@@ -784,7 +787,13 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   // subkey7 doesn't exists
   DoRedisTestInt(__LINE__, {"HDEL", "map_key", "subkey2", "subkey7", "subkey5"}, 2);
   SyncClient();
+  DoRedisTestInt(__LINE__, {"EXISTS", "map_key"}, 1);
   DoRedisTestArray(__LINE__, {"HGETALL", "map_key"}, {"subkey1", "41", "subkey6", "14"});
+  DoRedisTestInt(__LINE__, {"DEL", "map_key"}, 1); // Delete the whole map with a del
+  SyncClient();
+
+  DoRedisTestInt(__LINE__, {"EXISTS", "map_key"}, 0);
+  DoRedisTestArray(__LINE__, {"HGETALL", "map_key"}, {});
 
   DoRedisTestInt(__LINE__, {"EXISTS", "set1"}, 0);
   DoRedisTestInt(__LINE__, {"SADD", "set1", "val1"}, 1);

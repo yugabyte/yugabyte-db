@@ -194,7 +194,8 @@ Status ParseDel(YBRedisWriteOp* op, const RedisClientCommand& args) {
   RETURN_NOT_OK(op->SetKey(string_key));
   op->mutable_request()->set_allocated_del_request(new RedisDelRequestPB());
   op->mutable_request()->mutable_key_value()->set_key(string_key);
-  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_STRING);
+  // We should be able to delete all types of top level keys
+  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_NONE);
   return Status::OK();
 }
 
