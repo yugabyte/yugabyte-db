@@ -168,8 +168,21 @@ export function convertSpaceToDash(string) {
   return string && string.replace(/\s+/g, '-');
 }
 
+// Sorting such that 0.0.19.14 > 0.0.3.1 > A > B
 export function sortVersionStrings(arr) {
-  return arr.sort((a,b) => semver.valid(a) && semver.valid(b) ? semver.lt(a,b) : a < b);
+  return arr.sort((a,b) => {
+    let aValue = parseInt(a.replace(/\./g, ""));
+    let bValue = parseInt(b.replace(/\./g, ""));
+    if (isNaN(aValue) && isNaN(bValue)) {
+      return a < b;
+    } else if (isNaN(aValue) && !isNaN(bValue)) {
+      return 1;
+    } else if (!isNaN(aValue) && isNaN(bValue)) {
+      return -1;
+    } else {
+      return aValue < bValue
+    }
+  });
 }
 
 // FIXME: Deprecated. Change all references to use isNonEmptyArray instead.
