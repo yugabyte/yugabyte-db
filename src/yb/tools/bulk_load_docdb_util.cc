@@ -27,9 +27,6 @@ Status BulkLoadDocDBUtil::InitRocksDBDir() {
 Status BulkLoadDocDBUtil::InitRocksDBOptions() {
   RETURN_NOT_OK(InitCommonRocksDBOptions());
   rocksdb_options_.write_buffer_size = memtable_size_;
-  rocksdb_options_.max_write_buffer_number = 3;
-  rocksdb_options_.allow_concurrent_memtable_write = true;
-  rocksdb_options_.enable_write_thread_adaptive_yield = true;
   return Status::OK();
 }
 
