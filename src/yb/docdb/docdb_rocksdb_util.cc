@@ -50,7 +50,7 @@ DEFINE_int32(max_nexts_to_avoid_seek, 8,
              "The number of next calls to try before doing resorting to do a rocksdb seek.");
 DEFINE_bool(trace_docdb_calls, false, "Whether we should trace calls into the docdb.");
 
-DEFINE_uint64(initial_seqno, 0, "Initial seqno for new RocksDB instances.");
+DEFINE_uint64(initial_seqno, 1ULL << 40, "Initial seqno for new RocksDB instances.");
 
 using std::shared_ptr;
 using std::string;
