@@ -5,7 +5,7 @@ ENV container=yugaware-ui
 # Create app directory
 WORKDIR /opt/yugaware-ui
 
-RUN npm install -g static-server 
+RUN npm install -g pushstate-server 
 
 # Bundle app source
 COPY build /opt/yugaware-ui
@@ -13,4 +13,4 @@ COPY build /opt/yugaware-ui
 EXPOSE 4000
 
 # Start production version via pushstate server
-CMD [ "static-server", "/opt/yugaware-ui", "--port", "4000" ]
+CMD [ "pushstate-server", "/opt/yugaware-ui", "4000" ]
