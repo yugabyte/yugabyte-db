@@ -209,12 +209,13 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    * The load tester framework call this method of the base class. This in turn calls the
    * 'initialize()' method which the plugins should implement.
    * @param configuration configuration of the load tester framework.
+   * @param enableMetrics Should metrics tracker be enabled.
    */
-  public void workloadInit(CmdLineOpts configuration) {
+  public void workloadInit(CmdLineOpts configuration, boolean enableMetrics) {
     workloadStartTime = System.currentTimeMillis();
     this.configuration = configuration;
     initialize(configuration);
-    initMetricsTracker();
+    if (enableMetrics) initMetricsTracker();
   }
 
    private synchronized void initMetricsTracker() {
@@ -282,7 +283,9 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     long endTs = System.nanoTime();
     if (count > 0) {
       numKeysWritten.addAndGet(count);
-      metricsTracker.getMetric(MetricName.Write).accumulate(count, endTs - startTs);
+      if (metricsTracker != null) {
+        metricsTracker.getMetric(MetricName.Write).accumulate(count, endTs - startTs);
+      }
     }
   }
 
@@ -303,7 +306,9 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     long endTs = System.nanoTime();
     if (count > 0) {
       numKeysRead.addAndGet(count);
-      metricsTracker.getMetric(MetricName.Read).accumulate(count, endTs - startTs);
+      if (metricsTracker != null) {
+        metricsTracker.getMetric(MetricName.Read).accumulate(count, endTs - startTs);
+      }
     }
   }
 

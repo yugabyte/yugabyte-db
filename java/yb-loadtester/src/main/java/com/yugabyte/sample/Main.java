@@ -120,6 +120,11 @@ public class Main {
       }
       app.createTablesIfNeeded();
 
+      // For 100% read case, do a pre-setup to write a bunch of keys.
+      if (cmdLineOpts.getNumWriterThreads() == 0) {
+        setupForPureReads();
+      }
+
       // Create the reader and writer threads.
       int idx = 0;
       for (; idx < cmdLineOpts.getNumWriterThreads(); idx++) {
@@ -147,6 +152,36 @@ public class Main {
     } finally {
       app.terminate();
     }
+  }
+
+  private void setupForPureReads() {
+    if (cmdLineOpts.getNumWriterThreads() != 0) {
+      LOG.warn("Cannot call pure reads setup API when there are non-zero writer threads.");
+      return;
+    }
+
+    long actualNumToWrite = AppBase.appConfig.numKeysToWrite;
+    LOG.info("Setup step for pure reads.");
+
+    AppBase.appConfig.numKeysToWrite = AppBase.appConfig.numKeysToWrite;
+    List<IOPSThread> writeThreads = new ArrayList<IOPSThread>();
+    for (int idx = 0; idx < 10; idx++) {
+      writeThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(false), IOType.Write));
+    }
+    // Start the reader and writer threads.
+    for (IOPSThread writeThread : writeThreads) {
+      writeThread.start();
+    }
+    // Wait for the various threads to exit.
+    while (!writeThreads.isEmpty()) {
+      try {
+        writeThreads.get(0).join();
+        writeThreads.remove(0);
+      } catch (InterruptedException e) {
+        LOG.error("Error waiting for write thread join()", e);
+      }
+    }
+    AppBase.appConfig.numKeysToWrite = actualNumToWrite;
   }
 
   public static void main(String[] args) throws Exception {

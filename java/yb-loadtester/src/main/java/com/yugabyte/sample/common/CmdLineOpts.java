@@ -104,12 +104,20 @@ public class CmdLineOpts {
    * Creates new instance of the app.
    */
   public AppBase createAppInstance() {
+    return createAppInstance(true);
+  }
+
+  /**
+   * Creates new instance of the app.
+   * @param enableMetrics Should metrics tracker be enabled.
+   */
+  public AppBase createAppInstance(boolean enableMetrics) {
     AppBase workload = null;
     try {
       // Create a new workload object.
       workload = appClass.newInstance();
       // Initialize the workload.
-      workload.workloadInit(this);
+      workload.workloadInit(this, enableMetrics);
     } catch (Exception e) {
       LOG.error("Could not create instance of " + appClass.getName(), e);
     }
