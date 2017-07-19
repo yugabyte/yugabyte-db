@@ -54,6 +54,9 @@ string PrimitiveValue::ToString() const {
     case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kString:
       return FormatBytesAsStr(str_val_);
+    case ValueType::kInt32Descending: FALLTHROUGH_INTENDED;
+    case ValueType::kInt32:
+      return std::to_string(int32_val_);
     case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kInt64:
       return std::to_string(int64_val_);
@@ -134,6 +137,14 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
 
     case ValueType::kInt64:
       key_bytes->AppendInt64(int64_val_);
+      return;
+
+    case ValueType::kInt32:
+      key_bytes->AppendInt32(int32_val_);
+      return;
+
+    case ValueType::kInt32Descending:
+      key_bytes->AppendDescendingInt32(int32_val_);
       return;
 
     case ValueType::kInt64Descending:
@@ -226,6 +237,11 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kString:
       // No zero encoding necessary when storing the string in a value.
       result.append(str_val_);
+      return result;
+
+    case ValueType::kInt32Descending: FALLTHROUGH_INTENDED;
+    case ValueType::kInt32:
+      AppendBigEndianUInt32(int32_val_, &result);
       return result;
 
     case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
@@ -362,6 +378,23 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       type_ref = value_type;
       return Status::OK();
     }
+
+    case ValueType::kInt32Descending: FALLTHROUGH_INTENDED;
+    case ValueType::kInt32:
+      if (slice->size() < sizeof(int32_t)) {
+        return STATUS_SUBSTITUTE(Corruption,
+                                 "Not enough bytes to decode a 32-bit integer: $0",
+                                 slice->size());
+      }
+      if (out) {
+        out->int32_val_ = BigEndian::Load32(slice->data()) ^ kInt32SignBitFlipMask;
+        if (value_type == ValueType::kInt32Descending) {
+          out->int32_val_ = ~out->int32_val_;
+        }
+      }
+      slice->remove_prefix(sizeof(int32_t));
+      type_ref = value_type;
+      return Status::OK();
 
     case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
@@ -540,6 +573,17 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       type_ = ValueType::kString;
       return Status::OK();
 
+    case ValueType::kInt32: FALLTHROUGH_INTENDED;
+    case ValueType::kInt32Descending:
+      if (slice.size() != sizeof(int32_t)) {
+        return STATUS(Corruption,
+                      Substitute("Invalid number of bytes for a $0: $1",
+                                 ValueTypeToStr(value_type), slice.size()));
+      }
+      type_ = value_type;
+      int32_val_ = BigEndian::Load32(slice.data());
+      return Status::OK();
+
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
     case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kArrayIndex: FALLTHROUGH_INTENDED;
@@ -661,6 +705,17 @@ PrimitiveValue PrimitiveValue::SystemColumnId(ColumnId column_id) {
   return primitive_value;
 }
 
+PrimitiveValue PrimitiveValue::Int32(int32_t v, SortOrder sort_order) {
+  PrimitiveValue primitive_value;
+  if (sort_order == SortOrder::kDescending) {
+    primitive_value.type_ = ValueType::kInt32Descending;
+  } else {
+    primitive_value.type_ = ValueType::kInt32;
+  }
+  primitive_value.int32_val_ = v;
+  return primitive_value;
+}
+
 KeyBytes PrimitiveValue::ToKeyBytes() const {
   KeyBytes kb;
   AppendToKey(&kb);
@@ -677,6 +732,9 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kTrue: return true;
     case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kString: return str_val_ == other.str_val_;
+
+    case ValueType::kInt32Descending: FALLTHROUGH_INTENDED;
+    case ValueType::kInt32: return int32_val_ == other.int32_val_;
 
     case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
@@ -717,6 +775,10 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       return str_val_.compare(other.str_val_);
     case ValueType::kInt64Descending:
       return CompareUsingLessThan(other.int64_val_, int64_val_);
+    case ValueType::kInt32Descending:
+      return CompareUsingLessThan(other.int32_val_, int32_val_);
+    case ValueType::kInt32:
+      return CompareUsingLessThan(int32_val_, other.int32_val_);
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
     case ValueType::kArrayIndex:
       return CompareUsingLessThan(int64_val_, other.int64_val_);
@@ -783,10 +845,10 @@ PrimitiveValue PrimitiveValue::FromKuduValue(DataType data_type, Slice slice) {
       return PrimitiveValue(slice.ToString());
     case DataType::INT32:
       // TODO: fix cast when variable length integer encoding is implemented.
-      return PrimitiveValue(*reinterpret_cast<const int32_t*>(slice.data()));
+      return PrimitiveValue::Int32(*reinterpret_cast<const int32_t*>(slice.data()));
     case DataType::INT8:
       // TODO: fix cast when variable length integer encoding is implemented.
-      return PrimitiveValue(*reinterpret_cast<const int8_t*>(slice.data()));
+      return PrimitiveValue::Int32(*reinterpret_cast<const int8_t*>(slice.data()));
     case DataType::BOOL:
       // TODO(mbautin): check if this is the right way to interpret a bool value in Kudu.
       return PrimitiveValue(*slice.data() == 0 ? ValueType::kFalse: ValueType::kTrue);
@@ -801,9 +863,12 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const YQLValuePB& value,
   const auto sort_order = SortOrderFromColumnSchemaSortingType(sorting_type);
 
   switch (value.value_case()) {
-    case YQLValuePB::kInt8Value:    return PrimitiveValue(YQLValue::int8_value(value), sort_order);
-    case YQLValuePB::kInt16Value:   return PrimitiveValue(YQLValue::int16_value(value), sort_order);
-    case YQLValuePB::kInt32Value:   return PrimitiveValue(YQLValue::int32_value(value), sort_order);
+    case YQLValuePB::kInt8Value:    return PrimitiveValue::Int32(YQLValue::int8_value(value),
+                                                                 sort_order);
+    case YQLValuePB::kInt16Value:   return PrimitiveValue::Int32(YQLValue::int16_value(value),
+                                                                 sort_order);
+    case YQLValuePB::kInt32Value:   return PrimitiveValue::Int32(YQLValue::int32_value(value),
+                                                                 sort_order);
     case YQLValuePB::kInt64Value:   return PrimitiveValue(YQLValue::int64_value(value), sort_order);
     case YQLValuePB::kFloatValue:
       if (sort_order != SortOrder::kAscending) {
@@ -863,13 +928,13 @@ void PrimitiveValue::ToYQLValuePB(const PrimitiveValue& primitive_value,
 
   switch (yql_type->main()) {
     case INT8:
-      YQLValue::set_int8_value(static_cast<int8_t>(primitive_value.GetInt64()), yql_value);
+      YQLValue::set_int8_value(static_cast<int8_t>(primitive_value.GetInt32()), yql_value);
       return;
     case INT16:
-      YQLValue::set_int16_value(static_cast<int16_t>(primitive_value.GetInt64()), yql_value);
+      YQLValue::set_int16_value(static_cast<int16_t>(primitive_value.GetInt32()), yql_value);
       return;
     case INT32:
-      YQLValue::set_int32_value(static_cast<int32_t>(primitive_value.GetInt64()), yql_value);
+      YQLValue::set_int32_value(static_cast<int32_t>(primitive_value.GetInt32()), yql_value);
       return;
     case INT64:
       YQLValue::set_int64_value(static_cast<int64_t>(primitive_value.GetInt64()), yql_value);

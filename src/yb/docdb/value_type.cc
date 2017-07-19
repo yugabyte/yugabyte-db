@@ -19,7 +19,9 @@ string ValueTypeToStr(ValueType value_type) {
     case ValueType::kStringDescending: return "StingDescending";
     case ValueType::kString: return "String";
     case ValueType::kInt64Descending: return "Int64Descending";
+    case ValueType::kInt32Descending: return "Int32Descending";
     case ValueType::kInt64: return "Int64";
+    case ValueType::kInt32: return "Int32";
     case ValueType::kDouble: return "Double";
     case ValueType::kDecimalDescending: return "DecimalDescending";
     case ValueType::kDecimal: return "Decimal";

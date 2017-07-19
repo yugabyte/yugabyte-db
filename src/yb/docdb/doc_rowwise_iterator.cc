@@ -214,14 +214,14 @@ CHECKED_STATUS PrimitiveValueToKudu(const Schema& projection,
     }
     case DataType::INT32: {
       // TODO: update these casts when all data types are supported in docdb
-      RETURN_NOT_OK(ExpectValueType(ValueType::kInt64, col_schema, value));
-      *(reinterpret_cast<int32_t*>(dest_ptr)) = static_cast<int32_t>(value.GetInt64());
+      RETURN_NOT_OK(ExpectValueType(ValueType::kInt32, col_schema, value));
+      *(reinterpret_cast<int32_t*>(dest_ptr)) = static_cast<int32_t>(value.GetInt32());
       break;
     }
     case DataType::INT8: {
       // TODO: update these casts when all data types are supported in docdb
-      RETURN_NOT_OK(ExpectValueType(ValueType::kInt64, col_schema, value));
-      *(reinterpret_cast<int8_t*>(dest_ptr)) = static_cast<int8_t>(value.GetInt64());
+      RETURN_NOT_OK(ExpectValueType(ValueType::kInt32, col_schema, value));
+      *(reinterpret_cast<int8_t*>(dest_ptr)) = static_cast<int8_t>(value.GetInt32());
       break;
     }
     case DataType::BOOL: {

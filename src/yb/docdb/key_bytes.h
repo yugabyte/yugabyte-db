@@ -77,6 +77,10 @@ class KeyBytes {
     AppendInt64ToKey(x, &data_);
   }
 
+  void AppendInt32(int32_t x) {
+    AppendInt32ToKey(x, &data_);
+  }
+
   void AppendDescendingInt64(int64_t x) {
     // AppendInt64ToKey flips the highest bit. We flip all the x's bits before calling
     // AppendInt64ToKey, but the order of the operations (FLIP_HIGHEST_BIT and FLIP_ALL_BITS)
@@ -96,6 +100,10 @@ class KeyBytes {
     //    0    = 0x00 -> 0xFF -> 0x7F
     //    127  = 0x7F -> 0x80 -> 0x00
     AppendInt64ToKey(~x, &data_);
+  }
+
+  void AppendDescendingInt32(int32_t x) {
+    AppendInt32ToKey(~x, &data_);
   }
 
   void AppendUInt16(int16_t x) {

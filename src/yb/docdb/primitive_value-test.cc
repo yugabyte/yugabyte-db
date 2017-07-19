@@ -5,6 +5,7 @@
 #include <limits>
 #include <map>
 
+#include "yb/util/random.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/bytes_formatter.h"
@@ -42,6 +43,22 @@ void TestEncoding(const char* expected_str, const PrimitiveValue& primitive_valu
   ASSERT_STR_EQ_VERBOSE_TRIMMED(expected_str, primitive_value.ToKeyBytes().ToString());
 }
 
+template <typename T>
+void CompareSlices(KeyBytes key_bytes1, KeyBytes key_bytes2, T val1, T val2) {
+  rocksdb::Slice slice1 = key_bytes1.AsSlice();
+  rocksdb::Slice slice2 = key_bytes2.AsSlice();
+  if (val1 > val2) {
+    ASSERT_LT(0, slice1.compare(slice2)) << strings::Substitute("Failed for values $0, $1",
+                                                                val1, val2);
+  } else if (val1 < val2) {
+    ASSERT_GT(0, slice1.compare(slice2)) << strings::Substitute("Failed for values $0, $1",
+                                                                val1, val2);
+  } else {
+    ASSERT_EQ(0, slice1.compare(slice2)) << strings::Substitute("Failed for values $0, $1",
+                                                                val1, val2);
+  }
+}
+
 }  // unnamed namespace
 
 TEST(PrimitiveValueTest, TestToString) {
@@ -55,6 +72,13 @@ TEST(PrimitiveValueTest, TestToString) {
       PrimitiveValue(numeric_limits<int64_t>::max()).ToString());
   ASSERT_EQ("-9223372036854775808",
       PrimitiveValue(numeric_limits<int64_t>::min()).ToString());
+
+  ASSERT_EQ("123456789", PrimitiveValue::Int32(123456789).ToString());
+  ASSERT_EQ("-123456789", PrimitiveValue::Int32(-123456789).ToString());
+  ASSERT_EQ("2147483647",
+            PrimitiveValue::Int32(numeric_limits<int32_t>::max()).ToString());
+  ASSERT_EQ("-2147483648",
+            PrimitiveValue::Int32(numeric_limits<int32_t>::min()).ToString());
 
   ASSERT_EQ("3.1415", PrimitiveValue::Double(3.1415).ToString());
   ASSERT_EQ("100.0", PrimitiveValue::Double(100.0).ToString());
@@ -103,6 +127,9 @@ TEST(PrimitiveValueTest, TestRoundTrip) {
       PrimitiveValue("foo"),
       PrimitiveValue(string("foo\0bar\x01", 8)),
       PrimitiveValue(123L),
+      PrimitiveValue::Int32(123),
+      PrimitiveValue::Int32(std::numeric_limits<int32_t>::max()),
+      PrimitiveValue::Int32(std::numeric_limits<int32_t>::min()),
       PrimitiveValue(HybridTime(1000L)),
       PrimitiveValue(ColumnId(numeric_limits<ColumnIdRep>::max())),
       PrimitiveValue(ColumnId(0)),
@@ -121,6 +148,13 @@ TEST(PrimitiveValueTest, TestEncoding) {
       PrimitiveValue(std::numeric_limits<int64_t>::min()));
   TestEncoding(R"#("I\xff\xff\xff\xff\xff\xff\xff\xff")#",
       PrimitiveValue(std::numeric_limits<int64_t>::max()));
+
+  // int32_t.
+  TestEncoding(R"#("H\x80\x00\x00{")#", PrimitiveValue::Int32(123));
+  TestEncoding(R"#("H\x00\x00\x00\x00")#",
+               PrimitiveValue::Int32(std::numeric_limits<int32_t>::min()));
+  TestEncoding(R"#("H\xff\xff\xff\xff")#",
+               PrimitiveValue::Int32(std::numeric_limits<int32_t>::max()));
 
   // HybridTime encoding --------------------------------------------------------------------------
 
@@ -204,27 +238,22 @@ TEST(PrimitiveValueTest, TestVarintStorage) {
 }
 
 TEST(PrimitiveValueTest, TestRandomComparableColumnId) {
-  // Seed with current time.
-  std::srand(std::time(0));
+  Random r(0);
   for (int i = 0; i < 1000; i++) {
-    ColumnIdRep column_id1 = std::rand() % (std::numeric_limits<ColumnIdRep>::max());
-    ColumnIdRep column_id2 = std::rand() % (std::numeric_limits<ColumnIdRep>::max());
-    KeyBytes key_bytes1;
-    KeyBytes key_bytes2;
-    key_bytes1.AppendColumnId(ColumnId(column_id1));
-    key_bytes2.AppendColumnId(ColumnId(column_id2));
-    rocksdb::Slice slice1 = key_bytes1.AsSlice();
-    rocksdb::Slice slice2 = key_bytes2.AsSlice();
-    if (column_id1 > column_id2) {
-      ASSERT_LT(0, slice1.compare(slice2)) << strings::Substitute("Failed for values $0, $1",
-                                                                  column_id1, column_id2);
-    } else if (column_id1 < column_id2) {
-      ASSERT_GT(0, slice1.compare(slice2)) << strings::Substitute("Failed for values $0, $1",
-                                                                  column_id1, column_id2);
-    } else {
-      ASSERT_EQ(0, slice1.compare(slice2)) << strings::Substitute("Failed for values $0, $1",
-                                                                  column_id1, column_id2);
-    }
+    ColumnId column_id1(r.Next() % (std::numeric_limits<ColumnIdRep>::max()));
+    ColumnId column_id2(r.Next() % (std::numeric_limits<ColumnIdRep>::max()));
+    CompareSlices(PrimitiveValue(column_id1).ToKeyBytes(), PrimitiveValue(column_id2).ToKeyBytes(),
+                  column_id1, column_id2);
+  }
+}
+
+TEST(PrimitiveValueTest, TestRandomComparableInt32) {
+  Random r(0);
+  for (int i = 0; i < 1000; i++) {
+    int32_t val1 = r.Next32();
+    int32_t val2 = r.Next32();
+    CompareSlices(PrimitiveValue::Int32(val1).ToKeyBytes(),
+                  PrimitiveValue::Int32(val2).ToKeyBytes(), val1, val2);
   }
 }
 

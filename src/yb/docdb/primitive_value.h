@@ -215,6 +215,7 @@ class PrimitiveValue {
   static PrimitiveValue UInt16Hash(uint16_t hash);
   static PrimitiveValue SystemColumnId(ColumnId column_id);
   static PrimitiveValue SystemColumnId(SystemColumnIds system_column_id);
+  static PrimitiveValue Int32(int32_t v, SortOrder sort_order = SortOrder::kAscending);
 
   KeyBytes ToKeyBytes() const;
 
@@ -243,6 +244,11 @@ class PrimitiveValue {
   const std::string& GetString() const {
     DCHECK(ValueType::kString == type_ || ValueType::kStringDescending == type_);
     return str_val_;
+  }
+
+  int32_t GetInt32() const {
+    DCHECK(ValueType::kInt32 == type_ || ValueType::kInt32Descending == type_);
+    return int32_val_;
   }
 
   int64_t GetInt64() const {
@@ -298,6 +304,7 @@ class PrimitiveValue {
 
   // TODO: do we have to worry about alignment here?
   union {
+    int32_t int32_val_;
     int64_t int64_val_;
     uint16_t uint16_val_;
     DocHybridTime hybrid_time_val_;

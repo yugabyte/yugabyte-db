@@ -295,10 +295,12 @@ DocKey DocKey::FromKuduEncodedKey(const EncodedKey &encoded_key, const Schema &s
         new_doc_key.range_group_.emplace_back(*reinterpret_cast<const int64_t*>(raw_key));
         break;
       case DataType::INT32:
-        new_doc_key.range_group_.emplace_back(*reinterpret_cast<const int32_t*>(raw_key));
+        new_doc_key.range_group_.emplace_back(
+            PrimitiveValue::Int32(*reinterpret_cast<const int32_t*>(raw_key)));
         break;
       case DataType::INT8:
-        new_doc_key.range_group_.emplace_back(*reinterpret_cast<const int8_t*>(raw_key));
+        new_doc_key.range_group_.emplace_back(
+            PrimitiveValue::Int32(*reinterpret_cast<const int8_t*>(raw_key)));
         break;
       case DataType::STRING: FALLTHROUGH_INTENDED;
       case DataType::BINARY:

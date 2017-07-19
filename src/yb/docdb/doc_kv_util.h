@@ -24,6 +24,11 @@ namespace docdb {
 
 constexpr int kEncodedKeyStrTerminatorSize = 2;
 
+// We are flipping the sign bit of 64-bit integers appearing as object keys in a document so that
+// negative numbers sort earlier.
+constexpr uint64_t kInt64SignBitFlipMask = 0x8000000000000000L;
+constexpr uint32_t kInt32SignBitFlipMask = 0x80000000;
+
 // Checks whether the given RocksDB key belongs to a document identified by the given encoded
 // document key (a key that has already had zero characters escaped). This is done simply by
 // checking that the key starts with the encoded document key followed by two zero characters.
@@ -52,6 +57,12 @@ inline void AppendBigEndianUInt64(uint64_t u, std::string* dest) {
   dest->append(buf, sizeof(buf));
 }
 
+inline void AppendBigEndianUInt32(uint32_t u, std::string* dest) {
+  char buf[sizeof(uint32_t)];
+  BigEndian::Store32(buf, u);
+  dest->append(buf, sizeof(buf));
+}
+
 // Encode and append the given signed 64-bit integer to the destination string holding a RocksDB
 // key being constructed. We are flipping the sign bit so that negative numbers sort before positive
 // ones.
@@ -59,18 +70,18 @@ inline void AppendInt64ToKey(int64_t val, std::string* dest) {
   char buf[sizeof(uint64_t)];
   // Flip the sign bit so that negative values sort before positive ones when compared as
   // big-endian byte sequences.
-  BigEndian::Store64(buf, val ^ (static_cast<uint64_t>(1)) << 63);
+  BigEndian::Store64(buf, val ^ kInt64SignBitFlipMask);
   dest->append(buf, sizeof(buf));
 }
 
 inline int64_t DecodeInt64FromKey(const rocksdb::Slice& slice) {
   uint64_t v = BigEndian::Load64(slice.data());
-  return v ^ (static_cast<int64_t>(1)) << 63;
+  return v ^ kInt64SignBitFlipMask;
 }
 
-inline void AppendUInt32ToKey(uint32_t val, std::string* dest) {
-  char buf[sizeof(uint32_t)];
-  BigEndian::Store32(buf, val);
+inline void AppendInt32ToKey(int32_t val, std::string* dest) {
+  char buf[sizeof(int32_t)];
+  BigEndian::Store32(buf, val ^ kInt32SignBitFlipMask);
   dest->append(buf, sizeof(buf));
 }
 
@@ -87,7 +98,7 @@ inline void AppendFloatToKey(float val, std::string* dest) {
   if (v >> 31) { // This is the sign bit: better than using val >= 0 (because -0, nulls denormals).
     v = ~v;
   } else {
-    v ^= (static_cast<uint32_t>(1)) << 31;
+    v ^= kInt32SignBitFlipMask;
   }
   BigEndian::Store32(buf, v);
   dest->append(buf, sizeof(buf));
@@ -96,7 +107,7 @@ inline void AppendFloatToKey(float val, std::string* dest) {
 inline float DecodeFloatFromKey(const rocksdb::Slice& slice) {
   uint32_t v = BigEndian::Load32(slice.data());
   if (v >> 31) { // This is the sign bit: better than using val >= 0 (because -0, nulls denormals).
-    v ^= (static_cast<uint32_t>(1)) << 31;
+    v ^= kInt32SignBitFlipMask;
   } else {
     v = ~v;
   }
@@ -109,7 +120,7 @@ inline void AppendDoubleToKey(double val, std::string* dest) {
   if (v >> 63) { // This is the sign bit: better than using val >= 0 (because -0, nulls denormals).
     v = ~v;
   } else {
-    v ^= (static_cast<uint64_t>(1)) << 63;
+    v ^= kInt64SignBitFlipMask;
   }
   BigEndian::Store64(buf, v);
   dest->append(buf, sizeof(buf));
@@ -118,7 +129,7 @@ inline void AppendDoubleToKey(double val, std::string* dest) {
 inline double DecodeDoubleFromKey(const rocksdb::Slice& slice) {
   uint64_t v = BigEndian::Load64(slice.data());
   if (v >> 63) { // This is the sign bit: better than using val >= 0 (because -0, nulls denormals).
-    v ^= (static_cast<uint64_t>(1)) << 63;
+    v ^= kInt64SignBitFlipMask;
   } else {
     v = ~v;
   }

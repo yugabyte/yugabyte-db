@@ -34,6 +34,7 @@ enum class ValueType : char {
   kDecimal = 'E',  // ASCII code 69
   kFalse = 'F',  // ASCII code 70
   kUInt16Hash = 'G',  // ASCII code 71
+  kInt32 = 'H',  // ASCII code 72
   kInt64 = 'I',  // ASCII code 73
   kSystemColumnId = 'J',  // ASCII code 74
   kColumnId = 'K',  // ASCII code 75
@@ -51,6 +52,7 @@ enum class ValueType : char {
   kInt64Descending = 'b',  // ASCII code 98
   kTimestampDescending = 'c',  // ASCII code 99
   kDecimalDescending = 'd',  // ASCII code 100
+  kInt32Descending = 'e',  // ASCII code 101
 
   // Timestamp value in microseconds
   kTimestamp = 's',  // ASCII code 115

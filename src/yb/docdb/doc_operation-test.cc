@@ -298,16 +298,16 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(p=1000, w=3)]) -> 3; ttl: 1.
 }
 
 TEST_F(DocOperationTest, TestYQLReadWithoutLivenessColumn) {
-  const DocKey doc_key(0, PrimitiveValues(100), PrimitiveValues());
+  const DocKey doc_key(0, PrimitiveValues(PrimitiveValue::Int32(100)), PrimitiveValues());
   KeyBytes encoded_doc_key(doc_key.Encode());
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
-                         Value(PrimitiveValue(2)), HybridTime(1000),
+                         Value(PrimitiveValue::Int32(2)), HybridTime(1000),
                          InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
-                         Value(PrimitiveValue(3)), HybridTime(2000),
+                         Value(PrimitiveValue::Int32(3)), HybridTime(2000),
                          InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
-                         Value(PrimitiveValue(4)), HybridTime(3000),
+                         Value(PrimitiveValue::Int32(4)), HybridTime(3000),
                          InitMarkerBehavior::OPTIONAL));
 
   AssertDocDbDebugDumpStrEq(R"#(
@@ -328,7 +328,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> 4
 }
 
 TEST_F(DocOperationTest, TestYQLReadWithTombstone) {
-  DocKey doc_key(0, PrimitiveValues(100), PrimitiveValues());
+  DocKey doc_key(0, PrimitiveValues(PrimitiveValue::Int32(100)), PrimitiveValues());
   KeyBytes encoded_doc_key(doc_key.Encode());
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
                          Value(PrimitiveValue(ValueType::kTombstone)), HybridTime(1000),
@@ -353,16 +353,17 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
   ASSERT_FALSE(iter.HasNext());
 
   // Now verify row exists even with one valid column.
-  doc_key = DocKey(0, PrimitiveValues(100), PrimitiveValues());
+  doc_key = DocKey(0, PrimitiveValues(PrimitiveValue::Int32(100)), PrimitiveValues());
   encoded_doc_key = doc_key.Encode();
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
                          Value(PrimitiveValue(ValueType::kTombstone)), HybridTime(1001),
                          InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
-                         Value(PrimitiveValue(2), MonoDelta::FromMilliseconds(1)), HybridTime(2001),
+                         Value(PrimitiveValue::Int32(2),
+                               MonoDelta::FromMilliseconds(1)), HybridTime(2001),
                          InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
-                         Value(PrimitiveValue(101)), HybridTime(3001),
+                         Value(PrimitiveValue::Int32(101)), HybridTime(3001),
                          InitMarkerBehavior::OPTIONAL));
 
   AssertDocDbDebugDumpStrEq(R"#(
@@ -374,7 +375,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3001)]) -> 101
 SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
       )#");
 
-  vector<PrimitiveValue> hashed_components({PrimitiveValue(100)});
+  vector<PrimitiveValue> hashed_components({PrimitiveValue::Int32(100)});
   DocYQLScanSpec yql_scan_spec(schema, -1, -1, hashed_components, /* request = */ nullptr,
                                rocksdb::kDefaultQueryId);
   DocRowwiseIterator yql_iter(schema, schema, rocksdb(),
@@ -390,7 +391,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
   EXPECT_EQ(101, value_map.at(ColumnId(3)).int32_value());
 
   // Now verify row exists as long as liveness system column exists.
-  doc_key = DocKey(0, PrimitiveValues(101), PrimitiveValues());
+  doc_key = DocKey(0, PrimitiveValues(PrimitiveValue::Int32(101)), PrimitiveValues());
   encoded_doc_key = doc_key.Encode();
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key,
                                  PrimitiveValue::SystemColumnId(
@@ -401,7 +402,8 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
                          Value(PrimitiveValue(ValueType::kTombstone)), HybridTime(1000),
                          InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
-                         Value(PrimitiveValue(2), MonoDelta::FromMilliseconds(1)), HybridTime(2000),
+                         Value(PrimitiveValue::Int32(2),
+                               MonoDelta::FromMilliseconds(1)), HybridTime(2000),
                          InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
                          Value(PrimitiveValue(ValueType::kTombstone)), HybridTime(3000),
@@ -420,7 +422,7 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(2); HT(p=0, l=2000)]) -> 2; ttl: 
 SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
       )#");
 
-  vector<PrimitiveValue> hashed_components_system({PrimitiveValue(101)});
+  vector<PrimitiveValue> hashed_components_system({PrimitiveValue::Int32(101)});
   DocYQLScanSpec yql_scan_spec_system(schema, -1, -1, hashed_components_system, nullptr,
                                       rocksdb::kDefaultQueryId);
   DocRowwiseIterator yql_iter_system(schema, schema, rocksdb(),
@@ -542,7 +544,7 @@ void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType 
   for (auto op : operators) {
     LOG(INFO) << "Testing: " << YQLOperator_Name(op);
     for (auto& row : rows) {
-      std::vector<PrimitiveValue> hashed_components = { PrimitiveValue(key) };
+      std::vector<PrimitiveValue> hashed_components = { PrimitiveValue::Int32(key) };
       YQLConditionPB condition;
       condition.add_operands()->set_column_id(1_ColId);
       condition.set_op(op);
