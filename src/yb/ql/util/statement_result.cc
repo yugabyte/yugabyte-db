@@ -29,6 +29,8 @@ namespace ql {
 using std::string;
 using std::vector;
 using std::unique_ptr;
+using std::shared_ptr;
+using std::make_shared;
 using strings::Substitute;
 
 using client::YBOperation;
@@ -49,39 +51,35 @@ vector<ColumnSchema> GetBindVariableSchemasFromDmlStmt(const PTDmlStmt& stmt) {
   return bind_variable_schemas;
 }
 
-// Get column schemas from different statements / QL ops.
-vector<ColumnSchema> GetColumnSchemasFromSelectStmt(const PTSelectStmt& stmt) {
-  vector<ColumnSchema> column_schemas;
-  column_schemas.reserve(stmt.selected_columns().size());
-  const auto& schema = stmt.table()->schema();
-  for (const ColumnDesc *col_desc : stmt.selected_columns()) {
-    const auto column = schema.ColumnById(col_desc->id());
-    column_schemas.emplace_back(column.name(), column.type());
-  }
-  return column_schemas;
-}
-
-vector<ColumnSchema> GetColumnSchemasFromOp(const YBqlOp& op) {
-  vector<ColumnSchema> column_schemas;
+shared_ptr<vector<ColumnSchema>> GetColumnSchemasFromOp(const YBqlOp& op, const PTDmlStmt *tnode) {
   switch (op.type()) {
     case YBOperation::Type::QL_READ: {
-      const auto& read_op = static_cast<const YBqlReadOp&>(op);
-      column_schemas.reserve(read_op.request().column_ids_size());
-      const auto& schema = read_op.table()->schema();
-      for (const auto column_id : read_op.request().column_ids()) {
-        const auto column = schema.ColumnById(column_id);
-        column_schemas.emplace_back(column.name(), column.type());
+      // For actual execution "tnode" is always not null.
+      if (tnode != nullptr) {
+        return tnode->selected_schemas();
+      }
+
+      // Tests don't have access to the QL internal statement object, so they have to use rsrow
+      // descriptor from the read request.
+      const QLRSRowDescPB& rsrow_desc = static_cast<const YBqlReadOp&>(op).request().rsrow_desc();
+      shared_ptr<vector<ColumnSchema>> column_schemas = make_shared<vector<ColumnSchema>>();
+      for (const auto& rscol_desc : rsrow_desc.rscol_descs()) {
+        column_schemas->emplace_back(rscol_desc.name(),
+                                     QLType::FromQLTypePB(rscol_desc.ql_type()));
       }
       return column_schemas;
     }
+
     case YBOperation::Type::QL_WRITE: {
+      shared_ptr<vector<ColumnSchema>> column_schemas = make_shared<vector<ColumnSchema>>();
       const auto& write_op = static_cast<const YBqlWriteOp&>(op);
-      column_schemas.reserve(write_op.response().column_schemas_size());
+      column_schemas->reserve(write_op.response().column_schemas_size());
       for (const auto column_schema : write_op.response().column_schemas()) {
-        column_schemas.emplace_back(ColumnSchemaFromPB(column_schema));
+        column_schemas->emplace_back(ColumnSchemaFromPB(column_schema));
       }
       return column_schemas;
     }
+
     case YBOperation::Type::INSERT: FALLTHROUGH_INTENDED;
     case YBOperation::Type::UPDATE: FALLTHROUGH_INTENDED;
     case YBOperation::Type::DELETE: FALLTHROUGH_INTENDED;
@@ -90,7 +88,9 @@ vector<ColumnSchema> GetColumnSchemasFromOp(const YBqlOp& op) {
       break;
     // default: fallthrough
   }
+
   LOG(FATAL) << "Internal error: invalid or unknown QL operation: " << op.type();
+  return nullptr;
 }
 
 QLClient GetClientFromOp(const YBqlOp& op) {
@@ -120,20 +120,26 @@ PreparedResult::PreparedResult(const PTDmlStmt& stmt)
     : table_name_(stmt.table()->name()),
       hash_col_indices_(stmt.hash_col_indices()),
       bind_variable_schemas_(GetBindVariableSchemasFromDmlStmt(stmt)),
-      column_schemas_(stmt.opcode() == TreeNodeOpcode::kPTSelectStmt ?
-                      GetColumnSchemasFromSelectStmt(static_cast<const PTSelectStmt&>(stmt)) :
-                      vector<ColumnSchema>()) {
+      column_schemas_(stmt.selected_schemas()) {
+  if (column_schemas_ == nullptr) {
+    column_schemas_ = make_shared<vector<ColumnSchema>>();
+  }
 }
 
 PreparedResult::~PreparedResult() {
 }
 
 //------------------------------------------------------------------------------------------------
-RowsResult::RowsResult(YBqlOp *op)
+RowsResult::RowsResult(YBqlOp *op, const PTDmlStmt *tnode)
     : table_name_(op->table()->name()),
-      column_schemas_(GetColumnSchemasFromOp(*op)),
+      column_schemas_(GetColumnSchemasFromOp(*op, tnode)),
       client_(GetClientFromOp(*op)),
       rows_data_(op->rows_data()) {
+
+  if (column_schemas_ == nullptr) {
+    column_schemas_ = make_shared<vector<ColumnSchema>>();
+  }
+
   // If there is a paging state in the response, fill in the table ID also and serialize the
   // paging state as bytes.
   if (op->response().has_paging_state()) {
@@ -146,7 +152,7 @@ RowsResult::RowsResult(YBqlOp *op)
 }
 
 RowsResult::RowsResult(const client::YBTableName& table_name,
-                       const std::vector<ColumnSchema>& column_schemas,
+                       const shared_ptr<vector<ColumnSchema>>& column_schemas,
                        const std::string& rows_data)
     : table_name_(table_name),
       column_schemas_(column_schemas),
@@ -168,7 +174,7 @@ Status RowsResult::Append(const RowsResult& other) {
 }
 
 std::unique_ptr<QLRowBlock> RowsResult::GetRowBlock() const {
-  Schema schema(column_schemas_, 0);
+  Schema schema(*column_schemas_, 0);
   unique_ptr<QLRowBlock> rowblock(new QLRowBlock(schema));
   Slice data(rows_data_);
   if (!data.empty()) {

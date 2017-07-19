@@ -30,15 +30,10 @@ SemState::SemState(SemContext *sem_context,
                    const MCSharedPtr<MCString>& bindvar_name,
                    const ColumnDesc *lhs_col)
     : sem_context_(sem_context),
-      previous_state_(nullptr),
-      was_reset(false),
       expected_ql_type_(expected_ql_type),
       expected_internal_type_(expected_internal_type),
       bindvar_name_(bindvar_name),
-      where_state_(nullptr),
-      lhs_col_(lhs_col),
-      processing_if_clause_(false),
-      processing_set_clause_(false) {
+      lhs_col_(lhs_col) {
   // Passing down state variables that stay the same until they are set or reset.
   if (sem_context->sem_state() != nullptr) {
     processing_if_clause_ = sem_context_->processing_if_clause();

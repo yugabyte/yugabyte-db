@@ -385,8 +385,12 @@ TEST_F(QLDmlTest, FlushedOpId) {
   table_.SetInt32ColumnValue(req->add_hashed_column_values(), "h1", kHashInt, prow, 0);
   table_.SetStringColumnValue(req->add_hashed_column_values(), "h2", kHashStr, prow, 1);
   auto c2_column_id = table_.ColumnId("c2");
-  req->add_column_ids(c2_column_id);
+  req->add_selected_exprs()->set_column_id(c2_column_id);
   req->mutable_column_refs()->add_ids(c2_column_id);
+  QLRSColDescPB *rscol_desc = req->mutable_rsrow_desc()->add_rscol_descs();
+  rscol_desc->set_name("c2");
+  QLType::Create(DataType::STRING)->ToQLTypePB(rscol_desc->mutable_ql_type());
+
   ASSERT_OK(session->Apply(op));
   ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
   auto rowblock = RowsResult(op.get()).GetRowBlock();

@@ -23,6 +23,7 @@
 using std::function;
 using std::vector;
 using std::unordered_map;
+using strings::Substitute;
 
 namespace yb {
 namespace bfql {
@@ -63,7 +64,6 @@ static bool HasExactTypeSignature(const std::vector<DataType>& signature,
   if (index < actual_count) {
     return false;
   }
-
   return true;
 }
 
@@ -157,6 +157,7 @@ static bool HasCompatibleTypeSignature(const std::vector<DataType>& signature,
 //   "compare_signature" is a predicate to compare datatypes of formal and actual parameters.
 //   PTypePtr and RTypePtr can be either a (shared_ptr<MyClass>) or a raw pointer (MyClass*)
 static Status FindMatch(
+    const string& ql_name,
     function<bool(const std::vector<DataType>&, const std::vector<DataType>&)> compare_signature,
     BFOpcode max_opcode,
     const std::vector<DataType>& actual_types,
@@ -174,7 +175,8 @@ static Status FindMatch(
     if (compare_signature(bf_operator->param_types(), actual_types)) {
       // Found a compatible match. Make sure that it is the only match.
       if (compatible_operator != nullptr) {
-        return STATUS(InvalidArgument, "Found too many matched builtin functions");
+        return STATUS(InvalidArgument,
+                      Substitute("Found too many matches for builtin function '$0'", ql_name));
       }
       compatible_operator = bf_operator;
     }
@@ -190,7 +192,8 @@ static Status FindMatch(
 
   // Returns error if no match is found.
   if (compatible_operator == nullptr) {
-    return STATUS(NotFound, "No match is found for builtin with the given arguments.");
+    return STATUS(NotFound,
+                  Substitute("Signature mismatch in call to builtin function '$0'", ql_name));
   }
 
   // Returns error if the return type is not compatible.
@@ -198,8 +201,15 @@ static Status FindMatch(
     if (QLType::IsUnknown(*return_type)) {
       *return_type = compatible_operator->return_type();
     } else if (!IsCompatible(*return_type, compatible_operator->return_type())) {
-      return STATUS(InvalidArgument, "Return type is not matched");
+      return STATUS(InvalidArgument,
+                    Substitute("Return-type mismatch in call to builtin function '$0'", ql_name));
     }
+  }
+
+  // Raise error if the function execution was not yet implemented.
+  if (!compatible_operator->op_decl()->implemented()) {
+    return STATUS(NotSupported,
+                  Substitute("Builtin function '$0' is not yet implemented", ql_name));
   }
 
   *found_opcode = compatible_operator->opcode();
@@ -219,11 +229,10 @@ Status FindOpcodeByType(const string& ql_name,
                         BFOpcode *opcode,
                         const BFDecl **bfdecl,
                         DataType *return_type) {
-
   auto entry = kBfqlName2Opcode.find(ql_name);
   if (entry == kBfqlName2Opcode.end()) {
-    VLOG(3) << strings::Substitute("Builtin function $0 is not found", ql_name);
-    return STATUS(NotFound, strings::Substitute("Builtin function $0 is not found", ql_name));
+    VLOG(3) << strings::Substitute("Function '$0' does not exist", ql_name);
+    return STATUS(NotFound, strings::Substitute("Function '$0' does not exist", ql_name));
   }
 
   // Seek the correct overload functions in the following order:
@@ -243,19 +252,19 @@ Status FindOpcodeByType(const string& ql_name,
   //       double & float are both floating values.
   //
   // - Find the compatible match. Signatures are of convertible datatypes.
-  Status s = FindMatch(HasExactTypeSignature, entry->second, actual_types,
+  Status s = FindMatch(ql_name, HasExactTypeSignature, entry->second, actual_types,
                        opcode, bfdecl, return_type);
-  VLOG(3) << "Find exact match for function call " << ql_name << "(): " << s.ToString();
+  VLOG(3) << "Seek exact match for function call " << ql_name << "(): " << s.ToString();
 
   if (ql_name != kCastFuncName && s.IsNotFound()) {
-    s = FindMatch(HasSimilarTypeSignature, entry->second, actual_types,
+    s = FindMatch(ql_name, HasSimilarTypeSignature, entry->second, actual_types,
                   opcode, bfdecl, return_type);
-    VLOG(3) << "Find similar match for function call " << ql_name << "(): " << s.ToString();
+    VLOG(3) << "Seek similar match for function call " << ql_name << "(): " << s.ToString();
 
     if (s.IsNotFound()) {
-      s = FindMatch(HasCompatibleTypeSignature, entry->second, actual_types,
+      s = FindMatch(ql_name, HasCompatibleTypeSignature, entry->second, actual_types,
                     opcode, bfdecl, return_type);
-      VLOG(3) << "Find compatible match for function call " << ql_name << "(): " << s.ToString();
+      VLOG(3) << "Seek compatible match for function call " << ql_name << "(): " << s.ToString();
     }
   }
 

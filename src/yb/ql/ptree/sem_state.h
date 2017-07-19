@@ -69,6 +69,7 @@ class SemState {
   void SetWhereState(WhereExprState *where_state) {
     where_state_ = where_state;
   }
+  WhereExprState *where_state() const { return where_state_; }
 
   // Update the expr states.
   void SetExprState(const std::shared_ptr<QLType>& ql_type,
@@ -85,60 +86,53 @@ class SemState {
   // Access function for expression states.
   const std::shared_ptr<QLType>& expected_ql_type() const { return expected_ql_type_; }
   InternalType expected_internal_type() const { return expected_internal_type_; }
-  WhereExprState *where_state() const { return where_state_; }
-  const MCSharedPtr<MCString>& bindvar_name() const { return bindvar_name_; }
-  const ColumnDesc *lhs_col() const { return lhs_col_; }
 
   // Return the hash column descriptor on LHS if available.
+  const ColumnDesc *lhs_col() const { return lhs_col_; }
   const ColumnDesc *hash_col() const {
     return lhs_col_ != nullptr && lhs_col_->is_hash() ? lhs_col_ : nullptr;
   }
 
-  bool processing_if_clause() const { return processing_if_clause_; }
-  void set_processing_if_clause(bool value) { processing_if_clause_ = value; }
+  void set_bindvar_name(string bindvar_name);
+  const MCSharedPtr<MCString>& bindvar_name() const { return bindvar_name_; }
 
   bool processing_set_clause() const { return processing_set_clause_; }
   void set_processing_set_clause(bool value) { processing_set_clause_ = value; }
 
-  void set_processing_column_definition(bool val) {
-    processing_column_definition_ = val;
-  }
+  void set_processing_column_definition(bool val) { processing_column_definition_ = val; }
+  bool processing_column_definition() const { return processing_column_definition_; }
 
-  bool processing_column_definition() const {
-    return processing_column_definition_;
-  }
-
-  void set_bindvar_name(string bindvar_name);
+  bool processing_if_clause() const { return processing_if_clause_; }
+  void set_processing_if_clause(bool value) { processing_if_clause_ = value; }
 
  private:
   // Context that owns this SemState.
   SemContext *sem_context_;
 
   // Save the previous state to reset when done.
-  SemState *previous_state_;
-  bool was_reset;
+  SemState *previous_state_ = nullptr;
+  bool was_reset = false;
 
   // States to process an expression node.
   std::shared_ptr<QLType> expected_ql_type_; // The expected sql type of an expression.
   InternalType expected_internal_type_;        // The expected internal type of an expression.
 
-  MCSharedPtr<MCString> bindvar_name_;
+  MCSharedPtr<MCString> bindvar_name_ = nullptr;
 
   // State variables for where expression.
-  WhereExprState *where_state_;
+  WhereExprState *where_state_ = nullptr;
 
   // Predicate for processing a column definition in a table.
   bool processing_column_definition_ = false;
 
   // Descriptor for the LHS column.
-  const ColumnDesc *lhs_col_;
+  const ColumnDesc *lhs_col_ = nullptr;
 
   // State variables for if clause.
-  bool processing_if_clause_;
+  bool processing_if_clause_ = false;
 
   // State variable for set clause.
-  bool processing_set_clause_;
-
+  bool processing_set_clause_ = false;
 };
 
 }  // namespace ql

@@ -39,8 +39,6 @@ class YQLVTableIterator : public common::QLRowwiseIteratorIf {
   void SkipRow() override;
 
   CHECKED_STATUS SetPagingStateIfNecessary(const QLReadRequestPB& request,
-                                           const QLRowBlock& rowblock,
-                                           const size_t row_count_limit,
                                            QLResponsePB* response) const override;
 
   bool HasNext() const override;

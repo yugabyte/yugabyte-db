@@ -457,9 +457,9 @@ public class TestSelect extends BaseCQLTest {
     setupTable("test_ttl", ttls);
 
     // Select data from the test table.
-    String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_ttl" +
-                         "  WHERE ttl(v1) > 150";
+    String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_ttl WHERE ttl(v1) > 150";
     ResultSet rs = session.execute(select_stmt);
+
     List<Row> rows = rs.all();
     assertEquals(1, rows.size());
     Row row = rows.get(0);
@@ -473,8 +473,7 @@ public class TestSelect extends BaseCQLTest {
     String update_stmt = "UPDATE test_ttl USING ttl 300 SET v1 = 1009" +
                          "  WHERE h1 = 9 and h2 = 'h9' and r1 = 109 and r2 = 'r109' ";
     session.execute(update_stmt);
-    select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_ttl" +
-                  "  WHERE ttl(v1) > 250";
+    select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_ttl WHERE ttl(v1) > 250";
 
     rs = session.execute(select_stmt);
     rows = rs.all();
@@ -485,8 +484,7 @@ public class TestSelect extends BaseCQLTest {
     assertEquals(1009, row.getInt(4));
     assertEquals(1009, row.getInt(5));
 
-    select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_ttl" +
-                  "  WHERE ttl(v2) > 250";
+    select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_ttl WHERE ttl(v2) > 250";
     rs = session.execute(select_stmt);
     rows = rs.all();
     assertEquals(0, rows.size());
@@ -496,14 +494,13 @@ public class TestSelect extends BaseCQLTest {
   public void testTtlOfCollectionsThrowsError() throws Exception {
     int []ttls = {100};
     LOG.info("CREATE TABLE test_ttl");
-    String create_stmt = "CREATE TABLE test_ttl " +
-                         " (h int, v1 list<int>, v2 int, primary key (h));";
+    String create_stmt = "CREATE TABLE test_ttl(h int, v1 list<int>, v2 int, primary key (h));";
     session.execute(create_stmt);
+
     String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, [1], 1) using ttl 100;";
     session.execute(insert_stmt);
 
-    String select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
-                         "  WHERE ttl(v1) < 150";
+    String select_stmt = "SELECT h, v1, v2 FROM test_ttl WHERE ttl(v1) < 150";
     session.execute(select_stmt);
   }
 
@@ -511,14 +508,12 @@ public class TestSelect extends BaseCQLTest {
   public void testTtlOfPrimaryThrowsError() throws Exception {
     int []ttls = {100};
     LOG.info("CREATE TABLE test_ttl");
-    String create_stmt = "CREATE TABLE test_ttl " +
-                         " (h int, v1 list<int>, v2 int, primary key (h));";
+    String create_stmt = "CREATE TABLE test_ttl(h int, v1 list<int>, v2 int, primary key (h));";
     session.execute(create_stmt);
     String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, [1], 1) using ttl 100;";
     session.execute(insert_stmt);
 
-    String select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
-                         "  WHERE ttl(h) < 150";
+    String select_stmt = "SELECT h, v1, v2 FROM test_ttl WHERE ttl(h) < 150";
     session.execute(select_stmt);
   }
 
@@ -526,9 +521,9 @@ public class TestSelect extends BaseCQLTest {
   public void testTtlWrongParametersThrowsError() throws Exception {
     int []ttls = {100};
     LOG.info("CREATE TABLE test_ttl");
-    String create_stmt = "CREATE TABLE test_ttl " +
-                         " (h int, v1 int, v2 int, primary key (h));";
+    String create_stmt = "CREATE TABLE test_ttl(h int, v1 int, v2 int, primary key (h));";
     session.execute(create_stmt);
+
     String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, 1, 1) using ttl 100;";
     session.execute(insert_stmt);
 
@@ -539,6 +534,7 @@ public class TestSelect extends BaseCQLTest {
   @Test
   public void testTtlOfDefault() throws Exception {
     LOG.info("CREATE TABLE test_ttl");
+
     String create_stmt = "CREATE TABLE test_ttl (h int, v1 list<int>, v2 int, primary key (h)) " +
                          "with default_time_to_live = 100;";
     session.execute(create_stmt);
@@ -864,6 +860,41 @@ public class TestSelect extends BaseCQLTest {
       assertEquals(metrics1, metrics2);
 
       session.execute("DROP TABLE test_range;");
+    }
+  }
+
+  // This test is to check that SELECT expression is supported. Currently, only TTL and WRITETIME
+  // are available.  We use TTL() function here.
+  public void testSelectTtl() throws Exception {
+    LOG.info("TEST SELECT TTL - Start");
+
+    // Setup test table.
+    int[] ttls = {
+      100,
+      200,
+      300,
+      400,
+      500,
+      600,
+      700,
+      800,
+      900,
+    };
+    setupTable("test_ttl", ttls);
+    Thread.sleep(1000);
+
+    // Select data from the test table.
+    String select_stmt = "SELECT ttl(v1) FROM test_ttl;";
+    ResultSet rs = session.execute(select_stmt);
+    List<Row> rows = rs.all();
+    assertEquals(ttls.length, rows.size());
+
+    for (int i = 0; i < rows.size(); i++) {
+      Row row = rows.get(i);
+      LOG.info("Selected TTL value is " + row.getLong(0));
+
+      // Because ORDER BY is not yet supported, we cannot assert row by row.
+      assertTrue(999 >= row.getLong(0));
     }
   }
 }

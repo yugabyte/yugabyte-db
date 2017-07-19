@@ -56,8 +56,6 @@ void YQLVTableIterator::SkipRow() {
 }
 
 CHECKED_STATUS YQLVTableIterator::SetPagingStateIfNecessary(const QLReadRequestPB& request,
-                                                            const QLRowBlock& rowblock,
-                                                            const size_t row_count_limit,
                                                             QLResponsePB* response) const {
   // We don't support paging in virtual tables.
   return Status::OK();

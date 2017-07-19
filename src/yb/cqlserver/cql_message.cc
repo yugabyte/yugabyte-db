@@ -97,6 +97,8 @@ Status CQLMessage::QueryParameters::GetBindVariable(const std::string& name,
           case DataType::TYPEARGS: FALLTHROUGH_INTENDED;
           case DataType::USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
           case DataType::FROZEN: FALLTHROUGH_INTENDED;
+          case DataType::DATE: FALLTHROUGH_INTENDED;
+          case DataType::TIME: FALLTHROUGH_INTENDED;
           case DataType::UINT8: FALLTHROUGH_INTENDED;
           case DataType::UINT16: FALLTHROUGH_INTENDED;
           case DataType::UINT32: FALLTHROUGH_INTENDED;
@@ -1219,6 +1221,8 @@ ResultResponse::RowsMetadata::Type::Type(const shared_ptr<QLType>& ql_type) {
     case DataType::VARINT: FALLTHROUGH_INTENDED;
     case DataType::TUPLE: FALLTHROUGH_INTENDED;
     case DataType::TYPEARGS: FALLTHROUGH_INTENDED;
+    case DataType::DATE: FALLTHROUGH_INTENDED;
+    case DataType::TIME: FALLTHROUGH_INTENDED;
 
     case DataType::UINT8:  FALLTHROUGH_INTENDED;
     case DataType::UINT16: FALLTHROUGH_INTENDED;

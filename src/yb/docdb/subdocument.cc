@@ -305,8 +305,8 @@ void SubDocument::EnsureContainerAllocated() {
 }
 
 SubDocument SubDocument::FromQLValuePB(const QLValuePB& value,
-                                        ColumnSchema::SortingType sorting_type,
-                                        WriteAction write_action) {
+                                       ColumnSchema::SortingType sorting_type,
+                                       WriteAction write_action) {
   switch (value.value_case()) {
     case QLValuePB::kMapValue: {
       QLMapValuePB map = QLValue::map_value(value);
@@ -358,8 +358,8 @@ SubDocument SubDocument::FromQLValuePB(const QLValuePB& value,
 }
 
 void SubDocument::ToQLValuePB(SubDocument doc,
-                               const shared_ptr<QLType>& ql_type,
-                               QLValuePB* ql_value) {
+                              const shared_ptr<QLType>& ql_type,
+                              QLValuePB* ql_value) {
   // interpreting empty collections as null values following Cassandra semantics
   if (ql_type->HasComplexValues() && (!doc.has_valid_object_container() ||
                                        doc.object_num_keys() == 0)) {
@@ -422,17 +422,17 @@ void SubDocument::ToQLValuePB(SubDocument doc,
 }
 
 void SubDocument::ToQLExpressionPB(SubDocument doc,
-                                    const shared_ptr<QLType>& ql_type,
-                                    QLExpressionPB* ql_expr) {
+                                   const shared_ptr<QLType>& ql_type,
+                                   QLExpressionPB* ql_expr) {
   ToQLValuePB(doc, ql_type, ql_expr->mutable_value());
 }
 
 
 CHECKED_STATUS SubDocument::FromQLExpressionPB(const QLExpressionPB& ql_expr,
-                                                const ColumnSchema& column_schema,
-                                                const QLTableRow& table_row,
-                                                SubDocument* sub_doc,
-                                                WriteAction* write_action) {
+                                               const ColumnSchema& column_schema,
+                                               const QLTableRow& table_row,
+                                               SubDocument* sub_doc,
+                                               WriteAction* write_action) {
   switch (ql_expr.expr_case()) {
     case QLExpressionPB::ExprCase::kValue:  // Scenarios: SET column = constant.
       *sub_doc = FromQLValuePB(ql_expr.value(), column_schema.sorting_type(), *write_action);
@@ -440,10 +440,8 @@ CHECKED_STATUS SubDocument::FromQLExpressionPB(const QLExpressionPB& ql_expr,
 
     case QLExpressionPB::ExprCase::kColumnId:  // Scenarios: SET column = column.
       FALLTHROUGH_INTENDED;
-
     case QLExpressionPB::ExprCase::kSubscriptedCol:  // Scenarios: SET column = column[key].
       FALLTHROUGH_INTENDED;
-
     case QLExpressionPB::ExprCase::kBfcall: {  // Scenarios: SET column = func().
       QLValueWithPB result;
       RETURN_NOT_OK(YQLExpression::Evaluate(ql_expr, table_row, &result, write_action));
@@ -452,14 +450,75 @@ CHECKED_STATUS SubDocument::FromQLExpressionPB(const QLExpressionPB& ql_expr,
       return Status::OK();
     }
 
+    case QLExpressionPB::ExprCase::kTscall: {  // Scenarios: SELECT TTL(col).
+      QLValueWithPB result;
+      RETURN_NOT_OK(EvalQLBFCallTServerPB(ql_expr.tscall(), table_row, &result));
+      *sub_doc = FromQLValuePB(result.value(), column_schema.sorting_type(), *write_action);
+      return Status::OK();
+    }
+
     case QLExpressionPB::ExprCase::kCondition:
       LOG(FATAL) << "Internal error: Conditional expression is not allowed in this context";
       break;
 
+    case QLExpressionPB::ExprCase::kBocall: FALLTHROUGH_INTENDED;
+    case QLExpressionPB::ExprCase::kBindId: FALLTHROUGH_INTENDED;
     case QLExpressionPB::ExprCase::EXPR_NOT_SET:
       break;
   }
   LOG(FATAL) << "Internal error: invalid column or value expression: " << ql_expr.expr_case();
+}
+
+// TODO(neil)
+// - Need to work with Mihnea on collection function and merge this work with DocExprExecutor().
+// - When memory pool is implemented in DocDB, we should run some perf tool to optimize the
+// expression evaluating process. The intermediate / temporary QLValue should be allocated
+// in the pool. Currently, the argument structures are on stack, but their contents are in the
+// heap memory.
+CHECKED_STATUS SubDocument::EvalQLBFCallTServerPB(const QLBCallPB& tscall,
+                                                  const QLTableRow& table_row,
+                                                  QLValueWithPB *result) {
+  bfql::TSOpcode tsopcode = static_cast<bfql::TSOpcode>(tscall.opcode());
+  switch (tsopcode) {
+    case bfql::TSOpcode::kNoOp:
+      break;
+
+    case bfql::TSOpcode::kWriteTime: {
+      // TODO(neil) Call Docdb for the value and fill in the result.
+      // "args" should be just one "kColumnId". The variable "table_row" is not enough for this
+      // operator, so we must pass other information together with value.
+      DCHECK_EQ(tscall.operands().size(), 1) << "WriteTime takes only one argument, a column";
+      const QLExpressionPB& operand = tscall.operands().Get(0);
+      DCHECK(operand.has_column_id()) << "WriteTime operator expects a column ID";
+      LOG(INFO) << "Seek WRITETIME for column " << operand.column_id();
+
+      LOG(FATAL) << "Failed to execute WRITETIME";
+    }
+
+    case bfql::TSOpcode::kTtl: {
+      // TODO(neil) Call Docdb for the value and fill in the result.
+      // "args" should be just one "kColumnId". The variable "table_row" is not enough for this
+      // operator, so we must pass other information together with value.
+      DCHECK_EQ(tscall.operands().size(), 1) << "WriteTime takes only one argument, a column";
+      const QLExpressionPB& operand = tscall.operands().Get(0);
+      DCHECK(operand.has_column_id()) << "WriteTime operator expects a column ID";
+      LOG(INFO) << "Seek WRITETIME for column " << operand.column_id();
+
+      LOG(FATAL) << "Failed to execute TTL";
+    }
+
+    case bfql::TSOpcode::kCount: FALLTHROUGH_INTENDED;
+    case bfql::TSOpcode::kSum: FALLTHROUGH_INTENDED;
+    case bfql::TSOpcode::kAvg: FALLTHROUGH_INTENDED;
+    case bfql::TSOpcode::kMin: FALLTHROUGH_INTENDED;
+    case bfql::TSOpcode::kMax:
+      // TODO(neil) Call DocDB to execute aggregate functions.
+      // These functions operate across many rows, so some state variables must be kept beyond the
+      // scope of one row. The variable "table_row" is not enough for these operators.
+      LOG(FATAL) << "Failed to execute aggregate function";
+  }
+
+  return Status::OK();
 }
 
 }  // namespace docdb

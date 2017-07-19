@@ -205,10 +205,18 @@ QLValuePB EvaluateValue(const QLExpressionPB& expr, const QLTableRow& table_row)
     case QLExpressionPB::ExprCase::kValue:
       return expr.value();
 
-    case QLExpressionPB::ExprCase::kBfcall: {
-      switch(static_cast<bfql::BFOpcode>(expr.bfcall().bfopcode())) {
-        case bfql::BFOpcode::OPCODE_ttl_40: {
-          const QLExpressionPB& column = expr.bfcall().operands(0);
+    case QLExpressionPB::ExprCase::kBfcall:
+      LOG(FATAL) << "This builtin call is not yet supported";
+      break;
+
+    case QLExpressionPB::ExprCase::kTscall: {
+      bfql::TSOpcode tsopcode = static_cast<bfql::TSOpcode>(expr.tscall().opcode());
+      switch (tsopcode) {
+        case bfql::TSOpcode::kNoOp:
+          break;
+
+        case bfql::TSOpcode::kTtl: {
+          const QLExpressionPB& column = expr.tscall().operands(0);
           const auto column_id = ColumnId(column.column_id());
           const auto it = table_row.find(column_id);
           CHECK(it != table_row.end());
@@ -220,8 +228,8 @@ QLValuePB EvaluateValue(const QLExpressionPB& expr, const QLTableRow& table_row)
           }
           return ttl_seconds_pb;
         }
-        case bfql::BFOpcode::OPCODE_writetime_41: {
-          const QLExpressionPB& column = expr.bfcall().operands(0);
+        case bfql::TSOpcode::kWriteTime: {
+          const QLExpressionPB& column = expr.tscall().operands(0);
           const auto column_id = ColumnId(column.column_id());
           const auto it = table_row.find(column_id);
           CHECK(it != table_row.end());
@@ -229,12 +237,21 @@ QLValuePB EvaluateValue(const QLExpressionPB& expr, const QLTableRow& table_row)
           write_time_pb.set_int64_value(it->second.write_time);
           return write_time_pb;
         }
+
+        case bfql::TSOpcode::kCount: FALLTHROUGH_INTENDED;
+        case bfql::TSOpcode::kSum: FALLTHROUGH_INTENDED;
+        case bfql::TSOpcode::kAvg: FALLTHROUGH_INTENDED;
+        case bfql::TSOpcode::kMin: FALLTHROUGH_INTENDED;
+        case bfql::TSOpcode::kMax: FALLTHROUGH_INTENDED;
         default:
-          LOG(FATAL) << "Error: invalid builtin function: " << expr.bfcall().bfopcode();
+          LOG(FATAL) << "Error: invalid builtin function: " << expr.tscall().opcode();
       }
       break;
     }
+
     case QLExpressionPB::ExprCase::kCondition: FALLTHROUGH_INTENDED;
+    case QLExpressionPB::ExprCase::kBocall: FALLTHROUGH_INTENDED;
+    case QLExpressionPB::ExprCase::kBindId: FALLTHROUGH_INTENDED;
     case QLExpressionPB::ExprCase::EXPR_NOT_SET:
       break;
     // default: fall through

@@ -24,6 +24,8 @@
 namespace yb {
 namespace ql {
 
+using std::make_shared;
+
 using client::YBSchema;
 using client::YBTable;
 using client::YBTableType;
@@ -68,7 +70,7 @@ PTExprListNode::SharedPtr PTValues::Tuple(int index) const {
 PTSelectStmt::PTSelectStmt(MemoryContext *memctx,
                            YBLocation::SharedPtr loc,
                            const bool distinct,
-                           PTListNode::SharedPtr target,
+                           PTExprListNode::SharedPtr selected_exprs,
                            PTTableRefListNode::SharedPtr from_clause,
                            PTExpr::SharedPtr where_clause,
                            PTListNode::SharedPtr group_by_clause,
@@ -77,24 +79,19 @@ PTSelectStmt::PTSelectStmt(MemoryContext *memctx,
                            PTExpr::SharedPtr limit_clause)
     : PTDmlStmt(memctx, loc, false, where_clause),
       distinct_(distinct),
-      target_(target),
+      selected_exprs_(selected_exprs),
       from_clause_(from_clause),
       group_by_clause_(group_by_clause),
       having_clause_(having_clause),
       order_by_clause_(order_by_clause),
-      limit_clause_(limit_clause),
-      selected_columns_(nullptr) {
+      limit_clause_(limit_clause) {
 }
 
 PTSelectStmt::~PTSelectStmt() {
 }
 
 CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
-
   RETURN_NOT_OK(PTDmlStmt::Analyze(sem_context));
-
-  MemoryContext *psem_mem = sem_context->PSemMem();
-  selected_columns_ = MCMakeShared<MCVector<const ColumnDesc*>>(psem_mem);
 
   // Get the table descriptor.
   if (from_clause_->size() > 1) {
@@ -111,14 +108,13 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
     return is_system() ? Status::OK() : s;
   }
 
-  // Run error checking on the select list 'target_'.
-  // Check that all targets are valid references to table columns.
-  selected_columns_->reserve(num_columns());
-  TreeNodePtrOperator<SemContext> analyze = std::bind(&PTSelectStmt::AnalyzeTarget,
-                                                      this,
-                                                      std::placeholders::_1,
-                                                      std::placeholders::_2);
-  RETURN_NOT_OK(target_->Analyze(sem_context, analyze));
+  // Analyze clauses in select statements and check that references to columns in selected_exprs
+  // are valid and used appropriately.
+  SemState sem_state(sem_context);
+  RETURN_NOT_OK(selected_exprs_->Analyze(sem_context));
+  if (distinct_) {
+    RETURN_NOT_OK(AnalyzeDistinctClause(sem_context));
+  }
 
   // Run error checking on the WHERE conditions.
   RETURN_NOT_OK(AnalyzeWhereClause(sem_context, where_clause_));
@@ -126,8 +122,45 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
   // Run error checking on the LIMIT clause.
   RETURN_NOT_OK(AnalyzeLimitClause(sem_context));
 
+  // Constructing the schema of the result set.
+  RETURN_NOT_OK(ConstructSelectedSchema());
+
   return Status::OK();
 }
+
+void PTSelectStmt::PrintSemanticAnalysisResult(SemContext *sem_context) {
+  VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << "Not yet avail";
+}
+
+//--------------------------------------------------------------------------------------------------
+
+CHECKED_STATUS PTSelectStmt::AnalyzeDistinctClause(SemContext *sem_context) {
+  // Only partition and static columns are allowed to be used with distinct clause.
+  int key_count = 0;
+  for (const ColumnDesc& desc : table_columns_) {
+    if (desc.is_hash()) {
+      if (column_refs_.find(desc.id()) != column_refs_.end()) {
+        key_count++;
+      }
+    } else if (!desc.is_static()) {
+      if (column_refs_.find(desc.id()) != column_refs_.end()) {
+        return sem_context->Error(
+            selected_exprs_,
+            "Selecting distinct must request only partition keys and static columns",
+            ErrorCode::CQL_STATEMENT_INVALID);
+      }
+    }
+  }
+
+  if (key_count != 0 && key_count != num_hash_key_columns_) {
+    return sem_context->Error(selected_exprs_,
+                              "Selecting distinct must request all or none of partition keys",
+                              ErrorCode::CQL_STATEMENT_INVALID);
+  }
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS PTSelectStmt::AnalyzeLimitClause(SemContext *sem_context) {
   if (limit_clause_ == nullptr) {
@@ -143,66 +176,24 @@ CHECKED_STATUS PTSelectStmt::AnalyzeLimitClause(SemContext *sem_context) {
   return Status::OK();
 }
 
-namespace {
+//--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS AnalyzeDistinctColumn(TreeNode *target,
-                                     const ColumnDesc *col_desc,
-                                     SemContext *sem_context) {
-  if (col_desc->is_primary() && !col_desc->is_hash()) {
-    return sem_context->Error(target, "Selecting distinct range column is not yet supported",
-                              ErrorCode::CQL_STATEMENT_INVALID);
-  }
-  if (!col_desc->is_primary() && !col_desc->is_static()) {
-    return sem_context->Error(target, "Selecting distinct non-static column is not yet supported",
-                              ErrorCode::CQL_STATEMENT_INVALID);
-  }
-  return Status::OK();
-}
+CHECKED_STATUS PTSelectStmt::ConstructSelectedSchema() {
+  const MCList<PTExpr::SharedPtr>& exprs = selected_exprs();
+  selected_schemas_ = make_shared<vector<ColumnSchema>>();
 
-} // namespace
-
-CHECKED_STATUS PTSelectStmt::AnalyzeTarget(TreeNode *target, SemContext *sem_context) {
-  // Walking through the target expressions and collect all columns. Currently, CQL doesn't allow
-  // any expression except for references to table column.
-  if (target->opcode() != TreeNodeOpcode::kPTRef) {
-    return sem_context->Error(target, "Selecting expression is not allowed in CQL",
-                              ErrorCode::CQL_STATEMENT_INVALID);
-  }
-
-  PTRef *ref = static_cast<PTRef *>(target);
-
-  if (ref->name() == nullptr) { // This ref is pointing to the whole table (SELECT *)
-    if (target_->size() != 1) {
-      return sem_context->Error(target, "Selecting '*' is not allowed in this context",
-                                ErrorCode::CQL_STATEMENT_INVALID);
-    }
-    int num_cols = num_columns();
-    for (int idx = 0; idx < num_cols; idx++) {
-      const ColumnDesc *col_desc = &table_columns_[idx];
-      if (distinct_) {
-        RETURN_NOT_OK(AnalyzeDistinctColumn(target, col_desc, sem_context));
+  selected_schemas_->reserve(exprs.size());
+  for (auto expr : exprs) {
+    if (expr->opcode() == TreeNodeOpcode::kPTAllColumns) {
+      const PTAllColumns *ref = static_cast<const PTAllColumns*>(expr.get());
+      for (const auto& col_desc : ref->table_columns()) {
+        selected_schemas_->emplace_back(col_desc.name(), col_desc.ql_type());
       }
-      selected_columns_->push_back(col_desc);
-
-      // Inform the executor that we need to read this column.
-      AddColumnRef(*col_desc);
+    } else {
+      selected_schemas_->emplace_back(expr->QLName(), expr->ql_type());
     }
-  } else { // Add the column descriptor to selected_columns_.
-    // Set expected type to UNKNOWN as we don't expected any datatype.
-    SemState sem_state(sem_context);
-    RETURN_NOT_OK(ref->Analyze(sem_context));
-    const ColumnDesc *col_desc = ref->desc();
-    if (distinct_) {
-      RETURN_NOT_OK(AnalyzeDistinctColumn(target, col_desc, sem_context));
-    }
-    selected_columns_->push_back(col_desc);
   }
-
   return Status::OK();
-}
-
-void PTSelectStmt::PrintSemanticAnalysisResult(SemContext *sem_context) {
-  VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << "Not yet avail";
 }
 
 //--------------------------------------------------------------------------------------------------

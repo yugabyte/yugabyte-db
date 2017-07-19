@@ -50,6 +50,10 @@ class QLRow {
   QLRow& operator=(const QLRow& other);
   QLRow& operator=(QLRow&& other);
 
+  void SetColumnValues(const std::vector<QLValueWithPB>& column_values) {
+    values_ = column_values;
+  }
+
   //------------------------------------ debug string ---------------------------------------
   // Return a string for debugging.
   std::string ToString() const;
@@ -124,7 +128,6 @@ class QLRowBlock {
 // for saving the column values of a selected row to evaluate the WHERE and IF clauses. Since
 // we use the clauses in protobuf to evaluate, we will maintain the column values in QLValuePB
 // also to avoid conversion to and from QLValueWithPB.
-
 struct QLTableColumn {
  public:
   QLValuePB value;

@@ -54,7 +54,8 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
     hash_col_bindvars_(memctx),
     column_args_(nullptr),
     column_refs_(memctx),
-    static_column_refs_(memctx) {
+    static_column_refs_(memctx),
+    selected_schemas_(nullptr) {
 }
 
 PTDmlStmt::~PTDmlStmt() {
@@ -374,24 +375,9 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
 }
 
 CHECKED_STATUS WhereExprState::AnalyzeColumnFunction(SemContext *sem_context,
-                                         const PTRelationExpr *expr,
-                                         PTExpr::SharedPtr value,
-                                         PTBcall::SharedPtr call) {
-  switch(call->bf_opcode()) {
-    case bfql::BFOpcode::OPCODE_ttl_40:
-    case bfql::BFOpcode::OPCODE_writetime_41: {
-      const PTRef *ref = static_cast<const PTRef *>(call.get()->args().front().get());
-      if (ref->desc()->is_primary()) {
-        return sem_context->Error(expr, "Builtin cannot be called on primary key",
-                                  ErrorCode::INVALID_ARGUMENTS);
-      }
-      break;
-    }
-    default:
-      return sem_context->Error(call, "Unsupported builtin function",
-                                ErrorCode::CQL_STATEMENT_INVALID);
-  }
-
+                                                     const PTRelationExpr *expr,
+                                                     PTExpr::SharedPtr value,
+                                                     PTBcall::SharedPtr call) {
   switch (expr->ql_op()) {
     case QL_OP_LESS_THAN:
     case QL_OP_LESS_THAN_EQUAL:

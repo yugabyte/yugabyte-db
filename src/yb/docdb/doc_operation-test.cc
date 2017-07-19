@@ -197,16 +197,30 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=2)]) -> 4
     QLValuePB* value_pb = hash_column->mutable_expr()->mutable_value();
     value_pb->set_int32_value(primary_key);
 
-    for (int i = 1; i <= 3 ; i++) {
-      ql_read_req.add_column_ids(i);
+    QLRowBlock row_block(schema, vector<ColumnId> ({ColumnId(0), ColumnId(1), ColumnId(2),
+                                                        ColumnId(3)}));
+    const Schema& query_schema = row_block.schema();
+    QLRSRowDescPB *rsrow_desc = ql_read_req.mutable_rsrow_desc();
+    for (int32_t i = 0; i <= 3 ; i++) {
+      ql_read_req.add_selected_exprs()->set_column_id(i);
       ql_read_req.mutable_column_refs()->add_ids(i);
+
+      const ColumnSchema& col = query_schema.column_by_id(ColumnId(i));
+      QLRSColDescPB *rscol_desc = rsrow_desc->add_rscol_descs();
+      rscol_desc->set_name(col.name());
+      col.type()->ToQLTypePB(rscol_desc->mutable_ql_type());
     }
 
     QLReadOperation read_op(ql_read_req);
-    QLRowBlock row_block(schema, vector<ColumnId> ({ColumnId(0), ColumnId(1), ColumnId(2),
-                                                        ColumnId(3)}));
     QLRocksDBStorage ql_storage(rocksdb());
-    EXPECT_OK(read_op.Execute(ql_storage, read_time, schema, &row_block));
+    QLResultSet resultset;
+    EXPECT_OK(read_op.Execute(ql_storage, read_time, schema, query_schema, &resultset));
+
+    // Transfer the column values from result set to rowblock.
+    for (const auto& rsrow : resultset.rsrows()) {
+      QLRow& row = row_block.Extend();
+      row.SetColumnValues(rsrow.rscols());
+    }
     return row_block;
   }
 };

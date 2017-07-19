@@ -164,7 +164,7 @@ class PTSelectStmt : public PTDmlStmt {
   PTSelectStmt(MemoryContext *memctx,
                YBLocation::SharedPtr loc,
                bool distinct,
-               PTListNode::SharedPtr target,
+               PTExprListNode::SharedPtr target,
                PTTableRefListNode::SharedPtr from_clause,
                PTExpr::SharedPtr where_clause,
                PTListNode::SharedPtr group_by_clause,
@@ -181,8 +181,9 @@ class PTSelectStmt : public PTDmlStmt {
 
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  CHECKED_STATUS AnalyzeDistinctClause(SemContext *sem_context);
   CHECKED_STATUS AnalyzeLimitClause(SemContext *sem_context);
-  CHECKED_STATUS AnalyzeTarget(TreeNode *target, SemContext *sem_context);
+  CHECKED_STATUS ConstructSelectedSchema();
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   // Execution opcode.
@@ -213,10 +214,8 @@ class PTSelectStmt : public PTDmlStmt {
     return limit_clause_;
   }
 
-  // Selected columns.
-  const MCVector<const ColumnDesc*> &selected_columns() const {
-    CHECK(selected_columns_ != nullptr) << "selected columns not set up";
-    return *selected_columns_;
+  const MCList<PTExpr::SharedPtr>& selected_exprs() const {
+    return selected_exprs_->node_list();
   }
 
   // Returns table name.
@@ -234,22 +233,19 @@ class PTSelectStmt : public PTDmlStmt {
   // The following members represent different components of SELECT statement. However, Cassandra
   // doesn't support all of SQL syntax and semantics.
   //
-  // SELECT [DISTINCT] <target_>
+  // SELECT [DISTINCT] <selected_exprs_>
   //   FROM      <from_clause_>
   //   WHERE     <where_clause_>
   //   GROUP BY  <group_by_clause_> HAVING <having_clause_>
   //   ORDER BY  <order_by_clause_>
   //   LIMIT     <limit_clause_>
   const bool distinct_;
-  PTListNode::SharedPtr target_;
+  PTExprListNode::SharedPtr selected_exprs_;
   PTTableRefListNode::SharedPtr from_clause_;
   PTListNode::SharedPtr group_by_clause_;
   PTListNode::SharedPtr having_clause_;
   PTListNode::SharedPtr order_by_clause_;
   PTExpr::SharedPtr limit_clause_;
-
-  // Members that will be constructed by semantic analyzer.
-  MCSharedPtr<MCVector<const ColumnDesc*>> selected_columns_;
 };
 
 }  // namespace ql

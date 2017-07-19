@@ -95,8 +95,12 @@ class QLTabletTest : public QLDmlTestBase {
     auto prow = op->mutable_row();
     table->SetInt32ColumnValue(req->add_hashed_column_values(), kKey, key, prow, 0);
     auto value_column_id = table->ColumnId(kValue);
-    req->add_column_ids(value_column_id);
+    req->add_selected_exprs()->set_column_id(value_column_id);
     req->mutable_column_refs()->add_ids(value_column_id);
+
+    QLRSColDescPB *rscol_desc = req->mutable_rsrow_desc()->add_rscol_descs();
+    rscol_desc->set_name(kValue);
+    table->ColumnType(kValue)->ToQLTypePB(rscol_desc->mutable_ql_type());
     return op;
   }
 
@@ -193,7 +197,8 @@ class QLTabletTest : public QLDmlTestBase {
                                  "Bad resp status: $0",
                                  QLResponsePB_QLStatus_Name(ql_batch.status()));
           }
-          std::vector<ColumnSchema> columns = { table->schema().columns()[1] };
+          std::shared_ptr<std::vector<ColumnSchema>>
+            columns = std::make_shared<std::vector<ColumnSchema>>(table->schema().columns());
           Slice data;
           RETURN_NOT_OK(controller.GetSidecar(ql_batch.rows_data_sidecar(), &data));
           yb::ql::RowsResult result(table->name(), columns, data.ToBuffer());

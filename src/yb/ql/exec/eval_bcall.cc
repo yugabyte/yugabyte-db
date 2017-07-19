@@ -18,17 +18,29 @@
 namespace yb {
 namespace ql {
 
+using yb::bfql::BFOPCODE_NOOP;
+
 CHECKED_STATUS Executor::PTExprToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
-  if (bcall_pt->result_cast_op() != yb::bfql::OPCODE_NOOP) {
-      QLBFCallPB *cast_pb = expr_pb->mutable_bfcall();
-      cast_pb->set_bfopcode(static_cast<int32_t>(bcall_pt->result_cast_op()));
+  if (!bcall_pt->is_server_operator()) {
+    // Regular builtin function call.
+    return BFCallToPB(bcall_pt, expr_pb);
+  } else {
+    // Server builtin function call.
+    return TSCallToPB(bcall_pt, expr_pb);
+  }
+}
+
+CHECKED_STATUS Executor::BFCallToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
+  if (bcall_pt->result_cast_op() != BFOPCODE_NOOP) {
+      QLBCallPB *cast_pb = expr_pb->mutable_bfcall();
+      cast_pb->set_opcode(static_cast<int32_t>(bcall_pt->result_cast_op()));
 
       // Result of the bcall_pt is the input of this CAST.
       expr_pb = cast_pb->add_operands();
   }
 
-  QLBFCallPB *bcall_pb = expr_pb->mutable_bfcall();
-  bcall_pb->set_bfopcode(static_cast<int32_t>(bcall_pt->bf_opcode()));
+  QLBCallPB *bcall_pb = expr_pb->mutable_bfcall();
+  bcall_pb->set_opcode(bcall_pt->bfopcode());
 
   int pindex = 0;
   const MCVector<yb::bfql::BFOpcode>& cast_ops = bcall_pt->cast_ops();
@@ -38,10 +50,45 @@ CHECKED_STATUS Executor::PTExprToPB(const PTBcall *bcall_pt, QLExpressionPB *exp
     // Create PB for the argument "arg".
     QLExpressionPB *operand_pb = bcall_pb->add_operands();
 
-    if (cast_ops[pindex] != yb::bfql::OPCODE_NOOP) {
+    if (cast_ops[pindex] != BFOPCODE_NOOP) {
       // Apply the cast operator. The return value of CAST is the operand of the actual BCALL.
-      QLBFCallPB *cast_pb = operand_pb->mutable_bfcall();
-      cast_pb->set_bfopcode(static_cast<int32_t>(cast_ops[pindex]));
+      QLBCallPB *cast_pb = operand_pb->mutable_bfcall();
+      cast_pb->set_opcode(static_cast<int32_t>(cast_ops[pindex]));
+
+      // Result of the argument, operand_pb, is the input of CAST.
+      operand_pb = cast_pb->add_operands();
+    }
+    pindex++;
+
+    // Process the argument and save the result to "operand_pb".
+    RETURN_NOT_OK(PTExprToPB(arg, operand_pb));
+  }
+
+  return Status::OK();
+}
+
+CHECKED_STATUS Executor::TSCallToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
+  if (bcall_pt->result_cast_op() != BFOPCODE_NOOP) {
+      QLBCallPB *cast_pb = expr_pb->mutable_bfcall();
+      cast_pb->set_opcode(static_cast<int32_t>(bcall_pt->result_cast_op()));
+
+      // Result of the bcall_pt is the input of this CAST.
+      expr_pb = cast_pb->add_operands();
+  }
+  QLBCallPB *bcall_pb = expr_pb->mutable_tscall();
+  bcall_pb->set_opcode(bcall_pt->bfopcode());
+  int pindex = 0;
+  const MCVector<yb::bfql::BFOpcode>& cast_ops = bcall_pt->cast_ops();
+  const MCList<PTExpr::SharedPtr>& args = bcall_pt->args();
+
+  for (const PTExpr::SharedPtr& arg : args) {
+    // Create PB for the argument "arg".
+    QLExpressionPB *operand_pb = bcall_pb->add_operands();
+
+    if (cast_ops[pindex] != BFOPCODE_NOOP) {
+      // Apply the cast operator. The return value of CAST is the operand of the actual BCALL.
+      QLBCallPB *cast_pb = operand_pb->mutable_bfcall();
+      cast_pb->set_opcode(static_cast<int32_t>(cast_ops[pindex]));
 
       // Result of the argument, operand_pb, is the input of CAST.
       operand_pb = cast_pb->add_operands();

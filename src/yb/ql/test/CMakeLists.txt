@@ -34,6 +34,7 @@ ADD_YB_TEST(ql-statement-test)
 ADD_YB_TEST(ql-keyspace-test)
 ADD_YB_TEST(ql-static-column-test)
 ADD_YB_TEST(ql-arith-test)
+ADD_YB_TEST(ql-select-expr-test)
 
 # Due to some reasons ybcmd is implemented as a gtest, although it is really a tool and not
 # intended to be run as a test. So, we put it in usual binary directory and don't add as a test.

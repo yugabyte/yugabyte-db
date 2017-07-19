@@ -30,6 +30,10 @@
 namespace yb {
 namespace ql {
 
+// Because statements own expressions and their headers include expression headers, we forward
+// declare statement classes here.
+class PTSelectStmt;
+
 //--------------------------------------------------------------------------------------------------
 // The order of the following enum values are not important.
 enum class ExprOperator : int {
@@ -135,6 +139,16 @@ class PTExpr : public TreeNode {
 
   bool has_valid_ql_type_id() {
     return ql_type_->main() != DataType::UNKNOWN_DATA;
+  }
+
+  // Return selected name of expression. In SELECT statement, each selected expression is assigned a
+  // name, and this method is to form the name of an expression. For example, when selected expr is
+  // a column of a table, QLName() would be the name of that column.
+  virtual string QLName() const {
+    LOG(INFO) << "Missing QLName for expression("
+              << static_cast<int>(expr_op())
+              << ") that is being selected";
+    return "expr";
   }
 
   // Node type.
@@ -546,6 +560,30 @@ class PTLiteral {
 
   virtual ReturnType value() const { return value_; }
 
+  virtual string ToQLName(int64_t value) const {
+    return std::to_string(value);
+  }
+
+  virtual string ToQLName(long double value) const {
+    return std::to_string(value);
+  }
+
+  virtual string ToQLName(const string& value) const {
+    return value;
+  }
+
+  virtual string ToQLName(bool value) const {
+    return std::to_string(value);
+  }
+
+  virtual string ToQLName(void *ptr) const {
+    return "NULL";
+  }
+
+  virtual string ToQLName(const MCSharedPtr<MCString>& value) const {
+    return value->c_str();
+  }
+
  protected:
   ReturnType value_;
 };
@@ -582,6 +620,10 @@ class PTExprConst : public PTExpr0<itype, ytype>,
     // Nothing to do: constant expressions should be initialized with valid data type already
     return Status::OK();
   };
+
+  virtual string QLName() const override {
+    return LiteralType::ToQLName(LiteralType::value());
+  }
 };
 
 // NULL constant.
@@ -770,6 +812,11 @@ class PTRef : public PTOperator0 {
   using PTOperatorExpr::AnalyzeOperator;
   virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context) override;
 
+  // Selected name.
+  virtual string QLName() const override {
+    return name_->QLName();
+  }
+
   // Access function for name.
   const PTQualifiedName::SharedPtr& name() const {
     return name_;
@@ -866,6 +913,48 @@ class PTSubscriptedColumn : public PTOperator0 {
 };
 
 //--------------------------------------------------------------------------------------------------
+// Reference to all columns of all selected tables.
+class PTAllColumns : public PTOperator0 {
+ public:
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef MCSharedPtr<PTAllColumns> SharedPtr;
+  typedef MCSharedPtr<const PTAllColumns> SharedPtrConst;
+
+  //------------------------------------------------------------------------------------------------
+  // Constructor and destructor.
+  PTAllColumns(MemoryContext *memctx, YBLocation::SharedPtr loc);
+  virtual ~PTAllColumns();
+
+  // Support for shared_ptr.
+  template<typename... TypeArgs>
+  inline static PTAllColumns::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
+    return MCMakeShared<PTAllColumns>(memctx, std::forward<TypeArgs>(args)...);
+  }
+
+  using PTOperatorExpr::AnalyzeOperator;
+  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context) override;
+
+  // Node type.
+  virtual TreeNodeOpcode opcode() const override {
+    return TreeNodeOpcode::kPTAllColumns;
+  }
+
+  virtual string QLName() const override {
+    // We should not get here as '*' should have been converted into a list of column name before
+    // the selected tuple is constructed and described.
+    LOG(FATAL) << "Calling QLName for '*' is not expected";
+    return "*";
+  }
+
+  const MCVector<ColumnDesc>& table_columns() const;
+
+ private:
+  // Fields that should be resolved by semantic analysis.
+  PTSelectStmt *stmt_;
+};
+
+//--------------------------------------------------------------------------------------------------
 // Expression alias - Name of an expression including reference to column.
 class PTExprAlias : public PTOperator1 {
  public:
@@ -890,6 +979,10 @@ class PTExprAlias : public PTOperator1 {
 
   using PTOperatorExpr::AnalyzeOperator;
   virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context, PTExpr::SharedPtr op1) override;
+
+  virtual string QLName() const override {
+    return alias_->c_str();
+  }
 
  private:
   MCSharedPtr<MCString> alias_;

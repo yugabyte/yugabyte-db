@@ -79,6 +79,7 @@
 #include "yb/client/client.h"
 #include "yb/util/logging.h"
 #include "yb/util/bfql/bfql_template.h"
+#include "yb/util/bfql/tserver_opcodes.h"
 
 namespace yb {
 namespace bfql {
@@ -176,8 +177,10 @@ class BFCompileApi {
 
   // Seeks CAST opcode from one type to another.
   static Status FindCastOpcode(DataType source, DataType target, BFOpcode *opcode) {
-    if (source == target) {
-      *opcode = yb::bfql::OPCODE_NOOP;
+    if (source == target ||
+        source == DataType::NULL_VALUE_TYPE ||
+        target == DataType::NULL_VALUE_TYPE) {
+      *opcode = yb::bfql::BFOPCODE_NOOP;
       return Status::OK();
     }
 

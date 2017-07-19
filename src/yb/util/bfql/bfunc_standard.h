@@ -42,6 +42,28 @@ Status NoOp() {
   return Status::OK();
 }
 
+// ServerOperator that takes no argument and has no return value.
+template<typename PTypePtr, typename RTypePtr>
+Status ServerOperator() {
+  LOG(ERROR) << "Only tablet servers can execute this builtin call";
+  return STATUS(RuntimeError, "Only tablet servers can execute this builtin call");
+}
+
+// ServerOperator that takes 1 argument and has a return value.
+template<typename PTypePtr, typename RTypePtr>
+Status ServerOperator(PTypePtr arg1, RTypePtr result) {
+  LOG(ERROR) << "Only tablet servers can execute this builtin call";
+  return STATUS(RuntimeError, "Only tablet servers can execute this builtin call");
+}
+
+// This is not used but implemented as an example for future coding.
+// ServerOperator that takes 2 arguments and has a return value.
+template<typename PTypePtr, typename RTypePtr>
+Status ServerOperator(PTypePtr arg1, PTypePtr arg2, RTypePtr result) {
+  LOG(ERROR) << "Only tablet servers can execute this builtin call";
+  return STATUS(RuntimeError, "Only tablet servers can execute this builtin call");
+}
+
 //--------------------------------------------------------------------------------------------------
 
 template<typename PTypePtr, typename RTypePtr>
@@ -299,6 +321,13 @@ Status SubListList(PTypePtr x, PTypePtr y, RTypePtr result) {
     }
   }
   return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+// Now().
+template<typename PTypePtr, typename RTypePtr>
+Status NowTimeUuid(RTypePtr result) {
+  return STATUS(QLError, "Not yet implemented");
 }
 
 //--------------------------------------------------------------------------------------------------

@@ -54,8 +54,11 @@ class PTBcall : public PTExpr {
   }
 
   // Access API for opcode.
-  bfql::BFOpcode bf_opcode() const {
-    return bf_opcode_;
+  bool is_server_operator() const {
+    return is_server_operator_;
+  }
+  int32_t bfopcode() const {
+    return bfopcode_;
   }
 
   // Access API for cast opcodes.
@@ -75,6 +78,17 @@ class PTBcall : public PTExpr {
 
   virtual CHECKED_STATUS CheckCounterUpdateSupport(SemContext *sem_context) const override;
 
+  virtual string QLName() const override {
+    string arg_names;
+    for (auto arg : args_->node_list()) {
+      if (!arg_names.empty()) {
+        arg_names += ", ";
+      }
+      arg_names += arg->QLName();
+    }
+    return strings::Substitute("$0$1$2$3", name_->c_str(), "(", arg_names, ")");
+  }
+
  private:
   // Builtin function name.
   MCSharedPtr<MCString> name_;
@@ -82,8 +96,10 @@ class PTBcall : public PTExpr {
   // Arguments to builtin call.
   PTExprListNode::SharedPtr args_;
 
-  // Builtin opcode.
-  bfql::BFOpcode bf_opcode_;
+  // Builtin opcode can be either "bfql::BFOpcode" or "bfql::TSOpcode".
+  // If is_tablet_server_operator_ is true, it is a TSOpcode. Otherwise, it is a BFOpcode.
+  bool is_server_operator_;
+  int32_t bfopcode_;
 
   // Casting arguments to correct datatype before calling the builtin-function.
   MCVector<yb::bfql::BFOpcode> cast_ops_;

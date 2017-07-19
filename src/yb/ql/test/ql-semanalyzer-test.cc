@@ -103,8 +103,12 @@ TEST_F(QLTestAnalyzer, TestDmlWithStaticColumn) {
 
   // Test select with distinct columns.
   ANALYZE_VALID_STMT("SELECT DISTINCT h1, h2, s1 FROM t;", &parse_tree);
-  ANALYZE_VALID_STMT("SELECT DISTINCT h1, s1 FROM t;", &parse_tree);
+  ANALYZE_VALID_STMT("SELECT DISTINCT s1 FROM t WHERE h1 = 1 AND h2 = 1;", &parse_tree);
   ANALYZE_VALID_STMT("SELECT DISTINCT s1 FROM t;", &parse_tree);
+
+  // Invalid: Missing a hash primary-key column.
+  ANALYZE_INVALID_STMT("SELECT DISTINCT h1, s1 FROM t;", &parse_tree);
+  ANALYZE_INVALID_STMT("SELECT DISTINCT h1, s1 FROM t WHERE h2 = 1;", &parse_tree);
 
   // Invalid: cannot select distinct with non hash primary-key column.
   ANALYZE_INVALID_STMT("SELECT DISTINCT h1, h2, r1, s1 FROM t;", &parse_tree);

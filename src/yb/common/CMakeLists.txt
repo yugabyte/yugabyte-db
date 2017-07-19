@@ -103,7 +103,9 @@ set(COMMON_SRCS
   ql_value.cc
   ql_bfunc.cc
   ql_scanspec.cc
-  ql_rowblock.cc)
+  ql_rowblock.cc
+  ql_resultset.cc
+  ql_expr.cc)
 
 # Workaround for clang bug https://llvm.org/bugs/show_bug.cgi?id=23757
 # in which it incorrectly optimizes row_key-util.cc and causes incorrect results.

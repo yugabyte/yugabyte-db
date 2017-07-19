@@ -48,6 +48,7 @@ class ColumnDesc {
 
   void Init(int index,
             int id,
+            string name,
             bool is_hash,
             bool is_primary,
             bool is_static,
@@ -56,6 +57,7 @@ class ColumnDesc {
             InternalType internal_type) {
     index_ = index,
     id_ = id;
+    name_ = name;
     is_hash_ = is_hash;
     is_primary_ = is_primary;
     is_static_ = is_static;
@@ -74,6 +76,10 @@ class ColumnDesc {
 
   int id() const {
     return id_;
+  }
+
+  const string& name() const {
+    return name_;
   }
 
   bool is_hash() const {
@@ -103,6 +109,7 @@ class ColumnDesc {
  private:
   int index_;
   int id_;
+  string name_;
   bool is_hash_;
   bool is_primary_;
   bool is_static_;

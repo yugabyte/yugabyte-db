@@ -21,6 +21,7 @@
 
 #include "yb/client/client.h"
 #include "yb/util/logging.h"
+#include "yb/util/bfql/tserver_opcodes.h"
 
 namespace yb {
 namespace bfql {
@@ -37,11 +38,15 @@ class BFDecl {
   BFDecl(const char *cpp_name,
          const char *ql_name,
          DataType return_type,
-         std::initializer_list<DataType> param_types)
+         std::initializer_list<DataType> param_types,
+         TSOpcode tsopcode = TSOpcode::kNoOp,
+         bool implemented = true)
       : cpp_name_(cpp_name),
         ql_name_(ql_name),
         return_type_(return_type),
-        param_types_(param_types) {
+        param_types_(param_types),
+        tsopcode_(tsopcode),
+        implemented_(implemented) {
   }
 
   const char *cpp_name() const {
@@ -64,11 +69,25 @@ class BFDecl {
     return param_types_.size();
   }
 
+  TSOpcode tsopcode() const {
+    return tsopcode_;
+  }
+
+  bool is_server_operator() const {
+    return tsopcode_ != TSOpcode::kNoOp;
+  }
+
+  bool implemented() const {
+    return implemented_;
+  }
+
  private:
   const char *cpp_name_;
   const char *ql_name_;
   DataType return_type_;
   std::vector<DataType> param_types_;
+  TSOpcode tsopcode_;
+  bool implemented_;
 };
 
 } // namespace bfql

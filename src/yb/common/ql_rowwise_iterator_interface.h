@@ -16,6 +16,7 @@
 
 #include "yb/common/iterator.h"
 #include "yb/common/ql_rowblock.h"
+#include "yb/common/ql_resultset.h"
 #include "yb/common/ql_scanspec.h"
 
 namespace yb {
@@ -46,8 +47,6 @@ class QLRowwiseIteratorIf : public RowwiseIterator {
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
   // state in the response object.
   virtual CHECKED_STATUS SetPagingStateIfNecessary(const QLReadRequestPB& request,
-                                                   const QLRowBlock& rowblock,
-                                                   const size_t row_count_limit,
                                                    QLResponsePB* response) const = 0;
 };
 

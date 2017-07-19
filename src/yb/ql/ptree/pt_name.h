@@ -56,11 +56,15 @@ class PTName : public TreeNode {
     return name_;
   }
 
+  virtual string QLName() const {
+    return name_->c_str();
+  }
+
  private:
   MCSharedPtr<MCString> name_;
 };
 
-// This class represents "*" (i.e. all fields) in SQL statement.
+// This class represents '*' (i.e. all columns of a table) in SQL statement.
 class PTNameAll : public PTName {
  public:
   //------------------------------------------------------------------------------------------------
@@ -76,6 +80,13 @@ class PTNameAll : public PTName {
   template<typename... TypeArgs>
   inline static PTNameAll::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
     return MCMakeShared<PTNameAll>(memctx, std::forward<TypeArgs>(args)...);
+  }
+
+  virtual string QLName() const override {
+    // We should not get here as '*' should have been converted into a list of column name before
+    // the selected tuple is constructed and described.
+    LOG(INFO) << "Calling QLName before '*' is converted into a list of column name";
+    return "*";
   }
 };
 
@@ -133,6 +144,17 @@ class PTQualifiedName : public PTName {
     // See Analyze() implementation.
     return (ptnames_.size() >= 2 ? client::YBTableName(first_name().c_str(), last_name().c_str())
         : client::YBTableName(last_name().c_str()));
+  }
+
+  virtual string QLName() const override {
+    string full_name;
+    for (auto name : ptnames_) {
+      if (!full_name.empty()) {
+        full_name += '.';
+      }
+      full_name += name->QLName();
+    }
+    return full_name;
   }
 
  private:

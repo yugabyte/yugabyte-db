@@ -81,9 +81,12 @@ message QLExpressionPB {
   oneof expr {
     QLValuePB value = 1;
     int32 column_id = 2;
-    QLConditionPB condition = 3;
-    QLBFCallPB bfcall = 4;
-    QLSubscriptedColPB subscripted_col = 5;
+    QLSubscriptedColPB subscripted_col = 3;
+    int32 bind_id = 4;                      // Bind variable index.
+    QLConditionPB condition = 5;            // This should be replaced with builtin operator.
+    QLBCallPB bfcall = 6;                   // Regular builtin calls.
+    QLBCallPB tscall = 7;                   // Tablet server builtin calls.
+    QLBCallPB bocall = 8;                   // Builtin operator calls.
   }
 }
 
@@ -132,9 +135,20 @@ message QLConditionPB {
   repeated QLExpressionPB operands = 2;
 }
 
-// Builtin call expression.
-message QLBFCallPB {
-  optional int32 bfopcode = 1;
+// Builtin call expression. There are 3 different calls.
+// - Builtin operators such as '>', '<', '=', ...
+//   These operators can be executed anywhere.
+// - Builtin functions such as Now().
+//   These functions can be executed anywhere.
+// - Server builtin functions.
+//   Only tablet servers can execute these functions.
+//
+// TODO(neil) Regular builtin operators. This message can be executed anywhere.
+// - This is more efficient than builtin call as it avoids most overheads of calling builtin lib.
+// - Merge the current condition operator execution with this.
+// - To optimize certain operation (such as +), replace it builtin function with builtin op.
+message QLBCallPB {
+  optional int32 opcode = 1;
   repeated QLExpressionPB operands = 2;
 }
 
@@ -237,8 +251,21 @@ message QLWriteRequestPB {
 
 //-------------------------------------- Read request ----------------------------------------
 
-message QLReadRequestPB {
+// QLRSColDesc is the descriptor of a SELECT'ed column in a ResultSet, which can be any expression
+// and not just table columns.
+message QLRSColDescPB {
+  optional string name = 1;
+  optional QLTypePB ql_type = 2;
+}
 
+// Descriptor of a row in a resultset.
+message QLRSRowDescPB {
+  repeated QLRSColDescPB rscol_descs = 1;
+}
+
+// TODO(neil) The protocol for select needs to be changed accordingly when we introduce and cache
+// execution plan in tablet server.
+message QLReadRequestPB {
   // Client info
   optional QLClient client = 1; // required
   optional uint64 request_id = 2; // client request id - for debug tracing purpose only
@@ -256,8 +283,16 @@ message QLReadRequestPB {
   // Where clause condition
   optional QLExpressionPB where_expr = 6;
 
-  // Column ids to read (select)
-  repeated int32 column_ids = 7; // required
+  // TODO(neil) Currently, we need only the datatypes of the rsrow descriptor. However, when we
+  // optimize our execution pipeline to bypass QL layer, we might need to send the name as part
+  // of the prepared protobuf so that server know how to form result set without the help from QL.
+  //
+  // For now, we sent rsrow descriptor from proxy to tablet server for every request. RSRow is just
+  // a selected row. We call it rsrow to distinguish a selected row from a row of a table in the
+  // database in our coding.
+  optional QLRSRowDescPB rsrow_desc = 17; // required.
+  repeated QLExpressionPB selected_exprs = 7; // required.
+
   // Reading distinct columns?
   optional bool distinct = 12 [default = false];
 

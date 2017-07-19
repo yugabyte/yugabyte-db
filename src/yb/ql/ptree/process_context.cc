@@ -76,7 +76,7 @@ CHECKED_STATUS ProcessContextBase::Error(const YBLocation& l,
   msg += ErrorText(error_code);
 
   if (strcmp(m, "") != 0) {
-    msg += " - ";
+    msg += ". ";
     // Concatenate error message.
     msg += m;
   }

@@ -57,19 +57,19 @@ enum DataType {
   BINARY = 9;
   TIMESTAMP = 10;
   DECIMAL = 11;
-  // VARINT is not yet fully implemented, but it is a CQL type.
-  VARINT = 12;
+  VARINT = 12;  // VARINT is not yet fully implemented, but it is a CQL type.
   INET = 13;
   LIST = 14;
   MAP = 15;
   SET = 16;
   UUID = 17;
   TIMEUUID = 18;
-  // TUPLE is not yet fully implemented, but it is a CQL type.
-  TUPLE = 19;
+  TUPLE = 19;  // TUPLE is not yet fully implemented, but it is a CQL type.
   TYPEARGS = 20;
   USER_DEFINED_TYPE = 21;
   FROZEN = 22;
+  DATE = 23;  // TODO(Mihnea) Support date & time.
+  TIME = 24;
 
   // All unsigned datatypes will be removed from QL because databases do not have these types.
   UINT8 = 100;

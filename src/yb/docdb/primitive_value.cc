@@ -1120,6 +1120,8 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
     case TUPLE: FALLTHROUGH_INTENDED;
     case TYPEARGS: FALLTHROUGH_INTENDED;
     case USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
+    case DATE: FALLTHROUGH_INTENDED;
+    case TIME: FALLTHROUGH_INTENDED;
 
     case UINT8:  FALLTHROUGH_INTENDED;
     case UINT16: FALLTHROUGH_INTENDED;
@@ -1139,10 +1141,13 @@ PrimitiveValue PrimitiveValue::FromQLExpressionPB(const QLExpressionPB& ql_expr,
   switch (ql_expr.expr_case()) {
     case QLExpressionPB::ExprCase::kValue:
       return FromQLValuePB(ql_expr.value(), sorting_type);
-    case QLExpressionPB::ExprCase::kBfcall: FALLTHROUGH_INTENDED;
     case QLExpressionPB::ExprCase::kColumnId: FALLTHROUGH_INTENDED;
     case QLExpressionPB::ExprCase::kSubscriptedCol: FALLTHROUGH_INTENDED;
     case QLExpressionPB::ExprCase::kCondition: FALLTHROUGH_INTENDED;
+    case QLExpressionPB::ExprCase::kBfcall: FALLTHROUGH_INTENDED;
+    case QLExpressionPB::ExprCase::kTscall: FALLTHROUGH_INTENDED;
+    case QLExpressionPB::ExprCase::kBocall: FALLTHROUGH_INTENDED;
+    case QLExpressionPB::ExprCase::kBindId: FALLTHROUGH_INTENDED;
     case QLExpressionPB::ExprCase::EXPR_NOT_SET:
       break;
   }

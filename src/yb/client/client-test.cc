@@ -383,8 +383,8 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
                                                          YBValue::FromInt(upper_bound))));
     }
 
-    // We hit timeout with YQL table type in tests like TestServerTooBusyRetry. This YBScanner based
-    // reads will be replaced with YQLReadRequest based reads, so the isTimedOut check is temporary.
+    // We hit timeout with QL table type in tests like TestServerTooBusyRetry. This YBScanner based
+    // reads will be replaced with QLReadRequest based reads, so the isTimedOut check is temporary.
     Status s = scanner.Open();
     if (s.IsTimedOut()) {
       return 0;
@@ -2779,9 +2779,16 @@ TEST_F(ClientTest, TestReadFromFollower) {
       req.set_tablet_id(tablet_id);
       req.set_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
       QLReadRequestPB *ql_read = req.mutable_ql_batch()->Add();
+      std::shared_ptr<std::vector<ColumnSchema>> selected_cols =
+          std::make_shared<std::vector<ColumnSchema>>(schema_.columns());
+      QLRSRowDescPB *rsrow_desc = ql_read->mutable_rsrow_desc();
       for (int i = 0; i < schema_.num_columns(); i++) {
-        ql_read->add_column_ids(yb::kFirstColumnId + i);
+        ql_read->add_selected_exprs()->set_column_id(yb::kFirstColumnId + i);
         ql_read->mutable_column_refs()->add_ids(yb::kFirstColumnId + i);
+
+        QLRSColDescPB *rscol_desc = rsrow_desc->add_rscol_descs();
+        rscol_desc->set_name((*selected_cols)[i].name());
+        (*selected_cols)[i].type()->ToQLTypePB(rscol_desc->mutable_ql_type());
       }
       EXPECT_OK(tserver_proxy->Read(req, &resp, &controller));
 
@@ -2795,8 +2802,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
       Slice rows_data;
       EXPECT_TRUE(controller.finished());
       EXPECT_OK(controller.GetSidecar(ql_resp.rows_data_sidecar(), &rows_data));
-      yb::ql::RowsResult
-          rowsResult(kReadFromFollowerTable, schema_.columns(), rows_data.ToBuffer());
+      yb::ql::RowsResult rowsResult(kReadFromFollowerTable, selected_cols, rows_data.ToBuffer());
       rowBlock = rowsResult.GetRowBlock();
       return FLAGS_test_scan_num_rows == rowBlock->row_count();
     }, MonoDelta::FromSeconds(30), "Waiting for replication to followers"));

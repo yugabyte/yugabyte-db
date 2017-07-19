@@ -198,9 +198,15 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     condition->add_operands()->mutable_value()->set_timestamp_value(ts.ToInt64());
 
     // Set all column ids.
+    QLRSRowDescPB *rsrow_desc = req->mutable_rsrow_desc();
     for (int i = 0; i < table_->InternalSchema().num_columns(); i++) {
       req->mutable_column_refs()->add_ids(kFirstColumnId + i);
-      req->add_column_ids(kFirstColumnId + i);
+      req->add_selected_exprs()->set_column_id(kFirstColumnId + i);
+
+      const ColumnSchema& col = table_->InternalSchema().column(i);
+      QLRSColDescPB *rscol_desc = rsrow_desc->add_rscol_descs();
+      rscol_desc->set_name(col.name());
+      col.type()->ToQLTypePB(rscol_desc->mutable_ql_type());
     }
     return Status::OK();
   }
@@ -345,7 +351,9 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     Slice rows_data;
     ASSERT_TRUE(controller.finished());
     ASSERT_OK(controller.GetSidecar(ql_resp.rows_data_sidecar(), &rows_data));
-    yb::ql::RowsResult rowsResult(*table_name_, schema_.columns(), rows_data.ToBuffer());
+    std::shared_ptr<std::vector<ColumnSchema>>
+      columns = std::make_shared<std::vector<ColumnSchema>>(schema_.columns());
+    yb::ql::RowsResult rowsResult(*table_name_, columns, rows_data.ToBuffer());
     *rowblock = rowsResult.GetRowBlock();
   }
 
@@ -562,9 +570,15 @@ TEST_F(YBBulkLoadTest, TestCLITool) {
     condition->add_operands()->mutable_value()->set_int32_value(kV2Value);
 
     // Set all column ids.
+    QLRSRowDescPB *rsrow_desc = ql_req->mutable_rsrow_desc();
     for (int i = 0; i < table_->InternalSchema().num_columns(); i++) {
       ql_req->mutable_column_refs()->add_ids(kFirstColumnId + i);
-      ql_req->add_column_ids(kFirstColumnId + i);
+      ql_req->add_selected_exprs()->set_column_id(kFirstColumnId + i);
+
+      const ColumnSchema& col = table_->InternalSchema().column(i);
+      QLRSColDescPB *rscol_desc = rsrow_desc->add_rscol_descs();
+      rscol_desc->set_name(col.name());
+      col.type()->ToQLTypePB(rscol_desc->mutable_ql_type());
     }
 
     std::unique_ptr<QLRowBlock> rowblock;

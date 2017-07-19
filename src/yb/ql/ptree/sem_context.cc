@@ -79,13 +79,14 @@ CHECKED_STATUS SemContext::LookupTable(YBTableName name, shared_ptr<YBTable>* ta
     // Find the column descriptor.
     const YBColumnSchema col = schema.Column(idx);
     (*table_columns)[idx].Init(idx,
-                             schema.ColumnId(idx),
-                             idx < *num_hash_key_columns,
-                             idx < *num_key_columns,
-                             col.is_static(),
-                             col.is_counter(),
-                             col.type(),
-                             YBColumnSchema::ToInternalDataType(col.type()));
+                               schema.ColumnId(idx),
+                               col.name(),
+                               idx < *num_hash_key_columns,
+                               idx < *num_key_columns,
+                               col.is_static(),
+                               col.is_counter(),
+                               col.type(),
+                               YBColumnSchema::ToInternalDataType(col.type()));
 
     // Insert the column descriptor to symbol table.
     MCString col_name(col.name().c_str(), col.name().size(), PTreeMem());

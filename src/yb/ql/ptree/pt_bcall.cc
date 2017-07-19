@@ -26,9 +26,13 @@ namespace ql {
 using std::vector;
 using std::shared_ptr;
 using std::make_shared;
+using strings::Substitute;
 
 using yb::bfql::BFOpcode;
+using yb::bfql::BFOPCODE_NOOP;
+using yb::bfql::TSOpcode;
 using yb::bfql::BFDecl;
+
 using yb::client::YBColumnSchema;
 
 using BfuncCompile = yb::bfql::BFCompileApi<PTExpr, PTExpr>;
@@ -42,9 +46,10 @@ PTBcall::PTBcall(MemoryContext *memctx,
   : PTExpr(memctx, loc, ExprOperator::kBcall, QLOperator::QL_OP_NOOP),
     name_(name),
     args_(args),
-    bf_opcode_(yb::bfql::OPCODE_NOOP),
+    is_server_operator_(false),
+    bfopcode_(static_cast<int32_t>(BFOPCODE_NOOP)),
     cast_ops_(memctx),
-    result_cast_op_(yb::bfql::OPCODE_NOOP) {
+    result_cast_op_(BFOPCODE_NOOP) {
 }
 
 PTBcall::~PTBcall() {
@@ -78,29 +83,63 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
   sem_state.ResetContextState();
 
   // Type check the builtin call.
+  BFOpcode bfopcode;
   const BFDecl *bfdecl;
   PTExpr::SharedPtr pt_result = PTConstArg::MakeShared(sem_context->PTempMem(), loc_, nullptr);
-  Status s = BfuncCompile::FindQLOpcode(name_->c_str(), params, &bf_opcode_, &bfdecl, pt_result);
+  Status s = BfuncCompile::FindQLOpcode(name_->c_str(), params, &bfopcode, &bfdecl, pt_result);
   if (!s.ok()) {
-    std::string err_msg = string("Failed to process builtin call: ") + name_->c_str();
-    bool first_arg = true;
+    std::string err_msg = string("Failed calling '") + name_->c_str();
+    bool got_first_arg = false;
+    err_msg += "(";
     for (auto param : params) {
-      err_msg += string(first_arg ? "(" : ",");
+      if (got_first_arg) {
+        err_msg += ",";
+      }
       err_msg += param->ql_type()->ToString();
-      first_arg = false;
+      got_first_arg = true;
     }
-    err_msg += ")";
-    err_msg = s.ToString() + ". " + err_msg;
-    LOG(INFO) << s.ToString() << ". " << err_msg;
+    err_msg += ")'. ";
+    err_msg += s.ToString();
+    LOG(INFO) << err_msg;
     return sem_context->Error(this, err_msg.c_str(), ErrorCode::INVALID_FUNCTION_CALL);
+  }
+
+  // Check error for special cases.
+  // TODO(neil) This should be part of the builtin table. Each entry in builtin table should have
+  // a function pointer for CheckRequirement().  During analysis, QL will all apply these function
+  // pointers to check for any special requirement of an entry.
+  if (strcmp(name_->c_str(), "ttl") == 0 || strcmp(name_->c_str(), "writetime") == 0) {
+    const PTExpr::SharedPtr& expr = exprs.front();
+    if (expr->expr_op() != ExprOperator::kRef) {
+      string errmsg = Substitute("Input argument for $0 must be a column", name_->c_str());
+      return sem_context->Error(expr->loc(), errmsg.c_str(), ErrorCode::INVALID_ARGUMENTS);
+    }
+    const PTRef *ref = static_cast<const PTRef *>(expr.get());
+    if (ref->desc()->is_primary()) {
+      string errmsg = Substitute("Input argument for $0 cannot be primary key", name_->c_str());
+      return sem_context->Error(expr->loc(), errmsg.c_str(), ErrorCode::INVALID_ARGUMENTS);
+    }
+    if (ref->desc()->ql_type()->IsParametric()) {
+      string errmsg = Substitute("Input argument for $0 is of wrong datatype", name_->c_str());
+      return sem_context->Error(expr->loc(), errmsg.c_str(), ErrorCode::INVALID_ARGUMENTS);
+    }
+  }
+
+  // Set the opcode.
+  if (!bfdecl->is_server_operator()) {
+    // Use the builtin-function opcode since this is a regular buitlin call.
+    bfopcode_ = static_cast<int32_t>(bfopcode);
+  } else {
+    // Use the server opcode since this is a server operator. Ignore the BFOpcode.
+    is_server_operator_ = true;
+    bfopcode_ = static_cast<int32_t>(bfdecl->tsopcode());
   }
 
   // Collection operations require special handling during type analysis
   // 1. Casting check is not needed since type conversion between collection types is not allowed
   // 2. Additional type inference is needed for the parameter types of the collections
   if (pt_result->ql_type()->IsParametric()) {
-    cast_ops_.resize(exprs.size(), yb::bfql::OPCODE_NOOP);
-
+    cast_ops_.resize(exprs.size(), BFOPCODE_NOOP);
     if (strcmp(bfdecl->cpp_name(), "AddMapMap") == 0 ||
         strcmp(bfdecl->cpp_name(), "AddMapSet") == 0 ||
         strcmp(bfdecl->cpp_name(), "AddSetSet") == 0 ||
@@ -173,7 +212,7 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
   } else {
     // Find the cast operator if arguments' ql_type_id are not an exact match with signature.
     pindex = 0;
-    cast_ops_.resize(exprs.size(), yb::bfql::OPCODE_NOOP);
+    cast_ops_.resize(exprs.size(), BFOPCODE_NOOP);
     const std::vector<DataType> &formal_types = bfdecl->param_types();
     for (const auto &expr : exprs) {
       if (formal_types[pindex] == DataType::TYPEARGS) {
@@ -212,7 +251,6 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
 
     // TODO(neil) Not just BCALL, but each expression should have a "result_cast_op_". At execution
     // time if the cast is present, the result of the expression must be casted to the correct type.
-
     // Find the correct casting op for the result if expected type is not the same as return type.
     if (!sem_context->expr_expected_ql_type()->IsUnknown()) {
       s = BfuncCompile::FindCastOpcode(pt_result->ql_type()->main(),
@@ -226,6 +264,8 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
     internal_type_ = yb::client::YBColumnSchema::ToInternalDataType(ql_type_);
     return CheckExpectedTypeCompatibility(sem_context);
   }
+
+  return Status::OK();
 }
 
 CHECKED_STATUS PTBcall::CheckOperator(SemContext *sem_context) {

@@ -50,6 +50,7 @@ enum class TreeNodeOpcode {
   kPTExpr,
   kPTRef,
   kPTSubscript,
+  kPTAllColumns,
   kPTAssign,
   kPTBindVar,
 };

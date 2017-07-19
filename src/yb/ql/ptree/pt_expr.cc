@@ -591,9 +591,14 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
           return sem_context->Error(this, "Only token calls that reference partition key allowed",
               ErrorCode::FEATURE_NOT_SUPPORTED);
         }
+      } else if (strcmp(bcall->name()->c_str(), "ttl") == 0 ||
+                 strcmp(bcall->name()->c_str(), "writetime") == 0) {
+        PTBcall::SharedPtr ttl_shared = std::make_shared<PTBcall>(*bcall);
+        return where_state->AnalyzeColumnFunction(sem_context, this, op2, ttl_shared);
+      } else {
+        return sem_context->Error(loc(), "Builtin call not allowed in where clause",
+                                  ErrorCode::CQL_STATEMENT_INVALID);
       }
-      PTBcall::SharedPtr ttl_shared = std::make_shared<PTBcall> (*bcall);
-      return where_state->AnalyzeColumnFunction(sem_context, this, op2, ttl_shared);
     }
   }
   return Status::OK();
@@ -627,6 +632,7 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
 CHECKED_STATUS PTOperatorExpr::SetupSemStateForOp1(SemState *sem_state) {
   switch (op_) {
     case ExprOperator::kUMinus:
+    case ExprOperator::kAlias:
       sem_state->CopyPreviousStates();
       break;
 
@@ -678,12 +684,7 @@ PTRef::~PTRef() {
 }
 
 CHECKED_STATUS PTRef::AnalyzeOperator(SemContext *sem_context) {
-
-  // Check if this refers to the whole table (SELECT *).
-  if (name_ == nullptr) {
-    return sem_context->Error(this, "Cannot do type resolution for wildcard reference (SELECT *)",
-                              ErrorCode::SQL_STATEMENT_INVALID);
-  }
+  DCHECK(name_ != nullptr) << "Reference column is not specified";
 
   // Look for a column descriptor from symbol table.
   RETURN_NOT_OK(name_->Analyze(sem_context));
@@ -793,6 +794,42 @@ void PTSubscriptedColumn::PrintSemanticAnalysisResult(SemContext *sem_context) {
 
 //--------------------------------------------------------------------------------------------------
 
+PTAllColumns::PTAllColumns(MemoryContext *memctx,
+                           YBLocation::SharedPtr loc)
+    : PTOperator0(memctx, loc, ExprOperator::kRef, yb::QLOperator::QL_OP_NOOP),
+      stmt_(nullptr) {
+}
+
+PTAllColumns::~PTAllColumns() {
+}
+
+CHECKED_STATUS PTAllColumns::AnalyzeOperator(SemContext *sem_context) {
+  // Make sure '*' is used only in 'SELECT *' statement.
+  PTDmlStmt *stmt = sem_context->current_dml_stmt();
+  if (stmt == nullptr ||
+      stmt->opcode() != TreeNodeOpcode::kPTSelectStmt ||
+      static_cast<PTSelectStmt*>(stmt)->selected_exprs().size() > 1) {
+    return sem_context->Error(loc(), "Cannot use '*' expression in this context",
+                              ErrorCode::CQL_STATEMENT_INVALID);
+  }
+  stmt_ = static_cast<PTSelectStmt*>(stmt);
+
+  // Note to server that all column are referenced by this statement.
+  sem_context->current_dml_stmt()->AddRefForAllColumns();
+
+  // TODO(Mihnea) See if TUPLE datatype can be used here.
+  // '*' should be of TUPLE type, but we use the following workaround for now.
+  ql_type_ = QLType::Create(DataType::NULL_VALUE_TYPE);
+  internal_type_ = InternalType::kListValue;
+  return Status::OK();
+}
+
+const MCVector<ColumnDesc>& PTAllColumns::table_columns() const {
+  return stmt_->table_columns();
+}
+
+//--------------------------------------------------------------------------------------------------
+
 PTExprAlias::PTExprAlias(MemoryContext *memctx,
                          YBLocation::SharedPtr loc,
                          const PTExpr::SharedPtr& expr,
@@ -808,7 +845,6 @@ CHECKED_STATUS PTExprAlias::AnalyzeOperator(SemContext *sem_context, PTExpr::Sha
   // Type resolution: Alias of (x) should have the same datatype as (x).
   ql_type_ = op1->ql_type();
   internal_type_ = op1->internal_type();
-
   return Status::OK();
 }
 

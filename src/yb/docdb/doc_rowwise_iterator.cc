@@ -462,14 +462,12 @@ CHECKED_STATUS DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) 
 }
 
 CHECKED_STATUS DocRowwiseIterator::SetPagingStateIfNecessary(const QLReadRequestPB& request,
-                                                             const QLRowBlock& rowblock,
-                                                             const size_t row_count_limit,
                                                              QLResponsePB* response) const {
   // When the "limit" number of rows are returned and we are asked to return the paging state,
   // return the parition key and row key of the next row to read in the paging state if there are
   // still more rows to read. Otherwise, leave the paging state empty which means we are done
   // reading from this tablet.
-  if (rowblock.row_count() == row_count_limit && request.return_paging_state()) {
+  if (request.return_paging_state()) {
     SubDocKey next_key;
     RETURN_NOT_OK(GetNextReadSubDocKey(&next_key));
     if (!next_key.doc_key().empty()) {

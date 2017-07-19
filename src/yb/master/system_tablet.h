@@ -46,8 +46,9 @@ class SystemTablet : public tablet::AbstractTablet {
       RedisResponsePB* response) override;
 
   CHECKED_STATUS CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
-                                          const QLRowBlock& rowblock,
+                                          const size_t row_count,
                                           QLResponsePB* response) const override;
+
   const TableName& GetTableName() const;
  private:
   Schema schema_;

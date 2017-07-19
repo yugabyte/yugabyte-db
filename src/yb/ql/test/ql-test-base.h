@@ -113,6 +113,8 @@ class TestQLProcessor : public QLProcessor {
 
   // Construct a row_block and send it back.
   std::shared_ptr<QLRowBlock> row_block() const {
+    LOG(INFO) << (result_ == NULL ? "Result is NULL." : "Got result.")
+              << " Return type = " << static_cast<int>(ExecutedResult::Type::ROWS);
     if (result_ != nullptr && result_->type() == ExecutedResult::Type::ROWS) {
       return std::shared_ptr<QLRowBlock>(static_cast<RowsResult*>(result_.get())->GetRowBlock());
     }

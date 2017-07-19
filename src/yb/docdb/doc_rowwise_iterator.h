@@ -76,8 +76,6 @@ class DocRowwiseIterator : public common::QLRowwiseIteratorIf {
   CHECKED_STATUS NextRow(const Schema& projection, QLTableRow* table_row) override;
 
   CHECKED_STATUS SetPagingStateIfNecessary(const QLReadRequestPB& request,
-                                           const QLRowBlock& rowblock,
-                                           const size_t row_count_limit,
                                            QLResponsePB* response) const override;
 
   // Skip the current row.

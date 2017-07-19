@@ -443,7 +443,6 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
 
 Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   const shared_ptr<client::YBTable>& table = tnode->table();
-
   if (table == nullptr) {
     // If this is a system table but the table does not exist, it is okay. Just return OK with void
     // result.
@@ -486,17 +485,12 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   // Where clause - Hash, range, and regular columns.
   YBPartialRow *row = select_op->mutable_row();
 
-  // Specify selected columns.
-  for (const ColumnDesc *col_desc : tnode->selected_columns()) {
-    req->add_column_ids(col_desc->id());
-  }
-
   bool no_results = false;
-  Status s = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops(),
-      tnode->subscripted_col_where_ops(), tnode->partition_key_ops(), tnode->func_ops(),
-      &no_results);
-  if (PREDICT_FALSE(!s.ok())) {
-    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+  Status st = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops(),
+                              tnode->subscripted_col_where_ops(), tnode->partition_key_ops(),
+                              tnode->func_ops(), &no_results);
+  if (PREDICT_FALSE(!st.ok())) {
+    return exec_context_->Error(st, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // If where clause restrictions guarantee no rows could match, return empty result immediately.
@@ -520,10 +514,28 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
     }
   }
 
+  // Specify selected list by adding the expressions to selected_exprs in read request.
+  QLRSRowDescPB *rsrow_desc_pb = req->mutable_rsrow_desc();
+  for (const auto& expr : tnode->selected_exprs()) {
+    if (expr->opcode() == TreeNodeOpcode::kPTAllColumns) {
+      st = PTExprToPB(static_cast<const PTAllColumns*>(expr.get()), req);
+    } else {
+      st = PTExprToPB(expr, req->add_selected_exprs());
+      if (PREDICT_FALSE(!st.ok())) {
+        return exec_context_->Error(st, ErrorCode::INVALID_ARGUMENTS);
+      }
+
+      // Add the expression metadata (rsrow descriptor).
+      QLRSColDescPB *rscol_desc_pb = rsrow_desc_pb->add_rscol_descs();
+      rscol_desc_pb->set_name(expr->QLName());
+      expr->ql_type()->ToQLTypePB(rscol_desc_pb->mutable_ql_type());
+    }
+  }
+
   // Setup the column values that need to be read.
-  s = ColumnRefsToPB(tnode, req->mutable_column_refs());
-  if (PREDICT_FALSE(!s.ok())) {
-    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+  st = ColumnRefsToPB(tnode, req->mutable_column_refs());
+  if (PREDICT_FALSE(!st.ok())) {
+    return exec_context_->Error(st, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Specify distinct columns or non.
@@ -804,6 +816,7 @@ Status Executor::ProcessOpResponse(client::YBqlOp* op, ExecContext* exec_context
     // default: fall-through to below
   }
   LOG(FATAL) << "Unknown status: " << resp.DebugString();
+  return STATUS(QLError, "FATAL");
 }
 
 Status Executor::ProcessAsyncResults() {

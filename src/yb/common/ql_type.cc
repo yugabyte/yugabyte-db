@@ -82,6 +82,10 @@ shared_ptr<QLType> QLType::Create(DataType data_type) {
       return CreatePrimitiveType<DataType::UUID>();
     case DataType::TIMEUUID:
       return CreatePrimitiveType<DataType::TIMEUUID>();
+    case DataType::DATE:
+      return CreatePrimitiveType<DataType::DATE>();
+    case DataType::TIME:
+      return CreatePrimitiveType<DataType::TIME>();
 
     // Create empty parametric types and raise error during semantic check.
     case DataType::LIST:
@@ -225,7 +229,7 @@ shared_ptr<QLType> QLType::FromQLTypePB(const QLTypePB& pb_type) {
 const string QLType::ToCQLString(const DataType& datatype) {
   switch (datatype) {
     case DataType::UNKNOWN_DATA: return "unknown";
-    case DataType::NULL_VALUE_TYPE: return "null";
+    case DataType::NULL_VALUE_TYPE: return "anytype";
     case DataType::INT8: return "tinyint";
     case DataType::INT16: return "smallint";
     case DataType::INT32: return "int";
@@ -248,6 +252,8 @@ const string QLType::ToCQLString(const DataType& datatype) {
     case DataType::TYPEARGS: return "typeargs";
     case DataType::FROZEN: return "frozen";
     case DataType::USER_DEFINED_TYPE: return "user_defined_type";
+    case DataType::DATE: return "date";
+    case DataType::TIME: return "time";
     case DataType::UINT8: return "uint8";
     case DataType::UINT16: return "uint16";
     case DataType::UINT32: return "uint32";

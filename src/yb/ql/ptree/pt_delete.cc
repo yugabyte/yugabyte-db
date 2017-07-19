@@ -25,7 +25,7 @@ namespace ql {
 
 PTDeleteStmt::PTDeleteStmt(MemoryContext *memctx,
                            YBLocation::SharedPtr loc,
-                           PTListNode::SharedPtr target,
+                           PTExprListNode::SharedPtr target,
                            PTTableRef::SharedPtr relation,
                            TreeNode::SharedPtr using_clause,
                            PTExpr::SharedPtr where_clause,
@@ -50,10 +50,9 @@ CHECKED_STATUS PTDeleteStmt::Analyze(SemContext *sem_context) {
   column_args_->resize(num_columns());
 
   if (target_) {
-    TreeNodePtrOperator<SemContext> analyze = std::bind(&PTDeleteStmt::AnalyzeTarget, this,
-                                                        std::placeholders::_1,
-                                                        std::placeholders::_2);
-      RETURN_NOT_OK(target_->Analyze(sem_context, analyze));
+    TreeNodePtrOperator<SemContext> analyze =
+        std::bind(&PTDeleteStmt::AnalyzeTarget, this, std::placeholders::_1, std::placeholders::_2);
+    RETURN_NOT_OK(target_->Analyze(sem_context, analyze));
   }
   // Run error checking on the WHERE conditions.
   RETURN_NOT_OK(AnalyzeWhereClause(sem_context, where_clause_));

@@ -25,28 +25,42 @@ CHECKED_STATUS AbstractTablet::HandleQLReadRequest(
   // TODO(Robert): verify that all key column values are provided
   docdb::QLReadOperation doc_op(ql_read_request);
 
-  vector<ColumnId> column_ids;
-  for (const auto column_id : ql_read_request.column_ids()) {
-    column_ids.emplace_back(column_id);
+  // Form a schema of columns that are referenced by this query.
+  const Schema &schema = SchemaRef();
+  Schema query_schema;
+  const QLReferencedColumnsPB& column_pbs = ql_read_request.column_refs();
+  vector<ColumnId> column_refs;
+  for (int32_t id : column_pbs.static_ids()) {
+    column_refs.emplace_back(id);
   }
-  QLRowBlock rowblock(SchemaRef(), column_ids);
+  for (int32_t id : column_pbs.ids()) {
+    column_refs.emplace_back(id);
+  }
+  RETURN_NOT_OK(schema.CreateProjectionByIdsIgnoreMissing(column_refs, &query_schema));
+
+  QLRSRowDesc rsrow_desc(ql_read_request.rsrow_desc());
+  QLResultSet resultset;
   TRACE("Start Execute");
-  const Status s = doc_op.Execute(QLStorage(), timestamp, SchemaRef(), &rowblock);
+  const Status s = doc_op.Execute(QLStorage(), timestamp, schema, query_schema, &resultset);
   TRACE("Done Execute");
   if (!s.ok()) {
     response->set_status(QLResponsePB::YQL_STATUS_RUNTIME_ERROR);
     response->set_error_message(s.message().ToString());
     return Status::OK();
   }
-
   *response = std::move(doc_op.response());
 
-  RETURN_NOT_OK(CreatePagingStateForRead(ql_read_request, rowblock, response));
+  RETURN_NOT_OK(CreatePagingStateForRead(ql_read_request, resultset.rsrow_count(), response));
 
+  // TODO(neil) The clients' request should indicate what encoding method should be used. When
+  // multi-shard is used to process more complicated queries, proxy-server might prefer a different
+  // encoding. For now, we'll call CQLSerialize() without checking encoding method.
   response->set_status(QLResponsePB::YQL_STATUS_OK);
   rows_data->reset(new faststring());
   TRACE("Start Serialize");
-  rowblock.Serialize(ql_read_request.client(), rows_data->get());
+  RETURN_NOT_OK(resultset.CQLSerialize(ql_read_request.client(),
+                                       rsrow_desc,
+                                       rows_data->get()));
   TRACE("Done Serialize");
   return Status::OK();
 }

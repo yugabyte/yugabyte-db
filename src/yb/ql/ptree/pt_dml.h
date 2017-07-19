@@ -89,9 +89,9 @@ class WhereExprState {
                                  PTExprListNode::SharedPtr args = nullptr);
 
   CHECKED_STATUS AnalyzeColumnFunction(SemContext *sem_context,
-                                                       const PTRelationExpr *expr,
-                                                       PTExpr::SharedPtr value,
-                                                       PTBcall::SharedPtr call);
+                                       const PTRelationExpr *expr,
+                                       PTExpr::SharedPtr value,
+                                       PTBcall::SharedPtr call);
 
   CHECKED_STATUS AnalyzePartitionKeyOp(SemContext *sem_context,
                                        const PTRelationExpr *expr,
@@ -197,6 +197,10 @@ class PTDmlStmt : public PTCollection {
     return is_system_;
   }
 
+  const MCVector<ColumnDesc>& table_columns() const {
+    return table_columns_;
+  }
+
   int num_columns() const {
     return table_columns_.size();
   }
@@ -263,7 +267,7 @@ class PTDmlStmt : public PTCollection {
     return *column_args_;
   }
 
-  // Add column ref to be read.
+  // Add column ref to be read by DocDB.
   void AddColumnRef(const ColumnDesc& col_desc) {
     if (col_desc.is_static()) {
       static_column_refs_.insert(col_desc.id());
@@ -275,6 +279,13 @@ class PTDmlStmt : public PTCollection {
   // Add column ref to be read.
   void AddHashColumnBindVar(PTBindVar* bindvar) {
     hash_col_bindvars_.insert(bindvar);
+  }
+
+  // Add all column refs to be read by DocDB.
+  void AddRefForAllColumns() {
+    for (const auto col_desc : table_columns_) {
+      AddColumnRef(col_desc);
+    }
   }
 
   // Access for column_args.
@@ -291,6 +302,11 @@ class PTDmlStmt : public PTCollection {
   const MCVector<SubscriptedColumnArg>& subscripted_col_args() const {
     CHECK(subscripted_col_args_ != nullptr) << "subscripted-column arguments not set up";
     return *subscripted_col_args_;
+  }
+
+  // Access for selected result.
+  const std::shared_ptr<vector<ColumnSchema>>& selected_schemas() const {
+    return selected_schemas_;
   }
 
  protected:
@@ -353,6 +369,14 @@ class PTDmlStmt : public PTCollection {
   // must be sent back to the proxy from the tservers.
   MCSet<int32> column_refs_;
   MCSet<int32> static_column_refs_;
+
+  // TODO(neil) This should have been a resultset's row descriptor. However, because rowblock is
+  // using schema, this must be declared as vector<ColumnSchema>.
+  //
+  // Selected schema - a vector pair<name, datatype> - is used when describing the result set.
+  // NOTE: Only SELECT and DML with RETURN clause statements have outputs.
+  //       We prepare this vector once at compile time and use it at execution times.
+  std::shared_ptr<vector<ColumnSchema>> selected_schemas_;
 };
 
 }  // namespace ql

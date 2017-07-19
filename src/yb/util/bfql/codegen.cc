@@ -114,9 +114,9 @@ class BFCodegen {
     fopcode << "  OPCODE_MAX_VALUE" << endl;
     fopcode << "};" << endl;
 
-    fopcode << "const BFOpcode OPCODE_NOOP = BFOpcode::" << min_opcode << ";" << endl
-            << "const BFOpcode OPCODE_MIN_VALUE = BFOpcode::" << min_opcode << ";" << endl
-            << "const BFOpcode OPCODE_MAX_VALUE = BFOpcode::OPCODE_MAX_VALUE" << ";" << endl
+    fopcode << "const BFOpcode BFOPCODE_NOOP = BFOpcode::" << min_opcode << ";" << endl
+            << "const BFOpcode BFOPCODE_MIN_VALUE = BFOpcode::" << min_opcode << ";" << endl
+            << "const BFOpcode BFOPCODE_MAX_VALUE = BFOpcode::OPCODE_MAX_VALUE" << ";" << endl
             << endl;
 
     fopcode << "extern const std::unordered_map<std::string, BFOpcode> kBfqlName2Opcode;" << endl;
@@ -300,7 +300,7 @@ class BFCodegen {
         break;
       }
     }
-    if (!QLType::IsNull(entry.return_type())) {
+    if (!QLType::IsUnknown(entry.return_type())) {
       foper_h << param_end << "result";
     }
     foper_h << ");" << endl;

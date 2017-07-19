@@ -42,7 +42,7 @@ class AbstractTablet {
       gscoped_ptr<faststring>* rows_data);
 
   virtual CHECKED_STATUS CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
-                                                  const QLRowBlock& rowblock,
+                                                  const size_t row_count,
                                                   QLResponsePB* response) const = 0;
 
   virtual void RegisterReaderTimestamp(HybridTime read_point) = 0;

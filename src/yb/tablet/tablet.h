@@ -311,8 +311,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       HybridTime timestamp, const QLReadRequestPB& ql_read_request, QLResponsePB* response,
       gscoped_ptr<faststring>* rows_data) override;
 
-  CHECKED_STATUS CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
-      const QLRowBlock& rowblock,
+  CHECKED_STATUS CreatePagingStateForRead(
+      const QLReadRequestPB& ql_read_request, const size_t row_count,
       QLResponsePB* response) const override;
 
   // The QL equivalent of KeyValueBatchFromRedisWriteBatch, works similarly.

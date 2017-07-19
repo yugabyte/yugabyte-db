@@ -269,6 +269,8 @@ Status SetColumn(YBPartialRow* row, const int32 column_id, const QLValuePB& valu
     case TUPLE: FALLTHROUGH_INTENDED;
     case TYPEARGS: FALLTHROUGH_INTENDED;
     case USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
+    case DATE: FALLTHROUGH_INTENDED;
+    case TIME: FALLTHROUGH_INTENDED;
 
     case UINT8:  FALLTHROUGH_INTENDED;
     case UINT16: FALLTHROUGH_INTENDED;
@@ -289,7 +291,8 @@ Status SetColumn(YBPartialRow* row, const int32 column_id, const QLExpressionPB&
     case QLExpressionPB::ExprCase::kValue:
       return SetColumn(row, column_id, ql_expr.value());
 
-    case QLExpressionPB::ExprCase::kBfcall:
+    case QLExpressionPB::ExprCase::kBfcall: FALLTHROUGH_INTENDED;
+    case QLExpressionPB::ExprCase::kTscall:
       LOG(FATAL) << "Builtin call is not yet supported";
       return Status::OK();
 
@@ -302,6 +305,8 @@ Status SetColumn(YBPartialRow* row, const int32 column_id, const QLExpressionPB&
     case QLExpressionPB::ExprCase::kCondition:
       return STATUS(RuntimeError, "unexpected relational expression");
 
+    case QLExpressionPB::ExprCase::kBocall: FALLTHROUGH_INTENDED;
+    case QLExpressionPB::ExprCase::kBindId: FALLTHROUGH_INTENDED;
     case QLExpressionPB::ExprCase::EXPR_NOT_SET:
       return STATUS(Corruption, "expression not set");
   }

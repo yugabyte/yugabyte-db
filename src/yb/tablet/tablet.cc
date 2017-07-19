@@ -1116,7 +1116,7 @@ Status Tablet::HandleQLReadRequest(
 }
 
 CHECKED_STATUS Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
-                                                const QLRowBlock& rowblock,
+                                                const size_t row_count,
                                                 QLResponsePB* response) const {
   // If there is no hash column in the read request, this is a full-table query. And if there is no
   // paging state in the response, we are done reading from the current tablet. In this case, we
@@ -1126,7 +1126,7 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_r
   // Otherwise, leave the paging state empty which means we are completely done reading for the
   // whole SELECT statement.
   if (ql_read_request.hashed_column_values().empty() && !response->has_paging_state() &&
-      (!ql_read_request.has_limit() || rowblock.row_count() < ql_read_request.limit() ||
+      (!ql_read_request.has_limit() || row_count < ql_read_request.limit() ||
           ql_read_request.return_paging_state())) {
     const string& next_partition_key = metadata_->partition().partition_key_end();
     if (!next_partition_key.empty()) {
@@ -1137,7 +1137,7 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_r
   // If there is a paging state, update the total number of rows read so far.
   if (response->has_paging_state()) {
     response->mutable_paging_state()->set_total_num_rows_read(
-        ql_read_request.paging_state().total_num_rows_read() + rowblock.row_count());
+        ql_read_request.paging_state().total_num_rows_read() + row_count);
   }
   return Status::OK();
 }

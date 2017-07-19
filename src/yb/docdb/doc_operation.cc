@@ -15,10 +15,12 @@
 #include "yb/common/ql_scanspec.h"
 #include "yb/common/ql_storage_interface.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/ql_expr.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/doc_expr.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/subdocument.h"
@@ -740,7 +742,7 @@ CHECKED_STATUS CreateProjections(const Schema& schema, const QLReferencedColumns
   set<ColumnId> static_columns, non_static_columns;
 
   // Add regular columns.
-  for (int32 id : column_refs.ids()) {
+  for (int32_t id : column_refs.ids()) {
     const ColumnId column_id(id);
     if (!schema.is_key_column(column_id)) {
       non_static_columns.insert(column_id);
@@ -748,7 +750,7 @@ CHECKED_STATUS CreateProjections(const Schema& schema, const QLReferencedColumns
   }
 
   // Add static columns.
-  for (int32 id : column_refs.static_ids()) {
+  for (int32_t id : column_refs.static_ids()) {
     const ColumnId column_id(id);
     static_columns.insert(column_id);
   }
@@ -890,6 +892,7 @@ Status QLWriteOperation::ReadColumns(rocksdb::DB *rocksdb,
                                       Schema *param_non_static_projection,
                                       QLTableRow *table_row,
                                       const rocksdb::QueryId query_id) {
+
   Schema *static_projection = param_static_projection;
   Schema *non_static_projection = param_non_static_projection;
 
@@ -1160,10 +1163,11 @@ Status QLWriteOperation::Apply(
   return Status::OK();
 }
 
-Status QLReadOperation::Execute(
-    const common::QLStorageIf& ql_storage, const HybridTime& hybrid_time, const Schema& schema,
-    QLRowBlock* rowblock) {
-
+Status QLReadOperation::Execute(const common::QLStorageIf& ql_storage,
+                                const HybridTime& hybrid_time,
+                                const Schema& schema,
+                                const Schema& query_schema,
+                                QLResultSet* resultset) {
   size_t row_count_limit = std::numeric_limits<std::size_t>::max();
   if (request_.has_limit()) {
     if (request_.limit() == 0) {
@@ -1174,8 +1178,8 @@ Status QLReadOperation::Execute(
 
   // Create the projections of the non-key columns selected by the row block plus any referenced in
   // the WHERE condition. When DocRowwiseIterator::NextRow() populates the value map, it uses this
-  // projection only to scan sub-documents. QLRowBlock's own projection schema is used to populate
-  // the row block, including key columns if any.
+  // projection only to scan sub-documents. The query schema is used to select only referenced
+  // columns and key columns.
   Schema static_projection, non_static_projection;
   RETURN_NOT_OK(CreateProjections(schema, request_.column_refs(),
                                   &static_projection, &non_static_projection));
@@ -1188,8 +1192,7 @@ Status QLReadOperation::Execute(
   RETURN_NOT_OK(ql_storage.BuildQLScanSpec(request_, hybrid_time, schema, read_static_columns,
                                              static_projection, &spec, &static_row_spec,
                                              &req_hybrid_time));
-  RETURN_NOT_OK(ql_storage.GetIterator(request_, rowblock->schema(), schema, req_hybrid_time,
-                                        &iter));
+  RETURN_NOT_OK(ql_storage.GetIterator(request_, query_schema, schema, req_hybrid_time, &iter));
   RETURN_NOT_OK(iter->Init(*spec));
   if (FLAGS_trace_docdb_calls) {
     TRACE("Initialized iterator");
@@ -1211,7 +1214,7 @@ Status QLReadOperation::Execute(
   }
 
   // Begin the normal fetch.
-  while (rowblock->row_count() < row_count_limit && iter->HasNext()) {
+  while (resultset->rsrow_count() < row_count_limit && iter->HasNext()) {
 
     // Note that static columns are sorted before non-static columns in DocDB as follows. This is
     // because "<empty_range_components>" is empty and terminated by kGroupEnd which sorts before
@@ -1261,15 +1264,31 @@ Status QLReadOperation::Execute(
     bool match = false;
     RETURN_NOT_OK(spec->Match(selected_row, &match));
     if (match) {
-      QLRow& row = rowblock->Extend();
-      PopulateRow(selected_row, row.schema(), 0 /* begin col_idx */, &row);
+      RETURN_NOT_OK(PopulateResultSet(selected_row, resultset));
     }
   }
   if (FLAGS_trace_docdb_calls) {
-    TRACE("Fetched $0 rows.", rowblock->row_count());
+    TRACE("Fetched $0 rows.", resultset->rsrow_count());
   }
 
-  RETURN_NOT_OK(iter->SetPagingStateIfNecessary(request_, *rowblock, row_count_limit, &response_));
+  if (resultset->rsrow_count() >= row_count_limit) {
+    RETURN_NOT_OK(iter->SetPagingStateIfNecessary(request_, &response_));
+  }
+
+  return Status::OK();
+}
+
+CHECKED_STATUS QLReadOperation::PopulateResultSet(const QLTableRow& table_row,
+                                                  QLResultSet *resultset) {
+  DocExprExecutor executor;
+  int column_count = request_.selected_exprs().size();
+  QLRSRow *rsrow = resultset->AllocateRSRow(column_count);
+
+  int rscol_index = 0;
+  for (const QLExpressionPB& expr : request_.selected_exprs()) {
+    RETURN_NOT_OK(executor.EvalExpr(expr, table_row, rsrow->rscol(rscol_index)));
+    rscol_index++;
+  }
 
   return Status::OK();
 }

@@ -49,13 +49,13 @@ class PreparedResult {
   const client::YBTableName& table_name() const { return table_name_; }
   const std::vector<int64_t>& hash_col_indices() const { return hash_col_indices_; }
   const std::vector<ColumnSchema>& bind_variable_schemas() const { return bind_variable_schemas_; }
-  const std::vector<ColumnSchema>& column_schemas() const { return column_schemas_; }
+  const std::vector<ColumnSchema>& column_schemas() const { return *column_schemas_; }
 
  private:
   const client::YBTableName table_name_;
   const std::vector<int64_t> hash_col_indices_;
   const std::vector<ColumnSchema> bind_variable_schemas_;
-  const std::vector<ColumnSchema> column_schemas_;
+  std::shared_ptr<std::vector<ColumnSchema>> column_schemas_;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -116,9 +116,9 @@ class RowsResult : public ExecutedResult {
   typedef std::shared_ptr<const RowsResult> SharedPtrConst;
 
   // Constructors.
-  explicit RowsResult(client::YBqlOp *op);
+  explicit RowsResult(client::YBqlOp *op, const PTDmlStmt *tnode = nullptr);
   RowsResult(const client::YBTableName& table_name,
-             const std::vector<ColumnSchema>& column_schemas,
+             const std::shared_ptr<std::vector<ColumnSchema>>& column_schemas,
              const std::string& rows_data);
   virtual ~RowsResult() override;
 
@@ -127,7 +127,7 @@ class RowsResult : public ExecutedResult {
 
   // Accessor functions.
   const client::YBTableName& table_name() const { return table_name_; }
-  const std::vector<ColumnSchema>& column_schemas() const { return column_schemas_; }
+  const std::vector<ColumnSchema>& column_schemas() const { return *column_schemas_; }
   const std::string& rows_data() const { return rows_data_; }
   const std::string& paging_state() const { return paging_state_; }
   QLClient client() const { return client_; }
@@ -141,7 +141,7 @@ class RowsResult : public ExecutedResult {
 
  private:
   const client::YBTableName table_name_;
-  const std::vector<ColumnSchema> column_schemas_;
+  std::shared_ptr<std::vector<ColumnSchema>> column_schemas_;
   const QLClient client_;
   std::string rows_data_;
   std::string paging_state_;

@@ -154,14 +154,20 @@ class Executor {
   // Column types.
   CHECKED_STATUS PTExprToPB(const PTRef *ref_pt, QLExpressionPB *ref_pb);
   CHECKED_STATUS PTExprToPB(const PTSubscriptedColumn *ref_pt, QLExpressionPB *ref_pb);
+  CHECKED_STATUS PTExprToPB(const PTAllColumns *ref_all, QLReadRequestPB *req);
 
   // Operators.
   // There's only one, so call it PTUMinus for now.
   CHECKED_STATUS PTUMinusToPB(const PTOperator1 *op_pt, QLExpressionPB *op_pb);
   CHECKED_STATUS PTUMinusToPB(const PTOperator1 *op_pt, QLValuePB *const_pb);
 
-  // Builtins.
+  // Builtin calls.
+  // Even though BFCall and TSCall are processed similarly in executor at this point because they
+  // have similar protobuf, it is best not to merge the two functions "BFCallToPB" and "TSCallToPB"
+  // into one. That way, coding changes to one case doesn't affect the other in the future.
   CHECKED_STATUS PTExprToPB(const PTBcall *bcall_pt, QLExpressionPB *bcall_pb);
+  CHECKED_STATUS BFCallToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb);
+  CHECKED_STATUS TSCallToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb);
 
   // Logic expressions.
   CHECKED_STATUS PTExprToPB(const PTLogic1 *logic_pt, QLExpressionPB *logic_pb);

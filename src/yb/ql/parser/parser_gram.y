@@ -238,8 +238,7 @@ using namespace yb::ql;
                           using_ttl_clause opt_using_ttl_clause
 
 %type <PListNode>         // Clauses as list of tree nodes.
-                          target_list opt_target_list into_clause
-                          group_clause group_by_list having_clause
+                          group_clause group_by_list having_clause into_clause
                           opt_sort_clause sort_clause sortby_list
 
                           // Create table clauses.
@@ -265,6 +264,7 @@ using namespace yb::ql;
                           tuple_elems tuple_expr
 
 %type <PExprListNode>     // A list of expressions.
+                          target_list opt_target_list
                           ctext_row ctext_expr_list func_arg_list col_arg_list
 
 %type <PType>             // Datatype nodes.
@@ -2074,7 +2074,7 @@ opt_target_list:
 
 target_list:
   target_el {
-    $$ = MAKE_NODE(@1, PTListNode, $1);
+    $$ = MAKE_NODE(@1, PTExprListNode, $1);
   }
   | target_list ',' target_el {
     $1->Append($3);
@@ -2090,7 +2090,7 @@ target_el:
     $$ = $1;
   }
   | '*' {
-    $$ = MAKE_NODE(@1, PTRef, nullptr);
+    $$ = MAKE_NODE(@1, PTAllColumns);
   }
   // We support omitting AS only for column labels that aren't
   // any known keyword.  There is an ambiguity against postfix
@@ -2099,7 +2099,7 @@ target_el:
   // as an infix expression, which we accomplish by assigning
   // IDENT a precedence higher than POSTFIXOP.
   | a_expr IDENT {
-    PARSER_UNSUPPORTED(@2);
+    $$ = MAKE_NODE(@1, PTExprAlias, $1, $2);
   }
 ;
 

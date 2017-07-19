@@ -160,22 +160,27 @@ class SubDocument : public PrimitiveValue {
 
   // Construct a QLValuePB from a SubDocument.
   static void ToQLValuePB(SubDocument doc,
-                           const std::shared_ptr<QLType>& ql_type,
-                           QLValuePB* v);
+                          const std::shared_ptr<QLType>& ql_type,
+                          QLValuePB* v);
 
   // Construct a QLExpressionPB from a SubDocument.
   static void ToQLExpressionPB(SubDocument doc,
-                                const std::shared_ptr<QLType>& ql_type,
-                                QLExpressionPB* ql_expr);
+                               const std::shared_ptr<QLType>& ql_type,
+                               QLExpressionPB* ql_expr);
 
 
 
   // Construct a SubDocument from a QLExpressionPB.
   static CHECKED_STATUS FromQLExpressionPB(const QLExpressionPB& ql_expr,
-                                            const ColumnSchema& column_schema,
-                                            const QLTableRow& table_row,
-                                            SubDocument* subdoc,
-                                            WriteAction* write_action);
+                                           const ColumnSchema& column_schema,
+                                           const QLTableRow& table_row,
+                                           SubDocument* subdoc,
+                                           WriteAction* write_action);
+
+  // Evaluate tablet server operators.
+  static CHECKED_STATUS EvalQLBFCallTServerPB(const QLBCallPB& tscall,
+                                              const QLTableRow& table_row,
+                                              QLValueWithPB *result);
 
  private:
 

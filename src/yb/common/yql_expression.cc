@@ -35,9 +35,8 @@ CHECKED_STATUS YQLExpression::Evaluate(const QLExpressionPB &ql_expr,
       break;
 
     case QLExpressionPB::ExprCase::kBfcall: {
-
-      const QLBFCallPB &bfcall = ql_expr.bfcall();
-      const bfql::BFOperator::SharedPtr bf_op = bfql::kBFOperators[bfcall.bfopcode()];
+      const QLBCallPB &bfcall = ql_expr.bfcall();
+      const bfql::BFOperator::SharedPtr bf_op = bfql::kBFOperators[bfcall.opcode()];
       const string &bfop_name = bf_op->op_decl()->cpp_name();
 
       // Special cases: for collection operations of the form "cref = cref +/- <value>" we avoid
@@ -79,7 +78,7 @@ CHECKED_STATUS YQLExpression::Evaluate(const QLExpressionPB &ql_expr,
       }
 
       // Execute the builtin call associated with the given opcode.
-      QLBfunc::Exec(static_cast<bfql::BFOpcode>(bfcall.bfopcode()), &args, result);
+      QLBfunc::Exec(static_cast<bfql::BFOpcode>(bfcall.opcode()), &args, result);
       break;
     }
 
@@ -106,6 +105,11 @@ CHECKED_STATUS YQLExpression::Evaluate(const QLExpressionPB &ql_expr,
     case QLExpressionPB::ExprCase::EXPR_NOT_SET:
       LOG(FATAL) << "Internal error: Null/Unset expression is not allowed in this context";
       break;
+
+    case QLExpressionPB::ExprCase::kBindId: FALLTHROUGH_INTENDED;
+    case QLExpressionPB::ExprCase::kTscall: FALLTHROUGH_INTENDED;
+    case QLExpressionPB::ExprCase::kBocall:
+      LOG(FATAL) << "Internal error: Not yet supported";
   }
   return Status::OK();
 }

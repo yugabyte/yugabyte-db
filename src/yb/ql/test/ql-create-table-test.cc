@@ -28,7 +28,7 @@ namespace ql {
 do {                                                                                               \
   Status s = processor->Run(ql_stmt);                                                             \
   EXPECT_FALSE(s.ok());                                                                            \
-  EXPECT_FALSE(s.ToString().find("Duplicate Table - Already present") == string::npos);            \
+  EXPECT_FALSE(s.ToString().find("Duplicate Table. Already present") == string::npos);            \
 } while (false)
 
 #define EXEC_INVALID_TABLE_CREATE_STMT(ql_stmt, msg)                                              \
@@ -232,22 +232,22 @@ TEST_F(TestQLCreateTable, TestQLCreateTableWithClusteringOrderBy) {
   EXEC_VALID_STMT(CreateStmt(table5));
 
   EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table6),
-      "Invalid Table Property - Bad Request: The order of columns in the CLUSTERING ORDER "
+      "Invalid Table Property. Bad Request: The order of columns in the CLUSTERING ORDER "
       "directive must be the one of the clustering key (first_name must appear before last_name)");
   EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table7),
-      "Invalid Table Property - Bad Request: The order of columns in the CLUSTERING ORDER "
+      "Invalid Table Property. Bad Request: The order of columns in the CLUSTERING ORDER "
       "directive must be the one of the clustering key (first_name must appear before last_name)");
   EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table8),
-      "Invalid Table Property - Bad Request: Missing CLUSTERING ORDER for column first_name");
+      "Invalid Table Property. Bad Request: Missing CLUSTERING ORDER for column first_name");
   EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table9),
-      "Invalid Table Property - Bad Request: Only clustering key columns can be defined in "
+      "Invalid Table Property. Bad Request: Only clustering key columns can be defined in "
       "CLUSTERING ORDER directive");
   EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table10),
-      "Invalid Table Property - Bad Request: Missing CLUSTERING ORDER for column last_name");
+      "Invalid Table Property. Bad Request: Missing CLUSTERING ORDER for column last_name");
   EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table11),
-      "Invalid Table Property - Bad Request: Missing CLUSTERING ORDER for column last_name");
+      "Invalid Table Property. Bad Request: Missing CLUSTERING ORDER for column last_name");
   EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table12),
-      "Invalid Table Property - Bad Request: Missing CLUSTERING ORDER for column last_name");
+      "Invalid Table Property. Bad Request: Missing CLUSTERING ORDER for column last_name");
 }
 
 } // namespace ql

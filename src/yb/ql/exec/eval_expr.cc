@@ -48,6 +48,9 @@ Status Executor::PTExprToPB(const PTExpr::SharedPtr& expr, QLExpressionPB *expr_
     case ExprOperator::kBindVar:
       return PTExprToPB(static_cast<const PTBindVar*>(expr.get()), expr_pb);
 
+    case ExprOperator::kAlias:
+      return PTExprToPB(expr->op1(), expr_pb);
+
     case ExprOperator::kUMinus:
       return PTUMinusToPB(static_cast<const PTOperator1*>(expr.get()), expr_pb);
 
@@ -73,7 +76,7 @@ Status Executor::PTExprToPB(const PTExpr::SharedPtr& expr, QLExpressionPB *expr_
       return PTExprToPB(static_cast<const PTRelation3*>(expr.get()), expr_pb);
 
     default:
-      LOG(FATAL) << "Not supported operator";
+      LOG(FATAL) << "Not supported operator" << static_cast<int>(expr->expr_op());
   }
   return Status::OK();
 }
@@ -112,6 +115,21 @@ CHECKED_STATUS Executor::PTExprToPB(const PTSubscriptedColumn *ref_pt, QLExpress
     RETURN_NOT_OK(PTExprToPB(arg, col_pb->add_subscript_args()));
   }
 
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+CHECKED_STATUS Executor::PTExprToPB(const PTAllColumns *ref_pt, QLReadRequestPB *req) {
+  QLRSRowDescPB *rsrow_desc_pb = req->mutable_rsrow_desc();
+  for (const auto& col_desc : ref_pt->table_columns()) {
+    req->add_selected_exprs()->set_column_id(col_desc.id());
+
+    // Add the expression metadata (rsrow descriptor).
+    QLRSColDescPB *rscol_descs_pb = rsrow_desc_pb->add_rscol_descs();
+    rscol_descs_pb->set_name(col_desc.name());
+    col_desc.ql_type()->ToQLTypePB(rscol_descs_pb->mutable_ql_type());
+  }
   return Status::OK();
 }
 

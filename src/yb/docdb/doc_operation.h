@@ -25,6 +25,7 @@
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
+#include "yb/common/ql_resultset.h"
 
 namespace yb {
 namespace docdb {
@@ -183,9 +184,13 @@ class QLReadOperation {
  public:
   explicit QLReadOperation(const QLReadRequestPB& request) : request_(request) {}
 
-  CHECKED_STATUS Execute(
-      const common::QLStorageIf& ql_storage, const HybridTime& hybrid_time, const Schema& schema,
-      QLRowBlock* rowblock);
+  CHECKED_STATUS Execute(const common::QLStorageIf& ql_storage,
+                         const HybridTime& hybrid_time,
+                         const Schema& schema,
+                         const Schema& query_schema,
+                         QLResultSet* result_set);
+
+  CHECKED_STATUS PopulateResultSet(const QLTableRow& table_row, QLResultSet *result_set);
 
   const QLResponsePB& response() const;
 

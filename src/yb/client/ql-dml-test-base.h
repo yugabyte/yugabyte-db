@@ -54,6 +54,9 @@ class TableHandle {
   int32_t ColumnId(const string &column_name) {
     return column_ids_[column_name];
   }
+  const std::shared_ptr<QLType>& ColumnType(const string &column_name) {
+    return column_types_[column_ids_[column_name]];
+  }
 
   void SetInt32ColumnValue(
       QLColumnValuePB *column_value, const std::string &column_name, const int32_t value,
@@ -105,9 +108,11 @@ class TableHandle {
 
  private:
   typedef std::unordered_map<std::string, yb::ColumnId> ColumnIdsMap;
+  typedef std::unordered_map<yb::ColumnId, const std::shared_ptr<QLType>> ColumnTypesMap;
 
   YBTablePtr table_;
   ColumnIdsMap column_ids_;
+  ColumnTypesMap column_types_;
 };
 
 Status FlushSession(YBSession *session);

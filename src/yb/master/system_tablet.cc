@@ -60,7 +60,7 @@ CHECKED_STATUS SystemTablet::HandleRedisReadRequest(
 }
 
 CHECKED_STATUS SystemTablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
-                                                      const QLRowBlock& rowblock,
+                                                      const size_t row_count,
                                                       QLResponsePB* response) const {
   // We don't support pagination for system tablets. Although we need to return an OK() status
   // here since we don't want to raise this as an error to the client, but just want to avoid

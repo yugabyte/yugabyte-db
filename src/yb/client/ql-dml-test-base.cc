@@ -42,8 +42,9 @@ void TableHandle::Create(const YBTableName& table_name,
 
   schema = table_->schema();
   for (size_t i = 0; i < schema.num_columns(); ++i) {
-    EXPECT_TRUE(
-       column_ids_.emplace(schema.Column(i).name(), yb::ColumnId(schema.ColumnId(i))).second);
+    yb::ColumnId col_id = yb::ColumnId(schema.ColumnId(i));
+    EXPECT_TRUE(column_ids_.emplace(schema.Column(i).name(), col_id).second);
+    EXPECT_TRUE(column_types_.emplace(col_id, schema.Column(i).type()).second);
   }
 }
 
@@ -137,10 +138,15 @@ void TableHandle::AddCondition(QLConditionPB *const condition, const QLOperator 
 }
 
 void TableHandle::AddColumns(const std::vector<std::string>& columns, QLReadRequestPB* req) {
+  QLRSRowDescPB *rsrow_desc = req->mutable_rsrow_desc();
   for (const auto column : columns) {
     auto id = ColumnId(column);
-    req->add_column_ids(id);
+    req->add_selected_exprs()->set_column_id(id);
     req->mutable_column_refs()->add_ids(id);
+
+    QLRSColDescPB *rscol_desc = rsrow_desc->add_rscol_descs();
+    rscol_desc->set_name(column);
+    column_types_[column_ids_[column]]->ToQLTypePB(rscol_desc->mutable_ql_type());
   }
 }
 

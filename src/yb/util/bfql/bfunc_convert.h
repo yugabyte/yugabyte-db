@@ -417,6 +417,268 @@ Status ConvertBoolToBool(PTypePtr source, RTypePtr target) {
   return Status::OK();
 }
 
+//--------------------------------------------------------------------------------------------------
+// The following functions are for conversions to blob / binary from other datatypes.
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertStringToBlob(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertBoolToBlob(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertInt8ToBlob(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertInt16ToBlob(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertInt32ToBlob(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertInt64ToBlob(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertVarintToBlob(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertFloatToBlob(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertDoubleToBlob(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertDecimalToBlob(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertDateToBlob(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertTimeToBlob(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertTimestampToBlob(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertUuidToBlob(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertTimeuuidToBlob(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertInetToBlob(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertListToBlob(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertMapToBlob(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertSetToBlob(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertTupleToBlob(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+// The following functions are for conversions from blob / binary to other datatypes.
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertBlobToString(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertBlobToBool(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertBlobToInt8(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertBlobToInt16(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertBlobToInt32(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertBlobToInt64(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertBlobToVarint(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertBlobToFloat(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertBlobToDouble(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertBlobToDecimal(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertBlobToDate(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertBlobToTime(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertBlobToTimestamp(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertBlobToUuid(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertBlobToTimeuuid(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertBlobToInet(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertBlobToList(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertBlobToMap(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertBlobToSet(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertBlobToTuple(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+//--------------------------------------------------------------------------------------------------
+// The following functions are for conversions between date-time datatypes.
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertTimeuuidToDate(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertTimestampToDate(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertTimeuuidToTime(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertTimestampToTime(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertDateToTimestamp(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertTimeuuidToTimestamp(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertDateToUnixTimestamp(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertTimestampToUnixTimestamp(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertTimeuuidToUnixTimestamp(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertToMaxTimeuuid(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertToMinTimeuuid(PTypePtr source, RTypePtr target) {
+  return STATUS(RuntimeError, "Not yet implemented");
+}
+
 } // namespace bfql
 } // namespace yb
 
