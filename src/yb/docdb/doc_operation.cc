@@ -377,6 +377,7 @@ Status RedisWriteOperation::ApplySetRange(DocWriteBatch* doc_write_batch) {
 
   // TODO (akashnil): Handle overflows.
   value.replace(request_.set_range_request().offset(), kv.value(0).length(), kv.value(0));
+  response_.set_int_response(value.length());
 
   return doc_write_batch->SetPrimitive(
       DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()),
@@ -693,7 +694,7 @@ Status RedisReadOperation::ExecuteGetRange(rocksdb::DB *rocksdb, HybridTime hybr
     return Status::OK();
   }
 
-  response_.set_string_response(value.substr(start, end - start));
+  response_.set_string_response(value.substr(start, end - start + 1));
   return Status::OK();
 }
 

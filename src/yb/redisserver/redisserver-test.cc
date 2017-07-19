@@ -739,7 +739,7 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   SyncClient();
 
   DoRedisTestNull(__LINE__, {"GET", "key2"});
-  DoRedisTestOk(__LINE__, {"SETRANGE", "key1", "2", "xyz3"});
+  DoRedisTestInt(__LINE__, {"SETRANGE", "key1", "2", "xyz3"}, 10);
 
   SyncClient();
 
@@ -759,7 +759,7 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   DoRedisTestInt(__LINE__, {"EXISTS", "key2"}, 0);
   DoRedisTestInt(__LINE__, {"EXISTS", "key3"}, 1);
   DoRedisTestInt(__LINE__, {"EXISTS", "map_key"}, 1);
-  DoRedisTestBulkString(__LINE__, {"GETRANGE", "key1", "1", "-1"}, "axyz3tra");
+  DoRedisTestBulkString(__LINE__, {"GETRANGE", "key1", "1", "-1"}, "axyz3tra1");
 
   DoRedisTestOk(__LINE__, {"HMSET", "map_key", "subkey5", "19", "subkey6", "14"});
 
