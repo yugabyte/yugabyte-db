@@ -174,7 +174,8 @@ Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
 }
 
 void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
-  DCHECK_EQ(sem_.GetValue(), 0);
+  DCHECK_LE(sem_.GetValue(), 0) << "Cannot send request";
+
   // The peer has no pending request nor is sending: send the request.
   bool needs_remote_bootstrap = false;
   bool last_exchange_successful = false;
@@ -263,8 +264,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
 void Peer::ProcessResponse() {
   // Note: This method runs on the reactor thread.
 
-  DCHECK_EQ(0, sem_.GetValue())
-    << "Got a response when nothing was pending";
+  DCHECK_LE(sem_.GetValue(), 0) << "Got a response when nothing was pending";
 
   if (!controller_.status().ok()) {
     if (controller_.status().IsRemoteError()) {
