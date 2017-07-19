@@ -193,7 +193,8 @@ static CHECKED_STATUS InsertRow(const string& row,
 
   // Finally apply the operation to the the doc_write_batch.
   docdb::YQLWriteOperation op(req, schema, &resp);
-  RETURN_NOT_OK(op.Apply(doc_write_batch, db_fixture->rocksdb(), HybridTime::kInitialHybridTime));
+  RETURN_NOT_OK(op.Apply(doc_write_batch, db_fixture->rocksdb(),
+                         HybridTime::FromMicros(kYugaByteMicrosecondEpoch)));
   return Status::OK();
 }
 
@@ -202,7 +203,8 @@ static CHECKED_STATUS FinishTabletProcessing(const TabletId& tablet_id,
                                              docdb::DocWriteBatch* doc_write_batch,
                                              YBClient* client) {
   RETURN_NOT_OK(db_fixture->WriteToRocksDBAndClear(
-      doc_write_batch, HybridTime::kInitialHybridTime, /* decode_dockey */ false));
+      doc_write_batch, HybridTime::FromMicros(kYugaByteMicrosecondEpoch),
+      /* decode_dockey */ false));
   RETURN_NOT_OK(db_fixture->FlushRocksDB());
 
   if (!FLAGS_export_files) {
@@ -315,7 +317,8 @@ static CHECKED_STATUS RunBulkLoad() {
     // Flush the batch if necessary.
     if (doc_write_batch->size() >= FLAGS_row_batch_size) {
       RETURN_NOT_OK(db_fixture->WriteToRocksDBAndClear(
-          doc_write_batch.get(), HybridTime::kInitialHybridTime, /* decode_dockey */ false));
+          doc_write_batch.get(), HybridTime::FromMicros(kYugaByteMicrosecondEpoch),
+          /* decode_dockey */ false));
     }
   }
 
