@@ -430,7 +430,7 @@ Status RaftConsensus::StartElection(
     if (start_now) {
       if (state_->HasLeaderUnlocked()) {
         LOG_WITH_PREFIX_UNLOCKED(INFO)
-            << "Failure of leader " << state_->GetLeaderUuidUnlocked()
+            << "Fail of leader " << state_->GetLeaderUuidUnlocked()
             << " detected. Triggering leader election, mode=" << mode;
       } else {
         LOG_WITH_PREFIX_UNLOCKED(INFO)
@@ -690,7 +690,7 @@ void RaftConsensus::ReportFailureDetected(const std::string& name, const Status&
   }
 
   // Start an election.
-  LOG_WITH_PREFIX(INFO) << "ReportFailureDetected: Starting NORMAL_ELECTION...";
+  LOG_WITH_PREFIX(INFO) << "ReportFailDetected: Starting NORMAL_ELECTION...";
   Status s = StartElection(NORMAL_ELECTION);
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Failed to trigger leader election: " << s.ToString();
@@ -2519,7 +2519,7 @@ Status RaftConsensus::SnoozeFailureDetectorUnlocked(const MonoDelta& additional_
   time.AddDelta(additional_delta);
 
   if (allow_logging == ALLOW_LOGGING) {
-    LOG_WITH_PREFIX_UNLOCKED(INFO) << "Snoozing failure detection for election timeout "
+    LOG_WITH_PREFIX_UNLOCKED(INFO) << "Snoozing fail detection for election timeout "
                                    << "plus an additional " + additional_delta.ToString();
   }
 

@@ -206,7 +206,6 @@ Tablet::Tablet(
       mvcc_(clock, metadata->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE),
       rowsets_flush_sem_(1),
       state_(kInitialized),
-      rocksdb_statistics_(nullptr),
       block_cache_(block_cache),
       shutdown_requested_(false),
       monotonic_counter_(0) {

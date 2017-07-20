@@ -121,6 +121,30 @@
   GTEST_TEST_BOOLEAN_((condition) ? true : false, #condition, false, true, \
                       GTEST_FATAL_FAILURE_)
 
+#define VERIFY_EQ(expected_expr, actual_expr) \
+  do { \
+    auto&& expected = (expected_expr); \
+    auto&& actual = (actual_expr); \
+    if (expected != actual) { \
+      return ::testing::internal::EqFailure( \
+          BOOST_PP_STRINGIZE(expected_expr), \
+          BOOST_PP_STRINGIZE(actual_expr), \
+          ::testing::internal::FormatForComparisonFailureMessage(expected, actual), \
+          ::testing::internal::FormatForComparisonFailureMessage(actual, expected), \
+          false); \
+    } \
+  } while (false) \
+  /**/
+
+#define ASSERT_VERIFY(expr) \
+  do { \
+    auto&& result = (expr); \
+    if (!result) { \
+      FAIL() << result.message(); \
+    } \
+  } while (false) \
+  /**/
+
 #define CURRENT_TEST_NAME() \
   ::testing::UnitTest::GetInstance()->current_test_info()->name()
 

@@ -4,6 +4,11 @@
 
 #include "yb/client/yql-dml-test-base.h"
 
+#include "yb/tablet/tablet_peer.h"
+
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+
 #include "yb/util/curl_util.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/random.h"
@@ -108,7 +113,23 @@ class YqlDmlTest : public YqlDmlTestBase {
 
   std::shared_ptr<YBqlReadOp> SelectRow() {
     return SelectRow(client_->NewSession(true /* read_only */), kAllColumns, 1, "a", 2, "b");
+  }
 
+  __attribute__ ((warn_unused_result)) testing::AssertionResult VerifyRow(
+      const shared_ptr<YBSession>& session,
+      int32 h1, const std::string& h2,
+      int32 r1, const std::string& r2,
+      int32 c1, const std::string& c2) {
+    auto op = SelectRow(session, {"c1", "c2"}, h1, h2, r1, r2);
+
+    VERIFY_EQ(YQLResponsePB::YQL_STATUS_OK, op->response().status());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
+    VERIFY_EQ(1, rowblock->row_count());
+    const auto& row = rowblock->row(0);
+    VERIFY_EQ(c1, row.column(0).int32_value());
+    VERIFY_EQ(c2, row.column(1).string_value());
+
+    return testing::AssertionSuccess();
   }
 
   void AddAllColumns(YQLReadRequestPB* req) {
@@ -182,6 +203,10 @@ std::string RandomValueAt(int32_t idx, size_t len = 2000) {
   return RandomHumanReadableString(len, &rng);
 }
 
+std::string StrRangeFor(int32_t idx) {
+  return "range_" + std::to_string(1000000 + idx);
+}
+
 class YqlDmlRangeFilterBase: public YqlDmlTest {
  public:
   void SetUp() override {
@@ -191,61 +216,19 @@ class YqlDmlRangeFilterBase: public YqlDmlTest {
   }
 };
 
-#define EXPECT_OK_OR_CONTINUE(expr) \
-    { \
-      auto&& status = (expr); \
-      EXPECT_OK(status); \
-      if (!status.ok()) { continue; } \
-    }
-
-size_t CountIterators(const std::vector<uint16_t>& web_ports) {
-  EasyCurl curl;
-  faststring buffer;
+size_t CountIterators(MiniCluster* cluster) {
   size_t result = 0;
-  for (auto port : web_ports) {
-    std::string url = strings::Substitute("http://localhost:$0/metrics", port);
-    buffer.clear();
-    EXPECT_OK_OR_CONTINUE(curl.FetchURL(url, &buffer));
-    JsonReader json(buffer.ToString());
-    // Example of parsed data:
-    // [
-    // {
-    //    "type": "server",
-    //    "id": "yb.tabletserver",
-    //    "attributes": {},
-    //    "metrics": [
-    //        {
-    //            "name": "scanners_expired",
-    //            "value": 0
-    //        },
-    //        .....
-    //        {
-    //            "name": "rocksdb.no.table.cache.iterators",
-    //            "value": 100500
-    //        }
-    EXPECT_OK_OR_CONTINUE(json.Init());
-    std::vector<const rapidjson::Value*> objs;
-    EXPECT_OK_OR_CONTINUE(json.ExtractObjectArray(json.root(), nullptr, &objs));
-    for (auto obj : objs) {
-      std::string type;
-      EXPECT_OK_OR_CONTINUE(json.ExtractString(obj, "type", &type));
-      if (type != "tablet") {
-        continue;
-      }
-      std::vector<const rapidjson::Value*> metrics;
-      EXPECT_OK_OR_CONTINUE(json.ExtractObjectArray(obj, "metrics", &metrics));
-      for (auto metric : metrics) {
-        std::string name;
-        EXPECT_OK_OR_CONTINUE(json.ExtractString(metric, "name", &name));
-        if (name != "rocksdb.no.table.cache.iterators") {
-          continue;
-        }
-        int64_t value;
-        EXPECT_OK_OR_CONTINUE(json.ExtractInt64(metric, "value", &value));
-        result += value;
-      }
+
+  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+    std::vector<scoped_refptr<tablet::TabletPeer>> peers;
+    cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
+    for (const auto& peer : peers) {
+      auto statistics = peer->tablet()->rocksdb_statistics();
+      auto value = statistics->getTickerCount(rocksdb::NO_TABLE_CACHE_ITERATORS);
+      result += value;
     }
   }
+
   return result;
 }
 
@@ -258,63 +241,58 @@ constexpr auto kTimeout = 30s;
 TEST_F_EX(YqlDmlTest, RangeFilter, YqlDmlRangeFilterBase) {
   constexpr size_t kTotalLines = 25000;
   if (!FLAGS_mini_cluster_reuse_data) {
-    constexpr size_t kTotalThreads = 8;
-
-    std::vector<std::thread> threads;
-    std::atomic<int32_t> idx(0);
-    for (size_t t = 0; t != kTotalThreads; ++t) {
-      threads.emplace_back([this, &idx, kTotalLines] {
-        shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
-        session->SetTimeout(kTimeout);
-        for(;;) {
-          int32_t i = idx++;
-          if (i >= kTotalLines) {
-            break;
-          }
-          const shared_ptr<YBqlWriteOp> op = InsertRow(session,
-                                                       kHashInt,
-                                                       kHashStr,
-                                                       i,
-                                                       "range_" + std::to_string(i),
-                                                       -i,
-                                                       RandomValueAt(i));
-          EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
-          if (i % 5000 == 0) {
-            LOG(WARNING) << "Inserted " << i << " rows";
-          }
-        }
-      });
+    shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
+    ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+    session->SetTimeout(kTimeout);
+    for(int32_t i = 0; i != kTotalLines; ++i) {
+      const shared_ptr<YBqlWriteOp> op = InsertRow(session,
+                                                   kHashInt,
+                                                   kHashStr,
+                                                   i,
+                                                   StrRangeFor(i),
+                                                   -i,
+                                                   RandomValueAt(i));
+      ASSERT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
+      if ((i + 1) % 100 == 0) {
+        ASSERT_OK(session->Flush());
+      }
+      if (i % 5000 == 0) {
+        LOG(WARNING) << "Inserted " << i << " rows";
+      }
     }
-    for (auto& thread : threads) {
-      thread.join();
-    }
+    ASSERT_OK(session->Flush());
+    session = client_->NewSession(true /* read_only */);
     LOG(WARNING) << "Finished creating DB";
+    constexpr int32_t kProbeStep = 997;
+    for(int32_t idx = 0; idx < kTotalLines; idx += kProbeStep) {
+      ASSERT_VERIFY(VerifyRow(session,
+                              kHashInt,
+                              kHashStr,
+                              idx,
+                              StrRangeFor(idx),
+                              -idx,
+                              RandomValueAt(idx)));
+    }
   }
   FLAGS_db_block_cache_size_bytes = -2;
   ASSERT_OK(cluster_->RestartSync());
   {
     auto session = client_->NewSession(true /* read_only */);
     session->SetTimeout(kTimeout);
-    constexpr size_t kTotalProbes = 100;
+    constexpr size_t kTotalProbes = 1000;
     Random rng(GetRandomSeed32());
-    size_t old_iterators = CountIterators(cluster_->tserver_web_ports());
+    size_t old_iterators = CountIterators(cluster_.get());
     for (size_t i = 0; i != kTotalProbes; ++i) {
       int32_t idx = rng.Uniform(kTotalLines);
-      auto op = SelectRow(session,
-                          {"c1", "c2"},
-                          kHashInt,
-                          kHashStr,
-                          idx,
-                          "range_" + std::to_string(idx));
+      ASSERT_VERIFY(VerifyRow(session,
+                              kHashInt,
+                              kHashStr,
+                              idx,
+                              StrRangeFor(idx),
+                              -idx,
+                              RandomValueAt(idx)));
 
-      EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
-      unique_ptr<YQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
-      EXPECT_EQ(rowblock->row_count(), 1);
-      const auto& row = rowblock->row(0);
-      EXPECT_EQ(row.column(0).int32_value(), -idx);
-      EXPECT_EQ(row.column(1).string_value(), RandomValueAt(idx));
-
-      size_t new_iterators = CountIterators(cluster_->tserver_web_ports());
+      size_t new_iterators = CountIterators(cluster_.get());
       ASSERT_EQ(old_iterators + 1, new_iterators);
       old_iterators = new_iterators;
     }

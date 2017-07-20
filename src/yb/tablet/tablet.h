@@ -487,6 +487,11 @@ class Tablet : public AbstractTablet {
     return *yql_storage_;
   }
 
+  // Used from tests
+  const std::shared_ptr<rocksdb::Statistics>& rocksdb_statistics() const {
+    return rocksdb_statistics_;
+  }
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
