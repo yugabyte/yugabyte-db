@@ -2,16 +2,22 @@
 
 import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
-
+import {browserHistory} from 'react-router';
 import { YBButton } from 'components/common/forms/fields';
-import { UniverseFormContainer, UniverseTableContainer } from 'components/universes';
+import { UniverseTableContainer } from 'components/universes';
 import './ListUniverse.css';
 
 export default class ListUniverse extends Component {
+  constructor(props) {
+    super(props);
+    this.createNewUniverse = this.createNewUniverse.bind(this);
+  }
+
+  createNewUniverse() {
+    browserHistory.push("/universes/create");
+  }
 
   render() {
-    const {universe:{showModal, visibleModal}} = this.props;
-
     return (
       <div id="page-wrapper">
         <Row className="header-row">
@@ -21,10 +27,7 @@ export default class ListUniverse extends Component {
           <Col lg={3} className="universe-table-header-action">
             <YBButton btnClass="universe-button btn btn-default btn-lg bg-orange"
                            btnText="Create Universe" btnIcon="fa fa-pencil"
-                           onClick={this.props.showUniverseModal} />
-            <UniverseFormContainer type="Create"
-                                   visible={showModal === true && visibleModal === "universeModal"}
-                                   onHide={this.props.closeUniverseModal} title="Create Universe" />
+                           onClick={this.createNewUniverse} />
           </Col>
         </Row>
         <UniverseTableContainer />

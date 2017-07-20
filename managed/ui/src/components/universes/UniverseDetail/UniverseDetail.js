@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Link } from 'react-router';
+import { Link, withRouter, browserHistory} from 'react-router';
 import { Grid, Row, Col, ButtonGroup, DropdownButton, MenuItem, Tab } from 'react-bootstrap';
 import Measure from 'react-measure';
 import { UniverseInfoPanel, ResourceStringPanel } from '../../panels'
@@ -22,24 +22,29 @@ import {getPromiseState} from 'utils/PromiseUtils';
 import {YBLoadingIcon} from '../../common/indicators';
 import './UniverseDetail.scss';
 
-export default class UniverseDetail extends Component {
-  state = {
-    dimensions: {},
-  };
+class UniverseDetail extends Component {
+  constructor(props) {
+    super(props);
+    this.onEditUniverseButtonClick = this.onEditUniverseButtonClick.bind(this);
+    this.state = {
+      dimensions: {},
+    }
+  }
 
   componentWillUnmount() {
     this.props.resetUniverseInfo();
     this.props.resetUniverseTasks();
   }
 
-  componentDidMount() {
-    let uuid = this.props.uuid;
-    if (typeof this.props.universeSelectionId !== "undefined") {
-      uuid = this.props.universeUUID;
+  componentWillMount() {
+    if (this.props.location.pathname !== "/universes/create") {
+      let uuid = this.props.uuid;
+      if (typeof this.props.universeSelectionId !== "undefined") {
+        uuid = this.props.universeUUID;
+      }
+      this.props.getUniverseInfo(uuid);
+      this.props.fetchUniverseTasks(uuid);
     }
-    this.props.getUniverseInfo(uuid);
-    this.props.fetchUniverseTasks(uuid);
-
   }
 
   componentWillReceiveProps(nextProps) {
@@ -53,14 +58,27 @@ export default class UniverseDetail extends Component {
     this.setState({dimensions});
   }
 
+  onEditUniverseButtonClick() {
+    const location = Object.assign({}, browserHistory.getCurrentLocation());
+    let query = {edit: true}
+    Object.assign(location.query, query);
+    browserHistory.push(location);
+  }
+
   render() {
-    const { universe: { currentUniverse, showModal, visibleModal }, universe } = this.props;
+    const { universe: { currentUniverse, showModal, visibleModal }, universe, location: {query}} = this.props;
+
+    if (this.props.location.pathname === "/universes/create") {
+      return <UniverseFormContainer type="Create"/>
+    }
     if (getPromiseState(currentUniverse).isLoading() || getPromiseState(currentUniverse).isInit()) {
       return <YBLoadingIcon/>
     } else if (isEmptyObject(currentUniverse.data)) {
       return <span />;
     }
-
+    if (isNonEmptyObject(query) && query.edit) {
+      return <UniverseFormContainer type="Edit" />
+    }
     const width = this.state.dimensions.width;
     const nodePrefixes = [currentUniverse.data.universeDetails.nodePrefix];
     const graphPanelTypes = ['proxies', 'server', 'cql', 'redis', 'tserver', 'lsmdb'];
@@ -135,7 +153,7 @@ export default class UniverseDetail extends Component {
           <Col lg={2} className="page-action-buttons">
             <ButtonGroup className="universe-detail-btn-group">
               <YBButton btnClass=" btn btn-default bg-orange"
-                        btnText="Edit" btnIcon="fa fa-database" onClick={this.props.showUniverseModal} />
+                        btnText="Edit" btnIcon="fa fa-database" onClick={this.onEditUniverseButtonClick} />
 
               <DropdownButton className="btn btn-default" title="More" id="bg-nested-dropdown" pullRight>
                 <MenuItem eventKey="1" onClick={this.props.showSoftwareUpgradesModal}>
@@ -157,9 +175,6 @@ export default class UniverseDetail extends Component {
               </DropdownButton>
             </ButtonGroup>
           </Col>
-          <UniverseFormContainer type="Edit"
-                                 visible={showModal && visibleModal==="universeModal"}
-                                 onHide={this.props.closeModal} title="Edit Universe" />
           <RollingUpgradeFormContainer modalVisible={showModal &&
           (visibleModal === "gFlagsModal" || visibleModal ==="softwareUpgradesModal")}
                                        onHide={this.props.closeModal} />
@@ -211,3 +226,5 @@ class UniverseTaskList extends Component {
     )
   }
 }
+
+export default withRouter(UniverseDetail);
