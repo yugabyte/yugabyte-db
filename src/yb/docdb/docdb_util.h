@@ -57,15 +57,17 @@ class DocDBRocksDBUtil {
   CHECKED_STATUS PopulateRocksDBWriteBatch(
       const DocWriteBatch& dwb,
       rocksdb::WriteBatch *rocksdb_write_batch,
-      HybridTime hybrid_time = HybridTime::kInvalidHybridTime, bool decode_dockey = true) const;
+      HybridTime hybrid_time = HybridTime::kInvalidHybridTime,
+      bool decode_dockey = true,
+      bool increment_write_id = true) const;
 
   // Writes the given DocWriteBatch to RocksDB. We substitue the hybrid time, if provided.
   CHECKED_STATUS WriteToRocksDB(const DocWriteBatch& write_batch, const HybridTime& hybrid_time,
-                                bool decode_dockey = true);
+                                bool decode_dockey = true, bool increment_write_id = true);
 
   // The same as WriteToRocksDB but also clears the write batch afterwards.
   CHECKED_STATUS WriteToRocksDBAndClear(DocWriteBatch* dwb, const HybridTime& hybrid_time,
-                                        bool decode_dockey = true);
+                                        bool decode_dockey = true, bool increment_write_id = true);
 
   void SetHistoryCutoffHybridTime(HybridTime history_cutoff);
 

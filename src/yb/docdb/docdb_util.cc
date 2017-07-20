@@ -93,7 +93,9 @@ void DocDBRocksDBUtil::ResetMonotonicCounter() {
 Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
     const DocWriteBatch& dwb,
     rocksdb::WriteBatch *rocksdb_write_batch,
-    HybridTime hybrid_time, bool decode_dockey) const {
+    HybridTime hybrid_time,
+    bool decode_dockey,
+    bool increment_write_id) const {
   IntraTxnWriteId write_id = 0;
   for (const auto& entry : dwb.key_value_pairs()) {
     if (decode_dockey) {
@@ -116,7 +118,9 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
       rocksdb_key = entry.first;
     }
     rocksdb_write_batch->Put(rocksdb_key, entry.second);
-    ++write_id;
+    if (increment_write_id) {
+      ++write_id;
+    }
   }
   return Status::OK();
 }
@@ -124,7 +128,8 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
 Status DocDBRocksDBUtil::WriteToRocksDB(
     const DocWriteBatch& doc_write_batch,
     const HybridTime& hybrid_time,
-    bool decode_dockey) {
+    bool decode_dockey,
+    bool increment_write_id) {
   if (doc_write_batch.IsEmpty()) {
     return Status::OK();
   }
@@ -137,7 +142,7 @@ Status DocDBRocksDBUtil::WriteToRocksDB(
   ++op_id_.index;
   rocksdb_write_batch.SetUserOpId(op_id_);
   RETURN_NOT_OK(PopulateRocksDBWriteBatch(doc_write_batch, &rocksdb_write_batch, hybrid_time,
-                                          decode_dockey));
+                                          decode_dockey, increment_write_id));
   const rocksdb::Status rocksdb_write_status =
       rocksdb_->Write(write_options(), &rocksdb_write_batch);
   if (!rocksdb_write_status.ok()) {
@@ -165,8 +170,8 @@ Status DocDBRocksDBUtil::InitCommonRocksDBOptions() {
 Status DocDBRocksDBUtil::WriteToRocksDBAndClear(
     DocWriteBatch* dwb,
     const HybridTime& hybrid_time,
-    bool decode_dockey) {
-  RETURN_NOT_OK(WriteToRocksDB(*dwb, hybrid_time, decode_dockey));
+    bool decode_dockey, bool increment_write_id) {
+  RETURN_NOT_OK(WriteToRocksDB(*dwb, hybrid_time, decode_dockey, increment_write_id));
   dwb->Clear();
   return Status::OK();
 }

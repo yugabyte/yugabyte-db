@@ -204,7 +204,7 @@ static CHECKED_STATUS FinishTabletProcessing(const TabletId& tablet_id,
                                              YBClient* client) {
   RETURN_NOT_OK(db_fixture->WriteToRocksDBAndClear(
       doc_write_batch, HybridTime::FromMicros(kYugaByteMicrosecondEpoch),
-      /* decode_dockey */ false));
+      /* decode_dockey */ false, /* increment_write_id */ false));
   RETURN_NOT_OK(db_fixture->FlushRocksDB());
 
   if (!FLAGS_export_files) {
@@ -318,7 +318,7 @@ static CHECKED_STATUS RunBulkLoad() {
     if (doc_write_batch->size() >= FLAGS_row_batch_size) {
       RETURN_NOT_OK(db_fixture->WriteToRocksDBAndClear(
           doc_write_batch.get(), HybridTime::FromMicros(kYugaByteMicrosecondEpoch),
-          /* decode_dockey */ false));
+          /* decode_dockey */ false, /* increment_write_id */ false));
     }
   }
 
