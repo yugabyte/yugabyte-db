@@ -8,14 +8,15 @@ import {YBLoadingIcon} from '../../common/indicators';
 import { isValidObject } from 'utils/ObjectUtils';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { YBCost, DescriptionItem } from 'components/common/descriptors';
-import { UniverseFormContainer, UniverseStatusContainer } from 'components/universes';
+import { UniverseStatusContainer } from 'components/universes';
 import './UniverseDisplayPanel.scss';
 
 class CreateUniverseButtonComponent extends Component {
   render() {
     return (
       <Col sm={4} md={3} lg={2}>
-        <div className="create-universe-button" {...this.props}>
+        <Link to="/universes/create">
+          <div className="create-universe-button" {...this.props}>
           <div className="btn-icon">
             <i className="fa fa-plus"/>
           </div>
@@ -23,6 +24,7 @@ class CreateUniverseButtonComponent extends Component {
             Create Universe
           </div>
         </div>
+        </Link>
       </Col>
     )
   }
@@ -34,7 +36,6 @@ class UniverseDisplayItem extends Component {
     if (!isValidObject(universe)) {
       return <span/>;
     }
-
     var replicationFactor = <span>{`${universe.universeDetails.userIntent.replicationFactor}`}</span>
     var numNodes = <span>{universe.universeDetails.userIntent.numNodes}</span>
     var costPerMonth = <span>n/a</span>;
@@ -72,7 +73,7 @@ class UniverseDisplayItem extends Component {
 export default class UniverseDisplayPanel extends Component {
   render() {
     var self = this;
-    const { universe: {universeList, showModal, visibleModal}, cloud :{providers}} = this.props;
+    const { universe: {universeList}, cloud: {providers}} = this.props;
     if (getPromiseState(providers).isSuccess()) {
       let universeDisplayList = <span/>;
       if (getPromiseState(universeList).isSuccess()) {
@@ -87,9 +88,6 @@ export default class UniverseDisplayPanel extends Component {
           <Row>
             {universeDisplayList}
             {createUniverseButton}
-            <UniverseFormContainer type="Create"
-                                   visible={showModal===true && visibleModal==="universeModal"}
-                                   onHide={this.props.closeUniverseModal} title="Create Universe" />
           </Row>
         </div>
       )

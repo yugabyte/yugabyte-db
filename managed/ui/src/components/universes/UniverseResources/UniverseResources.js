@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { isDefinedNotNull } from 'utils/ObjectUtils';
+import { isDefinedNotNull, isNonEmptyObject } from 'utils/ObjectUtils';
 import { YBResourceCount, YBCost } from 'components/common/descriptors';
 
 import './UniverseResources.scss';
@@ -9,31 +9,34 @@ import './UniverseResources.scss';
 export default class UniverseResources extends Component {
   render() {
     const {resources} = this.props;
-    if (!isDefinedNotNull(resources)) {
-      return <span/>;
-    }
-
-    var empty = false;
+    var empty = true;
     var costPerDay = '$0.00';
     var costPerMonth = '$0.00';
-    if (!resources) {
-      return <span/>;
-    }
-    if (isDefinedNotNull(resources) && Object.keys(resources).length > 0) {
+    let numCores = 0;
+    let memSizeGB = 0;
+    let volumeSizeGB = 0;
+    let volumeCount = 0;
+
+    if (isNonEmptyObject(resources)) {
+      empty = false;
       costPerDay = <YBCost value={resources.pricePerHour} multiplier={"day"} />
       costPerMonth = <YBCost value={resources.pricePerHour} multiplier={"month"} />
-    } else {
-      empty = !(resources.numCores || resources.memSizeGB ||
-        resources.volumeSizeGB || resources.volumeCount);
+      numCores = resources.numCores;
+      memSizeGB = resources.memSizeGB;
+      volumeSizeGB = resources.volumeSizeGB;
+      volumeCount = resources.volumeCount;
     }
     return (
-      <div className={"universe-resources " + (empty ? 'empty' : '')}>
-        <YBResourceCount size={resources.numCores || 0} kind="Core" pluralizeKind />
-        <YBResourceCount size={resources.memSizeGB || 0} unit="GB" kind="Memory" />
-        <YBResourceCount size={resources.volumeSizeGB || 0} unit="GB" kind="Storage" />
-        <YBResourceCount size={resources.volumeCount || 0} kind="Volume" pluralizeKind />
-        <YBResourceCount size={costPerDay} kind="/day" />
-        <YBResourceCount size={costPerMonth} kind="/month" />
+      <div className={"universe-resources "}>
+        <span className={(empty ? 'empty' : '')}>
+          <YBResourceCount size={numCores || 0} kind="Core" pluralizeKind />
+          <YBResourceCount size={memSizeGB || 0} unit="GB" kind="Memory" />
+          <YBResourceCount size={volumeSizeGB || 0} unit="GB" kind="Storage" />
+          <YBResourceCount size={volumeCount || 0} kind="Volume" pluralizeKind />
+          <YBResourceCount size={costPerDay} kind="/day" />
+          <YBResourceCount size={costPerMonth} kind="/month" />
+        </span>
+        {this.props.children}
       </div>
     );
   }
