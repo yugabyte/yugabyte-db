@@ -36,48 +36,55 @@ parser.add_argument('--publish', action='store_true',
                     help='Publish release to S3.')
 parser.add_argument('--destination', help='Copy release to Destination folder.')
 parser.add_argument('--tag', help='Release tag name')
+parser.add_argument('--packages', nargs='+',  help='Comma separated release packages' +
+                    'ex. devops-sha.tar.gz, yugaware-sha.tar.gz, yugabyte-sha.tar.gz ')
 args = parser.parse_args()
 
 output = None
 SECRET_CHOICE = string.ascii_lowercase + string.digits + '!@#$%^&*(-_=+)'
+REQUIRED_PACKAGES = ('devops', 'yugaware', 'yugabyte')
 
 try:
     init_env(logging.INFO)
     script_dir = os.path.dirname(os.path.realpath(__file__))
-    output = check_output(["sbt", "clean"])
 
     if args.type == "docker":
-        # TODO, make these params, so we can specify which version of devops
-        # and yugabyte software we want to be bundled, also be able to specify
-        # local builds
-        if not args.tag:
-            raise YBOpsRuntimeError("--tag is required for docker release.")
-
-        packages_folder = os.path.join(script_dir, "target", "docker", "stage", "packages")
-
-        package_infos = None
-        try:
+        packages = args.packages
+        if not packages and not args.tag:
+            raise YBOpsRuntimeError("--tag or --packages is required for docker release.")
+        elif packages:
+            packages = [package for package in args.packages
+                        if os.path.basename(package).startswith(REQUIRED_PACKAGES)]
+            if len(packages) < 3:
+                raise YBOpsRuntimeError("Required packages {} not specified".format(REQUIRED_PACKAGES))
+        elif args.tag:
             log_message(logging.INFO, "Download packages based on the release tag")
-            package_infos = get_package_info(args.tag)
-            yugaware_commit_hash = None
+            packages = [p.get("package") for p in get_package_info(args.tag)]
+
+        packages_folder = os.path.join(script_dir, "target", "docker", "packages")
+
+        try:
             yugabyte_package = None
-            for package_info in package_infos:
-                package_name = package_info.get("package")
+            yugaware_package = None
+            for package in packages:
+                package_name = os.path.basename(package)
                 repo, commit, version = _extract_components_from_package_name(package_name, True)
+                download_folder = os.path.join(packages_folder, repo)
                 if repo == "yugaware":
-                    yugaware_commit_hash = commit
-                    continue
+                    yugaware_package = os.path.join(download_folder, package_name)
                 elif repo == "yugabyte":
                     download_folder = os.path.join(packages_folder, repo, version)
                     yugabyte_package = os.path.join(download_folder, package_name)
-                else:
-                    download_folder = os.path.join(packages_folder, repo)
 
                 if not os.path.exists(download_folder):
                     os.makedirs(download_folder)
 
-                download_release(args.tag, package_name, download_folder, S3_RELEASE_BUCKET)
-
+                if args.packages:
+                    log_message(logging.INFO, "Copy local package {}".format(package_name))
+                    shutil.copy(package, os.path.join(download_folder, package_name))
+                else:
+                    log_message(logging.INFO, "Download package {} from s3".format(package_name))
+                    download_release(args.tag, package_name, download_folder, S3_RELEASE_BUCKET)
 
             # Get the YB Load tester tar alone
             yugabyte_tarfile = tarfile.open(yugabyte_package)
@@ -87,28 +94,32 @@ try:
                     yugabyte_tarfile.extract(archive_file, packages_folder)
                     log_message(logging.INFO, archive_file.name)
 
-            if not yugaware_commit_hash:
-                raise YBOpsRuntimeError("Unable to fetch yugaware commit hash.")
-            output = check_output(["git", "checkout", yugaware_commit_hash])
+            # Get the YW UI code from the tar
+            yugaware_tarfile = tarfile.open(yugaware_package)
+            ui_files = [f for f in yugaware_tarfile.getmembers() if f.name.startswith("public/")]
+            yugaware_tarfile.extractall(path=packages_folder, members=ui_files)
+            shutil.move(os.path.join(packages_folder, "public"), "ui/build")
             log_message(logging.INFO, "Package and publish yugaware docker image locally")
-            output = check_output(["sbt", "docker:publishLocal"])
+            output = check_output(["docker", "build", "-t", "yugaware", "."])
             log_message(logging.INFO, "Package and publish yugaware-ui docker image locally")
             output = check_output(["docker", "build", "-t", "yugaware-ui", "ui"])
 
-            if args.publish:
+            if args.publish and args.tag:
                 log_message(logging.INFO, "Tag Yugaware and Yugaware UI with replicated urls")
-                docker_push_to_registry("yugaware", "1.0-SNAPSHOT", args.tag)
-                docker_push_to_registry("yugaware", "1.0-SNAPSHOT", "latest")
+                docker_push_to_registry("yugaware", "latest", args.tag)
+                docker_push_to_registry("yugaware", "latest", "latest")
                 docker_push_to_registry("yugaware-ui", "latest", args.tag)
                 docker_push_to_registry("yugaware-ui", "latest", "latest")
         except YBOpsRuntimeError as ye:
             log_message(logging.ERROR, ye)
             log_message(logging.ERROR, "Invalid release tag provided.")
         finally:
-            output = check_output(["git", "checkout", "master"])
             shutil.rmtree(packages_folder)
+            shutil.rmtree(os.path.join("ui", "build"))
 
     elif args.type == "replicated":
+        # Validated if the tag is valid release
+        _ = get_package_info(args.tag)
         log_message(logging.INFO, "Creating replicated release")
         # TODO move this to devops?
         secret_str = ''.join([random.SystemRandom().choice(SECRET_CHOICE) for i in range(64)])
@@ -120,6 +131,7 @@ try:
             with open("/tmp/replicated-{}.yml".format(args.tag), "w") as outfile:
                 outfile.write(yaml_str)
     else:
+        output = check_output(["sbt", "clean"])
         log_message(logging.INFO, "Building/Packaging UI code")
         shutil.rmtree(os.path.join(script_dir, "ui", "node_modules"), ignore_errors=True)
         output = check_output(["npm", "install"], cwd=os.path.join(script_dir, 'ui'))
