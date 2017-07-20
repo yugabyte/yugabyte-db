@@ -54,7 +54,13 @@ DEFINE_REDIS_histogram_EX(set_internal,
                           "yb.redisserver.RedisServerService.Set RPC Time",
                           "in yb.client.Set");
 
-DEFINE_int32(redis_service_yb_client_timeout_millis, 60000,
+#if defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
+constexpr int32_t kDefaultRedisServiceTimeoutMs = 600000;
+#else
+constexpr int32_t kDefaultRedisServiceTimeoutMs = 60000;
+#endif
+
+DEFINE_int32(redis_service_yb_client_timeout_millis, kDefaultRedisServiceTimeoutMs,
              "Timeout in milliseconds for RPC calls from Redis service to master/tserver");
 
 DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");

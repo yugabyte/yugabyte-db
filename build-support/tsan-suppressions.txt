@@ -114,3 +114,7 @@ race:boost::lockfree
 
 # std::locale is thread safe
 race:std::locale::classic
+
+# libbacktrace
+race:backtrace_vector_grow
+race:read_line_header
