@@ -305,6 +305,7 @@ set_compiler gcc
 F_ALL=1
 F_BITSHUFFLE=""
 F_CRCUTIL=""
+F_CRYPT_BLOWFISH=""
 F_CURL=""
 F_DIR=""
 F_GCOVR=""
@@ -371,6 +372,8 @@ while [[ $# -gt 0 ]]; do
                     F_BITSHUFFLE=1 ;;
     "crcutil")      building_what+=( crcutil )
                     F_CRCUTIL=1 ;;
+    "crypt_blowfish") building_what+=( crypt_blowfish )
+                    F_CRYPT_BLOWFISH=1 ;;
     "curl")         building_what+=( curl )
                     F_CURL=1 ;;
     "gcovr")        building_what+=( gcovr )
@@ -653,6 +656,10 @@ if [[ -z ${YB_THIRDPARTY_TSAN_ONLY_BUILD:-} ]]; then
     restore_env
   fi
 
+  if [ -n "$F_ALL" -o -n "$F_CRYPT_BLOWFISH" ]; then
+    do_build_if_necessary crypt_blowfish
+  fi
+
   heading "Finished building non-TSAN dependencies"
 fi
 
@@ -745,6 +752,10 @@ if [[ -n $F_TSAN  ]]; then
 
   if [ -n "$F_ALL" -o -n "$F_CRCUTIL" ]; then
     do_build_if_necessary crcutil
+  fi
+
+  if [ -n "$F_ALL" -o -n "$F_CRYPT_BLOWFISH" ]; then
+    do_build_if_necessary crypt_blowfish
   fi
 
   heading "Finished building dependencies with TSAN"

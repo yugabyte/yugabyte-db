@@ -140,22 +140,22 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
   typedef map<string, string> StringMap;
   StringMap ordered_tables;
   for (const scoped_refptr<TableInfo>& table : tables) {
-    TableMetadataLock l(table.get(), TableMetadataLock::READ);
-    if (!l.data().is_running()) {
+    auto l = table->LockForRead();
+    if (!l->data().is_running()) {
       continue;
     }
 
     const TableName long_table_name = TableLongName(
-        master_->catalog_manager()->GetNamespaceName(table->namespace_id()), l.data().name());
+        master_->catalog_manager()->GetNamespaceName(table->namespace_id()), l->data().name());
 
-    string state = SysTablesEntryPB_State_Name(l.data().pb.state());
+    string state = SysTablesEntryPB_State_Name(l->data().pb.state());
     Capitalize(&state);
     ordered_tables[long_table_name] = Substitute(
         "<tr><th>$0</th><td><a href=\"/table?id=$1\">$1</a></td><td>$2 $3</td></tr>\n",
         EscapeForHtmlToString(long_table_name),
         EscapeForHtmlToString(table->id()),
         state,
-        EscapeForHtmlToString(l.data().pb.state_msg()));
+        EscapeForHtmlToString(l->data().pb.state_msg()));
   }
   for (const StringMap::value_type& table : ordered_tables) {
     *output << table.second;
@@ -200,28 +200,28 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   TableName table_name;
   vector<scoped_refptr<TabletInfo> > tablets;
   {
-    TableMetadataLock l(table.get(), TableMetadataLock::READ);
+    auto l = table->LockForRead();
     keyspace_name = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
-    table_name = l.data().name();
+    table_name = l->data().name();
     *output << "<h1>Table: " << EscapeForHtmlToString(TableLongName(keyspace_name, table_name))
             << " (" << EscapeForHtmlToString(table_id) << ")</h1>\n";
 
     *output << "<table class='table table-striped'>\n";
-    *output << "  <tr><td>Version:</td><td>" << l.data().pb.version() << "</td></tr>\n";
+    *output << "  <tr><td>Version:</td><td>" << l->data().pb.version() << "</td></tr>\n";
 
-    *output << "  <tr><td>Type:</td><td>" << TableType_Name(l.data().pb.table_type())
+    *output << "  <tr><td>Type:</td><td>" << TableType_Name(l->data().pb.table_type())
             << "</td></tr>\n";
 
-    string state = SysTablesEntryPB_State_Name(l.data().pb.state());
+    string state = SysTablesEntryPB_State_Name(l->data().pb.state());
     Capitalize(&state);
     *output << "  <tr><td>State:</td><td>"
             << state
-            << EscapeForHtmlToString(l.data().pb.state_msg())
+            << EscapeForHtmlToString(l->data().pb.state_msg())
             << "</td></tr>\n";
     *output << "</table>\n";
 
-    SchemaFromPB(l.data().pb.schema(), &schema);
-    Status s = PartitionSchema::FromPB(l.data().pb.partition_schema(), schema, &partition_schema);
+    SchemaFromPB(l->data().pb.schema(), &schema);
+    Status s = PartitionSchema::FromPB(l->data().pb.partition_schema(), schema, &partition_schema);
     if (!s.ok()) {
       *output << "Unable to decode partition schema: " << s.ToString();
       return;
@@ -241,19 +241,19 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
     AppendValuesFromMap(locations, &sorted_locations);
     std::sort(sorted_locations.begin(), sorted_locations.end(), &CompareByRole);
 
-    TabletMetadataLock l(tablet.get(), TabletMetadataLock::READ);
+    auto l = tablet->LockForRead();
 
     Partition partition;
-    Partition::FromPB(l.data().pb.partition(), &partition);
+    Partition::FromPB(l->data().pb.partition(), &partition);
 
-    string state = SysTabletsEntryPB_State_Name(l.data().pb.state());
+    string state = SysTabletsEntryPB_State_Name(l->data().pb.state());
     Capitalize(&state);
     *output << Substitute(
         "<tr><th>$0</th><td>$1</td><td>$2</td><td>$3</td><td>$4</td></tr>\n",
         tablet->tablet_id(),
         EscapeForHtmlToString(partition_schema.PartitionDebugString(partition, schema)),
         state,
-        EscapeForHtmlToString(l.data().pb.state_msg()),
+        EscapeForHtmlToString(l->data().pb.state_msg()),
         RaftConfigToHtml(sorted_locations, tablet->tablet_id()));
   }
   *output << "</table>\n";
@@ -324,7 +324,7 @@ class JsonDumperBase {
   JsonWriter* jw_;
 };
 
-class JsonKeyspaceDumper : public NamespaceVisitor, public JsonDumperBase {
+class JsonKeyspaceDumper : public Visitor<PersistentNamespaceInfo>, public JsonDumperBase {
  public:
   explicit JsonKeyspaceDumper(JsonWriter* jw) : JsonDumperBase(jw) {}
 
@@ -344,7 +344,7 @@ class JsonKeyspaceDumper : public NamespaceVisitor, public JsonDumperBase {
   }
 };
 
-class JsonTableDumper : public TableVisitor, public JsonDumperBase {
+class JsonTableDumper : public Visitor<PersistentTableInfo>, public JsonDumperBase {
  public:
   explicit JsonTableDumper(JsonWriter* jw) : JsonDumperBase(jw) {}
 
@@ -373,7 +373,7 @@ class JsonTableDumper : public TableVisitor, public JsonDumperBase {
   }
 };
 
-class JsonTabletDumper : public TabletVisitor, public JsonDumperBase {
+class JsonTabletDumper : public Visitor<PersistentTabletInfo>, public JsonDumperBase {
  public:
   explicit JsonTabletDumper(JsonWriter* jw) : JsonDumperBase(jw) {}
 

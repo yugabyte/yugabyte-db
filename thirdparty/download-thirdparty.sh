@@ -372,6 +372,10 @@ if [[ ! -d $CQLSH_DIR ]]; then
   fetch_and_expand "cqlsh-${CQLSH_VERSION}.tar.gz" "$CQLSH_URL"
 fi
 
+if [[ ! -d $CRYPT_BLOWFISH_DIR ]]; then
+  fetch_and_expand "$CRYPT_BLOWFISH_ARCHIVE" "$CRYPT_BLOWFISH_URL"
+fi
+
 
 echo "---------------"
 if [[ $DOWNLOAD_ONLY -eq 1 ]]; then

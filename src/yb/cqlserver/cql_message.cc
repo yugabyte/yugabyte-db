@@ -13,6 +13,9 @@
 namespace yb {
 namespace cqlserver {
 
+constexpr const char* const kCassandraPasswordAuthenticator =
+    "org.apache.cassandra.auth.PasswordAuthenticator";
+
 using std::shared_ptr;
 using std::unique_ptr;
 using std::string;
@@ -21,6 +24,8 @@ using std::vector;
 using std::unordered_map;
 using strings::Substitute;
 using util::to_char_ptr;
+
+DEFINE_bool(use_cassandra_authentication, false, "If to require authentication on startup.");
 
 #define RETURN_NOT_ENOUGH(sz)                               \
   do {                                                      \
@@ -467,7 +472,11 @@ CQLResponse* StartupRequest::Execute() const {
           *this, ErrorResponse::Code::PROTOCOL_ERROR, "Unsupported option " + name);
     }
   }
-  return new ReadyResponse(*this);
+  if (FLAGS_use_cassandra_authentication) {
+    return new AuthenticateResponse(*this, kCassandraPasswordAuthenticator);
+  } else {
+    return new ReadyResponse(*this);
+  }
 }
 
 //----------------------------------------------------------------------------------------
@@ -479,12 +488,47 @@ AuthResponseRequest::~AuthResponseRequest() {
 }
 
 Status AuthResponseRequest::ParseBody() {
-  return ParseBytes(&token_);
+  RETURN_NOT_OK(ParseBytes(&token_));
+  string error_msg;
+  do {
+    if (token_.empty()) {
+      error_msg = "Invalid empty token!";
+      break;
+    }
+    if (token_[0] != '\0') {
+      error_msg = "Invalid format. Message must begin with \\0";
+      break;
+    }
+    size_t next_delim = token_.find_first_of('\0', 1);
+    if (next_delim == std::string::npos) {
+      error_msg = "Invalid format. Message must contain \\0 after username";
+      break;
+    }
+    // Start from token_[1], read all the username.
+    params_.username = token_.substr(1, next_delim - 1);
+    // Start from after the delimiter, go to the end.
+    params_.password = token_.substr(next_delim + 1);
+    return Status::OK();
+  } while (0);
+  return STATUS(InvalidArgument, error_msg);
 }
 
 CQLResponse* AuthResponseRequest::Execute() const {
-  // TODO(Robert): authentication support
-  return new ErrorResponse(*this, ErrorResponse::Code::PROTOCOL_ERROR, "Not implemented yet");
+  LOG(FATAL) << "Cannot execute AuthResponseRequest";
+  return nullptr;
+}
+
+CHECKED_STATUS AuthResponseRequest::AuthQueryParameters::GetBindVariable(
+    const std::string& name,
+    int64_t pos,
+    const std::shared_ptr<YQLType>& type,
+    YQLValue* value) const {
+  if (pos == 0) {
+    value->set_string_value(username);
+    return Status::OK();
+  } else {
+    return STATUS(InvalidArgument, Substitute("Bind variable position $0 out of range: ", pos));
+  }
 }
 
 //----------------------------------------------------------------------------------------

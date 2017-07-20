@@ -10,6 +10,7 @@
 #include "yb/cqlserver/cql_service.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/rpc/rpc_context.h"
+#include "yb/util/crypt.h"
 
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_CQLServerService_GetProcessor,
@@ -48,6 +49,8 @@ METRIC_DEFINE_histogram(
 namespace yb {
 namespace cqlserver {
 
+extern const char* const kRoleColumnNameSaltedHash;
+
 using std::shared_ptr;
 using std::unique_ptr;
 
@@ -64,6 +67,7 @@ using sql::Statement;
 using sql::StatementExecutedCallback;
 using sql::ErrorCode;
 using sql::GetErrorCode;
+using yb::util::bcrypt_checkpw;
 
 //------------------------------------------------------------------------------------------------
 CQLMetrics::CQLMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity)
@@ -98,6 +102,10 @@ CQLProcessor::CQLProcessor(CQLServiceImpl* service_impl, const CQLProcessorListP
 }
 
 CQLProcessor::~CQLProcessor() {
+}
+
+void CQLProcessor::Return() {
+  service_impl_->ReturnProcessor(pos_);
 }
 
 void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
@@ -135,6 +143,9 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
       batch_index_ = 0;
       response.reset(ProcessBatch(static_cast<const BatchRequest&>(*request_)));
       break;
+    case CQLMessage::Opcode::AUTH_RESPONSE:
+      response.reset(ProcessAuthResponse(static_cast<const AuthResponseRequest&>(*request_)));
+      break;
     default:
       response.reset(request_->Execute());
       break;
@@ -168,10 +179,27 @@ void CQLProcessor::SendResponse(const CQLResponse& response) {
   request_ = nullptr;
   stmt_ = nullptr;
   SetCurrentCall(nullptr);
-  service_impl_->ReturnProcessor(pos_);
+  Return();
 }
 
-CQLResponse *CQLProcessor::ProcessPrepare(const PrepareRequest& req) {
+CQLResponse* CQLProcessor::ProcessAuthResponse(const AuthResponseRequest& req) {
+  const auto& params = req.params();
+  shared_ptr<Statement> stmt = service_impl_->GetAuthPreparedStatement();
+  if (!stmt->Prepare(this).ok()) {
+    return new ErrorResponse(
+        req, ErrorResponse::Code::SERVER_ERROR,
+        "Could not prepare statement for querying user " + params.username);
+  }
+  if (!stmt->ExecuteAsync(this, params, statement_executed_cb_)) {
+    LOG(ERROR) << "Could not execute prepared statement to fetch login info!";
+      return new ErrorResponse(
+          req, ErrorResponse::Code::SERVER_ERROR,
+          "Could not execute prepared statement for querying roles for user " + params.username);
+  }
+  return nullptr;
+}
+
+CQLResponse* CQLProcessor::ProcessPrepare(const PrepareRequest& req) {
   VLOG(1) << "PREPARE " << req.query();
   const CQLMessage::QueryId query_id = CQLStatement::GetQueryId(
       sql_env_->CurrentKeyspace(), req.query());
@@ -297,12 +325,36 @@ CQLResponse* CQLProcessor::ProcessResult(Status s, const ExecutedResult::SharedP
     }
     case ExecutedResult::Type::ROWS: {
       const RowsResult::SharedPtr& rows_result = std::static_pointer_cast<RowsResult>(result);
-      cql_metrics_->sql_response_size_bytes_->Increment(rows_result->rows_data().size());
+      if (request_->opcode() != CQLMessage::Opcode::AUTH_RESPONSE) {
+        cql_metrics_->sql_response_size_bytes_->Increment(rows_result->rows_data().size());
+      }
       switch (request_->opcode()) {
         case CQLMessage::Opcode::EXECUTE:
           return new RowsResultResponse(down_cast<const ExecuteRequest&>(*request_), rows_result);
         case CQLMessage::Opcode::QUERY:
           return new RowsResultResponse(down_cast<const QueryRequest&>(*request_), rows_result);
+        case CQLMessage::Opcode::AUTH_RESPONSE:
+          {
+            const auto& req = down_cast<const AuthResponseRequest&>(*request_);
+            const auto& params = req.params();
+            const auto row_block = rows_result->GetRowBlock();
+            if (row_block->row_count() != 1) {
+              return new ErrorResponse(*request_, ErrorResponse::Code::SERVER_ERROR,
+                  "Could not get data for " + params.username);
+            } else {
+              const auto& row = row_block->row(0);
+              const auto& schema = row_block->schema();
+              const auto& saved_hash =
+                  row.column(schema.find_column(kRoleColumnNameSaltedHash)).string_value();
+              if (bcrypt_checkpw(params.password.c_str(), saved_hash.c_str())) {
+                return new ErrorResponse(*request_, ErrorResponse::Code::BAD_CREDENTIALS,
+                    "Invalid password for " + params.username);
+              } else {
+                return new AuthSuccessResponse(*request_, "" /* this does not matter" */);
+              }
+            }
+          }
+          break;
         case CQLMessage::Opcode::ERROR:   FALLTHROUGH_INTENDED;
         case CQLMessage::Opcode::STARTUP: FALLTHROUGH_INTENDED;
         case CQLMessage::Opcode::READY:   FALLTHROUGH_INTENDED;
@@ -315,7 +367,6 @@ CQLResponse* CQLProcessor::ProcessResult(Status s, const ExecutedResult::SharedP
         case CQLMessage::Opcode::EVENT:     FALLTHROUGH_INTENDED;
         case CQLMessage::Opcode::BATCH:     FALLTHROUGH_INTENDED;
         case CQLMessage::Opcode::AUTH_CHALLENGE: FALLTHROUGH_INTENDED;
-        case CQLMessage::Opcode::AUTH_RESPONSE:  FALLTHROUGH_INTENDED;
         case CQLMessage::Opcode::AUTH_SUCCESS:
           break;
         // default: fall through

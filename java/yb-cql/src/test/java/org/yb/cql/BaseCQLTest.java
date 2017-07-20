@@ -63,23 +63,33 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     System.setProperty("com.datastax.driver.EXTENDED_PEER_CHECK", "false");
   }
 
-  @Before
-  public void setUpCqlClient() throws Exception {
-    LOG.info("BaseCQLTest.setUpCqlClient is running");
+  public Cluster.Builder getDefaultClusterBuilder() {
     // Set a long timeout for CQL queries since build servers might be really slow (especially Mac
     // Mini).
     SocketOptions socketOptions = new SocketOptions();
     socketOptions.setReadTimeoutMillis(60 * 1000);
     socketOptions.setConnectTimeoutMillis(60 * 1000);
-    cluster = Cluster.builder()
+    return Cluster.builder()
               .addContactPointsWithPorts(miniCluster.getCQLContactPoints())
               .withLoadBalancingPolicy(
                 new PartitionAwarePolicy(PARTITION_POLICY_REFRESH_FREQUENCY_SECONDS))
-              .withSocketOptions(socketOptions)
-              .build();
-    LOG.info("Connected to cluster: " + cluster.getMetadata().getClusterName());
+              // To sniff the CQL wire protocol using Wireshark and debug, uncomment the following
+              // line to force the use of CQL V3 protocol. Wireshark does not decode V4 or higher
+              // protocol yet.
+              // .withProtocolVersion(com.datastax.driver.core.ProtocolVersion.V3)
+              .withSocketOptions(socketOptions);
+  }
 
-    session = cluster.connect();
+  public Session buildDefaultSession(Cluster cluster) {
+    return cluster.connect();
+  }
+
+  @Before
+  public void setUpCqlClient() throws Exception {
+    LOG.info("BaseCQLTest.setUpCqlClient is running");
+    cluster = getDefaultClusterBuilder().build();
+    LOG.info("Connected to cluster: " + cluster.getMetadata().getClusterName());
+    session = buildDefaultSession(cluster);
 
     // Create and use test keyspace to be able using short table names later.
     createKeyspaceIfNotExists(DEFAULT_TEST_KEYSPACE);

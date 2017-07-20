@@ -26,6 +26,8 @@ using NamespaceName = std::string;
 typedef std::pair<NamespaceId, TableName> NamespaceIdTableNamePair;
 typedef std::set<NamespaceIdTableNamePair> SystemTableSet;
 
+using RoleName = std::string;
+
 
 }  // namespace yb
 

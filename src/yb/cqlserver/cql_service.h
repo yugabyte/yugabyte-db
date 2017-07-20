@@ -14,6 +14,7 @@
 #include "yb/cqlserver/cql_statement.h"
 #include "yb/cqlserver/cql_service.service.h"
 #include "yb/cqlserver/cql_server_options.h"
+#include "yb/sql/statement.h"
 
 #include "yb/util/string_case.h"
 
@@ -28,6 +29,8 @@ class YBSession;
 }  // namespace client
 
 namespace cqlserver {
+
+extern const char* const kRoleColumnNameSaltedHash;
 
 class CQLMetrics;
 class CQLProcessor;
@@ -50,6 +53,8 @@ class CQLServiceImpl : public CQLServerServiceIf {
 
   // Look up a prepared statement by its id. Nullptr will be returned if the statement is not found.
   std::shared_ptr<const CQLStatement> GetPreparedStatement(const CQLMessage::QueryId& id);
+
+  std::shared_ptr<sql::Statement> GetAuthPreparedStatement() const { return auth_prepared_stmt_; }
 
   // Delete the prepared statement from the cache.
   void DeletePreparedStatement(const std::shared_ptr<const CQLStatement>& stmt);
@@ -125,6 +130,8 @@ class CQLServiceImpl : public CQLServerServiceIf {
 
   // Mutex that protects the prepared statements and the LRU list.
   std::mutex prepared_stmts_mutex_;
+
+  std::shared_ptr<sql::Statement> auth_prepared_stmt_;
 
   // Tracker to measure and limit memory usage of prepared statements.
   std::shared_ptr<MemTracker> prepared_stmts_mem_tracker_;

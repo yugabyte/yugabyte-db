@@ -39,23 +39,22 @@ void CreateTable(
     string tablet_id = Substitute("tablet-$0-$1", start_key, end_key);
 
     TabletInfo* tablet = new TabletInfo(table, tablet_id);
-    TabletMetadataLock meta_lock(tablet, TabletMetadataLock::WRITE);
-
-    PartitionPB* partition = meta_lock.mutable_data()->pb.mutable_partition();
+    auto l = tablet->LockForWrite();
+    PartitionPB* partition = l->mutable_data()->pb.mutable_partition();
     partition->set_partition_key_start(start_key);
     partition->set_partition_key_end(end_key);
-    meta_lock.mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
+    l->mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
 
     table->AddTablet(tablet);
-    meta_lock.Commit();
+    l->Commit();
     tablets->push_back(make_scoped_refptr(tablet));
   }
 
   if (setup_placement) {
-    TableMetadataLock meta_lock(table, TableMetadataLock::WRITE);
-    auto* ri = meta_lock.mutable_data()->pb.mutable_replication_info();
+    auto l = table->LockForWrite();
+    auto* ri = l->mutable_data()->pb.mutable_replication_info();
     ri->mutable_live_replicas()->set_num_replicas(num_replicas);
-    meta_lock.Commit();
+    l->Commit();
   }
 
   // The splits are of the form ("-a", "a-b", "b-c", "c-"), hence the +1.
@@ -888,8 +887,8 @@ TEST(TableInfoTest, TestAssignmentRanges) {
   CreateTable(split_keys, kNumReplicas, true, table.get(), &tablets);
 
   {
-    TableMetadataLock meta_lock(table.get(), TableMetadataLock::READ);
-    ASSERT_EQ(meta_lock.data().pb.replication_info().live_replicas().num_replicas(), kNumReplicas)
+    auto l = table->LockForRead();
+    ASSERT_EQ(l->data().pb.replication_info().live_replicas().num_replicas(), kNumReplicas)
         << "Invalid replicas for created table.";
   }
 

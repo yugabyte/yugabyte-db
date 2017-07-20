@@ -33,6 +33,7 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/system_tables_handler.h"
@@ -95,29 +96,8 @@ struct Persistent {
   DataEntryPB pb;
 };
 
-// This class is a base wrapper around accessors for the persistent proto data, through CowObject.
-// The locks are taken on subclasses of this class, around the object returned from metadata().
-template <class PersistentDataEntryPB>
-class MemoryState {
- public:
-  // Type declaration for use in the Lock classes.
-  typedef PersistentDataEntryPB cow_state;
-
-  // This method should return the id to be written into the sys_catalog id column.
-  virtual const std::string& id() const = 0;
-
-  // Access the persistent metadata. Typically you should use
-  // TabletMetadataLock to gain access to this data.
-  const CowObject<PersistentDataEntryPB>& metadata() const { return metadata_; }
-  CowObject<PersistentDataEntryPB>* mutable_metadata() { return &metadata_; }
-
- protected:
-  virtual ~MemoryState() = default;
-  CowObject<PersistentDataEntryPB> metadata_;
-};
-
-// This class is used to manage locking of the persistent metadata returned from the MemoryState
-// objects.
+// This class is used to manage locking of the persistent metadata returned from the
+// MetadataCowWrapper objects.
 template <class MetadataClass>
 class MetadataLock : public CowLock<typename MetadataClass::cow_state> {
  public:
@@ -126,6 +106,42 @@ class MetadataLock : public CowLock<typename MetadataClass::cow_state> {
       : super(DCHECK_NOTNULL(info)->mutable_metadata(), mode) {}
   MetadataLock(const MetadataClass* info, typename super::LockMode mode)
       : super(&(DCHECK_NOTNULL(info))->metadata(), mode) {}
+};
+
+// This class is a base wrapper around accessors for the persistent proto data, through CowObject.
+// The locks are taken on subclasses of this class, around the object returned from metadata().
+template <class PersistentDataEntryPB>
+class MetadataCowWrapper {
+ public:
+  // Type declaration for use in the Lock classes.
+  typedef PersistentDataEntryPB cow_state;
+  typedef MetadataLock<MetadataCowWrapper<PersistentDataEntryPB>> lock_type;
+
+  // This method should return the id to be written into the sys_catalog id column.
+  virtual const std::string& id() const = 0;
+
+  // Pretty printing.
+  virtual std::string ToString() const {
+    return strings::Substitute(
+        "Object type = $0 (id = $1)", PersistentDataEntryPB::type(), id());
+  }
+
+  // Access the persistent metadata. Typically you should use
+  // TabletMetadataLock to gain access to this data.
+  const CowObject<PersistentDataEntryPB>& metadata() const { return metadata_; }
+  CowObject<PersistentDataEntryPB>* mutable_metadata() { return &metadata_; }
+
+  std::unique_ptr<lock_type> LockForRead() const {
+    return std::unique_ptr<lock_type>(new lock_type(this, lock_type::READ));
+  }
+
+  std::unique_ptr<lock_type> LockForWrite() {
+    return std::unique_ptr<lock_type>(new lock_type(this, lock_type::WRITE));
+  }
+
+ protected:
+  virtual ~MetadataCowWrapper() = default;
+  CowObject<PersistentDataEntryPB> metadata_;
 };
 
 // The data related to a tablet which is persisted on disk.
@@ -175,7 +191,7 @@ struct TabletReplica {
 //
 // The object is owned/managed by the CatalogManager, and exposed for testing.
 class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
-                   public MemoryState<PersistentTabletInfo> {
+                   public MetadataCowWrapper<PersistentTabletInfo> {
  public:
   typedef std::unordered_map<std::string, TabletReplica> ReplicaMap;
 
@@ -204,7 +220,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   uint32_t reported_schema_version() const;
 
   // No synchronization needed.
-  std::string ToString() const;
+  std::string ToString() const override;
 
   // Determines whether or not this tablet belongs to a system table.
   bool IsSupportedSystemTable(const SystemTableSet& supported_system_tables) const;
@@ -265,9 +281,7 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
   }
 
   // Return the table's namespace id.
-  const NamespaceName& namespace_id() const {
-    return pb.namespace_id();
-  }
+  const NamespaceName& namespace_id() const { return pb.namespace_id(); }
 
   const SchemaPB& schema() const {
     return pb.schema();
@@ -284,7 +298,8 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
 //
 // The non-persistent information about the table is protected by an internal
 // spin-lock.
-class TableInfo : public RefCountedThreadSafe<TableInfo>, public MemoryState<PersistentTableInfo> {
+class TableInfo : public RefCountedThreadSafe<TableInfo>,
+                  public MetadataCowWrapper<PersistentTableInfo> {
  public:
   explicit TableInfo(TableId table_id);
 
@@ -295,7 +310,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>, public MemoryState<Per
 
   bool is_running() const;
 
-  std::string ToString() const;
+  std::string ToString() const override;
 
   const NamespaceId namespace_id() const;
 
@@ -415,15 +430,15 @@ struct PersistentNamespaceInfo : public Persistent<SysNamespaceEntryPB> {
 // The non-persistent information about the namespace is protected by an internal
 // spin-lock.
 class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
-                      public MemoryState<PersistentNamespaceInfo> {
+                      public MetadataCowWrapper<PersistentNamespaceInfo> {
  public:
   explicit NamespaceInfo(NamespaceId ns_id);
 
-  virtual const std::string& id() const override { return namespace_id_; };
+  virtual const std::string& id() const override { return namespace_id_; }
 
   const NamespaceName& name() const;
 
-  std::string ToString() const;
+  std::string ToString() const override;
 
  private:
   friend class RefCountedThreadSafe<NamespaceInfo>;
@@ -470,7 +485,7 @@ struct PersistentUDTypeInfo : public Persistent<SysUDTypeEntryPB> {
 };
 
 class UDTypeInfo : public RefCountedThreadSafe<UDTypeInfo>,
-                   public MemoryState<PersistentUDTypeInfo> {
+                   public MetadataCowWrapper<PersistentUDTypeInfo> {
  public:
   explicit UDTypeInfo(UDTypeId udtype_id);
 
@@ -489,7 +504,7 @@ class UDTypeInfo : public RefCountedThreadSafe<UDTypeInfo>,
 
   const YQLTypePB& field_types(int index) const;
 
-  std::string ToString() const;
+  std::string ToString() const override;
 
  private:
   friend class RefCountedThreadSafe<UDTypeInfo>;
@@ -510,11 +525,11 @@ struct PersistentClusterConfigInfo : public Persistent<SysClusterConfigEntryPB> 
 // This is the in memory representation of the cluster config information serialized proto data,
 // using metadata() for CowObject access.
 class ClusterConfigInfo : public RefCountedThreadSafe<ClusterConfigInfo>,
-                          public MemoryState<PersistentClusterConfigInfo> {
+                          public MetadataCowWrapper<PersistentClusterConfigInfo> {
  public:
   ClusterConfigInfo() {}
 
-  virtual const std::string& id() const override { return fake_id_; };
+  virtual const std::string& id() const override { return fake_id_; }
 
  private:
   friend class RefCountedThreadSafe<ClusterConfigInfo>;
@@ -524,6 +539,25 @@ class ClusterConfigInfo : public RefCountedThreadSafe<ClusterConfigInfo>,
   const std::string fake_id_ = kDefaultSysEntryUnusedId;
 
   DISALLOW_COPY_AND_ASSIGN(ClusterConfigInfo);
+};
+
+struct PersistentRoleInfo : public Persistent<SysRoleEntryPB> {
+  static int type() { return SysRowEntry::ROLE; }
+};
+
+class RoleInfo : public RefCountedThreadSafe<RoleInfo>,
+                 public MetadataCowWrapper<PersistentRoleInfo> {
+ public:
+  explicit RoleInfo(const std::string& role) : role_(role) {}
+  const std::string& id() const override { return role_; }
+
+ private:
+  friend class RefCountedThreadSafe<RoleInfo>;
+  ~RoleInfo() = default;
+
+  const std::string role_;
+
+  DISALLOW_COPY_AND_ASSIGN(RoleInfo);
 };
 
 // Component within the catalog manager which tracks blacklist (decommission) operation
@@ -543,13 +577,7 @@ class BlacklistState {
   int64_t initial_load_;
 };
 
-// Convenience typedefs for the locks.
-typedef MetadataLock<TabletInfo> TabletMetadataLock;
-typedef MetadataLock<TableInfo> TableMetadataLock;
-typedef MetadataLock<NamespaceInfo> NamespaceMetadataLock;
-typedef MetadataLock<UDTypeInfo> UDTypeMetadataLock;
-typedef MetadataLock<ClusterConfigInfo> ClusterConfigMetadataLock;
-
+// Convenience typedefs.
 typedef std::unordered_map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
 typedef std::unordered_map<TableId, scoped_refptr<TableInfo>> TableInfoMap;
 typedef std::pair<NamespaceId, TableName> TableNameKey;
@@ -801,9 +829,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   void GetAllNamespaces(std::vector<scoped_refptr<NamespaceInfo> >* namespaces);
 
   // Return all the available (user-defined) types.
-  void GetAllUDTypes(std::vector<scoped_refptr<UDTypeInfo> > *types);
+  void GetAllUDTypes(std::vector<scoped_refptr<UDTypeInfo> >* types);
 
   NamespaceName GetNamespaceName(const NamespaceId& id) const;
+
+  void GetAllRoles(std::vector<scoped_refptr<RoleInfo>>* roles);
 
   // Is the table a system table?
   bool IsSystemTable(const TableInfo& table) const;
@@ -896,6 +926,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   friend class NamespaceLoader;
   friend class UDTypeLoader;
   friend class ClusterConfigLoader;
+  friend class RoleLoader;
 
   // Called by SysCatalog::SysCatalogStateChanged when this node
   // becomes the leader of a consensus configuration.
@@ -929,11 +960,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Sets the version field of the SysClusterConfigEntryPB to 0.
   CHECKED_STATUS PrepareDefaultClusterConfig();
 
-  CHECKED_STATUS PrepareDefaultNamespace();
-
-  CHECKED_STATUS PrepareSystemNamespace();
+  CHECKED_STATUS PrepareDefaultNamespaces();
 
   CHECKED_STATUS PrepareSystemTables();
+
+  CHECKED_STATUS PrepareDefaultRoles();
 
   template <class T>
   CHECKED_STATUS PrepareSystemTableTemplate(const TableName& table_name,
@@ -1001,8 +1032,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   CHECKED_STATUS ResetTabletReplicasFromReportedConfig(const ReportedTabletPB& report,
                                                const scoped_refptr<TabletInfo>& tablet,
-                                               TabletMetadataLock* tablet_lock,
-                                               TableMetadataLock* table_lock);
+                                               TabletInfo::lock_type* tablet_lock,
+                                               TableInfo::lock_type* table_lock);
 
   // Register a tablet server whenever it heartbeats with a consensus configuration. This is
   // needed because we have logic in the Master that states that if a tablet
@@ -1062,8 +1093,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                   DeferredAssignmentActions* deferred,
                                   std::vector<scoped_refptr<TabletInfo> >* new_tablets);
 
-  CHECKED_STATUS HandleTabletSchemaVersionReport(TabletInfo *tablet,
-                                         uint32_t version);
+  CHECKED_STATUS HandleTabletSchemaVersionReport(TabletInfo *tablet, uint32_t version);
 
   // Send the create tablet requests to the selected peers of the consensus configurations.
   // The creation is async, and at the moment there is no error checking on the
@@ -1204,6 +1234,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // User-Defined type maps: udtype-id -> UDTypeInfo and udtype-name -> UDTypeInfo
   UDTypeInfoMap udtype_ids_map_;
   UDTypeInfoByNameMap udtype_names_map_;
+
+  // Role map: RoleName -> RoleInfo
+  typedef std::unordered_map<RoleName, scoped_refptr<RoleInfo> > RoleInfoMap;
+  RoleInfoMap roles_map_;
 
   // Config information
   scoped_refptr<ClusterConfigInfo> cluster_config_ = nullptr;

@@ -310,15 +310,31 @@ class StartupRequest : public CQLRequest {
 //------------------------------------------------------------
 class AuthResponseRequest : public CQLRequest {
  public:
+  class AuthQueryParameters : public sql::StatementParameters {
+   public:
+    AuthQueryParameters() : sql::StatementParameters() {}
+
+    CHECKED_STATUS GetBindVariable(const std::string& name,
+                                   int64_t pos,
+                                   const std::shared_ptr<YQLType>& type,
+                                   YQLValue* value) const override;
+    std::string username;
+    std::string password;
+  };
+
   AuthResponseRequest(const Header& header, const Slice& body);
   virtual ~AuthResponseRequest() override;
   virtual CQLResponse* Execute() const override;
+
+  const std::string& token() const { return token_; }
+  const AuthQueryParameters& params() const { return params_; }
 
  protected:
   virtual CHECKED_STATUS ParseBody() override;
 
  private:
   std::string token_;
+  AuthQueryParameters params_;
 };
 
 //------------------------------------------------------------
@@ -518,14 +534,13 @@ class ReadyResponse : public CQLResponse {
 //------------------------------------------------------------
 class AuthenticateResponse : public CQLResponse {
  public:
+  AuthenticateResponse(const CQLRequest& request, const std::string& authenticator);
   virtual ~AuthenticateResponse() override;
 
  protected:
   virtual void SerializeBody(faststring* mesg) const override;
 
  private:
-  AuthenticateResponse(const CQLRequest& request, const std::string& authenticator);
-
   const std::string authenticator_;
 };
 
@@ -849,13 +864,13 @@ class SchemaChangeEventResponse : public EventResponse {
 //------------------------------------------------------------
 class AuthChallengeResponse : public CQLResponse {
  public:
+  AuthChallengeResponse(const CQLRequest& request, const std::string& token);
   virtual ~AuthChallengeResponse() override;
 
  protected:
   virtual void SerializeBody(faststring* mesg) const override;
 
  private:
-  AuthChallengeResponse(const CQLRequest& request, const std::string& token);
 
   const std::string token_;
 };
@@ -863,14 +878,13 @@ class AuthChallengeResponse : public CQLResponse {
 //------------------------------------------------------------
 class AuthSuccessResponse : public CQLResponse {
  public:
+  AuthSuccessResponse(const CQLRequest& request, const std::string& token);
   virtual ~AuthSuccessResponse() override;
 
  protected:
   virtual void SerializeBody(faststring* mesg) const override;
 
  private:
-  AuthSuccessResponse(const CQLRequest& request, const std::string& token);
-
   const std::string token_;
 };
 

@@ -11,6 +11,7 @@
 #include "yb/cqlserver/cql_rpc.h"
 #include "yb/cqlserver/cql_server.h"
 
+#include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/tserver/tablet_server.h"
 
@@ -28,10 +29,13 @@ DEFINE_int32(cql_ybclient_reactor_threads, 24,
 namespace yb {
 namespace cqlserver {
 
+const char* const kRoleColumnNameSaltedHash = "salted_hash";
+
 using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
 using std::vector;
+using strings::Substitute;
 using yb::client::YBClientBuilder;
 using yb::client::YBSchema;
 using yb::client::YBSession;
@@ -58,6 +62,11 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts)
       "CQL prepared statements' memory usage", server->mem_tracker());
   prepared_stmts_mem_tracker_->AddGcFunction(
       std::bind(&CQLServiceImpl::DeleteLruPreparedStatement, this));
+
+  auth_prepared_stmt_ = std::make_shared<sql::Statement>(
+      "",
+      // TODO: enhance this once we need the other fields to create an AuthenticatedUser.
+      Substitute("SELECT $0 FROM system_auth.roles WHERE role = ?", kRoleColumnNameSaltedHash));
 }
 
 void CQLServiceImpl::SetUpYBClient(

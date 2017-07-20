@@ -54,11 +54,12 @@ class CQLProcessor : public sql::SqlProcessor {
   void ProcessCall(rpc::InboundCallPtr call);
 
  private:
-  // Process a PREPARE, EXECUTE, QUERY or BATCH request.
+  // Process a PREPARE, EXECUTE, QUERY, BATCH or AUTH_RESPONSE request.
   CQLResponse* ProcessPrepare(const PrepareRequest& req);
   CQLResponse* ProcessExecute(const ExecuteRequest& req);
   CQLResponse* ProcessQuery(const QueryRequest& req);
   CQLResponse* ProcessBatch(const BatchRequest& req);
+  CQLResponse* ProcessAuthResponse(const AuthResponseRequest& req);
 
   // Statement executed callback.
   void StatementExecuted(const Status& s, const sql::ExecutedResult::SharedPtr& result);
@@ -68,6 +69,9 @@ class CQLProcessor : public sql::SqlProcessor {
 
   // Send response back to client.
   void SendResponse(const CQLResponse& response);
+
+  // Return Processor back to Service.
+  void Return();
 
   // Pointer to the containing CQL service implementation.
   CQLServiceImpl* const service_impl_;

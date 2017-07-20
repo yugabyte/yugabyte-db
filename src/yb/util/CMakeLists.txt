@@ -112,6 +112,7 @@ set(UTIL_SRCS
   coding.cc
   condition_variable.cc
   crc.cc
+  crypt.cc
   curl_util.cc
   date_time.cc
   timestamp.cc
@@ -209,6 +210,7 @@ set(UTIL_LIBS
   boost_system
   boost_thread
   crcutil
+  crypt_blowfish
   gflags
   glog
   gutil
@@ -296,6 +298,7 @@ ADD_YB_TEST(cache-test)
 ADD_YB_TEST(callback_bind-test)
 ADD_YB_TEST(countdown_latch-test)
 ADD_YB_TEST(crc-test RUN_SERIAL true) # has a benchmark
+ADD_YB_TEST(crypt-test)
 ADD_YB_TEST(debug-util-test)
 ADD_YB_TEST(env-test LABELS no_tsan)
 ADD_YB_TEST(errno-test)

@@ -1333,6 +1333,12 @@ ADD_THIRDPARTY_LIB(crcutil
   STATIC_LIB "${CRCUTIL_STATIC_LIB}"
   SHARED_LIB "${CRCUTIL_SHARED_LIB}")
 
+## crypt_blowfish -- has no shared library!
+find_package(CryptBlowfish REQUIRED)
+include_directories(SYSTEM ${CRYPT_BLOWFISH_INCLUDE_DIR})
+ADD_THIRDPARTY_LIB(crypt_blowfish
+  STATIC_LIB "${CRYPT_BLOWFISH_STATIC_LIB}")
+
 ## librt
 if (NOT APPLE)
   find_library(RT_LIB_PATH rt)

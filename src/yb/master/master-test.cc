@@ -47,6 +47,23 @@ using std::shared_ptr;
 
 DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
 
+#define NAMESPACE_ENTRY(namespace) \
+    std::make_tuple(k##namespace##NamespaceName, k##namespace##NamespaceId)
+
+#define EXPECTED_SYSTEM_NAMESPACES \
+    NAMESPACE_ENTRY(System), \
+    NAMESPACE_ENTRY(SystemSchema), \
+    NAMESPACE_ENTRY(SystemAuth) \
+    /**/
+
+#define EXPECTED_DEFAULT_NAMESPACE \
+    NAMESPACE_ENTRY(Default)
+
+#define EXPECTED_DEFAULT_AND_SYSTEM_NAMESPACES \
+    EXPECTED_DEFAULT_NAMESPACE, \
+    EXPECTED_SYSTEM_NAMESPACES \
+    /**/
+
 #define TABLE_ENTRY(namespace, table) \
     std::make_tuple(k##namespace##table##TableName, \
         k##namespace##NamespaceName, k##namespace##NamespaceId)
@@ -63,21 +80,9 @@ DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
     TABLE_ENTRY(SystemSchema, Types), \
     TABLE_ENTRY(SystemSchema, Views), \
     TABLE_ENTRY(SystemSchema, Keyspaces), \
-    TABLE_ENTRY(SystemSchema, Tables)
-
-#define NAMESPACE_ENTRY(namespace) \
-    std::make_tuple(k##namespace##NamespaceName, k##namespace##NamespaceId)
-
-#define EXPECTED_SYSTEM_NAMESPACES \
-    NAMESPACE_ENTRY(System), \
-    NAMESPACE_ENTRY(SystemSchema)
-
-#define EXPECTED_DEFAULT_NAMESPACE \
-    NAMESPACE_ENTRY(Default)
-
-#define EXPECTED_DEFAULT_AND_SYSTEM_NAMESPACES \
-    EXPECTED_DEFAULT_NAMESPACE, \
-    EXPECTED_SYSTEM_NAMESPACES
+    TABLE_ENTRY(SystemSchema, Tables), \
+    TABLE_ENTRY(SystemAuth, Roles), \
+    /**/
 
 namespace yb {
 namespace master {

@@ -20,6 +20,8 @@ Options:
     If specified, passed to tserver process. Otherwise tserver will use its own default.
   --default_num_replicas <num_replicas>
     If specified, passed to master process. Otherwise master will use its own default.
+  --use_cassandra_authentication
+    If specified, passed to tserver process as true.
 Commands:
   create
     Creates a brand new cluster. Starts the master and tablet server processes after creating
@@ -454,6 +456,7 @@ placement_zone=""
 yb_num_shards_per_tserver=""
 tserver_db_block_cache_size_bytes=""
 default_num_replicas=""
+use_cassandra_authentication=false
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -473,6 +476,9 @@ while [ $# -gt 0 ]; do
     --num-tservers|--num-tablet-servers|--num_tservers)
       num_tservers="$2"
       shift
+    ;;
+    --use_cassandra_authentication)
+      use_cassandra_authentication=true
     ;;
     -h|--help)
       print_help
@@ -546,6 +552,7 @@ fi
 if [[ -n "$tserver_db_block_cache_size_bytes" ]]; then
   tserver_optional_params+=" --db_block_cache_size_bytes $tserver_db_block_cache_size_bytes"
 fi
+tserver_optional_params+=" --use_cassandra_authentication=$use_cassandra_authentication"
 
 master_binary="$build_root/bin/yb-master"
 ensure_binary_exists "$master_binary"

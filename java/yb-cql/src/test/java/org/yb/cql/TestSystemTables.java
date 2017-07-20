@@ -235,7 +235,7 @@ public class TestSystemTables extends BaseCQLTest {
     List <Row> results = session.execute(
       "SELECT * FROM system_schema.keyspaces;").all();
     Set<String> expectedKeySpaces = new HashSet<>(Arrays.asList(DEFAULT_KEYSPACE,
-      DEFAULT_TEST_KEYSPACE, "system_schema", "system"));
+      DEFAULT_TEST_KEYSPACE, "system_schema", "system", "system_auth"));
     assertEquals(expectedKeySpaces.size(), results.size());
 
     for (Row row : results) {
@@ -250,7 +250,7 @@ public class TestSystemTables extends BaseCQLTest {
 
     results = session.execute(
       "SELECT * FROM system_schema.tables;").all();
-    assertEquals(12, results.size());
+    assertEquals(13, results.size());
     assertTrue(verifySystemSchemaTables(results, "system_schema", "aggregates"));
     assertTrue(verifySystemSchemaTables(results, "system_schema", "columns"));
     assertTrue(verifySystemSchemaTables(results, "system_schema", "functions"));
@@ -263,6 +263,7 @@ public class TestSystemTables extends BaseCQLTest {
     assertTrue(verifySystemSchemaTables(results, "system", "peers"));
     assertTrue(verifySystemSchemaTables(results, "system", "local"));
     assertTrue(verifySystemSchemaTables(results, "system", "partitions"));
+    assertTrue(verifySystemSchemaTables(results, "system_auth", "roles"));
 
     // Create keyspace and table and verify it shows up.
     session.execute("CREATE KEYSPACE my_keyspace;");

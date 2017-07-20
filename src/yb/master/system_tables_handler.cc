@@ -34,6 +34,8 @@ SystemTablesHandler::SystemTablesHandler()
                        string(kSystemSchemaKeyspacesTableName)),
         std::make_pair(string(kSystemSchemaNamespaceId),
                        string(kSystemSchemaTablesTableName)),
+        std::make_pair(string(kSystemAuthNamespaceId),
+                       string(kSystemAuthRolesTableName)),
     }) {
 }
 

@@ -39,6 +39,7 @@ set(MASTER_SRCS
   yql_virtual_table.cc
   yql_vtable_iterator.cc
   util/yql_vtable_helpers.cc
+  yql_auth_roles_vtable.cc
   yql_aggregates_vtable.cc
   yql_columns_vtable.cc
   yql_empty_vtable.cc

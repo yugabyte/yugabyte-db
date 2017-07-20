@@ -293,8 +293,8 @@ TEST_F(CreateTableStressTest, TestGetTableLocationsOptions) {
     std::vector<scoped_refptr<master::TabletInfo> > tablets;
     table_info->GetAllTablets(&tablets);
     for (const scoped_refptr<master::TabletInfo>& tablet_info : tablets) {
-      master::TabletMetadataLock l_tablet(tablet_info.get(), master::TabletMetadataLock::READ);
-      const master::SysTabletsEntryPB& metadata = tablet_info->metadata().state().pb;
+      auto l_tablet = tablet_info->LockForRead();
+      const master::SysTabletsEntryPB& metadata = l_tablet->data().pb;
       LOG(INFO) << "  Tablet: " << tablet_info->ToString()
                 << " { start_key: "
                 << ((metadata.partition().has_partition_key_start())

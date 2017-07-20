@@ -41,73 +41,15 @@ namespace master {
 class Master;
 class MasterOptions;
 
+// Forward declaration from internal header file.
+class VisitorBase;
+class SysCatalogWriter;
+
 static const char* const kSysCatalogTabletId = "00000000000000000000000000000000";
 static const char* const kSysCatalogTableId = "sys.catalog.uuid";
-
-class VisitorBase {
- public:
-  VisitorBase() {}
-  virtual ~VisitorBase() = default;
-
-  virtual int entry_type() const = 0;
-
-  virtual CHECKED_STATUS Visit(const Slice* id, const Slice* data) = 0;
-
- protected:
-};
-
-template <class PersistentDataEntryClass>
-class Visitor : public VisitorBase {
- public:
-  Visitor() {}
-  virtual ~Visitor() = default;
-
-  virtual CHECKED_STATUS Visit(const Slice* id, const Slice* data) {
-    typename PersistentDataEntryClass::data_type metadata;
-    RETURN_NOT_OK_PREPEND(
-        pb_util::ParseFromArray(&metadata, data->data(), data->size()),
-        "Unable to parse metadata field for item id: " + id->ToString());
-
-    return Visit(id->ToString(), metadata);
-  }
-
-  int entry_type() const { return PersistentDataEntryClass::type(); }
-
- protected:
-  virtual CHECKED_STATUS Visit(
-      const std::string& id, const typename PersistentDataEntryClass::data_type& metadata) = 0;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(Visitor);
-};
-
-class TableVisitor : public Visitor<PersistentTableInfo> {
- public:
-  TableVisitor() : Visitor() {}
-};
-
-class TabletVisitor : public Visitor<PersistentTabletInfo> {
- public:
-  TabletVisitor() : Visitor() {}
-};
-
-class NamespaceVisitor : public Visitor<PersistentNamespaceInfo> {
- public:
-  NamespaceVisitor() : Visitor() {}
-};
-
-class UDTypeVisitor : public Visitor<PersistentUDTypeInfo> {
- public:
-  UDTypeVisitor() : Visitor() {}
-};
-
-class ClusterConfigVisitor : public Visitor<PersistentClusterConfigInfo> {
- public:
-  ClusterConfigVisitor() : Visitor() {}
-};
-
-// Forward declaration of internally used class.
-class SysCatalogWriter;
+static const char* const kSysCatalogTableColType = "entry_type";
+static const char* const kSysCatalogTableColId = "entry_id";
+static const char* const kSysCatalogTableColMetadata = "metadata";
 
 // SysCatalogTable is a YB table that keeps track of table and
 // tablet metadata.
@@ -142,37 +84,32 @@ class SysCatalogTable {
   CHECKED_STATUS CreateNew(FsManager *fs_manager);
 
   // ==================================================================
-  // Tables related methods
+  // Templated CRUD methods for items in sys.catalog.
   // ==================================================================
-  CHECKED_STATUS AddTable(const TableInfo* table);
-  CHECKED_STATUS UpdateTable(const TableInfo* table);
-  CHECKED_STATUS DeleteTable(const TableInfo* table);
+  template <class Item>
+  inline CHECKED_STATUS AddItem(Item* item);
 
-  // ==================================================================
-  // Tablets related methods
-  // ==================================================================
-  CHECKED_STATUS AddTablets(const vector<TabletInfo*>& tablets);
-  CHECKED_STATUS UpdateTablets(const vector<TabletInfo*>& tablets);
-  CHECKED_STATUS AddAndUpdateTablets(const vector<TabletInfo*>& tablets_to_add,
-                             const vector<TabletInfo*>& tablets_to_update);
-  CHECKED_STATUS DeleteTablets(const vector<TabletInfo*>& tablets);
-  // ==================================================================
-  // Namespace related methods
-  // ==================================================================
-  CHECKED_STATUS AddNamespace(const NamespaceInfo *ns);
-  CHECKED_STATUS UpdateNamespace(const NamespaceInfo *ns);
-  CHECKED_STATUS DeleteNamespace(const NamespaceInfo *ns);
-  // ==================================================================
-  // User Defined Type related methods
-  // ==================================================================
-  CHECKED_STATUS AddUDType(const UDTypeInfo *ns);
-  CHECKED_STATUS UpdateUDType(const UDTypeInfo *ns);
-  CHECKED_STATUS DeleteUDType(const UDTypeInfo *ns);
-  // ==================================================================
-  // ClusterConfig related methods
-  // ==================================================================
-  CHECKED_STATUS AddClusterConfigInfo(ClusterConfigInfo* config_info);
-  CHECKED_STATUS UpdateClusterConfigInfo(ClusterConfigInfo* config_info);
+  template <class Item>
+  inline CHECKED_STATUS AddItems(const vector<Item*>& items);
+
+  template <class Item>
+  inline CHECKED_STATUS UpdateItem(Item* item);
+  template <class Item>
+  inline CHECKED_STATUS UpdateItems(const vector<Item*>& items);
+
+  template <class Item>
+  inline CHECKED_STATUS AddAndUpdateItems(
+      const vector<Item*>& added_items,
+      const vector<Item*>& updated_items);
+
+  template <class Item>
+  inline CHECKED_STATUS DeleteItem(Item* item);
+  template <class Item>
+  inline CHECKED_STATUS DeleteItems(const vector<Item*>& items);
+
+  template <class Item>
+  inline CHECKED_STATUS MutateItems(
+      const vector<Item*>& items, const YQLWriteRequestPB::YQLStmtType& op_type);
 
   // ==================================================================
   // Static schema related methods.
@@ -204,9 +141,8 @@ class SysCatalogTable {
 
  private:
   friend class CatalogManager;
-  friend class SysCatalogWriter;
 
-  std::unique_ptr<SysCatalogWriter> NewWriter();
+  inline std::unique_ptr<SysCatalogWriter> NewWriter();
 
   const char *table_name() const { return "sys.catalog"; }
 
@@ -215,7 +151,7 @@ class SysCatalogTable {
   Schema BuildTableSchema();
 
   // Returns 'Status::OK()' if the WriteTranasction completed
-  CHECKED_STATUS SyncWrite(const tserver::WriteRequestPB *req, tserver::WriteResponsePB *resp);
+  CHECKED_STATUS SyncWrite(SysCatalogWriter* writer);
 
   void SysCatalogStateChanged(const std::string& tablet_id,
                               std::shared_ptr<consensus::StateChangeContext> context);
@@ -275,5 +211,7 @@ class SysCatalogTable {
 
 } // namespace master
 } // namespace yb
+
+#include "yb/master/sys_catalog-internal.h"
 
 #endif // YB_MASTER_SYS_CATALOG_H_

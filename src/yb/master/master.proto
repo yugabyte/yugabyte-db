@@ -182,6 +182,7 @@ message SysRowEntry {
     CLUSTER_CONFIG = 3;
     NAMESPACE = 4;
     UDTYPE = 5;
+    ROLE = 6;
   }
 
   // The type of entry we are storing. Since the data is serialized, we cannot
@@ -304,6 +305,13 @@ message SysClusterConfigEntryPB {
   optional BlacklistPB server_blacklist = 3;
 }
 
+message SysRoleEntryPB {
+  optional bytes role = 1;
+  optional bool can_login = 2;
+  optional bool is_superuser = 3;
+  repeated bytes member_of = 4;
+  optional bytes salted_hash = 5;
+}
 ////////////////////////////////////////////////////////////
 // RPCs
 ////////////////////////////////////////////////////////////

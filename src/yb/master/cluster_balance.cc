@@ -568,10 +568,10 @@ bool ClusterLoadBalancer::UpdateTabletInfo(TabletInfo* tablet) {
   if (!state_->placement_by_table_.count(table_id)) {
     PlacementInfoPB pb;
     {
-      TableMetadataLock l(tablet->table().get(), TableMetadataLock::READ);
+      auto l = tablet->table()->LockForRead();
       // If we have a custom per-table placement policy, use that.
-      if (l.data().pb.replication_info().has_live_replicas()) {
-        pb.CopyFrom(l.data().pb.replication_info().live_replicas());
+      if (l->data().pb.replication_info().has_live_replicas()) {
+        pb.CopyFrom(l->data().pb.replication_info().live_replicas());
       } else {
         // Otherwise, default to cluster policy.
         pb.CopyFrom(GetClusterPlacementInfo());
@@ -742,13 +742,13 @@ bool ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
   for (const auto& tablet : tablets) {
     bool tablet_running = false;
     {
-      TabletMetadataLock tablet_lock(tablet.get(), TabletMetadataLock::READ);
+      auto tablet_lock = tablet->LockForRead();
 
       if (!tablet->table()) {
         // Tablet is orphaned or in preparing state, continue.
         continue;
       }
-      tablet_running = tablet_lock.data().is_running();
+      tablet_running = tablet_lock->data().is_running();
     }
 
     // This is from the perspective of the CatalogManager and the on-disk, persisted
@@ -984,10 +984,10 @@ bool ClusterLoadBalancer::SkipLeaderAsVictim(const TabletId& tablet_id) const {
   auto tablet = GetTabletMap().at(tablet_id);
   int num_replicas = 0;
   {
-    TableMetadataLock l(tablet->table().get(), TableMetadataLock::READ);
+    auto l = tablet->table()->LockForRead();
     // If we have a custom per-table placement policy, use that.
-    if (l.data().pb.replication_info().has_live_replicas()) {
-      num_replicas = l.data().pb.replication_info().live_replicas().num_replicas();
+    if (l->data().pb.replication_info().has_live_replicas()) {
+      num_replicas = l->data().pb.replication_info().live_replicas().num_replicas();
     } else {
       // Otherwise, default to cluster policy.
       num_replicas = GetClusterPlacementInfo().num_replicas();
@@ -1269,17 +1269,15 @@ const TableInfoMap& ClusterLoadBalancer::GetTableMap() const {
 }
 
 const PlacementInfoPB& ClusterLoadBalancer::GetClusterPlacementInfo() const {
-  ClusterConfigMetadataLock l(
-      catalog_manager_->cluster_config_.get(), ClusterConfigMetadataLock::READ);
+  auto l = catalog_manager_->cluster_config_->LockForRead();
   // TODO: this is now hardcoded to just the live replicas; this will need to change when we add
   // support for async replication.
-  return l.data().pb.replication_info().live_replicas();
+  return l->data().pb.replication_info().live_replicas();
 }
 
 const BlacklistPB& ClusterLoadBalancer::GetServerBlacklist() const {
-  ClusterConfigMetadataLock l(
-      catalog_manager_->cluster_config_.get(), ClusterConfigMetadataLock::READ);
-  return l.data().pb.server_blacklist();
+  auto l = catalog_manager_->cluster_config_->LockForRead();
+  return l->data().pb.server_blacklist();
 }
 
 bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
@@ -1312,14 +1310,14 @@ void ClusterLoadBalancer::GetPendingTasks(const TableId& table_uuid,
 void ClusterLoadBalancer::SendReplicaChanges(
     scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid, const bool is_add,
     const bool should_remove_leader, const TabletServerId& new_leader_ts_uuid) {
-  TabletMetadataLock l(tablet.get(), TabletMetadataLock::READ);
+  auto l = tablet->LockForRead();
   if (is_add) {
     // These checks are temporary. They will be removed once we are confident that the algorithm is
     // always doing the right thing.
     CHECK_EQ(state_->pending_add_replica_tasks_[tablet->table()->id()].count(tablet->tablet_id()),
              0);
     catalog_manager_->SendAddServerRequest(tablet, consensus::RaftPeerPB::PRE_VOTER,
-        l.data().pb.committed_consensus_state(), ts_uuid);
+        l->data().pb.committed_consensus_state(), ts_uuid);
   } else {
     // If the replica is also the leader, first step it down and then remove.
     if (state_->per_tablet_meta_[tablet->id()].leader_uuid == ts_uuid) {
@@ -1327,7 +1325,7 @@ void ClusterLoadBalancer::SendReplicaChanges(
           state_->pending_stepdown_leader_tasks_[tablet->table()->id()].count(tablet->tablet_id()),
           0);
       catalog_manager_->SendLeaderStepDownRequest(tablet,
-                                                  l.data().pb.committed_consensus_state(),
+                                                  l->data().pb.committed_consensus_state(),
                                                   ts_uuid,
                                                   should_remove_leader,
                                                   new_leader_ts_uuid);
@@ -1336,15 +1334,15 @@ void ClusterLoadBalancer::SendReplicaChanges(
           state_->pending_remove_replica_tasks_[tablet->table()->id()].count(tablet->tablet_id()),
           0);
       catalog_manager_->SendRemoveServerRequest(
-          tablet, l.data().pb.committed_consensus_state(), ts_uuid);
+          tablet, l->data().pb.committed_consensus_state(), ts_uuid);
     }
   }
 }
 
 bool ClusterLoadBalancer::ConfigMemberInTransitionMode(const TabletId &tablet_id) const {
   auto tablet = GetTabletMap().at(tablet_id);
-  TabletMetadataLock l(tablet.get(), TabletMetadataLock::READ);
-  auto config = l.data().pb.committed_consensus_state().config();
+  auto l = tablet->LockForRead();
+  auto config = l->data().pb.committed_consensus_state().config();
   return CountVotersInTransition(config) != 0;
 }
 
