@@ -251,8 +251,8 @@ yb::Status ScanSubDocument(rocksdb::DB *rocksdb,
 
 // Returns the whole SubDocument below some node identified by subdocument_key.
 // subdocument_key should not have a timestamp.
-// Before the function is called, the iterator is expected to be positioned on or before
-// the first key.
+// Before the function is called, if is_iter_valid == true, the iterator is expected to be
+// positioned on or before the first key.
 // After this, the iter should be positioned just outside the SubDocument.
 // This function works with or without object init markers present.
 // If tombstone and other values are inserted at the same timestamp, it results in undefined
@@ -266,7 +266,8 @@ yb::Status GetSubDocument(rocksdb::Iterator *iterator,
     HybridTime scan_ts = HybridTime::kMax,
     MonoDelta table_ttl = Value::kMaxTtl,
     const std::vector<PrimitiveValue>* projection = nullptr,
-    bool return_type_only = false);
+    bool return_type_only = false,
+    const bool is_iter_valid = true);
 
 // This version of GetSubDocument creates a new iterator every time. This is not recommended for
 // multiple calls to subdocs that are sequential or near each other, in eg. doc_rowwise_iterator.

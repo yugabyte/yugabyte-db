@@ -808,9 +808,8 @@ yb::Status GetSubDocument(rocksdb::DB *db,
     MonoDelta table_ttl,
     bool return_type_only) {
   auto iter = CreateRocksDBIterator(db, BloomFilterMode::USE_BLOOM_FILTER, query_id);
-  iter->SeekToFirst();
   return GetSubDocument(iter.get(), subdocument_key, result, doc_found, scan_ht, table_ttl,
-      nullptr, return_type_only);
+      nullptr, return_type_only, false);
 }
 
 yb::Status GetSubDocument(
@@ -821,7 +820,8 @@ yb::Status GetSubDocument(
     HybridTime scan_ht,
     MonoDelta table_ttl,
     const vector<PrimitiveValue>* projection,
-    bool return_type_only) {
+    bool return_type_only,
+    const bool is_iter_valid) {
   *doc_found = false;
   DOCDB_DEBUG_LOG("GetSubDocument for key $0 @ $1", subdocument_key.ToString(),
       scan_ht.ToDebugString());
@@ -832,7 +832,11 @@ yb::Status GetSubDocument(
   DCHECK(!subdocument_key.has_hybrid_time());
   KeyBytes key_bytes = subdocument_key.doc_key().Encode();
 
-  SeekForward(key_bytes, rocksdb_iter);
+  if (is_iter_valid) {
+    SeekForward(key_bytes, rocksdb_iter);
+  } else {
+    ROCKSDB_SEEK(rocksdb_iter, key_bytes.AsSlice());
+  }
 
   // Check ancestors for init markers and tombstones, update max_deleted_ts with them.
   for (const PrimitiveValue& subkey : subdocument_key.subkeys()) {
