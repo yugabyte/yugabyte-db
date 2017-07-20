@@ -1,8 +1,18 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
+import {withRouter} from 'react-router';
+const PropTypes = require('prop-types');
 
-export default class AuthenticatedComponent extends Component {
+class AuthenticatedComponent extends Component {
+  constructor(props) {
+    super(props);
+    this.state = {prevPath: ""}
+  }
+
+  getChildContext() {
+    return {prevPath: this.state.prevPath};
+  }
 
   componentWillMount() {
     this.props.fetchHostInfo();
@@ -27,6 +37,9 @@ export default class AuthenticatedComponent extends Component {
     if (this.props.fetchUniverseMetadata !== nextProps.fetchUniverseMetadata && nextProps.fetchUniverseMetadata) {
       this.props.fetchUniverseList();
     }
+    if (this.props.location !== nextProps.location) {
+      this.setState({prevPath: this.props.location.pathname})
+    }
   }
 
   render() {
@@ -37,3 +50,9 @@ export default class AuthenticatedComponent extends Component {
     )
   }
 }
+
+export default withRouter(AuthenticatedComponent);
+
+AuthenticatedComponent.childContextTypes = {
+  prevPath: PropTypes.string
+};

@@ -1,12 +1,13 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { Row, Col } from 'react-bootstrap';
+import { Row, Col, Grid, ButtonGroup } from 'react-bootstrap';
 import { Field, change } from 'redux-form';
+import {browserHistory, withRouter} from 'react-router';
 import _ from 'lodash';
 import { isDefinedNotNull, isNonEmptyObject, areIntentsEqual, isEmptyObject, isNonEmptyArray } from 'utils/ObjectUtils';
-import { YBModal, YBTextInputWithLabel, YBControlledNumericInput, YBControlledNumericInputWithLabel,
-  YBSelectWithLabel, YBControlledSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel
-} from 'components/common/forms/fields';
+import { YBTextInputWithLabel, YBControlledNumericInput, YBControlledNumericInputWithLabel,
+         YBSelectWithLabel, YBControlledSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel, YBButton}
+       from 'components/common/forms/fields';
 import {getPromiseState} from 'utils/PromiseUtils';
 import AZSelectorTable from './AZSelectorTable';
 import { UniverseResources } from '../UniverseResources';
@@ -29,13 +30,12 @@ const initialState = {
   maxNumNodes: -1 // Maximum Number of nodes currently in use OnPrem case
 };
 
-export default class UniverseForm extends Component {
+class UniverseForm extends Component {
   static propTypes = {
-    type: PropTypes.oneOf(['Edit', 'Create']).isRequired,
-    title: PropTypes.string.isRequired,
+    type: PropTypes.oneOf(['Edit', 'Create']).isRequired
   };
 
-  constructor(props) {
+  constructor(props, context) {
     super(props);
     this.providerChanged = this.providerChanged.bind(this);
     this.regionListChanged = this.regionListChanged.bind(this);
@@ -52,7 +52,8 @@ export default class UniverseForm extends Component {
     this.volumeSizeChanged = this.volumeSizeChanged.bind(this);
     this.numVolumesChanged = this.numVolumesChanged.bind(this);
     this.diskIopsChanged = this.diskIopsChanged.bind(this);
-    this.hideModal = this.hideModal.bind(this);
+    this.handleCancelButtonClick = this.handleCancelButtonClick.bind(this);
+    this.handleSubmitButtonClick = this.handleSubmitButtonClick.bind(this);
     this.configureUniverseNodeList = this.configureUniverseNodeList.bind(this);
     this.getCurrentProvider = this.getCurrentProvider.bind(this);
     this.hasFieldChanged = this.hasFieldChanged.bind(this);
@@ -61,10 +62,29 @@ export default class UniverseForm extends Component {
     this.state = initialState;
   }
 
-  hideModal() {
+  handleCancelButtonClick() {
     this.setState(initialState);
     this.props.reset();
-    this.props.onHide();
+    if (this.props.type === "Create") {
+      if (this.context.prevPath) {
+        browserHistory.push(this.context.prevPath);
+      } else {
+        browserHistory.push("/universes");
+      }
+    } else {
+      if (this.props.location && this.props.location.pathname) {
+        browserHistory.push(this.props.location.pathname);
+      }
+    }
+  }
+
+  handleSubmitButtonClick() {
+    const {type} = this.props;
+    if (type === "Create") {
+      this.createUniverse();
+    } else {
+      this.editUniverse();
+    }
   }
 
   getCurrentProvider(providerUUID) {
@@ -186,6 +206,7 @@ export default class UniverseForm extends Component {
           accessKeyCode: userIntent.accessKeyCode,
           deviceInfo: userIntent.deviceInfo,
           ebsType: ebsType,
+          regionList: userIntent.regionList,
           volumeType: (ebsType === null) ? "SSD" : "EBS"
         });
       }
@@ -274,11 +295,11 @@ export default class UniverseForm extends Component {
 
   componentDidUpdate(prevProps, prevState) {
     const {universe: {currentUniverse}} = this.props;
-    if (!_.isEqual(this.state, prevState)
-      && prevProps.universe.showModal && this.props.universe.showModal && this.props.universe.visibleModal === "universeModal") {
+    if (!_.isEqual(this.state, prevState)) {
       let currentProvider = this.getCurrentProvider(this.state.providerSelected);
-      if (((currentProvider.code === "onprem" && this.state.numNodes <= this.state.maxNumNodes) || currentProvider.code !== "onprem")
-        && (this.state.numNodes >= this.state.replicationFactor && !this.state.nodeSetViaAZList)) {
+      if (((currentProvider && currentProvider.code === "onprem" && this.state.numNodes <= this.state.maxNumNodes) || (currentProvider && currentProvider.code !== "onprem"))
+          && (this.state.numNodes >= this.state.replicationFactor && !this.state.nodeSetViaAZList)) {
+
         if (isNonEmptyObject(currentUniverse.data)) {
           if (this.hasFieldChanged()) {
             this.configureUniverseNodeList();
@@ -400,18 +421,22 @@ export default class UniverseForm extends Component {
 
     // Form Actions on Create Universe Success
     if (getPromiseState(this.props.universe.createUniverse).isLoading() && getPromiseState(nextProps.universe.createUniverse).isSuccess()) {
-      this.props.closeUniverseDialog();
       this.props.reset();
       this.props.fetchUniverseMetadata();
       this.props.fetchCustomerTasks();
+      if (this.context.prevPath) {
+        browserHistory.push(this.context.prevPath)
+      } else {
+        browserHistory.push("/universes");
+      }
     }
     // Form Actions on Edit Universe Success
     if (getPromiseState(this.props.universe.editUniverse).isLoading() && getPromiseState(nextProps.universe.editUniverse).isSuccess()) {
-      this.props.closeUniverseDialog();
       this.props.fetchCurrentUniverse(currentUniverse.data.universeUUID);
       this.props.fetchUniverseMetadata();
       this.props.fetchCustomerTasks();
       this.props.fetchUniverseTasks(currentUniverse.data.universeUUID);
+      browserHistory.push(this.props.location.pathname);
     }
     // Form Actions on Configure Universe Success
     if (getPromiseState(this.props.universe.universeConfigTemplate).isLoading() && getPromiseState(nextProps.universe.universeConfigTemplate).isSuccess()) {
@@ -431,7 +456,7 @@ export default class UniverseForm extends Component {
 
   render() {
     var self = this;
-    const { visible, handleSubmit, title, universe, softwareVersions, cloud, accessKeys } = this.props;
+    const {handleSubmit, universe, softwareVersions, cloud, accessKeys } = this.props;
     var universeProviderList = [];
     var currentProviderCode = "";
     if (isNonEmptyArray(cloud.providers.data)) {
@@ -489,18 +514,11 @@ export default class UniverseForm extends Component {
       universeInstanceTypeList.unshift(<option key="" value="">Select</option>);
     }
 
-    var submitLabel, submitAction;
+    var submitLabel;
     if (this.props.type === "Create") {
       submitLabel = 'Create';
-      submitAction = handleSubmit(this.createUniverse);
     } else {
       submitLabel = 'Save';
-      submitAction = handleSubmit(this.editUniverse);
-    }
-
-    var configDetailItem = "";
-    if (isDefinedNotNull(universe.universeResourceTemplate) && isDefinedNotNull(universe.universeConfigTemplate)) {
-      configDetailItem = <UniverseResources resources={universe.universeResourceTemplate.data} />
     }
 
     var softwareVersionOptions = softwareVersions.map(function(item, idx){
@@ -576,61 +594,60 @@ export default class UniverseForm extends Component {
     }
 
     return (
-      <YBModal visible={visible} onHide={this.hideModal} title={title} error={universe.error}
-               submitLabel={submitLabel} showCancelButton={true}
-               onFormSubmit={submitAction} formName={"UniverseForm"} footerAccessory={configDetailItem} size="large" normalizeFooter={true}>
-        <Row className={"no-margin-row"}>
-          <Col md={6}>
-            <h4>Cloud Configuration</h4>
-            <div className="form-right-aligned-labels">
-              <Field name="universeName" type="text" component={YBTextInputWithLabel} label="Name"
-                     isReadOnly={isFieldReadOnly} />
-              <Field name="provider" type="select" component={YBSelectWithLabel} label="Provider"
-                     options={universeProviderList} onInputChanged={this.providerChanged} readOnlySelect={isFieldReadOnly}
-              />
-              <Field name="regionList" component={YBMultiSelectWithLabel}
-                     label="Regions" options={universeRegionList}
-                     selectValChanged={this.regionListChanged} multi={this.state.azCheckState}
-                     providerSelected={this.state.providerSelected}/>
-              <Field name="numNodes" type="text" component={YBControlledNumericInputWithLabel}
-                     label="Nodes" onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
-                     minVal={Number(this.state.replicationFactor)}/>
-            </div>
-          </Col>
-          <Col md={6} className={"universe-az-selector-container"}>
-            <AZSelectorTable {...this.props} setPlacementInfo={this.setPlacementInfo}
-                             numNodesChangedViaAzList={this.numNodesChangedViaAzList} minNumNodes={this.state.replicationFactor}
-                             maxNumNodes={this.state.maxNumNodes} currentProvider={this.getCurrentProvider(this.state.providerSelected)}/>
-            {placementStatus}
-          </Col>
-        </Row>
-        <Row className={"no-margin-row top-border-row"}>
-          <Col md={12}>
-            <h4>Instance Configuration</h4>
-          </Col>
-          <Col md={4}>
-            <div className="form-right-aligned-labels">
-              <Field name="instanceType" type="select" component={YBControlledSelectWithLabel} label="Instance Type"
-                     options={universeInstanceTypeList} selectVal={this.state.instanceTypeSelected}
-                     onInputChanged={this.instanceTypeChanged}/>
 
-            </div>
-          </Col>
-          {deviceDetail &&
-          <Col md={8}>
-            <div className="form-right-aligned-labels">
-              <div className="form-group universe-form-instance-info">
-                <label className="form-item-label">Volume Info</label>
-                {deviceDetail}
+      <Grid id="page-wrapper" fluid={true}>
+        <h3 className="universe-form-title">{this.props.type} Universe</h3>
+        <form name="UniverseForm" className="universe-form-container" onSubmit={handleSubmit(this.handleSubmitButtonClick)}>
+          <Row className={"no-margin-row"}>
+            <Col md={6}>
+              <h4>Cloud Configuration</h4>
+              <div className="form-right-aligned-labels">
+                <Field name="universeName" type="text" component={YBTextInputWithLabel} label="Name"
+                       isReadOnly={isFieldReadOnly} />
+                <Field name="provider" type="select" component={YBSelectWithLabel} label="Provider"
+                       options={universeProviderList} onInputChanged={this.providerChanged} readOnlySelect={isFieldReadOnly} />
+                <Field name="regionList" component={YBMultiSelectWithLabel}
+                       label="Regions" options={universeRegionList}
+                       selectValChanged={this.regionListChanged} multi={this.state.azCheckState}
+                       providerSelected={this.state.providerSelected}/>
+                <Field name="numNodes" type="text" component={YBControlledNumericInputWithLabel}
+                       label="Nodes" onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
+                       minVal={Number(this.state.replicationFactor)}/>
               </div>
-            </div>
-            <div className="form-right-aligned-labels">
-              {ebsTypeSelector}
-            </div>
-          </Col>
+            </Col>
+            <Col md={6} className={"universe-az-selector-container"}>
+              <AZSelectorTable {...this.props} setPlacementInfo={this.setPlacementInfo}
+                               numNodesChangedViaAzList={this.numNodesChangedViaAzList} minNumNodes={this.state.replicationFactor}
+                               maxNumNodes={this.state.maxNumNodes} currentProvider={this.getCurrentProvider(this.state.providerSelected)}/>
+              {placementStatus}
+            </Col>
+          </Row>
+          <Row className={"no-margin-row top-border-row"}>
+            <Col md={12}>
+              <h4>Instance Configuration</h4>
+            </Col>
+            <Col md={4}>
+              <div className="form-right-aligned-labels">
+                <Field name="instanceType" type="select" component={YBControlledSelectWithLabel} label="Instance Type"
+                       options={universeInstanceTypeList} selectVal={this.state.instanceTypeSelected}
+                       onInputChanged={this.instanceTypeChanged}/>
+              </div>
+            </Col>
+            {deviceDetail &&
+            <Col md={8}>
+              <div className="form-right-aligned-labels">
+                <div className="form-group universe-form-instance-info">
+                  <label className="form-item-label">Volume Info</label>
+                  {deviceDetail}
+                </div>
+              </div>
+              <div className="form-right-aligned-labels">
+                {ebsTypeSelector}
+              </div>
+            </Col>
           }
         </Row>
-        <Row className={"no-margin-row top-border-row"}>
+          <Row className={"no-margin-row top-border-row"}>
           <Col md={12}>
             <h4>Advanced</h4>
           </Col>
@@ -654,7 +671,23 @@ export default class UniverseForm extends Component {
             </div>
           </Col>
         </Row>
-      </YBModal>
+        <Row>
+          <div>
+            <UniverseResources resources={universe.universeResourceTemplate.data}>
+              <ButtonGroup className="pull-right">
+                <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText="Cancel" onClick={this.handleCancelButtonClick}/>
+                <YBButton btnClass="btn btn-default bg-orange universe-form-submit-btn" btnText={submitLabel} btnType={"submit"}/>
+              </ButtonGroup>
+            </UniverseResources>
+          </div>
+        </Row>
+        </form>
+      </Grid>
     );
   }
 }
+
+UniverseForm.contextTypes = {
+  prevPath: PropTypes.string
+}
+export default withRouter(UniverseForm);
