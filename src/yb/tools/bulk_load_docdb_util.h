@@ -11,7 +11,7 @@ namespace tools {
 class BulkLoadDocDBUtil : public docdb::DocDBRocksDBUtil {
  public:
   BulkLoadDocDBUtil(const std::string& tablet_id, const std::string& base_dir,
-                    size_t memtable_size);
+                    size_t memtable_size, int num_memtables, int max_background_flushes);
   CHECKED_STATUS InitRocksDBDir() override;
   CHECKED_STATUS InitRocksDBOptions() override;
   std::string tablet_id() override;
@@ -22,6 +22,8 @@ class BulkLoadDocDBUtil : public docdb::DocDBRocksDBUtil {
   const std::string tablet_id_;
   const std::string base_dir_;
   const size_t memtable_size_;
+  const int num_memtables_;
+  const int max_background_flushes_;
 };
 
 } // namespace tools

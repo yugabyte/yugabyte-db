@@ -51,6 +51,10 @@ DocDBRocksDBUtil::DocDBRocksDBUtil()
       monotonic_counter_(0) {
 }
 
+DocDBRocksDBUtil::DocDBRocksDBUtil(const rocksdb::OpId& op_id)
+    : op_id_(op_id) {
+}
+
 DocDBRocksDBUtil::~DocDBRocksDBUtil() {
 }
 
@@ -139,12 +143,15 @@ Status DocDBRocksDBUtil::WriteToRocksDB(
   }
 
   rocksdb::WriteBatch rocksdb_write_batch;
-  ++op_id_.index;
-  rocksdb_write_batch.SetUserOpId(op_id_);
+  if (op_id_) {
+    ++op_id_.index;
+    rocksdb_write_batch.SetUserOpId(op_id_);
+  }
+
   RETURN_NOT_OK(PopulateRocksDBWriteBatch(doc_write_batch, &rocksdb_write_batch, hybrid_time,
                                           decode_dockey, increment_write_id));
-  const rocksdb::Status rocksdb_write_status =
-      rocksdb_->Write(write_options(), &rocksdb_write_batch);
+  rocksdb::Status rocksdb_write_status = rocksdb_->Write(write_options(), &rocksdb_write_batch);
+
   if (!rocksdb_write_status.ok()) {
     LOG(ERROR) << "Failed writing to RocksDB: " << rocksdb_write_status.ToString();
     return STATUS_SUBSTITUTE(RuntimeError,

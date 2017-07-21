@@ -28,6 +28,7 @@ class DocDBRocksDBUtil {
 
  public:
   DocDBRocksDBUtil();
+  explicit DocDBRocksDBUtil(const rocksdb::OpId& op_id);
   virtual ~DocDBRocksDBUtil();
   virtual CHECKED_STATUS InitRocksDBDir() = 0;
   // Initializes RocksDB options, should be called after constructor, because it uses virtual

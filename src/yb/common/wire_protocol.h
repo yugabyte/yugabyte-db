@@ -53,6 +53,9 @@ Status HostPortToPB(const HostPort& host_port, HostPortPB* host_port_pb);
 // Returns the HostPort created from the specified protobuf.
 Status HostPortFromPB(const HostPortPB& host_port_pb, HostPort* host_port);
 
+// Returns an Endpoint from HostPortPB.
+CHECKED_STATUS EndpointFromHostPortPB(const HostPortPB& host_portpb, Endpoint* endpoint);
+
 // Adds addresses in 'addrs' to 'pbs'. If an address is a wildcard (e.g., "0.0.0.0"),
 // then the local machine's FQDN or its network interface address is used in its place.
 CHECKED_STATUS AddHostPortPBs(const std::vector<Endpoint>& addrs,

@@ -48,6 +48,7 @@ static const char* const kNamespace = "bulk_load_test_namespace";
 static const char* const kTableName = "my_table";
 static constexpr int32_t kNumTablets = 32;
 static constexpr int32_t kNumIterations = 10000;
+static constexpr int32_t kV2Value = 12345;
 
 class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
@@ -57,6 +58,10 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
   void SetUp() override {
     YBMiniClusterTestBase::SetUp();
     MiniClusterOptions opts;
+
+    // Use 3 tservers to test a more realistic scenario.
+    opts.num_tablet_servers = 3;
+
     // Use a high enough initial sequence number.
     FLAGS_initial_seqno = 1 << 20;
     cluster_.reset(new MiniCluster(env_.get(), opts));
@@ -83,8 +88,6 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(bld.Build(&client_messenger_));
     proxy_.reset(new master::MasterServiceProxy(client_messenger_,
                                                 cluster_->leader_mini_master()->bound_rpc_addr()));
-    tserver_proxy_.reset(new tserver::TabletServerServiceProxy(
-        client_messenger_, cluster_->mini_tablet_server(0)->bound_rpc_addr()));
 
     // Create the namespace.
     ASSERT_OK(client_->CreateNamespace(kNamespace));
@@ -280,8 +283,8 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     }
 
     string row = strings::Substitute(
-        "$0,$1,$2,2017-06-17 14:47:00,\"abc,xyz\",12345,3.14,4.1",
-        static_cast<int64_t>(random_.Next32()), timestamp_string, random_.Next32());
+        "$0,$1,$2,2017-06-17 14:47:00,\"abc,xyz\",$3,3.14,4.1",
+        static_cast<int64_t>(random_.Next32()), timestamp_string, random_.Next32(), kV2Value);
     VLOG(1) << "Generated row: " << row;
     return row;
   }
@@ -309,12 +312,32 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     }
   }
 
+  void PerformRead(const tserver::ReadRequestPB& req,
+                   tserver::TabletServerServiceProxy* tserver_proxy,
+                   std::unique_ptr<YQLRowBlock>* rowblock) {
+    tserver::ReadResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(MonoDelta::FromSeconds(3));
+    ASSERT_OK(tserver_proxy->Read(req, &resp, &controller));
+    ASSERT_FALSE(resp.has_error());
+    ASSERT_EQ(1, resp.yql_batch_size());
+    YQLResponsePB yql_resp = resp.yql_batch(0);
+    ASSERT_EQ((int)YQLResponsePB_YQLStatus_YQL_STATUS_OK, (int)yql_resp.status());
+    ASSERT_TRUE(yql_resp.has_rows_data_sidecar());
+
+    // Retrieve row.
+    Slice rows_data;
+    EXPECT_TRUE(controller.finished());
+    EXPECT_OK(controller.GetSidecar(yql_resp.rows_data_sidecar(), &rows_data));
+    yb::sql::RowsResult rowsResult(*table_name_, schema_.columns(), rows_data.ToBuffer());
+    *rowblock = rowsResult.GetRowBlock();
+  }
+
   std::shared_ptr<YBClient> client_;
   YBSchema schema_;
   std::unique_ptr<YBTableName> table_name_;
   std::shared_ptr<YBTable> table_;
   std::unique_ptr<master::MasterServiceProxy> proxy_;
-  std::unique_ptr<tserver::TabletServerServiceProxy> tserver_proxy_;
   std::shared_ptr<rpc::Messenger> client_messenger_;
   std::unique_ptr<YBPartitionGenerator> partition_generator_;
   std::vector<std::string> master_addresses_;
@@ -455,8 +478,20 @@ TEST_F(YBBulkLoadTest, TestCLITool) {
     }
     ASSERT_TRUE(found_sst);
 
+    Endpoint leader_tserver;
+    for (const master::TabletLocationsPB::ReplicaPB& replica : tablet_location.replicas()) {
+      if (replica.role() == consensus::RaftPeerPB_Role::RaftPeerPB_Role_LEADER) {
+        HostPort host_port;
+        ASSERT_OK(EndpointFromHostPortPB(replica.ts_info().rpc_addresses(0), &leader_tserver));
+        break;
+      }
+    }
+
+    auto tserver_proxy = std::make_unique<tserver::TabletServerServiceProxy>(client_messenger_,
+                                                                             leader_tserver);
+
     // Start the load generator to ensure we can import files with running load.
-    LoadGenerator load_generator(tablet_id, tserver_proxy_.get());
+    LoadGenerator load_generator(tablet_id, tserver_proxy.get());
     std::thread load_thread(&LoadGenerator::RunLoad, &load_generator);
     // Wait for load generator to generate some traffic.
     SleepFor(MonoDelta::FromSeconds(5));
@@ -467,7 +502,7 @@ TEST_F(YBBulkLoadTest, TestCLITool) {
     import_req.set_source_dir(tablet_path);
     tserver::ImportDataResponsePB import_resp;
     rpc::RpcController controller;
-    ASSERT_OK(tserver_proxy_->ImportData(import_req, &import_resp, &controller));
+    ASSERT_OK(tserver_proxy->ImportData(import_req, &import_resp, &controller));
     ASSERT_FALSE(import_resp.has_error());
 
     for (const string& row : tabletid_to_line[tablet_id]) {
@@ -477,23 +512,8 @@ TEST_F(YBBulkLoadTest, TestCLITool) {
       YQLReadRequestPB* yql_req = req.mutable_yql_batch()->Add();
       ASSERT_OK(CreateYQLReadRequest(row, yql_req));
 
-      // Perform read.
-      tserver::ReadResponsePB resp;
-      rpc::RpcController controller;
-      controller.set_timeout(MonoDelta::FromSeconds(3));
-      ASSERT_OK(tserver_proxy_->Read(req, &resp, &controller));
-      ASSERT_FALSE(resp.has_error());
-      ASSERT_EQ(1, resp.yql_batch_size());
-      YQLResponsePB yql_resp = resp.yql_batch(0);
-      ASSERT_EQ((int)YQLResponsePB_YQLStatus_YQL_STATUS_OK, (int)yql_resp.status());
-      ASSERT_TRUE(yql_resp.has_rows_data_sidecar());
-
-      // Retrieve row.
-      Slice rows_data;
-      EXPECT_TRUE(controller.finished());
-      EXPECT_OK(controller.GetSidecar(yql_resp.rows_data_sidecar(), &rows_data));
-      yb::sql::RowsResult rowsResult(*table_name_, schema_.columns(), rows_data.ToBuffer());
-      std::unique_ptr<YQLRowBlock> rowblock = rowsResult.GetRowBlock();
+      std::unique_ptr<YQLRowBlock> rowblock;
+      PerformRead(req, tserver_proxy.get(), &rowblock);
 
       // Validate row.
       ASSERT_EQ(1, rowblock->row_count());
@@ -501,6 +521,29 @@ TEST_F(YBBulkLoadTest, TestCLITool) {
       ASSERT_EQ(schema_.num_columns(), yql_row.column_count());
       ValidateRow(row, yql_row);
     }
+
+    // Perform a SELECT * and verify the number of rows present in the tablet is what we expected.
+    tserver::ReadRequestPB req;
+    tserver::ReadResponsePB resp;
+    req.set_tablet_id(tablet_id);
+    YQLReadRequestPB* yql_req = req.mutable_yql_batch()->Add();
+    YQLConditionPB* condition = yql_req->mutable_where_expr()->mutable_condition();
+    condition->set_op(YQLOperator::YQL_OP_EQUAL);
+    condition->add_operands()->set_column_id(kFirstColumnId + 5);
+    // kV2Value is common across all rows in the tablet and hence we use that value to verify the
+    // expected number of rows. Note that since we have a parallel load tester running, we can't
+    // validate the total number of rows in the DB.
+    condition->add_operands()->mutable_value()->set_int32_value(kV2Value);
+
+    // Set all column ids.
+    for (int i = 0; i < table_->InternalSchema().num_columns(); i++) {
+      yql_req->mutable_column_refs()->add_ids(kFirstColumnId + i);
+      yql_req->add_column_ids(kFirstColumnId + i);
+    }
+
+    std::unique_ptr<YQLRowBlock> rowblock;
+    PerformRead(req, tserver_proxy.get(), &rowblock);
+    ASSERT_EQ(tabletid_to_line[tablet_id].size(), rowblock->row_count());
 
     // Stop and join load generator.
     load_generator.StopLoad();

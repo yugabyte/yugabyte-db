@@ -27,11 +27,13 @@
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/threadpool.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/subprocess.h"
 
+using std::pair;
 using std::stoi;
 using std::stol;
 using std::stold;
@@ -58,43 +60,89 @@ DEFINE_string(bulk_load_cleanup_script, "./bulk_load_cleanup.sh", "Relative path
 DEFINE_string(ssh_key_file, "", "SSH key to push SSTable files to production cluster");
 DEFINE_bool(export_files, false, "Whether or not the files should be exported to a production "
             "cluster.");
+DEFINE_int32(bulk_load_num_threads, 16, "Number of threads to use for bulk load");
+DEFINE_int32(bulk_load_threadpool_queue_size, 10000,
+             "Maximum number of entries to queue in the threadpool");
+DEFINE_int32(bulk_load_num_memtables, 3, "Number of memtables to use for rocksdb");
+DEFINE_int32(bulk_load_max_background_flushes, 2, "Number of flushes to perform in the background");
 
 namespace yb {
 namespace tools {
 
-static CHECKED_STATUS InitYBBulkLoad(shared_ptr<YBClient>* client,
-                                    shared_ptr<YBTable>* table,
-                                    unique_ptr<YBPartitionGenerator>* partition_generator) {
-  // Convert table_name to lowercase since we store table names in lowercase.
-  string table_name_lower = boost::to_lower_copy(FLAGS_table_name);
-  YBTableName table_name(FLAGS_namespace_name, table_name_lower);
+namespace {
 
-  YBClientBuilder builder;
-  builder.add_master_server_addr(FLAGS_master_addresses);
+class BulkLoadTask : public Runnable {
+ public:
+  BulkLoadTask(vector<pair<TabletId, string>> rows, BulkLoadDocDBUtil *db_fixture,
+               const YBTable *table, YBPartitionGenerator *partition_generator);
+  void Run();
+ private:
+  CHECKED_STATUS PopulateColumnValue(const string &column,
+                                     const DataType data_type,
+                                     YQLColumnValuePB *column_value);
+  CHECKED_STATUS InsertRow(const string &row,
+                           const Schema &schema,
+                           BulkLoadDocDBUtil *const db_fixture,
+                           docdb::DocWriteBatch *const doc_write_batch,
+                           YBPartitionGenerator *const partition_generator);
+  vector<pair<TabletId, string>> rows_;
+  BulkLoadDocDBUtil *const db_fixture_;
+  const YBTable *const table_;
+  YBPartitionGenerator *const partition_generator_;
+};
 
-  RETURN_NOT_OK(builder.Build(client));
-  RETURN_NOT_OK((*client)->OpenTable(table_name, table));
-  partition_generator->reset(new YBPartitionGenerator(table_name, { FLAGS_master_addresses }));
-  RETURN_NOT_OK((*partition_generator)->Init());
-  return Status::OK();
+class BulkLoad {
+ public:
+  CHECKED_STATUS RunBulkLoad();
+
+ private:
+  CHECKED_STATUS InitYBBulkLoad();
+  CHECKED_STATUS InitDBUtil(const TabletId &tablet_id);
+  CHECKED_STATUS FinishTabletProcessing(const TabletId &tablet_id,
+                                        vector<pair<TabletId, string>> rows);
+  CHECKED_STATUS RetryableSubmit(vector<pair<TabletId, string>> rows);
+
+  shared_ptr<YBClient> client_;
+  shared_ptr<YBTable> table_;
+  unique_ptr<YBPartitionGenerator> partition_generator_;
+  gscoped_ptr<ThreadPool> thread_pool_;
+  unique_ptr<BulkLoadDocDBUtil> db_fixture_;
+};
+
+BulkLoadTask::BulkLoadTask(vector<pair<TabletId, string>> rows,
+                           BulkLoadDocDBUtil *db_fixture, const YBTable *table,
+                           YBPartitionGenerator *partition_generator)
+    : rows_(std::move(rows)),
+      db_fixture_(db_fixture),
+      table_(table),
+      partition_generator_(partition_generator) {
 }
 
-static CHECKED_STATUS InitDBUtil(const TabletId& tablet_id,
-                                    unique_ptr<BulkLoadDocDBUtil>* db_fixture) {
-  db_fixture->reset(new BulkLoadDocDBUtil(tablet_id, FLAGS_base_dir, FLAGS_memtable_size_bytes));
-  RETURN_NOT_OK((*db_fixture)->InitRocksDBOptions());
-  RETURN_NOT_OK((*db_fixture)->DisableCompactions()); // This opens rocksdb.
-  return Status::OK();
+void BulkLoadTask::Run() {
+  auto doc_write_batch = std::make_unique<docdb::DocWriteBatch>(db_fixture_->rocksdb());
+
+  for (const auto &entry : rows_) {
+    const string &row = entry.second;
+
+    // Populate the row.
+    CHECK_OK(InsertRow(row, table_->InternalSchema(), db_fixture_, doc_write_batch.get(),
+                       partition_generator_));
+  }
+
+  // Flush the batch.
+  CHECK_OK(db_fixture_->WriteToRocksDB(
+      *doc_write_batch, HybridTime::FromMicros(kYugaByteMicrosecondEpoch),
+      /* decode_dockey */ false, /* increment_write_id */ false));
 }
 
-static CHECKED_STATUS PopulateColumnValue(const string& column,
-                                          const DataType data_type,
-                                          YQLColumnValuePB* column_value) {
+Status BulkLoadTask::PopulateColumnValue(const string &column,
+                                         const DataType data_type,
+                                         YQLColumnValuePB *column_value) {
   auto yql_valuepb = column_value->mutable_expr()->mutable_value();
   int32_t int_val;
   int64_t long_val;
   double double_val;
-  switch(data_type) {
+  switch (data_type) {
     case DataType::INT8:
       RETURN_NOT_OK(CheckedStoi(column, &int_val));
       yql_valuepb->set_int8_value(int_val);
@@ -134,11 +182,11 @@ static CHECKED_STATUS PopulateColumnValue(const string& column,
   return Status::OK();
 }
 
-static CHECKED_STATUS InsertRow(const string& row,
-                                const Schema& schema,
-                                BulkLoadDocDBUtil* const db_fixture,
-                                docdb::DocWriteBatch* const doc_write_batch,
-                                YBPartitionGenerator* const partition_generator) {
+Status BulkLoadTask::InsertRow(const string &row,
+                               const Schema &schema,
+                               BulkLoadDocDBUtil *const db_fixture,
+                               docdb::DocWriteBatch *const doc_write_batch,
+                               YBPartitionGenerator *const partition_generator) {
   // Get individual columns.
   CsvTokenizer tokenizer = Tokenize(row);
   size_t ncolumns = std::distance(tokenizer.begin(), tokenizer.end());
@@ -159,7 +207,7 @@ static CHECKED_STATUS InsertRow(const string& row,
       return STATUS_SUBSTITUTE(IllegalState, "Primary key cannot be null: $0", *it);
     }
 
-    YQLColumnValuePB* column_value = nullptr;
+    YQLColumnValuePB *column_value = nullptr;
     if (schema.is_hash_key_column(i)) {
       column_value = req.add_hashed_column_values();
     } else {
@@ -168,19 +216,19 @@ static CHECKED_STATUS InsertRow(const string& row,
 
     column_value->set_column_id(kFirstColumnId + i);
     RETURN_NOT_OK(PopulateColumnValue(*it, schema.column(i).type_info()->type(),
-                                      column_value));
+                                          column_value));
   }
 
   // Finally process the regular columns.
   for (int i = schema.num_key_columns(); i < schema.num_columns(); i++, it++) {
-    YQLColumnValuePB* column_value = req.add_column_values();
+    YQLColumnValuePB *column_value = req.add_column_values();
     column_value->set_column_id(kFirstColumnId + i);
     if (IsNull(*it)) {
       // Use empty value for null.
       column_value->mutable_expr()->mutable_value();
     } else {
       RETURN_NOT_OK(PopulateColumnValue(*it, schema.column(i).type_info()->type(),
-                                        column_value));
+                                            column_value));
     }
   }
 
@@ -188,24 +236,53 @@ static CHECKED_STATUS InsertRow(const string& row,
   string tablet_id;
   string partition_key;
   RETURN_NOT_OK(partition_generator->LookupTabletIdWithTokenizer(tokenizer, &tablet_id,
-                                                                 &partition_key));
+                                                                     &partition_key));
   req.set_hash_code(PartitionSchema::DecodeMultiColumnHashValue(partition_key));
 
   // Finally apply the operation to the the doc_write_batch.
   docdb::YQLWriteOperation op(req, schema, &resp);
   RETURN_NOT_OK(op.Apply(doc_write_batch, db_fixture->rocksdb(),
-                         HybridTime::FromMicros(kYugaByteMicrosecondEpoch)));
+                             HybridTime::FromMicros(kYugaByteMicrosecondEpoch)));
   return Status::OK();
 }
 
-static CHECKED_STATUS FinishTabletProcessing(const TabletId& tablet_id,
-                                             BulkLoadDocDBUtil* db_fixture,
-                                             docdb::DocWriteBatch* doc_write_batch,
-                                             YBClient* client) {
-  RETURN_NOT_OK(db_fixture->WriteToRocksDBAndClear(
-      doc_write_batch, HybridTime::FromMicros(kYugaByteMicrosecondEpoch),
-      /* decode_dockey */ false, /* increment_write_id */ false));
-  RETURN_NOT_OK(db_fixture->FlushRocksDB());
+
+Status BulkLoad::RetryableSubmit(vector<pair<TabletId, string>> rows) {
+  auto runnable = std::make_shared<BulkLoadTask>(
+      std::move(rows), db_fixture_.get(), table_.get(), partition_generator_.get());
+
+  Status s;
+  do {
+    s = thread_pool_->Submit(runnable);
+
+    if (!s.IsServiceUnavailable()) {
+      return s;
+    }
+
+    LOG (ERROR) << "Failed submitting task, sleeping for a while: " << s.ToString();
+
+    // If service is unavailable, the queue might be full. Sleep and try again.
+    SleepFor(MonoDelta::FromSeconds(10));
+  } while (!s.ok());
+
+  return Status::OK();
+}
+
+Status BulkLoad::FinishTabletProcessing(const TabletId &tablet_id,
+                                        vector<pair<TabletId, string>> rows) {
+  if (!db_fixture_) {
+    // Skip processing since db_fixture wasn't initialized indicating empty input.
+    return Status::OK();
+  }
+
+  // Submit all the work.
+  RETURN_NOT_OK(RetryableSubmit(std::move(rows)));
+
+  // Wait for all tasks for the tablet to complete.
+  thread_pool_->Wait();
+
+  // Now flush the DB.
+  RETURN_NOT_OK(db_fixture_->FlushRocksDB());
 
   if (!FLAGS_export_files) {
     return Status::OK();
@@ -213,21 +290,21 @@ static CHECKED_STATUS FinishTabletProcessing(const TabletId& tablet_id,
 
   // Find replicas for the tablet.
   master::TabletLocationsPB tablet_locations;
-  RETURN_NOT_OK(client->GetTabletLocation(tablet_id, &tablet_locations));
+  RETURN_NOT_OK(client_->GetTabletLocation(tablet_id, &tablet_locations));
   string csv_replicas;
   std::map<string, int32_t> host_to_rpcport;
-  for (const master::TabletLocationsPB_ReplicaPB& replica : tablet_locations.replicas()) {
+  for (const master::TabletLocationsPB_ReplicaPB &replica : tablet_locations.replicas()) {
     if (!csv_replicas.empty()) {
       csv_replicas += ",";
     }
-    const string& host = replica.ts_info().rpc_addresses(0).host();
+    const string &host = replica.ts_info().rpc_addresses(0).host();
     csv_replicas += host;
     host_to_rpcport[host] = replica.ts_info().rpc_addresses(0).port();
   }
 
   // Invoke the bulk_load_helper script.
-  vector<string> argv =  {FLAGS_bulk_load_helper_script, "-t", tablet_id, "-r", csv_replicas, "-i",
-    FLAGS_ssh_key_file, "-d", db_fixture->rocksdb_dir()};
+  vector<string> argv = {FLAGS_bulk_load_helper_script, "-t", tablet_id, "-r", csv_replicas, "-i",
+      FLAGS_ssh_key_file, "-d", db_fixture_->rocksdb_dir()};
   string bulk_load_helper_stdout;
   RETURN_NOT_OK(Subprocess::Call(argv, &bulk_load_helper_stdout));
 
@@ -241,14 +318,14 @@ static CHECKED_STATUS FinishTabletProcessing(const TabletId& tablet_id,
   RETURN_NOT_OK(bld.Build(&client_messenger));
   vector<string> lines;
   boost::split(lines, bulk_load_helper_stdout, boost::is_any_of("\n"));
-  for (const string& line : lines) {
+  for (const string &line : lines) {
     vector<string> tokens;
     boost::split(tokens, line, boost::is_any_of(","));
     if (tokens.size() != 2) {
       return STATUS_SUBSTITUTE(InvalidArgument, "Invalid line $0", line);
     }
-    const string& replica_host = tokens[0];
-    const string& directory = tokens[1];
+    const string &replica_host = tokens[0];
+    const string &directory = tokens[1];
     Endpoint endpoint(IpAddress::from_string(replica_host), host_to_rpcport[replica_host]);
 
     tserver::TabletServerServiceProxy proxy(client_messenger, endpoint);
@@ -266,26 +343,58 @@ static CHECKED_STATUS FinishTabletProcessing(const TabletId& tablet_id,
     }
 
     // Now cleanup the files from the production tserver.
-    vector <string> cleanup_script = {FLAGS_bulk_load_cleanup_script, "-d", directory, "-t",
-      replica_host, "-i", FLAGS_ssh_key_file};
+    vector<string> cleanup_script = {FLAGS_bulk_load_cleanup_script, "-d", directory, "-t",
+        replica_host, "-i", FLAGS_ssh_key_file};
     RETURN_NOT_OK(Subprocess::Call(cleanup_script));
   }
 
   // Delete the data once the import is done.
-  return yb::Env::Default()->DeleteRecursively(db_fixture->rocksdb_dir());
+  return yb::Env::Default()->DeleteRecursively(db_fixture_->rocksdb_dir());
 }
 
-static CHECKED_STATUS RunBulkLoad() {
-  shared_ptr<YBClient> client;
-  shared_ptr<YBTable> table;
-  unique_ptr<YBPartitionGenerator> partition_generator;
-  RETURN_NOT_OK(InitYBBulkLoad(&client, &table, &partition_generator));
+
+CHECKED_STATUS BulkLoad::InitDBUtil(const TabletId &tablet_id) {
+  db_fixture_.reset(new BulkLoadDocDBUtil(tablet_id, FLAGS_base_dir,
+                                          FLAGS_memtable_size_bytes,
+                                          FLAGS_bulk_load_num_memtables,
+                                          FLAGS_bulk_load_max_background_flushes));
+  RETURN_NOT_OK(db_fixture_->InitRocksDBOptions());
+  RETURN_NOT_OK(db_fixture_->DisableCompactions()); // This opens rocksdb.
+  return Status::OK();
+}
+
+Status BulkLoad::InitYBBulkLoad() {
+  // Convert table_name to lowercase since we store table names in lowercase.
+  string table_name_lower = boost::to_lower_copy(FLAGS_table_name);
+  YBTableName table_name(FLAGS_namespace_name, table_name_lower);
+
+  YBClientBuilder builder;
+  builder.add_master_server_addr(FLAGS_master_addresses);
+
+  RETURN_NOT_OK(builder.Build(&client_));
+  RETURN_NOT_OK(client_->OpenTable(table_name, &table_));
+  partition_generator_.reset(new YBPartitionGenerator(table_name, {FLAGS_master_addresses}));
+  RETURN_NOT_OK(partition_generator_->Init());
+
+  db_fixture_ = nullptr;
+  CHECK_OK(
+      ThreadPoolBuilder("bulk_load_tasks")
+          .set_min_threads(FLAGS_bulk_load_num_threads)
+          .set_max_threads(FLAGS_bulk_load_num_threads)
+          .set_max_queue_size(FLAGS_bulk_load_threadpool_queue_size)
+          .set_idle_timeout(MonoDelta::FromMilliseconds(5000))
+          .Build(&thread_pool_));
+  return Status::OK();
+}
+
+
+Status BulkLoad::RunBulkLoad() {
+
+  RETURN_NOT_OK(InitYBBulkLoad());
 
   TabletId current_tablet_id;
 
-  unique_ptr<BulkLoadDocDBUtil> db_fixture = nullptr;
-  unique_ptr<docdb::DocWriteBatch> doc_write_batch;
-
+  vector<pair<TabletId, string>> rows;
   for (string line; std::getline(std::cin, line);) {
     // Trim the line.
     boost::algorithm::trim(line);
@@ -300,35 +409,25 @@ static CHECKED_STATUS RunBulkLoad() {
 
     // Reinitialize rocksdb if needed.
     if (current_tablet_id.empty() || current_tablet_id != tablet_id) {
-      if (db_fixture) {
-        // Flush all of the data before opening a new rocksdb.
-        RETURN_NOT_OK(FinishTabletProcessing(current_tablet_id, db_fixture.get(),
-                                             doc_write_batch.get(), client.get()));
-      }
-      RETURN_NOT_OK(InitDBUtil(tablet_id, &db_fixture));
-      doc_write_batch.reset(new docdb::DocWriteBatch(db_fixture->rocksdb()));
+      // Flush all of the data before opening a new rocksdb.
+      RETURN_NOT_OK(FinishTabletProcessing(current_tablet_id, std::move(rows)));
+      RETURN_NOT_OK(InitDBUtil(tablet_id));
     }
     current_tablet_id = tablet_id;
-
-    // Populate the row.
-    RETURN_NOT_OK(InsertRow(row, table->InternalSchema(), db_fixture.get(), doc_write_batch.get(),
-                            partition_generator.get()));
+    rows.emplace_back(std::move(tablet_id), std::move(row));
 
     // Flush the batch if necessary.
-    if (doc_write_batch->size() >= FLAGS_row_batch_size) {
-      RETURN_NOT_OK(db_fixture->WriteToRocksDBAndClear(
-          doc_write_batch.get(), HybridTime::FromMicros(kYugaByteMicrosecondEpoch),
-          /* decode_dockey */ false, /* increment_write_id */ false));
+    if (rows.size() >= FLAGS_row_batch_size) {
+      RETURN_NOT_OK(RetryableSubmit(std::move(rows)));
     }
   }
 
-  if (db_fixture) {
-    // Flush the last tablet.
-    RETURN_NOT_OK(FinishTabletProcessing(current_tablet_id, db_fixture.get(),
-                                         doc_write_batch.get(), client.get()));
-  }
+  // Process last tablet.
+  RETURN_NOT_OK(FinishTabletProcessing(current_tablet_id, std::move(rows)));
   return Status::OK();
 }
+
+} // anonymous namespace
 
 } // namespace tools
 } // namespace yb
@@ -351,7 +450,8 @@ int main(int argc, char** argv) {
     LOG(FATAL) << "Bulk load directory doesn't exist: " << FLAGS_base_dir;
   }
 
-  yb::Status s = yb::tools::RunBulkLoad();
+  yb::tools::BulkLoad bulk_load;
+  yb::Status s = bulk_load.RunBulkLoad();
   if (!s.ok()) {
     LOG(FATAL) << "Error running bulk load: " << s.ToString();
   }
