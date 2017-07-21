@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
 var _ = require('lodash');
-var semver = require('semver');
 
 export function isDefinedNotNull(obj) {
   return (typeof obj !== "undefined" && obj !== null);
@@ -175,8 +174,8 @@ export function convertSpaceToDash(string) {
 // Sorting such that 0.0.19.14 > 0.0.3.1 > A > B
 export function sortVersionStrings(arr) {
   return arr.sort((a,b) => {
-    let aValue = parseInt(a.replace(/\./g, ""));
-    let bValue = parseInt(b.replace(/\./g, ""));
+    let aValue = parseInt(a.replace(/\./g, ""), 10);
+    let bValue = parseInt(b.replace(/\./g, ""), 10);
     if (isNaN(aValue) && isNaN(bValue)) {
       return a < b;
     } else if (isNaN(aValue) && !isNaN(bValue)) {

@@ -20,6 +20,8 @@ import { YBMapLegend } from '../../maps';
 import { isEmptyObject, isNonEmptyObject, isNonEmptyArray, isDefinedNotNull } from 'utils/ObjectUtils';
 import {getPromiseState} from 'utils/PromiseUtils';
 import {YBLoadingIcon} from '../../common/indicators';
+import { mouseTrap } from 'react-mousetrap';
+
 import './UniverseDetail.scss';
 
 class UniverseDetail extends Component {
@@ -37,6 +39,8 @@ class UniverseDetail extends Component {
   }
 
   componentWillMount() {
+    this.props.bindShortcut(['ctrl+e', 'e'], this.onEditUniverseButtonClick);
+
     if (this.props.location.pathname !== "/universes/create") {
       let uuid = this.props.uuid;
       if (typeof this.props.universeSelectionId !== "undefined") {
@@ -227,4 +231,4 @@ class UniverseTaskList extends Component {
   }
 }
 
-export default withRouter(UniverseDetail);
+export default withRouter(mouseTrap(UniverseDetail));
