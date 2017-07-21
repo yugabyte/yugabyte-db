@@ -2,23 +2,26 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { Marker, Popup } from 'react-leaflet';
+import { Marker, Popup, Tooltip } from 'react-leaflet';
 import { Icon }  from 'leaflet';
-import { DefaultMarkerIcon, DefaultMarkerShadowIcon, RootMarkerIcon } from './images'
+import { DefaultMarkerIcon, DefaultMarkerShadowIcon, RootMarkerIcon, RootMarkerShadowIcon } from './images'
 
 export default class MapMarker extends Component {
   static propTypes = {
     latitude: PropTypes.number.isRequired,
     longitude: PropTypes.number.isRequired,
-    label: PropTypes.string,
     type: PropTypes.string.isRequired
   };
 
   render() {
-    const { latitude, longitude, label, type } = this.props;
+    const { latitude, longitude, label, type, labelType } = this.props;
     var popup;
     if (label) {
       popup = <Popup><span>{label}</span></Popup>
+    }
+
+    if (labelType === "tooltip") {
+      popup = <Tooltip>{label}</Tooltip>
     }
 
     var opts = {};
@@ -32,9 +35,19 @@ export default class MapMarker extends Component {
         shadowAnchor: [12, 46]
       });
     }
-    else {
+    else if (type === "AZMarker") {
+      opts['icon'] = new Icon({
+        iconUrl: RootMarkerIcon,
+        shadowUrl: RootMarkerShadowIcon,
+        iconSize: [30, 32],
+        shadowSize: [40, 42],
+        popupAnchor: [10, -4],
+        iconAnchor: [12, 20],
+        shadowAnchor: [10, 30]
+      });
+    } else {
       var markerData = "";
-      if (type === "Root") {
+      if (type === "Provider") {
         markerData = RootMarkerIcon;
       }
       opts['icon'] = new Icon({

@@ -151,7 +151,7 @@ class AWSProviderConfiguration extends Component {
               <DescriptionList listItems={providerInfo} />
             </Col>
           </Row>
-          <RegionMap title="All Supported Regions" regions={awsRegions} type="Root" showLabels={true}/>
+          <RegionMap title="All Supported Regions" regions={awsRegions} type="Provider" showLabels={true}/>
         </div>
     } else {
       let bootstrapSteps = <span />;
