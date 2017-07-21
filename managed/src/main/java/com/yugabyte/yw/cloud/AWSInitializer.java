@@ -284,7 +284,7 @@ public class AWSInitializer {
       Integer numCores = Integer.parseInt(productAttrs.get("vcpu"));
 
       // Parse the memory size.
-      String memSizeStrGB = productAttrs.get("memory").replace(" GiB", "");
+      String memSizeStrGB = productAttrs.get("memory").replaceAll("(?i) gib", "");
       Double memSizeGB = Double.parseDouble(memSizeStrGB);
 
       Integer volumeCount;
