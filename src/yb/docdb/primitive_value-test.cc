@@ -21,6 +21,19 @@ namespace docdb {
 
 namespace {
 
+void EncodeAndDecodeValue(const PrimitiveValue& primitive_value) {
+  string bytes = primitive_value.ToValue();
+  rocksdb::Slice slice(bytes);
+  PrimitiveValue decoded;
+  ASSERT_OK_PREPEND(
+      decoded.DecodeFromValue(slice),
+      Substitute(
+          "Could not decode value bytes obtained by encoding primitive value $0: $1",
+          primitive_value.ToString(), bytes));
+  ASSERT_EQ(primitive_value.ToString(), decoded.ToString())
+      << "String representation of decoded value is different from that of the original value.";
+}
+
 void EncodeAndDecode(const PrimitiveValue& primitive_value) {
   KeyBytes key_bytes = primitive_value.ToKeyBytes();
   PrimitiveValue decoded;
@@ -84,6 +97,10 @@ TEST(PrimitiveValueTest, TestToString) {
   ASSERT_EQ("100.0", PrimitiveValue::Double(100.0).ToString());
   ASSERT_EQ("1.000000E-100", PrimitiveValue::Double(1e-100).ToString());
 
+  ASSERT_EQ("3.1415", PrimitiveValue::Float(3.1415).ToString());
+  ASSERT_EQ("100.0", PrimitiveValue::Float(100.0).ToString());
+  ASSERT_EQ("1.000000E-37", PrimitiveValue::Float(1e-37).ToString());
+
   ASSERT_EQ("ArrayIndex(123)", PrimitiveValue::ArrayIndex(123).ToString());
   ASSERT_EQ("ArrayIndex(-123)", PrimitiveValue::ArrayIndex(-123).ToString());
 
@@ -138,6 +155,19 @@ TEST(PrimitiveValueTest, TestRoundTrip) {
   }) {
     EncodeAndDecode(primitive_value);
   }
+
+  for (auto primitive_value : {
+      PrimitiveValue("foo"),
+      PrimitiveValue(string("foo\0bar\x01", 8)),
+      PrimitiveValue(123L),
+      PrimitiveValue::Int32(123),
+      PrimitiveValue::Int32(std::numeric_limits<int32_t>::max()),
+      PrimitiveValue::Int32(std::numeric_limits<int32_t>::min()),
+      PrimitiveValue::Double(3.14),
+      PrimitiveValue::Float(3.14),
+  }) {
+    EncodeAndDecodeValue(primitive_value);
+  }
 }
 
 TEST(PrimitiveValueTest, TestEncoding) {
@@ -174,6 +204,10 @@ TEST(PrimitiveValueTest, TestEncoding) {
 
   TestEncoding(R"#("#\xff\x05T=\xf7)\xbc\x18\x80J")#",
                PrimitiveValue(HybridTime::FromMicros(1000)));
+
+  // Float and Double size, 1 byte for value_type.
+  ASSERT_EQ(1 + sizeof(double), PrimitiveValue::Double(3.14).ToValue().size());
+  ASSERT_EQ(1 + sizeof(float), PrimitiveValue::Float(3.14).ToValue().size());
 }
 
 TEST(PrimitiveValueTest, TestCompareStringsWithEmbeddedZeros) {

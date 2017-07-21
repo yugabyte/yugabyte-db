@@ -209,6 +209,7 @@ class PrimitiveValue {
   CHECKED_STATUS DecodeFromValue(const rocksdb::Slice& rocksdb_slice);
 
   static PrimitiveValue Double(double d);
+  static PrimitiveValue Float(float f);
   // decimal_str represents a human readable string representing the decimal number, e.g. "0.03".
   static PrimitiveValue Decimal(const std::string& decimal_str, SortOrder sort_order);
   static PrimitiveValue ArrayIndex(int64_t index);
@@ -261,6 +262,11 @@ class PrimitiveValue {
     return double_val_;
   }
 
+  float GetFloat() const {
+    DCHECK_EQ(ValueType::kFloat, type_);
+    return float_val_;
+  }
+
   const std::string& GetDecimal() const {
     DCHECK(ValueType::kDecimal == type_ || ValueType::kDecimalDescending == type_);
     return decimal_val_;
@@ -309,6 +315,7 @@ class PrimitiveValue {
     uint16_t uint16_val_;
     DocHybridTime hybrid_time_val_;
     std::string str_val_;
+    float float_val_;
     double double_val_;
     Timestamp timestamp_val_;
     InetAddress* inetaddress_val_;

@@ -41,6 +41,27 @@ using yb::util::FastDecodeSignedVarInt;
 namespace yb {
 namespace docdb {
 
+namespace {
+
+template <class T>
+string DoubleToString(T val) {
+  string s = std::to_string(val);
+  // Remove trailing zeros.
+  if (s.find(".") != string::npos) {
+    s.erase(s.find_last_not_of('0') + 1, string::npos);
+  }
+  if (!s.empty() && s.back() == '.') {
+    s += '0';
+  }
+  if (s == "0.0" && val != 0.0) {
+    // Use the exponential notation for small numbers that would otherwise look like a zero.
+    return StringPrintf("%E", val);
+  }
+  return s;
+}
+
+} // anonymous namespace
+
 string PrimitiveValue::ToString() const {
   switch (type_) {
     case ValueType::kNull:
@@ -60,21 +81,10 @@ string PrimitiveValue::ToString() const {
     case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kInt64:
       return std::to_string(int64_val_);
-    case ValueType::kDouble: {
-      string s = std::to_string(double_val_);
-      // Remove trailing zeros.
-      if (s.find(".") != string::npos) {
-        s.erase(s.find_last_not_of('0') + 1, string::npos);
-      }
-      if (!s.empty() && s.back() == '.') {
-        s += '0';
-      }
-      if (s == "0.0" && double_val_ != 0.0) {
-        // Use the exponential notation for small numbers that would otherwise look like a zero.
-        return StringPrintf("%E", double_val_);
-      }
-      return s;
-    }
+    case ValueType::kFloat:
+      return DoubleToString(float_val_);
+    case ValueType::kDouble:
+      return DoubleToString(double_val_);
     case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
     case ValueType::kDecimal: {
       util::Decimal decimal;
@@ -153,6 +163,10 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
 
     case ValueType::kDouble:
       LOG(FATAL) << "Double cannot be used as a key";
+      return;
+
+    case ValueType::kFloat:
+      LOG(FATAL) << "Float cannot be used as a key";
       return;
 
     case ValueType::kDecimal:
@@ -258,6 +272,13 @@ string PrimitiveValue::ToValue() const {
                     "Expected double to be the same size as uint64_t");
       // TODO: make sure this is a safe and reasonable representation for doubles.
       AppendBigEndianUInt64(int64_val_, &result);
+      return result;
+
+    case ValueType::kFloat:
+      static_assert(sizeof(float) == sizeof(uint32_t),
+                    "Expected float to be the same size as uint32_t");
+      // TODO: make sure this is a safe and reasonable representation for floats.
+      AppendBigEndianUInt32(int32_val_, &result);
       return result;
 
     case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
@@ -530,8 +551,9 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       return Status::OK();
     }
 
-    case ValueType::kDouble:
-      // Doubles are not allowed in a key as of 07/15/2016.
+    case ValueType::kDouble: FALLTHROUGH_INTENDED;
+    case ValueType::kFloat:
+      // Doubles and floats are not allowed in a key as of 07/20/2017.
       break;
 
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
@@ -574,7 +596,8 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       return Status::OK();
 
     case ValueType::kInt32: FALLTHROUGH_INTENDED;
-    case ValueType::kInt32Descending:
+    case ValueType::kInt32Descending: FALLTHROUGH_INTENDED;
+    case ValueType::kFloat:
       if (slice.size() != sizeof(int32_t)) {
         return STATUS(Corruption,
                       Substitute("Invalid number of bytes for a $0: $1",
@@ -669,6 +692,13 @@ PrimitiveValue PrimitiveValue::Double(double d) {
   return primitive_value;
 }
 
+PrimitiveValue PrimitiveValue::Float(float f) {
+  PrimitiveValue primitive_value;
+  primitive_value.type_ = ValueType::kFloat;
+  primitive_value.float_val_ = f;
+  return primitive_value;
+}
+
 PrimitiveValue PrimitiveValue::Decimal(const string& encoded_decimal_str, SortOrder sort_order) {
   PrimitiveValue primitive_value;
   if (sort_order == SortOrder::kDescending) {
@@ -740,6 +770,7 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
     case ValueType::kArrayIndex: return int64_val_ == other.int64_val_;
 
+    case ValueType::kFloat: return float_val_ == other.float_val_;
     case ValueType::kDouble: return double_val_ == other.double_val_;
     case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
     case ValueType::kDecimal: return decimal_val_ == other.decimal_val_;
@@ -784,6 +815,8 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       return CompareUsingLessThan(int64_val_, other.int64_val_);
     case ValueType::kDouble:
       return CompareUsingLessThan(double_val_, other.double_val_);
+    case ValueType::kFloat:
+      return CompareUsingLessThan(float_val_, other.float_val_);
     case ValueType::kDecimalDescending:
       return other.decimal_val_.compare(decimal_val_);
     case ValueType::kDecimal:
@@ -874,7 +907,7 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const YQLValuePB& value,
       if (sort_order != SortOrder::kAscending) {
         LOG(ERROR) << "Ignoring invalid sort order for FLOAT. Using SortOrder::kAscending.";
       }
-      return PrimitiveValue::Double(YQLValue::float_value(value));
+      return PrimitiveValue::Float(YQLValue::float_value(value));
     case YQLValuePB::kDoubleValue:
       if (sort_order != SortOrder::kAscending) {
         LOG(ERROR) << "Ignoring invalid sort order for DOUBLE. Using SortOrder::kAscending.";
@@ -940,7 +973,7 @@ void PrimitiveValue::ToYQLValuePB(const PrimitiveValue& primitive_value,
       YQLValue::set_int64_value(static_cast<int64_t>(primitive_value.GetInt64()), yql_value);
       return;
     case FLOAT:
-      YQLValue::set_float_value(static_cast<float>(primitive_value.GetDouble()), yql_value);
+      YQLValue::set_float_value(static_cast<float>(primitive_value.GetFloat()), yql_value);
       return;
     case DOUBLE:
       YQLValue::set_double_value(primitive_value.GetDouble(), yql_value);

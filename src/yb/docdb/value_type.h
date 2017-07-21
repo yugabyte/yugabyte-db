@@ -30,6 +30,7 @@ enum class ValueType : char {
   kInetaddress = '-',  // ASCII code 45
   kInetaddressDescending = '.',  // ASCII code 46
   kArray = 'A',  // ASCII code 65. TODO: do we need this at the this layer?
+  kFloat = 'C',  // ASCII code 67
   kDouble = 'D',  // ASCII code 68
   kDecimal = 'E',  // ASCII code 69
   kFalse = 'F',  // ASCII code 70
