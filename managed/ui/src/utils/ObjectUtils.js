@@ -185,6 +185,18 @@ export function sortVersionStrings(arr) {
   });
 }
 
+export function getPointsOnCircle(numPoints, center, radius) {
+  let x0 = center[0];
+  let y0 = center[1];
+  let pointsOnCircle = [];
+  for(var i = 0; i < numPoints; i++) {
+    var x = x0 + radius * Math.cos(2 * Math.PI * i / numPoints);
+    var y = y0 + radius * Math.sin(2 * Math.PI * i / numPoints);
+    pointsOnCircle.push([x, y])
+  }
+  return pointsOnCircle;
+}
+
 // FIXME: Deprecated. Change all references to use isNonEmptyArray instead.
 export var isValidArray = isNonEmptyArray;
 

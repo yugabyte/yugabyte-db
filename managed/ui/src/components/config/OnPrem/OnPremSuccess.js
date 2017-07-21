@@ -146,7 +146,7 @@ export default class OnPremSuccess extends Component {
               <DescriptionList listItems={providerInfo}/>
             </Col>
           </Row>
-          <RegionMap title="All Supported Regions" regions={onPremRegions} type="Root" showLabels={true}/>
+          <RegionMap title="All Supported Regions" regions={onPremRegions} type="Provider" showLabels={true}/>
         </div>
       )
     }
