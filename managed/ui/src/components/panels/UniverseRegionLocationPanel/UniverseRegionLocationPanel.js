@@ -62,7 +62,7 @@ export default class UniverseRegionLocationPanel extends Component {
 
     return (
       <div>
-        <RegionMap title="All Supported Regions" regions={completeRegionList} type="all"/>
+        <RegionMap title="All Supported Regions" regions={completeRegionList} type="All"/>
         { isNonEmptyArray(completeProviderList) && <RegionMapLegend providers={completeProviderList} onProviderSelect={this.onProviderSelect}/>}
       </div>
     )
