@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { isDefinedNotNull, isNonEmptyObject } from 'utils/ObjectUtils';
+import { isNonEmptyObject } from 'utils/ObjectUtils';
 import { YBResourceCount, YBCost } from 'components/common/descriptors';
 
 import './UniverseResources.scss';
