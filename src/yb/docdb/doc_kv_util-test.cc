@@ -124,5 +124,33 @@ TEST(DocKVUtilTest, ComputeTTL) {
   EXPECT_TRUE(ComputeTTL(reset_ttl, schema).Equals(Value::kMaxTtl));
 }
 
+TEST(DocKVUtilTest, FloatEncoding) {
+  vector<float> numbers = {-123.45f, -0.00123f, -0.0f, 0.0f, 0.00123f, 123.45f};
+  vector<string> strings;
+  for (int i = 0; i < numbers.size(); i++) {
+    string s;
+    AppendFloatToKey(numbers[i], &s);
+    strings.push_back(s);
+    EXPECT_EQ(numbers[i], DecodeFloatFromKey(rocksdb::Slice(s)));
+  }
+  for (int i = 1; i < numbers.size(); i++) {
+    EXPECT_LT(strings[i-1], strings[i]);
+  }
+}
+
+TEST(DocKVUtilTest, DoubleEncoding) {
+  vector<double> numbers = {-123.45f, -0.00123f, -0.0f, 0.0f, 0.00123f, 123.45f};
+  vector<string> strings;
+  for (int i = 0; i < numbers.size(); i++) {
+    string s;
+    AppendDoubleToKey(numbers[i], &s);
+    strings.push_back(s);
+    EXPECT_EQ(numbers[i], DecodeDoubleFromKey(rocksdb::Slice(s)));
+  }
+  for (int i = 1; i < numbers.size(); i++) {
+    EXPECT_LT(strings[i-1], strings[i]);
+  }
+}
+
 }  // namespace docdb
 }  // namespace yb

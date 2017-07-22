@@ -372,7 +372,7 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
             slice->size());
       }
       if (out) {
-        out->int64_val_ = BigEndian::Load64(slice->data()) ^ kInt64SignBitFlipMask;
+        out->int64_val_ = DecodeInt64FromKey(*slice);
         if (value_type == ValueType::kInt64Descending) {
           out->int64_val_ = ~out->int64_val_;
         }
@@ -401,7 +401,7 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
                 slice->size(), sizeof(Timestamp)));
       }
       if (out) {
-        const auto uint64_timestamp = BigEndian::Load64(slice->data()) ^kInt64SignBitFlipMask;
+        const auto uint64_timestamp = DecodeInt64FromKey(*slice);
         if (value_type == ValueType::kTimestampDescending) {
           // Flip all the bits after loading the integer.
           out->timestamp_val_ = Timestamp(~uint64_timestamp);
