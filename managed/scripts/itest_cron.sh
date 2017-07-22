@@ -29,14 +29,16 @@ fi
 export DEVOPS_HOME=$itest_devops_repo
 
 cd $itest_devops_repo
+git stash
 git checkout master
 git pull --rebase
 cd bin
 ./install_python_requirements.sh
 
 cd $itest_yw_repo
+git stash
 git checkout master
 git pull --rebase
 
 # The `unset` is needed to make yugabyte build correctly (otherwise hit ELF lib check failures).
-unset LD_LIBRARY_PATH; "$itest_yw_repo"/run_itest --perform_edits --notify
+unset LD_LIBRARY_PATH; "$itest_yw_repo"/run_itest --perform_edits --perform_perf_runs --notify
