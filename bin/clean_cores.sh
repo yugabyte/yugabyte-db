@@ -8,13 +8,13 @@ print_help() {
 Usage: ${0##*/} [<options>]
 Options:
   -n, --num_corestokeep <numcorestokeep>
-    number of latest core files to keep.
+    number of latest core files to keep (default: 5).
   -h, --help
     Show usage
 EOT
 }
 
-num_cores_to_keep=""
+num_cores_to_keep=5
 YB_CRASH_DIR=/var/crash/yugabyte
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -36,12 +36,6 @@ done
 
 if [[ "$(id -u)" != "0" && $USER != "yugabyte" ]]; then
   echo "This script must be run as root or yugabyte"
-  exit 1
-fi
-
-if [[ -z $num_cores_to_keep ]]; then
-  echo "Need to specify --num_cores_to_keep"
-  print_help
   exit 1
 fi
 
