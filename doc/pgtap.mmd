@@ -315,12 +315,12 @@ What a sweet unit!
 
 If you're used to xUnit testing frameworks, you can collect all of your tests
 into database functions and run them all at once with `runtests()`. This is
-similar to how [PGUnit](http://en.dklab.ru/lib/dklab_pgunit/) and
-[Epic](http://www.epictest.org/) work. The `runtests()` function does all the
-work of finding and running your test functions in individual transactions. It
-even supports setup and teardown functions. To use it, write your unit test
-functions so that they return a set of text results, and then use the pgTAP
-assertion functions to return TAP values, like so:
+similar to how [PGUnit](http://en.dklab.ru/lib/dklab_pgunit/)s. The
+`runtests()` function does all the work of finding and running your test
+functions in individual transactions. It even supports setup and teardown
+functions. To use it, write your unit test functions so that they return a set
+of text results, and then use the pgTAP assertion functions to return TAP
+values, like so:
 
     CREATE OR REPLACE FUNCTION setup_insert(
     ) RETURNS SETOF TEXT AS $$
@@ -7523,8 +7523,7 @@ failing tests.
 If you'd like pgTAP to plan, run all of your test functions, and finish, all
 in one fell swoop, use `runtests()`. This most closely emulates the xUnit
 testing environment, similar to the functionality of
-[PGUnit](http://en.dklab.ru/lib/dklab_pgunit/) and
-[Epic](http://www.epictest.org/). Example:
+[PGUnit](http://en.dklab.ru/lib/dklab_pgunit/). Example:
 
     SELECT * FROM runtests( 'testschema', '^test' );
 

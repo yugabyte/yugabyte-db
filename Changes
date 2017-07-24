@@ -6,6 +6,9 @@ Revision history for pgTAP
 * `make install` once again properly installs the versioned SQL file required
   by `CREATE EXTENSION`. Thanks to Keith Fiske for the report (Issue #131) and
   Jim Nasby for the fix (Issue #132).
+* Removed references to the Epic test framework, since its domain
+  (`epictest.org`) has expired and the project appears to no longer be
+  available online. Thanks to Andreas Brekken for the report (#140).
 
 0.97.0 2016-11-28T22:18:29Z
 ---------------------------
