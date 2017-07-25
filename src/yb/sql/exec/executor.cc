@@ -759,12 +759,12 @@ void Executor::ExecPTNodeAsync(
   // Where clause - Hash, range, and regular columns.
   YBPartialRow *row = select_op->mutable_row();
 
-  Status st = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops(),
-                              tnode->subscripted_col_where_ops(), tnode->partition_key_ops());
-  if (!st.ok()) {
+  Status s = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops(),
+                             tnode->subscripted_col_where_ops(), tnode->partition_key_ops());
+  if (!s.ok()) {
     CB_RETURN(
         cb,
-        exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+        exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
   }
 
   if (req->has_max_hash_code()) {
@@ -785,11 +785,11 @@ void Executor::ExecPTNodeAsync(
   }
 
   // Setup the column values that need to be read.
-  st = ColumnRefsToPB(tnode, req->mutable_column_refs());
-  if (!st.ok()) {
+  s = ColumnRefsToPB(tnode, req->mutable_column_refs());
+  if (!s.ok()) {
     CB_RETURN(
         cb,
-        exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+        exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
   }
 
   // Specify distinct columns or non.
@@ -908,28 +908,28 @@ void Executor::ExecPTNodeAsync(const PTInsertStmt *tnode, StatementExecutedCallb
   CB_RETURN_NOT_OK(cb, SetTtlToWriteRequestPB(tnode, insert_op->mutable_request()));
 
   // Set the values for columns.
-  Status st = ColumnArgsToWriteRequestPB(table, tnode, req, insert_op->mutable_row());
-  if (!st.ok()) {
+  Status s = ColumnArgsToWriteRequestPB(table, tnode, req, insert_op->mutable_row());
+  if (!s.ok()) {
     CB_RETURN(
         cb,
-        exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+        exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
   }
 
   // Setup the column values that need to be read.
-  st = ColumnRefsToPB(tnode, req->mutable_column_refs());
-  if (!st.ok()) {
+  s = ColumnRefsToPB(tnode, req->mutable_column_refs());
+  if (!s.ok()) {
     CB_RETURN(
         cb,
-        exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+        exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
   }
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
-    st = PTExprToPB(tnode->if_clause(), insert_op->mutable_request()->mutable_if_expr());
-    if (!st.ok()) {
+    s = PTExprToPB(tnode->if_clause(), insert_op->mutable_request()->mutable_if_expr());
+    if (!s.ok()) {
       CB_RETURN(
           cb,
-          exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+          exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
     }
   }
 
@@ -948,29 +948,29 @@ void Executor::ExecPTNodeAsync(const PTDeleteStmt *tnode, StatementExecutedCallb
   // Where clause - Hash, range, and regular columns.
   // NOTE: Currently, where clause for write op doesn't allow regular columns.
   YBPartialRow *row = delete_op->mutable_row();
-  Status st = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops(),
+  Status s = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops(),
       tnode->subscripted_col_where_ops());
-  if (!st.ok()) {
+  if (!s.ok()) {
     CB_RETURN(
         cb,
-        exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+        exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
   }
 
   // Setup the column values that need to be read.
-  st = ColumnRefsToPB(tnode, req->mutable_column_refs());
-  if (!st.ok()) {
+  s = ColumnRefsToPB(tnode, req->mutable_column_refs());
+  if (!s.ok()) {
     CB_RETURN(
         cb,
-        exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+        exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
   }
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
-    st = PTExprToPB(tnode->if_clause(), delete_op->mutable_request()->mutable_if_expr());
-    if (!st.ok()) {
+    s = PTExprToPB(tnode->if_clause(), delete_op->mutable_request()->mutable_if_expr());
+    if (!s.ok()) {
       CB_RETURN(
           cb,
-          exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+          exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
     }
   }
 
@@ -989,40 +989,40 @@ void Executor::ExecPTNodeAsync(const PTUpdateStmt *tnode, StatementExecutedCallb
   // Where clause - Hash, range, and regular columns.
   // NOTE: Currently, where clause for write op doesn't allow regular columns.
   YBPartialRow *row = update_op->mutable_row();
-  Status st = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops(),
+  Status s = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops(),
       tnode->subscripted_col_where_ops());
-  if (!st.ok()) {
+  if (!s.ok()) {
     CB_RETURN(
         cb,
-        exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+        exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
   }
 
   // Set the ttl
   CB_RETURN_NOT_OK(cb, SetTtlToWriteRequestPB(tnode, update_op->mutable_request()));
 
   // Setup the columns' new values.
-  st = ColumnArgsToWriteRequestPB(table,
-                                  tnode,
-                                  update_op->mutable_request(),
-                                  update_op->mutable_row());
+  s = ColumnArgsToWriteRequestPB(table,
+                                 tnode,
+                                 update_op->mutable_request(),
+                                 update_op->mutable_row());
 
-  if (!st.ok()) {
+  if (!s.ok()) {
     CB_RETURN(
         cb,
-        exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+        exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
   }
 
   // Setup the column values that need to be read.
-  st = ColumnRefsToPB(tnode, req->mutable_column_refs());
-  if (!st.ok()) {
+  s = ColumnRefsToPB(tnode, req->mutable_column_refs());
+  if (!s.ok()) {
     CB_RETURN(
         cb,
-        exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+        exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
   }
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
-    Status s = PTExprToPB(tnode->if_clause(), update_op->mutable_request()->mutable_if_expr());
+    s = PTExprToPB(tnode->if_clause(), update_op->mutable_request()->mutable_if_expr());
     if (!s.ok()) {
       CB_RETURN(
           cb,

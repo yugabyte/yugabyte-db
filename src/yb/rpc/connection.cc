@@ -67,7 +67,7 @@ Connection::Connection(Reactor* reactor,
       direction_(direction),
       last_activity_time_(MonoTime::Now(MonoTime::FINE)),
       read_buffer_(FLAGS_rpc_initial_buffer_size, context->BufferLimit()),
-      context_(move(context)) {
+      context_(std::move(context)) {
   auto status = socket_.GetSocketAddress(&local_);
   if (!status.ok()) {
     LOG(WARNING) << "Failed to get local address for: " << socket;

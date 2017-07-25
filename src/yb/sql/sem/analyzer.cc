@@ -27,7 +27,7 @@ CHECKED_STATUS Analyzer::Analyze(const string& sql_stmt,
   DCHECK(ptree != nullptr) << "Parse tree is null";
   sem_context_ = SemContext::UniPtr(new SemContext(sql_stmt.c_str(),
                                                    sql_stmt.length(),
-                                                   move(parse_tree),
+                                                   std::move(parse_tree),
                                                    sql_env));
 
   if (!ptree->Analyze(sem_context_.get()).ok()) {

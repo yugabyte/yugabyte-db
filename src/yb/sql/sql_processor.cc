@@ -129,7 +129,7 @@ CHECKED_STATUS SqlProcessor::Analyze(
     const string& sql_stmt, ParseTree::UniPtr* parse_tree, bool* reparse) {
   // Semantic analysis - traverse, error-check, and decorate the parse tree nodes with datatypes.
   const MonoTime begin_time = MonoTime::Now(MonoTime::FINE);
-  const Status s = analyzer_->Analyze(sql_stmt, move(*parse_tree), sql_env_.get());
+  const Status s = analyzer_->Analyze(sql_stmt, std::move(*parse_tree), sql_env_.get());
   const MonoTime end_time = MonoTime::Now(MonoTime::FINE);
   if (sql_metrics_ != nullptr) {
     const MonoDelta elapsed_time = end_time.GetDeltaSince(begin_time);

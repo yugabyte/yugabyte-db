@@ -18,7 +18,8 @@ YQLRow::YQLRow(const shared_ptr<const Schema>& schema)
 YQLRow::YQLRow(const YQLRow& other) : schema_(other.schema_), values_(other.values_) {
 }
 
-YQLRow::YQLRow(YQLRow&& other) : schema_(move(other.schema_)), values_(move(other.values_)) {
+YQLRow::YQLRow(YQLRow&& other)
+    : schema_(std::move(other.schema_)), values_(std::move(other.values_)) {
 }
 
 YQLRow::~YQLRow() {

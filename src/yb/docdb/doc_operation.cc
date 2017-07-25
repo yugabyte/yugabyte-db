@@ -1079,7 +1079,7 @@ Status YQLWriteOperation::Apply(
                       MonoDelta::kMax;
 
                   int index = column_value.subscript_args(0).value().int32_value();
-                  Status st = doc_write_batch->ReplaceInList(sub_path, {index}, {sub_doc},
+                  Status s = doc_write_batch->ReplaceInList(sub_path, {index}, {sub_doc},
                       hybrid_time,
                       request_.query_id(),
                       table_ttl,
@@ -1087,12 +1087,12 @@ Status YQLWriteOperation::Apply(
                       InitMarkerBehavior::OPTIONAL);
 
                   // Don't crash tserver if this is index-out-of-bounds error
-                  if (st.IsSqlError()) {
+                  if (s.IsSqlError()) {
                     response_->set_status(YQLResponsePB::YQL_STATUS_USAGE_ERROR);
-                    response_->set_error_message(st.ToString());
+                    response_->set_error_message(s.ToString());
                     return Status::OK();
-                  } else if (!st.ok()) {
-                    return st;
+                  } else if (!s.ok()) {
+                    return s;
                   }
 
                   break;

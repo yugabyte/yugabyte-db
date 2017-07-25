@@ -118,7 +118,7 @@ class ProcessContext : public ProcessContextBase {
 
   // Returns the generated parse tree and release the ownership from this context.
   ParseTree::UniPtr AcquireParseTree() {
-    return move(parse_tree_);
+    return std::move(parse_tree_);
   }
 
   ParseTree *parse_tree() {

@@ -15,12 +15,14 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <stdlib.h>
+
+#include <limits>
+
 #include <boost/ptr_container/ptr_vector.hpp>
 #include <boost/utility/binary.hpp>
 #include <glog/logging.h>
 #include <gtest/gtest.h>
-#include <stdlib.h>
-#include <limits>
 
 #include "yb/cfile/block_encodings.h"
 #include "yb/cfile/bshuf_block.h"
@@ -87,7 +89,7 @@ class TestEncoding : public ::testing::Test {
     while (rem > 0) {
       int added = sbb->Add(reinterpret_cast<const uint8_t *>(ptr),
                            rem);
-      CHECK(added > 0);
+      CHECK_GT(added, 0);
       rem -= added;
       ptr += added;
     }
@@ -308,14 +310,14 @@ class TestEncoding : public ::testing::Test {
       for (int i = 0; i < num_queries; i++) {
         bool exact = false;
         CppType target = random() % (num_ints * 2 + kBase);
-        Status s = ibd.SeekAtOrAfterValue(&target, &exact);
+        Status status = ibd.SeekAtOrAfterValue(&target, &exact);
         if (verify) {
           SCOPED_TRACE(target);
-          if (s.IsNotFound()) {
+          if (status.IsNotFound()) {
             ASSERT_EQ(kBase + num_ints * 2 - 1, target);
             continue;
           }
-          ASSERT_OK_FAST(s);
+          ASSERT_OK_FAST(status);
 
           CppType got;
           CopyOne<IntType>(&ibd, &got);
@@ -423,14 +425,14 @@ class TestEncoding : public ::testing::Test {
       LOG(INFO) << "Block: " << HexDump(s);
 
       DecoderType sbd(s);
-      Status st = sbd.ParseHeader();
+      Status status = sbd.ParseHeader();
 
       if (sbsize < DecoderType::kMinHeaderSize) {
-        ASSERT_TRUE(st.IsCorruption());
-        ASSERT_STR_CONTAINS(st.ToString(), "not enough bytes for header");
+        ASSERT_TRUE(status.IsCorruption());
+        ASSERT_STR_CONTAINS(status.ToString(), "not enough bytes for header");
       } else if (sbsize < coding::DecodeGroupVarInt32_GetGroupSize(s.data())) {
-        ASSERT_TRUE(st.IsCorruption());
-        ASSERT_STR_CONTAINS(st.ToString(), "less than length");
+        ASSERT_TRUE(status.IsCorruption());
+        ASSERT_STR_CONTAINS(status.ToString(), "less than length");
       }
       if (sbsize > 0) {
         s.truncate(sbsize - 1);

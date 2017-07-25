@@ -168,7 +168,7 @@ ProcessContext::ProcessContext(const char *stmt,
                                size_t stmt_len,
                                ParseTree::UniPtr parse_tree)
     : ProcessContextBase(stmt, stmt_len),
-      parse_tree_(move(parse_tree)) {
+      parse_tree_(std::move(parse_tree)) {
 }
 
 ProcessContext::~ProcessContext() {
