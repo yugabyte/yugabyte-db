@@ -23,6 +23,10 @@ export function isNonEmptyObject(obj) {
   return _.isObject(obj) && Object.keys(obj).length > 0;
 }
 
+export function isNonEmptyString(str) {
+  return _.isString(str) && str.trim().length > 0;
+}
+
 export function removeNullProperties(obj) {
   for (var propName in obj) {
     if (obj[propName] === null || obj[propName] === undefined) {
