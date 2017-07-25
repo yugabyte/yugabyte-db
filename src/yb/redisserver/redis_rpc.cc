@@ -249,8 +249,17 @@ void RedisInboundCall::Respond(size_t idx, const util::RefCntBuffer& buffer, boo
 
 void RedisInboundCall::RespondSuccess(size_t idx,
                                       const RedisResponsePB& resp,
-                                      const rpc::RpcMethodMetrics& metrics) {
-  Respond(idx, SerializeResponseBuffer(resp), true);
+                                      const rpc::RpcMethodMetrics& metrics,
+                                      bool use_encoded_array) {
+
+  if (use_encoded_array) {
+    CHECK(resp.has_array_response());
+    Respond(idx,
+            util::RefCntBuffer(EncodeAsArrayOfEncodedElements(resp.array_response().elements())),
+            true);
+  } else {
+    Respond(idx, SerializeResponseBuffer(resp), true);
+  }
   metrics.handler_latency->Increment((MonoTime::FineNow() - timing_.time_handled).ToMicroseconds());
 }
 

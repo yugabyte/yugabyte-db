@@ -60,7 +60,8 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
   void RespondFailure(size_t idx, const Status& status);
   void RespondSuccess(size_t idx,
                       const RedisResponsePB& resp,
-                      const rpc::RpcMethodMetrics& metrics);
+                      const rpc::RpcMethodMetrics& metrics,
+                      bool use_encoded_array = false);
  private:
   void Respond(size_t idx, const util::RefCntBuffer& buffer, bool is_success);
 

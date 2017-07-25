@@ -41,6 +41,11 @@ string EncodeAsBulkString(const std::string& input);
 // For more info: http://redis.io/topics/protocol
 string EncodeAsArrays(const google::protobuf::RepeatedPtrField<string> &encoded_elements);
 
+template <typename container>
+string EncodeAsArrayOfEncodedElements(const container& encoded_elements) {
+  return StrCat("*", encoded_elements.size(), "\r\n", JoinStrings(encoded_elements, ""));
+}
+
 }  // namespace redisserver
 }  // namespace yb
 

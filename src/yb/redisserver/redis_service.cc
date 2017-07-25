@@ -23,6 +23,7 @@
 #include "yb/common/redis_protocol.pb.h"
 
 #include "yb/redisserver/redis_constants.h"
+#include "yb/redisserver/redis_encoding.h"
 #include "yb/redisserver/redis_parser.h"
 #include "yb/redisserver/redis_rpc.h"
 #include "yb/redisserver/redis_server.h"
@@ -97,6 +98,7 @@ DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
     ((echo, Echo, 2, LOCAL)) \
     ((auth, Auth, -1, LOCAL)) \
     ((config, Config, -1, LOCAL)) \
+    ((role, Role, 1, LOCAL)) \
     /**/
 
 #define DO_DEFINE_HISTOGRAM(name, cname, arity, type) \
@@ -472,6 +474,16 @@ RedisResponsePB ParseConfig(const RedisClientCommand& command) {
   return RedisResponsePB();
 }
 
+RedisResponsePB ParseRole(const RedisClientCommand& command) {
+  RedisResponsePB responsePB;
+  responsePB.set_code(RedisResponsePB_RedisStatusCode_OK);
+  auto array_response = responsePB.mutable_array_response();
+  array_response->add_elements(redisserver::EncodeAsBulkString("master"));
+  array_response->add_elements(redisserver::EncodeAsInteger(0));
+  array_response->add_elements(redisserver::EncodeAsArrayOfEncodedElements(vector<string>()));
+  return responsePB;
+}
+
 #define REDIS_METRIC(name) \
     BOOST_PP_CAT(METRIC_handler_latency_yb_redisserver_RedisServerService_, name)
 
@@ -604,9 +616,11 @@ void RedisServiceImpl::Impl::LocalCommand(
     BatchContext* context) {
   const auto& command = context->command(idx);
   RedisResponsePB local_response = parse(command);
-  VLOG(4) << "Responding to Echo with " << command[1].ToBuffer();
-  context->call()->RespondSuccess(idx, local_response, info.metrics);
-  VLOG(4) << "Done Responding to Echo.";
+  VLOG_IF(4, local_response.has_string_response()) << "Responding to " << command[0].ToBuffer()
+                                                   << " with " << local_response.string_response();
+  context->call()->RespondSuccess(idx, local_response, info.metrics,
+                                  local_response.has_array_response());
+  VLOG(4) << "Done responding to " << command[0].ToBuffer();
 }
 
 template<class Op>
