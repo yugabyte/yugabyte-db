@@ -11,7 +11,7 @@ import { createUniverse, createUniverseResponse, editUniverse, editUniverseRespo
          configureUniverseResources, configureUniverseResourcesResponse,
          checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration,
          fetchUniverseInfo, fetchUniverseInfoResponse, fetchUniverseMetadata, fetchUniverseTasks, fetchUniverseTasksResponse } from 'actions/universe';
-import { isDefinedNotNull, isNonEmptyObject } from 'utils/ObjectUtils';
+import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString } from 'utils/ObjectUtils';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -163,20 +163,22 @@ function mapStateToProps(state, ownProps) {
 }
 
 const asyncValidate = (values, dispatch ) => {
-  return new Promise((resolve, reject) => {
-    dispatch(checkIfUniverseExists(values.universeName)).then((response) => {
-      if (response.payload.status !== 200 && values.formType !== "edit") {
-        reject({universeName: 'Universe name already exists'});
-      } else {
-        resolve();
-      }
+  if (isNonEmptyString(values.universeName)) {
+    return new Promise((resolve, reject) => {
+      dispatch(checkIfUniverseExists(values.universeName)).then((response) => {
+        if (response.payload.status !== 200 && values.formType !== "edit") {
+          reject({universeName: 'Universe name already exists'});
+        } else {
+          resolve();
+        }
+      })
     })
-  })
+  }
 };
 
 const validate = values => {
   const errors = {};
-  if (!isDefinedNotNull(values.universeName)) {
+  if (!isNonEmptyString(values.universeName)) {
     errors.universeName = 'Universe Name is Required'
   }
   if (!isDefinedNotNull(values.provider)) {
