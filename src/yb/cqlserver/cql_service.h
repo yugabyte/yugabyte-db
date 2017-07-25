@@ -49,10 +49,10 @@ class CQLServiceImpl : public CQLServerServiceIf {
       const CQLMessage::QueryId& id, const std::string& keyspace, const std::string& sql_stmt);
 
   // Look up a prepared statement by its id. Nullptr will be returned if the statement is not found.
-  std::shared_ptr<CQLStatement> GetPreparedStatement(const CQLMessage::QueryId& id);
+  std::shared_ptr<const CQLStatement> GetPreparedStatement(const CQLMessage::QueryId& id);
 
   // Delete the prepared statement from the cache.
-  void DeletePreparedStatement(const std::shared_ptr<CQLStatement>& stmt);
+  void DeletePreparedStatement(const std::shared_ptr<const CQLStatement>& stmt);
 
   // Return the memory tracker for prepared statements.
   std::shared_ptr<MemTracker> prepared_stmts_mem_tracker() const {
@@ -94,7 +94,7 @@ class CQLServiceImpl : public CQLServerServiceIf {
 
   // Delete a prepared statement from the cache and the LRU list. "prepared_stmts_mutex_" needs to
   // be locked before this call.
-  void DeletePreparedStatementUnlocked(const std::shared_ptr<CQLStatement> stmt);
+  void DeletePreparedStatementUnlocked(const std::shared_ptr<const CQLStatement> stmt);
 
   // Delete the least recently used prepared statement from the cache to free up memory.
   void DeleteLruPreparedStatement();

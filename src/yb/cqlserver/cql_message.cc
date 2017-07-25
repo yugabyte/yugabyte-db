@@ -415,10 +415,6 @@ Status CQLRequest::ParseQueryParameters(QueryParameters* params) {
   return Status::OK();
 }
 
-void CQLRequest::ExecuteAsync(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) {
-  cb.Run(Execute(processor));
-}
-
 // ------------------------------ Individual CQL requests -----------------------------------
 StartupRequest::StartupRequest(const Header& header, const Slice& body)
     : CQLRequest(header, body) {
@@ -431,7 +427,7 @@ Status StartupRequest::ParseBody() {
   return ParseStringMap(&options_);
 }
 
-CQLResponse* StartupRequest::Execute(CQLProcessor *processor) {
+CQLResponse* StartupRequest::Execute() const {
   for (const auto& option : options_) {
     const auto& name = option.first;
     const auto& value = option.second;
@@ -457,7 +453,7 @@ Status AuthResponseRequest::ParseBody() {
   return ParseBytes(&token_);
 }
 
-CQLResponse* AuthResponseRequest::Execute(CQLProcessor *processor) {
+CQLResponse* AuthResponseRequest::Execute() const {
   // TODO(Robert): authentication support
   return new ErrorResponse(*this, ErrorResponse::Code::PROTOCOL_ERROR, "Not implemented yet");
 }
@@ -474,7 +470,7 @@ Status OptionsRequest::ParseBody() {
   return Status::OK();
 }
 
-CQLResponse* OptionsRequest::Execute(CQLProcessor *processor) {
+CQLResponse* OptionsRequest::Execute() const {
   return new SupportedResponse(*this);
 }
 
@@ -491,13 +487,9 @@ Status QueryRequest::ParseBody() {
   return Status::OK();
 }
 
-CQLResponse* QueryRequest::Execute(CQLProcessor *processor) {
-  LOG(FATAL) << "Execute should only be used asynchrounsly on QueryRequest";
+CQLResponse* QueryRequest::Execute() const {
+  LOG(FATAL) << "Cannot execute QueryRequest";
   return nullptr;
-}
-
-void QueryRequest::ExecuteAsync(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) {
-  processor->ProcessQuery(*this, cb);
 }
 
 //----------------------------------------------------------------------------------------
@@ -512,8 +504,9 @@ Status PrepareRequest::ParseBody() {
   return Status::OK();
 }
 
-CQLResponse* PrepareRequest::Execute(CQLProcessor *processor) {
-  return processor->ProcessPrepare(*this);
+CQLResponse* PrepareRequest::Execute() const {
+  LOG(FATAL) << "Cannot execute PrepareRequest";
+  return nullptr;
 }
 
 //----------------------------------------------------------------------------------------
@@ -529,13 +522,9 @@ Status ExecuteRequest::ParseBody() {
   return Status::OK();
 }
 
-CQLResponse* ExecuteRequest::Execute(CQLProcessor *processor) {
-  LOG(FATAL) << "Execute should only be used asynchrounsly on ExecuteRequest";
+CQLResponse* ExecuteRequest::Execute() const {
+  LOG(FATAL) << "Cannot execute ExecuteRequest";
   return nullptr;
-}
-
-void ExecuteRequest::ExecuteAsync(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) {
-  processor->ProcessExecute(*this, cb);
 }
 
 //----------------------------------------------------------------------------------------
@@ -601,13 +590,9 @@ Status BatchRequest::ParseBody() {
   return Status::OK();
 }
 
-CQLResponse* BatchRequest::Execute(CQLProcessor *processor) {
-  LOG(FATAL) << "Execute should only be used asynchrounsly on BatchRequest";
+CQLResponse* BatchRequest::Execute() const {
+  LOG(FATAL) << "Cannot execute BatchRequest";
   return nullptr;
-}
-
-void BatchRequest::ExecuteAsync(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) {
-  processor->ProcessBatch(*this, cb);
 }
 
 //----------------------------------------------------------------------------------------
@@ -622,7 +607,7 @@ Status RegisterRequest::ParseBody() {
   return ParseStringList(&event_types_);
 }
 
-CQLResponse* RegisterRequest::Execute(CQLProcessor *processor) {
+CQLResponse* RegisterRequest::Execute() const {
   // TODO(Robert): implement real event responses
   return new ReadyResponse(*this);
 }

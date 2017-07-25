@@ -25,9 +25,6 @@
 namespace yb {
 namespace cqlserver {
 
-// Forward declaration for owner. The CQLProcessor owns the message that it's processing.
-class CQLProcessor;
-
 class CQLRequest;
 class CQLResponse;
 
@@ -215,8 +212,7 @@ class CQLRequest : public CQLMessage {
 
   virtual ~CQLRequest();
 
-  virtual CQLResponse* Execute(CQLProcessor *processor) = 0;
-  virtual void ExecuteAsync(CQLProcessor* processor, Callback<void(CQLResponse*)> cb);
+  virtual CQLResponse* Execute() const = 0;
 
  protected:
   CQLRequest(const Header& header, const Slice& body);
@@ -300,7 +296,7 @@ class StartupRequest : public CQLRequest {
  public:
   StartupRequest(const Header& header, const Slice& body);
   virtual ~StartupRequest() override;
-  virtual CQLResponse* Execute(CQLProcessor *processor) override;
+  virtual CQLResponse* Execute() const override;
 
  protected:
   virtual CHECKED_STATUS ParseBody() override;
@@ -314,7 +310,7 @@ class AuthResponseRequest : public CQLRequest {
  public:
   AuthResponseRequest(const Header& header, const Slice& body);
   virtual ~AuthResponseRequest() override;
-  virtual CQLResponse* Execute(CQLProcessor *processor) override;
+  virtual CQLResponse* Execute() const override;
 
  protected:
   virtual CHECKED_STATUS ParseBody() override;
@@ -328,7 +324,7 @@ class OptionsRequest : public CQLRequest {
  public:
   OptionsRequest(const Header& header, const Slice& body);
   virtual ~OptionsRequest() override;
-  virtual CQLResponse* Execute(CQLProcessor *processor) override;
+  virtual CQLResponse* Execute() const override;
 
  protected:
   virtual CHECKED_STATUS ParseBody() override;
@@ -339,8 +335,7 @@ class QueryRequest : public CQLRequest {
  public:
   QueryRequest(const Header& header, const Slice& body);
   virtual ~QueryRequest() override;
-  virtual CQLResponse* Execute(CQLProcessor *processor) override;
-  virtual void ExecuteAsync(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) override;
+  virtual CQLResponse* Execute() const override;
 
   const std::string& query() const { return query_; }
   const QueryParameters& params() const { return params_; }
@@ -360,7 +355,7 @@ class PrepareRequest : public CQLRequest {
  public:
   PrepareRequest(const Header& header, const Slice& body);
   virtual ~PrepareRequest() override;
-  virtual CQLResponse* Execute(CQLProcessor *processor) override;
+  virtual CQLResponse* Execute() const override;
 
   const std::string& query() const { return query_; }
 
@@ -376,8 +371,7 @@ class ExecuteRequest : public CQLRequest {
  public:
   ExecuteRequest(const Header& header, const Slice& body);
   virtual ~ExecuteRequest() override;
-  virtual CQLResponse* Execute(CQLProcessor *processor) override;
-  virtual void ExecuteAsync(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) override;
+  virtual CQLResponse* Execute() const override;
 
   const QueryId& query_id() const { return query_id_; }
   const QueryParameters& params() const { return params_; }
@@ -409,8 +403,7 @@ class BatchRequest : public CQLRequest {
 
   BatchRequest(const Header& header, const Slice& body);
   virtual ~BatchRequest() override;
-  virtual CQLResponse* Execute(CQLProcessor *processor) override;
-  virtual void ExecuteAsync(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) override;
+  virtual CQLResponse* Execute() const override;
 
   const std::vector<Query>& queries() const { return queries_; }
 
@@ -428,7 +421,7 @@ class RegisterRequest : public CQLRequest {
  public:
   RegisterRequest(const Header& header, const Slice& body);
   virtual ~RegisterRequest() override;
-  virtual CQLResponse* Execute(CQLProcessor *processor) override;
+  virtual CQLResponse* Execute() const override;
 
  protected:
   virtual CHECKED_STATUS ParseBody() override;

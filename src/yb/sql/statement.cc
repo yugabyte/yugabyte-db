@@ -67,7 +67,8 @@ CHECKED_STATUS Statement::Prepare(
 }
 
 bool Statement::ExecuteAsync(
-    SqlProcessor* processor, const StatementParameters& params, StatementExecutedCallback cb) {
+    SqlProcessor* processor, const StatementParameters& params, StatementExecutedCallback cb)
+    const {
   // Return false if the statement has not been prepared.
   if (!prepared_.load(std::memory_order_acquire)) {
     return false;

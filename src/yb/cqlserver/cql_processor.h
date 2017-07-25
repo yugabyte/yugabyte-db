@@ -51,41 +51,23 @@ class CQLProcessor : public sql::SqlProcessor {
   ~CQLProcessor();
 
   // Processing an inbound call.
-  void ProcessCall(rpc::InboundCallPtr cql_call);
-
-  // Process a PREPARE request.
-  CQLResponse *ProcessPrepare(const PrepareRequest& req);
-
-  // Process a EXECUTE request.
-  void ProcessExecute(const ExecuteRequest& req, Callback<void(CQLResponse*)> cb);
-
-  // Process a QUERY request.
-  void ProcessQuery(const QueryRequest& req, Callback<void(CQLResponse*)> cb);
-
-  // Process a BATCH request.
-  void ProcessBatch(const BatchRequest& req, Callback<void(CQLResponse*)> cb, int idx = 0);
+  void ProcessCall(rpc::InboundCallPtr call);
 
  private:
-  // Run in response to ProcessExecute, PrepareQuery, ProcessBatch and ProcessCall
-  void ProcessExecuteDone(
-      const ExecuteRequest& req, std::shared_ptr<CQLStatement> stmt,
-      Callback<void(CQLResponse*)> cb, const Status& s,
-      const sql::ExecutedResult::SharedPtr& result);
-  void ProcessQueryDone(
-      const QueryRequest& req, Callback<void(CQLResponse*)> cb, const Status& s,
-      const sql::ExecutedResult::SharedPtr& result);
-  void ProcessBatchDone(
-      const BatchRequest& req, int idx, std::shared_ptr<CQLStatement> stmt,
-      Callback<void(CQLResponse*)> cb, const Status& s,
-      const sql::ExecutedResult::SharedPtr& result);
-  void ProcessCallDone(
-      rpc::InboundCallPtr call, const CQLRequest* request, const MonoTime& start,
-      CQLResponse* response);
+  // Process a PREPARE, EXECUTE, QUERY or BATCH request.
+  CQLResponse* ProcessPrepare(const PrepareRequest& req);
+  CQLResponse* ProcessExecute(const ExecuteRequest& req);
+  CQLResponse* ProcessQuery(const QueryRequest& req);
+  CQLResponse* ProcessBatch(const BatchRequest& req);
 
-  CQLResponse* ReturnResponse(
-      const CQLRequest& req, std::shared_ptr<CQLStatement> stmt, Status s,
-      const sql::ExecutedResult::SharedPtr& result);
-  void SendResponse(rpc::InboundCallPtr call, CQLResponse* response);
+  // Statement executed callback.
+  void StatementExecuted(const Status& s, const sql::ExecutedResult::SharedPtr& result);
+
+  // Process statement execution result.
+  CQLResponse* ProcessResult(Status s, const sql::ExecutedResult::SharedPtr& result);
+
+  // Send response back to client.
+  void SendResponse(const CQLResponse& response);
 
   // Pointer to the containing CQL service implementation.
   CQLServiceImpl* const service_impl_;
@@ -95,6 +77,23 @@ class CQLProcessor : public sql::SqlProcessor {
 
   // Position in the CQL processor list.
   const CQLProcessorListPos pos_;
+
+  //----------------------------- StatementExecuted callback and state ---------------------------
+
+  // Current call, request, statement, and batch index being processed.
+  rpc::InboundCallPtr call_;
+  std::unique_ptr<const CQLRequest> request_;
+  std::shared_ptr<const CQLStatement> stmt_;
+  int batch_index_ = 0;
+
+  // Parse and execute begin times.
+  MonoTime parse_begin_;
+  MonoTime execute_begin_;
+
+  // Statement executed callback.
+  sql::StatementExecutedCallback statement_executed_cb_;
+
+  //----------------------------------------------------------------------------------------------
 };
 
 }  // namespace cqlserver

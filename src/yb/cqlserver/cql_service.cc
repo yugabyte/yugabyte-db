@@ -149,7 +149,8 @@ shared_ptr<CQLStatement> CQLServiceImpl::AllocatePreparedStatement(
   return stmt;
 }
 
-shared_ptr<CQLStatement> CQLServiceImpl::GetPreparedStatement(const CQLMessage::QueryId& query_id) {
+shared_ptr<const CQLStatement> CQLServiceImpl::GetPreparedStatement(
+    const CQLMessage::QueryId& query_id) {
   // Get exclusive lock before looking up a prepared statement and updating the LRU list.
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
 
@@ -163,7 +164,7 @@ shared_ptr<CQLStatement> CQLServiceImpl::GetPreparedStatement(const CQLMessage::
   return stmt;
 }
 
-void CQLServiceImpl::DeletePreparedStatement(const shared_ptr<CQLStatement>& stmt) {
+void CQLServiceImpl::DeletePreparedStatement(const shared_ptr<const CQLStatement>& stmt) {
   // Get exclusive lock before deleting the prepared statement.
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
 
@@ -184,7 +185,8 @@ void CQLServiceImpl::MoveLruPreparedStatementUnlocked(const shared_ptr<CQLStatem
   prepared_stmts_list_.splice(prepared_stmts_list_.begin(), prepared_stmts_list_, stmt->pos());
 }
 
-void CQLServiceImpl::DeletePreparedStatementUnlocked(const std::shared_ptr<CQLStatement> stmt) {
+void CQLServiceImpl::DeletePreparedStatementUnlocked(
+    const std::shared_ptr<const CQLStatement> stmt) {
   // Remove statement from cache by looking it up by query ID and only when it is same statement
   // object. Note that the "stmt" parameter above is not a ref ("&") intentionally so that we have
   // a separate copy of the shared_ptr and not the very shared_ptr in prepared_stmts_map_ or

@@ -38,14 +38,14 @@ class CQLStatement : public sql::Statement {
 
   // Get/set position of the statement in the LRU.
   CQLStatementListPos pos() const { return pos_; }
-  void set_pos(CQLStatementListPos pos) { pos_ = pos; }
+  void set_pos(CQLStatementListPos pos) const { pos_ = pos; }
 
   // Return the query id of a statement.
   static CQLMessage::QueryId GetQueryId(const std::string& keyspace, const std::string& sql_stmt);
 
  private:
   // Position of the statement in the LRU.
-  CQLStatementListPos pos_;
+  mutable CQLStatementListPos pos_;
 };
 
 }  // namespace cqlserver

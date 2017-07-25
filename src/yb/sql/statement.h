@@ -43,7 +43,7 @@ class Statement {
   // successfully.
   bool ExecuteAsync(
       SqlProcessor* processor, const StatementParameters& params, StatementExecutedCallback cb)
-      WARN_UNUSED_RESULT;
+      const WARN_UNUSED_RESULT;
 
  protected:
   // The keyspace this statement is parsed in.
