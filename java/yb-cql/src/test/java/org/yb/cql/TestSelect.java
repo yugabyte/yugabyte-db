@@ -414,13 +414,13 @@ public class TestSelect extends BaseCQLTest {
       for (JsonElement elem : obj.getAsJsonArray("metrics")) {
         JsonObject metric = elem.getAsJsonObject();
         String metric_name = metric.get("name").getAsString();
-        if (metric_name.equals("handler_latency_local_yb_client_read")) {
+        if (metric_name.equals("handler_latency_yb_client_read_local")) {
           totalLocalReadCalls += getTotalCount(metric);
-        } else if (metric_name.equals("handler_latency_local_yb_client_write")) {
+        } else if (metric_name.equals("handler_latency_yb_client_write_local")) {
           totalLocalWriteCalls += getTotalCount(metric);
-        } else if (metric_name.equals("handler_latency_remote_yb_client_read")) {
+        } else if (metric_name.equals("handler_latency_yb_client_read_remote")) {
           totalRemoteReadCalls += getTotalCount(metric);
-        } else if (metric_name.equals("handler_latency_remote_yb_client_write")) {
+        } else if (metric_name.equals("handler_latency_yb_client_write_remote")) {
           totalRemoteWriteCalls += getTotalCount(metric);
         }
       }

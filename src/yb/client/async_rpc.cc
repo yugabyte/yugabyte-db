@@ -16,16 +16,16 @@
 // TODO: do we need word Redis in following two metrics? ReadRpc and WriteRpc objects emitting
 // these metrics are used not only in Redis service.
 METRIC_DEFINE_histogram(
-    server, handler_latency_remote_yb_client_write, "yb.client.Write remote call time",
+    server, handler_latency_yb_client_write_remote, "yb.client.Write remote call time",
     yb::MetricUnit::kMicroseconds, "Microseconds spent in the remote Write call ", 60000000LU, 2);
 METRIC_DEFINE_histogram(
-    server, handler_latency_remote_yb_client_read, "yb.client.Read remote call time",
+    server, handler_latency_yb_client_read_remote, "yb.client.Read remote call time",
     yb::MetricUnit::kMicroseconds, "Microseconds spent in the remote Read call ", 60000000LU, 2);
 METRIC_DEFINE_histogram(
-    server, handler_latency_local_yb_client_write, "yb.client.Write local call time",
+    server, handler_latency_yb_client_write_local, "yb.client.Write local call time",
     yb::MetricUnit::kMicroseconds, "Microseconds spent in the local Write call ", 60000000LU, 2);
 METRIC_DEFINE_histogram(
-    server, handler_latency_local_yb_client_read, "yb.client.Read local call time",
+    server, handler_latency_yb_client_read_local, "yb.client.Read local call time",
     yb::MetricUnit::kMicroseconds, "Microseconds spent in the local Read call ", 60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_client_time_to_send,
@@ -55,10 +55,10 @@ bool IsTracingEnabled() {
 }
 
 AsyncRpcMetrics::AsyncRpcMetrics(const scoped_refptr<yb::MetricEntity>& entity)
-    : remote_write_rpc_time(METRIC_handler_latency_remote_yb_client_write.Instantiate(entity)),
-      remote_read_rpc_time(METRIC_handler_latency_remote_yb_client_read.Instantiate(entity)),
-      local_write_rpc_time(METRIC_handler_latency_local_yb_client_write.Instantiate(entity)),
-      local_read_rpc_time(METRIC_handler_latency_local_yb_client_read.Instantiate(entity)),
+    : remote_write_rpc_time(METRIC_handler_latency_yb_client_write_remote.Instantiate(entity)),
+      remote_read_rpc_time(METRIC_handler_latency_yb_client_read_remote.Instantiate(entity)),
+      local_write_rpc_time(METRIC_handler_latency_yb_client_write_local.Instantiate(entity)),
+      local_read_rpc_time(METRIC_handler_latency_yb_client_read_local.Instantiate(entity)),
       time_to_send(METRIC_handler_latency_yb_client_time_to_send.Instantiate(entity)) {
 }
 
