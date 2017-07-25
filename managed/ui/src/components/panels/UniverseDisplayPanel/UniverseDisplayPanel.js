@@ -42,6 +42,7 @@ class UniverseDisplayItem extends Component {
     if (isFinite(universe.pricePerHour)) {
       costPerMonth = <YBCost value={universe.pricePerHour} multiplier={"month"}/>
     }
+    let universeCreationDate = universe.creationDate || "";
     return (
       <Col sm={4} md={3} lg={2}>
         <div className="universe-display-item-container">
@@ -62,6 +63,9 @@ class UniverseDisplayItem extends Component {
             </DescriptionItem>
             <DescriptionItem title="Monthly Cost">
               <span>{costPerMonth}</span>
+            </DescriptionItem>
+            <DescriptionItem title="Create Date">
+              <span className="universe-create-date">{universeCreationDate}</span>
             </DescriptionItem>
           </div>
         </div>

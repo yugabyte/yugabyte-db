@@ -63,8 +63,11 @@ class YBUniverseItem extends Component {
       <div className={"universe-list-item"}>
         <ListGroupItem >
           <Row>
-            <Col sm={6}>
-              <Link to={`/universes/${universe.universeUUID}`}><div className={"universe-name-cell"}>{universe.name}</div></Link>
+            <Col sm={4}>
+               <Link to={`/universes/${universe.universeUUID}`}><div className={"universe-name-cell"}>{universe.name}</div></Link>
+            </Col>
+            <Col sm={2} className="universe-create-date-container">
+              <div >Created: {universe.creationDate}</div>
             </Col>
             <Col sm={6} className={"list-universe-status-container"}>
               <UniverseStatusContainer currentUniverse={universe} showLabelText={true}/>
