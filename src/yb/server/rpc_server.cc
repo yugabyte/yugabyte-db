@@ -49,7 +49,7 @@ DEFINE_bool(rpc_server_allow_ephemeral_ports, false,
             "only allowed in tests.");
 TAG_FLAG(rpc_server_allow_ephemeral_ports, unsafe);
 
-DEFINE_int32(rpc_queue_limit, 100, "Queue limit for rpc server");
+DEFINE_int32(rpc_queue_limit, 5000, "Queue limit for rpc server");
 DEFINE_int32(rpc_workers_limit, 128, "Workers limit for rpc server");
 
 namespace yb {

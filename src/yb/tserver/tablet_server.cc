@@ -199,7 +199,7 @@ void TabletServer::AutoInitServiceFlags() {
       // Assume desktop/lighter weight use case.
       FLAGS_tablet_server_svc_queue_length = 50;
     } else {
-      FLAGS_tablet_server_svc_queue_length = 512;
+      FLAGS_tablet_server_svc_queue_length = 5000;
     }
   }
   LOG(INFO) << "FLAGS_tablet_server_svc_queue_length=" << FLAGS_tablet_server_svc_queue_length;

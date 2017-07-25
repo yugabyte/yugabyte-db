@@ -8,11 +8,7 @@
 
 using yb::rpc::ServiceIf;
 
-DEFINE_int32(redis_svc_num_threads, 10,
-             "Number of RPC worker threads for the redis service");
-TAG_FLAG(redis_svc_num_threads, advanced);
-
-DEFINE_int32(redis_svc_queue_length, 50,
+DEFINE_int32(redis_svc_queue_length, 5000,
              "RPC queue length for redis service");
 TAG_FLAG(redis_svc_queue_length, advanced);
 
