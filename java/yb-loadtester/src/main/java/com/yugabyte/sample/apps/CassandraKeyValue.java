@@ -20,8 +20,6 @@ import com.yugabyte.sample.common.SimpleLoadGenerator.Key;
 public class CassandraKeyValue extends AppBase {
   private static final Logger LOG = Logger.getLogger(CassandraKeyValue.class);
 
-  private static final int NUM_UNIQUE_KEYS = 1000000;
-
   // Static initialization of this workload's config. These are good defaults for getting a decent
   // read dominated workload on a reasonably powered machine. Exact IOPS will of course vary
   // depending on the machine and what resources it has to spare.

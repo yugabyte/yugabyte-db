@@ -30,6 +30,10 @@ import redis.clients.jedis.Pipeline;
  */
 public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   private static final Logger LOG = Logger.getLogger(AppBase.class);
+
+  // Number of uniques keys to insert by default.
+  public static final int NUM_UNIQUE_KEYS = 1000000;
+
   // Variable to track start time of the workload.
   private long workloadStartTime = -1;
   // Instance of the workload configuration.
@@ -218,7 +222,11 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     if (enableMetrics) initMetricsTracker();
   }
 
-   private synchronized void initMetricsTracker() {
+  public void enableMetrics() {
+    initMetricsTracker();
+  }
+
+  private synchronized void initMetricsTracker() {
     if (metricsTracker == null) {
       metricsTracker = new MetricsTracker();
       if (appConfig.appType == AppConfig.Type.OLTP) {

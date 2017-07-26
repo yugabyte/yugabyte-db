@@ -61,7 +61,9 @@ public class Main {
 
   public Main(CmdLineOpts cmdLineOpts) {
     this.cmdLineOpts = cmdLineOpts;
-    this.app = cmdLineOpts.createAppInstance();
+    // Do not enable the metrics in app if it is a read-only workload.
+    // It will be enabled after the setup step is done in run().
+    this.app = cmdLineOpts.createAppInstance(cmdLineOpts.getNumWriterThreads() != 0);
   }
 
   /**
@@ -120,9 +122,11 @@ public class Main {
       }
       app.createTablesIfNeeded();
 
-      // For 100% read case, do a pre-setup to write a bunch of keys.
+      // For 100% read case, do a pre-setup to write a bunch of keys and enable metrics tracking
+      // after that.
       if (cmdLineOpts.getNumWriterThreads() == 0) {
         setupForPureReads();
+        app.enableMetrics();
       }
 
       // Create the reader and writer threads.
@@ -163,9 +167,9 @@ public class Main {
     long actualNumToWrite = AppBase.appConfig.numKeysToWrite;
     LOG.info("Setup step for pure reads.");
 
-    AppBase.appConfig.numKeysToWrite = AppBase.appConfig.numKeysToWrite;
+    AppBase.appConfig.numKeysToWrite = AppBase.NUM_UNIQUE_KEYS;
     List<IOPSThread> writeThreads = new ArrayList<IOPSThread>();
-    for (int idx = 0; idx < 10; idx++) {
+    for (int idx = 0; idx < 100; idx++) {
       writeThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(false), IOType.Write));
     }
     // Start the reader and writer threads.
@@ -182,6 +186,7 @@ public class Main {
       }
     }
     AppBase.appConfig.numKeysToWrite = actualNumToWrite;
+    LOG.info("Setup step for pure reads done.");
   }
 
   public static void main(String[] args) throws Exception {

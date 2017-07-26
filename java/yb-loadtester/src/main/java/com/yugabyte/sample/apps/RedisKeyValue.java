@@ -16,8 +16,7 @@ import java.util.zip.Checksum;
  */
 public class RedisKeyValue extends AppBase {
   private static final Logger LOG = Logger.getLogger(RedisKeyValue.class);
-  // The number of unique keys to write.
-  private static final int NUM_UNIQUE_KEYS = 1000000;
+
   // Static initialization of this workload's config.
   static {
     // Disable the read-write percentage.
@@ -28,7 +27,7 @@ public class RedisKeyValue extends AppBase {
     // Set the number of keys to read and write.
     appConfig.numKeysToRead = -1;
     appConfig.numKeysToWrite = -1;
-    appConfig.numUniqueKeysToWrite = NUM_UNIQUE_KEYS;
+    appConfig.numUniqueKeysToWrite = AppBase.NUM_UNIQUE_KEYS;
   }
 
   Random random = new Random();
