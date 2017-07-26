@@ -295,7 +295,7 @@ class UniverseForm extends Component {
 
   componentDidUpdate(prevProps, prevState) {
     const {universe: {currentUniverse}} = this.props;
-    if (!_.isEqual(this.state, prevState)) {
+    if (!_.isEqual(this.state, prevState) && prevState.maxNumNodes !== -1) {
       let currentProvider = this.getCurrentProvider(this.state.providerSelected);
       if (((currentProvider && currentProvider.code === "onprem" && this.state.numNodes <= this.state.maxNumNodes) || (currentProvider && currentProvider.code !== "onprem"))
           && (this.state.numNodes >= this.state.replicationFactor && !this.state.nodeSetViaAZList)) {
@@ -450,6 +450,10 @@ class UniverseForm extends Component {
         }
         return acc;
       }, 0);
+      // Add Existing nodes in Universe userIntent to available nodes for calculation in case of Edit
+      if (this.props.type === "Edit") {
+        numNodesAvailable += currentUniverse.data.universeDetails.userIntent.numNodes;
+      }
       this.setState({maxNumNodes: numNodesAvailable});
     }
   }
