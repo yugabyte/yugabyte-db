@@ -173,18 +173,18 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
    */
   private void createMoveMastersTasks(SubTaskGroupType subTask) {
     // Get the list of node names to add as masters.
-    List<String> mastersToAdd = new ArrayList<String>();
+    List<NodeDetails> mastersToAdd = new ArrayList<>();
     for (NodeDetails node : newMasters) {
-      mastersToAdd.add(node.nodeName);
+      mastersToAdd.add(node);
     }
 
     Collection<NodeDetails> removeMasters =
         PlacementInfoUtil.getMastersToBeRemoved(taskParams().nodeDetailsSet);
 
     // Get the list of node names to remove as masters.
-    List<String> mastersToRemove = new ArrayList<String>();
+    List<NodeDetails> mastersToRemove = new ArrayList<>();
     for (NodeDetails node : removeMasters) {
-      mastersToRemove.add(node.nodeName);
+      mastersToRemove.add(node);
     }
 
     // Find the minimum number of master changes where we can perform an add followed by a remove.
@@ -210,18 +210,21 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     }
   }
 
-  private void createChangeConfigTask(String nodeName,
+  private void createChangeConfigTask(NodeDetails node,
                                       boolean isAdd,
                                       SubTaskGroupType subTask) {
     // Create a new task list for the change config so that it happens one by one.
-    String taskListName = "ChangeMasterConfig(" + nodeName + ", " + (isAdd?"add":"remove") + ")";
+    String taskListName = "ChangeMasterConfig(" + node.nodeName + ", " + (isAdd? "add" : "remove")
+        + ")";
     TaskList taskList = new TaskList(taskListName, executor);
     // Create the task params.
     ChangeMasterConfig.Params params = new ChangeMasterConfig.Params();
     // Set the cloud name.
     params.cloud = taskParams().userIntent.providerType;
+    // Set the azUUID
+    params.azUuid = node.azUuid;
     // Add the node name.
-    params.nodeName = nodeName;
+    params.nodeName = node.nodeName;
     // Add the universe uuid.
     params.universeUUID = taskParams().universeUUID;
     // This is an add master.
