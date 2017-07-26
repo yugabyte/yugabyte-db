@@ -204,7 +204,7 @@ redis_yb_latency:
   function: "avg"
   operator: "< 25000"
   filters:
-    type: "rpc_write.avg|rpc_read.avg"
+    type: "handler_latency_remote_yb_client_read.avg|handler_latency_remote_yb_client_write.avg|handler_latency_local_yb_client_read.avg|handler_latency_local_yb_client_write.avg"
   group_by: "type"
   layout:
     title: "YBClient Latency"
@@ -212,8 +212,10 @@ redis_yb_latency:
       type: "date"
     yaxis:
       alias:
-        "rpc_write.avg": "Write"
-        "rpc_read.avg": "Read"
+        "handler_latency_remote_yb_client_read.avg": "Remote Read"
+        "handler_latency_remote_yb_client_write.avg": "Remote Write"
+        "handler_latency_local_yb_client_read.avg": "Local Read"
+        "handler_latency_local_yb_client_write.avg": "Local Write"
       ticksuffix: "&nbsp;\u00B5s"
 
 # tserver metrics
@@ -800,7 +802,7 @@ cql_yb_latency:
   function: "avg"
   operator: "< 25000"
   filters:
-    type: "rpc_write.avg|rpc_read.avg"
+    type: "handler_latency_remote_yb_client_read.avg|handler_latency_remote_yb_client_write.avg|handler_latency_local_yb_client_read.avg|handler_latency_local_yb_client_write.avg"
   group_by: "type"
   layout:
     title: "YBClient Latency"
@@ -808,8 +810,10 @@ cql_yb_latency:
       type: "date"
     yaxis:
       alias:
-        "rpc_read.avg": "Read"
-        "rpc_write.avg": "Write"
+        "handler_latency_remote_yb_client_read.avg": "Remote Read"
+        "handler_latency_remote_yb_client_write.avg": "Remote Write"
+        "handler_latency_local_yb_client_read.avg": "Local Read"
+        "handler_latency_local_yb_client_write.avg": "Local Write"
       ticksuffix: "&nbsp;\u00B5s"
 
 cql_reactor_latency:
