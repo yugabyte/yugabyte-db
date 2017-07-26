@@ -283,6 +283,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public TaskList createSetNodeStateTask(NodeDetails node, NodeDetails.NodeState nodeState) {
     TaskList taskList = new TaskList("SetNodeState", executor);
     SetNodeState.Params params = new SetNodeState.Params();
+    params.azUuid = node.azUuid;
     params.universeUUID = taskParams().universeUUID;
     params.nodeName = node.nodeName;
     params.state = nodeState;
