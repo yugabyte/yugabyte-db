@@ -51,10 +51,10 @@ class Executor {
     return exec_context_->error_code();
   }
 
+ private:
   //------------------------------------------------------------------------------------------------
   // Currently, we don't yet have code generator into byte code, so the following ExecTNode()
   // functions are operating directly on the parse tree.
-  void ExecPTreeAsync(const ParseTree &ptree, StatementExecutedCallback cb);
 
   // Execute any TreeNode. This function determines how to execute a node.
   void ExecTreeNodeAsync(const TreeNode *tnode, StatementExecutedCallback cb);
@@ -147,7 +147,6 @@ class Executor {
   CHECKED_STATUS PTExprToPB(const PTRelation2 *relation_pt, YQLExpressionPB *relation_pb);
   CHECKED_STATUS PTExprToPB(const PTRelation3 *relation_pt, YQLExpressionPB *relation_pb);
 
- private:
   //------------------------------------------------------------------------------------------------
 
   // Set the time to live for the values affected by the current write request
@@ -190,12 +189,8 @@ class Executor {
       const Status &s, const ExecutedResult::SharedPtr& new_result);
 
   void PTNodeAsyncDone(
-      const PTListNode *lnode, int index, StatementExecutedCallback cb, const Status &s,
-      const ExecutedResult::SharedPtr& result);
-
-  void ExecuteDone(
-      const ParseTree *ptree, MonoTime start, StatementExecutedCallback cb, const Status &s,
-      const ExecutedResult::SharedPtr& result);
+      const PTListNode *lnode, int index, MonoTime start, StatementExecutedCallback cb,
+      const Status &s, const ExecutedResult::SharedPtr& result);
 
   //------------------------------------------------------------------------------------------------
   // Execution context which are created and destroyed for each execution.

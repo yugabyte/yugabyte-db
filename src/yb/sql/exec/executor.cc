@@ -61,45 +61,8 @@ void Executor::ExecuteAsync(
                                                       sql_stmt.length(),
                                                       sql_env));
   params_ = &params;
-  // Execute the parse tree.
-  ExecPTreeAsync(
-      parse_tree, Bind(&Executor::ExecuteDone, Unretained(this), Unretained(&parse_tree),
-                       MonoTime::Now(MonoTime::FINE), std::move(cb)));
-}
-
-void Executor::ExecuteDone(
-    const ParseTree *ptree, MonoTime start, StatementExecutedCallback cb, const Status &s,
-    const ExecutedResult::SharedPtr& result) {
-  if (!s.ok()) {
-    // Before leaving the execution step, collect all errors and place them in return status.
-    VLOG(3) << "Failed to execute parse-tree <" << ptree << ">";
-    CB_RETURN(cb, exec_context_->GetStatus());
-  } else {
-    VLOG(3) << "Successfully executed parse-tree <" << ptree << ">";
-    if (sql_metrics_ != nullptr) {
-      MonoDelta delta = MonoTime::Now(MonoTime::FINE).GetDeltaSince(start);
-      const auto* lnode = static_cast<const PTListNode *>(ptree->root().get());
-      if (lnode->size() > 0) {
-        switch (lnode->element(0)->opcode()) {
-          case TreeNodeOpcode::kPTSelectStmt:
-            sql_metrics_->sql_select_->Increment(delta.ToMicroseconds());
-            break;
-          case TreeNodeOpcode::kPTInsertStmt:
-            sql_metrics_->sql_insert_->Increment(delta.ToMicroseconds());
-            break;
-          case TreeNodeOpcode::kPTUpdateStmt:
-            sql_metrics_->sql_update_->Increment(delta.ToMicroseconds());
-            break;
-          case TreeNodeOpcode::kPTDeleteStmt:
-            sql_metrics_->sql_delete_->Increment(delta.ToMicroseconds());
-            break;
-          default:
-            sql_metrics_->sql_others_->Increment(delta.ToMicroseconds());
-        }
-      }
-    }
-    cb.Run(Status::OK(), result);
-  }
+  // Execute the parse tree's root node.
+  ExecTreeNodeAsync(parse_tree.root().get(), std::move(cb));
 }
 
 void Executor::Done() {
@@ -108,10 +71,6 @@ void Executor::Done() {
 }
 
 //--------------------------------------------------------------------------------------------------
-
-void Executor::ExecPTreeAsync(const ParseTree &ptree, StatementExecutedCallback cb) {
-  ExecTreeNodeAsync(ptree.root().get(), std::move(cb));
-}
 
 void Executor::ExecTreeNodeAsync(const TreeNode *tnode, StatementExecutedCallback cb) {
   DCHECK_ONLY_NOTNULL(tnode);
@@ -167,13 +126,40 @@ void Executor::ExecPTNodeAsync(const PTListNode *lnode, StatementExecutedCallbac
   }
   ExecTreeNodeAsync(
       lnode->element(idx).get(),
-      Bind(&Executor::PTNodeAsyncDone, Unretained(this), Unretained(lnode), idx, std::move(cb)));
+      Bind(&Executor::PTNodeAsyncDone, Unretained(this), Unretained(lnode), idx,
+           MonoTime::Now(MonoTime::FINE), std::move(cb)));
 }
 
 void Executor::PTNodeAsyncDone(
-    const PTListNode *lnode, int index, StatementExecutedCallback cb, const Status &s,
-    const ExecutedResult::SharedPtr& result) {
-  CB_RETURN_NOT_OK(cb, s);
+    const PTListNode *lnode, int index, MonoTime start, StatementExecutedCallback cb,
+    const Status &s, const ExecutedResult::SharedPtr& result) {
+  const TreeNode *tnode = lnode->element(index).get();
+  if (PREDICT_FALSE(!s.ok())) {
+    // Before leaving the execution step, collect all errors and place them in return status.
+    VLOG(3) << "Failed to execute tree node <" << tnode << ">";
+    CB_RETURN(cb, exec_context_->GetStatus());
+  }
+
+  VLOG(3) << "Successfully executed tree node <" << tnode << ">";
+  if (sql_metrics_ != nullptr) {
+    MonoDelta delta = MonoTime::Now(MonoTime::FINE).GetDeltaSince(start);
+    switch (tnode->opcode()) {
+      case TreeNodeOpcode::kPTSelectStmt:
+        sql_metrics_->sql_select_->Increment(delta.ToMicroseconds());
+        break;
+      case TreeNodeOpcode::kPTInsertStmt:
+        sql_metrics_->sql_insert_->Increment(delta.ToMicroseconds());
+        break;
+      case TreeNodeOpcode::kPTUpdateStmt:
+        sql_metrics_->sql_update_->Increment(delta.ToMicroseconds());
+        break;
+      case TreeNodeOpcode::kPTDeleteStmt:
+        sql_metrics_->sql_delete_->Increment(delta.ToMicroseconds());
+        break;
+      default:
+        sql_metrics_->sql_others_->Increment(delta.ToMicroseconds());
+    }
+  }
   cb.Run(Status::OK(), result);
   if (++index < lnode->size()) {
     ExecPTNodeAsync(lnode, std::move(cb), index);
