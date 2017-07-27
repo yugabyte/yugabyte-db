@@ -184,7 +184,6 @@ redis_rpcs_per_sec:
 redis_ops_latency:
   metric: "collectd_yb_redis_counter_total"
   function: "avg"
-  operator: "< 25000"
   filters:
     type: "rpc_RedisServerService_get.avg|rpc_RedisServerService_set.avg|rpc_RedisServerService_echo.avg"
   group_by: "type"
@@ -202,7 +201,6 @@ redis_ops_latency:
 redis_yb_latency:
   metric: "collectd_yb_redis_counter_total"
   function: "avg"
-  operator: "< 25000"
   filters:
     type: "handler_latency_remote_yb_client_read.avg|handler_latency_remote_yb_client_write.avg|handler_latency_local_yb_client_read.avg|handler_latency_local_yb_client_write.avg"
   group_by: "type"
@@ -800,7 +798,6 @@ cql_sql_latency_breakdown:
 cql_yb_latency:
   metric: "collectd_yb_cql_counter_total"
   function: "avg"
-  operator: "< 25000"
   filters:
     type: "handler_latency_remote_yb_client_read.avg|handler_latency_remote_yb_client_write.avg|handler_latency_local_yb_client_read.avg|handler_latency_local_yb_client_write.avg"
   group_by: "type"
