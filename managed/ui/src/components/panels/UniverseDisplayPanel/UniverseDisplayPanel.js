@@ -10,6 +10,7 @@ import { getPromiseState } from 'utils/PromiseUtils';
 import { YBCost, DescriptionItem } from 'components/common/descriptors';
 import { UniverseStatusContainer } from 'components/universes';
 import './UniverseDisplayPanel.scss';
+var moment = require('moment');
 
 class CreateUniverseButtonComponent extends Component {
   render() {
@@ -42,7 +43,7 @@ class UniverseDisplayItem extends Component {
     if (isFinite(universe.pricePerHour)) {
       costPerMonth = <YBCost value={universe.pricePerHour} multiplier={"month"}/>
     }
-    let universeCreationDate = universe.creationDate || "";
+    let universeCreationDate = moment(universe.creationDate ).format("MM/DD/YYYY") || "";
     return (
       <Col sm={4} md={3} lg={2}>
         <div className="universe-display-item-container">
