@@ -39,49 +39,65 @@ googleAnalytics = ""
 
 
 [social]
-	# twitter = "@YugaByte"
+	# twitter = "YugaByte"
 	email   = "support@yugabyte.com"
 
 
 [[menu.main]]
-	name   = "Welcome"
+	name   = "Introduction"
 	url    = "/"
 	weight = 1
 
 [[menu.main]]
-	name = "Get started"
-	identifier = "get-started"
+	name = "Community Edition"
+	identifier = "community-edition"
+	weight = 2
+
+[[menu.main]]
+	name = "Get Started"
+	identifier = "community-get-started"
+	parent = "community-edition"
+	url = "community-edition/get-started/"
 	weight = 5
 
 [[menu.main]]
-	name = "Local node"
-	parent = "get-started"
-	url = "get-started/local-node/"
+	name = "Local Node"
+	parent = "community-get-started"
+	url = "community-edition/get-started/local-node/"
 	weight = 10
 
 [[menu.main]]
-	name = "Local cluster"
-	parent = "get-started"
-	url = "get-started/local-cluster/"
-	weight = 20
-
-[[menu.main]]
-	name = "Deploy YugaWare"
-	url = "deploy/"
-	weight = 30
-
-[[menu.main]]
-	name   = "Administer"
-	url    = "admin/"
-	weight = 40
+	name = "Local Cluster"
+	parent = "community-get-started"
+	url = "community-edition/get-started/local-cluster/"
+	weight = 15
 
 [[menu.main]]
 	name   = "Develop"
-	url    = "develop/"
+	parent = "community-edition"
+	url    = "community-edition/develop/"
+	weight = 20
+
+[[menu.main]]
+	name = "Enterprise Edition"
+	identifier = "enterprise-edition"
+	weight = 30
+
+[[menu.main]]
+	name = "Deploy Admin Console"
+	identifier = "enterprise-deploy"
+	parent = "enterprise-edition"
+	url = "enterprise-edition/deploy/"
+	weight = 40
+
+[[menu.main]]
+	name   = "Administer YugaByte"
+	parent = "enterprise-edition"
+	url    = "enterprise-edition/admin/"
 	weight = 50
 
 [[menu.main]]
-	name   = "Learn"
+	name   = "Learn YugaByte"
 	url    = "learn/"
 	weight = 60
 

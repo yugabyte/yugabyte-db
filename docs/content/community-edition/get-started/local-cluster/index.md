@@ -1,12 +1,15 @@
 ---
 date: 2016-03-09T00:11:02+01:00
-title: Start a local cluster
-weight: 20
+title: Community Edition - Start a local cluster
+weight: 15
 ---
 
-The local node approach is great for developing apps locally against the YugaByte Cassandra or Redis API endpoints. However, it doesn't include the ability to monitor the YugaByte instances as well as test of all operational management scenarios (including clustering). YugaWare, YugaByte's admin console, is necessary for these tasks and is available as a docker-compose application that can be run locally. This can be thought of as the **local cluster** approach.
+ The **local cluster** option includes the ability to manage YugaByte clusters as well as monitor/alert on cluster performance. YugaWare, YugaByte's admin console, simplifies these tasks greatly and is available as a local docker-compose application for YugaByte Community Edition users. 
 
-Note that the local cluster approach does not include high availability of YugaWare itself and hence is not recommended for mission-critical environments such as production. For such environments, follow the [Deploy](/deploy) section.
+{{< note title="Note" >}}
+The local cluster approach does not include high availability of YugaWare itself and hence is not recommended for mission-critical environments such as production. For such environments, follow the [Deploy](/enterprise-edition/deploy/) section of YugaByte Enterprise Edition.
+{{< /note >}}
+
 
 ## Prerequisites
 

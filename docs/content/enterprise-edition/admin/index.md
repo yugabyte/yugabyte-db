@@ -1,32 +1,47 @@
 ---
 date: 2016-03-09T19:56:50+01:00
-title: Administer
+title: Enterprise Edition - Administer YugaByte
 weight: 40
 ---
 
 This section details how to administer YugaByte using the YugaWare admin console.
 
-## Register customer
+## Prerequisites for data nodes
 
-Go to [http://yugaware-host-public-ip/register] (http://yugaware-host-public-ip/register) to register a customer (aka tenant) account. Note that by default YugaWare runs as a single-tenant application. If you are using YugaWare in a local node or local cluster mode, then this single tenant has already been pre-created for your convenience.
+### Public cloud
 
-![Register](/images/register.png)
+If you plan to create YugaByte clusters on public cloud providers such as Amazon Web Services (AWS) or Google Cloud Platform (GCP), all you need to provide on YugaWare UI is your cloud provider credentials. YugaWare will use those credentials to automatically provision and de-provision nodes that run YugaByte. A 'node' for YugaByte includes a compute instance as well as local or remote disk storage attached to the compute instance.
 
-After clicking Submit, you will be automatically logged into YugaWare.
+If you are using AWS, you will also need to share your AWS Account ID with YugaByte Support so that we can make our YugaByte base AMI accessible to your account. You can find your AWS Account ID at the top of the [AWS My Account](https://console.aws.amazon.com/billing/home?#/account) page.
 
-## Login and change profile
+{{< note title="Note" >}}
+You will need to agree to the AWS Marketplace Terms [here](https://aws.amazon.com/marketplace/pp/B00O7WM7QW) for Centos 7 before you can spin up YugaByte instances that are based on Centos 7. 
+{{< /note >}}
 
-By default, [http://yugaware-host-public-ip](http://yugaware-host-public-ip) redirects to [http://yugaware-host-public-ip/login](http://yugaware-host-public-ip/login). Login to the application using the credentials you had provided during the [Register customer](/admin/#register-customer) step.
+### Private cloud or on-premises data centers
 
-![Login](/images/login.png)
+Dedicated hosts or VMs running Centos 7+ with local or remote attached storage. All these hosts should be accessible over SSH from the YugaWare host. If your instance will not have public network access, make sure the following packages have been installed (all can be retrieved from the yum repo **epel**, make sure to use the latest epel release repo):
 
-By clicking on the top right dropdown or going directly to [http://yugaware-host-public-ip/profile](http://yugaware-host-public-ip/profile), you can change the profile of the customer provided during the [Register customer](/admin/#register-customer) step.
+- epel-release
+- libstdc++
+- collectd
+- ntp
+- cyrus-sasl-plain
+- cyrus-sasl-devel
+- python-pip
+- python-devel
+- python-psutil
 
-![Profile](/images/profile.png)
+Here's the command to install these packages.
+
+```sh
+# install pre-requisite packages
+sudo yum install epel-release libstdc++ collectd ntp cyrus-sasl-plain cyrus-sasl-devel python-pip python-devel python-psutil
+```
 
 ## Configure cloud providers
 
-If no cloud providers are configured yet, the main Dashboard page highlights the need to create at least 1 cloud provider.
+If no cloud providers are configured yet, the main Dashboard page highlights the need to configure at least 1 cloud provider.
 
 ![Configure Cloud Provider](/images/configure-cloud-provider.png)
 

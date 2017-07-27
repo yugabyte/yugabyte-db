@@ -4,17 +4,19 @@ title: Frequently Asked Questions
 weight: 70
 ---
 
-### What are the OS requirements for YugaByte admin console and YugaByte data nodes?
+## Architecture 
 
-OS requirements for YugaWare, the YugaByte admin console, are listed [here](/deploy/#operating-systems-supported)
+## Product Editions 
 
-OS requirements for YugaByte data nodes are listed [here](/deploy/#yugabyte-data-nodes)
+## Operational 
 
-### What permissions and additional requirements are needed to run the admin console?
+### What are the OS requirements and permissions to run the YugaByte admin console?
 
-Permissions to run the admin console are listed [here](/deploy/#permissions-necessary)
+All prerequisites for YugaWare, the YugaByte admin console, are listed [here](/enterprise-edition/deploy/#prerequisites)
 
-Additional requirements to run the admin console are listed [here](/deploy/#additional-requirements)
+### What are the OS requirements and permissions to run the YugaByte data nodes?
+
+All prerequisites for the YugaByte data nodes are listed [here](/enterprise-edition/admin/#prerequisites-for-data-nodes)
 
 ### How are the build artifacts packaged and where are they stored?
 
@@ -27,6 +29,10 @@ The data node software is packaged into the YugaWare application. YugaWare distr
 The YugaWare admin console does a password-less ssh to interact with the data nodes. It needs to have the access key file (like a PEM file) uploaded into it via the UI. The setup on each of the data nodes to configure password-less ssh is documented [here](/deploy/#private-cloud-or-on-premises-data-centers).
 
 A REST API is also exposed by the admin console to the end users in addition to the UI as another means of interacting with the data platform.
+
+## Apache CQL API 
+
+## Redis API
 
 
 

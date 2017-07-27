@@ -1,6 +1,6 @@
 ---
 date: 2016-03-09T20:08:11+01:00
-title: Learn
+title: Learn YugaByte
 weight: 60
 ---
 
@@ -35,7 +35,7 @@ Given the use of distributed consensus where reads are either served only by one
 
 ![Tunably consistent reads](/images/tunably-consistent-reads.png)
 
-## YugaWare
+## YugaWare admin console
 
-An integral part of YugaByte is YugaWare, it’s admin console responsible for all day-to-day operations. Through its built-in orchestration capabilities, YugaWare handles cluster management functions such as create, expand, shrink universe for all supported cloud providers including on-premises datacenters. These operations are available via the UI for new users as well as a REST API for advanced users needing programmable deployments. It also provides performance and availability monitoring based on metrics (pulled from Prometheus metric exporters running on each instance) and health checks.
+An integral part of YugaByte Enterprise Edition is YugaWare, it’s admin console responsible for all day-to-day operations. Through its built-in orchestration capabilities, YugaWare handles cluster management functions such as create, expand, shrink universe for all supported cloud providers including on-premises datacenters. These operations are available via the UI for new users as well as a REST API for advanced users needing programmable deployments. It also provides performance and availability monitoring based on metrics (pulled from Prometheus metric exporters running on each instance) and health checks.
 

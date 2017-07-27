@@ -1,19 +1,17 @@
 ---
 date: 2016-03-09T00:11:02+01:00
-title: Deploy YugaWare
+title: Enteprise Edition - Deploy Admin Console
 weight: 30
 ---
-Deploying YugaByte in a mission-critical environment such as production or pre-production test is easy. First install **YugaWare**, the YugaByte admin console, in a highly available mode and then spin up YugaByte clusters on any public cloud or private datacenters in no time.
+YugaByte Enterprise Edition is best fit for mission-critical deployments such as production or pre-production test. It starts out by first installing **YugaWare**, the YugaByte admin console, in a highly available mode and then spinning up YugaByte clusters on any public cloud or private datacenters.
 
 ## Prerequisites
 
-### YugaWare
-
-YugaWare is a containerized application that is installed and managed via [Replicated](https://www.replicated.com/) for mission-critical environments (such as production and pre-production testing). Replicated is a purpose-built tool for on-premises deployment and lifecycle management of containerized applications. For environments that are not mission-critical such as those needed for local development or testing, use either the [local node](/get-started/local-node) approach or the [local cluster](/get-started/local-cluster) approach.
+YugaWare, the YugaByte admin console, is a containerized application that is installed and managed via [Replicated](https://www.replicated.com/) for mission-critical environments (such as production and pre-production testing). Replicated is a purpose-built tool for on-premises deployment and lifecycle management of containerized applications. For environments that are not mission-critical such as those needed for local development or testing, you can use the [Community Edition](/community-edition/get-started/).
 
 A dedicated host or VM with the following characteristics is needed for YugaWare to run via Replicated.
 
-#### Operating systems supported
+### Operating systems supported
 
 Only Linux-based systems are supported by Replicated at this point. This Linux OS should be 3.10+ kernel, 64bit and ready to run docker-engine 1.7.1 - 17.03.1-ce (with 17.03.1-ce being the recommended version). Some of the supported OS versions are:
 
@@ -24,14 +22,20 @@ Only Linux-based systems are supported by Replicated at this point. This Linux O
 
 The complete list of operating systems supported by Replicated are listed [here](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/)
 
-#### Permissions necessary
+### Permissions necessary for Internet-connected host
 
 - Connectivity to the Internet, either directly or via a http proxy
 - Ability to install and configure [docker-engine](https://docs.docker.com/engine/)
 - Ability to install and configure [Replicated](https://www.replicated.com/), which is a containerized application itself and needs to pull containers from it's own Replicated.com container registry
 - Ability to pull YugaByte container images from [Quay.io](https://quay.io/) container registry, this will be done by Replicated automatically
 
-#### Additional requirements
+### Permissions necessary for airgapped host
+
+An “airgapped” host has no path to inbound or outbound Internet traffic at all. For such hosts, the installation is performed as a sudo user.
+
+### Additional requirements
+
+For airgapped hosts a supported version of docker-engine (currently 1.7.1 to 17.03.1-ce). If you do not have docker-engine installed, follow the instructions [here](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/) to first install docker-engine.
 
 - Following ports should be open on the YugaWare host: 
 8800 (replicated ui), 80 (http for yugaware ui), 22 (ssh)
@@ -40,57 +44,8 @@ The complete list of operating systems supported by Replicated are listed [here]
 
 If you are running on AWS, all you need is a dedicated [**c4.xlarge**] (https://aws.amazon.com/ec2/instance-types/) or higher instance running Ubuntu 16.04. Use `ami-a58d0dc5` to launch a new instance if you don't already have one.
 
-### YugaByte data nodes
 
-#### Public cloud
-
-If you plan to create YugaByte clusters on public cloud providers such as Amazon Web Services (AWS) or Google Cloud Platform (GCP), all you need to provide on YugaWare UI is your cloud provider credentials. YugaWare will use those credentials to automatically provision and de-provision nodes that run YugaByte. A 'node' for YugaByte includes a compute instance as well as local or remote disk storage attached to the compute instance.
-
-If you are using AWS, you will also need to share your AWS Account ID with YugaByte Support so that we can make our YugaByte base AMI accessible to your account. You can find your AWS Account ID at the top of the [AWS My Account](https://console.aws.amazon.com/billing/home?#/account) page.
-
-{{< note title="Note" >}}
-You will need to agree to the AWS Marketplace Terms [here](https://aws.amazon.com/marketplace/pp/B00O7WM7QW) for Centos 7 before you can spin up YugaByte instances that are based on Centos 7. 
-{{< /note >}}
-
-#### Private cloud or on-premises data centers
-
-Dedicated hosts or VMs running Centos 7+ with local or remote attached storage. All these hosts should be accessible over SSH from the YugaWare host. If your instance will not have public network access, make sure the following packages have been installed (all can be retrieved from the yum repo **epel**):
-
-- epel-release
-- libstdc++
-- collectd
-- python-pip
-- python-devel
-- python-psutil
-
-Here are all the commands to prepare a data node including configuring the centos user.
-
-```sh
-# install pre-requisite packages
-sudo yum install epel-release libstdc++ collectd python-pip python-devel python-psutil
-
-# create ‘centos’ user with passwordless sudo privileges and that accepts your SSH key
-adduser centos
-
-# add to ‘wheel’ group
-usermod -aG wheel centos
-
-# add to ‘sudoers’ file as no password required
-echo "centos ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
-
-# make sure local .ssh directory exists for the user
-mkdir /home/centos/.ssh
-
-# copy your authorized_keys file to the local directory for the user
-cp /root/.ssh/authorized_keys /home/centos/.ssh/.
-
-# make sure centos user owns .ssh directory and authorized_keys file by setting proper permissions on .ssh directory
-chmod 700 /home/centos/.ssh/.
-chown centos /home/centos/.ssh
-chown centos /home/centos/.ssh/authorized_keys
-```
-
-## Install 
+## Install on Internet-connected host
 
 ### Install Replicated
 
@@ -117,11 +72,67 @@ curl -x http://<proxy_address>:<proxy_port> https://get.replicated.com/docker | 
 # after replicated install completes, make sure it is running 
 sudo docker ps
 ```
-You should see the following output
+You should see an output similar to the following.
 
 ![Replicated successfully installed](/images/replicated-success.png)
 
-### Configure Replicated for YugaWare
+
+
+## Install on airgapped host
+
+### Install Replicated
+
+An “airgapped” host has no path to inbound or outbound Internet traffic at all. In order to install Replicated and YugaWare on such a host, we first download the binaries on a machine that has Internet connectivity and then copy the files over to the appropriate host.
+
+On a machine connected to the Internet, perform the following steps.
+
+```sh
+# make a directory for downloading the binaries
+sudo mkdir /opt/downloads
+
+# change the owner user for the directory
+sudo chown -R ubuntu:ubuntu /opt/downloads
+
+# change to the directory
+cd /opt/downloads
+
+# get the replicated binary
+wget https://s3-us-west-2.amazonaws.com/download.yugabyte.com/replicated.tar.gz 
+
+# get the yugaware binary where the 85 refers to the version of the binary. change this number as needed.
+wget https://s3-us-west-2.amazonaws.com/download.yugabyte.com/yugaware+-+85.airgap
+
+# copy the binaries to the host
+```
+
+{{< note title="Note" >}}
+On the host marked for installation, first ensure that a supported version of docker-engine (currently 1.7.1 to 17.03.1-ce). If you do not have docker-engine installed, follow the instructions [here](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/) to first install docker-engine.
+{{< /note >}}
+
+On the host marked for installation, first ensure that a supported version of docker-engine (currently 1.7.1 to 17.03.1-ce). If you do not have docker-engine installed, follow the instructions [here](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/) to first install docker-engine.
+
+After docker-engine is installed, perform the following steps to install replicated.
+
+```sh
+# change to the directory
+cd /opt/downloads
+
+# expand the replicated binary
+tar xzvf replicated.tar.gz
+
+# install replicated (yugaware will be installed via replicated ui after replicated install completes)
+cat ./install.sh | sudo bash -s airgap
+
+# after replicated install completes, make sure it is running 
+sudo docker ps
+```
+
+You should see an output similar to the following.
+
+![Replicated successfully installed](/images/replicated-success.png)
+
+
+### Install YugaWare via Replicated
 
 #### Setup HTTPS for Replicated
 
@@ -146,8 +157,21 @@ Now we are ready to upload the YugaByte license file received from YugaByte Supp
 
 ![Replicated License Upload](/images/replicated-license-upload.png)
 
-![Replicated License Progress](/images/replicated-license-progress.png)
+Two options to install YugaWare are presented.
 
+#### Online Install
+![Replicated License Online Install](/images/replicated-license-online-install-option.png)
+
+![Replicated License Online Progress](/images/replicated-license-progress.png)
+
+#### Airgapped Install
+![Replicated License Airgapped Install](/images/replicated-license-airgapped-install-option.png)
+
+![Replicated License Airgapped Path](/images/replicated-license-airgapped-path.png)
+
+![Replicated License Airgapped Progress](/images/replicated-license-airgapped-progress.png)
+
+#### Secure Replicated
 The next step is to add a password to protect the Replicated admin console (note that this admin console is for Replicated and is different from YugaWare, the admin console for YugaByte).
 
 ![Replicated Password](/images/replicated-password.png)
@@ -164,7 +188,7 @@ Configuring YugaWare is really simple. A randomly generated password for the Yug
 
 ![Replicated YugaWare Config](/images/replicated-yugaware-config.png)
 
-All the containers powering the YugaWare application will be downloaded from the Replicated Registry when the Dashboard is first launched. Replicated will automatically start the application as soon as all the container images are downloaded.
+For airgapped installation , all the containers powering the YugaWare application are already available with Replicated. For non-airgapped installations, these containers will be downloaded from the Quay.ui Registry when the Dashboard is first launched. Replicated will automatically start the application as soon as all the container images are available.
 
 ![Replicated Dashboard](/images/replicated-dashboard.png)
 
@@ -172,7 +196,23 @@ Click on "View release history" to see the release history of the YugaWare appli
 
 ![Replicated Release History](/images/replicated-release-history.png)
 
-After starting the YugaWare application, you can register a new customer in YugaWare by following the instructions in the [Admin] (/admin/#register-customer) section.
+After starting the YugaWare application, you must register a new tenant in YugaWare by following the instructions in the section below
+
+### Register tenant
+
+Go to [http://yugaware-host-public-ip/register] (http://yugaware-host-public-ip/register) to register a tenant account. Note that by default YugaWare runs as a single-tenant application. If you are using YugaWare in a local node or local cluster mode, then this single tenant has already been pre-created for your convenience.
+
+![Register](/images/register.png)
+
+After clicking Submit, you will be automatically logged into YugaWare. By default, [http://yugaware-host-public-ip](http://yugaware-host-public-ip) redirects to [http://yugaware-host-public-ip/login](http://yugaware-host-public-ip/login). Login to the application using the credentials you had provided during the Register customer step.
+
+![Login](/images/login.png)
+
+By clicking on the top right dropdown or going directly to [http://yugaware-host-public-ip/profile](http://yugaware-host-public-ip/profile), you can change the profile of the customer provided during the Register customer step.
+
+![Profile](/images/profile.png)
+
+Now you are ready to administer YugaByte clusters as documented [here](/enterprise-edition/admin/).
 
 ## Backup 
 
@@ -191,6 +231,7 @@ Upgrades to Replicated are as simple as rerunning the Replicated install command
 
 
 ### Uninstall
+
 Stop and remove the YugaWare application on Replicated first. 
 
 ```sh
