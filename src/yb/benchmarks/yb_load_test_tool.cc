@@ -75,6 +75,8 @@ DEFINE_string(
     target_redis_server_addresses, "",
     "comma separated list of <host:port> addresses of the redis proxy server(s)");
 
+DEFINE_bool(create_redis_table_and_exit, false, "If true, create the redis table and exit.");
+
 DEFINE_bool(writes_only, false, "Writes a new set of rows into an existing table.");
 
 DEFINE_bool(
@@ -162,7 +164,8 @@ int main(int argc, char *argv[]) {
     LOG(FATAL) << "If reads only or writes only option is set, then we cannot drop the table";
   }
 
-  bool use_redis_table = !FLAGS_target_redis_server_addresses.empty();
+  bool use_redis_table =
+      !FLAGS_target_redis_server_addresses.empty() || FLAGS_create_redis_table_and_exit;
 
   if (!FLAGS_reads_only)
     LOG(INFO) << "num_keys = " << FLAGS_num_rows;
@@ -189,6 +192,10 @@ int main(int argc, char *argv[]) {
       }
     } else {
       SetupYBTable(CreateYBClient());
+      if (FLAGS_create_redis_table_and_exit) {
+        LOG(INFO) << "Done creating redis table";
+        return 0;
+      }
       if (FLAGS_noop_only) {
         RedisNoopSessionFactory session_factory(FLAGS_target_redis_server_addresses);
         LaunchYBLoadTest(&session_factory);
@@ -224,7 +231,7 @@ shared_ptr<YBClient> CreateYBClient() {
 
 void SetupYBTable(const shared_ptr<YBClient> &client) {
   string keyspace = "my_keyspace";
-  if (!FLAGS_target_redis_server_addresses.empty()) {
+  if (!FLAGS_target_redis_server_addresses.empty() || FLAGS_create_redis_table_and_exit) {
     LOG(INFO) << "Ignoring FLAGS_table_name. Redis proxy expects table name to be "
               << kRedisKeyspaceName << '.' << kRedisTableName;
     FLAGS_table_name = kRedisTableName;
@@ -253,7 +260,7 @@ vector<const YBPartialRow *> GetSplitsForTable(const YBSchema *schema) {
 }
 
 void CreateTable(const YBTableName &table_name, const shared_ptr<YBClient> &client) {
-  if (!FLAGS_target_redis_server_addresses.empty()) {
+  if (!FLAGS_target_redis_server_addresses.empty() || FLAGS_create_redis_table_and_exit) {
     CreateRedisTable(table_name, client);
   } else {
     CreateYBTable(table_name, client);
