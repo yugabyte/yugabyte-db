@@ -1794,8 +1794,9 @@ get_hints_from_table(const char *client_query, const char *client_application)
 /*
  * Get client-supplied query string. Addtion to that the jumbled query is
  * supplied if the caller requested. From the restriction of JumbleQuery, some
- * kind of query needs special amendments. Reutrns NULL if the current hint
- * string is still valid.
+ * kind of query needs special amendments. Reutrns NULL if this query doesn't
+ * change the current hint. This function returns NULL also when something
+ * wrong has happend and let the caller continue using the current hints.
  */
 static const char *
 get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
@@ -1807,13 +1808,19 @@ get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
 
 	if (query->commandType == CMD_UTILITY)
 	{
-		Query *target_query = query;
+		Query *target_query = (Query *)query->utilityStmt;
 
-		/* Use the target query if EXPLAIN */
-		if (IsA(query->utilityStmt, ExplainStmt))
+		/*
+		 * Some CMD_UTILITY statements have a subquery that we can hint on.
+		 * Since EXPLAIN can be placed before other kind of utility statements
+		 * and EXECUTE can be contained other kind of utility statements, these
+		 * conditions are not mutually exclusive and should be considered in
+		 * this order.
+		 */
+		if (IsA(target_query, ExplainStmt))
 		{
-			ExplainStmt *stmt = (ExplainStmt *)(query->utilityStmt);
-
+			ExplainStmt *stmt = (ExplainStmt *)target_query;
+			
 			Assert(IsA(stmt->query, Query));
 			target_query = (Query *)stmt->query;
 
@@ -1823,34 +1830,34 @@ get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
 				target_query = (Query *)target_query->utilityStmt;
 		}
 
+		if (IsA(target_query, DeclareCursorStmt))
+		{
+			DeclareCursorStmt *stmt = (DeclareCursorStmt *)target_query;
+			Query *query = (Query *)stmt->query;
+
+			/* the target must be CMD_SELECT in this case */
+			Assert(IsA(query, Query) && query->commandType == CMD_SELECT);
+			target_query = query;
+		}
+
 		if (IsA(target_query, CreateTableAsStmt))
 		{
-			/*
-			 * Use the the body query for CREATE AS. The Query for jumble also
-			 * replaced with the corresponding one.
-			 */
 			CreateTableAsStmt  *stmt = (CreateTableAsStmt *) target_query;
-			PreparedStatement  *entry;
-			Query			   *tmp_query;
 
 			Assert(IsA(stmt->query, Query));
-			tmp_query = (Query *) stmt->query;
+			target_query = (Query *) stmt->query;
 
-			if (tmp_query->commandType == CMD_UTILITY &&
-				IsA(tmp_query->utilityStmt, ExecuteStmt))
-			{
-				ExecuteStmt *estmt = (ExecuteStmt *) tmp_query->utilityStmt;
-				entry = FetchPreparedStatement(estmt->name, true);
-				p = entry->plansource->query_string;
-				target_query = (Query *) linitial (entry->plansource->query_list);
-			}
+			/* strip out the top-level query for further processing */
+			if (target_query->commandType == CMD_UTILITY &&
+				target_query->utilityStmt != NULL)
+				target_query = (Query *)target_query->utilityStmt;
 		}
-		else
+
 		if (IsA(target_query, ExecuteStmt))
 		{
 			/*
-			 * Use the prepared query for EXECUTE. The Query for jumble also
-			 * replaced with the corresponding one.
+			 * Use the prepared query for EXECUTE. The Query for jumble
+			 * also replaced with the corresponding one.
 			 */
 			ExecuteStmt *stmt = (ExecuteStmt *)target_query;
 			PreparedStatement  *entry;
@@ -1859,10 +1866,10 @@ get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
 			p = entry->plansource->query_string;
 			target_query = (Query *) linitial (entry->plansource->query_list);
 		}
-
-		/* We don't accept other than a Query other than a CMD_UTILITY */
+			
+		/* JumbleQuery accespts only a non-utility Query */
 		if (!IsA(target_query, Query) ||
-			target_query->commandType == CMD_UTILITY)
+			target_query->utilityStmt != NULL)
 			target_query = NULL;
 
 		if (jumblequery)
@@ -2863,7 +2870,7 @@ pg_hint_plan_post_parse_analyze(ParseState *pstate, Query *query)
 			}
 		}
 
-		/* retrun if we have hint here*/
+		/* retrun if we have hint here */
 		if (current_hint_str)
 			return;
 	}
