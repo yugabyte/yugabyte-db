@@ -1423,8 +1423,7 @@ Status RaftConsensus::EarlyCommitUnlocked(const ConsensusRequestPB& request,
 
   VLOG_WITH_PREFIX_UNLOCKED(1) << "Early marking committed up to " <<
                                early_apply_up_to.ShortDebugString();
-  TRACE("Early marking committed up to $0",
-      early_apply_up_to.ShortDebugString());
+  TRACE("Early marking committed up to $0.$1", early_apply_up_to.term(), early_apply_up_to.index());
   return state_->AdvanceCommittedIndexUnlocked(early_apply_up_to);
 }
 

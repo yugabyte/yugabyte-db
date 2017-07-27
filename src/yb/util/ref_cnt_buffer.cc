@@ -9,7 +9,6 @@
 #include "yb/util/faststring.h"
 
 namespace yb {
-namespace util {
 
 RefCntBuffer::RefCntBuffer()
     : data_(nullptr) {
@@ -71,5 +70,4 @@ void RefCntBuffer::DoReset(char* data) {
   data_ = data;
 }
 
-} // namespace util
 } // namespace yb

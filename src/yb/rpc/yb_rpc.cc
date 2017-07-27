@@ -190,7 +190,7 @@ Status YBInboundCall::ParseFrom(Slice source) {
   return Status::OK();
 }
 
-Status YBInboundCall::AddRpcSidecar(util::RefCntBuffer car, int* idx) {
+Status YBInboundCall::AddRpcSidecar(RefCntBuffer car, int* idx) {
   // Check that the number of sidecars does not exceed the number of payload
   // slices that are free.
   if (sidecars_.size() >= CallResponse::kMaxSidecarSlices) {
@@ -290,7 +290,7 @@ void YBInboundCall::LogTrace() const {
   }
 }
 
-void YBInboundCall::Serialize(std::deque<util::RefCntBuffer>* output) const {
+void YBInboundCall::Serialize(std::deque<RefCntBuffer>* output) const {
   TRACE_EVENT0("rpc", "YBInboundCall::Serialize");
   CHECK_GT(response_buf_.size(), 0);
   output->push_back(response_buf_);

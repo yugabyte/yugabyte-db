@@ -65,11 +65,11 @@ Status SendFramedMessageBlocking(Socket* sock, const MessageLite& header, const 
   DCHECK(!is_non_blocking) << "Socket must be in blocking mode to use SendFramedMessage";
 
   // Serialize message
-  util::RefCntBuffer param_buf;
+  RefCntBuffer param_buf;
   RETURN_NOT_OK(serialization::SerializeMessage(msg, &param_buf));
 
   // Serialize header and initial length
-  util::RefCntBuffer header_buf;
+  RefCntBuffer header_buf;
   RETURN_NOT_OK(serialization::SerializeHeader(header, param_buf.size(), &header_buf));
 
   // Write header & param to stream

@@ -77,6 +77,8 @@ std::string Slice::ToDebugString(size_t max_len) const {
         ret += "\\r";
       } else if (data_[i] == '\n') {
         ret += "\\n";
+      } else if (data_[i] == ' ') {
+        ret += ' ';
       } else {
         StringAppendF(&ret, "\\x%02x", data_[i] & 0xff);
       }

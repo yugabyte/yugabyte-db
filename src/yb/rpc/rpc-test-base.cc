@@ -123,7 +123,7 @@ void GenericCalculatorService::DoSendStrings(InboundCall* incoming) {
   Random r(req.random_seed());
   SendStringsResponsePB resp;
   for (auto size : req.sizes()) {
-    auto sidecar = util::RefCntBuffer(size);
+    auto sidecar = RefCntBuffer(size);
     RandomString(sidecar.udata(), size, &r);
     int idx = 0;
     auto status = down_cast<YBInboundCall*>(incoming)->AddRpcSidecar(sidecar, &idx);

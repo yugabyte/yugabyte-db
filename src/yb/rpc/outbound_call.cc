@@ -156,7 +156,7 @@ void OutboundCall::NotifyTransferred(const Status& status) {
   }
 }
 
-void OutboundCall::Serialize(std::deque<util::RefCntBuffer>* output) const {
+void OutboundCall::Serialize(std::deque<RefCntBuffer>* output) const {
   output->push_back(buffer_);
 }
 

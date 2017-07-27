@@ -197,7 +197,7 @@ class OutboundCall : public RpcCall {
 
   // Serialize the call for the wire. Requires that SetRequestParam()
   // is called first. This is called from the Reactor thread.
-  void Serialize(std::deque<util::RefCntBuffer>* output) const override;
+  void Serialize(std::deque<RefCntBuffer>* output) const override;
 
   // Callback after the call has been put on the outbound connection queue.
   void SetQueued();
@@ -321,7 +321,7 @@ class OutboundCall : public RpcCall {
   ResponseCallback callback_;
 
   // Buffers for storing segments of the wire-format request.
-  util::RefCntBuffer buffer_;
+  RefCntBuffer buffer_;
 
   // Once a response has been received for this call, contains that response.
   // Otherwise NULL.

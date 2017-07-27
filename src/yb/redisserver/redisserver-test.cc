@@ -10,7 +10,9 @@
 #include "cpp_redis/redis_client.hpp"
 #include "cpp_redis/reply.hpp"
 
+#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/redis_table_test_base.h"
 
 #include "yb/redisserver/redis_encoding.h"
@@ -27,8 +29,10 @@ DECLARE_bool(redis_safe_batch);
 
 DEFINE_uint64(test_redis_max_concurrent_commands, 20,
               "Value of redis_max_concurrent_commands for pipeline test");
-DEFINE_uint64(test_redis_max_batch, 50,
+DEFINE_uint64(test_redis_max_batch, 250,
               "Value of redis_max_batch for pipeline test");
+
+using namespace std::literals;
 
 namespace yb {
 namespace redisserver {
@@ -66,6 +70,13 @@ class TestRedisService : public RedisTableTestBase {
                                     const string& cmd,
                                     const string& resp,
                                     bool partial = false);
+
+  void SendCommandAndExpectResponse(int line,
+                                    const RefCntBuffer& cmd,
+                                    const RefCntBuffer& resp,
+                                    bool partial = false) {
+    SendCommandAndExpectResponse(line, cmd.ToBuffer(), resp.ToBuffer(), partial);
+  }
 
   template <class Callback>
   void DoRedisTest(int line,
@@ -115,10 +126,10 @@ class TestRedisService : public RedisTableTestBase {
           for (size_t i = 0; i < expected.size(); i++) {
             if (expected[i] == "") {
               ASSERT_TRUE(replies[i].is_null())
-                  << "Originator: " << __FILE__ << ":" << line;
+                  << "Originator: " << __FILE__ << ":" << line << ", i: " << i;
             } else {
-              ASSERT_EQ(expected[i],  replies[i].as_string())
-                  << "Originator: " << __FILE__ << ":" << line;
+              ASSERT_EQ(expected[i], replies[i].as_string())
+                  << "Originator: " << __FILE__ << ":" << line << ", i: " << i;
             }
           }
         }
@@ -280,6 +291,7 @@ void TestRedisService::SendCommandAndExpectResponse(int line,
   } else {
     auto status = SendCommandAndGetResponse(cmd, expected.length());
     if (!status.ok()) {
+      LOG(INFO) << "    Sent: " << Slice(cmd).ToDebugString();
       LOG(INFO) << "Received: " << Slice(resp_.data(), resp_.size()).ToDebugString();
       LOG(INFO) << "Expected: " << Slice(expected).ToDebugString();
     }
@@ -289,7 +301,9 @@ void TestRedisService::SendCommandAndExpectResponse(int line,
   // Verify that the response is as expected.
 
   std::string response(util::to_char_ptr(resp_.data()), expected.length());
-  ASSERT_EQ(expected, response) << "Originator: " << __FILE__ << ":" << line;
+  ASSERT_EQ(expected, response)
+      << "Command: " << Slice(cmd).ToDebugString() << std::endl
+      << "Originator: " << __FILE__ << ":" << line;
 }
 
 template <class Callback>
@@ -513,19 +527,20 @@ class TestRedisServiceSafeBatch : public TestRedisService {
   }
 };
 
-
 TEST_F_EX(TestRedisService, SafeMixedBatch, TestRedisServiceSafeBatch) {
   constexpr size_t kBatches = 50;
   BatchGenerator generator(true);
-  std::chrono::steady_clock::duration total;
+  std::vector<decltype(generator.Generate())> batches;
   for (size_t i = 0; i != kBatches; ++i) {
-    auto batch = generator.Generate();
-    auto start = std::chrono::steady_clock::now();
-    SendCommandAndExpectResponse(__LINE__, batch.first, batch.second);
-    total += std::chrono::steady_clock::now() - start;
+    batches.push_back(generator.Generate());
   }
-  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(total).count() / kBatches;
-  LOG(INFO) << Format("Average: $0ms", ms);
+  auto start = std::chrono::steady_clock::now();
+  for (const auto& batch : batches) {
+    SendCommandAndExpectResponse(__LINE__, batch.first, batch.second);
+  }
+  auto total = std::chrono::steady_clock::now() - start;
+  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(total).count();
+  LOG(INFO) << Format("Total: $0ms, average: $1ms", ms, ms / kBatches);
 }
 
 TEST_F_EX(TestRedisService, SafeBatchPipeline, TestRedisServiceSafeBatch) {
@@ -587,10 +602,10 @@ TEST_F(TestRedisService, Echo) {
       __LINE__, "*2\r\n$4\r\necho\r\n$8\r\nfoo bar \r\n", "$8\r\nfoo bar \r\n");
   SendCommandAndExpectResponse(
       __LINE__,
-      EncodeAsArrays(ToRepeatedPtrField<string>({
-                         "echo",
-                         "foo bar"
-                     })),
+      EncodeAsArray({  // The request is sent as a multi bulk array.
+                        "echo"s,
+                        "foo bar"s
+                    }),
       EncodeAsBulkString("foo bar")  // The response is in the bulk string format.
       );
 }
@@ -621,19 +636,19 @@ TEST_F(TestRedisService, TestSetThenGet) {
   SendCommandAndExpectResponse(__LINE__, "*2\r\n$3\r\nget\r\n$3\r\nfoo\r\n", "$4\r\nTEST\r\n");
   SendCommandAndExpectResponse(
       __LINE__,
-      EncodeAsArrays(ToRepeatedPtrField<string>({  // The request is sent as a multi bulk array.
-                        "set",
-                        "name",
-                        "yugabyte"
-                     })),
+      EncodeAsArray({  // The request is sent as a multi bulk array.
+                        "set"s,
+                        "name"s,
+                        "yugabyte"s
+                    }),
       EncodeAsSimpleString("OK")  // The response is in the simple string format.
   );
   SendCommandAndExpectResponse(
       __LINE__,
-      EncodeAsArrays(ToRepeatedPtrField<string>({  // The request is sent as a multi bulk array.
-                        "get",
-                        "name"
-                     })),
+      EncodeAsArray({  // The request is sent as a multi bulk array.
+                        "get"s,
+                        "name"s
+                    }),
       EncodeAsBulkString("yugabyte")  // The response is in the bulk string format.
   );
 }
@@ -845,6 +860,20 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   // Commands are pipelined and only sent when client.commit() is called.
   // sync_commit() waits until all responses are received.
   SyncClient();
+
+  DoRedisTest(__LINE__, {"ROLE"}, cpp_redis::reply::type::array,
+      [](const RedisReply& reply) {
+        const auto& replies = reply.as_array();
+        ASSERT_EQ(3, replies.size());
+        ASSERT_EQ("master", replies[0].as_string());
+        ASSERT_EQ(0, replies[1].as_integer());
+        ASSERT_TRUE(replies[2].is_array());
+        ASSERT_EQ(0, replies[2].as_array().size());
+      }
+  );
+
+  SyncClient();
+
   VerifyCallbacks();
 }
 

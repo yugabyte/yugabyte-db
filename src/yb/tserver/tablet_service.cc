@@ -274,7 +274,7 @@ class WriteTransactionCompletionCallback : public TransactionCompletionCallback 
         rowblock->Serialize(yql_write_req.client(), &rows_data);
         int rows_data_sidecar_idx = 0;
         RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-            context_->AddRpcSidecar(util::RefCntBuffer(rows_data), &rows_data_sidecar_idx),
+            context_->AddRpcSidecar(RefCntBuffer(rows_data), &rows_data_sidecar_idx),
             response_,
             context_.get());
         yql_write_resp->set_rows_data_sidecar(rows_data_sidecar_idx);
@@ -917,7 +917,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
         TRACE("Done HandleYQLReadRequest");
         RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
         if (rows_data.get() != nullptr) {
-          s = context.AddRpcSidecar(util::RefCntBuffer(*rows_data), &rows_data_sidecar_idx);
+          s = context.AddRpcSidecar(RefCntBuffer(*rows_data), &rows_data_sidecar_idx);
           RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
           yql_response.set_rows_data_sidecar(rows_data_sidecar_idx);
         }
@@ -1294,13 +1294,13 @@ void TabletServiceImpl::Scan(const ScanRequestPB* req,
 
     // Add sidecar data to context and record the returned indices.
     int rows_idx;
-    CHECK_OK(context.AddRpcSidecar(util::RefCntBuffer(rows_data), &rows_idx));
+    CHECK_OK(context.AddRpcSidecar(RefCntBuffer(rows_data), &rows_idx));
     resp->mutable_data()->set_rows_sidecar(rows_idx);
 
     // Add indirect data as a sidecar, if applicable.
     if (indirect_data.size() > 0) {
       int indirect_idx;
-      CHECK_OK(context.AddRpcSidecar(util::RefCntBuffer(indirect_data), &indirect_idx));
+      CHECK_OK(context.AddRpcSidecar(RefCntBuffer(indirect_data), &indirect_idx));
       resp->mutable_data()->set_indirect_data_sidecar(indirect_idx);
     }
 

@@ -303,7 +303,7 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   GrowableBuffer read_buffer_;
 
   // sending_* contain bytes and calls we are currently sending to socket
-  std::deque<util::RefCntBuffer> sending_;
+  std::deque<RefCntBuffer> sending_;
   std::deque<OutboundDataPtr> sending_outbound_datas_;
   size_t send_position_ = 0;
   bool waiting_write_ready_ = false;

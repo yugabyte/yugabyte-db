@@ -151,7 +151,7 @@ void CQLProcessor::SendResponse(const CQLResponse& response) {
   faststring msg;
   response.Serialize(&msg);
   auto* cql_call = down_cast<CQLInboundCall*>(call_.get());
-  cql_call->RespondSuccess(util::RefCntBuffer(msg), cql_metrics_->rpc_method_metrics_);
+  cql_call->RespondSuccess(RefCntBuffer(msg), cql_metrics_->rpc_method_metrics_);
 
   MonoTime response_done = MonoTime::Now(MonoTime::FINE);
   cql_metrics_->time_to_process_request_->Increment(

@@ -15,8 +15,6 @@ namespace yb {
 
 class faststring;
 
-namespace util {
-
 // Byte buffer with reference counting. It embeds reference count, size and data in a single block.
 class RefCntBuffer {
  public:
@@ -45,6 +43,10 @@ class RefCntBuffer {
 
   size_t size() const {
     return size_reference();
+  }
+
+  bool empty() const {
+    return size() == 0;
   }
 
   char* data() const {
@@ -80,6 +82,11 @@ class RefCntBuffer {
   bool operator!() const {
     return data_ == nullptr;
   }
+
+  std::string ToBuffer() const {
+    return std::string(begin(), end());
+  }
+
  private:
   void DoReset(char* data);
 
@@ -97,7 +104,6 @@ class RefCntBuffer {
   char *data_;
 };
 
-} // namespace util
 } // namespace yb
 
 #endif // YB_UTIL_REF_CNT_BUFFER_H

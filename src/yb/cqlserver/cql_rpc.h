@@ -48,7 +48,7 @@ class CQLInboundCall : public rpc::InboundCall {
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
-  void Serialize(std::deque<util::RefCntBuffer>* output) const override;
+  void Serialize(std::deque<RefCntBuffer>* output) const override;
 
   void LogTrace() const override;
   std::string ToString() const override;
@@ -57,7 +57,7 @@ class CQLInboundCall : public rpc::InboundCall {
   MonoTime GetClientDeadline() const override;
 
   // Return the response message buffer.
-  util::RefCntBuffer& response_msg_buf() {
+  RefCntBuffer& response_msg_buf() {
     return response_msg_buf_;
   }
 
@@ -77,13 +77,13 @@ class CQLInboundCall : public rpc::InboundCall {
   const std::string& service_name() const override;
   const std::string& method_name() const override;
   void RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code, const Status& status) override;
-  void RespondSuccess(const util::RefCntBuffer& buffer, const yb::rpc::RpcMethodMetrics& metrics);
+  void RespondSuccess(const RefCntBuffer& buffer, const yb::rpc::RpcMethodMetrics& metrics);
 
  private:
   void RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time) override;
 
   Callback<void(void)>* resume_from_ = nullptr;
-  util::RefCntBuffer response_msg_buf_;
+  RefCntBuffer response_msg_buf_;
   sql::SqlSession::SharedPtr sql_session_;
   uint16_t stream_id_;
 };

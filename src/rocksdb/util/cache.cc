@@ -91,7 +91,6 @@ struct LRUHandle {
   void Free(yb::CacheMetrics* metrics) {
     assert((refs == 1 && in_cache) || (refs == 0 && !in_cache));
     (*deleter)(key(), value);
-    delete[] reinterpret_cast<char*>(this);
     if (metrics != nullptr) {
       if (GetSubCacheType() == MULTI_TOUCH) {
         metrics->multi_touch_cache_usage->DecrementBy(charge);
@@ -100,6 +99,7 @@ struct LRUHandle {
       }
       metrics->cache_usage->DecrementBy(charge);
     }
+    delete[] reinterpret_cast<char*>(this);
   }
 
   SubCacheType GetSubCacheType() const {

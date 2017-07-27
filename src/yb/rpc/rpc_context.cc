@@ -147,7 +147,7 @@ void RpcContext::RespondApplicationError(int error_ext_id, const std::string& me
   responded_ = true;
 }
 
-Status RpcContext::AddRpcSidecar(util::RefCntBuffer car, int* idx) {
+Status RpcContext::AddRpcSidecar(RefCntBuffer car, int* idx) {
   return call_->AddRpcSidecar(car, idx);
 }
 

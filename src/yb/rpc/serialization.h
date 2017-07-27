@@ -29,15 +29,10 @@ class MessageLite;
 
 namespace yb {
 
-class Status;
 class faststring;
-class Slice;
-
-namespace util {
-
 class RefCntBuffer;
-
-}
+class Slice;
+class Status;
 
 namespace rpc {
 namespace serialization {
@@ -58,7 +53,7 @@ namespace serialization {
 //        is reserved for 'additional_size', which only affects the
 //        size indicator prefix in 'param_buf').
 Status SerializeMessage(const google::protobuf::MessageLite& message,
-                        util::RefCntBuffer* param_buf,
+                        RefCntBuffer* param_buf,
                         int additional_size = 0,
                         bool use_cached_size = false,
                         size_t offset = 0,
@@ -72,7 +67,7 @@ Status SerializeMessage(const google::protobuf::MessageLite& message,
 // Out: RefCntBuffer to be populated with the serialized bytes.
 Status SerializeHeader(const google::protobuf::MessageLite& header,
                        size_t param_len,
-                       util::RefCntBuffer* header_buf,
+                       RefCntBuffer* header_buf,
                        size_t reserve_for_param = 0,
                        size_t* header_size = nullptr);
 

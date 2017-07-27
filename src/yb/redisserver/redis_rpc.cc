@@ -184,62 +184,70 @@ void RedisInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
       .ToMicroseconds());
 }
 
-util::RefCntBuffer SerializeResponseBuffer(const RedisResponsePB& redis_response) {
-  if (redis_response.code() == RedisResponsePB_RedisStatusCode_SERVER_ERROR) {
-    return util::RefCntBuffer(EncodeAsError("Request was unable to be processed from server."));
-  }
+template <class Collection, class Out>
+Out DoSerializeResponses(const Collection& responses, Out out) {
+  // TODO(Amit): As and when we implement get/set and its h* equivalents, we would have to
+  // handle arrays, hashes etc. For now, we only support the string response.
 
-  if (redis_response.code() == RedisResponsePB_RedisStatusCode_NOT_FOUND) {
-      return util::RefCntBuffer(kNilResponse);
+  for (const auto& redis_response : responses) {
+    if (redis_response.code() == RedisResponsePB_RedisStatusCode_SERVER_ERROR) {
+      out = SerializeError("Request was unable to be processed from server.", out);
+    } else if (redis_response.code() == RedisResponsePB_RedisStatusCode_NOT_FOUND) {
+      out = SerializeEncoded(kNilResponse, out);
+    } else if (redis_response.code() != RedisResponsePB_RedisStatusCode_OK) {
+      // We send a nil response for all non-ok statuses as of now.
+      // TODO: Follow redis error messages.
+      out = SerializeError("Error: Something wrong", out);
+    } else if (redis_response.has_string_response()) {
+      out = SerializeBulkString(redis_response.string_response(), out);
+    } else if (redis_response.has_int_response()) {
+      out = SerializeInteger(redis_response.int_response(), out);
+    } else if (redis_response.has_array_response()) {
+      if (redis_response.array_response().has_encoded() &&
+          redis_response.array_response().encoded()) {
+        out = SerializeEncodedArray(redis_response.array_response().elements(), out);
+      } else {
+        out = SerializeArray(redis_response.array_response().elements(), out);
+      }
+    } else {
+      out = SerializeEncoded(kOkResponse, out);
+    }
   }
-
-  if (redis_response.code() != RedisResponsePB_RedisStatusCode_OK) {
-    // TODO: Send meaningful error messages.
-    return util::RefCntBuffer(EncodeAsError("Error: Something wrong"));
-  }
-
-  if (redis_response.has_string_response()) {
-    return util::RefCntBuffer(EncodeAsBulkString(redis_response.string_response()));
-  }
-
-  if (redis_response.has_int_response()) {
-    return util::RefCntBuffer(EncodeAsInteger(redis_response.int_response()));
-  }
-
-  if (redis_response.has_array_response()) {
-    return util::RefCntBuffer(EncodeAsArrays(
-        redis_response.array_response().elements()));
-  }
-
-  static util::RefCntBuffer ok_response(EncodeAsSimpleString("OK"));
-  return ok_response;
+  return out;
 }
 
-void RedisInboundCall::Serialize(std::deque<util::RefCntBuffer>* output) const {
-  for (const auto& buf : responses_) {
-    output->push_back(buf);
-  }
+template <class Collection>
+RefCntBuffer SerializeResponses(const Collection& responses) {
+  constexpr size_t kZero = 0;
+  size_t size = DoSerializeResponses(responses, kZero);
+  RefCntBuffer result(size);
+  uint8_t* end = DoSerializeResponses(responses, result.udata());
+  DCHECK_EQ(result.uend(), end);
+  return result;
+}
+
+void RedisInboundCall::Serialize(std::deque<RefCntBuffer>* output) const {
+  output->push_back(SerializeResponses(responses_));
 }
 
 void RedisInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code,
                                       const Status& status) {
-  auto buffer = util::RefCntBuffer(EncodeAsError(status.message().ToBuffer()));
-  for (size_t i = 0; i != client_batch_.size(); ++i)
-    Respond(i, buffer, false);
+  for (size_t i = 0; i != client_batch_.size(); ++i) {
+    RespondFailure(i, status);
+  }
 }
 
 // We wait until all responses are ready for batch embedded in this call.
-void RedisInboundCall::Respond(size_t idx, const util::RefCntBuffer& buffer, bool is_success) {
+void RedisInboundCall::Respond(size_t idx, bool is_success, RedisResponsePB* resp) {
   // Did we set response for command at this index already?
-  VLOG(2) << "Responding to '" << client_batch_[idx][0] << "' with "
-      << string(buffer.data(), buffer.size());
+  VLOG(2) << "Responding to '" << client_batch_[idx][0] << "' with " << resp->ShortDebugString();
   if (ready_[idx].fetch_add(1, std::memory_order_relaxed) == 0) {
     if (!is_success) {
       had_failures_.store(true, std::memory_order_release);
     }
-    responses_[idx] = buffer;
+    responses_[idx].Swap(resp);
     // Did we get all responses and ready to send data.
-    size_t responded = ready_count_.fetch_add(1, std::memory_order_relaxed) + 1;
+    size_t responded = ready_count_.fetch_add(1, std::memory_order_release) + 1;
     if (responded == client_batch_.size()) {
       RecordHandlingCompleted(nullptr);
       QueueResponse(had_failures_.load(std::memory_order_acquire));
@@ -248,23 +256,18 @@ void RedisInboundCall::Respond(size_t idx, const util::RefCntBuffer& buffer, boo
 }
 
 void RedisInboundCall::RespondSuccess(size_t idx,
-                                      const RedisResponsePB& resp,
                                       const rpc::RpcMethodMetrics& metrics,
-                                      bool use_encoded_array) {
-
-  if (use_encoded_array) {
-    CHECK(resp.has_array_response());
-    Respond(idx,
-            util::RefCntBuffer(EncodeAsArrayOfEncodedElements(resp.array_response().elements())),
-            true);
-  } else {
-    Respond(idx, SerializeResponseBuffer(resp), true);
-  }
+                                      RedisResponsePB* resp) {
+  Respond(idx, true, resp);
   metrics.handler_latency->Increment((MonoTime::FineNow() - timing_.time_handled).ToMicroseconds());
 }
 
 void RedisInboundCall::RespondFailure(size_t idx, const Status& status) {
-  Respond(idx, util::RefCntBuffer(EncodeAsError(status.message().ToBuffer())), false);
+  RedisResponsePB resp;
+  Slice message = status.message();
+  resp.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+  resp.set_error_message(message.data(), message.size());
+  Respond(idx, false, &resp);
 }
 
 } // namespace redisserver

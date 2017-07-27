@@ -26,7 +26,7 @@ class LocalOutboundCall : public OutboundCall {
   const std::shared_ptr<LocalYBInboundCall>& CreateLocalInboundCall();
 
  protected:
-  void Serialize(std::deque<util::RefCntBuffer> *output) const override;
+  void Serialize(std::deque<RefCntBuffer> *output) const override;
 
   CHECKED_STATUS GetSidecar(int idx, Slice* sidecar) const override;
 
@@ -65,7 +65,7 @@ class LocalYBInboundCall : public YBInboundCall {
 
   std::shared_ptr<LocalOutboundCall> outbound_call() const { return outbound_call_.lock(); }
 
-  const std::vector<util::RefCntBuffer>& sidecars() const { return sidecars_; }
+  const std::vector<RefCntBuffer>& sidecars() const { return sidecars_; }
 
   // Weak pointer back to the outbound call owning this inbound call to avoid circular reference.
   std::weak_ptr<LocalOutboundCall> outbound_call_;

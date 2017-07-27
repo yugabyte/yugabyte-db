@@ -26,7 +26,7 @@ Status LocalOutboundCall::SetRequestParam(const google::protobuf::Message& req) 
   return Status::OK();
 }
 
-void LocalOutboundCall::Serialize(std::deque<util::RefCntBuffer> *output) const {
+void LocalOutboundCall::Serialize(std::deque<RefCntBuffer> *output) const {
   LOG(FATAL) << "local call should not require serialization";
 }
 
@@ -44,7 +44,7 @@ Status LocalOutboundCall::GetSidecar(int idx, Slice* sidecar) const {
     return STATUS(InvalidArgument, strings::Substitute(
         "Index $0 does not reference a valid sidecar", idx));
   }
-  const util::RefCntBuffer& car = inbound_call_->sidecars()[idx];
+  const RefCntBuffer& car = inbound_call_->sidecars()[idx];
   *sidecar = Slice(car.udata(), car.size());
   return Status::OK();
 }

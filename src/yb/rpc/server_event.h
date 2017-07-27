@@ -15,14 +15,14 @@ class ServerEvent {
  public:
   virtual ~ServerEvent() {}
   // Serializes the data to be sent out via the RPC framework.
-  virtual void Serialize(std::deque<util::RefCntBuffer> *output) const = 0;
+  virtual void Serialize(std::deque<RefCntBuffer> *output) const = 0;
   virtual std::string ToString() const = 0;
 };
 
 class ServerEventList : public OutboundData {
  public:
   virtual ~ServerEventList() {}
-  virtual void Serialize(std::deque<util::RefCntBuffer> *output) const = 0;
+  virtual void Serialize(std::deque<RefCntBuffer> *output) const = 0;
   virtual std::string ToString() const = 0;
 };
 

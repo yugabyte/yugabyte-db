@@ -127,7 +127,7 @@ const std::string& CQLInboundCall::method_name() const {
   return result;
 }
 
-void CQLInboundCall::Serialize(std::deque<util::RefCntBuffer>* output) const {
+void CQLInboundCall::Serialize(std::deque<RefCntBuffer>* output) const {
   TRACE_EVENT0("rpc", "CQLInboundCall::Serialize");
   CHECK_GT(response_msg_buf_.size(), 0);
 
@@ -136,12 +136,12 @@ void CQLInboundCall::Serialize(std::deque<util::RefCntBuffer>* output) const {
 
 void CQLInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code,
                                     const Status& status) {
-  response_msg_buf_ = util::RefCntBuffer(status.message().data(), status.message().size());
+  response_msg_buf_ = RefCntBuffer(status.message().data(), status.message().size());
 
   QueueResponse(false);
 }
 
-void CQLInboundCall::RespondSuccess(const util::RefCntBuffer& buffer,
+void CQLInboundCall::RespondSuccess(const RefCntBuffer& buffer,
                                     const yb::rpc::RpcMethodMetrics& metrics) {
   RecordHandlingCompleted(metrics.handler_latency);
   response_msg_buf_ = buffer;

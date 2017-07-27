@@ -221,4 +221,5 @@ message RedisResponsePB {
 
 message RedisArrayPB {
   repeated bytes elements = 1;
+  optional bool encoded = 2;
 }

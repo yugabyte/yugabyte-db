@@ -53,14 +53,7 @@ class Message;
 namespace yb {
 
 class Histogram;
-class RedisResponsePB;
 class Trace;
-
-namespace util {
-
-class RefCntBuffer;
-
-}
 
 namespace rpc {
 

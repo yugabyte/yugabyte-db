@@ -253,14 +253,18 @@ Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
   VLOG(3) << "Looking up tablet for " << in_flight_op->yb_op->ToString();
 
   // Increment our reference count for the outstanding callback.
-  //
-  // deadline_ is set in FlushAsync(), after all Add() calls are done, so
-  // here we're forced to create a new deadline.
-  MonoTime deadline = ComputeDeadlineUnlocked();
   base::RefCountInc(&outstanding_lookups_);
-  client_->data_->meta_cache_->LookupTabletByKey(
-      in_flight_op->yb_op->table(), in_flight_op->partition_key, deadline, &in_flight_op->tablet,
-      Bind(&Batcher::TabletLookupFinished, this, in_flight_op.get()));
+  if (yb_op->tablet()) {
+    in_flight_op->tablet = yb_op->tablet();
+    TabletLookupFinished(in_flight_op.get(), Status::OK());
+  } else {
+    // deadline_ is set in FlushAsync(), after all Add() calls are done, so
+    // here we're forced to create a new deadline.
+    MonoTime deadline = ComputeDeadlineUnlocked();
+    client_->data_->meta_cache_->LookupTabletByKey(
+        in_flight_op->yb_op->table(), in_flight_op->partition_key, deadline, &in_flight_op->tablet,
+        Bind(&Batcher::TabletLookupFinished, this, in_flight_op.get()));
+  }
   IgnoreResult(in_flight_op.release());
   return Status::OK();
 }

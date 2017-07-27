@@ -6,6 +6,8 @@
 
 #include <boost/algorithm/string/case_conv.hpp>
 
+#include <boost/lockfree/queue.hpp>
+
 #include <boost/logic/tribool.hpp>
 
 #include <boost/preprocessor/seq/for_each.hpp>
@@ -29,8 +31,11 @@
 #include "yb/redisserver/redis_server.h"
 
 #include "yb/rpc/rpc_context.h"
+
 #include "yb/tserver/tablet_server.h"
+
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/memory/mc_types.h"
 
 #define DEFINE_REDIS_histogram_EX(name_identifier, label_str, desc_str) \
   METRIC_DEFINE_histogram( \
@@ -120,6 +125,8 @@ using yb::RedisResponsePB;
 namespace yb {
 namespace redisserver {
 
+typedef boost::container::small_vector_base<Slice> RedisKeyList;
+
 #define READ_OP YBRedisReadOp
 #define WRITE_OP YBRedisWriteOp
 #define LOCAL_OP RedisResponsePB
@@ -136,15 +143,25 @@ namespace {
 
 class Operation {
  public:
-  Operation(size_t index,
-            std::shared_ptr<YBRedisReadOp> operation,
+  template <class Op>
+  Operation(const std::shared_ptr<RedisInboundCall>& call,
+            size_t index,
+            std::shared_ptr<Op> operation,
             const rpc::RpcMethodMetrics& metrics)
-    : read_(true), index_(index), operation_(std::move(operation)), metrics_(metrics) {}
+    : read_(std::is_same<Op, YBRedisReadOp>::value),
+      call_(call),
+      index_(index),
+      operation_(std::move(operation)),
+      metrics_(metrics) {
+    auto status = operation_->GetPartitionKey(&partition_key_);
+    if (!status.ok()) {
+      Respond(status);
+    }
+  }
 
-  Operation(size_t index,
-            std::shared_ptr<YBRedisWriteOp> operation,
-            const rpc::RpcMethodMetrics& metrics)
-    : read_(false), index_(index), operation_(std::move(operation)), metrics_(metrics) {}
+  bool responded() const {
+    return responded_.load(std::memory_order_acquire);
+  }
 
   size_t index() const {
     return index_;
@@ -154,11 +171,15 @@ class Operation {
     return read_;
   }
 
-  const RedisResponsePB& response() const {
+  const YBOperation& operation() const {
+    return *operation_;
+  }
+
+  RedisResponsePB& response() {
     if (read_) {
-      return down_cast<YBRedisReadOp*>(operation_.get())->response();
+      return *down_cast<YBRedisReadOp*>(operation_.get())->mutable_response();
     } else {
-      return down_cast<YBRedisWriteOp*>(operation_.get())->response();
+      return *down_cast<YBRedisWriteOp*>(operation_.get())->mutable_response();
     }
   }
 
@@ -166,48 +187,118 @@ class Operation {
     return metrics_;
   }
 
-  CHECKED_STATUS Apply(client::YBSession* session) const {
-    return session->Apply(operation_);
+  const std::string& partition_key() const {
+    return partition_key_;
+  }
+
+  scoped_refptr<client::internal::RemoteTablet>& tablet() {
+    return tablet_;
+  }
+
+  RedisInboundCall& call() const {
+    return *call_;
+  }
+
+  void GetKeys(RedisKeyList* keys) const {
+    if (FLAGS_redis_safe_batch) {
+      Slice key;
+      CHECK_OK(operation_->row().GetBinary(kRedisKeyColumnName, &key));
+      keys->push_back(key);
+    }
+  }
+
+  bool Apply(client::YBSession* session) {
+    if (tablet_) {
+      operation_->SetTablet(tablet_);
+    }
+    auto status = session->Apply(operation_);
+    if (!status.ok()) {
+      Respond(status);
+      return false;
+    }
+    return true;
+  }
+
+  void Respond(const Status& status) {
+    responded_.store(true, std::memory_order_release);
+    if (status.ok()) {
+      call_->RespondSuccess(index_, metrics_, &response());
+    } else {
+      call_->RespondFailure(index_, status);
+    }
   }
  private:
   bool read_;
+  std::shared_ptr<RedisInboundCall> call_;
   size_t index_;
   std::shared_ptr<YBOperation> operation_;
   rpc::RpcMethodMetrics metrics_;
+  std::string partition_key_;
+  scoped_refptr<client::internal::RemoteTablet> tablet_;
+  std::atomic<bool> responded_{false};
 };
+
+class SessionPool {
+ public:
+  void Init(const std::shared_ptr<client::YBClient>& client, bool read) {
+    client_ = client;
+    read_ = read;
+  }
+
+  std::shared_ptr<client::YBSession> Take() {
+    client::YBSession* result = nullptr;
+    if (!queue_.pop(result)) {
+      std::lock_guard<std::mutex> lock(mutex_);
+      auto session = client_->NewSession(read_);
+      session->SetTimeoutMillis(FLAGS_redis_service_yb_client_timeout_millis);
+      CHECK_OK(session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
+      sessions_.push_back(session);
+      return session;
+    }
+    return result->shared_from_this();
+  }
+
+  void Release(const std::shared_ptr<client::YBSession>& session) {
+    queue_.push(session.get());
+  }
+ private:
+  std::shared_ptr<client::YBClient> client_;
+  bool read_;
+  std::mutex mutex_;
+  std::vector<std::shared_ptr<client::YBSession>> sessions_;
+  boost::lockfree::queue<client::YBSession*> queue_{30};
+};
+
+class BatchContext;
+typedef scoped_refptr<BatchContext> BatchContextPtr;
 
 class Block : public std::enable_shared_from_this<Block> {
  public:
-  typedef boost::container::small_vector<Operation, RedisClientBatch::static_capacity> Ops;
+  typedef MCVector<Operation*> Ops;
 
-  Block(std::shared_ptr<RedisInboundCall> call,
+  Block(const BatchContextPtr& context,
+        Ops::allocator_type allocator,
         rpc::RpcMethodMetrics metrics_internal)
-      : call_(std::move(call)),
+      : context_(context),
+        ops_(allocator),
         metrics_internal_(std::move(metrics_internal)),
         start_(MonoTime::FineNow()) {}
 
-  void AddOperation(Operation&& operation) {
-    ops_.push_back(std::move(operation));
+  void AddOperation(Operation* operation) {
+    ops_.push_back(operation);
   }
 
-  void Launch(const std::shared_ptr<client::YBClient>& client) {
-    client_ = client;
-    session_ = client->NewSession(ops_.front().read());
-    session_->SetTimeoutMillis(FLAGS_redis_service_yb_client_timeout_millis);
-    CHECK_OK(session_->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
+  void Launch(SessionPool* session_pools) {
+    session_pools_ = session_pools;
+    session_ = session_pools[ops_.front()->read()].Take();
     bool has_ok = false;
-    for (const auto& op : ops_) {
-      auto status = op.Apply(session_.get());
-      if (!status.ok()) {
-        call_->RespondFailure(op.index(), status);
-      } else {
-        has_ok = true;
-      }
+    for (auto* op : ops_) {
+      has_ok = op->Apply(session_.get()) || has_ok;
     }
     if (has_ok) {
       session_->FlushAsync(new BlockCallback(shared_from_this()));
-    } else if (next_) {
-      next_->Launch(client);
+    } else {
+      Processed();
     }
   }
 
@@ -222,7 +313,9 @@ class Block : public std::enable_shared_from_this<Block> {
     explicit BlockCallback(std::shared_ptr<Block> block) : block_(std::move(block)) {}
 
     void Run(const Status& status) override {
+      auto context = block_->context_;
       block_->Done(status);
+      block_.reset();
       delete this;
     }
    private:
@@ -235,11 +328,7 @@ class Block : public std::enable_shared_from_this<Block> {
     metrics_internal_.handler_latency->Increment(now.GetDeltaSince(start_).ToMicroseconds());
     VLOG(3) << "Received status from call " << status.ToString(true);
 
-    if (status.ok()) {
-      for (const auto& op : ops_) {
-        call_->RespondSuccess(op.index(), op.response(), op.metrics());
-      }
-    } else {
+    if (!status.ok()) {
       client::CollectedErrors errors;
       bool overflowed;
       if (session_.get() != nullptr) {
@@ -248,84 +337,84 @@ class Block : public std::enable_shared_from_this<Block> {
           LOG(WARNING) << "Explicit error while inserting: " << error->status().ToString();
         }
       }
-
-      for (const auto& op : ops_) {
-        call_->RespondFailure(op.index(), status);
-      }
     }
 
+    for (auto* op : ops_) {
+      op->Respond(status);
+    }
+
+    Processed();
+  }
+
+  void Processed() {
     if (next_) {
-      next_->Launch(client_);
+      next_->Launch(session_pools_);
     }
+    context_.reset();
   }
  private:
-  std::shared_ptr<RedisInboundCall> call_;
+  BatchContextPtr context_;
   Ops ops_;
   rpc::RpcMethodMetrics metrics_internal_;
   MonoTime start_;
-  std::shared_ptr<client::YBClient> client_;
+  SessionPool* session_pools_;
   std::shared_ptr<client::YBSession> session_;
   std::shared_ptr<Block> next_;
 };
 
-typedef boost::container::small_vector_base<std::string> RedisKeyList;
+struct BlockData {
+  explicit BlockData(Arena* arena) : used_keys(UsedKeys::allocator_type(arena)) {}
 
-class BatchContext {
+  typedef MCUnorderedSet<Slice, Slice::Hash> UsedKeys;
+  UsedKeys used_keys;
+  std::shared_ptr<Block> block;
+  size_t count = 0;
+};
+
+class TabletOperations {
  public:
-  BatchContext(const std::shared_ptr<client::YBClient>& client,
-               const std::shared_ptr<RedisInboundCall>& call,
-               const rpc::RpcMethodMetrics& metrics_get_internal,
-               const rpc::RpcMethodMetrics& metrics_set_internal)
-      : client_(client),
-        call_(call),
-        metrics_get_internal_(metrics_get_internal),
-        metrics_set_internal_(metrics_set_internal) {
+  explicit TabletOperations(Arena* arena)
+      : read_data_(arena), write_data_(arena) {}
+
+  BlockData& data(bool read) {
+    return read ? read_data_ : write_data_;
   }
 
-  const RedisClientCommand& command(size_t idx) const {
-    return call_->client_batch()[idx];
-  }
-
-  const std::shared_ptr<RedisInboundCall>& call() const {
-    return call_;
-  }
-
-  void Commit() {
+  void Done(SessionPool* session_pools) {
     if (flush_head_) {
-      flush_head_->Launch(client_);
+      flush_head_->Launch(session_pools);
     } else {
       if (read_data_.block) {
-        read_data_.block->Launch(client_);
+        read_data_.block->Launch(session_pools);
       }
       if (write_data_.block) {
-        write_data_.block->Launch(client_);
+        write_data_.block->Launch(session_pools);
       }
     }
   }
 
-  template <class Op>
-  void Apply(size_t idx,
-             std::shared_ptr<Op> op,
-             const rpc::RpcMethodMetrics& metrics,
-             RedisKeyList* keys) {
-    Operation operation(idx, std::move(op), metrics);
-    bool read = operation.read();
-    CheckConflicts(read, *keys);
+  void Process(const BatchContextPtr& context,
+               Arena* arena,
+               Operation* operation,
+               rpc::RpcMethodMetrics* metrics_internal) {
+    bool read = operation->read();
+    boost::container::small_vector<Slice, RedisClientCommand::static_capacity> keys;
+    operation->GetKeys(&keys);
+    CheckConflicts(read, keys);
     auto& data = this->data(read);
     if (!data.block) {
-      data.block = std::make_shared<Block>(call_,
-                                           read ? metrics_get_internal_
-                                                : metrics_set_internal_);
+      ArenaAllocator<Block> alloc(arena);
+      data.block = std::allocate_shared<Block>(alloc, context, alloc, metrics_internal[read]);
       if (read == last_conflict_was_read_) {
         auto old_value = this->data(!read).block->SetNext(data.block);
         if (old_value) {
           LOG(DFATAL) << "Opposite already had next block: "
-                      << call_->serialized_request().ToDebugString();
+                      << operation->call().serialized_request().ToDebugString();
         }
       }
     }
-    data.block->AddOperation(std::move(operation));
-    RememberKeys(operation.read(), keys);
+    data.block->AddOperation(operation);
+    RememberKeys(read, &keys);
   }
 
  private:
@@ -367,21 +456,6 @@ class BatchContext {
     }
   }
 
-  struct BlockData {
-    std::unordered_set<std::string> used_keys;
-    std::shared_ptr<Block> block;
-    size_t count = 0;
-  };
-
-  BlockData& data(bool read) {
-    return read ? read_data_ : write_data_;
-  }
-
-  std::shared_ptr<client::YBClient> client_;
-  std::shared_ptr<RedisInboundCall> call_;
-  rpc::RpcMethodMetrics metrics_get_internal_;
-  rpc::RpcMethodMetrics metrics_set_internal_;
-
   BlockData read_data_;
   BlockData write_data_;
   std::shared_ptr<Block> flush_head_;
@@ -390,6 +464,95 @@ class BatchContext {
   // false - last conflict was write.
   // indeterminate - no conflict was found yet.
   boost::logic::tribool last_conflict_was_read_ = boost::logic::indeterminate;
+};
+
+class BatchContext : public RefCountedThreadSafe<BatchContext> {
+ public:
+  BatchContext(const std::shared_ptr<client::YBClient>& client,
+               SessionPool* session_pools,
+               const std::shared_ptr<RedisInboundCall>& call,
+               rpc::RpcMethodMetrics* metrics_internal)
+      : client_(client),
+        session_pools_(session_pools),
+        call_(call),
+        metrics_internal_(metrics_internal),
+        operations_(&arena_),
+        tablets_(&arena_) {}
+
+  const RedisClientCommand& command(size_t idx) const {
+    return call_->client_batch()[idx];
+  }
+
+  const std::shared_ptr<RedisInboundCall>& call() const {
+    return call_;
+  }
+
+  void Commit() {
+    if (operations_.empty()) {
+      return;
+    }
+
+    MonoTime deadline = MonoTime::FineNow() +
+                        MonoDelta::FromMilliseconds(FLAGS_redis_service_yb_client_timeout_millis);
+    lookups_left_.store(operations_.size(), std::memory_order_release);
+    for (auto& operation : operations_) {
+      client_->LookupTabletByKey(
+          operation.operation().table(),
+          operation.partition_key(),
+          deadline,
+          &operation.tablet(),
+          Bind(&BatchContext::LookupDone, this, &operation));
+    }
+  }
+
+  template <class Op>
+  void Apply(size_t idx,
+             std::shared_ptr<Op> op,
+             const rpc::RpcMethodMetrics& metrics) {
+    operations_.emplace_back(call_, idx, std::move(op), metrics);
+    if (PREDICT_FALSE(operations_.back().responded())) {
+      operations_.pop_back();
+    }
+  }
+
+ private:
+  void LookupDone(Operation* operation, const Status& status) {
+    if (!status.ok()) {
+      operation->Respond(status);
+    }
+    if (lookups_left_.fetch_sub(1, std::memory_order_acquire) != 1) {
+      return;
+    }
+
+    BatchContextPtr self(this);
+    for (auto& operation : operations_) {
+      if (!operation.responded()) {
+        auto it = tablets_.find(operation.tablet()->tablet_id());
+        TabletOperations* operations;
+        if (it == tablets_.end()) {
+          it = tablets_.emplace(operation.tablet()->tablet_id(), TabletOperations(&arena_)).first;
+          operations = &it->second;
+        } else {
+          operations = &it->second;
+        }
+        operations->Process(self, &arena_, &operation, metrics_internal_);
+      }
+    }
+
+    for (auto& tablet : tablets_) {
+      tablet.second.Done(session_pools_);
+    }
+  }
+
+  std::shared_ptr<client::YBClient> client_;
+  SessionPool* session_pools_;
+  std::shared_ptr<RedisInboundCall> call_;
+  rpc::RpcMethodMetrics* metrics_internal_;
+
+  Arena arena_;
+  MCDeque<Operation> operations_;
+  std::atomic<size_t> lookups_left_;
+  MCUnorderedMap<Slice, TabletOperations, Slice::Hash> tablets_;
 };
 
 template<class Op>
@@ -410,6 +573,8 @@ struct RedisCommandInfo {
   yb::rpc::RpcMethodMetrics metrics;
 };
 
+typedef std::shared_ptr<RedisCommandInfo> RedisCommandInfoPtr;
+
 } // namespace
 
 class RedisServiceImpl::Impl {
@@ -420,7 +585,18 @@ class RedisServiceImpl::Impl {
 
  private:
   void SetupMethod(const RedisCommandInfo& info) {
-    command_name_to_info_map_[info.name] = info;
+    auto info_ptr = std::make_shared<RedisCommandInfo>(info);
+    std::string lower_name = boost::to_lower_copy(info.name);
+    std::string upper_name = boost::to_upper_copy(info.name);
+    size_t len = info.name.size();
+    std::string temp(len, 0);
+    for (size_t i = 0; i != (1ULL << len); ++i) {
+      for (size_t j = 0; j != len; ++j) {
+        temp[j] = i & (1 << j) ? upper_name[j] : lower_name[j];
+      }
+      names_.push_back(temp);
+      CHECK(command_name_to_info_map_.emplace(names_.back(), info_ptr).second);
+    }
   }
 
   void LocalCommand(
@@ -446,15 +622,16 @@ class RedisServiceImpl::Impl {
                           size_t idx,
                           const std::string& error);
 
-  std::unordered_map<std::string, RedisCommandInfo> command_name_to_info_map_;
+  std::deque<std::string> names_;
+  std::unordered_map<Slice, RedisCommandInfoPtr, Slice::Hash> command_name_to_info_map_;
   yb::rpc::RpcMethodMetrics metrics_error_;
-  yb::rpc::RpcMethodMetrics metrics_get_internal_;
-  yb::rpc::RpcMethodMetrics metrics_set_internal_;
+  std::array<yb::rpc::RpcMethodMetrics, 2> metrics_internal_;
 
   std::string yb_tier_master_addresses_;
   std::mutex yb_mutex_;  // Mutex that protects the creation of client_ and table_.
   std::atomic<bool> yb_client_initialized_;
   std::shared_ptr<client::YBClient> client_;
+  std::array<SessionPool, 2> session_pools_;
   std::shared_ptr<client::YBTable> table_;
 
   RedisServer* server_;
@@ -474,13 +651,19 @@ RedisResponsePB ParseConfig(const RedisClientCommand& command) {
   return RedisResponsePB();
 }
 
+void AddElements(const RefCntBuffer& buffer, RedisArrayPB* array) {
+  array->add_elements(buffer.data(), buffer.size());
+}
+
 RedisResponsePB ParseRole(const RedisClientCommand& command) {
   RedisResponsePB responsePB;
   responsePB.set_code(RedisResponsePB_RedisStatusCode_OK);
   auto array_response = responsePB.mutable_array_response();
-  array_response->add_elements(redisserver::EncodeAsBulkString("master"));
-  array_response->add_elements(redisserver::EncodeAsInteger(0));
-  array_response->add_elements(redisserver::EncodeAsArrayOfEncodedElements(vector<string>()));
+  AddElements(redisserver::EncodeAsBulkString("master"), array_response);
+  AddElements(redisserver::EncodeAsInteger(0), array_response);
+  array_response->add_elements(
+      redisserver::EncodeAsArrayOfEncodedElements(std::initializer_list<std::string>()));
+  array_response->set_encoded(true);
   return responsePB;
 }
 
@@ -511,22 +694,23 @@ void RedisServiceImpl::Impl::PopulateHandlers() {
 
   // Set up metrics for erroneous calls.
   metrics_error_.handler_latency = REDIS_METRIC(error).Instantiate(metric_entity);
-  metrics_get_internal_.handler_latency = REDIS_METRIC(get_internal).Instantiate(metric_entity);
-  metrics_set_internal_.handler_latency = REDIS_METRIC(set_internal).Instantiate(metric_entity);
+  metrics_internal_[false].handler_latency = REDIS_METRIC(set_internal).Instantiate(metric_entity);
+  metrics_internal_[true].handler_latency = REDIS_METRIC(get_internal).Instantiate(metric_entity);
 }
 
 const RedisCommandInfo* RedisServiceImpl::Impl::FetchHandler(const RedisClientCommand& cmd_args) {
   if (cmd_args.size() < 1) {
     return nullptr;
   }
-  std::string cmd_name = cmd_args[0].ToBuffer();
-  boost::to_lower(cmd_name);
-  auto iter = command_name_to_info_map_.find(cmd_name);
+  Slice cmd_name = cmd_args[0];
+  auto iter = command_name_to_info_map_.find(cmd_args[0]);
   if (iter == command_name_to_info_map_.end()) {
-    LOG(ERROR) << "Command " << cmd_name << " not yet supported.";
+    LOG(ERROR) << "Command " << cmd_name << " not yet supported. "
+               << "Arguments: " << util::ToString(cmd_args) << ". "
+               << "Raw: " << Slice(cmd_args[0].data(), cmd_args.back().end()).ToDebugString();
     return nullptr;
   }
-  return &iter->second;
+  return iter->second.get();
 }
 
 RedisServiceImpl::Impl::Impl(RedisServer* server, string yb_tier_master_addresses)
@@ -539,7 +723,7 @@ RedisServiceImpl::Impl::Impl(RedisServer* server, string yb_tier_master_addresse
 
 Status RedisServiceImpl::Impl::SetUpYBClient() {
   std::lock_guard<std::mutex> guard(yb_mutex_);
-  if (!yb_client_initialized_.load()) {
+  if (!yb_client_initialized_.load(std::memory_order_relaxed)) {
     YBClientBuilder client_builder;
     client_builder.set_client_name("redis_ybclient");
     client_builder.default_rpc_timeout(MonoDelta::FromSeconds(kRpcTimeoutSec));
@@ -555,7 +739,11 @@ Status RedisServiceImpl::Impl::SetUpYBClient() {
 
     const YBTableName table_name(kRedisKeyspaceName, kRedisTableName);
     RETURN_NOT_OK(client_->OpenTable(table_name, &table_));
-    yb_client_initialized_.store(true);
+
+    session_pools_[0].Init(client_, false);
+    session_pools_[1].Init(client_, true);
+
+    yb_client_initialized_.store(true, std::memory_order_release);
   }
   return Status::OK();
 }
@@ -581,7 +769,10 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
   // We process them as follows:
   // Each read commands are processed individually.
   // Sequential write commands use single session and the same batcher.
-  BatchContext context(client_, call, metrics_get_internal_, metrics_set_internal_);
+  auto context = make_scoped_refptr(new BatchContext(client_,
+                                                     session_pools_.data(),
+                                                     call,
+                                                     metrics_internal_.data()));
   const auto& batch = call->client_batch();
   for (size_t idx = 0; idx != batch.size(); ++idx) {
     const RedisClientCommand& c = batch[idx];
@@ -603,10 +794,10 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
       RespondWithFailure(call, idx, "Wrong number of arguments.");
     } else {
       // Handle the call.
-      cmd_info->functor(*cmd_info, idx, &context);
+      cmd_info->functor(*cmd_info, idx, context.get());
     }
   }
-  context.Commit();
+  context->Commit();
 }
 
 void RedisServiceImpl::Impl::LocalCommand(
@@ -618,8 +809,7 @@ void RedisServiceImpl::Impl::LocalCommand(
   RedisResponsePB local_response = parse(command);
   VLOG_IF(4, local_response.has_string_response()) << "Responding to " << command[0].ToBuffer()
                                                    << " with " << local_response.string_response();
-  context->call()->RespondSuccess(idx, local_response, info.metrics,
-                                  local_response.has_array_response());
+  context->call()->RespondSuccess(idx, info.metrics, &local_response);
   VLOG(4) << "Done responding to " << command[0].ToBuffer();
 }
 
@@ -633,18 +823,12 @@ void RedisServiceImpl::Impl::Command(
 
   auto op = std::make_shared<Op>(table_);
   const auto& command = context->command(idx);
-  boost::container::small_vector<std::string, RedisClientCommand::static_capacity> keys;
   Status s = parser(op.get(), command);
-  if (s.ok() && FLAGS_redis_safe_batch) {
-    Slice key;
-    s = op->row().GetBinary(kRedisKeyColumnName, &key);
-    keys.push_back(key.ToBuffer());
-  }
   if (!s.ok()) {
     RespondWithFailure(context->call(), idx, s.message().ToBuffer());
     return;
   }
-  context->Apply(idx, std::move(op), info.metrics, &keys);
+  context->Apply(idx, std::move(op), info.metrics);
 }
 
 void RedisServiceImpl::Impl::RespondWithFailure(

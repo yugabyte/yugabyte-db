@@ -31,11 +31,14 @@
 #ifndef YB_UTIL_MEMORY_MC_TYPES_H
 #define YB_UTIL_MEMORY_MC_TYPES_H
 
+#include <deque>
 #include <list>
-#include <set>
 #include <map>
+#include <set>
 #include <string>
 #include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <boost/tti/has_type.hpp>
@@ -47,6 +50,8 @@ namespace yb {
 //--------------------------------------------------------------------------------------------------
 // Buffer (char*) support.
 char *MCStrdup(Arena *arena, const char *str);
+
+template<class MCObject> using MCDeque = std::deque<MCObject, ArenaAllocator<MCObject>>;
 
 // Class MCList.
 template<class MCObject> using MCList = std::list<MCObject, ArenaAllocator<MCObject>>;
@@ -61,6 +66,19 @@ using MCSet = std::set<MCObject, Compare, ArenaAllocator<MCObject>>;
 // Class MCMap.
 template<class MCKey, class MCObject, class Compare = std::less<MCKey>>
 using MCMap = std::map<MCKey, MCObject, Compare, ArenaAllocator<MCObject>>;
+
+template<class Key, class Tp, class Hash = std::hash<Key>, class Pred = std::equal_to<Key>>
+using MCUnorderedMap = std::unordered_map<Key,
+                                          Tp,
+                                          Hash,
+                                          Pred,
+                                          ArenaAllocator<std::pair<const Key, Tp>>>;
+
+template<class Key, class Hash = std::hash<Key>, class Pred = std::equal_to<Key>>
+using MCUnorderedSet = std::unordered_set<Key,
+                                          Hash,
+                                          Pred,
+                                          ArenaAllocator<Key>>;
 
 //--------------------------------------------------------------------------------------------------
 // String support.
@@ -132,6 +150,7 @@ class MCBase {
 
   void operator delete(void* ptr) noexcept;
   void *operator new(size_t bytes, Arena* arena) noexcept;
+  void *operator new(size_t bytes, void* address) noexcept;
 
  private:
   //------------------------------------------------------------------------------------------------

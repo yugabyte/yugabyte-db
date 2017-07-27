@@ -18,8 +18,10 @@
 #ifndef YB_TABLET_TRANSACTIONS_TRANSACTION_H_
 #define YB_TABLET_TRANSACTIONS_TRANSACTION_H_
 
-#include <string>
 #include <mutex>
+#include <string>
+
+#include <boost/optional/optional.hpp>
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol.h"
@@ -195,9 +197,7 @@ class TransactionState {
 
   // Return the arena associated with this transaction.
   // NOTE: this is not a thread-safe arena!
-  Arena* arena() {
-    return &arena_;
-  }
+  Arena* arena();
 
   // Each implementation should have its own ToString() method.
   virtual std::string ToString() const = 0;
@@ -258,7 +258,7 @@ class TransactionState {
   // The clock error when hybrid_time_ was read.
   uint64_t hybrid_time_error_;
 
-  Arena arena_;
+  boost::optional<Arena> arena_;
 
   // This OpId stores the canonical "anchor" OpId for this transaction.
   consensus::OpId op_id_;

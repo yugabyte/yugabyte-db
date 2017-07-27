@@ -646,6 +646,14 @@ Status YBClient::GetTablets(const YBTableName& table_name,
   return Status::OK();
 }
 
+void YBClient::LookupTabletByKey(const YBTable* table,
+                                 const std::string& partition_key,
+                                 const MonoTime& deadline,
+                                 scoped_refptr<internal::RemoteTablet>* remote_tablet,
+                                 const StatusCallback& callback) {
+  data_->meta_cache_->LookupTabletByKey(table, partition_key, deadline, remote_tablet, callback);
+}
+
 Status YBClient::SetMasterLeaderSocket(Endpoint* leader_socket) {
   HostPort leader_hostport = data_->leader_master_hostport();
   std::vector<Endpoint> leader_addrs;

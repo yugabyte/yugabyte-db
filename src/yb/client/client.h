@@ -43,6 +43,7 @@
 
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
+#include "yb/util/status_callback.h"
 #include "yb/util/net/net_fwd.h"
 
 template<class T> class scoped_refptr;
@@ -382,6 +383,12 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   CHECKED_STATUS SetReplicationInfo(const master::ReplicationInfoPB& replication_info);
 
   std::string client_id() const { return client_id_; }
+
+  void LookupTabletByKey(const YBTable* table,
+                         const std::string& partition_key,
+                         const MonoTime& deadline,
+                         scoped_refptr<internal::RemoteTablet>* remote_tablet,
+                         const StatusCallback& callback);
 
  private:
   class Data;

@@ -23,6 +23,7 @@
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
 
+#include "yb/client/meta_cache.h"
 
 namespace yb {
 
@@ -69,7 +70,7 @@ class YBOperation {
   };
   virtual ~YBOperation();
 
-  Status SetKey(const std::string& string_key);
+  Status SetKey(const Slice& string_key);
 
   const YBTable* table() const { return table_.get(); }
 
@@ -82,6 +83,14 @@ class YBOperation {
   virtual bool read_only() = 0;
 
   virtual void SetHashCode(uint16_t hash_code) = 0;
+
+  const scoped_refptr<internal::RemoteTablet>& tablet() const {
+    return tablet_;
+  }
+
+  void SetTablet(const scoped_refptr<internal::RemoteTablet>& tablet) {
+    tablet_ = tablet;
+  }
 
   // Returns the partition key of the operation.
   virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const;
@@ -99,6 +108,8 @@ class YBOperation {
   // Return the number of bytes required to buffer this operation,
   // including direct and indirect data.
   int64_t SizeInBuffer() const;
+
+  scoped_refptr<internal::RemoteTablet> tablet_;
 
   DISALLOW_COPY_AND_ASSIGN(YBOperation);
 };

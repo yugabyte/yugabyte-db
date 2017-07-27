@@ -32,8 +32,14 @@ TransactionState::TransactionState(TabletPeer* tablet_peer)
     : tablet_peer_(tablet_peer),
       completion_clbk_(new TransactionCompletionCallback()),
       hybrid_time_error_(0),
-      arena_(32 * 1024, 4 * 1024 * 1024),
       external_consistency_mode_(CLIENT_PROPAGATED) {
+}
+
+Arena* TransactionState::arena() {
+  if (!arena_) {
+    arena_.emplace(32 * 1024, 4 * 1024 * 1024);
+  }
+  return arena_.get_ptr();
 }
 
 TransactionState::~TransactionState() {

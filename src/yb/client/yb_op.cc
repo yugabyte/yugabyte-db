@@ -54,7 +54,7 @@ YBOperation::YBOperation(const shared_ptr<YBTable>& table)
 
 YBOperation::~YBOperation() {}
 
-Status YBOperation::SetKey(const string& string_key) {
+Status YBOperation::SetKey(const Slice& string_key) {
   return mutable_row()->SetBinaryCopy(kRedisKeyColumnName, string_key);
 }
 

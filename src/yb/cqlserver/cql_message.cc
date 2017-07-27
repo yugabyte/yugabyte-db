@@ -1571,10 +1571,10 @@ CQLServerEvent::CQLServerEvent(std::unique_ptr<EventResponse> event_response)
   CHECK_NOTNULL(event_response_.get());
   faststring temp;
   event_response_->Serialize(&temp);
-  serialized_response_ = util::RefCntBuffer(temp);
+  serialized_response_ = RefCntBuffer(temp);
 }
 
-void CQLServerEvent::Serialize(std::deque<util::RefCntBuffer>* output) const {
+void CQLServerEvent::Serialize(std::deque<RefCntBuffer>* output) const {
   output->push_back(serialized_response_);
 }
 
@@ -1591,7 +1591,7 @@ void CQLServerEventList::Transferred(const Status& status) {
   }
 }
 
-void CQLServerEventList::Serialize(std::deque<util::RefCntBuffer>* output) const {
+void CQLServerEventList::Serialize(std::deque<RefCntBuffer>* output) const {
   for (const auto& cql_server_event : cql_server_events_) {
     cql_server_event->Serialize(output);
   }

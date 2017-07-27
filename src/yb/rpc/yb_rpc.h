@@ -80,7 +80,7 @@ class YBInboundCall : public InboundCall {
   }
 
   // See RpcContext::AddRpcSidecar()
-  CHECKED_STATUS AddRpcSidecar(util::RefCntBuffer car, int* idx);
+  CHECKED_STATUS AddRpcSidecar(RefCntBuffer car, int* idx);
 
   // Serializes 'response' into the InboundCall's internal buffer, and marks
   // the call as a success. Enqueues the response back to the connection
@@ -110,7 +110,7 @@ class YBInboundCall : public InboundCall {
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
-  void Serialize(std::deque<util::RefCntBuffer>* output) const override;
+  void Serialize(std::deque<RefCntBuffer>* output) const override;
 
   void LogTrace() const override;
   std::string ToString() const override;
@@ -133,7 +133,7 @@ class YBInboundCall : public InboundCall {
  protected:
   // Vector of additional sidecars that are tacked on to the call's response
   // after serialization of the protobuf. See rpc/rpc_sidecar.h for more info.
-  std::vector<util::RefCntBuffer> sidecars_;
+  std::vector<RefCntBuffer> sidecars_;
 
   // Serialize and queue the response.
   virtual void Respond(const google::protobuf::MessageLite& response, bool is_success);
@@ -149,7 +149,7 @@ class YBInboundCall : public InboundCall {
   RequestHeader header_;
 
   // The buffers for serialized response. Set by SerializeResponseBuffer().
-  util::RefCntBuffer response_buf_;
+  RefCntBuffer response_buf_;
 
   // Proto service this calls belongs to. Used for routing.
   // This field is filled in when the inbound request header is parsed.

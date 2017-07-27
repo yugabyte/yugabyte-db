@@ -410,11 +410,13 @@ void TransactionDriver::ApplyTask() {
   TRACE_EVENT_FLOW_END0("txn", "ApplyTask", this);
   ADOPT_TRACE(trace());
 
+#ifndef NDEBUG
   {
     std::lock_guard<simple_spinlock> lock(lock_);
     DCHECK_EQ(replication_state_, REPLICATED);
     DCHECK_EQ(prepare_state_, PREPARED);
   }
+#endif
 
   // We need to ref-count ourself, since Commit() may run very quickly
   // and end up calling Finalize() while we're still in this code.

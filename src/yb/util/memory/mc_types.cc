@@ -35,4 +35,8 @@ void *MCBase::operator new(size_t bytes, Arena *arena) noexcept {
   return arena->AllocateBytesAligned(bytes, sizeof(void*));
 }
 
+void *MCBase::operator new(size_t bytes, void* ptr) noexcept {
+  return ptr;
+}
+
 }  // namespace yb

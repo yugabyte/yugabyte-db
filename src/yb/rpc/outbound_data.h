@@ -21,7 +21,7 @@ class OutboundData : public std::enable_shared_from_this<OutboundData> {
 
   virtual ~OutboundData() {}
   // Serializes the data to be sent out via the RPC framework.
-  virtual void Serialize(std::deque<util::RefCntBuffer> *output) const = 0;
+  virtual void Serialize(std::deque<RefCntBuffer> *output) const = 0;
   virtual std::string ToString() const = 0;
 };
 

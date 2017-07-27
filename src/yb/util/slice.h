@@ -173,6 +173,8 @@ class Slice {
   //   >  0 iff "*this" >  "b"
   int compare(const Slice& b) const;
 
+  size_t hash() const noexcept;
+
   // Return true iff "x" is a prefix of "*this"
   bool starts_with(const Slice& x) const {
     return ((size_ >= x.size_) &&
@@ -188,6 +190,12 @@ class Slice {
   struct Comparator {
     bool operator()(const Slice& a, const Slice& b) const {
       return a.compare(b) < 0;
+    }
+  };
+
+  struct Hash {
+    size_t operator()(const Slice& a) const noexcept {
+      return a.hash();
     }
   };
 
@@ -255,6 +263,17 @@ inline int Slice::compare(const Slice& b) const {
     else if (size_ > b.size_) r = +1;
   }
   return r;
+}
+
+inline size_t Slice::hash() const noexcept {
+  constexpr uint64_t kFnvOffset = 14695981039346656037ULL;
+  constexpr uint64_t kFnvPrime = 1099511628211ULL;
+  size_t result = kFnvOffset;
+  const uint8_t* e = end();
+  for (const uint8_t* i = data_; i != e; ++i) {
+    result = (result * kFnvPrime) ^ *i;
+  }
+  return result;
 }
 
 inline size_t Slice::difference_offset(const Slice& b) const {

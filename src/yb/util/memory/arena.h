@@ -293,8 +293,9 @@ class ArenaAllocatorBase {
 
   void deallocate(pointer p, size_type n) {}
 
-  void construct(pointer p, const T& val) {
-    new(reinterpret_cast<void*>(p)) T(val);
+  template<class... Args>
+  void construct(pointer p, Args&&... args) {
+    new (reinterpret_cast<void*>(p)) T(std::forward<Args>(args)...);
   }
 
   void destroy(pointer p) { p->~T(); }

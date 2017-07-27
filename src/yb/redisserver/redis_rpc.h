@@ -6,6 +6,7 @@
 #define YB_REDISSERVER_REDIS_RPC_H
 
 #include "yb/redisserver/redis_fwd.h"
+#include "yb/common/redis_protocol.pb.h"
 
 #include "yb/rpc/connection.h"
 #include "yb/rpc/rpc_with_queue.h"
@@ -43,7 +44,7 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
-  void Serialize(std::deque<util::RefCntBuffer>* output) const override;
+  void Serialize(std::deque<RefCntBuffer>* output) const override;
 
   void LogTrace() const override;
   std::string ToString() const override;
@@ -59,15 +60,14 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
 
   void RespondFailure(size_t idx, const Status& status);
   void RespondSuccess(size_t idx,
-                      const RedisResponsePB& resp,
                       const rpc::RpcMethodMetrics& metrics,
-                      bool use_encoded_array = false);
+                      RedisResponsePB* resp);
  private:
-  void Respond(size_t idx, const util::RefCntBuffer& buffer, bool is_success);
+  void Respond(size_t idx, bool is_success, RedisResponsePB* resp);
 
   // The connection on which this inbound call arrived.
   static constexpr size_t batch_capacity = RedisClientBatch::static_capacity;
-  boost::container::small_vector<util::RefCntBuffer, batch_capacity> responses_;
+  boost::container::small_vector<RedisResponsePB, batch_capacity> responses_;
   boost::container::small_vector<std::atomic<size_t>, batch_capacity> ready_;
   std::atomic<size_t> ready_count_{0};
   std::atomic<bool> had_failures_{false};

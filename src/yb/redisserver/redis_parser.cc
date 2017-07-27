@@ -5,6 +5,8 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include <boost/optional/optional.hpp>
+
 #include "yb/client/client.h"
 #include "yb/client/yb_op.h"
 
@@ -39,6 +41,29 @@ string to_lower_case(Slice slice) {
   return boost::to_lower_copy(slice.ToBuffer());
 }
 
+Result<int64_t> ParseInt64(const Slice& slice, const char* field) {
+  char* end = nullptr;
+  int64_t val = std::strtoll(slice.cdata(), &end, 10);
+  if (end != slice.cend()) {
+    return STATUS_SUBSTITUTE(InvalidArgument,
+        "$0 field $1 is not parsable as a valid number", field, slice.ToDebugString());
+  }
+  return val;
+}
+
+Result<int32_t> ParseInt32(const Slice& slice, const char* field) {
+  auto val = ParseInt64(slice, field);
+  if (!val.ok()) {
+    return std::move(val.status());
+  }
+  if (*val < std::numeric_limits<int32_t>::min() ||
+      *val > std::numeric_limits<int32_t>::max()) {
+    return STATUS_SUBSTITUTE(InvalidArgument,
+        "$0 field $1 is not within valid bounds", field, slice.ToDebugString());
+  }
+  return static_cast<int32_t>(*val);
+}
+
 } // namespace
 
 Status ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
@@ -47,11 +72,11 @@ Status ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
         "A SET request must have a non empty key field");
   }
   op->mutable_request()->set_allocated_set_request(new RedisSetRequestPB());
-  const string string_key = args[1].ToBuffer();
-  const string string_value = args[2].ToBuffer();
-  op->mutable_request()->mutable_key_value()->set_key(string_key);
-  RETURN_NOT_OK(op->SetKey(string_key));
-  op->mutable_request()->mutable_key_value()->add_value(string_value);
+  const auto& key = args[1];
+  const auto& value = args[2];
+  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  RETURN_NOT_OK(op->SetKey(key));
+  op->mutable_request()->mutable_key_value()->add_value(value.cdata(), value.size());
   int idx = 3;
   while (idx < args.size()) {
     if (args[idx] == "EX" || args[idx] == "PX") {
@@ -59,20 +84,14 @@ Status ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
         return STATUS_SUBSTITUTE(InvalidArgument,
             "Expected TTL field after the EX flag, no vale found");
       }
-      string ttl_string = args[idx + 1].ToString();
-      int64_t ttl_val;
-      try {
-        ttl_val = std::stoll(ttl_string);
-        if (ttl_val <= 0 || ttl_val > kMaxTTLSec) {
-          return STATUS_SUBSTITUTE(InvalidArgument,
-              "TTL field $0 is not within valid bounds", ttl_string);
-        }
-      } catch (std::invalid_argument e) {
-        return STATUS_SUBSTITUTE(InvalidArgument,
-            "TTL field $0 is not parsable as a valid number", ttl_string);
+      auto ttl_val = ParseInt64(args[idx + 1], "TTL");
+      RETURN_NOT_OK(ttl_val);
+      if (*ttl_val <= 0 || *ttl_val > kMaxTTLSec) {
+        return STATUS_FORMAT(InvalidArgument,
+            "TTL field $0 is not within valid bounds", args[idx + 1]);
       }
       const int64_t milliseconds_per_unit = args[idx] == "EX" ? 1000 : 1;
-      op->mutable_request()->mutable_set_request()->set_ttl(ttl_val * milliseconds_per_unit);
+      op->mutable_request()->mutable_set_request()->set_ttl(*ttl_val * milliseconds_per_unit);
       idx += 2;
     } else if (args[idx] == "XX") {
       op->mutable_request()->mutable_set_request()->set_mode(REDIS_WRITEMODE_UPDATE);
@@ -81,8 +100,8 @@ Status ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
       op->mutable_request()->mutable_set_request()->set_mode(REDIS_WRITEMODE_INSERT);
       idx += 1;
     } else {
-      return STATUS_SUBSTITUTE(InvalidArgument,
-          "Unidentified argument $0 found while parsing set command", args[idx].ToString());
+      return STATUS_FORMAT(InvalidArgument,
+          "Unidentified argument $0 found while parsing set command", args[idx]);
     }
   }
   return Status::OK();
@@ -98,15 +117,15 @@ Status ParseMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
 }
 
 Status ParseHSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
-  const string string_key = args[1].ToBuffer();
-  const string string_subkey = args[2].ToBuffer();
-  const string string_value = args[3].ToBuffer();
-  RETURN_NOT_OK(op->SetKey(string_key));
+  const auto& key = args[1];
+  const auto& subkey = args[2];
+  const auto& value = args[3];
+  RETURN_NOT_OK(op->SetKey(key));
   op->mutable_request()->set_allocated_set_request(new RedisSetRequestPB());
-  op->mutable_request()->mutable_key_value()->set_key(string_key);
+  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
   op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_HASH);
-  op->mutable_request()->mutable_key_value()->add_subkey(string_subkey);
-  op->mutable_request()->mutable_key_value()->add_value(string_value);
+  op->mutable_request()->mutable_key_value()->add_subkey(subkey.cdata(), subkey.size());
+  op->mutable_request()->mutable_key_value()->add_value(value.cdata(), value.size());
   return Status::OK();
 }
 
@@ -117,125 +136,111 @@ Status ParseHMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
     return STATUS_SUBSTITUTE(InvalidArgument,
         "wrong number of arguments for HMSET");
   }
-  RETURN_NOT_OK(op->SetKey(args[1].ToString()));
+  RETURN_NOT_OK(op->SetKey(args[1]));
   op->mutable_request()->set_allocated_set_request(new RedisSetRequestPB());
   op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_HASH);
-  op->mutable_request()->mutable_key_value()->set_key(args[1].ToString());
+  op->mutable_request()->mutable_key_value()->set_key(args[1].cdata(), args[1].size());
   for (int i = 2; i < args.size(); i += 2) {
-    op->mutable_request()->mutable_key_value()->add_subkey(args[i].ToString());
-    op->mutable_request()->mutable_key_value()->add_value(args[i+1].ToString());
+    op->mutable_request()->mutable_key_value()->add_subkey(args[i].cdata(), args[i].size());
+    op->mutable_request()->mutable_key_value()->add_value(args[i + 1].cdata(), args[i + 1].size());
+  }
+  return Status::OK();
+}
+
+template <class YBRedisOp>
+Status ParseCollection(YBRedisOp *op,
+                       const RedisClientCommand& args,
+                       boost::optional<RedisDataType> type) {
+  const auto& key = args[1];
+  RETURN_NOT_OK(op->SetKey(key));
+  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  if (type) {
+    op->mutable_request()->mutable_key_value()->set_type(*type);
+  }
+  for (size_t i = 2; i < args.size(); i++) {
+    op->mutable_request()->mutable_key_value()->add_subkey(args[i].cdata(), args[i].size());
   }
   return Status::OK();
 }
 
 Status ParseHDel(YBRedisWriteOp *op, const RedisClientCommand& args) {
-  const string string_key = args[1].ToString();
-  RETURN_NOT_OK(op->SetKey(string_key));
   op->mutable_request()->set_allocated_del_request(new RedisDelRequestPB());
-  op->mutable_request()->mutable_key_value()->set_key(string_key);
-  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_HASH);
-  for (size_t i = 2; i < args.size(); i++) {
-    op->mutable_request()->mutable_key_value()->add_subkey(args[i].ToString());
-  }
-  return Status::OK();
+  return ParseCollection(op, args, REDIS_TYPE_HASH);
 }
 
 Status ParseSAdd(YBRedisWriteOp *op, const RedisClientCommand& args) {
-  const string string_key = args[1].ToString();
-  RETURN_NOT_OK(op->SetKey(string_key));
   op->mutable_request()->set_allocated_add_request(new RedisAddRequestPB());
-  op->mutable_request()->mutable_key_value()->set_key(string_key);
-  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_SET);
-  for (size_t i = 2; i < args.size(); i++) {
-    op->mutable_request()->mutable_key_value()->add_subkey(args[i].ToString());
-  }
-  return Status::OK();
+  return ParseCollection(op, args, REDIS_TYPE_SET);
 }
 
 Status ParseSRem(YBRedisWriteOp *op, const RedisClientCommand& args) {
-  const string string_key = args[1].ToString();
-  RETURN_NOT_OK(op->SetKey(string_key));
   op->mutable_request()->set_allocated_del_request(new RedisDelRequestPB());
-  op->mutable_request()->mutable_key_value()->set_key(string_key);
-  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_SET);
-  for (size_t i = 2; i < args.size(); i++) {
-    op->mutable_request()->mutable_key_value()->add_subkey(args[i].ToString());
-  }
-  return Status::OK();
+  return ParseCollection(op, args, REDIS_TYPE_SET);
 }
 
 Status ParseGetSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
-  const string string_key = args[1].ToBuffer();
-  const string string_value = args[2].ToBuffer();
-  RETURN_NOT_OK(op->SetKey(string_key));
+  const auto& key = args[1];
+  const auto& value = args[2];
+  RETURN_NOT_OK(op->SetKey(key));
   op->mutable_request()->set_allocated_getset_request(new RedisGetSetRequestPB());
-  op->mutable_request()->mutable_key_value()->set_key(string_key);
-  op->mutable_request()->mutable_key_value()->add_value(string_value);
+  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->add_value(value.cdata(), value.size());
   return Status::OK();
 }
 
 Status ParseAppend(YBRedisWriteOp* op, const RedisClientCommand& args) {
-  const string string_key = args[1].ToBuffer();
-  const string string_value = args[2].ToBuffer();
-  RETURN_NOT_OK(op->SetKey(string_key));
+  const auto& key = args[1];
+  const auto& value = args[2];
+  RETURN_NOT_OK(op->SetKey(key));
   op->mutable_request()->set_allocated_append_request(new RedisAppendRequestPB());
-  op->mutable_request()->mutable_key_value()->set_key(string_key);
-  op->mutable_request()->mutable_key_value()->add_value(string_value);
+  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->add_value(value.cdata(), value.size());
   return Status::OK();
 }
 
 // Note: deleting only one key is supported using one command as of now.
 Status ParseDel(YBRedisWriteOp* op, const RedisClientCommand& args) {
-  const string string_key = args[1].ToBuffer();
-  RETURN_NOT_OK(op->SetKey(string_key));
+  const auto& key = args[1];
+  RETURN_NOT_OK(op->SetKey(key));
   op->mutable_request()->set_allocated_del_request(new RedisDelRequestPB());
-  op->mutable_request()->mutable_key_value()->set_key(string_key);
+  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
   // We should be able to delete all types of top level keys
   op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_NONE);
   return Status::OK();
 }
 
 Status ParseSetRange(YBRedisWriteOp* op, const RedisClientCommand& args) {
-  const string string_key = args[1].ToString();
-  const string string_value = args[3].ToString();
-  RETURN_NOT_OK(op->SetKey(string_key));
+  const auto& key = args[1];
+  const auto& value = args[3];
+  RETURN_NOT_OK(op->SetKey(key));
   op->mutable_request()->set_allocated_set_range_request(new RedisSetRangeRequestPB());
-  op->mutable_request()->mutable_key_value()->set_key(string_key);
-  op->mutable_request()->mutable_key_value()->add_value(string_value);
+  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->add_value(value.cdata(), value.size());
 
-  const string offset_string = args[2].ToString();
-  int32_t offset_val;
-  try {
-    offset_val = std::stoi(offset_string);
-  } catch (std::invalid_argument e) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "Offset field $0 is not parsable as a valid number", offset_string);
-  } catch (std::out_of_range e) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "Offset field $0 is not within valid bounds", offset_string);
-  }
-  op->mutable_request()->mutable_set_range_request()->set_offset(offset_val);
+  auto offset = ParseInt32(args[2], "offset");
+  RETURN_NOT_OK(offset);
+  op->mutable_request()->mutable_set_range_request()->set_offset(*offset);
 
   return Status::OK();
 }
 
 Status ParseIncr(YBRedisWriteOp* op, const RedisClientCommand& args) {
-  const string string_key = args[1].ToString();
-  RETURN_NOT_OK(op->SetKey(string_key));
+  const auto& key = args[1];
+  RETURN_NOT_OK(op->SetKey(key));
   op->mutable_request()->set_allocated_incr_request(new RedisIncrRequestPB());
-  op->mutable_request()->mutable_key_value()->set_key(string_key);
+  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
   return Status::OK();
 }
 
 Status ParseGet(YBRedisReadOp* op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_get_request(new RedisGetRequestPB());
-  const string string_key = args[1].ToString();
-  RETURN_NOT_OK(op->SetKey(string_key));
-  if (string_key.empty()) {
+  const auto& key = args[1];
+  RETURN_NOT_OK(op->SetKey(key));
+  if (key.empty()) {
     return STATUS_SUBSTITUTE(InvalidArgument,
         "A GET request must have non empty key field");
   }
-  op->mutable_request()->mutable_key_value()->set_key(string_key);
+  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
   op->mutable_request()->mutable_get_request()->set_request_type(
       RedisGetRequestPB_GetRequestType_GET);
   return Status::OK();
@@ -246,13 +251,9 @@ Status ParseGet(YBRedisReadOp* op, const RedisClientCommand& args) {
 Status ParseHGetLikeCommands(YBRedisReadOp* op, const RedisClientCommand& args,
                              RedisGetRequestPB_GetRequestType request_type) {
   op->mutable_request()->set_allocated_get_request(new RedisGetRequestPB());
-      RETURN_NOT_OK(op->SetKey(args[1].ToBuffer()));
-  op->mutable_request()->mutable_key_value()->set_key(args[1].ToBuffer());
   op->mutable_request()->mutable_get_request()->set_request_type(request_type);
-  for (int i = 2; i < args.size(); i++) {
-    op->mutable_request()->mutable_key_value()->add_subkey(args[i].ToBuffer());
-  }
-  return Status::OK();
+
+  return ParseCollection(op, args, boost::none);
 }
 
 // TODO: Support MGET
@@ -306,52 +307,34 @@ Status ParseSCard(YBRedisReadOp* op, const RedisClientCommand& args) {
 
 Status ParseStrLen(YBRedisReadOp* op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_strlen_request(new RedisStrLenRequestPB());
-  const string string_key = args[1].ToString();
-  RETURN_NOT_OK(op->SetKey(string_key));
-  op->mutable_request()->mutable_key_value()->set_key(string_key);
+  const auto& key = args[1];
+  RETURN_NOT_OK(op->SetKey(key));
+  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
   return Status::OK();
 }
 
 // Note: Checking existence of only one key is supported as of now.
 Status ParseExists(YBRedisReadOp* op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_exists_request(new RedisExistsRequestPB());
-  const string string_key = args[1].ToString();
-  RETURN_NOT_OK(op->SetKey(string_key));
-  op->mutable_request()->mutable_key_value()->set_key(string_key);
+  const auto& key = args[1];
+  RETURN_NOT_OK(op->SetKey(key));
+  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
   return Status::OK();
 }
 
 Status ParseGetRange(YBRedisReadOp* op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_get_range_request(new RedisGetRangeRequestPB());
-  const string string_key = args[1].ToString();
-  RETURN_NOT_OK(op->SetKey(string_key));
-  op->mutable_request()->mutable_key_value()->set_key(string_key);
+  const auto& key = args[1];
+  RETURN_NOT_OK(op->SetKey(key));
+  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
 
-  const string start_string = args[2].ToString();
-  int32_t start_val;
-  try {
-    start_val = std::stoi(start_string);
-  } catch (std::invalid_argument e) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "Start field $0 is not parsable as a valid number", start_string);
-  } catch (std::out_of_range e) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "Start field $0 is not within valid bounds", start_string);
-  }
-  op->mutable_request()->mutable_get_range_request()->set_start(start_val);
+  auto start = ParseInt32(args[2], "Start");
+  RETURN_NOT_OK(start);
+  op->mutable_request()->mutable_get_range_request()->set_start(*start);
 
-  const string end_string = args[3].ToString();
-  int32_t end_val;
-  try {
-    end_val = std::stoi(end_string);
-  } catch (std::invalid_argument e) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "End field $0 is not parsable as a valid number", end_string);
-  } catch (std::out_of_range e) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "End field $0 is not within valid bounds", end_string);
-  }
-  op->mutable_request()->mutable_get_range_request()->set_end(end_val);
+  auto end = ParseInt32(args[3], "End");
+  RETURN_NOT_OK(end);
+  op->mutable_request()->mutable_get_range_request()->set_end(*end);
 
   return Status::OK();
 }

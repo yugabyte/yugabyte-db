@@ -46,7 +46,7 @@ enum {
 };
 
 Status SerializeMessage(const MessageLite& message,
-                        util::RefCntBuffer* param_buf,
+                        RefCntBuffer* param_buf,
                         int additional_size,
                         bool use_cached_size,
                         size_t offset,
@@ -72,7 +72,7 @@ Status SerializeMessage(const MessageLite& message,
   }
   if (param_buf != nullptr) {
     if (!*param_buf) {
-      *param_buf = util::RefCntBuffer(offset + size_with_delim);
+      *param_buf = RefCntBuffer(offset + size_with_delim);
     } else {
       CHECK_EQ(param_buf->size(), offset + size_with_delim) << "offset = " << offset;
     }
@@ -87,7 +87,7 @@ Status SerializeMessage(const MessageLite& message,
 
 Status SerializeHeader(const MessageLite& header,
                        size_t param_len,
-                       util::RefCntBuffer* header_buf,
+                       RefCntBuffer* header_buf,
                        size_t reserve_for_param,
                        size_t* header_size) {
 
@@ -104,7 +104,7 @@ Status SerializeHeader(const MessageLite& header,
       + header_pb_len;                                  // Length for the header PB itself.
   size_t total_size = header_tot_len + param_len;
 
-  *header_buf = util::RefCntBuffer(header_tot_len + reserve_for_param);
+  *header_buf = RefCntBuffer(header_tot_len + reserve_for_param);
   if (header_size != nullptr) {
     *header_size = header_tot_len;
   }
