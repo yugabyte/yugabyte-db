@@ -10,6 +10,7 @@ import './UniverseTable.scss';
 import {UniverseReadWriteMetrics} from '../../metrics';
 import {YBCost} from '../../common/descriptors';
 import {UniverseStatusContainer} from '../../universes'
+var moment = require('moment');
 
 export default class UniverseTable extends Component {
 
@@ -67,7 +68,7 @@ class YBUniverseItem extends Component {
                <Link to={`/universes/${universe.universeUUID}`}><div className={"universe-name-cell"}>{universe.name}</div></Link>
             </Col>
             <Col sm={2} className="universe-create-date-container">
-              <div >Created: {universe.creationDate}</div>
+              <div >Created: {moment(universe.creationDate).format("MM/DD/YYYY, hh:mm a")}</div>
             </Col>
             <Col sm={6} className={"list-universe-status-container"}>
               <UniverseStatusContainer currentUniverse={universe} showLabelText={true}/>
