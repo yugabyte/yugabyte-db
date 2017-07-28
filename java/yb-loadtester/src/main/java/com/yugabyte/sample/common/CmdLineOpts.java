@@ -402,5 +402,7 @@ public class CmdLineOpts {
       int port = Integer.parseInt(parts[1]);
       return new Node(host, port);
     }
+
+    public String ToString() { return host + ":" + port; }
   }
 }

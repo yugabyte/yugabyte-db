@@ -77,7 +77,8 @@ public class IOPSThread extends Thread {
         } catch (RuntimeException e) {
           numExceptions++;
           if (numConsecutiveExceptions++ % 10 == 0) {
-            LOG.info("Caught Exception ", e);
+            LOG.info("Caught Exception " + app.getRedisServerInUse(), e);
+            app.resetClients();
           }
           if (numConsecutiveExceptions > 500) {
             LOG.error("Had more than " + numConsecutiveExceptions

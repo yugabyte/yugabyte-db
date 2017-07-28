@@ -56,7 +56,8 @@ public class RedisPipelinedKeyValue extends RedisKeyValue {
       try {
         count += c.call();
       } catch (Exception e) {
-        LOG.error("Caught Exception from redis pipeline", e);
+        LOG.error(
+            "Caught Exception from redis pipeline " + getRedisServerInUse(), e);
       }
     }
     pipelinedOpResponseCallables.clear();

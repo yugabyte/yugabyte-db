@@ -52,8 +52,9 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   protected Cluster cassandra_cluster = null;
   protected Session cassandra_session = null;
   // The Java redis client.
-  private Jedis jedisClient;
-  private Pipeline jedisPipeline;
+  private Jedis jedisClient = null;
+  private Pipeline jedisPipeline = null;
+  private Node redisServerInUse = null;
   // Instance of the load generator.
   private static volatile SimpleLoadGenerator loadGenerator = null;
   // Keyspace name.
@@ -112,6 +113,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
       Node node = getRandomNode();
       // Set the timeout to something more than the timeout in the proxy layer.
       jedisClient = new Jedis(node.getHost(), node.getPort(), /* timeout ms */ 61000);
+      redisServerInUse = node;
     }
     return jedisClient;
   }
@@ -121,6 +123,14 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
       jedisPipeline = getRedisClient().pipelined();
     }
     return jedisPipeline;
+  }
+
+  public synchronized void resetClients() {
+    jedisClient = null;
+    jedisPipeline = null;
+    redisServerInUse = null;
+    cassandra_cluster = null;
+    cassandra_session = null;
   }
 
   ///////////////////// The following methods are overridden by the apps ///////////////////////////
@@ -158,6 +168,14 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
 
   protected List<String> getCreateTableStatements() {
     return Arrays.asList();
+  }
+
+  /**
+   * Returns the redis server that we are currently talking to.
+   * Used for debug purposes. Returns "" for non-redis workloads.
+   */
+  public String getRedisServerInUse() {
+    return (redisServerInUse != null ? redisServerInUse.ToString() : "");
   }
 
   /**
