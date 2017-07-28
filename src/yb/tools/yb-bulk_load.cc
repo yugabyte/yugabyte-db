@@ -9,6 +9,7 @@
 #include <glog/logging.h>
 
 #include "rocksdb/db.h"
+#include "rocksdb/options.h"
 #include "yb/client/client.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
@@ -53,6 +54,8 @@ DEFINE_string(namespace_name, "", "Namespace of the table");
 DEFINE_string(base_dir, "", "Base directory where we will store all the SSTable files");
 DEFINE_int64(memtable_size_bytes, 1_GB, "Amount of bytes to use for the rocksdb memtable");
 DEFINE_int32(row_batch_size, 1000, "The number of rows to batch together in each rocksdb write");
+DEFINE_bool(flush_batch_for_tests, false, "Option used only in tests to flush after each batch. "
+    "Used to generate multiple SST files in conjuction with small row_batch_size");
 DEFINE_string(bulk_load_helper_script, "./bulk_load_helper.sh", "Relative path for bulk load helper"
               " script");
 DEFINE_string(bulk_load_cleanup_script, "./bulk_load_cleanup.sh", "Relative path for bulk load "
@@ -65,6 +68,9 @@ DEFINE_int32(bulk_load_threadpool_queue_size, 10000,
              "Maximum number of entries to queue in the threadpool");
 DEFINE_int32(bulk_load_num_memtables, 3, "Number of memtables to use for rocksdb");
 DEFINE_int32(bulk_load_max_background_flushes, 2, "Number of flushes to perform in the background");
+DEFINE_uint64(bulk_load_num_files_per_tablet, 5,
+              "Determines how to compact the data of a tablet to ensure we have only a certain "
+              "number of sst files per tablet");
 
 namespace yb {
 namespace tools {
@@ -91,6 +97,15 @@ class BulkLoadTask : public Runnable {
   YBPartitionGenerator *const partition_generator_;
 };
 
+class CompactionTask: public Runnable {
+ public:
+  CompactionTask(const vector<string>& sst_filenames, BulkLoadDocDBUtil* db_fixture);
+  void Run();
+ private:
+  vector <string> sst_filenames_;
+  BulkLoadDocDBUtil *const db_fixture_;
+};
+
 class BulkLoad {
  public:
   CHECKED_STATUS RunBulkLoad();
@@ -101,6 +116,7 @@ class BulkLoad {
   CHECKED_STATUS FinishTabletProcessing(const TabletId &tablet_id,
                                         vector<pair<TabletId, string>> rows);
   CHECKED_STATUS RetryableSubmit(vector<pair<TabletId, string>> rows);
+  CHECKED_STATUS CompactFiles();
 
   shared_ptr<YBClient> client_;
   shared_ptr<YBTable> table_;
@@ -108,6 +124,23 @@ class BulkLoad {
   gscoped_ptr<ThreadPool> thread_pool_;
   unique_ptr<BulkLoadDocDBUtil> db_fixture_;
 };
+
+CompactionTask::CompactionTask(const vector<string>& sst_filenames, BulkLoadDocDBUtil* db_fixture)
+    : sst_filenames_(sst_filenames),
+      db_fixture_(db_fixture) {
+}
+
+void CompactionTask::Run() {
+  if (sst_filenames_.size() == 1) {
+    LOG(INFO) << "Skipping compaction since we have only a single file: " << sst_filenames_[0];
+    return;
+  }
+
+  LOG(INFO) << "Compacting files: " << util::ToString(sst_filenames_);
+  CHECK_OK(db_fixture_->rocksdb()->CompactFiles(rocksdb::CompactionOptions(),
+                                                sst_filenames_,
+                                                /* output_level */ 0));
+}
 
 BulkLoadTask::BulkLoadTask(vector<pair<TabletId, string>> rows,
                            BulkLoadDocDBUtil *db_fixture, const YBTable *table,
@@ -133,6 +166,10 @@ void BulkLoadTask::Run() {
   CHECK_OK(db_fixture_->WriteToRocksDB(
       *doc_write_batch, HybridTime::FromMicros(kYugaByteMicrosecondEpoch),
       /* decode_dockey */ false, /* increment_write_id */ false));
+
+  if (FLAGS_flush_batch_for_tests) {
+    CHECK_OK(db_fixture_->FlushRocksDB());
+  }
 }
 
 Status BulkLoadTask::PopulateColumnValue(const string &column,
@@ -268,6 +305,48 @@ Status BulkLoad::RetryableSubmit(vector<pair<TabletId, string>> rows) {
   return Status::OK();
 }
 
+Status BulkLoad::CompactFiles() {
+  std::vector<rocksdb::LiveFileMetaData> live_files_metadata;
+  db_fixture_->rocksdb()->GetLiveFilesMetaData(&live_files_metadata);
+  if (live_files_metadata.empty()) {
+    return STATUS(IllegalState, "Need atleast one sst file");
+  }
+
+  // Extract file names.
+  vector<string> sst_files;
+  sst_files.reserve(live_files_metadata.size());
+  for (const rocksdb::LiveFileMetaData& file : live_files_metadata) {
+    sst_files.push_back(file.name);
+  }
+
+  // Batch the files for compaction.
+  size_t batch_size = sst_files.size() / FLAGS_bulk_load_num_files_per_tablet;
+  // We need to perform compactions only if we have more than 'bulk_load_num_files_per_tablet'
+  // files.
+  if (batch_size != 0) {
+    auto start_iter = sst_files.begin();
+    for (size_t i = 0; i < FLAGS_bulk_load_num_files_per_tablet; i++) {
+      // Sanity check.
+      CHECK_GE(std::distance(start_iter, sst_files.end()), batch_size);
+
+      // Include the remaining files for the last batch.
+      auto end_iter = (i == FLAGS_bulk_load_num_files_per_tablet - 1) ? sst_files.end()
+                                                                      : start_iter + batch_size;
+      auto runnable = std::make_shared<CompactionTask>(vector<string>(start_iter, end_iter),
+                                                       db_fixture_.get());
+      RETURN_NOT_OK(thread_pool_->Submit(runnable));
+      start_iter = end_iter;
+    }
+
+    // Finally wait for all compactions to finish.
+    thread_pool_->Wait();
+
+    // Reopen rocksdb to clean up deleted files.
+    return db_fixture_->ReopenRocksDB();
+  }
+  return Status::OK();
+}
+
 Status BulkLoad::FinishTabletProcessing(const TabletId &tablet_id,
                                         vector<pair<TabletId, string>> rows) {
   if (!db_fixture_) {
@@ -283,6 +362,9 @@ Status BulkLoad::FinishTabletProcessing(const TabletId &tablet_id,
 
   // Now flush the DB.
   RETURN_NOT_OK(db_fixture_->FlushRocksDB());
+
+  // Perform the necessary compactions.
+  RETURN_NOT_OK(CompactFiles());
 
   if (!FLAGS_export_files) {
     return Status::OK();
@@ -448,6 +530,10 @@ int main(int argc, char** argv) {
   // Verify the bulk load path exists.
   if (!yb::Env::Default()->FileExists(FLAGS_base_dir)) {
     LOG(FATAL) << "Bulk load directory doesn't exist: " << FLAGS_base_dir;
+  }
+
+  if (FLAGS_bulk_load_num_files_per_tablet <= 0) {
+    LOG(FATAL) << "--bulk_load_num_files_per_tablet needs to be greater than 0";
   }
 
   yb::tools::BulkLoad bulk_load;

@@ -30,6 +30,7 @@
 #include "yb/util/subprocess.h"
 
 DECLARE_uint64(initial_seqno);
+DECLARE_uint64(bulk_load_num_files_per_tablet);
 
 namespace yb {
 namespace tools {
@@ -50,6 +51,7 @@ static constexpr int32_t kNumTablets = 32;
 static constexpr int32_t kNumIterations = 10000;
 static constexpr int32_t kV2Value = 12345;
 static constexpr size_t kV2Index = 5;
+static constexpr uint64_t kNumFilesPerTablet = 5;
 
 class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
@@ -435,9 +437,19 @@ TEST_F(YBBulkLoadTest, TestCLITool) {
   ASSERT_OK(env->CreateDir(bulk_load_data));
 
   string bulk_load_exec = GetToolPath(kBulkLoadToolName);
-  vector<string> bulk_load_argv = {kBulkLoadToolName, "-master_addresses",
-      master_addresses_comma_separated_, "-table_name", kTableName, "-namespace_name",
-      kNamespace, "-base_dir", bulk_load_data, "-initial_seqno", "0"};
+  // -row_batch_size and -flush_batch_for_tests used to ensure we have multiple flushed files per
+  // tablet which ensures we would compact some files.
+  vector<string> bulk_load_argv = {
+      kBulkLoadToolName,
+      "-master_addresses", master_addresses_comma_separated_,
+      "-table_name", kTableName,
+      "-namespace_name", kNamespace,
+      "-base_dir", bulk_load_data,
+      "-initial_seqno", "0",
+      "-row_batch_size", std::to_string(kNumIterations/kNumTablets/10),
+      "-bulk_load_num_files_per_tablet", std::to_string(kNumFilesPerTablet),
+      "-flush_batch_for_tests"
+  };
 
   std::unique_ptr<Subprocess> bulk_load_process;
   ASSERT_OK(StartProcessAndGetStreams(bulk_load_exec, bulk_load_argv, &out, &in,
@@ -468,16 +480,16 @@ TEST_F(YBBulkLoadTest, TestCLITool) {
     string tablet_path = JoinPathSegments(bulk_load_data, tablet_id);
     ASSERT_TRUE(env->FileExists(tablet_path));
 
-    // Verify atleast 1 sst file.
+    // Verify atmost 'bulk_load_num_files_per_tablet' files.
     vector <string> tablet_files;
     ASSERT_OK(env->GetChildren(tablet_path, &tablet_files));
-    bool found_sst = false;
+    size_t num_files = 0;
     for (const string& tablet_file : tablet_files) {
       if (boost::algorithm::ends_with(tablet_file, ".sst")) {
-        found_sst = true;
+        num_files++;
       }
     }
-    ASSERT_TRUE(found_sst);
+    ASSERT_GE(kNumFilesPerTablet, num_files);
 
     Endpoint leader_tserver;
     for (const master::TabletLocationsPB::ReplicaPB& replica : tablet_location.replicas()) {
@@ -504,7 +516,7 @@ TEST_F(YBBulkLoadTest, TestCLITool) {
     tserver::ImportDataResponsePB import_resp;
     rpc::RpcController controller;
     ASSERT_OK(tserver_proxy->ImportData(import_req, &import_resp, &controller));
-    ASSERT_FALSE(import_resp.has_error());
+    ASSERT_FALSE(import_resp.has_error()) << import_resp.DebugString();
 
     for (const string& row : tabletid_to_line[tablet_id]) {
       // Build read request.

@@ -47,12 +47,12 @@ CHECKED_STATUS YQLKeyColumnValuesToPrimitiveValues(
 // ------------------------------------------------------------------------------------------------
 
 DocDBRocksDBUtil::DocDBRocksDBUtil()
-    : retention_policy_(make_shared<FixedHybridTimeRetentionPolicy>(HybridTime::kMin)),
-      monotonic_counter_(0) {
+    : DocDBRocksDBUtil(OpId(1, 42)) {
 }
 
 DocDBRocksDBUtil::DocDBRocksDBUtil(const rocksdb::OpId& op_id)
-    : op_id_(op_id) {
+    : op_id_(op_id),
+      retention_policy_(make_shared<FixedHybridTimeRetentionPolicy>(HybridTime::kMin)) {
 }
 
 DocDBRocksDBUtil::~DocDBRocksDBUtil() {

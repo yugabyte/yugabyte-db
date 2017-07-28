@@ -147,14 +147,14 @@ class DocDBRocksDBUtil {
   std::unique_ptr<rocksdb::DB> rocksdb_;
   rocksdb::Options rocksdb_options_;
   string rocksdb_dir_;
-  rocksdb::OpId op_id_ = {1, 42};
+  rocksdb::OpId op_id_;
   std::shared_ptr<rocksdb::Cache> block_cache_;
   std::shared_ptr<FixedHybridTimeRetentionPolicy> retention_policy_;
   rocksdb::WriteOptions write_options_;
   Schema schema_;
 
  private:
-  std::atomic<int64_t> monotonic_counter_;
+  std::atomic<int64_t> monotonic_counter_{0};
 };
 
 // An implementation of the document node visitor interface that dumps all events (document
