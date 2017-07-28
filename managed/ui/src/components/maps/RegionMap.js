@@ -15,7 +15,7 @@ import './stylesheets/RegionMap.scss'
 
 export default class RegionMap extends Component {
   static propTypes = {
-    type: PropTypes.oneOf(['All', 'Universe', 'Provider']),
+    type: PropTypes.oneOf(['All', 'Universe', 'Provider', 'Table']),
     showLabels: PropTypes.bool
   };
 

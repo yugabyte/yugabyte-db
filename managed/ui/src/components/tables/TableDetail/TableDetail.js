@@ -45,7 +45,7 @@ export default class TableDetail extends Component {
           </Row>
           <Row>
             <Col lg={12}>
-              <RegionMap regions={currentUniverse.data.regions} type={"Root"} />
+              <RegionMap regions={currentUniverse.data.regions} type={"Table"} />
               <YBMapLegend title="Placement Policy" regions={currentUniverse.data.regions}/>
             </Col>
           </Row>
