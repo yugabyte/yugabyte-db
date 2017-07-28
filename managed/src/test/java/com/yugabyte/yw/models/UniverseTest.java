@@ -4,10 +4,12 @@ package com.yugabyte.yw.models;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import com.google.common.collect.Sets;
+import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -17,7 +19,6 @@ import play.libs.Json;
 
 import java.util.*;
 
-import static com.yugabyte.yw.models.Universe.getUniverseResourcesUtil;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
 import static org.mockito.Matchers.anyList;
@@ -232,6 +233,7 @@ public class UniverseTest extends FakeDBApplication {
     Universe u = Universe.create("Test Universe", UUID.randomUUID(),
         defaultCustomer.getCustomerId());
 
+    // Create regions
     Region r1 = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
     Region r2 = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
     Region r3 = Region.create(defaultProvider, "region-3", "Region 3", "yb-image-1");
@@ -240,26 +242,36 @@ public class UniverseTest extends FakeDBApplication {
     regionList.add(r2.uuid);
     regionList.add(r3.uuid);
 
+    // Add non-EBS instance type with price to each region
+    String instanceType = "c3.xlarge";
+    double instancePrice = 0.1;
+    InstanceType.upsert(defaultProvider.code, instanceType, 1, 20.0, null);
+    PriceComponent.PriceDetails instanceDetails = new PriceComponent.PriceDetails();
+    instanceDetails.pricePerHour = instancePrice;
+    PriceComponent.upsert(defaultProvider.code, r1.code, instanceType, instanceDetails);
+    PriceComponent.upsert(defaultProvider.code, r2.code, instanceType, instanceDetails);
+    PriceComponent.upsert(defaultProvider.code, r3.code, instanceType, instanceDetails);
+
+    // Create userIntent
     UserIntent userIntent = new UserIntent();
     userIntent.isMultiAZ = true;
     userIntent.replicationFactor = 3;
     userIntent.regionList = regionList;
+    userIntent.instanceType = instanceType;
+    userIntent.provider = defaultProvider.uuid.toString();
+    userIntent.deviceInfo = new DeviceInfo();
+    userIntent.deviceInfo.ebsType = DeviceInfo.EBSType.IO1;
+    userIntent.deviceInfo.numVolumes = 2;
+    userIntent.deviceInfo.diskIops = 1000;
+    userIntent.deviceInfo.volumeSize = 100;
 
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
 
     JsonNode universeJson = u.toJson();
     assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(),
         equalTo(u.universeUUID.toString())));
-    assertThat(universeJson.get("resources").asText(), is(notNullValue()));
-    JsonNode resources = null;
-    Exception ex = null;
-    try {
-      resources = Json.toJson(getUniverseResourcesUtil(u.getNodes(),
-          u.getUniverseDetails().userIntent));
-    } catch (Exception e) {
-      ex = e;
-    }
-    assertEquals(null, ex);
+    JsonNode resources = Json.toJson(UniverseResourceDetails.create(u.getNodes(),
+        u.getUniverseDetails()));
     assertThat(universeJson.get("resources").asText(), allOf(notNullValue(),
         equalTo(resources.asText())));
     JsonNode userIntentJson = universeJson.get("universeDetails").get("userIntent");

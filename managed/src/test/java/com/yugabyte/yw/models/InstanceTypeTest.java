@@ -1,4 +1,5 @@
 // Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
@@ -8,9 +9,7 @@ import static org.hamcrest.core.AllOf.allOf;
 import static org.junit.Assert.*;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -19,13 +18,6 @@ import com.yugabyte.yw.models.InstanceType.VolumeType;
 
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.runners.MockitoJUnitRunner;
-
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.mock;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import play.libs.Json;
@@ -56,37 +48,38 @@ public class InstanceTypeTest extends FakeDBApplication {
   }
   
   @Test
-  public void testSetDefaultVolumeDetailsList() {
-    InstanceType.InstanceTypeDetails d1 = new InstanceType.InstanceTypeDetails();
-    d1.setDefaultVolumeDetailsList();
-    assertNotNull(d1.volumeDetailsList);
-    for (int i = 0; i < d1.volumeDetailsList.size(); i++) {
-    	InstanceType.VolumeDetails v1 = d1.volumeDetailsList.get(i);
-    	assertEquals(250, v1.volumeSizeGB.intValue());
-    	assertEquals(InstanceType.VolumeType.EBS, v1.volumeType);
-    	assertEquals(String.format("/mnt/d%d", i), v1.mountPath); 
+  public void testGetNonDefaultInstanceTypeDetails() {
+    int volumeCount = 3;
+    int volumeSizeGB = 100;
+    VolumeType volumeType = VolumeType.SSD;
+    InstanceType.InstanceTypeDetails itDetails = new InstanceType.InstanceTypeDetails();
+    itDetails.setVolumeDetailsList(volumeCount, volumeSizeGB, volumeType);
+    assertNotNull(itDetails.volumeDetailsList);
+    for (int i = 0; i < volumeCount; i++) {
+    	InstanceType.VolumeDetails v = itDetails.volumeDetailsList.get(i);
+    	assertEquals(volumeSizeGB, v.volumeSizeGB.intValue());
+    	assertEquals(volumeType, v.volumeType);
+    	assertEquals(String.format("/mnt/d%d", i), v.mountPath);
     }
   }
   
   @Test
-  public void testGetInstanceTypeDetails() {
-  	Map<String, List<InstanceType.InstanceTypeRegionDetails>> mockMap = mock(HashMap.class);
-  	InstanceType.InstanceTypeDetails itd1 = InstanceType.InstanceTypeDetails.getInstanceTypeDetails(mockMap);
-  	assertNotNull(itd1);
-  	assertNotNull(itd1.volumeDetailsList);
-  	assertEquals(mockMap, itd1.regionCodeToDetailsMap);
-    for (int i = 0; i < itd1.volumeDetailsList.size(); i++) {
-    	InstanceType.VolumeDetails v1 = itd1.volumeDetailsList.get(i);
-    	assertEquals(250, v1.volumeSizeGB.intValue());
-    	assertEquals(InstanceType.VolumeType.EBS, v1.volumeType);
-    	assertEquals(String.format("/mnt/d%d", i), v1.mountPath); 
+  public void testGetDefaultInstanceTypeDetails() {
+  	InstanceType.InstanceTypeDetails itDetails = InstanceType.InstanceTypeDetails.createDefault();
+  	assertNotNull(itDetails);
+  	assertNotNull(itDetails.volumeDetailsList);
+    for (int i = 0; i < 2; i++) {
+    	InstanceType.VolumeDetails v = itDetails.volumeDetailsList.get(i);
+    	assertEquals(InstanceType.InstanceTypeDetails.DEFAULT_VOLUME_SIZE_GB, v.volumeSizeGB.intValue());
+    	assertEquals(InstanceType.VolumeType.EBS, v.volumeType);
+    	assertEquals(String.format("/mnt/d%d", i), v.mountPath);
     }
   }
 
   @Test
   public void testFindByProvider() {
     Provider newProvider = ModelFactory.gcpProvider(defaultCustomer);
-    InstanceType i1 = InstanceType.upsert(defaultProvider.code, "foo", 3, 10.0, defaultDetails);
+    InstanceType.upsert(defaultProvider.code, "foo", 3, 10.0, defaultDetails);
     InstanceType.upsert(newProvider.code, "bar", 2, 10.0, defaultDetails);
     List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider);
     assertNotNull(instanceTypeList);
@@ -96,24 +89,12 @@ public class InstanceTypeTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDeleteByProviderWithValidProviderCode() {
+  public void testDeleteByProvider() {
     Provider newProvider = ModelFactory.gcpProvider(defaultCustomer);
     InstanceType.upsert(newProvider.code, "bar", 2, 10.0, defaultDetails);
-    int response = InstanceType.deleteInstanceTypesForProvider(newProvider.code);
+    InstanceType.deleteInstanceTypesForProvider(newProvider);
     List<InstanceType> instanceTypeList = InstanceType.findByProvider(newProvider);
-    assertEquals(1, response);
     assertEquals(0, instanceTypeList.size());
-
-  }
-
-  @Test
-  public void testDeleteByProviderWithInvalidProviderCode() {
-    Provider newProvider = ModelFactory.gcpProvider(defaultCustomer);
-    InstanceType.upsert(newProvider.code, "bar", 2, 10.0, defaultDetails);
-    int response = InstanceType.deleteInstanceTypesForProvider("abcd");
-    List<InstanceType> instanceTypeList = InstanceType.findByProvider(newProvider);
-    assertEquals(0, response);
-    assertEquals(1, instanceTypeList.size());
   }
 
   @Test

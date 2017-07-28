@@ -4,12 +4,16 @@ package com.yugabyte.yw.common;
 
 import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.UUID;
 
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import org.yb.ColumnSchema.SortOrder;
@@ -156,5 +160,23 @@ public class ApiUtils {
     column.isClusteringKey = false;
     table.columns.add(column);
     return table;
+  }
+
+
+  public static DeviceInfo getDummyDeviceInfo(int numVolumes, int volumeSize) {
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.numVolumes = numVolumes;
+    deviceInfo.volumeSize = volumeSize;
+    return deviceInfo;
+  }
+
+  public static UserIntent getDummyUserIntent(DeviceInfo deviceInfo, Provider provider,
+                                              String instanceType) {
+    UserIntent userIntent = new UserIntent();
+    userIntent.provider = provider.uuid.toString();
+    userIntent.providerType = Common.CloudType.valueOf(provider.code);
+    userIntent.instanceType = instanceType;
+    userIntent.deviceInfo = deviceInfo;
+    return userIntent;
   }
 }

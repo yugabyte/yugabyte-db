@@ -1,17 +1,16 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
+import java.util.stream.Collectors;
 
 import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.cloud.PublicCloudConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,8 +18,6 @@ import com.avaje.ebean.Ebean;
 import com.avaje.ebean.Model;
 import com.avaje.ebean.SqlUpdate;
 import com.avaje.ebean.annotation.EnumValue;
-import com.yugabyte.yw.cloud.PublicCloudConstants;
-import com.yugabyte.yw.cloud.PublicCloudConstants.Tenancy;
 
 import play.data.validation.Constraints;
 import play.libs.Json;
@@ -67,34 +64,6 @@ public class InstanceType extends Model {
 
   private static final Find<InstanceTypeKey, InstanceType> find =
     new Find<InstanceTypeKey, InstanceType>() {};
-
-  public List<InstanceTypeRegionDetails> getRegionDetails(String regionCode) {
-    return instanceTypeDetails.regionCodeToDetailsMap.get(regionCode);
-  }
-
-  public PriceDetails getPriceDetails(String regionCode, Tenancy tenancy) {
-    // Fetch the region info object.
-    List<InstanceTypeRegionDetails> regionDetailsList = getRegionDetails(regionCode);
-    InstanceTypeRegionDetails regionDetails = null;
-    for (InstanceTypeRegionDetails rDetails : regionDetailsList) {
-      if (rDetails.tenancy.equals(tenancy) && rDetails.operatingSystem.equals("Linux")) {
-        regionDetails = rDetails;
-        break;
-      }
-    }
-    if (regionDetails == null) {
-      String msg = "Tenancy " + tenancy.toString() + " not found for region " + regionCode;
-      LOG.error(msg);
-      throw new RuntimeException(msg);
-    }
-
-    if (regionDetails.priceDetailsList.size() > 1) {
-      String msg = "Found multiple price details for instance type " +
-        ", region " + regionCode;
-      LOG.error(msg);
-    }
-    return (regionDetails.priceDetailsList.get(0));
-  }
 
   public static InstanceType get(String providerCode, String instanceTypeCode) {
     InstanceType instanceType = find.byId(InstanceTypeKey.create(instanceTypeCode, providerCode));
@@ -156,8 +125,7 @@ public class InstanceType extends Model {
    */
   public static void resetAllInstanceTypeDetails() {
     String updateQuery = "UPDATE instance_type SET instance_type_details_json = ''";
-    SqlUpdate update = Ebean.createSqlUpdate(updateQuery);
-    int modifiedCount = Ebean.execute(update);
+    int modifiedCount = Ebean.execute(Ebean.createSqlUpdate(updateQuery));
     LOG.info("Query [" + updateQuery + "] updated " + modifiedCount + " rows");
     if (modifiedCount == 0) {
       LOG.warn("Failed to update any SQL row");
@@ -167,59 +135,59 @@ public class InstanceType extends Model {
   /**
    * Delete Instance Types corresponding to given provider
    */
-  public static int deleteInstanceTypesForProvider(String providerCode) {
-    SqlUpdate deleteStmt = Ebean.createSqlUpdate("DELETE from instance_type WHERE provider_code= :provider_code");
-    deleteStmt.setParameter("provider_code",  providerCode);
-    return deleteStmt.execute();
+  public static void deleteInstanceTypesForProvider(Provider provider) {
+    for (InstanceType instanceType : findByProvider(provider)) {
+      instanceType.delete();
+    }
   }
 
   /**
    * Query Helper to find supported instance types for a given cloud provider.
    */
   public static List<InstanceType> findByProvider(Provider provider) {
-    List<InstanceType> entries =
-      InstanceType.find.where().eq("provider_code", provider.code).findList();
-    List<InstanceType> instanceTypes = new ArrayList<InstanceType>();
-    for (InstanceType entry : entries) {
-      InstanceType instanceType =
-        InstanceType.get(entry.getProviderCode(), entry.getInstanceTypeCode());
-      instanceTypes.add(instanceType);
-    }
-    return instanceTypes;
+    List<InstanceType> entries = InstanceType.find.where().eq("provider_code", provider.code)
+        .findList();
+    return entries.stream().map(entry -> InstanceType.get(entry.getProviderCode(),
+        entry.getInstanceTypeCode())).collect(Collectors.toList());
+  }
+
+  public static InstanceType createWithMetadata(Provider provider, String instanceTypeCode,
+                                                JsonNode metadata) {
+    return upsert(provider.code,
+        instanceTypeCode,
+        Integer.parseInt(metadata.get("numCores").toString()),
+        Double.parseDouble(metadata.get("memSizeGB").toString()),
+        Json.fromJson(metadata.get("instanceTypeDetails"), InstanceTypeDetails.class));
   }
 
   /**
    * Default details for volumes attached to this instance.
    */
   public static class VolumeDetails {
-
     public Integer volumeSizeGB;
-
     public VolumeType volumeType;
-
     public String mountPath;
   }
 
   public static class InstanceTypeDetails {
-  	private static final int DEFAULT_VOLUME_COUNT = 2;
-  	
-    public Map<String, List<InstanceTypeRegionDetails>> regionCodeToDetailsMap;
+  	public static final int DEFAULT_VOLUME_COUNT = 2;
+  	public static final int DEFAULT_VOLUME_SIZE_GB = 250;
+
     public List<VolumeDetails> volumeDetailsList;
+    public PublicCloudConstants.Tenancy tenancy;
 
     public InstanceTypeDetails() {
-      regionCodeToDetailsMap = new HashMap<String, List<InstanceTypeRegionDetails>>();
-      volumeDetailsList = new LinkedList<VolumeDetails>();
+      volumeDetailsList = new LinkedList<>();
     }
-    
-    public void setDefaultVolumeDetailsList() {
-    	// Hardcoded suggested defaults. Will be overwritten.
-    	for (int i = 0; i < DEFAULT_VOLUME_COUNT; i++) {
-    		VolumeDetails volumeDetails = new VolumeDetails();
-    		volumeDetails.volumeSizeGB = 250;
-    		volumeDetails.volumeType = VolumeType.EBS;
-    		volumeDetailsList.add(volumeDetails);
-    	}
-    	setDefaultMountPaths();
+
+    public void setVolumeDetailsList(int volumeCount, int volumeSizeGB, VolumeType volumeType) {
+      for (int i = 0; i < volumeCount; i++) {
+        VolumeDetails volumeDetails = new VolumeDetails();
+        volumeDetails.volumeSizeGB = volumeSizeGB;
+        volumeDetails.volumeType = volumeType;
+        volumeDetailsList.add(volumeDetails);
+      }
+      setDefaultMountPaths();
     }
 
     public void setDefaultMountPaths() {
@@ -228,78 +196,12 @@ public class InstanceType extends Model {
       }
     }
     
-    public static InstanceTypeDetails getInstanceTypeDetails(
-    		Map<String, List<InstanceTypeRegionDetails>> regionCodeToDetailsMap) {
+    public static InstanceTypeDetails createDefault() {
     	InstanceTypeDetails instanceTypeDetails = new InstanceTypeDetails();
-    	
-    	instanceTypeDetails.regionCodeToDetailsMap = regionCodeToDetailsMap;
-    	instanceTypeDetails.setDefaultVolumeDetailsList();
-    	
+    	instanceTypeDetails.setVolumeDetailsList(DEFAULT_VOLUME_COUNT, DEFAULT_VOLUME_SIZE_GB,
+          VolumeType.EBS);
     	return instanceTypeDetails;
     }
     
-  }
-
-  public static InstanceType createWithMetadata(Provider provider, String code, JsonNode metadata) {
-    return upsert(
-        provider.code,
-        code,
-        Integer.parseInt(metadata.get("numCores").toString()),
-        Double.parseDouble(metadata.get("memSizeGB").toString()),
-        Json.fromJson(metadata.get("instanceTypeDetails"), InstanceTypeDetails.class)
-    );
-  }
-
-  /**
-   * Each of these objects captures price details of an instance type in a region, for a given
-   * value of tenancy and the operating system.
-   */
-  public static class InstanceTypeRegionDetails {
-    // This should be "AmazonEC2". Present for debugging/verification.
-    public String servicecode;
-
-    // For compute, this is "Compute Instance". For elastic IP, this is "IP Address". Present for
-    // debugging/verification.
-    public String productFamily;
-
-    // The valid values here are "Host", "Dedicated" and "Shared".
-    public PublicCloudConstants.Tenancy tenancy;
-
-    // Known values are "Linux", "RHEL", "SUSE", "Windows", "NA".
-    public String operatingSystem;
-
-    // The pricing details.
-    public List<PriceDetails> priceDetailsList;
-  }
-
-  public static class PriceDetails {
-    // The unit on which the 'pricePerUnit' is based.
-    public enum Unit {
-      Hours
-    }
-
-    // The price currency. Note that the case here matters as it matches AWS output.
-    public enum Currency {
-      USD
-    }
-
-    // The unit.
-    public Unit unit;
-
-    // Price per unit.
-    public double pricePerUnit;
-
-    // Currency.
-    public Currency currency;
-
-    // This denotes the start and end range for the pricing, as sometimes pricing is tiered, for
-    // instance by the number of hours used, etc.
-    public String beginRange;
-    public String endRange;
-
-    // Keeping these around for now as they seem useful.
-    public String effectiveDate;
-    public String description;
-
   }
 }

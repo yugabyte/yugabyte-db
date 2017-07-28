@@ -34,7 +34,33 @@ public class CloudQueryHelper extends DevopsBase {
   	commandArgs.add(region.code);
     return execCommand(region.uuid, "zones", commandArgs);
   }
-  
+
+  /*
+   * Example return from GCP:
+   * {
+   *   "n1-standard-32": {
+   *     "prices": {
+   *         "us-west1": [
+   *         {
+   *           "price": 1.52,
+   *           "os": "Linux"
+   *         }
+   *       ],
+   *       "us-east1": [
+   *         {
+   *           "price": 1.52,
+   *           "os": "Linux"
+   *         }
+   *       ]
+   *     },
+   *     "numCores": 32,
+   *     "description": "32 vCPUs, 120 GB RAM",
+   *     "memSizeGb": 120,
+   *     "isShared": false
+   *   },
+   *   ...
+   * }
+   */
   public JsonNode getInstanceTypes(Common.CloudType cloudType, List<Region> regionList) {
   	List<String> commandArgs = new ArrayList<String>();
   	commandArgs.add("--regions");
