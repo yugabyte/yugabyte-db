@@ -47,7 +47,7 @@ export default class MapMarker extends Component {
       });
     } else {
       var markerData = "";
-      if (type === "Provider") {
+      if (type === "Provider" || type === "Table") {
         markerData = RootMarkerIcon;
       }
       opts['icon'] = new Icon({
