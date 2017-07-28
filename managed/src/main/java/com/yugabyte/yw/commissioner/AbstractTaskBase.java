@@ -59,22 +59,6 @@ public abstract class AbstractTaskBase implements ITask {
   @Override
   public abstract void run();
 
-  @Override
-  public int getPercentCompleted() {
-    if (taskListQueue == null) {
-      return 0;
-    }
-    return taskListQueue.getPercentCompleted();
-  }
-
-  @Override
-  public UserTaskDetails getUserTaskDetails() {
-    if (taskListQueue == null) {
-      return null;
-    }
-    return taskListQueue.getUserTaskDetails();
-  }
-
   public void createThreadpool(int numThreads) {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();

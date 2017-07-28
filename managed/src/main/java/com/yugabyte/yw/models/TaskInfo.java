@@ -3,6 +3,9 @@
 package com.yugabyte.yw.models;
 
 import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import javax.persistence.Column;
@@ -12,6 +15,7 @@ import javax.persistence.Enumerated;
 import javax.persistence.Id;
 
 import com.avaje.ebean.Model;
+import com.avaje.ebean.Query;
 import com.avaje.ebean.annotation.CreatedTimestamp;
 import com.avaje.ebean.annotation.DbJson;
 import com.avaje.ebean.annotation.EnumValue;
@@ -19,8 +23,12 @@ import com.avaje.ebean.annotation.UpdatedTimestamp;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskDetails;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.models.helpers.TaskType;
 import play.data.validation.Constraints;
+
+import static com.yugabyte.yw.commissioner.UserTaskDetails.createSubTask;
 
 @Entity
 public class TaskInfo extends Model {
@@ -183,5 +191,74 @@ public class TaskInfo extends Model {
     sb.append(", ");
     sb.append("taskState: " + taskState);
     return sb.toString();
+  }
+
+  /**
+   * Retrieve the UserTaskDetails for the task mapped to this TaskInfo object. Should only be called
+   * on the user-level parent task, since only that task will have subtasks. Nothing will break if
+   * called on a SubTask, it just won't give you much useful information.
+   *
+   * @return UserTaskDetails object for this TaskInfo, including info on the state on each of the
+   * subTaskGroups.
+   */
+  public UserTaskDetails getUserTaskDetails() {
+    UserTaskDetails taskDetails = new UserTaskDetails();
+    Query<TaskInfo> subTaskQuery = TaskInfo.find.where()
+        .eq("parent_uuid", getTaskUUID())
+        .orderBy("position asc");
+    List<TaskInfo> result = subTaskQuery.findList();
+    Map<SubTaskGroupType, SubTaskDetails> userTasksMap = new HashMap<>();
+    boolean customerTaskFailure = taskState.equals(State.Failure);
+    for (TaskInfo taskInfo : result) {
+      SubTaskGroupType subTaskGroupType = taskInfo.getSubTaskGroupType();
+      if (subTaskGroupType == SubTaskGroupType.Invalid) {
+        continue;
+      }
+      SubTaskDetails subTask = userTasksMap.get(subTaskGroupType);
+      if (subTask == null) {
+        subTask = createSubTask(subTaskGroupType);
+        taskDetails.add(subTask);
+      } else if (subTask.getState().equals(State.Failure.name()) ||
+          subTask.getState().equals(State.Running.name())) {
+        continue;
+      }
+      switch (taskInfo.getTaskState()) {
+        case Failure:
+          subTask.setState(State.Failure);
+          break;
+        case Running:
+          subTask.setState(State.Running);
+          break;
+        case Created:
+          subTask.setState(customerTaskFailure ? State.Unknown : State.Created);
+          break;
+        default:
+          break;
+      }
+      userTasksMap.put(subTaskGroupType, subTask);
+    }
+    return taskDetails;
+  }
+
+  /**
+   * Returns the aggregate percentage completion across all the subtasks.
+   *
+   * @return a number between 0.0 and 100.0.
+   */
+  public double getPercentCompleted() {
+    Query<TaskInfo> subTaskQuery = TaskInfo.find.where()
+        .eq("parent_uuid", getTaskUUID())
+        .orderBy("position asc");
+    List<TaskInfo> result = subTaskQuery.findList();
+    if (result == null || result.size() == 0) {
+      return 0.0;
+    }
+    int numSubtasksCompleted = 0;
+    for (TaskInfo taskInfo : result) {
+      if (taskInfo.getTaskState().equals(TaskInfo.State.Success)) {
+        ++numSubtasksCompleted;
+      }
+    }
+    return numSubtasksCompleted * 100.0 / result.size();
   }
 }

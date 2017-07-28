@@ -13,6 +13,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -95,26 +96,21 @@ public class Commissioner {
   public ObjectNode getStatus(UUID taskUUID) {
     ObjectNode responseJson = Json.newObject();
 
-    // Find the task runner for the task.
-    TaskRunner taskRunner = runningTasks.get(taskUUID);
-    if (taskRunner != null) {
-      // Find out the state of the task.
-      responseJson.put("status", taskRunner.getState());
-      // Find out the percentage completion.
-      responseJson.put("percent", taskRunner.getPercentCompleted());
-      // Get the details of the task.
-      responseJson.set("details", Json.toJson(taskRunner.getUserTaskDetails()));
-      return responseJson;
-    }
-
-    // Check if the task is in the DB as it completed and is no longer in 'runningTasks'.
+    // Check if the task is in the DB
     TaskInfo taskInfo = TaskInfo.get(taskUUID);
-    if (taskInfo != null) {
-
+    CustomerTask task = CustomerTask.find.where().eq("task_uuid", taskUUID).findUnique();
+    if (taskInfo != null && task != null) {
+      // Add some generic information about the task
+      responseJson.put("title", task.getFriendlyDescription());
+      responseJson.put("createTime", task.getCreateTime().toString());
+      responseJson.put("target", task.getTargetName());
+      responseJson.put("type", task.getType().name());
       // Find out the state of the task.
       responseJson.put("status", taskInfo.getTaskState().toString());
-      // The job is assumed to be completed if its in the Tasks table and not in memory.
-      responseJson.put("percent", (taskInfo.getTaskState() == TaskInfo.State.Failure ? 0 : 100));
+      // Get the percentage of subtasks that ran and completed
+      responseJson.put("percent", taskInfo.getPercentCompleted());
+      // Get subtask groups
+      responseJson.put("details", Json.toJson(taskInfo.getUserTaskDetails()));
       return responseJson;
     }
 
