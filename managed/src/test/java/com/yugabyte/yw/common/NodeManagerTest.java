@@ -194,8 +194,10 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add(setupParams.instanceType);
           expectedCommand.add("--cloud_subnet");
           expectedCommand.add(setupParams.subnetId );
-          expectedCommand.add("--machine_image");
-          expectedCommand.add(setupParams.getRegion().ybImage);
+          if (params.cloud != Common.CloudType.aws) {
+            expectedCommand.add("--machine_image");
+            expectedCommand.add(setupParams.getRegion().ybImage);
+          }
           expectedCommand.add("--assign_public_ip");
         }
         break;
