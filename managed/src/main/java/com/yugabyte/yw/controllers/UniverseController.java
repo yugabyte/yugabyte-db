@@ -24,7 +24,6 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.RollingRestartParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
@@ -37,8 +36,6 @@ import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
 
-import static com.yugabyte.yw.models.Universe.getUniverseResourcesUtil;
-
 
 public class UniverseController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(UniverseController.class);
@@ -48,9 +45,6 @@ public class UniverseController extends AuthenticatedController {
 
   @Inject
   Commissioner commissioner;
-
-  @Inject
-  MetricQueryHelper metricQueryHelper;
 
   /**
    * API that checks if a Universe with a given name already exists.
@@ -103,9 +97,8 @@ public class UniverseController extends AuthenticatedController {
     try {
       ObjectNode formData = (ObjectNode) request().body().asJson();
       UniverseDefinitionTaskParams taskParams = bindFormDataToTaskParams(formData);
-      UniverseResourceDetails resourceDetails =
-        getUniverseResourcesUtil(taskParams.nodeDetailsSet, taskParams.userIntent);
-      return ApiResponse.success(resourceDetails);
+      return ApiResponse.success(UniverseResourceDetails.create(taskParams.nodeDetailsSet,
+          taskParams));
     } catch (Throwable t) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
     }
@@ -239,7 +232,9 @@ public class UniverseController extends AuthenticatedController {
     for (Universe universe: customer.getUniverses()) {
       ObjectNode universePayload = (ObjectNode) universe.toJson();
       try {
-        universePayload.put("pricePerHour", getUniverseResourcesUtil(universe.getNodes(), universe.getUniverseDetails().userIntent).pricePerHour);
+        UniverseResourceDetails details = UniverseResourceDetails.create(universe.getNodes(),
+            universe.getUniverseDetails());
+        universePayload.put("pricePerHour", details.pricePerHour);
       } catch (Exception e) {
         LOG.error("Unable to fetch cost for universe {}.", universe.universeUUID);
       }
@@ -322,7 +317,8 @@ public class UniverseController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
     }
     try {
-      return ApiResponse.success(getUniverseResourcesUtil(universe.getNodes(), universe.getUniverseDetails().userIntent));
+      return ApiResponse.success(Json.toJson(UniverseResourceDetails.create(universe.getNodes(),
+          universe.getUniverseDetails())));
     }
     catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR,
@@ -344,7 +340,8 @@ public class UniverseController extends AuthenticatedController {
     }
     try {
       for (Universe universe : universeSet) {
-        response.add(Json.toJson(getUniverseResourcesUtil(universe.getNodes(), universe.getUniverseDetails().userIntent)));
+        response.add(Json.toJson(UniverseResourceDetails.create(universe.getNodes(),
+            universe.getUniverseDetails())));
       }
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR,

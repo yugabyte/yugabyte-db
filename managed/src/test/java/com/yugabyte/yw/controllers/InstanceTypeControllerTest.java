@@ -6,6 +6,7 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
+import static com.yugabyte.yw.controllers.TablesControllerTest.LOG;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.core.IsNull.notNullValue;
@@ -126,8 +127,15 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
       assertValue(instance, "instanceTypeCode", instanceTypes[idx].getInstanceTypeCode());
       assertThat(instance.get("numCores").asInt(), allOf(notNullValue(), equalTo(instanceTypes[idx].numCores)));
       assertThat(instance.get("memSizeGB").asDouble(), allOf(notNullValue(), equalTo(instanceTypes[idx].memSizeGB)));
-      VolumeDetails targetDetails = instanceTypes[idx].instanceTypeDetails.volumeDetailsList.get(0);
-      JsonNode jsonDetails = instance.get("instanceTypeDetails").get("volumeDetailsList").get(0);
+
+      InstanceType it = instanceTypes[idx];
+      InstanceTypeDetails itd = it.instanceTypeDetails;
+      List<VolumeDetails> detailsList = itd.volumeDetailsList;
+      VolumeDetails targetDetails = detailsList.get(0);
+      LOG.error(instance.toString());
+      JsonNode itdNode = instance.get("instanceTypeDetails");
+      JsonNode detailsListNode = itdNode.get("volumeDetailsList");
+      JsonNode jsonDetails = detailsListNode.get(0);
       assertThat(jsonDetails.get("volumeSizeGB").asInt(), allOf(notNullValue(), equalTo(targetDetails.volumeSizeGB)));
       assertValue(jsonDetails, "volumeType", targetDetails.volumeType.toString());
       assertValue(jsonDetails, "mountPath", targetDetails.mountPath);

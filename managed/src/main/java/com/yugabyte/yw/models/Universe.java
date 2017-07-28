@@ -19,9 +19,7 @@ import javax.persistence.Id;
 import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
 
-import com.yugabyte.yw.cloud.ResourceUtil;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
-import com.yugabyte.yw.commissioner.Common;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -92,7 +90,8 @@ public class Universe extends Model {
     json.put("version", version);
     UserIntent userIntent = getUniverseDetails().userIntent;
     try {
-      json.set("resources", Json.toJson(getUniverseResourcesUtil(getNodes(), userIntent)));
+      json.set("resources", Json.toJson(UniverseResourceDetails.create(getNodes(),
+          getUniverseDetails())));
     } catch (Exception e) {
       json.set("resources", null);
     }
@@ -461,22 +460,5 @@ public class Universe extends Model {
     // Update and return the current version number.
     this.version = newVersion;
     return this.version;
-  }
-
-  public static UniverseResourceDetails getUniverseResourcesUtil(Collection<NodeDetails> nodes, 
-  		UniverseDefinitionTaskParams.UserIntent userIntent) throws Exception {
-    Common.CloudType cloudType = userIntent.providerType;
-    UniverseResourceDetails universeResourceDetails = new UniverseResourceDetails();
-    for (NodeDetails node : nodes) {
-      if (node.isActive()) {
-        ResourceUtil.mergeResourceDetails(userIntent.deviceInfo, 
-        																	cloudType, 
-        																	node.cloudInfo.instance_type, 
-        																	node.cloudInfo.az,
-        																	AvailabilityZone.find.byId(node.azUuid).region.code, 
-        																	universeResourceDetails);
-      }
-    }
-    return universeResourceDetails;
   }
 }

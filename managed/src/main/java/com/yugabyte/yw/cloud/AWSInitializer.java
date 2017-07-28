@@ -7,11 +7,11 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.UUID;
 
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.models.PriceComponent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,8 +20,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
-import com.yugabyte.yw.models.InstanceType.InstanceTypeRegionDetails;
-import com.yugabyte.yw.models.InstanceType.PriceDetails;
 import com.yugabyte.yw.models.InstanceType.VolumeType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -35,25 +33,30 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 @Singleton
 public class AWSInitializer {
   public static final Logger LOG = LoggerFactory.getLogger(AWSInitializer.class);
+  private static final boolean enableVerboseLogging = false;
 
-  public static final boolean enableVerboseLogging = false;
+  // TODO: fetch the EC2 price URL from the AWS EC2 price url:
+  // https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/index.json
+  private static String awsEc2PriceUrl =
+      "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/index.json";
 
   @Inject
   ApiHelper apiHelper;
 
-  // TODO: fetch the EC2 price URL from
-  // 'https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/index.json'  // The AWS EC2 price url.
+  private List<Map<String, String>> ec2AvailableInstances = new ArrayList<>();
+  private Provider provider;
 
-  public  String awsEc2PriceUrl =
-      "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/index.json";
-
-  Map<String, List<PriceDetails>> ec2SkuToPriceDetails = new HashMap<String, List<PriceDetails>>();
-
-  List<Map<String, String>> ec2AvailableInstances = new ArrayList<Map<String, String>>();
-
+  /**
+   * Entry point to initialize AWS. This will create the various InstanceTypes and their
+   * corresponding PriceComponents per Region for AWS as well as the EBS pricing info.
+   *
+   * @param customerUUID UUID of the Customer.
+   * @param providerUUID UUID of the Customer's configured AWS.
+   * @return A response result that can be returned to the user to indicate success/failure.
+   */
   public Result initialize(UUID customerUUID, UUID providerUUID) {
     try {
-      Provider provider = Provider.get(customerUUID, providerUUID);
+      provider = Provider.get(customerUUID, providerUUID);
 
       LOG.info("Initializing AWS instance type and pricing info from {}", awsEc2PriceUrl);
       LOG.info("This operation may take a few minutes...");
@@ -72,16 +75,17 @@ public class AWSInitializer {
       // The "terms" or price details json object has the following format:
       //  "terms" : {
       //    "OnDemand" : {
-      //      <onDemandTermsJson, which is a list of price details objects>
+      //      <onDemandJson, which is a list of price details objects>
       //    }
       //  }
-      JsonNode onDemandTermsJson = ec2PriceResponseJson.get("terms").get("OnDemand");
+      JsonNode onDemandJson = ec2PriceResponseJson.get("terms").get("OnDemand");
 
-      parsePriceDetailsList(onDemandTermsJson);
+      storeEBSPriceComponents(productDetailsListJson, onDemandJson);
+      storeInstancePriceComponents(productDetailsListJson, onDemandJson);
       parseProductDetailsList(productDetailsListJson);
 
       // Create the instance types.
-      storeInstanceTypeInfoToDB(provider.uuid);
+      storeInstanceTypeInfoToDB();
       LOG.info("Successfully finished parsing info from {}", awsEc2PriceUrl);
     } catch (Exception e) {
       LOG.error("AWS initialize failed", e);
@@ -92,134 +96,267 @@ public class AWSInitializer {
   }
 
   /**
-   * Parses the Json object which is a list of price details.
+   * This will store the PriceComponents corresponding to EBS. Example IO1 size json blobs:
+   * "KA7RG53ZHMXMZFAF" : {
+   *   "KA7RG53ZHMXMZFAF.JRTCKXETXF" : {
+   *     "offerTermCode" : "JRTCKXETXF",
+   *     "sku" : "KA7RG53ZHMXMZFAF",
+   *     "effectiveDate" : "2017-06-01T00:00:00Z",
+   *     "priceDimensions" : {
+   *       "KA7RG53ZHMXMZFAF.JRTCKXETXF.6YS6EN2CT7" : {
+   *         "rateCode" : "KA7RG53ZHMXMZFAF.JRTCKXETXF.6YS6EN2CT7",
+   *         "description" : "$0.145 per GB-month of Provisioned IOPS SSD (io1)  provisioned storage - EU (London)",
+   *         "beginRange" : "0",
+   *         "endRange" : "Inf",
+   *         "unit" : "GB-Mo",
+   *         "pricePerUnit" : {
+   *           "USD" : "0.1450000000"
+   *         },
+   *         "appliesTo" : [ ]
+   *       }
+   *     },
+   *     "termAttributes" : { }
+   *   }
+   * },
+   * "KA7RG53ZHMXMZFAF" : {
+   *   "sku" : "KA7RG53ZHMXMZFAF",
+   *   "productFamily" : "Storage",
+   *   "attributes" : {
+   *     "servicecode" : "AmazonEC2",
+   *     "location" : "EU (London)",
+   *     "locationType" : "AWS Region",
+   *     "storageMedia" : "SSD-backed",
+   *     "volumeType" : "Provisioned IOPS",
+   *     "maxVolumeSize" : "16 TiB",
+   *     "maxIopsvolume" : "20000",
+   *     "maxThroughputvolume" : "320 MB/sec",
+   *     "usagetype" : "EUW2-EBS:VolumeUsage.piops",
+   *     "operation" : ""
+   *   }
+   * },
    *
-   * @param onDemandTermsJson the 'terms' > 'OnDemand' JSON object.
+   * @param productDetailsListJson Products sub-document with list of EC2 products along with SKU.
+   * @param onDemandJson Price details json object.
    */
-  private void parsePriceDetailsList(JsonNode onDemandTermsJson) {
-    Iterator<JsonNode> priceDetailObjsIter = onDemandTermsJson.elements();
-
-    // Iterate over the price detail objects. Each price detail object has the format:
-    //
-    //      "DQ578CGN99KG6ECF" : {
-    //        "DQ578CGN99KG6ECF.JRTCKXETXF" : {
-    //          "offerTermCode" : "JRTCKXETXF",
-    //          "sku" : "DQ578CGN99KG6ECF",
-    //          "effectiveDate" : "2016-08-01T00:00:00Z",
-    //          "priceDimensions" : {
-    //            "DQ578CGN99KG6ECF.JRTCKXETXF.6YS6EN2CT7" : {
-    //              "rateCode" : "DQ578CGN99KG6ECF.JRTCKXETXF.6YS6EN2CT7",
-    //              "description" : "$4.931 per On Demand Windows hs1.8xlarge Instance Hour",
-    //              "beginRange" : "0",
-    //              "endRange" : "Inf",
-    //              "unit" : "Hrs",
-    //              "pricePerUnit" : {
-    //                "USD" : "4.9310000000"
-    //              },
-    //              "appliesTo" : [ ]
-    //            }
-    //          },
-    //          "termAttributes" : { }
-    //        }
-    //      }
-    while (priceDetailObjsIter.hasNext()) {
-      JsonNode priceDetailObj = priceDetailObjsIter.next();
-      Iterator<JsonNode> singleTermIter = priceDetailObj.elements();
-
-      int numSingleTermEntries = 0;
-      while (singleTermIter.hasNext()) {
-        // We expect only one entry. If there are multiple, take the first, skip the rest.
-        numSingleTermEntries++;
-        if (numSingleTermEntries > 1) {
-          String msg = "Multiple entries encountered for: " + priceDetailObj.toString();
-          LOG.error(msg);
+  private void storeEBSPriceComponents(JsonNode productDetailsListJson, JsonNode onDemandJson) {
+    LOG.info("Parsing product details list to store pricing info");
+    for (JsonNode productDetailsJson : productDetailsListJson) {
+      String sku = productDetailsJson.get("sku").textValue();
+      JsonNode attributesJson = productDetailsJson.get("attributes");
+      JsonNode regionJson = attributesJson.get("location");
+      if (regionJson == null) {
+        LOG.error("No region available for this product. Skipping.");
+      }
+      Region region = Region.find.where()
+          .eq("provider_uuid", provider.uuid)
+          .eq("name", regionJson.textValue())
+          .findUnique();
+      switch (productDetailsJson.get("productFamily").textValue()) {
+        case "Storage":
+          JsonNode volumeType = attributesJson.get("volumeType");
+          if (volumeType.textValue().equals("Provisioned IOPS")) {
+            storeEBSPriceComponent(sku, PublicCloudConstants.IO1_SIZE, region, onDemandJson);
+          } else if (volumeType.textValue().equals("General Purpose")) {
+            storeEBSPriceComponent(sku, PublicCloudConstants.GP2_SIZE, region, onDemandJson);
+          }
           break;
-        }
-        JsonNode singleTerm = singleTermIter.next();
-
-        // Get the hash key for this price term object.
-        String sku = singleTerm.findValue("sku").textValue();
-
-        Iterator<JsonNode> priceDimensionsIter = singleTerm.findValue("priceDimensions").elements();
-        while (priceDimensionsIter.hasNext()) {
-          // Create the price details object along with the details we have so far.
-          PriceDetails priceDetails = new PriceDetails();
-          if (singleTerm.has("effectiveDate")) {
-            priceDetails.effectiveDate = singleTerm.findValue("effectiveDate").textValue();
+        case "System Operation":
+          if (attributesJson.get("group").textValue().equals("EBS IOPS")) {
+            storeEBSPriceComponent(sku, PublicCloudConstants.IO1_PIOPS, region, onDemandJson);
           }
-
-          JsonNode priceDimension = priceDimensionsIter.next();
-          priceDetails.description = priceDimension.findValue("description").textValue();
-          priceDetails.beginRange = priceDimension.findValue("beginRange").textValue();
-          priceDetails.endRange = priceDimension.findValue("endRange").textValue();
-          Iterator<Entry<String, JsonNode>> iter =
-              priceDimension.findValue("pricePerUnit").fields();
-          String priceInUSDStr = null;
-          while (iter.hasNext()) {
-            Entry<String, JsonNode> entry = iter.next();
-            String currency = entry.getKey();
-            if (!currency.equals(PriceDetails.Currency.USD.toString())) {
-              continue;
-            }
-            priceInUSDStr = entry.getValue().textValue();
-            // The string will have double quotes before and after it, remove those.
-            priceInUSDStr = priceInUSDStr.substring(1, priceInUSDStr.length() - 1);
-          }
-          if (priceInUSDStr == null) {
-            String msg = "Price not found, maybe units are not USD";
-            LOG.error(msg);
-            throw new UnsupportedOperationException(msg);
-          }
-          priceDetails.currency = PriceDetails.Currency.USD;
-          priceDetails.pricePerUnit = Double.parseDouble(priceInUSDStr);
-          if (enableVerboseLogging) {
-            LOG.info("Parsed price entry sku={}, effectiveDate={}, description={}, priceInUSD={}",
-                     sku, priceDetails.effectiveDate, priceDetails.description,
-                     priceDetails.pricePerUnit);
-          }
-
-          // Add the price details to the map.
-          List<PriceDetails> priceDetailsList = ec2SkuToPriceDetails.get(sku);
-          if (priceDetailsList == null) {
-            priceDetailsList = new ArrayList<PriceDetails>();
-          }
-          priceDetailsList.add(priceDetails);
-          ec2SkuToPriceDetails.put(sku, priceDetailsList);
-        }
+          break;
+        default:
+          break;
       }
     }
   }
 
+  /**
+   * Given info about a single EBS item (size/piops) in a specific region, store its PriceComponent.
+   *
+   * @param sku SKU of the EBS item in its region.
+   * @param componentCode Code for the EBS item (e.g. io1.size).
+   * @param region The region the EBS item is in (e.g. us-west2).
+   * @param onDemandJson Price details json object.
+   */
+  private void storeEBSPriceComponent(String sku, String componentCode, Region region,
+                                      JsonNode onDemandJson) {
+    // Then create the pricing component object by grabbing the first item (should only have one)
+    // and populating the PriceDetails with all the relevant information
+    PriceComponent.PriceDetails priceDetails = new PriceComponent.PriceDetails();
+    JsonNode product = onDemandJson.get(sku).elements().next();
+    JsonNode priceDimensions = product.get("priceDimensions").elements().next();
+
+    // Get the currency & price per unit
+    String currency = priceDimensions.get("pricePerUnit").fields().next().getKey();
+    String pricePerUnit = priceDimensions.get("pricePerUnit").get(currency).textValue();
+    String unit = priceDimensions.get("unit").textValue().toUpperCase();
+    if (!(unit.endsWith("-MO") || unit.endsWith("MONTH"))) {
+      throw new RuntimeException("Unit is not per month: " + unit);
+    }
+    priceDetails.currency = PriceComponent.PriceDetails.Currency.valueOf(currency);
+    priceDetails.setUnitFromString(unit);
+    priceDetails.pricePerUnit = Double.parseDouble(pricePerUnit);
+    priceDetails.pricePerMonth = priceDetails.pricePerUnit;
+    priceDetails.pricePerDay = priceDetails.pricePerMonth / 30.0;
+    priceDetails.pricePerHour = priceDetails.pricePerDay / 24.0;
+
+    // Get everything else
+    priceDetails.description = priceDimensions.get("description").textValue();
+    priceDetails.effectiveDate = product.get("effectiveDate").textValue();
+
+    // Save to db
+    PriceComponent.upsert(provider.code, region.code, componentCode, priceDetails);
+  }
+
+  /**
+   * This will store the PriceComponent corresponding to the InstanceType itself.
+   * Each price detail object has the format:
+   *      "DQ578CGN99KG6ECF" : {
+   *        "DQ578CGN99KG6ECF.JRTCKXETXF" : {
+   *          "offerTermCode" : "JRTCKXETXF",
+   *          "sku" : "DQ578CGN99KG6ECF",
+   *          "effectiveDate" : "2016-08-01T00:00:00Z",
+   *          "priceDimensions" : {
+   *            "DQ578CGN99KG6ECF.JRTCKXETXF.6YS6EN2CT7" : {
+   *              "rateCode" : "DQ578CGN99KG6ECF.JRTCKXETXF.6YS6EN2CT7",
+   *              "description" : "$4.931 per On Demand Windows hs1.8xlarge Instance Hour",
+   *              "beginRange" : "0",
+   *              "endRange" : "Inf",
+   *              "unit" : "Hrs",
+   *              "pricePerUnit" : {
+   *                "USD" : "4.9310000000"
+   *              },
+   *              "appliesTo" : [ ]
+   *            }
+   *          },
+   *          "termAttributes" : { }
+   *        }
+   *      }
+   *
+   * @param productDetailsListJson Products sub-document with list of EC2 products along with SKU.
+   * @param onDemandJson Price details json object.
+   */
+  private void storeInstancePriceComponents(JsonNode productDetailsListJson,
+                                            JsonNode onDemandJson) {
+
+    // Get SKUs associated with Instances
+    LOG.info("Parsing product details list to store pricing info");
+    for (JsonNode productDetailsJson : productDetailsListJson) {
+
+      Map<String, String> productAttrs = extractAllAttributes(productDetailsJson);
+      boolean include = true;
+
+      // Make sure this is a compute instance.
+      include &= matches(productAttrs, "productFamily", FilterOp.Equals, "Compute Instance");
+      // The service code should be 'AmazonEC2'.
+      include &= matches(productAttrs, "servicecode", FilterOp.Equals, "AmazonEC2");
+      // Filter by the OS we support.
+      include &= (matches(productAttrs, "operatingSystem", FilterOp.Equals, "RHEL"));
+      // Pick the supported license models.
+      include &= (matches(productAttrs, "licenseModel", FilterOp.Equals, "No License required") ||
+          matches(productAttrs, "licenseModel", FilterOp.Equals, "NA"));
+      // Pick the valid disk drive types.
+      include &= (matches(productAttrs, "storage", FilterOp.Contains, "SSD") ||
+          matches(productAttrs, "storage", FilterOp.Contains, "EBS"));
+      // Make sure it is current generation.
+      include &= matches(productAttrs, "currentGeneration", FilterOp.Equals, "Yes");
+      // Make sure tenancy is shared
+      include &= matches(productAttrs, "tenancy", FilterOp.Equals, "Shared");
+
+      if (include) {
+        JsonNode attributesJson = productDetailsJson.get("attributes");
+        storeInstancePriceComponent(
+            productDetailsJson.get("sku").textValue(),
+            attributesJson.get("instanceType").textValue(),
+            attributesJson.get("location").textValue(),
+            onDemandJson);
+      }
+    }
+  }
+
+  /**
+   * Given info about a single AWS InstanceType in a specific region, store its PriceComponent.
+   *
+   * @param sku SKU of the InstanceType in its region.
+   * @param instanceCode Code for the InstanceType (e.g. m3.medium).
+   * @param regionName Name for the region the InstanceType is in (e.g. "US West (Oregon)").
+   * @param onDemandJson Price details json object.
+   */
+  private void storeInstancePriceComponent(String sku, String instanceCode, String regionName,
+                                           JsonNode onDemandJson) {
+
+    // First check that region exists
+    Region region = Region.find.where().eq("provider_uuid", provider.uuid).eq("name", regionName)
+        .findUnique();
+    if (region == null) {
+      LOG.error("Region " + regionName + " not found. Skipping.");
+      return;
+    }
+
+    // Then create the pricing component object by grabbing the first item (should only have one)
+    // and populating the PriceDetails with all the relevant information
+    PriceComponent.PriceDetails priceDetails = new PriceComponent.PriceDetails();
+    JsonNode product = onDemandJson.get(sku).elements().next();
+    JsonNode priceDimensions = product.get("priceDimensions").elements().next();
+
+    // Get the currency & price per unit
+    String currency = priceDimensions.get("pricePerUnit").fields().next().getKey();
+    String pricePerUnit = priceDimensions.get("pricePerUnit").get(currency).textValue();
+    String unit = priceDimensions.get("unit").textValue().toUpperCase();
+    if (!(unit.equals("HRS") || unit.equals("HOURS"))) {
+      throw new RuntimeException("Unit is not per hour: " + unit);
+    }
+    priceDetails.setUnitFromString(unit);
+    priceDetails.currency = PriceComponent.PriceDetails.Currency.valueOf(currency);
+    priceDetails.pricePerUnit = Double.parseDouble(pricePerUnit);
+    priceDetails.pricePerHour = priceDetails.pricePerUnit;
+    priceDetails.pricePerDay = priceDetails.pricePerUnit * 24.0;
+    priceDetails.pricePerMonth = priceDetails.pricePerDay * 30.0;
+
+    // Get everything else
+    priceDetails.description = priceDimensions.get("description").textValue();
+    priceDetails.effectiveDate = product.get("effectiveDate").textValue();
+
+    // Save to db
+    PriceComponent.upsert(provider.code, region.code, instanceCode, priceDetails);
+  }
+
+  /**
+   * Given a JSON blob containing details on various EC2 products, update the ec2AvailableInstances
+   * map, which contains information on the various instances available through EC2. Each entry in
+   * the product details map looks like:
+   * "DQ578CGN99KG6ECF" : {
+   *   "sku" : "DQ578CGN99KG6ECF",
+   *   "productFamily" : "Compute Instance",
+   *   "attributes" : {
+   *     "servicecode" : "AmazonEC2",
+   *     "location" : "US East (N. Virginia)",
+   *     "locationType" : "AWS Region",
+   *     "instanceType" : "hs1.8xlarge",
+   *     "currentGeneration" : "No",
+   *     "instanceFamily" : "Storage optimized",
+   *     "vcpu" : "17",
+   *     "physicalProcessor" : "Intel Xeon E5-2650",
+   *     "clockSpeed" : "2 GHz",
+   *     "memory" : "117 GiB",
+   *     "storage" : "24 x 2000",
+   *     "networkPerformance" : "10 Gigabit",
+   *     "processorArchitecture" : "64-bit",
+   *     "tenancy" : "Shared",
+   *     "operatingSystem" : "Windows",
+   *     "licenseModel" : "License Included",
+   *     "usagetype" : "BoxUsage:hs1.8xlarge",
+   *     "operation" : "RunInstances:0002",
+   *     "preInstalledSw" : "NA"
+   *   }
+   * }
+   *
+   * @param productDetailsListJson A JSON blob as described above.
+   */
   private void parseProductDetailsList(JsonNode productDetailsListJson) {
     LOG.info("Parsing product details list");
     Iterator<JsonNode> productDetailsListIter = productDetailsListJson.elements();
-
-    // Iterate over the product details objects, each of which has the format:
-    //    "DQ578CGN99KG6ECF" : {
-    //      "sku" : "DQ578CGN99KG6ECF",
-    //      "productFamily" : "Compute Instance",
-    //      "attributes" : {
-    //        "servicecode" : "AmazonEC2",
-    //        "location" : "US East (N. Virginia)",
-    //        "locationType" : "AWS Region",
-    //        "instanceType" : "hs1.8xlarge",
-    //        "currentGeneration" : "No",
-    //        "instanceFamily" : "Storage optimized",
-    //        "vcpu" : "17",
-    //        "physicalProcessor" : "Intel Xeon E5-2650",
-    //        "clockSpeed" : "2 GHz",
-    //        "memory" : "117 GiB",
-    //        "storage" : "24 x 2000",
-    //        "networkPerformance" : "10 Gigabit",
-    //        "processorArchitecture" : "64-bit",
-    //        "tenancy" : "Shared",
-    //        "operatingSystem" : "Windows",
-    //        "licenseModel" : "License Included",
-    //        "usagetype" : "BoxUsage:hs1.8xlarge",
-    //        "operation" : "RunInstances:0002",
-    //        "preInstalledSw" : "NA"
-    //      }
-    //    }
     while (productDetailsListIter.hasNext()) {
       JsonNode productDetailsJson = productDetailsListIter.next();
 
@@ -232,9 +369,7 @@ public class AWSInitializer {
       // The service code should be 'AmazonEC2'.
       include &= matches(productAttrs, "servicecode", FilterOp.Equals, "AmazonEC2");
       // Filter by the OS we support.
-      include &= (matches(productAttrs, "operatingSystem", FilterOp.Equals, "Linux") ||
-                  matches(productAttrs, "operatingSystem", FilterOp.Equals, "RHEL") ||
-                  matches(productAttrs, "operatingSystem", FilterOp.Equals, "NA"));
+      include &= (matches(productAttrs, "operatingSystem", FilterOp.Equals, "RHEL"));
       // Pick the supported license models.
       include &= (matches(productAttrs, "licenseModel", FilterOp.Equals, "No License required") ||
                   matches(productAttrs, "licenseModel", FilterOp.Equals, "NA"));
@@ -254,19 +389,47 @@ public class AWSInitializer {
       }
 
       if (enableVerboseLogging) {
-        LOG.info("Found matching product with sku={}, instanceType={}",
-                 productAttrs.get("sku"), productAttrs.get("instanceType"));
+        LOG.info("Found matching product with sku={}, instanceType={}", productAttrs.get("sku"),
+            productAttrs.get("instanceType"));
       }
-
       ec2AvailableInstances.add(productAttrs);
     }
+  }
+
+  /**
+   * Build a KVP Map for the attributes that make up a given product in the EC2 products JSON.
+   *
+   * @param productDetailsJson An entry in the EC2 product details JSON list.
+   * @return A KVP Map for the attributes of the provided entry.
+   */
+  private Map<String, String> extractAllAttributes(JsonNode productDetailsJson) {
+    Map<String, String> productAttrs = new HashMap<>();
+    productAttrs.put("sku", productDetailsJson.get("sku").textValue());
+    productAttrs.put("productFamily", productDetailsJson.get("productFamily").textValue());
+
+    // Iterate over all the attributes.
+    Iterator<String> iter = productDetailsJson.get("attributes").fieldNames();
+    while (iter.hasNext()) {
+      String key = iter.next();
+      productAttrs.put(key, productDetailsJson.get("attributes").get(key).textValue());
+    }
+    if (enableVerboseLogging) {
+      StringBuilder sb = new StringBuilder();
+      sb.append("Product: sku=").append(productDetailsJson.get("sku").textValue());
+      sb.append(", productFamily=").append(productDetailsJson.get("productFamily").textValue());
+      for (String key : productAttrs.keySet()) {
+        sb.append(", ").append(key).append("=").append(productAttrs.get(key));
+      }
+      LOG.info(sb.toString());
+    }
+    return productAttrs;
   }
 
   /**
    * Store information about the various instance types to the database. Uses UPSERT semantics if
    * the row for the instance type already exists.
    */
-  private void storeInstanceTypeInfoToDB(UUID awsUUID) {
+  private void storeInstanceTypeInfoToDB() {
     LOG.info("Storing AWS instance type and pricing info in Yugaware DB");
     // First reset all the JSON details of all entries in the table, as we are about to refresh it.
     InstanceType.resetAllInstanceTypeDetails();
@@ -345,33 +508,9 @@ public class AWSInitializer {
         volumeType = VolumeType.valueOf(parts[3]);
       }
 
-      // Fill up all the per-region details.
-      String regionName = productAttrs.get("location");
-      Region region =
-          Region.find.where().eq("provider_uuid", awsUUID).eq("name", regionName).findUnique();
-      if (region == null) {
-        LOG.error("Region " + regionName + " not found. Skipping.");
-        continue;
-      }
-      String regionCode = region.code;
-      InstanceTypeRegionDetails regionDetails = new InstanceTypeRegionDetails();
-      regionDetails.operatingSystem = productAttrs.get("operatingSystem");
-      regionDetails.productFamily = productAttrs.get("productFamily");
-      regionDetails.servicecode = productAttrs.get("servicecode");
-      regionDetails.tenancy = PublicCloudConstants.Tenancy.valueOf(productAttrs.get("tenancy"));
-
-      // Fill up the price details, using the sku to lookup.
-      regionDetails.priceDetailsList = ec2SkuToPriceDetails.get(productAttrs.get("sku"));
-      if (regionDetails.priceDetailsList == null || regionDetails.priceDetailsList.isEmpty()) {
-        String msg = "Failed to get price details for sku=" + productAttrs.get("sku");
-        LOG.error(msg);
-        throw new RuntimeException(msg);
-      }
-
       if (enableVerboseLogging) {
-        LOG.info("Instance type entry ({}, {}): {} cores, {} GB RAM, {} x {} GB {} in region {}",
-                 providerCode, instanceTypeCode, numCores, memSizeGB,
-                 volumeCount, volumeSizeGB, volumeType, regionCode);
+        LOG.info("Instance type entry ({}, {}): {} cores, {} GB RAM, {} x {} GB {}", providerCode,
+                 instanceTypeCode, numCores, memSizeGB, volumeCount, volumeSizeGB, volumeType);
       }
 
       // Create the instance type model. If one already exists, overwrite it.
@@ -379,41 +518,23 @@ public class AWSInitializer {
       if (instanceType == null) {
         instanceType = new InstanceType();
       }
-      if (instanceType.instanceTypeDetails == null) {
-        instanceType.instanceTypeDetails = new InstanceTypeDetails();
+      InstanceTypeDetails details = instanceType.instanceTypeDetails;
+      if (details == null) {
+        details = new InstanceTypeDetails();
       }
-      List<InstanceType.VolumeDetails> volumeDetailsList =
-          instanceType.instanceTypeDetails.volumeDetailsList;
-      if (volumeDetailsList == null || volumeDetailsList.isEmpty()) {
-        for (int i = 0; i < volumeCount; ++i) {
-          InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
-          volumeDetails.volumeSizeGB = volumeSizeGB;
-          volumeDetails.volumeType = volumeType;
-          instanceType.instanceTypeDetails.volumeDetailsList.add(volumeDetails);
-        }
-        instanceType.instanceTypeDetails.setDefaultMountPaths();
+      if (details.volumeDetailsList.isEmpty()) {
+        details.setVolumeDetailsList(volumeCount, volumeSizeGB, volumeType);
       }
-      List<InstanceTypeRegionDetails> detailsList =
-          instanceType.instanceTypeDetails.regionCodeToDetailsMap.get(regionCode);
-      if (detailsList == null) {
-        detailsList = new ArrayList<InstanceTypeRegionDetails>();
+      if (details.tenancy == null) {
+        details.tenancy = PublicCloudConstants.Tenancy.Shared;
       }
-      detailsList.add(regionDetails);
-
-      // Fill up the instance type details.
-      instanceType.instanceTypeDetails.regionCodeToDetailsMap.put(regionCode, detailsList);
 
       // Update the object.
       if (enableVerboseLogging) {
-        LOG.debug("Saving {} ({} cores, {}GB) with details {}",
-            instanceType.idKey.toString(), instanceType.numCores, instanceType.memSizeGB,
-            Json.stringify(Json.toJson(instanceType.instanceTypeDetails)));
+        LOG.debug("Saving {} ({} cores, {}GB) with details {}", instanceType.idKey.toString(),
+            instanceType.numCores, instanceType.memSizeGB, Json.stringify(Json.toJson(details)));
       }
-      InstanceType.upsert(providerCode,
-                          instanceTypeCode,
-                          numCores,
-                          memSizeGB,
-                          instanceType.instanceTypeDetails);
+      InstanceType.upsert(providerCode, instanceTypeCode, numCores, memSizeGB, details);
     }
   }
 
@@ -423,34 +544,13 @@ public class AWSInitializer {
   }
 
   private boolean matches(Map<String, String> objAttrs, String name, FilterOp op, String value) {
-    if (op == FilterOp.Equals) {
-      return value.equals(objAttrs.get(name));
-    } else if (op == FilterOp.Contains) {
-      if (!objAttrs.containsKey(name)) {
+    switch (op) {
+      case Equals:
+        return value.equals(objAttrs.get(name));
+      case Contains:
+        return objAttrs.containsKey(name) && objAttrs.get(name).contains(value);
+      default:
         return false;
-      }
-      return objAttrs.get(name).contains(value);
     }
-    return false;
-  }
-
-  private Map<String, String> extractAllAttributes(JsonNode productDetailsJson) {
-    Map<String, String> productAttrs = new HashMap<String, String>();
-    StringBuilder sb = new StringBuilder();
-    sb.append("Product: sku=" + productDetailsJson.get("sku").textValue());
-    sb.append(", productFamily=" + productDetailsJson.get("productFamily").textValue());
-    productAttrs.put("sku", productDetailsJson.get("sku").textValue());
-    productAttrs.put("productFamily", productDetailsJson.get("productFamily").textValue());
-    // Iterate over all the attributes.
-    Iterator<Map.Entry<String,JsonNode>> iter = productDetailsJson.get("attributes").fields();
-    while (iter.hasNext()) {
-      Map.Entry<String,JsonNode> entry = iter.next();
-      productAttrs.put(entry.getKey(), entry.getValue().textValue());
-      sb.append(", " + entry.getKey() + "=" + entry.getValue().textValue());
-    }
-    if (enableVerboseLogging) {
-      LOG.info(sb.toString());
-    }
-    return productAttrs;
   }
 }
