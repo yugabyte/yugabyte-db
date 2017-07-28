@@ -14,7 +14,7 @@ public class UserTaskDetails {
   public static final Logger LOG = LoggerFactory.getLogger(UserTaskDetails.class);
 
   // The various groupings of user facing subtasks.
-  public static enum SubTaskGroupType {
+  public enum SubTaskGroupType {
     // Ignore this subtask and do not display it to the user.
     Invalid,
 
@@ -112,7 +112,7 @@ public class UserTaskDetails {
   }
 
   public UserTaskDetails() {
-    taskDetails = new ArrayList<SubTaskDetails>();
+    taskDetails = new ArrayList<>();
   }
 
   public void add(SubTaskDetails subtaskDetails) {
