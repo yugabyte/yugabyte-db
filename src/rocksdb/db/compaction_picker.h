@@ -95,11 +95,11 @@ class CompactionPicker {
 
   // Takes a list of CompactionInputFiles and returns a (manual) Compaction
   // object.
-  Compaction* FormCompaction(
+  std::unique_ptr<Compaction> FormCompaction(
       const CompactionOptions& compact_options,
       const std::vector<CompactionInputFiles>& input_files, int output_level,
       VersionStorageInfo* vstorage, const MutableCFOptions& mutable_cf_options,
-      uint32_t output_path_id);
+      uint32_t output_path_id) const;
 
   // Converts a set of compaction input file numbers into
   // a list of CompactionInputFiles.

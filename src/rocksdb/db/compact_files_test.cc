@@ -55,63 +55,6 @@ class FlushedFileCollector : public EventListener {
   std::mutex mutex_;
 };
 
-TEST_F(CompactFilesTest, L0ConflictsFiles) {
-  Options options;
-  // to trigger compaction more easily
-  const int kWriteBufferSize = 10000;
-  const int kLevel0Trigger = 2;
-  options.create_if_missing = true;
-  options.compaction_style = kCompactionStyleLevel;
-  // Small slowdown and stop trigger for experimental purpose.
-  options.level0_slowdown_writes_trigger = 20;
-  options.level0_stop_writes_trigger = 20;
-  options.level0_stop_writes_trigger = 20;
-  options.write_buffer_size = kWriteBufferSize;
-  options.level0_file_num_compaction_trigger = kLevel0Trigger;
-  options.compression = kNoCompression;
-
-  DB* db = nullptr;
-  DestroyDB(db_name_, options);
-  Status s = DB::Open(options, db_name_, &db);
-  assert(s.ok());
-  assert(db);
-
-  rocksdb::SyncPoint::GetInstance()->LoadDependency({
-      {"CompactFilesImpl:0", "BackgroundCallCompaction:0"},
-      {"BackgroundCallCompaction:1", "CompactFilesImpl:1"},
-  });
-  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
-
-  // create couple files
-  // Background compaction starts and waits in BackgroundCallCompaction:0
-  for (int i = 0; i < kLevel0Trigger * 4; ++i) {
-    db->Put(WriteOptions(), ToString(i), "");
-    db->Put(WriteOptions(), ToString(100 - i), "");
-    db->Flush(FlushOptions());
-  }
-
-  rocksdb::ColumnFamilyMetaData meta;
-  db->GetColumnFamilyMetaData(&meta);
-  std::string file1;
-  for (auto& file : meta.levels[0].files) {
-    ASSERT_EQ(0, meta.levels[0].level);
-    if (file1 == "") {
-      file1 = file.db_path + "/" + file.name;
-    } else {
-      std::string file2 = file.db_path + "/" + file.name;
-      // Another thread starts a compact files and creates an L0 compaction
-      // The background compaction then notices that there is an L0 compaction
-      // already in progress and doesn't do an L0 compaction
-      // Once the background compaction finishes, the compact files finishes
-      ASSERT_OK(
-          db->CompactFiles(rocksdb::CompactionOptions(), {file1, file2}, 0));
-      break;
-    }
-  }
-  rocksdb::SyncPoint::GetInstance()->DisableProcessing();
-  delete db;
-}
-
 TEST_F(CompactFilesTest, ObsoleteFiles) {
   Options options;
   // to trigger compaction more easily

@@ -261,34 +261,21 @@ bool CompactionPicker::FilesInCompaction(
   return false;
 }
 
-Compaction* CompactionPicker::FormCompaction(
+std::unique_ptr<Compaction> CompactionPicker::FormCompaction(
     const CompactionOptions& compact_options,
     const std::vector<CompactionInputFiles>& input_files, int output_level,
     VersionStorageInfo* vstorage, const MutableCFOptions& mutable_cf_options,
-    uint32_t output_path_id) {
+    uint32_t output_path_id) const {
   uint64_t max_grandparent_overlap_bytes =
       output_level + 1 < vstorage->num_levels() ?
           mutable_cf_options.MaxGrandParentOverlapBytes(output_level + 1) :
           std::numeric_limits<uint64_t>::max();
-  assert(input_files.size());
-
-  // TODO(rven ): we might be able to run concurrent level 0 compaction
-  // if the key ranges of the two compactions do not overlap, but for now
-  // we do not allow it.
-  if ((input_files[0].level == 0) && !level0_compactions_in_progress_.empty()) {
-    return nullptr;
-  }
-  auto c = new Compaction(
+  DCHECK_GT(input_files.size(), 0);
+  return std::make_unique<Compaction>(
       vstorage, mutable_cf_options, input_files, output_level,
       compact_options.output_file_size_limit, max_grandparent_overlap_bytes,
-      output_path_id, compact_options.compression, /* grandparents */ {}, true);
-
-  // If it's level 0 compaction, make sure we don't execute any other level 0
-  // compactions in parallel
-  if ((c != nullptr) && (input_files[0].level == 0)) {
-    level0_compactions_in_progress_.insert(c);
-  }
-  return c;
+      output_path_id, compact_options.compression,
+      /* grandparents */ std::vector<FileMetaData*>(), true);
 }
 
 Status CompactionPicker::GetCompactionInputsFromFileNumbers(

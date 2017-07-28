@@ -1842,11 +1842,10 @@ Status DBImpl::CompactFilesImpl(
   // At this point, CompactFiles will be run.
   bg_compaction_scheduled_++;
 
-  unique_ptr<Compaction> c;
   assert(cfd->compaction_picker());
-  c.reset(cfd->compaction_picker()->FormCompaction(
+  unique_ptr<Compaction> c = cfd->compaction_picker()->FormCompaction(
       compact_options, input_files, output_level, version->storage_info(),
-      *cfd->GetLatestMutableCFOptions(), output_path_id));
+      *cfd->GetLatestMutableCFOptions(), output_path_id);
   if (!c) {
     return STATUS(Aborted, "Another Level 0 compaction is running");
   }
