@@ -7,6 +7,7 @@
 #include "yb/common/yql_rowblock.h"
 #include "yb/common/yql_storage_interface.h"
 #include "yb/master/master.h"
+#include "yb/master/ts_descriptor.h"
 #include "yb/master/util/yql_vtable_helpers.h"
 
 namespace yb {
@@ -54,6 +55,12 @@ class YQLVirtualTable : public common::YQLStorageIf {
     *(row->mutable_column(column_index)) = util::GetValue(value, data_type);
     return Status::OK();
   }
+
+  // Get all live tserver descriptors sorted by their UUIDs. For cases like system.local and
+  // system.peers tables to return the token map of each tserver node so that each maps to a
+  // consistent token.
+  void GetSortedLiveDescriptors(std::vector<std::shared_ptr<TSDescriptor>>* descs) const;
+
   const Master* const master_;
   TableName table_name_;
   Schema schema_;

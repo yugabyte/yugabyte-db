@@ -6,13 +6,17 @@ namespace yb {
 namespace master {
 namespace util {
 
-// TODO (mihnea) when partitioning issue is solved this should take arguments and return the
-// appropriate result for each node.
-YQLValuePB GetTokensValue() {
+// Ideally, we want clients to use YB's own load-balancing policy for Cassandra to route the
+// requests to the respective nodes hosting the partition keys. But for clients using vanilla
+// drivers and thus Cassandra's own token-aware policy, we still want the requests to hit our nodes
+// evenly. To do that, we split Cassandra's token ring (signed 64-bit number space) evenly and
+// return the token for each node in the node list.
+YQLValuePB GetTokensValue(size_t index, size_t node_count) {
+  CHECK_GT(node_count, 0);
   YQLValuePB value_pb;
   YQLValue::set_set_value(&value_pb);
   YQLValuePB *token = YQLValue::add_set_elem(&value_pb);
-  token->set_string_value("0");
+  token->set_string_value(std::to_string(static_cast<int64_t>(UINT64_MAX / node_count * index)));
   return value_pb;
 }
 

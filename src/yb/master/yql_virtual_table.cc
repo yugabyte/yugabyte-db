@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 #include "yb/master/yql_virtual_table.h"
+#include "yb/master/ts_manager.h"
 #include "yb/master/yql_vtable_iterator.h"
 
 namespace yb {
@@ -69,6 +70,16 @@ CHECKED_STATUS YQLVirtualTable::BuildYQLScanSpec(const YQLReadRequestPB& request
       request.has_where_expr() ? &request.where_expr().condition() : nullptr));
   *req_hybrid_time = hybrid_time;
   return Status::OK();
+}
+
+void YQLVirtualTable::GetSortedLiveDescriptors(std::vector<std::shared_ptr<TSDescriptor>>* descs)
+    const {
+  master_->ts_manager()->GetAllLiveDescriptors(descs);
+  std::sort(
+      descs->begin(), descs->end(),
+      [](const std::shared_ptr<TSDescriptor>& a, const std::shared_ptr<TSDescriptor>& b) -> bool {
+        return a->permanent_uuid() < b->permanent_uuid();
+      });
 }
 
 }  // namespace master

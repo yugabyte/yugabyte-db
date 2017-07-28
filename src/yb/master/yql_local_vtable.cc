@@ -2,7 +2,6 @@
 
 #include "yb/master/yql_local_vtable.h"
 #include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
 
 namespace yb {
 namespace master {
@@ -14,12 +13,13 @@ LocalVTable::LocalVTable(const Master* const master)
 Status LocalVTable::RetrieveData(const YQLReadRequestPB& request,
                                  std::unique_ptr<YQLRowBlock>* vtable) const {
   vector<std::shared_ptr<TSDescriptor> > descs;
-  master_->ts_manager()->GetAllDescriptors(&descs);
+  GetSortedLiveDescriptors(&descs);
   vtable->reset(new YQLRowBlock(schema_));
 
   InetAddress remote_endpoint;
   RETURN_NOT_OK(remote_endpoint.FromString(request.remote_endpoint().host()));
 
+  size_t index = 0;
   for (const std::shared_ptr<TSDescriptor>& desc : descs) {
     TSInformationPB ts_info;
     // This is thread safe since all operations are reads.
@@ -52,9 +52,11 @@ Status LocalVTable::RetrieveData(const YQLReadRequestPB& request,
       RETURN_NOT_OK(SetColumnValue(kSystemLocalSchemaVersionColumn, schema_version, &row));
       RETURN_NOT_OK(SetColumnValue(kSystemLocalThriftVersionColumn, "20.1.0", &row));
       // setting tokens
-      RETURN_NOT_OK(SetColumnValue(kSystemLocalTokensColumn, util::GetTokensValue(), &row));
+      RETURN_NOT_OK(SetColumnValue(kSystemLocalTokensColumn,
+                                   util::GetTokensValue(index, descs.size()), &row));
       break;
     }
+    index++;
   }
 
   return Status::OK();

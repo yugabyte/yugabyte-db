@@ -90,7 +90,7 @@ YQLValuePB GetValue(const T& t, DataType data_type) {
   return GetValueHelper<CleanedT>::Apply(t, data_type);
 }
 
-YQLValuePB GetTokensValue();
+YQLValuePB GetTokensValue(size_t index, size_t node_count);
 
 YQLValuePB GetReplicationValue();
 

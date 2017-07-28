@@ -1,6 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 package org.yb.cql;
 
+import java.io.IOException;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.*;
@@ -381,15 +383,89 @@ public class TestSelect extends BaseCQLTest {
     runInvalidSelectWithTimestamp(tableName, "1992-12-12 14:23:30.12.32");
   }
 
-  private int getTotalCount(JsonObject metric) {
-    return metric.get("total_count").getAsInt();
+  // The read/write metrics.
+  private static class IOMetrics {
+
+    public int localReadCount;
+    public int localWriteCount;
+    public int remoteReadCount;
+    public int remoteWriteCount;
+
+    private static final String METRIC_PREFIX = "handler_latency_yb_client_";
+
+    public IOMetrics() {
+    }
+
+    public IOMetrics(MiniYBDaemon ts) throws IOException {
+      try {
+        String host = ts.getLocalhostIP();
+        int port = ts.getCqlWebPort();
+        URL url = new URL(String.format("http://%s:%d/metrics", host, port));
+        Scanner scanner = new Scanner(url.openConnection().getInputStream());
+        JsonParser parser = new JsonParser();
+        JsonElement tree = parser.parse(scanner.useDelimiter("\\A").next());
+        JsonObject obj = tree.getAsJsonArray().get(0).getAsJsonObject();
+        for (JsonElement elem : obj.getAsJsonArray("metrics")) {
+          JsonObject metric = elem.getAsJsonObject();
+          String metric_name = metric.get("name").getAsString();
+          if (metric_name.equals(METRIC_PREFIX + "read_local")) {
+            localReadCount = getTotalCount(metric);
+          } else if (metric_name.equals(METRIC_PREFIX + "write_local")) {
+            localWriteCount = getTotalCount(metric);
+          } else if (metric_name.equals(METRIC_PREFIX + "read_remote")) {
+            remoteReadCount = getTotalCount(metric);
+          } else if (metric_name.equals(METRIC_PREFIX + "write_remote")) {
+            remoteWriteCount = getTotalCount(metric);
+          }
+        }
+      } catch (MalformedURLException e) {
+        throw new InternalError(e.getMessage());
+      }
+    }
+
+    private static int getTotalCount(JsonObject metric) {
+      return metric.get("total_count").getAsInt();
+    }
+
+    public IOMetrics add(IOMetrics other) {
+      this.localReadCount += other.localReadCount;
+      this.localWriteCount += other.localWriteCount;
+      this.remoteReadCount += other.remoteReadCount;
+      this.remoteWriteCount += other.remoteWriteCount;
+      return this;
+    }
+
+    public IOMetrics subtract(IOMetrics other) {
+      this.localReadCount -= other.localReadCount;
+      this.localWriteCount -= other.localWriteCount;
+      this.remoteReadCount -= other.remoteReadCount;
+      this.remoteWriteCount -= other.remoteWriteCount;
+      return this;
+    }
+
+    public String toString() {
+      return "local read = " + localReadCount +
+          ", local write = " + localWriteCount +
+          ", remote read = " + remoteReadCount +
+          ", remote write = " + remoteWriteCount;
+    }
   }
 
   @Test
   public void testLocalTServerCalls() throws Exception {
+    // Create test table.
+    session.execute("CREATE TABLE test_local (k int PRIMARY KEY, v int);");
+
+    // Get the base metrics of each tserver.
+    Map<MiniYBDaemon, IOMetrics> baseMetrics = new HashMap<>();
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      IOMetrics metrics = new IOMetrics(ts);
+      baseMetrics.put(ts, metrics);
+      LOG.info("Metrics of " + ts.toString() + ": " + metrics.toString());
+    }
+
     // Insert 100 rows and select them back.
     final int NUM_KEYS = 100;
-    session.execute("CREATE TABLE test_local (k int PRIMARY KEY, v int);");
     PreparedStatement stmt = session.prepare("INSERT INTO test_local (k, v) VALUES (?, ?);");
     for (int i = 1; i <= 100; i++) {
       session.execute(stmt.bind(Integer.valueOf(i), Integer.valueOf(i + 1)));
@@ -399,42 +475,29 @@ public class TestSelect extends BaseCQLTest {
       assertEquals(i + 1, session.execute(stmt.bind(Integer.valueOf(i))).one().getInt("v"));
     }
 
-    // Check the metrics.
-    int totalLocalReadCalls = 0;
-    int totalRemoteReadCalls = 0;
-    int totalLocalWriteCalls = 0;
-    int totalRemoteWriteCalls = 0;
+    // Check the metrics again.
+    IOMetrics totalMetrics = new IOMetrics();
+    int tsCount = miniCluster.getTabletServers().values().size();
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      URL metrics = new URL(String.format("http://%s:%d/metrics",
-                                          ts.getLocalhostIP(), ts.getCqlWebPort()));
-      URLConnection yc = metrics.openConnection();
-      JsonParser parser = new JsonParser();
-      JsonElement tree = parser.parse(new Scanner(yc.getInputStream()).useDelimiter("\\A").next());
-      JsonObject obj = tree.getAsJsonArray().get(0).getAsJsonObject();
-      for (JsonElement elem : obj.getAsJsonArray("metrics")) {
-        JsonObject metric = elem.getAsJsonObject();
-        String metric_name = metric.get("name").getAsString();
-        if (metric_name.equals("handler_latency_yb_client_read_local")) {
-          totalLocalReadCalls += getTotalCount(metric);
-        } else if (metric_name.equals("handler_latency_yb_client_write_local")) {
-          totalLocalWriteCalls += getTotalCount(metric);
-        } else if (metric_name.equals("handler_latency_yb_client_read_remote")) {
-          totalRemoteReadCalls += getTotalCount(metric);
-        } else if (metric_name.equals("handler_latency_yb_client_write_remote")) {
-          totalRemoteWriteCalls += getTotalCount(metric);
-        }
-      }
+      IOMetrics metrics = new IOMetrics(ts).subtract(baseMetrics.get(ts));
+      LOG.info("Metrics of " + ts.toString() + ": " + metrics.toString());
+
+      // Verify each node gets its equal share (roughly) of reads and writes.
+      assertTrue(metrics.localReadCount + metrics.remoteReadCount >= NUM_KEYS / tsCount * 0.75);
+      assertTrue(metrics.localWriteCount + metrics.remoteWriteCount >= NUM_KEYS / tsCount * 0.75);
+
+      totalMetrics.add(metrics);
     }
 
     // Verify there are some local calls and some remote calls for reads and writes.
-    assertTrue(totalLocalReadCalls > 0);
-    assertTrue(totalRemoteReadCalls > 0);
-    assertTrue(totalLocalWriteCalls > 0);
-    assertTrue(totalRemoteWriteCalls > 0);
+    assertTrue(totalMetrics.localReadCount > 0);
+    assertTrue(totalMetrics.remoteReadCount > 0);
+    assertTrue(totalMetrics.localWriteCount > 0);
+    assertTrue(totalMetrics.remoteWriteCount > 0);
 
     // Verify total number of read / write calls. It is possible to have more calls than the
     // number of keys because some calls may reach step-down leaders and need retries.
-    assertTrue(totalLocalReadCalls + totalRemoteReadCalls >= NUM_KEYS);
-    assertTrue(totalLocalWriteCalls + totalRemoteWriteCalls >= NUM_KEYS);
+    assertTrue(totalMetrics.localReadCount + totalMetrics.remoteReadCount >= NUM_KEYS);
+    assertTrue(totalMetrics.localWriteCount + totalMetrics.remoteWriteCount >= NUM_KEYS);
   }
 }
