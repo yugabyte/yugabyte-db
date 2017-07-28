@@ -233,8 +233,14 @@ public class NodeManager extends DevopsBase {
           commandArgs.add(taskParam.instanceType);
           commandArgs.add("--cloud_subnet");
           commandArgs.add(taskParam.subnetId);
-          commandArgs.add("--machine_image");
-          commandArgs.add(taskParam.getRegion().ybImage);
+
+          // For now we wouldn't add machine image for aws and fallback on the default
+          // one devops gives us, we need to transition to having this use versioning
+          // like base_image_version [ENG-1859]
+          if (nodeTaskParam.cloud != Common.CloudType.aws) {
+            commandArgs.add("--machine_image");
+            commandArgs.add(taskParam.getRegion().ybImage);
+          }
           commandArgs.add("--assign_public_ip");
         }
         commandArgs.addAll(getAccessKeySpecificCommand(taskParam));
