@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.cloud;
 
 import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.PriceComponent;
 import com.yugabyte.yw.models.Provider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +17,11 @@ public class CloudProviderCleanup extends CloudTaskBase {
   @Override
   public void run() {
     Provider provider = Provider.get(taskParams().providerUUID);
+    // Delete price components
+    List<PriceComponent> priceComponents = PriceComponent.findByProvider(provider);
+    if (priceComponents != null) {
+      priceComponents.forEach(priceComponent -> priceComponent.delete());
+    }
     // We would delete the provider, keys etc only when all the regions are cleaned up.
     if (getProvider().regions.isEmpty()) {
       List<AccessKey> accessKeyList = AccessKey.getAll(provider.uuid);
