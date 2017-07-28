@@ -39,3 +39,39 @@
   cursor: pointer;
   text-decoration: underline;
 }
+
+.form-item-custom-label {
+  font-weight: bold;
+  text-align: left;
+  padding: 8px 16px;
+}
+
+.editor-container {
+  padding-bottom: 40px;
+}
+
+.gcp-provider-input-field {
+  width: 80%;
+}
+
+.config-provider-row {
+  margin-top: 10px;
+}
+
+.file-label {
+  padding-top: 12px;
+  font-size: 14px;
+  color: $YB_DARK_GREY;
+}
+
+.upload-file-button {
+  border: 1px solid #d3d3d3;
+  height: 40px;
+  cursor: pointer;
+  text-align: center;
+  padding-top: 10px;
+  color: #444;
+  background-color: #DDD;
+  boxShadow: 0 0 5px -1px rgba(0,0,0,0.2);
+  vertical-align: middle
+}
