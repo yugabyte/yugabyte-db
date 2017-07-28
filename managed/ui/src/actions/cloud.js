@@ -47,6 +47,7 @@ export const INITIALIZE_PROVIDER_FAILURE = 'INITIALIZE_PROVIDER_FAILURE';
 export const DELETE_PROVIDER = 'DELETE_PROVIDER';
 export const DELETE_PROVIDER_SUCCESS = 'DELETE_PROVIDER_SUCCESS';
 export const DELETE_PROVIDER_FAILURE = 'DELETE_PROVIDER_FAILURE';
+export const DELETE_PROVIDER_RESPONSE = 'DELETE_PROVIDER_RESPONSE';
 
 export const RESET_PROVIDER_BOOTSTRAP = 'RESET_PROVIDER_BOOTSTRAP';
 
@@ -306,6 +307,13 @@ export function deleteProviderFailure(error) {
     type: DELETE_PROVIDER_FAILURE,
     payload: error
   };
+}
+
+export function deleteProviderResponse(response) {
+  return {
+    type: DELETE_PROVIDER_RESPONSE,
+    payload: response
+  }
 }
 
 export function resetProviderBootstrap() {
