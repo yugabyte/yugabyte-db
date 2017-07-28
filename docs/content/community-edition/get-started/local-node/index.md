@@ -6,7 +6,7 @@ weight: 10
 
 Getting started with YugaByte in a developer's localhost environment is easy. Run the single-node YugaByte docker container with the instructions below and you will have a Apache Cassandra as well as a Redis server running on your localhost at their respective default ports (9042 for CQL and 6379 for Redis).
 
-Note that this **local node** approach simply provides API endpoints to develop against. It can neither be monitored nor can be scaled out to a multi-node cluster. For all such operational needs, refer to the [Local cluster] (/get-started/local-cluster/) or [Deploy](/deploy/) sections.
+Note that this **local node** approach simply provides API endpoints to develop against. It can neither be monitored nor can be scaled out to a multi-node cluster. For all such operational needs, refer to the Community Edition [Local cluster] (/community-edition/get-started/local-cluster/) section or the Enteprise Edition [Deploy](/enterprise-edition/deploy/) section.
 
 ## Prerequisites
 
