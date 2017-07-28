@@ -230,7 +230,8 @@ class UniverseForm extends Component {
       this.props.getInstanceTypeListItems(providerUUID);
       this.props.getAccessKeys(providerUUID);
     }
-    if (this.getCurrentProvider(value).code === "onprem") {
+    let currentProviderData = this.getCurrentProvider(value);
+    if (currentProviderData && currentProviderData.code === "onprem") {
       this.props.fetchNodeInstanceList(value);
     }
   }
@@ -295,9 +296,10 @@ class UniverseForm extends Component {
 
   componentDidUpdate(prevProps, prevState) {
     const {universe: {currentUniverse}} = this.props;
-    if (!_.isEqual(this.state, prevState) && prevState.maxNumNodes !== -1) {
-      let currentProvider = this.getCurrentProvider(this.state.providerSelected);
-      if (((currentProvider && currentProvider.code === "onprem" && this.state.numNodes <= this.state.maxNumNodes) || (currentProvider && currentProvider.code !== "onprem"))
+    let currentProvider = this.getCurrentProvider(this.state.providerSelected);
+    // Fire Configure only iff either provider is not on-prem or maxNumNodes is not -1 if on-prem
+    if (!_.isEqual(this.state, prevState) && isNonEmptyObject(currentProvider) && (prevState.maxNumNodes !== -1 || currentProvider.code !== "onprem")) {
+      if (((currentProvider.code === "onprem" && this.state.numNodes <= this.state.maxNumNodes) || (currentProvider.code !== "onprem"))
           && (this.state.numNodes >= this.state.replicationFactor && !this.state.nodeSetViaAZList)) {
 
         if (isNonEmptyObject(currentUniverse.data)) {
@@ -316,7 +318,7 @@ class UniverseForm extends Component {
         } else {
           this.configureUniverseNodeList();
         }
-      } else if (isNonEmptyArray(this.state.regionList) && currentProvider &&
+      } else if (isNonEmptyArray(this.state.regionList) &&
         currentProvider.code === "onprem" && this.state.instanceTypeSelected &&
         this.state.numNodes >= this.state.maxNumNodes) {
         let placementStatusObject = {
