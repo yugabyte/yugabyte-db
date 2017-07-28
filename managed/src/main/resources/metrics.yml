@@ -450,7 +450,7 @@ tserver_log_bytes_written:
   range: "1m"
   filters:
     type: "log_bytes_logged"
-  group_by: "type"
+  group_by: "exported_instance"
   layout:
     title: "Log Bytes Written / Sec / TServer"
     xaxis:
@@ -458,13 +458,14 @@ tserver_log_bytes_written:
     yaxis:
       alias:
         "log_bytes_logged": "Log Bytes Logged"
+
 tserver_log_bytes_read:
   metric: "collectd_yb_tserver_counter_total"
   function: "rate|avg"
   range: "1m"
   filters:
     type: "log_reader_bytes_read"
-  group_by: "type"
+  group_by: "exported_instance"
   layout:
     title: "Log Bytes Read / Sec / TServer"
     xaxis:
@@ -472,6 +473,7 @@ tserver_log_bytes_read:
     yaxis:
       alias:
         "log_reader_bytes_read": "Log Bytes Read"
+
 tserver_log_ops_second:
    metric: "collectd_yb_tserver_counter_total"
    function: "rate|avg"
@@ -542,8 +544,8 @@ lsm_rocksdb_num_seek_or_next:
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "rocksdb.number.db.seek|rocksdb.number.db.seek.found|rocksdb.number.db.next|rocksdb.number.db.next.found"
-  group_by: "exported_instance"
+    type: "rocksdb.number.db.seek|rocksdb.number.db.next"
+  group_by: "type"
   layout:
     title: "LSM-DB Seek/Next Num Ops"
     xaxis:
@@ -551,9 +553,38 @@ lsm_rocksdb_num_seek_or_next:
     yaxis:
       alias:
         "rocksdb.number.db.seek": "Seek"
-        "rocksdb.number.db.seek.found": "Seek Found"
         "rocksdb.number.db.next": "Next"
-        "rocksdb.number.db.next.found": "Next Found"
+
+lsm_rocksdb_num_seeks_per_node:
+  metric: "collectd_yb_tserver_counter_total"
+  function: "rate|avg"
+  range: "1m"
+  filters:
+    type: "rocksdb.number.db.seek"
+  group_by: "exported_instance"
+  layout:
+    title: "LSM-DB Seeks per node per sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb.number.db.seek": "Seek"
+
+lsm_rocksdb_blooms_checked_and_useful:
+  metric: "collectd_yb_tserver_counter_total"
+  function: "rate|avg"
+  range: "1m"
+  filters:
+    type: "rocksdb.bloom.filter.checked|rocksdb.bloom.filter.useful"
+  group_by: "type"
+  layout:
+    title: "LSM-DB Blooms usefulness"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb.bloom.filter.checked": "Blooms checked"
+        "rocksdb.bloom.filter.useful": "Blooms useful"
 
 lsm_rocksdb_latencies_get:
   metric: "collectd_yb_tserver_counter_total"
