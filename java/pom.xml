@@ -53,7 +53,7 @@
 
     <!-- Library dependencies -->
     <async.version>1.4.1</async.version>
-    <cassandra-driver-core.version>3.2.0-yb-1</cassandra-driver-core.version>
+    <cassandra-driver-core.version>3.2.0-yb-2</cassandra-driver-core.version>
     <commons-cli.version>1.2</commons-cli.version>
     <commons-io.version>2.4</commons-io.version>
     <guava.version>16.0.1</guava.version>
@@ -335,13 +335,12 @@
   </repositories>
   <distributionManagement>
     <repository>
-      <id>s3.release</id>
-      <url>s3://releases.yugabyte.com</url>
+      <id>${yugabyte.releases.repository.id}</id>
+      <url>${yugabyte.releases.repository.url}</url>
     </repository>
     <snapshotRepository>
-      <id>s3.snapshot</id>
-      <url>s3://snapshots.yugabyte.com</url>
+      <id>${yugabyte.snapshots.repository.id}</id>
+      <url>${yugabyte.snapshots.repository.url}</url>
     </snapshotRepository>
   </distributionManagement>
-
 </project>
