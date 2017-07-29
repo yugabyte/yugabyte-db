@@ -49,6 +49,7 @@ static const char* const kTableName = "my_table";
 static constexpr int32_t kNumTablets = 32;
 static constexpr int32_t kNumIterations = 10000;
 static constexpr int32_t kV2Value = 12345;
+static constexpr size_t kV2Index = 5;
 
 class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
@@ -322,13 +323,13 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_FALSE(resp.has_error());
     ASSERT_EQ(1, resp.yql_batch_size());
     YQLResponsePB yql_resp = resp.yql_batch(0);
-    ASSERT_EQ((int)YQLResponsePB_YQLStatus_YQL_STATUS_OK, (int)yql_resp.status());
+    ASSERT_EQ(YQLResponsePB_YQLStatus_YQL_STATUS_OK, yql_resp.status());
     ASSERT_TRUE(yql_resp.has_rows_data_sidecar());
 
     // Retrieve row.
     Slice rows_data;
-    EXPECT_TRUE(controller.finished());
-    EXPECT_OK(controller.GetSidecar(yql_resp.rows_data_sidecar(), &rows_data));
+    ASSERT_TRUE(controller.finished());
+    ASSERT_OK(controller.GetSidecar(yql_resp.rows_data_sidecar(), &rows_data));
     yb::sql::RowsResult rowsResult(*table_name_, schema_.columns(), rows_data.ToBuffer());
     *rowblock = rowsResult.GetRowBlock();
   }
@@ -529,7 +530,7 @@ TEST_F(YBBulkLoadTest, TestCLITool) {
     YQLReadRequestPB* yql_req = req.mutable_yql_batch()->Add();
     YQLConditionPB* condition = yql_req->mutable_where_expr()->mutable_condition();
     condition->set_op(YQLOperator::YQL_OP_EQUAL);
-    condition->add_operands()->set_column_id(kFirstColumnId + 5);
+    condition->add_operands()->set_column_id(kFirstColumnId + kV2Index);
     // kV2Value is common across all rows in the tablet and hence we use that value to verify the
     // expected number of rows. Note that since we have a parallel load tester running, we can't
     // validate the total number of rows in the DB.
