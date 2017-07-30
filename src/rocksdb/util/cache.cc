@@ -14,10 +14,12 @@
 
 #include "yb/util/metrics.h"
 #include "rocksdb/cache.h"
+#include "rocksdb/statistics.h"
 #include "port/port.h"
 #include "util/autovector.h"
 #include "util/hash.h"
 #include "util/mutexlock.h"
+#include "util/statistics.h"
 
 // 0 value means that there exist no single_touch cache and
 // 1 means that the entire cache is treated as a multi-touch cache.
@@ -359,8 +361,9 @@ class LRUCache {
   // Like Cache methods, but with an extra "hash" parameter.
   Status Insert(const Slice& key, uint32_t hash, const QueryId query_id,
                 void* value, size_t charge, void (*deleter)(const Slice& key, void* value),
-                Cache::Handle** handle);
-  Cache::Handle* Lookup(const Slice& key, uint32_t hash, const QueryId query_id);
+                Cache::Handle** handle, Statistics* statistics);
+  Cache::Handle* Lookup(const Slice& key, uint32_t hash, const QueryId query_id,
+                        Statistics* statistics = nullptr);
   void Release(Cache::Handle* handle);
   void Erase(const Slice& key, uint32_t hash);
 
@@ -503,7 +506,8 @@ void LRUCache::SetStrictCapacityLimit(bool strict_capacity_limit) {
   strict_capacity_limit_ = strict_capacity_limit;
 }
 
-Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash, const QueryId query_id)  {
+Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash, const QueryId query_id,
+                                Statistics* statistics)  {
   MutexLock l(&mutex_);
   LRUHandle* e = table_.Lookup(key, hash);
   if (e != nullptr) {
@@ -533,9 +537,25 @@ Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash, const QueryId q
         multi_touch_sub_cache_.IncrementUsage(e->charge);
       }
     }
+    if (statistics != nullptr) {
+      // overall cache hit
+      RecordTick(statistics, BLOCK_CACHE_HIT);
+      // total bytes read from cache
+      RecordTick(statistics, BLOCK_CACHE_BYTES_READ, e->charge);
+      if (e->GetSubCacheType() == SubCacheType::SINGLE_TOUCH) {
+        RecordTick(statistics, BLOCK_CACHE_SINGLE_TOUCH_HIT);
+        RecordTick(statistics, BLOCK_CACHE_SINGLE_TOUCH_BYTES_READ, e->charge);
+      } else if (e->GetSubCacheType() == SubCacheType::MULTI_TOUCH) {
+        RecordTick(statistics, BLOCK_CACHE_MULTI_TOUCH_HIT);
+        RecordTick(statistics, BLOCK_CACHE_MULTI_TOUCH_BYTES_READ, e->charge);
+      }
+    }
+  } else {
+    if (statistics != nullptr) {
+      RecordTick(statistics, BLOCK_CACHE_MISS);
+    }
   }
 
-  // Do the metrics outside of the lock.
   if (metrics_ != nullptr) {
     metrics_->lookups->Increment();
     bool was_hit = (e != nullptr);
@@ -587,7 +607,7 @@ void LRUCache::Release(Cache::Handle* handle) {
 
 Status LRUCache::Insert(const Slice& key, uint32_t hash, const QueryId query_id,
                         void* value, size_t charge, void (*deleter)(const Slice& key, void* value),
-                        Cache::Handle** handle) {
+                        Cache::Handle** handle, Statistics* statistics) {
   // Don't use the cache if disabled by the caller using the special query id.
   if (query_id == kNoCacheQueryId) {
     return Status::OK();
@@ -616,11 +636,10 @@ Status LRUCache::Insert(const Slice& key, uint32_t hash, const QueryId query_id,
 
   {
     MutexLock l(&mutex_);
-
     // Free the space following strict LRU policy until enough space
     // is freed or the lru list is empty.
-    SubCacheType subcache_type;
     // Check if there is a single touch cache.
+    SubCacheType subcache_type;
     if (FLAGS_cache_single_touch_ratio == 0) {
       e->query_id = kInMultiTouchId;
       subcache_type = MULTI_TOUCH;
@@ -666,14 +685,30 @@ Status LRUCache::Insert(const Slice& key, uint32_t hash, const QueryId query_id,
       }
       s = Status::OK();
     }
-  }
-  if (metrics_ != nullptr) {
-    if (e->GetSubCacheType() == MULTI_TOUCH) {
-      metrics_->multi_touch_cache_usage->IncrementBy(charge);
-    } else {
-      metrics_->single_touch_cache_usage->IncrementBy(charge);
+    if (statistics != nullptr) {
+      if (s.ok()) {
+        RecordTick(statistics, BLOCK_CACHE_ADD);
+        RecordTick(statistics, BLOCK_CACHE_BYTES_WRITE, charge);
+        if (subcache_type == SubCacheType::SINGLE_TOUCH) {
+          RecordTick(statistics, BLOCK_CACHE_SINGLE_TOUCH_ADD);
+          RecordTick(statistics, BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE, charge);
+        } else if (subcache_type == SubCacheType::MULTI_TOUCH) {
+          RecordTick(statistics, BLOCK_CACHE_MULTI_TOUCH_ADD);
+          RecordTick(statistics, BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE, charge);
+        }
+      } else {
+        RecordTick(statistics, BLOCK_CACHE_ADD_FAILURES);
+      }
+    }
+    if (metrics_ != nullptr) {
+      if (subcache_type == MULTI_TOUCH) {
+        metrics_->multi_touch_cache_usage->IncrementBy(charge);
+      } else {
+        metrics_->single_touch_cache_usage->IncrementBy(charge);
+      }
     }
   }
+
 
   // we free the entries here outside of mutex for
   // performance reasons
@@ -774,23 +809,24 @@ class ShardedLRUCache : public Cache {
   }
   virtual Status Insert(const Slice& key, const QueryId query_id, void* value, size_t charge,
                         void (*deleter)(const Slice& key, void* value),
-                        Handle** handle) override {
+                        Handle** handle, Statistics* statistics) override {
     DCHECK(IsValidQueryId(query_id));
     // Queries with no cache query ids are not cached.
     if (query_id == kNoCacheQueryId) {
       return Status::OK();
     }
     const uint32_t hash = HashSlice(key);
-    return shards_[Shard(hash)].Insert(key, hash, query_id, value, charge, deleter, handle);
+    return shards_[Shard(hash)].Insert(key, hash, query_id, value, charge, deleter,
+                                       handle, statistics);
   }
 
-  Handle* Lookup(const Slice& key, const QueryId query_id) override {
+  Handle* Lookup(const Slice& key, const QueryId query_id, Statistics* statistics) override {
     DCHECK(IsValidQueryId(query_id));
     if (query_id == kNoCacheQueryId) {
       return nullptr;
     }
     const uint32_t hash = HashSlice(key);
-    return shards_[Shard(hash)].Lookup(key, hash, query_id);
+    return shards_[Shard(hash)].Lookup(key, hash, query_id, statistics);
   }
 
   void Release(Handle* handle) override {

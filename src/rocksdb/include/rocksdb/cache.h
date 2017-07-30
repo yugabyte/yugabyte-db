@@ -27,6 +27,7 @@
 #include "rocksdb/slice.h"
 #include "rocksdb/status.h"
 #include "yb/util/cache_metrics.h"
+#include "rocksdb/statistics.h"
 
 namespace rocksdb {
 
@@ -93,14 +94,16 @@ class Cache {
   virtual Status Insert(const Slice& key, const QueryId query_id,
                         void* value, size_t charge,
                         void (*deleter)(const Slice& key, void* value),
-                        Handle** handle = nullptr) = 0;
+                        Handle** handle = nullptr,
+                        Statistics* statistics = nullptr) = 0;
 
   // If the cache has no mapping for "key", returns nullptr.
   //
   // Else return a handle that corresponds to the mapping.  The caller
   // must call this->Release(handle) when the returned mapping is no
   // longer needed.
-  virtual Handle* Lookup(const Slice& key, const QueryId query_id) = 0;
+  virtual Handle* Lookup(const Slice& key, const QueryId query_id,
+                         Statistics* statistics = nullptr) = 0;
 
   // Release a mapping returned by a previous Lookup().
   // REQUIRES: handle must not have been released yet.
