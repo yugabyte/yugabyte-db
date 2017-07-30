@@ -549,4 +549,38 @@ uint64_t StackTrace::HashCode() const {
                                sizeof(frames_[0]) * num_frames_);
 }
 
+namespace {
+#ifdef __linux__
+int DynamcLibraryListCallback(struct dl_phdr_info *info, size_t size, void *data) {
+  if (*info->dlpi_name != '\0') {
+    // We can't use LOG(...) yet because Google Logging might not be initialized.
+    // It is also important to write the entire line at once so that it is less likely to be
+    // interleaved with pieces of similar lines from other processes.
+    std::cerr << StringPrintf(
+        "Shared library '%s' loaded at address 0x%" PRIx64 "\n", info->dlpi_name, info->dlpi_addr);
+  }
+  return 0;
+}
+#endif
+
+void PrintLoadedDynamicLibraries() {
+#ifdef __linux__
+  // Supported on Linux only.
+  dl_iterate_phdr(DynamcLibraryListCallback, nullptr);
+#endif
+}
+
+bool PrintLoadedDynamicLibrariesOnceHelper() {
+  const char* list_dl_env_var = std::getenv("YB_LIST_LOADED_DYNAMIC_LIBS");
+  if (list_dl_env_var != nullptr && *list_dl_env_var != '\0') {
+    PrintLoadedDynamicLibraries();
+  }
+  return true;
+}
+}  // anonymous namespace
+
+// List the load addresses of dynamic libraries once on process startup if required.
+const bool  __attribute__((unused)) kPrintedLoadedDynamicLibraries =
+    PrintLoadedDynamicLibrariesOnceHelper();
+
 }  // namespace yb

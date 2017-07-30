@@ -38,6 +38,7 @@ namespace tablet {
 class TransactionOrderVerifier;
 class TransactionTracker;
 class TransactionDriver;
+class PrepareThread;
 
 // Base class for transaction drivers.
 //
@@ -50,7 +51,7 @@ class TransactionDriver;
 //      the operation is already "REPLICATING" (and thus we don't need to
 //      trigger replication ourself later on).
 //
-//  2 - ExecuteAsync() is called. This submits PrepareAndStartTask() to prepare_pool_
+//  2 - ExecuteAsync() is called. This submits the transaction driver to the PrepareThread
 //      and returns immediately.
 //
 //  3 - PrepareAndStartTask() calls Prepare() and Start() on the transaction.
@@ -59,7 +60,10 @@ class TransactionDriver;
 //      also triggers consensus->Replicate() and changes the replication state to
 //      REPLICATING.
 //
-//      On the other hand, if we have already successfully replicated (eg we are the
+//      What happens in reality is more complicated, as PrepareThread tries to batch leader-side
+//      transactions before submitting them to consensus.
+
+//      On the other hand, if we have already successfully replicated (e.g. we are the
 //      follower and ConsensusCommitted() has already been called, then we can move
 //      on to ApplyAsync().
 //
@@ -100,7 +104,7 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver>,
   TransactionDriver(TransactionTracker* txn_tracker,
                     consensus::Consensus* consensus,
                     log::Log* log,
-                    ThreadPool* prepare_pool,
+                    PrepareThread* prepare_thread,
                     ThreadPool* apply_pool,
                     TransactionOrderVerifier* order_verifier,
                     TableType table_type_);
@@ -152,6 +156,37 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver>,
 
   void HandleConsensusAppend() override;
 
+  bool is_leader_side() {
+    // TODO: switch state to an atomic.
+    std::lock_guard<simple_spinlock> lock(lock_);
+    return replication_state_ == ReplicationState::NOT_REPLICATING;
+  }
+
+  // Actually prepare and start. In case of leader-side transactions, this stops short of calling
+  // Consensus::Replicate, which is the responsibility of the caller. This is being done so that
+  // we can append multiple rounds to the consensus queue together.
+  CHECKED_STATUS PrepareAndStart();
+
+  // The task used to be submitted to the prepare threadpool to prepare and start the transaction.
+  // If PrepareAndStart() fails, calls HandleFailure. Since 07/07/2017 this is being used for
+  // non-leader-side transactions from PrepareThread, and for leader-side transactions the handling
+  // is a bit more complicated due to batching.
+  void PrepareAndStartTask();
+
+  // This should be called in case of a failure to submit the transaction for replication.
+  void SetReplicationFailed(const Status& replication_status);
+
+  // Handle a failure in any of the stages of the operation.
+  // In some cases, this will end the operation and call its callback.
+  // In others, where we can't recover, this will FATAL.
+  void HandleFailure(const Status& s);
+
+  consensus::Consensus* consensus() { return consensus_; }
+
+  consensus::ConsensusRound* consensus_round() {
+    return mutable_state()->consensus_round();
+  }
+
  private:
   friend class RefCountedThreadSafe<TransactionDriver>;
   enum ReplicationState {
@@ -178,13 +213,6 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver>,
 
   ~TransactionDriver() override {}
 
-  // The task submitted to the prepare threadpool to prepare and start
-  // the transaction. If PrepareAndStart() fails, calls HandleFailure.
-  void PrepareAndStartTask();
-
-  // Actually prepare and start.
-  CHECKED_STATUS PrepareAndStart();
-
   // Submits ApplyTask to the apply pool.
   CHECKED_STATUS ApplyAsync();
 
@@ -195,11 +223,6 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver>,
   // Sleeps until the transaction is allowed to commit based on the
   // requested consistency mode.
   CHECKED_STATUS CommitWait();
-
-  // Handle a failure in any of the stages of the operation.
-  // In some cases, this will end the operation and call its callback.
-  // In others, where we can't recover, this will FATAL.
-  void HandleFailure(const Status& s);
 
   // Called on Transaction::Apply() after the CommitMsg has been successfully
   // appended to the WAL.
@@ -220,7 +243,7 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver>,
   TransactionTracker* const txn_tracker_;
   consensus::Consensus* const consensus_;
   log::Log* const log_;
-  ThreadPool* const prepare_pool_;
+  PrepareThread* const prepare_thread_;
   ThreadPool* const apply_pool_;
   TransactionOrderVerifier* const order_verifier_;
 

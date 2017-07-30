@@ -34,6 +34,7 @@
 #include "yb/tablet/transactions/transaction_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/semaphore.h"
+#include "yb/tablet/prepare_thread.h"
 
 using yb::consensus::StateChangeContext;
 
@@ -311,12 +312,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   // during them in order to reject RPCs, etc.
   mutable simple_spinlock state_change_lock_;
 
-  // IMPORTANT: correct execution of PrepareTask assumes that 'prepare_pool_'
-  // is single-threaded, moving to a multi-tablet setup where multiple TabletPeers
-  // use the same 'prepare_pool_' needs to enforce that, for a single
-  // TabletPeer, PrepareTasks are executed *serially*.
-  // TODO move the prepare pool to TabletServer.
-  gscoped_ptr<ThreadPool> prepare_pool_;
+  std::unique_ptr<PrepareThread> prepare_thread_;
 
   // Pool that executes apply tasks for transactions. This is a multi-threaded
   // pool, constructor-injected by either the Master (for system tables) or

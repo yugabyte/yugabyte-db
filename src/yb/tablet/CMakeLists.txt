@@ -56,7 +56,7 @@ set(TABLET_SRCS
   delta_tracker.cc
   key_value_iterator.cc
   tablet_retention_policy.cc
-)
+  prepare_thread.cc)
 
 PROTOBUF_GENERATE_CPP(
   TABLET_PROTO_SRCS TABLET_PROTO_HDRS TABLET_PROTO_TGTS

@@ -44,7 +44,7 @@ using tserver::AlterSchemaResponsePB;
 string AlterSchemaTransactionState::ToString() const {
   return Substitute("AlterSchemaTransactionState "
                     "[hybrid_time=$0, schema=$1, request=$2]",
-                    hybrid_time().ToString(),
+                    hybrid_time_even_if_unset().ToString(),
                     schema_ == nullptr ? "(none)" : schema_->ToString(),
                     request_ == nullptr ? "(none)" : request_->ShortDebugString());
 }

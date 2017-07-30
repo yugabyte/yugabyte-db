@@ -17,10 +17,12 @@
 #ifndef YB_UTIL_SUBPROCESS_H
 #define YB_UTIL_SUBPROCESS_H
 
-#include <glog/logging.h>
 #include <string>
 #include <vector>
 #include <mutex>
+#include <map>
+
+#include <glog/logging.h>
 
 #include "yb/gutil/macros.h"
 #include "yb/util/status.h"
@@ -127,6 +129,8 @@ class Subprocess {
 
   pid_t pid() const;
 
+  void SetEnv(const std::string& key, const std::string& value);
+
  private:
   enum State {
     kNotStarted,
@@ -155,6 +159,8 @@ class Subprocess {
   // The cached exit result code if Wait() has been called.
   // Only valid if state_ == kExited.
   int cached_rc_;
+
+  std::map<std::string, std::string> env_;
 
   DISALLOW_COPY_AND_ASSIGN(Subprocess);
 };

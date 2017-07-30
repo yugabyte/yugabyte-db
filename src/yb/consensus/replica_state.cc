@@ -127,8 +127,12 @@ Status ReplicaState::LockForRead(UniqueLock* lock) const {
 }
 
 Status ReplicaState::LockForReplicate(UniqueLock* lock, const ReplicateMsg& msg) const {
-  ThreadRestrictions::AssertWaitAllowed();
   DCHECK(!msg.has_id()) << "Should not have an ID yet: " << msg.ShortDebugString();
+  return LockForReplicate(lock);
+}
+
+Status ReplicaState::LockForReplicate(UniqueLock* lock) const {
+  ThreadRestrictions::AssertWaitAllowed();
   UniqueLock l(update_lock_);
   if (PREDICT_FALSE(state_ != kRunning)) {
     return STATUS(IllegalState, "Replica not in running state");

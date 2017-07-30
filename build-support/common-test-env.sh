@@ -231,7 +231,11 @@ collect_gtest_tests() {
   # the lines containing these patterns:
   # sed '/PATTERN-1/,/PATTERN-2/d' input.txt
   sed '/^Suppressions used:$/,/^-\{53\}$/d' \
-    <"$gtest_list_stderr_path" | sed '/^-\{53\}$/d; /^\s*$/d;' \
+    <"$gtest_list_stderr_path" | sed '/^-\{53\}$/d; /^\s*$/d;' | \
+    ( egrep -v "^(\
+Starting tracking the heap|\
+Dumping heap profile to .* \\(Exiting\\))|\
+Shared library .* loaded at address 0x[0-9a-f]+$" || true ) \
     >"$gtest_list_stderr_path.filtered"
 
   # -s tests if the given file is non-empty
@@ -286,6 +290,13 @@ collect_gtest_tests() {
       fi
     fi
   done
+}
+
+using_nfs() {
+  if [[ $YB_SRC_ROOT =~ ^/n/ ]]; then
+    return 0
+  fi
+  return 1
 }
 
 # Set a number of variables in preparation to running a test.
@@ -414,6 +425,12 @@ prepare_for_running_test() {
   fi
 
   export TEST_TMPDIR="$test_log_path_prefix.tmp"
+  if using_nfs; then
+    export TEST_TMPDIR="/tmp/$test_log_path_prefix.tmp.$RANDOM.$RANDOM.$RANDOM.$$"
+  else
+    export TEST_TMPDIR="$test_log_path_prefix.tmp"
+  fi
+
   mkdir_safe "$TEST_TMPDIR"
   test_log_path="$test_log_path_prefix.log"
   raw_test_log_path="${test_log_path_prefix}__raw.log"
@@ -745,17 +762,6 @@ run_one_test() {
         # Print some diagnostics if we fail to set core file size limit.
         log "Command 'ulimit -c unlimited' failed. Current 'ulimit -c' output: $( ulimit -c )"
       fi
-
-      # Print the load address of every dynamic library on test startup, so we can add file names
-      # and line numbers to stack traces. This should be unnecessary if we switch to
-      # libbacktrace-based stack traces that would come with line numbers already. Also, one
-      # potential problem with this approach based on dumping load offsets of dynamic libraries is
-      # that stacktrace_addr2line.pl won't be able to match lines specifying library load offsets to
-      # processes in multi-process tests (e.g. mini-cluster based tests), potentially resulting in
-      # incorrect file names / line numbers.
-      #
-      # See also https://yugabyte.atlassian.net/browse/ENG-617 for tracking the libbacktrace work.
-      export YB_LIST_LOADED_DYNAMIC_LIBS=1
 
       # YB_CTEST_VERBOSE makes test output go to stderr, and then we separately make it show up on
       # the console by giving ctest the --verbose option. This is intended for development. When we

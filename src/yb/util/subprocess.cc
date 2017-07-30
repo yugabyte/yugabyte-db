@@ -19,15 +19,17 @@
 
 #include <dirent.h>
 #include <fcntl.h>
-#include <glog/logging.h>
-#include <memory>
 #include <signal.h>
-#include <string>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
 #include <vector>
 #include <mutex>
+#include <memory>
+#include <string>
+
+#include <glog/logging.h>
 
 #if defined(__linux__)
 #include <sys/prctl.h>
@@ -180,6 +182,11 @@ Subprocess::~Subprocess() {
   }
 }
 
+void Subprocess::SetEnv(const std::string& key, const std::string& value) {
+  CHECK_EQ(state_, kNotStarted);
+  env_[key] = value;
+}
+
 void Subprocess::SetFdShared(int stdfd, bool share) {
   unique_lock<mutex> l(state_lock_);
   CHECK_EQ(state_, kNotStarted);
@@ -318,6 +325,10 @@ Status Subprocess::Start() {
     }
 
     CloseNonStandardFDs(fd_dir);
+
+    for (const auto& env_kv : env_) {
+      setenv(env_kv.first.c_str(), env_kv.second.c_str(), /* replace */ true);
+    }
 
     execvp(program_.c_str(), &argv_ptrs[0]);
     PLOG(WARNING) << "Couldn't exec " << program_;

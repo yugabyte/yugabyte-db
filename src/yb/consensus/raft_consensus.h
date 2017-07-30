@@ -119,7 +119,8 @@ class RaftConsensus : public Consensus,
   // being shut down).
   void ReportFailureDetected(const std::string& name, const Status& msg);
 
-  virtual CHECKED_STATUS Replicate(const scoped_refptr<ConsensusRound>& round) override;
+  virtual CHECKED_STATUS Replicate(const ConsensusRoundPtr& round) override;
+  virtual CHECKED_STATUS ReplicateBatch(const ConsensusRounds& rounds) override;
 
   virtual CHECKED_STATUS CheckLeadershipAndBindTerm(const scoped_refptr<ConsensusRound>& round)
       override;
@@ -192,6 +193,8 @@ class RaftConsensus : public Consensus,
   // As a leader, append a new ConsensusRound to the queue.
   // Only virtual and protected for mocking purposes.
   virtual CHECKED_STATUS AppendNewRoundToQueueUnlocked(const scoped_refptr<ConsensusRound>& round);
+  virtual CHECKED_STATUS AppendNewRoundsToQueueUnlocked(
+      const std::vector<scoped_refptr<ConsensusRound>>& rounds);
 
   // As a follower, start a consensus round not associated with a Transaction.
   // Only virtual and protected for mocking purposes.
@@ -479,6 +482,11 @@ class RaftConsensus : public Consensus,
                                                      OpId last_from_leader);
   CHECKED_STATUS WaitWritesUnlocked(const LeaderRequest& deduped_req,
                                     Synchronizer* log_synchronizer);
+
+  // Rollback the id gen. so that we reuse these ids later, when we can actually append to the
+  // state machine. This makes the state machine have continuous ids for the same term, even if
+  // the queue refused to add any more operations.
+  void RollbackIdAndDeleteOpId(const ReplicateMsgPtr& replicate_msg);
 
   // Threadpool for constructing requests to peers, handling RPC callbacks,
   // etc.

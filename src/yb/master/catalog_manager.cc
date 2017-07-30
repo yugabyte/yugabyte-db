@@ -1079,7 +1079,7 @@ void CatalogManager::AbortTableCreation(TableInfo* table,
 
   // Since this is a failed creation attempt, it's safe to just abort
   // all tasks, as (by definition) no tasks may be pending against a
-  // table that has failed to succesfully create.
+  // table that has failed to successfully create.
   table->AbortTasks();
   table->WaitTasksCompletion();
 
@@ -1949,8 +1949,8 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   SendAlterTableRequest(table);
 
-  LOG(INFO) << "Successfully altered table " << table->ToString()
-            << " per request from " << RequestorString(rpc);
+  LOG(INFO) << "Successfully initiated ALTER TABLE (pending tablet schema updates) for "
+            << table->ToString() << " per request from " << RequestorString(rpc);
   return Status::OK();
 }
 

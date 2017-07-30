@@ -135,15 +135,6 @@ Status TabletPeer::Init(const shared_ptr<Tablet>& tablet,
   DCHECK(tablet) << "A TabletPeer must be provided with a Tablet";
   DCHECK(log) << "A TabletPeer must be provided with a Log";
 
-  RETURN_NOT_OK(ThreadPoolBuilder("prepare").set_min_threads(1)
-                .set_max_threads(1).Build(&prepare_pool_));
-  prepare_pool_->SetQueueLengthHistogram(
-      METRIC_op_prepare_queue_length.Instantiate(metric_entity));
-  prepare_pool_->SetQueueTimeMicrosHistogram(
-      METRIC_op_prepare_queue_time.Instantiate(metric_entity));
-  prepare_pool_->SetRunTimeMicrosHistogram(
-      METRIC_op_prepare_run_time.Instantiate(metric_entity));
-
   {
     std::lock_guard<simple_spinlock> lock(lock_);
     CHECK_EQ(BOOTSTRAPPING, state_);
@@ -172,7 +163,11 @@ Status TabletPeer::Init(const shared_ptr<Tablet>& tablet,
                                        tablet_->mem_tracker(),
                                        mark_dirty_clbk_,
                                        tablet_->table_type());
+
+    prepare_thread_ = std::make_unique<PrepareThread>(consensus_.get());
   }
+
+  RETURN_NOT_OK(prepare_thread_->Start());
 
   if (tablet_->metrics() != nullptr) {
     TRACE("Starting instrumentation");
@@ -249,8 +244,8 @@ void TabletPeer::Shutdown() {
     txn_tracker_.WaitForAllToFinish();
   }
 
-  if (prepare_pool_) {
-    prepare_pool_->Shutdown();
+  if (prepare_thread_) {
+    prepare_thread_->Stop();
   }
 
   if (log_) {
@@ -677,7 +672,7 @@ scoped_refptr<TransactionDriver> TabletPeer::CreateTransactionDriver() {
       &txn_tracker_,
       consensus_.get(),
       log_.get(),
-      prepare_pool_.get(),
+      prepare_thread_.get(),
       apply_pool_,
       &txn_order_verifier_,
       tablet_->table_type()));

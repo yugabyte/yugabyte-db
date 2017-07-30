@@ -209,12 +209,16 @@ class ClientStressTest_LowMemory : public ClientStressTest {
     // There's nothing scientific about this number; it must be low enough to
     // trigger memory pressure request rejection yet high enough for the
     // servers to make forward progress.
+    //
+    // Note that if this number is set too low, the test will fail in a CHECK in TestWorkload
+    // after retries are exhausted when writing an entry. This happened e.g. when a substantial
+    // upfront memory overhead was introduced by adding a large lock-free queue in PrepareThread.
     const int kMemLimitBytes = 64 * 1024 * 1024;
     ExternalMiniClusterOptions opts;
-    opts.extra_tserver_flags.push_back(Substitute(
-        "--memory_limit_hard_bytes=$0", kMemLimitBytes));
-    opts.extra_tserver_flags.push_back(
-        "--memory_limit_soft_percentage=0");
+    opts.extra_tserver_flags.push_back(Substitute("--memory_limit_hard_bytes=$0", kMemLimitBytes));
+    opts.extra_tserver_flags.push_back("--memory_limit_soft_percentage=0");
+    opts.extra_tserver_flags.push_back("--memory_limit_soft_percentage=0");
+
     return opts;
   }
 };

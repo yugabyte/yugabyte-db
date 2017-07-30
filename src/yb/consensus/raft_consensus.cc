@@ -767,15 +767,26 @@ Status RaftConsensus::BecomeReplicaUnlocked() {
   return Status::OK();
 }
 
-Status RaftConsensus::Replicate(const scoped_refptr<ConsensusRound>& round) {
+Status RaftConsensus::Replicate(const ConsensusRoundPtr& round) {
+  return ReplicateBatch({ round });
+}
 
-  RETURN_NOT_OK(ExecuteHook(PRE_REPLICATE));
-
+Status RaftConsensus::ReplicateBatch(const ConsensusRounds& rounds) {
   {
     ReplicaState::UniqueLock lock;
-    RETURN_NOT_OK(state_->LockForReplicate(&lock, *round->replicate_msg()));
-    RETURN_NOT_OK(round->CheckBoundTerm(state_->GetCurrentTermUnlocked()));
-    RETURN_NOT_OK(AppendNewRoundToQueueUnlocked(round));
+#ifndef NDEBUG
+    for (const auto& round : rounds) {
+      DCHECK(!round->replicate_msg()->has_id()) << "Should not have an OpId yet: "
+                                                << round->replicate_msg()->DebugString();
+    }
+#endif
+    RETURN_NOT_OK(state_->LockForReplicate(&lock));
+    auto current_term = state_->GetCurrentTermUnlocked();
+
+    for (const auto& round : rounds) {
+      RETURN_NOT_OK(round->CheckBoundTerm(current_term));
+    }
+    RETURN_NOT_OK(AppendNewRoundsToQueueUnlocked(rounds));
   }
 
   peer_manager_->SignalRequest(RequestTriggerMode::NON_EMPTY_ONLY);
@@ -809,42 +820,69 @@ Status RaftConsensus::CheckLeadershipAndBindTerm(const scoped_refptr<ConsensusRo
 }
 
 Status RaftConsensus::AppendNewRoundToQueueUnlocked(const scoped_refptr<ConsensusRound>& round) {
-  state_->NewIdUnlocked(round->replicate_msg()->mutable_id());
-  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    ReplicateMsg* const replicate_msg = round->replicate_msg().get();
+  return AppendNewRoundsToQueueUnlocked({ round });
+}
 
-    // In YB tables we include the last committed id into every REPLICATE log record so we can
-    // perform local bootstrap more efficiently.
-    replicate_msg->mutable_committed_op_id()->CopyFrom(state_->GetCommittedOpIdUnlocked());
+Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
+    const std::vector<scoped_refptr<ConsensusRound>>& rounds) {
+  for (auto iter = rounds.begin(); iter != rounds.end(); ++iter) {
+    const ConsensusRoundPtr& round = *iter;
 
-    // We use this callback to transform write operations by substituting the hybrid_time into the
-    // write batch inside the write operation.
-    auto* const append_cb = round->append_callback();
-    if (append_cb != nullptr) {
-      append_cb->HandleConsensusAppend();
+    state_->NewIdUnlocked(round->replicate_msg()->mutable_id());
+
+    if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+      ReplicateMsg* const replicate_msg = round->replicate_msg().get();
+
+      // In YB tables we include the last committed id into every REPLICATE log record so we can
+      // perform local bootstrap more efficiently.
+      replicate_msg->mutable_committed_op_id()->CopyFrom(state_->GetCommittedOpIdUnlocked());
+
+      // We use this callback to transform write operations by substituting the hybrid_time into
+      // the write batch inside the write operation.
+      //
+      // TODO: we could allocate multiple HybridTimes in batch, only reading system clock once.
+      auto* const append_cb = round->append_callback();
+      if (append_cb != nullptr) {
+        append_cb->HandleConsensusAppend();
+      }
+    }
+
+    Status s = state_->AddPendingOperation(round);
+    if (!s.ok()) {
+      // Iterate rounds in the reverse order and release ids. We add one to the iterator before
+      // converting to a reverse iterator to get a reverse iterator staring with the current
+      // element.
+      for (auto riter = std::reverse_iterator<decltype(iter)>(iter + 1);
+           riter != rounds.rbegin(); ++riter) {
+        RollbackIdAndDeleteOpId((*riter)->replicate_msg());
+      }
+      return s;
     }
   }
-  RETURN_NOT_OK(state_->AddPendingOperation(round));
 
-  Status s = queue_->AppendOperation(round->replicate_msg());
+  std::vector<ReplicateMsgPtr> replicate_msgs;
+  replicate_msgs.reserve(rounds.size());
+  for (const auto& round : rounds) {
+    replicate_msgs.push_back(round->replicate_msg());
+  }
+  Status s = queue_->AppendOperations(replicate_msgs, Bind(DoNothingStatusCB));
 
   // Handle Status::ServiceUnavailable(), which means the queue is full.
+  // TODO: what are we doing about other errors here? Should we also release OpIds in those cases?
   if (PREDICT_FALSE(s.IsServiceUnavailable())) {
-    gscoped_ptr<OpId> id(round->replicate_msg()->release_id());
-    // Rollback the id gen. so that we reuse this id later, when we can
-    // actually append to the state machine, i.e. this makes the state
-    // machine have continuous ids, for the same term, even if the queue
-    // refused to add any more operations.
-    state_->CancelPendingOperation(*id);
-    LOG_WITH_PREFIX_UNLOCKED(WARNING) << ": Could not append replicate request "
-                 << "to the queue. Queue is Full. "
-                 << "Queue metrics: " << queue_->ToString();
+    for (auto iter = replicate_msgs.rbegin(); iter != replicate_msgs.rend(); ++iter) {
+      RollbackIdAndDeleteOpId(*iter);
+      LOG_WITH_PREFIX_UNLOCKED(WARNING) << ": Could not append replicate request "
+                   << "to the queue. Queue is Full. "
+                   << "Queue metrics: " << queue_->ToString();
 
-    // TODO Possibly evict a dangling peer from the configuration here.
-    // TODO count of number of ops failed due to consensus queue overflow.
+      // TODO Possibly evict a dangling peer from the configuration here.
+      // TODO count of number of ops failed due to consensus queue overflow.
+    }
   }
-  RETURN_NOT_OK_PREPEND(s, "Unable to append operation to consensus queue");
-  state_->UpdateLastReceivedOpIdUnlocked(round->id());
+
+  RETURN_NOT_OK_PREPEND(s, "Unable to append operations to consensus queue");
+  state_->UpdateLastReceivedOpIdUnlocked(rounds.back()->id());
   return Status::OK();
 }
 
@@ -2579,6 +2617,12 @@ Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
   RETURN_NOT_OK(state_->SetCurrentTermUnlocked(new_term));
   term_metric_->set_value(new_term);
   return Status::OK();
+}
+
+void RaftConsensus::RollbackIdAndDeleteOpId(const ReplicateMsgPtr& replicate_msg) {
+  OpId* op_id = replicate_msg->release_id();
+  state_->CancelPendingOperation(*op_id);
+  delete op_id;
 }
 
 }  // namespace consensus

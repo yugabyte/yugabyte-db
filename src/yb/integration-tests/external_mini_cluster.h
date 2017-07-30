@@ -468,6 +468,8 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   // In a non-coverage build, this does nothing.
   void FlushCoverage();
 
+  std::string ProcessNameAndPidStr();
+
   const std::string short_description_;
   const std::shared_ptr<rpc::Messenger> messenger_;
   const std::string exe_;

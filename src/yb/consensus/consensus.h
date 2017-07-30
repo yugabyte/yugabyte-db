@@ -70,6 +70,9 @@ typedef int64_t ConsensusTerm;
 
 typedef StatusCallback ConsensusReplicatedCallback;
 
+typedef scoped_refptr<ConsensusRound> ConsensusRoundPtr;
+typedef std::vector<ConsensusRoundPtr> ConsensusRounds;
+
 struct ConsensusOptions {
   std::string tablet_id;
 };
@@ -187,7 +190,7 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   // structures required for a consensus round, such as the ReplicateMsg
   // (and later on the CommitMsg). ConsensusRound will also point to and
   // increase the reference count for the provided callbacks.
-  scoped_refptr<ConsensusRound> NewRound(
+  ConsensusRoundPtr NewRound(
       ReplicateMsgPtr replicate_msg,
       const ConsensusReplicatedCallback& replicated_cb);
 
@@ -222,7 +225,10 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   //     commit index, which tells them to apply the operation.
   //
   // This method can only be called on the leader, i.e. role() == LEADER
-  virtual CHECKED_STATUS Replicate(const scoped_refptr<ConsensusRound>& round) = 0;
+  virtual CHECKED_STATUS Replicate(const ConsensusRoundPtr& round) = 0;
+
+  // A batch version of Replicate, which is what we try to use as much as possible for performance.
+  virtual CHECKED_STATUS ReplicateBatch(const ConsensusRounds& rounds) = 0;
 
   // Ensures that the consensus implementation is currently acting as LEADER,
   // and thus is allowed to submit operations to be prepared before they are
@@ -230,7 +236,7 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   // implementation also stores the current term inside the round's "bound_term"
   // member. When we eventually are about to replicate the transaction, we verify
   // that the term has not changed in the meantime.
-  virtual CHECKED_STATUS CheckLeadershipAndBindTerm(const scoped_refptr<ConsensusRound>& round) {
+  virtual CHECKED_STATUS CheckLeadershipAndBindTerm(const ConsensusRoundPtr& round) {
     return Status::OK();
   }
 
@@ -459,7 +465,7 @@ struct StateChangeContext {
 //   on a restart.
 class ReplicaTransactionFactory {
  public:
-  virtual CHECKED_STATUS StartReplicaTransaction(const scoped_refptr<ConsensusRound>& context) = 0;
+  virtual CHECKED_STATUS StartReplicaTransaction(const ConsensusRoundPtr& context) = 0;
 
   virtual ~ReplicaTransactionFactory() {}
 };
@@ -536,6 +542,8 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
   //
   // If this round has not been bound to any term, this is a no-op.
   CHECKED_STATUS CheckBoundTerm(int64_t current_term) const;
+
+  int64_t bound_term() { return bound_term_; }
 
  private:
   friend class RaftConsensusQuorumTest;

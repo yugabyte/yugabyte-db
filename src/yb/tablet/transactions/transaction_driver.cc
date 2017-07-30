@@ -53,14 +53,14 @@ static const char* kHybridTimeFieldName = "hybrid_time";
 TransactionDriver::TransactionDriver(TransactionTracker *txn_tracker,
                                      Consensus* consensus,
                                      Log* log,
-                                     ThreadPool* prepare_pool,
+                                     PrepareThread* prepare_thread,
                                      ThreadPool* apply_pool,
                                      TransactionOrderVerifier* order_verifier,
                                      TableType table_type)
     : txn_tracker_(txn_tracker),
       consensus_(consensus),
       log_(log),
-      prepare_pool_(prepare_pool),
+      prepare_thread_(prepare_thread),
       apply_pool_(apply_pool),
       order_verifier_(order_verifier),
       trace_(new Trace()),
@@ -147,8 +147,7 @@ Status TransactionDriver::ExecuteAsync() {
   }
 
   if (s.ok()) {
-    s = prepare_pool_->SubmitClosure(
-      Bind(&TransactionDriver::PrepareAndStartTask, Unretained(this)));
+    s = prepare_thread_->Submit(this);
   }
 
   if (!s.ok()) {
@@ -234,28 +233,19 @@ Status TransactionDriver::PrepareAndStart() {
         // consensus queue, to guarantee that hybrid_times increase monotonically with Raft indexes.
       }
 
-      VLOG_WITH_PREFIX(4) << "Triggering consensus repl";
-      // Trigger the consensus replication.
-
       {
         std::lock_guard<simple_spinlock> lock(lock_);
         replication_state_ = REPLICATING;
       }
-      Status s = consensus_->Replicate(mutable_state()->consensus_round());
 
-      if (PREDICT_FALSE(!s.ok())) {
-        std::lock_guard<simple_spinlock> lock(lock_);
-        CHECK_EQ(replication_state_, REPLICATING);
-        transaction_status_ = s;
-        replication_state_ = REPLICATION_FAILED;
-        return s;
-      }
-      break;
+      // After the batching changes from 07/2017, It is the caller's responsibility to call
+      // Consensus::Replicate. See PrepareThread for details.
+      return Status::OK();
     }
     case REPLICATING:
     {
       // Already replicating - nothing to trigger
-      break;
+      return Status::OK();
     }
     case REPLICATION_FAILED:
       DCHECK(!transaction_status_.ok());
@@ -268,8 +258,14 @@ Status TransactionDriver::PrepareAndStart() {
       return ApplyAsync();
     }
   }
+  FATAL_INVALID_ENUM_VALUE(ReplicationState, repl_state_copy);
+}
 
-  return Status::OK();
+void TransactionDriver::SetReplicationFailed(const Status& replication_status) {
+  std::lock_guard<simple_spinlock> lock(lock_);
+  CHECK_EQ(replication_state_, REPLICATING);
+  transaction_status_ = replication_status;
+  replication_state_ = REPLICATION_FAILED;
 }
 
 void TransactionDriver::HandleFailure(const Status& s) {

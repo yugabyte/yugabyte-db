@@ -113,6 +113,7 @@ class ReplicaState {
   // contains a replicate message and is of the appropriate type, and returns
   // Status::IllegalState if that is not the case.
   CHECKED_STATUS LockForReplicate(UniqueLock* lock, const ReplicateMsg& msg) const;
+  CHECKED_STATUS LockForReplicate(UniqueLock* lock) const;
 
   // Locks a replica down until an the critical section of an update completes.
   // Further updates from the same or some other leader will be blocked until

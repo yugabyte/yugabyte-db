@@ -65,6 +65,13 @@ DEFINE_int32(tcmalloc_max_free_bytes_percentage, 10,
 TAG_FLAG(tcmalloc_max_free_bytes_percentage, advanced);
 #endif
 
+DEFINE_bool(mem_tracker_logging, false,
+            "Enable logging of memory tracker consume/release operations");
+
+DEFINE_bool(mem_tracker_log_stack_trace, false,
+            "Enable logging of stack traces on memory tracker consume/release operations. "
+            "Only takes effect if mem_tracker_logging is also enabled.");
+
 namespace yb {
 
 // NOTE: this class has been adapted from Impala, so the code style varies
@@ -171,8 +178,8 @@ MemTracker::MemTracker(ConsumptionFunction consumption_func, int64_t byte_limit,
       consumption_(0),
       consumption_func_(std::move(consumption_func)),
       rand_(GetRandomSeed32()),
-      enable_logging_(false),
-      log_stack_(false) {
+      enable_logging_(FLAGS_mem_tracker_logging),
+      log_stack_(FLAGS_mem_tracker_log_stack_trace) {
   VLOG(1) << "Creating tracker " << ToString();
   if (consumption_func_) {
     UpdateConsumption();

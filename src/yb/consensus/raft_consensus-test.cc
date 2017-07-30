@@ -32,6 +32,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/tablet/prepare_thread.h"
 
 DECLARE_bool(enable_leader_failure_detection);
 
@@ -143,6 +144,13 @@ class RaftConsensusSpy : public RaftConsensus {
     return RaftConsensus::AppendNewRoundToQueueUnlocked(round);
   }
 
+  MOCK_METHOD1(AppendNewRoundsToQueueUnlocked, Status(
+      const std::vector<scoped_refptr<ConsensusRound>>& rounds));
+  Status AppendNewRoundsToQueueUnlockedConcrete(
+      const std::vector<scoped_refptr<ConsensusRound>>& rounds) {
+    return RaftConsensus::AppendNewRoundsToQueueUnlocked(rounds);
+  }
+
   MOCK_METHOD1(StartConsensusOnlyRoundUnlocked, Status(const ReplicateMsgPtr& msg));
   Status StartNonLeaderConsensusRoundUnlockedConcrete(const ReplicateMsgPtr& msg) {
     return RaftConsensus::StartConsensusOnlyRoundUnlocked(msg);
@@ -233,6 +241,8 @@ class RaftConsensusTest : public YBTest {
 
     ON_CALL(*consensus_.get(), AppendNewRoundToQueueUnlocked(_))
         .WillByDefault(Invoke(this, &RaftConsensusTest::MockAppendNewRound));
+    ON_CALL(*consensus_.get(), AppendNewRoundsToQueueUnlocked(_))
+        .WillByDefault(Invoke(this, &RaftConsensusTest::MockAppendNewRounds));
   }
 
   Status AppendToLog(const ReplicateMsgs& msgs,
@@ -248,10 +258,18 @@ class RaftConsensusTest : public YBTest {
   }
 
   Status MockAppendNewRound(const scoped_refptr<ConsensusRound>& round) {
-    rounds_.push_back(round);
-    RETURN_NOT_OK(consensus_->AppendNewRoundToQueueUnlockedConcrete(round));
-    LOG(INFO) << "Round append: " << round->id() << ", ReplicateMsg: "
-              << round->replicate_msg()->ShortDebugString();
+    return consensus_->AppendNewRoundToQueueUnlockedConcrete(round);
+  }
+
+  Status MockAppendNewRounds(const std::vector<scoped_refptr<ConsensusRound>>& rounds) {
+    for (const auto& round : rounds) {
+      rounds_.push_back(round);
+    }
+    RETURN_NOT_OK(consensus_->AppendNewRoundsToQueueUnlockedConcrete(rounds));
+    for (const auto& round : rounds) {
+      LOG(INFO) << "Round append: " << round->id() << ", ReplicateMsg: "
+                << round->replicate_msg()->ShortDebugString();
+    }
     return Status::OK();
   }
 
@@ -353,6 +371,8 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenInSameTerm) {
   EXPECT_CALL(*queue_, SetLeaderMode(_, _, _))
       .Times(1);
   EXPECT_CALL(*consensus_.get(), AppendNewRoundToQueueUnlocked(_))
+      .Times(1);
+  EXPECT_CALL(*consensus_.get(), AppendNewRoundsToQueueUnlocked(_))
       .Times(11);
   EXPECT_CALL(*queue_, AppendOperationsMock(_, _))
       .Times(11).WillRepeatedly(Return(Status::OK()));
@@ -388,8 +408,10 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenTermsChange) {
       .Times(1);
   EXPECT_CALL(*queue_, SetLeaderMode(_, _, _))
       .Times(2);
-  EXPECT_CALL(*consensus_.get(), AppendNewRoundToQueueUnlocked(_))
+  EXPECT_CALL(*consensus_.get(), AppendNewRoundsToQueueUnlocked(_))
       .Times(3);
+  EXPECT_CALL(*consensus_.get(), AppendNewRoundToQueueUnlocked(_))
+      .Times(2);
   EXPECT_CALL(*queue_, AppendOperationsMock(_, _))
       .Times(3).WillRepeatedly(Return(Status::OK()));;
 
@@ -439,9 +461,7 @@ TEST_F(RaftConsensusTest, TestPendingTransactions) {
   SetUpConsensus(10);
 
   // Emulate a stateful system by having a bunch of operations in flight when consensus starts.
-  // Specifically we emulate we're on term 10, with 5 operations before the last known
-  // committed operation, 10.104, which should be committed immediately, and 5 operations after the
-  // last known committed operation, which should be pending but not yet committed.
+  // Specifically we emulate we're on term 10, with 10 operations that have not been committed yet.
   ConsensusBootstrapInfo info;
   info.last_id.set_term(10);
   for (int i = 0; i < 10; i++) {

@@ -22,6 +22,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <chrono>
 
 #include <gtest/gtest.h>
 #include <rapidjson/document.h>
@@ -96,6 +97,16 @@ typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
 
 DECLARE_string(vmodule);
 DECLARE_int32(default_num_replicas);
+DECLARE_bool(mem_tracker_logging);
+DECLARE_bool(mem_tracker_log_stack_trace);
+
+DEFINE_string(external_daemon_heap_profile_prefix, "",
+              "If this is not empty, tcmalloc's HEAPPROFILE is set this, followed by a unique "
+              "suffix for external mini-cluster daemons.");
+
+DEFINE_bool(external_daemon_safe_shutdown, false,
+            "Shutdown external daemons using SIGTERM first. Disabled by default to avoid "
+            "interfering with kill-testing.");
 
 namespace yb {
 
@@ -103,6 +114,8 @@ static const char* const kMasterBinaryName = "yb-master";
 static const char* const kTabletServerBinaryName = "yb-tserver";
 static double kProcessStartTimeoutSeconds = 60.0;
 static double kTabletServerRegistrationTimeoutSeconds = 10.0;
+
+static const int kHeapProfileSignal = SIGUSR1;
 
 #if defined(__APPLE__)
 static bool kBindToUniqueLoopbackAddress = false;
@@ -1277,6 +1290,12 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   if (!FLAGS_vmodule.empty()) {
     argv.push_back(Substitute("--vmodule=$0", FLAGS_vmodule));
   }
+  if (FLAGS_mem_tracker_logging) {
+    argv.push_back("--mem_tracker_logging");
+  }
+  if (FLAGS_mem_tracker_log_stack_trace) {
+    argv.push_back("--mem_tracker_log_stack_trace");
+  }
 
   gscoped_ptr<Subprocess> p(new Subprocess(exe_, argv));
   p->ShareParentStdout(false);
@@ -1284,6 +1303,11 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   auto default_output_prefix = Substitute("[$0]", short_description_);
   LOG(INFO) << "Running " << default_output_prefix << ": " << exe_ << "\n"
     << JoinStrings(argv, "\n");
+  if (!FLAGS_external_daemon_heap_profile_prefix.empty()) {
+    p->SetEnv("HEAPPROFILE",
+              FLAGS_external_daemon_heap_profile_prefix + "_" + short_description_);
+    p->SetEnv("HEAPPROFILESIGNAL", std::to_string(kHeapProfileSignal));
+  }
   RETURN_NOT_OK_PREPEND(p->Start(),
                         Substitute("Failed to start subprocess $0", exe_));
 
@@ -1334,13 +1358,13 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
 
 Status ExternalDaemon::Pause() {
   if (!process_) return Status::OK();
-  VLOG(1) << "Pausing " << exe_ << " with pid " << process_->pid();
+  VLOG(1) << "Pausing " << ProcessNameAndPidStr();
   return process_->Kill(SIGSTOP);
 }
 
 Status ExternalDaemon::Resume() {
   if (!process_) return Status::OK();
-  VLOG(1) << "Resuming " << exe_ << " with pid " << process_->pid();
+  VLOG(1) << "Resuming " << ProcessNameAndPidStr();
   return process_->Kill(SIGCONT);
 }
 
@@ -1378,8 +1402,39 @@ void ExternalDaemon::Shutdown() {
     // external clusters.
     FlushCoverage();
 
-    LOG(INFO) << "Killing " << exe_ << " with pid " << process_->pid();
-    ignore_result(process_->Kill(SIGKILL));
+    if (!FLAGS_external_daemon_heap_profile_prefix.empty()) {
+      // The child process has been configured using the HEAPPROFILESIGNAL environment variable to
+      // create a heap profile on receiving kHeapProfileSignal.
+      static const int kWaitMs = 100;
+      LOG(INFO) << "Sending signal " << kHeapProfileSignal << " to " << ProcessNameAndPidStr()
+                << " to capture a heap profile. Waiting for " << kWaitMs << " ms afterwards.";
+      ignore_result(process_->Kill(kHeapProfileSignal));
+      std::this_thread::sleep_for(std::chrono::milliseconds(kWaitMs));
+    }
+
+    if (FLAGS_external_daemon_safe_shutdown) {
+      // We put 'SIGTERM' in quotes because an unquoted one would be treated as a test failure
+      // by our regular expressions in common-test-env.sh.
+      LOG(INFO) << "Terminating " << ProcessNameAndPidStr() << " using 'SIGTERM' signal";
+      ignore_result(process_->Kill(SIGTERM));
+      int total_delay_ms = 0;
+      int current_delay_ms = 10;
+      for (int i = 0; i < 10 && IsProcessAlive(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(current_delay_ms));
+        total_delay_ms += current_delay_ms;
+        current_delay_ms += 10;  // will sleep for 10ms, then 20ms, etc.
+      }
+
+      if (IsProcessAlive()) {
+        LOG(INFO) << "The process " << ProcessNameAndPidStr() << " is still running after "
+                  << total_delay_ms << " ms, will send SIGKILL";
+      }
+    }
+
+    if (IsProcessAlive()) {
+      LOG(INFO) << "Killing " << ProcessNameAndPidStr() << " with SIGKILL";
+      ignore_result(process_->Kill(SIGKILL));
+    }
   }
   int ret;
   WARN_NOT_OK(process_->Wait(&ret), "Waiting on " + exe_);
@@ -1406,6 +1461,10 @@ void ExternalDaemon::FlushCoverage() {
   }
   WARN_NOT_OK(s, Substitute("Unable to flush coverage on $0 pid $1", exe_, process_->pid()));
 #endif
+}
+
+std::string ExternalDaemon::ProcessNameAndPidStr() {
+  return Substitute("$0 with pid $1", exe_, process_->pid());
 }
 
 HostPort ExternalDaemon::bound_rpc_hostport() const {
