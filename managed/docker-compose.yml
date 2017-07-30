@@ -3,13 +3,13 @@ version: '2'
 
 services:
   yugaware:
-    image: quay.io/yugabyte/yugaware:latest 
+    image: quay.io/yugabyte/yugaware:latest
     volumes:
       - $HOME/.yugabyte:/root/.yugabyte
       - /var/run/docker.sock:/var/run/docker.sock:rw
       - /usr/bin/docker:/usr/bin/docker
       - /etc/yugaware
-      - /opt/yugabyte
+      - app-volume:/opt/yugabyte/
       - thirdparty-deps:/opt/yugabyte/third-party
       - nginx-conf:/etc/yugaware/nginx
     expose:
@@ -22,32 +22,25 @@ services:
       - postgres
     links:
       - postgres
-    network_mode: bridge
-
-  yugaware-ui:
-    image: quay.io/yugabyte/yugaware-ui:latest
-    expose:
-      - 4000
-    ports:
-      - 4000:4000
-    network_mode: bridge
-  
-  yugabyte-docs:
-    image: quay.io/yugabyte/docs:latest
-    expose: 
-      - 1313
-    ports:
-      - 1313:1313
-    network_mode: bridge
+    networks:
+      default:
+        aliases:
+          - yugaware
+    container_name: yugaware
 
   yugabyte-base:
     image: quay.io/yugabyte/base-image:latest
+    container_name: yugabyte-base
 
   thirdparty-deps:
     volumes:
       - thirdparty-deps:/opt/third-party
     image: quay.io/yugabyte/thirdparty-deps:latest
-    network_mode: bridge
+    networks:
+      default:
+        aliases:
+          - thirdparty-deps
+    container_name: thirdparty-deps
 
   postgres:
     image: postgres:latest
@@ -60,22 +53,29 @@ services:
       - POSTGRES_PASSWORD=yugaware
       - POSTGRES_DB=yugaware
     volumes:
-      - /var/lib/postgresql/data
-    network_mode: bridge
+      - db-volume:/var/lib/postgresql/data
+    networks:
+      default:
+        aliases:
+          - postgres
+    container_name: postgres
 
   nginx:
     image: nginx:latest
     volumes:
       - nginx-conf:/etc/nginx/conf.d/
+      - app-volume:/opt/yugabyte
     links:
       - yugaware
-      - yugaware-ui
-      - yugabyte-docs
     ports:
-      - "80:80"
+      - "8080:80"
     expose:
       - 80
-    network_mode: bridge
+    networks:
+      default:
+        aliases:
+          - nginx
+    container_name: nginx
 
   prometheus:
     image: prom/prometheus:v1.5.2
@@ -84,36 +84,22 @@ services:
     command:
       - '-config.file=/etc/yugaware/prometheus/prometheus.yml'
       - '-storage.local.path=/opt/yugabyte/prometheus'
-      - '-alertmanager.url=http://alertmanager:9093'
     expose:
       - 9090
     ports:
       - 9090:9090
-    depends_on:
-      - yugaware
-    network_mode: bridge
-
-  node-exporter:
-    image: prom/node-exporter:v0.13.0
-    expose:
-      - 9100
-    ports:
-      - 9100:9100
-    network_mode: bridge
-
-  alertmanager:
-    image: prom/alertmanager:v0.5.1
-    ports:
-      - 9093:9093
-    volumes_from:
-      - yugaware
-    depends_on:
-      - yugaware
-    command:
-      - '-config.file=/etc/yugaware/alertmanager/alertmanager.yml'
-      - '-storage.path=/opt/yugabyte/alertmanager'
-    network_mode: bridge
+    networks:
+      default:
+        aliases:
+          - prometheus
+    container_name: prometheus
 
 volumes:
   thirdparty-deps:
   nginx-conf:
+  app-volume:
+  db-volume:
+
+networks:
+  default:
+    driver: bridge
