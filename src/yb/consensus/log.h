@@ -458,13 +458,10 @@ class LogEntryBatch {
   // Mark the entry as ready to write to log.
   void MarkReady();
 
-  // Wait (currently, by spinning on ready_lock_) until ready.
-  void WaitForReady();
-
   // Returns a Slice representing the serialized contents of the
   // entry.
   Slice data() const {
-    DCHECK_EQ(state_, kEntryReady);
+    DCHECK_EQ(state_, kEntrySerialized);
     return Slice(buffer_);
   }
 
@@ -495,7 +492,7 @@ class LogEntryBatch {
   LogEntryBatchPB entry_batch_pb_;
 
   // Total size in bytes of all entries
-  const uint32_t total_size_bytes_;
+  uint32_t total_size_bytes_ = 0;
 
   // Number of entries in 'entry_batch_pb_'
   const size_t count_;
@@ -510,13 +507,6 @@ class LogEntryBatch {
   // synced to disk.
   StatusCallback callback_;
 
-  // Used to coordinate the synchronizer thread and the caller
-  // thread: this lock starts out locked, and is unlocked by the
-  // caller thread (i.e., inside AppendThread()) once the entry is
-  // fully initialized (once the callback is set and data is
-  // serialized)
-  base::SpinLock ready_lock_;
-
   // Buffer to which 'phys_entries_' are serialized by call to
   // 'Serialize()'
   faststring buffer_;
@@ -524,11 +514,11 @@ class LogEntryBatch {
   enum LogEntryState {
     kEntryInitialized,
     kEntryReserved,
-    kEntrySerialized,
     kEntryReady,
+    kEntrySerialized,
     kEntryFailedToAppend
   };
-  LogEntryState state_;
+  LogEntryState state_ = kEntryInitialized;
 
   DISALLOW_COPY_AND_ASSIGN(LogEntryBatch);
 };

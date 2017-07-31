@@ -179,7 +179,6 @@ void Log::AppendThread::RunThread() {
     SCOPED_LATENCY_METRIC(log_->metrics_, group_commit_latency);
 
     for (LogEntryBatch* entry_batch : entry_batches) {
-      entry_batch->WaitForReady();
       TRACE_EVENT_FLOW_END0("log", "Batch", entry_batch);
       Status s = log_->DoAppend(entry_batch);
 
@@ -399,10 +398,6 @@ Status Log::Reserve(LogEntryTypePB type,
   gscoped_ptr<LogEntryBatch> new_entry_batch(new LogEntryBatch(type, entry_batch, num_ops));
   new_entry_batch->MarkReserved();
 
-  if (PREDICT_FALSE(!entry_batch_queue_.BlockingPut(new_entry_batch.get()))) {
-    return kLogShutdownStatus;
-  }
-
   // Release the memory back to the caller: this will be freed when
   // the entry is removed from the queue.
   //
@@ -413,17 +408,18 @@ Status Log::Reserve(LogEntryTypePB type,
 }
 
 Status Log::AsyncAppend(LogEntryBatch* entry_batch, const StatusCallback& callback) {
-  TRACE_EVENT0("log", "Log::AsyncAppend");
   {
     boost::shared_lock<rw_spinlock> read_lock(state_lock_.get_lock());
     CHECK_EQ(kLogWriting, log_state_);
   }
 
-  RETURN_NOT_OK(entry_batch->Serialize());
   entry_batch->set_callback(callback);
-  TRACE("Serialized $0 byte log entry", entry_batch->total_size_bytes());
-  TRACE_EVENT_FLOW_BEGIN0("log", "Batch", entry_batch);
   entry_batch->MarkReady();
+
+  if (PREDICT_FALSE(!entry_batch_queue_.BlockingPut(entry_batch))) {
+    delete entry_batch;
+    return kLogShutdownStatus;
+  }
 
   return Status::OK();
 }
@@ -461,6 +457,7 @@ Status Log::AsyncAppendCommit(gscoped_ptr<consensus::CommitMsg> commit_msg,
 }
 
 Status Log::DoAppend(LogEntryBatch* entry_batch, bool caller_owns_operation) {
+  RETURN_NOT_OK(entry_batch->Serialize());
   size_t num_entries = entry_batch->count();
   DCHECK_GT(num_entries, 0) << "Cannot call DoAppend() with zero entries reserved";
 
@@ -669,14 +666,13 @@ Status Log::Append(LogEntryPB* phys_entry) {
   LogEntryBatchPB entry_batch_pb;
   entry_batch_pb.mutable_entry()->AddAllocated(phys_entry);
   LogEntryBatch entry_batch(phys_entry->type(), &entry_batch_pb, 1);
+  // Mark this as reserved, as we're building it from preallocated data.
   entry_batch.state_ = LogEntryBatch::kEntryReserved;
-  Status s = entry_batch.Serialize();
+  // Ready assumes the data is reserved before it is ready.
+  entry_batch.MarkReady();
+  Status s = DoAppend(&entry_batch, false);
   if (s.ok()) {
-    entry_batch.state_ = LogEntryBatch::kEntryReady;
-    s = DoAppend(&entry_batch, false);
-    if (s.ok()) {
-      s = Sync();
-    }
+    s = Sync();
   }
   entry_batch.entry_batch_pb_.mutable_entry()->ExtractSubrange(0, 1, nullptr);
   return s;
@@ -974,11 +970,7 @@ Log::~Log() {
 
 LogEntryBatch::LogEntryBatch(LogEntryTypePB type, LogEntryBatchPB* entry_batch_pb, size_t count)
     : type_(type),
-      total_size_bytes_(
-          PREDICT_FALSE(count == 1 && entry_batch_pb->entry(0).type() == FLUSH_MARKER) ?
-          0 : entry_batch_pb->ByteSize()),
-      count_(count),
-      state_(kEntryInitialized) {
+      count_(count) {
   entry_batch_pb_.Swap(entry_batch_pb);
 }
 
@@ -987,18 +979,19 @@ LogEntryBatch::~LogEntryBatch() {
 
 void LogEntryBatch::MarkReserved() {
   DCHECK_EQ(state_, kEntryInitialized);
-  ready_lock_.Lock();
   state_ = kEntryReserved;
 }
 
 Status LogEntryBatch::Serialize() {
-  DCHECK_EQ(state_, kEntryReserved);
+  DCHECK_EQ(state_, kEntryReady);
   buffer_.clear();
   // FLUSH_MARKER LogEntries are markers and are not serialized.
   if (PREDICT_FALSE(count() == 1 && entry_batch_pb_.entry(0).type() == FLUSH_MARKER)) {
+    total_size_bytes_ = 0;
     state_ = kEntrySerialized;
     return Status::OK();
   }
+  total_size_bytes_ = entry_batch_pb_.ByteSize();
   buffer_.reserve(total_size_bytes_);
 
   if (!pb_util::AppendToString(entry_batch_pb_, &buffer_)) {
@@ -1011,15 +1004,8 @@ Status LogEntryBatch::Serialize() {
 }
 
 void LogEntryBatch::MarkReady() {
-  DCHECK_EQ(state_, kEntrySerialized);
+  DCHECK_EQ(state_, kEntryReserved);
   state_ = kEntryReady;
-  ready_lock_.Unlock();
-}
-
-void LogEntryBatch::WaitForReady() {
-  ready_lock_.Lock();
-  DCHECK_EQ(state_, kEntryReady);
-  ready_lock_.Unlock();
 }
 
 }  // namespace log

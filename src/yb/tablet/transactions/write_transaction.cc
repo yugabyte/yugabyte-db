@@ -103,11 +103,8 @@ Status WriteTransaction::Prepare() {
 }
 
 void WriteTransaction::Start() {
-  TRACE_EVENT0("txn", "WriteTransaction::Start");
   TRACE("Start()");
   state()->tablet_peer()->tablet()->StartTransaction(state());
-
-  TRACE("HybridTime: $0", state()->tablet_peer()->clock().Stringify(state()->hybrid_time()));
 }
 
 // FIXME: Since this is called as a void in a thread-pool callback,
