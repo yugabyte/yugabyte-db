@@ -50,17 +50,18 @@ public class RedisPipelinedKeyValue extends RedisKeyValue {
       return 0;
 
     LOG.debug("Flushing pipeline. size = " + pipelinedOpResponseCallables.size());
-    getRedisPipeline().sync();
     int count = 0;
-    for (Callable<Integer> c : pipelinedOpResponseCallables) {
-      try {
+    try {
+      getRedisPipeline().sync();
+      for (Callable<Integer> c : pipelinedOpResponseCallables) {
         count += c.call();
-      } catch (Exception e) {
-        LOG.error(
-            "Caught Exception from redis pipeline " + getRedisServerInUse(), e);
       }
+    } catch (Exception e) {
+      throw new RuntimeException(
+        "Caught Exception from redis pipeline " + getRedisServerInUse(), e);
+    } finally {
+      pipelinedOpResponseCallables.clear();
     }
-    pipelinedOpResponseCallables.clear();
     LOG.debug("Processed  " + count + " responses.");
     return count;
   }
