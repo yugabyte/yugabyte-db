@@ -796,7 +796,7 @@ lsm_rocksdb_stalls:
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "rocksdb.stall.micros.avg"
+    type: "rocksdb.stall.micros"
   group_by: "exported_instance"
   layout:
     title: "Stalls (\u00B5s)"
