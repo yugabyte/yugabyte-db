@@ -10,13 +10,13 @@ import './TableSchema.scss';
 export default class TableSchema extends Component {
   render() {
     const {tableInfo: {tableDetails}} = this.props;
-    var ttlInSeconds = 0;
-    var partitionKeyRows = [];
-    var clusteringKeyRows = [];
-    var otherKeyRows = [];
+    let ttlInSeconds = 0;
+    let partitionKeyRows = [];
+    let clusteringKeyRows = [];
+    let otherKeyRows = [];
     if (isValidObject(tableDetails) && isNonEmptyArray(tableDetails.columns)) {
       ttlInSeconds = tableDetails.ttlInSeconds;
-      tableDetails.columns.forEach(function(item){
+      tableDetails.columns.forEach((item) => {
         if (item.isPartitionKey) {
           partitionKeyRows.push(item);
         } else if (item.isClusteringKey) {
@@ -24,7 +24,11 @@ export default class TableSchema extends Component {
         } else {
           otherKeyRows.push(item);
         }
-      });
+      })
+    }
+    let ttlMessage = <span />;
+    if (ttlInSeconds > 0) {
+      ttlMessage = moment.preciseDiff(moment(), moment().add(ttlInSeconds, 'seconds'));
     }
     return (
       <div>
@@ -72,7 +76,7 @@ export default class TableSchema extends Component {
                 <h5 className="no-bottom-margin">TTL:</h5>
               </Col>
               <Col lg={10}>
-                { moment.preciseDiff(moment(), moment().add(ttlInSeconds, 'seconds')) }
+                { ttlMessage }
               </Col>
             </Row>
           </Col>
