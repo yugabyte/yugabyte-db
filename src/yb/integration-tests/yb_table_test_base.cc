@@ -36,13 +36,7 @@ int YBTableTestBase::num_tablet_servers() {
 }
 
 int YBTableTestBase::num_tablets() {
-#ifdef NDEBUG
-  return 0;  // Will use the default.
-#elif defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
-  return num_tablet_servers();
-#else
-  return num_tablet_servers() * 3;
-#endif
+  return CalcNumTablets(num_tablet_servers());
 }
 
 int YBTableTestBase::num_replicas() {

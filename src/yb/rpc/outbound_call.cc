@@ -370,12 +370,13 @@ void OutboundCall::SetFailed(const Status &status,
 void OutboundCall::SetTimedOut() {
   TRACE_TO(trace_, "Call TimedOut.");
   {
-    std::lock_guard<simple_spinlock> l(lock_);
-    status_ = STATUS_SUBSTITUTE(TimedOut,
+    auto status = STATUS_FORMAT(TimedOut,
                                 "$0 RPC to $1 timed out after $2",
                                 remote_method_.method_name(),
-                                yb::ToString(conn_id_.remote()),
-                                controller_->timeout().ToString());
+                                conn_id_.remote(),
+                                controller_->timeout());
+    std::lock_guard<simple_spinlock> l(lock_);
+    status_ = std::move(status);
     set_state_unlocked(TIMED_OUT);
   }
   CallCallback();

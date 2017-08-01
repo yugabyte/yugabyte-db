@@ -326,16 +326,22 @@ TEST_F(YqlDmlTest, FlushedOpId) {
       }
     });
   }
-  std::this_thread::sleep_for(1s);
+#if defined(THREAD_SANITIZER)
+  const auto kTimeout = 5s;
+#else
+  const auto kTimeout = 1s;
+#endif
+  std::this_thread::sleep_for(kTimeout);
   LOG(INFO) << "Flushing tablets";
   cluster_->FlushTablets();
-  std::this_thread::sleep_for(1s);
+  std::this_thread::sleep_for(kTimeout);
   LOG(INFO) << "GC logs";
   cluster_->CleanTabletLogs();
+  LOG(INFO) << "Wait threads";
   for (auto& thread : threads) {
     thread.join();
   }
-  std::this_thread::sleep_for(5s);
+  std::this_thread::sleep_for(kTimeout * 5);
   ASSERT_OK(cluster_->RestartSync());
 
   auto session = client_->NewSession(true /* read_only */);

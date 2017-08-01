@@ -149,6 +149,8 @@ CHECKED_STATUS WaitFor(std::function<Result<bool>()> condition, const MonoDelta&
 // Return the path of a yb-tool.
 std::string GetToolPath(const std::string& tool_name);
 
+int CalcNumTablets(int num_tablet_servers);
+
 } // namespace yb
 
 // Gives ability to define custom parent class for test fixture.

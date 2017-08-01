@@ -23,6 +23,7 @@ void TableHandle::Create(const YBTableName& table_name,
         .table_type(YBTableType::YQL_TABLE_TYPE)
         .schema(&schema)
         .num_replicas(3)
+        .num_tablets(CalcNumTablets(3))
         .Create());
   }
 

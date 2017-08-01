@@ -219,4 +219,14 @@ string GetToolPath(const string& tool_name) {
   return tool_path;
 }
 
+int CalcNumTablets(int num_tablet_servers) {
+#ifdef NDEBUG
+  return 0;  // Will use the default.
+#elif defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
+  return num_tablet_servers;
+#else
+  return num_tablet_servers * 3;
+#endif
+}
+
 } // namespace yb

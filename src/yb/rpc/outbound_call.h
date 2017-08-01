@@ -260,9 +260,9 @@ class OutboundCall : public RpcCall {
 
   virtual CHECKED_STATUS GetSidecar(int idx, Slice* sidecar) const;
 
-  ConnectionId conn_id_;
+  const ConnectionId conn_id_;
   MonoTime start_;
-  RpcController* controller_;
+  RpcController* const controller_;
   // Pointer for the protobuf where the response should be written.
   google::protobuf::Message* response_;
 
@@ -316,7 +316,7 @@ class OutboundCall : public RpcCall {
   RequestHeader header_;
 
   // The remote method being called.
-  RemoteMethod remote_method_;
+  const RemoteMethod remote_method_;
 
   ResponseCallback callback_;
 

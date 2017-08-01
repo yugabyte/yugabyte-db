@@ -65,7 +65,6 @@ class PrepareThreadImpl {
   std::mutex mtx_;
   std::condition_variable cond_;
 
-  std::mutex stop_mtx_;
   std::condition_variable stop_cond_;
 
   TransactionDrivers leader_side_batch_;
@@ -107,15 +106,22 @@ void PrepareThreadImpl::Stop() {
     return;
   }
 
-  stop_requested_.store(true, std::memory_order_release);
+  bool expected = false;
+  if (stop_requested_.compare_exchange_strong(expected, true, std::memory_order_release)) {
+    // We need this to unblock waiting for new transactions to arrive. Since nothing has been added,
+    // we'll just go through the loop one more time and exit at the next iteration.
+    processing_.store(true, std::memory_order_release);
+    cond_.notify_one();
 
-  // We need this to unblock waiting for new transactions to arrive. Since nothing has been added,
-  // we'll just go through the loop one more time and exit at the next iteration.
-  processing_.store(true, std::memory_order_release);
-  cond_.notify_one();
+    CHECK_OK(ThreadJoiner(thread_.get()).Join());
 
-  std::unique_lock<decltype(mtx_)> stop_lock(stop_mtx_);
-  stop_cond_.wait(stop_lock, [this] { return stopped_.load(std::memory_order_acquire); });
+    std::unique_lock<decltype(mtx_)> stop_lock(mtx_);
+    stopped_.store(true, std::memory_order_release);
+    stop_cond_.notify_one();
+  } else {
+    std::unique_lock<decltype(mtx_)> stop_lock(mtx_);
+    stop_cond_.wait(stop_lock, [this] { return stopped_.load(std::memory_order_acquire); });
+  }
 }
 
 Status PrepareThreadImpl::Submit(TransactionDriver* txnd) {
@@ -167,8 +173,6 @@ void PrepareThreadImpl::Run() {
         if (stop_requested_.load(std::memory_order_acquire)) {
           ProcessAndClearLeaderSideBatch();
 
-          stopped_.store(true, std::memory_order_release);
-          stop_cond_.notify_one();
           VLOG(1) << "Prepare thread's Run() function is exiting";
 
           // This is the only place this function returns. If that ever changes, we'll need to move
