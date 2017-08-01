@@ -46,6 +46,21 @@ append_output_to=/dev/null
 
 readonly ADDRESS_ALREADY_IN_USE_PATTERN="Address already in use"
 
+# We use this to submit test jobs for execution on Spark.
+readonly SPARK_SUBMIT_CMD_PATH=/n/tools/spark/current/bin/spark-submit
+readonly INITIAL_SPARK_DRIVER_CORES=8
+
+# This is used to separate relative binary path from gtest_filter for C++ tests in what we call
+# a "test descriptor" (a string that identifies a particular test).
+#
+# This must match the constant with the same name in run_tests_on_spark.py.
+readonly TEST_DESCRIPTOR_SEPARATOR=":::"
+
+# This directory inside $BUILD_ROOT contains files listing all C++ tests (one file per test
+# program).
+#
+readonly LIST_OF_TESTS_DIR_NAME="list_of_tests"
+
 # -------------------------------------------------------------------------------------------------
 # Functions
 # -------------------------------------------------------------------------------------------------
@@ -59,6 +74,8 @@ set_common_test_paths() {
   expect_num_args 0 "$@"
   readonly YB_TEST_LOG_ROOT_DIR="$BUILD_ROOT/yb-test-logs"
   mkdir_safe "$YB_TEST_LOG_ROOT_DIR"
+
+  readonly YB_TEST_LIST_DIR="$BUILD_ROOT/$LIST_OF_TESTS_DIR_NAME"
 }
 
 validate_relative_test_binary_path() {
@@ -96,24 +113,26 @@ validate_abs_test_binary_path() {
 
 # Validates a "test descriptor" string. This is our own concept to identify tests within our test
 # suite. A test descriptor has one of the two forms:
-#   - <relative_test_binary>:::<test_name_within_binary>
+#   - <relative_test_binary>$TEST_DESCRIPTOR_SEPARATOR<test_name_within_binary>
 #   - <relative_test_binary>
 # We've chosen triple colon as a separator that would rarely occur otherwise.
 # Examples:
-#   - bin/tablet-test:::TestTablet/5.TestDeleteWithFlushAndCompact
+#   - bin/tablet-test$TEST_DESCRIPTOR_SEPARATORTestTablet/5.TestDeleteWithFlushAndCompact
 # The test name within the binary is what can be passed to Google Test as the --gtest_filter=...
 # argument. Some test binaries have to be run at once, e.g. non-gtest test binary or
-# test binaries with internal dependencies between tests. For those there is on ":::" separator
-# or the <test_name_within_binary> part (e.g. bin/backupable_db_test above).
+# test binaries with internal dependencies between tests. For those there is on
+# "$TEST_DESCRIPTOR_SEPARATOR" separator or the <test_name_within_binary> part (e.g.
+# bin/backupable_db_test above).
 validate_test_descriptor() {
   expect_num_args 1 "$@"
   local test_descriptor=$1
-  if [[ $test_descriptor =~ ::: ]]; then
-    if [[ $test_descriptor =~ :::.*::: ]]; then
-      fatal "The ':::' separator occurs twice within the test descriptor: $test_descriptor"
+  if [[ $test_descriptor =~ $TEST_DESCRIPTOR_SEPARATOR ]]; then
+    if [[ $test_descriptor =~ $TEST_DESCRIPTOR_SEPARATOR.*$TEST_DESCRIPTOR_SEPARATOR ]]; then
+      fatal "The '$TEST_DESCRIPTOR_SEPARATOR' separator occurs twice within the test descriptor:" \
+            "$test_descriptor"
     fi
-    # Remove ::: and all that follows and get a relative binary path.
-    validate_relative_test_binary_path "${test_descriptor%:::*}"
+    # Remove $TEST_DESCRIPTOR_SEPARATOR and all that follows and get a relative binary path.
+    validate_relative_test_binary_path "${test_descriptor%$TEST_DESCRIPTOR_SEPARATOR*}"
   else
     validate_relative_test_binary_path "$test_descriptor"
   fi
@@ -276,7 +295,7 @@ Shared library .* loaded at address 0x[0-9a-f]+$" || true ) \
       if [[ -n ${total_num_tests:-} ]]; then
         let total_num_tests+=1
       fi
-      tests+=( "${rel_test_binary}:::$test_case$test" )
+      tests+=( "${rel_test_binary}$TEST_DESCRIPTOR_SEPARATOR$test_case$test" )
       if [[ -n ${num_tests:-} ]]; then
         let num_tests+=1
       fi
@@ -302,8 +321,8 @@ using_nfs() {
 # Set a number of variables in preparation to running a test.
 # Inputs:
 #   test_descriptor
-#     Identifies the test. Consists fo the relative test binary, optionally followed by ":::" and a
-#     gtest-compatible test description.
+#     Identifies the test. Consists fo the relative test binary, optionally followed by
+#     "$TEST_DESCRIPTOR_SEPARATOR" and a gtest-compatible test description.
 #   test_attempt_index
 #     If this is set to a number, it is appended (followed by an underscore) to test output
 #     directory, work directory, JUnit xml file name, and other file/directory paths that are
@@ -361,9 +380,9 @@ prepare_for_running_test() {
     test_attempt_suffix="__attempt_$test_attempt_index"
   fi
 
-  if [[ "$test_descriptor" =~ ::: ]]; then
-    rel_test_binary=${test_descriptor%:::*}
-    test_name=${test_descriptor#*:::}
+  if [[ "$test_descriptor" =~ $TEST_DESCRIPTOR_SEPARATOR ]]; then
+    rel_test_binary=${test_descriptor%$TEST_DESCRIPTOR_SEPARATOR*}
+    test_name=${test_descriptor#*$TEST_DESCRIPTOR_SEPARATOR}
     run_at_once=false
     what_test_str="test $test_name"
     junit_test_case_id=$test_name
@@ -425,7 +444,7 @@ prepare_for_running_test() {
   fi
 
   export TEST_TMPDIR="$test_log_path_prefix.tmp"
-  if using_nfs; then
+  if is_src_root_on_nfs; then
     export TEST_TMPDIR="/tmp/$test_log_path_prefix.tmp.$RANDOM.$RANDOM.$RANDOM.$$"
   else
     export TEST_TMPDIR="$test_log_path_prefix.tmp"
@@ -859,8 +878,11 @@ delete_successful_output_if_needed() {
     test_log_path
   if is_jenkins && ! "$test_failed"; then
     # Delete test output after a successful test run to minimize network traffic and disk usage on
-    # Jenkins master.
+    # Jenkins.
     rm -rf "$test_log_path" "$TEST_TMPDIR"
+  fi
+  if is_src_root_on_nfs; then
+    rm -rf "$TEST_TMPDIR"
   fi
 }
 
@@ -1078,11 +1100,64 @@ show_disk_usage() {
   echo
 }
 
-is_jenkins() {
-  if [[ -n ${BUILD_ID:-} && -n ${JOB_NAME:-} ]]; then
-    return 0  # Yes, we're running on Jenkins.
+collect_ctest_tests() {
+  detect_num_cpus
+  (
+    cd "$BUILD_ROOT"
+    rm -rf "$BUILD_ROOT/list_of_tests"
+    log "Collecting the list of gtest C++ tests in all test programs"
+    time (
+      YB_LIST_TESTS_ONLY=1 ctest "$YB_NUM_CPUS" --output-on-failure 2>&1 | \
+        egrep -v "\
+Test .*[.]   Passed +[0-9]|\
+^        Start +[0-9]+:|\
+tests passed, [0-9]+ tests failed out of [0-9]+"
+    )
+    log "Finished collecting the list of tests, see timing information above."
+  )
+}
+
+spark_available() {
+  if is_running_on_gcp && [[ -f $SPARK_SUBMIT_CMD_PATH ]]; then
+    return 0  # true
   fi
-  return 1  # Probably running locally.
+  return 1  # false
+}
+
+run_tests_on_spark() {
+  log "Running tests on Spark"
+  local return_code
+  set +e
+  (
+    set -x
+    # Run Spark and filter out some boring output (or we'll end up with 6000 lines, two per test).
+    # We still keep "Finished" lines ending with "(x/y)" where x is divisible by 10. Example:
+    # Finished task 2791.0 in stage 0.0 (TID 2791) in 10436 ms on <ip> (executor 3) (2900/2908)
+    time "$SPARK_SUBMIT_CMD_PATH" \
+      --driver-cores "$INITIAL_SPARK_DRIVER_CORES" \
+      "$YB_SRC_ROOT/build-support/run_tests_on_spark.py" \
+        --build-root "$BUILD_ROOT" \
+        --build-type "$build_type" \
+        "$@" 2>&1 | \
+      egrep -v "TaskSetManager: (Starting task|Finished task .* \([0-9]+[1-9]/[0-9]+\))"
+    exit ${PIPESTATUS[0]}
+  )
+  return_code=$?
+  set -e
+  log "Finished running tests on Spark (timing information available above)," \
+      "exit code: $return_code"
+  return $return_code
+}
+
+# Check that all test binaries referenced by CMakeLists.txt files exist. Takes one optional
+# parameter, which is the pattern to look for in the ctest output.
+check_test_existence() {
+  set +e
+  local pattern=${1:-Failed}
+  YB_CHECK_TEST_EXISTENCE_ONLY=1 ctest -j "$YB_NUM_CPUS" "$@" 2>&1 | egrep "$pattern"
+  local ctest_exit_code=${PIPESTATUS[0]}
+  set -e
+  return $ctest_exit_code
 }
 
 # -------------------------------------------------------------------------------------------------

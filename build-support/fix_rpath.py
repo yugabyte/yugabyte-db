@@ -25,8 +25,9 @@ BUILD_SUPPORT_DIR = os.path.dirname(os.path.realpath(__file__))
 
 sys.path.append(os.path.join(BUILD_SUPPORT_DIR, '..', 'python'))
 
-# "noqa" silences the code style warning in the following line.
+# "noqa" silences the code style warning in the following lines.
 from yb.command_util import run_program  # noqa
+from yb.linuxbrew import get_linuxbrew_dir  # noqa
 
 READELF_RPATH_RE = re.compile(r'Library (?:rpath|runpath): \[(.+)\]')
 
@@ -168,9 +169,8 @@ def main():
             for prefix_rel_dir in ['installed', 'installed-deps', 'installed-deps-tsan']
             ]
 
-    find_linuxbrew_result = run_program(os.path.join(BUILD_SUPPORT_DIR, 'find_linuxbrew.sh'))
     global linuxbrew_dir
-    linuxbrew_dir = find_linuxbrew_result.stdout.strip()
+    linuxbrew_dir = get_linuxbrew_dir()
     assert linuxbrew_dir
 
     # We need patchelf as it is more flexible than chrpath and can in fact increase the length of

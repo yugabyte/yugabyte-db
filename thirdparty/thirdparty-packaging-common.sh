@@ -6,8 +6,18 @@ if [ "${BASH_SOURCE#*/}" == "${0##*/}" ]; then
   fatal "The script $BASH_SOURCE must be sourced, not invoked."
 fi
 
+# URLs for prebuilt third-party dependencies packages.
+
+# Amazon S3
 PREBUILT_THIRDPARTY_S3_URL=s3://binaries.yugabyte.com/prebuilt_thirdparty
-PREBUILT_THIRDPARTY_S3_CONFIG_PATH=$HOME/.s3cfg-jenkins-slave
+
+# Google Cloud Storage
+PREBUILT_THIRDPARTY_GS_URL=gs://binaries-yugabyte-com/prebuilt_thirdparty
+
+PREBUILT_THIRDPARTY_S3_CONFIG_PATH=$HOME/.s3cfg
+# We should deprecate this config location over time.
+LEGACY_PREBUILT_THIRDPARTY_S3_CONFIG_PATH=$HOME/.s3cfg-jenkins-slave
+
 DEFAULT_HASH="DEFAULT_MD5"
 
 
@@ -90,77 +100,121 @@ download_prebuilt_thirdparty_deps() {
   # simply means we're skipping pre-built third-party dependency download and will build those
   # dependencies from scratch.
 
-  if [ -z "${TP_DIR:-}" ]; then
+  if [[ -z ${TP_DIR:-} ]]; then
     fatal "The 'thirdparty' directory path TP_DIR is not set"
   fi
 
-  if [ -n "${YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY:-}" ]; then
-    log "YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY is defined, not attempting to download prebuilt" \
-         "third-party dependencies."
+  local -r SKIPPED_MSG_SUFFIX="not attempting to download prebuilt third-party dependencies"
+
+  if [[ -n ${YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY:-} ]]; then
+    log "YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY is defined, $SKIPPED_MSG_SUFFIX"
     return 1
   fi
 
-  local skipped_msg_suffix="not attempting to download prebuilt third-party dependencies"
-  if [ ! -f "$PREBUILT_THIRDPARTY_S3_CONFIG_PATH" ]; then
-    log "S3 configuration file $PREBUILT_THIRDPARTY_S3_CONFIG_PATH not found, $skipped_msg_suffix"
-    return 1
-  fi
-
-  if ! which s3cmd >/dev/null; then
-    log "s3cmd not found, $skipped_msg_suffix"
+  if ! is_jenkins && [[ -z ${YB_PREFER_PREBUILT_THIRDPARTY:-} ]]; then
+    log "Not running on Jenkins, and YB_PREFER_PREBUILT_THIRDPARTY is not defined," \
+        "$SKIPPED_MSG_SUFFIX"
+    if [[ $USER == "jenkins" ]]; then
+      log "To debug why we think we're not running on Jenkins:" \
+          "BUILD_ID=${BUILD_ID:-undefined}," \
+          "JOB_NAME=${JOB_NAME:-undefined}," \
+          "USER=$USER"
+      log "The issue might be that we're running on a different host and the environment" \
+          "variables have not been propagated."
+    fi
     return 1
   fi
 
   local name_prefix=$( get_prebuilt_thirdparty_name_prefix )
-  if [ -z "$name_prefix" ]; then
+  if [[ -z $name_prefix ]]; then
     fatal "Unable to compute name prefix for pre-built third-party dependencies package"
   fi
   # Replace default hash with * to be s3cmd friendly, as we do not know the hash upfront.
   name_prefix=$( echo "$name_prefix" | sed "s/HASH_${DEFAULT_HASH}__/HASH_/g" )
-  local s3cmd_cmd_line_prefix=( s3cmd -c "$PREBUILT_THIRDPARTY_S3_CONFIG_PATH" )
-  local s3cmd_ls_cmd_line=( "${s3cmd_cmd_line_prefix[@]}" )
-  s3cmd_ls_cmd_line+=( --list-md5 ls "$PREBUILT_THIRDPARTY_S3_URL/$name_prefix*" )
-  echo "Listing pre-built third-party dependency packages: ${s3cmd_ls_cmd_line[@]}"
-  local s3cmd_ls_output=( $( "${s3cmd_ls_cmd_line[@]}" | sort | tail -1 ) )
-  echo "s3cmd ls output: ${s3cmd_ls_output[@]}"
-  local package_s3_url=${s3cmd_ls_output[4]}
-  if [[ ! "$package_s3_url" =~ ^s3://.*[.]tar[.]gz$ ]]; then
+
+  local blobstore_protocol
+  if is_running_on_gcp; then
+    # Google Compute Platform
+    blobstore_protocol=gs
+    local package_blobstore_url=$(
+      gsutil ls "$PREBUILT_THIRDPARTY_GS_URL/$name_prefix*" | sort | tail -1 )
+  else
+    # AWS / S3
+    blobstore_protocol=s3
+    if [[ ! -f $PREBUILT_THIRDPARTY_S3_CONFIG_PATH && \
+          ! -f $LEGACY_PREBUILT_THIRDPARTY_S3_CONFIG_PATH ]]; then
+      log "S3 configuration file not found at either $PREBUILT_THIRDPARTY_S3_CONFIG_PATH or" \
+          "$LEGACY_PREBUILT_THIRDPARTY_S3_CONFIG_PATH, $SKIPPED_MSG_SUFFIX"
+      return 1
+    fi
+
+    if [[ -f $PREBUILT_THIRDPARTY_S3_CONFIG_PATH ]]; then
+      s3cmd_cfg_path=$PREBUILT_THIRDPARTY_S3_CONFIG_PATH
+    else
+      s3cmd_cfg_path=$LEGACY_PREBUILT_THIRDPARTY_S3_CONFIG_PATH
+    fi
+
+    if ! which s3cmd >/dev/null; then
+      log "s3cmd not found, $SKIPPED_MSG_SUFFIX"
+      return 1
+    fi
+
+    # -c specifies the configuration file.
+    local s3cmd_cmd_line_prefix=( s3cmd -c "$s3cmd_cfg_path" )
+    local s3cmd_ls_cmd_line=(
+      "${s3cmd_cmd_line_prefix[@]}" ls "$PREBUILT_THIRDPARTY_S3_URL/$name_prefix*" )
+    echo "Listing pre-built third-party dependency packages: ${s3cmd_ls_cmd_line[@]}"
+    local s3cmd_ls_output=( $( "${s3cmd_ls_cmd_line[@]}" | sort | tail -1 ) )
+    echo "s3cmd ls output: ${s3cmd_ls_output[@]}"
+    local package_blobstore_url=${s3cmd_ls_output[3]}
+  fi
+
+  if [[ ! "$package_blobstore_url" =~ ^$blobstore_protocol://.*[.]tar[.]gz$ ]]; then
     log "Expected the pre-built third-party dependency package URL obtained via 's3cmd ls'" \
-      "to start with s3:// and end with .tar.gz, found: '$package_s3_url'"
+        "or 'gsutil ls' to start with $blobstore_protocol:// and end with .tar.gz, found: " \
+        "'$package_blobstore_url'"
     return 1
   fi
-  local remote_md5_sum=$(get_hash_component "$package_s3_url" )
+
+  local remote_md5_sum=$(get_hash_component "$package_blobstore_url" )
   if [[ ! "$remote_md5_sum" =~ ^[0-9a-f]{32}$ ]]; then
     log "Expected to see an MD5 sum, found '$remote_md5_sum' in '$remote_md5_sum'"
     return 1
   fi
-  local package_name=${package_s3_url##*/}
+  local package_name=${package_blobstore_url##*/}
   local download_dir="$TP_DIR/prebuilt_downloads"
   mkdir -p "$download_dir"
   local need_to_download=true
   local dest_path=$download_dir/$package_name
-  if [ -f "$dest_path" ]; then
+  if [[ -f $dest_path ]]; then
     local_md5_sum=$( compute_md5_hash "$dest_path" )
     if [ "$local_md5_sum" == "$remote_md5_sum" ]; then
       echo "Local file $dest_path matches the remote package's MD5 sum, not downloading"
       need_to_download=false
     else
       echo "Local file $dest_path MD5 sum: $local_md5_sum, remote MD5 sum: $remote_md5_sum," \
-        "re-downloading from '$package_s3_url'"
+        "re-downloading from '$package_blobstore_url'"
       rm -f "$dest_path"
     fi
   else
-    echo "Local file $dest_path not found, downloading from $package_s3_url"
+    echo "Local file $dest_path not found, downloading from $package_blobstore_url"
   fi
   if "$need_to_download"; then
-    local s3cmd_get_cmd_line=( "${s3cmd_cmd_line_prefix[@]}" )
-    s3cmd_get_cmd_line+=( get "$package_s3_url" "$download_dir" )
-    ( set -x; "${s3cmd_get_cmd_line[@]}" )
+    if is_running_on_gcp; then
+      ( set -x; gsutil cp "$package_blobstore_url" "$download_dir" )
+    else
+      ( set -x; "${s3cmd_cmd_line_prefix[@]}" get "$package_blobstore_url" "$download_dir" )
+    fi
   fi
 
   pushd "$TP_DIR" >/dev/null
   echo "Extracting '$dest_path' into '$PWD'"
-  tar xzf "$dest_path"
-
+  if which pigz &>/dev/null; then
+    local untar_cmd=( tar xf "$dest_path" --use-compress-program=pigz )
+  else
+    local untar_cmd=( tar xzf "$dest_path" )
+  fi
+  # This will run the command on buildmaster when necessary (for faster unarchiving).
+  run_build_cmd "${untar_cmd[@]}"
   popd >/dev/null
 }

@@ -40,6 +40,11 @@ readonly YB_BUILD_WORKERS_FILE=$YB_JENKINS_NFS_HOME_DIR/run/build-workers
 # will affect whether or not we force the auto-scaling group of workers to expand.
 readonly YB_NUM_CORES_PER_BUILD_WORKER=8
 
+# The "number of build workers" that we'll end up using to compute the parallelism (by multiplying
+# it by YB_NUM_CORES_PER_BUILD_WORKER) will be first brought into this range.
+readonly MIN_EFFECTIVE_NUM_BUILD_WORKERS=5
+readonly MAX_EFFECTIVE_NUM_BUILD_WORKERS=10
+
 readonly MVN_OUTPUT_FILTER_REGEX
 
 readonly YB_LINUXBREW_DIR_CANDIDATES=(
@@ -47,6 +52,18 @@ readonly YB_LINUXBREW_DIR_CANDIDATES=(
   "$YB_JENKINS_NFS_HOME_DIR/.linuxbrew-yb-build"
 )
 
+# An even faster alternative to downloading a pre-built third-party dependency tarball from S3
+# or Google Storage: just use a pre-existing third-party build from NFS. This has to be maintained
+# outside of main (non-thirdparty) YB codebase's build pipeline.
+readonly NFS_SHARED_THIRDPARTY_DIR=/n/jenkins/thirdparty/yugabyte-current/thirdparty
+
+# This node is the NFS server and is also used to run the non-distributed part of distributed builds
+# (e.g. "cmake" or "make" commands) in a way such that it would have access to the build directory
+# as a local filesystem.
+#
+# This must be something that could be compared with $HOSTNAME, i.e. this can't be
+# "buildmaster.c.yugabyte.internal", only "buildmaster".
+readonly DISTRIBUTED_BUILD_MASTER_HOST=buildmaster
 
 # -------------------------------------------------------------------------------------------------
 # Functions used in initializing some constants
@@ -318,6 +335,8 @@ set_build_root() {
   if "$make_build_root_readonly"; then
     readonly BUILD_ROOT
   fi
+
+  export BUILD_ROOT
 }
 
 # Resolve the BUILD_ROOT symlink and save the result to the real_build_root_path variable.
@@ -603,9 +622,21 @@ set_cmake_build_type_and_compiler_type() {
   cmake_opts+=( "${YB_DEFAULT_CMAKE_OPTS[@]}" )
 }
 
-# utility function called by both 'build_yb_java_code' and 'build_yb_java_code_with_retries'
+set_mvn_local_repo() {
+  if [[ -z ${YB_MVN_LOCAL_REPO:-} ]]; then
+    if is_jenkins && is_src_root_on_nfs; then
+      YB_MVN_LOCAL_REPO=/n/jenkins/m2_repository
+    else
+      YB_MVN_LOCAL_REPO=$HOME/.m2/repository
+    fi
+  fi
+  export YB_MVN_LOCAL_REPO
+}
+
+# A utility function called by both 'build_yb_java_code' and 'build_yb_java_code_with_retries'.
 build_yb_java_code_filter_save_output() {
   populate_mvn_config
+  set_mvn_local_repo
 
   # --batch-mode hides download progress.
   # We are filtering out some patterns from Maven output, e.g.:
@@ -617,7 +648,10 @@ build_yb_java_code_filter_save_output() {
     local java_build_output_path=/tmp/yb-java-build-$( get_timestamp ).$$.tmp
     has_local_output=true
   fi
-  local mvn_opts=( --batch-mode -Dyb.thirdparty.dir=$YB_THIRDPARTY_DIR )
+  local mvn_opts=(
+    --batch-mode
+    -Dyb.thirdparty.dir="$YB_THIRDPARTY_DIR"
+    -Dmaven.repo.local="$YB_MVN_LOCAL_REPO" )
   if ! is_jenkins; then
     mvn_opts+=( -Dmaven.javadoc.skip )
   fi
@@ -736,11 +770,18 @@ mkdir_safe() {
 # if the build runs to completion. This only filters stdin, so it is expected that stderr is
 # redirected to stdout when invoking the C++ build.
 filter_boring_cpp_build_output() {
-  egrep -v --line-buffered "^(\[ *[0-9]{1,2}%\] +)*(Building C(XX)? object |\
+  egrep -v --line-buffered "\
+^(\[ *[0-9]{1,2}%\] +)*(\
+Building C(XX)? object |\
 Running C[+][+] protocol buffer compiler (with YRPC plugin )?on |\
-Linking CXX ((static|shared) library|executable) |\
+Linking CXX ((static|shared )?library|executable) |\
+Built target \
+)|\
 Scanning dependencies of target |\
-Built target |[[:space:]]+CC(LD)?[[:space:]]+)[[:graph:]]+$"
+^ssh: connect to host .* port [0-9]+: Connection (timed out|refused)|\
+Host .* seems to be down, retrying on a different host|\
+Connection to .* closed by remote host.|\
+ssh: Could not resolve hostname build-workers-.*: Name or service not known"
 }
 
 # Removes the ccache wrapper directory from PATH so we can find the real path to a compiler, e.g.
@@ -892,25 +933,42 @@ set_build_env_vars() {
 }
 
 detect_num_cpus() {
-  if [[ ${YB_NUM_CPUS:-} =~ ^[0-9]+$ ]]; then
-    # Already detected.
-    return
-  fi
+  if [[ ! ${YB_NUM_CPUS:-} =~ ^[0-9]+$ ]]; then
+    if is_linux; then
+      YB_NUM_CPUS=$(grep -c processor /proc/cpuinfo)
+    elif is_mac; then
+      YB_NUM_CPUS=$(sysctl -n hw.ncpu)
+    else
+      fatal "Don't know how to detect the number of CPUs on OS $OSTYPE."
+    fi
 
-  if is_linux; then
-    YB_NUM_CPUS=$(grep -c processor /proc/cpuinfo)
-  elif is_mac; then
-    YB_NUM_CPUS=$(sysctl -n hw.ncpu)
-  else
-    fatal "Don't know how to detect the number of CPUs on OS $OSTYPE."
+    if [[ ! $YB_NUM_CPUS =~ ^[0-9]+$ ]]; then
+      fatal "Invalid number of CPUs detected: '$YB_NUM_CPUS' (expected a number)."
+    fi
   fi
+}
 
-  if [[ ! $YB_NUM_CPUS =~ ^[0-9]+$ ]]; then
-    fatal "Invalid number of CPUs detected: '$YB_NUM_CPUS' (expected a number)."
-  fi
-
+detect_num_cpus_and_set_make_parallelism() {
+  detect_num_cpus
   if [[ -z ${YB_MAKE_PARALLELISM:-} ]]; then
-    YB_MAKE_PARALLELISM=$YB_NUM_CPUS
+    if [[ ${YB_REMOTE_BUILD:-} == "1" ]]; then
+      declare -i num_build_workers=$( wc -l "$YB_BUILD_WORKERS_FILE" | awk '{print $1}' )
+      # Add one to the number of workers so that we cause the auto-scaling group to scale up a bit
+      # by stressing the CPU on each worker a bit more.
+      declare -i effective_num_build_workers=$(( $num_build_workers + 1 ))
+
+      # However, make sure this number is within a reasonable range.
+      if [[ $effective_num_build_workers -lt $MIN_EFFECTIVE_NUM_BUILD_WORKERS ]]; then
+        effective_num_build_workers=$MIN_EFFECTIVE_NUM_BUILD_WORKERS
+      fi
+      if [[ $effective_num_build_workers -gt $MAX_EFFECTIVE_NUM_BUILD_WORKERS ]]; then
+        effective_num_build_workers=$MAX_EFFECTIVE_NUM_BUILD_WORKERS
+      fi
+
+      YB_MAKE_PARALLELISM=$(( $effective_num_build_workers * $YB_NUM_CORES_PER_BUILD_WORKER ))
+    else
+      YB_MAKE_PARALLELISM=$YB_NUM_CPUS
+    fi
   fi
   export YB_MAKE_PARALLELISM
 }
@@ -1008,6 +1066,111 @@ validate_thirdparty_dir() {
   ensure_directory_exists "$YB_THIRDPARTY_DIR/build-definitions"
   ensure_directory_exists "$YB_THIRDPARTY_DIR/patches"
   ensure_file_exists "$YB_THIRDPARTY_DIR/build-thirdparty.sh"
+}
+
+# Detect if we're running on Google Compute Platform. We perform this check lazily as there might be
+# a bit of a delay resolving the domain name.
+detect_gcp() {
+  # How to detect if we're running on Google Compute Engine:
+  # https://cloud.google.com/compute/docs/instances/managing-instances#dmi
+  if [[ -n ${YB_PRETEND_WE_ARE_ON_GCP:-} ]] || \
+     curl metadata.google.internal --silent --output /dev/null --connect-timeout 1; then
+    readonly is_running_on_gcp_exit_code=0  # "true" exit code
+  else
+    readonly is_running_on_gcp_exit_code=1  # "false" exit code
+  fi
+}
+
+is_running_on_gcp() {
+  if [[ -z ${is_running_on_gcp_exit_code:-} ]]; then
+    detect_gcp
+  fi
+  return "$is_running_on_gcp_exit_code"
+}
+
+is_jenkins() {
+  if [[ -n ${BUILD_ID:-} && -n ${JOB_NAME:-} && $USER == "jenkins" ]]; then
+    return 0  # Yes, we're running on Jenkins.
+  fi
+  return 1  # Probably running locally.
+}
+
+# Check if we're using an NFS partition.
+is_src_root_on_nfs() {
+  if [[ $YB_SRC_ROOT =~ ^/n/ ]]; then
+    return 0
+  fi
+  return 1
+}
+
+is_remote_build() {
+  if [[ ${YB_REMOTE_BUILD:-} == "1" ]]; then
+    return 0  # "true" return value
+  fi
+  return 1  # "false" return value
+}
+
+# This is used for escaping command lines for remote execution.
+# From StackOverflow: https://goo.gl/sTKReB
+# Using this approach: "Put the whole string in single quotes. This works for all chars except
+# single quote itself. To escape the single quote, close the quoting before it, insert the single
+# quote, and re-open the quoting."
+#
+escape_cmd_line() {
+  escape_cmd_line_rv=""
+  for arg in "$@"; do
+    escape_cmd_line_rv+=" '"${arg/\'/\'\\\'\'}"'"
+    # This should be equivalent to the sed command below.  The quadruple backslash encodes one
+    # backslash in the replacement string. We don't need that in the pure-bash implementation above.
+    # sed -e "s/'/'\\\\''/g; 1s/^/'/; \$s/\$/'/"
+  done
+  # Remove the leading space if necessary.
+  escape_cmd_line_rv=${escape_cmd_line_rv# }
+}
+
+run_remote_cmd() {
+  local build_host=$1
+  local executable=$2
+  shift 2
+  local escape_cmd_line_rv
+  escape_cmd_line "$@"
+  ssh "$build_host" \
+      "'$YB_SRC_ROOT/build-support/remote_cmd.sh' '$PWD' '$PATH' '$executable' $escape_cmd_line_rv"
+}
+
+# Run the build command (cmake / make) on the appropriate host. This is localhost in most cases.
+# However, in a remote build, we ensure we run this command on the "distributed build master host"
+# machine, as there are some issues with running cmake or make over NFS (e.g. stale file handles).
+run_build_cmd() {
+  if is_remote_build && [[ $HOSTNAME != $DISTRIBUTED_BUILD_MASTER_HOST ]]; then
+    run_remote_cmd "$DISTRIBUTED_BUILD_MASTER_HOST" "$@"
+  else
+    "$@"
+  fi
+}
+
+configure_remote_build() {
+  # Automatically set YB_REMOTE_BUILD in an NFS GCP environment.
+  if [[ -z ${YB_NO_REMOTE_BUILD:-} ]] && is_running_on_gcp && is_src_root_on_nfs; then
+    if [[ -z ${YB_REMOTE_BUILD:-} ]]; then
+      log "Automatically enabling distributed build (running in an NFS GCP environment). " \
+          "Use YB_NO_REMOTE_BUILD (or the --no-remote ybd option) to disable this behavior."
+      export YB_REMOTE_BUILD=1
+    else
+      log "YB_REMOTE_BUILD already defined: '$YB_REMOTE_BUILD', not enabling it automatically," \
+          "even though we would in this case."
+    fi
+  else
+    # Make it easier to diagnose why we're not using the distributed build.
+    log "Not using remote / distributed build:" \
+        "YB_NO_REMOTE_BUILD=${YB_NO_REMOTE_BUILD:-undefined}. See additional diagnostics below."
+    is_running_on_gcp && log "Running on GCP." || log "This is not GCP."
+    if is_src_root_on_nfs; then
+      log "YB_SRC_ROOT ($YB_SRC_ROOT) appears to be on NFS."
+    else
+      log "YB_SRC_ROOT ($YB_SRC_ROOT) does not appear to be on NFS."
+    fi
+  fi
 }
 
 # -------------------------------------------------------------------------------------------------

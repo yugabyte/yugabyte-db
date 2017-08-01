@@ -29,6 +29,8 @@ Options:
     Do not use ccache. Useful when debugging build scripts or compiler/linker options.
   --clang
     Use the clang C/C++ compiler.
+  --skip-build, --sb
+    Skip all kinds of build (C++, Java)
   --skip-java-build, --skip-java, --sjb, --sj
     Do not package and install java source code.
   --run-java-tests
@@ -139,7 +141,7 @@ no_tcmalloc=false
 cxx_test_name=""
 test_existence_check=true
 object_files_to_delete=()
-run_ctest=false
+should_run_ctest=false
 ctest_args=""
 num_test_repetitions=1
 build_descriptor_path=""
@@ -148,7 +150,6 @@ repeat_unit_test_inherited_args=()
 forward_args_to_repeat_unit_test=false
 original_args=( "$@" )
 java_with_assembly=false
-declare -i default_parallelism=0
 
 export YB_EXTRA_GTEST_FLAGS=""
 
@@ -231,10 +232,10 @@ while [ $# -gt 0 ]; do
       shift
     ;;
     --ctest)
-      run_ctest=true
+      should_run_ctest=true
     ;;
     --ctest-args)
-      run_ctest=true
+      should_run_ctest=true
       ctest_args+="$2"
       shift
     ;;
@@ -244,11 +245,14 @@ while [ $# -gt 0 ]; do
     --no-prebuilt-thirdparty)
       export YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY=1
     ;;
+    --prebuilt-thirdparty|--with-prebuilt-thirdparty)
+      export YB_PREFER_PREBUILT_THIRDPARTY=1
+    ;;
     --show-compiler-cmd-line|--sccl)
       export YB_SHOW_COMPILER_COMMAND_LINE=1
     ;;
-    --skip-test-existence-check|--no-test-existence-check) test_existence_check=false ;;
-    --skip-check-test-existence|--no-check-test-existence) test_existence_check=false ;;
+    --skip-test-existence-check|--no-test-existence-check|--ntec) test_existence_check=false ;;
+    --skip-check-test-existence|--no-check-test-existence|--ncte) test_existence_check=false ;;
     --gtest_filter)
       export YB_GTEST_FILTER=$2
       shift
@@ -297,10 +301,10 @@ while [ $# -gt 0 ]; do
       if [[ ! -f "$YB_BUILD_WORKERS_FILE" ]]; then
         fatal "--remote specified but $YB_BUILD_WORKERS_FILE not found"
       fi
-      declare -i num_build_workers=$( wc -l "$YB_BUILD_WORKERS_FILE" | awk '{print $1}' )
-      # Add one to the number of workers so that we cause the auto-scaling group to scale up a bit.
-      declare -i default_parallelism=$((
-        ( $num_build_workers + 1 ) * $YB_NUM_CORES_PER_BUILD_WORKER ))
+    ;;
+    --no-remote)
+      unset YB_REMOTE_BUILD
+      export YB_NO_REMOTE_BUILD=1
     ;;
     --)
       if [[ $num_test_repetitions -lt 2 ]]; then
@@ -321,6 +325,10 @@ while [ $# -gt 0 ]; do
     daemons|yb-daemons)
       make_targets+=( "yb-master" "yb-tserver" )
     ;;
+    --skip-build|--sb)
+      build_cxx=false
+      build_java=false
+    ;;
     *)
       echo "Invalid option: '$1'" >&2
       exit 1
@@ -340,7 +348,7 @@ if "$force_run_cmake" && "$force_no_run_cmake"; then
   fatal "--force-run-cmake and --force-no-run-cmake are incompatible"
 fi
 
-if "$run_ctest"; then
+if "$should_run_ctest"; then
   if [[ -n $cxx_test_name ]]; then
     fatal "--cxx-test (run one C++ test) is mutually exclusive with --ctest (run a number of tests)"
   fi
@@ -352,6 +360,19 @@ fi
 if [[ $num_test_repetitions -lt 1 ]]; then
   fatal "Invalid number of test repetitions: $num_test_repetitions. Must be 1 or more."
 fi
+
+if [[ ${YB_REMOTE_BUILD:-} == "1" && ${YB_NO_REMOTE_BUILD:-} == "1" ]]; then
+  fatal "YB_REMOTE_BUILD (--remote) and YB_NO_REMOTE_BUILD (--no-remote) cannot be set" \
+        "at the same time."
+fi
+
+if [[ ${YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY:-} == "1" && \
+      ${YB_PREFER_PREBUILT_THIRDPARTY:-} == "1" ]]; then
+  fatal "YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY (--no-prebuilt-thirdparty) and" \
+    "YB_PREFER_PREBUILT_THIRDPARTY (--prebuilt-thirdparty) are incompatible."
+fi
+
+configure_remote_build
 
 if "$save_log"; then
   log_dir="$HOME/logs"
@@ -386,13 +407,6 @@ set_build_root
 validate_cmake_build_type "$cmake_build_type"
 
 export YB_COMPILER_TYPE
-
-if [[ -z ${YB_MAKE_PARALLELISM:-} && $default_parallelism -gt 0 ]]; then
-  export YB_MAKE_PARALLELISM=$default_parallelism
-fi
-if [[ -n ${YB_MAKE_PARALLELISM:-} ]]; then
-  log "Using parallelism of $YB_MAKE_PARALLELISM"
-fi
 
 if "$verbose"; then
   # http://stackoverflow.com/questions/22803607/debugging-cmakelists-txt
@@ -451,7 +465,9 @@ if "$no_tcmalloc"; then
   cmake_opts+=( -DYB_TCMALLOC_AVAILABLE=0 )
 fi
 
-detect_num_cpus
+detect_num_cpus_and_set_make_parallelism
+log "Using make parallelism of $YB_MAKE_PARALLELISM" \
+    "(YB_REMOTE_BUILD=${YB_REMOTE_BUILD:-undefined})"
 
 set_build_env_vars
 
@@ -500,10 +516,13 @@ if "$build_cxx"; then
     (
       cd "$BUILD_ROOT"
       log "Checking if all test binaries referenced by CMakeLists.txt files exist."
-      set +e
-      YB_CHECK_TEST_EXISTENCE_ONLY=1 ctest -j8 2>&1 | grep Failed
-      if [[ "${PIPESTATUS[0]}" -ne 0 ]]; then
-        fatal "Some test binaries referenced in CMakeLists.txt files do not exist"
+      if ! check_test_existence; then
+        log "Re-running test existence check again with more verbose output"
+        # We need to do this because sometimes we get an error with no useful output otherwise.
+        # We pass a pattern that includes all lines in the output.
+        check_test_existence '.*'
+        fatal "Some test binaries referenced in CMakeLists.txt files do not exist," \
+              "or failed to check. See detailed output above."
       fi
     )
   fi
@@ -545,7 +564,7 @@ if [[ -n $cxx_test_name ]]; then
   fi
 fi
 
-if "$run_ctest"; then
+if "$should_run_ctest"; then
   # Not setting YB_CTEST_VERBOSE here because we don't want the output of a potentially large number
   # of tests to go to stdout.
   (

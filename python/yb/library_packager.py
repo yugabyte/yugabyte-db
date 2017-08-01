@@ -33,6 +33,7 @@ from os.path import join as path_join
 from os.path import realpath
 from distutils.dir_util import mkpath
 from yb.command_util import run_program
+from yb.linuxbrew import get_linuxbrew_dir
 
 
 # A resolved shared library dependency shown by ldd.
@@ -47,7 +48,7 @@ RESOLVED_DEP_RE = re.compile(r'^\s*(\S+)\s+=>\s+(\S.*\S)\s+[(]')
 READELF_RPATH_RE = re.compile(r'Library (?:rpath|runpath): \[(.+)\]')
 
 HOME_DIR = os.path.expanduser('~')
-LINUXBREW_HOME = os.path.join(HOME_DIR, '.linuxbrew-yb-build')
+LINUXBREW_HOME = get_linuxbrew_dir()
 PATCHELF_PATH = path_join(LINUXBREW_HOME, 'bin', 'patchelf')
 LINUXBREW_LDD_PATH = path_join(LINUXBREW_HOME, 'bin', 'ldd')
 

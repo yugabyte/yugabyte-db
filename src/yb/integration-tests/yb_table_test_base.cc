@@ -74,6 +74,8 @@ YBTableTestBase::YBTableTestBase() {
 
 void YBTableTestBase::SetUp() {
   YBTest::SetUp();
+
+  Status mini_cluster_status;
   if (use_external_mini_cluster()) {
     auto opts = ExternalMiniClusterOptions();
     opts.num_masters = num_masters();
@@ -81,15 +83,21 @@ void YBTableTestBase::SetUp() {
     opts.num_tablet_servers = num_tablet_servers();
 
     external_mini_cluster_.reset(new ExternalMiniCluster(opts));
-    ASSERT_OK(external_mini_cluster_->Start());
+    mini_cluster_status = external_mini_cluster_->Start();
   } else {
     auto opts = MiniClusterOptions();
     opts.num_masters = num_masters();
     opts.num_tablet_servers = num_tablet_servers();
 
     mini_cluster_.reset(new MiniCluster(env_.get(), opts));
-    ASSERT_OK(mini_cluster_->Start());
+    mini_cluster_status = mini_cluster_->Start();
   }
+  if (!mini_cluster_status.ok()) {
+    // We sometimes crash during cleanup if the cluster creation fails and don't get to report
+    // the root cause, so log it here just in case.
+    LOG(INFO) << "Failed starting the mini cluster: " << mini_cluster_status.ToString();
+  }
+  ASSERT_OK(mini_cluster_status);
 
   CreateClient();
   CreateTable();

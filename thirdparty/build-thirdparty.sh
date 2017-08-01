@@ -532,8 +532,6 @@ else
   exit 1
 fi
 
-detect_num_cpus
-
 ################################################################################
 
 ### Build common tools and libraries

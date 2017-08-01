@@ -138,7 +138,6 @@ should_skip_error_checking_by_input_file_pattern() {
 
 cmd_line_str="$*"
 
-arg_str=""
 output_file=""
 nonexistent_file_args=()
 local_build_only=false
@@ -146,13 +145,6 @@ for arg in "$@"; do
   if [[ $arg =~ *CMakeTmp* || $arg == "-" ]]; then
     local_build_only=true
   fi
-  # From StackOverflow: https://goo.gl/sTKReB
-  # Using this approach: "Put the whole string in single quotes. This works for all chars except
-  # single quote itself. To escape the single quote, close the quoting before it, insert the single
-  # quote, and re-open the quoting."
-  #
-  # The quadruple backslash encodes one backslash in the replacement string.
-  arg_str+=" $( echo -n "$arg" | sed -e "s/'/'\\\\''/g; 1s/^/'/; \$s/\$/'/" )"
 done
 
 is_build_worker=false
@@ -162,6 +154,7 @@ fi
 
 if [[ $local_build_only == "false" &&
       ${YB_REMOTE_BUILD:-} == "1" &&
+      -z ${YB_NO_REMOTE_BUILD:-} &&
       $is_build_worker == "false" ]]; then
   current_dir=$PWD
   declare -i attempt=1
@@ -173,14 +166,17 @@ if [[ $local_build_only == "false" &&
       if [[ $no_worker_count -ge 100 ]]; then
         fatal "Found no live workers in "$YB_BUILD_WORKERS_FILE" in $no_worker_count attempts"
       fi
+      log "Waiting for one second while no live workers are present in $YB_BUILD_WORKERS_FILE"
+      sleep 1
       continue
     fi
     build_host=$build_worker_name.c.yugabyte.internal
     set +e
-    ssh "$build_host" "'$YB_SRC_ROOT/build-support/remote_cmd.sh' '$PWD' '$PATH' '$0' $arg_str"
+    run_remote_cmd "$build_host" "$0" "$@"
     exit_code=$?
     set -e
-    if [[ $exit_code -eq 255 ]]; then
+    # Saw an exit code 254 after this error: "write: Connection reset by peer".
+    if [[ $exit_code -eq 255 || $exit_code -eq 254 ]]; then
       log "Host $build_host seems to be down, retrying on a different host" \
           "(this was attempt $attempt)"
       sleep 0.1
@@ -191,8 +187,20 @@ if [[ $local_build_only == "false" &&
   done
   if [[ $exit_code -ne 0 ]]; then
     log_empty_line
-    log "COMMAND FAILED: $0 $*"
-    log_empty_line
+    # Not using the log function here, because as of 07/23/2017 it does not correctly handle
+    # multi-line log messages (it concatenates them into one line).
+    echo >&2 "
+---------------------------------------------------------------------------------------------------
+REMOTE COMPILER INVOCATION FAILED
+---------------------------------------------------------------------------------------------------
+Build host: $build_host
+Directory:  $PWD
+PATH:       $PATH
+Command:    $0 $*
+Exit code:  $exit_code
+---------------------------------------------------------------------------------------------------
+
+"
   fi
   exit $exit_code
 elif [[ ${YB_DEBUG_REMOTE_BUILD:-} == "1" ]] && ! $is_build_worker; then
@@ -275,6 +283,17 @@ if which ccache >/dev/null && ! "$compiling_pch" && [[ -z ${YB_NO_CCACHE:-} ]]; 
   using_ccache=true
   export CCACHE_CC="$compiler_executable"
   export CCACHE_SLOPPINESS="pch_defines,time_macros"
+  export CCACHE_BASEDIR=$YB_SRC_ROOT
+  jenkins_ccache_dir=/n/jenkins/ccache
+  if [[ $USER == "jenkins" && -d $jenkins_ccache_dir ]] && is_src_root_on_nfs && is_running_on_gcp
+  then
+    if ! is_jenkins; then
+      log "is_jenkins (based on BUILD_ID and JOB_NAME) is false for some reason, even though" \
+          "the user is 'jenkins'. Setting CCACHE_DIR to '$jenkins_ccache_dir' anyway." \
+          "This is host $HOSTNAME, and current directory is $PWD."
+    fi
+    export CCACHE_DIR=$jenkins_ccache_dir
+  fi
   cmd=( ccache compiler )
 else
   cmd=( "$compiler_executable" )

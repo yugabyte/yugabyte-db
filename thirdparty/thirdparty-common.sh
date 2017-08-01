@@ -324,7 +324,7 @@ source_thirdparty_build_definitions() {
 # -------------------------------------------------------------------------------------------------
 # Initialization
 
-detect_num_cpus
+detect_num_cpus_and_set_make_parallelism
 source_thirdparty_build_definitions
 # We don't need this function anymore after calling it once, so delete it.
 unset -f source_thirdparty_build_definitions

@@ -62,8 +62,10 @@ cd "$real_build_root_path"
 
 show_stats "before"
 
-# Get rid of most of the build artifacts.
-( set -x; rm -rf bin lib src rocksdb-build )
+if [[ ${YB_KEEP_BUILD_OUTPUT:-} != "1" ]]; then
+  # Get rid of most of the build artifacts.
+  ( set -x; rm -rf bin lib src )
+fi
 
 # Get rid of temporary directories such as
 #   yb-test-logs/bin__raft_consensus-itest/
