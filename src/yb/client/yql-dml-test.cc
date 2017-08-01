@@ -239,12 +239,16 @@ constexpr auto kTimeout = 30s;
 } // namespace
 
 TEST_F_EX(YqlDmlTest, RangeFilter, YqlDmlRangeFilterBase) {
+#if defined(THREAD_SANITIZER)
+  constexpr size_t kTotalLines = 5000;
+#else
   constexpr size_t kTotalLines = 25000;
+#endif
   if (!FLAGS_mini_cluster_reuse_data) {
     shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     session->SetTimeout(kTimeout);
-    for(int32_t i = 0; i != kTotalLines; ++i) {
+    for(int32_t i = 0; i != kTotalLines;) {
       const shared_ptr<YBqlWriteOp> op = InsertRow(session,
                                                    kHashInt,
                                                    kHashStr,
@@ -253,7 +257,8 @@ TEST_F_EX(YqlDmlTest, RangeFilter, YqlDmlRangeFilterBase) {
                                                    -i,
                                                    RandomValueAt(i));
       ASSERT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
-      if ((i + 1) % 100 == 0) {
+      ++i;
+      if (i % 100 == 0) {
         ASSERT_OK(session->Flush());
       }
       if (i % 5000 == 0) {
@@ -262,6 +267,7 @@ TEST_F_EX(YqlDmlTest, RangeFilter, YqlDmlRangeFilterBase) {
     }
     ASSERT_OK(session->Flush());
     session = client_->NewSession(true /* read_only */);
+    session->SetTimeout(kTimeout);
     LOG(WARNING) << "Finished creating DB";
     constexpr int32_t kProbeStep = 997;
     for(int32_t idx = 0; idx < kTotalLines; idx += kProbeStep) {
@@ -273,6 +279,9 @@ TEST_F_EX(YqlDmlTest, RangeFilter, YqlDmlRangeFilterBase) {
                               -idx,
                               RandomValueAt(idx)));
     }
+    LOG(WARNING) << "Preliminary check done";
+    cluster_->FlushTablets();
+    std::this_thread::sleep_for(1s);
   }
   FLAGS_db_block_cache_size_bytes = -2;
   ASSERT_OK(cluster_->RestartSync());
@@ -282,7 +291,7 @@ TEST_F_EX(YqlDmlTest, RangeFilter, YqlDmlRangeFilterBase) {
     constexpr size_t kTotalProbes = 1000;
     Random rng(GetRandomSeed32());
     size_t old_iterators = CountIterators(cluster_.get());
-    for (size_t i = 0; i != kTotalProbes; ++i) {
+    for (size_t i = 0; i != kTotalProbes; ) {
       int32_t idx = rng.Uniform(kTotalLines);
       ASSERT_VERIFY(VerifyRow(session,
                               kHashInt,
@@ -295,6 +304,10 @@ TEST_F_EX(YqlDmlTest, RangeFilter, YqlDmlRangeFilterBase) {
       size_t new_iterators = CountIterators(cluster_.get());
       ASSERT_EQ(old_iterators + 1, new_iterators);
       old_iterators = new_iterators;
+      ++i;
+      if (i % 100 == 0) {
+        LOG(WARNING) << "Checked " << i << " rows";
+      }
     }
   }
 }

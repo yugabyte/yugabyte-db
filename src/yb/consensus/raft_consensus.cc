@@ -50,7 +50,13 @@
 #include "yb/util/trace.h"
 #include "yb/util/url-coding.h"
 
-DEFINE_int32(raft_heartbeat_interval_ms, 500,
+#if defined(THREAD_SANITIZER)
+constexpr int32_t kDefaultRaftHeartbeatIntervalMs = 1000;
+#else
+constexpr int32_t kDefaultRaftHeartbeatIntervalMs = 500;
+#endif
+
+DEFINE_int32(raft_heartbeat_interval_ms, kDefaultRaftHeartbeatIntervalMs,
              "The heartbeat interval for Raft replication. The leader produces heartbeats "
              "to followers at this interval. The followers expect a heartbeat at this interval "
              "and consider a leader to have failed if it misses several in a row.");
