@@ -257,9 +257,6 @@ class PTDmlStmt : public PTCollection {
     return *subscripted_col_args_;
   }
 
-  // Reset to clear and release previous semantics analysis results.
-  virtual void Reset() override;
-
  protected:
   // Protected functions.
   CHECKED_STATUS AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr);

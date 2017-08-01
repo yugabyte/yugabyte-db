@@ -185,14 +185,6 @@ CHECKED_STATUS PTDmlStmt::AnalyzeHashColumnBindVars(SemContext *sem_context) {
   return Status::OK();
 }
 
-void PTDmlStmt::Reset() {
-  for (auto itr = bind_variables_.cbegin(); itr != bind_variables_.cend(); itr++) {
-    (*itr)->Reset();
-  }
-  column_args_ = nullptr;
-  subscripted_col_args_ = nullptr;
-}
-
 // Are we writing to static columns only, i.e. no range columns or non-static columns.
 bool PTDmlStmt::StaticColumnArgsOnly() const {
   if (column_args_->empty() && subscripted_col_args_->empty()) {

@@ -45,10 +45,6 @@ CHECKED_STATUS ParseTree::Analyze(SemContext *sem_context) {
     return Status::OK();
   }
 
-  // Reset and release previous semantic analysis results and free the associated memory.
-  root_->Reset();
-  psem_mem_.Reset();
-
   return root_->Analyze(sem_context);
 }
 

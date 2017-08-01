@@ -197,11 +197,6 @@ void PTSelectStmt::PrintSemanticAnalysisResult(SemContext *sem_context) {
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << "Not yet avail";
 }
 
-void PTSelectStmt::Reset() {
-  PTDmlStmt::Reset();
-  selected_columns_ = nullptr;
-}
-
 //--------------------------------------------------------------------------------------------------
 
 PTOrderBy::PTOrderBy(MemoryContext *memctx,

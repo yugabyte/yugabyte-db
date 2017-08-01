@@ -91,13 +91,6 @@ class TreeListNode : public TreeNode {
     return Status::OK();
   }
 
-  // Reset to clear and release previous semantics analysis results.
-  virtual void Reset() override {
-    for (auto tnode : node_list_) {
-      tnode->Reset();
-    }
-  }
-
   // Apply an operator on each node in the list.
   template<typename ContextType, typename DerivedType = NodeType>
   CHECKED_STATUS Apply(ContextType *context,

@@ -219,9 +219,6 @@ class PTSelectStmt : public PTDmlStmt {
     return from_clause_->loc();
   }
 
-  // Reset to clear and release previous semantics analysis results.
-  virtual void Reset() override;
-
  private:
   // The following members represent different components of SELECT statement. However, Cassandra
   // doesn't support all of SQL syntax and semantics.
