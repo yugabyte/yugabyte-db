@@ -64,6 +64,11 @@ public class BaseMiniClusterTest extends BaseYBTest {
     createMiniCluster(NUM_MASTERS, NUM_TABLET_SERVERS);
   }
 
+  // Helper function to wait for existing tservers to heartbeat to master leader.
+  public boolean waitForTServersAtMasterLeader() throws Exception {
+    return miniCluster.waitForTabletServers(miniCluster.getTabletServers().size());
+  }
+
   /**
    * Creates a new cluster with the requested number of masters and tservers.
    */

@@ -21,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 
 /**
  * Tests {@link AsyncYBClient} with multiple masters.
@@ -50,6 +51,10 @@ public class TestMasterFailover extends BaseYBClientTest {
     // Test that we can open a previously created table after killing the leader master.
     YBTable table = openTable(TABLE_NAME);
     assertEquals(0, countRowsInScan(client.newScannerBuilder(table).build()));
+
+    if (!waitForTServersAtMasterLeader()) {
+      fail("Couldn't get all tablet servers heartbeating to new master leader.");
+    }
 
     // Test that we can create a new table when one of the masters is down.
     String newTableName = TABLE_NAME + "-afterLeaderIsDead";
