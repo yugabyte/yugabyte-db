@@ -79,7 +79,7 @@ class DockerProviderConfiguration extends Component {
               </span>
             </Col>
           </Row>
-          <RegionMap title="All Supported Regions" regions={dockerRegions} type="Root" showLabels={true}/>
+          <RegionMap title="All Supported Regions" regions={dockerRegions} type="Provider" showLabels={true}/>
         </div>
       );
     }
