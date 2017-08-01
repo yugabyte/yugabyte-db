@@ -82,7 +82,9 @@ export default class UniverseDisplayPanel extends Component {
     if (getPromiseState(providers).isSuccess()) {
       let universeDisplayList = <span/>;
       if (getPromiseState(universeList).isSuccess()) {
-        universeDisplayList = universeList.data.map(function (universeItem, idx) {
+        universeDisplayList = universeList.data.sort((a, b) => {
+          return Date.parse(a.creationDate) < Date.parse(b.creationDate)
+        }).map(function (universeItem, idx) {
           return <UniverseDisplayItem key={universeItem.name + idx} universe={universeItem}/>
         });
       }
