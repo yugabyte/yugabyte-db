@@ -33,7 +33,9 @@ export default class UniverseTable extends Component {
     }
 
     var universeRowItem =
-      universeList.data.map(function (item, idx) {
+      universeList.data.sort((a, b) => {
+        return Date.parse(a.creationDate) < Date.parse(b.creationDate)
+      }).map(function (item, idx) {
         var universeTaskUUIDs = [];
         if (isNonEmptyArray(tasks.customerTaskList)) {
           universeTaskUUIDs = tasks.customerTaskList.map(function(taskItem){
