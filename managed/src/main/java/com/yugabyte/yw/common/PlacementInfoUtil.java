@@ -737,22 +737,24 @@ public class PlacementInfoUtil {
     LOG.info("Nodes comparing userIntent={} and taskParams={}.",
              taskParams.userIntent.numNodes, taskParams.nodeDetailsSet.size());
     if (numDeltaNodes < 0) {
-      // For shrink case, order az's by decreasing number of nodes, and remove from them in
-      // a round-robin fashion.
-      Set<UUID> azUuidSet = sortByValues(azUuidToNumNodes, false).keySet();
-      Iterator<UUID> iter = azUuidSet.iterator();
-      UUID targetAZUuid = null;
-      for (int i = 0; i < -numDeltaNodes; ++i) {
-        if (iter.hasNext()) {
-          targetAZUuid = iter.next();
-        } else {
-          iter = azUuidSet.iterator();
-          targetAZUuid = iter.next();
+      Iterator<NodeDetails> nodeIter = taskParams.nodeDetailsSet.iterator();
+      int deleteCounter = 0;
+      while (nodeIter.hasNext()) {
+        NodeDetails currentNode = nodeIter.next();
+        if (currentNode.isMaster) {
+          continue;
         }
         if (isEditUniverse) {
-          decommissionNodeInAZ(taskParams.nodeDetailsSet, targetAZUuid);
+          if (currentNode.isActive()) {
+            currentNode.state = NodeDetails.NodeState.ToBeDecommissioned;
+            LOG.debug("Removing node [{}].", currentNode);
+          }
         } else {
-          removeNodeInAZ(taskParams.nodeDetailsSet, targetAZUuid);
+          nodeIter.remove();
+        }
+        deleteCounter ++;
+        if (deleteCounter == -numDeltaNodes) {
+          break;
         }
       }
     } else {
