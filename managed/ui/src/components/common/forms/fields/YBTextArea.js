@@ -11,7 +11,7 @@ export default class YBTextArea extends Component {
   };
   render() {
     var self = this;
-    const { input, type, className, placeHolder, onValueChanged, isReadOnly, label, meta } = this.props;
+    const { input, type, className, placeHolder, onValueChanged, isReadOnly, label, meta, insetError } = this.props;
     function onChange(event) {
       if (isFunction(onValueChanged)) {
         onValueChanged(event.target.value);
@@ -19,7 +19,7 @@ export default class YBTextArea extends Component {
       self.props.input.onChange(event.target.value);
     }
     return (
-      <YBLabel label={label} meta={meta}>
+      <YBLabel label={label} insetError={insetError} meta={meta}>
       <FormControl {...input} componentClass="textarea" placeholder={placeHolder} type={type} className={className}
                    onChange={onChange} readOnly={isReadOnly} />
       </YBLabel>

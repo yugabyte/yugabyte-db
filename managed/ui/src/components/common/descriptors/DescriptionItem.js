@@ -6,10 +6,10 @@ import PropTypes from 'prop-types';
 import './stylesheets/DescriptionList.css'
 
 export default class DescriptionItem extends Component {
-
   static propTypes = {
     children: PropTypes.element.isRequired
   };
+
   render() {
     const {title} = this.props;
     return (

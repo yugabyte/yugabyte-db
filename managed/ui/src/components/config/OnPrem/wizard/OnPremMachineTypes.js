@@ -42,7 +42,7 @@ class OnPremListMachineTypes extends Component {
     const {fields} = this.props;
     var self = this;
     var removeRowButton = function(fieldIdx) {
-      if (fieldIdx >= 1) {
+      if (fields.length > 1) {
         return <i className="fa fa-minus-circle on-prem-row-delete-btn" onClick={self.removeMachineTypeRow.bind(self, fieldIdx)}/>;
       }
       return <span/>;
@@ -57,19 +57,19 @@ class OnPremListMachineTypes extends Component {
                 {removeRowButton(fieldIdx)}
               </Col>
               <Col lg={3}>
-                <Field name={`${fieldItem}.code`} component={YBInputField} isReadOnly={isReadOnly}/>
+                <Field name={`${fieldItem}.code`} component={YBInputField} insetError={true} isReadOnly={isReadOnly}/>
               </Col>
               <Col lg={1}>
-                <Field name={`${fieldItem}.numCores`}component={YBInputField} isReadOnly={isReadOnly}/>
+                <Field name={`${fieldItem}.numCores`}component={YBInputField} insetError={true} isReadOnly={isReadOnly}/>
               </Col>
               <Col lg={1}>
-                <Field name={`${fieldItem}.memSizeGB`} component={YBInputField} isReadOnly={isReadOnly}/>
+                <Field name={`${fieldItem}.memSizeGB`} component={YBInputField} insetError={true} isReadOnly={isReadOnly}/>
               </Col>
               <Col lg={1}>
-                <Field name={`${fieldItem}.volumeSizeGB`} component={YBInputField} isReadOnly={isReadOnly}/>
+                <Field name={`${fieldItem}.volumeSizeGB`} component={YBInputField} insetError={true} isReadOnly={isReadOnly}/>
               </Col>
               <Col lg={4}>
-                <Field name={`${fieldItem}.mountPath`} component={YBInputField} isReadOnly={isReadOnly}/>
+                <Field name={`${fieldItem}.mountPath`} component={YBInputField} insetError={true} isReadOnly={isReadOnly}/>
               </Col>
             </Row>
           )

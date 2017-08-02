@@ -67,16 +67,20 @@ class OnPremListRegionsAndZones extends Component {
           return (
             <Row key={`region-zone-${fieldIdx}`}>
               <Col lg={1}>
-                <i className="fa fa-minus-circle on-prem-row-delete-btn" onClick={self.removeRegionZoneTypeRow.bind(self, fieldIdx)}/>
+                {
+                  fields.length > 1
+                    ? <i className="fa fa-minus-circle on-prem-row-delete-btn" onClick={self.removeRegionZoneTypeRow.bind(self, fieldIdx)} />
+                    : null
+                }
               </Col>
               <Col lg={3}>
-                <Field name={`${fieldItem}.code`} component={YBInputField} isReadOnly={isReadOnly}/>
+                <Field name={`${fieldItem}.code`} component={YBInputField} insetError={true} isReadOnly={isReadOnly}/>
               </Col>
               <Col lg={3}>
-                <Field name={`${fieldItem}.location`} component={YBSelect} options={onPremRegionLocations} readOnlySelect={isReadOnly}/>
+                <Field name={`${fieldItem}.location`} component={YBSelect} insetError={true} options={onPremRegionLocations} readOnlySelect={isReadOnly}/>
               </Col>
               <Col lg={5}>
-                <Field name={`${fieldItem}.zones`} component={YBInputField} isReadOnly={isReadOnly}/>
+                <Field name={`${fieldItem}.zones`} component={YBInputField} insetError={true} isReadOnly={isReadOnly}/>
               </Col>
             </Row>
           )
@@ -118,7 +122,7 @@ export default class OnPremRegionsAndZones extends Component {
                 Region Name
               </Col>
               <Col lg={3}>
-                GeoLocation <span className="row-head-subscript">Lat/Long or City/State/County</span>
+                Location
               </Col>
               <Col lg={5}>
                 Zone Names <span className="row-head-subscript">Comma Separated</span>
