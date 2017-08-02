@@ -60,10 +60,10 @@ YBScanner::Data::Data(YBTable* table)
     snapshot_hybrid_time_(kNoHybridTime),
     table_(DCHECK_NOTNULL(table)),
     arena_(1024, 1024*1024),
-    spec_encoder_(table->schema().schema_, &arena_),
+    spec_encoder_(&internal::GetSchema(table->schema()), &arena_),
     timeout_(MonoDelta::FromMilliseconds(kScanTimeoutMillis)),
     scan_attempts_(0) {
-  SetProjectionSchema(table->schema().schema_);
+  SetProjectionSchema(&internal::GetSchema(table->schema()));
 }
 
 YBScanner::Data::~Data() {
@@ -443,7 +443,8 @@ bool YBScanner::Data::MoreTablets() const {
     return false;
   }
 
-  if (!table_->partition_schema().IsSimplePKRangePartitioning(*table_->schema().schema_)) {
+  if (!table_->partition_schema().IsSimplePKRangePartitioning(
+          internal::GetSchema(table_->schema()))) {
     // We can't do culling yet if the partitioning isn't simple.
     return true;
   }

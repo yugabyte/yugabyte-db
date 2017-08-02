@@ -21,15 +21,16 @@
 #include <string>
 #include <vector>
 
-#include <boost/lockfree/queue.hpp>
-
 #include <glog/logging.h>
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/rpc/inbound_call.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
+#include "yb/rpc/tasks_pool.h"
+
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status.h"
@@ -62,20 +63,16 @@ namespace rpc {
 
 namespace {
 
-class InboundCallTask final : public ThreadPoolTask {
+class InboundCallTask final {
  public:
-  void Bind(ServicePoolImpl* pool, InboundCallPtr call) {
-    pool_ = pool;
-    call_ = std::move(call);
+  InboundCallTask(ServicePoolImpl* pool, InboundCallPtr call)
+      : pool_(pool), call_(std::move(call)) {
   }
 
-  ~InboundCallTask() {
-    CHECK(!call_);
-  }
- private:
   void Run();
   void Done(const Status& status);
 
+ private:
   ServicePoolImpl* pool_;
   InboundCallPtr call_;
 };
@@ -93,11 +90,7 @@ class ServicePoolImpl {
         incoming_queue_time_(METRIC_rpc_incoming_queue_time.Instantiate(entity)),
         rpcs_timed_out_in_queue_(METRIC_rpcs_timed_out_in_queue.Instantiate(entity)),
         rpcs_queue_overflow_(METRIC_rpcs_queue_overflow.Instantiate(entity)),
-        tasks_queue_(max_tasks),
         tasks_pool_(max_tasks) {
-    for (size_t i = 0; i < max_tasks; ++i) {
-      CHECK(tasks_queue_.bounded_push(&tasks_pool_[i]));
-    }
   }
 
   ~ServicePoolImpl() {
@@ -114,11 +107,7 @@ class ServicePoolImpl {
   void Enqueue(InboundCallPtr call) {
     TRACE_TO(call->trace(), "Inserting onto call queue");
 
-    InboundCallTask* task = nullptr;
-    if (tasks_queue_.pop(task)) {
-      task->Bind(this, std::move(call));
-      thread_pool_->Enqueue(task);
-    } else {
+    if (!tasks_pool_.Enqueue(thread_pool_, this, std::move(call))) {
       Overflow(call, "service", tasks_pool_.size());
     }
   }
@@ -187,10 +176,6 @@ class ServicePoolImpl {
     service_->Handle(std::move(incoming));
   }
 
-  void Released(InboundCallTask* task) {
-    CHECK(tasks_queue_.bounded_push(task));
-  }
-
  private:
   ThreadPool* thread_pool_;
   std::unique_ptr<ServiceIf> service_;
@@ -199,8 +184,7 @@ class ServicePoolImpl {
   scoped_refptr<Counter> rpcs_queue_overflow_;
 
   std::atomic<bool> closing_ = {false};
-  boost::lockfree::queue<InboundCallTask*> tasks_queue_;
-  std::vector<InboundCallTask> tasks_pool_;
+  TasksPool<InboundCallTask> tasks_pool_;
 };
 
 void InboundCallTask::Run() {
@@ -210,8 +194,6 @@ void InboundCallTask::Run() {
 void InboundCallTask::Done(const Status& status) {
   InboundCallPtr call = call_;
   pool_->Processed(call, status);
-  call_.reset();
-  pool_->Released(this);
 }
 
 ServicePool::ServicePool(size_t max_tasks,

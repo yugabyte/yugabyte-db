@@ -140,6 +140,10 @@ class Tablet : public AbstractTablet {
 
   CHECKED_STATUS ImportData(const std::string& source_dir);
 
+  CHECKED_STATUS ApplyIntents(const std::string& transaction_id,
+                              const consensus::OpId& op_id,
+                              const HybridTime& hybrid_time);
+
   // Decode the Write (insert/mutate) operations from within a user's request.
   // Either fills in tx_state->row_ops or tx_state->kv_write_batch depending on TableType.
   CHECKED_STATUS DecodeWriteOperations(const Schema* client_schema,
@@ -759,6 +763,8 @@ class Tablet : public AbstractTablet {
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };
+
+typedef std::shared_ptr<Tablet> TabletPtr;
 
 // A helper class to manage read transactions. Grabs and registers a read point with the tablet
 // when created, and deregisters the read point when this object is destructed.

@@ -22,8 +22,11 @@
 
 #include "yb/gutil/basictypes.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_header.pb.h"
+
+#include "yb/util/random_util.h"
 
 namespace yb {
 
@@ -35,7 +38,7 @@ using namespace std::placeholders;
 
 namespace rpc {
 
-bool RpcRetrier::HandleResponse(Rpc* rpc, Status* out_status) {
+bool RpcRetrier::HandleResponse(RpcCommand* rpc, Status* out_status) {
   ignore_result(DCHECK_NOTNULL(rpc));
   ignore_result(DCHECK_NOTNULL(out_status));
 
@@ -55,7 +58,7 @@ bool RpcRetrier::HandleResponse(Rpc* rpc, Status* out_status) {
   return false;
 }
 
-void RpcRetrier::DelayedRetry(Rpc* rpc, const Status& why_status) {
+void RpcRetrier::DelayedRetry(RpcCommand* rpc, const Status& why_status) {
   if (!why_status.ok() && (last_error_.ok() || last_error_.IsTimedOut())) {
     last_error_ = why_status;
   }
@@ -63,12 +66,12 @@ void RpcRetrier::DelayedRetry(Rpc* rpc, const Status& why_status) {
   //
   // If the delay causes us to miss our deadline, RetryCb will fail the
   // RPC on our behalf.
-  int num_ms = ++attempt_num_ + ((rand() % 5));
+  int num_ms = ++attempt_num_ + RandomUniformInt(0, 4);
   messenger_->ScheduleOnReactor(
       std::bind(&RpcRetrier::DelayedRetryCb, this, rpc, _1), MonoDelta::FromMilliseconds(num_ms));
 }
 
-void RpcRetrier::DelayedRetryCb(Rpc* rpc, const Status& status) {
+void RpcRetrier::DelayedRetryCb(RpcCommand* rpc, const Status& status) {
   Status new_status = status;
   if (new_status.ok()) {
     // Has this RPC timed out?

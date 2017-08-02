@@ -58,10 +58,9 @@ using tserver::WriteRequestPB;
 using tserver::WriteResponsePB;
 using strings::Substitute;
 
-WriteTransaction::WriteTransaction(WriteTransactionState* state, DriverType type)
-  : Transaction(state, type, Transaction::WRITE_TXN),
-  state_(state) {
-  start_time_ = MonoTime::Now(MonoTime::FINE);
+WriteTransaction::WriteTransaction(std::unique_ptr<WriteTransactionState> state, DriverType type)
+  : Transaction(std::move(state), type, Transaction::WRITE_TXN),
+    start_time_(MonoTime::FineNow()) {
 }
 
 consensus::ReplicateMsgPtr WriteTransaction::NewReplicateMsg() {
@@ -77,13 +76,13 @@ Status WriteTransaction::Prepare() {
 
   // Decode everything first so that we give up if something major is wrong.
   Schema client_schema;
-  RETURN_NOT_OK_PREPEND(SchemaFromPB(state_->request()->schema(), &client_schema),
+  RETURN_NOT_OK_PREPEND(SchemaFromPB(state()->request()->schema(), &client_schema),
                         "Cannot decode client schema");
   if (client_schema.has_column_ids()) {
     // TODO: we have this kind of code a lot - add a new SchemaFromPB variant which
     // does this check inline.
     Status s = STATUS(InvalidArgument, "User requests should not have Column IDs");
-    state_->completion_callback()->set_error(s, TabletServerErrorPB::INVALID_SCHEMA);
+    state()->completion_callback()->set_error(s, TabletServerErrorPB::INVALID_SCHEMA);
     return s;
   }
 
@@ -106,9 +105,9 @@ Status WriteTransaction::Prepare() {
 void WriteTransaction::Start() {
   TRACE_EVENT0("txn", "WriteTransaction::Start");
   TRACE("Start()");
-  state_->tablet_peer()->tablet()->StartTransaction(state_.get());
+  state()->tablet_peer()->tablet()->StartTransaction(state());
 
-  TRACE("HybridTime: $0", state_->tablet_peer()->clock()->Stringify(state_->hybrid_time()));
+  TRACE("HybridTime: $0", state()->tablet_peer()->clock()->Stringify(state()->hybrid_time()));
 }
 
 // FIXME: Since this is called as a void in a thread-pool callback,
@@ -178,17 +177,17 @@ void WriteTransaction::Finish(TransactionResult result) {
   TRACE("FINISH: making edits visible");
   state()->Commit();
 
-  TabletMetrics* metrics = state_->tablet_peer()->tablet()->metrics();
+  TabletMetrics* metrics = state()->tablet_peer()->tablet()->metrics();
   if (metrics) {
     // TODO: should we change this so it's actually incremented by the
     // Tablet code itself instead of this wrapper code?
-    metrics->rows_inserted->IncrementBy(state_->metrics().successful_inserts);
-    metrics->rows_updated->IncrementBy(state_->metrics().successful_updates);
-    metrics->rows_deleted->IncrementBy(state_->metrics().successful_deletes);
+    metrics->rows_inserted->IncrementBy(state()->metrics().successful_inserts);
+    metrics->rows_updated->IncrementBy(state()->metrics().successful_updates);
+    metrics->rows_deleted->IncrementBy(state()->metrics().successful_deletes);
 
     if (type() == consensus::LEADER) {
       if (state()->external_consistency_mode() == COMMIT_WAIT) {
-        metrics->commit_wait_duration->Increment(state_->metrics().commit_wait_duration_usec);
+        metrics->commit_wait_duration->Increment(state()->metrics().commit_wait_duration_usec);
       }
       uint64_t op_duration_usec =
           MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_time_).ToMicroseconds();
@@ -213,7 +212,7 @@ string WriteTransaction::ToString() const {
   string abs_time_formatted;
   StringAppendStrftime(&abs_time_formatted, "%Y-%m-%d %H:%M:%S", (time_t)abs_time, true);
   return Substitute("WriteTransaction [type=$0, start_time=$1, state=$2]",
-                    DriverType_Name(type()), abs_time_formatted, state_->ToString());
+                    DriverType_Name(type()), abs_time_formatted, state()->ToString());
 }
 
 WriteTransactionState::WriteTransactionState(TabletPeer* tablet_peer,

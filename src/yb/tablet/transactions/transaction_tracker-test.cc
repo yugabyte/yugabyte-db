@@ -58,11 +58,11 @@ class TransactionTrackerTest : public YBTest {
    private:
     std::shared_ptr<consensus::ReplicateMsg> req_;
   };
+
   class NoOpTransaction : public Transaction {
    public:
-    explicit NoOpTransaction(NoOpTransactionState* state)
-      : Transaction(state, consensus::LEADER, Transaction::WRITE_TXN),
-        state_(state) {
+    explicit NoOpTransaction(std::unique_ptr<NoOpTransactionState> state)
+      : Transaction(std::move(state), consensus::LEADER, Transaction::WRITE_TXN) {
     }
 
     consensus::ReplicateMsgPtr NewReplicateMsg() override {
@@ -77,8 +77,6 @@ class TransactionTrackerTest : public YBTest {
     std::string ToString() const override {
       return "NoOp";
     }
-   private:
-    gscoped_ptr<NoOpTransactionState> state_;
   };
 
   TransactionTrackerTest()
@@ -100,8 +98,8 @@ class TransactionTrackerTest : public YBTest {
           nullptr,
           nullptr,
           TableType::KUDU_COLUMNAR_TABLE_TYPE));
-      gscoped_ptr<NoOpTransaction> tx(new NoOpTransaction(new NoOpTransactionState));
-      RETURN_NOT_OK(driver->Init(tx.PassAs<Transaction>(), consensus::LEADER));
+      auto tx = std::make_unique<NoOpTransaction>(std::make_unique<NoOpTransactionState>());
+      RETURN_NOT_OK(driver->Init(std::move(tx), consensus::LEADER));
       local_drivers.push_back(driver);
     }
 

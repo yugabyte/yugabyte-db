@@ -111,8 +111,7 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver>,
 
   // Perform any non-constructor initialization. Sets the transaction
   // that will be executed.
-  CHECKED_STATUS Init(gscoped_ptr<Transaction> transaction,
-              consensus::DriverType driver);
+  CHECKED_STATUS Init(std::unique_ptr<Transaction> transaction, consensus::DriverType driver);
 
   // Returns the OpId of the transaction being executed or an uninitialized
   // OpId if none has been assigned. Returns a copy and thus should not
@@ -265,7 +264,7 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver>,
   mutable simple_spinlock opid_lock_;
 
   // The transaction to be executed by this driver.
-  gscoped_ptr<Transaction> transaction_;
+  std::unique_ptr<Transaction> transaction_;
 
   // Trace object for tracing any transactions started by this driver.
   scoped_refptr<Trace> trace_;

@@ -34,6 +34,9 @@ set(CLIENT_SRCS
   table_alterer-internal.cc
   table_creator-internal.cc
   tablet_server-internal.cc
+  tablet_rpc.cc
+  transaction.cc
+  transaction_manager.cc
   value.cc
   yb_op.cc
   yb_table_name.cc
@@ -89,3 +92,4 @@ ADD_YB_TEST(client-unittest)
 ADD_YB_TEST(yql-dml-test)
 ADD_YB_TEST(yql-dml-ttl-test)
 ADD_YB_TEST(yql-tablet-test)
+ADD_YB_TEST(yql-transaction-test)

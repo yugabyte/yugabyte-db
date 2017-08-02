@@ -4853,6 +4853,8 @@ Status CatalogManager::ConsensusStateToTabletLocations(const consensus::Consensu
 
 Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& tablet,
                                                TabletLocationsPB* locs_pb) {
+  locs_pb->set_table_id(tablet->table()->id());
+
   // For system tables, the set of replicas is always the set of masters.
   if (tablet->IsSupportedSystemTable(sys_tables_handler_.supported_system_tables())) {
     consensus::ConsensusStatePB master_consensus;

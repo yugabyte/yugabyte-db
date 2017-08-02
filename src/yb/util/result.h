@@ -258,6 +258,11 @@ inline std::string StatusToString(const Result<TValue>& result) {
   return result.status().ToString();
 }
 
+template<class TValue>
+std::ostream& operator<<(std::ostream& out, const Result<TValue>& result) {
+  return result.ok() ? out << *result : out << result.status().ToString();
+}
+
 } // namespace yb
 
 #endif // YB_UTIL_RESULT_H

@@ -437,12 +437,21 @@ bool YBColumnSchema::is_counter() const {
 // YBSchema
 ////////////////////////////////////////////////////////////
 
-YBSchema::YBSchema()
-    : schema_(nullptr) {
+namespace internal {
+
+const Schema& GetSchema(const YBSchema& schema) {
+  return *schema.schema_;
 }
 
-YBSchema::YBSchema(const YBSchema& other)
-    : schema_(nullptr) {
+Schema& GetSchema(YBSchema* schema) {
+  return *schema->schema_;
+}
+
+} // namespace internal
+
+YBSchema::YBSchema() {}
+
+YBSchema::YBSchema(const YBSchema& other) {
   CopyFrom(other);
 }
 
@@ -451,7 +460,6 @@ YBSchema::YBSchema(const Schema& schema)
 }
 
 YBSchema::~YBSchema() {
-  delete schema_;
 }
 
 YBSchema& YBSchema::operator=(const YBSchema& other) {
@@ -462,8 +470,11 @@ YBSchema& YBSchema::operator=(const YBSchema& other) {
 }
 
 void YBSchema::CopyFrom(const YBSchema& other) {
-  delete schema_;
-  schema_ = new Schema(*other.schema_);
+  schema_.reset(new Schema(*other.schema_));
+}
+
+void YBSchema::Reset(std::unique_ptr<Schema> schema) {
+  schema_ = std::move(schema);
 }
 
 Status YBSchema::Reset(const vector<YBColumnSchema>& columns, int key_columns,
@@ -472,17 +483,16 @@ Status YBSchema::Reset(const vector<YBColumnSchema>& columns, int key_columns,
   for (const YBColumnSchema& col : columns) {
     cols_private.push_back(*col.col_);
   }
-  gscoped_ptr<Schema> new_schema(new Schema());
+  std::unique_ptr<Schema> new_schema(new Schema());
   RETURN_NOT_OK(new_schema->Reset(cols_private, key_columns, table_properties));
 
-  delete schema_;
-  schema_ = new_schema.release();
+  schema_ = std::move(new_schema);
   return Status::OK();
 }
 
 bool YBSchema::Equals(const YBSchema& other) const {
   return this == &other ||
-      (schema_ && other.schema_ && schema_->Equals(*other.schema_));
+         (schema_.get() && other.schema_.get() && schema_->Equals(*other.schema_));
 }
 
 const TableProperties& YBSchema::table_properties() const {
@@ -506,7 +516,7 @@ int32_t YBSchema::ColumnId(size_t idx) const {
 }
 
 YBPartialRow* YBSchema::NewRow() const {
-  return new YBPartialRow(schema_);
+  return new YBPartialRow(schema_.get());
 }
 
 const std::vector<ColumnSchema>& YBSchema::columns() const {

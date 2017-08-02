@@ -27,6 +27,7 @@
 
 #include <boost/functional/hash/hash.hpp>
 
+#include "yb/client/client_fwd.h"
 #include "yb/client/row_result.h"
 #include "yb/client/scan_batch.h"
 #include "yb/client/scan_predicate.h"
@@ -40,6 +41,8 @@
 #endif
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
+
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
@@ -382,13 +385,20 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
 
   CHECKED_STATUS SetReplicationInfo(const master::ReplicationInfoPB& replication_info);
 
-  std::string client_id() const { return client_id_; }
+  const std::string& client_id() const { return client_id_; }
 
   void LookupTabletByKey(const YBTable* table,
                          const std::string& partition_key,
                          const MonoTime& deadline,
-                         scoped_refptr<internal::RemoteTablet>* remote_tablet,
+                         internal::RemoteTabletPtr* remote_tablet,
                          const StatusCallback& callback);
+
+  void LookupTabletById(const std::string& tablet_id,
+                        const MonoTime& deadline,
+                        internal::RemoteTabletPtr* remote_tablet,
+                        const StatusCallback& callback);
+
+  const std::shared_ptr<rpc::Messenger>& messenger() const;
 
  private:
   class Data;
@@ -745,6 +755,8 @@ class YBError {
 
 typedef std::vector<std::unique_ptr<YBError>> CollectedErrors;
 
+class YBSessionData;
+
 // A YBSession belongs to a specific YBClient, and represents a context in
 // which all read/write data access should take place. Within a session,
 // multiple operations may be accumulated and batched together for better
@@ -803,6 +815,10 @@ typedef std::vector<std::unique_ptr<YBError>> CollectedErrors;
 // This class is not thread-safe except where otherwise specified.
 class YBSession : public std::enable_shared_from_this<YBSession> {
  public:
+  explicit YBSession(const std::shared_ptr<YBClient>& client,
+                     bool read_only,
+                     const YBTransactionPtr& transaction = nullptr);
+
   ~YBSession();
 
   enum FlushMode {
@@ -1008,20 +1024,15 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   YBClient* client() const;
 
-  bool is_read_only() { return read_only_; }
+  bool is_read_only() const;
 
  private:
-  class Data;
-
   friend class YBClient;
   friend class internal::Batcher;
-  explicit YBSession(const std::shared_ptr<YBClient>& client);
 
-  // In case of read_only YBSessions, writes are not allowed. Otherwise, reads are not allowed.
-  bool read_only_;
-
-  // Owned.
-  Data* data_;
+  // We need shared_ptr here, because Batcher stored weak_ptr to our data_.
+  // But single data is still used only by single YBSession and destroyed with it.
+  std::shared_ptr<YBSessionData> data_;
 
   DISALLOW_COPY_AND_ASSIGN(YBSession);
 };

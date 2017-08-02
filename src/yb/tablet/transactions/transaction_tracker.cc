@@ -52,6 +52,10 @@ METRIC_DEFINE_gauge_uint64(tablet, alter_schema_transactions_inflight,
                            "Alter Schema Transactions In Flight",
                            yb::MetricUnit::kTransactions,
                            "Number of alter schema transactions currently in-flight");
+METRIC_DEFINE_gauge_uint64(tablet, update_transaction_transactions_inflight,
+                           "Update Transaction Transactions In Flight",
+                           yb::MetricUnit::kTransactions,
+                           "Number of update transaction transactions currently in-flight");
 
 METRIC_DEFINE_counter(tablet, transaction_memory_pressure_rejections,
                       "Transaction Memory Pressure Rejections",
@@ -71,9 +75,14 @@ using strings::Substitute;
 #define GINIT(x) x(METRIC_##x.Instantiate(entity, 0))
 TransactionTracker::Metrics::Metrics(const scoped_refptr<MetricEntity>& entity)
     : GINIT(all_transactions_inflight),
-      GINIT(write_transactions_inflight),
-      GINIT(alter_schema_transactions_inflight),
       MINIT(transaction_memory_pressure_rejections) {
+  transactions_inflight[Transaction::WRITE_TXN] =
+      METRIC_write_transactions_inflight.Instantiate(entity, 0);
+  transactions_inflight[Transaction::ALTER_SCHEMA_TXN] =
+      METRIC_alter_schema_transactions_inflight.Instantiate(entity, 0);
+  transactions_inflight[Transaction::UPDATE_TRANSACTION_TXN] =
+      METRIC_update_transaction_transactions_inflight.Instantiate(entity, 0);
+  static_assert(3 == Transaction::kTransactionTypes, "Init metrics for all transaction types");
 }
 #undef GINIT
 #undef MINIT
@@ -121,7 +130,7 @@ Status TransactionTracker::Add(TransactionDriver* driver) {
   State st;
   st.memory_footprint = driver_mem_footprint;
   std::lock_guard<simple_spinlock> l(lock_);
-  InsertOrDie(&pending_txns_, driver, st);
+  CHECK(pending_txns_.emplace(driver, st).second);
   return Status::OK();
 }
 
@@ -131,14 +140,7 @@ void TransactionTracker::IncrementCounters(const TransactionDriver& driver) cons
   }
 
   metrics_->all_transactions_inflight->Increment();
-  switch (driver.tx_type()) {
-    case Transaction::WRITE_TXN:
-      metrics_->write_transactions_inflight->Increment();
-      break;
-    case Transaction::ALTER_SCHEMA_TXN:
-      metrics_->alter_schema_transactions_inflight->Increment();
-      break;
-  }
+  metrics_->transactions_inflight[driver.tx_type()]->Increment();
 }
 
 void TransactionTracker::DecrementCounters(const TransactionDriver& driver) const {
@@ -148,16 +150,8 @@ void TransactionTracker::DecrementCounters(const TransactionDriver& driver) cons
 
   DCHECK_GT(metrics_->all_transactions_inflight->value(), 0);
   metrics_->all_transactions_inflight->Decrement();
-  switch (driver.tx_type()) {
-    case Transaction::WRITE_TXN:
-      DCHECK_GT(metrics_->write_transactions_inflight->value(), 0);
-      metrics_->write_transactions_inflight->Decrement();
-      break;
-    case Transaction::ALTER_SCHEMA_TXN:
-      DCHECK_GT(metrics_->alter_schema_transactions_inflight->value(), 0);
-      metrics_->alter_schema_transactions_inflight->Decrement();
-      break;
-  }
+  DCHECK_GT(metrics_->transactions_inflight[driver.tx_type()]->value(), 0);
+  metrics_->transactions_inflight[driver.tx_type()]->Decrement();
 }
 
 void TransactionTracker::Release(TransactionDriver* driver) {

@@ -449,6 +449,8 @@ message TabletLocationsPB {
   // This should happen on Master restart when the request is issued before
   // the TS has the time to notify the Master about the tablets that is hosting.
   required bool stale = 5;
+
+  optional bytes table_id = 7;
 }
 
 // Info about a single tablet server, returned to the client as part

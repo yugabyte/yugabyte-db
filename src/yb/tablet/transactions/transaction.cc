@@ -22,8 +22,10 @@ namespace tablet {
 
 using consensus::DriverType;
 
-Transaction::Transaction(TransactionState* state, DriverType type, TransactionType tx_type)
-    : state_(state),
+Transaction::Transaction(std::unique_ptr<TransactionState> state,
+                         DriverType type,
+                         TransactionType tx_type)
+    : state_(std::move(state)),
       type_(type),
       tx_type_(tx_type) {
 }

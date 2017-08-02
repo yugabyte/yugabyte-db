@@ -24,6 +24,8 @@
 #include <random>
 #include <string>
 
+#include <glog/logging.h>
+
 namespace yb {
 
 class Random;
@@ -55,6 +57,24 @@ template<class Engine>
 void Seed(Engine* engine) {
   RandomDeviceSequence sequence;
   engine->seed(sequence);
+}
+
+std::mt19937_64& ThreadLocalRandom();
+
+template <class Int>
+Int RandomUniformInt(Int min, Int max, std::mt19937_64* rng = nullptr) {
+  if (!rng) {
+    rng = &ThreadLocalRandom();
+  }
+  return std::uniform_int_distribution<Int>(min, max)(*rng);
+}
+
+template <class Collection>
+typename Collection::const_reference RandomElement(const Collection& collection,
+                                                   std::mt19937_64* rng = nullptr) {
+  CHECK(!collection.empty());
+  size_t index = RandomUniformInt<size_t>(0, collection.size() - 1, rng);
+  return collection[index];
 }
 
 } // namespace yb

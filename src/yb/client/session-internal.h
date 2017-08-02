@@ -31,17 +31,27 @@ class Batcher;
 class ErrorCollector;
 } // internal
 
-class YBSession::Data {
+// Single instance of YBSessionData is used by YBSession.
+// But each Batcher stores weak_ptr to YBSessionData.
+class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
  public:
-  explicit Data(std::shared_ptr<YBClient> client);
-  ~Data();
+  explicit YBSessionData(std::shared_ptr<YBClient> client,
+                         bool read_only,
+                         const YBTransactionPtr& transaction);
+  ~YBSessionData();
 
-  void Init(const std::shared_ptr<YBSession>& session);
+  YBSessionData(const YBSessionData&) = delete;
+  void operator=(const YBSessionData&) = delete;
 
-  // Swap in a new Batcher instance, returning the old one in '*old_batcher', unless it is
-  // NULL.
-  void NewBatcher(const std::shared_ptr<YBSession>& session,
-                  scoped_refptr<internal::Batcher>* old_batcher);
+  void Init();
+
+  bool is_read_only() { return read_only_; }
+
+  CHECKED_STATUS Apply(std::shared_ptr<YBOperation> yb_op);
+
+  void FlushAsync(YBStatusCallback* callback);
+
+  CHECKED_STATUS Flush();
 
   // Called by Batcher when a flush has finished.
   void FlushFinished(internal::Batcher* b);
@@ -51,8 +61,17 @@ class YBSession::Data {
   // operations.
   CHECKED_STATUS Close(bool force);
 
+  // Swap in a new Batcher instance, returning the old one in '*old_batcher', unless it is
+  // NULL.
+  scoped_refptr<internal::Batcher> NewBatcher();
+
   // The client that this session is associated with.
   const std::shared_ptr<YBClient> client_;
+
+  // In case of read_only YBSessions, writes are not allowed. Otherwise, reads are not allowed.
+  bool read_only_;
+
+  YBTransactionPtr transaction_;
 
   // Lock protecting internal state.
   // Note that this lock should not be taken if the thread is already holding
@@ -74,16 +93,14 @@ class YBSession::Data {
   // pointers stay valid.
   std::unordered_set<internal::Batcher*> flushed_batchers_;
 
-  FlushMode flush_mode_;
-  yb::client::YBSession::ExternalConsistencyMode external_consistency_mode_;
+  YBSession::FlushMode flush_mode_ = YBSession::AUTO_FLUSH_SYNC;
+  YBSession::ExternalConsistencyMode external_consistency_mode_ = YBSession::CLIENT_PROPAGATED;
 
   // Timeout for the next batch.
-  int timeout_ms_;
-
-  DISALLOW_COPY_AND_ASSIGN(Data);
+  int timeout_ms_ = -1;
 };
 
 }  // namespace client
 }  // namespace yb
 
-#endif
+#endif // YB_CLIENT_SESSION_INTERNAL_H_

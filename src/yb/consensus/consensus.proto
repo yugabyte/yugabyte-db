@@ -91,6 +91,7 @@ enum OperationType {
   WRITE_OP = 3;
   ALTER_SCHEMA_OP = 4;
   CHANGE_CONFIG_OP = 5;
+  UPDATE_TRANSACTION_OP = 6;
 }
 
 // The transaction driver type: indicates whether a transaction is
@@ -174,6 +175,7 @@ message ReplicateMsg {
   required OperationType op_type = 4;
   optional tserver.WriteRequestPB write_request = 5;
   optional tserver.AlterSchemaRequestPB alter_schema_request = 6;
+  optional tserver.TransactionStatePB transaction_state = 10;
   optional ChangeConfigRecordPB change_config_record = 7;
   // The Raft operation ID known to the leader to be committed at the time this message was sent.
   // This is used during tablet bootstrap for RocksDB-backed tables.

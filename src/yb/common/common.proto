@@ -339,3 +339,14 @@ message PartitionPB {
   // The encoded end partition key (exclusive).
   optional bytes partition_key_end = 3;
 }
+
+enum IsolationLevel {
+  NON_TRANSACTIONAL = 0;
+  SNAPSHOT_ISOLATION = 1;
+  SERIALIZABLE_ISOLATION = 2;
+}
+
+message TransactionMetadataPB {
+  optional bytes transaction_id = 1; // 16 byte uuid
+  optional IsolationLevel isolation = 2 [default=NON_TRANSACTIONAL];
+}

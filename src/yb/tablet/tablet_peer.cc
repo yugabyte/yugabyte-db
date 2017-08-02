@@ -39,13 +39,17 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
+
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer_mm_ops.h"
+
 #include "yb/tablet/transactions/alter_schema_transaction.h"
 #include "yb/tablet/transactions/transaction_driver.h"
 #include "yb/tablet/transactions/write_transaction.h"
+#include "yb/tablet/transactions/update_txn_transaction.h"
+
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/stopwatch.h"
@@ -339,23 +343,21 @@ Status TabletPeer::WaitUntilConsensusRunning(const MonoDelta& timeout) {
   return Status::OK();
 }
 
-Status TabletPeer::SubmitWrite(WriteTransactionState *state) {
-  gscoped_ptr<WriteTransaction> transaction(new WriteTransaction(state, consensus::LEADER));
+Status TabletPeer::SubmitWrite(std::unique_ptr<WriteTransactionState> state) {
+  auto transaction = std::make_unique<WriteTransaction>(std::move(state), consensus::LEADER);
   RETURN_NOT_OK(CheckRunning());
 
-  RETURN_NOT_OK(tablet_->AcquireLocksAndPerformDocOperations(state));
+  RETURN_NOT_OK(tablet_->AcquireLocksAndPerformDocOperations(transaction->state()));
   scoped_refptr<TransactionDriver> driver;
-  RETURN_NOT_OK(NewLeaderTransactionDriver(transaction.PassAs<Transaction>(), &driver));
+  RETURN_NOT_OK(NewLeaderTransactionDriver(std::move(transaction), &driver));
   return driver->ExecuteAsync();
 }
 
-Status TabletPeer::SubmitAlterSchema(gscoped_ptr<AlterSchemaTransactionState> state) {
+Status TabletPeer::Submit(std::unique_ptr<Transaction> transaction) {
   RETURN_NOT_OK(CheckRunning());
 
-  gscoped_ptr<AlterSchemaTransaction> transaction(
-      new AlterSchemaTransaction(state.release(), consensus::LEADER));
   scoped_refptr<TransactionDriver> driver;
-  RETURN_NOT_OK(NewLeaderTransactionDriver(transaction.PassAs<Transaction>(), &driver));
+  RETURN_NOT_OK(NewLeaderTransactionDriver(std::move(transaction), &driver));
   return driver->ExecuteAsync();
 }
 
@@ -416,6 +418,9 @@ void TabletPeer::GetInFlightTransactions(Transaction::TraceType trace_type,
           break;
         case Transaction::ALTER_SCHEMA_TXN:
           status_pb.set_tx_type(consensus::ALTER_SCHEMA_OP);
+          break;
+        case Transaction::UPDATE_TRANSACTION_TXN:
+          status_pb.set_tx_type(consensus::UPDATE_TRANSACTION_OP);
           break;
       }
       status_pb.set_description(driver->ToString());
@@ -503,6 +508,31 @@ Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
   return Status::OK();
 }
 
+std::unique_ptr<Transaction> TabletPeer::CreateTransaction(consensus::ReplicateMsg* replicate_msg) {
+  switch (replicate_msg->op_type()) {
+    case WRITE_OP:
+      DCHECK(replicate_msg->has_write_request()) << "WRITE_OP replica"
+          " transaction must receive a WriteRequestPB";
+      return std::make_unique<WriteTransaction>(std::make_unique<WriteTransactionState>(this),
+                                                consensus::REPLICA);
+    case ALTER_SCHEMA_OP:
+      DCHECK(replicate_msg->has_alter_schema_request()) << "ALTER_SCHEMA_OP replica"
+          " transaction must receive an AlterSchemaRequestPB";
+      return std::make_unique<AlterSchemaTransaction>(
+          std::make_unique<AlterSchemaTransactionState>(this), consensus::REPLICA);
+    case consensus::UPDATE_TRANSACTION_OP:
+      DCHECK(replicate_msg->has_transaction_state()) << "UPDATE_TRANSACTION_OP replica"
+          " transaction must receive an TransactionStateRequestPB";
+      return std::make_unique<UpdateTxnTransaction>(
+          std::make_unique<UpdateTxnTransactionState>(this), consensus::REPLICA);
+    case consensus::UNKNOWN_OP: FALLTHROUGH_INTENDED;
+    case consensus::NO_OP: FALLTHROUGH_INTENDED;
+    case consensus::CHANGE_CONFIG_OP:
+      FATAL_INVALID_ENUM_VALUE(consensus::OperationType, replicate_msg->op_type());
+  }
+  FATAL_INVALID_ENUM_VALUE(consensus::OperationType, replicate_msg->op_type());
+}
+
 Status TabletPeer::StartReplicaTransaction(const scoped_refptr<ConsensusRound>& round) {
   {
     std::lock_guard<simple_spinlock> lock(lock_);
@@ -513,30 +543,7 @@ Status TabletPeer::StartReplicaTransaction(const scoped_refptr<ConsensusRound>& 
 
   consensus::ReplicateMsg* replicate_msg = round->replicate_msg().get();
   DCHECK(replicate_msg->has_hybrid_time());
-  gscoped_ptr<Transaction> transaction;
-  switch (replicate_msg->op_type()) {
-    case WRITE_OP:
-    {
-      DCHECK(replicate_msg->has_write_request()) << "WRITE_OP replica"
-          " transaction must receive a WriteRequestPB";
-      transaction.reset(new WriteTransaction(
-          new WriteTransactionState(this),
-          consensus::REPLICA));
-      break;
-    }
-    case ALTER_SCHEMA_OP:
-    {
-      DCHECK(replicate_msg->has_alter_schema_request()) << "ALTER_SCHEMA_OP replica"
-          " transaction must receive an AlterSchemaRequestPB";
-      transaction.reset(
-          new AlterSchemaTransaction(
-              new AlterSchemaTransactionState(this),
-              consensus::REPLICA));
-      break;
-    }
-    default:
-      LOG(FATAL) << "Unsupported Operation Type";
-  }
+  auto transaction = CreateTransaction(replicate_msg);
 
   // TODO(todd) Look at wiring the stuff below on the driver
   TransactionState* state = transaction->state();
@@ -551,7 +558,7 @@ Status TabletPeer::StartReplicaTransaction(const scoped_refptr<ConsensusRound>& 
   tablet_->UpdateMonotonicCounter(replicate_msg->monotonic_counter());
 
   scoped_refptr<TransactionDriver> driver;
-  RETURN_NOT_OK(NewReplicaTransactionDriver(transaction.Pass(), &driver));
+  RETURN_NOT_OK(NewReplicaTransactionDriver(std::move(transaction), &driver));
 
   // Unretained is required to avoid a refcount cycle.
   state->consensus_round()->SetConsensusReplicatedCallback(
@@ -561,19 +568,11 @@ Status TabletPeer::StartReplicaTransaction(const scoped_refptr<ConsensusRound>& 
   return Status::OK();
 }
 
-Status TabletPeer::NewLeaderTransactionDriver(gscoped_ptr<Transaction> transaction,
-                                              scoped_refptr<TransactionDriver>* driver) {
+Status TabletPeer::NewTransactionDriver(std::unique_ptr<Transaction> transaction,
+                                        consensus::DriverType type,
+                                        scoped_refptr<TransactionDriver>* driver) {
   scoped_refptr<TransactionDriver> tx_driver = CreateTransactionDriver();
-  RETURN_NOT_OK(tx_driver->Init(transaction.Pass(), consensus::LEADER));
-  driver->swap(tx_driver);
-
-  return Status::OK();
-}
-
-Status TabletPeer::NewReplicaTransactionDriver(gscoped_ptr<Transaction> transaction,
-                                               scoped_refptr<TransactionDriver>* driver) {
-  scoped_refptr<TransactionDriver> tx_driver = CreateTransactionDriver();
-  RETURN_NOT_OK(tx_driver->Init(transaction.Pass(), consensus::REPLICA));
+  RETURN_NOT_OK(tx_driver->Init(std::move(transaction), type));
   driver->swap(tx_driver);
 
   return Status::OK();

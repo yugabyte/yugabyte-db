@@ -454,9 +454,11 @@ Status YBClient::Data::CreateTable(
                          &actual_partition_schema, &table_id),
           Substitute("Unable to check the schema of table $0", table_name.ToString()));
       if (!schema.Equals(actual_schema)) {
-        string msg = Substitute("Table $0 already exists with a different "
-            "schema. Requested schema was: $1, actual schema is: $2",
-            table_name.ToString(), schema.schema_->ToString(), actual_schema.schema_->ToString());
+         string msg = Format("Table $0 already exists with a different "
+                             "schema. Requested schema was: $1, actual schema is: $2",
+                             table_name,
+                             internal::GetSchema(schema),
+                             internal::GetSchema(actual_schema));
         LOG(ERROR) << msg;
         return STATUS(AlreadyPresent, msg);
       } else {
@@ -464,12 +466,14 @@ Status YBClient::Data::CreateTable(
         // We need to use the schema received from the server, because the user-constructed
         // schema might not have column ids.
         RETURN_NOT_OK(PartitionSchema::FromPB(req.partition_schema(),
-                                              *actual_schema.schema_, &partition_schema));
+                                              internal::GetSchema(actual_schema),
+                                              &partition_schema));
         if (!partition_schema.Equals(actual_partition_schema)) {
           string msg = Substitute("Table $0 already exists with a different partition schema. "
               "Requested partition schema was: $1, actual partition schema is: $2",
-              table_name.ToString(), partition_schema.DebugString(*schema.schema_),
-              actual_partition_schema.DebugString(*actual_schema.schema_));
+              table_name.ToString(),
+              partition_schema.DebugString(internal::GetSchema(schema)),
+              actual_partition_schema.DebugString(internal::GetSchema(actual_schema)));
           LOG(ERROR) << msg;
           return STATUS(AlreadyPresent, msg);
         } else {
@@ -870,13 +874,12 @@ void GetTableSchemaRpc::SendRpcCb(const Status& status) {
   }
 
   if (new_status.ok()) {
-    gscoped_ptr<Schema> schema(new Schema());
+    std::unique_ptr<Schema> schema(new Schema());
     new_status = SchemaFromPB(resp_.schema(), schema.get());
     if (new_status.ok()) {
-      delete out_schema_->schema_;
-      out_schema_->schema_ = schema.release();
+      out_schema_->Reset(std::move(schema));
       new_status = PartitionSchema::FromPB(resp_.partition_schema(),
-                                           *out_schema_->schema_,
+                                           GetSchema(out_schema_),
                                            out_partition_schema_);
 
       *out_id_ = resp_.identifier().table_id();

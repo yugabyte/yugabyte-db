@@ -35,6 +35,7 @@
 #include <string>
 #include <vector>
 
+#include "yb/client/client_fwd.h"
 #include "yb/client/value.h"
 #include "yb/common/schema.h"
 #include "yb/common/yql_value.h"
@@ -62,6 +63,10 @@ namespace internal {
 class GetTableSchemaRpc;
 class LookupRpc;
 class WriteRpc;
+
+const Schema& GetSchema(const YBSchema& schema);
+Schema& GetSchema(YBSchema* schema);
+
 } // namespace internal
 
 class YBClient;
@@ -371,6 +376,8 @@ class YBSchema {
  public:
   YBSchema();
 
+  explicit YBSchema(const Schema& schema);
+
   YBSchema(const YBSchema& other);
   ~YBSchema();
 
@@ -380,6 +387,8 @@ class YBSchema {
   // DEPRECATED: will be removed soon.
   CHECKED_STATUS Reset(const std::vector<YBColumnSchema>& columns, int key_columns,
                        const TableProperties& table_properties) WARN_UNUSED_RESULT;
+
+  void Reset(std::unique_ptr<Schema> schema);
 
   bool Equals(const YBSchema& other) const;
 
@@ -417,27 +426,14 @@ class YBSchema {
   const std::vector<ColumnSchema>& columns() const;
 
  private:
-  friend class YBClient;
-  friend class YBScanner;
-  friend class YBSchemaBuilder;
-  friend class YBTable;
-  friend class YBTableCreator;
-  friend class YBOperation;
-  friend class YBqlReadOp;
-  friend class internal::GetTableSchemaRpc;
-  friend class internal::LookupRpc;
-  friend class internal::WriteRpc;
-  friend class yb::tools::TsAdminClient;
-
   friend YBSchema YBSchemaFromSchema(const Schema& schema);
+  friend const Schema& internal::GetSchema(const YBSchema& schema);
+  friend Schema& internal::GetSchema(YBSchema* schema);
 
-  // For use by yb tests.
-  explicit YBSchema(const Schema& schema);
-
-  // Owned.
-  Schema* schema_;
+  std::unique_ptr<Schema> schema_;
 };
 
 } // namespace client
 } // namespace yb
+
 #endif // YB_CLIENT_SCHEMA_H

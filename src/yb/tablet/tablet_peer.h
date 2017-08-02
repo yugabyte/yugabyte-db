@@ -105,20 +105,9 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   // to the RPC WriteRequest, WriteResponse, RpcContext and to the tablet's
   // MvccManager.
   // The tx_state is deallocated after use by this function.
-  CHECKED_STATUS SubmitWrite(WriteTransactionState *tx_state);
+  CHECKED_STATUS SubmitWrite(std::unique_ptr<WriteTransactionState> tx_state);
 
-  // Called by the tablet service to start an alter schema transaction.
-  //
-  // The transaction contains all the information required to execute the
-  // AlterSchema operation and send the response back.
-  //
-  // If the returned Status is OK, the response to the client will be sent
-  // asynchronously. Otherwise the tablet service will have to send the response directly.
-  //
-  // The AlterSchema operation is taking the tablet component lock in exclusive mode
-  // meaning that no other operation on the tablet can be executed while the
-  // AlterSchema is in progress.
-  CHECKED_STATUS SubmitAlterSchema(gscoped_ptr<AlterSchemaTransactionState> tx_state);
+  CHECKED_STATUS Submit(std::unique_ptr<Transaction> transaction);
 
   void GetTabletStatusPB(TabletStatusPB* status_pb_out) const;
 
@@ -234,11 +223,19 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
     return tablet_ != nullptr ? tablet_->metadata()->fs_manager()->uuid() : "";
   }
 
-  CHECKED_STATUS NewLeaderTransactionDriver(gscoped_ptr<Transaction> transaction,
-                                    scoped_refptr<TransactionDriver>* driver);
+  CHECKED_STATUS NewTransactionDriver(std::unique_ptr<Transaction> transaction,
+                                      consensus::DriverType type,
+                                      scoped_refptr<TransactionDriver>* driver);
 
-  CHECKED_STATUS NewReplicaTransactionDriver(gscoped_ptr<Transaction> transaction,
-                                     scoped_refptr<TransactionDriver>* driver);
+  CHECKED_STATUS NewLeaderTransactionDriver(std::unique_ptr<Transaction> transaction,
+                                            scoped_refptr<TransactionDriver>* driver) {
+    return NewTransactionDriver(std::move(transaction), consensus::LEADER, driver);
+  }
+
+  CHECKED_STATUS NewReplicaTransactionDriver(std::unique_ptr<Transaction> transaction,
+                                             scoped_refptr<TransactionDriver>* driver) {
+    return NewTransactionDriver(std::move(transaction), consensus::REPLICA, driver);
+  }
 
   // Tells the tablet's log to garbage collect.
   CHECKED_STATUS RunLogGC();
@@ -282,6 +279,8 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
                                   const consensus::ConsensusBootstrapInfo& bootstrap_info);
 
   scoped_refptr<TransactionDriver> CreateTransactionDriver();
+
+  std::unique_ptr<Transaction> CreateTransaction(consensus::ReplicateMsg* replicate_msg);
 
   const scoped_refptr<TabletMetadata> meta_;
 

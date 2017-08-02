@@ -37,6 +37,10 @@ class ErrorCollector : public RefCountedThreadSafe<ErrorCollector> {
 
   void AddError(std::unique_ptr<YBError> error);
 
+  void AddError(std::shared_ptr<YBOperation> operation, Status status) {
+    AddError(std::make_unique<YBError>(std::move(operation), std::move(status)));
+  }
+
   // See YBSession for details.
   int CountErrors() const;
 

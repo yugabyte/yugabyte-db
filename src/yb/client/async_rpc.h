@@ -5,8 +5,10 @@
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc.h"
+
 #include "yb/tserver/tserver_service.proxy.h"
-#include "yb/common/redis_protocol.pb.h"
+
+#include "yb/client/tablet_rpc.h"
 
 namespace yb {
 namespace client {
@@ -38,52 +40,33 @@ struct AsyncRpcMetrics {
 // Keeps a reference on the owning batcher while alive. It doesn't take a generic callback,
 // but ProcessResponseFromTserver will update the state after getting the end response.
 // This class deletes itself after Rpc returns and is processed.
-class AsyncRpc : public rpc::Rpc {
+class AsyncRpc : public rpc::Rpc, public TabletRpc {
  public:
   AsyncRpc(const scoped_refptr<Batcher> &batcher,
            RemoteTablet *const tablet,
-           vector<InFlightOp*> ops,
-           const MonoTime &deadline,
-           const std::shared_ptr<rpc::Messenger> &messenger,
-           const std::shared_ptr<AsyncRpcMetrics>& async_rpc_metrics);
+           InFlightOps ops);
 
   virtual ~AsyncRpc();
 
-  virtual void SendRpc() override;
-  virtual string ToString() const override;
+  void SendRpc() override;
+  std::string ToString() const override;
 
   const YBTable* table() const;
-  const RemoteTablet* tablet() const { return tablet_; }
-  const vector<InFlightOp*>& ops() const { return ops_; }
+  const RemoteTablet& tablet() const { return tablet_invoker_.tablet(); }
+  const InFlightOps& ops() const { return ops_; }
 
  protected:
-  // Called when we finish a lookup (to find the new consensus leader). Retries
-  // the rpc after a short delay.
-  void LookupTabletCb(const Status& status);
+  void SendRpcCb(const Status& status) override;
 
-  // Marks all replicas on current_ts_ as failed and retries the write on a
-  // new replica.
-  void FailToNewReplica(const Status& reason);
+  void SendRpcToTserver() override;
 
-  virtual void SendRpcCb(const Status& status) override;
-
-  // Called when we finish initializing a TS proxy.
-  // Sends the RPC, provided there was no error.
-  void InitTSProxyCb(const Status& status);
-
-  virtual const tserver::TabletServerErrorPB* get_response_error() const = 0;
-
-  CHECKED_STATUS response_error_status() const;
-
-  tserver::TabletServerErrorPB_Code response_error_code() const;
-
-  virtual void SendRpcToTserver() = 0;
+  virtual void CallRemoteMethod() = 0;
 
   // This is the last step where errors and responses are collected from the response and
   // stored in batcher. If there's a callback from the user, it is done in this step.
   virtual void ProcessResponseFromTserver(Status status) = 0;
 
-  virtual void MarkOpsAsFailed(const std::string& error_message);
+  void Failed(const Status& status) override;
 
   // Is this a local call?
   bool IsLocalCall() const;
@@ -95,19 +78,11 @@ class AsyncRpc : public rpc::Rpc {
   // The trace buffer.
   scoped_refptr<Trace> trace_;
 
-  // The tablet that should receive this write.
-  RemoteTablet* const tablet_;
-
-  // The TS receiving the write. May change if the write is retried.
-  RemoteTabletServer* current_ts_;
-
-  // TSes that refused the write because they were followers at the time.
-  // Cleared when new consensus configuration information arrives from the master.
-  std::set<RemoteTabletServer*> followers_;
+  TabletInvoker tablet_invoker_;
 
   // Operations which were batched into this RPC.
   // These operations are in kRequestSent state.
-  vector<InFlightOp*> ops_;
+  InFlightOps ops_;
 
   MonoTime start_;
   std::shared_ptr<AsyncRpcMetrics> async_rpc_metrics_;
@@ -117,25 +92,22 @@ class WriteRpc : public AsyncRpc {
  public:
   WriteRpc(const scoped_refptr<Batcher>& batcher,
            RemoteTablet* const tablet,
-           vector<InFlightOp*> ops,
-           const MonoTime& deadline,
-           const std::shared_ptr<rpc::Messenger>& messenger,
-           const std::shared_ptr<AsyncRpcMetrics>& async_rpc_metrics);
+           InFlightOps ops);
 
   virtual ~WriteRpc();
 
   const tserver::WriteResponsePB& resp() const { return resp_; }
+  std::string ToString() const override;
 
- protected:
-  void SendRpcToTserver() override;
+ private:
+  void CallRemoteMethod() override;
 
-  const tserver::TabletServerErrorPB* get_response_error() const override {
+  const tserver::TabletServerErrorPB* response_error() const override {
     return resp_.has_error() ? &resp_.error() : nullptr;
   }
 
   void ProcessResponseFromTserver(Status status) override;
 
- private:
   // Request body.
   tserver::WriteRequestPB req_;
 
@@ -145,25 +117,24 @@ class WriteRpc : public AsyncRpc {
 
 class ReadRpc : public AsyncRpc {
  public:
-  ReadRpc(
-      const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet, vector<InFlightOp*> ops,
-      const MonoTime& deadline, const std::shared_ptr<rpc::Messenger>& messenger,
-      const std::shared_ptr<AsyncRpcMetrics>& async_rpc_metrics);
+  ReadRpc(const scoped_refptr<Batcher>& batcher,
+          RemoteTablet* const tablet,
+          InFlightOps ops);
 
   virtual ~ReadRpc();
 
   const tserver::ReadResponsePB& resp() const { return resp_; }
+  std::string ToString() const override;
 
- protected:
-  void SendRpcToTserver() override;
+ private:
+  void CallRemoteMethod() override;
 
   void ProcessResponseFromTserver(Status status) override;
 
-  const tserver::TabletServerErrorPB* get_response_error() const override {
+  const tserver::TabletServerErrorPB* response_error() const override {
     return resp_.has_error() ? &resp_.error() : nullptr;
   }
 
- private:
   // Request body.
   tserver::ReadRequestPB req_;
 

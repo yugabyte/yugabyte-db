@@ -10,7 +10,7 @@ PROTOBUF_GENERATE_CPP(
 
 ADD_YB_LIBRARY(docdb_proto
   SRCS ${DOCDB_PROTO_SRCS}
-  DEPS protobuf
+  DEPS protobuf yb_common_proto
   NONLINK_DEPS ${DOCDB_PROTO_TGTS})
 
 set(DOCDB_SRCS

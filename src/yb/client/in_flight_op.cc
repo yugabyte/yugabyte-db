@@ -11,9 +11,11 @@ namespace client {
 namespace internal {
 
 std::string InFlightOp::ToString() const {
-  return strings::Substitute("op[state=$0, yb_op=$1]", state, yb_op->ToString());
+  return strings::Substitute("op[state=$0, yb_op=$1]",
+                             internal::ToString(state),
+                             yb_op->ToString());
 }
 
-}
-}
-}
+} // namespace internal
+} // namespace client
+} // namespace yb

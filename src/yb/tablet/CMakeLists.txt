@@ -26,6 +26,7 @@ set(TABLET_SRCS
   transactions/alter_schema_transaction.cc
   transactions/transaction_driver.cc
   transactions/transaction_tracker.cc
+  transactions/update_txn_transaction.cc
   transactions/write_transaction.cc
   transaction_order_verifier.cc
   cfile_set.cc

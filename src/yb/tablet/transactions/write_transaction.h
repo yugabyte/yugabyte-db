@@ -262,10 +262,15 @@ class WriteTransactionState : public TransactionState {
 // Executes a write transaction.
 class WriteTransaction : public Transaction {
  public:
-  WriteTransaction(WriteTransactionState* tx_state, consensus::DriverType type);
+  WriteTransaction(std::unique_ptr<WriteTransactionState> tx_state, consensus::DriverType type);
 
-  virtual WriteTransactionState* state() override { return state_.get(); }
-  virtual const WriteTransactionState* state() const override { return state_.get(); }
+  WriteTransactionState* state() override {
+    return down_cast<WriteTransactionState*>(Transaction::state());
+  }
+
+  const WriteTransactionState* state() const override {
+    return down_cast<const WriteTransactionState*>(Transaction::state());
+  }
 
   consensus::ReplicateMsgPtr NewReplicateMsg() override;
 
@@ -311,8 +316,6 @@ class WriteTransaction : public Transaction {
  private:
   // this transaction's start time
   MonoTime start_time_;
-
-  gscoped_ptr<WriteTransactionState> state_;
 
   TabletPeer* tablet_peer() { return state()->tablet_peer(); }
 

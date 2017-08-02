@@ -14,6 +14,7 @@ namespace rpc {
 
 class AcceptorPool;
 class Messenger;
+class RpcCommand;
 class RpcContext;
 class RpcController;
 

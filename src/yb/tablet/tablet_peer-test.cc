@@ -79,6 +79,8 @@ static Schema GetTestSchema() {
   return Schema({ ColumnSchema("key", INT32) }, 1);
 }
 
+typedef LatchTransactionCompletionCallback<WriteResponsePB> LatchWriteCallback;
+
 class TabletPeerTest : public YBTabletTest,
                        public ::testing::WithParamInterface<TableType> {
  public:
@@ -198,13 +200,12 @@ class TabletPeerTest : public YBTabletTest,
 
   Status ExecuteWriteAndRollLog(TabletPeer* tablet_peer, const WriteRequestPB& req) {
     gscoped_ptr<WriteResponsePB> resp(new WriteResponsePB());
-    auto tx_state = new WriteTransactionState(tablet_peer, &req, resp.get());
+    auto tx_state = std::make_unique<WriteTransactionState>(tablet_peer, &req, resp.get());
 
     CountDownLatch rpc_latch(1);
-    tx_state->set_completion_callback(gscoped_ptr<TransactionCompletionCallback>(
-        new LatchTransactionCompletionCallback<WriteResponsePB>(&rpc_latch, resp.get())).Pass());
+    tx_state->set_completion_callback(std::make_unique<LatchWriteCallback>(&rpc_latch, resp.get()));
 
-    CHECK_OK(tablet_peer->SubmitWrite(tx_state));
+    CHECK_OK(tablet_peer->SubmitWrite(std::move(tx_state)));
     rpc_latch.Wait();
     CHECK(!resp->has_error())
         << "\nReq:\n" << req.DebugString() << "Resp:\n" << resp->DebugString();
@@ -303,8 +304,8 @@ class DelayedApplyTransaction : public WriteTransaction {
  public:
   DelayedApplyTransaction(CountDownLatch* apply_started,
                           CountDownLatch* apply_continue,
-                          WriteTransactionState* state)
-      : WriteTransaction(state, consensus::LEADER),
+                          std::unique_ptr<WriteTransactionState> state)
+      : WriteTransaction(std::move(state), consensus::LEADER),
         apply_started_(DCHECK_NOTNULL(apply_started)),
         apply_continue_(DCHECK_NOTNULL(apply_continue)) {
   }
@@ -513,18 +514,18 @@ TEST_P(TabletPeerTest, TestActiveTransactionPreventsLogGC) {
   {
     // Long-running mutation.
     ASSERT_OK(GenerateSequentialDeleteRequest(req.get()));
-    auto tx_state = new WriteTransactionState(tablet_peer_.get(), req.get(), resp.get());
+    auto tx_state = std::make_unique<WriteTransactionState>(
+        tablet_peer_.get(), req.get(), resp.get());
 
-    tx_state->set_completion_callback(gscoped_ptr<TransactionCompletionCallback>(
-          new LatchTransactionCompletionCallback<WriteResponsePB>(&rpc_latch, resp.get())).Pass());
+    tx_state->set_completion_callback(
+        std::make_unique<LatchWriteCallback>(&rpc_latch, resp.get()));
 
-    gscoped_ptr<DelayedApplyTransaction> transaction(new DelayedApplyTransaction(&apply_started,
-                                                                                 &apply_continue,
-                                                                                 tx_state));
+    auto transaction = std::make_unique<DelayedApplyTransaction>(&apply_started,
+                                                                 &apply_continue,
+                                                                 std::move(tx_state));
 
     scoped_refptr<TransactionDriver> driver;
-    ASSERT_OK(tablet_peer_->NewLeaderTransactionDriver(transaction.PassAs<Transaction>(),
-                                                       &driver));
+    ASSERT_OK(tablet_peer_->NewLeaderTransactionDriver(std::move(transaction), &driver));
 
     ASSERT_OK(driver->ExecuteAsync());
     apply_started.Wait();

@@ -45,10 +45,12 @@ namespace internal {
 
 struct InFlightOp;
 
+class Batcher;
 class ErrorCollector;
 class RemoteTablet;
 class AsyncRpc;
 
+typedef scoped_refptr<Batcher> BatcherPtr;
 
 // A Batcher is the class responsible for collecting row operations, routing them to the
 // correct tablet server, and possibly batching them together for better efficiency.
@@ -67,13 +69,13 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // Takes a reference on error_collector. Creates a weak_ptr to 'session'.
   Batcher(YBClient* client,
           ErrorCollector* error_collector,
-          const std::shared_ptr<YBSession>& session,
+          const std::shared_ptr<YBSessionData>& session,
           yb::client::YBSession::ExternalConsistencyMode consistency_mode);
 
   // Abort the current batch. Any writes that were buffered and not yet sent are
   // discarded. Those that were sent may still be delivered.  If there is a pending Flush
   // callback, it will be called immediately with an error status.
-  void Abort();
+  void Abort(const Status& status);
 
   // Set the timeout for this batcher.
   //
@@ -111,6 +113,22 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
     return consistency_mode_;
   }
 
+  MonoTime deadline() const {
+    return deadline_;
+  }
+
+  const std::shared_ptr<rpc::Messenger>& messenger() const;
+
+  const std::shared_ptr<AsyncRpcMetrics>& async_rpc_metrics() const {
+    return async_rpc_metrics_;
+  }
+
+  YBTransactionPtr transaction() const;
+
+  const TransactionMetadataPB& transaction_metadata() const {
+    return transaction_metadata_;
+  }
+
  private:
   friend class RefCountedThreadSafe<Batcher>;
   friend class AsyncRpc;
@@ -120,9 +138,9 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   ~Batcher();
 
   // Add an op to the in-flight set and increment the ref-count.
-  void AddInFlightOp(InFlightOp* op);
+  void AddInFlightOp(const InFlightOpPtr& op);
 
-  void RemoveInFlightOps(const vector<InFlightOp*>& ops);
+  void RemoveInFlightOps(const InFlightOps& ops);
 
 
     // Return true if the batch has been aborted, and any in-flight ops should stop
@@ -136,12 +154,12 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // Remove an op from the in-flight op list, and delete the op itself.
   // The operation is reported to the ErrorReporter as having failed with the
   // given status.
-  void MarkInFlightOpFailed(InFlightOp* op, const Status& s);
-  void MarkInFlightOpFailedUnlocked(InFlightOp* in_flight_op, const Status& s);
+  void MarkInFlightOpFailed(const InFlightOpPtr& op, const Status& s);
+  void MarkInFlightOpFailedUnlocked(const InFlightOpPtr& in_flight_op, const Status& s);
 
   void CheckForFinishedFlush();
   void FlushBuffersIfReady();
-  void FlushBuffer(RemoteTablet* tablet, const std::vector<InFlightOp*>& ops);
+  void FlushBuffer(RemoteTablet* tablet, const InFlightOps& ops);
 
   // Log an error where an Rpc callback has response count mismatch.
   void AddOpCountMismatchError();
@@ -155,11 +173,13 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   void ProcessRpcStatus(const AsyncRpc &rpc, const Status &s);
 
   // Async Callbacks.
-  void TabletLookupFinished(InFlightOp* op, const Status& s);
+  void TabletLookupFinished(InFlightOpPtr op, const Status& s);
 
   // Compute a new deadline based on timeout_. If no timeout_ has been set,
   // uses a hard-coded default and issues periodic warnings.
   MonoTime ComputeDeadlineUnlocked() const;
+
+  void TransactionReady(const Status& status, const BatcherPtr& self);
 
   // See note about lock ordering in batcher.cc
   mutable simple_spinlock lock_;
@@ -173,10 +193,10 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   State state_;
 
   YBClient* const client_;
-  std::weak_ptr<YBSession> weak_session_;
+  std::weak_ptr<YBSessionData> weak_session_data_;
 
   // The consistency mode set in the session.
-  yb::client::YBSession::ExternalConsistencyMode consistency_mode_;
+  YBSession::ExternalConsistencyMode consistency_mode_;
 
   // Errors are reported into this error collector.
   scoped_refptr<ErrorCollector> const error_collector_;
@@ -195,9 +215,9 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   // All buffered or in-flight ops.
   // Added to this set during apply, removed during SendRpcCb of AsyncRpc.
-  std::unordered_set<InFlightOp*> ops_;
+  std::unordered_set<InFlightOpPtr> ops_;
   // Each tablet's buffered ops.
-  typedef std::unordered_map<RemoteTablet*, std::vector<InFlightOp*> > OpsMap;
+  typedef std::unordered_map<RemoteTablet*, InFlightOps> OpsMap;
   OpsMap per_tablet_ops_;
 
   // When each operation is added to the batcher, it is assigned a sequence number
@@ -228,6 +248,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   AtomicInt<int64_t> buffer_bytes_used_;
 
   std::shared_ptr<yb::client::internal::AsyncRpcMetrics> async_rpc_metrics_;
+
+  TransactionMetadataPB transaction_metadata_;
 
   DISALLOW_COPY_AND_ASSIGN(Batcher);
 };

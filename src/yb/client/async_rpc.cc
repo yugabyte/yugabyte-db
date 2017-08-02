@@ -7,6 +7,7 @@
 #include "yb/client/in_flight_op.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/yb_op-internal.h"
+
 #include "yb/util/cast.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
@@ -33,6 +34,8 @@ METRIC_DEFINE_histogram(
     "Microseconds spent before sending the request to the server", 60000000LU, 2);
 DECLARE_bool(rpc_dump_all_traces);
 DECLARE_bool(collect_end_to_end_traces);
+
+using namespace std::placeholders;
 
 namespace yb {
 
@@ -63,24 +66,20 @@ AsyncRpcMetrics::AsyncRpcMetrics(const scoped_refptr<yb::MetricEntity>& entity)
 }
 
 AsyncRpc::AsyncRpc(
-    const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet, vector<InFlightOp*> ops,
-    const MonoTime& deadline, const shared_ptr<Messenger>& messenger,
-    const shared_ptr<AsyncRpcMetrics>& async_rpc_metrics)
-    : Rpc(deadline, messenger),
+    const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet, InFlightOps ops)
+    : Rpc(batcher->deadline(), batcher->messenger()),
       batcher_(batcher),
       trace_(new Trace),
-      tablet_(tablet),
-      current_ts_(NULL),
+      tablet_invoker_(batcher->client_, this, this, tablet, mutable_retrier(), trace_.get()),
       ops_(std::move(ops)),
       start_(MonoTime::Now(MonoTime::FINE)),
-      async_rpc_metrics_(async_rpc_metrics) {
+      async_rpc_metrics_(batcher->async_rpc_metrics()) {
   if (Trace::CurrentTrace()) {
     Trace::CurrentTrace()->AddChildTrace(trace_.get());
   }
 }
 
 AsyncRpc::~AsyncRpc() {
-  STLDeleteElements(&ops_);
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces)) {
     LOG(INFO) << ToString() << " took "
               << MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_).ToMicroseconds()
@@ -91,88 +90,14 @@ AsyncRpc::~AsyncRpc() {
 
 void AsyncRpc::SendRpc() {
   TRACE_TO(trace_, "SendRpc() called.");
-  // Choose a destination TS according to the following algorithm:
-  // 1. Select the leader, provided:
-  //    a. One exists, and
-  //    b. It hasn't failed, and
-  //    c. It isn't currently marked as a follower.
-  // 2. If there's no good leader select another replica, provided:
-  //    a. It hasn't failed, and
-  //    b. It hasn't rejected our write due to being a follower.
-  // 3. Preemptively mark the replica we selected in step 2 as "leader" in the
-  //    meta cache, so that our selection remains sticky until the next Master
-  //    metadata refresh.
-  // 4. If we're out of appropriate replicas, force a lookup to the master
-  //    to fetch new consensus configuration information.
-  // 5. When the lookup finishes, forget which replicas were followers and
-  //    retry the write (i.e. goto 1).
-  // 6. If we issue the write and it fails because the destination was a
-  //    follower, remember that fact and retry the write (i.e. goto 1).
-  // 7. Repeat steps 1-6 until the write succeeds, fails for other reasons,
-  //    or the write's deadline expires.
-  current_ts_ = tablet_->LeaderTServer();
-  if (current_ts_ && ContainsKey(followers_, current_ts_)) {
-    VLOG(2) << "Tablet " << tablet_->tablet_id() << ": We have a follower for a leader: "
-            << current_ts_->ToString();
 
-    // Mark the node as a follower in the cache so that on the next go-round,
-    // LeaderTServer() will not return it as a leader unless a full metadata
-    // refresh has occurred. This also avoids LookupTabletByKey() going into
-    // "fast path" mode and not actually performing a metadata refresh from the
-    // Master when it needs to.
-    tablet_->MarkTServerAsFollower(current_ts_);
-    current_ts_ = NULL;
-  }
-  if (!current_ts_) {
-    // Try to "guess" the next leader.
-    vector<RemoteTabletServer*> replicas;
-    tablet_->GetRemoteTabletServers(&replicas);
-    for (RemoteTabletServer* ts : replicas) {
-      if (!ContainsKey(followers_, ts)) {
-        current_ts_ = ts;
-        break;
-      }
-    }
-    if (current_ts_) {
-      // Mark this next replica "preemptively" as the leader in the meta cache,
-      // so we go to it first on the next write if writing was successful.
-      VLOG(1) << "Tablet " << tablet_->tablet_id() << ": Previous leader failed. "
-              << "Preemptively marking tserver " << current_ts_->ToString()
-              << " as leader in the meta cache.";
-      tablet_->MarkTServerAsLeader(current_ts_);
-    }
-  }
-
-  // If we've tried all replicas, force a lookup to the master to find the
-  // new leader. This relies on some properties of LookupTabletByKey():
-  // 1. The fast path only works when there's a non-failed leader (which we
-  //    know is untrue here).
-  // 2. The slow path always fetches consensus configuration information and
-  //    updates the looked-up tablet.
-  // Put another way, we don't care about the lookup results at all; we're
-  // just using it to fetch the latest consensus configuration information.
-  //
-  // TODO: When we support tablet splits, we should let the lookup shift
-  // the write to another tablet (i.e. if it's since been split).
-  if (!current_ts_) {
-    batcher_->client_->data_->meta_cache_->LookupTabletByKey(table(),
-                                                             tablet_->partition()
-                                                                 .partition_key_start(),
-                                                             retrier().deadline(),
-                                                             NULL,
-                                                             Bind(&AsyncRpc::LookupTabletCb,
-                                                                  Unretained(this)));
-    return;
-  }
-
-  // Make sure we have a working proxy before sending out the RPC.
-  current_ts_->InitProxy(batcher_->client_,
-                         Bind(&AsyncRpc::InitTSProxyCb, Unretained(this)));
+  tablet_invoker_.Execute();
 }
 
-string AsyncRpc::ToString() const {
-  return Substitute("Write(tablet: $0, num_ops: $1, num_attempts: $2)",
-                    tablet_->tablet_id(), ops_.size(), num_attempts());
+std::string AsyncRpc::ToString() const {
+  return Substitute("$0(tablet: $1, num_ops: $2, num_attempts: $3)",
+                    batcher_->read_only_ ? "Read" : "Write",
+                    tablet_invoker_.tablet().tablet_id(), ops_.size(), num_attempts());
 }
 
 const YBTable* AsyncRpc::table() const {
@@ -181,129 +106,18 @@ const YBTable* AsyncRpc::table() const {
   return ops_[0]->yb_op->table();
 }
 
-void AsyncRpc::LookupTabletCb(const Status& status) {
-  TRACE_TO(trace_, "LookupTabletCb($0)", status.ToString(false));
-  // We should retry the RPC regardless of the outcome of the lookup, as
-  // leader election doesn't depend on the existence of a master at all.
-  //
-  // Retry() imposes a slight delay, which is desirable in a lookup loop,
-  // but unnecessary the first time through. Seeing as leader failures are
-  // rare, perhaps this doesn't matter.
-  followers_.clear();
-  mutable_retrier()->DelayedRetry(this, status);
-}
-
-void AsyncRpc::FailToNewReplica(const Status& reason) {
-  VLOG(1) << "Failing " << ToString() << " to a new replica: "
-          << reason.ToString();
-  bool found = tablet_->MarkReplicaFailed(current_ts_, reason);
-  if (!found) {
-    // Its possible that current_ts_ is not part of replicas if RemoteTablet.Refresh() is invoked
-    // which updates the set of replicas.
-    LOG(WARNING) << "Tablet " << tablet_->tablet_id() << ": Unable to mark replica "
-                 << current_ts_->ToString()
-                 << " as failed. Replicas: " << tablet_->ReplicasAsString();
-  }
-
-  mutable_retrier()->DelayedRetry(this, reason);
-}
-
 void AsyncRpc::SendRpcCb(const Status& status) {
-  TRACE_TO(trace_, "SendRpcCb($0)", status.ToString(false));
-  ADOPT_TRACE(trace_.get());
-  // Prefer early failures over controller failures.
   Status new_status = status;
-  if (new_status.ok() && mutable_retrier()->HandleResponse(this, &new_status)) {
-    return;
+  if (tablet_invoker_.Done(&new_status)) {
+    ProcessResponseFromTserver(new_status);
+    batcher_->RemoveInFlightOps(ops_);
+    batcher_->CheckForFinishedFlush();
+    delete this;
   }
-
-  // Failover to a replica in the event of any network failure.
-  //
-  // TODO: This is probably too harsh; some network failures should be
-  // retried on the current replica.
-  if (new_status.IsNetworkError()) {
-    FailToNewReplica(new_status);
-    return;
-  }
-
-  // Prefer controller failures over response failures.
-  Status resp_error_status = response_error_status();
-  if (new_status.ok() && !resp_error_status.ok()) {
-    new_status = resp_error_status;
-  }
-
-  // Oops, we failed over to a replica that wasn't a LEADER. Unlikely as
-  // we're using consensus configuration information from the master, but still possible
-  // (e.g. leader restarted and became a FOLLOWER). Try again.
-  //
-  // TODO: IllegalState is obviously way too broad an error category for
-  // this case.
-  if (new_status.IsIllegalState() || new_status.IsServiceUnavailable() || new_status.IsAborted()) {
-    const bool leader_is_not_ready = (response_error_code() ==
-        tserver::TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE);
-
-    // If the leader just is not ready - let's retry the same tserver.
-    // Else the leader became a follower and must be reset on retry.
-    if (!leader_is_not_ready) {
-      followers_.insert(current_ts_);
-    }
-
-    mutable_retrier()->DelayedRetry(this, new_status);
-    return;
-  }
-
-  if (!new_status.ok()) {
-    string current_ts_string;
-    if (current_ts_) {
-      current_ts_string = Substitute("on tablet server $0", current_ts_->ToString());
-    } else {
-      current_ts_string = "(no tablet server available)";
-    }
-    const string error_message = new_status.message().ToString();
-    new_status = new_status.CloneAndPrepend(
-        Substitute("Failed to write batch of $0 ops to tablet $1 "
-                       "$2 after $3 attempt(s)",
-                   ops_.size(), tablet_->tablet_id(),
-                   current_ts_string, num_attempts()));
-    LOG(WARNING) << new_status.ToString();
-    MarkOpsAsFailed(error_message);
-  }
-  ProcessResponseFromTserver(new_status);
-  batcher_->RemoveInFlightOps(ops_);
-  batcher_->CheckForFinishedFlush();
-  delete this;
 }
 
-void AsyncRpc::InitTSProxyCb(const Status& status) {
-  TRACE_TO(trace_, "InitTSProxyCb($0)", status.ToString(false));
-  // Fail to a replica in the event of a DNS resolution failure.
-  if (!status.ok()) {
-    FailToNewReplica(status);
-    return;
-  }
-
-  VLOG(2) << "Tablet " << tablet_->tablet_id() << ": Writing batch to replica "
-          << current_ts_->ToString();
-
-  MonoTime end_time = MonoTime::Now(MonoTime::FINE);
-  if (async_rpc_metrics_)
-    async_rpc_metrics_->time_to_send->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
-  SendRpcToTserver();
-}
-
-Status AsyncRpc::response_error_status() const {
-  const tserver::TabletServerErrorPB* const error_pb = get_response_error();
-  return error_pb == nullptr ? Status::OK()
-                             : StatusFromPB(error_pb->status());
-}
-
-tserver::TabletServerErrorPB_Code AsyncRpc::response_error_code() const {
-  const tserver::TabletServerErrorPB* const error_pb = get_response_error();
-  return error_pb == nullptr ? tserver::TabletServerErrorPB::UNKNOWN_ERROR
-                             : error_pb->code();
-}
-
-void AsyncRpc::MarkOpsAsFailed(const string& error_message) {
+void AsyncRpc::Failed(const Status& status) {
+  std::string error_message = status.message().ToBuffer();
   for (auto op : ops_) {
     YBOperation* yb_op = op->yb_op.get();
     switch (yb_op->type()) {
@@ -341,23 +155,30 @@ void AsyncRpc::MarkOpsAsFailed(const string& error_message) {
 }
 
 bool AsyncRpc::IsLocalCall() const {
-  return (current_ts_ != nullptr &&
-          current_ts_->proxy() != nullptr &&
-          current_ts_->proxy()->IsServiceLocal());
+  return tablet_invoker_.IsLocalCall();
+}
+
+void AsyncRpc::SendRpcToTserver() {
+  MonoTime end_time = MonoTime::Now(MonoTime::FINE);
+  if (async_rpc_metrics_)
+    async_rpc_metrics_->time_to_send->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
+  CallRemoteMethod();
 }
 
 WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
                    RemoteTablet* const tablet,
-                   vector<InFlightOp*> ops,
-                   const MonoTime& deadline,
-                   const shared_ptr<Messenger>& messenger,
-                   const std::shared_ptr<AsyncRpcMetrics>& async_rpc_metrics)
-    : AsyncRpc(batcher, tablet, ops, deadline, messenger, async_rpc_metrics) {
+                   InFlightOps ops)
+    : AsyncRpc(batcher, tablet, ops) {
   TRACE_TO(trace_, "WriteRpc initiated to $0", tablet->tablet_id());
-  const Schema* schema = table()->schema().schema_;
+  const Schema& schema = GetSchema(table()->schema());
 
   req_.set_tablet_id(tablet->tablet_id());
   req_.set_include_trace(IsTracingEnabled());
+  const auto& transaction = batcher->transaction_metadata();
+  if (transaction.has_transaction_id()) {
+    *req_.mutable_write_batch()->mutable_transaction() = transaction;
+  }
+
   switch (batcher->external_consistency_mode()) {
     case yb::client::YBSession::CLIENT_PROPAGATED:
       req_.set_external_consistency_mode(yb::CLIENT_PROPAGATED);
@@ -367,7 +188,6 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
       break;
     default:
       LOG(FATAL) << "Unsupported consistency mode: " << batcher->external_consistency_mode();
-
   }
 
   RowOperationsPB* requested = req_.mutable_row_operations();
@@ -375,7 +195,7 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
   // Add the rows
   int ctr = 0;
   RowOperationsPBEncoder enc(requested);
-  for (InFlightOp* op : ops_) {
+  for (auto& op : ops_) {
 #ifndef NDEBUG
     const Partition& partition = op->tablet->partition();
     const PartitionSchema& partition_schema = table()->partition_schema();
@@ -385,7 +205,7 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
     CHECK(partition_schema.PartitionContainsRow(partition, row, &partition_contains_row).ok());
     CHECK(partition_contains_row)
     << "Row " << partition_schema.RowDebugString(row)
-    << "not in partition " << partition_schema.PartitionDebugString(partition, *schema);
+    << "not in partition " << partition_schema.PartitionDebugString(partition, schema);
 #endif
     switch (op->yb_op->type()) {
       case YBOperation::Type::REDIS_WRITE: {
@@ -412,7 +232,7 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
         enc.Add(ToInternalWriteType(op->yb_op->type()), op->yb_op->row());
         if (!req_.has_schema()) {
           // Only in the Kudu case, we still need the schema as part of every WriteRequest.
-          CHECK_OK(SchemaToPB(*schema, req_.mutable_schema(),
+          CHECK_OK(SchemaToPB(schema, req_.mutable_schema(),
               SCHEMA_PB_WITHOUT_STORAGE_ATTRIBUTES | SCHEMA_PB_WITHOUT_IDS));
         }
         break;
@@ -430,7 +250,7 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
     // there is no return, and we're definitely going to send it. If we waited
     // until after we sent it, the RPC callback could fire before we got a chance
     // to change its state to 'sent'.
-    op->state = InFlightOp::kRequestSent;
+    op->state = InFlightOpState::kRequestSent;
     VLOG(4) << ++ctr << ". Encoded row " << op->yb_op->ToString();
   }
 
@@ -450,14 +270,20 @@ WriteRpc::~WriteRpc() {
   }
 }
 
-void WriteRpc::SendRpcToTserver() {
+std::string WriteRpc::ToString() const {
+  return Substitute("Write(tablet: $0, num_ops: $1, num_attempts: $2)",
+                    tablet().tablet_id(), ops_.size(), num_attempts());
+}
+
+void WriteRpc::CallRemoteMethod() {
   auto trace = trace_; // It is possible that we receive reply before returning from WriteAsync.
                        // Since send happens before we return from WriteAsync.
                        // So under heavy load it is possible that our request is handled and
                        // reply is received before WriteAsync returned.
   TRACE_TO(trace, "SendRpcToTserver");
   ADOPT_TRACE(trace.get());
-  current_ts_->proxy()->WriteAsync(
+
+  tablet_invoker_.proxy()->WriteAsync(
       req_, &resp_, mutable_retrier()->mutable_controller(),
       std::bind(&WriteRpc::SendRpcCb, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
@@ -477,13 +303,13 @@ void WriteRpc::ProcessResponseFromTserver(Status status) {
     // If there is an error at the Rpc itself,
     // there should be no individual responses. All of them need to be
     // marked as failed.
-    MarkOpsAsFailed(resp_.error().status().message());
+    Failed(StatusFromPB(resp_.error().status()));
     return;
   }
   size_t redis_idx = 0;
   size_t yql_idx = 0;
   // Retrieve Redis and YQL responses and make sure we received all the responses back.
-  for (InFlightOp* op : ops_) {
+  for (auto& op : ops_) {
     YBOperation* yb_op = op->yb_op.get();
     switch (yb_op->type()) {
       case YBOperation::Type::REDIS_WRITE: {
@@ -539,20 +365,18 @@ void WriteRpc::ProcessResponseFromTserver(Status status) {
                              redis_idx, resp_.redis_response_batch().size(),
                              yql_idx, resp_.yql_response_batch().size());
     batcher_->AddOpCountMismatchError();
-    MarkOpsAsFailed("Write response count mismatch");
+    Failed(STATUS(IllegalState, "Write response count mismatch"));
   }
 }
 
 ReadRpc::ReadRpc(
-    const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet, vector<InFlightOp*> ops,
-    const MonoTime& deadline, const shared_ptr<Messenger>& messenger,
-    const std::shared_ptr<AsyncRpcMetrics>& async_rpc_metrics)
-    : AsyncRpc(batcher, tablet, ops, deadline, messenger, async_rpc_metrics) {
+    const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet, InFlightOps ops)
+    : AsyncRpc(batcher, tablet, ops) {
   TRACE_TO(trace_, "ReadRpc initiated to $0", tablet->tablet_id());
   req_.set_tablet_id(tablet->tablet_id());
   req_.set_include_trace(IsTracingEnabled());
   int ctr = 0;
-  for (InFlightOp* op : ops_) {
+  for (auto& op : ops_) {
     switch (op->yb_op->type()) {
       case YBOperation::Type::REDIS_READ: {
         CHECK_EQ(table()->table_type(), YBTableType::REDIS_TABLE_TYPE);
@@ -581,7 +405,7 @@ ReadRpc::ReadRpc(
         LOG(FATAL) << "Unsupported read operation " << op->yb_op->type();
         break;
     }
-    op->state = InFlightOp::kRequestSent;
+    op->state = InFlightOpState::kRequestSent;
     VLOG(4) << ++ctr << ". Encoded row " << op->yb_op->ToString();
   }
 
@@ -600,12 +424,17 @@ ReadRpc::~ReadRpc() {
   }
 }
 
-void ReadRpc::SendRpcToTserver() {
+std::string ReadRpc::ToString() const {
+  return Substitute("Read(tablet: $0, num_ops: $1, num_attempts: $2)",
+                    tablet().tablet_id(), ops_.size(), num_attempts());
+}
+
+void ReadRpc::CallRemoteMethod() {
   auto trace = trace_; // It is possible that we receive reply before returning from ReadAsync.
                        // Detailed explanation in WriteRpc::SendRpcToTserver.
   TRACE_TO(trace, "SendRpcToTserver");
   ADOPT_TRACE(trace.get());
-  current_ts_->proxy()->ReadAsync(
+  tablet_invoker_.proxy()->ReadAsync(
       req_, &resp_, mutable_retrier()->mutable_controller(),
       std::bind(&ReadRpc::SendRpcCb, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
@@ -625,13 +454,13 @@ void ReadRpc::ProcessResponseFromTserver(Status status) {
     // If there is an error at the Rpc itself,
     // there should be no individual responses. All of them need to be
     // marked as failed.
-    MarkOpsAsFailed(resp_.error().status().message());
+    Failed(StatusFromPB(resp_.error().status()));
     return;
   }
   // Retrieve Redis and YQL responses and make sure we received all the responses back.
   size_t redis_idx = 0;
   size_t yql_idx = 0;
-  for (InFlightOp* op : ops_) {
+  for (auto& op : ops_) {
     YBOperation* yb_op = op->yb_op.get();
     switch (yb_op->type()) {
       case YBOperation::Type::REDIS_READ: {
@@ -684,7 +513,7 @@ void ReadRpc::ProcessResponseFromTserver(Status status) {
                              redis_idx, resp_.redis_batch().size(),
                              yql_idx, resp_.yql_batch().size());
     batcher_->AddOpCountMismatchError();
-    MarkOpsAsFailed("Read response count mismatch");
+    Failed(STATUS(IllegalState, "Read response count mismatch"));
   }
 }
 

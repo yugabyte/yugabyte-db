@@ -583,12 +583,12 @@ Status SysCatalogTable::WaitUntilRunning() {
 
 Status SysCatalogTable::SyncWrite(const WriteRequestPB *req, WriteResponsePB *resp) {
   CountDownLatch latch(1);
-  gscoped_ptr<tablet::TransactionCompletionCallback> txn_callback(
-    new LatchTransactionCompletionCallback<WriteResponsePB>(&latch, resp));
-  auto tx_state = new tablet::WriteTransactionState(tablet_peer_.get(), req, resp);
-  tx_state->set_completion_callback(txn_callback.Pass());
+  auto txn_callback = std::make_unique<LatchTransactionCompletionCallback<WriteResponsePB>>(
+      &latch, resp);
+  auto tx_state = std::make_unique<tablet::WriteTransactionState>(tablet_peer_.get(), req, resp);
+  tx_state->set_completion_callback(std::move(txn_callback));
 
-  RETURN_NOT_OK(tablet_peer_->SubmitWrite(tx_state));
+  RETURN_NOT_OK(tablet_peer_->SubmitWrite(std::move(tx_state)));
   latch.Wait();
 
   if (resp->has_error()) {

@@ -41,6 +41,7 @@ service TabletServerService {
       returns (ListTabletsForTabletServerResponsePB);
 
   rpc ImportData(ImportDataRequestPB) returns (ImportDataResponsePB);
+  rpc UpdateTransaction(UpdateTransactionRequestPB) returns (UpdateTransactionResponsePB);
 }
 
 message GetLogLocationRequestPB {
@@ -104,6 +105,16 @@ message ImportDataRequestPB {
 }
 
 message ImportDataResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+}
+
+message UpdateTransactionRequestPB {
+  optional bytes tablet_id = 1;
+  optional TransactionStatePB state = 2;
+}
+
+message UpdateTransactionResponsePB {
   // Error message, if any.
   optional TabletServerErrorPB error = 1;
 }

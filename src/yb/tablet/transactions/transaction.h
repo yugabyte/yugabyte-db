@@ -58,7 +58,10 @@ class Transaction {
   enum TransactionType {
     WRITE_TXN,
     ALTER_SCHEMA_TXN,
+    UPDATE_TRANSACTION_TXN,
   };
+
+  static constexpr size_t kTransactionTypes = 3;
 
   enum TraceType {
     NO_TRACE_TXNS = 0,
@@ -70,11 +73,13 @@ class Transaction {
     ABORTED
   };
 
-  Transaction(TransactionState* state, consensus::DriverType type, TransactionType tx_type);
+  Transaction(std::unique_ptr<TransactionState> state,
+              consensus::DriverType type,
+              TransactionType tx_type);
 
   // Returns the TransactionState for this transaction.
-  virtual TransactionState* state() { return state_; }
-  virtual const TransactionState* state() const { return state_; }
+  virtual TransactionState* state() { return state_.get(); }
+  virtual const TransactionState* state() const { return state_.get(); }
 
   // Returns whether this transaction is being executed on the leader or on a
   // replica.
@@ -127,21 +132,23 @@ class Transaction {
  private:
   // A private version of this transaction's transaction state so that
   // we can use base TransactionState methods on destructors.
-  TransactionState* state_;
+  std::unique_ptr<TransactionState> state_;
   const consensus::DriverType type_;
   const TransactionType tx_type_;
 };
 
 class TransactionState {
  public:
+  TransactionState(const TransactionState&) = delete;
+  void operator=(const TransactionState&) = delete;
 
   // Returns the request PB associated with this transaction. May be NULL if
   // the transaction's state has been reset.
-  virtual const google::protobuf::Message* request() const { return NULL; }
+  virtual const google::protobuf::Message* request() const { return nullptr; }
 
   // Returns the response PB associated with this transaction, or NULL.
   // This will only return a non-null object for leader-side transactions.
-  virtual google::protobuf::Message* response() { return NULL; }
+  virtual google::protobuf::Message* response() { return nullptr; }
 
   // Sets the ConsensusRound for this transaction, if this transaction is
   // being executed through the consensus system.
@@ -174,8 +181,8 @@ class TransactionState {
     return &tx_metrics_;
   }
 
-  void set_completion_callback(gscoped_ptr<TransactionCompletionCallback> completion_clbk) {
-    completion_clbk_.reset(completion_clbk.release());
+  void set_completion_callback(std::unique_ptr<TransactionCompletionCallback> completion_clbk) {
+    completion_clbk_ = std::move(completion_clbk);
   }
 
   // Returns the completion callback.
@@ -238,9 +245,10 @@ class TransactionState {
     return external_consistency_mode_;
   }
 
+  virtual ~TransactionState();
+
  protected:
   explicit TransactionState(TabletPeer* tablet_peer);
-  virtual ~TransactionState();
 
   TransactionMetrics tx_metrics_;
 
@@ -248,7 +256,7 @@ class TransactionState {
   TabletPeer* const tablet_peer_;
 
   // Optional callback to be called once the transaction completes.
-  gscoped_ptr<TransactionCompletionCallback> completion_clbk_;
+  std::unique_ptr<TransactionCompletionCallback> completion_clbk_;
 
   AutoReleasePool pool_;
 

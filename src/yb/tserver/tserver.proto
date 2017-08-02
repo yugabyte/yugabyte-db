@@ -432,3 +432,15 @@ message ScannerKeepAliveResponsePB {
   // The error, if an error occurred with this request.
   optional TabletServerErrorPB error = 1;
 }
+
+enum TransactionStatus {
+  PENDING = 1;
+  COMMITTED = 2;
+  ABORTED = 3;
+}
+
+message TransactionStatePB {
+  optional bytes transaction_id = 1;
+  optional TransactionStatus status = 2;
+  repeated bytes involved_tablets = 3;
+}

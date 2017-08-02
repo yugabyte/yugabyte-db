@@ -636,22 +636,37 @@ Status YBClient::GetTablets(const YBTableName& table_name,
   RepeatedPtrField<TabletLocationsPB> tablets;
   RETURN_NOT_OK(GetTablets(table_name, max_tablets, &tablets));
   tablet_uuids->reserve(tablets.size());
-  ranges->reserve(tablets.size());
+  if (ranges != nullptr) {
+    ranges->reserve(tablets.size());
+  }
   for (const TabletLocationsPB& tablet : tablets) {
-    PartitionPB partition = tablet.partition();
     tablet_uuids->push_back(tablet.tablet_id());
-    ranges->push_back(partition.ShortDebugString());
+    if (ranges != nullptr) {
+      const PartitionPB& partition = tablet.partition();
+      ranges->push_back(partition.ShortDebugString());
+    }
   }
 
   return Status::OK();
 }
 
+const std::shared_ptr<rpc::Messenger>& YBClient::messenger() const {
+  return data_->messenger_;
+}
+
 void YBClient::LookupTabletByKey(const YBTable* table,
                                  const std::string& partition_key,
                                  const MonoTime& deadline,
-                                 scoped_refptr<internal::RemoteTablet>* remote_tablet,
+                                 internal::RemoteTabletPtr* remote_tablet,
                                  const StatusCallback& callback) {
   data_->meta_cache_->LookupTabletByKey(table, partition_key, deadline, remote_tablet, callback);
+}
+
+void YBClient::LookupTabletById(const std::string& tablet_id,
+                                const MonoTime& deadline,
+                                internal::RemoteTabletPtr* remote_tablet,
+                                const StatusCallback& callback) {
+  data_->meta_cache_->LookupTabletById(tablet_id, deadline, remote_tablet, callback);
 }
 
 Status YBClient::SetMasterLeaderSocket(Endpoint* leader_socket) {
@@ -867,10 +882,7 @@ Status YBClient::OpenTable(const YBTableName& table_name, shared_ptr<YBTable>* t
 }
 
 shared_ptr<YBSession> YBClient::NewSession(bool read_only) {
-  shared_ptr<YBSession> ret(new YBSession(shared_from_this()));
-  ret->read_only_ = read_only;
-  ret->data_->Init(ret);
-  return ret;
+  return std::make_shared<YBSession>(shared_from_this(), read_only);
 }
 
 bool YBClient::IsMultiMaster() const {
@@ -1046,7 +1058,7 @@ Status YBTableCreator::Create() {
               data_->num_replicas_, data_->replication_info_.live_replicas().num_replicas()));
     }
   }
-  RETURN_NOT_OK_PREPEND(SchemaToPB(*data_->schema_->schema_, req.mutable_schema()),
+  RETURN_NOT_OK_PREPEND(SchemaToPB(internal::GetSchema(*data_->schema_), req.mutable_schema()),
                         "Invalid schema");
 
 
@@ -1145,7 +1157,7 @@ const YBSchema& YBTable::schema() const {
 }
 
 const Schema& YBTable::InternalSchema() const {
-  return *(data_->schema_.schema_);
+  return internal::GetSchema(data_->schema_);
 }
 
 YBInsert* YBTable::NewInsert() {
@@ -1193,11 +1205,11 @@ const PartitionSchema& YBTable::partition_schema() const {
 }
 
 YBPredicate* YBTable::NewComparisonPredicate(const Slice& col_name,
-                                                 YBPredicate::ComparisonOp op,
-                                                 YBValue* value) {
+                                             YBPredicate::ComparisonOp op,
+                                             YBValue* value) {
   StringPiece name_sp(reinterpret_cast<const char*>(col_name.data()), col_name.size());
-  const Schema* s = data_->schema_.schema_;
-  int col_idx = s->find_column(name_sp);
+  const Schema& s = internal::GetSchema(data_->schema_);
+  int col_idx = s.find_column(name_sp);
   if (col_idx == Schema::kColumnNotFound) {
     // Since this function doesn't return an error, instead we create a special
     // predicate that just returns the errors when we add it to the scanner.
@@ -1208,7 +1220,7 @@ YBPredicate* YBTable::NewComparisonPredicate(const Slice& col_name,
                                  STATUS(NotFound, "column not found", col_name)));
   }
 
-  return new YBPredicate(new ComparisonPredicateData(s->column(col_idx), op, value));
+  return new YBPredicate(new ComparisonPredicateData(s.column(col_idx), op, value));
 }
 
 ////////////////////////////////////////////////////////////
@@ -1237,13 +1249,15 @@ YBError::~YBError() {}
 // YBSession
 ////////////////////////////////////////////////////////////
 
-YBSession::YBSession(const shared_ptr<YBClient>& client)
-  : data_(new YBSession::Data(client)) {
+YBSession::YBSession(const shared_ptr<YBClient>& client,
+                     bool read_only,
+                     const YBTransactionPtr& transaction)
+    : data_(std::make_shared<YBSessionData>(client, read_only, transaction)) {
+  data_->Init();
 }
 
 YBSession::~YBSession() {
   WARN_NOT_OK(data_->Close(true), "Closed Session with pending operations.");
-  delete data_;
 }
 
 Status YBSession::Close() {
@@ -1290,28 +1304,11 @@ void YBSession::SetTimeoutMillis(int millis) {
 }
 
 Status YBSession::Flush() {
-  Synchronizer s;
-  YBStatusMemberCallback<Synchronizer> ksmcb(&s, &Synchronizer::StatusCB);
-  FlushAsync(&ksmcb);
-  return s.Wait();
+  return data_->Flush();
 }
 
 void YBSession::FlushAsync(YBStatusCallback* user_callback) {
-  CHECK_NE(data_->flush_mode_, AUTO_FLUSH_BACKGROUND) << "TODO: handle flush background mode";
-
-  // Swap in a new batcher to start building the next batch.
-  // Save off the old batcher.
-  scoped_refptr<Batcher> old_batcher;
-  {
-    std::lock_guard<simple_spinlock> l(data_->lock_);
-    data_->NewBatcher(shared_from_this(), &old_batcher);
-    InsertOrDie(&data_->flushed_batchers_, old_batcher.get());
-  }
-
-  // Send off any buffered data. Important to do this outside of the lock
-  // since the callback may itself try to take the lock, in the case that
-  // the batch fails "inline" on the same thread.
-  old_batcher->FlushAsync(user_callback);
+  data_->FlushAsync(user_callback);
 }
 
 bool YBSession::HasPendingOperations() const {
@@ -1335,33 +1332,14 @@ Status YBSession::ReadSync(std::shared_ptr<YBOperation> yb_op) {
 }
 
 void YBSession::ReadAsync(std::shared_ptr<YBOperation> yb_op, YBStatusCallback* cb) {
-  CHECK(read_only_);
+  CHECK(data_->read_only_);
   CHECK(yb_op->read_only());
   CHECK_OK(Apply(yb_op));
   FlushAsync(cb);
 }
 
 Status YBSession::Apply(std::shared_ptr<YBOperation> yb_op) {
-  CHECK_EQ(yb_op->read_only(), read_only_);
-
-  // Check if the operations have the hashed keys. Read operations do not require key sets.
-  if (!yb_op->row().IsHashOrPrimaryKeySet() && yb_op->type() != YBOperation::YQL_READ) {
-    Status status = STATUS(IllegalState, "Key not specified", yb_op->ToString());
-    data_->error_collector_->AddError(std::make_unique<YBError>(yb_op, status));
-    return status;
-  }
-
-  Status s = data_->batcher_->Add(yb_op);
-  if (!PREDICT_FALSE(s.ok())) {
-    data_->error_collector_->AddError(std::make_unique<YBError>(yb_op, s));
-    return s;
-  }
-
-  if (data_->flush_mode_ == AUTO_FLUSH_SYNC) {
-    return Flush();
-  }
-
-  return Status::OK();
+  return data_->Apply(std::move(yb_op));
 }
 
 int YBSession::CountBufferedOperations() const {
@@ -1381,6 +1359,10 @@ void YBSession::GetPendingErrors(CollectedErrors* errors, bool* overflowed) {
 
 YBClient* YBSession::client() const {
   return data_->client_.get();
+}
+
+bool YBSession::is_read_only() const {
+  return data_->read_only_;
 }
 
 ////////////////////////////////////////////////////////////
@@ -1570,11 +1552,11 @@ Status YBScanner::SetProjectedColumnNames(const vector<string>& col_names) {
     return STATUS(IllegalState, "Projection must be set before Open()");
   }
 
-  const Schema* table_schema = data_->table_->schema().schema_;
+  const Schema& table_schema = internal::GetSchema(data_->table_->schema());
   vector<int> col_indexes;
   col_indexes.reserve(col_names.size());
   for (const string& col_name : col_names) {
-    int idx = table_schema->find_column(col_name);
+    int idx = table_schema.find_column(col_name);
     if (idx == Schema::kColumnNotFound) {
       return STATUS(NotFound, strings::Substitute("Column: \"$0\" was not found in the "
           "table schema.", col_name));
@@ -1590,15 +1572,15 @@ Status YBScanner::SetProjectedColumnIndexes(const vector<int>& col_indexes) {
     return STATUS(IllegalState, "Projection must be set before Open()");
   }
 
-  const Schema* table_schema = data_->table_->schema().schema_;
+  const Schema& table_schema = internal::GetSchema(data_->table_->schema());
   vector<ColumnSchema> cols;
   cols.reserve(col_indexes.size());
   for (const int col_index : col_indexes) {
-    if (col_index >= table_schema->columns().size()) {
+    if (col_index >= table_schema.columns().size()) {
       return STATUS(NotFound, strings::Substitute("Column: \"$0\" was not found in the "
           "table schema.", col_index));
     }
-    cols.push_back(table_schema->column(col_index));
+    cols.push_back(table_schema.column(col_index));
   }
 
   gscoped_ptr<Schema> s(new Schema());
@@ -1699,7 +1681,7 @@ Status YBScanner::AddLowerBoundRaw(const Slice& key) {
   // Make a copy of the key.
   gscoped_ptr<EncodedKey> enc_key;
   RETURN_NOT_OK(EncodedKey::DecodeEncodedString(
-                  *data_->table_->schema().schema_, &data_->arena_, key, &enc_key));
+      internal::GetSchema(data_->table_->schema()), &data_->arena_, key, &enc_key));
   data_->spec_.SetLowerBoundKey(enc_key.get());
   data_->pool_.Add(enc_key.release());
   return Status::OK();
@@ -1717,7 +1699,7 @@ Status YBScanner::AddExclusiveUpperBoundRaw(const Slice& key) {
   // Make a copy of the key.
   gscoped_ptr<EncodedKey> enc_key;
   RETURN_NOT_OK(EncodedKey::DecodeEncodedString(
-                  *data_->table_->schema().schema_, &data_->arena_, key, &enc_key));
+      internal::GetSchema(data_->table_->schema()), &data_->arena_, key, &enc_key));
   data_->spec_.SetExclusiveUpperBoundKey(enc_key.get());
   data_->pool_.Add(enc_key.release());
   return Status::OK();
@@ -1788,7 +1770,7 @@ Status YBScanner::Open() {
 
   bool is_simple_range_partitioned =
       data_->table_->partition_schema().IsSimplePKRangePartitioning(
-          *data_->table_->schema().schema_);
+          internal::GetSchema(data_->table_->schema()));
 
   if (!is_simple_range_partitioned &&
     (data_->spec_.lower_bound_key() != nullptr ||

@@ -49,7 +49,7 @@ RowOperationsPB_Type ToInternalWriteType(YBOperation::Type type) {
 
 YBOperation::YBOperation(const shared_ptr<YBTable>& table)
   : table_(table),
-    row_(table->schema().schema_) {
+    row_(&internal::GetSchema(table->schema())) {
 }
 
 YBOperation::~YBOperation() {}
@@ -206,7 +206,7 @@ YBqlWriteOp *YBqlWriteOp::NewDelete(const std::shared_ptr<YBTable>& table) {
 }
 
 std::string YBqlWriteOp::ToString() const {
-  return "YQL_WRITE " + yql_write_request_->DebugString();
+  return "YQL_WRITE " + yql_write_request_->ShortDebugString();
 }
 
 namespace {

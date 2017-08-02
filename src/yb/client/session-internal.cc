@@ -21,6 +21,7 @@
 #include <mutex>
 
 #include "yb/client/batcher.h"
+#include "yb/client/callbacks.h"
 #include "yb/client/error_collector.h"
 
 namespace yb {
@@ -32,51 +33,93 @@ using internal::ErrorCollector;
 
 using std::shared_ptr;
 
-YBSession::Data::Data(shared_ptr<YBClient> client)
+YBSessionData::YBSessionData(shared_ptr<YBClient> client,
+                             bool read_only,
+                             const YBTransactionPtr& transaction)
     : client_(std::move(client)),
-      error_collector_(new ErrorCollector()),
-      flush_mode_(AUTO_FLUSH_SYNC),
-      external_consistency_mode_(CLIENT_PROPAGATED),
-      timeout_ms_(-1) {
+      read_only_(read_only),
+      transaction_(transaction),
+      error_collector_(new ErrorCollector()) {
 }
 
-YBSession::Data::~Data() {
+YBSessionData::~YBSessionData() {
 }
 
-void YBSession::Data::Init(const shared_ptr<YBSession>& session) {
-  std::lock_guard<simple_spinlock> l(lock_);
+void YBSessionData::Init() {
   CHECK(!batcher_);
-  NewBatcher(session, NULL);
+  NewBatcher();
 }
 
-void YBSession::Data::NewBatcher(const shared_ptr<YBSession>& session,
-                                   scoped_refptr<Batcher>* old_batcher) {
-  DCHECK(lock_.is_locked());
+scoped_refptr<Batcher> YBSessionData::NewBatcher() {
+  std::lock_guard<simple_spinlock> l(lock_);
 
   scoped_refptr<Batcher> batcher(
-    new Batcher(client_.get(), error_collector_.get(), session,
+    new Batcher(client_.get(), error_collector_.get(), shared_from_this(),
                 external_consistency_mode_));
   if (timeout_ms_ != -1) {
     batcher->SetTimeoutMillis(timeout_ms_);
   }
   batcher.swap(batcher_);
 
-  if (old_batcher) {
-    old_batcher->swap(batcher);
+  if (batcher) {
+    CHECK(flushed_batchers_.insert(batcher.get()).second);
   }
+  return batcher;
 }
 
-void YBSession::Data::FlushFinished(Batcher* batcher) {
+void YBSessionData::FlushFinished(Batcher* batcher) {
   std::lock_guard<simple_spinlock> l(lock_);
   CHECK_EQ(flushed_batchers_.erase(batcher), 1);
 }
 
-Status YBSession::Data::Close(bool force) {
+Status YBSessionData::Close(bool force) {
   if (batcher_->HasPendingOperations() && !force) {
     return STATUS(IllegalState, "Could not close. There are pending operations.");
   }
-  batcher_->Abort();
+  batcher_->Abort(STATUS(Aborted, "Batch aborted"));
   return Status::OK();
+}
+
+void YBSessionData::FlushAsync(YBStatusCallback* callback) {
+  CHECK_NE(flush_mode_, YBSession::AUTO_FLUSH_BACKGROUND) << "TODO: handle flush background mode";
+
+  // Swap in a new batcher to start building the next batch.
+  // Save off the old batcher.
+  //
+  // Send off any buffered data. Important to do this outside of the lock
+  // since the callback may itself try to take the lock, in the case that
+  // the batch fails "inline" on the same thread.
+  NewBatcher()->FlushAsync(callback);
+}
+
+Status YBSessionData::Apply(std::shared_ptr<YBOperation> yb_op) {
+  CHECK_EQ(yb_op->read_only(), read_only_);
+
+  // Check if the operations have the hashed keys. Read operations do not require key sets.
+  if (!yb_op->row().IsHashOrPrimaryKeySet() && yb_op->type() != YBOperation::YQL_READ) {
+    Status status = STATUS(IllegalState, "Key not specified", yb_op->ToString());
+    error_collector_->AddError(yb_op, status);
+    return status;
+  }
+
+  Status s = batcher_->Add(yb_op);
+  if (!PREDICT_FALSE(s.ok())) {
+    error_collector_->AddError(yb_op, s);
+    return s;
+  }
+
+  if (flush_mode_ == YBSession::AUTO_FLUSH_SYNC) {
+    return Flush();
+  }
+
+  return Status::OK();
+}
+
+Status YBSessionData::Flush() {
+  Synchronizer s;
+  YBStatusMemberCallback<Synchronizer> ksmcb(&s, &Synchronizer::StatusCB);
+  FlushAsync(&ksmcb);
+  return s.Wait();
 }
 
 }  // namespace client

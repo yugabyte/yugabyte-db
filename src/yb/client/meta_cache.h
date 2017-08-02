@@ -25,8 +25,11 @@
 #include <unordered_map>
 #include <vector>
 
+#include "yb/client/client_fwd.h"
+
 #include "yb/common/partition.h"
 #include "yb/consensus/metadata.pb.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/async_util.h"
@@ -48,6 +51,7 @@ class TabletServerServiceProxy;
 namespace master {
 class MasterServiceProxy;
 class TabletLocationsPB_ReplicaPB;
+class TabletLocationsPB;
 class TSInfoPB;
 } // namespace master
 
@@ -60,6 +64,8 @@ class YBTable;
 namespace internal {
 
 class LookupRpc;
+class LookupByKeyRpc;
+class LookupByIdRpc;
 
 // The information cached about a given tablet server in the cluster.
 //
@@ -225,8 +231,13 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   void LookupTabletByKey(const YBTable* table,
                          const std::string& partition_key,
                          const MonoTime& deadline,
-                         scoped_refptr<RemoteTablet>* remote_tablet,
+                         RemoteTabletPtr* remote_tablet,
                          const StatusCallback& callback);
+
+  void LookupTabletById(const std::string& tablet_id,
+                        const MonoTime& deadline,
+                        RemoteTabletPtr* remote_tablet,
+                        const StatusCallback& callback);
 
   // Mark any replicas of any tablets hosted by 'ts' as failed. They will
   // not be returned in future cache lookups.
@@ -241,18 +252,22 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
  private:
   friend class LookupRpc;
+  friend class LookupByKeyRpc;
+  friend class LookupByIdRpc;
 
   FRIEND_TEST(client::ClientTest, TestMasterLookupPermits);
 
   // Called on the slow LookupTablet path when the master responds. Populates
   // the tablet caches and returns a reference to the first one.
-  const scoped_refptr<RemoteTablet>& ProcessLookupResponse(const LookupRpc& rpc);
+  RemoteTabletPtr ProcessTabletLocations(
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations);
 
   // Lookup the given tablet by key, only consulting local information.
   // Returns true and sets *remote_tablet if successful.
-  bool LookupTabletByKeyFastPath(const YBTable* table,
-                                 const std::string& partition_key,
-                                 scoped_refptr<RemoteTablet>* remote_tablet);
+  RemoteTabletPtr LookupTabletByKeyFastPath(const YBTable* table,
+                                            const std::string& partition_key);
+
+  RemoteTabletPtr LookupTabletByIdFastPath(const std::string& tablet_id);
 
   // Update our information about the given tablet server.
   //
@@ -278,13 +293,13 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // Cache of tablets, keyed by table ID, then by start partition key.
   //
   // Protected by lock_.
-  typedef std::map<std::string, scoped_refptr<RemoteTablet> > TabletMap;
+  typedef std::map<std::string, RemoteTabletPtr> TabletMap;
   std::unordered_map<std::string, TabletMap> tablets_by_table_and_key_;
 
   // Cache of tablets, keyed by tablet ID.
   //
   // Protected by lock_
-  std::unordered_map<std::string, scoped_refptr<RemoteTablet> > tablets_by_id_;
+  std::unordered_map<std::string, RemoteTabletPtr> tablets_by_id_;
 
   // Prevents master lookup "storms" by delaying master lookups when all
   // permits have been acquired.

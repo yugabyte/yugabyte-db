@@ -73,9 +73,9 @@ TransactionDriver::TransactionDriver(TransactionTracker *txn_tracker,
   }
 }
 
-Status TransactionDriver::Init(gscoped_ptr<Transaction> transaction,
+Status TransactionDriver::Init(std::unique_ptr<Transaction> transaction,
                                DriverType type) {
-  transaction_ = transaction.Pass();
+  transaction_ = std::move(transaction);
 
   if (type == consensus::REPLICA) {
     std::lock_guard<simple_spinlock> lock(opid_lock_);

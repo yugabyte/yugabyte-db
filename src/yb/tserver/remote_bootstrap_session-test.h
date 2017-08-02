@@ -172,10 +172,10 @@ class RemoteBootstrapTest : public YBTabletTest {
       WriteResponsePB resp;
       CountDownLatch latch(1);
 
-      const auto state = new WriteTransactionState(tablet_peer_.get(), req.get(), &resp);
-      state->set_completion_callback(gscoped_ptr<tablet::TransactionCompletionCallback>(
-          new tablet::LatchTransactionCompletionCallback<WriteResponsePB>(&latch, &resp)).Pass());
-      ASSERT_OK(tablet_peer_->SubmitWrite(state));
+      auto state = std::make_unique<WriteTransactionState>(tablet_peer_.get(), req.get(), &resp);
+      typedef tablet::LatchTransactionCompletionCallback<WriteResponsePB> LatchWriteCallback;
+      state->set_completion_callback(std::make_unique<LatchWriteCallback>(&latch, &resp));
+      ASSERT_OK(tablet_peer_->SubmitWrite(std::move(state)));
       latch.Wait();
       ASSERT_FALSE(resp.has_error()) << "Request failed: " << resp.error().ShortDebugString();
       ASSERT_EQ(0, resp.per_row_errors_size()) << "Insert error: " << resp.ShortDebugString();

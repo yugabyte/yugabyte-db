@@ -62,11 +62,9 @@ void AlterSchemaTransactionState::ReleaseSchemaLock() {
 }
 
 
-AlterSchemaTransaction::AlterSchemaTransaction(AlterSchemaTransactionState* state,
+AlterSchemaTransaction::AlterSchemaTransaction(std::unique_ptr<AlterSchemaTransactionState> state,
                                                DriverType type)
-    : Transaction(state, type, Transaction::ALTER_SCHEMA_TXN),
-      state_(state) {
-}
+    : Transaction(std::move(state), type, Transaction::ALTER_SCHEMA_TXN) {}
 
 consensus::ReplicateMsgPtr AlterSchemaTransaction::NewReplicateMsg() {
   auto result = std::make_shared<ReplicateMsg>();
@@ -80,41 +78,41 @@ Status AlterSchemaTransaction::Prepare() {
 
   // Decode schema
   gscoped_ptr<Schema> schema(new Schema);
-  Status s = SchemaFromPB(state_->request()->schema(), schema.get());
+  Status s = SchemaFromPB(state()->request()->schema(), schema.get());
   if (!s.ok()) {
-    state_->completion_callback()->set_error(s, TabletServerErrorPB::INVALID_SCHEMA);
+    state()->completion_callback()->set_error(s, TabletServerErrorPB::INVALID_SCHEMA);
     return s;
   }
 
-  Tablet* tablet = state_->tablet_peer()->tablet();
+  Tablet* tablet = state()->tablet_peer()->tablet();
   RETURN_NOT_OK(tablet->CreatePreparedAlterSchema(state(), schema.get()));
 
-  state_->AddToAutoReleasePool(schema.release());
+  state()->AddToAutoReleasePool(schema.release());
 
   TRACE("PREPARE ALTER-SCHEMA: finished");
   return s;
 }
 
 void AlterSchemaTransaction::Start() {
-  if (state_->tablet_peer()->tablet()->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+  if (state()->tablet_peer()->tablet()->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     // Only set the hybrid_time here for Kudu tables. For YB tables, we set the hybrid_time
     // when appending entries to the Raft log.
-    if (!state_->has_hybrid_time()) {
-      state_->set_hybrid_time(state_->tablet_peer()->clock()->Now());
+    if (!state()->has_hybrid_time()) {
+      state()->set_hybrid_time(state()->tablet_peer()->clock()->Now());
     }
     TRACE("START. HybridTime: $0",
-        server::HybridClock::GetPhysicalValueMicros(state_->hybrid_time()));
+        server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));
   }
 }
 
 Status AlterSchemaTransaction::Apply(gscoped_ptr<CommitMsg>* commit_msg) {
   TRACE("APPLY ALTER-SCHEMA: Starting");
 
-  Tablet* tablet = state_->tablet_peer()->tablet();
+  Tablet* tablet = state()->tablet_peer()->tablet();
   RETURN_NOT_OK(tablet->AlterSchema(state()));
-  state_->tablet_peer()->log()
-    ->SetSchemaForNextLogSegment(*DCHECK_NOTNULL(state_->schema()),
-                                                 state_->schema_version());
+  state()->tablet_peer()->log()
+    ->SetSchemaForNextLogSegment(*DCHECK_NOTNULL(state()->schema()),
+                                                 state()->schema_version());
 
   commit_msg->reset(new CommitMsg());
   (*commit_msg)->set_op_type(ALTER_SCHEMA_OP);
@@ -143,7 +141,7 @@ void AlterSchemaTransaction::Finish(TransactionResult result) {
 }
 
 string AlterSchemaTransaction::ToString() const {
-  return Substitute("AlterSchemaTransaction [state=$0]", state_->ToString());
+  return Substitute("AlterSchemaTransaction [state=$0]", state()->ToString());
 }
 
 }  // namespace tablet

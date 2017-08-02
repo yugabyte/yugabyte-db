@@ -27,7 +27,6 @@
 #include <vector>
 
 #include <glog/logging.h>
-#include <boost/bind.hpp>
 
 #include "yb/client/async_rpc.h"
 #include "yb/client/callbacks.h"
@@ -37,6 +36,8 @@
 #include "yb/client/in_flight_op.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/session-internal.h"
+#include "yb/client/transaction.h"
+
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/join.h"
@@ -49,6 +50,8 @@ using std::unique_ptr;
 using std::shared_ptr;
 using std::unordered_map;
 using strings::Substitute;
+
+using namespace std::placeholders;
 
 namespace yb {
 
@@ -74,15 +77,15 @@ namespace internal {
 
 Batcher::Batcher(YBClient* client,
                  ErrorCollector* error_collector,
-                 const std::shared_ptr<YBSession>& session,
+                 const std::shared_ptr<YBSessionData>& session_data,
                  yb::client::YBSession::ExternalConsistencyMode consistency_mode)
   : state_(kGatheringOps),
     client_(client),
-    weak_session_(session),
+    weak_session_data_(session_data),
     consistency_mode_(consistency_mode),
     error_collector_(error_collector),
     had_errors_(false),
-    read_only_(session->is_read_only()),
+    read_only_(session_data->is_read_only()),
     flush_callback_(NULL),
     next_op_sequence_number_(0),
     outstanding_lookups_(0),
@@ -92,33 +95,33 @@ Batcher::Batcher(YBClient* client,
   async_rpc_metrics_ = metric_entity ? std::make_shared<AsyncRpcMetrics>(metric_entity) : nullptr;
 }
 
-void Batcher::Abort() {
+void Batcher::Abort(const Status& status) {
   std::unique_lock<simple_spinlock> l(lock_);
   state_ = kAborted;
 
-  vector<InFlightOp*> to_abort;
-  for (InFlightOp* op : ops_) {
+  InFlightOps to_abort;
+  for (auto& op : ops_) {
     std::lock_guard<simple_spinlock> l(op->lock_);
-    if (op->state == InFlightOp::kBufferedToTabletServer) {
+    if (op->state == InFlightOpState::kBufferedToTabletServer) {
       to_abort.push_back(op);
     }
   }
 
-  for (InFlightOp* op : to_abort) {
+  for (auto& op : to_abort) {
     VLOG(1) << "Aborting op: " << op->ToString();
-    MarkInFlightOpFailedUnlocked(op, STATUS(Aborted, "Batch aborted"));
+    MarkInFlightOpFailedUnlocked(op, status);
   }
 
   if (flush_callback_) {
     l.unlock();
 
-    flush_callback_->Run(STATUS(Aborted, ""));
+    flush_callback_->Run(status);
   }
 }
 
 Batcher::~Batcher() {
   if (PREDICT_FALSE(!ops_.empty())) {
-    for (InFlightOp* op : ops_) {
+    for (auto& op : ops_) {
       LOG(ERROR) << "Orphaned op: " << op->ToString();
     }
     LOG(FATAL) << "ops_ not empty";
@@ -150,22 +153,22 @@ int Batcher::CountBufferedOperations() const {
 }
 
 void Batcher::CheckForFinishedFlush() {
-  std::shared_ptr<YBSession> session;
+  std::shared_ptr<YBSessionData> session_data;
   {
     std::lock_guard<simple_spinlock> l(lock_);
     if (state_ != kFlushing || !ops_.empty()) {
       return;
     }
 
-    session = weak_session_.lock();
+    session_data = weak_session_data_.lock();
     state_ = kFlushed;
   }
 
-  if (session) {
+  if (session_data) {
     // Important to do this outside of the lock so that we don't have
     // a lock inversion deadlock -- the session lock should always
     // come before the batcher lock.
-    session->data_->FlushFinished(this);
+    session_data->FlushFinished(this);
   }
 
   Status s;
@@ -228,10 +231,10 @@ Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
 
   // As soon as we get the op, start looking up where it belongs,
   // so that when the user calls Flush, we are ready to go.
-  unique_ptr<InFlightOp> in_flight_op(new InFlightOp());
+  auto in_flight_op = std::make_shared<InFlightOp>();
   RETURN_NOT_OK(yb_op->GetPartitionKey(&in_flight_op->partition_key));
   in_flight_op->yb_op = yb_op;
-  in_flight_op->state = InFlightOp::kLookingUpTablet;
+  in_flight_op->state = InFlightOpState::kLookingUpTablet;
 
   if (yb_op->type() == YBOperation::Type::YQL_READ) {
     if (!in_flight_op->partition_key.empty()) {
@@ -249,32 +252,31 @@ Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
       PartitionSchema::DecodeMultiColumnHashValue(in_flight_op->partition_key));
   }
 
-  AddInFlightOp(in_flight_op.get());
+  AddInFlightOp(in_flight_op);
   VLOG(3) << "Looking up tablet for " << in_flight_op->yb_op->ToString();
 
   // Increment our reference count for the outstanding callback.
   base::RefCountInc(&outstanding_lookups_);
   if (yb_op->tablet()) {
     in_flight_op->tablet = yb_op->tablet();
-    TabletLookupFinished(in_flight_op.get(), Status::OK());
+    TabletLookupFinished(std::move(in_flight_op), Status::OK());
   } else {
     // deadline_ is set in FlushAsync(), after all Add() calls are done, so
     // here we're forced to create a new deadline.
     MonoTime deadline = ComputeDeadlineUnlocked();
     client_->data_->meta_cache_->LookupTabletByKey(
         in_flight_op->yb_op->table(), in_flight_op->partition_key, deadline, &in_flight_op->tablet,
-        Bind(&Batcher::TabletLookupFinished, this, in_flight_op.get()));
+        Bind(&Batcher::TabletLookupFinished, this, in_flight_op));
   }
-  IgnoreResult(in_flight_op.release());
   return Status::OK();
 }
 
-void Batcher::AddInFlightOp(InFlightOp* op) {
-  DCHECK_EQ(op->state, InFlightOp::kLookingUpTablet);
+void Batcher::AddInFlightOp(const InFlightOpPtr& op) {
+  DCHECK_EQ(op->state, InFlightOpState::kLookingUpTablet);
 
   std::lock_guard<simple_spinlock> l(lock_);
   CHECK_EQ(state_, kGatheringOps);
-  InsertOrDie(&ops_, op);
+  CHECK(ops_.insert(op).second);
   op->sequence_number_ = next_op_sequence_number_++;
 }
 
@@ -287,20 +289,19 @@ void Batcher::MarkHadErrors() {
   had_errors_ = true;
 }
 
-void Batcher::MarkInFlightOpFailed(InFlightOp* op, const Status& s) {
+void Batcher::MarkInFlightOpFailed(const InFlightOpPtr& op, const Status& s) {
   std::lock_guard<simple_spinlock> l(lock_);
   MarkInFlightOpFailedUnlocked(op, s);
 }
 
-void Batcher::MarkInFlightOpFailedUnlocked(InFlightOp* in_flight_op, const Status& s) {
+void Batcher::MarkInFlightOpFailedUnlocked(const InFlightOpPtr& in_flight_op, const Status& s) {
   CHECK_EQ(1, ops_.erase(in_flight_op)) << "Could not remove op " << in_flight_op->ToString()
                                         << " from in-flight list";
-  error_collector_->AddError(std::make_unique<YBError>(in_flight_op->yb_op, s));
+  error_collector_->AddError(in_flight_op->yb_op, s);
   had_errors_ = true;
-  delete in_flight_op;
 }
 
-void Batcher::TabletLookupFinished(InFlightOp* op, const Status& s) {
+void Batcher::TabletLookupFinished(InFlightOpPtr op, const Status& s) {
   base::RefCountDec(&outstanding_lookups_);
 
   // Acquire the batcher lock early to atomically:
@@ -336,13 +337,13 @@ void Batcher::TabletLookupFinished(InFlightOp* op, const Status& s) {
 
   {
     std::lock_guard<simple_spinlock> l2(op->lock_);
-    CHECK_EQ(op->state, InFlightOp::kLookingUpTablet);
+    CHECK_EQ(op->state, InFlightOpState::kLookingUpTablet);
     CHECK(op->tablet != NULL);
 
-    op->state = InFlightOp::kBufferedToTabletServer;
+    op->state = InFlightOpState::kBufferedToTabletServer;
 
-    vector<InFlightOp*>& to_ts = per_tablet_ops_[op->tablet.get()];
-    to_ts.push_back(op);
+    InFlightOps& to_ts = per_tablet_ops_[op->tablet.get()];
+    to_ts.push_back(std::move(op));
 
     // "Reverse bubble sort" the operation into the right spot in the tablet server's
     // buffer, based on the sequence numbers of the ops.
@@ -354,7 +355,7 @@ void Batcher::TabletLookupFinished(InFlightOp* op, const Status& s) {
     // constant time, with worst case O(n). This is usually much better than something
     // like a priority queue which would have O(lg n) in every case and a more complex
     // code path.
-    for (int i = to_ts.size() - 1; i > 0; --i) {
+    for (size_t i = to_ts.size() - 1; i > 0; --i) {
       if (to_ts[i]->sequence_number_ < to_ts[i - 1]->sequence_number_) {
         std::swap(to_ts[i], to_ts[i - 1]);
       } else {
@@ -368,8 +369,16 @@ void Batcher::TabletLookupFinished(InFlightOp* op, const Status& s) {
   FlushBuffersIfReady();
 }
 
+void Batcher::TransactionReady(const Status& status, const BatcherPtr& self) {
+  if (status.ok()) {
+    FlushBuffersIfReady();
+  } else {
+    Abort(status);
+  }
+}
+
 void Batcher::FlushBuffersIfReady() {
-  unordered_map<RemoteTablet*, vector<InFlightOp*> > ops_copy;
+  std::unordered_map<RemoteTablet*, InFlightOps> ops_copy;
 
   // We're only ready to flush if:
   // 1. The batcher is in the flushing state (i.e. FlushAsync was called).
@@ -381,12 +390,31 @@ void Batcher::FlushBuffersIfReady() {
       VLOG(3) << "FlushBuffersIfReady: batcher not yet in flushing state";
       return;
     }
+
     if (!base::RefCountIsZero(&outstanding_lookups_)) {
       VLOG(3) << "FlushBuffersIfReady: "
               << base::subtle::NoBarrier_Load(&outstanding_lookups_)
               << " ops still in lookup";
       return;
     }
+
+    auto transaction = this->transaction();
+    if (transaction) {
+      // If this Batcher is executed in context of transaction,
+      // then this transaction should initialize metadata used by RPC calls.
+      //
+      // If transaction is not yet ready to do it, then it will notify as via provided when
+      // it could be done.
+      if (!transaction->Prepare(ops_,
+                                std::bind(&Batcher::TransactionReady,
+                                          this,
+                                          _1,
+                                          BatcherPtr(this)),
+                                &transaction_metadata_)) {
+        return;
+      }
+    }
+
     // Take ownership of the ops while we're under the lock.
     ops_copy.swap(per_tablet_ops_);
   }
@@ -394,7 +422,7 @@ void Batcher::FlushBuffersIfReady() {
   // Now flush the ops for each tablet.
   for (const OpsMap::value_type& e : ops_copy) {
     RemoteTablet* tablet = e.first;
-    const vector<InFlightOp*>& ops = e.second;
+    const InFlightOps& ops = e.second;
 
     VLOG(3) << "FlushBuffersIfReady: already in flushing state, immediately flushing to "
             << tablet->tablet_id();
@@ -402,7 +430,19 @@ void Batcher::FlushBuffersIfReady() {
   }
 }
 
-void Batcher::FlushBuffer(RemoteTablet* tablet, const vector<InFlightOp*>& ops) {
+const std::shared_ptr<rpc::Messenger>& Batcher::messenger() const {
+  return client_->messenger();
+}
+
+YBTransactionPtr Batcher::transaction() const {
+  auto session_data = weak_session_data_.lock();
+  if (session_data) {
+    return session_data->transaction_;
+  }
+  return nullptr;
+}
+
+void Batcher::FlushBuffer(RemoteTablet* tablet, const InFlightOps& ops) {
   CHECK(!ops.empty());
 
   // Create and send an RPC that aggregates the ops. The RPC is freed when
@@ -410,15 +450,14 @@ void Batcher::FlushBuffer(RemoteTablet* tablet, const vector<InFlightOp*>& ops) 
   //
   // The RPC object takes ownership of the in flight ops.
   // The underlying YB OP is not directly owned, only a reference is kept.
+  AsyncRpc* rpc;
   if (read_only_) {
-    ReadRpc* rpc = new ReadRpc(this, tablet, ops, deadline_, client_->data_->messenger_,
-                               async_rpc_metrics_);
-    rpc->SendRpc();
+    rpc = new ReadRpc(this, tablet, ops);
   } else {
-    WriteRpc* rpc = new WriteRpc(this, tablet, ops, deadline_, client_->data_->messenger_,
-                                 async_rpc_metrics_);
-    rpc->SendRpc();
+    rpc = new WriteRpc(this, tablet, ops);
   }
+
+  rpc->SendRpc();
 }
 
 
@@ -432,12 +471,11 @@ void Batcher::AddOpCountMismatchError() {
   DCHECK(false);
 }
 
-void Batcher::RemoveInFlightOps(const vector<InFlightOp*>& ops) {
+void Batcher::RemoveInFlightOps(const InFlightOps& ops) {
   std::lock_guard<simple_spinlock> l(lock_);
-  for (InFlightOp* op : ops) {
+  for (auto& op : ops) {
     CHECK_EQ(1, ops_.erase(op))
-      << "Could not remove op " << op->ToString()
-      << " from in-flight list";
+      << "Could not remove op " << op->ToString() << " from in-flight list";
   }
 }
 
@@ -450,8 +488,8 @@ void Batcher::ProcessRpcStatus(const AsyncRpc &rpc, const Status &s) {
 
   if (PREDICT_FALSE(!s.ok())) {
     // Mark each of the ops as failed, since the whole RPC failed.
-    for (InFlightOp* in_flight_op : rpc.ops()) {
-      error_collector_->AddError(std::make_unique<YBError>(in_flight_op->yb_op, s));
+    for (auto& in_flight_op : rpc.ops()) {
+      error_collector_->AddError(in_flight_op->yb_op, s);
     }
     MarkHadErrors();
   }
@@ -477,14 +515,14 @@ void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
       LOG(ERROR) << "Received a per_row_error for an out-of-bound op index "
                  << err_pb.row_index() << " (sent only "
                  << rpc.ops().size() << " ops)";
-      LOG(ERROR) << "Response from tablet " << rpc.tablet()->tablet_id() << ":\n"
+      LOG(ERROR) << "Response from tablet " << rpc.tablet().tablet_id() << ":\n"
                  << rpc.resp().DebugString();
       continue;
     }
     shared_ptr<YBOperation> yb_op = rpc.ops()[err_pb.row_index()]->yb_op;
     VLOG(1) << "Error on op " << yb_op->ToString() << ": " << err_pb.error().ShortDebugString();
     Status op_status = StatusFromPB(err_pb.error());
-    error_collector_->AddError(std::make_unique<YBError>(yb_op, op_status));
+    error_collector_->AddError(yb_op, op_status);
     MarkHadErrors();
   }
 }

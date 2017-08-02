@@ -57,4 +57,20 @@ std::string RandomHumanReadableString(int len, Random* rnd) {
   return ret;
 }
 
+namespace {
+
+thread_local std::unique_ptr<std::mt19937_64> thread_local_random_ptr;
+
+}
+
+std::mt19937_64& ThreadLocalRandom() {
+  auto* result = thread_local_random_ptr.get();
+  if (result) {
+    return *result;
+  }
+  thread_local_random_ptr.reset(result = new std::mt19937_64);
+  Seed(result);
+  return *result;
+}
+
 } // namespace yb

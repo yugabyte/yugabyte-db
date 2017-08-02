@@ -50,12 +50,14 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
+
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/primitive_value.h"
+
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
@@ -809,6 +811,11 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
 
   WriteBatch rocksdb_write_batch;
 
+  std::string key_prefix;
+  // TODO(dtxn) use correct intents store
+  if (put_batch.has_transaction()) {
+    key_prefix = '!' + put_batch.transaction().transaction_id() + '!';
+  }
   rocksdb_write_batch.SetUserOpId(rocksdb::OpId(op_id.term(), op_id.index()));
   for (int write_id = 0; write_id < put_batch.kv_pairs_size(); ++write_id) {
     const auto& kv_pair = put_batch.kv_pairs(write_id);
@@ -828,19 +835,25 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
     }
 #endif
 
-    string key_with_ts = kv_pair.key();
-    // We replicate encoded SubDocKeys without a HybridTime at the end, and only append it here.
-    // The reason for this is that the HybridTime timestamp is only picked at the time of appending
-    // an entry to the tablet's Raft log. Also this is a good way to save network bandwidth.
-    //
-    // "Write id" is the final component of our HybridTime encoding (or, to be more precise,
-    // DocHybridTime encoding) that helps disambiguate between different updates to the
-    // same key (row/column) within a transaction. We set it based on the position of the write
-    // operation in its write batch.
-    key_with_ts.push_back(static_cast<char>(ValueType::kHybridTime));  // Don't forget ValueType!
-    DocHybridTime(hybrid_time, write_id).AppendEncodedInDocDbFormat(&key_with_ts);
+    std::string patched_key;
+    patched_key.reserve(key_prefix.size() + kv_pair.key().size() + kMaxBytesPerEncodedHybridTime);
+    patched_key += key_prefix;
+    patched_key += kv_pair.key();
+    if (!put_batch.has_transaction()) {
+      // We replicate encoded SubDocKeys without a HybridTime at the end, and only append it here.
+      // The reason for this is that the HybridTime timestamp is only picked at the time of
+      // appending  an entry to the tablet's Raft log. Also this is a good way to save network
+      // bandwidth.
+      //
+      // "Write id" is the final component of our HybridTime encoding (or, to be more precise,
+      // DocHybridTime encoding) that helps disambiguate between different updates to the
+      // same key (row/column) within a transaction. We set it based on the position of the write
+      // operation in its write batch.
+      patched_key.push_back(static_cast<char>(ValueType::kHybridTime));  // Don't forget ValueType!
+      DocHybridTime(hybrid_time, write_id).AppendEncodedInDocDbFormat(&patched_key);
+    }
 
-    rocksdb_write_batch.Put(key_with_ts, kv_pair.value());
+    rocksdb_write_batch.Put(patched_key, kv_pair.value());
   }
 
   // We are using Raft replication index for the RocksDB sequence number for
@@ -939,10 +952,13 @@ Status Tablet::KeyValueBatchFromYQLWriteBatch(
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
 
   vector<unique_ptr<DocOperation>> doc_ops;
-  std::unique_ptr<WriteRequestPB> copy_req(new WriteRequestPB());
-  copy_req->mutable_yql_write_batch()->Swap(yql_write_request->mutable_yql_write_batch());
-  copy_req->set_allocated_tablet_id(yql_write_request->release_tablet_id());
-  copy_req->Swap(yql_write_request);
+  {
+    std::unique_ptr<WriteRequestPB> copy_req(new WriteRequestPB());
+    copy_req->mutable_yql_write_batch()->Swap(yql_write_request->mutable_yql_write_batch());
+    copy_req->set_allocated_tablet_id(yql_write_request->release_tablet_id());
+    copy_req->mutable_write_batch()->Swap(yql_write_request->mutable_write_batch());
+    copy_req->Swap(yql_write_request);
+  }
   const auto* write_batch = yql_write_request->mutable_yql_write_batch();
 
   for (size_t i = 0; i < write_batch->size(); i++) {
@@ -969,6 +985,7 @@ Status Tablet::AcquireLocksAndPerformDocOperations(WriteTransactionState *state)
   if (table_type_ != KUDU_COLUMNAR_TABLE_TYPE) {
     LockBatch locks_held;
     WriteRequestPB* key_value_write_request = state->mutable_request();
+
     bool invalid_table_type = true;
     switch (table_type_) {
       case TableType::REDIS_TABLE_TYPE: {
@@ -1243,6 +1260,37 @@ Status Tablet::ImportData(const std::string& source_dir) {
   return rocksdb_->Import(source_dir);
 }
 
+// TODO(dtxn) apply intents correctly
+Status Tablet::ApplyIntents(const std::string& transaction_id,
+                            const OpId& op_id,
+                            const HybridTime& hybrid_time) {
+  LOG(INFO) << "ApplyIntents: " << transaction_id;
+
+  auto iter = docdb::CreateRocksDBIterator(rocksdb_.get(),
+                                           docdb::BloomFilterMode::USE_BLOOM_FILTER,
+                                           rocksdb::kDefaultQueryId);
+  iter->SeekToFirst();
+  std::string prefix = '!' + transaction_id + '!';
+
+  KeyValueWriteBatchPB put_batch;
+
+  while (iter->Valid()) {
+    rocksdb::Slice key_slice(iter->key());
+    if (key_slice.starts_with(prefix)) {
+      key_slice.remove_prefix(prefix.size());
+      auto* pair = put_batch.add_kv_pairs();
+      LOG(INFO) << "  Intent found: " << key_slice.ToDebugHexString() << " => "
+                << iter->value().ToDebugHexString();
+      pair->set_key(key_slice.cdata(), key_slice.size());
+      pair->set_value(iter->value().cdata(), iter->value().size());
+    }
+    iter->Next();
+  }
+
+  ApplyKeyValueRowOperations(put_batch, op_id, hybrid_time);
+  return Status::OK();
+}
+
 Status Tablet::ReplaceMemRowSetUnlocked(RowSetsInCompaction *compaction,
                                         shared_ptr<MemRowSet> *old_ms) {
   *old_ms = components_->memrowset;
@@ -1254,9 +1302,9 @@ Status Tablet::ReplaceMemRowSetUnlocked(RowSetsInCompaction *compaction,
   // Add to compaction.
   compaction->AddRowSet(*old_ms, std::move(ms_lock));
 
-  shared_ptr<MemRowSet> new_mrs(new MemRowSet(next_mrs_id_++, *schema(), log_anchor_registry_.get(),
-                                              mem_tracker_));
-  shared_ptr<RowSetTree> new_rst(new RowSetTree());
+  auto new_mrs = std::make_shared<MemRowSet>(next_mrs_id_++, *schema(), log_anchor_registry_.get(),
+                                             mem_tracker_);
+  auto new_rst = std::make_shared<RowSetTree>();
   ModifyRowSetTree(*components_->rowsets,
                    RowSetVector(),  // remove nothing
                    { *old_ms },  // add the old MRS

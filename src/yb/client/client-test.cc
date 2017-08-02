@@ -1508,8 +1508,7 @@ TEST_F(ClientTest, TestWriteTimeout) {
     ASSERT_TRUE(s.IsIOError());
     auto error = GetSingleErrorFromSession(session.get());
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
-    ASSERT_STR_CONTAINS(error->status().ToString(),
-                        "Failed to write batch of 1 ops to tablet");
+    ASSERT_STR_CONTAINS(error->status().ToString(), "Failed Write");
     ASSERT_STR_CONTAINS(error->status().ToString(), "Write RPC to 127.0.0.1:");
     ASSERT_STR_CONTAINS(error->status().ToString(), "after 1 attempt");
   }

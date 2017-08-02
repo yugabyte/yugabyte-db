@@ -32,6 +32,25 @@ namespace rpc {
 class Messenger;
 class Rpc;
 
+// The command that could be retried by RpcRetrier.
+class RpcCommand {
+ public:
+  // Asynchronously sends the RPC to the remote end.
+  //
+  // Subclasses should use SendRpcCb() below as the callback function.
+  virtual void SendRpc() = 0;
+
+  // Returns a string representation of the RPC.
+  virtual std::string ToString() const = 0;
+
+  // Callback for SendRpc(). If 'status' is not OK, something failed
+  // before the RPC was sent.
+  virtual void SendRpcCb(const Status& status) = 0;
+
+ protected:
+  ~RpcCommand() {}
+};
+
 // Provides utilities for retrying failed RPCs.
 //
 // All RPCs should use HandleResponse() to retry certain generic errors.
@@ -54,7 +73,7 @@ class RpcRetrier {
   //
   // Otherwise, returns false and writes the controller status to
   // 'out_status'.
-  bool HandleResponse(Rpc* rpc, Status* out_status);
+  bool HandleResponse(RpcCommand* rpc, Status* out_status);
 
   // Retries an RPC at some point in the near future. If 'why_status' is not OK,
   // records it as the most recent error causing the RPC to retry. This is
@@ -65,7 +84,7 @@ class RpcRetrier {
   // deadline has already expired at the time that Retry() was called.
   //
   // Callers should ensure that 'rpc' remains alive.
-  void DelayedRetry(Rpc* rpc, const Status& why_status);
+  void DelayedRetry(RpcCommand* rpc, const Status& why_status);
 
   RpcController* mutable_controller() { return &controller_; }
   const RpcController& controller() const { return controller_; }
@@ -79,7 +98,7 @@ class RpcRetrier {
   int attempt_num() const { return attempt_num_; }
 
   // Called when an RPC comes up for retrying. Actually sends the RPC.
-  void DelayedRetryCb(Rpc* rpc, const Status& status);
+  void DelayedRetryCb(RpcCommand* rpc, const Status& status);
 
  private:
   // The next sent rpc will be the nth attempt (indexed from 1).
@@ -105,7 +124,7 @@ class RpcRetrier {
 };
 
 // An in-flight remote procedure call to some server.
-class Rpc {
+class Rpc : public RpcCommand {
  public:
   Rpc(const MonoTime& deadline,
       const std::shared_ptr<rpc::Messenger>& messenger)
@@ -113,14 +132,6 @@ class Rpc {
   }
 
   virtual ~Rpc() {}
-
-  // Asynchronously sends the RPC to the remote end.
-  //
-  // Subclasses should use SendRpcCb() below as the callback function.
-  virtual void SendRpc() = 0;
-
-  // Returns a string representation of the RPC.
-  virtual std::string ToString() const = 0;
 
   // Returns the number of times this RPC has been sent. Will always be at
   // least one.
@@ -132,10 +143,6 @@ class Rpc {
 
  private:
   friend class RpcRetrier;
-
-  // Callback for SendRpc(). If 'status' is not OK, something failed
-  // before the RPC was sent.
-  virtual void SendRpcCb(const Status& status) = 0;
 
   // Used to retry some failed RPCs.
   RpcRetrier retrier_;

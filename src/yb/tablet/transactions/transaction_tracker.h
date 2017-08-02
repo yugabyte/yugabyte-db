@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_TABLET_TRANSACTION_TRACKER_H_
-#define YB_TABLET_TRANSACTION_TRACKER_H_
+#ifndef YB_TABLET_TRANSACTIONS_TRANSACTION_TRACKER_H
+#define YB_TABLET_TRANSACTIONS_TRANSACTION_TRACKER_H
 
 #include <memory>
 #include <string>
@@ -74,8 +74,7 @@ class TransactionTracker {
     explicit Metrics(const scoped_refptr<MetricEntity>& entity);
 
     scoped_refptr<AtomicGauge<uint64_t> > all_transactions_inflight;
-    scoped_refptr<AtomicGauge<uint64_t> > write_transactions_inflight;
-    scoped_refptr<AtomicGauge<uint64_t> > alter_schema_transactions_inflight;
+    scoped_refptr<AtomicGauge<uint64_t> > transactions_inflight[Transaction::kTransactionTypes];
 
     scoped_refptr<Counter> transaction_memory_pressure_rejections;
   };
@@ -113,4 +112,4 @@ class TransactionTracker {
 }  // namespace tablet
 }  // namespace yb
 
-#endif // YB_TABLET_TRANSACTION_TRACKER_H_
+#endif // YB_TABLET_TRANSACTIONS_TRANSACTION_TRACKER_H

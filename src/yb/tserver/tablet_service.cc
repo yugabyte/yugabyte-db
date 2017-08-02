@@ -35,11 +35,15 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/tablet_bootstrap.h"
 #include "yb/tserver/remote_bootstrap_service.h"
+
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet_metrics.h"
+
 #include "yb/tablet/transactions/alter_schema_transaction.h"
+#include "yb/tablet/transactions/update_txn_transaction.h"
 #include "yb/tablet/transactions/write_transaction.h"
+
 #include "yb/tserver/scanners.h"
 #include "yb/tserver/service_util.h"
 #include "yb/tserver/tablet_server.h"
@@ -202,6 +206,48 @@ Status GetTabletRef(const scoped_refptr<TabletPeer>& tablet_peer,
   return Status::OK();
 }
 
+// Prepares modification operation, checks limits, fetches tablet_peer and tablet etc.
+template<class Resp>
+bool PrepareModify(TabletPeerLookupIf* tablet_manager,
+                   const std::string& tablet_id,
+                   Resp* resp,
+                   rpc::RpcContext* context,
+                   tablet::TabletPeerPtr* tablet_peer,
+                   tablet::TabletPtr* tablet) {
+  if (!LookupTabletPeerOrRespond(tablet_manager, tablet_id, resp, context, tablet_peer)) {
+    return false;
+  }
+
+  TabletServerErrorPB::Code error_code;
+  Status s = GetTabletRef(*tablet_peer, tablet, &error_code);
+  if (PREDICT_FALSE(!s.ok())) {
+    SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
+    return false;
+  }
+
+  TRACE("Found Tablet");
+  // Check for memory pressure; don't bother doing any additional work if we've
+  // exceeded the limit.
+  double capacity_pct;
+  if ((*tablet)->mem_tracker()->AnySoftLimitExceeded(&capacity_pct)) {
+    (*tablet)->metrics()->leader_memory_pressure_rejections->Increment();
+    string msg = StringPrintf(
+        "Soft memory limit exceeded (at %.2f%% of capacity)",
+        capacity_pct);
+    if (capacity_pct >= FLAGS_memory_limit_warn_threshold_percentage) {
+      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Rejecting Write request: " << msg << THROTTLE_MSG;
+    } else {
+      YB_LOG_EVERY_N_SECS(INFO, 1) << "Rejecting Write request: " << msg << THROTTLE_MSG;
+    }
+    SetupErrorAndRespond(resp->mutable_error(), STATUS(ServiceUnavailable, msg),
+                         TabletServerErrorPB::UNKNOWN_ERROR,
+                         context);
+    return false;
+  }
+
+  return true;
+}
+
 }  // namespace
 
 typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
@@ -238,7 +284,7 @@ class RpcTransactionCompletionCallback : public TransactionCompletionCallback {
     } else {
       context_.RespondSuccess();
     }
-  };
+  }
 
  private:
 
@@ -249,6 +295,13 @@ class RpcTransactionCompletionCallback : public TransactionCompletionCallback {
   rpc::RpcContext context_;
   Response* const response_;
 };
+
+template<class Response>
+std::unique_ptr<TransactionCompletionCallback> MakeRpcTransactionCompletionCallback(
+    rpc::RpcContext context,
+    Response* response) {
+  return std::make_unique<RpcTransactionCompletionCallback<Response>>(std::move(context), response);
+}
 
 class WriteTransactionCompletionCallback : public TransactionCompletionCallback {
  public:
@@ -548,16 +601,37 @@ void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
     return;
   }
 
-  gscoped_ptr<AlterSchemaTransactionState> tx_state(
-      new AlterSchemaTransactionState(tablet_peer.get(), req, resp));
+  auto tx_state = std::make_unique<AlterSchemaTransactionState>(tablet_peer.get(), req, resp);
 
-  tx_state->set_completion_callback(gscoped_ptr<TransactionCompletionCallback>(
-      new RpcTransactionCompletionCallback<AlterSchemaResponsePB>(std::move(context),
-                                                                  resp)).Pass());
+  tx_state->set_completion_callback(MakeRpcTransactionCompletionCallback(std::move(context), resp));
 
   // Submit the alter schema op. The RPC will be responded to asynchronously.
-  Status s = tablet_peer->SubmitAlterSchema(tx_state.Pass());
+  Status s = tablet_peer->Submit(
+      std::make_unique<tablet::AlterSchemaTransaction>(std::move(tx_state), consensus::LEADER));
   RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
+}
+
+void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
+                                          UpdateTransactionResponsePB* resp,
+                                          rpc::RpcContext context) {
+  TRACE("UpdateTransaction");
+
+  tablet::TabletPeerPtr tablet_peer;
+  tablet::TabletPtr tablet;
+  if (!PrepareModify(server_->tablet_manager(), req->tablet_id(), resp,
+                     &context, &tablet_peer, &tablet)) {
+    return;
+  }
+
+  LOG(INFO) << "UpdateTransaction: " << req->ShortDebugString();
+
+  auto state = std::make_unique<tablet::UpdateTxnTransactionState>(tablet_peer.get(),
+                                                                   &req->state());
+  state->set_completion_callback(MakeRpcTransactionCompletionCallback(std::move(context), resp));
+
+  Status status = tablet_peer->Submit(
+      std::make_unique<tablet::UpdateTxnTransaction>(std::move(state), consensus::LEADER));
+  RETURN_UNKNOWN_ERROR_IF_NOT_OK(status, resp, &context);
 }
 
 void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
@@ -699,37 +773,10 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
                "tablet_id", req->tablet_id());
   DVLOG(3) << "Received Write RPC: " << req->DebugString();
 
-  scoped_refptr<TabletPeer> tablet_peer;
-  if (!LookupTabletPeerOrRespond(server_->tablet_manager(), req->tablet_id(), resp, &context,
-                                 &tablet_peer)) {
-    return;
-  }
-
-  shared_ptr<Tablet> tablet;
-  TabletServerErrorPB::Code error_code;
-  Status s = GetTabletRef(tablet_peer, &tablet, &error_code);
-  if (PREDICT_FALSE(!s.ok())) {
-    SetupErrorAndRespond(resp->mutable_error(), s, error_code, &context);
-    return;
-  }
-
-  TRACE("Found Tablet");
-  // Check for memory pressure; don't bother doing any additional work if we've
-  // exceeded the limit.
-  double capacity_pct;
-  if (tablet->mem_tracker()->AnySoftLimitExceeded(&capacity_pct)) {
-    tablet->metrics()->leader_memory_pressure_rejections->Increment();
-    string msg = StringPrintf(
-        "Soft memory limit exceeded (at %.2f%% of capacity)",
-        capacity_pct);
-    if (capacity_pct >= FLAGS_memory_limit_warn_threshold_percentage) {
-      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Rejecting Write request: " << msg << THROTTLE_MSG;
-    } else {
-      YB_LOG_EVERY_N_SECS(INFO, 1) << "Rejecting Write request: " << msg << THROTTLE_MSG;
-    }
-    SetupErrorAndRespond(resp->mutable_error(), STATUS(ServiceUnavailable, msg),
-                         TabletServerErrorPB::UNKNOWN_ERROR,
-                         &context);
+  tablet::TabletPeerPtr tablet_peer;
+  tablet::TabletPtr tablet;
+  if (!PrepareModify(server_->tablet_manager(), req->tablet_id(), resp,
+                     &context, &tablet_peer, &tablet)) {
     return;
   }
 
@@ -742,6 +789,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
+  Status s;
   // If the client sent us a hybrid_time, decode it and update the clock so that all future
   // hybrid_times are greater than the passed hybrid_time.
   if (req->has_propagated_hybrid_time()) {
@@ -750,7 +798,11 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   }
   RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
 
-  if (PREDICT_FALSE(req->has_write_batch())) {
+  if (req->has_write_batch() && req->write_batch().has_transaction()) {
+    LOG(INFO) << "Write with transaction: " << req->write_batch().transaction().ShortDebugString();
+  }
+
+  if (PREDICT_FALSE(req->has_write_batch() && !req->write_batch().kv_pairs().empty())) {
     Status s = STATUS(NotSupported, "Write Request contains write batch. This field should be "
         "used only for post-processed write requests during "
         "Raft replication.");
@@ -771,12 +823,11 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   auto tx_state = std::make_unique<WriteTransactionState>(tablet_peer.get(), req, resp);
 
   auto context_ptr = std::make_shared<RpcContext>(std::move(context));
-  tx_state->set_completion_callback(gscoped_ptr<TransactionCompletionCallback>(
-      new WriteTransactionCompletionCallback(context_ptr, resp,
-                                             tx_state.get(), req->include_trace())).Pass());
+  tx_state->set_completion_callback(
+      std::make_unique<WriteTransactionCompletionCallback>(
+          context_ptr, resp, tx_state.get(), req->include_trace()));
 
-  // Submit the write. The RPC will be responded to asynchronously.
-  s = tablet_peer->SubmitWrite(tx_state.release());
+  s = tablet_peer->SubmitWrite(std::move(tx_state));
 
   // Check that we could submit the write
   RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context_ptr.get());

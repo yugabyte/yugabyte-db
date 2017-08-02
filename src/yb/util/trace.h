@@ -174,6 +174,8 @@ class Trace : public RefCountedThreadSafe<Trace> {
   DISALLOW_COPY_AND_ASSIGN(Trace);
 };
 
+typedef scoped_refptr<Trace> TracePtr;
+
 // Adopt a Trace object into the current thread for the duration
 // of this object.
 // This should only be used on the stack (and thus created and destroyed
