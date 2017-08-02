@@ -26,6 +26,7 @@
   }],
   "key": {
     "code": "",
+    "sshUser": "",
     "privateKeyContent": ""
   }
 }

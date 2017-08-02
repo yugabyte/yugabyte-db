@@ -69,6 +69,8 @@ export default class OnPremConfiguration extends Component {
       let newJsonString = jsonPayloadTokens[0] + "\"privateKeyContent\": " + privateKeyString + "\n}\n}";
       jsonPayload = JSON.parse(newJsonString);
     }
+    // Add sshUser to Node Payload, if not added
+    jsonPayload.nodes.map( (node) => node.sshUser = node.sshUser || jsonPayload.key.sshUser )
     return jsonPayload;
   }
 

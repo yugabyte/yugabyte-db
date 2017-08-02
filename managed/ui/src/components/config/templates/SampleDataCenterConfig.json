@@ -38,6 +38,7 @@
   }],
   "key": {
     "code": "my-key",
+    "sshUser": "centos",
     "privateKeyContent": "-----BEGIN RSA PRIVATE KEY-----\nxxxxxxxxxx\n-----END RSA PRIVATE KEY-----"
   }
 }
