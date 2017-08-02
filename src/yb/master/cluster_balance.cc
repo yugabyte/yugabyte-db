@@ -37,6 +37,10 @@ DEFINE_int32(leader_balance_unresponsive_timeout_ms,
              "tablet server before considering it unresponsive. Unresponsive servers are "
              "excluded from leader balancing.");
 
+DEFINE_int32(load_balancer_max_concurrent_moves,
+             1,
+             "Maximum number of concurrent LeaderMoves/Adds/Removals.");
+
 class TabletMetadata {
  public:
   bool is_missing_replicas() { return is_under_replicated || !under_replicated_placements.empty(); }

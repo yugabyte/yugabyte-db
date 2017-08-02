@@ -19,6 +19,8 @@
 namespace yb {
 namespace master {
 
+DECLARE_int32(load_balancer_max_concurrent_moves);
+
 //  This class keeps state with regards to the full cluster load of tablets on tablet servers. We
 //  count a tablet towards a tablet server's load if it is either RUNNING, or is in the process of
 //  starting up, hence NOT_STARTED or BOOTSTRAPPING.
@@ -90,13 +92,13 @@ class ClusterLoadBalancer {
     int kMaxOverReplicatedTablets = 3;
 
     // Max number of over-replicated tablet peer removals to do in any one run of the load balancer.
-    int kMaxConcurrentRemovals = 3;
+    int kMaxConcurrentRemovals = FLAGS_load_balancer_max_concurrent_moves;
 
     // Max number of tablet peer replicas to add in any one run of the load balancer.
-    int kMaxConcurrentAdds = 3;
+    int kMaxConcurrentAdds = FLAGS_load_balancer_max_concurrent_moves;
 
     // Max number of tablet leaders on tablet servers to move in any one run of the load balancer.
-    int kMaxConcurrentLeaderMoves = 3;
+    int kMaxConcurrentLeaderMoves = FLAGS_load_balancer_max_concurrent_moves;
 
     // TODO(bogdan): actually use these...
     // TODO(bogdan): add state for leaders starting remote bootstraps, to limit on that end too.

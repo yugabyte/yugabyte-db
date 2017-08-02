@@ -66,7 +66,7 @@ class Master : public server::RpcAndWebServerBase {
   // This method is intended for use by unit tests.
   // If 'timeout' time is exceeded, returns Status::TimedOut.
   CHECKED_STATUS WaitUntilCatalogManagerIsLeaderAndReadyForTests(
-    const MonoDelta& timeout = MonoDelta::FromSeconds(10))
+    const MonoDelta& timeout = MonoDelta::FromSeconds(15))
       WARN_UNUSED_RESULT;
 
   void Shutdown();
