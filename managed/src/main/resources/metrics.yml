@@ -202,7 +202,7 @@ redis_yb_latency:
   metric: "collectd_yb_redis_counter_total"
   function: "avg"
   filters:
-    type: "handler_latency_remote_yb_client_read.avg|handler_latency_remote_yb_client_write.avg|handler_latency_local_yb_client_read.avg|handler_latency_local_yb_client_write.avg"
+    type: "rpc_read_remote.avg|rpc_write_remote.avg|rpc_read_local.avg|rpc_write_local.avg"
   group_by: "type"
   layout:
     title: "YBClient Latency"
@@ -210,10 +210,10 @@ redis_yb_latency:
       type: "date"
     yaxis:
       alias:
-        "handler_latency_remote_yb_client_read.avg": "Remote Read"
-        "handler_latency_remote_yb_client_write.avg": "Remote Write"
-        "handler_latency_local_yb_client_read.avg": "Local Read"
-        "handler_latency_local_yb_client_write.avg": "Local Write"
+        "rpc_read_remote.avg": "Remote Read"
+        "rpc_write_remote.avg": "Remote Write"
+        "rpc_read_local.avg": "Local Read"
+        "rpc_write_local.avg": "Local Write"
       ticksuffix: "&nbsp;\u00B5s"
 
 # tserver metrics
@@ -830,7 +830,7 @@ cql_yb_latency:
   metric: "collectd_yb_cql_counter_total"
   function: "avg"
   filters:
-    type: "handler_latency_remote_yb_client_read.avg|handler_latency_remote_yb_client_write.avg|handler_latency_local_yb_client_read.avg|handler_latency_local_yb_client_write.avg"
+    type: "rpc_read_remote.avg|rpc_write_remote.avg|rpc_read_local.avg|rpc_write_local.avg"
   group_by: "type"
   layout:
     title: "YBClient Latency"
@@ -838,10 +838,10 @@ cql_yb_latency:
       type: "date"
     yaxis:
       alias:
-        "handler_latency_remote_yb_client_read.avg": "Remote Read"
-        "handler_latency_remote_yb_client_write.avg": "Remote Write"
-        "handler_latency_local_yb_client_read.avg": "Local Read"
-        "handler_latency_local_yb_client_write.avg": "Local Write"
+        "rpc_read_remote.avg": "Remote Read"
+        "rpc_write_remote.avg": "Remote Write"
+        "rpc_read_local.avg": "Local Read"
+        "rpc_write_local.avg": "Local Write"
       ticksuffix: "&nbsp;\u00B5s"
 
 cql_reactor_latency:
