@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Route, IndexRoute, browserHistory } from 'react-router';
+
 import { validateToken, validateFromTokenResponse, fetchCustomerCount, resetCustomer } from './actions/customers';
 import App from './app/App';
 import Login from './pages/Login';

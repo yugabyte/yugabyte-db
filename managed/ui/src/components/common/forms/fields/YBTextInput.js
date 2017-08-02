@@ -31,9 +31,9 @@ export class YBTextInput extends Component {
 
 export default class YBTextInputWithLabel extends Component {
   render() {
-    const { label, meta, ...otherProps } = this.props;
+    const { label, meta, insetError, ...otherProps } = this.props;
     return (
-      <YBLabel label={label} meta={meta}>
+      <YBLabel label={label} meta={meta} insetError={insetError}>
         <YBTextInput {...otherProps} />
       </YBLabel>
     );

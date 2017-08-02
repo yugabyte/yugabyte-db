@@ -46,16 +46,20 @@ export default class InstanceTypeForRegion extends Component {
           fields.map((instanceTypeItem, instanceTypeIdx) => (
             <Row key={instanceTypeIdx}>
               <Col lg={1}>
-                <i className="fa fa-minus-circle on-prem-row-delete-btn" onClick={self.removeRow.bind(self, instanceTypeIdx)}/>
+                {
+                  fields.length > 1
+                    ? <i className="fa fa-minus-circle on-prem-row-delete-btn" onClick={self.removeRow.bind(self, instanceTypeIdx)} />
+                    : null
+                }
               </Col>
               <Col lg={3}>
-                <Field name={`${instanceTypeItem}.zone`} component={YBSelect} options={zoneOptions}/>
+                <Field name={`${instanceTypeItem}.zone`} component={YBSelect} insetError={true} options={zoneOptions} />
               </Col>
               <Col lg={3}>
-                <Field name={`${instanceTypeItem}.machineType`} component={YBSelect} options={machineTypeOptions}/>
+                <Field name={`${instanceTypeItem}.machineType`} component={YBSelect} insetError={true} options={machineTypeOptions} />
               </Col>
               <Col lg={5}>
-                <Field name={`${instanceTypeItem}.instanceTypeIPs`} component={YBInputField}/>
+                <Field name={`${instanceTypeItem}.instanceTypeIPs`} component={YBInputField} insetError={true} />
               </Col>
             </Row>
           ))

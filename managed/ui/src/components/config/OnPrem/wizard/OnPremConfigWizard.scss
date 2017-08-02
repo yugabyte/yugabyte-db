@@ -42,12 +42,17 @@ label textarea {
 }
 
 .on-prem-row-delete-btn {
+  cursor: pointer;
   background-color: transparent;
   color: $YB_DARK_GREY;
   font-size: 26px;
   float: right;
   padding-top: 4px;
   margin-right: 10px;
+
+  &:hover {
+    color: $YB_FAIL_COLOR;
+  }
 }
 
 .on-prem-row-add-btn {

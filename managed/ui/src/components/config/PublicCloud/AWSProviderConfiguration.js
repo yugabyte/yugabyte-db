@@ -171,7 +171,7 @@ class AWSProviderConfiguration extends Component {
       providerConfig =
         <form name="awsConfigForm" onSubmit={handleSubmit(this.createProviderConfig.bind(this))}>
           <Row className="config-section-header">
-            <Col lg={12}>
+            <Col lg={6}>
               <h4>AWS Account Info</h4>
               { error && <Alert bsStyle="danger">{error}</Alert> }
               <div className="aws-config-form form-right-aligned-labels">
