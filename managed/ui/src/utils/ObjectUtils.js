@@ -62,6 +62,10 @@ export function sortedGroupCounts(array) {
   });
 }
 
+export function pickArray(objects, propertyNames) {
+  return _.map(objects, _.partialRight(_.pick, propertyNames));
+}
+
 // TODO: Move these functions to Universe and UserIntent model/class files.
 
 export function areIntentsEqual(userIntent1, userIntent2) {

@@ -8,7 +8,7 @@ import { deleteProvider, deleteProviderSuccess, deleteProviderFailure, fetchClou
          getInstanceTypeList, getInstanceTypeListResponse, } from '../../../actions/cloud';
 import {openDialog, closeDialog} from '../../../actions/universe';
 
-const mapStateToProps = (state) => {
+const mapStateToProps = (state, ownProps) => {
   return {
     universeList: state.universe.universeList,
     configuredProviders: state.cloud.providers,
@@ -16,7 +16,7 @@ const mapStateToProps = (state) => {
     accessKeys: state.cloud.accessKeys,
     cloudBootstrap: state.cloud.bootstrap,
     visibleModal: state.universe.visibleModal,
-    cloud: state.cloud
+    cloud: state.cloud,
   };
 };
 

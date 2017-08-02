@@ -28,8 +28,8 @@ function validate(values) {
   if(values.confirmPassword  && values.confirmPassword.trim() !== '' &&
     values.password  && values.password.trim() !== '' &&
     values.password !== values.confirmPassword) {
-    errors.password = 'Password And Confirm Password don\'t match';
-    errors.password = 'Password And Confirm Password don\'t match';
+    errors.password = 'Password and Confirm Password don\'t match';
+    errors.password = 'Password and Confirm Password don\'t match';
     hasErrors = true;
   }
   return hasErrors && errors;

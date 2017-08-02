@@ -1,15 +1,20 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
+import { Row, Col } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import {getPromiseState} from 'utils/PromiseUtils';
-import {isNonEmptyObject, isNonEmptyArray} from 'utils/ObjectUtils';
-import {YBButton, YBModal} from '../../common/forms/fields';
-import {Row, Col} from 'react-bootstrap';
-import InstanceTypeForRegion from '../OnPrem/wizard/InstanceTypeForRegion';
-import {FieldArray} from 'redux-form';
+import { FieldArray } from 'redux-form';
+import { withRouter } from 'react-router';
+import queryString from 'query-string';
+import { clone } from 'lodash';
 
-export default class OnPremNodesList extends Component {
+import { getPromiseState } from 'utils/PromiseUtils';
+import { isNonEmptyObject, isNonEmptyArray } from 'utils/ObjectUtils';
+import { YBButton, YBModal } from '../../common/forms/fields';
+import InstanceTypeForRegion from '../OnPrem/wizard/InstanceTypeForRegion';
+import { YBBreadcrumb } from '../../common/descriptors';
+
+class OnPremNodesList extends Component {
   constructor(props) {
     super(props);
     this.addNodeToList = this.addNodeToList.bind(this);
@@ -78,7 +83,7 @@ export default class OnPremNodesList extends Component {
   }
 
   render() {
-    const {cloud :{nodeInstanceList, instanceTypes, supportedRegionList}, handleSubmit} = this.props;
+    const {cloud :{nodeInstanceList, instanceTypes, supportedRegionList}, handleSubmit, location} = this.props;
     var nodeListItems = [];
     if (getPromiseState(nodeInstanceList).isSuccess()) {
       nodeListItems = nodeInstanceList.data.map(function(item) {
@@ -118,26 +123,37 @@ export default class OnPremNodesList extends Component {
         )
     }) : null;
 
+    var summaryQuery = clone(location.query);
+    delete summaryQuery.section;
+    var summaryLinkHref = `${location.pathname}?${queryString.stringify(summaryQuery)}`;
+
     return (
       <div>
+        <span className="buttons pull-right">
+          <YBButton btnText="Add Node" btnIcon="fa fa-plus" onClick={this.addNodeToList}/>
+        </span>
+
+        <YBBreadcrumb to={summaryLinkHref}>
+          On-Premises Datacenter Config
+        </YBBreadcrumb>
+        <h3 className="no-top-margin">Nodes</h3>
+
         <Row>
-          <Col lg={2}><div className="node-list-heading" onClick={this.props.toggleNodesView}><i className="fa fa-chevron-circle-left"/>Back</div></Col>
-          <Col lg={8}><div className="node-list-heading text-center">&nbsp;Nodes</div></Col>
-          <Col lg={2}><YBButton btnText="Add Node" btnIcon="fa fa-plus" onClick={this.addNodeToList}/></Col>
-        </Row>
-        <Row>
-          <BootstrapTable data={nodeListItems} >
-            <TableHeaderColumn dataField="nodeId" isKey={true} hidden={true} />
-            <TableHeaderColumn dataField="ip">IP</TableHeaderColumn>
-            <TableHeaderColumn dataField="inUse">In Use</TableHeaderColumn>
-            <TableHeaderColumn dataField="region">Region</TableHeaderColumn>
-            <TableHeaderColumn dataField="zone">Zone</TableHeaderColumn>
-            <TableHeaderColumn dataField="instanceType">Instance Type</TableHeaderColumn>
-            <TableHeaderColumn dataField="" dataFormat={removeNodeItem}/>
-          </BootstrapTable>
+          <Col xs={12}>
+            <BootstrapTable data={nodeListItems} >
+              <TableHeaderColumn dataField="nodeId" isKey={true} hidden={true} />
+              <TableHeaderColumn dataField="ip">IP</TableHeaderColumn>
+              <TableHeaderColumn dataField="inUse">In Use</TableHeaderColumn>
+              <TableHeaderColumn dataField="region">Region</TableHeaderColumn>
+              <TableHeaderColumn dataField="zone">Zone</TableHeaderColumn>
+              <TableHeaderColumn dataField="instanceType">Instance Type</TableHeaderColumn>
+              <TableHeaderColumn dataField="" dataFormat={removeNodeItem}/>
+            </BootstrapTable>
+          </Col>
         </Row>
         <YBModal title={"Add Node"} formName={"AddNodeForm"} visible={this.props.visibleModal === "AddNodesForm"}
-                 onHide={this.hideModal} onFormSubmit={handleSubmit(this.submitAddNodesForm)}>
+                 onHide={this.hideModal} onFormSubmit={handleSubmit(this.submitAddNodesForm)}
+                 showCancelButton={true} submitLabel="Add">
           <div className="on-prem-form-text">
             Enter IP Addresses for the instances of each zone and machine type.
           </div>
@@ -147,3 +163,5 @@ export default class OnPremNodesList extends Component {
     )
   }
 }
+
+export default withRouter(OnPremNodesList);

@@ -20,11 +20,12 @@ export default class RegionMap extends Component {
   };
 
   static defaultProps = {
-    showLabels: false
+    showLabels: false,
+    showRegionLegend: true,
   }
 
   render() {
-    const { regions, type, showLabels, universe } = this.props;
+    const { regions, type, showLabels, showRegionLabels, universe } = this.props;
     var regionMarkers = []
     var bounds = [[61.96, 105.78], [-21.96, -95.78]];
 
@@ -66,7 +67,7 @@ export default class RegionMap extends Component {
       var regionLabels = <Col md={12}>No Regions Configured</Col>;
       if (isNonEmptyArray(regions)) {
         regionLabels = sortBy(regions, 'longitude').map((region) => {
-          const zoneList = region.zones.map((zone) => {
+          const zoneList = sortBy(region.zones, 'name').map((zone) => {
             return <div key={`zone-${zone.uuid}`} className="zone-name">{zone.name}</div>;
           });
           return (
@@ -84,7 +85,7 @@ export default class RegionMap extends Component {
               {regionMap}
             </Col>
           </Row>
-          <Row className="yb-map-labels">{regionLabels}</Row>
+          { (showRegionLabels && <Row className="yb-map-labels">{regionLabels}</Row>) || null }
         </span>
       );
     }

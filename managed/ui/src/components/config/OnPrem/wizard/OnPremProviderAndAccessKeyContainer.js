@@ -62,13 +62,13 @@ const mapStateToProps = (state, ownProps) => {
 const validate = values => {
   const errors = {};
   if (!isDefinedNotNull(values.name)) {
-    errors.name = 'Provider Name is Required';
+    errors.name = 'Required';
   }
   if (!isDefinedNotNull(values.sshUser)) {
-    errors.sshUser = 'SSH User is Required';
+    errors.sshUser = 'Required';
   }
   if (!isDefinedNotNull(values.privateKeyContent)) {
-    errors.privateKeyContent = 'Private Key Content is Required';
+    errors.privateKeyContent = 'Required';
   }
   return errors;
 };

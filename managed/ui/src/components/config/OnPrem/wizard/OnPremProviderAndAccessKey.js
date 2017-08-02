@@ -30,18 +30,18 @@ export default class OnPremProviderAndAccessKey extends Component {
   render() {
     const {handleSubmit, switchToJsonEntry} = this.props;
     var hostOptionsIndicator =
-      <i className={this.state.hostOptionsVisible ? "fa fa-chevron-up": "fa fa-chevron-down"} />;
+      <i className={this.state.hostOptionsVisible ? "fa fa-chevron-down": "fa fa-chevron-right"} />;
 
     let isReadOnly = this.props.isEditProvider;
     return (
       <div className="on-prem-provider-form-container">
         <form name="onPremConfigForm" onSubmit={handleSubmit(this.submitProviderKeyForm)}>
           <Row>
-            <Col lg={5}>
+            <Col lg={6}>
               <div className="form-right-aligned-labels">
-                <Field name="name" component={YBInputField} label="Provider Name" isReadOnly={isReadOnly}/>
-                <Field name={"sshUser"} component={YBInputField} label=" SSH User" isReadOnly={isReadOnly}/>
-                <Field name="privateKeyContent" component={YBTextArea} label="SSH Key" className="ssh-key-container" isReadOnly={isReadOnly}/>
+                <Field name="name" component={YBInputField} label="Provider Name" insetError={true} isReadOnly={isReadOnly}/>
+                <Field name="sshUser" component={YBInputField} label="SSH User" insetError={true} isReadOnly={isReadOnly}/>
+                <Field name="privateKeyContent" component={YBTextArea} label="SSH Key" insetError={true} className="ssh-key-container" isReadOnly={isReadOnly}/>
               </div>
               <div className="add-host-options-container" onClick={this.toggleAdditionalHostOptions}>
                 {hostOptionsIndicator} Additional Host Options

@@ -37,7 +37,14 @@ form a {
 }
 
 .yb-field-group {
+  position: relative;
   padding-bottom: 10px;
+
+  .embed-error {
+    position: absolute;
+    top: 3px;
+    right: 7px;
+  }
 }
 
 .form-right-aligned-labels {

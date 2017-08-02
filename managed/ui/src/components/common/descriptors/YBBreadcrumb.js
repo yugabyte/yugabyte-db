@@ -2,18 +2,20 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
+import { Link } from 'react-router';
 
-export default class YBLabelWithIcon extends Component {
+export default class YBBreadcrumb extends Component {
   static propTypes = {
     icon: PropTypes.string.isRequired,
   };
 
   render() {
-    const {icon} = this.props;
     return (
       <span>
-        <i className={icon}></i>
-        {this.props.children}
+        <Link {...this.props}>
+          {this.props.children}
+        </Link>
+        <i className="fa fa-angle-right fa-fw"></i>
       </span>
     );
   }
