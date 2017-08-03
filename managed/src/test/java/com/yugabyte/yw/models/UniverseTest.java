@@ -229,12 +229,13 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testToJSONSuccess() {
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    Universe u = Universe.create("Test Universe", UUID.randomUUID(),
+        defaultCustomer.getCustomerId());
 
     Region r1 = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
     Region r2 = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
     Region r3 = Region.create(defaultProvider, "region-3", "Region 3", "yb-image-1");
-    List<UUID> regionList = new ArrayList<UUID>();
+    List<UUID> regionList = new ArrayList<>();
     regionList.add(r1.uuid);
     regionList.add(r2.uuid);
     regionList.add(r3.uuid);
@@ -247,21 +248,26 @@ public class UniverseTest extends FakeDBApplication {
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
 
     JsonNode universeJson = u.toJson();
-    assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(), equalTo(u.universeUUID.toString())));
+    assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(),
+        equalTo(u.universeUUID.toString())));
     assertThat(universeJson.get("resources").asText(), is(notNullValue()));
     JsonNode resources = null;
     Exception ex = null;
     try {
-      resources = Json.toJson(getUniverseResourcesUtil(u.getNodes(), u.getUniverseDetails().userIntent));
-    }catch (Exception e) {
+      resources = Json.toJson(getUniverseResourcesUtil(u.getNodes(),
+          u.getUniverseDetails().userIntent));
+    } catch (Exception e) {
       ex = e;
     }
     assertEquals(null, ex);
-    assertThat(universeJson.get("resources").asText(), allOf(notNullValue(), equalTo(resources.asText())));
-    JsonNode userIntentJson =
-      universeJson.get("universeDetails").get("userIntent");
+    assertThat(universeJson.get("resources").asText(), allOf(notNullValue(),
+        equalTo(resources.asText())));
+    JsonNode userIntentJson = universeJson.get("universeDetails").get("userIntent");
     assertTrue(userIntentJson.get("regionList").isArray());
     assertEquals(3, userIntentJson.get("regionList").size());
+    JsonNode gflags = userIntentJson.get("gflags");
+    assertThat(gflags, is(notNullValue()));
+    assertTrue(gflags.isObject());
 
     JsonNode regionsNode = universeJson.get("regions");
     assertThat(regionsNode, is(notNullValue()));
@@ -270,21 +276,53 @@ public class UniverseTest extends FakeDBApplication {
 
     JsonNode providerNode = universeJson.get("provider");
     assertThat(providerNode, is(notNullValue()));
-    assertThat(providerNode.get("uuid").asText(), allOf(notNullValue(), equalTo(defaultProvider.uuid.toString())));
+    assertThat(providerNode.get("uuid").asText(), allOf(notNullValue(),
+        equalTo(defaultProvider.uuid.toString())));
   }
 
   @Test
   public void testToJSONWithNullRegionList() {
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    Universe u = Universe.create("Test Universe", UUID.randomUUID(),
+        defaultCustomer.getCustomerId());
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
 
     JsonNode universeJson = u.toJson();
-    assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(), equalTo(u.universeUUID.toString())));
-    JsonNode userIntentJson =
-            universeJson.get("universeDetails").get("userIntent");
+    assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(),
+        equalTo(u.universeUUID.toString())));
+    JsonNode userIntentJson = universeJson.get("universeDetails").get("userIntent");
     assertTrue(userIntentJson.get("regionList").isNull());
     JsonNode regionsNode = universeJson.get("regions");
     assertNull(regionsNode);
+    JsonNode providerNode = universeJson.get("provider");
+    assertNull(providerNode);
+  }
+
+  @Test
+  public void testToJSONWithNullGFlags() {
+    Universe u = Universe.create("Test Universe", UUID.randomUUID(),
+        defaultCustomer.getCustomerId());
+    UserIntent userIntent = new UserIntent();
+    userIntent.isMultiAZ = true;
+    userIntent.replicationFactor = 3;
+    userIntent.regionList = new ArrayList<>();
+    userIntent.gflags = null;
+
+    // SaveDetails in order to generate universeDetailsJson with null gflags
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
+
+    // Update in-memory user intent so userDetails no longer has null gflags, but json still does
+    UniverseDefinitionTaskParams udtp = u.getUniverseDetails();
+    udtp.userIntent.gflags = new HashMap<>();
+    u.setUniverseDetails(udtp);
+
+    // Verify returned json is generated from the non-json userDetails object
+    JsonNode universeJson = u.toJson();
+    assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(),
+        equalTo(u.universeUUID.toString())));
+    JsonNode userIntentJson = universeJson.get("universeDetails").get("userIntent");
+    JsonNode gflags = userIntentJson.get("gflags");
+    assertThat(gflags, is(notNullValue()));
+    assertTrue(gflags.isObject());
     JsonNode providerNode = universeJson.get("provider");
     assertNull(providerNode);
   }

@@ -19,7 +19,6 @@ import javax.persistence.Id;
 import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
 
-import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.ResourceUtil;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Common;
@@ -89,7 +88,7 @@ public class Universe extends Model {
     json.put("universeUUID", universeUUID.toString());
     json.put("name", name);
     json.put("creationDate", creationDate.toString());
-    json.set("universeDetails", Json.parse(universeDetailsJson));
+    json.set("universeDetails", Json.toJson(getUniverseDetails()));
     json.put("version", version);
     UserIntent userIntent = getUniverseDetails().userIntent;
     try {
@@ -97,20 +96,15 @@ public class Universe extends Model {
     } catch (Exception e) {
       json.set("resources", null);
     }
-    if (userIntent != null &&
-        userIntent.regionList != null &&
-        !userIntent.regionList.isEmpty()) {
-      List<Region> regions =
-        Region.find.where().idIn(userIntent.regionList).findList();
-
-      if (!regions.isEmpty()) {
-        json.set("regions", Json.toJson(regions));
-        // TODO: change this when we want to deploy across clouds.
-        json.set("provider", Json.toJson(regions.get(0).provider));
+    if (userIntent != null) {
+      if (userIntent.regionList != null && !userIntent.regionList.isEmpty()) {
+        List<Region> regions = Region.find.where().idIn(userIntent.regionList).findList();
+        if (!regions.isEmpty()) {
+          json.set("regions", Json.toJson(regions));
+          // TODO: change this when we want to deploy across clouds.
+          json.set("provider", Json.toJson(regions.get(0).provider));
+        }
       }
-    }
-
-    if (userIntent != null && !userIntent.gflags.isEmpty()) {
       json.set("gflags", Json.toJson(userIntent.gflags));
     }
 
