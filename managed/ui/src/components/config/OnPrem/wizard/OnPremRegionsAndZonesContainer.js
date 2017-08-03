@@ -10,20 +10,17 @@ import {isDefinedNotNull, isNonEmptyArray} from 'utils/ObjectUtils';
 const mapDispatchToProps = (dispatch, ownProps) => {
   return {
     setOnPremRegionsAndZones: (formData) => {
-      var payloadData = _.clone(ownProps.onPremJsonFormData);
-      var regionsPayload = formData.regionsZonesList.map(function(regionItem){
-        var regionLocation = regionItem.location.split(",");
+      let payloadData = _.clone(ownProps.onPremJsonFormData);
+      payloadData.regions = formData.regionsZonesList.map((regionItem) => {
+        let regionLocation = regionItem.location.split(",");
         return {
           code: regionItem.code,
-          zones: regionItem.zones.split(",").map(function(zoneItem){
-            return zoneItem.trim();
-          }),
+          zones: regionItem.zones.split(",").map(zoneItem => zoneItem.trim()),
           latitude: regionLocation[0],
           longitude: regionLocation[1],
           isBeingEdited: regionItem.isBeingEdited
         }
       });
-      payloadData.regions = regionsPayload;
       dispatch(setOnPremConfigData(payloadData));
       if (ownProps.isEditProvider) {
         ownProps.submitEditProvider(payloadData);

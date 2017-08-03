@@ -36,23 +36,33 @@ class OnPremListRegionsAndZones extends Component {
 
   isFieldReadOnly(fieldIdx) {
     const {fields, isEditProvider} = this.props;
-    return isEditProvider && (!isDefinedNotNull(fields.get(fieldIdx).isBeingEdited) || !fields.get(fieldIdx).isBeingEdited);
+    return isEditProvider && (!isDefinedNotNull(fields.get(fieldIdx).isBeingEdited) ||
+      !fields.get(fieldIdx).isBeingEdited);
   }
 
   render() {
     const {fields} = this.props;
-    var self = this;
+    let self = this;
     // TODO Replace this with API lookup to local DB City to LatLong Conversion
-    var onPremRegionLocations = [
+    let onPremRegionLocations = [
       <option value="" key={0}>Select</option>,
-      <option value="37, -121" key={1}>US West</option>,
-      <option value="40, -74" key={2}>US East</option>,
-      <option value="48, -118" key={3}>US North</option>,
-      <option value="28, -99" key={4}>US South</option>,
-    ]
+      <option value="-29, 148" key={1}>Australia</option>,
+      <option value="-22, -43" key={2}>Brazil</option>,
+      <option value="31.2, 121.5" key={3}>China</option>,
+      <option value="46, 25" key={4}>EU East</option>,
+      <option value="48, 3" key={5}>EU West</option>,
+      <option value="36, 139" key={6}>Japan</option>,
+      <option value="-43, 171" key={7}>New Zealand</option>,
+      <option value="14, 101" key={8}>SE Asia</option>,
+      <option value="18.4, 78.4" key={9}>South Asia</option>,
+      <option value="36.8, -79" key={10}>US East</option>,
+      <option value="48, -118" key={11}>US North</option>,
+      <option value="28, -99" key={12}>US South</option>,
+      <option value="37, -121" key={13}>US West</option>
+    ];
     return (
       <div>
-        { fields.map(function(fieldItem, fieldIdx){
+        { fields.map((fieldItem, fieldIdx) => {
           let isReadOnly = self.isFieldReadOnly(fieldIdx);
           return (
             <Row key={`region-zone-${fieldIdx}`}>
@@ -70,8 +80,7 @@ class OnPremListRegionsAndZones extends Component {
               </Col>
             </Row>
           )
-        })
-        }
+        }) }
         <Row>
           <Col lg={1}>
             <i className="fa fa-plus-circle fa-2x on-prem-row-add-btn" onClick={this.addRegionZoneTypeRow}/>
@@ -81,7 +90,7 @@ class OnPremListRegionsAndZones extends Component {
           </Col>
         </Row>
       </div>
-    )
+    );
   }
 }
 

@@ -96,7 +96,8 @@ public class RegionController extends AuthenticatedController {
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
-    String regionCode = formData.get().code;
+    RegionFormData form = formData.get();
+    String regionCode = form.code;
 
     Provider provider = Provider.get(customerUUID, providerUUID);
     if (provider == null) {
@@ -122,29 +123,31 @@ public class RegionController extends AuthenticatedController {
         	JsonNode zoneInfo = cloudQueryHelper.getZones(region);
         	if (zoneInfo.has("error") || !zoneInfo.has(regionCode)) {
         		region.delete();
-        		return ApiResponse.error(INTERNAL_SERVER_ERROR, "Region Bootstrap failed. Unable to fetch zones for "+regionCode);
+        		String errMsg = "Region Bootstrap failed. Unable to fetch zones for " + regionCode;
+        		return ApiResponse.error(INTERNAL_SERVER_ERROR, errMsg);
         	}
         	List<String> zones = Json.fromJson(zoneInfo.get(regionCode), List.class);
         	region.zones = new HashSet<>();
         	zones.forEach(zone -> {
-        		region.zones.add(AvailabilityZone.create(region, zone, zone, "subnet-"+regionCode));
+        		region.zones.add(AvailabilityZone.create(region, zone, zone, "subnet-" + regionCode));
         	});
         } else {
         	// TODO: Move this to commissioner framework, Bootstrap the region with VPC, subnet etc.
-	        JsonNode vpcInfo = networkManager.bootstrap(region.uuid, formData.get().hostVPCId);
+	        JsonNode vpcInfo = networkManager.bootstrap(region.uuid, form.hostVPCId);
 	        if (vpcInfo.has("error") || !vpcInfo.has(regionCode)) {
 	          region.delete();
 	          return ApiResponse.error(INTERNAL_SERVER_ERROR, "Region Bootstrap failed.");
 	        }
-	        Map<String, String> zoneSubnets =
-	            Json.fromJson(vpcInfo.get(regionCode).get("zones"), Map.class);
+	        Map<String, String> zoneSubnets = Json.fromJson(vpcInfo.get(regionCode).get("zones"),
+              Map.class);
 	        region.zones = new HashSet<>();
 	        zoneSubnets.forEach((zone, subnet) -> {
 	          region.zones.add(AvailabilityZone.create(region, zone, zone, subnet));
 	        });
         } 
       } else {
-        region = Region.create(provider, regionCode, formData.get().name, formData.get().ybImage, formData.get().latitude, formData.get().longitude);
+        region = Region.create(provider, regionCode, form.name, form.ybImage, form.latitude,
+            form.longitude);
       }
       return ApiResponse.success(region);
     } catch (Exception e) {
