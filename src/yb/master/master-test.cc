@@ -861,8 +861,7 @@ TEST_F(MasterTest, TestNamespaces) {
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_NOT_FOUND);
     ASSERT_EQ(resp.error().status().code(), AppStatusPB::NOT_FOUND);
-    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
-        "The namespace does not exist");
+    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(), "Namespace name not found");
   }
   {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
@@ -1042,8 +1041,8 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   // Try to create a table with an unknown namespace.
   {
     Status s = CreateTable(kTableName, kTableSchema, "nonexistingns");
-    ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
-    ASSERT_STR_CONTAINS(s.ToString(), "Invalid namespace id or namespace name");
+    ASSERT_TRUE(s.IsNotFound()) << s.ToString();
+    ASSERT_STR_CONTAINS(s.ToString(), "Namespace name not found");
   }
 
   // List tables, should show 1 table.
@@ -1096,9 +1095,8 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_NOT_FOUND);
-    ASSERT_EQ(resp.error().status().code(), AppStatusPB::INVALID_ARGUMENT);
-    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
-        "Invalid namespace id or namespace name");
+    ASSERT_EQ(resp.error().status().code(), AppStatusPB::NOT_FOUND);
+    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(), "Namespace name not found");
   }
   ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
@@ -1119,9 +1117,8 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_NOT_FOUND);
-    ASSERT_EQ(resp.error().status().code(), AppStatusPB::INVALID_ARGUMENT);
-    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
-        "Invalid namespace id or namespace name");
+    ASSERT_EQ(resp.error().status().code(), AppStatusPB::NOT_FOUND);
+    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(), "Namespace identifier not found");
   }
   ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());

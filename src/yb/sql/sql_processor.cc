@@ -148,6 +148,7 @@ CHECKED_STATUS SqlProcessor::Analyze(
   // when the table is not found in which case no cache is used.
   if (reparse != nullptr &&
       sem_errcode != ErrorCode::SUCCESS &&
+      sem_errcode != ErrorCode::KEYSPACE_NOT_FOUND &&
       sem_errcode != ErrorCode::TABLE_NOT_FOUND &&
       sem_errcode != ErrorCode::TYPE_NOT_FOUND &&
       cache_used) {

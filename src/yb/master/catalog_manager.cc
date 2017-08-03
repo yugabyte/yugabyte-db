@@ -223,6 +223,17 @@ using tserver::RemoteBootstrapClient;
 using tserver::TabletServerErrorPB;
 using master::MasterServiceProxy;
 
+#define RETURN_NAMESPACE_NOT_FOUND(s, resp)                                       \
+  do {                                                                            \
+    if (PREDICT_FALSE(!s.ok())) {                                                 \
+      if (s.IsNotFound()) {                                                       \
+        SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s); \
+      }                                                                           \
+      return s;                                                                   \
+    }                                                                             \
+  } while (false)
+
+
 ////////////////////////////////////////////////////////////
 // Table Loader
 ////////////////////////////////////////////////////////////
@@ -1139,13 +1150,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
     // Lookup the namespace and verify if it exists.
     TRACE("Looking up namespace");
-    RETURN_NOT_OK(FindNamespace(req.namespace_(), &ns));
-    if (ns == nullptr) {
-      s = STATUS(InvalidArgument,
-          "Invalid namespace id or namespace name", req.DebugString());
-      SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
-      return s;
-    }
+    RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req.namespace_(), &ns), resp);
 
     namespace_id = ns->id();
   }
@@ -1529,10 +1534,16 @@ Status CatalogManager::FindNamespace(const NamespaceIdentifierPB& ns_identifier,
 
   if (ns_identifier.has_id()) {
     *ns_info = FindPtrOrNull(namespace_ids_map_, ns_identifier.id());
+    if (*ns_info == nullptr) {
+      return STATUS(NotFound, "Namespace identifier not found", ns_identifier.id());
+    }
   } else if (ns_identifier.has_name()) {
     *ns_info = FindPtrOrNull(namespace_names_map_, ns_identifier.name());
+    if (*ns_info == nullptr) {
+      return STATUS(NotFound, "Namespace name not found", ns_identifier.name());
+    }
   } else {
-    return STATUS(InvalidArgument, "Neither namespace id or namespace name are specified");
+    return STATUS(NotFound, "Neither namespace id or namespace name are specified");
   }
   return Status::OK();
 }
@@ -1833,13 +1844,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     // Lookup the new namespace and verify if it exists.
     TRACE("Looking up new namespace");
     scoped_refptr<NamespaceInfo> ns;
-    RETURN_NOT_OK(FindNamespace(req->new_namespace(), &ns));
-    if (ns == nullptr) {
-      Status s = STATUS(InvalidArgument,
-          "Invalid namespace id or namespace name", req->DebugString());
-      SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
-      return s;
-    }
+    RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->new_namespace(), &ns), resp);
 
     new_namespace_id = ns->id();
   }
@@ -2056,13 +2061,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     scoped_refptr<NamespaceInfo> ns;
 
     // Lookup the namespace and verify if it exists.
-    RETURN_NOT_OK(FindNamespace(req->namespace_(), &ns));
-    if (ns == nullptr) {
-      Status s = STATUS(InvalidArgument,
-          "Invalid namespace id or namespace name", req->DebugString());
-      SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
-      return s;
-    }
+    RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
 
     namespace_id = ns->id();
   }
@@ -2556,12 +2555,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
 
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up namespace");
-  RETURN_NOT_OK(FindNamespace(req->namespace_(), &ns));
-  if (ns == nullptr) {
-    Status s = STATUS(NotFound, "The namespace does not exist", req->DebugString());
-    SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
-    return s;
-  }
+  RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
 
   TRACE("Locking namespace");
   NamespaceMetadataLock l(ns.get(), NamespaceMetadataLock::WRITE);
@@ -2666,12 +2660,7 @@ Status CatalogManager::CreateUDType(const CreateUDTypeRequestPB* req,
   // Lookup the namespace and verify if it exists.
   if (req->has_namespace_()) {
     TRACE("Looking up namespace");
-        RETURN_NOT_OK(FindNamespace(req->namespace_(), &ns));
-    if (ns == nullptr) {
-      s = STATUS(InvalidArgument, "Invalid namespace id or namespace name", req->DebugString());
-      SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
-      return s;
-    }
+    RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
   }
 
   {
@@ -2753,13 +2742,7 @@ Status CatalogManager::DeleteUDType(const DeleteUDTypeRequestPB* req,
   if (req->type().has_namespace_()) {
     // Lookup the namespace and verify if it exists.
     TRACE("Looking up namespace");
-        RETURN_NOT_OK(FindNamespace(req->type().namespace_(), &ns));
-    if (ns == nullptr) {
-      Status s = STATUS(InvalidArgument, "Invalid namespace id or namespace name",
-          req->DebugString());
-      SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
-      return s;
-    }
+    RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->type().namespace_(), &ns), resp);
   }
 
   {
@@ -2853,14 +2836,8 @@ Status CatalogManager::GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
   } else if (req->type().has_type_name() && req->type().has_namespace_()) {
     // Lookup the type and verify if it exists.
     TRACE("Looking up namespace");
-        RETURN_NOT_OK(FindNamespace(req->type().namespace_(), &ns));
-    if (ns == nullptr) {
-      s = STATUS(InvalidArgument,
-          "Invalid namespace id or name for (user-defined) type",
-          req->DebugString());
-      SetupError(resp->mutable_error(), MasterErrorPB::TYPE_NOT_FOUND, s);
-      return s;
-    }
+    RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->type().namespace_(), &ns), resp);
+
     tp = FindPtrOrNull(udtype_names_map_, std::make_pair(ns->id(), req->type().type_name()));
   }
 
@@ -2903,13 +2880,7 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
     scoped_refptr<NamespaceInfo> ns;
 
     // Lookup the namespace and verify that it exists.
-    RETURN_NOT_OK(FindNamespace(req->namespace_(), &ns));
-    if (ns == nullptr) {
-      Status s = STATUS(InvalidArgument,
-          "Invalid namespace id or namespace name", req->DebugString());
-      SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
-      return s;
-    }
+    RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
   }
 
   boost::shared_lock<LockType> l(lock_);

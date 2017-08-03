@@ -177,8 +177,7 @@ CHECKED_STATUS PTUserDefinedType::Analyze(SemContext *sem_context) {
 
   yql_type_ = sem_context->GetUDType(ybname.namespace_name(), ybname.table_name());
   if (yql_type_ == nullptr) {
-    return sem_context->Error(loc(), ErrorCode::INVALID_TABLE_DEFINITION,
-        "Could not find user defined type");
+    return sem_context->Error(loc(), ErrorCode::TYPE_NOT_FOUND, "Could not find user defined type");
   }
 
   return Status::OK();

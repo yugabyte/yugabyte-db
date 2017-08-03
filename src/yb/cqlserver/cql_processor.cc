@@ -198,6 +198,9 @@ CQLResponse *CQLProcessor::ProcessPrepare(const PrepareRequest& req) {
 CQLResponse* CQLProcessor::ProcessExecute(const ExecuteRequest& req) {
   VLOG(1) << "EXECUTE " << b2a_hex(req.query_id());
   stmt_ = service_impl_->GetPreparedStatement(req.query_id());
+  // Apart from saving the reference to the statement in "stmt_" for StatementExecuted callback,
+  // keep another reference locally to avoid it being deleted until ExecuteAsync returns.
+  const shared_ptr<const CQLStatement> stmt = stmt_;
   if (stmt_ == nullptr || !stmt_->ExecuteAsync(this, req.params(), statement_executed_cb_)) {
     // If the query is not found or it is not prepared successfully, return UNPREPARED error. Upon
     // receiving the error, the client will reprepare the query and execute again.
@@ -221,6 +224,9 @@ CQLResponse* CQLProcessor::ProcessBatch(const BatchRequest& req) {
   if (query.is_prepared) {
     VLOG(1) << "BATCH EXECUTE " << query.query_id;
     stmt_ = service_impl_->GetPreparedStatement(query.query_id);
+    // Apart from saving the reference to the statement in "stmt_" for StatementExecuted callback,
+    // keep another reference locally to avoid it being deleted until ExecuteAsync returns.
+    const shared_ptr<const CQLStatement> stmt = stmt_;
     if (stmt_ == nullptr || !stmt_->ExecuteAsync(this, query.params, statement_executed_cb_)) {
       // If the query is not found or it is not prepared successfully, return UNPREPARED error. Upon
       // receiving the error, the client will reprepare the query and execute again.

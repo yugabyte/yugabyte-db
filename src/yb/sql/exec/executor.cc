@@ -208,12 +208,15 @@ void Executor::ExecPTNodeAsync(const PTCreateType *tnode, StatementExecutedCallb
     field_types.push_back(field->yql_type());
   }
 
-  Status exec_st = exec_context_->CreateUDType(keyspace_name, type_name, field_names, field_types);
+  Status exec_status =
+      exec_context_->CreateUDType(keyspace_name, type_name, field_names, field_types);
 
-  if (!exec_st.ok()) {
+  if (!exec_status.ok()) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
-    if (exec_st.IsAlreadyPresent()) {
+    if (exec_status.IsAlreadyPresent()) {
       error_code = ErrorCode::DUPLICATE_TYPE;
+    } else if (exec_status.IsNotFound()) {
+      error_code = ErrorCode::KEYSPACE_NOT_FOUND;
     }
 
     if (tnode->create_if_not_exists() && error_code == ErrorCode::DUPLICATE_TYPE) {
@@ -221,7 +224,7 @@ void Executor::ExecPTNodeAsync(const PTCreateType *tnode, StatementExecutedCallb
     }
 
     CB_RETURN(
-        cb, exec_context_->Error(tnode->name_loc(), exec_st.ToString().c_str(), error_code));
+        cb, exec_context_->Error(tnode->name_loc(), exec_status.ToString().c_str(), error_code));
   }
   cb.Run(Status::OK(),
          std::make_shared<SchemaChangeResult>("CREATED", "TYPE", keyspace_name, type_name));
@@ -288,7 +291,7 @@ void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCall
   }
 
   TableProperties table_properties;
-  if(!tnode->ToTableProperties(&table_properties).ok()) {
+  if (!tnode->ToTableProperties(&table_properties).ok()) {
     CB_RETURN(
         cb, exec_context_->Error(
                 tnode->columns_loc(), exec_status.ToString().c_str(),
@@ -314,6 +317,8 @@ void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCall
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
     if (exec_status.IsAlreadyPresent()) {
       error_code = ErrorCode::DUPLICATE_TABLE;
+    } else if (exec_status.IsNotFound()) {
+      error_code = ErrorCode::KEYSPACE_NOT_FOUND;
     } else if (exec_status.IsInvalidArgument()) {
       error_code = ErrorCode::INVALID_TABLE_DEFINITION;
     }
@@ -1106,7 +1111,7 @@ void Executor::ExecPTNodeAsync(const PTCreateKeyspace *tnode, StatementExecutedC
   if (!exec_status.ok()) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
 
-    if(exec_status.IsAlreadyPresent()) {
+    if (exec_status.IsAlreadyPresent()) {
       if (tnode->create_if_not_exists()) {
         // Case: CREATE KEYSPACE IF NOT EXISTS name;
         CB_RETURN(cb, Status::OK());
@@ -1130,7 +1135,7 @@ void Executor::ExecPTNodeAsync(const PTUseKeyspace *tnode, StatementExecutedCall
   if (!exec_status.ok()) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
 
-    if(exec_status.IsNotFound()) {
+    if (exec_status.IsNotFound()) {
       error_code = ErrorCode::KEYSPACE_NOT_FOUND;
     }
 
