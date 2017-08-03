@@ -293,6 +293,7 @@ public class NodeManager extends DevopsBase {
         if (nodeTaskParam.deviceInfo != null) {
           commandArgs.addAll(getDeviceArgs(nodeTaskParam));
         }
+        commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam));
         break;
       }
       case Control:
