@@ -137,6 +137,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.numNodes = numNodes;
       newUserIntent.ybSoftwareVersion = ybSoftwareVersion;
       newUserIntent.accessKeyCode = accessKeyCode;
+      newUserIntent.gflags = gflags;
       return newUserIntent;
     }
 
@@ -151,7 +152,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           instanceType.equals(other.instanceType) &&
           numNodes == other.numNodes &&
           ybSoftwareVersion.equals(other.ybSoftwareVersion) &&
-          (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))) {
+          (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode)) &&
+          gflags.equals(other.gflags)) {
          return true;
       }
       return false;
