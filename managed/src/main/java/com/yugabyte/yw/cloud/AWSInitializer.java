@@ -243,6 +243,8 @@ public class AWSInitializer {
                   matches(productAttrs, "storage", FilterOp.Contains, "EBS"));
       // Make sure it is current generation.
       include &= matches(productAttrs, "currentGeneration", FilterOp.Equals, "Yes");
+      // Make sure tenancy is shared
+      include &= matches(productAttrs, "tenancy", FilterOp.Equals, "Shared");
 
       if (!include) {
         if (enableVerboseLogging) {
@@ -296,7 +298,7 @@ public class AWSInitializer {
       if (parts.length < 4) {
         if (!productAttrs.get("storage").equals("EBS only")) {
           String msg = "Volume type not specified in product sku=" + productAttrs.get("sku") +
-                       ", storage={" + productAttrs.get("storage") + "}";
+              ", storage={" + productAttrs.get("storage") + "}";
           LOG.error(msg);
           throw new UnsupportedOperationException(msg);
         } else {
@@ -305,15 +307,10 @@ public class AWSInitializer {
           volumeSizeGB = 250;
           volumeType = VolumeType.EBS;
         }
-      } else {
-        volumeCount = Integer.parseInt(parts[0]);
-        volumeSizeGB = Integer.parseInt(parts[2]);
-        volumeType = VolumeType.valueOf(parts[3]);
-      }
-      // TODO: remove this once aws pricing api is fixed
-      // TODO: see discussion: https://forums.aws.amazon.com/thread.jspa?messageID=783507
-      String[] instanceTypeParts = instanceTypeCode.split("\\.");
-      if (instanceTypeCode.startsWith("i3")) {
+      } else if (instanceTypeCode.startsWith("i3")) {
+        // TODO: remove this once aws pricing api is fixed
+        // TODO: see discussion: https://forums.aws.amazon.com/thread.jspa?messageID=783507
+        String[] instanceTypeParts = instanceTypeCode.split("\\.");
         volumeType = VolumeType.SSD;
         switch (instanceTypeParts[1]) {
           case "large":
@@ -337,10 +334,15 @@ public class AWSInitializer {
             volumeSizeGB = 1900;
             break;
           case "16xlarge":
+          default:
             volumeCount = 8;
             volumeSizeGB = 1900;
             break;
         }
+      } else {
+        volumeCount = Integer.parseInt(parts[0]);
+        volumeSizeGB = Integer.parseInt(parts[2]);
+        volumeType = VolumeType.valueOf(parts[3]);
       }
 
       // Fill up all the per-region details.
