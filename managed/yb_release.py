@@ -94,28 +94,18 @@ try:
                     yugabyte_tarfile.extract(archive_file, packages_folder)
                     log_message(logging.INFO, archive_file.name)
 
-            # Get the YW UI code from the tar
-            yugaware_tarfile = tarfile.open(yugaware_package)
-            ui_files = [f for f in yugaware_tarfile.getmembers() if f.name.startswith("public/")]
-            yugaware_tarfile.extractall(path=packages_folder, members=ui_files)
-            shutil.move(os.path.join(packages_folder, "public"), "ui/build")
-            log_message(logging.INFO, "Package and publish yugaware docker image locally")
+            log_message(logging.INFO, "Package and publish YugaWare docker image locally")
             output = check_output(["docker", "build", "-t", "yugaware", "."])
-            log_message(logging.INFO, "Package and publish yugaware-ui docker image locally")
-            output = check_output(["docker", "build", "-t", "yugaware-ui", "ui"])
 
             if args.publish and args.tag:
-                log_message(logging.INFO, "Tag Yugaware and Yugaware UI with replicated urls")
+                log_message(logging.INFO, "Publish YugaWare docker image to Quay.io")
                 docker_push_to_registry("yugaware", "latest", args.tag)
                 docker_push_to_registry("yugaware", "latest", "latest")
-                docker_push_to_registry("yugaware-ui", "latest", args.tag)
-                docker_push_to_registry("yugaware-ui", "latest", "latest")
         except YBOpsRuntimeError as ye:
             log_message(logging.ERROR, ye)
             log_message(logging.ERROR, "Invalid release tag provided.")
         finally:
             shutil.rmtree(packages_folder)
-            shutil.rmtree(os.path.join("ui", "build"))
 
     elif args.type == "replicated":
         # Validated if the tag is valid release
