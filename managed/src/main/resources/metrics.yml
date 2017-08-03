@@ -220,7 +220,6 @@ redis_yb_latency:
 tserver_ops_latency:
   metric: "collectd_yb_tserver_counter_total"
   function: "avg"
-  operator: "< 25000"
   filters:
     type: "rpc_TabletServerService_Scan.avg|rpc_TabletServerService_Write.avg|rpc_TabletServerService_Read.avg"
   group_by: "type"
@@ -240,7 +239,6 @@ tserver_write_latency:
   function: "avg"
   filters:
     type: "rpc_TabletServerService_Write.avg"
-  operator: "< 25000"
   group_by: "exported_instance"
   layout:
     title: "YugaByte Write Latency"
@@ -254,7 +252,6 @@ tserver_write_latency:
 tserver_read_latency:
   metric: "collectd_yb_tserver_counter_total"
   function: "avg"
-  operator: "< 25000"
   filters:
     type: "rpc_TabletServerService_Read.avg"
   group_by: "exported_instance"
@@ -270,7 +267,6 @@ tserver_read_latency:
 tserver_handler_latency:
   metric: "collectd_yb_tserver_counter_total"
   function: "avg"
-  operator: "< 25000"
   filters:
     type: "rpc_incoming_queue_time.avg|handler_latency_outbound_call_queue_time.avg|handler_latency_outbound_transfer.avg"
   group_by: "type"
@@ -429,7 +425,6 @@ tserver_spinlock_server:
 tserver_log_latency:
   metric: "collectd_yb_tserver_counter_total"
   function: "avg"
-  operator: "< 25000"
   filters:
     type: "log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg"
   group_by: "type"
@@ -791,7 +786,6 @@ cql_server_rpc_per_second:
 cql_sql_latency:
   metric: "collectd_yb_cql_counter_total"
   function: "avg"
-  operator: "< 25000"
   filters:
     type: "rpc_SQLProcessor_SelectStmt.avg|rpc_SQLProcessor_InsertStmt.avg|rpc_SQLProcessor_UpdateStmt.avg|rpc_SQLProcessor_DeleteStmt.avg|rpc_SQLProcessor_OtherStmts.avg"
   group_by: "type"
@@ -847,7 +841,6 @@ cql_yb_latency:
 cql_reactor_latency:
   metric: "collectd_yb_cql_counter_total"
   function: "avg"
-  operator: "< 25000"
   filters:
     type: "rpc_incoming_queue_time.avg|handler_latency_outbound_transfer.avg|handler_latency_outbound_call_queue_time.avg"
   group_by: "type"
