@@ -167,7 +167,7 @@ public class Main {
     long actualNumToWrite = AppBase.appConfig.numKeysToWrite;
     LOG.info("Setup step for pure reads.");
 
-    AppBase.appConfig.numKeysToWrite = AppBase.NUM_UNIQUE_KEYS;
+    AppBase.appConfig.numKeysToWrite = AppBase.appConfig.numUniqueKeysToWrite;
     List<IOPSThread> writeThreads = new ArrayList<IOPSThread>();
     for (int idx = 0; idx < 100; idx++) {
       writeThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(false), IOType.Write));

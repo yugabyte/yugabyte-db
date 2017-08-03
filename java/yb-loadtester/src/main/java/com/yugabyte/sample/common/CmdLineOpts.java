@@ -259,7 +259,10 @@ public class CmdLineOpts {
     options.addOption("num_writes", true, "The total number of writes to perform.");
     options.addOption("num_reads", true, "The total number of reads to perform.");
     options.addOption("value_size", true, "Size in bytes of the value. " +
-        "The bytes are random.");
+        "The bytes are random. Value size should be more than 5 (9) bytes for binary (ascii) " +
+        "values in order to have checksum for read verification. First byte is used as a " +
+        "binary/ascii marker. If value size is more than 16 bytes, random content is prepended " +
+        "with \"val: $key\" string, so we can check if value matches the key during read.");
     options.addOption("use_ascii_values", false, "[RedisKeyValue] If " +
         "specified, values are restricted to ASCII strings.");
     options.addOption("table_ttl_seconds", true, "The TTL in seconds to create the table with.");

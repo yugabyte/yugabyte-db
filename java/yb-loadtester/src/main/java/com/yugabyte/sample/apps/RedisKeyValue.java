@@ -37,6 +37,9 @@ public class RedisKeyValue extends AppBase {
   static final int CHECKSUM_SIZE = 4;
   // For ASCII values we store checksum in hex string.
   static final int CHECKSUM_ASCII_SIZE = CHECKSUM_SIZE * 2;
+  // If value size is more than VALUE_SIZE_TO_USE_PREFIX we add prefix in "val: $key" format
+  // in order to check if value matches the key during read.
+  static final int VALUE_SIZE_TO_USE_PREFIX = 16;
   static final byte ASCII_MARKER = (byte) 'A';
   static final byte BINARY_MARKER = (byte) 'B';
 
@@ -44,16 +47,33 @@ public class RedisKeyValue extends AppBase {
     buffer = new byte[appConfig.valueSize];
   }
 
-  byte[] getRandomValue(Key key) {
-    final int contentSize = appConfig.valueSize -
-        (appConfig.restrictValuesToAscii ? CHECKSUM_ASCII_SIZE : CHECKSUM_SIZE);
-    final byte[] keyValueBytes = key.getValueStr().getBytes();
-    System.arraycopy(keyValueBytes, 0, buffer, 0,
-        Math.min(contentSize, keyValueBytes.length));
+  private static boolean isUseChecksum(int valueSize, int checksumSize) {
+    return valueSize > checksumSize + 1;
+  }
 
-    int i = keyValueBytes.length;
+  private static boolean isUsePrefix(int valueSize) {
+    return valueSize > VALUE_SIZE_TO_USE_PREFIX;
+  }
+
+  byte[] getRandomValue(Key key) {
+    buffer[0] = appConfig.restrictValuesToAscii ? ASCII_MARKER : BINARY_MARKER;
+    final int checksumSize = appConfig.restrictValuesToAscii ? CHECKSUM_ASCII_SIZE : CHECKSUM_SIZE;
+    final boolean isUseChecksum = isUseChecksum(appConfig.valueSize, checksumSize);
+    final int contentSize = appConfig.valueSize - (isUseChecksum ? checksumSize : 0);
+    int i = 1;
+    if (isUsePrefix(appConfig.valueSize)) {
+      final byte[] keyValueBytes = key.getValueStr().getBytes();
+
+      // Beginning of value is not random, but has format "<MARKER><PREFIX>", where prefix is
+      // "val: $key" (or part of it in case small value size). This is needed to verify expected
+      // value during read.
+      final int prefixSize = Math.min(contentSize - 1 /* marker */, keyValueBytes.length);
+      System.arraycopy(keyValueBytes, 0, buffer, 1, prefixSize);
+      i += prefixSize;
+    }
+
+    // Generate randomly the rest of payload leaving space for checksum.
     if (appConfig.restrictValuesToAscii) {
-      buffer[i++] = ASCII_MARKER;
       final int ASCII_START = 32;
       final int ASCII_RANGE_SIZE = 95;
       while (i < contentSize) {
@@ -66,7 +86,6 @@ public class RedisKeyValue extends AppBase {
         }
       }
     } else {
-      buffer[i++] = BINARY_MARKER;
       while (i < contentSize) {
         for (int r = random.nextInt(), n = Math.min(Integer.BYTES, contentSize - i); n > 0;
              r >>= Byte.SIZE, n--)
@@ -74,20 +93,22 @@ public class RedisKeyValue extends AppBase {
       }
     }
 
-    checksum.reset();
-    checksum.update(buffer, 0, contentSize);
-    long cs = checksum.getValue();
-    if (appConfig.restrictValuesToAscii) {
-      String csHexStr = Long.toHexString(cs);
-      // Prepend zeros
-      while (i < appConfig.valueSize - csHexStr.length()) {
-        buffer[i++] = (byte) '0';
-      }
-      System.arraycopy(csHexStr.getBytes(), 0, buffer, i, csHexStr.length());
-    } else {
-      while (i < appConfig.valueSize) {
-        buffer[i++] = (byte) cs;
-        cs >>= Byte.SIZE;
+    if (isUseChecksum) {
+      checksum.reset();
+      checksum.update(buffer, 0, contentSize);
+      long cs = checksum.getValue();
+      if (appConfig.restrictValuesToAscii) {
+        String csHexStr = Long.toHexString(cs);
+        // Prepend zeros
+        while (i < appConfig.valueSize - csHexStr.length()) {
+          buffer[i++] = (byte) '0';
+        }
+        System.arraycopy(csHexStr.getBytes(), 0, buffer, i, csHexStr.length());
+      } else {
+        while (i < appConfig.valueSize) {
+          buffer[i++] = (byte) cs;
+          cs >>= Byte.SIZE;
+        }
       }
     }
 
@@ -95,34 +116,41 @@ public class RedisKeyValue extends AppBase {
   }
 
   void verifyRandomValue(Key key, byte[] value) {
-    String keyValueStr = key.getValueStr();
-    String prefix = new String(value, 0, keyValueStr.getBytes().length);
-    // Check prefix.
-    if (!prefix.equals(keyValueStr)) {
-      LOG.fatal("Value mismatch for key: " + key.toString() +
-          ", expected to start with: " + keyValueStr +
-          ", got: " + prefix);
-    }
-    final boolean isAscii = value[keyValueStr.getBytes().length] == ASCII_MARKER;
-    // Verify checksum.
+    final boolean isAscii = value[0] == ASCII_MARKER;
     final int checksumSize = isAscii ? CHECKSUM_ASCII_SIZE : CHECKSUM_SIZE;
-    checksum.reset();
-    checksum.update(value, 0, value.length - checksumSize);
-    long expectedCs;
-    if (isAscii) {
-      String csHexStr = new String(value, value.length - checksumSize, checksumSize);
-      expectedCs = Long.parseUnsignedLong(csHexStr, 16);
-    } else {
-      expectedCs = 0;
-      for (int i = value.length - 1; i >= value.length - checksumSize; --i) {
-        expectedCs <<= Byte.SIZE;
-        expectedCs |= (value[i] & 0xFF);
+    final boolean hasChecksum = isUseChecksum(value.length, checksumSize);
+    if (isUsePrefix(value.length)) {
+      final String keyValueStr = key.getValueStr();
+      final int prefixSize = Math.min(keyValueStr.length(), value.length -
+          (hasChecksum ? checksumSize : 0) - 1 /* marker */);
+      final String prefix = new String(value, 1, prefixSize);
+      // Check prefix.
+      if (!prefix.equals(keyValueStr.substring(0, prefixSize))) {
+        LOG.fatal("Value mismatch for key: " + key.toString() +
+            ", expected to start with: " + keyValueStr +
+            ", got: " + prefix);
       }
     }
-    if (checksum.getValue() != expectedCs) {
-      LOG.fatal("Value mismatch for key: " + key.toString() +
-          ", expected checksum: " + expectedCs +
-          ", got: " + checksum.getValue());
+    if (hasChecksum) {
+      // Verify checksum.
+      checksum.reset();
+      checksum.update(value, 0, value.length - checksumSize);
+      long expectedCs;
+      if (isAscii) {
+        String csHexStr = new String(value, value.length - checksumSize, checksumSize);
+        expectedCs = Long.parseUnsignedLong(csHexStr, 16);
+      } else {
+        expectedCs = 0;
+        for (int i = value.length - 1; i >= value.length - checksumSize; --i) {
+          expectedCs <<= Byte.SIZE;
+          expectedCs |= (value[i] & 0xFF);
+        }
+      }
+      if (checksum.getValue() != expectedCs) {
+        LOG.fatal("Value mismatch for key: " + key.toString() +
+            ", expected checksum: " + expectedCs +
+            ", got: " + checksum.getValue());
+      }
     }
   }
 
