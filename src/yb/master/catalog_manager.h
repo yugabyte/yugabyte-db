@@ -1112,8 +1112,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Start a task to change the config to add an additional voter because the
   // specified tablet is under-replicated.
   void SendAddServerRequest(
-      const scoped_refptr<TabletInfo>& tablet, const consensus::ConsensusStatePB& cstate,
-      const string& change_config_ts_uuid);
+      const scoped_refptr<TabletInfo>& tablet, consensus::RaftPeerPB::MemberType member_type,
+      const consensus::ConsensusStatePB& cstate, const string& change_config_ts_uuid);
 
   void GetPendingServerTasksUnlocked(const TableId &table_uuid,
                                      TabletToTabletServerMap *add_replica_tasks_map,

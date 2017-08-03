@@ -1318,8 +1318,8 @@ void ClusterLoadBalancer::SendReplicaChanges(
     // always doing the right thing.
     CHECK_EQ(state_->pending_add_replica_tasks_[tablet->table()->id()].count(tablet->tablet_id()),
              0);
-    catalog_manager_->SendAddServerRequest(
-        tablet, l.data().pb.committed_consensus_state(), ts_uuid);
+    catalog_manager_->SendAddServerRequest(tablet, consensus::RaftPeerPB::PRE_VOTER,
+        l.data().pb.committed_consensus_state(), ts_uuid);
   } else {
     // If the replica is also the leader, first step it down and then remove.
     if (state_->per_tablet_meta_[tablet->id()].leader_uuid == ts_uuid) {

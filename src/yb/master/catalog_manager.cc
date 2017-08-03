@@ -3966,8 +3966,10 @@ class AsyncAddServerTask : public AsyncChangeConfigTask {
  public:
   AsyncAddServerTask(
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-      const ConsensusStatePB& cstate, const string& change_config_ts_uuid)
-      : AsyncChangeConfigTask(master, callback_pool, tablet, cstate, change_config_ts_uuid) {}
+      RaftPeerPB::MemberType member_type, const ConsensusStatePB& cstate,
+      const string& change_config_ts_uuid)
+      : AsyncChangeConfigTask(master, callback_pool, tablet, cstate, change_config_ts_uuid),
+        member_type_(member_type) {}
 
   Type type() const override { return ASYNC_ADD_SERVER; }
 
@@ -3975,6 +3977,10 @@ class AsyncAddServerTask : public AsyncChangeConfigTask {
 
  protected:
   bool PrepareRequest(int attempt) override;
+
+ private:
+  // PRE_VOTER or PRE_OBSERVER (for async replicas).
+  RaftPeerPB::MemberType member_type_;
 };
 
 bool AsyncAddServerTask::PrepareRequest(int attempt) {
@@ -4005,7 +4011,9 @@ bool AsyncAddServerTask::PrepareRequest(int attempt) {
   req_.set_cas_config_opid_index(cstate_.config().opid_index());
   RaftPeerPB* peer = req_.mutable_server();
   peer->set_permanent_uuid(replacement_replica->permanent_uuid());
-  peer->set_member_type(RaftPeerPB::PRE_VOTER);
+  // Remove this check once support for async replicas is complete.
+  DCHECK_EQ(member_type_, RaftPeerPB::PRE_VOTER);
+  peer->set_member_type(member_type_);
   TSRegistrationPB peer_reg;
   replacement_replica->GetRegistration(&peer_reg);
   if (peer_reg.common().rpc_addresses_size() == 0) {
@@ -4265,10 +4273,10 @@ void CatalogManager::SendRemoveServerRequest(
 }
 
 void CatalogManager::SendAddServerRequest(
-    const scoped_refptr<TabletInfo>& tablet, const ConsensusStatePB& cstate,
-    const string& change_config_ts_uuid) {
-  auto task = std::make_shared<AsyncAddServerTask>(master_, worker_pool_.get(), tablet, cstate,
-      change_config_ts_uuid);
+    const scoped_refptr<TabletInfo>& tablet, RaftPeerPB::MemberType member_type,
+    const ConsensusStatePB& cstate, const string& change_config_ts_uuid) {
+  auto task = std::make_shared<AsyncAddServerTask>(master_, worker_pool_.get(), tablet, member_type,
+      cstate, change_config_ts_uuid);
   tablet->table()->AddTask(task);
   Status status = task->Run();
   WARN_NOT_OK(status, Substitute("Failed to send AddServer of tserver $0 to tablet $1",
