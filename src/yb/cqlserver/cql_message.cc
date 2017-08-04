@@ -122,8 +122,9 @@ Status CQLMessage::QueryParameters::ValidateConsistency() {
       break;
     }
     default:
-      return STATUS_SUBSTITUTE(InvalidArgument, "Consistency level $0 is not supported",
-                               static_cast<uint16_t>(consistency));
+      LOG(WARNING) << "Consistency level " << static_cast<uint16_t>(consistency)
+                   << " is not supported, defaulting to strong consistency";
+      set_yb_consistency_level(YBConsistencyLevel::STRONG);
   }
   return Status::OK();
 }

@@ -5,6 +5,7 @@
 #include <thread>
 #include <cmath>
 
+#include "yb/util/yb_partition.h"
 #include "yb/sql/test/ybsql-test-base.h"
 #include "yb/gutil/strings/substitute.h"
 
@@ -1093,7 +1094,7 @@ TEST_F(YbSqlQuery, TestScanWithBounds) {
   //------------------------------------------------------------------------------------------------
 
   // generating input data with hash_code and inserting into table
-  std::vector<std::tuple<uint16_t, int, string, int, int>> rows;
+  std::vector<std::tuple<int64_t, int, string, int, int>> rows;
   for (int i = 0; i < 10; i++) {
     std::string i_str = std::to_string(i);
     YBPartialRow row(&table->InternalSchema());
@@ -1104,7 +1105,9 @@ TEST_F(YbSqlQuery, TestScanWithBounds) {
     std::string part_key;
     CHECK_OK(table->partition_schema().EncodeKey(row, &part_key));
     uint16_t hash_code = PartitionSchema::DecodeMultiColumnHashValue(part_key);
-    std::tuple<uint16_t, int, string, int, int> values(hash_code, i, i_str, i, i);
+
+    int64_t cql_hash = YBPartition::YBToCqlHashCode(hash_code);
+    std::tuple<int64_t, int, string, int, int> values(cql_hash, i, i_str, i, i);
     rows.push_back(values);
     string stmt = Substitute("INSERT INTO scan_bounds_test (h1, h2, r1, v1) VALUES "
                              "($0, '$1', $2, $3);", i, i, i, i);
@@ -1113,10 +1116,16 @@ TEST_F(YbSqlQuery, TestScanWithBounds) {
 
   // ordering rows by hash code
   std::sort(rows.begin(), rows.end(),
-      [](const std::tuple<uint16_t, int, string, int, int>& r1,
-         const std::tuple<uint16_t, int, string, int, int>& r2) -> bool {
+      [](const std::tuple<int64_t, int, string, int, int>& r1,
+         const std::tuple<int64_t, int, string, int, int>& r2) -> bool {
         return std::get<0>(r1) < std::get<0>(r2);
       });
+
+  // CQL uses 64 bit hashes, but YB uses 16-bit internally.
+  // Our bucket range is [cql_hash, cql_hash + bucket_size) -- start-inclusive, end-exclusive
+  // We test the bucket ranges below by choosing the appropriate values for the bounds.
+  int64_t bucket_size = 1;
+  bucket_size = bucket_size << 48;
 
   //------------------------------------------------------------------------------------------------
   // Testing Select with lower bound
@@ -1153,8 +1162,15 @@ TEST_F(YbSqlQuery, TestScanWithBounds) {
     EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
   }
 
-  // Empty range: no hashes
+  // Empty range: no hashes.
   select_stmt = Substitute(select_stmt_template, std::get<0>(rows[9]));
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result
+  EXPECT_EQ(0, row_block->row_count());
+
+  // Empty range: no hashes (checking overflow for max Cql hash)
+  select_stmt = Substitute(select_stmt_template, INT64_MAX);
   CHECK_OK(processor->Run(select_stmt));
   row_block = processor->row_block();
   // checking result
@@ -1163,8 +1179,8 @@ TEST_F(YbSqlQuery, TestScanWithBounds) {
   //---------------------------------- Inclusive Lower Bound ---------------------------------------
   select_stmt_template = "SELECT * FROM scan_bounds_test WHERE token(h1, h2) >= $0";
 
-  // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
-  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[0]));
+  // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9.
+  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[0]) + bucket_size - 1);
   CHECK_OK(processor->Run(select_stmt));
   row_block = processor->row_block();
   // checking result
@@ -1178,7 +1194,7 @@ TEST_F(YbSqlQuery, TestScanWithBounds) {
   }
 
   // Partial range: hashes 6, 7, 8, 9
-  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[6]));
+  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[6]) + bucket_size - 1);
   CHECK_OK(processor->Run(select_stmt));
   row_block = processor->row_block();
   // checking result
@@ -1192,7 +1208,7 @@ TEST_F(YbSqlQuery, TestScanWithBounds) {
   }
 
   // Empty range: no hashes
-  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[9]) + 1);
+  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[9]) + bucket_size);
   CHECK_OK(processor->Run(select_stmt));
   row_block = processor->row_block();
   // checking result
@@ -1206,7 +1222,7 @@ TEST_F(YbSqlQuery, TestScanWithBounds) {
   select_stmt_template = "SELECT * FROM scan_bounds_test WHERE token(h1, h2) < $0";
 
   // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
-  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[9]) + 1);
+  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[9]) + bucket_size);
   CHECK_OK(processor->Run(select_stmt));
   row_block = processor->row_block();
   // checking result
@@ -1220,7 +1236,7 @@ TEST_F(YbSqlQuery, TestScanWithBounds) {
   }
 
   // Partial range: hashes 0, 1, 2, 3, 4, 5, 6
-  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[7]));
+  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[7]) + bucket_size - 1);
   CHECK_OK(processor->Run(select_stmt));
   row_block.reset();
   row_block = processor->row_block();
@@ -1235,7 +1251,7 @@ TEST_F(YbSqlQuery, TestScanWithBounds) {
   }
 
   // Empty range: no hashes
-  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[0]));
+  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[0]) + bucket_size - 1);
   CHECK_OK(processor->Run(select_stmt));
   row_block = processor->row_block();
   // checking result
@@ -1287,7 +1303,7 @@ TEST_F(YbSqlQuery, TestScanWithBounds) {
       "SELECT * FROM scan_bounds_test WHERE token(h1, h2) $0 $1 AND token(h1, h2) $2 $3";
 
   // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
-  select_stmt = Substitute(select_stmt_template, ">=", std::get<0>(rows[0]),
+  select_stmt = Substitute(select_stmt_template, ">=", std::get<0>(rows[0]) + bucket_size - 1,
       "<=", std::get<0>(rows[9]));
   CHECK_OK(processor->Run(select_stmt));
   row_block = processor->row_block();
@@ -1317,8 +1333,8 @@ TEST_F(YbSqlQuery, TestScanWithBounds) {
   }
 
   // Partial Range: hashes 4, 5, 6
-  select_stmt = Substitute(select_stmt_template, ">=", std::get<0>(rows[4]),
-      "<", std::get<0>(rows[7]));
+  select_stmt = Substitute(select_stmt_template, ">=", std::get<0>(rows[4]) + bucket_size - 1,
+      "<", std::get<0>(rows[7]) + bucket_size - 1);
   CHECK_OK(processor->Run(select_stmt));
   row_block = processor->row_block();
   // checking result
@@ -1332,8 +1348,8 @@ TEST_F(YbSqlQuery, TestScanWithBounds) {
   }
 
   // Empty Range (inclusive lower bound): no hashes
-  select_stmt = Substitute(select_stmt_template, ">=", std::get<0>(rows[2]),
-      "<", std::get<0>(rows[2]));
+  select_stmt = Substitute(select_stmt_template, ">=", std::get<0>(rows[2]) + bucket_size - 1,
+      "<", std::get<0>(rows[2]) + bucket_size - 1);
   CHECK_OK(processor->Run(select_stmt));
   row_block = processor->row_block();
   // checking result
@@ -1342,6 +1358,13 @@ TEST_F(YbSqlQuery, TestScanWithBounds) {
   // Empty Range (inclusive upper bound): no hashes
   select_stmt = Substitute(select_stmt_template, ">", std::get<0>(rows[2]),
       "<=", std::get<0>(rows[2]));
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result
+  EXPECT_EQ(0, row_block->row_count());
+
+  // Empty range: no hashes (checking overflow for max Cql hash)
+  select_stmt = Substitute(select_stmt_template, "<=", std::get<0>(rows[9]), ">", INT64_MAX);
   CHECK_OK(processor->Run(select_stmt));
   row_block = processor->row_block();
   // checking result
@@ -1365,12 +1388,11 @@ TEST_F(YbSqlQuery, TestScanWithBounds) {
   EXPECT_EQ(std::get<4>(rows[2]), row2.column(3).int32_value());
 
   // testing non-existing hash: empty
-  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[9]) + 1);
+  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[9]) + bucket_size);
   CHECK_OK(processor->Run(select_stmt));
   row_block = processor->row_block();
   // checking result
   EXPECT_EQ(0, row_block->row_count());
-
 
   //------------------------------------------------------------------------------------------------
   // Testing Select with conditions on both partition key and individual hash columns
@@ -1490,26 +1512,26 @@ TEST_F(YbSqlQuery, TestDeleteColumn) {
     CHECK_OK(processor->Run(stmt));
   }
 
-  //Deleting the value
+  // Deleting the value
   string delete_stmt = "DELETE v1 FROM delete_column WHERE h = 0";
   CHECK_OK(processor->Run(delete_stmt));
 
   string select_stmt_template = "SELECT $0 FROM delete_column WHERE h = 0";
-  //Check that v1 is null
+  // Check that v1 is null
   CHECK_OK(processor->Run(Substitute(select_stmt_template, "v1")));
   auto row_block = processor->row_block();
   ASSERT_EQ(1, row_block->row_count());
   const YQLRow &row1 = row_block->row(0);
   EXPECT_TRUE(row1.column(0).IsNull());
 
-  //cehck that v2 is 0
+  // Check that v2 is 0
   CHECK_OK(processor->Run(Substitute(select_stmt_template, "v2")));
   row_block = processor->row_block();
   ASSERT_EQ(1, row_block->row_count());
   const YQLRow &row2 = row_block->row(0);
   EXPECT_EQ(0, row2.column(0).int32_value());
 
-  //check that primary keys and * cannot be deleted
+  // Check that primary keys and * cannot be deleted
   CHECK_INVALID_STMT("DELETE * FROM delete_column WHERE h = 0;");
   CHECK_INVALID_STMT("DELETE h FROM delete_column WHERE h = 0;");
 }
@@ -1520,7 +1542,8 @@ TEST_F(YbSqlQuery, TestTtlWritetimeInWhereClauseOfSelectStatements) {
 
   YbSqlProcessor *processor = GetSqlProcessor();
 
-  CHECK_OK(processor->Run("CREATE TABLE ttl_writetime_test (h int, v1 int, v2 int, PRIMARY KEY(h))"));
+  CHECK_OK(
+      processor->Run("CREATE TABLE ttl_writetime_test (h int, v1 int, v2 int, PRIMARY KEY(h))"));
 
   client::YBTableName name(kDefaultKeyspaceName, "ttl_writetime_test");
 
@@ -1563,7 +1586,7 @@ TEST_F(YbSqlQuery, TestTtlWritetimeInWhereClauseOfSelectStatements) {
             });
 
 
-  //test that for ttl > 150, there are 5 elements that match what we expect
+  // test that for ttl > 150, there are 5 elements that match what we expect
   string select_stmt_template = "SELECT * FROM ttl_writetime_test WHERE ttl($0) $1 $2";
 
   string select_stmt = Substitute(select_stmt_template, "v1", "<", 150);
@@ -1584,8 +1607,8 @@ TEST_F(YbSqlQuery, TestTtlWritetimeInWhereClauseOfSelectStatements) {
     EXPECT_EQ(std::get<2>(rows[i]), row.column(2).int32_value());
   }
 
-  //Now, let us test that when we update a column with a new ttl, that it shows up
-  //Should update 2 entries
+  // Now, let us test that when we update a column with a new ttl, that it shows up
+  // Should update 2 entries
   string update_stmt = "UPDATE ttl_writetime_test using ttl 300 set v1 = 7 where h = 7;";
   CHECK_OK(processor->Run(update_stmt));
   update_stmt = "UPDATE ttl_writetime_test using ttl 300 set v1 = 8 where h = 8;";

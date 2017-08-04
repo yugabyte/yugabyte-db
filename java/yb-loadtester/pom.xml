@@ -77,13 +77,22 @@
     </dependency>
     <dependency>
       <groupId>com.datastax.spark</groupId>
-      <artifactId>spark-cassandra-connector_2.10</artifactId>
+      <!-- Using unshaded jar and excluding dependencies of YB-Cql to avoid conflicts -->
+      <artifactId>spark-cassandra-connector-unshaded_2.10</artifactId>
       <version>2.0.0</version>
       <!-- Exclude netty-all dependency to avoid conflict (ENG-1971) -->
       <exclusions>
         <exclusion>
           <groupId>io.netty</groupId>
           <artifactId>netty-all</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>com.datastax.cassandra</groupId>
+          <artifactId>cassandra-driver-core</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>com.google.guava</groupId>
+          <artifactId>guava</artifactId>
         </exclusion>
       </exclusions>
     </dependency>

@@ -89,6 +89,10 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     LOG.debug("Used the new keyspace " + ks + " using query: [" + use_keyspace_stmt + "]");
   }
 
+  protected String getKeyspace() {
+    return keyspace;
+  }
+
   /**
    * Private method that is thread-safe and creates the Cassandra client. Exactly one calling thread
    * will succeed in creating the client. This method does nothing for the other threads.

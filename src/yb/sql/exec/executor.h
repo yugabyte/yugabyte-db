@@ -173,7 +173,8 @@ class Executor {
                                  const MCList<ColumnOp>& where_ops,
                                  const MCList<SubscriptedColumnOp>& subcol_where_ops,
                                  const MCList<PartitionKeyOp>& partition_key_ops,
-                                 const MCList<FuncOp>& func_ops);
+                                 const MCList<FuncOp>& func_ops,
+                                 bool *no_results);
 
   // Convert where clause to protobuf for write request.
   CHECKED_STATUS WhereClauseToPB(YQLWriteRequestPB *req,
@@ -189,9 +190,9 @@ class Executor {
   CHECKED_STATUS WhereSubColOpToPB(YQLConditionPB *condition, const SubscriptedColumnOp& subcol_op);
 
 
-  void SelectAsyncDone(
-      const PTSelectStmt *tnode, StatementExecutedCallback cb, RowsResult::SharedPtr current_result,
-      const Status &s, const ExecutedResult::SharedPtr& new_result);
+  void SelectAsyncDone(const PTSelectStmt *tnode, std::shared_ptr<client::YBqlReadOp>,
+                       StatementExecutedCallback cb, RowsResult::SharedPtr current_result,
+                       const Status &s, const ExecutedResult::SharedPtr& new_result);
 
   void PTNodeAsyncDone(
       const PTListNode *lnode, int index, MonoTime start, StatementExecutedCallback cb,

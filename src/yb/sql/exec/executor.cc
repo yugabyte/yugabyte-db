@@ -8,6 +8,7 @@
 #include "yb/common/partition.h"
 #include "yb/sql/sql_processor.h"
 #include "yb/util/decimal.h"
+#include "yb/util/yb_partition.h"
 
 namespace yb {
 namespace sql {
@@ -697,7 +698,10 @@ CHECKED_STATUS Executor::WhereClauseToPB(YQLReadRequestPB *req,
                                          const MCList<ColumnOp>& where_ops,
                                          const MCList<SubscriptedColumnOp>& subcol_where_ops,
                                          const MCList<PartitionKeyOp>& partition_key_ops,
-                                         const MCList<FuncOp>& func_ops) {
+                                         const MCList<FuncOp>& func_ops,
+                                         bool *no_results) {
+  // If where clause restrictions guarantee no results can be found this will be set to true below.
+  *no_results = false;
 
   // Setup the lower/upper bounds on the partition key -- if any
   for (const auto& op : partition_key_ops) {
@@ -705,12 +709,18 @@ CHECKED_STATUS Executor::WhereClauseToPB(YQLReadRequestPB *req,
     RETURN_NOT_OK(PTExprToPB(op.expr(), &hash_code_pb));
     DCHECK(hash_code_pb.has_value()) << "Integer constant expected";
 
-    // TODO(mihnea) check for overflow
-    uint16_t hash_code = static_cast<uint16_t>(hash_code_pb.value().int64_value());
+    uint16_t hash_code = YBPartition::CqlToYBHashCode(hash_code_pb.value().int64_value());
+
     // internally we use [start, end) intervals -- start-inclusive, end-exclusive
     switch (op.yb_op()) {
       case YQL_OP_GREATER_THAN:
-        req->set_hash_code(hash_code + 1);
+        if (hash_code != YBPartition::kMaxHashCode) {
+          req->set_hash_code(hash_code + 1);
+        } else {
+          // Token hash greater than max implies no results.
+          *no_results = true;
+          return Status::OK();
+        }
         break;
       case YQL_OP_GREATER_THAN_EQUAL:
         req->set_hash_code(hash_code);
@@ -719,11 +729,15 @@ CHECKED_STATUS Executor::WhereClauseToPB(YQLReadRequestPB *req,
         req->set_max_hash_code(hash_code);
         break;
       case YQL_OP_LESS_THAN_EQUAL:
-        req->set_max_hash_code(hash_code + 1);
+        if (hash_code != YBPartition::kMaxHashCode) {
+          req->set_max_hash_code(hash_code + 1);
+        } // Token hash less or equal than max adds no real restriction.
         break;
       case YQL_OP_EQUAL:
         req->set_hash_code(hash_code);
-        req->set_max_hash_code(hash_code + 1);
+        if (hash_code != YBPartition::kMaxHashCode) {
+          req->set_max_hash_code(hash_code + 1);
+        }  // Token hash equality restriction with max value needs no upper bound.
         break;
 
       default:
@@ -901,12 +915,25 @@ void Executor::ExecPTNodeAsync(
   // Where clause - Hash, range, and regular columns.
   YBPartialRow *row = select_op->mutable_row();
 
+  // Specify selected columns.
+  for (const ColumnDesc *col_desc : tnode->selected_columns()) {
+    req->add_column_ids(col_desc->id());
+  }
+
+  bool no_results = false;
   Status s = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops(),
-                              tnode->subscripted_col_where_ops(), tnode->partition_key_ops(), tnode->func_ops());
+      tnode->subscripted_col_where_ops(), tnode->partition_key_ops(), tnode->func_ops(),
+      &no_results);
+
   if (!s.ok()) {
     CB_RETURN(
         cb,
         exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+  }
+
+  // If where clause restrictions guarantee no rows could match, return empty result immediately.
+  if (no_results) {
+    return SelectAsyncDone(tnode, select_op, cb, current_result, Status::OK(), nullptr);
   }
 
   if (req->has_max_hash_code()) {
@@ -921,10 +948,6 @@ void Executor::ExecPTNodeAsync(
     }
   }
 
-  // Specify selected columns.
-  for (const ColumnDesc *col_desc : tnode->selected_columns()) {
-    req->add_column_ids(col_desc->id());
-  }
 
   // Setup the column values that need to be read.
   s = ColumnRefsToPB(tnode, req->mutable_column_refs());
@@ -998,12 +1021,12 @@ void Executor::ExecPTNodeAsync(
   // before returning the result to the client.
   exec_context_->ApplyReadAsync(select_op, tnode,
                                 Bind(&Executor::SelectAsyncDone, Unretained(this),
-                                     Unretained(tnode), std::move(cb), current_result));
+                                     Unretained(tnode), select_op, std::move(cb), current_result));
 }
 
-void Executor::SelectAsyncDone(
-    const PTSelectStmt *tnode, StatementExecutedCallback cb, RowsResult::SharedPtr current_result,
-    const Status &s, const ExecutedResult::SharedPtr& new_result) {
+void Executor::SelectAsyncDone(const PTSelectStmt *tnode, std::shared_ptr<YBqlReadOp> select_op,
+                               StatementExecutedCallback cb, RowsResult::SharedPtr current_result,
+                               const Status &s, const ExecutedResult::SharedPtr& new_result) {
 
   // If an error occurs, return current result if present and ignore the error. Otherwise, return
   // the error.
@@ -1014,7 +1037,7 @@ void Executor::SelectAsyncDone(
 
   // Process the new result.
   if (new_result != nullptr) {
-    // If there is a new non-rows result. Return the current result if present (shouldn't happend)
+    // If there is a new non-rows result. Return the current result if present (shouldn't happen)
     // and ignore the new one. Otherwise, return the new result.
     if (new_result->type() != ExecutedResult::Type::ROWS) {
       if (current_result != nullptr) {
@@ -1041,6 +1064,15 @@ void Executor::SelectAsyncDone(
   if (current_result != nullptr && !current_result->paging_state().empty()) {
     ExecPTNodeAsync(tnode, std::move(cb), current_result);
     return;
+  }
+
+  // If current_result is null, producing an empty result.
+  if (current_result == nullptr) {
+    YQLRowBlock empty_row_block(tnode->table()->InternalSchema(), {});
+    faststring buffer;
+    empty_row_block.Serialize(select_op->request().client(), &buffer);
+    *select_op->mutable_rows_data() = buffer.ToString();
+    current_result = std::make_shared<RowsResult>(select_op.get());
   }
 
   cb.Run(Status::OK(), current_result);

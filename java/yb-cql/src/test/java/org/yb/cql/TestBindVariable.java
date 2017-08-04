@@ -1415,7 +1415,7 @@ public class TestBindVariable extends BaseCQLTest {
       // Simple bind (by position) with token.
       String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
               " WHERE h1 = ? AND h2 = ? AND token(h1, h2) >= ?;";
-      ResultSet rs = session.execute(select_stmt, new Integer(7), "h7", new Long(0));
+      ResultSet rs = session.execute(select_stmt, new Integer(7), "h7", Long.MIN_VALUE);
 
       // Checking result.
       assertEquals(1, rs.getAvailableWithoutFetching());
@@ -1436,7 +1436,7 @@ public class TestBindVariable extends BaseCQLTest {
               new HashMap<String, Object>() {{
                 put("h1", new Integer(7));
                 put("h2", "h7");
-                put(token_vcol_name, new Long(0));
+                put(token_vcol_name, Long.MIN_VALUE);
               }});
 
       // Checking result.
@@ -1455,7 +1455,7 @@ public class TestBindVariable extends BaseCQLTest {
       String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
               " WHERE h1 = ? AND h2 = ? AND token(h1, h2) >= ?;";
       PreparedStatement stmt = session.prepare(select_stmt);
-      ResultSet rs = session.execute(stmt.bind(new Integer(7), "h7", new Long(0)));
+      ResultSet rs = session.execute(stmt.bind(new Integer(7), "h7", Long.MIN_VALUE));
       // Checking result.
       assertEquals(1, rs.getAvailableWithoutFetching());
       Row row = rs.one();
@@ -1476,7 +1476,7 @@ public class TestBindVariable extends BaseCQLTest {
               .bind()
               .setInt("h1", 7)
               .setString("h2", "h7")
-              .setLong(token_vcol_name, 0));
+              .setLong(token_vcol_name, Long.MIN_VALUE));
       // Checking result.
       assertEquals(1, rs.getAvailableWithoutFetching());
       Row row = rs.one();
@@ -1497,7 +1497,7 @@ public class TestBindVariable extends BaseCQLTest {
               .bind()
               .setInt("b1", 7)
               .setString("b2", "h7")
-              .setLong("b3", 0));
+              .setLong("b3", Long.MIN_VALUE));
       // Checking result.
       assertEquals(1, rs.getAvailableWithoutFetching());
       Row row = rs.one();

@@ -5246,6 +5246,18 @@ Status CatalogManager::SetClusterConfig(
   return Status::OK();
 }
 
+Status CatalogManager::GetReplicationFactor(int* num_replicas) {
+  DCHECK(cluster_config_) << "Missing cluster config for master!";
+  ClusterConfigMetadataLock l(cluster_config_.get(), ClusterConfigMetadataLock::READ);
+
+  *num_replicas = l.data().pb.replication_info().live_replicas().num_replicas();
+  if (*num_replicas == 0) {
+    *num_replicas = FLAGS_default_num_replicas;
+  }
+
+  return Status::OK();
+}
+
 Status CatalogManager::IsLoadBalanced(const IsLoadBalancedRequestPB* req,
                                       IsLoadBalancedResponsePB* resp) {
   vector<double> load;

@@ -1,5 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
+#include "yb/util/yb_partition.h"
 #include "yb/master/util/yql_vtable_helpers.h"
 
 namespace yb {
@@ -16,7 +17,7 @@ YQLValuePB GetTokensValue(size_t index, size_t node_count) {
   YQLValuePB value_pb;
   YQLValue::set_set_value(&value_pb);
   YQLValuePB *token = YQLValue::add_set_elem(&value_pb);
-  token->set_string_value(std::to_string(static_cast<int64_t>(UINT64_MAX / node_count * index)));
+  token->set_string_value(YBPartition::CqlTokenSplit(node_count, index));
   return value_pb;
 }
 
@@ -37,8 +38,7 @@ bool RemoteEndpointMatchesTServer(const TSInformationPB& ts_info,
   return false;
 }
 
-// TODO (mihnea) when partitioning issue is solved use the right values here
-YQLValuePB GetReplicationValue() {
+YQLValuePB GetReplicationValue(int replication_factor) {
   YQLValuePB value_pb;
   YQLValue::set_map_value(&value_pb);
 
@@ -52,7 +52,7 @@ YQLValuePB GetReplicationValue() {
   elem = YQLValue::add_map_key(&value_pb);
   elem->set_string_value("replication_factor");
   elem = YQLValue::add_map_value(&value_pb);
-  elem->set_string_value("1");
+  elem->set_string_value(std::to_string(replication_factor));
 
   return value_pb;
 }

@@ -26,6 +26,7 @@ public class CassandraSparkWordCount extends AppBase {
     // Set the app type to simple.
     appConfig.appType = AppConfig.Type.Simple;
 
+    // Set Spark parallelism for this app.
     appConfig.numWriterThreads = 2;
   }
 
@@ -33,15 +34,12 @@ public class CassandraSparkWordCount extends AppBase {
 
   // input source (file or Cassandra table)
   private String inputFile;
-  private String inputKeyspace;
   private String inputTableName;
 
   // output source (Cassandra table)
-  private String outputKeyspace;
   private String outputTableName;
 
   // default values
-  private static final String defaultKeyspace = "ybdemo";
   private static final String defaultInputTableName = "lines";
   private static final String defaultOutputTableName = "wordcounts";
 
@@ -64,62 +62,49 @@ public class CassandraSparkWordCount extends AppBase {
       useCassandraInput = false;
       LOG.info("Using wordcount_input_file: " + inputFile);
     } else if (commandLine.hasOption("wordcount_input_table")) {
-      String[] fragments = commandLine.getOptionValue("wordcount_input_table").split("\\.");
-      if (fragments.length == 2) {
-        inputKeyspace = fragments[0];
-        inputTableName = fragments[1];
+        inputTableName = commandLine.getOptionValue("wordcount_input_table");
         useCassandraInput = true;
-        LOG.info("Using wordcount_input_table: " + inputKeyspace + "." + inputTableName);
-      } else {
-        LOG.fatal("Expected <keyspace>.<table name> format for input table: " + fragments.length);
-        System.exit(1);
-      }
+        LOG.info("Using wordcount_input_table: " + inputTableName);
     } else { // defaults
       LOG.info("No input given, will create sample table and use it as input.");
-      inputKeyspace = defaultKeyspace;
       inputTableName = defaultInputTableName;
       useCassandraInput = true;
 
       // Setting up sample table
       Session session = getCassandraClient();
 
-      // Create keyspace and use it.
-      createKeyspace(session, inputKeyspace);
       // Drop the sample table if it already exists.
       if (!configuration.getReuseExistingTable()) {
-        dropCassandraTable(inputKeyspace + "." + inputTableName);
+        dropCassandraTable(inputTableName);
       }
       // Create the input table.
-      executeAndLog(session, "CREATE TABLE IF NOT EXISTS " + inputKeyspace + "." + inputTableName +
+      executeAndLog(session, "CREATE TABLE IF NOT EXISTS " +  inputTableName +
               " (id int, line varchar, primary key(id));");
 
       // Insert some rows.
-      String insert_stmt = "INSERT INTO " + inputKeyspace + "." + inputTableName + "(id, line) " +
-              "VALUES (%d, '%s');";
-      executeAndLog(session, String.format(insert_stmt, 1, "zero one two three four five"));
-      executeAndLog(session, String.format(insert_stmt, 2, "nine eight seven six"));
-      executeAndLog(session, String.format(insert_stmt, 3, "four two"));
-      executeAndLog(session, String.format(insert_stmt, 4, "one seven seven six"));
-      executeAndLog(session, String.format(insert_stmt, 5, "three one four one five nine two six"));
-      executeAndLog(session, String.format(insert_stmt, 6, "two seven one eight two eight one"));
+      String insert_stmt = "INSERT INTO " + inputTableName + "(id, line) VALUES (%d, '%s');";
+      executeAndLog(session, String.format(insert_stmt, 1,
+              "ten nine eight seven six five four three two one"));
+      executeAndLog(session, String.format(insert_stmt, 2,
+              "ten nine eight seven six five four three two"));
+      executeAndLog(session, String.format(insert_stmt, 3,
+              "ten nine eight seven six five four three"));
+      executeAndLog(session, String.format(insert_stmt, 4, "ten nine eight seven six five four"));
+      executeAndLog(session, String.format(insert_stmt, 5, "ten nine eight seven six five"));
+      executeAndLog(session, String.format(insert_stmt, 6, "ten nine eight seven six"));
+      executeAndLog(session, String.format(insert_stmt, 7, "ten nine eight seven"));
+      executeAndLog(session, String.format(insert_stmt, 8, "ten nine eight"));
+      executeAndLog(session, String.format(insert_stmt, 9, "ten nine"));
+      executeAndLog(session, String.format(insert_stmt, 10, "ten"));
 
-      LOG.info("Created sample table " + inputKeyspace + "." + inputTableName);
+      LOG.info("Created sample table " + inputTableName);
     }
 
     //----------------------- Setting Output location (Cassandra table) --------------------------\\
     if (commandLine.hasOption("wordcount_output_table")) {
-      String[] fragments = commandLine.getOptionValue("wordcount_input_table").split("\\.");
-      if (fragments.length == 2) {
-        outputKeyspace = fragments[0];
-        outputTableName = fragments[1];
-        useCassandraInput = true;
-        LOG.info("Using wordcount_output_table: " + outputKeyspace + "." + outputTableName);
-      } else {
-        LOG.fatal("Expected <keyspace>.<table name> format for output table: " + fragments.length);
-        System.exit(1);
-      }
+      outputTableName = commandLine.getOptionValue("wordcount_input_table");
+      LOG.info("Using wordcount_output_table: " + outputTableName);
     } else { // defaults
-      outputKeyspace = defaultKeyspace;
       outputTableName = defaultOutputTableName;
     }
   }
@@ -144,7 +129,7 @@ public class CassandraSparkWordCount extends AppBase {
     JavaRDD<String> rows;
     if (useCassandraInput) {
       // Read rows from table and convert them to an RDD.
-      rows = javaFunctions(sc).cassandraTable(inputKeyspace, inputTableName)
+      rows = javaFunctions(sc).cassandraTable(getKeyspace(), inputTableName)
               .select("line").map(row -> row.getString("line"));
     } else {
       // Read the input file and convert it to an RDD.
@@ -155,21 +140,23 @@ public class CassandraSparkWordCount extends AppBase {
     JavaPairRDD<String, Integer> counts =
         rows.flatMap(line -> Arrays.asList(line.split(" ")).iterator())
             .mapToPair(word -> new Tuple2<String, Integer>(word, 1))
-            .reduceByKey((x, y) ->  x +  y);
+            .reduceByKey((x, y) ->  x + y);
 
     //------------------------------------------- Output -----------------------------------------\\
-    createKeyspace(session, outputKeyspace);
+
+    String outTable = getKeyspace() + "." + outputTableName;
+
     // Drop the output table if it already exists.
     if (!this.configuration.getReuseExistingTable()) {
-      dropCassandraTable(outputKeyspace + "." + outputTableName);
+      dropCassandraTable(outTable);
     }
     // Create the output table.
-    session.execute("CREATE TABLE IF NOT EXISTS " + outputKeyspace + "." + outputTableName +
+    session.execute("CREATE TABLE IF NOT EXISTS " + outTable +
             " (word VARCHAR PRIMARY KEY, count INT);");
 
     // Save the output to the CQL table.
-    javaFunctions(counts).writerBuilder(outputKeyspace,
-            outputTableName,
+    javaFunctions(counts).writerBuilder(getKeyspace(),
+                                        outputTableName,
                                         mapTupleToRow(String.class, Integer.class))
         .withColumnSelector(someColumns("word", "count"))
         .saveToCassandra();
@@ -191,8 +178,7 @@ public class CassandraSparkWordCount extends AppBase {
     sb.append("Input source is either input_file or input_table. If none is given a sample ");
     sb.append(optsSuffix);
     sb.append(optsPrefix);
-    sb.append("Cassandra table " + defaultKeyspace + "." + defaultInputTableName +
-            " is created and used as input");
+    sb.append("Cassandra table " + defaultInputTableName + " is created and used as input");
     sb.append(optsSuffix);
     return sb.toString();
   }
@@ -204,13 +190,13 @@ public class CassandraSparkWordCount extends AppBase {
     sb.append("--num_threads_write " + appConfig.numWriterThreads);
     sb.append(optsSuffix);
     sb.append(optsPrefix);
-    sb.append("--wordcount_output_table " + defaultKeyspace+ "." + defaultOutputTableName);
+    sb.append("--wordcount_output_table " + defaultOutputTableName);
     sb.append(optsSuffix);
     sb.append(optsPrefix);
     sb.append("--wordcount_input_file <path to input file>");
     sb.append(optsSuffix);
     sb.append(optsPrefix);
-    sb.append("--wordcount_input_table <keyspace>.<table name>");
+    sb.append("--wordcount_input_table <table name>");
     sb.append(optsSuffix);
     return sb.toString();
   }

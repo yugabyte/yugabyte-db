@@ -21,7 +21,10 @@ Status YQLKeyspacesVTable::RetrieveData(const YQLReadRequestPB& request,
     YQLRow& row = (*vtable)->Extend();
     RETURN_NOT_OK(SetColumnValue(kKeyspaceName, ns->name(), &row));
     RETURN_NOT_OK(SetColumnValue(kDurableWrites, true, &row));
-    RETURN_NOT_OK(SetColumnValue(kReplication, util::GetReplicationValue(), &row));
+
+    int repl_factor;
+    RETURN_NOT_OK(master_->catalog_manager()->GetReplicationFactor(ns->name(), &repl_factor));
+    RETURN_NOT_OK(SetColumnValue(kReplication, util::GetReplicationValue(repl_factor), &row));
   }
 
   return Status::OK();
