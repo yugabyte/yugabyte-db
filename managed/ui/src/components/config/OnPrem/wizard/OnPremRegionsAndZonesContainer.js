@@ -28,7 +28,7 @@ const mapDispatchToProps = (dispatch, ownProps) => {
       if (ownProps.isEditProvider) {
         ownProps.submitEditProvider(payloadData);
       } else {
-        ownProps.nextPage();
+        ownProps.submitWizardJson(payloadData);
       }
     }
   }
