@@ -47,8 +47,17 @@ static const char* const kPartitionToolName = "yb-generate_partitions_main";
 static const char* const kBulkLoadToolName = "yb-bulk_load";
 static const char* const kNamespace = "bulk_load_test_namespace";
 static const char* const kTableName = "my_table";
-static constexpr int32_t kNumTablets = 32;
-static constexpr int32_t kNumIterations = 10000;
+#ifdef THREAD_SANITIZER
+    // Lower number of runs for tsan due to low perf.
+    static constexpr int32_t kNumIterations = 30;
+    static constexpr int32_t kNumTablets = 3;
+    static constexpr int32_t kNumTabletServers = 1;
+#else
+    static constexpr int32_t kNumIterations = 10000;
+    static constexpr int32_t kNumTablets = 32;
+    // Use 3 tservers to test a more realistic scenario.
+    static constexpr int32_t kNumTabletServers = 3;
+#endif
 static constexpr int32_t kV2Value = 12345;
 static constexpr size_t kV2Index = 5;
 static constexpr uint64_t kNumFilesPerTablet = 5;
@@ -62,8 +71,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     YBMiniClusterTestBase::SetUp();
     MiniClusterOptions opts;
 
-    // Use 3 tservers to test a more realistic scenario.
-    opts.num_tablet_servers = 3;
+    opts.num_tablet_servers = kNumTabletServers;
 
     // Use a high enough initial sequence number.
     FLAGS_initial_seqno = 1 << 20;
