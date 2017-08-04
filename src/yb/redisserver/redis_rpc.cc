@@ -250,7 +250,7 @@ void RedisInboundCall::Respond(size_t idx, bool is_success, RedisResponsePB* res
     size_t responded = ready_count_.fetch_add(1, std::memory_order_release) + 1;
     if (responded == client_batch_.size()) {
       RecordHandlingCompleted(nullptr);
-      QueueResponse(had_failures_.load(std::memory_order_acquire));
+      QueueResponse(!had_failures_.load(std::memory_order_acquire));
     }
   }
 }
