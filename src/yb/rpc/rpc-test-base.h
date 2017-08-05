@@ -154,7 +154,6 @@ class RpcTestBase : public YBTest {
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
   std::unique_ptr<TestServer> server_;
-  std::mt19937_64 rng_;
 };
 
 } // namespace rpc

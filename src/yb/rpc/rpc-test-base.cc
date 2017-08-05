@@ -2,9 +2,11 @@
 // Copyright (c) YugaByte, Inc.
 //
 
+#include "yb/rpc/rpc-test-base.h"
+
 #include <thread>
 
-#include "yb/rpc/rpc-test-base.h"
+#include "yb/util/random_util.h"
 
 using namespace std::chrono_literals;
 
@@ -333,7 +335,6 @@ void TestServer::Shutdown() {
 
 RpcTestBase::RpcTestBase()
     : metric_entity_(METRIC_ENTITY_server.Instantiate(&metric_registry_, "test.rpc_test")) {
-  Seed(&rng_);
 }
 
 void RpcTestBase::TearDown() {
@@ -343,8 +344,8 @@ void RpcTestBase::TearDown() {
 
 CHECKED_STATUS RpcTestBase::DoTestSyncCall(const Proxy& p, const char* method) {
   AddRequestPB req;
-  req.set_x(rng_());
-  req.set_y(rng_());
+  req.set_x(RandomUniformInt<uint32_t>());
+  req.set_y(RandomUniformInt<uint32_t>());
   AddResponsePB resp;
   RpcController controller;
   controller.set_timeout(MonoDelta::FromMilliseconds(10000));
