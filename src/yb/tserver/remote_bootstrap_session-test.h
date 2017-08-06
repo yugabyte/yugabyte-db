@@ -137,6 +137,7 @@ class RemoteBootstrapTest : public YBTabletTest {
     log_anchor_registry_.reset(new LogAnchorRegistry());
     tablet_peer_->SetBootstrapping();
     CHECK_OK(tablet_peer_->Init(tablet(),
+                                nullptr /* client */,
                                 clock(),
                                 messenger,
                                 log,

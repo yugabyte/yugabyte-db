@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_TABLET_TABLET_PEER_HARNESS_H
-#define YB_TABLET_TABLET_PEER_HARNESS_H
+#ifndef YB_TABLET_TABLET_HARNESS_H
+#define YB_TABLET_TABLET_HARNESS_H
 
 #include <memory>
 #include <string>
@@ -26,7 +26,9 @@
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/server/logical_clock.h"
 #include "yb/server/metadata.h"
+
 #include "yb/tablet/tablet.h"
+
 #include "yb/util/env.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
@@ -77,6 +79,8 @@ class TabletHarness {
   TabletHarness(const Schema& schema, Options options)
       : options_(std::move(options)), schema_(schema) {}
 
+  virtual ~TabletHarness() {}
+
   CHECKED_STATUS Create(bool first_time) {
     std::pair<PartitionSchema, Partition> partition(CreateDefaultPartition(schema_));
 
@@ -107,7 +111,8 @@ class TabletHarness {
                              clock_,
                              std::shared_ptr<MemTracker>(),
                              metrics_registry_.get(),
-                             new log::LogAnchorRegistry()));
+                             new log::LogAnchorRegistry(),
+                             nullptr /* transaction_coordinator_context */));
     return Status::OK();
   }
 
@@ -146,4 +151,4 @@ class TabletHarness {
 
 } // namespace tablet
 } // namespace yb
-#endif /* YB_TABLET_TABLET_PEER_HARNESS_H */
+#endif // YB_TABLET_TABLET_HARNESS_H

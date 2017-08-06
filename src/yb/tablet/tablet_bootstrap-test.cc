@@ -104,16 +104,17 @@ class BootstrapTest : public LogTestBase {
     gscoped_ptr<TabletStatusListener> listener(new TabletStatusListener(meta));
     scoped_refptr<LogAnchorRegistry> log_anchor_registry(new LogAnchorRegistry());
     // Now attempt to recover the log
-    RETURN_NOT_OK(BootstrapTablet(
+    BootstrapTabletData data = {
         meta,
         scoped_refptr<Clock>(LogicalClock::CreateStartingAt(HybridTime::kInitialHybridTime)),
         shared_ptr<MemTracker>(),
-        NULL,
+        nullptr /* metric_registry */,
         listener.get(),
-        tablet,
-        &log_,
         log_anchor_registry,
-        boot_info));
+        nullptr /* block_cache */,
+        nullptr /* transaction_coordinator_context */};
+
+    RETURN_NOT_OK(BootstrapTablet(data, tablet, &log_, boot_info));
 
     return Status::OK();
   }

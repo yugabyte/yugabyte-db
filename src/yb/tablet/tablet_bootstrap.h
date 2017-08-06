@@ -24,6 +24,9 @@
 #include <boost/thread/shared_mutex.hpp>
 
 #include "rocksdb/cache.h"
+
+#include "yb/client/client_fwd.h"
+
 #include "yb/common/schema.h"
 #include "yb/consensus/log.pb.h"
 #include "yb/gutil/gscoped_ptr.h"
@@ -52,6 +55,7 @@ class Clock;
 namespace tablet {
 class Tablet;
 class TabletMetadata;
+class TransactionCoordinatorContext;
 
 // A listener for logging the tablet related statuses as well as
 // piping it into the web UI.
@@ -85,20 +89,28 @@ class TabletStatusListener {
   DISALLOW_COPY_AND_ASSIGN(TabletStatusListener);
 };
 
+struct BootstrapTabletData {
+  scoped_refptr<TabletMetadata> meta;
+  scoped_refptr<server::Clock> clock;
+  std::shared_ptr<MemTracker> mem_tracker;
+  MetricRegistry* metric_registry;
+  TabletStatusListener* listener;
+  scoped_refptr<log::LogAnchorRegistry> log_anchor_registry;
+  std::shared_ptr<rocksdb::Cache> block_cache;
+  TransactionCoordinatorContext* transaction_coordinator_context;
+};
+
 // Bootstraps a tablet, initializing it with the provided metadata. If the tablet
 // has blocks and log segments, this method rebuilds the soft state by replaying
 // the Log.
 //
 // This is a synchronous method, but is typically called within a thread pool by
 // TSTabletManager.
-Status BootstrapTablet(
-    const scoped_refptr<TabletMetadata>& meta, const scoped_refptr<server::Clock>& clock,
-    const std::shared_ptr<MemTracker>& mem_tracker, MetricRegistry* metric_registry,
-    TabletStatusListener* status_listener, std::shared_ptr<Tablet>* rebuilt_tablet,
+CHECKED_STATUS BootstrapTablet(
+    const BootstrapTabletData& data,
+    std::shared_ptr<Tablet>* rebuilt_tablet,
     scoped_refptr<log::Log>* rebuilt_log,
-    const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry,
-    consensus::ConsensusBootstrapInfo* consensus_info,
-    std::shared_ptr<rocksdb::Cache> block_cache = nullptr);
+    consensus::ConsensusBootstrapInfo* consensus_info);
 
 }  // namespace tablet
 }  // namespace yb

@@ -135,7 +135,8 @@ target_link_libraries(tserver
   yrpc
   server_common
   server_process
-  tablet)
+  tablet
+  yb_client)
 
 #########################################
 # yb-tserver

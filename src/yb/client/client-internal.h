@@ -146,6 +146,7 @@ class YBClient::Data {
   // Works with both a distributed and non-distributed configuration.
   void SetMasterServerProxyAsync(YBClient* client,
                                  const MonoTime& deadline,
+                                 bool skip_resolution,
                                  const StatusCallback& cb);
 
   // Synchronous version of SetMasterServerProxyAsync method above.
@@ -156,7 +157,8 @@ class YBClient::Data {
   // TODO (KUDU-492): Get rid of this method and re-factor the client
   // to lazily initialize 'master_proxy_'.
   CHECKED_STATUS SetMasterServerProxy(YBClient* client,
-                              const MonoTime& deadline);
+                                      const MonoTime& deadline,
+                                      bool skip_resolution = false);
 
   std::shared_ptr<master::MasterServiceProxy> master_proxy() const;
 

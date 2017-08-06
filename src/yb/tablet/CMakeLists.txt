@@ -22,6 +22,7 @@ set(TABLET_SRCS
   tablet_metrics.cc
   tablet_peer_mm_ops.cc
   tablet_peer.cc
+  transaction_coordinator.cc
   transactions/transaction.cc
   transactions/alter_schema_transaction.cc
   transactions/transaction_driver.cc
@@ -90,7 +91,8 @@ target_link_libraries(tablet
   yb_util
   consensus
   rocksdb
-  yb_docdb)
+  yb_docdb
+  yb_client)
 
 set(YB_TEST_LINK_LIBS tablet ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(tablet-test)

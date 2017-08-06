@@ -28,6 +28,7 @@
 #include <gtest/gtest_prod.h>
 
 #include "rocksdb/cache.h"
+#include "yb/client/client_fwd.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/gutil/macros.h"
@@ -398,6 +399,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   // Block cache to share across tablet DB instances.
   std::shared_ptr<rocksdb::Cache> block_cache_;
+
+  client::YBClientPtr client_;
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };

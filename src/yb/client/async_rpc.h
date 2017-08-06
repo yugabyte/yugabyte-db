@@ -54,7 +54,7 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   virtual string ToString() const override;
 
   const YBTable* table() const;
-  const RemoteTablet& tablet() const { return tablet_invoker_->tablet(); }
+  const RemoteTablet& tablet() const { return *tablet_invoker_.tablet(); }
   const InFlightOps& ops() const { return ops_; }
 
  protected:
@@ -80,7 +80,7 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   // The trace buffer.
   scoped_refptr<Trace> trace_;
 
-  std::unique_ptr<TabletInvoker> tablet_invoker_;
+  TabletInvoker tablet_invoker_;
 
   // Operations which were batched into this RPC.
   // These operations are in kRequestSent state.

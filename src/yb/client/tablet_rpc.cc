@@ -15,6 +15,14 @@ namespace yb {
 namespace client {
 namespace internal {
 
+void TabletInvoker::SelectTabletServerWithConsistentPrefix() {
+  std::vector<RemoteTabletServer*> candidates;
+  current_ts_ = client_->data_->SelectTServer(tablet_.get(),
+                                              YBClient::ReplicaSelection::CLOSEST_REPLICA, {},
+                                              &candidates);
+  VLOG(1) << "Using tserver: " << current_ts_->ToString();
+}
+
 void TabletInvoker::SelectTabletServer()  {
   // Choose a destination TS according to the following algorithm:
   // 1. Select the leader, provided:
@@ -71,7 +79,11 @@ void TabletInvoker::SelectTabletServer()  {
 
 void TabletInvoker::Execute() {
   // Sets current_ts_.
-  SelectTabletServer();
+  if (!consistent_prefix_) {
+    SelectTabletServer();
+  } else {
+    SelectTabletServerWithConsistentPrefix();
+  }
 
   // If we've tried all replicas, force a lookup to the master to find the
   // new leader. This relies on some properties of LookupTabletByKey():
@@ -189,6 +201,19 @@ bool TabletInvoker::Done(Status* status) {
   }
 
   return true;
+}
+
+void TabletInvoker::LookupTablet(const std::string& tablet_id) {
+  client_->LookupTabletById(tablet_id, retrier_->deadline(), &tablet_,
+                            Bind(&TabletInvoker::InitialLookupTabletDone, Unretained(this)));
+}
+
+void TabletInvoker::InitialLookupTabletDone(const Status& status) {
+  if (status.ok()) {
+    Execute();
+  } else {
+    command_->SendRpcCb(status);
+  }
 }
 
 bool TabletInvoker::IsLocalCall() const {

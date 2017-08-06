@@ -140,8 +140,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // Add an op to the in-flight set and increment the ref-count.
   void AddInFlightOp(const InFlightOpPtr& op);
 
-  void RemoveInFlightOps(const InFlightOps& ops);
-
+  void RemoveInFlightOpsAfterFlushing(const InFlightOps& ops, const Status& status);
 
     // Return true if the batch has been aborted, and any in-flight ops should stop
   // processing wherever they are.

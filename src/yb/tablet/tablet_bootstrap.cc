@@ -29,12 +29,15 @@
 #include "yb/gutil/walltime.h"
 #include "yb/server/clock.h"
 #include "yb/server/hybrid_clock.h"
+
 #include "yb/tablet/lock_manager.h"
 #include "yb/tablet/row_op.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transactions/alter_schema_transaction.h"
 #include "yb/tablet/transactions/write_transaction.h"
+#include "yb/tablet/transaction_coordinator.h"
+
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
@@ -129,19 +132,15 @@ class FlushedStoresSnapshot {
 // we need to set it before replay or we won't be able to re-rebuild.
 class TabletBootstrap {
  public:
-  TabletBootstrap(
-      const scoped_refptr<TabletMetadata>& meta, const scoped_refptr<Clock>& clock,
-      shared_ptr<MemTracker> mem_tracker, MetricRegistry* metric_registry,
-      TabletStatusListener* listener, const scoped_refptr<LogAnchorRegistry>& log_anchor_registry,
-      std::shared_ptr<rocksdb::Cache> block_cache);
+  explicit TabletBootstrap(const BootstrapTabletData& data);
 
   // Plays the log segments, rebuilding the portion of the Tablet's soft
   // state that is present in the log (additional soft state may be present
   // in other replicas).
   // A successful call will yield the rebuilt tablet and the rebuilt log.
-  Status Bootstrap(shared_ptr<Tablet>* rebuilt_tablet,
-                   scoped_refptr<Log>* rebuilt_log,
-                   ConsensusBootstrapInfo* results);
+  CHECKED_STATUS Bootstrap(shared_ptr<Tablet>* rebuilt_tablet,
+                           scoped_refptr<Log>* rebuilt_log,
+                           ConsensusBootstrapInfo* results);
 
  private:
 
@@ -258,12 +257,12 @@ class TabletBootstrap {
   // Return a log prefix string in the standard "T xxx P yyy" format.
   string LogPrefix() const;
 
+  BootstrapTabletData data_;
   scoped_refptr<TabletMetadata> meta_;
-  scoped_refptr<Clock> clock_;
   shared_ptr<MemTracker> mem_tracker_;
   MetricRegistry* metric_registry_;
   TabletStatusListener* listener_;
-  gscoped_ptr<tablet::Tablet> tablet_;
+  std::unique_ptr<tablet::Tablet> tablet_;
   const scoped_refptr<log::LogAnchorRegistry> log_anchor_registry_;
   scoped_refptr<log::Log> log_;
   gscoped_ptr<log::LogReader> log_reader_;
@@ -351,16 +350,13 @@ void TabletStatusListener::StatusMessage(const string& status) {
 }
 
 Status BootstrapTablet(
-    const scoped_refptr<TabletMetadata>& meta, const scoped_refptr<Clock>& clock,
-    const shared_ptr<MemTracker>& mem_tracker, MetricRegistry* metric_registry,
-    TabletStatusListener* listener, shared_ptr<tablet::Tablet>* rebuilt_tablet,
+    const BootstrapTabletData& data,
+    shared_ptr<tablet::Tablet>* rebuilt_tablet,
     scoped_refptr<log::Log>* rebuilt_log,
-    const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry,
-    ConsensusBootstrapInfo* consensus_info, std::shared_ptr<rocksdb::Cache> block_cache) {
+    ConsensusBootstrapInfo* consensus_info) {
   TRACE_EVENT1("tablet", "BootstrapTablet",
-               "tablet_id", meta->tablet_id());
-  TabletBootstrap bootstrap(
-      meta, clock, mem_tracker, metric_registry, listener, log_anchor_registry, block_cache);
+               "tablet_id", data.meta->tablet_id());
+  TabletBootstrap bootstrap(data);
   RETURN_NOT_OK(bootstrap.Bootstrap(rebuilt_tablet, rebuilt_log, consensus_info));
   // This is necessary since OpenNewLog() initially disables sync.
   RETURN_NOT_OK((*rebuilt_log)->ReEnableSyncIfRequired());
@@ -385,18 +381,14 @@ static string DebugInfo(const string& tablet_id,
                     segment_path, debug_str);
 }
 
-TabletBootstrap::TabletBootstrap(
-    const scoped_refptr<TabletMetadata>& meta, const scoped_refptr<Clock>& clock,
-    shared_ptr<MemTracker> mem_tracker, MetricRegistry* metric_registry,
-    TabletStatusListener* listener, const scoped_refptr<LogAnchorRegistry>& log_anchor_registry,
-    std::shared_ptr<rocksdb::Cache> block_cache)
-    : meta_(meta),
-      clock_(clock),
-      mem_tracker_(std::move(mem_tracker)),
-      metric_registry_(metric_registry),
-      listener_(listener),
-      log_anchor_registry_(log_anchor_registry),
-      block_cache_(std::move(block_cache)) {}
+TabletBootstrap::TabletBootstrap(const BootstrapTabletData& data)
+    : data_(data),
+      meta_(data.meta),
+      mem_tracker_(data.mem_tracker),
+      metric_registry_(data.metric_registry),
+      listener_(data.listener),
+      log_anchor_registry_(data.log_anchor_registry),
+      block_cache_(data.block_cache) {}
 
 Status TabletBootstrap::Bootstrap(shared_ptr<Tablet>* rebuilt_tablet,
                                   scoped_refptr<Log>* rebuilt_log,
@@ -504,8 +496,9 @@ Status TabletBootstrap::FinishBootstrap(const string& message,
 }
 
 Status TabletBootstrap::OpenTablet(bool* has_blocks) {
-  gscoped_ptr<Tablet> tablet(new Tablet(
-      meta_, clock_, mem_tracker_, metric_registry_, log_anchor_registry_, block_cache_));
+  auto tablet = std::make_unique<Tablet>(
+      meta_, data_.clock, mem_tracker_, metric_registry_, log_anchor_registry_,
+      data_.transaction_coordinator_context, block_cache_);
   // doing nothing for now except opening a tablet locally.
   LOG_TIMING_PREFIX(INFO, LogPrefix(), "opening tablet") {
     RETURN_NOT_OK(tablet->Open());
@@ -521,7 +514,7 @@ Status TabletBootstrap::OpenTablet(bool* has_blocks) {
     default:
       LOG(FATAL) << "Invalid table type " << tablet->table_type();
   }
-  tablet_.reset(tablet.release());
+  tablet_ = std::move(tablet);
   return Status::OK();
 }
 
@@ -1108,8 +1101,8 @@ Status TabletBootstrap::HandleEntryPair(LogEntryPB* replicate_entry,
   // unlikely and the problem would manifest itself immediately and clearly (mvcc would complain
   // the operation is already committed, with a CHECK failure).
   } else {
-    DCHECK(clock_->SupportsExternalConsistencyMode(COMMIT_WAIT)) << "The provided clock does not"
-        "support COMMIT_WAIT external consistency mode.";
+    DCHECK(data_.clock->SupportsExternalConsistencyMode(COMMIT_WAIT))
+        << "The provided clock does not support COMMIT_WAIT external consistency mode.";
     safe_time = server::HybridClock::AddPhysicalTimeToHybridTime(
         HybridTime(replicate->hybrid_time()),
         MonoDelta::FromMicroseconds(-FLAGS_max_clock_sync_error_usec));
@@ -1623,7 +1616,7 @@ Status TabletBootstrap::FilterMutate(WriteTransactionState* tx_state,
 Status TabletBootstrap::UpdateClock(uint64_t hybrid_time) {
   HybridTime ht;
   RETURN_NOT_OK(ht.FromUint64(hybrid_time));
-  RETURN_NOT_OK(clock_->Update(ht));
+  RETURN_NOT_OK(data_.clock->Update(ht));
   return Status::OK();
 }
 

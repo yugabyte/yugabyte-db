@@ -39,41 +39,39 @@ class TabletRpc {
 
 class TabletInvoker {
  public:
-  explicit TabletInvoker(YBClient* client,
+  explicit TabletInvoker(bool consistent_prefix,
+                         YBClient* client,
                          rpc::RpcCommand* command,
                          TabletRpc* rpc,
                          RemoteTablet* tablet,
                          rpc::RpcRetrier* retrier,
                          Trace* trace)
       : client_(client),
-        tablet_(tablet),
         command_(command),
         rpc_(rpc),
+        tablet_(tablet),
         retrier_(retrier),
-        trace_(trace) {}
+        trace_(trace),
+        consistent_prefix_(consistent_prefix) {}
 
   virtual ~TabletInvoker() {}
 
   void Execute();
   bool Done(Status* status);
+  void LookupTablet(const std::string& tablet_id);
 
   bool IsLocalCall() const;
-  const RemoteTablet& tablet() const { return *tablet_; }
+  const RemoteTabletPtr& tablet() const { return tablet_; }
   std::shared_ptr<tserver::TabletServerServiceProxy> proxy() const;
-
- protected:
-  virtual void SelectTabletServer();
-  YBClient* client_;
-
-  // The tablet that should receive this rpc.
-  RemoteTablet* const tablet_;
-
-  // The TS receiving the write. May change if the write is retried.
-  // RemoteTabletServer is taken from YBClient cache, so it is guaranteed that those objects are
-  // alive while YBClient is alive. Because we don't delete them, but only add and update.
-  RemoteTabletServer* current_ts_ = nullptr;
+  YBClient& client() const { return *client_; }
 
  private:
+  void SelectTabletServer();
+
+  // This is an implementation of ReadRpc with consistency level as CONSISTENT_PREFIX. As a result,
+  // there is no requirement that the read needs to hit the leader.
+  void SelectTabletServerWithConsistentPrefix();
+
   // Called when we finish initializing a TS proxy.
   // Sends the RPC, provided there was no error.
   void InitTSProxyCb(const Status& status);
@@ -86,9 +84,16 @@ class TabletInvoker {
   // the rpc after a short delay.
   void LookupTabletCb(const Status& status);
 
+  void InitialLookupTabletDone(const Status& status);
+
+  YBClient* client_;
+
   rpc::RpcCommand* const command_;
 
   TabletRpc* const rpc_;
+
+  // The tablet that should receive this rpc.
+  RemoteTabletPtr tablet_;
 
   rpc::RpcRetrier* const retrier_;
 
@@ -100,30 +105,14 @@ class TabletInvoker {
   // Tablet servers that refused the write because they were followers at the time.
   // Cleared when new consensus configuration information arrives from the master.
   std::unordered_set<RemoteTabletServer*> followers_;
+
+  bool consistent_prefix_;
+
+  // The TS receiving the write. May change if the write is retried.
+  // RemoteTabletServer is taken from YBClient cache, so it is guaranteed that those objects are
+  // alive while YBClient is alive. Because we don't delete them, but only add and update.
+  RemoteTabletServer* current_ts_ = nullptr;
 };
-
-// This is an implementation of ReadRpc with consistency level as CONSISTENT_PREFIX. As a result,
-// there is no requirement that the read needs to hit the leader.
-class ConsistentPrefixTabletInvoker : public TabletInvoker {
- public:
-  explicit ConsistentPrefixTabletInvoker(YBClient* client,
-                                         rpc::RpcCommand* command,
-                                         TabletRpc* rpc,
-                                         RemoteTablet* tablet,
-                                         rpc::RpcRetrier* retrier,
-                                         Trace* trace)
-      : TabletInvoker(client, command, rpc, tablet, retrier, trace) {}
-
- protected:
-  void SelectTabletServer() {
-    vector<RemoteTabletServer*> candidates;
-    current_ts_ = client_->data_->SelectTServer(tablet_,
-                                                YBClient::ReplicaSelection::CLOSEST_REPLICA, {},
-                                                &candidates);
-    VLOG(1) << "Using tserver: " << current_ts_->ToString();
-  }
-};
-
 
 CHECKED_STATUS ErrorStatus(const tserver::TabletServerErrorPB* error);
 tserver::TabletServerErrorPB_Code ErrorCode(const tserver::TabletServerErrorPB* error);

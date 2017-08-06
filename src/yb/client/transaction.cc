@@ -14,12 +14,15 @@
 #include "yb/util/result.h"
 #include "yb/util/random_util.h"
 
+#include "yb/common/transaction.h"
+
 #include "yb/client/async_rpc.h"
 #include "yb/client/client.h"
 #include "yb/client/in_flight_op.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/tablet_rpc.h"
 #include "yb/client/transaction_manager.h"
+#include "yb/client/transaction_rpc.h"
 
 using namespace std::placeholders;
 
@@ -28,108 +31,19 @@ namespace client {
 
 namespace {
 
-using TransactionId = boost::uuids::uuid;
-
 TransactionId GenerateId() {
   boost::uuids::basic_random_generator<std::mt19937_64> generator(&ThreadLocalRandom());
   return generator();
 }
-
-// TransactionUpdater is used by UpdateTransactionRpc to fill request with transaction data,
-// and handle response.
-class TransactionUpdater {
- public:
-  virtual std::string ToString() const = 0;
-  virtual void UpdateDone(const Status& status) = 0;
-  virtual void PrepareRequest(tserver::UpdateTransactionRequestPB* req) = 0;
- protected:
-  ~TransactionUpdater() {}
-};
 
 // TODO(dtxn) correct deadline should be calculated and propagated.
 MonoTime TransactionDeadline() {
   return MonoTime::FineNow() + MonoDelta::FromSeconds(5);
 }
 
-// UpdateTransactionRpc is used to call UpdateTransaction remote method of appropriate tablet.
-class UpdateTransactionRpc : public rpc::Rpc, public internal::TabletRpc {
- public:
-  UpdateTransactionRpc(YBClient* client,
-                       internal::RemoteTablet* tablet,
-                       TransactionUpdater* updater)
-      : rpc::Rpc(TransactionDeadline(), client->messenger()),
-        updater_(updater),
-        trace_(new Trace),
-        invoker_(client, this, this, tablet, mutable_retrier(), trace_.get()) {
-  }
-
-  void SendRpc() override {
-    invoker_.Execute();
-  }
-
-  const tserver::TabletServerErrorPB* response_error() const override {
-    return resp_.has_error() ? &resp_.error() : nullptr;
-  }
-
-  virtual ~UpdateTransactionRpc() {}
-
- private:
-  std::string ToString() const override {
-    return Format("Commit: $0", updater_->ToString());
-  }
-
-  void SendRpcCb(const Status& status) override {
-    Status new_status = status;
-    if (invoker_.Done(&new_status)) {
-      updater_->UpdateDone(new_status);
-      delete this;
-    }
-  }
-
-  void Failed(const Status& status) override {}
-
-  void SendRpcToTserver() override {
-    updater_->PrepareRequest(&req_);
-    invoker_.proxy()->UpdateTransactionAsync(req_, &resp_, mutable_retrier()->mutable_controller(),
-        std::bind(&UpdateTransactionRpc::SendRpcCb, this, Status::OK()));
-  }
-
-  TransactionUpdater* updater_;
-  TracePtr trace_;
-  internal::TabletInvoker invoker_;
-  tserver::UpdateTransactionRequestPB req_;
-  tserver::UpdateTransactionResponsePB resp_;
-};
-
-// TODO(dtxn) Temporary class, that should be deleted in upcoming diffs.
-class TempTransactionUpdater final : public TransactionUpdater {
- public:
-  explicit TempTransactionUpdater(const internal::RemoteTabletPtr& tablet,
-                                  TransactionUpdater* updater)
-      : tablet_(tablet), updater_(updater) {}
-
-  std::string ToString() const {
-    return Format("TempTransactionUpdater: $0", tablet_->tablet_id());
-  }
-
-  void UpdateDone(const Status& status) {
-    updater_->UpdateDone(status);
-    delete this;
-  }
-
-  void PrepareRequest(tserver::UpdateTransactionRequestPB* req) {
-    updater_->PrepareRequest(req);
-    req->set_tablet_id(tablet_->tablet_id());
-  }
-
- private:
-  internal::RemoteTabletPtr tablet_;
-  TransactionUpdater* updater_;
-};
-
 } // namespace
 
-class YBTransaction::Impl final : public TransactionUpdater {
+class YBTransaction::Impl final {
  public:
   Impl(TransactionManager* manager, YBTransaction* transaction, IsolationLevel isolation)
       : manager_(manager),
@@ -145,6 +59,7 @@ class YBTransaction::Impl final : public TransactionUpdater {
                TransactionMetadataPB* metadata) {
     VLOG_WITH_PREFIX(1) << "Prepare";
 
+    bool has_tablets_without_parameters = false;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (!status_tablet_) {
@@ -157,13 +72,38 @@ class YBTransaction::Impl final : public TransactionUpdater {
       for (const auto& op : ops) {
         VLOG_WITH_PREFIX(1) << "Prepare, op: " << op->ToString();
         DCHECK(op->tablet != nullptr);
-        tablets_.insert(op->tablet->tablet_id());
+        auto it = tablets_.find(op->tablet->tablet_id());
+        if (it == tablets_.end()) {
+          tablets_.emplace(op->tablet->tablet_id(), TabletState());
+          has_tablets_without_parameters = true;
+        } else if (!has_tablets_without_parameters) {
+          has_tablets_without_parameters = !it->second.has_parameters;
+        }
       }
     }
 
     metadata->set_transaction_id(id_.begin(), id_.size());
-    metadata->set_isolation(isolation_);
+    if (has_tablets_without_parameters) {
+      metadata->set_isolation(isolation_);
+      metadata->set_status_tablet(status_tablet_->tablet_id());
+    }
     return true;
+  }
+
+  void Flushed(const internal::InFlightOps& ops, const Status& status) {
+    if (status.ok()) {
+      std::lock_guard<std::mutex> lock(mutex_);
+      TabletStates::iterator it = tablets_.end();
+      for (const auto& op : ops) {
+        const std::string& tablet_id = op->tablet->tablet_id();
+        // Usually all ops belong to the same tablet. So we can avoid repeating lookup.
+        if (it == tablets_.end() || it->first != tablet_id) {
+          auto it = tablets_.find(tablet_id);
+          CHECK(it != tablets_.end());
+          it->second.has_parameters = true;
+        }
+      }
+    }
   }
 
   void Commit(CommitCallback callback) {
@@ -189,45 +129,6 @@ class YBTransaction::Impl final : public TransactionUpdater {
     DoCommit(Status::OK(), transaction);
   }
 
-  void DoCommit(const Status& status, const YBTransactionPtr& transaction) {
-    VLOG_WITH_PREFIX(1) << Format("Commit, tablets: $0, status: $1", tablets_, status);
-    if (!status.ok()) {
-      commit_callback_(status);
-      return;
-    }
-
-    // TODO(dtxn) Add to raft queue of status tablet.
-    // auto* rpc = new UpdateTransactionRpc(manager_->client().get(), status_tablet_.get(), this);
-    // rpc->SendRpc();
-
-    auto deadline = TransactionDeadline();
-    pending_updates_.store(tablets_.size(), std::memory_order_release);
-    retained_transaction_ = transaction_->shared_from_this();
-    for (const auto& tablet : tablets_) {
-      auto holder = std::make_shared<internal::RemoteTabletPtr>();
-      manager_->client()->LookupTabletById(
-          tablet,
-          deadline,
-          holder.get(),
-          Bind(&Impl::LookupInvolvedTabletDone,
-               Unretained(this),
-               holder,
-               transaction_->shared_from_this()));
-    }
-  }
-
-  void LookupInvolvedTabletDone(const std::shared_ptr<internal::RemoteTabletPtr>& holder,
-                                const YBTransactionPtr& transaction,
-                                const Status& status) {
-    internal::RemoteTabletPtr remote_tablet(*holder);
-    CHECK_OK(status); // TODO(dtxn) Handle errors.
-
-    auto* rpc = new UpdateTransactionRpc(manager_->client().get(),
-                                         remote_tablet.get(),
-                                         new TempTransactionUpdater(remote_tablet, this));
-    rpc->SendRpc();
-  }
-
   const std::string& LogPrefix() {
     return log_prefix_;
   }
@@ -237,24 +138,34 @@ class YBTransaction::Impl final : public TransactionUpdater {
   }
 
  private:
-  void UpdateDone(const Status& status) {
-    CHECK_OK(status); // TODO(dtxn) Handle errors.
-
-    if (pending_updates_.fetch_sub(1, std::memory_order_acquire) == 1) {
-      retained_transaction_.reset();
-      VLOG_WITH_PREFIX(1) << "Updated";
-      commit_callback_(Status::OK());
+  void DoCommit(const Status& status, const YBTransactionPtr& transaction) {
+    VLOG_WITH_PREFIX(1) << Format("Commit, tablets: $0, status: $1", tablets_, status);
+    if (!status.ok()) {
+      commit_callback_(status);
+      return;
     }
-  }
 
-  void PrepareRequest(tserver::UpdateTransactionRequestPB* req) {
-    req->set_tablet_id(status_tablet_->tablet_id());
-    auto& state = *req->mutable_state();
+    tserver::UpdateTransactionRequestPB req;
+    req.set_tablet_id(status_tablet_->tablet_id());
+    auto& state = *req.mutable_state();
     state.set_transaction_id(id_.begin(), id_.size());
     state.set_status(tserver::COMMITTED);
     for (const auto& tablet : tablets_) {
-      state.add_involved_tablets(tablet);
+      state.add_tablets(tablet.first);
     }
+
+    UpdateTransaction(TransactionDeadline(),
+                      status_tablet_.get(),
+                      manager_->client().get(),
+                      &req,
+                      std::bind(&Impl::UpdateDone, this, _1, transaction));
+  }
+
+  void UpdateDone(const Status& status, const YBTransactionPtr& transaction) {
+    CHECK_OK(status); // TODO(dtxn) Handle errors.
+
+    VLOG_WITH_PREFIX(1) << "Updated";
+    commit_callback_(Status::OK());
   }
 
   void RequestStatusTablet() {
@@ -311,14 +222,18 @@ class YBTransaction::Impl final : public TransactionUpdater {
   bool complete_ = false;
   CommitCallback commit_callback_;
 
-  // TODO(dtxn) temporary while we send multiple commits
-  std::atomic<size_t> pending_updates_{0};
+  struct TabletState {
+    bool has_parameters = false;
 
-  // Prevent transaction from being destroyed during async calls
-  YBTransactionPtr retained_transaction_;
+    std::string ToString() const {
+      return Format("{ has_parameters $0 }", has_parameters);
+    }
+  };
+
+  typedef std::unordered_map<std::string, TabletState> TabletStates;
 
   std::mutex mutex_;
-  std::unordered_set<std::string> tablets_;
+  TabletStates tablets_;
   std::vector<Waiter> waiters_;
 };
 
@@ -334,6 +249,10 @@ bool YBTransaction::Prepare(const std::unordered_set<internal::InFlightOpPtr>& o
                             Waiter waiter,
                             TransactionMetadataPB* metadata) {
   return impl_->Prepare(ops, std::move(waiter), metadata);
+}
+
+void YBTransaction::Flushed(const internal::InFlightOps& ops, const Status& status) {
+  impl_->Flushed(ops, status);
 }
 
 void YBTransaction::Commit(CommitCallback callback) {

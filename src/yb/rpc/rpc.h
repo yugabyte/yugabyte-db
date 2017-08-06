@@ -136,6 +136,7 @@ class Rpc : public RpcCommand {
   // Returns the number of times this RPC has been sent. Will always be at
   // least one.
   int num_attempts() const { return retrier().attempt_num(); }
+  const MonoTime& deadline() const { return retrier_.deadline(); }
 
  protected:
   const RpcRetrier& retrier() const { return retrier_; }

@@ -29,10 +29,13 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/yql_value.h"
+
+#include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/catalog_manager.h"
@@ -522,20 +525,21 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& 
   scoped_refptr<Log> log;
   consensus::ConsensusBootstrapInfo consensus_info;
   tablet_peer_->SetBootstrapping();
-  RETURN_NOT_OK(BootstrapTablet(metadata,
-                                scoped_refptr<server::Clock>(master_->clock()),
-                                master_->mem_tracker(),
-                                metric_registry_,
-                                tablet_peer_->status_listener(),
-                                &tablet,
-                                &log,
-                                tablet_peer_->log_anchor_registry(),
-                                &consensus_info));
+  tablet::BootstrapTabletData data = { metadata,
+                                       scoped_refptr<server::Clock>(master_->clock()),
+                                       master_->mem_tracker(),
+                                       metric_registry_,
+                                       tablet_peer_->status_listener(),
+                                       tablet_peer_->log_anchor_registry(),
+                                       nullptr /* block_cache */,
+                                       nullptr /* transaction_coordinator_context */ };
+  RETURN_NOT_OK(BootstrapTablet(data, &tablet, &log, &consensus_info));
 
   // TODO: Do we have a setSplittable(false) or something from the outside is
   // handling split in the TS?
 
   RETURN_NOT_OK_PREPEND(tablet_peer_->Init(tablet,
+                                           nullptr,
                                            scoped_refptr<server::Clock>(master_->clock()),
                                            master_->messenger(),
                                            log,

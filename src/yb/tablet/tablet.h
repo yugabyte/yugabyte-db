@@ -24,32 +24,38 @@
 #include <string>
 #include <vector>
 
-#include <boost/thread/shared_mutex.hpp>
-
 #include "rocksdb/cache.h"
 #include "rocksdb/include/rocksdb/options.h"
 #include "rocksdb/statistics.h"
 #include "rocksdb/write_batch.h"
 
 #include "yb/tserver/tserver.pb.h"
+
+#include "yb/client/client_fwd.h"
+
 #include "yb/common/iterator.h"
 #include "yb/common/predicate_encoder.h"
 #include "yb/common/schema.h"
 #include "yb/common/row_operations.h"
+#include "yb/common/transaction.h"
 #include "yb/common/yql_storage_interface.h"
+
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/yql_rocksdb_storage.h"
 #include "yb/docdb/doc_operation.h"
+
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
+
 #include "yb/tablet/abstract_tablet.h"
-#include "yb/tablet/rowset_metadata.h"
-#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/lock_manager.h"
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/rowset.h"
+#include "yb/tablet/rowset_metadata.h"
+#include "yb/tablet/tablet_metadata.h"
+
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pending_op_counter.h"
@@ -94,6 +100,8 @@ class RowSetTree;
 class ScopedReadTransaction;
 struct TabletComponents;
 struct TabletMetrics;
+class TransactionCoordinator;
+class TransactionCoordinatorContext;
 class WriteTransactionState;
 
 using util::LockBatch;
@@ -114,9 +122,12 @@ class Tablet : public AbstractTablet {
   // If 'metric_registry' is non-NULL, then this tablet will create a 'tablet' entity
   // within the provided registry. Otherwise, no metrics are collected.
   Tablet(
-      const scoped_refptr<TabletMetadata>& metadata, const scoped_refptr<server::Clock>& clock,
-      const std::shared_ptr<MemTracker>& parent_mem_tracker, MetricRegistry* metric_registry,
+      const scoped_refptr<TabletMetadata>& metadata,
+      const scoped_refptr<server::Clock>& clock,
+      const std::shared_ptr<MemTracker>& parent_mem_tracker,
+      MetricRegistry* metric_registry,
       const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry,
+      TransactionCoordinatorContext* transaction_coordinator_context,
       std::shared_ptr<rocksdb::Cache> block_cache = nullptr);
 
   ~Tablet();
@@ -140,9 +151,9 @@ class Tablet : public AbstractTablet {
 
   CHECKED_STATUS ImportData(const std::string& source_dir);
 
-  CHECKED_STATUS ApplyIntents(const std::string& transaction_id,
+  CHECKED_STATUS ApplyIntents(const TransactionId& transaction_id,
                               const consensus::OpId& op_id,
-                              const HybridTime& hybrid_time);
+                              HybridTime hybrid_time);
 
   // Decode the Write (insert/mutate) operations from within a user's request.
   // Either fills in tx_state->row_ops or tx_state->kv_write_batch depending on TableType.
@@ -496,6 +507,10 @@ class Tablet : public AbstractTablet {
     return rocksdb_statistics_;
   }
 
+  TransactionCoordinator& transaction_coordinator() {
+    return *transaction_coordinator_;
+  }
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -676,11 +691,11 @@ class Tablet : public AbstractTablet {
   std::shared_ptr<MemTracker> mem_tracker_;
   std::shared_ptr<MemTracker> dms_mem_tracker_;
 
-  scoped_refptr<MetricEntity> metric_entity_;
+  MetricEntityPtr metric_entity_;
   gscoped_ptr<TabletMetrics> metrics_;
   FunctionGaugeDetacher metric_detacher_;
 
-  int64_t next_mrs_id_;
+  int64_t next_mrs_id_ = 0;
 
   // A pointer to the server's clock.
   scoped_refptr<server::Clock> clock_;
@@ -706,7 +721,7 @@ class Tablet : public AbstractTablet {
   // We take this lock when flushing the tablet's rowsets in Tablet::Flush.  We
   // don't want to have two flushes in progress at once, in case the one which
   // started earlier completes after the one started later.
-  mutable Semaphore rowsets_flush_sem_;
+  mutable Semaphore rowsets_flush_sem_{1};
 
   // Lock used to serialize the creation of RocksDB checkpoints.
   mutable std::mutex create_checkpoint_lock_;
@@ -717,7 +732,7 @@ class Tablet : public AbstractTablet {
     kOpen,
     kShutdown
   };
-  State state_;
+  State state_ = kInitialized;
 
   // Fault hooks. In production code, these will always be NULL.
   std::shared_ptr<CompactionFaultHooks> compaction_hooks_;
@@ -742,14 +757,14 @@ class Tablet : public AbstractTablet {
 
   // A lightweight way to reject new operations when the tablet is shutting down. This is used to
   // prevent race conditions between destroying the RocksDB instance and read/write operations.
-  std::atomic_bool shutdown_requested_;
+  std::atomic_bool shutdown_requested_{false};
 
   // This is a special atomic counter per tablet that increases monotonically.
   // It is like timestamp, but doesn't need locks to read or update.
   // This is raft replicated as well. Each replicate message contains the current number.
   // It is guaranteed to keep increasing for committed entries even across tablet server
   // restarts and leader changes.
-  std::atomic<int64_t> monotonic_counter_;
+  std::atomic<int64_t> monotonic_counter_{0};
 
   // Number of pending operations. We use this to make sure we don't shut down RocksDB before all
   // pending operations are finished. We don't have a strict definition of an "operation" for the
@@ -760,6 +775,8 @@ class Tablet : public AbstractTablet {
   mutable yb::util::PendingOperationCounter pending_op_counter_;
 
   std::shared_ptr<yb::docdb::HistoryRetentionPolicy> retention_policy_;
+
+  std::unique_ptr<TransactionCoordinator> transaction_coordinator_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

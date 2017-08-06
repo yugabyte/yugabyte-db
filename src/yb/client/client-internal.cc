@@ -813,6 +813,7 @@ void GetTableSchemaRpc::ResetLeaderMasterAndRetry() {
   client_->data_->SetMasterServerProxyAsync(
       client_,
       retrier().deadline(),
+      false /* skip_resolution */,
       Bind(&GetTableSchemaRpc::NewLeaderMasterDeterminedCb,
            Unretained(this)));
 }
@@ -914,7 +915,7 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
 }
 
 void YBClient::Data::LeaderMasterDetermined(const Status& status,
-                                              const HostPort& host_port) {
+                                            const HostPort& host_port) {
   Endpoint leader_sock_addr;
   Status new_status = status;
   if (new_status.ok()) {
@@ -939,15 +940,17 @@ void YBClient::Data::LeaderMasterDetermined(const Status& status,
 }
 
 Status YBClient::Data::SetMasterServerProxy(YBClient* client,
-                                              const MonoTime& deadline) {
+                                            const MonoTime& deadline,
+                                            bool skip_resolution) {
   Synchronizer sync;
-  SetMasterServerProxyAsync(client, deadline, sync.AsStatusCallback());
+  SetMasterServerProxyAsync(client, deadline, skip_resolution, sync.AsStatusCallback());
   return sync.Wait();
 }
 
 void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
-                                                 const MonoTime& deadline,
-                                                 const StatusCallback& cb) {
+                                               const MonoTime& deadline,
+                                               bool skip_resolution,
+                                               const StatusCallback& cb) {
   DCHECK(deadline.Initialized());
 
   vector<Endpoint> master_sockaddrs;
@@ -993,6 +996,11 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
   // callback to leader_master_callbacks_.
   std::unique_lock<simple_spinlock> l(leader_master_lock_);
   leader_master_callbacks_.push_back(cb);
+  if (skip_resolution && !master_sockaddrs.empty()) {
+    l.unlock();
+    LeaderMasterDetermined(Status::OK(), HostPort(master_sockaddrs.front()));
+    return;
+  }
   if (!leader_master_rpc_) {
     // No one is sending a request yet - we need to be the one to do it.
     leader_master_rpc_.reset(new GetLeaderMasterRpc(

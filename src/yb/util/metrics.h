@@ -542,6 +542,8 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   std::vector<ExternalMetricsCb> external_metrics_cbs_;
 };
 
+typedef scoped_refptr<MetricEntity> MetricEntityPtr;
+
 // Base class to allow for putting all metrics into a single container.
 // See documentation at the top of this file for information on metrics ownership.
 class Metric : public RefCountedThreadSafe<Metric> {

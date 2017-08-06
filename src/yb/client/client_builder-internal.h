@@ -50,6 +50,8 @@ class YBClientBuilder::Data {
 
   // A descriptive name for the client. Useful for embedded ybclients.
   std::string client_name_ = "ybclient";
+
+  bool skip_master_leader_resolution_ = false;
  private:
   DISALLOW_COPY_AND_ASSIGN(Data);
 };

@@ -34,6 +34,8 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   bool Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
                Waiter waiter,
                TransactionMetadataPB* metadata);
+  void Flushed(const internal::InFlightOps& ops, const Status& status);
+
   void Commit(CommitCallback callback);
  private:
   class Impl;

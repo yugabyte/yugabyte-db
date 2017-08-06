@@ -86,7 +86,7 @@ class MetaCache;
 class RemoteTablet;
 class RemoteTabletServer;
 class AsyncRpc;
-class ConsistentPrefixTabletInvoker;
+class TabletInvoker;
 }  // namespace internal
 
 // This must match TableType in common.proto.
@@ -181,6 +181,10 @@ class YBClientBuilder {
   // Sets client name to be used for naming the client's messenger/reactors.
   YBClientBuilder& set_client_name(const std::string& name);
 
+  // Sets skip master leader resolution.
+  // Used in tests, when we do not have real master.
+  YBClientBuilder& set_skip_master_leader_resolution(bool value);
+
   // Creates the client.
   //
   // The return value may indicate an error in the create operation, or a
@@ -190,8 +194,7 @@ class YBClientBuilder {
  private:
   class Data;
 
-  // Owned.
-  Data* data_;
+  std::unique_ptr<Data> data_;
 
   DISALLOW_COPY_AND_ASSIGN(YBClientBuilder);
 };
@@ -417,7 +420,7 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   friend class internal::RemoteTablet;
   friend class internal::RemoteTabletServer;
   friend class internal::AsyncRpc;
-  friend class internal::ConsistentPrefixTabletInvoker;
+  friend class internal::TabletInvoker;
 
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);
   FRIEND_TEST(ClientTest, TestMasterDown);

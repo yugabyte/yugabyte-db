@@ -492,11 +492,17 @@ void Batcher::AddOpCountMismatchError() {
   DCHECK(false);
 }
 
-void Batcher::RemoveInFlightOps(const InFlightOps& ops) {
-  std::lock_guard<simple_spinlock> l(lock_);
-  for (auto& op : ops) {
-    CHECK_EQ(1, ops_.erase(op))
-      << "Could not remove op " << op->ToString() << " from in-flight list";
+void Batcher::RemoveInFlightOpsAfterFlushing(const InFlightOps& ops, const Status& status) {
+  {
+    std::lock_guard<simple_spinlock> l(lock_);
+    for (auto& op : ops) {
+      CHECK_EQ(1, ops_.erase(op))
+        << "Could not remove op " << op->ToString() << " from in-flight list";
+    }
+  }
+  auto transaction = this->transaction();
+  if (transaction) {
+    transaction->Flushed(ops, status);
   }
 }
 

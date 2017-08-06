@@ -425,10 +425,18 @@ enum TransactionStatus {
   PENDING = 1;
   COMMITTED = 2;
   ABORTED = 3;
+  APPLY = 4;
+  APPLIED = 5;
+  COMMITTING = 6;
 }
 
 message TransactionStatePB {
   optional bytes transaction_id = 1;
   optional TransactionStatus status = 2;
-  repeated bytes involved_tablets = 3;
+
+  // tablets has different meaning, depending on status:
+  // COMMITTED - list of involved tablets
+  // APPLY - single entry, status tablet of this transaction
+  // APPLIED - single entry, tablet that applied this transaction
+  repeated bytes tablets = 3;
 }

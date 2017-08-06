@@ -209,7 +209,6 @@ YBClientBuilder::YBClientBuilder()
 }
 
 YBClientBuilder::~YBClientBuilder() {
-  delete data_;
 }
 
 YBClientBuilder& YBClientBuilder::clear_master_server_addrs() {
@@ -261,6 +260,11 @@ YBClientBuilder& YBClientBuilder::set_client_name(const std::string& name) {
   return *this;
 }
 
+YBClientBuilder& YBClientBuilder::set_skip_master_leader_resolution(bool value) {
+  data_->skip_master_leader_resolution_ = value;
+  return *this;
+}
+
 Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
   RETURN_NOT_OK(CheckCPUFlags());
 
@@ -281,8 +285,9 @@ Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
   // time around.
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(c->default_admin_operation_timeout());
-  RETURN_NOT_OK_PREPEND(c->data_->SetMasterServerProxy(c.get(), deadline),
-                        "Could not locate the leader master");
+  RETURN_NOT_OK_PREPEND(
+      c->data_->SetMasterServerProxy(c.get(), deadline, data_->skip_master_leader_resolution_),
+      "Could not locate the leader master");
 
   c->data_->meta_cache_.reset(new MetaCache(c.get()));
   c->data_->dns_resolver_.reset(new DnsResolver());

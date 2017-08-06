@@ -33,6 +33,11 @@ class PickStatusTabletTask {
       callback_(status);
       return;
     }
+    // TODO(dtxn)
+    auto filter = [](const YBTableName& name) {
+      return name.namespace_name() == "system" || name.namespace_name() == "system_schema";
+    };
+    tables.erase(std::remove_if(tables.begin(), tables.end(), filter), tables.end());
     if (tables.empty()) {
       callback_(STATUS(IllegalState, "No tables exists"));
       return;

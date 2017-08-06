@@ -29,9 +29,6 @@
 #include <utility>
 #include <vector>
 
-#include <boost/bind.hpp>
-#include <boost/thread/shared_mutex.hpp>
-
 #include "rocksdb/db.h"
 #include "rocksdb/include/rocksdb/options.h"
 #include "rocksdb/statistics.h"
@@ -66,6 +63,7 @@
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 #include "yb/server/hybrid_clock.h"
+
 #include "yb/tablet/compaction.h"
 #include "yb/tablet/compaction_policy.h"
 #include "yb/tablet/delta_compaction.h"
@@ -79,8 +77,10 @@
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_mm_ops.h"
 #include "yb/tablet/tablet_retention_policy.h"
+#include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transactions/alter_schema_transaction.h"
 #include "yb/tablet/transactions/write_transaction.h"
+
 #include "yb/util/bloom_filter.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/enums.h"
@@ -123,6 +123,8 @@ METRIC_DEFINE_gauge_size(tablet, memrowset_size, "MemRowSet Memory Usage",
 METRIC_DEFINE_gauge_size(tablet, on_disk_size, "Tablet Size On Disk",
                          yb::MetricUnit::kBytes,
                          "Size of this tablet on disk.");
+
+using namespace std::placeholders;
 
 using std::shared_ptr;
 using std::make_shared;
@@ -192,9 +194,12 @@ TabletComponents::TabletComponents(shared_ptr<MemRowSet> mrs,
 const char* Tablet::kDMSMemTrackerId = "DeltaMemStores";
 
 Tablet::Tablet(
-    const scoped_refptr<TabletMetadata>& metadata, const scoped_refptr<server::Clock>& clock,
-    const shared_ptr<MemTracker>& parent_mem_tracker, MetricRegistry* metric_registry,
+    const scoped_refptr<TabletMetadata>& metadata,
+    const scoped_refptr<server::Clock>& clock,
+    const shared_ptr<MemTracker>& parent_mem_tracker,
+    MetricRegistry* metric_registry,
     const scoped_refptr<LogAnchorRegistry>& log_anchor_registry,
+    TransactionCoordinatorContext* transaction_coordinator_context,
     std::shared_ptr<rocksdb::Cache> block_cache)
     : key_schema_(metadata->schema().CreateKeyProjection()),
       metadata_(metadata),
@@ -203,14 +208,9 @@ Tablet::Tablet(
       mem_tracker_(
           MemTracker::CreateTracker(-1, Substitute("tablet-$0", tablet_id()), parent_mem_tracker)),
       dms_mem_tracker_(MemTracker::CreateTracker(-1, kDMSMemTrackerId, mem_tracker_)),
-      next_mrs_id_(0),
       clock_(clock),
       mvcc_(clock, metadata->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE),
-      rowsets_flush_sem_(1),
-      state_(kInitialized),
-      block_cache_(block_cache),
-      shutdown_requested_(false),
-      monotonic_counter_(0) {
+      block_cache_(block_cache) {
   CHECK(schema()->has_column_ids());
   compaction_policy_.reset(CreateCompactionPolicy());
 
@@ -238,6 +238,11 @@ Tablet::Tablet(
     METRIC_on_disk_size.InstantiateFunctionGauge(
             metric_entity_, Bind(&Tablet::EstimateOnDiskSize, Unretained(this)))
         ->AutoDetach(&metric_detacher_);
+  }
+
+  if (transaction_coordinator_context) {
+    transaction_coordinator_ = std::make_unique<TransactionCoordinator>(
+        transaction_coordinator_context);
   }
 }
 
@@ -810,13 +815,16 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
   }
 
   WriteBatch rocksdb_write_batch;
+  rocksdb_write_batch.SetUserOpId(rocksdb::OpId(op_id.term(), op_id.index()));
 
   std::string key_prefix;
   // TODO(dtxn) use correct intents store
   if (put_batch.has_transaction()) {
     key_prefix = '!' + put_batch.transaction().transaction_id() + '!';
+    if (put_batch.transaction().has_isolation()) {
+      transaction_coordinator().Add(put_batch.transaction(), &rocksdb_write_batch);
+    }
   }
-  rocksdb_write_batch.SetUserOpId(rocksdb::OpId(op_id.term(), op_id.index()));
   for (int write_id = 0; write_id < put_batch.kv_pairs_size(); ++write_id) {
     const auto& kv_pair = put_batch.kv_pairs(write_id);
     CHECK(kv_pair.has_key());
@@ -1261,16 +1269,18 @@ Status Tablet::ImportData(const std::string& source_dir) {
 }
 
 // TODO(dtxn) apply intents correctly
-Status Tablet::ApplyIntents(const std::string& transaction_id,
+Status Tablet::ApplyIntents(const TransactionId& transaction_id,
                             const OpId& op_id,
-                            const HybridTime& hybrid_time) {
+                            HybridTime hybrid_time) {
   LOG(INFO) << "ApplyIntents: " << transaction_id;
 
   auto iter = docdb::CreateRocksDBIterator(rocksdb_.get(),
                                            docdb::BloomFilterMode::USE_BLOOM_FILTER,
                                            rocksdb::kDefaultQueryId);
   iter->SeekToFirst();
-  std::string prefix = '!' + transaction_id + '!';
+  std::string prefix = "!";
+  prefix.insert(prefix.end(), transaction_id.begin(), transaction_id.end());
+  prefix += '!';
 
   KeyValueWriteBatchPB put_batch;
 

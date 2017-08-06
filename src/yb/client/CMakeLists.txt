@@ -37,6 +37,7 @@ set(CLIENT_SRCS
   tablet_rpc.cc
   transaction.cc
   transaction_manager.cc
+  transaction_rpc.cc
   value.cc
   yb_op.cc
   yb_table_name.cc

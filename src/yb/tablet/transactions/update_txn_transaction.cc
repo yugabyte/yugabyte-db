@@ -5,6 +5,7 @@
 #include "yb/tablet/transactions/update_txn_transaction.h"
 
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_coordinator.h"
 
 using namespace std::literals;
 
@@ -38,14 +39,12 @@ void UpdateTxnTransaction::Start() {
 }
 
 Status UpdateTxnTransaction::Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) {
-  auto* request = state()->request();
-  if (request->status() == tserver::COMMITTED) {
-    auto* tablet = state()->tablet_peer()->tablet();
-    return tablet->ApplyIntents(request->transaction_id(),
-                                state()->op_id(),
-                                state()->hybrid_time());
-  }
-  return Status::OK();
+  auto* tablet = state()->tablet_peer()->tablet();
+  auto mode = type() == consensus::LEADER ? ProcessMode::LEADER : ProcessMode::NON_LEADER;
+  return tablet->transaction_coordinator().Process(mode,
+                                                   *state()->request(),
+                                                   state()->op_id(),
+                                                   state()->hybrid_time());
 }
 
 string UpdateTxnTransaction::ToString() const {

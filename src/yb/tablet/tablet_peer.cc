@@ -131,6 +131,7 @@ TabletPeer::~TabletPeer() {
 }
 
 Status TabletPeer::Init(const shared_ptr<Tablet>& tablet,
+                        const client::YBClientPtr& client,
                         const scoped_refptr<server::Clock>& clock,
                         const shared_ptr<Messenger>& messenger,
                         const scoped_refptr<Log>& log,
@@ -143,6 +144,7 @@ Status TabletPeer::Init(const shared_ptr<Tablet>& tablet,
     std::lock_guard<simple_spinlock> lock(lock_);
     CHECK_EQ(BOOTSTRAPPING, state_);
     tablet_ = tablet;
+    client_ = client;
     clock_ = clock;
     messenger_ = messenger;
     log_ = log;
@@ -675,6 +677,12 @@ scoped_refptr<TransactionDriver> TabletPeer::CreateTransactionDriver() {
       apply_pool_,
       &txn_order_verifier_,
       tablet_->table_type()));
+}
+
+Status TabletPeer::ApplyIntents(const TransactionId& id,
+                                const consensus::OpId& op_id,
+                                HybridTime hybrid_time) {
+  return tablet_->ApplyIntents(id, op_id, hybrid_time);
 }
 
 }  // namespace tablet

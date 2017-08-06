@@ -106,13 +106,8 @@ void ServerBaseOptions::SetMasterAddressesNoValidation(
 }
 
 ServerBaseOptions::addresses_shared_ptr ServerBaseOptions::GetMasterAddresses() const {
-  addresses_shared_ptr local;
-  {
-    std::lock_guard<std::mutex> l(master_addresses_mtx_);
-    local = master_addresses_;
-  }
-
-  return local;
+  std::lock_guard<std::mutex> l(master_addresses_mtx_);
+  return master_addresses_;
 }
 
 } // namespace server

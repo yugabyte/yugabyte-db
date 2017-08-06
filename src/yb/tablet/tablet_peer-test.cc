@@ -140,6 +140,7 @@ class TabletPeerTest : public YBTabletTest,
 
     tablet_peer_->SetBootstrapping();
     ASSERT_OK(tablet_peer_->Init(tablet(),
+                                 nullptr /* client */,
                                  clock(),
                                  messenger_,
                                  log,

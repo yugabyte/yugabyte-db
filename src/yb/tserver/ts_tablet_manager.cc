@@ -23,13 +23,16 @@
 #include <string>
 #include <vector>
 
-#include <boost/bind.hpp>
-#include <boost/optional.hpp>
-#include <boost/thread/shared_mutex.hpp>
+#include <boost/optional/optional.hpp>
+
 #include <glog/logging.h>
+
+#include "yb/client/client.h"
+
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
+#include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
@@ -185,6 +188,17 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
       METRIC_op_apply_queue_time.Instantiate(server_->metric_entity()));
   apply_pool_->SetRunTimeMicrosHistogram(
       METRIC_op_apply_run_time.Instantiate(server_->metric_entity()));
+
+  {
+    client::YBClientBuilder client_builder;
+    client_builder.set_client_name("tserver_client");
+    client_builder.default_rpc_timeout(MonoDelta::FromSeconds(5)); // TODO(dtxn)
+    auto addresses = *server_->options().GetMasterAddresses();
+    client_builder.add_master_server_addr(HostPort::ToCommaSeparatedString(addresses));
+    client_builder.set_skip_master_leader_resolution(addresses.size() == 1);
+    client_builder.set_metric_entity(server_->metric_entity());
+    CHECK_OK(client_builder.Build(&client_));
+  }
 
   int64_t block_cache_size_bytes = FLAGS_db_block_cache_size_bytes;
   // Auto-compute size of block cache if asked to.
@@ -730,10 +744,16 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
     // TODO: handle crash mid-creation of tablet? do we ever end up with a
     // partially created tablet here?
     tablet_peer->SetBootstrapping();
-    s = BootstrapTablet(
-        meta, scoped_refptr<server::Clock>(server_->clock()), server_->mem_tracker(),
-        metric_registry_, tablet_peer->status_listener(), &tablet, &log,
-        tablet_peer->log_anchor_registry(), &bootstrap_info, block_cache_);
+    tablet::BootstrapTabletData data = {
+        meta,
+        scoped_refptr<server::Clock>(server_->clock()),
+        server_->mem_tracker(),
+        metric_registry_,
+        tablet_peer->status_listener(),
+        tablet_peer->log_anchor_registry(),
+        block_cache_,
+        tablet_peer.get()};
+    s = BootstrapTablet(data, &tablet, &log, &bootstrap_info);
     if (!s.ok()) {
       LOG(ERROR) << kLogPrefix << "Tablet failed to bootstrap: "
                  << s.ToString();
@@ -746,6 +766,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "starting tablet") {
     TRACE("Initializing tablet peer");
     s =  tablet_peer->Init(tablet,
+                           client_,
                            scoped_refptr<server::Clock>(server_->clock()),
                            server_->messenger(),
                            log,

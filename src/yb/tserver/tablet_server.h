@@ -114,6 +114,8 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   // Returns the proxy to call this tablet server locally.
   const std::shared_ptr<TabletServerServiceProxy>& proxy() const { return proxy_; }
 
+  const TabletServerOptions& options() const { return opts_; }
+
  private:
   // Auto initialize some of the service flags that are defaulted to -1.
   void AutoInitServiceFlags();

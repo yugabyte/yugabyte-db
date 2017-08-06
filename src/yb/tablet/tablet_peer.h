@@ -30,8 +30,11 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/tablet/tablet.h"
+
+#include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_order_verifier.h"
 #include "yb/tablet/transactions/transaction_tracker.h"
+
 #include "yb/util/metrics.h"
 #include "yb/util/semaphore.h"
 #include "yb/tablet/prepare_thread.h"
@@ -65,7 +68,8 @@ class TransactionDriver;
 // peers see the same updates in the same order. In addition to this, this
 // class also splits the work and coordinates multi-threaded execution.
 class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
-                   public consensus::ReplicaTransactionFactory {
+                   public consensus::ReplicaTransactionFactory,
+                   public TransactionCoordinatorContext {
  public:
   typedef std::map<int64_t, int64_t> MaxIdxToSegmentSizeMap;
 
@@ -76,10 +80,11 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   // Initializes the TabletPeer, namely creating the Log and initializing
   // Consensus.
   CHECKED_STATUS Init(const std::shared_ptr<tablet::Tablet>& tablet,
-              const scoped_refptr<server::Clock>& clock,
-              const std::shared_ptr<rpc::Messenger>& messenger,
-              const scoped_refptr<log::Log>& log,
-              const scoped_refptr<MetricEntity>& metric_entity);
+                      const client::YBClientPtr& client,
+                      const scoped_refptr<server::Clock>& clock,
+                      const std::shared_ptr<rpc::Messenger>& messenger,
+                      const scoped_refptr<log::Log>& log,
+                      const scoped_refptr<MetricEntity>& metric_entity);
 
   // Starts the TabletPeer, making it available for Write()s. If this
   // TabletPeer is part of a consensus configuration this will connect it to other peers
@@ -205,8 +210,16 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
     return log_.get();
   }
 
-  server::Clock* clock() {
-    return clock_.get();
+  const scoped_refptr<server::Clock>& clock() const override {
+    return clock_;
+  }
+
+  CHECKED_STATUS ApplyIntents(const TransactionId& id,
+                              const consensus::OpId& op_id,
+                              HybridTime hybrid_time) override;
+
+  const client::YBClientPtr& client() const override {
+    return client_;
   }
 
   const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry() const {
@@ -216,7 +229,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   // Returns the tablet_id of the tablet managed by this TabletPeer.
   // Returns the correct tablet_id even if the underlying tablet is not available
   // yet.
-  const std::string& tablet_id() const { return tablet_id_; }
+  const std::string& tablet_id() const override { return tablet_id_; }
 
   // Convenience method to return the permanent_uuid of this peer.
   std::string permanent_uuid() const {
@@ -319,6 +332,8 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   ThreadPool* apply_pool_;
 
   scoped_refptr<server::Clock> clock_;
+
+  client::YBClientPtr client_;
 
   scoped_refptr<log::LogAnchorRegistry> log_anchor_registry_;
 
