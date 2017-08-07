@@ -31,7 +31,6 @@ class OnPremSuccess extends Component {
     const {configuredProviders, location} = this.props;
     const currentProvider = configuredProviders.data.find(provider => provider.code === 'onprem');
     if (isDefinedNotNull(currentProvider)) {
-      this.props.fetchAccessKeysList(currentProvider.uuid);
       this.props.fetchConfiguredNodeList(currentProvider.uuid);
       this.props.fetchInstanceTypeList(currentProvider.uuid);
     }
@@ -137,9 +136,12 @@ class OnPremSuccess extends Component {
       });
     });
 
-    let accessKeyList = 'Not Configured';
+    let keyPairName = "Not Configured";
     if (isNonEmptyArray(accessKeys.data)) {
-      accessKeyList = accessKeys.data.map(accessKey => accessKey.idKey.keyCode).join(", ")
+      let onPremAccessKey = accessKeys.data.find((accessKey) => accessKey.idKey.providerUUID === currentProvider.uuid)
+      if (isDefinedNotNull(onPremAccessKey)) {
+        keyPairName = onPremAccessKey.idKey.keyCode;
+      }
     }
 
     const universeExistsForProvider = (universeList.data || []).some(universe => universe.provider && (universe.provider.uuid === currentProvider.uuid));
@@ -193,7 +195,7 @@ class OnPremSuccess extends Component {
 
     const providerInfo = [
       {name: 'Provider Name', data: currentProvider.name},
-      {name: 'Key Pair', data: accessKeyList},
+      {name: 'Key Pair', data: keyPairName},
       {name: 'Nodes', data: nodeItemObject},
     ];
     return (

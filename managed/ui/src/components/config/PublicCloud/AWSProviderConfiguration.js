@@ -4,6 +4,7 @@ import React, {Component} from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
 import { YBButton, YBTextInputWithLabel } from '../../common/forms/fields';
 import {getPromiseState} from 'utils/PromiseUtils';
+import { isDefinedNotNull } from 'utils/ObjectUtils';
 import { ProgressList } from '../../common/indicators';
 import { DescriptionList } from '../../common/descriptors';
 import { YBConfirmModal } from '../../modals';
@@ -29,7 +30,7 @@ class AWSProviderConfiguration extends Component {
   }
 
   componentWillUnmount() {
-    this.props.resetProviderBootstrap();
+    // this.props.resetProviderBootstrap();
   }
 
   createProviderConfig(formValues) {
@@ -115,14 +116,17 @@ class AWSProviderConfiguration extends Component {
         (configuredRegion) => configuredRegion.provider.code === PROVIDER_TYPE
       );
 
-      let accessKeyList = "Not Configured";
+      let keyPairName = "Not Configured";
       if (isValidObject(accessKeys) && isNonEmptyArray(accessKeys.data)) {
-        accessKeyList = accessKeys.data.map( (accessKey) => accessKey.idKey.keyCode ).join(", ")
+        let awsAccessKey = accessKeys.data.find((accessKey) => accessKey.idKey.providerUUID === awsProvider.uuid)
+        if (isDefinedNotNull(awsAccessKey)) {
+          keyPairName = awsAccessKey.idKey.keyCode;
+        }
       }
 
       const providerInfo = [
         {name: "Account Name", data: awsProvider.name },
-        {name: "Key Pair", data: accessKeyList},
+        {name: "Key Pair", data: keyPairName},
       ];
 
       let deleteButtonDisabled = submitting || universeExistsForProvider;

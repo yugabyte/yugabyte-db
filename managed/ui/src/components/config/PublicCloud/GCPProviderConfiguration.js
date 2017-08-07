@@ -33,10 +33,6 @@ class GCPProviderConfiguration extends Component {
     }
   }
 
-  componentWillMount() {
-    this.props.fetchProviderList();
-  }
-
   submitGCPConfiguration(vals) {
     let self = this;
     let configText = this.state.gcpConfig;
@@ -60,7 +56,7 @@ class GCPProviderConfiguration extends Component {
   }
 
   componentWillReceiveProps(nextProps) {
-    const { cloudBootstrap: {data: { response, type }, error, promiseState}, formValues} = nextProps;
+    const { cloudBootstrap: {data: { response, type }, error, promiseState}} = nextProps;
     if (promiseState.isSuccess() && this.props.cloudBootstrap.promiseState.isLoading()) {
       const { bootstrapSteps } = this.state;
       const currentStepIndex = bootstrapSteps.findIndex( (step) => step.type === type );
@@ -72,6 +68,7 @@ class GCPProviderConfiguration extends Component {
         }
         this.setState({bootstrapSteps: bootstrapSteps});
       }
+
       switch (type) {
         case "provider":
           let providerUUID = response.uuid;
@@ -89,10 +86,6 @@ class GCPProviderConfiguration extends Component {
           this.props.initializeGCPMetadata(this.state.providerUUID);
           break;
         case "initialize":
-          if (this.props.cloudBootstrap !== nextProps.cloudBootstrap) {
-            this.props.reloadCloudMetadata();
-          }
-          break;
         case "cleanup":
           if (this.props.cloudBootstrap !== nextProps.cloudBootstrap) {
             this.props.reloadCloudMetadata();
@@ -102,18 +95,6 @@ class GCPProviderConfiguration extends Component {
           break;
       }
     }
-    if (getPromiseState(this.props.cloud.providers).isLoading() && getPromiseState(nextProps.cloud.providers).isSuccess()) {
-      let gcpProvider = nextProps.cloud.providers.data.find(function(provider){
-        return provider.code === "gcp";
-      });
-      if (isNonEmptyObject(gcpProvider)) {
-        this.setState({currentProvider: gcpProvider});
-        this.props.getRegionList(gcpProvider.uuid);
-        this.props.getAccessKeys(gcpProvider.uuid);
-      } else {
-        this.setState({currentProvider: {}})
-      }
-    }
   }
 
   uploadGCPConfig(uploadFile) {
@@ -121,7 +102,7 @@ class GCPProviderConfiguration extends Component {
   }
 
   render() {
-    const {handleSubmit, cloud: {providers}, cloudBootstrap: {data: {type}, error}} = this.props;
+    const { handleSubmit, configuredProviders, cloudBootstrap: {data: {type}, error}} = this.props;
     let bootstrapSteps = <span />;
     // We don't have bootstrap steps for cleanup.
     if (type && type !== "cleanup") {
@@ -137,12 +118,15 @@ class GCPProviderConfiguration extends Component {
         </div>
     }
 
-    if (getPromiseState(providers).isLoading()) {
+    if (getPromiseState(configuredProviders).isLoading()) {
       return <YBLoadingIcon/>;
     }
 
-    if (getPromiseState(providers).isSuccess() && isNonEmptyObject(this.state.currentProvider)) {
-      return <GCPConfigureSuccess {...this.props}/>
+    if (getPromiseState(configuredProviders).isSuccess()) {
+      let gcpProvider = configuredProviders.data.find((provider) => provider.code === "gcp");
+      if (isNonEmptyObject(gcpProvider)) {
+        return <GCPConfigureSuccess {...this.props}/>;
+      }
     }
 
     let gcpConfigFileName = "";
@@ -199,23 +183,26 @@ class GCPConfigureSuccess extends Component {
     this.props.deleteProviderConfig(provider.uuid);
   }
   render() {
-    const {cloud: {providers, regions, accessKeys}, universe: {universeList}, handleSubmit} = this.props;
-    let gcpProvider = providers.data.find((provider) => {
-      return provider.code === "gcp"
-    });
+    const {cloud: {supportedRegionList, accessKeys}, configuredProviders, universe: {universeList}, handleSubmit} = this.props;
+    let gcpProvider = configuredProviders.data.find((provider) => provider.code === "gcp");
     let gcpProviderName = "";
+    let regions = [];
     let gcpKey = "No Key Configured";
     if (isNonEmptyObject(gcpProvider)) {
       gcpProviderName = gcpProvider.name;
       if (isNonEmptyArray(accessKeys.data)) {
-        let accessKey = accessKeys.data.find((key)=>{
+        let accessKey = accessKeys.data.find((key) => {
           return key.idKey.providerUUID === gcpProvider.uuid
         });
-        if (accessKey) {
+        if (isNonEmptyObject(accessKey)) {
           gcpKey = accessKey.idKey.keyCode;
         }
       }
+      if (isNonEmptyArray(supportedRegionList.data)) {
+        regions = supportedRegionList.data.filter((region) => region.provider.uuid === gcpProvider.uuid);
+      }
     }
+
     let universeExistsForProvider = false;
     if (isNonEmptyArray(universeList.data)) {
       universeExistsForProvider = universeList.data.some(universe => universe.provider && (universe.provider.uuid === gcpProvider.uuid));
@@ -250,7 +237,7 @@ class GCPConfigureSuccess extends Component {
             <DescriptionList listItems={providerInfo} />
           </Col>
         </Row>
-        <RegionMap title="All Supported Regions" regions={regions.data} type="Provider" showLabels={true}/>
+        <RegionMap title="All Supported Regions" regions={regions} type="Provider" showLabels={true}/>
       </div>
     )
   }

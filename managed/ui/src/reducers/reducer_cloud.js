@@ -151,12 +151,15 @@ export default function(state = INITIAL_STATE, action) {
       return setInitialState(state, "bootstrap");
 
     case LIST_ACCESS_KEYS:
-      return setLoadingState(state, "accessKeys", []);
+
+      return setLoadingState(state, "accessKeys", state.accessKeys.data || []);
     case LIST_ACCESS_KEYS_RESPONSE:
-      if (action.payload.status !== 200) {
-        return setFailureState(state, "accessKeys", action.payload.data.error);
+      // When we have multiple providers, we would have multiple access keys,
+      // we just concat all those into an array.
+      if (_.isArray(state.accessKeys.data)) {
+        action.payload.data = state.accessKeys.data.concat(action.payload.data);
       }
-      return setSuccessState(state, "accessKeys", action.payload.data);
+      return setPromiseResponse(state, "accessKeys", action);
 
     case GET_EBS_TYPE_LIST:
       return {...state, ebsTypes: [], status: 'storage', error: null, loading: _.assign(state.loading, {ebsTypes: true})};

@@ -3,9 +3,9 @@
 import { connect } from 'react-redux';
 import {destroy} from 'redux-form';
 import { OnPremSuccess } from '../../config';
-import { deleteProvider, deleteProviderSuccess, deleteProviderFailure, fetchCloudMetadata, setOnPremConfigData,
-         listAccessKeysResponse, listAccessKeys, getNodeInstancesForProvider, getNodesInstancesForProviderResponse,
-         getInstanceTypeList, getInstanceTypeListResponse, } from '../../../actions/cloud';
+import { deleteProvider, deleteProviderSuccess, deleteProviderFailure, fetchCloudMetadata,
+  setOnPremConfigData, getNodeInstancesForProvider, getNodesInstancesForProviderResponse,
+  getInstanceTypeList, getInstanceTypeListResponse, } from '../../../actions/cloud';
 import {openDialog, closeDialog} from '../../../actions/universe';
 
 const mapStateToProps = (state, ownProps) => {
@@ -30,12 +30,6 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(deleteProviderSuccess(response.payload));
         }
       });
-    },
-
-    fetchAccessKeysList: (providerUUID) => {
-      dispatch(listAccessKeys(providerUUID)).then((response) => {
-        dispatch(listAccessKeysResponse(response.payload));
-      })
     },
 
     showDeleteProviderModal: () => {
