@@ -751,8 +751,8 @@ lsm_rocksdb_block_cache_hit:
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "rocksdb.block.cache.hit"
-  group_by: "exported_instance"
+    type: "rocksdb.block.cache.hit|rocksdb.block.cache.single.touch.hit|rocksdb.block.cache.multi.touch.hit"
+  group_by: "type"
   layout:
     title: "Cache Hit"
     xaxis:
@@ -760,6 +760,8 @@ lsm_rocksdb_block_cache_hit:
     yaxis:
       alias:
         "rocksdb.block.cache.hit": "Hit"
+        "rocksdb.block.cache.single.touch.hit": "Single Touch Hit"
+        "rocksdb.block.cache.multi.touch.hit": "Multi Touch Hit"
 
 lsm_rocksdb_block_cache_miss:
   metric: "collectd_yb_tserver_counter_total"
@@ -781,8 +783,8 @@ lsm_rocksdb_block_cache_add:
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "rocksdb.block.cache.add"
-  group_by: "exported_instance"
+    type: "rocksdb.block.cache.add|rocksdb.block.cache.single.touch.add|rocksdb.block.cache.multi.touch.add"
+  group_by: "type"
   layout:
     title: "Cache Add"
     xaxis:
@@ -790,6 +792,42 @@ lsm_rocksdb_block_cache_add:
     yaxis:
       alias:
         "rocksdb.block.cache.add": "Add"
+        "rocksdb.block.cache.single.touch.add": "Single Touch Add"
+        "rocksdb.block.cache.multi.touch.add": "Multi Touch Add"
+
+lsm_rocksdb_block_cache_bytes_read:
+  metric: "collectd_yb_tserver_counter_total"
+  function: "rate|avg"
+  range: "1m"
+  filters:
+    type: "rocksdb.block.cache.bytes.read|rocksdb.block.cache.single.touch.bytes.read|rocksdb.block.cache.multi.touch.bytes.read"
+  group_by: "type"
+  layout:
+    title: "Block Cache Bytes Read"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb.block.cache.bytes.read": "Total Bytes Read"
+        "rocksdb.block.cache.single.touch.bytes.read": "Single Touch Bytes Read"
+        "rocksdb.block.cache.multi.touch.bytes.read": "Multi Touch Bytes Read"
+
+lsm_rocksdb_block_cache_bytes_write:
+  metric: "collectd_yb_tserver_counter_total"
+  function: "rate|avg"
+  range: "1m"
+  filters:
+    type: "rocksdb.block.cache.bytes.write|rocksdb.block.cache.single.touch.bytes.write|rocksdb.block.cache.multi.touch.bytes.write"
+  group_by: "type"
+  layout:
+    title: "Block Cache Bytes Write"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb.block.cache.bytes.write": "Total Bytes Written"
+        "rocksdb.block.cache.single.touch.bytes.write": "Single Touch Bytes Written"
+        "rocksdb.block.cache.multi.touch.bytes.write": "Multi Touch Bytes Written"
 
 lsm_rocksdb_stalls:
   metric: "collectd_yb_tserver_counter_total"

@@ -27,6 +27,8 @@ const panelTypes = {
       "lsm_rocksdb_block_cache_hit",
       "lsm_rocksdb_block_cache_miss",
       "lsm_rocksdb_block_cache_add",
+      "lsm_rocksdb_block_cache_bytes_read",
+      "lsm_rocksdb_block_cache_bytes_write",
       "lsm_rocksdb_blooms_checked_and_useful",
       "lsm_rocksdb_stalls",
       "lsm_rocksdb_flush_size",
