@@ -9,15 +9,13 @@ import java.util.*;
 
 import org.junit.Test;
 
+import org.yb.minicluster.IOMetrics;
+import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBDaemon;
 
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
-
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
@@ -383,74 +381,6 @@ public class TestSelect extends BaseCQLTest {
     runInvalidSelectWithTimestamp(tableName, "1992-12-12 14:23:30.12.32");
   }
 
-  // The read/write metrics.
-  private static class IOMetrics {
-
-    public int localReadCount;
-    public int localWriteCount;
-    public int remoteReadCount;
-    public int remoteWriteCount;
-
-    private static final String METRIC_PREFIX = "handler_latency_yb_client_";
-
-    public IOMetrics() {
-    }
-
-    public IOMetrics(MiniYBDaemon ts) throws IOException {
-      try {
-        String host = ts.getLocalhostIP();
-        int port = ts.getCqlWebPort();
-        URL url = new URL(String.format("http://%s:%d/metrics", host, port));
-        Scanner scanner = new Scanner(url.openConnection().getInputStream());
-        JsonParser parser = new JsonParser();
-        JsonElement tree = parser.parse(scanner.useDelimiter("\\A").next());
-        JsonObject obj = tree.getAsJsonArray().get(0).getAsJsonObject();
-        for (JsonElement elem : obj.getAsJsonArray("metrics")) {
-          JsonObject metric = elem.getAsJsonObject();
-          String metric_name = metric.get("name").getAsString();
-          if (metric_name.equals(METRIC_PREFIX + "read_local")) {
-            localReadCount = getTotalCount(metric);
-          } else if (metric_name.equals(METRIC_PREFIX + "write_local")) {
-            localWriteCount = getTotalCount(metric);
-          } else if (metric_name.equals(METRIC_PREFIX + "read_remote")) {
-            remoteReadCount = getTotalCount(metric);
-          } else if (metric_name.equals(METRIC_PREFIX + "write_remote")) {
-            remoteWriteCount = getTotalCount(metric);
-          }
-        }
-      } catch (MalformedURLException e) {
-        throw new InternalError(e.getMessage());
-      }
-    }
-
-    private static int getTotalCount(JsonObject metric) {
-      return metric.get("total_count").getAsInt();
-    }
-
-    public IOMetrics add(IOMetrics other) {
-      this.localReadCount += other.localReadCount;
-      this.localWriteCount += other.localWriteCount;
-      this.remoteReadCount += other.remoteReadCount;
-      this.remoteWriteCount += other.remoteWriteCount;
-      return this;
-    }
-
-    public IOMetrics subtract(IOMetrics other) {
-      this.localReadCount -= other.localReadCount;
-      this.localWriteCount -= other.localWriteCount;
-      this.remoteReadCount -= other.remoteReadCount;
-      this.remoteWriteCount -= other.remoteWriteCount;
-      return this;
-    }
-
-    public String toString() {
-      return "local read = " + localReadCount +
-          ", local write = " + localWriteCount +
-          ", remote read = " + remoteReadCount +
-          ", remote write = " + remoteWriteCount;
-    }
-  }
-
   @Test
   public void testLocalTServerCalls() throws Exception {
     // Create test table.
@@ -459,19 +389,20 @@ public class TestSelect extends BaseCQLTest {
     // Get the base metrics of each tserver.
     Map<MiniYBDaemon, IOMetrics> baseMetrics = new HashMap<>();
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      IOMetrics metrics = new IOMetrics(ts);
+      IOMetrics metrics = new IOMetrics(new Metrics(ts.getLocalhostIP(),
+                                                    ts.getCqlWebPort(),
+                                                    "server"));
       baseMetrics.put(ts, metrics);
-      LOG.info("Metrics of " + ts.toString() + ": " + metrics.toString());
     }
 
-    // Insert 100 rows and select them back.
+    // Insert rows and select them back.
     final int NUM_KEYS = 100;
     PreparedStatement stmt = session.prepare("INSERT INTO test_local (k, v) VALUES (?, ?);");
-    for (int i = 1; i <= 100; i++) {
+    for (int i = 1; i <= NUM_KEYS; i++) {
       session.execute(stmt.bind(Integer.valueOf(i), Integer.valueOf(i + 1)));
     }
     stmt = session.prepare("SELECT v FROM test_local WHERE k = ?");
-    for (int i = 1; i <= 100; i++) {
+    for (int i = 1; i <= NUM_KEYS; i++) {
       assertEquals(i + 1, session.execute(stmt.bind(Integer.valueOf(i))).one().getInt("v"));
     }
 
@@ -479,21 +410,17 @@ public class TestSelect extends BaseCQLTest {
     IOMetrics totalMetrics = new IOMetrics();
     int tsCount = miniCluster.getTabletServers().values().size();
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      IOMetrics metrics = new IOMetrics(ts).subtract(baseMetrics.get(ts));
+      IOMetrics metrics = new IOMetrics(new Metrics(ts.getLocalhostIP(),
+                                                    ts.getCqlWebPort(),
+                                                    "server"))
+                          .subtract(baseMetrics.get(ts));
       LOG.info("Metrics of " + ts.toString() + ": " + metrics.toString());
-
-      // Verify each node gets its equal share (roughly) of reads and writes.
-      assertTrue(metrics.localReadCount + metrics.remoteReadCount >= NUM_KEYS / tsCount * 0.75);
-      assertTrue(metrics.localWriteCount + metrics.remoteWriteCount >= NUM_KEYS / tsCount * 0.75);
-
       totalMetrics.add(metrics);
     }
 
-    // Verify there are some local calls and some remote calls for reads and writes.
+    // Verify there are some local read and write calls.
     assertTrue(totalMetrics.localReadCount > 0);
-    assertTrue(totalMetrics.remoteReadCount > 0);
     assertTrue(totalMetrics.localWriteCount > 0);
-    assertTrue(totalMetrics.remoteWriteCount > 0);
 
     // Verify total number of read / write calls. It is possible to have more calls than the
     // number of keys because some calls may reach step-down leaders and need retries.

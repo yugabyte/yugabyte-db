@@ -425,11 +425,11 @@ public class TestSystemTables extends BaseCQLTest {
 
       int leader = 0;
       int followers = 0;
-      Map<InetAddress, String> rpcAddresses = partition.getMap("rpc_addresses",
-                                                               InetAddress.class,
-                                                               String.class);
-      for (Map.Entry<InetAddress, String> entry : rpcAddresses.entrySet()) {
-        // Verify rpc_addresses are in the CQL contact points.
+      Map<InetAddress, String> replicaAddresses = partition.getMap("replica_addresses",
+                                                                   InetAddress.class,
+                                                                   String.class);
+      for (Map.Entry<InetAddress, String> entry : replicaAddresses.entrySet()) {
+        // Verify replica_addresses are in the CQL contact points.
         assertTrue(contactPoints.contains(entry.getKey()));
         if (entry.getValue().equals("LEADER")) {
           leader++;

@@ -22,7 +22,8 @@ class YQLPartitionsVTable : public YQLVirtualTable {
   static constexpr const char* const kTableName = "table_name";
   static constexpr const char* const kStartKey = "start_key";
   static constexpr const char* const kEndKey = "end_key";
-  static constexpr const char* const kRpcAddresses = "rpc_addresses";
+  static constexpr const char* const kId = "id";
+  static constexpr const char* const kReplicaAddresses = "replica_addresses";
 };
 
 }  // namespace master

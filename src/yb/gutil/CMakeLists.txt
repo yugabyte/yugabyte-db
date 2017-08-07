@@ -70,3 +70,4 @@ ADD_YB_LIBRARY(gutil
 cotire(gutil)
 
 add_yb_test(strings/string_util-test)
+add_yb_test(hash/jenkins-test)

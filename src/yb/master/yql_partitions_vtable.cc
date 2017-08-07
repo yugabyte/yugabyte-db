@@ -41,17 +41,22 @@ Status YQLPartitionsVTable::RetrieveData(const YQLReadRequestPB& request,
       RETURN_NOT_OK(SetColumnValue(kStartKey, partition.partition_key_start(), &row));
       RETURN_NOT_OK(SetColumnValue(kEndKey, partition.partition_key_end(), &row));
 
+      // Note: tablet id is in host byte order.
+      Uuid uuid;
+      RETURN_NOT_OK(uuid.FromHexString(tablet->id()));
+      RETURN_NOT_OK(SetColumnValue(kId, uuid, &row));
+
       // Get replicas for tablet.
-      YQLValuePB rpc_addresses;
-      YQLValue::set_map_value(&rpc_addresses);
+      YQLValuePB replica_addresses;
+      YQLValue::set_map_value(&replica_addresses);
       for (const auto replica : tabletLocationsPB.replicas()) {
         InetAddress addr;
         RETURN_NOT_OK(addr.FromString(replica.ts_info().rpc_addresses(0).host()));
-        YQLValue::set_inetaddress_value(addr, YQLValue::add_map_key(&rpc_addresses));
+        YQLValue::set_inetaddress_value(addr, YQLValue::add_map_key(&replica_addresses));
         const string& role = consensus::RaftPeerPB::Role_Name(replica.role());
-        YQLValue::set_string_value(role, YQLValue::add_map_value(&rpc_addresses));
+        YQLValue::set_string_value(role, YQLValue::add_map_value(&replica_addresses));
       }
-      RETURN_NOT_OK(SetColumnValue(kRpcAddresses, rpc_addresses, &row));
+      RETURN_NOT_OK(SetColumnValue(kReplicaAddresses, replica_addresses, &row));
     }
   }
 
@@ -64,7 +69,8 @@ Schema YQLPartitionsVTable::CreateSchema() const {
   CHECK_OK(builder.AddKeyColumn(kTableName, YQLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddKeyColumn(kStartKey, YQLType::Create(DataType::BINARY)));
   CHECK_OK(builder.AddColumn(kEndKey, YQLType::Create(DataType::BINARY)));
-  CHECK_OK(builder.AddColumn(kRpcAddresses,
+  CHECK_OK(builder.AddColumn(kId, YQLType::Create(DataType::UUID)));
+  CHECK_OK(builder.AddColumn(kReplicaAddresses,
                              YQLType::CreateTypeMap(DataType::INET, DataType::STRING)));
   return builder.Build();
 }

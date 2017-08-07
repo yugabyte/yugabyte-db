@@ -10,6 +10,15 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import com.yugabyte.cql.PartitionAwarePolicy;
+
+import com.datastax.driver.core.Cluster;
+import com.datastax.driver.core.ResultSet;
+import com.datastax.driver.core.Row;
+import com.datastax.driver.core.SimpleStatement;
+import com.datastax.driver.core.Statement;
+import com.datastax.driver.core.Session;
+import com.datastax.driver.core.SocketOptions;
 import com.datastax.driver.core.exceptions.QueryValidationException;
 
 import org.slf4j.Logger;
@@ -60,12 +69,9 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     socketOptions.setReadTimeoutMillis(60 * 1000);
     cluster = Cluster.builder()
               .addContactPointsWithPorts(miniCluster.getCQLContactPoints())
-              // To sniff the CQL wire protocol using Wireshark and debug, uncomment the following
-              // line to force the use of CQL V3 protocol. Wireshark does not decode V4 or higher
-              // protocol yet.
-              // .withProtocolVersion(com.datastax.driver.core.ProtocolVersion.V3)
-             .withSocketOptions(socketOptions)
-             .build();
+              .withLoadBalancingPolicy(new PartitionAwarePolicy())
+              .withSocketOptions(socketOptions)
+              .build();
     LOG.info("Connected to cluster: " + cluster.getMetadata().getClusterName());
 
     session = cluster.connect();
@@ -294,7 +300,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   }
 
   // blob type utils
-  String makeBlobString(ByteBuffer buf) {
+  protected String makeBlobString(ByteBuffer buf) {
     StringBuilder sb = new StringBuilder();
     char[] text_values = "0123456789abcdef".toCharArray();
 

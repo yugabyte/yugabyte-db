@@ -214,6 +214,9 @@ public class CmdLineOpts {
     if (cmd.hasOption("sanity_check_at_end")) {
       AppBase.appConfig.sanityCheckAtEnd = true;
     }
+    if (cmd.hasOption("disable_yb_load_balancing_policy")) {
+      AppBase.appConfig.disableYBLoadBalancingPolicy = true;
+    }
     LOG.info("Num unique keys to insert: " + AppBase.appConfig.numUniqueKeysToWrite);
     LOG.info("Num keys to update: " +
         (AppBase.appConfig.numKeysToWrite - AppBase.appConfig.numUniqueKeysToWrite));
@@ -276,6 +279,8 @@ public class CmdLineOpts {
     options.addOption("table_ttl_seconds", true, "The TTL in seconds to create the table with.");
     options.addOption("sanity_check_at_end", false,
         "Add FATAL logs to ensure no failures before terminating the app.");
+    options.addOption("disable_yb_load_balancing_policy", false,
+        "Disable Yugabyte load-balancing policy.");
 
     // Options for CassandraTimeseries workload.
     options.addOption("num_users", true, "[CassandraTimeseries] The total number of users.");

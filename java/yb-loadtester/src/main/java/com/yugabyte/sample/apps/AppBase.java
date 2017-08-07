@@ -2,6 +2,8 @@
 
 package com.yugabyte.sample.apps;
 
+import com.yugabyte.cql.PartitionAwarePolicy;
+
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -12,6 +14,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.apache.log4j.Logger;
 
 import com.datastax.driver.core.Cluster;
+import com.datastax.driver.core.Cluster.Builder;
 import com.datastax.driver.core.Session;
 import com.yugabyte.sample.common.CmdLineOpts;
 import com.yugabyte.sample.common.CmdLineOpts.Node;
@@ -92,9 +95,11 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    */
   private synchronized void createCassandraClient() {
     if (cassandra_cluster == null) {
-      cassandra_cluster = Cluster.builder()
-                       .addContactPointsWithPorts(getNodesAsInet())
-                       .build();
+      Cluster.Builder builder = Cluster.builder().addContactPointsWithPorts(getNodesAsInet());
+      if (!appConfig.disableYBLoadBalancingPolicy) {
+        builder.withLoadBalancingPolicy(new PartitionAwarePolicy());
+      }
+      cassandra_cluster = builder.build();
       LOG.debug("Connected to cluster: " + cassandra_cluster.getClusterName());
     }
     if (cassandra_session == null) {

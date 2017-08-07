@@ -5,6 +5,7 @@
 #ifndef YB_COMMON_TRANSACTION_H
 #define YB_COMMON_TRANSACTION_H
 
+#include <boost/functional/hash.hpp>
 #include <boost/uuid/uuid.hpp>
 
 namespace yb {
