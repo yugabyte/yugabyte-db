@@ -27,7 +27,7 @@ class CreateUniverseButtonComponent extends Component {
         </div>
         </Link>
       </Col>
-    )
+    );
   }
 }
 

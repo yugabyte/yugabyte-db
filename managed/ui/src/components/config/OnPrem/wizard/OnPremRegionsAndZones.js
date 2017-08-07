@@ -134,7 +134,7 @@ export default class OnPremRegionsAndZones extends Component {
           </div>
           <div className="form-action-button-container">
             {switchToJsonEntry}
-            <YBButton btnText={"Next"} btnType={"submit"} btnClass={"btn btn-default save-btn"}/>
+            <YBButton btnText={"Finish"} btnType={"submit"} btnClass={"btn btn-default save-btn"}/>
             <YBButton btnText={"Previous"}  btnClass={"btn btn-default back-btn"} onClick={this.props.prevPage}/>
           </div>
         </form>

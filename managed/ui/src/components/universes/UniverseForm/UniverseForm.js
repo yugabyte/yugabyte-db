@@ -602,83 +602,82 @@ class UniverseForm extends Component {
     return (
 
       <Grid id="page-wrapper" fluid={true}>
-        <h3 className="universe-form-title">{this.props.type} Universe</h3>
-        <form name="UniverseForm" className="universe-form-container" onSubmit={handleSubmit(this.handleSubmitButtonClick)}>
-          <Row className={"no-margin-row"}>
-            <Col md={6}>
-              <h4>Cloud Configuration</h4>
+        <h2>{this.props.type} Universe</h2>
+          <form name="UniverseForm" className="universe-form-container" onSubmit={handleSubmit(this.handleSubmitButtonClick)}>
+            <Row className={"no-margin-row"}>
+              <Col md={6}>
+                <h4>Cloud Configuration</h4>
+                <div className="form-right-aligned-labels">
+                  <Field name="universeName" type="text" component={YBTextInputWithLabel} label="Name"
+                         isReadOnly={isFieldReadOnly} />
+                  <Field name="provider" type="select" component={YBSelectWithLabel} label="Provider"
+                         options={universeProviderList} onInputChanged={this.providerChanged} readOnlySelect={isFieldReadOnly} />
+                  <Field name="regionList" component={YBMultiSelectWithLabel}
+                         label="Regions" options={universeRegionList}
+                         selectValChanged={this.regionListChanged} multi={this.state.azCheckState}
+                         providerSelected={this.state.providerSelected}/>
+                  <Field name="numNodes" type="text" component={YBControlledNumericInputWithLabel}
+                         label="Nodes" onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
+                         minVal={Number(this.state.replicationFactor)}/>
+                </div>
+              </Col>
+              <Col md={6} className={"universe-az-selector-container"}>
+                <AZSelectorTable {...this.props} setPlacementInfo={this.setPlacementInfo}
+                                 numNodesChangedViaAzList={this.numNodesChangedViaAzList} minNumNodes={this.state.replicationFactor}
+                                 maxNumNodes={this.state.maxNumNodes} currentProvider={this.getCurrentProvider(this.state.providerSelected)}/>
+                {placementStatus}
+              </Col>
+            </Row>
+            <Row className={"no-margin-row top-border-row"}>
+              <Col md={12}>
+                <h4>Instance Configuration</h4>
+              </Col>
+              <Col md={4}>
+                <div className="form-right-aligned-labels">
+                  <Field name="instanceType" type="select" component={YBControlledSelectWithLabel} label="Instance Type"
+                         options={universeInstanceTypeList} selectVal={this.state.instanceTypeSelected}
+                         onInputChanged={this.instanceTypeChanged}/>
+                </div>
+              </Col>
+              {deviceDetail &&
+              <Col md={8}>
+                <div className="form-right-aligned-labels">
+                  <div className="form-group universe-form-instance-info">
+                    <label className="form-item-label">Volume Info</label>
+                    {deviceDetail}
+                  </div>
+                </div>
+                <div className="form-right-aligned-labels">
+                  {ebsTypeSelector}
+                </div>
+              </Col>
+            }
+          </Row>
+            <Row className={"no-margin-row top-border-row"}>
+            <Col md={12}>
+              <h4>Advanced</h4>
+            </Col>
+            <Col sm={7} md={4}>
               <div className="form-right-aligned-labels">
-                <Field name="universeName" type="text" component={YBTextInputWithLabel} label="Name"
-                       isReadOnly={isFieldReadOnly} />
-                <Field name="provider" type="select" component={YBSelectWithLabel} label="Provider"
-                       options={universeProviderList} onInputChanged={this.providerChanged} readOnlySelect={isFieldReadOnly} />
-                <Field name="regionList" component={YBMultiSelectWithLabel}
-                       label="Regions" options={universeRegionList}
-                       selectValChanged={this.regionListChanged} multi={this.state.azCheckState}
-                       providerSelected={this.state.providerSelected}/>
-                <Field name="numNodes" type="text" component={YBControlledNumericInputWithLabel}
-                       label="Nodes" onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
-                       minVal={Number(this.state.replicationFactor)}/>
+                <Field name="replicationFactor" type="text" component={YBRadioButtonBarWithLabel} options={[1, 3, 5, 7]}
+                       label="Replication Factor" initialValue={this.state.replicationFactor}
+                       onSelect={this.replicationFactorChanged} isReadOnly={isFieldReadOnly}/>
               </div>
             </Col>
-            <Col md={6} className={"universe-az-selector-container"}>
-              <AZSelectorTable {...this.props} setPlacementInfo={this.setPlacementInfo}
-                               numNodesChangedViaAzList={this.numNodesChangedViaAzList} minNumNodes={this.state.replicationFactor}
-                               maxNumNodes={this.state.maxNumNodes} currentProvider={this.getCurrentProvider(this.state.providerSelected)}/>
-              {placementStatus}
+            <Col sm={5} md={4}>
+              <div className="form-right-aligned-labels">
+                <Field name="ybSoftwareVersion" type="select" component={YBSelectWithLabel} defaultValue={this.state.ybSoftwareVersion}
+                       options={softwareVersionOptions} label="YugaByte Version" onInputChanged={this.softwareVersionChanged} readOnlySelect={isFieldReadOnly}/>
+              </div>
+            </Col>
+            <Col lg={4}>
+              <div className="form-right-aligned-labels">
+                <Field name="accessKeyCode" type="select" component={YBSelectWithLabel} label="Access Key"
+                       defaultValue={this.state.accessKeyCode} options={accessKeyOptions} readOnlySelect={isFieldReadOnly}/>
+              </div>
             </Col>
           </Row>
-          <Row className={"no-margin-row top-border-row"}>
-            <Col md={12}>
-              <h4>Instance Configuration</h4>
-            </Col>
-            <Col md={4}>
-              <div className="form-right-aligned-labels">
-                <Field name="instanceType" type="select" component={YBControlledSelectWithLabel} label="Instance Type"
-                       options={universeInstanceTypeList} selectVal={this.state.instanceTypeSelected}
-                       onInputChanged={this.instanceTypeChanged}/>
-              </div>
-            </Col>
-            {deviceDetail &&
-            <Col md={8}>
-              <div className="form-right-aligned-labels">
-                <div className="form-group universe-form-instance-info">
-                  <label className="form-item-label">Volume Info</label>
-                  {deviceDetail}
-                </div>
-              </div>
-              <div className="form-right-aligned-labels">
-                {ebsTypeSelector}
-              </div>
-            </Col>
-          }
-        </Row>
-          <Row className={"no-margin-row top-border-row"}>
-          <Col md={12}>
-            <h4>Advanced</h4>
-          </Col>
-          <Col sm={7} md={4}>
-            <div className="form-right-aligned-labels">
-              <Field name="replicationFactor" type="text" component={YBRadioButtonBarWithLabel} options={[1, 3, 5, 7]}
-                     label="Replication Factor" initialValue={this.state.replicationFactor}
-                     onSelect={this.replicationFactorChanged} isReadOnly={isFieldReadOnly}/>
-            </div>
-          </Col>
-          <Col sm={5} md={4}>
-            <div className="form-right-aligned-labels">
-              <Field name="ybSoftwareVersion" type="select" component={YBSelectWithLabel} defaultValue={this.state.ybSoftwareVersion}
-                     options={softwareVersionOptions} label="YugaByte Version" onInputChanged={this.softwareVersionChanged} readOnlySelect={isFieldReadOnly}/>
-            </div>
-          </Col>
-          <Col lg={4}>
-            <div className="form-right-aligned-labels">
-              <Field name="accessKeyCode" type="select" component={YBSelectWithLabel} label="Access Key"
-                     defaultValue={this.state.accessKeyCode} options={accessKeyOptions} readOnlySelect={isFieldReadOnly}/>
-            </div>
-          </Col>
-        </Row>
-        <Row>
-          <div>
+          <div className="form-action-button-container">
             <UniverseResources resources={universe.universeResourceTemplate.data}>
               <ButtonGroup className="pull-right">
                 <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText="Cancel" onClick={this.handleCancelButtonClick}/>
@@ -686,7 +685,6 @@ class UniverseForm extends Component {
               </ButtonGroup>
             </UniverseResources>
           </div>
-        </Row>
         </form>
       </Grid>
     );
