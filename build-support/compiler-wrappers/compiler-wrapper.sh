@@ -355,9 +355,8 @@ exit_handler() {
                 echo "Output file (from -o): $output_file"
               fi
 
-            ) | while read stderr_line; do
-              echo "| $stderr_line"
-            done
+            ) | python -c "import re,sys;[sys.stdout.write('| ' + re.sub('(..\/)+src', "\
+"'$YB_SRC', line)) for line in sys.stdin]"
             unset IFS
             echo "\-------------------------------------------------------------------------------"
             no_color
