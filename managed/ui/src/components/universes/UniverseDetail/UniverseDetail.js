@@ -51,12 +51,6 @@ class UniverseDetail extends Component {
     }
   }
 
-  componentWillReceiveProps(nextProps) {
-    if (getPromiseState(nextProps.universe.currentUniverse).isSuccess() && getPromiseState(this.props.universe.currentUniverse).isLoading()) {
-      this.props.fetchAccessKeys(nextProps.universe.currentUniverse.data.provider.uuid);
-    }
-  }
-
   onResize(dimensions) {
     dimensions.width -= 40;
     this.setState({dimensions});

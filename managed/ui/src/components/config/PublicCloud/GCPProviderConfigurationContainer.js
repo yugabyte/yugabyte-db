@@ -6,8 +6,7 @@ import { reduxForm, reset } from 'redux-form';
 import {createProvider, createProviderResponse,
         createRegion, createRegionResponse, createAccessKey, createAccessKeyResponse,
         initializeProvider, initializeProviderSuccess, initializeProviderFailure,
-        getProviderList, getProviderListResponse, getRegionList, getRegionListResponse,
-        fetchCloudMetadata, listAccessKeys, listAccessKeysResponse, deleteProvider, deleteProviderResponse} from '../../../actions/cloud';
+        fetchCloudMetadata, deleteProvider, deleteProviderResponse } from '../../../actions/cloud';
 import { openDialog, closeDialog } from '../../../actions/universe';
 
 const mapStateToProps = (state) => {
@@ -15,6 +14,8 @@ const mapStateToProps = (state) => {
     customer: state.customer,
     universe: state.universe,
     cloud: state.cloud,
+    configuredProviders: state.cloud.providers,
+    configuredRegions: state.cloud.supportedRegionList,
     cloudBootstrap: state.cloud.bootstrap,
     visibleModal: state.universe.visibleModal
   };
@@ -46,23 +47,8 @@ const mapDispatchToProps = (dispatch) => {
         }
       });
     },
-    fetchProviderList: () => {
-      dispatch(getProviderList()).then((response) => {
-        dispatch(getProviderListResponse(response.payload));
-      })
-    },
-    getRegionList: (providerUUID) => {
-      dispatch(getRegionList(providerUUID, true)).then((response) => {
-        dispatch(getRegionListResponse(response.payload));
-      })
-    },
     reloadCloudMetadata: () => {
       dispatch(fetchCloudMetadata());
-    },
-    getAccessKeys: (providerUUID) => {
-      dispatch(listAccessKeys(providerUUID)).then((response) => {
-        dispatch(listAccessKeysResponse(response.payload));
-      })
     },
     showDeleteProviderModal: () => {
       dispatch(openDialog("deleteGCPProvider"));
