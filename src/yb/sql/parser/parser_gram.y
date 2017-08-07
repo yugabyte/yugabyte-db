@@ -2511,21 +2511,21 @@ returning_clause:
 //--------------------------------------------------------------------------------------------------
 
 DeleteStmt:
-  opt_with_clause DELETE_P FROM relation_expr_opt_alias
+  opt_with_clause DELETE_P opt_target_list FROM relation_expr_opt_alias
   opt_where_or_current_clause returning_clause {
-    $$ = MAKE_NODE(@2, PTDeleteStmt, nullptr, $4, nullptr, $5);
+    $$ = MAKE_NODE(@2, PTDeleteStmt, $3, $5, nullptr, $6);
   }
-  | opt_with_clause DELETE_P FROM relation_expr_opt_alias
+  | opt_with_clause DELETE_P opt_target_list FROM relation_expr_opt_alias
   using_clause opt_where_or_current_clause returning_clause {
-    $$ = MAKE_NODE(@2, PTDeleteStmt, nullptr, $4, nullptr, $6);
+    $$ = MAKE_NODE(@2, PTDeleteStmt, $3, $5, nullptr, $7);
   }
-  | opt_with_clause DELETE_P FROM relation_expr_opt_alias
+  | opt_with_clause DELETE_P opt_target_list FROM relation_expr_opt_alias
   where_or_current_clause if_clause {
-    $$ = MAKE_NODE(@2, PTDeleteStmt, nullptr, $4, nullptr, $5, $6);
+    $$ = MAKE_NODE(@2, PTDeleteStmt, $3, $5, nullptr, $6, $7);
   }
-  | opt_with_clause DELETE_P FROM relation_expr_opt_alias
+  | opt_with_clause DELETE_P opt_target_list FROM relation_expr_opt_alias
   using_clause where_or_current_clause if_clause {
-    $$ = MAKE_NODE(@2, PTDeleteStmt, nullptr, $4, nullptr, $6, $7);
+    $$ = MAKE_NODE(@2, PTDeleteStmt, $3, $5, nullptr, $7, $8);
   }
 ;
 

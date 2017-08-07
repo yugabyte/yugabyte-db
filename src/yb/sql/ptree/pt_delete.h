@@ -28,7 +28,7 @@ class PTDeleteStmt : public PTDmlStmt {
   // Constructor and destructor.
   PTDeleteStmt(MemoryContext *memctx,
                YBLocation::SharedPtr loc,
-               TreeNode::SharedPtr selections,
+               PTListNode::SharedPtr target,
                PTTableRef::SharedPtr relation,
                TreeNode::SharedPtr using_clause,
                PTExpr::SharedPtr where_clause,
@@ -65,7 +65,10 @@ class PTDeleteStmt : public PTDmlStmt {
     return if_clause_;
   }
 
+  CHECKED_STATUS AnalyzeTarget(TreeNode *target, SemContext *sem_context);
+
  private:
+  PTListNode::SharedPtr target_;
   PTTableRef::SharedPtr relation_;
   PTExpr::SharedPtr where_clause_;
   PTExpr::SharedPtr if_clause_;

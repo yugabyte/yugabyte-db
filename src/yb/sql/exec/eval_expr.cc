@@ -16,6 +16,8 @@ namespace sql {
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::PTExprToPB(const PTExpr::SharedPtr& expr, YQLExpressionPB *expr_pb) {
+  if (expr == nullptr)
+    return Status::OK();
   switch (expr->expr_op()) {
     case ExprOperator::kNoOp:
       return Status::OK();

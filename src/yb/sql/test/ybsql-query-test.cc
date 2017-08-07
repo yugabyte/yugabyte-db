@@ -1468,5 +1468,59 @@ TEST_F(YbSqlQuery, TestInvalidGrammar) {
   CHECK_INVALID_STMT("SELECT * from \"long \n  multiline table  name wi\nth  spaces   \"  \n ;");
 }
 
+TEST_F(YbSqlQuery, TestDeleteColumn) {
+  //------------------------------------------------------------------------------------------------
+  // Setting up cluster
+  //------------------------------------------------------------------------------------------------
+
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  YbSqlProcessor *processor = GetSqlProcessor();
+
+  // Create test table.
+  CHECK_OK(processor->Run("CREATE TABLE delete_column (h int, v1 int, v2 int,"
+                            " PRIMARY KEY(h));"));
+
+  client::YBTableName name(kDefaultKeyspaceName, "delete_column");
+  shared_ptr<client::YBTable> table;
+
+  ASSERT_OK(client_->OpenTable(name, &table));
+
+  //------------------------------------------------------------------------------------------------
+  // Initializing rows data
+  //------------------------------------------------------------------------------------------------
+  for (int i = 0; i < 2; i++) {
+    string stmt = Substitute("INSERT INTO delete_column (h, v1, v2) VALUES "
+                               "($0, $1, $2);", i, i, i);
+    CHECK_OK(processor->Run(stmt));
+  }
+
+  //Deleting the value
+  string delete_stmt = "DELETE v1 FROM delete_column WHERE h = 0";
+  CHECK_OK(processor->Run(delete_stmt));
+
+  string select_stmt_template = "SELECT $0 FROM delete_column WHERE h = 0";
+  //Check that v1 is null
+  CHECK_OK(processor->Run(Substitute(select_stmt_template, "v1")));
+  auto row_block = processor->row_block();
+  ASSERT_EQ(1, row_block->row_count());
+  const YQLRow &row1 = row_block->row(0);
+  EXPECT_TRUE(row1.column(0).IsNull());
+
+  //cehck that v2 is 0
+  CHECK_OK(processor->Run(Substitute(select_stmt_template, "v2")));
+  row_block = processor->row_block();
+  ASSERT_EQ(1, row_block->row_count());
+  const YQLRow &row2 = row_block->row(0);
+  EXPECT_EQ(0, row2.column(0).int32_value());
+
+  //check that primary keys and * cannot be deleted
+  CHECK_INVALID_STMT("DELETE * FROM delete_column WHERE h = 0;");
+  CHECK_INVALID_STMT("DELETE h FROM delete_column WHERE h = 0;");
+}
+
+
 } // namespace sql
 } // namespace yb

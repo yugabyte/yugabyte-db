@@ -1,12 +1,15 @@
 // Copyright (c) YugaByte, Inc.
 package org.yb.cql;
 
+import java.util.*;
+
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 public class TestStaticColumn extends BaseCQLTest {
@@ -442,5 +445,30 @@ public class TestStaticColumn extends BaseCQLTest {
 
     LOG.info("Test End");
   }
+  
+  @Test
+  public void testDeleteStaticColumn() throws Exception {
+  	LOG.info("Test Start");
+    session.execute("create table t (" +
+                    "h int, r int, v int static," +
+                    "primary key (h, r));");
 
+    // Test select rows with a hash key (1, h1). Expect updated s1 and c1.
+    session.execute("insert into t (h, r, v) " +
+                    "values (1, 1, 1);");
+    session.execute("insert into t (h, r, v) " +
+                    "values (1, 2, 2);");
+
+    // Verify the static collection columns
+    String delete_stmt = "delete v from t where h = 1;";
+    session.execute(delete_stmt);
+    String select_stmt = "select v from t;";
+    ResultSet rs = session.execute(select_stmt);
+    List<Row> rows = rs.all();
+    assertEquals(2, rows.size());
+    for (Row row : rows) {
+    		assertTrue(row.isNull(0));
+    }
+    LOG.info("Test End");
+  }
 }

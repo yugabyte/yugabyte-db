@@ -1031,6 +1031,12 @@ void Executor::ExecPTNodeAsync(const PTDeleteStmt *tnode, StatementExecutedCallb
         cb,
         exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
   }
+  s = ColumnArgsToWriteRequestPB(table, tnode, req, delete_op->mutable_row());
+  if (!s.ok()) {
+    CB_RETURN(
+        cb,
+        exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+  }
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
