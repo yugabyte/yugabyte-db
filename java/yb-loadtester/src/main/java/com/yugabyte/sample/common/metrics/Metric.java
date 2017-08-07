@@ -18,10 +18,15 @@ public class Metric {
     lastSnapshotNanos = System.nanoTime();
   }
 
-  public void accumulate(long numOps, long totalLatencyNanos) {
+  /**
+   * Accumulate metrics with operations processed as one batch.
+   * @param numOps number of ops processed as one batch
+   * @param batchLatencyNanos whole batch latency
+   */
+  public void accumulate(long numOps, long batchLatencyNanos) {
     synchronized(lock) {
       curOpCount += numOps;
-      curOpLatencyNanos += totalLatencyNanos;
+      curOpLatencyNanos += batchLatencyNanos * numOps;
       totalOpCount += numOps;
     }
   }

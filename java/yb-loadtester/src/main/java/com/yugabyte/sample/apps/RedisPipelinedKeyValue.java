@@ -97,9 +97,13 @@ public class RedisPipelinedKeyValue extends RedisKeyValue {
   @Override
   public long doWrite() {
     Key key = getSimpleLoadGenerator().getKeyToWrite();
-    Response<String> retVal = doActualWrite(key);
-    verifyWriteResult(key, retVal);
-    return flushPipelineIfNecessary();
+    if (key != null) {
+      Response<String> retVal = doActualWrite(key);
+      verifyWriteResult(key, retVal);
+      return flushPipelineIfNecessary();
+    } else {
+      return 0;
+    }
   }
 
   public Response<String> doActualWrite(Key key) {
