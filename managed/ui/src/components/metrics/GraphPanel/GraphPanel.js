@@ -6,7 +6,7 @@ import { Accordion, Panel } from 'react-bootstrap';
 import { MetricsPanel } from '../../metrics';
 import './GraphPanel.scss';
 import {YBLoadingIcon} from '../../common/indicators';
-import { isValidObject, isNonEmptyArray } from 'utils/ObjectUtils';
+import { isNonEmptyObject, isNonEmptyArray, isEmptyArray } from 'utils/ObjectUtils';
 
 const panelTypes = {
   server:  { title: "Node",
@@ -76,10 +76,10 @@ class GraphPanel extends Component {
       start: startMoment.format('X'),
       end: endMoment.format('X')
     }
-    if (isValidObject(nodePrefix) && nodePrefix !== "all") {
+    if (isNonEmptyObject(nodePrefix) && nodePrefix !== "all") {
       params.nodePrefix = nodePrefix;
     }
-    if (isValidObject(nodeName) && nodeName !== "all") {
+    if (isNonEmptyObject(nodeName) && nodeName !== "all") {
       params.nodeName = nodeName;
     }
     // In case of universe metrics , nodePrefix comes from component itself
@@ -98,7 +98,7 @@ class GraphPanel extends Component {
     const { type, graph: { metrics }} = this.props;
 
     var panelItem = <YBLoadingIcon />;
-    if (Object.keys(metrics).length > 0 && isValidObject(metrics[type])) {
+    if (Object.keys(metrics).length > 0 && isNonEmptyObject(metrics[type])) {
       /* Logic here is, since there will be multiple instances of GraphPanel
       we basically would have metrics data keyed off panel type. So we
       loop through all the possible panel types in the metric data fetched
@@ -106,18 +106,22 @@ class GraphPanel extends Component {
       */
       const width = this.props.width;
       panelItem = panelTypes[type].metrics.map(function(metricKey, idx) {
-        return (isValidObject(metrics[type][metricKey])) ?
+        return (isNonEmptyObject(metrics[type][metricKey]) && !metrics[type][metricKey].error) ?
           <MetricsPanel metricKey={metricKey} key={idx}
                         metric={metrics[type][metricKey]}
                         className={"metrics-panel-container"}
                         width={width} />
           : null;
-      });
+      }).filter(Boolean);
+    }
+    let panelData= panelItem;
+    if (isEmptyArray(panelItem)) {
+      panelData = "Error receiving response from Graph Server";
     }
     return (
       <Accordion>
         <Panel header={panelTypes[type].title} key={panelTypes[type]} className="metrics-container">
-          {panelItem}
+          {panelData}
         </Panel>
       </Accordion>
     )
