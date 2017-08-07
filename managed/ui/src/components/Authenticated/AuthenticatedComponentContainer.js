@@ -7,7 +7,8 @@ import { fetchHostInfo, fetchHostInfoSuccess,
 import { fetchUniverseList, fetchUniverseListResponse, resetUniverseList }
   from '../../actions/universe';
 import { getProviderList, getProviderListResponse, getSupportedRegionData,
-  getSupportedRegionDataResponse, getEBSTypeList, getEBSTypeListResponse }
+  getSupportedRegionDataResponse, getEBSTypeList, getEBSTypeListResponse,
+  listAccessKeysResponse, listAccessKeys }
   from '../../actions/cloud';
 import { fetchColumnTypes, fetchColumnTypesSuccess, fetchColumnTypesFailure }
   from '../../actions/tables';
@@ -61,6 +62,13 @@ const mapDispatchToProps = (dispatch) => {
 
     getProviderListItems: () => {
       dispatch(getProviderList()).then((response) => {
+        if (response.payload.status === 200) {
+          response.payload.data.forEach((provider) => {
+            dispatch(listAccessKeys(provider.uuid)).then((response) => {
+              dispatch(listAccessKeysResponse(response.payload));
+            });
+          });
+        }
         dispatch(getProviderListResponse(response.payload));
       });
     },
