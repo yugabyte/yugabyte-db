@@ -28,10 +28,7 @@ export default class OnPremConfigWizard extends Component {
     } else if (this.state.currentStep === 2) {
       currentWizardStepContainer = <OnPremRegionsAndZonesContainer {...this.props} prevPage={this.prevPage} nextPage={this.nextPage}/>;
     }
-    let onPremStepperOptions = ["Provider Info", "Machine Types", "Regions and Zones"];
-    if (this.props.isEditProvider) {
-      onPremStepperOptions = ["Provider Info", "Machine Types", "Regions and Zones"];
-    }
+    const onPremStepperOptions = ["Provider Info", "Machine Types", "Regions and Zones"];
     return (
       <div>
         <OnPremStepper currentStep={this.state.currentStep} options={onPremStepperOptions}>
