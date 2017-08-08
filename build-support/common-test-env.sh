@@ -61,6 +61,8 @@ readonly TEST_DESCRIPTOR_SEPARATOR=":::"
 #
 readonly LIST_OF_TESTS_DIR_NAME="list_of_tests"
 
+readonly JENKINS_NFS_BUILD_STATS_DIR="/n/jenkins/build_stats"
+
 # -------------------------------------------------------------------------------------------------
 # Functions
 # -------------------------------------------------------------------------------------------------
@@ -74,8 +76,6 @@ set_common_test_paths() {
   expect_num_args 0 "$@"
   readonly YB_TEST_LOG_ROOT_DIR="$BUILD_ROOT/yb-test-logs"
   mkdir_safe "$YB_TEST_LOG_ROOT_DIR"
-
-  readonly YB_TEST_LIST_DIR="$BUILD_ROOT/$LIST_OF_TESTS_DIR_NAME"
 }
 
 validate_relative_test_binary_path() {
@@ -674,6 +674,9 @@ handle_xml_output() {
     --result-xml "$xml_output_file" \
     --log-url "$test_log_url" \
     --mark-as-failed "$test_failed"
+
+  # Useful for distributed builds in an NFS environment.
+  chmod g+w "$xml_output_file"
 }
 
 postprocess_test_log() {
@@ -804,6 +807,9 @@ run_one_test() {
     )
     test_exit_code=$?
     set -e
+
+    # Useful for distributed builds in an NFS environment.
+    chmod g+w "$test_log_path"
 
     # Test did not fail, no need to retry.
     if [[ $test_exit_code -eq 0 ]]; then
@@ -1100,23 +1106,6 @@ show_disk_usage() {
   echo
 }
 
-collect_ctest_tests() {
-  detect_num_cpus
-  (
-    cd "$BUILD_ROOT"
-    rm -rf "$BUILD_ROOT/list_of_tests"
-    log "Collecting the list of gtest C++ tests in all test programs"
-    time (
-      YB_LIST_TESTS_ONLY=1 ctest "$YB_NUM_CPUS" --output-on-failure 2>&1 | \
-        egrep -v "\
-Test .*[.]   Passed +[0-9]|\
-^        Start +[0-9]+:|\
-tests passed, [0-9]+ tests failed out of [0-9]+"
-    )
-    log "Finished collecting the list of tests, see timing information above."
-  )
-}
-
 spark_available() {
   if is_running_on_gcp && [[ -f $SPARK_SUBMIT_CMD_PATH ]]; then
     return 0  # true
@@ -1127,6 +1116,14 @@ spark_available() {
 run_tests_on_spark() {
   log "Running tests on Spark"
   local return_code
+  local run_tests_args=(
+    --build-root "$BUILD_ROOT"
+    --build-type "$build_type"
+  )
+  if is_jenkins && [[ -d "$JENKINS_NFS_BUILD_STATS_DIR" ]]; then
+    run_tests_args+=( "--stats-dir" "$JENKINS_NFS_BUILD_STATS_DIR" )
+  fi
+
   set +e
   (
     set -x
@@ -1136,10 +1133,9 @@ run_tests_on_spark() {
     time "$SPARK_SUBMIT_CMD_PATH" \
       --driver-cores "$INITIAL_SPARK_DRIVER_CORES" \
       "$YB_SRC_ROOT/build-support/run_tests_on_spark.py" \
-        --build-root "$BUILD_ROOT" \
-        --build-type "$build_type" \
-        "$@" 2>&1 | \
-      egrep -v "TaskSetManager: (Starting task|Finished task .* \([0-9]+[1-9]/[0-9]+\))"
+      "${run_tests_args[@]}" "$@" 2>&1 | \
+      egrep -v "TaskSetManager: (Starting task|Finished task .* \([0-9]+[1-9]/[0-9]+\))" \
+            --line-buffered
     exit ${PIPESTATUS[0]}
   )
   return_code=$?

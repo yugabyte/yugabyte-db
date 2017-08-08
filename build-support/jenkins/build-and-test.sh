@@ -96,10 +96,9 @@ LATEST_BUILD_LINK="$YB_SRC_ROOT/build/latest"
 CTEST_OUTPUT_PATH="$BUILD_ROOT"/ctest.log
 CTEST_FULL_OUTPUT_PATH="$BUILD_ROOT"/ctest-full.log
 
-# Remove testing artifacts from the previous run before we do anything
-# else. Otherwise, if we fail during the "build" step, Jenkins will
-# archive the test logs from the previous run, thinking they came from
-# this run, and confuse us when we look at the failed build.
+# Remove testing artifacts from the previous run before we do anything else. Otherwise, if we fail
+# during the "build" step, Jenkins will archive the test logs from the previous run, thinking they
+# came from this run, and confuse us when we look at the failed build.
 
 build_root_deleted=false
 if [[ $DONT_DELETE_BUILD_ROOT == "0" ]]; then
@@ -313,6 +312,7 @@ if [[ $BUILD_JAVA == "1" ]]; then
     export PATH=$JAVA_HOME/bin:$PATH
   fi
   pushd "$YB_SRC_ROOT/java"
+  ( set -x; mvn clean )
   java_build_cmd_line=( --fail-never -DbinDir="$BUILD_ROOT"/bin )
   if ! time build_yb_java_code_with_retries "${java_build_cmd_line[@]}" \
                                             -DskipTests clean install 2>&1; then
@@ -326,7 +326,6 @@ fi
 if spark_available; then
   if [[ $BUILD_CPP == "1" || $BUILD_JAVA == "1" ]]; then
     log "Will run tests on Spark"
-    collect_ctest_tests
     extra_args=""
     if [[ $BUILD_JAVA == "1" ]]; then
       extra_args+="--java"

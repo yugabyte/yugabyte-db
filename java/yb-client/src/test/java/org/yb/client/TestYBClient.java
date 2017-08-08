@@ -59,6 +59,10 @@ public class TestYBClient extends BaseYBClientTest {
     tableName = TestYBClient.class.getName() + "-" + System.currentTimeMillis();
   }
 
+  private void waitForMasterLeader() throws Exception {
+    syncClient.waitForMasterLeader(TestUtils.adjustTimeoutForBuildType(10000));
+  }
+
   private Schema createManyStringsSchema() {
     ArrayList<ColumnSchema> columns = new ArrayList<ColumnSchema>(4);
     columns.add(new ColumnSchema.ColumnSchemaBuilder("key", Type.STRING).key(true).build());
@@ -95,14 +99,14 @@ public class TestYBClient extends BaseYBClientTest {
     IsLoadBalancedResponse resp = syncClient.getIsLoadBalanced(0 /* numServers */);
     assertFalse(resp.hasError());
   }
-  
+
   /**
    * Test Master Configuration Change operation going from A,B,C to D,E,F.
    * @throws Exception
    */
   @Test(timeout = 100000)
   public void testAllMasterChangeConfig() throws Exception {
-    syncClient.waitForMasterLeader(10000);
+    waitForMasterLeader();
     LOG.info("Starting testAllChangeMasterConfig");
     int numBefore = miniCluster.getNumMasters();
     ListMastersResponse listResp = syncClient.listMasters();
@@ -123,7 +127,7 @@ public class TestYBClient extends BaseYBClientTest {
       resp = syncClient.changeMasterConfig(oldHp.getHostText(), oldHp.getPort(), false);
       assertFalse(resp.hasError());
     }
-    
+
     listResp = syncClient.listMasters();
     assertEquals(listResp.getMasters().size(), numBefore);
   }
@@ -135,7 +139,7 @@ public class TestYBClient extends BaseYBClientTest {
   @Test(timeout = 100000)
   public void testChangeMasterConfig() throws Exception {
     // TODO: See if TestName @Rule can be made to work instead of explicit test names.
-    syncClient.waitForMasterLeader(10000);
+    waitForMasterLeader();
     LOG.info("Starting testChangeMasterConfig");
     int numBefore = miniCluster.getNumMasters();
     ListMastersResponse listResp = syncClient.listMasters();
@@ -156,7 +160,7 @@ public class TestYBClient extends BaseYBClientTest {
    */
   @Test(timeout = 100000)
   public void testChangeMasterConfigOfLeader() throws Exception {
-    syncClient.waitForMasterLeader(10000);
+    waitForMasterLeader();
     LOG.info("Starting testChangeMasterConfigOfLeader");
     int numBefore = miniCluster.getNumMasters();
     ListMastersResponse listResp = syncClient.listMasters();

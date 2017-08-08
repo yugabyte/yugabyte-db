@@ -67,6 +67,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     // Mini).
     SocketOptions socketOptions = new SocketOptions();
     socketOptions.setReadTimeoutMillis(60 * 1000);
+    socketOptions.setConnectTimeoutMillis(60 * 1000);
     cluster = Cluster.builder()
               .addContactPointsWithPorts(miniCluster.getCQLContactPoints())
               .withLoadBalancingPolicy(new PartitionAwarePolicy())

@@ -64,7 +64,11 @@ show_stats "before"
 
 if [[ ${YB_KEEP_BUILD_OUTPUT:-} != "1" ]]; then
   # Get rid of most of the build artifacts.
-  ( set -x; rm -rf bin lib src )
+  (
+    set -x
+    rm -rf bin lib src
+    find . -perm -u+x -type f -wholename './tests-*/*' -exec rm -f {} \;
+  )
 fi
 
 # Get rid of temporary directories such as

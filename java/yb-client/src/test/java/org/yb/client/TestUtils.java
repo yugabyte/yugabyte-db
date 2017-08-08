@@ -35,11 +35,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 /**
@@ -74,6 +71,9 @@ public class TestUtils {
   private static Path flagFileTmpPath = null;
 
   private static final Object flagFilePathLock = new Object();
+
+  private static volatile String cppBinariesDir = null;
+  private static volatile String buildType = null;
 
   /**
    * @return the path of the flags file to pass to daemon processes
@@ -158,12 +158,10 @@ public class TestUtils {
     return TestUtils.findYbRootDir() + "/www";
   }
 
-  /**
-   * @param binName the binary to look for (eg 'yb-tserver')
-   * @return the absolute path of that binary
-   * @throws FileNotFoundException if no such binary is found
-   */
-  public static String findBinary(String binName) throws FileNotFoundException {
+  public static String getBinDir() {
+    if (cppBinariesDir != null)
+      return cppBinariesDir;
+
     String binDir = System.getProperty(BIN_DIR_PROP);
     if (binDir != null) {
       LOG.info("Using binary directory specified by property: {}",
@@ -172,12 +170,48 @@ public class TestUtils {
       binDir = findYbRootDir() + "/build/latest/bin";
     }
 
+    if (!new File(binDir).isDirectory()) {
+      throw new RuntimeException(
+          "Directory that is supposed to contain YB C++ binaries not found: " + binDir);
+    }
+
+    cppBinariesDir = binDir;
+    return binDir;
+  }
+
+  /**
+   * @param binName the binary to look for (eg 'yb-tserver')
+   * @return the absolute path of that binary
+   * @throws FileNotFoundException if no such binary is found
+   */
+  public static String findBinary(String binName) throws FileNotFoundException {
+    String binDir = getBinDir();
+
     File candidate = new File(binDir, binName);
     if (candidate.canExecute()) {
       return candidate.getAbsolutePath();
     }
     throw new FileNotFoundException("Cannot find binary " + binName +
         " in binary directory " + binDir);
+  }
+
+  public static String getBuildType() {
+    if (buildType != null)
+      return buildType;
+
+    try {
+      final File canonicalBuildDir = new File(getBinDir()).getParentFile().getCanonicalFile();
+      final String buildDirBasename = canonicalBuildDir.getName();
+      final String[] buildDirNameComponents = buildDirBasename.split("-");
+      assert buildDirNameComponents.length >= 3 :
+          "buildDirNameComponents is expected to have at least 3 components: " +
+              Arrays.asList(buildDirNameComponents) + ", canonicalBuildDir=" +
+              canonicalBuildDir.getPath();
+      buildType = buildDirNameComponents[0];
+      return buildType;
+    } catch (IOException ex) {
+      throw new RuntimeException("Failed trying to get the build type", ex);
+    }
   }
 
   /**
@@ -381,5 +415,24 @@ public class TestUtils {
       }
       return true;
     }, timeoutMs);
+  }
+
+  public static boolean isTSAN() {
+    return getBuildType() == "tsan";
+  }
+
+  /** @return a timeout multiplier to apply in tests based on the build type */
+  public static double getTimeoutMultiplier() {
+    return isTSAN() ? 3.0 : 1.0;
+  }
+
+  /**
+   * Adjusts a timeout based on the build type.
+   *
+   * @param timeout timeout in any time units
+   * @return adjusted timeout
+   */
+  public static long adjustTimeoutForBuildType(long timeout) {
+    return (long) (timeout * TestUtils.getTimeoutMultiplier());
   }
 }

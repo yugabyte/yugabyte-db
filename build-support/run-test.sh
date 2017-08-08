@@ -31,9 +31,19 @@ set -euo pipefail
 . "${BASH_SOURCE%/*}/common-build-env.sh"
 . "${BASH_SOURCE%/*}/common-test-env.sh"
 
+if [[ -n ${YB_LIST_CTEST_TESTS_ONLY:-} ]]; then
+  # This has to match CTEST_TEST_PROGRAM_RE in run_tests_on_spark.py.
+  echo "ctest test: \"$1\""
+  exit 0
+fi
+
+# Create group-writable files by default. Useful in an NFS environment.
+umask 0002
+
 if [[ $# -eq 2 && -d $YB_SRC_ROOT/java/$1 ]]; then
   # This is a Java test.
-  # Example arguments: yb-client org.yb.client.TestYBClient
+  # Arguments: <maven_module_name> <package_and_class>
+  # Example: yb-client org.yb.client.TestYBClient
   module_name=$1
   test_class=$2
   if [[ -z ${BUILD_ROOT:-} ]]; then
@@ -41,6 +51,7 @@ if [[ $# -eq 2 && -d $YB_SRC_ROOT/java/$1 ]]; then
   fi
   set_common_test_paths
   set_mvn_local_repo
+  set_asan_tsan_options
   mkdir -p "$YB_TEST_LOG_ROOT_DIR/java"
   surefire_rel_tmp_dir=surefire$(date +%Y-%m-%d_%H_%M_%S)_${RANDOM}_$$
   (
@@ -48,11 +59,11 @@ if [[ $# -eq 2 && -d $YB_SRC_ROOT/java/$1 ]]; then
     set -x
     # We specify tempDir to use a separate temporary directory for each test.
     # http://maven.apache.org/surefire/maven-surefire-plugin/test-mojo.html
-    mvn -Dtest=$test_class \
+    mvn -Dtest="$test_class" \
       --projects "$module_name" \
       -DbinDir="$BUILD_ROOT/bin" \
       -Dmaven.repo.local="$YB_MVN_LOCAL_REPO" \
-      -DtempDir=$surefire_rel_tmp_dir \
+      -DtempDir="$surefire_rel_tmp_dir" \
       surefire:test \
       2>&1 | tee "$YB_TEST_LOG_ROOT_DIR/java/${module_name}__${test_class}.log"
   )
@@ -108,7 +119,6 @@ abs_test_binary_path=$TEST_DIR/$TEST_NAME_WITH_EXT
 # Remove path and extension, if any.
 TEST_NAME=${TEST_NAME_WITH_EXT%%.*}
 
-
 TEST_DIR_BASENAME="$( basename "$TEST_DIR" )"
 LOG_PATH_BASENAME_PREFIX=$TEST_NAME
 
@@ -147,11 +157,9 @@ else
 fi
 
 if [[ -n ${YB_LIST_TESTS_ONLY:-} ]]; then
-  # Print test descriptors one per line.
-  if [[ ! -d "$YB_TEST_LIST_DIR" ]]; then
-    mkdir -p "$YB_TEST_LIST_DIR"
-  fi
-  printf '%s\n' "${tests[@]}" >"$YB_TEST_LIST_DIR/$TEST_NAME.test_list"
+  for test_descriptor in "${tests[@]}"; do
+    echo "test descriptor: $test_descriptor"
+  done
   exit 0
 fi
 
