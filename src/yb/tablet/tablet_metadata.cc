@@ -374,6 +374,13 @@ Status TabletMetadata::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) 
 
     tablet_data_state_ = superblock.tablet_data_state();
 
+    deleted_cols_.clear();
+    for (const DeletedColumnPB& deleted_col : superblock.deleted_cols()) {
+      DeletedColumn col;
+      RETURN_NOT_OK(DeletedColumn::FromPB(deleted_col, &col));
+      deleted_cols_.push_back(col);
+    }
+
     rowsets_.clear();
     for (const RowSetDataPB& rowset_pb : superblock.rowsets()) {
       gscoped_ptr<RowSetMetadata> rowset_meta;
@@ -613,6 +620,10 @@ Status TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* super_block,
 
   for (const BlockId& block_id : orphaned_blocks_) {
     block_id.CopyToPB(pb.mutable_orphaned_blocks()->Add());
+  }
+
+  for (const DeletedColumn& deleted_col : deleted_cols_) {
+    deleted_col.CopyToPB(pb.mutable_deleted_cols()->Add());
   }
 
   super_block->Swap(&pb);

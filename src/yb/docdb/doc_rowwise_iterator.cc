@@ -158,7 +158,7 @@ bool DocRowwiseIterator::HasNext() const {
       // If doc is not found, decide if some non-projection column exists.
       // Currently we read the whole doc here,
       // may be optimized by exiting on the first column in future.
-      ROCKSDB_SEEK(db_iter_.get(), row_key_.Encode().AsSlice()); // Position it for GetSubDocument.
+      ROCKSDB_SEEK(db_iter_.get(), row_key_.Encode().AsSlice());  // Position it for GetSubDocument.
       status_ = GetSubDocument(db_iter_.get(), SubDocKey(row_key_), &full_row, &doc_found,
           hybrid_time_, TableTTL(schema_));
       if (!status_.ok()) {
@@ -346,8 +346,22 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
       RETURN_NOT_OK(PrimitiveValueToKudu(projection_, i, *value, &dst_row));
     }
     if (is_null && !is_nullable) {
-      return STATUS_SUBSTITUTE(IllegalState,
-                               "Column $0 is not nullable, but no data is found", i);
+      // From D1319 (mikhail) to make some tests run with YQL tables:
+      // We can't use dst->schema().column(i) here, because it might not provide the correct read
+      // default. Instead, we get the matching column's schema from the server-side schema that
+      // the iterator was created with.
+      int idx = schema_.find_column_by_id(projection_.column_id(i));
+      if (idx != Schema::kColumnNotFound && schema_.column(idx).has_read_default()) {
+        memcpy(dst_row.cell(i).mutable_ptr(), schema_.column(idx).read_default_value(),
+               schema_.column(idx).type_info()->size());
+      } else {
+        return STATUS_SUBSTITUTE(
+            IllegalState,
+            "Column #$0 in the projection ($1) is not nullable, but no data is found and no read "
+                "default provided by the schema",
+            i,
+            schema_.column(idx).ToString());
+      }
     }
     if (is_nullable) {
       dst->column_block(i).SetCellIsNull(0, is_null);

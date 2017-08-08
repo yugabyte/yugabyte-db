@@ -20,6 +20,7 @@ using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBTable;
 using client::YBTableCreator;
+using client::YBTableAlterer;
 using client::YBTableType;
 using client::YBTableName;
 using client::YBqlWriteOp;
@@ -339,8 +340,54 @@ void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCall
 //--------------------------------------------------------------------------------------------------
 
 void Executor::ExecPTNodeAsync(const PTAlterTable *tnode, StatementExecutedCallback cb) {
+  YBTableName table_name = tnode->yb_table_name();
 
-  CB_RETURN(cb, Status::OK());
+  if (!table_name.has_namespace()) {
+    if (exec_context_->CurrentKeyspace().empty()) {
+      CB_RETURN(cb, exec_context_->Error(tnode->loc(), ErrorCode::NO_NAMESPACE_USED));
+    }
+
+    table_name.set_namespace_name(exec_context_->CurrentKeyspace());
+  }
+
+  shared_ptr<YBTableAlterer> table_alterer(exec_context_->NewTableAlterer(table_name));
+
+  for (const auto& mod_column : tnode->mod_columns()) {
+    switch (mod_column->mod_type()) {
+      case ALTER_ADD:
+        table_alterer->AddColumn(mod_column->new_name()->data())
+                     ->Type(mod_column->yql_type());
+        break;
+      case ALTER_DROP:
+        table_alterer->DropColumn(mod_column->old_name()->last_name().data());
+        break;
+      case ALTER_RENAME:
+        table_alterer->AlterColumn(mod_column->old_name()->last_name().data())
+                     ->RenameTo(mod_column->new_name()->c_str());
+        break;
+      case ALTER_TYPE:
+        // Not yet supported by AlterTableRequestPB.
+        CB_RETURN(cb, exec_context_->Error(tnode->loc(), ErrorCode::FEATURE_NOT_YET_IMPLEMENTED));
+    }
+  }
+
+  // Altering table properties not yet supported by AlterTableRequestPB.
+  if (!tnode->mod_props().empty()) {
+    CB_RETURN(cb, exec_context_->Error(tnode->loc(), ErrorCode::FEATURE_NOT_YET_IMPLEMENTED));
+  }
+
+  Status exec_status = table_alterer->Alter();
+
+  if (!exec_status.ok()) {
+    ErrorCode error_code = ErrorCode::EXEC_ERROR;
+
+    CB_RETURN(cb, exec_context_->Error(tnode->loc(), exec_status.ToString().c_str(), error_code));
+  }
+
+  cb.Run(
+    Status::OK(),
+    std::make_shared<SchemaChangeResult>(
+        "UPDATED", "TABLE", table_name.resolved_namespace_name(), table_name.table_name()));
 }
 
 //--------------------------------------------------------------------------------------------------

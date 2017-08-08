@@ -922,6 +922,11 @@ Status Tablet::HandleYQLReadRequest(
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
   ScopedTabletMetricsTracker(metrics_->yql_read_latency);
 
+  if (metadata()->schema_version() != yql_read_request.schema_version()) {
+    response->set_status(YQLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
+    return Status::OK();
+  }
+
   return AbstractTablet::HandleYQLReadRequest(timestamp, yql_read_request, response, rows_data);
 }
 
@@ -969,14 +974,14 @@ Status Tablet::KeyValueBatchFromYQLWriteBatch(
   }
   const auto* write_batch = yql_write_request->mutable_yql_write_batch();
 
-  for (size_t i = 0; i < write_batch->size(); i++) {
+  for (size_t i = 0; i < yql_write_request->yql_write_batch_size(); i++) {
     doc_ops.emplace_back(new YQLWriteOperation(
         write_batch->Get(i), metadata_->schema(),
         write_response->add_yql_response_batch()));
   }
   RETURN_NOT_OK(StartDocWriteTransaction(
       doc_ops, keys_locked, yql_write_request->mutable_write_batch()));
-  for (size_t i = 0; i < write_batch->size(); i++) {
+  for (size_t i = 0; i < doc_ops.size(); i++) {
     YQLWriteOperation* yql_write_op = down_cast<YQLWriteOperation*>(doc_ops[i].get());
     // If the YQL write op returns a rowblock, move the op to the transaction state to return the
     // rows data as a sidecar after the transaction completes.
@@ -1410,6 +1415,16 @@ Status Tablet::AlterSchema(AlterSchemaTransactionState *tx_state) {
               << " to " << tx_state->schema()->ToString()
               << " version " << tx_state->schema_version();
     DCHECK(schema_lock_.is_locked());
+
+    // Find out which columns have been deleted in this schema change, and add them to metadata.
+    for (const auto& col : schema()->column_ids()) {
+      if (tx_state->schema()->find_column_by_id(col) == Schema::kColumnNotFound) {
+        DeletedColumn deleted_col(col, clock_->Now());
+        LOG(INFO) << "Column " << col.ToString() << " recorded as deleted.";
+        metadata_->AddDeletedColumn(deleted_col);
+      }
+    }
+
     metadata_->SetSchema(*tx_state->schema(), tx_state->schema_version());
     if (tx_state->has_new_table_name()) {
       metadata_->SetTableName(tx_state->new_table_name());
@@ -1425,7 +1440,7 @@ Status Tablet::AlterSchema(AlterSchemaTransactionState *tx_state) {
   }
 
   // Replace the MemRowSet
-  {
+  if (table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     std::lock_guard<rw_spinlock> lock(component_lock_);
     RETURN_NOT_OK(ReplaceMemRowSetUnlocked(&input, &old_ms));
   }
@@ -1438,7 +1453,10 @@ Status Tablet::AlterSchema(AlterSchemaTransactionState *tx_state) {
   // all the way until the COMMIT message has been appended to the WAL.
 
   // Flush the old MemRowSet
-  return FlushInternal(input, old_ms);
+  if (table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return FlushInternal(input, old_ms);
+  }
+  return Status::OK();
 }
 
 Status Tablet::RewindSchemaForBootstrap(const Schema& new_schema,
@@ -2420,6 +2438,9 @@ Status Tablet::FlushBiggestDMS() {
 }
 
 Status Tablet::CompactWorstDeltas(RowSet::DeltaCompactionType type) {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return Status::OK();
+  }
   CHECK_EQ(state_, kOpen);
   shared_ptr<RowSet> rs;
   // We're required to grab the rowset's compact_flush_lock under the compact_select_lock_.
@@ -2454,6 +2475,9 @@ Status Tablet::CompactWorstDeltas(RowSet::DeltaCompactionType type) {
 
 double Tablet::GetPerfImprovementForBestDeltaCompact(RowSet::DeltaCompactionType type,
                                                      shared_ptr<RowSet>* rs) const {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return 0;
+  }
   std::lock_guard<std::mutex> compact_lock(compact_select_lock_);
   return GetPerfImprovementForBestDeltaCompactUnlocked(type, rs);
 }
@@ -2622,6 +2646,27 @@ void Tablet::UnregisterReader(HybridTime timestamp) {
   if (active_readers_cnt_[timestamp] == 0) {
     active_readers_cnt_.erase(timestamp);
   }
+}
+
+void Tablet::ForceRocksDBCompactInTest() {
+  rocksdb_->CompactRange(rocksdb::CompactRangeOptions(),
+      /* begin = */ nullptr,
+      /* end = */ nullptr);
+  uint64_t compaction_pending, running_compactions;
+
+  while (true) {
+    rocksdb_->GetIntProperty("rocksdb.compaction-pending", &compaction_pending);
+    rocksdb_->GetIntProperty("rocksdb.num-running-compactions", &running_compactions);
+    if (!compaction_pending && !running_compactions) {
+      return;
+    }
+
+    SleepFor(MonoDelta::FromMilliseconds(10));
+  }
+}
+
+std::string Tablet::DocDBDumpStrInTest() {
+  return docdb::DocDBDebugDumpToStr(rocksdb_.get(), false);
 }
 
 ScopedReadTransaction::ScopedReadTransaction(AbstractTablet* tablet)

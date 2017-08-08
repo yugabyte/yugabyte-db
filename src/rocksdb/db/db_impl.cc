@@ -102,6 +102,8 @@
 #include "util/xfunc.h"
 
 DEFINE_bool(dump_dbimpl_info, false, "Dump RocksDB info during constructor.");
+DEFINE_bool(flush_rocksdb_on_shutdown, true,
+            "Safely flush RocksDB when instance is destroyed, disabled for crash tests.");
 
 namespace rocksdb {
 
@@ -325,7 +327,7 @@ void DBImpl::CancelAllBackgroundWork(bool wait) {
 
 DBImpl::~DBImpl() {
   RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log, "Shutting down RocksDB at: %s\n",
-      dbname_.c_str());
+       dbname_.c_str());
   mutex_.Lock();
 
   if (!shutting_down_.load(std::memory_order_acquire) &&
@@ -334,7 +336,11 @@ DBImpl::~DBImpl() {
       if (!cfd->IsDropped() && !cfd->mem()->IsEmpty()) {
         cfd->Ref();
         mutex_.Unlock();
-        FlushMemTable(cfd, FlushOptions());
+        if (FLAGS_flush_rocksdb_on_shutdown) {
+          FlushMemTable(cfd, FlushOptions());
+        } else {
+          LOG(INFO) << "Skipping mem table flush - flush_rocksdb_on_shutdown is unset";
+        }
         mutex_.Lock();
         cfd->Unref();
       }
@@ -5329,16 +5335,6 @@ OpId DBImpl::GetFlushedOpId() {
         result = OpId(OpId::kUnknownTerm, file.largest.seqno);
       }
     }
-  } else {
-#ifndef NDEBUG
-    std::vector<LiveFileMetaData> files;
-    versions_->GetLiveFilesMetaData(&files);
-    OpId max_file_op_id;
-    for (auto& file : files) {
-      max_file_op_id.UpdateIfGreater(file.last_op_id);
-    }
-    CHECK_EQ(result, max_file_op_id);
-#endif
   }
   return result;
 }

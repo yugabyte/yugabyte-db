@@ -247,6 +247,14 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // Fully replace a superblock (used for bootstrap).
   CHECKED_STATUS ReplaceSuperBlock(const TabletSuperBlockPB &pb);
 
+  const std::vector<DeletedColumn>& GetDeletedColumns() const {
+    return deleted_cols_;
+  }
+
+  void AddDeletedColumn(const DeletedColumn& col) {
+    deleted_cols_.push_back(col);
+  }
+
   // ==========================================================================
   // Stuff used by the tests
   // ==========================================================================
@@ -387,6 +395,12 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // A callback that, if set, is called before this metadata is flushed
   // to disk.
   StatusClosure pre_flush_callback_;
+
+  // A vector of column IDs that have been deleted, so that the compaction filter can free the
+  // associated memory. At present, deleted column IDs are persisted forever, even if all the
+  // associated data has been discarded. In the future, we can garbage collect such column IDs
+  // to make sure this vector doesn't grow too large.
+  std::vector<DeletedColumn> deleted_cols_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletMetadata);
 };

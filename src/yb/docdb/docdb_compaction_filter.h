@@ -9,6 +9,7 @@
 
 #include "rocksdb/compaction_filter.h"
 
+#include "yb/common/schema.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/docdb/doc_key.h"
 
@@ -17,7 +18,10 @@ namespace docdb {
 
 class DocDBCompactionFilter : public rocksdb::CompactionFilter {
  public:
-  DocDBCompactionFilter(HybridTime history_cutoff, bool is_full_compaction, const Schema& schema);
+  DocDBCompactionFilter(HybridTime history_cutoff,
+                        ColumnIdsPtr deleted_cols,
+                        bool is_full_compaction,
+                        const Schema& schema);
 
   ~DocDBCompactionFilter() override;
   bool Filter(int level,
@@ -83,6 +87,8 @@ class DocDBCompactionFilter : public rocksdb::CompactionFilter {
 
   // Reference to tablet's metadata schema.
   const Schema& schema_;
+
+  ColumnIdsPtr deleted_cols_;
 };
 
 // A strategy for deciding the history cutoff. We may implement this differently in production and
@@ -91,6 +97,7 @@ class HistoryRetentionPolicy {
  public:
   virtual ~HistoryRetentionPolicy() {}
   virtual HybridTime GetHistoryCutoff() = 0;
+  virtual ColumnIdsPtr GetDeletedColumns() = 0;
 };
 
 // A history retention policy that always returns the same hybrid_time. Useful in tests. This class
@@ -104,8 +111,14 @@ class FixedHybridTimeRetentionPolicy : public HistoryRetentionPolicy {
   HybridTime GetHistoryCutoff() override { return history_cutoff_.load(); }
   void SetHistoryCutoff(HybridTime history_cutoff) { history_cutoff_.store(history_cutoff); }
 
+  ColumnIdsPtr GetDeletedColumns() override {
+    return std::make_shared<ColumnIds>(deleted_cols_);
+  }
+  void AddDeletedColumn(ColumnId col) { deleted_cols_.insert(col); }
+
  private:
   std::atomic<HybridTime> history_cutoff_;
+  ColumnIds deleted_cols_;
 };
 
 class DocDBCompactionFilterFactory : public rocksdb::CompactionFilterFactory {

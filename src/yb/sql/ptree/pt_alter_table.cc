@@ -5,7 +5,6 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/sql/ptree/pt_alter_table.h"
-#include "yb/sql/ptree/pt_create_table.h"
 #include "yb/sql/ptree/sem_context.h"
 
 namespace yb {
@@ -14,6 +13,7 @@ namespace sql {
 using client::YBSchema;
 using client::YBColumnSchema;
 using client::YBTableName;
+using client::YBTable;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -26,7 +26,7 @@ PTAlterTable::PTAlterTable(MemoryContext *memctx,
     commands_(commands),
     table_columns_(memctx),
     mod_columns_(memctx),
-    with_props_(memctx) {
+    mod_props_(memctx) {
 }
 
 PTAlterTable::~PTAlterTable() {
@@ -59,42 +59,36 @@ CHECKED_STATUS PTAlterTable::Analyze(SemContext *sem_context) {
 
 void PTAlterTable::PrintSemanticAnalysisResult(SemContext *sem_context) {
   MCString sem_output("\tAltering Table ", sem_context->PTempMem());
-  sem_output += table_.get()->name().ToString().c_str();
+  sem_output += yb_table_name().ToString().c_str();
   sem_output += "(";
-
+  // TODO: Add debugging info for what this alter command is.
   sem_output += ")";
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << sem_output;
 }
 
 CHECKED_STATUS PTAlterTable::AppendModColumn(SemContext *sem_context,
                                              PTAlterColumnDefinition *column) {
-
-  if (column->mod_type() != ALTER_ADD) {
-    // Check if column already exists
-
-    const ColumnDesc* desc = sem_context->GetColumnDesc(column->name()->last_name(),
-                             /* reading column = */ false);
+  // Make sure column already exists and isn't key column.
+  if (column->old_name() != nullptr) {
+    const ColumnDesc* desc = sem_context->GetColumnDesc(column->old_name()->last_name(),
+                                 /* reading column = */ false);
     if (desc == nullptr) {
       return sem_context->Error(loc(), "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
     }
+
+    if (desc->is_hash() && column->mod_type() != ALTER_RENAME) {
+      return sem_context->Error(loc(), "Can't alter key column", ErrorCode::ALTER_KEY_COLUMN);
+    }
   }
 
-  if (column->datatype() != nullptr) {
-    RETURN_NOT_OK(PTCreateTable::CheckType(sem_context, column->datatype()));
-  }
-
-  switch (column->mod_type()) {
-    case ALTER_ADD:
-      // TODO: check for dup name etc
-      break;
-    case ALTER_DROP:
-      // TODO: check if key column
-      break;
-    case ALTER_RENAME:
-      // TODO: check for dup name etc
-      break;
-    case ALTER_TYPE:
-      break;
+  // Make sure column already doesn't exist with the same name.
+  if (column->new_name() != nullptr) {
+    MCString name = *column->new_name();
+    const ColumnDesc* desc = sem_context->GetColumnDesc(name,
+                                 /* reading column = */ false);
+    if (desc != nullptr) {
+      return sem_context->Error(loc(), "Duplicate column name", ErrorCode::DUPLICATE_COLUMN);
+    }
   }
 
   mod_columns_.push_back(column);
@@ -104,13 +98,16 @@ CHECKED_STATUS PTAlterTable::AppendModColumn(SemContext *sem_context,
 CHECKED_STATUS PTAlterTable::AppendAlterProperty(SemContext *sem_context, PTAlterProperty *prop) {
   const auto property_name = string(prop->property_name()->c_str());
   bool found_match = false;
+
   for (auto supported_property : supported_properties) {
     found_match |= (supported_property == property_name);
   }
+
   if (!found_match) {
     return sem_context->Error(prop->loc(), ErrorCode::INVALID_TABLE_PROPERTY);
   }
-  with_props_.push_back(prop);
+
+  mod_props_.push_back(prop);
   return Status::OK();
 }
 

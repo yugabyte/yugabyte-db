@@ -186,9 +186,7 @@ static YBqlWriteOp *NewYBqlWriteOp(const shared_ptr<YBTable>& table,
   req->set_request_id(reinterpret_cast<uint64_t>(op));
   req->set_query_id(reinterpret_cast<int64_t>(op));
 
-  // TODO(neil): When ALTER TABLE is supported, we'll need to set schema version of 'table'.
-  VLOG(4) << "TODO: Schema version is not being used";
-  req->set_schema_version(0);
+  req->set_schema_version(table->schema().version());
 
   return op;
 }
@@ -341,9 +339,7 @@ YBqlReadOp *YBqlReadOp::NewSelect(const shared_ptr<YBTable>& table) {
   req->set_request_id(reinterpret_cast<uint64_t>(op));
   req->set_query_id(reinterpret_cast<int64_t>(op));
 
-  // TODO(neil): When ALTER TABLE is supported, we'll need to set schema version of 'table'.
-  VLOG(4) << "TODO: Schema version is not being used";
-  req->set_schema_version(0);
+  req->set_schema_version(table->schema().version());
 
   return op;
 }

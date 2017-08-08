@@ -196,6 +196,22 @@ TEST_F(YqlDmlTest, TestInsertUpdateAndSelect) {
   }
 }
 
+TEST_F(YqlDmlTest, TestInsertWrongSchema) {
+  const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
+  CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+
+  // Move to schema version 1 by altering table
+  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  table_alterer->AddColumn("c3")->Type(INT32)->NotNull()->Default(YBValue::FromInt(0));
+  EXPECT_OK(table_alterer->timeout(MonoDelta::FromSeconds(60))->Alter());
+
+  // The request created has schema version 0 by default
+  const shared_ptr<YBqlWriteOp> op = InsertRow(session, 1, "a", 2, "b", 3, "c");
+
+  EXPECT_OK(FlushSession(session.get()));
+  EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
+}
+
 namespace {
 
 std::string RandomValueAt(int32_t idx, size_t len = 2000) {

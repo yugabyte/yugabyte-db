@@ -24,6 +24,7 @@ using client::YBStatusMemberCallback;
 using client::YBTable;
 using client::YBMetaDataCache;
 using client::YBTableCreator;
+using client::YBTableAlterer;
 using client::YBTableName;
 using client::YBqlReadOp;
 using client::YBqlWriteOp;
@@ -59,6 +60,10 @@ SqlEnv::~SqlEnv() {}
 
 YBTableCreator *SqlEnv::NewTableCreator() {
   return client_->NewTableCreator();
+}
+
+YBTableAlterer *SqlEnv::NewTableAlterer(const YBTableName& table_name) {
+  return client_->NewTableAlterer(table_name);
 }
 
 CHECKED_STATUS SqlEnv::DeleteTable(const YBTableName& name) {

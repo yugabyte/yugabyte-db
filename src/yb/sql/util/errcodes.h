@@ -82,6 +82,7 @@ enum class ErrorCode : int64_t {
   INVALID_COUNTING_EXPR = -217,
   DUPLICATE_TYPE = -218,
   DUPLICATE_TYPE_FIELD = -219,
+  ALTER_KEY_COLUMN = -220,
 
   //------------------------------------------------------------------------------------------------
   // Execution errors [-300, x).

@@ -49,6 +49,7 @@
 
 DECLARE_bool(enable_data_block_fsync);
 DECLARE_bool(enable_maintenance_manager);
+DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(flush_threshold_mb);
 DECLARE_bool(use_hybrid_clock);
@@ -69,6 +70,7 @@ using client::YBTable;
 using client::YBTableAlterer;
 using client::YBTableCreator;
 using client::YBTableName;
+using client::YBTableType;
 using client::YBUpdate;
 using client::YBValue;
 using std::shared_ptr;
@@ -123,6 +125,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
     gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     CHECK_OK(table_creator->table_name(kTableName)
              .schema(&schema_)
+             .table_type(YBTableType::YQL_TABLE_TYPE)
              .num_replicas(num_replicas())
              .Create());
 
@@ -539,6 +542,69 @@ TEST_F(AlterTableTest, TestDropAndAddNewColumn) {
 
   LOG(INFO) << "Verifying that the new default shows up";
   VerifyRows(0, kNumRows, C1_IS_DEADBEEF);
+
+
+}
+
+TEST_F(AlterTableTest, TestCompactionAfterDrop) {
+  LOG(INFO) << "Inserting rows";
+  InsertRows(0, 3);
+
+  std::string docdb_dump = tablet_peer_->tablet()->DocDBDumpStrInTest();
+  // DocDB should not be empty right now.
+  ASSERT_NE(0, docdb_dump.length());
+
+  LOG(INFO) << "Dropping c1";
+  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
+
+  LOG(INFO) << "Forcing compaction";
+  tablet_peer_->tablet()->ForceRocksDBCompactInTest();
+
+  docdb_dump = tablet_peer_->tablet()->DocDBDumpStrInTest();
+
+  LOG(INFO) << "Checking that docdb is empty";
+  ASSERT_EQ(0, docdb_dump.length());
+
+  ASSERT_OK(cluster_->RestartSync());
+  tablet_peer_ = LookupTabletPeer();
+}
+
+// This tests the scenario where the log entries immediately after last RocksDB flush are for a
+// different schema than the one that was last flushed to the superblock.
+TEST_F(AlterTableTest, TestLogSchemaReplay) {
+  vector<string> rows;
+
+  ASSERT_OK(AddNewI32Column(kTableName, "c2", 12345));
+  InsertRows(0, 2);
+  UpdateRow(1, { {"c1", 0} });
+
+  LOG(INFO) << "Flushing RocksDB";
+  ASSERT_OK(tablet_peer_->tablet()->Flush());
+
+  UpdateRow(0, { {"c1", 1}, {"c2", 10001} });
+
+  LOG(INFO) << "Dropping c1";
+  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
+
+  UpdateRow(1, { {"c2", 10002} });
+
+  ASSERT_NO_FATALS(ScanToStrings(&rows));
+  ASSERT_EQ(2, rows.size());
+  ASSERT_EQ("(int32 c0=0, int32 c2=10001)", rows[0]);
+  ASSERT_EQ("(int32 c0=16777216, int32 c2=10002)", rows[1]);
+
+  google::FlagSaver flag_saver;
+  // Restart without flushing RocksDB
+  FLAGS_flush_rocksdb_on_shutdown = false;
+  LOG(INFO) << "Restarting tablet";
+  ASSERT_NO_FATALS(RestartTabletServer());
+
+  ASSERT_NO_FATALS(ScanToStrings(&rows));
+  ASSERT_EQ(2, rows.size());
+  ASSERT_EQ("(int32 c0=0, int32 c2=10001)", rows[0]);
+  ASSERT_EQ("(int32 c0=16777216, int32 c2=10002)", rows[1]);
 }
 
 // Tests that a renamed table can still be altered. This is a regression test, we used to not carry
@@ -638,155 +704,6 @@ TEST_F(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {
   ASSERT_OK(tablet_peer_->tablet()->Compact(tablet::Tablet::FORCE_COMPACT_ALL));
 }
 
-// Test which major-compacts a column for which there are updates in
-// a delta file, but where the column has been removed.
-TEST_F(AlterTableTest, TestMajorCompactDeltasAfterUpdatingRemovedColumn) {
-  // Disable maintenance manager, since we manually flush/compact
-  // in this test.
-  FLAGS_enable_maintenance_manager = false;
-
-  vector<string> rows;
-
-  ASSERT_OK(AddNewI32Column(kTableName, "c2", 12345));
-  InsertRows(0, 1);
-  ASSERT_OK(tablet_peer_->tablet()->Flush());
-
-  ASSERT_NO_FATALS(ScanToStrings(&rows));
-  ASSERT_EQ(1, rows.size());
-  ASSERT_EQ("(int32 c0=0, int32 c1=0, int32 c2=12345)", rows[0]);
-
-  // Add a delta for c1.
-  UpdateRow(0, { {"c1", 54321} });
-
-  // Make sure the delta is in a delta-file.
-  ASSERT_OK(tablet_peer_->tablet()->FlushBiggestDMS());
-
-  // Drop c1.
-  LOG(INFO) << "Dropping c1";
-  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  ASSERT_OK(table_alterer->DropColumn("c1") ->Alter());
-
-  ASSERT_NO_FATALS(ScanToStrings(&rows));
-  ASSERT_EQ(1, rows.size());
-  ASSERT_EQ("(int32 c0=0, int32 c2=12345)", rows[0]);
-
-  // Major Compact Deltas
-  ASSERT_OK(tablet_peer_->tablet()->CompactWorstDeltas(
-                tablet::RowSet::MAJOR_DELTA_COMPACTION));
-
-  // Check via debug dump that the data was properly compacted, including deltas.
-  // We expect to see neither deltas nor base data for the deleted column.
-  rows.clear();
-  ASSERT_OK(tablet_peer_->tablet()->DebugDump(&rows));
-  ASSERT_EQ("Dumping tablet:\n"
-            "---------------------------\n"
-            "MRS memrowset:\n"
-            "RowSet RowSet(1):\n"
-            "(int32 c0=0, int32 c2=12345) Undos: [@3(DELETE)] Redos: []",
-            JoinStrings(rows, "\n"));
-
-}
-
-// Test which major-compacts a column for which we have updates
-// in a DeltaFile, but for which we didn't originally flush any
-// CFile in the base data (because the the RowSet was flushed
-// prior to the addition of the column).
-TEST_F(AlterTableTest, TestMajorCompactDeltasIntoMissingBaseData) {
-  // Disable maintenance manager, since we manually flush/compact
-  // in this test.
-  FLAGS_enable_maintenance_manager = false;
-
-  vector<string> rows;
-
-  InsertRows(0, 2);
-  ASSERT_OK(tablet_peer_->tablet()->Flush());
-
-  // Add the new column after the Flush, so it has no base data.
-  ASSERT_OK(AddNewI32Column(kTableName, "c2", 12345));
-
-  // Add a delta for c2.
-  UpdateRow(0, { {"c2", 54321} });
-
-  // Make sure the delta is in a delta-file.
-  ASSERT_OK(tablet_peer_->tablet()->FlushBiggestDMS());
-
-  ASSERT_NO_FATALS(ScanToStrings(&rows));
-  ASSERT_EQ(2, rows.size());
-  ASSERT_EQ("(int32 c0=0, int32 c1=0, int32 c2=54321)", rows[0]);
-  ASSERT_EQ("(int32 c0=16777216, int32 c1=1, int32 c2=12345)", rows[1]);
-
-  // Major Compact Deltas
-  ASSERT_OK(tablet_peer_->tablet()->CompactWorstDeltas(
-                tablet::RowSet::MAJOR_DELTA_COMPACTION));
-
-  // Check via debug dump that the data was properly compacted, including deltas.
-  // We expect to see the updated value materialized into the base data for the first
-  // row, the default value materialized for the second, and a proper UNDO to undo
-  // the update on the first row.
-  rows.clear();
-  ASSERT_OK(tablet_peer_->tablet()->DebugDump(&rows));
-  ASSERT_EQ("Dumping tablet:\n"
-            "---------------------------\n"
-            "MRS memrowset:\n"
-            "RowSet RowSet(0):\n"
-            "(int32 c0=0, int32 c1=0, int32 c2=54321) "
-            "Undos: [@5(SET c2=12345), @2(DELETE)] Redos: []\n"
-            "(int32 c0=16777216, int32 c1=1, int32 c2=12345) Undos: [@3(DELETE)] Redos: []",
-            JoinStrings(rows, "\n"));
-}
-
-// Test which major-compacts a column for which there we have updates
-// in a DeltaFile, but for which there is no corresponding CFile
-// in the base data. Unlike the above test, in this case, we also drop
-// the column again before running the major delta compaction.
-TEST_F(AlterTableTest, TestMajorCompactDeltasAfterAddUpdateRemoveColumn) {
-  // Disable maintenance manager, since we manually flush/compact
-  // in this test.
-  FLAGS_enable_maintenance_manager = false;
-
-  vector<string> rows;
-
-  InsertRows(0, 1);
-  ASSERT_OK(tablet_peer_->tablet()->Flush());
-
-  // Add the new column after the Flush(), so that no CFile for this
-  // column is present in the base data.
-  ASSERT_OK(AddNewI32Column(kTableName, "c2", 12345));
-
-  // Add a delta for c2.
-  UpdateRow(0, { {"c2", 54321} });
-
-  // Make sure the delta is in a delta-file.
-  ASSERT_OK(tablet_peer_->tablet()->FlushBiggestDMS());
-
-  ASSERT_NO_FATALS(ScanToStrings(&rows));
-  ASSERT_EQ(1, rows.size());
-  ASSERT_EQ("(int32 c0=0, int32 c1=0, int32 c2=54321)", rows[0]);
-
-  // Drop c2.
-  LOG(INFO) << "Dropping c2";
-  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  ASSERT_OK(table_alterer->DropColumn("c2")->Alter());
-
-  ASSERT_NO_FATALS(ScanToStrings(&rows));
-  ASSERT_EQ(1, rows.size());
-  ASSERT_EQ("(int32 c0=0, int32 c1=0)", rows[0]);
-
-  // Major Compact Deltas
-  ASSERT_OK(tablet_peer_->tablet()->CompactWorstDeltas(
-                tablet::RowSet::MAJOR_DELTA_COMPACTION));
-
-  // Check via debug dump that the data was properly compacted, including deltas.
-  // We expect to see neither deltas nor base data for the deleted column.
-  rows.clear();
-  ASSERT_OK(tablet_peer_->tablet()->DebugDump(&rows));
-  ASSERT_EQ("Dumping tablet:\n"
-            "---------------------------\n"
-            "MRS memrowset:\n"
-            "RowSet RowSet(0):\n"
-            "(int32 c0=0, int32 c1=0) Undos: [@2(DELETE)] Redos: []",
-            JoinStrings(rows, "\n"));
-}
 
 // Thread which inserts rows into the table.
 // After each batch of rows is inserted, inserted_idx_ is updated

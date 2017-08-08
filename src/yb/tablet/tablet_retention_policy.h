@@ -16,6 +16,7 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
  public:
   explicit TabletRetentionPolicy(const Tablet* tablet);
   HybridTime GetHistoryCutoff() override;
+  ColumnIdsPtr GetDeletedColumns() override;
 
  private:
   const Tablet* tablet_;

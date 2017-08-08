@@ -32,6 +32,11 @@ class ExecContext : public ProcessContextBase {
     return sql_env_->NewTableCreator();
   }
 
+  // Get a table alterer from YB client.
+  client::YBTableAlterer* NewTableAlterer(const client::YBTableName& table_name) {
+    return sql_env_->NewTableAlterer(table_name);
+  }
+
   CHECKED_STATUS DeleteTable(const client::YBTableName& name) {
     return sql_env_->DeleteTable(name);
   }

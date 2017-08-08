@@ -30,6 +30,8 @@
 #include "yb/common/yql_type.h"
 #include "yb/common/id_mapping.h"
 #include "yb/common/key_encoder.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/tablet/metadata.pb.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/substitute.h"
@@ -137,6 +139,30 @@ template<char... digits>
 ColumnId operator"" _ColId() {
   return ColumnId(ColumnIdHelper<digits...>());
 }
+
+// Struct for storing information about deleted columns for cleanup.
+struct DeletedColumn {
+  ColumnId id;
+  HybridTime ht;
+
+  DeletedColumn() { }
+
+  DeletedColumn(ColumnId id, const HybridTime& ht) : id(id), ht(ht) { }
+
+  static Status FromPB(const tablet::DeletedColumnPB& col, DeletedColumn* ret) {
+    ret->id = col.column_id();
+    ret->ht = HybridTime(col.deleted_hybrid_time());
+    return Status::OK();
+  }
+
+  void CopyToPB(tablet::DeletedColumnPB* pb) const {
+    pb->set_column_id(id);
+    pb->set_deleted_hybrid_time(ht.ToUint64());
+  }
+};
+
+typedef std::unordered_set<ColumnId> ColumnIds;
+typedef std::shared_ptr<ColumnIds> ColumnIdsPtr;
 
 // Class for storing column attributes such as compression and
 // encoding.  Column attributes describe the physical storage and
@@ -649,6 +675,10 @@ class Schema {
     return cols_;
   }
 
+  const std::vector<ColumnId>& column_ids() const {
+    return col_ids_;
+  }
+
   const std::vector<string> column_names() const {
     vector<string> column_names;
     for (const std::pair<const StringPiece, size_t>& entry : name_to_index_) {
@@ -904,11 +934,11 @@ class Schema {
   }
 
   // Return true if the key projection schemas have exactly the same set of
-  // columns and respective types.
+  // columns and respective types. Doesn't check column names.
   bool KeyEquals(const Schema& other) const {
     if (this->num_key_columns_ != other.num_key_columns_) return false;
     for (size_t i = 0; i < this->num_key_columns_; i++) {
-      if (!this->cols_[i].Equals(other.cols_[i], false)) return false;
+      if (!this->cols_[i].EqualsType(other.cols_[i])) return false;
     }
     return true;
   }

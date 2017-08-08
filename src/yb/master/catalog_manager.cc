@@ -1795,11 +1795,6 @@ static Status ApplyAlterSteps(const SysTablesEntryPB& current_pb,
           return STATUS(InvalidArgument, "RENAME_COLUMN missing column info");
         }
 
-        // TODO: In theory we can rename a key
-        if (cur_schema.is_key_column(step.rename_column().old_name())) {
-          return STATUS(InvalidArgument, "cannot rename a key column");
-        }
-
         RETURN_NOT_OK(builder.RenameColumn(
                         step.rename_column().old_name(),
                         step.rename_column().new_name()));
@@ -2032,6 +2027,7 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
   resp->mutable_identifier()->set_table_name(l.data().pb.name());
   resp->mutable_identifier()->set_table_id(table->id());
   resp->mutable_identifier()->mutable_namespace_()->set_id(table->namespace_id());
+  resp->set_version(l.data().pb.version());
 
   // Get namespace name by id.
   boost::shared_lock<LockType> l_map(lock_);

@@ -1164,8 +1164,10 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   // as of the point in time where the logs begin. We must replay the writes
   // in the logs with the correct point-in-time schema.
   //
-  // We only do this for legacy Kudu columnar-format tables as of 10/03/2016.
-  // TODO(mbautin): should we also do this for YQL tables?
+  // We only do this for legacy Kudu columnar-format tables. For YQL tables,
+  // the write transactions write docdb key values directly, without checking the schema.
+  // This means that we can replay them without rewinding the schema. Entries for columns
+  // that were deleted will still be cleaned up by the compaction filter.
   if (!segments.empty() && tablet_->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     const scoped_refptr<ReadableLogSegment>& segment = segments[0];
     // Set the point-in-time schema for the tablet based on the log header.

@@ -16,6 +16,7 @@
 
 using std::shared_ptr;
 using std::unique_ptr;
+using std::unordered_set;
 using rocksdb::CompactionFilter;
 using rocksdb::VectorToString;
 
@@ -24,13 +25,16 @@ namespace docdb {
 
 // ------------------------------------------------------------------------------------------------
 
-DocDBCompactionFilter::DocDBCompactionFilter(HybridTime history_cutoff, bool is_full_compaction,
+DocDBCompactionFilter::DocDBCompactionFilter(HybridTime history_cutoff,
+                                             ColumnIdsPtr deleted_cols,
+                                             bool is_full_compaction,
                                              const Schema& schema)
     : history_cutoff_(history_cutoff),
       is_full_compaction_(is_full_compaction),
       is_first_key_value_(true),
       filter_usage_logged_(false),
-      schema_(schema) {
+      schema_(schema),
+      deleted_cols_(deleted_cols) {
 }
 
 DocDBCompactionFilter::~DocDBCompactionFilter() {
@@ -63,9 +67,9 @@ bool DocDBCompactionFilter::Filter(int level,
   // TODO: Find a better way for handling of data corruption encountered during compactions.
   const Status key_decode_status = subdoc_key.FullyDecodeFrom(key);
   CHECK(key_decode_status.ok())
-      << "Error decoding a key during compaction: " << key_decode_status.ToString() << "\n"
-      << "    Key (raw): " << FormatRocksDBSliceAsStr(key) << "\n"
-      << "    Key (best-effort decoded): " << BestEffortDocDBKeyToStr(key);
+    << "Error decoding a key during compaction: " << key_decode_status.ToString() << "\n"
+    << "    Key (raw): " << FormatRocksDBSliceAsStr(key) << "\n"
+    << "    Key (best-effort decoded): " << BestEffortDocDBKeyToStr(key);
 
   if (is_first_key_value_) {
     CHECK_EQ(0, overwrite_ht_.size());
@@ -97,7 +101,7 @@ bool DocDBCompactionFilter::Filter(int level,
   //              deciding to remove this entry because 9 < 10.
   //
   const DocHybridTime prev_overwrite_ht =
-      overwrite_ht_.empty() ? DocHybridTime::kMin : overwrite_ht_.back();
+    overwrite_ht_.empty() ? DocHybridTime::kMin : overwrite_ht_.back();
 
   // We only keep entries with hybrid_time equal to or later than the latest time the subdocument
   // was fully overwritten or deleted prior to or at the history cutoff hybrid_time. The intuition
@@ -142,6 +146,16 @@ bool DocDBCompactionFilter::Filter(int level,
 
   CHECK_EQ(new_stack_size, overwrite_ht_.size());
   prev_subdoc_key_ = std::move(subdoc_key);
+
+  if (prev_subdoc_key_.num_subkeys() > 0 &&
+      prev_subdoc_key_.subkeys()[0].value_type() == ValueType::kColumnId) {
+    // Column ID is first subkey in YQL tables.
+    ColumnId col_id = prev_subdoc_key_.subkeys()[0].GetColumnId();
+
+    if (deleted_cols_->find(col_id) != deleted_cols_->end()) {
+      return true;
+    }
+  }
 
   const ValueType value_type = DecodeValueType(existing_value);
   MonoDelta ttl;
@@ -198,6 +212,7 @@ unique_ptr<CompactionFilter> DocDBCompactionFilterFactory::CreateCompactionFilte
     const CompactionFilter::Context& context) {
   return unique_ptr<DocDBCompactionFilter>(
       new DocDBCompactionFilter(retention_policy_->GetHistoryCutoff(),
+                                retention_policy_->GetDeletedColumns(),
                                 context.is_full_compaction, schema_));
 }
 

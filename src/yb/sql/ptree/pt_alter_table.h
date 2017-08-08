@@ -30,7 +30,6 @@ typedef enum AlterColumnType : int {
 
 const string supported_properties[] = {"ttl"};
 
-
 //--------------------------------------------------------------------------------------------------
 // Drop/rename/alter type column operation details
 
@@ -60,7 +59,8 @@ class PTAlterColumnDefinition : public TreeNode {
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
 
-  PTQualifiedName::SharedPtr name() const {
+  // Qualified name of column that's already present.
+  PTQualifiedName::SharedPtr old_name() const {
     return name_;
   }
 
@@ -76,8 +76,9 @@ class PTAlterColumnDefinition : public TreeNode {
     return datatype_->yql_type();
   }
 
-  const char* yb_name() const {
-    return new_name_->c_str();
+  // New string name of column to be created or altered.
+  const MCSharedPtr<MCString> new_name() const {
+    return new_name_;
   }
 
  private:
@@ -155,7 +156,17 @@ class PTAlterTable : public TreeNode {
 
   // Table name.
   client::YBTableName yb_table_name() const {
-    return table_->name();
+    return name_->ToTableName();
+  }
+
+  // Column modifications to be made.
+  const MCList<PTAlterColumnDefinition* >& mod_columns() const {
+    return mod_columns_;
+  }
+
+  // Table property modifications to be made.
+  const MCList<PTAlterProperty* >& mod_props() const {
+    return mod_props_;
   }
 
   // Node semantics analysis.
@@ -172,10 +183,9 @@ class PTAlterTable : public TreeNode {
   PTListNode::SharedPtr commands_;
 
   std::shared_ptr<client::YBTable> table_;
-
   MCVector<ColumnDesc> table_columns_;
   MCList<PTAlterColumnDefinition *> mod_columns_;
-  MCList<PTAlterProperty *> with_props_;
+  MCList<PTAlterProperty *> mod_props_;
 
   int num_key_columns_;
   int num_hash_key_columns_;

@@ -655,6 +655,9 @@ message GetTableSchemaResponsePB {
   // otherwise it is the latest schema.
   optional SchemaPB schema = 2;
 
+  // Table schema version
+  optional uint32 version = 9;
+
   // The table's partition schema.
   optional PartitionSchemaPB partition_schema = 5;
 

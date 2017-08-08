@@ -511,6 +511,10 @@ class Tablet : public AbstractTablet {
     return *transaction_coordinator_;
   }
 
+  void ForceRocksDBCompactInTest();
+
+  std::string DocDBDumpStrInTest();
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;

@@ -879,6 +879,7 @@ void GetTableSchemaRpc::SendRpcCb(const Status& status) {
     new_status = SchemaFromPB(resp_.schema(), schema.get());
     if (new_status.ok()) {
       out_schema_->Reset(std::move(schema));
+      out_schema_->set_version(resp_.version());
       new_status = PartitionSchema::FromPB(resp_.partition_schema(),
                                            GetSchema(out_schema_),
                                            out_partition_schema_);

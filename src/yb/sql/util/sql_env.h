@@ -40,6 +40,8 @@ class SqlEnv {
 
   virtual client::YBTableCreator *NewTableCreator();
 
+  virtual client::YBTableAlterer *NewTableAlterer(const client::YBTableName& table_name);
+
   virtual CHECKED_STATUS DeleteTable(const client::YBTableName& name);
 
   virtual void ApplyWriteAsync(

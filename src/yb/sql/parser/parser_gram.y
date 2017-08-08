@@ -1767,7 +1767,7 @@ alterColumnTypeList:
 
 alterColumnType:
   qualified_name TYPE_P Typename {
-    $$ = MAKE_NODE(@1, PTAlterColumnDefinition, $1, nullptr, $3, ALTER_TYPE);
+    PARSER_UNSUPPORTED(@3);
   }
 ;
 
@@ -1783,7 +1783,7 @@ alterPropertyList:
 
 alterProperty:
   property_name '=' IDENT {
-    $$ = MAKE_NODE(@1, PTAlterProperty, $1, $3);
+    PARSER_UNSUPPORTED(@2);
   }
 ;
 

@@ -94,15 +94,11 @@ Status AlterSchemaTransaction::Prepare() {
 }
 
 void AlterSchemaTransaction::Start() {
-  if (state()->tablet_peer()->tablet()->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    // Only set the hybrid_time here for Kudu tables. For YB tables, we set the hybrid_time
-    // when appending entries to the Raft log.
-    if (!state()->has_hybrid_time()) {
-      state()->set_hybrid_time(state()->tablet_peer()->clock()->Now());
-    }
-    TRACE("START. HybridTime: $0",
-        server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));
+  if (!state()->has_hybrid_time()) {
+    state()->set_hybrid_time(state()->tablet_peer()->clock()->Now());
   }
+  TRACE("START. HybridTime: $0",
+      server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));
 }
 
 Status AlterSchemaTransaction::Apply(gscoped_ptr<CommitMsg>* commit_msg) {

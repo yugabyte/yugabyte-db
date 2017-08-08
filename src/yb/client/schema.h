@@ -409,6 +409,9 @@ class YBSchema {
   // Returns the total number of columns.
   size_t num_columns() const;
 
+  uint32_t version() const;
+  void set_version(uint32_t version);
+
   // Get the indexes of the primary key columns within this Schema.
   // In current versions of YB, these will always be contiguous column
   // indexes starting with 0. However, in future versions this assumption
@@ -431,6 +434,7 @@ class YBSchema {
   friend Schema& internal::GetSchema(YBSchema* schema);
 
   std::unique_ptr<Schema> schema_;
+  uint32_t version_;
 };
 
 } // namespace client

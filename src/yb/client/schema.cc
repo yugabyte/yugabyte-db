@@ -471,6 +471,7 @@ YBSchema& YBSchema::operator=(const YBSchema& other) {
 
 void YBSchema::CopyFrom(const YBSchema& other) {
   schema_.reset(new Schema(*other.schema_));
+  version_ = other.version();
 }
 
 void YBSchema::Reset(std::unique_ptr<Schema> schema) {
@@ -533,6 +534,14 @@ size_t YBSchema::num_key_columns() const {
 
 size_t YBSchema::num_hash_key_columns() const {
   return schema_->num_hash_key_columns();
+}
+
+uint32_t YBSchema::version() const {
+  return version_;
+}
+
+void YBSchema::set_version(uint32_t version) {
+  version_ = version;
 }
 
 void YBSchema::GetPrimaryKeyColumnIndexes(vector<int>* indexes) const {

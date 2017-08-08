@@ -132,6 +132,17 @@ message TabletSuperBlockPB {
   // WAL before tombstoning.
   // Only relevant for TOMBSTONED tablets.
   optional OpIdPB tombstone_last_logged_opid = 12;
+
+  // Deleted column IDs with timestamps so that memory can be cleaned up.
+  repeated DeletedColumnPB deleted_cols = 19;
+}
+
+message DeletedColumnPB {
+  // Required. Column Id.
+  optional int32 column_id = 1;
+
+  // Required. Hybrid Time when column was deleted on this tablet.
+  optional fixed64 deleted_hybrid_time = 2;
 }
 
 message RocksDBFilePB {
