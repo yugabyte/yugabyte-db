@@ -21,6 +21,7 @@ import org.yb.client.ModifyClusterConfigReplicationFactor;
 import org.yb.client.TestUtils;
 import org.yb.client.YBClient;
 import org.yb.cql.BaseCQLTest;
+import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBDaemon;
 
@@ -179,8 +180,9 @@ public class TestClusterBase extends BaseCQLTest {
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
       // Wait for the webserver to be up.
       TestUtils.waitForServer(ts.getLocalhostIP(), ts.getCqlWebPort(), WEBSERVER_TIMEOUT_MS);
-      long numOps = getTServerMetric(ts.getLocalhostIP(), ts.getCqlWebPort(),
-        "handler_latency_yb_cqlserver_SQLProcessor_ExecuteRequest");
+      Metrics metrics = new Metrics(ts.getLocalhostIP(), ts.getCqlWebPort(), "server");
+      long numOps = metrics.getHistogram(
+        "handler_latency_yb_cqlserver_SQLProcessor_ExecuteRequest").totalCount;
 
       LOG.info("TSERVER: " + ts.getLocalhostIP() + ", num_ops: " + numOps + ", min_ops: " + minOps);
       assertTrue(numOps >= minOps);
@@ -203,23 +205,10 @@ public class TestClusterBase extends BaseCQLTest {
       assertTrue(String.format("Couldn't find master %s in list %s", masterHostAndPort,
         masters.keySet().toString()), masters.containsKey(masterHostAndPort));
       int masterLeaderWebPort = masters.get(masterHostAndPort).getWebPort();
-
-      // Now verify leader master has expected number of live tservers.
-      JsonElement jsonTree = getMetricsJson(masterHostAndPort.getHostText(), masterLeaderWebPort);
-      for (JsonElement element : jsonTree.getAsJsonArray()) {
-        JsonObject object = element.getAsJsonObject();
-        if (object.get("type").getAsString().equals("cluster")) {
-          for (JsonElement metric : object.getAsJsonArray("metrics")) {
-            JsonObject metric_object = metric.getAsJsonObject();
-            if (metric_object.get("name").getAsString().equals("num_tablet_servers_live")) {
-              int live_tservers = metric_object.get("value").getAsInt();
-              LOG.info("Found live tservers: " + live_tservers);
-              return live_tservers == expected_live;
-            }
-          }
-        }
-      }
-      return false;
+      Metrics metrics = new Metrics(masterHostAndPort.getHostText(), masterLeaderWebPort,
+        "cluster");
+      int live_tservers = metrics.getCounter("num_tablet_servers_live").value;
+      return live_tservers == expected_live;
     }, EXPECTED_TSERVERS_TIMEOUT_MS);
   }
 

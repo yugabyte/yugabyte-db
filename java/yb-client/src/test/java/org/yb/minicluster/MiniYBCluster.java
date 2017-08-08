@@ -55,7 +55,7 @@ public class MiniYBCluster implements AutoCloseable {
   private static final int CQL_PORT = 9042;
 
   // How often to push node list refresh events to CQL clients (in seconds)
-  public static final int CQL_NODE_LIST_REFRESH_SECS = 5;
+  public static int CQL_NODE_LIST_REFRESH_SECS = 5;
 
   public static final int TSERVER_HEARTBEAT_TIMEOUT_MS = 5 * 1000;
 
@@ -125,7 +125,7 @@ public class MiniYBCluster implements AutoCloseable {
                 int numTservers,
                 int defaultTimeoutMs,
                 List<String> masterArgs,
-                List<String> tserverArgs,
+                List<List<String>> tserverArgs,
                 String testClassName) throws Exception {
     this.defaultTimeoutMs = defaultTimeoutMs;
     this.testClassName = testClassName;
@@ -246,7 +246,7 @@ public class MiniYBCluster implements AutoCloseable {
   private void startCluster(int numMasters,
                             int numTservers,
                             List<String> masterArgs,
-                            List<String> tserverArgs) throws Exception {
+                            List<List<String>> tserverArgs) throws Exception {
     Preconditions.checkArgument(numMasters > 0, "Need at least one master");
     Preconditions.checkArgument(numTservers > 0, "Need at least one tablet server");
     // The following props are set via yb-client's pom.
@@ -256,7 +256,7 @@ public class MiniYBCluster implements AutoCloseable {
     startMasters(numMasters, baseDirPath, masterArgs);
     LOG.info("Starting {} tablet servers...", numTservers);
     for (int i = 0; i < numTservers; i++) {
-      startTServer(tserverArgs);
+      startTServer(tserverArgs.get(i));
     }
   }
 

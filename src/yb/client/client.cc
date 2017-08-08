@@ -254,6 +254,11 @@ YBClientBuilder& YBClientBuilder::set_num_reactors(int32_t num_reactors) {
   return *this;
 }
 
+YBClientBuilder& YBClientBuilder::set_cloud_info_pb(const CloudInfoPB& cloud_info_pb) {
+  data_->cloud_info_pb_ = cloud_info_pb;
+  return *this;
+}
+
 YBClientBuilder& YBClientBuilder::set_metric_entity(
     const scoped_refptr<MetricEntity>& metric_entity) {
   data_->metric_entity_ = metric_entity;
@@ -262,6 +267,11 @@ YBClientBuilder& YBClientBuilder::set_metric_entity(
 
 YBClientBuilder& YBClientBuilder::set_client_name(const std::string& name) {
   data_->client_name_ = name;
+  return *this;
+}
+
+YBClientBuilder& YBClientBuilder::set_tserver_uuid(const TabletServerId& uuid) {
+  data_->uuid_ = uuid;
   return *this;
 }
 
@@ -300,6 +310,8 @@ Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
   // Init local host names used for locality decisions.
   RETURN_NOT_OK_PREPEND(c->data_->InitLocalHostNames(),
                         "Could not determine local host names");
+  c->data_->cloud_info_pb_ = data_->cloud_info_pb_;
+  c->data_->uuid_ = data_->uuid_;
 
   client->swap(c);
   return Status::OK();

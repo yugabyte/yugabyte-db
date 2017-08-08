@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "yb/client/client.h"
+#include "yb/common/entity_ids.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
@@ -246,6 +247,13 @@ class YBClient::Data {
   mutable simple_spinlock leader_master_lock_;
 
   AtomicInt<uint64_t> latest_observed_hybrid_time_;
+
+  // Cloud info indicating placement information of client.
+  CloudInfoPB cloud_info_pb_;
+
+  // When the client is part of a CQL proxy, this denotes the uuid for the associated tserver to
+  // aid in detecting local tservers.
+  TabletServerId uuid_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(Data);

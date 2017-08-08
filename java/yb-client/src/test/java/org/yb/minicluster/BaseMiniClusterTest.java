@@ -19,6 +19,7 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.net.URLConnection;
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.Assert.fail;
@@ -69,7 +70,8 @@ public class BaseMiniClusterTest extends BaseYBTest {
     if (miniCluster != null) {
       return;
     }
-    createMiniCluster(NUM_MASTERS, NUM_TABLET_SERVERS);
+
+    createMiniCluster();
   }
 
   // Helper function to wait for existing tservers to heartbeat to master leader.
@@ -78,9 +80,23 @@ public class BaseMiniClusterTest extends BaseYBTest {
   }
 
   /**
+   * Override this method to create a custom minicluster for your test.
+   */
+  protected void createMiniCluster() throws Exception {
+    createMiniCluster(NUM_MASTERS, NUM_TABLET_SERVERS);
+  }
+
+  /**
    * Creates a new cluster with the requested number of masters and tservers.
    */
   public void createMiniCluster(int numMasters, int numTservers) throws Exception {
+    createMiniCluster(numMasters, Collections.nCopies(numTservers, tserverArgs));
+  }
+
+  public void createMiniCluster(int numMasters, List<List<String>> tserverArgs)
+    throws Exception {
+    LOG.info("BaseMiniClusterTest.createMiniCluster is running");
+    int numTservers = tserverArgs.size();
     miniCluster = new MiniYBClusterBuilder()
                       .numMasters(numMasters)
                       .numTservers(numTservers)
@@ -120,56 +136,5 @@ public class BaseMiniClusterTest extends BaseYBTest {
   public static void tearDownAfterClass() throws Exception {
     LOG.info("BaseMiniClusterTest.tearDownAfterClass is running");
     destroyMiniCluster();
-  }
-
-  public long getTServerMetric(String host, int port, String metricName) throws Exception {
-    // This is what a sample json looks likes:
-    //[
-    //  {
-    //    "type": "server",
-    //    "id": "yb.cqlserver",
-    //    "attributes": {},
-    //    "metrics": [
-    //      {
-    //        "name": "handler_latency_yb_cqlserver_SQLProcessor_SelectStmt",
-    //        "total_count": 0,
-    //        ...
-    //      },
-    //      {
-    //        "name": "handler_latency_yb_cqlserver_SQLProcessor_InsertStmt",
-    //        "total_count": 0,
-    //        ...
-    //      }
-    //    ]
-    //  }
-    //]
-    // Now parse the json.
-    JsonElement jsonTree = getMetricsJson(host, port);
-    for (JsonElement metricsArray : jsonTree.getAsJsonArray()) {
-      for (JsonElement jsonElement : metricsArray.getAsJsonObject().getAsJsonArray("metrics")) {
-        JsonObject jsonMetric = jsonElement.getAsJsonObject();
-        String jsonMetricName = jsonMetric.get("name").getAsString();
-        if (jsonMetricName.equals(metricName)) {
-          return jsonMetric.get("total_count").getAsLong();
-        }
-      }
-    }
-    throw new Exception("Couldn't find metric: " + metricName + ", json: " + jsonTree.toString());
-  }
-
-  public JsonElement getMetricsJson(String host, int port) throws Exception {
-    // Retrieve metrics json.
-    URL metrics = new URL(String.format("http://%s:%d/metrics", host, port));
-    URLConnection yc = metrics.openConnection();
-
-    BufferedReader in = new BufferedReader(new InputStreamReader(yc.getInputStream()));
-    String json = null;
-    try {
-      json = IOUtils.toString(in);
-    } finally {
-      in.close();
-    }
-    JsonParser parser = new JsonParser();
-    return parser.parse(json);
   }
 }

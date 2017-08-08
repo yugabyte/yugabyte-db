@@ -34,6 +34,7 @@
 #include "yb/client/schema.h"
 #ifdef YB_HEADERS_NO_STUBS
 #include <gtest/gtest_prod.h>
+#include "yb/common/entity_ids.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 #else
@@ -175,6 +176,9 @@ class YBClientBuilder {
   // (defaults to the flag value yb_client_num_reactors : 4).
   YBClientBuilder& set_num_reactors(int32_t num_reactors);
 
+  // Sets the cloud info for the client, indicating where the client is located.
+  YBClientBuilder& set_cloud_info_pb(const CloudInfoPB& cloud_info_pb);
+
   // Sets metric entity to be used for emitting metrics. Optional.
   YBClientBuilder& set_metric_entity(const scoped_refptr<MetricEntity>& metric_entity);
 
@@ -184,6 +188,10 @@ class YBClientBuilder {
   // Sets skip master leader resolution.
   // Used in tests, when we do not have real master.
   YBClientBuilder& set_skip_master_leader_resolution(bool value);
+
+  // Sets the tserver uuid for the client used by the CQL proxy. Intended only for use by CQL
+  // proxy clients.
+  YBClientBuilder& set_tserver_uuid(const TabletServerId& uuid);
 
   // Creates the client.
   //
@@ -422,6 +430,7 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   friend class internal::RemoteTabletServer;
   friend class internal::AsyncRpc;
   friend class internal::TabletInvoker;
+  friend class PlacementInfoTest;
 
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);
   FRIEND_TEST(ClientTest, TestMasterDown);

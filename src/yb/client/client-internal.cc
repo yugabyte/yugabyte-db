@@ -363,13 +363,30 @@ RemoteTabletServer* YBClient::Data::SelectTServer(const RemoteTablet* rt,
           ret = filtered[0];
         }
       } else if (selection == CLOSEST_REPLICA) {
-        // Choose a local replica.
+        // Choose the closest replica.
+        bool local_zone_ts = false;
         for (RemoteTabletServer* rts : filtered) {
           if (IsTabletServerLocal(*rts)) {
             ret = rts;
+            // If the tserver is local, we are done here.
             break;
+          } else if (cloud_info_pb_.has_placement_zone() && rts->cloud_info().has_placement_zone()
+              && cloud_info_pb_.placement_zone() == rts->cloud_info().placement_zone()) {
+            // Note down that we have found a zone local tserver and continue looking for node
+            // local tserver.
+            ret = rts;
+            local_zone_ts = true;
+          } else if (cloud_info_pb_.has_placement_region() &&
+              rts->cloud_info().has_placement_region() &&
+              cloud_info_pb_.placement_region() == rts->cloud_info().placement_region() &&
+              !local_zone_ts) {
+            // Look for a region local tserver only if we haven't found a zone local tserver yet.
+            ret = rts;
           }
         }
+
+        // If ret is not null here, it should point to the closest replica from the client.
+
         // Fallback to a random replica if none are local.
         if (ret == nullptr && !filtered.empty()) {
           ret = filtered[rand() % filtered.size()];
@@ -714,6 +731,12 @@ bool YBClient::Data::IsLocalHostPort(const HostPort& hp) const {
 }
 
 bool YBClient::Data::IsTabletServerLocal(const RemoteTabletServer& rts) const {
+  // If the uuid's are same, we are sure the tablet server is local, since if this client is used
+  // via the CQL proxy, the tablet server's uuid is set in the client.
+  if (uuid_ == rts.permanent_uuid()) {
+    return true;
+  }
+
   vector<HostPort> host_ports;
   rts.GetHostPorts(&host_ports);
   for (const HostPort& hp : host_ports) {

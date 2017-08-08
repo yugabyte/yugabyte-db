@@ -1,10 +1,11 @@
 package org.yb.cql;
 
-import com.datastax.driver.core.ConsistencyLevel;
-import com.datastax.driver.core.Statement;
+import com.datastax.driver.core.*;
 import com.datastax.driver.core.exceptions.ProtocolError;
+import com.datastax.driver.core.policies.DCAwareRoundRobinPolicy;
 import com.datastax.driver.core.querybuilder.QueryBuilder;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.cql.PartitionAwarePolicy;
 import org.junit.Before;
 import org.junit.Test;
 import org.slf4j.Logger;
@@ -15,14 +16,14 @@ import org.yb.Schema;
 import org.yb.Type;
 import org.yb.client.*;
 import org.yb.consensus.Metadata;
+import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBDaemon;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import static junit.framework.TestCase.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -35,11 +36,16 @@ public class TestConsistencyLevels extends BaseCQLTest {
 
   private static final int NUM_OPS = 100;
 
-  private static final int WAIT_FOR_REPLICATION_TIMEOUT_MS = 10000;
+  private static final int WAIT_FOR_REPLICATION_TIMEOUT_MS = 30000;
 
   private YBTable ybTable = null;
 
   private LocatedTablet tablet = null;
+
+  private static final String REGION_PREFIX = "region";
+
+  private static final String CQLPROXY_SELECT_METRIC =
+    "handler_latency_yb_cqlserver_SQLProcessor_SelectStmt";
 
   @Override
   public void useKeyspace() throws Exception {
@@ -51,6 +57,15 @@ public class TestConsistencyLevels extends BaseCQLTest {
     // We need to destroy the mini cluster since we don't want metrics from one test to interfere
     // with another.
     destroyMiniCluster();
+  }
+
+  protected void createMiniClusterWithPlacementRegion() throws Exception {
+    // Create a cluster with tservers in different regions.
+    List<List<String>> tserverArgs = new ArrayList<>();
+    for (int i = 0; i < NUM_TABLET_SERVERS; i++) {
+      tserverArgs.add(Arrays.asList(String.format("--placement_region=%s%d", REGION_PREFIX, i)));
+    }
+    createMiniCluster(1, tserverArgs);
   }
 
   @Before
@@ -104,10 +119,12 @@ public class TestConsistencyLevels extends BaseCQLTest {
     for (LocatedTablet.Replica replica : tablet.getReplicas()) {
       String host = replica.getRpcHost();
       int webPort = tservers.get(HostAndPort.fromParts(host, replica.getRpcPort())).getWebPort();
+      Metrics metrics = new Metrics(host, webPort, "server");
+      long numOps = metrics.getHistogram(TSERVER_READ_METRIC).totalCount;
       if (replica.getRole().equals(Metadata.RaftPeerPB.Role.LEADER.toString())) {
-        assertEquals(NUM_OPS, getTServerMetric(host, webPort, TSERVER_READ_METRIC));
+        assertEquals(NUM_OPS, numOps);
       } else {
-        assertEquals(0, getTServerMetric(host, webPort, TSERVER_READ_METRIC));
+        assertEquals(0, numOps);
       }
     }
   }
@@ -140,7 +157,8 @@ public class TestConsistencyLevels extends BaseCQLTest {
       String host = replica.getRpcHost();
       int webPort = tservers.get(HostAndPort.fromParts(host, replica.getRpcPort())).getWebPort();
 
-      long numOps = getTServerMetric(host, webPort, TSERVER_READ_METRIC);
+      Metrics metrics = new Metrics(host, webPort, "server");
+      long numOps = metrics.getHistogram(TSERVER_READ_METRIC).totalCount;
       LOG.info("Num ops for tserver: " + replica.toString() + " : " + numOps);
       totalOps += numOps;
       // At least some ops went to each server.
@@ -160,5 +178,69 @@ public class TestConsistencyLevels extends BaseCQLTest {
     assertTrue(verifyNumRows(ConsistencyLevel.SERIAL));
     assertTrue(verifyNumRows(ConsistencyLevel.THREE));
     assertTrue(verifyNumRows(ConsistencyLevel.TWO));
+  }
+
+  public void testRegionLocalReads() throws Exception {
+    // Destroy existing cluster and recreate it.
+    destroyMiniCluster();
+
+    // Set a high refresh interval, so that this does not mess with our metrics.
+    MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS = Integer.MAX_VALUE;
+    createMiniClusterWithPlacementRegion();
+    setUpCqlClient();
+    setUpTable();
+
+    // Now lets create a client in one of the DC's and ensure all reads go to the same
+    // proxy/tserver.
+    for (int i = 0 ; i < NUM_TABLET_SERVERS; i++) {
+      Cluster cluster = Cluster.builder()
+        .addContactPointsWithPorts(miniCluster.getCQLContactPoints())
+        .withLoadBalancingPolicy(new PartitionAwarePolicy(DCAwareRoundRobinPolicy.builder()
+          .withLocalDc(REGION_PREFIX + i).build())).build();
+      Session session = cluster.connect();
+
+      // Find the tserver, cqlproxy for this region.
+      HostAndPort tserver_webaddress = null;
+      HostAndPort cqlproxy_webaddress = null;
+      for (Map.Entry<HostAndPort, MiniYBDaemon> entry : miniCluster.getTabletServers().entrySet()) {
+        for (String cmdline : entry.getValue().getCommandLine()) {
+          if (cmdline.contains(REGION_PREFIX + i)) {
+            tserver_webaddress = entry.getValue().getWebHostAndPort();
+            cqlproxy_webaddress = HostAndPort.fromParts(entry.getKey().getHostText(), entry
+              .getValue().getCqlWebPort());
+          }
+        }
+      }
+      assertNotNull(tserver_webaddress);
+      assertNotNull(cqlproxy_webaddress);
+
+      // Note the current metrics.
+      Metrics tserverMetrics = new Metrics(tserver_webaddress.getHostText(),
+        tserver_webaddress.getPort(), "server");
+      long tserverNumOpsBefore = tserverMetrics.getHistogram(TSERVER_READ_METRIC).totalCount;
+
+      Metrics cqlproxyMetrics = new Metrics(cqlproxy_webaddress.getHostText(),
+        cqlproxy_webaddress.getPort(), "server");
+      long cqlproxyNumOpsBefore = cqlproxyMetrics.getHistogram(CQLPROXY_SELECT_METRIC).totalCount;
+
+      // Perform a number of reads.
+      Statement statement = QueryBuilder.select()
+        .from(DEFAULT_KEYSPACE, TABLE_NAME)
+        .setConsistencyLevel(ConsistencyLevel.ONE);
+      for (int j = 0; j < NUM_OPS; j++) {
+        session.execute(statement);
+      }
+
+      // Verify all reads went to the same tserver and cql proxy.
+      tserverMetrics = new Metrics(tserver_webaddress.getHostText(), tserver_webaddress.getPort(),
+        "server");
+      assertEquals(NUM_OPS,
+        tserverMetrics.getHistogram(TSERVER_READ_METRIC).totalCount - tserverNumOpsBefore);
+
+      cqlproxyMetrics = new Metrics(cqlproxy_webaddress.getHostText(),
+        cqlproxy_webaddress.getPort(), "server");
+      assertEquals(NUM_OPS,
+        cqlproxyMetrics.getHistogram(CQLPROXY_SELECT_METRIC).totalCount - cqlproxyNumOpsBefore);
+    }
   }
 }

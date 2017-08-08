@@ -146,6 +146,10 @@ string RemoteTabletServer::permanent_uuid() const {
   return uuid_;
 }
 
+const CloudInfoPB& RemoteTabletServer::cloud_info() const {
+  return cloud_info_pb_;
+}
+
 shared_ptr<TabletServerServiceProxy> RemoteTabletServer::proxy() const {
   std::lock_guard<simple_spinlock> l(lock_);
   CHECK(proxy_);

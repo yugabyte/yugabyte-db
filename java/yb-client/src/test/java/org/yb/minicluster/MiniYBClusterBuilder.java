@@ -11,7 +11,7 @@ public class MiniYBClusterBuilder {
   private int numTservers = 3;
   private int defaultTimeoutMs = 50000;
   private List<String> masterArgs = null;
-  private List<String> tserverArgs = null;
+  private List<List<String>> tserverArgs = null;
   private String testClassName = null;
 
   public MiniYBClusterBuilder numMasters(int numMasters) {
@@ -48,7 +48,7 @@ public class MiniYBClusterBuilder {
   /**
    * Configure additional command-line arguments for starting tserver.
    */
-  public MiniYBClusterBuilder tserverArgs(List<String> tserverArgs) {
+  public MiniYBClusterBuilder tserverArgs(List<List<String>> tserverArgs) {
     this.tserverArgs = tserverArgs;
     return this;
   }

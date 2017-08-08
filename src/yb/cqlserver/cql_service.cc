@@ -47,7 +47,7 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts)
                                              opts.broadcast_rpc_address)) {
   // TODO(ENG-446): Handle metrics for all the methods individually.
   // Setup client.
-  SetUpYBClient(opts.master_addresses_flag, server->metric_entity());
+  SetUpYBClient(opts, server->metric_entity());
   cql_metrics_ = std::make_shared<CQLMetrics>(server->metric_entity());
 
   // Setup prepared statements' memory tracker. Add garbage-collect function to delete least
@@ -61,13 +61,23 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts)
 }
 
 void CQLServiceImpl::SetUpYBClient(
-    const string& yb_tier_master_addresses, const scoped_refptr<MetricEntity>& metric_entity) {
+    const CQLServerOptions& opts, const scoped_refptr<MetricEntity>& metric_entity) {
+  // Build cloud_info_pb.
+  CloudInfoPB cloud_info_pb;
+  cloud_info_pb.set_placement_cloud(opts.placement_cloud);
+  cloud_info_pb.set_placement_region(opts.placement_region);
+  cloud_info_pb.set_placement_zone(opts.placement_zone);
+
   YBClientBuilder client_builder;
   client_builder.set_client_name("cql_ybclient");
+  if (server_->tserver()) {
+    client_builder.set_tserver_uuid(server_->tserver()->permanent_uuid());
+  }
   client_builder.default_rpc_timeout(MonoDelta::FromSeconds(kRpcTimeoutSec));
-  client_builder.add_master_server_addr(yb_tier_master_addresses);
+  client_builder.add_master_server_addr(opts.master_addresses_flag);
   client_builder.set_metric_entity(metric_entity);
   client_builder.set_num_reactors(FLAGS_cql_ybclient_reactor_threads);
+  client_builder.set_cloud_info_pb(cloud_info_pb);
   CHECK_OK(client_builder.Build(&client_));
   // Add proxy to call local tserver if available.
   if (server_->tserver() != nullptr && server_->tserver()->proxy() != nullptr) {

@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "yb/client/client.h"
+#include "yb/common/entity_ids.h"
 #include "yb/gutil/ref_counted.h"
 
 namespace yb {
@@ -50,6 +51,13 @@ class YBClientBuilder::Data {
 
   // A descriptive name for the client. Useful for embedded ybclients.
   std::string client_name_ = "ybclient";
+
+  // Placement information for the client.
+  CloudInfoPB cloud_info_pb_;
+
+  // When the client is part of a CQL proxy, this denotes the uuid for the associated tserver to
+  // aid in detecting local tservers.
+  TabletServerId uuid_;
 
   bool skip_master_leader_resolution_ = false;
  private:

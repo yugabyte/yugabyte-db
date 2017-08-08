@@ -79,7 +79,7 @@ class CQLServiceImpl : public CQLServerServiceIf {
 
   // Setup YBClient.
   void SetUpYBClient(
-      const std::string& yb_master_address, const scoped_refptr<MetricEntity>& metric_entity);
+      const CQLServerOptions& opts, const scoped_refptr<MetricEntity>& metric_entity);
 
   // Either gets an available processor or creates a new one.
   CQLProcessor *GetProcessor();

@@ -97,6 +97,8 @@ class RemoteTabletServer {
   // Returns the remote server's uuid.
   std::string permanent_uuid() const;
 
+  const CloudInfoPB& cloud_info() const;
+
  private:
   // Internal callback for DNS resolution.
   void DnsResolutionFinished(const HostPort& hp,

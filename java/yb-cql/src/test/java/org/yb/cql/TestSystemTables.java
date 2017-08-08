@@ -17,6 +17,7 @@ import org.junit.Test;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import org.yb.client.YBClient;
+import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.master.Master;
 import org.yb.minicluster.MiniYBDaemon;
@@ -43,12 +44,13 @@ public class TestSystemTables extends BaseCQLTest {
     HostAndPort leaderMaster = client.getLeaderMasterHostAndPort();
     Map<HostAndPort, MiniYBDaemon> masters = miniCluster.getMasters();
     for (Map.Entry<HostAndPort, MiniYBDaemon> master : masters.entrySet()) {
+      Metrics metrics = new Metrics(master.getKey().getHostText(),master.getValue().getWebPort(),
+        "server");
+      long numOps = metrics.getHistogram(TSERVER_READ_METRIC).totalCount;
       if (leaderMaster.equals(master.getKey())) {
-        assertTrue(getTServerMetric(master.getKey().getHostText(), master.getValue().getWebPort()
-          , TSERVER_READ_METRIC) > 0);
+        assertTrue(numOps > 0);
       } else {
-        assertEquals(0, getTServerMetric(master.getKey().getHostText(), master.getValue()
-            .getWebPort(), TSERVER_READ_METRIC));
+        assertEquals(0, numOps);
       }
     }
   }
