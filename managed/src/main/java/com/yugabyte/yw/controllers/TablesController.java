@@ -6,9 +6,12 @@ import java.util.List;
 import java.util.UUID;
 
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
@@ -32,6 +35,7 @@ import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
 
+import static com.yugabyte.yw.commissioner.Common.CloudType.aws;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 import static com.yugabyte.yw.forms.TableDefinitionTaskParams.createFromResponse;
 
@@ -172,10 +176,10 @@ public class TablesController extends AuthenticatedController {
   /**
    * This API will describe a single table.
    *
-   * @param customerUUID UUID of the customer owning the table
-   * @param universeUUID UUID of the universe in which the table resides
-   * @param tableUUID UUID of the table to describe
-   * @return json-serialized description of the table
+   * @param customerUUID UUID of the customer owning the table.
+   * @param universeUUID UUID of the universe in which the table resides.
+   * @param tableUUID UUID of the table to describe.
+   * @return json-serialized description of the table.
    */
   public Result describe(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
     try {
@@ -203,6 +207,78 @@ public class TablesController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, e.getMessage());
     } catch (Exception e) {
       LOG.error("Failed to get schema of table " + tableUUID + " in universe " + universeUUID, e);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
+  }
+
+  /**
+   * This API will allow a customer to bulk import data into a table.
+   *
+   * @param customerUUID UUID of the customer owning the table.
+   * @param universeUUID UUID of the universe in which the table resides.
+   * @param tableUUID UUID of the table to describe.
+   */
+  public Result bulkImport(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
+    try {
+
+      // Validate customer UUID and universe UUID and AWS provider.
+      Customer customer = Customer.get(customerUUID);
+      if (customer == null) {
+        String errMsg = "Invalid Customer UUID: " + customerUUID;
+        LOG.error(errMsg);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
+      Universe universe = Universe.get(universeUUID);
+      if (universe == null) {
+        String errMsg = "Invalid Universe UUID: " + universeUUID;
+        LOG.error(errMsg);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
+      // TODO: undo hardcode to AWS (required right now due to using EMR).
+      Common.CloudType cloudType = universe.getUniverseDetails().userIntent.providerType;
+      if (cloudType != aws) {
+        String errMsg = "Bulk Import is currently only supported for AWS.";
+        LOG.error(errMsg);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
+      Provider provider = Provider.get(customerUUID, cloudType);
+      if (provider == null) {
+        String errMsg = "Could not find Provider aws for customer UUID: " + customerUUID;
+        LOG.error(errMsg);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
+
+      // Get form data and validate it.
+      Form<BulkImportParams> formData = formFactory.form(BulkImportParams.class)
+          .bindFromRequest();
+      BulkImportParams taskParams = formData.get();
+      if (taskParams.s3Bucket == null || !taskParams.s3Bucket.startsWith("s3://")) {
+        String errMsg = "Invalid S3 Bucket provided: " + taskParams.s3Bucket;
+        LOG.error(errMsg);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
+      taskParams.universeUUID = universeUUID;
+
+      UUID taskUUID = commissioner.submit(TaskType.ImportIntoTable, taskParams);
+      LOG.info("Submitted import into table for {}:{}, task uuid = {}.",
+          tableUUID, taskParams.tableName, taskUUID);
+
+      CustomerTask.create(customer,
+          universe.universeUUID,
+          taskUUID,
+          CustomerTask.TargetType.Table,
+          CustomerTask.TaskType.BulkImportData,
+          taskParams.tableName);
+      LOG.info("Saved task uuid {} in customer tasks table for table {}:{}.{}", taskUUID,
+          tableUUID, taskParams.keyspace, taskParams.tableName);
+
+      ObjectNode resultNode = Json.newObject();
+      resultNode.put("taskUUID", taskUUID.toString());
+      return ApiResponse.success(resultNode);
+    } catch (Exception e) {
+      String errMsg = "Failed to bulk import data into table " + tableUUID + " in universe "
+          + universeUUID;
+      LOG.error(errMsg, e);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }
   }

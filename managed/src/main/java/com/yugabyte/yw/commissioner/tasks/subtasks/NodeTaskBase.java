@@ -64,16 +64,4 @@ public abstract class NodeTaskBase extends AbstractTaskBase {
 
     Universe.saveDetails(taskParams().universeUUID, updater);
   }
-
-  /**
-   * Log the output of shellResponse to STDOUT or STDERR
-   * @param response : ShellResponse object
-   */
-  public void logShellResponse(ShellProcessHandler.ShellResponse response) {
-    if (response.code == 0) {
-      LOG.info("[" + getName() + "] STDOUT: " + response.message);
-    } else {
-      throw new RuntimeException(response.message);
-    }
-  }
 }
