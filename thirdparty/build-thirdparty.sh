@@ -445,6 +445,7 @@ mkdir -p "$TP_DIR/installed/uninstrumented/include"
 # TODO: remove this directory after fully migrating to the new thirdparty layout.
 mkdir -p "$TP_DIR/installed-deps/include"
 
+log "YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY=${YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY:-undefined}"
 if download_prebuilt_thirdparty_deps; then
   echo "Using prebuilt third-party code, skipping the build"
   "$YB_SRC_ROOT"/build-support/fix_rpath.py

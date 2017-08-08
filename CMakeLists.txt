@@ -253,15 +253,53 @@ function(ADD_CXX_GLOBAL_COMMON_FLAGS FLAGS)
       PARENT_SCOPE)
 endfunction()
 
+# This duplicates part of the logic from common-build-env.sh so that we can run from CLion where
+# cmake is invoked directly.
+function(DETECT_EDITION)
+  set(YB_ENTERPRISE_ROOT "${YB_SRC_ROOT}/ent")
+  set(YB_ENTERPRISE_ROOT "${YB_ENTERPRISE_ROOT}" PARENT_SCOPE)
+  if ("$ENV{YB_EDITION}" STREQUAL "")
+    if (IS_DIRECTORY "${YB_ENTERPRISE_ROOT}")
+      set(ENV{YB_EDITION} "enterprise")
+    else()
+      set(ENV{YB_EDITION} "community")
+    endif()
+  endif()
+  set(YB_EDITION "$ENV{YB_EDITION}")
+  set(YB_EDITION "${YB_EDITION}" PARENT_SCOPE)
+  if ("${YB_EDITION}" STREQUAL "enterprise" AND NOT IS_DIRECTORY "${YB_ENTERPRISE_ROOT}")
+    message(FATAL_ERROR "YB_EDITION is '${YB_EDITION}' but the directory '${YB_ENTERPRISE_ROOT}'"
+                           " does not exist.")
+  endif()
+  message("YB_EDITION: ${YB_EDITION}")
+endfunction()
+
+function(YB_INCLUDE_EXTENSIONS)
+  if ("${YB_EDITION}" STREQUAL "enterprise")
+    file(RELATIVE_PATH CUR_REL_LIST_FILE  "${YB_SRC_ROOT}" "${CMAKE_CURRENT_LIST_FILE}")
+    get_filename_component(CUR_REL_LIST_NAME_NO_EXT "${CUR_REL_LIST_FILE}" NAME_WE)
+    get_filename_component(CUR_REL_LIST_DIR "${CUR_REL_LIST_FILE}" DIRECTORY)
+    set(INCLUDED_PATH
+        "${YB_ENTERPRISE_ROOT}/${CUR_REL_LIST_DIR}/${CUR_REL_LIST_NAME_NO_EXT}-include.txt")
+    message("Including '${INCLUDED_PATH}' into '${CMAKE_CURRENT_LIST_FILE}'")
+    include("${INCLUDED_PATH}")
+  endif()
+endfunction()
+
 # ------------------------------------------------------------------------------------------------
 # Main build
 
-set(YB_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-message("YB_SRC_DIR: ${YB_SRC_DIR}")
+set(YB_SRC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
+message("YB_SRC_ROOT: ${YB_SRC_ROOT}")
+
+DETECT_EDITION()
+if ("$YB_EDITION" STREQUAL "")
+  message(FATAL_ERROR "YB_EDITION not defined after calling DETECT_EDITION()")
+endif()
 
 set(YB_THIRDPARTY_DIR "$ENV{YB_THIRDPARTY_DIR}")
 if("${YB_THIRDPARTY_DIR}" STREQUAL "")
-  set(YB_THIRDPARTY_DIR "${YB_SRC_DIR}/thirdparty")
+  set(YB_THIRDPARTY_DIR "${YB_SRC_ROOT}/thirdparty")
 endif()
 
 set(YB_BUILD_ROOT "${CMAKE_CURRENT_BINARY_DIR}")
@@ -988,7 +1026,7 @@ function(GET_TEST_PREFIX_AND_BINARY_NAME CTEST_PREFIX_RV TEST_BINARY_NAME_RV REL
       break()
     endif()
     get_filename_component(DIR ${DIR} DIRECTORY)
-    if (${DIR} STREQUAL ${YB_SRC_DIR})
+    if (${DIR} STREQUAL ${YB_SRC_ROOT})
       # If we have tests in 'src/test' or 'src/tests' - use following prefix:
       set(${CTEST_PREFIX_RV} "other" PARENT_SCOPE)
       break()
@@ -1012,33 +1050,29 @@ function(ADD_YB_TEST REL_TEST_NAME)
   endif()
   GET_TEST_PREFIX_AND_BINARY_NAME(CTEST_PREFIX TEST_BINARY_NAME ${REL_TEST_NAME})
   SET(TEST_BINARY_DIR "${YB_BUILD_ROOT}/tests-${CTEST_PREFIX}")
+  SET(CTEST_TEST_NAME "${CTEST_PREFIX}_${TEST_BINARY_NAME}")
+  SET(TEST_SOURCE_PATH "${CMAKE_CURRENT_LIST_DIR}/${REL_TEST_NAME}.cc")
 
-  if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${REL_TEST_NAME}.cc)
-    # This test has a corresponding .cc file, set it up as an executable.
-    set(TEST_PATH "${TEST_BINARY_DIR}/${TEST_BINARY_NAME}")
-    add_executable(${TEST_BINARY_NAME} "${REL_TEST_NAME}.cc")
-    set_target_properties(${TEST_BINARY_NAME}
-      PROPERTIES
-      RUNTIME_OUTPUT_DIRECTORY "${TEST_BINARY_DIR}")
-    target_link_libraries(${TEST_BINARY_NAME} ${YB_TEST_LINK_LIBS})
-    ADD_COMMON_YB_TEST_DEPENDENCIES(${REL_TEST_NAME})
-  else()
-    # No executable, just invoke the test (probably a script) directly.
-    get_filename_component(TEST_NAME_WITH_EXT ${REL_TEST_NAME} NAME)
-    set(TEST_PATH "${TEST_BINARY_DIR}/${TEST_NAME_WITH_EXT}")
-
-    # Ideally this would run only when the test is built, not when cmake runs,
-    # but add_test() doesn't yield a target (if it did, that target could depend
-    # on an add_custom_command() that copies the test file into place).
-    execute_process(COMMAND ln -sf ${CMAKE_CURRENT_SOURCE_DIR}/${REL_TEST_NAME}
-      ${TEST_BINARY_DIR}/)
-    # Note: we're not calling ADD_COMMON_YB_TEST_DEPENDENCIES here because add_test() does not
-    # produce a target. run-with-timeout might not get build if we're just trying to build/run
-    # one test.
+  # We're using CMAKE_CURRENT_LIST_DIR instead of CMAKE_CURRENT_SOURCE_DIR here so that we can
+  # include a CMakeLists.txt from a different directory and add tests whose sources reside in the
+  # same directory as the included CMakeLists.txt.
+  if(NOT EXISTS "${TEST_SOURCE_PATH}")
+    message(FATAL_ERROR "Test source '${TEST_SOURCE_PATH}' does not exist.")
   endif()
 
-  add_test("${CTEST_PREFIX}_${TEST_BINARY_NAME}"
-    ${BUILD_SUPPORT_DIR}/run-test.sh ${TEST_PATH})
+  set(TEST_PATH "${TEST_BINARY_DIR}/${TEST_BINARY_NAME}")
+
+  # We need the ${CMAKE_CURRENT_LIST_DIR} prefix, because in case of including a CMakeLists.txt
+  # file from a different directory, the test's source might not be in
+  # ${CMAKE_CURRENT_SOURCE_DIR}.
+  add_executable(${TEST_BINARY_NAME} "${CMAKE_CURRENT_LIST_DIR}/${REL_TEST_NAME}.cc")
+  set_target_properties(${TEST_BINARY_NAME}
+    PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${TEST_BINARY_DIR}")
+  target_link_libraries(${TEST_BINARY_NAME} ${YB_TEST_LINK_LIBS})
+  ADD_COMMON_YB_TEST_DEPENDENCIES(${REL_TEST_NAME})
+  add_custom_target("${CTEST_TEST_NAME}" DEPENDS "${TEST_BINARY_NAME}")
+  add_test("${CTEST_TEST_NAME}" "${BUILD_SUPPORT_DIR}/run-test.sh" "${TEST_PATH}")
 
   if(ARGN)
     set_tests_properties(${TEST_NAME} PROPERTIES ${ARGN})
@@ -1494,3 +1528,7 @@ add_subdirectory(src/yb/rocksutil)
 add_subdirectory(src/yb/docdb)
 add_subdirectory(src/yb/sql)
 add_subdirectory(src/yb/cqlserver)
+
+if ("${YB_EDITION}" STREQUAL "enterprise")
+  include("${YB_ENTERPRISE_ROOT}/CMakeLists.txt")
+endif()

@@ -165,6 +165,10 @@ download_prebuilt_thirdparty_deps() {
       "${s3cmd_cmd_line_prefix[@]}" ls "$PREBUILT_THIRDPARTY_S3_URL/$name_prefix*" )
     echo "Listing pre-built third-party dependency packages: ${s3cmd_ls_cmd_line[@]}"
     local s3cmd_ls_output=( $( "${s3cmd_ls_cmd_line[@]}" | sort | tail -1 ) )
+    if [[ ${#s3cmd_ls_output[@]} -eq 0 ]]; then
+      log "No matching prebuilt third-party packages found."
+      return 1
+    fi
     echo "s3cmd ls output: ${s3cmd_ls_output[@]}"
     local package_blobstore_url=${s3cmd_ls_output[3]}
   fi

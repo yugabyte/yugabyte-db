@@ -169,6 +169,8 @@ else
   log "Third-party dependency build finished (see timing information above)"
 fi
 
+# We built third-party dependencies above. Do not attempt to download or build them in in further
+# steps.
 export YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY=1
 export NO_REBUILD_THIRDPARTY=1
 

@@ -424,3 +424,5 @@ endif()
 # Builtin function.
 #######################################
 add_subdirectory(bfyql)
+
+YB_INCLUDE_EXTENSIONS()

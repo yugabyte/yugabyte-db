@@ -159,6 +159,10 @@ horizontal_line() {
   echo "------------------------------------------------------------------------------------------"
 }
 
+thick_horizontal_line() {
+  echo "=========================================================================================="
+}
+
 header() {
   echo
   horizontal_line
@@ -329,6 +333,9 @@ set_build_root() {
   validate_compiler_type "$YB_COMPILER_TYPE"
   determine_linking_type
   BUILD_ROOT=$YB_SRC_ROOT/build/$build_type-$YB_COMPILER_TYPE-$YB_LINK
+
+  detect_edition
+  BUILD_ROOT+="-$YB_EDITION"
 
   normalize_build_root
 
@@ -1173,12 +1180,42 @@ configure_remote_build() {
   fi
 }
 
+yb_edition_detected=false
+
+validate_edition() {
+  if [[ ! $YB_EDITION =~ ^(community|enterprise)$ ]]; then
+    fatal "The YB_EDITION environment variable has an invalid value: '$YB_EDITION'" \
+          "(must be either 'community' or 'enterprise')."
+  fi
+}
+
+detect_edition() {
+  if "$yb_edition_detected"; then
+    return
+  fi
+  yb_edition_detected=true
+
+  if [[ -z ${YB_EDITION:-} ]]; then
+    [[ -d $YB_ENTERPRISE_ROOT ]] && YB_EDITION=enterprise || YB_EDITION=community
+    log "Detected YB_EDITION: $YB_EDITION"
+  fi
+
+  if [[ $YB_EDITION == "enterprise" && ! -d $YB_ENTERPRISE_ROOT ]]; then
+    fatal "YB_EDITION is set to '$YB_EDITION' but the directory '$YB_ENTERPRISE_ROOT'" \
+          "does not exist"
+  fi
+
+  readonly YB_EDITION
+  export YB_EDITION
+}
+
 # -------------------------------------------------------------------------------------------------
 # Initialization
 # -------------------------------------------------------------------------------------------------
 
-# This script is expected to be in build-support.
+# This script is expected to be in build-support, a subdirectory of the repository root directory.
 readonly YB_SRC_ROOT=$( cd "$( dirname "$BASH_SOURCE" )"/.. && pwd )
+readonly YB_ENTERPRISE_ROOT=$YB_SRC_ROOT/ent
 
 if [[ ! -d $YB_SRC_ROOT/build-support ]]; then
   fatal "Could not determine YB source directory from '$BASH_SOURCE':" \

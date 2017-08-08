@@ -117,6 +117,25 @@ setup_vars_for_cxx_test() {
   test_existence_check=false
 }
 
+print_summary() {
+  echo >&2
+  thick_horizontal_line
+  echo >&2 "YUGABYTE BUILD SUMMARY"
+  thick_horizontal_line
+  echo >&2 "Edition:               ${YB_EDITION:-undefined}"
+  if [[ -n ${cmake_end_time_sec:-} ]]; then
+    echo >&2 "CMake time:            $(( $cmake_end_time_sec - $cmake_start_time_sec )) seconds"
+  fi
+  if [[ -n ${make_end_time_sec:-} ]]; then
+    echo >&2 "C++ compilation time:  $(( $make_end_time_sec - $make_start_time_sec )) seconds"
+  fi
+  if [[ -n ${java_build_end_time_sec:-} ]]; then
+    echo >&2 "Java compilation time: $(( $java_build_end_time_sec - $java_build_start_time_sec))" \
+             "seconds"
+  fi
+  horizontal_line
+}
+
 # -------------------------------------------------------------------------------------------------
 # Command line parsing
 
@@ -329,6 +348,17 @@ while [ $# -gt 0 ]; do
       build_cxx=false
       build_java=false
     ;;
+    --community|--comm)
+      export YB_EDITION=community
+    ;;
+    --enterprise|--ent)
+      export YB_EDITION=enterprise
+    ;;
+    --edition)
+      export YB_EDITION=$2
+      validate_edition
+      shift
+    ;;
     *)
       echo "Invalid option: '$1'" >&2
       exit 1
@@ -373,6 +403,7 @@ if [[ ${YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY:-} == "1" && \
 fi
 
 configure_remote_build
+detect_edition
 
 if "$save_log"; then
   log_dir="$HOME/logs"
@@ -395,6 +426,7 @@ if "$save_log"; then
   ( set -x; "$0" "${filtered_args[@]}" ) 2>&1 | tee "$log_path"
   exit_code=$?
   echo "Log saved to $log_path (also symlinked to $latest_log_symlink_path)" >&2
+  print_summary
   exit "$exit_code"
 fi
 
@@ -479,7 +511,9 @@ if "$build_cxx"; then
     fi
     log "Using cmake binary: $( which cmake )"
     log "Running cmake in $PWD"
+    cmake_start_time_sec=$(date +%s)
     ( set -x; cmake "${cmake_opts[@]}" "$YB_SRC_ROOT" )
+    cmake_end_time_sec=$(date +%s)
   fi
 
   if "$rocksdb_only"; then
@@ -497,6 +531,7 @@ if "$build_cxx"; then
   fi
 
   log "Running make in $PWD"
+  make_start_time_sec=$(date +%s)
   set +u +e  # "set -u" may cause failures on empty lists
   time (
     set -x
@@ -505,6 +540,7 @@ if "$build_cxx"; then
 
   exit_code=$?
   set -u -e
+  make_end_time_sec=$(date +%s)
   log "Non-java build finished with exit code $exit_code" \
       "(build type: $build_type, compiler: $YB_COMPILER_TYPE)." \
       "Timing information is available above."
@@ -585,7 +621,9 @@ if "$build_java"; then
   if ! "$run_java_tests"; then
     build_opts+=( -DskipTests )
   fi
+  java_build_start_time_sec=$(date +%s)
   time ( build_yb_java_code ${build_opts[@]} )
+  java_build_end_time_sec=$(date +%s)
   log "Java build finished, total time information above."
 fi
 
@@ -599,3 +637,5 @@ compiler_type: "$YB_COMPILER_TYPE"
 EOT
   log "Created a build descriptor file at '$build_descriptor_path'"
 fi
+
+print_summary

@@ -96,7 +96,7 @@ target_link_libraries(tablet
 
 set(YB_TEST_LINK_LIBS tablet ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(tablet-test)
-ADD_YB_TEST(tablet_metadata-test)
+ADD_YB_TEST(tablet-metadata-test)
 ADD_YB_TEST(mt-tablet-test RUN_SERIAL true)
 ADD_YB_TEST(compaction_policy-test)
 ADD_YB_TEST(diskrowset-test)
