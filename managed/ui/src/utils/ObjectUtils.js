@@ -76,7 +76,9 @@ export function areIntentsEqual(userIntent1, userIntent2) {
   && _.isEqual(userIntent1.provider, userIntent2.provider)
   && _.isEqual(userIntent1.universeName, userIntent2.universeName)
   && _.isEqual(userIntent1.ybSoftwareVersion, userIntent2.ybSoftwareVersion)
-  && _.isEqual(userIntent1.accessKeyCode, userIntent2.accessKeyCode))
+  && _.isEqual(userIntent1.accessKeyCode, userIntent2.accessKeyCode)
+  && _.isEqual(userIntent1.instanceType, userIntent2.instanceType)
+  && _.isEqual(userIntent1.gflags, userIntent2.gflags))
 }
 
 // Helper method to check if AZ objects equal
