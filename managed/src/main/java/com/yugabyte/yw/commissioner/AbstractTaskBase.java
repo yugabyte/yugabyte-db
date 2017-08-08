@@ -7,6 +7,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 
+import com.yugabyte.yw.common.ShellProcessHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -68,5 +69,17 @@ public abstract class AbstractTaskBase implements ITask {
   @Override
   public void setUserTaskUUID(UUID userTaskUUID) {
     this.userTaskUUID = userTaskUUID;
+  }
+
+  /**
+   * Log the output of shellResponse to STDOUT or STDERR
+   * @param response : ShellResponse object
+   */
+  public void logShellResponse(ShellProcessHandler.ShellResponse response) {
+    if (response.code == 0) {
+      LOG.info("[" + getName() + "] STDOUT: " + response.message);
+    } else {
+      throw new RuntimeException(response.message);
+    }
   }
 }

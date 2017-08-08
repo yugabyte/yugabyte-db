@@ -7,19 +7,21 @@ package com.yugabyte.yw.models.helpers;
 public enum TaskType {
 
   // Tasks that are CustomerTasks
+  CloudBootstrap("CloudBootstrap"),
+
+  CloudCleanup("CloudCleanup"),
+
+  CreateCassandraTable("CreateCassandraTable"),
+
   CreateUniverse("CreateUniverse"),
 
   DestroyUniverse("DestroyUniverse"),
 
   EditUniverse("EditUniverse"),
 
+  ImportIntoTable("ImportIntoTable"),
+
   UpgradeUniverse("UpgradeUniverse"),
-
-  CreateCassandraTable("CreateCassandraTable"),
-
-  CloudBootstrap("CloudBootstrap"),
-
-  CloudCleanup("CloudCleanup"),
 
   // Tasks belonging to subtasks classpath
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
@@ -31,6 +33,8 @@ public enum TaskType {
   AnsibleSetupServer("subtasks.AnsibleSetupServer"),
 
   AnsibleUpdateNodeInfo("subtasks.AnsibleUpdateNodeInfo"),
+
+  BulkImport("subtasks.BulkImport"),
 
   ChangeMasterConfig("subtasks.ChangeMasterConfig"),
 
