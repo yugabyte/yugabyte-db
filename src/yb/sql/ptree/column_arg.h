@@ -90,6 +90,41 @@ class ColumnOp : public ColumnArg {
   yb::YQLOperator yb_op_;
 };
 
+class FuncOp {
+  public:
+    typedef std::shared_ptr<FuncOp> SharedPtr;
+    typedef std::shared_ptr<const FuncOp> SharedPtrConst;
+
+    FuncOp(PTExpr::SharedPtr value_expr,
+           PTBcall::SharedPtr func_expr,
+           yb::YQLOperator yb_op = yb::YQLOperator::YQL_OP_NOOP)
+      : value_expr_(value_expr), func_expr_(func_expr), yb_op_(yb_op) {
+    }
+
+    void Init(const PTExpr::SharedPtr value_expr, const PTExpr::SharedPtr func_expr, yb::YQLOperator yb_op) {
+      value_expr_ = value_expr;
+      func_expr_ = func_expr_;
+      yb_op_ = yb_op;
+    }
+
+    yb::YQLOperator yb_op() const {
+      return yb_op_;
+    }
+
+    PTExpr::SharedPtr value_expr() const {
+      return value_expr_;
+    }
+
+    PTBcall::SharedPtr func_expr() const {
+      return func_expr_;
+    }
+
+  private:
+    PTExpr::SharedPtr value_expr_;
+    PTBcall::SharedPtr func_expr_;
+    yb::YQLOperator yb_op_;
+  };
+
 // This class represents a sub-column argument (e.g. "SET l[1] = 'b'")
 class SubscriptedColumnArg : public ColumnArg {
  public:

@@ -1476,7 +1476,6 @@ TEST_F(YbSqlQuery, TestDeleteColumn) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
 
-  // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();
 
   // Create test table.
@@ -1484,13 +1483,7 @@ TEST_F(YbSqlQuery, TestDeleteColumn) {
                             " PRIMARY KEY(h));"));
 
   client::YBTableName name(kDefaultKeyspaceName, "delete_column");
-  shared_ptr<client::YBTable> table;
 
-  ASSERT_OK(client_->OpenTable(name, &table));
-
-  //------------------------------------------------------------------------------------------------
-  // Initializing rows data
-  //------------------------------------------------------------------------------------------------
   for (int i = 0; i < 2; i++) {
     string stmt = Substitute("INSERT INTO delete_column (h, v1, v2) VALUES "
                                "($0, $1, $2);", i, i, i);
@@ -1519,6 +1512,107 @@ TEST_F(YbSqlQuery, TestDeleteColumn) {
   //check that primary keys and * cannot be deleted
   CHECK_INVALID_STMT("DELETE * FROM delete_column WHERE h = 0;");
   CHECK_INVALID_STMT("DELETE h FROM delete_column WHERE h = 0;");
+}
+
+TEST_F(YbSqlQuery, TestTtlWritetimeInWhereClauseOfSelectStatements) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  YbSqlProcessor *processor = GetSqlProcessor();
+
+  CHECK_OK(processor->Run("CREATE TABLE ttl_writetime_test (h int, v1 int, v2 int, PRIMARY KEY(h))"));
+
+  client::YBTableName name(kDefaultKeyspaceName, "ttl_writetime_test");
+
+  shared_ptr<client::YBTable> table;
+
+  ASSERT_OK(client_->OpenTable(name, &table));
+
+  // generating input data with hash_code and inserting into table
+  std::vector<std::tuple<int, int, int>> rows;
+  for (int i = 0; i < 5; i++) {
+    std::string i_str = std::to_string(i);
+    YBPartialRow row(&table->InternalSchema());
+    CHECK_OK(row.SetInt32(0, i));
+    CHECK_OK(row.SetInt32(1, i));
+    CHECK_OK(row.SetInt32(2, i));
+    std::tuple<int, int, int> values(i, i, i);
+    rows.push_back(values);
+    string stmt = Substitute("INSERT INTO ttl_writetime_test (h, v1, v2) VALUES "
+                               "($0, $1, $2) using ttl 100;", i, i, i);
+    CHECK_OK(processor->Run(stmt));
+  }
+
+  for (int i = 5; i < 10; i++) {
+    std::string i_str = std::to_string(i);
+    YBPartialRow row(&table->InternalSchema());
+    CHECK_OK(row.SetInt32(0, i));
+    CHECK_OK(row.SetInt32(1, i));
+    CHECK_OK(row.SetInt32(2, i));
+    std::tuple<int, int, int> values(i, i, i);
+    rows.push_back(values);
+    string stmt = Substitute("INSERT INTO ttl_writetime_test (h, v1, v2) VALUES "
+                               "($0, $1, $2) using ttl 200;", i, i, i);
+    CHECK_OK(processor->Run(stmt));
+  }
+
+  std::sort(rows.begin(), rows.end(),
+            [](const std::tuple<int, int, int>& r1,
+               const std::tuple<int, int, int>& r2) -> bool {
+              return std::get<0>(r1) < std::get<0>(r2);
+            });
+
+
+  //test that for ttl > 150, there are 5 elements that match what we expect
+  string select_stmt_template = "SELECT * FROM ttl_writetime_test WHERE ttl($0) $1 $2";
+
+  string select_stmt = Substitute(select_stmt_template, "v1", "<", 150);
+  CHECK_OK(processor->Run(select_stmt));
+  auto row_block = processor->row_block();
+  std::vector<YQLRow>& returned_rows_1 = row_block->rows();
+  std::sort(returned_rows_1.begin(), returned_rows_1.end(),
+            [](const YQLRow &r1,
+               const YQLRow &r2) -> bool {
+              return r1.column(0).int32_value() < r2.column(0).int32_value();
+            });
+  // checking result
+  ASSERT_EQ(5, row_block->row_count());
+  for (int i = 0; i < 5; i++) {
+    YQLRow &row = returned_rows_1.at(i);
+    EXPECT_EQ(std::get<0>(rows[i]), row.column(0).int32_value());
+    EXPECT_EQ(std::get<1>(rows[i]), row.column(1).int32_value());
+    EXPECT_EQ(std::get<2>(rows[i]), row.column(2).int32_value());
+  }
+
+  //Now, let us test that when we update a column with a new ttl, that it shows up
+  //Should update 2 entries
+  string update_stmt = "UPDATE ttl_writetime_test using ttl 300 set v1 = 7 where h = 7;";
+  CHECK_OK(processor->Run(update_stmt));
+  update_stmt = "UPDATE ttl_writetime_test using ttl 300 set v1 = 8 where h = 8;";
+  CHECK_OK(processor->Run(update_stmt));
+  select_stmt = Substitute(select_stmt_template, "v1", ">", 250);
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  std::vector<YQLRow>& returned_rows_2 = row_block->rows();
+  std::sort(returned_rows_2.begin(), returned_rows_2.end(),
+            [](const YQLRow &r1,
+               const YQLRow &r2) -> bool {
+              return r1.column(0).int32_value() < r2.column(0).int32_value();
+            });
+  // checking result
+  ASSERT_EQ(2, row_block->row_count());
+  for (int i = 7; i < 9; i++) {
+    YQLRow &row = returned_rows_2.at(i - 7);
+    EXPECT_EQ(std::get<0>(rows[i]), row.column(0).int32_value());
+    EXPECT_EQ(std::get<1>(rows[i]), row.column(1).int32_value());
+    EXPECT_EQ(std::get<2>(rows[i]), row.column(2).int32_value());
+  }
+
+  select_stmt = Substitute(select_stmt_template, "v2", ">", 250);
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result
+  ASSERT_EQ(0, row_block->row_count());
 }
 
 

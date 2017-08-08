@@ -143,6 +143,27 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     LOG.info("INSERT INTO TABLE " + tableName + " FINISHED");
   }
 
+  public void setupTable(String tableName, int []ttls) throws Exception {
+    LOG.info("CREATE TABLE " + tableName);
+    String create_stmt = String.format("CREATE TABLE %s " +
+                    " (h1 int, h2 %2$s, " +
+                    " r1 int, r2 %2$s, " +
+                    " v1 int, v2 int, " +
+                    " primary key((h1, h2), r1, r2));",
+            tableName, "varchar");
+    session.execute(create_stmt);
+
+    LOG.info("INSERT INTO TABLE " + tableName);
+    for (int idx = 0; idx < ttls.length; idx++) {
+      // INSERT: Valid statement with column list.
+      String insert_stmt = String.format(
+        "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, 'h%d', %d, 'r%d', %d, %d) using ttl %d;",
+        tableName, idx, idx, idx+100, idx+100, idx+1000, idx+1000, ttls[idx]);
+      session.execute(insert_stmt);
+    }
+    LOG.info("INSERT INTO TABLE " + tableName + " FINISHED");
+  }
+  
   protected void DropTable(String tableName) throws Exception {
     String drop_stmt = String.format("DROP TABLE %s;", tableName);
     session.execute(drop_stmt);

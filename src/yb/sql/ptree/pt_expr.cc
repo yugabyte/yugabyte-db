@@ -536,10 +536,9 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
           return sem_context->Error(loc(), "Only token calls that reference partition key allowed",
               ErrorCode::FEATURE_NOT_SUPPORTED);
         }
-      } else {
-        return sem_context->Error(loc(), "Expected token found different builtin call",
-            ErrorCode::CQL_STATEMENT_INVALID);
       }
+      PTBcall::SharedPtr ttl_shared = std::make_shared<PTBcall> (*bcall);
+      return where_state->AnalyzeColumnFunction(sem_context, this, op2, ttl_shared);
     }
   }
   return Status::OK();

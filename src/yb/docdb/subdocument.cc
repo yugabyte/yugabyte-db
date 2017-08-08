@@ -419,7 +419,7 @@ void SubDocument::ToYQLExpressionPB(SubDocument doc,
 
 CHECKED_STATUS SubDocument::FromYQLExpressionPB(const YQLExpressionPB& yql_expr,
                                                 const ColumnSchema& column_schema,
-                                                const YQLValueMap& value_map,
+                                                const YQLTableRow& table_row,
                                                 SubDocument* sub_doc,
                                                 WriteAction* write_action) {
   switch (yql_expr.expr_case()) {
@@ -435,7 +435,7 @@ CHECKED_STATUS SubDocument::FromYQLExpressionPB(const YQLExpressionPB& yql_expr,
 
     case YQLExpressionPB::ExprCase::kBfcall: {  // Scenarios: SET column = func().
       YQLValueWithPB result;
-      RETURN_NOT_OK(EvalYQLExpressionPB(yql_expr, value_map, &result, write_action));
+      RETURN_NOT_OK(EvalYQLExpressionPB(yql_expr, table_row, &result, write_action));
       // Type of the result could be changed for some write actions (e.g. REMOVE_KEYS from map)
       *sub_doc = FromYQLValuePB(result.value(), column_schema.sorting_type(), *write_action);
       return Status::OK();
@@ -456,7 +456,7 @@ CHECKED_STATUS SubDocument::FromYQLExpressionPB(const YQLExpressionPB& yql_expr,
 // in the pool. Currently, the argument structures are on stack, but their contents are in the
 // heap memory.
 CHECKED_STATUS SubDocument::EvalYQLExpressionPB(const YQLExpressionPB& yql_expr,
-                                   const YQLValueMap& value_map,
+                                   const YQLTableRow& table_row,
                                    YQLValueWithPB *result,
                                    WriteAction* write_action) {
   switch (yql_expr.expr_case()) {
@@ -474,13 +474,13 @@ CHECKED_STATUS SubDocument::EvalYQLExpressionPB(const YQLExpressionPB& yql_expr,
           strcmp(bf_op->op_decl()->cpp_name(), "AddMapSet") == 0 ||
           strcmp(bf_op->op_decl()->cpp_name(), "AddSetSet") == 0) {
         *write_action = WriteAction::EXTEND;
-        return EvalYQLExpressionPB(bfcall.operands(1), value_map, result, write_action);
+        return EvalYQLExpressionPB(bfcall.operands(1), table_row, result, write_action);
       }
 
       if (strcmp(bf_op->op_decl()->cpp_name(), "SubMapSet") == 0 ||
           strcmp(bf_op->op_decl()->cpp_name(), "SubSetSet") == 0) {
         *write_action = WriteAction::REMOVE_KEYS;
-        RETURN_NOT_OK(EvalYQLExpressionPB(bfcall.operands(1), value_map, result, write_action));
+        RETURN_NOT_OK(EvalYQLExpressionPB(bfcall.operands(1), table_row, result, write_action));
 
         return Status::OK();
       }
@@ -488,10 +488,10 @@ CHECKED_STATUS SubDocument::EvalYQLExpressionPB(const YQLExpressionPB& yql_expr,
       if (strcmp(bf_op->op_decl()->cpp_name(), "AddListList") == 0) {
         if (bfcall.operands(0).has_column_id()) {
           *write_action = WriteAction::APPEND;
-          return EvalYQLExpressionPB(bfcall.operands(1), value_map, result, write_action);
+          return EvalYQLExpressionPB(bfcall.operands(1), table_row, result, write_action);
         } else {
           *write_action = WriteAction::PREPEND;
-          return EvalYQLExpressionPB(bfcall.operands(0), value_map, result, write_action);
+          return EvalYQLExpressionPB(bfcall.operands(0), table_row, result, write_action);
         }
       }
 
@@ -507,7 +507,7 @@ CHECKED_STATUS SubDocument::EvalYQLExpressionPB(const YQLExpressionPB& yql_expr,
       vector<YQLValueWithPB> args(bfcall.operands().size());
       int arg_index = 0;
       for (auto operand : bfcall.operands()) {
-        RETURN_NOT_OK(EvalYQLExpressionPB(operand, value_map, &args[arg_index], write_action));
+        RETURN_NOT_OK(EvalYQLExpressionPB(operand, table_row, &args[arg_index], write_action));
         arg_index++;
       }
 
@@ -517,9 +517,9 @@ CHECKED_STATUS SubDocument::EvalYQLExpressionPB(const YQLExpressionPB& yql_expr,
     }
 
     case YQLExpressionPB::ExprCase::kColumnId: {
-      auto iter = value_map.find(ColumnId(yql_expr.column_id()));
-      if (iter != value_map.end()) {
-        result->Assign(iter->second);
+      auto iter = table_row.find(ColumnId(yql_expr.column_id()));
+      if (iter != table_row.end()) {
+        result->Assign(iter->second.value);
       } else {
         result->SetNull();
       }

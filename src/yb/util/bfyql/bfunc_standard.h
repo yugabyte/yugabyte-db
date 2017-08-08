@@ -84,6 +84,16 @@ Status Token(const vector<PTypePtr>& params, RTypePtr result) {
   return Status::OK();
 }
 
+template<typename PTypePtr, typename RTypePtr>
+Status ttl(PTypePtr col, PTypePtr result) {
+  return Status::OK();
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status writetime(PTypePtr col, PTypePtr result) {
+  return Status::OK();
+}
+
 //--------------------------------------------------------------------------------------------------
 // Special ops for counter: "+counter" and "-counter".
 

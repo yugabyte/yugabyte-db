@@ -17,8 +17,8 @@ namespace yb {
 class YQLRow {
  public:
   explicit YQLRow(const std::shared_ptr<const Schema>& schema);
-  explicit YQLRow(const YQLRow& row);
-  explicit YQLRow(YQLRow&& row);
+  YQLRow(const YQLRow& row);
+  YQLRow(YQLRow&& row);
   ~YQLRow();
 
   // Row columns' schema
@@ -113,11 +113,19 @@ class YQLRowBlock {
 // for saving the column values of a selected row to evaluate the WHERE and IF clauses. Since
 // we use the clauses in protobuf to evaluate, we will maintain the column values in YQLValuePB
 // also to avoid conversion to and from YQLValueWithPB.
+
+struct YQLTableColumn {
+public:
+  YQLValuePB value;
+  int64_t ttl_seconds;
+  int64_t write_time;
+};
+
+using YQLTableRow = std::unordered_map<ColumnId, YQLTableColumn>;
 using YQLValueMap = std::unordered_map<ColumnId, YQLValuePB>;
 
 // Evaluate a boolean condition for the given row.
-CHECKED_STATUS EvaluateCondition(
-    const YQLConditionPB& condition, const YQLValueMap& row, bool* result);
+CHECKED_STATUS EvaluateCondition(const YQLConditionPB& condition, const YQLTableRow& row, bool* result);
 
 } // namespace yb
 

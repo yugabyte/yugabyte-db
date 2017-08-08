@@ -690,7 +690,8 @@ CHECKED_STATUS Executor::WhereClauseToPB(YQLReadRequestPB *req,
                                          const MCVector<ColumnOp>& key_where_ops,
                                          const MCList<ColumnOp>& where_ops,
                                          const MCList<SubscriptedColumnOp>& subcol_where_ops,
-                                         const MCList<PartitionKeyOp>& partition_key_ops) {
+                                         const MCList<PartitionKeyOp>& partition_key_ops,
+                                         const MCList<FuncOp>& func_ops) {
 
   // Setup the lower/upper bounds on the partition key -- if any
   for (const auto& op : partition_key_ops) {
@@ -740,7 +741,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(YQLReadRequestPB *req,
   }
 
   // Not generate any code if where clause is empty.
-  if (where_ops.empty() && subcol_where_ops.empty()) {
+  if (where_ops.empty() && subcol_where_ops.empty() && func_ops.empty()) {
     return Status::OK();
   }
 
@@ -776,6 +777,21 @@ CHECKED_STATUS Executor::WhereClauseToPB(YQLReadRequestPB *req,
     }
   }
 
+  for (const auto& func_op : func_ops) {
+    if (&func_op == &func_ops.back()) {
+      // This is the last operator. Use the current ConditionPB.
+        RETURN_NOT_OK(FuncOpToPB(cond_pb, func_op));
+    } else {
+      // Current ConditionPB would be AND of this op and the next one.
+      cond_pb->set_op(YQL_OP_AND);
+      YQLExpressionPB *op = cond_pb->add_operands();
+      RETURN_NOT_OK(FuncOpToPB(op->mutable_condition(), func_op));
+
+      // Create a new the ConditionPB for the next operand.
+      cond_pb = cond_pb->add_operands()->mutable_condition();
+    }
+  }
+
   return Status::OK();
 }
 
@@ -792,6 +808,20 @@ CHECKED_STATUS Executor::WhereOpToPB(YQLConditionPB *condition, const ColumnOp& 
   // Operand 2: The expression.
   expr_pb = condition->add_operands();
   return PTExprToPB(col_op.expr(), expr_pb);
+}
+
+CHECKED_STATUS Executor::FuncOpToPB(YQLConditionPB *condition, const FuncOp& func_op) {
+  // Set the operator.
+  condition->set_op(func_op.yb_op());
+
+  // Operand 1: The function call.
+  PTBcall::SharedPtr ptr = func_op.func_expr();
+  YQLExpressionPB *expr_pb = condition->add_operands();
+  RETURN_NOT_OK(PTExprToPB(static_cast<const PTBcall*>(ptr.get()), expr_pb));
+
+  // Operand 2: The expression.
+  expr_pb = condition->add_operands();
+  return PTExprToPB(func_op.value_expr(), expr_pb);
 }
 
 CHECKED_STATUS Executor::WhereSubColOpToPB(YQLConditionPB *condition,
@@ -862,12 +892,11 @@ void Executor::ExecPTNodeAsync(
   // Create the read request.
   shared_ptr<YBqlReadOp> select_op(table->NewYQLSelect());
   YQLReadRequestPB *req = select_op->mutable_request();
-
   // Where clause - Hash, range, and regular columns.
   YBPartialRow *row = select_op->mutable_row();
 
   Status s = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops(),
-                             tnode->subscripted_col_where_ops(), tnode->partition_key_ops());
+                              tnode->subscripted_col_where_ops(), tnode->partition_key_ops(), tnode->func_ops());
   if (!s.ok()) {
     CB_RETURN(
         cb,

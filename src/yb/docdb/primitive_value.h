@@ -304,7 +304,27 @@ class PrimitiveValue {
 
   bool operator!=(const PrimitiveValue& other) const { return !(*this == other); }
 
+  int64_t GetTtl() const {
+    return ttl_seconds_;
+  }
+
+  int64_t GetWritetime() const {
+    return write_time_;
+  }
+
+  void SetTtl(const int64_t ttl_seconds) {
+    ttl_seconds_ = ttl_seconds;
+  }
+
+  void SetWritetime(const int64_t write_time) {
+    write_time_ = write_time;
+  }
+
  protected:
+
+  //column attributes
+  int64_t ttl_seconds_;
+  int64_t write_time_;
 
   ValueType type_;
 

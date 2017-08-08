@@ -93,6 +93,13 @@ const vector<BFDecl> kBFDirectory = {
   { "SubSetSet", "-", SET, {SET, SET} },
   { "SubListList", "-", LIST, {LIST, LIST} },
 
+  // SELECT ... WHERE ttl(int_column) > 5;
+  // void TTL(int x)
+  { "ttl", "ttl", INT64, {INT32}},
+
+  // SELECT ... WHERE writetime(int_column) > 5;
+  // void TTL(int x)
+  { "writetime", "writetime", INT64, {INT32}},
 };
 
 } // namespace bfyql

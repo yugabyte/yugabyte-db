@@ -382,13 +382,13 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
                               HybridClock::HybridTimeFromMicroseconds(3000));
   ASSERT_OK(yql_iter.Init(yql_scan_spec));
   ASSERT_TRUE(yql_iter.HasNext());
-  YQLValueMap value_map;
+  YQLTableRow value_map;
   ASSERT_OK(yql_iter.NextRow(schema, &value_map));
   ASSERT_EQ(4, value_map.size());
-  EXPECT_EQ(100, value_map.at(ColumnId(0)).int32_value());
-  EXPECT_TRUE(YQLValue::IsNull(value_map.at(ColumnId(1))));
-  EXPECT_TRUE(YQLValue::IsNull(value_map.at(ColumnId(2))));
-  EXPECT_EQ(101, value_map.at(ColumnId(3)).int32_value());
+  EXPECT_EQ(100, value_map.at(ColumnId(0)).value.int32_value());
+  EXPECT_TRUE(YQLValue::IsNull(value_map.at(ColumnId(1)).value));
+  EXPECT_TRUE(YQLValue::IsNull(value_map.at(ColumnId(2)).value));
+  EXPECT_EQ(101, value_map.at(ColumnId(3)).value.int32_value());
 
   // Now verify row exists as long as liveness system column exists.
   doc_key = DocKey(0, PrimitiveValues(PrimitiveValue::Int32(101)), PrimitiveValues());
@@ -429,13 +429,13 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
                                      HybridClock::HybridTimeFromMicroseconds(3000));
   ASSERT_OK(yql_iter_system.Init(yql_scan_spec_system));
   ASSERT_TRUE(yql_iter_system.HasNext());
-  YQLValueMap value_map_system;
+  YQLTableRow value_map_system;
   ASSERT_OK(yql_iter_system.NextRow(schema, &value_map_system));
   ASSERT_EQ(4, value_map_system.size());
-  EXPECT_EQ(101, value_map_system.at(ColumnId(0)).int32_value());
-  EXPECT_TRUE(YQLValue::IsNull(value_map_system.at(ColumnId(1))));
-  EXPECT_TRUE(YQLValue::IsNull(value_map_system.at(ColumnId(2))));
-  EXPECT_TRUE(YQLValue::IsNull(value_map_system.at(ColumnId(3))));
+  EXPECT_EQ(101, value_map_system.at(ColumnId(0)).value.int32_value());
+  EXPECT_TRUE(YQLValue::IsNull(value_map_system.at(ColumnId(1)).value));
+  EXPECT_TRUE(YQLValue::IsNull(value_map_system.at(ColumnId(2)).value));
+  EXPECT_TRUE(YQLValue::IsNull(value_map_system.at(ColumnId(3)).value));
 }
 
 namespace {
@@ -562,13 +562,13 @@ void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType 
       LOG(INFO) << "Expected rows: " << util::ToString(expected_rows);
 
       while(yql_iter.HasNext()) {
-        YQLValueMap value_map;
+        YQLTableRow value_map;
         ASSERT_OK(yql_iter.NextRow(schema, &value_map));
         ASSERT_EQ(3, value_map.size());
 
-        RowData fetched_row = { value_map[0_ColId].int32_value(),
-                                value_map[1_ColId].int32_value(),
-                                value_map[2_ColId].int32_value() };
+        RowData fetched_row = { value_map[0_ColId].value.int32_value(),
+                                value_map[1_ColId].value.int32_value(),
+                                value_map[2_ColId].value.int32_value() };
         LOG(INFO) << "Fetched row: " << fetched_row;
         it = std::lower_bound(expected_rows.begin(), expected_rows.end(), fetched_row);
         ASSERT_NE(it, expected_rows.end());

@@ -266,9 +266,9 @@ YQLScanSpec::YQLScanSpec(const YQLConditionPB* condition)
 }
 
 // Evaluate the WHERE condition for the given row.
-Status YQLScanSpec::Match(const YQLValueMap& row, bool* match) const {
+Status YQLScanSpec::Match(const YQLTableRow& table_row, bool* match) const {
   if (condition_ != nullptr) {
-    return EvaluateCondition(*condition_, row, match);
+    return EvaluateCondition(*condition_, table_row, match);
   }
   *match = true;
   return Status::OK();

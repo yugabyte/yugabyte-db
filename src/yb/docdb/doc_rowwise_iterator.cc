@@ -270,7 +270,7 @@ CHECKED_STATUS SetYQLPrimaryKeyColumnValues(const Schema& schema,
                                             const size_t column_count,
                                             const char* column_type,
                                             const vector<PrimitiveValue>& values,
-                                            YQLValueMap* value_map) {
+                                            YQLTableRow* table_row) {
   if (values.size() != column_count) {
     return STATUS_SUBSTITUTE(Corruption, "$0 $1 primary key columns found but $2 expected",
                              values.size(), column_type, column_count);
@@ -284,7 +284,7 @@ CHECKED_STATUS SetYQLPrimaryKeyColumnValues(const Schema& schema,
   for (size_t i = 0, j = begin_index; i < column_count; i++, j++) {
     const auto column_id = schema.column_id(j);
     const auto yql_type = schema.column(j).type();
-    PrimitiveValue::ToYQLValuePB(values[i], yql_type, &(*value_map)[column_id]);
+    PrimitiveValue::ToYQLValuePB(values[i], yql_type, &(*table_row)[column_id].value);
   }
   return Status::OK();
 }
@@ -379,7 +379,7 @@ bool DocRowwiseIterator::IsNextStaticColumn() const {
   return schema_.has_statics() && row_key_.range_group().empty();
 }
 
-Status DocRowwiseIterator::NextRow(const Schema& projection, YQLValueMap* value_map) {
+Status DocRowwiseIterator::NextRow(const Schema& projection, YQLTableRow* table_row) {
   if (!status_.ok()) {
     // An error happened in HasNext.
     return status_;
@@ -400,11 +400,11 @@ Status DocRowwiseIterator::NextRow(const Schema& projection, YQLValueMap* value_
   // are present, read them also.
   RETURN_NOT_OK(SetYQLPrimaryKeyColumnValues(
       schema_, 0, schema_.num_hash_key_columns(),
-      "hash", row_key_.hashed_group(), value_map));
+      "hash", row_key_.hashed_group(), table_row));
   if (!row_key_.range_group().empty()) {
     RETURN_NOT_OK(SetYQLPrimaryKeyColumnValues(
         schema_, schema_.num_hash_key_columns(), schema_.num_range_key_columns(),
-        "range", row_key_.range_group(), value_map));
+        "range", row_key_.range_group(), table_row));
   }
 
   for (size_t i = projection.num_key_columns(); i < projection.num_columns(); i++) {
@@ -412,7 +412,9 @@ Status DocRowwiseIterator::NextRow(const Schema& projection, YQLValueMap* value_
     const auto yql_type = projection.column(i).type();
     const SubDocument* column_value = row_.GetChild(PrimitiveValue(column_id));
     if (column_value != nullptr) {
-      SubDocument::ToYQLValuePB(*column_value, yql_type, &(*value_map)[column_id]);
+      SubDocument::ToYQLValuePB(*column_value, yql_type, &(*table_row)[column_id].value);
+      (*table_row)[column_id].ttl_seconds = column_value->GetTtl();
+      (*table_row)[column_id].write_time = column_value->GetWritetime();
     }
   }
   row_ready_ = false;

@@ -16,10 +16,15 @@ import org.yb.minicluster.MiniYBDaemon;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
+import com.datastax.driver.core.exceptions.InvalidQueryException;
+import com.datastax.driver.core.exceptions.SyntaxError;
 
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+
+import org.junit.rules.ExpectedException;
+import org.junit.Rule;
 
 public class TestSelect extends BaseCQLTest {
   @Test
@@ -427,4 +432,158 @@ public class TestSelect extends BaseCQLTest {
     assertTrue(totalMetrics.localReadCount + totalMetrics.remoteReadCount >= NUM_KEYS);
     assertTrue(totalMetrics.localWriteCount + totalMetrics.remoteWriteCount >= NUM_KEYS);
   }
+
+  @Test
+  public void testTtlInWhereClauseOfSelect() throws Exception {
+    LOG.info("TEST SELECT TTL queries - Start");
+
+    // Setup test table.
+    int[] ttls = {
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      200
+    };
+    setupTable("test_ttl", ttls);
+
+    // Select data from the test table.
+    String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_ttl" +
+      "  WHERE ttl(v1) > 150";
+    ResultSet rs = session.execute(select_stmt);
+		List<Row> rows = rs.all();
+    assertEquals(1, rows.size());
+		Row row = rows.get(0);
+		assertEquals(9, row.getInt(0));
+		assertEquals("h9", row.getString(1));
+		assertEquals(109, row.getInt(2));
+		assertEquals("r109", row.getString(3));
+		assertEquals(1009, row.getInt(4));
+		assertEquals(1009, row.getInt(5));
+
+    String update_stmt = "UPDATE test_ttl USING ttl 300 SET v1 = 1009" +
+      "  WHERE h1 = 9 and h2 = 'h9' and r1 = 109 and r2 = 'r109' ";
+    session.execute(update_stmt);
+    select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_ttl" +
+      "  WHERE ttl(v1) > 250";
+
+    rs = session.execute(select_stmt);
+		rows = rs.all();
+    assertEquals(9, row.getInt(0));
+		assertEquals("h9", row.getString(1));
+		assertEquals(109, row.getInt(2));
+		assertEquals("r109", row.getString(3));
+		assertEquals(1009, row.getInt(4));
+		assertEquals(1009, row.getInt(5));
+
+    select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_ttl" +
+      "  WHERE ttl(v2) > 250";
+    rs = session.execute(select_stmt);
+    rows = rs.all();
+    assertEquals(0, rows.size());
+  }
+
+  @Test(expected=InvalidQueryException.class) 
+	public void testTtlOfCollectionsThrowsError() throws Exception {
+		int []ttls = {100};
+		LOG.info("CREATE TABLE test_ttl");
+	  String create_stmt = "CREATE TABLE test_ttl " +
+	                    " (h int, v1 list<int>, v2 int, primary key (h));";
+	  session.execute(create_stmt);
+	  String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, [1], 1) using ttl 100;";
+	  session.execute(insert_stmt);
+		
+		String select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
+		  "  WHERE ttl(v1) < 150";
+		session.execute(select_stmt);
+	}
+  
+  @Test(expected=InvalidQueryException.class)
+	public void testTtlOfPrimaryThrowsError() throws Exception {
+		int []ttls = {100};
+		LOG.info("CREATE TABLE test_ttl");
+	  String create_stmt = "CREATE TABLE test_ttl " +
+	                    " (h int, v1 list<int>, v2 int, primary key (h));";
+	  session.execute(create_stmt);
+	  String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, [1], 1) using ttl 100;";
+	  session.execute(insert_stmt);
+		
+		String select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
+		  "  WHERE ttl(h) < 150";
+		session.execute(select_stmt);
+	}
+  
+  @Test(expected=InvalidQueryException.class) 
+	public void testTtlWrongParametersThrowsError() throws Exception {
+  	int []ttls = {100};
+		LOG.info("CREATE TABLE test_ttl");
+	  String create_stmt = "CREATE TABLE test_ttl " +
+	                    " (h int, v1 int, v2 int, primary key (h));";
+	  session.execute(create_stmt);
+	  String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, 1, 1) using ttl 100;";
+	  session.execute(insert_stmt);
+		
+		String select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
+		  "  WHERE ttl() < 150";
+		session.execute(select_stmt);
+	}
+  
+  @Test 
+	public void testTtlOfDefault() throws Exception {
+		LOG.info("CREATE TABLE test_ttl");
+	  String create_stmt = "CREATE TABLE test_ttl " +
+	                    " (h int, v1 list<int>, v2 int, primary key (h)) with default_time_to_live = 100;";
+	  session.execute(create_stmt);
+	  String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, [1], 1);";
+	  session.execute(insert_stmt);
+		
+		String select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
+		  "  WHERE ttl(v2) <= 100";
+		ResultSet rs = session.execute(select_stmt);
+    List<Row> rows = rs.all();
+    assertEquals(1, rows.size());
+    
+    select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
+  		  "  WHERE ttl(v2) >= 90";
+  		rs = session.execute(select_stmt);
+    rows = rs.all();
+    assertEquals(1, rows.size());
+    
+    String insert_stmt_2 = "INSERT INTO test_ttl (h, v1, v2) VALUES(2, [2], 2) using ttl 150;";
+    session.execute(insert_stmt_2);
+    select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
+  		  "  WHERE ttl(v2) >= 140";
+    rs = session.execute(select_stmt);
+    rows = rs.all();
+    assertEquals(1, rows.size());
+	}
+  
+  @Test 
+	public void testTtlWhenNoneSpecified() throws Exception {
+		LOG.info("CREATE TABLE test_ttl");
+	  String create_stmt = "CREATE TABLE test_ttl " +
+	                    " (h int, v1 list<int>, v2 int, primary key (h));";
+	  session.execute(create_stmt);
+	  String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, [1], 1);";
+	  session.execute(insert_stmt);
+	  
+		String select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
+		  "  WHERE ttl(v2) > 100;";
+		ResultSet rs = session.execute(select_stmt);
+    List<Row> rows = rs.all();
+    //The number of rows when we query ttl on v2 should be 0, since ttl(v2) isn't defined.
+    assertEquals(0, rows.size());
+    
+    select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
+  		  "  WHERE ttl(v2) <= 100";
+  		rs = session.execute(select_stmt);
+    rows = rs.all();
+    assertEquals(0, rows.size());
+	}
+    
 }

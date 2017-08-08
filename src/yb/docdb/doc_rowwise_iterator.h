@@ -62,7 +62,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   bool IsNextStaticColumn() const override;
 
   // Read next row into a value map using the specified projection.
-  CHECKED_STATUS NextRow(const Schema& projection, YQLValueMap* value_map) override;
+  CHECKED_STATUS NextRow(const Schema& projection, YQLTableRow* table_row) override;
 
   CHECKED_STATUS SetPagingStateIfNecessary(const YQLReadRequestPB& request,
                                            const YQLRowBlock& rowblock,

@@ -25,36 +25,36 @@ enum class ExprOperator : int {
   kNoOp = 0,
 
   // Reference to constants, columns, and variables.
-  kConst,
-  kAlias,
-  kRef,
-  kSubColRef,
-  kBindVar,
-  kBcall,
+  kConst = 1,
+  kAlias = 2,
+  kRef = 3,
+  kSubColRef = 4,
+  kBindVar = 5,
+  kBcall = 6,
 
   // Operators that take one operand.
-  kUMinus,
+  kUMinus = 7,
 
   // Logical operators with one operand.
-  kLogic1,
+  kLogic1 = 8,
 
   // Logical operators with two operands.
-  kLogic2,
+  kLogic2 = 9,
 
   // Relation operators that take no operand.
-  kRelation0,
+  kRelation0 = 10,
 
   // Relation operators that take one operand.
-  kRelation1,
+  kRelation1 = 11,
 
   // Relation operators that take two operands.
-  kRelation2,
+  kRelation2 = 12,
 
   // Relation operators that take three operands.
-  kRelation3,
+  kRelation3 = 13,
 
   // Relation operators that take unspecified number of operands.
-  kCollection,
+  kCollection = 14,
 };
 
 //--------------------------------------------------------------------------------------------------

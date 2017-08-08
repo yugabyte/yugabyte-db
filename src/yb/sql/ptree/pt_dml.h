@@ -49,20 +49,23 @@ class ColumnOpCounter {
 // State variables for where clause.
 class WhereExprState {
  public:
+
   WhereExprState(MCList<ColumnOp> *ops,
                  MCVector<ColumnOp> *key_ops,
                  MCList<SubscriptedColumnOp> *subscripted_col_ops,
                  MCList<PartitionKeyOp> *partition_key_ops,
                  MCVector<ColumnOpCounter> *op_counters,
                  ColumnOpCounter *partition_key_counter,
-                 bool write_only)
-      : ops_(ops),
-        key_ops_(key_ops),
-        subscripted_col_ops_(subscripted_col_ops),
-        partition_key_ops_(partition_key_ops),
-        op_counters_(op_counters),
-        partition_key_counter_(partition_key_counter),
-        write_only_(write_only) {
+                 bool write_only,
+                 MCList<FuncOp> *func_ops)
+    : ops_(ops),
+      key_ops_(key_ops),
+      subscripted_col_ops_(subscripted_col_ops),
+      partition_key_ops_(partition_key_ops),
+      op_counters_(op_counters),
+      partition_key_counter_(partition_key_counter),
+      write_only_(write_only),
+      func_ops_(func_ops) {
   }
 
   CHECKED_STATUS AnalyzeColumnOp(SemContext *sem_context,
@@ -71,13 +74,20 @@ class WhereExprState {
                                  PTExpr::SharedPtr value,
                                  PTExprListNode::SharedPtr args = nullptr);
 
+  CHECKED_STATUS AnalyzeColumnFunction(SemContext *sem_context,
+                                                       const PTRelationExpr *expr,
+                                                       PTExpr::SharedPtr value,
+                                                       PTBcall::SharedPtr call);
 
   CHECKED_STATUS AnalyzePartitionKeyOp(SemContext *sem_context,
                                        const PTRelationExpr *expr,
                                        PTExpr::SharedPtr value);
 
- private:
-  // Operators on all columns.
+  MCList<FuncOp> *func_ops() {
+    return func_ops_;
+  }
+  
+private:
   MCList<ColumnOp> *ops_;
 
   // Operators on key columns.
@@ -96,6 +106,9 @@ class WhereExprState {
 
   // update, insert, delete.
   bool write_only_;
+
+  MCList<FuncOp> *func_ops_;
+
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -196,6 +209,10 @@ class PTDmlStmt : public PTCollection {
     return partition_key_ops_;
   }
 
+  const MCList <yb::sql::FuncOp>& func_ops() const {
+    return func_ops_;
+  }
+
   bool has_ttl() const {
     return ttl_seconds_ != nullptr;
   }
@@ -287,6 +304,7 @@ class PTDmlStmt : public PTCollection {
   // This is just a workaround for UPDATE and DELETE. Backend supports only single row. It also
   // requires that conditions on columns are ordered the same way as they were defined in
   // CREATE TABLE statement.
+  MCList<FuncOp> func_ops_;
   MCVector<ColumnOp> key_where_ops_;
   MCList<ColumnOp> where_ops_;
   MCList<SubscriptedColumnOp> subscripted_col_where_ops_;

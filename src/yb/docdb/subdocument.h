@@ -170,13 +170,13 @@ class SubDocument : public PrimitiveValue {
   // Construct a SubDocument from a YQLExpressionPB.
   static CHECKED_STATUS FromYQLExpressionPB(const YQLExpressionPB& yql_expr,
                                             const ColumnSchema& column_schema,
-                                            const YQLValueMap& value_map,
+                                            const YQLTableRow& table_row,
                                             SubDocument* subdoc,
                                             WriteAction* write_action);
 
   // Evaluate the given YQLExpressionPB into YQLValue.
   static CHECKED_STATUS EvalYQLExpressionPB(const YQLExpressionPB& yql_expr,
-                                            const YQLValueMap& value_map,
+                                            const YQLTableRow& table_row,
                                             YQLValueWithPB *result,
                                             WriteAction* write_action);
 

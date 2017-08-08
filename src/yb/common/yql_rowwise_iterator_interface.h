@@ -26,8 +26,8 @@ class YQLRowwiseIteratorIf : public RowwiseIterator {
   // Is the next row column to read a static column?
   virtual bool IsNextStaticColumn() const = 0;
 
-  // Read next row into a value map using the specified projection.
-  virtual CHECKED_STATUS NextRow(const Schema& projection, YQLValueMap* value_map) = 0;
+  // Read next row using the specified projection.
+  virtual CHECKED_STATUS NextRow(const Schema& projection, YQLTableRow* table_row) = 0;
 
   // Skip the current row.
   virtual void SkipRow() = 0;

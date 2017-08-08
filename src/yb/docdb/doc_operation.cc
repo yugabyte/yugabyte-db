@@ -744,12 +744,12 @@ CHECKED_STATUS CreateProjections(const Schema& schema, const YQLReferencedColumn
 }
 
 void PopulateRow(
-    const YQLValueMap& value_map, const Schema& projection, size_t col_idx, YQLRow* row) {
+    const YQLTableRow& table_row, const Schema& projection, size_t col_idx, YQLRow* row) {
   for (size_t i = 0; i < projection.num_columns(); i++) {
     const auto column_id = projection.column_id(i);
-    const auto it = value_map.find(column_id);
-    if (it != value_map.end()) {
-      *row->mutable_column(col_idx) = std::move(it->second);
+    const auto it = table_row.find(column_id);
+    if (it != table_row.end()) {
+      *row->mutable_column(col_idx) = std::move(it->second.value);
     }
     col_idx++;
   }
@@ -757,15 +757,15 @@ void PopulateRow(
 
 // Join a static row with a non-static row.
 void JoinStaticRow(
-    const Schema& schema, const Schema& static_projection, const YQLValueMap& static_row,
-    YQLValueMap* non_static_row) {
+    const Schema& schema, const Schema& static_projection, const YQLTableRow& static_row,
+    YQLTableRow* non_static_row) {
   // No need to join if static row is empty or the hash key is different.
   if (static_row.empty()) {
     return;
   }
   for (size_t i = 0; i < schema.num_hash_key_columns(); i++) {
     const ColumnId column_id = schema.column_id(i);
-    if (static_row.at(column_id) != non_static_row->at(column_id)) {
+    if (static_row.at(column_id).value != non_static_row->at(column_id).value) {
       return;
     }
   }
@@ -865,7 +865,7 @@ Status YQLWriteOperation::ReadColumns(rocksdb::DB *rocksdb,
                                       const HybridTime& hybrid_time,
                                       Schema *param_static_projection,
                                       Schema *param_non_static_projection,
-                                      YQLValueMap *value_map,
+                                      YQLTableRow *table_row,
                                       const rocksdb::QueryId query_id) {
   Schema *static_projection = param_static_projection;
   Schema *non_static_projection = param_non_static_projection;
@@ -894,7 +894,7 @@ Status YQLWriteOperation::ReadColumns(rocksdb::DB *rocksdb,
     DocRowwiseIterator iterator(*static_projection, schema_, rocksdb, hybrid_time);
     RETURN_NOT_OK(iterator.Init(spec));
     if (iterator.HasNext()) {
-      RETURN_NOT_OK(iterator.NextRow(*static_projection, value_map));
+      RETURN_NOT_OK(iterator.NextRow(*static_projection, table_row));
     }
   }
   if (pk_doc_key_ != nullptr) {
@@ -902,11 +902,11 @@ Status YQLWriteOperation::ReadColumns(rocksdb::DB *rocksdb,
     DocRowwiseIterator iterator(*non_static_projection, schema_, rocksdb, hybrid_time);
     RETURN_NOT_OK(iterator.Init(spec));
     if (iterator.HasNext()) {
-      RETURN_NOT_OK(iterator.NextRow(*non_static_projection, value_map));
+      RETURN_NOT_OK(iterator.NextRow(*non_static_projection, table_row));
     } else {
       // If no non-static column is found, the row does not exist and we should clear the static
       // columns in the map to indicate the row does not exist.
-      value_map->clear();
+      table_row->clear();
     }
   }
 
@@ -918,22 +918,22 @@ Status YQLWriteOperation::IsConditionSatisfied(const YQLConditionPB& condition,
                                                const HybridTime& hybrid_time,
                                                bool* should_apply,
                                                std::unique_ptr<YQLRowBlock>* rowblock,
-                                               YQLValueMap* value_map,
+                                               YQLTableRow* table_row,
                                                const rocksdb::QueryId query_id) {
 
   // Read column values.
   Schema static_projection, non_static_projection;
   RETURN_NOT_OK(ReadColumns(rocksdb, hybrid_time, &static_projection,
-                            &non_static_projection, value_map, query_id));
+                            &non_static_projection, table_row, query_id));
 
   // See if the if-condition is satisfied.
-  RETURN_NOT_OK(EvaluateCondition(condition, *value_map, should_apply));
+  RETURN_NOT_OK(EvaluateCondition(condition, *table_row, should_apply));
 
   // Populate the result set to return the "applied" status, and optionally the present column
   // values if the condition is not satisfied and the row does exist (value_map is not empty).
   vector<ColumnSchema> columns;
   columns.emplace_back(ColumnSchema("[applied]", BOOL));
-  if (!*should_apply && !value_map->empty()) {
+  if (!*should_apply && !table_row->empty()) {
     columns.insert(columns.end(),
                    static_projection.columns().begin(), static_projection.columns().end());
     columns.insert(columns.end(),
@@ -942,9 +942,9 @@ Status YQLWriteOperation::IsConditionSatisfied(const YQLConditionPB& condition,
   rowblock->reset(new YQLRowBlock(Schema(columns, 0)));
   YQLRow& row = rowblock->get()->Extend();
   row.mutable_column(0)->set_bool_value(*should_apply);
-  if (!*should_apply && !value_map->empty()) {
-    PopulateRow(*value_map, static_projection, 1 /* begin col_idx */, &row);
-    PopulateRow(*value_map, non_static_projection, 1 + static_projection.num_columns(), &row);
+  if (!*should_apply && !table_row->empty()) {
+    PopulateRow(*table_row, static_projection, 1 /* begin col_idx */, &row);
+    PopulateRow(*table_row, non_static_projection, 1 + static_projection.num_columns(), &row);
   }
 
   return Status::OK();
@@ -954,17 +954,17 @@ Status YQLWriteOperation::Apply(
     DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) {
 
   bool should_apply = true;
-  YQLValueMap value_map;
+  YQLTableRow table_row;
   if (request_.has_if_expr()) {
     RETURN_NOT_OK(IsConditionSatisfied(request_.if_expr().condition(),
                                        rocksdb,
                                        hybrid_time,
                                        &should_apply,
                                        &rowblock_,
-                                       &value_map,
+                                       &table_row,
                                        request_.query_id()));
   } else if (RequireReadSnapshot()) {
-    RETURN_NOT_OK(ReadColumns(rocksdb, hybrid_time, nullptr, nullptr, &value_map,
+    RETURN_NOT_OK(ReadColumns(rocksdb, hybrid_time, nullptr, nullptr, &table_row,
                               request_.query_id()));
   }
 
@@ -1006,7 +1006,7 @@ Status YQLWriteOperation::Apply(
             SubDocument sub_doc;
             RETURN_NOT_OK(SubDocument::FromYQLExpressionPB(column_value.expr(),
                                                            column,
-                                                           value_map,
+                                                           table_row,
                                                            &sub_doc,
                                                            &write_action));
 
@@ -1171,8 +1171,8 @@ Status YQLReadOperation::Execute(
   if (FLAGS_trace_docdb_calls) {
     TRACE("Initialized iterator");
   }
-  YQLValueMap static_row, non_static_row;
-  YQLValueMap& selected_row = read_distinct_columns ? static_row : non_static_row;
+  YQLTableRow static_row, non_static_row;
+  YQLTableRow& selected_row = read_distinct_columns ? static_row : non_static_row;
 
   // In case when we are continuing a select with a paging state, the static columns for the next
   // row to fetch are not included in the first iterator and we need to fetch them with a separate

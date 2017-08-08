@@ -28,6 +28,7 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
     table_columns_(memctx),
     num_key_columns_(0),
     num_hash_key_columns_(0),
+    func_ops_(memctx),
     key_where_ops_(memctx),
     where_ops_(memctx),
     subscripted_col_where_ops_(memctx),
@@ -86,7 +87,7 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr
   op_counters.resize(num_columns());
   ColumnOpCounter partition_key_counter;
   WhereExprState where_state(&where_ops_, &key_where_ops_, &subscripted_col_where_ops_,
-      &partition_key_ops_, &op_counters, &partition_key_counter, write_only_);
+      &partition_key_ops_, &op_counters, &partition_key_counter, write_only_, &func_ops_);
 
   SemState sem_state(sem_context, YQLType::Create(BOOL), InternalType::kBoolValue);
   sem_state.SetWhereState(&where_state);
@@ -326,6 +327,44 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
         ColumnOp col_op(col_desc, value, expr->yql_op());
         ops_->push_back(col_op);
       }
+      break;
+    }
+
+    default:
+      return sem_context->Error(expr->loc(), "Operator is not supported in where clause",
+                                ErrorCode::CQL_STATEMENT_INVALID);
+  }
+
+  // Check that if where clause is present, it must follow CQL rules.
+  return Status::OK();
+}
+
+CHECKED_STATUS WhereExprState::AnalyzeColumnFunction(SemContext *sem_context,
+                                         const PTRelationExpr *expr,
+                                         PTExpr::SharedPtr value,
+                                         PTBcall::SharedPtr call) {
+  switch(call->bf_opcode()) {
+    case bfyql::BFOpcode::OPCODE_ttl_40:
+    case bfyql::BFOpcode::OPCODE_writetime_41: {
+      const PTRef *ref = static_cast<const PTRef *>(call.get()->args().front().get());
+      if (ref->desc()->is_primary()) {
+        return sem_context->Error(expr->loc(), "builtin cannot be called on primary key", ErrorCode::INVALID_ARGUMENTS);
+      }
+      break;
+    }
+    default:
+      return sem_context->Error(call->loc(), "Unsupported builtin function",
+                              ErrorCode::CQL_STATEMENT_INVALID);
+  }
+
+  switch (expr->yql_op()) {
+    case YQL_OP_LESS_THAN:
+    case YQL_OP_LESS_THAN_EQUAL:
+    case YQL_OP_EQUAL:
+    case YQL_OP_GREATER_THAN_EQUAL:
+    case YQL_OP_GREATER_THAN: {
+      FuncOp func_op(value, call, expr->yql_op());
+      func_ops_->push_back(func_op);
       break;
     }
 

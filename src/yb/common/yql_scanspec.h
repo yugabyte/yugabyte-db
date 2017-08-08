@@ -55,7 +55,7 @@ class YQLScanSpec {
 
   // Evaluate the WHERE condition for the given row to decide if it is selected or not.
   // virtual to make the class polymorphic.
-  virtual CHECKED_STATUS Match(const YQLValueMap& row, bool* match) const;
+  virtual CHECKED_STATUS Match(const YQLTableRow& table_row, bool* match) const;
 
  private:
   const YQLConditionPB* condition_;

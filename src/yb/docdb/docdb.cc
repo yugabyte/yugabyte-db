@@ -6,6 +6,8 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <yb/util/date_time.h>
+#include <yb/server/hybrid_clock.h>
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/redis_protocol.pb.h"
@@ -768,6 +770,19 @@ yb::Status BuildSubDocument(
           return STATUS_SUBSTITUTE(Corruption,
               "Expected primitive value type, got $0", ValueTypeToStr(doc_value.value_type()));
         }
+
+        DCHECK_GE(high_ts, write_time.hybrid_time());
+        if (ttl.Equals(Value::kMaxTtl)) {
+          doc_value.mutable_primitive_value()->SetTtl(-1);
+        } else {
+          int64_t time_since_write_seconds = (server::HybridClock::GetPhysicalValueMicros(high_ts) -
+                                              server::HybridClock::GetPhysicalValueMicros(write_time.hybrid_time()))/
+                                              MonoTime::kMicrosecondsPerSecond;
+          int64_t ttl_seconds = std::max(static_cast<int64_t>(0),
+                                         ttl.ToMilliseconds()/MonoTime::kMillisecondsPerSecond - time_since_write_seconds);
+          doc_value.mutable_primitive_value()->SetTtl(ttl_seconds);
+        }
+        doc_value.mutable_primitive_value()->SetWritetime(write_time.hybrid_time().ToUint64());
         *subdocument = SubDocument(doc_value.primitive_value());
         SeekForward(found_key.AdvanceOutOfSubDoc(), iter);
         return Status::OK();
