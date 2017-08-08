@@ -35,6 +35,7 @@ DEFINE_string(test_leave_files, "on_failure",
               " Valid values are 'always', 'on_failure', or 'never'");
 
 DEFINE_int32(test_random_seed, 0, "Random seed to use for randomized tests");
+DECLARE_int64(memory_limit_hard_bytes);
 DECLARE_bool(enable_tracing);
 
 using std::string;
@@ -84,6 +85,7 @@ void YBTest::SetUp() {
   InitSpinLockContentionProfiling();
   InitGoogleLoggingSafeBasic("yb_test");
   FLAGS_enable_tracing = true;
+  FLAGS_memory_limit_hard_bytes = 256 * 1024 * 1024;
 }
 
 string YBTest::GetTestPath(const string& relative_path) {

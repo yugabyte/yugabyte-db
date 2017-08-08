@@ -215,15 +215,15 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
   int64_t block_cache_size_bytes = FLAGS_db_block_cache_size_bytes;
   // Auto-compute size of block cache if asked to.
   if (FLAGS_db_block_cache_size_bytes == kDbCacheSizeUsePercentage) {
-    int64_t total_ram;
+    int64_t total_ram_avail = MemTracker::GetRootTracker()->limit();
     // Check some bounds.
     CHECK(FLAGS_db_block_cache_size_percentage > 0 && FLAGS_db_block_cache_size_percentage <= 100)
         << Substitute(
                "Flag tablet_block_cache_size_percentage must be between 0 and 100. Current value: "
                "$0",
                FLAGS_db_block_cache_size_percentage);
-    CHECK_OK(Env::Default()->GetTotalRAMBytes(&total_ram));
-    block_cache_size_bytes = total_ram * FLAGS_db_block_cache_size_percentage / 100;
+
+    block_cache_size_bytes = total_ram_avail * FLAGS_db_block_cache_size_percentage / 100;
   }
   if (FLAGS_db_block_cache_size_bytes != kDbCacheSizeCacheDisabled) {
     block_cache_ = rocksdb::NewLRUCache(block_cache_size_bytes);
