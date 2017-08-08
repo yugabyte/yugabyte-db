@@ -49,7 +49,10 @@ public class UserTaskDetails {
     CleanupCloud,
 
     // Creating Table
-    CreatingTable
+    CreatingTable,
+
+    // Importing Data
+    ImportingData
   }
 
   public List<SubTaskDetails> taskDetails;

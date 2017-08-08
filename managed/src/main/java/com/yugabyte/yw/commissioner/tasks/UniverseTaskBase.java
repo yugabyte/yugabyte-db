@@ -6,6 +6,9 @@ import java.util.Collection;
 import java.util.Map;
 
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.BulkImport;
+import com.yugabyte.yw.forms.BulkImportParams;
+import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -366,6 +369,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.newGflags = newGflags;
     UpdateAndPersistGFlags task = new UpdateAndPersistGFlags();
     task.initialize(params);
+    taskList.addTask(task);
+    taskListQueue.add(taskList);
+    return taskList;
+  }
+
+  /**
+   * Creates a task to bulk import data from an s3 bucket into a given table.
+   *
+   * @param taskParams Info about the table and universe of the table to import into.
+   */
+  public TaskList createBulkImportTask(BulkImportParams taskParams) {
+    TaskList taskList = new TaskList("BulkImport", executor);
+    BulkImport task = new BulkImport();
+    task.initialize(taskParams);
     taskList.addTask(task);
     taskListQueue.add(taskList);
     return taskList;

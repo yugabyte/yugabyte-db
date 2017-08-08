@@ -4,7 +4,6 @@ package com.yugabyte.yw.common;
 
 import java.util.HashSet;
 import java.util.LinkedList;
-import java.util.UUID;
 
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.Provider;
@@ -20,22 +19,33 @@ import org.yb.ColumnSchema.SortOrder;
 
 public class ApiUtils {
   public static Universe.UniverseUpdater mockUniverseUpdater() {
-    return mockUniverseUpdater("host");
+    return mockUniverseUpdater("host", null);
   }
 
-  public static Universe.UniverseUpdater mockUniverseUpdater(final String nodePrefix) {
+  public static Universe.UniverseUpdater mockUniverseUpdater(Common.CloudType cloudType) {
+    return mockUniverseUpdater("host", cloudType);
+  }
+
+  public static Universe.UniverseUpdater mockUniverseUpdater(String nodePrefix) {
+    return mockUniverseUpdater(nodePrefix, null);
+  }
+
+  public static Universe.UniverseUpdater mockUniverseUpdater(final String nodePrefix,
+                                                             final Common.CloudType cloudType) {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        universeDetails.cloud = cloudType;
         universeDetails.userIntent = new UserIntent();
+        universeDetails.userIntent.providerType = cloudType;
         universeDetails.userIntent.accessKeyCode = "yugabyte-default";
         // Add a desired number of nodes.
         universeDetails.userIntent.numNodes = universeDetails.userIntent.replicationFactor;
         universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
         for (int idx = 1; idx <= universeDetails.userIntent.numNodes; idx++) {
           NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Running,
-	                                       idx <= universeDetails.userIntent.replicationFactor);
+              idx <= universeDetails.userIntent.replicationFactor);
           universeDetails.nodeDetailsSet.add(node);
         }
         universeDetails.nodePrefix = nodePrefix;
@@ -45,11 +55,22 @@ public class ApiUtils {
   }
 
   public static Universe.UniverseUpdater mockUniverseUpdater(UserIntent userIntent) {
-    return mockUniverseUpdater(userIntent, false /* setMasters */);
+    return mockUniverseUpdater(userIntent, "host", false /* setMasters */);
+  }
+
+  public static Universe.UniverseUpdater mockUniverseUpdater(UserIntent userIntent,
+                                                             boolean setMasters) {
+    return mockUniverseUpdater(userIntent, "host", setMasters);
+  }
+
+  public static Universe.UniverseUpdater mockUniverseUpdater(UserIntent userIntent,
+                                                             String nodePrefix) {
+    return mockUniverseUpdater(userIntent, nodePrefix, false /* setMasters */);
   }
 
   public static Universe.UniverseUpdater mockUniverseUpdater(final UserIntent userIntent,
-      final boolean setMasters) {
+                                                             final String nodePrefix,
+                                                             final boolean setMasters) {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
@@ -57,14 +78,14 @@ public class ApiUtils {
         universeDetails = new UniverseDefinitionTaskParams();
         universeDetails.userIntent = userIntent;
         universeDetails.placementInfo = PlacementInfoUtil.getPlacementInfo(userIntent);
-        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
+        universeDetails.nodeDetailsSet = new HashSet<>();
         for (int idx = 1; idx <= universeDetails.userIntent.numNodes; idx++) {
           NodeDetails node =
               getDummyNodeDetails(idx, NodeDetails.NodeState.Running,
                   setMasters && idx <= universeDetails.userIntent.replicationFactor);
           universeDetails.nodeDetailsSet.add(node);
         }
-        universeDetails.nodePrefix = "host";
+        universeDetails.nodePrefix = nodePrefix;
         universe.setUniverseDetails(universeDetails);
       }
     };

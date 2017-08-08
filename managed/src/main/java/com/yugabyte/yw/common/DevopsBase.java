@@ -24,39 +24,47 @@ public abstract class DevopsBase {
   // Command that we would need to execute eg: instance, network, access.
   protected abstract String getCommandType();
 
+  protected String getBaseCommand() {
+    return YBCLOUD_SCRIPT;
+  }
+
   @Inject
   ShellProcessHandler shellProcessHandler;
 
-  protected  JsonNode execCommand(Common.CloudType cloudType, String command, List<String> commandArgs) {
-    ShellProcessHandler.ShellResponse response = execCommand(new UUID(0L, 0L), command, commandArgs,
-                                                             cloudType, Collections.emptyList());
+  protected JsonNode execCommand(Common.CloudType cloudType, String command,
+                                 List<String> commandArgs) {
+    ShellProcessHandler.ShellResponse response = execCommand(new UUID(0L, 0L), command,
+        commandArgs, cloudType, Collections.emptyList());
     // WARNING: Does not pass environment variables from config. 
     return parseShellResponse(response, command);
   }
 
   protected JsonNode execCommand(UUID regionUUID, String command, List<String> commandArgs) {
     ShellProcessHandler.ShellResponse response = execCommand(regionUUID, command, commandArgs,
-                                                             null, Collections.emptyList());
+        null, Collections.emptyList());
     return parseShellResponse(response, command);
   }
 
-  protected JsonNode parseShellResponse(ShellProcessHandler.ShellResponse response, String command) {
+  protected JsonNode parseShellResponse(ShellProcessHandler.ShellResponse response,
+                                        String command) {
     if (response.code == 0) {
       return Json.parse(response.message);
     } else {
       LOG.error(response.message);
-      return ApiResponse.errorJSON("YBCloud command " + getCommandType() + " (" + command + ") failed to execute.");
+      return ApiResponse.errorJSON("YBCloud command " + getCommandType() + " (" + command +
+          ") failed to execute.");
     }
   }
+
   protected ShellProcessHandler.ShellResponse execCommand(UUID regionUUID,
                                                           String command,
                                                           List<String> commandArgs,
                                                           Common.CloudType cloudType,
                                                           List<String> cloudArgs) {
-    Region region = Region.get(regionUUID);
     List<String> commandList = new ArrayList<>();
     commandList.add(YBCLOUD_SCRIPT);
     Map<String, String> extraVars = new HashMap<>();
+    Region region = Region.get(regionUUID);
     if (region != null) {
       commandList.add(region.provider.code);
       commandList.add("--region");
@@ -65,7 +73,8 @@ public abstract class DevopsBase {
     } else if (cloudType != null) {
       commandList.add(cloudType.toString());
     } else {
-      throw new RuntimeException("Invalid args provided for execCommand: RegionUUID or CloudType required.");
+      throw new RuntimeException("Invalid args provided for execCommand: RegionUUID or " +
+          "CloudType required.");
     }
 
     commandList.addAll(cloudArgs);
@@ -81,7 +90,6 @@ public abstract class DevopsBase {
                                                           String command,
                                                           List<String> commandArgs,
                                                           List<String> cloudArgs) {
-
     return execCommand(regionUUID, command, commandArgs, null, cloudArgs);
   }
 

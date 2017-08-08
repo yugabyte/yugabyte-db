@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.commissioner.Common.CloudType.aws;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -34,6 +35,8 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
@@ -74,6 +77,15 @@ public class TablesControllerTest extends WithApplication {
   private GetTableSchemaResponse mockSchemaResponse;
   private Commissioner mockCommissioner;
 
+  private Schema getFakeSchema() {
+    List<ColumnSchema> columnSchemas = new LinkedList<>();
+    columnSchemas.add(new ColumnSchema.ColumnSchemaBuilder("mock_column", Type.INT32)
+        .id(1)
+        .hashKey(true)
+        .build());
+    return new Schema(columnSchemas);
+  }
+
   @Override
   protected Application provideApplication() {
     mockCommissioner = mock(Commissioner.class);
@@ -100,21 +112,24 @@ public class TablesControllerTest extends WithApplication {
     tableNames.add("Table1");
     tableNames.add("Table2");
     TableInfo ti1 = TableInfo.newBuilder()
-                             .setName("Table1").setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
-                             .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString()))
-                             .setTableType(TableType.REDIS_TABLE_TYPE)
-                             .build();
+        .setName("Table1")
+        .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
+        .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString()))
+        .setTableType(TableType.REDIS_TABLE_TYPE)
+        .build();
     TableInfo ti2 = TableInfo.newBuilder()
-                             .setName("Table2").setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
-                             .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString()))
-                             .setTableType(TableType.YQL_TABLE_TYPE)
-                             .build();
+        .setName("Table2")
+        .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
+        .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString()))
+        .setTableType(TableType.YQL_TABLE_TYPE)
+        .build();
     // Create System type table, this will not be returned in response
     TableInfo ti3 = TableInfo.newBuilder()
-      .setName("Table3").setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("system"))
-      .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString()))
-      .setTableType(TableType.YQL_TABLE_TYPE)
-      .build();
+        .setName("Table3")
+        .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("system"))
+        .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString()))
+        .setTableType(TableType.YQL_TABLE_TYPE)
+        .build();
     tableInfoList.add(ti1);
     tableInfoList.add(ti2);
     tableInfoList.add(ti3);
@@ -289,13 +304,8 @@ public class TablesControllerTest extends WithApplication {
     when(mockClient.getTableSchemaByUUID(any(String.class))).thenReturn(mockSchemaResponse);
 
     // Creating a fake table
+    Schema schema = getFakeSchema();
     UUID tableUUID = UUID.randomUUID();
-    List<ColumnSchema> columnSchemas = new LinkedList<>();
-    columnSchemas.add(new ColumnSchema.ColumnSchemaBuilder("mock_column", Type.INT32)
-        .id(1)
-        .hashKey(true)
-        .build());
-    Schema schema = new Schema(columnSchemas);
     when(mockSchemaResponse.getSchema()).thenReturn(schema);
     when(mockSchemaResponse.getTableName()).thenReturn("mock_table");
     when(mockSchemaResponse.getNamespace()).thenReturn("mock_ks");
@@ -372,5 +382,58 @@ public class TablesControllerTest extends WithApplication {
 
     // Check all
     assertTrue(resultTypes.containsAll(types));
+  }
+
+  @Test
+  public void testBulkImportWithValidParams() throws Exception {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskType.class),
+        Matchers.any(BulkImportParams.class))).thenReturn(fakeTaskUUID);
+
+    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
+    String authToken = customer.createAuthToken();
+    Universe universe = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
+    universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(aws));
+    customer.addUniverseUUID(universe.universeUUID);
+    customer.save();
+    ModelFactory.awsProvider(customer);
+
+    String method = "PUT";
+    String url = "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID +
+        "/tables/" + UUID.randomUUID() + "/bulk_import";
+    ObjectNode topJson = Json.newObject();
+    topJson.put("s3Bucket", "s3://foo.bar.com/bulkload");
+    topJson.put("keyspace", "mock_ks");
+    topJson.put("tableName", "mock_table");
+
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, topJson);
+    assertEquals(OK, result.status());
+  }
+
+  @Test
+  public void testBulkImportWithInvalidParams() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskType.class),
+        Matchers.any(BulkImportParams.class))).thenReturn(fakeTaskUUID);
+
+    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
+    String authToken = customer.createAuthToken();
+    Universe universe = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
+    universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(aws));
+    customer.addUniverseUUID(universe.universeUUID);
+    customer.save();
+    ModelFactory.awsProvider(customer);
+
+    String method = "PUT";
+    String url = "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID +
+        "/tables/" + UUID.randomUUID() + "/bulk_import";
+    ObjectNode topJson = Json.newObject();
+    topJson.put("s3Bucket", "foobar");
+    topJson.put("keyspace", "mock_ks");
+    topJson.put("tableName", "mock_table");
+
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, topJson);
+    assertEquals(BAD_REQUEST, result.status());
+    assertThat(contentAsString(result), containsString("Invalid S3 Bucket provided: foobar"));
   }
 }
