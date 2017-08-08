@@ -319,20 +319,25 @@ public class PlacementInfoUtil {
     LOG.info("Placement info:{}.", taskParams.placementInfo);
   }
 
-  private static void updatePlacementAZCounts(Collection<NodeDetails> nodes,
+  private static void updatePlacementInfo(Collection<NodeDetails> nodes,
                                               PlacementInfo placementInfo) {
     Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodes);
-    for (Map.Entry<UUID, Integer> azUuidToNumNode : azUuidToNumNodes.entrySet()) {
-      for (PlacementCloud cloud : placementInfo.cloudList) {
-        for (PlacementRegion region : cloud.regionList) {
-          for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
-            PlacementAZ az =  region.azList.get(azIdx);
-            if (azUuidToNumNode.getKey().equals(az.uuid)) {
-              LOG.info("Changing AZ count from {} to {}.", az.numNodesInAZ,
-                       azUuidToNumNode.getValue());
-              az.numNodesInAZ = azUuidToNumNode.getValue();
-            }
+    for (int cIdx = 0; cIdx < placementInfo.cloudList.size(); cIdx++) {
+      PlacementCloud cloud = placementInfo.cloudList.get(cIdx);
+      for (int rIdx = 0; rIdx < cloud.regionList.size(); rIdx++) {
+        PlacementRegion region = cloud.regionList.get(rIdx);
+        for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
+          PlacementAZ az = region.azList.get(azIdx);
+          if (azUuidToNumNodes.get(az.uuid) != null) {
+            az.numNodesInAZ = azUuidToNumNodes.get(az.uuid);
+          } else {
+            region.azList.remove(az);
+            azIdx --;
           }
+        }
+        if (region.azList.isEmpty()) {
+          cloud.regionList.remove(region);
+          rIdx --;
         }
       }
     }
@@ -812,7 +817,7 @@ public class PlacementInfoUtil {
         // Case where userIntent numNodes has to be favored - as it is different from the
         // sum of all per AZ node counts).
         configureNodesUsingUserIntent(taskParams, universe != null);
-        updatePlacementAZCounts(taskParams.nodeDetailsSet, taskParams.placementInfo);
+        updatePlacementInfo(taskParams.nodeDetailsSet, taskParams.placementInfo);
         break;
     }
 
