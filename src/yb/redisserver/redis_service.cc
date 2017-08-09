@@ -60,6 +60,21 @@ DEFINE_REDIS_histogram_EX(set_internal,
                           "yb.redisserver.RedisServerService.Set RPC Time",
                           "in yb.client.Set");
 
+#define DEFINE_REDIS_SESSION_GAUGE(type, state) \
+  METRIC_DEFINE_gauge_uint64( \
+      server, \
+      BOOST_PP_CAT(BOOST_PP_CAT(BOOST_PP_CAT(state, _), type), _sessions), \
+      "Number of " BOOST_PP_STRINGIZE(state) " " BOOST_PP_STRINGIZE(type) " sessions", \
+      yb::MetricUnit::kUnits, \
+      "Number of " BOOST_PP_STRINGIZE(type) " sessions " BOOST_PP_STRINGIZE(type) \
+      " by Redis service.") \
+      /**/
+
+DEFINE_REDIS_SESSION_GAUGE( read, allocated);
+DEFINE_REDIS_SESSION_GAUGE( read, available);
+DEFINE_REDIS_SESSION_GAUGE(write, allocated);
+DEFINE_REDIS_SESSION_GAUGE(write, available);
+
 #if defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
 constexpr int32_t kDefaultRedisServiceTimeoutMs = 600000;
 #else
@@ -240,9 +255,15 @@ class Operation {
 
 class SessionPool {
  public:
-  void Init(const std::shared_ptr<client::YBClient>& client, bool read) {
+  void Init(const std::shared_ptr<client::YBClient>& client,
+            const scoped_refptr<MetricEntity>& metric_entity,
+            bool read) {
     client_ = client;
     read_ = read;
+    auto* proto = read ? &METRIC_allocated_read_sessions : &METRIC_allocated_write_sessions;
+    allocated_sessions_metric_ = proto->Instantiate(metric_entity, 0);
+    proto = read ? &METRIC_available_read_sessions : &METRIC_available_write_sessions;
+    available_sessions_metric_ = proto->Instantiate(metric_entity, 0);
   }
 
   std::shared_ptr<client::YBSession> Take() {
@@ -253,12 +274,15 @@ class SessionPool {
       session->SetTimeoutMillis(FLAGS_redis_service_yb_client_timeout_millis);
       CHECK_OK(session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
       sessions_.push_back(session);
+      allocated_sessions_metric_->IncrementBy(1);
       return session;
     }
+    available_sessions_metric_->DecrementBy(1);
     return result->shared_from_this();
   }
 
   void Release(const std::shared_ptr<client::YBSession>& session) {
+    available_sessions_metric_->IncrementBy(1);
     queue_.push(session.get());
   }
  private:
@@ -267,6 +291,8 @@ class SessionPool {
   std::mutex mutex_;
   std::vector<std::shared_ptr<client::YBSession>> sessions_;
   boost::lockfree::queue<client::YBSession*> queue_{30};
+  scoped_refptr<AtomicGauge<uint64_t>> allocated_sessions_metric_;
+  scoped_refptr<AtomicGauge<uint64_t>> available_sessions_metric_;
 };
 
 class BatchContext;
@@ -347,6 +373,8 @@ class Block : public std::enable_shared_from_this<Block> {
   }
 
   void Processed() {
+    session_pools_[ops_.front()->read()].Release(session_);
+    session_.reset();
     if (next_) {
       next_->Launch(session_pools_);
     }
@@ -740,8 +768,8 @@ Status RedisServiceImpl::Impl::SetUpYBClient() {
     const YBTableName table_name(kRedisKeyspaceName, kRedisTableName);
     RETURN_NOT_OK(client_->OpenTable(table_name, &table_));
 
-    session_pools_[0].Init(client_, false);
-    session_pools_[1].Init(client_, true);
+    session_pools_[0].Init(client_, server_->metric_entity(), false);
+    session_pools_[1].Init(client_, server_->metric_entity(), true);
 
     yb_client_initialized_.store(true, std::memory_order_release);
   }

@@ -156,6 +156,23 @@ class TestRedisService : public RedisTableTestBase {
   Status SendCommandAndGetResponse(
       const string& cmd, int expected_resp_length, int timeout_in_millis = kDefaultTimeoutMs);
 
+  size_t CountSessions(const std::string& prefix) {
+    size_t result = 0;
+
+    auto map = server_->metric_entity()->UnsafeMetricsMapForTests();
+    for (const auto& p : map) {
+      if (p.first->name() == prefix + "_read_sessions" ||
+          p.first->name() == prefix + "_write_sessions") {
+        auto gauge = down_cast<AtomicGauge<uint64_t>*>(p.second.get());
+        result += gauge->value();
+      }
+    }
+
+    return result;
+  }
+
+  bool expected_no_sessions_ = false;
+
  private:
   RedisClient test_client_;
   std::atomic_int num_callbacks_called_;
@@ -222,6 +239,14 @@ void TestRedisService::RestartClient() {
 }
 
 void TestRedisService::TearDown() {
+  size_t allocated_sessions = CountSessions("allocated");
+  if (!expected_no_sessions_) {
+    ASSERT_GT(allocated_sessions, 0); // Check that metric is sane.
+  } else {
+    ASSERT_EQ(0, allocated_sessions);
+  }
+  ASSERT_EQ(allocated_sessions, CountSessions("available"));
+
   test_client_.disconnect();
   StopClient();
   StopServer();
@@ -579,10 +604,12 @@ TEST_F(TestRedisService, BatchedCommandMultiPartial) {
 }
 
 TEST_F(TestRedisService, IncompleteCommandInline) {
+  expected_no_sessions_ = true;
   SendCommandAndExpectTimeout("TEST");
 }
 
 TEST_F(TestRedisService, MalformedCommandsFollowedByAGoodOne) {
+  expected_no_sessions_ = true;
   ASSERT_FALSE(SendCommandAndGetResponse("*3\r\n.1\r\n", 1).ok());
   RestartClient();
   ASSERT_FALSE(SendCommandAndGetResponse("*0\r\n.2\r\n", 1).ok());
@@ -593,10 +620,12 @@ TEST_F(TestRedisService, MalformedCommandsFollowedByAGoodOne) {
 }
 
 TEST_F(TestRedisService, IncompleteCommandMulti) {
+  expected_no_sessions_ = true;
   SendCommandAndExpectTimeout("*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTE");
 }
 
 TEST_F(TestRedisService, Echo) {
+  expected_no_sessions_ = true;
   SendCommandAndExpectResponse(__LINE__, "*2\r\n$4\r\necho\r\n$3\r\nfoo\r\n", "$3\r\nfoo\r\n");
   SendCommandAndExpectResponse(
       __LINE__, "*2\r\n$4\r\necho\r\n$8\r\nfoo bar \r\n", "$8\r\nfoo bar \r\n");

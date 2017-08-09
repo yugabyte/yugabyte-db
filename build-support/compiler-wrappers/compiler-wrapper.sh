@@ -355,7 +355,7 @@ exit_handler() {
                 echo "Output file (from -o): $output_file"
               fi
 
-            ) | python -c "import re,sys;[sys.stdout.write('| ' + re.sub('(..\/)+src', "\
+            ) | python -c "import re,sys;[sys.stdout.write('| ' + re.sub('(\.\.\/)+src', "\
 "'$YB_SRC', line)) for line in sys.stdin]"
             unset IFS
             echo "\-------------------------------------------------------------------------------"
