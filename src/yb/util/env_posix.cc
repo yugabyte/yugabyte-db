@@ -1039,7 +1039,7 @@ class PosixEnv : public Env {
                            const string& fname,
                            gscoped_ptr<RWFile>* result) override {
     TRACE_EVENT1("io", "PosixEnv::NewRWFile", "path", fname);
-    int fd;
+    int fd = -1;
     RETURN_NOT_OK(DoOpen(fname, opts.mode, &fd));
     result->reset(new PosixRWFile(fname, fd, opts.sync_on_close));
     return Status::OK();
