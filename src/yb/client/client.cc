@@ -49,7 +49,6 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
@@ -510,7 +509,6 @@ CHECKED_STATUS YBClient::DeleteUDType(const std::string &namespace_name,
   return Status::OK();
 }
 
-
 Status YBClient::TabletServerCount(int *tserver_count) {
   ListTabletServersRequestPB req;
   ListTabletServersResponsePB resp;
@@ -583,7 +581,6 @@ Status YBClient::GetTablets(const YBTableName& table_name,
     req.set_max_returned_locations(max_tablets);
   }
 
-
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(default_admin_operation_timeout());
   Status s =
@@ -637,7 +634,8 @@ Status YBClient::GetTabletLocation(const TabletId& tablet_id,
 Status YBClient::GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
                             vector<string>* tablet_uuids,
-                            vector<string>* ranges) {
+                            vector<string>* ranges,
+                            std::vector<master::TabletLocationsPB>* locations) {
   RepeatedPtrField<TabletLocationsPB> tablets;
   RETURN_NOT_OK(GetTablets(table_name, max_tablets, &tablets));
   tablet_uuids->reserve(tablets.size());
@@ -645,6 +643,9 @@ Status YBClient::GetTablets(const YBTableName& table_name,
     ranges->reserve(tablets.size());
   }
   for (const TabletLocationsPB& tablet : tablets) {
+    if (locations) {
+      locations->push_back(tablet);
+    }
     tablet_uuids->push_back(tablet.tablet_id());
     if (ranges != nullptr) {
       const PartitionPB& partition = tablet.partition();
@@ -956,8 +957,18 @@ YBTableCreator& YBTableCreator::schema(const YBSchema* schema) {
   return *this;
 }
 
-YBTableCreator& YBTableCreator::set_use_multi_column_hash_schema() {
-  data_->partition_schema_.set_use_multi_column_hash_schema(true);
+YBTableCreator& YBTableCreator::set_hash_schema(YBHashSchema hash_schema) {
+  switch (hash_schema) {
+    case YBHashSchema::kDefault:
+      data_->partition_schema_.set_hash_schema(PartitionSchemaPB::KUDU_HASH_SCHEMA);
+      break;
+    case YBHashSchema::kMultiColumnHash:
+      data_->partition_schema_.set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
+      break;
+    case YBHashSchema::kRedisHash:
+      data_->partition_schema_.set_hash_schema(PartitionSchemaPB::REDIS_HASH_SCHEMA);
+      break;
+  }
   return *this;
 }
 
@@ -1066,10 +1077,10 @@ Status YBTableCreator::Create() {
   RETURN_NOT_OK_PREPEND(SchemaToPB(internal::GetSchema(*data_->schema_), req.mutable_schema()),
                         "Invalid schema");
 
-
   // Check if partition schema is to multi column hash value.
   int32_t num_hash_keys = data_->schema_->num_hash_key_columns();
-  if (num_hash_keys > 0 || data_->partition_schema_.use_multi_column_hash_schema()) {
+  if (num_hash_keys > 0 ||
+      data_->partition_schema_.hash_schema() == PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA) {
     if (!data_->split_rows_.empty()) {
       return STATUS(InvalidArgument,
                     "Split rows cannot be used with schema that contains hash key columns");
@@ -1087,8 +1098,12 @@ Status YBTableCreator::Create() {
     }
     req.set_num_tablets(data_->num_tablets_);
 
-    // Setup multi column hash schema option.
-    set_use_multi_column_hash_schema();
+    if (data_->table_type_ == TableType::REDIS_TABLE_TYPE) {
+      set_hash_schema(YBHashSchema::kRedisHash);
+    } else {
+      // Setup multi column hash schema option.
+      set_hash_schema(YBHashSchema::kMultiColumnHash);
+    }
 
   } else {
     RowOperationsPBEncoder encoder(req.mutable_split_rows());

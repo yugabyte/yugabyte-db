@@ -326,7 +326,14 @@ message PartitionSchemaPB {
 
   repeated HashBucketSchemaPB hash_bucket_schemas = 1;
   optional RangeSchemaPB range_schema = 2;
-  optional bool use_multi_column_hash_schema = 3 [default = false];
+
+  enum HashSchema {
+    KUDU_HASH_SCHEMA = 0;
+    MULTI_COLUMN_HASH_SCHEMA = 1;
+    REDIS_HASH_SCHEMA = 2;
+  }
+
+  optional HashSchema hash_schema = 3 [default = KUDU_HASH_SCHEMA];
 }
 
 // The serialized format of a YB table partition.

@@ -21,11 +21,13 @@
 #include <vector>
 
 #include "yb/common/common.pb.h"
+#include "yb/common/crc16.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
 #include "yb/common/row.h"
 #include "yb/common/scan_predicate.h"
 #include "yb/common/schema.h"
+#include "yb/redisserver/redis_constants.h"
 #include "yb/util/hash_util.h"
 #include "yb/util/test_util.h"
 
@@ -45,6 +47,11 @@ void AddHashBucketComponent(PartitionSchemaPB* partition_schema_pb,
   }
   hash_bucket_schema->set_num_buckets(num_buckets);
   hash_bucket_schema->set_seed(seed);
+}
+
+string EncodeRedisKey(const Slice& key) {
+  return PartitionSchema::EncodeMultiColumnHashValue(
+      crc16(key.data(), key.size()) % kRedisClusterSlots);
 }
 
 void SetRangePartitionComponent(PartitionSchemaPB* partition_schema_pb,
@@ -148,6 +155,67 @@ TEST(PartitionTest, TestPartitionKeyEncoding) {
     EXPECT_EQ(debug, partition_schema.RowDebugString(row));
     EXPECT_EQ(debug, partition_schema.PartitionKeyDebugString(key, schema));
   }
+}
+
+TEST(PartitionTest, TestRedisEncoding) {
+  Schema schema({ ColumnSchema("key", STRING, false, true) }, { ColumnId(0) }, 1);
+
+  PartitionSchema partition_schema;
+  ASSERT_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
+
+  YBPartialRow split1(&schema);
+  ASSERT_OK(split1.SetStringCopy("key", "{user1000}.following"));
+  string pk1;
+  ASSERT_OK(partition_schema.EncodeRedisKey(split1, &pk1));
+  YBPartialRow split2(&schema);
+  ASSERT_OK(split2.SetStringCopy("key", "{user1000}.followers"));
+  string pk2;
+  ASSERT_OK(partition_schema.EncodeRedisKey(split2, &pk2));
+  ASSERT_EQ(pk1, pk2);
+  pk2 = EncodeRedisKey(Slice("user1000"));
+  ASSERT_EQ(pk1, pk2);
+
+  ASSERT_OK(split1.SetStringCopy("key", "foo{}{bar}"));
+  ASSERT_OK(partition_schema.EncodeRedisKey(split1, &pk1));
+  pk2 = EncodeRedisKey(Slice("foo{}{bar}"));
+  ASSERT_EQ(pk1, pk2);
+
+  ASSERT_OK(split1.SetStringCopy("key", "foo{{bar}}zap"));
+  ASSERT_OK(partition_schema.EncodeRedisKey(split1, &pk1));
+  pk2 = EncodeRedisKey(Slice("{bar"));
+  ASSERT_EQ(pk1, pk2);
+
+  ASSERT_OK(split1.SetStringCopy("key", "foo{bar}{zap}"));
+  ASSERT_OK(partition_schema.EncodeRedisKey(split1, &pk1));
+  pk2 = EncodeRedisKey(Slice("bar"));
+  ASSERT_EQ(pk1, pk2);
+
+  ASSERT_OK(split1.SetStringCopy("key", "{}foobar"));
+  ASSERT_OK(partition_schema.EncodeRedisKey(split1, &pk1));
+  pk2 = EncodeRedisKey(Slice("{}foobar"));
+  ASSERT_EQ(pk1, pk2);
+
+  ASSERT_OK(split1.SetStringCopy("key", "foobar{}"));
+  ASSERT_OK(partition_schema.EncodeRedisKey(split1, &pk1));
+  pk2 = EncodeRedisKey(Slice("foobar{}"));
+  ASSERT_EQ(pk1, pk2);
+
+  ASSERT_OK(split1.SetStringCopy("key", "foobar{z}"));
+  ASSERT_OK(partition_schema.EncodeRedisKey(split1, &pk1));
+  pk2 = EncodeRedisKey(Slice("z"));
+  ASSERT_EQ(pk1, pk2);
+
+  ASSERT_OK(split1.SetStringCopy("key", "foobar"));
+  ASSERT_OK(partition_schema.EncodeRedisKey(split1, &pk1));
+  pk2 = EncodeRedisKey(Slice("foobar"));
+  ASSERT_EQ(pk1, pk2);
+
+  ASSERT_OK(split1.SetStringCopy("key", "a"));
+  ASSERT_OK(partition_schema.EncodeRedisKey(split1, &pk1));
+
+  ASSERT_OK(split1.SetStringCopy("key", "{a}"));
+  ASSERT_OK(partition_schema.EncodeRedisKey(split1, &pk2));
+  ASSERT_EQ(pk1, pk2);
 }
 
 TEST(PartitionTest, TestCreateRangePartitions) {

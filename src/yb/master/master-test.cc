@@ -1400,7 +1400,7 @@ TEST_F(MasterTest, TestGetTableSchema) {
     ASSERT_TRUE(resp.partition_schema().has_range_schema());
     ASSERT_EQ(1, resp.partition_schema().range_schema().columns_size());
     ASSERT_EQ(Schema::first_column_id(), resp.partition_schema().range_schema().columns(0).id());
-    ASSERT_FALSE(resp.partition_schema().use_multi_column_hash_schema());
+    ASSERT_EQ(resp.partition_schema().hash_schema(), PartitionSchemaPB::KUDU_HASH_SCHEMA);
     // ReplicationInfoPB replication_info.
     ASSERT_TRUE(resp.has_replication_info());
     ASSERT_TRUE(resp.replication_info().has_live_replicas());

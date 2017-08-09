@@ -1,5 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
+#include "yb/common/partition.h"
 #include "yb/common/yql_scanspec.h"
 #include "yb/common/yql_storage_interface.h"
 #include "yb/common/yql_value.h"
@@ -12,7 +13,6 @@
 #include "yb/docdb/subdocument.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/common/partition.h"
 #include "yb/util/trace.h"
 
 DECLARE_bool(trace_docdb_calls);

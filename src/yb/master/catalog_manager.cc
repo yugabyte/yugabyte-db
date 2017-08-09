@@ -94,6 +94,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/redisserver/redis_constants.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
@@ -1200,42 +1201,53 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   vector<Partition> partitions;
 
   s = PartitionSchema::FromPB(req.partition_schema(), schema, &partition_schema);
-  if (partition_schema.use_multi_column_hash_schema()) {
-    // Use the given number of tablets to create partitions and ignore the other schema options in
-    // the request.
-    int32_t num_tablets = req.num_tablets();
-    LOG(INFO) << "num_tablets: " << num_tablets;
-    RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions));
-
-  } else {
-    // If the client did not set a partition schema in the create table request,
-    // the default partition schema (no hash bucket components and a range
-    // partitioned on the primary key columns) will be used.
-    if (!s.ok()) {
-      SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
-      return s;
+  switch (partition_schema.hash_schema()) {
+    case YBHashSchema::kMultiColumnHash: {
+      // Use the given number of tablets to create partitions and ignore the other schema options in
+      // the request.
+      int32_t num_tablets = req.num_tablets();
+      LOG(INFO) << "num_tablets: " << num_tablets;
+      RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions));
+      break;
     }
-
-    // Decode split rows.
-    vector<YBPartialRow> split_rows;
-
-    RowOperationsPBDecoder decoder(&req.split_rows(), &client_schema, &schema, nullptr);
-    vector<DecodedRowOperation> ops;
-    RETURN_NOT_OK(decoder.DecodeOperations(&ops));
-
-    for (const DecodedRowOperation& op : ops) {
-      if (op.type != RowOperationsPB::SPLIT_ROW) {
-        Status s = STATUS(InvalidArgument,
-                          "Split rows must be specified as RowOperationsPB::SPLIT_ROW");
-        SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
+    case YBHashSchema::kRedisHash: {
+      int32_t num_tablets = req.num_tablets();
+      LOG(INFO) << "Creating partitions for redis with num_tablets: " << num_tablets;
+      RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets,
+                                                      &partitions, kRedisClusterSlots));
+      break;
+    }
+    case YBHashSchema::kDefault: {
+      // If the client did not set a partition schema in the create table request,
+      // the default partition schema (no hash bucket components and a range
+      // partitioned on the primary key columns) will be used.
+      if (!s.ok()) {
+        SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
         return s;
       }
 
-      split_rows.push_back(*op.split_row);
-    }
+      // Decode split rows.
+      vector<YBPartialRow> split_rows;
 
-    // Create partitions based on specified partition schema and split rows.
-    RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
+      RowOperationsPBDecoder decoder(&req.split_rows(), &client_schema, &schema, nullptr);
+      vector<DecodedRowOperation> ops;
+      RETURN_NOT_OK(decoder.DecodeOperations(&ops));
+
+      for (const DecodedRowOperation& op : ops) {
+        if (op.type != RowOperationsPB::SPLIT_ROW) {
+          Status s = STATUS(InvalidArgument,
+                            "Split rows must be specified as RowOperationsPB::SPLIT_ROW");
+          SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
+          return s;
+        }
+
+        split_rows.push_back(*op.split_row);
+      }
+
+      // Create partitions based on specified partition schema and split rows.
+      RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
+      break;
+    }
   }
 
   // If they didn't specify a num_replicas, set it based on the universe, or else default.
@@ -2820,7 +2832,6 @@ Status CatalogManager::GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
   scoped_refptr<UDTypeInfo> tp;
   scoped_refptr<NamespaceInfo> ns;
 
-
   if (!req->has_type()) {
     s = STATUS(InvalidArgument, "Cannot get type, no type identifier given", req->DebugString());
     SetupError(resp->mutable_error(), MasterErrorPB::TYPE_NOT_FOUND, s);
@@ -3166,7 +3177,6 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
         "Remote bootstrap: Failure calling VerifyRemoteBootstrapSucceeded",
         nullptr);
   }
-
 
   LOG(INFO) << "Master completed remote bootstrap and is out of shell mode.";
 
@@ -5792,7 +5802,6 @@ const NamespaceName& NamespaceInfo::name() const {
 std::string NamespaceInfo::ToString() const {
   return Substitute("$0 [id=$1]", name(), namespace_id_);
 }
-
 
 ////////////////////////////////////////////////////////////
 // UDTypeInfo

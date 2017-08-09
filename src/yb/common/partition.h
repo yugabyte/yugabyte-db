@@ -37,6 +37,12 @@ class YBPartialRow;
 class PartitionSchemaPB;
 class TypeInfo;
 
+enum YBHashSchema {
+  kDefault = 1,
+  kMultiColumnHash = 2,
+  kRedisHash = 3
+};
+
 // A Partition describes the set of rows that a Tablet is responsible for
 // serving. Each tablet is assigned a single Partition.
 //
@@ -135,6 +141,11 @@ class PartitionSchema {
   // Serializes a partition schema into a protobuf message.
   void ToPB(PartitionSchemaPB* pb) const;
 
+  CHECKED_STATUS EncodeRedisKey(const YBPartialRow& row, std::string* buf) const WARN_UNUSED_RESULT;
+
+  CHECKED_STATUS EncodeRedisKey(const ConstContiguousRow& row,
+                                std::string* buf) const WARN_UNUSED_RESULT;
+
   // Appends the row's encoded partition key into the provided buffer.
   // On failure, the buffer may have data partially appended.
   CHECKED_STATUS EncodeKey(const YBPartialRow& row, std::string* buf) const WARN_UNUSED_RESULT;
@@ -145,13 +156,14 @@ class PartitionSchema {
     WARN_UNUSED_RESULT;
 
   // Creates the set of table partitions using multi column hash schema. In this schema, we divide
-  // the [0, max<UINT16>] range equally into the requested number of intervals.
-  CHECKED_STATUS CreatePartitions(int32_t num_tablets,
-                          std::vector<Partition>* partitions) const WARN_UNUSED_RESULT;
+  // the [0, max_partition_key] range equally into the requested number of intervals.
+  CHECKED_STATUS CreatePartitions(
+      int32_t num_tablets,
+      std::vector<Partition>* partitions,
+      int32_t max_partition_key = std::numeric_limits<uint16_t>::max()) const WARN_UNUSED_RESULT;
 
-  // Predicate for using multi column hash schema.
-  bool use_multi_column_hash_schema() {
-    return use_multi_column_hash_schema_;
+  YBHashSchema hash_schema() const {
+    return hash_schema_;
   }
 
   // Encodes the given uint16 value into a 2 byte string.
@@ -285,7 +297,7 @@ class PartitionSchema {
 
   std::vector<HashBucketSchema> hash_bucket_schemas_;
   RangeSchema range_schema_;
-  bool use_multi_column_hash_schema_ = false;
+  YBHashSchema hash_schema_ = YBHashSchema::kDefault;
 };
 
 } // namespace yb

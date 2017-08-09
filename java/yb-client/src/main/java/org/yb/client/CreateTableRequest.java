@@ -17,6 +17,7 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
+import org.yb.Common.PartitionSchemaPB;
 import org.yb.Common.TableType;
 import org.yb.Schema;
 import org.yb.annotations.InterfaceAudience;
@@ -47,7 +48,8 @@ class CreateTableRequest extends YRpc<CreateTableResponse> {
     this.tableType = tableOptions.getTableType();
     Master.CreateTableRequestPB.Builder pbBuilder = tableOptions.getBuilder();
     if (this.schema.getNumHashKeyColumns() > 0) {
-      pbBuilder.getPartitionSchemaBuilder().setUseMultiColumnHashSchema(true);
+      pbBuilder.getPartitionSchemaBuilder()
+               .setHashSchema(PartitionSchemaPB.HashSchema.MULTI_COLUMN_HASH_SCHEMA);
     }
     this.builder = pbBuilder;
   }

@@ -304,7 +304,8 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   CHECKED_STATUS GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
                             std::vector<std::string>* tablet_uuids,
-                            std::vector<std::string>* ranges);
+                            std::vector<std::string>* ranges,
+                            std::vector<master::TabletLocationsPB>* locations = nullptr);
 
   CHECKED_STATUS GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
@@ -580,8 +581,7 @@ class YBTableCreator {
 
   explicit YBTableCreator(YBClient* client);
 
-  // Use multi column hash schema to create partition.
-  YBTableCreator& set_use_multi_column_hash_schema();
+  YBTableCreator& set_hash_schema(YBHashSchema hash_schema);
 
   // Owned.
   Data* data_;
