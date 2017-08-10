@@ -36,7 +36,7 @@ export default class InstanceTypeForRegion extends Component {
             Zone
           </Col>
           <Col lg={3}>
-            Machine Type
+            Instance Type
           </Col>
           <Col lg={5}>
             Instances <span className="row-head-subscript">Comma Separated {formType === "modal" ? "IPs" : "IP Addresses"}</span>

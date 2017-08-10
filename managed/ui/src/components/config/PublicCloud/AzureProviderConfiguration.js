@@ -32,7 +32,7 @@ class AzureProviderConfiguration extends Component {
             universes.
           </ListGroupItem>
           <ListGroupItem>
-            Get the Access Key and Account Name for your Azure Stroage account.
+            Get the Access Key and Account Name for your Azure Storage account.
             <div className="detail-text">YugaByte VMs will use this account to attach Azure Virtual Hard Disks (VHDs) to the YugaByte VMs.</div>
           </ListGroupItem>
           <ListGroupItem>

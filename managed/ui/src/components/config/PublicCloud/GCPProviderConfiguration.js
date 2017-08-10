@@ -143,7 +143,7 @@ class GCPProviderConfiguration extends Component {
               <Col lg={8}>
                 <Row className="config-provider-row">
                   <Col lg={2}>
-                    <div className="form-item-custom-label">Provider Name</div>
+                    <div className="form-item-custom-label">Name</div>
                   </Col>
                   <Col lg={10}>
                     <Field name="accountName" placeHolder="Google Cloud Platform"
@@ -217,8 +217,8 @@ class GCPConfigureSuccess extends Component {
     }
 
     const providerInfo = [
-      {name: "Provider Name", data: gcpProviderName },
-      {name: "Key Pair", data: gcpKey},
+      {name: "Name", data: gcpProviderName },
+      {name: "SSH Key", data: gcpKey},
     ];
     return (
       <div>

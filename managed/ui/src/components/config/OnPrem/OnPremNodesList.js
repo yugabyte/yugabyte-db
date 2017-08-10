@@ -130,13 +130,13 @@ class OnPremNodesList extends Component {
     return (
       <div>
         <span className="buttons pull-right">
-          <YBButton btnText="Add Node" btnIcon="fa fa-plus" onClick={this.addNodeToList}/>
+          <YBButton btnText="Add Instances" btnIcon="fa fa-plus" onClick={this.addNodeToList}/>
         </span>
 
         <YBBreadcrumb to={summaryLinkHref}>
           On-Premises Datacenter Config
         </YBBreadcrumb>
-        <h3 className="no-top-margin">Nodes</h3>
+        <h3 className="no-top-margin">Instances</h3>
 
         <Row>
           <Col xs={12}>
@@ -151,11 +151,11 @@ class OnPremNodesList extends Component {
             </BootstrapTable>
           </Col>
         </Row>
-        <YBModal title={"Add Node"} formName={"AddNodeForm"} visible={this.props.visibleModal === "AddNodesForm"}
+        <YBModal title={"Add Instances"} formName={"AddNodeForm"} visible={this.props.visibleModal === "AddNodesForm"}
                  onHide={this.hideModal} onFormSubmit={handleSubmit(this.submitAddNodesForm)}
                  showCancelButton={true} submitLabel="Add">
           <div className="on-prem-form-text">
-            Enter IP Addresses for the instances of each zone and machine type.
+            Enter IP addresses for the instances of each availability zone and instance type.
           </div>
           {regionFormTemplate}
         </YBModal>
