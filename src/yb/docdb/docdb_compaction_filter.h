@@ -21,7 +21,7 @@ class DocDBCompactionFilter : public rocksdb::CompactionFilter {
   DocDBCompactionFilter(HybridTime history_cutoff,
                         ColumnIdsPtr deleted_cols,
                         bool is_full_compaction,
-                        const Schema& schema);
+                        MonoDelta table_ttl);
 
   ~DocDBCompactionFilter() override;
   bool Filter(int level,
@@ -85,8 +85,8 @@ class DocDBCompactionFilter : public rocksdb::CompactionFilter {
   // the Filter function.
   mutable bool filter_usage_logged_;
 
-  // Reference to tablet's metadata schema.
-  const Schema& schema_;
+  // Default TTL of table.
+  MonoDelta table_ttl_;
 
   ColumnIdsPtr deleted_cols_;
 };
@@ -98,14 +98,15 @@ class HistoryRetentionPolicy {
   virtual ~HistoryRetentionPolicy() {}
   virtual HybridTime GetHistoryCutoff() = 0;
   virtual ColumnIdsPtr GetDeletedColumns() = 0;
+  virtual MonoDelta GetTableTTL() = 0;
 };
 
 // A history retention policy that always returns the same hybrid_time. Useful in tests. This class
 // is thread-safe.
 class FixedHybridTimeRetentionPolicy : public HistoryRetentionPolicy {
  public:
-  explicit FixedHybridTimeRetentionPolicy(HybridTime history_cutoff)
-      : history_cutoff_(history_cutoff) {
+  explicit FixedHybridTimeRetentionPolicy(HybridTime history_cutoff, MonoDelta table_ttl)
+      : history_cutoff_(history_cutoff), table_ttl_(table_ttl) {
   }
 
   HybridTime GetHistoryCutoff() override { return history_cutoff_.load(); }
@@ -116,15 +117,18 @@ class FixedHybridTimeRetentionPolicy : public HistoryRetentionPolicy {
   }
   void AddDeletedColumn(ColumnId col) { deleted_cols_.insert(col); }
 
+  MonoDelta GetTableTTL() override { return table_ttl_; }
+  void SetTableTTL(MonoDelta ttl) {  table_ttl_ = ttl; }
+
  private:
   std::atomic<HybridTime> history_cutoff_;
   ColumnIds deleted_cols_;
+  MonoDelta table_ttl_;
 };
 
 class DocDBCompactionFilterFactory : public rocksdb::CompactionFilterFactory {
  public:
-  explicit DocDBCompactionFilterFactory(std::shared_ptr<HistoryRetentionPolicy> retention_policy,
-                                        const Schema& schema);
+  explicit DocDBCompactionFilterFactory(std::shared_ptr<HistoryRetentionPolicy> retention_policy);
   ~DocDBCompactionFilterFactory() override;
   std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
       const rocksdb::CompactionFilter::Context& context) override;
@@ -132,8 +136,6 @@ class DocDBCompactionFilterFactory : public rocksdb::CompactionFilterFactory {
 
  private:
   std::shared_ptr<HistoryRetentionPolicy> retention_policy_;
-  // Reference to tablet's metadata schema.
-  const Schema& schema_;
 };
 
 }  // namespace docdb

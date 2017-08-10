@@ -50,8 +50,7 @@ Status YBTableAlterer::Data::ToRequest(AlterTableRequestPB* req) {
     return status_;
   }
 
-  if (!rename_to_.is_initialized() &&
-      steps_.empty()) {
+  if (!rename_to_.is_initialized() && steps_.empty() && !table_properties_.is_initialized()) {
     return STATUS(InvalidArgument, "No alter steps provided");
   }
 
@@ -110,6 +109,10 @@ Status YBTableAlterer::Data::ToRequest(AlterTableRequestPB* req) {
       default:
         LOG(FATAL) << "unknown step type " << s.step_type;
     }
+  }
+
+  if (table_properties_.is_initialized()) {
+    table_properties_->ToTablePropertiesPB(req->mutable_alter_properties());
   }
 
   return Status::OK();

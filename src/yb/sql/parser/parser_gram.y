@@ -1782,8 +1782,8 @@ alterPropertyList:
 ;
 
 alterProperty:
-  property_name '=' IDENT {
-    PARSER_UNSUPPORTED(@2);
+  property_name '=' AexprConst {
+    $$ = MAKE_NODE(@1, PTTableProperty, $1, $3);
   }
 ;
 

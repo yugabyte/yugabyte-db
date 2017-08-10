@@ -17,6 +17,7 @@
 #include "yb/docdb/in_mem_docdb.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/subdocument.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/util/test_util.h"
 #include "yb/util/test_macros.h"
 

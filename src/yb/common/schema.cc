@@ -529,4 +529,9 @@ Status SchemaBuilder::AddColumn(const ColumnSchema& column, bool is_key) {
   return Status::OK();
 }
 
+Status SchemaBuilder::AlterProperties(const TablePropertiesPB& pb) {
+  table_properties_.AlterFromTablePropertiesPB(pb);
+  return Status::OK();
+}
+
 } // namespace yb

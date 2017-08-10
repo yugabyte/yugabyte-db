@@ -371,9 +371,15 @@ void Executor::ExecPTNodeAsync(const PTAlterTable *tnode, StatementExecutedCallb
     }
   }
 
-  // Altering table properties not yet supported by AlterTableRequestPB.
   if (!tnode->mod_props().empty()) {
-    CB_RETURN(cb, exec_context_->Error(tnode->loc(), ErrorCode::FEATURE_NOT_YET_IMPLEMENTED));
+    TableProperties table_properties;
+    Status exec_status = tnode->ToTableProperties(&table_properties);
+    if(!exec_status.ok()) {
+      CB_RETURN(cb, exec_context_->Error(tnode->loc(), exec_status.ToString().c_str(),
+                                         ErrorCode::INVALID_ARGUMENTS));
+    }
+
+    table_alterer->SetTableProperties(table_properties);
   }
 
   Status exec_status = table_alterer->Alter();

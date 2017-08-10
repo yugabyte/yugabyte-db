@@ -95,19 +95,16 @@ CHECKED_STATUS PTAlterTable::AppendModColumn(SemContext *sem_context,
   return Status::OK();
 }
 
-CHECKED_STATUS PTAlterTable::AppendAlterProperty(SemContext *sem_context, PTAlterProperty *prop) {
-  const auto property_name = string(prop->property_name()->c_str());
-  bool found_match = false;
-
-  for (auto supported_property : supported_properties) {
-    found_match |= (supported_property == property_name);
-  }
-
-  if (!found_match) {
-    return sem_context->Error(prop->loc(), ErrorCode::INVALID_TABLE_PROPERTY);
-  }
-
+CHECKED_STATUS PTAlterTable::AppendAlterProperty(SemContext *sem_context, PTTableProperty *prop) {
   mod_props_.push_back(prop);
+  return Status::OK();
+}
+
+CHECKED_STATUS PTAlterTable::ToTableProperties(TableProperties *table_properties) const {
+  for (const auto& table_property : mod_props_) {
+      RETURN_NOT_OK(table_property->SetTableProperty(table_properties));
+  }
+
   return Status::OK();
 }
 
@@ -140,29 +137,6 @@ CHECKED_STATUS PTAlterColumnDefinition::Analyze(SemContext *sem_context) {
 
   PTAlterTable *table = sem_context->current_alter_table();
   RETURN_NOT_OK(table->AppendModColumn(sem_context, this));
-
-  return Status::OK();
-}
-
-//--------------------------------------------------------------------------------------------------
-
-PTAlterProperty::PTAlterProperty(MemoryContext *memctx,
-                                 YBLocation::SharedPtr loc,
-                                 const MCSharedPtr<MCString>& lhs,
-                                 const MCSharedPtr<MCString>& rhs)
-  : TreeNode(memctx, loc),
-    lhs_(lhs),
-    rhs_(rhs) {
-}
-
-PTAlterProperty::~PTAlterProperty() {
-}
-
-CHECKED_STATUS PTAlterProperty::Analyze(SemContext *sem_context) {
-  VLOG(3) << "Appending " << lhs_.get() << rhs_ << "\n";
-
-  PTAlterTable *table = sem_context->current_alter_table();
-  RETURN_NOT_OK(table->AppendAlterProperty(sem_context, this));
 
   return Status::OK();
 }

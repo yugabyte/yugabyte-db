@@ -727,6 +727,7 @@ yb::Status BuildSubDocument(
 
       MonoDelta ttl;
       RETURN_NOT_OK(Value::DecodeTTL(&value, &ttl));
+
       ttl = ComputeTTL(ttl, table_ttl);
 
       DocHybridTime write_time = found_key.doc_hybrid_time();

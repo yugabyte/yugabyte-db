@@ -282,7 +282,7 @@ Status Tablet::OpenKeyValueTablet() {
   // Install the history cleanup handler. Note that TabletRetentionPolicy is going to hold a raw ptr
   // to this tablet. So, we ensure that rocksdb_ is reset before this tablet gets destroyed.
   rocksdb_options.compaction_filter_factory = make_shared<DocDBCompactionFilterFactory>(
-      make_shared<TabletRetentionPolicy>(this), metadata_->schema());
+      make_shared<TabletRetentionPolicy>(this));
 
   const string db_dir = metadata()->rocksdb_dir();
   LOG(INFO) << "Creating RocksDB database in dir " << db_dir;
@@ -1406,8 +1406,9 @@ Status Tablet::AlterSchema(AlterSchemaTransactionState *tx_state) {
   RowSetsInCompaction input;
   shared_ptr<MemRowSet> old_ms;
   {
-    // If the current version >= new version, there is nothing to do.
     bool same_schema = schema()->Equals(*tx_state->schema());
+
+    // If the current version >= new version, there is nothing to do.
     if (metadata_->schema_version() >= tx_state->schema_version()) {
       LOG(INFO) << "Already running schema version " << metadata_->schema_version()
                 << " got alter request for version " << tx_state->schema_version();

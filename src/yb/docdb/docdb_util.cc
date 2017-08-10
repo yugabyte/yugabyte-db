@@ -52,7 +52,8 @@ DocDBRocksDBUtil::DocDBRocksDBUtil()
 
 DocDBRocksDBUtil::DocDBRocksDBUtil(const rocksdb::OpId& op_id)
     : op_id_(op_id),
-      retention_policy_(make_shared<FixedHybridTimeRetentionPolicy>(HybridTime::kMin)) {
+      retention_policy_(make_shared<FixedHybridTimeRetentionPolicy>(HybridTime::kMin,
+                                                                    MonoDelta::kMax)) {
 }
 
 DocDBRocksDBUtil::~DocDBRocksDBUtil() {
@@ -170,7 +171,7 @@ Status DocDBRocksDBUtil::InitCommonRocksDBOptions() {
                             block_cache_);
   InitRocksDBWriteOptions(&write_options_);
   rocksdb_options_.compaction_filter_factory =
-      std::make_shared<docdb::DocDBCompactionFilterFactory>(retention_policy_, schema_);
+      std::make_shared<docdb::DocDBCompactionFilterFactory>(retention_policy_);
   return Status::OK();
 }
 

@@ -506,6 +506,12 @@ class TableProperties {
     return table_properties;
   }
 
+  void AlterFromTablePropertiesPB(const TablePropertiesPB& pb) {
+    if (pb.has_default_time_to_live()) {
+      SetDefaultTimeToLive(pb.default_time_to_live());
+    }
+  }
+
   void Reset() {
     default_time_to_live_ = kNoDefaultTtl;
     contain_counters_ = false;
@@ -1196,6 +1202,7 @@ class SchemaBuilder {
 
   CHECKED_STATUS RemoveColumn(const string& name);
   CHECKED_STATUS RenameColumn(const string& old_name, const string& new_name);
+  CHECKED_STATUS AlterProperties(const TablePropertiesPB& pb);
 
  private:
 

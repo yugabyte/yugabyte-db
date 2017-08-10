@@ -59,6 +59,8 @@ class YBTableAlterer::Data {
 
   boost::optional<YBTableName> rename_to_;
 
+  boost::optional<TableProperties> table_properties_;
+
  private:
   DISALLOW_COPY_AND_ASSIGN(Data);
 };

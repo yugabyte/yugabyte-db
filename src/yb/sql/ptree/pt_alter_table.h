@@ -89,46 +89,6 @@ class PTAlterColumnDefinition : public TreeNode {
 };
 
 //--------------------------------------------------------------------------------------------------
-// Table property updates
-
-class PTAlterProperty : public TreeNode {
- public:
-  //------------------------------------------------------------------------------------------------
-  // Public types.
-  typedef MCSharedPtr<PTAlterProperty> SharedPtr;
-  typedef MCSharedPtr<const PTAlterProperty> SharedPtrConst;
-
-  //------------------------------------------------------------------------------------------------
-  // Constructor and destructor.
-  PTAlterProperty(MemoryContext *memctx,
-                  YBLocation::SharedPtr loc,
-                  const MCSharedPtr<MCString>& lhs,
-                  const MCSharedPtr<MCString>& rhs);
-  virtual ~PTAlterProperty();
-
-  template<typename... TypeArgs>
-  inline static PTAlterProperty::SharedPtr MakeShared(MemoryContext *memctx,
-                                                      TypeArgs&& ... args) {
-    return MCMakeShared<PTAlterProperty>(memctx, std::forward<TypeArgs>(args)...);
-  }
-
-  // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
-
-  const MCSharedPtr<MCString> property_name() {
-    return lhs_;
-  }
-
-  const MCSharedPtr<MCString> property_value() {
-    return rhs_;
-  }
-
- private:
-  const MCSharedPtr<MCString> lhs_;
-  const MCSharedPtr<MCString> rhs_;
-};
-
-//--------------------------------------------------------------------------------------------------
 // ALTER TABLE
 
 class PTAlterTable : public TreeNode {
@@ -165,7 +125,7 @@ class PTAlterTable : public TreeNode {
   }
 
   // Table property modifications to be made.
-  const MCList<PTAlterProperty* >& mod_props() const {
+  const MCList<PTTableProperty* >& mod_props() const {
     return mod_props_;
   }
 
@@ -176,7 +136,9 @@ class PTAlterTable : public TreeNode {
 
   CHECKED_STATUS AppendModColumn(SemContext *sem_context, PTAlterColumnDefinition *column);
 
-  CHECKED_STATUS AppendAlterProperty(SemContext *sem_context, PTAlterProperty *prop);
+  CHECKED_STATUS AppendAlterProperty(SemContext *sem_context, PTTableProperty *prop);
+
+  CHECKED_STATUS ToTableProperties(TableProperties *table_properties) const;
 
  private:
   PTQualifiedName::SharedPtr name_;
@@ -185,7 +147,7 @@ class PTAlterTable : public TreeNode {
   std::shared_ptr<client::YBTable> table_;
   MCVector<ColumnDesc> table_columns_;
   MCList<PTAlterColumnDefinition *> mod_columns_;
-  MCList<PTAlterProperty *> mod_props_;
+  MCList<PTTableProperty *> mod_props_;
 
   int num_key_columns_;
   int num_hash_key_columns_;

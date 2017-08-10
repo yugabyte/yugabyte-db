@@ -12,6 +12,8 @@ DEFINE_int32(timestamp_history_retention_interval_sec, 10,
 namespace yb {
 namespace tablet {
 
+using docdb::TableTTL;
+
 TabletRetentionPolicy::TabletRetentionPolicy(const Tablet* tablet)
     : tablet_(tablet),
       retention_delta_(MonoDelta::FromSeconds(-FLAGS_timestamp_history_retention_interval_sec)) {}
@@ -35,6 +37,10 @@ ColumnIdsPtr TabletRetentionPolicy::GetDeletedColumns() {
     }
   }
   return deleted_before_history_cutoff;
+}
+
+MonoDelta TabletRetentionPolicy::GetTableTTL() {
+  return TableTTL(tablet_->metadata()->schema());
 }
 
 }  // namespace tablet

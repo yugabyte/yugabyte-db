@@ -619,6 +619,7 @@ message AlterTableRequestPB {
   repeated Step alter_schema_steps = 2;
   optional string new_table_name = 3;
   optional NamespaceIdentifierPB new_namespace = 4;
+  optional TablePropertiesPB alter_properties = 5;
 }
 
 message AlterTableResponsePB {

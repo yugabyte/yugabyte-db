@@ -28,12 +28,12 @@ namespace docdb {
 DocDBCompactionFilter::DocDBCompactionFilter(HybridTime history_cutoff,
                                              ColumnIdsPtr deleted_cols,
                                              bool is_full_compaction,
-                                             const Schema& schema)
+                                             MonoDelta table_ttl)
     : history_cutoff_(history_cutoff),
       is_full_compaction_(is_full_compaction),
       is_first_key_value_(true),
       filter_usage_logged_(false),
-      schema_(schema),
+      table_ttl_(table_ttl),
       deleted_cols_(deleted_cols) {
 }
 
@@ -165,7 +165,7 @@ bool DocDBCompactionFilter::Filter(int level,
 
   bool has_expired = false;
 
-  CHECK_OK(HasExpiredTTL(subdoc_key.hybrid_time(), ComputeTTL(ttl, schema_), history_cutoff_,
+  CHECK_OK(HasExpiredTTL(subdoc_key.hybrid_time(), ComputeTTL(ttl, table_ttl_), history_cutoff_,
                          &has_expired));
 
   // As of 02/2017, we don't have init markers for top level documents in YQL. As a result, we can
@@ -198,11 +198,9 @@ const char* DocDBCompactionFilter::Name() const {
 // ------------------------------------------------------------------------------------------------
 
 DocDBCompactionFilterFactory::DocDBCompactionFilterFactory(
-    shared_ptr<HistoryRetentionPolicy> retention_policy,
-    const Schema& schema)
+    shared_ptr<HistoryRetentionPolicy> retention_policy)
     :
-    retention_policy_(retention_policy),
-    schema_(schema) {
+    retention_policy_(retention_policy) {
 }
 
 DocDBCompactionFilterFactory::~DocDBCompactionFilterFactory() {
@@ -213,7 +211,7 @@ unique_ptr<CompactionFilter> DocDBCompactionFilterFactory::CreateCompactionFilte
   return unique_ptr<DocDBCompactionFilter>(
       new DocDBCompactionFilter(retention_policy_->GetHistoryCutoff(),
                                 retention_policy_->GetDeletedColumns(),
-                                context.is_full_compaction, schema_));
+                                context.is_full_compaction, retention_policy_->GetTableTTL()));
 }
 
 const char* DocDBCompactionFilterFactory::Name() const {

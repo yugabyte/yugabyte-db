@@ -1422,6 +1422,11 @@ YBTableAlterer* YBTableAlterer::DropColumn(const string& name) {
   return this;
 }
 
+YBTableAlterer* YBTableAlterer::SetTableProperties(const TableProperties& table_properties) {
+  data_->table_properties_ = table_properties;
+  return this;
+}
+
 YBTableAlterer* YBTableAlterer::timeout(const MonoDelta& timeout) {
   data_->timeout_ = timeout;
   return this;

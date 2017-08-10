@@ -101,6 +101,11 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
                              const TabletDataState& initial_tablet_data_state,
                              scoped_refptr<TabletMetadata>* metadata);
 
+  // Create a  tablet metadata instance without reading or writing to superblocks.
+  // For testing purposes.
+  static CHECKED_STATUS TEST_CreateDummyWithSchema(scoped_refptr<TabletMetadata>* metadata,
+                                                   const Schema& schema);
+
   static void CollectBlockIdPBs(const TabletSuperBlockPB& superblock,
                                 std::vector<BlockIdPB>* block_ids);
 

@@ -91,6 +91,7 @@ public class TestAlterTable extends BaseCQLTest {
     assertFalse(rows.hasNext());
 
     LOG.info("With property ...");
+    session.execute("ALTER TABLE human_resource1 WITH default_time_to_live=5;");
     runInvalidStmt("ALTER TABLE human_resource1 WITH ttl=\"5\";");
 
     LOG.info("With invalid property ...");

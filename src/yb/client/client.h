@@ -699,6 +699,9 @@ class YBTableAlterer {
   // Drops an existing column from the table.
   YBTableAlterer* DropColumn(const std::string& name);
 
+  // Alter table properties
+  YBTableAlterer* SetTableProperties(const TableProperties& table_properties);
+
   // Set the timeout for the operation. This includes any waiting
   // after the alter has been submitted (i.e if the alter is slow
   // to be performed on a large table, it may time out and then

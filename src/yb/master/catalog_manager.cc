@@ -1821,6 +1821,11 @@ static Status ApplyAlterSteps(const SysTablesEntryPB& current_pb,
       }
     }
   }
+
+  if (req->has_alter_properties()) {
+      RETURN_NOT_OK(builder.AlterProperties(req->alter_properties()));
+  }
+
   *new_schema = builder.Build();
   *next_col_id = builder.next_column_id();
   return Status::OK();
@@ -1872,7 +1877,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   // Calculate new schema for the on-disk state, not persisted yet.
   Schema new_schema;
   ColumnId next_col_id = ColumnId(l.data().pb.next_column_id());
-  if (req->alter_schema_steps_size()) {
+  if (req->alter_schema_steps_size() || req->has_alter_properties()) {
     TRACE("Apply alter schema");
     Status s = ApplyAlterSteps(l.data().pb, req, &new_schema, &next_col_id);
     if (!s.ok()) {

@@ -182,6 +182,11 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
                                            table_property_name).c_str(),
                                 ErrorCode::DATATYPE_MISMATCH);
   }
+
+  PTAlterTable *alter_table = sem_context->current_alter_table();
+  if (alter_table != nullptr) {
+    RETURN_NOT_OK(alter_table->AppendAlterProperty(sem_context, this));
+  }
   return Status::OK();
 }
 
@@ -271,6 +276,8 @@ CHECKED_STATUS PTTablePropertyListNode::Analyze(SemContext *sem_context) {
 }
 
 Status PTTableProperty::SetTableProperty(yb::TableProperties *table_property) const {
+  // TODO: Also reject properties that cannot be changed during alter table (like clustering order)
+
   // Clustering order not handled here.
   if (property_type_ == PropertyType::kClusteringOrder) {
     return Status::OK();

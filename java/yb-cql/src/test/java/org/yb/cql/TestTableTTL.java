@@ -289,4 +289,135 @@ public class TestTableTTL extends BaseCQLTest {
     assertEquals(20, row.getInt(1));
     assertTrue(row.isNull(2));
   }
+
+  @Test
+  public void testTableTTLAfterAlter() throws Exception {
+    String tableName = "testTableTTLAfterAlter";
+
+    // Create table with TTL.
+    createTable(tableName, 1000);
+
+    // Insert a row.
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3);", tableName));
+
+    // Update Table TTL
+    session.execute(String.format("ALTER TABLE %s WITH default_time_to_live=1;", tableName));
+
+    // Insert a row.
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (4, 5, 6);", tableName));
+
+    // Verify first row is present.
+    Row row = getFirstRow(tableName, 1);
+    assertEquals(1, row.getInt(0));
+    assertEquals(2, row.getInt(1));
+    assertEquals(3, row.getInt(2));
+
+
+    // Verify second row is present.
+    row = getFirstRow(tableName, 4);
+    assertEquals(4, row.getInt(0));
+    assertEquals(5, row.getInt(1));
+    assertEquals(6, row.getInt(2));
+
+    // Wait for rows to expire.
+    Thread.sleep(1050);
+
+    // Verify rows have expired.
+    assertNoRow(tableName, 1);
+    assertNoRow(tableName, 4);
+  }
+
+  @Test
+  public void testRowTTLAfterAlter() throws Exception {
+    String tableName = "testRowTTLAfterAlter";
+
+    // Create table with TTL.
+    createTable(tableName, 1000);
+
+    // Insert rows.
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3);", tableName));
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (4, 5, 6) " +
+          "USING TTL 3;", tableName));
+
+    // Update Table TTL
+    session.execute(String.format("ALTER TABLE %s WITH default_time_to_live=1;", tableName));
+
+    // Wait for rows to expire.
+    Thread.sleep(1050);
+
+    // Verify first row is gone.
+    assertNoRow(tableName, 1);
+
+    // Verify second row is present.
+    Row row = getFirstRow(tableName, 4);
+    assertEquals(4, row.getInt(0));
+    assertEquals(5, row.getInt(1));
+    assertEquals(6, row.getInt(2));
+
+    // Insert rows without TTL.
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (7, 8, 9);", tableName));
+
+    // Update Table TTL to be higher.
+    session.execute(String.format("ALTER TABLE %s WITH default_time_to_live=10;", tableName));
+
+    // Wait for rows to expire.
+    Thread.sleep(2050);
+
+    // Verify second row is gone.
+    assertNoRow(tableName, 4);
+
+    // Verify third row is still there.
+    row = getFirstRow(tableName, 7);
+    assertEquals(7, row.getInt(0));
+    assertEquals(8, row.getInt(1));
+    assertEquals(9, row.getInt(2));
+  }
+
+  @Test
+  public void testColumnTTLAfterIncrease() throws Exception {
+    String tableName = "testColumnTTLAfterIncrease";
+
+    // Create table with TTL.
+    createTable(tableName, 1);
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3);", tableName));
+
+    // Update a single column.
+    session.execute(String.format("UPDATE %s USING TTL 1 SET c2 = 20 WHERE c1 = 1", tableName));
+
+    // Update Table TTL
+    session.execute(String.format("ALTER TABLE %s WITH default_time_to_live=50;", tableName));
+
+    // Wait for columns to expire.
+    Thread.sleep(1050);
+
+    // Verify that only c2 is deleted.
+    Row row = getFirstRow(tableName, 1);
+    assertEquals(1, row.getInt(0));
+    assertTrue(row.isNull(1));
+    assertEquals(3, row.getInt(2));
+  }
+
+  @Test
+  public void testColumnTTLAfterDecrease() throws Exception {
+    String tableName = "testColumnTTLAfterDecrease";
+
+    // Create table with TTL.
+    createTable(tableName, 5);
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3);", tableName));
+
+    // Update a single column.
+    session.execute(String.format("UPDATE %s USING TTL 60 SET c2 = 20 WHERE c1 = 1", tableName));
+
+    // Update Table TTL
+    session.execute(String.format("ALTER TABLE %s WITH default_time_to_live=1;", tableName));
+
+    // Wait for columns to expire.
+    Thread.sleep(1050);
+
+    // Verify that only c3 is deleted.
+    Row row = getFirstRow(tableName, 1);
+    assertEquals(1, row.getInt(0));
+    assertEquals(20, row.getInt(1));
+    assertTrue(row.isNull(2));
+  }
 }

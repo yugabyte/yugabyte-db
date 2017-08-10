@@ -171,6 +171,15 @@ Status TabletMetadata::LoadOrCreate(FsManager* fs_manager,
   }
 }
 
+Status TabletMetadata::TEST_CreateDummyWithSchema(scoped_refptr<TabletMetadata>* metadata,
+                                                  const Schema& schema) {
+  scoped_refptr<TabletMetadata> ret(new TabletMetadata(nullptr, "test_tablet"));
+  RETURN_NOT_OK(ret->Flush());
+  metadata->swap(ret);
+  metadata->get()->SetSchema(schema, 0);
+  return Status::OK();
+}
+
 void TabletMetadata::CollectBlockIdPBs(const TabletSuperBlockPB& superblock,
                                        std::vector<BlockIdPB>* block_ids) {
   for (const RowSetDataPB& rowset : superblock.rowsets()) {
