@@ -35,6 +35,13 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // to prevent other updates from happening.
       lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
+      // Ensure there are no masters that were selected, pick them here.
+      if (PlacementInfoUtil.getNumMasters(taskParams().nodeDetailsSet) > 0) {
+        throw new IllegalStateException("Should not have any masters before create task run.");
+      }
+      PlacementInfoUtil.selectMasters(taskParams().nodeDetailsSet,
+                                      taskParams().userIntent.replicationFactor);
+
       // Update the user intent.
       writeUserIntentToUniverse();
 

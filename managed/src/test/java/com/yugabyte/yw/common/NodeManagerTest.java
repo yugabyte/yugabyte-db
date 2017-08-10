@@ -456,7 +456,7 @@ public class NodeManagerTest extends FakeDBApplication {
       userIntent.isMultiAZ = false;
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
-          ApiUtils.mockUniverseUpdater(userIntent)));
+          ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */)));
       addValidDeviceInfo(t, params);
       params.isMasterInShellMode = true;
       params.ybSoftwareVersion = "0.0.1";

@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common;
 
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -26,6 +27,7 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
@@ -76,6 +78,16 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       userIntent.preferredRegion = r1.uuid;
       Universe.saveDetails(univUuid, ApiUtils.mockUniverseUpdater(userIntent));
       universe = Universe.get(univUuid);
+      final Collection<NodeDetails> nodes = universe.getNodes();
+      PlacementInfoUtil.selectMasters(nodes, replFactor);
+      UniverseUpdater updater = new UniverseUpdater() {
+        @Override
+        public void run(Universe universe) {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          universeDetails.nodeDetailsSet = (Set<NodeDetails>) nodes;
+        }
+      };
+      universe = Universe.saveDetails(univUuid, updater);
     }
 
     public TestData(Common.CloudType cloud) {
@@ -424,8 +436,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementInfoUtil.updateUniverseDefinition(ud, customer.getCustomerId());
     Set<NodeDetails> nodes = ud.nodeDetailsSet;
     assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
-    assertEquals(1, t.universe.getMasters().size());
-    assertEquals(1, PlacementInfoUtil.getNumMasters(nodes));
+    assertEquals(0, t.universe.getMasters().size());
+    assertEquals(0, PlacementInfoUtil.getNumMasters(nodes));
     assertEquals(1, nodes.size());
   }
 
@@ -468,12 +480,12 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       assertEquals(node.cloudInfo.instance_type, "m3.medium");
     }
     assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
-    assertEquals(3, PlacementInfoUtil.getNumMasters(nodes));
+    assertEquals(0, PlacementInfoUtil.getNumMasters(nodes));
     assertEquals(3, nodes.size());
     ud.userIntent.instanceType = newType;
     PlacementInfoUtil.updateUniverseDefinition(ud, customer.getCustomerId());
     nodes = ud.nodeDetailsSet;
-    assertEquals(numMasters, PlacementInfoUtil.getMastersToProvision(nodes).size());
+    assertEquals(0, PlacementInfoUtil.getMastersToProvision(nodes).size());
     assertEquals(numTservers, PlacementInfoUtil.getTserversToProvision(nodes).size());
     for (NodeDetails node : nodes) {
       assertEquals(node.cloudInfo.instance_type, newType);

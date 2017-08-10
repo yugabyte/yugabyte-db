@@ -786,10 +786,10 @@ public class PlacementInfoUtil {
         node.state = NodeDetails.NodeState.ToBeDecommissioned;
         taskParams.nodeDetailsSet.add(node);
       }
-    }
 
-    // Select the masters for this cluster based on subnets.
-    selectMasters(deltaNodesMap, numMastersToChoose);
+      // Select the masters for this cluster based on subnets.
+      selectMasters(deltaNodesMap, numMastersToChoose);
+    }
   }
 
   /**
@@ -823,7 +823,7 @@ public class PlacementInfoUtil {
 
     int numMastersToChoose = taskParams.userIntent.replicationFactor -
         getNumMasters(taskParams.nodeDetailsSet);
-    if (numMastersToChoose > 0) {
+    if (numMastersToChoose > 0 && universe != null) {
       LOG.info("Selecting {} masters.", numMastersToChoose);
       selectMasters(taskParams.nodeDetailsSet, numMastersToChoose);
     }
@@ -910,7 +910,7 @@ public class PlacementInfoUtil {
     taskParams.nodeDetailsSet.addAll(deltaNodesSet);
   }
 
-  private static void selectMasters(Collection<NodeDetails> nodes, int numMastersToChoose) {
+  public static void selectMasters(Collection<NodeDetails> nodes, int numMastersToChoose) {
     Map<String, NodeDetails> deltaNodesMap = new HashMap<String, NodeDetails>();
     for (NodeDetails node : nodes) {
       deltaNodesMap.put(node.nodeName, node);
@@ -951,6 +951,7 @@ public class PlacementInfoUtil {
           }
           String nodeName = value.first();
           value.remove(nodeName);
+          subnetsToNodenameMap.put(entry.getKey(), value);
           NodeDetails node = nodesMap.get(nodeName);
           node.isMaster = true;
           LOG.info("Chose node '{}' as a master from subnet {}.", nodeName, entry.getKey());
@@ -963,6 +964,9 @@ public class PlacementInfoUtil {
     } else {
       // We do not have enough subnets. Simply pick enough masters.
       for (NodeDetails node : nodesMap.values()) {
+        if (node.isMaster) {
+          continue;
+        }
         node.isMaster = true;
         LOG.info("Chose node {} as a master from subnet {}.",
                   node.nodeName, node.cloudInfo.subnet_id);
@@ -970,6 +974,10 @@ public class PlacementInfoUtil {
         if (numMastersChosen == numMasters) {
           break;
         }
+      }
+      if (numMastersChosen < numMasters) {
+        throw new IllegalStateException("Could not pick " + numMasters + " masters, got only " +
+                                         numMastersChosen + ". Nodes info. " + nodesMap);
       }
     }
   }
