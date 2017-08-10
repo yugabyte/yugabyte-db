@@ -240,7 +240,7 @@ export default class OnPremConfiguration extends Component {
   }
 
   render() {
-    const { configuredProviders } = this.props;
+    const { configuredProviders, params } = this.props;
     if (getPromiseState(configuredProviders).isInit() || getPromiseState(configuredProviders).isError()) {
       return <span/>;
     }
@@ -252,7 +252,7 @@ export default class OnPremConfiguration extends Component {
         if (this.state.isEditProvider) {
           return <OnPremConfigWizardContainer submitWizardJson={this.submitWizardJson} isEditProvider={this.state.isEditProvider} submitEditProvider={this.submitEditProvider}/>;
         }
-        return <OnPremSuccessContainer showEditProviderForm={this.showEditProviderForm}/>;
+        return <OnPremSuccessContainer showEditProviderForm={this.showEditProviderForm} params={params} />;
       }
     }
     var switchToJsonEntry = <YBButton btnText={"Switch to JSON View"} btnClass={"btn btn-default pull-left"} onClick={this.toggleJsonEntry}/>;
