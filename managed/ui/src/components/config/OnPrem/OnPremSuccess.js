@@ -36,7 +36,7 @@ class OnPremSuccess extends Component {
     }
 
     this.manageNodesLocation = cloneDeep(location);
-    this.manageNodesLocation.query.section = 'nodes';
+    this.manageNodesLocation.query.section = 'instances';
   }
 
   getReadyState(dataObject) {
@@ -111,7 +111,7 @@ class OnPremSuccess extends Component {
     const {configuredRegions, configuredProviders, accessKeys, universeList, location,
       cloud: {nodeInstanceList}} = this.props;
 
-    if (location.query.section === 'nodes') {
+    if (location.query.section === 'instances') {
       return <OnPremNodesListContainer changeSection={this.changeSection} />;
     }
 
@@ -147,12 +147,12 @@ class OnPremSuccess extends Component {
     const universeExistsForProvider = (universeList.data || []).some(universe => universe.provider && (universe.provider.uuid === currentProvider.uuid));
     const buttons = (
       <span className="buttons pull-right">
-        <YBButton btnText="Edit Configuration" disabled={false} btnIcon="fa fa-pencil"
-                  btnClass={"btn btn-default yb-button"} onClick={this.props.showEditProviderForm}/>
-        <YBButton btnText="Manage Nodes" disabled={false} btnIcon="fa fa-server"
-                  btnClass={"btn btn-default yb-button"} onClick={this.handleManageNodesClick}/>
-        <YBButton btnText="Delete Configuration" disabled={universeExistsForProvider} btnIcon="fa fa-trash"
-                  btnClass={"btn btn-default yb-button"} onClick={this.props.showDeleteProviderModal}/>
+        <YBButton btnText="Manage Instances" disabled={false} btnIcon="fa fa-server"
+                  btnClass={"btn btn-default yb-button"} onClick={this.handleManageNodesClick} />
+        <YBButton btnText="Edit Provider" disabled={false} btnIcon="fa fa-pencil"
+                  btnClass={"btn btn-default yb-button"} onClick={this.props.showEditProviderForm} />
+        <YBButton btnText="Delete Provider" disabled={universeExistsForProvider} btnIcon="fa fa-trash"
+                  btnClass={"btn btn-default yb-button"} onClick={this.props.showDeleteProviderModal} />
         <YBConfirmModal name="delete-aws-provider" title={"Confirm Delete"}
                         onConfirm={this.deleteProvider.bind(this, currentProvider.uuid)}
                         currentModal="deleteOnPremProvider" visibleModal={this.props.visibleModal}
@@ -162,7 +162,7 @@ class OnPremSuccess extends Component {
       </span>
     );
 
-    const editNodesLinkText = 'Setup Nodes';
+    const editNodesLinkText = 'Setup Instances';
     const nodeItemObject = (
       <div>
         {nodeInstanceList.data.length}
@@ -180,7 +180,7 @@ class OnPremSuccess extends Component {
           return (
             <div key={`zone-${zone.uuid}`} className="zone">
               <div className="zone-name">{zone.name}:</div>
-              <span title={nodeIps.join(', ')}>{zone.nodes.length} nodes</span>
+              <span title={nodeIps.join(', ')}>{zone.nodes.length} instances</span>
             </div>
           );
         });
@@ -194,9 +194,9 @@ class OnPremSuccess extends Component {
     }
 
     const providerInfo = [
-      {name: 'Provider Name', data: currentProvider.name},
-      {name: 'Key Pair', data: keyPairName},
-      {name: 'Nodes', data: nodeItemObject},
+      {name: 'Name', data: currentProvider.name},
+      {name: 'SSH Key', data: keyPairName},
+      {name: 'Instances', data: nodeItemObject},
     ];
     return (
       <div>
