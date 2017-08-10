@@ -31,8 +31,7 @@ public class SimpleLoadGenerator {
       return key;
     }
 
-    public String asString() {
-      return keyPrefix + key.toString();
+    public String asString() { return keyPrefix + ":" + key.toString();
     }
 
     public String getValueStr() {

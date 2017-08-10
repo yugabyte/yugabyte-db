@@ -5,9 +5,11 @@ package com.yugabyte.sample.apps;
 import java.util.Arrays;
 import java.util.List;
 
+import com.yugabyte.sample.common.CmdLineOpts;
 import org.apache.log4j.Logger;
 
 import com.datastax.driver.core.BoundStatement;
+import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
@@ -77,6 +79,9 @@ public class CassandraKeyValue extends AppBase {
           // Create the prepared statement object.
           String select_stmt = String.format("SELECT k, v FROM %s WHERE k = ?;", tableName);
           preparedSelect = getCassandraClient().prepare(select_stmt);
+          if (appConfig.localReads) {
+            preparedSelect.setConsistencyLevel(ConsistencyLevel.ONE);
+          }
         }
       }
     }

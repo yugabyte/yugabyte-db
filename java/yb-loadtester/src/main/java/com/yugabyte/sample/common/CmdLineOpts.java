@@ -51,6 +51,8 @@ public class CmdLineOpts {
   // The number of writer threads to spawn for OLTP apps.
   int numWriterThreads;
   boolean reuseExistingTable = false;
+  boolean readOnly = false;
+  boolean localReads = false;
   // Random number generator.
   Random random = new Random();
   // Command line opts parser.
@@ -86,6 +88,14 @@ public class CmdLineOpts {
     // Check if we should drop existing tables.
     if (commandLine.hasOption("reuse_table")) {
       reuseExistingTable = true;
+    }
+    if (commandLine.hasOption("local_reads")) {
+      AppBase.appConfig.localReads = true;
+      localReads = true;
+    }
+    if (commandLine.hasOption("read_only")) {
+      AppBase.appConfig.readOnly = true;
+      readOnly = true;
     }
     if (appName == AppName.RedisPipelinedKeyValue) {
       if (commandLine.hasOption("pipeline_length")) {
@@ -146,6 +156,10 @@ public class CmdLineOpts {
     return numWriterThreads;
   }
 
+  public boolean getReadOnly() {
+    return readOnly;
+  }
+
   public boolean getReuseExistingTable() {
     return reuseExistingTable;
   }
@@ -186,7 +200,11 @@ public class CmdLineOpts {
       numReaderThreads = Integer.parseInt(cmd.getOptionValue("num_threads_read"));
     }
     if (cmd.hasOption("num_threads_write")) {
-      numWriterThreads = Integer.parseInt(cmd.getOptionValue("num_threads_write"));
+      if (cmd.hasOption("read_only")) {
+        LOG.warn("Ignoring num_threads_write option. It shouldn't be used with read_only.");
+      } else {
+        numWriterThreads = Integer.parseInt(cmd.getOptionValue("num_threads_write"));
+      }
     }
     LOG.info("Num reader threads: " + numReaderThreads +
              ", num writer threads: " + numWriterThreads);
@@ -264,6 +282,10 @@ public class CmdLineOpts {
 
     options.addOption("uuid", true, "The UUID to use for this loadtester.");
     options.addOption("reuse_table", false, "Reuse table if it already exists.");
+    options.addOption("read_only", false, "Read-only workload. " +
+        "Values must have been written previously and uuid must be provided. " +
+        "num_threads_write will be ignored.");
+    options.addOption("local_reads", false, "Use consistency ONE for reads.");
     options.addOption("num_threads", true, "The total number of threads.");
     options.addOption("num_threads_read", true, "The number of threads that perform reads.");
     options.addOption("num_threads_write", true, "The number of threads that perform writes.");

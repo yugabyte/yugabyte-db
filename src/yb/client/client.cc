@@ -55,6 +55,7 @@
 #include "yb/redisserver/redis_constants.h"
 #include "yb/redisserver/redis_parser.h"
 #include "yb/rpc/messenger.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/dns_resolver.h"
@@ -127,6 +128,11 @@ MAKE_ENUM_LIMITS(yb::client::YBScanner::OrderMode,
 
 DEFINE_int32(yb_num_shards_per_tserver, 8,
              "The default number of shards per table per tablet server when a table is created.");
+
+DEFINE_int32(yb_num_total_tablets, 0,
+             "The total number of tablets per table when a table is created. (For testing only!)");
+TAG_FLAG(yb_num_total_tablets, unsafe);
+TAG_FLAG(yb_num_total_tablets, hidden);
 
 namespace yb {
 namespace client {
@@ -1091,9 +1097,13 @@ Status YBTableCreator::Create() {
       if (data_->table_name_.is_system()) {
         data_->num_tablets_ = 1;
       } else {
-        int tserver_count = 0;
-        RETURN_NOT_OK(data_->client_->TabletServerCount(&tserver_count));
-        data_->num_tablets_ = tserver_count * FLAGS_yb_num_shards_per_tserver;
+        if (FLAGS_yb_num_total_tablets > 0) {
+          data_->num_tablets_ = FLAGS_yb_num_total_tablets;
+        } else {
+          int tserver_count = 0;
+          RETURN_NOT_OK(data_->client_->TabletServerCount(&tserver_count));
+          data_->num_tablets_ = tserver_count * FLAGS_yb_num_shards_per_tserver;
+        }
       }
     }
     req.set_num_tablets(data_->num_tablets_);

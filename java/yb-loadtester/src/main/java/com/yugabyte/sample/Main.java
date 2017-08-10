@@ -145,10 +145,18 @@ public class Main {
 
       // Create the reader and writer threads.
       int idx = 0;
-      for (; idx < cmdLineOpts.getNumWriterThreads(); idx++) {
+      int numWriteThreads = cmdLineOpts.getNumWriterThreads();
+      if (cmdLineOpts.getReadOnly()) {
+        if (!cmdLineOpts.getCommandLine().hasOption("uuid")) {
+          LOG.error("uuid needs to be provided when using --read-only");
+          return;
+        }
+        numWriteThreads = 0;
+      }
+      for (; idx < numWriteThreads; idx++) {
         iopsThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(), IOType.Write));
       }
-      for (; idx < cmdLineOpts.getNumWriterThreads() + cmdLineOpts.getNumReaderThreads();
+      for (; idx < numWriteThreads + cmdLineOpts.getNumReaderThreads();
            idx++) {
         iopsThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(), IOType.Read));
       }

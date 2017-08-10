@@ -63,4 +63,13 @@ public class AppConfig {
 
   // Disable YB load-balancing policy.
   public boolean disableYBLoadBalancingPolicy = false;
+
+  // Read only workload without doing any writes before reads.
+  public boolean readOnly = false;
+
+  // UUID used by another app instance to write the keys.
+  public String uuid;
+
+  // Do not forward read requests to the leader.
+  public boolean localReads = false;
 }
