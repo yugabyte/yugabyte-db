@@ -123,17 +123,13 @@ class OnPremNodesList extends Component {
         )
     }) : null;
 
-    var summaryQuery = clone(location.query);
-    delete summaryQuery.section;
-    var summaryLinkHref = `${location.pathname}?${queryString.stringify(summaryQuery)}`;
-
     return (
       <div>
         <span className="buttons pull-right">
           <YBButton btnText="Add Instances" btnIcon="fa fa-plus" onClick={this.addNodeToList}/>
         </span>
 
-        <YBBreadcrumb to={summaryLinkHref}>
+        <YBBreadcrumb to="/config/onprem">
           On-Premises Datacenter Config
         </YBBreadcrumb>
         <h3 className="no-top-margin">Instances</h3>

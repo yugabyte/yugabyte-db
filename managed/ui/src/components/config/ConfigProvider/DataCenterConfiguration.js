@@ -34,21 +34,21 @@ class DataCenterConfiguration extends Component {
     return (
       <div>
         <h2>Cloud Provider Configuration</h2>
-        <YBTabsPanel activeTab={"gcp"} id={"config-tab-panel"} className="config-tabs">
-          <Tab eventKey={"aws"} title={<img src={awsLogo} alt="AWS" className="aws-logo" />} key="aws-tab" unmountOnExit={true}>
+        <YBTabsPanel defaultTab="aws" activeTab={this.props.params.tab} id="config-tab-panel" className="config-tabs" routePrefix="/config/">
+          <Tab eventKey="aws" title={<img src={awsLogo} alt="AWS" className="aws-logo" />} key="aws-tab" unmountOnExit={true}>
             <AWSProviderConfigurationContainer />
           </Tab>
-          <Tab eventKey={"gcp"} title={<img src={gcpLogo} alt="GCP" className="gcp-logo" />} key="gcp-tab" unmountOnExit={true}>
+          <Tab eventKey="gcp" title={<img src={gcpLogo} alt="GCP" className="gcp-logo" />} key="gcp-tab" unmountOnExit={true}>
             <GCPProviderConfigurationContainer />
           </Tab>
-          <Tab eventKey={"azure"} title={<img src={azureLogo} alt="Azure" className="azure-logo" />} key="azure-tab" unmountOnExit={true}>
+          <Tab eventKey="azure" title={<img src={azureLogo} alt="Azure" className="azure-logo" />} key="azure-tab" unmountOnExit={true}>
             <AzureProviderConfigurationContainer />
           </Tab>
-          <Tab eventKey={"docker"} title={<img src={dockerLogo} alt="Docker" className="docker-logo" />} key="docker-tab" unmountOnExit={true}>
+          <Tab eventKey="docker" title={<img src={dockerLogo} alt="Docker" className="docker-logo" />} key="docker-tab" unmountOnExit={true}>
             <DockerProviderConfigurationContainer />
           </Tab>
-          <Tab eventKey={"onprem"} title={onPremiseTabContent} key="onprem-tab" unmountOnExit={true}>
-            <OnPremConfigurationContainer />
+          <Tab eventKey="onprem" title={onPremiseTabContent} key="onprem-tab" unmountOnExit={true}>
+            <OnPremConfigurationContainer params={this.props.params} />
           </Tab>
         </YBTabsPanel>
       </div>

@@ -177,7 +177,7 @@ class UniverseDetail extends Component {
         </Row>
 
         <Measure onMeasure={this.onResize.bind(this)}>
-          <YBTabsPanel activeTab={"overview"} id={"universe-tab-panel"} className="universe-detail">
+          <YBTabsPanel defaultTab={"overview"} id={"universe-tab-panel"} className="universe-detail">
             { tabElements }
           </YBTabsPanel>
         </Measure>

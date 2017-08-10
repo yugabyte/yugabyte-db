@@ -12,31 +12,33 @@ class YBTabsPanel extends Component {
   }
 
   tabSelect(selectedKey) {
-    // Update the query params.
-    let currentLocation = this.props.location;
-    currentLocation.query = { tab: selectedKey }
-    this.props.router.push(currentLocation)
+    const currentLocation = this.props.location;
+    if (this.props.routePrefix) {
+      currentLocation.pathname = this.props.routePrefix + selectedKey;
+    } else {
+      currentLocation.query = currentLocation.query || {};
+      currentLocation.query.tab = selectedKey;
+    }
+    this.props.router.push(currentLocation);
   }
 
   static propTypes = {
     id: PropTypes.string.isRequired,
-    activeTab: PropTypes.string.isRequired,
+    activeTab: PropTypes.string,
+    defaultTab: PropTypes.string.isRequired,
     children: PropTypes.array.isRequired,
     className: PropTypes.string,
+    routePrefix: PropTypes.string,
   }
 
   render() {
-    let currentLocation = this.props.location;
-    var activeTabKey = this.props.activeTab;
-    if (currentLocation.query.tab !== "") {
-      activeTabKey = currentLocation.query.tab
-    }
-
+    const {activeTab, defaultTab, location} = this.props;
+    const activeTabKey = activeTab || location.query.tab || defaultTab;
     return (
       <Tabs activeKey={activeTabKey} onSelect={this.tabSelect} id={this.props.id} className={this.props.className}>
         {this.props.children}
       </Tabs>
-    )
+    );
   }
 }
 
