@@ -161,6 +161,7 @@ Status TransactionDriver::ExecuteAsync() {
 void TransactionDriver::HandleConsensusAppend() {
   // YB tables only.
   CHECK_NE(table_type_, TableType::KUDU_COLUMNAR_TABLE_TYPE);
+  ADOPT_TRACE(trace());
   transaction_->Start();
   auto* const replicate_msg = transaction_->state()->consensus_round()->replicate_msg().get();
   CHECK(!replicate_msg->has_hybrid_time());
@@ -178,6 +179,7 @@ void TransactionDriver::PrepareAndStartTask() {
 }
 
 Status TransactionDriver::PrepareAndStart() {
+  ADOPT_TRACE(trace());
   TRACE_EVENT1("txn", "PrepareAndStart", "txn", this);
   VLOG_WITH_PREFIX(4) << "PrepareAndStart()";
   // Actually prepare and start the transaction.
@@ -271,6 +273,7 @@ void TransactionDriver::SetReplicationFailed(const Status& replication_status) {
 void TransactionDriver::HandleFailure(const Status& s) {
   VLOG_WITH_PREFIX(2) << "Failed transaction: " << s.ToString();
   CHECK(!s.ok());
+  ADOPT_TRACE(trace());
   TRACE("HandleFailure($0)", s.ToString());
 
   ReplicationState repl_state_copy;
