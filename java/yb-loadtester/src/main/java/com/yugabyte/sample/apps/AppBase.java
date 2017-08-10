@@ -101,7 +101,8 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     if (cassandra_cluster == null) {
       Cluster.Builder builder = Cluster.builder().addContactPointsWithPorts(getNodesAsInet());
       if (!appConfig.disableYBLoadBalancingPolicy) {
-        builder.withLoadBalancingPolicy(new PartitionAwarePolicy());
+        builder.withLoadBalancingPolicy(
+          new PartitionAwarePolicy(appConfig.partitionMetadataRefreshSeconds));
       }
       cassandra_cluster = builder.build();
       LOG.debug("Connected to cluster: " + cassandra_cluster.getClusterName());

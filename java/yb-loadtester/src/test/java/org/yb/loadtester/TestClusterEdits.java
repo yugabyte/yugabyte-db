@@ -54,8 +54,7 @@ public class TestClusterEdits extends TestClusterBase {
 
     // Wait for some ops and verify no failures in load tester.
     loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
-    assertFalse(String.format("Number of exceptions: %d", loadTesterRunnable.getNumExceptions()),
-      loadTesterRunnable.hasFailures());
+    loadTesterRunnable.verifyNumExceptions();
 
     // Now perform a full tserver move.
     performTServerExpandShrink(true);

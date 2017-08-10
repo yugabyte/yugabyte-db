@@ -34,10 +34,13 @@ public class IOPSThread extends Thread {
 
   private volatile boolean ioThreadFailed = false;
 
-  public IOPSThread(int threadIdx, AppBase app, IOType ioType) {
+  private final boolean printAllExceptions;
+
+  public IOPSThread(int threadIdx, AppBase app, IOType ioType, boolean printAllExceptions) {
     this.threadIdx = threadIdx;
     this.app = app;
     this.ioType = ioType;
+    this.printAllExceptions = printAllExceptions;
   }
 
   public int getNumExceptions() {
@@ -76,6 +79,9 @@ public class IOPSThread extends Thread {
           numConsecutiveExceptions = 0;
         } catch (RuntimeException e) {
           numExceptions++;
+          if (printAllExceptions) {
+            LOG.info("Caught Exception: ", e);
+          }
           if (numConsecutiveExceptions++ % 10 == 0) {
             LOG.info("Caught Exception " + app.getRedisServerInUse(), e);
             app.resetClients();

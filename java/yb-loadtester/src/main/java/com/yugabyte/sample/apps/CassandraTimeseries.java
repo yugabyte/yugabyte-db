@@ -164,6 +164,13 @@ public class CassandraTimeseries extends AppBase {
   }
 
   @Override
+  public synchronized void resetClients() {
+    preparedInsert = null;
+    preparedSelect = null;
+    super.resetClients();
+  }
+
+  @Override
   public long doRead() {
     // Pick a ransom data source.
     DataSource dataSource = dataSources.get(random.nextInt(dataSources.size()));

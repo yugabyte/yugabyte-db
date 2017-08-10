@@ -40,6 +40,7 @@ import java.util.Iterator;
 public class PartitionAwarePolicy implements ChainableLoadBalancingPolicy {
 
   private final LoadBalancingPolicy childPolicy;
+  private final int refreshFrequencySeconds;
   private volatile Metadata clusterMetadata;
   private volatile PartitionMetadata partitionMetadata;
 
@@ -64,22 +65,26 @@ public class PartitionAwarePolicy implements ChainableLoadBalancingPolicy {
    * Creates a new {@code PartitionAware} policy.
    *
    * @param childPolicy  the load balancing policy to wrap with partition awareness
+   * @param refreshFrequencySeconds the refresh frequency in seconds for partition metadata
    */
-  public PartitionAwarePolicy(LoadBalancingPolicy childPolicy) {
+  public PartitionAwarePolicy(LoadBalancingPolicy childPolicy, int refreshFrequencySeconds) {
     this.childPolicy = childPolicy;
+    this.refreshFrequencySeconds = refreshFrequencySeconds;
   }
 
   /**
    * Creates a new {@code PartitionAware} policy with additional default data-center awareness.
+   *
+   * @param refreshFrequencySeconds the refresh frequency in seconds for partition metadata
    */
-  public PartitionAwarePolicy() {
-    this(new DCAwareRoundRobinPolicy.Builder().build());
+  public PartitionAwarePolicy(int refreshFrequencySeconds) {
+    this(new DCAwareRoundRobinPolicy.Builder().build(), refreshFrequencySeconds);
   }
 
   @Override
   public void init(Cluster cluster, Collection<Host> hosts) {
     clusterMetadata = cluster.getMetadata();
-    partitionMetadata = new PartitionMetadata(cluster);
+    partitionMetadata = new PartitionMetadata(cluster, refreshFrequencySeconds);
     childPolicy.init(cluster, hosts);
   }
 

@@ -94,6 +94,13 @@ public class CassandraKeyValue extends AppBase {
   }
 
   @Override
+  public synchronized void resetClients() {
+    preparedInsert = null;
+    preparedSelect = null;
+    super.resetClients();
+  }
+
+  @Override
   public long doRead() {
     Key key = getSimpleLoadGenerator().getKeyToRead();
     if (key == null) {

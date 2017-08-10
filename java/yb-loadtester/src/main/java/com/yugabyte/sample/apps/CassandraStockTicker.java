@@ -196,6 +196,14 @@ public class CassandraStockTicker extends AppBase {
   }
 
   @Override
+  public synchronized void resetClients() {
+    preparedInsertMin = null;
+    preparedInsertRaw = null;
+    preparedSelectLatest = null;
+    super.resetClients();
+  }
+
+  @Override
   public long doWrite() {
     // Pick a random data source.
     TickerInfo dataSource = tickers.get(random.nextInt(tickers.size()));

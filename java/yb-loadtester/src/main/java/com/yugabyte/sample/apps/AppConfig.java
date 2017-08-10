@@ -72,4 +72,10 @@ public class AppConfig {
 
   // Do not forward read requests to the leader.
   public boolean localReads = false;
+
+  // Print all exceptions on the client instead of sampling.
+  public boolean printAllExceptions = false;
+
+  // The number of seconds after which we should refresh the partition metadata.
+  public int partitionMetadataRefreshSeconds = 60;
 }

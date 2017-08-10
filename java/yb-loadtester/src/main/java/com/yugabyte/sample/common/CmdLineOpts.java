@@ -240,6 +240,21 @@ public class CmdLineOpts {
     if (cmd.hasOption("disable_yb_load_balancing_policy")) {
       AppBase.appConfig.disableYBLoadBalancingPolicy = true;
     }
+    if (cmd.hasOption("print_all_exceptions")) {
+      AppBase.appConfig.printAllExceptions = true;
+    }
+    if (cmd.hasOption("refresh_partition_metadata_seconds")) {
+      int refreshFrequencySeconds = Integer.parseInt(
+        cmd.getOptionValue("refresh_partition_metadata_seconds"));
+
+      if (refreshFrequencySeconds <= 0) {
+        LOG.warn(String.format("Invalid --refresh_partition_metadata_seconds provided: %d, using " +
+          "the default %d instead", refreshFrequencySeconds, AppBase.appConfig
+          .partitionMetadataRefreshSeconds));
+      } else {
+        AppBase.appConfig.partitionMetadataRefreshSeconds = refreshFrequencySeconds;
+      }
+    }
     LOG.info("Num unique keys to insert: " + AppBase.appConfig.numUniqueKeysToWrite);
     LOG.info("Num keys to update: " +
         (AppBase.appConfig.numKeysToWrite - AppBase.appConfig.numUniqueKeysToWrite));
@@ -308,6 +323,10 @@ public class CmdLineOpts {
         "Add FATAL logs to ensure no failures before terminating the app.");
     options.addOption("disable_yb_load_balancing_policy", false,
         "Disable Yugabyte load-balancing policy.");
+    options.addOption("print_all_exceptions", false,
+      "Print all exceptions encountered on the client, instead of sampling.");
+    options.addOption("refresh_partition_metadata_seconds", true,
+      "The interval (in seconds) after which we should refresh the partition metadata.");
 
     // Options for CassandraTimeseries workload.
     options.addOption("num_users", true, "[CassandraTimeseries] The total number of users.");

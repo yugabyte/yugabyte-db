@@ -46,6 +46,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   protected static final String TSERVER_READ_METRIC =
     "handler_latency_yb_tserver_TabletServerService_Read";
 
+  protected static final int PARTITION_POLICY_REFRESH_FREQUENCY_SECONDS = 10;
 
   protected Cluster cluster;
   protected Session session;
@@ -72,7 +73,8 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     socketOptions.setConnectTimeoutMillis(60 * 1000);
     cluster = Cluster.builder()
               .addContactPointsWithPorts(miniCluster.getCQLContactPoints())
-              .withLoadBalancingPolicy(new PartitionAwarePolicy())
+              .withLoadBalancingPolicy(
+                new PartitionAwarePolicy(PARTITION_POLICY_REFRESH_FREQUENCY_SECONDS))
               .withSocketOptions(socketOptions)
               .build();
     LOG.info("Connected to cluster: " + cluster.getMetadata().getClusterName());

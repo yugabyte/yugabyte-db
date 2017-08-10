@@ -150,11 +150,13 @@ public class Main {
         numWriteThreads = 0;
       }
       for (; idx < numWriteThreads; idx++) {
-        iopsThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(), IOType.Write));
+        iopsThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(), IOType.Write,
+          app.appConfig.printAllExceptions));
       }
       for (; idx < numWriteThreads + cmdLineOpts.getNumReaderThreads();
            idx++) {
-        iopsThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(), IOType.Read));
+        iopsThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(), IOType.Read,
+          app.appConfig.printAllExceptions));
       }
 
       // Start the reader and writer threads.
@@ -188,7 +190,8 @@ public class Main {
     AppBase.appConfig.numKeysToWrite = AppBase.appConfig.numUniqueKeysToWrite;
     List<IOPSThread> writeThreads = new ArrayList<IOPSThread>();
     for (int idx = 0; idx < 100; idx++) {
-      writeThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(false), IOType.Write));
+      writeThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(false), IOType.Write,
+        app.appConfig.printAllExceptions));
     }
     // Start the reader and writer threads.
     for (IOPSThread writeThread : writeThreads) {

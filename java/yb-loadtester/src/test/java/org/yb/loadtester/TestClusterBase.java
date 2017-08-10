@@ -57,7 +57,7 @@ public class TestClusterBase extends BaseCQLTest {
   private static final String WORKLOAD = "CassandraStockTicker";
 
   // Number of ops to wait for between significant events in the test.
-  protected static final int NUM_OPS_INCREMENT = 10000;
+  protected static final int NUM_OPS_INCREMENT = 1000;
 
   // Timeout to wait for desired number of ops.
   protected static final int WAIT_FOR_OPS_TIMEOUT_MS = 60000; // 60 seconds
@@ -85,6 +85,12 @@ public class TestClusterBase extends BaseCQLTest {
 
   // The total number of ops seen so far.
   protected static long totalOps = 0;
+
+  // Maximum number of exceptions to tolerate. We might see exceptions during a full master move,
+  // since the newly elected leader might not have received heartbeats from any tservers. As a
+  // result, the system.peers table would be empty and any client reading the table in that state
+  // would end up removing all the hosts from its metadata causing exceptions.
+  protected static final int MAX_NUM_EXCEPTIONS = 20;
 
   @Override
   public int getTestMethodTimeoutSec() {
@@ -137,7 +143,10 @@ public class TestClusterBase extends BaseCQLTest {
     private volatile boolean testRunnerFailed = false;
 
     public LoadTester(String workload, String cqlContactPoints) throws Exception {
-      String args[] = {"--workload", workload, "--nodes", cqlContactPoints};
+      String args[] = {"--workload", workload, "--nodes", cqlContactPoints,
+        "--print_all_exceptions", "--num_threads_read", "1", "--num_threads_write", "1",
+        "--refresh_partition_metadata_seconds",
+        Integer.toString(PARTITION_POLICY_REFRESH_FREQUENCY_SECONDS)};
       CmdLineOpts configuration = CmdLineOpts.createFromArgs(args);
       testRunner = new Main(configuration);
     }
@@ -164,7 +173,7 @@ public class TestClusterBase extends BaseCQLTest {
       return testRunner.hasThreadFailed();
     }
 
-    public int getNumExceptions() {
+    private int getNumExceptions() {
       return testRunner.getNumExceptions();
     }
 
@@ -173,6 +182,11 @@ public class TestClusterBase extends BaseCQLTest {
       totalOps = testRunner.numOps();
       LOG.info("Num Ops: " + totalOps + ", Expected: " + expectedNumOps);
       assertTrue(totalOps >= expectedNumOps);
+    }
+
+    public void verifyNumExceptions() {
+      assertTrue(String.format("Number of exceptions: %d", getNumExceptions()),
+        getNumExceptions() < MAX_NUM_EXCEPTIONS && !hasThreadFailed());
     }
   }
 
@@ -235,8 +249,7 @@ public class TestClusterBase extends BaseCQLTest {
       LOG.info("Done waiting for new leader");
 
       // Verify no load tester errors.
-      assertFalse(String.format("Number of exceptions: %d", loadTesterRunnable.getNumExceptions()),
-                  loadTesterRunnable.hasFailures());
+      loadTesterRunnable.verifyNumExceptions();
     }
   }
 
@@ -259,6 +272,9 @@ public class TestClusterBase extends BaseCQLTest {
 
       LOG.info("Added new master to config: " + masterRpcHostPort.toString());
 
+      // Wait for hearbeat interval to ensure tservers pick up the new masters.
+      Thread.sleep(2 * MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS);
+
       // Remove old master.
       response = client.changeMasterConfig(originalMaster.getHostText(), originalMaster.getPort(),
                                            false);
@@ -266,19 +282,17 @@ public class TestClusterBase extends BaseCQLTest {
 
       LOG.info("Removed old master from config: " + originalMaster.toString());
 
+      // Wait for the new leader to be online.
+      client.waitForMasterLeader(NEW_MASTER_TIMEOUT_MS);
+      LOG.info("Done waiting for new leader");
+
       // Kill the old master.
       miniCluster.killMasterOnHostPort(originalMaster);
 
       LOG.info("Killed old master: " + originalMaster.toString());
 
-      // Wait for hearbeat interval to ensure tservers pick up the new masters.
-      Thread.sleep(2 * MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS);
-
-      LOG.info("Done waiting for new leader");
-
       // Verify no load tester errors.
-      assertFalse(String.format("Number of exceptions: %d", loadTesterRunnable.getNumExceptions()),
-        loadTesterRunnable.hasFailures());
+      loadTesterRunnable.verifyNumExceptions();
     }
   }
 
@@ -297,8 +311,7 @@ public class TestClusterBase extends BaseCQLTest {
     loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
 
     // Verify no failures in load tester.
-    assertFalse(String.format("Number of exceptions: %d", loadTesterRunnable.getNumExceptions()),
-      loadTesterRunnable.hasFailures());
+    loadTesterRunnable.verifyNumExceptions();
 
     // Verify metrics for all tservers.
     verifyMetrics(0);
@@ -337,6 +350,9 @@ public class TestClusterBase extends BaseCQLTest {
 
     assertEquals(100, (int) client.getLoadMoveCompletion().getPercentCompleted());
 
+    // Wait for the partition aware policy to refresh, to remove old tservers before we kill them.
+    Thread.sleep(2 * PARTITION_POLICY_REFRESH_FREQUENCY_SECONDS * 1000);
+
     // Kill the old tablet servers.
     // TODO: Check that the blacklisted tablet servers have no tablets assigned.
     for (HostAndPort rpcPort : originalTServers.keySet()) {
@@ -360,7 +376,7 @@ public class TestClusterBase extends BaseCQLTest {
 
     // Wait for some more ops and verify no exceptions.
     loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
-    assertEquals(0, loadTesterRunnable.getNumExceptions());
+    loadTesterRunnable.verifyNumExceptions();
 
     // Verify metrics for all tservers.
     verifyMetrics(NUM_OPS_INCREMENT / numTabletServers);
@@ -372,8 +388,7 @@ public class TestClusterBase extends BaseCQLTest {
     verifyExpectedLiveTServers(numTabletServers);
 
     // Verify no failures in the load tester.
-    assertFalse(String.format("Number of exceptions: %d", loadTesterRunnable.getNumExceptions()),
-      loadTesterRunnable.hasFailures());
+    loadTesterRunnable.verifyNumExceptions();
   }
 
   protected void performTServerExpandShrink(boolean fullMove) throws Exception {
@@ -387,6 +402,9 @@ public class TestClusterBase extends BaseCQLTest {
     if (!fullMove) {
       // Wait for the load to be balanced across the cluster.
       assertTrue(client.waitForLoadBalance(LOADBALANCE_TIMEOUT_MS, NUM_TABLET_SERVERS * 2));
+
+      // Wait for the partition aware policy to refresh.
+      Thread.sleep(2 * PARTITION_POLICY_REFRESH_FREQUENCY_SECONDS * 1000);
     }
 
     verifyStateAfterTServerAddition();
@@ -432,6 +450,9 @@ public class TestClusterBase extends BaseCQLTest {
 
     // Wait for load to balance across the target number of tservers.
     assertTrue(client.waitForLoadBalance(LOADBALANCE_TIMEOUT_MS, toRF));
+
+    // Wait for the partition aware policy to refresh.
+    Thread.sleep(2 * PARTITION_POLICY_REFRESH_FREQUENCY_SECONDS * 1000);
     LOG.info("Load Balance Done.");
 
     verifyClusterHealth(toRF);

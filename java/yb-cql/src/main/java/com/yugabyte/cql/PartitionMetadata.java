@@ -34,12 +34,7 @@ import java.util.NavigableMap;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.Vector;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -52,9 +47,6 @@ class PartitionMetadata implements Host.StateListener, SchemaChangeListener {
   // Query to load partition metadata for all tables.
   public static final String PARTITIONS_QUERY =
       "select keyspace_name, table_name, start_key, replica_addresses from system.partitions;";
-
-  // Frequency in which partition metadata is refreshed.
-  private static final int REFRESH_FREQUENCY_SECONDS = 60;
 
   private static final Logger LOG = Logger.getLogger(PartitionMetadata.class);
 
@@ -82,15 +74,6 @@ class PartitionMetadata implements Host.StateListener, SchemaChangeListener {
 
   // Scheduler to refresh partition metadata shared across all instances of PartitionMetadata.
   private static final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
-
-  /**
-   * Creates a new {@code PartitionMetadata}.
-   *
-   * @param cluster  the cluster
-   */
-  public PartitionMetadata(Cluster cluster) {
-    this(cluster, REFRESH_FREQUENCY_SECONDS);
-  }
 
   /**
    * Creates a new {@code PartitionMetadata}.
@@ -200,8 +183,9 @@ class PartitionMetadata implements Host.StateListener, SchemaChangeListener {
     // cancel the scheduled load and reschedule again at a later time since we have just refreshed.
     // And we do not want to have 2 recurring refresh cycles in parallel.
     if (refreshFrequencySeconds > 0) {
-      if (loadFuture != null && !loadFuture.cancel(false) && !loadFuture.isDone())
+      if (loadFuture != null && !loadFuture.cancel(false) && !loadFuture.isDone()) {
         return;
+      }
 
       loadFuture = scheduler.schedule(
           new Runnable() { public void run() { loadAsync(); } },

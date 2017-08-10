@@ -196,7 +196,8 @@ public class TestConsistencyLevels extends BaseCQLTest {
       Cluster cluster = Cluster.builder()
         .addContactPointsWithPorts(miniCluster.getCQLContactPoints())
         .withLoadBalancingPolicy(new PartitionAwarePolicy(DCAwareRoundRobinPolicy.builder()
-          .withLocalDc(REGION_PREFIX + i).build())).build();
+          .withLocalDc(REGION_PREFIX + i).build(),
+          PARTITION_POLICY_REFRESH_FREQUENCY_SECONDS)).build();
       Session session = cluster.connect();
 
       // Find the tserver, cqlproxy for this region.
