@@ -36,7 +36,7 @@ class OnPremSuccess extends Component {
     }
 
     this.manageNodesLocation = cloneDeep(location);
-    this.manageNodesLocation.query.section = 'instances';
+    this.manageNodesLocation.pathname = '/config/onprem/instances';
   }
 
   getReadyState(dataObject) {
@@ -108,10 +108,10 @@ class OnPremSuccess extends Component {
   }
 
   render() {
-    const {configuredRegions, configuredProviders, accessKeys, universeList, location,
+    const {configuredRegions, configuredProviders, accessKeys, universeList, params,
       cloud: {nodeInstanceList}} = this.props;
 
-    if (location.query.section === 'instances') {
+    if (params.section === 'instances') {
       return <OnPremNodesListContainer changeSection={this.changeSection} />;
     }
 
