@@ -6,6 +6,7 @@ import { YBButton } from '../../common/forms/fields';
 import {withRouter} from 'react-router';
 import {isValidObject} from 'utils/ObjectUtils';
 import { getPromiseState } from 'utils/PromiseUtils';
+import { DescriptionList } from '../../common/descriptors';
 import { YBConfirmModal } from '../../modals';
 import { RegionMap } from '../../maps';
 
@@ -66,7 +67,6 @@ class DockerProviderConfiguration extends Component {
         <div className="provider-config-container">
           <Row className="config-section-header">
             <Col md={12}>
-              <h4>Docker Configuration</h4>
               <span className="pull-right" title={deleteButtonTitle}>
                 <YBButton btnText="Delete Configuration" disabled={deleteButtonDisabled}
                           btnClass={deleteButtonClassName} onClick={this.props.showDeleteProviderModal}/>
@@ -77,6 +77,14 @@ class DockerProviderConfiguration extends Component {
                   Are you sure you want to delete this Docker configuration?
                 </YBConfirmModal>
               </span>
+              <p><strong>Name:</strong> Docker</p>
+              <p>
+                Setup&nbsp;
+                <a href="https://docs.docker.com/" target="_blank" rel="noopener noreferrer">
+                  Docker Platform
+                </a>
+                &nbsp;in order to create YugaByte clusters as containers running on your host machine.
+              </p>
             </Col>
           </Row>
           <RegionMap title="All Supported Regions" regions={dockerRegions} type="Provider" showLabels={true}/>
@@ -89,14 +97,13 @@ class DockerProviderConfiguration extends Component {
         <form name="dockerConfigForm" onSubmit={handleSubmit(this.createProviderConfig)}>
           <Row className="config-section-header">
             <Col lg={12}>
-              <h4>Docker Configuration</h4>
               { error && <Alert bsStyle="danger">{error}</Alert> }
               <div className="docker-config-form form-right-aligned-labels">
-                Setup<span className="heading-text">
+                Setup
                 <a href="https://docs.docker.com/" target="_blank" rel="noopener noreferrer">
                   Docker Platform
-                </a></span>
-                in order to create yugabyte clusters as containers running on your host machine.
+                </a>&nbsp;
+                in order to create YugaByte clusters as containers running on your host machine.
               </div>
             </Col>
           </Row>

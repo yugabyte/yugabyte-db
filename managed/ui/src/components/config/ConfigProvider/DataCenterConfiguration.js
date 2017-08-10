@@ -33,7 +33,7 @@ class DataCenterConfiguration extends Component {
       </div>;
     return (
       <div>
-        <h2>Configuration</h2>
+        <h2>Cloud Provider Configuration</h2>
         <YBTabsPanel activeTab={"gcp"} id={"config-tab-panel"} className="config-tabs">
           <Tab eventKey={"aws"} title={<img src={awsLogo} alt="AWS" className="aws-logo" />} key="aws-tab" unmountOnExit={true}>
             <AWSProviderConfigurationContainer />

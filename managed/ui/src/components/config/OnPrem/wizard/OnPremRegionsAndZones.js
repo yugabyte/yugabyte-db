@@ -114,7 +114,7 @@ export default class OnPremRegionsAndZones extends Component {
       <div className="on-prem-provider-form-container">
         <form name="onPremConfigForm" onSubmit={handleSubmit(this.createOnPremRegionsAndZones)}>
           <div className="on-prem-form-text">
-            Add One or More Regions, each with one or more zones.
+            Add one or more regions, each with one or more availability zones.
           </div>
           <div className="form-field-grid">
             <Row>

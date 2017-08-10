@@ -80,7 +80,7 @@ class OnPremListMachineTypes extends Component {
             <i className="fa fa-plus-circle fa-2x on-prem-row-add-btn" onClick={this.addMachineTypeRow}/>
           </Col>
           <Col lg={3}>
-            <a className="on-prem-add-link" onClick={this.addMachineTypeRow}>Add Machine Type</a>
+            <a className="on-prem-add-link" onClick={this.addMachineTypeRow}>Add Instance Type</a>
           </Col>
         </Row>
       </div>

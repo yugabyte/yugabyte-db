@@ -13,12 +13,12 @@ function validate(values) {
   var errors = {};
   var hasErrors = false;
   if (!values.accountName) {
-    errors.accountName = 'Account Name is required';
+    errors.accountName = 'Name is required';
     hasErrors = true;
   }
 
   if (/\s/.test(values.accountName)) {
-    errors.accountName = 'Account Name cannot have spaces';
+    errors.accountName = 'Name cannot have spaces';
     hasErrors = true;
   }
 

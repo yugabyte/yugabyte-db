@@ -125,8 +125,8 @@ class AWSProviderConfiguration extends Component {
       }
 
       const providerInfo = [
-        {name: "Account Name", data: awsProvider.name },
-        {name: "Key Pair", data: keyPairName},
+        {name: "Name", data: awsProvider.name },
+        {name: "SSH Key", data: keyPairName},
       ];
 
       let deleteButtonDisabled = submitting || universeExistsForProvider;
@@ -179,7 +179,7 @@ class AWSProviderConfiguration extends Component {
               <h4>AWS Account Info</h4>
               { error && <Alert bsStyle="danger">{error}</Alert> }
               <div className="aws-config-form form-right-aligned-labels">
-                <Field name="accountName" type="text" label="Account Name"
+                <Field name="accountName" type="text" label="Name"
                   component={YBTextInputWithLabel} normalize={convertSpaceToDash} />
                 <Field name="accessKey" type="text" label="Access Key ID"
                   component={YBTextInputWithLabel} normalize={trimString} />

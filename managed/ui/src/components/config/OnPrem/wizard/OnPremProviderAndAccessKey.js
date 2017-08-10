@@ -39,7 +39,7 @@ export default class OnPremProviderAndAccessKey extends Component {
           <Row>
             <Col lg={6}>
               <div className="form-right-aligned-labels">
-                <Field name="name" component={YBInputField} label="Provider Name" insetError={true} isReadOnly={isReadOnly}/>
+                <Field name="name" component={YBInputField} label="Name" insetError={true} isReadOnly={isReadOnly}/>
                 <Field name="sshUser" component={YBInputField} label="SSH User" insetError={true} isReadOnly={isReadOnly}/>
                 <Field name="privateKeyContent" component={YBTextArea} label="SSH Key" insetError={true} className="ssh-key-container" isReadOnly={isReadOnly}/>
               </div>
