@@ -5,16 +5,11 @@
 #include "yb/client/transaction.h"
 
 #include <unordered_set>
-
-#include <boost/uuid/uuid_io.hpp>
-#include <boost/uuid/random_generator.hpp>
-
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/scheduler.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
-#include "yb/util/random_util.h"
 
 #include "yb/common/transaction.h"
 
@@ -36,11 +31,6 @@ namespace client {
 
 namespace {
 
-TransactionId GenerateId() {
-  boost::uuids::basic_random_generator<std::mt19937_64> generator(&ThreadLocalRandom());
-  return generator();
-}
-
 // TODO(dtxn) correct deadline should be calculated and propagated.
 MonoTime TransactionDeadline() {
   return MonoTime::FineNow() + MonoDelta::FromSeconds(5);
@@ -54,7 +44,7 @@ class YBTransaction::Impl final {
       : manager_(manager),
         transaction_(transaction),
         isolation_(isolation),
-        id_(GenerateId()),
+        id_(Uuid::Generate()),
         log_prefix_(Format("$0: ", to_string(id_))) {
     VLOG_WITH_PREFIX(1) << "Started, isolation level: " << IsolationLevel_Name(isolation_);
   }

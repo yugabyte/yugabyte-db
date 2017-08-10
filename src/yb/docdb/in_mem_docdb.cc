@@ -53,9 +53,9 @@ Status InMemDocDbState::SetPrimitive(const DocPath& doc_path, const PrimitiveVal
     }
 
     if (current_subdoc->value_type() != ValueType::kObject) {
-      return STATUS(IllegalState, Substitute(
+      return STATUS_FORMAT(IllegalState,
           "Cannot set or delete values inside a subdocument of type $0",
-          ValueTypeToStr(current_subdoc->value_type())));
+          current_subdoc->value_type());
     }
 
     if (is_deletion) {

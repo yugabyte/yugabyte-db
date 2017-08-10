@@ -29,12 +29,12 @@ CHECKED_STATUS ExpectValueType(ValueType expected_value_type,
   if (expected_value_type == actual_value.value_type()) {
     return Status::OK();
   } else {
-    return STATUS_SUBSTITUTE(Corruption,
+    return STATUS_FORMAT(Corruption,
         "Expected a internal value type $0 for column $1 of physical SQL type $2, got $3",
-        ValueTypeToStr(expected_value_type),
+        expected_value_type,
         column.name(),
         column.type_info()->name(),
-        ValueTypeToStr(actual_value.value_type()));
+        actual_value.value_type());
   }
 }
 

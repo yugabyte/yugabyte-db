@@ -48,6 +48,8 @@ class Value {
 
   std::string Encode() const;
 
+  void EncodeAndAppend(std::string* value_bytes) const;
+
  private:
   PrimitiveValue primitive_value_;
   // The ttl of the Value. kMaxTtl is the default value. TTL is not included in encoded

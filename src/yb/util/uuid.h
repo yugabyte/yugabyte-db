@@ -14,17 +14,23 @@
 #include "yb/util/slice.h"
 namespace yb {
 
+constexpr size_t kUuidSize = 16;
+
 // Generic class that UUID type and uses the boost implementation underneath.
 // Implements a custom comparator that follows the cassandra implementation.
 class Uuid {
  public:
-  static constexpr size_t kUuidSize = 16;
   static constexpr size_t kUuidMsbSize = 8;
   static constexpr size_t kUuidLsbSize = kUuidSize - kUuidMsbSize;
 
   Uuid();
 
+  explicit Uuid(boost::uuids::uuid boost_uuid) : boost_uuid_(boost_uuid) {}
+
   Uuid(const Uuid& other);
+
+  // Generate a new boost uuid
+  static boost::uuids::uuid Generate();
 
   // Builds an Uuid object given a string representation of the UUID.
   CHECKED_STATUS FromString(const std::string& strval);

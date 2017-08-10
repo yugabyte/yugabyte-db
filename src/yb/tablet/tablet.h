@@ -159,7 +159,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Decode the Write (insert/mutate) operations from within a user's request.
   // Either fills in tx_state->row_ops or tx_state->kv_write_batch depending on TableType.
   CHECKED_STATUS DecodeWriteOperations(const Schema* client_schema,
-                               WriteTransactionState* tx_state);
+      WriteTransactionState* tx_state);
 
   // Kudu-specific. To be removed with the rest of Kudu storage engine. This is a no-op for YB
   // tables.
@@ -216,7 +216,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Acquires the row lock for the given operation, setting it in the
   // RowOp struct. This also sets the row op's RowSetKeyProbe.
   CHECKED_STATUS AcquireLockForOp(WriteTransactionState* tx_state,
-                          RowOp* op);
+      RowOp* op);
 
   // Signal that the given transaction is about to Apply.
   void StartApplying(WriteTransactionState* tx_state);
@@ -227,12 +227,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Apply a single row operation, which must already be prepared.
   // The result is set back into row_op->result
   void ApplyKuduRowOperation(WriteTransactionState* tx_state,
-                             RowOp* row_op);
+      RowOp* row_op);
 
   // Apply a set of RocksDB row operations.
   void ApplyKeyValueRowOperations(const docdb::KeyValueWriteBatchPB& put_batch,
-                                  const consensus::OpId& op_id,
-                                  HybridTime hybrid_time);
+      const consensus::OpId& op_id,
+      HybridTime hybrid_time);
 
   // Takes a Redis WriteRequestPB as input with its redis_write_batch.
   // Constructs a WriteRequestPB containing a serialized WriteBatch that will be
@@ -255,8 +255,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       gscoped_ptr<faststring>* rows_data) override;
 
   CHECKED_STATUS CreatePagingStateForRead(const YQLReadRequestPB& yql_read_request,
-                                          const YQLRowBlock& rowblock,
-                                          YQLResponsePB* response) const override;
+      const YQLRowBlock& rowblock,
+      YQLResponsePB* response) const override;
 
   // The YQL equivalent of KeyValueBatchFromRedisWriteBatch, works similarly.
   CHECKED_STATUS KeyValueBatchFromYQLWriteBatch(
@@ -277,13 +277,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Create a RocksDB checkpoint in the provided directory. Only used when table_type_ ==
   // YQL_TABLE_TYPE.
   CHECKED_STATUS CreateCheckpoint(const std::string& dir,
-                          google::protobuf::RepeatedPtrField<RocksDBFilePB>* rocksdb_files);
+      google::protobuf::RepeatedPtrField<RocksDBFilePB>* rocksdb_files);
 
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
   // The returned iterator is not initialized.
   CHECKED_STATUS NewRowIterator(const Schema &projection,
-                        gscoped_ptr<RowwiseIterator> *iter) const;
+      gscoped_ptr<RowwiseIterator> *iter) const;
 
   // Whether the iterator should return results in order.
   enum OrderMode {
@@ -293,9 +293,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Create a new row iterator for some historical snapshot.
   CHECKED_STATUS NewRowIterator(const Schema &projection,
-                        const MvccSnapshot &snap,
-                        const OrderMode order,
-                        gscoped_ptr<RowwiseIterator> *iter) const;
+      const MvccSnapshot &snap,
+      const OrderMode order,
+      gscoped_ptr<RowwiseIterator> *iter) const;
 
   // Flush the current MemRowSet for this tablet to disk. This swaps
   // in a new (initially empty) MemRowSet in its place.
@@ -308,7 +308,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // An error will be returned if the specified schema is invalid (e.g.
   // key mismatch, or missing IDs)
   CHECKED_STATUS CreatePreparedAlterSchema(AlterSchemaTransactionState *tx_state,
-                                   const Schema* schema);
+      const Schema* schema);
 
   // Apply the Schema of the specified transaction.
   // This operation will trigger a flush on the current MemRowSet.
@@ -321,7 +321,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //
   // REQUIRES: state_ == kBootstrapping
   CHECKED_STATUS RewindSchemaForBootstrap(const Schema& schema,
-                                  int64_t schema_version);
+      int64_t schema_version);
 
   // Prints current RowSet layout, taking a snapshot of the current RowSet interval
   // tree. Also prints the log of the compaction algorithm as evaluated
@@ -335,7 +335,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     // Force the compaction to include all rowsets, regardless of the
     // configured compaction policy. This is currently only used in
     // tests.
-    FORCE_COMPACT_ALL = 1 << 0
+        FORCE_COMPACT_ALL = 1 << 0
   };
   typedef int CompactFlags;
 
@@ -369,7 +369,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Fills in the in-memory size and retention size in bytes for the DMS with the
   // highest retention.
   void GetInfoForBestDMSToFlush(const MaxIdxToSegmentMap& max_idx_to_segment_size,
-                                int64_t* mem_size, int64_t* retention_size) const;
+      int64_t* mem_size, int64_t* retention_size) const;
 
   // Flushes the DMS with the highest retention.
   CHECKED_STATUS FlushDMSWithHighestRetention(
@@ -387,12 +387,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // then 'rs' isn't set. Callers who already own compact_select_lock_
   // can call GetPerfImprovementForBestDeltaCompactUnlocked().
   double GetPerfImprovementForBestDeltaCompact(RowSet::DeltaCompactionType type,
-                                               std::shared_ptr<RowSet>* rs) const;
+      std::shared_ptr<RowSet>* rs) const;
 
   // Same as GetPerfImprovementForBestDeltaCompact(), but doesn't take a lock on
   // compact_select_lock_.
   double GetPerfImprovementForBestDeltaCompactUnlocked(RowSet::DeltaCompactionType type,
-                                                       std::shared_ptr<RowSet>* rs) const;
+      std::shared_ptr<RowSet>* rs) const;
 
   // Return the current number of rowsets in the tablet.
   size_t num_rowsets() const;
@@ -443,7 +443,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //
   // TODO: Handle MVCC to support MemRowSet and handle deltas in DeltaMemStore
   CHECKED_STATUS DoMajorDeltaCompaction(const std::vector<ColumnId>& column_ids,
-                                std::shared_ptr<RowSet> input_rowset);
+      std::shared_ptr<RowSet> input_rowset);
 
   // Method used by tests to retrieve all rowsets of this table. This
   // will be removed once code for selecting the appropriate RowSet is
@@ -535,20 +535,20 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // they were already acquired. Requires that handles for the relevant locks
   // and MVCC transaction are present in the transaction state.
   CHECKED_STATUS InsertUnlocked(
-    WriteTransactionState *tx_state,
-    RowOp* insert);
+      WriteTransactionState *tx_state,
+      RowOp* insert);
 
   CHECKED_STATUS KuduColumnarInsertUnlocked(
-    WriteTransactionState *tx_state,
-    RowOp* insert,
-    const TabletComponents* comps,
-    ProbeStats* stats);
+      WriteTransactionState *tx_state,
+      RowOp* insert,
+      const TabletComponents* comps,
+      ProbeStats* stats);
 
   // A version of MutateRow that does not acquire locks and instead assumes
   // they were already acquired. Requires that handles for the relevant locks
   // and MVCC transaction are present in the transaction state.
   CHECKED_STATUS MutateRowUnlocked(WriteTransactionState *tx_state,
-                           RowOp* mutate);
+      RowOp* mutate);
 
   // Capture a set of iterators which, together, reflect all of the data in the tablet.
   //
@@ -559,15 +559,15 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // The returned iterators are not Init()ed.
   // 'projection' must remain valid and unchanged for the lifetime of the returned iterators.
   CHECKED_STATUS CaptureConsistentIterators(const Schema *projection,
-                                    const MvccSnapshot &snap,
-                                    const ScanSpec *spec,
-                                    vector<std::shared_ptr<RowwiseIterator> > *iters) const;
+      const MvccSnapshot &snap,
+      const ScanSpec *spec,
+      vector<std::shared_ptr<RowwiseIterator> > *iters) const;
 
   CHECKED_STATUS KuduColumnarCaptureConsistentIterators(
-    const Schema *projection,
-    const MvccSnapshot &snap,
-    const ScanSpec *spec,
-    vector<std::shared_ptr<RowwiseIterator> > *iters) const;
+      const Schema *projection,
+      const MvccSnapshot &snap,
+      const ScanSpec *spec,
+      vector<std::shared_ptr<RowwiseIterator> > *iters) const;
 
   CHECKED_STATUS YQLCaptureConsistentIterators(
       const Schema *projection,
@@ -581,29 +581,29 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       docdb::KeyValueWriteBatchPB* write_batch);
 
   CHECKED_STATUS PickRowSetsToCompact(RowSetsInCompaction *picked,
-                              CompactFlags flags) const;
+      CompactFlags flags) const;
 
   CHECKED_STATUS DoCompactionOrFlush(const RowSetsInCompaction &input,
-                             int64_t mrs_being_flushed);
+      int64_t mrs_being_flushed);
 
   CHECKED_STATUS FlushMetadata(const RowSetVector& to_remove,
-                       const RowSetMetadataVector& to_add,
-                       int64_t mrs_being_flushed);
+      const RowSetMetadataVector& to_add,
+      int64_t mrs_being_flushed);
 
   static void ModifyRowSetTree(const RowSetTree& old_tree,
-                               const RowSetVector& rowsets_to_remove,
-                               const RowSetVector& rowsets_to_add,
-                               RowSetTree* new_tree);
+      const RowSetVector& rowsets_to_remove,
+      const RowSetVector& rowsets_to_add,
+      RowSetTree* new_tree);
 
   // Swap out a set of rowsets, atomically replacing them with the new rowset
   // under the lock.
   void AtomicSwapRowSets(const RowSetVector &to_remove,
-                         const RowSetVector &to_add);
+      const RowSetVector &to_add);
 
   // Same as the above, but without taking the lock. This should only be used
   // in cases where the lock is already held.
   void AtomicSwapRowSetsUnlocked(const RowSetVector &to_remove,
-                                 const RowSetVector &to_add);
+      const RowSetVector &to_add);
 
   void GetComponents(scoped_refptr<TabletComponents>* comps) const {
     shared_lock<rw_spinlock> lock(component_lock_);
@@ -616,18 +616,18 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // and the MemRowSet compaction lock will be taken to prevent the inclusion
   // in any concurrent compactions.
   CHECKED_STATUS ReplaceMemRowSetUnlocked(RowSetsInCompaction *compaction,
-                                  std::shared_ptr<MemRowSet> *old_ms);
+      std::shared_ptr<MemRowSet> *old_ms);
 
   // TODO: Document me.
   CHECKED_STATUS FlushInternal(const RowSetsInCompaction& input,
-                       const std::shared_ptr<MemRowSet>& old_ms);
+      const std::shared_ptr<MemRowSet>& old_ms);
 
   BloomFilterSizing bloom_sizing() const;
 
   // Convert the specified read client schema (without IDs) to a server schema (with IDs)
   // This method is used by NewRowIterator().
   CHECKED_STATUS GetMappedReadProjection(const Schema& projection,
-                                 Schema *mapped_projection) const;
+      Schema *mapped_projection) const;
 
   CHECKED_STATUS CheckRowInTablet(const ConstContiguousRow& probe) const;
 
@@ -638,8 +638,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS DocDBDebugDump(vector<std::string> *lines);
 
   static void EmitRocksDBMetrics(std::shared_ptr<rocksdb::Statistics> rocksdb_statistics,
-                                 JsonWriter* writer,
-                                 const MetricJsonOptions& opts);
+      JsonWriter* writer,
+      const MetricJsonOptions& opts);
 
   // Helper method to find the rowset that has the DMS with the highest retention.
   std::shared_ptr<RowSet> FindBestDMSToFlush(
@@ -647,7 +647,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Helper method to find how many bytes this index retains.
   static int64_t GetLogRetentionSizeForIndex(int64_t min_log_index,
-                                             const MaxIdxToSegmentMap& max_idx_to_segment_size);
+      const MaxIdxToSegmentMap& max_idx_to_segment_size);
 
   // Register/Unregister a read operation, with an associated timestamp, for the purpose of
   // tracking the oldest read point.
@@ -862,7 +862,7 @@ class Tablet::Iterator : public RowwiseIterator {
   DISALLOW_COPY_AND_ASSIGN(Iterator);
 
   Iterator(const Tablet* tablet, const Schema& projection, MvccSnapshot snap,
-           const OrderMode order);
+      const OrderMode order);
 
   const Tablet *tablet_;
   Schema projection_;
@@ -881,7 +881,7 @@ class Tablet::Iterator : public RowwiseIterator {
 // that it won't change.
 struct TabletComponents : public RefCountedThreadSafe<TabletComponents> {
   TabletComponents(std::shared_ptr<MemRowSet> mrs,
-                   std::shared_ptr<RowSetTree> rs_tree);
+      std::shared_ptr<RowSetTree> rs_tree);
   const std::shared_ptr<MemRowSet> memrowset;
   const std::shared_ptr<RowSetTree> rowsets;
 };

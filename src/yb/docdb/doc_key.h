@@ -237,19 +237,16 @@ class SubDocKey {
     return subkeys_;
   }
 
-  // Append a sequence of sub-keys to this key. We require that the hybrid_time is not set, because
-  // we append it last.
+  // Append a sequence of sub-keys to this key.
   template<class ...T>
   void AppendSubKeysAndMaybeHybridTime(PrimitiveValue subdoc_key,
                                        T... subkeys_and_maybe_hybrid_time) {
-    EnsureHasNoHybridTimeYet();
     subkeys_.emplace_back(subdoc_key);
     AppendSubKeysAndMaybeHybridTime(subkeys_and_maybe_hybrid_time...);
   }
 
   template<class ...T>
   void AppendSubKeysAndMaybeHybridTime(PrimitiveValue subdoc_key) {
-    EnsureHasNoHybridTimeYet();
     subkeys_.emplace_back(subdoc_key);
   }
 

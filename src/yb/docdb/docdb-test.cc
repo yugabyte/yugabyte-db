@@ -16,6 +16,7 @@
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/docdb/in_mem_docdb.h"
+#include "yb/docdb/intent.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/server/hybrid_clock.h"
@@ -351,6 +352,22 @@ void DocDBTest::CheckExpectedLatestDBState() {
 }
 
 // ------------------------------------------------------------------------------------------------
+
+TEST_F(DocDBTest, IntentEncodingTest) {
+  Uuid uuid(Uuid::Generate());
+  SubDocKey subdoc_key(DocKey(PrimitiveValues("test_dockey")),
+      PrimitiveValue("test_subdoc_key"), HybridTime(10));
+  Intent intent(subdoc_key,
+      IntentType::kSnapshotParentWrite, uuid, Value(PrimitiveValue("test_intent_value")));
+  ASSERT_EQ("Intent(" + subdoc_key.ToString() + ", kSnapshotParentWrite, " + uuid.ToString()
+      + ", \"test_intent_value\")", intent.ToString());
+  string encoded_intent_key = intent.EncodeKey();
+  string encoded_intent_value = intent.EncodeValue();
+  Intent decoded_intent;
+  ASSERT_OK(decoded_intent.DecodeFromKey(Slice(encoded_intent_key)));
+  ASSERT_OK(decoded_intent.DecodeFromValue(Slice(encoded_intent_value)));
+  ASSERT_EQ(intent.ToString(), decoded_intent.ToString());
+}
 
 TEST_F(DocDBTest, DocPathTest) {
   DocKey doc_key(PrimitiveValues("mydockey", 10, "mydockey", 20));

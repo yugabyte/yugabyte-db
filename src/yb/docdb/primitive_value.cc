@@ -8,6 +8,7 @@
 
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/subdocument.h"
+#include "yb/docdb/intent.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/yb_rocksdb.h"
@@ -15,6 +16,7 @@
 #include "yb/util/compare_util.h"
 #include "yb/util/decimal.h"
 #include "yb/util/fast_varint.h"
+#include "yb/util/net/inetaddress.h"
 
 using std::string;
 using strings::Substitute;
@@ -122,12 +124,16 @@ string PrimitiveValue::ToString() const {
       return "DEL";
     case ValueType::kArray:
       return "[]";
+    case ValueType::kTransactionId:
+      return Substitute("TransactionID($0)", uuid_val_.ToString());
+    case ValueType::kIntentType:
+      return Substitute("Intent($0)", docdb::ToString(static_cast<enum IntentType>(uint16_val_)));
 
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
     case ValueType::kTtl:
       break;
   }
-  LOG(FATAL) << __FUNCTION__ << " not implemented for value type " << ValueTypeToStr(type_);
+  FATAL_INVALID_ENUM_VALUE(ValueType, type_);
 }
 
 void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
@@ -199,6 +205,7 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
       return;
     }
 
+    case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUuid: {
       std::string bytes;
       CHECK_OK(uuid_val_.EncodeToComparable(&bytes));
@@ -230,9 +237,13 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
       key_bytes->AppendColumnId(column_id_val_);
       return;
 
+    case ValueType::kIntentType:
+      key_bytes->AppendIntentType(static_cast<IntentType>(uint16_val_));
+      return;
+
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
   }
-  LOG(FATAL) << __FUNCTION__ << " not implemented for value type " << ValueTypeToStr(type_);
+  FATAL_INVALID_ENUM_VALUE(ValueType, type_);
 }
 
 string PrimitiveValue::ToValue() const {
@@ -300,6 +311,7 @@ string PrimitiveValue::ToValue() const {
     }
 
     case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUuid: {
       std::string bytes;
       CHECK_OK(uuid_val_.EncodeToComparable(&bytes))
@@ -311,6 +323,7 @@ string PrimitiveValue::ToValue() const {
       // Hashes are not allowed in a value.
       break;
 
+    case ValueType::kIntentType: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
@@ -320,7 +333,7 @@ string PrimitiveValue::ToValue() const {
       break;
   }
 
-  LOG(FATAL) << __FUNCTION__ << " not implemented for value type " << ValueTypeToStr(type_);
+  FATAL_INVALID_ENUM_VALUE(ValueType, type_);
 }
 
 Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
@@ -494,6 +507,7 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       return Status::OK();
     }
 
+    case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUuid: {
       if (out) {
         string bytes;
@@ -551,17 +565,22 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       return Status::OK();
     }
 
-    case ValueType::kDouble: FALLTHROUGH_INTENDED;
-    case ValueType::kFloat:
-      // Doubles and floats are not allowed in a key as of 07/20/2017.
-      break;
+    case ValueType::kIntentType: {
+      out->uint16_val_ = static_cast<uint16_t>(*slice->data());
+      type_ref = value_type;
+      slice->consume_byte();
+      return Status::OK();
+    }
+
+    case ValueType::kFloat: FALLTHROUGH_INTENDED;
+    case ValueType::kDouble:
+      return STATUS_FORMAT(Corruption, "ValueType $0 cannot be decoded to key", value_type);
 
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
   }
-  return STATUS(Corruption,
-      Substitute("Cannot decode value type $0 from the key encoding format: $1",
-          ValueTypeToStr(value_type),
-          ToShortDebugStr(input_slice)));
+  return STATUS_FORMAT(Corruption, "Cannot decode value type $0 from the key encoding format: $1",
+      value_type,
+      ToShortDebugStr(input_slice));
 }
 
 Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
@@ -599,9 +618,8 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kInt32Descending: FALLTHROUGH_INTENDED;
     case ValueType::kFloat:
       if (slice.size() != sizeof(int32_t)) {
-        return STATUS(Corruption,
-                      Substitute("Invalid number of bytes for a $0: $1",
-                                 ValueTypeToStr(value_type), slice.size()));
+        return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
+            value_type, slice.size());
       }
       type_ = value_type;
       int32_val_ = BigEndian::Load32(slice.data());
@@ -612,9 +630,8 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kArrayIndex: FALLTHROUGH_INTENDED;
     case ValueType::kDouble:
       if (slice.size() != sizeof(int64_t)) {
-        return STATUS(Corruption,
-            Substitute("Invalid number of bytes for a $0: $1",
-                ValueTypeToStr(value_type), slice.size()));
+        return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
+            value_type, slice.size());
       }
       type_ = value_type;
       int64_val_ = BigEndian::Load64(slice.data());
@@ -631,19 +648,18 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
 
     case ValueType::kTimestamp:
       if (slice.size() != sizeof(Timestamp)) {
-        return STATUS(Corruption,
-            Substitute("Invalid number of bytes for a $0: $1",
-                ValueTypeToStr(value_type), slice.size()));
+        return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
+            value_type, slice.size());
       }
       type_ = value_type;
       timestamp_val_ = Timestamp(BigEndian::Load64(slice.data()));
       return Status::OK();
 
     case ValueType::kInetaddress: {
-      if (slice.size() != InetAddress::kV4Size && slice.size() != InetAddress::kV6Size) {
-        return STATUS(Corruption,
-                      Substitute("Invalid number of bytes to decode IPv4/IPv6: $0, need $1 or $2",
-                                 slice.size(), InetAddress::kV4Size, InetAddress::kV6Size));
+      if (slice.size() != kInetAddressV4Size && slice.size() != kInetAddressV6Size) {
+        return STATUS_FORMAT(Corruption,
+            "Invalid number of bytes to decode IPv4/IPv6: $0, need $1 or $2",
+            slice.size(), kInetAddressV4Size, kInetAddressV6Size);
       }
       // Need to use a non-rocksdb slice for InetAddress.
       Slice slice_temp(slice.data(), slice.size());
@@ -653,11 +669,11 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       return Status::OK();
     }
 
+    case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUuid: {
-      if (slice.size() != Uuid::kUuidSize) {
-        return STATUS(Corruption,
-                      Substitute("Invalid number of bytes to decode Uuid: $0, need $1",
-                                 slice.size(), Uuid::kUuidSize));
+      if (slice.size() != kUuidSize) {
+        return STATUS_FORMAT(Corruption, "Invalid number of bytes to decode Uuid: $0, need $1",
+            slice.size(), kUuidSize);
       }
       Slice slice_temp(slice.data(), slice.size());
       new(&uuid_val_) Uuid();
@@ -666,6 +682,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       return Status::OK();
     }
 
+    case ValueType::kIntentType: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
     case ValueType::kUInt16Hash: FALLTHROUGH_INTENDED;
     case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED;
@@ -678,10 +695,9 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
     case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTimestampDescending:
-      return STATUS(Corruption,
-          Substitute("$0 is not allowed in a RocksDB PrimitiveValue", ValueTypeToStr(value_type)));
+      return STATUS_FORMAT(Corruption, "$0 is not allowed in a RocksDB PrimitiveValue", value_type);
   }
-  LOG(FATAL) << "Invalid value type: " << ValueTypeToStr(value_type);
+  FATAL_INVALID_ENUM_VALUE(ValueType, type_);
   return Status::OK();
 }
 
@@ -746,6 +762,19 @@ PrimitiveValue PrimitiveValue::Int32(int32_t v, SortOrder sort_order) {
   return primitive_value;
 }
 
+PrimitiveValue PrimitiveValue::TransactionId(Uuid transaction_id) {
+  PrimitiveValue primitive_value(transaction_id);
+  primitive_value.type_ = ValueType::kTransactionId;
+  return primitive_value;
+}
+
+PrimitiveValue PrimitiveValue::IntentTypeValue(IntentType intent_type) {
+  PrimitiveValue primitive_value(static_cast<uint16_t>(intent_type));
+  primitive_value.type_ = ValueType::kIntentType;
+  return primitive_value;
+}
+
+
 KeyBytes PrimitiveValue::ToKeyBytes() const {
   KeyBytes kb;
   AppendToKey(&kb);
@@ -774,12 +803,14 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kDouble: return double_val_ == other.double_val_;
     case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
     case ValueType::kDecimal: return decimal_val_ == other.decimal_val_;
+    case ValueType::kIntentType: FALLTHROUGH_INTENDED;
     case ValueType::kUInt16Hash: return uint16_val_ == other.uint16_val_;
 
     case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTimestamp: return timestamp_val_ == other.timestamp_val_;
     case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
     case ValueType::kInetaddress: return *inetaddress_val_ == *(other.inetaddress_val_);
+    case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
     case ValueType::kUuid: return uuid_val_ == other.uuid_val_;
 
@@ -788,7 +819,7 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kHybridTime: return hybrid_time_val_.CompareTo(other.hybrid_time_val_) == 0;
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
   }
-  LOG(FATAL) << "Trying to test equality of wrong PrimitiveValue type: " << ValueTypeToStr(type_);
+  FATAL_INVALID_ENUM_VALUE(ValueType, type_);
 }
 
 int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
@@ -821,6 +852,7 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       return other.decimal_val_.compare(decimal_val_);
     case ValueType::kDecimal:
       return decimal_val_.compare(other.decimal_val_);
+    case ValueType::kIntentType: FALLTHROUGH_INTENDED;
     case ValueType::kUInt16Hash:
       return CompareUsingLessThan(uint16_val_, other.uint16_val_);
     case ValueType::kTimestampDescending:
@@ -831,6 +863,7 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       return CompareUsingLessThan(*(other.inetaddress_val_), *inetaddress_val_);
     case ValueType::kInetaddress:
       return CompareUsingLessThan(*inetaddress_val_, *(other.inetaddress_val_));
+    case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUuidDescending:
       return CompareUsingLessThan(other.uuid_val_, uuid_val_);
     case ValueType::kUuid:

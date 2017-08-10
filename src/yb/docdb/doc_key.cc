@@ -41,9 +41,9 @@ Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice, Callback callback) {
       return Status::OK();
     }
     if (PREDICT_FALSE(!IsPrimitiveValueType(current_value_type))) {
-      return STATUS_SUBSTITUTE(Corruption,
+      return STATUS_FORMAT(Corruption,
           "Expected a primitive value type, got $0",
-          ValueTypeToStr(current_value_type));
+          current_value_type);
     }
     RETURN_NOT_OK_PREPEND(callback(),
         Substitute("while consuming primitive values from $0",
@@ -191,9 +191,9 @@ yb::Status DocKey::DoDecode(rocksdb::Slice *slice,
   const ValueType first_value_type = static_cast<ValueType>(*slice->data());
 
   if (!IsPrimitiveValueType(first_value_type) && first_value_type != ValueType::kGroupEnd) {
-    return STATUS_SUBSTITUTE(Corruption,
+    return STATUS_FORMAT(Corruption,
         "Expected first value type to be primitive or GroupEnd, got $0",
-        ValueTypeToStr(first_value_type));
+        first_value_type);
   }
 
   if (first_value_type == ValueType::kUInt16Hash) {
@@ -654,12 +654,14 @@ rocksdb::FilterBitsReader* DocDbAwareFilterPolicy::GetFilterBitsReader(
     const rocksdb::Slice& contents) const {
   return builtin_policy_->GetFilterBitsReader(contents);
 }
+
 rocksdb::FilterPolicy::FilterType DocDbAwareFilterPolicy::GetFilterType() const {
   return builtin_policy_->GetFilterType();
 }
 
 const rocksdb::FilterPolicy::KeyTransformer* DocDbAwareFilterPolicy::GetKeyTransformer() const {
-  return &HashedComponentsExtractor::GetInstance(); }
+  return &HashedComponentsExtractor::GetInstance();
+}
 
 }  // namespace docdb
 

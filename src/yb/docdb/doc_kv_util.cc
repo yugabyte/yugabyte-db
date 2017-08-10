@@ -49,11 +49,11 @@ Status CheckHybridTimeSizeAndValueType(
   const size_t hybrid_time_value_type_offset = key.size() - *ht_byte_size_dest - 1;
   const ValueType value_type = DecodeValueType(key[hybrid_time_value_type_offset]);
   if (value_type != ValueType::kHybridTime) {
-    return STATUS_SUBSTITUTE(
+    return STATUS_FORMAT(
         Corruption,
         "Expected to find value type kHybridTime preceding the HybridTime component of the "
             "encoded key, found $0. DocHybridTime bytes: $1",
-        ValueTypeToStr(value_type),
+        value_type,
         ToShortDebugStr(rocksdb::Slice(key.data() + hybrid_time_value_type_offset,
                                        key.size() - hybrid_time_value_type_offset)));
   }

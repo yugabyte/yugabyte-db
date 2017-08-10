@@ -6,8 +6,6 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <yb/util/date_time.h>
-#include <yb/server/hybrid_clock.h>
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/redis_protocol.pb.h"
@@ -143,9 +141,8 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
           doc_iter->subdoc_type() != ValueType::kObject &&
           doc_iter->subdoc_type() != ValueType::kRedisSet) {
         // We raise this error only if init markers are mandatory.
-        return STATUS_SUBSTITUTE(IllegalState,
-                                 "Cannot set values inside a subdocument of type $0",
-                                 ValueTypeToStr(doc_iter->subdoc_type()));
+        return STATUS_FORMAT(IllegalState, "Cannot set values inside a subdocument of type $0",
+            doc_iter->subdoc_type());
       }
       if ((subkey_index == num_subkeys - 1 && !is_deletion) ||
           use_init_marker == InitMarkerBehavior::OPTIONAL) {
@@ -265,9 +262,9 @@ Status DocWriteBatch::ExtendSubDocument(
       RETURN_NOT_OK(ExtendList(doc_path, value, ListExtendOrder::APPEND, use_init_marker, ttl));
   } else {
     if (!value.IsPrimitive() && value.value_type() != ValueType::kTombstone) {
-      return STATUS_SUBSTITUTE(InvalidArgument,
+      return STATUS_FORMAT(InvalidArgument,
           "Found unexpected value type $0. Expecting a PrimitiveType or a Tombstone",
-          ValueTypeToStr(value.value_type()));
+          value.value_type());
     }
     RETURN_NOT_OK(SetPrimitive(doc_path, Value(value, ttl), use_init_marker));
   }
@@ -302,10 +299,10 @@ Status DocWriteBatch::ExtendList(
     return STATUS(IllegalState, "List cannot be extended if monotonic_counter_ is uninitialized");
   }
   if (value.value_type() != ValueType::kArray) {
-    return STATUS_SUBSTITUTE(
+    return STATUS_FORMAT(
         InvalidArgument,
         "Expecting Subdocument of type kArray, found $0",
-        ValueTypeToStr(value.value_type()));
+        value.value_type());
   }
   const std::vector<SubDocument>& list = value.array_container();
   // It is assumed that there is an exclusive lock on the list key.
@@ -487,8 +484,8 @@ static yb::Status ScanPrimitiveValueOrObject(const SubDocKey& higher_level_key,
     return Status::OK();
   }
 
-  return STATUS_SUBSTITUTE(Corruption, "Invalid value type at the top level of a document: $0",
-                           ValueTypeToStr(top_level_value.primitive_value().value_type()));
+  return STATUS_FORMAT(Corruption, "Invalid value type at the top level of a document: $0",
+      top_level_value.primitive_value().value_type());
 }
 
 // @param higher_level_key
@@ -768,8 +765,8 @@ yb::Status BuildSubDocument(
         continue;
       } else {
         if (!IsPrimitiveValueType(doc_value.value_type())) {
-          return STATUS_SUBSTITUTE(Corruption,
-              "Expected primitive value type, got $0", ValueTypeToStr(doc_value.value_type()));
+          return STATUS_FORMAT(Corruption,
+              "Expected primitive value type, got $0", doc_value.value_type());
         }
 
         DCHECK_GE(high_ts, write_time.hybrid_time());
@@ -777,10 +774,10 @@ yb::Status BuildSubDocument(
           doc_value.mutable_primitive_value()->SetTtl(-1);
         } else {
           int64_t time_since_write_seconds = (server::HybridClock::GetPhysicalValueMicros(high_ts) -
-                                              server::HybridClock::GetPhysicalValueMicros(write_time.hybrid_time()))/
-                                              MonoTime::kMicrosecondsPerSecond;
+              server::HybridClock::GetPhysicalValueMicros(write_time.hybrid_time())) /
+              MonoTime::kMicrosecondsPerSecond;
           int64_t ttl_seconds = std::max(static_cast<int64_t>(0),
-                                         ttl.ToMilliseconds()/MonoTime::kMillisecondsPerSecond - time_since_write_seconds);
+              ttl.ToMilliseconds()/MonoTime::kMillisecondsPerSecond - time_since_write_seconds);
           doc_value.mutable_primitive_value()->SetTtl(ttl_seconds);
         }
         doc_value.mutable_primitive_value()->SetWritetime(write_time.hybrid_time().ToUint64());

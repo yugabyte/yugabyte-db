@@ -62,7 +62,7 @@ SubDocument::SubDocument(const SubDocument& other) {
         break;
       default:
         LOG(FATAL) << "Trying to copy an invalid/unsupported SubDocument type: "
-                   << ValueTypeToStr(type_);
+                   << docdb::ToString(type_);
     }
   }
 }
@@ -96,7 +96,7 @@ bool SubDocument::operator ==(const SubDocument& other) const {
         return true;
       }
     default:
-      LOG(FATAL) << "Trying to compare SubDocuments of invalid type: " << ValueTypeToStr(type_);
+      LOG(FATAL) << "Trying to compare SubDocuments of invalid type: " << docdb::ToString(type_);
   }
   // We'll get here if both container pointers are null.
   return true;
@@ -104,8 +104,8 @@ bool SubDocument::operator ==(const SubDocument& other) const {
 
 Status SubDocument::ConvertToRedisSet() {
   if (type_ != ValueType::kObject) {
-    return STATUS_SUBSTITUTE(
-        InvalidArgument, "Expected kObject Subdocument, found $0", ValueTypeToStr(type_));
+    return STATUS_FORMAT(
+        InvalidArgument, "Expected kObject Subdocument, found $0", type_);
   }
   if (!has_valid_object_container()) {
     return STATUS(InvalidArgument, "Subdocument doesn't have valid object container");
@@ -116,8 +116,8 @@ Status SubDocument::ConvertToRedisSet() {
 
 Status SubDocument::ConvertToArray() {
   if (type_ != ValueType::kObject) {
-    return STATUS_SUBSTITUTE(
-        InvalidArgument, "Expected kObject Subdocument, found $0", ValueTypeToStr(type_));
+    return STATUS_FORMAT(
+        InvalidArgument, "Expected kObject Subdocument, found $0", type_);
   }
   if (!has_valid_object_container()) {
     return STATUS(InvalidArgument, "Subdocument doesn't have valid object container");
@@ -279,7 +279,7 @@ void SubDocumentToStreamInternal(ostream& out,
       break;
     }
     default:
-      LOG(FATAL) << "Invalid subdocument type: " << ValueTypeToStr(subdoc.value_type());
+      LOG(FATAL) << "Invalid subdocument type: " << ToString(subdoc.value_type());
   }
 }
 

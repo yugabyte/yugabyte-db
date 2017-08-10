@@ -559,7 +559,7 @@ void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType 
       DocRowwiseIterator yql_iter(schema, schema, rocksdb(),
           HybridClock::HybridTimeFromMicroseconds(3000));
       ASSERT_OK(yql_iter.Init(yql_scan_spec));
-      LOG(INFO) << "Expected rows: " << ToString(expected_rows);
+      LOG(INFO) << "Expected rows: " << yb::ToString(expected_rows);
 
       while(yql_iter.HasNext()) {
         YQLTableRow value_map;

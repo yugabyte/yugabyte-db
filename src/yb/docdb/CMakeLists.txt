@@ -29,6 +29,7 @@ set(DOCDB_SRCS
     internal_doc_iterator.cc
     key_bytes.cc
     primitive_value.cc
+    intent.cc
     value.cc
     subdocument.cc
     value_type.cc

@@ -61,7 +61,7 @@ string InternalDocIterator::ToDebugString() {
   ss << "InternalDocIterator:" << endl;
   ss << "  key_prefix: " << BestEffortDocDBKeyToStr(key_prefix_) << endl;
   if (subdoc_exists_ == Trilean::kTrue || subdoc_deleted()) {
-    ss << "  subdoc_type: " << ValueTypeToStr(subdoc_type_) << endl;
+    ss << "  subdoc_type: " << ToString(subdoc_type_) << endl;
     ss << "  subdoc_gen_ht: " << subdoc_ht_.ToString() << endl;
   }
   ss << "  subdoc_exists: " << subdoc_exists_ << endl;

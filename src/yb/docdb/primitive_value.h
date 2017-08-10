@@ -217,6 +217,8 @@ class PrimitiveValue {
   static PrimitiveValue SystemColumnId(ColumnId column_id);
   static PrimitiveValue SystemColumnId(SystemColumnIds system_column_id);
   static PrimitiveValue Int32(int32_t v, SortOrder sort_order = SortOrder::kAscending);
+  static PrimitiveValue TransactionId(Uuid transaction_id);
+  static PrimitiveValue IntentTypeValue(IntentType intent_type);
 
   KeyBytes ToKeyBytes() const;
 
@@ -257,6 +259,11 @@ class PrimitiveValue {
     return int64_val_;
   }
 
+  uint16_t GetUInt16() const {
+    DCHECK(ValueType::kUInt16Hash == type_ || ValueType::kIntentType == type_);
+    return uint16_val_;
+  }
+
   double GetDouble() const {
     DCHECK_EQ(ValueType::kDouble, type_);
     return double_val_;
@@ -283,7 +290,8 @@ class PrimitiveValue {
   }
 
   const Uuid& GetUuid() const {
-    DCHECK(type_ == ValueType::kUuid || type_ == ValueType::kUuidDescending);
+    DCHECK(type_ == ValueType::kUuid || type_ == ValueType::kUuidDescending ||
+        type_ == ValueType::kTransactionId);
     return uuid_val_;
   }
 
@@ -322,7 +330,7 @@ class PrimitiveValue {
 
  protected:
 
-  //column attributes
+  // Column attributes
   int64_t ttl_seconds_;
   int64_t write_time_;
 

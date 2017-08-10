@@ -7,6 +7,7 @@
 
 #include <glog/logging.h>
 
+#include "yb/util/enums.h"
 #include "rocksdb/slice.h"
 
 namespace yb {
@@ -18,6 +19,9 @@ enum class ValueType : char {
   // needs to sort before all other value types, so that a DocKey that has a prefix of the sequence
   // of components of another key sorts before the other key.
   kGroupEnd = '!',  // ASCII code 33 -- we pick the lowest code graphic character.
+  // Note that intents also start with a ! character.
+  // All intents are stored in the beginning of the keyspace to be able to read them without
+  // polluting cache with other values. Later we'll put intents in a separate rocksdb.
 
   // HybridTime must be lower than all other primitive types (other than kGroupEnd) so that
   // SubDocKeys that have fewer subkeys within a document sort above those that have all the same
@@ -29,7 +33,7 @@ enum class ValueType : char {
   kString = '$',  // ASCII code 36
   kInetaddress = '-',  // ASCII code 45
   kInetaddressDescending = '.',  // ASCII code 46
-  kArray = 'A',  // ASCII code 65. TODO: do we need this at the this layer?
+  kArray = 'A',  // ASCII code 65.
   kFloat = 'C',  // ASCII code 67
   kDouble = 'D',  // ASCII code 68
   kDecimal = 'E',  // ASCII code 69
@@ -42,7 +46,7 @@ enum class ValueType : char {
   kNull = 'N',  // ASCII code 78
   kTrue = 'T',  // ASCII code 84
   kTombstone = 'X',  // ASCII code 88
-  kArrayIndex = '[',  // ASCII code 91. TODO: do we need this at this layer?
+  kArrayIndex = '[',  // ASCII code 91.
 
   // We allow putting a 32-bit hash in front of the document key. This hash is computed based on
   // the "hashed" components of the document key that precede "range" components.
@@ -53,12 +57,14 @@ enum class ValueType : char {
   kInt64Descending = 'b',  // ASCII code 98
   kTimestampDescending = 'c',  // ASCII code 99
   kDecimalDescending = 'd',  // ASCII code 100
+  kIntentType = 'i', // ASCII code 105
   kInt32Descending = 'e',  // ASCII code 101
 
   // Timestamp value in microseconds
   kTimestamp = 's',  // ASCII code 115
   // TTL value in milliseconds, optionally present at the start of a value.
   kTtl = 't',  // ASCII code 116
+  kTransactionId = 'x', // ASCII code 120
 
   kObject = '{',  // ASCII code 123
   kRedisSet = '(', // ASCII code 40
@@ -67,13 +73,17 @@ enum class ValueType : char {
   kInvalidValueType = 127
 };
 
+// The purpose of different types of intents is to ensure that they conflict
+// in appropriate ways according to the conflict matrix.
+YB_DEFINE_ENUM(IntentType, (kSnapshotWrite)(kSnapshotParentWrite)(kInvalidIntent));
+
 // All primitive value types fall into this range, but not all value types in this range are
 // primitive (e.g. object and tombstone are not).
 
 constexpr ValueType kMinPrimitiveValueType = ValueType::kString;
 constexpr ValueType kMaxPrimitiveValueType = ValueType::kObject;
 
-std::string ValueTypeToStr(ValueType value_type);
+std::string ToString(ValueType value_type);
 
 constexpr inline bool IsPrimitiveValueType(const ValueType value_type) {
   return kMinPrimitiveValueType <= value_type && value_type <= kMaxPrimitiveValueType &&
@@ -95,7 +105,7 @@ inline ValueType ConsumeValueType(rocksdb::Slice* slice) {
 }
 
 inline std::ostream& operator<<(std::ostream& out, const ValueType value_type) {
-  return out << ValueTypeToStr(value_type);
+  return out << ToString(value_type);
 }
 
 inline ValueType DecodeValueType(char value_type_byte) {

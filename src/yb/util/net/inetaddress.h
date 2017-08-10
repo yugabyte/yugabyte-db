@@ -13,12 +13,13 @@
 
 namespace yb {
 
+constexpr size_t kInetAddressV4Size = 4;
+constexpr size_t kInetAddressV6Size = 16;
+
 // Generic class that encapsulates IPv4 and IPv6 addresses and uses the boost implementation
 // underneath.
 class InetAddress {
  public:
-  static constexpr size_t kV4Size = 4;
-  static constexpr size_t kV6Size = 16;
   InetAddress();
 
   explicit InetAddress(const boost::asio::ip::address& address);

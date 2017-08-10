@@ -55,12 +55,16 @@ string Value::ToString() const {
 
 string Value::Encode() const {
   string result;
-  if (!ttl_.Equals(kMaxTtl)) {
-    result.push_back(static_cast<char>(ValueType::kTtl));
-    AppendBigEndianUInt64(ttl_.ToMilliseconds(), &result);
-  }
-  result += primitive_value_.ToValue();
+  EncodeAndAppend(&result);
   return result;
+}
+
+void Value::EncodeAndAppend(std::string *value_bytes) const {
+  if (!ttl_.Equals(kMaxTtl)) {
+    value_bytes->push_back(static_cast<char>(ValueType::kTtl));
+    AppendBigEndianUInt64(ttl_.ToMilliseconds(), value_bytes);
+  }
+  value_bytes->append(primitive_value_.ToValue());
 }
 
 }  // namespace docdb

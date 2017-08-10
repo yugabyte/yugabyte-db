@@ -81,6 +81,10 @@ class KeyBytes {
     AppendInt32ToKey(x, &data_);
   }
 
+  void AppendIntentType(IntentType intent_type) {
+    data_.push_back(static_cast<char>(intent_type));
+  }
+
   void AppendDescendingInt64(int64_t x) {
     // AppendInt64ToKey flips the highest bit. We flip all the x's bits before calling
     // AppendInt64ToKey, but the order of the operations (FLIP_HIGHEST_BIT and FLIP_ALL_BITS)

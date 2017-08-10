@@ -1,6 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
+#include <boost/uuid/random_generator.hpp>
 #include "yb/util/uuid.h"
+#include "yb/util/random_util.h"
 
 namespace yb {
 
@@ -9,6 +11,11 @@ Uuid::Uuid() {
 
 Uuid::Uuid(const Uuid& other) {
   boost_uuid_ = other.boost_uuid_;
+}
+
+boost::uuids::uuid Uuid::Generate() {
+  boost::uuids::basic_random_generator<std::mt19937_64> generator(&ThreadLocalRandom());
+  return generator();
 }
 
 CHECKED_STATUS Uuid::FromString(const std::string& strval) {

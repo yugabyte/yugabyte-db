@@ -32,7 +32,7 @@ void DocWriteBatchCache::Put(const KeyBytes& key_bytes,
       "Writing to DocWriteBatchCache: encoded_key_prefix=$0, gen_ht=$1, value_type=$2",
       BestEffortDocDBKeyToStr(key_bytes),
       gen_ht.ToString(),
-      ValueTypeToStr(value_type));
+      ToString(value_type));
   prefix_to_gen_ht_[key_bytes.AsStringRef()] = std::make_pair(gen_ht, value_type);
 }
 
@@ -69,7 +69,7 @@ string DocWriteBatchCache::EntryToStr(const Entry& entry) {
   ostringstream ss;
   ss << "("
      << entry.first.ToString() << ", "
-     << ValueTypeToStr(entry.second)
+     << entry.second
      << ")";
   return ss.str();
 }

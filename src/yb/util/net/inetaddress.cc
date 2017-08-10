@@ -109,13 +109,13 @@ CHECKED_STATUS InetAddress::FromSlice(const Slice& slice, size_t size_hint) {
     return STATUS_SUBSTITUTE(InvalidArgument, "Size of slice: $0 is smaller than provided "
         "size_hint: $1", slice.size(), expected_size);
   }
-  if (expected_size == kV4Size) {
+  if (expected_size == kInetAddressV4Size) {
     address_v4::bytes_type v4bytes;
     DCHECK_EQ(expected_size, v4bytes.size());
     memcpy(v4bytes.data(), slice.data(), v4bytes.size());
     address_v4 v4address(v4bytes);
     boost_addr_ = v4address;
-  } else if (expected_size == kV6Size) {
+  } else if (expected_size == kInetAddressV6Size) {
     address_v6::bytes_type v6bytes;
     DCHECK_EQ(expected_size, v6bytes.size());
     memcpy(v6bytes.data(), slice.data(), v6bytes.size());
