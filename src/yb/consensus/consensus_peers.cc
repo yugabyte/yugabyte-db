@@ -377,6 +377,7 @@ void Peer::Close() {
   queue_->UntrackPeer(peer_pb_.permanent_uuid());
   // We don't own the ops (the queue does).
   request_.mutable_ops()->ExtractSubrange(0, request_.ops_size(), nullptr);
+  replicate_msg_refs_.clear();
 }
 
 Peer::~Peer() {
