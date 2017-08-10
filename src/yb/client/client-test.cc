@@ -1908,15 +1908,6 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
     ASSERT_STR_CONTAINS(s.ToString(), "cannot remove a key column");
   }
 
-  // test that renaming a key should throws an error
-  {
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    table_alterer->AlterColumn("key")->RenameTo("key2");
-    Status s = table_alterer->Alter();
-    ASSERT_TRUE(s.IsInvalidArgument());
-    ASSERT_STR_CONTAINS(s.ToString(), "cannot rename a key column");
-  }
-
   // test that renaming to an already-existing name throws an error
   {
     gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
