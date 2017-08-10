@@ -6,11 +6,6 @@ var eslintConfigPath = path.resolve(__dirname, '.eslintrc.yml');
 
 const ExtractTextPlugin = require("extract-text-webpack-plugin");
 
-const extractSass = new ExtractTextPlugin({
-    filename: "[name].[contenthash].css",
-    disable: process.env.NODE_ENV === "development"
-});
-
 // module.exports = {
 //   eslint: {
 //     configFile: path.resolve(__dirname, '.eslintrc.yml')
@@ -35,10 +30,10 @@ function isJsPreRule(conf) {
 
 function rewireSass(config, env) {
   var urlLoaderRule = config.module.rules.find(loaderMatch('url-loader'));
-  if (urlLoaderRule.exclude) urlLoaderRule.exclude.push(/\.scss$/);
+  if (urlLoaderRule && urlLoaderRule.exclude) urlLoaderRule.exclude.push(/\.scss$/);
 
   var fileLoaderRule = config.module.rules.find(loaderMatch('file-loader'));
-  if (fileLoaderRule.exclude) fileLoaderRule.exclude.push(/\.scss$/);
+  if (fileLoaderRule && fileLoaderRule.exclude) fileLoaderRule.exclude.push(/\.scss$/);
 
   var sassRule = {
     test: /\.(scss|sass)$/
@@ -60,7 +55,7 @@ function rewireSass(config, env) {
       }
     }];
   } else {
-    sassRule.use = extractSass.extract({
+    sassRule.use = ExtractTextPlugin.extract({
       use: [{
         loader: "css-loader"
       }, {
@@ -75,6 +70,12 @@ function rewireSass(config, env) {
   }
 
   config.module.rules.unshift(sassRule);
+  config.plugins.push(
+    new ExtractTextPlugin({
+      filename: "[name].[contenthash].css",
+      disable: process.env.NODE_ENV === "development",
+    })
+  );
 
   return config;
 }
