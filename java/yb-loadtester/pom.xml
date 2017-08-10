@@ -79,6 +79,13 @@
       <groupId>com.datastax.spark</groupId>
       <artifactId>spark-cassandra-connector_2.10</artifactId>
       <version>2.0.0</version>
+      <!-- Exclude netty-all dependency to avoid conflict (ENG-1971) -->
+      <exclusions>
+        <exclusion>
+          <groupId>io.netty</groupId>
+          <artifactId>netty-all</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.apache.spark</groupId>
