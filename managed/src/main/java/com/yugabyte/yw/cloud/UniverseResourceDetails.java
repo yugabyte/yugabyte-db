@@ -26,6 +26,7 @@ public class UniverseResourceDetails {
   public double memSizeGB = 0;
   public int volumeCount = 0;
   public int volumeSizeGB = 0;
+  public int numNodes = 0;
   public HashSet<String> azList = new HashSet<>();
 
   public void addCostPerHour(double price) {
@@ -56,6 +57,9 @@ public class UniverseResourceDetails {
     numCores += cores;
   }
 
+  public void addNumNodes(int numNodes) {
+    this.numNodes = numNodes;
+  }
   public void addPrice(UniverseDefinitionTaskParams params) {
     Provider provider = Provider.get(UUID.fromString(params.userIntent.provider));
     InstanceType instanceType = InstanceType.get(provider.code, params.userIntent.instanceType);
@@ -114,6 +118,7 @@ public class UniverseResourceDetails {
   public static UniverseResourceDetails create(Collection<NodeDetails> nodes,
                                                UniverseDefinitionTaskParams params) {
     UniverseResourceDetails details = new UniverseResourceDetails();
+    details.addNumNodes(params.userIntent.numNodes);
     Common.CloudType cloudType = params.userIntent.providerType;
     for (NodeDetails node : nodes) {
       if (node.isActive()) {
