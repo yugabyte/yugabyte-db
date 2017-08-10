@@ -21,7 +21,6 @@ import { isEmptyObject, isNonEmptyObject, isNonEmptyArray, isDefinedNotNull } fr
 import {getPromiseState} from 'utils/PromiseUtils';
 import {YBLoadingIcon} from '../../common/indicators';
 import { mouseTrap } from 'react-mousetrap';
-
 import './UniverseDetail.scss';
 
 class UniverseDetail extends Component {
@@ -83,13 +82,10 @@ class UniverseDetail extends Component {
     const graphPanelContainers = graphPanelTypes.map(function (type, idx) {
       return <GraphPanelContainer key={idx} type={type} width={width} nodePrefixes={nodePrefixes} />
     });
-
     var tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab">
         <UniverseAppsModal nodeDetails={currentUniverse.data.universeDetails.nodeDetailsSet}/>
-        {isDefinedNotNull(currentUniverse.data.resources) &&
-          <UniverseResources resources={currentUniverse.data.resources} />
-        }
+        <UniverseResources resources={currentUniverse.data.resources} renderType={"Display"}/>
         <Row>
           <Col lg={5}>
             <UniverseInfoPanel universeInfo={currentUniverse.data}

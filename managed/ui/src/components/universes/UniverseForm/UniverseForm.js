@@ -6,8 +6,8 @@ import {browserHistory, withRouter} from 'react-router';
 import _ from 'lodash';
 import { isDefinedNotNull, isNonEmptyObject, areIntentsEqual, isEmptyObject, isNonEmptyArray } from 'utils/ObjectUtils';
 import { YBTextInputWithLabel, YBControlledNumericInput, YBControlledNumericInputWithLabel,
-         YBSelectWithLabel, YBControlledSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel, YBButton}
-       from 'components/common/forms/fields';
+  YBSelectWithLabel, YBControlledSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel, YBButton}
+  from 'components/common/forms/fields';
 import {getPromiseState} from 'utils/PromiseUtils';
 import AZSelectorTable from './AZSelectorTable';
 import { UniverseResources } from '../UniverseResources';
@@ -106,7 +106,7 @@ class UniverseForm extends Component {
       accessKeyCode: this.state.accessKeyCode
     }
   }
-  
+
   setDeviceInfo(instanceTypeCode, instanceTypeList) {
     let instanceTypeSelectedData = instanceTypeList.find(function (item) {
       return item.instanceTypeCode === instanceTypeCode;
@@ -171,7 +171,7 @@ class UniverseForm extends Component {
           this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
         }
       } else {
-         this.props.submitConfigureUniverse(universeTaskParams);
+        this.props.submitConfigureUniverse(universeTaskParams);
       }
     }
   }
@@ -300,7 +300,7 @@ class UniverseForm extends Component {
     // Fire Configure only iff either provider is not on-prem or maxNumNodes is not -1 if on-prem
     if (!_.isEqual(this.state, prevState) && isNonEmptyObject(currentProvider) && (prevState.maxNumNodes !== -1 || currentProvider.code !== "onprem")) {
       if (((currentProvider.code === "onprem" && this.state.numNodes <= this.state.maxNumNodes) || (currentProvider.code !== "onprem"))
-          && (this.state.numNodes >= this.state.replicationFactor && !this.state.nodeSetViaAZList)) {
+        && (this.state.numNodes >= this.state.replicationFactor && !this.state.nodeSetViaAZList)) {
 
         if (isNonEmptyObject(currentUniverse.data)) {
           if (this.hasFieldChanged()) {
@@ -603,57 +603,57 @@ class UniverseForm extends Component {
 
       <Grid id="page-wrapper" fluid={true}>
         <h2>{this.props.type} Universe</h2>
-          <form name="UniverseForm" className="universe-form-container" onSubmit={handleSubmit(this.handleSubmitButtonClick)}>
-            <Row className={"no-margin-row"}>
-              <Col md={6}>
-                <h4>Cloud Configuration</h4>
-                <div className="form-right-aligned-labels">
-                  <Field name="universeName" type="text" component={YBTextInputWithLabel} label="Name"
-                         isReadOnly={isFieldReadOnly} />
-                  <Field name="provider" type="select" component={YBSelectWithLabel} label="Provider"
-                         options={universeProviderList} onInputChanged={this.providerChanged} readOnlySelect={isFieldReadOnly} />
-                  <Field name="regionList" component={YBMultiSelectWithLabel}
-                         label="Regions" options={universeRegionList}
-                         selectValChanged={this.regionListChanged} multi={this.state.azCheckState}
-                         providerSelected={this.state.providerSelected}/>
-                  <Field name="numNodes" type="text" component={YBControlledNumericInputWithLabel}
-                         label="Nodes" onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
-                         minVal={Number(this.state.replicationFactor)}/>
+        <form name="UniverseForm" className="universe-form-container" onSubmit={handleSubmit(this.handleSubmitButtonClick)}>
+          <Row className={"no-margin-row"}>
+            <Col md={6}>
+              <h4>Cloud Configuration</h4>
+              <div className="form-right-aligned-labels">
+                <Field name="universeName" type="text" component={YBTextInputWithLabel} label="Name"
+                       isReadOnly={isFieldReadOnly} />
+                <Field name="provider" type="select" component={YBSelectWithLabel} label="Provider"
+                       options={universeProviderList} onInputChanged={this.providerChanged} readOnlySelect={isFieldReadOnly} />
+                <Field name="regionList" component={YBMultiSelectWithLabel}
+                       label="Regions" options={universeRegionList}
+                       selectValChanged={this.regionListChanged} multi={this.state.azCheckState}
+                       providerSelected={this.state.providerSelected}/>
+                <Field name="numNodes" type="text" component={YBControlledNumericInputWithLabel}
+                       label="Nodes" onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
+                       minVal={Number(this.state.replicationFactor)}/>
+              </div>
+            </Col>
+            <Col md={6} className={"universe-az-selector-container"}>
+              <AZSelectorTable {...this.props} setPlacementInfo={this.setPlacementInfo}
+                               numNodesChangedViaAzList={this.numNodesChangedViaAzList} minNumNodes={this.state.replicationFactor}
+                               maxNumNodes={this.state.maxNumNodes} currentProvider={this.getCurrentProvider(this.state.providerSelected)}/>
+              {placementStatus}
+            </Col>
+          </Row>
+          <Row className={"no-margin-row top-border-row"}>
+            <Col md={12}>
+              <h4>Instance Configuration</h4>
+            </Col>
+            <Col md={4}>
+              <div className="form-right-aligned-labels">
+                <Field name="instanceType" type="select" component={YBControlledSelectWithLabel} label="Instance Type"
+                       options={universeInstanceTypeList} selectVal={this.state.instanceTypeSelected}
+                       onInputChanged={this.instanceTypeChanged}/>
+              </div>
+            </Col>
+            {deviceDetail &&
+            <Col md={8}>
+              <div className="form-right-aligned-labels">
+                <div className="form-group universe-form-instance-info">
+                  <label className="form-item-label">Volume Info</label>
+                  {deviceDetail}
                 </div>
-              </Col>
-              <Col md={6} className={"universe-az-selector-container"}>
-                <AZSelectorTable {...this.props} setPlacementInfo={this.setPlacementInfo}
-                                 numNodesChangedViaAzList={this.numNodesChangedViaAzList} minNumNodes={this.state.replicationFactor}
-                                 maxNumNodes={this.state.maxNumNodes} currentProvider={this.getCurrentProvider(this.state.providerSelected)}/>
-                {placementStatus}
-              </Col>
-            </Row>
-            <Row className={"no-margin-row top-border-row"}>
-              <Col md={12}>
-                <h4>Instance Configuration</h4>
-              </Col>
-              <Col md={4}>
-                <div className="form-right-aligned-labels">
-                  <Field name="instanceType" type="select" component={YBControlledSelectWithLabel} label="Instance Type"
-                         options={universeInstanceTypeList} selectVal={this.state.instanceTypeSelected}
-                         onInputChanged={this.instanceTypeChanged}/>
-                </div>
-              </Col>
-              {deviceDetail &&
-              <Col md={8}>
-                <div className="form-right-aligned-labels">
-                  <div className="form-group universe-form-instance-info">
-                    <label className="form-item-label">Volume Info</label>
-                    {deviceDetail}
-                  </div>
-                </div>
-                <div className="form-right-aligned-labels">
-                  {ebsTypeSelector}
-                </div>
-              </Col>
+              </div>
+              <div className="form-right-aligned-labels">
+                {ebsTypeSelector}
+              </div>
+            </Col>
             }
           </Row>
-            <Row className={"no-margin-row top-border-row"}>
+          <Row className={"no-margin-row top-border-row"}>
             <Col md={12}>
               <h4>Advanced</h4>
             </Col>
