@@ -975,9 +975,13 @@ Status Tablet::KeyValueBatchFromYQLWriteBatch(
   const auto* write_batch = yql_write_request->mutable_yql_write_batch();
 
   for (size_t i = 0; i < yql_write_request->yql_write_batch_size(); i++) {
-    doc_ops.emplace_back(new YQLWriteOperation(
-        write_batch->Get(i), metadata_->schema(),
-        write_response->add_yql_response_batch()));
+    YQLResponsePB* resp = write_response->add_yql_response_batch();
+    const YQLWriteRequestPB& req = write_batch->Get(i);
+    if (metadata_->schema_version() != req.schema_version()) {
+      resp->set_status(YQLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
+    } else {
+      doc_ops.emplace_back(new YQLWriteOperation(req, metadata_->schema(), resp));
+    }
   }
   RETURN_NOT_OK(StartDocWriteTransaction(
       doc_ops, keys_locked, yql_write_request->mutable_write_batch()));
