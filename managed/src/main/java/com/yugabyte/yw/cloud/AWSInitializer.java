@@ -145,12 +145,21 @@ public class AWSInitializer {
       JsonNode attributesJson = productDetailsJson.get("attributes");
       JsonNode regionJson = attributesJson.get("location");
       if (regionJson == null) {
-        LOG.error("No region available for this product. Skipping.");
+        if (enableVerboseLogging) {
+          LOG.error("No region available for product SKU " + sku + ". Skipping.");
+        }
+        continue;
       }
       Region region = Region.find.where()
           .eq("provider_uuid", provider.uuid)
           .eq("name", regionJson.textValue())
           .findUnique();
+      if (region == null) {
+        if (enableVerboseLogging) {
+          LOG.error("No region " + regionJson.textValue() + " available");
+        }
+        continue;
+      }
       switch (productDetailsJson.get("productFamily").textValue()) {
         case "Storage":
           JsonNode volumeType = attributesJson.get("volumeType");
