@@ -6,7 +6,8 @@
       "text.max-line-length": 100,
       "exclude": [
         "(^thirdparty/thirdparty_src_checksums[.]txt$)",
-        "(^java/yb-client/src/test/java/org/yb/client/TestYBClient[.]java$)"
+        "(^java/yb-client/src/test/java/org/yb/client/TestYBClient[.]java$)",
+        "(^cmake_modules/cotire[.]cmake$)"
       ]
     },
     "pycodestyle": {

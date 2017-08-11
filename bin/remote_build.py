@@ -102,6 +102,8 @@ def main():
                 REMOTE_BUILD_HOST_ENV_VAR))
         sys.exit(1)
 
+    os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
     print("Host: {0}, build type: {1}, remote path: {2}".format(args.host,
                                                                 args.build_type,
                                                                 args.remote_path))

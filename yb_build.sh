@@ -118,22 +118,24 @@ setup_vars_for_cxx_test() {
 }
 
 print_summary() {
-  echo >&2
-  thick_horizontal_line
-  echo >&2 "YUGABYTE BUILD SUMMARY"
-  thick_horizontal_line
-  echo >&2 "Edition:               ${YB_EDITION:-undefined}"
-  if [[ -n ${cmake_end_time_sec:-} ]]; then
-    echo >&2 "CMake time:            $(( $cmake_end_time_sec - $cmake_start_time_sec )) seconds"
-  fi
-  if [[ -n ${make_end_time_sec:-} ]]; then
-    echo >&2 "C++ compilation time:  $(( $make_end_time_sec - $make_start_time_sec )) seconds"
-  fi
-  if [[ -n ${java_build_end_time_sec:-} ]]; then
-    echo >&2 "Java compilation time: $(( $java_build_end_time_sec - $java_build_start_time_sec))" \
-             "seconds"
-  fi
-  horizontal_line
+  (
+    echo
+    thick_horizontal_line
+    echo "YUGABYTE BUILD SUMMARY"
+    thick_horizontal_line
+    echo "Edition:               ${YB_EDITION:-undefined}"
+    if [[ -n ${cmake_end_time_sec:-} ]]; then
+      echo "CMake time:            $(( $cmake_end_time_sec - $cmake_start_time_sec )) seconds"
+    fi
+    if [[ -n ${make_end_time_sec:-} ]]; then
+      echo "C++ compilation time:  $(( $make_end_time_sec - $make_start_time_sec )) seconds"
+    fi
+    if [[ -n ${java_build_end_time_sec:-} ]]; then
+      echo "Java compilation time: $(( $java_build_end_time_sec - $java_build_start_time_sec))" \
+           "seconds"
+    fi
+    horizontal_line
+  ) >&2
 }
 
 # -------------------------------------------------------------------------------------------------

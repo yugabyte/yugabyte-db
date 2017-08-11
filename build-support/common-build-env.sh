@@ -55,7 +55,7 @@ readonly YB_LINUXBREW_DIR_CANDIDATES=(
 # An even faster alternative to downloading a pre-built third-party dependency tarball from S3
 # or Google Storage: just use a pre-existing third-party build from NFS. This has to be maintained
 # outside of main (non-thirdparty) YB codebase's build pipeline.
-readonly NFS_SHARED_THIRDPARTY_DIR=/n/jenkins/thirdparty/yugabyte-current/thirdparty
+readonly NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY=/n/jenkins/thirdparty
 
 # This node is the NFS server and is also used to run the non-distributed part of distributed builds
 # (e.g. "cmake" or "make" commands) in a way such that it would have access to the build directory

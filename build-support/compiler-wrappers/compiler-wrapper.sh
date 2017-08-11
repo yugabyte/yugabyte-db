@@ -3,9 +3,11 @@
 # Copyright (c) YugaByte, Inc.
 
 # A wrapper script that pretends to be a C/C++ compiler and does some pre-processing of arguments
-# and error checking on the output. Invokes GCC or Clang internally.
+# and error checking on the output. Invokes GCC or Clang internally.  This script is invoked through
+# symlinks called "cc" or "c++".
 
 . "${0%/*}/../common-build-env.sh"
+
 set -euo pipefail
 
 # -------------------------------------------------------------------------------------------------
@@ -17,7 +19,7 @@ readonly GENERATED_BUILD_DEBUG_SCRIPT_DIR=$HOME/.yb-build-debug-scripts
 readonly SCRIPT_NAME="compiler-wrapper.sh"
 
 # -------------------------------------------------------------------------------------------------
-# Functions
+# Common functions
 
 fatal_error() {
   echo -e "$RED_COLOR[FATAL] $SCRIPT_NAME: $*$NO_COLOR"
@@ -85,6 +87,7 @@ show_compiler_command_line() {
   set -e
 }
 
+
 # This can be used to generate scripts that make it easy to re-run failed build commands.
 generate_build_debug_script() {
   local script_name_prefix=$1
@@ -134,6 +137,29 @@ should_skip_error_checking_by_input_file_pattern() {
 }
 
 # -------------------------------------------------------------------------------------------------
+# Functions for remote build
+
+flush_stderr_file() {
+  if [[ -f ${stderr_path:-} ]]; then
+    cat "$stderr_path" >&2
+    rm -f "$stderr_path"
+  fi
+}
+
+remote_build_exit_handler() {
+  local exit_code=$?
+  flush_stderr_file
+  exit "$exit_code"
+}
+
+# -------------------------------------------------------------------------------------------------
+# Common setup for remote and local build
+
+cc_or_cxx=${0##*/}
+
+stderr_path=/tmp/yb-$cc_or_cxx.$RANDOM-$RANDOM-$RANDOM.$$.stderr
+
+# -------------------------------------------------------------------------------------------------
 # Remote build
 
 cmd_line_str="$*"
@@ -156,9 +182,13 @@ if [[ $local_build_only == "false" &&
       ${YB_REMOTE_BUILD:-} == "1" &&
       -z ${YB_NO_REMOTE_BUILD:-} &&
       $is_build_worker == "false" ]]; then
+
+  trap remote_build_exit_handler EXIT
+
   current_dir=$PWD
   declare -i attempt=1
   declare -i no_worker_count=0
+  sleep_deciseconds=1  # a decisecond is one-tenth of a second
   while [[ $attempt -lt 100 ]]; do
     build_worker_name=$( shuf -n 1 "$YB_BUILD_WORKERS_FILE" )
     if [[ -z $build_worker_name ]]; then
@@ -172,17 +202,30 @@ if [[ $local_build_only == "false" &&
     fi
     build_host=$build_worker_name.c.yugabyte.internal
     set +e
-    run_remote_cmd "$build_host" "$0" "$@"
+    run_remote_cmd "$build_host" "$0" "$@" 2>"$stderr_path"
     exit_code=$?
     set -e
     # Saw an exit code 254 after this error: "write: Connection reset by peer".
-    if [[ $exit_code -eq 255 || $exit_code -eq 254 ]]; then
-      log "Host $build_host seems to be down, retrying on a different host" \
-          "(this was attempt $attempt)"
-      sleep 0.1
+    if [[ $exit_code -eq 255 || $exit_code -eq 254 ]] || \
+        egrep "\
+ccache: error: Failed to open .*: No such file or directory|\
+Fatal error: can't create .*: Stale file handle\
+" "$stderr_path" >&2; then
+      flush_stderr_file
+      # TODO: distinguish between problems that can be retried on the same host, and problems
+      # indicating that the host is down.
+      # TODO: maintain a blacklist of hosts that are down and don't retry on the same host from
+      # that blacklist list too soon.
+      log "Host $build_host is experiencing problems, retrying on a different host" \
+          "(this was attempt $attempt) after a 0.$sleep_deciseconds second delay"
+      sleep 0.$sleep_deciseconds
+      if [[ $sleep_deciseconds -lt 9 ]]; then
+        let sleep_deciseconds+=1
+      fi
       let attempt+=1
       continue
     fi
+    flush_stderr_file
     break
   done
   if [[ $exit_code -ne 0 ]]; then
@@ -210,13 +253,67 @@ elif [[ ${YB_DEBUG_REMOTE_BUILD:-} == "1" ]] && ! $is_build_worker; then
 fi
 
 # -------------------------------------------------------------------------------------------------
+# Functions for local build
+
+local_build_exit_handler() {
+  local exit_code=$?
+  if [[ $exit_code -eq 0 ]]; then
+    if [[ -f ${stderr_path:-} ]]; then
+      tail -n +2 "$stderr_path" >&2
+    fi
+  elif [[ -n ${YB_IS_THIRDPARTY_BUILD:-} ]]; then
+    # Do not add any fancy output if we're running as part of the third-party build.
+    if [[ -f ${stderr_path:-} ]]; then
+      cat "$stderr_path" >&2
+    fi
+  else
+    # We output the compiler executable path because the actual command we're running will likely
+    # contain ccache instead of the compiler executable.
+    (
+      show_compiler_command_line "\n$RED_COLOR" "  # Compiler exit code: $compiler_exit_code.\n"
+      if [[ -f ${stderr_path:-} ]]; then
+        if [[ -s ${stderr_path:-} ]]; then
+          (
+            red_color
+            echo "/-------------------------------------------------------------------------------"
+            echo "| COMPILATION FAILED"
+            echo "|-------------------------------------------------------------------------------"
+            IFS='\n'
+            (
+              tail -n +2 "$stderr_path"
+              echo
+              if [[ ${#input_files[@]} -gt 0 ]]; then
+                echo "Input files:"
+                for input_file in "${input_files[@]}"; do
+                  # Only resolve paths for files that exists (and therefore are more likely to
+                  # actually be files).
+                  if [[ -f "/usr/bin/realpath" && -e "$input_file" ]]; then
+                    input_file=$( realpath "$input_file" )
+                  fi
+                  echo "  $input_file"
+                done
+                echo
+                echo "Output file (from -o): $output_file"
+              fi
+
+            ) | "$YB_SRC_ROOT/build-support/fix_paths_in_compile_errors.py"
+
+            unset IFS
+            echo "\-------------------------------------------------------------------------------"
+            no_color
+          ) >&2
+        else
+          echo "Compiler standard error is empty." >&2
+        fi
+      fi
+    ) >&2
+  fi
+  rm -f "${stderr_path:-}"
+  exit "$exit_code"
+}
+
+# -------------------------------------------------------------------------------------------------
 # Local build
-
-# The above script ensures that YB_COMPILER_TYPE is set and is valid for the OS type. Also sets
-# This script is invoked through symlinks called "cc" or "c++".
-cc_or_cxx=${0##*/}
-
-stderr_path=/tmp/yb-$cc_or_cxx.$RANDOM-$RANDOM-$RANDOM.$$.stderr
 
 compiler_args=( "$@" )
 
@@ -314,67 +411,10 @@ if [[ ${#compiler_args[@]} -gt 0 ]]; then
   cmd+=( "${compiler_args[@]}" )
 fi
 
-exit_handler() {
-  local exit_code=$?
-  if [[ $exit_code -eq 0 ]]; then
-    if [[ -f ${stderr_path:-} ]]; then
-      tail -n +2 "$stderr_path" >&2
-    fi
-  elif [[ -n ${YB_IS_THIRDPARTY_BUILD:-} ]]; then
-    # Do not add any fancy output if we're running as part of the third-party build.
-    if [[ -f ${stderr_path:-} ]]; then
-      cat "$stderr_path" >&2
-    fi
-  else
-    # We output the compiler executable path because the actual command we're running will likely
-    # contain ccache instead of the compiler executable.
-    (
-      show_compiler_command_line "\n$RED_COLOR" "  # Compiler exit code: $compiler_exit_code.\n"
-      if [[ -f ${stderr_path:-} ]]; then
-        if [[ -s ${stderr_path:-} ]]; then
-          (
-            red_color
-            echo "/-------------------------------------------------------------------------------"
-            echo "| COMPILATION FAILED"
-            echo "|-------------------------------------------------------------------------------"
-            IFS='\n'
-            (
-              tail -n +2 "$stderr_path"
-              echo
-              if [[ ${#input_files[@]} -gt 0 ]]; then
-                echo "Input files:"
-                for input_file in "${input_files[@]}"; do
-                  # Only resolve paths for files that exists (and therefore are more likely to
-                  # actually be files).
-                  if [[ -f "/usr/bin/realpath" && -e "$input_file" ]]; then
-                    input_file=$( realpath "$input_file" )
-                  fi
-                  echo "  $input_file"
-                done
-                echo
-                echo "Output file (from -o): $output_file"
-              fi
-
-            ) | python -c "import re,sys;[sys.stdout.write('| ' + re.sub('(\.\.\/)+src', "\
-"'$YB_SRC', line)) for line in sys.stdin]"
-            unset IFS
-            echo "\-------------------------------------------------------------------------------"
-            no_color
-          ) >&2
-        else
-          echo "Compiler standard error is empty." >&2
-        fi
-      fi
-    ) >&2
-  fi
-  rm -f "${stderr_path:-}"
-  exit "$exit_code"
-}
-
 set_build_env_vars
 
 compiler_exit_code=UNKNOWN
-trap exit_handler EXIT
+trap local_build_exit_handler EXIT
 
 set +e
 

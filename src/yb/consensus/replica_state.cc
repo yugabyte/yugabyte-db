@@ -885,6 +885,7 @@ Status ReplicaState::CheckOpInSequence(const OpId& previous, const OpId& current
     return STATUS(Corruption, Substitute("New operation's term is not >= than the previous "
         "op's term. Current: $0. Previous: $1", OpIdToString(current), OpIdToString(previous)));
   }
+
   if (current.index() != previous.index() + 1) {
     return STATUS(Corruption, Substitute("New operation's index does not follow the previous"
         " op's index. Current: $0. Previous: $1", OpIdToString(current), OpIdToString(previous)));

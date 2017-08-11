@@ -157,19 +157,36 @@ fi
 
 configure_remote_build
 
-if is_src_root_on_nfs && [[ -d "$NFS_SHARED_THIRDPARTY_DIR" ]]; then
+should_build_thirdparty=true
+if is_src_root_on_nfs && [[ -d $NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY ]]; then
   # TODO: make this option available in yb_build.sh as well.
-  log "Using existing third-party dependencies from $NFS_SHARED_THIRDPARTY_DIR"
-  # Avoid rebuilding third-party dependencies in this shared directory when running cmake.
-  export YB_THIRDPARTY_DIR=$NFS_SHARED_THIRDPARTY_DIR
-else
+  set +e
+  # We name shared prebuilt thirdparty directories on NFS like this:
+  # /n/jenkins/thirdparty/yugabyte-thirdparty-YYYY-MM-DDTHH_MM_SS
+  # This is why sorting and taking the last entry makes sense below.
+  existing_thirdparty_dir=$(
+    ls -d "$NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY/yugabyte-thirdparty-"*/thirdparty | sort | tail -1
+  )
+  set -e
+  if [[ -d $existing_thirdparty_dir ]]; then
+    log "Using existing third-party dependencies from $existing_thirdparty_dir"
+    export YB_THIRDPARTY_DIR=$existing_thirdparty_dir
+    should_build_thirdparty=false
+  else
+    log "Even though the top-level directory '$NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY'" \
+        "exists, we could not find a prebuilt shared third-party directory there (got" \
+        "$existing_thirdparty_dir. Falling back to building our own third-party dependencies."
+  fi
+fi
+
+if "$should_build_thirdparty"; then
   log "Starting third-party dependency build"
   time thirdparty/build-thirdparty.sh
   log "Third-party dependency build finished (see timing information above)"
 fi
 
-# We built third-party dependencies above. Do not attempt to download or build them in in further
-# steps.
+# We built or found third-party dependencies above. Do not attempt to download or build them in in
+# further steps.
 export YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY=1
 export NO_REBUILD_THIRDPARTY=1
 
