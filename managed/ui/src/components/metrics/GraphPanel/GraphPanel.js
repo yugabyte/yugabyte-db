@@ -36,9 +36,9 @@ const panelTypes = {
   proxies:   { title: "Apache Cassandra and Redis",
              metrics: ["cql_server_rpc_per_second",  "cql_sql_latency", "memory_usage_all", "redis_rpcs_per_sec", "redis_ops_latency"]},
   redis:   { title: "Redis Advanced Graphs",
-             metrics: ["redis_yb_latency"]},
+             metrics: ["redis_yb_local_vs_remote", "redis_yb_latency", "redis_reactor_latency"]},
   cql:     { title: "Apache Cassandra Advanced Graphs",
-             metrics: ["cql_sql_latency_breakdown", "cql_yb_latency", "cql_reactor_latency", "response_sizes"]}
+             metrics: ["cql_sql_latency_breakdown", "cql_yb_local_vs_remote", "cql_yb_latency", "cql_reactor_latency", "response_sizes"]}
 }
 
 class GraphPanel extends Component {
