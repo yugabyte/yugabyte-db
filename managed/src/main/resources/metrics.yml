@@ -168,8 +168,9 @@ redis_rpcs_per_sec:
   metric: "collectd_yb_redis_counter_total"
   function: "rate|sum"
   range: "1m"
+  operator: "> 0"
   filters:
-    type: "rpc_RedisServerService_get.num|rpc_RedisServerService_set.num|rpc_RedisServerService_echo.num"
+    type: "rpc_RedisServerService_[^_]*.num"
   group_by: "type"
   layout:
     title: "Total Redis Ops / Sec"
@@ -179,28 +180,106 @@ redis_rpcs_per_sec:
       alias:
         "rpc_RedisServerService_get.num": "Get"
         "rpc_RedisServerService_set.num": "Set"
+        "rpc_RedisServerService_config.num": "Config"
+        "rpc_RedisServerService_mget.num": "MGet"
+        "rpc_RedisServerService_hget.num": "HGet"
+        "rpc_RedisServerService_hmget.num": "HMGet"
+        "rpc_RedisServerService_hgetall.num": "HGetAll"
+        "rpc_RedisServerService_hkeys.num": "HKeys"
+        "rpc_RedisServerService_hvals.num": "HVals"
+        "rpc_RedisServerService_hlen.num": "HLen"
+        "rpc_RedisServerService_hexists.num": "HExists"
+        "rpc_RedisServerService_hstrlen.num": "HStrLen"
+        "rpc_RedisServerService_smembers.num": "SMembers"
+        "rpc_RedisServerService_sismember.num": "SIsMember"
+        "rpc_RedisServerService_scard.num": "SCard"
+        "rpc_RedisServerService_strlen.num": "StrLen"
+        "rpc_RedisServerService_exists.num": "Exists"
+        "rpc_RedisServerService_getrange.num": "GetRange"
+        "rpc_RedisServerService_role.num": "Role"
+        "rpc_RedisServerService_mset.num": "MSet"
+        "rpc_RedisServerService_hset.num": "HSet"
+        "rpc_RedisServerService_hmset.num": "HMSet"
+        "rpc_RedisServerService_hdel.num": "HDel"
+        "rpc_RedisServerService_sadd.num": "SAdd"
+        "rpc_RedisServerService_srem.num": "SRem"
+        "rpc_RedisServerService_getset.num": "GetSet"
+        "rpc_RedisServerService_append.num": "Append"
+        "rpc_RedisServerService_del.num": "Del"
+        "rpc_RedisServerService_setrange.num": "SetRange"
+        "rpc_RedisServerService_incr.num": "Incr"
         "rpc_RedisServerService_echo.num": "Echo"
+        "rpc_RedisServerService_auth.num": "Auth"
 
 redis_ops_latency:
   metric: "collectd_yb_redis_counter_total"
   function: "avg"
+  operator: "/ 1000"
+  operator: "> 0"
   filters:
-    type: "rpc_RedisServerService_get.avg|rpc_RedisServerService_set.avg|rpc_RedisServerService_echo.avg"
+    type: "rpc_RedisServerService_[^_]*.avg"
   group_by: "type"
   layout:
     title: "Redis Op Latency"
     xaxis:
       type: "date"
     yaxis:
+      ticksuffix: "&nbsp;ms"
       alias:
         "rpc_RedisServerService_get.avg": "Get"
         "rpc_RedisServerService_set.avg": "Set"
+        "rpc_RedisServerService_config.avg": "Config"
+        "rpc_RedisServerService_mget.avg": "MGet"
+        "rpc_RedisServerService_hget.avg": "HGet"
+        "rpc_RedisServerService_hmget.avg": "HMGet"
+        "rpc_RedisServerService_hgetall.avg": "HGetAll"
+        "rpc_RedisServerService_hkeys.avg": "HKeys"
+        "rpc_RedisServerService_hvals.avg": "HVals"
+        "rpc_RedisServerService_hlen.avg": "HLen"
+        "rpc_RedisServerService_hexists.avg": "HExists"
+        "rpc_RedisServerService_hstrlen.avg": "HStrLen"
+        "rpc_RedisServerService_smembers.avg": "SMembers"
+        "rpc_RedisServerService_sismember.avg": "SIsMember"
+        "rpc_RedisServerService_scard.avg": "SCard"
+        "rpc_RedisServerService_strlen.avg": "StrLen"
+        "rpc_RedisServerService_exists.avg": "Exists"
+        "rpc_RedisServerService_getrange.avg": "GetRange"
+        "rpc_RedisServerService_role.avg": "Role"
+        "rpc_RedisServerService_mset.avg": "MSet"
+        "rpc_RedisServerService_hset.avg": "HSet"
+        "rpc_RedisServerService_hmset.avg": "HMSet"
+        "rpc_RedisServerService_hdel.avg": "HDel"
+        "rpc_RedisServerService_sadd.avg": "SAdd"
+        "rpc_RedisServerService_srem.avg": "SRem"
+        "rpc_RedisServerService_getset.avg": "GetSet"
+        "rpc_RedisServerService_append.avg": "Append"
+        "rpc_RedisServerService_del.avg": "Del"
+        "rpc_RedisServerService_setrange.avg": "SetRange"
+        "rpc_RedisServerService_incr.avg": "Incr"
         "rpc_RedisServerService_echo.avg": "Echo"
-      ticksuffix: "&nbsp;\u00B5s"
+        "rpc_RedisServerService_auth.avg": "Auth"
+
+redis_yb_local_vs_remote:
+  metric: "collectd_yb_redis_counter_total"
+  function: "avg"
+  filters:
+    type: "rpc_read_remote.num|rpc_write_remote.num|rpc_read_local.num|rpc_write_local.num"
+  group_by: "type"
+  layout:
+    title: "YBClient Ops Local vs Remote"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_read_remote.num": "Remote Read"
+        "rpc_write_remote.num": "Remote Write"
+        "rpc_read_local.num": "Local Read"
+        "rpc_write_local.num": "Local Write"
 
 redis_yb_latency:
   metric: "collectd_yb_redis_counter_total"
   function: "avg"
+  operator: "/ 1000"
   filters:
     type: "rpc_read_remote.avg|rpc_write_remote.avg|rpc_read_local.avg|rpc_write_local.avg"
   group_by: "type"
@@ -214,12 +293,30 @@ redis_yb_latency:
         "rpc_write_remote.avg": "Remote Write"
         "rpc_read_local.avg": "Local Read"
         "rpc_write_local.avg": "Local Write"
+      ticksuffix: "&nbsp;ms"
+
+redis_reactor_latency:
+  metric: "collectd_yb_redis_counter_total"
+  function: "avg"
+  filters:
+    type: "rpc_incoming_queue_time.avg|handler_latency_outbound_transfer.avg|handler_latency_outbound_call_queue_time.avg"
+  group_by: "type"
+  layout:
+    title: "YBClient Reactor Delays"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_incoming_queue_time.avg": "Incoming Queue"
+        "handler_latency_outbound_transfer.avg": "Outbound transfer time"
+        "handler_latency_outbound_call_queue_time.avg": "Outbound queue time"
       ticksuffix: "&nbsp;\u00B5s"
 
 # tserver metrics
 tserver_ops_latency:
   metric: "collectd_yb_tserver_counter_total"
   function: "avg"
+  operator: "/ 1000"
   filters:
     type: "rpc_TabletServerService_Scan.avg|rpc_TabletServerService_Write.avg|rpc_TabletServerService_Read.avg"
   group_by: "type"
@@ -232,11 +329,12 @@ tserver_ops_latency:
         "rpc_TabletServerService_Scan.avg": "Scan"
         "rpc_TabletServerService_Write.avg": "Write"
         "rpc_TabletServerService_Read.avg": "Read"
-      ticksuffix: "&nbsp;\u00B5s"
+      ticksuffix: "&nbsp;ms"
 
 tserver_write_latency:
   metric: "collectd_yb_tserver_counter_total"
   function: "avg"
+  operator: "/ 1000"
   filters:
     type: "rpc_TabletServerService_Write.avg"
   group_by: "exported_instance"
@@ -247,11 +345,12 @@ tserver_write_latency:
     yaxis:
       alias:
         "rpc_TabletServerService_Write.avg": "Write"
-      ticksuffix: "&nbsp;\u00B5s"
+      ticksuffix: "&nbsp;ms"
 
 tserver_read_latency:
   metric: "collectd_yb_tserver_counter_total"
   function: "avg"
+  operator: "/ 1000"
   filters:
     type: "rpc_TabletServerService_Read.avg"
   group_by: "exported_instance"
@@ -262,11 +361,12 @@ tserver_read_latency:
     yaxis:
       alias:
         "rpc_TabletServerService_Read.avg": "Read"
-      ticksuffix: "&nbsp;\u00B5s"
+      ticksuffix: "&nbsp;ms"
 
 tserver_handler_latency:
   metric: "collectd_yb_tserver_counter_total"
   function: "avg"
+  operator: "/ 1000"
   filters:
     type: "rpc_incoming_queue_time.avg|handler_latency_outbound_call_queue_time.avg|handler_latency_outbound_transfer.avg"
   group_by: "type"
@@ -279,7 +379,7 @@ tserver_handler_latency:
         "rpc_incoming_queue_time.avg": "Incoming queue time"
         "handler_latency_outbound_call_queue_time.avg": "Outbound queue time"
         "handler_latency_outbound_transfer.avg": "Outbound transfer time"
-      ticksuffix: "&nbsp;\u00B5s"
+      ticksuffix: "&nbsp;ms"
 
 tserver_rpcs_per_sec:
   metric: "collectd_yb_tserver_counter_total"
@@ -348,6 +448,7 @@ tserver_remote_bootstraps:
 tserver_consensus_rpcs_latency:
   metric: "collectd_yb_tserver_counter_total"
   function: "rate|avg"
+  operator: "/ 1000"
   range: "1m"
   filters:
     type: "rpc_ConsensusService_UpdateConsensus.avg|rpc_ConsensusService_RequestConsensusVote.avg"
@@ -360,10 +461,12 @@ tserver_consensus_rpcs_latency:
       alias:
         "rpc_ConsensusService_UpdateConsensus.avg": "UpdateConsensus"
         "rpc_ConsensusService_RequestConsensusVote.avg": "RequestConsensusVote"
+      ticksuffix: "&nbsp;ms"
 
 tserver_change_config_latency:
   metric: "collectd_yb_tserver_counter_total"
   function: "rate|avg"
+  operator: "/ 1000"
   range: "1m"
   filters:
     type: "rpc_ConsensusService_ChangeConfig.avg"
@@ -375,6 +478,7 @@ tserver_change_config_latency:
     yaxis:
       alias:
         "rpc_ConsensusService_ChangeConfig.avg": "Change Config"
+      ticksuffix: "&nbsp;ms"
 
 tserver_threads:
   metric: "collectd_yb_tserver_counter_total"
@@ -410,18 +514,19 @@ tserver_context_switches:
 tserver_spinlock_server:
   metric: "collectd_yb_tserver_counter_total"
   function: "rate|avg"
+  operator: "/ 1000000"
   range: "1m"
   filters:
     type: "spinlock_contention_time"
   group_by: "type"
   layout:
-    title: "SpinLock Pct / Server"
+    title: "SpinLock Time/Server"
     xaxis:
       type: "date"
     yaxis:
       alias:
         "spinlock_contention_time": "SpinLock"
-      ticksuffix: "&nbsp;%"
+      ticksuffix: "&nbsp;sec"
 tserver_log_latency:
   metric: "collectd_yb_tserver_counter_total"
   function: "avg"
@@ -819,6 +924,23 @@ cql_sql_latency_breakdown:
         "rpc_SQLProcessor_AnalyseRequest.avg": "Analyze"
         "rpc_SQLProcessor_ExecuteRequest.avg": "Execute"
       ticksuffix: "&nbsp;\u00B5s"
+
+cql_yb_local_vs_remote:
+  metric: "collectd_yb_cql_counter_total"
+  function: "avg"
+  filters:
+    type: "rpc_read_remote.num|rpc_write_remote.num|rpc_read_local.num|rpc_write_local.num"
+  group_by: "type"
+  layout:
+    title: "YBClient Ops Local vs Remote"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_read_remote.num": "Remote Read"
+        "rpc_write_remote.num": "Remote Write"
+        "rpc_read_local.num": "Local Read"
+        "rpc_write_local.num": "Local Write"
 
 cql_yb_latency:
   metric: "collectd_yb_cql_counter_total"
