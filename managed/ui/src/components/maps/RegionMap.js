@@ -10,7 +10,7 @@ import 'leaflet/dist/leaflet.css';
 import { isValidObject, isNonEmptyArray } from 'utils/ObjectUtils';
 import MarkerClusterLayer from './MarkerClusterLayer';
 import UniverseRegionMarkerLayer from './UniverseRegionMarkerLayer';
-
+import {MAP_SERVER_URL} from '../../config';
 import './stylesheets/RegionMap.scss'
 
 export default class RegionMap extends Component {
@@ -50,8 +50,7 @@ export default class RegionMap extends Component {
       bounds = regionLatLngs;
     }
     const attribution =
-      '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>' +
-      ' contributors, &copy; <a href="https://carto.com/attributions">CARTO</a>';
+      'Copyright &copy; MapBox All rights reserved';
 
     let regionMap =
       <Map bounds={bounds} center={[-1, 0]} zoom={1}
@@ -59,7 +58,7 @@ export default class RegionMap extends Component {
            touchZoom={false} scrollWheelZoom={false} doubleClickZoom={false} draggable={false}>
          <TileLayer
             attribution={attribution}
-            url="http://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png"/>
+            url={`${MAP_SERVER_URL}/{z}/{x}/{y}.png`}/>
         {regionMarkers}
       </Map>;
 

@@ -9,7 +9,6 @@ import argparse
 import tarfile
 import random
 import string
-
 from subprocess import check_output, CalledProcessError
 from ybops.utils import init_env, log_message, get_release_file, publish_release, \
     generate_checksum, latest_release, download_release, docker_push_to_registry
@@ -122,21 +121,23 @@ try:
                 outfile.write(yaml_str)
     else:
         output = check_output(["sbt", "clean"])
-        log_message(logging.INFO, "Building/Packaging UI code")
         shutil.rmtree(os.path.join(script_dir, "ui", "node_modules"), ignore_errors=True)
+        log_message(logging.INFO, "Copy Map Tiles from S3 Repo")
+        mapDownloadPath = os.path.join(script_dir, 'ui', 'public', 'map')
+        if not os.path.exists(mapDownloadPath):
+            os.makedirs(mapDownloadPath)
+        output = check_output(['aws', 's3', 'sync', 's3://no-such-url', mapDownloadPath])
+        log_message(logging.INFO, "Building/Packaging UI code")
         output = check_output(["npm", "install"], cwd=os.path.join(script_dir, 'ui'))
         output = check_output(["npm", "run", "build"], cwd=os.path.join(script_dir, 'ui'))
-
         log_message(logging.INFO, "Kick off SBT universal packaging")
         output = check_output(["sbt", "universal:packageZipTarball"])
-
         log_message(logging.INFO, "Get a release file name based on the current commit sha")
         release_file = get_release_file(script_dir, 'yugaware')
         packaged_file = os.path.join(script_dir, 'target', 'universal', 'yugaware-1.0-SNAPSHOT.tgz')
-
         log_message(logging.INFO, "Rename the release file to have current commit sha")
         shutil.copyfile(packaged_file, release_file)
-
+        shutil.rmtree(mapDownloadPath, ignore_errors=True)
         if args.publish:
             log_message(logging.INFO, "Publish the release to S3")
             generate_checksum(release_file)
