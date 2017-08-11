@@ -52,7 +52,15 @@ const validate = values => {
       if (!isDefinedNotNull(machineTypeItem.volumeSizeGB)) {
         errors.machineTypeList[rowIdx] =  {volumeSizeGB: 'Required'}
       }
-
+      if (isDefinedNotNull(machineTypeItem.volumeSizeGB) && !/^\d+$/.test(machineTypeItem.volumeSizeGB)) {
+        errors.machineTypeList[rowIdx] =  {volumeSizeGB: 'Must be Integer'}
+      }
+      if (isDefinedNotNull(machineTypeItem.numCores) && !/^\d+$/.test(machineTypeItem.numCores)) {
+        errors.machineTypeList[rowIdx] =  {numCores: 'Must be Integer'}
+      }
+      if (isDefinedNotNull(machineTypeItem.memSizeGB) && !/(\d+(\.\d+)?)/.test(machineTypeItem.memSizeGB)) {
+        errors.machineTypeList[rowIdx] =  {memSizeGB: 'Must be Numeric'}
+      }
       if (!isDefinedNotNull(machineTypeItem.mountPath)) {
         errors.machineTypeList[rowIdx] =  {mountPath: 'Required'}
       }
