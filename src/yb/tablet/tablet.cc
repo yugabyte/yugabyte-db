@@ -884,19 +884,21 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(
   vector<unique_ptr<DocOperation>> doc_ops;
   // Since we take exclusive locks, it's okay to use Now as the read TS for writes.
   const HybridTime read_hybrid_time = clock_->Now();
+  // Separate Redis write batch from the key-value write batch in preparation for the write
+  // transaction. Leave just the tablet id behind.
   std::unique_ptr<WriteRequestPB> copy_req(new WriteRequestPB());
-  copy_req->mutable_redis_write_batch()->Swap(redis_write_request->mutable_redis_write_batch());
   copy_req->set_allocated_tablet_id(redis_write_request->release_tablet_id());
   copy_req->Swap(redis_write_request);
-  const auto* write_batch = redis_write_request->mutable_redis_write_batch();
+  const auto* redis_write_batch = copy_req->mutable_redis_write_batch();
 
-  for (size_t i = 0; i < write_batch->size(); i++) {
+  doc_ops.reserve(redis_write_batch->size());
+  for (size_t i = 0; i < redis_write_batch->size(); i++) {
     doc_ops.emplace_back(new RedisWriteOperation(
-          write_batch->Get(i), read_hybrid_time));
+        redis_write_batch->Get(i), read_hybrid_time));
   }
   RETURN_NOT_OK(StartDocWriteTransaction(
       doc_ops, keys_locked, redis_write_request->mutable_write_batch()));
-  for (size_t i = 0; i < write_batch->size(); i++) {
+  for (size_t i = 0; i < doc_ops.size(); i++) {
     responses->emplace_back(
         (down_cast<RedisWriteOperation*>(doc_ops[i].get()))->response());
   }
@@ -965,18 +967,18 @@ Status Tablet::KeyValueBatchFromYQLWriteBatch(
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
 
   vector<unique_ptr<DocOperation>> doc_ops;
-  {
-    std::unique_ptr<WriteRequestPB> copy_req(new WriteRequestPB());
-    copy_req->mutable_yql_write_batch()->Swap(yql_write_request->mutable_yql_write_batch());
-    copy_req->set_allocated_tablet_id(yql_write_request->release_tablet_id());
-    copy_req->mutable_write_batch()->Swap(yql_write_request->mutable_write_batch());
-    copy_req->Swap(yql_write_request);
-  }
-  const auto* write_batch = yql_write_request->mutable_yql_write_batch();
+  // Separate YQL write batch from the key-value write batch in preparation for the write
+  // transaction. Leave just the tablet id behind.
+  std::unique_ptr<WriteRequestPB> copy_req(new WriteRequestPB());
+  copy_req->set_allocated_tablet_id(yql_write_request->release_tablet_id());
+  copy_req->mutable_write_batch()->Swap(yql_write_request->mutable_write_batch());
+  copy_req->Swap(yql_write_request);
+  const auto* yql_write_batch = copy_req->mutable_yql_write_batch();
 
-  for (size_t i = 0; i < yql_write_request->yql_write_batch_size(); i++) {
+  doc_ops.reserve(yql_write_batch->size());
+  for (size_t i = 0; i < yql_write_batch->size(); i++) {
     YQLResponsePB* resp = write_response->add_yql_response_batch();
-    const YQLWriteRequestPB& req = write_batch->Get(i);
+    const YQLWriteRequestPB& req = yql_write_batch->Get(i);
     if (metadata_->schema_version() != req.schema_version()) {
       resp->set_status(YQLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
     } else {
@@ -1038,6 +1040,13 @@ Status Tablet::AcquireLocksAndPerformDocOperations(WriteTransactionState *state)
       LOG(FATAL) << "Invalid table type: " << table_type_;
     }
     state->ReplaceDocDBLocks(std::move(locks_held));
+    DCHECK(!key_value_write_request->has_schema()) << "Schema not empty in key-value batch";
+    DCHECK(!key_value_write_request->has_row_operations())
+        << "Rows operations not empty in key-value batch";
+    DCHECK_EQ(key_value_write_request->redis_write_batch_size(), 0) <<
+        "Redis write batch not empty in key-value batch";
+    DCHECK_EQ(key_value_write_request->yql_write_batch_size(), 0) <<
+        "YQL write batch not empty in key-value batch";
   }
   return Status::OK();
 }
