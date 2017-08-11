@@ -167,3 +167,16 @@ Hit next, and browse to the Yugaware source directory for the project to get imp
 ```
   $ ./yb_release
 ```
+
+
+#### Generating Map Tiles and uploading to S3
+The maps in Yugaware are generated using TileMill and mbTiles project and uploaded to S3,
+from where they are downloaded into /public folder during the build process.
+To generate your own Map tiles, do the following -
+Download TileMill or build from source https://tilemill-project.github.io/tilemill/
+Create Outline World Map , customize styles using CartoCSS http://tilemill-project.github.io/tilemill/docs/manual/carto/
+Export to .mbTiles file (choose zoom level, center, tile quality etc. all of which will affect the size of your output)
+Use mbutil to generate base map pngs.
+git clone git://github.com/mapbox/mbutil.git
+sudo python setup.py install
+Upload to S3 bucket, make sure permissions are open, set content/type to "image/png"
