@@ -876,6 +876,19 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
   }
 }
 
+namespace {
+
+// Separate Redis / YQL / row operations write batches from write_request in preparation for the
+// write transaction. Leave just the tablet id behind. Return Redis / YQL / row operations, etc.
+// in batch_request.
+void SetupKeyValueBatch(WriteRequestPB* write_request, unique_ptr<WriteRequestPB>* batch_request) {
+  batch_request->reset(new WriteRequestPB());
+  (*batch_request)->Swap(write_request);
+  write_request->set_allocated_tablet_id((*batch_request)->release_tablet_id());
+}
+
+} // namespace
+
 Status Tablet::KeyValueBatchFromRedisWriteBatch(
     WriteRequestPB* redis_write_request,
     LockBatch *keys_locked,
@@ -884,12 +897,9 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(
   vector<unique_ptr<DocOperation>> doc_ops;
   // Since we take exclusive locks, it's okay to use Now as the read TS for writes.
   const HybridTime read_hybrid_time = clock_->Now();
-  // Separate Redis write batch from the key-value write batch in preparation for the write
-  // transaction. Leave just the tablet id behind.
-  std::unique_ptr<WriteRequestPB> copy_req(new WriteRequestPB());
-  copy_req->set_allocated_tablet_id(redis_write_request->release_tablet_id());
-  copy_req->Swap(redis_write_request);
-  const auto* redis_write_batch = copy_req->mutable_redis_write_batch();
+  unique_ptr<WriteRequestPB> batch_request;
+  SetupKeyValueBatch(redis_write_request, &batch_request);
+  const auto* redis_write_batch = batch_request->mutable_redis_write_batch();
 
   doc_ops.reserve(redis_write_batch->size());
   for (size_t i = 0; i < redis_write_batch->size(); i++) {
@@ -967,13 +977,9 @@ Status Tablet::KeyValueBatchFromYQLWriteBatch(
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
 
   vector<unique_ptr<DocOperation>> doc_ops;
-  // Separate YQL write batch from the key-value write batch in preparation for the write
-  // transaction. Leave just the tablet id behind.
-  std::unique_ptr<WriteRequestPB> copy_req(new WriteRequestPB());
-  copy_req->set_allocated_tablet_id(yql_write_request->release_tablet_id());
-  copy_req->mutable_write_batch()->Swap(yql_write_request->mutable_write_batch());
-  copy_req->Swap(yql_write_request);
-  const auto* yql_write_batch = copy_req->mutable_yql_write_batch();
+  unique_ptr<WriteRequestPB> batch_request;
+  SetupKeyValueBatch(yql_write_request, &batch_request);
+  const auto* yql_write_batch = batch_request->mutable_yql_write_batch();
 
   doc_ops.reserve(yql_write_batch->size());
   for (size_t i = 0; i < yql_write_batch->size(); i++) {
@@ -1043,21 +1049,23 @@ Status Tablet::AcquireLocksAndPerformDocOperations(WriteTransactionState *state)
     DCHECK(!key_value_write_request->has_schema()) << "Schema not empty in key-value batch";
     DCHECK(!key_value_write_request->has_row_operations())
         << "Rows operations not empty in key-value batch";
-    DCHECK_EQ(key_value_write_request->redis_write_batch_size(), 0) <<
-        "Redis write batch not empty in key-value batch";
-    DCHECK_EQ(key_value_write_request->yql_write_batch_size(), 0) <<
-        "YQL write batch not empty in key-value batch";
+    DCHECK_EQ(key_value_write_request->redis_write_batch_size(), 0)
+        << "Redis write batch not empty in key-value batch";
+    DCHECK_EQ(key_value_write_request->yql_write_batch_size(), 0)
+        << "YQL write batch not empty in key-value batch";
   }
   return Status::OK();
 }
 
-Status Tablet::KeyValueBatchFromKuduRowOps(WriteRequestPB* kudu_write_request_pb,
+Status Tablet::KeyValueBatchFromKuduRowOps(WriteRequestPB* kudu_write_request,
                                            LockBatch *keys_locked) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
 
   TRACE("PREPARE: Decoding operations");
 
-  auto* write_batch = kudu_write_request_pb->mutable_write_batch();
+  unique_ptr<WriteRequestPB> row_operations_request;
+  SetupKeyValueBatch(kudu_write_request, &row_operations_request);
+  auto* write_batch = kudu_write_request->mutable_write_batch();
 
   TRACE("Acquiring schema lock in shared mode");
   shared_lock<rw_semaphore> schema_lock(schema_lock_);
@@ -1065,24 +1073,20 @@ Status Tablet::KeyValueBatchFromKuduRowOps(WriteRequestPB* kudu_write_request_pb
 
   Schema client_schema;
 
-  RETURN_NOT_OK(SchemaFromPB(kudu_write_request_pb->schema(), &client_schema));
+  RETURN_NOT_OK(SchemaFromPB(row_operations_request->schema(), &client_schema));
 
   // Allocating temporary arena for decoding.
   Arena arena(32 * 1024, 4 * 1024 * 1024);
 
   vector<DecodedRowOperation> row_ops;
-  RowOperationsPBDecoder row_operation_decoder(&kudu_write_request_pb->row_operations(),
+  RowOperationsPBDecoder row_operation_decoder(&row_operations_request->row_operations(),
                                                &client_schema,
                                                schema(),
                                                &arena);
 
   RETURN_NOT_OK(row_operation_decoder.DecodeOperations(&row_ops));
 
-  RETURN_NOT_OK(
-      CreateWriteBatchFromKuduRowOps(
-          row_ops, write_batch, keys_locked));
-  // TODO(bogdan): setup copy/swap like in Redis/YQL cases.
-  kudu_write_request_pb->clear_row_operations();
+  RETURN_NOT_OK(CreateWriteBatchFromKuduRowOps(row_ops, write_batch, keys_locked));
 
   return Status::OK();
 }
@@ -1096,7 +1100,7 @@ DocPath DocPathForColumn(const KeyBytes& encoded_doc_key, ColumnId col_id) {
 }  // namespace
 
 Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> &row_ops,
-                                              KeyValueWriteBatchPB* write_batch_pb,
+                                              KeyValueWriteBatchPB* write_batch,
                                               LockBatch* keys_locked) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
   vector<unique_ptr<DocOperation>> doc_ops;
@@ -1166,7 +1170,7 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
       }
     }
   }
-  return StartDocWriteTransaction(doc_ops, keys_locked, write_batch_pb);
+  return StartDocWriteTransaction(doc_ops, keys_locked, write_batch);
 }
 
 void Tablet::ApplyKuduRowOperation(WriteTransactionState *tx_state,

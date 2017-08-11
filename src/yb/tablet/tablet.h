@@ -265,12 +265,12 @@ class Tablet : public AbstractTablet {
 
   // The Kudu equivalent of KeyValueBatchFromRedisWriteBatch, works similarly.
   CHECKED_STATUS KeyValueBatchFromKuduRowOps(
-      tserver::WriteRequestPB* kudu_write_request_pb,
+      tserver::WriteRequestPB* kudu_write_request,
       LockBatch *keys_locked);
 
   // Uses primary_key:column_name for key encoding.
   CHECKED_STATUS CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> &row_ops,
-                                        yb::docdb::KeyValueWriteBatchPB* write_batch_pb,
+                                        yb::docdb::KeyValueWriteBatchPB* write_batch,
                                         LockBatch* keys_locked);
 
   // Create a RocksDB checkpoint in the provided directory. Only used when table_type_ ==
