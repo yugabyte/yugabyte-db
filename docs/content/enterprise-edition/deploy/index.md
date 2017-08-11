@@ -3,11 +3,11 @@ date: 2016-03-09T00:11:02+01:00
 title: Enteprise Edition - Deploy Admin Console
 weight: 30
 ---
-YugaByte Enterprise Edition is best fit for mission-critical deployments such as production or pre-production test. It starts out by first installing **YugaWare**, the YugaByte admin console, in a highly available mode and then spinning up YugaByte clusters on any public cloud or private datacenters.
+YugaByte Enterprise Edition is best fit for mission-critical deployments such as production or pre-production test. It starts out by first installing **YugaWare**, the YugaByte admin console, in a highly available mode and then spinning up YugaByte clusters on one or more datacenters (across public cloud and private on-premises datacenters).
 
 ## Prerequisites
 
-YugaWare, the YugaByte admin console, is a containerized application that is installed and managed via [Replicated](https://www.replicated.com/) for mission-critical environments (such as production and pre-production testing). Replicated is a purpose-built tool for on-premises deployment and lifecycle management of containerized applications. For environments that are not mission-critical such as those needed for local development or testing, you can use the [Community Edition](/community-edition/get-started/).
+YugaWare, the YugaByte admin console, is a containerized application that is installed and managed via [Replicated](https://www.replicated.com/) for mission-critical environments (such as production or performance or failure mode testing). Replicated is a purpose-built tool for on-premises deployment and lifecycle management of containerized applications. For environments that are not mission-critical such as those needed for local development or simple functional testing, you can also use the [Community Edition](/community-edition/get-started/).
 
 A dedicated host or VM with the following characteristics is needed for YugaWare to run via Replicated.
 

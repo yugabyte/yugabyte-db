@@ -57,8 +57,22 @@ Distributed OLTP applications (such as retail product catalog, unified customer 
 
 ### Time-series
 
-HTAP applications (such as application/infrastructure monitoring as well as industrial/consumer Internet-of-Things) that ingest time-series metrics and events essentially require high write throughput for append-only workloads deployed on cost-efficient tiered storage as well as Apache Spark integration for batch/real-time analytics. These applications can use Prometheus with YugaByte (using CQL) as it's backing store or can directly leverage YugaByte’s CQL support.
+HTAP applications (such as application/infrastructure monitoring as well as industrial/consumer Internet-of-Things) that ingest time-series metrics and events essentially require high write throughput for append-only workloads deployed on cost-efficient tiered storage as well as Apache Spark integration for batch/real-time analytics. These applications can directly leverage YugaByte’s CQL support or use other open-source time-series frameworks such as [KairosDB](https://kairosdb.github.io/) that can use Apache Cassandra as a backing store.
 
 ### Key-value
 
 Mission-critical key-value applications (such as financial transaction processing, stock quotes and sports feeds) that require low latency reads and writes without the overhead of explicit memory management. Such applications use YugaByte’s Redis API support.
+
+## Product editions
+
+YugaByte offers two ways to get started with YugaByte DB. 
+
+![Product Editions](/images/editions.png)
+
+### Community Edition
+Community Edition is the best choice for the individual developer looking to develop applications and deploy the DB into production with traditional DevOps tools. 
+
+### Enteprise Edition
+Enterprise Edition includes all the features of the Community Edition as well as additional features such as built-in cloud-native operations, advanced tunable consistency and enterprise security. It is the simplest way to run the DB in mission-critical production environments with one or more datacenters (across both public cloud and on-premises datacenters). 
+
+
