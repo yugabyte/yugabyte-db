@@ -23,11 +23,7 @@ import org.junit.runner.Description;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.PrintStream;
-import java.io.UnsupportedEncodingException;
+import java.io.*;
 import java.lang.reflect.Field;
 
 import java.net.*;
@@ -36,8 +32,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Supplier;
 
 /**
  * A grouping of methods that help unit testing.
@@ -58,7 +52,24 @@ public class TestUtils {
 
   private static final long unixUserId = new UnixSystem().getUid();
   private static final long startTimeMillis = System.currentTimeMillis();
-  private static final Random randomGenerator = new Random(startTimeMillis);
+  private static Random randomGenerator;
+
+  private static String NONBLOCKING_RANDOM_DEVICE = "/dev/urandom";
+  static {
+    long seed = System.nanoTime();
+    if (new File(NONBLOCKING_RANDOM_DEVICE).exists()) {
+      try {
+        InputStream in = new FileInputStream(NONBLOCKING_RANDOM_DEVICE);
+        for (int i = 0; i < 64; ++i) {
+          seed = seed * 37 + in.read();
+        }
+        in.close();
+      } catch (IOException ex) {
+        LOG.warn("Failed to read from " + NONBLOCKING_RANDOM_DEVICE + " to seed random generator");
+      }
+    }
+    randomGenerator = new Random(seed);
+  }
 
   public static final int MIN_PORT_TO_USE = 10000;
   public static final int MAX_PORT_TO_USE = 32768;
@@ -214,7 +225,8 @@ public class TestUtils {
   public static String getBaseDir() {
     String testTmpDir = System.getenv("TEST_TMPDIR");
     if (testTmpDir == null) {
-      testTmpDir = "/tmp/ybtest-" + unixUserId + "-" + startTimeMillis;
+      testTmpDir = "/tmp/ybtest-" + unixUserId + "-" + startTimeMillis + "-" +
+              randomGenerator.nextInt();
     }
     File f = new File(testTmpDir);
     f.mkdirs();
@@ -428,5 +440,9 @@ public class TestUtils {
    */
   public static long adjustTimeoutForBuildType(long timeout) {
     return (long) (timeout * TestUtils.getTimeoutMultiplier());
+  }
+
+  public static Random getRandomGenerator() {
+    return randomGenerator;
   }
 }

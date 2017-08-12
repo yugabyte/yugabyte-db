@@ -69,7 +69,7 @@ public class MiniYBCluster implements AutoCloseable {
   private static final String TSERVER_MASTER_ADDRESSES_FLAG = "--tserver_master_addrs";
 
   private static final String TSERVER_MASTER_ADDRESSES_FLAG_REGEX =
-    TSERVER_MASTER_ADDRESSES_FLAG + ".*";
+      TSERVER_MASTER_ADDRESSES_FLAG + ".*";
 
   // High threshold to avoid excessive slow query log.
   private static final int RPC_SLOW_QUERY_THRESHOLD = 10000000;
@@ -99,8 +99,6 @@ public class MiniYBCluster implements AutoCloseable {
   // We pass the Java test class name as a command line option to YB daemons so that we know what
   // test invoked them if they get stuck.
   private final String testClassName;
-
-  private final Random rng = new Random(miniClusterInitTimeMillis);
 
   /**
    * This is used to prevent trying to launch two tservers on the same loopback IP. However, this is
@@ -186,6 +184,7 @@ public class MiniYBCluster implements AutoCloseable {
     //
     // In case serverIndex is -1, pick random addresses.
     final StringBuilder randomLoopbackIp = new StringBuilder("127");
+    final Random rng = TestUtils.getRandomGenerator();
     for (int i = 0; i < 3; ++i) {
       // Do not use 0 or 255 for IP components.
       randomLoopbackIp.append("." + (1 + rng.nextInt(254)));
@@ -233,6 +232,7 @@ public class MiniYBCluster implements AutoCloseable {
     if (TestUtils.IS_LINUX) {
       return getRandomBindAddressOnLinux();
     }
+    final Random rng = TestUtils.getRandomGenerator();
     return "127.0.0." + (1 + rng.nextInt(NUM_LOCALHOSTS_ON_MAC_OS_X - 1));
   }
 
