@@ -27,6 +27,8 @@ import org.slf4j.LoggerFactory;
 import org.yb.master.Master;
 import org.yb.minicluster.BaseMiniClusterTest;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.*;
 
@@ -86,10 +88,26 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     useKeyspace(DEFAULT_TEST_KEYSPACE);
   }
 
+  private static void closeIfNotNull(String logPrefix,
+                                     String clusterOrSessionStr,
+                                     Closeable closeable) throws Exception {
+    if (closeable != null) {
+      LOG.info(logPrefix + "closing " + clusterOrSessionStr);
+      try {
+        closeable.close();
+      } catch (IOException ex) {
+        LOG.error(logPrefix + ": exception while trying to close " + clusterOrSessionStr, ex);
+        throw ex;
+      }
+    } else {
+      LOG.info(logPrefix + clusterOrSessionStr + " is already null, nothing to close");
+    }
+  }
+
   @After
   public void tearDownAfter() throws Exception {
-    LOG.info("BaseCQLTest.tearDownAfter is running: " +
-        "dropping tables and closing CQL session/client");
+    final String logPrefix = "BaseCQLTest.tearDownAfter: ";
+    LOG.info(logPrefix + "dropping tables / types / keyspaces");
 
     // Clean up all tables before end of each test to lower high-water-mark disk usage.
     dropTables();
@@ -100,12 +118,20 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     // Also delete all keyspaces, because we may
     dropKeyspaces();
 
-    if (session != null) {
-      session.close();
+    closeIfNotNull(logPrefix, "session", session);
+    // Cannot move this check to closeIfNotNull, because isClosed() is not part of Closeable.
+    if (session != null && session.isClosed()) {
+      LOG.warn(logPrefix + ": session is still not closed!");
     }
-    if (cluster != null) {
-      cluster.close();
+    session = null;
+
+    closeIfNotNull(logPrefix, "cluster", cluster);
+    // See the comment above.
+    if (cluster  != null && cluster.isClosed()) {
+      LOG.warn(logPrefix + ": cluster is still not closed!");
     }
+    cluster = null;
+
     LOG.info("BaseCQLTest.tearDownAfter is running: " +
         "finished dropping tables and closing CQL session/client");
     afterBaseCQLTestTearDown();

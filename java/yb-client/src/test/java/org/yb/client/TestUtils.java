@@ -53,7 +53,8 @@ public class TestUtils {
 
   private static String ybRootDir = null;
 
-  public static final boolean IS_LINUX = System.getProperty("os.name").equals("Linux");
+  public static final boolean IS_LINUX =
+      System.getProperty("os.name").toLowerCase().equals("linux");
 
   private static final long unixUserId = new UnixSystem().getUid();
   private static final long startTimeMillis = System.currentTimeMillis();
@@ -80,13 +81,6 @@ public class TestUtils {
    * started by the tests
    */
   public static String getFlagsPath() {
-    URL u = BaseYBClientTest.class.getResource("/flags");
-    if (u == null) {
-      throw new RuntimeException("Unable to find 'flags' file");
-    }
-    if (u.getProtocol() == "file") {
-      return urlToPath(u);
-    }
     // If the flags are inside a JAR, extract them into our temporary
     // test directory.
     try {
