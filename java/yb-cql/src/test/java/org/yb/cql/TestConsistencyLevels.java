@@ -149,27 +149,16 @@ public class TestConsistencyLevels extends BaseCQLTest {
     assertTrue(totalOps >= NUM_OPS);
   }
 
-  private void runInvalidConsistencyLevel(String TABLE_NAME, ConsistencyLevel consistencyLevel) {
-    try {
-      Statement statement = QueryBuilder.select()
-        .from(DEFAULT_KEYSPACE, TABLE_NAME)
-        .setConsistencyLevel(consistencyLevel);
-      session.execute(statement);
-      fail(String.format("No failure for consistency level: %d", consistencyLevel));
-    } catch (ProtocolError e) {
-      // expected.
-    }
-  }
-
   @Test
-  public void testInvalidCQLConsistencyLevels() throws Exception {
-    runInvalidConsistencyLevel(TABLE_NAME, ConsistencyLevel.ALL);
-    runInvalidConsistencyLevel(TABLE_NAME, ConsistencyLevel.ANY);
-    runInvalidConsistencyLevel(TABLE_NAME, ConsistencyLevel.EACH_QUORUM);
-    runInvalidConsistencyLevel(TABLE_NAME, ConsistencyLevel.LOCAL_QUORUM);
-    runInvalidConsistencyLevel(TABLE_NAME, ConsistencyLevel.LOCAL_SERIAL);
-    runInvalidConsistencyLevel(TABLE_NAME, ConsistencyLevel.SERIAL);
-    runInvalidConsistencyLevel(TABLE_NAME, ConsistencyLevel.THREE);
-    runInvalidConsistencyLevel(TABLE_NAME, ConsistencyLevel.TWO);
+  public void testOtherCQLConsistencyLevels() throws Exception {
+    // Expecting correct result for CQL compatibility, but no guarantee of how reads are spread.
+    assertTrue(verifyNumRows(ConsistencyLevel.ALL));
+    assertTrue(verifyNumRows(ConsistencyLevel.ANY));
+    assertTrue(verifyNumRows(ConsistencyLevel.EACH_QUORUM));
+    assertTrue(verifyNumRows(ConsistencyLevel.LOCAL_QUORUM));
+    assertTrue(verifyNumRows(ConsistencyLevel.LOCAL_SERIAL));
+    assertTrue(verifyNumRows(ConsistencyLevel.SERIAL));
+    assertTrue(verifyNumRows(ConsistencyLevel.THREE));
+    assertTrue(verifyNumRows(ConsistencyLevel.TWO));
   }
 }
