@@ -3,6 +3,7 @@ package com.yugabyte.cql;
 
 import org.junit.Test;
 
+import com.datastax.driver.core.BatchStatement;
 import com.datastax.driver.core.BoundStatement;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.Row;
@@ -296,6 +297,35 @@ public class TestLoadBalancing extends BaseCQLTest {
     assertTrue(metadata.loadCount.get() >= MIN_LOAD_COUNT);
   }
 
+  // Get IO metrics of all tservers.
+  private Map<MiniYBDaemon, IOMetrics> getTSMetrics() throws Exception {
+    Map<MiniYBDaemon, IOMetrics> initialMetrics = new HashMap<>();
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      IOMetrics metrics = new IOMetrics(new Metrics(ts.getLocalhostIP(),
+                                                    ts.getCqlWebPort(),
+                                                    "server"));
+      initialMetrics.put(ts, metrics);
+    }
+    return initialMetrics;
+  }
+
+  // Get combined IO metrics of all tservers since a certain point.
+  private IOMetrics getCombinedMetrics(Map<MiniYBDaemon, IOMetrics> initialMetrics)
+      throws Exception {
+    IOMetrics totalMetrics = new IOMetrics();
+    int tsCount = miniCluster.getTabletServers().values().size();
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      IOMetrics metrics = new IOMetrics(new Metrics(ts.getLocalhostIP(),
+                                                    ts.getCqlWebPort(),
+                                                    "server"))
+                          .subtract(initialMetrics.get(ts));
+      LOG.info("Metrics of " + ts.toString() + ": " + metrics.toString());
+      totalMetrics.add(metrics);
+    }
+    LOG.info("Total metrics: " + totalMetrics.toString());
+    return totalMetrics;
+  }
+
   // Test load-balancing policy with DMLs.
   @Test
   public void testDML() throws Exception {
@@ -311,13 +341,7 @@ public class TestLoadBalancing extends BaseCQLTest {
     Thread.sleep(10000);
 
     // Get the initial metrics.
-    Map<MiniYBDaemon, IOMetrics> initialMetrics = new HashMap<>();
-    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      IOMetrics metrics = new IOMetrics(new Metrics(ts.getLocalhostIP(),
-                                                    ts.getCqlWebPort(),
-                                                    "server"));
-      initialMetrics.put(ts, metrics);
-    }
+    Map<MiniYBDaemon, IOMetrics> initialMetrics = getTSMetrics();
 
     PreparedStatement stmt;
 
@@ -344,17 +368,7 @@ public class TestLoadBalancing extends BaseCQLTest {
     }
 
     // Check the metrics again.
-    IOMetrics totalMetrics = new IOMetrics();
-    int tsCount = miniCluster.getTabletServers().values().size();
-    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      IOMetrics metrics = new IOMetrics(new Metrics(ts.getLocalhostIP(),
-                                                    ts.getCqlWebPort(),
-                                                    "server"))
-                          .subtract(initialMetrics.get(ts));
-      LOG.info("Metrics of " + ts.toString() + ": " + metrics.toString());
-      totalMetrics.add(metrics);
-    }
-    LOG.info("Total metrics: " + totalMetrics.toString());
+    IOMetrics totalMetrics = getCombinedMetrics(initialMetrics);
 
     // Verify that the majority of read and write calls are local.
     //
@@ -363,5 +377,51 @@ public class TestLoadBalancing extends BaseCQLTest {
     // loaded, the cluster's load-balancer may still be rebalancing the leaders.
     assertTrue(totalMetrics.localReadCount >= NUM_KEYS * 0.7);
     assertTrue(totalMetrics.localWriteCount >= NUM_KEYS * 3 * 0.7);
+  }
+
+  // Test load-balancing policy with BatchStatement
+  @Test
+  public void testBatchStatement() throws Exception {
+
+    final int NUM_KEYS = 100;
+
+    // Create test table.
+    session.execute("create table test_lb (h int, r text, c int, primary key ((h), r));");
+
+    // Since partition metadata is refreshed asynchronously after a new table is created, let's
+    // wait for a little or else the initial statements will be executed without the partition
+    // metadata and will be dispatched to a random node.
+    Thread.sleep(10000);
+
+    // Get the initial metrics.
+    Map<MiniYBDaemon, IOMetrics> initialMetrics = getTSMetrics();
+
+    PreparedStatement stmt;
+    stmt = session.prepare("insert into test_lb (h, r, c) values (?, ?, ?);");
+    for (int i = 1; i <= NUM_KEYS; i++) {
+      BatchStatement batch = new BatchStatement();
+      for (int j = 1; j <= 5; j++) {
+        batch.add(stmt.bind(Integer.valueOf(i), "v" + j, Integer.valueOf(i)));
+      }
+      session.execute(batch);
+    }
+
+    stmt = session.prepare("select c from test_lb where h = ? and r = 'v1';");
+    for (int i = 1; i <= NUM_KEYS; i++) {
+      Row row = session.execute(stmt.bind(Integer.valueOf(i))).one();
+      assertNotNull(row);
+      assertEquals(i, row.getInt("c"));
+    }
+
+    // Check the metrics again.
+    IOMetrics totalMetrics = getCombinedMetrics(initialMetrics);
+
+    // Verify that the majority of read and write calls are local.
+    //
+    // With PartitionAwarePolicy, all calls should be local ideally but there is no 100% guarantee
+    // because as soon as the test table has been created and the partition metadata has been
+    // loaded, the cluster's load-balancer may still be rebalancing the leaders.
+    assertTrue(totalMetrics.localReadCount >= NUM_KEYS * 0.7);
+    assertTrue(totalMetrics.localWriteCount >= NUM_KEYS * 5 * 0.7);
   }
 }

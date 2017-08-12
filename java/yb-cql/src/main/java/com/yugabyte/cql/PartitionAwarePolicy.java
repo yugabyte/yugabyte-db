@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.cql;
 
+import com.datastax.driver.core.BatchStatement;
 import com.datastax.driver.core.BoundStatement;
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.ColumnDefinitions;
@@ -275,32 +276,64 @@ public class PartitionAwarePolicy implements ChainableLoadBalancingPolicy {
     }
   }
 
-  @Override
-  public Iterator<Host> newQueryPlan(String loggedKeyspace, Statement statement) {
-    if (statement instanceof BoundStatement) {
-      BoundStatement bstmt = (BoundStatement)statement;
-      PreparedStatement pstmt = bstmt.preparedStatement();
-      String query = pstmt.getQueryString();
-      ColumnDefinitions variables = pstmt.getVariables();
+  /**
+   * Gets the query plan for a {@code BoundStatement}.
+   *
+   * @param loggedKeyspace  the logged keyspace of the statement
+   * @param statement       the statement
+   * @return                the query plan, or null when no plan can be determined
+   */
+  private Iterator<Host> getQueryPlan(String loggedKeyspace, BoundStatement statement) {
+    PreparedStatement pstmt = statement.preparedStatement();
+    String query = pstmt.getQueryString();
+    ColumnDefinitions variables = pstmt.getVariables();
 
-      // Look up the hosts for the partition key. Skip statements that do not have bind variables.
-      // Skip also PartitionMetadata's own query to avoid infinite loop.
-      if (variables.size() != 0 && !query.equals(PartitionMetadata.PARTITIONS_QUERY)) {
-        LOG.debug("newQueryPlan: " + "keyspace = " + loggedKeyspace + ", " + "query = " + query);
-        KeyspaceMetadata keyspace = clusterMetadata.getKeyspace(variables.getKeyspace(0));
-        if (keyspace != null) {
-          TableMetadata table = keyspace.getTable(variables.getTable(0));
-          if (table != null) {
-            int key = getKey(bstmt);
-            if (key >= 0) {
-              Collection<Host> hosts = partitionMetadata.getHostsForKey(table, key);
-              return new UpHostIterator(loggedKeyspace, statement, hosts);
-            }
-          }
-        }
+    // Look up the hosts for the partition key. Skip statements that do not have bind variables.
+    // Skip also PartitionMetadata's own query to avoid infinite loop.
+    if (variables.size() == 0 || query.equals(PartitionMetadata.PARTITIONS_QUERY))
+      return null;
+    LOG.debug("getQueryPlan: keyspace = " + loggedKeyspace + ", " + "query = " + query);
+    KeyspaceMetadata keyspace = clusterMetadata.getKeyspace(variables.getKeyspace(0));
+    if (keyspace == null)
+      return null;
+    TableMetadata table = keyspace.getTable(variables.getTable(0));
+    if (table == null)
+      return null;
+    int key = getKey(statement);
+    if (key < 0)
+      return null;
+
+    Collection<Host> hosts = partitionMetadata.getHostsForKey(table, key);
+    return new UpHostIterator(loggedKeyspace, statement, hosts);
+  }
+
+  /**
+   * Gets the query plan for a {@code BatchStatement}.
+   *
+   * @param loggedKeyspace  the logged keyspace of the statement
+   * @param statement       the statement
+   * @return                the query plan, or null when no plan can be determined
+   */
+  private Iterator<Host> getQueryPlan(String loggedKeyspace, BatchStatement batch) {
+    for (Statement statement : batch.getStatements()) {
+      if (statement instanceof BoundStatement) {
+        Iterator<Host> plan = getQueryPlan(loggedKeyspace, (BoundStatement)statement);
+        if (plan != null)
+          return plan;
       }
     }
-    return childPolicy.newQueryPlan(loggedKeyspace, statement);
+    return null;
+  }
+
+  @Override
+  public Iterator<Host> newQueryPlan(String loggedKeyspace, Statement statement) {
+    Iterator<Host> plan = null;
+    if (statement instanceof BoundStatement) {
+      plan = getQueryPlan(loggedKeyspace, (BoundStatement)statement);
+    } else if (statement instanceof BatchStatement) {
+      plan = getQueryPlan(loggedKeyspace, (BatchStatement)statement);
+    }
+    return (plan != null) ? plan : childPolicy.newQueryPlan(loggedKeyspace, statement);
   }
 
   @Override

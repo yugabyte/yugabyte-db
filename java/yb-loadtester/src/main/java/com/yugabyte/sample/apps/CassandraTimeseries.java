@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.apache.commons.cli.CommandLine;
 import org.apache.log4j.Logger;
 
+import com.datastax.driver.core.BatchStatement;
 import com.datastax.driver.core.BoundStatement;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
@@ -252,16 +253,16 @@ public class CassandraTimeseries extends AppBase {
         random.nextBytes(randBytesArr);
         sb.append(randBytesArr);
       }
+      BatchStatement batch = new BatchStatement();
       for (String metric : dataSource.getMetrics()) {
-        BoundStatement insert =
-            getPreparedInsert().bind().setString("user_id", dataSource.getUserId())
-                                      .setString("node_id", dataSource.getNodeId())
-                                      .setString("metric_id", metric)
-                                      .setTimestamp("ts", new Date(ts))
-                                      .setString("value", sb.toString());
-        ResultSet resultSet = getCassandraClient().execute(insert);
+        batch.add(getPreparedInsert().bind().setString("user_id", dataSource.getUserId())
+                                            .setString("node_id", dataSource.getNodeId())
+                                            .setString("metric_id", metric)
+                                            .setTimestamp("ts", new Date(ts))
+                                            .setString("value", sb.toString()));
         numKeysWritten++;
       }
+      getCassandraClient().execute(batch);
       dataSource.setLastEmittedTs(ts);
       ts = dataSource.getDataEmitTs();
     }
