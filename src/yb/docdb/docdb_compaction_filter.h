@@ -118,7 +118,7 @@ class FixedHybridTimeRetentionPolicy : public HistoryRetentionPolicy {
   void AddDeletedColumn(ColumnId col) { deleted_cols_.insert(col); }
 
   MonoDelta GetTableTTL() override { return table_ttl_; }
-  void SetTableTTL(MonoDelta ttl) {  table_ttl_ = ttl; }
+  void SetTableTTLForTests(MonoDelta ttl) {  table_ttl_ = ttl; }
 
  private:
   std::atomic<HybridTime> history_cutoff_;

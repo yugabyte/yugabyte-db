@@ -190,6 +190,7 @@ void DocDBRocksDBUtil::SetHistoryCutoffHybridTime(HybridTime history_cutoff) {
 
 void DocDBRocksDBUtil::SetTableTTL(uint64_t ttl_msec) {
   schema_.SetDefaultTimeToLive(ttl_msec);
+  retention_policy_->SetTableTTLForTests(MonoDelta::FromMilliseconds(ttl_msec));
 }
 
 string DocDBRocksDBUtil::DocDBDebugDumpToStr() {
