@@ -25,7 +25,7 @@
 #   BUILD_TYPE: Default: debug
 #     Maybe be one of asan|tsan|debug|release|coverage|lint
 #
-#   BUILD_CPP
+#   YB_BUILD_CPP
 #   Default: 1
 #     Build and test C++ code if this is set to 1.
 #
@@ -33,11 +33,11 @@
 #   Default: 0
 #     Skip building C++ code, only run tests if this is set to 1 (useful for debugging).
 #
-#   BUILD_JAVA
+#   YB_BUILD_JAVA
 #   Default: 1
 #     Build and test java code if this is set to 1.
 #
-#   BUILD_PYTHON
+#   YB_BUILD_PYTHON
 #   Default: 1
 #     Build and test the Python wrapper of the client API.
 #
@@ -60,7 +60,7 @@ fi
 
 MAX_NUM_PARALLEL_TESTS=3
 
-BUILD_CPP=${BUILD_CPP:-1}
+YB_BUILD_CPP=${YB_BUILD_CPP:-1}
 
 # gather core dumps
 ulimit -c unlimited
@@ -79,9 +79,9 @@ set_build_root --no-readonly
 set_common_test_paths
 
 # TODO: deduplicate this with similar logic in yb-jenkins-build.sh.
-BUILD_JAVA=${BUILD_JAVA:-1}
-BUILD_PYTHON=${BUILD_PYTHON:-0}
-BUILD_CPP=${BUILD_CPP:-1}
+YB_BUILD_JAVA=${YB_BUILD_JAVA:-1}
+YB_BUILD_PYTHON=${YB_BUILD_PYTHON:-0}
+YB_BUILD_CPP=${YB_BUILD_CPP:-1}
 if is_jenkins; then
   # Delete the build root by default on Jenkins.
   DONT_DELETE_BUILD_ROOT=${DONT_DELETE_BUILD_ROOT:-0}
@@ -213,13 +213,13 @@ if [[ $BUILD_TYPE == "asan" ]]; then
   log "Starting ASAN build"
   run_build_cmd $cmake_cmd_line "$YB_SRC_ROOT"
   log "CMake invocation for ASAN build finished (see timing information above)"
-  BUILD_PYTHON=0
+  YB_BUILD_PYTHON=0
 elif [[ $BUILD_TYPE == "tsan" ]]; then
   log "Starting TSAN build"
   run_build_cmd $cmake_cmd_line -DYB_USE_TSAN=1 "$YB_SRC_ROOT"
   log "CMake invocation for TSAN build finished (see timing information above)"
   EXTRA_TEST_FLAGS+=" -LE no_tsan"
-  BUILD_PYTHON=0
+  YB_BUILD_PYTHON=0
 elif [[ $BUILD_TYPE == "coverage" ]]; then
   DO_COVERAGE=1
   log "Starting coverage build"
@@ -275,52 +275,58 @@ set -e
 
 FAILURES=""
 
-if [[ $BUILD_CPP == "1" ]]; then
+if [[ $YB_BUILD_CPP == "1" ]]; then
   if ! which ctest >/dev/null; then
     fatal "ctest not found, won't be able to run C++ tests"
   fi
-
-  heading "Building C++ code."
-  if [[ $SKIP_CPP_MAKE == "0" ]]; then
-    remote_opt=""
-    if [[ ${YB_REMOTE_BUILD:-} == "1" ]]; then
-      remote_opt="--remote"
-    fi
-
-    # Delegate the actual C++ build to the yb_build.sh script. Also explicitly specify the --remote
-    # flag so that the worker list refresh script can capture it from ps output and bump the number
-    # of workers to some minimum value.
-    #
-    # We're explicitly disabling third-party rebuilding here as we've already built third-party
-    # dependencies (or downloaded them, or picked an existing third-party directory) above.
-    time run_build_cmd "$YB_SRC_ROOT/yb_build.sh" $remote_opt \
-      --no-rebuild-thirdparty \
-      --skip-java \
-      "$BUILD_TYPE" 2>&1 | \
-      filter_boring_cpp_build_output
-    if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
-      log "C++ build failed!"
-      # TODO: perhaps we shouldn't even try to run C++ tests in this case?
-      EXIT_STATUS=1
-    fi
-
-    log "Finished building C++ code (see timing information above)"
-  else
-    log "Skipped building C++ code, only running tests"
-  fi
-
-  if [[ -h $LATEST_BUILD_LINK ]]; then
-    # This helps prevent Jenkins from showing every test twice in test results.
-    unlink "$LATEST_BUILD_LINK"
-  fi
-
-  log "Disk usage after C++ build:"
-  show_disk_usage
 fi
+
+# -------------------------------------------------------------------------------------------------
+# Build C++ code regardless of YB_BUILD_CPP, because we'll also need it for Java tests.
+
+heading "Building C++ code."
+if [[ $SKIP_CPP_MAKE == "0" ]]; then
+  remote_opt=""
+  if [[ ${YB_REMOTE_BUILD:-} == "1" ]]; then
+    remote_opt="--remote"
+  fi
+
+  # Delegate the actual C++ build to the yb_build.sh script. Also explicitly specify the --remote
+  # flag so that the worker list refresh script can capture it from ps output and bump the number
+  # of workers to some minimum value.
+  #
+  # We're explicitly disabling third-party rebuilding here as we've already built third-party
+  # dependencies (or downloaded them, or picked an existing third-party directory) above.
+  time run_build_cmd "$YB_SRC_ROOT/yb_build.sh" $remote_opt \
+    --no-rebuild-thirdparty \
+    --skip-java \
+    "$BUILD_TYPE" 2>&1 | \
+    filter_boring_cpp_build_output
+  if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+    log "C++ build failed!"
+    # TODO: perhaps we shouldn't even try to run C++ tests in this case?
+    EXIT_STATUS=1
+  fi
+
+  log "Finished building C++ code (see timing information above)"
+else
+  log "Skipped building C++ code, only running tests"
+fi
+
+if [[ -h $LATEST_BUILD_LINK ]]; then
+  # This helps prevent Jenkins from showing every test twice in test results.
+  unlink "$LATEST_BUILD_LINK"
+fi
+
+log "Disk usage after C++ build:"
+show_disk_usage
+
+# End of the C++ code build.
+# -------------------------------------------------------------------------------------------------
 
 set_asan_tsan_options
 
-if [[ $BUILD_JAVA == "1" ]]; then
+if [[ $YB_BUILD_JAVA == "1" ]]; then
   # This sets the proper NFS-shared directory for Maven's local repository on Jenkins.
   set_mvn_local_repo
 
@@ -329,7 +335,20 @@ if [[ $BUILD_JAVA == "1" ]]; then
     export PATH=$JAVA_HOME/bin:$PATH
   fi
   pushd "$YB_SRC_ROOT/java"
+
   ( set -x; mvn clean )
+
+  # Use a unique version to avoid a race with other concurrent jobs on jar files that we install
+  # into ~/.m2/repository.
+  yb_java_project_version=yugabyte-jenkins-$( date +%Y%m%dT%H%M%S ).$RANDOM.$RANDOM.$$
+
+  (
+    set -x
+    mvn versions:set -DnewVersion="$yb_java_project_version"
+    git add -A .
+    git commit -m "Updating version to $yb_java_project_version during testing"
+  )
+
   java_build_cmd_line=( --fail-never -DbinDir="$BUILD_ROOT"/bin )
   if ! time build_yb_java_code_with_retries "${java_build_cmd_line[@]}" \
                                             -DskipTests clean install 2>&1; then
@@ -341,13 +360,13 @@ if [[ $BUILD_JAVA == "1" ]]; then
 fi
 
 if spark_available; then
-  if [[ $BUILD_CPP == "1" || $BUILD_JAVA == "1" ]]; then
+  if [[ $YB_BUILD_CPP == "1" || $YB_BUILD_JAVA == "1" ]]; then
     log "Will run tests on Spark"
     extra_args=""
-    if [[ $BUILD_JAVA == "1" ]]; then
+    if [[ $YB_BUILD_JAVA == "1" ]]; then
       extra_args+="--java"
     fi
-    if [[ $BUILD_CPP == "1" ]]; then
+    if [[ $YB_BUILD_CPP == "1" ]]; then
       extra_args+=" --cpp"
     fi
     if ! run_tests_on_spark $extra_args; then
@@ -362,7 +381,7 @@ if spark_available; then
 else
   # A single-node way of running tests (without Spark).
 
-  if [[ $BUILD_CPP == "1" ]]; then
+  if [[ $YB_BUILD_CPP == "1" ]]; then
     log "Run C++ tests in a non-distributed way"
     export GTEST_OUTPUT="xml:$TEST_LOG_DIR/" # Enable JUnit-compatible XML output.
 
@@ -390,7 +409,7 @@ else
     fi
   fi
 
-  if [[ $BUILD_JAVA == "1" ]]; then
+  if [[ $YB_BUILD_JAVA == "1" ]]; then
     pushd "$YB_SRC_ROOT/java"
     log "Running Java tests in a non-distributed way"
     if ! time build_yb_java_code_with_retries "${java_build_cmd_line[@]}" verify 2>&1; then
@@ -403,7 +422,7 @@ else
 fi
 
 
-if [[ $BUILD_CPP == "1" ]] && using_linuxbrew; then
+if [[ $YB_BUILD_CPP == "1" ]] && using_linuxbrew; then
   # -----------------------------------------------------------------------------------------------
   # Test package creation (i.e. relocating all the necessary libraries).  This only works on Linux
   # builds using Linuxbrew.
@@ -418,7 +437,7 @@ if [[ $BUILD_CPP == "1" ]] && using_linuxbrew; then
   rm -rf "$packaged_dest_dir"
 fi
 
-if [[ $BUILD_PYTHON == "1" ]]; then
+if [[ $YB_BUILD_PYTHON == "1" ]]; then
   show_disk_usage
 
   heading "Building and testing python."

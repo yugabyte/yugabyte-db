@@ -64,6 +64,7 @@ if [[ $# -eq 2 && -d $YB_SRC_ROOT/java/$1 ]]; then
       -DbinDir="$BUILD_ROOT/bin" \
       -Dmaven.repo.local="$YB_MVN_LOCAL_REPO" \
       -DtempDir="$surefire_rel_tmp_dir" \
+      -X \
       surefire:test \
       2>&1 | tee "$YB_TEST_LOG_ROOT_DIR/java/${module_name}__${test_class}.log"
   )
