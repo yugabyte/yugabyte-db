@@ -189,6 +189,11 @@ TEST_F(PlacementInfoTest, TestSelectTServer) {
         PlacementZone((ts_index + 1) % kNumTservers),
         PlacementRegion((ts_index + 2) % kNumTservers), ts_index, remote_tablet.get());
   }
+
+  // Cleanup RemoteTabletServer.
+  for (const auto& entry : tserver_map) {
+    delete entry.second;
+  }
 }
 
 } // namespace client
