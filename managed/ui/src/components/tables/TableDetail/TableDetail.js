@@ -11,7 +11,7 @@ import { isValidObject } from '../../../utils/ObjectUtils';
 import {getPromiseState} from 'utils/PromiseUtils';
 import './TableDetail.scss';
 import {ItemStatus} from '../../common/indicators';
-import {TableSchema} from '../../tables';
+import { TableSchema, BulkImportContainer } from '../../tables';
 
 export default class TableDetail extends Component {
   static propTypes = {
@@ -32,7 +32,10 @@ export default class TableDetail extends Component {
   }
   render() {
     var tableInfoContent = <span/>;
-    const {universe: {currentUniverse}, tables: {currentTableDetail}} = this.props;
+    const {
+      universe: { currentUniverse, showModal, visibleModal },
+      tables: { currentTableDetail }
+    } = this.props;
     if (getPromiseState(currentUniverse).isSuccess()) {
       tableInfoContent =
         <div>
@@ -110,9 +113,16 @@ export default class TableDetail extends Component {
                     Drop Table
                   </YBLabelWithIcon>
                 </MenuItem>
+                <MenuItem eventKey="2" onClick={this.props.showBulkImportModal} >
+                  <YBLabelWithIcon icon="fa fa-upload">
+                    Bulk Import Data
+                  </YBLabelWithIcon>
+                </MenuItem>
               </DropdownButton>
             </ButtonGroup>
           </Col>
+          <BulkImportContainer visible={showModal && visibleModal==="bulkImport"}
+                               onHide={this.props.closeModal} title="Bulk Import Data"/>
         </Row>
         <Row>
           <Col lg={12}>
