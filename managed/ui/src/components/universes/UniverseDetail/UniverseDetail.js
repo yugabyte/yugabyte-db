@@ -99,7 +99,7 @@ class UniverseDetail extends Component {
         <Row>
           <Col lg={12}>
             <RegionMap universe={currentUniverse.data} type={"Universe"} />
-            <YBMapLegend title="Placement Policy" regions={ currentUniverse.data.regions ? currentUniverse.data.regions : []}/>
+            <YBMapLegend title="Placement Policy" regions={ currentUniverse.data.regions ? currentUniverse.data.regions : []} type={"Universe"}/>
           </Col>
         </Row>
       </Tab>,

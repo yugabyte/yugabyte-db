@@ -11,7 +11,7 @@ import { getPromiseState } from 'utils/PromiseUtils';
 import { isNonEmptyArray, isDefinedNotNull, isEmptyObject, pickArray } from 'utils/ObjectUtils';
 import { YBConfirmModal } from '../../modals';
 import { DescriptionList } from '../../common/descriptors';
-import { RegionMap } from '../../maps';
+import { RegionMap, YBMapLegend } from '../../maps';
 import OnPremNodesListContainer from './OnPremNodesListContainer';
 
 const PROVIDER_TYPE = "onprem";
@@ -58,14 +58,14 @@ class OnPremSuccess extends Component {
     } = nextProps;
 
     if (cloudBootstrap !== this.props.cloudBootstrap && type === "cleanup"
-        && isDefinedNotNull(response)) {
+      && isDefinedNotNull(response)) {
       this.props.resetConfigForm();
       this.props.fetchCloudMetadata();
     }
 
     // setOnPremJSONFormData if not already set.
     if (isEmptyObject(onPremJsonFormData) && this.getReadyState(nodeInstanceList) &&
-        this.getReadyState(instanceTypes) && this.getReadyState(accessKeys)) {
+      this.getReadyState(instanceTypes) && this.getReadyState(accessKeys)) {
       const onPremRegions = configuredRegions.data.filter(
         (configuredRegion) => configuredRegion.provider.code === PROVIDER_TYPE
       );
@@ -93,7 +93,7 @@ class OnPremSuccess extends Component {
           instanceTypeCode: instanceTypeItem.instanceTypeCode,
           numCores: instanceTypeItem.numCores,
           memSizeGB: instanceTypeItem.memSizeGB,
-          volumeDetailsList: pickArray(instanceTypeItem.instanceTypeDetails.volumeDetailsList, 
+          volumeDetailsList: pickArray(instanceTypeItem.instanceTypeDetails.volumeDetailsList,
             ['volumeSizeGB', 'volumeType', 'mountPath']),
         })),
         nodes: nodeInstanceList.data.map(nodeItem => ({
@@ -199,7 +199,7 @@ class OnPremSuccess extends Component {
       {name: 'Instances', data: nodeItemObject},
     ];
     return (
-      <div>
+      <div className="provider-config-container">
         <Row className="config-section-header">
           <Col md={12}>
             {buttons}
@@ -207,7 +207,12 @@ class OnPremSuccess extends Component {
           </Col>
         </Row>
         <Row className="yb-map-labels">{regionLabels}</Row>
-        <RegionMap title="All Supported Regions" regions={onPremRegions} type="Provider" showRegionLabels={false} showLabels={true} />
+        <Row>
+          <Col lg={12} className="provider-map-container">
+            <RegionMap title="All Supported Regions" regions={onPremRegions} type="Region" showRegionLabels={false} showLabels={true} />
+            <YBMapLegend title="Region Map" />
+          </Col>
+        </Row>
       </div>
     );
   }

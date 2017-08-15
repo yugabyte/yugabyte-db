@@ -8,7 +8,7 @@ import {isValidObject} from 'utils/ObjectUtils';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { DescriptionList } from '../../common/descriptors';
 import { YBConfirmModal } from '../../modals';
-import { RegionMap } from '../../maps';
+import { RegionMap, YBMapLegend } from '../../maps';
 
 const PROVIDER_TYPE = "docker";
 
@@ -87,7 +87,12 @@ class DockerProviderConfiguration extends Component {
               </p>
             </Col>
           </Row>
-          <RegionMap title="All Supported Regions" regions={dockerRegions} type="Provider" showLabels={true}/>
+          <Row>
+            <Col lg={12} className="provider-map-container">
+              <RegionMap title="All Supported Regions" regions={dockerRegions} type="Region" showLabels={true}/>
+              <YBMapLegend title="Region Map" />
+            </Col>
+          </Row>
         </div>
       );
     }
