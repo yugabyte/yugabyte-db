@@ -72,20 +72,25 @@ public class CassandraKeyValue extends AppBase {
     return Arrays.asList(create_stmt);
   }
 
-  private PreparedStatement getPreparedSelect()  {
+  protected PreparedStatement getPreparedSelect(String selectStmt, boolean localReads)  {
     if (preparedSelect == null) {
       synchronized (prepareInitLock) {
         if (preparedSelect == null) {
           // Create the prepared statement object.
-          String select_stmt = String.format("SELECT k, v FROM %s WHERE k = ?;", tableName);
-          preparedSelect = getCassandraClient().prepare(select_stmt);
-          if (appConfig.localReads) {
+          preparedSelect = getCassandraClient().prepare(selectStmt);
+          if (localReads) {
+            LOG.info("doing local reads");
             preparedSelect.setConsistencyLevel(ConsistencyLevel.ONE);
           }
         }
       }
     }
     return preparedSelect;
+  }
+
+  private PreparedStatement getPreparedSelect()  {
+    return getPreparedSelect(String.format("SELECT k, v FROM %s WHERE k = ?;", tableName),
+                             appConfig.localReads);
   }
 
   @Override
@@ -113,18 +118,20 @@ public class CassandraKeyValue extends AppBase {
     return 1;
   }
 
-  private PreparedStatement getPreparedInsert()  {
+  protected PreparedStatement getPreparedInsert(String insertStmt)  {
     if (preparedInsert == null) {
       synchronized (prepareInitLock) {
         if (preparedInsert == null) {
           // Create the prepared statement object.
-          String insert_stmt =
-              String.format("INSERT INTO %s (k, v) VALUES (?, ?);", tableName);
-          preparedInsert = getCassandraClient().prepare(insert_stmt);
+          preparedInsert = getCassandraClient().prepare(insertStmt);
         }
       }
     }
     return preparedInsert;
+  }
+
+  private PreparedStatement getPreparedInsert()  {
+    return getPreparedInsert(String.format("INSERT INTO %s (k, v) VALUES (?, ?);", tableName));
   }
 
   @Override

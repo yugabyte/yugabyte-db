@@ -147,10 +147,6 @@ public class Main {
       int idx = 0;
       int numWriteThreads = cmdLineOpts.getNumWriterThreads();
       if (cmdLineOpts.getReadOnly()) {
-        if (!cmdLineOpts.getCommandLine().hasOption("uuid")) {
-          LOG.error("uuid needs to be provided when using --read-only");
-          return;
-        }
         numWriteThreads = 0;
       }
       for (; idx < numWriteThreads; idx++) {

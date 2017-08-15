@@ -37,6 +37,7 @@ public class CmdLineOpts {
     CassandraKeyValue,
     CassandraStockTicker,
     CassandraTimeseries,
+    CassandraUserId,
     CassandraSparkWordCount,
     RedisKeyValue,
     RedisPipelinedKeyValue,
@@ -96,6 +97,10 @@ public class CmdLineOpts {
     if (commandLine.hasOption("read_only")) {
       AppBase.appConfig.readOnly = true;
       readOnly = true;
+      if (!commandLine.hasOption("uuid")) {
+        LOG.error("uuid needs to be provided when using --read-only");
+        System.exit(1);
+      }
     }
     if (appName == AppName.RedisPipelinedKeyValue) {
       if (commandLine.hasOption("pipeline_length")) {
