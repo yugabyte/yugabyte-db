@@ -12,7 +12,7 @@ import { Field } from 'redux-form';
 import { withRouter } from 'react-router';
 
 import  {isValidObject, trimString, convertSpaceToDash, isNonEmptyArray} from '../../../utils/ObjectUtils';
-import { RegionMap } from '../../maps';
+import { RegionMap, YBMapLegend } from '../../maps';
 
 const PROVIDER_TYPE = "aws";
 
@@ -155,7 +155,12 @@ class AWSProviderConfiguration extends Component {
               <DescriptionList listItems={providerInfo} />
             </Col>
           </Row>
-          <RegionMap title="All Supported Regions" regions={awsRegions} type="Provider" showLabels={true}/>
+          <Row>
+            <Col lg={12} className="provider-map-container">
+              <RegionMap title="All Supported Regions" regions={awsRegions} type="Region" showLabels={true}/>
+              <YBMapLegend title="Region Map" />
+            </Col>
+          </Row>
         </div>
     } else {
       let bootstrapSteps = <span />;

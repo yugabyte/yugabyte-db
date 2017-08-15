@@ -3,18 +3,23 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Marker, Popup, Tooltip } from 'react-leaflet';
-import { Icon }  from 'leaflet';
+import { Icon, divIcon }  from 'leaflet';
 import { DefaultMarkerIcon, DefaultMarkerShadowIcon, RootMarkerIcon, RootMarkerShadowIcon } from './images'
 
 export default class MapMarker extends Component {
   static propTypes = {
     latitude: PropTypes.number.isRequired,
     longitude: PropTypes.number.isRequired,
-    type: PropTypes.string.isRequired
+    type: PropTypes.oneOf(['Default', 'AZMarker', 'Region', 'Table', 'Universe', 'All'])
   };
 
+  static defaultProps = {
+    type: 'All',
+    label: ''
+  }
+
   render() {
-    const { latitude, longitude, label, type, labelType } = this.props;
+    const { latitude, longitude, label, type, labelType, numChildren } = this.props;
     var popup;
     if (label) {
       popup = <Popup><span>{label}</span></Popup>
@@ -45,11 +50,10 @@ export default class MapMarker extends Component {
         iconAnchor: [12, 20],
         shadowAnchor: [10, 30]
       });
+    } else if (type === "Region") {
+        opts['icon'] = divIcon({className: 'marker-cluster-small provider-marker-cluster', html: numChildren})
     } else {
-      var markerData = "";
-      if (type === "Provider" || type === "Table") {
-        markerData = RootMarkerIcon;
-      }
+      var markerData = RootMarkerIcon;
       opts['icon'] = new Icon({
         iconUrl: markerData,
         shadowUrl: "",
