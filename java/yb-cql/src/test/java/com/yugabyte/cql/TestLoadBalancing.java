@@ -159,7 +159,7 @@ public class TestLoadBalancing extends BaseCQLTest {
 
       // Select the row back using the hash key value and verify the row.
       Row row = session.execute("select * from t1 where token(h1, h2, h3, h4) = ?;",
-                                Long.valueOf(PartitionAwarePolicy.getKey(stmt))).one();
+              PartitionAwarePolicy.YBToCqlHashCode(PartitionAwarePolicy.getKey(stmt))).one();
       assertNotNull(row);
       assertEquals(h1, row.getString("h1"));
       assertEquals(h2, row.getString("h2"));
@@ -196,7 +196,7 @@ public class TestLoadBalancing extends BaseCQLTest {
 
       // Select the row back using the hash key value and verify the row.
       Row row = session.execute("select * from t2 where token(h1, h2, h3, h4, h5) = ?;",
-                                Long.valueOf(PartitionAwarePolicy.getKey(stmt))).one();
+              PartitionAwarePolicy.YBToCqlHashCode(PartitionAwarePolicy.getKey(stmt))).one();
       assertNotNull(row);
       assertEquals(h1, row.getByte("h1"));
       assertEquals(h2, row.getShort("h2"));
@@ -235,7 +235,7 @@ public class TestLoadBalancing extends BaseCQLTest {
 
       // Select the row back using the hash key value and verify the row.
       Row row = session.execute("select * from t3 where token(h1, h2, h3, h4, h5) = ?;",
-                                Long.valueOf(PartitionAwarePolicy.getKey(stmt))).one();
+              PartitionAwarePolicy.YBToCqlHashCode(PartitionAwarePolicy.getKey(stmt))).one();
       assertNotNull(row);
       assertEquals(h1, row.getInt("h1"));
       assertEquals(h2, row.getTimestamp("h2"));

@@ -210,10 +210,10 @@ class PartitionMetadata implements Host.StateListener, SchemaChangeListener {
   }
 
   /**
-   * Returns the hosts for the parition key in the given table.
+   * Returns the hosts for the partition key in the given table.
    *
    * @param table  the table
-   * @param int    the partition key
+   * @param key    the partition key
    * @return       the hosts for the partition key, or an empty list if they cannot be determined
    *               due to cases like stale metadata cache
    */

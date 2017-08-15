@@ -105,10 +105,34 @@ public class PartitionAwarePolicy implements ChainableLoadBalancingPolicy {
   }
 
   /**
+   * Internally we use a unsigned 16-bit hash CQL uses signed 64-bit. This method converts from the
+   * user-visible (e.g. via 'token') CQL hash to our internal representation used for partitioning.
+   * @param cql_hash the CQL hash key
+   * @return the corresponding internal YB hash key
+   */
+  static int CqlToYBHashCode(long cql_hash) {
+    int hash_code = (int)(cql_hash >> 48);
+    hash_code ^= 0x8000; // flip first bit so that negative values are smaller than positives.
+    return hash_code;
+  }
+
+  /**
+   * Internally we use a unsigned 16-bit hash CQL uses signed 64-bit. This method converts from our
+   * internal representation used for partitioning to the user-visible (e.g. via 'token') CQL hash.
+   * @param hash the internal YB hash key
+   * @return a corresponding CQL hash key
+   */
+  static long YBToCqlHashCode(int hash) {
+    long cql_hash = hash ^ 0x8000; // undo the flipped bit
+    cql_hash = cql_hash << 48;
+    return cql_hash;
+  }
+
+  /**
    * Returns the hash key for the given bound statement. The hash key can be determined only for
-   * DMLs and when the partition key is specifed in the bind variables.
+   * DMLs and when the partition key is specified in the bind variables.
    *
-   * @param bytes  the bytes to calculate the hash key
+   * @param stmt   the statement to calculate the hash key for
    * @return       the hash key for the statement, or -1 when hash key cannot be determined
    */
   static int getKey(BoundStatement stmt) {
