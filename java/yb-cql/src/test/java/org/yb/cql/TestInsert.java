@@ -212,6 +212,17 @@ public class TestInsert extends BaseCQLTest {
     assertEquals(InetAddress.getByName("10.10.10.10"), row.getInet("c5"));
     assertNull(rs.one());
 
+    // Try blobs and int.
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values ('0xff', " +
+        "'4294967295', 1, '0xffffffff', '291913250');", tableName));
+    row = session.execute(String.format("SELECT c1, c2, c3, c4, c5 FROM %s WHERE c1 = '0xff';",
+      tableName)).one();
+    assertEquals(InetAddress.getByName("0.0.0.255"), row.getInet("c1"));
+    assertEquals(InetAddress.getByName("255.255.255.255"), row.getInet("c2"));
+    assertEquals(1, row.getInt("c3"));
+    assertEquals(InetAddress.getByName("255.255.255.255"), row.getInet("c4"));
+    assertEquals(InetAddress.getByName("17.102.62.34"), row.getInet("c5"));
+
     // Now try a bunch of invalid inserts.
     // 1.2.3.400 invalid IPv4
     runInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values ('1.2.3.400', " +
