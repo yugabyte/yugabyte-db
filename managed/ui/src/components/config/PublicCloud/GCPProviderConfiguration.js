@@ -11,7 +11,7 @@ import {YBLoadingIcon} from '../../common/indicators';
 import {isNonEmptyObject, isNonEmptyArray, convertSpaceToDash} from 'utils/ObjectUtils';
 import { ProgressList } from '../../common/indicators';
 import { DescriptionList } from '../../common/descriptors';
-import { RegionMap } from '../../maps';
+import { RegionMap, YBMapLegend } from '../../maps';
 import { YBConfirmModal } from '../../modals';
 import Dropzone from 'react-dropzone';
 
@@ -174,7 +174,7 @@ class GCPProviderConfiguration extends Component {
           </div>
         </form>
       </div>
-      )
+    )
   }
 }
 
@@ -221,7 +221,7 @@ class GCPConfigureSuccess extends Component {
       {name: "SSH Key", data: gcpKey},
     ];
     return (
-      <div>
+      <div className="provider-config-container">
         <Row className="config-section-header">
           <Col md={12}>
               <span className="pull-right" title={deleteButtonTitle}>
@@ -237,7 +237,12 @@ class GCPConfigureSuccess extends Component {
             <DescriptionList listItems={providerInfo} />
           </Col>
         </Row>
-        <RegionMap title="All Supported Regions" regions={regions} type="Provider" showLabels={true}/>
+        <Row>
+          <Col lg={12} className="provider-map-container">
+            <RegionMap title="All Supported Regions" regions={regions} type="Region" showLabels={true}/>
+            <YBMapLegend title="Region Map"/>
+          </Col>
+        </Row>
       </div>
     )
   }

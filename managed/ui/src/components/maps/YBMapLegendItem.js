@@ -9,18 +9,20 @@ import './stylesheets/YBMapLegendItem.scss'
 export default class YBMapLegendItem extends Component {
   render() {
     const {regions, title, type} = this.props;
-    var legendItemImg = "";
+    var legendItemIcon = "";
     if (type === "Root") {
-      legendItemImg = RootMarkerIcon;
+      legendItemIcon = <Image src={RootMarkerIcon} className="legend-img"/>;
     } else if( type === "Cache") {
-      legendItemImg = CacheMarkerIcon;
+      legendItemIcon = <Image src={CacheMarkerIcon} className="legend-img"/>;
     } else if (type === "Async") {
-      legendItemImg = AsyncMarkerIcon;
+      legendItemIcon = <Image src={AsyncMarkerIcon} className="legend-img"/>;
+    } else if (type === "Region") {
+      legendItemIcon = <div className="marker-cluster-small provider-marker-cluster">#</div>
     }
-    return (
-      <div className="map-legend-item">
-        <div className="icon-hang-left"><Image src={legendItemImg} className="legend-img"/></div>
-        <h5 className="map-legend-heading">{title}</h5>
+    console.log(type);
+    let mapLegendDetails = <span/>;
+    if (type !== "Region") {
+      mapLegendDetails =
         <ListGroup>
           {
             regions.map(function(item, idx){
@@ -28,13 +30,24 @@ export default class YBMapLegendItem extends Component {
             })
           }
         </ListGroup>
+    }
+    return (
+      <div className="map-legend-item">
+        <div className="icon-hang-left">
+          {legendItemIcon}
+        </div>
+        <h5 className="map-legend-heading">{title}</h5>
+        {mapLegendDetails}
       </div>
     )
   }
 }
 
+YBMapLegendItem.defaultProps = {
+  type: 'Region'
+}
+
 YBMapLegendItem.propTypes = {
-  regions: PropTypes.array.isRequired,
   title: PropTypes.string.isRequired,
-  type: PropTypes.oneOf(['Root', 'Async', 'Cache'])
+  type: PropTypes.oneOf(['Root', 'Async', 'Cache', 'Region'])
 }

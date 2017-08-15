@@ -15,7 +15,7 @@ import './stylesheets/RegionMap.scss'
 
 export default class RegionMap extends Component {
   static propTypes = {
-    type: PropTypes.oneOf(['All', 'Universe', 'Provider', 'Table']),
+    type: PropTypes.oneOf(['All', 'Universe', 'Region', 'Table']),
     showLabels: PropTypes.bool
   };
 
@@ -30,16 +30,21 @@ export default class RegionMap extends Component {
     var bounds = [[61.96, 105.78], [-21.96, -95.78]];
 
     let regionData = type !== "Universe" ? regions : universe.regions;
-      var regionLatLngs = regionData.map(function (region, idx) {
-        var markerType = type;
-        if (isValidObject(region.providerCode)) {
-          markerType = region.providerCode;
-        }
+    var regionLatLngs = regionData.map(function (region, idx) {
+      var markerType = type;
+      if (isValidObject(region.providerCode)) {
+        markerType = region.providerCode;
+      }
+      let numChildren = region.zones.length;
+      if (type === "Region") {
         regionMarkers.push(<MapMarker key={idx} latitude={region.latitude}
-                                      longitude={region.longitude} type={markerType}/>)
-        return [region.latitude, region.longitude];
-      });
-
+                                        longitude={region.longitude} type={markerType} numChildren={numChildren}/>)
+      } else {
+        regionMarkers.push(<MapMarker key={idx} latitude={region.latitude}
+                                        longitude={region.longitude} type={markerType}/>)
+      }
+      return [region.latitude, region.longitude];
+    });
     if (type === "All") {
       regionMarkers =  <MarkerClusterLayer newMarkerData={regions}/>;
     }
