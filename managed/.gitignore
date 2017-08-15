@@ -37,3 +37,5 @@ src/main/public/*
 *.pyc
 docker/yugaware/*.yml
 src/itest/static/*.log
+
+ui/.env
