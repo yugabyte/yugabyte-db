@@ -47,6 +47,9 @@ public class TableManager extends DevopsBase {
     String accessKeyCode = userIntent.accessKeyCode;
     AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
     String ybServerPackage = releaseManager.getReleaseByVersion(userIntent.ybSoftwareVersion);
+    if (taskParams.instanceCount == 0) {
+      taskParams.instanceCount = userIntent.numNodes * EMR_MULTIPLE;
+    }
 
     // Construct bulk import command
     List<String> commandArgs = new ArrayList<>();
@@ -54,7 +57,7 @@ public class TableManager extends DevopsBase {
     commandArgs.add("--key_path");
     commandArgs.add((accessKey == null) ? "yugabyte-default" : accessKey.getKeyInfo().privateKey);
     commandArgs.add("--instance_count");
-    commandArgs.add(Integer.toString(userIntent.numNodes * EMR_MULTIPLE));
+    commandArgs.add(Integer.toString(taskParams.instanceCount));
     commandArgs.add("--universe");
     commandArgs.add(universe.getUniverseDetails().nodePrefix);
     commandArgs.add("--release");

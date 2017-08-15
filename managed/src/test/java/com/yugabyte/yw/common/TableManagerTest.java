@@ -98,7 +98,11 @@ public class TableManagerTest extends FakeDBApplication {
     cmd.add("--key_path");
     cmd.add(pkPath);
     cmd.add("--instance_count");
-    cmd.add(Integer.toString(uniParams.userIntent.numNodes * 8));
+    if (bulkImportParams.instanceCount == 0) {
+      cmd.add(Integer.toString(uniParams.userIntent.numNodes * 8));
+    } else {
+      cmd.add(Integer.toString(bulkImportParams.instanceCount));
+    }
     cmd.add("--universe");
     cmd.add("yb-1-" + testUniverse.name);
     cmd.add("--release");
@@ -126,8 +130,24 @@ public class TableManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testTableCommand() {
+  public void testTableCommandWithDefaultInstanceCount() {
     BulkImportParams bulkImportParams = new BulkImportParams();
+    UniverseDefinitionTaskParams uniTaskParams = new UniverseDefinitionTaskParams();
+    buildValidParams(bulkImportParams, uniTaskParams);
+    testUniverse.setUniverseDetails(uniTaskParams);
+    testUniverse = Universe.saveDetails(testUniverse.universeUUID,
+        ApiUtils.mockUniverseUpdater(uniTaskParams.userIntent, uniTaskParams.nodePrefix));
+
+    List<String> expectedCommand = getExpectedCommmand(bulkImportParams, uniTaskParams);
+
+    tableManager.tableCommand(bulkImportParams);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, new HashMap<>());
+  }
+
+  @Test
+  public void testTableCommandWithSpecificInstanceCount() {
+    BulkImportParams bulkImportParams = new BulkImportParams();
+    bulkImportParams.instanceCount = 5;
     UniverseDefinitionTaskParams uniTaskParams = new UniverseDefinitionTaskParams();
     buildValidParams(bulkImportParams, uniTaskParams);
     testUniverse.setUniverseDetails(uniTaskParams);
