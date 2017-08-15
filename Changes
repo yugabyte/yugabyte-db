@@ -11,6 +11,8 @@ Revision history for pgTAP
   available online. Thanks to Andreas Brekken for the report (#140).
 * Fix failing version tests on PostgreSQL v10. Thanks to Erik Rijkers
   for the patch.
+* Improved foreign tables test to account for varying message order for
+  diagnostic output. Thanks to Erik Rijkers for the patch.
 
 0.97.0 2016-11-28T22:18:29Z
 ---------------------------

@@ -2469,7 +2469,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             has_materialized_view( 'mview', 'yowza' ),
             true,
-            'has_materialized_view(materialized_viewiew, desc)',
+            'has_materialized_view(materialized_view, desc)',
             'yowza',
             ''
         ) AS b LOOP
@@ -2583,7 +2583,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             hasnt_materialized_view( 'mview', 'yowza' ),
             false,
-            'hasnt_materialized_view(materialized_viewiew, desc)',
+            'hasnt_materialized_view(materialized_view, desc)',
             'yowza',
             ''
         ) AS b LOOP

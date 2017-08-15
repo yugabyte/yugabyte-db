@@ -1837,8 +1837,8 @@ BEGIN
     'foreign_tables_are(schema, tables) extra and missing',
     'Schema public should have the correct foreign tables',
     '    Extra foreign tables:
-        ft_foo
-        ft_bar
+        ft_(?:bar|foo)
+        ft_(?:foo|bar)
     Missing foreign tables:
         ba[rz]
         ba[rz]',
