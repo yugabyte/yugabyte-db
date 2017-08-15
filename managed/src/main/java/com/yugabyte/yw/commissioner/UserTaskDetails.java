@@ -107,6 +107,10 @@ public class UserTaskDetails {
         title = "Creating Table";
         description = "Create a table.";
         break;
+      case ImportingData:
+        title = "Importing Data";
+        description = "Import a large amount of data into a table";
+        break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);
         return null;

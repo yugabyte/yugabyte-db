@@ -18,4 +18,7 @@ public class BulkImportParams extends UniverseTaskParams {
   // Name of the table to bulk import data into
   @Constraints.Required
   public String tableName;
+
+  // Number of task nodes for the EMR job. Optional.
+  public int instanceCount = 0;
 }

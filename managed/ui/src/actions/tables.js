@@ -17,6 +17,8 @@ export const FETCH_COLUMN_TYPES = 'FETCH_COLUMN_TYPES';
 export const FETCH_COLUMN_TYPES_SUCCESS = 'FETCH_COLUMN_TYPES_SUCCESS';
 export const FETCH_COLUMN_TYPES_FAILURE = 'FETCH_COLUMN_TYPES_FAILURE';
 export const TOGGLE_TABLE_VIEW = 'TOGGLE_TABLE_VIEW';
+export const BULK_IMPORT = 'BULK_IMPORT';
+export const BULK_IMPORT_RESPONSE = 'BULK_IMPORT_RESPONSE';
 
 export function fetchUniverseTables(universeUUID) {
   const customerId = localStorage.getItem("customer_id");
@@ -132,4 +134,23 @@ export function resetTablesList() {
   return {
     type: RESET_TABLES_LIST
   }
+}
+
+export function bulkImport(universeUUID, tableUUID, formValues) {
+  const customerId = localStorage.getItem("customer_id");
+  const request = axios.put(
+    `${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables/${tableUUID}/bulk_import`,
+    formValues
+  );
+  return {
+    type: BULK_IMPORT,
+    payload: request
+  };
+}
+
+export function bulkImportResponse(response) {
+  return {
+    type: BULK_IMPORT_RESPONSE,
+    payload: response
+  };
 }

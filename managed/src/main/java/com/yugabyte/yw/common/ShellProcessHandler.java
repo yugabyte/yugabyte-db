@@ -9,9 +9,11 @@ import org.slf4j.LoggerFactory;
 import javax.inject.Singleton;
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
 
@@ -46,15 +48,16 @@ public class ShellProcessHandler {
         response.code = -1;
 
         try {
+            File tempOutputFile = Files.createTempFile("shell_process_out", "tmp").toFile();
+            File tempErrorFile = Files.createTempFile("shell_process_err", "tmp").toFile();
+            pb.redirectOutput(tempOutputFile);
+            pb.redirectError(tempErrorFile);
             Process process = pb.start();
             response.code = process.waitFor();
-            String processOutput = fetchStream(process.getInputStream());
-            String processError = fetchStream(process.getErrorStream());
-            response.message = (response.code == 0) ?  processOutput : processError;
-        } catch (IOException e) {
-            LOG.error(e.getMessage());
-            response.message = e.getMessage();
-        } catch (InterruptedException e) {
+            String processOutput = fetchStream(new FileInputStream(tempOutputFile));
+            String processError = fetchStream(new FileInputStream(tempErrorFile));
+            response.message = (response.code == 0) ? processOutput : processError;
+        } catch (IOException | InterruptedException e) {
             LOG.error(e.getMessage());
             response.message = e.getMessage();
         }
