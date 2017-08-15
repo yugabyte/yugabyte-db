@@ -239,11 +239,11 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
         SubscriptedColumnOp subcol_op(col_desc, col_args, value, YQLOperator::YQL_OP_EQUAL);
         subscripted_col_ops_->push_back(subcol_op);
       } else {
-        if (counter.eq_count() > 0 || counter.gt_count() > 0 || counter.lt_count() > 0) {
+        counter.increase_eq();
+        if (!counter.isValid()) {
           return sem_context->Error(expr->loc(), "Illogical condition for where clause",
               ErrorCode::CQL_STATEMENT_INVALID);
         }
-        counter.increase_eq();
 
         // Check if the column is used correctly.
         if (col_desc->is_hash()) {
@@ -259,10 +259,9 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
           if (write_only_) {
             return sem_context->Error(expr->loc(), "Non primary key cannot be used in where clause",
                 ErrorCode::CQL_STATEMENT_INVALID);
-          } else {
-            ColumnOp col_op(col_desc, value, YQLOperator::YQL_OP_EQUAL);
-            ops_->push_back(col_op);
           }
+          ColumnOp col_op(col_desc, value, YQLOperator::YQL_OP_EQUAL);
+          ops_->push_back(col_op);
         }
       }
       break;
@@ -278,20 +277,19 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
           return sem_context->Error(expr->loc(),
                                     "Partition column cannot be used in this expression",
                                     ErrorCode::CQL_STATEMENT_INVALID);
-        } else if (col_desc->is_primary()) {
-          if (write_only_) {
+        } else if (col_desc->is_primary() && write_only_) {
             return sem_context->Error(expr->loc(), "Range expression is not yet supported",
                                       ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
-          } else if (counter.eq_count() > 0 || counter.lt_count() > 0) {
-            return sem_context->Error(expr->loc(), "Illogical range condition",
-                                      ErrorCode::CQL_STATEMENT_INVALID);
-          }
-        } else if (write_only_) {
+        } else if (write_only_) { // regular column
           return sem_context->Error(expr->loc(), "Non primary key cannot be used in where clause",
                                     ErrorCode::CQL_STATEMENT_INVALID);
         }
-        counter.increase_lt();
 
+        counter.increase_lt();
+        if (!counter.isValid()) {
+          return sem_context->Error(expr->loc(), "Illogical condition for where clause",
+                                    ErrorCode::CQL_STATEMENT_INVALID);
+        }
         // Cache the column operator for execution.
         ColumnOp col_op(col_desc, value, expr->yql_op());
         ops_->push_back(col_op);
@@ -309,21 +307,48 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
           return sem_context->Error(expr->loc(),
                                     "Partition column cannot be used in this expression",
                                     ErrorCode::CQL_STATEMENT_INVALID);
-        } else if (col_desc->is_primary()) {
-          if (write_only_) {
-            return sem_context->Error(expr->loc(), "Range expression is not yet supported",
-                                      ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
-          } else if (counter.eq_count() > 0 || counter.gt_count() > 0) {
-            return sem_context->Error(expr->loc(), "Illogical range condition",
-                                      ErrorCode::CQL_STATEMENT_INVALID);
-          }
-        } else if (write_only_) {
+        } else if (col_desc->is_primary() && write_only_) {
+          return sem_context->Error(expr->loc(), "Range expression is not yet supported",
+                                    ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
+        } else if (write_only_) { // regular column
           return sem_context->Error(expr->loc(), "Non primary key cannot be used in where clause",
                                     ErrorCode::CQL_STATEMENT_INVALID);
         }
+
         counter.increase_gt();
+        if (!counter.isValid()) {
+          return sem_context->Error(expr->loc(), "Illogical condition for where clause",
+                                    ErrorCode::CQL_STATEMENT_INVALID);
+        }
 
         // Cache the column operator for execution.
+        ColumnOp col_op(col_desc, value, expr->yql_op());
+        ops_->push_back(col_op);
+      }
+      break;
+    }
+
+    case YQL_OP_NOT_IN: FALLTHROUGH_INTENDED;
+    case YQL_OP_IN: {
+      if (write_only_) {
+        return sem_context->Error(expr->loc(), "IN expression not supported for write operations",
+            ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
+      }
+
+      if (col_args != nullptr) {
+        return sem_context->Error(expr->loc(), "IN expression not supported for subscripted column",
+            ErrorCode::CQL_STATEMENT_INVALID);
+      }
+
+      counter.increase_in();
+      if (!counter.isValid()) {
+        return sem_context->Error(expr->loc(), "Illogical condition for where clause",
+            ErrorCode::CQL_STATEMENT_INVALID);
+      }
+
+      if (expr->yql_op() == YQL_OP_IN && col_desc->is_hash()) {
+        (*key_ops_)[col_desc->index()].Init(col_desc, value, YQLOperator::YQL_OP_IN);
+      } else {
         ColumnOp col_op(col_desc, value, expr->yql_op());
         ops_->push_back(col_op);
       }
@@ -348,7 +373,8 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnFunction(SemContext *sem_context,
     case bfyql::BFOpcode::OPCODE_writetime_41: {
       const PTRef *ref = static_cast<const PTRef *>(call.get()->args().front().get());
       if (ref->desc()->is_primary()) {
-        return sem_context->Error(expr->loc(), "builtin cannot be called on primary key", ErrorCode::INVALID_ARGUMENTS);
+        return sem_context->Error(expr->loc(), "Builtin cannot be called on primary key",
+            ErrorCode::INVALID_ARGUMENTS);
       }
       break;
     }

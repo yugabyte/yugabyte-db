@@ -146,11 +146,11 @@ class YBColumnSchema {
       case FROZEN:
         return InternalType::kFrozenValue;
 
+      case TUPLE: FALLTHROUGH_INTENDED; // TODO (mihnea) Tuple type not fully supported yet
       case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
       case UNKNOWN_DATA:
         return InternalType::VALUE_NOT_SET;
 
-      case TUPLE: FALLTHROUGH_INTENDED;
       case TYPEARGS: FALLTHROUGH_INTENDED;
       case UINT8: FALLTHROUGH_INTENDED;
       case UINT16: FALLTHROUGH_INTENDED;

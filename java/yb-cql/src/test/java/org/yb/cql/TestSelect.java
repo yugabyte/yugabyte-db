@@ -7,6 +7,7 @@ import java.net.URL;
 import java.net.URLConnection;
 import java.util.*;
 
+import org.junit.Ignore;
 import org.junit.Test;
 
 import org.yb.minicluster.IOMetrics;
@@ -456,15 +457,15 @@ public class TestSelect extends BaseCQLTest {
     String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_ttl" +
       "  WHERE ttl(v1) > 150";
     ResultSet rs = session.execute(select_stmt);
-		List<Row> rows = rs.all();
+    List<Row> rows = rs.all();
     assertEquals(1, rows.size());
-		Row row = rows.get(0);
-		assertEquals(9, row.getInt(0));
-		assertEquals("h9", row.getString(1));
-		assertEquals(109, row.getInt(2));
-		assertEquals("r109", row.getString(3));
-		assertEquals(1009, row.getInt(4));
-		assertEquals(1009, row.getInt(5));
+    Row row = rows.get(0);
+    assertEquals(9, row.getInt(0));
+    assertEquals("h9", row.getString(1));
+    assertEquals(109, row.getInt(2));
+    assertEquals("r109", row.getString(3));
+    assertEquals(1009, row.getInt(4));
+    assertEquals(1009, row.getInt(5));
 
     String update_stmt = "UPDATE test_ttl USING ttl 300 SET v1 = 1009" +
       "  WHERE h1 = 9 and h2 = 'h9' and r1 = 109 and r2 = 'r109' ";
@@ -473,13 +474,13 @@ public class TestSelect extends BaseCQLTest {
       "  WHERE ttl(v1) > 250";
 
     rs = session.execute(select_stmt);
-		rows = rs.all();
+    rows = rs.all();
     assertEquals(9, row.getInt(0));
-		assertEquals("h9", row.getString(1));
-		assertEquals(109, row.getInt(2));
-		assertEquals("r109", row.getString(3));
-		assertEquals(1009, row.getInt(4));
-		assertEquals(1009, row.getInt(5));
+    assertEquals("h9", row.getString(1));
+    assertEquals(109, row.getInt(2));
+    assertEquals("r109", row.getString(3));
+    assertEquals(1009, row.getInt(4));
+    assertEquals(1009, row.getInt(5));
 
     select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_ttl" +
       "  WHERE ttl(v2) > 250";
@@ -489,101 +490,225 @@ public class TestSelect extends BaseCQLTest {
   }
 
   @Test(expected=InvalidQueryException.class) 
-	public void testTtlOfCollectionsThrowsError() throws Exception {
-		int []ttls = {100};
-		LOG.info("CREATE TABLE test_ttl");
-	  String create_stmt = "CREATE TABLE test_ttl " +
-	                    " (h int, v1 list<int>, v2 int, primary key (h));";
-	  session.execute(create_stmt);
-	  String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, [1], 1) using ttl 100;";
-	  session.execute(insert_stmt);
-		
-		String select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
-		  "  WHERE ttl(v1) < 150";
-		session.execute(select_stmt);
-	}
+  public void testTtlOfCollectionsThrowsError() throws Exception {
+      int []ttls = {100};
+      LOG.info("CREATE TABLE test_ttl");
+    String create_stmt = "CREATE TABLE test_ttl " +
+                      " (h int, v1 list<int>, v2 int, primary key (h));";
+    session.execute(create_stmt);
+    String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, [1], 1) using ttl 100;";
+    session.execute(insert_stmt);
+
+      String select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
+        "  WHERE ttl(v1) < 150";
+      session.execute(select_stmt);
+  }
   
   @Test(expected=InvalidQueryException.class)
-	public void testTtlOfPrimaryThrowsError() throws Exception {
-		int []ttls = {100};
-		LOG.info("CREATE TABLE test_ttl");
-	  String create_stmt = "CREATE TABLE test_ttl " +
-	                    " (h int, v1 list<int>, v2 int, primary key (h));";
-	  session.execute(create_stmt);
-	  String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, [1], 1) using ttl 100;";
-	  session.execute(insert_stmt);
-		
-		String select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
-		  "  WHERE ttl(h) < 150";
-		session.execute(select_stmt);
-	}
+  public void testTtlOfPrimaryThrowsError() throws Exception {
+      int []ttls = {100};
+      LOG.info("CREATE TABLE test_ttl");
+    String create_stmt = "CREATE TABLE test_ttl " +
+                      " (h int, v1 list<int>, v2 int, primary key (h));";
+    session.execute(create_stmt);
+    String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, [1], 1) using ttl 100;";
+    session.execute(insert_stmt);
+
+      String select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
+        "  WHERE ttl(h) < 150";
+      session.execute(select_stmt);
+  }
   
   @Test(expected=InvalidQueryException.class) 
-	public void testTtlWrongParametersThrowsError() throws Exception {
-  	int []ttls = {100};
-		LOG.info("CREATE TABLE test_ttl");
-	  String create_stmt = "CREATE TABLE test_ttl " +
-	                    " (h int, v1 int, v2 int, primary key (h));";
-	  session.execute(create_stmt);
-	  String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, 1, 1) using ttl 100;";
-	  session.execute(insert_stmt);
-		
-		String select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
-		  "  WHERE ttl() < 150";
-		session.execute(select_stmt);
-	}
+  public void testTtlWrongParametersThrowsError() throws Exception {
+    int []ttls = {100};
+    LOG.info("CREATE TABLE test_ttl");
+    String create_stmt = "CREATE TABLE test_ttl " +
+                      " (h int, v1 int, v2 int, primary key (h));";
+    session.execute(create_stmt);
+    String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, 1, 1) using ttl 100;";
+    session.execute(insert_stmt);
+
+    String select_stmt = "SELECT h, v1, v2 FROM test_ttl WHERE ttl() < 150";
+    session.execute(select_stmt);
+  }
   
   @Test 
-	public void testTtlOfDefault() throws Exception {
-		LOG.info("CREATE TABLE test_ttl");
-	  String create_stmt = "CREATE TABLE test_ttl " +
-	                    " (h int, v1 list<int>, v2 int, primary key (h)) with default_time_to_live = 100;";
-	  session.execute(create_stmt);
-	  String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, [1], 1);";
-	  session.execute(insert_stmt);
-		
-		String select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
-		  "  WHERE ttl(v2) <= 100";
-		ResultSet rs = session.execute(select_stmt);
+  public void testTtlOfDefault() throws Exception {
+    LOG.info("CREATE TABLE test_ttl");
+    String create_stmt = "CREATE TABLE test_ttl (h int, v1 list<int>, v2 int, primary key (h)) " +
+            "with default_time_to_live = 100;";
+    session.execute(create_stmt);
+    String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, [1], 1);";
+    session.execute(insert_stmt);
+
+    String select_stmt = "SELECT h, v1, v2 FROM test_ttl WHERE ttl(v2) <= 100";
+    ResultSet rs = session.execute(select_stmt);
     List<Row> rows = rs.all();
     assertEquals(1, rows.size());
     
-    select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
-  		  "  WHERE ttl(v2) >= 90";
-  		rs = session.execute(select_stmt);
+    select_stmt = "SELECT h, v1, v2 FROM test_ttl WHERE ttl(v2) >= 90";
+    rs = session.execute(select_stmt);
     rows = rs.all();
     assertEquals(1, rows.size());
     
     String insert_stmt_2 = "INSERT INTO test_ttl (h, v1, v2) VALUES(2, [2], 2) using ttl 150;";
     session.execute(insert_stmt_2);
-    select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
-  		  "  WHERE ttl(v2) >= 140";
+    select_stmt = "SELECT h, v1, v2 FROM test_ttl WHERE ttl(v2) >= 140";
     rs = session.execute(select_stmt);
     rows = rs.all();
     assertEquals(1, rows.size());
-	}
+  }
   
   @Test 
-	public void testTtlWhenNoneSpecified() throws Exception {
-		LOG.info("CREATE TABLE test_ttl");
-	  String create_stmt = "CREATE TABLE test_ttl " +
-	                    " (h int, v1 list<int>, v2 int, primary key (h));";
-	  session.execute(create_stmt);
-	  String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, [1], 1);";
-	  session.execute(insert_stmt);
-	  
-		String select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
-		  "  WHERE ttl(v2) > 100;";
-		ResultSet rs = session.execute(select_stmt);
+  public void testTtlWhenNoneSpecified() throws Exception {
+    LOG.info("CREATE TABLE test_ttl");
+    String create_stmt = "CREATE TABLE test_ttl " +
+                      " (h int, v1 list<int>, v2 int, primary key (h));";
+    session.execute(create_stmt);
+    String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, [1], 1);";
+    session.execute(insert_stmt);
+
+    String select_stmt = "SELECT h, v1, v2 FROM test_ttl WHERE ttl(v2) > 100;";
+    ResultSet rs = session.execute(select_stmt);
     List<Row> rows = rs.all();
     //The number of rows when we query ttl on v2 should be 0, since ttl(v2) isn't defined.
     assertEquals(0, rows.size());
     
-    select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
-  		  "  WHERE ttl(v2) <= 100";
-  		rs = session.execute(select_stmt);
+    select_stmt = "SELECT h, v1, v2 FROM test_ttl WHERE ttl(v2) <= 100";
+    rs = session.execute(select_stmt);
     rows = rs.all();
     assertEquals(0, rows.size());
-	}
-    
+  }
+
+  @Test
+  public void testInKeyword() throws Exception {
+    LOG.info("TEST IN KEYWORD - Start");
+    setupTable("in_test", 10);
+
+    // Test basic IN condition on hash column.
+    {
+      ResultSet rs = session.execute("SELECT * FROM in_test WHERE h1 IN (1, 3, -1, 7)");
+      Set<Integer> expected_values = new HashSet<>();
+      expected_values.add(1);
+      expected_values.add(3);
+      expected_values.add(7);
+      // Check rows
+      for (Row row : rs) {
+          Integer h1 = row.getInt("h1");
+          assertTrue(expected_values.contains(h1));
+          expected_values.remove(h1);
+      }
+      assertTrue(expected_values.isEmpty());
+    }
+
+    // Test basic IN condition on range column.
+    {
+      ResultSet rs = session.execute("SELECT * FROM in_test WHERE " +
+              "r2 IN ('foo', 'r101','r103','r107')");
+      Set<String> expected_values = new HashSet<>();
+      expected_values.add("r101");
+      expected_values.add("r103");
+      expected_values.add("r107");
+      // Check rows
+      for (Row row : rs) {
+          String r2 = row.getString("r2");
+          assertTrue(expected_values.contains(r2));
+          expected_values.remove(r2);
+      }
+      assertTrue(expected_values.isEmpty());
+    }
+
+    // Test basic IN condition on regular column.
+    {
+      ResultSet rs = session.execute("SELECT * FROM in_test WHERE v1 IN (1006, 1002, -1)");
+      Set<Integer> expected_values = new HashSet<>();
+      expected_values.add(1002);
+      expected_values.add(1006);
+      // Check rows
+      for (Row row : rs) {
+        Integer v1 = row.getInt("v1");
+        assertTrue(expected_values.contains(v1));
+        expected_values.remove(v1);
+      }
+      assertTrue(expected_values.isEmpty());
+    }
+
+    // Test multiple IN conditions.
+    {
+      ResultSet rs = session.execute("SELECT * FROM in_test WHERE " +
+              "h2 IN ('h1', 'h2', 'h7', 'h8') AND v2 in ('v1001', 'v1004', 'v1007')");
+      // Since all values are unique we identify rows by the first hash column.
+      Set<Integer> expected_values = new HashSet<>();
+      expected_values.add(1);
+      expected_values.add(7);
+      // Check rows
+      for (Row row : rs) {
+        Integer h1 = row.getInt("h1");
+        assertTrue(expected_values.contains(h1));
+        expected_values.remove(h1);
+      }
+      assertTrue(expected_values.isEmpty());
+    }
+
+    // Test IN condition with single entry.
+    {
+      ResultSet rs = session.execute("SELECT * FROM in_test WHERE h1 IN (4)");
+
+      Set<Integer> expected_values = new HashSet<>();
+      expected_values.add(4);
+      // Check rows
+      for (Row row : rs) {
+        Integer h1 = row.getInt("h1");
+        assertTrue(expected_values.contains(h1));
+        expected_values.remove(h1);
+      }
+      assertTrue(expected_values.isEmpty());
+    }
+
+    // Test empty IN condition.
+    {
+      ResultSet rs = session.execute("SELECT * FROM in_test WHERE h1 IN ()");
+      assertFalse(rs.iterator().hasNext());
+
+      rs = session.execute("SELECT * FROM in_test WHERE r2 IN ()");
+      assertFalse(rs.iterator().hasNext());
+
+      rs = session.execute("SELECT * FROM in_test WHERE v1 IN ()");
+      assertFalse(rs.iterator().hasNext());
+    }
+
+    // Test NOT IN condition.
+    {
+      ResultSet rs = session.execute("SELECT * FROM in_test WHERE " +
+              "h1 NOT IN (0, 1, 3, -1, 4, 5, 7, -2)");
+      Set<Integer> expected_values = new HashSet<>();
+      expected_values.add(2);
+      expected_values.add(6);
+      expected_values.add(8);
+      expected_values.add(9);
+      // Check rows
+      for (Row row : rs) {
+        Integer h1 = row.getInt("h1");
+        assertTrue(expected_values.contains(h1));
+        expected_values.remove(h1);
+      }
+      assertTrue(expected_values.isEmpty());
+    }
+
+    // Test Invalid Statements.
+
+    // Column cannot be restricted by more than one relation if it includes an IN
+    runInvalidStmt("SELECT * FROM in_test WHERE h1 IN (1,2) AND h1 = 2");
+    runInvalidStmt("SELECT * FROM in_test WHERE r1 IN (1,2) AND r1 < 2");
+    runInvalidStmt("SELECT * FROM in_test WHERE v1 >= 2 AND v1 NOT IN (1,2)");
+    runInvalidStmt("SELECT * FROM in_test WHERE v1 IN (1,2) AND v1 NOT IN (2,3)");
+
+    // IN tuple elements must be convertible to column type.
+    runInvalidStmt("SELECT * FROM in_test WHERE h1 IN (1.2,2.2)");
+    runInvalidStmt("SELECT * FROM in_test WHERE h2 NOT IN ('a', 1)");
+
+    LOG.info("TEST IN KEYWORD - End");
+  }
+
 }

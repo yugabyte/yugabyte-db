@@ -260,8 +260,9 @@ using namespace yb::sql;
 %type <PRef>              columnref
 
 %type <PCollectionExpr>   // An expression for CQL collections:
-                          //  - Map/Set/List/Tuple/Froze/User-Defined Types.
+                          //  - Map/Set/List/Tuple/Frozen/User-Defined Types.
                           map_elems map_expr set_elems set_expr list_elems list_expr
+                          tuple_elems tuple_expr
 
 %type <PExprListNode>     // A list of expressions.
                           ctext_row ctext_expr_list func_arg_list col_arg_list
@@ -3041,11 +3042,9 @@ a_expr:
   // Predicates that have variable number of operands.
   | a_expr IN_P in_expr {
     $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, YQL_OP_IN, $1, $3);
-    PARSER_UNSUPPORTED(@2);
   }
   | a_expr NOT_LA IN_P in_expr                                 %prec NOT_LA {
     $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, YQL_OP_NOT_IN, $1, $4);
-    PARSER_UNSUPPORTED(@3);
   }
   | collection_expr {
     $$ = $1;
@@ -3859,15 +3858,6 @@ trim_list:
   }
 ;
 
-in_expr:
-  select_with_parens {
-    $$ = nullptr;
-  }
-  | '(' expr_list ')' {
-    $$ = nullptr;
-  }
-;
-
 // Define SQL-style CASE clause.
 // - Full specification
 //  CASE WHEN a = b THEN c ... ELSE d END
@@ -4113,11 +4103,31 @@ list_expr:
   }
 ;
 
+tuple_elems:
+  tuple_elems ',' a_expr {
+    $1->AddElement($3);
+    $$ = $1;
+  }
+  | a_expr {
+    $$ = MAKE_NODE(@1, PTCollectionExpr, DataType::TUPLE);
+    $$->AddElement($1);
+  }
+;
+
+tuple_expr:
+  '(' tuple_elems ')' {
+    $$ = $2;
+  }
+  | '(' ')' {
+    $$ = MAKE_NODE(@1, PTCollectionExpr, DataType::TUPLE);
+  }
+;
+
 collection_expr:
  // '{ }' can mean either (empty) map or set so we treat it separately here and infer the expected
  // type (i.e. map or set) during type analysis
- '{' '}' {
-      $$ = MAKE_NODE(@1, PTCollectionExpr, DataType::SET);
+  '{' '}' {
+    $$ = MAKE_NODE(@1, PTCollectionExpr, DataType::SET);
   }
   | map_expr {
     $$ = $1;
@@ -4126,6 +4136,18 @@ collection_expr:
     $$ = $1;
   }
   | list_expr {
+    $$ = $1;
+  }
+;
+
+in_expr:
+  tuple_expr {
+    $$ = $1;
+  }
+  | bindvar {
+    if ($1 != nullptr) {
+      parser_->AddBindVariable(static_cast<PTBindVar*>($1.get()));
+    }
     $$ = $1;
   }
 ;

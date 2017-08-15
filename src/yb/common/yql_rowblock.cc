@@ -232,16 +232,18 @@ YQLValuePB EvaluateValue(const YQLExpressionPB& expr, const YQLTableRow& table_r
 }
 
 // Evaluate an IN (...) condition.
-Status
-EvaluateInCondition(const google::protobuf::RepeatedPtrField<yb::YQLExpressionPB> &operands, const YQLTableRow &row,
-                    bool *result) {
-  CHECK_GE(operands.size(), 1);
+Status EvaluateInCondition(const google::protobuf::RepeatedPtrField<yb::YQLExpressionPB> &operands,
+                           const YQLTableRow &row,
+                           bool *result) {
+  // Expecting two operands, second should be list of elements.
+  CHECK_EQ(operands.size(), 2);
   *result = false;
   YQLValuePB left = EvaluateValue(operands.Get(0), row);
-  for (int i = 1; i < operands.size(); ++i) {
-    YQLValuePB right = EvaluateValue(operands.Get(i), row);
-    if (!YQLValue::Comparable(left, right)) return STATUS(RuntimeError, "values not comparable");
-    if (left == right) {
+  YQLValuePB right = EvaluateValue(operands.Get(1), row);
+
+  for (const YQLValuePB& elem : right.list_value().elems()) {
+    if (!YQLValue::Comparable(left, elem)) return STATUS(RuntimeError, "values not comparable");
+    if (left == elem) {
       *result = true;
       break;
     }
@@ -250,8 +252,9 @@ EvaluateInCondition(const google::protobuf::RepeatedPtrField<yb::YQLExpressionPB
 }
 
 // Evaluate a BETWEEN(a, b) condition.
-Status EvaluateBetweenCondition(const google::protobuf::RepeatedPtrField<yb::YQLExpressionPB> &operands,
-                                const YQLTableRow &row, bool *result) {
+Status EvaluateBetweenCondition(
+    const google::protobuf::RepeatedPtrField<yb::YQLExpressionPB> &operands,
+    const YQLTableRow &row, bool *result) {
   CHECK_EQ(operands.size(), 3);
   YQLValuePB v = EvaluateValue(operands.Get(0), row);
   YQLValuePB lower_bound = EvaluateValue(operands.Get(1), row);
@@ -266,7 +269,8 @@ Status EvaluateBetweenCondition(const google::protobuf::RepeatedPtrField<yb::YQL
 } // namespace
 
 // Evaluate a condition for the given row.
-Status EvaluateCondition(const YQLConditionPB &condition, const YQLTableRow &table_row, bool *result) {
+Status EvaluateCondition(
+    const YQLConditionPB &condition, const YQLTableRow &table_row, bool *result) {
   const auto &operands = condition.operands();
   switch (condition.op()) {
     case YQL_OP_NOT: {

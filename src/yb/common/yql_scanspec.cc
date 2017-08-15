@@ -123,6 +123,20 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
       }
       return;
     }
+    case YQL_OP_IN: {
+      if (has_range_column) {
+        YQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
+        // - <column> IN (<value>) --> min/max values = <value>
+        // TODO(Mihnea) handle the other cases here too
+        if (val_expr->value().list_value().elems_size() == 1) {
+          YQLValuePB value = val_expr->value().list_value().elems(0);
+          const ColumnId column_id(col_expr->column_id());
+          ranges_.at(column_id).min_value = value;
+          ranges_.at(column_id).max_value = value;
+        }
+      }
+      return;
+    }
 
 #undef YQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN
 
@@ -219,7 +233,6 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
     case YQL_OP_NOT_EQUAL:   FALLTHROUGH_INTENDED;
     case YQL_OP_LIKE:        FALLTHROUGH_INTENDED;
     case YQL_OP_NOT_LIKE:    FALLTHROUGH_INTENDED;
-    case YQL_OP_IN:          FALLTHROUGH_INTENDED;
     case YQL_OP_NOT_IN:      FALLTHROUGH_INTENDED;
     case YQL_OP_NOT_BETWEEN:
       // No simple range can be deduced from these conditions. So the range will be unbounded.

@@ -24,26 +24,29 @@ namespace sql {
 // Counter of operators on each column. "gt" includes ">" and ">=". "lt" includes "<" and "<=".
 class ColumnOpCounter {
  public:
-  ColumnOpCounter() : gt_count_(0), lt_count_(0), eq_count_(0) { }
+  ColumnOpCounter() : gt_count_(0), lt_count_(0), eq_count_(0), in_count_(0) { }
   int gt_count() const { return gt_count_; }
   int lt_count() const { return lt_count_; }
   int eq_count() const { return eq_count_; }
+  int in_count() const { return in_count_; }
 
   void increase_gt() { gt_count_++; }
   void increase_lt() { lt_count_++; }
   void increase_eq() { eq_count_++; }
+  void increase_in() { in_count_++; }
 
   bool isValid() {
-    // 1. each condition type can be set at most once
-    // 2. equality and inequality (less/greater) conditions cannot appear together
-    return (gt_count_ <= 1 && lt_count_ <= 1 && eq_count_ <= 1) &&
-           (eq_count_ == 0 || gt_count_ == 0 && lt_count_ == 0);
+    // A. at most one condition set, or
+    // B. both inequality (less and greater) set together
+    return (in_count_ + eq_count_ + gt_count_ + lt_count_ <= 1) ||
+           (gt_count_ == 1 && lt_count_ == 1 && eq_count_ == 0 && in_count_ == 0);
   }
 
  private:
   int gt_count_;
   int lt_count_;
   int eq_count_;
+  int in_count_;
 };
 
 // State variables for where clause.
@@ -86,8 +89,8 @@ class WhereExprState {
   MCList<FuncOp> *func_ops() {
     return func_ops_;
   }
-  
-private:
+
+ private:
   MCList<ColumnOp> *ops_;
 
   // Operators on key columns.

@@ -28,6 +28,8 @@ CHECKED_STATUS PTExpr::CheckOperator(SemContext *sem_context) {
       case YQL_OP_LESS_THAN_EQUAL:
       case YQL_OP_GREATER_THAN:
       case YQL_OP_GREATER_THAN_EQUAL:
+      case YQL_OP_IN:
+      case YQL_OP_NOT_IN:
       case YQL_OP_NOOP:
         break;
       default:
@@ -234,6 +236,8 @@ CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
     return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
   }
 
+  const MCSharedPtr<MCString>& bindvar_name = sem_context->bindvar_name();
+
   // Checking type parameters.
   switch (expected_type->main()) {
     case MAP: {
@@ -243,13 +247,13 @@ CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
       SemState sem_state(sem_context);
 
       const shared_ptr<YQLType>& key_type = expected_type->param_type(0);
-      sem_state.SetExprState(key_type, YBColumnSchema::ToInternalDataType(key_type));
+      sem_state.SetExprState(key_type, YBColumnSchema::ToInternalDataType(key_type), bindvar_name);
       for (auto& key : keys_) {
         RETURN_NOT_OK(key->Analyze(sem_context));
       }
 
-      const shared_ptr<YQLType>& value_type = expected_type->param_type(1);
-      sem_state.SetExprState(value_type, YBColumnSchema::ToInternalDataType(value_type));
+      const shared_ptr<YQLType>& val_type = expected_type->param_type(1);
+      sem_state.SetExprState(val_type, YBColumnSchema::ToInternalDataType(val_type), bindvar_name);
       for (auto& value : values_) {
         RETURN_NOT_OK(value->Analyze(sem_context));
       }
@@ -259,8 +263,8 @@ CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
     }
     case SET: {
       SemState sem_state(sem_context);
-      const shared_ptr<YQLType>& value_type = expected_type->param_type(0);
-      sem_state.SetExprState(value_type, YBColumnSchema::ToInternalDataType(value_type));
+      const shared_ptr<YQLType>& val_type = expected_type->param_type(0);
+      sem_state.SetExprState(val_type, YBColumnSchema::ToInternalDataType(val_type), bindvar_name);
       for (auto& elem : values_) {
         RETURN_NOT_OK(elem->Analyze(sem_context));
       }
@@ -270,8 +274,8 @@ CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
 
     case LIST: {
       SemState sem_state(sem_context);
-      const shared_ptr<YQLType>& value_type = expected_type->param_type(0);
-      sem_state.SetExprState(value_type, YBColumnSchema::ToInternalDataType(value_type));
+      const shared_ptr<YQLType>& val_type = expected_type->param_type(0);
+      sem_state.SetExprState(val_type, YBColumnSchema::ToInternalDataType(val_type), bindvar_name);
       for (auto& elem : values_) {
         RETURN_NOT_OK(elem->Analyze(sem_context));
       }
@@ -317,7 +321,9 @@ CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
 
         // Each value should have the corresponding type from the UDT
         auto& param_type = expected_type->param_type(field_idx);
-        sem_state.SetExprState(param_type, YBColumnSchema::ToInternalDataType(param_type));
+        sem_state.SetExprState(param_type,
+                               YBColumnSchema::ToInternalDataType(param_type),
+                               bindvar_name);
         RETURN_NOT_OK(udtype_field_values_[field_idx]->Analyze(sem_context));
 
         values_it++;
@@ -328,7 +334,8 @@ CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
     case FROZEN: {
       SemState sem_state(sem_context);
       sem_state.SetExprState(expected_type->param_type(0),
-          YBColumnSchema::ToInternalDataType(expected_type->param_type(0)));
+                             YBColumnSchema::ToInternalDataType(expected_type->param_type(0)),
+                             bindvar_name);
       RETURN_NOT_OK(Analyze(sem_context));
       sem_state.ResetContextState();
       break;
@@ -432,32 +439,65 @@ CHECKED_STATUS PTRelationExpr::SetupSemStateForOp1(SemState *sem_state) {
 }
 
 CHECKED_STATUS PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
-  // The states of operand2 is dependent on operand1.
+  // The state of operand2 is dependent on operand1.
   PTExpr::SharedPtr operand1 = op1();
   DCHECK(operand1 != nullptr);
 
-  if (operand1->expr_op() == ExprOperator::kRef) {
-    const PTRef *ref = static_cast<const PTRef*>(operand1.get());
-    sem_state->SetExprState(ref->yql_type(),
-                            ref->internal_type(),
-                            ref->bindvar_name(),
-                            ref->desc());
-  } else {
-    sem_state->SetExprState(operand1->yql_type(), operand1->internal_type());
-  }
+  switch (yql_op_) {
+    case YQL_OP_EQUAL: FALLTHROUGH_INTENDED;
+    case YQL_OP_LESS_THAN: FALLTHROUGH_INTENDED;
+    case YQL_OP_LESS_THAN_EQUAL: FALLTHROUGH_INTENDED;
+    case YQL_OP_GREATER_THAN: FALLTHROUGH_INTENDED;
+    case YQL_OP_GREATER_THAN_EQUAL: FALLTHROUGH_INTENDED;
+    case YQL_OP_NOT_EQUAL: FALLTHROUGH_INTENDED;
+    case YQL_OP_EXISTS: FALLTHROUGH_INTENDED;
+    case YQL_OP_NOT_EXISTS: FALLTHROUGH_INTENDED;
+    case YQL_OP_BETWEEN: FALLTHROUGH_INTENDED;
+    case YQL_OP_NOT_BETWEEN: {
+      if (operand1->expr_op() == ExprOperator::kRef) {
+        const PTRef *ref = static_cast<const PTRef *>(operand1.get());
+        sem_state->SetExprState(ref->yql_type(),
+            ref->internal_type(),
+            ref->bindvar_name(),
+            ref->desc());
+      } else {
+        sem_state->SetExprState(operand1->yql_type(), operand1->internal_type());
+      }
 
-  if (operand1->expr_op() == ExprOperator::kBcall) {
-    PTBcall* bcall = static_cast<PTBcall *>(operand1.get());
-    if (strcmp(bcall->name()->c_str(), "token") == 0) {
-      sem_state->set_bindvar_name(PTBindVar::token_bindvar_name());
+      if (operand1->expr_op() == ExprOperator::kBcall) {
+        PTBcall *bcall = static_cast<PTBcall *>(operand1.get());
+        if (strcmp(bcall->name()->c_str(), "token") == 0) {
+          sem_state->set_bindvar_name(PTBindVar::token_bindvar_name());
+        }
+      }
+      break;
     }
+
+    case YQL_OP_IN: FALLTHROUGH_INTENDED;
+    case YQL_OP_NOT_IN: {
+      auto yql_type = YQLType::CreateTypeList(operand1->yql_type());
+
+      if (operand1->expr_op() == ExprOperator::kRef) {
+        const PTRef *ref = static_cast<const PTRef *>(operand1.get());
+        sem_state->SetExprState(yql_type,
+            ref->internal_type(),
+            ref->bindvar_name(),
+            ref->desc());
+      } else {
+        sem_state->SetExprState(yql_type, operand1->internal_type());
+      }
+      break;
+    }
+
+    default:
+      LOG(FATAL) << "Invalid operator" << int(yql_op_);
   }
 
   return Status::OK();
 }
 
 CHECKED_STATUS PTRelationExpr::SetupSemStateForOp3(SemState *sem_state) {
-  // The states of operand3 is dependend on operand1 in the same way as op2.
+  // The states of operand3 is dependent on operand1 in the same way as op2.
   return SetupSemStateForOp2(sem_state);
 }
 
@@ -507,6 +547,12 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
       RETURN_NOT_OK(op2->CheckRhsExpr(sem_context));
       RETURN_NOT_OK(CheckInequalityOperands(sem_context, op1, op2));
       internal_type_ = yb::InternalType::kBoolValue;
+      break;
+
+    case YQL_OP_IN:
+    case YQL_OP_NOT_IN:
+      RETURN_NOT_OK(op1->CheckLhsExpr(sem_context));
+      RETURN_NOT_OK(op2->CheckRhsExpr(sem_context));
       break;
 
     default:

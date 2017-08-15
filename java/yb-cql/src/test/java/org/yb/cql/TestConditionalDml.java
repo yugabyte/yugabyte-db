@@ -1,10 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package org.yb.cql;
 
-import com.datastax.driver.core.ColumnDefinitions;
-import com.datastax.driver.core.DataType;
-import com.datastax.driver.core.Row;
-import com.datastax.driver.core.ResultSet;
+import com.datastax.driver.core.*;
 
 import org.junit.Test;
 import static org.junit.Assert.assertFalse;

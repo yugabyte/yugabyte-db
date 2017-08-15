@@ -2,12 +2,9 @@
 package org.yb.cql;
 
 import java.nio.ByteBuffer;
-import java.util.UUID;
+import java.util.*;
 import java.math.BigDecimal;
 import java.net.InetAddress;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
 
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
@@ -1510,6 +1507,105 @@ public class TestBindVariable extends BaseCQLTest {
     }
 
     LOG.info("End test");
+  }
+
+  @Test
+  public void testInKeywordWithBind() throws Exception {
+    LOG.info("TEST IN KEYWORD - Start");
+    setupTable("in_bind_test", 10);
+
+
+    // Test basic bind.
+    {
+      List<Integer> int_list = new LinkedList<>();
+      int_list.add(1);
+      int_list.add(-1);
+      int_list.add(3);
+      int_list.add(7);
+
+      ResultSet rs = session.execute("SELECT * FROM in_bind_test WHERE h1 IN ?", int_list);
+      Set<Integer> expected_values = new HashSet<>();
+      expected_values.add(1);
+      expected_values.add(3);
+      expected_values.add(7);
+      // Check rows
+      for (Row row : rs) {
+        Integer h1 = row.getInt("h1");
+        assertTrue(expected_values.contains(h1));
+        expected_values.remove(h1);
+      }
+      assertTrue(expected_values.isEmpty());
+    }
+
+    // Test prepare bind.
+    {
+      List<String> string_list = new LinkedList<>();
+      string_list.add("r106");
+      string_list.add("r104");
+      string_list.add("r_non_existent");
+      string_list.add("r101");
+
+      PreparedStatement prepared =
+              session.prepare("SELECT * FROM in_bind_test WHERE r2 IN ?");
+      ResultSet rs = session.execute(prepared.bind(string_list));
+      Set<Integer> expected_values = new HashSet<>();
+      expected_values.add(1);
+      expected_values.add(4);
+      expected_values.add(6);
+      // Check rows
+      for (Row row : rs) {
+        Integer h1 = row.getInt("h1");
+        assertTrue(expected_values.contains(h1));
+        expected_values.remove(h1);
+      }
+      assertTrue(expected_values.isEmpty());
+    }
+
+    // Test binding IN elems individually - one element
+    {
+      ResultSet rs = session.execute("SELECT * FROM in_bind_test WHERE h1 IN (?)",
+              new Integer(2));
+      Set<Integer> expected_values = new HashSet<>();
+      expected_values.add(2);
+      // Check rows
+      for (Row row : rs) {
+        Integer h1 = row.getInt("h1");
+        assertTrue(expected_values.contains(h1));
+        expected_values.remove(h1);
+      }
+      assertTrue(expected_values.isEmpty());
+    }
+
+    // Test binding IN elems individually - multiple conditions
+    {
+      ResultSet rs = session.execute("SELECT * FROM in_bind_test WHERE h1 IN (?) AND r1 IN (?)",
+              new Integer(5), new Integer(105));
+      Set<Integer> expected_values = new HashSet<>();
+      expected_values.add(5);
+      // Check rows
+      for (Row row : rs) {
+        Integer h1 = row.getInt("h1");
+        assertTrue(expected_values.contains(h1));
+        expected_values.remove(h1);
+      }
+      assertTrue(expected_values.isEmpty());
+    }
+
+    // Test binding IN elems individually - several elements
+    {
+      ResultSet rs = session.execute("SELECT * FROM in_bind_test WHERE h1 IN (?, ?, ?)",
+              new Integer(9), new Integer(4), new Integer(-1));
+      Set<Integer> expected_values = new HashSet<>();
+      expected_values.add(4);
+      expected_values.add(9);
+      // Check rows
+      for (Row row : rs) {
+        Integer h1 = row.getInt("h1");
+        assertTrue(expected_values.contains(h1));
+        expected_values.remove(h1);
+      }
+      assertTrue(expected_values.isEmpty());
+    }
   }
 
 }

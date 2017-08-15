@@ -255,8 +255,7 @@ class PTCollectionExpr : public PTExpr {
   }
 
   int size() const {
-    DCHECK_EQ(keys_.size(), values_.size());
-    return static_cast<int>(keys_.size());
+    return static_cast<int>(values_.size());
   }
 
   const MCList<PTExpr::SharedPtr>& keys() const {

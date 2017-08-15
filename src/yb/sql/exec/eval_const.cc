@@ -18,13 +18,22 @@ CHECKED_STATUS Executor::PTConstToPB(const PTExpr::SharedPtr& expr,
                                      bool negate) {
   DCHECK(expr->expr_op() == ExprOperator::kConst ||
          expr->expr_op() == ExprOperator::kCollection ||
-         expr->expr_op() == ExprOperator::kUMinus);
+         expr->expr_op() == ExprOperator::kUMinus ||
+         expr->expr_op() == ExprOperator::kBindVar);
+
   if (expr->internal_type() == InternalType::VALUE_NOT_SET) {
       YQLValue::SetNull(const_pb);
   }
 
   if (expr->expr_op() == ExprOperator::kUMinus) {
     return PTUMinusToPB(static_cast<const PTOperator1*>(expr.get()), const_pb);
+  }
+
+  if (expr->expr_op() == ExprOperator::kBindVar) {
+    YQLExpressionPB expr_pb;
+    RETURN_NOT_OK(PTExprToPB(static_cast<const PTBindVar*>(expr.get()), &expr_pb));
+    const_pb->Swap(expr_pb.mutable_value());
+    return Status::OK();
   }
 
   const PTExpr *const_pt = expr.get();

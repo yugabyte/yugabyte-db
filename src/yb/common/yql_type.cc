@@ -24,8 +24,7 @@ shared_ptr<YQLType> YQLType::Create(DataType data_type, const vector<shared_ptr<
       DCHECK_EQ(params.size(), 1);
       return CreateCollectionType<DataType::FROZEN>(params);
     case DataType::TUPLE:
-      LOG(FATAL) << "Tuple datatype not supported";
-      return nullptr;
+      return CreateCollectionType<DataType::TUPLE>(params);
     // User-defined types cannot be created like this
     case DataType::USER_DEFINED_TYPE:
       LOG(FATAL) << "Unsupported constructor for user-defined type";
@@ -80,6 +79,8 @@ shared_ptr<YQLType> YQLType::Create(DataType data_type) {
       return CreateTypeMap();
     case DataType::SET:
       return CreateTypeSet();
+    case DataType::TUPLE:
+      return CreateCollectionType<DataType::TUPLE>({});
     case DataType::FROZEN:
       return CreateTypeFrozen();
 
