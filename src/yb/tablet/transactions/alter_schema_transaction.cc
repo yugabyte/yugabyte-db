@@ -95,7 +95,7 @@ Status AlterSchemaTransaction::Prepare() {
 
 void AlterSchemaTransaction::Start() {
   if (!state()->has_hybrid_time()) {
-    state()->set_hybrid_time(state()->tablet_peer()->clock()->Now());
+    state()->set_hybrid_time(state()->tablet_peer()->clock().Now());
   }
   TRACE("START. HybridTime: $0",
       server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));

@@ -48,6 +48,7 @@ set(YRPC_SRCS
     constants.cc
     growable_buffer.cc
     inbound_call.cc
+    io_thread_pool.cc
     messenger.cc
     negotiation.cc
     outbound_call.cc
@@ -65,6 +66,7 @@ set(YRPC_SRCS
     sasl_client.cc
     sasl_helper.cc
     sasl_server.cc
+    scheduler.cc
     serialization.cc
     service_if.cc
     service_pool.cc
@@ -123,4 +125,5 @@ ADD_YB_TEST(rpc-bench RUN_SERIAL true)
 ADD_YB_TEST(rpc-test)
 ADD_YB_TEST(rpc_stub-test RUN_SERIAL true)
 ADD_YB_TEST(sasl_rpc-test)
+ADD_YB_TEST(scheduler-test)
 ADD_YB_TEST(thread_pool-test)

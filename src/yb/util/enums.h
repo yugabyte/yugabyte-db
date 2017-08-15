@@ -59,25 +59,26 @@ constexpr typename std::underlying_type<E>::type to_underlying(E e) {
     BOOST_PP_SEQ_FOR_EACH(YB_ENUM_ITEM, prefix, list) \
   }; \
   \
-  inline const char* ToCString(enum_name value) { \
+  inline __attribute__((unused)) const char* ToCString(enum_name value) { \
     switch(value) { \
     BOOST_PP_SEQ_FOR_EACH(YB_ENUM_CASE_NAME, (enum_name, prefix), list); \
     } \
     return nullptr; \
   } \
   \
-  inline std::string ToString(enum_name value) { \
+  inline __attribute__((unused)) std::string ToString(enum_name value) { \
     const char* c_str = ToCString(value); \
     if (c_str != nullptr) \
       return c_str; \
     return "<unknown " BOOST_PP_STRINGIZE(enum_name) " : " + \
            std::to_string(::yb::util::to_underlying(value)) + ">"; \
   } \
-  inline std::ostream& operator<<(std::ostream& out, enum_name value) { \
+  inline __attribute__((unused)) std::ostream& operator<<(std::ostream& out, enum_name value) { \
     return out << ToString(value); \
   } \
   \
-  constexpr size_t BOOST_PP_CAT(kElementsIn, enum_name) = BOOST_PP_SEQ_SIZE(list); \
+  constexpr __attribute__((unused)) size_t BOOST_PP_CAT(kElementsIn, enum_name) = \
+      BOOST_PP_SEQ_SIZE(list); \
   /**/
 
 // Please see the usage of YB_DEFINE_ENUM before the auxiliary macros above.

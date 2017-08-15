@@ -55,6 +55,7 @@
 #include "yb/tablet/rowset.h"
 #include "yb/tablet/rowset_metadata.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/transaction_coordinator.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
@@ -106,7 +107,7 @@ class WriteTransactionState;
 
 using util::LockBatch;
 
-class Tablet : public AbstractTablet {
+class Tablet : public AbstractTablet, public TransactionIntentApplier {
  public:
   typedef std::map<int64_t, int64_t> MaxIdxToSegmentMap;
   friend class CompactRowSetsOp;
@@ -153,7 +154,7 @@ class Tablet : public AbstractTablet {
 
   CHECKED_STATUS ApplyIntents(const TransactionId& transaction_id,
                               const consensus::OpId& op_id,
-                              HybridTime hybrid_time);
+                              HybridTime hybrid_time) override;
 
   // Decode the Write (insert/mutate) operations from within a user's request.
   // Either fills in tx_state->row_ops or tx_state->kv_write_batch depending on TableType.
@@ -507,13 +508,20 @@ class Tablet : public AbstractTablet {
     return rocksdb_statistics_;
   }
 
-  TransactionCoordinator& transaction_coordinator() {
-    return *transaction_coordinator_;
+  TransactionCoordinator* transaction_coordinator() {
+    return transaction_coordinator_.get();
   }
 
   void ForceRocksDBCompactInTest();
 
   std::string DocDBDumpStrInTest();
+
+  // Returns whether we had writes in this tablet.
+  // The main purpose of this method is to make correct log cleanup when tablet does not have
+  // writes.
+  bool has_written_something() const {
+    return has_written_something_.load(std::memory_order_acquire);
+  }
 
  private:
   friend class Iterator;
@@ -781,6 +789,8 @@ class Tablet : public AbstractTablet {
   std::shared_ptr<yb::docdb::HistoryRetentionPolicy> retention_policy_;
 
   std::unique_ptr<TransactionCoordinator> transaction_coordinator_;
+
+  std::atomic<bool> has_written_something_{false};
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

@@ -5,10 +5,14 @@
 #ifndef YB_TABLET_TRANSACTIONS_UPDATE_TXN_TRANSACTION_H
 #define YB_TABLET_TRANSACTIONS_UPDATE_TXN_TRANSACTION_H
 
+#include "yb/tablet/transaction_coordinator.h"
+
 #include "yb/tablet/transactions/transaction.h"
 
 namespace yb {
 namespace tablet {
+
+class TransactionCoordinator;
 
 class UpdateTxnTransactionState : public TransactionState {
  public:
@@ -20,11 +24,18 @@ class UpdateTxnTransactionState : public TransactionState {
 
   const tserver::TransactionStatePB* request() const override { return request_; }
 
+  void TakeRequest(tserver::TransactionStatePB* request) {
+    request_holder_.reset(new tserver::TransactionStatePB);
+    request_ = request_holder_.get();
+    request_holder_->Swap(request);
+  }
+
   std::string ToString() const override;
 
  private:
   void UpdateRequestFromConsensusRound() override;
 
+  std::unique_ptr<tserver::TransactionStatePB> request_holder_;
   const tserver::TransactionStatePB* request_;
 };
 
@@ -40,6 +51,10 @@ class UpdateTxnTransaction : public Transaction {
   const UpdateTxnTransactionState* state() const override {
     return down_cast<const UpdateTxnTransactionState*>(Transaction::state());
   }
+
+ private:
+  TransactionCoordinator& transaction_coordinator() const;
+  ProcessingMode mode() const;
 
   consensus::ReplicateMsgPtr NewReplicateMsg() override;
   CHECKED_STATUS Prepare() override;

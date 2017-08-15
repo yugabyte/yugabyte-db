@@ -16,11 +16,11 @@
 #include "yb/util/tostring.h"
 
 namespace yb {
-// We should use namespace other than yb::util::ToString to check how does ToString works
+// We should use namespace other than yb::ToString to check how does ToString works
 // with code from other namespaces.
 namespace util_test {
 
-using yb::util::ToString;
+using yb::ToString;
 
 class ToStringTest : public YBTest {
 };

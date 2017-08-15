@@ -5,6 +5,7 @@
 #ifndef YB_UTIL_TOSTRING_H
 #define YB_UTIL_TOSTRING_H
 
+#include <chrono>
 #include <string>
 #include <type_traits>
 
@@ -17,7 +18,6 @@
 // This utility actively use SFINAE (http://en.cppreference.com/w/cpp/language/sfinae)
 // technique to route ToString to correct implementation.
 namespace yb {
-namespace util {
 
 #define HAS_MEMBER_FUNCTION(function) \
     template<class T> \
@@ -263,7 +263,17 @@ std::string CollectionToString(const Collection& collection) {
   return result;
 }
 
-} // namespace util
+template<class Rep, class Period>
+std::string ToString(const std::chrono::duration<Rep, Period>& duration) {
+  int64_t milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+  int64_t seconds = milliseconds / 1000;
+  milliseconds -= seconds * 1000;
+  return StringPrintf("%" PRId64 ".%03" PRId64 "s", seconds, milliseconds);
+}
+
+std::string ToString(const std::chrono::steady_clock::time_point& time_point);
+std::string ToString(const std::chrono::system_clock::time_point& time_point);
+
 } // namespace yb
 
 #endif // YB_UTIL_TOSTRING_H

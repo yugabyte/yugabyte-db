@@ -355,12 +355,31 @@ Status TabletPeer::SubmitWrite(std::unique_ptr<WriteTransactionState> state) {
   return driver->ExecuteAsync();
 }
 
-Status TabletPeer::Submit(std::unique_ptr<Transaction> transaction) {
-  RETURN_NOT_OK(CheckRunning());
+void TabletPeer::Submit(std::unique_ptr<Transaction> transaction) {
+  auto status = CheckRunning();
 
-  scoped_refptr<TransactionDriver> driver;
-  RETURN_NOT_OK(NewLeaderTransactionDriver(std::move(transaction), &driver));
-  return driver->ExecuteAsync();
+  if (status.ok()) {
+    scoped_refptr<TransactionDriver> driver;
+    status = NewLeaderTransactionDriver(std::move(transaction), &driver);
+    if (status.ok()) {
+      status = driver->ExecuteAsync();
+    }
+  }
+  if (!status.ok()) {
+    transaction->state()->completion_callback()->set_error(status);
+    transaction->state()->completion_callback()->TransactionCompleted();
+  }
+}
+
+void TabletPeer::SubmitUpdateTransaction(std::unique_ptr<UpdateTxnTransactionState> state) {
+  Submit(std::make_unique<tablet::UpdateTxnTransaction>(std::move(state), consensus::LEADER));
+}
+
+std::unique_ptr<UpdateTxnTransactionState> TabletPeer::CreateUpdateTransactionState(
+    tserver::TransactionStatePB* request) {
+  auto result = std::make_unique<UpdateTxnTransactionState>(this);
+  result->TakeRequest(request);
+  return result;
 }
 
 void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) const {
@@ -476,8 +495,18 @@ Status TabletPeer::GetEarliestNeededLogIndex(int64_t* min_index) const {
     }
   }
 
+  auto* transaction_coordinator = tablet()->transaction_coordinator();
+  if (transaction_coordinator) {
+    auto mode = consensus_->leader_status() == consensus::Consensus::LeaderStatus::LEADER_AND_READY
+        ? ProcessingMode::LEADER
+        : ProcessingMode::NON_LEADER;
+    *min_index = std::min(*min_index, transaction_coordinator->PrepareGC(mode));
+  }
+
   if (tablet_->table_type() != KUDU_COLUMNAR_TABLE_TYPE) {
-    *min_index = std::min(*min_index, tablet_->MaxPersistentOpId().index);
+    if (tablet_->has_written_something()) {
+      *min_index = std::min(*min_index, tablet_->MaxPersistentOpId().index);
+    }
     // We keep at least one committed operation in the log so that we can always recover safe time
     // during bootstrap.
     OpId committed_op_id;
@@ -677,12 +706,6 @@ scoped_refptr<TransactionDriver> TabletPeer::CreateTransactionDriver() {
       apply_pool_,
       &txn_order_verifier_,
       tablet_->table_type()));
-}
-
-Status TabletPeer::ApplyIntents(const TransactionId& id,
-                                const consensus::OpId& op_id,
-                                HybridTime hybrid_time) {
-  return tablet_->ApplyIntents(id, op_id, hybrid_time);
 }
 
 }  // namespace tablet

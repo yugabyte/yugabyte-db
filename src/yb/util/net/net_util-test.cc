@@ -140,9 +140,9 @@ TEST_F(NetUtilTest, TestGetFQDN) {
 TEST_F(NetUtilTest, LocalAddresses) {
   std::vector<IpAddress> addresses, external_addresses;
   ASSERT_OK(GetLocalAddresses(&addresses, AddressFilter::ANY));
-  LOG(INFO) << "Any addresses: " << util::ToString(addresses);
+  LOG(INFO) << "Any addresses: " << ToString(addresses);
   ASSERT_OK(GetLocalAddresses(&external_addresses, AddressFilter::EXTERNAL));
-  LOG(INFO) << "External addresses: " << util::ToString(external_addresses);
+  LOG(INFO) << "External addresses: " << ToString(external_addresses);
   ASSERT_GT(addresses.size(), external_addresses.size());
 }
 

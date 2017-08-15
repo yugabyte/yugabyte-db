@@ -33,6 +33,7 @@
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
+
 #include "yb/util/coding-inl.h"
 #include "yb/util/coding.h"
 #include "yb/util/crc.h"
@@ -40,10 +41,15 @@
 #include "yb/util/env_util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/size_literals.h"
 
 DEFINE_int32(log_segment_size_mb, 64,
              "The default segment size for log roll-overs, in MB");
 TAG_FLAG(log_segment_size_mb, advanced);
+
+DEFINE_uint64(log_segment_size_bytes, 0,
+             "The default segment size for log roll-overs, in bytes. "
+             "If 0 then log_segment_size_mb is used.");
 
 DEFINE_bool(durable_wal_write, false,
             "Whether the Log/WAL should explicitly call fsync() after each write.");
@@ -90,10 +96,11 @@ const int kLogMinorVersion = 0;
 const uint32_t kLogSegmentMaxHeaderOrFooterSize = 8 * 1024 * 1024;
 
 LogOptions::LogOptions()
-: segment_size_mb(FLAGS_log_segment_size_mb),
-  durable_wal_write(FLAGS_durable_wal_write),
-  preallocate_segments(FLAGS_log_preallocate_segments),
-  async_preallocate_segments(FLAGS_log_async_preallocate_segments) {
+    : segment_size_bytes(FLAGS_log_segment_size_bytes == 0 ? FLAGS_log_segment_size_mb * 1_MB
+                                                           : FLAGS_log_segment_size_bytes),
+      durable_wal_write(FLAGS_durable_wal_write),
+      preallocate_segments(FLAGS_log_preallocate_segments),
+      async_preallocate_segments(FLAGS_log_async_preallocate_segments) {
 }
 
 Status ReadableLogSegment::Open(Env* env,

@@ -729,6 +729,7 @@ void Tablet::StartApplying(WriteTransactionState* tx_state) {
 }
 
 void Tablet::ApplyRowOperations(WriteTransactionState* tx_state) {
+  has_written_something_.store(true, std::memory_order_release);
   StartApplying(tx_state);
   switch (table_type_) {
     case TableType::KUDU_COLUMNAR_TABLE_TYPE: {
@@ -822,7 +823,7 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
   if (put_batch.has_transaction()) {
     key_prefix = '!' + put_batch.transaction().transaction_id() + '!';
     if (put_batch.transaction().has_isolation()) {
-      transaction_coordinator().Add(put_batch.transaction(), &rocksdb_write_batch);
+      transaction_coordinator()->Add(put_batch.transaction(), &rocksdb_write_batch);
     }
   }
   for (int write_id = 0; write_id < put_batch.kv_pairs_size(); ++write_id) {
@@ -881,10 +882,13 @@ namespace {
 // Separate Redis / YQL / row operations write batches from write_request in preparation for the
 // write transaction. Leave just the tablet id behind. Return Redis / YQL / row operations, etc.
 // in batch_request.
-void SetupKeyValueBatch(WriteRequestPB* write_request, unique_ptr<WriteRequestPB>* batch_request) {
-  batch_request->reset(new WriteRequestPB());
-  (*batch_request)->Swap(write_request);
-  write_request->set_allocated_tablet_id((*batch_request)->release_tablet_id());
+void SetupKeyValueBatch(WriteRequestPB* write_request, WriteRequestPB* batch_request) {
+  batch_request->Swap(write_request);
+  write_request->set_allocated_tablet_id(batch_request->release_tablet_id());
+  if (batch_request->write_batch().has_transaction()) {
+    write_request->mutable_write_batch()->mutable_transaction()->Swap(
+        batch_request->mutable_write_batch()->mutable_transaction());
+  }
 }
 
 } // namespace
@@ -897,9 +901,9 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(
   vector<unique_ptr<DocOperation>> doc_ops;
   // Since we take exclusive locks, it's okay to use Now as the read TS for writes.
   const HybridTime read_hybrid_time = clock_->Now();
-  unique_ptr<WriteRequestPB> batch_request;
+  WriteRequestPB batch_request;
   SetupKeyValueBatch(redis_write_request, &batch_request);
-  const auto* redis_write_batch = batch_request->mutable_redis_write_batch();
+  const auto* redis_write_batch = batch_request.mutable_redis_write_batch();
 
   doc_ops.reserve(redis_write_batch->size());
   for (size_t i = 0; i < redis_write_batch->size(); i++) {
@@ -977,9 +981,9 @@ Status Tablet::KeyValueBatchFromYQLWriteBatch(
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
 
   vector<unique_ptr<DocOperation>> doc_ops;
-  unique_ptr<WriteRequestPB> batch_request;
+  WriteRequestPB batch_request;
   SetupKeyValueBatch(yql_write_request, &batch_request);
-  const auto* yql_write_batch = batch_request->mutable_yql_write_batch();
+  const auto* yql_write_batch = batch_request.mutable_yql_write_batch();
 
   doc_ops.reserve(yql_write_batch->size());
   for (size_t i = 0; i < yql_write_batch->size(); i++) {
@@ -1063,7 +1067,7 @@ Status Tablet::KeyValueBatchFromKuduRowOps(WriteRequestPB* kudu_write_request,
 
   TRACE("PREPARE: Decoding operations");
 
-  unique_ptr<WriteRequestPB> row_operations_request;
+  WriteRequestPB row_operations_request;
   SetupKeyValueBatch(kudu_write_request, &row_operations_request);
   auto* write_batch = kudu_write_request->mutable_write_batch();
 
@@ -1073,13 +1077,13 @@ Status Tablet::KeyValueBatchFromKuduRowOps(WriteRequestPB* kudu_write_request,
 
   Schema client_schema;
 
-  RETURN_NOT_OK(SchemaFromPB(row_operations_request->schema(), &client_schema));
+  RETURN_NOT_OK(SchemaFromPB(row_operations_request.schema(), &client_schema));
 
   // Allocating temporary arena for decoding.
   Arena arena(32 * 1024, 4 * 1024 * 1024);
 
   vector<DecodedRowOperation> row_ops;
-  RowOperationsPBDecoder row_operation_decoder(&row_operations_request->row_operations(),
+  RowOperationsPBDecoder row_operation_decoder(&row_operations_request.row_operations(),
                                                &client_schema,
                                                schema(),
                                                &arena);

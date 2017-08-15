@@ -34,7 +34,7 @@ void CheckInt(const std::string& format, const T& t) {
 
 template<class Collection>
 void CheckCollection(const std::string& format, const Collection& collection) {
-  ASSERT_EQ(strings::Substitute(format, util::ToString(collection)), Format(format, collection));
+  ASSERT_EQ(strings::Substitute(format, ToString(collection)), Format(format, collection));
 }
 
 std::vector<std::string> kFormats = { "Is it $0?", "Yes, it is $0", "$0 == $0, right?"};

@@ -73,7 +73,7 @@
 // If 'to_call' returns a bad status, CHECK immediately with a logged message
 // of 'msg' followed by the status.
 #define YB_CHECK_OK_PREPEND(to_call, msg) do { \
-  const auto _s = (to_call); \
+  auto&& _s = (to_call); \
   YB_CHECK(_s.ok()) << (msg) << ": " << StatusToString(_s); \
   } while (0);
 
@@ -298,6 +298,10 @@ inline const Status& MoveStatus(const Status& status) {
 
 inline std::string StatusToString(const Status& status) {
   return status.ToString();
+}
+
+inline std::ostream& operator<<(std::ostream& out, const Status& status) {
+  return out << status.ToString();
 }
 
 }  // namespace yb

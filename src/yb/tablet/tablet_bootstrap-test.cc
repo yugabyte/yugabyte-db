@@ -322,7 +322,7 @@ TEST_F(BootstrapTest, TestOrphanedReplicate) {
 
   // The consensus bootstrap info should include the orphaned REPLICATE.
   ASSERT_EQ(1, boot_info.orphaned_replicates.size())
-      << util::ToString(boot_info.orphaned_replicates);
+      << yb::ToString(boot_info.orphaned_replicates);
   ASSERT_STR_CONTAINS(boot_info.orphaned_replicates[0]->ShortDebugString(),
                       "this is a test mutate");
 

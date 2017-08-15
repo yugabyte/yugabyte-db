@@ -10,6 +10,10 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/common/hybrid_time.h"
+
+#include "yb/rpc/rpc_fwd.h"
+
 #include "yb/util/result.h"
 
 namespace yb {
@@ -27,6 +31,8 @@ class TransactionManager {
   void PickStatusTablet(PickStatusTabletCallback callback);
 
   const YBClientPtr& client() const;
+  rpc::Scheduler& scheduler();
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

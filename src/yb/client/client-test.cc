@@ -483,12 +483,12 @@ TEST_F(ClientTest, TestListTables) {
     return n1.ToString() < n2.ToString();
   });
   ASSERT_EQ(2 + cluster_->leader_mini_master()->NumSystemTables(), tables.size());
-  ASSERT_EQ(kTableName, tables[0]) << "Tables:" << util::ToString(tables);
-  ASSERT_EQ(kTable2Name, tables[1]) << "Tables:" << util::ToString(tables);
+  ASSERT_EQ(kTableName, tables[0]) << "Tables:" << ToString(tables);
+  ASSERT_EQ(kTable2Name, tables[1]) << "Tables:" << ToString(tables);
   tables.clear();
   ASSERT_OK(client_->ListTables(&tables, "testtb2"));
   ASSERT_EQ(1, tables.size());
-  ASSERT_EQ(kTable2Name, tables[0]) << "Tables:" << util::ToString(tables);
+  ASSERT_EQ(kTable2Name, tables[0]) << "Tables:" << ToString(tables);
 }
 
 TEST_F(ClientTest, TestListTabletServers) {

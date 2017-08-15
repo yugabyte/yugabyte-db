@@ -734,7 +734,7 @@ const RedisCommandInfo* RedisServiceImpl::Impl::FetchHandler(const RedisClientCo
   auto iter = command_name_to_info_map_.find(cmd_args[0]);
   if (iter == command_name_to_info_map_.end()) {
     LOG(ERROR) << "Command " << cmd_name << " not yet supported. "
-               << "Arguments: " << util::ToString(cmd_args) << ". "
+               << "Arguments: " << ToString(cmd_args) << ". "
                << "Raw: " << Slice(cmd_args[0].data(), cmd_args.back().end()).ToDebugString();
     return nullptr;
   }

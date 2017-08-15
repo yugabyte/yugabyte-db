@@ -63,7 +63,7 @@ struct LogOptions {
 
   // The size of a Log segment
   // Logs will rollover upon reaching this size (default 64 MB)
-  size_t segment_size_mb;
+  size_t segment_size_bytes;
 
   // Whether to call fsync on every call to Append().
   bool durable_wal_write;

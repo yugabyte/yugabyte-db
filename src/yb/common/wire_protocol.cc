@@ -87,6 +87,8 @@ void StatusToPB(const Status& status, AppStatusPB* pb) {
     pb->set_code(AppStatusPB::SQL_ERROR);
   } else if (status.IsInternalError()) {
     pb->set_code(AppStatusPB::INTERNAL_ERROR);
+  } else if (status.IsExpired()) {
+    pb->set_code(AppStatusPB::EXPIRED);
   } else {
     LOG(WARNING) << "Unknown error code translation from internal error "
                  << status.ToString() << ": sending UNKNOWN_ERROR";
@@ -161,6 +163,8 @@ Status StatusFromPB(const AppStatusPB& pb) {
       return STATUS(SqlError, pb.message(), "", pb.sql_error_code());
     case AppStatusPB::INTERNAL_ERROR:
       return STATUS(InternalError, pb.message(), "", posix_code);
+    case AppStatusPB::EXPIRED:
+      return STATUS(Expired, pb.message(), "", posix_code);
     case AppStatusPB::UNKNOWN_ERROR:
     default:
       LOG(WARNING) << "Unknown error code in status: " << pb.ShortDebugString();

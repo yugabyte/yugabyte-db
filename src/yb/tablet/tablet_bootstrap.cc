@@ -35,6 +35,7 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transactions/alter_schema_transaction.h"
+#include "yb/tablet/transactions/update_txn_transaction.h"
 #include "yb/tablet/transactions/write_transaction.h"
 #include "yb/tablet/transaction_coordinator.h"
 
@@ -56,6 +57,7 @@ TAG_FLAG(fault_crash_during_log_replay, unsafe);
 
 DECLARE_int32(max_clock_sync_error_usec);
 
+using namespace std::literals;
 using namespace std::placeholders;
 
 namespace yb {
@@ -192,6 +194,9 @@ class TabletBootstrap {
   Status PlayWriteRequest(ReplicateMsg* replicate_msg,
                           const CommitMsg* commit_msg);
 
+  Status PlayUpdateTransactionRequest(ReplicateMsg* replicate_msg,
+                                      const CommitMsg* commit_msg);
+
   Status PlayAlterSchemaRequest(ReplicateMsg* replicate_msg,
                                 const CommitMsg* commit_msg);
 
@@ -236,11 +241,14 @@ class TabletBootstrap {
   void DumpReplayStateToLog(const ReplayState& state);
 
   // Handlers for each type of message seen in the log during replay.
-  Status HandleEntry(ReplayState* state, std::unique_ptr<LogEntryPB>* entry);
-  Status HandleReplicateMessage(ReplayState* state, std::unique_ptr<LogEntryPB>* replicate_entry);
-  Status HandleCommitMessage(ReplayState* state, std::unique_ptr<LogEntryPB>* commit_entry);
-  Status ApplyCommitMessage(ReplayState* state, const LogEntryPB& commit_entry);
-  Status HandleEntryPair(LogEntryPB* replicate_entry, const LogEntryPB* commit_entry);
+  CHECKED_STATUS HandleEntry(ReplayState* state, std::unique_ptr<LogEntryPB>* entry);
+  CHECKED_STATUS HandleReplicateMessage(
+      ReplayState* state, std::unique_ptr<LogEntryPB>* replicate_entry);
+  CHECKED_STATUS HandleCommitMessage(ReplayState* state, std::unique_ptr<LogEntryPB>* commit_entry);
+  CHECKED_STATUS ApplyCommitMessage(ReplayState* state, const LogEntryPB& commit_entry);
+  CHECKED_STATUS HandleEntryPair(LogEntryPB* replicate_entry, const LogEntryPB* commit_entry);
+  CHECKED_STATUS HandleOperation(
+      OperationType op_type, ReplicateMsg* replicate, const CommitMsg* commit);
 
   // Checks that an orphaned commit message is actually irrelevant, i.e that the
   // data stores it refers to are already flushed.
@@ -1040,45 +1048,51 @@ Status TabletBootstrap::ApplyCommitMessage(ReplayState* state, const LogEntryPB&
   return Status::OK();
 }
 
+Status TabletBootstrap::HandleOperation(OperationType op_type,
+                                        ReplicateMsg* replicate,
+                                        const CommitMsg* commit) {
+  switch (op_type) {
+    case WRITE_OP:
+      return PlayWriteRequest(replicate, commit);
+
+    case ALTER_SCHEMA_OP:
+      return PlayAlterSchemaRequest(replicate, commit);
+
+    case CHANGE_CONFIG_OP:
+      return PlayChangeConfigRequest(replicate, commit);
+
+    case NO_OP:
+      return PlayNoOpRequest(replicate, commit);
+
+    case consensus::UNKNOWN_OP:
+      break;
+
+    case consensus::UPDATE_TRANSACTION_OP:
+      return PlayUpdateTransactionRequest(replicate, commit);
+
+  }
+
+  return STATUS(IllegalState, Substitute("Unsupported commit entry type: $0", op_type));
+}
+
 // Never deletes 'replicate_entry' or 'commit_entry'.
 Status TabletBootstrap::HandleEntryPair(LogEntryPB* replicate_entry,
                                         const LogEntryPB* commit_entry) {
-  const char* error_fmt = "Failed to play $0 request. ReplicateMsg: { $1 }, CommitMsg: { $2 }";
-
-#define RETURN_NOT_OK_REPLAY(ReplayMethodName, replicate, commit) \
-  RETURN_NOT_OK_PREPEND(ReplayMethodName(replicate, commit), \
-                        Substitute(error_fmt, OperationType_Name(op_type), \
-                                   replicate->ShortDebugString(), \
-                                   commit_debug_str))
-
   ReplicateMsg* replicate = replicate_entry->mutable_replicate();
   const CommitMsg* commit = commit_entry == nullptr ? nullptr : &commit_entry->commit();
-  OperationType op_type =
+  const OperationType op_type =
       commit == nullptr ? replicate_entry->replicate().op_type() : commit->op_type();
-  const string commit_debug_str = commit == nullptr ? "N/A" : commit->ShortDebugString();
 
-  switch (op_type) {
-    case WRITE_OP:
-      RETURN_NOT_OK_REPLAY(PlayWriteRequest, replicate, commit);
-      break;
-
-    case ALTER_SCHEMA_OP:
-      RETURN_NOT_OK_REPLAY(PlayAlterSchemaRequest, replicate, commit);
-      break;
-
-    case CHANGE_CONFIG_OP:
-      RETURN_NOT_OK_REPLAY(PlayChangeConfigRequest, replicate, commit);
-      break;
-
-    case NO_OP:
-      RETURN_NOT_OK_REPLAY(PlayNoOpRequest, replicate, commit);
-      break;
-
-    default:
-      return STATUS(IllegalState, Substitute("Unsupported commit entry type: $0", op_type));
+  {
+    const auto status = HandleOperation(op_type, replicate, commit);
+    if (!status.ok()) {
+      return status.CloneAndAppend(Format(
+          "Failed to play $0 request. ReplicateMsg: { $1 }, CommitMsg: { $2 }",
+          OperationType_Name(op_type),
+          *replicate,
+          commit ? commit->ShortDebugString() : "N/A"s));
+    }
   }
-
-#undef RETURN_NOT_OK_REPLAY
 
   // Non-tablet operations should not advance the safe time, because they are
   // not started serially and so may have hybrid_times that are out of order.
@@ -1435,6 +1449,28 @@ Status TabletBootstrap::PlayChangeConfigRequest(ReplicateMsg* replicate_msg,
 
 Status TabletBootstrap::PlayNoOpRequest(ReplicateMsg* replicate_msg, const CommitMsg* commit_msg) {
   return commit_msg == nullptr ? Status::OK() : AppendCommitMsg(*commit_msg);
+}
+
+Status TabletBootstrap::PlayUpdateTransactionRequest(ReplicateMsg* replicate_msg,
+                                                     const CommitMsg* commit_msg) {
+  DCHECK(replicate_msg->has_hybrid_time());
+
+  UpdateTxnTransactionState tx_state(nullptr, replicate_msg->mutable_transaction_state());
+  tx_state.mutable_op_id()->CopyFrom(replicate_msg->id());
+  tx_state.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
+
+  auto transaction_coordinator = tablet_->transaction_coordinator();
+
+  TransactionCoordinator::ReplicatedData replicated_data = {
+      ProcessingMode::NON_LEADER,
+      tablet_.get(),
+      *tx_state.request(),
+      tx_state.op_id(),
+      tx_state.hybrid_time()
+  };
+  RETURN_NOT_OK(transaction_coordinator->ProcessReplicated(replicated_data));
+
+  return Status::OK();
 }
 
 Status TabletBootstrap::PlayRowOperations(WriteTransactionState* tx_state,

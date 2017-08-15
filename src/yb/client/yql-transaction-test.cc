@@ -20,8 +20,25 @@
 
 using namespace std::literals;
 
+DECLARE_uint64(transaction_timeout_usec);
+DECLARE_uint64(transaction_heartbeat_usec);
+DECLARE_uint64(transaction_table_default_num_tablets);
+DECLARE_uint64(log_segment_size_bytes);
+DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_bool(transaction_disable_heartbeat_in_tests);
+
 namespace yb {
 namespace client {
+
+constexpr size_t kNumRows = 5;
+
+int32_t KeyForTransactionAndIndex(size_t transaction, size_t index) {
+  return static_cast<int32_t>(transaction * 10 + index);
+}
+
+int32_t ValueForTransactionAndIndex(size_t transaction, size_t index) {
+  return static_cast<int32_t>(transaction * 10 + index + 2);
+}
 
 class YqlTransactionTest : public YqlDmlTestBase {
  protected:
@@ -35,12 +52,15 @@ class YqlTransactionTest : public YqlDmlTestBase {
 
     table_.Create(kTableName, client_.get(), &builder);
 
+    FLAGS_transaction_table_default_num_tablets = 1;
+    FLAGS_log_segment_size_bytes = 128;
+    FLAGS_log_min_seconds_to_retain = 5;
     transaction_manager_.emplace(client_);
   }
 
   // Insert a full, single row, equivalent to the insert statement below. Return a YB write op that
   // has been applied.
-  //   insert into t values (h1, h2, r1, r2, c1, c2);
+  //   insert into t values (key, value);
   shared_ptr<YBqlWriteOp> InsertRow(const YBSessionPtr& session, int32_t key, int32_t value) {
     const auto op = table_.NewWriteOp(YQLWriteRequestPB::YQL_STMT_INSERT);
     auto* const req = op->mutable_request();
@@ -49,6 +69,14 @@ class YqlTransactionTest : public YqlDmlTestBase {
     table_.SetInt32ColumnValue(req->add_column_values(), "v", value);
     CHECK_OK(session->Apply(op));
     return op;
+  }
+
+  void InsertRows(const YBSessionPtr& session, size_t transaction = 0) {
+    for (size_t r = 0; r != kNumRows; ++r) {
+      InsertRow(session,
+                KeyForTransactionAndIndex(transaction, r),
+                ValueForTransactionAndIndex(transaction, r));
+    }
   }
 
   // Select the specified columns of a row using a primary key, equivalent to the select statement
@@ -74,8 +102,7 @@ class YqlTransactionTest : public YqlDmlTestBase {
       auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
       auto session = std::make_shared<YBSession>(client_, false /* read_only */, tc);
       session->SetTimeout(5s);
-      InsertRow(session, 1, 3);
-      InsertRow(session, 2, 4);
+      InsertRows(session);
       tc->Commit([&latch](const Status& status) {
           ASSERT_OK(status);
           latch.CountDown(1);
@@ -85,15 +112,32 @@ class YqlTransactionTest : public YqlDmlTestBase {
     LOG(INFO) << "Committed";
   }
 
-  void VerifyData() {
+  void VerifyData(size_t num_transactions = 1) {
+    std::this_thread::sleep_for(1s); // TODO(dtxn) wait for intents to apply
     auto session = client_->NewSession(true /* read_only */);
     session->SetTimeout(5s);
-    auto row1 = SelectRow(session, 1);
-    ASSERT_OK(row1);
-    ASSERT_EQ(3, *row1);
-    auto row2 = SelectRow(session, 2);
-    ASSERT_OK(row2);
-    ASSERT_EQ(4, *row2);
+    for (size_t i = 0; i != num_transactions; ++i) {
+      for (size_t r = 0; r != kNumRows; ++r) {
+        auto row = SelectRow(session, KeyForTransactionAndIndex(i, r));
+        ASSERT_OK(row);
+        ASSERT_EQ(ValueForTransactionAndIndex(i, r), *row);
+      }
+    }
+  }
+
+  size_t CountTransactions() {
+    size_t result = 0;
+    for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      auto* tablet_manager = cluster_->mini_tablet_server(i)->server()->tablet_manager();
+      std::vector<tablet::TabletPeerPtr> peers;
+      tablet_manager->GetTabletPeers(&peers);
+      for (const auto& peer : peers) {
+        if (peer->consensus()->leader_status() != consensus::Consensus::LeaderStatus::NOT_LEADER) {
+          result += peer->tablet()->transaction_coordinator()->test_count_transactions();
+        }
+      }
+    }
+    return result;
   }
 
   TableHandle table_;
@@ -102,7 +146,6 @@ class YqlTransactionTest : public YqlDmlTestBase {
 
 TEST_F(YqlTransactionTest, Simple) {
   WriteData();
-  std::this_thread::sleep_for(1s); // TODO(dtxn)
   VerifyData();
   CHECK_OK(cluster_->RestartSync());
 }
@@ -110,16 +153,72 @@ TEST_F(YqlTransactionTest, Simple) {
 TEST_F(YqlTransactionTest, Cleanup) {
   WriteData();
   std::this_thread::sleep_for(1s); // TODO(dtxn)
-  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    auto* tablet_manager = cluster_->mini_tablet_server(i)->server()->tablet_manager();
-    std::vector<tablet::TabletPeerPtr> peers;
-    tablet_manager->GetTabletPeers(&peers);
-    for (const auto& peer : peers) {
-      ASSERT_EQ(0, peer->tablet()->transaction_coordinator().test_count_transactions());
-    }
-  }
+  ASSERT_EQ(0, CountTransactions());
   VerifyData();
   CHECK_OK(cluster_->RestartSync());
+}
+
+TEST_F(YqlTransactionTest, Heartbeat) {
+  auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(),
+                                            IsolationLevel::SNAPSHOT_ISOLATION);
+  auto session = std::make_shared<YBSession>(client_, false /* read_only */, tc);
+  session->SetTimeout(5s);
+  InsertRows(session);
+  std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_transaction_timeout_usec * 2));
+  CountDownLatch latch(1);
+  tc->Commit([&latch](const Status& status) {
+    EXPECT_OK(status);
+    latch.CountDown();
+  });
+  latch.Wait();
+  VerifyData();
+}
+
+TEST_F(YqlTransactionTest, Expire) {
+  google::FlagSaver flag_saver;
+  FLAGS_transaction_disable_heartbeat_in_tests = true;
+  auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
+  auto session = std::make_shared<YBSession>(client_, false /* read_only */, tc);
+  session->SetTimeout(5s);
+  InsertRows(session);
+  std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_transaction_timeout_usec * 2));
+  CountDownLatch latch(1);
+  tc->Commit([&latch](const Status& status) {
+    EXPECT_TRUE(status.IsExpired()) << "Bad status: " << status.ToString();
+    latch.CountDown();
+  });
+  latch.Wait();
+  std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_transaction_heartbeat_usec * 2));
+  cluster_->CleanTabletLogs();
+  ASSERT_EQ(0, CountTransactions());
+}
+
+TEST_F(YqlTransactionTest, PreserveLogs) {
+  google::FlagSaver flag_saver;
+  FLAGS_transaction_disable_heartbeat_in_tests = true;
+  FLAGS_transaction_timeout_usec = std::chrono::microseconds(60s).count();
+  std::vector<std::shared_ptr<YBTransaction>> transactions;
+  constexpr size_t kTransactions = 20;
+  for (size_t i = 0; i != kTransactions; ++i) {
+    auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
+    auto session = std::make_shared<YBSession>(client_, false /* read_only */, tc);
+    session->SetTimeout(5s);
+    InsertRows(session, i);
+    transactions.push_back(std::move(tc));
+    std::this_thread::sleep_for(100ms);
+  }
+  LOG(INFO) << "Request clean";
+  cluster_->CleanTabletLogs();
+  CHECK_OK(cluster_->RestartSync());
+  CountDownLatch latch(kTransactions);
+  for (auto& transaction : transactions) {
+    transaction->Commit([&latch](const Status& status) {
+      EXPECT_OK(status);
+      latch.CountDown();
+    });
+  }
+  latch.Wait();
+  VerifyData(kTransactions);
 }
 
 } // namespace client

@@ -606,9 +606,8 @@ void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
   tx_state->set_completion_callback(MakeRpcTransactionCompletionCallback(std::move(context), resp));
 
   // Submit the alter schema op. The RPC will be responded to asynchronously.
-  Status s = tablet_peer->Submit(
+  tablet_peer->Submit(
       std::make_unique<tablet::AlterSchemaTransaction>(std::move(tx_state), consensus::LEADER));
-  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
 }
 
 void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
@@ -629,9 +628,7 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
                                                                    &req->state());
   state->set_completion_callback(MakeRpcTransactionCompletionCallback(std::move(context), resp));
 
-  Status status = tablet_peer->Submit(
-      std::make_unique<tablet::UpdateTxnTransaction>(std::move(state), consensus::LEADER));
-  RETURN_UNKNOWN_ERROR_IF_NOT_OK(status, resp, &context);
+  tablet_peer->tablet()->transaction_coordinator()->Handle(std::move(state));
 }
 
 void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,

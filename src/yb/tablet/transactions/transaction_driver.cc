@@ -472,8 +472,8 @@ Status TransactionDriver::CommitWait() {
   // TODO: we could plumb the RPC deadline in here, and not bother commit-waiting
   // if the deadline is already expired.
   RETURN_NOT_OK(
-      mutable_state()->tablet_peer()->clock()->WaitUntilAfter(mutable_state()->hybrid_time(),
-                                                              MonoTime::Max()));
+      mutable_state()->tablet_peer()->clock().WaitUntilAfter(mutable_state()->hybrid_time(),
+                                                             MonoTime::Max()));
   mutable_state()->mutable_metrics()->commit_wait_duration_usec =
       MonoTime::Now(MonoTime::FINE).GetDeltaSince(before).ToMicroseconds();
   return Status::OK();

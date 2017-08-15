@@ -595,11 +595,11 @@ void ReplicaState::StoreRoleAndTerm(RaftPeerPB::Role role, int64_t term) {
 
 Status ReplicaState::InitCommittedIndexUnlocked(const OpId& committed_index) {
   if (!OpIdEquals(last_committed_index_, MinimumOpId())) {
-    return STATUS_SUBSTITUTE(
+    return STATUS_FORMAT(
         IllegalState,
         "Committed index already initialized to: $0, tried to set $1",
-        util::ToString(last_committed_index_),
-        util::ToString(committed_index));
+        last_committed_index_,
+        committed_index);
   }
 
   if (!pending_txns_.empty() && committed_index.index() >= pending_txns_.begin()->first) {
@@ -618,24 +618,24 @@ Status ReplicaState::CheckOperationExist(const OpId& committed_index,
                                          IndexToRoundMap::iterator* end_iter) {
   auto prev = pending_txns_.upper_bound(committed_index.index());
   if (prev == pending_txns_.begin()) {
-    return STATUS_SUBSTITUTE(
+    return STATUS_FORMAT(
         NotFound,
         "No pending entries before committed index: $0 => $1, stack: $2, pending: $3",
-        last_committed_index_.ShortDebugString(),
-        committed_index.ShortDebugString(),
+        last_committed_index_,
+        committed_index,
         GetStackTrace(),
-        yb::util::CollectionToString(pending_txns_));
+        pending_txns_);
   }
   *end_iter = prev;
   --prev;
   const auto prev_id = prev->second->id();
   if (!OpIdEquals(prev_id, committed_index)) {
-    return STATUS_SUBSTITUTE(NotFound,
+    return STATUS_FORMAT(NotFound,
         "No pending entry with committed index: $0 => $1, stack: $2, pending: $3",
-        last_committed_index_.ShortDebugString(),
-        committed_index.ShortDebugString(),
+        last_committed_index_,
+        committed_index,
         GetStackTrace(),
-        yb::util::CollectionToString(pending_txns_));
+        pending_txns_);
   }
   return Status::OK();
 }

@@ -14,7 +14,7 @@ namespace internal {
 template <class Type, bool integral>
 class FormatValue {
  public:
-  explicit FormatValue(const Type& input) : value_(util::ToString(input)) {}
+  explicit FormatValue(const Type& input) : value_(ToString(input)) {}
 
   FormatValue(const FormatValue& rhs) = delete;
   void operator=(const FormatValue& rhs) = delete;
@@ -57,7 +57,7 @@ template <class T>
 class FormatValue<T, true> : public BufferedValue {
  public:
   explicit FormatValue(const T& t) {
-    auto end = util::IntToBuffer(t, buffer_);
+    auto end = IntToBuffer(t, buffer_);
     len_ = end - buffer_;
   }
 };

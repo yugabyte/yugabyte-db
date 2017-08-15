@@ -66,7 +66,7 @@ TEST_F(YBRocksDBLoggerTest, LogvWithContextSmall) {
     const size_t prefix_pos = trimmed_log.find(kPrefix);
     ASSERT_NE(prefix_pos, std::string::npos);
     const std::string log_after_prefix = trimmed_log.substr(prefix_pos + sizeof(kPrefix) - 1);
-    const std::string formatted_text = text + " " + util::ToString(length);
+    const std::string formatted_text = text + " " + ToString(length);
     if (length > google::LogMessage::kMaxLogMessageLen - reserve_for_prefix) {
       // Log part after prefix should be a substring of what we've logged.
       ASSERT_STR_CONTAINS(formatted_text, log_after_prefix);

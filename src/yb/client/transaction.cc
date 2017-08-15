@@ -6,9 +6,11 @@
 
 #include <unordered_set>
 
+#include <boost/uuid/uuid_io.hpp>
 #include <boost/uuid/random_generator.hpp>
 
 #include "yb/rpc/rpc.h"
+#include "yb/rpc/scheduler.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
@@ -25,6 +27,9 @@
 #include "yb/client/transaction_rpc.h"
 
 using namespace std::placeholders;
+
+DEFINE_uint64(transaction_heartbeat_usec, 500000, "Interval of transaction heartbeat in usec.");
+DEFINE_bool(transaction_disable_heartbeat_in_tests, false, "Disable heartbeat during test.");
 
 namespace yb {
 namespace client {
@@ -149,7 +154,7 @@ class YBTransaction::Impl final {
     req.set_tablet_id(status_tablet_->tablet_id());
     auto& state = *req.mutable_state();
     state.set_transaction_id(id_.begin(), id_.size());
-    state.set_status(tserver::COMMITTED);
+    state.set_status(tserver::TransactionStatus::COMMITTED);
     for (const auto& tablet : tablets_) {
       state.add_tablets(tablet.first);
     }
@@ -158,14 +163,12 @@ class YBTransaction::Impl final {
                       status_tablet_.get(),
                       manager_->client().get(),
                       &req,
-                      std::bind(&Impl::UpdateDone, this, _1, transaction));
+                      std::bind(&Impl::CommitDone, this, _1, transaction));
   }
 
-  void UpdateDone(const Status& status, const YBTransactionPtr& transaction) {
-    CHECK_OK(status); // TODO(dtxn) Handle errors.
-
-    VLOG_WITH_PREFIX(1) << "Updated";
-    commit_callback_(Status::OK());
+  void CommitDone(const Status& status, const YBTransactionPtr& transaction) {
+    VLOG_WITH_PREFIX(1) << "Committed: " << status.ToString();
+    commit_callback_(status);
   }
 
   void RequestStatusTablet() {
@@ -205,6 +208,40 @@ class YBTransaction::Impl final {
     for (const auto& waiter : waiters) {
       waiter(status);
     }
+    SendHeartbeat(tserver::TransactionStatus::CREATE, transaction_->shared_from_this());
+  }
+
+  void SendHeartbeat(tserver::TransactionStatus status, const YBTransactionPtr& transaction) {
+    if (complete_.load(std::memory_order_acquire)) {
+      return;
+    }
+
+    if (status != tserver::TransactionStatus::CREATE &&
+        FLAGS_transaction_disable_heartbeat_in_tests) {
+      HeartbeatDone(Status::OK(), status, transaction);
+      return;
+    }
+
+    tserver::UpdateTransactionRequestPB req;
+    req.set_tablet_id(status_tablet_->tablet_id());
+    auto& state = *req.mutable_state();
+    state.set_transaction_id(id_.begin(), id_.size());
+    state.set_status(status);
+    UpdateTransaction(TransactionDeadline(), status_tablet_.get(), manager_->client().get(), &req,
+                      std::bind(&Impl::HeartbeatDone, this, _1, status, transaction));
+  }
+
+  void HeartbeatDone(const Status& status,
+                     tserver::TransactionStatus transaction_status,
+                     const YBTransactionPtr& transaction) {
+    if (status.ok()) {
+      manager_->scheduler().Schedule(
+          std::bind(&Impl::SendHeartbeat, this, tserver::TransactionStatus::PENDING, transaction),
+          std::chrono::microseconds(FLAGS_transaction_heartbeat_usec));
+    } else {
+      LOG_WITH_PREFIX(WARNING) << "Send heartbeat failed: " << status;
+      SendHeartbeat(transaction_status, transaction);
+    }
   }
 
   // Manager is created once per service.
@@ -219,7 +256,7 @@ class YBTransaction::Impl final {
   bool requested_status_tablet_ = false;
   internal::RemoteTabletPtr status_tablet_;
   internal::RemoteTabletPtr status_tablet_holder_;
-  bool complete_ = false;
+  std::atomic<bool> complete_{false};
   CommitCallback commit_callback_;
 
   struct TabletState {

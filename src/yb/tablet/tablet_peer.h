@@ -61,6 +61,7 @@ class TabletPeer;
 class TabletStatusPB;
 class TabletStatusListener;
 class TransactionDriver;
+class UpdateTxnTransactionState;
 
 // A peer in a tablet consensus configuration, which coordinates writes to tablets.
 // Each time Write() is called this class appends a new entry to a replicated
@@ -112,7 +113,12 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   // The tx_state is deallocated after use by this function.
   CHECKED_STATUS SubmitWrite(std::unique_ptr<WriteTransactionState> tx_state);
 
-  CHECKED_STATUS Submit(std::unique_ptr<Transaction> transaction);
+  void Submit(std::unique_ptr<Transaction> transaction);
+
+  std::unique_ptr<UpdateTxnTransactionState> CreateUpdateTransactionState(
+      tserver::TransactionStatePB* request) override;
+
+  void SubmitUpdateTransaction(std::unique_ptr<UpdateTxnTransactionState> state) override;
 
   void GetTabletStatusPB(TabletStatusPB* status_pb_out) const;
 
@@ -210,13 +216,9 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
     return log_.get();
   }
 
-  const scoped_refptr<server::Clock>& clock() const override {
-    return clock_;
+  server::Clock& clock() const override {
+    return *clock_;
   }
-
-  CHECKED_STATUS ApplyIntents(const TransactionId& id,
-                              const consensus::OpId& op_id,
-                              HybridTime hybrid_time) override;
 
   const client::YBClientPtr& client() const override {
     return client_;

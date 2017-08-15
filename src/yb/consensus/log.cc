@@ -282,7 +282,7 @@ Log::Log(LogOptions options, FsManager* fs_manager, string log_path,
       schema_version_(schema_version),
       active_segment_sequence_number_(0),
       log_state_(kLogInitialized),
-      max_segment_size_(options_.segment_size_mb * 1024 * 1024),
+      max_segment_size_(options_.segment_size_bytes),
       entry_batch_queue_(FLAGS_group_commit_queue_size_bytes),
       append_thread_(new AppendThread(this)),
       durable_wal_write_(options_.durable_wal_write),
@@ -707,6 +707,7 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
   CHECK_GE(min_op_idx, 0);
 
   VLOG(1) << "Running Log GC on " << log_dir_ << ": retaining ops >= " << min_op_idx;
+  LOG(INFO) << "Running Log GC on " << log_dir_ << ": retaining ops >= " << min_op_idx;
   VLOG_TIMING(1, "Log GC") {
     SegmentSequence segments_to_delete;
 

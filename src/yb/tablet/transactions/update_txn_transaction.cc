@@ -34,17 +34,28 @@ Status UpdateTxnTransaction::Prepare() {
 
 void UpdateTxnTransaction::Start() {
   if (!state()->has_hybrid_time()) {
-    state()->set_hybrid_time(state()->tablet_peer()->clock()->Now());
+    state()->set_hybrid_time(state()->tablet_peer()->clock().Now());
   }
 }
 
+TransactionCoordinator& UpdateTxnTransaction::transaction_coordinator() const {
+  return *state()->tablet_peer()->tablet()->transaction_coordinator();
+}
+
+ProcessingMode UpdateTxnTransaction::mode() const {
+  return type() == consensus::LEADER ? ProcessingMode::LEADER : ProcessingMode::NON_LEADER;
+}
+
 Status UpdateTxnTransaction::Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) {
-  auto* tablet = state()->tablet_peer()->tablet();
-  auto mode = type() == consensus::LEADER ? ProcessMode::LEADER : ProcessMode::NON_LEADER;
-  return tablet->transaction_coordinator().Process(mode,
-                                                   *state()->request(),
-                                                   state()->op_id(),
-                                                   state()->hybrid_time());
+  auto* state = this->state();
+  TransactionCoordinator::ReplicatedData data = {
+      mode(),
+      state->tablet_peer()->tablet(),
+      *state->request(),
+      state->op_id(),
+      state->hybrid_time()
+  };
+  return transaction_coordinator().ProcessReplicated(data);
 }
 
 string UpdateTxnTransaction::ToString() const {

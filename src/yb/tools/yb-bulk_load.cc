@@ -136,7 +136,7 @@ void CompactionTask::Run() {
     return;
   }
 
-  LOG(INFO) << "Compacting files: " << util::ToString(sst_filenames_);
+  LOG(INFO) << "Compacting files: " << ToString(sst_filenames_);
   CHECK_OK(db_fixture_->rocksdb()->CompactFiles(rocksdb::CompactionOptions(),
                                                 sst_filenames_,
                                                 /* output_level */ 0));
