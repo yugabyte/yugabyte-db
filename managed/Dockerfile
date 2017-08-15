@@ -7,8 +7,9 @@ EXPOSE 9000
 ENTRYPOINT ["bin/yugaware", "-Dconfig.file=conf/application.docker.conf"]
 
 RUN apk add --update build-base bash openssl openssl-dev ca-certificates \
-  openssh py-pip python-dev libffi-dev &&\
+  openssh py-pip python-dev libffi-dev rsync &&\
   rm -rf /var/cache/apk/**/
+RUN pip install cqlsh==5.0.3
 
 USER root
 ADD target/docker/packages/yugaware/yugaware*.tar.gz /opt/yugabyte/yugaware
