@@ -16,7 +16,10 @@ SELECT is(
 );
 SELECT matches(
     pg_version(),
-    '^[89][.][[:digit:]]{1,2}([.][[:digit:]]{1,2}|devel|(alpha|beta|rc)[[:digit:]]+)$',
+    '(?x)'
+    '(?: ^[89][.][[:digit:]]{1,2}([.][[:digit:]]{1,2}|devel|(alpha|beta|rc)[[:digit:]]+) )'
+    '|'
+    '(?: ^1[[:digit:]] (?: [.] [[:digit:]]{1,2} | devel | (?:alpha|beta|rc)[[:digit:]]+))',
     'pg_version() should work'
 );
 
@@ -36,7 +39,7 @@ SELECT is(
 );
 SELECT matches(
     pg_version_num()::text,
-    '^[89][[:digit:]]{4}$',
+    '^[89][[:digit:]]{4}$|^1[[:digit:]]{5}$',
     'pg_version_num() should be correct'
 );
 

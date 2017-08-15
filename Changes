@@ -9,6 +9,8 @@ Revision history for pgTAP
 * Removed references to the Epic test framework, since its domain
   (`epictest.org`) has expired and the project appears to no longer be
   available online. Thanks to Andreas Brekken for the report (#140).
+* Fix failing version tests on PostgreSQL v10. Thanks to Erik Rijkers
+  for the patch.
 
 0.97.0 2016-11-28T22:18:29Z
 ---------------------------
