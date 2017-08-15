@@ -31,11 +31,6 @@ class MonitoredTask;
 
 void HtmlOutputSchemaTable(const Schema& schema,
                            std::stringstream* output);
-void HtmlOutputImpalaSchema(const std::string& keyspace_name,
-                            const std::string& table_name,
-                            const Schema& schema,
-                            const std::string& master_address,
-                            std::stringstream* output);
 void HtmlOutputTasks(const std::unordered_set<std::shared_ptr<MonitoredTask> >& tasks,
                      std::stringstream* output);
 

@@ -258,17 +258,6 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   }
   *output << "</table>\n";
 
-  *output << "<h2>Impala CREATE TABLE statement</h2>\n";
-
-  string master_addresses;
-  vector<string> all_addresses;
-  auto master_addresses_shared_ptr = master_->opts().GetMasterAddresses();  // ENG-285
-  for (const HostPort& hp : *master_addresses_shared_ptr) {
-    all_addresses.push_back(hp.ToString());
-  }
-  master_addresses = JoinElements(all_addresses, ",");
-  HtmlOutputImpalaSchema(keyspace_name, table_name, schema, master_addresses, output);
-
   HtmlOutputTasks(table->GetTasks(), output);
 }
 
