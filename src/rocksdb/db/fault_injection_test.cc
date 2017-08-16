@@ -811,6 +811,8 @@ TEST_P(FaultInjectionTest, WriteOptionSyncTest) {
   Value(1, &value_space);
   ASSERT_OK(ReadValue(1, &val));
   ASSERT_EQ(value_space, val);
+
+  sleeping_task_low.WaitUntilDone();
 }
 
 TEST_P(FaultInjectionTest, UninstalledCompaction) {
@@ -895,6 +897,7 @@ TEST_P(FaultInjectionTest, ManualLogSyncTest) {
   Value(1, &value_space);
   ASSERT_OK(ReadValue(1, &val));
   ASSERT_EQ(value_space, val);
+  sleeping_task_low.WaitUntilDone();
 }
 
 INSTANTIATE_TEST_CASE_P(FaultTest, FaultInjectionTest, ::testing::Bool());
