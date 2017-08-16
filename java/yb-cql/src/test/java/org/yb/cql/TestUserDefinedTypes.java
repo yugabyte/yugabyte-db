@@ -67,6 +67,10 @@ public class TestUserDefinedTypes extends BaseCQLTest {
         // Field types cannot refer to other user defined types
         runInvalidStmt("CREATE TYPE test (a int, b test_all_types);");
         runInvalidStmt("CREATE TYPE test (a int, b frozen<test_all_types>);");
+
+        // Create table with non-existent types should fail.
+        runInvalidStmt("CREATE TABLE test_create_udt(h non_existent_udt primary key)");
+        runInvalidStmt("CREATE TABLE test_create_udt(h non_existent_udt, primary key(h))");
     }
 
     @Test
