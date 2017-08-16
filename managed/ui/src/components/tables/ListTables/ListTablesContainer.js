@@ -9,11 +9,11 @@ const mapDispatchToProps = (dispatch) => {
   return {
     fetchUniverseTables: (universeUUID) => {
       dispatch(fetchUniverseTables(universeUUID)).then((response) => {
-          if (response.payload.status !== 200) {
-            dispatch(fetchUniverseTablesFailure(response.payload));
-          } else {
-            dispatch(fetchUniverseTablesSuccess(response.payload));
-          }
+        if (response.payload.status !== 200) {
+          dispatch(fetchUniverseTablesFailure(response.payload));
+        } else {
+          dispatch(fetchUniverseTablesSuccess(response.payload));
+        }
       });
     },
     showCreateTable: () => {

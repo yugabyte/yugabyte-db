@@ -32,7 +32,7 @@ export default class OnPremConfigWizard extends Component {
     return (
       <div>
         <OnPremStepper currentStep={this.state.currentStep} options={onPremStepperOptions}>
-         {currentWizardStepContainer}
+          {currentWizardStepContainer}
         </OnPremStepper>
       </div>
     )

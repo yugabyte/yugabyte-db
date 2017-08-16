@@ -36,13 +36,12 @@ export default class RegionMap extends Component {
         markerType = region.providerCode;
       }
       let numChildren = region.zones.length;
-      if (type === "Region") {
-        regionMarkers.push(<MapMarker key={idx} latitude={region.latitude}
-                                        longitude={region.longitude} type={markerType} numChildren={numChildren}/>)
-      } else {
-        regionMarkers.push(<MapMarker key={idx} latitude={region.latitude}
-                                        longitude={region.longitude} type={markerType}/>)
-      }
+      const extraMapMarkerProps = (type === "Region") ? {numChildren: numChildren} : {};
+      regionMarkers.push(
+        <MapMarker key={idx} latitude={region.latitude}
+                   longitude={region.longitude} type={markerType}
+                   {...extraMapMarkerProps} />
+      );
       return [region.latitude, region.longitude];
     });
     if (type === "All") {
@@ -57,15 +56,16 @@ export default class RegionMap extends Component {
     const attribution =
       'Copyright &copy; MapBox All rights reserved';
 
-    let regionMap =
+    let regionMap = (
       <Map bounds={bounds} center={[-1, 0]} zoom={1}
            zoomControl={false} className="yb-region-map" minZoom={1} maxZoom={5}
            touchZoom={false} scrollWheelZoom={false} doubleClickZoom={false} draggable={false}>
-         <TileLayer
+        <TileLayer
             attribution={attribution}
             url={`${MAP_SERVER_URL}/{z}/{x}/{y}.png`}/>
         {regionMarkers}
-      </Map>;
+      </Map>
+    );
 
     if (showLabels) {
       var regionLabels = <Col md={12}>No Regions Configured</Col>;

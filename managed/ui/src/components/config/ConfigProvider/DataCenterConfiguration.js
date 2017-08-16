@@ -26,11 +26,12 @@ class DataCenterConfiguration extends Component {
   }
 
   render() {
-    const onPremiseTabContent =
+    const onPremiseTabContent = (
       <div className="on-premise">
         <i className="fa fa-server" />
         On-Premises<br/>Datacenters
-      </div>;
+      </div>
+    );
     return (
       <div>
         <h2>Cloud Provider Configuration</h2>

@@ -14,5 +14,5 @@ export default class TasksList extends Component {
     return (
       <TaskListTable taskList={customerTaskList}/>
     )
-   }
+  }
 }

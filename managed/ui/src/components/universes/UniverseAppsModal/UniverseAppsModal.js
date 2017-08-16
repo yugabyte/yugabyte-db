@@ -83,7 +83,7 @@ export default class UniverseAppsModal extends Component {
 
       var appOptions = appType.options.map(function(option, idx) {
         var option_data = Array.shift(Object.entries(option));
-        return (<p key={idx}>--{ option_data[0] + " " + option_data[1]}</p>);
+        return <p key={idx}>--{ option_data[0] + " " + option_data[1]}</p>;
       })
       return (
         <Tab eventKey={idx} title={appType.title} key={appType.code}>

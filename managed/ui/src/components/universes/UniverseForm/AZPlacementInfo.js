@@ -4,19 +4,19 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { isNonEmptyObject } from 'utils/ObjectUtils';
 const statusTypes =
-{
-  singleRF: {currentStatusIcon: "fa fa-exclamation", currentStatusString: "Primary data placement is not redundant," +
+  {
+    singleRF: {currentStatusIcon: "fa fa-exclamation", currentStatusString: "Primary data placement is not redundant," +
              " universe cannot survive even 1 node failure", currentStatusClass: "yb-warn-color"},
-  azWarning: {currentStatusIcon: "fa fa-exclamation", currentStatusString: "Primary data placement is not geo-redundant," +
+    azWarning: {currentStatusIcon: "fa fa-exclamation", currentStatusString: "Primary data placement is not geo-redundant," +
              " universe cannot survive even 1 availability zone failure", currentStatusClass: "yb-warn-color"},
-  regionWarning: {currentStatusIcon: "fa fa-check", currentStatusString: "Primary data placement is geo-redundant," +
+    regionWarning: {currentStatusIcon: "fa fa-check", currentStatusString: "Primary data placement is geo-redundant," +
                   " universe can survive at least 1 availability zone failure", currentStatusClass: "yb-success-color"},
-  multiRegion: {currentStatusIcon: "fa fa-check", currentStatusString: "Primary data placement is fully geo-redundant," +
+    multiRegion: {currentStatusIcon: "fa fa-check", currentStatusString: "Primary data placement is fully geo-redundant," +
                 " universe can survive at least 1 region failure", currentStatusClass: "yb-success-color"},
-  notEnoughNodesConfigured: {currentStatusIcon: "fa fa-times", currentStatusString: "Not Enough Nodes Configured", currentStatusClass: "yb-fail-color"},
-  notEnoughNodes: {currentStatusIcon: "fa fa-times", currentStatusString: "Not Enough Nodes", currentStatusClass: "yb-fail-color"},
-  noFieldsChanged: {currentStatusIcon: "fa fa-times", currentStatusString: "At Least One Field Must Be Modified", currentStatusClass: "yb-fail-color"}
-}
+    notEnoughNodesConfigured: {currentStatusIcon: "fa fa-times", currentStatusString: "Not Enough Nodes Configured", currentStatusClass: "yb-fail-color"},
+    notEnoughNodes: {currentStatusIcon: "fa fa-times", currentStatusString: "Not Enough Nodes", currentStatusClass: "yb-fail-color"},
+    noFieldsChanged: {currentStatusIcon: "fa fa-times", currentStatusString: "At Least One Field Must Be Modified", currentStatusClass: "yb-fail-color"}
+  }
 
 export default class AZSelectorTable extends Component {
   static propTypes = {

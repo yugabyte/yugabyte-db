@@ -14,16 +14,18 @@ export default class YBMapLegend extends Component {
     var asyncRegions = [{"name": "No async replicas added."}];
     let mapLegendItems = <span/>;
     if (type === "Universe") {
-      mapLegendItems =
+      mapLegendItems = (
         <span>
           <YBMapLegendItem regions={rootRegions} title={"Primary Data"} type="Root"/>
           <YBMapLegendItem regions={asyncRegions} title={"Async Replica"} type="Async"/>
         </span>
+      );
     } else if (type === "Region") {
-      mapLegendItems =
+      mapLegendItems = (
         <span>
           <YBMapLegendItem title={"Regions & Availability Zones"} type="Region"/>
         </span>
+      );
     }
     return (
       <div className="yb-map-legend">

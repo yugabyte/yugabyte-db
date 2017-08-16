@@ -35,16 +35,16 @@ export default class TaskProgress extends Component {
   }
 
   componentWillReceiveProps(nextProps) {
-      if (this.props.taskProgressData !== nextProps.taskProgressData &&
+    if (this.props.taskProgressData !== nextProps.taskProgressData &&
           !getPromiseState(nextProps.taskProgressData).isLoading()) {
-        clearTimeout(this.timeout);
+      clearTimeout(this.timeout);
 
-        const { taskProgressData: { data }} = nextProps;
+      const { taskProgressData: { data }} = nextProps;
         // Check to make sure if the current state is running
-        if (isValidObject(data) && (data.status === "Running" || data.status === "Initializing")) {
-          this.scheduleFetch();
-        }
+      if (isValidObject(data) && (data.status === "Running" || data.status === "Initializing")) {
+        this.scheduleFetch();
       }
+    }
   }
 
   scheduleFetch() {

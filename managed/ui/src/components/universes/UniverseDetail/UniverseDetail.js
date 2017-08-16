@@ -17,7 +17,7 @@ import { YBTabsPanel } from '../../panels';
 import { RegionMap } from '../../maps';
 import { ListTablesContainer } from '../../tables';
 import { YBMapLegend } from '../../maps';
-import { isEmptyObject, isNonEmptyObject, isNonEmptyArray, isDefinedNotNull } from 'utils/ObjectUtils';
+import { isEmptyObject, isNonEmptyObject, isNonEmptyArray } from 'utils/ObjectUtils';
 import {getPromiseState} from 'utils/PromiseUtils';
 import {YBLoadingIcon} from '../../common/indicators';
 import { mouseTrap } from 'react-mousetrap';
@@ -118,7 +118,7 @@ class UniverseDetail extends Component {
         <UniverseTaskList universe={universe}/>
       </Tab>
     ];
-    let currentBreadCrumb =
+    let currentBreadCrumb = (
       <div className="detail-label-small">
         <Link to="/universes">
           <YBLabelWithIcon icon="fa fa-chevron-right fa-fw">
@@ -130,7 +130,8 @@ class UniverseDetail extends Component {
             {currentUniverse.data.name}
           </YBLabelWithIcon>
         </Link>
-      </div>;
+      </div>
+    );
 
     return (
       <Grid id="page-wrapper" fluid={true}>

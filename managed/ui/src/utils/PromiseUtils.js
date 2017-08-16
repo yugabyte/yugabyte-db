@@ -4,11 +4,11 @@ import _ from 'lodash';
 import { Enum } from 'enumify';
 
 class PromiseState extends Enum {
-    isSuccess() { return this === PromiseState.SUCCESS; }
-    isError() { return this === PromiseState.ERROR; }
-    isEmpty() { return this === PromiseState.EMPTY; }
-    isLoading() { return this === PromiseState.LOADING; }
-    isInit() { return this === PromiseState.INIT; }
+  isSuccess() { return this === PromiseState.SUCCESS; }
+  isError() { return this === PromiseState.ERROR; }
+  isEmpty() { return this === PromiseState.EMPTY; }
+  isLoading() { return this === PromiseState.LOADING; }
+  isInit() { return this === PromiseState.INIT; }
 }
 
 PromiseState.initEnum(['INIT', 'SUCCESS', 'LOADING', 'ERROR', 'EMPTY']);

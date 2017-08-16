@@ -138,7 +138,7 @@ class AWSProviderConfiguration extends Component {
         deleteButtonClassName += " delete-btn";
       }
 
-      providerConfig =
+      providerConfig = (
         <div>
           <Row className="config-section-header">
             <Col md={12}>
@@ -162,6 +162,7 @@ class AWSProviderConfiguration extends Component {
             </Col>
           </Row>
         </div>
+      );
     } else {
       let bootstrapSteps = <span />;
       // We don't have bootstrap steps for cleanup.
@@ -169,15 +170,16 @@ class AWSProviderConfiguration extends Component {
         const progressDetailsMap = this.state.bootstrapSteps.map( (step) => {
           return { name: step.name, type: step.state }
         });
-        bootstrapSteps =
+        bootstrapSteps = (
           <div className="aws-config-progress">
             <h5>Bootstrap Steps:</h5>
             <Col lg={12}>
               <ProgressList items={progressDetailsMap} />
             </Col>
           </div>
+        );
       }
-      providerConfig =
+      providerConfig = (
         <form name="awsConfigForm" onSubmit={handleSubmit(this.createProviderConfig.bind(this))}>
           <Row className="config-section-header">
             <Col lg={6}>
@@ -198,7 +200,8 @@ class AWSProviderConfiguration extends Component {
             <YBButton btnText={"Save"} btnClass={"btn btn-default save-btn"}
                       disabled={submitting || promiseState.isLoading() } btnType="submit"/>
           </div>
-        </form>;
+        </form>
+      );
     }
 
     return (
