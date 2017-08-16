@@ -20,23 +20,24 @@ export default class TaskProgressStepBar extends Component {
 
     let currentTaskDetail = details.taskDetails
       .filter((taskDetail) => taskDetail.state === "Running")
-      .map((taskDetail, idx) =>
+      .map((taskDetail, idx) => (
         <div key={`taskdetail-{idx}`}>
           <h4>Current Task: {taskDetail.title}</h4>
           <Row className="description-text-container">
-          <Col lg={8} className="description-text">
-            {taskDetail.description}
-          </Col>
+            <Col lg={8} className="description-text">
+              {taskDetail.description}
+            </Col>
           </Row>
-        </div>);
+        </div>
+      ));
 
     return (
       <Row>
         <Col lg={8}>
-        <div className="progress-bar-container">
-          <h4>Task Progress</h4>
-          <StepProgressBar progressData={this.props.progressData} />
-        </div>
+          <div className="progress-bar-container">
+            <h4>Task Progress</h4>
+            <StepProgressBar progressData={this.props.progressData} />
+          </div>
         </Col>
         <Col lg={4}>
           {currentTaskDetail}

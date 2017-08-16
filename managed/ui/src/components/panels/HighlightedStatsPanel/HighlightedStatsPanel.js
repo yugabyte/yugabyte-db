@@ -42,8 +42,10 @@ export default class HighlightedStatsPanel extends Component {
       numNodes += universeItem.universeDetails.userIntent.numNodes;
       totalCost += universeItem.pricePerHour * 24 * moment().daysInMonth();
     });
-    const formattedCost = <YBFormattedNumber value={totalCost} maximumFractionDigits={2}
-                                             formattedNumberStyle="currency" currency="USD"/>;
+    const formattedCost = (
+      <YBFormattedNumber value={totalCost} maximumFractionDigits={2}
+        formattedNumberStyle="currency" currency="USD"/>
+    );
     return (
       <div className="row tile_count highlighted-stats-panel">
         <Col sm={6} smOffset={3}>

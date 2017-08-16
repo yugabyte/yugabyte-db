@@ -109,13 +109,14 @@ class GCPProviderConfiguration extends Component {
       const progressDetailsMap = this.state.bootstrapSteps.map( (step) => {
         return { name: step.name, type: step.state }
       });
-      bootstrapSteps =
+      bootstrapSteps = (
         <div className="aws-config-progress">
           <h5>Bootstrap Steps:</h5>
           <Col lg={12}>
             <ProgressList items={progressDetailsMap} />
           </Col>
         </div>
+      );
     }
 
     if (getPromiseState(configuredProviders).isLoading()) {
@@ -224,16 +225,16 @@ class GCPConfigureSuccess extends Component {
       <div className="provider-config-container">
         <Row className="config-section-header">
           <Col md={12}>
-              <span className="pull-right" title={deleteButtonTitle}>
-                <YBButton btnText="Delete Configuration" disabled={deleteButtonDisabled}
+            <span className="pull-right" title={deleteButtonTitle}>
+              <YBButton btnText="Delete Configuration" disabled={deleteButtonDisabled}
                           btnClass={deleteButtonClassName} onClick={this.props.showDeleteProviderModal}/>
-                <YBConfirmModal name="delete-aws-provider" title={"Confirm Delete"}
+              <YBConfirmModal name="delete-aws-provider" title={"Confirm Delete"}
                                 onConfirm={handleSubmit(this.deleteProviderConfig.bind(this, gcpProvider))}
                                 currentModal="deleteGCPProvider" visibleModal={this.props.visibleModal}
                                 hideConfirmModal={this.props.hideDeleteProviderModal}>
                   Are you sure you want to delete this GCP configuration?
                 </YBConfirmModal>
-              </span>
+            </span>
             <DescriptionList listItems={providerInfo} />
           </Col>
         </Row>

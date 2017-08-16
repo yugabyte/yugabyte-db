@@ -197,7 +197,7 @@ class ListTableGrid extends Component {
       }
     }
     var sortedListItems = _.sortBy(listItems, "tableName");
-    var tableListDisplay =
+    var tableListDisplay = (
       <BootstrapTable data={sortedListItems} >
         <TableHeaderColumn dataField="tableID" isKey={true} hidden={true} />
         <TableHeaderColumn dataField={"tableType"} dataFormat={ getTableIcon }
@@ -218,7 +218,8 @@ class ListTableGrid extends Component {
                            columnClassName={"yb-table-cell"} >
           Write</TableHeaderColumn>
       </BootstrapTable>
+    );
 
-    return (<div>{tableListDisplay}</div>)
+    return <div>{tableListDisplay}</div>;
   }
 }

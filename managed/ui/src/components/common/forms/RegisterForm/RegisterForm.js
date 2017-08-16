@@ -38,7 +38,7 @@ class RegisterForm extends Component {
           </PageHeader>
           <form onSubmit={handleSubmit(this.props.registerCustomer.bind(this))}>
             <div className={`alert alert-danger form-error-alert ${authToken.error ? '': 'hide'}`}>
-                {<strong>{JSON.stringify(authToken.error)}</strong>}
+              {<strong>{JSON.stringify(authToken.error)}</strong>}
             </div>
             <div className="form-right-aligned-labels">
               <Field name="name" type="text" component={YBInputField} label="Full Name"/>

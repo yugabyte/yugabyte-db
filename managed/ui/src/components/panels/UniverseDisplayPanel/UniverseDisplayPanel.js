@@ -18,13 +18,13 @@ class CreateUniverseButtonComponent extends Component {
       <Col sm={4} md={3} lg={2}>
         <Link to="/universes/create">
           <div className="create-universe-button" {...this.props}>
-          <div className="btn-icon">
-            <i className="fa fa-plus"/>
-          </div>
-          <div className="display-name text-center">
+            <div className="btn-icon">
+              <i className="fa fa-plus"/>
+            </div>
+            <div className="display-name text-center">
             Create Universe
           </div>
-        </div>
+          </div>
         </Link>
       </Col>
     );

@@ -26,18 +26,18 @@ export default class NodeDetails extends Component {
       return <span />;
     }
     const nodeDetailRows = nodeDetails.map(function(nodeDetail){
-       return {
-          name: nodeDetail.nodeName,
-          regionAz: `${nodeDetail.cloudInfo.region}/${nodeDetail.cloudInfo.az}`,
-          isMaster: nodeDetail.isMaster ? "Yes" : "No",
-          masterPort: nodeDetail.masterHttpPort,
-          tserverPort: nodeDetail.tserverHttpPort,
-          isTServer: nodeDetail.isTserver ? "Yes" : "No",
-          privateIP: nodeDetail.cloudInfo.private_ip,
-          publicIP: nodeDetail.cloudInfo.public_ip,
-          nodeStatus: nodeDetail.state,
-          cloudInfo: nodeDetail.cloudInfo
-        }
+      return {
+        name: nodeDetail.nodeName,
+        regionAz: `${nodeDetail.cloudInfo.region}/${nodeDetail.cloudInfo.az}`,
+        isMaster: nodeDetail.isMaster ? "Yes" : "No",
+        masterPort: nodeDetail.masterHttpPort,
+        tserverPort: nodeDetail.tserverHttpPort,
+        isTServer: nodeDetail.isTserver ? "Yes" : "No",
+        privateIP: nodeDetail.cloudInfo.private_ip,
+        publicIP: nodeDetail.cloudInfo.public_ip,
+        nodeStatus: nodeDetail.state,
+        cloudInfo: nodeDetail.cloudInfo
+      }
     });
 
     var formatIpPort = function(cell, row, type) {
@@ -50,7 +50,7 @@ export default class NodeDetails extends Component {
       } else {
         href = "http://" + row.privateIP + ":" + row.tserverPort
       }
-      return (<a href={href} target="_blank">{cell}</a>);
+      return <a href={href} target="_blank" rel="noopener noreferrer">{cell}</a>;
     }
 
     const nodeIPs = nodeDetailRows.map(function(node) {
@@ -64,7 +64,7 @@ export default class NodeDetails extends Component {
     var getNodeNameLink = function(cell, row) {
       if (row.cloudInfo.cloud === "aws") {
         var awsURI = `https://${row.cloudInfo.region}.console.aws.amazon.com/ec2/v2/home?region=${row.cloudInfo.region}#Instances:search=${cell};sort=availabilityZone`;
-        return <a href={awsURI} target="_blank">{cell}</a>
+        return <a href={awsURI} target="_blank" rel="noopener noreferrer">{cell}</a>
       } else {
         return cell;
       }

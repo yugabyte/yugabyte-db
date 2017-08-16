@@ -6,7 +6,6 @@ import { YBButton } from '../../common/forms/fields';
 import {withRouter} from 'react-router';
 import {isValidObject} from 'utils/ObjectUtils';
 import { getPromiseState } from 'utils/PromiseUtils';
-import { DescriptionList } from '../../common/descriptors';
 import { YBConfirmModal } from '../../modals';
 import { RegionMap, YBMapLegend } from '../../maps';
 

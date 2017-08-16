@@ -37,7 +37,7 @@ export default class TableDetail extends Component {
       tables: { currentTableDetail }
     } = this.props;
     if (getPromiseState(currentUniverse).isSuccess()) {
-      tableInfoContent =
+      tableInfoContent = (
         <div>
           <Row className={"table-detail-row"}>
             <Col lg={4}>
@@ -53,6 +53,7 @@ export default class TableDetail extends Component {
             </Col>
           </Row>
         </div>
+      );
     }
     var tableSchemaContent = <span/>;
     if (isValidObject(currentTableDetail)) {

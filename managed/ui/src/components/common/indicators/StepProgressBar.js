@@ -25,7 +25,7 @@ export default class StepProgressBar extends Component {
     }, this);
     return (
       <ul className="progressbar">
-            {listLabels}
+        {listLabels}
       </ul>
     )
   }

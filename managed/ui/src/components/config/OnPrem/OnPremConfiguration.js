@@ -219,10 +219,10 @@ export default class OnPremConfiguration extends Component {
       this.setState({configJsonVal: payloadData, isEditProvider: false});
     } else {
       this.setState({numRegions: totalNumRegions,
-                    numZones: totalNumZones,
-                    numInstanceTypes: totalNumInstances,
-                    configJsonVal: payloadData,
-                    providerUUID: currentProvider.uuid
+        numZones: totalNumZones,
+        numInstanceTypes: totalNumInstances,
+        configJsonVal: payloadData,
+        providerUUID: currentProvider.uuid
       }, function () {
         if (totalNumInstances > 0) {
           self.props.createOnPremInstanceTypes(currentProvider.code, currentProvider.uuid, payloadData, true);
@@ -259,9 +259,11 @@ export default class OnPremConfiguration extends Component {
     var switchToWizardEntry = <YBButton btnText={"Switch to Wizard View"} btnClass={"btn btn-default pull-left"} onClick={this.toggleJsonEntry}/>;
     let ConfigurationDataForm = <OnPremConfigWizardContainer switchToJsonEntry={switchToJsonEntry} submitWizardJson={this.submitWizardJson}/>;
     if (this.state.isJsonEntry) {
-      ConfigurationDataForm = <OnPremConfigJSONContainer updateConfigJsonVal={this.updateConfigJsonVal}
-                                                         configJsonVal={_.isString(this.state.configJsonVal) ? this.state.configJsonVal : JSON.stringify(JSON.parse(JSON.stringify(this.state.configJsonVal)), null, 2)}
-                                                         switchToWizardEntry={switchToWizardEntry} submitJson={this.submitJson}/>
+      ConfigurationDataForm = (
+        <OnPremConfigJSONContainer updateConfigJsonVal={this.updateConfigJsonVal}
+          configJsonVal={_.isString(this.state.configJsonVal) ? this.state.configJsonVal : JSON.stringify(JSON.parse(JSON.stringify(this.state.configJsonVal)), null, 2)}
+          switchToWizardEntry={switchToWizardEntry} submitJson={this.submitJson}/>
+      );
     }
     return (
       <div className="on-prem-provider-container">

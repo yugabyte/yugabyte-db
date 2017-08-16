@@ -71,9 +71,11 @@ export default class KeyColumnList extends Component {
   removeRowItem(index) {
     const {columnType} = this.props;
     if (columnType !== "partitionKey" || index > 0) {
-      return <YBButton btnClass="btn btn-xs remove-item-btn"
-                       btnIcon="fa fa-minus"
-                       onClick={() => this.removeKeyItem(index)} />;
+      return (
+        <YBButton btnClass="btn btn-xs remove-item-btn"
+                  btnIcon="fa fa-minus"
+                  onClick={() => this.removeKeyItem(index)} />
+      );
     } else {
       return <span/>;
     }
@@ -105,7 +107,7 @@ export default class KeyColumnList extends Component {
 
     return (
       <div className="form-field-grid">
-        {fields.map((item, index) =>
+        {fields.map((item, index) => (
           <span key={item+index}>
             <Row>
               <Col md={5}>
@@ -124,7 +126,7 @@ export default class KeyColumnList extends Component {
             <CollectionSubtypeRow name={`${item}.subrow`} tables={this.props.tables} item={item}
                                   columnType={this.state.selectedTypes[index]} />
           </span>
-        )}
+        ))}
         <Row>
           <Col md={12} className="add-key-column key-row-heading" onClick={this.addKeyItem}>
             <i className="fa fa-plus" />&nbsp;Add {getFieldLabel()} Column

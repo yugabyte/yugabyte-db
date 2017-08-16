@@ -48,8 +48,10 @@ export default class UniverseTable extends Component {
             return a.data.createTime < b.data.createTime;
           })
         }
-        return <YBUniverseItem {...self.props} key={idx} universe={item} idx={idx}
-                               taskId={universeTaskUUIDs} universeReadWriteData={universeReadWriteData} />
+        return (
+          <YBUniverseItem {...self.props} key={idx} universe={item} idx={idx}
+                          taskId={universeTaskUUIDs} universeReadWriteData={universeReadWriteData} />
+        );
       });
     return (
       <ListGroup>
@@ -67,7 +69,7 @@ class YBUniverseItem extends Component {
         <ListGroupItem >
           <Row>
             <Col sm={4}>
-               <Link to={`/universes/${universe.universeUUID}`}><div className={"universe-name-cell"}>{universe.name}</div></Link>
+              <Link to={`/universes/${universe.universeUUID}`}><div className={"universe-name-cell"}>{universe.name}</div></Link>
             </Col>
             <Col sm={2} className="universe-create-date-container">
               <div >Created: {moment(universe.creationDate).format("MM/DD/YYYY, hh:mm a")}</div>

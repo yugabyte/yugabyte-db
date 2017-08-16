@@ -5,8 +5,6 @@ import { Row, Col } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { FieldArray } from 'redux-form';
 import { withRouter } from 'react-router';
-import queryString from 'query-string';
-import { clone } from 'lodash';
 
 import { getPromiseState } from 'utils/PromiseUtils';
 import { isNonEmptyObject, isNonEmptyArray } from 'utils/ObjectUtils';
@@ -41,10 +39,10 @@ class OnPremNodesList extends Component {
     ).shift()
 
     let zoneList = currentCloudRegions.reduce(function(azs, r) {
-                         azs[r.code] = [];
-                          r.zones.map((z) => azs[r.code][z.code.trim()] = z.uuid);
-                         return azs
-                       }, {});
+      azs[r.code] = [];
+      r.zones.map((z) => azs[r.code][z.code.trim()] = z.uuid);
+      return azs
+    }, {});
     let instanceTypeList = [];
     if (isNonEmptyObject(vals.instances)) {
       instanceTypeList = Object.keys(vals.instances).map(function(region) {
@@ -83,7 +81,7 @@ class OnPremNodesList extends Component {
   }
 
   render() {
-    const {cloud :{nodeInstanceList, instanceTypes, supportedRegionList}, handleSubmit, location} = this.props;
+    const {cloud :{nodeInstanceList, instanceTypes, supportedRegionList}, handleSubmit} = this.props;
     var nodeListItems = [];
     if (getPromiseState(nodeInstanceList).isSuccess()) {
       nodeListItems = nodeInstanceList.data.map(function(item) {
@@ -99,17 +97,17 @@ class OnPremNodesList extends Component {
     }
     var removeNodeItem = function(row, cell) {
       if (cell)
-      return <i className={`fa fa-trash remove-cell-container`}/>;
+        return <i className={`fa fa-trash remove-cell-container`}/>;
     }
 
     let currentCloudRegions = supportedRegionList.data.filter(region => region.provider.code === "onprem");
     var regionFormTemplate = isNonEmptyArray(currentCloudRegions) ?
       currentCloudRegions.map(function(regionItem, idx){
         var zoneOptions = regionItem.zones.map(function(zoneItem, zoneIdx){
-        return <option key={zoneItem+zoneIdx} value={zoneItem.code}>{zoneItem.code}</option>});
+          return <option key={zoneItem+zoneIdx} value={zoneItem.code}>{zoneItem.code}</option>});
         var machineTypeOptions = instanceTypes.data.map(function(machineTypeItem, mcIdx){
-        return <option key={machineTypeItem+mcIdx} value={machineTypeItem.instanceTypeCode}>{machineTypeItem.instanceTypeCode}</option>;
-      });
+          return <option key={machineTypeItem+mcIdx} value={machineTypeItem.instanceTypeCode}>{machineTypeItem.instanceTypeCode}</option>;
+        });
         zoneOptions.unshift(<option key={-1} value={""}>Select</option>);
         machineTypeOptions.unshift(<option key={-1} value={""}>Select</option>);
         return (
@@ -121,7 +119,7 @@ class OnPremNodesList extends Component {
             </div>
           </div>
         )
-    }) : null;
+      }) : null;
 
     return (
       <div>

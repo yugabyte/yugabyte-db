@@ -13,8 +13,8 @@ const mapDispatchToProps = (dispatch, ownProps) => {
         var formSubmitVals = {
           provider: {name: formData.name},
           key: {code: formData.name.toLowerCase().replace(/ /g, "-") + "-key",
-                privateKeyContent: formData.privateKeyContent,
-                sshUser: formData.sshUser }
+            privateKeyContent: formData.privateKeyContent,
+            sshUser: formData.sshUser }
         };
         dispatch(setOnPremConfigData(formSubmitVals));
       }
@@ -45,11 +45,11 @@ const mapStateToProps = (state, ownProps) => {
       }),
       regionsZonesList: onPremJsonFormData.regions.map(function(regionZoneItem, rIdx){
         return {code: regionZoneItem.code,
-                location: Number(regionZoneItem.latitude) + ", " + Number(regionZoneItem.longitude),
-                zones: regionZoneItem.zones.map(function(zoneItem){
-                  return zoneItem
-                }).join(", ")}
-        })
+          location: Number(regionZoneItem.latitude) + ", " + Number(regionZoneItem.longitude),
+          zones: regionZoneItem.zones.map(function(zoneItem){
+            return zoneItem
+          }).join(", ")}
+      })
     };
   }
   return {

@@ -34,12 +34,15 @@ export default class TaskListTable extends Component {
       if (!isValidObject(cell)) {
         return "<span>-</span>";
       } else {
-        return <FormattedDate value={new Date(cell)}
-                              year='numeric'
-                              month='long'
-                              day='2-digit'
-                              hour='numeric'
-                              minute='numeric'/>
+        return (
+          <FormattedDate
+            value={new Date(cell)}
+            year='numeric'
+            month='long'
+            day='2-digit'
+            hour='numeric'
+            minute='numeric' />
+        );
       }
     }
 
@@ -50,9 +53,11 @@ export default class TaskListTable extends Component {
         case "Initializing":
           return <span className="yb-pending-color"><i className='fa fa-spinner fa-spin'/> Initializing</span>;
         case "Running":
-          return <span className="yb-pending-color">
-            <i className='fa fa-spinner fa-spin'/>Pending ({percentFormatter(row.percentComplete, row)})
-          </span>;
+          return (
+            <span className="yb-pending-color">
+              <i className='fa fa-spinner fa-spin'/>Pending ({percentFormatter(row.percentComplete, row)})
+          </span>
+          );
         case "Failure":
           return <span className="yb-fail-color"><i className='fa fa-warning' /> Failed</span> ;
         default:
