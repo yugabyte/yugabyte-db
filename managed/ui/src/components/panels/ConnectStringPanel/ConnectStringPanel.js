@@ -11,10 +11,11 @@ export default class ConnectStringPanel extends Component {
     var universeId = universeInfo.universeUUID;
     const endpointUrl = ROOT_URL + "/customers/" + customerId +
                         "/universes/" + universeId + "/masters";
-    const endpoint =
-      <a href={endpointUrl} target="_blank">Endpoint &nbsp;
+    const endpoint = (
+      <a href={endpointUrl} target="_blank" rel="noopener noreferrer">Endpoint &nbsp;
         <i className="fa fa-external-link" aria-hidden="true"></i>
-      </a>;
+      </a>
+    );
     var connectStringPanelItems = [
       {name: "Meta Masters", data: endpoint},
       {name: "Server Version", data: userIntent.ybSoftwareVersion || 'n/a'},

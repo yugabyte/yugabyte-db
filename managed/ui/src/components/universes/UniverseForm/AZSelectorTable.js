@@ -84,37 +84,37 @@ export default class AZSelectorTable extends Component {
       if (isEmptyObject(currentUniverse.data)) {
         this.props.submitConfigureUniverse(newTaskParams);
       } else if (!areUniverseConfigsEqual(newTaskParams, currentUniverse.data.universeDetails)) {
-          newTaskParams.universeUUID = currentUniverse.data.universeUUID;
-          newTaskParams.expectedUniverseVersion = currentUniverse.data.version;
-          this.props.submitConfigureUniverse(newTaskParams);
+        newTaskParams.universeUUID = currentUniverse.data.universeUUID;
+        newTaskParams.expectedUniverseVersion = currentUniverse.data.version;
+        this.props.submitConfigureUniverse(newTaskParams);
       } else {
         let placementStatusObject = {
-            error: {
-              type: "noFieldsChanged",
-              numNodes: totalNodesInConfig,
-              maxNumNodes: maxNumNodes
-            }
+          error: {
+            type: "noFieldsChanged",
+            numNodes: totalNodesInConfig,
+            maxNumNodes: maxNumNodes
           }
-          this.props.setPlacementStatus(placementStatusObject);
+        }
+        this.props.setPlacementStatus(placementStatusObject);
       }
     } else if (totalNodesInConfig > maxNumNodes && currentProvider.code === "onprem") {
-        let placementStatusObject = {
-          error: {
-            type: "notEnoughNodesConfigured",
-            numNodes: totalNodesInConfig,
-            maxNumNodes: maxNumNodes
-          }
+      let placementStatusObject = {
+        error: {
+          type: "notEnoughNodesConfigured",
+          numNodes: totalNodesInConfig,
+          maxNumNodes: maxNumNodes
         }
-        this.props.setPlacementStatus(placementStatusObject);
+      }
+      this.props.setPlacementStatus(placementStatusObject);
     } else {
-        let placementStatusObject = {
-          error: {
-            type: "notEnoughNodes",
-            numNodes: totalNodesInConfig,
-            maxNumNodes: maxNumNodes
-          }
+      let placementStatusObject = {
+        error: {
+          type: "notEnoughNodes",
+          numNodes: totalNodesInConfig,
+          maxNumNodes: maxNumNodes
         }
-        this.props.setPlacementStatus(placementStatusObject);
+      }
+      this.props.setPlacementStatus(placementStatusObject);
     }
   }
 
@@ -154,8 +154,8 @@ export default class AZSelectorTable extends Component {
       });
     }
     return ({groups: groupsArray,
-             uniqueRegions: uniqueRegions.length,
-             uniqueAzs: [...new Set(groupsArray.map(item => item.value))].length})
+      uniqueRegions: uniqueRegions.length,
+      uniqueAzs: [...new Set(groupsArray.map(item => item.value))].length})
   };
 
   componentWillMount() {
@@ -171,7 +171,7 @@ export default class AZSelectorTable extends Component {
     var azGroups = placementInfo.groups;
     if (!areUniverseConfigsEqual(this.props.universe.universeConfigTemplate.data, universeConfigTemplate.data)
         && isValidObject(universeConfigTemplate.data.placementInfo)) {
-       this.setState({azItemState: azGroups});
+      this.setState({azItemState: azGroups});
     }
     if (isValidObject(universeConfigTemplate.data) && isValidObject(universeConfigTemplate.data.placementInfo) &&
     !_.isEqual(universeConfigTemplate, this.props.universe.universeConfigTemplate)) {
@@ -198,7 +198,7 @@ export default class AZSelectorTable extends Component {
     if (isValidObject(universeConfigTemplate.data.userIntent) && 
       isNonEmptyArray(universeConfigTemplate.data.userIntent.regionList)
     ) {
-       azListForSelectedRegions = regions.data.filter(
+      azListForSelectedRegions = regions.data.filter(
         region => universeConfigTemplate.data.userIntent.regionList.includes(region.uuid)
       ).reduce((az, region) => az.concat(region.zones), []);
     }
@@ -213,22 +213,22 @@ export default class AZSelectorTable extends Component {
     if (isNonEmptyArray(azGroups) && isNonEmptyArray(azListForSelectedRegions)) {
       azList = azGroups.map((azGroupItem, idx) => (
         <Row key={idx} >
-        <Col sm={6}>
-          <Field name={`select${idx}`} component={YBControlledSelect}
+          <Col sm={6}>
+            <Field name={`select${idx}`} component={YBControlledSelect}
                  options={azListOptions} selectVal={azGroupItem.value}
                  onInputChanged={self.handleAZChange.bind(self, idx)}/>
-        </Col>
-        <Col sm={6}>
-          <Field name={`nodes${idx}`} component={YBControlledNumericInput}
+          </Col>
+          <Col sm={6}>
+            <Field name={`nodes${idx}`} component={YBControlledNumericInput}
             val={azGroupItem.count}
             onInputChanged={self.handleAZNodeCountChange.bind(self, idx)}/>
-        </Col>
-      </Row>
+          </Col>
+        </Row>
     ));
-    return (
-      <div className={"az-table-container form-field-grid"}>
-        <h4>Availability Zones</h4>
-        {azList}
+      return (
+        <div className={"az-table-container form-field-grid"}>
+          <h4>Availability Zones</h4>
+          {azList}
         </div>
       );
     }

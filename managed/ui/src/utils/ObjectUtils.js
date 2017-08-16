@@ -132,9 +132,9 @@ export function arePlacementInfoEqual(placementInfo1, placementInfo2) {
   for (let cloud1Idx = 0 ; cloud1Idx < placementInfo1.cloudList.length; cloud1Idx ++) {
     let cloudFound = false;
     for(let cloud2Idx = 0; cloud2Idx < placementInfo2.cloudList.length; cloud2Idx ++) {
-       if (areProviderObjectsEqual(placementInfo1.cloudList[cloud1Idx], placementInfo2.cloudList[cloud2Idx])) {
-         cloudFound = true;
-       }
+      if (areProviderObjectsEqual(placementInfo1.cloudList[cloud1Idx], placementInfo2.cloudList[cloud2Idx])) {
+        cloudFound = true;
+      }
     }
     if (!cloudFound) {
       return false;

@@ -20,7 +20,7 @@ export default class YBTextArea extends Component {
     }
     return (
       <YBLabel label={label} insetError={insetError} meta={meta}>
-      <FormControl {...input} componentClass="textarea" placeholder={placeHolder} type={type} className={className}
+        <FormControl {...input} componentClass="textarea" placeholder={placeHolder} type={type} className={className}
                    onChange={onChange} readOnly={isReadOnly} />
       </YBLabel>
     );

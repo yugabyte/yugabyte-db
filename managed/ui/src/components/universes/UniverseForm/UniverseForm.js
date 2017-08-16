@@ -470,20 +470,22 @@ class UniverseForm extends Component {
         if (providerItem.uuid === self.state.providerSelected) {
           currentProviderCode = providerItem.code;
         }
-        return <option key={providerItem.uuid} value={providerItem.uuid}>
-          {providerItem.name}
-        </option>;
+        return (
+          <option key={providerItem.uuid} value={providerItem.uuid}>
+            {providerItem.name}
+          </option>
+        );
       });
     }
     universeProviderList.unshift(<option key="" value=""></option>);
 
     var ebsTypesList = cloud.ebsTypes && cloud.ebsTypes.map(function (ebsType, idx) {
-        return <option key={ebsType} value={ebsType}>{ebsType}</option>
-      });
+      return <option key={ebsType} value={ebsType}>{ebsType}</option>
+    });
 
     var universeRegionList = cloud.regions.data && cloud.regions.data.map(function (regionItem, idx) {
-        return {value: regionItem.uuid, label: regionItem.name};
-      });
+      return {value: regionItem.uuid, label: regionItem.name};
+    });
 
     var universeInstanceTypeList = <option/>;
     if (currentProviderCode === "aws") {
@@ -497,11 +499,12 @@ class UniverseForm extends Component {
           return(
             <optgroup label={`${key.toUpperCase()} type instances`} key={key+idx}>
               {
-                optGroups[key].sort(function(a, b) { return /\d+(?!\.)/.exec(a) - /\d+(?!\.)/.exec(b) }).map(function(item, arrIdx){
-                  return (<option key={idx+arrIdx} value={item}>
-                    {item}
-                  </option>)
-                })
+                optGroups[key].sort((a, b) => (/\d+(?!\.)/.exec(a) - /\d+(?!\.)/.exec(b)))
+                  .map((item, arrIdx) => (
+                    <option key={idx+arrIdx} value={item}>
+                      {item}
+                    </option>
+                  ))
               }
             </optgroup>
           )
@@ -510,10 +513,12 @@ class UniverseForm extends Component {
     } else {
       universeInstanceTypeList =
         cloud.instanceTypes.data && cloud.instanceTypes.data.map(function (instanceTypeItem, idx) {
-          return <option key={instanceTypeItem.instanceTypeCode}
+          return (
+            <option key={instanceTypeItem.instanceTypeCode}
                          value={instanceTypeItem.instanceTypeCode}>
-            {instanceTypeItem.instanceTypeCode}
-          </option>
+              {instanceTypeItem.instanceTypeCode}
+            </option>
+          );
         });
     }
     if (isNonEmptyArray(universeInstanceTypeList)) {
@@ -527,15 +532,15 @@ class UniverseForm extends Component {
       submitLabel = 'Save';
     }
 
-    var softwareVersionOptions = softwareVersions.map(function(item, idx){
-      return <option key={idx} value={item}>{item}</option>
-    })
+    var softwareVersionOptions = softwareVersions.map((item, idx) => (
+      <option key={idx} value={item}>{item}</option>
+    ));
 
     var accessKeyOptions = <option key={1} value={this.state.accessKeyCode}>{this.state.accessKeyCode}</option>;
     if (_.isObject(accessKeys) && isNonEmptyArray(accessKeys.data)) {
-      accessKeyOptions = accessKeys.data.map(function(item, idx){
-        return <option key={idx} value={item.idKey.keyCode}>{item.idKey.keyCode}</option>
-      })
+      accessKeyOptions = accessKeys.data.map((item, idx) => (
+        <option key={idx} value={item.idKey.keyCode}>{item.idKey.keyCode}</option>
+      ));
     }
 
     var placementStatus = <span/>;
@@ -553,16 +558,17 @@ class UniverseForm extends Component {
       if (self.state.volumeType === 'EBS') {
         let iopsField = <span/>;
         if (self.state.deviceInfo.ebsType === 'IO1') {
-          iopsField =
+          iopsField = (
             <span>
               <label className="form-item-label">Provisioned IOPS</label>
               <span className="volume-info-field volume-info-iops">
                 <Field name="diskIops" component={YBControlledNumericInput} label="Provisioned IOPS"
                        val={self.state.deviceInfo.diskIops} onInputChanged={self.diskIopsChanged}/>
               </span>
-            </span>;
+            </span>
+          );
         }
-        deviceDetail =
+        deviceDetail = (
           <span className="volume-info">
             <span className="volume-info-field volume-info-count">
               <Field name="volumeCount" component={YBControlledNumericInput}
@@ -574,28 +580,32 @@ class UniverseForm extends Component {
                      valueFormat={volumeTypeFormat} onInputChanged={self.volumeSizeChanged}/>
             </span>
             {iopsField}
-          </span>;
-        ebsTypeSelector =
+          </span>
+        );
+        ebsTypeSelector = (
           <span>
             <Field name="ebsType" component={YBControlledSelectWithLabel} options={ebsTypesList}
                    label="EBS Type" selectVal={self.state.ebsType}
                    onInputChanged={self.ebsTypeChanged}/>
-          </span>;
+          </span>
+        );
       } else if (self.state.volumeType === 'SSD') {
         let mountPointsDetail = <span />;
         if (self.state.deviceInfo.mountPoints != null) {
-          mountPointsDetail =
+          mountPointsDetail = (
             <span>
               <label className="form-item-label">Mount Points</label>
               {self.state.deviceInfo.mountPoints}
-            </span>;
+            </span>
+          );
         }
-        deviceDetail =
+        deviceDetail = (
           <span className="volume-info">
             {self.state.deviceInfo.numVolumes} &times;&nbsp;
             {volumeTypeFormat(self.state.deviceInfo.volumeSize)} {self.state.volumeType} &nbsp;
             {mountPointsDetail}
-          </span>;
+          </span>
+        );
       }
     }
 

@@ -16,16 +16,18 @@ export default class UniverseInfoPanel extends Component {
     const { universeDetails } = universeInfo;
     const { userIntent } = universeDetails;
     var universeId = universeInfo.universeUUID;
-    var formattedCreationDate =
+    var formattedCreationDate = (
       <FormattedDate value={universeInfo.creationDate}
                      year='numeric' month='long' day='2-digit'
-                     hour='2-digit' minute='2-digit' second='2-digit' timeZoneName='short' />;
+                     hour='2-digit' minute='2-digit' second='2-digit' timeZoneName='short' />
+    );
     const endpointUrl = ROOT_URL + "/customers/" + customerId +
                         "/universes/" + universeId + "/yqlservers";
-    const endpoint =
-      <a href={endpointUrl} target="_blank">Endpoint &nbsp;
+    const endpoint = (
+      <a href={endpointUrl} target="_blank" rel="noopener noreferrer">Endpoint &nbsp;
         <i className="fa fa-external-link" aria-hidden="true"></i>
-      </a>;
+      </a>
+    );
     var universeInfoItems = [
       {name: "Universe ID", data: universeId},
       {name: "Customer ID", data: customerId},

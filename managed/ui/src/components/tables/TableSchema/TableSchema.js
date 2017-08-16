@@ -48,7 +48,7 @@ export default class TableSchema extends Component {
             <h5 className="no-bottom-margin">Partition Key Columns</h5>
           </Col>
           <Col lg={9}>
-             <SchemaRowDefinition rows={partitionKeyRows}/>
+            <SchemaRowDefinition rows={partitionKeyRows}/>
           </Col>
         </Row>
         <hr />
@@ -66,7 +66,7 @@ export default class TableSchema extends Component {
             <h5 className="no-bottom-margin">Other Columns</h5>
           </Col>
           <Col lg={9}>
-             <SchemaRowDefinition rows={otherKeyRows}/>
+            <SchemaRowDefinition rows={otherKeyRows}/>
           </Col>
         </Row>
         <Row className="schema-table-level-row">
@@ -93,11 +93,11 @@ class SchemaRowDefinition extends Component {
     if (isNonEmptyArray(rows)) {
       rowEntries = rows.map(function(item, idx){
         return (
-        <Row key={idx}>
-          <Col lg={4}>{item.name}</Col>
-          <Col lg={4}>{item.type}</Col>
-          <Col lg={3}>{item.sortOrder === 'NONE' ? '' : item.sortOrder}</Col>
-        </Row>
+          <Row key={idx}>
+            <Col lg={4}>{item.name}</Col>
+            <Col lg={4}>{item.type}</Col>
+            <Col lg={3}>{item.sortOrder === 'NONE' ? '' : item.sortOrder}</Col>
+          </Row>
         )
       });
     }

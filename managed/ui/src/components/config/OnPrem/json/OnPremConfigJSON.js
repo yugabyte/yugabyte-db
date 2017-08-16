@@ -20,7 +20,7 @@ class ConfigFormTitle extends Component {
       <div className="sample-config-item-label">
         <Col lg={9} className="color-grey">{titleText}</Col>
         <Col lg={3} className="text-right">
-            <YBButton btnIcon="fa fa-files-o" btnText={"Copy"} onClick={copyTextToForm}/>
+          <YBButton btnIcon="fa fa-files-o" btnText={"Copy"} onClick={copyTextToForm}/>
         </Col>
       </div>
     )
@@ -55,17 +55,17 @@ export default class OnPremConfigJSON extends Component {
     return (
       <div>
         <Row className="form-data-container">
-        <Col lg={5} className="sample-config-item">
-          <Row className="color-light-grey">
-            <ConfigFormTitle text={this.sampleJsonPretty}
+          <Col lg={5} className="sample-config-item">
+            <Row className="color-light-grey">
+              <ConfigFormTitle text={this.sampleJsonPretty}
                              titleText={"Example Datacenter Configuration"}
                              copyTextToForm={this.copyTextToForm}/>
-          </Row>
-          <Highlight className='json'>{this.sampleJsonPretty}</Highlight>
-        </Col>
-        <Col lg={5} id="sample-panel-item">
-          <YBPanelItem name={configTitle} hideToolBox={true}>
-            <AceEditor
+            </Row>
+            <Highlight className='json'>{this.sampleJsonPretty}</Highlight>
+          </Col>
+          <Col lg={5} id="sample-panel-item">
+            <YBPanelItem name={configTitle} hideToolBox={true}>
+              <AceEditor
               theme="github"
               mode="json"
               onChange={this.onChange}
@@ -76,9 +76,9 @@ export default class OnPremConfigJSON extends Component {
               showPrintMargin={false}
               wrapEnabled={true}
             />
-          </YBPanelItem>
-        </Col>
-      </Row>
+            </YBPanelItem>
+          </Col>
+        </Row>
         <Row>
           {switchToWizardEntry}
           <YBButton btnText={"Submit"} btnType={"submit"} btnClass={"btn btn-default save-btn pull-right"} onClick={submitJson}/>

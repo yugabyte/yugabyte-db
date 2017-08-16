@@ -22,7 +22,7 @@ export default class YBMapLegendItem extends Component {
     console.log(type);
     let mapLegendDetails = <span/>;
     if (type !== "Region") {
-      mapLegendDetails =
+      mapLegendDetails = (
         <ListGroup>
           {
             regions.map(function(item, idx){
@@ -30,6 +30,7 @@ export default class YBMapLegendItem extends Component {
             })
           }
         </ListGroup>
+      );
     }
     return (
       <div className="map-legend-item">

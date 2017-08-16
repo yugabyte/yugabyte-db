@@ -18,7 +18,7 @@ class AuthenticatedComponent extends Component {
 
   componentWillMount() {
     this.props.bindShortcut(['ctrl+shift+n', 'ctrl+shift+m', 'ctrl+shift+t',
-                             'ctrl+shift+l', 'ctrl+shift+c', 'ctrl+shift+d'],
+      'ctrl+shift+l', 'ctrl+shift+c', 'ctrl+shift+d'],
                             this._keyEvent);
     this.props.bindShortcut('?', this._toggleShortcutsHelp);
   }

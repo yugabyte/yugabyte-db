@@ -1,5 +1,6 @@
 ---
-extends: 'react-app'
+extends:
+  - 'react-app'
 
 plugins:
   - import
@@ -8,3 +9,7 @@ rules:
   import/named: 2
   import/namespace: 2
   import/export: 2
+
+  indent: [1, 2, {"SwitchCase": 1}]
+  react/jsx-indent: [1, 2]
+  react/jsx-wrap-multilines: 1

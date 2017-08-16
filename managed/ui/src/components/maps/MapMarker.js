@@ -51,7 +51,7 @@ export default class MapMarker extends Component {
         shadowAnchor: [10, 30]
       });
     } else if (type === "Region") {
-        opts['icon'] = divIcon({className: 'marker-cluster-small provider-marker-cluster', html: numChildren})
+      opts['icon'] = divIcon({className: 'marker-cluster-small provider-marker-cluster', html: numChildren})
     } else {
       var markerData = RootMarkerIcon;
       opts['icon'] = new Icon({

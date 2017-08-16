@@ -36,10 +36,12 @@ export default class UniverseRegionMarkerLayer extends Component {
           azMarkerPoints.push(azPoint);
         });
         azPoints.forEach(function(azItem, azIdx){
-          let label = <span>
-                        <div>Name: {regionItem.azList[azIdx].name}</div>
-                        <div>Number Of Nodes: {regionItem.azList[azIdx].numNodesInAZ}</div>
-                      </span>;
+          let label = (
+            <span>
+              <div>Name: {regionItem.azList[azIdx].name}</div>
+              <div>Number Of Nodes: {regionItem.azList[azIdx].numNodesInAZ}</div>
+            </span>
+          );
           markerDataArray.push(
             <MapMarker key={"az-marker-" + regionIdx + azIdx} type="AZMarker" latitude={azItem[0]} longitude={azItem[1]} label={label} labelType={"tooltip"}/>
           )

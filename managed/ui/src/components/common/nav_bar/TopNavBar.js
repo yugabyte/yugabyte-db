@@ -11,44 +11,44 @@ import './stylesheets/TopNavBar.scss';
 import {LinkContainer} from 'react-router-bootstrap';
 
 export default class TopNavBar extends Component {
-	constructor(props) {
-		super(props);
-		this.handleLogout = this.handleLogout.bind(this);
-	}
+  constructor(props) {
+    super(props);
+    this.handleLogout = this.handleLogout.bind(this);
+  }
 
-	handleLogout(event) {
-		localStorage.clear();
-		this.props.logoutProfile();
-	}
+  handleLogout(event) {
+    localStorage.clear();
+    this.props.logoutProfile();
+  }
 
-	render() {
-		return (
-			<Navbar fixedTop>
-				<Navbar.Header>
-					<Link to="/" className="col-md-3 left_col text-center">
-						<YBLogo />
-					</Link>
-				</Navbar.Header>
-				<Nav pullRight>
-					<NavDropdown eventKey="1" title={<i className="fa fa-list fa-fw"></i>} id="task-alert-dropdown">
-						<TaskAlertsContainer eventKey="1"/>
-					</NavDropdown>
-					<NavDropdown eventKey="2" title={<i className="fa fa-user fa-fw"></i>} id="profile-dropdown">
-						<LinkContainer to="/profile">
-							<MenuItem eventKey="2.1">
-								<i className="fa fa-user fa-fw"></i>Profile
+  render() {
+    return (
+      <Navbar fixedTop>
+        <Navbar.Header>
+          <Link to="/" className="col-md-3 left_col text-center">
+            <YBLogo />
+          </Link>
+        </Navbar.Header>
+        <Nav pullRight>
+          <NavDropdown eventKey="1" title={<i className="fa fa-list fa-fw"></i>} id="task-alert-dropdown">
+            <TaskAlertsContainer eventKey="1"/>
+          </NavDropdown>
+          <NavDropdown eventKey="2" title={<i className="fa fa-user fa-fw"></i>} id="profile-dropdown">
+            <LinkContainer to="/profile">
+              <MenuItem eventKey="2.1">
+                <i className="fa fa-user fa-fw"></i>Profile
 							</MenuItem>
-						</LinkContainer>
-						<LinkContainer to="/login">
-							<MenuItem eventKey="2.2" id="logoutLink" onClick={this.handleLogout}>
-								<i className="fa fa-sign-out fa-fw"></i>Logout
+            </LinkContainer>
+            <LinkContainer to="/login">
+              <MenuItem eventKey="2.2" id="logoutLink" onClick={this.handleLogout}>
+                <i className="fa fa-sign-out fa-fw"></i>Logout
 							</MenuItem>
-						</LinkContainer>
-					</NavDropdown>
-				</Nav>
+            </LinkContainer>
+          </NavDropdown>
+        </Nav>
 
         <HighlightedStatsPanelContainer />
-			</Navbar>
-		);
-	}
+      </Navbar>
+    );
+  }
 }

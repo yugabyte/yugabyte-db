@@ -37,10 +37,9 @@ class FlagItems extends Component {
     var addFlagItem = function() {
       fields.push({})
     }
-    var gFlagsFieldList = fields.map(function(item, idx){
-      return <FlagInput item={item} key={idx}
-                        deleteRow={() => fields.remove(idx)} />
-    })
+    var gFlagsFieldList = fields.map((item, idx) => (
+      <FlagInput item={item} key={idx} deleteRow={() => fields.remove(idx)} />
+    ));
 
     return (
       <div>
@@ -109,21 +108,26 @@ export default class RollingUpgradeForm extends Component {
     }
     if (visibleModal === "softwareUpgradesModal") {
       title="Upgrade Software";
-      formBody = <span>
-                   <Col lg={12} className="form-section-title">
-                     Software Package Version
-                   </Col>
-                  <Field name="ybSoftwareVersion" type="select" component={YBSelectWithLabel}
-                         options={softwareVersionOptions} label="Server Version" onInputChanged={this.softwareVersionChanged}/>
-                 </span>
+      formBody = (
+        <span>
+          <Col lg={12} className="form-section-title">
+            Software Package Version
+          </Col>
+          <Field name="ybSoftwareVersion" type="select" component={YBSelectWithLabel}
+            options={softwareVersionOptions} label="Server Version"
+            onInputChanged={this.softwareVersionChanged}/>
+        </span>
+      );
     } else {
       title = "GFlags";
-      formBody = <span>
-                   <Col lg={12} className="form-section-title">
-                     Set Flag
-                   </Col>
-                   <FieldArray name="gflags" component={FlagItems} resetRollingUpgrade={resetRollingUpgrade}/>
-                 </span>
+      formBody = (
+        <span>
+          <Col lg={12} className="form-section-title">
+            Set Flag
+          </Col>
+          <FieldArray name="gflags" component={FlagItems} resetRollingUpgrade={resetRollingUpgrade}/>
+        </span>
+      );
     }
 
     let itemList = <span/>;

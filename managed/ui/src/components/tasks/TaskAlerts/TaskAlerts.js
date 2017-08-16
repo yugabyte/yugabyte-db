@@ -70,9 +70,9 @@ export default class TaskAlerts extends Component {
     var tasksDisplayList = [];
     if (isNonEmptyArray(customerTaskList)) {
       var displayItems = customerTaskList.slice(0, 4);
-      tasksDisplayList = displayItems.map(function(listItem, idx){
-        return (<AlertItem key={`alertItem${idx}`} taskInfo={listItem}/>)
-      });
+      tasksDisplayList = displayItems.map((listItem, idx) => (
+        <AlertItem key={`alertItem${idx}`} taskInfo={listItem}/>
+      ));
     }
 
     return (

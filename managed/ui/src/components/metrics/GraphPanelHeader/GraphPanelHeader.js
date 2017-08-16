@@ -89,10 +89,10 @@ class GraphPanelHeader extends Component {
         filterValue: currentQuery.filterValue
       }
       if (currentQuery.filterType === "custom") {
-          filterParams.startMoment = moment.unix(currentQuery.startDate);
-          filterParams.endMoment = moment.unix(currentQuery.endDate);
-          filterParams.filterValue  = "";
-          filterParams.filterLabel = "Custom";
+        filterParams.startMoment = moment.unix(currentQuery.startDate);
+        filterParams.endMoment = moment.unix(currentQuery.endDate);
+        filterParams.filterValue  = "";
+        filterParams.filterLabel = "Custom";
       } else {
         var currentFilterItem = filterTypes.find(filterType => filterType.type === currentQuery.filterType
                                                  && filterType.value === currentQuery.filterValue);
@@ -179,7 +179,7 @@ class GraphPanelHeader extends Component {
       if (universeList.data[counter].universeUUID === event.target.value) {
         universeFound = true;
         self.setState({currentSelectedUniverse: universeList[counter], nodePrefix: universeList.data[counter].universeDetails.nodePrefix,
-                       nodeName: "all"});
+          nodeName: "all"});
         newParams.nodePrefix = universeList.data[counter].universeDetails.nodePrefix;
         break;
       }
@@ -242,7 +242,7 @@ class GraphPanelHeader extends Component {
     const { origin } = this.props;
     var datePicker = null;
     if (this.state.filterLabel === "Custom") {
-      datePicker =
+      datePicker = (
         <span className="graph-filter-custom" >
           <DateTimePicker
             value={this.state.startMoment.toDate()}
@@ -255,7 +255,8 @@ class GraphPanelHeader extends Component {
             max={new Date()} min={this.state.startMoment.toDate()} />
             &nbsp;
           <YBButton btnIcon={"fa fa-caret-right"} onClick={this.applyCustomFilter} />
-        </span>;
+        </span>
+      );
     }
 
     var self = this;
@@ -275,8 +276,10 @@ class GraphPanelHeader extends Component {
 
     var universePicker = <span/>;
     if (origin === "customer") {
-      universePicker = <UniversePicker {...this.props} universeItemChanged={this.universeItemChanged}
-      selectedUniverse={self.state.currentSelectedUniverse}/>;
+      universePicker = (
+        <UniversePicker {...this.props} universeItemChanged={this.universeItemChanged}
+          selectedUniverse={self.state.currentSelectedUniverse} />
+      );
     }
     return (
       <Grid className="x_panel graph-panel">
@@ -347,12 +350,13 @@ class NodePicker extends Component {
     const {selectedUniverse, nodeItemChanged, selectedNode} = this.props;
     var nodeItems =[];
     if (isNonEmptyObject(selectedUniverse) && selectedUniverse!== "all") {
-      nodeItems = selectedUniverse.universeDetails.nodeDetailsSet.sort((a, b) => a.nodeName.toLowerCase() > b.nodeName.toLowerCase())
-                    .map(function(nodeItem, nodeIdx){
-                          return <option key={nodeIdx} value={nodeItem.nodeName}>
-                               {nodeItem.nodeName}
-                             </option>
-                          })
+      nodeItems = selectedUniverse.universeDetails.nodeDetailsSet
+        .sort((a, b) => a.nodeName.toLowerCase() > b.nodeName.toLowerCase())
+        .map((nodeItem, nodeIdx) => (
+          <option key={nodeIdx} value={nodeItem.nodeName}>
+            {nodeItem.nodeName}
+          </option>
+        ));
     }
     var nodeOptionArray=[<option key={-1} value="all">All</option>].concat(nodeItems);
     return (

@@ -88,7 +88,7 @@ export function fetchTableDetailFailure(error) {
 
 
 export function createUniverseTableSuccess(result) {
-    return {
+  return {
     type: CREATE_UNIVERSE_TABLE_SUCCESS,
     payload: result
   };
