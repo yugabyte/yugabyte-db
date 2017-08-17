@@ -145,6 +145,7 @@ Status BuildTable(const std::string& dbname,
       builder->Add(key, value);
       auto boundaries = MakeFileBoundaryValues(boundary_values_extractor, key, value);
       if (!boundaries) {
+        builder->Abandon();
         return std::move(boundaries.status());
       }
       auto& boundary_values = *boundaries;
