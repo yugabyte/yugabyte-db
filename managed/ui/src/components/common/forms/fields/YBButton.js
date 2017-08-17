@@ -12,6 +12,6 @@ export default class YBButton extends Component {
         <i className={btnIcon}></i>
         {btnText}
       </Button>
-    )
+    );
   }
 }

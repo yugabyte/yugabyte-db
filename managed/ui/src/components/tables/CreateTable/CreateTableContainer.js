@@ -83,7 +83,7 @@ const mapDispatchToProps = (dispatch) => {
     hideModal: () => {
       dispatch(closeDialog());
     }
-  }
+  };
 };
 
 const validate = (values, props) => {

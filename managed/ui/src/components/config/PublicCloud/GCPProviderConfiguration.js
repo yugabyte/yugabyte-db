@@ -30,7 +30,7 @@ class GCPProviderConfiguration extends Component {
         {type: "accessKey", name: "Create Access Key", state: "Initializing"},
         {type: "initialize", name: "Create Instance Types", state: "Initializing"}
       ]
-    }
+    };
   }
 
   submitGCPConfiguration(vals) {
@@ -49,7 +49,7 @@ class GCPProviderConfiguration extends Component {
         } catch (e) {
           self.setState({"error": "Invalid GCP config JSON file"});
         }
-      }
+      };
     } else {
       this.setState({"error": "GCP Config JSON is required"});
     }
@@ -62,7 +62,7 @@ class GCPProviderConfiguration extends Component {
       const currentStepIndex = bootstrapSteps.findIndex( (step) => step.type === type );
       if (currentStepIndex !== -1) {
         if (promiseState.isLoading()) {
-          bootstrapSteps[currentStepIndex].state = "Running"
+          bootstrapSteps[currentStepIndex].state = "Running";
         } else {
           bootstrapSteps[currentStepIndex].state = error ? "Error" : "Success";
         }
@@ -73,13 +73,13 @@ class GCPProviderConfiguration extends Component {
         case "provider":
           let providerUUID = response.uuid;
           this.setState({providerUUID: providerUUID});
-          let regionVals = {code: "us-west1", name: "us-west1"} // Default for now
+          let regionVals = {code: "us-west1", name: "us-west1"}; // Default for now
           this.props.createGCPRegions(providerUUID, regionVals);
           break;
         case "region":
           let keyInfo = {
             code: "yb-" + convertSpaceToDash(this.state.accountName.toLowerCase()) + "-key"
-          }
+          };
           this.props.createGCPAccessKey(this.state.providerUUID, response.uuid, keyInfo);
           break;
         case "accessKey":
@@ -107,7 +107,7 @@ class GCPProviderConfiguration extends Component {
     // We don't have bootstrap steps for cleanup.
     if (type && type !== "cleanup") {
       const progressDetailsMap = this.state.bootstrapSteps.map( (step) => {
-        return { name: step.name, type: step.state }
+        return { name: step.name, type: step.state };
       });
       bootstrapSteps = (
         <div className="aws-config-progress">
@@ -175,7 +175,7 @@ class GCPProviderConfiguration extends Component {
           </div>
         </form>
       </div>
-    )
+    );
   }
 }
 
@@ -193,7 +193,7 @@ class GCPConfigureSuccess extends Component {
       gcpProviderName = gcpProvider.name;
       if (isNonEmptyArray(accessKeys.data)) {
         let accessKey = accessKeys.data.find((key) => {
-          return key.idKey.providerUUID === gcpProvider.uuid
+          return key.idKey.providerUUID === gcpProvider.uuid;
         });
         if (isNonEmptyObject(accessKey)) {
           gcpKey = accessKey.idKey.keyCode;
@@ -245,7 +245,7 @@ class GCPConfigureSuccess extends Component {
           </Col>
         </Row>
       </div>
-    )
+    );
   }
 }
 export default withRouter(GCPProviderConfiguration);

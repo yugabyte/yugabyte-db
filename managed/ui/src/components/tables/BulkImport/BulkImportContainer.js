@@ -12,7 +12,7 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(bulkImportResponse(response.payload));
       });
     }
-  }
+  };
 };
 
 function mapStateToProps(state) {

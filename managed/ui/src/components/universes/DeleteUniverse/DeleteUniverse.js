@@ -45,6 +45,6 @@ export default class DeleteUniverse extends Component {
           <YBButton btnStyle="primary" onClick={this.confirmDelete} btnText="Yes"/>
         </Modal.Footer>
       </Modal>
-    )
+    );
   }
 }

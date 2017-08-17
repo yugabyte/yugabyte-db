@@ -14,12 +14,12 @@ const mapDispatchToProps = (dispatch) => {
         if(response.payload.status === 200) {
           dispatch(closeDialog());
         }
-      })
+      });
     },
     resetRollingUpgrade: () => {
       dispatch(resetRollingUpgrade());
     }
-  }
+  };
 };
 
 function mapStateToProps(state, ownProps) {
@@ -28,10 +28,10 @@ function mapStateToProps(state, ownProps) {
   if (isNonEmptyObject(currentUniverse) && currentUniverse.data.universeDetails.userIntent) {
     let currentGFlags = currentUniverse.data.universeDetails.userIntent.gflags;
     let gFlagList = Object.keys(currentGFlags).map(function(gFlagKey){
-      return {name: gFlagKey, value: currentGFlags[gFlagKey]}
+      return {name: gFlagKey, value: currentGFlags[gFlagKey]};
     });
     if (isNonEmptyArray(gFlagList)) {
-      initalGFlagValues = {gflags: gFlagList}
+      initalGFlagValues = {gflags: gFlagList};
     }
   }
   return {

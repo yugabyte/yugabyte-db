@@ -53,7 +53,7 @@ export function validateFromTokenResponse(response) {
   return {
     type: VALIDATE_FROM_TOKEN_RESPONSE,
     payload: response
-  }
+  };
 }
 
 export function register(formValues) {
@@ -68,7 +68,7 @@ export function registerResponse(response) {
   return {
     type: REGISTER_RESPONSE,
     payload: response
-  }
+  };
 }
 
 export function login(formValues) {
@@ -83,7 +83,7 @@ export function loginResponse(response) {
   return {
     type: LOGIN_RESPONSE,
     payload: response
-  }
+  };
 }
 export function logout() {
   const request = axios.get(`${ROOT_URL}/logout`);
@@ -103,13 +103,13 @@ export function logoutFailure(error) {
   return {
     type: LOGOUT_FAILURE,
     payload: error
-  }
+  };
 }
 
 export function resetCustomer() {
   return {
     type: RESET_CUSTOMER
-  }
+  };
 }
 
 export function updateProfile(values) {
@@ -118,21 +118,21 @@ export function updateProfile(values) {
   return {
     type: UPDATE_PROFILE,
     payload: request
-  }
+  };
 }
 
 export function updateProfileSuccess(response) {
   return {
     type: UPDATE_PROFILE_SUCCESS,
     payload: response
-  }
+  };
 }
 
 export function updateProfileFailure(error) {
   return {
     type: UPDATE_PROFILE_FAILURE,
     payload: error
-  }
+  };
 }
 
 export function fetchSoftwareVersions() {
@@ -141,21 +141,21 @@ export function fetchSoftwareVersions() {
   return {
     type: FETCH_SOFTWARE_VERSIONS,
     payload: request
-  }
+  };
 }
 
 export function fetchSoftwareVersionsSuccess(result) {
   return {
     type: FETCH_SOFTWARE_VERSIONS_SUCCESS,
     payload: result
-  }
+  };
 }
 
 export function fetchSoftwareVersionsFailure(error) {
   return {
     type: FETCH_SOFTWARE_VERSIONS_FAILURE,
     payload: error
-  }
+  };
 }
 
 export function fetchHostInfo() {
@@ -164,21 +164,21 @@ export function fetchHostInfo() {
   return {
     type: FETCH_HOST_INFO,
     payload: request
-  }
+  };
 }
 
 export function fetchHostInfoSuccess(result) {
   return {
     type: FETCH_HOST_INFO_SUCCESS,
     payload: result
-  }
+  };
 }
 
 export function fetchHostInfoFailure(error) {
   return {
     type: FETCH_HOST_INFO_FAILURE,
     payload: error
-  }
+  };
 }
 
 

@@ -24,7 +24,7 @@ const mapDispatchToProps = (dispatch) => {
         } else {
           dispatch(fetchHostInfoSuccess(response.payload));
         }
-      })
+      });
     },
 
     fetchSoftwareVersions: () => {
@@ -34,7 +34,7 @@ const mapDispatchToProps = (dispatch) => {
         } else {
           dispatch(fetchSoftwareVersionsSuccess(response.payload));
         }
-      })
+      });
     },
 
     fetchTableColumnTypes: () => {
@@ -76,12 +76,12 @@ const mapDispatchToProps = (dispatch) => {
     getSupportedRegionList: () => {
       dispatch(getSupportedRegionData()).then((response) => {
         dispatch(getSupportedRegionDataResponse(response.payload));
-      })
+      });
     },
     resetUniverseList: () => {
       dispatch(resetUniverseList());
     }
-  }
+  };
 };
 
 const mapStateToProps = (state) => {

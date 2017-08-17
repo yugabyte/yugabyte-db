@@ -24,7 +24,7 @@ export default class TableSchema extends Component {
         } else {
           otherKeyRows.push(item);
         }
-      })
+      });
     }
     let ttlMessage = <span />;
     if (ttlInSeconds > 0) {
@@ -82,7 +82,7 @@ export default class TableSchema extends Component {
           </Col>
         </Row>
       </div>
-    )
+    );
   }
 }
 
@@ -98,13 +98,13 @@ class SchemaRowDefinition extends Component {
             <Col lg={4}>{item.type}</Col>
             <Col lg={3}>{item.sortOrder === 'NONE' ? '' : item.sortOrder}</Col>
           </Row>
-        )
+        );
       });
     }
     return (
       <div>
         {rowEntries}
       </div>
-    )
+    );
   }
 }

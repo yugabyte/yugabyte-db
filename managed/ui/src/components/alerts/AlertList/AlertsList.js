@@ -27,6 +27,6 @@ export default class AlertsList extends Component {
           </Col>
         </Row>
       </div>
-    )
+    );
   }
 }

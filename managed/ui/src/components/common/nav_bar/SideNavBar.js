@@ -19,7 +19,7 @@ class NavLink extends Component {
       <li className={isActive ? 'active' : ''}>
         <LinkComponent to={to} title={text} {...props}><i className={icon}></i><span>{text}</span></LinkComponent>
       </li>
-    )
+    );
   }
 }
 

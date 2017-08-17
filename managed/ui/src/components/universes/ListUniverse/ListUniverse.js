@@ -32,6 +32,6 @@ export default class ListUniverse extends Component {
         </Row>
         <UniverseTableContainer />
       </div>
-    )
+    );
   }
 }

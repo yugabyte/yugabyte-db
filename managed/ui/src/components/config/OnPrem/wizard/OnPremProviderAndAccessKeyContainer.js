@@ -20,8 +20,8 @@ const mapDispatchToProps = (dispatch, ownProps) => {
       }
       ownProps.nextPage();
     }
-  }
-}
+  };
+};
 
 const mapStateToProps = (state, ownProps) => {
   let initialFormValues = {};
@@ -39,16 +39,16 @@ const mapStateToProps = (state, ownProps) => {
           memSizeGB: item.memSizeGB,
           volumeSizeGB: item.volumeDetailsList[0].volumeSizeGB,
           mountPath: item.volumeDetailsList.map(function(volItem) {
-            return volItem.mountPath
+            return volItem.mountPath;
           }).join(", ")
-        }
+        };
       }),
       regionsZonesList: onPremJsonFormData.regions.map(function(regionZoneItem, rIdx){
         return {code: regionZoneItem.code,
           location: Number(regionZoneItem.latitude) + ", " + Number(regionZoneItem.longitude),
           zones: regionZoneItem.zones.map(function(zoneItem){
-            return zoneItem
-          }).join(", ")}
+            return zoneItem;
+          }).join(", ")};
       })
     };
   }
@@ -57,7 +57,7 @@ const mapStateToProps = (state, ownProps) => {
     cloud: state.cloud,
     initialValues: initialFormValues
   };
-}
+};
 
 const validate = values => {
   const errors = {};

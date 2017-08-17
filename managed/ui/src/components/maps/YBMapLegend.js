@@ -32,7 +32,7 @@ export default class YBMapLegend extends Component {
         {this.props.title && <h4>{this.props.title}</h4>}
         {mapLegendItems}
       </div>
-    )
+    );
   }
 }
 

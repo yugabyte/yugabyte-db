@@ -61,7 +61,7 @@ export default class TaskProgress extends Component {
       return <YBLoadingIcon/>;
     }
     if (type === "StepBar") {
-      return <TaskProgressStepBar progressData={taskProgressData.data}/>
+      return <TaskProgressStepBar progressData={taskProgressData.data}/>;
     } else {
       return <TaskProgressBar progressData={taskProgressData.data} />;
     }

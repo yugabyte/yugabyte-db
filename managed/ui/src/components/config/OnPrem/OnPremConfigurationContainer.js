@@ -43,9 +43,9 @@ const mapDispatchToProps = (dispatch) => {
           if ((isEdit && type.isBeingEdited) || !isEdit) {
             dispatch(createInstanceType(providerType, providerUUID, type)).then((response) => {
               dispatch(createInstanceTypeResponse(response.payload));
-            })
+            });
           }
-        })
+        });
       }
     },
 
@@ -68,9 +68,9 @@ const mapDispatchToProps = (dispatch) => {
           if ((isEdit && region.isBeingEdited) || !isEdit) {
             dispatch(createRegion(providerUUID, formValues)).then((response) => {
               dispatch(createRegionResponse(response.payload));
-            })
+            });
           }
-        })
+        });
       }
     },
 
@@ -84,7 +84,7 @@ const mapDispatchToProps = (dispatch) => {
               });
             }
           }
-        })
+        });
       }
     },
 
@@ -119,12 +119,12 @@ const mapDispatchToProps = (dispatch) => {
     fetchProviderList: () => {
       dispatch(getProviderList()).then((response) => {
         dispatch(getProviderListResponse(response.payload));
-      })
+      });
     },
     setConfigJsonData: (payload) => {
       dispatch(setOnPremConfigData(payload));
     }
-  }
+  };
 };
 
 export default connect(mapStateToProps, mapDispatchToProps)(OnPremConfiguration);

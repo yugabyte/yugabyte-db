@@ -57,7 +57,7 @@ export default class TableDetail extends Component {
     }
     var tableSchemaContent = <span/>;
     if (isValidObject(currentTableDetail)) {
-      tableSchemaContent = <TableSchema tableInfo={currentTableDetail}/>
+      tableSchemaContent = <TableSchema tableInfo={currentTableDetail}/>;
     }
     var tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab">

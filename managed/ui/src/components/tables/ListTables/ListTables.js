@@ -36,14 +36,14 @@ class TableTitle extends Component {
           </Button>
         </div>
       </div>
-    )
+    );
   }
 }
 
 export default class ListTables extends Component {
   constructor(props) {
     super(props);
-    this.state = {'currentView': 'listTables'}
+    this.state = {'currentView': 'listTables'};
     this.showCreateTable = this.showCreateTable.bind(this);
     this.showListTables = this.showListTables.bind(this);
     this.fetchUniverseTables = this.fetchUniverseTables.bind(this);
@@ -61,7 +61,7 @@ export default class ListTables extends Component {
   fetchUniverseTables(universeTasks, universeUUID) {
     let createUniverseTask = universeTasks.data[universeUUID].find(function(task){
       return task.target === "Universe" && task.type === "Create" && task.status === "Running" && task.percentComplete < 100;
-    })
+    });
     if (!isDefinedNotNull(createUniverseTask)) {
       this.props.fetchUniverseTables(universeUUID);
     }
@@ -109,15 +109,15 @@ export default class ListTables extends Component {
                       onCreateButtonClick={this.showCreateTable}/>
           <ListTableGrid {...this.props}/>
         </div>
-      )
+      );
     } else if (tables.currentTableView === "create") {
       return (
         <div>
           <CreateTableContainer showListTables={this.showListTables}/>
         </div>
-      )
+      );
     } else {
-      return <span/>
+      return <span/>;
     }
   }
 }
@@ -130,7 +130,7 @@ class ListTableGrid extends Component {
     const {universe: {currentUniverse: {data: {universeUUID}}, universeTasks}} = this.props;
     var getTableIcon = function(tableType) {
       return <Image src={tableType === "YQL_TABLE_TYPE" ? cassandraLogo : redisLogo} className="table-type-logo" />;
-    }
+    };
 
     var getTableName = function (tableName, data) {
       if (data.status === "success") {
@@ -141,26 +141,26 @@ class ListTableGrid extends Component {
     };
 
     var formatKeySpace = function(cell) {
-      return <div className="top-5">{cell}</div>
+      return <div className="top-5">{cell}</div>;
     };
 
     const tablePlacementDummyData = {"read": "-", "write": "-"};
 
     var formatTableStatus = function(item, row) {
       if (item === "success") {
-        return <i className="yb-success-color fa fa-check"/>
+        return <i className="yb-success-color fa fa-check"/>;
       } else if (item === "pending") {
         return (
           <div>
             <span className="yb-orange">Pending {row.percentComplete} % complete</span>
             <ProgressBar className={"pending-action-progress"} now={row.percentComplete}/>
           </div>
-        )
+        );
       }
       else {
-        return <i className="indicator-orange fa fa-times"/>
+        return <i className="indicator-orange fa fa-times"/>;
       }
-    }
+    };
 
     var listItems = [];
     if (isNonEmptyArray(self.props.tables.universeTablesList)) {
@@ -179,7 +179,7 @@ class ListTableGrid extends Component {
     let currentUniverseTasks = universeTasks.data[universeUUID];
     if (getPromiseState(universeTasks).isSuccess() && isNonEmptyArray(currentUniverseTasks)) {
       var pendingTableTasks = currentUniverseTasks.find(function(taskItem){
-        return taskItem.target === "Table" && taskItem.status === "Running" && taskItem.percentComplete < 100
+        return taskItem.target === "Table" && taskItem.status === "Running" && taskItem.percentComplete < 100;
       });
       if (pendingTableTasks) {
         // Split title string to extract table name from the title.

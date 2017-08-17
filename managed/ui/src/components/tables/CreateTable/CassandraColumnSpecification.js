@@ -42,6 +42,6 @@ export default class CassandraColumnSpecification extends Component {
           </Col>
         </Row>
       </div>
-    )
+    );
   }
 }

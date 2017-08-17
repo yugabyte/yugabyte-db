@@ -21,7 +21,7 @@ class FlagInput extends Component {
           <i className="fa fa-times fa-fw delete-row-btn" onClick={deleteRow}/>
         </Col>
       </Row>
-    )
+    );
   }
 }
 
@@ -35,8 +35,8 @@ class FlagItems extends Component {
   render() {
     const { fields } = this.props;
     var addFlagItem = function() {
-      fields.push({})
-    }
+      fields.push({});
+    };
     var gFlagsFieldList = fields.map((item, idx) => (
       <FlagInput item={item} key={idx} deleteRow={() => fields.remove(idx)} />
     ));
@@ -50,7 +50,7 @@ class FlagItems extends Component {
                   btnText="Add" btnIcon="fa fa-plus"
                   onClick={addFlagItem} />
       </div>
-    )
+    );
   }
 }
 
@@ -100,12 +100,12 @@ export default class RollingUpgradeForm extends Component {
     var title = "";
     var formBody = <span/>;
     var softwareVersionOptions = softwareVersions.map(function(item, idx){
-      return <option key={idx} value={item}>{item}</option>
-    })
+      return <option key={idx} value={item}>{item}</option>;
+    });
     var formCloseAction = function() {
       onHide();
       self.props.reset();
-    }
+    };
     if (visibleModal === "softwareUpgradesModal") {
       title="Upgrade Software";
       formBody = (
@@ -132,7 +132,7 @@ export default class RollingUpgradeForm extends Component {
 
     let itemList = <span/>;
     if (isDefinedNotNull(universeDetails) && isNonEmptyArray(universeDetails.nodeDetailsSet)) {
-      itemList = <ItemList nodeList={universeDetails.nodeDetailsSet}/>
+      itemList = <ItemList nodeList={universeDetails.nodeDetailsSet}/>;
     }
     return (
       <YBModal visible={modalVisible} formName={"RollingUpgradeForm"}
@@ -143,14 +143,14 @@ export default class RollingUpgradeForm extends Component {
         </Col>
         {itemList}
       </YBModal>
-    )
+    );
   }
 }
 
 class ItemList extends Component {
   render() {
     const {nodeList} = this.props;
-    var nodeCheckList = <Field name={"check"} component={YBCheckBox}/>
+    var nodeCheckList = <Field name={"check"} component={YBCheckBox}/>;
     if (isNonEmptyArray(nodeList)) {
       nodeCheckList =
         nodeList.map(function (item, idx) {
@@ -158,13 +158,13 @@ class ItemList extends Component {
             <Col lg={4} key={idx}>
               <Field name={item.nodeName} component={YBCheckBox} label={item.nodeName} checkState={true}/>
             </Col>
-          )
+          );
         });
     }
     return (
       <div>
         {nodeCheckList}
       </div>
-    )
+    );
   }
 }

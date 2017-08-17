@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Image, ListGroup, ListGroupItem} from 'react-bootstrap';
 import { RootMarkerIcon, AsyncMarkerIcon, CacheMarkerIcon } from './images';
-import './stylesheets/YBMapLegendItem.scss'
+import './stylesheets/YBMapLegendItem.scss';
 
 export default class YBMapLegendItem extends Component {
   render() {
@@ -17,7 +17,7 @@ export default class YBMapLegendItem extends Component {
     } else if (type === "Async") {
       legendItemIcon = <Image src={AsyncMarkerIcon} className="legend-img"/>;
     } else if (type === "Region") {
-      legendItemIcon = <div className="marker-cluster-small provider-marker-cluster">#</div>
+      legendItemIcon = <div className="marker-cluster-small provider-marker-cluster">#</div>;
     }
     console.log(type);
     let mapLegendDetails = <span/>;
@@ -26,7 +26,7 @@ export default class YBMapLegendItem extends Component {
         <ListGroup>
           {
             regions.map(function(item, idx){
-              return <ListGroupItem key={item+idx}>{item.name}</ListGroupItem>
+              return <ListGroupItem key={item+idx}>{item.name}</ListGroupItem>;
             })
           }
         </ListGroup>
@@ -40,15 +40,15 @@ export default class YBMapLegendItem extends Component {
         <h5 className="map-legend-heading">{title}</h5>
         {mapLegendDetails}
       </div>
-    )
+    );
   }
 }
 
 YBMapLegendItem.defaultProps = {
   type: 'Region'
-}
+};
 
 YBMapLegendItem.propTypes = {
   title: PropTypes.string.isRequired,
   type: PropTypes.oneOf(['Root', 'Async', 'Cache', 'Region'])
-}
+};

@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 
-import './stylesheets/DescriptionList.css'
+import './stylesheets/DescriptionList.css';
 
 export default class DescriptionList extends Component {
   static propTypes = {
@@ -22,7 +22,7 @@ export default class DescriptionList extends Component {
             <span key={dataIdx}>
               <dd key={dataIdx}>{data.name}</dd>
             </span>
-          )
+          );
         });
         itemData = <dl className="dl-nested">{arrData}</dl>;
       }

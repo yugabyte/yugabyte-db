@@ -15,8 +15,8 @@ const mapDispatchToProps = (dispatch) => {
     resetTaskProgress: () => {
       dispatch(resetTaskProgress());
     }
-  }
-}
+  };
+};
 
 function mapStateToProps(state, ownProps) {
   return {

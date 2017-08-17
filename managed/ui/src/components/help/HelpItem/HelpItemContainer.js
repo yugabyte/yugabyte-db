@@ -6,8 +6,8 @@ import HelpItems from './HelpItems';
 const mapDispatchToProps = (dispatch) => {
   return {
 
-  }
-}
+  };
+};
 
 function mapStateToProps(state, ownProps) {
   return {

@@ -48,7 +48,7 @@ export class YBControlledTextInput extends Component {
         <FormControl {...input} placeholder={placeHolder} type={type} className={className}
                      onChange={onValueChanged} readOnly={isReadOnly} value={val}/>
       </YBLabel>
-    )
+    );
   }
 }
 

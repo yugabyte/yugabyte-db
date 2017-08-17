@@ -17,7 +17,7 @@ export default class UniverseRegionMarkerLayer extends Component {
     let markerData =  universe.regions;
     let currentRegion = markerData.find(function(markerItem){
       return markerItem.uuid === regionUUID ;
-    })
+    });
     return currentRegion;
   }
   render() {
@@ -44,9 +44,9 @@ export default class UniverseRegionMarkerLayer extends Component {
           );
           markerDataArray.push(
             <MapMarker key={"az-marker-" + regionIdx + azIdx} type="AZMarker" latitude={azItem[0]} longitude={azItem[1]} label={label} labelType={"tooltip"}/>
-          )
+          );
         });
-        markerDataArray.push(<Marker key={regionIdx+"-region-marker"} position={[currentRegion.latitude, currentRegion.longitude]} icon={regionMarkerIcon}/>)
+        markerDataArray.push(<Marker key={regionIdx+"-region-marker"} position={[currentRegion.latitude, currentRegion.longitude]} icon={regionMarkerIcon}/>);
       });
     });
     markerDataArray.push(<Polygon key={"az-line-polygon"} color="#A9A9A9" fillColor="transparent" positions={azMarkerPoints} />);

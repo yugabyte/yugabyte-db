@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import { Link, withRouter, browserHistory} from 'react-router';
 import { Grid, Row, Col, ButtonGroup, DropdownButton, MenuItem, Tab } from 'react-bootstrap';
 import Measure from 'react-measure';
-import { UniverseInfoPanel, ResourceStringPanel } from '../../panels'
+import { UniverseInfoPanel, ResourceStringPanel } from '../../panels';
 import { GraphPanelContainer, GraphPanelHeaderContainer } from '../../metrics';
 import { TaskProgressContainer, TaskListTable } from '../../tasks';
 import { RollingUpgradeFormContainer } from 'components/common/forms';
@@ -29,7 +29,7 @@ class UniverseDetail extends Component {
     this.onEditUniverseButtonClick = this.onEditUniverseButtonClick.bind(this);
     this.state = {
       dimensions: {},
-    }
+    };
   }
 
   componentWillUnmount() {
@@ -57,7 +57,7 @@ class UniverseDetail extends Component {
 
   onEditUniverseButtonClick() {
     const location = Object.assign({}, browserHistory.getCurrentLocation());
-    let query = {edit: true}
+    let query = {edit: true};
     Object.assign(location.query, query);
     browserHistory.push(location);
   }
@@ -66,21 +66,21 @@ class UniverseDetail extends Component {
     const { universe: { currentUniverse, showModal, visibleModal }, universe, location: {query}} = this.props;
 
     if (this.props.location.pathname === "/universes/create") {
-      return <UniverseFormContainer type="Create"/>
+      return <UniverseFormContainer type="Create"/>;
     }
     if (getPromiseState(currentUniverse).isLoading() || getPromiseState(currentUniverse).isInit()) {
-      return <YBLoadingIcon/>
+      return <YBLoadingIcon/>;
     } else if (isEmptyObject(currentUniverse.data)) {
       return <span />;
     }
     if (isNonEmptyObject(query) && query.edit) {
-      return <UniverseFormContainer type="Edit" />
+      return <UniverseFormContainer type="Edit" />;
     }
     const width = this.state.dimensions.width;
     const nodePrefixes = [currentUniverse.data.universeDetails.nodePrefix];
     const graphPanelTypes = ['proxies', 'server', 'cql', 'redis', 'tserver', 'lsmdb'];
     const graphPanelContainers = graphPanelTypes.map(function (type, idx) {
-      return <GraphPanelContainer key={idx} type={type} width={width} nodePrefixes={nodePrefixes} />
+      return <GraphPanelContainer key={idx} type={type} width={width} nodePrefixes={nodePrefixes} />;
     });
     var tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab">
@@ -207,7 +207,7 @@ class UniverseTaskList extends Component {
       }).filter(Boolean);
     }
     if (isNonEmptyArray(universeTaskHistoryArray)) {
-      universeTaskHistory = <TaskListTable taskList={universeTaskHistoryArray} title={"Task History"}/>
+      universeTaskHistory = <TaskListTable taskList={universeTaskHistoryArray} title={"Task History"}/>;
     }
     let currentTaskProgress = <span/>;
     if (isNonEmptyArray) {
@@ -218,7 +218,7 @@ class UniverseTaskList extends Component {
         {currentTaskProgress}
         {universeTaskHistory}
       </div>
-    )
+    );
   }
 }
 

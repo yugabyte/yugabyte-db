@@ -14,7 +14,7 @@ export default class OnPremConfigWizard extends Component {
     this.state = {currentStep: 0};
   }
   nextPage() {
-    this.setState({currentStep: this.state.currentStep + 1})
+    this.setState({currentStep: this.state.currentStep + 1});
   }
   prevPage() {
     this.setState({currentStep: this.state.currentStep - 1});
@@ -24,7 +24,7 @@ export default class OnPremConfigWizard extends Component {
     if (this.state.currentStep === 0) {
       currentWizardStepContainer = <OnPremProviderAndAccessKeyContainer {...this.props} nextPage={this.nextPage}/>;
     } else if (this.state.currentStep === 1) {
-      currentWizardStepContainer = <OnPremMachineTypesContainer {...this.props} prevPage={this.prevPage} nextPage={this.nextPage}/>
+      currentWizardStepContainer = <OnPremMachineTypesContainer {...this.props} prevPage={this.prevPage} nextPage={this.nextPage}/>;
     } else if (this.state.currentStep === 2) {
       currentWizardStepContainer = <OnPremRegionsAndZonesContainer {...this.props} prevPage={this.prevPage} nextPage={this.nextPage}/>;
     }
@@ -35,7 +35,7 @@ export default class OnPremConfigWizard extends Component {
           {currentWizardStepContainer}
         </OnPremStepper>
       </div>
-    )
+    );
   }
 }
 
@@ -53,7 +53,7 @@ class OnPremStepper extends Component {
           <Col lg={cellSize} key={idx} className={`stepper-cell ${(currentStep === idx) ? 'active-stepper-cell' : ''}`}>
             {item}
           </Col>
-        )
+        );
       });
     }
     return (
@@ -63,7 +63,7 @@ class OnPremStepper extends Component {
         </Row>
         {children}
       </div>
-    )
+    );
   }
 }
 

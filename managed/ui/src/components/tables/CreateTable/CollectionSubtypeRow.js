@@ -12,7 +12,7 @@ export default class CollectionSubtypeRow extends Component {
     let options = [<option key={initValue} value={initValue}>{displayValue}</option>];
     if (isNonEmptyArray(dataTypes)) {
       options = options.concat(dataTypes.map((item, idx) => {
-        return <option key={idx} value={item}>{item}</option>
+        return <option key={idx} value={item}>{item}</option>;
       }));
     }
     return options;

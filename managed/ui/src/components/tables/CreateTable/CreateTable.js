@@ -19,7 +19,7 @@ class CreateTable extends Component {
     this.cancelCreateTableForm = this.cancelCreateTableForm.bind(this);
     this.hideCancelCreateModal = this.hideCancelCreateModal.bind(this);
     this.confirmCancelCreateModal = this.confirmCancelCreateModal.bind(this);
-    this.state = {nextTab: ''}
+    this.state = {nextTab: ''};
   }
 
   radioClicked(event) {
@@ -38,7 +38,7 @@ class CreateTable extends Component {
         this.props.showCancelCreateModal();
         let currentLocation = this.props.location;
         currentLocation.query = {tab: "tables"};
-        this.props.router.push(currentLocation)
+        this.props.router.push(currentLocation);
       } else {
         this.props.showListTables();
       }
@@ -127,7 +127,7 @@ class CreateTable extends Component {
           <div>Are you sure you want to exit?</div>
         </YBConfirmModal>
       </div>
-    )
+    );
   }
 }
 

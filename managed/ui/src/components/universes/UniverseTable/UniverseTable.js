@@ -9,7 +9,7 @@ import { isValidObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
 import './UniverseTable.scss';
 import {UniverseReadWriteMetrics} from '../../metrics';
 import {YBCost} from '../../common/descriptors';
-import {UniverseStatusContainer} from '../../universes'
+import {UniverseStatusContainer} from '../../universes';
 var moment = require('moment');
 
 export default class UniverseTable extends Component {
@@ -34,7 +34,7 @@ export default class UniverseTable extends Component {
 
     var universeRowItem =
       universeList.data.sort((a, b) => {
-        return Date.parse(a.creationDate) < Date.parse(b.creationDate)
+        return Date.parse(a.creationDate) < Date.parse(b.creationDate);
       }).map(function (item, idx) {
         var universeTaskUUIDs = [];
         if (isNonEmptyArray(tasks.customerTaskList)) {
@@ -46,7 +46,7 @@ export default class UniverseTable extends Component {
             }
           }).filter(Boolean).sort(function(a, b){
             return a.data.createTime < b.data.createTime;
-          })
+          });
         }
         return (
           <YBUniverseItem {...self.props} key={idx} universe={item} idx={idx}
@@ -57,7 +57,7 @@ export default class UniverseTable extends Component {
       <ListGroup>
         {universeRowItem}
       </ListGroup>
-    )
+    );
   }
 }
 
@@ -98,8 +98,8 @@ class CellLocationPanel extends Component {
     const {universe, universe: {universeDetails: {userIntent}}} = this.props;
     var isMultiAz = userIntent.isMultiAZ ? "Multi AZ" : "Single AZ";
     var regionList = universe.regions && universe.regions.map(function(regionItem, idx){
-      return <span key={idx}>{regionItem.name}</span>
-    })
+      return <span key={idx}>{regionItem.name}</span>;
+    });
 
     return (
       <div >
@@ -115,7 +115,7 @@ class CellLocationPanel extends Component {
           <Col sm={10}>{regionList}</Col>
         </Row>
       </div>
-    )
+    );
   }
 }
 
@@ -170,6 +170,6 @@ class CellResourcesPanel extends Component {
           </Row>
         </Col>
       </div>
-    )
+    );
   }
 }

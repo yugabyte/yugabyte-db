@@ -91,8 +91,8 @@ const mapDispatchToProps = (dispatch) => {
     reloadCloudMetadata: () => {
       dispatch(fetchCloudMetadata());
     }
-  }
-}
+  };
+};
 
 
 const mapStateToProps = (state) => {
@@ -106,12 +106,12 @@ const mapStateToProps = (state) => {
     hostInfo: state.customer.hostInfo,
     visibleModal: state.universe.visibleModal
   };
-}
+};
 
 var awsConfigForm = reduxForm({
   form: 'awsConfigForm',
   fields: ['accessKey', 'secretKey', 'accountName'],
   validate
-})
+});
 
 export default connect(mapStateToProps, mapDispatchToProps)(awsConfigForm(AWSProviderConfiguration));

@@ -43,16 +43,16 @@ class NodeConnectModal extends Component {
         <p key={'private-node-details-' + idx}>
           ssh -i { accessKeyInfo.privateKey } centos@{nodeIP.privateIP} -p 54422
         </p>
-      )
-    })
+      );
+    });
 
     var publicSSHCommand = nodeIPs.map(function(nodeIP, idx) {
       return(
         <p key={'public-node-details-' + idx}>
           ssh -i {accessKeyCode}.pem centos@{nodeIP.publicIP} -p 54422
         </p>
-      )
-    })
+      );
+    });
     return (
       <div className="node-connect-modal">
         <YBButton btnText={"Connect"} btnClass={"btn btn-default"} onClick={this.toggleConnectModal}/>

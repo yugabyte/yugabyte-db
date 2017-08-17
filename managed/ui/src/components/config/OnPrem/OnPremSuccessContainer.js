@@ -60,7 +60,7 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(getInstanceTypeListResponse(response.payload));
       });
     },
-  }
+  };
 };
 
 export default connect(mapStateToProps, mapDispatchToProps)(OnPremSuccess);

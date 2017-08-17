@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import './stylesheets/StepProgressBar.css'
+import './stylesheets/StepProgressBar.css';
 
 export default class StepProgressBar extends Component {
   render() {
@@ -16,7 +16,7 @@ export default class StepProgressBar extends Component {
         return "running";
       }
       return null;
-    }
+    };
     const listLabels = taskDetails.map(function(item, idx) {
       taskClassName = getTaskClass(item.state);
       return (
@@ -27,6 +27,6 @@ export default class StepProgressBar extends Component {
       <ul className="progressbar">
         {listLabels}
       </ul>
-    )
+    );
   }
 }

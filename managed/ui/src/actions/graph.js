@@ -15,7 +15,7 @@ export function changeGraphQueryPeriod(params) {
   return {
     type: CHANGE_GRAPH_QUERY_PERIOD,
     payload: params
-  }
+  };
 }
 
 export function resetGraphQueryPeriod() {
@@ -46,7 +46,7 @@ export function queryMetricsFailure(error, panelType) {
     type: QUERY_METRICS_FAILURE,
     payload: error,
     panelType: panelType
-  }
+  };
 }
 
 export function resetMetrics() {

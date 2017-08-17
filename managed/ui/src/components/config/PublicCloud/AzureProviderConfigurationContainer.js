@@ -10,11 +10,11 @@ const mapStateToProps = (state) => {
     universe: state.universe,
     cloud: state.cloud
   };
-}
+};
 
 var azureConfigForm = reduxForm({
   form: 'AzureConfigForm'
-})
+});
 
 
 export default connect(mapStateToProps)(azureConfigForm(AzureProviderConfiguration));

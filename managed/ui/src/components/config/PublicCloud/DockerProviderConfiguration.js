@@ -24,7 +24,7 @@ class DockerProviderConfiguration extends Component {
 
   deleteProviderConfig() {
     const { configuredProviders } = this.props;
-    let dockerProvider = configuredProviders.data.find((provider) => provider.code === PROVIDER_TYPE)
+    let dockerProvider = configuredProviders.data.find((provider) => provider.code === PROVIDER_TYPE);
     this.props.deleteProviderConfig(dockerProvider.uuid);
   }
 
@@ -44,7 +44,7 @@ class DockerProviderConfiguration extends Component {
   render() {
     const { handleSubmit, submitting, dockerBootstrap: { loading, error },
             configuredProviders, configuredRegions, universeList } = this.props;
-    let dockerProvider = configuredProviders.data.find((provider) => provider.code === PROVIDER_TYPE)
+    let dockerProvider = configuredProviders.data.find((provider) => provider.code === PROVIDER_TYPE);
     let dockerRegions = configuredRegions.data.filter(
       (configuredRegion) => configuredRegion.provider.code === PROVIDER_TYPE
     );
@@ -117,7 +117,7 @@ class DockerProviderConfiguration extends Component {
           </div>
         </form>
       </div>
-    )
+    );
   }
 }
 
