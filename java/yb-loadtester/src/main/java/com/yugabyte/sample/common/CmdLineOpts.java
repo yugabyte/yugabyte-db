@@ -80,6 +80,15 @@ public class CmdLineOpts {
       LOG.info("Adding node: " + hostPort);
       this.nodes.add(Node.fromHostPort(hostPort));
     }
+    // This check needs to be done before initializeThreadCount is called.
+    if (commandLine.hasOption("read_only")) {
+      AppBase.appConfig.readOnly = true;
+      readOnly = true;
+      if (!commandLine.hasOption("uuid")) {
+        LOG.error("uuid needs to be provided when using --read-only");
+        System.exit(1);
+      }
+    }
     // Set the number of threads.
     initializeThreadCount(commandLine);
     // Initialize num keys.
@@ -94,14 +103,8 @@ public class CmdLineOpts {
       AppBase.appConfig.localReads = true;
       localReads = true;
     }
-    if (commandLine.hasOption("read_only")) {
-      AppBase.appConfig.readOnly = true;
-      readOnly = true;
-      if (!commandLine.hasOption("uuid")) {
-        LOG.error("uuid needs to be provided when using --read-only");
-        System.exit(1);
-      }
-    }
+    LOG.info("Local reads: " + localReads);
+    LOG.info("Read only load: " + readOnly);
     if (appName == AppName.RedisPipelinedKeyValue) {
       if (commandLine.hasOption("pipeline_length")) {
         AppBase.appConfig.redisPipelineLength =
@@ -112,6 +115,13 @@ public class CmdLineOpts {
         }
       }
       LOG.info("RedisPipelinedKeyValue pipeline length : " + AppBase.appConfig.redisPipelineLength);
+    }
+    if (commandLine.hasOption("with_local_dc")) {
+      if (AppBase.appConfig.disableYBLoadBalancingPolicy == true) {
+        LOG.error("--disable_yb_load_balancing_policy cannot be used with --with_local_dc");
+        System.exit(1);
+      }
+      AppBase.appConfig.localDc = commandLine.getOptionValue("with_local_dc");
     }
   }
 
@@ -183,7 +193,10 @@ public class CmdLineOpts {
   private void initializeThreadCount(CommandLine cmd) {
     // Check if there are a fixed number of threads or variable.
     String numThreadsStr = cmd.getOptionValue("num_threads");
-    if (AppBase.appConfig.readIOPSPercentage == -1) {
+    if (readOnly) {
+      numReaderThreads = AppBase.appConfig.numReaderThreads;
+      numWriterThreads = 0;
+    } else if (AppBase.appConfig.readIOPSPercentage == -1) {
       numReaderThreads = AppBase.appConfig.numReaderThreads;
       numWriterThreads = AppBase.appConfig.numWriterThreads;
     } else {
@@ -205,7 +218,7 @@ public class CmdLineOpts {
       numReaderThreads = Integer.parseInt(cmd.getOptionValue("num_threads_read"));
     }
     if (cmd.hasOption("num_threads_write")) {
-      if (cmd.hasOption("read_only")) {
+      if (readOnly) {
         LOG.warn("Ignoring num_threads_write option. It shouldn't be used with read_only.");
       } else {
         numWriterThreads = Integer.parseInt(cmd.getOptionValue("num_threads_write"));
@@ -353,6 +366,7 @@ public class CmdLineOpts {
     options.addOption("max_written_key", true,
         "[KV workloads only, reusing existing table] Max written key number.");
 
+    options.addOption("with_local_dc", true, "Local DC name.");
     // Options for CassandraSparkWordCount app.
     options.addOption("wordcount_input_file", true,
                       "[CassandraSparkWordCount] Input file with words to count.");

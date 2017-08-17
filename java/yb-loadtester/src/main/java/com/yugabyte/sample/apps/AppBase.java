@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.apache.log4j.Logger;
 
 import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.Cluster.Builder;
+import com.datastax.driver.core.policies.DCAwareRoundRobinPolicy;
 import com.datastax.driver.core.Session;
 import com.yugabyte.sample.common.CmdLineOpts;
 import com.yugabyte.sample.common.CmdLineOpts.Node;
@@ -100,7 +100,12 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   private synchronized void createCassandraClient() {
     if (cassandra_cluster == null) {
       Cluster.Builder builder = Cluster.builder().addContactPointsWithPorts(getNodesAsInet());
-      if (!appConfig.disableYBLoadBalancingPolicy) {
+      if (appConfig.localDc != null && !appConfig.localDc.isEmpty()) {
+        builder.withLoadBalancingPolicy((new PartitionAwarePolicy(
+            DCAwareRoundRobinPolicy.builder()
+                .withLocalDc(appConfig.localDc).build(),
+            appConfig.partitionMetadataRefreshSeconds)));
+      } else if (!appConfig.disableYBLoadBalancingPolicy) {
         builder.withLoadBalancingPolicy(
           new PartitionAwarePolicy(appConfig.partitionMetadataRefreshSeconds));
       }

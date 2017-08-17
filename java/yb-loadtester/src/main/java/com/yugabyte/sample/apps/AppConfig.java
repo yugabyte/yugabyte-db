@@ -78,4 +78,6 @@ public class AppConfig {
 
   // The number of seconds after which we should refresh the partition metadata.
   public int partitionMetadataRefreshSeconds = 60;
+
+  public String localDc;
 }

@@ -79,7 +79,7 @@ public class CassandraKeyValue extends AppBase {
           // Create the prepared statement object.
           preparedSelect = getCassandraClient().prepare(selectStmt);
           if (localReads) {
-            LOG.info("doing local reads");
+            LOG.debug("Doing local reads");
             preparedSelect.setConsistencyLevel(ConsistencyLevel.ONE);
           }
         }
@@ -162,6 +162,10 @@ public class CassandraKeyValue extends AppBase {
     super.appendMessage(sb);
     sb.append("maxWrittenKey: " + getSimpleLoadGenerator().getMaxWrittenKey() +  " | ");
     sb.append("maxGeneratedKey: " + getSimpleLoadGenerator().getMaxGeneratedKey() +  " | ");
+  }
+
+  public void appendParentMessage(StringBuilder sb) {
+    super.appendMessage(sb);
   }
 
   @Override

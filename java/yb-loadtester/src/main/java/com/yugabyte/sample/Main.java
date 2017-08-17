@@ -138,25 +138,20 @@ public class Main {
 
       // For 100% read case, do a pre-setup to write a bunch of keys and enable metrics tracking
       // after that.
-      if (cmdLineOpts.getNumWriterThreads() == 0) {
+      if (!cmdLineOpts.getReadOnly() && cmdLineOpts.getNumWriterThreads() == 0) {
         setupForPureReads();
         app.enableMetrics();
       }
 
       // Create the reader and writer threads.
       int idx = 0;
-      int numWriteThreads = cmdLineOpts.getNumWriterThreads();
-      if (cmdLineOpts.getReadOnly()) {
-        numWriteThreads = 0;
-      }
-      for (; idx < numWriteThreads; idx++) {
+      for (; idx < cmdLineOpts.getNumWriterThreads(); idx++) {
         iopsThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(), IOType.Write,
-          app.appConfig.printAllExceptions));
+            app.appConfig.printAllExceptions));
       }
-      for (; idx < numWriteThreads + cmdLineOpts.getNumReaderThreads();
-           idx++) {
+      for (; idx < cmdLineOpts.getNumWriterThreads() + cmdLineOpts.getNumReaderThreads(); idx++) {
         iopsThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(), IOType.Read,
-          app.appConfig.printAllExceptions));
+            app.appConfig.printAllExceptions));
       }
 
       // Start the reader and writer threads.

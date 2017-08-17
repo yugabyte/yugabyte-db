@@ -113,7 +113,7 @@ public class CassandraUserId extends CassandraKeyValue {
 
   @Override
   public void appendMessage(StringBuilder sb) {
-    super.appendMessage(sb);
+    super.appendParentMessage(sb);
     sb.append("maxWrittenKey: " + getSimpleLoadGenerator().getMaxWrittenKey() +  " | ");
     sb.append("max timestamp: " + maxTimestamp.toString());
   }
