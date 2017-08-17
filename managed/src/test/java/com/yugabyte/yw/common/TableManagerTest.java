@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static com.yugabyte.yw.common.TableManager.BULK_LOAD_SCRIPT;
+import static com.yugabyte.yw.common.TableManager.PY_WRAPPER;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -90,10 +91,11 @@ public class TableManagerTest extends FakeDBApplication {
   private List<String> getExpectedCommmand(BulkImportParams bulkImportParams,
                                            UniverseDefinitionTaskParams uniParams) {
     List<String> cmd = new LinkedList<>();
-    // bin/yb_bulk_load.py, --key_path, /path/to/private.key, --instance_count, 24,
+    // bin/py_wrapper bin/yb_bulk_load.py, --key_path, /path/to/private.key, --instance_count, 24,
     // --universe, Universe-1, --release, /yb/release.tar.gz,
     // --masters, host-n1:7100,host-n2:7100,host-n3:7100, --table, mock_table, --keyspace, mock_ks,
     // --s3bucket, s3://foo.bar.com/bulkload
+    cmd.add(PY_WRAPPER);
     cmd.add(BULK_LOAD_SCRIPT);
     cmd.add("--key_path");
     cmd.add(pkPath);
