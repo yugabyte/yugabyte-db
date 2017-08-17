@@ -5,7 +5,7 @@ import PropTypes from 'prop-types';
 import { StepProgressBar } from '../../common/indicators';
 import { isValidObject } from '../../../utils/ObjectUtils';
 import { Row, Col } from 'react-bootstrap';
-import './TaskProgressStepBar.scss'
+import './TaskProgressStepBar.scss';
 
 export default class TaskProgressStepBar extends Component {
   static propTypes = {

@@ -37,7 +37,7 @@ export default class NodeDetails extends Component {
         publicIP: nodeDetail.cloudInfo.public_ip,
         nodeStatus: nodeDetail.state,
         cloudInfo: nodeDetail.cloudInfo
-      }
+      };
     });
 
     var formatIpPort = function(cell, row, type) {
@@ -46,29 +46,29 @@ export default class NodeDetails extends Component {
       }
       var href;
       if (type === "master") {
-        href = "http://" + row.privateIP + ":" + row.masterPort
+        href = "http://" + row.privateIP + ":" + row.masterPort;
       } else {
-        href = "http://" + row.privateIP + ":" + row.tserverPort
+        href = "http://" + row.privateIP + ":" + row.tserverPort;
       }
       return <a href={href} target="_blank" rel="noopener noreferrer">{cell}</a>;
-    }
+    };
 
     const nodeIPs = nodeDetailRows.map(function(node) {
       if (isDefinedNotNull(node.privateIP) && isDefinedNotNull(node.publicIP)) {
-        return { privateIP: node.privateIP, publicIP: node.publicIP }
+        return { privateIP: node.privateIP, publicIP: node.publicIP };
       } else {
-        return null
+        return null;
       }
     }).filter(Boolean);
 
     var getNodeNameLink = function(cell, row) {
       if (row.cloudInfo.cloud === "aws") {
         var awsURI = `https://${row.cloudInfo.region}.console.aws.amazon.com/ec2/v2/home?region=${row.cloudInfo.region}#Instances:search=${cell};sort=availabilityZone`;
-        return <a href={awsURI} target="_blank" rel="noopener noreferrer">{cell}</a>
+        return <a href={awsURI} target="_blank" rel="noopener noreferrer">{cell}</a>;
       } else {
         return cell;
       }
-    }
+    };
     return (
       <YBPanelItem name="Node Details">
         { nodeIPs && <NodeConnectModal nodeIPs={nodeIPs} />}
@@ -91,6 +91,6 @@ export default class NodeDetails extends Component {
           <TableHeaderColumn dataField="nodeStatus">Node Status</TableHeaderColumn>
         </BootstrapTable>
       </YBPanelItem>
-    )
+    );
   }
 }

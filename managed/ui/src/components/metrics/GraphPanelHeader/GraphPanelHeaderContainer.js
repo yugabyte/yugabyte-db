@@ -13,8 +13,8 @@ const mapDispatchToProps = (dispatch) => {
     resetGraphQueryPeriod: () => {
       dispatch(resetGraphQueryPeriod());
     }
-  }
-}
+  };
+};
 
 function mapStateToProps(state, ownProps) {
   return {
@@ -27,7 +27,7 @@ function mapStateToProps(state, ownProps) {
 var graphPanelFilter = reduxForm({
   form: 'GraphPanelFilterForm',
   fields: ["timeSelect", "universeSelect"]
-})
+});
 
 
 export default connect( mapStateToProps, mapDispatchToProps)(graphPanelFilter(GraphPanelHeader));

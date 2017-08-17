@@ -20,7 +20,7 @@ const mapStateToProps = (state) => {
     // TODO change this once we refactor aws bootstrap.
     cloudBootstrap: state.cloud.bootstrap
   };
-}
+};
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -37,7 +37,7 @@ const mapDispatchToProps = (dispatch) => {
         } else {
           dispatch(deleteProviderSuccess(response.payload));
         }
-      })
+      });
     },
 
     showDeleteProviderModal: () => {
@@ -51,11 +51,11 @@ const mapDispatchToProps = (dispatch) => {
     reloadCloudMetadata: () => {
       dispatch(fetchCloudMetadata());
     }
-  }
-}
+  };
+};
 
 var dockerConfigForm = reduxForm({
   form: 'dockerConfigForm'
-})
+});
 
 export default connect(mapStateToProps, mapDispatchToProps)(dockerConfigForm(DockerProviderConfiguration));

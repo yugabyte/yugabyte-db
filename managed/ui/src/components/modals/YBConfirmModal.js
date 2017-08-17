@@ -43,6 +43,6 @@ export default class YBConfirmModal extends Component {
           {this.props.children}
         </YBModal>
       </div>
-    )
+    );
   }
 }

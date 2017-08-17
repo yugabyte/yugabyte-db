@@ -7,7 +7,7 @@ const PropTypes = require('prop-types');
 class AuthenticatedComponent extends Component {
   constructor(props) {
     super(props);
-    this.state = {prevPath: ""}
+    this.state = {prevPath: ""};
   }
 
   getChildContext() {
@@ -38,7 +38,7 @@ class AuthenticatedComponent extends Component {
       this.props.fetchUniverseList();
     }
     if (this.props.location !== nextProps.location) {
-      this.setState({prevPath: this.props.location.pathname})
+      this.setState({prevPath: this.props.location.pathname});
     }
   }
 
@@ -47,7 +47,7 @@ class AuthenticatedComponent extends Component {
       <div>
         {this.props.children}
       </div>
-    )
+    );
   }
 }
 

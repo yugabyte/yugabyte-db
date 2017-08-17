@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Marker, Popup, Tooltip } from 'react-leaflet';
 import { Icon, divIcon }  from 'leaflet';
-import { DefaultMarkerIcon, DefaultMarkerShadowIcon, RootMarkerIcon, RootMarkerShadowIcon } from './images'
+import { DefaultMarkerIcon, DefaultMarkerShadowIcon, RootMarkerIcon, RootMarkerShadowIcon } from './images';
 
 export default class MapMarker extends Component {
   static propTypes = {
@@ -22,11 +22,11 @@ export default class MapMarker extends Component {
     const { latitude, longitude, label, type, labelType, numChildren } = this.props;
     var popup;
     if (label) {
-      popup = <Popup><span>{label}</span></Popup>
+      popup = <Popup><span>{label}</span></Popup>;
     }
 
     if (labelType === "tooltip") {
-      popup = <Tooltip>{label}</Tooltip>
+      popup = <Tooltip>{label}</Tooltip>;
     }
 
     var opts = {};
@@ -51,7 +51,7 @@ export default class MapMarker extends Component {
         shadowAnchor: [10, 30]
       });
     } else if (type === "Region") {
-      opts['icon'] = divIcon({className: 'marker-cluster-small provider-marker-cluster', html: numChildren})
+      opts['icon'] = divIcon({className: 'marker-cluster-small provider-marker-cluster', html: numChildren});
     } else {
       var markerData = RootMarkerIcon;
       opts['icon'] = new Icon({

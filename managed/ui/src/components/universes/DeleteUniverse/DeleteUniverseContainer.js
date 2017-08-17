@@ -19,8 +19,8 @@ const mapDispatchToProps = (dispatch) => {
     fetchUniverseMetadata: () => {
       dispatch(fetchUniverseMetadata());
     }
-  }
-}
+  };
+};
 
 function mapStateToProps(state) {
   return {

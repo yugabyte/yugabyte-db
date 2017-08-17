@@ -9,7 +9,7 @@ export default class BulkImport extends Component {
 
   constructor(props) {
     super(props);
-    this.confirmBulkImport = this.confirmBulkImport.bind(this)
+    this.confirmBulkImport = this.confirmBulkImport.bind(this);
   }
 
   confirmBulkImport(values) {

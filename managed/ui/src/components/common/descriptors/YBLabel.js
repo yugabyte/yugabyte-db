@@ -27,6 +27,6 @@ export default class YBLabel extends Component {
           }
         </div>
       </div>
-    )
+    );
   }
 }

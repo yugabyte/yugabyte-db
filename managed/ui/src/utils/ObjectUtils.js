@@ -78,7 +78,7 @@ export function areIntentsEqual(userIntent1, userIntent2) {
   && _.isEqual(userIntent1.ybSoftwareVersion, userIntent2.ybSoftwareVersion)
   && _.isEqual(userIntent1.accessKeyCode, userIntent2.accessKeyCode)
   && _.isEqual(userIntent1.instanceType, userIntent2.instanceType)
-  && _.isEqual(userIntent1.gflags, userIntent2.gflags))
+  && _.isEqual(userIntent1.gflags, userIntent2.gflags));
 }
 
 // Helper method to check if AZ objects equal
@@ -153,7 +153,7 @@ export function areUniverseConfigsEqual(config1, config2) {
       userIntentsEqual = _.isEqual(config1.userIntent, config2.userIntent);
     }
     if (isNonEmptyObject(config1.placementInfo) && isNonEmptyObject(config2.placementInfo)) {
-      placementObjectsEqual = arePlacementInfoEqual(config1.placementInfo, config2.placementInfo)
+      placementObjectsEqual = arePlacementInfoEqual(config1.placementInfo, config2.placementInfo);
     } else {
       placementObjectsEqual = _.isEqual(config1.placementInfo, config2.placementInfo);
     }
@@ -170,7 +170,7 @@ export function normalizeToPositiveInt(value) {
 // TODO: Move the functions below to StringUtils.js?
 
 export function trimString(string) {
-  return string && string.trim()
+  return string && string.trim();
 }
 
 export function convertSpaceToDash(string) {
@@ -189,7 +189,7 @@ export function sortVersionStrings(arr) {
     } else if (!isNaN(aValue) && isNaN(bValue)) {
       return -1;
     } else {
-      return aValue < bValue
+      return aValue < bValue;
     }
   });
 }
@@ -201,7 +201,7 @@ export function getPointsOnCircle(numPoints, center, radius) {
   for(var i = 0; i < numPoints; i++) {
     var x = x0 + radius * Math.cos(2 * Math.PI * i / numPoints);
     var y = y0 + radius * Math.sin(2 * Math.PI * i / numPoints);
-    pointsOnCircle.push([x, y])
+    pointsOnCircle.push([x, y]);
   }
   return pointsOnCircle;
 }

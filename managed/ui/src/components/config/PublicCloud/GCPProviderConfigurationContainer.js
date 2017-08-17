@@ -19,7 +19,7 @@ const mapStateToProps = (state) => {
     cloudBootstrap: state.cloud.bootstrap,
     visibleModal: state.universe.visibleModal
   };
-}
+};
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -36,7 +36,7 @@ const mapDispatchToProps = (dispatch) => {
     createGCPAccessKey: (providerUUID, zone, key) => {
       dispatch(createAccessKey(providerUUID, zone, key)).then((response) => {
         dispatch(createAccessKeyResponse(response.payload));
-      })
+      });
     },
     initializeGCPMetadata: (providerUUID) => {
       dispatch(initializeProvider(providerUUID)).then((response) => {
@@ -62,12 +62,12 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(reset('gcpConfigForm'));
       });
     },
-  }
-}
+  };
+};
 
 let gcpConfigForm = reduxForm({
   form: 'gcpConfigForm',
   fields: [ 'accountName'],
-})
+});
 
 export default connect(mapStateToProps, mapDispatchToProps)(gcpConfigForm(GCPProviderConfiguration));

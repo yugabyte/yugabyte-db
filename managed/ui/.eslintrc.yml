@@ -10,6 +10,7 @@ rules:
   import/namespace: 2
   import/export: 2
 
+  semi: 1
   indent: [1, 2, {"SwitchCase": 1}]
   react/jsx-indent: [1, 2]
   react/jsx-wrap-multilines: 1

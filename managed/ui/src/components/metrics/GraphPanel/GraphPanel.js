@@ -39,7 +39,7 @@ const panelTypes = {
     metrics: ["redis_yb_local_vs_remote", "redis_yb_latency", "redis_reactor_latency"]},
   cql:     { title: "Apache Cassandra Advanced Graphs",
     metrics: ["cql_sql_latency_breakdown", "cql_yb_local_vs_remote", "cql_yb_latency", "cql_reactor_latency", "response_sizes"]}
-}
+};
 
 class GraphPanel extends Component {
   constructor(props) {
@@ -75,7 +75,7 @@ class GraphPanel extends Component {
       metrics: panelTypes[type].metrics,
       start: startMoment.format('X'),
       end: endMoment.format('X')
-    }
+    };
     if (isNonEmptyObject(nodePrefix) && nodePrefix !== "all") {
       params.nodePrefix = nodePrefix;
     }
@@ -124,7 +124,7 @@ class GraphPanel extends Component {
           {panelData}
         </Panel>
       </Accordion>
-    )
+    );
   }
 }
 

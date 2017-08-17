@@ -19,7 +19,7 @@ const mapDispatchToProps = (dispatch, ownProps) => {
           latitude: regionLocation[0],
           longitude: regionLocation[1],
           isBeingEdited: regionItem.isBeingEdited
-        }
+        };
       });
       dispatch(setOnPremConfigData(payloadData));
       if (ownProps.isEditProvider) {
@@ -28,14 +28,14 @@ const mapDispatchToProps = (dispatch, ownProps) => {
         ownProps.submitWizardJson(payloadData);
       }
     }
-  }
-}
+  };
+};
 
 const mapStateToProps = (state) => {
   return {
     onPremJsonFormData: state.cloud.onPremJsonFormData
   };
-}
+};
 
 const validate = values => {
   const errors = {regionsZonesList: []};

@@ -80,7 +80,7 @@ export function createUniverseResponse(response) {
   return {
     type: CREATE_UNIVERSE_RESPONSE,
     payload: response
-  }
+  };
 }
 
 export function fetchUniverseInfo(universeUUID) {
@@ -89,7 +89,7 @@ export function fetchUniverseInfo(universeUUID) {
   return {
     type: FETCH_UNIVERSE_INFO,
     payload: request
-  }
+  };
 }
 
 export function fetchUniverseInfoSuccess(universeInfo) {
@@ -116,7 +116,7 @@ export function fetchUniverseInfoResponse(response) {
   return {
     type: FETCH_UNIVERSE_INFO_RESPONSE,
     payload: response
-  }
+  };
 }
 
 export function fetchUniverseList() {
@@ -126,14 +126,14 @@ export function fetchUniverseList() {
   return {
     type: FETCH_UNIVERSE_LIST,
     payload: request
-  }
+  };
 }
 
 export function fetchUniverseListResponse(response) {
   return {
     type: FETCH_UNIVERSE_LIST_RESPONSE,
     payload: response
-  }
+  };
 }
 
 export function fetchUniverseListSuccess(universeList) {
@@ -169,7 +169,7 @@ export function deleteUniverseResponse(response) {
   return {
     type: DELETE_UNIVERSE_RESPONSE,
     payload: response
-  }
+  };
 }
 
 
@@ -179,14 +179,14 @@ export function editUniverse(formValues, universeUUID) {
   return {
     type: EDIT_UNIVERSE,
     payload: request
-  }
+  };
 }
 
 export function editUniverseResponse(response) {
   return {
     type: EDIT_UNIVERSE_RESPONSE,
     payload: response
-  }
+  };
 }
 
 export function fetchUniverseTasks(universeUUID) {
@@ -202,26 +202,26 @@ export function fetchUniverseTasksResponse(response) {
   return {
     type: FETCH_UNIVERSE_TASKS_RESPONSE,
     payload: response
-  }
+  };
 }
 
 export function resetUniverseTasks() {
   return {
     type: RESET_UNIVERSE_TASKS
-  }
+  };
 }
 
 export function openDialog(data) {
   return {
     type: OPEN_DIALOG,
     payload: data
-  }
+  };
 }
 
 export function closeDialog() {
   return {
     type: CLOSE_DIALOG
-  }
+  };
 }
 
 export function rollingUpgrade(values, universeUUID) {
@@ -253,7 +253,7 @@ export function configureUniverseTemplateResponse(response) {
   return {
     type: CONFIGURE_UNIVERSE_TEMPLATE_RESPONSE,
     payload: response
-  }
+  };
 }
 
 export function configureUniverseTemplateSuccess(result) {
@@ -269,14 +269,14 @@ export function configureUniverseResources(values) {
   return {
     type: CONFIGURE_UNIVERSE_RESOURCES,
     payload: request
-  }
+  };
 }
 
 export function configureUniverseResourcesResponse(response) {
   return {
     type: CONFIGURE_UNIVERSE_RESOURCES_RESPONSE,
     payload: response
-  }
+  };
 }
 
 export function checkIfUniverseExists(universeName) {
@@ -292,31 +292,31 @@ export function checkIfUniverseExists(universeName) {
 export function resetRollingUpgrade() {
   return {
     type: RESET_ROLLING_UPGRADE
-  }
+  };
 }
 
 export function setUniverseMetrics(values) {
   return {
     type: SET_UNIVERSE_METRICS,
     payload: values
-  }
+  };
 }
 
 export function setPlacementStatus(currentStatus) {
   return {
     type: SET_PLACEMENT_STATUS,
     payload: currentStatus
-  }
+  };
 }
 
 export function resetUniverseConfiguration() {
   return {
     type: RESET_UNIVERSE_CONFIGURATION
-  }
+  };
 }
 
 export function fetchUniverseMetadata() {
   return {
     type: FETCH_UNIVERSE_METADATA
-  }
+  };
 }

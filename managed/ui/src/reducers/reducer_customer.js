@@ -29,7 +29,7 @@ export default function(state = INITIAL_STATE, action) {
       return setPromiseResponse(state, "currentCustomer", action);
 
     case REGISTER:
-      return setLoadingState(state, "authToken", {})
+      return setLoadingState(state, "authToken", {});
     case REGISTER_RESPONSE:
       return setPromiseResponse(state, "authToken", action);
 
@@ -47,24 +47,24 @@ export default function(state = INITIAL_STATE, action) {
     case RESET_CUSTOMER:
       return {...state, currentCustomer: getInitialState({}), authToken: getInitialState({})};
     case FETCH_SOFTWARE_VERSIONS:
-      return {...state, softwareVersions: []}
+      return {...state, softwareVersions: []};
     case FETCH_SOFTWARE_VERSIONS_SUCCESS:
-      return {...state, softwareVersions: sortVersionStrings(action.payload.data)}
+      return {...state, softwareVersions: sortVersionStrings(action.payload.data)};
     case FETCH_SOFTWARE_VERSIONS_FAILURE:
-      return {...state}
+      return {...state};
     case FETCH_HOST_INFO:
-      return {...state, hostInfo: null}
+      return {...state, hostInfo: null};
     case FETCH_HOST_INFO_SUCCESS:
-      return {...state, hostInfo: action.payload.data}
+      return {...state, hostInfo: action.payload.data};
     case FETCH_HOST_INFO_FAILURE:
-      return {...state, hostInfo: null }
+      return {...state, hostInfo: null };
 
     case UPDATE_PROFILE:
-      return setLoadingState(state, "profile")
+      return setLoadingState(state, "profile");
     case UPDATE_PROFILE_SUCCESS:
-      return setSuccessState(state, "profile", "updated-success")
+      return setSuccessState(state, "profile", "updated-success");
     case UPDATE_PROFILE_FAILURE:
-      return setFailureState(state, "profile", action.payload.data.error)
+      return setFailureState(state, "profile", action.payload.data.error);
     case FETCH_CUSTOMER_COUNT:
       return setLoadingState(state, "customerCount");
     default:

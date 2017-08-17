@@ -49,8 +49,8 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(registerResponse(response.payload));
       });
     }
-  }
-}
+  };
+};
 
 
 function mapStateToProps(state) {

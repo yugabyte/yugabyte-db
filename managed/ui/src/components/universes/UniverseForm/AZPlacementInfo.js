@@ -16,7 +16,7 @@ const statusTypes =
     notEnoughNodesConfigured: {currentStatusIcon: "fa fa-times", currentStatusString: "Not Enough Nodes Configured", currentStatusClass: "yb-fail-color"},
     notEnoughNodes: {currentStatusIcon: "fa fa-times", currentStatusString: "Not Enough Nodes", currentStatusClass: "yb-fail-color"},
     noFieldsChanged: {currentStatusIcon: "fa fa-times", currentStatusString: "At Least One Field Must Be Modified", currentStatusClass: "yb-fail-color"}
-  }
+  };
 
 export default class AZSelectorTable extends Component {
   static propTypes = {
@@ -29,7 +29,7 @@ export default class AZSelectorTable extends Component {
     }
     var currentStatusType = "";
     if (placementInfo.error) {
-      currentStatusType = placementInfo.error.type
+      currentStatusType = placementInfo.error.type;
     } else if (placementInfo.replicationFactor === 1) {
       currentStatusType = "singleRF";
     } else if (placementInfo.numUniqueAzs <= 2) {
@@ -43,6 +43,6 @@ export default class AZSelectorTable extends Component {
       <div>
         <span className={statusTypes[currentStatusType].currentStatusClass}>&nbsp;<i className={statusTypes[currentStatusType].currentStatusIcon}/>&nbsp;{statusTypes[currentStatusType].currentStatusString}</span>
       </div>
-    )
+    );
   }
 }

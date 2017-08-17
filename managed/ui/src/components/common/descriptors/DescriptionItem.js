@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 
-import './stylesheets/DescriptionList.css'
+import './stylesheets/DescriptionList.css';
 
 export default class DescriptionItem extends Component {
   static propTypes = {
@@ -19,6 +19,6 @@ export default class DescriptionItem extends Component {
         </div>
         <small className="description-item-sub-text">{title}</small>
       </div>
-    )
+    );
   }
 }

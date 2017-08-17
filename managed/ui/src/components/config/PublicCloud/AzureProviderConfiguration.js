@@ -61,7 +61,7 @@ class AzureProviderConfiguration extends Component {
           <YBButton btnText={"Save"} btnClass={"btn btn-default save-btn pull-right"}/>
         </div>
       </div>
-    )
+    );
   }
 }
 

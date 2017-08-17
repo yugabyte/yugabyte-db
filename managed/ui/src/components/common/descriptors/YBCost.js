@@ -5,7 +5,7 @@ import PropTypes from 'prop-types';
 import moment from 'moment';
 import { YBFormattedNumber } from '../descriptors';
 
-import './stylesheets/YBCost.css'
+import './stylesheets/YBCost.css';
 
 export default class YBCost extends Component {
   static propTypes = {
@@ -26,6 +26,6 @@ export default class YBCost extends Component {
         <YBFormattedNumber value={finalCost} maximumFractionDigits={2}
           formattedNumberStyle="currency" currency="USD" multiplier={multiplier}/>
       </div>
-    )
+    );
   }
 }

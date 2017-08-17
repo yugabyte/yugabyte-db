@@ -53,7 +53,7 @@ class DataCenterConfiguration extends Component {
           </Tab>
         </YBTabsPanel>
       </div>
-    )
+    );
   }
 }
 export default withRouter(DataCenterConfiguration);

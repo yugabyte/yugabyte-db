@@ -11,6 +11,6 @@ export default class ListUniverse extends Component {
       <Universes>
         <ListUniverseContainer />
       </Universes>
-    )
+    );
   }
 }

@@ -35,7 +35,7 @@ const mapDispatchToProps = (dispatch) => {
         metrics: ["disk_iops_by_universe"],
         start: startTime,
         end: endTime
-      }
+      };
       dispatch(queryMetrics(queryParams))
         .then((response) => {
           if (response.payload.status === 200) {
@@ -43,8 +43,8 @@ const mapDispatchToProps = (dispatch) => {
           }
         });
     }
-  }
-}
+  };
+};
 
 function mapStateToProps(state) {
   return {

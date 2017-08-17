@@ -26,7 +26,7 @@ export default class UniverseReadWriteMetrics extends Component {
           width: 100,
           paper_bgcolor: 'rgba(0,0,0,0)',
           plot_bgcolor: 'rgba(0,0,0,0)'
-        }
+        };
         var metricXData = metricData.x;
         var metricYData = metricData.y;
         var data = [
@@ -39,7 +39,7 @@ export default class UniverseReadWriteMetrics extends Component {
               width: 2
             }
           }
-        ]
+        ];
         Plotly.newPlot(`lineGraph${graphIndex}`, data, layout, {displayModeBar: false});
       }
     }

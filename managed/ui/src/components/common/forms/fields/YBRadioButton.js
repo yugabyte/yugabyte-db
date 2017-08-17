@@ -16,7 +16,7 @@ export default class YBRadioButton extends Component {
     var onCheckClick = function(event) {
       input && input.onChange && input.onChange(event);
       return isValidObject(onClick) ? onClick(event) : true;
-    }
+    };
     return (
       <label htmlFor={id} className={labelClass}>
         <input {...input} type="radio"
@@ -25,6 +25,6 @@ export default class YBRadioButton extends Component {
         />
         {label}
       </label>
-    )
+    );
   }
 }

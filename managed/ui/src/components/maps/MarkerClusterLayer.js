@@ -8,7 +8,7 @@ import { isObject } from 'lodash';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import { isNonEmptyArray, isValidObject, sortByLengthOfArrayProperty } from 'utils/ObjectUtils';
 import React, { Component } from 'react';
-import './stylesheets/MarkerClusterLayer.scss'
+import './stylesheets/MarkerClusterLayer.scss';
 import ReactDOMServer from 'react-dom/server';
 
 require('leaflet.markercluster');
@@ -79,7 +79,7 @@ export default class MarkerClusterLayer extends MapLayer {
         });
         let clusterIconData = universeCount ?
           {className: 'marker-cluster-small', html: universeCount.toString()} :
-          {className: 'marker-cluster-small marker-cluster-outline', html: '&nbsp;'}
+          {className: 'marker-cluster-small marker-cluster-outline', html: '&nbsp;'};
         return new Leaflet.DivIcon(clusterIconData);
       },
     });

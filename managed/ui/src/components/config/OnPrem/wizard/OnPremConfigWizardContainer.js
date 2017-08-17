@@ -7,6 +7,6 @@ const mapStateToProps = (state) => {
   return {
     onPremJsonFormData: state.cloud.onPremJsonFormData
   };
-}
+};
 
 export default connect(mapStateToProps)(OnPremConfigWizard);

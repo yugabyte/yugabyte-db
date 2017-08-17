@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 
-import './stylesheets/YBResourceCount.scss'
+import './stylesheets/YBResourceCount.scss';
 
 export default class YBResourceCount extends Component {
   static propTypes = {

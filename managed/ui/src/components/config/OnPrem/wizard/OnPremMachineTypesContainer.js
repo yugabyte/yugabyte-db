@@ -17,23 +17,23 @@ const mapDispatchToProps = (dispatch, ownProps) => {
           volumeDetailsList: item.mountPath.split(",").map(function(mountPathItem){
             return {volumeSizeGB: item.volumeSizeGB,
               volumeType: item.volumeType,
-              mountPath: mountPathItem.trim()}
+              mountPath: mountPathItem.trim()};
           }),
           volumeType: 'SSD',
-          isBeingEdited: item.isBeingEdited}
+          isBeingEdited: item.isBeingEdited};
       });
       payloadObject.instanceTypes = instanceTypesList;
       dispatch(setOnPremConfigData(payloadObject));
       ownProps.nextPage();
     }
-  }
-}
+  };
+};
 
 const mapStateToProps = (state) => {
   return {
     onPremJsonFormData: state.cloud.onPremJsonFormData
   };
-}
+};
 
 
 const validate = values => {
@@ -41,28 +41,28 @@ const validate = values => {
   if (values.machineTypeList && isNonEmptyArray(values.machineTypeList)) {
     values.machineTypeList.forEach(function(machineTypeItem, rowIdx){
       if (!isDefinedNotNull(machineTypeItem.code)) {
-        errors.machineTypeList[rowIdx] =  {code: 'Required'}
+        errors.machineTypeList[rowIdx] =  {code: 'Required'};
       }
       if (!isDefinedNotNull(machineTypeItem.numCores)) {
-        errors.machineTypeList[rowIdx] =  {numCores: 'Required'}
+        errors.machineTypeList[rowIdx] =  {numCores: 'Required'};
       }
       if (!isDefinedNotNull(machineTypeItem.memSizeGB)) {
-        errors.machineTypeList[rowIdx] =  {memSizeGB: 'Required'}
+        errors.machineTypeList[rowIdx] =  {memSizeGB: 'Required'};
       }
       if (!isDefinedNotNull(machineTypeItem.volumeSizeGB)) {
-        errors.machineTypeList[rowIdx] =  {volumeSizeGB: 'Required'}
+        errors.machineTypeList[rowIdx] =  {volumeSizeGB: 'Required'};
       }
       if (isDefinedNotNull(machineTypeItem.volumeSizeGB) && !/^\d+$/.test(machineTypeItem.volumeSizeGB)) {
-        errors.machineTypeList[rowIdx] =  {volumeSizeGB: 'Must be Integer'}
+        errors.machineTypeList[rowIdx] =  {volumeSizeGB: 'Must be Integer'};
       }
       if (isDefinedNotNull(machineTypeItem.numCores) && !/^\d+$/.test(machineTypeItem.numCores)) {
-        errors.machineTypeList[rowIdx] =  {numCores: 'Must be Integer'}
+        errors.machineTypeList[rowIdx] =  {numCores: 'Must be Integer'};
       }
       if (isDefinedNotNull(machineTypeItem.memSizeGB) && !/(\d+(\.\d+)?)/.test(machineTypeItem.memSizeGB)) {
-        errors.machineTypeList[rowIdx] =  {memSizeGB: 'Must be Numeric'}
+        errors.machineTypeList[rowIdx] =  {memSizeGB: 'Must be Numeric'};
       }
       if (!isDefinedNotNull(machineTypeItem.mountPath)) {
-        errors.machineTypeList[rowIdx] =  {mountPath: 'Required'}
+        errors.machineTypeList[rowIdx] =  {mountPath: 'Required'};
       }
     });
   }

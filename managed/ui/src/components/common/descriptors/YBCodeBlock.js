@@ -22,6 +22,6 @@ export default class YBCodeBlock extends Component {
           <code>{this.props.children}</code>
         </pre>
       </div>
-    )
+    );
   }
 }

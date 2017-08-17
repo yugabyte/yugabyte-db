@@ -31,7 +31,7 @@ function validateSession(store, replacePath, callback) {
           browserHistory.push('/register');
         }
       }
-    })
+    });
     browserHistory.push('/login');
   } else {
     store.dispatch(validateToken(token))
@@ -55,7 +55,7 @@ export default (store) => {
 
   const checkIfAuthenticated = (prevState, nextState, replace, callback) => {
     validateSession(store, replace, callback);
-  }
+  };
 
   return (
     // We will have two different routes, on which is authenticated route

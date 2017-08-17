@@ -13,8 +13,8 @@ const mapDispatchToProps = (dispatch) => {
     closeUniverseModal: () => {
       dispatch(closeDialog());
     }
-  }
-}
+  };
+};
 
 export default connect(null, mapDispatchToProps)(UniverseDisplayPanel);
 

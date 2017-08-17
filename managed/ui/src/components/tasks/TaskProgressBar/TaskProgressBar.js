@@ -11,13 +11,13 @@ export default class TaskProgressBar extends Component {
 
   getStyleByStatus(status) {
     if ( status === "Failure" ) {
-      return "danger"
+      return "danger";
     } else if ( status === "Success" ) {
-      return "success"
+      return "success";
     } else if ( status === "Running" ) {
-      return "info"
+      return "info";
     }
-    return null
+    return null;
   }
 
   render() {

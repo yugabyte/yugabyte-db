@@ -55,7 +55,7 @@ export default class KeyColumnList extends Component {
   getAllDataTypes() {
     const {tables: {columnDataTypes: {collections, primitives}}} = this.props;
     if (isValidArray(primitives) && isValidArray(collections)) {
-      return primitives.concat(collections)
+      return primitives.concat(collections);
     }
     return [];
   }

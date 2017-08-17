@@ -6,8 +6,8 @@ import { AlertsList } from '../../alerts';
 const mapDispatchToProps = (dispatch) => {
   return {
 
-  }
-}
+  };
+};
 
 function mapStateToProps(state, ownProps) {
   return {

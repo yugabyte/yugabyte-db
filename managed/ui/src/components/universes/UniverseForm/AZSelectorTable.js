@@ -9,7 +9,7 @@ import _ from 'lodash';
 const nodeStates = {
   activeStates: ["ToBeAdded", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Running"],
   inactiveStates: ["ToBeDecommissioned", "BeingDecommissioned", "Destroyed"]
-}
+};
 
 export default class AZSelectorTable extends Component {
   constructor(props) {
@@ -94,7 +94,7 @@ export default class AZSelectorTable extends Component {
             numNodes: totalNodesInConfig,
             maxNumNodes: maxNumNodes
           }
-        }
+        };
         this.props.setPlacementStatus(placementStatusObject);
       }
     } else if (totalNodesInConfig > maxNumNodes && currentProvider.code === "onprem") {
@@ -104,7 +104,7 @@ export default class AZSelectorTable extends Component {
           numNodes: totalNodesInConfig,
           maxNumNodes: maxNumNodes
         }
-      }
+      };
       this.props.setPlacementStatus(placementStatusObject);
     } else {
       let placementStatusObject = {
@@ -113,7 +113,7 @@ export default class AZSelectorTable extends Component {
           numNodes: totalNodesInConfig,
           maxNumNodes: maxNumNodes
         }
-      }
+      };
       this.props.setPlacementStatus(placementStatusObject);
     }
   }
@@ -132,7 +132,7 @@ export default class AZSelectorTable extends Component {
             }
           }
           if (!nodeFound) {
-            uniConfigArray.push({value: nodeItem.azUuid, count: 1})
+            uniConfigArray.push({value: nodeItem.azUuid, count: 1});
           }
         }
       });
@@ -144,7 +144,7 @@ export default class AZSelectorTable extends Component {
         regionItem.azList.forEach(function(azItem) {
           uniConfigArray.forEach(function(configArrayItem) {
             if (configArrayItem.value === azItem.uuid) {
-              groupsArray.push({value: azItem.uuid, count: configArrayItem.count})
+              groupsArray.push({value: azItem.uuid, count: configArrayItem.count});
               if (uniqueRegions.indexOf(regionItem.uuid) === -1) {
                 uniqueRegions.push(regionItem.uuid);
               }
@@ -155,7 +155,7 @@ export default class AZSelectorTable extends Component {
     }
     return ({groups: groupsArray,
       uniqueRegions: uniqueRegions.length,
-      uniqueAzs: [...new Set(groupsArray.map(item => item.value))].length})
+      uniqueAzs: [...new Set(groupsArray.map(item => item.value))].length});
   };
 
   componentWillMount() {
@@ -175,13 +175,13 @@ export default class AZSelectorTable extends Component {
     }
     if (isValidObject(universeConfigTemplate.data) && isValidObject(universeConfigTemplate.data.placementInfo) &&
     !_.isEqual(universeConfigTemplate, this.props.universe.universeConfigTemplate)) {
-      const uniqueAZs = [ ...new Set(azGroups.map(item => item.value)) ]
+      const uniqueAZs = [ ...new Set(azGroups.map(item => item.value)) ];
       if (isValidObject(uniqueAZs)) {
         var placementStatusObject = {
           numUniqueRegions: placementInfo.uniqueRegions,
           numUniqueAzs: placementInfo.uniqueAzs,
           replicationFactor: universeConfigTemplate.data.userIntent.replicationFactor
-        }
+        };
         this.props.setPlacementStatus(placementStatusObject);
       }
     }

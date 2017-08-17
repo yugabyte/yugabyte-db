@@ -13,8 +13,8 @@ const mapDispatchToProps = (dispatch) => {
     closeUniverseModal: () => {
       dispatch(closeDialog());
     }
-  }
-}
+  };
+};
 
 function mapStateToProps(state, ownProps) {
   return {

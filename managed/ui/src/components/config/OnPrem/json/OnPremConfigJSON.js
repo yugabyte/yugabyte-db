@@ -9,7 +9,7 @@ import brace from 'brace';
 import AceEditor from 'react-ace';
 import 'brace/mode/json';
 import 'brace/theme/github';
-import {YBPanelItem} from '../../../panels'
+import {YBPanelItem} from '../../../panels';
 import { YBButton } from '../../../common/forms/fields';
 import sampleDataCenterConfig from '../../templates/SampleDataCenterConfig.json';
 
@@ -23,7 +23,7 @@ class ConfigFormTitle extends Component {
           <YBButton btnIcon="fa fa-files-o" btnText={"Copy"} onClick={copyTextToForm}/>
         </Col>
       </div>
-    )
+    );
   }
 }
 
@@ -49,7 +49,7 @@ export default class OnPremConfigJSON extends Component {
     // https://developer.mozilla.org/en-US/docs/Web/SVG
     const editorStyle = {
       width: "100%"
-    }
+    };
     const configTitle = "Enter Datacenter Configuration JSON:";
     const {switchToWizardEntry, submitJson} = this.props;
     return (
@@ -84,6 +84,6 @@ export default class OnPremConfigJSON extends Component {
           <YBButton btnText={"Submit"} btnType={"submit"} btnClass={"btn btn-default save-btn pull-right"} onClick={submitJson}/>
         </Row>
       </div>
-    )
+    );
   }
 }

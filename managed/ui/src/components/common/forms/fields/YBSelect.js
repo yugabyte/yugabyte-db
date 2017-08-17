@@ -14,7 +14,7 @@ export class YBControlledSelect extends Component {
       <select {...input} className="form-control" onChange={onInputChanged} value={selectVal}>
         {options}
       </select>
-    )
+    );
   }
 }
 
