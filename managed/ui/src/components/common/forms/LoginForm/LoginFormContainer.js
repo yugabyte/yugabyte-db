@@ -32,8 +32,8 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(loginResponse(response.payload));
       });
     }
-  }
-}
+  };
+};
 
 function mapStateToProps(state) {
   return {
@@ -46,6 +46,6 @@ var loginForm = reduxForm({
   form: 'LoginForm',
   fields: ['email', 'password'],
   validate
-})
+});
 
 export default connect(mapStateToProps, mapDispatchToProps)(loginForm(LoginForm));

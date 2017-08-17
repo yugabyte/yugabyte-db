@@ -11,7 +11,7 @@ import { isValidObject, isNonEmptyArray } from 'utils/ObjectUtils';
 import MarkerClusterLayer from './MarkerClusterLayer';
 import UniverseRegionMarkerLayer from './UniverseRegionMarkerLayer';
 import {MAP_SERVER_URL} from '../../config';
-import './stylesheets/RegionMap.scss'
+import './stylesheets/RegionMap.scss';
 
 export default class RegionMap extends Component {
   static propTypes = {
@@ -26,7 +26,7 @@ export default class RegionMap extends Component {
 
   render() {
     const { regions, type, showLabels, showRegionLabels, universe } = this.props;
-    var regionMarkers = []
+    var regionMarkers = [];
     var bounds = [[61.96, 105.78], [-21.96, -95.78]];
 
     let regionData = type !== "Universe" ? regions : universe.regions;

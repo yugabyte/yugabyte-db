@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 
-import './stylesheets/YBLoadingIcon.scss'
+import './stylesheets/YBLoadingIcon.scss';
 
 export default class YBLoadingIcon extends Component {
   render() {
@@ -11,6 +11,6 @@ export default class YBLoadingIcon extends Component {
         <i className="fa fa-spinner fa-spin"/>
         <div>Loading</div>
       </div>
-    )
+    );
   }
 }

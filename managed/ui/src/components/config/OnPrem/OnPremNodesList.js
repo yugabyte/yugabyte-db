@@ -36,12 +36,12 @@ class OnPremNodesList extends Component {
     let currentCloudRegions = supportedRegionList.data.filter(region => region.provider.code === "onprem");
     let currentCloudAccessKey = accessKeys.data.filter(
       accessKey => accessKey.idKey.providerUUID === onPremProvider.uuid
-    ).shift()
+    ).shift();
 
     let zoneList = currentCloudRegions.reduce(function(azs, r) {
       azs[r.code] = [];
       r.zones.map((z) => azs[r.code][z.code.trim()] = z.uuid);
-      return azs
+      return azs;
     }, {});
     let instanceTypeList = [];
     if (isNonEmptyObject(vals.instances)) {
@@ -55,8 +55,8 @@ class OnPremNodesList extends Component {
                 zone: val.zone, region: region, ip: ip.trim(),
                 instanceType: val.machineType,
                 sshUser: currentCloudAccessKey.keyInfo.sshUser
-              })
-            })
+              });
+            });
           } else {
             acc[currentRegion] = val.instanceTypeIPs.split(",").map((ip) =>
               ({zone: val.zone, region: region, ip: ip.trim(),
@@ -92,19 +92,19 @@ class OnPremNodesList extends Component {
           instanceType: item.details.instanceType,
           region: item.details.region,
           zone: item.details.zone
-        }
+        };
       });
     }
     var removeNodeItem = function(row, cell) {
       if (cell)
         return <i className={`fa fa-trash remove-cell-container`}/>;
-    }
+    };
 
     let currentCloudRegions = supportedRegionList.data.filter(region => region.provider.code === "onprem");
     var regionFormTemplate = isNonEmptyArray(currentCloudRegions) ?
       currentCloudRegions.map(function(regionItem, idx){
         var zoneOptions = regionItem.zones.map(function(zoneItem, zoneIdx){
-          return <option key={zoneItem+zoneIdx} value={zoneItem.code}>{zoneItem.code}</option>});
+          return <option key={zoneItem+zoneIdx} value={zoneItem.code}>{zoneItem.code}</option>;});
         var machineTypeOptions = instanceTypes.data.map(function(machineTypeItem, mcIdx){
           return <option key={machineTypeItem+mcIdx} value={machineTypeItem.instanceTypeCode}>{machineTypeItem.instanceTypeCode}</option>;
         });
@@ -118,7 +118,7 @@ class OnPremNodesList extends Component {
                           zoneOptions={zoneOptions} machineTypeOptions={machineTypeOptions} formType={"modal"}/>
             </div>
           </div>
-        )
+        );
       }) : null;
 
     return (
@@ -154,7 +154,7 @@ class OnPremNodesList extends Component {
           {regionFormTemplate}
         </YBModal>
       </div>
-    )
+    );
   }
 }
 

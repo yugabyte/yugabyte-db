@@ -3,7 +3,7 @@
 import { CHANGE_GRAPH_QUERY_PERIOD, RESET_GRAPH_QUERY_PERIOD,
 QUERY_METRICS, QUERY_METRICS_SUCCESS, QUERY_METRICS_FAILURE,
 RESET_METRICS } from '../actions/graph';
-import { DEFAULT_GRAPH_FILTER } from '../components/metrics'
+import { DEFAULT_GRAPH_FILTER } from '../components/metrics';
 
 const INITIAL_STATE = {graphFilter: DEFAULT_GRAPH_FILTER, metrics: {},
   loading: false, error: null, universeMetricList: []};
@@ -22,11 +22,11 @@ export default function(state = INITIAL_STATE, action) {
       return { ...state, loading: true};
     case QUERY_METRICS_SUCCESS:
       var metricData = state.metrics;
-      metricData[action.panelType] = action.payload.data
+      metricData[action.panelType] = action.payload.data;
       return { ...state, metrics: metricData, loading: false};
     case QUERY_METRICS_FAILURE:
       metricData = state.metrics;
-      metricData[action.panelType] = []
+      metricData[action.panelType] = [];
       return { ...state, metrics: metricData, error: action.payload,
         loading: false};
     case RESET_METRICS:

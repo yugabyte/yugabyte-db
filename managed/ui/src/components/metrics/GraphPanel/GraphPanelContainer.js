@@ -19,14 +19,14 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
     resetMetrics: () => {
-      dispatch(resetMetrics())
+      dispatch(resetMetrics());
     }
-  }
-}
+  };
+};
 const mapStateToProps = (state) => {
   return {
     graph: state.graph
   };
-}
+};
 
 export default connect( mapStateToProps, mapDispatchToProps)(GraphPanel);

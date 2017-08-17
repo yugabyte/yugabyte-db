@@ -5,7 +5,7 @@ import PropTypes from 'prop-types';
 import { isValidObject } from '../../../utils/ObjectUtils';
 import { FormattedDate } from 'react-intl';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import './AlertsList.css'
+import './AlertsList.css';
 import {YBFormattedNumber} from '../../common/descriptors';
 
 export default class TaskListTable extends Component {

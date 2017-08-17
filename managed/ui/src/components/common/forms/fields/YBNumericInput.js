@@ -18,7 +18,7 @@ export class YBControlledNumericInput extends Component {
       <NumericInput {...input} className="form-control" value={val} onChange={onInputChanged}
                     onSelect={onInputSelect} onFocus={onInputFocus} onBlur={onInputBlur} format={valueFormat}
                     min={minVal} />
-    )
+    );
   }
 }
 export class YBUnControlledNumericInput extends Component {

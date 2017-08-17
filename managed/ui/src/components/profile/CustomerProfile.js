@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import { Col } from 'react-bootstrap';
-import {YBInputField, YBButton} from '../common/forms/fields'
+import {YBInputField, YBButton} from '../common/forms/fields';
 import { Field } from 'redux-form';
 import _ from 'lodash';
 
@@ -27,9 +27,9 @@ export default class CustomerProfile extends Component {
     const {handleSubmit, submitting, customerProfile} = this.props;
     var profileUpdateStatus = <span/>;
     if (customerProfile.data === "updated-success") {
-      profileUpdateStatus = <span className="pull-right yb-success-color">Profile Updated Successfully</span>
+      profileUpdateStatus = <span className="pull-right yb-success-color">Profile Updated Successfully</span>;
     } else if (customerProfile.error) {
-      profileUpdateStatus = <span className="pull-right yb-fail-color">Profile Update Failed</span>
+      profileUpdateStatus = <span className="pull-right yb-fail-color">Profile Update Failed</span>;
     }
     return (
       <div className="bottom-bar-padding">
@@ -50,6 +50,6 @@ export default class CustomerProfile extends Component {
           </div>
         </Col>
       </div>
-    )
+    );
   }
 }

@@ -9,7 +9,7 @@ var Dropzone = require('react-dropzone');
 export default class OnPremProviderAndAccessKey extends Component {
   constructor(props) {
     super(props);
-    this.state  = {privateKeyFile: {}, hostOptionsVisible: false}
+    this.state  = {privateKeyFile: {}, hostOptionsVisible: false};
     this.toggleAdditionalHostOptions = this.toggleAdditionalHostOptions.bind(this);
     this.privateKeyUpload = this.privateKeyUpload.bind(this);
     this.submitProviderKeyForm = this.submitProviderKeyForm.bind(this);
@@ -75,6 +75,6 @@ export default class OnPremProviderAndAccessKey extends Component {
           </div>
         </form>
       </div>
-    )
+    );
   }
 }

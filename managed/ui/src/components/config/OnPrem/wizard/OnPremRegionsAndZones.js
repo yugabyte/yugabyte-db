@@ -83,7 +83,7 @@ class OnPremListRegionsAndZones extends Component {
                 <Field name={`${fieldItem}.zones`} component={YBInputField} insetError={true} isReadOnly={isReadOnly}/>
               </Col>
             </Row>
-          )
+          );
         }) }
         <Row>
           <Col lg={1}>
@@ -139,7 +139,7 @@ export default class OnPremRegionsAndZones extends Component {
           </div>
         </form>
       </div>
-    )
+    );
   }
 }
 

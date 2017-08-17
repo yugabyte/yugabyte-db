@@ -69,7 +69,7 @@ export default class OnPremConfiguration extends Component {
       jsonPayload = JSON.parse(newJsonString);
     }
     // Add sshUser to Node Payload, if not added
-    jsonPayload.nodes.map( (node) => node.sshUser = node.sshUser || jsonPayload.key.sshUser )
+    jsonPayload.nodes.map( (node) => node.sshUser = node.sshUser || jsonPayload.key.sshUser );
     return jsonPayload;
   }
 
@@ -180,7 +180,7 @@ export default class OnPremConfiguration extends Component {
   }
 
   toggleJsonEntry() {
-    this.setState({'isJsonEntry': !this.state.isJsonEntry})
+    this.setState({'isJsonEntry': !this.state.isJsonEntry});
   }
 
   toggleAdditionalOptionsModal() {
@@ -209,7 +209,7 @@ export default class OnPremConfiguration extends Component {
         totalNumRegions ++;
         totalNumZones += region.zones.length;
       }
-    })
+    });
     payloadData.instanceTypes.forEach(function(instanceType){
       if (instanceType.isBeingEdited) {
         totalNumInstances ++;
@@ -235,7 +235,7 @@ export default class OnPremConfiguration extends Component {
   }
 
   submitWizardJson(payloadData) {
-    this.setState({configJsonVal: payloadData})
+    this.setState({configJsonVal: payloadData});
     this.props.createOnPremProvider(PROVIDER_TYPE, payloadData);
   }
 
@@ -269,6 +269,6 @@ export default class OnPremConfiguration extends Component {
       <div className="on-prem-provider-container">
         {ConfigurationDataForm}
       </div>
-    )
+    );
   }
 }

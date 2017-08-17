@@ -19,14 +19,14 @@ export default class UniverseResources extends Component {
     let universeNodes = <span/>;
     if (isNonEmptyObject(resources)) {
       empty = false;
-      costPerDay = <YBCost value={resources.pricePerHour} multiplier={"day"} />
-      costPerMonth = <YBCost value={resources.pricePerHour} multiplier={"month"} />
+      costPerDay = <YBCost value={resources.pricePerHour} multiplier={"day"} />;
+      costPerMonth = <YBCost value={resources.pricePerHour} multiplier={"month"} />;
       numCores = resources.numCores;
       memSizeGB = resources.memSizeGB;
       volumeSizeGB = resources.volumeSizeGB;
       volumeCount = resources.volumeCount;
       if (resources && resources.numNodes && renderType === "Display") {
-        universeNodes = <YBResourceCount size={resources.numNodes || 0} kind="Node" pluralizeKind />
+        universeNodes = <YBResourceCount size={resources.numNodes || 0} kind="Node" pluralizeKind />;
       }
     }
     
@@ -49,8 +49,8 @@ export default class UniverseResources extends Component {
 
 UniverseResources.PropTypes = {
   renderType: PropTypes.oneOf(["Display", "Configure"])
-}
+};
 
 UniverseResources.defaultProps = {
   renderType: "Configure"
-}
+};

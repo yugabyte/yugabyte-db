@@ -70,7 +70,7 @@ export default function(state = INITIAL_STATE, action) {
       return setSuccessState(state, "instanceTypes", _.sortBy(action.payload.data, "name"));
 
     case RESET_PROVIDER_LIST:
-      return { ...state, providers: getInitialState([]), regions: getInitialState([]), instanceTypes:getInitialState([])}
+      return { ...state, providers: getInitialState([]), regions: getInitialState([]), instanceTypes:getInitialState([])};
 
     case GET_SUPPORTED_REGION_DATA:
       return setLoadingState(state, "supportedRegionList", []);

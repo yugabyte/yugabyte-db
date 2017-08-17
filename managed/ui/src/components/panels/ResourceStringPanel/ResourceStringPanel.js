@@ -12,8 +12,8 @@ export default class ResourceStringPanel extends Component {
       return cloudItem.regionList.map(function(regionItem, regionIdx){
         return regionItem.azList.map(function(azItem, azIdx){
           return azItem.name;
-        }).join(", ")
-      }).join(", ")
+        }).join(", ");
+      }).join(", ");
     }).join(", ");
     var regionList = universeInfo.regions && universeInfo.regions.map(function(region) { return region.name; }).join(", ");
     var connectStringPanelItems = [

@@ -6,6 +6,6 @@ const mapStateToProps = (state) => {
   return {
     customer: state.customer
   };
-}
+};
 
 export default connect(mapStateToProps)(YBPanelItem);

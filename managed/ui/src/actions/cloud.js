@@ -75,14 +75,14 @@ export function getProviderList() {
   return {
     type: GET_PROVIDER_LIST,
     payload: request
-  }
+  };
 }
 
 export function getProviderListResponse(responsePayload) {
   return {
     type: GET_PROVIDER_LIST_RESPONSE,
     payload: responsePayload
-  }
+  };
 }
 
 export function getRegionList(providerUUID, isMultiAz) {
@@ -98,7 +98,7 @@ export function getRegionListResponse(responsePayload) {
   return {
     type: GET_REGION_LIST_RESPONSE,
     payload: responsePayload
-  }
+  };
 }
 
 export function getInstanceTypeList(providerUUID) {
@@ -114,7 +114,7 @@ export function getInstanceTypeListResponse(responsePayload) {
   return {
     type: GET_INSTANCE_TYPE_LIST_RESPONSE,
     payload: responsePayload
-  }
+  };
 }
 
 export function createInstanceType(providerCode, providerUUID, instanceTypeInfo) {
@@ -134,14 +134,14 @@ export function createInstanceType(providerCode, providerUUID, instanceTypeInfo)
   return {
     type: CREATE_INSTANCE_TYPE,
     payload: request
-  }
+  };
 }
 
 export function createInstanceTypeResponse(responsePayload) {
   return {
     type: CREATE_INSTANCE_TYPE_RESPONSE,
     payload: responsePayload
-  }
+  };
 }
 
 export function getSupportedRegionData() {
@@ -150,20 +150,20 @@ export function getSupportedRegionData() {
   return {
     type: GET_SUPPORTED_REGION_DATA,
     payload: request
-  }
+  };
 }
 
 export function getSupportedRegionDataResponse(responsePayload) {
   return {
     type: GET_SUPPORTED_REGION_DATA_RESPONSE,
     payload: responsePayload
-  }
+  };
 }
 
 export function resetProviderList() {
   return {
     type: RESET_PROVIDER_LIST
-  }
+  };
 }
 
 export function createProvider(type, name, config) {
@@ -241,7 +241,7 @@ export function createNodeInstancesResponse(result) {
   return {
     type: CREATE_NODE_INSTANCES_RESPONSE,
     payload: result
-  }
+  };
 }
 
 export function createAccessKey(providerUUID, regionUUID, keyInfo) {
@@ -287,7 +287,7 @@ export function initializeProviderFailure(error) {
   return {
     type: INITIALIZE_PROVIDER_FAILURE,
     payload: error
-  }
+  };
 }
 
 export function deleteProvider(providerUUID) {
@@ -318,13 +318,13 @@ export function deleteProviderResponse(response) {
   return {
     type: DELETE_PROVIDER_RESPONSE,
     payload: response
-  }
+  };
 }
 
 export function resetProviderBootstrap() {
   return {
     type: RESET_PROVIDER_BOOTSTRAP
-  }
+  };
 }
 
 export function listAccessKeys(providerUUID) {
@@ -340,7 +340,7 @@ export function listAccessKeysResponse(response) {
   return {
     type: LIST_ACCESS_KEYS_RESPONSE,
     payload: response
-  }
+  };
 }
 
 export function getEBSTypeList() {
@@ -348,14 +348,14 @@ export function getEBSTypeList() {
   return {
     type: GET_EBS_TYPE_LIST,
     payload: request
-  }
+  };
 }
 
 export function getEBSTypeListResponse(responsePayload) {
   return {
     type: GET_EBS_TYPE_LIST_RESPONSE,
     payload: responsePayload
-  }
+  };
 }
 
 export function createDockerProvider() {
@@ -364,20 +364,20 @@ export function createDockerProvider() {
   return {
     type: CREATE_DOCKER_PROVIDER,
     payload: request
-  }
+  };
 }
 
 export function createDockerProviderResponse(response) {
   return {
     type: CREATE_DOCKER_PROVIDER_RESPONSE,
     payload: response
-  }
+  };
 }
 
 export function fetchCloudMetadata() {
   return {
     type: FETCH_CLOUD_METADATA
-  }
+  };
 }
 
 export function setOnPremConfigData(configData) {
@@ -393,18 +393,18 @@ export function getNodeInstancesForProvider(pUUID) {
   return {
     type: GET_NODE_INSTANCE_LIST,
     payload: request
-  }
+  };
 }
 
 export function getNodesInstancesForProviderResponse(response) {
   return {
     type: GET_NODE_INSTANCE_LIST_RESPONSE,
     payload: response
-  }
+  };
 }
 
 export function resetOnPremConfigData() {
   return {
     type: RESET_ON_PREM_CONFIG_DATA
-  }
+  };
 }

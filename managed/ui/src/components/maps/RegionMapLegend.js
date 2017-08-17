@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import { isEmptyArray } from 'utils/ObjectUtils';
-import './stylesheets/RegionMapLegend.scss'
+import './stylesheets/RegionMapLegend.scss';
 import SelectList from 'react-widgets/lib/SelectList';
 import _ from 'lodash';
 
@@ -39,6 +39,6 @@ export default class RegionMapLegend extends Component{
                       onChange={value => self.setState({selectedProviderList: value})} />
         </div>
       </div>
-    )
+    );
   }
 }

@@ -37,11 +37,11 @@ class UniverseDisplayItem extends Component {
     if (!isValidObject(universe)) {
       return <span/>;
     }
-    var replicationFactor = <span>{`${universe.universeDetails.userIntent.replicationFactor}`}</span>
-    var numNodes = <span>{universe.universeDetails.userIntent.numNodes}</span>
+    var replicationFactor = <span>{`${universe.universeDetails.userIntent.replicationFactor}`}</span>;
+    var numNodes = <span>{universe.universeDetails.userIntent.numNodes}</span>;
     var costPerMonth = <span>n/a</span>;
     if (isFinite(universe.pricePerHour)) {
-      costPerMonth = <YBCost value={universe.pricePerHour} multiplier={"month"}/>
+      costPerMonth = <YBCost value={universe.pricePerHour} multiplier={"month"}/>;
     }
     let universeCreationDate = moment(universe.creationDate ).format("MM/DD/YYYY") || "";
     return (
@@ -71,7 +71,7 @@ class UniverseDisplayItem extends Component {
           </div>
         </div>
       </Col>
-    )
+    );
   }
 }
 
@@ -83,9 +83,9 @@ export default class UniverseDisplayPanel extends Component {
       let universeDisplayList = <span/>;
       if (getPromiseState(universeList).isSuccess()) {
         universeDisplayList = universeList.data.sort((a, b) => {
-          return Date.parse(a.creationDate) < Date.parse(b.creationDate)
+          return Date.parse(a.creationDate) < Date.parse(b.creationDate);
         }).map(function (universeItem, idx) {
-          return <UniverseDisplayItem key={universeItem.name + idx} universe={universeItem}/>
+          return <UniverseDisplayItem key={universeItem.name + idx} universe={universeItem}/>;
         });
       }
       var createUniverseButton = <CreateUniverseButtonComponent onClick={() => self.props.showUniverseModal()}/>;
@@ -97,7 +97,7 @@ export default class UniverseDisplayPanel extends Component {
             {createUniverseButton}
           </Row>
         </div>
-      )
+      );
     } else if (getPromiseState(providers).isEmpty()) {
       return (
         <div className="get-started-config">
@@ -105,7 +105,7 @@ export default class UniverseDisplayPanel extends Component {
           <span>Before you can create a Universe, you must configure a cloud provider.</span>
           <span><Link to="config">Click Here to Configure A Provider</Link></span>
         </div>
-      )
+      );
     } else {
       return <YBLoadingIcon/>;
     }

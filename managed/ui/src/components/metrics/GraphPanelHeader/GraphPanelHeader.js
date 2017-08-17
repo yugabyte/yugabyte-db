@@ -27,9 +27,9 @@ const filterTypes = [
   {label: "Last 7 days", type: "days", value: "7"},
   {type: "divider"},
   {label: "Custom", type: "custom"}
-]
+];
 
-const DEFAULT_FILTER_KEY = 0
+const DEFAULT_FILTER_KEY = 0;
 export const DEFAULT_GRAPH_FILTER = {
   startMoment: moment().subtract(
     filterTypes[DEFAULT_FILTER_KEY].value,
@@ -40,7 +40,7 @@ export const DEFAULT_GRAPH_FILTER = {
   filterLabel: filterTypes[DEFAULT_FILTER_KEY].label,
   filterType: filterTypes[DEFAULT_FILTER_KEY].type,
   filterValue: filterTypes[DEFAULT_FILTER_KEY].value
-}
+};
 
 
 class GraphPanelHeader extends Component {
@@ -74,7 +74,7 @@ class GraphPanelHeader extends Component {
       startMoment: moment().subtract("1", "hours"),
       nodePrefix: currentUniversePrefix,
       nodeName: "all"
-    }
+    };
   }
 
   componentWillMount() {
@@ -87,7 +87,7 @@ class GraphPanelHeader extends Component {
         nodeName: currentQuery.nodeName,
         filterType: currentQuery.filterType,
         filterValue: currentQuery.filterValue
-      }
+      };
       if (currentQuery.filterType === "custom") {
         filterParams.startMoment = moment.unix(currentQuery.startDate);
         filterParams.endMoment = moment.unix(currentQuery.endDate);
@@ -117,7 +117,7 @@ class GraphPanelHeader extends Component {
       if (getPromiseState(universe.currentUniverse).isEmpty() || getPromiseState(universe.currentUniverse).isInit()) {
         var currentUniverse = universeList.data.find(function (item) {
           return item.universeDetails.nodePrefix === nodePrefix;
-        })
+        });
         if (!isNonEmptyObject(currentUniverse)) {
           currentUniverse = "all";
         }
@@ -160,12 +160,12 @@ class GraphPanelHeader extends Component {
       filterValue: filterInfo.value});
 
     if (event.target.getAttribute("data-filter-type") !== "custom") {
-      var endMoment = moment()
+      var endMoment = moment();
       var startMoment = moment().subtract(filterInfo.value, filterInfo.type);
       newParams.startMoment = startMoment;
       newParams.endMoment = endMoment;
       this.setState({startMoment: startMoment, endMoment: endMoment});
-      this.props.changeGraphQueryFilters(newParams)
+      this.props.changeGraphQueryFilters(newParams);
       this.updateUrlQueryParams(newParams);
     }
   }
@@ -185,7 +185,7 @@ class GraphPanelHeader extends Component {
       }
     }
     if (!universeFound) {
-      self.setState({nodeName: "all", nodePrefix: "all"})
+      self.setState({nodeName: "all", nodePrefix: "all"});
     }
     newParams.nodeName = "all";
     this.props.changeGraphQueryFilters(newParams);
@@ -205,11 +205,11 @@ class GraphPanelHeader extends Component {
   }
 
   handleEndDateChange(dateStr) {
-    this.setState({endMoment: moment(dateStr)})
+    this.setState({endMoment: moment(dateStr)});
   }
 
   applyCustomFilter() {
-    this.updateGraphQueryParams(this.state.startMoment, this.state.endMoment)
+    this.updateGraphQueryParams(this.state.startMoment, this.state.endMoment);
   }
 
   updateGraphQueryParams(startMoment, endMoment) {
@@ -263,7 +263,7 @@ class GraphPanelHeader extends Component {
     var menuItems = filterTypes.map(function(filter, idx) {
       const key = 'graph-filter-' + idx;
       if (filter.type === "divider") {
-        return <MenuItem divider key={key}/>
+        return <MenuItem divider key={key}/>;
       }
 
       return (
@@ -327,7 +327,7 @@ class UniversePicker extends Component {
     const {universeItemChanged, universe: {universeList}, selectedUniverse} = this.props;
     var universeItems = universeList.data.sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
                           .map(function(item, idx){
-                            return <option key={idx} value={item.universeUUID} name={item.name}>{item.name}</option>
+                            return <option key={idx} value={item.universeUUID} name={item.name}>{item.name}</option>;
                           });
     var universeOptionArray = [<option key={-1} value="all">All</option>].concat(universeItems);
     var currentUniverseValue = "all";

@@ -7,7 +7,7 @@ export const PROVIDER_TYPES = [
   { code: "docker", name: "Docker Localhost" },
   { code: "gcp", name: "Google" },
   { code: "onprem", name: "On Premises"}
-]
+];
 
 export function getProviderEndpoint(providerUUID) {
   var customerUUID = localStorage.getItem("customer_id");

@@ -19,7 +19,7 @@ export default function(state = INITIAL_STATE, action) {
     case RESET_TASK_PROGRESS:
       return setInitialState(state, "taskProgressData", {});
     case FETCH_CUSTOMER_TASKS:
-      return {...state}
+      return {...state};
     case FETCH_CUSTOMER_TASKS_SUCCESS:
       var taskData = action.payload.data;
       var taskListResultArray = [];
@@ -27,11 +27,11 @@ export default function(state = INITIAL_STATE, action) {
         taskData[taskIdx].forEach(function(taskItem){
           taskItem.universeUUID = taskIdx;
           taskListResultArray.push(taskItem);
-        })
+        });
       });
-      return {...state, customerTaskList: taskListResultArray.sort((a, b) => b.createTime - a.createTime)}
+      return {...state, customerTaskList: taskListResultArray.sort((a, b) => b.createTime - a.createTime)};
     case FETCH_CUSTOMER_TASKS_FAILURE:
-      return {...state, customerTaskList: action.payload.error}
+      return {...state, customerTaskList: action.payload.error};
     case RESET_CUSTOMER_TASKS:
       return {...state, customerTaskList: []};
     default:

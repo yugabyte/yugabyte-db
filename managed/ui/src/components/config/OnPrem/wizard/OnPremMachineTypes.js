@@ -46,7 +46,7 @@ class OnPremListMachineTypes extends Component {
         return <i className="fa fa-minus-circle on-prem-row-delete-btn" onClick={self.removeMachineTypeRow.bind(self, fieldIdx)}/>;
       }
       return <span/>;
-    }
+    };
     return (
       <div>
         { fields.map(function(fieldItem, fieldIdx){
@@ -72,7 +72,7 @@ class OnPremListMachineTypes extends Component {
                 <Field name={`${fieldItem}.mountPath`} component={YBInputField} insetError={true} isReadOnly={isReadOnly}/>
               </Col>
             </Row>
-          )
+          );
         })
         }
         <Row>
@@ -84,7 +84,7 @@ class OnPremListMachineTypes extends Component {
           </Col>
         </Row>
       </div>
-    )
+    );
   }
 }
 

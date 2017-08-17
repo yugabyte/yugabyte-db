@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 
-import './YBPanelItem.css'
+import './YBPanelItem.css';
 
 export default class YBPanelItem extends Component {
 
@@ -25,4 +25,4 @@ export default class YBPanelItem extends Component {
 
 YBPanelItem.defaultProps ={
   hideToolBox: false
-}
+};

@@ -44,7 +44,7 @@ const appTypes = [
     options: [{"num_unique_keys": "1000000"}, {"num_reads": "-1"}, {"num_writes": "-1"},
     {"num_threads_read": "32"}, {"num_threads_write": "2"}]
   }
-]
+];
 
 export default class UniverseAppsModal extends Component {
   static propTypes = {
@@ -64,16 +64,16 @@ export default class UniverseAppsModal extends Component {
     const { nodeDetails } = this.props;
     var cassandraHosts = nodeDetails.map(function(nodeDetail) {
       if (nodeDetail.state === "Running" && nodeDetail.cloudInfo && isValidObject(nodeDetail.cloudInfo.private_ip))
-        return nodeDetail.cloudInfo.private_ip + ":" + nodeDetail.yqlServerRpcPort
+        return nodeDetail.cloudInfo.private_ip + ":" + nodeDetail.yqlServerRpcPort;
       else
-        return null
-    }).filter(Boolean).join(",")
+        return null;
+    }).filter(Boolean).join(",");
     var redisHosts = nodeDetails.map(function(nodeDetail) {
       if (nodeDetail.state === "Running" && nodeDetail.cloudInfo && isValidObject(nodeDetail.cloudInfo.private_ip))
-        return nodeDetail.cloudInfo.private_ip + ":" + nodeDetail.redisServerRpcPort
+        return nodeDetail.cloudInfo.private_ip + ":" + nodeDetail.redisServerRpcPort;
       else
-        return null
-    }).filter(Boolean).join(",")
+        return null;
+    }).filter(Boolean).join(",");
 
     var appTabs = appTypes.map(function(appType, idx) {
       var hostPorts = cassandraHosts;
@@ -84,7 +84,7 @@ export default class UniverseAppsModal extends Component {
       var appOptions = appType.options.map(function(option, idx) {
         var option_data = Array.shift(Object.entries(option));
         return <p key={idx}>--{ option_data[0] + " " + option_data[1]}</p>;
-      })
+      });
       return (
         <Tab eventKey={idx} title={appType.title} key={appType.code}>
           <label className="app-description">{appType.description}</label>
@@ -94,8 +94,8 @@ export default class UniverseAppsModal extends Component {
           <YBCodeBlock label="Other options (with default values):">
             {appOptions}
           </YBCodeBlock>
-        </Tab>)
-    })
+        </Tab>);
+    });
 
     return (
       <div className="universe-apps-modal">

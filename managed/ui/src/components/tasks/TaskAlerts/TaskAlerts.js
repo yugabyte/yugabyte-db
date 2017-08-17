@@ -6,7 +6,7 @@ import { Link } from 'react-router';
 import { isNonEmptyArray } from 'utils/ObjectUtils';
 import moment from 'moment';
 
-import './TaskAlerts.scss'
+import './TaskAlerts.scss';
 
 class AlertItem extends Component {
   render() {
@@ -37,7 +37,7 @@ class AlertItem extends Component {
     }
 
     var timeStampDifference = moment(taskInfo.createTime).fromNow();
-    var [currentTask, universeName] = taskInfo.title.split(":")
+    var [currentTask, universeName] = taskInfo.title.split(":");
     return (
       <div className='task-cell'>
         <div className='icon icon-hang-left'>
@@ -51,12 +51,12 @@ class AlertItem extends Component {
           {timeStampDifference}
         </div>
       </div>
-    )
+    );
   }
 }
 AlertItem.propTypes = {
   taskInfo: PropTypes.object.isRequired
-}
+};
 
 export default class TaskAlerts extends Component {
   componentDidMount() {
@@ -86,9 +86,9 @@ export default class TaskAlerts extends Component {
         {tasksDisplayList}
         <Link to="tasks" className="task-cell">Show All Tasks</Link>
       </div>
-    )
+    );
   }
 }
 TaskAlerts.propTypes = {
   eventKey: PropTypes.string.isRequired
-}
+};

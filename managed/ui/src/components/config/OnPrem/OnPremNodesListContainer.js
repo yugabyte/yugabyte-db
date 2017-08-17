@@ -42,7 +42,7 @@ const mapDispatchToProps = (dispatch, ownProps) => {
             });
             dispatch(closeDialog());
           }
-        })
+        });
       });
     },
 
@@ -60,7 +60,7 @@ const mapDispatchToProps = (dispatch, ownProps) => {
         dispatch(getNodesInstancesForProviderResponse(response.payload));
       });
     }
-  }
+  };
 };
 
 var addNodeForm = reduxForm({

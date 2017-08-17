@@ -14,7 +14,7 @@ export default class YBCheckBox extends Component {
       if (isValidObject(onClick)) {
         onClick(event);
       }
-    }
+    };
     return (
       <label htmlFor={this.props.name}>
         <input {...input} type="checkbox"

@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import Measure from 'react-measure';
-import { GraphPanelHeaderContainer, GraphPanelContainer } from '../../metrics'
+import { GraphPanelHeaderContainer, GraphPanelContainer } from '../../metrics';
 
 export default class CustomerMetricsPanel extends Component {
   state = {

@@ -19,8 +19,8 @@ const mapDispatchToProps = (dispatch) => {
     resetCustomerTasks: () => {
       dispatch(resetCustomerTasks());
     }
-  }
-}
+  };
+};
 
 function mapStateToProps(state, ownProps) {
   return {

@@ -37,6 +37,6 @@ export default class HelpItems extends Component {
         </Row>
         <hr/>
       </div>
-    )
+    );
   }
 }

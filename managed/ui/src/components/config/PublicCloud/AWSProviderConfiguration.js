@@ -49,7 +49,7 @@ class AWSProviderConfiguration extends Component {
     const currentStepIndex = bootstrapSteps.findIndex( (step) => step.type === type );
     if (currentStepIndex !== -1) {
       if (promiseState.isLoading()) {
-        bootstrapSteps[currentStepIndex].state = "Running"
+        bootstrapSteps[currentStepIndex].state = "Running";
       } else {
         bootstrapSteps[currentStepIndex].state = error ? "Error" : "Success";
       }
@@ -118,7 +118,7 @@ class AWSProviderConfiguration extends Component {
 
       let keyPairName = "Not Configured";
       if (isValidObject(accessKeys) && isNonEmptyArray(accessKeys.data)) {
-        let awsAccessKey = accessKeys.data.find((accessKey) => accessKey.idKey.providerUUID === awsProvider.uuid)
+        let awsAccessKey = accessKeys.data.find((accessKey) => accessKey.idKey.providerUUID === awsProvider.uuid);
         if (isDefinedNotNull(awsAccessKey)) {
           keyPairName = awsAccessKey.idKey.keyCode;
         }
@@ -168,7 +168,7 @@ class AWSProviderConfiguration extends Component {
       // We don't have bootstrap steps for cleanup.
       if (type && type !== "cleanup") {
         const progressDetailsMap = this.state.bootstrapSteps.map( (step) => {
-          return { name: step.name, type: step.state }
+          return { name: step.name, type: step.state };
         });
         bootstrapSteps = (
           <div className="aws-config-progress">

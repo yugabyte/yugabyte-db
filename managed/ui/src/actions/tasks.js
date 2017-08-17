@@ -31,7 +31,7 @@ export function fetchTaskProgressResponse(result) {
 export function resetTaskProgress(error) {
   return {
     type: RESET_TASK_PROGRESS
-  }
+  };
 }
 
 export function fetchCustomerTasks() {
@@ -47,18 +47,18 @@ export function fetchCustomerTasksSuccess(result) {
   return {
     type: FETCH_CUSTOMER_TASKS_SUCCESS,
     payload: result
-  }
+  };
 }
 
 export function fetchCustomerTasksFailure(error) {
   return {
     type: FETCH_CUSTOMER_TASKS_FAILURE,
     payload: error
-  }
+  };
 }
 
 export function resetCustomerTasks() {
   return {
     type: RESET_CUSTOMER_TASKS
-  }
+  };
 }

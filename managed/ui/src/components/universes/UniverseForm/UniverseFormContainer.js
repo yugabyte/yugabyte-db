@@ -73,7 +73,7 @@ const mapDispatchToProps = (dispatch) => {
     getAccessKeys: (provider) => {
       dispatch(listAccessKeys(provider)).then((response) => {
         dispatch(listAccessKeysResponse(response.payload));
-      })
+      });
     },
 
     getRegionListItems: (provider, isMultiAZ) => {
@@ -93,7 +93,7 @@ const mapDispatchToProps = (dispatch) => {
     fetchUniverseTasks: (universeUUID) => {
       dispatch(fetchUniverseTasks(universeUUID)).then((response) => {
         dispatch(fetchUniverseTasksResponse(response.payload));
-      })
+      });
     },
     getExistingUniverseConfiguration: (universeDetail) => {
       dispatch(configureUniverseTemplateSuccess({data: universeDetail}));
@@ -107,7 +107,7 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(getNodesInstancesForProviderResponse(response.payload));
       });
     }
-  }
+  };
 };
 
 const formFieldNames = ['formType', 'universeName', 'provider',  'providerType', 'regionList',
@@ -137,7 +137,7 @@ function mapStateToProps(state, ownProps) {
     if (isDefinedNotNull(currentUniverse.data.universeDetails)  && userIntent.isMultiAZ) {
       data.regionList = currentUniverse.data.regions && currentUniverse.data.regions.map(function (item, idx) {
         return {value: item.uuid, name: item.name, label: item.name};
-      })
+      });
     } else {
       data.regionList = [{
         value: currentUniverse.data.regions[0].uuid,
@@ -171,24 +171,24 @@ const asyncValidate = (values, dispatch ) => {
         } else {
           resolve();
         }
-      })
-    })
+      });
+    });
   }
 };
 
 const validate = values => {
   const errors = {};
   if (!isNonEmptyString(values.universeName)) {
-    errors.universeName = 'Universe Name is Required'
+    errors.universeName = 'Universe Name is Required';
   }
   if (!isDefinedNotNull(values.provider)) {
-    errors.provider = 'Provider Value is Required'
+    errors.provider = 'Provider Value is Required';
   }
   if (!isDefinedNotNull(values.regionList)) {
-    errors.regionList = 'Region Value is Required'
+    errors.regionList = 'Region Value is Required';
   }
   if (!isDefinedNotNull(values.instanceType)) {
-    errors.instanceType = 'Instance Type is Required'
+    errors.instanceType = 'Instance Type is Required';
   }
   return errors;
 };

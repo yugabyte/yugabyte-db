@@ -87,7 +87,7 @@ class OnPremSuccess extends Component {
             longitude: regionItem.longitude,
             latitude: regionItem.latitude,
             zones: regionItem.zones.map(zoneItem => zoneItem.code)
-          }
+          };
         }),
         instanceTypes: instanceTypes.data.map(instanceTypeItem => ({
           instanceTypeCode: instanceTypeItem.instanceTypeCode,
@@ -138,7 +138,7 @@ class OnPremSuccess extends Component {
 
     let keyPairName = "Not Configured";
     if (isNonEmptyArray(accessKeys.data)) {
-      let onPremAccessKey = accessKeys.data.find((accessKey) => accessKey.idKey.providerUUID === currentProvider.uuid)
+      let onPremAccessKey = accessKeys.data.find((accessKey) => accessKey.idKey.providerUUID === currentProvider.uuid);
       if (isDefinedNotNull(onPremAccessKey)) {
         keyPairName = onPremAccessKey.idKey.keyCode;
       }

@@ -74,8 +74,8 @@ export default class MetricsPanel extends Component {
           y: 1
         }];
         metric.layout.margin.b = 105;
-        metric.layout.xaxis = {range: [0, 2]}
-        metric.layout.yaxis = {range: [0, 2]}
+        metric.layout.xaxis = {range: [0, 2]};
+        metric.layout.yaxis = {range: [0, 2]};
       }
 
       Plotly.newPlot(metricKey, metric.data, metric.layout, {displayModeBar: false});

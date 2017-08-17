@@ -22,8 +22,8 @@ const mapDispatchToProps = (dispatch) => {
     resetTablesList: () => {
       dispatch(resetTablesList());
     }
-  }
-}
+  };
+};
 
 function mapStateToProps(state) {
   return {

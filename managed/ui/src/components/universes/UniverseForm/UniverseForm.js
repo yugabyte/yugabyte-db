@@ -104,7 +104,7 @@ class UniverseForm extends Component {
       replicationFactor: this.state.replicationFactor,
       deviceInfo: this.state.deviceInfo,
       accessKeyCode: this.state.accessKeyCode
-    }
+    };
   }
 
   setDeviceInfo(instanceTypeCode, instanceTypeList) {
@@ -312,7 +312,7 @@ class UniverseForm extends Component {
                 numNodes: this.state.numNodes,
                 maxNumNodes: this.state.maxNumNodes
               }
-            }
+            };
             this.props.setPlacementStatus(placementStatusObject);
           }
         } else {
@@ -327,7 +327,7 @@ class UniverseForm extends Component {
             numNodes: this.state.numNodes,
             maxNumNodes: this.state.maxNumNodes
           }
-        }
+        };
         this.props.setPlacementStatus(placementStatusObject);
       }
     }
@@ -418,7 +418,7 @@ class UniverseForm extends Component {
       }
     }
     if (isNonEmptyArray(nextProps.accessKeys.data) && !isNonEmptyArray(this.props.accessKeys.data)) {
-      this.setState({accessKeyCode: nextProps.accessKeys.data[0].idKey.keyCode})
+      this.setState({accessKeyCode: nextProps.accessKeys.data[0].idKey.keyCode});
     }
 
     // Form Actions on Create Universe Success
@@ -427,7 +427,7 @@ class UniverseForm extends Component {
       this.props.fetchUniverseMetadata();
       this.props.fetchCustomerTasks();
       if (this.context.prevPath) {
-        browserHistory.push(this.context.prevPath)
+        browserHistory.push(this.context.prevPath);
       } else {
         browserHistory.push("/universes");
       }
@@ -480,7 +480,7 @@ class UniverseForm extends Component {
     universeProviderList.unshift(<option key="" value=""></option>);
 
     var ebsTypesList = cloud.ebsTypes && cloud.ebsTypes.map(function (ebsType, idx) {
-      return <option key={ebsType} value={ebsType}>{ebsType}</option>
+      return <option key={ebsType} value={ebsType}>{ebsType}</option>;
     });
 
     var universeRegionList = cloud.regions.data && cloud.regions.data.map(function (regionItem, idx) {
@@ -507,8 +507,8 @@ class UniverseForm extends Component {
                   ))
               }
             </optgroup>
-          )
-        })
+          );
+        });
       }
     } else {
       universeInstanceTypeList =
@@ -545,7 +545,7 @@ class UniverseForm extends Component {
 
     var placementStatus = <span/>;
     if (self.props.universe.currentPlacementStatus) {
-      placementStatus = <AZPlacementInfo placementInfo={self.props.universe.currentPlacementStatus}/>
+      placementStatus = <AZPlacementInfo placementInfo={self.props.universe.currentPlacementStatus}/>;
     }
 
     var ebsTypeSelector = <span/>;
@@ -703,5 +703,5 @@ class UniverseForm extends Component {
 
 UniverseForm.contextTypes = {
   prevPath: PropTypes.string
-}
+};
 export default withRouter(UniverseForm);

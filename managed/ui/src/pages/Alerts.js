@@ -9,6 +9,6 @@ export default class Alerts extends Component {
       <div>
         <AlertsListContainer/>
       </div>
-    )
+    );
   }
 }

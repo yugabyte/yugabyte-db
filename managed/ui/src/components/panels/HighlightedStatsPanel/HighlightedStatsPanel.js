@@ -6,7 +6,7 @@ import moment from 'moment';
 import { DescriptionItem, YBFormattedNumber } from '../../common/descriptors';
 import { getPromiseState } from 'utils/PromiseUtils';
 import {YBLoadingIcon} from '../../common/indicators';
-import './HighlightedStatsPanel.css'
+import './HighlightedStatsPanel.css';
 
 class StatsPanelComponent extends Component {
   render() {
@@ -22,7 +22,7 @@ class StatsPanelComponent extends Component {
           {label}
         </span>
       </Col>
-    )
+    );
   }
 }
 
@@ -35,7 +35,7 @@ export default class HighlightedStatsPanel extends Component {
       return <YBLoadingIcon/>;
     }
     if (!(getPromiseState(universeList).isSuccess() || getPromiseState(universeList).isEmpty())) {
-      return <span/>
+      return <span/>;
     }
 
     universeList.data.forEach(function (universeItem) {
@@ -54,6 +54,6 @@ export default class HighlightedStatsPanel extends Component {
           <StatsPanelComponent value={formattedCost} label={"Per Month"}/>
         </Col>
       </div>
-    )
+    );
   }
 }

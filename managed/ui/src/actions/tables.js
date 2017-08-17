@@ -133,7 +133,7 @@ export function toggleTableView(currentView) {
 export function resetTablesList() {
   return {
     type: RESET_TABLES_LIST
-  }
+  };
 }
 
 export function bulkImport(universeUUID, tableUUID, formValues) {

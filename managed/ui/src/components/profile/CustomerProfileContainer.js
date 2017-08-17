@@ -4,7 +4,7 @@ import { connect } from 'react-redux';
 import {CustomerProfile} from '../profile';
 import { reduxForm } from 'redux-form';
 import {updateProfile, updateProfileSuccess, updateProfileFailure} from '../../actions/customers';
-import { SubmissionError } from 'redux-form'
+import { SubmissionError } from 'redux-form';
 
 //Client side validation
 function validate(values) {
@@ -48,14 +48,14 @@ const mapDispatchToProps = (dispatch) => {
         }
       });
     }
-  }
-}
+  };
+};
 
 var editCustomerProfile = reduxForm({
   form: 'EditCustomerProfile',
   fields: ['email', 'password', 'name'],
   validate
-})
+});
 
 
 function mapStateToProps(state) {

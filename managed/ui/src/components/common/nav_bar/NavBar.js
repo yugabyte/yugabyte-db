@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import TopNavBarContainer from './TopNavBarContainer';
 import SideNavBar from './SideNavBar';
-import './stylesheets/NavBar.scss'
+import './stylesheets/NavBar.scss';
 
 export default class NavBar extends Component {
   render() {

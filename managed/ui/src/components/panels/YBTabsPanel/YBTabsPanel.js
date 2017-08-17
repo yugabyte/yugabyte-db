@@ -42,4 +42,4 @@ class YBTabsPanel extends Component {
   }
 }
 
-export default withRouter(YBTabsPanel)
+export default withRouter(YBTabsPanel);

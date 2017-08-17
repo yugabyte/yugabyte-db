@@ -5,7 +5,7 @@ import { Row, Col } from 'react-bootstrap';
 
 import { UniverseRegionLocationPanelContainer,
    UniverseDisplayPanelContainer } from '../panels';
-import './stylesheets/Dashboard.scss'
+import './stylesheets/Dashboard.scss';
 
 export default class Dashboard extends Component {
 

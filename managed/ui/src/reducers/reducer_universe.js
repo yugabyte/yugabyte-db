@@ -114,9 +114,9 @@ export default function(state = INITIAL_STATE, action) {
       }
       return {...state, universeList: currentUniverseList};
     case SET_PLACEMENT_STATUS:
-      return {...state, currentPlacementStatus: action.payload}
+      return {...state, currentPlacementStatus: action.payload};
     case RESET_UNIVERSE_CONFIGURATION:
-      return {...state, currentPlacementStatus: null, universeResourceTemplate: getInitialState({}), universeConfigTemplate: getInitialState({})}
+      return {...state, currentPlacementStatus: null, universeResourceTemplate: getInitialState({}), universeConfigTemplate: getInitialState({})};
     case FETCH_UNIVERSE_METADATA:
       return {...state, fetchUniverseMetadata: true};
     default:

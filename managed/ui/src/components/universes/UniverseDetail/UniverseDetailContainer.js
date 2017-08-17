@@ -41,8 +41,8 @@ const mapDispatchToProps = (dispatch) => {
     closeModal: () => {
       dispatch(closeDialog());
     }
-  }
-}
+  };
+};
 
 function mapStateToProps(state, ownProps) {
   return {

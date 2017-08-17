@@ -9,6 +9,6 @@ export default class Help extends Component {
       <div>
         <HelpItemContainer/>
       </div>
-    )
+    );
   }
 }

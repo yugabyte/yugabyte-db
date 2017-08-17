@@ -30,12 +30,12 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(resetUniverseInfo());
     },
     showBulkImportModal: () => {
-      dispatch(openDialog("bulkImport"))
+      dispatch(openDialog("bulkImport"));
     },
     closeModal: () => {
       dispatch(closeDialog());
     }
-  }
+  };
 };
 
 function mapStateToProps(state) {

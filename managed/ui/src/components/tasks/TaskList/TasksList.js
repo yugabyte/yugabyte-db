@@ -13,6 +13,6 @@ export default class TasksList extends Component {
     const {tasks: {customerTaskList}} = this.props;
     return (
       <TaskListTable taskList={customerTaskList}/>
-    )
+    );
   }
 }
