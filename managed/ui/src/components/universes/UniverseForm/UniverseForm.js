@@ -419,7 +419,7 @@ class UniverseForm extends Component {
 
     // If we have accesskeys for a current selected provider we set that in the state or we fallback to default value.
     if (isNonEmptyArray(nextProps.accessKeys.data) && !_.isEqual(this.props.accessKeys.data, nextProps.accessKeys.data)) {
-      let providerAccessKeys = nextProps.accessKeys.data.filter((key) => key.idKey.providerUUID === this.state.providerSelected);
+      const providerAccessKeys = nextProps.accessKeys.data.filter((key) => key.idKey.providerUUID === this.state.providerSelected);
       if (isNonEmptyArray(providerAccessKeys)) {
         this.setState({accessKeyCode: providerAccessKeys[0].idKey.keyCode});
       } else {
