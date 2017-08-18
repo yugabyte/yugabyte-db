@@ -114,7 +114,6 @@ Status BuildTable(const std::string& dbname,
                                              meta->fd.GetPathId());
   const std::string data_fname = is_split_sst ? TableBaseToDataFileName(base_fname) : "";
   if (iter->Valid()) {
-    std::unique_ptr<TableBuilder> builder;
     shared_ptr<WritableFileWriter> base_file_writer;
     shared_ptr<WritableFileWriter> data_file_writer;
     s = CreateWritableFileWriter(base_fname, env_options, io_priority, env, &base_file_writer);
@@ -124,10 +123,10 @@ Status BuildTable(const std::string& dbname,
     if (!s.ok()) {
       return s;
     }
-    builder = NewTableBuilder(
+    std::unique_ptr<TableBuilder> builder(NewTableBuilder(
         ioptions, internal_comparator, int_tbl_prop_collector_factories,
         column_family_id, base_file_writer.get(), data_file_writer.get(), compression,
-        compression_opts);
+        compression_opts));
 
     MergeHelper merge(env, internal_comparator.user_comparator(),
                       ioptions.merge_operator, nullptr, ioptions.info_log,
