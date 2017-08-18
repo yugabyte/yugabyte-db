@@ -11,7 +11,7 @@ import AuthenticatedComponent from './pages/AuthenticatedComponent';
 import Dashboard from './pages/Dashboard';
 import UniverseDetail from './pages/UniverseDetail';
 import Universes from './pages/Universes';
-import Tasks from './pages/Tasks';
+import {Tasks, TasksList, TaskDetail} from './pages/tasks';
 import Alerts from './pages/Alerts';
 import ListUniverse from './pages/ListUniverse';
 import Metrics from './pages/Metrics';
@@ -70,7 +70,10 @@ export default (store) => {
           <Route path="/universes/:uuid" component={UniverseDetail} />
           <Route path="/universes/:uuid/tables/:tableUUID" component={TableDetail}/>
         </Route>
-        <Route path="/tasks" component={Tasks} />
+        <Route path="/tasks" component={Tasks} >
+          <IndexRoute component={TasksList}/>
+          <Route path="/tasks/:taskUUID" component={TaskDetail}/>
+        </Route>
         <Route path="/metrics" component={Metrics} />
         <Route path="/config" component={DataCenterConfiguration} />
         <Route path="/config/:tab" component={DataCenterConfiguration} />
