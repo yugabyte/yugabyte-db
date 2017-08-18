@@ -19,7 +19,6 @@ export default class YBMapLegendItem extends Component {
     } else if (type === "Region") {
       legendItemIcon = <div className="marker-cluster-small provider-marker-cluster">#</div>;
     }
-    console.log(type);
     let mapLegendDetails = <span/>;
     if (type !== "Region") {
       mapLegendDetails = (
