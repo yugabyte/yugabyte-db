@@ -54,7 +54,7 @@ export default class TaskProgress extends Component {
 
   render() {
     const { taskUUIDs, taskProgressData, type } = this.props;
-    let taskProgressPromise = getPromiseState(taskProgressData);
+    const taskProgressPromise = getPromiseState(taskProgressData);
     if (taskUUIDs.length === 0) {
       return <span />;
     } else if (taskProgressPromise.isLoading() || taskProgressPromise.isInit()) {

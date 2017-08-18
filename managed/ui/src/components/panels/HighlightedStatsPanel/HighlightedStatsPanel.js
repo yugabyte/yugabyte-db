@@ -29,8 +29,8 @@ class StatsPanelComponent extends Component {
 export default class HighlightedStatsPanel extends Component {
   render() {
     const { universe: { universeList } } = this.props;
-    var numNodes = 0;
-    var totalCost = 0;
+    let numNodes = 0;
+    let totalCost = 0;
     if (getPromiseState(universeList).isLoading()) {
       return <YBLoadingIcon/>;
     }

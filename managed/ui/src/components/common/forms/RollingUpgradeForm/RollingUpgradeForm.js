@@ -34,10 +34,10 @@ class FlagItems extends Component {
 
   render() {
     const { fields } = this.props;
-    var addFlagItem = function() {
+    const addFlagItem = function() {
       fields.push({});
     };
-    var gFlagsFieldList = fields.map((item, idx) => (
+    const gFlagsFieldList = fields.map((item, idx) => (
       <FlagInput item={item} key={idx} deleteRow={() => fields.remove(idx)} />
     ));
 
@@ -67,8 +67,8 @@ export default class RollingUpgradeForm extends Component {
   setRollingUpgradeProperties(values) {
     const { universe: {visibleModal, currentUniverse: {data: {universeDetails: {nodeDetailsSet,
       userIntent}, universeUUID}}}} = this.props;
-    let nodeNames = [];
-    let payload = {};
+    const nodeNames = [];
+    const payload = {};
     nodeDetailsSet.forEach((item) => {
       if (!isValidObject(values[item.nodeName]) || values[item.nodeName] !== false) {
         nodeNames.push(item.nodeName);
@@ -93,16 +93,16 @@ export default class RollingUpgradeForm extends Component {
   }
 
   render() {
-    var self = this;
+    const self = this;
     const {onHide, modalVisible, handleSubmit, universe: {visibleModal,
       error, currentUniverse: {data: {universeDetails}}}, resetRollingUpgrade, softwareVersions} = this.props;
     const submitAction = handleSubmit(self.setRollingUpgradeProperties);
-    var title = "";
-    var formBody = <span/>;
-    var softwareVersionOptions = softwareVersions.map(function(item, idx){
+    let title = "";
+    let formBody = <span/>;
+    const softwareVersionOptions = softwareVersions.map(function(item, idx){
       return <option key={idx} value={item}>{item}</option>;
     });
-    var formCloseAction = function() {
+    const formCloseAction = function() {
       onHide();
       self.props.reset();
     };
@@ -150,7 +150,7 @@ export default class RollingUpgradeForm extends Component {
 class ItemList extends Component {
   render() {
     const {nodeList} = this.props;
-    var nodeCheckList = <Field name={"check"} component={YBCheckBox}/>;
+    let nodeCheckList = <Field name={"check"} component={YBCheckBox}/>;
     if (isNonEmptyArray(nodeList)) {
       nodeCheckList =
         nodeList.map(function (item, idx) {

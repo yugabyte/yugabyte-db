@@ -65,7 +65,7 @@ const mapDispatchToProps = (dispatch) => {
   };
 };
 
-let gcpConfigForm = reduxForm({
+const gcpConfigForm = reduxForm({
   form: 'gcpConfigForm',
   fields: [ 'accountName'],
 });

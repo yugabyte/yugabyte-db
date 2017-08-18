@@ -9,15 +9,15 @@ export default class UniverseStatus extends Component {
 
   render() {
     const {currentUniverse: {universeDetails, universeUUID}, showLabelText, tasks: {customerTaskList}} = this.props;
-    var updateInProgress = universeDetails.updateInProgress;
-    var updateSucceeded = universeDetails.updateSucceeded;
-    var statusClassName = "";
-    var statusText = "";
-    var universePendingTask = isNonEmptyArray(customerTaskList) ? customerTaskList.find(function(taskItem) {
+    const updateInProgress = universeDetails.updateInProgress;
+    const updateSucceeded = universeDetails.updateSucceeded;
+    let statusClassName = "";
+    let statusText = "";
+    const universePendingTask = isNonEmptyArray(customerTaskList) ? customerTaskList.find(function(taskItem) {
       return (taskItem.universeUUID === universeUUID && (taskItem.status === "Running" ||
         taskItem.status === "Initializing") && Number(taskItem.percentComplete) !== 100);
     }) : null;
-    var statusDisplay = <span/>;
+    let statusDisplay = <span/>;
     if (updateSucceeded) {
       statusClassName = 'good';
       if (showLabelText) {

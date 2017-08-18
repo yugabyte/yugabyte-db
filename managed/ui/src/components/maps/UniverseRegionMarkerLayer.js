@@ -14,29 +14,29 @@ export default class UniverseRegionMarkerLayer extends Component {
   }
   getCurrentRegion(regionUUID) {
     const {universe} = this.props;
-    let markerData =  universe.regions;
-    let currentRegion = markerData.find(function(markerItem){
+    const markerData =  universe.regions;
+    const currentRegion = markerData.find(function(markerItem){
       return markerItem.uuid === regionUUID ;
     });
     return currentRegion;
   }
   render() {
-    let self = this;
+    const self = this;
     const { universe } = this.props;
-    let cloudList = universe.universeDetails.placementInfo.cloudList;
-    let azMarkerPoints = [];
-    let markerDataArray = [];
+    const cloudList = universe.universeDetails.placementInfo.cloudList;
+    const azMarkerPoints = [];
+    const markerDataArray = [];
     cloudList.forEach(function(cloudItem){
       cloudItem.regionList.forEach(function(regionItem, regionIdx){
-        let regionMarkerIcon = divIcon({className: 'universe-region-marker', html: regionItem.name});
-        let currentRegion = self.getCurrentRegion(regionItem.uuid);
-        let regionLatLong = [currentRegion.latitude, currentRegion.longitude];
-        let azPoints = getPointsOnCircle(regionItem.azList.length, regionLatLong, 1);
+        const regionMarkerIcon = divIcon({className: 'universe-region-marker', html: regionItem.name});
+        const currentRegion = self.getCurrentRegion(regionItem.uuid);
+        const regionLatLong = [currentRegion.latitude, currentRegion.longitude];
+        const azPoints = getPointsOnCircle(regionItem.azList.length, regionLatLong, 1);
         azPoints.forEach(function(azPoint){
           azMarkerPoints.push(azPoint);
         });
         azPoints.forEach(function(azItem, azIdx){
-          let label = (
+          const label = (
             <span>
               <div>Name: {regionItem.azList[azIdx].name}</div>
               <div>Number Of Nodes: {regionItem.azList[azIdx].numNodesInAZ}</div>

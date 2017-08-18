@@ -20,7 +20,7 @@ export default class MapMarker extends Component {
 
   render() {
     const { latitude, longitude, label, type, labelType, numChildren } = this.props;
-    var popup;
+    let popup;
     if (label) {
       popup = <Popup><span>{label}</span></Popup>;
     }
@@ -29,7 +29,7 @@ export default class MapMarker extends Component {
       popup = <Tooltip>{label}</Tooltip>;
     }
 
-    var opts = {};
+    const opts = {};
     if( type === "Default" ) {
       opts['icon'] = new Icon({
         iconUrl: DefaultMarkerIcon,
@@ -53,7 +53,7 @@ export default class MapMarker extends Component {
     } else if (type === "Region") {
       opts['icon'] = divIcon({className: 'marker-cluster-small provider-marker-cluster', html: numChildren});
     } else {
-      var markerData = RootMarkerIcon;
+      const markerData = RootMarkerIcon;
       opts['icon'] = new Icon({
         iconUrl: markerData,
         shadowUrl: "",

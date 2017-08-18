@@ -18,7 +18,7 @@ export default class RegionMapLegend extends Component{
     }
   }
   render() {
-    var self = this;
+    const self = this;
     if (isEmptyArray(self.props.providers)) {
       return <span />;
     }

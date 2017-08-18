@@ -40,11 +40,11 @@ export default class NodeDetails extends Component {
       };
     });
 
-    var formatIpPort = function(cell, row, type) {
+    const formatIpPort = function(cell, row, type) {
       if (cell === "No") {
         return <span>{cell}</span>;
       }
-      var href;
+      let href;
       if (type === "master") {
         href = "http://" + row.privateIP + ":" + row.masterPort;
       } else {
@@ -61,9 +61,9 @@ export default class NodeDetails extends Component {
       }
     }).filter(Boolean);
 
-    var getNodeNameLink = function(cell, row) {
+    const getNodeNameLink = function(cell, row) {
       if (row.cloudInfo.cloud === "aws") {
-        var awsURI = `https://${row.cloudInfo.region}.console.aws.amazon.com/ec2/v2/home?region=${row.cloudInfo.region}#Instances:search=${cell};sort=availabilityZone`;
+        const awsURI = `https://${row.cloudInfo.region}.console.aws.amazon.com/ec2/v2/home?region=${row.cloudInfo.region}#Instances:search=${cell};sort=availabilityZone`;
         return <a href={awsURI} target="_blank" rel="noopener noreferrer">{cell}</a>;
       } else {
         return cell;

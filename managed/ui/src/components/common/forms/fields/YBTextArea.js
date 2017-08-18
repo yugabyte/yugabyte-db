@@ -10,7 +10,7 @@ export default class YBTextArea extends Component {
     isReadOnly: false
   };
   render() {
-    var self = this;
+    const self = this;
     const { input, type, className, placeHolder, onValueChanged, isReadOnly, label, meta, insetError } = this.props;
     function onChange(event) {
       if (isFunction(onValueChanged)) {

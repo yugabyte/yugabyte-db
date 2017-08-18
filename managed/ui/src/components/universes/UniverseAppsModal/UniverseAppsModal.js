@@ -62,27 +62,27 @@ export default class UniverseAppsModal extends Component {
 
   render() {
     const { nodeDetails } = this.props;
-    var cassandraHosts = nodeDetails.map(function(nodeDetail) {
+    const cassandraHosts = nodeDetails.map(function(nodeDetail) {
       if (nodeDetail.state === "Running" && nodeDetail.cloudInfo && isValidObject(nodeDetail.cloudInfo.private_ip))
         return nodeDetail.cloudInfo.private_ip + ":" + nodeDetail.yqlServerRpcPort;
       else
         return null;
     }).filter(Boolean).join(",");
-    var redisHosts = nodeDetails.map(function(nodeDetail) {
+    const redisHosts = nodeDetails.map(function(nodeDetail) {
       if (nodeDetail.state === "Running" && nodeDetail.cloudInfo && isValidObject(nodeDetail.cloudInfo.private_ip))
         return nodeDetail.cloudInfo.private_ip + ":" + nodeDetail.redisServerRpcPort;
       else
         return null;
     }).filter(Boolean).join(",");
 
-    var appTabs = appTypes.map(function(appType, idx) {
-      var hostPorts = cassandraHosts;
+    const appTabs = appTypes.map(function(appType, idx) {
+      let hostPorts = cassandraHosts;
       if (appType.type === "redis") {
         hostPorts = redisHosts;
       }
 
-      var appOptions = appType.options.map(function(option, idx) {
-        var option_data = Array.shift(Object.entries(option));
+      const appOptions = appType.options.map(function(option, idx) {
+        const option_data = Array.shift(Object.entries(option));
         return <p key={idx}>--{ option_data[0] + " " + option_data[1]}</p>;
       });
       return (

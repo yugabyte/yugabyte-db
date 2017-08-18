@@ -40,8 +40,8 @@ class OnPremListMachineTypes extends Component {
 
   render() {
     const {fields} = this.props;
-    var self = this;
-    var removeRowButton = function(fieldIdx) {
+    const self = this;
+    const removeRowButton = function(fieldIdx) {
       if (fields.length > 1) {
         return <i className="fa fa-minus-circle on-prem-row-delete-btn" onClick={self.removeMachineTypeRow.bind(self, fieldIdx)}/>;
       }
@@ -50,7 +50,7 @@ class OnPremListMachineTypes extends Component {
     return (
       <div>
         { fields.map(function(fieldItem, fieldIdx){
-          let isReadOnly = self.isFieldReadOnly(fieldIdx);
+          const isReadOnly = self.isFieldReadOnly(fieldIdx);
           return (
             <Row key={`fieldMap${fieldIdx}`}>
               <Col lg={1}>

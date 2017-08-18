@@ -24,7 +24,7 @@ function mapStateToProps(state) {
 }
 
 function validate(values) {
-  let errors = {};
+  const errors = {};
   let hasErrors = false;
   if (!values.s3Bucket) {
     errors.s3Bucket = 'S3 bucket path required.';
@@ -43,7 +43,7 @@ function validate(values) {
   return hasErrors && errors;
 }
 
-let bulkImportForm = reduxForm({
+const bulkImportForm = reduxForm({
   form: 'BulkImport',
   fields: ['s3Bucket', 'instanceCount'],
   validate

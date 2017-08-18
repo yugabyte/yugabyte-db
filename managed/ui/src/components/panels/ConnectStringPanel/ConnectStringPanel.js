@@ -8,7 +8,7 @@ import './connectStringPanel.css';
 export default class ConnectStringPanel extends Component {
   render() {
     const { universeInfo, customerId, universeInfo: {universeDetails: {userIntent}}} = this.props;
-    var universeId = universeInfo.universeUUID;
+    const universeId = universeInfo.universeUUID;
     const endpointUrl = ROOT_URL + "/customers/" + customerId +
                         "/universes/" + universeId + "/masters";
     const endpoint = (
@@ -16,7 +16,7 @@ export default class ConnectStringPanel extends Component {
         <i className="fa fa-external-link" aria-hidden="true"></i>
       </a>
     );
-    var connectStringPanelItems = [
+    const connectStringPanelItems = [
       {name: "Meta Masters", data: endpoint},
       {name: "Server Version", data: userIntent.ybSoftwareVersion || 'n/a'},
     ];

@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import {Field} from 'redux-form';
 import {Row, Col, Collapse} from 'react-bootstrap';
 import {YBInputField, YBButton, YBTextArea} from '../../../common/forms/fields';
-var Dropzone = require('react-dropzone');
+const Dropzone = require('react-dropzone');
 
 export default class OnPremProviderAndAccessKey extends Component {
   constructor(props) {
@@ -29,10 +29,10 @@ export default class OnPremProviderAndAccessKey extends Component {
 
   render() {
     const {handleSubmit, switchToJsonEntry} = this.props;
-    var hostOptionsIndicator =
+    const hostOptionsIndicator =
       <i className={this.state.hostOptionsVisible ? "fa fa-chevron-down": "fa fa-chevron-right"} />;
 
-    let isReadOnly = this.props.isEditProvider;
+    const isReadOnly = this.props.isEditProvider;
     return (
       <div className="on-prem-provider-form-container">
         <form name="onPremConfigForm" onSubmit={handleSubmit(this.submitProviderKeyForm)}>

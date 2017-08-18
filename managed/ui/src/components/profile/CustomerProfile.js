@@ -25,7 +25,7 @@ export default class CustomerProfile extends Component {
 
   render() {
     const {handleSubmit, submitting, customerProfile} = this.props;
-    var profileUpdateStatus = <span/>;
+    let profileUpdateStatus = <span/>;
     if (customerProfile.data === "updated-success") {
       profileUpdateStatus = <span className="pull-right yb-success-color">Profile Updated Successfully</span>;
     } else if (customerProfile.error) {

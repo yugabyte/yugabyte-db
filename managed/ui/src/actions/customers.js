@@ -39,8 +39,8 @@ export const FETCH_HOST_INFO_FAILURE = 'FETCH_HOST_INFO_FAILURE';
 export const FETCH_CUSTOMER_COUNT = 'FETCH_CUSTOMER_COUNT';
 
 export function validateToken(tokenFromStorage) {
-  var cUUID = localStorage.getItem("customer_id");
-  var auth_token = localStorage.getItem("customer_token");
+  const cUUID = localStorage.getItem("customer_id");
+  const auth_token = localStorage.getItem("customer_token");
   axios.defaults.headers.common['X-AUTH-TOKEN'] = auth_token;
   const request = axios(`${ROOT_URL}/customers/${cUUID}`);
   return {
@@ -113,7 +113,7 @@ export function resetCustomer() {
 }
 
 export function updateProfile(values) {
-  var cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customer_id");
   const request = axios.put(`${ROOT_URL}/customers/${cUUID}`, values);
   return {
     type: UPDATE_PROFILE,
@@ -136,7 +136,7 @@ export function updateProfileFailure(error) {
 }
 
 export function fetchSoftwareVersions() {
-  var cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customer_id");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/releases`);
   return {
     type: FETCH_SOFTWARE_VERSIONS,
@@ -159,7 +159,7 @@ export function fetchSoftwareVersionsFailure(error) {
 }
 
 export function fetchHostInfo() {
-  var cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customer_id");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/host_info`);
   return {
     type: FETCH_HOST_INFO,

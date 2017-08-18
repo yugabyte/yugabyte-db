@@ -10,7 +10,7 @@ import './UniverseTable.scss';
 import {UniverseReadWriteMetrics} from '../../metrics';
 import {YBCost} from '../../common/descriptors';
 import {UniverseStatusContainer} from '../../universes';
-var moment = require('moment');
+const moment = require('moment');
 
 export default class UniverseTable extends Component {
 
@@ -25,18 +25,18 @@ export default class UniverseTable extends Component {
   }
 
   render() {
-    var self = this;
+    const self = this;
     const { universe: { universeList }, universeReadWriteData, tasks } = this.props;
 
     if (!isObject(universeList) || !isNonEmptyArray(universeList.data)) {
       return <h5>No universes defined.</h5>;
     }
 
-    var universeRowItem =
+    const universeRowItem =
       universeList.data.sort((a, b) => {
         return Date.parse(a.creationDate) < Date.parse(b.creationDate);
       }).map(function (item, idx) {
-        var universeTaskUUIDs = [];
+        let universeTaskUUIDs = [];
         if (isNonEmptyArray(tasks.customerTaskList)) {
           universeTaskUUIDs = tasks.customerTaskList.map(function(taskItem){
             if (taskItem.universeUUID === item.universeUUID) {
@@ -96,8 +96,8 @@ class YBUniverseItem extends Component {
 class CellLocationPanel extends Component {
   render() {
     const {universe, universe: {universeDetails: {userIntent}}} = this.props;
-    var isMultiAz = userIntent.isMultiAZ ? "Multi AZ" : "Single AZ";
-    var regionList = universe.regions && universe.regions.map(function(regionItem, idx){
+    const isMultiAz = userIntent.isMultiAZ ? "Multi AZ" : "Single AZ";
+    const regionList = universe.regions && universe.regions.map(function(regionItem, idx){
       return <span key={idx}>{regionItem.name}</span>;
     });
 
@@ -123,19 +123,19 @@ class CellResourcesPanel extends Component {
 
   render() {
     const {universe: {universeUUID, pricePerHour, iostat_read_count, iostat_write_count}} = this.props;
-    var averageReadRate = 0;
-    var averageWriteRate = 0;
+    let averageReadRate = 0;
+    let averageWriteRate = 0;
 
     if (isValidObject(iostat_read_count)) {
-      var readMetricArray = iostat_read_count.y;
-      var sum = readMetricArray.reduce(function (a, b) {
+      const readMetricArray = iostat_read_count.y;
+      const sum = readMetricArray.reduce(function (a, b) {
         return parseFloat(a) + parseFloat(b);
       });
       averageReadRate = (sum / readMetricArray.length).toFixed(2);
     }
     if (isValidObject(iostat_write_count)) {
-      var writeMetricArray = iostat_write_count.y;
-      sum = writeMetricArray.reduce(function (a, b) {
+      const writeMetricArray = iostat_write_count.y;
+      const sum = writeMetricArray.reduce(function (a, b) {
         return parseFloat(a) + parseFloat(b);
       });
       averageWriteRate = (sum / writeMetricArray.length).toFixed(2);

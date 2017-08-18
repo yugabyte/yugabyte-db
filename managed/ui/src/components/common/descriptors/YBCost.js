@@ -14,7 +14,7 @@ export default class YBCost extends Component {
 
   render() {
     const {value, multiplier} = this.props;
-    var finalCost = value || 0;
+    let finalCost = value || 0;
     if (multiplier === "day") {
       finalCost *= 24;
     }

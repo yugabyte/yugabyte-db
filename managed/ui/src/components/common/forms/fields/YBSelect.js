@@ -60,4 +60,4 @@ export default class YBSelectWithLabel extends Component {
 }
 
 // TODO: Rename all prior YBSelect references to YBSelectWithLabel.
-export var YBSelect = YBSelectWithLabel;
+export const YBSelect = YBSelectWithLabel;

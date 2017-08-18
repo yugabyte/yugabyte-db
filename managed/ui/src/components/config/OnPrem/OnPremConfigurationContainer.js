@@ -58,7 +58,7 @@ const mapDispatchToProps = (dispatch) => {
     createOnPremRegions: (providerUUID, config, isEdit) => {
       if (isObject(config) && isNonEmptyArray(config.regions)) {
         config.regions.forEach((region) => {
-          let formValues = {
+          const formValues = {
             "code": region.code,
             "hostVPCId": "",
             "name": region.code,
@@ -91,10 +91,10 @@ const mapDispatchToProps = (dispatch) => {
     createOnPremNodes: (zonesMap, config) => {
       if (isObject(config) && isNonEmptyArray(config.nodes)) {
         // Get a grouping of zones to nodes
-        let zoneToNodeMap = {};
+        const zoneToNodeMap = {};
         config.nodes.forEach((node) => {
           if (isObject(node)) {
-            let zoneUuid = zonesMap[node.zone];
+            const zoneUuid = zonesMap[node.zone];
             node.nodeName = "yb-" + node.zone + "-n" + config.nodes.indexOf(node).toString();
             zoneToNodeMap[zoneUuid] = zoneToNodeMap[zoneUuid] || [];
             zoneToNodeMap[zoneUuid].push(node);

@@ -50,7 +50,7 @@ export default class ListTables extends Component {
   }
 
   componentWillMount() {
-    var universeUUID = this.props.universe.currentUniverse.data.universeUUID;
+    const universeUUID = this.props.universe.currentUniverse.data.universeUUID;
     const {universe: {universeTasks}} = this.props;
     // Do not send tables query if task type is create, status is pending and target is universe
     if (getPromiseState(universeTasks).isSuccess() && isNonEmptyArray(universeTasks.data[universeUUID])) {
@@ -59,7 +59,7 @@ export default class ListTables extends Component {
   }
 
   fetchUniverseTables(universeTasks, universeUUID) {
-    let createUniverseTask = universeTasks.data[universeUUID].find(function(task){
+    const createUniverseTask = universeTasks.data[universeUUID].find(function(task){
       return task.target === "Universe" && task.type === "Create" && task.status === "Running" && task.percentComplete < 100;
     });
     if (!isDefinedNotNull(createUniverseTask)) {
@@ -68,8 +68,8 @@ export default class ListTables extends Component {
   }
 
   componentWillReceiveProps(nextProps) {
-    let {universe: {universeTasks, currentUniverse}} = nextProps;
-    let universeUUID = currentUniverse.data.universeUUID;
+    const {universe: {universeTasks, currentUniverse}} = nextProps;
+    const universeUUID = currentUniverse.data.universeUUID;
     if (getPromiseState(universeTasks).isSuccess() && getPromiseState(this.props.universe.universeTasks).isLoading() && isNonEmptyArray(universeTasks.data[universeUUID])) {
       this.fetchUniverseTables(universeTasks, universeUUID);
     }
@@ -88,10 +88,10 @@ export default class ListTables extends Component {
   }
 
   render() {
-    var self = this;
+    const self = this;
     const {tables} = this.props;
-    var numCassandraTables = 0;
-    var numRedisTables = 0;
+    let numCassandraTables = 0;
+    let numRedisTables = 0;
     if (isNonEmptyArray(self.props.tables.universeTablesList)) {
       self.props.tables.universeTablesList.forEach(function (item, idx) {
         if (item.tableType === "REDIS_TABLE_TYPE") {
@@ -126,13 +126,13 @@ class ListTableGrid extends Component {
 
 
   render(){
-    var self = this;
+    const self = this;
     const {universe: {currentUniverse: {data: {universeUUID}}, universeTasks}} = this.props;
-    var getTableIcon = function(tableType) {
+    const getTableIcon = function(tableType) {
       return <Image src={tableType === "YQL_TABLE_TYPE" ? cassandraLogo : redisLogo} className="table-type-logo" />;
     };
 
-    var getTableName = function (tableName, data) {
+    const getTableName = function (tableName, data) {
       if (data.status === "success") {
         return <Link to={`/universes/${universeUUID}/tables/${data.tableID}`}>{tableName}</Link>;
       } else {
@@ -140,13 +140,13 @@ class ListTableGrid extends Component {
       }
     };
 
-    var formatKeySpace = function(cell) {
+    const formatKeySpace = function(cell) {
       return <div className="top-5">{cell}</div>;
     };
 
     const tablePlacementDummyData = {"read": "-", "write": "-"};
 
-    var formatTableStatus = function(item, row) {
+    const formatTableStatus = function(item, row) {
       if (item === "success") {
         return <i className="yb-success-color fa fa-check"/>;
       } else if (item === "pending") {
@@ -162,7 +162,7 @@ class ListTableGrid extends Component {
       }
     };
 
-    var listItems = [];
+    let listItems = [];
     if (isNonEmptyArray(self.props.tables.universeTablesList)) {
       listItems = self.props.tables.universeTablesList.map(function (item, idx) {
         return {
@@ -176,16 +176,16 @@ class ListTableGrid extends Component {
         };
       });
     }
-    let currentUniverseTasks = universeTasks.data[universeUUID];
+    const currentUniverseTasks = universeTasks.data[universeUUID];
     if (getPromiseState(universeTasks).isSuccess() && isNonEmptyArray(currentUniverseTasks)) {
-      var pendingTableTasks = currentUniverseTasks.find(function(taskItem){
+      const pendingTableTasks = currentUniverseTasks.find(function(taskItem){
         return taskItem.target === "Table" && taskItem.status === "Running" && taskItem.percentComplete < 100;
       });
       if (pendingTableTasks) {
         // Split title string to extract table name from the title.
-        var pendingTableName = pendingTableTasks.title.replace(/.*:\s*/, '');
+        const pendingTableName = pendingTableTasks.title.replace(/.*:\s*/, '');
         if (listItems.findIndex(lItem => lItem.tableName === pendingTableName) === -1) {
-          var pendingTableRow = {
+          const pendingTableRow = {
             tableID: pendingTableTasks.id,
             tableType: "YQL_TABLE_TYPE",
             tableName: pendingTableName,
@@ -196,8 +196,8 @@ class ListTableGrid extends Component {
         }
       }
     }
-    var sortedListItems = _.sortBy(listItems, "tableName");
-    var tableListDisplay = (
+    const sortedListItems = _.sortBy(listItems, "tableName");
+    const tableListDisplay = (
       <BootstrapTable data={sortedListItems} >
         <TableHeaderColumn dataField="tableID" isKey={true} hidden={true} />
         <TableHeaderColumn dataField={"tableType"} dataFormat={ getTableIcon }

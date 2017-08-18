@@ -20,8 +20,8 @@ export default class TableDetail extends Component {
   }
 
   componentWillMount() {
-    var universeUUID = this.props.universeUUID;
-    var tableUUID = this.props.tableUUID;
+    const universeUUID = this.props.universeUUID;
+    const tableUUID = this.props.tableUUID;
     this.props.fetchUniverseDetail(universeUUID);
     this.props.fetchTableDetail(universeUUID, tableUUID);
   }
@@ -31,7 +31,7 @@ export default class TableDetail extends Component {
     this.props.resetTableDetail();
   }
   render() {
-    var tableInfoContent = <span/>;
+    let tableInfoContent = <span/>;
     const {
       universe: { currentUniverse, showModal, visibleModal },
       tables: { currentTableDetail }
@@ -55,11 +55,11 @@ export default class TableDetail extends Component {
         </div>
       );
     }
-    var tableSchemaContent = <span/>;
+    let tableSchemaContent = <span/>;
     if (isValidObject(currentTableDetail)) {
       tableSchemaContent = <TableSchema tableInfo={currentTableDetail}/>;
     }
-    var tabElements = [
+    const tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab">
         {tableInfoContent}
       </Tab>,
@@ -68,11 +68,11 @@ export default class TableDetail extends Component {
       </Tab>,
       <Tab eventKey={"metrics"} title="Metrics" key="metrics-tab"/>
     ];
-    var tableName = "";
+    let tableName = "";
     if (isValidObject(currentTableDetail.tableDetails)) {
       tableName = currentTableDetail.tableDetails.tableName;
     }
-    var universeUUID = this.props.universeUUID;
+    const universeUUID = this.props.universeUUID;
     return (
       <Grid id="page-wrapper" fluid={true}>
         <Row className="header-row">

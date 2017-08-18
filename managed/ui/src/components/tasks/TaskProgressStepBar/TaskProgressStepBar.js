@@ -18,7 +18,7 @@ export default class TaskProgressStepBar extends Component {
       return <span />;
     }
 
-    let currentTaskDetail = details.taskDetails
+    const currentTaskDetail = details.taskDetails
       .filter((taskDetail) => taskDetail.state === "Running")
       .map((taskDetail, idx) => (
         <div key={`taskdetail-{idx}`}>

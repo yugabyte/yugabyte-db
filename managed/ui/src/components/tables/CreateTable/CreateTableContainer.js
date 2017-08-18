@@ -13,7 +13,7 @@ const mapDispatchToProps = (dispatch) => {
   return {
     submitCreateTable: (currentUniverse, values) => {
       let rowCounter = 1;
-      let partitionKeyList = values.partitionKeyColumns.map(function(row, idx){
+      const partitionKeyList = values.partitionKeyColumns.map(function(row, idx){
         return {
           "columnOrder": rowCounter++,
           "name": row.name,
@@ -22,7 +22,7 @@ const mapDispatchToProps = (dispatch) => {
           "isClusteringKey": false
         };
       });
-      let clusteringColumnList = values.clusteringColumns.map(function(row, idx){
+      const clusteringColumnList = values.clusteringColumns.map(function(row, idx){
         return {
           "columnOrder": rowCounter++,
           "name": row.name,
@@ -32,7 +32,7 @@ const mapDispatchToProps = (dispatch) => {
           "isClusteringKey": true
         };
       });
-      let otherColumnList = values.otherColumns.map(function(row, idx){
+      const otherColumnList = values.otherColumns.map(function(row, idx){
         return {
           "columnOrder": rowCounter++,
           "name": row.name,
@@ -45,7 +45,7 @@ const mapDispatchToProps = (dispatch) => {
       });
       const allColumns = partitionKeyList.concat(clusteringColumnList, otherColumnList);
 
-      let payload = {};
+      const payload = {};
       payload.cloud = currentUniverse.universeDetails.cloud;
       payload.universeUUID = currentUniverse.universeUUID;
       payload.tableName = values.tableName;
@@ -130,7 +130,7 @@ const validate = (values, props) => {
   return errors;
 };
 
-var createTableForm = reduxForm({
+const createTableForm = reduxForm({
   form: 'CreateTableForm',
   validate,
   fields: ['tableName', 'ttlInSeconds', 'partitionKeyColumns[]', 'clusteringColumns[]', 'otherColumns[]']

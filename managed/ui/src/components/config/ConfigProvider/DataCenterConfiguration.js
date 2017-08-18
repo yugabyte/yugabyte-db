@@ -20,7 +20,7 @@ class DataCenterConfiguration extends Component {
   }
 
   configProviderSelect(item) {
-    let currentLocation = this.props.location;
+    const currentLocation = this.props.location;
     currentLocation.query = { provider: item };
     this.props.router.push(currentLocation);
   }

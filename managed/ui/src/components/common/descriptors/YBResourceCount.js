@@ -25,10 +25,10 @@ export default class YBResourceCount extends Component {
 
   render() {
     const {size, kind, unit, pluralizeKind, pluralizeUnit} = this.props;
-    var displayUnit = unit && pluralizeUnit ?
+    const displayUnit = unit && pluralizeUnit ?
       ((size === 1) ? unit : (this.props.unitPlural || this.pluralize(unit))) :
       unit;
-    var displayKind = kind && pluralizeKind ?
+    const displayKind = kind && pluralizeKind ?
       ((size === 1) ? kind : (this.props.kindPlural || this.pluralize(kind))) :
       kind;
 

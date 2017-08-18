@@ -66,7 +66,7 @@ class AWSProviderConfiguration extends Component {
         case "provider":
           this.setState({providerUUID: response.uuid, accountName: response.name});
           const { hostInfo } = this.props;
-          var regionFormVals = {};
+          let regionFormVals = {};
           if (isValidObject(hostInfo) && hostInfo["error"] === undefined) {
             regionFormVals = { "code": hostInfo["region"], "hostVPCId": hostInfo["vpc-id"], "name": hostInfo["region"]};
             this.props.createRegion(response.uuid, regionFormVals);
@@ -118,7 +118,7 @@ class AWSProviderConfiguration extends Component {
 
       let keyPairName = "Not Configured";
       if (isValidObject(accessKeys) && isNonEmptyArray(accessKeys.data)) {
-        let awsAccessKey = accessKeys.data.find((accessKey) => accessKey.idKey.providerUUID === awsProvider.uuid);
+        const awsAccessKey = accessKeys.data.find((accessKey) => accessKey.idKey.providerUUID === awsProvider.uuid);
         if (isDefinedNotNull(awsAccessKey)) {
           keyPairName = awsAccessKey.idKey.keyCode;
         }
@@ -129,7 +129,7 @@ class AWSProviderConfiguration extends Component {
         {name: "SSH Key", data: keyPairName},
       ];
 
-      let deleteButtonDisabled = submitting || universeExistsForProvider;
+      const deleteButtonDisabled = submitting || universeExistsForProvider;
       let deleteButtonClassName = "btn btn-default delete-aws-btn";
       let deleteButtonTitle = "Delete this AWS configuration.";
       if (deleteButtonDisabled) {

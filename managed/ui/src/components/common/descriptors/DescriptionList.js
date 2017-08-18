@@ -14,10 +14,10 @@ export default class DescriptionList extends Component {
     const { listItems } = this.props;
 
     const descriptionListItems = listItems.map(function(item, idx) {
-      var itemData = item.data;
+      let itemData = item.data;
 
       if (Array.isArray(item.data)) {
-        var arrData = item.data.map(function(data, dataIdx) {
+        const arrData = item.data.map(function(data, dataIdx) {
           return (
             <span key={dataIdx}>
               <dd key={dataIdx}>{data.name}</dd>

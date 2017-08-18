@@ -12,7 +12,7 @@ class NavLink extends Component {
     delete props.params;
     delete props.location;
     delete props.routes;
-    let isActive = router.isActive(to, index);
+    const isActive = router.isActive(to, index);
     const LinkComponent = index ?  IndexLink : Link;
 
     return (

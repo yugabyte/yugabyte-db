@@ -33,12 +33,12 @@ class OnPremNodesList extends Component {
     const {cloud: { supportedRegionList, accessKeys, providers }} = this.props;
     const onPremProvider = providers.data.find((provider) => provider.code === "onprem");
     const self = this;
-    let currentCloudRegions = supportedRegionList.data.filter(region => region.provider.code === "onprem");
-    let currentCloudAccessKey = accessKeys.data.filter(
+    const currentCloudRegions = supportedRegionList.data.filter(region => region.provider.code === "onprem");
+    const currentCloudAccessKey = accessKeys.data.filter(
       accessKey => accessKey.idKey.providerUUID === onPremProvider.uuid
     ).shift();
 
-    let zoneList = currentCloudRegions.reduce(function(azs, r) {
+    const zoneList = currentCloudRegions.reduce(function(azs, r) {
       azs[r.code] = [];
       r.zones.map((z) => azs[r.code][z.code.trim()] = z.uuid);
       return azs;
@@ -47,8 +47,8 @@ class OnPremNodesList extends Component {
     if (isNonEmptyObject(vals.instances)) {
       instanceTypeList = Object.keys(vals.instances).map(function(region) {
         return vals.instances[region].reduce(function(acc, val) {
-          let currentZone = val.zone.trim();
-          let currentRegion = zoneList[region][currentZone];
+          const currentZone = val.zone.trim();
+          const currentRegion = zoneList[region][currentZone];
           if (acc[currentRegion]) {
             val.instanceTypeIPs.split(",").forEach(function(ip){
               acc[zoneList[region][currentZone]].push({
@@ -75,14 +75,14 @@ class OnPremNodesList extends Component {
 
   componentWillMount() {
     // Get OnPrem provider if provider list is already loaded during component load
-    var onPremProvider = this.props.cloud.providers.data.find((provider)=>provider.code === "onprem");
+    const onPremProvider = this.props.cloud.providers.data.find((provider)=>provider.code === "onprem");
     this.props.getRegionListItems(onPremProvider.uuid);
     this.props.getInstanceTypeListItems(onPremProvider.uuid);
   }
 
   render() {
     const {cloud :{nodeInstanceList, instanceTypes, supportedRegionList}, handleSubmit} = this.props;
-    var nodeListItems = [];
+    let nodeListItems = [];
     if (getPromiseState(nodeInstanceList).isSuccess()) {
       nodeListItems = nodeInstanceList.data.map(function(item) {
         return {
@@ -95,17 +95,17 @@ class OnPremNodesList extends Component {
         };
       });
     }
-    var removeNodeItem = function(row, cell) {
+    const removeNodeItem = function(row, cell) {
       if (cell)
         return <i className={`fa fa-trash remove-cell-container`}/>;
     };
 
-    let currentCloudRegions = supportedRegionList.data.filter(region => region.provider.code === "onprem");
-    var regionFormTemplate = isNonEmptyArray(currentCloudRegions) ?
+    const currentCloudRegions = supportedRegionList.data.filter(region => region.provider.code === "onprem");
+    const regionFormTemplate = isNonEmptyArray(currentCloudRegions) ?
       currentCloudRegions.map(function(regionItem, idx){
-        var zoneOptions = regionItem.zones.map(function(zoneItem, zoneIdx){
+        const zoneOptions = regionItem.zones.map(function(zoneItem, zoneIdx){
           return <option key={zoneItem+zoneIdx} value={zoneItem.code}>{zoneItem.code}</option>;});
-        var machineTypeOptions = instanceTypes.data.map(function(machineTypeItem, mcIdx){
+        const machineTypeOptions = instanceTypes.data.map(function(machineTypeItem, mcIdx){
           return <option key={machineTypeItem+mcIdx} value={machineTypeItem.instanceTypeCode}>{machineTypeItem.instanceTypeCode}</option>;
         });
         zoneOptions.unshift(<option key={-1} value={""}>Select</option>);

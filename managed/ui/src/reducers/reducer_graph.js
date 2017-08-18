@@ -11,7 +11,7 @@ const INITIAL_STATE = {graphFilter: DEFAULT_GRAPH_FILTER, metrics: {},
 export default function(state = INITIAL_STATE, action) {
   switch(action.type) {
     case CHANGE_GRAPH_QUERY_PERIOD:
-      var filters = {};
+      const filters = {};
       Object.keys(action.payload).forEach(function(key, idx){
         filters[key] = action.payload[key];
       });
@@ -21,7 +21,7 @@ export default function(state = INITIAL_STATE, action) {
     case QUERY_METRICS:
       return { ...state, loading: true};
     case QUERY_METRICS_SUCCESS:
-      var metricData = state.metrics;
+      let metricData = state.metrics;
       metricData[action.panelType] = action.payload.data;
       return { ...state, metrics: metricData, loading: false};
     case QUERY_METRICS_FAILURE:
