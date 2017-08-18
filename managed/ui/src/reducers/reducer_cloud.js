@@ -156,7 +156,10 @@ export default function(state = INITIAL_STATE, action) {
     case LIST_ACCESS_KEYS_RESPONSE:
       // When we have multiple providers, we would have multiple access keys,
       // we just concat all those into an array.
-      if (_.isArray(state.accessKeys.data)) {
+      if (_.isArray(state.accessKeys.data) &&
+          !state.accessKeys.data.find( (a) => (
+            action.payload.data.find( (b) => _.isEqual(a.idKey, b.idKey))
+          ))) {
         action.payload.data = state.accessKeys.data.concat(action.payload.data);
       }
       return setPromiseResponse(state, "accessKeys", action);

@@ -5,7 +5,7 @@ import { connect } from 'react-redux';
 import { fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure } from '../../../actions/tasks';
 import UniverseForm from './UniverseForm';
 import { getInstanceTypeList, getRegionList, getRegionListResponse, getInstanceTypeListResponse,
-         listAccessKeys, listAccessKeysResponse, getNodeInstancesForProvider, getNodesInstancesForProviderResponse } from 'actions/cloud';
+         getNodeInstancesForProvider, getNodesInstancesForProviderResponse } from 'actions/cloud';
 import { createUniverse, createUniverseResponse, editUniverse, editUniverseResponse, closeDialog,
          configureUniverseTemplate, configureUniverseTemplateResponse, configureUniverseTemplateSuccess,
          configureUniverseResources, configureUniverseResourcesResponse,
@@ -67,12 +67,6 @@ const mapDispatchToProps = (dispatch) => {
     getInstanceTypeListItems: (provider) => {
       dispatch(getInstanceTypeList(provider)).then((response) => {
         dispatch(getInstanceTypeListResponse(response.payload));
-      });
-    },
-
-    getAccessKeys: (provider) => {
-      dispatch(listAccessKeys(provider)).then((response) => {
-        dispatch(listAccessKeysResponse(response.payload));
       });
     },
 
