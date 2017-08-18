@@ -3,7 +3,7 @@
 @import "_style/colors.scss";
 
 .universe-display-item-container {
-  height: 150px;
+  height: 170px;
   background-color: white;
   margin-bottom: 10px;
   padding: 12px 14px;
@@ -52,7 +52,7 @@
     float: right;
     color: #545454;
     padding-top: 0;
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 600;
   }
 
@@ -72,7 +72,7 @@
   }
 
   .create-universe-button {
-    height: 150px;
+    height: 170px;
     margin-bottom: 10px;
     padding: 25px 0 4px 0;
     border: $YB_GRAY_20 solid 1px;
