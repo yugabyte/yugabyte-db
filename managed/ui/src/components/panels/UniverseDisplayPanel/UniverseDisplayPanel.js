@@ -37,9 +37,10 @@ class UniverseDisplayItem extends Component {
     if (!isValidObject(universe)) {
       return <span/>;
     }
-    const replicationFactor = <span>{`${universe.universeDetails.userIntent.replicationFactor}`}</span>;
-    const numNodes = <span>{universe.universeDetails.userIntent.numNodes}</span>;
-    let costPerMonth = <span>n/a</span>;
+    var replicationFactor = <span>{`${universe.universeDetails.userIntent.replicationFactor}`}</span>;
+    let universeProvider = <span>{`${universe.provider.name}`}</span>;
+    var numNodes = <span>{universe.universeDetails.userIntent.numNodes}</span>;
+    var costPerMonth = <span>n/a</span>;
     if (isFinite(universe.pricePerHour)) {
       costPerMonth = <YBCost value={universe.pricePerHour} multiplier={"month"}/>;
     }
@@ -56,16 +57,19 @@ class UniverseDisplayItem extends Component {
             </Link>
           </div>
           <div className="description-item-list">
-            <DescriptionItem title="Replication Factor">
-              <span>{replicationFactor}</span>
+            <DescriptionItem title="Provider">
+              <span>{universeProvider}</span>
             </DescriptionItem>
             <DescriptionItem title="Nodes">
               <span>{numNodes}</span>
             </DescriptionItem>
+            <DescriptionItem title="Replication Factor">
+              <span>{replicationFactor}</span>
+            </DescriptionItem>
             <DescriptionItem title="Monthly Cost">
               <span>{costPerMonth}</span>
             </DescriptionItem>
-            <DescriptionItem title="Create Date">
+            <DescriptionItem title="Created">
               <span className="universe-create-date">{universeCreationDate}</span>
             </DescriptionItem>
           </div>
