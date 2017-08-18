@@ -9,3 +9,5 @@ export { default as TasksListContainer } from './TaskList/TasksListContainer';
 export { default as TaskAlertsContainer } from './TaskAlerts/TaskAlertsContainer';
 export { default as TaskProgressContainer } from './TaskProgress/TaskProgressContainer';
 export { default as TaskListTable } from './TaskList/TaskListTable';
+export { default as TaskDetail} from './TaskDetail/TaskDetail';
+export { default as TaskDetailContainer } from './TaskDetail/TaskDetailContainer';

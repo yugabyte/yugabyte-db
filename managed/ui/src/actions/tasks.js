@@ -2,7 +2,7 @@
 
 import axios from 'axios';
 import { ROOT_URL } from '../config';
-
+import {getCustomerEndpoint} from './common';
 export const FETCH_TASK_PROGRESS = 'FETCH_TASK_PROGRESS';
 export const FETCH_TASK_PROGRESS_RESPONSE = 'FETCH_TASK_PROGRESS_RESPONSE';
 export const RESET_TASK_PROGRESS = 'RESET_TASK_PROGRESS';
@@ -11,10 +11,13 @@ export const FETCH_CUSTOMER_TASKS_SUCCESS = 'FETCH_CUSTOMER_TASKS_SUCCESS';
 export const FETCH_CUSTOMER_TASKS_FAILURE = 'FETCH_CUSTOMER_TASKS_FAILURE';
 export const RESET_CUSTOMER_TASKS = 'RESET_CUSTOMER_TASKS';
 
+export const FETCH_FAILED_TASK_DETAIL = 'FETCH_TASK_DETAIL';
+export const FETCH_FAILED_TASK_DETAIL_RESPONSE = 'FETCH_TASK_DETAIL_RESPONSE';
+
 export function fetchTaskProgress(taskUUID) {
   const customerUUID = localStorage.getItem("customer_id");
   const request =
-    axios.get(`${ROOT_URL}/customers/${customerUUID}/tasks/${taskUUID}`);
+    axios.get(`${getCustomerEndpoint()}/tasks/${taskUUID}`);
   return {
     type: FETCH_TASK_PROGRESS,
     payload: request
@@ -35,8 +38,7 @@ export function resetTaskProgress(error) {
 }
 
 export function fetchCustomerTasks() {
-  const customerUUID = localStorage.getItem("customer_id");
-  const request = axios.get(`${ROOT_URL}/customers/${customerUUID}/tasks`);
+  const request = axios.get(`${getCustomerEndpoint()}/tasks`);
   return {
     type: FETCH_CUSTOMER_TASKS,
     payload: request
@@ -61,4 +63,20 @@ export function resetCustomerTasks() {
   return {
     type: RESET_CUSTOMER_TASKS
   };
+}
+
+export function fetchFailedSubTasks(taskUUID) {
+  var customerUUID = localStorage.getItem("customer_id");
+  const request = axios.get(`${getCustomerEndpoint()}/tasks/${taskUUID}/failed`);
+  return {
+    type: FETCH_FAILED_TASK_DETAIL,
+    payload: request
+  }
+}
+
+export function fetchFailedSubTasksResponse(response) {
+  return {
+    type: FETCH_FAILED_TASK_DETAIL_RESPONSE,
+    payload: response.payload
+  }
 }

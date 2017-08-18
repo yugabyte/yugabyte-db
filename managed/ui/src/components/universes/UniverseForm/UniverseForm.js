@@ -711,5 +711,6 @@ class UniverseForm extends Component {
 
 UniverseForm.contextTypes = {
   prevPath: PropTypes.string
-};
+}
+
 export default withRouter(UniverseForm);
