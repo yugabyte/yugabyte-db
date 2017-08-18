@@ -5,8 +5,8 @@
   "main": "public/index.html",
   "scripts": {
     "start": "hugo serve",
-    "build": "hugo -b http://7cn4x6fngg9h37hw.s3-website-us-west-2.amazonaws.com",
-    "publish": "npm run build && aws s3 sync public/ s3://7cn4x6fngg9h37hw"
+    "build": "hugo -b http://docs.yugabyte.com",
+    "publish": "npm run build && aws s3 sync public/ s3://docs.yugabyte.com"
   },
   "repository": {
     "type": "git",
