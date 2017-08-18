@@ -1,27 +1,51 @@
 # Copyright (c) YugaByte, Inc.
 
 asia-east1:
-  name: GCP Asia East 1
+  name: Taiwan
   latitude: 23.9919519
   longitude: 120.3300829
   ybImage: projects/centos-cloud/global/images/centos-7-v20161025
 europe-west1:
-  name: GCP Europe West  1
+  name: Belgium
   latitude: 50.489824
   longitude: 3.7378805
   ybImage: projects/centos-cloud/global/images/centos-7-v20161025
 us-central1:
-  name: GCP US Central 1
+  name: Iowa
   latitude: 41.2326957
   longitude: -95.9167207
   ybImage: projects/centos-cloud/global/images/centos-7-v20161025
 us-west1:
-  name: GCP US West 1
+  name: Oregon
   latitude: 45.6094756
   longitude: -121.2088799
   ybImage: projects/centos-cloud/global/images/centos-7-v20161025
 us-east1:
-  name: GCP US East 1
+  name: South Carolina
   latitude: 33.1637261
   longitude: -80.1845003
   ybImage: projects/centos-cloud/global/images/centos-7-v20161025
+us-east4:
+  name: Northern Virginia
+  latitude: 33.1960027
+  longitude: -80.0131374
+europe-west2:
+  name: London
+  latitude: 51.500152
+  longitude: -0.126236
+europe-west3:
+  name: Frankfurt
+  latitude: 50.111512
+  longitude: 8.680506
+asia-southeast1:
+  name: Singapore
+  latitude: 1.352083
+  longitude: 103.819836
+asia-northeast1:
+  name: Tokyo
+  latitude: 35.689488
+  longitude: 139.691706
+australia-southeast1:
+  name: Sydney
+  latitude: -33.867139
+  longitude: 151.207114
