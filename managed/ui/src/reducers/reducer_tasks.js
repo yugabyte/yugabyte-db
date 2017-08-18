@@ -21,8 +21,8 @@ export default function(state = INITIAL_STATE, action) {
     case FETCH_CUSTOMER_TASKS:
       return {...state};
     case FETCH_CUSTOMER_TASKS_SUCCESS:
-      var taskData = action.payload.data;
-      var taskListResultArray = [];
+      const taskData = action.payload.data;
+      const taskListResultArray = [];
       Object.keys(taskData).forEach(function(taskIdx){
         taskData[taskIdx].forEach(function(taskItem){
           taskItem.universeUUID = taskIdx;

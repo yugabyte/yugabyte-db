@@ -24,7 +24,7 @@ function mapStateToProps(state, ownProps) {
 }
 
 
-var graphPanelFilter = reduxForm({
+const graphPanelFilter = reduxForm({
   form: 'GraphPanelFilterForm',
   fields: ["timeSelect", "universeSelect"]
 });

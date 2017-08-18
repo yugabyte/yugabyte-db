@@ -29,9 +29,9 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     universeReadWriteData: () => {
-      var startTime  = Math.floor(Date.now() / 1000) - (12 * 60 * 60 );
-      var endTime = Math.floor(Date.now() / 1000);
-      var queryParams = {
+      const startTime  = Math.floor(Date.now() / 1000) - (12 * 60 * 60 );
+      const endTime = Math.floor(Date.now() / 1000);
+      const queryParams = {
         metrics: ["disk_iops_by_universe"],
         start: startTime,
         end: endTime

@@ -108,11 +108,11 @@ class UniverseForm extends Component {
   }
 
   setDeviceInfo(instanceTypeCode, instanceTypeList) {
-    let instanceTypeSelectedData = instanceTypeList.find(function (item) {
+    const instanceTypeSelectedData = instanceTypeList.find(function (item) {
       return item.instanceTypeCode === instanceTypeCode;
     });
-    let volumesList = instanceTypeSelectedData.instanceTypeDetails.volumeDetailsList;
-    let volumeDetail = volumesList[0];
+    const volumesList = instanceTypeSelectedData.instanceTypeDetails.volumeDetailsList;
+    const volumeDetail = volumesList[0];
     let mountPoints = null;
     if (instanceTypeSelectedData.providerCode === "onprem") {
       mountPoints = instanceTypeSelectedData.instanceTypeDetails.volumeDetailsList.map(function (item) {
@@ -120,7 +120,7 @@ class UniverseForm extends Component {
       }).join(",");
     }
     if (volumeDetail) {
-      let deviceInfo = {
+      const deviceInfo = {
         volumeSize: volumeDetail.volumeSizeGB,
         numVolumes: volumesList.length,
         mountPoints: mountPoints,
@@ -133,12 +133,12 @@ class UniverseForm extends Component {
 
   configureUniverseNodeList() {
     const {universe: {universeConfigTemplate, currentUniverse}, formValues} = this.props;
-    var universeTaskParams = _.clone(universeConfigTemplate.data, true);
+    const universeTaskParams = _.clone(universeConfigTemplate.data, true);
     if (isNonEmptyObject(currentUniverse.data)) {
       universeTaskParams.universeUUID = currentUniverse.data.universeUUID;
       universeTaskParams.expectedUniverseVersion = currentUniverse.data.version;
     }
-    var currentState = this.state;
+    const currentState = this.state;
     universeTaskParams.userIntent = {
       universeName: formValues.universeName,
       provider: currentState.providerSelected,
@@ -192,10 +192,10 @@ class UniverseForm extends Component {
     }
     if (this.props.type === "Edit") {
       const {universe: {currentUniverse}, universe: {currentUniverse: {data: {universeDetails: {userIntent}}}}} = this.props;
-      let providerUUID = currentUniverse.data.provider && currentUniverse.data.provider.uuid;
-      let isMultiAZ = userIntent.isMultiAZ;
+      const providerUUID = currentUniverse.data.provider && currentUniverse.data.provider.uuid;
+      const isMultiAZ = userIntent.isMultiAZ;
       if (userIntent && providerUUID) {
-        let ebsType = (userIntent.deviceInfo === null) ? null : userIntent.deviceInfo.ebsType;
+        const ebsType = (userIntent.deviceInfo === null) ? null : userIntent.deviceInfo.ebsType;
         this.setState({
           providerSelected: providerUUID,
           azCheckState: isMultiAZ,
@@ -221,7 +221,7 @@ class UniverseForm extends Component {
   }
 
   providerChanged(value) {
-    let providerUUID = value;
+    const providerUUID = value;
     if (isEmptyObject(this.props.universe.currentUniverse.data)) {
       this.props.resetConfig();
       this.props.dispatch(change("UniverseForm", "regionList", []));
@@ -229,7 +229,7 @@ class UniverseForm extends Component {
       this.props.getRegionListItems(providerUUID, this.state.azCheckState);
       this.props.getInstanceTypeListItems(providerUUID);
     }
-    let currentProviderData = this.getCurrentProvider(value);
+    const currentProviderData = this.getCurrentProvider(value);
     if (currentProviderData && currentProviderData.code === "onprem") {
       this.props.fetchNodeInstanceList(value);
     }
@@ -240,7 +240,7 @@ class UniverseForm extends Component {
   }
 
   instanceTypeChanged(event) {
-    let instanceTypeValue = event.target.value;
+    const instanceTypeValue = event.target.value;
     this.setState({instanceTypeSelected: instanceTypeValue});
     this.setDeviceInfo(instanceTypeValue, this.props.cloud.instanceTypes.data);
   }
@@ -266,7 +266,7 @@ class UniverseForm extends Component {
   }
 
   replicationFactorChanged(value) {
-    var self = this;
+    const self = this;
     if (isEmptyObject(this.props.universe.currentUniverse.data)) {
       this.setState({nodeSetViaAZList: false, replicationFactor: value}, function () {
         if (self.state.numNodes <= value) {
@@ -288,14 +288,14 @@ class UniverseForm extends Component {
     if (isEmptyObject(currentUniverse.data)) {
       return true;
     }
-    let existingIntent = _.clone(currentUniverse.data.universeDetails.userIntent, true);
-    let currentIntent = this.getCurrentUserIntent();
+    const existingIntent = _.clone(currentUniverse.data.universeDetails.userIntent, true);
+    const currentIntent = this.getCurrentUserIntent();
     return !areIntentsEqual(existingIntent, currentIntent);
   }
 
   componentDidUpdate(prevProps, prevState) {
     const {universe: {currentUniverse}} = this.props;
-    let currentProvider = this.getCurrentProvider(this.state.providerSelected);
+    const currentProvider = this.getCurrentProvider(this.state.providerSelected);
     // Fire Configure only iff either provider is not on-prem or maxNumNodes is not -1 if on-prem
     if (!_.isEqual(this.state, prevState) && isNonEmptyObject(currentProvider) && (prevState.maxNumNodes !== -1 || currentProvider.code !== "onprem")) {
       if (((currentProvider.code === "onprem" && this.state.numNodes <= this.state.maxNumNodes) || (currentProvider.code !== "onprem"))
@@ -305,7 +305,7 @@ class UniverseForm extends Component {
           if (this.hasFieldChanged()) {
             this.configureUniverseNodeList();
           } else {
-            let placementStatusObject = {
+            const placementStatusObject = {
               error: {
                 type: "noFieldsChanged",
                 numNodes: this.state.numNodes,
@@ -320,7 +320,7 @@ class UniverseForm extends Component {
       } else if (isNonEmptyArray(this.state.regionList) &&
         currentProvider.code === "onprem" && this.state.instanceTypeSelected &&
         this.state.numNodes >= this.state.maxNumNodes) {
-        let placementStatusObject = {
+        const placementStatusObject = {
           error: {
             type: "notEnoughNodesConfigured",
             numNodes: this.state.numNodes,
@@ -333,7 +333,7 @@ class UniverseForm extends Component {
   }
 
   ebsTypeChanged(event) {
-    let currentDeviceInfo = this.state.deviceInfo;
+    const currentDeviceInfo = this.state.deviceInfo;
     currentDeviceInfo.ebsType = event.target.value;
     if (currentDeviceInfo.ebsType === "IO1" && currentDeviceInfo.diskIops == null) {
       currentDeviceInfo.diskIops = 1000;
@@ -345,14 +345,14 @@ class UniverseForm extends Component {
   }
 
   numVolumesChanged(val) {
-    let currentDeviceInfo = this.state.deviceInfo;
+    const currentDeviceInfo = this.state.deviceInfo;
     currentDeviceInfo.numVolumes = val;
     this.setState({deviceInfo: currentDeviceInfo});
     this.configureUniverseNodeList("deviceInfo", currentDeviceInfo);
   }
 
   volumeSizeChanged(val) {
-    let currentDeviceInfo = this.state.deviceInfo;
+    const currentDeviceInfo = this.state.deviceInfo;
     currentDeviceInfo.volumeSize = val;
     this.setState({deviceInfo: currentDeviceInfo});
     this.configureUniverseNodeList("deviceInfo", currentDeviceInfo);
@@ -360,7 +360,7 @@ class UniverseForm extends Component {
 
   diskIopsChanged(val) {
     if (this.state.deviceInfo.ebsType === "IO1") {
-      let currentDeviceInfo = this.state.deviceInfo;
+      const currentDeviceInfo = this.state.deviceInfo;
       currentDeviceInfo.diskIops = val;
       this.setState({deviceInfo: currentDeviceInfo});
       this.configureUniverseNodeList("deviceInfo", currentDeviceInfo);
@@ -398,10 +398,10 @@ class UniverseForm extends Component {
     // If dialog has been closed and opened again in-case of edit, then repopulate current config
     if (isNonEmptyObject(currentUniverse.data) && showModal
       && !this.props.universe.showModal && visibleModal === "universeModal") {
-      var userIntent = currentUniverse.data.universeDetails.userIntent;
+      const userIntent = currentUniverse.data.universeDetails.userIntent;
       this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
-      var providerUUID = currentUniverse.data.provider.uuid;
-      var isMultiAZ = true;
+      const providerUUID = currentUniverse.data.provider.uuid;
+      const isMultiAZ = true;
       if (userIntent && providerUUID) {
         this.setState({
           providerSelected: providerUUID,
@@ -467,10 +467,10 @@ class UniverseForm extends Component {
   }
 
   render() {
-    var self = this;
+    const self = this;
     const {handleSubmit, universe, softwareVersions, cloud, accessKeys } = this.props;
-    var universeProviderList = [];
-    var currentProviderCode = "";
+    let universeProviderList = [];
+    let currentProviderCode = "";
     if (isNonEmptyArray(cloud.providers.data)) {
       universeProviderList = cloud.providers.data.map(function(providerItem, idx) {
         if (providerItem.uuid === self.state.providerSelected) {
@@ -485,18 +485,18 @@ class UniverseForm extends Component {
     }
     universeProviderList.unshift(<option key="" value=""></option>);
 
-    var ebsTypesList = cloud.ebsTypes && cloud.ebsTypes.map(function (ebsType, idx) {
+    const ebsTypesList = cloud.ebsTypes && cloud.ebsTypes.map(function (ebsType, idx) {
       return <option key={ebsType} value={ebsType}>{ebsType}</option>;
     });
 
-    var universeRegionList = cloud.regions.data && cloud.regions.data.map(function (regionItem, idx) {
+    const universeRegionList = cloud.regions.data && cloud.regions.data.map(function (regionItem, idx) {
       return {value: regionItem.uuid, label: regionItem.name};
     });
 
-    var universeInstanceTypeList = <option/>;
+    let universeInstanceTypeList = <option/>;
     if (currentProviderCode === "aws") {
-      var optGroups = this.props.cloud.instanceTypes.data.reduce(function(groups, it) {
-        var prefix = it.instanceTypeCode.substr(0, it.instanceTypeCode.indexOf("."));
+      const optGroups = this.props.cloud.instanceTypes.data.reduce(function(groups, it) {
+        const prefix = it.instanceTypeCode.substr(0, it.instanceTypeCode.indexOf("."));
         groups[prefix] ? groups[prefix].push(it.instanceTypeCode): groups[prefix] = [it.instanceTypeCode];
         return groups;
       }, {});
@@ -531,18 +531,18 @@ class UniverseForm extends Component {
       universeInstanceTypeList.unshift(<option key="" value="">Select</option>);
     }
 
-    var submitLabel;
+    let submitLabel;
     if (this.props.type === "Create") {
       submitLabel = 'Create';
     } else {
       submitLabel = 'Save';
     }
 
-    var softwareVersionOptions = softwareVersions.map((item, idx) => (
+    const softwareVersionOptions = softwareVersions.map((item, idx) => (
       <option key={idx} value={item}>{item}</option>
     ));
 
-    var accessKeyOptions = <option key={1} value={this.state.accessKeyCode}>{this.state.accessKeyCode}</option>;
+    let accessKeyOptions = <option key={1} value={this.state.accessKeyCode}>{this.state.accessKeyCode}</option>;
     if (_.isObject(accessKeys) && isNonEmptyArray(accessKeys.data)) {
       accessKeyOptions = accessKeys.data.filter((key) => key.idKey.providerUUID === self.state.providerSelected)
                                         .map((item, idx) => (
@@ -551,17 +551,17 @@ class UniverseForm extends Component {
                                           </option>));
     }
 
-    var placementStatus = <span/>;
+    let placementStatus = <span/>;
     if (self.props.universe.currentPlacementStatus) {
       placementStatus = <AZPlacementInfo placementInfo={self.props.universe.currentPlacementStatus}/>;
     }
 
-    var ebsTypeSelector = <span/>;
-    var deviceDetail = null;
+    let ebsTypeSelector = <span/>;
+    let deviceDetail = null;
     function volumeTypeFormat(num) {
       return num + ' GB';
     }
-    var isFieldReadOnly = isNonEmptyObject(universe.currentUniverse.data) && this.props.type === "Edit";
+    const isFieldReadOnly = isNonEmptyObject(universe.currentUniverse.data) && this.props.type === "Edit";
     if (_.isObject(self.state.deviceInfo) && isNonEmptyObject(self.state.deviceInfo)) {
       if (self.state.volumeType === 'EBS') {
         let iopsField = <span/>;

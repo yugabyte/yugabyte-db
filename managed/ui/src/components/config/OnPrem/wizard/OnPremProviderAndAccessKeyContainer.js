@@ -10,7 +10,7 @@ const mapDispatchToProps = (dispatch, ownProps) => {
   return {
     setOnPremProviderAndAccessKey: (formData) => {
       if (!ownProps.isEditProvider) {
-        var formSubmitVals = {
+        const formSubmitVals = {
           provider: {name: formData.name},
           key: {code: formData.name.toLowerCase().replace(/ /g, "-") + "-key",
             privateKeyContent: formData.privateKeyContent,
@@ -73,7 +73,7 @@ const validate = values => {
   return errors;
 };
 
-var onPremProviderConfigForm = reduxForm({
+const onPremProviderConfigForm = reduxForm({
   form: 'onPremConfigForm',
   validate,
   destroyOnUnmount: false,

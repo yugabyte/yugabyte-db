@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-var _ = require('lodash');
+const _ = require('lodash');
 
 export function isDefinedNotNull(obj) {
   return (typeof obj !== "undefined" && obj !== null);
@@ -27,7 +27,7 @@ export function isNonEmptyString(str) {
 }
 
 export function removeNullProperties(obj) {
-  for (var propName in obj) {
+  for (const propName in obj) {
     if (obj[propName] === null || obj[propName] === undefined) {
       delete obj[propName];
     }
@@ -44,7 +44,7 @@ export function sortByLengthOfArrayProperty(array, propertyName) {
 }
 
 export function groupWithCounts(array) {
-  var counts = {};
+  const counts = {};
   array.forEach(function(item) {
     counts[item] = counts[item] || 0;
     counts[item]++;
@@ -53,7 +53,7 @@ export function groupWithCounts(array) {
 }
 
 export function sortedGroupCounts(array) {
-  var counts = groupWithCounts(array);
+  const counts = groupWithCounts(array);
   return Object.keys(counts).sort().map(function(item) {
     return {
       value: item,
@@ -144,8 +144,8 @@ export function arePlacementInfoEqual(placementInfo1, placementInfo2) {
 }
 
 export function areUniverseConfigsEqual(config1, config2) {
-  var userIntentsEqual = true;
-  var placementObjectsEqual = true;
+  let userIntentsEqual = true;
+  let placementObjectsEqual = true;
   if (config1 && config2) {
     if (config1.userIntent && config2.userIntent) {
       userIntentsEqual = areIntentsEqual(config1.userIntent, config2.userIntent);
@@ -180,8 +180,8 @@ export function convertSpaceToDash(string) {
 // Sorting such that 0.0.19.14 > 0.0.3.1 > A > B
 export function sortVersionStrings(arr) {
   return arr.sort((a,b) => {
-    let aValue = parseInt(a.replace(/\./g, ""), 10);
-    let bValue = parseInt(b.replace(/\./g, ""), 10);
+    const aValue = parseInt(a.replace(/\./g, ""), 10);
+    const bValue = parseInt(b.replace(/\./g, ""), 10);
     if (isNaN(aValue) && isNaN(bValue)) {
       return a < b;
     } else if (isNaN(aValue) && !isNaN(bValue)) {
@@ -195,22 +195,22 @@ export function sortVersionStrings(arr) {
 }
 
 export function getPointsOnCircle(numPoints, center, radius) {
-  let x0 = center[0];
-  let y0 = center[1];
-  let pointsOnCircle = [];
-  for(var i = 0; i < numPoints; i++) {
-    var x = x0 + radius * Math.cos(2 * Math.PI * i / numPoints);
-    var y = y0 + radius * Math.sin(2 * Math.PI * i / numPoints);
+  const x0 = center[0];
+  const y0 = center[1];
+  const pointsOnCircle = [];
+  for(let i = 0; i < numPoints; i++) {
+    const x = x0 + radius * Math.cos(2 * Math.PI * i / numPoints);
+    const y = y0 + radius * Math.sin(2 * Math.PI * i / numPoints);
     pointsOnCircle.push([x, y]);
   }
   return pointsOnCircle;
 }
 
 // FIXME: Deprecated. Change all references to use isNonEmptyArray instead.
-export var isValidArray = isNonEmptyArray;
+export const isValidArray = isNonEmptyArray;
 
 // FIXME: isValidObject has never properly checked the object type.
 // FIXME: We have renamed isValidObject to isDefinedNotNull, and
 // FIXME: this alias is only kept here for backward compatibility
 // FIXME: and should be removed after changing all existing uses.
-export var isValidObject = isDefinedNotNull;
+export const isValidObject = isDefinedNotNull;

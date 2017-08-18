@@ -101,8 +101,8 @@ export default function(state = INITIAL_STATE, action) {
 
     // Universe I/O Metrics Operations
     case SET_UNIVERSE_METRICS:
-      let currentUniverseList = _.clone(state.universeList);
-      let universeReadWriteMetricList = action.payload.data.disk_iops_by_universe.data;
+      const currentUniverseList = _.clone(state.universeList);
+      const universeReadWriteMetricList = action.payload.data.disk_iops_by_universe.data;
       if (isNonEmptyArray(universeReadWriteMetricList)) {
         universeReadWriteMetricList.forEach(function(metricData, metricIdx) {
           for (let counter = 0; counter < currentUniverseList.data.length; counter++) {

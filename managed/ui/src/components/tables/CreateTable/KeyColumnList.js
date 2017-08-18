@@ -47,7 +47,7 @@ export default class KeyColumnList extends Component {
   }
 
   columnTypeChanged(columnTypeValue, index) {
-    let nextState = this.state;
+    const nextState = this.state;
     nextState.selectedTypes[index] = columnTypeValue;
     this.setState(nextState);
   }
@@ -62,7 +62,7 @@ export default class KeyColumnList extends Component {
 
   removeKeyItem(indexToRemove) {
     const {fields} = this.props;
-    let nextState = this.state;
+    const nextState = this.state;
     nextState.selectedTypes.splice(indexToRemove, 1);
     this.setState(nextState);
     fields.remove(indexToRemove);
@@ -90,10 +90,10 @@ export default class KeyColumnList extends Component {
   render() {
     const {fields, columnType, tables: {columnDataTypes: {primitives}}} = this.props;
     const allDataTypes = this.getAllDataTypes();
-    let typeOptions = CollectionSubtypeRow.getTypeOptions("type", "Type",
+    const typeOptions = CollectionSubtypeRow.getTypeOptions("type", "Type",
       (columnType === "other") ? allDataTypes : primitives
     );
-    let getFieldLabel = function() {
+    const getFieldLabel = function() {
       if (columnType === "partitionKey") {
         return "Partition Key";
       } else if (columnType === "clustering") {

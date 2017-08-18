@@ -24,7 +24,7 @@ class DockerProviderConfiguration extends Component {
 
   deleteProviderConfig() {
     const { configuredProviders } = this.props;
-    let dockerProvider = configuredProviders.data.find((provider) => provider.code === PROVIDER_TYPE);
+    const dockerProvider = configuredProviders.data.find((provider) => provider.code === PROVIDER_TYPE);
     this.props.deleteProviderConfig(dockerProvider.uuid);
   }
 
@@ -44,8 +44,8 @@ class DockerProviderConfiguration extends Component {
   render() {
     const { handleSubmit, submitting, dockerBootstrap: { loading, error },
             configuredProviders, configuredRegions, universeList } = this.props;
-    let dockerProvider = configuredProviders.data.find((provider) => provider.code === PROVIDER_TYPE);
-    let dockerRegions = configuredRegions.data.filter(
+    const dockerProvider = configuredProviders.data.find((provider) => provider.code === PROVIDER_TYPE);
+    const dockerRegions = configuredRegions.data.filter(
       (configuredRegion) => configuredRegion.provider.code === PROVIDER_TYPE
     );
     if (isValidObject(dockerProvider)) {
@@ -53,7 +53,7 @@ class DockerProviderConfiguration extends Component {
       if (getPromiseState(configuredProviders).isSuccess() && getPromiseState(universeList).isSuccess()){
         universeExistsForProvider = universeList.data.some(universe => universe.provider && (universe.provider.uuid === dockerProvider.uuid));
       }
-      let deleteButtonDisabled = submitting || universeExistsForProvider;
+      const deleteButtonDisabled = submitting || universeExistsForProvider;
       let deleteButtonClassName = "btn btn-default delete-aws-btn";
       let deleteButtonTitle = "Delete this configuration.";
       if (deleteButtonDisabled) {

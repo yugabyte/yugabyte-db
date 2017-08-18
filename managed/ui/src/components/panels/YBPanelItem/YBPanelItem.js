@@ -8,7 +8,7 @@ export default class YBPanelItem extends Component {
 
   render() {
     const { name, children} = this.props;
-    var headerTextClass = "";
+    const headerTextClass = "";
     return (
       <div>
         <div className="x_panel">

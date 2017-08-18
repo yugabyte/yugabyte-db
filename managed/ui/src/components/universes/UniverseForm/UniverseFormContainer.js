@@ -109,7 +109,7 @@ const formFieldNames = ['formType', 'universeName', 'provider',  'providerType',
 
 function mapStateToProps(state, ownProps) {
   const {universe: { currentUniverse }} = state;
-  let data = {
+  const data = {
     "universeName": "",
     "ybSoftwareVersion": "",
     "numNodes": 3,
@@ -119,7 +119,7 @@ function mapStateToProps(state, ownProps) {
     "accessKeyCode": "yugabyte-default"
   };
   if (isNonEmptyObject(currentUniverse.data) && ownProps.type === "Edit") {
-    let userIntent = currentUniverse.data.universeDetails && currentUniverse.data.universeDetails.userIntent;
+    const userIntent = currentUniverse.data.universeDetails && currentUniverse.data.universeDetails.userIntent;
     data.universeName = currentUniverse.data.name;
     data.formType = "edit";
     data.provider = currentUniverse.data.provider && currentUniverse.data.provider.uuid;
@@ -187,7 +187,7 @@ const validate = values => {
   return errors;
 };
 
-var universeForm = reduxForm({
+const universeForm = reduxForm({
   form: 'UniverseForm',
   validate,
   asyncValidate,

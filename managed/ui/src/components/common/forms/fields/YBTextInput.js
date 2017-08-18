@@ -12,7 +12,7 @@ export class YBTextInput extends Component {
   };
 
   render() {
-    var self = this;
+    const self = this;
     const { input, type, className, placeHolder, onValueChanged, isReadOnly } = this.props;
 
     function onChange(event) {
@@ -53,4 +53,4 @@ export class YBControlledTextInput extends Component {
 }
 
 // TODO: Deprecated. Rename all YBInputField references to YBTextInputWithLabel.
-export var YBInputField = YBTextInputWithLabel;
+export const YBInputField = YBTextInputWithLabel;

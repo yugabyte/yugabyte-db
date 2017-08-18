@@ -10,7 +10,7 @@ import { getPromiseState } from 'utils/PromiseUtils';
 import { YBCost, DescriptionItem } from 'components/common/descriptors';
 import { UniverseStatusContainer } from 'components/universes';
 import './UniverseDisplayPanel.scss';
-var moment = require('moment');
+const moment = require('moment');
 
 class CreateUniverseButtonComponent extends Component {
   render() {
@@ -37,13 +37,13 @@ class UniverseDisplayItem extends Component {
     if (!isValidObject(universe)) {
       return <span/>;
     }
-    var replicationFactor = <span>{`${universe.universeDetails.userIntent.replicationFactor}`}</span>;
-    var numNodes = <span>{universe.universeDetails.userIntent.numNodes}</span>;
-    var costPerMonth = <span>n/a</span>;
+    const replicationFactor = <span>{`${universe.universeDetails.userIntent.replicationFactor}`}</span>;
+    const numNodes = <span>{universe.universeDetails.userIntent.numNodes}</span>;
+    let costPerMonth = <span>n/a</span>;
     if (isFinite(universe.pricePerHour)) {
       costPerMonth = <YBCost value={universe.pricePerHour} multiplier={"month"}/>;
     }
-    let universeCreationDate = moment(universe.creationDate ).format("MM/DD/YYYY") || "";
+    const universeCreationDate = moment(universe.creationDate ).format("MM/DD/YYYY") || "";
     return (
       <Col sm={4} md={3} lg={2}>
         <div className="universe-display-item-container">
@@ -77,7 +77,7 @@ class UniverseDisplayItem extends Component {
 
 export default class UniverseDisplayPanel extends Component {
   render() {
-    var self = this;
+    const self = this;
     const { universe: {universeList}, cloud: {providers}} = this.props;
     if (getPromiseState(providers).isSuccess()) {
       let universeDisplayList = <span/>;
@@ -88,7 +88,7 @@ export default class UniverseDisplayPanel extends Component {
           return <UniverseDisplayItem key={universeItem.name + idx} universe={universeItem}/>;
         });
       }
-      var createUniverseButton = <CreateUniverseButtonComponent onClick={() => self.props.showUniverseModal()}/>;
+      const createUniverseButton = <CreateUniverseButtonComponent onClick={() => self.props.showUniverseModal()}/>;
       return (
         <div className="universe-display-panel-container">
           <h2>Universes</h2>

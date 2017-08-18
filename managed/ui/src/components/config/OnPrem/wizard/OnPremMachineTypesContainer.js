@@ -10,8 +10,8 @@ import {isNonEmptyArray, isDefinedNotNull} from 'utils/ObjectUtils';
 const mapDispatchToProps = (dispatch, ownProps) => {
   return {
     submitOnPremMachineTypes: (formData) => {
-      var payloadObject = _.clone(ownProps.onPremJsonFormData);
-      var instanceTypesList = formData.machineTypeList.map(function(item){
+      const payloadObject = _.clone(ownProps.onPremJsonFormData);
+      const instanceTypesList = formData.machineTypeList.map(function(item){
         return {instanceTypeCode: item.code,
           numCores: item.numCores, memSizeGB: item.memSizeGB,
           volumeDetailsList: item.mountPath.split(",").map(function(mountPathItem){
@@ -69,7 +69,7 @@ const validate = values => {
   return errors;
 };
 
-var onPremMachineTypesConfigForm = reduxForm({
+const onPremMachineTypesConfigForm = reduxForm({
   form: 'onPremConfigForm',
   validate,
   destroyOnUnmount: false,

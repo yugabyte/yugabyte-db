@@ -12,7 +12,7 @@ const mapStateToProps = (state) => {
   };
 };
 
-var azureConfigForm = reduxForm({
+const azureConfigForm = reduxForm({
   form: 'AzureConfigForm'
 });
 

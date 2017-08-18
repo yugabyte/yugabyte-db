@@ -11,9 +11,9 @@ import './TaskAlerts.scss';
 class AlertItem extends Component {
   render() {
     const {taskInfo} = this.props;
-    var statusText = "";
-    var statusVerbClassName = "";
-    var statusIconClassName = "";
+    let statusText = "";
+    let statusVerbClassName = "";
+    let statusIconClassName = "";
     if (taskInfo.status === "Initializing") {
       statusText = 'Initializing';
       statusVerbClassName = "yb-pending-color";
@@ -36,8 +36,8 @@ class AlertItem extends Component {
       statusIconClassName = "fa-exclamation yb-unknown-color";
     }
 
-    var timeStampDifference = moment(taskInfo.createTime).fromNow();
-    var [currentTask, universeName] = taskInfo.title.split(":");
+    const timeStampDifference = moment(taskInfo.createTime).fromNow();
+    const [currentTask, universeName] = taskInfo.title.split(":");
     return (
       <div className='task-cell'>
         <div className='icon icon-hang-left'>
@@ -67,9 +67,9 @@ export default class TaskAlerts extends Component {
   }
   render() {
     const {tasks: {customerTaskList}} = this.props;
-    var tasksDisplayList = [];
+    let tasksDisplayList = [];
     if (isNonEmptyArray(customerTaskList)) {
-      var displayItems = customerTaskList.slice(0, 4);
+      const displayItems = customerTaskList.slice(0, 4);
       tasksDisplayList = displayItems.map((listItem, idx) => (
         <AlertItem key={`alertItem${idx}`} taskInfo={listItem}/>
       ));

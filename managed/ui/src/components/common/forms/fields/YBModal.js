@@ -12,11 +12,11 @@ export default class YBModal extends Component {
     const {visible, onHide, size, formName, onFormSubmit, title, submitLabel,
       cancelLabel,  error, submitting, asyncValidating, footerAccessory,
       showCancelButton, className, normalizeFooter} = this.props;
-    var btnDisabled = false;
+    let btnDisabled = false;
     if (submitting || asyncValidating) {
       btnDisabled = true;
     }
-    var footerButtonClass = "";
+    let footerButtonClass = "";
     if (normalizeFooter) {
       footerButtonClass = "modal-action-buttons";
     }

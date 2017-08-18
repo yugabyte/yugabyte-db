@@ -15,8 +15,8 @@ export default class UniverseInfoPanel extends Component {
     const { universeInfo, customerId } = this.props;
     const { universeDetails } = universeInfo;
     const { userIntent } = universeDetails;
-    var universeId = universeInfo.universeUUID;
-    var formattedCreationDate = (
+    const universeId = universeInfo.universeUUID;
+    const formattedCreationDate = (
       <FormattedDate value={universeInfo.creationDate}
                      year='numeric' month='long' day='2-digit'
                      hour='2-digit' minute='2-digit' second='2-digit' timeZoneName='short' />
@@ -28,7 +28,7 @@ export default class UniverseInfoPanel extends Component {
         <i className="fa fa-external-link" aria-hidden="true"></i>
       </a>
     );
-    var universeInfoItems = [
+    const universeInfoItems = [
       {name: "Universe ID", data: universeId},
       {name: "Customer ID", data: customerId},
       {name: "Launch Time", data: formattedCreationDate},

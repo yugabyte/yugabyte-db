@@ -62,10 +62,10 @@ export default class OnPremConfiguration extends Component {
       jsonPayload = JSON.parse(payloadString);
     } catch (e) {
       // Handle case where private key contains newline characters and hence is not valid json
-      let jsonPayloadTokens = payloadString.split("\"privateKeyContent\":");
-      let privateKeyBlob = jsonPayloadTokens[1].split("}")[0].trim();
-      let privateKeyString = privateKeyBlob.replace(/\n/g, "\\n");
-      let newJsonString = jsonPayloadTokens[0] + "\"privateKeyContent\": " + privateKeyString + "\n}\n}";
+      const jsonPayloadTokens = payloadString.split("\"privateKeyContent\":");
+      const privateKeyBlob = jsonPayloadTokens[1].split("}")[0].trim();
+      const privateKeyString = privateKeyBlob.replace(/\n/g, "\\n");
+      const newJsonString = jsonPayloadTokens[0] + "\"privateKeyContent\": " + privateKeyString + "\n}\n}";
       jsonPayload = JSON.parse(newJsonString);
     }
     // Add sshUser to Node Payload, if not added
@@ -79,8 +79,8 @@ export default class OnPremConfiguration extends Component {
 
   componentWillReceiveProps(nextProps) {
     const { cloudBootstrap: {data: { response, type }, error, promiseState}} = nextProps;
-    let bootstrapSteps = this.state.bootstrapSteps;
-    let currentStepIndex = bootstrapSteps.findIndex( (step) => step.type === type );
+    const bootstrapSteps = this.state.bootstrapSteps;
+    const currentStepIndex = bootstrapSteps.findIndex( (step) => step.type === type );
     if (currentStepIndex !== -1) {
       if (promiseState.isLoading()) {
         bootstrapSteps[currentStepIndex].status = "Running";
@@ -91,7 +91,7 @@ export default class OnPremConfiguration extends Component {
     }
     if (isValidObject(response)) {
 
-      let payloadString = _.clone(this.state.configJsonVal);
+      const payloadString = _.clone(this.state.configJsonVal);
       const config = this.serializeStringToJson(payloadString);
       const isEdit = this.state.isEditProvider;
       const numZones = config.regions.reduce((total, region) => {
@@ -128,7 +128,7 @@ export default class OnPremConfiguration extends Component {
           break;
         case "region":
           // Update regionsMap until done
-          let regionsMap = this.state.regionsMap;
+          const regionsMap = this.state.regionsMap;
           regionsMap[response.code] = response.uuid;
           this.setState({regionsMap: regionsMap});
           // Launch configuration of zones once all regions are bootstrapped
@@ -139,7 +139,7 @@ export default class OnPremConfiguration extends Component {
           break;
         case "zones":
           // Update zonesMap until done
-          let zonesMap = {};
+          const zonesMap = {};
           Object.keys(response).forEach(zoneCode => zonesMap[zoneCode] = response[zoneCode].uuid);
           bootstrapSteps[currentStepIndex + 1].status = "Running";
           // If Edit Case, then jump to success
@@ -153,7 +153,7 @@ export default class OnPremConfiguration extends Component {
           break;
         case "node":
           // Update numNodesConfigured until done
-          let numNodesConfigured = this.state.numNodesConfigured + Object.keys(response).length;
+          const numNodesConfigured = this.state.numNodesConfigured + Object.keys(response).length;
           this.setState({numNodesConfigured: numNodesConfigured});
           // Launch configuration of access keys once all node instances are bootstrapped
           if (numNodesConfigured === config.nodes.length) {
@@ -199,8 +199,8 @@ export default class OnPremConfiguration extends Component {
 
   submitEditProvider(payloadData) {
     const {cloud: {providers}} = this.props;
-    let self = this;
-    let currentProvider = providers.data.find((provider)=>(provider.code === "onprem"));
+    const self = this;
+    const currentProvider = providers.data.find((provider)=>(provider.code === "onprem"));
     let totalNumRegions  = 0;
     let totalNumInstances = 0;
     let totalNumZones = 0;
@@ -247,7 +247,7 @@ export default class OnPremConfiguration extends Component {
     else if (getPromiseState(configuredProviders).isLoading()) {
       return <YBLoadingIcon/>;
     } else if (getPromiseState(configuredProviders).isSuccess()) {
-      var providerFound = configuredProviders.data.find(provider => provider.code === 'onprem');
+      const providerFound = configuredProviders.data.find(provider => provider.code === 'onprem');
       if (isDefinedNotNull(providerFound)) {
         if (this.state.isEditProvider) {
           return <OnPremConfigWizardContainer submitWizardJson={this.submitWizardJson} isEditProvider={this.state.isEditProvider} submitEditProvider={this.submitEditProvider}/>;
@@ -255,8 +255,8 @@ export default class OnPremConfiguration extends Component {
         return <OnPremSuccessContainer showEditProviderForm={this.showEditProviderForm} params={params} />;
       }
     }
-    var switchToJsonEntry = <YBButton btnText={"Switch to JSON View"} btnClass={"btn btn-default pull-left"} onClick={this.toggleJsonEntry}/>;
-    var switchToWizardEntry = <YBButton btnText={"Switch to Wizard View"} btnClass={"btn btn-default pull-left"} onClick={this.toggleJsonEntry}/>;
+    const switchToJsonEntry = <YBButton btnText={"Switch to JSON View"} btnClass={"btn btn-default pull-left"} onClick={this.toggleJsonEntry}/>;
+    const switchToWizardEntry = <YBButton btnText={"Switch to Wizard View"} btnClass={"btn btn-default pull-left"} onClick={this.toggleJsonEntry}/>;
     let ConfigurationDataForm = <OnPremConfigWizardContainer switchToJsonEntry={switchToJsonEntry} submitWizardJson={this.submitWizardJson}/>;
     if (this.state.isJsonEntry) {
       ConfigurationDataForm = (

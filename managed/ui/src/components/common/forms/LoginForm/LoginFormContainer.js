@@ -7,8 +7,8 @@ import { connect } from 'react-redux';
 
 //Client side validation
 function validate(values) {
-  var errors = {};
-  var hasErrors = false;
+  const errors = {};
+  let hasErrors = false;
   if (!values.email || values.email.trim() === '') {
     errors.email = 'Enter email';
     hasErrors = true;
@@ -42,7 +42,7 @@ function mapStateToProps(state) {
 }
 
 
-var loginForm = reduxForm({
+const loginForm = reduxForm({
   form: 'LoginForm',
   fields: ['email', 'password'],
   validate

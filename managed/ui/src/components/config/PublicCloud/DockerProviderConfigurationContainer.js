@@ -54,7 +54,7 @@ const mapDispatchToProps = (dispatch) => {
   };
 };
 
-var dockerConfigForm = reduxForm({
+const dockerConfigForm = reduxForm({
   form: 'dockerConfigForm'
 });
 

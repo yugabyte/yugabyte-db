@@ -11,9 +11,9 @@ export default class TableSchema extends Component {
   render() {
     const {tableInfo: {tableDetails}} = this.props;
     let ttlInSeconds = 0;
-    let partitionKeyRows = [];
-    let clusteringKeyRows = [];
-    let otherKeyRows = [];
+    const partitionKeyRows = [];
+    const clusteringKeyRows = [];
+    const otherKeyRows = [];
     if (isValidObject(tableDetails) && isNonEmptyArray(tableDetails.columns)) {
       ttlInSeconds = tableDetails.ttlInSeconds;
       tableDetails.columns.forEach((item) => {
@@ -89,7 +89,7 @@ export default class TableSchema extends Component {
 class SchemaRowDefinition extends Component {
   render() {
     const {rows} = this.props;
-    var rowEntries = <span/>;
+    let rowEntries = <span/>;
     if (isNonEmptyArray(rows)) {
       rowEntries = rows.map(function(item, idx){
         return (

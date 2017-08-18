@@ -3,12 +3,12 @@
 import React, { Component } from 'react';
 import {isValidObject} from '../../../utils/ObjectUtils';
 
-var Plotly = require('plotly.js/lib/core');
+const Plotly = require('plotly.js/lib/core');
 
 export default class UniverseReadWriteMetrics extends Component {
   componentWillReceiveProps(nextProps) {
     const {universe: {iostat_read_count, iostat_write_count}, graphIndex, type} = nextProps;
-    var metricData = [];
+    let metricData = [];
     if (isValidObject(iostat_read_count)) {
       if (type === "read") {
         metricData = iostat_read_count;
@@ -16,7 +16,7 @@ export default class UniverseReadWriteMetrics extends Component {
         metricData = iostat_write_count;
       }
       if (isValidObject(metricData)) {
-        var layout = {
+        const layout = {
           margin: {l: 0, r: 0, t: 0, b: 0, pad: 0, autoexpand: false},
           xaxis: {showline: false, showgrid: false, zeroline: false},
           yaxis: {showline: false, showgrid: false, zeroline: false},
@@ -27,9 +27,9 @@ export default class UniverseReadWriteMetrics extends Component {
           paper_bgcolor: 'rgba(0,0,0,0)',
           plot_bgcolor: 'rgba(0,0,0,0)'
         };
-        var metricXData = metricData.x;
-        var metricYData = metricData.y;
-        var data = [
+        const metricXData = metricData.x;
+        const metricYData = metricData.y;
+        const data = [
           {
             x: metricXData,
             y: metricYData,

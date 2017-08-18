@@ -17,7 +17,7 @@ export default class BulkImport extends Component {
       currentTableDetail: { tableDetails: { tableName, keyspace }, tableUUID, universeUUID },
       universeDetails
     } = this.props;
-    let instanceCount = values["instanceCount"] === undefined ?
+    const instanceCount = values["instanceCount"] === undefined ?
       universeDetails.userIntent.numNodes * 8 :
       values["instanceCount"];
     const payload = {
@@ -35,9 +35,9 @@ export default class BulkImport extends Component {
 
     if (isValidObject(currentTableDetail.tableDetails) && isValidObject(universeDetails)
       && isValidObject(universeDetails.userIntent)) {
-      let tableName = currentTableDetail.tableDetails.tableName;
-      let keyspace = currentTableDetail.tableDetails.keyspace;
-      let s3label = "S3 Bucket with data to be loaded into " + keyspace + "." + tableName;
+      const tableName = currentTableDetail.tableDetails.tableName;
+      const keyspace = currentTableDetail.tableDetails.keyspace;
+      const s3label = "S3 Bucket with data to be loaded into " + keyspace + "." + tableName;
 
       return (
         <div className="universe-apps-modal">

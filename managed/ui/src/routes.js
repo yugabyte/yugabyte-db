@@ -21,12 +21,12 @@ import Help from './pages/Help';
 import Profile from './pages/Profile';
 
 function validateSession(store, replacePath, callback) {
-  let token = localStorage.getItem('customer_token');
+  const token = localStorage.getItem('customer_token');
   // If the token is null or invalid, we just re-direct to login page
   if(!token || token === '') {
     store.dispatch(fetchCustomerCount()).then((response) => {
       if (!response.error) {
-        var responseData = response.payload.data;
+        const responseData = response.payload.data;
         if (responseData && responseData.count === 0) {
           browserHistory.push('/register');
         }

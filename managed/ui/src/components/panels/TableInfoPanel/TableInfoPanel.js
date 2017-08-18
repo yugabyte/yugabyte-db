@@ -12,7 +12,7 @@ export default class TableInfoPanel extends Component {
 
   render() {
     const {tableInfo} = this.props;
-    var tableInfoItems = [
+    const tableInfoItems = [
       { name: "Table Name", data: isValidObject(tableInfo.tableDetails) ? tableInfo.tableDetails.tableName : ""},
       { name: "Table Type", data: tableInfo.tableType},
       { name: "Table UUID", data: tableInfo.tableUUID}

@@ -12,7 +12,7 @@ export const FETCH_CUSTOMER_TASKS_FAILURE = 'FETCH_CUSTOMER_TASKS_FAILURE';
 export const RESET_CUSTOMER_TASKS = 'RESET_CUSTOMER_TASKS';
 
 export function fetchTaskProgress(taskUUID) {
-  var customerUUID = localStorage.getItem("customer_id");
+  const customerUUID = localStorage.getItem("customer_id");
   const request =
     axios.get(`${ROOT_URL}/customers/${customerUUID}/tasks/${taskUUID}`);
   return {
@@ -35,7 +35,7 @@ export function resetTaskProgress(error) {
 }
 
 export function fetchCustomerTasks() {
-  var customerUUID = localStorage.getItem("customer_id");
+  const customerUUID = localStorage.getItem("customer_id");
   const request = axios.get(`${ROOT_URL}/customers/${customerUUID}/tasks`);
   return {
     type: FETCH_CUSTOMER_TASKS,

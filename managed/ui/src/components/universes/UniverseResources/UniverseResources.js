@@ -9,9 +9,9 @@ import './UniverseResources.scss';
 export default class UniverseResources extends Component {
   render() {
     const {resources, renderType} = this.props;
-    var empty = true;
-    var costPerDay = '$0.00';
-    var costPerMonth = '$0.00';
+    let empty = true;
+    let costPerDay = '$0.00';
+    let costPerMonth = '$0.00';
     let numCores = 0;
     let memSizeGB = 0;
     let volumeSizeGB = 0;

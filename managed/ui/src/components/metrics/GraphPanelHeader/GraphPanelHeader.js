@@ -12,8 +12,8 @@ import { isValidObject, isNonEmptyObject } from 'utils/ObjectUtils';
 import './GraphPanelHeader.scss';
 
 require('react-widgets/dist/css/react-widgets.css');
-var moment = require('moment');
-var momentLocalizer = require('react-widgets/lib/localizers/moment');
+const moment = require('moment');
+const momentLocalizer = require('react-widgets/lib/localizers/moment');
 
 // We can define different filter types here, the type parameter should be
 // valid type that moment supports except for custom and divider.
@@ -52,13 +52,13 @@ class GraphPanelHeader extends Component {
     this.handleEndDateChange = this.handleEndDateChange.bind(this);
     this.applyCustomFilter = this.applyCustomFilter.bind(this);
     this.updateGraphQueryParams = this.updateGraphQueryParams.bind(this);
-    var defaultFilter = filterTypes[DEFAULT_FILTER_KEY];
+    const defaultFilter = filterTypes[DEFAULT_FILTER_KEY];
     this.universeItemChanged = this.universeItemChanged.bind(this);
     this.nodeItemChanged = this.nodeItemChanged.bind(this);
     this.submitGraphFilters = this.submitGraphFilters.bind(this);
     this.refreshGraphQuery = this.refreshGraphQuery.bind(this);
-    var currentUniverse = "all";
-    var currentUniversePrefix  = "all";
+    let currentUniverse = "all";
+    let currentUniversePrefix  = "all";
     if (this.props.origin === "universe") {
       currentUniverse = this.props.universe.currentUniverse.data;
       currentUniversePrefix = currentUniverse.universeDetails.nodePrefix;
@@ -78,11 +78,11 @@ class GraphPanelHeader extends Component {
   }
 
   componentWillMount() {
-    var location = browserHistory.getCurrentLocation();
-    var currentQuery = location.query;
-    var currentFilters = this.state;
+    const location = browserHistory.getCurrentLocation();
+    const currentQuery = location.query;
+    let currentFilters = this.state;
     if (isValidObject(currentQuery) && Object.keys(currentQuery).length > 1) {
-      var filterParams = {
+      const filterParams = {
         nodePrefix: currentQuery.nodePrefix,
         nodeName: currentQuery.nodeName,
         filterType: currentQuery.filterType,
@@ -94,7 +94,7 @@ class GraphPanelHeader extends Component {
         filterParams.filterValue  = "";
         filterParams.filterLabel = "Custom";
       } else {
-        var currentFilterItem = filterTypes.find(filterType => filterType.type === currentQuery.filterType
+        const currentFilterItem = filterTypes.find(filterType => filterType.type === currentQuery.filterType
                                                  && filterType.value === currentQuery.filterValue);
         filterParams.filterLabel = currentFilterItem.label;
         filterParams.endMoment = moment();
@@ -110,12 +110,13 @@ class GraphPanelHeader extends Component {
     const {location, universe, universe: {universeList}} = nextProps;
     if (this.props.location !== nextProps.location ||
        (getPromiseState(universeList).isSuccess() && getPromiseState(this.props.universe.universeList).isLoading())) {
-      var nodePrefix = this.state.nodePrefix;
+      let nodePrefix = this.state.nodePrefix;
       if (location.query.nodePrefix) {
         nodePrefix = location.query.nodePrefix;
       }
+      let currentUniverse;
       if (getPromiseState(universe.currentUniverse).isEmpty() || getPromiseState(universe.currentUniverse).isInit()) {
-        var currentUniverse = universeList.data.find(function (item) {
+        currentUniverse = universeList.data.find(function (item) {
           return item.universeDetails.nodePrefix === nodePrefix;
         });
         if (!isNonEmptyObject(currentUniverse)) {
@@ -124,7 +125,7 @@ class GraphPanelHeader extends Component {
       } else {
         currentUniverse = universe.currentUniverse.data;
       }
-      var currentSelectedNode = "all";
+      let currentSelectedNode = "all";
       if (isValidObject(location.query.nodeName)) {
         currentSelectedNode = location.query.nodeName;
       }
@@ -133,14 +134,14 @@ class GraphPanelHeader extends Component {
   }
 
   submitGraphFilters(type, val) {
-    var queryObject = this.state.filterParams;
+    const queryObject = this.state.filterParams;
     queryObject[type] = val;
     this.props.changeGraphQueryFilters(queryObject);
     this.updateUrlQueryParams(queryObject);
   }
 
   refreshGraphQuery() {
-    var newParams = this.state;
+    const newParams = this.state;
     if (newParams.filterLabel !== "Custom") {
       newParams.startMoment = moment().subtract(newParams.filterValue, newParams.filterType);
       newParams.endMoment = moment();
@@ -149,8 +150,8 @@ class GraphPanelHeader extends Component {
   }
 
   handleFilterChange(eventKey, event) {
-    var filterInfo = filterTypes[eventKey] || filterTypes[DEFAULT_FILTER_KEY];
-    var newParams = this.state;
+    const filterInfo = filterTypes[eventKey] || filterTypes[DEFAULT_FILTER_KEY];
+    const newParams = this.state;
     newParams.filterLabel = filterInfo.label;
     newParams.filterType = filterInfo.type;
     newParams.filterValue = filterInfo.value;
@@ -160,8 +161,8 @@ class GraphPanelHeader extends Component {
       filterValue: filterInfo.value});
 
     if (event.target.getAttribute("data-filter-type") !== "custom") {
-      var endMoment = moment();
-      var startMoment = moment().subtract(filterInfo.value, filterInfo.type);
+      const endMoment = moment();
+      const startMoment = moment().subtract(filterInfo.value, filterInfo.type);
       newParams.startMoment = startMoment;
       newParams.endMoment = endMoment;
       this.setState({startMoment: startMoment, endMoment: endMoment});
@@ -172,10 +173,10 @@ class GraphPanelHeader extends Component {
 
   universeItemChanged(event) {
     const {universe: {universeList}} = this.props;
-    var self = this;
-    var universeFound = false;
-    var newParams = this.state;
-    for (var counter = 0; counter < universeList.data.length; counter++) {
+    const self = this;
+    let universeFound = false;
+    const newParams = this.state;
+    for (let counter = 0; counter < universeList.data.length; counter++) {
       if (universeList.data[counter].universeUUID === event.target.value) {
         universeFound = true;
         self.setState({currentSelectedUniverse: universeList[counter], nodePrefix: universeList.data[counter].universeDetails.nodePrefix,
@@ -193,7 +194,7 @@ class GraphPanelHeader extends Component {
   }
 
   nodeItemChanged(event) {
-    var newParams = this.state;
+    const newParams = this.state;
     newParams.nodeName = event.target.value;
     this.props.changeGraphQueryFilters(newParams);
     this.setState({nodeName: event.target.value});
@@ -213,7 +214,7 @@ class GraphPanelHeader extends Component {
   }
 
   updateGraphQueryParams(startMoment, endMoment) {
-    var newFilterParams = this.state;
+    const newFilterParams = this.state;
     if (isValidObject(startMoment) && isValidObject(endMoment)) {
       newFilterParams.startMoment = startMoment;
       newFilterParams.endMoment = endMoment;
@@ -224,7 +225,7 @@ class GraphPanelHeader extends Component {
 
   updateUrlQueryParams(filterParams) {
     const location = Object.assign({}, browserHistory.getCurrentLocation());
-    var queryParams = location.query;
+    const queryParams = location.query;
     queryParams.nodePrefix = filterParams.nodePrefix;
     queryParams.nodeName = filterParams.nodeName;
     queryParams.filterType = filterParams.filterType;
@@ -240,7 +241,7 @@ class GraphPanelHeader extends Component {
 
   render() {
     const { origin } = this.props;
-    var datePicker = null;
+    let datePicker = null;
     if (this.state.filterLabel === "Custom") {
       datePicker = (
         <span className="graph-filter-custom" >
@@ -259,8 +260,8 @@ class GraphPanelHeader extends Component {
       );
     }
 
-    var self = this;
-    var menuItems = filterTypes.map(function(filter, idx) {
+    const self = this;
+    const menuItems = filterTypes.map(function(filter, idx) {
       const key = 'graph-filter-' + idx;
       if (filter.type === "divider") {
         return <MenuItem divider key={key}/>;
@@ -274,7 +275,7 @@ class GraphPanelHeader extends Component {
       );
     });
 
-    var universePicker = <span/>;
+    let universePicker = <span/>;
     if (origin === "customer") {
       universePicker = (
         <UniversePicker {...this.props} universeItemChanged={this.universeItemChanged}
@@ -325,12 +326,12 @@ export default withRouter(GraphPanelHeader);
 class UniversePicker extends Component {
   render() {
     const {universeItemChanged, universe: {universeList}, selectedUniverse} = this.props;
-    var universeItems = universeList.data.sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
+    const universeItems = universeList.data.sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
                           .map(function(item, idx){
                             return <option key={idx} value={item.universeUUID} name={item.name}>{item.name}</option>;
                           });
-    var universeOptionArray = [<option key={-1} value="all">All</option>].concat(universeItems);
-    var currentUniverseValue = "all";
+    const universeOptionArray = [<option key={-1} value="all">All</option>].concat(universeItems);
+    let currentUniverseValue = "all";
     if (!_.isString(selectedUniverse)) {
       currentUniverseValue = selectedUniverse.universeUUID;
     }
@@ -348,7 +349,7 @@ class UniversePicker extends Component {
 class NodePicker extends Component {
   render() {
     const {selectedUniverse, nodeItemChanged, selectedNode} = this.props;
-    var nodeItems =[];
+    let nodeItems =[];
     if (isNonEmptyObject(selectedUniverse) && selectedUniverse!== "all") {
       nodeItems = selectedUniverse.universeDetails.nodeDetailsSet
         .sort((a, b) => a.nodeName.toLowerCase() > b.nodeName.toLowerCase())
@@ -358,7 +359,7 @@ class NodePicker extends Component {
           </option>
         ));
     }
-    var nodeOptionArray=[<option key={-1} value="all">All</option>].concat(nodeItems);
+    const nodeOptionArray=[<option key={-1} value="all">All</option>].concat(nodeItems);
     return (
       <div className="node-picker">
         Node:
