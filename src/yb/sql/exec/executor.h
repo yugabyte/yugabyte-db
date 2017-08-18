@@ -60,14 +60,8 @@ class Executor {
   // Execute any TreeNode. This function determines how to execute a node.
   void ExecTreeNodeAsync(const TreeNode *tnode, StatementExecutedCallback cb);
 
-  // Returns unsupported error for generic tree node execution. We only get to this overloaded
-  // function if the execution of a specific treenode is not yet supported or defined.
-  void ExecPTNodeAsync(const TreeNode *tnode, StatementExecutedCallback cb);
-
   // Runs the execution on all of the entries in the list node.
   void ExecPTNodeAsync(const PTListNode *tnode, StatementExecutedCallback cb, int idx = 0);
-
-  CHECKED_STATUS ColumnRefsToPB(const PTDmlStmt *tnode, YQLReferencedColumnsPB *columns_pb);
 
   // Creates table.
   void ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCallback cb);
@@ -122,11 +116,8 @@ class Executor {
   CHECKED_STATUS PTExprToPB(const PTConstBinary *const_pt, YQLValuePB *const_pb);
   CHECKED_STATUS PTExprToPB(const PTCollectionExpr *const_pt, YQLValuePB *const_pb);
 
-
   // Bind variable.
   CHECKED_STATUS PTExprToPB(const PTBindVar *bind_pt, YQLExpressionPB *bind_pb);
-  // Get a bind variable.
-  CHECKED_STATUS GetBindVariable(const PTBindVar* var, YQLValue *value) const;
 
   // Column types.
   CHECKED_STATUS PTExprToPB(const PTRef *ref_pt, YQLExpressionPB *ref_pb);
@@ -153,18 +144,27 @@ class Executor {
   //------------------------------------------------------------------------------------------------
 
   // Set the time to live for the values affected by the current write request
-  CHECKED_STATUS SetTtlToWriteRequestPB(const PTDmlStmt *tnode, YQLWriteRequestPB *req);
+  CHECKED_STATUS TtlToPB(const PTDmlStmt *tnode, YQLWriteRequestPB *req);
+
+  //------------------------------------------------------------------------------------------------
+  // Column evaluation.
+
+  // Convert column references to protobuf.
+  CHECKED_STATUS ColumnRefsToPB(const PTDmlStmt *tnode, YQLReferencedColumnsPB *columns_pb);
 
   // Convert column arguments to protobuf.
-  CHECKED_STATUS ColumnArgsToWriteRequestPB(const std::shared_ptr<client::YBTable>& table,
-                                            const PTDmlStmt *tnode,
-                                            YQLWriteRequestPB *req,
-                                            YBPartialRow *row);
+  CHECKED_STATUS ColumnArgsToPB(const std::shared_ptr<client::YBTable>& table,
+                                const PTDmlStmt *tnode,
+                                YQLWriteRequestPB *req,
+                                YBPartialRow *row);
 
   // Set up partial row for computing hash value.
   CHECKED_STATUS SetupPartialRow(const ColumnDesc *col_desc,
                                  const YQLExpressionPB *col_expr,
                                  YBPartialRow *row);
+
+  //------------------------------------------------------------------------------------------------
+  // Where clause evaluation.
 
   // Convert where clause to protobuf for read request.
   CHECKED_STATUS WhereClauseToPB(YQLReadRequestPB *req,
@@ -185,9 +185,8 @@ class Executor {
 
   // Convert an expression op in where clause to protobuf.
   CHECKED_STATUS WhereOpToPB(YQLConditionPB *condition, const ColumnOp& col_op);
-  CHECKED_STATUS FuncOpToPB(YQLConditionPB *condition, const FuncOp& func_op);
-
   CHECKED_STATUS WhereSubColOpToPB(YQLConditionPB *condition, const SubscriptedColumnOp& subcol_op);
+  CHECKED_STATUS FuncOpToPB(YQLConditionPB *condition, const FuncOp& func_op);
 
 
   void SelectAsyncDone(const PTSelectStmt *tnode, std::shared_ptr<client::YBqlReadOp>,

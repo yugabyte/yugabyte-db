@@ -6,6 +6,9 @@ add_library(ybsql_exec
             eval_expr.cc
             eval_logic.cc
             eval_op.cc
+            eval_col.cc
+            eval_where.cc
+            eval_misc.cc
             exec_context.cc
             executor.cc)
 

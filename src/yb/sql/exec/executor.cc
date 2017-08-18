@@ -112,14 +112,8 @@ void Executor::ExecTreeNodeAsync(const TreeNode *tnode, StatementExecutedCallbac
       return ExecPTNodeAsync(static_cast<const PTUseKeyspace *>(tnode), std::move(cb));
 
     default:
-      return ExecPTNodeAsync(tnode, std::move(cb));
+      CB_RETURN(cb, exec_context_->Error(tnode->loc(), ErrorCode::FEATURE_NOT_SUPPORTED));
   }
-}
-
-//--------------------------------------------------------------------------------------------------
-
-void Executor::ExecPTNodeAsync(const TreeNode *tnode, StatementExecutedCallback cb) {
-  CB_RETURN(cb, exec_context_->Error(tnode->loc(), ErrorCode::FEATURE_NOT_SUPPORTED));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -172,24 +166,6 @@ void Executor::PTNodeAsyncDone(
 }
 
 //--------------------------------------------------------------------------------------------------
-
-CHECKED_STATUS Executor::ColumnRefsToPB(const PTDmlStmt *tnode,
-                                        YQLReferencedColumnsPB *columns_pb) {
-  // Write a list of columns to be read before executing the statement.
-  const MCSet<int32>& column_refs = tnode->column_refs();
-  for (auto column_ref : column_refs) {
-    columns_pb->add_ids(column_ref);
-  }
-
-  const MCSet<int32>& static_column_refs = tnode->static_column_refs();
-  for (auto column_ref : static_column_refs) {
-    columns_pb->add_static_ids(column_ref);
-  }
-  return Status::OK();
-}
-
-
-//--------------------------------------------------------------------------------------------------
 void Executor::ExecPTNodeAsync(const PTCreateType *tnode, StatementExecutedCallback cb) {
   YBTableName yb_name = tnode->yb_type_name();
 
@@ -210,14 +186,12 @@ void Executor::ExecPTNodeAsync(const PTCreateType *tnode, StatementExecutedCallb
     field_types.push_back(field->yql_type());
   }
 
-  Status exec_status =
-      exec_context_->CreateUDType(keyspace_name, type_name, field_names, field_types);
-
-  if (!exec_status.ok()) {
+  Status s = exec_context_->CreateUDType(keyspace_name, type_name, field_names, field_types);
+  if (!s.ok()) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
-    if (exec_status.IsAlreadyPresent()) {
+    if (s.IsAlreadyPresent()) {
       error_code = ErrorCode::DUPLICATE_TYPE;
-    } else if (exec_status.IsNotFound()) {
+    } else if (s.IsNotFound()) {
       error_code = ErrorCode::KEYSPACE_NOT_FOUND;
     }
 
@@ -225,8 +199,7 @@ void Executor::ExecPTNodeAsync(const PTCreateType *tnode, StatementExecutedCallb
       CB_RETURN(cb, Status::OK());
     }
 
-    CB_RETURN(
-        cb, exec_context_->Error(tnode->name_loc(), exec_status.ToString().c_str(), error_code));
+    CB_RETURN(cb, exec_context_->Error(tnode->name_loc(), s.ToString().c_str(), error_code));
   }
   cb.Run(Status::OK(),
          std::make_shared<SchemaChangeResult>("CREATED", "TYPE", keyspace_name, type_name));
@@ -250,7 +223,7 @@ void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCall
   }
 
   // Setting up columns.
-  Status exec_status;
+  Status s;
   YBSchema schema;
   YBSchemaBuilder b;
 
@@ -259,8 +232,7 @@ void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCall
     if (column->sorting_type() != ColumnSchema::SortingType::kNotSpecified) {
       CB_RETURN(
           cb, exec_context_->Error(
-                  tnode->columns_loc(), exec_status.ToString().c_str(),
-                  ErrorCode::INVALID_TABLE_DEFINITION));
+              tnode->columns_loc(), s.ToString().c_str(), ErrorCode::INVALID_TABLE_DEFINITION));
     }
     b.AddColumn(column->yb_name())->Type(column->yql_type())
         ->HashPrimaryKey()
@@ -278,8 +250,7 @@ void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCall
     if (column->sorting_type() != ColumnSchema::SortingType::kNotSpecified) {
       CB_RETURN(
           cb, exec_context_->Error(
-                  tnode->columns_loc(), exec_status.ToString().c_str(),
-                  ErrorCode::INVALID_TABLE_DEFINITION));
+              tnode->columns_loc(), s.ToString().c_str(), ErrorCode::INVALID_TABLE_DEFINITION));
     }
     YBColumnSpec *column_spec = b.AddColumn(column->yb_name())->Type(column->yql_type())
                                                               ->Nullable()
@@ -296,32 +267,31 @@ void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCall
   if (!tnode->ToTableProperties(&table_properties).ok()) {
     CB_RETURN(
         cb, exec_context_->Error(
-                tnode->columns_loc(), exec_status.ToString().c_str(),
-                ErrorCode::INVALID_TABLE_DEFINITION));
+            tnode->columns_loc(), s.ToString().c_str(), ErrorCode::INVALID_TABLE_DEFINITION));
   }
 
   b.SetTableProperties(table_properties);
 
-  exec_status = b.Build(&schema);
-  if (!exec_status.ok()) {
+  s = b.Build(&schema);
+  if (!s.ok()) {
     CB_RETURN(
         cb, exec_context_->Error(
-                tnode->columns_loc(), exec_status.ToString().c_str(),
-                ErrorCode::INVALID_TABLE_DEFINITION));
+            tnode->columns_loc(), s.ToString().c_str(), ErrorCode::INVALID_TABLE_DEFINITION));
   }
 
   // Create table.
   shared_ptr<YBTableCreator> table_creator(exec_context_->NewTableCreator());
-  exec_status = table_creator->table_name(table_name).table_type(YBTableType::YQL_TABLE_TYPE)
-                              .schema(&schema)
-                              .Create();
-  if (!exec_status.ok()) {
+  s = table_creator->table_name(table_name)
+                    .table_type(YBTableType::YQL_TABLE_TYPE)
+                    .schema(&schema)
+                    .Create();
+  if (!s.ok()) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
-    if (exec_status.IsAlreadyPresent()) {
+    if (s.IsAlreadyPresent()) {
       error_code = ErrorCode::DUPLICATE_TABLE;
-    } else if (exec_status.IsNotFound()) {
+    } else if (s.IsNotFound()) {
       error_code = ErrorCode::KEYSPACE_NOT_FOUND;
-    } else if (exec_status.IsInvalidArgument()) {
+    } else if (s.IsInvalidArgument()) {
       error_code = ErrorCode::INVALID_TABLE_DEFINITION;
     }
 
@@ -329,8 +299,7 @@ void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCall
       CB_RETURN(cb, Status::OK());
     }
 
-    CB_RETURN(
-        cb, exec_context_->Error(tnode->name_loc(), exec_status.ToString().c_str(), error_code));
+    CB_RETURN(cb, exec_context_->Error(tnode->name_loc(), s.ToString().c_str(), error_code));
   }
   cb.Run(
       Status::OK(),
@@ -374,21 +343,21 @@ void Executor::ExecPTNodeAsync(const PTAlterTable *tnode, StatementExecutedCallb
 
   if (!tnode->mod_props().empty()) {
     TableProperties table_properties;
-    Status exec_status = tnode->ToTableProperties(&table_properties);
-    if(!exec_status.ok()) {
-      CB_RETURN(cb, exec_context_->Error(tnode->loc(), exec_status.ToString().c_str(),
+    Status s = tnode->ToTableProperties(&table_properties);
+    if(!s.ok()) {
+      CB_RETURN(cb, exec_context_->Error(tnode->loc(), s.ToString().c_str(),
                                          ErrorCode::INVALID_ARGUMENTS));
     }
 
     table_alterer->SetTableProperties(table_properties);
   }
 
-  Status exec_status = table_alterer->Alter();
+  Status s = table_alterer->Alter();
 
-  if (!exec_status.ok()) {
+  if (!s.ok()) {
     ErrorCode error_code = ErrorCode::EXEC_ERROR;
 
-    CB_RETURN(cb, exec_context_->Error(tnode->loc(), exec_status.ToString().c_str(), error_code));
+    CB_RETURN(cb, exec_context_->Error(tnode->loc(), s.ToString().c_str(), error_code));
   }
 
   cb.Run(
@@ -401,7 +370,7 @@ void Executor::ExecPTNodeAsync(const PTAlterTable *tnode, StatementExecutedCallb
 
 void Executor::ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallback cb) {
   DCHECK_NOTNULL(exec_context_.get());
-  Status exec_status;
+  Status s;
   ErrorCode error_not_found = ErrorCode::SERVER_ERROR;
   SchemaChangeResult::SharedPtr result;
 
@@ -417,7 +386,7 @@ void Executor::ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallbac
         table_name.set_namespace_name(exec_context_->CurrentKeyspace());
       }
       // Drop the table.
-      exec_status = exec_context_->DeleteTable(table_name);
+      s = exec_context_->DeleteTable(table_name);
       error_not_found = ErrorCode::TABLE_NOT_FOUND;
       result = std::make_shared<SchemaChangeResult>(
           "DROPPED", "TABLE", table_name.resolved_namespace_name(), table_name.table_name());
@@ -427,7 +396,7 @@ void Executor::ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallbac
     case OBJECT_SCHEMA: {
       // Drop the keyspace.
       const string &keyspace_name(tnode->name()->last_name().c_str());
-      exec_status = exec_context_->DeleteKeyspace(keyspace_name);
+      s = exec_context_->DeleteKeyspace(keyspace_name);
       error_not_found = ErrorCode::KEYSPACE_NOT_FOUND;
       result = std::make_shared<SchemaChangeResult>("DROPPED", "KEYSPACE", keyspace_name);
       break;
@@ -446,7 +415,7 @@ void Executor::ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallbac
       }
 
       // Drop the type.
-      exec_status = exec_context_->DeleteUDType(namespace_name, type_name);
+      s = exec_context_->DeleteUDType(namespace_name, type_name);
       error_not_found = ErrorCode::TYPE_NOT_FOUND;
       result = std::make_shared<SchemaChangeResult>(
           "DROPPED", "TYPE", namespace_name, type_name);
@@ -457,10 +426,10 @@ void Executor::ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallbac
       CB_RETURN(cb, exec_context_->Error(tnode->name_loc(), ErrorCode::FEATURE_NOT_SUPPORTED));
   }
 
-  if (!exec_status.ok()) {
+  if (!s.ok()) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
 
-    if (exec_status.IsNotFound()) {
+    if (s.IsNotFound()) {
       // Ignore not found error for a DROP IF EXISTS statement.
       if (tnode->drop_if_exists()) {
         CB_RETURN(cb, Status::OK());
@@ -470,397 +439,10 @@ void Executor::ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallbac
     }
 
     CB_RETURN(
-        cb, exec_context_->Error(tnode->name_loc(), exec_status.ToString().c_str(), error_code));
+        cb, exec_context_->Error(tnode->name_loc(), s.ToString().c_str(), error_code));
   }
 
   cb.Run(Status::OK(), result);
-}
-
-//--------------------------------------------------------------------------------------------------
-
-CHECKED_STATUS Executor::SetupPartialRow(const ColumnDesc *col_desc,
-                                         const YQLExpressionPB *expr_pb,
-                                         YBPartialRow *row) {
-  DCHECK(expr_pb->has_value()) << "Expecting literals for hash columns";
-
-  const YQLValuePB& value_pb = expr_pb->value();
-  if (YQLValue::IsNull(value_pb)) {
-    return Status::OK();
-  }
-
-  switch (YQLValue::type(value_pb)) {
-    case InternalType::kInt8Value:
-      RETURN_NOT_OK(row->SetInt8(col_desc->index(), YQLValue::int8_value(value_pb)));
-      break;
-    case InternalType::kInt16Value:
-      RETURN_NOT_OK(row->SetInt16(col_desc->index(), YQLValue::int16_value(value_pb)));
-      break;
-    case InternalType::kInt32Value:
-      RETURN_NOT_OK(row->SetInt32(col_desc->index(), YQLValue::int32_value(value_pb)));
-      break;
-    case InternalType::kInt64Value:
-      RETURN_NOT_OK(row->SetInt64(col_desc->index(), YQLValue::int64_value(value_pb)));
-      break;
-    case InternalType::kDecimalValue: {
-      const string& decimal_value = YQLValue::decimal_value(value_pb);
-      RETURN_NOT_OK(row->SetDecimal(col_desc->index(),
-                                    Slice(decimal_value.data(), decimal_value.size())));
-      break;
-    }
-    case InternalType::kStringValue:
-      RETURN_NOT_OK(row->SetString(col_desc->index(), YQLValue::string_value(value_pb)));
-      break;
-    case InternalType::kTimestampValue:
-      RETURN_NOT_OK(row->SetTimestamp(col_desc->index(),
-                                      YQLValue::timestamp_value(value_pb).ToInt64()));
-      break;
-    case InternalType::kInetaddressValue: {
-      std::string bytes;
-      RETURN_NOT_OK(YQLValue::inetaddress_value(value_pb).ToBytes(&bytes));
-      RETURN_NOT_OK(row->SetInet(col_desc->index(), Slice(bytes)));
-      break;
-    }
-    case InternalType::kUuidValue: {
-      std::string bytes;
-      RETURN_NOT_OK(YQLValue::uuid_value(value_pb).ToBytes(&bytes));
-      RETURN_NOT_OK(row->SetUuidCopy(col_desc->index(), Slice(bytes)));
-      break;
-    }
-    case InternalType::kTimeuuidValue: {
-      std::string bytes;
-      RETURN_NOT_OK(YQLValue::timeuuid_value(value_pb).ToBytes(&bytes));
-      RETURN_NOT_OK(row->SetTimeUuidCopy(col_desc->index(), Slice(bytes)));
-      break;
-    }
-    case InternalType::kBinaryValue:
-      RETURN_NOT_OK(row->SetBinary(col_desc->index(), YQLValue::binary_value(value_pb)));
-      break;
-    case InternalType::kFrozenValue:
-      RETURN_NOT_OK(row->SetFrozen(col_desc->index(), YQLValue::frozen_value(value_pb)));
-      break;
-
-    case InternalType::kBoolValue: FALLTHROUGH_INTENDED;
-    case InternalType::kFloatValue: FALLTHROUGH_INTENDED;
-    case InternalType::kDoubleValue: FALLTHROUGH_INTENDED;
-    case InternalType::kMapValue: FALLTHROUGH_INTENDED;
-    case InternalType::kSetValue: FALLTHROUGH_INTENDED;
-    case InternalType::kListValue:
-      LOG(FATAL) << "Invalid datatype for partition column";
-
-    case InternalType::kVarintValue: FALLTHROUGH_INTENDED;
-    default:
-      LOG(FATAL) << "DataType not yet supported";
-  }
-
-  return Status::OK();
-}
-
-//--------------------------------------------------------------------------------------------------
-
-CHECKED_STATUS Executor::SetTtlToWriteRequestPB(const PTDmlStmt *tnode, YQLWriteRequestPB *req) {
-  if (tnode->has_ttl()) {
-    YQLExpressionPB ttl_pb;
-    RETURN_NOT_OK(PTExprToPB(tnode->ttl_seconds(), &ttl_pb));
-    if (ttl_pb.has_value() && YQLValue::IsNull(ttl_pb.value())) {
-      return exec_context_->Error(tnode->loc(),
-                                  "TTL value cannot be null.",
-                                  ErrorCode::INVALID_ARGUMENTS);
-    }
-
-    // this should be ensured by checks before getting here
-    DCHECK(ttl_pb.has_value() && ttl_pb.value().has_int64_value())
-        << "Integer constant expected for USING TTL clause";
-
-    int64_t ttl_seconds = ttl_pb.value().int64_value();
-
-    if (!yb::common::IsValidTTLSeconds(ttl_seconds)) {
-      return exec_context_->Error(tnode->ttl_seconds()->loc(),
-          strings::Substitute("Valid ttl range : [$0, $1]",
-              yb::common::kMinTtlSeconds,
-              yb::common::kMaxTtlSeconds).c_str(),
-          ErrorCode::INVALID_ARGUMENTS);
-    }
-    req->set_ttl(static_cast<uint64_t>(ttl_seconds * MonoTime::kMillisecondsPerSecond));
-  }
-  return Status::OK();
-}
-
-CHECKED_STATUS Executor::ColumnArgsToWriteRequestPB(const shared_ptr<client::YBTable>& table,
-                                                    const PTDmlStmt *tnode,
-                                                    YQLWriteRequestPB *req,
-                                                    YBPartialRow *row) {
-  const MCVector<ColumnArg>& column_args = tnode->column_args();
-  for (const ColumnArg& col : column_args) {
-    if (!col.IsInitialized()) {
-      // This column is not assigned a value, ignore it. We don't support default value yet.
-      continue;
-    }
-
-    const ColumnDesc *col_desc = col.desc();
-    YQLColumnValuePB* col_pb;
-
-    if (col_desc->is_hash()) {
-      col_pb = req->add_hashed_column_values();
-    } else if (col_desc->is_primary()) {
-      col_pb = req->add_range_column_values();
-    } else {
-      col_pb = req->add_column_values();
-    }
-
-    VLOG(3) << "WRITE request, column id = " << col_desc->id();
-    col_pb->set_column_id(col_desc->id());
-    YQLExpressionPB *expr_pb = col_pb->mutable_expr();
-    RETURN_NOT_OK(PTExprToPB(col.expr(), expr_pb));
-    // null values not allowed for primary key: checking here catches nulls introduced by bind
-    if (col_desc->is_primary() && expr_pb->has_value() && YQLValue::IsNull(expr_pb->value())) {
-      LOG(INFO) << "Unexpected null value. Current request: " << req->DebugString();
-      return exec_context_->Error(tnode->loc(), ErrorCode::NULL_ARGUMENT_FOR_PRIMARY_KEY);
-    }
-
-    if (col_desc->is_hash()) {
-      RETURN_NOT_OK(SetupPartialRow(col_desc, expr_pb, row));
-    }
-  }
-
-  const MCVector<SubscriptedColumnArg>& subcol_args = tnode->subscripted_col_args();
-  for (const SubscriptedColumnArg& col : subcol_args) {
-    const ColumnDesc *col_desc = col.desc();
-    YQLColumnValuePB *col_pb = req->add_column_values();
-    col_pb->set_column_id(col_desc->id());
-    YQLExpressionPB *expr_pb = col_pb->mutable_expr();
-    RETURN_NOT_OK(PTExprToPB(col.expr(), expr_pb));
-    for (auto& col_arg : col.args()->node_list()) {
-      YQLExpressionPB *arg_pb = col_pb->add_subscript_args();
-      RETURN_NOT_OK(PTExprToPB(col_arg, arg_pb));
-    }
-  }
-
-  return Status::OK();
-}
-
-//--------------------------------------------------------------------------------------------------
-
-CHECKED_STATUS Executor::WhereClauseToPB(YQLWriteRequestPB *req,
-                                         YBPartialRow *row,
-                                         const MCVector<ColumnOp>& key_where_ops,
-                                         const MCList<ColumnOp>& where_ops,
-                                         const MCList<SubscriptedColumnOp>& subcol_where_ops) {
-  // Setup the key columns.
-  for (const auto& op : key_where_ops) {
-    const ColumnDesc *col_desc = op.desc();
-    YQLColumnValuePB *col_pb;
-    if (col_desc->is_hash()) {
-      col_pb = req->add_hashed_column_values();
-    } else if (col_desc->is_primary()) {
-      col_pb = req->add_range_column_values();
-    } else {
-      LOG(FATAL) << "Unexpected non primary key column in this context";
-    }
-    VLOG(3) << "WRITE request, column id = " << col_desc->id();
-    col_pb->set_column_id(col_desc->id());
-    RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb->mutable_expr()));
-    if (col_desc->is_hash()) {
-      RETURN_NOT_OK(SetupPartialRow(col_desc, col_pb->mutable_expr(), row));
-    }
-  }
-
-  // Setup the rest of the columns.
-  CHECK(where_ops.empty()) << "Server doesn't support range operation yet";
-  for (const auto& op : where_ops) {
-    const ColumnDesc *col_desc = op.desc();
-    YQLColumnValuePB *col_pb;
-    if (col_desc->is_primary()) {
-      col_pb = req->add_range_column_values();
-    } else {
-      col_pb = req->add_column_values();
-    }
-    col_pb->set_column_id(col_desc->id());
-    RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb->mutable_expr()));
-  }
-
-  for (const auto& op : subcol_where_ops) {
-    const ColumnDesc *col_desc = op.desc();
-    YQLColumnValuePB *col_pb;
-    col_pb = req->add_column_values();
-    col_pb->set_column_id(col_desc->id());
-    for (auto& arg : op.args()->node_list()) {
-      RETURN_NOT_OK(PTExprToPB(arg, col_pb->add_subscript_args()));
-    }
-    RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb->mutable_expr()));
-  }
-
-  return Status::OK();
-}
-
-CHECKED_STATUS Executor::WhereClauseToPB(YQLReadRequestPB *req,
-                                         YBPartialRow *row,
-                                         const MCVector<ColumnOp>& key_where_ops,
-                                         const MCList<ColumnOp>& where_ops,
-                                         const MCList<SubscriptedColumnOp>& subcol_where_ops,
-                                         const MCList<PartitionKeyOp>& partition_key_ops,
-                                         const MCList<FuncOp>& func_ops,
-                                         bool *no_results) {
-  // If where clause restrictions guarantee no results can be found this will be set to true below.
-  *no_results = false;
-
-  // Setup the lower/upper bounds on the partition key -- if any
-  for (const auto& op : partition_key_ops) {
-    YQLExpressionPB hash_code_pb;
-    RETURN_NOT_OK(PTExprToPB(op.expr(), &hash_code_pb));
-    DCHECK(hash_code_pb.has_value()) << "Integer constant expected";
-
-    uint16_t hash_code = YBPartition::CqlToYBHashCode(hash_code_pb.value().int64_value());
-
-    // internally we use [start, end) intervals -- start-inclusive, end-exclusive
-    switch (op.yb_op()) {
-      case YQL_OP_GREATER_THAN:
-        if (hash_code != YBPartition::kMaxHashCode) {
-          req->set_hash_code(hash_code + 1);
-        } else {
-          // Token hash greater than max implies no results.
-          *no_results = true;
-          return Status::OK();
-        }
-        break;
-      case YQL_OP_GREATER_THAN_EQUAL:
-        req->set_hash_code(hash_code);
-        break;
-      case YQL_OP_LESS_THAN:
-        req->set_max_hash_code(hash_code);
-        break;
-      case YQL_OP_LESS_THAN_EQUAL:
-        if (hash_code != YBPartition::kMaxHashCode) {
-          req->set_max_hash_code(hash_code + 1);
-        } // Token hash less or equal than max adds no real restriction.
-        break;
-      case YQL_OP_EQUAL:
-        req->set_hash_code(hash_code);
-        if (hash_code != YBPartition::kMaxHashCode) {
-          req->set_max_hash_code(hash_code + 1);
-        }  // Token hash equality restriction with max value needs no upper bound.
-        break;
-
-      default:
-        LOG(FATAL) << "Unsupported operator for token-based partition key condition";
-    }
-  }
-
-  // Setup the hash key columns. This may be empty
-  for (const auto& op : key_where_ops) {
-    const ColumnDesc *col_desc = op.desc();
-    YQLColumnValuePB *col_pb;
-    if (col_desc->is_hash()) {
-      col_pb = req->add_hashed_column_values();
-    } else {
-      LOG(FATAL) << "Unexpected non partition column in this context";
-    }
-    VLOG(3) << "READ request, column id = " << col_desc->id();
-    col_pb->set_column_id(col_desc->id());
-    RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb->mutable_expr()));
-    RETURN_NOT_OK(SetupPartialRow(col_desc, col_pb->mutable_expr(), row));
-  }
-
-  // Not generate any code if where clause is empty.
-  if (where_ops.empty() && subcol_where_ops.empty() && func_ops.empty()) {
-    return Status::OK();
-  }
-
-  // Setup the rest of the where clause.
-  YQLConditionPB *cond_pb = req->mutable_where_expr()->mutable_condition();
-  for (const auto& col_op : where_ops) {
-    if (&col_op == &where_ops.back() && subcol_where_ops.empty()) {
-      // This is the last operator. Use the current ConditionPB.
-      RETURN_NOT_OK(WhereOpToPB(cond_pb, col_op));
-    } else {
-      // Current ConditionPB would be AND of this op and the next one.
-      cond_pb->set_op(YQL_OP_AND);
-      YQLExpressionPB *op = cond_pb->add_operands();
-      RETURN_NOT_OK(WhereOpToPB(op->mutable_condition(), col_op));
-
-      // Create a new the ConditionPB for the next operand.
-      cond_pb = cond_pb->add_operands()->mutable_condition();
-    }
-  }
-
-  for (const auto& col_op : subcol_where_ops) {
-    if (&col_op == &subcol_where_ops.back()) {
-      // This is the last operator. Use the current ConditionPB.
-      RETURN_NOT_OK(WhereSubColOpToPB(cond_pb, col_op));
-    } else {
-      // Current ConditionPB would be AND of this op and the next one.
-      cond_pb->set_op(YQL_OP_AND);
-      YQLExpressionPB *op = cond_pb->add_operands();
-      RETURN_NOT_OK(WhereSubColOpToPB(op->mutable_condition(), col_op));
-
-      // Create a new the ConditionPB for the next operand.
-      cond_pb = cond_pb->add_operands()->mutable_condition();
-    }
-  }
-
-  for (const auto& func_op : func_ops) {
-    if (&func_op == &func_ops.back()) {
-      // This is the last operator. Use the current ConditionPB.
-        RETURN_NOT_OK(FuncOpToPB(cond_pb, func_op));
-    } else {
-      // Current ConditionPB would be AND of this op and the next one.
-      cond_pb->set_op(YQL_OP_AND);
-      YQLExpressionPB *op = cond_pb->add_operands();
-      RETURN_NOT_OK(FuncOpToPB(op->mutable_condition(), func_op));
-
-      // Create a new the ConditionPB for the next operand.
-      cond_pb = cond_pb->add_operands()->mutable_condition();
-    }
-  }
-
-  return Status::OK();
-}
-
-CHECKED_STATUS Executor::WhereOpToPB(YQLConditionPB *condition, const ColumnOp& col_op) {
-  // Set the operator.
-  condition->set_op(col_op.yb_op());
-
-  // Operand 1: The column.
-  const ColumnDesc *col_desc = col_op.desc();
-  YQLExpressionPB *expr_pb = condition->add_operands();
-  VLOG(3) << "WHERE condition, column id = " << col_desc->id();
-  expr_pb->set_column_id(col_desc->id());
-
-  // Operand 2: The expression.
-  expr_pb = condition->add_operands();
-  return PTExprToPB(col_op.expr(), expr_pb);
-}
-
-CHECKED_STATUS Executor::FuncOpToPB(YQLConditionPB *condition, const FuncOp& func_op) {
-  // Set the operator.
-  condition->set_op(func_op.yb_op());
-
-  // Operand 1: The function call.
-  PTBcall::SharedPtr ptr = func_op.func_expr();
-  YQLExpressionPB *expr_pb = condition->add_operands();
-  RETURN_NOT_OK(PTExprToPB(static_cast<const PTBcall*>(ptr.get()), expr_pb));
-
-  // Operand 2: The expression.
-  expr_pb = condition->add_operands();
-  return PTExprToPB(func_op.value_expr(), expr_pb);
-}
-
-CHECKED_STATUS Executor::WhereSubColOpToPB(YQLConditionPB *condition,
-                                           const SubscriptedColumnOp& col_op) {
-  // Set the operator.
-  condition->set_op(col_op.yb_op());
-
-  // Operand 1: The column.
-  const ColumnDesc *col_desc = col_op.desc();
-  YQLExpressionPB *expr_pb = condition->add_operands();
-  VLOG(3) << "WHERE condition, sub-column with id = " << col_desc->id();
-  auto col_pb = expr_pb->mutable_subscripted_col();
-  col_pb->set_column_id(col_desc->id());
-  for (auto& arg : col_op.args()->node_list()) {
-    RETURN_NOT_OK(PTExprToPB(arg, col_pb->add_subscript_args()));
-  }
-  // Operand 2: The expression.
-  expr_pb = condition->add_operands();
-  return PTExprToPB(col_op.expr(), expr_pb);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -947,7 +529,6 @@ void Executor::ExecPTNodeAsync(
       return;
     }
   }
-
 
   // Setup the column values that need to be read.
   s = ColumnRefsToPB(tnode, req->mutable_column_refs());
@@ -1087,10 +668,10 @@ void Executor::ExecPTNodeAsync(const PTInsertStmt *tnode, StatementExecutedCallb
   YQLWriteRequestPB *req = insert_op->mutable_request();
 
   // Set the ttl
-  CB_RETURN_NOT_OK(cb, SetTtlToWriteRequestPB(tnode, insert_op->mutable_request()));
+  CB_RETURN_NOT_OK(cb, TtlToPB(tnode, insert_op->mutable_request()));
 
   // Set the values for columns.
-  Status s = ColumnArgsToWriteRequestPB(table, tnode, req, insert_op->mutable_row());
+  Status s = ColumnArgsToPB(table, tnode, req, insert_op->mutable_row());
   if (!s.ok()) {
     CB_RETURN(
         cb,
@@ -1145,7 +726,7 @@ void Executor::ExecPTNodeAsync(const PTDeleteStmt *tnode, StatementExecutedCallb
         cb,
         exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
   }
-  s = ColumnArgsToWriteRequestPB(table, tnode, req, delete_op->mutable_row());
+  s = ColumnArgsToPB(table, tnode, req, delete_op->mutable_row());
   if (!s.ok()) {
     CB_RETURN(
         cb,
@@ -1186,13 +767,10 @@ void Executor::ExecPTNodeAsync(const PTUpdateStmt *tnode, StatementExecutedCallb
   }
 
   // Set the ttl
-  CB_RETURN_NOT_OK(cb, SetTtlToWriteRequestPB(tnode, update_op->mutable_request()));
+  CB_RETURN_NOT_OK(cb, TtlToPB(tnode, update_op->mutable_request()));
 
   // Setup the columns' new values.
-  s = ColumnArgsToWriteRequestPB(table,
-                                 tnode,
-                                 update_op->mutable_request(),
-                                 update_op->mutable_row());
+  s = ColumnArgsToPB(table, tnode, update_op->mutable_request(), update_op->mutable_row());
 
   if (!s.ok()) {
     CB_RETURN(
@@ -1226,12 +804,12 @@ void Executor::ExecPTNodeAsync(const PTUpdateStmt *tnode, StatementExecutedCallb
 
 void Executor::ExecPTNodeAsync(const PTCreateKeyspace *tnode, StatementExecutedCallback cb) {
   DCHECK_NOTNULL(exec_context_.get());
-  Status exec_status = exec_context_->CreateKeyspace(tnode->name());
+  Status s = exec_context_->CreateKeyspace(tnode->name());
 
-  if (!exec_status.ok()) {
+  if (!s.ok()) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
 
-    if (exec_status.IsAlreadyPresent()) {
+    if (s.IsAlreadyPresent()) {
       if (tnode->create_if_not_exists()) {
         // Case: CREATE KEYSPACE IF NOT EXISTS name;
         CB_RETURN(cb, Status::OK());
@@ -1240,7 +818,7 @@ void Executor::ExecPTNodeAsync(const PTCreateKeyspace *tnode, StatementExecutedC
       error_code = ErrorCode::KEYSPACE_ALREADY_EXISTS;
     }
 
-    CB_RETURN(cb, exec_context_->Error(tnode->loc(), exec_status.ToString().c_str(), error_code));
+    CB_RETURN(cb, exec_context_->Error(tnode->loc(), s.ToString().c_str(), error_code));
   }
 
   cb.Run(Status::OK(), std::make_shared<SchemaChangeResult>("CREATED", "KEYSPACE", tnode->name()));
@@ -1250,16 +828,16 @@ void Executor::ExecPTNodeAsync(const PTCreateKeyspace *tnode, StatementExecutedC
 
 void Executor::ExecPTNodeAsync(const PTUseKeyspace *tnode, StatementExecutedCallback cb) {
   DCHECK_NOTNULL(exec_context_.get());
-  const Status exec_status = exec_context_->UseKeyspace(tnode->name());
+  const Status s = exec_context_->UseKeyspace(tnode->name());
 
-  if (!exec_status.ok()) {
+  if (!s.ok()) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
 
-    if (exec_status.IsNotFound()) {
+    if (s.IsNotFound()) {
       error_code = ErrorCode::KEYSPACE_NOT_FOUND;
     }
 
-    CB_RETURN(cb, exec_context_->Error(tnode->loc(), exec_status.ToString().c_str(), error_code));
+    CB_RETURN(cb, exec_context_->Error(tnode->loc(), s.ToString().c_str(), error_code));
   }
   cb.Run(Status::OK(), std::make_shared<SetKeyspaceResult>(tnode->name()));
 }

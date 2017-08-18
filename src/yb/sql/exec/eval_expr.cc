@@ -77,14 +77,12 @@ CHECKED_STATUS Executor::PTExprToPB(const PTBindVar *bind_pt, YQLExpressionPB *e
   }
 
   std::unique_ptr<YQLValueWithPB> value(new YQLValueWithPB());
-  RETURN_NOT_OK(GetBindVariable(bind_pt, value.get()));
-
+  RETURN_NOT_OK(params_->GetBindVariable(bind_pt->name()->c_str(),
+                                         bind_pt->pos(),
+                                         bind_pt->yql_type(),
+                                         value.get()));
   expr_pb->set_allocated_value(value.release());
   return Status::OK();
-}
-
-CHECKED_STATUS Executor::GetBindVariable(const PTBindVar* var, YQLValue *value) const {
-  return params_->GetBindVariable(var->name()->c_str(), var->pos(), var->yql_type(), value);
 }
 
 //--------------------------------------------------------------------------------------------------
