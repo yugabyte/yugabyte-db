@@ -78,9 +78,9 @@ class DocOperationTest : public DocDBTestBase {
     }
   }
 
-  void WriteYQL(const YQLWriteRequestPB& yql_writereq_pb, const Schema& schema,
-             YQLResponsePB* yql_writeresp_pb,
-             const HybridTime& hybrid_time = HybridTime::kMax) {
+  void WriteYQL(YQLWriteRequestPB* yql_writereq_pb, const Schema& schema,
+                YQLResponsePB* yql_writeresp_pb,
+                const HybridTime& hybrid_time = HybridTime::kMax) {
     YQLWriteOperation yql_write_op(yql_writereq_pb, schema, yql_writeresp_pb);
     DocWriteBatch doc_write_batch(rocksdb());
     CHECK_OK(yql_write_op.Apply(&doc_write_batch, rocksdb(), HybridTime()));
@@ -140,7 +140,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=2)]) -> 4
     }
 
     // Write to docdb.
-    WriteYQL(yql_writereq_pb, schema, &yql_writeresp_pb);
+    WriteYQL(&yql_writereq_pb, schema, &yql_writeresp_pb);
 
     if (ttl == -1) {
       AssertWithoutTTL(stmt_type);
@@ -170,7 +170,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=2)]) -> 4
     yql_writereq_pb.set_ttl(ttl);
 
     // Write to docdb.
-    WriteYQL(yql_writereq_pb, schema, &yql_writeresp_pb, hybrid_time);
+    WriteYQL(&yql_writereq_pb, schema, &yql_writeresp_pb, hybrid_time);
   }
 
   YQLRowBlock ReadYQLRow(const Schema& schema, int32_t primary_key, const HybridTime& read_time) {
@@ -203,7 +203,7 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   redis_write_operation_pb.mutable_key_value()->set_key("abc");
   redis_write_operation_pb.mutable_key_value()->set_hash_code(123);
   redis_write_operation_pb.mutable_key_value()->add_value("xyz");
-  RedisWriteOperation redis_write_operation(redis_write_operation_pb, HybridTime::kMax);
+  RedisWriteOperation redis_write_operation(&redis_write_operation_pb, HybridTime::kMax);
   DocWriteBatch doc_write_batch(db);
   ASSERT_OK(redis_write_operation.Apply(&doc_write_batch, db, HybridTime()));
 
@@ -260,7 +260,7 @@ TEST_F(DocOperationTest, TestYQLWriteNulls) {
   }
 
   // Write to docdb.
-  WriteYQL(yql_writereq_pb, schema, &yql_writeresp_pb);
+  WriteYQL(&yql_writereq_pb, schema, &yql_writeresp_pb);
 
   // Null columns are converted to tombstones.
   AssertDocDbDebugDumpStrEq(R"#(
@@ -642,7 +642,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(p=1000, w=3)]) -> 3; ttl: 1.
   yql_writereq_pb.set_ttl(2000);
 
   // Write to docdb at the same physical time and a bumped-up logical time.
-  WriteYQL(yql_writereq_pb, schema, &yql_writeresp_pb, t0prime);
+  WriteYQL(&yql_writereq_pb, schema, &yql_writeresp_pb, t0prime);
 
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT(p=1000)]) -> null; ttl: 1.000s

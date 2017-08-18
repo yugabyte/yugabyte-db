@@ -277,9 +277,9 @@ Status BulkLoadTask::InsertRow(const string &row,
   req.set_hash_code(PartitionSchema::DecodeMultiColumnHashValue(partition_key));
 
   // Finally apply the operation to the the doc_write_batch.
-  docdb::YQLWriteOperation op(req, schema, &resp);
+  docdb::YQLWriteOperation op(&req, schema, &resp);
   RETURN_NOT_OK(op.Apply(doc_write_batch, db_fixture->rocksdb(),
-                             HybridTime::FromMicros(kYugaByteMicrosecondEpoch)));
+                         HybridTime::FromMicros(kYugaByteMicrosecondEpoch)));
   return Status::OK();
 }
 

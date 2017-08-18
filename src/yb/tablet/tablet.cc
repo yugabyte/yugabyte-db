@@ -903,12 +903,12 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(
   const HybridTime read_hybrid_time = clock_->Now();
   WriteRequestPB batch_request;
   SetupKeyValueBatch(redis_write_request, &batch_request);
-  const auto* redis_write_batch = batch_request.mutable_redis_write_batch();
+  auto* redis_write_batch = batch_request.mutable_redis_write_batch();
 
   doc_ops.reserve(redis_write_batch->size());
   for (size_t i = 0; i < redis_write_batch->size(); i++) {
     doc_ops.emplace_back(new RedisWriteOperation(
-        redis_write_batch->Get(i), read_hybrid_time));
+        redis_write_batch->Mutable(i), read_hybrid_time));
   }
   RETURN_NOT_OK(StartDocWriteTransaction(
       doc_ops, keys_locked, redis_write_request->mutable_write_batch()));
@@ -983,13 +983,13 @@ Status Tablet::KeyValueBatchFromYQLWriteBatch(
   vector<unique_ptr<DocOperation>> doc_ops;
   WriteRequestPB batch_request;
   SetupKeyValueBatch(yql_write_request, &batch_request);
-  const auto* yql_write_batch = batch_request.mutable_yql_write_batch();
+  auto* yql_write_batch = batch_request.mutable_yql_write_batch();
 
   doc_ops.reserve(yql_write_batch->size());
   for (size_t i = 0; i < yql_write_batch->size(); i++) {
+    YQLWriteRequestPB* req = yql_write_batch->Mutable(i);
     YQLResponsePB* resp = write_response->add_yql_response_batch();
-    const YQLWriteRequestPB& req = yql_write_batch->Get(i);
-    if (metadata_->schema_version() != req.schema_version()) {
+    if (metadata_->schema_version() != req->schema_version()) {
       resp->set_status(YQLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
     } else {
       doc_ops.emplace_back(new YQLWriteOperation(req, metadata_->schema(), resp));

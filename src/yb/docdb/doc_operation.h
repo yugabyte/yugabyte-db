@@ -53,8 +53,9 @@ class KuduWriteOperation: public DocOperation {
 
 class RedisWriteOperation: public DocOperation {
  public:
-  RedisWriteOperation(const yb::RedisWriteRequestPB& request, HybridTime read_hybrid_time)
-      : request_(request), response_(), read_hybrid_time_(read_hybrid_time) {}
+  // Construct a RedisWriteOperation. Content of request will be swapped out by the constructor.
+  RedisWriteOperation(RedisWriteRequestPB* request, HybridTime read_hybrid_time)
+      : response_(), read_hybrid_time_(read_hybrid_time) { request_.Swap(request); }
 
   bool RequireReadSnapshot() const override { return false; }
 
@@ -78,7 +79,7 @@ class RedisWriteOperation: public DocOperation {
   Status ApplyAdd(DocWriteBatch *doc_write_batch);
   Status ApplyRemove(DocWriteBatch *doc_write_batch);
 
-  const RedisWriteRequestPB& request_;
+  RedisWriteRequestPB request_;
   RedisResponsePB response_;
   HybridTime read_hybrid_time_;
 };
@@ -110,8 +111,8 @@ class RedisReadOperation {
 
 class YQLWriteOperation : public DocOperation {
  public:
-  YQLWriteOperation(
-      const YQLWriteRequestPB& request, const Schema& schema, YQLResponsePB* response);
+  // Construct a YQLWriteOperation. Content of request will be swapped out by the constructor.
+  YQLWriteOperation(YQLWriteRequestPB* request, const Schema& schema, YQLResponsePB* response);
 
   bool RequireReadSnapshot() const override;
 
@@ -158,7 +159,7 @@ class YQLWriteOperation : public DocOperation {
   std::unique_ptr<DocKey> pk_doc_key_;
   std::unique_ptr<DocPath> pk_doc_path_;
 
-  const YQLWriteRequestPB& request_;
+  YQLWriteRequestPB request_;
   YQLResponsePB* response_;
   // The row and the column schema that is returned to the CQL client for an INSERT/UPDATE/DELETE
   // that has a "... IF <condition> ..." clause. The row contains the "[applied]" status column

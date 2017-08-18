@@ -783,12 +783,13 @@ void JoinStaticRow(
 } // namespace
 
 YQLWriteOperation::YQLWriteOperation(
-    const YQLWriteRequestPB& request, const Schema& schema, YQLResponsePB* response)
-    : schema_(schema), request_(request), response_(response) {
+    YQLWriteRequestPB* request, const Schema& schema, YQLResponsePB* response)
+    : schema_(schema), response_(response) {
+  request_.Swap(request);
   // Determine if static / non-static columns are being written.
   bool write_static_columns = false;
   bool write_non_static_columns = false;
-  for (const auto& column : request.column_values()) {
+  for (const auto& column : request_.column_values()) {
     if (schema.column_by_id(ColumnId(column.column_id())).is_static()) {
       write_static_columns = true;
     } else {
@@ -805,7 +806,7 @@ YQLWriteOperation::YQLWriteOperation(
   CHECK_OK(InitializeKeys(
       write_static_columns,
       write_non_static_columns ||
-      !request.range_column_values().empty() ||
+      !request_.range_column_values().empty() ||
       schema.num_range_key_columns() == 0));
 }
 
