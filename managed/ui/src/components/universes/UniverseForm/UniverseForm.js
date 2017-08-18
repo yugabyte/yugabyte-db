@@ -228,7 +228,6 @@ class UniverseForm extends Component {
       this.setState({nodeSetViaAZList: false, regionList: [], providerSelected: providerUUID, deviceInfo: {}});
       this.props.getRegionListItems(providerUUID, this.state.azCheckState);
       this.props.getInstanceTypeListItems(providerUUID);
-      this.props.getAccessKeys(providerUUID);
     }
     let currentProviderData = this.getCurrentProvider(value);
     if (currentProviderData && currentProviderData.code === "onprem") {
@@ -417,8 +416,15 @@ class UniverseForm extends Component {
         });
       }
     }
-    if (isNonEmptyArray(nextProps.accessKeys.data) && !isNonEmptyArray(this.props.accessKeys.data)) {
-      this.setState({accessKeyCode: nextProps.accessKeys.data[0].idKey.keyCode});
+
+    // If we have accesskeys for a current selected provider we set that in the state or we fallback to default value.
+    if (isNonEmptyArray(nextProps.accessKeys.data) && !_.isEqual(this.props.accessKeys.data, nextProps.accessKeys.data)) {
+      let providerAccessKeys = nextProps.accessKeys.data.filter((key) => key.idKey.providerUUID === this.state.providerSelected);
+      if (isNonEmptyArray(providerAccessKeys)) {
+        this.setState({accessKeyCode: providerAccessKeys[0].idKey.keyCode});
+      } else {
+        this.setState({accessKeyCode: initialState.accessKeyCode});
+      }
     }
 
     // Form Actions on Create Universe Success
@@ -538,9 +544,11 @@ class UniverseForm extends Component {
 
     var accessKeyOptions = <option key={1} value={this.state.accessKeyCode}>{this.state.accessKeyCode}</option>;
     if (_.isObject(accessKeys) && isNonEmptyArray(accessKeys.data)) {
-      accessKeyOptions = accessKeys.data.map((item, idx) => (
-        <option key={idx} value={item.idKey.keyCode}>{item.idKey.keyCode}</option>
-      ));
+      accessKeyOptions = accessKeys.data.filter((key) => key.idKey.providerUUID === self.state.providerSelected)
+                                        .map((item, idx) => (
+                                          <option key={idx} value={item.idKey.keyCode}>
+                                            {item.idKey.keyCode}
+                                          </option>));
     }
 
     var placementStatus = <span/>;
