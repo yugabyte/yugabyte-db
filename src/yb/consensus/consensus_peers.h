@@ -135,7 +135,7 @@ class Peer {
       ThreadPool* thread_pool,
       gscoped_ptr<PeerProxy> proxy,
       Consensus* consensus,
-      gscoped_ptr<Peer>* peer);
+      std::unique_ptr<Peer>* peer);
 
  private:
   Peer(const RaftPeerPB& peer, std::string tablet_id, std::string leader_uuid,

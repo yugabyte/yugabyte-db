@@ -56,8 +56,7 @@ Status PeerManager::UpdateRaftConfig(const RaftConfigPB& config) {
   std::lock_guard<simple_spinlock> lock(lock_);
   // Create new peers
   for (const RaftPeerPB& peer_pb : config.peers()) {
-    Peer* peer = FindPtrOrNull(peers_, peer_pb.permanent_uuid());
-    if (peer != nullptr) {
+    if (peers_.find(peer_pb.permanent_uuid()) != peers_.end()) {
       continue;
     }
     if (peer_pb.permanent_uuid() == local_uuid_) {
@@ -69,7 +68,7 @@ Status PeerManager::UpdateRaftConfig(const RaftConfigPB& config) {
     RETURN_NOT_OK_PREPEND(peer_proxy_factory_->NewProxy(peer_pb, &peer_proxy),
                           "Could not obtain a remote proxy to the peer.");
 
-    gscoped_ptr<Peer> remote_peer;
+    std::unique_ptr<Peer> remote_peer;
     RETURN_NOT_OK(Peer::NewRemotePeer(peer_pb,
                                       tablet_id_,
                                       local_uuid_,
@@ -78,7 +77,7 @@ Status PeerManager::UpdateRaftConfig(const RaftConfigPB& config) {
                                       peer_proxy.Pass(),
                                       consensus_,
                                       &remote_peer));
-    InsertOrDie(&peers_, peer_pb.permanent_uuid(), remote_peer.release());
+    peers_[peer_pb.permanent_uuid()] = std::move(remote_peer);
   }
 
   return Status::OK();
@@ -105,7 +104,7 @@ void PeerManager::Close() {
     for (const PeersMap::value_type& entry : peers_) {
       entry.second->Close();
     }
-    STLDeleteValues(&peers_);
+    peers_.clear();
   }
 }
 
@@ -117,7 +116,7 @@ void PeerManager::ClosePeersNotInConfig(const RaftConfigPB& config) {
 
   std::lock_guard<simple_spinlock> lock(lock_);
   for (auto iter = peers_.begin(); iter != peers_.end();) {
-    auto peer = iter->second;
+    auto peer = iter->second.get();
 
     if (peer->peer_pb().permanent_uuid() == local_uuid_) {
       continue;

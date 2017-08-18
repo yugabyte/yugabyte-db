@@ -82,7 +82,7 @@ class ConsensusPeersTest : public YBTest {
 
   DelayablePeerProxy<NoOpTestPeerProxy>* NewRemotePeer(
       const string& peer_name,
-      gscoped_ptr<Peer>* peer) {
+      std::unique_ptr<Peer>* peer) {
     RaftPeerPB peer_pb;
     peer_pb.set_permanent_uuid(peer_name);
     auto proxy_ptr = new DelayablePeerProxy<NoOpTestPeerProxy>(
@@ -153,7 +153,7 @@ TEST_F(ConsensusPeersTest, TestRemotePeer) {
                                 MinimumOpId().term(),
                                 BuildRaftConfigPBForTests(3));
 
-  gscoped_ptr<Peer> remote_peer;
+  std::unique_ptr<Peer> remote_peer;
   DelayablePeerProxy<NoOpTestPeerProxy>* proxy =
       NewRemotePeer(kFollowerUuid, &remote_peer);
 
@@ -182,11 +182,11 @@ TEST_F(ConsensusPeersTest, TestRemotePeers) {
                                 BuildRaftConfigPBForTests(3));
 
   // Create a set of remote peers
-  gscoped_ptr<Peer> remote_peer1;
+  std::unique_ptr<Peer> remote_peer1;
   DelayablePeerProxy<NoOpTestPeerProxy>* remote_peer1_proxy =
       NewRemotePeer("peer-1", &remote_peer1);
 
-  gscoped_ptr<Peer> remote_peer2;
+  std::unique_ptr<Peer> remote_peer2;
   DelayablePeerProxy<NoOpTestPeerProxy>* remote_peer2_proxy =
       NewRemotePeer("peer-2", &remote_peer2);
 
@@ -241,7 +241,7 @@ TEST_F(ConsensusPeersTest, TestCloseWhenRemotePeerDoesntMakeProgress) {
                                 BuildRaftConfigPBForTests(3));
 
   auto mock_proxy = new MockedPeerProxy(pool_.get());
-  gscoped_ptr<Peer> peer;
+  std::unique_ptr<Peer> peer;
   ASSERT_OK(Peer::NewRemotePeer(FakeRaftPeerPB(kFollowerUuid),
                                 kTabletId,
                                 kLeaderUuid,
@@ -280,7 +280,7 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
                                 BuildRaftConfigPBForTests(3));
 
   auto mock_proxy = new MockedPeerProxy(pool_.get());
-  gscoped_ptr<Peer> peer;
+  std::unique_ptr<Peer> peer;
   ASSERT_OK(Peer::NewRemotePeer(FakeRaftPeerPB(kFollowerUuid),
                                 kTabletId,
                                 kLeaderUuid,

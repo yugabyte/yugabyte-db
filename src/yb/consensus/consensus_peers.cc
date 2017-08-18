@@ -86,15 +86,15 @@ Status Peer::NewRemotePeer(const RaftPeerPB& peer_pb,
                            ThreadPool* thread_pool,
                            gscoped_ptr<PeerProxy> proxy,
                            Consensus* consensus,
-                           gscoped_ptr<Peer>* peer) {
+                           std::unique_ptr<Peer>* peer) {
 
-  gscoped_ptr<Peer> new_peer(new Peer(peer_pb,
-                                      tablet_id,
-                                      leader_uuid,
-                                      proxy.Pass(),
-                                      queue,
-                                      thread_pool,
-                                      consensus));
+  std::unique_ptr<Peer> new_peer(new Peer(peer_pb,
+                                          tablet_id,
+                                          leader_uuid,
+                                          proxy.Pass(),
+                                          queue,
+                                          thread_pool,
+                                          consensus));
   RETURN_NOT_OK(new_peer->Init());
   peer->reset(new_peer.release());
   return Status::OK();

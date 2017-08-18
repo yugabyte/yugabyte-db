@@ -77,7 +77,7 @@ class PeerManager {
  private:
   std::string GetLogPrefix() const;
 
-  typedef std::unordered_map<std::string, Peer*> PeersMap;
+  typedef std::unordered_map<std::string, std::unique_ptr<Peer>> PeersMap;
   const std::string tablet_id_;
   const std::string local_uuid_;
   PeerProxyFactory* peer_proxy_factory_;
