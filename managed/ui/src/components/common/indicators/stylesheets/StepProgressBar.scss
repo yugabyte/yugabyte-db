@@ -1,5 +1,7 @@
 /* Copyright (c) YugaByte, Inc. */
 
+@import "_style/colors.scss";
+
 .progressbar {
   margin: 0;
   padding: 0;
@@ -83,4 +85,8 @@
 
 .progressbar li.finished + li:after {
   background-color: #55b776;
+}
+
+.progressbar li.failed {
+  color: $YB_FAIL_COLOR;
 }

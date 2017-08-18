@@ -1,13 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 import { FETCH_TASK_PROGRESS, FETCH_TASK_PROGRESS_RESPONSE, RESET_TASK_PROGRESS,
   FETCH_CUSTOMER_TASKS, FETCH_CUSTOMER_TASKS_SUCCESS, FETCH_CUSTOMER_TASKS_FAILURE,
-  RESET_CUSTOMER_TASKS } from '../actions/tasks';
+  RESET_CUSTOMER_TASKS, FETCH_FAILED_TASK_DETAIL, FETCH_FAILED_TASK_DETAIL_RESPONSE } from '../actions/tasks';
 
 import { getInitialState, setInitialState, setLoadingState, setPromiseResponse }  from '../utils/PromiseUtils';
 
 const INITIAL_STATE = {
   taskProgressData: getInitialState({}),
-  customerTaskList: []
+  customerTaskList: [],
+  failedTasks: getInitialState([])
 };
 
 export default function(state = INITIAL_STATE, action) {
@@ -31,7 +32,11 @@ export default function(state = INITIAL_STATE, action) {
       });
       return {...state, customerTaskList: taskListResultArray.sort((a, b) => b.createTime - a.createTime)};
     case FETCH_CUSTOMER_TASKS_FAILURE:
-      return {...state, customerTaskList: action.payload.error};
+      return {...state, customerTaskList: action.payload.error}
+    case FETCH_FAILED_TASK_DETAIL:
+      return setLoadingState(state, "failedTasks", [])
+    case FETCH_FAILED_TASK_DETAIL_RESPONSE:
+      return setPromiseResponse(state, "failedTasks", action);
     case RESET_CUSTOMER_TASKS:
       return {...state, customerTaskList: []};
     default:

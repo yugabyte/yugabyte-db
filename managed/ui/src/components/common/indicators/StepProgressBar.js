@@ -1,19 +1,22 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import './stylesheets/StepProgressBar.css';
+import './stylesheets/StepProgressBar.scss';
 
 export default class StepProgressBar extends Component {
   render() {
     const { details: { taskDetails } } = this.props.progressData;
-    let taskClassName = "";
-    const getTaskClass = function(type) {
-      if ( type === "Initializing" ) {
+
+    var taskClassName = "";
+    var getTaskClass = function(type) {
+      if ( type === "Initializing" || type === "Unknown") {
         return "pending";
       } else if ( type === "Success" ) {
         return "finished";
       } else if ( type === "Running" ) {
         return "running";
+      } else if (type === "Failure") {
+        return "failed"
       }
       return null;
     };
