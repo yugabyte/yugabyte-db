@@ -8,8 +8,8 @@ import { SubmissionError } from 'redux-form';
 
 //Client side validation
 function validate(values) {
-  var errors = {};
-  var hasErrors = false;
+  const errors = {};
+  let hasErrors = false;
 
   if (!values.name || values.name.trim() === '') {
     errors.name = 'Enter a name';
@@ -41,7 +41,7 @@ const mapDispatchToProps = (dispatch) => {
       return dispatch(updateProfile(values)).then((response) => {
         if (response.payload.status !== 200) {
           dispatch(updateProfileFailure(response.payload));
-          var error = response.payload.data.error;
+          const error = response.payload.data.error;
           throw new SubmissionError(error);
         } else {
           dispatch(updateProfileSuccess(response.payload));
@@ -51,7 +51,7 @@ const mapDispatchToProps = (dispatch) => {
   };
 };
 
-var editCustomerProfile = reduxForm({
+const editCustomerProfile = reduxForm({
   form: 'EditCustomerProfile',
   fields: ['email', 'password', 'name'],
   validate

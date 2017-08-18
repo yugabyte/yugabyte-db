@@ -42,9 +42,9 @@ export default class OnPremConfigWizard extends Component {
 class OnPremStepper extends Component {
   render() {
     const {options, currentStep, children} = this.props;
-    var optionsArraySize = options.length;
-    var cellSize = parseInt(12 / optionsArraySize, 10);
-    var cellArray;
+    const optionsArraySize = options.length;
+    const cellSize = parseInt(12 / optionsArraySize, 10);
+    let cellArray;
     if (currentStep >= optionsArraySize) {
       cellArray = <span/>;
     } else {

@@ -29,9 +29,9 @@ export default class YBRadioButtonBar extends Component {
   }
   render() {
     const { input, options } = this.props;
-    var self = this;
+    const self = this;
     function radioButtonForOption(option) {
-      var value, display;
+      let value, display;
       if (isNonEmptyArray(option)) {
         [value, display] = option;
       } else if (isObject(option)) {

@@ -36,7 +36,7 @@ class CreateTable extends Component {
       if (nextProps.anyTouched && nextProps.dirty) {
         this.setState({nextTab: nextProps.location.query.tab});
         this.props.showCancelCreateModal();
-        let currentLocation = this.props.location;
+        const currentLocation = this.props.location;
         currentLocation.query = {tab: "tables"};
         this.props.router.push(currentLocation);
       } else {
@@ -53,7 +53,7 @@ class CreateTable extends Component {
     this.props.hideModal();
     this.props.showListTables();
     if (isValidObject(this.state.nextTab) && this.state.nextTab.length > 0) {
-      let currentLocation = this.props.location;
+      const currentLocation = this.props.location;
       currentLocation.query = { tab: this.state.nextTab };
       this.props.router.push(currentLocation);
     }

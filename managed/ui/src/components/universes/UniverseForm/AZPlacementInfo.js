@@ -27,7 +27,7 @@ export default class AZSelectorTable extends Component {
     if (!isNonEmptyObject(placementInfo)) {
       return <span/>;
     }
-    var currentStatusType = "";
+    let currentStatusType = "";
     if (placementInfo.error) {
       currentStatusType = placementInfo.error.type;
     } else if (placementInfo.replicationFactor === 1) {

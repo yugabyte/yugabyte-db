@@ -31,7 +31,7 @@ export default class ProgressList extends Component {
 
   render() {
     const listItems = this.props.items.map(function(item, idx) {
-      var iconType = this.getIconByType(item.type);
+      const iconType = this.getIconByType(item.type);
       return (
         <ListGroupItem key={idx} bsClass="progress-list-item">
           <i className={iconType}></i>{item.name}

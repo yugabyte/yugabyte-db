@@ -7,13 +7,13 @@ export default class YBRadioButton extends Component {
 
   render() {
     const { input, checkState, fieldValue, label, disabled, onClick } = this.props;
-    var labelClass = this.props.labelClass || 'radio-label';
+    let labelClass = this.props.labelClass || 'radio-label';
     if (disabled) {
       labelClass += ' disabled';
     }
-    var name = this.props.name || input.name;
-    var id = this.props.id || `radio_button_${name}_${fieldValue}`;
-    var onCheckClick = function(event) {
+    const name = this.props.name || input.name;
+    const id = this.props.id || `radio_button_${name}_${fieldValue}`;
+    const onCheckClick = function(event) {
       input && input.onChange && input.onChange(event);
       return isValidObject(onClick) ? onClick(event) : true;
     };

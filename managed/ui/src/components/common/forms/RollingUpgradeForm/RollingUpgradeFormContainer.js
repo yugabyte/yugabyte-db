@@ -26,8 +26,8 @@ function mapStateToProps(state, ownProps) {
   const {universe: {currentUniverse}} = state;
   let initalGFlagValues = null;
   if (isNonEmptyObject(currentUniverse) && currentUniverse.data.universeDetails.userIntent) {
-    let currentGFlags = currentUniverse.data.universeDetails.userIntent.gflags;
-    let gFlagList = Object.keys(currentGFlags).map(function(gFlagKey){
+    const currentGFlags = currentUniverse.data.universeDetails.userIntent.gflags;
+    const gFlagList = Object.keys(currentGFlags).map(function(gFlagKey){
       return {name: gFlagKey, value: currentGFlags[gFlagKey]};
     });
     if (isNonEmptyArray(gFlagList)) {
@@ -41,7 +41,7 @@ function mapStateToProps(state, ownProps) {
   };
 }
 
-var rollingUpgradeForm = reduxForm({
+const rollingUpgradeForm = reduxForm({
   form: 'RollingUpgradeForm'
 });
 

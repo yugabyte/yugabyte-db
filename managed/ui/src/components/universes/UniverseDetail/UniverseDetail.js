@@ -57,7 +57,7 @@ class UniverseDetail extends Component {
 
   onEditUniverseButtonClick() {
     const location = Object.assign({}, browserHistory.getCurrentLocation());
-    let query = {edit: true};
+    const query = {edit: true};
     Object.assign(location.query, query);
     browserHistory.push(location);
   }
@@ -82,7 +82,7 @@ class UniverseDetail extends Component {
     const graphPanelContainers = graphPanelTypes.map(function (type, idx) {
       return <GraphPanelContainer key={idx} type={type} width={width} nodePrefixes={nodePrefixes} />;
     });
-    var tabElements = [
+    const tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab">
         <UniverseAppsModal nodeDetails={currentUniverse.data.universeDetails.nodeDetailsSet}/>
         <UniverseResources resources={currentUniverse.data.resources} renderType={"Display"}/>
@@ -118,7 +118,7 @@ class UniverseDetail extends Component {
         <UniverseTaskList universe={universe}/>
       </Tab>
     ];
-    let currentBreadCrumb = (
+    const currentBreadCrumb = (
       <div className="detail-label-small">
         <Link to="/universes">
           <YBLabelWithIcon icon="fa fa-chevron-right fa-fw">
@@ -191,13 +191,13 @@ class UniverseTaskList extends Component {
 
   render() {
     const {universe: {universeTasks, currentUniverse}} = this.props;
-    var universeTaskUUIDs = [];
-    var universeTaskHistoryArray = [];
-    var universeTaskHistory = <span/>;
+    let universeTaskUUIDs = [];
+    const universeTaskHistoryArray = [];
+    let universeTaskHistory = <span/>;
     if (getPromiseState(universeTasks).isLoading()) {
       universeTaskHistory = <YBLoadingIcon/>;
     }
-    let currentUniverseTasks = universeTasks.data[currentUniverse.data.universeUUID];
+    const currentUniverseTasks = universeTasks.data[currentUniverse.data.universeUUID];
     if (getPromiseState(universeTasks).isSuccess() && isNonEmptyObject(currentUniverse.data) && isNonEmptyArray(currentUniverseTasks)) {
       universeTaskUUIDs = currentUniverseTasks.map(function(task) {
         if (task.status !== "Running") {

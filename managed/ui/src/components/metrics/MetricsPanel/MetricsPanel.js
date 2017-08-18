@@ -5,7 +5,7 @@ import PropTypes from 'prop-types';
 import { removeNullProperties, isNonEmptyObject, isNonEmptyArray } from 'utils/ObjectUtils';
 import './MetricsPanel.scss';
 
-var Plotly = require('plotly.js/lib/core');
+const Plotly = require('plotly.js/lib/core');
 
 const WIDTH_OFFSET = 5;
 const MAX_GRAPH_WIDTH_PX = 600;
@@ -24,7 +24,7 @@ export default class MetricsPanel extends Component {
       removeNullProperties(metric.layout);
 
       // TODO: send this data from backend.
-      var max = 0;
+      let max = 0;
       metric.data.forEach(function (data) {
         if (data.y) {
           data.y.forEach(function (y) {
@@ -89,8 +89,8 @@ export default class MetricsPanel extends Component {
   }
 
   getGraphWidth(containerWidth) {
-    var width = containerWidth - WIDTH_OFFSET;
-    var columnCount = Math.ceil(width / MAX_GRAPH_WIDTH_PX);
+    const width = containerWidth - WIDTH_OFFSET;
+    const columnCount = Math.ceil(width / MAX_GRAPH_WIDTH_PX);
     return Math.floor(width / columnCount) - GRAPH_GUTTER_WIDTH_PX;
   }
 

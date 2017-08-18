@@ -42,9 +42,9 @@ class OnPremListRegionsAndZones extends Component {
 
   render() {
     const {fields} = this.props;
-    let self = this;
+    const self = this;
     // TODO Replace this with API lookup to local DB City to LatLong Conversion
-    let onPremRegionLocations = [
+    const onPremRegionLocations = [
       <option value="" key={0}>Select</option>,
       <option value="-29, 148" key={1}>Australia</option>,
       <option value="-22, -43" key={2}>Brazil</option>,
@@ -63,7 +63,7 @@ class OnPremListRegionsAndZones extends Component {
     return (
       <div>
         { fields.map((fieldItem, fieldIdx) => {
-          let isReadOnly = self.isFieldReadOnly(fieldIdx);
+          const isReadOnly = self.isFieldReadOnly(fieldIdx);
           return (
             <Row key={`region-zone-${fieldIdx}`}>
               <Col lg={1}>

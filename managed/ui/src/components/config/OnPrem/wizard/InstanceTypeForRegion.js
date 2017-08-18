@@ -27,7 +27,7 @@ export default class InstanceTypeForRegion extends Component {
   }
 
   render() {
-    var self = this;
+    const self = this;
     const {fields, zoneOptions, machineTypeOptions, formType} = this.props;
     return (
       <div className="instance-row-container">

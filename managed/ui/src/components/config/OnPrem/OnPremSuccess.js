@@ -138,7 +138,7 @@ class OnPremSuccess extends Component {
 
     let keyPairName = "Not Configured";
     if (isNonEmptyArray(accessKeys.data)) {
-      let onPremAccessKey = accessKeys.data.find((accessKey) => accessKey.idKey.providerUUID === currentProvider.uuid);
+      const onPremAccessKey = accessKeys.data.find((accessKey) => accessKey.idKey.providerUUID === currentProvider.uuid);
       if (isDefinedNotNull(onPremAccessKey)) {
         keyPairName = onPremAccessKey.idKey.keyCode;
       }

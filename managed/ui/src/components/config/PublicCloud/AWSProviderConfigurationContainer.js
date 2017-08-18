@@ -10,8 +10,8 @@ import { createProvider, createProviderResponse, createRegion, createRegionRespo
 import { openDialog, closeDialog } from '../../../actions/universe';
 
 function validate(values) {
-  var errors = {};
-  var hasErrors = false;
+  const errors = {};
+  let hasErrors = false;
   if (!values.accountName) {
     errors.accountName = 'Name is required';
     hasErrors = true;
@@ -108,7 +108,7 @@ const mapStateToProps = (state) => {
   };
 };
 
-var awsConfigForm = reduxForm({
+const awsConfigForm = reduxForm({
   form: 'awsConfigForm',
   fields: ['accessKey', 'secretKey', 'accountName'],
   validate

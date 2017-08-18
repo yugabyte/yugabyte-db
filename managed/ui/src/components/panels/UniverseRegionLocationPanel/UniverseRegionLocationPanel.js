@@ -26,13 +26,13 @@ export default class UniverseRegionLocationPanel extends Component {
 
   render() {
     const { cloud, universe: {universeList}, cloud: {providers}} = this.props;
-    var self = this;
+    const self = this;
     if (getPromiseState(providers).isEmpty() || !getPromiseState(cloud.supportedRegionList).isSuccess()) {
       return <span/>;
     }
 
-    var completeRegionList = cloud.supportedRegionList.data.filter((region) => self.state.selectedProviders.includes(region.provider.code));
-    var universeListByRegions = {};
+    const completeRegionList = cloud.supportedRegionList.data.filter((region) => self.state.selectedProviders.includes(region.provider.code));
+    const universeListByRegions = {};
     if (getPromiseState(universeList).isSuccess()) {
       universeList.data.forEach(function (universeItem) {
         if (isNonEmptyArray(universeItem.regions)) {
@@ -56,7 +56,7 @@ export default class UniverseRegionLocationPanel extends Component {
         }
       });
     });
-    var completeProviderList = cloud.providers.data.map( (provider) => {
+    const completeProviderList = cloud.providers.data.map( (provider) => {
       return {code: provider.code, name: provider.name};
     });
 

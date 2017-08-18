@@ -10,8 +10,8 @@ export default class YBMapLegend extends Component {
 
   render() {
     const {regions, type} = this.props;
-    var rootRegions = regions;
-    var asyncRegions = [{"name": "No async replicas added."}];
+    const rootRegions = regions;
+    const asyncRegions = [{"name": "No async replicas added."}];
     let mapLegendItems = <span/>;
     if (type === "Universe") {
       mapLegendItems = (

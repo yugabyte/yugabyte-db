@@ -34,11 +34,11 @@ class GCPProviderConfiguration extends Component {
   }
 
   submitGCPConfiguration(vals) {
-    let self = this;
-    let configText = this.state.gcpConfig;
+    const self = this;
+    const configText = this.state.gcpConfig;
     if(isNonEmptyObject(configText)) {
-      let providerName = vals.accountName;
-      var reader = new FileReader();
+      const providerName = vals.accountName;
+      const reader = new FileReader();
       reader.readAsText(configText);
       // Parse the file back to JSON, since the API controller endpoint doesn't support file upload
       reader.onloadend = function () {
@@ -71,13 +71,13 @@ class GCPProviderConfiguration extends Component {
 
       switch (type) {
         case "provider":
-          let providerUUID = response.uuid;
+          const providerUUID = response.uuid;
           this.setState({providerUUID: providerUUID});
-          let regionVals = {code: "us-west1", name: "us-west1"}; // Default for now
+          const regionVals = {code: "us-west1", name: "us-west1"}; // Default for now
           this.props.createGCPRegions(providerUUID, regionVals);
           break;
         case "region":
-          let keyInfo = {
+          const keyInfo = {
             code: "yb-" + convertSpaceToDash(this.state.accountName.toLowerCase()) + "-key"
           };
           this.props.createGCPAccessKey(this.state.providerUUID, response.uuid, keyInfo);
@@ -124,7 +124,7 @@ class GCPProviderConfiguration extends Component {
     }
 
     if (getPromiseState(configuredProviders).isSuccess()) {
-      let gcpProvider = configuredProviders.data.find((provider) => provider.code === "gcp");
+      const gcpProvider = configuredProviders.data.find((provider) => provider.code === "gcp");
       if (isNonEmptyObject(gcpProvider)) {
         return <GCPConfigureSuccess {...this.props}/>;
       }
@@ -134,7 +134,7 @@ class GCPProviderConfiguration extends Component {
     if (isNonEmptyObject(this.state.gcpConfig)) {
       gcpConfigFileName = this.state.gcpConfig.name;
     }
-    let errorString = JSON.stringify(error);
+    const errorString = JSON.stringify(error);
     return (
       <div className="provider-config-container">
         <form name="gcpConfigForm" onSubmit={handleSubmit(this.submitGCPConfiguration)}>
@@ -185,14 +185,14 @@ class GCPConfigureSuccess extends Component {
   }
   render() {
     const {cloud: {supportedRegionList, accessKeys}, configuredProviders, universe: {universeList}, handleSubmit} = this.props;
-    let gcpProvider = configuredProviders.data.find((provider) => provider.code === "gcp");
+    const gcpProvider = configuredProviders.data.find((provider) => provider.code === "gcp");
     let gcpProviderName = "";
     let regions = [];
     let gcpKey = "No Key Configured";
     if (isNonEmptyObject(gcpProvider)) {
       gcpProviderName = gcpProvider.name;
       if (isNonEmptyArray(accessKeys.data)) {
-        let accessKey = accessKeys.data.find((key) => {
+        const accessKey = accessKeys.data.find((key) => {
           return key.idKey.providerUUID === gcpProvider.uuid;
         });
         if (isNonEmptyObject(accessKey)) {
@@ -208,7 +208,7 @@ class GCPConfigureSuccess extends Component {
     if (isNonEmptyArray(universeList.data)) {
       universeExistsForProvider = universeList.data.some(universe => universe.provider && (universe.provider.uuid === gcpProvider.uuid));
     }
-    let deleteButtonDisabled = universeExistsForProvider;
+    const deleteButtonDisabled = universeExistsForProvider;
     let deleteButtonClassName = "btn btn-default delete-aws-btn";
     let deleteButtonTitle = "Delete this GCP configuration.";
     if (deleteButtonDisabled) {

@@ -20,12 +20,12 @@ export default class CollectionSubtypeRow extends Component {
 
   render() {
     const {tables: {columnDataTypes: {collections, primitives}}, item, columnType} = this.props;
-    let showKeySubtype = collections.indexOf(columnType) > -1;
-    let showValueSubtype = columnType === "MAP";
+    const showKeySubtype = collections.indexOf(columnType) > -1;
+    const showValueSubtype = columnType === "MAP";
 
     if (showKeySubtype) {
-      let keyTypes = CollectionSubtypeRow.getTypeOptions("Key Type", "Key Type", primitives);
-      let valueTypes = CollectionSubtypeRow.getTypeOptions("Value Type", "Value Type", primitives);
+      const keyTypes = CollectionSubtypeRow.getTypeOptions("Key Type", "Key Type", primitives);
+      const valueTypes = CollectionSubtypeRow.getTypeOptions("Value Type", "Value Type", primitives);
 
       return (
         <Row>

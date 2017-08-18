@@ -9,7 +9,7 @@ import './stylesheets/YBMapLegendItem.scss';
 export default class YBMapLegendItem extends Component {
   render() {
     const {regions, title, type} = this.props;
-    var legendItemIcon = "";
+    let legendItemIcon = "";
     if (type === "Root") {
       legendItemIcon = <Image src={RootMarkerIcon} className="legend-img"/>;
     } else if( type === "Cache") {

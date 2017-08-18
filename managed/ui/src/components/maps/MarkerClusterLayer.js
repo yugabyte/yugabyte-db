@@ -23,7 +23,7 @@ class MarkerDetail extends Component {
     let universeCount = 0;
     let markerDetailUniverseLinks = null;
     const providerName = isObject(markerDetail.provider) ? markerDetail.provider.name : '';
-    var markerListItems = [
+    const markerListItems = [
       {name: "provider", data: providerName},
       {name: "region", data: markerDetail.name},
     ];
@@ -70,14 +70,14 @@ export default class MarkerClusterLayer extends MapLayer {
       maxClusterRadius: 20,
 
       iconCreateFunction: function (cluster) {
-        let markers = cluster.getAllChildMarkers();
+        const markers = cluster.getAllChildMarkers();
         let universeCount = 0;
         markers.forEach(function (marker) {
           if (marker.ybData.universes) {
             universeCount += marker.ybData.universes.length;
           }
         });
-        let clusterIconData = universeCount ?
+        const clusterIconData = universeCount ?
           {className: 'marker-cluster-small', html: universeCount.toString()} :
           {className: 'marker-cluster-small marker-cluster-outline', html: '&nbsp;'};
         return new Leaflet.DivIcon(clusterIconData);
@@ -86,15 +86,15 @@ export default class MarkerClusterLayer extends MapLayer {
   }
 
   componentWillReceiveProps(nextProps) {
-    var self = this;
+    const self = this;
     this.leafletElement.clearLayers();
     const {newMarkerData} = nextProps;
     if (newMarkerData.length > 0) {
-      let newMarkers = [];
+      const newMarkers = [];
       sortByLengthOfArrayProperty(newMarkerData, 'universes').forEach((obj) => {
-        var popupDetail = ReactDOMServer.renderToString(<MarkerDetail markerDetail={obj}/>);
-        var latLng = Leaflet.latLng(obj.latitude, obj.longitude);
-        let leafletMarker = new Leaflet.Marker(latLng)
+        const popupDetail = ReactDOMServer.renderToString(<MarkerDetail markerDetail={obj}/>);
+        const latLng = Leaflet.latLng(obj.latitude, obj.longitude);
+        const leafletMarker = new Leaflet.Marker(latLng)
           .bindPopup(popupDetail, {maxHeight: 100, maxWidth: 300, minWidth: 100});
         leafletMarker.ybData = obj;
         newMarkers.push(leafletMarker);
@@ -103,12 +103,12 @@ export default class MarkerClusterLayer extends MapLayer {
       this.leafletElement.addLayers(newMarkers);
     }
     self.leafletElement.on('clusterclick', function(a) {
-      var clusterMarker = "";
+      let clusterMarker = "";
       a.layer.getAllChildMarkers().forEach(function(markerItem, markerIndex) {
         clusterMarker += `${ReactDOMServer.renderToString(<MarkerDetail markerDetail={markerItem._popup._source.ybData}/>)}`;
       });
-      var marker = a.layer.getAllChildMarkers()[0];
-      var cluster = a.target.getVisibleParent(marker);
+      const marker = a.layer.getAllChildMarkers()[0];
+      const cluster = a.target.getVisibleParent(marker);
       cluster.bindPopup(clusterMarker, {minWidth: 100}).openPopup();
     });
   }

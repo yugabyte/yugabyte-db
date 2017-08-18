@@ -10,6 +10,6 @@ export const PROVIDER_TYPES = [
 ];
 
 export function getProviderEndpoint(providerUUID) {
-  var customerUUID = localStorage.getItem("customer_id");
+  const customerUUID = localStorage.getItem("customer_id");
   return `${ROOT_URL}/customers/${customerUUID}/providers/${providerUUID}`;
 }

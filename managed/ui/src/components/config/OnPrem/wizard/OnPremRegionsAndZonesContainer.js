@@ -10,9 +10,9 @@ import {isDefinedNotNull, isNonEmptyArray} from 'utils/ObjectUtils';
 const mapDispatchToProps = (dispatch, ownProps) => {
   return {
     setOnPremRegionsAndZones: (formData) => {
-      let payloadData = _.clone(ownProps.onPremJsonFormData);
+      const payloadData = _.clone(ownProps.onPremJsonFormData);
       payloadData.regions = formData.regionsZonesList.map((regionItem) => {
-        let regionLocation = regionItem.location.split(",");
+        const regionLocation = regionItem.location.split(",");
         return {
           code: regionItem.code,
           zones: regionItem.zones.split(",").map(zoneItem => zoneItem.trim()),
@@ -55,7 +55,7 @@ const validate = values => {
   return errors;
 };
 
-var onPremRegionsAndZonesForm = reduxForm({
+const onPremRegionsAndZonesForm = reduxForm({
   form: 'onPremConfigForm',
   validate,
   destroyOnUnmount: false

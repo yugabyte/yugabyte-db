@@ -66,4 +66,4 @@ export class YBControlledNumericInputWithLabel extends Component {
 }
 
 // TODO: Rename all prior YBNumericInput references to YBNumericInputWithLabel.
-export var YBNumericInput = YBNumericInputWithLabel;
+export const YBNumericInput = YBNumericInputWithLabel;

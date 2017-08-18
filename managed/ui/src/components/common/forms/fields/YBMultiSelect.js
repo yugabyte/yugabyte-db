@@ -12,11 +12,11 @@ import { isNonEmptyArray } from 'utils/ObjectUtils';
 // TODO: Make default export after checking all corresponding imports.
 export class YBNewMultiSelect extends Component {
   componentWillReceiveProps(props) {
-    var newSelection = null;
+    let newSelection = null;
 
     // If AZ is changed from multi to single, take only last selection.
     if (this.props.multi !== props.multi && props.multi === false) {
-      var currentSelection = this.props.input.value;
+      const currentSelection = this.props.input.value;
       if (isNonEmptyArray(currentSelection)) {
         newSelection = currentSelection.splice(-1, 1);
       }
@@ -33,7 +33,7 @@ export class YBNewMultiSelect extends Component {
 
   render() {
     const { input, options, multi, selectValChanged } = this.props;
-    var self = this;
+    const self = this;
 
     function onChange(val) {
       val = multi ? val: val.slice(-1);
@@ -61,4 +61,4 @@ export default class YBMultiSelectWithLabel extends Component {
 }
 
 // TODO: Rename all prior YBMultiSelect references to YBMultiSelectWithLabel.
-export var YBMultiSelect = YBMultiSelectWithLabel;
+export const YBMultiSelect = YBMultiSelectWithLabel;

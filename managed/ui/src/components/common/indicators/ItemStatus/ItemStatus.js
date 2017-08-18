@@ -6,9 +6,9 @@ import './ItemStatus.scss';
 export default class ItemStatus extends Component {
   render() {
     const { showLabelText } = this.props;
-    var statusText = '';
+    let statusText = '';
     // TODO: Add other statuses here.
-    var statusClassName = 'good';
+    const statusClassName = 'good';
     if (showLabelText) {
       // TODO: Add other statuses here.
       statusText = 'Ready';

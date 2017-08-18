@@ -71,7 +71,7 @@ class GraphPanel extends Component {
   queryMetricsType(graphFilter) {
     const {startMoment, endMoment, nodeName, nodePrefix} = graphFilter;
     const {type} = this.props;
-    var params = {
+    const params = {
       metrics: panelTypes[type].metrics,
       start: startMoment.format('X'),
       end: endMoment.format('X')
@@ -97,7 +97,7 @@ class GraphPanel extends Component {
   render() {
     const { type, graph: { metrics }} = this.props;
 
-    var panelItem = <YBLoadingIcon />;
+    let panelItem = <YBLoadingIcon />;
     if (Object.keys(metrics).length > 0 && isNonEmptyObject(metrics[type])) {
       /* Logic here is, since there will be multiple instances of GraphPanel
       we basically would have metrics data keyed off panel type. So we

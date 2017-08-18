@@ -68,7 +68,7 @@ export const RESET_UNIVERSE_CONFIGURATION = 'RESET_UNIVERSE_CONFIGURATION';
 export const FETCH_UNIVERSE_METADATA = 'FETCH_UNIVERSE_METADATA';
 
 export function createUniverse(formValues) {
-  var customerUUID = localStorage.getItem("customer_id");
+  const customerUUID = localStorage.getItem("customer_id");
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universes`, formValues);
   return {
     type: CREATE_UNIVERSE,
@@ -84,7 +84,7 @@ export function createUniverseResponse(response) {
 }
 
 export function fetchUniverseInfo(universeUUID) {
-  var cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customer_id");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}`);
   return {
     type: FETCH_UNIVERSE_INFO,
@@ -120,7 +120,7 @@ export function fetchUniverseInfoResponse(response) {
 }
 
 export function fetchUniverseList() {
-  var cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customer_id");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/universes`);
 
   return {
@@ -157,7 +157,7 @@ export function resetUniverseList() {
 }
 
 export function deleteUniverse(universeUUID) {
-  var customerUUID = localStorage.getItem("customer_id");
+  const customerUUID = localStorage.getItem("customer_id");
   const request=axios.delete(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}`);
   return {
     type: DELETE_UNIVERSE,
@@ -174,7 +174,7 @@ export function deleteUniverseResponse(response) {
 
 
 export function editUniverse(formValues, universeUUID) {
-  var cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customer_id");
   const request = axios.put(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}`, formValues);
   return {
     type: EDIT_UNIVERSE,
@@ -190,7 +190,7 @@ export function editUniverseResponse(response) {
 }
 
 export function fetchUniverseTasks(universeUUID) {
-  var customerUUID = localStorage.getItem("customer_id");
+  const customerUUID = localStorage.getItem("customer_id");
   const request = axios.get(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/tasks`);
   return {
     type: FETCH_UNIVERSE_TASKS,
@@ -225,7 +225,7 @@ export function closeDialog() {
 }
 
 export function rollingUpgrade(values, universeUUID) {
-  var customerUUID = localStorage.getItem("customer_id");
+  const customerUUID = localStorage.getItem("customer_id");
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/upgrade`, values);
   return {
     type: ROLLING_UPGRADE,
@@ -241,7 +241,7 @@ export function rollingUpgradeResponse(response) {
 }
 
 export function configureUniverseTemplate(values) {
-  var customerUUID = localStorage.getItem("customer_id");
+  const customerUUID = localStorage.getItem("customer_id");
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universe_configure`, values);
   return {
     type: CONFIGURE_UNIVERSE_TEMPLATE,
@@ -264,7 +264,7 @@ export function configureUniverseTemplateSuccess(result) {
 }
 
 export function configureUniverseResources(values) {
-  var customerUUID = localStorage.getItem("customer_id");
+  const customerUUID = localStorage.getItem("customer_id");
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universe_resources`, values);
   return {
     type: CONFIGURE_UNIVERSE_RESOURCES,
@@ -280,8 +280,8 @@ export function configureUniverseResourcesResponse(response) {
 }
 
 export function checkIfUniverseExists(universeName) {
-  var customerUUID = localStorage.getItem("customer_id");
-  var requestUrl = `${ROOT_URL}/customers/${customerUUID}/universes/find/${universeName}`;
+  const customerUUID = localStorage.getItem("customer_id");
+  const requestUrl = `${ROOT_URL}/customers/${customerUUID}/universes/find/${universeName}`;
   const request = axios.get(requestUrl);
   return {
     type: CHECK_IF_UNIVERSE_EXISTS,

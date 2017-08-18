@@ -24,16 +24,16 @@ export default class AZSelectorTable extends Component {
 
   handleAZChange(listKey, event) {
     const {universe: {universeConfigTemplate}} = this.props;
-    var currentAZState = this.state.azItemState;
-    var universeTemplate = _.clone(universeConfigTemplate.data);
+    const currentAZState = this.state.azItemState;
+    const universeTemplate = _.clone(universeConfigTemplate.data);
     currentAZState[listKey].value = event.target.value;
     this.updatePlacementInfo(currentAZState, universeTemplate);
   }
 
   handleAZNodeCountChange(listKey, value) {
     const {universe: {universeConfigTemplate}} = this.props;
-    var universeTemplate = _.clone(universeConfigTemplate.data);
-    var currentAZState = this.state.azItemState;
+    const universeTemplate = _.clone(universeConfigTemplate.data);
+    const currentAZState = this.state.azItemState;
     currentAZState[listKey].count = value;
     this.updatePlacementInfo(currentAZState, universeTemplate);
   }
@@ -41,7 +41,7 @@ export default class AZSelectorTable extends Component {
   updatePlacementInfo(currentAZState, universeConfigTemplate) {
     const {universe: {currentUniverse}, cloud, numNodesChangedViaAzList, currentProvider, maxNumNodes, minNumNodes} = this.props;
     this.setState({azItemState: currentAZState});
-    var totalNodesInConfig = 0;
+    let totalNodesInConfig = 0;
     currentAZState.forEach(function(item){
       totalNodesInConfig += item.count;
     });
@@ -49,11 +49,11 @@ export default class AZSelectorTable extends Component {
 
     if (((currentProvider.code === "onprem" && totalNodesInConfig <= maxNumNodes)
           || currentProvider.code !== "onprem") && totalNodesInConfig >= minNumNodes) {
-      var newPlacementInfo = _.clone(universeConfigTemplate.placementInfo, true);
-      var newRegionList = [];
+      const newPlacementInfo = _.clone(universeConfigTemplate.placementInfo, true);
+      const newRegionList = [];
       cloud.regions.data.forEach(function (regionItem) {
-        var newAzList = [];
-        var zoneFoundInRegion = false;
+        const newAzList = [];
+        let zoneFoundInRegion = false;
         regionItem.zones.forEach(function (zoneItem) {
           currentAZState.forEach(function (azItem) {
             if (zoneItem.uuid === azItem.value) {
@@ -78,7 +78,7 @@ export default class AZSelectorTable extends Component {
         }
       });
       newPlacementInfo.cloudList[0].regionList = newRegionList;
-      var newTaskParams = _.clone(universeConfigTemplate, true);
+      const newTaskParams = _.clone(universeConfigTemplate, true);
       newTaskParams.placementInfo = newPlacementInfo;
       newTaskParams.userIntent.numNodes = totalNodesInConfig;
       if (isEmptyObject(currentUniverse.data)) {
@@ -88,7 +88,7 @@ export default class AZSelectorTable extends Component {
         newTaskParams.expectedUniverseVersion = currentUniverse.data.version;
         this.props.submitConfigureUniverse(newTaskParams);
       } else {
-        let placementStatusObject = {
+        const placementStatusObject = {
           error: {
             type: "noFieldsChanged",
             numNodes: totalNodesInConfig,
@@ -98,7 +98,7 @@ export default class AZSelectorTable extends Component {
         this.props.setPlacementStatus(placementStatusObject);
       }
     } else if (totalNodesInConfig > maxNumNodes && currentProvider.code === "onprem") {
-      let placementStatusObject = {
+      const placementStatusObject = {
         error: {
           type: "notEnoughNodesConfigured",
           numNodes: totalNodesInConfig,
@@ -107,7 +107,7 @@ export default class AZSelectorTable extends Component {
       };
       this.props.setPlacementStatus(placementStatusObject);
     } else {
-      let placementStatusObject = {
+      const placementStatusObject = {
         error: {
           type: "notEnoughNodes",
           numNodes: totalNodesInConfig,
@@ -119,12 +119,12 @@ export default class AZSelectorTable extends Component {
   }
 
   getGroupWithCounts(universeConfigTemplate) {
-    var uniConfigArray = [];
+    const uniConfigArray = [];
     if (isNonEmptyArray(universeConfigTemplate.nodeDetailsSet)) {
       universeConfigTemplate.nodeDetailsSet.forEach(function (nodeItem) {
         if (nodeStates.activeStates.indexOf(nodeItem.state) !== -1) {
-          var nodeFound = false;
-          for (var idx = 0; idx < uniConfigArray.length; idx++) {
+          let nodeFound = false;
+          for (let idx = 0; idx < uniConfigArray.length; idx++) {
             if (uniConfigArray[idx].value === nodeItem.azUuid) {
               nodeFound = true;
               uniConfigArray[idx].count++;
@@ -137,8 +137,8 @@ export default class AZSelectorTable extends Component {
         }
       });
     }
-    var groupsArray = [];
-    var uniqueRegions = [];
+    const groupsArray = [];
+    const uniqueRegions = [];
     if (isValidObject(universeConfigTemplate.placementInfo)) {
       universeConfigTemplate.placementInfo.cloudList[0].regionList.forEach(function(regionItem) {
         regionItem.azList.forEach(function(azItem) {
@@ -161,14 +161,14 @@ export default class AZSelectorTable extends Component {
   componentWillMount() {
     const {universe: {currentUniverse}, type} = this.props;
     if (type === "Edit" &&  isValidObject(currentUniverse)) {
-      var azGroups = this.getGroupWithCounts(currentUniverse.data.universeDetails).groups;
+      const azGroups = this.getGroupWithCounts(currentUniverse.data.universeDetails).groups;
       this.setState({azItemState: azGroups});
     }
   }
   componentWillReceiveProps(nextProps) {
     const {universe: {universeConfigTemplate}} = nextProps;
-    var placementInfo = this.getGroupWithCounts(universeConfigTemplate.data);
-    var azGroups = placementInfo.groups;
+    const placementInfo = this.getGroupWithCounts(universeConfigTemplate.data);
+    const azGroups = placementInfo.groups;
     if (!areUniverseConfigsEqual(this.props.universe.universeConfigTemplate.data, universeConfigTemplate.data)
         && isValidObject(universeConfigTemplate.data.placementInfo)) {
       this.setState({azItemState: azGroups});
@@ -177,7 +177,7 @@ export default class AZSelectorTable extends Component {
     !_.isEqual(universeConfigTemplate, this.props.universe.universeConfigTemplate)) {
       const uniqueAZs = [ ...new Set(azGroups.map(item => item.value)) ];
       if (isValidObject(uniqueAZs)) {
-        var placementStatusObject = {
+        const placementStatusObject = {
           numUniqueRegions: placementInfo.uniqueRegions,
           numUniqueAzs: placementInfo.uniqueAzs,
           replicationFactor: universeConfigTemplate.data.userIntent.replicationFactor
@@ -193,8 +193,8 @@ export default class AZSelectorTable extends Component {
 
   render() {
     const {universe: {universeConfigTemplate}, cloud: {regions}} = this.props;
-    var self = this;
-    var azListForSelectedRegions = [];
+    const self = this;
+    let azListForSelectedRegions = [];
     if (isValidObject(universeConfigTemplate.data.userIntent) && 
       isNonEmptyArray(universeConfigTemplate.data.userIntent.regionList)
     ) {
@@ -202,14 +202,14 @@ export default class AZSelectorTable extends Component {
         region => universeConfigTemplate.data.userIntent.regionList.includes(region.uuid)
       ).reduce((az, region) => az.concat(region.zones), []);
     }
-    var azListOptions = <option/>;
+    let azListOptions = <option/>;
     if (isNonEmptyArray(azListForSelectedRegions)) {
       azListOptions = azListForSelectedRegions.map((azItem, azIdx) => (
         <option key={azIdx} value={azItem.uuid}>{azItem.code}</option>
       ));
     }
-    var azGroups = self.state.azItemState;
-    var azList = [];
+    const azGroups = self.state.azItemState;
+    let azList = [];
     if (isNonEmptyArray(azGroups) && isNonEmptyArray(azListForSelectedRegions)) {
       azList = azGroups.map((azGroupItem, idx) => (
         <Row key={idx} >

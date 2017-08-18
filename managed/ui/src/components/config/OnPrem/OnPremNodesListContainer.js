@@ -33,7 +33,7 @@ const mapDispatchToProps = (dispatch, ownProps) => {
 
     createOnPremNodes: (nodePayload, pUUID) => {
       Object.keys(nodePayload).forEach((zoneUUID, zoneIdx) => {
-        let nodesForZone = nodePayload[zoneUUID];
+        const nodesForZone = nodePayload[zoneUUID];
         dispatch(createNodeInstances(zoneUUID, nodesForZone)).then((response) => {
           dispatch(createNodeInstancesResponse(response.payload));
           if (zoneIdx === Object.keys(nodePayload).length -1) {
@@ -63,7 +63,7 @@ const mapDispatchToProps = (dispatch, ownProps) => {
   };
 };
 
-var addNodeForm = reduxForm({
+const addNodeForm = reduxForm({
   form: 'AddNodeForm',
 
 });
