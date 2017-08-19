@@ -18,7 +18,7 @@ export default class ConnectStringPanel extends Component {
     );
     const connectStringPanelItems = [
       {name: "Meta Masters", data: endpoint},
-      {name: "Server Version", data: userIntent.ybSoftwareVersion || 'n/a'},
+      {name: "YugaByte Version", data: userIntent.ybSoftwareVersion || 'n/a'},
     ];
     return (
       <DescriptionList listItems={connectStringPanelItems} />

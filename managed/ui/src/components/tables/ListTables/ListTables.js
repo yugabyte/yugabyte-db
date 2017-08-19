@@ -204,7 +204,7 @@ class ListTableGrid extends Component {
                            columnClassName={"table-type-image-header yb-table-cell"} className={"yb-table-cell"}/>
         <TableHeaderColumn dataField={"keySpace"}
                            columnClassName={"yb-table-cell"} dataFormat={formatKeySpace}>
-          Key Space</TableHeaderColumn>
+          Keyspace</TableHeaderColumn>
         <TableHeaderColumn dataField={"tableName"} dataFormat={getTableName}
                            columnClassName={"table-name-label yb-table-cell"} className={"yb-table-cell"}>
           Table Name</TableHeaderColumn>

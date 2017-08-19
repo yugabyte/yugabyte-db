@@ -32,8 +32,8 @@ export default class UniverseInfoPanel extends Component {
       {name: "Universe ID", data: universeId},
       {name: "Customer ID", data: customerId},
       {name: "Launch Time", data: formattedCreationDate},
-      {name: "YQL Proxies", data: endpoint},
-      {name: "Server Version", data: userIntent.ybSoftwareVersion || 'n/a'},
+      {name: "CQL Service", data: endpoint},
+      {name: "YugaByte Version", data: userIntent.ybSoftwareVersion || 'n/a'},
     ];
 
     return (

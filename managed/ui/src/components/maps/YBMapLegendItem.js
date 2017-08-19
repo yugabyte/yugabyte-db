@@ -5,6 +5,7 @@ import PropTypes from 'prop-types';
 import { Image, ListGroup, ListGroupItem} from 'react-bootstrap';
 import { RootMarkerIcon, AsyncMarkerIcon, CacheMarkerIcon } from './images';
 import './stylesheets/YBMapLegendItem.scss';
+import {isNonEmptyArray} from 'utils/ObjectUtils';
 
 export default class YBMapLegendItem extends Component {
   render() {
@@ -19,17 +20,27 @@ export default class YBMapLegendItem extends Component {
     } else if (type === "Region") {
       legendItemIcon = <div className="marker-cluster-small provider-marker-cluster">#</div>;
     }
-    let mapLegendDetails = <span/>;
+    let regionList = <span/>;
     if (type !== "Region") {
-      mapLegendDetails = (
-        <ListGroup>
-          {
-            regions.map(function(item, idx){
-              return <ListGroupItem key={item+idx}>{item.name}</ListGroupItem>;
-            })
+      if (isNonEmptyArray(regions)) {
+        regionList = regions.map(function(region, rIdx){
+          if (isNonEmptyArray(region.azList)) {
+            return (
+              <ListGroupItem key={`${region.name}.${rIdx}`}>
+                <div className="region-item-cell">{region.name}</div>
+                {
+                  region.azList.map(function (az, azIdx) {
+                    let azNodeCount = az.numNodesInAZ === 1 ? `(${az.numNodesInAZ} Node)` : `(${az.numNodesInAZ} Nodes)`;
+                    return <ListGroupItem key={az.uuid + "" + azIdx} className="az-item-cell">{`${az.name} ${azNodeCount}`}</ListGroupItem>
+                  })
+                }
+              </ListGroupItem>
+            );
+          } else {
+            return <ListGroupItem key={`${region.name}.${rIdx}`}>{region.name}</ListGroupItem>
           }
-        </ListGroup>
-      );
+        })
+      }
     }
     return (
       <div className="map-legend-item">
@@ -37,7 +48,7 @@ export default class YBMapLegendItem extends Component {
           {legendItemIcon}
         </div>
         <h5 className="map-legend-heading">{title}</h5>
-        {mapLegendDetails}
+        {regionList}
       </div>
     );
   }
