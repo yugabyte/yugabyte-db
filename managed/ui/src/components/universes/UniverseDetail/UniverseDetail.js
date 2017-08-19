@@ -64,7 +64,7 @@ class UniverseDetail extends Component {
 
   render() {
     const { universe: { currentUniverse, showModal, visibleModal }, universe, location: {query}} = this.props;
-
+    let placementInfoRegionList = isNonEmptyObject(currentUniverse.data) ? currentUniverse.data.universeDetails.placementInfo.cloudList[0].regionList : [];
     if (this.props.location.pathname === "/universes/create") {
       return <UniverseFormContainer type="Create"/>;
     }
@@ -99,7 +99,7 @@ class UniverseDetail extends Component {
         <Row>
           <Col lg={12}>
             <RegionMap universe={currentUniverse.data} type={"Universe"} />
-            <YBMapLegend title="Placement Policy" regions={ currentUniverse.data.regions ? currentUniverse.data.regions : []} type={"Universe"}/>
+            <YBMapLegend title="Data Placement (In AZs)" regions={placementInfoRegionList} type="Universe"/>
           </Col>
         </Row>
       </Tab>,

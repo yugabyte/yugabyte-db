@@ -85,10 +85,10 @@ export default class NodeDetails extends Component {
     };
 
     return (
-      <YBPanelItem name="Node Details">
+      <YBPanelItem name="Nodes">
         { nodeIPs && <NodeConnectModal nodeIPs={nodeIPs} />}
         <BootstrapTable ref='nodeDetailTable' data={nodeDetailRows} >
-          <TableHeaderColumn dataField="name" isKey={true} dataFormat={getNodeNameLink}>Instance Name</TableHeaderColumn>
+          <TableHeaderColumn dataField="name" isKey={true} dataFormat={getNodeNameLink}>Name</TableHeaderColumn>
           <TableHeaderColumn dataField="regionAz">Region/Zone</TableHeaderColumn>
           <TableHeaderColumn
               dataField="isMaster"
@@ -103,7 +103,7 @@ export default class NodeDetails extends Component {
             TServer
           </TableHeaderColumn>
           <TableHeaderColumn dataField="privateIP">Private IP</TableHeaderColumn>
-          <TableHeaderColumn dataField="nodeStatus">Node Status</TableHeaderColumn>
+          <TableHeaderColumn dataField="nodeStatus">Status</TableHeaderColumn>
           <TableHeaderColumn dataField="nodeStatus" dataFormat={getNodeAction}>Action</TableHeaderColumn>
         </BootstrapTable>
       </YBPanelItem>
