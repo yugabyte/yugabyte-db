@@ -69,6 +69,9 @@ export const GET_NODE_INSTANCE_LIST_RESPONSE = 'GET_NODE_INSTANCE_RESPONSE';
 
 export const RESET_ON_PREM_CONFIG_DATA = 'RESET_ON_PREM_CONFIG_DATA';
 
+export const DELETE_NODE = 'DELETE_NODE';
+export const DELETE_NODE_RESPONSE = 'DELETE_NODE_RESPONSE';
+
 export function getProviderList() {
   const cUUID = localStorage.getItem("customer_id");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers`);
@@ -406,5 +409,21 @@ export function getNodesInstancesForProviderResponse(response) {
 export function resetOnPremConfigData() {
   return {
     type: RESET_ON_PREM_CONFIG_DATA
+  };
+}
+
+export function deleteNode(nodeName, universeUUID) {
+  const cUUID = localStorage.getItem("customer_id");
+  const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/nodes/${nodeName}`);
+  return {
+    type: DELETE_NODE,
+    payload: request
+  };
+}
+
+export function deleteNodeResponse(response) {
+  return {
+    type: DELETE_NODE_RESPONSE,
+    payload: response
   };
 }

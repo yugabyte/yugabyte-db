@@ -107,7 +107,7 @@ class UniverseDetail extends Component {
         <ListTablesContainer/>
       </Tab>,
       <Tab eventKey={"nodes"} title="Nodes" key="nodes-tab">
-        <NodeDetails nodeDetails={currentUniverse.data.universeDetails.nodeDetailsSet} />
+        <NodeDetails {...this.props}/>
       </Tab>,
       <Tab eventKey={"metrics"} title="Metrics" key="metrics-tab">
         <GraphPanelHeaderContainer origin={"universe"}>
