@@ -23,6 +23,8 @@ public enum TaskType {
 
   UpgradeUniverse("UpgradeUniverse"),
 
+  DeleteNodeFromUniverse("DeleteNodeFromUniverse"),
+
   // Tasks belonging to subtasks classpath
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
 
@@ -39,6 +41,8 @@ public enum TaskType {
   ChangeMasterConfig("subtasks.ChangeMasterConfig"),
 
   CreateTable("subtasks.CreateTable"),
+
+  DeleteNode("subtasks.DeleteNode"),
 
   LoadBalancerStateChange("subtasks.LoadBalancerStateChange"),
 

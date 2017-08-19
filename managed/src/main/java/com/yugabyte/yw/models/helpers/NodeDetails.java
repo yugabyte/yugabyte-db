@@ -99,4 +99,9 @@ public class NodeDetails {
             state == NodeState.ToBeDecommissioned ||
             state == NodeState.BeingDecommissioned);
   }
+  @JsonIgnore
+  public boolean isRemovable() {
+    return state == NodeState.ToBeAdded;
+  }
+
 }

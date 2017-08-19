@@ -26,7 +26,10 @@ public class CustomerTask extends Model {
     Table,
 
     @EnumValue("Provider")
-    Provider
+    Provider,
+
+    @EnumValue("Node")
+    Node;
   }
 
   public enum TaskType {

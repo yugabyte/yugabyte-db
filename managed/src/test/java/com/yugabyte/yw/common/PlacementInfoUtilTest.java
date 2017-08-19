@@ -6,13 +6,9 @@ import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
+import static com.yugabyte.yw.common.PlacementInfoUtil.removeNodeByName;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -491,4 +487,32 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       assertEquals(node.cloudInfo.instance_type, newType);
     }
   }
+
+  @Test
+  public void testRemoveNodeByName() {
+    testData.clear();
+    customer = ModelFactory.testCustomer("a@b.com");
+    testData.add(new TestData(Common.CloudType.aws, 5, 10));
+    TestData t = testData.get(0);
+    UniverseDefinitionTaskParams ud = t.universe.getUniverseDetails();
+    UUID univUuid = t.univUuid;
+    Universe.saveDetails(univUuid, t.setAzUUIDs());
+    t.setAzUUIDs(ud);
+    Set<NodeDetails> nodes = ud.nodeDetailsSet;
+    Iterator<NodeDetails> nodeIter = nodes.iterator();
+    NodeDetails nodeToBeRemoved = nodeIter.next();
+    removeNodeByName(nodeToBeRemoved.nodeName, nodes);
+    // Assert that node no longer exists
+    Iterator<NodeDetails> newNodeIter = ud.nodeDetailsSet.iterator();
+    boolean nodeFound = false;
+    while (newNodeIter.hasNext()) {
+      NodeDetails newNode = newNodeIter.next();
+      if (newNode.nodeName.equals(nodeToBeRemoved.nodeName)) {
+        nodeFound = true;
+      }
+    }
+    assertEquals(nodeFound, false);
+    assertEquals(nodes.size(), 9);
+  }
+
 }
