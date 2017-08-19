@@ -5,6 +5,7 @@ import { UniverseDetail } from '../../universes';
 import {fetchUniverseInfo, fetchUniverseInfoResponse, resetUniverseInfo,
         fetchUniverseTasks, fetchUniverseTasksResponse,
         resetUniverseTasks, openDialog, closeDialog } from '../../../actions/universe';
+import {deleteNode, deleteNodeResponse} from '../../../actions/cloud';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -40,6 +41,22 @@ const mapDispatchToProps = (dispatch) => {
     },
     closeModal: () => {
       dispatch(closeDialog());
+    },
+    deleteNode: (nodeName, universeUUID) => {
+      dispatch(deleteNode(nodeName, universeUUID))
+        .then((response) => {
+          dispatch(deleteNodeResponse(response.payload));
+          if (response.payload.status === 200) {
+            setTimeout(function () {
+              // This is a quick task, we can get the updated universe with a timeout.
+              dispatch(fetchUniverseInfo(universeUUID))
+                .then((universeInfoResponse) => {
+                  dispatch(fetchUniverseInfoResponse(universeInfoResponse.payload));
+                });
+            }, 1000);
+
+          }
+        })
     }
   };
 };

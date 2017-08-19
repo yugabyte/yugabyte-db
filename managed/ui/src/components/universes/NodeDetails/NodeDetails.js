@@ -7,6 +7,7 @@ import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBPanelItem } from '../../panels';
 import { isValidObject, isNonEmptyArray, isDefinedNotNull } from 'utils/ObjectUtils';
 import NodeConnectModal from './NodeConnectModal';
+import {isNodeRemovable} from 'utils/UniverseUtils';
 
 export default class NodeDetails extends Component {
   static propTypes = {
@@ -19,9 +20,16 @@ export default class NodeDetails extends Component {
     }
   }
 
-  render() {
-    const { nodeDetails } = this.props;
+  deleteNode(node) {
+    const {universe: {currentUniverse}} = this.props;
+    const universeUUID = currentUniverse.data.universeUUID;
+    this.props.deleteNode(node.name, universeUUID);
+  }
 
+  render() {
+    const { universe: {currentUniverse}} = this.props;
+    const self = this;
+    const nodeDetails = currentUniverse.data.universeDetails.nodeDetailsSet;
     if (!isNonEmptyArray(nodeDetails)) {
       return <span />;
     }
@@ -37,7 +45,7 @@ export default class NodeDetails extends Component {
         publicIP: nodeDetail.cloudInfo.public_ip,
         nodeStatus: nodeDetail.state,
         cloudInfo: nodeDetail.cloudInfo
-      };
+      }
     });
 
     const formatIpPort = function(cell, row, type) {
@@ -69,6 +77,13 @@ export default class NodeDetails extends Component {
         return cell;
       }
     };
+
+    const getNodeAction = function(cell, row) {
+      if (isNodeRemovable(cell)) {
+        return <div className="node-action-text" onClick={self.deleteNode.bind(self, row)}>Delete</div>;
+      }
+    };
+
     return (
       <YBPanelItem name="Node Details">
         { nodeIPs && <NodeConnectModal nodeIPs={nodeIPs} />}
@@ -89,6 +104,7 @@ export default class NodeDetails extends Component {
           </TableHeaderColumn>
           <TableHeaderColumn dataField="privateIP">Private IP</TableHeaderColumn>
           <TableHeaderColumn dataField="nodeStatus">Node Status</TableHeaderColumn>
+          <TableHeaderColumn dataField="nodeStatus" dataFormat={getNodeAction}>Action</TableHeaderColumn>
         </BootstrapTable>
       </YBPanelItem>
     );
