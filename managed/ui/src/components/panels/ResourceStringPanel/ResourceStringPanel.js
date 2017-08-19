@@ -20,8 +20,8 @@ export default class ResourceStringPanel extends Component {
       {name: "Provider", data: universeInfo.provider && universeInfo.provider.name},
       {name: "Regions", data: regionList},
       {name: "Instance Type", data: userIntent && userIntent.instanceType},
-      {name: "Availability Zones", data: azString},
       {name: "Replication Factor", data: userIntent.replicationFactor},
+      {name: "SSH Key", data: userIntent.accessKeyCode}
     ];
     return (
       <DescriptionList listItems={connectStringPanelItems} />
