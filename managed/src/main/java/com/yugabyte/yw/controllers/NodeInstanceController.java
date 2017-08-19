@@ -6,13 +6,16 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Customer;
+
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.inject.Inject;
-import com.yugabyte.yw.models.AvailabilityZone;
 
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
@@ -20,11 +23,16 @@ import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 
 import play.data.Form;
 import play.data.FormFactory;
+import play.libs.Json;
 import play.mvc.Result;
+import play.mvc.Results;
 
 public class NodeInstanceController extends AuthenticatedController {
   @Inject
   FormFactory formFactory;
+
+  @Inject
+  Commissioner commissioner;
 
   public static final Logger LOG = LoggerFactory.getLogger(NodeInstanceController.class);
 
@@ -95,6 +103,49 @@ public class NodeInstanceController extends AuthenticatedController {
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }
+  }
+
+
+  public Result delete(UUID customerUUID, UUID universeUUID, String nodeName) {
+    try {
+      // Validate customer UUID and universe UUID and AWS provider.
+      Customer customer = Customer.get(customerUUID);
+      if (customer == null) {
+        String errMsg = "Invalid Customer UUID: " + customerUUID;
+        LOG.error(errMsg);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
+      Universe universe = Universe.get(universeUUID);
+      if (universe == null) {
+        String errMsg = "Invalid Universe UUID: " + universeUUID;
+        LOG.error(errMsg);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
+      if (nodeName == null || nodeName.trim().equals("")) {
+        String errMsg = "Node Name Cannot be Empty";
+        LOG.error(errMsg);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
+      NodeTaskParams taskParams = new NodeTaskParams();
+      taskParams.universeUUID = universe.universeUUID;
+      taskParams.expectedUniverseVersion = universe.version;
+      taskParams.nodeName = nodeName;
+      taskParams.cloud = universe.getUniverseDetails().cloud;
+      LOG.info("Deleting Node {} from  universe {} : name={} at version={}.",
+        nodeName, universe.universeUUID, universe.name, universe.version);
+      UUID taskUUID = commissioner.submit(TaskType.DeleteNodeFromUniverse, taskParams);
+      CustomerTask.create(customer, universe.universeUUID,
+                          taskUUID, CustomerTask.TargetType.Node,
+                          CustomerTask.TaskType.Delete, nodeName);
+      LOG.info("Saved task uuid {} in customer tasks table for universe {} : {} for node {}",
+        taskUUID, universe.universeUUID, universe.name, nodeName);
+      ObjectNode resultNode = Json.newObject();
+      resultNode.put("taskUUID", taskUUID.toString());
+      return Results.status(OK, resultNode);
+    } catch (Exception e) {
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
+
   }
 
   private String validateParams(UUID customerUuid, UUID zoneUuid) {

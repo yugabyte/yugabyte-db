@@ -319,8 +319,8 @@ public class PlacementInfoUtil {
     LOG.info("Placement info:{}.", taskParams.placementInfo);
   }
 
-  private static void updatePlacementInfo(Collection<NodeDetails> nodes,
-                                              PlacementInfo placementInfo) {
+  public static void updatePlacementInfo(Collection<NodeDetails> nodes,
+                                         PlacementInfo placementInfo) {
     Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodes);
     for (int cIdx = 0; cIdx < placementInfo.cloudList.size(); cIdx++) {
       PlacementCloud cloud = placementInfo.cloudList.get(cIdx);
@@ -1171,5 +1171,29 @@ public class PlacementInfoUtil {
     }
     placementAZ.replicationFactor++;
     placementAZ.numNodesInAZ++;
+  }
+
+  // Removes a given node from universe nodeDetailsSet
+  public static void removeNodeByName(String nodeName, Set<NodeDetails> nodeDetailsSet) {
+    Iterator<NodeDetails> nodeIter = nodeDetailsSet.iterator();
+    while (nodeIter.hasNext()) {
+      NodeDetails currentNode = nodeIter.next();
+      if (currentNode.nodeName.equals(nodeName)) {
+        nodeIter.remove();
+        return;
+      }
+    }
+  }
+
+  // Checks the status of the node by given name in current universe
+  public static boolean isNodeRemovable(String nodeName, Set<NodeDetails> nodeDetailsSet) {
+    Iterator<NodeDetails> nodeIter = nodeDetailsSet.iterator();
+    while (nodeIter.hasNext()) {
+      NodeDetails currentNode = nodeIter.next();
+      if (currentNode.nodeName.equals(nodeName) && currentNode.isRemovable()) {
+        return true;
+      }
+    }
+    return false;
   }
 }

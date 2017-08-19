@@ -27,12 +27,25 @@ public class NodeTaskParams extends UniverseTaskParams {
   public String instanceType;
 
   public AvailabilityZone getAZ() {
-    return AvailabilityZone.find.fetch("region").where().idEq(azUuid).findUnique();
+    if (azUuid != null) {
+      return AvailabilityZone.find.fetch("region").where().idEq(azUuid).findUnique();
+    }
+    return null;
   }
 
-  public Region getRegion() { return getAZ().region; }
+  public Region getRegion() {
+    if (getAZ() != null) {
+      return getAZ().region;
+    }
+    return null;
+  }
 
-  public Provider getProvider() { return getAZ().getProvider(); }
+  public Provider getProvider() {
+    if (getAZ() != null) {
+      return getAZ().getProvider();
+    }
+    return null;
+  }
 
   // Less prominent params can be added to properties variable
   private Map<String, String> properties = new HashMap<>();
