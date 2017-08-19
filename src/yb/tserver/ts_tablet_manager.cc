@@ -122,6 +122,16 @@ DEFINE_int32(sleep_after_tombstoning_tablet_secs, 0,
 TAG_FLAG(sleep_after_tombstoning_tablet_secs, unsafe);
 TAG_FLAG(sleep_after_tombstoning_tablet_secs, hidden);
 
+#if defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
+constexpr int kTServerYbClientDefaultTimeoutMs = 60 * 1000;
+#else
+constexpr int kTServerYbClientDefaultTimeoutMs = 5 * 1000;
+#endif
+
+DEFINE_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeoutMs,
+             "Default timeout for the YBClient embedded into the tablet server that is used "
+             "for distributed transactions.");
+
 namespace yb {
 namespace tserver {
 
@@ -190,9 +200,11 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
       METRIC_op_apply_run_time.Instantiate(server_->metric_entity()));
 
   {
+    // TODO(dtxn): make this client initialization asynchronous and don't delay tserver startup.
     client::YBClientBuilder client_builder;
     client_builder.set_client_name("tserver_client");
-    client_builder.default_rpc_timeout(MonoDelta::FromSeconds(5)); // TODO(dtxn)
+    client_builder.default_rpc_timeout(
+        MonoDelta::FromMilliseconds(FLAGS_tserver_yb_client_default_timeout_ms));
     auto addresses = *server_->options().GetMasterAddresses();
     client_builder.add_master_server_addr(HostPort::ToCommaSeparatedString(addresses));
     client_builder.set_skip_master_leader_resolution(addresses.size() == 1);
