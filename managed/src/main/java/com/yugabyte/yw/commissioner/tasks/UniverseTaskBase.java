@@ -7,6 +7,7 @@ import java.util.Map;
 
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BulkImport;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteNode;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import org.slf4j.Logger;
@@ -383,6 +384,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     TaskList taskList = new TaskList("BulkImport", executor);
     BulkImport task = new BulkImport();
     task.initialize(taskParams);
+    taskList.addTask(task);
+    taskListQueue.add(taskList);
+    return taskList;
+  }
+
+  public TaskList deleteNodeFromUniverseTask(String nodeName) {
+    TaskList taskList = new TaskList("RemoveNodeFromUniverse", executor);
+    NodeTaskParams params = new NodeTaskParams();
+    params.nodeName = nodeName;
+    params.universeUUID = taskParams().universeUUID;
+    params.cloud = taskParams().cloud;
+    DeleteNode task = new DeleteNode();
+    task.initialize(params);
     taskList.addTask(task);
     taskListQueue.add(taskList);
     return taskList;
