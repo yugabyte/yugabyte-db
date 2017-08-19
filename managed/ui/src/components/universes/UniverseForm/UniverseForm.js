@@ -225,7 +225,16 @@ class UniverseForm extends Component {
     if (isEmptyObject(this.props.universe.currentUniverse.data)) {
       this.props.resetConfig();
       this.props.dispatch(change("UniverseForm", "regionList", []));
-      this.setState({nodeSetViaAZList: false, regionList: [], providerSelected: providerUUID, deviceInfo: {}});
+      //If we have accesskeys for a current selected provider we set that in the state or we fallback to default value.
+      let defaultAccessKeyCode = initialState.accessKeyCode;
+      if (isNonEmptyArray(this.props.accessKeys.data)) {
+        const providerAccessKeys = this.props.accessKeys.data.filter((key) => key.idKey.providerUUID === value);
+        if (isNonEmptyArray(providerAccessKeys)) {
+          defaultAccessKeyCode = providerAccessKeys[0].idKey.keyCode;
+        }
+      }
+      this.setState({nodeSetViaAZList: false, regionList: [], providerSelected: providerUUID,
+        deviceInfo: {}, accessKeyCode: defaultAccessKeyCode});
       this.props.getRegionListItems(providerUUID, this.state.azCheckState);
       this.props.getInstanceTypeListItems(providerUUID);
     }
@@ -414,16 +423,6 @@ class UniverseForm extends Component {
           accessKeyCode: userIntent.accessKeyCode,
           deviceInfo: userIntent.deviceInfo
         });
-      }
-    }
-
-    // If we have accesskeys for a current selected provider we set that in the state or we fallback to default value.
-    if (isNonEmptyArray(nextProps.accessKeys.data) && !_.isEqual(this.props.accessKeys.data, nextProps.accessKeys.data)) {
-      const providerAccessKeys = nextProps.accessKeys.data.filter((key) => key.idKey.providerUUID === this.state.providerSelected);
-      if (isNonEmptyArray(providerAccessKeys)) {
-        this.setState({accessKeyCode: providerAccessKeys[0].idKey.keyCode});
-      } else {
-        this.setState({accessKeyCode: initialState.accessKeyCode});
       }
     }
 
@@ -711,6 +710,6 @@ class UniverseForm extends Component {
 
 UniverseForm.contextTypes = {
   prevPath: PropTypes.string
-}
+};
 
 export default withRouter(UniverseForm);
