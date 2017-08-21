@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { Image, ListGroup, ListGroupItem} from 'react-bootstrap';
+import { Image, ListGroupItem } from 'react-bootstrap';
 import { RootMarkerIcon, AsyncMarkerIcon, CacheMarkerIcon } from './images';
 import './stylesheets/YBMapLegendItem.scss';
 import {isNonEmptyArray} from 'utils/ObjectUtils';
@@ -30,16 +30,16 @@ export default class YBMapLegendItem extends Component {
                 <div className="region-item-cell">{region.name}</div>
                 {
                   region.azList.map(function (az, azIdx) {
-                    let azNodeCount = az.numNodesInAZ === 1 ? `(${az.numNodesInAZ} Node)` : `(${az.numNodesInAZ} Nodes)`;
-                    return <ListGroupItem key={az.uuid + "" + azIdx} className="az-item-cell">{`${az.name} ${azNodeCount}`}</ListGroupItem>
+                    const azNodeCount = az.numNodesInAZ === 1 ? `(${az.numNodesInAZ} Node)` : `(${az.numNodesInAZ} Nodes)`;
+                    return <ListGroupItem key={az.uuid + "" + azIdx} className="az-item-cell">{`${az.name} ${azNodeCount}`}</ListGroupItem>;
                   })
                 }
               </ListGroupItem>
             );
           } else {
-            return <ListGroupItem key={`${region.name}.${rIdx}`}>{region.name}</ListGroupItem>
+            return <ListGroupItem key={`${region.name}.${rIdx}`}>{region.name}</ListGroupItem>;
           }
-        })
+        });
       }
     }
     return (

@@ -6,7 +6,7 @@ import { isValidObject } from '../../../utils/ObjectUtils';
 import { FormattedDate } from 'react-intl';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import './AlertsList.css';
-import {browserHistory, Link} from 'react-router';
+import { Link } from 'react-router';
 import {YBFormattedNumber} from '../../common/descriptors';
 
 export default class TaskListTable extends Component {
@@ -66,13 +66,13 @@ export default class TaskListTable extends Component {
       }
     }
 
-    let taskDetailLinkFormatter = function(cell, row) {
+    const taskDetailLinkFormatter = function(cell, row) {
       if (row.status === "Failure") {
         return <Link to={`/tasks/${row.id}`}>See Details</Link>;
       } else {
         return <span/>;
       }
-    }
+    };
     const tableBodyContainer = {marginBottom: "1%", paddingBottom: "1%"};
     return (
       <div id="page-wrapper" className="dashboard-widget-container">

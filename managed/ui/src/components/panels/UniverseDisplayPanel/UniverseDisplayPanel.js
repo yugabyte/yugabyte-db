@@ -37,10 +37,10 @@ class UniverseDisplayItem extends Component {
     if (!isValidObject(universe)) {
       return <span/>;
     }
-    var replicationFactor = <span>{`${universe.universeDetails.userIntent.replicationFactor}`}</span>;
-    let universeProvider = <span>{`${universe.provider.name}`}</span>;
-    var numNodes = <span>{universe.universeDetails.userIntent.numNodes}</span>;
-    var costPerMonth = <span>n/a</span>;
+    const replicationFactor = <span>{`${universe.universeDetails.userIntent.replicationFactor}`}</span>;
+    const universeProvider = <span>{`${universe.provider.name}`}</span>;
+    const numNodes = <span>{universe.universeDetails.userIntent.numNodes}</span>;
+    let costPerMonth = <span>n/a</span>;
     if (isFinite(universe.pricePerHour)) {
       costPerMonth = <YBCost value={universe.pricePerHour} multiplier={"month"}/>;
     }

@@ -45,7 +45,7 @@ export default class NodeDetails extends Component {
         publicIP: nodeDetail.cloudInfo.public_ip,
         nodeStatus: nodeDetail.state,
         cloudInfo: nodeDetail.cloudInfo
-      }
+      };
     });
 
     const formatIpPort = function(cell, row, type) {
