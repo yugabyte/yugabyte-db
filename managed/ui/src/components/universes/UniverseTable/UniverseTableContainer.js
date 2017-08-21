@@ -3,9 +3,8 @@
 import { connect } from 'react-redux';
 
 import UniverseTable from './UniverseTable';
-import { fetchUniverseMetadata, resetUniverseTasks, setUniverseMetrics} from '../../../actions/universe';
+import { fetchUniverseMetadata, resetUniverseTasks } from '../../../actions/universe';
 import { fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure } from '../../../actions/tasks';
-import { queryMetrics } from '../../../actions/graph';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -23,25 +22,8 @@ const mapDispatchToProps = (dispatch) => {
         }
       });
     },
-
     resetUniverseTasks: () => {
       dispatch(resetUniverseTasks());
-    },
-
-    universeReadWriteData: () => {
-      const startTime  = Math.floor(Date.now() / 1000) - (12 * 60 * 60 );
-      const endTime = Math.floor(Date.now() / 1000);
-      const queryParams = {
-        metrics: ["disk_iops_by_universe"],
-        start: startTime,
-        end: endTime
-      };
-      dispatch(queryMetrics(queryParams))
-        .then((response) => {
-          if (response.payload.status === 200) {
-            dispatch(setUniverseMetrics(response.payload));
-          }
-        });
     }
   };
 };
