@@ -56,7 +56,7 @@ const mapDispatchToProps = (dispatch) => {
             }, 1000);
 
           }
-        })
+        });
     }
   };
 };

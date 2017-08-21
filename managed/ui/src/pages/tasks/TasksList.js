@@ -9,6 +9,6 @@ export default class TasksList extends Component {
       <div>
         <TasksListContainer/>
       </div>
-    )
+    );
   }
 }

@@ -54,7 +54,7 @@ const mapDispatchToProps = (dispatch) => {
         .then((response) => {
           const startTime  = Math.floor(Date.now() / 1000) - (12 * 60 * 60 );
           const endTime = Math.floor(Date.now() / 1000);
-          let queryParams = {
+          const queryParams = {
             metrics: ["tserver_rpcs_per_sec_by_universe"],
             start: startTime,
             end: endTime

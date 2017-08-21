@@ -101,19 +101,18 @@ export default function(state = INITIAL_STATE, action) {
 
     // Universe I/O Metrics Operations
     case SET_UNIVERSE_METRICS:
-      let currentUniverseList = _.clone(state.universeList.data, true);
+      const currentUniverseList = _.clone(state.universeList.data, true);
       if (isNonEmptyObject(action.payload.data.tserver_rpcs_per_sec_by_universe)) {
-        var universeReadWriteMetricList = action.payload.data.tserver_rpcs_per_sec_by_universe.data;
+        const universeReadWriteMetricList = action.payload.data.tserver_rpcs_per_sec_by_universe.data;
         isNonEmptyArray(universeReadWriteMetricList) &&
         universeReadWriteMetricList.forEach(function(metricData){
-          for(var counter = 0; counter < currentUniverseList.length; counter++) {
+          for(let counter = 0; counter < currentUniverseList.length; counter++) {
             if (currentUniverseList[counter].universeDetails.nodePrefix === metricData.name) {
               if (metricData.labels["type"] === "rpc_TabletServerService_Read.num") {
                 currentUniverseList[counter]["readData"] = metricData;
               } else if (metricData.labels["type"] === "rpc_TabletServerService_Write.num") {
                 currentUniverseList[counter]["writeData"] = metricData;
               }
-
             }
           }
         });

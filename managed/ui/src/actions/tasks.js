@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
 import axios from 'axios';
-import { ROOT_URL } from '../config';
 import {getCustomerEndpoint} from './common';
 export const FETCH_TASK_PROGRESS = 'FETCH_TASK_PROGRESS';
 export const FETCH_TASK_PROGRESS_RESPONSE = 'FETCH_TASK_PROGRESS_RESPONSE';
@@ -15,7 +14,6 @@ export const FETCH_FAILED_TASK_DETAIL = 'FETCH_TASK_DETAIL';
 export const FETCH_FAILED_TASK_DETAIL_RESPONSE = 'FETCH_TASK_DETAIL_RESPONSE';
 
 export function fetchTaskProgress(taskUUID) {
-  const customerUUID = localStorage.getItem("customer_id");
   const request =
     axios.get(`${getCustomerEndpoint()}/tasks/${taskUUID}`);
   return {
@@ -66,17 +64,16 @@ export function resetCustomerTasks() {
 }
 
 export function fetchFailedSubTasks(taskUUID) {
-  var customerUUID = localStorage.getItem("customer_id");
   const request = axios.get(`${getCustomerEndpoint()}/tasks/${taskUUID}/failed`);
   return {
     type: FETCH_FAILED_TASK_DETAIL,
     payload: request
-  }
+  };
 }
 
 export function fetchFailedSubTasksResponse(response) {
   return {
     type: FETCH_FAILED_TASK_DETAIL_RESPONSE,
     payload: response.payload
-  }
+  };
 }

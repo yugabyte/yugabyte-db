@@ -15,6 +15,6 @@ export function getProviderEndpoint(providerUUID) {
 }
 
 export function getCustomerEndpoint() {
-  var customerUUID = localStorage.getItem("customer_id");
+  const customerUUID = localStorage.getItem("customer_id");
   return `${ROOT_URL}/customers/${customerUUID}`;
 }
