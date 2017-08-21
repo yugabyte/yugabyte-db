@@ -16,6 +16,7 @@ import com.yugabyte.yw.models.Universe;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Singleton
@@ -73,10 +74,14 @@ public class TableManager extends DevopsBase {
     commandArgs.add("--s3bucket");
     commandArgs.add(taskParams.s3Bucket);
 
+    // Grab necessary environment variables
+    Map<String, String> extraVars = region.provider.getConfig();
+    extraVars.put("AWS_DEFAULT_REGION", region.code);
+
     // Execute bulk import command (only valid for AWS right now)
     // TODO: move to opscli
 
     LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
-    return shellProcessHandler.run(commandArgs, new HashMap<>());
+    return shellProcessHandler.run(commandArgs, extraVars);
   }
 }
