@@ -30,9 +30,9 @@ export default class UniverseTable extends Component {
       return <h5>No universes defined.</h5>;
     }
     const universeRowItem = universeList.data.sort((a, b) => {
-      return Date.parse(a.creationDate) < Date.parse(b.creationDate)
+      return Date.parse(a.creationDate) < Date.parse(b.creationDate);
     }).map(function (item, idx) {
-      var universeTaskUUIDs = [];
+      let universeTaskUUIDs = [];
       if (isNonEmptyArray(tasks.customerTaskList)) {
         universeTaskUUIDs = tasks.customerTaskList.map(function(taskItem){
           if (taskItem.universeUUID === item.universeUUID) {
@@ -42,7 +42,7 @@ export default class UniverseTable extends Component {
           }
         }).filter(Boolean).sort(function(a, b){
           return a.data.createTime < b.data.createTime;
-        })
+        });
       }
       return (
         <YBUniverseItem {...self.props} key={idx} universe={item} idx={idx}
@@ -92,9 +92,9 @@ class YBUniverseItem extends Component {
 class CellLocationPanel extends Component {
   render() {
     const {universe, universe: {universeDetails: {userIntent}}} = this.props;
-    let regionList = universe.regions && universe.regions.map(function(regionItem, idx){
-      return <span key={idx}>{regionItem.name}</span>
-    })
+    const regionList = universe.regions && universe.regions.map(function(regionItem, idx){
+      return <span key={idx}>{regionItem.name}</span>;
+    });
     return (
       <div >
         <Row className={"cell-position-detail"}>
@@ -120,16 +120,16 @@ class CellResourcesPanel extends Component {
     let averageReadRate = Number(0).toFixed(2);
     let averageWriteRate = Number(0).toFixed(2);
     if (isNonEmptyObject(readData)) {
-      let readMetricArray = readData.y;
-      let sum = readMetricArray.reduce(function (a, b) {
+      const readMetricArray = readData.y;
+      const sum = readMetricArray.reduce(function (a, b) {
         return parseFloat(a) + parseFloat(b);
       });
       averageReadRate = (sum / readMetricArray.length).toFixed(2);
     }
 
     if (isNonEmptyObject(writeData)) {
-      let writeMetricArray = writeData.y;
-      let sum = writeMetricArray.reduce(function (a, b) {
+      const writeMetricArray = writeData.y;
+      const sum = writeMetricArray.reduce(function (a, b) {
         return parseFloat(a) + parseFloat(b);
       });
       averageWriteRate = (sum / writeMetricArray.length).toFixed(2);
@@ -170,6 +170,6 @@ class CellResourcesPanel extends Component {
           /month
         </Col>
       </Row>
-    )
+    );
   }
 }

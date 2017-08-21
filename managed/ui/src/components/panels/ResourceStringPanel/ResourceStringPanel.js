@@ -8,13 +8,6 @@ export default class ResourceStringPanel extends Component {
     const { universeInfo } = this.props;
     const { universeDetails } = universeInfo;
     const { userIntent } = universeDetails;
-    const azString = universeInfo.universeDetails.placementInfo.cloudList.map(function(cloudItem, idx){
-      return cloudItem.regionList.map(function(regionItem, regionIdx){
-        return regionItem.azList.map(function(azItem, azIdx){
-          return azItem.name;
-        }).join(", ");
-      }).join(", ");
-    }).join(", ");
     const regionList = universeInfo.regions && universeInfo.regions.map(function(region) { return region.name; }).join(", ");
     const connectStringPanelItems = [
       {name: "Provider", data: universeInfo.provider && universeInfo.provider.name},

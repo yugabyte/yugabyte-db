@@ -6,9 +6,8 @@ import './stylesheets/StepProgressBar.scss';
 export default class StepProgressBar extends Component {
   render() {
     const { details: { taskDetails } } = this.props.progressData;
-
-    var taskClassName = "";
-    var getTaskClass = function(type) {
+    let taskClassName = "";
+    const getTaskClass = function(type) {
       if ( type === "Initializing" || type === "Unknown") {
         return "pending";
       } else if ( type === "Success" ) {
@@ -16,7 +15,7 @@ export default class StepProgressBar extends Component {
       } else if ( type === "Running" ) {
         return "running";
       } else if (type === "Failure") {
-        return "failed"
+        return "failed";
       }
       return null;
     };

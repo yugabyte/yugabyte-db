@@ -28,21 +28,21 @@ export default class UniverseRegionMarkerLayer extends Component {
     const markerDataArray = [];
     cloudList.forEach(function(cloudItem){
       cloudItem.regionList.forEach(function(regionItem, regionIdx){
-
-        let regionMarkerIcon = divIcon({className: 'universe-region-marker'});
-        let currentRegion = self.getCurrentRegion(regionItem.uuid);
-        let regionLatLong = [currentRegion.latitude, currentRegion.longitude];
-        let azPoints = getPointsOnCircle(regionItem.azList.length, regionLatLong, 1);
-
+        const regionMarkerIcon = divIcon({className: 'universe-region-marker'});
+        const currentRegion = self.getCurrentRegion(regionItem.uuid);
+        const regionLatLong = [currentRegion.latitude, currentRegion.longitude];
+        const azPoints = getPointsOnCircle(regionItem.azList.length, regionLatLong, 1);
         azPoints.forEach(function(azPoint){
           azMarkerPoints.push(azPoint);
         });
         azPoints.forEach(function(azItem, azIdx){
-          let label = <span>
-                        <div>Region: {regionItem.name}</div>
-                        <div>Availability Zone: {regionItem.azList[azIdx].name}</div>
-                        <div>Nodes: {regionItem.azList[azIdx].numNodesInAZ}</div>
-                      </span>;
+          const label = (
+            <span>
+              <div>Region: {regionItem.name}</div>
+              <div>Availability Zone: {regionItem.azList[azIdx].name}</div>
+              <div>Nodes: {regionItem.azList[azIdx].numNodesInAZ}</div>
+            </span>
+          );
           markerDataArray.push(
             <MapMarker key={"az-marker-" + regionIdx + azIdx} type="AZMarker" latitude={azItem[0]} longitude={azItem[1]} label={label} labelType={"tooltip"}/>
           );

@@ -8,7 +8,7 @@ const Plotly = require('plotly.js/lib/core');
 export default class UniverseReadWriteMetrics extends Component {
   componentWillReceiveProps(nextProps) {
     const {readData, writeData, graphIndex} = nextProps;
-    let data = this.preparePlotlyData([
+    const data = this.preparePlotlyData([
       {
         data: readData,
         color: '#4477dd',
@@ -24,9 +24,8 @@ export default class UniverseReadWriteMetrics extends Component {
           if (parseFloat(value) > max) max = value;
         });
       });
-
       max = Math.round(max * 10) / 10;
-      let layout = {
+      const layout = {
         margin: {l: 42, r: 0, t: 5, b: 8, pad: 0, autoexpand: false},
         xaxis: {
           showline: false, showgrid: false, zeroline: false, title: "Last 1 Hour", titlefont: {
@@ -52,15 +51,15 @@ export default class UniverseReadWriteMetrics extends Component {
         width: 140,
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: 'rgba(0,0,0,0)'
-      }
-       Plotly.newPlot(`lineGraph${graphIndex}`, data, layout, {displayModeBar: false});
-      }
+      };
+      Plotly.newPlot(`lineGraph${graphIndex}`, data, layout, {displayModeBar: false});
     }
+  }
 
   preparePlotlyData(lines) {
-    let data = [];
+    const data = [];
     lines.forEach(function (line, index) {
-      let plotName = index === 0 ? "Read" : "Write";
+      const plotName = index === 0 ? "Read" : "Write";
       if (isValidObject(line.data)) {
         data.push({
           x: line.data.x,
