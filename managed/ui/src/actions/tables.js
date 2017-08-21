@@ -2,6 +2,8 @@
 
 import axios from 'axios';
 import { ROOT_URL } from '../config';
+import { getCustomerEndpoint } from "./common";
+
 export const FETCH_TABLES_LIST = 'FETCH_TABLES_LIST';
 export const FETCH_TABLES_LIST_SUCCESS = 'FETCH_TABLES_LIST_SUCCESS';
 export const FETCH_TABLES_LIST_FAILURE = 'FETCH_TABLES_LIST_FAILURE';
@@ -19,6 +21,8 @@ export const FETCH_COLUMN_TYPES_FAILURE = 'FETCH_COLUMN_TYPES_FAILURE';
 export const TOGGLE_TABLE_VIEW = 'TOGGLE_TABLE_VIEW';
 export const BULK_IMPORT = 'BULK_IMPORT';
 export const BULK_IMPORT_RESPONSE = 'BULK_IMPORT_RESPONSE';
+export const DROP_TABLE = 'DROP_TABLE';
+export const DROP_TABLE_RESPONSE = 'DROP_TABLE_RESPONSE';
 
 export function fetchUniverseTables(universeUUID) {
   const customerId = localStorage.getItem("customer_id");
@@ -151,6 +155,22 @@ export function bulkImport(universeUUID, tableUUID, formValues) {
 export function bulkImportResponse(response) {
   return {
     type: BULK_IMPORT_RESPONSE,
+    payload: response
+  };
+}
+
+export function dropTable(universeUUID, tableUUID) {
+  const baseUrl = getCustomerEndpoint();
+  const request = axios.delete(`${baseUrl}/universes/${universeUUID}/tables/${tableUUID}`);
+  return {
+    type: DROP_TABLE,
+    payload: request
+  };
+}
+
+export function dropTableResponse(response) {
+  return {
+    type: DROP_TABLE_RESPONSE,
     payload: response
   };
 }
