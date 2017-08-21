@@ -45,21 +45,20 @@ disk_iops:
         "iostat_write_count": "Writes"
         "iostat_read_count": "Reads"
 
-disk_iops_by_universe:
-  metric: "collectd_yb_system_counter_total"
+tserver_rpcs_per_sec_by_universe:
+  metric: "collectd_yb_tserver_counter_total"
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "iostat_write_count|iostat_read_count"
-  group_by: "type, node_prefix, exported_instance"
+    type: "rpc_TabletServerService_Write.num|rpc_TabletServerService_Read.num"
+  group_by: "type, node_prefix"
   layout:
-    title: "Disk IOPS / Node"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "iostat_write_count": "Writes"
-        "iostat_read_count": "Reads"
+        "rpc_TabletServerService_Write.num": "Write"
+        "rpc_TabletServerService_Read.num": "Read"
 
 memory_usage:
   metric: "collectd_memory"

@@ -14,6 +14,8 @@ import { fetchColumnTypes, fetchColumnTypesSuccess, fetchColumnTypesFailure }
   from '../../actions/tables';
 import { fetchSoftwareVersions, fetchSoftwareVersionsSuccess, fetchSoftwareVersionsFailure }
   from 'actions/customers';
+import {setUniverseMetrics} from '../../actions/universe';
+import { queryMetrics } from '../../actions/graph';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -50,6 +52,19 @@ const mapDispatchToProps = (dispatch) => {
     fetchUniverseList: () => {
       dispatch(fetchUniverseList())
         .then((response) => {
+          const startTime  = Math.floor(Date.now() / 1000) - (12 * 60 * 60 );
+          const endTime = Math.floor(Date.now() / 1000);
+          let queryParams = {
+            metrics: ["tserver_rpcs_per_sec_by_universe"],
+            start: startTime,
+            end: endTime
+          };
+          dispatch(queryMetrics(queryParams))
+            .then((response) => {
+              if (response.payload.status === 200) {
+                dispatch(setUniverseMetrics(response.payload));
+              }
+            });
           dispatch(fetchUniverseListResponse(response.payload));
         });
     },

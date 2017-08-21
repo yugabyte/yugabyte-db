@@ -5,7 +5,7 @@ import { Row, Col, ListGroup, ListGroupItem } from 'react-bootstrap';
 import { Link } from 'react-router';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { isObject } from 'lodash';
-import { isValidObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
+import { isNonEmptyArray, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import './UniverseTable.scss';
 import {UniverseReadWriteMetrics} from '../../metrics';
 import {YBCost} from '../../common/descriptors';
@@ -17,7 +17,6 @@ export default class UniverseTable extends Component {
   componentWillMount() {
     this.props.fetchUniverseMetadata();
     this.props.fetchUniverseTasks();
-    this.props.universeReadWriteData();
   }
 
   componentWillUnmount() {
@@ -27,32 +26,29 @@ export default class UniverseTable extends Component {
   render() {
     const self = this;
     const { universe: { universeList }, universeReadWriteData, tasks } = this.props;
-
     if (!isObject(universeList) || !isNonEmptyArray(universeList.data)) {
       return <h5>No universes defined.</h5>;
     }
-
-    const universeRowItem =
-      universeList.data.sort((a, b) => {
-        return Date.parse(a.creationDate) < Date.parse(b.creationDate);
-      }).map(function (item, idx) {
-        let universeTaskUUIDs = [];
-        if (isNonEmptyArray(tasks.customerTaskList)) {
-          universeTaskUUIDs = tasks.customerTaskList.map(function(taskItem){
-            if (taskItem.universeUUID === item.universeUUID) {
-              return {"id": taskItem.id, "data": taskItem, "universe": item.universeUUID};
-            } else {
-              return null;
-            }
-          }).filter(Boolean).sort(function(a, b){
-            return a.data.createTime < b.data.createTime;
-          });
-        }
-        return (
-          <YBUniverseItem {...self.props} key={idx} universe={item} idx={idx}
-                          taskId={universeTaskUUIDs} universeReadWriteData={universeReadWriteData} />
-        );
-      });
+    const universeRowItem = universeList.data.sort((a, b) => {
+      return Date.parse(a.creationDate) < Date.parse(b.creationDate)
+    }).map(function (item, idx) {
+      var universeTaskUUIDs = [];
+      if (isNonEmptyArray(tasks.customerTaskList)) {
+        universeTaskUUIDs = tasks.customerTaskList.map(function(taskItem){
+          if (taskItem.universeUUID === item.universeUUID) {
+            return {"id": taskItem.id, "data": taskItem, "universe": item.universeUUID};
+          } else {
+            return null;
+          }
+        }).filter(Boolean).sort(function(a, b){
+          return a.data.createTime < b.data.createTime;
+        })
+      }
+      return (
+        <YBUniverseItem {...self.props} key={idx} universe={item} idx={idx}
+                        taskId={universeTaskUUIDs} universeReadWriteData={universeReadWriteData} />
+      );
+    });
     return (
       <ListGroup>
         {universeRowItem}
@@ -67,18 +63,18 @@ class YBUniverseItem extends Component {
     return (
       <div className={"universe-list-item"}>
         <ListGroupItem >
-          <Row>
-            <Col sm={4}>
+          <Row className={"universe-list-item-name-status"}>
+            <Col sm={6}>
               <Link to={`/universes/${universe.universeUUID}`}><div className={"universe-name-cell"}>{universe.name}</div></Link>
             </Col>
             <Col sm={2} className="universe-create-date-container">
               <div >Created: {moment(universe.creationDate).format("MM/DD/YYYY, hh:mm a")}</div>
             </Col>
-            <Col sm={6} className={"list-universe-status-container"}>
+            <Col sm={4} className={"list-universe-status-container"}>
               <UniverseStatusContainer currentUniverse={universe} showLabelText={true}/>
             </Col>
           </Row>
-          <Row className={"universe-list-detail-item"}>
+          <Row className={"universe-list-item-detail"}>
             <Col sm={7}>
               <CellLocationPanel {...this.props}/>
             </Col>
@@ -96,10 +92,9 @@ class YBUniverseItem extends Component {
 class CellLocationPanel extends Component {
   render() {
     const {universe, universe: {universeDetails: {userIntent}}} = this.props;
-
-    var regionList = universe.regions && universe.regions.map(function(regionItem, idx){
-                       return regionItem.name
-                     }).join(", ");
+    let regionList = universe.regions && universe.regions.map(function(regionItem, idx){
+      return <span key={idx}>{regionItem.name}</span>
+    })
     return (
       <div >
         <Row className={"cell-position-detail"}>
@@ -120,54 +115,61 @@ class CellLocationPanel extends Component {
 class CellResourcesPanel extends Component {
 
   render() {
-    const {universe: {universeUUID, pricePerHour, iostat_read_count, iostat_write_count}} = this.props;
-    let averageReadRate = 0;
-    let averageWriteRate = 0;
 
-    if (isValidObject(iostat_read_count)) {
-      const readMetricArray = iostat_read_count.y;
-      const sum = readMetricArray.reduce(function (a, b) {
+    const {universe: {universeUUID, pricePerHour, readData, writeData}} = this.props;
+    let averageReadRate = Number(0).toFixed(2);
+    let averageWriteRate = Number(0).toFixed(2);
+    if (isNonEmptyObject(readData)) {
+      let readMetricArray = readData.y;
+      let sum = readMetricArray.reduce(function (a, b) {
         return parseFloat(a) + parseFloat(b);
       });
       averageReadRate = (sum / readMetricArray.length).toFixed(2);
     }
-    if (isValidObject(iostat_write_count)) {
-      const writeMetricArray = iostat_write_count.y;
-      const sum = writeMetricArray.reduce(function (a, b) {
+
+    if (isNonEmptyObject(writeData)) {
+      let writeMetricArray = writeData.y;
+      let sum = writeMetricArray.reduce(function (a, b) {
         return parseFloat(a) + parseFloat(b);
       });
       averageWriteRate = (sum / writeMetricArray.length).toFixed(2);
     }
 
     return (
-      <div>
-        <Col sm={4}>
-          <div className={"cell-cost-item"}>
-            <YBCost value={pricePerHour} multiplier={"month"}/>
+      <Row>
+        <Col md={5}>
+          <div className="cell-chart-container">
+            <UniverseReadWriteMetrics {...this.props} graphIndex={`${universeUUID}-read`} readData={readData} writeData={writeData}/>
           </div>
-          Monthly Cost
         </Col>
-        <Col sm={8}>
-          <Row>
-            <Row>
-              <Col sm={6} className={"cell-bold-label"}>
-                Read <span className="cell-bold-letters">{averageReadRate}</span>
-              </Col>
-              <Col sm={6} className={"cell-chart-container"}>
-                <UniverseReadWriteMetrics {...this.props} graphIndex={`${universeUUID}-read`} type={"read"} />
-              </Col>
-            </Row>
-            <Row >
-              <Col sm={6} className={"cell-bold-label"}>
-                Write <span className="cell-bold-letters">{averageWriteRate}</span>
-              </Col>
-              <Col sm={6} className={"cell-chart-container"}>
-                <UniverseReadWriteMetrics {...this.props} graphIndex={`${universeUUID}-write`} type={"write"}/>
-              </Col>
-            </Row>
-          </Row>
+        <Col md={4} className="cell-read-write">
+          <div className="cell-read-write-row">
+            <span className="legend-square read-color" />
+            <span className="metric-label-type">Read </span>
+            <span className="label-type-identifier">ops/sec</span>
+            <span className="cell-read-write-value">
+              {averageReadRate}
+              <span className="metric-value-label">&nbsp;avg</span>
+            </span>
+          </div>
+          <div className="cell-read-write-row">
+            <span className="legend-square write-color" />
+            <span className="metric-label-type">Write </span>
+            <span className="label-type-identifier">ops/sec</span>
+            <span className="cell-read-write-value">
+              {averageWriteRate}
+              <span className="metric-value-label">&nbsp;avg</span>
+            </span>
+          </div>
         </Col>
-      </div>
-    );
+
+        <Col md={3} className="cell-cost">
+          <div className="cell-cost-value">
+            <YBCost value={pricePerHour} multiplier="month"/>
+          </div>
+          /month
+        </Col>
+      </Row>
+    )
   }
 }

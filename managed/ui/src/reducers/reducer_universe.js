@@ -12,7 +12,7 @@ import { FETCH_UNIVERSE_INFO, RESET_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_RESPONSE,
 } from '../actions/universe';
 import _ from 'lodash';
 import { getInitialState, setLoadingState, setPromiseResponse, setSuccessState } from 'utils/PromiseUtils.js';
-import { isNonEmptyArray } from 'utils/ObjectUtils.js';
+import { isNonEmptyArray, isNonEmptyObject } from 'utils/ObjectUtils.js';
 
 const INITIAL_STATE = {
   currentUniverse: getInitialState({}),
@@ -101,18 +101,25 @@ export default function(state = INITIAL_STATE, action) {
 
     // Universe I/O Metrics Operations
     case SET_UNIVERSE_METRICS:
-      const currentUniverseList = _.clone(state.universeList);
-      const universeReadWriteMetricList = action.payload.data.disk_iops_by_universe.data;
-      if (isNonEmptyArray(universeReadWriteMetricList)) {
-        universeReadWriteMetricList.forEach(function(metricData, metricIdx) {
-          for (let counter = 0; counter < currentUniverseList.data.length; counter++) {
-            if (currentUniverseList.data[counter].universeDetails.nodePrefix === metricData.name) {
-              currentUniverseList.data[counter][metricData.labels["type"]] = metricData;
+      let currentUniverseList = _.clone(state.universeList.data, true);
+      if (isNonEmptyObject(action.payload.data.tserver_rpcs_per_sec_by_universe)) {
+        var universeReadWriteMetricList = action.payload.data.tserver_rpcs_per_sec_by_universe.data;
+        isNonEmptyArray(universeReadWriteMetricList) &&
+        universeReadWriteMetricList.forEach(function(metricData){
+          for(var counter = 0; counter < currentUniverseList.length; counter++) {
+            if (currentUniverseList[counter].universeDetails.nodePrefix === metricData.name) {
+              if (metricData.labels["type"] === "rpc_TabletServerService_Read.num") {
+                currentUniverseList[counter]["readData"] = metricData;
+              } else if (metricData.labels["type"] === "rpc_TabletServerService_Write.num") {
+                currentUniverseList[counter]["writeData"] = metricData;
+              }
+
             }
           }
         });
       }
-      return {...state, universeList: currentUniverseList};
+      return setSuccessState(state, "universeList", currentUniverseList);
+
     case SET_PLACEMENT_STATUS:
       return {...state, currentPlacementStatus: action.payload};
     case RESET_UNIVERSE_CONFIGURATION:

@@ -9,7 +9,7 @@
   padding: 8px 0;
 }
 
-.universe-list-detail-item {
+.universe-list-item-detail {
   background-color: rgba(211,211,211, 0.3);
   padding: 0;
   margin: 0;
@@ -21,7 +21,7 @@
   line-height: 1.3;
 }
 
-.universe-list-item .row {
+.universe-list-item-name-status {
   margin-left: 0;
   margin-right: 0;
 }
@@ -49,21 +49,15 @@
   font-size: 14px;
 }
 
-.cell-bold-letters {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.cell-bold-label {
-  padding: 4px 0 0 0;
-
-}
-
 .chartjs-hidden-iframe {
   overflow: visible !important;
 }
 
-.cell-cost-item {
+.cell-cost {
+  text-align: right;
+}
+
+.cell-cost-value {
   padding-top: 6px;
   font-size: 18px;
   font-weight: 600;
@@ -176,6 +170,55 @@
 
 .status-pending {
   float: right;
+}
+
+.cell-chart-container {
+  padding: 1px 0;
+}
+
+.cell-read-write {
+  padding-top: 4px;
+}
+.cell-read-write-row {
+  margin: 5px 0;
+  white-space: nowrap;
+}
+
+.cell-read-write-value {
+  position: relative;
+  float: right;
+  top: -2px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.legend-square {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+}
+
+.read-color {
+  background-color: #4477dd;
+}
+.write-color {
+  background-color: #cd6500;
+}
+
+.metric-label-type {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.label-type-identifier {
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.metric-value-label {
+  font-size: 10px;
+  font-weight: 400;
 }
 
 .universe-create-date-container {
