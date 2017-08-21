@@ -7,42 +7,74 @@ const Plotly = require('plotly.js/lib/core');
 
 export default class UniverseReadWriteMetrics extends Component {
   componentWillReceiveProps(nextProps) {
-    const {universe: {iostat_read_count, iostat_write_count}, graphIndex, type} = nextProps;
-    let metricData = [];
-    if (isValidObject(iostat_read_count)) {
-      if (type === "read") {
-        metricData = iostat_read_count;
-      } else {
-        metricData = iostat_write_count;
+    const {readData, writeData, graphIndex} = nextProps;
+    let data = this.preparePlotlyData([
+      {
+        data: readData,
+        color: '#4477dd',
+      }, {
+        data: writeData,
+        color: '#cd6500',
       }
-      if (isValidObject(metricData)) {
-        const layout = {
-          margin: {l: 0, r: 0, t: 0, b: 0, pad: 0, autoexpand: false},
-          xaxis: {showline: false, showgrid: false, zeroline: false},
-          yaxis: {showline: false, showgrid: false, zeroline: false},
-          showlegend: false,
-          autosize: false,
-          height: 30,
-          width: 100,
-          paper_bgcolor: 'rgba(0,0,0,0)',
-          plot_bgcolor: 'rgba(0,0,0,0)'
-        };
-        const metricXData = metricData.x;
-        const metricYData = metricData.y;
-        const data = [
-          {
-            x: metricXData,
-            y: metricYData,
-            mode: 'lines',
-            line: {
-              color: '#CD6500',
-              width: 2
-            }
+    ]);
+    if (data.length) {
+      let max = 0.01;
+      data.forEach(function(series) {
+        series.y.forEach(function (value) {
+          if (parseFloat(value) > max) max = value;
+        });
+      });
+
+      max = Math.round(max * 10) / 10;
+      let layout = {
+        margin: {l: 42, r: 0, t: 5, b: 8, pad: 0, autoexpand: false},
+        xaxis: {
+          showline: false, showgrid: false, zeroline: false, title: "Last 1 Hour", titlefont: {
+            size: 8,
+            color: '#7f7f7f'
           }
-        ];
-        Plotly.newPlot(`lineGraph${graphIndex}`, data, layout, {displayModeBar: false});
+        },
+        yaxis: {
+          tickvals: [0, max],
+          range: [0, max * 1.1],
+          gridwidth: 1,
+          gridcolor: '#aaa7a3',
+          showgrid: true,
+          tickfont: {
+            family: 'Helvetica Neue, Helvetica, Roboto, Arial, Droid Sans, sans-serif',
+            size: 9,
+            color: '#777573'
+          },
+        },
+        showlegend: false,
+        autosize: false,
+        height: 50,
+        width: 140,
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        plot_bgcolor: 'rgba(0,0,0,0)'
+      }
+       Plotly.newPlot(`lineGraph${graphIndex}`, data, layout, {displayModeBar: false});
       }
     }
+
+  preparePlotlyData(lines) {
+    let data = [];
+    lines.forEach(function (line, index) {
+      let plotName = index === 0 ? "Read" : "Write";
+      if (isValidObject(line.data)) {
+        data.push({
+          x: line.data.x,
+          y: line.data.y,
+          mode: 'lines',
+          line: {
+            color: line.color,
+            width: 2,
+          },
+          name: plotName
+        });
+      }
+    });
+    return data;
   }
 
   render() {
