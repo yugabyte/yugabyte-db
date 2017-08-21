@@ -36,6 +36,8 @@ import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
 
+import static com.yugabyte.yw.common.PlacementInfoUtil.updatePlacementInfo;
+
 
 public class UniverseController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(UniverseController.class);
@@ -128,6 +130,7 @@ public class UniverseController extends AuthenticatedController {
       Provider provider = Provider.find.byId(UUID.fromString(taskParams.userIntent.provider));
       String providerCode = provider.code;
       taskParams.userIntent.providerType = CloudType.valueOf(providerCode);
+      updatePlacementInfo(taskParams.nodeDetailsSet, taskParams.placementInfo);
       // Create a new universe. This makes sure that a universe of this name does not already exist
       // for this customer id.
       Universe universe = Universe.create(taskParams.userIntent.universeName,
@@ -192,6 +195,7 @@ public class UniverseController extends AuthenticatedController {
       // Get the universe. This makes sure that a universe of this name does exist
       // for this customer id.
       Universe universe = Universe.get(universeUUID);
+      updatePlacementInfo(taskParams.nodeDetailsSet, taskParams.placementInfo);
       LOG.info("Found universe {} : name={} at version={}.",
                universe.universeUUID, universe.name, universe.version);
       UUID taskUUID = commissioner.submit(TaskType.EditUniverse, taskParams);
