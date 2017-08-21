@@ -20,6 +20,7 @@ import org.mockito.runners.MockitoJUnitRunner;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static com.yugabyte.yw.common.TableManager.BULK_LOAD_SCRIPT;
@@ -141,9 +142,12 @@ public class TableManagerTest extends FakeDBApplication {
         ApiUtils.mockUniverseUpdater(uniTaskParams.userIntent, uniTaskParams.nodePrefix));
 
     List<String> expectedCommand = getExpectedCommmand(bulkImportParams, uniTaskParams);
+    Map<String, String> expectedEnvVars = testProvider.getConfig();
+    expectedEnvVars.put("AWS_DEFAULT_REGION",
+        Region.get(uniTaskParams.userIntent.regionList.get(0)).code);
 
     tableManager.tableCommand(bulkImportParams);
-    verify(shellProcessHandler, times(1)).run(expectedCommand, new HashMap<>());
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
   }
 
   @Test
@@ -157,8 +161,11 @@ public class TableManagerTest extends FakeDBApplication {
         ApiUtils.mockUniverseUpdater(uniTaskParams.userIntent, uniTaskParams.nodePrefix));
 
     List<String> expectedCommand = getExpectedCommmand(bulkImportParams, uniTaskParams);
+    Map<String, String> expectedEnvVars = testProvider.getConfig();
+    expectedEnvVars.put("AWS_DEFAULT_REGION",
+        Region.get(uniTaskParams.userIntent.regionList.get(0)).code);
 
     tableManager.tableCommand(bulkImportParams);
-    verify(shellProcessHandler, times(1)).run(expectedCommand, new HashMap<>());
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
   }
 }
