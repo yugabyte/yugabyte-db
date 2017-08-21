@@ -321,23 +321,25 @@ public class PlacementInfoUtil {
 
   public static void updatePlacementInfo(Collection<NodeDetails> nodes,
                                          PlacementInfo placementInfo) {
-    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodes);
-    for (int cIdx = 0; cIdx < placementInfo.cloudList.size(); cIdx++) {
-      PlacementCloud cloud = placementInfo.cloudList.get(cIdx);
-      for (int rIdx = 0; rIdx < cloud.regionList.size(); rIdx++) {
-        PlacementRegion region = cloud.regionList.get(rIdx);
-        for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
-          PlacementAZ az = region.azList.get(azIdx);
-          if (azUuidToNumNodes.get(az.uuid) != null) {
-            az.numNodesInAZ = azUuidToNumNodes.get(az.uuid);
-          } else {
-            region.azList.remove(az);
-            azIdx --;
+    if (nodes != null && placementInfo != null) {
+      Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodes);
+      for (int cIdx = 0; cIdx < placementInfo.cloudList.size(); cIdx++) {
+        PlacementCloud cloud = placementInfo.cloudList.get(cIdx);
+        for (int rIdx = 0; rIdx < cloud.regionList.size(); rIdx++) {
+          PlacementRegion region = cloud.regionList.get(rIdx);
+          for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
+            PlacementAZ az = region.azList.get(azIdx);
+            if (azUuidToNumNodes.get(az.uuid) != null) {
+              az.numNodesInAZ = azUuidToNumNodes.get(az.uuid);
+            } else {
+              region.azList.remove(az);
+              azIdx--;
+            }
           }
-        }
-        if (region.azList.isEmpty()) {
-          cloud.regionList.remove(region);
-          rIdx --;
+          if (region.azList.isEmpty()) {
+            cloud.regionList.remove(region);
+            rIdx--;
+          }
         }
       }
     }
