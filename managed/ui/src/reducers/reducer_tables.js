@@ -3,7 +3,7 @@
 import { FETCH_TABLES_LIST, FETCH_TABLES_LIST_SUCCESS, FETCH_TABLES_LIST_FAILURE, RESET_TABLES_LIST,
   FETCH_TABLE_DETAIL, FETCH_TABLE_DETAIL_SUCCESS, FETCH_TABLE_DETAIL_FAILURE, RESET_TABLE_DETAIL,
   FETCH_COLUMN_TYPES, FETCH_COLUMN_TYPES_SUCCESS, FETCH_COLUMN_TYPES_FAILURE, TOGGLE_TABLE_VIEW,
-  BULK_IMPORT, BULK_IMPORT_RESPONSE
+  BULK_IMPORT, BULK_IMPORT_RESPONSE, DROP_TABLE, DROP_TABLE_RESPONSE
 } from '../actions/tables';
 import { getInitialState, setLoadingState, setPromiseResponse } from '../utils/PromiseUtils';
 
@@ -12,7 +12,8 @@ const INITIAL_STATE = {
   currentTableDetail: {},
   columnDataTypes: {},
   currentTableView: 'list',
-  bulkImport: getInitialState({})
+  bulkImport: getInitialState({}),
+  dropTable: getInitialState({})
 };
 
 export default function(state = INITIAL_STATE, action) {
@@ -47,6 +48,10 @@ export default function(state = INITIAL_STATE, action) {
       return setLoadingState(state, "bulkImport", {});
     case BULK_IMPORT_RESPONSE:
       return setPromiseResponse(state, "bulkImport", action);
+    case DROP_TABLE:
+      return setLoadingState(state, "dropTable", {});
+    case DROP_TABLE_RESPONSE:
+      return setPromiseResponse(state, "dropTable", action);
     default:
       return state;
   }

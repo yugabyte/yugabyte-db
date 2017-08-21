@@ -17,6 +17,8 @@ public enum TaskType {
 
   DestroyUniverse("DestroyUniverse"),
 
+  DeleteTable("DeleteTable"),
+
   EditUniverse("EditUniverse"),
 
   ImportIntoTable("ImportIntoTable"),
@@ -43,6 +45,8 @@ public enum TaskType {
   CreateTable("subtasks.CreateTable"),
 
   DeleteNode("subtasks.DeleteNode"),
+
+  DeleteTableFromUniverse("subtasks.DeleteTableFromUniverse"),
 
   LoadBalancerStateChange("subtasks.LoadBalancerStateChange"),
 

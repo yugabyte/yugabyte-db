@@ -7,6 +7,7 @@ import java.util.UUID;
 
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
@@ -109,8 +110,67 @@ public class TablesController extends AuthenticatedController {
     return play.mvc.Results.TODO;
   }
 
-  public Result drop(UUID cUUID, UUID uniUUID, UUID tableUUID) {
-    return play.mvc.Results.TODO;
+  public Result drop(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
+    try {
+      // Validate customer UUID
+      Customer customer = Customer.get(customerUUID);
+      if (customer == null) {
+        String errMsg = "Invalid Customer UUID: " + customerUUID;
+        LOG.error(errMsg);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
+
+      // Validate universe UUID and retrieve master addresses
+      Universe universe = Universe.get(universeUUID);
+      if (universe == null) {
+        String errMsg = "Invalid Universe UUID: " + universeUUID;
+        LOG.error(errMsg);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
+      final String masterAddresses = universe.getMasterAddresses();
+      if (masterAddresses.isEmpty()) {
+        String errMsg = "Expected error. Masters are not currently queryable.";
+        LOG.warn(errMsg);
+        return ok(errMsg);
+      }
+
+      YBClient client = ybService.getClient(masterAddresses);
+      GetTableSchemaResponse schemaResponse = client.getTableSchemaByUUID(
+          tableUUID.toString().replace("-", ""));
+      if (schemaResponse == null) {
+        String errMsg = "No table for UUID: " + tableUUID;
+        LOG.error(errMsg);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
+
+      DeleteTableFromUniverse.Params taskParams = new DeleteTableFromUniverse.Params();
+      taskParams.universeUUID = universeUUID;
+      taskParams.expectedUniverseVersion = -1;
+      taskParams.tableUUID = tableUUID;
+      taskParams.tableName = schemaResponse.getTableName();
+      taskParams.keyspace = schemaResponse.getNamespace();
+      taskParams.masterAddresses = masterAddresses;
+
+      UUID taskUUID = commissioner.submit(TaskType.DeleteTable, taskParams);
+      LOG.info("Submitted delete table for {}:{}, task uuid = {}.", taskParams.tableUUID,
+          taskParams.getFullName(), taskUUID);
+
+      CustomerTask.create(customer,
+          universeUUID,
+          taskUUID,
+          CustomerTask.TargetType.Table,
+          CustomerTask.TaskType.Delete,
+          taskParams.getFullName());
+      LOG.info("Saved task uuid {} in customer tasks table for table {}:{}", taskUUID,
+          taskParams.tableUUID, taskParams.getFullName());
+
+      ObjectNode resultNode = Json.newObject();
+      resultNode.put("taskUUID", taskUUID.toString());
+      return ok(resultNode);
+    } catch (Exception e) {
+      LOG.error("Failed to get list of tables in universe " + universeUUID, e);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
   }
 
   public Result getColumnTypes() {
