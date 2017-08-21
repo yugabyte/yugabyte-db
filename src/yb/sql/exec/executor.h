@@ -36,13 +36,13 @@ class Executor {
 
   //------------------------------------------------------------------------------------------------
   // Constructor & destructor.
-  explicit Executor(const SqlMetrics* sql_metrics);
+  Executor(SqlEnv *sql_env, const SqlMetrics* sql_metrics);
   virtual ~Executor();
 
   // Execute the given parse tree.
   void ExecuteAsync(
       const std::string &sql_stmt, const ParseTree &ptree, const StatementParameters& params,
-      SqlEnv *sql_env, StatementExecutedCallback cb);
+      StatementExecutedCallback cb);
 
   // Complete execution.
   void Done();
@@ -198,6 +198,9 @@ class Executor {
       const Status &s, const ExecutedResult::SharedPtr& result);
 
   //------------------------------------------------------------------------------------------------
+  // Environment (YBClient) for executing statements.
+  SqlEnv *sql_env_;
+
   // Execution context which are created and destroyed for each execution.
   ExecContext::UniPtr exec_context_;
 

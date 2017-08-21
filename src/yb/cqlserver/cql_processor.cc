@@ -202,7 +202,7 @@ CQLResponse* CQLProcessor::ProcessAuthResponse(const AuthResponseRequest& req) {
 CQLResponse* CQLProcessor::ProcessPrepare(const PrepareRequest& req) {
   VLOG(1) << "PREPARE " << req.query();
   const CQLMessage::QueryId query_id = CQLStatement::GetQueryId(
-      sql_env_->CurrentKeyspace(), req.query());
+      sql_env_.CurrentKeyspace(), req.query());
   // To prevent multiple clients from preparing the same new statement in parallel and trying to
   // cache the same statement (a typical "login storm" scenario), each caller will try to allocate
   // the statement in the cached statement first. If it already exists, the existing one will be
@@ -210,7 +210,7 @@ CQLResponse* CQLProcessor::ProcessPrepare(const PrepareRequest& req) {
   // the actual prepare while the rest wait. As the rest do the prepare afterwards, the statement
   // is already prepared so it will be an no-op (see Statement::Prepare).
   shared_ptr<CQLStatement> stmt = service_impl_->AllocatePreparedStatement(
-      query_id, sql_env_->CurrentKeyspace(), req.query());
+      query_id, sql_env_.CurrentKeyspace(), req.query());
   PreparedResult::UniPtr result;
   const Status s = stmt->Prepare(this, service_impl_->prepared_stmts_mem_tracker(), &result);
   if (!s.ok()) {

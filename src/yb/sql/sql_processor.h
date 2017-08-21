@@ -78,17 +78,17 @@ class SqlProcessor {
  protected:
   void SetCurrentCall(rpc::InboundCallPtr call);
   //------------------------------------------------------------------------------------------------
+  // Environment (YBClient) that processor uses to execute statement.
+  SqlEnv sql_env_;
+
   // Parsing processor.
-  Parser::UniPtr parser_;
+  Parser parser_;
 
   // Semantic analysis processor.
-  Analyzer::UniPtr analyzer_;
+  Analyzer analyzer_;
 
   // Tree executor.
-  Executor::UniPtr executor_;
-
-  // Environment (YBClient) that processor uses to execute statement.
-  SqlEnv::UniPtr sql_env_;
+  Executor executor_;
 
   // SQL metrics.
   SqlMetrics* const sql_metrics_;

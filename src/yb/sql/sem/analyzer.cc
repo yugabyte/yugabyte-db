@@ -12,7 +12,7 @@ using std::string;
 
 //--------------------------------------------------------------------------------------------------
 
-Analyzer::Analyzer() {
+Analyzer::Analyzer(SqlEnv *sql_env) : sql_env_(sql_env) {
 }
 
 Analyzer::~Analyzer() {
@@ -20,15 +20,13 @@ Analyzer::~Analyzer() {
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Analyzer::Analyze(const string& sql_stmt,
-                                 ParseTree::UniPtr parse_tree,
-                                 SqlEnv *sql_env) {
+CHECKED_STATUS Analyzer::Analyze(const string& sql_stmt, ParseTree::UniPtr parse_tree) {
   ParseTree *ptree = parse_tree.get();
   DCHECK(ptree != nullptr) << "Parse tree is null";
   sem_context_ = SemContext::UniPtr(new SemContext(sql_stmt.c_str(),
                                                    sql_stmt.length(),
                                                    std::move(parse_tree),
-                                                   sql_env));
+                                                   sql_env_));
 
   if (!ptree->Analyze(sem_context_.get()).ok()) {
     // Before leaving the semantic step, collect all errors and place them in return status.

@@ -18,13 +18,12 @@ class YbSqlTestAnalyzer: public YbSqlTestBase {
 
 TEST_F(YbSqlTestAnalyzer, TestCreateTablePropertyAnalyzer) {
   CreateSimulatedCluster();
-  SqlEnv* sql_env = CreateSqlEnv();
 
   // Analyze the sql statement.
   ParseTree::UniPtr parse_tree;
   string create_stmt = "CREATE TABLE foo (c1 int, c2 int, c3 int, PRIMARY KEY (c1)) WITH "
       "default_time_to_live = 1000";
-  CHECK_OK(TestAnalyzer(sql_env, create_stmt, &parse_tree));
+  CHECK_OK(TestAnalyzer(create_stmt, &parse_tree));
 
   // Now verify the analysis was done correctly.
   TreeNode *tnode = ((parse_tree.get())->root()).get();
@@ -46,37 +45,35 @@ TEST_F(YbSqlTestAnalyzer, TestCreateTablePropertyAnalyzer) {
 
 TEST_F(YbSqlTestAnalyzer, TestCreateTableAnalyze) {
   CreateSimulatedCluster();
-  SqlEnv *sql_env = CreateSqlEnv();
 
   // Analyze the sql statement.
   ParseTree::UniPtr parse_tree;
-  ANALYZE_INVALID_STMT(sql_env, "CREATE TABLE foo (c1 int, c2 int, c3 int, PRIMARY KEY "
+  ANALYZE_INVALID_STMT("CREATE TABLE foo (c1 int, c2 int, c3 int, PRIMARY KEY "
       "(c1)) WITH default_time_to_live = 1000 AND default_time_to_live = 2000", &parse_tree);
-  ANALYZE_VALID_STMT(sql_env, "CREATE TABLE foo (c1 int, c2 int, c3 int, PRIMARY KEY "
+  ANALYZE_VALID_STMT("CREATE TABLE foo (c1 int, c2 int, c3 int, PRIMARY KEY "
       "(c1)) WITH default_time_to_live = 1000", &parse_tree);
-  ANALYZE_VALID_STMT(sql_env, "CREATE TABLE foo (c1 int, c2 int, c3 int, PRIMARY KEY "
+  ANALYZE_VALID_STMT("CREATE TABLE foo (c1 int, c2 int, c3 int, PRIMARY KEY "
       "(c1))", &parse_tree);
-  ANALYZE_INVALID_STMT(sql_env, "CREATE TABLE foo (c1 int, c2 int, c3 int, PRIMARY KEY "
+  ANALYZE_INVALID_STMT("CREATE TABLE foo (c1 int, c2 int, c3 int, PRIMARY KEY "
       "(c1)) WITH default_time_to_live = 1000.1", &parse_tree);
 }
 
 TEST_F(YbSqlTestAnalyzer, TestCreateTableWithStaticColumn) {
   CreateSimulatedCluster();
-  SqlEnv *sql_env = CreateSqlEnv();
 
   // Test static column analysis.
   ParseTree::UniPtr parse_tree;
-  ANALYZE_VALID_STMT(sql_env, "CREATE TABLE foo (h1 int, r1 int, s1 int static, "
+  ANALYZE_VALID_STMT("CREATE TABLE foo (h1 int, r1 int, s1 int static, "
                      "PRIMARY KEY ((h1), r1));", &parse_tree);
   // Invalid: hash column cannot be static.
-  ANALYZE_INVALID_STMT(sql_env, "CREATE TABLE foo (h1 int, h2 int static, r1 int, "
+  ANALYZE_INVALID_STMT("CREATE TABLE foo (h1 int, h2 int static, r1 int, "
                        "PRIMARY KEY ((h1, h2), r1));", &parse_tree);
-  ANALYZE_INVALID_STMT(sql_env, "CREATE TABLE foo (h1 int static primary key);", &parse_tree);
+  ANALYZE_INVALID_STMT("CREATE TABLE foo (h1 int static primary key);", &parse_tree);
   // Invalid: range column cannot be static.
-  ANALYZE_INVALID_STMT(sql_env, "CREATE TABLE foo (h1 int, r1 int, r2 int static, "
+  ANALYZE_INVALID_STMT("CREATE TABLE foo (h1 int, r1 int, r2 int static, "
                        "PRIMARY KEY ((h1), r1, r2));", &parse_tree);
   // Invalid: no static column for table hash key column only.
-  ANALYZE_INVALID_STMT(sql_env, "CREATE TABLE foo (h1 int, h2 int, s int static, c int, "
+  ANALYZE_INVALID_STMT("CREATE TABLE foo (h1 int, h2 int, s int static, c int, "
                        "PRIMARY KEY ((h1, h2)));", &parse_tree);
 }
 
@@ -86,36 +83,34 @@ TEST_F(YbSqlTestAnalyzer, TestDmlWithStaticColumn) {
   CHECK_OK(processor->Run("CREATE TABLE t (h1 int, h2 int, r1 int, r2 int, s1 int static, c1 int, "
                           "PRIMARY KEY ((h1, h2), r1, r2));"));
 
-  SqlEnv *sql_env = CreateSqlEnv();
   ParseTree::UniPtr parse_tree;
 
   // Test insert with hash key only.
-  ANALYZE_VALID_STMT(sql_env, "INSERT INTO t (h1, h2, s1) VALUES (1, 1, 1);", &parse_tree);
+  ANALYZE_VALID_STMT("INSERT INTO t (h1, h2, s1) VALUES (1, 1, 1);", &parse_tree);
 
   // Test update with hash key only.
-  ANALYZE_VALID_STMT(sql_env, "UPDATE t SET s1 = 1 WHERE h1 = 1 AND h2 = 1;", &parse_tree);
+  ANALYZE_VALID_STMT("UPDATE t SET s1 = 1 WHERE h1 = 1 AND h2 = 1;", &parse_tree);
 
   // TODO: Test delete with hash key only.
-  // ANALYZE_VALID_STMT(sql_env, "DELETE c1 FROM t WHERE h1 = 1 and r1 = 1;", &parse_tree);
+  // ANALYZE_VALID_STMT("DELETE c1 FROM t WHERE h1 = 1 and r1 = 1;", &parse_tree);
 
   // Test select with distinct columns.
-  ANALYZE_VALID_STMT(sql_env, "SELECT DISTINCT h1, h2, s1 FROM t;", &parse_tree);
-  ANALYZE_VALID_STMT(sql_env, "SELECT DISTINCT h1, s1 FROM t;", &parse_tree);
-  ANALYZE_VALID_STMT(sql_env, "SELECT DISTINCT s1 FROM t;", &parse_tree);
+  ANALYZE_VALID_STMT("SELECT DISTINCT h1, h2, s1 FROM t;", &parse_tree);
+  ANALYZE_VALID_STMT("SELECT DISTINCT h1, s1 FROM t;", &parse_tree);
+  ANALYZE_VALID_STMT("SELECT DISTINCT s1 FROM t;", &parse_tree);
 
   // Invalid: cannot select distinct with non hash primary-key column.
-  ANALYZE_INVALID_STMT(sql_env, "SELECT DISTINCT h1, h2, r1, s1 FROM t;", &parse_tree);
+  ANALYZE_INVALID_STMT("SELECT DISTINCT h1, h2, r1, s1 FROM t;", &parse_tree);
 
   // Invalid: cannot select distinct with non-static column.
-  ANALYZE_INVALID_STMT(sql_env, "SELECT DISTINCT h1, h2, c1 FROM t;", &parse_tree);
+  ANALYZE_INVALID_STMT("SELECT DISTINCT h1, h2, c1 FROM t;", &parse_tree);
 
   // Invalid: cannot select distinct with non hash primary-key / non-static column.
-  ANALYZE_INVALID_STMT(sql_env, "SELECT DISTINCT * FROM t;", &parse_tree);
+  ANALYZE_INVALID_STMT("SELECT DISTINCT * FROM t;", &parse_tree);
 
   // Invalid: cannot insert or update with partial range columns.
-  ANALYZE_INVALID_STMT(sql_env, "INSERT INTO t (h1, h2, r1, s1) VALUES (1, 1, 1, 1);", &parse_tree);
-  ANALYZE_INVALID_STMT(sql_env, "UPDATE t SET s1 = 1 WHERE h1 = 1 AND h2 = 1 AND r1 = 1;",
-                       &parse_tree);
+  ANALYZE_INVALID_STMT("INSERT INTO t (h1, h2, r1, s1) VALUES (1, 1, 1, 1);", &parse_tree);
+  ANALYZE_INVALID_STMT("UPDATE t SET s1 = 1 WHERE h1 = 1 AND h2 = 1 AND r1 = 1;", &parse_tree);
 }
 
 TEST_F(YbSqlTestAnalyzer, TestWhereClauseAnalyzer) {
@@ -124,12 +119,10 @@ TEST_F(YbSqlTestAnalyzer, TestWhereClauseAnalyzer) {
   CHECK_OK(processor->Run("CREATE TABLE t (h1 int, r1 varchar, c1 varchar, "
                           "PRIMARY KEY ((h1), r1));"));
 
-  SqlEnv *sql_env = CreateSqlEnv();
-
   ParseTree::UniPtr parse_tree;
   // OR and NOT logical operator are not supported yet.
-  ANALYZE_INVALID_STMT(sql_env, "SELECT * FROM t WHERE h1 = 1 AND r1 = 2 OR r2 = 3", &parse_tree);
-  ANALYZE_INVALID_STMT(sql_env, "SELECT * FROM t WHERE h1 = 1 AND NOT r1 = 2", &parse_tree);
+  ANALYZE_INVALID_STMT("SELECT * FROM t WHERE h1 = 1 AND r1 = 2 OR r2 = 3", &parse_tree);
+  ANALYZE_INVALID_STMT("SELECT * FROM t WHERE h1 = 1 AND NOT r1 = 2", &parse_tree);
 
   CHECK_OK(processor->Run("DROP TABLE t;"));
 }
@@ -140,18 +133,14 @@ TEST_F(YbSqlTestAnalyzer, TestIfClauseAnalyzer) {
   CHECK_OK(processor->Run("CREATE TABLE t (h1 int, r1 int, c1 int, "
                           "PRIMARY KEY ((h1), r1));"));
 
-  SqlEnv *sql_env = CreateSqlEnv();
-
   ParseTree::UniPtr parse_tree;
   // Valid case: if not exists or if <col> = xxx.
-  ANALYZE_VALID_STMT(sql_env, "UPDATE t SET c1 = 1 WHERE h1 = 1 AND r1 = 1 IF NOT EXISTS or c1 = 0",
+  ANALYZE_VALID_STMT("UPDATE t SET c1 = 1 WHERE h1 = 1 AND r1 = 1 IF NOT EXISTS or c1 = 0",
                      &parse_tree);
 
   // Invalid cases: primary key columns not allowed in if clause.
-  ANALYZE_INVALID_STMT(sql_env, "UPDATE t SET c1 = 1 WHERE h1 = 1 AND r1 = 1 IF h1 = 1",
-                     &parse_tree);
-  ANALYZE_INVALID_STMT(sql_env, "UPDATE t SET c1 = 1 WHERE h1 = 1 AND r1 = 1 IF r1 = 1",
-                     &parse_tree);
+  ANALYZE_INVALID_STMT("UPDATE t SET c1 = 1 WHERE h1 = 1 AND r1 = 1 IF h1 = 1", &parse_tree);
+  ANALYZE_INVALID_STMT("UPDATE t SET c1 = 1 WHERE h1 = 1 AND r1 = 1 IF r1 = 1", &parse_tree);
   CHECK_OK(processor->Run("DROP TABLE t;"));
 }
 
@@ -161,21 +150,19 @@ TEST_F(YbSqlTestAnalyzer, TestBindVariableAnalyzer) {
   CHECK_OK(processor->Run("CREATE TABLE t (h1 int, r1 varchar, c1 varchar, "
                           "PRIMARY KEY ((h1), r1));"));
 
-  SqlEnv *sql_env = CreateSqlEnv();
-
   // Analyze the sql statement.
   ParseTree::UniPtr parse_tree;
-  ANALYZE_VALID_STMT(sql_env, "SELECT * FROM t WHERE h1 = ? AND r1 = ?;", &parse_tree);
-  ANALYZE_VALID_STMT(sql_env, "UPDATE t set c1 = :1 WHERE h1 = :2 AND r1 = :3;", &parse_tree);
-  ANALYZE_VALID_STMT(sql_env, "UPDATE t set c1 = ? WHERE h1 = ? AND r1 = ?;", &parse_tree);
-  ANALYZE_VALID_STMT(sql_env, "INSERT INTO t (h1, r1, c1) VALUES (?, ?, ?);", &parse_tree);
+  ANALYZE_VALID_STMT("SELECT * FROM t WHERE h1 = ? AND r1 = ?;", &parse_tree);
+  ANALYZE_VALID_STMT("UPDATE t set c1 = :1 WHERE h1 = :2 AND r1 = :3;", &parse_tree);
+  ANALYZE_VALID_STMT("UPDATE t set c1 = ? WHERE h1 = ? AND r1 = ?;", &parse_tree);
+  ANALYZE_VALID_STMT("INSERT INTO t (h1, r1, c1) VALUES (?, ?, ?);", &parse_tree);
 
   // Bind var cannot be used in a logical boolean context.
-  ANALYZE_INVALID_STMT(sql_env, "SELECT * FROM t WHERE NOT ?", &parse_tree);
+  ANALYZE_INVALID_STMT("SELECT * FROM t WHERE NOT ?", &parse_tree);
 
   // Bind var not supported in an expression (yet).
-  ANALYZE_INVALID_STMT(sql_env, "SELECT * FROM t WHERE h1 = (- ?)", &parse_tree);
-  ANALYZE_INVALID_STMT(sql_env, "SELECT * FROM t WHERE h1 = (- :1)", &parse_tree);
+  ANALYZE_INVALID_STMT("SELECT * FROM t WHERE h1 = (- ?)", &parse_tree);
+  ANALYZE_INVALID_STMT("SELECT * FROM t WHERE h1 = (- :1)", &parse_tree);
 
   CHECK_OK(processor->Run("DROP TABLE t;"));
 }

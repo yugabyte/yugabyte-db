@@ -99,10 +99,9 @@ SqlProcessor::SqlProcessor(
     std::weak_ptr<rpc::Messenger> messenger, shared_ptr<YBClient> client,
     shared_ptr<YBMetaDataCache> cache, SqlMetrics* sql_metrics,
     cqlserver::CQLRpcServerEnv* cql_rpcserver_env)
-    : parser_(new Parser()),
-      analyzer_(new Analyzer()),
-      executor_(new Executor(sql_metrics)),
-      sql_env_(new SqlEnv(messenger, client, cache, cql_rpcserver_env)),
+    : sql_env_(messenger, client, cache, cql_rpcserver_env),
+      analyzer_(&sql_env_),
+      executor_(&sql_env_, sql_metrics),
       sql_metrics_(sql_metrics) {
 }
 
@@ -114,13 +113,13 @@ CHECKED_STATUS SqlProcessor::Parse(const string& sql_stmt,
                                    shared_ptr<MemTracker> mem_tracker) {
   // Parse the statement and get the generated parse tree.
   const MonoTime begin_time = MonoTime::Now(MonoTime::FINE);
-  RETURN_NOT_OK(parser_->Parse(sql_stmt, mem_tracker));
+  RETURN_NOT_OK(parser_.Parse(sql_stmt, mem_tracker));
   const MonoTime end_time = MonoTime::Now(MonoTime::FINE);
   if (sql_metrics_ != nullptr) {
     const MonoDelta elapsed_time = end_time.GetDeltaSince(begin_time);
     sql_metrics_->time_to_parse_sql_query_->Increment(elapsed_time.ToMicroseconds());
   }
-  *parse_tree = parser_->Done();
+  *parse_tree = parser_.Done();
   DCHECK(parse_tree->get() != nullptr) << "Parse tree is null";
   return Status::OK();
 }
@@ -129,7 +128,7 @@ CHECKED_STATUS SqlProcessor::Analyze(
     const string& sql_stmt, ParseTree::UniPtr* parse_tree, bool* reparse) {
   // Semantic analysis - traverse, error-check, and decorate the parse tree nodes with datatypes.
   const MonoTime begin_time = MonoTime::Now(MonoTime::FINE);
-  const Status s = analyzer_->Analyze(sql_stmt, std::move(*parse_tree), sql_env_.get());
+  const Status s = analyzer_.Analyze(sql_stmt, std::move(*parse_tree));
   const MonoTime end_time = MonoTime::Now(MonoTime::FINE);
   if (sql_metrics_ != nullptr) {
     const MonoDelta elapsed_time = end_time.GetDeltaSince(begin_time);
@@ -137,9 +136,9 @@ CHECKED_STATUS SqlProcessor::Analyze(
     sql_metrics_->num_rounds_to_analyze_sql_->Increment(1);
   }
 
-  const ErrorCode sem_errcode = analyzer_->error_code();
-  const bool cache_used = analyzer_->cache_used();
-  *parse_tree = analyzer_->Done();
+  const ErrorCode sem_errcode = analyzer_.error_code();
+  const bool cache_used = analyzer_.cache_used();
+  *parse_tree = analyzer_.Done();
   CHECK(parse_tree->get() != nullptr) << "Parse tree is null";
 
   // When "reparse" out-parameter is provided, the statement has not been reparsed. When a statement
@@ -152,8 +151,8 @@ CHECKED_STATUS SqlProcessor::Analyze(
       sem_errcode != ErrorCode::TABLE_NOT_FOUND &&
       sem_errcode != ErrorCode::TYPE_NOT_FOUND &&
       cache_used) {
-    (*parse_tree)->ClearAnalyzedTableCache(sql_env_.get());
-    (*parse_tree)->ClearAnalyzedUDTypeCache(sql_env_.get());
+    (*parse_tree)->ClearAnalyzedTableCache(&sql_env_);
+    (*parse_tree)->ClearAnalyzedUDTypeCache(&sql_env_);
     *reparse = true;
     return Status::OK();
   }
@@ -166,12 +165,12 @@ void SqlProcessor::ExecuteAsync(const string& sql_stmt,
                                 const StatementParameters& params,
                                 StatementExecutedCallback cb,
                                 const bool reparsed) {
-  sql_env_->Reset();
+  sql_env_.Reset();
   // Code execution.
   const MonoTime begin_time = MonoTime::Now(MonoTime::FINE);
-  executor_->ExecuteAsync(sql_stmt, parse_tree, params, sql_env_.get(),
-                          Bind(&SqlProcessor::ExecuteAsyncDone, Unretained(this), begin_time,
-                               Unretained(&parse_tree), std::move(cb), reparsed));
+  executor_.ExecuteAsync(sql_stmt, parse_tree, params,
+                         Bind(&SqlProcessor::ExecuteAsyncDone, Unretained(this), begin_time,
+                              Unretained(&parse_tree), std::move(cb), reparsed));
 }
 
 void SqlProcessor::ExecuteAsyncDone(const MonoTime &begin_time,
@@ -185,8 +184,8 @@ void SqlProcessor::ExecuteAsyncDone(const MonoTime &begin_time,
     const MonoDelta elapsed_time = end_time.GetDeltaSince(begin_time);
     sql_metrics_->time_to_execute_sql_query_->Increment(elapsed_time.ToMicroseconds());
   }
-  const ErrorCode exec_errcode = executor_->error_code();
-  executor_->Done();
+  const ErrorCode exec_errcode = executor_.error_code();
+  executor_.Done();
 
   if (!reparsed) {
     // If execution fails because the statement was analyzed with stale metadata cache, the
@@ -208,8 +207,8 @@ void SqlProcessor::ExecuteAsyncDone(const MonoTime &begin_time,
 
         // Clear the metadata cache before invoking callback so that the statement can be reprepared
         // with new metadata.
-        parse_tree->ClearAnalyzedTableCache(sql_env_.get());
-        parse_tree->ClearAnalyzedUDTypeCache(sql_env_.get());
+        parse_tree->ClearAnalyzedTableCache(&sql_env_);
+        parse_tree->ClearAnalyzedUDTypeCache(&sql_env_);
 
         cb.Run(STATUS(SqlError, ErrorText(ErrorCode::STALE_PREPARED_STATEMENT), Slice(),
                       static_cast<int64_t>(ErrorCode::STALE_PREPARED_STATEMENT)), result);
@@ -253,7 +252,7 @@ void SqlProcessor::RunAsyncDone(
 
 void SqlProcessor::RunAsync(
     const string& sql_stmt, const StatementParameters& params, StatementExecutedCallback cb) {
-  sql_env_->Reset();
+  sql_env_.Reset();
   ParseTree::UniPtr parse_tree;
   bool reparse = false;
   CB_RETURN_NOT_OK(cb, Parse(sql_stmt, &parse_tree, nullptr /* mem_tracker */));
@@ -269,7 +268,7 @@ void SqlProcessor::RunAsync(
 }
 
 void SqlProcessor::SetCurrentCall(rpc::InboundCallPtr call) {
-  sql_env_->SetCurrentCall(std::move(call));
+  sql_env_.SetCurrentCall(std::move(call));
 }
 
 }  // namespace sql

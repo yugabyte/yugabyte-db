@@ -18,7 +18,6 @@ using client::YBClientBuilder;
 const string YbSqlTestBase::kDefaultKeyspaceName("my_keyspace");
 
 YbSqlTestBase::YbSqlTestBase() {
-  sql_envs_.reserve(1);
 }
 
 YbSqlTestBase::~YbSqlTestBase() {
@@ -36,31 +35,6 @@ void YbSqlTestBase::CreateSimulatedCluster() {
   ASSERT_OK(builder.Build(&client_));
   metadata_cache_ = std::make_shared<client::YBMetaDataCache>(client_);
   ASSERT_OK(client_->CreateNamespaceIfNotExists(kDefaultKeyspaceName));
-}
-
-//--------------------------------------------------------------------------------------------------
-
-SqlEnv *YbSqlTestBase::CreateSqlEnv() {
-  if (client_ == nullptr) {
-    CreateSimulatedCluster();
-  }
-
-  const int max_id = sql_envs_.size();
-  if (sql_envs_.capacity() == max_id) {
-    sql_envs_.reserve(max_id + 10);
-  }
-
-  std::weak_ptr<rpc::Messenger> messenger;
-  SqlEnv *sql_env = new SqlEnv(messenger, client_, metadata_cache_);
-  sql_envs_.emplace_back(sql_env);
-  return sql_env;
-}
-
-SqlEnv *YbSqlTestBase::GetSqlEnv(int session_id) {
-  if (sql_envs_.size() < session_id) {
-    return nullptr;
-  }
-  return sql_envs_[session_id - 1].get();
 }
 
 //--------------------------------------------------------------------------------------------------

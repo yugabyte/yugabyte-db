@@ -17,15 +17,15 @@
 namespace yb {
 namespace sql {
 
-#define ANALYZE_VALID_STMT(sql_env, sql_stmt, parse_tree)             \
+#define ANALYZE_VALID_STMT(sql_stmt, parse_tree)                      \
 do {                                                                  \
-  Status s = TestAnalyzer(sql_env, sql_stmt, parse_tree);             \
+  Status s = TestAnalyzer(sql_stmt, parse_tree);                      \
   EXPECT_TRUE(s.ok());                                                \
 } while (false)
 
-#define ANALYZE_INVALID_STMT(sql_env, sql_stmt, parse_tree)           \
+#define ANALYZE_INVALID_STMT(sql_stmt, parse_tree)                    \
 do {                                                                  \
-  Status s = TestAnalyzer(sql_env, sql_stmt, parse_tree);             \
+  Status s = TestAnalyzer(sql_stmt, parse_tree);                      \
   EXPECT_FALSE(s.ok());                                               \
 } while (false)
 
@@ -116,10 +116,10 @@ class YbSqlProcessor : public SqlProcessor {
     return nullptr;
   }
 
-  std::string CurrentKeyspace() const { return sql_env_->CurrentKeyspace(); }
+  std::string CurrentKeyspace() const { return sql_env_.CurrentKeyspace(); }
 
   CHECKED_STATUS UseKeyspace(const std::string& keyspace_name) {
-    return sql_env_->UseKeyspace(keyspace_name);
+    return sql_env_.UseKeyspace(keyspace_name);
   }
 
  private:
@@ -156,8 +156,7 @@ class YbSqlTestBase : public YBTest {
   }
 
   // Tests parser and analyzer
-  CHECKED_STATUS TestAnalyzer(SqlEnv *sql_env, const string& sql_stmt,
-                              ParseTree::UniPtr *parse_tree) {
+  CHECKED_STATUS TestAnalyzer(const string& sql_stmt, ParseTree::UniPtr *parse_tree) {
     SqlProcessor *processor = GetSqlProcessor();
     RETURN_NOT_OK(processor->Parse(sql_stmt, parse_tree, nullptr /* mem_tracker */));
     RETURN_NOT_OK(processor->Analyze(sql_stmt, parse_tree));
@@ -171,12 +170,6 @@ class YbSqlTestBase : public YBTest {
   // Create sql processor.
   YbSqlProcessor *GetSqlProcessor();
 
-  // Create a session context for client_.
-  SqlEnv *CreateSqlEnv();
-
-  // Pull a session from the cached tables.
-  SqlEnv *GetSqlEnv(int session_id);
-
  protected:
   //------------------------------------------------------------------------------------------------
 
@@ -186,9 +179,6 @@ class YbSqlTestBase : public YBTest {
   // Simulated YB client.
   std::shared_ptr<client::YBClient> client_;
   std::shared_ptr<client::YBMetaDataCache> metadata_cache_;
-
-  // Contexts to be passed to SQL engine.
-  std::vector<SqlEnv::UniPtr> sql_envs_;
 
   // SQL Processor.
   std::vector<YbSqlProcessor::UniPtr> sql_processors_;

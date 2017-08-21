@@ -23,14 +23,12 @@ class Analyzer {
 
   //------------------------------------------------------------------------------------------------
   // Constructor & destructor.
-  Analyzer();
+  explicit Analyzer(SqlEnv *sql_env);
   virtual ~Analyzer();
 
   // Run semantics analysis on the given parse tree and decorate it with semantics information such
   // as datatype or object-type of a database object.
-  CHECKED_STATUS Analyze(const std::string& sql_stmt,
-                         ParseTree::UniPtr ptree,
-                         SqlEnv *sql_env);
+  CHECKED_STATUS Analyze(const std::string& sql_stmt, ParseTree::UniPtr ptree);
 
   // Returns decorated parse tree from the semantic analysis and destroys the context.
   ParseTree::UniPtr Done();
@@ -46,6 +44,9 @@ class Analyzer {
   }
 
  private:
+  // Environment (YBClient) for analyzing statements.
+  SqlEnv *sql_env_;
+
   SemContext::UniPtr sem_context_;
 };
 

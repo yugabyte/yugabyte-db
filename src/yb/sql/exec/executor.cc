@@ -47,7 +47,9 @@ using strings::Substitute;
 
 //--------------------------------------------------------------------------------------------------
 
-Executor::Executor(const SqlMetrics* sql_metrics) : sql_metrics_(sql_metrics) {
+Executor::Executor(SqlEnv *sql_env, const SqlMetrics* sql_metrics)
+    : sql_env_(sql_env),
+      sql_metrics_(sql_metrics) {
 }
 
 Executor::~Executor() {
@@ -57,11 +59,11 @@ Executor::~Executor() {
 
 void Executor::ExecuteAsync(
     const string &sql_stmt, const ParseTree &parse_tree, const StatementParameters& params,
-    SqlEnv *sql_env, StatementExecutedCallback cb) {
+    StatementExecutedCallback cb) {
   // Prepare execution context.
   exec_context_ = ExecContext::UniPtr(new ExecContext(sql_stmt.c_str(),
                                                       sql_stmt.length(),
-                                                      sql_env));
+                                                      sql_env_));
   params_ = &params;
   // Execute the parse tree's root node.
   ExecTreeNodeAsync(parse_tree.root().get(), std::move(cb));
