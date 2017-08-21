@@ -8,8 +8,8 @@ import java.util.Map;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BulkImport;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteNode;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.forms.BulkImportParams;
-import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -333,6 +333,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.tableName = tableName;
     params.tableDetails = tableDetails;
     params.numTablets = numTablets;
+    task.initialize(params);
+    taskList.addTask(task);
+    taskListQueue.add(taskList);
+    return taskList;
+  }
+
+  /**
+   * Create a task to delete a table.
+   *
+   * @param params The necessary parameters for dropping a table.
+   */
+  public TaskList createDeleteTableFromUniverseTask(DeleteTableFromUniverse.Params params) {
+    TaskList taskList = new TaskList("DeleteTableFromUniverse", executor);
+    DeleteTableFromUniverse task = new DeleteTableFromUniverse();
     task.initialize(params);
     taskList.addTask(task);
     taskListQueue.add(taskList);

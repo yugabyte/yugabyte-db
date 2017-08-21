@@ -33,6 +33,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.protobuf.ByteString;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
@@ -435,5 +436,49 @@ public class TablesControllerTest extends WithApplication {
     Result result = FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, topJson);
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), containsString("Invalid S3 Bucket provided: foobar"));
+  }
+
+  @Test
+  public void testDeleteTableWithValidParams() throws Exception {
+    tablesController.commissioner = mockCommissioner;
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskType.class),
+        Matchers.any(DeleteTableFromUniverse.Params.class))).thenReturn(fakeTaskUUID);
+    when(mockClient.getTableSchemaByUUID(any(String.class))).thenReturn(mockSchemaResponse);
+
+    // Creating a fake table
+    Schema schema = getFakeSchema();
+    UUID tableUUID = UUID.randomUUID();
+    when(mockSchemaResponse.getSchema()).thenReturn(schema);
+    when(mockSchemaResponse.getTableName()).thenReturn("mock_table");
+    when(mockSchemaResponse.getNamespace()).thenReturn("mock_ks");
+    when(mockSchemaResponse.getTableType()).thenReturn(TableType.YQL_TABLE_TYPE);
+    when(mockSchemaResponse.getTableId()).thenReturn(tableUUID.toString().replace("-", ""));
+
+    // Creating fake authentication
+    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
+    Universe universe = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
+    universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
+    customer.addUniverseUUID(universe.universeUUID);
+    customer.save();
+
+    Result result = tablesController.drop(customer.uuid, universe.universeUUID, tableUUID);
+    assertEquals(OK, result.status());
+  }
+
+  @Test
+  public void testDeleteTableWithInvalidparams() throws Exception {
+    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
+    Universe universe = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
+    universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
+    customer.addUniverseUUID(universe.universeUUID);
+    customer.save();
+
+    UUID badTableUUID = UUID.randomUUID();
+    String errorString = "No table for UUID: " + badTableUUID;
+
+    Result result = tablesController.drop(customer.uuid, universe.universeUUID, badTableUUID);
+    assertEquals(BAD_REQUEST, result.status());
+    assertThat(contentAsString(result), containsString(errorString));
   }
 }

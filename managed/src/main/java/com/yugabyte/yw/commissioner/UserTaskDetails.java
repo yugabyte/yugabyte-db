@@ -55,7 +55,10 @@ public class UserTaskDetails {
     ImportingData,
 
     // Delete Node
-    DeletingNode
+    DeletingNode,
+
+    // Deleting Table
+    DeletingTable
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -117,6 +120,10 @@ public class UserTaskDetails {
       case DeletingNode:
         title = "Deleting Node";
         description = "Remove Node entry from Universe details";
+        break;
+      case DeletingTable:
+        title = "Deleting Table";
+        description = "Delete an existing table from a universe";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

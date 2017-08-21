@@ -3,18 +3,14 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.TaskListQueue;
-import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.forms.TableDefinitionTaskParams;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yb.Common;
+import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 
-public class CreateCassandraTable extends UniverseTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(CreateCassandraTable.class);
+public class DeleteTable extends UniverseTaskBase {
 
   @Override
-  protected TableDefinitionTaskParams taskParams() {
-    return (TableDefinitionTaskParams) taskParams;
+  protected DeleteTableFromUniverse.Params taskParams() {
+    return (DeleteTableFromUniverse.Params)taskParams;
   }
 
   @Override
@@ -28,12 +24,9 @@ public class CreateCassandraTable extends UniverseTaskBase {
       // to lock out the universe completely in case this task fails.
       lockUniverse(-1 /* expectedUniverseVersion */);
 
-      // Create table task
-      createTableTask(Common.TableType.YQL_TABLE_TYPE, taskParams().tableDetails.tableName, -1,
-                      taskParams().tableDetails)
-          .setSubTaskGroupType(SubTaskGroupType.CreatingTable);
-
-      // TODO: wait for table creation
+      // Delete table task
+      createDeleteTableFromUniverseTask(taskParams())
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeletingTable);
 
       // Run all the tasks.
       taskListQueue.run();
