@@ -59,6 +59,7 @@ class UniverseForm extends Component {
     this.hasFieldChanged = this.hasFieldChanged.bind(this);
     this.getCurrentUserIntent = this.getCurrentUserIntent.bind(this);
     this.setDeviceInfo = this.setDeviceInfo.bind(this);
+    this.getFormPayload = this.getFormPayload.bind(this);
     this.state = initialState;
   }
 
@@ -177,12 +178,12 @@ class UniverseForm extends Component {
   }
 
   createUniverse() {
-    this.props.submitCreateUniverse(this.props.universe.universeConfigTemplate.data);
+    this.props.submitCreateUniverse(this.getFormPayload());
   }
 
   editUniverse() {
-    const {universe: {universeConfigTemplate, currentUniverse: {data: {universeUUID}}}} = this.props;
-    this.props.submitEditUniverse(universeConfigTemplate.data, universeUUID);
+    const {universe: {currentUniverse: {data: {universeUUID}}}} = this.props;
+    this.props.submitEditUniverse(this.getFormPayload(), universeUUID);
   }
 
   componentWillMount() {
@@ -374,6 +375,13 @@ class UniverseForm extends Component {
       this.setState({deviceInfo: currentDeviceInfo});
       this.configureUniverseNodeList("deviceInfo", currentDeviceInfo);
     }
+  }
+
+  getFormPayload() {
+    const {formValues, universe: {universeConfigTemplate}} = this.props;
+    const submitPayload = _.clone(universeConfigTemplate.data, true);
+    submitPayload.userIntent.universeName = formValues.universeName;
+    return submitPayload;
   }
 
   componentWillReceiveProps(nextProps) {
