@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import PropTypes from 'prop-types';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBPanelItem } from '../../panels';
@@ -10,10 +9,6 @@ import NodeConnectModal from './NodeConnectModal';
 import {isNodeRemovable} from 'utils/UniverseUtils';
 
 export default class NodeDetails extends Component {
-  static propTypes = {
-    nodeDetails: PropTypes.array.isRequired
-  };
-
   componentWillReceiveProps(nextProps) {
     if (isValidObject(this.refs.nodeDetailTable)) {
       this.refs.nodeDetailTable.handleSort('asc', 'name');
