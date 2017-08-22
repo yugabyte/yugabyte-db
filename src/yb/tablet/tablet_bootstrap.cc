@@ -55,7 +55,7 @@ DEFINE_double(fault_crash_during_log_replay, 0.0,
               "(For testing only!)");
 TAG_FLAG(fault_crash_during_log_replay, unsafe);
 
-DECLARE_int32(max_clock_sync_error_usec);
+DECLARE_uint64(max_clock_sync_error_usec);
 
 using namespace std::literals;
 using namespace std::placeholders;

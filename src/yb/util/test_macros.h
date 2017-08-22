@@ -57,6 +57,8 @@
     } \
   } while (0)
 
+#define EXPECT_NOT_OK(s) EXPECT_FALSE((s).ok())
+
 // Like the above, but doesn't record successful
 // tests.
 #define ASSERT_OK_FAST(status) do {      \

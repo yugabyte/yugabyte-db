@@ -32,13 +32,12 @@
 #include "yb/util/metrics.h"
 #include "yb/util/status.h"
 
-#if !defined(__APPLE__)
-#include <sys/timex.h>
-#endif // !defined(__APPLE__)
-
-DEFINE_int32(max_clock_sync_error_usec, 10 * 1000 * 1000, // 10 secs
-             "Maximum allowed clock synchronization error as reported by NTP "
-             "before the server will abort.");
+DEFINE_uint64(max_clock_sync_error_usec, 10 * 1000 * 1000,
+              "Maximum allowed clock synchronization error as reported by NTP "
+              "before the server will abort.");
+DEFINE_bool(disable_clock_sync_error, true,
+            "Whether or not we should keep running if we detect a clock synchronization issue.");
+TAG_FLAG(disable_clock_sync_error, advanced);
 TAG_FLAG(max_clock_sync_error_usec, advanced);
 TAG_FLAG(max_clock_sync_error_usec, runtime);
 
@@ -68,43 +67,6 @@ namespace yb {
 namespace server {
 
 namespace {
-
-#if !defined(__APPLE__)
-// Returns the clock modes and checks if the clock is synchronized.
-Status GetClockModes(timex* timex) {
-  // this makes ntp_adjtime a read-only call
-  timex->modes = 0;
-  int rc = ntp_adjtime(timex);
-  if (PREDICT_FALSE(rc == TIME_ERROR)) {
-    return STATUS(ServiceUnavailable,
-        Substitute("Error reading clock. Clock considered unsynchronized. Return code: $0", rc));
-  }
-  // TODO what to do about leap seconds? see KUDU-146
-  if (PREDICT_FALSE(rc != TIME_OK)) {
-    LOG(ERROR) << Substitute("TODO Server undergoing leap second. Return code: $0", rc);
-  }
-  return Status::OK();
-}
-
-// Returns the current time/max error and checks if the clock is synchronized.
-yb::Status GetClockTime(ntptimeval* timeval) {
-  int rc = ntp_gettime(timeval);
-  switch (rc) {
-    case TIME_OK:
-      return Status::OK();
-    case -1: // generic error
-      return STATUS(ServiceUnavailable, "Error reading clock. ntp_gettime() failed",
-                                        ErrnoToString(errno));
-    case TIME_ERROR:
-      return STATUS(ServiceUnavailable, "Error reading clock. Clock considered unsynchronized");
-    default:
-      // TODO what to do about leap seconds? see KUDU-146
-      YB_LOG_FIRST_N(ERROR, 1) << "Server undergoing leap second. This may cause consistency issues"
-        << " (rc=" << rc << ")";
-      return Status::OK();
-  }
-}
-#endif // !defined(__APPLE__)
 
 Status CheckDeadlineNotWithinMicros(const MonoTime& deadline, int64_t wait_for_usec) {
   if (!deadline.Initialized()) {
@@ -142,6 +104,56 @@ HybridClock::HybridClock()
       next_logical_(0),
       state_(kNotInitialized) {
 }
+
+#if !defined(__APPLE__)
+int HybridClock::NtpAdjtime(timex* timex) {
+  return ntp_adjtime(timex);
+}
+
+int HybridClock::NtpGettime(ntptimeval* timeval) {
+  return ntp_gettime(timeval);
+}
+
+// Returns the clock modes and checks if the clock is synchronized.
+Status HybridClock::GetClockModes(timex* timex) {
+  // this makes ntp_adjtime a read-only call
+  timex->modes = 0;
+  int rc = NtpAdjtime(timex);
+  if (PREDICT_FALSE(rc == TIME_ERROR) && !FLAGS_disable_clock_sync_error) {
+    return STATUS(ServiceUnavailable,
+        Substitute("Error reading clock. Clock considered unsynchronized. Return code: $0", rc));
+  }
+  // TODO what to do about leap seconds? see KUDU-146
+  if (PREDICT_FALSE(rc != TIME_OK) && rc != TIME_ERROR) {
+    LOG(ERROR) << Substitute("TODO Server undergoing leap second. Return code: $0", rc);
+  }
+  return Status::OK();
+}
+
+// Returns the current time/max error and checks if the clock is synchronized.
+Status HybridClock::GetClockTime(ntptimeval* timeval) {
+  int rc = NtpGettime(timeval);
+  switch (rc) {
+    case TIME_OK:
+      return Status::OK();
+    case -1: // generic error
+      return STATUS(ServiceUnavailable, "Error reading clock. ntp_gettime() failed",
+                                        ErrnoToString(errno));
+    case TIME_ERROR:
+      if (!FLAGS_disable_clock_sync_error) {
+        return STATUS(ServiceUnavailable, "Error reading clock. Clock considered unsynchronized");
+      } else {
+        return Status::OK();
+      }
+    default:
+      // TODO what to do about leap seconds? see KUDU-146
+      YB_LOG_FIRST_N(ERROR, 1) << "Server undergoing leap second. This may cause consistency issues"
+        << " (rc=" << rc << ")";
+      return Status::OK();
+  }
+}
+#endif // !defined(__APPLE__)
+
 
 Status HybridClock::Init() {
   if (PREDICT_FALSE(FLAGS_use_mock_wall_clock)) {
@@ -285,7 +297,7 @@ Status HybridClock::Update(const HybridTime& to_update) {
   // we won't update our clock if to_update is more than 'max_clock_sync_error_usec'
   // into the future as it might have been corrupted or originated from an out-of-sync
   // server.
-  if ((to_update_physical - now_physical) > FLAGS_max_clock_sync_error_usec) {
+  if(!CheckClockSyncError(to_update_physical - now_physical).ok()) {
     return STATUS(InvalidArgument, "Tried to update clock beyond the max. error.");
   }
 
@@ -383,6 +395,15 @@ bool HybridClock::IsAfter(HybridTime t) {
   return t.value() < now.value();
 }
 
+yb::Status HybridClock::CheckClockSyncError(uint64_t error_usec) {
+  if (!FLAGS_disable_clock_sync_error && error_usec > FLAGS_max_clock_sync_error_usec) {
+    return STATUS(ServiceUnavailable, Substitute("Error: Clock error was too high ($0 us), max "
+                                                 "allowed ($1 us).", error_usec,
+                                                 FLAGS_max_clock_sync_error_usec));
+  }
+  return Status::OK();
+}
+
 yb::Status HybridClock::WalltimeWithError(uint64_t* now_usec, uint64_t* error_usec) {
   if (PREDICT_FALSE(FLAGS_use_mock_wall_clock)) {
     VLOG(1) << "Current clock time: " << mock_clock_time_usec_ << " error: "
@@ -406,10 +427,7 @@ yb::Status HybridClock::WalltimeWithError(uint64_t* now_usec, uint64_t* error_us
 
   // If the clock is synchronized but has max_error beyond max_clock_sync_error_usec
   // we also return a non-ok status.
-  if (*error_usec > FLAGS_max_clock_sync_error_usec) {
-    return STATUS(ServiceUnavailable, Substitute("Error: Clock synchronized but error was"
-        "too high ($0 us).", *error_usec));
-  }
+  RETURN_NOT_OK(CheckClockSyncError(*error_usec));
 #endif // defined(__APPLE__)
   return yb::Status::OK();
 }

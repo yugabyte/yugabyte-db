@@ -99,6 +99,8 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   server::Clock* Clock() override { return clock(); }
 
+  void SetClockForTests(server::Clock* clock) { clock_.reset(clock); }
+
   const scoped_refptr<MetricEntity>& MetricEnt() const override { return metric_entity(); }
 
   CHECKED_STATUS PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp);

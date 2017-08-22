@@ -51,6 +51,7 @@ set(YB_TEST_LINK_LIBS integration-tests ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(alter_table-test)
 ADD_YB_TEST(alter_table-randomized-test)
 ADD_YB_TEST(registration-test RESOURCE_LOCK "master-web-port")
+ADD_YB_TEST(clock_synchronization-itest)
 ADD_YB_TEST(client_failover-itest)
 ADD_YB_TEST(client-stress-test
   RESOURCE_LOCK "master-rpc-ports"

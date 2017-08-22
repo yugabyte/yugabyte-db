@@ -19,6 +19,9 @@
 #define YB_SERVER_HYBRID_CLOCK_H_
 
 #include <string>
+#if !defined(__APPLE__)
+#include <sys/timex.h>
+#endif // !defined(__APPLE__)
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/server/clock.h"
@@ -167,13 +170,29 @@ class HybridClock : public Clock {
   // setting error to be more than the configured tolerance.
   void SetMockMaxClockErrorForTests(uint64_t max_error_usec);
 
+ protected:
+#if !defined(__APPLE__)
+  CHECKED_STATUS GetClockModes(timex* timex);
+  CHECKED_STATUS GetClockTime(ntptimeval* timeval);
+  // Wrappers around ntp_adjtime() and ntp_gettime() to assist in mocking.
+  virtual int NtpAdjtime(timex* timex);
+  virtual int NtpGettime(ntptimeval* timeval);
+#endif // !defined(__APPLE__)
+
  private:
+  FRIEND_TEST(HybridClockTest, TestCheckClockSyncError);
+  FRIEND_TEST(HybridClockTest, TestNtpErrorsNotIgnored);
+  FRIEND_TEST(HybridClockTest, TestNtpErrorsIgnored);
 
   // Obtains the current wallclock time and maximum error in microseconds,
   // and checks if the clock is synchronized.
   //
   // On OS X, the error will always be 0.
-  yb::Status WalltimeWithError(uint64_t* now_usec, uint64_t* error_usec);
+  CHECKED_STATUS WalltimeWithError(uint64_t* now_usec, uint64_t* error_usec);
+
+  // Returns Status::OK if the clock error_usec provided is within acceptable limits, otherwise
+  // it returns a not OK status if disable_clock_sync_error is not true.
+  static CHECKED_STATUS CheckClockSyncError(uint64_t error_usec);
 
   // Used to get the hybrid_time for metrics.
   uint64_t NowForMetrics();

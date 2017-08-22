@@ -53,6 +53,7 @@ DECLARE_int32(scanner_batch_size_rows);
 DECLARE_int32(metrics_retirement_age_ms);
 DECLARE_string(block_manager);
 DECLARE_string(rpc_bind_addresses);
+DECLARE_bool(disable_clock_sync_error);
 
 // Declare these metrics prototypes for simpler unit testing of their behavior.
 METRIC_DECLARE_counter(rows_inserted);
@@ -1223,6 +1224,7 @@ TEST_F(TabletServerTest, TestSnapshotScan_SnapshotInTheFutureWithPropagatedHybri
 // Test that a read in the future fails, even if a propagated_hybrid_time is sent along,
 // if the read_hybrid_time is beyond the propagated_hybrid_time.
 TEST_F(TabletServerTest, TestSnapshotScan__SnapshotInTheFutureBeyondPropagatedHybridTimeFails) {
+  FLAGS_disable_clock_sync_error = false;
   vector<uint64_t> write_hybrid_times_collector;
   // perform a write
   InsertTestRowsRemote(0, 0, 1, 1, nullptr, kTabletId, &write_hybrid_times_collector);

@@ -26,6 +26,8 @@
 #include "yb/util/test_util.h"
 
 DECLARE_bool(use_mock_wall_clock);
+DECLARE_uint64(max_clock_sync_error_usec);
+DECLARE_bool(disable_clock_sync_error);
 
 namespace yb {
 namespace server {
@@ -284,6 +286,62 @@ TEST_F(HybridClockTest, CompareHybridClocksToDelta) {
       HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 9),
       MonoDelta::FromMicroseconds(1)));
 }
+
+TEST_F(HybridClockTest, TestCheckClockSyncError) {
+  // Test with the clock sync check disabled.
+  FLAGS_disable_clock_sync_error = true;
+  EXPECT_OK(HybridClock::CheckClockSyncError(FLAGS_max_clock_sync_error_usec - 1));
+  EXPECT_OK(HybridClock::CheckClockSyncError(FLAGS_max_clock_sync_error_usec));
+  EXPECT_OK(HybridClock::CheckClockSyncError(FLAGS_max_clock_sync_error_usec + 1));
+  EXPECT_OK(HybridClock::CheckClockSyncError(std::numeric_limits<uint64_t>::max()));
+  EXPECT_OK(HybridClock::CheckClockSyncError(std::numeric_limits<uint64_t>::min()));
+
+  // Test with the clock sync check enabled.
+  FLAGS_disable_clock_sync_error = false;
+  EXPECT_OK(HybridClock::CheckClockSyncError(FLAGS_max_clock_sync_error_usec - 1));
+  EXPECT_OK(HybridClock::CheckClockSyncError(FLAGS_max_clock_sync_error_usec));
+  EXPECT_NOT_OK(HybridClock::CheckClockSyncError(FLAGS_max_clock_sync_error_usec + 1));
+  EXPECT_NOT_OK(HybridClock::CheckClockSyncError(std::numeric_limits<uint64_t>::max()));
+  EXPECT_OK(HybridClock::CheckClockSyncError(std::numeric_limits<uint64_t>::min()));
+}
+
+#if !defined(__APPLE__)
+TEST_F(HybridClockTest, TestNtpErrorsNotIgnored) {
+  using ::testing::Return;
+  using ::testing::_;
+
+  // NTP errors should not be ignored.
+  FLAGS_disable_clock_sync_error = false;
+  scoped_refptr<MockHybridClock> mock_clock(new MockHybridClock());
+  EXPECT_CALL(*mock_clock, NtpGettime(_))
+    .Times(1)
+    .WillRepeatedly(Return(TIME_ERROR));
+  EXPECT_CALL(*mock_clock, NtpAdjtime(_))
+    .Times(1)
+    .WillRepeatedly(Return(TIME_ERROR));
+  EXPECT_NOT_OK(mock_clock->Init());
+  timex timex;
+  EXPECT_NOT_OK(mock_clock->GetClockModes(&timex));
+}
+
+TEST_F(HybridClockTest, TestNtpErrorsIgnored) {
+  using ::testing::Return;
+  using ::testing::_;
+
+  // NTP errors should be ignored.
+  FLAGS_disable_clock_sync_error = true;
+  scoped_refptr<MockHybridClock> mock_clock(new MockHybridClock());
+  EXPECT_CALL(*mock_clock, NtpGettime(_))
+    .Times(1)
+    .WillRepeatedly(Return(TIME_ERROR));
+  EXPECT_CALL(*mock_clock, NtpAdjtime(_))
+    .Times(2)
+    .WillRepeatedly(Return(TIME_ERROR));
+  EXPECT_OK(mock_clock->Init());
+  timex timex;
+  EXPECT_OK(mock_clock->GetClockModes(&timex));
+}
+#endif // !defined(__APPLE__)
 
 }  // namespace server
 }  // namespace yb
