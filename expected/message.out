@@ -1,0 +1,122 @@
+\set VERBOSITY terse
+-- predictability
+SET synchronous_commit = on;
+SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot', 'wal2json');
+ ?column? 
+----------
+ init
+(1 row)
+
+SELECT 'msg1' FROM pg_logical_emit_message(true, 'wal2json', 'this is a\ message');
+ ?column? 
+----------
+ msg1
+(1 row)
+
+SELECT 'msg2' FROM pg_logical_emit_message(false, 'wal2json', 'this is "another" message');
+ ?column? 
+----------
+ msg2
+(1 row)
+
+BEGIN;
+SELECT 'msg3' FROM pg_logical_emit_message(true, 'wal2json', 'this message will not be printed');
+ ?column? 
+----------
+ msg3
+(1 row)
+
+SELECT 'msg4' FROM pg_logical_emit_message(false, 'wal2json', 'this message will be printed even if the transaction is rollbacked');
+ ?column? 
+----------
+ msg4
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT 'msg5' FROM pg_logical_emit_message(true, 'wal2json', 'this is message #1');
+ ?column? 
+----------
+ msg5
+(1 row)
+
+SELECT 'msg6' FROM pg_logical_emit_message(false, 'wal2json', 'this message will be printed before message #1');
+ ?column? 
+----------
+ msg6
+(1 row)
+
+SELECT 'msg7' FROM pg_logical_emit_message(true, 'wal2json', 'this is message #2');
+ ?column? 
+----------
+ msg7
+(1 row)
+
+COMMIT;
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1');
+                                                  data                                                   
+---------------------------------------------------------------------------------------------------------
+ {                                                                                                      +
+         "change": [                                                                                    +
+                 {                                                                                      +
+                         "kind": "message",                                                             +
+                         "transactional": true,                                                         +
+                         "prefix": "wal2json",                                                          +
+                         "content": "this is a\ message"                                                +
+                 }                                                                                      +
+         ]                                                                                              +
+ }
+ {                                                                                                      +
+         "change": [                                                                                    +
+                 {                                                                                      +
+                         "kind": "message",                                                             +
+                         "transactional": false,                                                        +
+                         "prefix": "wal2json",                                                          +
+                         "content": "this is "another" message"                                         +
+                 }                                                                                      +
+         ]                                                                                              +
+ }
+ {                                                                                                      +
+         "change": [                                                                                    +
+                 {                                                                                      +
+                         "kind": "message",                                                             +
+                         "transactional": false,                                                        +
+                         "prefix": "wal2json",                                                          +
+                         "content": "this message will be printed even if the transaction is rollbacked"+
+                 }                                                                                      +
+         ]                                                                                              +
+ }
+ {                                                                                                      +
+         "change": [                                                                                    +
+                 {                                                                                      +
+                         "kind": "message",                                                             +
+                         "transactional": false,                                                        +
+                         "prefix": "wal2json",                                                          +
+                         "content": "this message will be printed before message #1"                    +
+                 }                                                                                      +
+         ]                                                                                              +
+ }
+ {                                                                                                      +
+         "change": [                                                                                    +
+                 {                                                                                      +
+                         "kind": "message",                                                             +
+                         "transactional": true,                                                         +
+                         "prefix": "wal2json",                                                          +
+                         "content": "this is message #1"                                                +
+                 }                                                                                      +
+                 ,{                                                                                     +
+                         "kind": "message",                                                             +
+                         "transactional": true,                                                         +
+                         "prefix": "wal2json",                                                          +
+                         "content": "this is message #2"                                                +
+                 }                                                                                      +
+         ]                                                                                              +
+ }
+(5 rows)
+
+SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
+ ?column? 
+----------
+ stop
+(1 row)
+

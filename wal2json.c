@@ -22,6 +22,9 @@
 
 #include "replication/output_plugin.h"
 #include "replication/logical.h"
+#if	PG_VERSION_NUM >= 90600
+#include "replication/message.h"
+#endif
 
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
@@ -68,6 +71,12 @@ static void pg_decode_commit_txn(LogicalDecodingContext *ctx,
 static void pg_decode_change(LogicalDecodingContext *ctx,
 				 ReorderBufferTXN *txn, Relation rel,
 				 ReorderBufferChange *change);
+#if	PG_VERSION_NUM >= 90600
+static void pg_decode_message(LogicalDecodingContext *ctx,
+					ReorderBufferTXN *txn, XLogRecPtr lsn,
+					bool transactional, const char *prefix,
+					Size content_size, const char *content);
+#endif
 
 void
 _PG_init(void)
@@ -85,6 +94,9 @@ _PG_output_plugin_init(OutputPluginCallbacks *cb)
 	cb->change_cb = pg_decode_change;
 	cb->commit_cb = pg_decode_commit_txn;
 	cb->shutdown_cb = pg_decode_shutdown;
+#if	PG_VERSION_NUM >= 90600
+	cb->message_cb = pg_decode_message;
+#endif
 }
 
 /* Initialize this plugin */
@@ -869,3 +881,116 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	if (data->write_in_chunks)
 		OutputPluginWrite(ctx, true);
 }
+
+#if	PG_VERSION_NUM >= 90600
+/* Callback for generic logical decoding messages */
+static void
+pg_decode_message(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
+		XLogRecPtr lsn, bool transactional, const char *prefix, Size
+		content_size, const char *content)
+{
+	JsonDecodingData *data;
+	MemoryContext old;
+
+	data = ctx->output_plugin_private;
+
+	/* Avoid leaking memory by using and resetting our own context */
+	old = MemoryContextSwitchTo(data->context);
+
+	/*
+	 * write immediately iif (i) write-in-chunks=1 or (ii) non-transactional
+	 * messages.
+	 */
+	if (data->write_in_chunks || !transactional)
+		OutputPluginPrepareWrite(ctx, true);
+
+	/*
+	 * increment counter only for transactional messages because
+	 * non-transactional message has only one object.
+	 */
+	if (transactional)
+		data->nr_changes++;
+
+	if (data->pretty_print)
+	{
+		/* if we don't write in chunks, we need a newline here */
+		if (!data->write_in_chunks && transactional)
+			appendStringInfoChar(ctx->out, '\n');
+
+		/* build a complete JSON object for non-transactional message */
+		if (!transactional)
+		{
+			appendStringInfoString(ctx->out, "{\n");
+			appendStringInfoString(ctx->out, "\t\"change\": [\n");
+		}
+
+		appendStringInfoString(ctx->out, "\t\t");
+
+		if (data->nr_changes > 1)
+			appendStringInfoChar(ctx->out, ',');
+
+		appendStringInfoString(ctx->out, "{\n");
+
+		appendStringInfoString(ctx->out, "\t\t\t\"kind\": \"message\",\n");
+
+		if (transactional)
+			appendStringInfoString(ctx->out, "\t\t\t\"transactional\": true,\n");
+		else
+			appendStringInfoString(ctx->out, "\t\t\t\"transactional\": false,\n");
+
+		appendStringInfo(ctx->out, "\t\t\t\"prefix\": \"%s\",\n", prefix);
+		appendStringInfoString(ctx->out, "\t\t\t\"content\": \"");
+		appendBinaryStringInfo(ctx->out, content, content_size);
+		appendStringInfoString(ctx->out, "\"\n");
+		appendStringInfoString(ctx->out, "\t\t}");
+
+		/* build a complete JSON object for non-transactional message */
+		if (!transactional)
+		{
+			appendStringInfoString(ctx->out, "\n\t]");
+			appendStringInfoString(ctx->out, "\n}");
+		}
+	}
+	else
+	{
+		/* build a complete JSON object for non-transactional message */
+		if (!transactional)
+		{
+			appendStringInfoString(ctx->out, "{");
+			appendStringInfoString(ctx->out, "\"change\":[");
+		}
+
+		if (data->nr_changes > 1)
+			appendStringInfoString(ctx->out, ",{");
+		else
+			appendStringInfoChar(ctx->out, '{');
+
+		appendStringInfoString(ctx->out, "\"kind\":\"message\",");
+
+		if (transactional)
+			appendStringInfoString(ctx->out, "\"transactional\":true,");
+		else
+			appendStringInfoString(ctx->out, "\"transactional\":false,");
+
+		appendStringInfo(ctx->out, "\"prefix\":");
+		quote_escape_json(ctx->out, prefix);
+		appendStringInfoChar(ctx->out, ',');
+		appendStringInfoString(ctx->out, "\"content\":");
+		quote_escape_json(ctx->out, content);
+		appendStringInfoChar(ctx->out, '}');
+
+		/* build a complete JSON object for non-transactional message */
+		if (!transactional)
+		{
+			appendStringInfoChar(ctx->out, ']');
+			appendStringInfoChar(ctx->out, '}');
+		}
+	}
+
+	MemoryContextSwitchTo(old);
+	MemoryContextReset(data->context);
+
+	if (data->write_in_chunks || !transactional)
+		OutputPluginWrite(ctx, true);
+}
+#endif
