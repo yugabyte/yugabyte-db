@@ -432,7 +432,7 @@ bool InternalStats::HandleCompactionPending(uint64_t* value, DBImpl* db,
 
 bool InternalStats::HandleNumRunningCompactions(uint64_t* value, DBImpl* db,
                                                 Version* version) {
-  *value = db->num_running_compactions_;
+  *value = db->num_total_running_compactions_;
   return true;
 }
 

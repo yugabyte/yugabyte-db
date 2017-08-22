@@ -961,6 +961,14 @@ struct DBOptions {
   // Default: 1
   int max_background_compactions;
 
+  // Number of threads reserved for exclusively doing small compactions
+  // Default: -1 (later gets set to base_background_compactions - 1)
+  int num_reserved_small_compaction_threads;
+
+  // Threshold for input size beyond which compaction is considered large
+  // Default: numeric_limits<uint64_t>::max()
+  uint64_t compaction_size_threshold_bytes;
+
   // This value represents the maximum number of threads that will
   // concurrently perform a compaction job by breaking it into multiple,
   // smaller ones that are run simultaneously.

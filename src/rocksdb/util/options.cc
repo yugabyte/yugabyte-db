@@ -236,6 +236,8 @@ DBOptions::DBOptions()
       delete_obsolete_files_period_micros(6ULL * 60 * 60 * 1000000),
       base_background_compactions(-1),
       max_background_compactions(1),
+      num_reserved_small_compaction_threads(-1),
+      compaction_size_threshold_bytes(std::numeric_limits<uint64_t>::max()),
       max_subcompactions(1),
       max_background_flushes(1),
       max_log_file_size(0),

@@ -319,6 +319,8 @@ class DBImpl : public DB {
   // get total level0 file size. Only for testing.
   uint64_t TEST_GetLevel0TotalSize();
 
+  int TEST_NumRunningLargeCompactions();
+
   void TEST_GetFilesMetaData(ColumnFamilyHandle* column_family,
                              std::vector<std::vector<FileMetaData>>* metadata);
 
@@ -422,7 +424,12 @@ class DBImpl : public DB {
   // REQUIREMENT: mutex_ must be held when calling this function.
   int num_running_compactions() {
     mutex_.AssertHeld();
-    return num_running_compactions_;
+    return num_total_running_compactions_;
+  }
+
+  int num_running_large_compactions() {
+    mutex_.AssertHeld();
+    return num_running_large_compactions_;
   }
 
   // Imports data from other database dir. Source database is left unmodified.
@@ -596,8 +603,10 @@ class DBImpl : public DB {
   Status ReFitLevel(ColumnFamilyData* cfd, int level, int target_level = -1);
 
   // helper functions for adding and removing from flush & compaction queues
-  void AddToCompactionQueue(ColumnFamilyData* cfd);
-  ColumnFamilyData* PopFirstFromCompactionQueue();
+  bool AddToCompactionQueue(ColumnFamilyData* cfd);
+  Compaction* PopFirstFromSmallCompactionQueue();
+  Compaction* PopFirstFromLargeCompactionQueue();
+  bool IsEmptyCompactionQueue();
   void AddToFlushQueue(ColumnFamilyData* cfd);
   ColumnFamilyData* PopFirstFromFlushQueue();
 
@@ -781,15 +790,19 @@ class DBImpl : public DB {
   std::deque<ColumnFamilyData*> flush_queue_;
   // invariant(column family present in compaction_queue_ <==>
   // ColumnFamilyData::pending_compaction_ == true)
-  std::deque<ColumnFamilyData*> compaction_queue_;
+  std::deque<Compaction*> small_compaction_queue_;
+  std::deque<Compaction*> large_compaction_queue_;
   int unscheduled_flushes_;
   int unscheduled_compactions_;
 
   // count how many background compactions are running or have been scheduled
   int bg_compaction_scheduled_;
 
-  // stores the number of compactions are currently running
-  int num_running_compactions_;
+  // stores the total number of compactions that are currently running
+  int num_total_running_compactions_;
+
+  // stores the number of large compaction that are currently running
+  int num_running_large_compactions_;
 
   // number of background memtable flush jobs, submitted to the HIGH pool
   int bg_flush_scheduled_;

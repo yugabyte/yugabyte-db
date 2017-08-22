@@ -155,6 +155,13 @@ DBOptions SanitizeOptions(const std::string& dbname, const DBOptions& src) {
   if (result.base_background_compactions > result.max_background_compactions) {
     result.base_background_compactions = result.max_background_compactions;
   }
+  if (result.base_background_compactions == 1) {
+    result.num_reserved_small_compaction_threads = 0;
+  }
+  if (result.num_reserved_small_compaction_threads == -1 ||
+        result.num_reserved_small_compaction_threads >= result.base_background_compactions) {
+    result.num_reserved_small_compaction_threads = result.base_background_compactions - 1;
+  }
   result.env->IncBackgroundThreadsIfNeeded(src.max_background_compactions,
                                            Env::Priority::LOW);
   result.env->IncBackgroundThreadsIfNeeded(src.max_background_flushes,
@@ -269,7 +276,8 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname)
       unscheduled_flushes_(0),
       unscheduled_compactions_(0),
       bg_compaction_scheduled_(0),
-      num_running_compactions_(0),
+      num_total_running_compactions_(0),
+      num_running_large_compactions_(0),
       bg_flush_scheduled_(0),
       num_running_flushes_(0),
       disable_delete_obsolete_files_(0),
@@ -371,8 +379,20 @@ DBImpl::~DBImpl() {
       delete cfd;
     }
   }
-  while (!compaction_queue_.empty()) {
-    auto cfd = PopFirstFromCompactionQueue();
+  while (!small_compaction_queue_.empty()) {
+    auto c = PopFirstFromSmallCompactionQueue();
+    c->ReleaseCompactionFiles(STATUS(Incomplete, "DBImpl destroyed before compaction scheduled"));
+    auto cfd = c->column_family_data();
+    delete c;
+    if (cfd->Unref()) {
+      delete cfd;
+    }
+  }
+  while (!large_compaction_queue_.empty()) {
+    auto c = PopFirstFromLargeCompactionQueue();
+    c->ReleaseCompactionFiles(STATUS(Incomplete, "DBImpl destroyed before compaction scheduled"));
+    auto cfd = c->column_family_data();
+    delete c;
     if (cfd->Unref()) {
       delete cfd;
     }
@@ -1596,6 +1616,13 @@ void DBImpl::NotifyOnFlushCompleted(ColumnFamilyData* cfd,
   bool triggered_writes_stop =
       (cfd->current()->storage_info()->NumLevelFiles(0) >=
        mutable_cf_options.level0_stop_writes_trigger);
+
+  if (triggered_writes_stop) {
+    TEST_SYNC_POINT("DBImpl::NotifyOnFlushCompleted::TriggeredWriteStop");
+  } else if (triggered_writes_slowdown) {
+    TEST_SYNC_POINT("DBImpl::NotifyOnFlushCompleted::TriggeredWriteSlowdown");
+  }
+
   // release lock while notifying events
   mutex_.Unlock();
   {
@@ -1725,6 +1752,16 @@ Status DBImpl::CompactRange(const CompactRangeOptions& options,
     InstrumentedMutexLock l(&mutex_);
     // an automatic compaction that has been scheduled might have been
     // preempted by the manual compactions. Need to schedule it back.
+    if (exclusive) {
+      // all compaction scheduling was stopped so we reschedule for each cf
+      ColumnFamilySet* columnFamilySet = versions_->GetColumnFamilySet();
+      for (auto it = columnFamilySet->begin(); it != columnFamilySet->end(); ++it) {
+        SchedulePendingCompaction(*it);
+      }
+    } else {
+      // only compactions in this column family were stopped
+      SchedulePendingCompaction(cfd);
+    }
     MaybeScheduleFlushOrCompaction();
   }
 
@@ -1901,8 +1938,6 @@ Status DBImpl::CompactFilesImpl(
   compaction_job.Prepare();
 
   mutex_.Unlock();
-  TEST_SYNC_POINT("CompactFilesImpl:0");
-  TEST_SYNC_POINT("CompactFilesImpl:1");
   compaction_job.Run();
   TEST_SYNC_POINT("CompactFilesImpl:2");
   TEST_SYNC_POINT("CompactFilesImpl:3");
@@ -2341,10 +2376,12 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
 
   InstrumentedMutexLock l(&mutex_);
 
-  // When a manual compaction arrives, temporarily disable scheduling of
-  // non-manual compactions and wait until the number of scheduled compaction
-  // jobs drops to zero. This is needed to ensure that this manual compaction
-  // can compact any range of keys/files.
+  // When a manual compaction arrives, if it is exclusive, run all scheduled
+  // and unscheduled compactions (from the queue) and then run the manual
+  // one. This is to ensure that any key range can be compacted without
+  // conflict. Otherwise, we let the manual compaction conflict until all
+  // automatic compactions from the same column family have been scheduled
+  // and run in the background.
   //
   // HasPendingManualCompaction() is true when at least one thread is inside
   // RunManualCompaction(), i.e. during that time no other compaction will
@@ -2358,12 +2395,16 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
   AddManualCompaction(&manual);
   TEST_SYNC_POINT_CALLBACK("DBImpl::RunManualCompaction:NotScheduled", &mutex_);
   if (exclusive) {
-    while (bg_compaction_scheduled_ > 0) {
-      RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
-          "[%s] Manual compaction waiting for all other scheduled background "
-          "compactions to finish",
-          cfd->GetName().c_str());
-      bg_cv_.Wait();
+    while (unscheduled_compactions_ + bg_compaction_scheduled_ > 0) {
+      TEST_SYNC_POINT("DBImpl::RunManualCompaction()::Conflict");
+      MaybeScheduleFlushOrCompaction();
+      while (bg_compaction_scheduled_ > 0) {
+        RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+             "[%s] Manual compaction waiting for all other scheduled background "
+                 "compactions to finish",
+             cfd->GetName().c_str());
+        bg_cv_.Wait();
+      }
     }
   }
 
@@ -2389,6 +2430,9 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
       // exclusive manual compactions should not see a conflict during
       // CompactRange
       assert(!exclusive || !manual_conflict);
+      if (manual_conflict) {
+        TEST_SYNC_POINT("DBImpl::RunManualCompaction()::Conflict");
+      }
       // Running either this or some other manual compaction
       bg_cv_.Wait();
       if (scheduled && manual.incomplete == true) {
@@ -2546,12 +2590,6 @@ void DBImpl::MaybeScheduleFlushOrCompaction() {
     return;
   }
 
-  if (HasExclusiveManualCompaction()) {
-    // only manual compactions are allowed to run. don't schedule automatic
-    // compactions
-    return;
-  }
-
   while (bg_compaction_scheduled_ < bg_compactions_allowed &&
          unscheduled_compactions_ > 0) {
     CompactionArg* ca = new CompactionArg;
@@ -2572,20 +2610,53 @@ int DBImpl::BGCompactionsAllowed() const {
   }
 }
 
-void DBImpl::AddToCompactionQueue(ColumnFamilyData* cfd) {
-  assert(!cfd->pending_compaction());
-  cfd->Ref();
-  compaction_queue_.push_back(cfd);
-  cfd->set_pending_compaction(true);
+bool DBImpl::IsEmptyCompactionQueue() {
+  return small_compaction_queue_.empty() && large_compaction_queue_.empty();
 }
 
-ColumnFamilyData* DBImpl::PopFirstFromCompactionQueue() {
-  assert(!compaction_queue_.empty());
-  auto cfd = *compaction_queue_.begin();
-  compaction_queue_.pop_front();
+bool DBImpl::AddToCompactionQueue(ColumnFamilyData* cfd) {
+  assert(!cfd->pending_compaction());
+
+  LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, db_options_.info_log.get());
+  const MutableCFOptions* mutable_cf_options = cfd->GetLatestMutableCFOptions();
+  Compaction* c;
+
+  if (!mutable_cf_options->disable_auto_compactions && !cfd->IsDropped()
+        && !(HasExclusiveManualCompaction() || HaveManualCompaction(cfd))) {
+    c = cfd->PickCompaction(*cfd->GetLatestMutableCFOptions(), &log_buffer);
+    if (c) {
+      cfd->Ref();
+      if (c->CalculateTotalInputSize() < db_options_.compaction_size_threshold_bytes) {
+        small_compaction_queue_.push_back(c);
+      } else {
+        large_compaction_queue_.push_back(c);
+      }
+      cfd->set_pending_compaction(true);
+      return true;
+    }
+  }
+
+  return false;
+}
+
+Compaction* DBImpl::PopFirstFromSmallCompactionQueue() {
+  assert(!small_compaction_queue_.empty());
+  Compaction* c = *small_compaction_queue_.begin();
+  ColumnFamilyData* cfd = c->column_family_data();
+  small_compaction_queue_.pop_front();
   assert(cfd->pending_compaction());
   cfd->set_pending_compaction(false);
-  return cfd;
+  return c;
+}
+
+Compaction* DBImpl::PopFirstFromLargeCompactionQueue() {
+  assert(!large_compaction_queue_.empty());
+  Compaction* c = *large_compaction_queue_.begin();
+  ColumnFamilyData* cfd = c->column_family_data();
+  large_compaction_queue_.pop_front();
+  assert(cfd->pending_compaction());
+  cfd->set_pending_compaction(false);
+  return c;
 }
 
 void DBImpl::AddToFlushQueue(ColumnFamilyData* cfd) {
@@ -2613,8 +2684,9 @@ void DBImpl::SchedulePendingFlush(ColumnFamilyData* cfd) {
 
 void DBImpl::SchedulePendingCompaction(ColumnFamilyData* cfd) {
   if (!cfd->pending_compaction() && cfd->NeedsCompaction()) {
-    AddToCompactionQueue(cfd);
-    ++unscheduled_compactions_;
+    if (AddToCompactionQueue(cfd)) {
+      ++unscheduled_compactions_;
+    }
   }
 }
 
@@ -2769,12 +2841,11 @@ void DBImpl::BackgroundCallCompaction(void* arg) {
   bool made_progress = false;
   ManualCompaction* m = reinterpret_cast<ManualCompaction*>(arg);
   JobContext job_context(next_job_id_.fetch_add(1), true);
-  TEST_SYNC_POINT("BackgroundCallCompaction:0");
   MaybeDumpStats();
   LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, db_options_.info_log.get());
   {
     InstrumentedMutexLock l(&mutex_);
-    num_running_compactions_++;
+    num_total_running_compactions_++;
 
     auto pending_outputs_inserted_elem =
         CaptureCurrentFileNumberInPendingOutputs();
@@ -2825,8 +2896,8 @@ void DBImpl::BackgroundCallCompaction(void* arg) {
       mutex_.Lock();
     }
 
-    assert(num_running_compactions_ > 0);
-    num_running_compactions_--;
+    assert(num_total_running_compactions_ > 0);
+    num_total_running_compactions_--;
     bg_compaction_scheduled_--;
 
     versions_->GetColumnFamilySet()->FreeDeadColumnFamilies();
@@ -2859,6 +2930,7 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
   mutex_.AssertHeld();
 
   bool is_manual = (manual_compaction != nullptr);
+  bool is_large_compaction = false;
 
   // (manual_compaction->in_progress == false);
   bool trivial_move_disallowed =
@@ -2913,9 +2985,23 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
                        ? "(end)"
                        : m->manual_end->DebugString().c_str()));
     }
-  } else if (!compaction_queue_.empty()) {
+  } else if (!IsEmptyCompactionQueue()) {
     // cfd is referenced here
-    auto cfd = PopFirstFromCompactionQueue();
+    if (!large_compaction_queue_.empty() && BGCompactionsAllowed() >
+          num_running_large_compactions() + db_options_.num_reserved_small_compaction_threads) {
+      c.reset(PopFirstFromLargeCompactionQueue());
+      is_large_compaction = true;
+    } else if (!small_compaction_queue_.empty()) {
+      c.reset(PopFirstFromSmallCompactionQueue());
+      is_large_compaction = false;
+    } else {
+      LOG_TO_BUFFER(log_buffer, "No small compactions in queue. Large compaction threads busy.");
+      unscheduled_compactions_++;
+      return Status::OK();
+    }
+
+    ColumnFamilyData* cfd = c->column_family_data();
+
     // We unreference here because the following code will take a Ref() on
     // this cfd if it is going to use it (Compaction class holds a
     // reference).
@@ -2928,53 +3014,36 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
       return Status::OK();
     }
 
-    if (HaveManualCompaction(cfd)) {
-      // Can't compact right now, but try again later
-      TEST_SYNC_POINT("DBImpl::BackgroundCompaction()::Conflict");
-      return Status::OK();
+    if (is_large_compaction) {
+      num_running_large_compactions_++;
+      TEST_SYNC_POINT("DBImpl:BackgroundCompaction:LargeCompaction");
+    } else {
+      TEST_SYNC_POINT("DBImpl:BackgroundCompaction:SmallCompaction");
     }
 
-    // Pick up latest mutable CF Options and use it throughout the
-    // compaction job
-    // Compaction makes a copy of the latest MutableCFOptions. It should be used
-    // throughout the compaction procedure to make sure consistency. It will
-    // eventually be installed into SuperVersion
-    auto* mutable_cf_options = cfd->GetLatestMutableCFOptions();
-    if (!mutable_cf_options->disable_auto_compactions && !cfd->IsDropped()) {
-      // NOTE: try to avoid unnecessary copy of MutableCFOptions if
-      // compaction is not necessary. Need to make sure mutex is held
-      // until we make a copy in the following code
-      c.reset(cfd->PickCompaction(*mutable_cf_options, log_buffer));
-      if (c != nullptr) {
-        // update statistics
-        MeasureTime(stats_, NUM_FILES_IN_SINGLE_COMPACTION,
-                    c->inputs(0)->size());
-        // There are three things that can change compaction score:
-        // 1) When flush or compaction finish. This case is covered by
-        // InstallSuperVersionAndScheduleWork
-        // 2) When MutableCFOptions changes. This case is also covered by
-        // InstallSuperVersionAndScheduleWork, because this is when the new
-        // options take effect.
-        // 3) When we Pick a new compaction, we "remove" those files being
-        // compacted from the calculation, which then influences compaction
-        // score. Here we check if we need the new compaction even without the
-        // files that are currently being compacted. If we need another
-        // compaction, we might be able to execute it in parallel, so we add it
-        // to the queue and schedule a new thread.
-        if (cfd->NeedsCompaction()) {
-          // Yes, we need more compactions!
-          AddToCompactionQueue(cfd);
-          ++unscheduled_compactions_;
-          MaybeScheduleFlushOrCompaction();
-        }
-      }
+    if (c != nullptr) {
+      // update statistics
+      MeasureTime(stats_, NUM_FILES_IN_SINGLE_COMPACTION,
+                  c->inputs(0)->size());
+      // There are three things that can change compaction score:
+      // 1) When flush or compaction finish. This case is covered by
+      // InstallSuperVersionAndScheduleWork
+      // 2) When MutableCFOptions changes. This case is also covered by
+      // InstallSuperVersionAndScheduleWork, because this is when the new
+      // options take effect.
+      // 3) When we Pick a new compaction, we "remove" those files being
+      // compacted from the calculation, which then influences compaction
+      // score. Here we check if we need the new compaction even without the
+      // files that are currently being compacted. If we need another
+      // compaction, we might be able to execute it in parallel, so we add it
+      // to the queue and schedule a new thread.
+
+      SchedulePendingCompaction(cfd);
+      MaybeScheduleFlushOrCompaction();
     }
   }
 
-  if (!c) {
-    // Nothing to do
-    LOG_TO_BUFFER(log_buffer, "Compaction nothing to do");
-  } else if (c->deletion_compaction()) {
+  if (c->deletion_compaction()) {
     // TODO(icanadi) Do we want to honor snapshots here? i.e. not delete old
     // file if there is alive snapshot pointing to it
     assert(c->num_input_files(1) == 0);
@@ -3088,13 +3157,19 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
     }
     *made_progress = true;
   }
-  if (c != nullptr) {
-    NotifyOnCompactionCompleted(
-        c->column_family_data(), c.get(), status,
-        compaction_job_stats, job_context->job_id);
-    c->ReleaseCompactionFiles(status);
-    *made_progress = true;
-  }
+
+  NotifyOnCompactionCompleted(
+      c->column_family_data(), c.get(), status,
+      compaction_job_stats, job_context->job_id);
+
+  c->ReleaseCompactionFiles(status);
+
+  // It is possible that a compaction was needed in the column family but we could not
+  // add it to the queue when this compaction was popped because of L0 conflicts
+  // or other picker internals, so we try to schedule again.
+  SchedulePendingCompaction(c->column_family_data());
+
+  *made_progress = true;
   // this will unref its input_version and column_family_data
   c.reset();
 
@@ -3146,6 +3221,11 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
     }
     m->in_progress = false; // not being processed anymore
   }
+
+  if (is_large_compaction) {
+    num_running_large_compactions_--;
+  }
+
   return status;
 }
 

@@ -38,6 +38,8 @@ DEFINE_int32(rocksdb_universal_compaction_min_merge_width, 4,
              "The minimum number of files in a single compaction run.");
 DEFINE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 100 * 1024 * 1024,
              "Use to control write rate of flush and compaction.");
+DEFINE_uint64(rocksdb_compaction_size_threshold_bytes, 2ULL * 1024 * 1024 * 1024,
+             "Threshold beyond which compaction is considered large.");
 DEFINE_uint64(rocksdb_max_file_size_for_compaction, 0,
              "Maximal allowed file size to participate in RocksDB compaction. 0 - unlimited.");
 
@@ -316,6 +318,7 @@ void InitRocksDBOptions(
         FLAGS_rocksdb_universal_compaction_size_ratio;
     options->compaction_options_universal.min_merge_width =
         FLAGS_rocksdb_universal_compaction_min_merge_width;
+    options->compaction_size_threshold_bytes = FLAGS_rocksdb_compaction_size_threshold_bytes;
     if (FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec > 0) {
       options->rate_limiter.reset(
           rocksdb::NewGenericRateLimiter(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec));

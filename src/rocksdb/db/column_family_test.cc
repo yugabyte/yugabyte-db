@@ -1547,8 +1547,8 @@ TEST_F(ColumnFamilyTest, SameCFManualAutomaticConflict) {
   bool cf_1_1 = true;
   bool cf_1_2 = true;
   rocksdb::SyncPoint::GetInstance()->LoadDependency(
-      {{"DBImpl::BackgroundCompaction()::Conflict",
-        "ColumnFamilyTest::ManualAutoCon:7"},
+      {{"ColumnFamilyTest::ManualAutoCon:7",
+        "DBImpl::RunManualCompaction()::Conflict"},
        {"ColumnFamilyTest::ManualAutoCon:9",
         "ColumnFamilyTest::ManualAutoCon:8"},
        {"ColumnFamilyTest::ManualAutoCon:2",

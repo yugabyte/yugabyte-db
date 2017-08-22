@@ -524,6 +524,7 @@ TEST_F(DBCompactionTest, BGCompactionsAllowed) {
   options.soft_pending_compaction_bytes_limit = 1 << 30;  // Infinitely large
   options.base_background_compactions = 1;
   options.max_background_compactions = 3;
+  options.compaction_style = kCompactionStyleUniversal;
   options.memtable_factory.reset(new SpecialSkipListFactory(kNumKeysPerFile));
   options = CurrentOptions(options);
 
@@ -605,6 +606,186 @@ TEST_F(DBCompactionTest, BGCompactionsAllowed) {
     sleeping_tasks[i].WakeUp();
     sleeping_tasks[i].WaitUntilDone();
   }
+}
+
+TEST_F(DBCompactionTest, ClogSingleCompactionQueue) {
+  int slowdown_writes = 0, stop_writes = 0;
+
+  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+      "DBImpl::NotifyOnFlushCompleted::TriggeredWriteStop",
+      [&](void *args) { stop_writes++; });
+  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+      "DBImpl::NotifyOnFlushCompleted::TriggeredWriteSlowdown",
+      [&](void *args) { slowdown_writes++; });
+  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+  // Create several column families. Make large compactions in all but one
+  // of them and see small compactions in the other starve.
+  const int kNumKeysPerLargeFile = 100000;
+  const int kNumKeysPerSmallFile = 1;
+
+  Options options;
+  options.write_buffer_size = 110 << 20;  // 110 MB
+  options.arena_block_size = 4 << 10;
+  options.compaction_style = kCompactionStyleUniversal;
+  // Should speed up compaction when there are 4 files.
+  options.level0_file_num_compaction_trigger = 2;
+  options.level0_slowdown_writes_trigger = 10;
+  options.level0_stop_writes_trigger = 20;
+  options.soft_pending_compaction_bytes_limit = 1ULL << 63;  // Infinitely large
+  options.max_background_compactions = 3;
+  options.memtable_factory.reset(new SpecialSkipListFactory(kNumKeysPerLargeFile));
+  options.listeners.emplace_back(new EventListener());
+  options = CurrentOptions(options);
+
+  // Block all threads in thread pool.
+  const size_t kTotalTasks = 4;
+  env_->SetBackgroundThreads(4, Env::LOW);
+  test::SleepingBackgroundTask sleeping_tasks[kTotalTasks];
+  for (size_t i = 0; i < kTotalTasks; i++) {
+    env_->Schedule(&test::SleepingBackgroundTask::DoSleepTask,
+                   &sleeping_tasks[i], Env::Priority::LOW);
+    sleeping_tasks[i].WaitUntilSleeping();
+  }
+
+  CreateAndReopenWithCF({"one", "two", "three"}, options);
+
+  Random rnd(301);
+  for (int cf = 0; cf < 3; cf++) {
+    for (int num = 0; num < options.level0_file_num_compaction_trigger; num++) {
+      for (int i = 0; i < kNumKeysPerLargeFile; i++) {
+        ASSERT_OK(Put(cf, Key(i), ""));
+      }
+      // put extra key to trigger flush
+      ASSERT_OK(Put(cf, "", ""));
+      dbfull()->TEST_WaitForFlushMemTable(handles_[cf]);
+      ASSERT_EQ(NumTableFilesAtLevel(0, cf), num + 1);
+    }
+  }
+
+  ASSERT_EQ(3, env_->GetThreadPoolQueueLen(Env::Priority::LOW));
+
+  for (size_t i = 0; i < kTotalTasks; i++) {
+    sleeping_tasks[i].WakeUp();
+  }
+
+  for (int num = 0; num < options.level0_stop_writes_trigger; num++) {
+    for (int i = 0; i < kNumKeysPerSmallFile; i++) {
+      ASSERT_OK(Put(3, Key(i), ""));
+    }
+    ASSERT_OK(Flush(3));
+  }
+
+  for (size_t i = 0; i < kTotalTasks; i++) {
+    ASSERT_FALSE(sleeping_tasks[i].IsSleeping());
+  }
+
+  dbfull()->TEST_WaitForCompact();
+
+  rocksdb::SyncPoint::GetInstance()->DisableProcessing();
+
+  ASSERT_GT(slowdown_writes + stop_writes, 0);
+}
+
+TEST_F(DBCompactionTest, ClogMultipleCompactionQueues) {
+  int slowdown_writes = 0, stop_writes = 0;
+  int num_large_compactions = 0, num_small_compactions = 0;
+
+  // Create several column families. Make large compaction triggers in all
+  // but one of them and see no slowdown in writes when small compactions
+  // in the last column family use the reserved threads to run.
+  const int kNumKeysPerLargeFile = 100000;
+  const int kNumKeysPerSmallFile = 1;
+
+  Options options;
+  options.write_buffer_size = 110 << 20;  // 110 MB
+  options.arena_block_size = 4 << 10;
+  options.compaction_style = kCompactionStyleUniversal;
+  // Should speed up compaction when there are 4 files.
+  options.level0_file_num_compaction_trigger = 2;
+  options.level0_slowdown_writes_trigger = 10;
+  options.level0_stop_writes_trigger = 20;
+  options.soft_pending_compaction_bytes_limit = 1ULL << 63;  // Infinitely large
+  options.max_background_compactions = 3;
+  options.compaction_size_threshold_bytes = 1 << 20;
+  options.memtable_factory.reset(new SpecialSkipListFactory(kNumKeysPerLargeFile));
+  options.listeners.emplace_back(new EventListener());
+  options = CurrentOptions(options);
+
+  // Block all threads in thread pool.
+  const size_t kTotalTasks = 4;
+  env_->SetBackgroundThreads(4, Env::LOW);
+  test::SleepingBackgroundTask sleeping_tasks[kTotalTasks];
+  for (size_t i = 0; i < kTotalTasks; i++) {
+    env_->Schedule(&test::SleepingBackgroundTask::DoSleepTask,
+                   &sleeping_tasks[i], Env::Priority::LOW);
+    sleeping_tasks[i].WaitUntilSleeping();
+  }
+
+  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+      "DBImpl::NotifyOnFlushCompleted::TriggeredWriteStop",
+      [&](void *args) { stop_writes++; });
+  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+      "DBImpl::NotifyOnFlushCompleted::TriggeredWriteSlowdown",
+      [&](void *args) { slowdown_writes++; });
+  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+
+  CreateAndReopenWithCF({"one", "two", "three"}, options);
+
+  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+      "DBImpl:BackgroundCompaction:LargeCompaction",
+      [&](void *args) {
+        ASSERT_EQ(dbfull()->TEST_NumRunningLargeCompactions(), 1);
+        ++num_large_compactions; });
+
+  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+      "DBImpl:BackgroundCompaction:SmallCompaction",
+      [&](void *args) {
+        ++num_small_compactions; });
+
+  Random rnd(301);
+  for (int cf = 0; cf < 3; cf++) {
+    for (int num = 0; num < 3 * options.level0_file_num_compaction_trigger; num++) {
+      for (int i = 0; i < kNumKeysPerLargeFile; i++) {
+        ASSERT_OK(Put(cf, Key(i), ""));
+      }
+      // put extra key to trigger flush
+      ASSERT_OK(Put(cf, "", ""));
+      dbfull()->TEST_WaitForFlushMemTable(handles_[cf]);
+      ASSERT_EQ(NumTableFilesAtLevel(0, cf), num + 1);
+    }
+  }
+
+  ASSERT_EQ(3, env_->GetThreadPoolQueueLen(Env::Priority::LOW));
+
+  for (size_t i = 0; i < kTotalTasks; i++) {
+    sleeping_tasks[i].WakeUp();
+  }
+
+  ASSERT_EQ(num_small_compactions, 0);
+  int num_large_compactions_before_small_flushes = num_large_compactions;
+
+  rocksdb::SyncPoint::GetInstance()->LoadDependency({
+      {"DBImpl:BackgroundCompaction:LargeCompaction",
+          "DBImpl:BackgroundCompaction:SmallCompaction"}
+  });
+
+  for (int num = 0; num < options.level0_stop_writes_trigger; num++) {
+    for (int i = 0; i < kNumKeysPerSmallFile; i++) {
+      ASSERT_OK(Put(3, Key(i), ""));
+    }
+    ASSERT_OK(Flush(3));
+  }
+
+  for (size_t i = 0; i < kTotalTasks; i++) {
+    ASSERT_FALSE(sleeping_tasks[i].IsSleeping());
+  }
+
+  dbfull()->TEST_WaitForCompact();
+
+  rocksdb::SyncPoint::GetInstance()->DisableProcessing();
+
+  ASSERT_GT(num_small_compactions, options.level0_stop_writes_trigger);
+  ASSERT_GT(num_large_compactions, num_large_compactions_before_small_flushes);
 }
 
 TEST_P(DBCompactionTestWithParam, CompactionsGenerateMultipleFiles) {

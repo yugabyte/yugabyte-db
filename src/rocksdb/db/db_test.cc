@@ -7395,7 +7395,7 @@ TEST_F(DBTest, AutomaticConflictsWithManualCompaction) {
 
   std::atomic<int> callback_count(0);
   rocksdb::SyncPoint::GetInstance()->SetCallBack(
-      "DBImpl::BackgroundCompaction()::Conflict",
+      "DBImpl::RunManualCompaction()::Conflict",
       [&](void* arg) { callback_count.fetch_add(1); });
   rocksdb::SyncPoint::GetInstance()->EnableProcessing();
   CompactRangeOptions croptions;
@@ -7664,6 +7664,7 @@ TEST_F(DBTest, SoftLimit) {
 
   // Now there is one L1 file but doesn't trigger soft_rate_limit
   // The L1 file size is around 30KB.
+
   ASSERT_EQ(NumTableFilesAtLevel(1), 1);
   ASSERT_TRUE(!dbfull()->TEST_write_controler().NeedsDelay());
 
@@ -7689,15 +7690,18 @@ TEST_F(DBTest, SoftLimit) {
     Flush();
   }
 
-  // Wake up sleep task to enable compaction to run and waits
+  // (Twice) Wake up sleep task to enable compaction to run and waits
   // for it to go to sleep state again to make sure one compaction
   // goes through.
-  sleeping_task_low.WakeUp();
-  sleeping_task_low.WaitUntilSleeping();
+  for (int i = 0; i < 2; i++) {
+    sleeping_task_low.WakeUp();
+    sleeping_task_low.WaitUntilSleeping();
+  }
 
   // Now there is one L1 file (around 60KB) which exceeds 50KB base by 10KB
   // Given level multiplier 10, estimated pending compaction is around 100KB
-  // doesn't trigger soft_pending_compaction_bytes_limit
+  // doesn't trigger soft_pending_compaction_bytes_limit. Another compaction
+  // promoting the L1 file to L2 is unscheduled.
   ASSERT_EQ(NumTableFilesAtLevel(1), 1);
   ASSERT_TRUE(!dbfull()->TEST_write_controler().NeedsDelay());
 
@@ -7711,13 +7715,13 @@ TEST_F(DBTest, SoftLimit) {
   // Wake up sleep task to enable compaction to run and waits
   // for it to go to sleep state again to make sure one compaction
   // goes through.
+
   sleeping_task_low.WakeUp();
   sleeping_task_low.WaitUntilSleeping();
 
-  // Now there is one L1 file (around 90KB) which exceeds 50KB base by 40KB
-  // Given level multiplier 10, estimated pending compaction is around 400KB
-  // triggerring soft_pending_compaction_bytes_limit
-  ASSERT_EQ(NumTableFilesAtLevel(1), 1);
+  // Now there is one L2 file (around 60KB) which doesn't trigger
+  // soft_pending_compaction_bytes_limit but the 3 L0 files do get the delay token
+  ASSERT_EQ(NumTableFilesAtLevel(2), 1);
   ASSERT_TRUE(dbfull()->TEST_write_controler().NeedsDelay());
 
   sleeping_task_low.WakeUp();
