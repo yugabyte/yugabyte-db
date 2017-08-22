@@ -61,21 +61,15 @@ googleAnalytics = ""
 	weight = 5
 
 [[menu.main]]
-	name = "Local Node"
-	parent = "community-get-started"
-	url = "community-edition/get-started/local-node/"
-	weight = 10
-
-[[menu.main]]
-	name = "Local Cluster"
-	parent = "community-get-started"
-	url = "community-edition/get-started/local-cluster/"
-	weight = 15
-
-[[menu.main]]
 	name   = "Develop"
 	parent = "community-edition"
 	url    = "community-edition/develop/"
+	weight = 10
+
+[[menu.main]]
+	name   = "Deploy"
+	parent = "community-edition"
+	url    = "community-edition/deploy/"
 	weight = 20
 
 [[menu.main]]
@@ -98,8 +92,25 @@ googleAnalytics = ""
 
 [[menu.main]]
 	name   = "Learn YugaByte"
-	url    = "learn/"
+	identifier    = "learn"
 	weight = 60
+
+
+[[menu.main]]
+	name = "Basics"
+	identifier = "learn-basics"
+	parent = "learn"
+	url = "learn/basics/"
+	weight = 65
+
+
+[[menu.main]]
+	name = "Architecture"
+	identifier = "learn-architecuture"
+	parent = "learn"
+	url = "learn/architecture/"
+	weight = 70
+
 
 [[menu.main]]
 	name   = "FAQs"

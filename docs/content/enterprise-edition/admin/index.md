@@ -6,11 +6,11 @@ weight: 40
 
 This section details how to administer YugaByte using the YugaWare admin console.
 
-## Prerequisites for data nodes
+## Prerequisites
 
 ### Public cloud
 
-If you plan to create YugaByte clusters on public cloud providers such as Amazon Web Services (AWS) or Google Cloud Platform (GCP), all you need to provide on YugaWare UI is your cloud provider credentials. YugaWare will use those credentials to automatically provision and de-provision nodes that run YugaByte. A 'node' for YugaByte includes a compute instance as well as local or remote disk storage attached to the compute instance.
+If you plan to create YugaByte clusters on public cloud providers such as Amazon Web Services (AWS) or Google Cloud Platform (GCP), all you need to provide on YugaWare UI is your cloud provider credentials. YugaWare will use those credentials to automatically provision and de-provision instances that run YugaByte. An 'instance' for YugaByte includes a compute instance as well as local or remote disk storage attached to the compute instance.
 
 If you are using AWS, you will also need to share your AWS Account ID with YugaByte Support so that we can make our YugaByte base AMI accessible to your account. You can find your AWS Account ID at the top of the [AWS My Account](https://console.aws.amazon.com/billing/home?#/account) page.
 
@@ -20,24 +20,7 @@ You will need to agree to the AWS Marketplace Terms [here](https://aws.amazon.co
 
 ### Private cloud or on-premises data centers
 
-Dedicated hosts or VMs running Centos 7+ with local or remote attached storage. All these hosts should be accessible over SSH from the YugaWare host. If your instance will not have public network access, make sure the following packages have been installed (all can be retrieved from the yum repo **epel**, make sure to use the latest epel release repo):
-
-- epel-release
-- libstdc++
-- collectd
-- ntp
-- cyrus-sasl-plain
-- cyrus-sasl-devel
-- python-pip
-- python-devel
-- python-psutil
-
-Here's the command to install these packages.
-
-```sh
-# install pre-requisite packages
-sudo yum install epel-release libstdc++ collectd ntp cyrus-sasl-plain cyrus-sasl-devel python-pip python-devel python-psutil
-```
+The prerequisites here are same as that of the [Community Edition](/community-edition/deploy/#prerequisites/).
 
 ## Configure cloud providers
 
