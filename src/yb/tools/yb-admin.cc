@@ -35,6 +35,7 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
+#include "yb/redisserver/redis_constants.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/env.h"
@@ -50,6 +51,9 @@
 DEFINE_string(master_addresses, "localhost:7051",
               "Comma-separated list of YB Master server addresses");
 DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
+
+DEFINE_int32(redis_num_replicas, 3, "Replication factor for the .redis table");
+DEFINE_int32(redis_num_tablets, 16, "Number of tablets to create in the .redis table");
 
 #define EXIT_NOT_OK_PREPEND(status, msg) \
   do { \
@@ -110,6 +114,7 @@ const char* const kListTabletsForTabletServerOp = "list_tablets_for_tablet_serve
 const char* const kSetLoadBalancerEnabled = "set_load_balancer_enabled";
 const char* const kGetLoadMoveCompletion = "get_load_move_completion";
 const char* const kListLeaderCounts = "list_leader_counts";
+const char* const kSetupRedisTable = "setup_redis_table";
 static const char* g_progname = nullptr;
 
 // Maximum number of elements to dump on unexpected errors.
@@ -179,6 +184,8 @@ class ClusterAdminClient {
   Status GetLoadMoveCompletion();
 
   Status ListLeaderCounts(const YBTableName& table_name);
+
+  Status SetupRedisTable();
 
  private:
   // Fetch the locations of the replicas for a given tablet from the Master.
@@ -541,6 +548,28 @@ Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
     std::cout << "Adjusted deviation percentage: " << percent_dev << "%" << std::endl;
   }
 
+  return Status::OK();
+}
+
+Status ClusterAdminClient::SetupRedisTable() {
+  const YBTableName table_name(kRedisKeyspaceName, kRedisTableName);
+  RETURN_NOT_OK(yb_client_->CreateNamespaceIfNotExists(kRedisKeyspaceName));
+  LOG(INFO) << "Checking if table '" << kRedisTableName << "' already exists";
+  {
+    yb::client::YBSchema existing_schema;
+    if (yb_client_->GetTableSchema(table_name, &existing_schema).ok()) {
+      LOG(INFO) << "Table '" << table_name.ToString() << "' already exists";
+    } else {
+      LOG(INFO) << "Table '" << table_name.ToString() << "' does not exist yet, creating...";
+      gscoped_ptr<yb::client::YBTableCreator> table_creator(yb_client_->NewTableCreator());
+      // TODO: tablets / RF for redis table creation?
+      RETURN_NOT_OK(table_creator->table_name(table_name)
+                                  .num_tablets(FLAGS_redis_num_tablets)
+                                  .num_replicas(FLAGS_redis_num_replicas)
+                                  .table_type(yb::client::YBTableType::REDIS_TABLE_TYPE)
+                                  .Create());
+    }
+  }
   return Status::OK();
 }
 
@@ -984,7 +1013,8 @@ static void SetUsage(const char* argv0) {
       << " 11. " << kListTabletsForTabletServerOp << " <ts_uuid>" << std::endl
       << " 12. " << kSetLoadBalancerEnabled << " <0|1>" << std::endl
       << " 13. " << kGetLoadMoveCompletion << std::endl
-      << " 14. " << kListLeaderCounts << " <table_name>";
+      << " 14. " << kListLeaderCounts << " <table_name>" << std::endl
+      << " 15. " << kSetupRedisTable;
 
   google::SetUsageMessage(str.str());
 }
@@ -1155,6 +1185,12 @@ static int ClusterAdminCliMain(int argc, char** argv) {
     Status s = client.ListLeaderCounts(table_name);
     if (!s.ok()) {
       std::cerr << "Unable to get leader counts: " << s.ToString() << std::endl;
+      return 1;
+    }
+  } else if (op == kSetupRedisTable) {
+    Status s = client.SetupRedisTable();
+    if (!s.ok()) {
+      std::cerr << "Unable to setup Redis keyspace and table: " << s.ToString() << std::endl;
       return 1;
     }
   } else {

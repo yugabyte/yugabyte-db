@@ -42,7 +42,7 @@ class ClusterOptions():
         self.replication_factor = None
         self.base_local_url = "127.0.0.1"
 
-        self.cluster_base_dir = "/tmp/yugabyte-local-cluster"
+        self.cluster_base_dir = None
 
         self.custom_binary_dir = None
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
@@ -56,6 +56,8 @@ class ClusterOptions():
         self.placement_cloud = "cloud"
         self.placement_region = "region"
         self.placement_zone = "zone"
+
+        self.require_clock_sync = False
 
         self.master_addresses = ""
         self.base_ports = {
@@ -76,19 +78,23 @@ class ClusterOptions():
     def update_options_from_args(self, args):
         self.replication_factor = args.replication_factor
         self.custom_binary_dir = args.binary_dir
+        self.cluster_base_dir = args.data_dir
+        self.require_clock_sync = args.require_clock_sync
 
     def validate_daemon_type(self, daemon_type):
         if daemon_type not in ClusterOptions.DAEMON_TYPES:
             raise RuntimeError("Invalid daemon type: {}".format(daemon_type))
         # Validate the binary.
-        self.get_binary_path(daemon_type)
+        self.get_server_binary_path(daemon_type)
 
     def validate_daemon_index(self, daemon_index):
         if daemon_index < 1 or daemon_index > self.max_daemon_index:
             raise RuntimeError("Invalid daemon index: {}".format(daemon_index))
 
-    def get_binary_path(self, daemon_type):
+    def get_server_binary_path(self, daemon_type):
+        return self.get_binary_path("yb-{}".format(daemon_type))
 
+    def get_binary_path(self, binary_name):
         # If the user specified a custom path, do not default back to anything else.
         if self.custom_binary_dir:
             binary_dirs = [self.custom_binary_dir]
@@ -97,12 +103,12 @@ class ClusterOptions():
             binary_dirs = [self.script_dir, self.build_bin_dir]
 
         for binary_dir in binary_dirs:
-            path = os.path.join(binary_dir, "yb-{}".format(daemon_type))
+            path = os.path.join(binary_dir, binary_name)
             if not os.path.isfile(path) or not os.access(path, os.X_OK):
-                logging.debug("Binary path {} is not the yugabyte server".format(path))
+                logging.debug("No binary found at {}".format(path))
             else:
                 return path
-        raise RuntimeError("Could not find binary for {}".format(daemon_type))
+        raise RuntimeError("No binary found for {}".format(binary_name))
 
     def get_node_name(self, daemon_type, daemon_index):
         self.validate_daemon_type(daemon_type)
@@ -139,8 +145,14 @@ class ClusterControl():
             "--binary_dir", default=None,
             help="Specify a custom directory in which to find the yugabyte binaries.")
         self.parser.add_argument(
+            "--data_dir", default="/tmp/yugabyte-local-cluster",
+            help="Specify a custom directory where to store data.")
+        self.parser.add_argument(
             "--replication_factor", "--rf", default=3, type=int,
             help="Replication factor for the cluster as well as default number of masters. ")
+        self.parser.add_argument(
+            "--require_clock_sync", default=False, type=bool,
+            help="Use ntpd for clock syncronization. Needed for real time dependent use-cases.")
 
         p = self.setup_base_parser("create", help="Create a new cluster")
 
@@ -152,6 +164,8 @@ class ClusterControl():
 
         p = self.setup_base_parser("remove_node", help="Remove a tserver from the current cluster")
         p.add_argument("node_id", type=int, help="The index of the tserver to remove")
+
+        p = self.setup_base_parser("setup_redis", help="Setup YugaByte to support Redis queries")
 
     def run(self):
         self.args = self.parser.parse_args()
@@ -194,7 +208,7 @@ class ClusterControl():
 
         command_list = [
             # Start with the actual binary
-            self.options.get_binary_path(daemon_type),
+            self.options.get_server_binary_path(daemon_type),
             # Add in all the shared flags
             "--fs_data_dirs \"{}\"".format(",".join(["{}/{}".format(
                   node_base_dir, d) for d in self.options.data_dir_suffixes])),
@@ -205,11 +219,12 @@ class ClusterControl():
                 self.options.get_address(daemon_type, daemon_index, "http")),
             "--rpc_bind_addresses {}".format(
                     self.options.get_address(daemon_type, daemon_index, "rpc", True)),
+            "--use_hybrid_clock={}".format(self.options.require_clock_sync),
             "--placement_cloud {}".format(self.options.placement_cloud),
             "--placement_region {}".format(self.options.placement_region),
             "--placement_zone {}".format(self.options.placement_zone)
         ]
-        binary_path = self.options.get_binary_path(daemon_type)
+        binary_path = self.options.get_server_binary_path(daemon_type)
         www_path = os.path.realpath(os.path.join(os.path.dirname(binary_path), "..", "www"))
         if os.path.isdir(www_path):
             command_list.append("--webserver_doc_root \"{}\"".format(www_path))
@@ -326,7 +341,9 @@ class ClusterControl():
                 if pid == 0:
                     logging.info("Server type={} index={} is not running".format(t, i))
                 else:
-                    logging.info("Server type={} index={} is running on PID={}".format(t, i, pid))
+                    logging.info("Server type={} index={} is running on PID={}, URL={}:{}".format(
+                        t, i, pid, self.options.base_local_url,
+                        self.options.base_ports[t]["http"] + i))
 
     def destroy(self):
         # Stop all the daemons.
@@ -339,6 +356,12 @@ class ClusterControl():
         if os.path.exists(top_level) and os.path.isdir(top_level):
             logging.info("Removing base directory: {}".format(top_level))
             shutil.rmtree(self.options.cluster_base_dir)
+
+    def setup_redis(self):
+        self.set_master_addresses(self.get_number_servers("master"))
+        yb_admin_binary_path = self.options.get_binary_path("yb-admin")
+        os.system("{} --master_addresses {} setup_redis_table".format(
+            yb_admin_binary_path, self.options.master_addresses))
 
 
 if __name__ == "__main__":

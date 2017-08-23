@@ -1,0 +1,31 @@
+#!/bin/bash
+
+set -euo pipefail
+
+# Among other things, /etc/os-release prints one line of this format:
+#
+# NAME="CentOS Linux"
+#
+ETC_RELEASE_FILE=/etc/os-release
+if [[ -f $ETC_RELEASE_FILE ]] && egrep -q '^NAME="CentOS.*' "$ETC_RELEASE_FILE";
+then
+  echo "Attempting to install cyrus SASL dependencies..."
+  sudo yum install -y cyrus-sasl cyrus-sasl-plain
+else
+  echo "We only support CentOS for now. YugaByte might not function well on this platform..."
+  exit 1
+fi
+
+SCRIPT_DIR=${BASH_SOURCE%/*}
+echo $SCRIPT_DIR
+POST_INSTALL_SCRIPT="$SCRIPT_DIR/post_install.sh"
+
+if [[ ! -f $POST_INSTALL_SCRIPT ]];
+then
+  echo "Could not find post install script: $POST_INSTALL_SCRIPT"
+  exit 1
+fi
+
+# Run the script
+echo "Running post install script..."
+"$POST_INSTALL_SCRIPT"
