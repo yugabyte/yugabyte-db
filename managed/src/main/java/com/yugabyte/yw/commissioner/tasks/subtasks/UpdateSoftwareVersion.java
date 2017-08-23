@@ -5,11 +5,11 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import java.util.UUID;
 
+import com.yugabyte.yw.forms.AbstractTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
@@ -18,7 +18,7 @@ public class UpdateSoftwareVersion extends AbstractTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(UpdateSoftwareVersion.class);
 
   // Parameters for marking universe update as a success.
-  public static class Params implements ITaskParams {
+  public static class Params extends AbstractTaskParams {
     // The universe against which software version should be saved.
     public UUID universeUUID;
     // The software version to which user updated the universe.

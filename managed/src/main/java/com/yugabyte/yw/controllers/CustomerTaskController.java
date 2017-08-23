@@ -50,6 +50,7 @@ public class CustomerTaskController extends AuthenticatedController {
       subTaskData.subTaskState = taskInfo.getTaskState().name();
       subTaskData.creationTime = taskInfo.getCreationTime();
       subTaskData.subTaskGroupType = taskInfo.getSubTaskGroupType().name();
+      subTaskData.errorString = taskInfo.getTaskDetails().get("errorString").asText();
       subTasks.add(subTaskData);
     }
     return subTasks;

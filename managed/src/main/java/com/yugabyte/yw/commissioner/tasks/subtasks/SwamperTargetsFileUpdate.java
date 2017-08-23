@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.SwamperHelper;
+import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,7 +18,7 @@ public class SwamperTargetsFileUpdate extends AbstractTaskBase {
   @Inject
   SwamperHelper swamperHelper;
 
-  public static class Params implements ITaskParams {
+  public static class Params extends AbstractTaskParams {
     public UUID universeUUID;
     public boolean removeFile = false;
   }

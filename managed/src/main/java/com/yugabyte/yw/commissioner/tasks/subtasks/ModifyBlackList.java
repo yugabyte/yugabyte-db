@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Collection;
 import java.util.UUID;
 
+import com.yugabyte.yw.forms.AbstractTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.Common.HostPortPB;
@@ -29,7 +30,7 @@ public class ModifyBlackList extends AbstractTaskBase {
   public YBClientService ybService = null;
 
   // Parameters for placement info update task.
-  public static class Params implements ITaskParams {
+  public static class Params extends AbstractTaskParams {
     // The universe against which this node's details should be saved.
     public UUID universeUUID;
 
