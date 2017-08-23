@@ -116,16 +116,13 @@ CHECKED_STATUS Executor::WhereClauseToPB(YQLReadRequestPB *req,
     }
   }
 
-  // Try to set up key_where_ops as the requests hash key columns. This may be empty
+  // Try to set up key_where_ops as the requests hash key columns. This may be empty.
   bool key_ops_are_set = true;
   for (const auto& op : key_where_ops) {
     const ColumnDesc *col_desc = op.desc();
     YQLColumnValuePB *col_pb;
-    if (col_desc->is_hash()) {
-      col_pb = req->add_hashed_column_values();
-    } else {
-      LOG(FATAL) << "Unexpected non partition column in this context";
-    }
+    CHECK(col_desc->is_hash()) << "Unexpected non partition column in this context";
+    col_pb = req->add_hashed_column_values();
     VLOG(3) << "READ request, column id = " << col_desc->id();
     col_pb->set_column_id(col_desc->id());
     RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb->mutable_expr()));
@@ -156,75 +153,21 @@ CHECKED_STATUS Executor::WhereClauseToPB(YQLReadRequestPB *req,
   }
 
   // Setup the where clause.
-  YQLConditionPB *next_cond = req->mutable_where_expr()->mutable_condition();
-
+  YQLConditionPB *where_pb = req->mutable_where_expr()->mutable_condition();
+  where_pb->set_op(YQL_OP_AND);
   if (!key_ops_are_set) {
     for (const auto& col_op : key_where_ops) {
-      YQLConditionPB *curr_cond = next_cond; // default for last op
-      if (&col_op != &key_where_ops.back() || !where_ops.empty() ||
-          !subcol_where_ops.empty() || !func_ops.empty()) {
-        // If this is not last op then ConditionPB is AND of this op and the next one.
-        next_cond->set_op(YQL_OP_AND);
-
-        // Create new ConditionPBs for current and next operands.
-        curr_cond = next_cond->add_operands()->mutable_condition();
-        next_cond = next_cond->add_operands()->mutable_condition();
-      }
-      RETURN_NOT_OK(WhereOpToPB(curr_cond, col_op));
-      // Empty 'IN' condition guarantees no results. We check this again here since we may break
-      // early in the previous loop and skip subsequent empty `IN` conditions.
-      if (curr_cond->op() == YQL_OP_IN && curr_cond->operands().empty()) {
-        *no_results = true;
-        return Status::OK();
-      }
+      RETURN_NOT_OK(WhereOpToPB(where_pb->add_operands()->mutable_condition(), col_op));
     }
   }
-
   for (const auto& col_op : where_ops) {
-    YQLConditionPB *curr_cond = next_cond; // default for last op
-    if (&col_op != &where_ops.back() || !subcol_where_ops.empty() || !func_ops.empty()) {
-      // If this is not last op then ConditionPB is AND of this op and the next one.
-      next_cond->set_op(YQL_OP_AND);
-
-      // Create new ConditionPBs for current and next operands.
-      curr_cond = next_cond->add_operands()->mutable_condition();
-      next_cond = next_cond->add_operands()->mutable_condition();
-    }
-    RETURN_NOT_OK(WhereOpToPB(curr_cond, col_op));
-    // Empty 'IN' condition guarantees no results.
-    if (curr_cond->op() == YQL_OP_IN && curr_cond->operands().empty()) {
-      *no_results = true;
-      return Status::OK();
-    }
+    RETURN_NOT_OK(WhereOpToPB(where_pb->add_operands()->mutable_condition(), col_op));
   }
-
   for (const auto& col_op : subcol_where_ops) {
-    if (&col_op == &subcol_where_ops.back() && func_ops.empty()) {
-      // This is the last operator. Use the current ConditionPB.
-      RETURN_NOT_OK(WhereSubColOpToPB(next_cond, col_op));
-    } else {
-      // Current ConditionPB would be AND of this op and the next one.
-      next_cond->set_op(YQL_OP_AND);
-      YQLExpressionPB *op = next_cond->add_operands();
-      RETURN_NOT_OK(WhereSubColOpToPB(op->mutable_condition(), col_op));
-      // Create a new the ConditionPB for the next operand.
-      next_cond = next_cond->add_operands()->mutable_condition();
-    }
+    RETURN_NOT_OK(WhereSubColOpToPB(where_pb->add_operands()->mutable_condition(), col_op));
   }
-
   for (const auto& func_op : func_ops) {
-    if (&func_op == &func_ops.back()) {
-      // This is the last operator. Use the current ConditionPB.
-      RETURN_NOT_OK(FuncOpToPB(next_cond, func_op));
-    } else {
-      // Current ConditionPB would be AND of this op and the next one.
-      next_cond->set_op(YQL_OP_AND);
-      YQLExpressionPB *op = next_cond->add_operands();
-      RETURN_NOT_OK(FuncOpToPB(op->mutable_condition(), func_op));
-
-      // Create a new the ConditionPB for the next operand.
-      next_cond = next_cond->add_operands()->mutable_condition();
-    }
+    RETURN_NOT_OK(FuncOpToPB(where_pb->add_operands()->mutable_condition(), func_op));
   }
 
   return Status::OK();

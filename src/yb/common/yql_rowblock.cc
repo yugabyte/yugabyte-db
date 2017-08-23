@@ -307,14 +307,14 @@ Status EvaluateCondition(
       return Status::OK();
     }
 
-#define YQL_EVALUATE_RELATIONAL_OP(op, operands, row, result)         \
-      do {                                                            \
-        CHECK_EQ(operands.size(), 2);                                 \
+#define YQL_EVALUATE_RELATIONAL_OP(op, operands, row, result)               \
+      do {                                                                  \
+        CHECK_EQ(operands.size(), 2);                                       \
         const YQLValuePB left = EvaluateValue(operands.Get(0), table_row);  \
         const YQLValuePB right = EvaluateValue(operands.Get(1), table_row); \
-        if (!YQLValue::Comparable(left, right))                       \
-          return STATUS(RuntimeError, "values not comparable");       \
-        *result = (left op right);                                    \
+        if (!YQLValue::Comparable(left, right))                             \
+          return STATUS(RuntimeError, "values not comparable");             \
+        *result = (left op right);                                          \
       } while (0)
 
     case YQL_OP_EQUAL: {
@@ -344,33 +344,32 @@ Status EvaluateCondition(
 
 #undef YQL_EVALUATE_RELATIONAL_OP
 
-// Evaluate a logical AND/OR operation. To see if we can short-circuit, we do
-// "(left op true) ^ (left op false)" that applies the "left" result with both
-// "true" and "false" and only if the answers are different (i.e. exclusive or ^)
-// that we should evaluate the "right" result also.
-#define YQL_EVALUATE_LOGICAL_OP(op, operands, table_row, result)                            \
-      do {                                                                            \
-        CHECK_EQ(operands.size(), 2);                                                 \
-        CHECK_EQ(operands.Get(0).expr_case(), YQLExpressionPB::ExprCase::kCondition); \
-        CHECK_EQ(operands.Get(1).expr_case(), YQLExpressionPB::ExprCase::kCondition); \
-        bool left = false, right = false;                                             \
-        RETURN_NOT_OK(EvaluateCondition(operands.Get(0).condition(), table_row, &left));    \
-        if ((left op true) ^ (left op false)) {                                       \
-          RETURN_NOT_OK(EvaluateCondition(operands.Get(1).condition(), table_row, &right)); \
-        }                                                                             \
-        *result = (left op right);                                                    \
-      } while (0)
-
     case YQL_OP_AND: {
-      YQL_EVALUATE_LOGICAL_OP(&&, operands, table_row, result);
+      *result = true;
+      CHECK_GT(operands.size(), 0);
+      for (const auto &operand : operands) {
+        bool value = false;
+        CHECK_EQ(operand.expr_case(), YQLExpressionPB::ExprCase::kCondition);
+        RETURN_NOT_OK(EvaluateCondition(operand.condition(), table_row, &value));
+        *result = *result && value;
+        if (!*result)
+          break;
+      }
       return Status::OK();
     }
     case YQL_OP_OR: {
-      YQL_EVALUATE_LOGICAL_OP(||, operands, table_row, result);
+      *result = false;
+      CHECK_GT(operands.size(), 0);
+      for (const auto &operand : operands) {
+        bool value = true;
+        CHECK_EQ(operand.expr_case(), YQLExpressionPB::ExprCase::kCondition);
+        RETURN_NOT_OK(EvaluateCondition(operand.condition(), table_row, &value));
+        *result = *result || value;
+        if (*result)
+          break;
+      }
       return Status::OK();
     }
-
-#undef YQL_EVALUATE_LOGICAL_OP
 
     case YQL_OP_LIKE:     FALLTHROUGH_INTENDED;
     case YQL_OP_NOT_LIKE:

@@ -34,6 +34,13 @@ class YQLScanRange {
   // TODO(robert): allow only a subset (prefix) of range components to be specified as optimization.
   std::vector<YQLValuePB> range_values(bool lower_bound, bool allow_null = false) const;
 
+  // Interact / union / complement operators.
+  YQLScanRange& operator&=(const YQLScanRange& other);
+  YQLScanRange& operator|=(const YQLScanRange& other);
+  YQLScanRange& operator~();
+
+  YQLScanRange& operator=(YQLScanRange&& other);
+
  private:
 
   // Table schema being scanned.

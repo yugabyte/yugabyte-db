@@ -142,87 +142,25 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
 
     // For logical conditions, the ranges are union/intersect/complement of the operands' ranges.
     case YQL_OP_AND: {
-      CHECK_EQ(operands.size(), 2);
-      CHECK_EQ(operands.Get(0).expr_case(), YQLExpressionPB::ExprCase::kCondition);
-      CHECK_EQ(operands.Get(1).expr_case(), YQLExpressionPB::ExprCase::kCondition);
-      const YQLScanRange left(schema_, operands.Get(0).condition());
-      const YQLScanRange right(schema_, operands.Get(1).condition());
-      for (auto& elem : ranges_) {
-        const auto column_id = elem.first;
-        auto& range = elem.second;
-        const auto& left_range = left.ranges_.at(column_id);
-        const auto& right_range = right.ranges_.at(column_id);
-
-        // <condition> AND <condition>:
-        // - min_value = max(left_min_value, right_min_value)
-        // - max_value = min(left_max_value, right_max_value)
-        // - if only left or right min/max value is defined, it is the resulting value.
-        if (YQLValue::BothNotNull(left_range.min_value, right_range.min_value)) {
-          range.min_value = std::max(left_range.min_value, right_range.min_value);
-        } else if (!YQLValue::IsNull(left_range.min_value)) {
-          range.min_value = left_range.min_value;
-        } else if (!YQLValue::IsNull(right_range.min_value)) {
-          range.min_value = right_range.min_value;
-        }
-
-        if (YQLValue::BothNotNull(left_range.max_value, right_range.max_value)) {
-          range.max_value = std::min(left_range.max_value, right_range.max_value);
-        } else if (!YQLValue::IsNull(left_range.max_value)) {
-          range.max_value = left_range.max_value;
-        } else if (!YQLValue::IsNull(right_range.max_value)) {
-          range.max_value = right_range.max_value;
-        }
+      CHECK_GT(operands.size(), 0);
+      for (const auto& operand : operands) {
+        CHECK_EQ(operand.expr_case(), YQLExpressionPB::ExprCase::kCondition);
+        *this &= YQLScanRange(schema_, operand.condition());
       }
       return;
     }
     case YQL_OP_OR: {
-      CHECK_EQ(operands.size(), 2);
-      CHECK_EQ(operands.Get(0).expr_case(), YQLExpressionPB::ExprCase::kCondition);
-      CHECK_EQ(operands.Get(1).expr_case(), YQLExpressionPB::ExprCase::kCondition);
-      const YQLScanRange left(schema_, operands.Get(0).condition());
-      const YQLScanRange right(schema_, operands.Get(1).condition());
-      for (auto& elem : ranges_) {
-        const auto column_id = elem.first;
-        auto& range = elem.second;
-        const auto& left_range = left.ranges_.at(column_id);
-        const auto& right_range = right.ranges_.at(column_id);
-
-        // <condition> OR <condition>:
-        // - min_value = min(left_min_value, right_min_value)
-        // - max_value = max(left_max_value, right_max_value)
-        // - if either left or right (or both) min/max value is undefined, there is no bound.
-        if (YQLValue::BothNotNull(left_range.min_value, right_range.min_value)) {
-          range.min_value = std::min(left_range.min_value, right_range.min_value);
-        }
-
-        if (YQLValue::BothNotNull(left_range.max_value, right_range.max_value)) {
-          range.max_value = std::max(left_range.max_value, right_range.max_value);
-        }
+      CHECK_GT(operands.size(), 0);
+      for (const auto& operand : operands) {
+        CHECK_EQ(operand.expr_case(), YQLExpressionPB::ExprCase::kCondition);
+        *this |= YQLScanRange(schema_, operand.condition());
       }
       return;
     }
     case YQL_OP_NOT: {
       CHECK_EQ(operands.size(), 1);
       CHECK_EQ(operands.Get(0).expr_case(), YQLExpressionPB::ExprCase::kCondition);
-      const YQLScanRange other(schema_, operands.Get(0).condition());
-      for (auto& elem : ranges_) {
-        const auto column_id = elem.first;
-        auto& range = elem.second;
-        const auto& other_range = other.ranges_.at(column_id);
-
-        // NOT <condition>:
-        if (YQLValue::BothNotNull(other_range.min_value, other_range.max_value)) {
-          // If the condition's min and max values are defined, the negation of it will be
-          // disjoint ranges at the two ends, which is not representable as a simple range. So
-          // we will treat the result as unbounded.
-          return;
-        }
-
-        // Otherwise, for one-sided range or unbounded range, the resulting min/max values are
-        // just the reverse of the bounds.
-        range.min_value = other_range.max_value;
-        range.max_value = other_range.min_value;
-      }
+      *this = std::move(~YQLScanRange(schema_, operands.Get(0).condition()));
       return;
     }
 
@@ -247,6 +185,77 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
   }
 
   LOG(FATAL) << "Internal error: illegal or unknown operator " << condition.op();
+}
+
+YQLScanRange& YQLScanRange::operator&=(const YQLScanRange& other) {
+  for (auto& elem : ranges_) {
+    auto& range = elem.second;
+    const auto& other_range = other.ranges_.at(elem.first);
+
+    // Interact operation:
+    // - min_value = max(min_value, other_min_value)
+    // - max_value = min(max_value, other_max_value)
+    if (YQLValue::BothNotNull(range.min_value, other_range.min_value)) {
+      range.min_value = std::max(range.min_value, other_range.min_value);
+    } else if (!YQLValue::IsNull(other_range.min_value)) {
+      range.min_value = other_range.min_value;
+    }
+
+    if (YQLValue::BothNotNull(range.max_value, other_range.max_value)) {
+      range.max_value = std::min(range.max_value, other_range.max_value);
+    } else if (!YQLValue::IsNull(other_range.max_value)) {
+      range.max_value = other_range.max_value;
+    }
+  }
+  return *this;
+}
+
+YQLScanRange& YQLScanRange::operator|=(const YQLScanRange& other) {
+  for (auto& elem : ranges_) {
+    auto& range = elem.second;
+    const auto& other_range = other.ranges_.at(elem.first);
+
+    // Union operation:
+    // - min_value = min(min_value, other_min_value)
+    // - max_value = max(max_value, other_max_value)
+    if (YQLValue::BothNotNull(range.min_value, other_range.min_value)) {
+      range.min_value = std::min(range.min_value, other_range.min_value);
+    } else if (YQLValue::IsNull(other_range.min_value)) {
+      YQLValue::SetNull(&range.min_value);
+    }
+
+    if (YQLValue::BothNotNull(range.max_value, other_range.max_value)) {
+      range.max_value = std::max(range.max_value, other_range.max_value);
+    } else if (YQLValue::IsNull(other_range.max_value)) {
+      YQLValue::SetNull(&range.max_value);
+    }
+  }
+  return *this;
+}
+
+YQLScanRange& YQLScanRange::operator~() {
+  for (auto& elem : ranges_) {
+    auto& range = elem.second;
+
+    // Complement operation:
+    if (YQLValue::BothNotNull(range.min_value, range.max_value)) {
+      // If the condition's min and max values are defined, the negation of it will be
+      // disjoint ranges at the two ends, which is not representable as a simple range. So
+      // we will treat the result as unbounded.
+      YQLValue::SetNull(&range.min_value);
+      YQLValue::SetNull(&range.max_value);
+    } else {
+      // Otherwise, for one-sided range or unbounded range, the resulting min/max values are
+      // just the reverse of the bounds.
+      range.min_value.Swap(&range.max_value);
+    }
+  }
+  return *this;
+}
+
+YQLScanRange& YQLScanRange::operator=(YQLScanRange&& other) {
+  ranges_ = std::move(other.ranges_);
+  return *this;
 }
 
 // Return the lower/upper range components for the scan. We can use the range group as the bounds
