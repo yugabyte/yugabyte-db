@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import java.util.Set;
 import java.util.UUID;
 
+import com.yugabyte.yw.forms.AbstractTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.WireProtocol;
@@ -37,7 +38,7 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
   public YBClientService ybService = null;
 
   // Parameters for placement info update task.
-  public static class Params implements ITaskParams {
+  public static class Params extends AbstractTaskParams {
     // The cloud provider to get node details.
     public CloudType cloud;
 
