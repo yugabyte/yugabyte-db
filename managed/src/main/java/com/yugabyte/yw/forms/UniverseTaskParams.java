@@ -7,7 +7,7 @@ import java.util.UUID;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 
-public class UniverseTaskParams implements ITaskParams {
+public class UniverseTaskParams extends AbstractTaskParams {
 
   public DeviceInfo deviceInfo;
 

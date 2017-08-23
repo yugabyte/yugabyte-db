@@ -13,4 +13,6 @@ public class SubTaskFormData {
   public String subTaskState;
 
   public String subTaskGroupType;
+
+  public String errorString;
 }

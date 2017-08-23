@@ -4,18 +4,24 @@ package com.yugabyte.yw.commissioner;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.libs.Json;
 
 public class TaskList implements Runnable {
 
@@ -33,14 +39,12 @@ public class TaskList implements Runnable {
   private String name;
 
   // The list of tasks in this task list.
-  private List<ITask> taskList;
+  private Map<AbstractTaskBase, TaskInfo> taskMap;
 
   // The list of futures to wait for.
-  private List<Future<?>> futuresList;
+  private Map<Future<?>, TaskInfo> futuresMap;
 
   private AtomicInteger numTasksCompleted;
-
-  private List<TaskInfo> taskInfoList;
 
   // The number of threads to run in parallel.
   int numThreads;
@@ -60,15 +64,14 @@ public class TaskList implements Runnable {
   public TaskList(String name, ExecutorService executor) {
     this.name = name;
     this.executor = executor;
-    this.taskList = new LinkedList<ITask>();
-    this.futuresList = new LinkedList<Future<?>>();
+    this.taskMap = new HashMap<>();
+    this.futuresMap = new HashMap<>();
     this.numTasksCompleted = new AtomicInteger(0);
-    this.taskInfoList = new LinkedList<TaskInfo>();
   }
 
   public synchronized void setSubTaskGroupType(UserTaskDetails.SubTaskGroupType subTaskGroupType) {
     this.subTaskGroupType = subTaskGroupType;
-    for (TaskInfo taskInfo : taskInfoList) {
+    for (TaskInfo taskInfo : taskMap.values()) {
       taskInfo.setSubTaskGroupType(subTaskGroupType);
       taskInfo.save();
     }
@@ -80,7 +83,7 @@ public class TaskList implements Runnable {
 
   public synchronized void setUserSubTaskState(TaskInfo.State userTaskState) {
     this.userSubTaskState = userTaskState;
-    for (TaskInfo taskInfo : taskInfoList) {
+    for (TaskInfo taskInfo : taskMap.values()) {
       taskInfo.setTaskState(userTaskState);
       taskInfo.save();
     }
@@ -99,9 +102,8 @@ public class TaskList implements Runnable {
     return getName() + " : completed " + getNumTasksDone() + " out of " + getNumTasks() + " tasks.";
   }
 
-  public void addTask(ITask task) {
-    LOG.info("Adding task #" + taskList.size() + ": " + task.toString());
-    taskList.add(task);
+  public void addTask(AbstractTaskBase task) {
+    LOG.info("Adding task #" + taskMap.size() + ": " + task.toString());
     // Set up corresponding TaskInfo.
     TaskType taskType = TaskType.valueOf(task.getClass().getSimpleName());
     TaskInfo taskInfo = new TaskInfo(taskType);
@@ -119,11 +121,11 @@ public class TaskList implements Runnable {
       taskInfo.setSubTaskGroupType(this.subTaskGroupType);
     }
     taskInfo.save();
-    taskInfoList.add(taskInfo);
+    taskMap.put(task, taskInfo);
   }
 
   public int getNumTasks() {
-    return taskList.size();
+    return taskMap.size();
   }
 
   public int getNumTasksDone() {
@@ -131,7 +133,7 @@ public class TaskList implements Runnable {
   }
 
   public void setTaskContext(int position, UUID userTaskUUID) {
-    for (TaskInfo taskInfo : taskInfoList) {
+    for (TaskInfo taskInfo : taskMap.values()) {
       taskInfo.setPosition(position);
       taskInfo.setParentUuid(userTaskUUID);
       taskInfo.save();
@@ -144,37 +146,43 @@ public class TaskList implements Runnable {
    */
   @Override
   public void run() {
-    if (taskList.isEmpty()) {
+    if (taskMap.isEmpty()) {
       LOG.error("No tasks in task list {}.", getName());
       tasksDone = true;
       return;
     }
     LOG.info("Running task list {}.", getName());
-    for (ITask task : taskList) {
+    for (AbstractTaskBase task : taskMap.keySet()) {
       Future<?> future = executor.submit(task);
-      futuresList.add(future);
+      futuresMap.put(future, taskMap.get(task));
     }
   }
 
   public boolean waitFor() {
-    for (Future<?> future : futuresList) {
+    String errorString = null;
+    for (Future<?> future : futuresMap.keySet()) {
       // Wait for each future to finish.
       try {
         if (future.get() == null) {
           // Task succeeded.
           numTasksCompleted.incrementAndGet();
         } else {
-          LOG.error("ERROR: task {} get() returned null.", future.toString());
+          errorString = "ERROR: task " + future.toString() + " get() returned null.";
+          LOG.error(errorString);
+        }
+      } catch (Exception e) {
+        errorString = "Failed to execute task " + future.toString() + ", hit error " +
+            e.getMessage() + ".";
+        LOG.error(errorString, e);
+      } finally {
+        if (errorString != null) {
+          TaskInfo taskInfo = futuresMap.get(future);
+          ObjectNode details = taskInfo.getTaskDetails().deepCopy();
+          details.put("errorString", errorString);
+          taskInfo.setTaskDetails(details);
+          taskInfo.save();
           return false;
         }
-      } catch (InterruptedException e) {
-        LOG.error("Failed to execute task {}, hit error {}.",
-                  future.toString(), e.getMessage(), e);
-        return false;
-      } catch (ExecutionException e) {
-        LOG.error("Failed to execute task {}, hit error {}.",
-                  future.toString(), e.getMessage(), e);
-        return false;
       }
     }
 
