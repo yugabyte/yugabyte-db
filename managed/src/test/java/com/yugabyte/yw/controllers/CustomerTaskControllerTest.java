@@ -117,7 +117,9 @@ public class CustomerTaskControllerTest extends WithApplication {
     subTask.setPosition(position);
     subTask.setSubTaskGroupType(groupType);
     subTask.setTaskState(taskState);
-    subTask.setTaskDetails(Json.newObject());
+    ObjectNode taskDetailsJson = Json.newObject();
+    taskDetailsJson.put("errorString", taskState.equals(TaskInfo.State.Failure) ? "foobaz" : null);
+    subTask.setTaskDetails(taskDetailsJson);
     subTask.setOwner("foobar");
     subTask.save();
 
@@ -140,7 +142,7 @@ public class CustomerTaskControllerTest extends WithApplication {
     String authToken = customer.createAuthToken();
     UUID universeUUID = UUID.randomUUID();
     UUID taskUUID = createTaskWithStatus(universeUUID, CustomerTask.TargetType.Universe, Create,
-        "Foo", "Failed", 50.0);
+        "Foo", "Failure", 50.0);
     UUID subTaskUUID = createSubTask(taskUUID, 0, TaskType.AnsibleSetupServer,
         TaskInfo.State.Failure);
 
