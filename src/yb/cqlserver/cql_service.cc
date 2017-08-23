@@ -21,7 +21,6 @@
 DEFINE_int64(cql_service_max_prepared_statement_size_bytes, 0,
              "The maximum amount of memory the CQL proxy should use to maintain prepared "
              "statements. 0 or negative means unlimited.");
-DECLARE_int32(cql_service_num_threads);
 DEFINE_int32(cql_ybclient_reactor_threads, 24,
              "The number of reactor threads to be used for processing ybclient "
              "requests originating in the cql layer");

@@ -10,11 +10,7 @@
 
 using yb::rpc::ServiceIf;
 
-DEFINE_int32(cql_service_num_threads, 10,
-             "Number of RPC worker threads for the CQL service");
-TAG_FLAG(cql_service_num_threads, advanced);
-
-DEFINE_int32(cql_service_queue_length, 50,
+DEFINE_int32(cql_service_queue_length, 1000,
              "RPC queue length for CQL service");
 TAG_FLAG(cql_service_queue_length, advanced);
 
