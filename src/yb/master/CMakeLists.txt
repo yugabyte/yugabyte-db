@@ -15,6 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 
+YB_INCLUDE_EXTENSIONS()
+
 YRPC_GENERATE(
   MASTER_YRPC_SRCS MASTER_YRPC_HDRS MASTER_YRPC_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
@@ -32,6 +34,10 @@ ADD_YB_LIBRARY(master_proto
   SRCS ${MASTER_YRPC_SRCS}
   DEPS ${MASTER_YRPC_LIBS}
   NONLINK_DEPS ${MASTER_YRPC_TGTS})
+
+set(MASTER_PROTO_LIBS
+  master_proto
+  ${MASTER_PROTO_LIBS_EXTENTIONS})
 
 set(MASTER_SRCS
   system_tablet.cc
@@ -57,6 +63,7 @@ set(MASTER_SRCS
   cluster_balance.cc
   master.cc
   master_options.cc
+  master_service_base.cc
   master_service.cc
   master-path-handlers.cc
   mini_master.cc
@@ -65,7 +72,7 @@ set(MASTER_SRCS
   ts_manager.cc
   master_tablet_service.cc
   master_tserver.cc
-)
+  ${MASTER_SRCS_EXTENTIONS})
 
 add_library(master ${MASTER_SRCS})
 target_link_libraries(master
@@ -78,7 +85,7 @@ target_link_libraries(master
   yb_util
   tserver
   tserver_service_proto
-  master_proto
+  ${MASTER_PROTO_LIBS}
   rpc_header_proto
   master_util)
 
@@ -89,7 +96,7 @@ set(MASTER_RPC_LIBS
   yrpc
   gutil
   yb_util
-  master_proto
+  ${MASTER_PROTO_LIBS}
   rpc_header_proto)
 ADD_YB_LIBRARY(master_rpc
   SRCS ${MASTER_RPC_SRCS}
@@ -102,7 +109,7 @@ ADD_YB_LIBRARY(master_util
   DEPS ${MASTER_RPC_LIBS})
 
 # Tests
-set(YB_TEST_LINK_LIBS master master_proto yb_client ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS master ${MASTER_PROTO_LIBS} yb_client ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(catalog_manager-test)
 ADD_YB_TEST(master-test RESOURCE_LOCK "master-web-port")
 ADD_YB_TEST(sys_catalog-test RESOURCE_LOCK "master-web-port")

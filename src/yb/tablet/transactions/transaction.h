@@ -59,9 +59,9 @@ class Transaction {
     WRITE_TXN,
     ALTER_SCHEMA_TXN,
     UPDATE_TRANSACTION_TXN,
-  };
 
-  static constexpr size_t kTransactionTypes = 3;
+    kTransactionTypes // Must be the last one (number of types above).
+  };
 
   enum TraceType {
     NO_TRACE_TXNS = 0,

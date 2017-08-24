@@ -443,6 +443,9 @@ void TabletPeer::GetInFlightTransactions(Transaction::TraceType trace_type,
         case Transaction::UPDATE_TRANSACTION_TXN:
           status_pb.set_tx_type(consensus::UPDATE_TRANSACTION_OP);
           break;
+
+        default:
+          FATAL_INVALID_ENUM_VALUE(Transaction::TransactionType, driver->tx_type());
       }
       status_pb.set_description(driver->ToString());
       int64_t running_for_micros =
@@ -541,21 +544,24 @@ Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
 
 std::unique_ptr<Transaction> TabletPeer::CreateTransaction(consensus::ReplicateMsg* replicate_msg) {
   switch (replicate_msg->op_type()) {
-    case WRITE_OP:
+    case consensus::WRITE_OP:
       DCHECK(replicate_msg->has_write_request()) << "WRITE_OP replica"
           " transaction must receive a WriteRequestPB";
-      return std::make_unique<WriteTransaction>(std::make_unique<WriteTransactionState>(this),
-                                                consensus::REPLICA);
-    case ALTER_SCHEMA_OP:
+      return std::make_unique<WriteTransaction>(
+          std::make_unique<WriteTransactionState>(this), consensus::REPLICA);
+
+    case consensus::ALTER_SCHEMA_OP:
       DCHECK(replicate_msg->has_alter_schema_request()) << "ALTER_SCHEMA_OP replica"
           " transaction must receive an AlterSchemaRequestPB";
       return std::make_unique<AlterSchemaTransaction>(
           std::make_unique<AlterSchemaTransactionState>(this), consensus::REPLICA);
+
     case consensus::UPDATE_TRANSACTION_OP:
       DCHECK(replicate_msg->has_transaction_state()) << "UPDATE_TRANSACTION_OP replica"
           " transaction must receive an TransactionStateRequestPB";
       return std::make_unique<UpdateTxnTransaction>(
           std::make_unique<UpdateTxnTransactionState>(this), consensus::REPLICA);
+
     case consensus::UNKNOWN_OP: FALLTHROUGH_INTENDED;
     case consensus::NO_OP: FALLTHROUGH_INTENDED;
     case consensus::CHANGE_CONFIG_OP:

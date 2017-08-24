@@ -17,23 +17,18 @@
 #ifndef YB_MASTER_MASTER_SERVICE_H
 #define YB_MASTER_MASTER_SERVICE_H
 
-#include "yb/gutil/macros.h"
 #include "yb/master/master.service.h"
-#include "yb/util/metrics.h"
+#include "yb/master/master_service_base.h"
 
 namespace yb {
-
-class NodeInstancePB;
-
 namespace master {
 
-class Master;
 class TSDescriptor;
-class CatalogManager;
 
 // Implementation of the master service. See master.proto for docs
 // on each RPC.
-class MasterServiceImpl : public MasterServiceIf {
+class MasterServiceImpl : public MasterServiceIf,
+                          public MasterServiceBase {
  public:
   explicit MasterServiceImpl(Master* server);
 
@@ -146,25 +141,6 @@ class MasterServiceImpl : public MasterServiceIf {
       rpc::RpcContext rpc) override;
 
  private:
-  template <class ReqType, class RespType, class FnType>
-  void HandleOnLeader(const ReqType* req, RespType* resp, rpc::RpcContext* rpc, FnType f);
-
-  template <class HandlerType, class ReqType, class RespType>
-  void HandleIn(const ReqType* req, RespType* resp, rpc::RpcContext* rpc,
-      Status (HandlerType::*f)(RespType*));
-
-  template <class HandlerType, class ReqType, class RespType>
-  void HandleIn(const ReqType* req, RespType* resp, rpc::RpcContext* rpc,
-      Status (HandlerType::*f)(const ReqType*, RespType*));
-
-  template <class HandlerType, class ReqType, class RespType>
-  void HandleIn(const ReqType* req, RespType* resp, rpc::RpcContext* rpc,
-      Status (HandlerType::*f)(const ReqType*, RespType*, rpc::RpcContext*));
-
-  CatalogManager* handler(CatalogManager*);
-
-  Master* server_;
-
   DISALLOW_COPY_AND_ASSIGN(MasterServiceImpl);
 };
 

@@ -25,8 +25,6 @@
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
 
-using yb::master::Master;
-
 DECLARE_string(rpc_bind_addresses);
 DECLARE_int32(webserver_port);
 DECLARE_bool(evict_failed_followers);
@@ -54,7 +52,7 @@ static int MasterMain(int argc, char** argv) {
   InitGoogleLoggingSafe(argv[0]);
 
   MasterOptions opts;
-  Master server(opts);
+  YB_EDITION_NS_PREFIX Master server(opts);
   LOG(INFO) << "Initializing master server...";
   CHECK_OK(server.Init());
 

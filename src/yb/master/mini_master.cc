@@ -92,7 +92,7 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,
   opts->fs_opts.wal_paths = { fs_root_ };
   opts->fs_opts.data_paths = { fs_root_ };
 
-  gscoped_ptr<Master> server(new Master(*opts));
+  gscoped_ptr<Master> server(new YB_EDITION_NS_PREFIX Master(*opts));
   RETURN_NOT_OK(server->Init());
   RETURN_NOT_OK(server->StartAsync());
 

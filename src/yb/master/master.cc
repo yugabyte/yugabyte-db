@@ -153,27 +153,33 @@ Status Master::Start() {
   return Status::OK();
 }
 
+Status Master::RegisterServices() {
+  std::unique_ptr<ServiceIf> master_service(new MasterServiceImpl(this));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_svc_queue_length,
+                                                     std::move(master_service)));
+
+  std::unique_ptr<ServiceIf> master_tablet_service(
+      new MasterTabletServiceImpl(master_tablet_server_.get(), this));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_tserver_svc_queue_length,
+                                                     std::move(master_tablet_service)));
+
+  std::unique_ptr<ServiceIf> consensus_service(
+      new ConsensusServiceImpl(metric_entity(), catalog_manager_.get()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_consensus_svc_queue_length,
+                                                     std::move(consensus_service)));
+
+  std::unique_ptr<ServiceIf> remote_bootstrap_service(
+      new RemoteBootstrapServiceImpl(fs_manager_.get(), catalog_manager_.get(), metric_entity()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_remote_bootstrap_svc_queue_length,
+                                                     std::move(remote_bootstrap_service)));
+  return Status::OK();
+}
+
 Status Master::StartAsync() {
   CHECK_EQ(kInitialized, state_);
 
   RETURN_NOT_OK(maintenance_manager_->Init());
-
-  std::unique_ptr<ServiceIf> impl(new MasterServiceImpl(this));
-  std::unique_ptr<ServiceIf> master_tserver_impl(
-      new MasterTabletServiceImpl(master_tablet_server_.get(), this));
-  std::unique_ptr<ServiceIf> consensus_service(
-      new ConsensusServiceImpl(metric_entity(), catalog_manager_.get()));
-  std::unique_ptr<ServiceIf> remote_bootstrap_service(
-      new RemoteBootstrapServiceImpl(fs_manager_.get(), catalog_manager_.get(), metric_entity()));
-
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_svc_queue_length,
-                                                     std::move(impl)));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_tserver_svc_queue_length,
-                                                     std::move(master_tserver_impl)));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_consensus_svc_queue_length,
-                                                     std::move(consensus_service)));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_remote_bootstrap_svc_queue_length,
-                                                     std::move(remote_bootstrap_service)));
+  RETURN_NOT_OK(RegisterServices());
   RETURN_NOT_OK(RpcAndWebServerBase::Start());
 
   // Now that we've bound, construct our ServerRegistrationPB.
@@ -184,7 +190,6 @@ Status Master::StartAsync() {
                                                Unretained(this))));
 
   state_ = kRunning;
-
   return Status::OK();
 }
 

@@ -120,7 +120,7 @@ class SysCatalogWriter {
   DISALLOW_COPY_AND_ASSIGN(SysCatalogWriter);
 };
 
-// Template method defintions must go in header.
+// Template method defintions must go into a header file.
 template <class Item>
 CHECKED_STATUS SysCatalogTable::AddItem(Item* item) {
   TRACE_EVENT1("master", "SysCatalogTable::Add",

@@ -54,7 +54,7 @@ class MasterPathHandlers;
 class Master : public server::RpcAndWebServerBase {
  public:
   explicit Master(const MasterOptions& opts);
-  ~Master();
+  virtual ~Master();
 
   CHECKED_STATUS Init();
   CHECKED_STATUS Start();
@@ -125,6 +125,9 @@ class Master : public server::RpcAndWebServerBase {
 
   // Returns the number of system tables (used only for testing currently).
   size_t NumSystemTables() const;
+
+ protected:
+  virtual CHECKED_STATUS RegisterServices();
 
  private:
   friend class MasterTest;

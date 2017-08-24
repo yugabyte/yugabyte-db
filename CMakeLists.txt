@@ -948,14 +948,15 @@ file(MAKE_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 set(EXECUTABLE_OUTPUT_PATH "${YB_BUILD_ROOT}/bin")
 file(MAKE_DIRECTORY "${EXECUTABLE_OUTPUT_PATH}")
 
-add_definitions(-DYB_EDITION=${YB_EDITION})
-
 # Generated sources always have higher priority than even enterprise code.
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/src)
 
 if ("${YB_EDITION}" STREQUAL "enterprise")
   # Enterprise sources have higher priority than community code.
   include_directories(ent/src ent/src/rocksdb ent/src/rocksdb/include)
+  add_definitions(-DYB_EDITION_NS_PREFIX=enterprise::)
+else()
+  add_definitions(-DYB_EDITION_NS_PREFIX=)
 endif()
 
 include_directories(src src/rocksdb src/rocksdb/include)

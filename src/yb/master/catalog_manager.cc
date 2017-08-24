@@ -557,8 +557,8 @@ void CatalogManagerBgTasks::Run() {
       // Report metrics.
       catalog_manager_->ReportMetrics();
 
-      std::vector<scoped_refptr<TabletInfo> > to_delete;
-      std::vector<scoped_refptr<TabletInfo> > to_process;
+      std::vector<scoped_refptr<TabletInfo>> to_delete;
+      std::vector<scoped_refptr<TabletInfo>> to_process;
 
       // Get list of tablets not yet running or already replaced.
       catalog_manager_->ExtractTabletsToProcess(&to_delete, &to_process);
@@ -772,6 +772,7 @@ Status CatalogManager::VisitSysCatalog() {
   namespace_ids_map_.clear();
   namespace_names_map_.clear();
 
+  // Clear the type mappings.
   udtype_ids_map_.clear();
   udtype_names_map_.clear();
 
@@ -2221,7 +2222,7 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const TableId& tab
   return FindPtrOrNull(table_ids_map_, table_id);
 }
 
-void CatalogManager::GetAllTables(std::vector<scoped_refptr<TableInfo> > *tables,
+void CatalogManager::GetAllTables(std::vector<scoped_refptr<TableInfo>> *tables,
                                   bool includeOnlyRunningTables) {
   tables->clear();
   boost::shared_lock<LockType> l(lock_);
@@ -2241,7 +2242,7 @@ void CatalogManager::GetAllNamespaces(std::vector<scoped_refptr<NamespaceInfo>>*
   }
 }
 
-void CatalogManager::GetAllUDTypes(std::vector<scoped_refptr<UDTypeInfo> >* types) {
+void CatalogManager::GetAllUDTypes(std::vector<scoped_refptr<UDTypeInfo>>* types) {
   types->clear();
   boost::shared_lock<LockType> l(lock_);
   for (const UDTypeInfoMap::value_type& e : udtype_ids_map_) {
@@ -2605,7 +2606,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     std::lock_guard<LockType> l(lock_);
     TRACE("Acquired catalog manager lock");
 
-    // a. Validate the user request.
+    // Validate the user request.
 
     // Verify that the namespace does not exist
     ns = FindPtrOrNull(namespace_names_map_, req->name());
@@ -2615,7 +2616,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
       return s;
     }
 
-    // b. Add the new namespace.
+    // Add the new namespace.
 
     // Create unique id for this new namespace.
     NamespaceId new_id;
@@ -2636,7 +2637,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
   }
   TRACE("Inserted new namespace info into CatalogManager maps");
 
-  // c. Update the on-disk system catalog.
+  // Update the on-disk system catalog.
   s = sys_catalog_->AddItem(ns.get());
   if (!s.ok()) {
     s = s.CloneAndPrepend(Substitute(
@@ -2647,7 +2648,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
   }
   TRACE("Wrote namespace to sys-catalog");
 
-  // d. Commit the in-memory state.
+  // Commit the namespace in-memory state.
   ns->mutable_metadata()->CommitMutation();
 
   LOG(INFO) << "Created namespace " << ns->ToString();
@@ -4255,7 +4256,7 @@ void AsyncTryStepDown::HandleResponse(int attempt) {
 }
 
 void CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& table) {
-  vector<scoped_refptr<TabletInfo> > tablets;
+  vector<scoped_refptr<TabletInfo>> tablets;
   table->GetAllTablets(&tablets);
 
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
@@ -4283,7 +4284,7 @@ void CatalogManager::DeleteTabletReplicas(
 }
 
 void CatalogManager::DeleteTabletsAndSendRequests(const scoped_refptr<TableInfo>& table) {
-  vector<scoped_refptr<TabletInfo> > tablets;
+  vector<scoped_refptr<TabletInfo>> tablets;
   table->GetAllTablets(&tablets);
 
   string deletion_msg = "Table deleted at " + LocalTimeAsString();
@@ -4401,8 +4402,8 @@ void CatalogManager::GetPendingServerTasksUnlocked(const TableId &table_uuid,
 }
 
 void CatalogManager::ExtractTabletsToProcess(
-    std::vector<scoped_refptr<TabletInfo> > *tablets_to_delete,
-    std::vector<scoped_refptr<TabletInfo> > *tablets_to_process) {
+    std::vector<scoped_refptr<TabletInfo>> *tablets_to_delete,
+    std::vector<scoped_refptr<TabletInfo>> *tablets_to_process) {
   boost::shared_lock<LockType> l(lock_);
 
   // TODO: At the moment we loop through all the tablets
@@ -4457,7 +4458,7 @@ void CatalogManager::HandleAssignPreparingTablet(TabletInfo* tablet,
 
 void CatalogManager::HandleAssignCreatingTablet(TabletInfo* tablet,
                                                 DeferredAssignmentActions* deferred,
-                                                vector<scoped_refptr<TabletInfo> >* new_tablets) {
+                                                vector<scoped_refptr<TabletInfo>>* new_tablets) {
   MonoDelta time_since_updated =
       MonoTime::Now(MonoTime::FINE).GetDeltaSince(tablet->last_update_time());
   int64_t remaining_timeout_ms =
@@ -4547,7 +4548,7 @@ namespace {
 
 class ScopedTabletInfoCommitter {
  public:
-  explicit ScopedTabletInfoCommitter(const std::vector<scoped_refptr<TabletInfo> >* tablets)
+  explicit ScopedTabletInfoCommitter(const std::vector<scoped_refptr<TabletInfo>>* tablets)
     : tablets_(DCHECK_NOTNULL(tablets)),
       aborted_(false) {
   }
@@ -4571,13 +4572,13 @@ class ScopedTabletInfoCommitter {
   }
 
  private:
-  const std::vector<scoped_refptr<TabletInfo> >* tablets_;
+  const std::vector<scoped_refptr<TabletInfo>>* tablets_;
   bool aborted_;
 };
 }  // anonymous namespace
 
 Status CatalogManager::ProcessPendingAssignments(
-    const std::vector<scoped_refptr<TabletInfo> >& tablets) {
+    const std::vector<scoped_refptr<TabletInfo>>& tablets) {
   VLOG(1) << "Processing pending assignments";
 
   // Take write locks on all tablets to be processed, and ensure that they are
@@ -4590,7 +4591,7 @@ Status CatalogManager::ProcessPendingAssignments(
   // Any tablets created by the helper functions will also be created in a
   // locked state, so we must ensure they are unlocked before we return to
   // avoid deadlocks.
-  std::vector<scoped_refptr<TabletInfo> > new_tablets;
+  std::vector<scoped_refptr<TabletInfo>> new_tablets;
   ScopedTabletInfoCommitter unlocker_out(&new_tablets);
 
   DeferredAssignmentActions deferred;
@@ -4884,7 +4885,7 @@ shared_ptr<TSDescriptor> CatalogManager::SelectReplica(
   // Pick two random servers, excluding those we've already picked.
   // If we've only got one server left, 'two_choices' will actually
   // just contain one element.
-  vector<shared_ptr<TSDescriptor> > two_choices;
+  vector<shared_ptr<TSDescriptor>> two_choices;
   rng_.ReservoirSample(ts_descs, 2, excluded, &two_choices);
 
   if (two_choices.size() == 2) {
@@ -5088,7 +5089,7 @@ Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
     return s;
   }
 
-  vector<scoped_refptr<TabletInfo> > tablets_in_range;
+  vector<scoped_refptr<TabletInfo>> tablets_in_range;
   table->GetTabletsInRange(req, &tablets_in_range);
 
   for (const scoped_refptr<TabletInfo>& tablet : tablets_in_range) {
@@ -5170,7 +5171,7 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
 
     *out << "  tablets:\n";
 
-    vector<scoped_refptr<TabletInfo> > table_tablets;
+    vector<scoped_refptr<TabletInfo>> table_tablets;
     t->GetAllTablets(&table_tablets);
     for (const scoped_refptr<TabletInfo>& tablet : table_tablets) {
       auto l_tablet = tablet->LockForRead();
@@ -5744,7 +5745,7 @@ void TableInfo::AddTabletUnlocked(TabletInfo* tablet) {
 }
 
 void TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req,
-                                  vector<scoped_refptr<TabletInfo> > *ret) const {
+                                  vector<scoped_refptr<TabletInfo>> *ret) const {
   std::lock_guard<simple_spinlock> l(lock_);
   int32_t max_returned_locations = req->max_returned_locations();
 
@@ -5857,7 +5858,7 @@ std::unordered_set<std::shared_ptr<MonitoredTask>> TableInfo::GetTasks() {
   return pending_tasks_;
 }
 
-void TableInfo::GetAllTablets(vector<scoped_refptr<TabletInfo> > *ret) const {
+void TableInfo::GetAllTablets(vector<scoped_refptr<TabletInfo>> *ret) const {
   ret->clear();
   std::lock_guard<simple_spinlock> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
@@ -5875,7 +5876,7 @@ void PersistentTableInfo::set_state(SysTablesEntryPB::State state, const string&
 ////////////////////////////////////////////////////////////
 
 DeletedTableInfo::DeletedTableInfo(const TableInfo* table) : table_id_(table->id()) {
-  vector<scoped_refptr<TabletInfo> > tablets;
+  vector<scoped_refptr<TabletInfo>> tablets;
   table->GetAllTablets(&tablets);
 
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {

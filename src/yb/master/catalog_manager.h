@@ -81,16 +81,15 @@ typedef unordered_map<TabletId, TabletServerId> TabletToTabletServerMap;
 // sys_catalog. Subclasses of this will provide convenience getter/setter methods around the
 // protos and instances of these will be wrapped around CowObjects and locks for access and
 // modifications.
-template <class DataEntryPB>
+template <class DataEntryPB, SysRowEntry::Type entry_type>
 struct Persistent {
   // Type declaration to be used in templated read/write methods. We are using typename
   // Class::data_type in templated methods for figuring out the type we need.
   typedef DataEntryPB data_type;
 
-  // Defaults to UNKNOWN. Subclasses of this need to define a static method like this, as C++ does
-  // not have static inheritance, but it does allow typename definitions in templated methods. We
-  // are using Class::type() to only have to define this in one set of classes.
-  static int type() { return SysRowEntry::UNKNOWN; }
+  // Subclasses of this need to provide a valid value of the entry type through
+  // the template class argument.
+  static SysRowEntry::Type type() { return entry_type; }
 
   // The proto that is persisted in the sys_catalog.
   DataEntryPB pb;
@@ -147,9 +146,7 @@ class MetadataCowWrapper {
 // The data related to a tablet which is persisted on disk.
 // This portion of TableInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB> {
-  static int type() { return SysRowEntry::TABLET; }
-
+struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntry::TABLET> {
   bool is_running() const {
     return pb.state() == SysTabletsEntryPB::RUNNING;
   }
@@ -253,9 +250,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 // The data related to a table which is persisted on disk.
 // This portion of TableInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
-  static int type() { return SysRowEntry::TABLE; }
-
+struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntry::TABLE> {
   bool started_deleting() const {
     return pb.state() == SysTablesEntryPB::DELETING ||
            pb.state() == SysTablesEntryPB::DELETED;
@@ -413,9 +408,7 @@ class DeletedTableInfo : public RefCountedThreadSafe<DeletedTableInfo> {
 // The data related to a namespace which is persisted on disk.
 // This portion of NamespaceInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentNamespaceInfo : public Persistent<SysNamespaceEntryPB> {
-  static int type() { return SysRowEntry::NAMESPACE; }
-
+struct PersistentNamespaceInfo : public Persistent<SysNamespaceEntryPB, SysRowEntry::NAMESPACE> {
   // Get the namespace name
   const NamespaceName& name() const {
     return pb.name();
@@ -426,9 +419,6 @@ struct PersistentNamespaceInfo : public Persistent<SysNamespaceEntryPB> {
 //
 // This object uses copy-on-write techniques similarly to TabletInfo.
 // Please see the TabletInfo class doc above for more information.
-//
-// The non-persistent information about the namespace is protected by an internal
-// spin-lock.
 class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
                       public MetadataCowWrapper<PersistentNamespaceInfo> {
  public:
@@ -450,13 +440,10 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
   DISALLOW_COPY_AND_ASSIGN(NamespaceInfo);
 };
 
-
 // The data related to a User-Defined Type which is persisted on disk.
 // This portion of UDTypeInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentUDTypeInfo : public Persistent<SysUDTypeEntryPB> {
-  static int type() { return SysRowEntry::UDTYPE; }
-
+struct PersistentUDTypeInfo : public Persistent<SysUDTypeEntryPB, SysRowEntry::UDTYPE> {
   // Return the type's name.
   const UDTypeName& name() const {
     return pb.name();
@@ -518,8 +505,8 @@ class UDTypeInfo : public RefCountedThreadSafe<UDTypeInfo>,
 
 // This wraps around the proto containing cluster level config information. It will be used for
 // CowObject managed access.
-struct PersistentClusterConfigInfo : public Persistent<SysClusterConfigEntryPB> {
-  static int type() { return SysRowEntry::CLUSTER_CONFIG; }
+struct PersistentClusterConfigInfo : public Persistent<SysClusterConfigEntryPB,
+                                                       SysRowEntry::CLUSTER_CONFIG> {
 };
 
 // This is the in memory representation of the cluster config information serialized proto data,
@@ -541,8 +528,7 @@ class ClusterConfigInfo : public RefCountedThreadSafe<ClusterConfigInfo>,
   DISALLOW_COPY_AND_ASSIGN(ClusterConfigInfo);
 };
 
-struct PersistentRoleInfo : public Persistent<SysRoleEntryPB> {
-  static int type() { return SysRowEntry::ROLE; }
+struct PersistentRoleInfo : public Persistent<SysRoleEntryPB, SysRowEntry::ROLE> {
 };
 
 class RoleInfo : public RefCountedThreadSafe<RoleInfo>,
@@ -1329,4 +1315,4 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
 }  // namespace master
 }  // namespace yb
-#endif /* YB_MASTER_CATALOG_MANAGER_H */
+#endif // YB_MASTER_CATALOG_MANAGER_H

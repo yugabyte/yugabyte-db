@@ -1052,16 +1052,16 @@ Status TabletBootstrap::HandleOperation(OperationType op_type,
                                         ReplicateMsg* replicate,
                                         const CommitMsg* commit) {
   switch (op_type) {
-    case WRITE_OP:
+    case consensus::WRITE_OP:
       return PlayWriteRequest(replicate, commit);
 
-    case ALTER_SCHEMA_OP:
+    case consensus::ALTER_SCHEMA_OP:
       return PlayAlterSchemaRequest(replicate, commit);
 
-    case CHANGE_CONFIG_OP:
+    case consensus::CHANGE_CONFIG_OP:
       return PlayChangeConfigRequest(replicate, commit);
 
-    case NO_OP:
+    case consensus::NO_OP:
       return PlayNoOpRequest(replicate, commit);
 
     case consensus::UNKNOWN_OP:
@@ -1069,10 +1069,9 @@ Status TabletBootstrap::HandleOperation(OperationType op_type,
 
     case consensus::UPDATE_TRANSACTION_OP:
       return PlayUpdateTransactionRequest(replicate, commit);
-
   }
 
-  return STATUS(IllegalState, Substitute("Unsupported commit entry type: $0", op_type));
+  FATAL_INVALID_ENUM_VALUE(consensus::OperationType, op_type);
 }
 
 // Never deletes 'replicate_entry' or 'commit_entry'.

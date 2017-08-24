@@ -277,7 +277,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Create a RocksDB checkpoint in the provided directory. Only used when table_type_ ==
   // YQL_TABLE_TYPE.
   CHECKED_STATUS CreateCheckpoint(const std::string& dir,
-      google::protobuf::RepeatedPtrField<RocksDBFilePB>* rocksdb_files);
+      google::protobuf::RepeatedPtrField<RocksDBFilePB>* rocksdb_files = nullptr);
 
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.

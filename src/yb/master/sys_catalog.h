@@ -87,28 +87,28 @@ class SysCatalogTable {
   // Templated CRUD methods for items in sys.catalog.
   // ==================================================================
   template <class Item>
-  inline CHECKED_STATUS AddItem(Item* item);
+  CHECKED_STATUS AddItem(Item* item);
 
   template <class Item>
-  inline CHECKED_STATUS AddItems(const vector<Item*>& items);
+  CHECKED_STATUS AddItems(const vector<Item*>& items);
 
   template <class Item>
-  inline CHECKED_STATUS UpdateItem(Item* item);
+  CHECKED_STATUS UpdateItem(Item* item);
   template <class Item>
-  inline CHECKED_STATUS UpdateItems(const vector<Item*>& items);
+  CHECKED_STATUS UpdateItems(const vector<Item*>& items);
 
   template <class Item>
-  inline CHECKED_STATUS AddAndUpdateItems(
+  CHECKED_STATUS AddAndUpdateItems(
       const vector<Item*>& added_items,
       const vector<Item*>& updated_items);
 
   template <class Item>
-  inline CHECKED_STATUS DeleteItem(Item* item);
+  CHECKED_STATUS DeleteItem(Item* item);
   template <class Item>
-  inline CHECKED_STATUS DeleteItems(const vector<Item*>& items);
+  CHECKED_STATUS DeleteItems(const vector<Item*>& items);
 
   template <class Item>
-  inline CHECKED_STATUS MutateItems(
+  CHECKED_STATUS MutateItems(
       const vector<Item*>& items, const YQLWriteRequestPB::YQLStmtType& op_type);
 
   // ==================================================================

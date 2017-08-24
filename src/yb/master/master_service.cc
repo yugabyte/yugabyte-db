@@ -23,14 +23,12 @@
 #include <gflags/gflags.h>
 
 #include "yb/common/wire_protocol.h"
-#include "yb/master/catalog_manager.h"
+#include "yb/master/master_service_base-internal.h"
 #include "yb/master/master.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
-#include "yb/rpc/rpc_context.h"
 #include "yb/server/webserver.h"
 #include "yb/util/flag_tags.h"
-
 
 DEFINE_int32(master_inject_latency_on_tablet_lookups_ms, 0,
              "Number of milliseconds that the master will sleep before responding to "
@@ -47,21 +45,6 @@ using std::shared_ptr;
 using consensus::RaftPeerPB;
 using rpc::RpcContext;
 
-namespace {
-
-// If 's' is not OK and 'resp' has no application specific error set,
-// set the error field of 'resp' to match 's' and set the code to
-// UNKNOWN_ERROR.
-template<class RespClass>
-void CheckRespErrorOrSetUnknown(const Status& s, RespClass* resp) {
-  if (PREDICT_FALSE(!s.ok() && !resp->has_error())) {
-    StatusToPB(s, resp->mutable_error()->mutable_status());
-    resp->mutable_error()->set_code(MasterErrorPB::UNKNOWN_ERROR);
-  }
-}
-
-} // anonymous namespace
-
 static void SetupErrorAndRespond(MasterErrorPB* error,
                                  const Status& s,
                                  MasterErrorPB::Code code,
@@ -73,56 +56,7 @@ static void SetupErrorAndRespond(MasterErrorPB* error,
 
 MasterServiceImpl::MasterServiceImpl(Master* server)
   : MasterServiceIf(server->metric_entity()),
-    server_(server) {
-}
-
-template <class ReqType, class RespType, class FnType>
-void MasterServiceImpl::HandleOnLeader(const ReqType* req,
-                                       RespType* resp,
-                                       RpcContext* rpc,
-                                       FnType f) {
-  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
-    return;
-  }
-
-  const Status s = f();
-  CheckRespErrorOrSetUnknown(s, resp);
-  rpc->RespondSuccess();
-}
-
-template <class HandlerType, class ReqType, class RespType>
-void MasterServiceImpl::HandleIn(const ReqType* req,
-                                 RespType* resp,
-                                 RpcContext* rpc,
-                                 Status (HandlerType::*f)(RespType*)) {
-  HandleOnLeader(req, resp, rpc, [=]() -> Status {
-      return (handler(static_cast<HandlerType*>(nullptr))->*f)(resp); });
-}
-
-template <class HandlerType, class ReqType, class RespType>
-void MasterServiceImpl::HandleIn(const ReqType* req,
-                                 RespType* resp,
-                                 RpcContext* rpc,
-                                 Status (HandlerType::*f)(const ReqType*, RespType*)) {
-  HandleOnLeader(req, resp, rpc, [=]() -> Status {
-      return (handler(static_cast<HandlerType*>(nullptr))->*f)(req, resp); });
-}
-
-template <class HandlerType, class ReqType, class RespType>
-void MasterServiceImpl::HandleIn(const ReqType* req,
-                                 RespType* resp,
-                                 RpcContext* rpc,
-                                 Status (HandlerType::*f)(
-                                     const ReqType*, RespType*, rpc::RpcContext*)) {
-  HandleOnLeader(req, resp, rpc, [=]() -> Status {
-      return (handler(static_cast<HandlerType*>(nullptr))->*f)(req, resp, rpc); });
-}
-
-// Available overloaded handlers of different types:
-
-CatalogManager* MasterServiceImpl::handler(CatalogManager*) {
-  return server_->catalog_manager();
+    MasterServiceBase(server) {
 }
 
 void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
