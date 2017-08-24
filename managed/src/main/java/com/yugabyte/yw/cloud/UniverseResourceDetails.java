@@ -60,6 +60,7 @@ public class UniverseResourceDetails {
   public void addNumNodes(int numNodes) {
     this.numNodes = numNodes;
   }
+
   public void addPrice(UniverseDefinitionTaskParams params) {
     Provider provider = Provider.get(UUID.fromString(params.userIntent.provider));
     InstanceType instanceType = InstanceType.get(provider.code, params.userIntent.instanceType);
@@ -69,6 +70,10 @@ public class UniverseResourceDetails {
     double hourlyEBSPrice = 0.0;
     DeviceInfo deviceInfo = params.userIntent.deviceInfo;
     for (NodeDetails nodeDetails : params.nodeDetailsSet) {
+
+      if (!nodeDetails.isActive()) {
+        continue;
+      }
 
       // Add price of instance
       Region region = Region.getByCode(provider, nodeDetails.cloudInfo.region);
