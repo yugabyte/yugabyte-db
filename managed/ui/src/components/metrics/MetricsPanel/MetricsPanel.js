@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { removeNullProperties, isNonEmptyObject, isNonEmptyArray } from 'utils/ObjectUtils';
+import { removeNullProperties, isNonEmptyObject, isNonEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
 import './MetricsPanel.scss';
 
 const Plotly = require('plotly.js/lib/core');
@@ -45,7 +45,7 @@ export default class MetricsPanel extends Component {
         t: 70,
         pad: 4,
       };
-      if (isNonEmptyObject(metric.layout.yaxis) && isNonEmptyObject(metric.layout.yaxis.ticksuffix)) {
+      if (isNonEmptyObject(metric.layout.yaxis) && isNonEmptyString(metric.layout.yaxis.ticksuffix)) {
         metric.layout.margin.l = 70;
         metric.layout.yaxis.range = [0, max];
       } else {
