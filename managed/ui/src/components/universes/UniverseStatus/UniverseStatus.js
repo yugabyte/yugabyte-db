@@ -11,13 +11,20 @@ export default class UniverseStatus extends Component {
     const {currentUniverse: {universeDetails, universeUUID}, showLabelText, tasks: {customerTaskList}} = this.props;
     const updateInProgress = universeDetails.updateInProgress;
     const updateSucceeded = universeDetails.updateSucceeded;
-    let statusClassName = "";
+    let statusClassName = "unknown";
     let statusText = "";
     const universePendingTask = isNonEmptyArray(customerTaskList) ? customerTaskList.find(function(taskItem) {
       return (taskItem.universeUUID === universeUUID && (taskItem.status === "Running" ||
         taskItem.status === "Initializing") && Number(taskItem.percentComplete) !== 100);
     }) : null;
-    let statusDisplay = <span/>;
+    if (showLabelText) {
+      statusText = "Loading";
+    }
+    let statusDisplay = (
+      <div><i className="fa fa-spinner fa-spin" />
+        <span>{statusText}</span>
+      </div>
+    );
     if (updateSucceeded) {
       statusClassName = 'good';
       if (showLabelText) {
@@ -34,7 +41,7 @@ export default class UniverseStatus extends Component {
           statusDisplay = (
             <div className="status-pending">
               <div className="status-pending-display-container">
-                <i className="fa fa fa-spinner fa-spin"/>
+                <i className="fa fa-spinner fa-spin"/>
                 <span className="status-pending-name">
                   Pending&hellip;
                   {universePendingTask.percentComplete}%
@@ -49,7 +56,7 @@ export default class UniverseStatus extends Component {
           statusDisplay = <div className={"yb-orange"}><i className={"fa fa fa-spinner fa-spin"}/></div>;
         }
         statusClassName = 'pending';
-      } else {
+      } else if(!updateInProgress && !updateSucceeded) {
         statusClassName = 'bad';
         if (showLabelText) {
           statusText = 'Error';
