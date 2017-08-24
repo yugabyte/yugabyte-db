@@ -158,8 +158,10 @@ public class TablesControllerTest extends WithApplication {
       String tableKeySpace = table.get("keySpace") != null ? table.get("keySpace").asText() : null;
       // Display table only if table is redis type or table is CQL type but not of system keyspace
       if (tableType.equals("REDIS_TABLE_TYPE") ||
-         (!tableKeySpace.toLowerCase().equals("system") && !tableKeySpace.toLowerCase().equals("system_schema"))) {
-           numTables++;
+          (!tableKeySpace.toLowerCase().equals("system") &&
+          !tableKeySpace.toLowerCase().equals("system_schema") &&
+          !tableKeySpace.toLowerCase().equals("system_auth"))) {
+        numTables++;
       }
       LOG.info("Table name: " + tableName + ", table type: " + tableType);
       assertTrue(tableNames.contains(tableName));

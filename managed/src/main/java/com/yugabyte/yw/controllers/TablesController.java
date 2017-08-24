@@ -214,7 +214,9 @@ public class TablesController extends AuthenticatedController {
       ArrayNode resultNode = Json.newArray();
       for (TableInfo table : tableInfoList) {
         String tableKeySpace = table.getNamespace().getName().toString();
-        if (!tableKeySpace.toLowerCase().equals("system") && !tableKeySpace.toLowerCase().equals("system_schema")) {
+        if (!tableKeySpace.toLowerCase().equals("system") &&
+            !tableKeySpace.toLowerCase().equals("system_schema") &&
+            !tableKeySpace.toLowerCase().equals("system_auth")) {
           ObjectNode node = Json.newObject();
           if (!table.getTableType().toString().equals("REDIS_TABLE_TYPE")) {
             node.put("keySpace", tableKeySpace);
