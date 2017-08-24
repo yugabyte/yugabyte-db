@@ -25,6 +25,7 @@ const initialState = {
   deviceInfo: {},
   placementInfo: {},
   ybSoftwareVersion: '',
+  gflags: {},
   ebsType: 'GP2',
   accessKeyCode: 'yugabyte-default',
   maxNumNodes: -1 // Maximum Number of nodes currently in use OnPrem case
@@ -104,7 +105,8 @@ class UniverseForm extends Component {
       ybSoftwareVersion: this.state.ybSoftwareVersion,
       replicationFactor: this.state.replicationFactor,
       deviceInfo: this.state.deviceInfo,
-      accessKeyCode: this.state.accessKeyCode
+      accessKeyCode: this.state.accessKeyCode,
+      gflags: this.state.gflags
     };
   }
 
