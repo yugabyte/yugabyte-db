@@ -17,6 +17,8 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.stubbing.OngoingStubbing;
+import play.libs.Json;
 
 import java.util.HashSet;
 import java.util.Iterator;
@@ -27,6 +29,7 @@ import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_PIOPS;
 import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_SIZE;
 import static com.yugabyte.yw.common.ApiUtils.getDummyDeviceInfo;
 import static com.yugabyte.yw.common.ApiUtils.getDummyUserIntent;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.ToBeDecommissioned;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
@@ -51,24 +54,35 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   private int numVolumes = 2;
   private int volumeSize = 200;
   private int diskIops = 500;
+  private NodeDetails sampleNodeDetails;
 
   private Set<NodeDetails> setUpNodeDetailsSet(Iterator<NodeDetails> mockIterator) {
-    NodeDetails nodeDetails = new NodeDetails();
-    nodeDetails.cloudInfo = new CloudSpecificInfo();
-    nodeDetails.cloudInfo.cloud = provider.code;
-    nodeDetails.cloudInfo.instance_type = testInstanceType;
-    nodeDetails.cloudInfo.region = region.code;
-    nodeDetails.cloudInfo.az = az.code;
-    nodeDetails.azUuid = az.uuid;
-    when(mockIterator.hasNext()).thenReturn(true).thenReturn(true).thenReturn(true)
-        .thenReturn(false);
-    when(mockIterator.next()).thenReturn(nodeDetails); // return same node 3x
+    return setUpNodeDetailsSet(mockIterator, 3);
+  }
+
+  private Set<NodeDetails> setUpNodeDetailsSet(Iterator<NodeDetails> mockIterator,
+                                               int numIterations) {
+    OngoingStubbing hasNextStubbing = when(mockIterator.hasNext());
+    for (int i = 0; i < numIterations; ++i) {
+      hasNextStubbing = hasNextStubbing.thenReturn(true);
+    }
+    hasNextStubbing.thenReturn(false);
+    OngoingStubbing nextStubbing = when(mockIterator.next());
+    for (int i = 0; i < numIterations; ++i) {
+      nextStubbing = nextStubbing.thenReturn(sampleNodeDetails); // return same node 3x
+    }
+    nextStubbing.thenReturn(null);
     Set<NodeDetails> mockNodeDetailsSet = mock(HashSet.class);
     when(mockNodeDetailsSet.iterator()).thenReturn(mockIterator);
     return mockNodeDetailsSet;
   }
 
   private UniverseDefinitionTaskParams setUpValidSSD(Iterator<NodeDetails> mockIterator) {
+    return setUpValidSSD(mockIterator, 3);
+  }
+
+  private UniverseDefinitionTaskParams setUpValidSSD(Iterator<NodeDetails> mockIterator,
+                                                     int numIterations) {
 
     // Set up instance type
     InstanceType.upsert(provider.code, testInstanceType, 10, 5.5, null);
@@ -85,7 +99,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     // Set up TaskParams
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.userIntent = userIntent;
-    params.nodeDetailsSet = setUpNodeDetailsSet(mockIterator);
+    params.nodeDetailsSet = setUpNodeDetailsSet(mockIterator, numIterations);
     params.cloud = Common.CloudType.valueOf(provider.code);
 
     return params;
@@ -142,12 +156,20 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     provider = ModelFactory.awsProvider(ModelFactory.testCustomer());
     region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
     az = AvailabilityZone.create(region, "az-1", "PlacementAZ 1", "subnet-1");
+    sampleNodeDetails = new NodeDetails();
+    sampleNodeDetails.cloudInfo = new CloudSpecificInfo();
+    sampleNodeDetails.cloudInfo.cloud = provider.code;
+    sampleNodeDetails.cloudInfo.instance_type = testInstanceType;
+    sampleNodeDetails.cloudInfo.region = region.code;
+    sampleNodeDetails.cloudInfo.az = az.code;
+    sampleNodeDetails.azUuid = az.uuid;
+    sampleNodeDetails.state = NodeDetails.NodeState.Running;
   }
 
   @Test
   public void testCreate() throws Exception {
     Iterator<NodeDetails> mockIterator = mock(Iterator.class);
-    UniverseDefinitionTaskParams params = setUpValidSSD(mockIterator);
+    UniverseDefinitionTaskParams params = setUpValidSSD(mockIterator, 6);
 
     // Set up mockIterator to support 2 runs throw a foreach loop
     when(mockIterator.hasNext()).thenReturn(true).thenReturn(true).thenReturn(true)
@@ -204,6 +226,28 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     assertThat(details.ebsPricePerHour, equalTo(expectedEbsPrice));
     double expectedPrice = Double.parseDouble(String.format("%.4f",
         expectedEbsPrice + 3 * instancePrice));
+    assertThat(details.pricePerHour, equalTo(expectedPrice));
+  }
+
+  @Test
+  public void testAddPriceWithRemovingOneNode() throws Exception {
+    NodeDetails decommissioningNode = Json.fromJson(Json.toJson(sampleNodeDetails).deepCopy(),
+        NodeDetails.class);
+    decommissioningNode.state = ToBeDecommissioned;
+    Iterator<NodeDetails> mockIterator = mock(Iterator.class);
+    UniverseDefinitionTaskParams params = setUpValidSSD(mockIterator, 4);
+    OngoingStubbing nextStubbing = when(mockIterator.next());
+    for (int i = 0; i < 3; ++i) {
+      nextStubbing = nextStubbing.thenReturn(sampleNodeDetails); // return same node 3x
+    }
+    nextStubbing = nextStubbing.thenReturn(decommissioningNode);
+    nextStubbing.thenReturn(null);
+
+    UniverseResourceDetails details = new UniverseResourceDetails();
+    details.addPrice(params);
+    verify(mockIterator, times(4)).next();
+    assertThat(details.ebsPricePerHour, equalTo(0.0));
+    double expectedPrice = Double.parseDouble(String.format("%.4f", 3 * instancePrice));
     assertThat(details.pricePerHour, equalTo(expectedPrice));
   }
 }
