@@ -18,6 +18,9 @@
   &.bad {
     color: $YB_FAIL_COLOR;
   }
+  &.unknown {
+    color: $YB_PENDING_COLOR;
+  }
 
   span {
     display: inline-block;
