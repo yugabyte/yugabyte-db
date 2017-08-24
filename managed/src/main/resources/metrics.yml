@@ -260,7 +260,8 @@ redis_ops_latency:
 
 redis_yb_local_vs_remote:
   metric: "collectd_yb_redis_counter_total"
-  function: "avg"
+  function: "rate|avg"
+  range: "1m"
   filters:
     type: "rpc_read_remote.num|rpc_write_remote.num|rpc_read_local.num|rpc_write_local.num"
   group_by: "type"
@@ -926,7 +927,8 @@ cql_sql_latency_breakdown:
 
 cql_yb_local_vs_remote:
   metric: "collectd_yb_cql_counter_total"
-  function: "avg"
+  function: "rate|avg"
+  range: "1m"
   filters:
     type: "rpc_read_remote.num|rpc_write_remote.num|rpc_read_local.num|rpc_write_local.num"
   group_by: "type"
