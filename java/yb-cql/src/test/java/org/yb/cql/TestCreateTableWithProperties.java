@@ -49,7 +49,7 @@ public class TestCreateTableWithProperties extends BaseCQLTest {
                          "    'tombstone_compaction_interval' : 86400, " +
                          "    'tombstone_threshold' : 0.2, " +
                          "    'unchecked_tombstone_compaction' : false " +
-                         "}; ";
+                         "} AND COMPACT STORAGE; ";
 
     session.execute(create_stmt);
 
@@ -70,7 +70,7 @@ public class TestCreateTableWithProperties extends BaseCQLTest {
         "    'min_threshold': '4' " +
         "} " +
         "AND compression = { " +
-        "   'chunk_length_in_kb': '64', " +
+        "   'chunk_length_kb': '64', " +
         "   'class': 'org.apache.cassandra.io.compress.LZ4Compressor' " +
         "} " +
         "AND crc_check_chance = 1.0 " +
@@ -81,7 +81,8 @@ public class TestCreateTableWithProperties extends BaseCQLTest {
         "AND memtable_flush_period_in_ms = 0 " +
         "AND min_index_interval = 128 " +
         "AND read_repair_chance = 0.0 " +
-        "AND speculative_retry = '99PERCENTILE'; ";
+        "AND speculative_retry = '99PERCENTILE' " +
+        "AND COMPACT STORAGE; ";
 
     session.execute(create_stmt);
 
@@ -103,7 +104,6 @@ public class TestCreateTableWithProperties extends BaseCQLTest {
     session.execute(CreateTableStmt(property));
     DropTable("test_create");
   }
-
 
   private void testInvalidString(String property) throws Exception {
     RunInvalidTableProperty(String.format("%s = 1", property));
@@ -205,7 +205,6 @@ public class TestCreateTableWithProperties extends BaseCQLTest {
         "  'min_threshold' : 33 " +
         "}");
 
-
     RunValidTableProperty("compaction = " +
         "{ " +
         "  'class' : 'SizeTieredCompactionStrategy', " +
@@ -256,7 +255,6 @@ public class TestCreateTableWithProperties extends BaseCQLTest {
         "  'class' : 'SizeTieredCompactionStrategy', " +
         "  'unchecked_tombstone_compaction' : 1 " +
         "}");
-
 
     // DateTieredCompactionStrategy tests.
     RunInvalidTableProperty("compaction = " +

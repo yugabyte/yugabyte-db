@@ -215,6 +215,11 @@ CHECKED_STATUS PTTablePropertyListNode::Analyze(SemContext *sem_context) {
   unordered_map<string, PTTableProperty::SharedPtr> order_tnodes;
   vector<string> order_columns;
   for (PTTableProperty::SharedPtr tnode : node_list()) {
+    if (tnode == nullptr) {
+      // This shouldn't happen because AppendList ignores null nodes.
+      LOG(ERROR) << "Invalid null property";
+      continue;
+      }
     switch(tnode->property_type()) {
       case PropertyType::kTableProperty: FALLTHROUGH_INTENDED;
       case PropertyType::kTablePropertyMap: {
@@ -644,6 +649,7 @@ Status PTTablePropertyMap::AnalyzeCompression() {
 }
 
 const std::map<std::string, Compression::Subproperty> Compression::kSubpropertyDataTypes = {
+    {"chunk_length_kb",     Compression::Subproperty::kChunkLengthKb},
     {"chunk_length_in_kb",  Compression::Subproperty::kChunkLengthKb},
     {"class",               Compression::Subproperty::kClass},
     {"crc_check_chance",    Compression::Subproperty::kCrcCheckChance},
