@@ -525,15 +525,9 @@ Status RowOperationsPBDecoder::DecodeSplitRow(const ClientServerMapping& mapping
 }
 
 Status RowOperationsPBDecoder::DecodeOperations(vector<DecodedRowOperation>* ops) {
-  // TODO: there's a bug here, in that if a client passes some column
-  // in its schema that has been deleted on the server, it will fail
-  // even if the client never actually specified any values for it.
-  // For example, a DBA might do a thorough audit that no one is using
-  // some column anymore, and then drop the column, expecting it to be
-  // compatible, but all writes would start failing until clients
-  // refreshed their schema.
-  // See DISABLED_TestProjectUpdatesSubsetOfColumns
-  CHECK(!client_schema_->has_column_ids());
+  if (client_schema_->has_column_ids()) {
+    return STATUS(InvalidArgument, "User requests should not have Column IDs");
+  }
   DCHECK(tablet_schema_->has_column_ids());
   ClientServerMapping mapping(client_schema_, tablet_schema_);
   RETURN_NOT_OK(client_schema_->GetProjectionMapping(*tablet_schema_, &mapping));
@@ -543,7 +537,7 @@ Status RowOperationsPBDecoder::DecodeOperations(vector<DecodedRowOperation>* ops
   // Make a "prototype row" which has all the defaults filled in. We can copy
   // this to create a starting point for each row as we decode it, with
   // all the defaults in place without having to loop.
-  uint8_t prototype_row_storage[tablet_row_size_];
+  uint8_t prototype_row_storage[tablet_row_size_]; // NOLINT
   ContiguousRow prototype_row(tablet_schema_, prototype_row_storage);
   SetupPrototypeRow(*tablet_schema_, &prototype_row);
 

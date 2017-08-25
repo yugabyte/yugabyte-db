@@ -65,6 +65,9 @@ namespace tserver {
 
 class TabletServerTest : public TabletServerTestBase {
  public:
+  explicit TabletServerTest(TableType table_type = YQL_TABLE_TYPE)
+      : TabletServerTestBase(table_type) {}
+
   // Starts the tablet server, override to start it later.
   void SetUp() override {
     TabletServerTestBase::SetUp();
@@ -261,7 +264,7 @@ TEST_F(TabletServerTest, TestInsert) {
     ASSERT_OK(proxy_->Write(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
-    ASSERT_EQ(TabletServerErrorPB::MISMATCHED_SCHEMA, resp.error().code());
+    ASSERT_EQ(TabletServerErrorPB::UNKNOWN_ERROR, resp.error().code());
     Status s = StatusFromPB(resp.error().status());
     EXPECT_TRUE(s.IsInvalidArgument());
     ASSERT_STR_CONTAINS(s.ToString(),
@@ -294,7 +297,6 @@ TEST_F(TabletServerTest, TestInsert) {
     SCOPED_TRACE(resp.DebugString());
     ASSERT_FALSE(resp.has_error());
     req.clear_row_operations();
-    ASSERT_EQ(1, rows_inserted->value());
   }
 
   // Send a batch with multiple rows, one of which is a duplicate of
@@ -311,11 +313,6 @@ TEST_F(TabletServerTest, TestInsert) {
     ASSERT_OK(proxy_->Write(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
-    ASSERT_EQ(1, resp.per_row_errors().size());
-    ASSERT_EQ(2, resp.per_row_errors().Get(0).row_index());
-    Status s = StatusFromPB(resp.per_row_errors().Get(0).error());
-    ASSERT_STR_CONTAINS(s.ToString(), "Already present");
-    ASSERT_EQ(3, rows_inserted->value());  // This counter only counts successful inserts.
   }
 
   // get the clock's current hybrid_time
@@ -342,10 +339,6 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_ClientPropagated) {
   ASSERT_TRUE(
       mini_server_->server()->tablet_manager()->LookupTablet(kTabletId,
                                                              &tablet));
-  scoped_refptr<Counter> rows_inserted =
-      METRIC_rows_inserted.Instantiate(tablet->tablet()->GetMetricEntity());
-  ASSERT_EQ(0, rows_inserted->value());
-
   // get the current time
   HybridTime current = mini_server_->server()->clock()->Now();
   // advance current to some time in the future. we do 5 secs to make
@@ -368,7 +361,6 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_ClientPropagated) {
   SCOPED_TRACE(resp.DebugString());
   ASSERT_FALSE(resp.has_error());
   req.clear_row_operations();
-  ASSERT_EQ(1, rows_inserted->value());
 
   // make sure the server returned a write hybrid_time where only
   // the logical value was increased since he should have updated
@@ -393,11 +385,6 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_CommitWait) {
   ASSERT_TRUE(
       mini_server_->server()->tablet_manager()->LookupTablet(kTabletId,
                                                              &tablet));
-  scoped_refptr<Counter> rows_inserted =
-      METRIC_rows_inserted.Instantiate(
-          tablet->tablet()->GetMetricEntity());
-  ASSERT_EQ(0, rows_inserted->value());
-
   // get current time, with and without error
   HybridTime now_before;
   uint64_t error_before;
@@ -420,7 +407,6 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_CommitWait) {
   SCOPED_TRACE(resp.DebugString());
   ASSERT_FALSE(resp.has_error());
   req.clear_row_operations();
-  ASSERT_EQ(1, rows_inserted->value());
 
   // Two things must have happened.
   // 1 - The write hybrid_time must be greater than 'now_before'
@@ -454,15 +440,6 @@ TEST_F(TabletServerTest, TestInsertAndMutate) {
 
   scoped_refptr<TabletPeer> tablet;
   ASSERT_TRUE(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet));
-  scoped_refptr<Counter> rows_inserted =
-      METRIC_rows_inserted.Instantiate(tablet->tablet()->GetMetricEntity());
-  scoped_refptr<Counter> rows_updated =
-      METRIC_rows_updated.Instantiate(tablet->tablet()->GetMetricEntity());
-  scoped_refptr<Counter> rows_deleted =
-      METRIC_rows_deleted.Instantiate(tablet->tablet()->GetMetricEntity());
-  ASSERT_EQ(0, rows_inserted->value());
-  ASSERT_EQ(0, rows_updated->value());
-  ASSERT_EQ(0, rows_deleted->value());
   tablet.reset();
 
   RpcController controller;
@@ -481,9 +458,6 @@ TEST_F(TabletServerTest, TestInsertAndMutate) {
     ASSERT_OK(proxy_->Write(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
-    ASSERT_EQ(0, resp.per_row_errors().size());
-    ASSERT_EQ(3, rows_inserted->value());
-    ASSERT_EQ(0, rows_updated->value());
     controller.Reset();
   }
 
@@ -504,13 +478,10 @@ TEST_F(TabletServerTest, TestInsertAndMutate) {
     ASSERT_OK(proxy_->Write(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
-    ASSERT_EQ(0, resp.per_row_errors().size());
-    ASSERT_EQ(3, rows_inserted->value());
-    ASSERT_EQ(3, rows_updated->value());
     controller.Reset();
   }
 
-  // Try and mutate a non existent row key (should get an error)
+  // Try and mutate a non existent row key (should not get an error)
   {
     WriteRequestPB req;
     WriteResponsePB resp;
@@ -523,8 +494,6 @@ TEST_F(TabletServerTest, TestInsertAndMutate) {
     ASSERT_OK(proxy_->Write(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
-    ASSERT_EQ(1, resp.per_row_errors().size());
-    ASSERT_EQ(3, rows_updated->value());
     controller.Reset();
   }
 
@@ -539,14 +508,11 @@ TEST_F(TabletServerTest, TestInsertAndMutate) {
     SCOPED_TRACE(req.DebugString());
     ASSERT_OK(proxy_->Write(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
-    ASSERT_FALSE(resp.has_error())<< resp.ShortDebugString();
-    ASSERT_EQ(0, resp.per_row_errors().size());
-    ASSERT_EQ(3, rows_updated->value());
-    ASSERT_EQ(1, rows_deleted->value());
+    ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
     controller.Reset();
   }
 
-  // Now try and mutate a row we just deleted, we should get an error
+  // Now try and mutate a row we just deleted, we should not get an error
   {
     WriteRequestPB req;
     WriteResponsePB resp;
@@ -558,16 +524,12 @@ TEST_F(TabletServerTest, TestInsertAndMutate) {
     SCOPED_TRACE(req.DebugString());
     ASSERT_OK(proxy_->Write(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
-    ASSERT_FALSE(resp.has_error())<< resp.ShortDebugString();
-    ASSERT_EQ(1, resp.per_row_errors().size());
+    ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
     controller.Reset();
   }
 
-  ASSERT_EQ(3, rows_inserted->value());
-  ASSERT_EQ(3, rows_updated->value());
-
-  // At this point, we have two rows left (row key 2 and 3).
-  VerifyRows(schema_, { KeyValue(2, 3), KeyValue(3, 4) });
+  // At this point, we have two left.
+  VerifyRows(schema_, {KeyValue(1, 2), KeyValue(2, 3), KeyValue(3, 4), KeyValue(1234, 2)});
 
   // Do a mixed operation (some insert, update, and delete, some of which fail)
   {
@@ -577,8 +539,8 @@ TEST_F(TabletServerTest, TestInsertAndMutate) {
     ASSERT_OK(SchemaToPB(schema_, req.mutable_schema()));
 
     RowOperationsPB* ops = req.mutable_row_operations();
-    // op 0: Mutate row 1, which doesn't exist. This should fail.
-    AddTestRowToPB(RowOperationsPB::UPDATE, schema_, 1, 3, "mutate_should_fail", ops);
+    // op 0: Mutate row 1, which doesn't exist. This should not fail.
+    AddTestRowToPB(RowOperationsPB::UPDATE, schema_, 1, 3, "mutate_should_not_fail", ops);
     // op 1: Insert a new row 4 (succeeds)
     AddTestRowToPB(RowOperationsPB::INSERT, schema_, 4, 4, "new row 4", ops);
     // op 2: Delete a non-existent row 5 (should fail)
@@ -589,22 +551,17 @@ TEST_F(TabletServerTest, TestInsertAndMutate) {
     SCOPED_TRACE(req.DebugString());
     ASSERT_OK(proxy_->Write(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
-    ASSERT_FALSE(resp.has_error())<< resp.ShortDebugString();
-    ASSERT_EQ(2, resp.per_row_errors().size());
-    EXPECT_EQ("row_index: 0 error { code: NOT_FOUND message: \"key not found\" }",
-              resp.per_row_errors(0).ShortDebugString());
-    EXPECT_EQ("row_index: 2 error { code: NOT_FOUND message: \"key not found\" }",
-              resp.per_row_errors(1).ShortDebugString());
+    ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
     controller.Reset();
   }
 
   // get the clock's current hybrid_time
   HybridTime now_before = mini_server_->server()->clock()->Now();
 
-  rows_inserted = nullptr;
-  rows_updated = nullptr;
   ASSERT_NO_FATALS(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
-  VerifyRows(schema_, { KeyValue(2, 3), KeyValue(3, 4), KeyValue(4, 4), KeyValue(6, 6) });
+  VerifyRows(schema_,
+      { KeyValue(1, 3), KeyValue(2, 3), KeyValue(3, 4), KeyValue(4, 4), KeyValue(6, 6),
+        KeyValue(1234, 2) });
 
   // get the clock's hybrid_time after replay
   HybridTime now_after = mini_server_->server()->clock()->Now();
@@ -643,7 +600,7 @@ TEST_F(TabletServerTest, TestInvalidWriteRequest_BadSchema) {
     ASSERT_OK(proxy_->Write(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
-    ASSERT_EQ(TabletServerErrorPB::MISMATCHED_SCHEMA, resp.error().code());
+    ASSERT_EQ(TabletServerErrorPB::UNKNOWN_ERROR, resp.error().code());
     ASSERT_STR_CONTAINS(resp.error().status().message(),
                         "Client provided column col_doesnt_exist[int32 NOT NULL]"
                         " not present in tablet");
@@ -664,7 +621,7 @@ TEST_F(TabletServerTest, TestInvalidWriteRequest_BadSchema) {
     ASSERT_OK(proxy_->Write(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
-    ASSERT_EQ(TabletServerErrorPB::INVALID_SCHEMA, resp.error().code());
+    ASSERT_EQ(TabletServerErrorPB::UNKNOWN_ERROR, resp.error().code());
     ASSERT_STR_CONTAINS(resp.error().status().message(),
                         "User requests should not have Column IDs");
   }
@@ -725,51 +682,9 @@ class MyCommonHooks : public Tablet::FlushCompactCommonHooks,
   int iteration_;
 };
 
-// Tests performing mutations that are going to the initial MRS
-// or to a DMS, when the MRS is flushed. This also tests that the
-// log produced on recovery allows to re-recover the original state.
-TEST_F(TabletServerTest, TestRecoveryWithMutationsWhileFlushing) {
-
-  InsertTestRowsRemote(0, 1, 7);
-
-  shared_ptr<MyCommonHooks> hooks(new MyCommonHooks(this));
-
-  tablet_peer_->tablet()->SetFlushHooksForTests(hooks);
-  tablet_peer_->tablet()->SetCompactionHooksForTests(hooks);
-  tablet_peer_->tablet()->SetFlushCompactCommonHooksForTests(hooks);
-
-  ASSERT_OK(tablet_peer_->tablet()->Flush());
-
-  // Shutdown the tserver and try and rebuild the tablet from the log
-  // produced on recovery (recovery flushed no state, but produced a new
-  // log).
-  ASSERT_NO_FATALS(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
-  VerifyRows(schema_, { KeyValue(1, 10),
-                        KeyValue(2, 20),
-                        KeyValue(3, 30),
-                        KeyValue(4, 40),
-                        KeyValue(5, 50),
-                        KeyValue(6, 60),
-                        // the last hook only fires on compaction
-                        // so this isn't mutated
-                        KeyValue(7, 7) });
-
-  // Shutdown and rebuild again to test that the log generated during
-  // the previous recovery allows to perform recovery again.
-  ASSERT_NO_FATALS(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
-  VerifyRows(schema_, { KeyValue(1, 10),
-                        KeyValue(2, 20),
-                        KeyValue(3, 30),
-                        KeyValue(4, 40),
-                        KeyValue(5, 50),
-                        KeyValue(6, 60),
-                        KeyValue(7, 7) });
-}
-
 // Regression test for KUDU-176. Ensures that after a major delta compaction,
 // restarting properly recovers the tablet.
 TEST_F(TabletServerTest, TestKUDU_176_RecoveryAfterMajorDeltaCompaction) {
-
   // Flush a DRS with 1 rows.
   ASSERT_NO_FATALS(InsertTestRowsRemote(0, 1, 1));
   ASSERT_OK(tablet_peer_->tablet()->Flush());
@@ -779,15 +694,6 @@ TEST_F(TabletServerTest, TestKUDU_176_RecoveryAfterMajorDeltaCompaction) {
   ASSERT_NO_FATALS(UpdateTestRowRemote(0, 1, 2));
   ASSERT_OK(tablet_peer_->tablet()->FlushBiggestDMS());
   ASSERT_NO_FATALS(VerifyRows(schema_, { KeyValue(1, 2) }));
-
-  // Major compact deltas.
-  {
-    vector<shared_ptr<tablet::RowSet> > rsets;
-    tablet_peer_->tablet()->GetRowSetsForTests(&rsets);
-    vector<ColumnId> col_ids = { tablet_peer_->tablet()->schema()->column_id(1),
-                                 tablet_peer_->tablet()->schema()->column_id(2) };
-    ASSERT_OK(tablet_peer_->tablet()->DoMajorDeltaCompaction(col_ids, rsets[0]));
-  }
 
   // Verify that data is still the same.
   ASSERT_NO_FATALS(VerifyRows(schema_, { KeyValue(1, 2) }));
@@ -813,15 +719,6 @@ TEST_F(TabletServerTest, TestKUDU_177_RecoveryOfDMSEditsAfterMajorDeltaCompactio
   ASSERT_NO_FATALS(UpdateTestRowRemote(0, 1, 3));
   ASSERT_NO_FATALS(VerifyRows(schema_, { KeyValue(1, 3) }));
 
-  // Major compact deltas. This doesn't include the DMS, but the old
-  // DMS should "move over" to the output of the delta compaction.
-  {
-    vector<shared_ptr<tablet::RowSet> > rsets;
-    tablet_peer_->tablet()->GetRowSetsForTests(&rsets);
-    vector<ColumnId> col_ids = { tablet_peer_->tablet()->schema()->column_id(1),
-                                 tablet_peer_->tablet()->schema()->column_id(2) };
-    ASSERT_OK(tablet_peer_->tablet()->DoMajorDeltaCompaction(col_ids, rsets[0]));
-  }
   // Verify that data is still the same.
   ASSERT_NO_FATALS(VerifyRows(schema_, { KeyValue(1, 3) }));
 
@@ -840,8 +737,7 @@ TEST_F(TabletServerTest, TestClientGetsErrorBackWhenRecoveryFailed) {
   string log_path = tablet_peer_->log()->ActiveSegmentPathForTests();
   ShutdownTablet();
 
-  ASSERT_OK(log::CorruptLogFile(env_.get(), log_path,
-                                       log::FLIP_BYTE, 300));
+  ASSERT_OK(log::CorruptLogFile(env_.get(), log_path, log::FLIP_BYTE, 300));
 
   ASSERT_FALSE(ShutdownAndRebuildTablet().ok());
 
@@ -1629,106 +1525,6 @@ TEST_F(TabletServerTest, TestOrderedScan_ProjectionWithKeyColumnsOutOfOrder) {
   DoOrderedScanTest(projection, "(string string_val=hello $0, int32 int_val=$1, int32 key=$0)");
 }
 
-TEST_F(TabletServerTest, TestAlterSchema) {
-  AlterSchemaRequestPB req;
-  AlterSchemaResponsePB resp;
-  RpcController rpc;
-
-  InsertTestRowsRemote(0, 0, 2);
-
-  // Add one column with a default value
-  const int32_t c2_write_default = 5;
-  const int32_t c2_read_default = 7;
-  SchemaBuilder builder(schema_);
-  ASSERT_OK(builder.AddColumn("c2", INT32, false, false, false, false,
-                              ColumnSchema::SortingType::kNotSpecified,
-                              &c2_read_default, &c2_write_default));
-  Schema s2 = builder.Build();
-
-  req.set_dest_uuid(mini_server_->server()->fs_manager()->uuid());
-  req.set_tablet_id(kTabletId);
-  req.set_schema_version(1);
-  ASSERT_OK(SchemaToPB(s2, req.mutable_schema()));
-
-  // Send the call
-  {
-    SCOPED_TRACE(req.DebugString());
-    ASSERT_OK(admin_proxy_->AlterSchema(req, &resp, &rpc));
-    SCOPED_TRACE(resp.DebugString());
-    ASSERT_FALSE(resp.has_error());
-  }
-
-  {
-    InsertTestRowsRemote(0, 2, 2);
-    scoped_refptr<TabletPeer> tablet;
-    ASSERT_TRUE(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet));
-    ASSERT_OK(tablet->tablet()->Flush());
-  }
-
-  const Schema projection({ ColumnSchema("key", INT32), (ColumnSchema("c2", INT32)) }, 1);
-
-  // Try recovering from the original log
-  ASSERT_NO_FATALS(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
-  VerifyRows(projection, { KeyValue(0, 7),
-                           KeyValue(1, 7),
-                           KeyValue(2, 5),
-                           KeyValue(3, 5) });
-
-  // Try recovering from the log generated on recovery
-  ASSERT_NO_FATALS(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
-  VerifyRows(projection, { KeyValue(0, 7),
-                           KeyValue(1, 7),
-                           KeyValue(2, 5),
-                           KeyValue(3, 5) });
-}
-
-// Adds a new column with no "write default", and then restarts the tablet
-// server. Inserts that were made before the new column was added should
-// still replay properly during bootstrap.
-//
-// Regression test for KUDU-181.
-TEST_F(TabletServerTest, TestAlterSchema_AddColWithoutWriteDefault) {
-  AlterSchemaRequestPB req;
-  AlterSchemaResponsePB resp;
-  RpcController rpc;
-
-  InsertTestRowsRemote(0, 0, 2);
-
-  // Add a column with a read-default but no write-default.
-  const uint32_t c2_read_default = 7;
-  SchemaBuilder builder(schema_);
-  ASSERT_OK(builder.AddColumn("c2", INT32, false, false, false, false,
-                              ColumnSchema::SortingType::kNotSpecified,
-                              &c2_read_default, nullptr));
-  Schema s2 = builder.Build();
-
-  req.set_dest_uuid(mini_server_->server()->fs_manager()->uuid());
-  req.set_tablet_id(kTabletId);
-  req.set_schema_version(1);
-  ASSERT_OK(SchemaToPB(s2, req.mutable_schema()));
-
-  // Send the call
-  {
-    SCOPED_TRACE(req.DebugString());
-    ASSERT_OK(admin_proxy_->AlterSchema(req, &resp, &rpc));
-    SCOPED_TRACE(resp.DebugString());
-    ASSERT_FALSE(resp.has_error());
-  }
-
-  // Verify that the old data picked up the read default.
-
-  const Schema projection({ ColumnSchema("key", INT32), ColumnSchema("c2", INT32) }, 1);
-  VerifyRows(projection, { KeyValue(0, 7), KeyValue(1, 7) });
-
-  // Try recovering from the original log
-  ASSERT_NO_FATALS(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
-  VerifyRows(projection, { KeyValue(0, 7), KeyValue(1, 7) });
-
-  // Try recovering from the log generated on recovery
-  ASSERT_NO_FATALS(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
-  VerifyRows(projection, { KeyValue(0, 7), KeyValue(1, 7) });
-}
-
 TEST_F(TabletServerTest, TestCreateTablet_TabletExists) {
   CreateTabletRequestPB req;
   CreateTabletResponsePB resp;
@@ -1937,16 +1733,6 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
   RpcServer server1("server1", opts);
   ASSERT_OK(server1.Init(messenger));
 
-  if (false) {
-    // TODO: crashes during tserver destruct as some fields not set, will fix later.
-    tbo.rpc_opts = opts;
-    TabletServer tserver(tbo);
-    ASSERT_NO_FATALS(WARN_NOT_OK(tserver.Init(), "Ignore"));
-    // This call will fail for http binding, but this test is for rpc.
-    ASSERT_NO_FATALS(WARN_NOT_OK(tserver.GetRegistration(&reg), "Ignore"));
-    ASSERT_EQ(2000, reg.rpc_addresses(0).port());
-  }
-
   FLAGS_rpc_bind_addresses = "0.0.0.0:2000,0.0.0.1:2001";
   RpcServerOptions opts2;
   RpcServer server2("server2", opts2);
@@ -1978,6 +1764,10 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
   ASSERT_EQ(2, reg.rpc_addresses().size());
 }
 
+// We are not checking if a row is out of bounds in YB because we are using a completely different
+// hash-based partitioning scheme, so this test is now actually testing that there is no error
+// returned from the server. If we introduce such range checking, this test could be enhanced to
+// test for it.
 TEST_F(TabletServerTest, TestWriteOutOfBounds) {
   const char *tabletId = "TestWriteOutOfBoundsTablet";
   Schema schema = SchemaBuilder(schema_).Build();
@@ -1998,7 +1788,7 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
 
   ASSERT_OK(
     mini_server_->server()->tablet_manager()->CreateNewTablet("TestWriteOutOfBoundsTable", tabletId,
-      partitions[1], tabletId, DEFAULT_TABLE_TYPE, schema, partition_schema,
+      partitions[1], tabletId, YQL_TABLE_TYPE, schema, partition_schema,
       mini_server_->CreateLocalConfig(), nullptr));
 
   ASSERT_OK(WaitForTabletRunning(tabletId));
@@ -2014,16 +1804,9 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
   for (const RowOperationsPB::Type &op : ops) {
     RowOperationsPB* data = req.mutable_row_operations();
     AddTestRowToPB(op, schema_, 20, 1, "1", data);
-    SCOPED_TRACE(req.DebugString());
     ASSERT_OK(proxy_->Write(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
-
-    ASSERT_TRUE(resp.has_error());
-    ASSERT_EQ(TabletServerErrorPB::UNKNOWN_ERROR, resp.error().code());
-    Status s = StatusFromPB(resp.error().status());
-    EXPECT_TRUE(s.IsNotFound());
-    ASSERT_STR_CONTAINS(s.ToString(/* no file/line */ false),
-                        "Not found: Row not in tablet partition");
+    ASSERT_FALSE(resp.has_error());
     data->Clear();
     controller.Reset();
   }
@@ -2144,86 +1927,6 @@ class DelayFsyncLogHook : public log::Log::LogFaultHooks {
   CountDownLatch log_latch1_;
   CountDownLatch test_latch1_;
 };
-
-namespace {
-
-void DeleteOneRowAsync(TabletServerTest* test) {
-  test->DeleteTestRowsRemote(10, 1);
-}
-
-void CompactAsync(Tablet* tablet, CountDownLatch* flush_done_latch) {
-  CHECK_OK(tablet->Compact(Tablet::FORCE_COMPACT_ALL));
-  flush_done_latch->CountDown();
-}
-
-} // namespace
-
-// Tests that in flight transactions are committed and that commit messages
-// are durable before a compaction is allowed to flush the tablet metadata.
-//
-// This test is in preparation for KUDU-120 and should pass before and after
-// it, but was also confirmed to fail if the pre-conditions it tests for
-// fail. That is if KUDU-120 is implemented without these pre-requisites
-// this test is confirmed to fail.
-TEST_F(TabletServerTest, TestKudu120PreRequisites) {
-
-  // Insert a few rows...
-  InsertTestRowsRemote(0, 0, 10);
-  // ... now flush ...
-  ASSERT_OK(tablet_peer_->tablet()->Flush());
-  // ... insert a few rows...
-  InsertTestRowsRemote(0, 10, 10);
-  // ... and flush again so that we have two disk row sets.
-  ASSERT_OK(tablet_peer_->tablet()->Flush());
-
-  // Add a hook so that we can make the log wait right after an append
-  // (before the callback is triggered).
-  log::Log* log = tablet_peer_->log();
-  shared_ptr<DelayFsyncLogHook> log_hook(new DelayFsyncLogHook);
-  log->SetLogFaultHooksForTests(log_hook);
-
-  // Now start a transaction (delete) and stop just before commit.
-  scoped_refptr<yb::Thread> thread1;
-  CHECK_OK(yb::Thread::Create("DeleteThread", "DeleteThread",
-                                DeleteOneRowAsync, this, &thread1));
-
-  // Wait for the replicate message to arrive and continue.
-  log_hook->Continue();
-  // Wait a few msecs to make sure that the transaction is
-  // trying to commit.
-  usleep(100* 1000); // 100 msecs
-
-  // Now start a compaction before letting the commit message go through.
-  scoped_refptr<yb::Thread> flush_thread;
-  CountDownLatch flush_done_latch(1);
-  CHECK_OK(yb::Thread::Create("CompactThread", "CompactThread",
-                                CompactAsync,
-                                tablet_peer_->tablet(),
-                                &flush_done_latch,
-                                &flush_thread));
-
-  // At this point we have both a compaction and a transaction going on.
-  // If we allow the transaction to return before the commit message is
-  // durable (KUDU-120) that means that the mvcc transaction will no longer
-  // be in flight at this moment, nonetheless since we're blocking the WAL
-  // and not allowing the commit message to go through, the compaction should
-  // be forced to wait.
-  //
-  // We are thus testing two conditions:
-  // - That in-flight transactions are committed.
-  // - That commit messages for transactions that were in flight are durable.
-  //
-  // If these pre-conditions are not met, i.e. if the compaction is not forced
-  // to wait here for the conditions to be true, then the below assertion
-  // will fail, since the transaction's commit write callback will only
-  // return when we allow it (in log_hook->Continue());
-  CHECK(!flush_done_latch.WaitFor(MonoDelta::FromMilliseconds(300)));
-
-  // Now let the rest go through.
-  log_hook->Continue();
-  log_hook->Continue();
-  flush_done_latch.Wait();
-}
 
 } // namespace tserver
 } // namespace yb

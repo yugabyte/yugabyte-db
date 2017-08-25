@@ -49,7 +49,7 @@ class CreateTableITest : public ExternalMiniClusterITestBase {
  public:
   Status CreateTableWithPlacement(
       const master::ReplicationInfoPB& replication_info, const string& table_suffix,
-      const YBTableType table_type = YBTableType::KUDU_COLUMNAR_TABLE_TYPE) {
+      const YBTableType table_type = YBTableType::YQL_TABLE_TYPE) {
     RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
     gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
     client::YBSchema client_schema(client::YBSchemaFromSchema(yb::GetSimpleTestSchema()));

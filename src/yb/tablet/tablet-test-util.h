@@ -18,10 +18,11 @@
 #define YB_TABLET_TABLET_TEST_UTIL_H
 
 #include <algorithm>
-#include <gflags/gflags.h>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include <gflags/gflags.h>
 
 #include "yb/common/iterator.h"
 #include "yb/gutil/casts.h"
@@ -175,7 +176,8 @@ static inline void CollectRowsForSnapshots(Tablet* tablet,
                                             snapshot,
                                             Tablet::UNORDERED,
                                             &iter));
-    ASSERT_OK(iter->Init(NULL));
+    ScanSpec scan_spec;
+    ASSERT_OK(iter->Init(&scan_spec));
     auto collector = new vector<string>();
     ASSERT_OK(IterateToStringList(iter.get(), collector));
     for (const auto& mrs : *collector) {
@@ -197,10 +199,11 @@ static inline void VerifySnapshotsHaveSameResult(Tablet* tablet,
     DVLOG(1) << "Snapshot: " <<  snapshot.ToString();
     gscoped_ptr<RowwiseIterator> iter;
     ASSERT_OK(tablet->NewRowIterator(schema,
-                                            snapshot,
-                                            Tablet::UNORDERED,
-                                            &iter));
-    ASSERT_OK(iter->Init(NULL));
+                                     snapshot,
+                                     Tablet::UNORDERED,
+                                     &iter));
+    ScanSpec scan_spec;
+    ASSERT_OK(iter->Init(&scan_spec));
     vector<string> collector;
     ASSERT_OK(IterateToStringList(iter.get(), &collector));
     ASSERT_EQ(collector.size(), expected_rows[idx]->size());
@@ -218,13 +221,14 @@ static inline void VerifySnapshotsHaveSameResult(Tablet* tablet,
 // all of its results into 'out'. The previous contents
 // of 'out' are cleared.
 static inline CHECKED_STATUS DumpRowSet(const RowSet &rs,
-                                const Schema &projection,
-                                const MvccSnapshot &snap,
-                                vector<string> *out,
-                                int limit = INT_MAX) {
+                                        const Schema &projection,
+                                        const MvccSnapshot &snap,
+                                        vector<string> *out,
+                                        int limit = INT_MAX) {
   gscoped_ptr<RowwiseIterator> iter;
   RETURN_NOT_OK(rs.NewRowIterator(&projection, snap, &iter));
-  RETURN_NOT_OK(iter->Init(NULL));
+  ScanSpec scan_spec;
+  RETURN_NOT_OK(iter->Init(&scan_spec));
   RETURN_NOT_OK(IterateToStringList(iter.get(), out, limit));
   return Status::OK();
 }
@@ -245,7 +249,8 @@ static inline CHECKED_STATUS DumpTablet(const Tablet& tablet,
                          vector<string>* out) {
   gscoped_ptr<RowwiseIterator> iter;
   RETURN_NOT_OK(tablet.NewRowIterator(projection, &iter));
-  RETURN_NOT_OK(iter->Init(NULL));
+  ScanSpec scan_spec;
+  RETURN_NOT_OK(iter->Init(&scan_spec));
   std::vector<string> rows;
   RETURN_NOT_OK(IterateToStringList(iter.get(), &rows));
   std::sort(rows.begin(), rows.end());
@@ -270,4 +275,4 @@ static CHECKED_STATUS WriteRow(const Slice &row_slice, RowSetWriterClass *writer
 
 } // namespace tablet
 } // namespace yb
-#endif
+#endif // YB_TABLET_TABLET_TEST_UTIL_H

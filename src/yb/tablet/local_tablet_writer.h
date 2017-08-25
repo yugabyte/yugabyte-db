@@ -27,9 +27,19 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/transactions/write_transaction.h"
 #include "yb/gutil/macros.h"
+#include "yb/gutil/singleton.h"
 
 namespace yb {
 namespace tablet {
+
+// This is used for providing OpIds to write operations, which must always be increasing.
+class AutoIncrementingCounter {
+ public:
+  AutoIncrementingCounter() : next_index_(1) {}
+  int64_t GetAndIncrement() { return next_index_.fetch_add(1); }
+ private:
+  std::atomic<int64_t> next_index_;
+};
 
 // Helper class to write directly into a local tablet, without going
 // through TabletPeer, consensus, etc.
@@ -53,8 +63,6 @@ class LocalTabletWriter {
                              const Schema* client_schema)
     : tablet_(tablet),
       client_schema_(client_schema) {
-    CHECK_EQ(TableType::KUDU_COLUMNAR_TABLE_TYPE, tablet->table_type())
-        << "LocalTabletWriter does not support RocksDB-backed tables yet";
     CHECK(!client_schema->has_column_ids());
     CHECK_OK(SchemaToPB(*client_schema, req_.mutable_schema()));
   }
@@ -91,26 +99,38 @@ class LocalTabletWriter {
     }
 
     tx_state_.reset(new WriteTransactionState(NULL, &req_, NULL));
-
-    RETURN_NOT_OK(tablet_->DecodeWriteOperations(client_schema_, tx_state_.get()));
-    RETURN_NOT_OK(tablet_->AcquireKuduRowLocks(tx_state_.get()));
+    // Note: Order of lock/decode differs for these two table types, anyway temporary as KUDU
+    // codepath will be removed once all tests are converted to YQL.
+    if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+      RETURN_NOT_OK(tablet_->AcquireLocksAndPerformDocOperations(tx_state_.get()));
+      RETURN_NOT_OK(tablet_->DecodeWriteOperations(client_schema_, tx_state_.get()));
+    } else {
+      RETURN_NOT_OK(tablet_->DecodeWriteOperations(client_schema_, tx_state_.get()));
+      RETURN_NOT_OK(tablet_->AcquireKuduRowLocks(tx_state_.get()));
+    }
     tablet_->StartTransaction(tx_state_.get());
 
     // Create a "fake" OpId and set it in the TransactionState for anchoring.
-    tx_state_->mutable_op_id()->CopyFrom(consensus::MaximumOpId());
+    if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+      tx_state_->mutable_op_id()->set_term(0);
+      tx_state_->mutable_op_id()->set_index(
+        Singleton<AutoIncrementingCounter>::get()->GetAndIncrement());
+    } else {
+      tx_state_->mutable_op_id()->CopyFrom(consensus::MaximumOpId());
+    }
+
     tablet_->ApplyRowOperations(tx_state_.get());
 
     tx_state_->ReleaseTxResultPB(&result_);
     tx_state_->Commit();
-    tx_state_->release_row_locks();
+    tx_state_->ReleaseDocDbLocks(tablet_);
     tx_state_->ReleaseSchemaLock();
 
     // Return the status of first failed op.
     int op_idx = 0;
     for (const OperationResultPB& result : result_.ops()) {
       if (result.has_failed_status()) {
-        return StatusFromPB(result.failed_status())
-          .CloneAndPrepend(ops[op_idx].row->ToString());
+        return StatusFromPB(result.failed_status()).CloneAndPrepend(ops[op_idx].row->ToString());
       }
       op_idx++;
     }

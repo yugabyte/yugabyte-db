@@ -124,22 +124,22 @@ Status WriteTransaction::Apply(gscoped_ptr<CommitMsg>* commit_msg) {
 
   tablet->ApplyRowOperations(state());
 
-  // Add per-row errors to the result, update metrics.
-  int i = 0;
-  for (const RowOp* op : state()->row_ops()) {
-    if (state()->response() != nullptr && op->result->has_failed_status()) {
-      // Replicas disregard the per row errors, for now
-      // TODO check the per-row errors against the leader's, at least in debug mode
-      WriteResponsePB::PerRowErrorPB* error = state()->response()->add_per_row_errors();
-      error->set_row_index(i);
-      error->mutable_error()->CopyFrom(op->result->failed_status());
+  if (tablet->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    // Add per-row errors to the result, update metrics.
+    int i = 0;
+    for (const RowOp* op : state()->row_ops()) {
+     if (state()->response() != nullptr && op->result->has_failed_status()) {
+       // Replicas disregard the per row errors, for now
+       // TODO check the per-row errors against the leader's, at least in debug mode
+       WriteResponsePB::PerRowErrorPB* error = state()->response()->add_per_row_errors();
+       error->set_row_index(i);
+       error->mutable_error()->CopyFrom(op->result->failed_status());
+      }
+
+      state()->UpdateMetricsForOp(*op);
+      i++;
     }
 
-    state()->UpdateMetricsForOp(*op);
-    i++;
-  }
-
-  if (tablet->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     // Create the Commit message
     commit_msg->reset(new CommitMsg());
     state()->ReleaseTxResultPB((*commit_msg)->mutable_result());
@@ -156,7 +156,7 @@ void WriteTransaction::PreCommit() {
   TRACE_EVENT0("txn", "WriteTransaction::PreCommit");
   TRACE("PRECOMMIT: Releasing row and schema locks");
   // Perform early lock release after we've applied all changes
-  state()->release_row_locks();
+  state()->ReleaseDocDbLocks(tablet_peer()->tablet());
   state()->ReleaseSchemaLock();
 }
 
@@ -272,7 +272,7 @@ void WriteTransactionState::StartApplying() {
 void WriteTransactionState::Abort() {
   ResetMvccTx([](ScopedWriteTransaction* mvcc_tx) { mvcc_tx->Abort(); });
 
-  release_row_locks();
+  ReleaseDocDbLocks(tablet_peer()->tablet());
   ReleaseSchemaLock();
 
   // After aborting, we may respond to the RPC and delete the
@@ -316,19 +316,17 @@ void WriteTransactionState::UpdateMetricsForOp(const RowOp& op) {
   }
 }
 
-void WriteTransactionState::release_row_locks() {
-  // Kudu-only, to be removed.
-  for (RowOp* op : row_ops_) {
-    op->row_lock.Release();
-  }
+void WriteTransactionState::ReleaseDocDbLocks(Tablet* tablet) {
+  // Free docdb multi-level locks.
+  tablet->shared_lock_manager()->Unlock(docdb_locks_);
 
-  if (tablet_peer() != nullptr) {
-    const auto table_type = tablet_peer()->tablet()->table_type();;
-    if (table_type != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-      CHECK(row_ops_.empty());  // Kudu-specific row_ops_ data structure must be empty in this case.
-      // Free docdb multi-level locks.
-      tablet_peer()->tablet()->shared_lock_manager()->Unlock(docdb_locks_);
+  if (tablet->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    // The code below is kudu-only and will be removed, along with the tablet parameter.
+    for (RowOp *op : row_ops_) {
+      op->row_lock.Release();
     }
+  } else {
+    CHECK(row_ops_.empty());
   }
 }
 

@@ -38,7 +38,7 @@ namespace tablet {
 class TestTabletSchema : public YBTabletTest {
  public:
   TestTabletSchema()
-    : YBTabletTest(CreateBaseSchema()) {
+    : YBTabletTest(CreateBaseSchema(), YQL_TABLE_TYPE) {
   }
 
   void InsertRows(const Schema& schema, size_t first_key, size_t nrows) {

@@ -117,11 +117,9 @@ ADD_YB_TEST(rowset_tree-test)
 ADD_YB_TEST(composite-pushdown-test)
 ADD_YB_TEST(delta_compaction-test)
 ADD_YB_TEST(mt-rowset_delta_compaction-test)
-ADD_YB_TEST(major_delta_compaction-test)
 ADD_YB_TEST(transactions/transaction_tracker-test)
 ADD_YB_TEST(tablet_peer-test)
 ADD_YB_TEST(tablet_random_access-test)
-ADD_YB_TEST(tablet_mm_ops-test)
 
 # Some tests don't have dependencies on other tablet stuff
 set(YB_TEST_LINK_LIBS yb_util gutil ${YB_MIN_TEST_LIBS})

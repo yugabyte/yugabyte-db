@@ -53,6 +53,7 @@ namespace tablet {
 struct RowOp;
 class RowSetKeyProbe;
 struct TabletComponents;
+class Tablet;
 
 using util::LockBatch;
 
@@ -195,8 +196,8 @@ class WriteTransactionState : public TransactionState {
 
   void UpdateMetricsForOp(const RowOp& op);
 
-  // Releases all the row locks acquired by this transaction.
-  void release_row_locks();
+  // Releases all the DocDB locks acquired by this transaction.
+  void ReleaseDocDbLocks(Tablet* tablet);
 
   // Resets this TransactionState, releasing all locks, destroying all prepared
   // writes, clearing the transaction result _and_ committing the current Mvcc

@@ -278,7 +278,6 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
  private:
   friend class RefCountedThreadSafe<TabletPeer>;
   friend class TabletPeerTest;
-  FRIEND_TEST(TabletPeerTest, TestMRSAnchorPreventsLogGC);
   FRIEND_TEST(TabletPeerTest, TestDMSAnchorPreventsLogGC);
   FRIEND_TEST(TabletPeerTest, TestActiveTransactionPreventsLogGC);
 

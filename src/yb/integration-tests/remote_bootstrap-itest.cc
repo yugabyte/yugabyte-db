@@ -960,80 +960,40 @@ void RemoteBootstrapITest::ClientCrashesBeforeChangeRole(YBTableType table_type)
                                                   crash_test_workload_->rows_inserted()));
 }
 
-TEST_F(RemoteBootstrapITest, TestRejectRogueLeaderKuduTableType) {
-  RejectRogueLeader(YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
-}
-
 TEST_F(RemoteBootstrapITest, TestRejectRogueLeaderKeyValueType) {
   RejectRogueLeader(YBTableType::YQL_TABLE_TYPE);
-}
-
-TEST_F(RemoteBootstrapITest, TestDeleteTabletDuringRemoteBootstrapKuduTableType) {
-  DeleteTabletDuringRemoteBootstrap(YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
 }
 
 TEST_F(RemoteBootstrapITest, TestDeleteTabletDuringRemoteBootstrapKeyValueType) {
   DeleteTabletDuringRemoteBootstrap(YBTableType::YQL_TABLE_TYPE);
 }
 
-TEST_F(RemoteBootstrapITest, TestRemoteBootstrapFollowerWithHigherTermKuduTableType) {
-  RemoteBootstrapFollowerWithHigherTerm(YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
-}
-
 TEST_F(RemoteBootstrapITest, TestRemoteBootstrapFollowerWithHigherTermKeyValueType) {
   RemoteBootstrapFollowerWithHigherTerm(YBTableType::YQL_TABLE_TYPE);
-}
-
-TEST_F(RemoteBootstrapITest, TestConcurrentRemoteBootstrapsKuduTableType) {
-  ConcurrentRemoteBootstraps(YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
 }
 
 TEST_F(RemoteBootstrapITest, TestConcurrentRemoteBootstrapsKeyValueType) {
   ConcurrentRemoteBootstraps(YBTableType::YQL_TABLE_TYPE);
 }
 
-TEST_F(RemoteBootstrapITest, TestDeleteLeaderDuringRemoteBootstrapStressTestKuduTableType) {
-  DeleteLeaderDuringRemoteBootstrapStressTest(YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
-}
-
 TEST_F(RemoteBootstrapITest, TestDeleteLeaderDuringRemoteBootstrapStressTestKeyValueType) {
   DeleteLeaderDuringRemoteBootstrapStressTest(YBTableType::YQL_TABLE_TYPE);
-}
-
-TEST_F(RemoteBootstrapITest, TestDisableRemoteBootstrap_NoTightLoopWhenTabletDeletedKuduTableType) {
-  DisableRemoteBootstrap_NoTightLoopWhenTabletDeleted(YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
 }
 
 TEST_F(RemoteBootstrapITest, TestDisableRemoteBootstrap_NoTightLoopWhenTabletDeletedKeyValueType) {
   DisableRemoteBootstrap_NoTightLoopWhenTabletDeleted(YBTableType::YQL_TABLE_TYPE);
 }
 
-TEST_F(RemoteBootstrapITest, TestLeaderCrashesWhileFetchingDataKuduTableType) {
-  RemoteBootstrapITest::LeaderCrashesWhileFetchingData(YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
-}
-
 TEST_F(RemoteBootstrapITest, TestLeaderCrashesWhileFetchingDataKeyValueTableType) {
   RemoteBootstrapITest::LeaderCrashesWhileFetchingData(YBTableType::YQL_TABLE_TYPE);
-}
-
-TEST_F(RemoteBootstrapITest, TestLeaderCrashesBeforeChangeRoleKuduTableType) {
-  RemoteBootstrapITest::LeaderCrashesBeforeChangeRole(YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
 }
 
 TEST_F(RemoteBootstrapITest, TestLeaderCrashesBeforeChangeRoleKeyValueTableType) {
   RemoteBootstrapITest::LeaderCrashesBeforeChangeRole(YBTableType::YQL_TABLE_TYPE);
 }
 
-TEST_F(RemoteBootstrapITest, TestLeaderCrashesAfterChangeRoleKuduTableType) {
-  RemoteBootstrapITest::LeaderCrashesAfterChangeRole(YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
-}
-
 TEST_F(RemoteBootstrapITest, TestLeaderCrashesAfterChangeRoleKeyValueTableType) {
   RemoteBootstrapITest::LeaderCrashesAfterChangeRole(YBTableType::YQL_TABLE_TYPE);
-}
-
-TEST_F(RemoteBootstrapITest, TestClientCrashesBeforeChangeRoleKuduTableType) {
-  RemoteBootstrapITest::ClientCrashesBeforeChangeRole(YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
 }
 
 TEST_F(RemoteBootstrapITest, TestClientCrashesBeforeChangeRoleKeyValueTableType) {

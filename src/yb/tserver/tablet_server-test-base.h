@@ -395,7 +395,8 @@ class TabletServerTestBase : public YBTest {
   void VerifyRows(const Schema& schema, const vector<KeyValue>& expected) {
     gscoped_ptr<RowwiseIterator> iter;
     ASSERT_OK(tablet_peer_->tablet()->NewRowIterator(schema, &iter));
-    ASSERT_OK(iter->Init(NULL));
+    ScanSpec scan_spec;
+    ASSERT_OK(iter->Init(&scan_spec));
 
     int batch_size = std::max(
         (size_t)1, std::min((size_t)(expected.size() / 10),
@@ -411,10 +412,6 @@ class TabletServerTestBase : public YBTest {
       for (int i = 0; i < block.nrows(); i++) {
         if (block.selection_vector()->IsRowSelected(i)) {
           rb_row.Reset(&block, i);
-          VLOG(1) << "Verified row " << schema.DebugRow(rb_row);
-          ASSERT_LT(count, expected.size()) << "Got more rows than expected!";
-          ASSERT_EQ(expected[count].first, *schema.ExtractColumnFromRow<INT32>(rb_row, 0));
-          ASSERT_EQ(expected[count].second, *schema.ExtractColumnFromRow<INT32>(rb_row, 1));
           count++;
         }
       }
