@@ -3,7 +3,17 @@
 #ifndef ENT_SRC_YB_MASTER_MASTER_H
 #define ENT_SRC_YB_MASTER_MASTER_H
 
-#include "../../src/yb/master/master.h"
+namespace yb {
+namespace master {
+namespace enterprise {
+
+class CatalogManager;
+
+} // namespace enterprise
+} // namespace master
+} // namespace yb
+
+#include "../../../../src/yb/master/master.h"
 
 namespace yb {
 namespace master {
