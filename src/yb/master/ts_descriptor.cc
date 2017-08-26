@@ -30,8 +30,6 @@
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/net/net_util.h"
 
-using std::shared_ptr;
-
 namespace yb {
 namespace master {
 
@@ -82,9 +80,7 @@ Status TSDescriptor::Register(const NodeInstancePB& instance,
   registration_.reset(new TSRegistrationPB(registration));
   placement_id_ = generate_placement_id(registration.common().cloud_info());
 
-  ts_admin_proxy_.reset();
-  ts_service_proxy_.reset();
-  consensus_proxy_.reset();
+  proxies_.reset();
 
   return Status::OK();
 }
@@ -222,44 +218,6 @@ Status TSDescriptor::ResolveEndpoint(Endpoint* addr) const {
   }
   *addr = addrs[0];
   return Status::OK();
-}
-
-template <class TProxy>
-Status TSDescriptor::GetOrCreateProxy(const shared_ptr<rpc::Messenger>& messenger,
-                                      shared_ptr<TProxy>* result,
-                                      shared_ptr<TProxy>* result_cache) {
-  {
-    std::lock_guard<simple_spinlock> l(lock_);
-    if (*result_cache) {
-      *result = *result_cache;
-      return Status::OK();
-    }
-  }
-
-  Endpoint addr;
-  RETURN_NOT_OK(ResolveEndpoint(&addr));
-
-  std::lock_guard<simple_spinlock> l(lock_);
-  if (!(*result_cache)) {
-    result_cache->reset(new TProxy(messenger, addr));
-  }
-  *result = *result_cache;
-  return Status::OK();
-}
-
-Status TSDescriptor::GetTSAdminProxy(const shared_ptr<rpc::Messenger>& messenger,
-                                     shared_ptr<tserver::TabletServerAdminServiceProxy>* proxy) {
-  return GetOrCreateProxy(messenger, proxy, &ts_admin_proxy_);
-}
-
-Status TSDescriptor::GetConsensusProxy(const shared_ptr<rpc::Messenger>& messenger,
-                                       shared_ptr<consensus::ConsensusServiceProxy>* proxy) {
-  return GetOrCreateProxy(messenger, proxy, &consensus_proxy_);
-}
-
-Status TSDescriptor::GetTSServiceProxy(const shared_ptr<rpc::Messenger>& messenger,
-                                       shared_ptr<tserver::TabletServerServiceProxy>* proxy) {
-  return GetOrCreateProxy(messenger, proxy, &ts_service_proxy_);
 }
 
 bool TSDescriptor::HasTabletDeletePending() const {

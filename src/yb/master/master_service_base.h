@@ -38,7 +38,7 @@ class MasterServiceBase {
   void HandleIn(const ReqType* req, RespType* resp, rpc::RpcContext* rpc,
       Status (HandlerType::*f)(const ReqType*, RespType*, rpc::RpcContext*));
 
-  CatalogManager* handler(CatalogManager*);
+  YB_EDITION_NS_PREFIX CatalogManager* handler(CatalogManager*);
 
   Master* server_;
 

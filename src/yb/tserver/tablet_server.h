@@ -118,6 +118,9 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   const TabletServerOptions& options() const { return opts_; }
 
+ protected:
+  virtual CHECKED_STATUS RegisterServices();
+
  private:
   // Auto initialize some of the service flags that are defaulted to -1.
   void AutoInitServiceFlags();

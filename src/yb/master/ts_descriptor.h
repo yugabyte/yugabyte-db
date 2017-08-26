@@ -26,6 +26,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
+#include "yb/util/shared_ptr_tuple.h"
 
 namespace yb {
 
@@ -44,6 +45,10 @@ namespace master {
 
 class TSRegistrationPB;
 class TSInformationPB;
+
+typedef util::SharedPtrTuple<tserver::TabletServerAdminServiceProxy,
+                             tserver::TabletServerServiceProxy,
+                             consensus::ConsensusServiceProxy> ProxyTuple;
 
 // Master-side view of a single tablet server.
 //
@@ -97,17 +102,12 @@ class TSDescriptor {
 
   void GetNodeInstancePB(NodeInstancePB* instance_pb) const;
 
-  // Return an RPC proxy to the tablet server admin service.
-  CHECKED_STATUS GetTSAdminProxy(const std::shared_ptr<rpc::Messenger>& messenger,
-                         std::shared_ptr<tserver::TabletServerAdminServiceProxy>* proxy);
-
-  // Return an RPC proxy to the consensus service.
-  CHECKED_STATUS GetConsensusProxy(const std::shared_ptr<rpc::Messenger>& messenger,
-                           std::shared_ptr<consensus::ConsensusServiceProxy>* proxy);
-
-  // Return an RPC proxy to the tablet server service.
-  CHECKED_STATUS GetTSServiceProxy(const std::shared_ptr<rpc::Messenger>& messenger,
-                           std::shared_ptr<tserver::TabletServerServiceProxy>* proxy);
+  // Return an RPC proxy to a service.
+  template <class TProxy>
+  CHECKED_STATUS GetProxy(const std::shared_ptr<rpc::Messenger>& messenger,
+                          std::shared_ptr<TProxy>* proxy) {
+    return GetOrCreateProxy(messenger, proxy, &proxies_.get<TProxy>());
+  }
 
   // Increment the accounting of the number of replicas recently created on this
   // server. This value will automatically decay over time.
@@ -177,9 +177,7 @@ class TSDescriptor {
   gscoped_ptr<TSRegistrationPB> registration_;
   std::string placement_id_;
 
-  std::shared_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy_;
-  std::shared_ptr<consensus::ConsensusServiceProxy> consensus_proxy_;
-  std::shared_ptr<tserver::TabletServerServiceProxy> ts_service_proxy_;
+  YB_EDITION_NS_PREFIX ProxyTuple proxies_;
 
   // Set of tablet uuids for which a delete is pending on this tablet server.
   std::set<std::string> tablets_pending_delete_;
@@ -187,6 +185,29 @@ class TSDescriptor {
   DISALLOW_COPY_AND_ASSIGN(TSDescriptor);
 };
 
+template <class TProxy>
+Status TSDescriptor::GetOrCreateProxy(const std::shared_ptr<rpc::Messenger>& messenger,
+                                      std::shared_ptr<TProxy>* result,
+                                      std::shared_ptr<TProxy>* result_cache) {
+  {
+    std::lock_guard<simple_spinlock> l(lock_);
+    if (*result_cache) {
+      *result = *result_cache;
+      return Status::OK();
+    }
+  }
+
+  Endpoint addr;
+  RETURN_NOT_OK(ResolveEndpoint(&addr));
+
+  std::lock_guard<simple_spinlock> l(lock_);
+  if (!(*result_cache)) {
+    result_cache->reset(new TProxy(messenger, addr));
+  }
+  *result = *result_cache;
+  return Status::OK();
+}
+
 } // namespace master
 } // namespace yb
-#endif /* YB_MASTER_TS_DESCRIPTOR_H */
+#endif // YB_MASTER_TS_DESCRIPTOR_H

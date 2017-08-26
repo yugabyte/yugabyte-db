@@ -108,7 +108,7 @@ Master::Master(const MasterOptions& opts)
   : RpcAndWebServerBase("Master", opts, "yb.master"),
     state_(kStopped),
     ts_manager_(new TSManager()),
-    catalog_manager_(new CatalogManager(this)),
+    catalog_manager_(new YB_EDITION_NS_PREFIX CatalogManager(this)),
     path_handlers_(new MasterPathHandlers(this)),
     opts_(opts),
     registration_initialized_(false),

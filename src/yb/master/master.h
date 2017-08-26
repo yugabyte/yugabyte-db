@@ -75,7 +75,7 @@ class Master : public server::RpcAndWebServerBase {
 
   TSManager* ts_manager() const { return ts_manager_.get(); }
 
-  CatalogManager* catalog_manager() const { return catalog_manager_.get(); }
+  YB_EDITION_NS_PREFIX CatalogManager* catalog_manager() const { return catalog_manager_.get(); }
 
   scoped_refptr<MetricEntity> metric_entity_cluster() { return metric_entity_cluster_; }
 
@@ -148,7 +148,7 @@ class Master : public server::RpcAndWebServerBase {
   MasterState state_;
 
   gscoped_ptr<TSManager> ts_manager_;
-  gscoped_ptr<CatalogManager> catalog_manager_;
+  gscoped_ptr<YB_EDITION_NS_PREFIX CatalogManager> catalog_manager_;
   gscoped_ptr<MasterPathHandlers> path_handlers_;
 
   // For initializing the catalog manager.

@@ -59,6 +59,7 @@ set(MASTER_SRCS
   yql_types_vtable.cc
   yql_views_vtable.cc
   yql_partitions_vtable.cc
+  async_rpc_tasks.cc
   catalog_manager.cc
   cluster_balance.cc
   master.cc

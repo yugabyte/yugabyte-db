@@ -1064,11 +1064,12 @@ Status TabletBootstrap::HandleOperation(OperationType op_type,
     case consensus::NO_OP:
       return PlayNoOpRequest(replicate, commit);
 
-    case consensus::UNKNOWN_OP:
-      break;
-
     case consensus::UPDATE_TRANSACTION_OP:
       return PlayUpdateTransactionRequest(replicate, commit);
+
+    // Unexpected cases:
+    case consensus::UNKNOWN_OP:
+      return STATUS(IllegalState, Substitute("Unsupported commit entry type: $0", op_type));
   }
 
   FATAL_INVALID_ENUM_VALUE(consensus::OperationType, op_type);

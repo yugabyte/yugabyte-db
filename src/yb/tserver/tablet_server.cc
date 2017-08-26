@@ -217,26 +217,32 @@ void TabletServer::AutoInitServiceFlags() {
 
 }
 
+Status TabletServer::RegisterServices() {
+  std::unique_ptr<ServiceIf> ts_service(new TabletServiceImpl(this));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_tablet_server_svc_queue_length,
+                                                     std::move(ts_service)));
+
+  std::unique_ptr<ServiceIf> admin_service(new TabletServiceAdminImpl(this));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_admin_svc_queue_length,
+                                                     std::move(admin_service)));
+
+  std::unique_ptr<ServiceIf> consensus_service(new ConsensusServiceImpl(metric_entity(),
+                                                                        tablet_manager_.get()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_consensus_svc_queue_length,
+                                                     std::move(consensus_service)));
+
+  std::unique_ptr<ServiceIf> remote_bootstrap_service(
+      new RemoteBootstrapServiceImpl(fs_manager_.get(), tablet_manager_.get(), metric_entity()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_remote_bootstrap_svc_queue_length,
+                                                     std::move(remote_bootstrap_service)));
+  return Status::OK();
+}
+
 Status TabletServer::Start() {
   CHECK(initted_);
 
-  std::unique_ptr<ServiceIf> ts_service(new TabletServiceImpl(this));
-  std::unique_ptr<ServiceIf> admin_service(new TabletServiceAdminImpl(this));
-  std::unique_ptr<ServiceIf> consensus_service(new ConsensusServiceImpl(metric_entity(),
-                                                                        tablet_manager_.get()));
-  std::unique_ptr<ServiceIf> remote_bootstrap_service(
-      new RemoteBootstrapServiceImpl(fs_manager_.get(), tablet_manager_.get(), metric_entity()));
-
   AutoInitServiceFlags();
-
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_tablet_server_svc_queue_length,
-                                                     std::move(ts_service)));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_admin_svc_queue_length,
-                                                     std::move(admin_service)));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_consensus_svc_queue_length,
-                                                     std::move(consensus_service)));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_remote_bootstrap_svc_queue_length,
-                                                     std::move(remote_bootstrap_service)));
+  RETURN_NOT_OK(RegisterServices());
   RETURN_NOT_OK(RpcAndWebServerBase::Start());
 
   // If enabled, creates a proxy to call this tablet server locally.
