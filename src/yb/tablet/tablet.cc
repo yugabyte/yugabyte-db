@@ -206,6 +206,90 @@ TabletComponents::TabletComponents(shared_ptr<MemRowSet> mrs,
 ////////////////////////////////////////////////////////////
 // Tablet
 ////////////////////////////////////////////////////////////
+void EmitRocksDbMetricsAsJson(
+    std::shared_ptr<rocksdb::Statistics> rocksdb_statistics,
+    JsonWriter* writer,
+    const MetricJsonOptions& opts) {
+  // Make sure the class member 'rocksdb_statistics_' exists, as this is the stats object
+  // maintained by RocksDB for this tablet.
+  if (rocksdb_statistics == nullptr) {
+    return;
+  }
+  // Emit all the ticker (gauge) metrics.
+  for (std::pair<rocksdb::Tickers, std::string> entry : rocksdb::TickersNameMap) {
+    // Start the metric object.
+    writer->StartObject();
+    // Write the name.
+    writer->String("name");
+    writer->String(entry.second);
+    // Write the value.
+    uint64_t value = rocksdb_statistics->getTickerCount(entry.first);
+    writer->String("value");
+    writer->Uint64(value);
+    // Finish the metric object.
+    writer->EndObject();
+  }
+  // Emit all the histogram metrics.
+  rocksdb::HistogramData histogram_data;
+  for (std::pair<rocksdb::Histograms, std::string> entry : rocksdb::HistogramsNameMap) {
+    // Start the metric object.
+    writer->StartObject();
+    // Write the name.
+    writer->String("name");
+    writer->String(entry.second);
+    // Write the value.
+    rocksdb_statistics->histogramData(entry.first, &histogram_data);
+    writer->String("total_count");
+    writer->Double(histogram_data.count);
+    writer->String("min");
+    writer->Double(histogram_data.min);
+    writer->String("mean");
+    writer->Double(histogram_data.average);
+    writer->String("median");
+    writer->Double(histogram_data.median);
+    writer->String("std_dev");
+    writer->Double(histogram_data.standard_deviation);
+    writer->String("percentile_95");
+    writer->Double(histogram_data.percentile95);
+    writer->String("percentile_99");
+    writer->Double(histogram_data.percentile99);
+    writer->String("max");
+    writer->Double(histogram_data.max);
+    writer->String("total_sum");
+    writer->Double(histogram_data.sum);
+    // Finish the metric object.
+    writer->EndObject();
+  }
+}
+
+CHECKED_STATUS EmitRocksDbMetricsAsPrometheus(
+    std::shared_ptr<rocksdb::Statistics> rocksdb_statistics,
+    PrometheusWriter* writer,
+    const MetricEntity::AttributeMap& attrs) {
+  // Make sure the class member 'rocksdb_statistics_' exists, as this is the stats object
+  // maintained by RocksDB for this tablet.
+  if (rocksdb_statistics == nullptr) {
+    return Status::OK();
+  }
+  // Emit all the ticker (gauge) metrics.
+  for (std::pair<rocksdb::Tickers, std::string> entry : rocksdb::TickersNameMap) {
+    RETURN_NOT_OK(writer->WriteSingleEntry(
+        attrs, entry.second, rocksdb_statistics->getTickerCount(entry.first)));
+  }
+  // Emit all the histogram metrics.
+  rocksdb::HistogramData histogram_data;
+  for (std::pair<rocksdb::Histograms, std::string> entry : rocksdb::HistogramsNameMap) {
+    rocksdb_statistics->histogramData(entry.first, &histogram_data);
+
+    auto copy_of_attr = attrs;
+    const std::string hist_name = entry.second;
+    RETURN_NOT_OK(writer->WriteSingleEntry(
+        copy_of_attr, hist_name + "_sum", histogram_data.sum));
+    RETURN_NOT_OK(writer->WriteSingleEntry(
+        copy_of_attr, hist_name + "_count", histogram_data.count));
+  }
+  return Status::OK();
+}
 
 const char* Tablet::kDMSMemTrackerId = "DeltaMemStores";
 
@@ -243,9 +327,17 @@ Tablet::Tablet(
     if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
       rocksdb_statistics_ = rocksdb::CreateDBStatistics();
       auto rocksdb_statistics = rocksdb_statistics_;
-      metric_entity_->AddExternalMetricsCb([rocksdb_statistics](JsonWriter* writer,
-                                                                const MetricJsonOptions& opts) {
-        Tablet::EmitRocksDBMetrics(rocksdb_statistics, writer, opts);
+      metric_entity_->AddExternalJsonMetricsCb(
+          [rocksdb_statistics](JsonWriter* jw, const MetricJsonOptions& opts) {
+        EmitRocksDbMetricsAsJson(rocksdb_statistics, jw, opts);
+      });
+
+      metric_entity_->AddExternalPrometheusMetricsCb(
+          [rocksdb_statistics, attrs](PrometheusWriter* pw) {
+        auto s = EmitRocksDbMetricsAsPrometheus(rocksdb_statistics, pw, attrs);
+        if (!s.ok()) {
+          YB_LOG_EVERY_N(WARNING, 100) << "Failed to get Prometheus metrics: " << s.ToString();
+        }
       });
     }
     metrics_.reset(new TabletMetrics(metric_entity_));
@@ -365,61 +457,6 @@ Status Tablet::OpenKuduColumnarTablet() {
                                               mem_tracker_));
   components_ = new TabletComponents(new_mrs, new_rowset_tree);
   return Status::OK();
-}
-
-void Tablet::EmitRocksDBMetrics(std::shared_ptr<rocksdb::Statistics> rocksdb_statistics,
-                                JsonWriter* writer,
-                                const MetricJsonOptions& opts) {
-  // Make sure the class member 'rocksdb_statistics_' exists, as this is the stats object
-  // maintained by RocksDB for this tablet.
-  if (rocksdb_statistics == nullptr) {
-    return;
-  }
-  // Emit all the ticker (gauge) metrics.
-  for (std::pair<rocksdb::Tickers, std::string> entry : rocksdb::TickersNameMap) {
-    // Start the metric object.
-    writer->StartObject();
-    // Write the name.
-    writer->String("name");
-    writer->String(entry.second);
-    // Write the value.
-    uint64_t value = rocksdb_statistics->getTickerCount(entry.first);
-    writer->String("value");
-    writer->Uint64(value);
-    // Finish the metric object.
-    writer->EndObject();
-  }
-  // Emit all the histogram metrics.
-  rocksdb::HistogramData histogram_data;
-  for (std::pair<rocksdb::Histograms, std::string> entry : rocksdb::HistogramsNameMap) {
-    // Start the metric object.
-    writer->StartObject();
-    // Write the name.
-    writer->String("name");
-    writer->String(entry.second);
-    // Write the value.
-    rocksdb_statistics->histogramData(entry.first, &histogram_data);
-    writer->String("total_count");
-    writer->Double(histogram_data.count);
-    writer->String("min");
-    writer->Double(histogram_data.min);
-    writer->String("mean");
-    writer->Double(histogram_data.average);
-    writer->String("median");
-    writer->Double(histogram_data.median);
-    writer->String("std_dev");
-    writer->Double(histogram_data.standard_deviation);
-    writer->String("percentile_95");
-    writer->Double(histogram_data.percentile95);
-    writer->String("percentile_99");
-    writer->Double(histogram_data.percentile99);
-    writer->String("max");
-    writer->Double(histogram_data.max);
-    writer->String("total_sum");
-    writer->Double(histogram_data.sum);
-    // Finish the metric object.
-    writer->EndObject();
-  }
 }
 
 void Tablet::MarkFinishedBootstrapping() {
@@ -2471,6 +2508,7 @@ Status Tablet::DebugDump(vector<string> *lines) {
       return DocDBDebugDump(lines);
   }
   LOG(FATAL) << "Invalid table type: " << table_type_;
+  return Status::OK();
 }
 
 Status Tablet::KuduDebugDump(vector<string> *lines) {

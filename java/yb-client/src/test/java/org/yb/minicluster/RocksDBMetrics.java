@@ -21,7 +21,7 @@ public class RocksDBMetrics {
   public int seekCount;
   public int nextCount;
 
-  private static final String METRIC_PREFIX = "rocksdb.number.db.";
+  private static final String METRIC_PREFIX = "rocksdb_number_db_";
 
   /**
    * Constructs an empty {@code RocksDBMetrics}.

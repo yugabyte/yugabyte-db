@@ -706,10 +706,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS KuduDebugDump(vector<std::string> *lines);
   CHECKED_STATUS DocDBDebugDump(vector<std::string> *lines);
 
-  static void EmitRocksDBMetrics(std::shared_ptr<rocksdb::Statistics> rocksdb_statistics,
-      JsonWriter* writer,
-      const MetricJsonOptions& opts);
-
   // Helper method to find the rowset that has the DMS with the highest retention.
   std::shared_ptr<RowSet> FindBestDMSToFlush(
       const MaxIdxToSegmentMap& max_idx_to_segment_size) const;

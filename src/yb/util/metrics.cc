@@ -56,6 +56,10 @@ DEFINE_int32(metrics_retirement_age_ms, 120 * 1000,
 TAG_FLAG(metrics_retirement_age_ms, runtime);
 TAG_FLAG(metrics_retirement_age_ms, advanced);
 
+// TODO: changed to empty string and add logic to get this from cluster_uuid in case empty.
+DEFINE_string(metric_node_name, "DEFAULT_NODE_NAME",
+              "Value to use as node name for metrics reporting");
+
 // Process/server-wide metrics should go into the 'server' entity.
 // More complex applications will define other entities.
 METRIC_DEFINE_entity(server);
@@ -173,8 +177,7 @@ MetricEntity::MetricEntity(const MetricEntityPrototype* prototype,
                            std::string id, AttributeMap attributes)
     : prototype_(prototype),
       id_(std::move(id)),
-      attributes_(std::move(attributes)),
-      external_metrics_cbs_() {}
+      attributes_(std::move(attributes)) {}
 
 MetricEntity::~MetricEntity() {
 }
@@ -217,13 +220,13 @@ Status MetricEntity::WriteAsJson(JsonWriter* writer,
   typedef std::map<const char*, scoped_refptr<Metric> > OrderedMetricMap;
   OrderedMetricMap metrics;
   AttributeMap attrs;
-  std::vector<ExternalMetricsCb> external_metrics_cbs;
+  std::vector<ExternalJsonMetricsCb> external_metrics_cbs;
   {
     // Snapshot the metrics, attributes & external metrics callbacks in this metrics entity. (Note:
     // this is not guaranteed to be a consistent snapshot).
     std::lock_guard<simple_spinlock> l(lock_);
     attrs = attributes_;
-    external_metrics_cbs = external_metrics_cbs_;
+    external_metrics_cbs = external_json_metrics_cbs_;
     for (const MetricMap::value_type& val : metric_map_) {
       const MetricPrototype* prototype = val.first;
       const scoped_refptr<Metric>& metric = val.second;
@@ -264,12 +267,62 @@ Status MetricEntity::WriteAsJson(JsonWriter* writer,
 
   }
   // Run the external metrics collection callback if there is one set.
-  for (const ExternalMetricsCb& cb : external_metrics_cbs) {
+  for (const ExternalJsonMetricsCb& cb : external_metrics_cbs) {
     cb(writer, opts);
   }
   writer->EndArray();
 
   writer->EndObject();
+
+  return Status::OK();
+}
+
+CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer) const {
+  // We want the keys to be in alphabetical order when printing, so we use an ordered map here.
+  typedef std::map<const char*, scoped_refptr<Metric> > OrderedMetricMap;
+  OrderedMetricMap metrics;
+  AttributeMap attrs;
+  std::vector<ExternalPrometheusMetricsCb> external_metrics_cbs;
+  {
+    // Snapshot the metrics, attributes & external metrics callbacks in this metrics entity. (Note:
+    // this is not guaranteed to be a consistent snapshot).
+    std::lock_guard<simple_spinlock> l(lock_);
+    attrs = attributes_;
+    external_metrics_cbs = external_prometheus_metrics_cbs_;
+    for (const MetricMap::value_type& val : metric_map_) {
+      const MetricPrototype* prototype = val.first;
+      const scoped_refptr<Metric>& metric = val.second;
+
+      InsertOrDie(&metrics, prototype->name(), metric);
+    }
+  }
+  AttributeMap prometheus_attr;
+  // Per tablet metrics come with tablet_id, as well as table_id and table_name attributes.
+  // We ignore the tablet part to squash at the table level.
+  if (strcmp(prototype_->name(), "tablet") == 0)  {
+    prometheus_attr["table_id"] = attrs["table_id"];
+    prometheus_attr["table_name"] = attrs["table_name"];
+  } else if (strcmp(prototype_->name(), "server") == 0 ||
+      strcmp(prototype_->name(), "cluster") == 0) {
+    prometheus_attr = attrs;
+    // This is tablet_id in the case of tablet, but otherwise names the server type, eg: yb.master
+    prometheus_attr["metric_id"] = id_;
+  } else {
+    return Status::OK();
+  }
+  // This is currently tablet / server / cluster.
+  prometheus_attr["metric_type"] = prototype_->name();
+  prometheus_attr["exported_instance"] = FLAGS_metric_node_name;
+
+  for (OrderedMetricMap::value_type& val : metrics) {
+    WARN_NOT_OK(val.second->WriteForPrometheus(writer, prometheus_attr),
+                strings::Substitute("Failed to write $0 as Prometheus", val.first));
+
+  }
+  // Run the external metrics collection callback if there is one set.
+  for (const ExternalPrometheusMetricsCb& cb : external_metrics_cbs) {
+    cb(writer);
+  }
 
   return Status::OK();
 }
@@ -371,6 +424,29 @@ Status MetricRegistry::WriteAsJson(JsonWriter* writer,
   return Status::OK();
 }
 
+CHECKED_STATUS MetricRegistry::WriteForPrometheus(PrometheusWriter* writer) const {
+  EntityMap entities;
+  {
+    std::lock_guard<simple_spinlock> l(lock_);
+    entities = entities_;
+  }
+
+  for (const EntityMap::value_type e : entities) {
+    WARN_NOT_OK(e.second->WriteForPrometheus(writer),
+                Substitute("Failed to write entity $0 as Prometheus", e.second->id()));
+  }
+  RETURN_NOT_OK(writer->FlushAggregatedValues());
+
+  // Rather than having a thread poll metrics periodically to retire old ones,
+  // we'll just retire them here. The only downside is that, if no one is polling
+  // metrics, we may end up leaving them around indefinitely; however, metrics are
+  // small, and one might consider it a feature: if monitoring stops polling for
+  // metrics, we should keep them around until the next poll.
+  entities.clear(); // necessary to deref metrics we just dumped before doing retirement scan.
+  const_cast<MetricRegistry*>(this)->RetireOldMetrics();
+  return Status::OK();
+}
+
 void MetricRegistry::RetireOldMetrics() {
   std::lock_guard<simple_spinlock> l(lock_);
   for (auto it = entities_.begin(); it != entities_.end();) {
@@ -435,6 +511,11 @@ void MetricPrototypeRegistry::WriteAsJson(JsonWriter* writer) const {
   writer->EndArray();
 
   writer->EndObject();
+}
+
+CHECKED_STATUS MetricPrototypeRegistry::WriteForPrometheus(PrometheusWriter* writer) const {
+  // TODO: do we need this?
+  return Status::OK();
 }
 
 void MetricPrototypeRegistry::WriteAsJsonAndExit() const {
@@ -549,6 +630,13 @@ void StringGauge::WriteValue(JsonWriter* writer) const {
   writer->String(value());
 }
 
+CHECKED_STATUS StringGauge::WriteForPrometheus(
+    PrometheusWriter* writer, const MetricEntity::AttributeMap& attr) const {
+  // TODO(bogdan): don't think we need this?
+  // return writer->WriteSingleEntry(attr, prototype_->name(), value());
+  return Status::OK();
+}
+
 //
 // Counter
 //
@@ -585,6 +673,12 @@ Status Counter::WriteAsJson(JsonWriter* writer,
   writer->EndObject();
   return Status::OK();
 }
+
+CHECKED_STATUS Counter::WriteForPrometheus(
+    PrometheusWriter* writer, const MetricEntity::AttributeMap& attr) const {
+  return writer->WriteSingleEntry(attr, prototype_->name(), value());
+}
+
 
 /////////////////////////////////////////////////
 // HistogramPrototype
@@ -632,6 +726,39 @@ Status Histogram::WriteAsJson(JsonWriter* writer,
   HistogramSnapshotPB snapshot;
   RETURN_NOT_OK(GetHistogramSnapshotPB(&snapshot, opts));
   writer->Protobuf(snapshot);
+  return Status::OK();
+}
+
+CHECKED_STATUS Histogram::WriteForPrometheus(
+    PrometheusWriter* writer, const MetricEntity::AttributeMap& attr) const {
+  HdrHistogram snapshot(*histogram_);
+
+  // Representing the sum and count require suffixed names.
+  std::string hist_name = prototype_->name();
+  auto copy_of_attr = attr;
+  RETURN_NOT_OK(writer->WriteSingleEntry(
+        copy_of_attr, hist_name + "_sum", snapshot.TotalSum()));
+  RETURN_NOT_OK(writer->WriteSingleEntry(
+        copy_of_attr, hist_name + "_count", snapshot.TotalCount()));
+  /*
+  // Copy the label map to add the quatiles.
+  copy_of_attr["quantile"] = "0.75";
+  RETURN_NOT_OK(writer->WriteSingleEntry(
+        copy_of_attr, hist_name, snapshot.ValueAtPercentile(75)));
+  copy_of_attr["quantile"] = "0.95";
+  RETURN_NOT_OK(writer->WriteSingleEntry(
+        copy_of_attr, hist_name, snapshot.ValueAtPercentile(95)));
+  copy_of_attr["quantile"] = "0.99";
+  RETURN_NOT_OK(writer->WriteSingleEntry(
+        copy_of_attr, hist_name, snapshot.ValueAtPercentile(99)));
+  copy_of_attr["quantile"] = "0.999";
+  RETURN_NOT_OK(writer->WriteSingleEntry(
+        copy_of_attr, hist_name, snapshot.ValueAtPercentile(99.9)));
+  copy_of_attr["quantile"] = "0.9999";
+  RETURN_NOT_OK(writer->WriteSingleEntry(
+        copy_of_attr, hist_name, snapshot.ValueAtPercentile(99.99)));
+  // TODO: add min/max/mean?
+  */
   return Status::OK();
 }
 

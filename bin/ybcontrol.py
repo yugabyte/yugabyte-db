@@ -15,6 +15,7 @@
 import argparse
 import os
 import pipes
+import platform
 import subprocess
 import sys
 import time
@@ -50,8 +51,11 @@ class ClusterManager(object):
         self.pem_file = ClusterManager.get_arg(args, 'pem_file', default_pem)
         self.repo = ClusterManager.get_arg(args, 'repo',
                                            os.path.join(os.environ["HOME"], 'code/yugabyte'))
-        default_tar_prefix = "yugabyte.{0}-release".format(
-            subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip())
+        default_tar_prefix = "yugabyte-ee-{0}-{1}-release-{2}-{3}".format(
+            file("version.txt").read().strip(),
+            subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip(),
+            platform.system().lower(),
+            platform.machine().lower())
         self.tar_prefix = ClusterManager.get_arg(args, 'tar_prefix', default_tar_prefix)
         self.port = ClusterManager.get_arg(args, 'port', 54422)
 

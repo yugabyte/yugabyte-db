@@ -54,7 +54,7 @@
 
 #include <boost/algorithm/string.hpp>
 
-#include <gperftools/malloc_extension.h>
+#include <gperftools/malloc_extension.h> // NOLINT
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
@@ -232,8 +232,16 @@ static void WriteMetricsAsJson(const MetricRegistry* const metrics,
               "Couldn't write JSON metrics over HTTP");
 }
 
+static void WriteForPrometheus(const MetricRegistry* const metrics,
+                               const Webserver::WebRequest& req, std::stringstream* output) {
+  PrometheusWriter writer(output);
+  WARN_NOT_OK(metrics->WriteForPrometheus(&writer), "Couldn't write text metrics for Prometheus");
+}
+
 void RegisterMetricsJsonHandler(Webserver* webserver, const MetricRegistry* const metrics) {
   Webserver::PathHandlerCallback callback = std::bind(WriteMetricsAsJson, metrics, _1, _2);
+  Webserver::PathHandlerCallback prometheus_callback = std::bind(
+      WriteForPrometheus, metrics, _1, _2);
   bool not_styled = false;
   bool not_on_nav_bar = false;
   bool is_on_nav_bar = true;
@@ -242,6 +250,9 @@ void RegisterMetricsJsonHandler(Webserver* webserver, const MetricRegistry* cons
   // The old name -- this is preserved for compatibility with older releases of
   // monitoring software which expects the old name.
   webserver->RegisterPathHandler("/jsonmetricz", "Metrics", callback, not_styled, not_on_nav_bar);
+
+  webserver->RegisterPathHandler(
+      "/prometheus-metrics", "Metrics", prometheus_callback, not_styled, not_on_nav_bar);
 }
 
 } // namespace yb

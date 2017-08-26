@@ -241,6 +241,7 @@
 #include <algorithm>
 #include <mutex>
 #include <string>
+#include <sstream>
 #include <unordered_map>
 #include <vector>
 
@@ -369,7 +370,7 @@ class HistogramPrototype;
 class HistogramSnapshotPB;
 
 class MetricEntity;
-
+class PrometheusWriter;
 } // namespace yb
 
 // Forward-declare the generic 'server' entity type.
@@ -471,7 +472,9 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   typedef std::unordered_map<const MetricPrototype*, scoped_refptr<Metric> > MetricMap;
   typedef std::unordered_map<std::string, std::string> AttributeMap;
   typedef std::function<void (JsonWriter* writer, const MetricJsonOptions& opts)>
-    ExternalMetricsCb;
+    ExternalJsonMetricsCb;
+  typedef std::function<void (PrometheusWriter* writer)>
+    ExternalPrometheusMetricsCb;
 
   scoped_refptr<Counter> FindOrCreateCounter(const CounterPrototype* proto);
   scoped_refptr<Histogram> FindOrCreateHistogram(const HistogramPrototype* proto);
@@ -494,6 +497,8 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   CHECKED_STATUS WriteAsJson(JsonWriter* writer,
                      const std::vector<std::string>& requested_metrics,
                      const MetricJsonOptions& opts) const;
+
+  CHECKED_STATUS WriteForPrometheus(PrometheusWriter* writer) const;
 
   const MetricMap& UnsafeMetricsMapForTests() const { return metric_map_; }
 
@@ -521,9 +526,14 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
     return metric_map_.size();
   }
 
-  void AddExternalMetricsCb(const ExternalMetricsCb &external_metrics_cb) {
+  void AddExternalJsonMetricsCb(const ExternalJsonMetricsCb &external_metrics_cb) {
     std::lock_guard<simple_spinlock> l(lock_);
-    external_metrics_cbs_.push_back(external_metrics_cb);
+    external_json_metrics_cbs_.push_back(external_metrics_cb);
+  }
+
+  void AddExternalPrometheusMetricsCb(const ExternalPrometheusMetricsCb&external_metrics_cb) {
+    std::lock_guard<simple_spinlock> l(lock_);
+    external_prometheus_metrics_cbs_.push_back(external_metrics_cb);
   }
 
  private:
@@ -554,10 +564,84 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   std::vector<scoped_refptr<Metric> > never_retire_metrics_;
 
   // Callbacks fired each time WriteAsJson is called.
-  std::vector<ExternalMetricsCb> external_metrics_cbs_;
+  std::vector<ExternalJsonMetricsCb> external_json_metrics_cbs_;
+
+  // Callbacks fired each time WriteForPrometheus is called.
+  std::vector<ExternalPrometheusMetricsCb> external_prometheus_metrics_cbs_;
 };
 
 typedef scoped_refptr<MetricEntity> MetricEntityPtr;
+
+class PrometheusWriter {
+ public:
+  explicit PrometheusWriter(std::stringstream* output)
+    : output_(output),
+      timestamp_(std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch()).count()) {}
+
+  template<typename T>
+  CHECKED_STATUS WriteSingleEntry(
+      const MetricEntity::AttributeMap& attr, const std::string& name, const T& value) {
+    auto it = attr.find("table_id");
+    if (it != attr.end()) {
+      // For tablet level metrics, we roll up on the table level.
+      if (per_table_attributes_.find(it->second) == per_table_attributes_.end()) {
+        // If it's the first time we see this table, create the aggregate structures.
+        per_table_attributes_[it->second] = attr;
+        per_table_values_[it->second];
+      } else {
+        per_table_values_[it->second][name] += value;
+      }
+    } else {
+      // For non-tablet level metrics, export them directly.
+      RETURN_NOT_OK(FlushSingleEntry(attr, name, value));
+    }
+    return Status::OK();
+  }
+
+  CHECKED_STATUS FlushAggregatedValues() {
+    for (const auto& entry : per_table_values_) {
+      const auto& attrs = per_table_attributes_[entry.first];
+      for (const auto& metric_entry : entry.second) {
+        RETURN_NOT_OK(FlushSingleEntry(attrs, metric_entry.first, metric_entry.second));
+      }
+    }
+    return Status::OK();
+  }
+
+ private:
+  template<typename T>
+  CHECKED_STATUS FlushSingleEntry(
+      const MetricEntity::AttributeMap& attr, const std::string& name, const T& value) {
+    *output_ << name;
+    size_t total_elements = attr.size();
+    if (total_elements > 0) {
+      *output_ << "{";
+      for (const auto& entry : attr) {
+        *output_ << entry.first << "=\"" << entry.second << "\"";
+        if (--total_elements > 0) {
+          *output_ << ",";
+        }
+      }
+      *output_ << "}";
+    }
+    *output_ << " " << value;
+    *output_ << " " << timestamp_;
+    *output_ << std::endl;
+    return Status::OK();
+  }
+
+  // Map from table_id to attributes
+  std::map<std::string, MetricEntity::AttributeMap> per_table_attributes_;
+  // Map from table_id to map of metric_name to value
+  std::map<std::string, std::map<std::string, double>> per_table_values_;
+  // Output stream
+  std::stringstream* output_;
+  // Timestamp for all metrics belonging to this writer instance.
+  int64_t timestamp_;
+};
+
+
 
 // Base class to allow for putting all metrics into a single container.
 // See documentation at the top of this file for information on metrics ownership.
@@ -566,6 +650,9 @@ class Metric : public RefCountedThreadSafe<Metric> {
   // All metrics must be able to render themselves as JSON.
   virtual CHECKED_STATUS WriteAsJson(JsonWriter* writer,
                              const MetricJsonOptions& opts) const = 0;
+
+  virtual CHECKED_STATUS WriteForPrometheus(
+      PrometheusWriter* writer, const MetricEntity::AttributeMap& attr) const = 0;
 
   const MetricPrototype* prototype() const { return prototype_; }
 
@@ -613,6 +700,8 @@ class MetricRegistry {
                      const std::vector<std::string>& requested_metrics,
                      const MetricJsonOptions& opts) const;
 
+  CHECKED_STATUS WriteForPrometheus(PrometheusWriter* writer) const;
+
   // For each registered entity, retires orphaned metrics. If an entity has no more
   // metrics and there are no external references, entities are removed as well.
   //
@@ -650,6 +739,8 @@ class MetricPrototypeRegistry {
   // Dump a JSON document including all of the registered entity and metric
   // prototypes.
   void WriteAsJson(JsonWriter* writer) const;
+
+  CHECKED_STATUS WriteForPrometheus(PrometheusWriter* writer) const;
 
   // Convenience wrapper around WriteAsJson(...). This dumps the JSON information
   // to stdout and then exits.
@@ -785,6 +876,9 @@ class StringGauge : public Gauge {
               std::string initial_value);
   std::string value() const;
   void set_value(const std::string& value);
+
+  CHECKED_STATUS WriteForPrometheus(
+      PrometheusWriter* writer, const MetricEntity::AttributeMap& attr) const override;
  protected:
   virtual void WriteValue(JsonWriter* writer) const override;
  private:
@@ -818,6 +912,11 @@ class AtomicGauge : public Gauge {
   }
   void DecrementBy(int64_t amount) {
     IncrementBy(-amount);
+  }
+
+  CHECKED_STATUS WriteForPrometheus(
+      PrometheusWriter* writer, const MetricEntity::AttributeMap& attr) const override {
+    return writer->WriteSingleEntry(attr, prototype_->name(), value());
   }
 
  protected:
@@ -935,6 +1034,11 @@ class FunctionGauge : public Gauge {
                                 this));
   }
 
+  CHECKED_STATUS WriteForPrometheus(
+      PrometheusWriter* writer, const MetricEntity::AttributeMap& attr) const override {
+    return writer->WriteSingleEntry(attr, prototype_->name(), value());
+  }
+
  private:
   friend class MetricEntity;
 
@@ -977,6 +1081,9 @@ class Counter : public Metric {
   void IncrementBy(int64_t amount);
   virtual CHECKED_STATUS WriteAsJson(JsonWriter* w,
                              const MetricJsonOptions& opts) const override;
+
+  CHECKED_STATUS WriteForPrometheus(
+      PrometheusWriter* writer, const MetricEntity::AttributeMap& attr) const override;
 
  private:
   FRIEND_TEST(MetricsTest, SimpleCounterTest);
@@ -1021,6 +1128,9 @@ class Histogram : public Metric {
 
   virtual CHECKED_STATUS WriteAsJson(JsonWriter* w,
                              const MetricJsonOptions& opts) const override;
+
+  CHECKED_STATUS WriteForPrometheus(
+      PrometheusWriter* writer, const MetricEntity::AttributeMap& attr) const override;
 
   // Returns a snapshot of this histogram including the bucketed values and counts.
   CHECKED_STATUS GetHistogramSnapshotPB(HistogramSnapshotPB* snapshot,
