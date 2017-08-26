@@ -106,11 +106,10 @@ googleAnalytics = ""
 
 [[menu.main]]
 	name = "Architecture"
-	identifier = "learn-architecuture"
+	identifier = "learn-architecture"
 	parent = "learn"
 	url = "learn/architecture/"
 	weight = 70
-
 
 [[menu.main]]
 	name   = "FAQs"
