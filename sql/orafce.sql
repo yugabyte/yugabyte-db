@@ -977,3 +977,10 @@ SELECT plvdate.bizdays_between('2016-02-21','2016-02-27');
 
 SELECT oracle.round(1.234::double precision, 2), oracle.trunc(1.234::double precision, 2);
 SELECT oracle.round(1.234::float, 2), oracle.trunc(1.234::float, 2);
+
+--
+-- should not fail - fix: Crashes due to insufficent argument checking (#59)
+--
+select dbms_random.string(null, 42);
+select dbms_pipe.create_pipe(null);
+select plunit.assert_not_equals(1,2,3);

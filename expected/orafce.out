@@ -4312,3 +4312,14 @@ SELECT oracle.round(1.234::float, 2), oracle.trunc(1.234::float, 2);
   1.23 |  1.23
 (1 row)
 
+--
+-- should not fail - fix: Crashes due to insufficent argument checking (#59)
+--
+select dbms_random.string(null, 42);
+ERROR:  an argument is NULL
+select dbms_pipe.create_pipe(null);
+ERROR:  pipe name is NULL
+DETAIL:  Pipename may not be NULL.
+select plunit.assert_not_equals(1,2,3);
+ERROR:  plunit.assert_not_equal exception
+DETAIL:  Plunit.assertation fails (assert_not_equals).

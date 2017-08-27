@@ -382,7 +382,7 @@ plunit_assert_not_equals_range(PG_FUNCTION_ARGS)
 Datum
 plunit_assert_not_equals_range_message(PG_FUNCTION_ARGS)
 {
-	char *message = assert_get_message(fcinfo, 3, "plunit.assert_not_equal exception");
+	char *message = assert_get_message(fcinfo, 4, "plunit.assert_not_equal exception");
 
 	/* skip all tests for NULL value */
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1) || PG_ARGISNULL(2))

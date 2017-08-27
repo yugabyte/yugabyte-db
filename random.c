@@ -197,7 +197,12 @@ dbms_random_string(PG_FUNCTION_ARGS)
 	const char *upper_only = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 	const char *upper_alphanum = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 	const char *printable = "`1234567890-=qwertyuiop[]asdfghjkl;'zxcvbnm,./!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVVBNM<>? ";
-	
+
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+		ereport(ERROR,
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("an argument is NULL")));
+
 	option = text_to_cstring(PG_GETARG_TEXT_P(0));
 	len = PG_GETARG_INT32(1);
 	

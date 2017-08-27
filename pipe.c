@@ -1266,12 +1266,23 @@ dbms_pipe_remove_pipe (PG_FUNCTION_ARGS)
 Datum
 dbms_pipe_create_pipe_2 (PG_FUNCTION_ARGS)
 {
-	Datum arg1 = PG_GETARG_DATUM(0);
-	Datum arg2 = PG_GETARG_DATUM(1);
+	Datum	arg1;
+	int		limit = -1;
+
+	if (PG_ARGISNULL(0))
+		ereport(ERROR,
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("pipe name is NULL"),
+				 errdetail("Pipename may not be NULL.")));
+
+	arg1 = PG_GETARG_DATUM(0);
+
+	if (!PG_ARGISNULL(1))
+		limit = PG_GETARG_INT32(1);
 
 	DirectFunctionCall3(dbms_pipe_create_pipe,
 						arg1,
-						arg2,
+						Int32GetDatum(limit),
 						BoolGetDatum(false));
 
 	PG_RETURN_VOID();
@@ -1280,11 +1291,19 @@ dbms_pipe_create_pipe_2 (PG_FUNCTION_ARGS)
 Datum
 dbms_pipe_create_pipe_1 (PG_FUNCTION_ARGS)
 {
-	Datum arg1 = PG_GETARG_DATUM(0);
+	Datum	arg1;
+
+	if (PG_ARGISNULL(0))
+		ereport(ERROR,
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("pipe name is NULL"),
+				 errdetail("Pipename may not be NULL.")));
+
+	arg1 = PG_GETARG_DATUM(0);
 
 	DirectFunctionCall3(dbms_pipe_create_pipe,
 						arg1,
-						(Datum)0,
+						(Datum) -1,
 						BoolGetDatum(false));
 
 	PG_RETURN_VOID();
@@ -1308,5 +1327,4 @@ dbms_pipe_pack_message_bigint(PG_FUNCTION_ARGS)
 				DirectFunctionCall1(int8_numeric, PG_GETARG_DATUM(0)));
 
 	PG_RETURN_VOID();
-
 }
