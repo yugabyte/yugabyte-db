@@ -1679,6 +1679,8 @@ Status GetFromString(DBOptions* source, DBOptions* destination) {
       "access_hint_on_compaction_start=NONE;"
       "max_file_size_for_compaction=123;"
       "initial_seqno=432;"
+      "num_reserved_small_compaction_threads=-1;"
+      "compaction_size_threshold_bytes=18446744073709551615;"
       "info_log_level=DEBUG_LEVEL;";
 
   return GetDBOptionsFromString(*source, kOptionsString, destination);

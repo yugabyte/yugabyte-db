@@ -7670,7 +7670,7 @@ TEST_F(DBTest, SoftLimit) {
 
   // Only allow one compactin going through.
   rocksdb::SyncPoint::GetInstance()->SetCallBack(
-      "BackgroundCallCompaction:0", [&](void* arg) {
+      "DBImpl:BackgroundCompaction:SmallCompaction", [&](void* arg) {
         // Schedule a sleeping task.
         sleeping_task_low.Reset();
         env_->Schedule(&test::SleepingBackgroundTask::DoSleepTask,
