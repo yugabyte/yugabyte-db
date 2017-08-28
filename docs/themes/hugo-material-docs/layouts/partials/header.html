@@ -8,11 +8,10 @@
     <div class="stretch">
       <div class="title">
         {{ with .Site.Params.logo }}
-          <div class="logo">
+          <a class="logo" href="http://www.yugabyte.com/">
             <img src="{{ $.Site.BaseURL }}{{ . }}">
-          </div>
+          </a>
         {{ end }}
-        {{ .Site.Title }}
       </div>
     </div>
 

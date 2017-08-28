@@ -1,12 +1,16 @@
 /* Copyright (c) YugaByte, Inc. */
 
+a {
+  cursor: pointer;
+}
+
 header .bar .logo {
   display: inline-block;
 }
 
 header .bar .logo img {
-  width: 36px;
-  margin: -8px 4px -12px 0;
+  height: 32px;
+  margin: -8px 4px -8px 0;
 }
 
 .article .wrapper {
@@ -18,6 +22,16 @@ header .bar .logo img {
   background: transparent !important;
 }
 
+.drawer h3 {
+  margin: 29px 23px 18px;
+  font-size: 24px;
+  font-weight: 400;
+  color: #344d78;
+}
+.drawer h3 .headerlink {
+  display: none;
+}
+
 .drawer .toc li .section {
   color: #999;
   font-size: 14px;
@@ -25,19 +39,60 @@ header .bar .logo img {
 }
 
 .drawer .toc li a {
+  padding-top: 6px !important;
+  padding-bottom: 10px;
   font-size: 14px;
   font-weight: 400;
+}
+.drawer .toc li a:hover {
+  color: #f75821 !important;
+}
+.drawer .toc li a.current {
+  color: #f75821 !important;
+  font-weight: 700;
+}
+
+#scrollspy {
+  margin-top: -2px;
+  padding-left: 8px;
+}
+#scrollspy a {
+  border-left: 1px solid #f75821;
 }
 
 .drawer .scrollable .wrapper hr {
   width: 100%;
 }
 
-.palette-primary-orange .article a, .palette-primary-orange .article code,
-.palette-primary-orange .article h1, .palette-primary-orange .article h2 {
-  color: #ef8a2b;
+.palette-primary-orange .article a,
+.palette-primary-orange .article h1,
+.palette-primary-orange .article h2 {
+  color: #f75821 !important;
 }
 
-.palette-primary-orange, .palette-primary-orange .footer, .palette-primary-orange .header {
-  background:  #333 !important;
+.palette-primary-orange .article pre {
+  background: none !important;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.palette-primary-orange .article code {
+  padding: 12px 20px;
+  color: #344d78 !important;
+}
+
+.palette-primary-orange .article .admonition {
+  margin: 20px -24px 0 0;
+  padding: 10px 20px 20px 20px;
+  background: #344d78;
+}
+.palette-primary-orange .article .admonition-title {
+  margin: -10px -24px -5px -20px;
+  padding: 10px 10px;
+  background: #f75821 !important;
+}
+
+.palette-primary-orange,
+.palette-primary-orange .footer,
+.palette-primary-orange .header {
+  background: #0f1229 !important;
 }
