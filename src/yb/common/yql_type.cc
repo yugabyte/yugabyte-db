@@ -256,7 +256,8 @@ const string YQLType::ToString() const {
 
 void YQLType::ToString(std::stringstream& os) const {
   if (IsUserDefined()) {
-    os << udtype_keyspace_name() << "." << udtype_name();
+    // UDTs can only be used in the keyspace they are defined in, so keyspace name is implied.
+    os << udtype_name();
   } else {
     os << ToCQLString(id_);
     if (!params_.empty()) {

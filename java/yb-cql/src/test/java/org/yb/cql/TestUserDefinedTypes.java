@@ -71,6 +71,14 @@ public class TestUserDefinedTypes extends BaseCQLTest {
         // Create table with non-existent types should fail.
         runInvalidStmt("CREATE TABLE test_create_udt(h non_existent_udt primary key)");
         runInvalidStmt("CREATE TABLE test_create_udt(h non_existent_udt, primary key(h))");
+
+        // User-Defined Types can only be used in the keyspace where they are defined.
+        session.execute("CREATE KEYSPACE udt_test_keyspace");
+        runInvalidStmt("CREATE TABLE udt_test_keyspace.test(h int primary key, v test_all_types)");
+        session.execute("USE udt_test_keyspace");
+        runInvalidStmt("CREATE TABLE test(h int primary key, v test_all_types)");
+        runInvalidStmt("CREATE TABLE test(h int primary key, v " + DEFAULT_TEST_KEYSPACE +
+                ".test_all_types)");
     }
 
     @Test

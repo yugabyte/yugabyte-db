@@ -163,7 +163,22 @@ CHECKED_STATUS PTCreateTable::CheckType(SemContext *sem_context,
                                         const PTBaseType::SharedPtr& datatype) {
   // Although simple datatypes don't need further checking, complex datatypes such as collections,
   // tuples, and user-defined datatypes need to be analyzed because they have members.
-  return datatype->Analyze(sem_context);
+  RETURN_NOT_OK(datatype->Analyze(sem_context));
+
+  if (datatype->yql_type()->IsUserDefined()) {
+    string table_keyspace = sem_context->CurrentKeyspace(); // default
+    if (sem_context->current_create_table_stmt()->yb_table_name().has_namespace()) {
+      table_keyspace = sem_context->current_create_table_stmt()->yb_table_name().namespace_name();
+    }
+
+    if (table_keyspace != datatype->yql_type()->udtype_keyspace_name()) {
+      return sem_context->Error(datatype->loc(),
+          "User Defined Types can only be used in the same keyspace where they are defined",
+          ErrorCode::INVALID_COLUMN_DEFINITION);
+    }
+  }
+
+  return Status::OK();
 }
 
 void PTCreateTable::PrintSemanticAnalysisResult(SemContext *sem_context) {
