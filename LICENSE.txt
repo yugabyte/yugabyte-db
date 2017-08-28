@@ -418,7 +418,7 @@ BSD license with an additional grant of patent rights:
   (subject to the termination provision below) license under any Necessary
   Claims, to make, have made, use, sell, offer to sell, import, and otherwise
   transfer the Software. For avoidance of doubt, no license is granted under
-  Facebook’s rights in any patent claims that are infringed by (i) modifications
+  Facebook's rights in any patent claims that are infringed by (i) modifications
   to the Software made by you or any third party or (ii) the Software in
   combination with any software or other technology.
 
@@ -659,6 +659,5 @@ under the following 3-clause BSD license:
 
 Note on thirdparty dependencies downloaded during the build process
 -------------------------------------------------------------------
-The Kudu build process downloads many thirdparty dependencies automatically.
-Many of these dependencies are statically linked into the resulting Kudu
-binaries. Please refer to thirdparty/LICENSE.txt for relevant information.
+The YugaByte build process downloads many thirdparty dependencies automatically.
+Please refer to thirdparty/LICENSE.txt for relevant information.
