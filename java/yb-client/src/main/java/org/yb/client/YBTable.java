@@ -66,7 +66,7 @@ public class YBTable {
 
   YBTable(AsyncYBClient client, String name, String tableId,
           Schema schema, PartitionSchema partitionSchema) {
-    this(client, name, tableId, schema, partitionSchema, TableType.DEFAULT_TABLE_TYPE,
+    this(client, name, tableId, schema, partitionSchema, TableType.YQL_TABLE_TYPE,
          null);
   }
 

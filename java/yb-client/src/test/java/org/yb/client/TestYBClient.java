@@ -32,6 +32,7 @@ import java.util.concurrent.Executors;
 
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -428,99 +429,6 @@ public class TestYBClient extends BaseYBClientTest {
     assertEquals(
         "STRING key=กขฃคฅฆง, STRING c1=✁✂✃✄✆, STRING c2=hello, STRING c3=NULL, STRING c4=🐱",
         rowStrings.get(0));
-  }
-
-  /**
-   * Test inserting and retrieving binary columns.
-   */
-  @Test(timeout = 100000)
-  public void testBinaryColumns() throws Exception {
-    LOG.info("Starting testBinaryColumns");
-    Schema schema = createSchemaWithBinaryColumns();
-    syncClient.createTable(tableName, schema);
-
-    byte[] testArray = new byte[] {1, 2, 3, 4, 5, 6 ,7, 8, 9};
-
-    YBSession session = syncClient.newSession();
-    YBTable table = syncClient.openTable(tableName);
-    for (int i = 0; i < 100; i++) {
-      Insert insert = table.newInsert();
-      PartialRow row = insert.getRow();
-      row.addBinary("key", String.format("key_%02d", i).getBytes());
-      row.addString("c1", "✁✂✃✄✆");
-      row.addDouble("c2", i);
-      if (i % 2 == 1) {
-        row.addBinary("c3", testArray);
-      }
-      session.apply(insert);
-      if (i % 50 == 0) {
-        session.flush();
-      }
-    }
-    session.flush();
-
-    List<String> rowStrings = scanTableToStrings(table);
-    assertEquals(100, rowStrings.size());
-    for (int i = 0; i < rowStrings.size(); i++) {
-      StringBuilder expectedRow = new StringBuilder();
-      expectedRow.append(String.format("BINARY key=\"key_%02d\", STRING c1=✁✂✃✄✆, DOUBLE c2=%.1f,"
-          + " BINARY c3=", i, (double) i));
-      if (i % 2 == 1) {
-        expectedRow.append(Bytes.pretty(testArray));
-      } else {
-        expectedRow.append("NULL");
-      }
-      assertEquals(expectedRow.toString(), rowStrings.get(i));
-    }
-  }
-
-  /**
-   * Test inserting and retrieving timestamp columns.
-   */
-  @Test(timeout = 100000)
-  public void testTimestampColumns() throws Exception {
-    LOG.info("Starting testTimestampColumns");
-    Schema schema = createSchemaWithTimestampColumns();
-    syncClient.createTable(tableName, schema);
-
-    List<Long> timestamps = new ArrayList<>();
-
-    YBSession session = syncClient.newSession();
-    YBTable table = syncClient.openTable(tableName);
-    long lastTimestamp = 0;
-    for (int i = 0; i < 100; i++) {
-      Insert insert = table.newInsert();
-      PartialRow row = insert.getRow();
-      long timestamp = System.currentTimeMillis() * 1000;
-      while(timestamp == lastTimestamp) {
-        timestamp = System.currentTimeMillis() * 1000;
-      }
-      timestamps.add(timestamp);
-      row.addLong("key", timestamp);
-      if (i % 2 == 1) {
-        row.addLong("c1", timestamp);
-      }
-      session.apply(insert);
-      if (i % 50 == 0) {
-        session.flush();
-      }
-      lastTimestamp = timestamp;
-    }
-    session.flush();
-
-    List<String> rowStrings = scanTableToStrings(table);
-    assertEquals(100, rowStrings.size());
-    for (int i = 0; i < rowStrings.size(); i++) {
-      StringBuilder expectedRow = new StringBuilder();
-      expectedRow.append(String.format("TIMESTAMP key=%s, TIMESTAMP c1=",
-          timestampToString(timestamps.get(i))));
-      if (i % 2 == 1) {
-        expectedRow.append(timestampToString(timestamps.get(i)));
-      } else {
-        expectedRow.append("NULL");
-      }
-      assertEquals(expectedRow.toString(), rowStrings.get(i));
-    }
   }
 
   /**
