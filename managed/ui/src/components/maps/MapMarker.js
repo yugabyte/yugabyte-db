@@ -26,7 +26,7 @@ export default class MapMarker extends Component {
     }
 
     if (labelType === "tooltip") {
-      popup = <Tooltip>{label}</Tooltip>;
+      popup = <Tooltip><div>{label}</div></Tooltip>;
     }
 
     const opts = {};
