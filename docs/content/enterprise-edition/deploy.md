@@ -26,7 +26,7 @@ The complete list of operating systems supported by Replicated are listed [here]
 
 - Connectivity to the Internet, either directly or via a http proxy
 - Ability to install and configure [docker-engine](https://docs.docker.com/engine/)
-- Ability to install and configure [Replicated](https://www.replicated.com/), which is a containerized application itself and needs to pull containers from it's own Replicated.com container registry
+- Ability to install and configure [Replicated](https://www.replicated.com/), which is a containerized application itself and needs to pull containers from its own Replicated.com container registry
 - Ability to pull YugaByte container images from [Quay.io](https://quay.io/) container registry, this will be done by Replicated automatically
 
 ### Permissions necessary for airgapped host

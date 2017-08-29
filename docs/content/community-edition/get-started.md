@@ -60,7 +60,7 @@ $ ./bin/yugabyte-cli status
 
 - Run cqlsh
 
-For ease of use, the YugaByte DB package ships with a version of cqlsh in it's bin directory.
+For ease of use, the YugaByte DB package ships with a version of cqlsh in its bin directory.
 
 ```sh
 $ ./bin/cqlsh localhost:9043
