@@ -3,7 +3,7 @@ title: MGET
 ---
 
 ## SYNOPSIS
-<code>MGET key [key ...]</code><br>
+<code><b>MGET key [key ...]</b></code><br>
 This command is to collect string values of all given keys.
 <li>If a given <code>key</code> does not exist, an empty string is returned for that <code>key</code>.</li>
 <li>If a given <code>key</code> is associated with a non-string value, an empty string is returned for that <code>key</code>.</li>
@@ -18,3 +18,4 @@ Returns an array of string values.
 3) (null)<br>
 
 ## SEE ALSO
+[`append`](/yql/redis/append/), [`get`](/yql/redis/get/), [`getrange`](/yql/redis/getrange/), [`getset`](/yql/redis/getset/), [`incr`](/yql/redis/incr/), [`mset`](/yql/redis/mset/), [`set`](/yql/redis/set/), [`setrange`](/yql/redis/setrange/), [`strlen`](/yql/redis/strlen/)

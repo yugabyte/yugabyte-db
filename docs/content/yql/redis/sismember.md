@@ -2,7 +2,7 @@
 title: SISMEMBER
 ---
 ## SYNOPSIS
-<code>SISMEMBER key member_value</code><br>
+<code><b>SISMEMBER key member_value</b></code><br>
 This command is a predicate for whether or not a value is a member of a set that is associated with the given  <code>key</code>.
 <li>If the <code>key</code> is associated with a value that is not a set, an error is raised.</li>
 <li>If the <code>key</code> does not exist, its associated set is empty, and the command returns 0.</li>
@@ -20,3 +20,4 @@ Returns 1 if the specified member exists. Returns 0 otherwise.
 % 0<br>
 
 ## SEE ALSO
+[`sadd`](/yql/redis/sadd/), [`scard`](/yql/redis/scard/), [`smembers`](/yql/redis/smembers/), [`srem`](/yql/redis/srem/)

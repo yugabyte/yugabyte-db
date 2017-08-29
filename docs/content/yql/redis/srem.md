@@ -3,7 +3,7 @@ title: SREM
 ---
 
 ## SYNOPSIS
-<code>SREM key value [value ...] </code><br>
+<code><b>SREM key value [value ...]</b></code><br>
 This command removes one or more specified members from the set that is associated with the given <code>key</code>.
 <li>If the <code>key</code> does not exist, the associated set is an empty set, and the return value is zero.</li>
 <li>If the <code>key</code> is associated with a value that is not a set, an error is raised.</li>
@@ -23,3 +23,4 @@ Returns the total number of existed members that were removed from the set.
 % 0<br>
 
 ## SEE ALSO
+[`sadd`](/yql/redis/sadd/), [`scard`](/yql/redis/scard/), [`sismember`](/yql/redis/sismember/), [`smembers`](/yql/redis/smembers/)

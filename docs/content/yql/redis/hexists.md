@@ -3,7 +3,7 @@ title: HEXISTS
 ---
 
 ## SYNOPSIS
-<code>HEXISTS key field</code><br>
+<code><b>HEXISTS key field</b></code><br>
 This is a predicate to check whether or not the given <code>field</code> exists in the hash that is specified by the given <code>key</code>.
 <li>If the given <code>key</code> and <code>field</code> exist, 1 is returned.</li>
 <li>If the given <code>key</code> or <code>field</code> does not exist, 0 is returned.</li>
@@ -21,3 +21,4 @@ Returns existence status as integer, either 1 or 0.
 0<br>
 
 ## SEE ALSO
+[`hdel`](/yql/redis/hdel/), [`hget`](/yql/redis/hget/), [`hgetall`](/yql/redis/hgetall/), [`hkeys`](/yql/redis/hkeys/), [`hlen`](/yql/redis/hlen/), [`hmget`](/yql/redis/hmget/), [`hmset`](/yql/redis/hmset/), [`hset`](/yql/redis/hset/), [`hstrlen`](/yql/redis/hstrlen/), [`hvals`](/yql/redis/hvals/)

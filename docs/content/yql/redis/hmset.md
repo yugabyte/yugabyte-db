@@ -3,9 +3,9 @@ title: HMSET
 ---
 
 ## SYNOPSIS
-<code>HMSET key field value [field value ...]</code><br>
+<code><b>HMSET key field value [field value ...]</b></code><br>
 This command is to set the data for the given <code>field</code> with the given <code>value</code> in the hash that is specified by <code>key</code>.
-<li>If the given <code>field</code> already exists in the specified hash, this command overwrites the existing value with the given <code>value</code>;
+<li>If the given <code>field</code> already exists in the specified hash, this command overwrites the existing value with the given <code>value</code>.</li>
 <li>If the given <code>key</code> does not exist, a new hash is created for the <code>key</code>, and the given values are inserted to the associated given fields.</li>
 <li>If the given <code>key</code> is associated with a non-hash data, an error is raised.</li>
 
@@ -19,3 +19,4 @@ Returns status string.
 "America"<br>
 
 ## SEE ALSO
+[`hdel`](/yql/redis/hdel/), [`hexists`](/yql/redis/hexists/), [`hget`](/yql/redis/hget/), [`hgetall`](/yql/redis/hgetall/), [`hkeys`](/yql/redis/hkeys/), [`hlen`](/yql/redis/hlen/), [`hmget`](/yql/redis/hmget/), [`hset`](/yql/redis/hset/), [`hstrlen`](/yql/redis/hstrlen/), [`hvals`](/yql/redis/hvals/)

@@ -3,7 +3,7 @@ title: HMGET
 ---
 
 ## SYNOPSIS
-<code>HMGET key field [field ...]</code><br>
+<code><b>HMGET key field [field ...]</b></code><br>
 This command is to fetch one or more values for the given fields of the hash that is associated with the given <code>key</code>.
 
 <li>For every given <code>field</code>, (null) is returned if either <code>key</code> or <code>field</code> does not exist.</li>
@@ -21,3 +21,4 @@ Returns list of string values of the fields in the same order that was requested
 3) (null)<br>
 
 ## SEE ALSO
+[`hdel`](/yql/redis/hdel/), [`hexists`](/yql/redis/hexists/), [`hget`](/yql/redis/hget/), [`hgetall`](/yql/redis/hgetall/), [`hkeys`](/yql/redis/hkeys/), [`hlen`](/yql/redis/hlen/), [`hmset`](/yql/redis/hmset/), [`hset`](/yql/redis/hset/), [`hstrlen`](/yql/redis/hstrlen/), [`hvals`](/yql/redis/hvals/)

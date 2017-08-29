@@ -3,7 +3,7 @@ title: SCARD
 ---
 
 ## SYNOPSIS
-<code>SCARD key</code><br>
+<code><b>SCARD key</b></code><br>
 This command is to find the cardinality of the set that is associated with the given <code>key</code>. Cardinality is the number of elements in a set.
 <li>If the <code>key</code> does not exist, 0 is returned.</li>
 <li>If the <code>key</code> is associated with a non-set value, an error is raised.</li>
@@ -20,3 +20,4 @@ Returns the cardinality of the set.
 2<br>
 
 ## SEE ALSO
+[`sadd`](/yql/redis/sadd/), [`sismember`](/yql/redis/sismember/), [`smembers`](/yql/redis/smembers/), [`srem`](/yql/redis/srem/)

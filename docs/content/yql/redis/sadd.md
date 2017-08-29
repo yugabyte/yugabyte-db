@@ -2,7 +2,7 @@
 title: SADD
 ---
 ## SYNOPSIS
-<code>SADD key value [value ...]</code><br>
+<code><b>SADD key value [value ...]</b></code><br>
 This command is to add one or more given values to the set that is associated with the given <code>key</code>.
 <li>If the <code>key</code> does not exist, a new set is created, and members are added with the given values.
 <li>If the <code>key</code> is associated with a value that is not a set, an error is raised.</li>
@@ -21,3 +21,4 @@ Returns the number of new members that were added by this command not including 
 % 2) "America"<br>
 
 ## SEE ALSO
+[`scard`](/yql/redis/scard/), [`sismember`](/yql/redis/sismember/), [`smembers`](/yql/redis/smembers/), [`srem`](/yql/redis/srem/)

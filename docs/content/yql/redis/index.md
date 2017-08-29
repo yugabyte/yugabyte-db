@@ -4,56 +4,58 @@ summary: Redis overview and commands.
 ---
 <style>
 table {
-      float: left;
+  float: left;
 }
 </style>
 
-## Introduction
+<h2>Introduction</h2>
+Redis is an API that can be used to access YugaByte database system. YugaByte server provides an adapter for Redis client to connect, send request, and receive result. All data values are on-disk persistence. 
 
-## Local Control Commands
-Command | Operation Type | Description |
---------|----------------|-------------|
-[`echo`](/yql/redis/echo/) |  LOCAL | to-be-filled |
-[`auth`](/yql/redis/auth/) |  LOCAL | to-be-filled |
-[`config`](/yql/redis/config/) |  LOCAL | to-be-filled |
-[`role`](/yql/redis/role/) |  LOCAL | to-be-filled |
+<h2>Data Structures</h2>
+The following datatypes can be read and written via Redis service. All data are on-disk persistent in YugaByte system.<br>
 
-## Commands for String
-Command | Operation Type | Description |
---------|----------------|-------------|
-[`append`](/yql/redis/append/) |  WRITE | to-be-filled |
-[`del`](/yql/redis/del/) |  WRITE | to-be-filled |
-[`exists`](/yql/redis/exists/) |  READ | to-be-filled |
-[`get`](/yql/redis/get/) |  READ | to-be-filled |
-[`getrange`](/yql/redis/getrange/) |  READ | to-be-filled |
-[`getset`](/yql/redis/getset/) |  WRITE | to-be-filled |
-[`incr`](/yql/redis/incr/) |  WRITE | to-be-filled |
-[`mget`](/yql/redis/mget/) |  READ | to-be-filled |
-[`mset`](/yql/redis/mset/) |  WRITE | to-be-filled |
-[`set`](/yql/redis/set/) |  WRITE | to-be-filled |
-[`setrange`](/yql/redis/setrange/) |  WRITE | to-be-filled |
-[`strlen`](/yql/redis/strlen/) |  READ | to-be-filled |
+DataType | Description |
+--------|-------------|
+string | Supported |
+hash | Supported |
+set | Supported |
+sorted set | Not supported |
+list | Not supported |
 
-## Commands for Set
-Command | Operation Type | Description |
---------|----------------|-------------|
-[`sadd`](/yql/redis/sadd/) |  WRITE | to-be-filled |
-[`scard`](/yql/redis/scard/) |  READ | to-be-filled |
-[`sismember`](/yql/redis/sismember/) |  READ | to-be-filled |
-[`smembers`](/yql/redis/smembers/) |  READ | to-be-filled |
-[`srem`](/yql/redis/srem/) |  WRITE | to-be-filled |
+<h2>Commands</h2>
+Redis-cli or any Redis applications can access Yugabyte database system. The following commands are accepted by Yugabyte server.
 
-## Commands for Hash
-Command | Operation Type | Description |
---------|----------------|-------------|
-[`hdel`](/yql/redis/hdel/) |  WRITE | to-be-filled |
-[`hexists`](/yql/redis/hexists/) |  READ | to-be-filled |
-[`hget`](/yql/redis/hget/) |  READ | to-be-filled |
-[`hgetall`](/yql/redis/hgetall/) |  READ | to-be-filled |
-[`hkeys`](/yql/redis/hkeys/) |  READ | to-be-filled |
-[`hlen`](/yql/redis/hlen/) |  READ | to-be-filled |
-[`hmget`](/yql/redis/hmget/) |  READ | to-be-filled |
-[`hmset`](/yql/redis/hmset/) |  WRITE | to-be-filled |
-[`hset`](/yql/redis/hset/) |  WRITE | to-be-filled |
-[`hstrlen`](/yql/redis/hstrlen/) |  READ | to-be-filled |
-[`hvals`](/yql/redis/hvals/) |  READ | to-be-filled |
+Command | Description |
+--------|-------------|
+[`append`](/yql/redis/append/) | Appending data to end of string |
+[`auth`](/yql/redis/auth/) | Not supported. Accepted without processing |
+[`config`](/yql/redis/config/) | Not supported. Accepted without processing |
+[`del`](/yql/redis/del/) | Deleting keys from database |
+[`echo`](/yql/redis/echo/) | Output messages |
+[`exists`](/yql/redis/exists/) | Predicate for key existence |
+[`get`](/yql/redis/get/) | Reading string value |
+[`getrange`](/yql/redis/getrange/) | Reading substring |
+[`getset`](/yql/redis/getset/) | Atomically reading and writing a string |
+[`hdel`](/yql/redis/hdel/) | Removing specified entries from a hash |
+[`hexists`](/yql/redis/hexists/) | Predicate for field existence in hash |
+[`hget`](/yql/redis/hget/) | Reading a field in hash |
+[`hgetall`](/yql/redis/hgetall/) | Reading hash content |
+[`hkeys`](/yql/redis/hkeys/) | Reading all value-keys in a hash |
+[`hlen`](/yql/redis/hlen/) | Reading number of entries in a hash |
+[`hmget`](/yql/redis/hmget/) | Reading values of given keys in a hash |
+[`hmset`](/yql/redis/hmset/) | Writing values of given keys in a hash |
+[`hset`](/yql/redis/hset/) | Writing one entry in a hash |
+[`hstrlen`](/yql/redis/hstrlen/) | Reading the length of a specified entry in a hash |
+[`hvals`](/yql/redis/hvals/) | Reading all values in a hash |
+[`incr`](/yql/redis/incr/) | Incrementing a number by one |
+[`mget`](/yql/redis/mget/) | Reading multiple strings |
+[`mset`](/yql/redis/mset/) | Writing multiple strings |
+[`role`](/yql/redis/role/) | Reading role of a node |
+[`sadd`](/yql/redis/sadd/) | Writing entries to a set |
+[`scard`](/yql/redis/scard/) | Reading number of entries in a set |
+[`set`](/yql/redis/set/) | Writing or rewriting a string value |
+[`setrange`](/yql/redis/setrange/) | Writing a subsection of a string |
+[`sismember`](/yql/redis/sismember/) | Predicate for existence of a member in a set |
+[`smembers`](/yql/redis/smembers/) | Reading all members of a set |
+[`srem`](/yql/redis/srem/) | Removing members from a set |
+[`strlen`](/yql/redis/strlen/) | Reading the length of a string|

@@ -3,7 +3,7 @@ title: APPEND
 ---
 
 ## SYNOPSIS
-% <code>APPEND key string_value</code>
+<code><b>APPEND key string_value</b></code><br>
 This command appends a value to the end of the string that is associated with the given <code>key</code>.
 <li>If <code>key</code> already exists, the given <code>string_value</code> is appended to the end of the string value that is associated with the <code>key</code>.</li>
 <li>If the <code>key</code> does not exist, it is created and associated with an empty string.</li>
@@ -21,3 +21,4 @@ Returns the length of the resulted string after appending.
 "YugaByte"<br>
 
 ## SEE ALSO
+[`get`](/yql/redis/get/), [`getrange`](/yql/redis/getrange/), [`getset`](/yql/redis/getset/), [`incr`](/yql/redis/incr/), [`mget`](/yql/redis/mget/), [`mset`](/yql/redis/mset/), [`set`](/yql/redis/set/), [`setrange`](/yql/redis/setrange/), [`strlen`](/yql/redis/strlen/)

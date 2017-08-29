@@ -2,7 +2,7 @@
 title: SETRANGE
 ---
 ## SYNOPSIS
-<code> SETRANGE key offset value</code><br>
+<code><b>SETRANGE key offset value</b></code><br>
 This commands is to overwrite the string that is associated with the given <code>key</code> with the given <code>value</code>, starting from the given <code>offset</code>.
 <li> The <code>offset</code> cannot exceed 536870911.</li>
 <li>If the <code>offset</code> is larger than the length of the specified string, the string will be padded with zeros up to the <code>offset</code>.</li>
@@ -21,3 +21,4 @@ Returns the length of the resulted string after overwriting.
 "YugaByte"<br>
 
 ## SEE ALSO
+[`append`](/yql/redis/append/), [`get`](/yql/redis/get/), [`getrange`](/yql/redis/getrange/), [`getset`](/yql/redis/getset/), [`incr`](/yql/redis/incr/), [`mget`](/yql/redis/mget/), [`mset`](/yql/redis/mset/), [`set`](/yql/redis/set/), [`strlen`](/yql/redis/strlen/)

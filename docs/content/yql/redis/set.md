@@ -3,7 +3,7 @@ title: SET
 ---
 
 ## SYNOPSIS
-% <code>SET key string_value [EX seconds] [PX milliseconds] [NX|XX]</code><br>
+<code><b>SET key string_value [EX seconds] [PX milliseconds] [NX|XX]</b></code><br>
 This command is to insert <code>string_value</code> to be hold at <code>key</code>, where <code>EX seconds</code> sets the expire time in <code>seconds</code>, <code>PX milliseconds</code> sets the expire time in <code>milliseconds</code>, <code>NX</code> sets the key only if it does not already exist, and <code>XX</code> sets the key only if it already exists.
 
 <li>If the <code>key</code> is already associated with a value, it is overwritten regardless of its type.</li>
@@ -19,3 +19,4 @@ Returns status string.
 % "YugaByte"<br>
 
 ## SEE ALSO
+[`append`](/yql/redis/append/), [`get`](/yql/redis/get/), [`getrange`](/yql/redis/getrange/), [`getset`](/yql/redis/getset/), [`incr`](/yql/redis/incr/), [`mget`](/yql/redis/mget/), [`mset`](/yql/redis/mset/), [`setrange`](/yql/redis/setrange/), [`strlen`](/yql/redis/strlen/)

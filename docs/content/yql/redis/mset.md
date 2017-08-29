@@ -3,7 +3,7 @@ title: MSET
 ---
 
 ## SYNOPSIS
-<code>MSET key value [key value ...]</code><br>
+<code><b>MSET key value [key value ...]</b></code><br>
 This command is an atomic write that sets the data for all given <code>keys</code> with their associated <code>values</code>.
 
 <li>If a <code>key</code> already exists, it is overwritten regardless of its datatype.</li>
@@ -18,3 +18,4 @@ Returns status string.
 "Africa"<br>
 
 ## SEE ALSO
+[`append`](/yql/redis/append/), [`get`](/yql/redis/get/), [`getrange`](/yql/redis/getrange/), [`getset`](/yql/redis/getset/), [`incr`](/yql/redis/incr/), [`mget`](/yql/redis/mget/), [`set`](/yql/redis/set/), [`setrange`](/yql/redis/setrange/), [`strlen`](/yql/redis/strlen/)

@@ -1,13 +1,4 @@
 ---
 title: CONFIG
 ---
-
-## SYNOPSIS
-<code></code><br>
-
-## RETURN VALUE
-Returns status string.
-
-## EXAMPLES
-
-## SEE ALSO
+Early Releases: Not supported. All <code>CONFIG</code> requests would be accepted as valid command without further processing.

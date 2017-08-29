@@ -3,7 +3,7 @@ title: GET
 ---
 
 ## SYNOPSIS
-<code>GET key</code><br>
+<code><b>GET key</code></b><br>
 This command is to fetch the value that is associated with the given <code>key</code>.
 
 <li>If the <code>key</code> does not exist, null is returned.</li>
@@ -21,3 +21,4 @@ Returns string value of the given <code>key</code>.
 "YugaByte"<br>
 
 ## SEE ALSO
+[`append`](/yql/redis/append/), [`getrange`](/yql/redis/getrange/), [`getset`](/yql/redis/getset/), [`incr`](/yql/redis/incr/), [`mget`](/yql/redis/mget/), [`mset`](/yql/redis/mset/), [`set`](/yql/redis/set/), [`setrange`](/yql/redis/setrange/), [`strlen`](/yql/redis/strlen/)

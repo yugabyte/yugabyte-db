@@ -3,7 +3,7 @@ title: HKEYS
 ---
 
 ## SYNOPSIS
-<code>HKEYS key</code><br>
+<code><b>HKEYS key</b></code><br>
 This command is to fetch all fields of the hash that is associated with the given <code>key</code>.
 
 <li>If the <code>key</code> does not exist, an empty list is returned.</li>
@@ -22,3 +22,4 @@ Returns list of fields in the specified hash.
 1) "area2"<br>
 
 ## SEE ALSO
+[`hdel`](/yql/redis/hdel/), [`hexists`](/yql/redis/hexists/), [`hget`](/yql/redis/hget/), [`hgetall`](/yql/redis/hgetall/), [`hlen`](/yql/redis/hlen/), [`hmget`](/yql/redis/hmget/), [`hmset`](/yql/redis/hmset/), [`hset`](/yql/redis/hset/), [`hstrlen`](/yql/redis/hstrlen/), [`hvals`](/yql/redis/hvals/)

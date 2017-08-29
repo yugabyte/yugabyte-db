@@ -3,7 +3,7 @@ title: GETSET
 ---
 
 ## SYNOPSIS
-<code>GETSET key value</code><br>
+<code><b>GETSET key value</b></code><br>
 This command is an atomic read and write operation that gets the existing value that is associated with the given <code>key</code> while rewriting it with the given <code>value</code>.
 
 <li>If the given <code>key</code> does not exist, the given <code>value</code> is inserted for the <code>key</code>, and null is returned.</li>
@@ -19,3 +19,4 @@ Returns the old value of the given <code>key</code>.
 1<br>
 
 ## SEE ALSO
+[`append`](/yql/redis/append/), [`get`](/yql/redis/get/), [`getrange`](/yql/redis/getrange/), [`incr`](/yql/redis/incr/), [`mget`](/yql/redis/mget/), [`mset`](/yql/redis/mset/), [`set`](/yql/redis/set/), [`setrange`](/yql/redis/setrange/), [`strlen`](/yql/redis/strlen/)

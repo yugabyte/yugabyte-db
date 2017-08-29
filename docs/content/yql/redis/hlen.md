@@ -3,8 +3,8 @@ title: HLEN
 ---
 
 ## SYNOPSIS
-<code>HLEN key</code><br>
-This command is to fetch the number of fields in the hash that is associated with the given <code>key</code>
+<code><b>HLEN key</b></code><br>
+This command is to fetch the number of fields in the hash that is associated with the given <code>key</code>.
 <li>If the <code>key</code> does not exist, 0 is returned.</li>
 <li>If the <code>key</code> is associated with non-hash data, an error is raised.</li>
 
@@ -20,3 +20,4 @@ Returns number of fields in the specified hash.
 2<br>
 
 ## SEE ALSO
+[`hdel`](/yql/redis/hdel/), [`hexists`](/yql/redis/hexists/), [`hget`](/yql/redis/hget/), [`hgetall`](/yql/redis/hgetall/), [`hkeys`](/yql/redis/hkeys/), [`hmget`](/yql/redis/hmget/), [`hmset`](/yql/redis/hmset/), [`hset`](/yql/redis/hset/), [`hstrlen`](/yql/redis/hstrlen/), [`hvals`](/yql/redis/hvals/)

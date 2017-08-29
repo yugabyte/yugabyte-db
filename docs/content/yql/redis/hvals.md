@@ -3,7 +3,7 @@ title: HVALS
 ---
 
 ## SYNOPSIS
-<code>HVALS key</code><br>
+<code><b>HVALS key</b></code><br>
 This command is to select all the values in the hash that is associated with the given <code>key</code>.
 
 <li>If the <code>key</code> does not exist, an empty list is returned.</li>
@@ -20,3 +20,4 @@ Returns list of values in the specified hash.
 2) "Africa"<br>
 
 ## SEE ALSO
+[`hdel`](/yql/redis/hdel/), [`hexists`](/yql/redis/hexists/), [`hget`](/yql/redis/hget/), [`hgetall`](/yql/redis/hgetall/), [`hkeys`](/yql/redis/hkeys/), [`hlen`](/yql/redis/hlen/), [`hmget`](/yql/redis/hmget/), [`hmset`](/yql/redis/hmset/), [`hset`](/yql/redis/hset/), [`hstrlen`](/yql/redis/hstrlen/)
