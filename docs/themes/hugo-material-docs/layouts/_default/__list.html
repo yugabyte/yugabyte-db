@@ -32,7 +32,7 @@
 			<hr>
 			{{ end }}
 
-			<aside class="copyright" role="note">
+			<!--<aside class="copyright" role="note">
 				{{ with .Site.Params.copyright }}
 				&copy; {{ $.Now.Format "2006" }} {{ . }} &ndash;
 				{{ end }}
@@ -40,7 +40,15 @@
 				<a href="https://www.gohugo.io" target="_blank">Hugo</a>
 				using the
 				<a href="http://github.com/digitalcraftsman/hugo-material-docs" target="_blank">Material</a> theme.
+			</aside>-->
+			<aside class="copyright" role="note">
+				{{ with .Site.Params.copyright }}
+				&copy; {{ $.Now.Format "2006" }} YugaByte Inc.
+				{{ end }}
+				<a href="http://www.yugabyte.com/privacy" target="_blank">Privacy Policy</a> ·
+				<a href="http://www.yugabyte.com/terms-of-service" target="_blank">Terms of Service</a>
 			</aside>
+			
 		</div>
 	</article>
 

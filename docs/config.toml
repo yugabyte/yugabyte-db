@@ -13,10 +13,10 @@ googleAnalytics = ""
 	# General information
 	author = "Team YugaByte"
 	description = "YugaByte Product Documentation"
-	# copyright = "Released under the MIT license"
+	copyright = "YugaByte Inc."
 	block_indexing = true
 
-	version = "early release"
+	version = "Beta"
 	logo = "/images/logo.png"
 	favicon = "/images/favicon.ico"
 
@@ -37,11 +37,9 @@ googleAnalytics = ""
     	text = "Lato"
     	code = "Ubuntu Mono"
 
-
 [social]
 	# twitter = "YugaByte"
 	email   = "support@yugabyte.com"
-
 
 [[menu.main]]
 	name   = "Introduction"
@@ -73,310 +71,88 @@ googleAnalytics = ""
 	weight = 20
 
 [[menu.main]]
-	name = "Enterprise Edition"
-	identifier = "enterprise-edition"
+	name   = "CLI Reference"
+	parent = "community-edition"
+	url    = "community-edition/cli-reference/"
 	weight = 30
 
 [[menu.main]]
-	name = "Deploy Admin Console"
-	identifier = "enterprise-deploy"
-	parent = "enterprise-edition"
-	url = "enterprise-edition/deploy/"
+	name = "Enterprise Edition"
+	identifier = "enterprise-edition"
 	weight = 40
 
 [[menu.main]]
-	name   = "Administer YugaByte"
+	name = "Deploy Admin Console"
 	parent = "enterprise-edition"
-	url    = "enterprise-edition/admin/"
+	url = "enterprise-edition/deploy/"
 	weight = 50
 
 [[menu.main]]
-	name   = "Learn YugaByte"
-	identifier    = "learn"
+	name   = "Administer"
+	parent = "enterprise-edition"
+	url    = "enterprise-edition/admin/"
 	weight = 60
 
-
 [[menu.main]]
-	name = "Basics"
-	identifier = "learn-basics"
-	parent = "learn"
-	url = "learn/basics/"
-	weight = 65
-
-
-[[menu.main]]
-	name = "Architecture"
-	identifier = "learn-architecture"
-	parent = "learn"
-	url = "learn/architecture/"
+	name   = "Architecture"
+	identifier = "architecture"
+	url = "architecture/"
 	weight = 70
 
 [[menu.main]]
-	name   = "FAQs"
-	url    = "faq/"
-	weight = 70
+	name   = "Concepts"
+	parent = "architecture"
+	url = "architecture/concepts/"
+	weight = 80
 
 [[menu.main]]
-	name   = "API"
+	name   = "Core Functions"
+	parent = "architecture"
+	url = "architecture/core-functions/"
+	weight = 90
+
+[[menu.main]]
+	name   = "Operations"
+	parent = "architecture"
+	url = "architecture/operations/"
+	weight = 95
+
+[[menu.main]]
+	name   = "Enterprise Features"
+	parent = "architecture"
+	url = "architecture/enterprise-features/"
 	weight = 100
+
+[[menu.main]]
+	name   = "Comparisons"
+	parent = "architecture"
+	url = "architecture/comparisons/"
+	weight = 110
+
+[[menu.main]]
+	name   = "Client API Reference"
+	weight = 120
 	identifier = "API"
 	url    = "api/"
 
 [[menu.main]]
-	name = "Overview"
-	weight = 101
-	identifier = "API-Overview"
+	name = "Apache Cassandra"
+	weight = 130
+	identifier = "API-CQL"
 	parent = "API"
-	url = "api/overview/"
+	url = "api/cql/"
 
 [[menu.main]]
 	name = "Redis"
-	weight = 102
+	weight = 140
 	identifier = "API-Redis"
 	parent = "API"
-	url = "api/redis"
-
-[[menu.main]]
-	name = "CQL"
-	weight = 103
-	identifier = "API-CQL"
-	parent = "API"
-	url = "api/cql"
-
-# Links for redis commands
-[[menu.main]]
-	name = "RCommands - Must be moved to API/Redis section"
-	weight = 200
-	identifier = "RCommands"
 	url = "api/redis/"
 
 [[menu.main]]
-	name = "APPEND"
-	weight = 210
-	parent = "RCommands"
-	url = "api/redis/append/"
-
-[[menu.main]]
-	name = "AUTH"
-	weight = 211
-	parent = "RCommands"
-	url = "api/redis/auth/"
-
-[[menu.main]]
-	name = "CONFIG"
-	weight = 212
-	parent = "RCommands"
-	url = "api/redis/config/"
-
-[[menu.main]]
-	name = "DEL"
-	weight = 213
-	parent = "RCommands"
-	url = "api/redis/del/"
-
-[[menu.main]]
-	name = "ECHO"
-	weight = 214
-	parent = "RCommands"
-	url = "api/redis/echo/"
-
-[[menu.main]]
-	name = "EXISTS"
-	weight = 215
-	parent = "RCommands"
-	url = "api/redis/exists/"
-
-[[menu.main]]
-	name = "GET"
-	weight = 216
-	parent = "RCommands"
-	url = "api/redis/get/"
-
-[[menu.main]]
-	name = "GETRANGE"
-	weight = 217
-	parent = "RCommands"
-	url = "api/redis/getrange/"
-
-[[menu.main]]
-	name = "GETSET"
-	weight = 218
-	parent = "RCommands"
-	url = "api/redis/getset/"
-
-[[menu.main]]
-	name = "HDEL"
-	weight = 219
-	parent = "RCommands"
-	url = "api/redis/hdel/"
-
-[[menu.main]]
-	name = "HEXISTS"
-	weight = 220
-	parent = "RCommands"
-	url = "api/redis/hexists/"
-
-[[menu.main]]
-	name = "HGET"
-	weight = 221
-	parent = "RCommands"
-	url = "api/redis/hget/"
-
-[[menu.main]]
-	name = "HGETALL"
-	weight = 222
-	parent = "RCommands"
-	url = "api/redis/hgetall/"
-
-[[menu.main]]
-	name = "HKEYS"
-	weight = 223
-	parent = "RCommands"
-	url = "api/redis/hkeys/"
-
-[[menu.main]]
-	name = "HLEN"
-	weight = 224
-	parent = "RCommands"
-	url = "api/redis/hlen/"
-
-[[menu.main]]
-	name = "HMGET"
-	weight = 225
-	parent = "RCommands"
-	url = "api/redis/hmget/"
-
-[[menu.main]]
-	name = "HMSET"
-	weight = 226
-	parent = "RCommands"
-	url = "api/redis/hmset/"
-
-[[menu.main]]
-	name = "HSET"
-	weight = 227
-	parent = "RCommands"
-	url = "api/redis/hset/"
-
-[[menu.main]]
-	name = "HSTRLEN"
-	weight = 228
-	parent = "RCommands"
-	url = "api/redis/hstrlen/"
-
-[[menu.main]]
-	name = "HVALS"
-	weight = 229
-	parent = "RCommands"
-	url = "api/redis/hvals/"
-
-[[menu.main]]
-	name = "INCR"
-	weight = 230
-	parent = "RCommands"
-	url = "api/redis/incr/"
-
-[[menu.main]]
-	name = "MGET"
-	weight = 231
-	parent = "RCommands"
-	url = "api/redis/mget/"
-
-[[menu.main]]
-	name = "MSET"
-	weight = 232
-	parent = "RCommands"
-	url = "api/redis/mset/"
-
-[[menu.main]]
-	name = "ROLE"
-	weight = 233
-	parent = "RCommands"
-	url = "api/redis/role/"
-
-[[menu.main]]
-	name = "SADD"
-	weight = 234
-	parent = "RCommands"
-	url = "api/redis/sadd/"
-
-[[menu.main]]
-	name = "SCARD"
-	weight = 235
-	parent = "RCommands"
-	url = "api/redis/scard/"
-
-[[menu.main]]
-	name = "SET"
-	weight = 236
-	parent = "RCommands"
-	url = "api/redis/set/"
-
-[[menu.main]]
-	name = "SETRANGE"
-	weight = 237
-	parent = "RCommands"
-	url = "api/redis/setrange/"
-
-[[menu.main]]
-	name = "SISMEMBER"
-	weight = 238
-	parent = "RCommands"
-	url = "api/redis/sismember/"
-
-[[menu.main]]
-	name = "SMEMBERS"
-	weight = 239
-	parent = "RCommands"
-	url = "api/redis/smembers/"
-
-[[menu.main]]
-	name = "SREM"
-	weight = 240
-	parent = "RCommands"
-	url = "api/redis/srem/"
-
-[[menu.main]]
-	name = "STRLEN"
-	weight = 241
-	parent = "RCommands"
-	url = "api/redis/strlen/"
-
-[[menu.main]]
-	name   = "QStatements - Must be moved to API/CQL section"
-	weight = 300
-	identifier = "QStatements"
-	url    = "api/ql/statements"
-
-[[menu.main]]
-	name   = "SELECT"
-	weight = 301
-	parent = "QStatements"
-	url    = "api/ql/statements/select"
-
-[[menu.main]]
-	name   = "QDatatypes - Must be moved to API/CQL section"
-	weight = 400
-	identifier = "QDatatypes"
-	url    = "api/ql/datatypes"
-
-[[menu.main]]
-	name   = "INT"
-	weight = 401
-	parent = "QDatatypes"
-	url    = "api/ql/datatypes/int32"
-
-[[menu.main]]
-	name   = "QDataConstraints - Must be moved to API/CQL section"
-	weight = 500
-	identifier = "QDataConstraints"
-	url    = "api/ql/data_constraints"
-
-[[menu.main]]
-	name   = "COUNTER"
-	weight = 501
-	parent = "QDataConstraints"
-	url    = "api/ql/data_constraints/counter"
+	name   = "FAQs"
+	url    = "faq/"
+	weight = 150
 
 [blackfriday]
 	smartypants	= true

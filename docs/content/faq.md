@@ -30,9 +30,9 @@ The YugaWare admin console does a password-less ssh to interact with the data no
 
 A REST API is also exposed by the admin console to the end users in addition to the UI as another means of interacting with the data platform.
 
-## Apache CQL API 
+## Apache Cassandra Compatibility
 
-## Redis API
+## Redis Compatibility
 
 
 

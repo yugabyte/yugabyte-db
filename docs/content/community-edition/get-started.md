@@ -1,10 +1,10 @@
 ---
 date: 2016-03-09T00:11:02+01:00
-title: Community Edition - Start a local cluster
+title: Community Edition - Get Started
 weight: 15
 ---
 
- The easiest way to get started with the YugaByte Community Edition is to start a multi-node YugaByte **local cluster** on your laptop or desktop.
+ The easiest way to get started with the YugaByte Community Edition is to create a multi-node YugaByte **local cluster** on your laptop or desktop.
 
 {{< note title="Note" >}}
 Running local clusters is not recommended for production environments. You can either deploy the Community Edition manually on a set of instances or use the Enterprise Edition that automates all day-to-day operations including cluster administration across all major public clouds as well as on-premises datacenters.
@@ -13,50 +13,44 @@ Running local clusters is not recommended for production environments. You can e
 ## Prerequisites
 
 Operation systems supported for local clusters are
+
 - Centos 7 or higher
 
 ## Download and install
 
+Download the YugaByte DB package using the link you were provided at registration. Thereafter, follow the instructions below.
+
 ```sh
-$ wget 
-$ mkdir yugabyte
-$ tar xvfz yugabyte.a0a845f2ba6ff2d4436c3b0525ddae28075fbbc4.0.0.19.25.tar.gz -C yugabyte
+$ mkdir ~/yugabyte
+$ tar xvfz yugabyte.0.0.19.25-centos.tar.gz -C yugabyte
 $ cd yugabyte
+```
+
+Run the **configure.sh** script to ensure all dependencies get auto-installed. This script will also install a two libraries (`cyrus-sasl` and `cyrus-sasl-plain`) and will request for a sudo password in case you are not running the script as root.
+
+```sh
 $ ./bin/configure.sh 
 ```
 
-## Start the cluster
+## Create local cluster
+
+Create a 3 node cluster with replication factor 3 using the [yugabyte-cli](/community-edition/cli-reference) CLI that has a set of pre-built commands to manage a local cluster. 
 
 ```sh
-$ ./bin/yugabyte.py --rf 3 create
+$ ./bin/yugabyte-cli create
 ```
 
-Use the **-h** option to see all the commands the yugabyte.py script supports
+Check the status of the cluster
 
 ```sh
-$ ./bin/yugabyte.py -h
-usage: yugabyte.py [-h] [--binary_dir BINARY_DIR]
-                   [--replication_factor REPLICATION_FACTOR]
-                   {create,destroy,status,add_node,remove_node} ...
-
-positional arguments:
-  {create,destroy,status,add_node,remove_node}
-    create              Create a new cluster
-    destroy             Destroy the current cluster
-    status              Get info on the current cluster processes
-    add_node            Add a new tserver to the current cluster
-    remove_node         Remove a tserver from the current cluster
-
-optional arguments:
-  -h, --help            show this help message and exit
-  --binary_dir BINARY_DIR
-                        Specify a custom directory in which to find the
-                        yugabyte binaries.
-  --replication_factor REPLICATION_FACTOR, --rf REPLICATION_FACTOR
-                        Replication factor for the cluster as well as default
-                        number of masters.
+$ ./bin/yugabyte-cli status
+2017-08-24 20:05:42,323 INFO: Server type=master index=1 is running on PID=5968
+2017-08-24 20:05:42,328 INFO: Server type=master index=2 is running on PID=5971
+2017-08-24 20:05:42,333 INFO: Server type=master index=3 is running on PID=5974
+2017-08-24 20:05:42,338 INFO: Server type=tserver index=1 is running on PID=5977
+2017-08-24 20:05:42,342 INFO: Server type=tserver index=2 is running on PID=5980
+2017-08-24 20:05:42,346 INFO: Server type=tserver index=3 is running on PID=5983
 ```
-
 
 ## Connect with cqlsh or redis-cli
 
@@ -64,10 +58,12 @@ optional arguments:
 
 [**cqlsh**](http://cassandra.apache.org/doc/latest/tools/cqlsh.html) is a command line shell for interacting with Apache Cassandra through [CQL (the Cassandra Query Language)](http://cassandra.apache.org/doc/latest/cql/index.html). It is shipped with every Cassandra package, and can be found in the bin/ directory. cqlsh utilizes the Python CQL driver, and connects to the single node specified on the command line.
 
-- Download and run cqlsh
+- Run cqlsh
+
+For ease of use, the YugaByte DB package ships with a version of cqlsh in it's bin directory.
 
 ```sh
-$ docker run -it --rm quay.io/yugabyte/cqlsh localhost:9043
+$ ./bin/cqlsh localhost:9043
 ```
 
 - Output will look similar to the following
@@ -91,6 +87,8 @@ cqlsh>
 ```
 
 ### redis-cli
+
+<redis-cli content goes here>
 
 ## Run a sample app
 
@@ -186,11 +184,9 @@ cqlsh:ybdemo_keyspace>
 $ java -jar ./java/yb-sample-apps.jar --workload RedisKeyValue --nodes localhost:6379
 ```
 
-## Add a node
+## Test high availability
 
-## Remove a node
-
-## Terminate the cluster
+## Test automatic rebalancing
 
 
 
