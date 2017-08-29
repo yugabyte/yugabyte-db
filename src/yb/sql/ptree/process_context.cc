@@ -73,66 +73,88 @@ CHECKED_STATUS ProcessContextBase::Error(const YBLocation& l,
   // Concantenate token.
   msg += "\n";
   if (token == nullptr) {
-    const int err_begin_line = l.BeginLine();
-    const int err_begin_column = l.BeginColumn();
-    const int err_end_line = l.EndLine();
-    const int err_end_column = l.EndColumn();
-
-    int curr_line = 1;
-    int curr_col = 1;
-    const char *curr_char = stmt_;
+    // Try to mark the error token from the input statement in the error message.
+    // This may not be possible if:
+    //   1. Bison reports a wrong/invalid error location (e.g. ENG-2052).
+    //   2. Theoretically, if input statement is empty.
     bool wrote_token = false;
+    if (stmt_len_ > 0) {
+      // Bison-reported line/column numbers start from 1, we use 0-based numbering here.
+      const int err_begin_line = l.BeginLine() - 1;
+      const int err_begin_column = l.BeginColumn() - 1;
+      const int err_end_line = l.EndLine() - 1;
+      const int err_end_column = l.EndColumn() - 1;
 
-    while (curr_char <= stmt_ + stmt_len_) {
-      if (curr_char == stmt_ + stmt_len_ || *curr_char == '\n') { // end of line
-        msg += '\n';
+      // Error location values should have sane lower bound.
+      // The reported values may exceed upper bound (ENG-2052) so we handle that in code below.
+      DCHECK_GE(err_begin_line, 0);
+      DCHECK_GE(err_begin_column, 0);
+      DCHECK_GE(err_end_line, 0);
+      DCHECK_GE(err_end_column, 0);
 
-        // If in error-token range, try writing line marking error location with '^'
-        if (curr_line >= err_begin_line && curr_line <= err_end_line) {
-          const char *line_start = curr_char - curr_col + 1;
-          const char *line_end = curr_char - 1;
+      int curr_line = 0;
+      int curr_col = 0;
+      const char *curr_char = stmt_;
 
-          // finding token start - left-trim spaces
-          const char *start = line_start;
-          if (curr_line == err_begin_line) {
-            start += err_begin_column - 1;
-          }
-          if (!wrote_token) {
-            while (start < line_end && isspace(*start)) {
-              start++;
+      while (curr_char <= stmt_ + stmt_len_) {
+        if (curr_char == stmt_ + stmt_len_ || *curr_char == '\n') { // End of stmt/line char.
+          msg += '\n';
+
+          // If in error-token range, try writing line marking error location with '^'.
+          if (curr_line >= err_begin_line && curr_line <= err_end_line) {
+            const char *line_start = curr_char - curr_col; // Inclusive, first char of line.
+            const char *line_end = curr_char - 1; // Inclusive, last char of line.
+
+            // Line start and end should be within statement bounds.
+            DCHECK_GE(line_start, stmt_);
+            DCHECK_LT(line_start, stmt_ + stmt_len_);
+            DCHECK_GE(line_end, stmt_);
+            DCHECK_LT(line_end, stmt_ + stmt_len_);
+
+            // Finding error-token start, left-trim spaces if this is first line of the error token.
+            const char *error_start = line_start; // Inclusive, first char of error token.
+            if (curr_line == err_begin_line) {
+              error_start += err_begin_column;
+            }
+            if (!wrote_token) {
+              while (error_start <= line_end && isspace(*error_start)) {
+                error_start++;
+              }
+            }
+
+            // Finding error-token end, right-trim spaces if this is last line of the error token.
+            const char *error_end = line_end; // Inclusive, last char of error token.
+            if (curr_line == err_end_line) {
+              // The end-column location reported by Bison is generally exclusive (i.e. character
+              // after the error token) so by default we subtract one from reported value.
+              // ENG-2052: End-column value may be wrong/out-of-bounds so we cap value to line end.
+              error_end = std::min(line_start + err_end_column - 1, line_end);
+
+              while (error_end >= error_start && isspace(*error_end)) {
+                error_end--;
+              }
+            }
+
+            // If we found a valid token range write a marker line.
+            if (error_end >= error_start) {
+              msg.append(error_start - line_start, ' ');
+              msg.append(error_end - error_start + 1, '^'); // +1 since both limits are inclusive.
+              msg += '\n';
+              wrote_token = true;
             }
           }
 
-          // finding token end - right-trim spaces
-          const char *end = line_end;
-          if (curr_line == err_end_line) {
-            end = line_start + err_end_column - 1;
-            while (end > start && isspace(*end - 1)) {
-              end--;
-            }
-          }
-
-          // if found a valid token range write a marker line
-          if (end > start) {
-            msg.append(start - line_start, ' ');
-            msg.append(end - start, '^');
-            msg += '\n';
-            wrote_token = true;
-          }
+          curr_line++;
+          curr_col = 0;
+        } else {
+          msg += *curr_char;
+          curr_col++;
         }
-
-        curr_line++;
-        curr_col = 1;
-      } else {
-        msg += *curr_char;
-        curr_col++;
+        curr_char++;
       }
-      curr_char++;
     }
 
-    // In rare cases Bison reports the wrong error location which may contain only spaces and be
-    // skipped entirely because of the trimming done above.
-    // In that case we append the reported location directly
+    // If we couldn't mark the error token in the stmt we append the reported location directly.
     if (!wrote_token) {
       msg += "At location: (";
       l.ToString<MCString>(&msg, false /* starting_location_only */);
