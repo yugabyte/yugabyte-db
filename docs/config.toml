@@ -117,266 +117,266 @@ googleAnalytics = ""
 	weight = 70
 
 [[menu.main]]
-	name   = "YQL"
+	name   = "API"
 	weight = 100
-	identifier = "YQL"
-	url    = "yql/"
+	identifier = "API"
+	url    = "api/"
 
 [[menu.main]]
 	name = "Overview"
 	weight = 101
-	identifier = "YQL-Overview"
-	parent = "YQL"
-	url = "yql/overview/"
+	identifier = "API-Overview"
+	parent = "API"
+	url = "api/overview/"
 
 [[menu.main]]
 	name = "Redis"
 	weight = 102
-	identifier = "YQL-Redis"
-	parent = "YQL"
-	url = "yql/redis"
+	identifier = "API-Redis"
+	parent = "API"
+	url = "api/redis"
 
 [[menu.main]]
 	name = "CQL"
 	weight = 103
-	identifier = "YQL-CQL"
-	parent = "YQL"
-	url = "yql/cql"
+	identifier = "API-CQL"
+	parent = "API"
+	url = "api/cql"
 
 # Links for redis commands
 [[menu.main]]
-	name = "RCommands - Must be moved to YQL/Redis section"
+	name = "RCommands - Must be moved to API/Redis section"
 	weight = 200
 	identifier = "RCommands"
-	url = "yql/redis/"
+	url = "api/redis/"
 
 [[menu.main]]
 	name = "APPEND"
 	weight = 210
 	parent = "RCommands"
-	url = "yql/redis/append/"
+	url = "api/redis/append/"
 
 [[menu.main]]
 	name = "AUTH"
 	weight = 211
 	parent = "RCommands"
-	url = "yql/redis/auth/"
+	url = "api/redis/auth/"
 
 [[menu.main]]
 	name = "CONFIG"
 	weight = 212
 	parent = "RCommands"
-	url = "yql/redis/config/"
+	url = "api/redis/config/"
 
 [[menu.main]]
 	name = "DEL"
 	weight = 213
 	parent = "RCommands"
-	url = "yql/redis/del/"
+	url = "api/redis/del/"
 
 [[menu.main]]
 	name = "ECHO"
 	weight = 214
 	parent = "RCommands"
-	url = "yql/redis/echo/"
+	url = "api/redis/echo/"
 
 [[menu.main]]
 	name = "EXISTS"
 	weight = 215
 	parent = "RCommands"
-	url = "yql/redis/exists/"
+	url = "api/redis/exists/"
 
 [[menu.main]]
 	name = "GET"
 	weight = 216
 	parent = "RCommands"
-	url = "yql/redis/get/"
+	url = "api/redis/get/"
 
 [[menu.main]]
 	name = "GETRANGE"
 	weight = 217
 	parent = "RCommands"
-	url = "yql/redis/getrange/"
+	url = "api/redis/getrange/"
 
 [[menu.main]]
 	name = "GETSET"
 	weight = 218
 	parent = "RCommands"
-	url = "yql/redis/getset/"
+	url = "api/redis/getset/"
 
 [[menu.main]]
 	name = "HDEL"
 	weight = 219
 	parent = "RCommands"
-	url = "yql/redis/hdel/"
+	url = "api/redis/hdel/"
 
 [[menu.main]]
 	name = "HEXISTS"
 	weight = 220
 	parent = "RCommands"
-	url = "yql/redis/hexists/"
+	url = "api/redis/hexists/"
 
 [[menu.main]]
 	name = "HGET"
 	weight = 221
 	parent = "RCommands"
-	url = "yql/redis/hget/"
+	url = "api/redis/hget/"
 
 [[menu.main]]
 	name = "HGETALL"
 	weight = 222
 	parent = "RCommands"
-	url = "yql/redis/hgetall/"
+	url = "api/redis/hgetall/"
 
 [[menu.main]]
 	name = "HKEYS"
 	weight = 223
 	parent = "RCommands"
-	url = "yql/redis/hkeys/"
+	url = "api/redis/hkeys/"
 
 [[menu.main]]
 	name = "HLEN"
 	weight = 224
 	parent = "RCommands"
-	url = "yql/redis/hlen/"
+	url = "api/redis/hlen/"
 
 [[menu.main]]
 	name = "HMGET"
 	weight = 225
 	parent = "RCommands"
-	url = "yql/redis/hmget/"
+	url = "api/redis/hmget/"
 
 [[menu.main]]
 	name = "HMSET"
 	weight = 226
 	parent = "RCommands"
-	url = "yql/redis/hmset/"
+	url = "api/redis/hmset/"
 
 [[menu.main]]
 	name = "HSET"
 	weight = 227
 	parent = "RCommands"
-	url = "yql/redis/hset/"
+	url = "api/redis/hset/"
 
 [[menu.main]]
 	name = "HSTRLEN"
 	weight = 228
 	parent = "RCommands"
-	url = "yql/redis/hstrlen/"
+	url = "api/redis/hstrlen/"
 
 [[menu.main]]
 	name = "HVALS"
 	weight = 229
 	parent = "RCommands"
-	url = "yql/redis/hvals/"
+	url = "api/redis/hvals/"
 
 [[menu.main]]
 	name = "INCR"
 	weight = 230
 	parent = "RCommands"
-	url = "yql/redis/incr/"
+	url = "api/redis/incr/"
 
 [[menu.main]]
 	name = "MGET"
 	weight = 231
 	parent = "RCommands"
-	url = "yql/redis/mget/"
+	url = "api/redis/mget/"
 
 [[menu.main]]
 	name = "MSET"
 	weight = 232
 	parent = "RCommands"
-	url = "yql/redis/mset/"
+	url = "api/redis/mset/"
 
 [[menu.main]]
 	name = "ROLE"
 	weight = 233
 	parent = "RCommands"
-	url = "yql/redis/role/"
+	url = "api/redis/role/"
 
 [[menu.main]]
 	name = "SADD"
 	weight = 234
 	parent = "RCommands"
-	url = "yql/redis/sadd/"
+	url = "api/redis/sadd/"
 
 [[menu.main]]
 	name = "SCARD"
 	weight = 235
 	parent = "RCommands"
-	url = "yql/redis/scard/"
+	url = "api/redis/scard/"
 
 [[menu.main]]
 	name = "SET"
 	weight = 236
 	parent = "RCommands"
-	url = "yql/redis/set/"
+	url = "api/redis/set/"
 
 [[menu.main]]
 	name = "SETRANGE"
 	weight = 237
 	parent = "RCommands"
-	url = "yql/redis/setrange/"
+	url = "api/redis/setrange/"
 
 [[menu.main]]
 	name = "SISMEMBER"
 	weight = 238
 	parent = "RCommands"
-	url = "yql/redis/sismember/"
+	url = "api/redis/sismember/"
 
 [[menu.main]]
 	name = "SMEMBERS"
 	weight = 239
 	parent = "RCommands"
-	url = "yql/redis/smembers/"
+	url = "api/redis/smembers/"
 
 [[menu.main]]
 	name = "SREM"
 	weight = 240
 	parent = "RCommands"
-	url = "yql/redis/srem/"
+	url = "api/redis/srem/"
 
 [[menu.main]]
 	name = "STRLEN"
 	weight = 241
 	parent = "RCommands"
-	url = "yql/redis/strlen/"
+	url = "api/redis/strlen/"
 
 [[menu.main]]
-	name   = "QStatements - Must be moved to YQL/CQL section"
+	name   = "QStatements - Must be moved to API/CQL section"
 	weight = 300
 	identifier = "QStatements"
-	url    = "yql/ql/statements"
+	url    = "api/ql/statements"
 
 [[menu.main]]
 	name   = "SELECT"
 	weight = 301
 	parent = "QStatements"
-	url    = "yql/ql/statements/select"
+	url    = "api/ql/statements/select"
 
 [[menu.main]]
-	name   = "QDatatypes - Must be moved to YQL/CQL section"
+	name   = "QDatatypes - Must be moved to API/CQL section"
 	weight = 400
 	identifier = "QDatatypes"
-	url    = "yql/ql/datatypes"
+	url    = "api/ql/datatypes"
 
 [[menu.main]]
 	name   = "INT"
 	weight = 401
 	parent = "QDatatypes"
-	url    = "yql/ql/datatypes/int32"
+	url    = "api/ql/datatypes/int32"
 
 [[menu.main]]
-	name   = "QDataConstraints - Must be moved to YQL/CQL section"
+	name   = "QDataConstraints - Must be moved to API/CQL section"
 	weight = 500
 	identifier = "QDataConstraints"
-	url    = "yql/ql/data_constraints"
+	url    = "api/ql/data_constraints"
 
 [[menu.main]]
 	name   = "COUNTER"
 	weight = 501
 	parent = "QDataConstraints"
-	url    = "yql/ql/data_constraints/counter"
+	url    = "api/ql/data_constraints/counter"
 
 [blackfriday]
 	smartypants	= true
