@@ -32,12 +32,16 @@
 }
 
 .universe-detail .universe-resources {
-  padding: 10px 0 10px 14px;
+  padding: 2px 0 2px 14px;
   border-bottom: 1px solid #ddd;
-  margin-bottom: 10px;
+  margin-bottom: 2px;
   text-align: center;
 }
 
 .node-action-text {
   cursor: pointer;
+}
+
+.universe-detail .tab-content {
+  padding-top: 2px;
 }
