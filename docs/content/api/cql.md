@@ -9,7 +9,7 @@ table {
 </style>
 
 <h2>Introduction</h2>
-YQL supports the following Apache CQL features.
+YugaByte supports the following Apache CQL features.
 <li> All primitive datatypes</li>
 <li> Data definition language (DDL) statements</li>
 <li> Data manipulation language (DML) statements</li>
@@ -22,22 +22,22 @@ Data definition language (DDL) statements are instructions for the following dat
 
 Statement | Description |
 ----------|-------------|
-[`ALTER TABLE`](/yql/ql/alter-table) | Alter a table |
-[`CREATE KEYSPACE`](/yql/ql/create-database) | Create a new keyspace |
-[`CREATE TABLE`](/yql/ql/create-table) | Create a new table |
-[`DROP KEYSPACE`](/yql/ql/drop-database) | Delete a keyspace and associated objects |
-[`DROP TABLE`](/yql/ql/drop-table) | Remove a table |
+[`ALTER TABLE`](/api/ql/alter-table) | Alter a table |
+[`CREATE KEYSPACE`](/api/ql/create-database) | Create a new keyspace |
+[`CREATE TABLE`](/api/ql/create-table) | Create a new table |
+[`DROP KEYSPACE`](/api/ql/drop-database) | Delete a keyspace and associated objects |
+[`DROP TABLE`](/api/ql/drop-table) | Remove a table |
 
 <h2>DML Statements</h2>
-Data manipulation language (DML) statements are to read from and write to the existing database objects. Similar to Apache CQL bebhavior, YQL implicitly commits any updates by DML statements.
+Data manipulation language (DML) statements are to read from and write to the existing database objects. Similar to Apache CQL bebhavior, YugaByte implicitly commits any updates by DML statements.
 
 Statement | Description |
 ---------|-------------|
-[`DELETE`](/yql/ql/delete) | Delete specific rows from a table.
-[`INSERT`](/yql/ql/insert) | Insert rows into a table.
-[`SELECT`](/yql/ql/select) | Select rows from a table.
-[`TRUNCATE`](/yql/ql/truncate) | Deletes all rows from specified tables.
-[`UPDATE`](/yql/ql/update) | Update rows in a table.
+[`DELETE`](/api/ql/delete) | Delete specific rows from a table.
+[`INSERT`](/api/ql/insert) | Insert rows into a table.
+[`SELECT`](/api/ql/select) | Select rows from a table.
+[`TRUNCATE`](/api/ql/truncate) | Deletes all rows from specified tables.
+[`UPDATE`](/api/ql/update) | Update rows in a table.
 
 <h2>Transaction Control Statements</h2>
 Transaction control statements are under development.

@@ -19,4 +19,4 @@ Returns the value for the given <code>field</code>
 "America"<br>
 
 ## SEE ALSO
-[`hdel`](/yql/redis/hdel/), [`hexists`](/yql/redis/hexists/), [`hgetall`](/yql/redis/hgetall/), [`hkeys`](/yql/redis/hkeys/), [`hlen`](/yql/redis/hlen/), [`hmget`](/yql/redis/hmget/), [`hmset`](/yql/redis/hmset/), [`hset`](/yql/redis/hset/), [`hstrlen`](/yql/redis/hstrlen/), [`hvals`](/yql/redis/hvals/)
+[`hdel`](/api/redis/hdel/), [`hexists`](/api/redis/hexists/), [`hgetall`](/api/redis/hgetall/), [`hkeys`](/api/redis/hkeys/), [`hlen`](/api/redis/hlen/), [`hmget`](/api/redis/hmget/), [`hmset`](/api/redis/hmset/), [`hset`](/api/redis/hset/), [`hstrlen`](/api/redis/hstrlen/), [`hvals`](/api/redis/hvals/)

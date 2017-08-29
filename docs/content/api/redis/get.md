@@ -21,4 +21,4 @@ Returns string value of the given <code>key</code>.
 "YugaByte"<br>
 
 ## SEE ALSO
-[`append`](/yql/redis/append/), [`getrange`](/yql/redis/getrange/), [`getset`](/yql/redis/getset/), [`incr`](/yql/redis/incr/), [`mget`](/yql/redis/mget/), [`mset`](/yql/redis/mset/), [`set`](/yql/redis/set/), [`setrange`](/yql/redis/setrange/), [`strlen`](/yql/redis/strlen/)
+[`append`](/api/redis/append/), [`getrange`](/api/redis/getrange/), [`getset`](/api/redis/getset/), [`incr`](/api/redis/incr/), [`mget`](/api/redis/mget/), [`mset`](/api/redis/mset/), [`set`](/api/redis/set/), [`setrange`](/api/redis/setrange/), [`strlen`](/api/redis/strlen/)

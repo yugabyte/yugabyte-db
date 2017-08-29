@@ -18,4 +18,4 @@ Returns the value after addition.
 8<br>
 
 ## SEE ALSO
-[`append`](/yql/redis/append/), [`get`](/yql/redis/get/), [`getrange`](/yql/redis/getrange/), [`getset`](/yql/redis/getset/), [`mget`](/yql/redis/mget/), [`mset`](/yql/redis/mset/), [`set`](/yql/redis/set/), [`setrange`](/yql/redis/setrange/), [`strlen`](/yql/redis/strlen/)
+[`append`](/api/redis/append/), [`get`](/api/redis/get/), [`getrange`](/api/redis/getrange/), [`getset`](/api/redis/getset/), [`mget`](/api/redis/mget/), [`mset`](/api/redis/mset/), [`set`](/api/redis/set/), [`setrange`](/api/redis/setrange/), [`strlen`](/api/redis/strlen/)

@@ -1,6 +1,6 @@
 ---
 title: Query Language DataTypes
-summary: YQL datatypes that are used in SQL and/or CQL.
+summary: Datatypes that are used in SQL and/or CQL.
 toc: true
 ---
 <style>
@@ -11,7 +11,7 @@ table {
 
 ## Supported Types
 
-YQL supports the following data types in the query language.
+YugaByte supports the following data types in the query language.
 
 Type | Description |
 -----|-------------|

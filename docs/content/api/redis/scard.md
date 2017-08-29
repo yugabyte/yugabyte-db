@@ -20,4 +20,4 @@ Returns the cardinality of the set.
 2<br>
 
 ## SEE ALSO
-[`sadd`](/yql/redis/sadd/), [`sismember`](/yql/redis/sismember/), [`smembers`](/yql/redis/smembers/), [`srem`](/yql/redis/srem/)
+[`sadd`](/api/redis/sadd/), [`sismember`](/api/redis/sismember/), [`smembers`](/api/redis/smembers/), [`srem`](/api/redis/srem/)

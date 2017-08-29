@@ -8,7 +8,7 @@ table {
 }
 </style>
 
-YQL supports the following types of statements that are simimlar to Apache CQL and PostgreSQL.
+YugaByte supports the following types of statements that are simimlar to Apache CQL and PostgreSQL.
 <li> Data definition language (DDL) statements </li>
 <li> Data manipulation language (DML) statements  </li>
 <li> Transaction control statements </li>
@@ -29,7 +29,7 @@ Statement | Description
 Need to run "cqlsh" and check those statements that show the metadata.
 
 ## DML
-Data manipulation language (DML) statements are to read from and write to the existing database objects. Similar to Apache CQL bebhavior, YQL implicitly commits any updates by DML statements.
+Data manipulation language (DML) statements are to read from and write to the existing database objects. Similar to Apache CQL bebhavior, YugaByte implicitly commits any updates by DML statements.
 
 Statement | Description
 ----------|-------------|

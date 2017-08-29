@@ -46,4 +46,4 @@ Returns an array of values.
       3) "0"<br>
 
 ## SEE ALSO
-[`auth`](/yql/redis/auth/), [`config`](/yql/redis/config/)
+[`auth`](/api/redis/auth/), [`config`](/api/redis/config/)

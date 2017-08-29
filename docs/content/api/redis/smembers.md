@@ -20,4 +20,4 @@ Returns all members of the given set.
 2) "America"<br>
 
 ## SEE ALSO
-[`sadd`](/yql/redis/sadd/), [`scard`](/yql/redis/scard/), [`sismember`](/yql/redis/sismember/), [`srem`](/yql/redis/srem/)
+[`sadd`](/api/redis/sadd/), [`scard`](/api/redis/scard/), [`sismember`](/api/redis/sismember/), [`srem`](/api/redis/srem/)

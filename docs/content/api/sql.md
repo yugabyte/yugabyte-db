@@ -2,7 +2,7 @@
 title: Structured Query Language (SQL)
 linktitle: Get Started Overview
 description: Overview for SQL.
-categories: [YQL]
+categories: [API]
 #tags: [usage,docs]
 menu:
   docs:

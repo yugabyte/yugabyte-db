@@ -21,4 +21,4 @@ Returns the number of existing keys.
 2<br>
 
 ## SEE ALSO
-[`del`](/yql/redis/del/), [`get`](/yql/redis/get/), [`getrange`](/yql/redis/getrange/), [`hdel`](/yql/redis/hdel/), [`hexists`](/yql/redis/hexists/), [`hget`](/yql/redis/hget/), [`hset`](/yql/redis/hset/), [`mget`](/yql/redis/mget/), [`mset`](/yql/redis/mset/), [`sadd`](/yql/redis/sadd/), [`set`](/yql/redis/set/)
+[`del`](/api/redis/del/), [`get`](/api/redis/get/), [`getrange`](/api/redis/getrange/), [`hdel`](/api/redis/hdel/), [`hexists`](/api/redis/hexists/), [`hget`](/api/redis/hget/), [`hset`](/api/redis/hset/), [`mget`](/api/redis/mget/), [`mset`](/api/redis/mset/), [`sadd`](/api/redis/sadd/), [`set`](/api/redis/set/)

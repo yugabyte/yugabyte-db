@@ -1,6 +1,6 @@
 ---
 title: YugaByte API
-summary: YQL overall description.
+summary: Overall description.
 ---
 <style>
 table {
