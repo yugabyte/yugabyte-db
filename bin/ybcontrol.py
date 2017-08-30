@@ -20,7 +20,13 @@ def stop_command(service):
 
 
 def parse_hosts(inp):
-    return [host for host in inp.split(' ') if len(host) > 0]
+    if isinstance(inp, list):
+        result = []
+        for item in inp:
+            result += parse_hosts(item)
+        return result
+    else:
+        return [host for host in inp.split(' ') if len(host) > 0]
 
 
 class ClusterManager(object):
@@ -92,17 +98,17 @@ class ClusterManager(object):
     def launch_at_service(self, service, command, title):
         return self.launch_simple(self.service_hosts(service), command, title)
 
-    def execute_service_commands(self, services, commands):
+    def execute_service_commands(self, services, commands, timeout):
         procedures = []
         for service in services:
             for command in commands:
                 procedures += self.launch_simple(self.service_hosts(service),
                                                  service_command(service, command),
                                                  "Perform {0} {1}".format(service, command))
-        show_output(procedures)
+        show_output(procedures, timeout)
 
-    def execute_everywhere(self, command):
-        show_output(self.launch_simple(self.all_hosts, command, '`{0}`'.format(command)))
+    def execute_everywhere(self, command, timeout):
+        show_output(self.launch_simple(self.all_hosts, command, '`{0}`'.format(command)), timeout)
 
 
 help_printer = None
@@ -263,11 +269,11 @@ class CopyTarProcedure(Procedure):
         return "Copy tar to {0}".format(self.host)
 
 
-def show_output(procedures):
+def show_output(procedures, timeout):
     exit_code = 0
     i = 0
     start_time = time.time()
-    while i != len(procedures) and time.time() < start_time + 15:
+    while i != len(procedures) and time.time() < start_time + timeout:
         if procedures[i].check():
             exit_code = procedures[i].return_code if exit_code == 0 else exit_code
             i += 1
@@ -293,7 +299,7 @@ def wait_all(procedures, timeout):
 
 
 class RollTask:
-    def __init__(self, manager, host, service, upgrade):
+    def __init__(self, manager, host, service, upgrade, timeout):
         self.manager = manager
         self.host = host
         self.service = service
@@ -301,10 +307,11 @@ class RollTask:
         self.sleep_time = 5 if service == 'master' else 45
         action = "Upgrade" if self.upgrade else "Restart"
         self.description = "{0} {1} at {2}".format(action, self.service, self.host)
+        self.timeout = timeout
 
     def execute(self):
         print(self.description)
-        wait_all([StopProcedure(self.manager, self.host, self.service)], 30)
+        wait_all([StopProcedure(self.manager, self.host, self.service)], self.timeout)
         if self.upgrade:
             pattern = "sudo -u yugabyte rm /opt/yugabyte/{0} && " \
                       "sudo -u yugabyte ln -s /opt/yugabyte/{1} /opt/yugabyte/{0}"
@@ -312,7 +319,7 @@ class RollTask:
         self.__execute(service_command(self.service, 'start'), "Start {0}".format(self.service))
 
     def __execute(self, command, title):
-        show_output(self.manager.launch_simple([self.host], command, title))
+        show_output(self.manager.launch_simple([self.host], command, title), self.timeout)
 
 
 def perform_tasks(tasks):
@@ -338,6 +345,7 @@ class YBControl:
         global help_printer
         self.all_services = ['master', 'tserver']
         self.manager = None
+        self.timeout = None
         self.commands = {}
         self.__fill_commands()
         self.__parse_arguments()
@@ -348,19 +356,20 @@ class YBControl:
         for service in services:
             procedures += [StopProcedure(self.manager, host, service)
                            for host in self.manager.service_hosts(service)]
-        wait_all(procedures, 30)
+        wait_all(procedures, self.__timeout(30))
 
     def roll_servers(self, services, upgrade):
         tasks = []
         for service in services:
-            tasks += [RollTask(self.manager, host, service, upgrade)
+            tasks += [RollTask(self.manager, host, service, upgrade, self.__timeout(30))
                       for host in self.manager.service_hosts(service)]
         perform_tasks(tasks)
 
     def copy_tar(self):
         if self.manager.tar_prefix is None:
             error('Please specify: tar_prefix')
-        wait_all([CopyTarProcedure(self.manager, host) for host in self.manager.all_hosts], 90)
+        wait_all([CopyTarProcedure(self.manager, host) for host in self.manager.all_hosts],
+                 self.__timeout(180))
 
     def copy(self, upload):
         if len(self.parameters) == 1:
@@ -368,10 +377,10 @@ class YBControl:
         elif len(self.parameters) != 2:
             error('Usage {0} src_path dst_path'.format('upload' if upload else 'download'))
         wait_all([CopyProcedure(self.manager, upload, host, self.parameters[0], self.parameters[1])
-                  for host in self.manager.all_hosts], 60)
+                  for host in self.manager.all_hosts], self.__timeout(60))
 
     def masters_create(self):
-        self.manager.execute_service_commands(['master'], ['create'])
+        self.manager.execute_service_commands(['master'], ['create'], self.__timeout(15))
 
     def status(self):
         procedures = []
@@ -379,13 +388,13 @@ class YBControl:
             procedures += self.manager.launch_at_service(service,
                                                          list_command(service),
                                                          "Processes related to {0}".format(service))
-        show_output(procedures)
+        show_output(procedures, self.__timeout(15))
 
     def start_services(self, services):
-        self.manager.execute_service_commands(services, ['start'])
+        self.manager.execute_service_commands(services, ['start'], self.__timeout(15))
 
     def clean_services(self, services):
-        self.manager.execute_service_commands(services, ['clean', 'clean-logs'])
+        self.manager.execute_service_commands(services, ['clean', 'clean-logs'], self.__timeout(15))
 
     def execute(self):
         parameters = self.parameters
@@ -395,7 +404,7 @@ class YBControl:
             parameters = " ".join([pipes.quote(p) for p in parameters])
         else:
             parameters = parameters[0]
-        self.manager.execute_everywhere(parameters)
+        self.manager.execute_everywhere(parameters, self.__timeout(15))
 
     def __add_command_ex(self, name, action, hint):
         self.commands[name] = Command(name, action, hint)
@@ -460,6 +469,7 @@ class YBControl:
         self.parser = parser
         ClusterManager.setup_parser(parser)
 
+        parser.add_argument('--timeout', nargs='?', type=int, help="operation timeout in seconds")
         parser.add_argument('command', help="command to execute")
         parser.add_argument('parameters', nargs=argparse.REMAINDER, help="command arguments")
 
@@ -474,6 +484,10 @@ class YBControl:
         self.manager = ClusterManager(args)
         self.command = args.command
         self.parameters = args.parameters
+        self.timeout = args.timeout
+
+    def __timeout(self, default):
+        return default if self.timeout is None else self.timeout
 
     def run(self):
         if not self.command:
