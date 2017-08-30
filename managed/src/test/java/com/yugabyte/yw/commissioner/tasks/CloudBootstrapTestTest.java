@@ -49,7 +49,8 @@ public class CloudBootstrapTestTest extends CommissionerBaseTest {
     CloudBootstrap.Params taskParams = new CloudBootstrap.Params();
     taskParams.providerUUID = defaultProvider.uuid;
     taskParams.regionList = regionList;
-    taskParams.hostVPCId = "host-vpc-id";
+    taskParams.hostVpcId = "host-vpc-id";
+    taskParams.destVpcId = "dest-vpc-id";
     return commissioner.submit(TaskType.CloudBootstrap, taskParams);
   }
 
@@ -57,7 +58,8 @@ public class CloudBootstrapTestTest extends CommissionerBaseTest {
   public void testCloudBootstrapSuccess() throws InterruptedException {
     JsonNode vpcInfo = Json.parse("{\"us-west-1\": {\"zones\": {\"zone-1\": \"subnet-1\"}}}");
     mockRegionMetadata("us-west-1");
-    when(mockNetworkManager.bootstrap(any(), any())).thenReturn(vpcInfo);
+    when(mockNetworkManager.bootstrap(any(UUID.class), anyString(), anyString()))
+        .thenReturn(vpcInfo);
     UUID taskUUID = submitTask(ImmutableList.of("us-west-1"));
     TaskInfo taskInfo = waitForTask(taskUUID);
     assertValue(Json.toJson(taskInfo), "taskState", "Success");
@@ -88,7 +90,8 @@ public class CloudBootstrapTestTest extends CommissionerBaseTest {
   @Test
   public void testCloudBootstrapWithNetworkBootstrapError() throws InterruptedException {
     JsonNode vpcInfo = Json.parse("{\"error\": \"Something failed\"}");
-    when(mockNetworkManager.bootstrap(any(), any())).thenReturn(vpcInfo);
+    when(mockNetworkManager.bootstrap(any(UUID.class), anyString(), anyString()))
+        .thenReturn(vpcInfo);
     UUID taskUUID = submitTask(ImmutableList.of("us-west-1"));
     TaskInfo taskInfo = waitForTask(taskUUID);
     assertValue(Json.toJson(taskInfo), "taskState", "Failure");

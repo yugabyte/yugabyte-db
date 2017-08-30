@@ -51,7 +51,7 @@ public class NetworkManagerTest extends FakeDBApplication {
     cloudCredentials = ArgumentCaptor.forClass(HashMap.class);
   }
 
-  private JsonNode runBootstrap(UUID regionUUID, String hostVPCId, boolean mimicError) {
+  private JsonNode runBootstrap(UUID regionUUID, String hostVpcId, String destVpcId, boolean mimicError) {
     ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
     if (mimicError) {
       response.message = "{\"error\": \"Unknown Error\"}";
@@ -61,7 +61,7 @@ public class NetworkManagerTest extends FakeDBApplication {
       response.message = "{\"foo\": \"bar\"}";
     }
     when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(response);
-    return networkManager.bootstrap(regionUUID, hostVPCId);
+    return networkManager.bootstrap(regionUUID, hostVpcId, destVpcId);
   }
 
   private JsonNode runCommand(UUID regionUUID, String commandType, boolean mimicError) {
@@ -106,7 +106,7 @@ public class NetworkManagerTest extends FakeDBApplication {
 
   @Test
   public void testBootstrapCommandWithoutHostVPC() {
-    JsonNode json = runBootstrap(defaultRegion.uuid, null, false);
+    JsonNode json = runBootstrap(defaultRegion.uuid, null, null, false);
     Mockito.verify(shellProcessHandler, times(1)).run((List<String>) command.capture(),
         (Map<String, String>) cloudCredentials.capture());
     assertEquals(String.join(" ", command.getValue()),
@@ -114,14 +114,24 @@ public class NetworkManagerTest extends FakeDBApplication {
     assertValue(json, "foo", "bar");
   }
 
-
   @Test
   public void testBootstrapCommandWithHostVPC() {
-    JsonNode json = runBootstrap(defaultRegion.uuid, "host-vpc-id", false);
+    JsonNode json = runBootstrap(defaultRegion.uuid, "host-vpc-id", null, false);
     Mockito.verify(shellProcessHandler, times(1)).run((List<String>) command.capture(),
         (Map<String, String>) cloudCredentials.capture());
     assertEquals(String.join(" ", command.getValue()),
         "bin/ybcloud.sh aws --region us-west-2 network bootstrap --host_vpc_id host-vpc-id");
+    assertValue(json, "foo", "bar");
+  }
+
+  @Test
+  public void testBootstrapCommandWithHostVPCAndDestVPC() {
+    JsonNode json = runBootstrap(defaultRegion.uuid, "host-vpc-id", "dest-vpc-id", false);
+    Mockito.verify(shellProcessHandler, times(1)).run((List<String>) command.capture(),
+        (Map<String, String>) cloudCredentials.capture());
+    assertEquals(String.join(" ", command.getValue()),
+        "bin/ybcloud.sh aws --region us-west-2 network bootstrap --host_vpc_id host-vpc-id " +
+        "--dest_vpc_id dest-vpc-id");
     assertValue(json, "foo", "bar");
   }
 }

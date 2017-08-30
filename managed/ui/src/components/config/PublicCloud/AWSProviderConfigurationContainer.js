@@ -110,7 +110,7 @@ const mapStateToProps = (state) => {
 
 const awsConfigForm = reduxForm({
   form: 'awsConfigForm',
-  fields: ['accessKey', 'secretKey', 'accountName'],
+  fields: ['accessKey', 'secretKey', 'accountName', 'useHostVpc'],
   validate
 });
 

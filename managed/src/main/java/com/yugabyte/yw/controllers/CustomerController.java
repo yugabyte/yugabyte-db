@@ -143,7 +143,8 @@ public class CustomerController extends AuthenticatedController {
     }
     // TODO: currently we assume the cloudtype to be AWS for fetching host information.
     JsonNode hostInfo = cloudQueryHelper.currentHostInfo(
-        Common.CloudType.aws, ImmutableList.of("vpc-id", "privateIp", "region"));
+        Common.CloudType.aws, ImmutableList.of("instance-id", "vpc-id", "privateIp", "region"));
+
     return ApiResponse.success(hostInfo);
   }
 }

@@ -207,7 +207,8 @@ public class CloudProviderController extends AuthenticatedController {
     CloudBootstrap.Params taskParams = new CloudBootstrap.Params();
     taskParams.providerUUID = providerUUID;
     taskParams.regionList = formData.get().regionList;
-    taskParams.hostVPCId = formData.get().hostVPCId;
+    taskParams.hostVpcId = formData.get().hostVpcId;
+    taskParams.destVpcId = formData.get().destVpcId;
     UUID taskUUID = commissioner.submit(TaskType.CloudBootstrap, taskParams);
 
     // TODO: add customer task

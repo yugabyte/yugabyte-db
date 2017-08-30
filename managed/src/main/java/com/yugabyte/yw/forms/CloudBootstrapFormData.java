@@ -10,6 +10,10 @@ public class CloudBootstrapFormData {
   @Constraints.Required()
   public List<String> regionList;
 
-  // We use hostVPCId to enable VPC peering.
-  public String hostVPCId;
+  // We use hostVpcId to make sure we know where YW is coming from.
+  // Not required for non-AWS deployments.
+  public String hostVpcId;
+
+  // We use destVpcId to when bootstrapping a previously existing VPC.
+  public String destVpcId;
 }
