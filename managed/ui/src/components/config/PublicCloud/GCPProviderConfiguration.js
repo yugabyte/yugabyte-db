@@ -180,11 +180,38 @@ class GCPProviderConfiguration extends Component {
 }
 
 class GCPConfigureSuccess extends Component {
+
+  constructor(props) {
+    super(props);
+    const { cloudBootstrap: {data: { type }, promiseState}} = props;
+    this.state = {
+      refreshing: type === "initialize" && promiseState.isLoading()
+    };
+    this.deleteProviderConfig = this.deleteProviderConfig.bind(this);
+    this.refreshPricingData = this.refreshPricingData.bind(this);
+  }
+
   deleteProviderConfig(provider) {
     this.props.deleteProviderConfig(provider.uuid);
   }
+
+  refreshPricingData(provider) {
+    this.props.initializeGCPMetadata(provider.uuid);
+    this.setState({refreshing: true});
+  }
+
+  componentWillReceiveProps(nextProps) {
+    const { cloudBootstrap: {data: { type }, promiseState}} = nextProps;
+    const { refreshing } = this.state;
+    if (refreshing && type === "initialize" && !promiseState.isLoading()) {
+      this.setState({refreshing: false});
+    }
+  }
+
   render() {
-    const {cloud: {supportedRegionList, accessKeys}, configuredProviders, universe: {universeList}, handleSubmit} = this.props;
+    const {cloud: {supportedRegionList, accessKeys}, configuredProviders, universe: {universeList},
+      handleSubmit} = this.props;
+    const { refreshing } = this.state;
     const gcpProvider = configuredProviders.data.find((provider) => provider.code === "gcp");
     let gcpProviderName = "";
     let regions = [];
@@ -208,8 +235,9 @@ class GCPConfigureSuccess extends Component {
     if (isNonEmptyArray(universeList.data)) {
       universeExistsForProvider = universeList.data.some(universe => universe.provider && (universe.provider.uuid === gcpProvider.uuid));
     }
-    const deleteButtonDisabled = universeExistsForProvider;
-    let deleteButtonClassName = "btn btn-default delete-aws-btn";
+    const deleteButtonDisabled = refreshing || universeExistsForProvider;
+    const buttonBaseClassName = "btn btn-default manage-provider-btn";
+    let deleteButtonClassName = buttonBaseClassName;
     let deleteButtonTitle = "Delete this GCP configuration.";
     if (deleteButtonDisabled) {
       deleteButtonTitle = "Can't delete this GCP configuration because one or more AWS universes are currently defined. Delete all GCP universes first.";
@@ -221,17 +249,25 @@ class GCPConfigureSuccess extends Component {
       {name: "Name", data: gcpProviderName },
       {name: "SSH Key", data: gcpKey},
     ];
+
+    let refreshPricingLabel = "Refresh Pricing Data";
+    if (refreshing) {
+      refreshPricingLabel = "Refreshing...";
+    }
+
     return (
       <div className="provider-config-container">
         <Row className="config-section-header">
           <Col md={12}>
             <span className="pull-right" title={deleteButtonTitle}>
               <YBButton btnText="Delete Configuration" disabled={deleteButtonDisabled}
-                          btnClass={deleteButtonClassName} onClick={this.props.showDeleteProviderModal}/>
+                        btnClass={deleteButtonClassName} onClick={this.props.showDeleteProviderModal}/>
+              <YBButton btnText={refreshPricingLabel} btnClass={buttonBaseClassName}
+                        disabled={refreshing} onClick={() => this.refreshPricingData(gcpProvider)} />
               <YBConfirmModal name="delete-aws-provider" title={"Confirm Delete"}
-                                onConfirm={handleSubmit(this.deleteProviderConfig.bind(this, gcpProvider))}
-                                currentModal="deleteGCPProvider" visibleModal={this.props.visibleModal}
-                                hideConfirmModal={this.props.hideDeleteProviderModal}>
+                              onConfirm={handleSubmit(() => this.deleteProviderConfig(gcpProvider))}
+                              currentModal="deleteGCPProvider" visibleModal={this.props.visibleModal}
+                              hideConfirmModal={this.props.hideDeleteProviderModal}>
                   Are you sure you want to delete this GCP configuration?
                 </YBConfirmModal>
             </span>
