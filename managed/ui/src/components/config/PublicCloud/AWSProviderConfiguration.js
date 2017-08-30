@@ -1,17 +1,19 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, {Component} from 'react';
+import React, { Component } from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
-import { YBButton, YBTextInputWithLabel } from '../../common/forms/fields';
-import {getPromiseState} from 'utils/PromiseUtils';
+import { YBButton, YBTextInputWithLabel, YBToggle } from '../../common/forms/fields';
+import { getPromiseState } from 'utils/PromiseUtils';
 import { isDefinedNotNull } from 'utils/ObjectUtils';
 import { ProgressList } from '../../common/indicators';
 import { DescriptionList } from '../../common/descriptors';
 import { YBConfirmModal } from '../../modals';
 import { Field } from 'redux-form';
 import { withRouter } from 'react-router';
+import { IN_DEVELOPMENT_MODE } from '../../../config';
 
-import  {isValidObject, trimString, convertSpaceToDash, isNonEmptyArray} from '../../../utils/ObjectUtils';
+import { isValidObject, trimString, convertSpaceToDash, isNonEmptyArray }
+from '../../../utils/ObjectUtils';
 import { RegionMap, YBMapLegend } from '../../maps';
 
 const PROVIDER_TYPE = "aws";
@@ -25,8 +27,11 @@ class AWSProviderConfiguration extends Component {
         {type: "region", name: "Create Region and Zones", state: "Initializing"},
         {type: "accessKey", name: "Create Access Key", state: "Initializing"},
         {type: "initialize", name: "Create Instance Types", state: "Initializing"}
-      ]
+      ],
+      useHostVpc: false
     };
+    this.createProviderConfig = this.createProviderConfig.bind(this);
+    this.isHostInAWS = this.isHostInAWS.bind(this);
   }
 
   componentWillUnmount() {
@@ -34,15 +39,23 @@ class AWSProviderConfiguration extends Component {
   }
 
   createProviderConfig(formValues) {
+    this.setState({useHostVpc: isDefinedNotNull(formValues.useHostVpc)});
     const awsProviderConfig = {
       'AWS_ACCESS_KEY_ID': formValues.accessKey,
       'AWS_SECRET_ACCESS_KEY': formValues.secretKey
     };
     this.props.createProvider(PROVIDER_TYPE, formValues.accountName, awsProviderConfig);
   }
+
   deleteProviderConfig(provider) {
     this.props.deleteProviderConfig(provider.uuid);
   }
+
+  isHostInAWS() {
+    const { hostInfo } = this.props;
+    return !IN_DEVELOPMENT_MODE && (isValidObject(hostInfo) && hostInfo["error"] === undefined);
+  }
+
   componentWillReceiveProps(nextProps) {
     const { cloudBootstrap: {data: { response, type }, error, promiseState}} = nextProps;
     const { bootstrapSteps } = this.state;
@@ -67,14 +80,18 @@ class AWSProviderConfiguration extends Component {
           this.setState({providerUUID: response.uuid, accountName: response.name});
           const { hostInfo } = this.props;
           let regionFormVals = {};
-          if (isValidObject(hostInfo) && hostInfo["error"] === undefined) {
-            regionFormVals = { "code": hostInfo["region"], "hostVPCId": hostInfo["vpc-id"], "name": hostInfo["region"]};
-            this.props.createRegion(response.uuid, regionFormVals);
+          if (this.isHostInAWS()) {
+            regionFormVals = {
+              "code": hostInfo["region"],
+              "hostVpcId": hostInfo["vpc-id"],
+              "destVpcId": this.state.useHostVpc ? hostInfo["vpc-id"] : "",
+              "name": hostInfo["region"]
+            };
           } else {
             // TODO: Temporary change to it work locally.
-            regionFormVals = { "code": "us-west-2", "hostVPCId": "", "name": "us-west-2"};
-            this.props.createRegion(response.uuid, regionFormVals);
+            regionFormVals = {"code": "us-west-2", "name": "us-west-2"};
           }
+          this.props.createRegion(response.uuid, regionFormVals);
           break;
         case "region":
           const accessKeyCode = "yb-" + this.state.accountName.toLowerCase() + "-key";
@@ -104,7 +121,7 @@ class AWSProviderConfiguration extends Component {
 
   render() {
     const { handleSubmit, submitting, cloudBootstrap: { data: { type }, promiseState, error },
-      configuredProviders, configuredRegions, accessKeys, universeList } = this.props;
+      configuredProviders, configuredRegions, accessKeys, universeList, hostInfo } = this.props;
     const awsProvider = configuredProviders.data.find((provider) => provider.code === PROVIDER_TYPE);
     let universeExistsForProvider = false;
     let providerConfig;
@@ -179,19 +196,31 @@ class AWSProviderConfiguration extends Component {
           </div>
         );
       }
+
+      let subLabel = "Disabled if host is not on AWS";
+      if (this.isHostInAWS()) {
+        subLabel = " (" + hostInfo["vpc-id"] + ")";
+      }
+
       providerConfig = (
-        <form name="awsConfigForm" onSubmit={handleSubmit(this.createProviderConfig.bind(this))}>
+        <form name="awsConfigForm" onSubmit={handleSubmit(this.createProviderConfig)}>
           <Row className="config-section-header">
             <Col lg={6}>
               <h4>AWS Account Info</h4>
               { error && <Alert bsStyle="danger">{error}</Alert> }
               <div className="aws-config-form form-right-aligned-labels">
                 <Field name="accountName" type="text" label="Name"
-                  component={YBTextInputWithLabel} normalize={convertSpaceToDash} />
+                       component={YBTextInputWithLabel} normalize={convertSpaceToDash} />
                 <Field name="accessKey" type="text" label="Access Key ID"
-                  component={YBTextInputWithLabel} normalize={trimString} />
+                       component={YBTextInputWithLabel} normalize={trimString} />
                 <Field name="secretKey" type="text" label="Secret Access Key"
-                  component={YBTextInputWithLabel} normalize={trimString} />
+                       component={YBTextInputWithLabel} normalize={trimString} />
+                <Field name="useHostVpc"
+                       component={YBToggle}
+                       label="Use Host's VPC"
+                       subLabel={subLabel}
+                       defaultChecked={this.state.useHostVpc}
+                       isReadOnly={!this.isHostInAWS()} />
               </div>
               { bootstrapSteps }
             </Col>

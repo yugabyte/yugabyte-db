@@ -20,7 +20,8 @@ public class CloudBootstrap extends CloudTaskBase {
 
   public static class Params extends CloudTaskParams {
     public List<String> regionList;
-    public String hostVPCId;
+    public String hostVpcId;
+    public String destVpcId;
   }
 
   @Override
@@ -48,7 +49,8 @@ public class CloudBootstrap extends CloudTaskBase {
     CloudRegionSetup.Params params = new CloudRegionSetup.Params();
     params.providerUUID = taskParams().providerUUID;
     params.regionCode = regionCode;
-    params.hostVPCId = taskParams().hostVPCId;
+    params.hostVpcId = taskParams().hostVpcId;
+    params.destVpcId = taskParams().destVpcId;
     CloudRegionSetup task = new CloudRegionSetup();
     task.initialize(params);
     taskList.addTask(task);

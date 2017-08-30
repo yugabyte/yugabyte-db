@@ -21,12 +21,17 @@ public class NetworkManager extends DevopsBase {
   @Override
   protected String getCommandType() { return YB_CLOUD_COMMAND_TYPE; }
 
-  public JsonNode bootstrap(UUID regionUUID, String hostVPCId) {
+  public JsonNode bootstrap(UUID regionUUID, String hostVpcId, String destVpcId) {
     List<String> commandArgs = new ArrayList();
-    if (hostVPCId != null && !hostVPCId.isEmpty()) {
+    if (hostVpcId != null && !hostVpcId.trim().isEmpty()) {
       commandArgs.add("--host_vpc_id");
-      commandArgs.add(hostVPCId);
+      commandArgs.add(hostVpcId);
     }
+    if (destVpcId != null && !destVpcId.trim().isEmpty()) {
+      commandArgs.add("--dest_vpc_id");
+      commandArgs.add(destVpcId);
+    }
+
     return execCommand(regionUUID, "bootstrap", commandArgs);
   }
 

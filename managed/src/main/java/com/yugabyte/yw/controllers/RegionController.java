@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.controllers;
 
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -133,7 +134,7 @@ public class RegionController extends AuthenticatedController {
         	});
         } else {
         	// TODO: Move this to commissioner framework, Bootstrap the region with VPC, subnet etc.
-	        JsonNode vpcInfo = networkManager.bootstrap(region.uuid, form.hostVPCId);
+	        JsonNode vpcInfo = networkManager.bootstrap(region.uuid, form.hostVpcId, form.destVpcId);
 	        if (vpcInfo.has("error") || !vpcInfo.has(regionCode)) {
 	          region.delete();
 	          return ApiResponse.error(INTERNAL_SERVER_ERROR, "Region Bootstrap failed.");

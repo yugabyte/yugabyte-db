@@ -10,6 +10,7 @@ import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
@@ -234,9 +235,11 @@ public class RegionControllerTest extends FakeDBApplication {
         ConfigHelper.ConfigType.AWSRegionMetadata.getDescription());
     ObjectNode regionJson = Json.newObject();
     regionJson.put("code", "foo-region");
-    regionJson.put("hostVPCId", "host-vpc-id");
+    regionJson.put("hostVpcId", "host-vpc-id");
+    regionJson.put("destVpcId", "dest-vpc-id");
     JsonNode vpcInfo = Json.parse("{\"foo-region\": {\"zones\": {\"zone-1\": \"subnet-1\"}}}");
-    Mockito.when(networkManager.bootstrap(any(UUID.class), eq("host-vpc-id"))).thenReturn(vpcInfo);
+    when(networkManager.bootstrap(any(UUID.class), eq("host-vpc-id"), eq("dest-vpc-id")))
+        .thenReturn(vpcInfo);
     Result result = createRegion(provider.uuid, regionJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -256,10 +259,12 @@ public class RegionControllerTest extends FakeDBApplication {
         ConfigHelper.ConfigType.AWSRegionMetadata.getDescription());
     ObjectNode regionJson = Json.newObject();
     regionJson.put("code", "foo-region");
-    regionJson.put("hostVPCId", "host-vpc-id");
+    regionJson.put("hostVpcId", "host-vpc-id");
+    regionJson.put("destVpcId", "dest-vpc-id");
     ObjectNode vpcInfo = Json.newObject();
     vpcInfo.put("error", "Something went wrong!!.");
-    Mockito.when(networkManager.bootstrap(any(UUID.class), eq("host-vpc-id"))).thenReturn(vpcInfo);
+    when(networkManager.bootstrap(any(UUID.class), eq("host-vpc-id"), eq("dest-vpc-id")))
+        .thenReturn(vpcInfo);
     Result result = createRegion(provider.uuid, regionJson);
     assertInternalServerError(result, "Region Bootstrap failed.");
     Region r = Region.getByCode(provider, "foo-region");
