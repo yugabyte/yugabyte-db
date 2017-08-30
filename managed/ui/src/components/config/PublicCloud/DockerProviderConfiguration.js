@@ -54,7 +54,7 @@ class DockerProviderConfiguration extends Component {
         universeExistsForProvider = universeList.data.some(universe => universe.provider && (universe.provider.uuid === dockerProvider.uuid));
       }
       const deleteButtonDisabled = submitting || universeExistsForProvider;
-      let deleteButtonClassName = "btn btn-default delete-aws-btn";
+      let deleteButtonClassName = "btn btn-default manage-provider-btn";
       let deleteButtonTitle = "Delete this configuration.";
       if (deleteButtonDisabled) {
         deleteButtonTitle = "Delete all Docker based universes before deleting the configuration.";

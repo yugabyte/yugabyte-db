@@ -21,6 +21,7 @@ const PROVIDER_TYPE = "aws";
 class AWSProviderConfiguration extends Component {
   constructor(props) {
     super(props);
+    const { cloudBootstrap: {data: { type }, promiseState}} = props;
     this.state = {
       bootstrapSteps: [
         {type: "provider", name: "Create Provider", state: "Initializing"},
@@ -28,7 +29,8 @@ class AWSProviderConfiguration extends Component {
         {type: "accessKey", name: "Create Access Key", state: "Initializing"},
         {type: "initialize", name: "Create Instance Types", state: "Initializing"}
       ],
-      useHostVpc: false
+      useHostVpc: false,
+      refreshing: type === "initialize" && promiseState.isLoading()
     };
     this.createProviderConfig = this.createProviderConfig.bind(this);
     this.isHostInAWS = this.isHostInAWS.bind(this);
@@ -56,9 +58,19 @@ class AWSProviderConfiguration extends Component {
     return !IN_DEVELOPMENT_MODE && (isValidObject(hostInfo) && hostInfo["error"] === undefined);
   }
 
+  refreshPricingData(provider) {
+    this.props.initializeProvider(provider.uuid);
+    this.setState({refreshing: true});
+  }
+
   componentWillReceiveProps(nextProps) {
     const { cloudBootstrap: {data: { response, type }, error, promiseState}} = nextProps;
-    const { bootstrapSteps } = this.state;
+    const { bootstrapSteps, refreshing } = this.state;
+
+    if (refreshing && type === "initialize" && !promiseState.isLoading()) {
+      this.setState({refreshing: false});
+    }
+
     const currentStepIndex = bootstrapSteps.findIndex( (step) => step.type === type );
     if (currentStepIndex !== -1) {
       if (promiseState.isLoading()) {
@@ -122,6 +134,7 @@ class AWSProviderConfiguration extends Component {
   render() {
     const { handleSubmit, submitting, cloudBootstrap: { data: { type }, promiseState, error },
       configuredProviders, configuredRegions, accessKeys, universeList, hostInfo } = this.props;
+    const { refreshing } = this.state;
     const awsProvider = configuredProviders.data.find((provider) => provider.code === PROVIDER_TYPE);
     let universeExistsForProvider = false;
     let providerConfig;
@@ -146,13 +159,19 @@ class AWSProviderConfiguration extends Component {
         {name: "SSH Key", data: keyPairName},
       ];
 
-      const deleteButtonDisabled = submitting || universeExistsForProvider;
-      let deleteButtonClassName = "btn btn-default delete-aws-btn";
+      const deleteButtonDisabled = refreshing || submitting || universeExistsForProvider;
+      const buttonBaseClassName = "btn btn-default manage-provider-btn";
+      let deleteButtonClassName = buttonBaseClassName;
       let deleteButtonTitle = "Delete this AWS configuration.";
       if (deleteButtonDisabled) {
         deleteButtonTitle = "Can't delete this AWS configuration because one or more AWS universes are currently defined. Delete all AWS universes first.";
       } else {
         deleteButtonClassName += " delete-btn";
+      }
+
+      let refreshPricingLabel = "Refresh Pricing Data";
+      if (refreshing) {
+        refreshPricingLabel = "Refreshing...";
       }
 
       providerConfig = (
@@ -162,6 +181,8 @@ class AWSProviderConfiguration extends Component {
               <span className="pull-right" title={deleteButtonTitle}>
                 <YBButton btnText="Delete Configuration" disabled={deleteButtonDisabled}
                           btnClass={deleteButtonClassName} onClick={this.props.showDeleteProviderModal}/>
+                <YBButton btnText={refreshPricingLabel} btnClass={buttonBaseClassName} disabled={refreshing}
+                          onClick={this.refreshPricingData.bind(this, awsProvider)} />
                 <YBConfirmModal name="delete-aws-provider" title={"Confirm Delete"}
                                 onConfirm={handleSubmit(this.deleteProviderConfig.bind(this, awsProvider))}
                                 currentModal="deleteAWSProvider" visibleModal={this.props.visibleModal}
