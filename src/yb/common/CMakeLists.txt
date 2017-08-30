@@ -80,6 +80,7 @@ set(COMMON_SRCS
   schema.cc
   hybrid_time.cc
   doc_hybrid_time.cc
+  transaction.cc
   types.cc
   wire_protocol.cc
   yql_type.cc

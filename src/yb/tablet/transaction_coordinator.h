@@ -12,6 +12,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/opid_util.h"
 
 #include "yb/gutil/ref_counted.h"
@@ -20,15 +21,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/status.h"
 
-namespace rocksdb {
-
-class WriteBatch;
-
-}
-
 namespace yb {
-
-class TransactionMetadataPB;
 
 namespace server {
 
@@ -38,23 +31,16 @@ class Clock;
 
 namespace tserver {
 
+class GetTransactionStatusResponsePB;
 class TransactionStatePB;
 
 }
 
 namespace tablet {
 
+class TransactionIntentApplier;
+class TransactionParticipant;
 class UpdateTxnTransactionState;
-
-// Interface to object that should apply intents in RocksDB when transaction is applying.
-class TransactionIntentApplier {
- public:
-  virtual CHECKED_STATUS ApplyIntents(const TransactionId& id,
-                                      const consensus::OpId& op_id,
-                                      HybridTime hybrid_time) = 0;
- protected:
-  ~TransactionIntentApplier() {}
-};
 
 // Context for transaction coordinator. I.e. access to external facilities required by
 // transaction coordinator to do its job.
@@ -63,6 +49,8 @@ class TransactionCoordinatorContext {
   virtual const std::string& tablet_id() const = 0;
   virtual const client::YBClientPtr& client() const = 0;
   virtual server::Clock& clock() const = 0;
+  virtual consensus::Consensus::LeaderStatus LeaderStatus() const = 0;
+  virtual HybridTime LastCommittedHybridTime() const = 0;
 
   virtual std::unique_ptr<UpdateTxnTransactionState> CreateUpdateTransactionState(
       tserver::TransactionStatePB* request) = 0;
@@ -72,18 +60,14 @@ class TransactionCoordinatorContext {
   ~TransactionCoordinatorContext() {}
 };
 
-// Processing mode:
-//   LEADER - processing in leader.
-//   NON_LEADER - processing in non leader.
-YB_DEFINE_ENUM(ProcessingMode, (NON_LEADER)(LEADER));
-
 // Coordinates all transactions managed by specific tablet, i.e. all transactions
 // that selected this tablet as status tablet for it.
 // Also it handles running transactions, i.e. transactions that has intents in appropriate tablet.
 // Each tablet has separate transaction coordinator.
 class TransactionCoordinator {
  public:
-  explicit TransactionCoordinator(TransactionCoordinatorContext* context);
+  TransactionCoordinator(TransactionCoordinatorContext* context,
+                         TransactionParticipant* transaction_participant);
   ~TransactionCoordinator();
 
   // Used to pass arguments to ProcessReplicated.
@@ -104,11 +88,18 @@ class TransactionCoordinator {
   // Handles new request for transaction udpate.
   void Handle(std::unique_ptr<tablet::UpdateTxnTransactionState> request);
 
-  // Adds new running transaction.
-  void Add(const TransactionMetadataPB& data, rocksdb::WriteBatch *write_batch);
-
   // Prepares log garbage collection. Return min index that should be preserved.
-  int64_t PrepareGC(ProcessingMode mode);
+  int64_t PrepareGC();
+
+  // Starts background processes of transaction coordinator.
+  void Start();
+
+  // Stop background processes of transaction coordinator.
+  // And like most of other Shutdowns in our codebase it wait until shutdown completes.
+  void Shutdown();
+
+  CHECKED_STATUS GetStatus(const std::string& transaction_id,
+                           tserver::GetTransactionStatusResponsePB* response);
 
   // Returns count of managed transactions. Used in tests.
   size_t test_count_transactions() const;

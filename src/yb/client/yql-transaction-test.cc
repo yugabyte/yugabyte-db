@@ -26,6 +26,8 @@ DECLARE_uint64(transaction_table_default_num_tablets);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_bool(transaction_disable_heartbeat_in_tests);
+DECLARE_double(transaction_ignore_appying_probability_in_tests);
+DECLARE_uint64(transaction_check_interval_usec);
 
 namespace yb {
 namespace client {
@@ -219,6 +221,23 @@ TEST_F(YqlTransactionTest, PreserveLogs) {
   }
   latch.Wait();
   VerifyData(kTransactions);
+}
+
+TEST_F(YqlTransactionTest, ResendApplying) {
+  google::FlagSaver flag_saver;
+  std::atomic<double>& atomic_flag = *pointer_cast<std::atomic<double>*>(
+      &FLAGS_transaction_ignore_appying_probability_in_tests);
+
+  atomic_flag.store(1.0);
+  WriteData();
+  std::this_thread::sleep_for(5s); // Transaction should not be applied here.
+  ASSERT_NE(0, CountTransactions());
+
+  atomic_flag.store(0.0);
+  std::this_thread::sleep_for(1s); // Wait long enough for transaction to be applied.
+  ASSERT_EQ(0, CountTransactions());
+  VerifyData();
+  CHECK_OK(cluster_->RestartSync());
 }
 
 } // namespace client

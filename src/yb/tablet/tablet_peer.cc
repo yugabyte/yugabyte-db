@@ -181,6 +181,10 @@ Status TabletPeer::Init(const shared_ptr<Tablet>& tablet,
   }
   txn_tracker_.StartMemoryTracking(tablet_->mem_tracker());
 
+  if (tablet_->transaction_coordinator()) {
+    tablet_->transaction_coordinator()->Start();
+  }
+
   TRACE("TabletPeer::Init() finished");
   VLOG(2) << "T " << tablet_id() << " P " << consensus_->peer_uuid() << ": Peer Initted";
   return Status::OK();
@@ -500,10 +504,7 @@ Status TabletPeer::GetEarliestNeededLogIndex(int64_t* min_index) const {
 
   auto* transaction_coordinator = tablet()->transaction_coordinator();
   if (transaction_coordinator) {
-    auto mode = consensus_->leader_status() == consensus::Consensus::LeaderStatus::LEADER_AND_READY
-        ? ProcessingMode::LEADER
-        : ProcessingMode::NON_LEADER;
-    *min_index = std::min(*min_index, transaction_coordinator->PrepareGC(mode));
+    *min_index = std::min(*min_index, transaction_coordinator->PrepareGC());
   }
 
   if (tablet_->table_type() != KUDU_COLUMNAR_TABLE_TYPE) {
@@ -713,6 +714,20 @@ scoped_refptr<TransactionDriver> TabletPeer::CreateTransactionDriver() {
       &txn_order_verifier_,
       tablet_->table_type()));
 }
+
+consensus::Consensus::LeaderStatus TabletPeer::LeaderStatus() const {
+  scoped_refptr<consensus::Consensus> consensus;
+  {
+    std::lock_guard<simple_spinlock> lock(lock_);
+    consensus = consensus_;
+  }
+  return consensus ? consensus->leader_status() : consensus::Consensus::LeaderStatus::NOT_LEADER;
+}
+
+HybridTime TabletPeer::LastCommittedHybridTime() const {
+  return tablet_->mvcc_manager()->LastCommittedHybridTime();
+}
+
 
 }  // namespace tablet
 }  // namespace yb

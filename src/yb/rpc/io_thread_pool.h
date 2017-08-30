@@ -22,6 +22,7 @@ class IoThreadPool {
   void Join();
 
   IoService& io_service();
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

@@ -75,6 +75,23 @@ Int RandomUniformInt(std::mt19937_64* rng = nullptr) {
   return RandomUniformInt<Int>(Limits::min(), Limits::max(), rng);
 }
 
+template <class Real>
+Real RandomUniformReal(Real a, Real b, std::mt19937_64* rng = nullptr) {
+  if (!rng) {
+    rng = &ThreadLocalRandom();
+  }
+  return std::uniform_real_distribution<Real>(a, b)(*rng);
+}
+
+template <class Real>
+Real RandomUniformReal(std::mt19937_64* rng = nullptr) {
+  return RandomUniformReal(static_cast<Real>(0), static_cast<Real>(1), rng);
+}
+
+inline bool RandomActWithProbability(double probability, std::mt19937_64* rng = nullptr) {
+  return probability <= 0 ? false : RandomUniformReal<double>(rng) < probability;
+}
+
 template <class Collection>
 typename Collection::const_reference RandomElement(const Collection& collection,
                                                    std::mt19937_64* rng = nullptr) {

@@ -56,6 +56,7 @@ namespace tablet {
 class Tablet;
 class TabletMetadata;
 class TransactionCoordinatorContext;
+class TransactionParticipantContext;
 
 // A listener for logging the tablet related statuses as well as
 // piping it into the web UI.
@@ -97,6 +98,7 @@ struct BootstrapTabletData {
   TabletStatusListener* listener;
   scoped_refptr<log::LogAnchorRegistry> log_anchor_registry;
   std::shared_ptr<rocksdb::Cache> block_cache;
+  TransactionParticipantContext* transaction_participant_context;
   TransactionCoordinatorContext* transaction_coordinator_context;
 };
 

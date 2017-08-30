@@ -425,7 +425,7 @@ message ScannerKeepAliveResponsePB {
 }
 
 enum TransactionStatus {
-  CREATE = 1;
+  CREATED = 1;
   PENDING = 2;
 
   COMMITTED = 4;

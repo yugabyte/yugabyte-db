@@ -113,8 +113,13 @@ TEST_F(SchedulerTest, Shutdown) {
   for (auto& thread : threads) {
     thread.join();
   }
-  std::this_thread::sleep_for(200ms);
   ASSERT_GT(scheduled.load(std::memory_order_acquire), 0);
+  for (int i = 0; i != 20; ++i) {
+    if (scheduled.load(std::memory_order_acquire) == executed.load(std::memory_order_acquire)) {
+      break;
+    }
+    std::this_thread::sleep_for(200ms);
+  }
   ASSERT_EQ(scheduled.load(std::memory_order_acquire), executed.load(std::memory_order_acquire));
 }
 

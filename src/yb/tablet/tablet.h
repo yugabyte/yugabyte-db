@@ -55,7 +55,7 @@
 #include "yb/tablet/rowset.h"
 #include "yb/tablet/rowset_metadata.h"
 #include "yb/tablet/tablet_metadata.h"
-#include "yb/tablet/transaction_coordinator.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
@@ -101,8 +101,10 @@ class RowSetTree;
 class ScopedReadTransaction;
 struct TabletComponents;
 struct TabletMetrics;
+struct TransactionApplyData;
 class TransactionCoordinator;
 class TransactionCoordinatorContext;
+class TransactionParticipant;
 class WriteTransactionState;
 
 using util::LockBatch;
@@ -128,6 +130,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const std::shared_ptr<MemTracker>& parent_mem_tracker,
       MetricRegistry* metric_registry,
       const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry,
+      TransactionParticipantContext* transaction_participant_context,
       TransactionCoordinatorContext* transaction_coordinator_context,
       std::shared_ptr<rocksdb::Cache> block_cache = nullptr);
 
@@ -152,9 +155,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS ImportData(const std::string& source_dir);
 
-  CHECKED_STATUS ApplyIntents(const TransactionId& transaction_id,
-                              const consensus::OpId& op_id,
-                              HybridTime hybrid_time) override;
+  CHECKED_STATUS ApplyIntents(const TransactionApplyData& data) override;
 
   // Decode the Write (insert/mutate) operations from within a user's request.
   // Either fills in tx_state->row_ops or tx_state->kv_write_batch depending on TableType.
@@ -512,6 +513,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return transaction_coordinator_.get();
   }
 
+  TransactionParticipant* transaction_participant() {
+    return transaction_participant_.get();
+  }
+
   void ForceRocksDBCompactInTest();
 
   std::string DocDBDumpStrInTest();
@@ -789,6 +794,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::shared_ptr<yb::docdb::HistoryRetentionPolicy> retention_policy_;
 
   std::unique_ptr<TransactionCoordinator> transaction_coordinator_;
+
+  std::unique_ptr<TransactionParticipant> transaction_participant_;
 
   std::atomic<bool> has_written_something_{false};
 

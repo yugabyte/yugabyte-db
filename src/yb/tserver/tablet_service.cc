@@ -551,6 +551,28 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   tablet_peer->tablet()->transaction_coordinator()->Handle(std::move(state));
 }
 
+void TabletServiceImpl::GetTransactionStatus(const GetTransactionStatusRequestPB* req,
+                                             GetTransactionStatusResponsePB* resp,
+                                             rpc::RpcContext context) {
+  TRACE("GetTransactionStatus");
+
+  tablet::TabletPeerPtr tablet_peer;
+  if (!LookupTabletPeerOrRespond(server_->tablet_manager(),
+                                 req->tablet_id(),
+                                 resp,
+                                 &context,
+                                 &tablet_peer)) {
+    return;
+  }
+
+  auto status = tablet_peer->tablet()->transaction_coordinator()->GetStatus(
+      req->transaction_id(), resp);
+  if (PREDICT_FALSE(!status.ok())) {
+    SetupErrorAndRespond(
+        resp->mutable_error(), status, TabletServerErrorPB::UNKNOWN_ERROR, &context);
+  }
+}
+
 void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
                                           CreateTabletResponsePB* resp,
                                           rpc::RpcContext context) {

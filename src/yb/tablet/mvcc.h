@@ -299,6 +299,11 @@ class MvccManager {
   // never Abort().
   void GetApplyingTransactionsHybridTimes(std::vector<HybridTime>* hybrid_times) const;
 
+  HybridTime LastCommittedHybridTime() const {
+    std::lock_guard<LockType> l(lock_);
+    return cur_snap_.LastCommittedHybridTime();
+  }
+
   ~MvccManager();
 
  private:

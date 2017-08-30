@@ -764,6 +764,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
         tablet_peer->status_listener(),
         tablet_peer->log_anchor_registry(),
         block_cache_,
+        tablet_peer.get(),
         tablet_peer.get()};
     s = BootstrapTablet(data, &tablet, &log, &bootstrap_info);
     if (!s.ok()) {

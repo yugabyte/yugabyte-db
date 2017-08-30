@@ -57,7 +57,7 @@ class YBTransaction::Impl final {
     bool has_tablets_without_parameters = false;
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      if (!status_tablet_) {
+      if (!ready_) {
         RequestStatusTablet();
         waiters_.push_back(std::move(waiter));
         VLOG_WITH_PREFIX(1) << "Prepare, rejected";
@@ -115,7 +115,7 @@ class YBTransaction::Impl final {
         commit_callback_(Status::OK());
         return;
       }
-      if (!status_tablet_) {
+      if (!ready_) {
         RequestStatusTablet();
         waiters_.emplace_back(std::bind(&Impl::DoCommit, this, _1, transaction));
         return;
@@ -189,16 +189,11 @@ class YBTransaction::Impl final {
   void LookupTabletDone(const YBTransactionPtr& transaction, const Status& status) {
     VLOG_WITH_PREFIX(1) << "Lookup tablet done: " << status.ToString();
 
-    std::vector<Waiter> waiters;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       status_tablet_ = std::move(status_tablet_holder_);
-      waiters_.swap(waiters);
     }
-    for (const auto& waiter : waiters) {
-      waiter(status);
-    }
-    SendHeartbeat(tserver::TransactionStatus::CREATE, transaction_->shared_from_this());
+    SendHeartbeat(tserver::TransactionStatus::CREATED, transaction_->shared_from_this());
   }
 
   void SendHeartbeat(tserver::TransactionStatus status, const YBTransactionPtr& transaction) {
@@ -206,7 +201,7 @@ class YBTransaction::Impl final {
       return;
     }
 
-    if (status != tserver::TransactionStatus::CREATE &&
+    if (status != tserver::TransactionStatus::CREATED &&
         FLAGS_transaction_disable_heartbeat_in_tests) {
       HeartbeatDone(Status::OK(), status, transaction);
       return;
@@ -225,7 +220,19 @@ class YBTransaction::Impl final {
                      tserver::TransactionStatus transaction_status,
                      const YBTransactionPtr& transaction) {
     if (status.ok()) {
-      manager_->scheduler().Schedule(
+      if (transaction_status == tserver::TransactionStatus::CREATED) {
+        std::vector<Waiter> waiters;
+        {
+          std::lock_guard<std::mutex> lock(mutex_);
+          DCHECK(!ready_);
+          ready_ = true;
+          waiters_.swap(waiters);
+        }
+        for (const auto& waiter : waiters) {
+          waiter(status);
+        }
+      }
+      manager_->client()->messenger()->scheduler().Schedule(
           std::bind(&Impl::SendHeartbeat, this, tserver::TransactionStatus::PENDING, transaction),
           std::chrono::microseconds(FLAGS_transaction_heartbeat_usec));
     } else {
@@ -247,6 +254,8 @@ class YBTransaction::Impl final {
   internal::RemoteTabletPtr status_tablet_;
   internal::RemoteTabletPtr status_tablet_holder_;
   std::atomic<bool> complete_{false};
+  // Transaction is successfully initialized and ready to process intents.
+  bool ready_ = false;
   CommitCallback commit_callback_;
 
   struct TabletState {

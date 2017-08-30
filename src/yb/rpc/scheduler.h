@@ -14,6 +14,7 @@ class Status;
 namespace rpc {
 
 using ScheduledTaskId = int64_t;
+constexpr ScheduledTaskId kUninitializedScheduledTaskId = 0;
 
 class ScheduledTaskBase {
  public:

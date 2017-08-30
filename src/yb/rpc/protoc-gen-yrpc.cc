@@ -595,7 +595,7 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         "  void $rpc_name$Async(const $request$ &req,\n"
         "                       $response$ *response,\n"
         "                       ::yb::rpc::RpcController *controller,\n"
-        "                       const ::yb::rpc::ResponseCallback &callback);\n"
+        "                       ::yb::rpc::ResponseCallback callback);\n"
         );
         subs->Pop();
       }
@@ -651,8 +651,8 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         "\n"
         "void $service_name$Proxy::$rpc_name$Async(const $request$ &req,\n"
         "                     $response$ *resp, ::yb::rpc::RpcController *controller,\n"
-        "                     const ::yb::rpc::ResponseCallback &callback) {\n"
-        "  AsyncRequest(\"$rpc_name$\", req, resp, controller, callback);\n"
+        "                     ::yb::rpc::ResponseCallback callback) {\n"
+        "  AsyncRequest(\"$rpc_name$\", req, resp, controller, std::move(callback));\n"
         "}\n"
         "\n");
         subs->Pop();

@@ -6,8 +6,6 @@
 
 #include "yb/rpc/thread_pool.h"
 #include "yb/rpc/tasks_pool.h"
-#include "yb/rpc/io_thread_pool.h"
-#include "yb/rpc/scheduler.h"
 
 #include "yb/util/random_util.h"
 
@@ -16,7 +14,6 @@
 DEFINE_uint64(transaction_table_default_num_tablets, 24,
               "Automatically create transaction table with specified number of tablets if missing. "
               "0 to disable.");
-DEFINE_uint64(io_thread_pool_size, 4, "Size of allocated IO Thread Pool.");
 
 namespace yb {
 namespace client {
@@ -112,22 +109,7 @@ class TransactionManager::Impl {
   explicit Impl(const YBClientPtr& client)
       : client_(client),
         thread_pool_("TransactionManager", kQueueLimit, kMaxWorkers),
-        tasks_pool_(kQueueLimit),
-        io_thread_pool_(FLAGS_io_thread_pool_size),
-        scheduler_(&io_thread_pool_.io_service()) {}
-
-  ~Impl() {
-    Shutdown();
-  }
-
-  void Shutdown() {
-    bool expected = false;
-    if (closed_.compare_exchange_strong(expected, true)) {
-      scheduler_.Shutdown();
-      io_thread_pool_.Shutdown();
-      io_thread_pool_.Join();
-    }
-  }
+        tasks_pool_(kQueueLimit) {}
 
   void PickStatusTablet(PickStatusTabletCallback callback) {
     if (!tasks_pool_.Enqueue(&thread_pool_, client_, &status_table_exists_, std::move(callback))) {
@@ -139,18 +121,12 @@ class TransactionManager::Impl {
     return client_;
   }
 
-  rpc::Scheduler& scheduler() {
-    return scheduler_;
-  }
-
  private:
   YBClientPtr client_;
   std::atomic<bool> status_table_exists_{false};
   std::atomic<bool> closed_{false};
   yb::rpc::ThreadPool thread_pool_; // TODO async operations instead of pool
   yb::rpc::TasksPool<PickStatusTabletTask> tasks_pool_;
-  yb::rpc::IoThreadPool io_thread_pool_;
-  yb::rpc::Scheduler scheduler_;
 };
 
 TransactionManager::TransactionManager(const YBClientPtr& client)
@@ -159,20 +135,12 @@ TransactionManager::TransactionManager(const YBClientPtr& client)
 TransactionManager::~TransactionManager() {
 }
 
-void TransactionManager::Shutdown() {
-  impl_->Shutdown();
-}
-
 void TransactionManager::PickStatusTablet(PickStatusTabletCallback callback) {
   impl_->PickStatusTablet(std::move(callback));
 }
 
 const YBClientPtr& TransactionManager::client() const {
   return impl_->client();
-}
-
-rpc::Scheduler& TransactionManager::scheduler() {
-  return impl_->scheduler();
 }
 
 } // namespace client

@@ -78,6 +78,7 @@
 #include "yb/tablet/tablet_mm_ops.h"
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/transaction_coordinator.h"
+#include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/transactions/alter_schema_transaction.h"
 #include "yb/tablet/transactions/write_transaction.h"
 
@@ -199,6 +200,7 @@ Tablet::Tablet(
     const shared_ptr<MemTracker>& parent_mem_tracker,
     MetricRegistry* metric_registry,
     const scoped_refptr<LogAnchorRegistry>& log_anchor_registry,
+    TransactionParticipantContext* transaction_participant_context,
     TransactionCoordinatorContext* transaction_coordinator_context,
     std::shared_ptr<rocksdb::Cache> block_cache)
     : key_schema_(metadata->schema().CreateKeyProjection()),
@@ -240,9 +242,15 @@ Tablet::Tablet(
         ->AutoDetach(&metric_detacher_);
   }
 
-  if (transaction_coordinator_context) {
+  if (transaction_participant_context) {
+    transaction_participant_ = std::make_unique<TransactionParticipant>(
+        transaction_participant_context);
+  }
+
+  if (transaction_coordinator_context) { // TODO(dtxn) Create coordinator only for status tablets
+    CHECK_NOTNULL(transaction_participant_context);
     transaction_coordinator_ = std::make_unique<TransactionCoordinator>(
-        transaction_coordinator_context);
+        transaction_coordinator_context, transaction_participant_.get());
   }
 }
 
@@ -406,6 +414,10 @@ void Tablet::Shutdown() {
   LOG_SLOW_EXECUTION(WARNING, 1000,
                      Substitute("Tablet $0: Waiting for pending ops to complete", tablet_id())) {
     CHECK_OK(pending_op_counter_.WaitForAllOpsToFinish(MonoDelta::FromSeconds(60)));
+  }
+
+  if (transaction_coordinator_) {
+    transaction_coordinator_->Shutdown();
   }
 
   std::lock_guard<rw_spinlock> lock(component_lock_);
@@ -823,7 +835,7 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
   if (put_batch.has_transaction()) {
     key_prefix = '!' + put_batch.transaction().transaction_id() + '!';
     if (put_batch.transaction().has_isolation()) {
-      transaction_coordinator()->Add(put_batch.transaction(), &rocksdb_write_batch);
+      transaction_participant()->Add(put_batch.transaction(), &rocksdb_write_batch);
     }
   }
   for (int write_id = 0; write_id < put_batch.kv_pairs_size(); ++write_id) {
@@ -1295,17 +1307,15 @@ Status Tablet::ImportData(const std::string& source_dir) {
 }
 
 // TODO(dtxn) apply intents correctly
-Status Tablet::ApplyIntents(const TransactionId& transaction_id,
-                            const OpId& op_id,
-                            HybridTime hybrid_time) {
-  LOG(INFO) << "ApplyIntents: " << transaction_id;
+Status Tablet::ApplyIntents(const TransactionApplyData& data) {
+  LOG(INFO) << "ApplyIntents: " << data.transaction_id;
 
   auto iter = docdb::CreateRocksDBIterator(rocksdb_.get(),
                                            docdb::BloomFilterMode::USE_BLOOM_FILTER,
                                            rocksdb::kDefaultQueryId);
   iter->SeekToFirst();
   std::string prefix = "!";
-  prefix.insert(prefix.end(), transaction_id.begin(), transaction_id.end());
+  prefix.insert(prefix.end(), data.transaction_id.begin(), data.transaction_id.end());
   prefix += '!';
 
   KeyValueWriteBatchPB put_batch;
@@ -1323,7 +1333,7 @@ Status Tablet::ApplyIntents(const TransactionId& transaction_id,
     iter->Next();
   }
 
-  ApplyKeyValueRowOperations(put_batch, op_id, hybrid_time);
+  ApplyKeyValueRowOperations(put_batch, data.op_id, data.hybrid_time);
   return Status::OK();
 }
 

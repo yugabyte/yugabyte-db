@@ -16,6 +16,8 @@ namespace yb {
 
 namespace tserver {
 
+class GetTransactionStatusRequestPB;
+class GetTransactionStatusResponsePB;
 class UpdateTransactionRequestPB;
 
 }
@@ -30,6 +32,15 @@ void UpdateTransaction(const MonoTime& deadline,
                        YBClient* client,
                        tserver::UpdateTransactionRequestPB* req,
                        UpdateTransactionCallback callback);
+
+typedef std::function<void(const Status&, const tserver::GetTransactionStatusResponsePB&)>
+    GetTransactionStatusCallback;
+
+void GetTransactionStatus(const MonoTime& deadline,
+                          internal::RemoteTablet* tablet,
+                          YBClient* client,
+                          tserver::GetTransactionStatusRequestPB* req,
+                          GetTransactionStatusCallback callback);
 
 } // namespace client
 } // namespace yb

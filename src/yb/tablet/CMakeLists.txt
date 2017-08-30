@@ -23,13 +23,14 @@ set(TABLET_SRCS
   tablet_peer_mm_ops.cc
   tablet_peer.cc
   transaction_coordinator.cc
+  transaction_participant.cc
+  transaction_order_verifier.cc
   transactions/transaction.cc
   transactions/alter_schema_transaction.cc
   transactions/transaction_driver.cc
   transactions/transaction_tracker.cc
   transactions/update_txn_transaction.cc
   transactions/write_transaction.cc
-  transaction_order_verifier.cc
   cfile_set.cc
   compaction.cc
   compaction_policy.cc

@@ -27,11 +27,9 @@ class TransactionManager {
   explicit TransactionManager(const YBClientPtr& client);
   ~TransactionManager();
 
-  void Shutdown();
   void PickStatusTablet(PickStatusTabletCallback callback);
 
   const YBClientPtr& client() const;
-  rpc::Scheduler& scheduler();
 
  private:
   class Impl;

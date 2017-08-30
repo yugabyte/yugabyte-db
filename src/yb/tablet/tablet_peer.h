@@ -70,6 +70,7 @@ class UpdateTxnTransactionState;
 // class also splits the work and coordinates multi-threaded execution.
 class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
                    public consensus::ReplicaTransactionFactory,
+                   public TransactionParticipantContext,
                    public TransactionCoordinatorContext {
  public:
   typedef std::map<int64_t, int64_t> MaxIdxToSegmentSizeMap;
@@ -223,6 +224,10 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   const client::YBClientPtr& client() const override {
     return client_;
   }
+
+  consensus::Consensus::LeaderStatus LeaderStatus() const override;
+
+  HybridTime LastCommittedHybridTime() const override;
 
   const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry() const {
     return log_anchor_registry_;

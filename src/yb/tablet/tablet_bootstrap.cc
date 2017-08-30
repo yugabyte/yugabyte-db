@@ -506,7 +506,7 @@ Status TabletBootstrap::FinishBootstrap(const string& message,
 Status TabletBootstrap::OpenTablet(bool* has_blocks) {
   auto tablet = std::make_unique<Tablet>(
       meta_, data_.clock, mem_tracker_, metric_registry_, log_anchor_registry_,
-      data_.transaction_coordinator_context, block_cache_);
+      data_.transaction_participant_context, data_.transaction_coordinator_context, block_cache_);
   // doing nothing for now except opening a tablet locally.
   LOG_TIMING_PREFIX(INFO, LogPrefix(), "opening tablet") {
     RETURN_NOT_OK(tablet->Open());

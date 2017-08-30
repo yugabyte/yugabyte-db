@@ -31,9 +31,13 @@
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/rpc/connection.h"
+#include "yb/rpc/io_thread_pool.h"
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/response_callback.h"
+#include "yb/rpc/scheduler.h"
+
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -196,6 +200,10 @@ class Messenger {
   void BreakConnectivityWith(const IpAddress& address);
   void RestoreConnectivityWith(const IpAddress& address);
 
+  Scheduler& scheduler() {
+    return scheduler_;
+  }
+
  private:
   FRIEND_TEST(TestRpc, TestConnectionKeepalive);
   friend class DelayedTask;
@@ -296,6 +304,9 @@ class Messenger {
 
   // Set of addresses with artificially broken connectivity.
   std::unordered_set<IpAddress, IpAddressHash> broken_connectivity_;
+
+  IoThreadPool io_thread_pool_;
+  Scheduler scheduler_;
 
   DISALLOW_COPY_AND_ASSIGN(Messenger);
 };

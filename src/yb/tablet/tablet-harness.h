@@ -112,6 +112,7 @@ class TabletHarness {
                              std::shared_ptr<MemTracker>(),
                              metrics_registry_.get(),
                              new log::LogAnchorRegistry(),
+                             nullptr /* transaction_participant_context */,
                              nullptr /* transaction_coordinator_context */));
     return Status::OK();
   }

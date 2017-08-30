@@ -65,6 +65,7 @@ DEFINE_int32(rpc_default_keepalive_time_ms, 65000,
              "If an RPC connection from a client is idle for this amount of time, the server "
              "will disconnect the client.");
 TAG_FLAG(rpc_default_keepalive_time_ms, advanced);
+DEFINE_uint64(io_thread_pool_size, 4, "Size of allocated IO Thread Pool.");
 
 namespace yb {
 namespace rpc {
@@ -172,9 +173,14 @@ void Messenger::Shutdown() {
     reactor->Shutdown();
   }
 
+  scheduler_.Shutdown();
+  io_thread_pool_.Shutdown();
+
   for (auto* reactor : reactors) {
     reactor->Join();
   }
+
+  io_thread_pool_.Join();
 }
 
 Status Messenger::ListenAddress(const Endpoint& accept_endpoint, Endpoint* bound_endpoint) {
@@ -344,7 +350,9 @@ Messenger::Messenger(const MessengerBuilder &bld)
   : name_(bld.name_),
     connection_context_factory_(bld.connection_context_factory_),
     metric_entity_(bld.metric_entity_),
-    retain_self_(this) {
+    retain_self_(this),
+    io_thread_pool_(FLAGS_io_thread_pool_size),
+    scheduler_(&io_thread_pool_.io_service()) {
   for (int i = 0; i < bld.num_reactors_; i++) {
     reactors_.push_back(new Reactor(retain_self_, i, bld));
   }
