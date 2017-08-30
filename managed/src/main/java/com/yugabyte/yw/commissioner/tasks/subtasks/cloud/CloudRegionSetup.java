@@ -41,7 +41,9 @@ public class CloudRegionSetup extends CloudTaskBase {
     final Region region = Region.createWithMetadata(getProvider(), regionCode, metaData);
     NetworkManager networkManager = Play.current().injector().instanceOf(NetworkManager.class);
 
-    JsonNode vpcInfo = networkManager.bootstrap(region.uuid, taskParams().hostVPCId);
+    JsonNode vpcInfo = networkManager.bootstrap(region.uuid,
+                                                taskParams().hostVpcId,
+                                                taskParams().destVpcId);
     if (vpcInfo.has("error") || !vpcInfo.has(regionCode)) {
       // If network bootstrap failed, we will delete the newly created region.
       region.delete();
