@@ -22,6 +22,7 @@
           "build/latest/bin/yb-generate_partitions_main",
           "build/latest/bin/yb-bulk_load",
           "thirdparty/installed/uninstrumented/bin/*",
+          "thirdparty/installed/common/bin/redis-cli",
           "thirdparty/build/common/cqlsh/bin/*"],
   "lib"      : ["thirdparty/build/common/cqlsh/lib/*"],
   "pylib"    : ["thirdparty/build/common/cqlsh/pylib/*"],

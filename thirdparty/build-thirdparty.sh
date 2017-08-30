@@ -330,6 +330,7 @@ F_TRACE=""
 F_TRACE_VIEWER=""
 F_LIBBACKTRACE=""
 F_CQLSH=""
+F_REDIS_CLI=""
 
 if is_linux; then
   F_TSAN=1
@@ -417,6 +418,8 @@ while [[ $# -gt 0 ]]; do
                     F_LIBBACKTRACE=1 ;;
     "cqlsh")        building_what+=( cqlsh )
                     F_CQLSH=1 ;;
+    "redis-cli")    building_what+=( redis_cli )
+                    F_REDIS_CLI=1 ;;
     *)
       echo "Invalid option: $1" >&2
       exit 1
@@ -617,6 +620,10 @@ if [[ -z ${YB_THIRDPARTY_TSAN_ONLY_BUILD:-} ]]; then
 
   if [ -n "$F_ALL" -o -n "$F_CQLSH" ]; then
     do_build_if_necessary cqlsh
+  fi
+
+  if [ -n "$F_ALL" -o -n "$F_REDIS_CLI" ]; then
+    do_build_if_necessary redis_cli
   fi
 
   ### Build C++ dependencies

@@ -376,6 +376,10 @@ if [[ ! -d $CRYPT_BLOWFISH_DIR ]]; then
   fetch_and_expand "$CRYPT_BLOWFISH_ARCHIVE" "$CRYPT_BLOWFISH_URL"
 fi
 
+if [[ ! -d $REDIS_DIR ]]; then
+  fetch_and_expand "redis-${REDIS_VERSION}.tar.gz" "$REDIS_URL"
+fi
+
 
 echo "---------------"
 if [[ $DOWNLOAD_ONLY -eq 1 ]]; then
