@@ -8,16 +8,25 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import './TaskDetail.scss';
 import { StepProgressBar } from '../../common/indicators';
 import { YBResourceCount } from 'components/common/descriptors';
+import {Row, Col} from 'react-bootstrap';
 import './TaskDetail.scss';
 import moment from 'moment';
+import _ from 'lodash';
+import Highlight from 'react-highlight';
+import "highlight.js/styles/github.css";
 
 class TaskDetail extends Component {
   constructor(props) {
     super(props);
     this.gotoTaskList = this.gotoTaskList.bind(this);
+    this.toggleErrorStringDisplay = this.toggleErrorStringDisplay.bind(this);
+    this.state = {errorStringDisplay: false}
   }
   gotoTaskList() {
     browserHistory.push(this.context.prevPath);
+  }
+  toggleErrorStringDisplay() {
+    this.setState({errorStringDisplay: !this.state.errorStringDisplay})
   }
   componentWillMount() {
     const {params} = this.props;
@@ -29,16 +38,8 @@ class TaskDetail extends Component {
   }
   render() {
     const {tasks: {failedTasks, taskProgressData}} = this.props;
+    const self = this;
     const currentTaskData = taskProgressData.data;
-    const failedTaskList = isNonEmptyArray(failedTasks.data.failedSubTasks) ? failedTasks.data.failedSubTasks.map(function(subTask){
-      return {
-        "creationTime": subTask.creationTime,
-        "id": subTask.subTaskUUID,
-        "taskType": subTask.subTaskType,
-        "taskState": subTask.subTaskState,
-        "groupType": subTask.subTaskGroupType
-      };
-    }) : [];
     const formatDateField = function(cell) {
       return moment(cell).format("YYYY-MM-DD hh:mm:ss a");
     };
@@ -63,6 +64,62 @@ class TaskDetail extends Component {
     if (taskProgressData.data.details && isNonEmptyArray(taskProgressData.data.details.taskDetails)) {
       taskProgressBarData = <StepProgressBar progressData={taskProgressData.data}/>;
     }
+    let taskFailureDetails = <span/>;
+    let getFullErrorString = function(errorString) {
+      return <Highlight className='json'>{errorString}</Highlight>;
+    }
+    const getTruncatedErrorString = function(errorString) {
+      return (
+        <Highlight className='json'>
+          {_.trunc(errorString, {
+            'length': 400,
+            'separator': /,? +/
+          })}
+        </Highlight>
+      )
+    }
+
+    const getErrorMessageDisplay = function(errorString) {
+      let errorElement = getTruncatedErrorString(errorString);
+      let chevronClassName = "fa fa-chevron-down";
+      let displayMessage = "View More";
+      if (self.state.errorStringDisplay) {
+        errorElement = <Highlight className='json'>{errorString}</Highlight>;
+        chevronClassName = "fa fa-chevron-up";
+        displayMessage = "View Less";
+      }
+
+      return (
+        <div>
+          {errorElement}
+          <div className="task-detail-view-toggle text-center" onClick={self.toggleErrorStringDisplay}>
+            {displayMessage}&nbsp;<i className={chevronClassName} />
+          </div>
+        </div>
+      )
+    }
+
+    if (isNonEmptyArray(failedTasks.data.failedSubTasks)) {
+      taskFailureDetails = failedTasks.data.failedSubTasks.map(function(subTask){
+        let errorString = <span/>;
+        if (subTask.errorString !== "null") {
+          errorString =
+            <Col lg={12} className="error-string-detail-container">
+              {getErrorMessageDisplay(subTask.errorString)}
+            </Col>
+        }
+        return (
+          <div key={subTask.creationTime}>
+            <Col lg={3}>{formatDateField(subTask.creationTime)}</Col>
+            <Col lg={3}>{subTask.subTaskType}</Col>
+            <Col lg={3}>{subTask.subTaskState}</Col>
+            <Col lg={3}>{subTask.subTaskGroupType}</Col>
+            {errorString}
+          </div>
+        );
+      })
+    }
+
     return (
       <div className="task-failure-container">
         <div className="task-failure-top-heading">
@@ -73,25 +130,15 @@ class TaskDetail extends Component {
         </div>
         <div className="task-failure-detail-heading">Task Failure Details</div>
         <div className="task-failure-detail-container">
-          <BootstrapTable data={failedTaskList}>
-            <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
-            <TableHeaderColumn dataField="creationTime" dataFormat={formatDateField}
-                               columnClassName="no-border name-column" className="no-border">
-              Created On
-            </TableHeaderColumn>
-            <TableHeaderColumn dataField="taskType" columnClassName="no-border name-column"
-                               className="no-border">
-              Task Type
-            </TableHeaderColumn>
-            <TableHeaderColumn dataField="taskState" columnClassName="no-border name-column"
-                               className="no-border">
-              Task State
-            </TableHeaderColumn>
-            <TableHeaderColumn dataField="groupType" columnClassName="no-border"
-                               className="no-border" dataAlign="left">
-              Group Type
-            </TableHeaderColumn>
-          </BootstrapTable>
+          <Row className="task-failure-heading-row">
+            <Col lg={3}>Created On</Col>
+            <Col lg={3}>Task Type</Col>
+            <Col lg={3}>Task State</Col>
+            <Col lg={3}>Group Type</Col>
+          </Row>
+          <Row>
+            {taskFailureDetails}
+          </Row>
         </div>
       </div>
     );
