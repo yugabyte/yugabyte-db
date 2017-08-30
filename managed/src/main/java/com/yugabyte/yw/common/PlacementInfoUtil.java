@@ -289,7 +289,7 @@ public class PlacementInfoUtil {
 
     LOG.info("Placement={}, nodes={}.", taskParams.placementInfo,
              taskParams.nodeDetailsSet.size());
-
+    taskParams.userIntent.isMultiAZ = isMultiAZSetup(taskParams);
     ConfigureNodesMode mode = getPureExpandOrShrinkMode(universe, taskParams);
     if (mode == ConfigureNodesMode.NEW_CONFIG) {
       // Not a pure expand or shrink.
@@ -308,8 +308,6 @@ public class PlacementInfoUtil {
       // Clear the nodes as it we will pick a new set of nodes.
       taskParams.nodeDetailsSet.clear();
     }
-
-    taskParams.userIntent.isMultiAZ = isMultiAZSetup(taskParams);
 
     // Compute the node states that should be configured for this operation.
     configureNodeStates(taskParams, universe, mode);
