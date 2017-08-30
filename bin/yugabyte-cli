@@ -246,7 +246,7 @@ class ClusterControl():
         daemon_type = "tserver"
         return [
             "--tserver_master_addrs {}".format(self.options.master_addresses),
-            "--memory_limit_hard_bytes {}".format(256 * 1024 * 1024),
+            "--memory_limit_hard_bytes {}".format(1024 * 1024 * 1024),
             "--redis_proxy_webserver_port {}".format(
                 self.options.get_address(daemon_type, daemon_index, "redis_http")),
             "--redis_proxy_bind_address {}".format(

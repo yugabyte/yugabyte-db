@@ -143,6 +143,7 @@ public class MiniYBCluster implements AutoCloseable {
   private List<String> getCommonDaemonFlags() {
     final List<String> commonFlags = Lists.newArrayList(
         "--logtostderr",
+        "--memory_limit_hard_bytes=1073741824",  // 1 GB.
         "--webserver_doc_root=" + TestUtils.getWebserverDocRoot());
     final String extraFlagsFromEnv = System.getenv("YB_EXTRA_DAEMON_FLAGS");
     if (extraFlagsFromEnv != null) {

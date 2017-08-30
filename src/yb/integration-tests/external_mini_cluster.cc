@@ -1600,7 +1600,7 @@ Status ExternalMaster::Start(bool shell_mode) {
   flags.push_back("--rpc_bind_addresses=" + rpc_bind_address_);
   flags.push_back("--webserver_interface=localhost");
   flags.push_back(Substitute("--webserver_port=$0", http_port_));
-  flags.push_back(Substitute("--memory_limit_hard_bytes=$0", 256 * 1024 * 1024));
+  flags.push_back(Substitute("--memory_limit_hard_bytes=$0", 1024 * 1024 * 1024));
   // On first start, we need to tell the masters what their list of expected peers is and set the
   // create_cluster flag. For 'shell' master, there is no create flag or master addresses needed.
   if (!shell_mode) {
@@ -1659,7 +1659,7 @@ Status ExternalTabletServer::Start(bool start_cql_proxy) {
   flags.push_back(Substitute("--cql_proxy_webserver_port=$0", cql_http_port_));
   flags.push_back(Substitute("--start_cql_proxy=$0", start_cql_proxy_));
   flags.push_back("--tserver_master_addrs=" + master_addrs_);
-  flags.push_back(Substitute("--memory_limit_hard_bytes=$0", 256 * 1024 * 1024));
+  flags.push_back(Substitute("--memory_limit_hard_bytes=$0", 1024 * 1024 * 1024));
 
   // Use conservative number of threads for the mini cluster for unit test env
   // where several unit tests tend to run in parallel.

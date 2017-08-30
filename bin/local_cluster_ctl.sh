@@ -311,7 +311,7 @@ start_tserver() {
        --v "$verbose_level" \
        --tserver_master_addrs "$master_addresses" \
        --block_cache_capacity_mb 128 \
-       --memory_limit_hard_bytes $(( 256 * 1024 * 1024)) \
+       --memory_limit_hard_bytes $(( 1024 * 1024 * 1024)) \
        --webserver_port $(( $tserver_http_port_base + $tserver_index )) \
        --rpc_bind_addresses 127.0.0.$tserver_index:$(( $tserver_rpc_port )) \
        --redis_proxy_webserver_port $(( $redis_http_port_base + $tserver_index )) \

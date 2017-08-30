@@ -85,7 +85,7 @@ void YBTest::SetUp() {
   InitSpinLockContentionProfiling();
   InitGoogleLoggingSafeBasic("yb_test");
   FLAGS_enable_tracing = true;
-  FLAGS_memory_limit_hard_bytes = 256 * 1024 * 1024;
+  FLAGS_memory_limit_hard_bytes = 1024 * 1024 * 1024;
 }
 
 string YBTest::GetTestPath(const string& relative_path) {
