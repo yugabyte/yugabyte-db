@@ -21,8 +21,9 @@
 }
 
 .task-failure-detail-container {
-  width: 80%;
-  margin-left: 10%;
+  width: 92%;
+  margin-left: 4%;
+  padding: 4px 18px;
   border: 1px solid $YB_DARK_GREY;
   border-radius: 6px;
 }
@@ -65,4 +66,34 @@
   font-size: 16px;
   font-weight: 400;
   cursor: pointer;
+}
+
+.error-string-display {
+  padding: 10px 6px;
+}
+
+.task-failure-heading-row {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.task-detail-view-toggle {
+  display:inline-block;
+  color:#444;
+  border:1px solid #CCC;
+  background:#DDD;
+  box-shadow: 0 0 5px -1px rgba(0,0,0,0.2);
+  cursor:pointer;
+  vertical-align:middle;
+  max-width: 100px;
+  padding: 5px;
+  text-align: center;
+}
+.task-detail-view-toggle:active {
+  color:red;
+  box-shadow: 0 0 5px -1px rgba(0,0,0,0.6);
+}
+
+.error-string-detail-container .hljs {
+  height: auto;
 }
