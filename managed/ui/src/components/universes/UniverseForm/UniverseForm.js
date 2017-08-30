@@ -390,7 +390,8 @@ class UniverseForm extends Component {
     const {universe: {showModal, visibleModal, currentUniverse}, cloud: {nodeInstanceList, instanceTypes}} = nextProps;
 
     if (nextProps.cloud.instanceTypes.data !== this.props.cloud.instanceTypes.data
-      && isNonEmptyArray(nextProps.cloud.instanceTypes.data) && this.state.providerSelected) {
+      && isNonEmptyArray(nextProps.cloud.instanceTypes.data) && this.state.providerSelected
+      && nextProps.type !== "Edit") {
       let instanceTypeSelected = instanceTypes.data[0].instanceTypeCode;
       if (this.getCurrentProvider(this.state.providerSelected).code === "aws") {
         instanceTypeSelected = "m3.medium";
