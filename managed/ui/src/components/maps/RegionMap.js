@@ -84,12 +84,12 @@ export default class RegionMap extends Component {
       }
       return (
         <span>
+          { (showRegionLabels && <Row className="yb-map-labels">{regionLabels}</Row>) || null }
           <Row>
             <Col md={12}>
               {regionMap}
             </Col>
           </Row>
-          { (showRegionLabels && <Row className="yb-map-labels">{regionLabels}</Row>) || null }
         </span>
       );
     }
