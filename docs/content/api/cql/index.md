@@ -35,15 +35,32 @@ Statement | Description |
 Data manipulation language (DML) statements are to read from and write to the existing database objects. Similar to Apache Cassandra bebhavior, YugaByte implicitly commits any updates by DML statements.
 
 Statement | Description |
----------|-------------|
+----------|-------------|
 [`DELETE`](dml_delete) | Delete specific rows from a table.
 [`INSERT`](dml_insert) | Insert rows into a table.
 [`SELECT`](dml_select) | Select rows from a table.
-[`TRUNCATE`](dml_truncate) | Deletes all rows from specified tables.
 [`UPDATE`](dml_update) | Update rows in a table.
+[`TRUNCATE`](.) | Not yet supported.
 
 ## Transaction Control Statements
 Transaction control statements are under development.
+
+## Expressions
+An expression is a finite combination of one or more values, operators, functions, and expressions that specifies a computation. Expression can be used in the following components.
+<li>The select list of [`SELECT`](dml_select) statement. For example, `SELECT id + 1 FROM yugatab;`.</li>
+<li>The WHERE clause in [`SELECT`](dml_select), [`DELETE`](dml_delete), [`INSERT`](dml_insert), or [`UPDATE`](dml_update).</li>
+<li>The IF clause in [`DELETE`](dml_delete), [`INSERT`](dml_insert), or [`UPDATE`](dml_update).</li>
+<li>The VALUES clause in [`INSERT`](dml_insert).</li>
+<li>The SET clause in [`UPDATE`](dml_update).</li>
+
+Currently, the following expressions are supported.
+
+Expression | Description |
+-----------|-------------|
+[Simple Value](expr_simple) | Column, constant, or null. Column alias cannot be used in expression yet. |
+[Subscript `[]`](expr_subscript) | Subscripting columns of collection datatypes |
+[Operator Call](expr_ocall) | Builtin operators only |
+[Function Call](expr_fcall) | Builtin function calls only |
 
 ## DataTypes
 All primitive datatypes in Apache Cassandra are supported.
