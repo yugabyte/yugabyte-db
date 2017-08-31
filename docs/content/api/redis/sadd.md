@@ -12,13 +12,16 @@ This command is to add one or more given values to the set that is associated wi
 Returns the number of new members that were added by this command not including the duplicates.
 
 ## EXAMPLES
-% <code>SADD yuga_world "Africa"</code><br>
-% 1<br>
-% <code>SADD yuga_world "America"</code><br>
-% 1<br>
-% <code>SMEMBERS yuga_world</code><br>
-% 1) "Africa"<br>
-% 2) "America"<br>
+
+```
+% SADD yuga_world "Africa"
+% 1
+% SADD yuga_world "America"
+% 1
+% SMEMBERS yuga_world
+% 1) "Africa"
+% 2) "America"
+```
 
 ## SEE ALSO
 [`scard`](../scard/), [`sismember`](../sismember/), [`smembers`](../smembers/), [`srem`](../srem/)
