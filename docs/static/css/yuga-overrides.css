@@ -91,7 +91,10 @@ header .bar .logo img {
   background: #f75821 !important;
 }
 
-.palette-primary-orange,
+.palette-primary-orange {
+  background: none !important;
+}
+
 .palette-primary-orange .footer,
 .palette-primary-orange .header {
   background: #0f1229 !important;
