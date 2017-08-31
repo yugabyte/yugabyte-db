@@ -109,7 +109,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 
 	data = palloc0(sizeof(JsonDecodingData));
 	data->context = AllocSetContextCreate(TopMemoryContext,
-										"text conversion context",
+										"wal2json output context",
 										ALLOCSET_DEFAULT_MINSIZE,
 										ALLOCSET_DEFAULT_INITSIZE,
 										ALLOCSET_DEFAULT_MAXSIZE);
