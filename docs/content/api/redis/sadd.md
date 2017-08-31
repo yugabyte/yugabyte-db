@@ -21,4 +21,4 @@ Returns the number of new members that were added by this command not including 
 % 2) "America"<br>
 
 ## SEE ALSO
-[`scard`](/api/redis/scard/), [`sismember`](/api/redis/sismember/), [`smembers`](/api/redis/smembers/), [`srem`](/api/redis/srem/)
+[`scard`](../scard/), [`sismember`](../sismember/), [`smembers`](../smembers/), [`srem`](../srem/)

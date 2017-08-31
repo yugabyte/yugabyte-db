@@ -8,55 +8,58 @@ table {
 }
 </style>
 
-<h2>Introduction</h2>
-YugaByte supports the following Apache CQL features.
+## Introduction
+YugaByte supports the following Apache Cassandra features.
 <li> All primitive datatypes</li>
 <li> Data definition language (DDL) statements</li>
 <li> Data manipulation language (DML) statements</li>
 <li> Transaction control statements</li>
 
-<h2>DDL Statements</h2>
+## DDL Statements
 Data definition language (DDL) statements are instructions for the following database operations.
 <li> Create, alter, and drop database objects</li>
 <li> Create, grant, and revoke users and roles</li>
 
 Statement | Description |
 ----------|-------------|
-[`ALTER TABLE`](/api/ql/alter-table) | Alter a table |
-[`CREATE KEYSPACE`](/api/ql/create-database) | Create a new keyspace |
-[`CREATE TABLE`](/api/ql/create-table) | Create a new table |
-[`DROP KEYSPACE`](/api/ql/drop-database) | Delete a keyspace and associated objects |
-[`DROP TABLE`](/api/ql/drop-table) | Remove a table |
+[`ALTER TABLE`](ddl_alter_table) | Alter a table |
+[`CREATE KEYSPACE`](ddl_create_keyspace) | Create a new keyspace |
+[`CREATE TABLE`](ddl_create_table) | Create a new table |
+[`CREATE TYPE`](ddl_create_type) | Construct a user-defined datatype |
+[`DROP KEYSPACE`](ddl_drop_keyspace) | Delete a keyspace and associated objects |
+[`DROP TABLE`](ddl_drop_table) | Remove a table |
+[`DROP TYPE`](ddl_drop_type) | Remove a user-defined datatype |
+[`USE`](ddl_use) | Use an existing keyspace for subsequent commands|
 
-<h2>DML Statements</h2>
-Data manipulation language (DML) statements are to read from and write to the existing database objects. Similar to Apache CQL bebhavior, YugaByte implicitly commits any updates by DML statements.
+## DML Statements
+Data manipulation language (DML) statements are to read from and write to the existing database objects. Similar to Apache Cassandra bebhavior, YugaByte implicitly commits any updates by DML statements.
 
 Statement | Description |
 ---------|-------------|
-[`DELETE`](/api/ql/delete) | Delete specific rows from a table.
-[`INSERT`](/api/ql/insert) | Insert rows into a table.
-[`SELECT`](/api/ql/select) | Select rows from a table.
-[`TRUNCATE`](/api/ql/truncate) | Deletes all rows from specified tables.
-[`UPDATE`](/api/ql/update) | Update rows in a table.
+[`DELETE`](dml_delete) | Delete specific rows from a table.
+[`INSERT`](dml_insert) | Insert rows into a table.
+[`SELECT`](dml_select) | Select rows from a table.
+[`TRUNCATE`](dml_truncate) | Deletes all rows from specified tables.
+[`UPDATE`](dml_update) | Update rows in a table.
 
-<h2>Transaction Control Statements</h2>
+## Transaction Control Statements
 Transaction control statements are under development.
 
-<h2>DataTypes</h2>
-All primitive datatypes in Apache CQL are supported.
+## DataTypes
+All primitive datatypes in Apache Cassandra are supported.
 
 Type | Description |
 -----|-------------|
-[`TINYINT`](int8) | 8-bit signed integer |
-[`SMALLINT`](int16) | 16-bit signed integer |
-[<code>INT &#124; INT32</code>](int32) | 32-bit signed integer |
-[`BIGINT`](int64) | 64-bit signed integer |
-[`FLOAT`](float) | A 64-bit, inexact, floating-point number |
-[`DOUBLE`](double) | A 64-bit, inexact, floating-point number |
-[`DECIMAL`](decimal) | An exact, fixed-point number |
-[`BOOL`](bool) | A Boolean value |
-[`DATE`](date) | A date |
-[`TIMESTAMP`](timestamp) | A date and time pairing |
-[`INTERVAL`](interval) | A span of time |
-[`TEXT`](string) | A string of Unicode characters |
-[`BYTES`](bytes) | A string of binary characters |
+[`BIGINT`](type_int) | 64-bit signed integer |
+[`BLOB`](type_blob) | A string of binary characters |
+[`BOOL`](type_bool) | A Boolean value |
+[`DATE`](type_date) | A date |
+[`DECIMAL`](type_decimal) | An exact, fixed-point number |
+[`DOUBLE`](type_float) | A 64-bit, inexact, floating-point number |
+[`FLOAT`](type_float) | A 64-bit, inexact, floating-point number |
+[<code>INT &#124; INTEGER</code>](type_int) | 32-bit signed integer |
+[`INTERVAL`](type_interval) | A span of time |
+[`SMALLINT`](type_int) | 16-bit signed integer |
+[`TEXT`](type_text) | A string of Unicode characters |
+[`TIMESTAMP`](type_timestamp) | A date and time pairing |
+[`TINYINT`](type_int) | 8-bit signed integer |

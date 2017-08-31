@@ -20,4 +20,4 @@ Returns 1 if the specified member exists. Returns 0 otherwise.
 % 0<br>
 
 ## SEE ALSO
-[`sadd`](/api/redis/sadd/), [`scard`](/api/redis/scard/), [`smembers`](/api/redis/smembers/), [`srem`](/api/redis/srem/)
+[`sadd`](../sadd/), [`scard`](../scard/), [`smembers`](../smembers/), [`srem`](../srem/)

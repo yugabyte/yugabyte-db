@@ -19,4 +19,4 @@ Returns status string.
 % "YugaByte"<br>
 
 ## SEE ALSO
-[`append`](/api/redis/append/), [`get`](/api/redis/get/), [`getrange`](/api/redis/getrange/), [`getset`](/api/redis/getset/), [`incr`](/api/redis/incr/), [`mget`](/api/redis/mget/), [`mset`](/api/redis/mset/), [`setrange`](/api/redis/setrange/), [`strlen`](/api/redis/strlen/)
+[`append`](../append/), [`get`](../get/), [`getrange`](../getrange/), [`getset`](../getset/), [`incr`](../incr/), [`mget`](../mget/), [`mset`](../mset/), [`setrange`](../setrange/), [`strlen`](../strlen/)

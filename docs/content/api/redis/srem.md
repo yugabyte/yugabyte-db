@@ -23,4 +23,4 @@ Returns the total number of existed members that were removed from the set.
 % 0<br>
 
 ## SEE ALSO
-[`sadd`](/api/redis/sadd/), [`scard`](/api/redis/scard/), [`sismember`](/api/redis/sismember/), [`smembers`](/api/redis/smembers/)
+[`sadd`](../sadd/), [`scard`](../scard/), [`sismember`](../sismember/), [`smembers`](../smembers/)

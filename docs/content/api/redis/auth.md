@@ -18,4 +18,4 @@ Returns a status string.
 "OK"<br>
 
 ## SEE ALSO
-[`config`](/api/redis/config/)
+[`config`](../config/)

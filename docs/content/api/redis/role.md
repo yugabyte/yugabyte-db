@@ -46,4 +46,4 @@ Returns an array of values.
       3) "0"<br>
 
 ## SEE ALSO
-[`auth`](/api/redis/auth/), [`config`](/api/redis/config/)
+[`auth`](../auth/), [`config`](../config/)
