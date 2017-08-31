@@ -195,7 +195,7 @@ class AWSProviderConfiguration extends Component {
           </Row>
           <Row>
             <Col lg={12} className="provider-map-container">
-              <RegionMap title="All Supported Regions" regions={awsRegions} type="Region" showLabels={true}/>
+              <RegionMap title="All Supported Regions" regions={awsRegions} type="Region" showLabels={true} showRegionLabels={true} />
               <YBMapLegend title="Region Map" />
             </Col>
           </Row>
