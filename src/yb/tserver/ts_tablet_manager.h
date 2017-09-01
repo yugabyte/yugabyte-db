@@ -28,6 +28,7 @@
 #include <gtest/gtest_prod.h>
 
 #include "rocksdb/cache.h"
+#include "rocksdb/include/rocksdb/options.h"
 #include "yb/client/client_fwd.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/metadata.pb.h"
@@ -40,6 +41,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"
+#include "yb/tablet/tablet_options.h"
 
 namespace yb {
 
@@ -48,6 +50,7 @@ class FsManager;
 class HostPort;
 class Partition;
 class Schema;
+class BackgroundTask;
 
 namespace consensus {
 class RaftConfigPB;
@@ -67,6 +70,9 @@ class TabletStatusListener;
 
 namespace tserver {
 class TabletServer;
+class TSMemoryMonitorListener;
+
+using rocksdb::MemoryMonitor;
 
 // Map of tablet id -> transition reason string.
 typedef std::unordered_map<std::string, std::string> TransitionInProgressMap;
@@ -249,6 +255,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   TabletServer* server() { return server_; }
 
+  MemoryMonitor* memory_monitor() { return tablet_options_.memory_monitor.get(); }
+
+  // Flush some tablet if the memstore memory limit is exceeded
+  void MaybeFlushTablet();
+
  private:
   FRIEND_TEST(TsTabletManagerTest, TestPersistBlocks);
 
@@ -339,6 +350,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // TABLET_DATA_READY state. Generally, we tombstone the replica.
   CHECKED_STATUS HandleNonReadyTabletOnStartup(const scoped_refptr<tablet::TabletMetadata>& meta);
 
+  // Return the tablet with oldest write still in its memstore
+  scoped_refptr<tablet::TabletPeer> TabletToFlush();
+
   TSTabletManagerStatePB state() const {
     boost::shared_lock<rw_spinlock> lock(lock_);
     return state_;
@@ -349,6 +363,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // Crashes with an invariant check if the RPC server is not currently in a
   // running state.
   void InitLocalRaftPeerPB();
+
+  void FlushIfNeeded();
 
   FsManager* const fs_manager_;
 
@@ -397,8 +413,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // Thread pool for apply transactions, shared between all tablets.
   gscoped_ptr<ThreadPool> apply_pool_;
 
-  // Block cache to share across tablet DB instances.
-  std::shared_ptr<rocksdb::Cache> block_cache_;
+  // Used for scheduling flushes
+  std::unique_ptr<BackgroundTask> background_task_;
+
+  // For block cache and memory monitor shared across tablets
+  tablet::TabletOptions tablet_options_;
 
   client::YBClientPtr client_;
 

@@ -24,14 +24,14 @@
 #include <boost/thread/shared_mutex.hpp>
 
 #include "rocksdb/cache.h"
-
+#include "rocksdb/memory_monitor.h"
 #include "yb/client/client_fwd.h"
-
 #include "yb/common/schema.h"
 #include "yb/consensus/log.pb.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/status.h"
+#include "yb/tablet/tablet_options.h"
 
 namespace yb {
 
@@ -57,6 +57,7 @@ class Tablet;
 class TabletMetadata;
 class TransactionCoordinatorContext;
 class TransactionParticipantContext;
+struct TabletOptions;
 
 // A listener for logging the tablet related statuses as well as
 // piping it into the web UI.
@@ -97,7 +98,7 @@ struct BootstrapTabletData {
   MetricRegistry* metric_registry;
   TabletStatusListener* listener;
   scoped_refptr<log::LogAnchorRegistry> log_anchor_registry;
-  std::shared_ptr<rocksdb::Cache> block_cache;
+  TabletOptions tablet_options;
   TransactionParticipantContext* transaction_participant_context;
   TransactionCoordinatorContext* transaction_coordinator_context;
 };

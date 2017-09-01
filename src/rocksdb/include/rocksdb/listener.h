@@ -166,6 +166,15 @@ struct CompactionJobInfo {
 // EventListener callback thread is considered safe.
 class EventListener {
  public:
+
+  // A call-back function which will be called whenever a RocksDB
+  // memstore flush is scheduled.
+  //
+  // Note that the this function must be implemented in a way such that
+  // it should not run for an extended period of time before the function
+  // returns.  Otherwise, RocksDB may be blocked.
+  virtual void OnFlushScheduled(DB* db) {}
+
   // A call-back function to RocksDB which will be called whenever a
   // registered RocksDB flushes a file.  The default implementation is
   // no-op.

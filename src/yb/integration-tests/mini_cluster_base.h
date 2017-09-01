@@ -14,8 +14,8 @@ class YBClient;
 } // namespace client
 
 // Base class for ExternalMiniCluster and MiniCluster with common interface required by
-// ClusterVerifier. Introduced in order to be able to use ClusterVerifier for both types
-// of mini cluster.
+// ClusterVerifier and TestWorkload. Introduced in order to be able to use ClusterVerifier
+// for both types of mini cluster.
 class MiniClusterBase {
  public:
   CHECKED_STATUS CreateClient(client::YBClientBuilder* builder,

@@ -43,6 +43,7 @@
 #include "yb/rpc/rpc_context.h"
 #include "yb/tablet/tablet_bootstrap.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_options.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tablet/transactions/write_transaction.h"
 #include "yb/util/flag_tags.h"
@@ -439,13 +440,14 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& 
   scoped_refptr<Log> log;
   consensus::ConsensusBootstrapInfo consensus_info;
   tablet_peer_->SetBootstrapping();
+  tablet::TabletOptions tablet_options;
   tablet::BootstrapTabletData data = { metadata,
                                        scoped_refptr<server::Clock>(master_->clock()),
                                        master_->mem_tracker(),
                                        metric_registry_,
                                        tablet_peer_->status_listener(),
                                        tablet_peer_->log_anchor_registry(),
-                                       nullptr /* block_cache */,
+                                       tablet_options,
                                        nullptr /* transaction_coordinator_context */ };
   RETURN_NOT_OK(BootstrapTablet(data, &tablet, &log, &consensus_info));
 

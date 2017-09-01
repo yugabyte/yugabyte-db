@@ -25,6 +25,7 @@
 #include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/tablet/tablet_options.h"
 
 using std::endl;
 using std::make_shared;

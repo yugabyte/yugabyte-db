@@ -26,9 +26,8 @@
 #include <boost/optional/optional.hpp>
 
 #include <glog/logging.h>
-
+#include "rocksdb/memory_monitor.h"
 #include "yb/client/client.h"
-
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
@@ -47,9 +46,11 @@
 #include "yb/tablet/tablet_bootstrap.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/tablet_options.h"
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/util/background_task.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
@@ -105,6 +106,20 @@ constexpr int kDbCacheSizeUsePercentage = -1;
 constexpr int kDbCacheSizeCacheDisabled = -2;
 
 } // namespace
+
+DEFINE_int32(flush_background_task_interval_msec, 0,
+             "The tick interval time for the flush background task. "
+             "This defaults to 0, which means disable the background task "
+             "And only use callbacks on memstore allocations. ");
+
+DEFINE_int64(global_memstore_size_percentage, 10,
+             "Percentage of total available memory to use for the global memstore. "
+             "Default is 10. See also memstore_size_mb and "
+             "global_memstore_size_mb_max.");
+DEFINE_int64(global_memstore_size_mb_max, 2048,
+             "Global memstore size is determined as a percentage of the available "
+             "memory. However, this flag limits it in absolute size. Value of 0 "
+             "means no limit on the value obtained by the percentage. Default is 2048.");
 
 DEFINE_int64(db_block_cache_size_bytes, kDbCacheSizeUsePercentage,
              "Size of cross-tablet shared RocksDB block cache (in bytes). "
@@ -182,6 +197,36 @@ using tablet::TabletStatusListener;
 using tablet::TabletStatusPB;
 using tserver::RemoteBootstrapClient;
 
+// Only called from the background task to ensure it's synchronized
+void TSTabletManager::MaybeFlushTablet() {
+  while (memory_monitor()->Exceeded()) {
+    scoped_refptr<tablet::TabletPeer> tablet_to_flush = TabletToFlush();
+    // TODO(bojanserafimov): If tablet_to_flush flushes now because of other reasons,
+    // we will schedule a second flush, which will unnecessarily stall writes. This
+    // will not happen often, but should be fixed.
+    if (tablet_to_flush) {
+      WARN_NOT_OK(tablet_to_flush->tablet()->Flush(),
+          Substitute("Flush failed on $0", tablet_to_flush->tablet_id()));
+    }
+  }
+}
+
+// Return the tablet with the oldest write in memstore, or nullptr if all
+// tablet memstores are empty or about to flush.
+scoped_refptr<tablet::TabletPeer> TSTabletManager::TabletToFlush() {
+  boost::shared_lock<rw_spinlock> lock(lock_); // For using the tablet map
+  HybridTime oldest_write_in_memstore = HybridTime::kMax;
+  scoped_refptr<TabletPeer> tablet_to_flush;
+  for (const TabletMap::value_type& entry : tablet_map_) {
+    HybridTime ow = entry.second->tablet()->flush_stats()->oldest_write_in_memstore();
+    if (ow < oldest_write_in_memstore) {
+      oldest_write_in_memstore = ow;
+      tablet_to_flush = entry.second;
+    }
+  }
+  return tablet_to_flush;
+}
+
 TSTabletManager::TSTabletManager(FsManager* fs_manager,
                                  TabletServer* server,
                                  MetricRegistry* metric_registry)
@@ -213,9 +258,9 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
   }
 
   int64_t block_cache_size_bytes = FLAGS_db_block_cache_size_bytes;
+  int64_t total_ram_avail = MemTracker::GetRootTracker()->limit();
   // Auto-compute size of block cache if asked to.
   if (FLAGS_db_block_cache_size_bytes == kDbCacheSizeUsePercentage) {
-    int64_t total_ram_avail = MemTracker::GetRootTracker()->limit();
     // Check some bounds.
     CHECK(FLAGS_db_block_cache_size_percentage > 0 && FLAGS_db_block_cache_size_percentage <= 100)
         << Substitute(
@@ -226,8 +271,35 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
     block_cache_size_bytes = total_ram_avail * FLAGS_db_block_cache_size_percentage / 100;
   }
   if (FLAGS_db_block_cache_size_bytes != kDbCacheSizeCacheDisabled) {
-    block_cache_ = rocksdb::NewLRUCache(block_cache_size_bytes);
-    block_cache_->SetMetrics(server_->metric_entity());
+    tablet_options_.block_cache = rocksdb::NewLRUCache(block_cache_size_bytes);
+    tablet_options_.block_cache->SetMetrics(server_->metric_entity());
+  }
+
+  // Calculate memstore_size_bytes
+  bool should_count_memory = FLAGS_global_memstore_size_percentage > 0;
+  CHECK(FLAGS_global_memstore_size_percentage > 0 && FLAGS_global_memstore_size_percentage <= 100)
+    << Substitute(
+        "Flag tablet_block_cache_size_percentage must be between 0 and 100. Current value: "
+        "$0",
+        FLAGS_global_memstore_size_percentage);
+  size_t memstore_size_bytes = total_ram_avail * FLAGS_global_memstore_size_percentage / 100;
+
+  if (FLAGS_global_memstore_size_mb_max != 0) {
+    memstore_size_bytes = std::min(memstore_size_bytes,
+                                   static_cast<size_t>(FLAGS_global_memstore_size_mb_max << 20));
+  }
+
+  // Add memory monitor and background thread for flushing
+  if (should_count_memory) {
+    background_task_.reset(new BackgroundTask(
+      std::function<void()>([this](){ MaybeFlushTablet(); }),
+      "tablet manager",
+      "flush scheduler bgtask",
+      std::chrono::milliseconds(FLAGS_flush_background_task_interval_msec)));
+    tablet_options_.memory_monitor = std::make_shared<rocksdb::MemoryMonitor>(
+        memstore_size_bytes,
+        std::function<void()>([this](){
+                                YB_WARN_NOT_OK(background_task_->Wake(), "Wakeup error"); }));
   }
 }
 
@@ -295,6 +367,10 @@ Status TSTabletManager::Init() {
   {
     std::lock_guard<rw_spinlock> lock(lock_);
     state_ = MANAGER_RUNNING;
+  }
+
+  if (background_task_) {
+    RETURN_NOT_OK(background_task_->Init());
   }
 
   return Status::OK();
@@ -763,7 +839,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
         metric_registry_,
         tablet_peer->status_listener(),
         tablet_peer->log_anchor_registry(),
-        block_cache_,
+        tablet_options_,
         tablet_peer.get(),
         tablet_peer.get()};
     s = BootstrapTablet(data, &tablet, &log, &bootstrap_info);
@@ -815,6 +891,11 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
 }
 
 void TSTabletManager::Shutdown() {
+
+  if(background_task_) {
+    background_task_->Shutdown();
+  }
+
   {
     std::lock_guard<rw_spinlock> lock(lock_);
     switch (state_) {

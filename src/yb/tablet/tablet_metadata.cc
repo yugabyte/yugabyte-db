@@ -38,6 +38,7 @@
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 #include "yb/server/metadata.h"
 #include "yb/tablet/rowset_metadata.h"
+#include "yb/tablet/tablet_options.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
@@ -228,8 +229,9 @@ Status TabletMetadata::DeleteTabletData(TabletDataState delete_type,
 
   if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     rocksdb::Options rocksdb_options;
+    TabletOptions tablet_options;
     docdb::InitRocksDBOptions(
-        &rocksdb_options, tablet_id_, nullptr /* statistics */, nullptr /* block_cache */);
+        &rocksdb_options, tablet_id_, nullptr /* statistics */, tablet_options);
 
     LOG(INFO) << "Destroying RocksDB at: " << rocksdb_dir_;
     rocksdb::Status status = rocksdb::DestroyDB(rocksdb_dir_, rocksdb_options);

@@ -98,6 +98,7 @@ using tserver::AlterSchemaRequestPB;
 using tserver::WriteRequestPB;
 
 struct ReplayState;
+struct TabletOptions;
 
 // Information from the tablet metadata which indicates which data was
 // flushed prior to this restart.
@@ -276,7 +277,7 @@ class TabletBootstrap {
   gscoped_ptr<log::LogReader> log_reader_;
 
   gscoped_ptr<ConsensusMetadata> cmeta_;
-  std::shared_ptr<rocksdb::Cache> block_cache_;
+  TabletOptions tablet_options_;
 
   // Statistics on the replay of entries in the log.
   struct Stats {
@@ -396,7 +397,7 @@ TabletBootstrap::TabletBootstrap(const BootstrapTabletData& data)
       metric_registry_(data.metric_registry),
       listener_(data.listener),
       log_anchor_registry_(data.log_anchor_registry),
-      block_cache_(data.block_cache) {}
+      tablet_options_(data.tablet_options) {}
 
 Status TabletBootstrap::Bootstrap(shared_ptr<Tablet>* rebuilt_tablet,
                                   scoped_refptr<Log>* rebuilt_log,
@@ -505,8 +506,8 @@ Status TabletBootstrap::FinishBootstrap(const string& message,
 
 Status TabletBootstrap::OpenTablet(bool* has_blocks) {
   auto tablet = std::make_unique<Tablet>(
-      meta_, data_.clock, mem_tracker_, metric_registry_, log_anchor_registry_,
-      data_.transaction_participant_context, data_.transaction_coordinator_context, block_cache_);
+      meta_, data_.clock, mem_tracker_, metric_registry_, log_anchor_registry_, tablet_options_,
+      data_.transaction_participant_context, data_.transaction_coordinator_context);
   // doing nothing for now except opening a tablet locally.
   LOG_TIMING_PREFIX(INFO, LogPrefix(), "opening tablet") {
     RETURN_NOT_OK(tablet->Open());

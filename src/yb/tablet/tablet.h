@@ -51,6 +51,7 @@
 
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/tablet/lock_manager.h"
+#include "yb/tablet/tablet_options.h"
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/rowset.h"
 #include "yb/tablet/rowset_metadata.h"
@@ -109,6 +110,38 @@ class WriteTransactionState;
 
 using util::LockBatch;
 
+class TabletFlushStats : public rocksdb::EventListener {
+ public:
+
+  void OnFlushScheduled(rocksdb::DB* db) override {
+    oldest_write_in_memstore_.store(std::numeric_limits<uint64_t>::max(),
+                                    std::memory_order_release);
+    num_flushes_++;
+  }
+
+  void AboutToWriteToDb(HybridTime hybrid_time) {
+    // Atomically do oldest_write_in_memstore_ = min(oldest_write_in_memstore_, hybrid_time)
+    uint64_t curr_val = hybrid_time.ToUint64();
+    uint64_t prev_val = oldest_write_in_memstore_.load(std::memory_order_acquire);
+    while (curr_val < prev_val &&
+           !oldest_write_in_memstore_.compare_exchange_weak(prev_val, curr_val)) {}
+  }
+
+  // Return the hybrid time of the oldest write in the memstore, or HybridTime::kMax if empty
+  HybridTime oldest_write_in_memstore() const {
+    return HybridTime(oldest_write_in_memstore_.load(std::memory_order_acquire));
+  }
+
+  // Number of flushes scheduled. Updated atomically before scheduling.
+  size_t num_flushes() {
+    return num_flushes_.load(std::memory_order_acquire);
+  }
+
+ private:
+  std::atomic<size_t> num_flushes_{0};
+  std::atomic<uint64_t> oldest_write_in_memstore_{std::numeric_limits<uint64_t>::max()};
+};
+
 class Tablet : public AbstractTablet, public TransactionIntentApplier {
  public:
   typedef std::map<int64_t, int64_t> MaxIdxToSegmentMap;
@@ -130,9 +163,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const std::shared_ptr<MemTracker>& parent_mem_tracker,
       MetricRegistry* metric_registry,
       const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry,
+      const TabletOptions& tablet_options,
       TransactionParticipantContext* transaction_participant_context,
-      TransactionCoordinatorContext* transaction_coordinator_context,
-      std::shared_ptr<rocksdb::Cache> block_cache = nullptr);
+      TransactionCoordinatorContext* transaction_coordinator_context);
 
   ~Tablet();
 
@@ -492,6 +525,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // This is used to figure out what can be garbage collected during a compaction.
   HybridTime OldestReadPoint() const;
 
+  // The HybridTime of the oldest write that is still not scheduled to be flushed in RocksDB.
+  TabletFlushStats* flush_stats() const { return flush_stats_.get(); }
+
   const scoped_refptr<server::Clock> &clock() const {
     return clock_;
   }
@@ -769,8 +805,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // This is for docdb fine-grained locking.
   yb::util::SharedLockManager shared_lock_manager_;
 
-  // RocksDB block cache for this tablet.
-  std::shared_ptr<rocksdb::Cache> block_cache_;
+  // For the block cache and memory manager shared across tablets
+  TabletOptions tablet_options_;
 
   // A lightweight way to reject new operations when the tablet is shutting down. This is used to
   // prevent race conditions between destroying the RocksDB instance and read/write operations.
@@ -798,6 +834,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::unique_ptr<TransactionParticipant> transaction_participant_;
 
   std::atomic<bool> has_written_something_{false};
+
+  // Remembers he HybridTime of the oldest write that is still not scheduled to
+  // be flushed in RocksDB.
+  std::shared_ptr<TabletFlushStats> flush_stats_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

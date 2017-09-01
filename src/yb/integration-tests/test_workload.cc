@@ -23,7 +23,7 @@
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/util/env.h"
 #include "yb/util/net/sockaddr.h"
@@ -49,7 +49,7 @@ using std::shared_ptr;
 
 const YBTableName TestWorkload::kDefaultTableName("my_keyspace", "test-workload");
 
-TestWorkload::TestWorkload(ExternalMiniCluster* cluster)
+TestWorkload::TestWorkload(MiniClusterBase* cluster)
   : cluster_(cluster),
     payload_bytes_(11),
     num_write_threads_(4),

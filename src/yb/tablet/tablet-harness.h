@@ -28,7 +28,7 @@
 #include "yb/server/metadata.h"
 
 #include "yb/tablet/tablet.h"
-
+#include "yb/tablet/tablet_options.h"
 #include "yb/util/env.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
@@ -107,11 +107,13 @@ class TabletHarness {
     }
 
     clock_ = server::LogicalClock::CreateStartingAt(HybridTime::kInitialHybridTime);
+    TabletOptions tablet_options;
     tablet_.reset(new Tablet(metadata,
                              clock_,
                              std::shared_ptr<MemTracker>(),
                              metrics_registry_.get(),
                              new log::LogAnchorRegistry(),
+                             tablet_options,
                              nullptr /* transaction_participant_context */,
                              nullptr /* transaction_coordinator_context */));
     return Status::OK();

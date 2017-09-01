@@ -30,6 +30,7 @@
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/util/tostring.h"
+#include "yb/tablet/tablet_options.h"
 
 using std::shared_ptr;
 using std::string;
@@ -104,6 +105,7 @@ class BootstrapTest : public LogTestBase {
     gscoped_ptr<TabletStatusListener> listener(new TabletStatusListener(meta));
     scoped_refptr<LogAnchorRegistry> log_anchor_registry(new LogAnchorRegistry());
     // Now attempt to recover the log
+    TabletOptions tablet_options;
     BootstrapTabletData data = {
         meta,
         scoped_refptr<Clock>(LogicalClock::CreateStartingAt(HybridTime::kInitialHybridTime)),
@@ -111,11 +113,9 @@ class BootstrapTest : public LogTestBase {
         nullptr /* metric_registry */,
         listener.get(),
         log_anchor_registry,
-        nullptr /* block_cache */,
+        tablet_options,
         nullptr /* transaction_coordinator_context */};
-
     RETURN_NOT_OK(BootstrapTablet(data, tablet, &log_, boot_info));
-
     return Status::OK();
   }
 

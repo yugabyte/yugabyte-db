@@ -7,6 +7,7 @@
 #include "yb/docdb/docdb_util.h"
 #include "yb/rocksutil/write_batch_formatter.h"
 #include "yb/rocksutil/yb_rocksdb.h"
+#include "yb/tablet/tablet_options.h"
 #include "yb/util/env.h"
 #include "yb/util/path_util.h"
 #include "yb/util/string_trim.h"
@@ -162,13 +163,16 @@ Status DocDBRocksDBUtil::WriteToRocksDB(
 }
 
 Status DocDBRocksDBUtil::InitCommonRocksDBOptions() {
+  // TODO(bojanserafimov): create MemoryMonitor?
   const size_t cache_size = block_cache_size();
   if (cache_size > 0) {
     block_cache_ = rocksdb::NewLRUCache(cache_size);
   }
 
+  tablet::TabletOptions tablet_options;
+  tablet_options.block_cache = block_cache_;
   docdb::InitRocksDBOptions(&rocksdb_options_, tablet_id(), rocksdb::CreateDBStatistics(),
-                            block_cache_);
+                            tablet_options);
   InitRocksDBWriteOptions(&write_options_);
   rocksdb_options_.compaction_filter_factory =
       std::make_shared<docdb::DocDBCompactionFilterFactory>(retention_policy_);
@@ -281,8 +285,9 @@ Status DocDBRocksDBUtil::FlushRocksDB() {
 }
 
 Status DocDBRocksDBUtil::ReinitDBOptions() {
+  tablet::TabletOptions tablet_options;
   docdb::InitRocksDBOptions(&rocksdb_options_, tablet_id(), rocksdb_options_.statistics,
-                            nullptr);
+                            tablet_options);
   return ReopenRocksDB();
 }
 

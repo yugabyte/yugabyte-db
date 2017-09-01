@@ -266,7 +266,7 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname)
       total_log_size_(0),
       max_total_in_memory_state_(0),
       is_snapshot_supported_(true),
-      write_buffer_(options.db_write_buffer_size),
+      write_buffer_(options.db_write_buffer_size, options.memory_monitor),
       write_thread_(options.enable_write_thread_adaptive_yield
                         ? options.write_thread_max_yield_usec
                         : 0,
@@ -2676,6 +2676,9 @@ ColumnFamilyData* DBImpl::PopFirstFromFlushQueue() {
 }
 
 void DBImpl::SchedulePendingFlush(ColumnFamilyData* cfd) {
+  for (auto listener : db_options_.listeners) {
+    listener->OnFlushScheduled(this);
+  }
   if (!cfd->pending_flush() && cfd->imm()->IsFlushPending()) {
     AddToFlushQueue(cfd);
     ++unscheduled_flushes_;

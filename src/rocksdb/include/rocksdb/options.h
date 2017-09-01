@@ -49,6 +49,7 @@ class SliceTransform;
 class Statistics;
 class InternalKeyComparator;
 class WalFilter;
+class MemoryMonitor;
 
 // DB contents are stored in a set of blocks, each of which holds a
 // sequence of key,value pairs.  Each block may be compressed before
@@ -1092,6 +1093,11 @@ struct DBOptions {
   //
   // Default: 0 (disabled)
   size_t db_write_buffer_size;
+
+  // Shared MemoryMonitor to keep track of total memory usage.
+  //
+  // Default: nullptr (disabled)
+  std::shared_ptr<MemoryMonitor> memory_monitor;
 
   // Specify the file access pattern once a compaction is started.
   // It will be applied to all input files of a compaction.

@@ -264,7 +264,7 @@ unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(
 void InitRocksDBOptions(
     rocksdb::Options* options, const string& tablet_id,
     const shared_ptr<rocksdb::Statistics>& statistics,
-    const shared_ptr<rocksdb::Cache>& block_cache) {
+    const tablet::TabletOptions& tablet_options) {
   options->create_if_missing = true;
   options->disableDataSync = true;
   options->statistics = statistics;
@@ -272,11 +272,15 @@ void InitRocksDBOptions(
   options->info_log_level = YBRocksDBLogger::ConvertToRocksDBLogLevel(FLAGS_minloglevel);
   options->initial_seqno = FLAGS_initial_seqno;
   options->boundary_extractor = DocBoundaryValuesExtractorInstance();
+  options->memory_monitor = tablet_options.memory_monitor;
+  options->listeners.insert(
+      options->listeners.end(), tablet_options.listeners.begin(),
+      tablet_options.listeners.end()); // Append listeners
 
   // Set block cache options.
   rocksdb::BlockBasedTableOptions table_options;
-  if (block_cache) {
-    table_options.block_cache = block_cache;
+  if (tablet_options.block_cache) {
+    table_options.block_cache = tablet_options.block_cache;
     // Cache the bloom filters in the block cache.
     table_options.cache_index_and_filter_blocks = true;
   } else {

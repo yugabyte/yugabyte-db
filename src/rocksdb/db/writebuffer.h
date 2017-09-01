@@ -12,13 +12,17 @@
 #pragma once
 
 #include <atomic>
+#include <memory>
+
+#include "rocksdb/memory_monitor.h"
 
 namespace rocksdb {
 
 class WriteBuffer {
  public:
-  explicit WriteBuffer(size_t _buffer_size)
-      : buffer_size_(_buffer_size), memory_used_(0) {}
+  WriteBuffer(size_t _buffer_size,
+              std::shared_ptr<MemoryMonitor> memory_monitor = nullptr)
+    : buffer_size_(_buffer_size), memory_monitor_(memory_monitor) {}
 
   ~WriteBuffer() {}
 
@@ -35,14 +39,21 @@ class WriteBuffer {
   // Should only be called from write thread
   void ReserveMem(size_t mem) {
     memory_used_.fetch_add(mem, std::memory_order_relaxed);
+    if (memory_monitor_) {
+      memory_monitor_->ReservedMem(mem);
+    }
   }
   void FreeMem(size_t mem) {
     memory_used_.fetch_sub(mem, std::memory_order_relaxed);
+    if (memory_monitor_) {
+      memory_monitor_->FreedMem(mem);
+    }
   }
 
  private:
   const size_t buffer_size_;
-  std::atomic<size_t> memory_used_;
+  std::atomic<size_t> memory_used_{0};
+  std::shared_ptr<MemoryMonitor> memory_monitor_;
 
   // No copying allowed
   WriteBuffer(const WriteBuffer&);

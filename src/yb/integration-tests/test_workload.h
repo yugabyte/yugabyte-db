@@ -29,7 +29,7 @@
 
 namespace yb {
 
-class ExternalMiniCluster;
+class MiniClusterBase;
 class Thread;
 
 // Utility class for generating a workload against a test cluster.
@@ -41,7 +41,7 @@ class TestWorkload {
  public:
   static const client::YBTableName kDefaultTableName;
 
-  explicit TestWorkload(ExternalMiniCluster* cluster);
+  explicit TestWorkload(MiniClusterBase* cluster);
   ~TestWorkload();
 
   void set_payload_bytes(int n) {
@@ -126,7 +126,7 @@ class TestWorkload {
  private:
   void WriteThread();
 
-  ExternalMiniCluster* cluster_;
+  MiniClusterBase* cluster_;
   client::YBClientBuilder client_builder_;
   std::shared_ptr<client::YBClient> client_;
 

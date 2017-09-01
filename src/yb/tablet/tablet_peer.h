@@ -34,7 +34,7 @@
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_order_verifier.h"
 #include "yb/tablet/transactions/transaction_tracker.h"
-
+#include "yb/tablet/tablet_options.h"
 #include "yb/util/metrics.h"
 #include "yb/util/semaphore.h"
 #include "yb/tablet/prepare_thread.h"

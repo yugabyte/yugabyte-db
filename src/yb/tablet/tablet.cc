@@ -81,7 +81,7 @@
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/transactions/alter_schema_transaction.h"
 #include "yb/tablet/transactions/write_transaction.h"
-
+#include "yb/tablet/tablet_options.h"
 #include "yb/util/bloom_filter.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/enums.h"
@@ -200,9 +200,9 @@ Tablet::Tablet(
     const shared_ptr<MemTracker>& parent_mem_tracker,
     MetricRegistry* metric_registry,
     const scoped_refptr<LogAnchorRegistry>& log_anchor_registry,
+    const TabletOptions& tablet_options,
     TransactionParticipantContext* transaction_participant_context,
-    TransactionCoordinatorContext* transaction_coordinator_context,
-    std::shared_ptr<rocksdb::Cache> block_cache)
+    TransactionCoordinatorContext* transaction_coordinator_context)
     : key_schema_(metadata->schema().CreateKeyProjection()),
       metadata_(metadata),
       table_type_(metadata->table_type()),
@@ -212,7 +212,7 @@ Tablet::Tablet(
       dms_mem_tracker_(MemTracker::CreateTracker(-1, kDMSMemTrackerId, mem_tracker_)),
       clock_(clock),
       mvcc_(clock, metadata->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE),
-      block_cache_(block_cache) {
+      tablet_options_(tablet_options) {
   CHECK(schema()->has_column_ids());
   compaction_policy_.reset(CreateCompactionPolicy());
 
@@ -252,6 +252,9 @@ Tablet::Tablet(
     transaction_coordinator_ = std::make_unique<TransactionCoordinator>(
         transaction_coordinator_context, transaction_participant_.get());
   }
+
+  flush_stats_ = make_shared<TabletFlushStats>();
+  tablet_options_.listeners.emplace_back(flush_stats_);
 }
 
 Tablet::~Tablet() {
@@ -285,7 +288,7 @@ Status Tablet::Open() {
 
 Status Tablet::OpenKeyValueTablet() {
   rocksdb::Options rocksdb_options;
-  docdb::InitRocksDBOptions(&rocksdb_options, tablet_id(), rocksdb_statistics_, block_cache_);
+  docdb::InitRocksDBOptions(&rocksdb_options, tablet_id(), rocksdb_statistics_, tablet_options_);
 
   // Install the history cleanup handler. Note that TabletRetentionPolicy is going to hold a raw ptr
   // to this tablet. So, we ensure that rocksdb_ is reset before this tablet gets destroyed.
@@ -882,6 +885,7 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
   rocksdb::WriteOptions write_options;
   InitRocksDBWriteOptions(&write_options);
 
+  flush_stats_->AboutToWriteToDb(hybrid_time);
   auto rocksdb_write_status = rocksdb_->Write(write_options, &rocksdb_write_batch);
   if (!rocksdb_write_status.ok()) {
     LOG(FATAL) << "Failed to write a batch with " << rocksdb_write_batch.Count() << " operations"
@@ -1281,7 +1285,11 @@ Status Tablet::FlushUnlocked() {
   TRACE_EVENT0("tablet", "Tablet::FlushUnlocked");
 
   if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    rocksdb_->Flush(rocksdb::FlushOptions());
+    // TODO(bojanserafimov): Can raise null pointer exception if
+    // the tablet just got shutdown. Acquire a read lock on component_lock_?
+    rocksdb::FlushOptions options;
+    options.wait = false; // TODO(bojanserafimov): Make this optional
+    rocksdb_->Flush(options);
     return Status::OK();
   }
 

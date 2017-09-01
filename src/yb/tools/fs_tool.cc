@@ -38,6 +38,7 @@
 #include "yb/tablet/cfile_set.h"
 #include "yb/tablet/deltafile.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_options.h"
 #include "yb/util/env.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
@@ -341,8 +342,9 @@ Status FsTool::DumpTabletData(const std::string& tablet_id) {
   RETURN_NOT_OK(TabletMetadata::Load(fs_manager_.get(), tablet_id, &meta));
 
   scoped_refptr<log::LogAnchorRegistry> reg(new log::LogAnchorRegistry());
+  tablet::TabletOptions tablet_options;
   Tablet t(meta, scoped_refptr<server::Clock>(nullptr), shared_ptr<MemTracker>(),
-           nullptr, reg.get(), nullptr, nullptr);
+           nullptr, reg.get(), tablet_options, nullptr, nullptr);
   RETURN_NOT_OK_PREPEND(t.Open(), "Couldn't open tablet");
   vector<string> lines;
   RETURN_NOT_OK_PREPEND(t.DebugDump(&lines), "Couldn't dump tablet");

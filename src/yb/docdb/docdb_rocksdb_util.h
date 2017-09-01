@@ -12,6 +12,7 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/value.h"
 #include "yb/util/slice.h"
+#include "yb/tablet/tablet_options.h"
 
 namespace yb {
 namespace docdb {
@@ -72,7 +73,7 @@ std::unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(
 void InitRocksDBOptions(
     rocksdb::Options* options, const std::string& tablet_id,
     const std::shared_ptr<rocksdb::Statistics>& statistics,
-    const std::shared_ptr<rocksdb::Cache>& block_cache);
+    const tablet::TabletOptions& tablet_options);
 
 }  // namespace docdb
 }  // namespace yb
