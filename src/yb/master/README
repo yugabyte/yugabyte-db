@@ -15,12 +15,12 @@ limitations under the License.
 The Catalog Manager and System Tables
 ============================================================
 
-The Catalog Manager keeps track of the Kudu tables and tablets defined by the
+The Catalog Manager keeps track of the tables and tablets defined by the
 user in the cluster.
 
 All the table and tablet information is stored in-memory in copy-on-write
 TableInfo / TabletInfo objects, as well as on-disk, in the "sys.catalog"
-Kudu system table hosted only on the Masters.  This system table is loaded
+system table hosted only on the Masters.  This system table is loaded
 into memory on Master startup.  At the time of this writing, the "sys.catalog"
 table consists of only a single tablet in order to provide strong consistency
 for the metadata under RAFT replication (as currently, each tablet has its own

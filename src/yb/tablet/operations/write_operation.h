@@ -230,7 +230,7 @@ class WriteOperationState : public OperationState {
   // Sets mvcc_tx_ to nullptr after commit/abort in a thread-safe manner.
   void ResetMvccTx(std::function<void(ScopedWriteOperation*)> txn_action);
 
-  // pointers to the rpc context, request and response, lifecyle
+  // pointers to the rpc context, request and response, lifecycle
   // is managed by the rpc subsystem. These pointers maybe nullptr if the
   // transaction was not initiated by an RPC call.
   tserver::WriteRequestPB* request_;

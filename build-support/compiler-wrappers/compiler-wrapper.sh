@@ -536,20 +536,9 @@ if ! should_skip_error_checking_by_input_file_pattern \
    "/(diskrowset|\
 cfile_set-test|\
 compaction|\
-compaction-test|\
 deltamemstore|\
-deltamemstore-test|\
 diskrowset|\
-diskrowset-test|\
-major_delta_compaction-test|\
-mt-diskrowset-test|\
-mt-rowset_delta_compaction-test|\
-remote_bootstrap_kudu_client-test|\
-remote_bootstrap_kudu_session-test|\
-rowset_info|\
-tablet/(delta_)?compaction|\
-tablet_server-test|\
-tablet-test\
+rowset_info\
 )[.]cc\$"
 then
   treat_warning_pattern_as_error \

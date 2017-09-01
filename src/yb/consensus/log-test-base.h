@@ -40,11 +40,11 @@
 #include <gtest/gtest.h>
 
 #include "yb/consensus/log.h"
-
 #include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_reader.h"
+#include "yb/consensus/opid_util.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/stl_util.h"
@@ -61,6 +61,9 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/stopwatch.h"
+#include "yb/tablet/tablet.h"
+#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/doc_key.h"
 
 METRIC_DECLARE_entity(tablet);
 
@@ -74,6 +77,7 @@ using consensus::CommitMsg;
 using consensus::ReplicateMsg;
 using consensus::WRITE_OP;
 using consensus::NO_OP;
+using consensus::MakeOpId;
 
 using server::Clock;
 
@@ -82,6 +86,13 @@ using tserver::WriteRequestPB;
 using tablet::TxResultPB;
 using tablet::OperationResultPB;
 using tablet::MemStoreTargetPB;
+using tablet::Tablet;
+
+using docdb::KeyValuePairPB;
+using docdb::SubDocKey;
+using docdb::DocKey;
+using docdb::PrimitiveValue;
+using docdb::ValueType;
 
 const char* kTestTable = "test-log-table";
 const char* kTestTablet = "test-log-tablet";
@@ -92,11 +103,10 @@ const bool APPEND_ASYNC = false;
 // If 'size' is not NULL, increments it by the expected increase in log size.
 // Increments 'op_id''s index once for each operation logged.
 static CHECKED_STATUS AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
-                                   Log* log,
-                                   OpId* op_id,
-                                   int count,
-                                   int* size = NULL) {
-
+                                           Log* log,
+                                           OpId* op_id,
+                                           int count,
+                                           int* size = NULL) {
   ReplicateMsgs replicates;
   for (int i = 0; i < count; i++) {
     auto replicate = std::make_shared<ReplicateMsg>();
@@ -130,9 +140,9 @@ static CHECKED_STATUS AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
 }
 
 static CHECKED_STATUS AppendNoOpToLogSync(const scoped_refptr<Clock>& clock,
-                                  Log* log,
-                                  OpId* op_id,
-                                  int* size = NULL) {
+                                          Log* log,
+                                          OpId* op_id,
+                                          int* size = NULL) {
   return AppendNoOpsToLogSync(clock, log, op_id, 1, size);
 }
 
@@ -140,6 +150,8 @@ class LogTestBase : public YBTest {
  public:
 
   typedef pair<int, int> DeltaId;
+
+  typedef std::tuple<int, int, string> TupleForAppend;
 
   LogTestBase()
     : schema_(GetSimpleTestSchema()),
@@ -200,24 +212,42 @@ class LogTestBase : public YBTest {
     CHECK_OK(s);
   }
 
-  // Appends a batch with size 2 (1 insert, 1 mutate) to the log.
-  void AppendReplicateBatch(const OpId& opid, bool sync = APPEND_SYNC) {
+  // Appends a batch with size 2, or the given set of writes.
+  void AppendReplicateBatch(const OpId& opid,
+                            const OpId& committed_opid = MakeOpId(0, 0),
+                            std::vector<TupleForAppend> writes = {},
+                            bool sync = APPEND_SYNC,
+                            TableType table_type = TableType::YQL_TABLE_TYPE) {
     auto replicate = std::make_shared<ReplicateMsg>();
     replicate->set_op_type(WRITE_OP);
     replicate->mutable_id()->CopyFrom(opid);
+    replicate->mutable_committed_op_id()->CopyFrom(committed_opid);
     replicate->set_hybrid_time(clock_->Now().ToUint64());
-    WriteRequestPB* batch_request = replicate->mutable_write_request();
+    WriteRequestPB *batch_request = replicate->mutable_write_request();
     ASSERT_OK(SchemaToPB(schema_, batch_request->mutable_schema()));
-    AddTestRowToPB(RowOperationsPB::INSERT, schema_,
-                   opid.index(),
-                   0,
-                   "this is a test insert",
-                   batch_request->mutable_row_operations());
-    AddTestRowToPB(RowOperationsPB::UPDATE, schema_,
-                   opid.index() + 1,
-                   0,
-                   "this is a test mutate",
-                   batch_request->mutable_row_operations());
+    if (table_type == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+      AddTestRowToPB(RowOperationsPB::INSERT, schema_,
+                     opid.index(),
+                     0,
+                     "this is a test insert",
+                     batch_request->mutable_row_operations());
+      AddTestRowToPB(RowOperationsPB::UPDATE, schema_,
+                     opid.index() + 1,
+                     0,
+                     "this is a test mutate",
+                     batch_request->mutable_row_operations());
+    } else {
+      if (writes.empty()) {
+        const int opid_index_as_int = static_cast<int>(opid.index());
+        writes.emplace_back(opid_index_as_int, 0, "this is a test insert");
+        writes.emplace_back(opid_index_as_int + 1, 0, "this is a test mutate");
+      }
+      auto write_batch = batch_request->mutable_write_batch();
+      for (const auto &w : writes) {
+        AddKVToPB(std::get<0>(w), std::get<1>(w), std::get<2>(w), write_batch);
+      }
+    }
+
     batch_request->set_tablet_id(kTestTablet);
     AppendReplicateBatch(replicate, sync);
   }
@@ -281,17 +311,15 @@ class LogTestBase : public YBTest {
       ASSERT_OK(log_->AsyncAppendCommit(commit.Pass(), s.AsStatusCallback()));
       ASSERT_OK(s.Wait());
     } else {
-      ASSERT_OK(log_->AsyncAppendCommit(commit.Pass(),
-                                               Bind(&LogTestBase::CheckCommitResult)));
+      ASSERT_OK(log_->AsyncAppendCommit(commit.Pass(), Bind(&LogTestBase::CheckCommitResult)));
     }
   }
 
-    // Appends 'count' ReplicateMsgs and the corresponding CommitMsgs to the log
-  void AppendReplicateBatchAndCommitEntryPairsToLog(int count, bool sync = true) {
+  // Appends 'count' ReplicateMsgs and the corresponding CommitMsgs to the log
+  void AppendReplicateBatchToLog(int count, TableType table_type, bool sync = true) {
     for (int i = 0; i < count; i++) {
       OpId opid = consensus::MakeOpId(1, current_index_);
       AppendReplicateBatch(opid);
-      AppendCommit(opid, sync);
       current_index_ += 1;
     }
   }

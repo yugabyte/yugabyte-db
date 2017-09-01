@@ -44,34 +44,23 @@
 #include "yb/util/test_graph.h"
 #include "yb/util/thread.h"
 
-DECLARE_double(tablet_delta_store_major_compact_min_ratio);
-DECLARE_int32(tablet_delta_store_minor_compact_max);
-DEFINE_int32(num_insert_threads, 8, "Number of inserting threads to launch");
 DEFINE_int32(num_counter_threads, 8, "Number of counting threads to launch");
 DEFINE_int32(num_summer_threads, 1, "Number of summing threads to launch");
-DEFINE_int32(num_updater_threads, 1, "Number of updating threads to launch");
 DEFINE_int32(num_slowreader_threads, 1, "Number of 'slow' reader threads to launch");
-DEFINE_int32(num_flush_threads, 1, "Number of flusher reader threads to launch");
-DEFINE_int32(num_compact_threads, 1, "Number of compactor threads to launch");
-DEFINE_int32(num_flush_delta_threads, 1, "Number of delta flusher reader threads to launch");
-DEFINE_int32(num_minor_compact_deltas_threads, 1,
-             "Number of delta minor compactor threads to launch");
-DEFINE_int32(num_major_compact_deltas_threads, 1,
-             "Number of delta major compactor threads to launch");
-
-DEFINE_int64(inserts_per_thread, 1000,
-             "Number of rows inserted by each inserter thread");
-DEFINE_int32(tablet_test_flush_threshold_mb, 0, "Minimum memrowset size to flush");
-DEFINE_double(flusher_backoff, 2.0f, "Ratio to backoff the flusher thread");
-DEFINE_int32(flusher_initial_frequency_ms, 30, "Number of ms to wait between flushes");
+DEFINE_int64(inserts_per_thread, 1000, "Number of rows inserted by the inserter thread");
 
 using std::shared_ptr;
 
 namespace yb {
 namespace tablet {
 
+// We use only one thread for now as each thread picks an OpId via a WriteTnxState for write and
+// could reach rocksdb::MemTable::SetLastOpId() async'ly causing out of order assertion.
+// There could be multiple threads, as long as they get OpId's assigned in order.
+const int kNumInsertThreads = 1;
+
 template<class SETUP>
-class MultiThreadedTabletTest : public TabletTestBase<SETUP> {
+class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
   // Import some names from superclass, since C++ is stingy about
   // letting us refer to the members otherwise.
   typedef TabletTestBase<SETUP> superclass;
@@ -96,28 +85,23 @@ class MultiThreadedTabletTest : public TabletTestBase<SETUP> {
     ts_collector_.StartDumperThread();
   }
 
-  MultiThreadedTabletTest()
-    : running_insert_count_(FLAGS_num_insert_threads),
-      ts_collector_(::testing::UnitTest::GetInstance()->current_test_info()->test_case_name()) {
+  VerifyRowsTabletTest()
+      : running_insert_count_(kNumInsertThreads),
+        ts_collector_(::testing::UnitTest::GetInstance()->current_test_info()->test_case_name()) {
   }
 
   void InsertThread(int tid) {
     CountDownOnScopeExit dec_count(&running_insert_count_);
     shared_ptr<TimeSeries> inserts = ts_collector_.GetTimeSeries("inserted");
 
-    // TODO: add a test where some of the inserts actually conflict
-    // on the same row.
-
-    uint64_t max_rows = this->ClampRowCount(FLAGS_inserts_per_thread * FLAGS_num_insert_threads)
-        / FLAGS_num_insert_threads;
+    uint64_t max_rows = this->ClampRowCount(FLAGS_inserts_per_thread * kNumInsertThreads)
+        / kNumInsertThreads;
 
     if (max_rows < FLAGS_inserts_per_thread) {
       LOG(WARNING) << "Clamping the inserts per thread to " << max_rows << " to prevent overflow";
     }
 
-    this->InsertTestRows(tid * max_rows,
-                         max_rows, 0,
-                         inserts.get());
+    this->InsertTestRows(tid * max_rows, max_rows, 0, inserts.get());
   }
 
   void UpdateThread(int tid) {
@@ -140,7 +124,8 @@ class MultiThreadedTabletTest : public TabletTestBase<SETUP> {
     while (running_insert_count_.count() > 0) {
       gscoped_ptr<RowwiseIterator> iter;
       CHECK_OK(tablet()->NewRowIterator(client_schema_, &iter));
-      CHECK_OK(iter->Init(NULL));
+      ScanSpec scan_spec;
+      CHECK_OK(iter->Init(&scan_spec));
 
       while (iter->HasNext() && running_insert_count_.count() > 0) {
         tmp_arena.Reset();
@@ -153,9 +138,9 @@ class MultiThreadedTabletTest : public TabletTestBase<SETUP> {
           continue;
         }
 
-
         RowBlockRow rb_row = block.row(0);
-        if (rand() % 10 == 7) {
+        unsigned int seed = 1234;
+        if (rand_r(&seed) % 10 == 7) {
           // Increment the "val"
           const int32_t *old_val = schema.ExtractColumnFromRow<INT32>(rb_row, col_idx);
           // Issue an update. In the NullableValue setup, many of the rows start with
@@ -200,15 +185,16 @@ class MultiThreadedTabletTest : public TabletTestBase<SETUP> {
     Arena arena(32*1024, 256*1024);
     RowBlock block(schema_, 1, &arena);
 
-    uint64_t max_rows = this->ClampRowCount(FLAGS_inserts_per_thread * FLAGS_num_insert_threads)
-            / FLAGS_num_insert_threads;
+    uint64_t max_rows = this->ClampRowCount(FLAGS_inserts_per_thread * kNumInsertThreads)
+            / kNumInsertThreads;
 
-    int max_iters = FLAGS_num_insert_threads * max_rows / 10;
+    int max_iters = kNumInsertThreads * max_rows / 10;
 
     while (running_insert_count_.count() > 0) {
       gscoped_ptr<RowwiseIterator> iter;
       CHECK_OK(tablet()->NewRowIterator(client_schema_, &iter));
-      CHECK_OK(iter->Init(NULL));
+      ScanSpec scan_spec;
+      CHECK_OK(iter->Init(&scan_spec));
 
       for (int i = 0; i < max_iters && iter->HasNext(); i++) {
         CHECK_OK(iter->NextBlock(&block));
@@ -221,8 +207,7 @@ class MultiThreadedTabletTest : public TabletTestBase<SETUP> {
   }
 
   void SummerThread(int tid) {
-    shared_ptr<TimeSeries> scanned_ts = ts_collector_.GetTimeSeries(
-      "scanned");
+    shared_ptr<TimeSeries> scanned_ts = ts_collector_.GetTimeSeries("scanned");
 
     while (running_insert_count_.count() > 0) {
       CountSum(scanned_ts);
@@ -242,7 +227,8 @@ class MultiThreadedTabletTest : public TabletTestBase<SETUP> {
 
     gscoped_ptr<RowwiseIterator> iter;
     CHECK_OK(tablet()->NewRowIterator(valcol_projection_, &iter));
-    CHECK_OK(iter->Init(NULL));
+    ScanSpec scan_spec;
+    CHECK_OK(iter->Init(&scan_spec));
 
     while (iter->HasNext()) {
       arena.Reset();
@@ -267,70 +253,6 @@ class MultiThreadedTabletTest : public TabletTestBase<SETUP> {
     }
 
     return sum;
-  }
-
-
-
-  void FlushThread(int tid) {
-    // Start off with a very short wait time between flushes.
-    // But, especially in debug mode, this will only allow a few
-    // rows to get inserted between each flush, and the test will take
-    // quite a while. So, after every flush, we double the wait time below.
-    int wait_time = FLAGS_flusher_initial_frequency_ms;
-    while (running_insert_count_.count() > 0) {
-
-      if (tablet()->MemRowSetSize() > FLAGS_tablet_test_flush_threshold_mb * 1024 * 1024) {
-        CHECK_OK(tablet()->Flush(tablet::FlushMode::kSync));
-      } else {
-        LOG(INFO) << "Not flushing, memrowset not very full";
-      }
-
-      if (tablet()->DeltaMemStoresSize() > FLAGS_tablet_test_flush_threshold_mb * 1024 * 1024) {
-        CHECK_OK(tablet()->FlushBiggestDMS());
-      }
-
-      // Wait, unless the inserters are all done.
-      running_insert_count_.WaitFor(MonoDelta::FromMilliseconds(wait_time));
-      wait_time *= FLAGS_flusher_backoff;
-    }
-  }
-
-  void FlushDeltasThread(int tid) {
-    int wait_time = 100;
-    while (running_insert_count_.count() > 0) {
-      CHECK_OK(tablet()->FlushBiggestDMS());
-
-      // Wait, unless the inserters are all done.
-      running_insert_count_.WaitFor(MonoDelta::FromMilliseconds(wait_time));
-    }
-  }
-
-  void MinorCompactDeltasThread(int tid) {
-    CompactDeltas(RowSet::MINOR_DELTA_COMPACTION);
-  }
-
-  void MajorCompactDeltasThread(int tid) {
-    CompactDeltas(RowSet::MAJOR_DELTA_COMPACTION);
-  }
-
-  void CompactDeltas(RowSet::DeltaCompactionType type) {
-    int wait_time = 100;
-    while (running_insert_count_.count() > 0) {
-      CHECK_OK(tablet()->CompactWorstDeltas(type));
-
-      // Wait, unless the inserters are all done.
-      running_insert_count_.WaitFor(MonoDelta::FromMilliseconds(wait_time));
-    }
-  }
-
-  void CompactThread(int tid) {
-    int wait_time = 100;
-    while (running_insert_count_.count() > 0) {
-      CHECK_OK(tablet()->Compact(Tablet::COMPACT_NO_FLAGS));
-
-      // Wait, unless the inserters are all done.
-      running_insert_count_.WaitFor(MonoDelta::FromMilliseconds(wait_time));
-    }
   }
 
   // Thread which cycles between inserting and deleting a test row, each time
@@ -365,24 +287,6 @@ class MultiThreadedTabletTest : public TabletTestBase<SETUP> {
     }
   }
 
-  // Thread which wakes up periodically and collects metrics like memrowset
-  // size, etc. Eventually we should have a metrics system to collect things
-  // like this, but for now, this is what we've got.
-  void CollectStatisticsThread(int tid) {
-    shared_ptr<TimeSeries> num_rowsets_ts = ts_collector_.GetTimeSeries(
-      "num_rowsets");
-    shared_ptr<TimeSeries> memrowset_size_ts = ts_collector_.GetTimeSeries(
-      "memrowset_kb");
-
-    while (running_insert_count_.count() > 0) {
-      num_rowsets_ts->SetValue(tablet()->num_rowsets());
-      memrowset_size_ts->SetValue(tablet()->MemRowSetSize() / 1024);
-
-      // Wait, unless the inserters are all done.
-      running_insert_count_.WaitFor(MonoDelta::FromMilliseconds(250));
-    }
-  }
-
   template<typename FunctionType>
   void StartThreads(int n_threads, const FunctionType &function) {
     for (int i = 0; i < n_threads; i++) {
@@ -409,11 +313,9 @@ class MultiThreadedTabletTest : public TabletTestBase<SETUP> {
   TimeSeriesCollector ts_collector_;
 };
 
+TYPED_TEST_CASE(VerifyRowsTabletTest, TabletTestHelperTypes);
 
-TYPED_TEST_CASE(MultiThreadedTabletTest, TabletTestHelperTypes);
-
-
-TYPED_TEST(MultiThreadedTabletTest, DoTestAllAtOnce) {
+TYPED_TEST(VerifyRowsTabletTest, DoTestAllAtOnce) {
   if (1000 == FLAGS_inserts_per_thread) {
     if (AllowSlowTests()) {
       FLAGS_inserts_per_thread = 50000;
@@ -421,47 +323,25 @@ TYPED_TEST(MultiThreadedTabletTest, DoTestAllAtOnce) {
   }
 
   // Spawn a bunch of threads, each of which will do updates.
-  this->StartThreads(1, &TestFixture::CollectStatisticsThread);
-  this->StartThreads(FLAGS_num_insert_threads, &TestFixture::InsertThread);
+  this->StartThreads(kNumInsertThreads, &TestFixture::InsertThread);
   this->StartThreads(FLAGS_num_counter_threads, &TestFixture::CountThread);
   this->StartThreads(FLAGS_num_summer_threads, &TestFixture::SummerThread);
-  this->StartThreads(FLAGS_num_flush_threads, &TestFixture::FlushThread);
-  this->StartThreads(FLAGS_num_compact_threads, &TestFixture::CompactThread);
-  this->StartThreads(FLAGS_num_flush_delta_threads, &TestFixture::FlushDeltasThread);
-  this->StartThreads(FLAGS_num_minor_compact_deltas_threads,
-                     &TestFixture::MinorCompactDeltasThread);
-  this->StartThreads(FLAGS_num_major_compact_deltas_threads,
-                     &TestFixture::MajorCompactDeltasThread);
   this->StartThreads(FLAGS_num_slowreader_threads, &TestFixture::SlowReaderThread);
-  this->StartThreads(FLAGS_num_updater_threads, &TestFixture::UpdateThread);
   this->JoinThreads();
   LOG_TIMING(INFO, "Summing int32 column") {
     uint64_t sum = this->CountSum(shared_ptr<TimeSeries>());
     LOG(INFO) << "Sum = " << sum;
   }
 
-  uint64_t max_rows = this->ClampRowCount(FLAGS_inserts_per_thread * FLAGS_num_insert_threads)
-          / FLAGS_num_insert_threads;
+  uint64_t max_rows = this->ClampRowCount(FLAGS_inserts_per_thread * kNumInsertThreads)
+          / kNumInsertThreads;
 
-  this->VerifyTestRows(0, max_rows * FLAGS_num_insert_threads);
-}
+  this->VerifyTestRows(0, max_rows * kNumInsertThreads);
 
-// Start up a bunch of threads which repeatedly insert and delete the same
-// row, while flushing and compacting. This checks various concurrent handling
-// of DELETE/REINSERT during flushes.
-TYPED_TEST(MultiThreadedTabletTest, DeleteAndReinsert) {
+  // Start up a bunch of threads which repeatedly insert and delete the same
+  // row, while flushing and compacting. This checks various concurrent handling
+  // of DELETE/REINSERT during flushes.
   google::FlagSaver saver;
-  FLAGS_flusher_backoff = 1.0f;
-  FLAGS_flusher_initial_frequency_ms = 1;
-  FLAGS_tablet_delta_store_major_compact_min_ratio = 0.01f;
-  FLAGS_tablet_delta_store_minor_compact_max = 10;
-  this->StartThreads(FLAGS_num_flush_threads, &TestFixture::FlushThread);
-  this->StartThreads(FLAGS_num_compact_threads, &TestFixture::CompactThread);
-  this->StartThreads(FLAGS_num_flush_delta_threads, &TestFixture::FlushDeltasThread);
-  this->StartThreads(FLAGS_num_minor_compact_deltas_threads,
-                     &TestFixture::MinorCompactDeltasThread);
-  this->StartThreads(FLAGS_num_major_compact_deltas_threads,
-                     &TestFixture::MajorCompactDeltasThread);
   this->StartThreads(10, &TestFixture::DeleteAndReinsertCycleThread);
   this->StartThreads(10, &TestFixture::StubbornlyUpdateSameRowThread);
 
@@ -479,6 +359,9 @@ TYPED_TEST(MultiThreadedTabletTest, DeleteAndReinsert) {
   this->running_insert_count_.Reset(0);
   this->JoinThreads();
 }
+
+// NOTE: Cannot add another TYPED_TEST here. The opid chosen for the next insert might
+// be out of order and will assert in rocksdb::MemTable::SetLastOpId().
 
 } // namespace tablet
 } // namespace yb

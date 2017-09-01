@@ -80,6 +80,8 @@ using tserver::WriteRequestPB;
 class BootstrapTest : public LogTestBase {
  protected:
 
+  static constexpr TableType kTableType = TableType::YQL_TABLE_TYPE;
+
   void SetUp() override {
     LogTestBase::SetUp();
   }
@@ -93,7 +95,7 @@ class BootstrapTest : public LogTestBase {
       log::kTestTable,
       log::kTestTablet,
       log::kTestTable,
-      TableType::DEFAULT_TABLE_TYPE,
+      kTableType,
       schema,
       partition.first,
       partition.second,
@@ -166,9 +168,9 @@ class BootstrapTest : public LogTestBase {
     // Unless we explicitly scan at a snapshot including all hybrid_times, we don't
     // see the bootstrapped operation. This is likely due to KUDU-138 -- perhaps
     // we aren't properly setting up the clock after bootstrap.
-    MvccSnapshot snap = MvccSnapshot::CreateSnapshotIncludingAllOperations();
-    ASSERT_OK(tablet->NewRowIterator(schema_, snap, Tablet::UNORDERED, &iter));
-    ASSERT_OK(iter->Init(nullptr));
+    ASSERT_OK(tablet->NewRowIterator(schema_, &iter));
+    ScanSpec scan_spec;
+    ASSERT_OK(iter->Init(&scan_spec));
     ASSERT_OK(IterateToStringList(iter.get(), results));
     for (const string& result : *results) {
       VLOG(1) << result;
@@ -179,19 +181,14 @@ class BootstrapTest : public LogTestBase {
 // Tests a normal bootstrap scenario
 TEST_F(BootstrapTest, TestBootstrap) {
   BuildLog();
-
-  AppendReplicateBatch(MakeOpId(1, current_index_));
-  ASSERT_OK(RollLog());
-
-  AppendCommit(MakeOpId(1, current_index_));
-
+  const auto current_op_id = MakeOpId(1, current_index_);
+  AppendReplicateBatch(current_op_id, current_op_id);
   shared_ptr<Tablet> tablet;
   ConsensusBootstrapInfo boot_info;
   ASSERT_OK(BootstrapTestTablet(-1, -1, &tablet, &boot_info));
 
   vector<string> results;
   IterateTabletRows(tablet.get(), &results);
-  ASSERT_EQ(1, results.size());
 }
 
 // Tests attempting a local bootstrap of a tablet that was in the middle of a
@@ -206,110 +203,6 @@ TEST_F(BootstrapTest, TestIncompleteRemoteBootstrap) {
   ASSERT_TRUE(s.IsCorruption()) << "Expected corruption: " << s.ToString();
   ASSERT_STR_CONTAINS(s.ToString(), "TabletMetadata bootstrap state is TABLET_DATA_COPYING");
   LOG(INFO) << "State is still TABLET_DATA_COPYING, as expected: " << s.ToString();
-}
-
-// Tests the KUDU-141 scenario: bootstrap when there is
-// an orphaned commit after a log roll.
-// The test simulates the following scenario:
-//
-// 1) 'Replicate A' is written to Segment_1, which is anchored
-// on MemRowSet_1.
-// 2) Segment_1 is rolled, 'Commit A' is written to Segment_2.
-// 3) MemRowSet_1 is flushed, releasing all anchors.
-// 4) Segment_1 is garbage collected.
-// 5) We crash, requiring a recovery of Segment_2 which now contains
-// the orphan 'Commit A'.
-TEST_F(BootstrapTest, TestOrphanCommit) {
-  BuildLog();
-
-  OpId opid = MakeOpId(1, current_index_);
-
-  // Step 1) Write a REPLICATE to the log, and roll it.
-  AppendReplicateBatch(opid);
-  ASSERT_OK(RollLog());
-
-  // Step 2) Write the corresponding COMMIT in the second segment.
-  AppendCommit(opid);
-
-  {
-    shared_ptr<Tablet> tablet;
-    ConsensusBootstrapInfo boot_info;
-
-    // Step 3) Apply the operations in the log to the tablet and flush
-    // the tablet to disk.
-    ASSERT_OK(BootstrapTestTablet(-1, -1, &tablet, &boot_info));
-    ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
-
-    // Create a new log segment.
-    ASSERT_OK(RollLog());
-
-    // Step 4) Create an orphanned commit by first adding a commit to
-    // the newly rolled logfile, and then by removing the previous
-    // commits.
-    AppendCommit(opid);
-    log::SegmentSequence segments;
-    ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
-    ASSERT_OK(fs_manager_->env()->DeleteFile(segments[0]->path()));
-  }
-  {
-    shared_ptr<Tablet> tablet;
-    ConsensusBootstrapInfo boot_info;
-
-    // Note: when GLOG_v=1, the test logs should include 'Ignoring
-    // orphan commit: op_type: WRITE_OP...' line.
-    ASSERT_OK(BootstrapTestTablet(2, 1, &tablet, &boot_info));
-
-    // Confirm that the legitimate data (from Step 3) is still there.
-    vector<string> results;
-    IterateTabletRows(tablet.get(), &results);
-    ASSERT_EQ(1, results.size());
-    ASSERT_EQ("(int32 key=1, int32 int_val=0, string string_val=this is a test insert)",
-              results[0]);
-    ASSERT_EQ(2, tablet->metadata()->last_durable_mrs_id());
-  }
-}
-
-// Tests this scenario:
-// Orphan COMMIT with id <= current mrs id, followed by a REPLICATE
-// message with mrs_id > current mrs_id, and a COMMIT message for that
-// REPLICATE message.
-//
-// This should result in the orphan COMMIT being ignored, but the last
-// REPLICATE/COMMIT messages ending up in the tablet.
-TEST_F(BootstrapTest, TestNonOrphansAfterOrphanCommit) {
-  BuildLog();
-
-  OpId opid = MakeOpId(1, current_index_);
-
-  AppendReplicateBatch(opid);
-  ASSERT_OK(RollLog());
-
-  AppendCommit(opid);
-
-  log::SegmentSequence segments;
-  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
-  ASSERT_OK(fs_manager_->env()->DeleteFile(segments[0]->path()));
-
-  current_index_ += 2;
-
-  opid = MakeOpId(1, current_index_);
-
-  AppendReplicateBatch(opid);
-  AppendCommit(opid, 2, 1, 0);
-
-  shared_ptr<Tablet> tablet;
-  ConsensusBootstrapInfo boot_info;
-  ASSERT_OK(BootstrapTestTablet(1, 0, &tablet, &boot_info));
-
-  // Confirm that the legitimate data is there.
-  vector<string> results;
-  IterateTabletRows(tablet.get(), &results);
-  ASSERT_EQ(1, results.size());
-
-  // 'key=3' means the REPLICATE message was inserted when current_id_ was 3, meaning
-  // that only the non-orphan commit went in.
-  ASSERT_EQ("(int32 key=3, int32 int_val=0, string string_val=this is a test insert)",
-            results[0]);
 }
 
 // Test for where the server crashes in between REPLICATE and COMMIT.
@@ -360,16 +253,39 @@ TEST_F(BootstrapTest, TestMissingConsensusMetadata) {
   ASSERT_STR_CONTAINS(s.ToString(), "Unable to load Consensus metadata");
 }
 
+// Tests that when we have two consecutive replicates and the commit index specified in the second
+// is that of the first, only the first one is committed.
+TEST_F(BootstrapTest, TestCommitFirstMessageBySpecifyingCommittedIndexInSecond) {
+  BuildLog();
+
+  // This appends a write with op 1.1
+  const OpId insert_opid = MakeOpId(1, 1);
+  AppendReplicateBatch(insert_opid, MakeOpId(0, 0),
+                       {TupleForAppend(10, 1, "this is a test insert")}, true /* sync */);
+
+  // This appends a write with op 1.2 and commits the previous one.
+  const OpId mutate_opid = MakeOpId(1, 2);
+  AppendReplicateBatch(mutate_opid, insert_opid,
+                       {TupleForAppend(10, 2, "this is a test mutate")}, true /* sync */);
+  ConsensusBootstrapInfo boot_info;
+  shared_ptr<Tablet> tablet;
+  ASSERT_OK(BootstrapTestTablet(-1, -1, &tablet, &boot_info));
+  ASSERT_EQ(boot_info.orphaned_replicates.size(), 1);
+  ASSERT_OPID_EQ(boot_info.last_committed_id, insert_opid);
+
+  // Confirm that one operation was applied.
+  vector<string> results;
+  IterateTabletRows(tablet.get(), &results);
+  ASSERT_EQ(1, results.size());
+}
+
 TEST_F(BootstrapTest, TestOperationOverwriting) {
   BuildLog();
 
-  OpId opid = MakeOpId(1, 1);
+  const OpId opid = MakeOpId(1, 1);
 
-  // Append a replicate in term 1
-  AppendReplicateBatch(opid);
-
-  // Append a commit for op 1.1
-  AppendCommit(opid);
+  // Append a replicate in term 1 with only one row.
+  AppendReplicateBatch(opid, MakeOpId(0, 0), {TupleForAppend(1, 0, "this is a test insert")});
 
   // Now append replicates for 4.2 and 4.3
   AppendReplicateBatch(MakeOpId(4, 2));
@@ -377,7 +293,7 @@ TEST_F(BootstrapTest, TestOperationOverwriting) {
 
   ASSERT_OK(RollLog());
   // And overwrite with 3.2
-  AppendReplicateBatch(MakeOpId(3, 2), true);
+  AppendReplicateBatch(MakeOpId(3, 2), MakeOpId(1, 1), {}, true /* sync */);
 
   // When bootstrapping we should apply ops 1.1 and get 3.2 as pending.
   ConsensusBootstrapInfo boot_info;
@@ -396,121 +312,6 @@ TEST_F(BootstrapTest, TestOperationOverwriting) {
             results[0]);
 }
 
-// Tests that when we have out-of-order commits that touch the same rows, operations are
-// still applied and in the correct order.
-TEST_F(BootstrapTest, TestOutOfOrderCommits) {
-  BuildLog();
-
-  auto replicate = std::make_shared<consensus::ReplicateMsg>();
-  replicate->set_op_type(consensus::WRITE_OP);
-  tserver::WriteRequestPB* batch_request = replicate->mutable_write_request();
-  ASSERT_OK(SchemaToPB(schema_, batch_request->mutable_schema()));
-  batch_request->set_tablet_id(log::kTestTablet);
-
-  // This appends Insert(1) with op 10.10
-  OpId insert_opid = MakeOpId(10, 10);
-  replicate->mutable_id()->CopyFrom(insert_opid);
-  replicate->set_hybrid_time(clock_->Now().ToUint64());
-  AddTestRowToPB(RowOperationsPB::INSERT, schema_, 10, 1,
-                 "this is a test insert", batch_request->mutable_row_operations());
-  AppendReplicateBatch(replicate, true);
-
-  // This appends Mutate(1) with op 10.11
-  OpId mutate_opid = MakeOpId(10, 11);
-  batch_request->mutable_row_operations()->Clear();
-  replicate->mutable_id()->CopyFrom(mutate_opid);
-  replicate->set_hybrid_time(clock_->Now().ToUint64());
-  AddTestRowToPB(RowOperationsPB::UPDATE, schema_,
-                 10, 2, "this is a test mutate",
-                 batch_request->mutable_row_operations());
-  AppendReplicateBatch(replicate, true);
-
-  // Now commit the mutate before the insert (in the log).
-  gscoped_ptr<consensus::CommitMsg> mutate_commit(new consensus::CommitMsg);
-  mutate_commit->set_op_type(consensus::WRITE_OP);
-  mutate_commit->mutable_commited_op_id()->CopyFrom(mutate_opid);
-  TxResultPB* result = mutate_commit->mutable_result();
-  OperationResultPB* mutate = result->add_ops();
-  MemStoreTargetPB* target = mutate->add_mutated_stores();
-  target->set_mrs_id(1);
-
-  AppendCommit(mutate_commit.Pass());
-
-  gscoped_ptr<consensus::CommitMsg> insert_commit(new consensus::CommitMsg);
-  insert_commit->set_op_type(consensus::WRITE_OP);
-  insert_commit->mutable_commited_op_id()->CopyFrom(insert_opid);
-  result = insert_commit->mutable_result();
-  OperationResultPB* insert = result->add_ops();
-  target = insert->add_mutated_stores();
-  target->set_mrs_id(1);
-
-  AppendCommit(insert_commit.Pass());
-
-  ConsensusBootstrapInfo boot_info;
-  shared_ptr<Tablet> tablet;
-  ASSERT_OK(BootstrapTestTablet(-1, -1, &tablet, &boot_info));
-
-  // Confirm that both operations were applied.
-  vector<string> results;
-  IterateTabletRows(tablet.get(), &results);
-  ASSERT_EQ(1, results.size());
-
-  ASSERT_EQ("(int32 key=10, int32 int_val=2, string string_val=this is a test mutate)",
-            results[0]);
-}
-
-// Tests that when we have two consecutive replicates but the commit message for the
-// first one is missing, both appear as pending in ConsensusInfo.
-TEST_F(BootstrapTest, TestMissingCommitMessage) {
-  BuildLog();
-
-  auto replicate = std::make_shared<consensus::ReplicateMsg>();
-  replicate->set_op_type(consensus::WRITE_OP);
-  tserver::WriteRequestPB* batch_request = replicate->mutable_write_request();
-  ASSERT_OK(SchemaToPB(schema_, batch_request->mutable_schema()));
-  batch_request->set_tablet_id(log::kTestTablet);
-
-  // This appends Insert(1) with op 10.10
-  OpId insert_opid = MakeOpId(10, 10);
-  replicate->mutable_id()->CopyFrom(insert_opid);
-  replicate->set_hybrid_time(clock_->Now().ToUint64());
-  AddTestRowToPB(RowOperationsPB::INSERT, schema_, 10, 1,
-                 "this is a test insert", batch_request->mutable_row_operations());
-  AppendReplicateBatch(replicate, true);
-
-  // This appends Mutate(1) with op 10.11
-  OpId mutate_opid = MakeOpId(10, 11);
-  batch_request->mutable_row_operations()->Clear();
-  replicate->mutable_id()->CopyFrom(mutate_opid);
-  replicate->set_hybrid_time(clock_->Now().ToUint64());
-  AddTestRowToPB(RowOperationsPB::UPDATE, schema_,
-                 10, 2, "this is a test mutate",
-                 batch_request->mutable_row_operations());
-  AppendReplicateBatch(replicate, true);
-
-  // Now commit the mutate before the insert (in the log).
-  gscoped_ptr<consensus::CommitMsg> mutate_commit(new consensus::CommitMsg);
-  mutate_commit->set_op_type(consensus::WRITE_OP);
-  mutate_commit->mutable_commited_op_id()->CopyFrom(mutate_opid);
-  TxResultPB* result = mutate_commit->mutable_result();
-  OperationResultPB* mutate = result->add_ops();
-  MemStoreTargetPB* target = mutate->add_mutated_stores();
-  target->set_mrs_id(1);
-
-  AppendCommit(mutate_commit.Pass());
-
-  ConsensusBootstrapInfo boot_info;
-  shared_ptr<Tablet> tablet;
-  ASSERT_OK(BootstrapTestTablet(-1, -1, &tablet, &boot_info));
-  ASSERT_EQ(boot_info.orphaned_replicates.size(), 2);
-  ASSERT_OPID_EQ(boot_info.last_committed_id, mutate_opid);
-
-  // Confirm that no operation was applied.
-  vector<string> results;
-  IterateTabletRows(tablet.get(), &results);
-  ASSERT_EQ(0, results.size());
-}
-
 // Test that we do not crash when a consensus-only operation has a hybrid_time
 // that is higher than a hybrid_time assigned to a write operation that follows
 // it in the log.
@@ -523,45 +324,20 @@ TEST_F(BootstrapTest, TestConsensusOnlyOperationOutOfOrderHybridTime) {
   *noop_replicate->mutable_id() = MakeOpId(1, 1);
   noop_replicate->set_hybrid_time(2);
 
+  // All YB REPLICATEs require this:
+  *noop_replicate->mutable_committed_op_id() = MakeOpId(0, 0);
+
   AppendReplicateBatch(noop_replicate, true);
 
-  // Append WRITE_OP with higher OpId and lower hybrid_time.
-  auto write_replicate = std::make_shared<ReplicateMsg>();
-  write_replicate->set_op_type(consensus::WRITE_OP);
-  WriteRequestPB* batch_request = write_replicate->mutable_write_request();
-  ASSERT_OK(SchemaToPB(schema_, batch_request->mutable_schema()));
-  batch_request->set_tablet_id(log::kTestTablet);
-  *write_replicate->mutable_id() = MakeOpId(1, 2);
-  write_replicate->set_hybrid_time(1);
-  AddTestRowToPB(RowOperationsPB::INSERT, schema_, 1, 1, "foo",
-                 batch_request->mutable_row_operations());
-
-  AppendReplicateBatch(write_replicate, true);
-
-  // Now commit in OpId order.
-  // NO_OP...
-  gscoped_ptr<consensus::CommitMsg> mutate_commit(new consensus::CommitMsg);
-  mutate_commit->set_op_type(consensus::NO_OP);
-  *mutate_commit->mutable_commited_op_id() = noop_replicate->id();
-
-  AppendCommit(mutate_commit.Pass());
-
-  // ...and WRITE_OP...
-  mutate_commit.reset(new consensus::CommitMsg);
-  mutate_commit->set_op_type(consensus::WRITE_OP);
-  *mutate_commit->mutable_commited_op_id() = write_replicate->id();
-  TxResultPB* result = mutate_commit->mutable_result();
-  OperationResultPB* mutate = result->add_ops();
-  MemStoreTargetPB* target = mutate->add_mutated_stores();
-  target->set_mrs_id(1);
-
-  AppendCommit(mutate_commit.Pass());
+  // Append WRITE_OP with higher OpId and lower hybrid_time, and commit both messages.
+  const auto second_opid = MakeOpId(1, 2);
+  AppendReplicateBatch(second_opid, second_opid, {TupleForAppend(1, 1, "foo")});
 
   ConsensusBootstrapInfo boot_info;
   shared_ptr<Tablet> tablet;
   ASSERT_OK(BootstrapTestTablet(-1, -1, &tablet, &boot_info));
   ASSERT_EQ(boot_info.orphaned_replicates.size(), 0);
-  ASSERT_OPID_EQ(boot_info.last_committed_id, write_replicate->id());
+  ASSERT_OPID_EQ(boot_info.last_committed_id, second_opid);
 
   // Confirm that the insert op was applied.
   vector<string> results;

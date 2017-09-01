@@ -130,12 +130,6 @@ class RemoteBootstrapClient {
       const scoped_refptr<consensus::Consensus>& shared_consensus);
 
  private:
-  FRIEND_TEST(RemoteBootstrapKuduClientTest, TestBeginEndSession);
-  FRIEND_TEST(RemoteBootstrapKuduClientTest, TestDownloadBlock);
-  FRIEND_TEST(RemoteBootstrapKuduClientTest, TestVerifyData);
-  FRIEND_TEST(RemoteBootstrapKuduClientTest, TestDownloadWalSegment);
-  FRIEND_TEST(RemoteBootstrapKuduClientTest, TestDownloadAllBlocks);
-
   FRIEND_TEST(RemoteBootstrapRocksDBClientTest, TestBeginEndSession);
   FRIEND_TEST(RemoteBootstrapRocksDBClientTest, TestDownloadRocksDBFiles);
 

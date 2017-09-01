@@ -61,7 +61,7 @@ using std::vector;
 
 class YBTabletTest : public YBTest {
  public:
-  explicit YBTabletTest(const Schema& schema, TableType table_type = TableType::DEFAULT_TABLE_TYPE)
+  explicit YBTabletTest(const Schema& schema, TableType table_type = TableType::YQL_TABLE_TYPE)
     : schema_(schema.CopyWithColumnIds()),
       client_schema_(schema),
       table_type_(table_type) {
@@ -147,7 +147,7 @@ class YBRowSetTest : public YBTabletTest {
   virtual void SetUp() override {
     YBTabletTest::SetUp();
     ASSERT_OK(tablet()->metadata()->CreateRowSet(&rowset_meta_,
-                                                       SchemaBuilder(schema_).Build()));
+                                                 SchemaBuilder(schema_).Build()));
   }
 
   CHECKED_STATUS FlushMetadata() {
@@ -159,8 +159,8 @@ class YBRowSetTest : public YBTabletTest {
 };
 
 static inline CHECKED_STATUS IterateToStringList(RowwiseIterator *iter,
-                                         vector<string> *out,
-                                         int limit = INT_MAX) {
+                                                 vector<string> *out,
+                                                 int limit = INT_MAX) {
   out->clear();
   Schema schema = iter->schema();
   Arena arena(1024, 1024);
@@ -169,10 +169,8 @@ static inline CHECKED_STATUS IterateToStringList(RowwiseIterator *iter,
   while (iter->HasNext() && fetched < limit) {
     RETURN_NOT_OK(iter->NextBlock(&block));
     for (size_t i = 0; i < block.nrows() && fetched < limit; i++) {
-      if (block.selection_vector()->IsRowSelected(i)) {
-        out->push_back(schema.DebugRow(block.row(i)));
-        fetched++;
-      }
+      out->push_back(schema.DebugRow(block.row(i)));
+      fetched++;
     }
   }
   return Status::OK();
@@ -188,9 +186,9 @@ static inline void CollectRowsForSnapshots(Tablet* tablet,
     DVLOG(1) << "Snapshot: " <<  snapshot.ToString();
     gscoped_ptr<RowwiseIterator> iter;
     ASSERT_OK(tablet->NewRowIterator(schema,
-                                            snapshot,
-                                            Tablet::UNORDERED,
-                                            &iter));
+                                     snapshot,
+                                     Tablet::UNORDERED,
+                                     &iter));
     ScanSpec scan_spec;
     ASSERT_OK(iter->Init(&scan_spec));
     auto collector = new vector<string>();
@@ -251,7 +249,8 @@ static inline CHECKED_STATUS DumpRowSet(const RowSet &rs,
 // Take an un-initialized iterator, Init() it, and iterate through all of its rows.
 // The resulting string contains a line per entry.
 static inline string InitAndDumpIterator(gscoped_ptr<RowwiseIterator> iter) {
-  CHECK_OK(iter->Init(NULL));
+  ScanSpec scan_spec;
+  CHECK_OK(iter->Init(&scan_spec));
 
   vector<string> out;
   CHECK_OK(IterateToStringList(iter.get(), &out));
@@ -260,8 +259,8 @@ static inline string InitAndDumpIterator(gscoped_ptr<RowwiseIterator> iter) {
 
 // Dump all of the rows of the tablet into the given vector.
 static inline CHECKED_STATUS DumpTablet(const Tablet& tablet,
-                         const Schema& projection,
-                         vector<string>* out) {
+                                        const Schema& projection,
+                                        vector<string>* out) {
   gscoped_ptr<RowwiseIterator> iter;
   RETURN_NOT_OK(tablet.NewRowIterator(projection, &iter));
   ScanSpec scan_spec;

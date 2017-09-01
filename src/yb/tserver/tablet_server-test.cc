@@ -697,50 +697,6 @@ class MyCommonHooks : public Tablet::FlushCompactCommonHooks,
   int iteration_;
 };
 
-// Regression test for KUDU-176. Ensures that after a major delta compaction,
-// restarting properly recovers the tablet.
-TEST_F(TabletServerTest, TestKUDU_176_RecoveryAfterMajorDeltaCompaction) {
-  // Flush a DRS with 1 rows.
-  ASSERT_NO_FATALS(InsertTestRowsRemote(0, 1, 1));
-  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
-  ASSERT_NO_FATALS(VerifyRows(schema_, { KeyValue(1, 1) }));
-
-  // Update it, flush deltas.
-  ASSERT_NO_FATALS(UpdateTestRowRemote(0, 1, 2));
-  ASSERT_OK(tablet_peer_->tablet()->FlushBiggestDMS());
-  ASSERT_NO_FATALS(VerifyRows(schema_, { KeyValue(1, 2) }));
-
-  // Verify that data is still the same.
-  ASSERT_NO_FATALS(VerifyRows(schema_, { KeyValue(1, 2) }));
-
-  // Verify that data remains after a restart.
-  ASSERT_OK(ShutdownAndRebuildTablet());
-  ASSERT_NO_FATALS(VerifyRows(schema_, { KeyValue(1, 2) }));
-}
-
-// Regression test for KUDU-177. Ensures that after a major delta compaction,
-// rows that were in the old DRS's DMS are properly replayed.
-TEST_F(TabletServerTest, TestKUDU_177_RecoveryOfDMSEditsAfterMajorDeltaCompaction) {
-  // Flush a DRS with 1 rows.
-  ASSERT_NO_FATALS(InsertTestRowsRemote(0, 1, 1));
-  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
-  ASSERT_NO_FATALS(VerifyRows(schema_, { KeyValue(1, 1) }));
-
-  // Update it, flush deltas.
-  ASSERT_NO_FATALS(UpdateTestRowRemote(0, 1, 2));
-  ASSERT_OK(tablet_peer_->tablet()->FlushBiggestDMS());
-
-  // Update it again, so this last update is in the DMS.
-  ASSERT_NO_FATALS(UpdateTestRowRemote(0, 1, 3));
-  ASSERT_NO_FATALS(VerifyRows(schema_, { KeyValue(1, 3) }));
-
-  // Verify that data is still the same.
-  ASSERT_NO_FATALS(VerifyRows(schema_, { KeyValue(1, 3) }));
-
-  // Verify that the update remains after a restart.
-  ASSERT_OK(ShutdownAndRebuildTablet());
-  ASSERT_NO_FATALS(VerifyRows(schema_, { KeyValue(1, 3) }));
-}
 
 TEST_F(TabletServerTest, TestClientGetsErrorBackWhenRecoveryFailed) {
   ASSERT_NO_FATALS(InsertTestRowsRemote(0, 1, 7));

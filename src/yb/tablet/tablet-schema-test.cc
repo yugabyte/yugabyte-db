@@ -59,9 +59,6 @@ class TestTabletSchema : public YBTabletTest {
   void InsertRows(const Schema& schema, size_t first_key, size_t nrows) {
     for (size_t i = first_key; i < nrows; ++i) {
       InsertRow(schema, i);
-
-      // Half of the rows will be on disk
-      // and the other half in the MemRowSet
       if (i == (nrows / 2)) {
         ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync));
       }
@@ -279,39 +276,6 @@ TEST_F(TestTabletSchema, TestDeleteAndReAddColumn) {
   keys.clear();
   keys.push_back(std::pair<string, string>("key=1", "c1=NULL"));
   VerifyTabletRows(s2, keys);
-}
-
-// Verify modifying an empty MemRowSet
-TEST_F(TestTabletSchema, TestModifyEmptyMemRowSet) {
-  std::vector<std::pair<string, string> > keys;
-
-  // Switch schema to s2
-  SchemaBuilder builder(tablet()->metadata()->schema());
-  ASSERT_OK(builder.AddNullableColumn("c2", INT32));
-  AlterSchema(builder.Build());
-  Schema s2 = builder.BuildWithoutIds();
-
-  // Verify we can insert some new data.
-  // Inserts the row "(2, 2, 2)"
-  LocalTabletWriter writer(tablet().get(), &s2);
-  YBPartialRow row(&s2);
-  CHECK_OK(row.SetInt32(0, 2));
-  CHECK_OK(row.SetInt32(1, 2));
-  CHECK_OK(row.SetInt32(2, 2));
-  ASSERT_OK(writer.Insert(row));
-
-  vector<string> rows;
-  ASSERT_OK(DumpTablet(*tablet(), s2, &rows));
-  EXPECT_EQ("(int32 key=2, int32 c1=2, int32 c2=2)", rows[0]);
-
-  // Update some columns.
-  MutateRow(s2, /* key= */ 2, /* col_idx= */ 2, /* new_val= */ 3);
-  ASSERT_OK(DumpTablet(*tablet(), s2, &rows));
-  EXPECT_EQ("(int32 key=2, int32 c1=2, int32 c2=3)", rows[0]);
-
-  MutateRow(s2, /* key= */ 2, /* col_idx= */ 1, /* new_val= */ 4);
-  ASSERT_OK(DumpTablet(*tablet(), s2, &rows));
-  EXPECT_EQ("(int32 key=2, int32 c1=4, int32 c2=3)", rows[0]);
 }
 
 } // namespace tablet

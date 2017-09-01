@@ -186,9 +186,7 @@ set(YB_TEST_LINK_LIBS
   tserver_test_util
   yb_client # yb::client::YBTableName
   ${YB_MIN_TEST_LIBS})
-ADD_YB_TEST(remote_bootstrap_kudu_client-test)
 ADD_YB_TEST(remote_bootstrap_rocksdb_client-test)
-ADD_YB_TEST(remote_bootstrap_kudu_session-test)
 ADD_YB_TEST(remote_bootstrap_rocksdb_session-test)
 ADD_YB_TEST(remote_bootstrap_service-test)
 ADD_YB_TEST(tablet_server-test)

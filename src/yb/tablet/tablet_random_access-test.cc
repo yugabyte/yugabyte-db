@@ -61,9 +61,6 @@ enum TestOp {
   TEST_DELETE,
   TEST_FLUSH_OPS,
   TEST_FLUSH_TABLET,
-  TEST_FLUSH_DELTAS,
-  TEST_MINOR_COMPACT_DELTAS,
-  TEST_MAJOR_COMPACT_DELTAS,
   TEST_COMPACT_TABLET,
   TEST_NUM_OP_TYPES // max value for enum
 };
@@ -78,9 +75,6 @@ const char* TestOp_names[] = {
   "TEST_DELETE",
   "TEST_FLUSH_OPS",
   "TEST_FLUSH_TABLET",
-  "TEST_FLUSH_DELTAS",
-  "TEST_MINOR_COMPACT_DELTAS",
-  "TEST_MAJOR_COMPACT_DELTAS",
   "TEST_COMPACT_TABLET"
 };
 
@@ -91,11 +85,12 @@ const char* TestOp_names[] = {
 // a single thread, so that it's easy to verify that the tablet always matches the expected
 // state.
 class TestRandomAccess : public YBTabletTest {
+  static const string VALUE_NOT_FOUND;
+
  public:
   TestRandomAccess()
-    : YBTabletTest(Schema({ ColumnSchema("key", INT32),
-                              ColumnSchema("val", INT32, true) }, 1)),
-      done_(1) {
+    : YBTabletTest(Schema({ ColumnSchema("key", INT32), ColumnSchema("val", INT32, true) }, 1)),
+                   done_(1) {
     OverrideFlagForSlowTests("keyspace_size", "30000");
     OverrideFlagForSlowTests("runtime_seconds", "10");
     OverrideFlagForSlowTests("sleep_between_background_ops_ms", "1000");
@@ -122,12 +117,17 @@ class TestRandomAccess : public YBTabletTest {
   // TODO: should add a version of this test which also tries invalid operations
   // and validates the correct errors.
   void DoRandomBatch() {
+    if (expected_tablet_state_.size() == 0)
+      return;
     int key = rand_r(&random_seed_) % expected_tablet_state_.size();
     string& cur_val = expected_tablet_state_[key];
 
     // Check that a read yields what we expect.
     string val_in_table = GetRow(key);
-    ASSERT_EQ("(" + cur_val + ")", val_in_table);
+    // Since we start with expected_tablet_state_ sized `keyspace_size`, there might not
+    // be all keys present initially. So we do not assert for the value when key is not present.
+    if (val_in_table != VALUE_NOT_FOUND)
+      ASSERT_EQ("(" + cur_val + ")", val_in_table);
 
     vector<LocalTabletWriter::Op> pending;
     for (int i = 0; i < 3; i++) {
@@ -170,14 +170,8 @@ class TestRandomAccess : public YBTabletTest {
       CHECK_OK(tablet()->Flush(tablet::FlushMode::kSync));
       ++n_flushes;
       switch (n_flushes % 3) {
-        case 0:
-          CHECK_OK(tablet()->Compact(Tablet::FORCE_COMPACT_ALL));
-          break;
         case 1:
-          CHECK_OK(tablet()->CompactWorstDeltas(RowSet::MAJOR_DELTA_COMPACTION));
-          break;
-        case 2:
-          CHECK_OK(tablet()->CompactWorstDeltas(RowSet::MINOR_DELTA_COMPACTION));
+          CHECK_OK(tablet()->Compact(Tablet::FORCE_COMPACT_ALL));
           break;
       }
     }
@@ -233,18 +227,22 @@ class TestRandomAccess : public YBTabletTest {
     spec.AddPredicate(pred_one);
     CHECK_OK(iter->Init(&spec));
 
-    string ret = "()";
-    int n_results = 0;
+    string ret = VALUE_NOT_FOUND;
+    if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+      vector<string> results;
+      CHECK_OK(IterateToStringList(iter.get(), &results));
+      if (results.size() == 1)
+        return results[0];
+      return VALUE_NOT_FOUND;
+    }
 
+    int n_results = 0;
     Arena arena(1024, 4*1024*1024);
     RowBlock block(schema, 100, &arena);
     while (iter->HasNext()) {
       arena.Reset();
       CHECK_OK(iter->NextBlock(&block));
       for (int i = 0; i < block.nrows(); i++) {
-        if (!block.selection_vector()->IsRowSelected(i)) {
-          continue;
-        }
         // We expect to only get exactly one result per read.
         CHECK_EQ(n_results, 0)
           << "Already got result when looking up row "
@@ -275,6 +273,8 @@ class TestRandomAccess : public YBTabletTest {
   unsigned int random_seed_ = SeedRandom();
 };
 
+const string TestRandomAccess::VALUE_NOT_FOUND = "()";
+
 TEST_F(TestRandomAccess, Test) {
   scoped_refptr<Thread> flush_thread;
   CHECK_OK(Thread::Create(
@@ -285,13 +285,10 @@ TEST_F(TestRandomAccess, Test) {
   flush_thread->Join();
 }
 
-
 void GenerateTestCase(vector<TestOp>* ops, int len) {
   bool exists = false;
   bool ops_pending = false;
-  bool data_in_mrs = false;
   bool worth_compacting = false;
-  bool data_in_dms = false;
   ops->clear();
   unsigned int random_seed = SeedRandom();
   while (ops->size() < len) {
@@ -301,26 +298,18 @@ void GenerateTestCase(vector<TestOp>* ops, int len) {
       case TEST_INSERT:
         if (exists) continue;
         ops->push_back(TEST_INSERT);
-        exists = true;
         ops_pending = true;
-        data_in_mrs = true;
+        exists = true;
         break;
       case TEST_UPDATE:
         if (!exists) continue;
         ops->push_back(TEST_UPDATE);
         ops_pending = true;
-        if (!data_in_mrs) {
-          data_in_dms = true;
-        }
         break;
       case TEST_DELETE:
         if (!exists) continue;
         ops->push_back(TEST_DELETE);
-        ops_pending = true;
         exists = false;
-        if (!data_in_mrs) {
-          data_in_dms = true;
-        }
         break;
       case TEST_FLUSH_OPS:
         if (ops_pending) {
@@ -329,41 +318,14 @@ void GenerateTestCase(vector<TestOp>* ops, int len) {
         }
         break;
       case TEST_FLUSH_TABLET:
-        if (data_in_mrs) {
-          if (ops_pending) {
-            ops->push_back(TEST_FLUSH_OPS);
-            ops_pending = false;
-          }
-          ops->push_back(TEST_FLUSH_TABLET);
-          data_in_mrs = false;
-          worth_compacting = true;
-        }
+        ops->push_back(TEST_FLUSH_TABLET);
+        worth_compacting = true;
         break;
       case TEST_COMPACT_TABLET:
         if (worth_compacting) {
-          if (ops_pending) {
-            ops->push_back(TEST_FLUSH_OPS);
-            ops_pending = false;
-          }
           ops->push_back(TEST_COMPACT_TABLET);
           worth_compacting = false;
         }
-        break;
-      case TEST_FLUSH_DELTAS:
-        if (data_in_dms) {
-          if (ops_pending) {
-            ops->push_back(TEST_FLUSH_OPS);
-            ops_pending = false;
-          }
-          ops->push_back(TEST_FLUSH_DELTAS);
-          data_in_dms = false;
-        }
-        break;
-      case TEST_MAJOR_COMPACT_DELTAS:
-        ops->push_back(TEST_MAJOR_COMPACT_DELTAS);
-        break;
-      case TEST_MINOR_COMPACT_DELTAS:
-        ops->push_back(TEST_MINOR_COMPACT_DELTAS);
         break;
       default:
         LOG(FATAL);
@@ -392,7 +354,8 @@ void TestRandomAccess::RunFuzzCase(const vector<TestOp>& test_ops,
   int i = 0;
   for (TestOp test_op : test_ops) {
     string val_in_table = GetRow(1);
-    ASSERT_EQ("(" + cur_val + ")", val_in_table);
+    if (val_in_table != VALUE_NOT_FOUND)
+      ASSERT_EQ("(" + cur_val + ")", val_in_table);
 
     i++;
     LOG(INFO) << TestOp_names[test_op];
@@ -418,15 +381,6 @@ void TestRandomAccess::RunFuzzCase(const vector<TestOp>& test_ops,
         break;
       case TEST_FLUSH_TABLET:
         ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync));
-        break;
-      case TEST_FLUSH_DELTAS:
-        ASSERT_OK(tablet()->FlushBiggestDMS());
-        break;
-      case TEST_MAJOR_COMPACT_DELTAS:
-        ASSERT_OK(tablet()->CompactWorstDeltas(RowSet::MAJOR_DELTA_COMPACTION));
-        break;
-      case TEST_MINOR_COMPACT_DELTAS:
-        ASSERT_OK(tablet()->CompactWorstDeltas(RowSet::MINOR_DELTA_COMPACTION));
         break;
       case TEST_COMPACT_TABLET:
         ASSERT_OK(tablet()->Compact(Tablet::FORCE_COMPACT_ALL));
@@ -463,24 +417,16 @@ TEST_F(TestRandomAccess, TestFuzzHugeBatches) {
 // A particular test case which previously failed TestFuzz.
 TEST_F(TestRandomAccess, TestFuzz1) {
   TestOp test_ops[] = {
-    // Get an inserted row in a DRS.
+    // Get an inserted row.
     TEST_INSERT,
     TEST_FLUSH_OPS,
     TEST_FLUSH_TABLET,
-
-    // DELETE in DMS, INSERT in MRS and flush again.
+    // DELETE and INSERT.
     TEST_DELETE,
     TEST_INSERT,
     TEST_FLUSH_OPS,
     TEST_FLUSH_TABLET,
-
-    // State:
-    // RowSet RowSet(0):
-    //   (int32 key=1, int32 val=NULL) Undos: [@1(DELETE)] Redos (in DMS): [@2 DELETE]
-    // RowSet RowSet(1):
-    //   (int32 key=1, int32 val=NULL) Undos: [@2(DELETE)] Redos: []
-
-    TEST_COMPACT_TABLET,
+    TEST_COMPACT_TABLET
   };
   RunFuzzCase(vector<TestOp>(test_ops, test_ops + arraysize(test_ops)));
 }
@@ -492,27 +438,13 @@ TEST_F(TestRandomAccess, TestFuzz2) {
     TEST_DELETE,
     TEST_FLUSH_OPS,
     TEST_FLUSH_TABLET,
-    // (int32 key=1, int32 val=NULL)
-    // Undo Mutations: [@1(DELETE)]
-    // Redo Mutations: [@1(DELETE)]
-
     TEST_INSERT,
     TEST_DELETE,
     TEST_INSERT,
     TEST_FLUSH_OPS,
     TEST_FLUSH_TABLET,
-    // (int32 key=1, int32 val=NULL)
-    // Undo Mutations: [@2(DELETE)]
-    // Redo Mutations: []
-
-    TEST_COMPACT_TABLET,
-    // Output Row: (int32 key=1, int32 val=NULL)
-    // Undo Mutations: [@1(DELETE)]
-    // Redo Mutations: [@1(DELETE)]
-
     TEST_DELETE,
-    TEST_FLUSH_OPS,
-    TEST_COMPACT_TABLET
+    TEST_COMPACT_TABLET,
   };
   RunFuzzCase(vector<TestOp>(test_ops, test_ops + arraysize(test_ops)));
 }
@@ -521,32 +453,12 @@ TEST_F(TestRandomAccess, TestFuzz2) {
 TEST_F(TestRandomAccess, TestFuzz3) {
   TestOp test_ops[] = {
     TEST_INSERT,
+    TEST_DELETE,
     TEST_FLUSH_OPS,
     TEST_FLUSH_TABLET,
-    // Output Row: (int32 key=1, int32 val=NULL)
-    // Undo Mutations: [@1(DELETE)]
-    // Redo Mutations: []
-
-    TEST_DELETE,
-    // Adds a @2 DELETE to DMS for above row.
-
     TEST_INSERT,
     TEST_DELETE,
-    TEST_FLUSH_OPS,
-    TEST_FLUSH_TABLET,
-    // (int32 key=1, int32 val=NULL)
-    // Undo Mutations: [@2(DELETE)]
-    // Redo Mutations: [@2(DELETE)]
-
-    // Compaction input:
-    // Row 1: (int32 key=1, int32 val=NULL)
-    //   Undo Mutations: [@2(DELETE)]
-    //   Redo Mutations: [@2(DELETE)]
-    // Row 2: (int32 key=1, int32 val=NULL)
-    //  Undo Mutations: [@1(DELETE)]
-    //  Redo Mutations: [@2(DELETE)]
-
-    TEST_COMPACT_TABLET,
+    TEST_COMPACT_TABLET
   };
   RunFuzzCase(vector<TestOp>(test_ops, test_ops + arraysize(test_ops)));
 }
@@ -556,21 +468,16 @@ TEST_F(TestRandomAccess, TestFuzz4) {
   TestOp test_ops[] = {
     TEST_INSERT,
     TEST_FLUSH_OPS,
+    TEST_FLUSH_TABLET,
     TEST_COMPACT_TABLET,
     TEST_DELETE,
-    TEST_FLUSH_OPS,
-    TEST_COMPACT_TABLET,
     TEST_INSERT,
     TEST_UPDATE,
-    TEST_FLUSH_OPS,
-    TEST_FLUSH_TABLET,
     TEST_DELETE,
+    TEST_FLUSH_OPS,
+    TEST_FLUSH_TABLET,
     TEST_INSERT,
-    TEST_FLUSH_OPS,
-    TEST_FLUSH_TABLET,
     TEST_UPDATE,
-    TEST_FLUSH_OPS,
-    TEST_FLUSH_TABLET,
     TEST_UPDATE,
     TEST_DELETE,
     TEST_INSERT,

@@ -11,12 +11,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-Kudu Consensus Implementation
+YugaByte Consensus Implementation
 =============================
 
-Kudu implements the RAFT consensus protocol, with minor modifications as
+YugaByte implements the RAFT consensus protocol, with minor modifications as
 described in this document. For the details of the write-ahead-log (WAL) message
-format, see the README file in this directory. Kudu maintains one RAFT config
+format, see the README file in this directory. YugaByte maintains one RAFT config
 per tablet.
 
 RAFT describes how to ensure that additions to the leader's WAL get replicated
@@ -34,7 +34,7 @@ brief outline of important points follows here, for quick reference:
   to be elected. Every time a leader election takes place, the monotonic term
   number is incremented (see currentTerm below).
 - There are three roles a RAFT node can assume: leader, follower, or candidate.
-  Kudu explicitly specifies an additional learner role (not yet implemented),
+  YugaByte explicitly specifies an additional learner roles,
   which is a non-voting role.
 - The WAL index is an absolute index into the log. If two logs contain an entry
   with the same index and term, then the logs are identical in all entries
@@ -73,16 +73,16 @@ details.
 RaftConfig membership changes:
 ------------------------------
 A two-phase joint consensus protocol is used for making cluster membership
-changes, including changing members of the config or the size of the majority.
-See RAFT section 6 and figure 11 for details.
+changes, including changing members of the config. Currently we do not allow changes to
+the size of the majority for a given tablet quorm.
 
-NOTE: membership changes are not yet implemented in Kudu.
+See RAFT section 6 and figure 11 for details.
 
 
 Leader election modifications (future work)
 ---------------------------------------------
 
-The Kudu leader election protocol proceeds exactly as specified in the extended
+The YugaByte leader election protocol proceeds exactly as specified in the extended
 version of the RAFT paper [1], sections 5.2 - 5.3, with the following
 exceptions:
 
@@ -142,7 +142,7 @@ References
 [1] RAFT: In Search of an Understandable Consensus Algorithm (Extended Version).
     Ongaro & Ousterhout. http://ramcloud.stanford.edu/raft.pdf
 
-[2] Spanner: Google’s globally distributed database. Corbett, et al. OSDI '12.
+[2] Spanner: Google's globally distributed database. Corbett, et al. OSDI '12.
     http://research.google.com/archive/spanner-osdi2012.pdf
 
 [3] http://pdos.csail.mit.edu/dsrg/blog/2013/05/23/raft/

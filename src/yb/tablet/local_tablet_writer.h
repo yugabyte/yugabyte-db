@@ -99,7 +99,7 @@ class LocalTabletWriter {
   // Perform a write against the local tablet.
   // Returns a bad Status if the applied operation had a per-row error.
   CHECKED_STATUS Write(RowOperationsPB::Type type,
-               const YBPartialRow& row) {
+                       const YBPartialRow& row) {
     vector<Op> ops;
     ops.push_back(Op(type, &row));
     return WriteBatch(ops);
@@ -129,7 +129,7 @@ class LocalTabletWriter {
     if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
       tx_state_->mutable_op_id()->set_term(0);
       tx_state_->mutable_op_id()->set_index(
-        Singleton<AutoIncrementingCounter>::get()->GetAndIncrement());
+          Singleton<AutoIncrementingCounter>::get()->GetAndIncrement());
     } else {
       tx_state_->mutable_op_id()->CopyFrom(consensus::MaximumOpId());
     }

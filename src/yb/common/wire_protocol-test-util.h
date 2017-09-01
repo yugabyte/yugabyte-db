@@ -40,8 +40,16 @@
 #include "yb/common/partial_row.h"
 #include "yb/common/row.h"
 #include "yb/common/row_operations.h"
+#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/doc_key.h"
 
 namespace yb {
+
+using docdb::KeyValuePairPB;
+using docdb::SubDocKey;
+using docdb::DocKey;
+using docdb::PrimitiveValue;
+using docdb::ValueType;
 
 inline Schema GetSimpleTestSchema() {
   return Schema({ ColumnSchema("key", INT32),
@@ -77,15 +85,36 @@ inline void AddTestRowToPB(RowOperationsPB::Type op_type,
 }
 
 inline void AddTestKeyToPB(RowOperationsPB::Type op_type,
-                    const Schema& schema,
-                    int32_t key,
-                    RowOperationsPB* ops) {
+                           const Schema& schema,
+                           int32_t key,
+                           RowOperationsPB* ops) {
   YBPartialRow row(&schema);
   CHECK_OK(row.SetInt32(0, key));
   RowOperationsPBEncoder enc(ops);
   enc.Add(op_type, row);
 }
 
+inline void AddKVToPB(int32_t key_val,
+                      int32_t int_val,
+                      const string& string_val,
+                      docdb::KeyValueWriteBatchPB* write_batch) {
+  const ColumnId int_val_col_id(kFirstColumnId + 1);
+  const ColumnId string_val_col_id(kFirstColumnId + 2);
+
+  auto add_kv_pair =
+    [&](const SubDocKey &subdoc_key, const PrimitiveValue &primitive_value) {
+        KeyValuePairPB *const kv = write_batch->add_kv_pairs();
+        kv->set_key(subdoc_key.Encode().AsStringRef());
+        kv->set_value(primitive_value.ToValue());
+    };
+
+  const DocKey doc_key({PrimitiveValue::Int32(key_val)});
+  add_kv_pair(SubDocKey(doc_key, PrimitiveValue(int_val_col_id)),
+              PrimitiveValue::Int32(int_val));
+  add_kv_pair(SubDocKey(doc_key, PrimitiveValue(string_val_col_id)),
+             PrimitiveValue(string_val));
+}
+
 } // namespace yb
 
-#endif /* YB_COMMON_WIRE_PROTOCOL_TEST_UTIL_H_ */
+#endif // YB_COMMON_WIRE_PROTOCOL_TEST_UTIL_H_

@@ -106,7 +106,6 @@ class CompositePushdownTest : public YBTabletTest {
 
   void ScanTablet(ScanSpec *spec, vector<string> *results, const char *descr) {
     SCOPED_TRACE(descr);
-
     gscoped_ptr<RowwiseIterator> iter;
     ASSERT_OK(tablet()->NewRowIterator(client_schema_, &iter));
     ASSERT_OK(iter->Init(spec));
@@ -335,7 +334,7 @@ TEST_F(CompositePushdownTest, TestPushDownPrefixEqualitySuffixInequality) {
     ASSERT_EQ(9 * 28 * 3, results.size());
     EXPECT_EQ("(int16 year=2001, int8 month=1, int8 day=1, "
               "string hostname=baz, string data=2001/01/01-baz)",
-              results.front());
+               results.front());
     EXPECT_EQ("(int16 year=2001, int8 month=9, int8 day=28, "
               "string hostname=foobar, string data=2001/09/28-foobar)",
               results.back());
@@ -370,8 +369,6 @@ TEST_F(CompositePushdownTest, TestPushdownPrefixInequality) {
     vector<string> results;
     ASSERT_NO_FATALS(ScanTablet(&spec, &results, "Prefix inequality"));
     ASSERT_EQ(10 * 12 * 28 * 3, results.size());
-    // Needed because results from memrowset are returned first and memrowset begins
-    // with last 10% of the keys (e.g., last few years)
     EXPECT_EQ("(int16 year=2001, int8 month=1, int8 day=1, "
               "string hostname=baz, string data=2001/01/01-baz)",
               results.front());

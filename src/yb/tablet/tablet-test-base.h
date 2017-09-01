@@ -33,13 +33,14 @@
 #define YB_TABLET_TABLET_TEST_BASE_H
 
 #include <algorithm>
-#include <boost/thread/thread.hpp>
-#include <glog/logging.h>
-#include <gtest/gtest.h>
 #include <limits>
 #include <string>
 #include <unordered_set>
 #include <vector>
+
+#include <boost/thread/thread.hpp>
+#include <glog/logging.h>
+#include <gtest/gtest.h>
 
 #include "yb/common/partial_row.h"
 #include "yb/common/row.h"
@@ -354,16 +355,16 @@ class TabletTestBase : public YBTabletTest {
 
   // Inserts a single test row within a transaction.
   CHECKED_STATUS InsertTestRow(LocalTabletWriter* writer,
-                       int64_t key_idx,
-                       int32_t val) {
+                               int64_t key_idx,
+                               int32_t val) {
     YBPartialRow row(&client_schema_);
     setup_.BuildRow(&row, key_idx, val);
     return writer->Insert(row);
   }
 
   CHECKED_STATUS UpdateTestRow(LocalTabletWriter* writer,
-                       int64_t key_idx,
-                       int32_t new_val) {
+                               int64_t key_idx,
+                               int32_t new_val) {
     YBPartialRow row(&client_schema_);
     setup_.BuildRowKey(&row, key_idx);
 
@@ -375,7 +376,7 @@ class TabletTestBase : public YBTabletTest {
   }
 
   CHECKED_STATUS UpdateTestRowToNull(LocalTabletWriter* writer,
-                             int64_t key_idx) {
+                                     int64_t key_idx) {
     YBPartialRow row(&client_schema_);
     setup_.BuildRowKey(&row, key_idx);
 
@@ -400,7 +401,8 @@ class TabletTestBase : public YBTabletTest {
   void VerifyTestRows(int64_t first_row, uint64_t expected_count) {
     gscoped_ptr<RowwiseIterator> iter;
     ASSERT_OK(tablet()->NewRowIterator(client_schema_, &iter));
-    ASSERT_OK(iter->Init(NULL));
+    ScanSpec scan_spec;
+    ASSERT_OK(iter->Init(&scan_spec));
     int batch_size = std::max(
       (size_t)1, std::min((size_t)(expected_count / 10),
                           4*1024*1024 / schema_.byte_size()));
@@ -454,7 +456,8 @@ class TabletTestBase : public YBTabletTest {
   CHECKED_STATUS IterateToStringList(vector<string> *out) {
     gscoped_ptr<RowwiseIterator> iter;
     RETURN_NOT_OK(this->tablet()->NewRowIterator(this->client_schema_, &iter));
-    RETURN_NOT_OK(iter->Init(NULL));
+    ScanSpec scan_spec;
+    RETURN_NOT_OK(iter->Init(&scan_spec));
     return yb::tablet::IterateToStringList(iter.get(), out);
   }
 
@@ -487,4 +490,4 @@ class TabletTestBase : public YBTabletTest {
 } // namespace tablet
 } // namespace yb
 
-#endif
+#endif  // YB_TABLET_TABLET_TEST_BASE_H"

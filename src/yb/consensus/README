@@ -11,13 +11,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-This document introduces how Kudu will handle log replication and consistency
+This document introduces how YugaByte will handle log replication and consistency
 using an algorithm known as Viewstamped Replication (VS) and a series of 
 practical algorithms/techniques for recovery, reconfiguration, compactions etc.
-This document introduces all the concepts directly related to Kudu, for any
+This document introduces all the concepts directly related to YugaByte, for any
 missing information please refer to the original papers [1,3,4].
 
-Quorums, in Kudu, are a set of collaborating processes that serve the purpose
+Quorums, in YugaByte, are a set of collaborating processes that serve the purpose
 of keeping a consistent, replicated log of operations on a given data set, e.g.
 a tablet. This replicated consistent log, also plays the role of the Write
 Ahead Log (WAL) for the tablet. Throughout this document we use config
@@ -139,7 +139,7 @@ size, the underlying file is truncated to the last written offset
 Quorums and roles within configs
 ============================================================
 
-A config in Kudu is a fault-tolerant, consistent unit that serves requests for
+A config in YugaByte is a fault-tolerant, consistent unit that serves requests for
 a single tablet. As long as there are 2f+1 participants available in a config,
 where f is the number of possibly faulty participants, the config will keep
 serving requests for its tablet and it is guaranteed that clients perceive a

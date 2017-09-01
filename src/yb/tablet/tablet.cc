@@ -1205,15 +1205,15 @@ Status Tablet::AcquireLocksAndPerformDocOperations(WriteOperationState *state) {
           RETURN_NOT_OK(KeyValueBatchFromQLWriteBatch(
               key_value_write_request, &locks_held, state->response(), state));
         } else {
-          // Kudu-compatible codepath - we'll construct a new WriteRequestPB for Raft replication.
+          // TODO: Remove this row op based codepath after all tests set yql_write_batch.
           RETURN_NOT_OK(KeyValueBatchFromKuduRowOps(key_value_write_request, &locks_held));
         }
         invalid_table_type = false;
         break;
       }
-      case KUDU_COLUMNAR_TABLE_TYPE:
-        LOG(FATAL) << "Invalid table type: " << table_type_;
+      case TableType::KUDU_COLUMNAR_TABLE_TYPE: {
         break;
+      }
     }
     if (invalid_table_type) {
       LOG(FATAL) << "Invalid table type: " << table_type_;
@@ -1402,12 +1402,18 @@ void Tablet::ModifyRowSetTree(const RowSetTree& old_tree,
 
 void Tablet::AtomicSwapRowSets(const RowSetVector &old_rowsets,
                                const RowSetVector &new_rowsets) {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return;
+  }
   std::lock_guard<rw_spinlock> lock(component_lock_);
   AtomicSwapRowSetsUnlocked(old_rowsets, new_rowsets);
 }
 
 void Tablet::AtomicSwapRowSetsUnlocked(const RowSetVector &to_remove,
                                        const RowSetVector &to_add) {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return;
+  }
   DCHECK(component_lock_.is_locked());
 
   shared_ptr<RowSetTree> new_tree(new RowSetTree());
@@ -1419,6 +1425,9 @@ void Tablet::AtomicSwapRowSetsUnlocked(const RowSetVector &to_remove,
 
 Status Tablet::DoMajorDeltaCompaction(const vector<ColumnId>& col_ids,
                                       shared_ptr<RowSet> input_rs) {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return Status::OK();
+  }
   CHECK_EQ(state_, kOpen);
   Status s = down_cast<DiskRowSet*>(input_rs.get())
       ->MajorCompactDeltaStoresWithColumnIds(col_ids);
@@ -1571,6 +1580,9 @@ Status Tablet::ApplyIntents(const TransactionApplyData& data) {
 
 Status Tablet::ReplaceMemRowSetUnlocked(RowSetsInCompaction *compaction,
                                         shared_ptr<MemRowSet> *old_ms) {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return Status::OK();
+  }
   *old_ms = components_->memrowset;
   // Mark the memrowset rowset as locked, so compactions won't consider it
   // for inclusion in any concurrent compactions.
@@ -1595,6 +1607,10 @@ Status Tablet::ReplaceMemRowSetUnlocked(RowSetsInCompaction *compaction,
 
 Status Tablet::FlushInternal(const RowSetsInCompaction& input,
                              const shared_ptr<MemRowSet>& old_ms) {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return Status::OK();
+  }
+
   CHECK(state_ == kOpen || state_ == kBootstrapping);
 
   // Step 1. Freeze the old memrowset by blocking readers and swapping
@@ -1662,8 +1678,6 @@ Status Tablet::AlterSchema(AlterSchemaOperationState *operation_state) {
   // in-place.
   std::lock_guard<Semaphore> lock(rowsets_flush_sem_);
 
-  RowSetsInCompaction input;
-  shared_ptr<MemRowSet> old_ms;
   {
     bool same_schema = schema()->Equals(*operation_state->schema());
 
@@ -1703,9 +1717,12 @@ Status Tablet::AlterSchema(AlterSchemaOperationState *operation_state) {
     }
   }
 
-  // Replace the MemRowSet
+  // The rest of this function is old Kudu code, which will be deleted.
+  // Replace the MemRowSet.
+  RowSetsInCompaction input;
+  shared_ptr<MemRowSet> old_ms;
   if (table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    std::lock_guard<rw_spinlock> lock(component_lock_);
+    std::lock_guard <rw_spinlock> lock(component_lock_);
     RETURN_NOT_OK(ReplaceMemRowSetUnlocked(&input, &old_ms));
   }
 
@@ -1716,7 +1733,7 @@ Status Tablet::AlterSchema(AlterSchemaOperationState *operation_state) {
   // writes. A "big hammer" fix has been applied here to hold the lock
   // all the way until the COMMIT message has been appended to the WAL.
 
-  // Flush the old MemRowSet
+  // Flush the old MemRowSet.
   if (table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     return FlushInternal(input, old_ms);
   }
@@ -2068,6 +2085,11 @@ Status Tablet::PickRowSetsToCompact(RowSetsInCompaction *picked,
 }
 
 void Tablet::GetRowSetsForTests(RowSetVector* out) {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    out->clear();
+    return;
+  }
+
   shared_ptr<RowSetTree> rowsets_copy;
   {
     shared_lock<rw_spinlock> lock(component_lock_);
@@ -2121,6 +2143,9 @@ yb::OpId Tablet::MaxPersistentOpId() const {
 Status Tablet::FlushMetadata(const RowSetVector& to_remove,
                              const RowSetMetadataVector& to_add,
                              int64_t mrs_being_flushed) {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return metadata_->Flush();
+  }
   RowSetMetadataIds to_remove_meta;
   for (const shared_ptr<RowSet>& rowset : to_remove) {
     // Skip MemRowSet & DuplicatingRowSets which don't have metadata.
@@ -2134,6 +2159,10 @@ Status Tablet::FlushMetadata(const RowSetVector& to_remove,
 }
 
 Status Tablet::DoCompactionOrFlush(const RowSetsInCompaction &input, int64_t mrs_being_flushed) {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return Status::OK();
+  }
+
   const char *op_name =
       (mrs_being_flushed == TabletMetadata::kNoMrsFlushed) ? "Compaction" : "Flush";
   TRACE_EVENT2("tablet", "Tablet::DoCompactionOrFlush",
@@ -2332,10 +2361,12 @@ Status Tablet::DoCompactionOrFlush(const RowSetsInCompaction &input, int64_t mrs
 }
 
 Status Tablet::Compact(CompactFlags flags) {
+  CHECK_EQ(state_, kOpen);
+
   if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    // TODO: Add calls into RocksDB compaction.
     return Status::OK();
   }
-  CHECK_EQ(state_, kOpen);
 
   RowSetsInCompaction input;
   // Step 1. Capture the rowsets to be merged
@@ -2525,16 +2556,25 @@ Status Tablet::StartDocWriteOperation(const vector<unique_ptr<DocOperation>> &do
 }
 
 Status Tablet::CountRows(uint64_t *count) const {
+  *count = 0;
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    // TODO: Could use DocRowwiseIterator to get the count right.
+    return Status::OK();
+  }
   // First grab a consistent view of the components of the tablet.
   scoped_refptr<TabletComponents> comps;
   GetComponents(&comps);
 
   // Now sum up the counts.
-  *count = comps->memrowset->entry_count();
-  for (const shared_ptr<RowSet> &rowset : comps->rowsets->all_rowsets()) {
-    rowid_t l_count;
-    RETURN_NOT_OK(rowset->CountRows(&l_count));
-    *count += l_count;
+  if (comps->memrowset != nullptr) {
+    *count = comps->memrowset->entry_count();
+  }
+  if (comps->rowsets != nullptr) {
+    for (const shared_ptr <RowSet> &rowset : comps->rowsets->all_rowsets()) {
+      rowid_t l_count;
+      RETURN_NOT_OK(rowset->CountRows(&l_count));
+      *count += l_count;
+    }
   }
 
   return Status::OK();
@@ -2771,7 +2811,9 @@ double Tablet::GetPerfImprovementForBestDeltaCompactUnlocked(RowSet::DeltaCompac
 }
 
 size_t Tablet::num_rowsets() const {
-  assert(table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE);
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return 0;
+  }
   shared_lock<rw_spinlock> lock(component_lock_);
   return components_->rowsets->all_rowsets().size();
 }
@@ -2845,8 +2887,7 @@ Status Tablet::Iterator::Init(ScanSpec *spec) {
     VLOG(3) << "After encoding range preds: " << spec->ToString();
   }
 
-  RETURN_NOT_OK(tablet_->CaptureConsistentIterators(
-      &projection_, snap_, spec, &iters));
+  RETURN_NOT_OK(tablet_->CaptureConsistentIterators(&projection_, snap_, spec, &iters));
 
   switch (order_) {
     case ORDERED:

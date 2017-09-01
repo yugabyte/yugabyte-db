@@ -37,6 +37,7 @@
 #include <vector>
 #include <glog/stl_logging.h>
 
+#include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/schema-internal.h"
 #include "yb/consensus/quorum_util.h"
@@ -65,6 +66,7 @@ namespace yb {
 namespace tserver {
 
 using client::YBSchemaFromSchema;
+using client::YBTableType;
 using consensus::OpId;
 using consensus::RaftPeerPB;
 using itest::GetReplicaStatusAndCheckIfLeader;
@@ -436,6 +438,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
     ASSERT_OK(table_creator->table_name(kTableName)
              .schema(&client_schema)
              .num_replicas(FLAGS_num_replicas)
+             .table_type(static_cast<YBTableType>(TableType::KUDU_COLUMNAR_TABLE_TYPE))
              // NOTE: this is quite high as a timeout, but the default (5 sec) does not
              // seem to be high enough in some cases (see KUDU-550). We should remove
              // this once that ticket is addressed.
@@ -462,6 +465,10 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
     ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
     ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(kTableName, ClusterVerifier::EXACTLY,
         expected_result_count));
+  }
+
+  YBTableType table_type() {
+    return table_->table_type();
   }
 
  protected:

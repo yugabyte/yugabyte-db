@@ -89,6 +89,11 @@ using consensus::MakeOpId;
 using consensus::RaftPeerPB;
 using consensus::ReplicateMsg;
 using consensus::LeaderLeaseCheckMode;
+using docdb::KeyValuePairPB;
+using docdb::SubDocKey;
+using docdb::DocKey;
+using docdb::PrimitiveValue;
+using docdb::ValueType;
 using itest::AddServer;
 using itest::GetReplicaStatusAndCheckIfLeader;
 using itest::LeaderStepDown;
@@ -1419,7 +1424,7 @@ void RaftConsensusITest::StubbornlyWriteSameRowThread(int replica_idx, const Ato
 // requests targeting a single row. If the bug exists, then OperationOrderVerifier
 // will trigger an assertion because the prepare order and the op indexes will become
 // misaligned.
-TEST_F(RaftConsensusITest, TestKUDU_597) {
+TEST_F(RaftConsensusITest, VerifyTransactionOrder) {
   FLAGS_num_replicas = 3;
   FLAGS_num_tablet_servers = 3;
   ASSERT_NO_FATALS(BuildAndStart(vector<string>()));
@@ -1454,9 +1459,14 @@ void RaftConsensusITest::AddOp(const OpId& id, ConsensusRequestPB* req) {
   WriteRequestPB* write_req = msg->mutable_write_request();
   CHECK_OK(SchemaToPB(schema_, write_req->mutable_schema()));
   write_req->set_tablet_id(tablet_id_);
-  int key = id.index() * 10000 + id.term();
-  AddTestRowToPB(RowOperationsPB::INSERT, schema_, key, id.term(),
-                 id.ShortDebugString(), write_req->mutable_row_operations());
+  int32_t key = static_cast<int32_t>(id.index() * 10000 + id.term());
+  if (table_type() == client::YBTableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    AddTestRowToPB(RowOperationsPB::INSERT, schema_, key, id.term(),
+                   id.ShortDebugString(), write_req->mutable_row_operations());
+  } else {
+    string str_val = Substitute("term: $0 index: $1", id.term(), id.index());
+    AddKVToPB(key, key + 10, str_val, write_req->mutable_write_batch());
+  }
 }
 
 // Regression test for KUDU-644:

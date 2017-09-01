@@ -73,6 +73,8 @@ struct TestLogSequenceElem {
 
 class LogTest : public LogTestBase {
  public:
+  static constexpr TableType kTableType = TableType::YQL_TABLE_TYPE;
+
   void CreateAndRegisterNewAnchor(int64_t log_index, vector<LogAnchor*>* anchors) {
     anchors->push_back(new LogAnchor());
     log_anchor_registry_->Register(log_index, CURRENT_TEST_NAME(), anchors->back());
@@ -598,8 +600,8 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
 // writing them to the log.
 TEST_F(LogTest, TestWaitUntilAllFlushed) {
   BuildLog();
-  // Append 2 replicate/commit pairs asynchronously
-  AppendReplicateBatchAndCommitEntryPairsToLog(2, APPEND_ASYNC);
+  // Append 2 replicate pairs asynchronously
+  AppendReplicateBatchToLog(2, kTableType, APPEND_ASYNC);
 
   ASSERT_OK(log_->WaitUntilAllFlushed());
 
@@ -608,14 +610,9 @@ TEST_F(LogTest, TestWaitUntilAllFlushed) {
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
 
   ASSERT_OK(segments[0]->ReadEntries(&entries_));
-  ASSERT_EQ(entries_.size(), 4);
-  for (int i = 0; i < 4 ; i++) {
-    if (i % 2 == 0) {
-      ASSERT_TRUE(entries_[i]->has_replicate());
-    } else {
-      ASSERT_TRUE(entries_[i]->has_commit());
-      ASSERT_EQ(WRITE_OP, entries_[i]->commit().op_type());
-    }
+  ASSERT_EQ(entries_.size(), 2);
+  for (int i = 0; i < entries_.size(); i++) {
+    ASSERT_TRUE(entries_[i]->has_replicate());
   }
 }
 
@@ -699,7 +696,7 @@ TEST_F(LogTest, TestWriteManyBatches) {
 
   LOG(INFO)<< "Starting to write " << num_batches << " to log";
   LOG_TIMING(INFO, "Wrote all batches to log") {
-    AppendReplicateBatchAndCommitEntryPairsToLog(num_batches);
+    AppendReplicateBatchToLog(num_batches, kTableType);
   }
   ASSERT_OK(log_->Close());
   LOG(INFO) << "Done writing";
@@ -720,7 +717,7 @@ TEST_F(LogTest, TestWriteManyBatches) {
       ASSERT_OK(entry->ReadEntries(&entries_));
       num_entries += entries_.size();
     }
-    ASSERT_EQ(num_entries, num_batches * 2);
+    ASSERT_EQ(num_entries, num_batches);
     LOG(INFO) << "End readfile";
   }
 }
@@ -794,8 +791,7 @@ TEST_F(LogTest, TestLogReaderReturnsLatestSegmentIfIndexEmpty) {
   BuildLog();
 
   OpId opid = MakeOpId(1, 1);
-  AppendCommit(opid, APPEND_ASYNC);
-  AppendReplicateBatch(opid, APPEND_SYNC);
+  AppendReplicateBatch(opid, MakeOpId(0, 0), {}, APPEND_SYNC, kTableType);
 
   SegmentSequence segments;
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
@@ -803,7 +799,7 @@ TEST_F(LogTest, TestLogReaderReturnsLatestSegmentIfIndexEmpty) {
 
   LogEntries entries;
   ASSERT_OK(segments[0]->ReadEntries(&entries));
-  ASSERT_EQ(2, entries.size());
+  ASSERT_EQ(1, entries.size());
 }
 
 TEST_F(LogTest, TestOpIdUtils) {
@@ -903,8 +899,6 @@ void LogTest::AppendTestSequence(const vector<TestLogSequenceElem>& seq) {
         Synchronizer s;
         ASSERT_OK(log_->AsyncAppendCommit(commit.Pass(), s.AsStatusCallback()));
         ASSERT_OK(s.Wait());
-        // There was a missing break here in Kudu, most likely a bug. We found this after we made
-        // implicit fallthrough in case statements an error.
         break;
       }
       case TestLogSequenceElem::ROLL:

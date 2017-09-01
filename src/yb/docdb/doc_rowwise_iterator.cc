@@ -41,7 +41,7 @@ CHECKED_STATUS ExpectValueType(ValueType expected_value_type,
     return Status::OK();
   } else {
     return STATUS_FORMAT(Corruption,
-        "Expected a internal value type $0 for column $1 of physical SQL type $2, got $3",
+        "Expected an internal value type $0 for column $1 of physical SQL type $2, got $3",
         expected_value_type,
         column.name(),
         column.type_info()->name(),
@@ -80,7 +80,7 @@ Status DocRowwiseIterator::Init(ScanSpec *spec) {
   db_iter_ = CreateRocksDBIterator(db_, BloomFilterMode::DONT_USE_BLOOM_FILTER,
       boost::none /* user_key_for_filter */, spec->query_id());
 
-  if (spec->lower_bound_key() != nullptr) {
+  if (spec != nullptr && spec->lower_bound_key() != nullptr) {
     row_key_ = KuduToDocKey(*spec->lower_bound_key());
   } else {
     row_key_ = DocKey();
@@ -89,7 +89,7 @@ Status DocRowwiseIterator::Init(ScanSpec *spec) {
                SubDocKey(row_key_, DocHybridTime(hybrid_time_, kMaxWriteId)).Encode().AsSlice());
   row_ready_ = false;
 
-  if (spec->exclusive_upper_bound_key() != nullptr) {
+  if (spec != nullptr && spec->exclusive_upper_bound_key() != nullptr) {
     has_upper_bound_key_ = true;
     exclusive_upper_bound_key_ = KuduToDocKey(*spec->exclusive_upper_bound_key()).Encode();
   } else {
@@ -233,6 +233,12 @@ CHECKED_STATUS PrimitiveValueToKudu(const Schema& projection,
       // TODO: update these casts when all data types are supported in docdb
       RETURN_NOT_OK(ExpectValueType(ValueType::kInt32, col_schema, value));
       *(reinterpret_cast<int32_t*>(dest_ptr)) = static_cast<int32_t>(value.GetInt32());
+      break;
+    }
+    case DataType::INT16: {
+      // TODO: update these casts when all data types are supported in docdb
+      RETURN_NOT_OK(ExpectValueType(ValueType::kInt32, col_schema, value));
+      *(reinterpret_cast<int16_t*>(dest_ptr)) = static_cast<int16_t>(value.GetInt32());
       break;
     }
     case DataType::INT8: {
