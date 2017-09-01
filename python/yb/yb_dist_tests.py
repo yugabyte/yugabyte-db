@@ -2,11 +2,11 @@
 
 import collections
 import command_util
+import copy
 import logging
 import os
 import re
 import time
-
 
 # This is used to separate relative binary path from gtest_filter for C++ tests in what we call
 # a "test descriptor" (a string that identifies a particular test).
@@ -16,9 +16,14 @@ TEST_DESCRIPTOR_SEPARATOR = ":::"
 
 JAVA_TEST_DESCRIPTOR_RE = re.compile(r'^([a-z0-9-]+)/src/test/(?:java|scala)/(.*)$')
 
+TEST_DESCRIPTOR_ATTEMPT_PREFIX = TEST_DESCRIPTOR_SEPARATOR + 'attempt_'
+TEST_DESCRIPTOR_ATTEMPT_INDEX_RE = re.compile(
+    r'^(.*)' + TEST_DESCRIPTOR_ATTEMPT_PREFIX + r'(\d+)$')
+
 global_conf = None
 
 CLOCK_SYNC_WAIT_LOGGING_INTERVAL_SEC = 10
+
 MAX_TIME_TO_WAIT_FOR_CLOCK_SYNC_SEC = 60
 
 
@@ -32,6 +37,14 @@ class TestDescriptor:
     def __init__(self, descriptor_str):
         self.descriptor_str = descriptor_str
 
+        attempt_index_match = TEST_DESCRIPTOR_ATTEMPT_INDEX_RE.match(descriptor_str)
+        if attempt_index_match:
+            self.attempt_index = int(attempt_index_match.group(2))
+            self.descriptor_str_without_attempt_index = attempt_index_match.group(1)
+        else:
+            self.attempt_index = 1
+            self.descriptor_str_without_attempt_index = descriptor_str
+
         self.is_jvm_based = False
         if self.descriptor_str.endswith('.java'):
             self.is_jvm_based = True
@@ -43,8 +56,8 @@ class TestDescriptor:
         if self.is_jvm_based:
             # This is a Java/Scala test. The "test descriptors string " is the Java source file path
             # relative to the "java" directory.
-            mvn_module, package_and_class_with_slashes = \
-                    JAVA_TEST_DESCRIPTOR_RE.match(self.descriptor_str).groups()
+            mvn_module, package_and_class_with_slashes = JAVA_TEST_DESCRIPTOR_RE.match(
+                self.descriptor_str_without_attempt_index).groups()
 
             package_and_class = package_and_class_with_slashes.replace('/', '.')
             self.args_for_run_test = "{} {}".format(mvn_module, package_and_class)
@@ -52,10 +65,11 @@ class TestDescriptor:
         else:
             self.language = 'C++'
             # This is a C++ test.
-            if TEST_DESCRIPTOR_SEPARATOR in self.descriptor_str:
-                rel_test_binary, test_name = self.descriptor_str.split(TEST_DESCRIPTOR_SEPARATOR)
+            if TEST_DESCRIPTOR_SEPARATOR in self.descriptor_str_without_attempt_index:
+                rel_test_binary, test_name = self.descriptor_str_without_attempt_index.split(
+                    TEST_DESCRIPTOR_SEPARATOR)
             else:
-                rel_test_binary = self.descriptor_str
+                rel_test_binary = self.descriptor_str_without_attempt_index
                 test_name = None
 
             # Arguments for run-test.sh.
@@ -74,7 +88,22 @@ class TestDescriptor:
                 global_conf.build_root, 'yb-test-logs', output_file_name + '__error.log')
 
     def __str__(self):
-        return self.descriptor_str
+        if self.attempt_index == 1:
+            return self.descriptor_str_without_attempt_index
+        return "{}{}{}".format[
+            self.descriptor_str_without_attempt_index,
+            TEST_DESCRIPTOR_ATTEMPT_PREFIX,
+            self.attempt_index
+            ]
+
+    def with_attempt_index(self, attempt_index):
+        assert attempt_index >= 1
+        copied = copy.copy(self)
+        copied.attempt_index = attempt_index
+        # descriptor_str is just the cached version of the string representation, with the
+        # attempt_index included (if it is greater than 1).
+        copied.descriptor_str = str(copied)
+        return copied
 
 
 class GlobalTestConfig:
@@ -126,9 +155,17 @@ def set_global_conf_from_args(args):
         "Inconsistent YB_SRC_ROOT from module location ({}) vs. BUILD_ROOT ({})".format(
             yb_src_root, yb_src_root_from_build_root)
 
-    assert os.path.basename(build_root).startswith(build_type + '-'), (
-            "Inconsistent build root '{}': the directory name must start with build type "
-            "followed by '-', and build type is '{}'.").format(build_root, build_type)
+    build_root_basename = os.path.basename(build_root)
+    if build_type is None:
+        # Figure out build_type based on build path.
+        build_type = build_root_basename.split('-')[0]
+        logging.info("Autodetected build type as '{}' based on build root basename '{}'".format(
+            build_type, build_root_basename
+        ))
+    else:
+        assert build_root_basename.startswith(build_type + '-'), (
+                "Inconsistent build root '{}': the directory name must start with build type "
+                "followed by '-', and build type is '{}'.").format(build_root, build_type)
     global global_conf
     global_conf = GlobalTestConfig(
             build_root=build_root,

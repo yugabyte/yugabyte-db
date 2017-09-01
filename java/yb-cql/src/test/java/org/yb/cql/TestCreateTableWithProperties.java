@@ -102,7 +102,7 @@ public class TestCreateTableWithProperties extends BaseCQLTest {
 
   private void RunValidTableProperty(String property) throws Exception {
     session.execute(CreateTableStmt(property));
-    DropTable("test_create");
+    dropTable("test_create");
   }
 
   private void testInvalidString(String property) throws Exception {

@@ -109,6 +109,7 @@ do_build_if_necessary() {
     echo >&2 -e "$YELLOW_COLOR" "Running $build_func ($install_prefix_type)$NO_COLOR"
     echo >&2 -e "$YELLOW_COLOR$HORIZONTAL_LINE$NO_COLOR"
 
+    set_default_compiler_type
     # Log values of environment variables that influence the third-party dependency build.
     log "YB_COMPILER_TYPE=$YB_COMPILER_TYPE"
     log_empty_line

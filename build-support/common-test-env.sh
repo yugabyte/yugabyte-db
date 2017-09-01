@@ -74,7 +74,13 @@ sanitize_for_path() {
 
 set_common_test_paths() {
   expect_num_args 0 "$@"
-  readonly YB_TEST_LOG_ROOT_DIR="$BUILD_ROOT/yb-test-logs"
+
+  # Allow putting all the test logs into a separate directory by setting YB_TEST_LOG_ROOT_SUFFIX.
+  # This is useful for regression tracking when rolling commits back one by one after the main build
+  # is done (see track_down_regressions.sh), so that we don't pollute the main test result
+  # directory.
+  YB_TEST_LOG_ROOT_DIR="$BUILD_ROOT/yb-test-logs${YB_TEST_LOG_ROOT_SUFFIX:-}"
+
   mkdir_safe "$YB_TEST_LOG_ROOT_DIR"
 }
 
@@ -1121,7 +1127,7 @@ run_tests_on_spark() {
     --build-type "$build_type"
   )
   if is_jenkins && [[ -d "$JENKINS_NFS_BUILD_STATS_DIR" ]]; then
-    run_tests_args+=( "--stats-dir" "$JENKINS_NFS_BUILD_STATS_DIR" )
+    run_tests_args+=( "--stats-dir" "$JENKINS_NFS_BUILD_STATS_DIR" --write_stats )
   fi
 
   set +e

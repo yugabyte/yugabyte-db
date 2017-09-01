@@ -60,6 +60,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/oid_generator.h"
+#include "yb/util/tsan_util.h"
 
 using yb::master::AlterTableRequestPB;
 using yb::master::AlterTableRequestPB_Step;
@@ -126,7 +127,7 @@ MAKE_ENUM_LIMITS(yb::client::YBScanner::OrderMode,
                  yb::client::YBScanner::UNORDERED,
                  yb::client::YBScanner::ORDERED);
 
-DEFINE_int32(yb_num_shards_per_tserver, 8,
+DEFINE_int32(yb_num_shards_per_tserver, yb::NonTsanVsTsan(8, 2),
              "The default number of shards per table per tablet server when a table is created.");
 
 DEFINE_int32(yb_num_total_tablets, 0,
@@ -1108,15 +1109,23 @@ Status YBTableCreator::Create() {
     if (data_->num_tablets_ <= 0) {
       if (data_->table_name_.is_system()) {
         data_->num_tablets_ = 1;
+        VLOG(1) << "num_tablets=1: using one tablet for a system table";
       } else {
         if (FLAGS_yb_num_total_tablets > 0) {
           data_->num_tablets_ = FLAGS_yb_num_total_tablets;
+          VLOG(1) << "num_tablets=" << data_->num_tablets_
+                  << ": --yb_num_total_tablets is specified.";
         } else {
           int tserver_count = 0;
           RETURN_NOT_OK(data_->client_->TabletServerCount(&tserver_count));
           data_->num_tablets_ = tserver_count * FLAGS_yb_num_shards_per_tserver;
+          VLOG(1) << "num_tablets=" << data_->num_tablets_<< ": "
+                  << "calculated as tserver_count * FLAGS_yb_num_shards_per_tserver ("
+                  << tserver_count << " * " << FLAGS_yb_num_shards_per_tserver << ")";
         }
       }
+    } else {
+      VLOG(1) << "num_tablets: number of tablets explicitly specified: " << data_->num_tablets_;
     }
     req.set_num_tablets(data_->num_tablets_);
 

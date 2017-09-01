@@ -119,6 +119,12 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   /**
+   * Hard memory limit for YB daemons. This should be consistent with the memory limit set for C++
+   * based mini clusters in external_mini_cluster.cc.
+   */
+  private static final long DAEMON_MEMORY_LIMIT_HARD_BYTES = 1024 * 1024 * 1024;
+
+  /**
    * Not to be invoked directly, but through a {@link MiniYBClusterBuilder}.
    */
   MiniYBCluster(int numMasters,
@@ -155,6 +161,7 @@ public class MiniYBCluster implements AutoCloseable {
     if (testClassName != null) {
       commonFlags.add("--yb_test_name=" + testClassName);
     }
+    commonFlags.add("--memory_limit_hard_bytes=" + DAEMON_MEMORY_LIMIT_HARD_BYTES);
     return commonFlags;
   }
 

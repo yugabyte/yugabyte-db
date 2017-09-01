@@ -15,15 +15,13 @@
 #include "util/testharness.h"
 #include "port/port.h"
 
-using namespace rocksdb;
+#include "yb/util/tsan_util.h"
+
+using namespace rocksdb;  // NOLINT
 
 namespace {
 
-#if defined(THREAD_SANITIZER)
-const int kNumKeys = 100000;
-#else
-const int kNumKeys = 1100000;
-#endif
+const int kNumKeys = yb::NonTsanVsTsan(1100000, 100000);
 
 std::string Key1(int i) {
   char buf[100];

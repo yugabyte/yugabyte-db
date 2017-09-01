@@ -1,13 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 package org.yb.cql;
 
-import java.io.IOException;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.net.URLConnection;
 import java.util.*;
 
-import org.junit.Ignore;
 import org.junit.Test;
 
 import org.yb.minicluster.IOMetrics;
@@ -18,14 +13,10 @@ import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.exceptions.InvalidQueryException;
-import com.datastax.driver.core.exceptions.SyntaxError;
 
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-
-import org.junit.rules.ExpectedException;
-import org.junit.Rule;
 
 public class TestSelect extends BaseCQLTest {
   @Test
@@ -303,7 +294,7 @@ public class TestSelect extends BaseCQLTest {
   @Test
   public void testSelectWithTimestamp() throws Exception {
     String tableName = "test_select_with_timestamp";
-    CreateTable(tableName, "timestamp");
+    createTable(tableName, "timestamp");
     // testing String input
     String ins_stmt = String.format(
             "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, '%s', %d, '%s', %d, %s);",
@@ -373,7 +364,7 @@ public class TestSelect extends BaseCQLTest {
   @Test
   public void testInvalidSelectWithTimestamp() throws Exception {
     String tableName = "test_select_with_invalid_timestamp";
-    CreateTable(tableName, "timestamp");
+    createTable(tableName, "timestamp");
     String ins_stmt = String.format(
             "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, %s, %d, %s, %d, %s);",
             tableName, 1, "0", 2, "0", 3, "0");

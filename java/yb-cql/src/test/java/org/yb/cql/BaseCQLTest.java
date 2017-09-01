@@ -87,11 +87,22 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   @Before
   public void setUpCqlClient() throws Exception {
     LOG.info("BaseCQLTest.setUpCqlClient is running");
-    cluster = getDefaultClusterBuilder().build();
+    if (miniCluster == null) {
+      final String errorMsg =
+          "Mini-cluster must already be running by the time setUpCqlClient is invoked";
+      LOG.error(errorMsg);
+      throw new RuntimeException(errorMsg);
+    }
+    try {
+      cluster = getDefaultClusterBuilder().build();
+    } catch (Exception ex) {
+      LOG.error("Error while setting up a CQL client", ex);
+      throw ex;
+    }
     LOG.info("Connected to cluster: " + cluster.getMetadata().getClusterName());
     session = buildDefaultSession(cluster);
 
-    // Create and use test keyspace to be able using short table names later.
+    // Create and use test keyspace to be able to use short table names later.
     createKeyspaceIfNotExists(DEFAULT_TEST_KEYSPACE);
     useKeyspace();
   }
@@ -132,27 +143,27 @@ public class BaseCQLTest extends BaseMiniClusterTest {
 
     closeIfNotNull(logPrefix, "session", session);
     // Cannot move this check to closeIfNotNull, because isClosed() is not part of Closeable.
-    if (session != null && session.isClosed()) {
-      LOG.warn(logPrefix + ": session is still not closed!");
+    if (session != null && !session.isClosed()) {
+      LOG.warn(logPrefix + "session is still not closed!");
     }
     session = null;
 
     closeIfNotNull(logPrefix, "cluster", cluster);
     // See the comment above.
-    if (cluster  != null && cluster.isClosed()) {
-      LOG.warn(logPrefix + ": cluster is still not closed!");
+    if (cluster  != null && !cluster.isClosed()) {
+      LOG.warn(logPrefix + "cluster is still not closed!");
     }
     cluster = null;
 
-    LOG.info("BaseCQLTest.tearDownAfter is running: " +
-        "finished dropping tables and closing CQL session/client");
+    LOG.info(logPrefix +
+        "finished attempting to drop tables and trying to close CQL session/client");
     afterBaseCQLTestTearDown();
   }
 
   protected void afterBaseCQLTestTearDown() throws Exception {
   }
 
-  protected void CreateTable(String test_table, String column_type) throws Exception {
+  protected void createTable(String test_table, String column_type) throws Exception {
     LOG.info("CREATE TABLE " + test_table);
     String create_stmt = String.format("CREATE TABLE %s " +
                     " (h1 int, h2 %2$s, " +
@@ -163,22 +174,45 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     session.execute(create_stmt);
   }
 
-  protected void CreateTable(String tableName) throws Exception {
-     CreateTable(tableName, "varchar");
+  protected void createTable(String tableName) throws Exception {
+     createTable(tableName, "varchar");
   }
 
   public void setupTable(String tableName, int numRows) throws Exception {
-    CreateTable(tableName);
+    createTable(tableName);
+
+    if (numRows <= 0) {
+      LOG.info("No rows to create in setupTable (numRows=" + numRows + ")");
+      return;
+    }
 
     LOG.info("INSERT INTO TABLE " + tableName);
+    final long startTimeMs = System.currentTimeMillis();
+    long lastLogTimeMs = startTimeMs;
+    final int LOG_EVERY_MS = 15 * 1000;
+    // INSERT: A valid statement with a column list.
+    final PreparedStatement preparedStmt = session.prepare(
+        "INSERT INTO " + tableName + "(h1, h2, r1, r2, v1, v2) VALUES(" +
+            "?, ?, ?, ?, ?, ?);");
     for (int idx = 0; idx < numRows; idx++) {
-      // INSERT: Valid statement with column list.
-      String insert_stmt = String.format(
-        "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, 'h%d', %d, 'r%d', %d, 'v%d');",
-        tableName, idx, idx, idx+100, idx+100, idx+1000, idx+1000);
-      session.execute(insert_stmt);
+      session.execute(preparedStmt.bind(
+          idx, "h" + idx, idx + 100, "r" + (idx + 100), idx + 1000, "v" + (idx + 1000)));
+      if (idx % 10 == 0) {
+        long currentTimeMs = System.currentTimeMillis();
+        if (currentTimeMs - lastLogTimeMs > LOG_EVERY_MS) {
+          // If we have to do this, we're probably running pretty slowly.
+          LOG.info("Inserted " + (idx + 1) + " rows out of " + numRows + " (" +
+              String.format("%.2f", (idx + 1) * 1000.0 / (currentTimeMs - startTimeMs)) +
+              " rows/second on average)."
+          );
+        }
+      }
     }
-    LOG.info("INSERT INTO TABLE " + tableName + " FINISHED");
+
+    final long totalTimeMs = System.currentTimeMillis() - startTimeMs;
+    LOG.info("INSERT INTO TABLE " + tableName + " FINISHED: inserted " + numRows +
+             "(" + totalTimeMs + " ms, " +
+             String.format("%.2f", numRows * 1000.0 / totalTimeMs) + " rows/sec)");
   }
 
   public void setupTable(String tableName, int []ttls) throws Exception {
@@ -202,9 +236,9 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     LOG.info("INSERT INTO TABLE " + tableName + " FINISHED");
   }
   
-  protected void DropTable(String tableName) throws Exception {
-    String drop_stmt = String.format("DROP TABLE %s;", tableName);
-    session.execute(drop_stmt);
+  protected void dropTable(String tableName) throws Exception {
+    String dropStmt = String.format("DROP TABLE %s;", tableName);
+    session.execute(dropStmt);
   }
 
   protected void dropUDType(String keyspaceName, String typeName) throws Exception {
@@ -229,7 +263,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
       // Drop all non-system tables.
       String namespaceName = tableInfo.getNamespace().getName();
       if (!IsSystemKeyspace(namespaceName)) {
-        DropTable(namespaceName + "." + tableInfo.getName());
+        dropTable(namespaceName + "." + tableInfo.getName());
       }
     }
   }

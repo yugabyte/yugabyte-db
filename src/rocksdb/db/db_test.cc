@@ -74,6 +74,7 @@
 #include "util/string_util.h"
 #include "util/thread_status_util.h"
 #include "util/xfunc.h"
+#include "yb/util/tsan_util.h"
 
 namespace rocksdb {
 
@@ -3996,12 +3997,8 @@ TEST_F(DBTest, SyncMultipleLogs) {
 class RecoveryTestHelper {
  public:
   // Number of WAL files to generate
-#ifdef THREAD_SANITIZER
-    // Lower number of wals for tsan due to low perf.
-    static constexpr int kWALFilesCount = 5;
-#else
-    static constexpr int kWALFilesCount = 10;
-#endif
+  // Lower number of wals for tsan due to low perf.
+  static constexpr int kWALFilesCount = yb::NonTsanVsTsan(10, 5);
   // Starting number for the WAL file name like 00010.log
   static const int kWALFileOffset = 10;
   // Keys to be written per WAL file
@@ -8866,12 +8863,8 @@ TEST_F(DBTest, AddExternalSstFileOverlappingRanges) {
 
     printf("Option config = %d\n", option_config_);
     std::vector<std::pair<int, int>> key_ranges;
-#ifdef THREAD_SANITIZER
-      // Lower number of key ranges for tsan due to low perf.
-      constexpr int kNumKeyRanges = 100;
-#else
-      constexpr int kNumKeyRanges = 500;
-#endif
+    // Lower number of key ranges for tsan due to low perf.
+    constexpr int kNumKeyRanges = yb::NonTsanVsTsan(500, 100);
     for (int i = 0; i < kNumKeyRanges; i++) {
       int range_start = rnd.Uniform(20000);
       int keys_per_range = 10 + rnd.Uniform(41);
@@ -9015,12 +9008,8 @@ TEST_F(DBTest, PinnedDataIteratorRandomized) {
   // Generate Random data
   Random rnd(301);
 
-#ifdef THREAD_SANITIZER
-    // Lower number of keys for tsan due to low perf.
-    constexpr int kNumPuts = 10000;
-#else
-    constexpr int kNumPuts = 100000;
-#endif
+  // Lower number of keys for tsan due to low perf.
+  constexpr int kNumPuts = yb::NonTsanVsTsan(100000, 10000);
   int key_pool = static_cast<int>(kNumPuts * 0.7);
   int key_size = 100;
   int val_size = 1000;

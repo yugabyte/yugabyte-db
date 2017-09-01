@@ -33,7 +33,7 @@ Options:
     Skip all kinds of build (C++, Java)
   --skip-java-build, --skip-java, --sjb, --sj
     Do not package and install java source code.
-  --run-java-tests
+  --java-tests, run-java-tests, --jt, --rjt
     Run the java unit tests when build is enabled.
   --static
     Force a static build.
@@ -91,6 +91,8 @@ Options:
     Use a third-party directory other than <source_tree_root>/thirdparty. This is useful when using
     multiple build directories with different versions of YB code so we can avoid building
     third-party code multiple times.
+  --mvn-opts <maven_options>
+    Specify additional Maven options for Java build/tests.
   --
     Pass all arguments after -- to repeat_unit_test.
 
@@ -171,6 +173,7 @@ repeat_unit_test_inherited_args=()
 forward_args_to_repeat_unit_test=false
 original_args=( "$@" )
 java_with_assembly=false
+mvn_opts=""
 
 export YB_EXTRA_GTEST_FLAGS=""
 
@@ -225,7 +228,7 @@ while [ $# -gt 0 ]; do
     --skip-java-build|--skip-java|--sjb|--sj)
       build_java=false
     ;;
-    --run-java-tests)
+    --run-java-tests|--java-tests|--jt|--rjt)
       run_java_tests=true
     ;;
     --with-assembly)
@@ -359,6 +362,10 @@ while [ $# -gt 0 ]; do
     --edition)
       export YB_EDITION=$2
       validate_edition
+      shift
+    ;;
+    --mvn-opts)
+      mvn_opts+=" $2"
       shift
     ;;
     *)
@@ -613,18 +620,23 @@ if "$should_run_ctest"; then
   )
 fi
 
-# Check if the Java build is needed. And skip Java unit test runs if requested.
+# Check if the Java build is needed, and skip Java unit test runs if requested.
 if "$build_java"; then
+  # We'll need this for running Java tests.
+  set_asan_tsan_options
+
   cd "$YB_SRC_ROOT"/java
   build_opts=( install )
   if ! "$java_with_assembly"; then
     build_opts+=( -DskipAssembly )
   fi
-  if ! "$run_java_tests"; then
+  if "$run_java_tests"; then
+    build_opts+=( -DbinDir="$BUILD_ROOT/bin" )
+  else
     build_opts+=( -DskipTests )
   fi
   java_build_start_time_sec=$(date +%s)
-  time ( build_yb_java_code ${build_opts[@]} )
+  time ( build_yb_java_code $mvn_opts ${build_opts[@]} )
   java_build_end_time_sec=$(date +%s)
   log "Java build finished, total time information above."
 fi

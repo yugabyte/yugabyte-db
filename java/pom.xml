@@ -324,16 +324,6 @@
       </extension>
     </extensions>
   </build>
-  <repositories>
-    <repository>
-      <id>s3.release</id>
-      <url>s3://releases.yugabyte.com</url>
-    </repository>
-    <repository>
-      <id>s3.snapshot</id>
-      <url>s3://snapshots.yugabyte.com</url>
-    </repository>
-  </repositories>
   <distributionManagement>
     <repository>
       <id>${yugabyte.releases.repository.id}</id>

@@ -47,17 +47,11 @@ static const char* const kPartitionToolName = "yb-generate_partitions_main";
 static const char* const kBulkLoadToolName = "yb-bulk_load";
 static const char* const kNamespace = "bulk_load_test_namespace";
 static const char* const kTableName = "my_table";
-#ifdef THREAD_SANITIZER
-    // Lower number of runs for tsan due to low perf.
-    static constexpr int32_t kNumIterations = 30;
-    static constexpr int32_t kNumTablets = 3;
-    static constexpr int32_t kNumTabletServers = 1;
-#else
-    static constexpr int32_t kNumIterations = 10000;
-    static constexpr int32_t kNumTablets = 32;
-    // Use 3 tservers to test a more realistic scenario.
-    static constexpr int32_t kNumTabletServers = 3;
-#endif
+// Lower number of runs for tsan due to low perf.
+static constexpr int32_t kNumIterations = NonTsanVsTsan(10000, 30);
+static constexpr int32_t kNumTablets = NonTsanVsTsan(32, 3);
+// Use 3 tservers to test a more realistic scenario.
+static constexpr int32_t kNumTabletServers = NonTsanVsTsan(3, 1);
 static constexpr int32_t kV2Value = 12345;
 static constexpr size_t kV2Index = 5;
 static constexpr uint64_t kNumFilesPerTablet = 5;

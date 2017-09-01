@@ -212,7 +212,9 @@ public class TestUtils {
           "buildDirNameComponents is expected to have at least 3 components: " +
               Arrays.asList(buildDirNameComponents) + ", canonicalBuildDir=" +
               canonicalBuildDir.getPath();
-      buildType = buildDirNameComponents[0];
+      buildType = buildDirNameComponents[0].toLowerCase();
+      LOG.info("Identified build type as '" + buildType + "' based on canonical build " +
+          "directory '" + canonicalBuildDir + "' and base name '" + buildDirBasename + "'");
       return buildType;
     } catch (IOException ex) {
       throw new RuntimeException("Failed trying to get the build type", ex);
@@ -424,7 +426,7 @@ public class TestUtils {
   }
 
   public static boolean isTSAN() {
-    return getBuildType() == "tsan";
+    return getBuildType().equals("tsan");
   }
 
   /** @return a timeout multiplier to apply in tests based on the build type */
@@ -444,5 +446,9 @@ public class TestUtils {
 
   public static Random getRandomGenerator() {
     return randomGenerator;
+  }
+
+  public static int randomNonNegNumber() {
+    return randomGenerator.nextInt(Integer.MAX_VALUE);
   }
 }

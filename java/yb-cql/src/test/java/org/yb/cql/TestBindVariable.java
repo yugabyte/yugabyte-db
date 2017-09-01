@@ -1270,7 +1270,7 @@ public class TestBindVariable extends BaseCQLTest {
     String ttl_vcol_name = "[ttl]";
 
     // Setup test table.
-    CreateTable("test_bind");
+    createTable("test_bind");
 
     String select_stmt = "SELECT v1, v2 FROM test_bind WHERE " +
             "h1 = 1 AND h2 = '1' AND r1 = 1 AND r2 = '1'";

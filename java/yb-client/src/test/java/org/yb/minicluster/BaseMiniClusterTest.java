@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.BaseYBTest;
 import org.yb.client.TestUtils;
+import org.yb.client.YBClient;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -67,11 +68,9 @@ public class BaseMiniClusterTest extends BaseYBTest {
   @Before
   public void setUpBefore() throws Exception {
     TestUtils.clearReservedPorts();
-    if (miniCluster != null) {
-      return;
+    if (miniCluster == null) {
+      createMiniCluster();
     }
-
-    createMiniCluster();
   }
 
   // Helper function to wait for existing tservers to heartbeat to master leader.
@@ -94,7 +93,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
   }
 
   public void createMiniCluster(int numMasters, List<List<String>> tserverArgs)
-    throws Exception {
+      throws Exception {
     LOG.info("BaseMiniClusterTest.createMiniCluster is running");
     int numTservers = tserverArgs.size();
     miniCluster = new MiniYBClusterBuilder()

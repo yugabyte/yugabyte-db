@@ -394,10 +394,8 @@ RemoteTabletServer* YBClient::Data::SelectTServer(const RemoteTablet* rt,
       }
       break;
     }
-    default: {
-      LOG(FATAL) << "Unknown ProxySelection value " << selection;
-      break;
-    }
+    default:
+      FATAL_INVALID_ENUM_VALUE(ReplicaSelection, selection);
   }
 
   return ret;

@@ -45,12 +45,73 @@
 #   Default: 0 (meaning build root will be deleted) on Jenkins, 1 (don't delete) locally.
 #     Skip deleting BUILD_ROOT (useful for debugging).
 #
+#   YB_TRACK_REGRESSIONS
+#   Default: 0
+#     Track regressions by re-running failed tests multiple times on the previous git commit.
+#
 # Portions Copyright (c) YugaByte, Inc.
 
 set -euo pipefail
 
 . "${BASH_SOURCE%/*}/../common-test-env.sh"
 
+# -------------------------------------------------------------------------------------------------
+# Functions
+
+build_cpp_code() {
+  # Save the source root just in case, but this should not be necessary as we will typically run
+  # this function in a separate process in case it is building code in a non-standard location
+  # (i.e. in a separate directory where we rollback the last commit for regression tracking).
+  local old_yb_src_root=$YB_SRC_ROOT
+
+  expect_num_args 1 "$@"
+  set_yb_src_root "$1"
+
+  heading "Building C++ code in $YB_SRC_ROOT."
+  if [[ $SKIP_CPP_MAKE == "0" ]]; then
+    remote_opt=""
+    if [[ ${YB_REMOTE_BUILD:-} == "1" ]]; then
+      # This helps with our background script resizing the build cluster, because it looks at all
+      # running build processes with the "--remote" option as of 08/2017.
+      remote_opt="--remote"
+    fi
+
+    # Delegate the actual C++ build to the yb_build.sh script. Also explicitly specify the --remote
+    # flag so that the worker list refresh script can capture it from ps output and bump the number
+    # of workers to some minimum value.
+    #
+    # We're explicitly disabling third-party rebuilding here as we've already built third-party
+    # dependencies (or downloaded them, or picked an existing third-party directory) above.
+    time run_build_cmd "$YB_SRC_ROOT/yb_build.sh" $remote_opt \
+      --no-rebuild-thirdparty \
+      --skip-java \
+      "$BUILD_TYPE" 2>&1 | \
+      filter_boring_cpp_build_output
+    if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+      log "C++ build failed!"
+      # TODO: perhaps we shouldn't even try to run C++ tests in this case?
+      EXIT_STATUS=1
+    fi
+
+    log "Finished building C++ code (see timing information above)"
+  else
+    log "Skipped building C++ code, only running tests"
+  fi
+
+  LATEST_BUILD_LINK="$YB_SRC_ROOT/build/latest"
+  if [[ -h $LATEST_BUILD_LINK ]]; then
+    # This helps prevent Jenkins from showing every test twice in test results.
+    ( set -x; unlink "$LATEST_BUILD_LINK" )
+  fi
+
+  # Restore the old source root. See the comment at the top.
+  set_yb_src_root "$old_yb_src_root"
+}
+
+# -------------------------------------------------------------------------------------------------
+# Main script
+
+cd "$YB_SRC_ROOT"
 export TSAN_OPTIONS=""
 
 if [[ $OSTYPE =~ ^darwin ]]; then
@@ -92,7 +153,6 @@ else
 fi
 SKIP_CPP_MAKE=${SKIP_CPP_MAKE:-0}
 
-LATEST_BUILD_LINK="$YB_SRC_ROOT/build/latest"
 CTEST_OUTPUT_PATH="$BUILD_ROOT"/ctest.log
 CTEST_FULL_OUTPUT_PATH="$BUILD_ROOT"/ctest-full.log
 
@@ -158,14 +218,22 @@ fi
 configure_remote_build
 
 should_build_thirdparty=true
-if is_src_root_on_nfs && [[ -d $NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY ]]; then
+parent_dir_for_shared_thirdparty=""
+if is_linux && is_src_root_on_nfs; then
+  parent_dir_for_shared_thirdparty=$NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY
+fi
+if is_mac; then
+  parent_dir_for_shared_thirdparty=$MAC_OS_X_PARENT_DIR_FOR_SHARED_THIRDPARTY
+fi
+
+if [[ -d $parent_dir_for_shared_thirdparty ]]; then
   # TODO: make this option available in yb_build.sh as well.
   set +e
   # We name shared prebuilt thirdparty directories on NFS like this:
   # /n/jenkins/thirdparty/yugabyte-thirdparty-YYYY-MM-DDTHH_MM_SS
   # This is why sorting and taking the last entry makes sense below.
   existing_thirdparty_dir=$(
-    ls -d "$NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY/yugabyte-thirdparty-"*/thirdparty | sort | tail -1
+    ls -d "$parent_dir_for_shared_thirdparty/yugabyte-thirdparty-"*/thirdparty | sort | tail -1
   )
   set -e
   if [[ -d $existing_thirdparty_dir ]]; then
@@ -173,7 +241,7 @@ if is_src_root_on_nfs && [[ -d $NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY ]]; then
     export YB_THIRDPARTY_DIR=$existing_thirdparty_dir
     should_build_thirdparty=false
   else
-    log "Even though the top-level directory '$NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY'" \
+    log "Even though the top-level directory '$parent_dir_for_shared_thirdparty'" \
         "exists, we could not find a prebuilt shared third-party directory there (got" \
         "$existing_thirdparty_dir. Falling back to building our own third-party dependencies."
   fi
@@ -284,38 +352,68 @@ fi
 # -------------------------------------------------------------------------------------------------
 # Build C++ code regardless of YB_BUILD_CPP, because we'll also need it for Java tests.
 
-heading "Building C++ code."
-if [[ $SKIP_CPP_MAKE == "0" ]]; then
-  remote_opt=""
-  if [[ ${YB_REMOTE_BUILD:-} == "1" ]]; then
-    remote_opt="--remote"
+if [[ ${YB_TRACK_REGRESSIONS:-} == "1" ]]; then
+
+  cd "$YB_SRC_ROOT"
+  if ! git diff-index --quiet HEAD --; then
+    fatal "Uncommitted changes found in '$YB_SRC_ROOT', cannot proceed."
+  fi
+  git_original_commit=$( git rev-parse --abbrev-ref HEAD )
+
+  # Set up a separate directory that is one commit behind and launch a C++ build there in parallel
+  # with the main C++ build.
+
+  # TODO: we can probably do this in parallel with running the first batch of tests instead of in
+  # parallel with compilation, so that we deduplicate compilation of almost identical codebases.
+
+  YB_SRC_ROOT_REGR=${YB_SRC_ROOT}_regr
+  heading "Preparing directory for regression tracking: $YB_SRC_ROOT_REGR"
+
+  if [[ -e $YB_SRC_ROOT_REGR ]]; then
+    log "Removing the existing contents of '$YB_SRC_ROOT_REGR'"
+    time run_build_cmd rm -rf "$YB_SRC_ROOT_REGR"
+    if [[ -e $YB_SRC_ROOT_REGR ]]; then
+      log "Failed to remove '$YB_SRC_ROOT_REGR' right away"
+      sleep 0.5
+      if [[ -e $YB_SRC_ROOT_REGR ]]; then
+        fatal "Failed to remove '$YB_SRC_ROOT_REGR'"
+      fi
+    fi
   fi
 
-  # Delegate the actual C++ build to the yb_build.sh script. Also explicitly specify the --remote
-  # flag so that the worker list refresh script can capture it from ps output and bump the number
-  # of workers to some minimum value.
-  #
-  # We're explicitly disabling third-party rebuilding here as we've already built third-party
-  # dependencies (or downloaded them, or picked an existing third-party directory) above.
-  time run_build_cmd "$YB_SRC_ROOT/yb_build.sh" $remote_opt \
-    --no-rebuild-thirdparty \
-    --skip-java \
-    "$BUILD_TYPE" 2>&1 | \
-    filter_boring_cpp_build_output
-  if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
-    log "C++ build failed!"
-    # TODO: perhaps we shouldn't even try to run C++ tests in this case?
-    EXIT_STATUS=1
+  log "Cloning '$YB_SRC_ROOT' to '$YB_SRC_ROOT_REGR'"
+  time run_build_cmd git clone "$YB_SRC_ROOT" "$YB_SRC_ROOT_REGR"
+  if [[ ! -d $YB_SRC_ROOT_REGR ]]; then
+    log "Directory $YB_SRC_ROOT_REGR did not appear right away"
+    sleep 0.5
+    if [[ ! -d $YB_SRC_ROOT_REGR ]]; then
+      fatal "Directory ''$YB_SRC_ROOT_REGR' still does not exist"
+    fi
   fi
 
-  log "Finished building C++ code (see timing information above)"
-else
-  log "Skipped building C++ code, only running tests"
+  cd "$YB_SRC_ROOT_REGR"
+  git checkout "$git_original_commit^"
+  git_commit_after_rollback=$( git rev-parse --abbrev-ref HEAD )
+  log "Rolling back commit '$git_commit_after_rollback', currently at '$git_original_commit'"
+  heading "Top commits in '$YB_SRC_ROOT_REGR' after reverting one commit:"
+  git log -n 2
+
+  (
+    build_cpp_code "$PWD" 2>&1 | \
+      while read output_line; do \
+        echo "[base version build] $output_line"
+      done
+  ) &
+  build_cpp_code_regr_pid=$!
+
+  cd "$YB_SRC_ROOT"
 fi
+build_cpp_code "$YB_SRC_ROOT"
 
-if [[ -h $LATEST_BUILD_LINK ]]; then
-  # This helps prevent Jenkins from showing every test twice in test results.
-  unlink "$LATEST_BUILD_LINK"
+if [[ ${YB_TRACK_REGRESSIONS:-} == "1" ]]; then
+  log "Waiting for building C++ code one commit behind (at $git_commit_after_rollback)" \
+      "in $YB_SRC_ROOT_REGR"
+  wait "$build_cpp_code_regr_pid"
 fi
 
 log "Disk usage after C++ build:"
@@ -328,7 +426,7 @@ set_asan_tsan_options
 
 if [[ $YB_BUILD_JAVA == "1" ]]; then
   # This sets the proper NFS-shared directory for Maven's local repository on Jenkins.
-  set_mvn_local_repo
+  set_mvn_parameters
 
   heading "Building and testing java..."
   if [[ -n ${JAVA_HOME:-} ]]; then

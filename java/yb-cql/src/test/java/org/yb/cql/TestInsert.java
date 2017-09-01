@@ -31,7 +31,7 @@ public class TestInsert extends BaseCQLTest {
   @Test
   public void testInsertWithTimestamp() throws Exception {
     String tableName = "test_insert_with_timestamp";
-    CreateTable(tableName, "timestamp");
+    createTable(tableName, "timestamp");
     // this includes both string and int inputs
     Map<String, Date> ts_values = generateTimestampMap();
     for (String key : ts_values.keySet()) {
@@ -62,7 +62,7 @@ public class TestInsert extends BaseCQLTest {
   @Test
   public void testInvalidInsertWithTimestamp() throws Exception {
     String tableName = "test_insert_with_invalid_timestamp";
-    CreateTable(tableName, "timestamp");
+    createTable(tableName, "timestamp");
 
     runInvalidInsertWithTimestamp(tableName, "plainstring");
     runInvalidInsertWithTimestamp(tableName, "1992:12:11");
@@ -75,7 +75,7 @@ public class TestInsert extends BaseCQLTest {
   @Test
   public void testInsertWithTTL() throws Exception {
     String tableName = "test_insert_with_ttl";
-    CreateTable(tableName);
+    createTable(tableName);
 
     // Now insert with ttl.
     String insert_stmt = String.format(
@@ -132,7 +132,7 @@ public class TestInsert extends BaseCQLTest {
   @Test
   public void testInvalidInsertWithTTL() throws Exception {
     String tableName = "test_insert_with_invalid_ttl";
-    CreateTable(tableName);
+    createTable(tableName);
 
     runValidInsertWithTTL(tableName, String.valueOf(MAX_TTL_SEC));
     runValidInsertWithTTL(tableName, "0");
@@ -151,7 +151,7 @@ public class TestInsert extends BaseCQLTest {
   public void testResetTTL() throws Exception {
     // Setting TTL to 0 should reset the TTL.
     String tableName = "test_reset_ttl";
-    CreateTable(tableName);
+    createTable(tableName);
 
     // Insert two rows with TTL 1000
     String insert_stmt = String.format(

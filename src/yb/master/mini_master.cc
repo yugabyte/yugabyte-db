@@ -82,7 +82,14 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port) {
   auto master_addresses = std::make_shared<std::vector<HostPort>>();
   master_addresses->push_back(local_host_port);
   MasterOptions opts(master_addresses, is_creating_);
-  return StartOnPorts(rpc_port, web_port, &opts);
+
+  Status start_status = StartOnPorts(rpc_port, web_port, &opts);
+  if (!start_status.ok()) {
+    LOG(ERROR) << "MiniMaster failed to start on RPC port " << rpc_port
+               << ", web port " << web_port << ": " << start_status;
+    // Don't crash here. Handle the error in the caller (e.g. could retry there).
+  }
+  return start_status;
 }
 
 Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,

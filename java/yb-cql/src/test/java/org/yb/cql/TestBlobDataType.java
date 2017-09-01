@@ -16,7 +16,7 @@ public class TestBlobDataType extends BaseCQLTest {
     @Test
     public void testValidQueries() throws Exception {
         String tableName = "test_blob_valid";
-        CreateTable(tableName, "blob");
+        createTable(tableName, "blob");
 
         //------------------------------------------------------------------------------------------
         // Testing Insert
@@ -139,7 +139,7 @@ public class TestBlobDataType extends BaseCQLTest {
         assertEquals("0xcd" + long_hex, makeBlobString(row.getBytes("r2")));
         assertEquals("0x42", makeBlobString(row.getBytes("v2"))); // new value
 
-        DropTable(tableName);
+        dropTable(tableName);
     }
 
     @Test
@@ -180,7 +180,7 @@ public class TestBlobDataType extends BaseCQLTest {
             assertEquals(1, row.getInt("v"));
         }
 
-        DropTable(tableNameAsc);
+        dropTable(tableNameAsc);
 
         //---------------------------------- testing descending ----------------------------------\\
         String tableNameDesc = "test_blob_descending";
@@ -203,13 +203,13 @@ public class TestBlobDataType extends BaseCQLTest {
             assertEquals(1, row.getInt("v"));
         }
 
-        DropTable(tableNameDesc);
+        dropTable(tableNameDesc);
     }
 
     @Test
     public void testInValidQueries() throws Exception {
         String tableName = "test_blob_valid";
-        CreateTable(tableName, "blob");
+        createTable(tableName, "blob");
 
         // testing mostly parsing here so negative tests use just inserts
         String insert_template = "INSERT INTO " + tableName + "(h1, h2, r1, r2, v1, v2) " +
@@ -237,7 +237,7 @@ public class TestBlobDataType extends BaseCQLTest {
         insert_stmt = String.format(insert_template, 1, "0xab", 1, "0xef", 1, "0zcdab");
         runInvalidStmt(insert_stmt);
 
-        DropTable(tableName);
+        dropTable(tableName);
     }
 
 }

@@ -32,6 +32,7 @@
 #include "yb/util/result.h"
 #include "yb/util/port_picker.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 namespace yb {
 

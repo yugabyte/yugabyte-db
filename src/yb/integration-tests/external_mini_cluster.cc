@@ -54,6 +54,9 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
+#include "yb/util/size_literals.h"
+
+using namespace std::literals;  // NOLINT
 
 using std::atomic;
 using std::lock_guard;
@@ -123,6 +126,8 @@ static bool kBindToUniqueLoopbackAddress = false;
 static bool kBindToUniqueLoopbackAddress = true;
 #endif
 
+constexpr size_t kDefaultMemoryLimitHardBytes = 1_GB;
+
 ExternalMiniClusterOptions::ExternalMiniClusterOptions()
     : bind_to_unique_loopback_addresses(kBindToUniqueLoopbackAddress),
       timeout_(MonoDelta::FromMilliseconds(1000 * 10)) {
@@ -137,9 +142,15 @@ ExternalMiniClusterOptions::~ExternalMiniClusterOptions() {
 }
 
 ExternalMiniCluster::ExternalMiniCluster(const ExternalMiniClusterOptions& opts)
-  : opts_(opts), add_new_master_at_(-1) {
-  opts_.extra_master_flags.push_back("--enable_tracing=true");
-  opts_.extra_tserver_flags.push_back("--enable_tracing=true");
+    : opts_(opts), add_new_master_at_(-1) {
+  // These "extra mini cluster options" are added in the end of the command line.
+  for (const auto& argument : {
+      "--enable_tracing=true"s,
+      Substitute("--memory_limit_hard_bytes=$0", kDefaultMemoryLimitHardBytes)
+  }) {
+    opts_.extra_master_flags.push_back(argument);
+    opts_.extra_tserver_flags.push_back(argument);
+  }
 }
 
 ExternalMiniCluster::~ExternalMiniCluster() {
@@ -1600,7 +1611,6 @@ Status ExternalMaster::Start(bool shell_mode) {
   flags.push_back("--rpc_bind_addresses=" + rpc_bind_address_);
   flags.push_back("--webserver_interface=localhost");
   flags.push_back(Substitute("--webserver_port=$0", http_port_));
-  flags.push_back(Substitute("--memory_limit_hard_bytes=$0", 1024 * 1024 * 1024));
   // On first start, we need to tell the masters what their list of expected peers is and set the
   // create_cluster flag. For 'shell' master, there is no create flag or master addresses needed.
   if (!shell_mode) {
@@ -1659,7 +1669,6 @@ Status ExternalTabletServer::Start(bool start_cql_proxy) {
   flags.push_back(Substitute("--cql_proxy_webserver_port=$0", cql_http_port_));
   flags.push_back(Substitute("--start_cql_proxy=$0", start_cql_proxy_));
   flags.push_back("--tserver_master_addrs=" + master_addrs_);
-  flags.push_back(Substitute("--memory_limit_hard_bytes=$0", 1024 * 1024 * 1024));
 
   // Use conservative number of threads for the mini cluster for unit test env
   // where several unit tests tend to run in parallel.

@@ -27,11 +27,15 @@ from yb import yb_dist_tests  # noqa
 from yb import command_util  # noqa
 
 
+# Environment variables propagated to tasks running in a distributed way on Spark.
 PROPAGATED_ENV_VARS = [
         'BUILD_ID',
         'BUILD_URL',
         'JOB_NAME',
         ]
+
+# In addition, all variables with names starting with the following prefix are propagated.
+PROPAGATED_ENV_VAR_PREFIX = 'YB_'
 
 # This directory inside $BUILD_ROOT contains files listing all C++ tests (one file per test
 # program).
@@ -43,7 +47,7 @@ LIST_OF_TESTS_DIR_NAME = 'list_of_tests'
 propagated_env_vars = {}
 global_conf_dict = None
 
-SPARK_MASTER_URL = 'spark://buildmaster.c.yugabyte.internal:7077'
+DEFAULT_SPARK_MASTER_URL = 'spark://buildmaster.c.yugabyte.internal:7077'
 
 # This has to match what we output in run-test.sh if YB_LIST_CTEST_TESTS_ONLY is set.
 CTEST_TEST_PROGRAM_RE = re.compile(r'^.* ctest test: \"(.*)\"$')
@@ -79,7 +83,8 @@ def init_spark_context():
     # NOTE: we never retry failed tests to avoid hiding bugs. This failure tolerance mechanism
     #       is just for the resilience of the test framework itself.
     SparkContext.setSystemProperty('spark.task.maxFailures', str(SPARK_TASK_MAX_FAILURES))
-    spark_context = SparkContext(SPARK_MASTER_URL, "YB tests (build type: {})".format(build_type))
+    spark_master_url = os.environ.get('YB_SPARK_MASTER_URL', DEFAULT_SPARK_MASTER_URL)
+    spark_context = SparkContext(spark_master_url, "YB tests (build type: {})".format(build_type))
     spark_context.addPyFile(yb_dist_tests.__file__)
 
 
@@ -104,6 +109,8 @@ def parallel_run_test(test_descriptor_str):
     global_conf.set_env(propagated_env_vars)
     yb_dist_tests.global_conf = global_conf
     test_descriptor = yb_dist_tests.TestDescriptor(test_descriptor_str)
+    os.environ['YB_TEST_ATTEMPT_INDEX'] = str(test_descriptor.attempt_index)
+    os.environ['build_type'] = global_conf.build_type
 
     yb_dist_tests.wait_for_clock_sync()
     start_time = time.time()
@@ -112,9 +119,7 @@ def parallel_run_test(test_descriptor_str):
     # ideal for a large amount of test log output. The "tee" part also makes the output visible in
     # the standard error of the Spark task as well, which is sometimes helpful for debugging.
     exit_code = os.system(
-            ("bash -c 'set -o pipefail; build_type={} " +
-             "{} {} 2>&1 | tee \"{}\"'").format(
-                    global_conf.build_type,
+            ("bash -c 'set -o pipefail; \"{}\" {} 2>&1 | tee \"{}\"'").format(
                     global_conf.get_run_test_script_path(),
                     test_descriptor.args_for_run_test,
                     test_descriptor.error_output_path)) >> 8
@@ -194,9 +199,32 @@ def get_username():
         return pwd.getpwuid(os.getuid()).pw_name
 
 
-def save_stats(stats_dir, results, total_elapsed_time_sec):
+def get_jenkins_job_name():
+    return os.environ.get('JOB_NAME', None)
+
+
+def get_jenkins_job_name_path_component():
+    jenkins_job_name = get_jenkins_job_name()
+    if jenkins_job_name:
+        return "job_" + jenkins_job_name
+    else:
+        return "unknown_jenkins_job"
+
+
+def get_stats_parent_dir(stats_base_dir):
+    """
+    @return a directory to store build stats, relative to the given base directory. Path components
+            are based on build type, Jenkins job name, etc.
+    """
+    return os.path.join(stats_base_dir,
+                        yb_dist_tests.global_conf.build_type,
+                        get_jenkins_job_name_path_component())
+
+
+def save_stats(stats_base_dir, results, total_elapsed_time_sec):
     global_conf = yb_dist_tests.global_conf
-    stats_parent_dir = os.path.join(stats_dir, global_conf.build_type)
+
+    stats_parent_dir = get_stats_parent_dir(stats_base_dir)
     if not os.path.isdir(stats_parent_dir):
         try:
             os.makedirs(stats_parent_dir)
@@ -207,11 +235,11 @@ def save_stats(stats_dir, results, total_elapsed_time_sec):
 
     stats_path = os.path.join(
             stats_parent_dir,
-            '{}_{}__user_{}__job_{}__build_{}.json'.format(
+            '{}_{}__user_{}__build_{}.json'.format(
                 global_conf.build_type,
                 time.strftime('%Y-%m-%dT%H_%M_%S'),
                 get_username(),
-                os.environ.get('JOB_NAME', 'unknown'),
+                get_jenkins_job_name_path_component(),
                 os.environ.get('BUILD_ID', 'unknown')))
     logging.info("Saving test stats to {}".format(stats_path))
     test_stats = {}
@@ -281,6 +309,8 @@ def collect_cpp_tests(max_tests, cpp_test_program_re_str):
         random.shuffle(test_programs)
         test_programs = test_programs[:max_tests]
 
+    logging.info("Collecting gtest tests for {} test programs".format(len(test_programs)))
+
     start_time_sec = time.time()
     init_spark_context()
     set_global_conf_for_spark_jobs()
@@ -300,6 +330,76 @@ def collect_cpp_tests(max_tests, cpp_test_program_re_str):
     return [yb_dist_tests.TestDescriptor(s) for s in test_descriptor_strs]
 
 
+def is_writable(dir_path):
+    return os.access(dir_path, os.W_OK)
+
+
+def is_parent_dir_writable(file_path):
+    return is_writable(os.path.dirname(file_path))
+
+
+def fatal_error(msg):
+    logging.error("Fatal: " + msg)
+    raise RuntimeError(msg)
+
+
+def collect_tests(args):
+    cpp_test_descriptors = []
+    if args.run_cpp_tests:
+        cpp_test_descriptors = collect_cpp_tests(args.max_tests, args.cpp_test_program_regexp)
+        if not cpp_test_descriptors:
+            logging.error(
+                    ("No C++ tests found in '{}'. To re-generate test list files, run the "
+                     "following: YB_LIST_TESTS_ONLY ctest -j<parallelism>.").format(build_root))
+
+    java_test_descriptors = []
+    yb_src_root = yb_dist_tests.global_conf.yb_src_root
+    if args.run_java_tests:
+        for java_src_root in [os.path.join(yb_src_root, 'java'),
+                              os.path.join(yb_src_root, 'ent', 'java')]:
+            for dir_path, dir_names, file_names in os.walk(java_src_root):
+                rel_dir_path = os.path.relpath(dir_path, java_src_root)
+                for file_name in file_names:
+                    if (file_name.startswith('Test') and
+                        (file_name.endswith('.java') or file_name.endswith('.scala')) or
+                        file_name.endswith('Test.java') or file_name.endswith('Test.scala')) and \
+                       '/src/test/' in rel_dir_path:
+                        test_descriptor_str = os.path.join(rel_dir_path, file_name)
+                        if yb_dist_tests.JAVA_TEST_DESCRIPTOR_RE.match(test_descriptor_str):
+                            java_test_descriptors.append(
+                                    yb_dist_tests.TestDescriptor(test_descriptor_str))
+                        else:
+                            logging.warning("Skipping file (does not match expected pattern): " +
+                                            test_descriptor)
+
+    # TODO: sort tests in the order of reverse historical execution time. If Spark starts running
+    # tasks from the beginning, this will ensure the longest tests start the earliest.
+    #
+    # Right now we just put Java tests first because those tests are entire test classes and will
+    # take longer to run on average.
+    return sorted(java_test_descriptors) + sorted(cpp_test_descriptors)
+
+
+def load_test_list(test_list_path):
+    test_descriptors = []
+    with open(test_list_path, 'r') as input_file:
+        for line in input_file:
+            line = line.strip()
+            if line:
+                test_descriptors.append(yb_dist_tests.TestDescriptor())
+    return test_descriptors
+
+
+def propagate_env_vars():
+    for env_var_name in PROPAGATED_ENV_VARS:
+        if env_var_name in os.environ:
+            propagated_env_vars[env_var_name] = os.environ[env_var_name]
+
+    for env_var_name, env_var_value in os.environ.iteritems():
+        if env_var_name.startswith(PROPAGATED_ENV_VAR_PREFIX):
+            propagated_env_vars[env_var_name] = env_var_value
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Run tests on Spark.')
@@ -311,9 +411,12 @@ def main():
                         help='Run C++ tests')
     parser.add_argument('--all', dest='run_all_tests', action='store_true',
                         help='Run tests in all languages')
+    parser.add_argument('--test_list',
+                        help='A file with a list of tests to run. Useful when e.g. re-running ' +
+                             'failed tests using a file produced with --failed_test_list.')
     parser.add_argument('--build-root', dest='build_root', required=True,
-                        help='Build root (e.g. ~/code/yugabyte/build/debug-gcc-dynamic)')
-    parser.add_argument('--build-type', dest='build_type', required=True,
+                        help='Build root (e.g. ~/code/yugabyte/build/debug-gcc-dynamic-community)')
+    parser.add_argument('--build-type', dest='build_type', required=False,
                         help='Build type (e.g. debug, release, tsan, or asan)')
     parser.add_argument('--max-tests', type=int, dest='max_tests',
                         help='Maximum number of tests to run. Useful when debugging this script '
@@ -323,11 +426,23 @@ def main():
                         help='Sleep for a while after test are done before destroying '
                              'SparkContext. This allows to examine the Spark app UI.')
     parser.add_argument('--stats-dir', dest='stats_dir',
-                        help='A directory to save stats to (such as per-test run times.)')
+                        help='A directory for storing build statistics (such as per-test run ' +
+                             'times.)')
+    parser.add_argument('--write_stats', action='store_true',
+                        help='Actually enable writing build statistics. If this is not ' +
+                             'specified, we will only read previous stats to sort tests better.')
     parser.add_argument('--cpp_test_program_regexp',
                         help='A regular expression to filter C++ test program names on.')
+    parser.add_argument('--num_repetitions', type=int, default=1,
+                        help='Number of times to run each test.')
+    parser.add_argument('--failed_test_list',
+                        help='A file path to save the list of failed tests to. The format is '
+                             'one test descriptor per line.')
 
     args = parser.parse_args()
+
+    # ---------------------------------------------------------------------------------------------
+    # Argument validation.
 
     if args.run_all_tests:
         args.run_java_tests = True
@@ -346,57 +461,48 @@ def main():
     yb_src_root = global_conf.yb_src_root
 
     if not args.run_cpp_tests and not args.run_java_tests:
-        logging.error("At least one of --java or --cpp has to be specified")
-        sys.exit(1)
+        fatal_error("At least one of --java or --cpp has to be specified")
 
     stats_dir = args.stats_dir
+    write_stats = args.write_stats
     if stats_dir and not os.path.isdir(stats_dir):
-        logging.error("Stats directory '{}' does not exist".format(stats_dir))
-        sys.exit(1)
+        fatal_error("Stats directory '{}' does not exist".format(stats_dir))
+
+    if write_stats and not stats_dir:
+        fatal_error("--write_stats specified but the stats directory (--stats-dir) is not")
+
+    if write_stats and not is_writable(stats_dir):
+        fatal_error(
+            "--write_stats specified but the stats directory ('{}') is not writable".format(
+                stats_dir))
+
+    if args.num_repetitions < 1:
+        fatal_error("--num_repetitions must be at least 1, got: {}".format(args.num_repetitions))
+
+    failed_test_list_path = args.failed_test_list
+    if failed_test_list_path and not is_parent_dir_writable(failed_test_list_path):
+        fatal_error(("Parent directory of failed test list destination path ('{}') is not " +
+                     "writable").format(args.failed_test_list))
+
+    test_list_path = args.test_list
+    if test_list_path and not os.path.isfile(test_list_path):
+        fatal_error("File specified by --test_list does not exist or is not a file: '{}'".format(
+            test_list_path))
 
     # ---------------------------------------------------------------------------------------------
     # Start the timer.
     global_start_time = time.time()
 
-    cpp_test_descriptors = []
-    if args.run_cpp_tests:
-        cpp_test_descriptors = collect_cpp_tests(args.max_tests, args.cpp_test_program_regexp)
-        if not cpp_test_descriptors:
-            logging.error(
-                    ("No C++ tests found in '{}'. To re-generate test list files, run the "
-                     "following: YB_LIST_TESTS_ONLY ctest -j<parallelism>.").format(build_root))
+    if test_list_path:
+        test_descriptors = load_test_list(test_list_path)
+    else:
+        test_descriptors = collect_tests(args)
 
-    java_test_descriptors = []
-    if args.run_java_tests:
-        java_src_root = os.path.join(yb_src_root, 'java')
-        for dir_path, dir_names, file_names in os.walk(java_src_root):
-            rel_dir_path = os.path.relpath(dir_path, java_src_root)
-            for file_name in file_names:
-                if (file_name.startswith('Test') and
-                    (file_name.endswith('.java') or file_name.endswith('.scala')) or
-                    file_name.endswith('Test.java') or file_name.endswith('Test.scala')) \
-                            and '/src/test/' in rel_dir_path:
-                    test_descriptor_str = os.path.join(rel_dir_path, file_name)
-                    if yb_dist_tests.JAVA_TEST_DESCRIPTOR_RE.match(test_descriptor_str):
-                        java_test_descriptors.append(
-                                yb_dist_tests.TestDescriptor(test_descriptor_str))
-                    else:
-                        logging.warning("Skipping file (does not match expected pattern): " +
-                                        test_descriptor)
+    if not test_descriptors:
+        logging.info("No tests to run")
+        return
 
-    # TODO: sort tests in the order of reverse historical execution time. If Spark starts running
-    # tasks from the beginning, this will ensure the longest tests start the earliest.
-    #
-    # Right now we just put Java tests first because those tests are entire test classes and will
-    # take longer to run on average.
-    test_descriptors = sorted(java_test_descriptors) + sorted(cpp_test_descriptors)
-    for env_var_name in PROPAGATED_ENV_VARS:
-        if env_var_name in os.environ:
-            propagated_env_vars[env_var_name] = os.environ[env_var_name]
-
-    for env_var_name, env_var_value in os.environ.iteritems():
-        if env_var_name.startswith('YB_'):
-            propagated_env_vars[env_var_name] = env_var_value
+    propagate_env_vars()
 
     # We're only importing PySpark here so that we can debug the part of this script above this line
     # without depending on PySpark libraries.
@@ -412,14 +518,27 @@ def main():
     if args.verbose:
         for test_descriptor in test_descriptors:
             logging.info("Will run test: {}".format(test_descriptor))
-    logging.info("Running {} tests on Spark".format(num_tests))
+
+    num_repetitions = args.num_repetitions
+    total_num_tests = num_tests * num_repetitions
+    logging.info("Running {} tests on Spark, {} times each, for a total of {} tests".format(
+        num_tests, num_repetitions, total_num_tests))
+
+    if num_repetitions > 1:
+        test_descriptors = [
+            test_descriptor.with_attempt_index(i)
+            for test_descriptor in test_descriptors
+            for i in xrange(1, num_repetitions + 1)
+        ]
 
     init_spark_context()
     set_global_conf_for_spark_jobs()
 
+    # By this point, test_descriptors have been duplicated the necessary number of times, with
+    # attempt indexes attached to each test descriptor.
     test_names_rdd = spark_context.parallelize(
             [test_descriptor.descriptor_str for test_descriptor in test_descriptors],
-            numSlices=num_tests)
+            numSlices=total_num_tests)
 
     results = test_names_rdd.map(parallel_run_test).collect()
     exit_codes = set([result.exit_code for result in results])
@@ -432,17 +551,24 @@ def main():
     logging.info("Tests are done, set of exit codes: {}, will return exit code {}".format(
         sorted(exit_codes), global_exit_code))
     failures_by_language = defaultdict(int)
+    failed_test_desc_strs = []
     for result in results:
         if result.exit_code != 0:
             logging.info("Test failed: {}".format(result.test_descriptor))
             failures_by_language[result.test_descriptor.language] += 1
+            failed_test_desc_strs.append(result.test_descriptor.descriptor_str)
+
+    if failed_test_list_path:
+        logging.info("Writing the list of failed tests to '{}'".format(failed_test_list_path))
+        with open(failed_test_list_path, 'w') as failed_test_file:
+            failed_test_file.write("\n".join(failed_test_desc_strs) + "\n")
 
     for language, num_failures in failures_by_language.iteritems():
         logging.info("Failures in {} tests: {}".format(language, num_failures))
 
     total_elapsed_time_sec = time.time() - global_start_time
     logging.info("Total elapsed time: {} sec".format(total_elapsed_time_sec))
-    if stats_dir:
+    if stats_dir and write_stats:
         save_stats(stats_dir, results, total_elapsed_time_sec)
 
     if args.sleep_after_tests:

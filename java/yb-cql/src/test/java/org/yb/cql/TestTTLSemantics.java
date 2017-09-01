@@ -16,7 +16,7 @@ import org.junit.Test;
  */
 public class TestTTLSemantics extends BaseCQLTest {
 
-  private void createTable(String tableName) {
+  private void createTtlTable(String tableName) {
     session.execute(String.format(
       "CREATE TABLE %s (k1 int, k2 int, k3 int, k4 int, c1 int, c2 " +
         "int, c3 int, PRIMARY KEY((k1, k2), k3, k4))",
@@ -73,7 +73,7 @@ public class TestTTLSemantics extends BaseCQLTest {
   @Test
   public void testUpdateAsUpsert() throws Exception {
     String tableName = "testUpdateAsUpsert";
-    createTable(tableName);
+    createTtlTable(tableName);
     session.execute(String.format("UPDATE %s USING TTL 5 SET c1 = 1, c2 = 2, c3 = 3 WHERE k1 = 1 " +
       "AND k2 = 2 AND k3 = 3 AND k4 = 4", tableName));
 
@@ -101,7 +101,7 @@ public class TestTTLSemantics extends BaseCQLTest {
   @Test
   public void testRowTTLWithUpdates() throws Exception {
     String tableName = "testRowTTLWithUpdates";
-    createTable(tableName);
+    createTtlTable(tableName);
 
     // Insert with a TTL.
     session.execute(String.format("INSERT INTO %s (k1, k2, k3, k4, c1, c2, c3) VALUES (1, 2, 3, " +
@@ -129,7 +129,7 @@ public class TestTTLSemantics extends BaseCQLTest {
   @Test
   public void testUpdateRowTTL() throws Exception {
     String tableName = "testUpdateRowTTL";
-    createTable(tableName);
+    createTtlTable(tableName);
 
     // Insert with a TTL.
     session.execute(String.format("INSERT INTO %s (k1, k2, k3, k4, c1, c2, c3) VALUES (1, 2, 3, " +
@@ -179,7 +179,7 @@ public class TestTTLSemantics extends BaseCQLTest {
   @Test
   public void testDecreaseRowTTL() throws Exception {
     String tableName = "testDecreaseRowTTL";
-    createTable(tableName);
+    createTtlTable(tableName);
 
     // Insert with a TTL.
     session.execute(String.format("INSERT INTO %s (k1, k2, k3, k4, c1, c2, c3) VALUES (1, 2, 3, " +
@@ -202,7 +202,7 @@ public class TestTTLSemantics extends BaseCQLTest {
   @Test
   public void testRowSurvivesWithSingleColumn() throws Exception {
     String tableName = "testRowSurvivesWithSingleColumn";
-    createTable(tableName);
+    createTtlTable(tableName);
 
     // Insert with a TTL.
     session.execute(String.format("INSERT INTO %s (k1, k2, k3, k4, c1, c2, c3) VALUES (1, 2, 3, " +
@@ -225,7 +225,7 @@ public class TestTTLSemantics extends BaseCQLTest {
   @Test
   public void testTTLWithOverwrites() throws Exception {
     String tableName = "testTTLWithOverwrites";
-    createTable(tableName);
+    createTtlTable(tableName);
 
     // Insert with a TTL.
     session.execute(String.format("INSERT INTO %s (k1, k2, k3, k4, c1, c2, c3) VALUES (1, 2, 3, " +
@@ -244,7 +244,7 @@ public class TestTTLSemantics extends BaseCQLTest {
   @Test
   public void testInsertUpdateWithNull() throws Exception {
     String tableName = "testInsertUpdateWithNull";
-    createTable(tableName);
+    createTtlTable(tableName);
 
     // Insert with null columns.
     session.execute(String.format("INSERT INTO %s (k1, k2, k3, k4, c1, c2, c3) VALUES (1, 2, 3, " +
@@ -284,7 +284,7 @@ public class TestTTLSemantics extends BaseCQLTest {
   @Test
   public void testWithDeletes() throws Exception {
     String tableName = "testWithDeletes";
-    createTable(tableName);
+    createTtlTable(tableName);
 
     // Insert a row with TTL.
     session.execute(String.format("INSERT INTO %s (k1, k2, k3, k4, c1, c2, c3) VALUES (1, 2, 3, " +
@@ -331,7 +331,7 @@ public class TestTTLSemantics extends BaseCQLTest {
   @Test
   public void testLivenessColumnExpiry() throws Exception {
     String tableName = "testLivenessColumnExpiry";
-    createTable(tableName);
+    createTtlTable(tableName);
 
     // Insert a row with TTL.
     session.execute(String.format("INSERT INTO %s (k1, k2, k3, k4, c1, c2, c3) VALUES (1, 2, 3, " +
@@ -364,7 +364,7 @@ public class TestTTLSemantics extends BaseCQLTest {
   @Test
   public void testNullColumns() throws Exception {
     String tableName = "testNullcolumns";
-    createTable(tableName);
+    createTtlTable(tableName);
 
     // Insert a couple of rows.
     session.execute(String.format("INSERT INTO %s (k1, k2, k3, k4, c1, c2, c3) VALUES (1, 2, 3, " +

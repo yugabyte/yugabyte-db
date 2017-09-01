@@ -6,12 +6,10 @@ import java.util.Iterator;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 
-import org.junit.Ignore;
 import org.junit.Test;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
+import org.yb.client.TestUtils;
+
+import static org.junit.Assert.*;
 
 public class TestKeyspace extends BaseCQLTest {
   public void setupTable(String test_table) throws Exception {
@@ -22,7 +20,7 @@ public class TestKeyspace extends BaseCQLTest {
 
   public void dropTable(String test_table) throws Exception {
     LOG.info("Drop table: " + test_table);
-    super.DropTable(test_table);
+    super.dropTable(test_table);
     LOG.info("Drop table finished: " + test_table);
   }
 
@@ -74,18 +72,27 @@ public class TestKeyspace extends BaseCQLTest {
     return 300;
   }
 
+  // We use a random keyspace name in each test to be sure that the keyspace does not exist in the
+  // beginning of the test.
+  private static String getRandomKeyspaceName() {
+    return "test_keyspace_" + TestUtils.randomNonNegNumber();
+  }
+
   @Test
   public void testCreateAndDropTableTimeout() throws Exception {
     LOG.info("--- TEST CQL: CREATE & DROP TABLE TIMEOUTS - Start");
-    String keyspaceName = "test_keyspace";
-    String tableName = "test_table";
+    final String keyspaceName = getRandomKeyspaceName();
+    final String tableName = "test_table";
 
     createKeyspace(keyspaceName);
     useKeyspace(keyspaceName);
 
     for (int i = 0; i < 5; ++i) {
-      LOG.info("Create big table: " + tableName);
-      super.setupTable(tableName, 10000 /* num_rows */);
+      final int numRows = TestUtils.isTSAN() ? 1000 : 10000;
+      LOG.info("Create a big table '" + tableName + "' with " + numRows +
+          " rows (isTSAN=" + TestUtils.isTSAN() + ", build type=" + TestUtils.getBuildType() + ")");
+
+      super.setupTable(tableName, numRows);
       dropTable(tableName);
 
       // Check results of dropTable() just first a few times.
@@ -102,7 +109,7 @@ public class TestKeyspace extends BaseCQLTest {
   @Test
   public void testCreateAndUseAndDropKeyspaceTimeout() throws Exception {
     LOG.info("--- TEST CQL: CREATE & USE & DROP KEYSPACE TIMEOUTS - Start");
-    String keyspaceName = "test_keyspace";
+    final String keyspaceName = getRandomKeyspaceName();
 
     for (int i = 0; i < 10; ++i) {
       LOG.info("i={}, creating & using keyspace {}", i, keyspaceName);
@@ -119,7 +126,7 @@ public class TestKeyspace extends BaseCQLTest {
   @Test
   public void testCreateAndDropKeyspaceTimeout() throws Exception {
     LOG.info("--- TEST CQL: CREATE & DROP KEYSPACE TIMEOUTS - Start");
-    String keyspaceName = "test_keyspace";
+    final String keyspaceName = getRandomKeyspaceName();
 
     for (int i = 0; i < 10; ++i) {
       LOG.info("i={}, creating keyspace {}", i, keyspaceName);
@@ -136,7 +143,7 @@ public class TestKeyspace extends BaseCQLTest {
   public void testNoKeyspace() throws Exception {
     LOG.info("--- TEST CQL: NO KEYSPACE - Start");
 
-    final String keyspaceName = "my_keyspace";
+    final String keyspaceName = getRandomKeyspaceName();
     final String tableName = "test_table";
 
     LOG.info("The table's NOT been created yet.");
@@ -171,7 +178,7 @@ public class TestKeyspace extends BaseCQLTest {
   public void testCustomKeyspace() throws Exception {
     LOG.info("--- TEST CQL: CUSTOM KEYSPACE - Start");
 
-    String keyspaceName = "my_keyspace";
+    final String keyspaceName = getRandomKeyspaceName();
     String tableName = "test_table";
     String longTableName = keyspaceName + "." + tableName;
 
@@ -204,7 +211,7 @@ public class TestKeyspace extends BaseCQLTest {
   public void testUseKeyspace() throws Exception {
     LOG.info("--- TEST CQL: USE KEYSPACE - Start");
 
-    String keyspaceName = "my_keyspace";
+    final String keyspaceName = getRandomKeyspaceName();
     String tableName = "test_table";
     String longTableName = keyspaceName + "." + tableName;
 
@@ -229,11 +236,11 @@ public class TestKeyspace extends BaseCQLTest {
   public void testTwoKeyspaces() throws Exception {
     LOG.info("--- TEST CQL: TWO KEYSPACES - Start");
 
-    String keyspaceName1 = "my_keyspace1";
-    String keyspaceName2 = "my_keyspace2";
-    String tableName = "test_table";
-    String longTableName1 = keyspaceName1 + "." + tableName; // Table1.
-    String longTableName2 = keyspaceName2 + "." + tableName; // Table2.
+    final String keyspaceName1 = getRandomKeyspaceName() + "_1";
+    final String keyspaceName2 = getRandomKeyspaceName() + "_2";
+    final String tableName = "test_table";
+    final String longTableName1 = keyspaceName1 + "." + tableName; // Table1.
+    final String longTableName2 = keyspaceName2 + "." + tableName; // Table2.
 
     // Using Keyspace1.
     createKeyspace(keyspaceName1);
@@ -289,10 +296,10 @@ public class TestKeyspace extends BaseCQLTest {
   public void testDriverBugWithTwoKeyspaces() throws Exception {
     LOG.info("--- TEST CQL: DRIVER BUG WITH TWO KEYSPACES - Start");
 
-    String keyspaceName1 = "my_keyspace1";
-    String keyspaceName2 = "my_keyspace2";
-    String tableName = "test_table";
-    String longTableName2 = keyspaceName2 + "." + tableName;
+    final String keyspaceName1 = getRandomKeyspaceName() + "_1";
+    final String keyspaceName2 = getRandomKeyspaceName() + "_1";
+    final String tableName = "test_table";
+    final String longTableName2 = keyspaceName2 + "." + tableName;
 
     // Create keyspaces.
     createKeyspace(keyspaceName1);
@@ -324,8 +331,8 @@ public class TestKeyspace extends BaseCQLTest {
   public void testUpdateAndDelete() throws Exception {
     LOG.info("--- TEST CQL: UPDATE & DELETE - Start");
 
-    String keyspaceName1 = "my_keyspace1";
-    String keyspaceName2 = "my_keyspace2";
+    final String keyspaceName1 = getRandomKeyspaceName() + "_1";
+    final String keyspaceName2 = getRandomKeyspaceName() + "_2";
     String tableName = "test_table";
     String longTableName1 = keyspaceName1 + "." + tableName; // Table1.
     String longTableName2 = keyspaceName2 + "." + tableName; // Table2.
@@ -400,10 +407,11 @@ public class TestKeyspace extends BaseCQLTest {
 
     // Table1 name: "a" . "b.c"
     // Table2 name: "a.b" . "c"
-    String keyspaceName1 = "a";
-    String keyspaceName2 = "a.b";
-    String longTableName1 = "\"" + keyspaceName1 + "\"." + "\"b.c\""; // Table1.
-    String longTableName2 = "\"" + keyspaceName2 + "\"." + "\"c\""; // Table2.
+    final long randomId = TestUtils.randomNonNegNumber();
+    final String keyspaceName1 = "a" + randomId;
+    final String keyspaceName2 = "a" + randomId + ".b";
+    final String longTableName1 = "\"" + keyspaceName1 + "\"." + "\"b.c\""; // Table1.
+    final String longTableName2 = "\"" + keyspaceName2 + "\"." + "\"c\""; // Table2.
 
     // Table1 has NOT been created yet.
     assertNoTable(longTableName1);

@@ -50,7 +50,7 @@ if [[ $# -eq 2 && -d $YB_SRC_ROOT/java/$1 ]]; then
     fatal "Running Java tests with run-test.sh requires that BUILD_ROOT be set"
   fi
   set_common_test_paths
-  set_mvn_local_repo
+  set_mvn_parameters
   set_asan_tsan_options
   mkdir -p "$YB_TEST_LOG_ROOT_DIR/java"
   surefire_rel_tmp_dir=surefire$(date +%Y-%m-%d_%H_%M_%S)_${RANDOM}_$$
@@ -61,9 +61,12 @@ if [[ $# -eq 2 && -d $YB_SRC_ROOT/java/$1 ]]; then
     # http://maven.apache.org/surefire/maven-surefire-plugin/test-mojo.html
     mvn -Dtest="$test_class" \
       --projects "$module_name" \
+      --settings "$YB_MVN_SETTINGS_PATH" \
       -DbinDir="$BUILD_ROOT/bin" \
       -Dmaven.repo.local="$YB_MVN_LOCAL_REPO" \
       -DtempDir="$surefire_rel_tmp_dir" \
+      -DskipAssembly \
+      -Dmaven.javadoc.skip \
       -X \
       surefire:test \
       2>&1 | tee "$YB_TEST_LOG_ROOT_DIR/java/${module_name}__${test_class}.log"
@@ -145,16 +148,37 @@ set_test_log_url_prefix
 
 global_exit_code=0
 
-if [[ -n ${YB_NUM_TEST_ATTEMPTS:-} ]]; then
-  if [[ ! $YB_NUM_TEST_ATTEMPTS =~ ^[0-9]+$ ]]; then
-    fatal "YB_NUM_TEST_ATTEMPTS is not set to a valid integer: '${YB_NUM_TEST_ATTEMPTS}'"
+# We have a mode in which we run multiple "attempts" of the same test. It can be triggered in one
+# of two ways:
+# - Specifying YB_NUM_TEST_ATTEMPTS greater than 1. In that case we'll run multiple attempts of the
+#   same test sequentially.
+# - Setting YB_TEST_ATTEMPT_INDEX. This is what happens in distributed test runs on Spark. In this
+#   case we run one test, but attach the given "attempt index" to it so that all log and output
+#   files are suffixed with it.
+
+if [[ -n ${YB_TEST_ATTEMPT_INDEX:-} ]]; then
+  # This is used when running tests multiple times on Spark. We just specify an attempt index
+  # externally as an environment variable, as multiple attempts for the same test could run
+  # concurrently.
+  if [[ ! $YB_TEST_ATTEMPT_INDEX =~ ^[0-9]+$ ]]; then
+    fatal "YB_TEST_ATTEMPT_INDEX is not set to a valid integer: '${YB_TEST_ATTEMPT_INDEX}'"
   fi
-  declare -i -r num_test_attempts=$YB_NUM_TEST_ATTEMPTS
-  if [[ $num_test_attempts -lt 1 ]]; then
-    fatal "YB_NUM_TEST_ATTEMPTS cannot be lower than 1"
-  fi
+  declare -i -r min_test_attempt_index=$YB_TEST_ATTEMPT_INDEX
+  declare -i -r max_test_attempt_index=$YB_TEST_ATTEMPT_INDEX
 else
-  declare -i -r num_test_attempts=1
+  if [[ -n ${YB_NUM_TEST_ATTEMPTS:-} ]]; then
+    if [[ ! $YB_NUM_TEST_ATTEMPTS =~ ^[0-9]+$ ]]; then
+      fatal "YB_NUM_TEST_ATTEMPTS is not set to a valid integer: '${YB_NUM_TEST_ATTEMPTS}'"
+    fi
+    declare -i -r num_test_attempts=$YB_NUM_TEST_ATTEMPTS
+    if [[ $num_test_attempts -lt 1 ]]; then
+      fatal "YB_NUM_TEST_ATTEMPTS cannot be lower than 1"
+    fi
+  else
+    declare -i -r num_test_attempts=1
+  fi
+  declare -i -r min_test_attempt_index=1
+  declare -i -r max_test_attempt_index=$num_test_attempts
 fi
 
 if [[ -n ${YB_LIST_TESTS_ONLY:-} ]]; then
@@ -167,21 +191,19 @@ fi
 # Loop over all tests in a gtest binary, or just one element (the whole test binary) for tests that
 # we have to run in one shot.
 for test_descriptor in "${tests[@]}"; do
-  for (( test_attempt=1; test_attempt <= $num_test_attempts; test_attempt++ )); do
-    if [[ $num_test_attempts -ne 1 ]]; then
+  for (( test_attempt=$min_test_attempt_index;
+         test_attempt <= $max_test_attempt_index;
+         test_attempt++ )); do
+    if [[ $max_test_attempt_index -gt 1 ]]; then
       log "Starting test attempt $test_attempt ($test_descriptor)"
-    fi
-    if [[ $test_attempt -eq 1 && $num_test_attempts -eq 1 ]]; then
-      test_attempt_index=""
-    else
       test_attempt_index=$test_attempt
+    else
+      test_attempt_index=""
     fi
     prepare_for_running_test
     run_test_and_process_results
   done
 done
-
-cd /tmp
 
 # This was missing for quite some time prior to early Dec 2016, resulting in "$global_exit_code"
 # being carefully prepared but then ignored, and people observing discrepancies between test

@@ -20,6 +20,7 @@
 #include "util/random.h"
 #include "utilities/table_properties_collectors/compact_on_deletion_collector.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/tsan_util.h"
 
 int main(int argc, char** argv) {
   const int kWindowSizes[] =
@@ -39,12 +40,8 @@ int main(int argc, char** argv) {
   }
 
 
-#ifdef THREAD_SANITIZER
-    // Lower number of runs for tsan due to low perf.
-    constexpr int kNumRandomTests = 20;
-#else
-    constexpr int kNumRandomTests = 100;
-#endif
+  // Lower number of runs for tsan due to low perf.
+  constexpr int kNumRandomTests = yb::NonTsanVsTsan(100, 20);
 
   // randomize tests
   rocksdb::Random rnd(301);

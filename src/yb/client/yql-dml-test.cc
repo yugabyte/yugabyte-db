@@ -14,6 +14,7 @@
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
 #include "yb/util/tostring.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/sql/util/statement_result.h"
 
@@ -255,11 +256,7 @@ constexpr auto kTimeout = 30s;
 } // namespace
 
 TEST_F_EX(YqlDmlTest, RangeFilter, YqlDmlRangeFilterBase) {
-#if defined(THREAD_SANITIZER)
-  constexpr size_t kTotalLines = 5000;
-#else
-  constexpr size_t kTotalLines = 25000;
-#endif
+  constexpr size_t kTotalLines = NonTsanVsTsan(25000, 5000);
   if (!FLAGS_mini_cluster_reuse_data) {
     shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
@@ -355,11 +352,7 @@ TEST_F(YqlDmlTest, FlushedOpId) {
       }
     });
   }
-#if defined(THREAD_SANITIZER)
-  const auto kSleepTime = 5s;
-#else
-  const auto kSleepTime = 1s;
-#endif
+  const auto kSleepTime = NonTsanVsTsan(5s, 1s);
   std::this_thread::sleep_for(kSleepTime);
   LOG(INFO) << "Flushing tablets";
   cluster_->FlushTablets();

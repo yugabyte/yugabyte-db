@@ -47,7 +47,8 @@ public class TestRF1Cluster extends TestClusterBase {
 
   @Override
   public void setUpBefore() throws Exception {
-    MiniYBCluster.setNumShardsPerTserver(12);
+    // This should ideally be consistent with kDefaultNumShardsPerTServer in client.cc.
+    MiniYBCluster.setNumShardsPerTserver(TestUtils.isTSAN() ? 2 : 8);
     createMiniCluster(1, 1);
     updateConfigReplicationFactor(1);
   }

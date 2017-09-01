@@ -181,7 +181,7 @@ void Acceptor::AsyncHandler(ev::async& async, int events) {
       LOG(WARNING) << "Failed to get address for socket: "
                    << socket.GetFd() << ": " << status.ToString();
     }
-    LOG(INFO) << "Adding " << socket.GetFd() << " at " << endpoint;
+    VLOG(1) << "Adding socket fd " << socket.GetFd() << " at " << endpoint;
     AcceptingSocket ac{ std::unique_ptr<ev::io>(new ev::io),
                         Socket(std::move(socket)),
                         endpoint };

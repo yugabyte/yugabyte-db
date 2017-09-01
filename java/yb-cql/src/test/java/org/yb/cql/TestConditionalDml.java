@@ -95,7 +95,7 @@ public class TestConditionalDml extends BaseCQLTest {
     }
 
     // Tear down table
-    DropTable("t");
+    dropTable("t");
 
     LOG.info("TEST SIMPLE DELETE - End");
   }
@@ -198,7 +198,7 @@ public class TestConditionalDml extends BaseCQLTest {
     }
 
     // Tear down table
-    DropTable("t");
+    dropTable("t");
 
     LOG.info("TEST SIMPLE INSERT - End");
   }
@@ -322,7 +322,7 @@ public class TestConditionalDml extends BaseCQLTest {
     }
 
     // Tear down table
-    DropTable("t");
+    dropTable("t");
 
     LOG.info("TEST SIMPLE UPDATE - End");
   }

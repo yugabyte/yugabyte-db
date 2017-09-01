@@ -232,13 +232,9 @@ TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
   // to YQL. Cluster check is disabled, because checksum checking is failing for Kudu tables here.
   DontVerifyClusterBeforeNextTearDown();
 
-#ifdef THREAD_SANITIZER
   // TSAN tests run much slower, so we don't want to wait for as many
   // rejections before declaring the test to be passed.
-  const int64_t kMinRejections = 20;
-#else
-  const int64_t kMinRejections = 100;
-#endif
+  const int64_t kMinRejections = NonTsanVsTsan(100, 20);
 
   const MonoDelta kMaxWaitTime = MonoDelta::FromSeconds(60);
 

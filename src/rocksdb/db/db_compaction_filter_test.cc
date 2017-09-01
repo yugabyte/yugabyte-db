@@ -10,6 +10,7 @@
 #include "db/db_test_util.h"
 #include "port/stack_trace.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/tsan_util.h"
 
 namespace rocksdb {
 
@@ -408,12 +409,8 @@ TEST_F(DBTestCompactionFilter, CompactionFilterWithValueChange) {
     options = CurrentOptions(options);
     CreateAndReopenWithCF({"pikachu"}, options);
 
-#ifdef THREAD_SANITIZER
     // Lower number of runs for tsan due to low perf.
-    constexpr int kNumKeys = 10001;
-#else
-    constexpr int kNumKeys = 100001;
-#endif
+    constexpr int kNumKeys = yb::NonTsanVsTsan(100001, 10001);
 
     // Write 'kNumKeys' keys, these are written to a few files
     // in L0. We do this so that the current snapshot points

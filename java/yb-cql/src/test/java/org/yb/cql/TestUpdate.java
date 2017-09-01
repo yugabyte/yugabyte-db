@@ -17,7 +17,7 @@ public class TestUpdate extends BaseCQLTest {
   @Test
   public void testUpdateWithTimestamp() throws Exception {
     String tableName = "test_update_with_timestamp";
-    CreateTable(tableName, "timestamp");
+    createTable(tableName, "timestamp");
     // this includes both string and int inputs
     Map<String, Date> ts_values = generateTimestampMap();
     for (String key : ts_values.keySet()) {
@@ -45,7 +45,7 @@ public class TestUpdate extends BaseCQLTest {
   @Test
   public void testUpdateWithTTL() throws Exception {
     String tableName = "test_update_with_ttl";
-    CreateTable(tableName);
+    createTable(tableName);
 
     // Insert a row.
     String insert_stmt = String.format(
@@ -117,7 +117,7 @@ public class TestUpdate extends BaseCQLTest {
   @Test
   public void testInvalidUpdateWithTimestamp() throws Exception {
     String tableName = "test_update_with_invalid_timestamp";
-    CreateTable(tableName, "timestamp");
+    createTable(tableName, "timestamp");
     String ins_stmt = String.format(
       "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, %s, %d, %s, %d, %s);",
       tableName, 1, "0", 2, "0", 3, "0");
@@ -148,7 +148,7 @@ public class TestUpdate extends BaseCQLTest {
   @Test
   public void testValidInvalidUpdateWithTTL() throws Exception {
     String tableName = "testValidInvalidUpdateWithTTL";
-    CreateTable(tableName);
+    createTable(tableName);
 
     // Insert a row.
     String insert_stmt = String.format(
@@ -169,7 +169,7 @@ public class TestUpdate extends BaseCQLTest {
   @Test
   public void testUpdateWithInet() throws Exception {
     String tableName = "testUpdateWithInet";
-    CreateTable(tableName, "inet");
+    createTable(tableName, "inet");
 
     // Insert a row.
     String insert_stmt = String.format(

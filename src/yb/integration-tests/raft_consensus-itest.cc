@@ -1194,13 +1194,9 @@ TEST_F(RaftConsensusITest, DISABLED_TestChurnyElections_WithNotificationLatency)
 void RaftConsensusITest::DoTestChurnyElections(bool with_latency) {
   vector<string> ts_flags, master_flags;
 
-#ifdef THREAD_SANITIZER
   // On TSAN builds, we need to be a little bit less churny in order to make
   // any progress at all.
-  ts_flags.push_back("--raft_heartbeat_interval_ms=5");
-#else
-  ts_flags.push_back("--raft_heartbeat_interval_ms=1");
-#endif
+  ts_flags.push_back(Format("--raft_heartbeat_interval_ms=$0", NonTsanVsTsan(5, 1)));
   ts_flags.push_back("--leader_failure_monitor_check_mean_ms=1");
   ts_flags.push_back("--leader_failure_monitor_check_stddev_ms=1");
   ts_flags.push_back("--never_fsync");

@@ -62,9 +62,17 @@ class PrepareThreadImpl {
   std::atomic<bool> processing_{false};
 
   boost::lockfree::queue<TransactionDriver*> queue_;
+
   std::mutex mtx_;
   std::condition_variable cond_;
 
+  // This mutex/condition combination is used in Stop() in case multiple threads are calling that
+  // function concurrently. One of them will ask the prepare thread to stop and wait for it, and
+  // then will notify other threads that have called Stop(). Using a separate mutex adds a bit of
+  // complexity, but simplifies reasoning about lock ordering, because the PrepareThread mutex
+  // (mtx_) cannot be acquired while holding the ReplicaState (consensus) lock. With a separate
+  // stopping mutex, we have one fewer place where the main PrepareThread mutex can be acquired.
+  std::mutex stop_mtx_;
   std::condition_variable stop_cond_;
 
   TransactionDrivers leader_side_batch_;
@@ -81,9 +89,19 @@ class PrepareThreadImpl {
   void ProcessItem(TransactionDriver* item);
 
   // @return true if at least one item was processed.
-  bool ProcessAndClearLeaderSideBatch();
+  // @param lock This unique_lock of mtx_ is provided so that we can release it if we need to submit
+  //        a batch for replication. The reason is that ReplicateBatch acquires the Raft
+  //        ReplicaState lock, and we already submit entries to PrepareThread under that lock
+  //        in UpdateReplica. To avoid deadlock, we must never attempt to acquire the ReplicaState
+  //        lock while holding the PrepareThread lock.
+  bool ProcessAndClearLeaderSideBatch(std::unique_lock<std::mutex>* lock = nullptr);
 
-  void ReplicateSubBatch(TransactionDrivers::iterator begin, TransactionDrivers::iterator end);
+  // A wrapper around ProcessAndClearLeaderSideBatch that assumes we are currently holding the
+  // mutex.
+
+  void ReplicateSubBatch(TransactionDrivers::iterator begin,
+                         TransactionDrivers::iterator end,
+                         std::unique_lock<std::mutex>* lock);
 };
 
 PrepareThreadImpl::PrepareThreadImpl(consensus::Consensus* consensus)
@@ -115,11 +133,13 @@ void PrepareThreadImpl::Stop() {
 
     CHECK_OK(ThreadJoiner(thread_.get()).Join());
 
-    std::unique_lock<decltype(mtx_)> stop_lock(mtx_);
+    // Note: we are using a separate mutex for stopping, different from the main mutex mtx_.
+    std::unique_lock<std::mutex> stop_lock(stop_mtx_);
     stopped_.store(true, std::memory_order_release);
-    stop_cond_.notify_one();
+    stop_cond_.notify_all();
   } else {
-    std::unique_lock<decltype(mtx_)> stop_lock(mtx_);
+    // Note (as above): stop_mtx_ is different from mtx_.
+    std::unique_lock<std::mutex> stop_lock(stop_mtx_);
     stop_cond_.wait(stop_lock, [this] { return stopped_.load(std::memory_order_acquire); });
   }
 }
@@ -147,7 +167,7 @@ Status PrepareThreadImpl::Submit(TransactionDriver* txnd) {
     // - The item we've appended has not yet been processed at that time. Then we'll immediately
     //   store true into processing_ once again (a no-op since it's already true) and go into
     //   another iteration of the inner loop, which will process the newly added item.
-    std::unique_lock<decltype(mtx_)> lock(mtx_);
+    std::unique_lock<std::mutex> lock(mtx_);
     cond_.notify_one();
   }
 
@@ -167,23 +187,30 @@ Status PrepareThreadImpl::Submit(TransactionDriver* txnd) {
 void PrepareThreadImpl::Run() {
   for (;;) {
     {
-      std::unique_lock<decltype(mtx_)> lock(mtx_);
+      // Logic for waiting (most common) and stopping (happens once on tablet shutdown).
+      std::unique_lock<std::mutex> lock(mtx_);
 
       if (can_block()) {
         if (stop_requested_.load(std::memory_order_acquire)) {
-          ProcessAndClearLeaderSideBatch();
+          ProcessAndClearLeaderSideBatch(&lock);
+          if (lock.owns_lock()) {
+            VLOG(1) << "Prepare thread's Run() function is exiting";
 
-          VLOG(1) << "Prepare thread's Run() function is exiting";
-
-          // This is the only place this function returns. If that ever changes, we'll need to move
-          // the cleanup logic above so that it gets executed on every return path.
-          return;
-        }
-
-        // If we end up processing at least one accumulated leader-side item here, we need to check
-        // the can_block() condition again. Otherwise, we don't need to re-check.
-        if (!ProcessAndClearLeaderSideBatch() || can_block()) {
-          cond_.wait(lock, [this] { return processing_.load(std::memory_order_acquire); });
+            // This is the only place this function returns. If that ever changes, we'll need to
+            // move the cleanup logic above so that it gets executed on every return path.
+            return;
+          }
+          // We had to release our mutex before submitting some entries for replication. Go for one
+          // more iteration and come back here next time.
+        } else {
+          // If we end up processing at least one accumulated leader-side item here, we need to
+          // check the can_block() condition again. Otherwise, we don't need to re-check.
+          //
+          // Also, if we no longer own the lock as a result of ProcessAndClearLeaderSideBatch()
+          // having released it, we can't block now so we'll loop around.
+          if ((!ProcessAndClearLeaderSideBatch(&lock) || can_block()) && lock.owns_lock()) {
+            cond_.wait(lock, [this] { return processing_.load(std::memory_order_acquire); });
+          }
         }
       }
     }
@@ -233,7 +260,8 @@ void PrepareThreadImpl::ProcessItem(TransactionDriver* item) {
   }
 }
 
-bool PrepareThreadImpl::ProcessAndClearLeaderSideBatch() {
+bool PrepareThreadImpl::ProcessAndClearLeaderSideBatch(std::unique_lock<std::mutex>* lock) {
+  DCHECK(!lock || lock->mutex() == &mtx_);
   if (leader_side_batch_.empty()) {
     return false;
   }
@@ -256,9 +284,7 @@ bool PrepareThreadImpl::ProcessAndClearLeaderSideBatch() {
     if (PREDICT_TRUE(s.ok())) {
       replication_subbatch_end = ++iter;
     } else {
-      // Replicate the accumulated batch so far, not including this transaction. This is a no-op in
-      // case of an empty batch.
-      ReplicateSubBatch(replication_subbatch_begin, replication_subbatch_end);
+      ReplicateSubBatch(replication_subbatch_begin, replication_subbatch_end, lock);
 
       // Handle failure for this transaction itself.
       txnd->HandleFailure(s);
@@ -269,7 +295,7 @@ bool PrepareThreadImpl::ProcessAndClearLeaderSideBatch() {
   }
 
   // Replicate the remaining batch. No-op for an empty batch.
-  ReplicateSubBatch(replication_subbatch_begin, replication_subbatch_end);
+  ReplicateSubBatch(replication_subbatch_begin, replication_subbatch_end, lock);
 
   leader_side_batch_.clear();
   return true;
@@ -277,7 +303,9 @@ bool PrepareThreadImpl::ProcessAndClearLeaderSideBatch() {
 
 void PrepareThreadImpl::ReplicateSubBatch(
     TransactionDrivers::iterator txnd_begin,
-    TransactionDrivers::iterator txnd_end) {
+    TransactionDrivers::iterator txnd_end,
+    std::unique_lock<std::mutex>* lock) {
+  DCHECK(!lock || lock->mutex() == &mtx_);
   DCHECK_GE(std::distance(txnd_begin, txnd_end), 0);
   if (txnd_begin == txnd_end) {
     return;
@@ -296,6 +324,10 @@ void PrepareThreadImpl::ReplicateSubBatch(
     DCHECK_ONLY_NOTNULL(*txnd_iter);
     DCHECK_ONLY_NOTNULL((*txnd_iter)->consensus_round());
     rounds_to_replicate_.push_back((*txnd_iter)->consensus_round());
+  }
+
+  if (lock && lock->owns_lock()) {
+    lock->unlock();
   }
   const Status s = consensus_->ReplicateBatch(rounds_to_replicate_);
   rounds_to_replicate_.clear();
