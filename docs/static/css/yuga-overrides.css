@@ -76,6 +76,10 @@ header .bar .logo img {
   padding-bottom: 0;
 }
 .palette-primary-orange .article code {
+  color: inherit !important;
+}
+
+.palette-primary-orange .article pre code {
   padding: 12px 20px;
   color: #344d78 !important;
 }
