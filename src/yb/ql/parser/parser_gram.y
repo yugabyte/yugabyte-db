@@ -110,6 +110,8 @@ typedef PTValues::SharedPtr            PValues;
 typedef PTSelectStmt::SharedPtr        PSelectStmt;
 typedef PTTableRef::SharedPtr          PTableRef;
 typedef PTTableRefListNode::SharedPtr  PTableRefListNode;
+typedef PTOrderBy::SharedPtr           POrderBy;
+typedef PTOrderByListNode::SharedPtr   POrderByListNode;
 typedef PTAssign::SharedPtr            PAssign;
 typedef PTKeyspaceProperty::SharedPtr     PKeyspaceProperty;
 typedef PTKeyspacePropertyListNode::SharedPtr     PKeyspacePropertyListNode;
@@ -200,7 +202,7 @@ using namespace yb::ql;
                           DropStmt
 
                           // Select.
-                          distinct_clause opt_all_clause sortby
+                          distinct_clause opt_all_clause
                           group_by_item for_locking_clause opt_for_locking_clause
                           with_clause opt_with_clause cte_list common_table_expr
                           opt_window_clause
@@ -245,7 +247,6 @@ using namespace yb::ql;
 
 %type <PListNode>         // Clauses as list of tree nodes.
                           group_clause group_by_list having_clause into_clause
-                          opt_sort_clause sort_clause sortby_list
 
                           // Create table clauses.
                           OptTableElementList TableElementList
@@ -288,6 +289,13 @@ using namespace yb::ql;
 
 %type <PTableRef>         // Name node that represents table.
                           table_ref relation_expr_opt_alias
+
+%type <POrderByListNode>  // Sortby List for orderby clause
+                          sortby_list opt_sort_clause sort_clause
+
+
+%type <POrderBy>          // Sortby for orderby clause
+                          sortby
 
 %type <PTableRefListNode> // List of names that represent tables.
                           from_clause from_list
@@ -2064,7 +2072,7 @@ sort_clause:
 
 sortby_list:
   sortby {
-    $$ = MAKE_NODE(@1, PTListNode, $1);
+    $$ = MAKE_NODE(@1, PTOrderByListNode, $1);
   }
   | sortby_list ',' sortby {
     $1->Append($3);

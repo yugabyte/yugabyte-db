@@ -345,12 +345,12 @@ class PrimitiveValue {
     return CompareTo(other) < 0;
   }
 
-  bool operator >(const PrimitiveValue& other) const {
-    return CompareTo(other) > 0;
-  }
-
   bool operator <=(const PrimitiveValue& other) const {
     return CompareTo(other) <= 0;
+  }
+
+  bool operator >(const PrimitiveValue& other) const {
+    return CompareTo(other) > 0;
   }
 
   bool operator >=(const PrimitiveValue& other) const {

@@ -404,7 +404,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
 
   vector<PrimitiveValue> hashed_components({PrimitiveValue::Int32(100)});
   DocQLScanSpec ql_scan_spec(schema, -1, -1, hashed_components, /* request = */ nullptr,
-                               rocksdb::kDefaultQueryId);
+                             rocksdb::kDefaultQueryId);
   DocRowwiseIterator ql_iter(
       schema, schema, kNonTransactionalOperationContext, rocksdb(),
       HybridClock::HybridTimeFromMicroseconds(3000));
@@ -452,7 +452,7 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
 
   vector<PrimitiveValue> hashed_components_system({PrimitiveValue::Int32(101)});
   DocQLScanSpec ql_scan_spec_system(schema, -1, -1, hashed_components_system, nullptr,
-                                      rocksdb::kDefaultQueryId);
+                                    rocksdb::kDefaultQueryId);
   DocRowwiseIterator ql_iter_system(
       schema, schema, kNonTransactionalOperationContext, rocksdb(),
       HybridClock::HybridTimeFromMicroseconds(3000));
@@ -518,15 +518,18 @@ std::ostream& operator<<(std::ostream& out, const RowData& row) {
 
 class DocOperationRangeFilterTest : public DocOperationTest {
  public:
-  void TestWithSortingType(ColumnSchema::SortingType type);
+  void TestWithSortingType(ColumnSchema::SortingType schema_type, bool is_forward_scan = true);
  private:
 };
 
-void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType type) {
+// Currently we test using one column and one scan type.
+// TODO(akashnil): In future we want to implement and test arbitrary ASC DESC combinations for scan.
+void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType schema_type,
+    bool is_forward_scan) {
   ASSERT_OK(DisableCompactions());
 
   ColumnSchema hash_column("k", INT32, false, true);
-  ColumnSchema range_column("r", INT32, false, false, false, false, type);
+  ColumnSchema range_column("r", INT32, false, false, false, false, schema_type);
   ColumnSchema value_column("v", INT32, false, false);
   auto columns = { hash_column, range_column, value_column };
   Schema schema(columns, CreateColumnIds(columns.size()), 2);
@@ -583,13 +586,16 @@ void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType 
       auto range = GetIteratorRange(ordered_rows.begin(), ordered_rows.end(), it, op);
 
       std::vector<RowData> expected_rows(range.first, range.second);
+      if (is_forward_scan == (schema_type == ColumnSchema::SortingType::kDescending)) {
+        std::reverse(expected_rows.begin(), expected_rows.end());
+      }
       DocQLScanSpec ql_scan_spec(schema, -1, -1, hashed_components, &condition,
-                                   rocksdb::kDefaultQueryId);
+                                 rocksdb::kDefaultQueryId, is_forward_scan);
       DocRowwiseIterator ql_iter(schema, schema, boost::none, rocksdb(),
           HybridClock::HybridTimeFromMicroseconds(3000));
       ASSERT_OK(ql_iter.Init(ql_scan_spec));
       LOG(INFO) << "Expected rows: " << yb::ToString(expected_rows);
-
+      it = expected_rows.begin();
       while(ql_iter.HasNext()) {
         QLTableRow value_map;
         ASSERT_OK(ql_iter.NextRow(schema, &value_map));
@@ -599,14 +605,13 @@ void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType 
                                 value_map[1_ColId].value.int32_value(),
                                 value_map[2_ColId].value.int32_value() };
         LOG(INFO) << "Fetched row: " << fetched_row;
-        it = std::lower_bound(expected_rows.begin(), expected_rows.end(), fetched_row);
-        ASSERT_NE(it, expected_rows.end());
         ASSERT_EQ(*it, fetched_row);
-        expected_rows.erase(it);
+        it++;
       }
-      ASSERT_TRUE(expected_rows.empty());
+      ASSERT_EQ(expected_rows.end(), it);
       auto new_iterators =
           rocksdb()->GetDBOptions().statistics->getTickerCount(rocksdb::NO_TABLE_CACHE_ITERATORS);
+
       ASSERT_EQ(range.second - range.first, new_iterators - old_iterators);
       old_iterators = new_iterators;
     }
@@ -616,11 +621,19 @@ void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType 
 } // namespace
 
 TEST_F_EX(DocOperationTest, QLRangeFilterAscending, DocOperationRangeFilterTest) {
-  TestWithSortingType(ColumnSchema::kAscending);
+  TestWithSortingType(ColumnSchema::kAscending, true);
 }
 
-TEST_F_EX(DocOperationTest, QLRangeFiltervDescending, DocOperationRangeFilterTest) {
-  TestWithSortingType(ColumnSchema::kDescending);
+TEST_F_EX(DocOperationTest, QLRangeFilterDescending, DocOperationRangeFilterTest) {
+  TestWithSortingType(ColumnSchema::kDescending, true);
+}
+
+TEST_F_EX(DocOperationTest, TestQLAscDescScan, DocOperationRangeFilterTest) {
+  TestWithSortingType(ColumnSchema::kAscending, false);
+}
+
+TEST_F_EX(DocOperationTest, TestQLDescAscScan, DocOperationRangeFilterTest) {
+  TestWithSortingType(ColumnSchema::kDescending, false);
 }
 
 TEST_F(DocOperationTest, TestQLCompactions) {

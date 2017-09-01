@@ -101,6 +101,8 @@ class PTOrderBy : public TreeNode {
     return MCMakeShared<PTOrderBy>(memctx, std::forward<TypeArgs>(args)...);
   }
 
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+
   Direction direction() const {
     return direction_;
   }
@@ -109,11 +111,17 @@ class PTOrderBy : public TreeNode {
     return null_placement_;
   }
 
+  PTExpr::SharedPtr name() const {
+    return name_;
+  }
+
  private:
   PTExpr::SharedPtr name_;
   Direction direction_;
   NullPlacement null_placement_;
 };
+
+using PTOrderByListNode = TreeListNode<PTOrderBy>;
 
 //--------------------------------------------------------------------------------------------------
 // FROM <table ref list>.
@@ -169,7 +177,7 @@ class PTSelectStmt : public PTDmlStmt {
                PTExpr::SharedPtr where_clause,
                PTListNode::SharedPtr group_by_clause,
                PTListNode::SharedPtr having_clause,
-               PTListNode::SharedPtr order_by_clause,
+               PTOrderByListNode::SharedPtr order_by_clause,
                PTExpr::SharedPtr limit_clause);
   virtual ~PTSelectStmt();
 
@@ -181,9 +189,6 @@ class PTSelectStmt : public PTDmlStmt {
 
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
-  CHECKED_STATUS AnalyzeDistinctClause(SemContext *sem_context);
-  CHECKED_STATUS AnalyzeLimitClause(SemContext *sem_context);
-  CHECKED_STATUS ConstructSelectedSchema();
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   // Execution opcode.
@@ -191,7 +196,7 @@ class PTSelectStmt : public PTDmlStmt {
     return TreeNodeOpcode::kPTSelectStmt;
   }
 
-  virtual void SetOrderByClause(PTListNode::SharedPtr order_by_clause) {
+  virtual void SetOrderByClause(PTOrderByListNode::SharedPtr order_by_clause) {
     order_by_clause_ = order_by_clause;
   }
 
@@ -201,6 +206,10 @@ class PTSelectStmt : public PTDmlStmt {
 
   bool distinct() const {
     return distinct_;
+  }
+
+  bool is_forward_scan() const {
+    return is_forward_scan_;
   }
 
   bool has_limit() const {
@@ -229,7 +238,17 @@ class PTSelectStmt : public PTDmlStmt {
     return from_clause_->loc();
   }
 
+  PTOrderByListNode::SharedPtr order_by_clause() const {
+    return order_by_clause_;
+  }
+
  private:
+
+  CHECKED_STATUS AnalyzeDistinctClause(SemContext *sem_context);
+  CHECKED_STATUS AnalyzeOrderByClause(SemContext *sem_context);
+  CHECKED_STATUS AnalyzeLimitClause(SemContext *sem_context);
+  CHECKED_STATUS ConstructSelectedSchema();
+
   // The following members represent different components of SELECT statement. However, Cassandra
   // doesn't support all of SQL syntax and semantics.
   //
@@ -240,11 +259,12 @@ class PTSelectStmt : public PTDmlStmt {
   //   ORDER BY  <order_by_clause_>
   //   LIMIT     <limit_clause_>
   const bool distinct_;
+  bool is_forward_scan_;
   PTExprListNode::SharedPtr selected_exprs_;
   PTTableRefListNode::SharedPtr from_clause_;
   PTListNode::SharedPtr group_by_clause_;
   PTListNode::SharedPtr having_clause_;
-  PTListNode::SharedPtr order_by_clause_;
+  PTOrderByListNode::SharedPtr order_by_clause_;
   PTExpr::SharedPtr limit_clause_;
 };
 

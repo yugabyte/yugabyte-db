@@ -45,8 +45,8 @@ QLScanRange::QLScanRange(const Schema& schema, const QLConditionPB& condition)
   for (const auto& operand : operands) {
     if (operand.expr_case() == QLExpressionPB::ExprCase::kColumnId &&
         schema.is_range_column(ColumnId(operand.column_id()))) {
-        has_range_column = true;
-        break;
+      has_range_column = true;
+      break;
     }
   }
 
@@ -151,7 +151,7 @@ QLScanRange::QLScanRange(const Schema& schema, const QLConditionPB& condition)
 
 #undef QL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN
 
-    // For logical conditions, the ranges are union/intersect/complement of the operands' ranges.
+      // For logical conditions, the ranges are union/intersect/complement of the operands' ranges.
     case QL_OP_AND: {
       CHECK_GT(operands.size(), 0);
       for (const auto& operand : operands) {
@@ -192,7 +192,7 @@ QLScanRange::QLScanRange(const Schema& schema, const QLConditionPB& condition)
     case QL_OP_NOOP:
       break;
 
-    // default: fall through
+      // default: fall through
   }
 
   LOG(FATAL) << "Internal error: illegal or unknown operator " << condition.op();
@@ -279,7 +279,7 @@ vector<QLValuePB> QLScanRange::range_values(const bool lower_bound) const {
       bool desc_col = schema_.column(i).sorting_type() == ColumnSchema::kDescending;
       // lower bound for ASC column and upper bound for DESC column -> min value
       // otherwise -> max value
-      const auto& value = lower_bound ^ desc_col ? range.min_value : range.max_value;
+      const auto& value = (lower_bound ^ desc_col) ? range.min_value : range.max_value;
       range_values.emplace_back(value);
     }
   }
@@ -288,7 +288,11 @@ vector<QLValuePB> QLScanRange::range_values(const bool lower_bound) const {
 
 //-------------------------------------- QL scan spec ---------------------------------------
 QLScanSpec::QLScanSpec(const QLConditionPB* condition)
-      : condition_(condition) {
+    : condition_(condition), is_forward_scan_(true) {
+}
+
+QLScanSpec::QLScanSpec(const QLConditionPB* condition, const bool is_forward_scan)
+    : condition_(condition), is_forward_scan_(is_forward_scan) {
 }
 
 // Evaluate the WHERE condition for the given row.
@@ -298,6 +302,10 @@ Status QLScanSpec::Match(const QLTableRow& table_row, bool* match) const {
   }
   *match = true;
   return Status::OK();
+}
+
+bool QLScanSpec::is_forward_scan() const {
+  return is_forward_scan_;
 }
 
 } // namespace common

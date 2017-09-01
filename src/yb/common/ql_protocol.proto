@@ -287,6 +287,8 @@ message QLReadRequestPB {
   optional uint32 hash_code = 4;
   repeated QLExpressionPB hashed_column_values = 5;
 
+  optional bool is_forward_scan = 18 [default = true];
+
   // Where clause condition
   optional QLExpressionPB where_expr = 6;
 
@@ -318,7 +320,7 @@ message QLReadRequestPB {
   // set.
   optional HostPortPB remote_endpoint = 13;
 
-  // the upper limit for partition (hash) key scan ranges
+  // the upper limit for partition (hash) key scan ranges (inclusive)
   optional uint32 max_hash_code = 14;
 
   // Listing of all columns that this operation is referencing. TServers will need to read these

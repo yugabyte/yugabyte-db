@@ -64,6 +64,8 @@ enum class DocKeyPart {
 
 YB_STRONGLY_TYPED_BOOL(HybridTimeRequired)
 
+
+
 class DocKey {
  public:
   // Constructs an empty document key with no hash component.
@@ -82,6 +84,10 @@ class DocKey {
   DocKey(DocKeyHash hash,
          const std::vector<PrimitiveValue>& hashed_components,
          const std::vector<PrimitiveValue>& range_components = std::vector<PrimitiveValue>());
+
+  // DocKey with no hash but hashed components and range components preset
+  DocKey(const std::vector<PrimitiveValue>& hashed_components,
+      const std::vector<PrimitiveValue>& range_components);
 
   KeyBytes Encode() const;
   void AppendTo(KeyBytes* out) const;
@@ -135,6 +141,8 @@ class DocKey {
   }
 
   bool HashedComponentsEqual(const DocKey& other) const;
+
+  void AddRangeComponent(const PrimitiveValue& val);
 
   int CompareTo(const DocKey& other) const;
 

@@ -16,6 +16,7 @@
 #include "yb/common/iterator.h"
 #include "yb/common/partition.h"
 #include "yb/common/transaction.h"
+#include "yb/common/ql_scanspec.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -63,9 +64,10 @@ DocRowwiseIterator::DocRowwiseIterator(
     : projection_(projection),
       schema_(schema),
       txn_op_context_(txn_op_context),
+      is_forward_scan_(true),
       hybrid_time_(hybrid_time),
       db_(db),
-      has_upper_bound_key_(false),
+      has_bound_key_(false),
       pending_op_(pending_op_counter),
       done_(false) {
   projection_subkeys_.reserve(projection.num_columns() + 1);
@@ -95,31 +97,33 @@ Status DocRowwiseIterator::Init(ScanSpec *spec) {
   row_ready_ = false;
 
   if (spec != nullptr && spec->exclusive_upper_bound_key() != nullptr) {
-    has_upper_bound_key_ = true;
-    exclusive_upper_bound_key_ = KuduToDocKey(*spec->exclusive_upper_bound_key()).Encode();
+    has_bound_key_ = true;
+    bound_key_ = KuduToDocKey(*spec->exclusive_upper_bound_key());
   } else {
-    has_upper_bound_key_ = false;
+    has_bound_key_ = false;
   }
   return Status::OK();
 }
 
 Status DocRowwiseIterator::Init(const common::QLScanSpec& spec) {
   const DocQLScanSpec& doc_spec = dynamic_cast<const DocQLScanSpec&>(spec);
+  is_forward_scan_ = doc_spec.is_forward_scan();
 
-  // TOOD(bogdan): decide if this is a good enough heuristic for using blooms for scans.
+  VLOG(4) << "Initializing iterator direction: " << (is_forward_scan_ ? "FORWARD" : "BACKWARD");
+
   DocKey lower_doc_key;
   DocKey upper_doc_key;
   RETURN_NOT_OK(doc_spec.lower_bound(&lower_doc_key));
   RETURN_NOT_OK(doc_spec.upper_bound(&upper_doc_key));
+  VLOG(4) << "DocKey Bounds " << lower_doc_key.ToString() << ", " << upper_doc_key.ToString();
+
+  // TOOD(bogdan): decide if this is a good enough heuristic for using blooms for scans.
   const bool is_fixed_point_get = !lower_doc_key.empty() &&
       upper_doc_key.HashedComponentsEqual(lower_doc_key);
   const auto mode = is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER :
       BloomFilterMode::DONT_USE_BLOOM_FILTER;
 
-  // Start scan with the lower bound doc key.
-  row_key_ = std::move(lower_doc_key);
-
-  const KeyBytes row_key_encoded = row_key_.Encode();
+  const KeyBytes row_key_encoded = lower_doc_key.Encode();
   const Slice row_key_encoded_as_slice = row_key_encoded.AsSlice();
 
   db_iter_ = CreateIntentAwareIterator(
@@ -129,15 +133,40 @@ Status DocRowwiseIterator::Init(const common::QLScanSpec& spec) {
   RETURN_NOT_OK(db_iter_->SeekWithoutHt(row_key_encoded));
   row_ready_ = false;
 
-  // End scan with the upper bound key bytes.
-  if (!upper_doc_key.empty()) {
-    has_upper_bound_key_ = true;
-    exclusive_upper_bound_key_ = SubDocKey(upper_doc_key).AdvanceOutOfDocKeyPrefix();
+  if (is_forward_scan_) {
+    has_bound_key_ = !upper_doc_key.empty();
+    if (has_bound_key_) {
+      bound_key_ = upper_doc_key;
+    }
   } else {
-    has_upper_bound_key_ = false;
+    has_bound_key_ = !lower_doc_key.empty();
+    if (has_bound_key_) {
+      bound_key_ = lower_doc_key;
+    }
+  }
+
+  if (is_forward_scan_) {
+    if (has_bound_key_) {
+       RETURN_NOT_OK(db_iter_->Seek(lower_doc_key));
+    }
+  } else {
+    if (has_bound_key_) {
+      RETURN_NOT_OK(db_iter_->PrevDocKey(upper_doc_key));
+    } else {
+      RETURN_NOT_OK(db_iter_->SeekToLastDocKey());
+    }
+  }
+
+  return Status::OK();
+}
+
+Status DocRowwiseIterator::EnsureIteratorPositionCorrect() const {
+  if (!is_forward_scan_) {
+    RETURN_NOT_OK(db_iter_->PrevDocKey(row_key_));
   }
   return Status::OK();
 }
+
 
 bool DocRowwiseIterator::HasNext() const {
   if (!status_.ok() || row_ready_) {
@@ -160,11 +189,12 @@ bool DocRowwiseIterator::HasNext() const {
       // Defer error reporting to NextBlock().
       return true;
     }
-    if (has_upper_bound_key_ &&
-        db_iter_->key().compare(exclusive_upper_bound_key_.AsSlice()) >= 0) {
+
+    if (has_bound_key_ && is_forward_scan_ == (row_key_ >= bound_key_)) {
       done_ = true;
       return false;
     }
+
     KeyBytes old_key(db_iter_->key());
     // The iterator is positioned by the previous GetSubDocument call
     // (which places the iterator outside the previous doc_key).
@@ -198,6 +228,11 @@ bool DocRowwiseIterator::HasNext() const {
     if (db_iter_->valid() && old_key.AsSlice().compare(db_iter_->key()) >= 0) {
       status_ = STATUS_SUBSTITUTE(Corruption, "Infinite loop detected at $0",
           FormatRocksDBSliceAsStr(old_key.AsSlice()));
+      return true;
+    }
+    status_ = EnsureIteratorPositionCorrect();
+    if (!status_.ok()) {
+      // Defer error reporting to NextBlock().
       return true;
     }
   }
@@ -271,20 +306,20 @@ CHECKED_STATUS PrimitiveValueToKudu(const Schema& projection,
       return STATUS_SUBSTITUTE(IllegalState,
                                "Unsupported column data type $0", data_type);
   }
-  return Status::OK();
-}
+        return Status::OK();
+  }
 
 // Set primary key column values (hashed or range columns) in a Kudu row. The destination row's
 // schema must match that of the projection.
-CHECKED_STATUS SetKuduPrimaryKeyColumnValues(const Schema& projection,
-                                             const size_t begin_index,
-                                             const size_t column_count,
-                                             const char* column_type,
-                                             const vector<PrimitiveValue>& values,
-                                             RowBlockRow* dst_row) {
-  if (values.size() != column_count) {
-    return STATUS_SUBSTITUTE(Corruption, "$0 $1 primary key columns found but $2 expected",
-                             values.size(), column_type, column_count);
+  CHECKED_STATUS SetKuduPrimaryKeyColumnValues(const Schema& projection,
+      const size_t begin_index,
+      const size_t column_count,
+      const char* column_type,
+      const vector<PrimitiveValue>& values,
+      RowBlockRow* dst_row) {
+    if (values.size() != column_count) {
+      return STATUS_SUBSTITUTE(Corruption, "$0 $1 primary key columns found but $2 expected",
+      values.size(), column_type, column_count);
   }
   if (begin_index + column_count > projection.num_columns()) {
     return STATUS_SUBSTITUTE(

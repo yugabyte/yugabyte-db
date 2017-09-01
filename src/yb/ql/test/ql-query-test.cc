@@ -73,6 +73,56 @@ class TestQLQuery : public QLTestBase {
     EXPECT_EQ(3, row.column(2).int32_value());
   }
 
+  void TestSelectWithBounds(
+      string select_stmt,
+      TestQLProcessor* processor,
+      const std::vector<std::tuple<int64_t, int, string, int, int>>& rows,
+      int start_idx, int end_idx, string order_by_clause) {
+    std::vector<std::tuple<int64_t, int, string, int, int>> test_rows(
+        &rows[start_idx], &rows[end_idx]);
+
+    select_stmt += order_by_clause;
+
+    if (order_by_clause == " ORDER BY r1 DESC") {
+      std::reverse(test_rows.begin(), test_rows.end());
+    }
+    CHECK_OK(processor->Run(select_stmt));
+    auto row_block = processor->row_block();
+    // checking result
+    ASSERT_EQ(test_rows.size(), row_block->row_count());
+    for (int i = 0; i < test_rows.size(); i++) {
+      QLRow &row = row_block->row(i);
+      EXPECT_EQ(std::get<1>(test_rows[i]), row.column(0).int32_value());
+      EXPECT_EQ(std::get<2>(test_rows[i]), row.column(1).string_value());
+      EXPECT_EQ(std::get<3>(test_rows[i]), row.column(2).int32_value());
+      EXPECT_EQ(std::get<4>(test_rows[i]), row.column(3).int32_value());
+    }
+  }
+
+  // Make sure regular scan works, but errors when order by is present.
+  void TestSelectWithoutOrderBy(
+      string select_stmt,
+      TestQLProcessor *processor,
+      const std::vector<std::tuple<int64_t, int, string, int, int>> &rows,
+      int start_idx, int end_idx) {
+    // Forward scan
+    TestSelectWithBounds(select_stmt, processor, rows, start_idx, end_idx, "");
+    CHECK_INVALID_STMT(select_stmt + " ORDER BY r1 DESC");
+    CHECK_INVALID_STMT(select_stmt + " ORDER BY r1 ASC");
+  }
+
+  // Make sure normal scans and those with order by clause all work.
+  void TestSelectWithOrderBy(
+      string select_stmt,
+      TestQLProcessor *processor,
+      const std::vector<std::tuple<int64_t, int, string, int, int>> &rows,
+      int start_idx, int end_idx) {
+    // Forward scan
+    TestSelectWithBounds(select_stmt, processor, rows, start_idx, end_idx, "");
+    TestSelectWithBounds(select_stmt, processor, rows, start_idx, end_idx, " ORDER BY r1 ASC");
+    TestSelectWithBounds(select_stmt, processor, rows, start_idx, end_idx, " ORDER BY r1 DESC");
+  }
+
 };
 
 TEST_F(TestQLQuery, TestMissingSystemTable) {
@@ -1283,84 +1333,36 @@ TEST_F(TestQLQuery, TestScanWithBounds) {
   string select_stmt_template = "SELECT * FROM scan_bounds_test WHERE token(h1, h2) > $0";
 
   // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
-  string select_stmt = Substitute(select_stmt_template, std::get<0>(rows[0]) - 1);
-  CHECK_OK(processor->Run(select_stmt));
-  auto row_block = processor->row_block();
-  // checking result
-  ASSERT_EQ(10, row_block->row_count());
-  for (int i = 0; i < 10; i++) {
-    QLRow &row = row_block->row(i);
-    EXPECT_EQ(std::get<1>(rows[i]), row.column(0).int32_value());
-    EXPECT_EQ(std::get<2>(rows[i]), row.column(1).string_value());
-    EXPECT_EQ(std::get<3>(rows[i]), row.column(2).int32_value());
-    EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
-  }
-
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, std::get<0>(rows[0]) - 1), processor, rows,
+      0, 10);
   // Partial range: hashes 4, 5, 6, 7, 8, 9
-  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[3]));
-  CHECK_OK(processor->Run(select_stmt));
-  row_block = processor->row_block();
-  // checking result
-  ASSERT_EQ(6, row_block->row_count());
-  for (int i = 4; i < 10; i++) {
-    QLRow &row = row_block->row(i - 4);
-    EXPECT_EQ(std::get<1>(rows[i]), row.column(0).int32_value());
-    EXPECT_EQ(std::get<2>(rows[i]), row.column(1).string_value());
-    EXPECT_EQ(std::get<3>(rows[i]), row.column(2).int32_value());
-    EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
-  }
-
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, std::get<0>(rows[3])), processor, rows,
+      4, 10);
   // Empty range: no hashes.
-  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[9]));
-  CHECK_OK(processor->Run(select_stmt));
-  row_block = processor->row_block();
-  // checking result
-  EXPECT_EQ(0, row_block->row_count());
-
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, std::get<0>(rows[9])), processor, rows,
+      0, 0);
   // Empty range: no hashes (checking overflow for max Cql hash)
-  select_stmt = Substitute(select_stmt_template, INT64_MAX);
-  CHECK_OK(processor->Run(select_stmt));
-  row_block = processor->row_block();
-  // checking result
-  EXPECT_EQ(0, row_block->row_count());
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, INT64_MAX), processor, rows,
+      0, 0);
 
   //---------------------------------- Inclusive Lower Bound ---------------------------------------
   select_stmt_template = "SELECT * FROM scan_bounds_test WHERE token(h1, h2) >= $0";
-
   // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9.
-  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[0]) + bucket_size - 1);
-  CHECK_OK(processor->Run(select_stmt));
-  row_block = processor->row_block();
-  // checking result
-  ASSERT_EQ(10, row_block->row_count());
-  for (int i = 0; i < 10; i++) {
-    QLRow &row = row_block->row(i);
-    EXPECT_EQ(std::get<1>(rows[i]), row.column(0).int32_value());
-    EXPECT_EQ(std::get<2>(rows[i]), row.column(1).string_value());
-    EXPECT_EQ(std::get<3>(rows[i]), row.column(2).int32_value());
-    EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
-  }
-
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, std::get<0>(rows[0]) + bucket_size - 1), processor, rows,
+      0, 10);
   // Partial range: hashes 6, 7, 8, 9
-  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[6]) + bucket_size - 1);
-  CHECK_OK(processor->Run(select_stmt));
-  row_block = processor->row_block();
-  // checking result
-  ASSERT_EQ(4, row_block->row_count());
-  for (int i = 6; i < 10; i++) {
-    QLRow &row = row_block->row(i - 6);
-    EXPECT_EQ(std::get<1>(rows[i]), row.column(0).int32_value());
-    EXPECT_EQ(std::get<2>(rows[i]), row.column(1).string_value());
-    EXPECT_EQ(std::get<3>(rows[i]), row.column(2).int32_value());
-    EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
-  }
-
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, std::get<0>(rows[6]) + bucket_size - 1), processor, rows,
+      6, 10);
   // Empty range: no hashes
-  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[9]) + bucket_size);
-  CHECK_OK(processor->Run(select_stmt));
-  row_block = processor->row_block();
-  // checking result
-  EXPECT_EQ(0, row_block->row_count());
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, std::get<0>(rows[9]) + bucket_size), processor, rows,
+      0, 0);
 
   //------------------------------------------------------------------------------------------------
   // Testing Select with upper bound
@@ -1368,179 +1370,87 @@ TEST_F(TestQLQuery, TestScanWithBounds) {
 
   //---------------------------------- Exclusive Upper Bound ---------------------------------------
   select_stmt_template = "SELECT * FROM scan_bounds_test WHERE token(h1, h2) < $0";
-
   // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
-  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[9]) + bucket_size);
-  CHECK_OK(processor->Run(select_stmt));
-  row_block = processor->row_block();
-  // checking result
-  ASSERT_EQ(10, row_block->row_count());
-  for (int i = 0; i < 10; i++) {
-    QLRow &row = row_block->row(i);
-    EXPECT_EQ(std::get<1>(rows[i]), row.column(0).int32_value());
-    EXPECT_EQ(std::get<2>(rows[i]), row.column(1).string_value());
-    EXPECT_EQ(std::get<3>(rows[i]), row.column(2).int32_value());
-    EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
-  }
-
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, std::get<0>(rows[9]) + bucket_size), processor, rows,
+      0, 10);
   // Partial range: hashes 0, 1, 2, 3, 4, 5, 6
-  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[7]) + bucket_size - 1);
-  CHECK_OK(processor->Run(select_stmt));
-  row_block.reset();
-  row_block = processor->row_block();
-  // checking result
-  ASSERT_EQ(7, row_block->row_count());
-  for (int i = 0; i < 7; i++) {
-    QLRow &row = row_block->row(i);
-    EXPECT_EQ(std::get<1>(rows[i]), row.column(0).int32_value());
-    EXPECT_EQ(std::get<2>(rows[i]), row.column(1).string_value());
-    EXPECT_EQ(std::get<3>(rows[i]), row.column(2).int32_value());
-    EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
-  }
-
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, std::get<0>(rows[7]) + bucket_size - 1), processor, rows,
+      0, 7);
   // Empty range: no hashes
-  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[0]) + bucket_size - 1);
-  CHECK_OK(processor->Run(select_stmt));
-  row_block = processor->row_block();
-  // checking result
-  EXPECT_EQ(0, row_block->row_count());
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, std::get<0>(rows[0]) + bucket_size - 1), processor, rows,
+      0, 0);
 
   //---------------------------------- Inclusive Upper Bound ---------------------------------------
   select_stmt_template = "SELECT * FROM scan_bounds_test WHERE token(h1, h2) <= $0";
-
   // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
-  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[9]));
-  CHECK_OK(processor->Run(select_stmt));
-  row_block = processor->row_block();
-  // checking result
-  ASSERT_EQ(10, row_block->row_count());
-  for (int i = 0; i < 10; i++) {
-    QLRow &row = row_block->row(i);
-    EXPECT_EQ(std::get<1>(rows[i]), row.column(0).int32_value());
-    EXPECT_EQ(std::get<2>(rows[i]), row.column(1).string_value());
-    EXPECT_EQ(std::get<3>(rows[i]), row.column(2).int32_value());
-    EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
-  }
-
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, std::get<0>(rows[9])), processor, rows,
+      0, 10);
   // Partial range: hashes 0, 1, 2
-  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[2]));
-  CHECK_OK(processor->Run(select_stmt));
-  row_block.reset();
-  row_block = processor->row_block();
-  // checking result
-  ASSERT_EQ(3, row_block->row_count());
-  for (int i = 0; i < 3; i++) {
-    QLRow &row = row_block->row(i);
-    EXPECT_EQ(std::get<1>(rows[i]), row.column(0).int32_value());
-    EXPECT_EQ(std::get<2>(rows[i]), row.column(1).string_value());
-    EXPECT_EQ(std::get<3>(rows[i]), row.column(2).int32_value());
-    EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
-  }
-
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, std::get<0>(rows[2])), processor, rows,
+      0, 3);
   // Empty range: no hashes
-  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[0]) - 1);
-  CHECK_OK(processor->Run(select_stmt));
-  row_block = processor->row_block();
-  // checking result
-  EXPECT_EQ(0, row_block->row_count());
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, std::get<0>(rows[0]) - 1), processor, rows,
+      0, 0);
 
   //------------------------------------------------------------------------------------------------
   // Testing Select with both lower and upper bounds
   //------------------------------------------------------------------------------------------------
   select_stmt_template =
       "SELECT * FROM scan_bounds_test WHERE token(h1, h2) $0 $1 AND token(h1, h2) $2 $3";
-
   // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
-  select_stmt = Substitute(select_stmt_template, ">=", std::get<0>(rows[0]) + bucket_size - 1,
-      "<=", std::get<0>(rows[9]));
-  CHECK_OK(processor->Run(select_stmt));
-  row_block = processor->row_block();
-  // checking result
-  ASSERT_EQ(10, row_block->row_count());
-  for (int i = 0; i < 10; i++) {
-    QLRow &row = row_block->row(i);
-    EXPECT_EQ(std::get<1>(rows[i]), row.column(0).int32_value());
-    EXPECT_EQ(std::get<2>(rows[i]), row.column(1).string_value());
-    EXPECT_EQ(std::get<3>(rows[i]), row.column(2).int32_value());
-    EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
-  }
-
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, ">=", std::get<0>(rows[0]) + bucket_size - 1,
+          "<=", std::get<0>(rows[9])), processor, rows,
+      0, 10);
   // Partial Range: hashes 2, 3, 4, 5, 6, 7, 8
-  select_stmt = Substitute(select_stmt_template, ">", std::get<0>(rows[1]),
-      "<=", std::get<0>(rows[8]));
-  CHECK_OK(processor->Run(select_stmt));
-  row_block = processor->row_block();
-  // checking result
-  ASSERT_EQ(7, row_block->row_count());
-  for (int i = 2; i < 9; i++) {
-    QLRow &row = row_block->row(i - 2);
-    EXPECT_EQ(std::get<1>(rows[i]), row.column(0).int32_value());
-    EXPECT_EQ(std::get<2>(rows[i]), row.column(1).string_value());
-    EXPECT_EQ(std::get<3>(rows[i]), row.column(2).int32_value());
-    EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
-  }
-
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, ">", std::get<0>(rows[1]),
+          "<=", std::get<0>(rows[8])), processor, rows,
+      2, 9);
   // Partial Range: hashes 4, 5, 6
-  select_stmt = Substitute(select_stmt_template, ">=", std::get<0>(rows[4]) + bucket_size - 1,
-      "<", std::get<0>(rows[7]) + bucket_size - 1);
-  CHECK_OK(processor->Run(select_stmt));
-  row_block = processor->row_block();
-  // checking result
-  ASSERT_EQ(3, row_block->row_count());
-  for (int i = 4; i < 7; i++) {
-    QLRow &row = row_block->row(i - 4);
-    EXPECT_EQ(std::get<1>(rows[i]), row.column(0).int32_value());
-    EXPECT_EQ(std::get<2>(rows[i]), row.column(1).string_value());
-    EXPECT_EQ(std::get<3>(rows[i]), row.column(2).int32_value());
-    EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
-  }
-
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, ">=", std::get<0>(rows[4]) + bucket_size - 1,
+          "<", std::get<0>(rows[7]) + bucket_size - 1), processor, rows,
+      4, 7);
   // Empty Range (inclusive lower bound): no hashes
-  select_stmt = Substitute(select_stmt_template, ">=", std::get<0>(rows[2]) + bucket_size - 1,
-      "<", std::get<0>(rows[2]) + bucket_size - 1);
-  CHECK_OK(processor->Run(select_stmt));
-  row_block = processor->row_block();
-  // checking result
-  EXPECT_EQ(0, row_block->row_count());
-
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, ">=", std::get<0>(rows[2]) + bucket_size - 1,
+          "<", std::get<0>(rows[2]) + bucket_size - 1), processor, rows,
+      0, 0);
   // Empty Range (inclusive upper bound): no hashes
-  select_stmt = Substitute(select_stmt_template, ">", std::get<0>(rows[2]),
-      "<=", std::get<0>(rows[2]));
-  CHECK_OK(processor->Run(select_stmt));
-  row_block = processor->row_block();
-  // checking result
-  EXPECT_EQ(0, row_block->row_count());
-
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, ">", std::get<0>(rows[2]),
+          "<=", std::get<0>(rows[2])), processor, rows,
+      0, 0);
   // Empty range: no hashes (checking overflow for max Cql hash)
-  select_stmt = Substitute(select_stmt_template, "<=", std::get<0>(rows[9]), ">", INT64_MAX);
-  CHECK_OK(processor->Run(select_stmt));
-  row_block = processor->row_block();
-  // checking result
-  EXPECT_EQ(0, row_block->row_count());
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, "<=", std::get<0>(rows[9]), ">", INT64_MAX), processor, rows,
+      0, 0);
 
   //------------------------------------------------------------------------------------------------
   // Testing Select with exact partition key (equal condition with token)
   //------------------------------------------------------------------------------------------------
   select_stmt_template = "SELECT * FROM scan_bounds_test WHERE token(h1, h2) = $0";
-
   // testing existing hash: 2
-  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[2]));
-  CHECK_OK(processor->Run(select_stmt));
-  row_block = processor->row_block();
-  // checking result
-  ASSERT_EQ(1, row_block->row_count());
-  QLRow &row2 = row_block->row(0);
-  EXPECT_EQ(std::get<1>(rows[2]), row2.column(0).int32_value());
-  EXPECT_EQ(std::get<2>(rows[2]), row2.column(1).string_value());
-  EXPECT_EQ(std::get<3>(rows[2]), row2.column(2).int32_value());
-  EXPECT_EQ(std::get<4>(rows[2]), row2.column(3).int32_value());
-
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, std::get<0>(rows[2])), processor, rows,
+      2, 3);
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, std::get<0>(rows[2])), processor, rows,
+      2, 3);
   // testing non-existing hash: empty
-  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[9]) + bucket_size);
-  CHECK_OK(processor->Run(select_stmt));
-  row_block = processor->row_block();
-  // checking result
-  EXPECT_EQ(0, row_block->row_count());
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, std::get<0>(rows[9]) + bucket_size), processor, rows,
+      0, 0);
+  TestSelectWithoutOrderBy(
+      Substitute(select_stmt_template, std::get<0>(rows[9]) + bucket_size), processor, rows,
+      0, 0);
 
   //------------------------------------------------------------------------------------------------
   // Testing Select with conditions on both partition key and individual hash columns
@@ -1551,46 +1461,25 @@ TEST_F(TestQLQuery, TestScanWithBounds) {
                          "h1 = $0 AND h2 = '$1' AND token(h1, h2) $2 $3";
 
   // checking existing row with exact partition key: 6
-  select_stmt = Substitute(select_stmt_template, std::get<1>(rows[6]), std::get<2>(rows[6]),
-                           "=", std::get<0>(rows[6]));
-  CHECK_OK(processor->Run(select_stmt));
-  row_block = processor->row_block();
-  // checking result
-  ASSERT_EQ(1, row_block->row_count());
-  QLRow &row6 = row_block->row(0);
-  EXPECT_EQ(std::get<1>(rows[6]), row6.column(0).int32_value());
-  EXPECT_EQ(std::get<2>(rows[6]), row6.column(1).string_value());
-  EXPECT_EQ(std::get<3>(rows[6]), row6.column(2).int32_value());
-  EXPECT_EQ(std::get<4>(rows[6]), row6.column(3).int32_value());
-
+  TestSelectWithOrderBy(
+      Substitute(select_stmt_template, std::get<1>(rows[6]), std::get<2>(rows[6]),
+          "=", std::get<0>(rows[6])), processor, rows,
+      6, 7);
   // checking existing row with partition key bound: 3 with partition upper bound 7 (to include 3)
-  select_stmt = Substitute(select_stmt_template, std::get<1>(rows[3]), std::get<2>(rows[3]),
-                           "<=", std::get<0>(rows[7]));
-  CHECK_OK(processor->Run(select_stmt));
-  row_block = processor->row_block();
-  // checking result, expecting referenced row
-  ASSERT_EQ(1, row_block->row_count());
-  QLRow &row3 = row_block->row(0);
-  EXPECT_EQ(std::get<1>(rows[3]), row3.column(0).int32_value());
-  EXPECT_EQ(std::get<2>(rows[3]), row3.column(1).string_value());
-  EXPECT_EQ(std::get<3>(rows[3]), row3.column(2).int32_value());
-  EXPECT_EQ(std::get<4>(rows[3]), row3.column(3).int32_value());
-
+  TestSelectWithOrderBy(
+      Substitute(select_stmt_template, std::get<1>(rows[3]), std::get<2>(rows[3]),
+          "<=", std::get<0>(rows[7])), processor, rows,
+      3, 4);
   // checking existing row with partition key bound: 4 with partition lower bound 5 (to exclude 4)
-  select_stmt = Substitute(select_stmt_template, std::get<1>(rows[4]), std::get<2>(rows[4]),
-                           ">=", std::get<0>(rows[5]));
-  CHECK_OK(processor->Run(select_stmt));
-  row_block = processor->row_block();
-  // checking result -- expecting no rows since partition key restriction excludes referenced row
-  EXPECT_EQ(0, row_block->row_count());
-
+  TestSelectWithOrderBy(
+      Substitute(select_stmt_template, std::get<1>(rows[4]), std::get<2>(rows[4]),
+          ">=", std::get<0>(rows[5])), processor, rows,
+      0, 0);
   // checking existing row with partition key bound: 7 with partition upper bound 6 (to exclude 7)
-  select_stmt = Substitute(select_stmt_template, std::get<1>(rows[7]), std::get<2>(rows[7]),
-      "<=", std::get<0>(rows[6]));
-  CHECK_OK(processor->Run(select_stmt));
-  row_block = processor->row_block();
-  // checking result -- expecting no rows since partition key restriction excludes referenced row
-  EXPECT_EQ(0, row_block->row_count());
+  TestSelectWithOrderBy(
+      Substitute(select_stmt_template, std::get<1>(rows[7]), std::get<2>(rows[7]),
+          "<=", std::get<0>(rows[6])), processor, rows,
+      0, 0);
 
   //------------------------------------------------------------------------------------------------
   // Testing Invalid Statements

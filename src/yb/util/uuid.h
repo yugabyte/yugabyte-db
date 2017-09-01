@@ -106,7 +106,7 @@ class Uuid {
       for (int i = 6; i < kUuidMsbSize; i++) {
         if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
           return true;
-        } else if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
+        } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
           return false;
         }
       }
@@ -114,7 +114,7 @@ class Uuid {
       for (int i = 4; i < 6; i++) {
         if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
           return true;
-        } else if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
+        } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
           return false;
         }
       }
@@ -122,7 +122,7 @@ class Uuid {
       for (int i = 0; i < 4; i++) {
         if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
           return true;
-        } else if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
+        } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
           return false;
         }
       }
@@ -131,7 +131,7 @@ class Uuid {
       for (int i = 0; i < kUuidMsbSize; i++) {
         if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
           return true;
-        } else if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
+        } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
           return false;
         }
       }
@@ -141,7 +141,7 @@ class Uuid {
     for (int i = kUuidMsbSize; i < kUuidSize; i++) {
       if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
         return true;
-      } else if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
+      } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
         return false;
       }
     }

@@ -26,6 +26,7 @@ class YBPartition {
  public:
 
   static const uint16 kMaxHashCode = UINT16_MAX;
+  static const uint16 kMinHashCode = 0;
 
   static uint16_t CqlToYBHashCode(int64_t cql_hash) {
     uint16_t hash_code = static_cast<uint16_t>(cql_hash >> 48);

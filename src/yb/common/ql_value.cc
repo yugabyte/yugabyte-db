@@ -796,9 +796,9 @@ int QLValue::CompareTo(const QLValuePB& lhs, const QLValuePB& rhs) {
     case QLValuePB::kInetaddressValue:
       return GenericCompare(lhs.inetaddress_value(), rhs.inetaddress_value());
     case QLValuePB::kUuidValue:
-      return GenericCompare(lhs.uuid_value(), rhs.uuid_value());
+      return GenericCompare(uuid_value(lhs), uuid_value(rhs));
     case QLValuePB::kTimeuuidValue:
-      return GenericCompare(lhs.timeuuid_value(), rhs.timeuuid_value());
+      return GenericCompare(timeuuid_value(lhs), timeuuid_value(rhs));
     case QLValuePB::kFrozenValue: {
       return QLValue::CompareTo(lhs.frozen_value(), rhs.frozen_value());
     }

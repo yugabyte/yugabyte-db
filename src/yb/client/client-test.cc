@@ -154,8 +154,7 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(client_->CreateNamespace(kKeyspaceName));
 
     ASSERT_NO_FATALS(CreateTable(kTableName, 1, GenerateSplitRows(), &client_table_));
-    ASSERT_NO_FATALS(CreateTable(kTable2Name, 1, vector<const YBPartialRow*>(),
-                                 &client_table2_));
+    ASSERT_NO_FATALS(CreateTable(kTable2Name, 1, vector<const YBPartialRow*>(), &client_table2_));
   }
 
   // Generate a set of split rows for tablets used in this test.
@@ -2627,8 +2626,7 @@ TEST_F(ClientTest, TestLatestObservedHybridTime) {
 }
 
 TEST_F(ClientTest, TestClonePredicates) {
-  ASSERT_NO_FATALS(InsertTestRows(client_table_.get(),
-                                         2, 0));
+  ASSERT_NO_FATALS(InsertTestRows(client_table_.get(), 2, 0));
   gscoped_ptr<YBPredicate> predicate(client_table_->NewComparisonPredicate(
       "key",
       YBPredicate::EQUAL,
@@ -2788,6 +2786,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
         rscol_desc->set_name((*selected_cols)[i].name());
         (*selected_cols)[i].type()->ToQLTypePB(rscol_desc->mutable_ql_type());
       }
+
       EXPECT_OK(tserver_proxy->Read(req, &resp, &controller));
 
       // Verify response.

@@ -283,45 +283,57 @@ void YBqlReadOp::SetHashCode(const uint16_t hash_code) {
 }
 
 Status YBqlReadOp::GetPartitionKey(string* partition_key) const {
-  // if this is a continued query use the partition key from the paging state
-  if (ql_read_request_->has_paging_state() &&
-      ql_read_request_->paging_state().has_next_partition_key() &&
-      !ql_read_request_->paging_state().next_partition_key().empty()) {
-    *partition_key = ql_read_request_->paging_state().next_partition_key();
-    return Status::OK();
-  }
-
-  // otherwise, if hashed columns are set, use them to compute the exact key
   if (!ql_read_request_->hashed_column_values().empty()) {
+    // If hashed columns are set, use them to compute the exact key and set the bounds
     RETURN_NOT_OK(table_->partition_schema().EncodeKey(ql_read_request_->hashed_column_values(),
-                                                       partition_key));
+        partition_key));
 
-    // make sure given key is not smaller than lower bound (if any)
+    // TODO: If user specified token range doesn't contain the hash columns specified then the query
+    // will have no effect. We need to implement an exit path rather than requesting the tablets.
+    // For now, we set point query some value that is not equal to the hash to the hash columns
+    // Which will return no result.
+
+    // Make sure given key is not smaller than lower bound (if any)
     if (ql_read_request_->has_hash_code()) {
       uint16 hash_code = static_cast<uint16>(ql_read_request_->hash_code());
       auto lower_bound = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
       if (*partition_key < lower_bound) *partition_key = std::move(lower_bound);
     }
 
-    // make sure given key is not bigger than upper bound (if any)
+    // Make sure given key is not bigger than upper bound (if any)
     if (ql_read_request_->has_max_hash_code()) {
       uint16 hash_code = static_cast<uint16>(ql_read_request_->max_hash_code());
       auto upper_bound = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
       if (*partition_key > upper_bound) *partition_key = std::move(upper_bound);
     }
 
-    return Status::OK();
+    // Set both bounds to equal partition key now, because this is a point get
+    ql_read_request_->set_hash_code(
+          PartitionSchema::DecodeMultiColumnHashValue(*partition_key));
+    ql_read_request_->set_max_hash_code(
+          PartitionSchema::DecodeMultiColumnHashValue(*partition_key));
+  } else {
+    // Otherwise, set the parititon key to the hash_code (lower bound of the token range).
+    if (ql_read_request_->has_hash_code()) {
+      uint16 hash_code = static_cast<uint16>(ql_read_request_->hash_code());
+      *partition_key = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
+    } else {
+      // Default to empty key, this will start a scan from the beginning.
+      partition_key->clear();
+    }
   }
 
-  // otherwise, use request hash code if set (i.e. lower-bound from condition using "token")
-  if (ql_read_request_->has_hash_code()) {
-    uint16 hash_code = static_cast<uint16>(ql_read_request_->hash_code());
-    *partition_key = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
-    return Status::OK();
+  // If this is a continued query use the partition key from the paging state
+  // If paging state is there, set hash_code = paging state. This is only supported for forward
+  // scans.
+  if (ql_read_request_->has_paging_state() &&
+      ql_read_request_->paging_state().has_next_partition_key() &&
+      !ql_read_request_->paging_state().next_partition_key().empty()) {
+    *partition_key = ql_read_request_->paging_state().next_partition_key();
+    ql_read_request_->set_hash_code(
+        PartitionSchema::DecodeMultiColumnHashValue(*partition_key));
   }
 
-  // default to empty key, this will start a scan from the beginning
-  partition_key->clear();
   return Status::OK();
 }
 

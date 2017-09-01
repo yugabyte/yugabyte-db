@@ -551,6 +551,10 @@ size_t YBSchema::num_hash_key_columns() const {
   return schema_->num_hash_key_columns();
 }
 
+size_t YBSchema::num_range_key_columns() const {
+  return schema_->num_range_key_columns();
+}
+
 uint32_t YBSchema::version() const {
   return version_;
 }

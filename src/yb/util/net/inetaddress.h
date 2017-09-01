@@ -80,7 +80,11 @@ class InetAddress {
   }
 
   bool operator<(const InetAddress& other) const {
-    return (boost_addr_ < other.boost_addr_);
+    string this_bytes, other_bytes;
+    Status s = ToBytes(&this_bytes);
+    Status t = other.ToBytes(&other_bytes);
+    DCHECK(s.ok() && t.ok());
+    return this_bytes < other_bytes;
   }
 
   bool operator>(const InetAddress& other) const {

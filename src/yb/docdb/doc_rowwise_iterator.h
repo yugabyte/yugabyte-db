@@ -28,6 +28,7 @@
 #include "yb/common/ql_scanspec.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/subdocument.h"
+#include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/value.h"
 #include "yb/util/status.h"
 #include "yb/util/pending_op_counter.h"
@@ -121,6 +122,11 @@ class DocRowwiseIterator : public common::QLRowwiseIteratorIf {
                                      const Value& value,
                                      bool* is_valid) const;
 
+  // For reverse scans, moves the iterator to the first kv-pair of the previous row after having
+  // constructed the current row. For forward scans nothing is necessary because GetSubDocument
+  // ensures that the iterator will be positioned on the first kv-pair of the next row.
+  CHECKED_STATUS EnsureIteratorPositionCorrect() const;
+
   const Schema& projection_;
 
   // The schema for all columns, not just the columns we're scanning.
@@ -128,12 +134,17 @@ class DocRowwiseIterator : public common::QLRowwiseIteratorIf {
 
   const TransactionOperationContextOpt txn_op_context_;
 
-  const HybridTime hybrid_time_;
+  bool is_forward_scan_;
+
+  HybridTime hybrid_time_;
+
   rocksdb::DB* const db_;
 
-  // A copy of the exclusive upper bound key of the scan range (if any).
-  bool has_upper_bound_key_;
-  KeyBytes exclusive_upper_bound_key_;
+  // A copy of the bound key of the end of the scan range (if any). We stop scan if iterator
+  // reaches this point. This is exclusive bound for forward scans and inclusive bound for
+  // reverse scans.
+  bool has_bound_key_;
+  DocKey bound_key_;
 
   std::unique_ptr<IntentAwareIterator> db_iter_;
 

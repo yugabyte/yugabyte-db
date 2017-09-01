@@ -263,6 +263,19 @@ void PerformRocksDBSeek(
       seek_count);
 }
 
+void PerformRocksDBReverseSeek(
+    rocksdb::Iterator *iter,
+    const rocksdb::Slice &seek_key,
+    const char *file_name,
+    int line) {
+  PerformRocksDBSeek(iter, seek_key, file_name, line);
+  if (!iter->Valid()) {
+    iter->SeekToLast();
+  } else if (iter->key().compare(seek_key) > 0) {
+    iter->Prev();
+  }
+}
+
 namespace {
 
 rocksdb::ReadOptions PrepareReadOptions(

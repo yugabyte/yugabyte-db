@@ -307,6 +307,10 @@ bool DocKey::HashedComponentsEqual(const DocKey& other) const {
       (!hash_present_ || (hash_ == other.hash_ && hashed_group_ == other.hashed_group_));
 }
 
+void DocKey::AddRangeComponent(const PrimitiveValue& val) {
+  range_group_.push_back(val);
+}
+
 int DocKey::CompareTo(const DocKey& other) const {
   // Each table will only contain keys with hash present or absent, so we should never compare
   // keys from both categories.
@@ -560,7 +564,7 @@ bool SubDocKey::StartsWith(const SubDocKey& prefix) const {
          ).first == prefix.subkeys_.end();
 }
 
-bool SubDocKey::operator ==(const SubDocKey& other) const {
+bool SubDocKey::operator==(const SubDocKey& other) const {
   return doc_key_ == other.doc_key_ &&
          doc_ht_ == other.doc_ht_&&
          subkeys_ == other.subkeys_;

@@ -248,6 +248,42 @@ Status IntentAwareIterator::SeekOutOfSubDoc(const SubDocKey& subdoc_key) {
   return Status::OK();
 }
 
+Status IntentAwareIterator::SeekToLastDocKey() {
+  if (intent_iter_) {
+    // TODO (dtxn): Implement SeekToLast when inten intents are present. Since part of the
+    // is made of intents, we may have to avoid that. This is needed when distributed txns are fully
+    // supported.
+    return Status::OK();
+  }
+  iter_->SeekToLast();
+  if (!iter_->Valid()) {
+    return Status::OK();
+  }
+  // Seek to the first rocksdb kv-pair for this row.
+  rocksdb::Slice rocksdb_key(iter_->key());
+  DocKey doc_key;
+  RETURN_NOT_OK(doc_key.DecodeFrom(&rocksdb_key));
+  KeyBytes encoded_doc_key = doc_key.Encode();
+  RETURN_NOT_OK(SeekWithoutHt(encoded_doc_key));
+  return Status::OK();
+}
+
+Status IntentAwareIterator::PrevDocKey(const DocKey& doc_key) {
+  RETURN_NOT_OK(Seek(doc_key));
+  if (!iter_->Valid()) {
+    return SeekToLastDocKey();
+  }
+  iter_->Prev();
+  DocKey prev_key;
+  if (!iter_->Valid()) {
+    return Status::OK();
+  }
+  Slice key_slice = iter_->key();
+  RETURN_NOT_OK(prev_key.DecodeFrom(&key_slice));
+  RETURN_NOT_OK(Seek(prev_key));
+  return Status::OK();
+}
+
 bool IntentAwareIterator::valid() {
   return iter_->Valid() || has_resolved_intent_;
 }

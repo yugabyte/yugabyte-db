@@ -180,7 +180,9 @@ class QLTabletTest : public QLDmlTestBase {
             RETURN_NOT_OK(op->GetPartitionKey(&partition_key));
             auto* ql_batch = req.add_ql_batch();
             *ql_batch = op->request();
-            ql_batch->set_hash_code(PartitionSchema::DecodeMultiColumnHashValue(partition_key));
+            const auto& hash_code = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+            ql_batch->set_hash_code(hash_code);
+            ql_batch->set_max_hash_code(hash_code);
           }
 
           tserver::ReadResponsePB resp;

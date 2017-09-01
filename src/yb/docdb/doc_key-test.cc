@@ -123,7 +123,6 @@ void TestDocOrSubDocKeyComparison() {
           << "b.Encode(): " << b.Encode().ToString() << "\n"
           << "a.CompareTo(b): " << object_comparison << "\n"
           << "a.Encode().CompareTo(b.Encode()): " << encoded_comparison;
-
       ASSERT_EQ(0, object_comparison + reverse_object_comparison);
       ASSERT_EQ(0, encoded_comparison + reverse_encoded_comparison);
     }

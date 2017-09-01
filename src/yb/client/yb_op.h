@@ -384,6 +384,7 @@ class YBqlReadOp : public YBqlOp {
   virtual void SetHashCode(uint16_t hash_code) override;
 
   // Returns the partition key of the read request if it exists.
+  // Also sets the hash_code and max_hash_code in the request.
   virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
 
   const YBConsistencyLevel yb_consistency_level() {

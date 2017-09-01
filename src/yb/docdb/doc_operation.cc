@@ -1467,7 +1467,6 @@ Status QLWriteOperation::Apply(
         break;
       }
     }
-
   }
 
   response_->set_status(QLResponsePB::YQL_STATUS_OK);

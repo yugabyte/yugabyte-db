@@ -439,6 +439,8 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
     return Status::OK();
   }
 
+  req->set_is_forward_scan(tnode->is_forward_scan());
+
   // Specify selected list by adding the expressions to selected_exprs in read request.
   QLRSRowDescPB *rsrow_desc_pb = req->mutable_rsrow_desc();
   for (const auto& expr : tnode->selected_exprs()) {
@@ -586,6 +588,7 @@ Status Executor::FetchMoreRowsIfNeeded() {
     // Otherwise, we continue to the next partition.
     exec_context_->AdvanceToNextPartition(op->mutable_request());
     op->mutable_request()->clear_hash_code();
+    op->mutable_request()->clear_max_hash_code();
   }
 
   // If we reached the fetch limit (min of paging state and limit clause) we are done.
@@ -603,18 +606,6 @@ Status Executor::FetchMoreRowsIfNeeded() {
     }
 
     return Status::OK();
-  }
-
-  // If we reached the hash_code limit (upper bound restriction for token function) we are done.
-  if (op->request().has_max_hash_code()) {
-    uint16_t next_hash_code = current_params.next_partition_key().empty() ? 0
-        : PartitionSchema::DecodeMultiColumnHashValue(current_params.next_partition_key());
-
-    // if reached max_hash_code stop and return the current result
-    if (next_hash_code >= op->request().max_hash_code()) {
-      current_result->clear_paging_state();
-      return Status::OK();
-    }
   }
 
   //------------------------------------------------------------------------------------------------

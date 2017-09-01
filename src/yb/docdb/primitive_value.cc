@@ -104,7 +104,6 @@ string PrimitiveValue::ToString() const {
     case ValueType::kFloatDescending: FALLTHROUGH_INTENDED;
     case ValueType::kFloat:
       return RealToString(float_val_);
-    case ValueType::kDoubleDescending: FALLTHROUGH_INTENDED;
     case ValueType::kFrozenDescending: FALLTHROUGH_INTENDED;
     case ValueType::kFrozen: {
       std::stringstream ss;
@@ -121,6 +120,7 @@ string PrimitiveValue::ToString() const {
       ss << ">";
       return ss.str();
     }
+    case ValueType::kDoubleDescending: FALLTHROUGH_INTENDED;
     case ValueType::kDouble:
       return RealToString(double_val_);
     case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
@@ -1101,6 +1101,8 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       return CompareUsingLessThan(other.timestamp_val_, timestamp_val_);
     case ValueType::kTimestamp:
       return CompareUsingLessThan(timestamp_val_, other.timestamp_val_);
+    case ValueType::kInetaddress:
+      return CompareUsingLessThan(*inetaddress_val_, *(other.inetaddress_val_));
     case ValueType::kInetaddressDescending:
       return CompareUsingLessThan(*(other.inetaddress_val_), *inetaddress_val_);
     case ValueType::kFrozenDescending: FALLTHROUGH_INTENDED;
@@ -1121,8 +1123,6 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
         return CompareUsingLessThan(frozen_val_->size(), other.frozen_val_->size());
       }
     }
-    case ValueType::kInetaddress:
-      return CompareUsingLessThan(*inetaddress_val_, *(other.inetaddress_val_));
     case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUuidDescending:
       return CompareUsingLessThan(other.uuid_val_, uuid_val_);

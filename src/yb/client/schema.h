@@ -419,6 +419,9 @@ class YBSchema {
   // Returns the number of columns in hash primary keys.
   size_t num_hash_key_columns() const;
 
+  // Number of range key columns.
+  size_t num_range_key_columns() const;
+
   // Returns the number of columns in primary keys.
   size_t num_key_columns() const;
 

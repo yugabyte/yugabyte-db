@@ -75,10 +75,11 @@ PTSelectStmt::PTSelectStmt(MemoryContext *memctx,
                            PTExpr::SharedPtr where_clause,
                            PTListNode::SharedPtr group_by_clause,
                            PTListNode::SharedPtr having_clause,
-                           PTListNode::SharedPtr order_by_clause,
+                           PTOrderByListNode::SharedPtr order_by_clause,
                            PTExpr::SharedPtr limit_clause)
     : PTDmlStmt(memctx, loc, false, where_clause),
       distinct_(distinct),
+      is_forward_scan_(true),
       selected_exprs_(selected_exprs),
       from_clause_(from_clause),
       group_by_clause_(group_by_clause),
@@ -119,6 +120,8 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
   // Run error checking on the WHERE conditions.
   RETURN_NOT_OK(AnalyzeWhereClause(sem_context, where_clause_));
 
+  RETURN_NOT_OK(AnalyzeOrderByClause(sem_context));
+
   // Run error checking on the LIMIT clause.
   RETURN_NOT_OK(AnalyzeLimitClause(sem_context));
 
@@ -156,6 +159,71 @@ CHECKED_STATUS PTSelectStmt::AnalyzeDistinctClause(SemContext *sem_context) {
     return sem_context->Error(selected_exprs_,
                               "Selecting distinct must request all or none of partition keys",
                               ErrorCode::CQL_STATEMENT_INVALID);
+  }
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+namespace {
+
+PTOrderBy::Direction directionFromSortingType(ColumnSchema::SortingType sorting_type) {
+  return sorting_type == ColumnSchema::SortingType::kDescending ?
+      PTOrderBy::Direction::kDESC : PTOrderBy::Direction::kASC;
+}
+
+} // namespace
+
+
+CHECKED_STATUS PTSelectStmt::AnalyzeOrderByClause(SemContext *sem_context) {
+  if (order_by_clause_ != nullptr) {
+    if (key_where_ops_.empty()) {
+      return sem_context->Error(
+          order_by_clause_,
+          "All hash columns must be set if order by clause is present.",
+          ErrorCode::INVALID_ARGUMENTS);
+    }
+
+    unordered_map<string, PTOrderBy::Direction> order_by_map;
+    for (auto& order_by : order_by_clause_->node_list()) {
+      RETURN_NOT_OK(order_by->Analyze(sem_context));
+      order_by_map[order_by->name()->QLName()] = order_by->direction();
+    }
+    const auto& schema = table_->schema();
+    vector<bool> is_column_forward;
+    is_column_forward.reserve(schema.num_range_key_columns());
+    bool last_column_order_specified = true;
+    for (size_t i = schema.num_hash_key_columns(); i < schema.num_key_columns(); i++) {
+      const auto& column = schema.Column(i);
+      if (order_by_map.find(column.name()) != order_by_map.end()) {
+        if (!last_column_order_specified) {
+          return sem_context->Error(
+              order_by_clause_,
+              "Order by currently only support the ordering of columns following their declared"
+                  " order in the PRIMARY KEY", ErrorCode::INVALID_ARGUMENTS);
+        }
+        is_column_forward.push_back(
+            directionFromSortingType(column.sorting_type()) == order_by_map[column.name()]);
+        order_by_map.erase(column.name());
+      } else {
+        last_column_order_specified = false;
+        is_column_forward.push_back(is_column_forward.empty() || is_column_forward.back());
+      }
+    }
+    if (!order_by_map.empty()) {
+      return sem_context->Error(
+          order_by_clause_,
+          ("Order by is should only contain clustering columns, got " + order_by_map.begin()->first)
+              .c_str(), ErrorCode::INVALID_ARGUMENTS);
+    }
+    is_forward_scan_ = is_column_forward[0];
+    for (auto&& b : is_column_forward) {
+      if (b != is_forward_scan_) {
+        return sem_context->Error(
+            order_by_clause_,
+            "Unsupported order by relation", ErrorCode::INVALID_ARGUMENTS);
+      }
+    }
   }
   return Status::OK();
 }
@@ -207,6 +275,17 @@ PTOrderBy::PTOrderBy(MemoryContext *memctx,
     name_(name),
     direction_(direction),
     null_placement_(null_placement) {
+}
+
+Status PTOrderBy::Analyze(SemContext *sem_context) {
+  RETURN_NOT_OK(name_->Analyze(sem_context));
+  if (name_->expr_op() != ExprOperator::kRef) {
+    return sem_context->Error(
+        this,
+        "Order By clause contains invalid expression",
+        ErrorCode::INVALID_ARGUMENTS);
+  }
+  return Status::OK();
 }
 
 PTOrderBy::~PTOrderBy() {

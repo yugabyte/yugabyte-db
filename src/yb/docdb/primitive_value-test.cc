@@ -68,18 +68,19 @@ void TestEncoding(const char* expected_str, const PrimitiveValue& primitive_valu
 }
 
 template <typename T>
-void CompareSlices(KeyBytes key_bytes1, KeyBytes key_bytes2, T val1, T val2) {
+void CompareSlices(
+    KeyBytes key_bytes1, KeyBytes key_bytes2, T val1, T val2, string str1, string str2) {
   rocksdb::Slice slice1 = key_bytes1.AsSlice();
   rocksdb::Slice slice2 = key_bytes2.AsSlice();
   if (val1 > val2) {
     ASSERT_LT(0, slice1.compare(slice2)) << strings::Substitute("Failed for values $0, $1",
-                                                                val1, val2);
+              str1, str2);
   } else if (val1 < val2) {
     ASSERT_GT(0, slice1.compare(slice2)) << strings::Substitute("Failed for values $0, $1",
-                                                                val1, val2);
+              str1, str2);
   } else {
     ASSERT_EQ(0, slice1.compare(slice2)) << strings::Substitute("Failed for values $0, $1",
-                                                                val1, val2);
+              str1, str2);
   }
 }
 
@@ -323,7 +324,7 @@ TEST(PrimitiveValueTest, TestRandomComparableColumnId) {
     ColumnId column_id1(r.Next() % (std::numeric_limits<ColumnIdRep>::max()));
     ColumnId column_id2(r.Next() % (std::numeric_limits<ColumnIdRep>::max()));
     CompareSlices(PrimitiveValue(column_id1).ToKeyBytes(), PrimitiveValue(column_id2).ToKeyBytes(),
-                  column_id1, column_id2);
+                  column_id1, column_id2, column_id1.ToString(), column_id2.ToString());
   }
 }
 
@@ -333,7 +334,21 @@ TEST(PrimitiveValueTest, TestRandomComparableInt32) {
     int32_t val1 = r.Next32();
     int32_t val2 = r.Next32();
     CompareSlices(PrimitiveValue::Int32(val1).ToKeyBytes(),
-                  PrimitiveValue::Int32(val2).ToKeyBytes(), val1, val2);
+                  PrimitiveValue::Int32(val2).ToKeyBytes(),
+                  val1, val2,
+                  std::to_string(val1), std::to_string(val2));
+  }
+}
+
+TEST(PrimitiveValueTest, TestRandomComparableUUIDs) {
+  Random r(0);
+  for (int i = 0; i < 1000; i++) {
+    Uuid val1 (Uuid::Generate());
+    Uuid val2 (Uuid::Generate());
+    CompareSlices(PrimitiveValue(val1).ToKeyBytes(),
+        PrimitiveValue(val2).ToKeyBytes(),
+        val1, val2,
+        val1.ToString(), val2.ToString());
   }
 }
 

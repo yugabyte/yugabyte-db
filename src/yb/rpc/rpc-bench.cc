@@ -40,7 +40,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/test_util.h"
 
-using namespace std::literals;
+using namespace std::literals; // NOLINT
 
 using std::string;
 using std::shared_ptr;

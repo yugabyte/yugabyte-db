@@ -66,6 +66,19 @@ void PerformRocksDBSeek(
     const char* file_name,
     int line);
 
+// Positions the iterator at the largest key k <= seek_key
+void PerformRocksDBReverseSeek(
+    rocksdb::Iterator *iter,
+    const rocksdb::Slice &seek_key,
+    const char *file_name,
+    int line);
+
+// Positions the iterator at the largest key k <= seek_key
+#define ROCKSDB_REVERSE_SEEK(iter, key) \
+  do { \
+    PerformRocksDBReverseSeek((iter), (key), __FILE__, __LINE__); \
+  } while (0)
+
 // TODO: is there too much overhead in passing file name and line here in release mode?
 #define ROCKSDB_SEEK(iter, key) \
   do { \

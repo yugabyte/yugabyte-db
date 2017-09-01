@@ -67,12 +67,17 @@ class QLScanSpec {
   // Scan for the given hash key and a condition.
   explicit QLScanSpec(const QLConditionPB* condition);
 
+  QLScanSpec(const QLConditionPB* condition, const bool is_forward_scan);
+
   // Evaluate the WHERE condition for the given row to decide if it is selected or not.
   // virtual to make the class polymorphic.
   virtual CHECKED_STATUS Match(const QLTableRow& table_row, bool* match) const;
 
+  bool is_forward_scan() const;
+
  private:
   const QLConditionPB* condition_;
+  const bool is_forward_scan_;
 };
 
 } // namespace common

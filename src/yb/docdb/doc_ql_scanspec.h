@@ -30,15 +30,16 @@ class DocQLScanSpec : public common::QLScanSpec {
   // Scan for the specified doc_key. If the doc_key specify a full primary key, the scan spec will
   // not include any static column for the primary key. If the static columns are needed, a separate
   // scan spec can be used to read just those static columns.
-  DocQLScanSpec(const Schema& schema, const DocKey& doc_key, const rocksdb::QueryId query_id);
+  DocQLScanSpec(const Schema& schema, const DocKey& doc_key,
+      const rocksdb::QueryId query_id, const bool is_forward_scan = true);
 
   // Scan for the given hash key and a condition. If a start_doc_key is specified, the scan spec
   // will not include any static column for the start key. If the static columns are needed, a
   // separate scan spec can be used to read just those static columns.
   DocQLScanSpec(const Schema& schema, int32_t hash_code, int32_t max_hash_code,
-                 const std::vector<PrimitiveValue>& hashed_components, const QLConditionPB* req,
-                 const rocksdb::QueryId query_id,
-                 bool include_static_columns = false, const DocKey& start_doc_key = DocKey());
+      const std::vector<PrimitiveValue>& hashed_components, const QLConditionPB* req,
+      const rocksdb::QueryId query_id, const bool is_forward_scan = true,
+      bool include_static_columns = false, const DocKey& start_doc_key = DocKey());
 
   // Return the inclusive lower and upper bounds of the scan.
   CHECKED_STATUS lower_bound(DocKey* key) const {
@@ -58,6 +59,7 @@ class DocQLScanSpec : public common::QLScanSpec {
   }
 
  private:
+
   // Return inclusive lower/upper range doc key considering the start_doc_key.
   CHECKED_STATUS GetBoundKey(const bool lower_bound, DocKey* key) const;
 
@@ -72,6 +74,9 @@ class DocQLScanSpec : public common::QLScanSpec {
 
   // Schema of the columns to scan.
   const Schema& schema_;
+
+  // If hash_code_ or max_hash_code_ is unspecified, we use the following constant.
+  static constexpr int32_t kUnspecifiedHashCode_ = -1;
 
   // Hash code to scan at (interpreted as lower bound if hashed_components_ are empty)
   // hash values are positive int16_t, here -1 is default and means unset

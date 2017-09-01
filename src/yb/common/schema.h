@@ -723,8 +723,8 @@ class Schema {
 
   const std::vector<string> column_names() const {
     vector<string> column_names;
-    for (const std::pair<const StringPiece, size_t>& entry : name_to_index_) {
-      column_names.push_back(entry.first.ToString());
+    for (const auto& col : cols_) {
+      column_names.push_back(col.name());
     }
     return column_names;
   }

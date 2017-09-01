@@ -24,6 +24,8 @@ int CompareUsingLessThan(const T& a, const T& b) {
   return 0;
 }
 
+// If the vectors are not equal size, we assume the smaller vector is padded with the last element
+// An empty vector will always compare less than a bigger vector.
 template<typename T>
 int CompareVectors(const std::vector<T>& a, const std::vector<T>& b) {
   auto a_iter = a.begin();

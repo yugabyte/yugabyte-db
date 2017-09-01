@@ -77,10 +77,10 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
     RETURN_NOT_OK(YQLExpression::Evaluate(expr_pb, QLTableRow{}, &result, &write_action));
     hash_code = YBPartition::CqlToYBHashCode(result.int64_value());
 
-    // Internally we use [start, end) intervals -- start-inclusive, end-exclusive
+    // We always use inclusive intervals [start, end] for hash_code
     switch (op.yb_op()) {
       case QL_OP_GREATER_THAN:
-        if (hash_code != YBPartition::kMaxHashCode) {
+        if (hash_code < YBPartition::kMaxHashCode) {
           req->set_hash_code(hash_code + 1);
         } else {
           // Token hash greater than max implies no results.
@@ -92,18 +92,20 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
         req->set_hash_code(hash_code);
         break;
       case QL_OP_LESS_THAN:
-        req->set_max_hash_code(hash_code);
+        if (hash_code > YBPartition::kMinHashCode) {
+          req->set_max_hash_code(hash_code - 1);
+        } else {
+          // Token hash smaller than min implies no results.
+          *no_results = true;
+          return Status::OK();
+        }
         break;
       case QL_OP_LESS_THAN_EQUAL:
-        if (hash_code != YBPartition::kMaxHashCode) {
-          req->set_max_hash_code(hash_code + 1);
-        } // Token hash less or equal than max adds no real restriction.
+        req->set_max_hash_code(hash_code);
         break;
       case QL_OP_EQUAL:
         req->set_hash_code(hash_code);
-        if (hash_code != YBPartition::kMaxHashCode) {
-          req->set_max_hash_code(hash_code + 1);
-        } // Token hash equality restriction with max value needs no upper bound.
+        req->set_max_hash_code(hash_code);
         break;
 
       default:

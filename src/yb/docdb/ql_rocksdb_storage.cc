@@ -37,15 +37,15 @@ CHECKED_STATUS QLRocksDBStorage::GetIterator(
 }
 
 CHECKED_STATUS QLRocksDBStorage::BuildQLScanSpec(const QLReadRequestPB& request,
-                                                   const HybridTime& hybrid_time,
-                                                   const Schema& schema,
-                                                   const bool include_static_columns,
-                                                   const Schema& static_projection,
-                                                   std::unique_ptr<common::QLScanSpec>* spec,
-                                                   std::unique_ptr<common::QLScanSpec>*
-                                                   static_row_spec,
-                                                   HybridTime* req_hybrid_time)
-                                                   const {
+    const HybridTime& hybrid_time,
+    const Schema& schema,
+    const bool include_static_columns,
+    const Schema& static_projection,
+    std::unique_ptr<common::QLScanSpec>* spec,
+    std::unique_ptr<common::QLScanSpec>*
+    static_row_spec,
+    HybridTime* req_hybrid_time)
+const {
   // Populate dockey from QL key columns.
   int32_t hash_code = request.has_hash_code() ?
       static_cast<docdb::DocKeyHash>(request.hash_code()) : -1;
@@ -53,7 +53,7 @@ CHECKED_STATUS QLRocksDBStorage::BuildQLScanSpec(const QLReadRequestPB& request,
       static_cast<docdb::DocKeyHash>(request.max_hash_code()) : -1;
 
   vector<PrimitiveValue> hashed_components;
-  RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
+      RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
       request.hashed_column_values(), schema, 0, schema.num_hash_key_columns(),
       &hashed_components));
 
@@ -64,7 +64,7 @@ CHECKED_STATUS QLRocksDBStorage::BuildQLScanSpec(const QLReadRequestPB& request,
       request.paging_state().has_next_row_key() &&
       !request.paging_state().next_row_key().empty()) {
     KeyBytes start_key_bytes(request.paging_state().next_row_key());
-    RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
+        RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
     *req_hybrid_time = start_sub_doc_key.hybrid_time();
 
     // If we start the scan with a specific primary key, the normal scan spec we return below will
@@ -74,14 +74,15 @@ CHECKED_STATUS QLRocksDBStorage::BuildQLScanSpec(const QLReadRequestPB& request,
     if (include_static_columns && !start_doc_key.range_group().empty()) {
       const DocKey hashed_doc_key(start_doc_key.hash(), start_doc_key.hashed_group());
       static_row_spec->reset(new DocQLScanSpec(static_projection, hashed_doc_key,
-                                                request.query_id()));
+          request.query_id(), request.is_forward_scan()));
     }
   }
 
   // Construct the scan spec basing on the WHERE condition.
   spec->reset(new DocQLScanSpec(schema, hash_code, max_hash_code, hashed_components,
       request.has_where_expr() ? &request.where_expr().condition() : nullptr,
-      request.query_id(), include_static_columns, start_sub_doc_key.doc_key()));
+      request.query_id(), request.is_forward_scan(), include_static_columns,
+      start_sub_doc_key.doc_key()));
   return Status::OK();
 }
 

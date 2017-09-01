@@ -77,6 +77,13 @@ class IntentAwareIterator {
   // Seek out of subdoc key.
   CHECKED_STATUS SeekOutOfSubDoc(const SubDocKey& subdoc_key);
 
+  // Seek to last doc key.
+  CHECKED_STATUS SeekToLastDocKey();
+
+  // This method positions the iterator at the beginning of the DocKey found before the doc_key
+  // provided
+  CHECKED_STATUS PrevDocKey(const DocKey& doc_key);
+
   bool valid();
   Slice key();
   Slice value();
