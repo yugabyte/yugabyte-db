@@ -15,9 +15,9 @@ A dedicated host or VM with the following characteristics is needed for YugaWare
 
 Only Linux-based systems are supported by Replicated at this point. This Linux OS should be 3.10+ kernel, 64bit and ready to run docker-engine 1.7.1 - 17.03.1-ce (with 17.03.1-ce being the recommended version). Some of the supported OS versions are:
 
-- Ubuntu 16.04+ 
+- Ubuntu 16.04+
 - Red Hat Enterprise Linux 6.5+
-- CentOS 7+ 
+- CentOS 7+
 - Amazon AMI 2014.03 / 2014.09 / 2015.03 / 2015.09 / 2016.03 / 2016.09
 
 The complete list of operating systems supported by Replicated are listed [here](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/)
@@ -37,7 +37,7 @@ An “airgapped” host has no path to inbound or outbound Internet traffic at a
 
 For airgapped hosts a supported version of docker-engine (currently 1.7.1 to 17.03.1-ce). If you do not have docker-engine installed, follow the instructions [here](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/) to first install docker-engine.
 
-- Following ports should be open on the YugaWare host: 
+- Following ports should be open on the YugaWare host:
 8800 (replicated ui), 80 (http for yugaware ui), 22 (ssh)
 - Attached disk storage (such as persistent EBS volumes on AWS): 100 GB minimum
 - A YugaByte license file (attached to your welcome email from YugaByte Support)

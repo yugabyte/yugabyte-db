@@ -14,8 +14,7 @@ In terms of data model and APIs, YugaByte currently supports **Apache Cassandra 
 
 All of the above data models are powered by a **common underlying core** (aka **YBase**) - a highly available, distributed system with strong write consistency, tunable read consistency, and an advanced log-structured row/document-oriented storage model with several optimizations for handling ever-growing datasets efficiently. Only the upper/edge layer (the YugaByte Query Layer or **YQL**) of the servers have the API specific aspects - for example, the server-side implementation of Apache Cassandra and Redis protocols, and the corresponding query/command compilation and run-time (data type representations, built-in operations, etc.).
 
-In terms of the traditional [CAP theorem](https://en.wikipedia.org/wiki/CAP_theorem), YugaByte is a CP database (consistent and partition tolerant), but achieves very high availability. The architectural design of YugaByte is similar to Spanner, which is also technically a CP system. The description about Spanner [here](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html) is just as valid for YugaByte. The point is that no system provides 100% availability, so the pragmatic question is whether or not the system delivers availability that is so high that most 
-users don't worry about its outages. For example, given there are many sources of outages for an application, if YugaByte is an insignificant contributor to its downtime, then users are correct to not worry about it.
+In terms of the traditional [CAP theorem](https://en.wikipedia.org/wiki/CAP_theorem), YugaByte is a CP database (consistent and partition tolerant), but achieves very high availability. The architectural design of YugaByte is similar to Spanner, which is also technically a CP system. The description about Spanner [here](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html) is just as valid for YugaByte. The point is that no system provides 100% availability, so the pragmatic question is whether or not the system delivers availability that is so high that most users don't worry about its outages. For example, given there are many sources of outages for an application, if YugaByte is an insignificant contributor to its downtime, then users are correct to not worry about it.
 
 ## Universe
 
@@ -34,13 +33,13 @@ failures), and re-distributes and re-replicates data back to desired levels acro
 
 ## Universe components
 
-A YugaByte universe comprises of two sets of processes, YB-Master and YB-TServer. These serve different purposes. 
+A YugaByte universe comprises of two sets of processes, YB-Master and YB-TServer. These serve different purposes.
 
-- The YB-Master (aka the YugaByte Master Server) processes are responsible for keeping system metadata, coordinating system-wide operations such as create/alter drop tables, and initiating maintenance operations such as load-balancing.  
+- The YB-Master (aka the YugaByte Master Server) processes are responsible for keeping system metadata, coordinating system-wide operations such as create/alter drop tables, and initiating maintenance operations such as load-balancing.
 
-- The YB-TServer (aka the YugaByte Tablet Server) processes are responsible for hosting/serving user data (e.g, tables). 
+- The YB-TServer (aka the YugaByte Tablet Server) processes are responsible for hosting/serving user data (e.g, tables).
 
-YugaByte is architected to not have any single point of failure. The YB-Master and YB-TServer processes use [Raft](https://raft.github.io/), a distributed consensus algorithm, for replicating changes to system metadata or user data respectively across a set of nodes. 
+YugaByte is architected to not have any single point of failure. The YB-Master and YB-TServer processes use [Raft](https://raft.github.io/), a distributed consensus algorithm, for replicating changes to system metadata or user data respectively across a set of nodes.
 
 High Availability (HA) of the YB-Master’s functionalities and of the user-tables served by the YB-TServers is achieved by the failure-detection and new-leader election mechanisms that are built into the Raft implementation.
 
@@ -63,7 +62,7 @@ a table may therefore have at most 64K tablets. We expect this to be sufficient 
 very large data sets or cluster sizes.
 
 As an example, for a table with 16 tablets the overall hash space [0x0000 to 0xFFFF) is divided into
-16 sub-ranges, one for each tablet:  [0x0000, 0x1000), [0x1000, 0x2000), … , [0xF000, 0xFFFF). 
+16 sub-ranges, one for each tablet:  [0x0000, 0x1000), [0x1000, 0x2000), … , [0xF000, 0xFFFF).
 
 Read/write operations are processed by converting the primary key into an internal key and its hash
 value, and determining what tablet the operation should be routed to.
@@ -130,13 +129,13 @@ lazily in the background.
 [TODO] Add detailed docdb diagrams.
 
 DocDB is YugaByte’s Log Structured Merge tree (LSM) based storage engine. Once data is replicated
-via Raft  across a majority of the tablet-peers, it is applied to each tablet peer’s local DocDB. 
+via Raft  across a majority of the tablet-peers, it is applied to each tablet peer’s local DocDB.
 
 DocDB is a persistent “**key to object/document**” store rather than just a “key to value” store.
 
-* The **keys** in DocDB can be compound keys consisting of:
-  * **hash organized components**, followed by
-  * **ordered (range) components**. These components are stored in their data type specific sort order; both
+* The **keys** in DocDB are compound keys consisting of:
+  * 1 or more **hash organized components**, followed by
+  * 0 or more **ordered (range) components**. These components are stored in their data type specific sort order; both
     ascending and descending sort order is supported for each ordered component of the key.
 * The **values** in DocDB can be:
   * **primitive types**: such as int32, int64, double, text, timestamp, etc.
@@ -189,9 +188,11 @@ are described below:
 * **Read Optimizations**:
   * **Data model aware bloom filters**: The keys stored by DocDB in RocksDB consist of a number of
   components, where the first component is a "document key", followed by a few scalar components, and
-  finally followed by a timestamp (sorted in reverse order). 
+  finally followed by a timestamp (sorted in reverse order).
+
       * The bloom filter needs to be aware of what components of the key need be added to the bloom so that
         only the relevant SSTable files in the LSM store are looked up during a read operation.
+
       * In a traditional KV store, range scans do not make use of bloom filters because exact keys that fall
       in the range are unknown. However, we have implemented a data-model aware bloom filter, where range
       scans within keys that share the same hash component can also benefit from bloom filters. For
@@ -214,8 +215,8 @@ are described below:
         or,
         SELECT metric_value
           FROM metrics
-        WHERE metric_name = ’system.cpu’ 
-          AND metric_timestamp < ? 
+        WHERE metric_name = ’system.cpu’
+          AND metric_timestamp < ?
           AND metric_timestamp > ?
     ```
 
@@ -285,29 +286,41 @@ Within each YB-TServer, there is a lot of cross-tablet intelligence built in to 
 efficiency. Below are just some of the ways the YB-TServer coordinates operations across tablets
 hosted by it:
 
-* The block cache is shared across the different tablets in a given YB-TServer. This leads to highly
-efficient memory utilization in cases when one tablet is read more often than others. For example,
-one table may have a read-heavy usage pattern compared to others. The block cache will automatically
-favor blocks of this table as the block cache is global across all tablet-peers.
-* The compactions are throttled across tablets in a given YB-TServer to prevent compaction storms.
-This prevents the often dreaded high foreground latencies during a compaction storm.
-* Compactions are prioritized into large and small compactions with some prioritization to keep the
-system functional even in extreme IO patterns.
-* Tracks and enforces a global size across all the memstores. This makes sense when there is a skew in
-the write rate across tablets. For example, the scenario when there are tablets belonging to
-multiple tables in a single YB-TServer and one of the tables gets a lot more writes than the other
-tables. The write heavy table is allowed to grow much larger than it could if there was a per-tablet
-memory limit, allowing good write efficiency.
-* The block cache and memstores represent some of the larger memory-consuming components. Since these
-are global across all the tablet-peers, this makes memory management and sizing of these components
-across a variety of workloads very easy. In fact, based on the RAM available on the system, the
-YB-TServer automatically gives a certain percentage of the total available memory to the block
-cache, and another percentage to memstores.
+* **Server-global block cache**: The block cache is shared across the different tablets in a given
+YB-TServer. This leads to highly efficient memory utilization in cases when one tablet is read more
+often than others. For example, one table may have a read-heavy usage pattern compared to
+others. The block cache will automatically favor blocks of this table as the block cache is global
+across all tablet-peers.
+
+* **Throttled Compactions**: The compactions are throttled across tablets in a given YB-TServer to
+prevent compaction storms. This prevents the often dreaded high foreground latencies during a
+compaction storm.
+
+* **Small/Large Compaction Queues**: Compactions are prioritized into large and small compactions with
+some prioritization to keep the system functional even in extreme IO patterns.
+
+* **Server-global Memstore Limit**: Tracks and enforces a global size across the memstores for
+different tablets. This makes sense when there is a skew in the write rate across tablets. For
+example, the scenario when there are tablets belonging to multiple tables in a single YB-TServer and
+one of the tables gets a lot more writes than the other tables. The write heavy table is allowed to
+grow much larger than it could if there was a per-tablet memory limit, allowing good write
+efficiency.
+
+* **Auto-Sizing of Block Cache/Memstore** The block cache and memstores represent some of the larger
+memory-consuming components. Since these are global across all the tablet-peers, this makes memory
+management and sizing of these components across a variety of workloads very easy. In fact, based on
+the RAM available on the system, the YB-TServer automatically gives a certain percentage of the
+total available memory to the block cache, and another percentage to memstores.
+
+* **Striping tablet load uniformly across data disks** On multi-SSD machines, the data (SSTable) and
+WAL (RAFT write-ahead-log) for various tablets of tables are evenly distributed across the attached
+disks on a **per-table basis**. This ensures that each disk handles an even amount of load for each
+table.
 
 
 ## YB-Master
 
-The YB-Master is the keeper of system meta-data/records, such as what tables exist in the system, where their tablets live, what users/roles exist, the permissions associated with them, and so on. 
+The YB-Master is the keeper of system meta-data/records, such as what tables exist in the system, where their tablets live, what users/roles exist, the permissions associated with them, and so on.
 
 It is also responsible for coordinating background operations (such as load-balancing or initiating re-replication of under-replicated data) and performing a variety of administrative operations such as create/alter/drop of a table.
 
@@ -325,20 +338,20 @@ Examples of such operations are user-issued create/alter/drop table requests, as
 
 The master stores system metadata such as the information about all the keyspaces, tables, roles, permissions, and assignment of tablets to YB-TServers. These system records are replicated across the YB-Masters for redundancy using Raft as well. The system metadata is also stored as a DocDB table by the YB-Master(s).
 
-### Authoritative source of assignment of tablets to YB-TServers 
+### Authoritative source of assignment of tablets to YB-TServers
 
 The YB-Master stores all tablets and the corresponding YB-TServers that currently host them. This map of tablets to the hosting YB-TServers is queried by clients (such as the YQL layer). Applications using the YB smart clients for various languages (such as Cassandra or Redis) are very efficient in retrieving data. The smart clients query the YB-Master for the tablet to YB-TServer map and cache it. By doing so, the smart clients can talk directly to the correct YB-TServer to serve various queries without incurring additional network hops.
 
 ### Background ops performed throughout the lifetime of the universe
 
-#### Data placement & load balancing
+#### Data Placement & Load Balancing
 
 The YB-Master leader does the initial placement (at CREATE table time) of tablets across YB-TServers to enforce any user-defined data placement constraints and ensure uniform load. In addition, during the lifetime of the universe, as nodes are added, fail or
 decommissioned, it continues to balance the load and enforce data placement constraints automatically.
 
-#### Leader balancing
+#### Leader Balancing
 
-Aside from ensuring that the number of tablets served by each YB-TServer is balanced across the universe, the YB-Masters also ensures that each node has a symmetric number of tablet-peer leaders across eligible nodes. 
+Aside from ensuring that the number of tablets served by each YB-TServer is balanced across the universe, the YB-Masters also ensures that each node has a symmetric number of tablet-peer leaders across eligible nodes.
 
 #### Re-replication of data on extended YB-TServer failure
 
@@ -346,4 +359,18 @@ The YB-Master receives heartbeats from all the YB-TServers, and tracks their liv
 
 ## Acknowledgements
 
-[TODO]
+The YugaByte code base has leveraged several open source projects as a starting point.
+
+* Google Libraries (glog, gflags, protocol buffers, snappy, gperftools, gtest, gmock).
+
+* The DocDB layer uses a highly customized/enhanced version of RocksDB. The customizations and
+  enhancements are described [in this section](#data-persistence-with-docdb).
+
+* We used Apache Kudu's Raft implementation & the server framework as a starting point. Since then,
+  we have implemented several enhancements such as leader-leases & pre-voting state during learner
+  mode for correctness, improvements to the network stack, auto balancing of tablets on failures,
+  zone/DC aware data placement, leader-balancing, ability to do full cluster moves in a online
+  manner, and so on to name just a few.
+
+* Postgres' scanner/parser modules (.y/.l files) were used as a starting point for implementating
+  CQL (Apache Cassandra Query Language) scanner/parser in C++.
