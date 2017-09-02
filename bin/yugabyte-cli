@@ -69,7 +69,7 @@ class ClusterOptions():
                     "http": 9000,
                     "rpc": 9100,
                     "redis_http": 11000,
-                    "redis_rpc": 10100,
+                    "redis_rpc": 6379,
                     "cql_http": 12000,
                     "cql_rpc": 9042
                 }
@@ -89,7 +89,7 @@ class ClusterOptions():
 
     def validate_daemon_index(self, daemon_index):
         if daemon_index < 1 or daemon_index > self.max_daemon_index:
-            raise RuntimeError("Invalid daemon index: {}".format(daemon_index))
+            raise RuntimeError("Invalid daemon node_id: {}".format(daemon_index))
 
     def get_server_binary_path(self, daemon_type):
         return self.get_binary_path("yb-{}".format(daemon_type))
@@ -119,7 +119,9 @@ class ClusterOptions():
         return "{}/{}".format(self.cluster_base_dir, self.get_node_name(daemon_type, daemon_index))
 
     def get_address(self, daemon_type, daemon_index, port_type, include_base_url=False):
-        port_str = str(self.base_ports[daemon_type][port_type] + daemon_index)
+        # We index nodes from 1, but we would like to always start from the actual base port for
+        # all use cases, hence the -1.
+        port_str = str(self.base_ports[daemon_type][port_type] + daemon_index - 1)
         return port_str if not include_base_url else "{}:{}".format(self.base_local_url, port_str)
 
 
@@ -163,7 +165,9 @@ class ClusterControl():
         p = self.setup_base_parser("add_node", help="Add a new tserver to the current cluster")
 
         p = self.setup_base_parser("remove_node", help="Remove a tserver from the current cluster")
-        p.add_argument("node_id", type=int, help="The index of the tserver to remove")
+        p.add_argument("node_id", type=int,
+                       help="The id of the tserver to remove in range: 1-{}".format(
+                          self.options.max_daemon_index))
 
         p = self.setup_base_parser("setup_redis", help="Setup YugaByte to support Redis queries")
 
@@ -286,17 +290,17 @@ class ClusterControl():
     def stop_daemon(self, daemon_type, daemon_index):
         pid = self.get_pid(daemon_type, daemon_index)
         if pid == 0:
-            logging.info("Server type={} index={} already stopped".format(
+            logging.info("Server type={} node_id={} already stopped".format(
                 daemon_type, daemon_index))
             return
-        logging.info("Stopping server type={} index={} PID={}".format(
+        logging.info("Stopping server type={} node_id={} PID={}".format(
             daemon_type, daemon_index, pid))
         # Kill the process.
         os.kill(pid, signal.SIGTERM)
         # Wait for process to stop.
         while True:
             try:
-                logging.info("Waiting for server type={} index={} PID={} to stop...".format(
+                logging.info("Waiting for server type={} node_id={} PID={} to stop...".format(
                     daemon_type, daemon_index, pid))
                 time.sleep(0.5)
                 os.kill(pid, 0)
@@ -317,7 +321,7 @@ class ClusterControl():
             for i in range(1, server_counts + 1):
                 pid = self.get_pid(t, i)
                 if pid > 0:
-                    logging.info("Server type={} index={} is running on PID={}".format(t, i, pid))
+                    logging.info("Server type={} node_id={} is running on PID={}".format(t, i, pid))
                 else:
                     self.start_daemon(t, i)
 
@@ -330,7 +334,7 @@ class ClusterControl():
     def remove_node(self):
         daemon_type = "tserver"
         daemon_index = self.args.node_id
-        logging.info("Removing server type={} index={}".format(daemon_type, daemon_index))
+        logging.info("Removing server type={} node_id={}".format(daemon_type, daemon_index))
         self.stop_daemon(daemon_type, daemon_index)
 
     def status(self):
@@ -339,11 +343,22 @@ class ClusterControl():
             for i in range(1, num_servers + 1):
                 pid = self.get_pid(t, i)
                 if pid == 0:
-                    logging.info("Server type={} index={} is not running".format(t, i))
+                    logging.info("Server type={} node_id={} is not running".format(t, i))
                 else:
-                    logging.info("Server type={} index={} is running on PID={}, URL={}:{}".format(
-                        t, i, pid, self.options.base_local_url,
-                        self.options.base_ports[t]["http"] + i))
+                    info_list = [
+                        ("type", t),
+                        ("node_id", i),
+                        ("PID", pid),
+                        ("URL", self.options.get_address(t, i, "http", True))
+                        ]
+                    if t == "tserver":
+                        info_list.extend([
+                            ("cql port", self.options.get_address(t, i, "cql_rpc")),
+                            ("redis port", self.options.get_address(t, i, "redis_rpc"))
+                            ])
+                    logging.info("Server is running: {}".format(
+                        ", ".join(["{}={}".format(k, v) for k, v in info_list])))
+
 
     def destroy(self):
         # Stop all the daemons.
