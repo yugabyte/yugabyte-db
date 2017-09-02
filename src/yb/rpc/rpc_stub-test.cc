@@ -31,11 +31,13 @@
 #include "yb/util/metrics.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
 #include "yb/util/user.h"
 #include "yb/util/net/net_util.h"
 
 DEFINE_bool(is_panic_test_child, false, "Used by TestRpcPanic");
 DECLARE_bool(socket_inject_short_recvs);
+DECLARE_int32(rpc_slow_query_threshold_ms);
 
 using namespace std::chrono_literals;
 
@@ -142,8 +144,8 @@ void CheckForward(CalculatorServiceProxy* proxy,
   controller.set_timeout(1s);
   auto status = proxy->Forward(req, &resp, &controller);
   if (expected.empty()) {
-    ASSERT_NOK(status) << "name: " << resp.name();
-    LOG(INFO) << "Failed with status: " << status.ToString();
+    LOG(INFO) << "Call status: " << status;
+    ASSERT_NOK(status) << "Name: " << resp.name();
   } else {
     ASSERT_OK(status);
     ASSERT_EQ(expected, resp.name());
@@ -166,6 +168,8 @@ TEST_F(RpcStubTest, TestIncoherence) {
   CheckForward(&proxy2, server1.bound_endpoint(), kServer1Name);
 
   server2.messenger().BreakConnectivityWith(server1.bound_endpoint().address());
+
+  LOG(INFO) << "Checking connectivity";
   CheckForward(&proxy1, server2.bound_endpoint(), std::string()); // No connection between servers.
   CheckForward(&proxy1, Endpoint(), kServer1Name); // We could connect to server1.
   CheckForward(&proxy2, server1.bound_endpoint(), std::string()); // No connection between servers.
@@ -584,7 +588,7 @@ class PingTestHelper {
     }
   }
 
-  const vector<PingCall>& calls() const {
+  const std::vector<PingCall>& calls() const {
     return calls_;
   }
 
@@ -592,16 +596,18 @@ class PingTestHelper {
   CalculatorServiceProxy* proxy_;
   std::atomic<size_t> done_calls_ = {0};
   std::atomic<size_t> call_idx_ = {0};
-  vector<PingCall> calls_;
+  std::vector<PingCall> calls_;
   std::mutex mutex_;
   std::condition_variable cond_;
   std::atomic<bool> finished_ = {false};
 };
 
-DEFINE_int32(test_rpc_concurrency, 20, "Number of concurrent RPC requests");
+DEFINE_uint64(test_rpc_concurrency, 20, "Number of concurrent RPC requests");
 DEFINE_int32(test_rpc_count, 50000, "Total number of RPC requests");
 
 TEST_F(RpcStubTest, TestRpcPerformance) {
+  FLAGS_rpc_slow_query_threshold_ms = std::numeric_limits<int32_t>::max();
+
   MessengerOptions messenger_options = kDefaultClientMessengerOptions;
   messenger_options.n_reactors = 4;
   client_messenger_ = CreateMessenger("Client", messenger_options);
@@ -622,17 +628,30 @@ TEST_F(RpcStubTest, TestRpcPerformance) {
   }
   auto finish = MonoTime::Now(MonoTime::FINE);
 
+#ifndef NDEBUG
+  const int kTimeMultiplier = 5;
+#else
+  const int kTimeMultiplier = 1;
+#endif
+  const MonoDelta kMaxLimit = MonoDelta::FromMilliseconds(50 * kTimeMultiplier);
+  const MonoDelta kReplyAverageLimit = MonoDelta::FromMilliseconds(10 * kTimeMultiplier);
+  const MonoDelta kHandleAverageLimit = MonoDelta::FromMilliseconds(5 * kTimeMultiplier);
+
   MonoDelta min_processing = MonoDelta::kMax;
   MonoDelta max_processing = MonoDelta::kMin;
   MonoDelta reply_sum = MonoDelta::kZero;
   MonoDelta handle_sum = MonoDelta::kZero;
   size_t measured_calls = 0;
+  size_t slow_calls = 0;
   auto& calls = helper.calls();
   for (size_t i = kWarmupCalls; i != total_calls; ++i) {
     const auto& call = calls[i];
     auto call_processing_delta = call.reply_time.GetDeltaSince(call.start_time);
     min_processing = std::min(min_processing, call_processing_delta);
     max_processing = std::max(max_processing, call_processing_delta);
+    if (call_processing_delta > kReplyAverageLimit) {
+      ++slow_calls;
+    }
     reply_sum += call_processing_delta;
     handle_sum += call.handle_time.GetDeltaSince(call.start_time);
     ++measured_calls;
@@ -646,21 +665,15 @@ TEST_F(RpcStubTest, TestRpcPerformance) {
   LOG(INFO) << "Min: " << min_processing.ToMicroseconds() << "us, "
             << "max: " << max_processing.ToMicroseconds() << "us, "
             << "reply avg: " << reply_average.ToMicroseconds() << "us, "
-            << "handle avg: " << handle_average.ToMicroseconds() << "us, "
-            << "total: " << passed_us << "us, "
+            << "handle avg: " << handle_average.ToMicroseconds() << "us";
+  LOG(INFO) << "Total: " << passed_us << "us, "
             << "calls per second: " << measured_calls * 1000000 / passed_us
-            << " (" << us_per_call << "us per call, NOT latency)";
-#ifndef NDEBUG
-  const int kTimeMultiplier = 5;
-#else
-  const int kTimeMultiplier = 1;
-#endif
-  const MonoDelta kMaxLimit = MonoDelta::FromMilliseconds(15 * kTimeMultiplier);
-  const MonoDelta kReplyAverageLimit = MonoDelta::FromMilliseconds(10 * kTimeMultiplier);
-  const MonoDelta kHandleAverageLimit = MonoDelta::FromMilliseconds(5 * kTimeMultiplier);
-  ASSERT_PERF_LE(max_processing, kMaxLimit);
-  ASSERT_PERF_LE(reply_average, kReplyAverageLimit);
-  ASSERT_PERF_LE(handle_average, kHandleAverageLimit);
+            << " (" << us_per_call << "us per call, NOT latency), "
+            << " slow calls: " << slow_calls * 100.0 / measured_calls << "%";
+  EXPECT_PERF_LE(slow_calls * 200, measured_calls);
+  EXPECT_PERF_LE(max_processing, kMaxLimit);
+  EXPECT_PERF_LE(reply_average, kReplyAverageLimit);
+  EXPECT_PERF_LE(handle_average, kHandleAverageLimit);
 }
 
 TEST_F(RpcStubTest, IPv6) {

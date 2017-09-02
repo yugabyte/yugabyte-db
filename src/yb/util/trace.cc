@@ -210,6 +210,15 @@ ThreadSafeArena* Trace::GetAndInitArena() {
   return arena;
 }
 
+void Trace::SubstituteAndTrace(const char* file_path, int line_number, StringPiece format) {
+  int msg_len = format.size();
+  DCHECK_NE(msg_len, 0) << "Bad format specification";
+  TraceEntry* entry = NewEntry(msg_len, file_path, line_number);
+  if (entry == nullptr) return;
+  memcpy(entry->message(), format.data(), msg_len);
+  AddEntry(entry);
+}
+
 void Trace::SubstituteAndTrace(const char* file_path,
                                int line_number,
                                StringPiece format,

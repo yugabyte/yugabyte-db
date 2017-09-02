@@ -40,20 +40,20 @@
 #define ASSERT_NOK(s) ASSERT_FALSE((s).ok())
 
 #define ASSERT_OK_PREPEND(status, msg) do { \
-  const auto _s = (status); \
+  auto&& _s = (status); \
   if (_s.ok()) { \
     SUCCEED(); \
   } else { \
-    FAIL() << (msg) << " - status: " << _s.ToString();  \
+    FAIL() << (msg) << " - status: " << StatusToString(_s);  \
   } \
 } while (0)
 
 #define EXPECT_OK(status) do { \
-    const auto _s = (status); \
+    auto&& _s = (status); \
     if (_s.ok()) { \
       SUCCEED(); \
     } else { \
-      ADD_FAILURE() << "Bad status: " << _s.ToString();  \
+      ADD_FAILURE() << "Bad status: " << StatusToString(_s);  \
     } \
   } while (0)
 
@@ -62,16 +62,38 @@
 // Like the above, but doesn't record successful
 // tests.
 #define ASSERT_OK_FAST(status) do {      \
-    const auto _s = (status); \
+    auto&& _s = (status); \
     if (!_s.ok()) { \
-      FAIL() << "Bad status: " << _s.ToString();  \
+      FAIL() << "Bad status: " << StatusToString(_s);  \
     } \
   } while (0)
 
+#define ASSERT_NO_ERROR(ec) \
+  do { \
+    auto&& _ec = (ec); \
+    if (!_ec) { \
+      SUCCEED(); \
+    } else { \
+      FAIL() << "Unexpected error: " << ec.message(); \
+    } \
+  } while (false)
+
+#define EXPECT_NO_ERROR(ec) \
+  do { \
+    auto&& _ec = (ec); \
+    if (!_ec) { \
+      SUCCEED(); \
+    } else { \
+      ADD_FAILURE() << "Unexpected error: " << ec.message(); \
+    } \
+  } while (false)
+
 #ifdef THREAD_SANITIZER
 #define ASSERT_PERF_LE(lhs, rhs) do { (void)(lhs); (void)(rhs); } while(false)
+#define EXPECT_PERF_LE(lhs, rhs) do { (void)(lhs); (void)(rhs); } while(false)
 #else
 #define ASSERT_PERF_LE(lhs, rhs) ASSERT_LE(lhs, rhs)
+#define EXPECT_PERF_LE(lhs, rhs) EXPECT_LE(lhs, rhs)
 #endif
 
 #define ASSERT_STR_CONTAINS(str, substr) do { \

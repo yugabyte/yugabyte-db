@@ -372,12 +372,12 @@ Status Connection::TryProcessCalls(bool* continue_receiving) {
 
 Status Connection::HandleCallResponse(Slice call_data) {
   DCHECK(reactor_->IsCurrentThread());
-  gscoped_ptr<CallResponse> resp(new CallResponse);
-  RETURN_NOT_OK(resp->ParseFrom(call_data));
+  CallResponse resp;
+  RETURN_NOT_OK(resp.ParseFrom(call_data));
 
-  auto awaiting = awaiting_response_.find(resp->call_id());
+  auto awaiting = awaiting_response_.find(resp.call_id());
   if (awaiting == awaiting_response_.end()) {
-    LOG(ERROR) << ToString() << ": Got a response for call id " << resp->call_id() << " which "
+    LOG(ERROR) << ToString() << ": Got a response for call id " << resp.call_id() << " which "
                << "was not pending! Ignoring.";
     DCHECK(awaiting != awaiting_response_.end());
     return Status::OK();
@@ -387,11 +387,11 @@ Status Connection::HandleCallResponse(Slice call_data) {
 
   if (PREDICT_FALSE(!call)) {
     // The call already failed due to a timeout.
-    VLOG(1) << "Got response to call id " << resp->call_id() << " after client already timed out";
+    VLOG(1) << "Got response to call id " << resp.call_id() << " after client already timed out";
     return Status::OK();
   }
 
-  call->SetResponse(resp.Pass());
+  call->SetResponse(std::move(resp));
 
   return Status::OK();
 }

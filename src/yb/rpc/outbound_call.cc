@@ -283,7 +283,7 @@ void OutboundCall::CallCallback() {
   }
 }
 
-void OutboundCall::SetResponse(gscoped_ptr<CallResponse> resp) {
+void OutboundCall::SetResponse(CallResponse&& resp) {
   TRACE_TO(trace_, "Response received.");
   // Track time taken to be responded.
 
@@ -291,10 +291,10 @@ void OutboundCall::SetResponse(gscoped_ptr<CallResponse> resp) {
     outbound_call_metrics_->time_to_response->Increment(
         MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_).ToMicroseconds());
   }
-  call_response_ = resp.Pass();
-  Slice r(call_response_->serialized_response());
+  call_response_ = std::move(resp);
+  Slice r(call_response_.serialized_response());
 
-  if (call_response_->is_success()) {
+  if (call_response_.is_success()) {
     // TODO: here we're deserializing the call response within the reactor thread,
     // which isn't great, since it would block processing of other RPCs in parallel.
     // Should look into a way to avoid this.
@@ -330,6 +330,7 @@ void OutboundCall::SetQueued() {
 }
 
 void OutboundCall::SetSent() {
+  buffer_ = RefCntBuffer();
   // Track time taken to be sent
   if (outbound_call_metrics_) {
     auto end_time = MonoTime::Now(MonoTime::FINE);
@@ -405,7 +406,7 @@ bool OutboundCall::IsFinished() const {
 }
 
 Status OutboundCall::GetSidecar(int idx, Slice* sidecar) const {
-  return call_response_->GetSidecar(idx, sidecar);
+  return call_response_.GetSidecar(idx, sidecar);
 }
 
 string OutboundCall::ToString() const {
@@ -555,6 +556,25 @@ bool ConnectionIdEqual::operator() (const ConnectionId& cid1, const ConnectionId
 
 CallResponse::CallResponse()
     : parsed_(false) {
+}
+
+CallResponse::CallResponse(CallResponse&& rhs) {
+  DCHECK(rhs.parsed_);
+  parsed_ = rhs.parsed_;
+  header_.Swap(&rhs.header_);
+  serialized_response_ = rhs.serialized_response_;
+  sidecar_slices_ = rhs.sidecar_slices_;
+  response_data_ = std::move(rhs.response_data_);
+}
+
+void CallResponse::operator=(CallResponse&& rhs) {
+  DCHECK(rhs.parsed_);
+  DCHECK(!parsed_);
+  parsed_ = rhs.parsed_;
+  header_.Swap(&rhs.header_);
+  serialized_response_ = rhs.serialized_response_;
+  sidecar_slices_ = rhs.sidecar_slices_;
+  response_data_ = std::move(rhs.response_data_);
 }
 
 Status CallResponse::GetSidecar(int idx, Slice* sidecar) const {
