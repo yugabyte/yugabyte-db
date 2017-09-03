@@ -1,10 +1,12 @@
-/**
- * An persistent map : key -> (list of strings), using rocksdb merge.
- * This file is a test-harness / use-case for the StringAppendOperator.
- *
- * @author Deon Nicholas (dnicholas@fb.com)
- * Copyright 2013 Facebook, Inc.
-*/
+//
+// An persistent map : key -> (list of strings), using rocksdb merge.
+// This file is a test-harness / use-case for the StringAppendOperator.
+//
+// @author Deon Nicholas (dnicholas@fb.com)
+// Copyright 2013 Facebook, Inc.
+//
+
+// Portions Copyright (c) YugaByte, Inc.
 
 #include <iostream>
 #include <map>
@@ -17,8 +19,6 @@
 #include "utilities/merge_operators/string_append/stringappend2.h"
 #include "util/testharness.h"
 #include "util/random.h"
-
-using namespace rocksdb;
 
 namespace rocksdb {
 
@@ -49,14 +49,14 @@ std::shared_ptr<DB> OpenTtlDb(char delim_char) {
 #endif  // !ROCKSDB_LITE
 }  // namespace
 
-/// StringLists represents a set of string-lists, each with a key-index.
-/// Supports Append(list, string) and Get(list)
+// StringLists represents a set of string-lists, each with a key-index.
+// Supports Append(list, string) and Get(list)
 class StringLists {
  public:
 
-  //Constructor: specifies the rocksdb db
+  // Constructor: specifies the rocksdb db
   /* implicit */
-  StringLists(std::shared_ptr<DB> db)
+  explicit StringLists(std::shared_ptr<DB> db)
       : db_(db),
         merge_option_(),
         get_option_() {
@@ -64,7 +64,7 @@ class StringLists {
   }
 
   // Append string val onto the list defined by key; return true on success
-  bool Append(const std::string& key, const std::string& val){
+  bool Append(const std::string& key, const std::string& val) {
     Slice valSlice(val.data(), val.size());
     auto s = db_->Merge(merge_option_, key, valSlice);
 
@@ -77,7 +77,7 @@ class StringLists {
   }
 
   // Returns the list of strings associated with key (or "" if does not exist)
-  bool Get(const std::string& key, std::string* const result){
+  bool Get(const std::string& key, std::string* const result) {
     assert(result != nullptr); // we should have a place to store the result
     auto s = db_->Get(get_option_, key, result);
 
@@ -88,8 +88,8 @@ class StringLists {
     // Either key does not exist, or there is some error.
     *result = "";       // Always return empty string (just for convention)
 
-    //NotFound is okay; just return empty (similar to std::map)
-    //But network or db errors, etc, should fail the test (or at least yell)
+    // NotFound is okay; just return empty (similar to std::map)
+    // But network or db errors, etc, should fail the test (or at least yell)
     if (!s.IsNotFound()) {
       std::cerr << "ERROR " << s.ToString() << std::endl;
     }
@@ -106,30 +106,31 @@ class StringLists {
 
 };
 
+enum class DbTypeToUse {
+  NORMAL_DB,
+  TTL_DB
+};
 
 // The class for unit-testing
-class StringAppendOperatorTest : public testing::Test {
+class StringAppendOperatorTest : public testing::TestWithParam<DbTypeToUse> {
  public:
   StringAppendOperatorTest() {
     DestroyDB(kDbName, Options());    // Start each test with a fresh DB
   }
 
-  typedef std::shared_ptr<DB> (* OpenFuncPtr)(char);
-
-  // Allows user to open databases with different configurations.
-  // e.g.: Can open a DB or a TtlDB, etc.
-  static void SetOpenDbFunction(OpenFuncPtr func) {
-    OpenDb = func;
+  std::shared_ptr<DB> OpenDb(char delim_char) {
+    if (GetParam() == DbTypeToUse::NORMAL_DB) {
+      return OpenNormalDb(delim_char);
+    } else {
+      return OpenTtlDb(delim_char);
+    }
   }
 
- protected:
-  static OpenFuncPtr OpenDb;
 };
-StringAppendOperatorTest::OpenFuncPtr StringAppendOperatorTest::OpenDb = nullptr;
 
 // THE TEST CASES BEGIN HERE
 
-TEST_F(StringAppendOperatorTest, IteratorTest) {
+TEST_P(StringAppendOperatorTest, IteratorTest) {
   auto db_ = OpenDb(',');
   StringLists slists(db_);
 
@@ -222,7 +223,7 @@ TEST_F(StringAppendOperatorTest, IteratorTest) {
 
 }
 
-TEST_F(StringAppendOperatorTest, SimpleTest) {
+TEST_P(StringAppendOperatorTest, SimpleTest) {
   auto db = OpenDb(',');
   StringLists slists(db);
 
@@ -237,7 +238,7 @@ TEST_F(StringAppendOperatorTest, SimpleTest) {
   ASSERT_EQ(res, "v1,v2,v3");
 }
 
-TEST_F(StringAppendOperatorTest, SimpleDelimiterTest) {
+TEST_P(StringAppendOperatorTest, SimpleDelimiterTest) {
   auto db = OpenDb('|');
   StringLists slists(db);
 
@@ -250,7 +251,7 @@ TEST_F(StringAppendOperatorTest, SimpleDelimiterTest) {
   ASSERT_EQ(res, "v1|v2|v3");
 }
 
-TEST_F(StringAppendOperatorTest, OneValueNoDelimiterTest) {
+TEST_P(StringAppendOperatorTest, OneValueNoDelimiterTest) {
   auto db = OpenDb('!');
   StringLists slists(db);
 
@@ -261,7 +262,7 @@ TEST_F(StringAppendOperatorTest, OneValueNoDelimiterTest) {
   ASSERT_EQ(res, "single_val");
 }
 
-TEST_F(StringAppendOperatorTest, VariousKeys) {
+TEST_P(StringAppendOperatorTest, VariousKeys) {
   auto db = OpenDb('\n');
   StringLists slists(db);
 
@@ -287,7 +288,7 @@ TEST_F(StringAppendOperatorTest, VariousKeys) {
 }
 
 // Generate semi random keys/words from a small distribution.
-TEST_F(StringAppendOperatorTest, RandomMixGetAppend) {
+TEST_P(StringAppendOperatorTest, RandomMixGetAppend) {
   auto db = OpenDb(' ');
   StringLists slists(db);
 
@@ -305,20 +306,20 @@ TEST_F(StringAppendOperatorTest, RandomMixGetAppend) {
 
   // Generate a bunch of random queries (Append and Get)!
   enum query_t  { APPEND_OP, GET_OP, NUM_OPS };
-  Random randomGen(1337);       //deterministic seed; always get same results!
+  Random randomGen(1337);       // deterministic seed; always get same results!
 
   const int kNumQueries = 30;
-  for (int q=0; q<kNumQueries; ++q) {
+  for (int q = 0; q < kNumQueries; ++q) {
     // Generate a random query (Append or Get) and random parameters
-    query_t query = (query_t)randomGen.Uniform((int)NUM_OPS);
-    std::string key = keys[randomGen.Uniform((int)kKeyCount)];
-    std::string word = words[randomGen.Uniform((int)kWordCount)];
+    query_t query = (query_t)randomGen.Uniform(NUM_OPS);
+    std::string key = keys[randomGen.Uniform(kKeyCount)];
+    std::string word = words[randomGen.Uniform(kWordCount)];
 
     // Apply the query and any checks.
     if (query == APPEND_OP) {
 
       // Apply the rocksdb test-harness Append defined above
-      slists.Append(key, word);  //apply the rocksdb append
+      slists.Append(key, word);  // apply the rocksdb append
 
       // Apply the similar "Append" to the parallel copy
       if (parallel_copy[key].size() > 0) {
@@ -338,7 +339,7 @@ TEST_F(StringAppendOperatorTest, RandomMixGetAppend) {
 
 }
 
-TEST_F(StringAppendOperatorTest, BIGRandomMixGetAppend) {
+TEST_P(StringAppendOperatorTest, BIGRandomMixGetAppend) {
   auto db = OpenDb(' ');
   StringLists slists(db);
 
@@ -359,17 +360,17 @@ TEST_F(StringAppendOperatorTest, BIGRandomMixGetAppend) {
   Random randomGen(9138204);       // deterministic seed
 
   const int kNumQueries = 1000;
-  for (int q=0; q<kNumQueries; ++q) {
+  for (int q = 0; q < kNumQueries; ++q) {
     // Generate a random query (Append or Get) and random parameters
-    query_t query = (query_t)randomGen.Uniform((int)NUM_OPS);
-    std::string key = keys[randomGen.Uniform((int)kKeyCount)];
-    std::string word = words[randomGen.Uniform((int)kWordCount)];
+    query_t query = (query_t)randomGen.Uniform(NUM_OPS);
+    std::string key = keys[randomGen.Uniform(kKeyCount)];
+    std::string word = words[randomGen.Uniform(kWordCount)];
 
-    //Apply the query and any checks.
+    // Apply the query and any checks.
     if (query == APPEND_OP) {
 
       // Apply the rocksdb test-harness Append defined above
-      slists.Append(key, word);  //apply the rocksdb append
+      slists.Append(key, word);  // apply the rocksdb append
 
       // Apply the similar "Append" to the parallel copy
       if (parallel_copy[key].size() > 0) {
@@ -389,7 +390,7 @@ TEST_F(StringAppendOperatorTest, BIGRandomMixGetAppend) {
 
 }
 
-TEST_F(StringAppendOperatorTest, PersistentVariousKeys) {
+TEST_P(StringAppendOperatorTest, PersistentVariousKeys) {
   // Perform the following operations in limited scope
   {
     auto db = OpenDb('\n');
@@ -456,7 +457,7 @@ TEST_F(StringAppendOperatorTest, PersistentVariousKeys) {
   }
 }
 
-TEST_F(StringAppendOperatorTest, PersistentFlushAndCompaction) {
+TEST_P(StringAppendOperatorTest, PersistentFlushAndCompaction) {
   // Perform the following operations in limited scope
   {
     auto db = OpenDb('\n');
@@ -513,7 +514,7 @@ TEST_F(StringAppendOperatorTest, PersistentFlushAndCompaction) {
     slists.Get("a", &a);
     ASSERT_EQ(a, "x\nt\nr");
 
-    //Append, Compact, Get
+    // Append, Compact, Get
     slists.Append("c", "bbnagnagsx");
     slists.Append("a", "sa");
     slists.Append("b", "df");
@@ -552,7 +553,7 @@ TEST_F(StringAppendOperatorTest, PersistentFlushAndCompaction) {
   }
 }
 
-TEST_F(StringAppendOperatorTest, SimpleTestNullDelimiter) {
+TEST_P(StringAppendOperatorTest, SimpleTestNullDelimiter) {
   auto db = OpenDb('\0');
   StringLists slists(db);
 
@@ -575,26 +576,13 @@ TEST_F(StringAppendOperatorTest, SimpleTestNullDelimiter) {
   ASSERT_EQ(res, checker);
 }
 
+INSTANTIATE_TEST_CASE_P(Instantiation,
+                        StringAppendOperatorTest,
+                        ::testing::Values(DbTypeToUse::NORMAL_DB, DbTypeToUse::TTL_DB));
+
 } // namespace rocksdb
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  // Run with regular database
-  int result;
-  {
-    fprintf(stderr, "Running tests with regular db and operator.\n");
-    StringAppendOperatorTest::SetOpenDbFunction(&OpenNormalDb);
-    result = RUN_ALL_TESTS();
-  }
-
-#ifndef ROCKSDB_LITE  // TtlDb is not supported in Lite
-  // Run with TTL
-  {
-    fprintf(stderr, "Running tests with ttl db and generic operator.\n");
-    StringAppendOperatorTest::SetOpenDbFunction(&OpenTtlDb);
-    result |= RUN_ALL_TESTS();
-  }
-#endif  // !ROCKSDB_LITE
-
-  return result;
+  return RUN_ALL_TESTS();
 }
