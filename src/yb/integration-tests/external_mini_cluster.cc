@@ -144,12 +144,16 @@ ExternalMiniClusterOptions::~ExternalMiniClusterOptions() {
 ExternalMiniCluster::ExternalMiniCluster(const ExternalMiniClusterOptions& opts)
     : opts_(opts), add_new_master_at_(-1) {
   // These "extra mini cluster options" are added in the end of the command line.
-  for (const auto& argument : {
+  const auto common_extra_flags = {
       "--enable_tracing=true"s,
       Substitute("--memory_limit_hard_bytes=$0", kDefaultMemoryLimitHardBytes)
-  }) {
-    opts_.extra_master_flags.push_back(argument);
-    opts_.extra_tserver_flags.push_back(argument);
+  };
+  for (auto* extra_flags : {&opts_.extra_master_flags, &opts_.extra_tserver_flags}) {
+    // Common default extra flags are inserted in the beginning so that they can be overridden by
+    // caller-specified flags.
+    extra_flags->insert(extra_flags->begin(),
+                        common_extra_flags.begin(),
+                        common_extra_flags.end());
   }
 }
 

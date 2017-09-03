@@ -2333,6 +2333,7 @@ TEST_F(RaftConsensusITest, TestEarlyCommitDespiteMemoryPressure) {
   Status s = replica_ts->consensus_proxy->UpdateConsensus(req, &resp, &rpc);
 
   // Our memory limit was truly tiny, so we should be over it by now...
+  LOG(INFO) << "UpdateConsensus status: " << s;
   ASSERT_TRUE(s.IsRemoteError());
   ASSERT_STR_CONTAINS(s.ToString(), "Soft memory limit exceeded");
 
