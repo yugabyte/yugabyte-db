@@ -3344,6 +3344,7 @@ create view oracle.user_cons_columns as
 
 create view oracle.user_constraints as
     select conname as constraint_name,
+           conindid::regclass as index_name,
            case contype when 'p' then 'P' when 'f' then 'R' end as constraint_type,
            relname as table_name,
            case contype when 'f' then (select conname
@@ -3392,6 +3393,36 @@ create view oracle.user_objects as
       from pg_proc p join pg_namespace n on p.pronamespace = n.oid
      where nspname not in ('pg_toast','pg_catalog','information_schema') order by 1;
 
+create view user_procedures as
+    select proname as object_name
+      from pg_proc p join pg_namespace n on p.pronamespace = n.oid
+       and nspname <> 'pg_catalog';
+
+create view user_source as
+    select row_number() over (partition by oid) as line, *
+      from ( select oid, unnest(string_to_array(prosrc, e'\n')) as text,
+                    proname as name, 'FUNCTION'::text as type
+               from pg_proc) s;
+
+create view user_views
+   as select c.relname as view_name,
+  pg_catalog.pg_get_userbyid(c.relowner) as owner
+from pg_catalog.pg_class c
+     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+where c.relkind in ('v','')
+      and n.nspname <> 'pg_catalog'
+      and n.nspname <> 'information_schema'
+      and n.nspname !~ '^pg_toast'
+  and pg_catalog.pg_table_is_visible(c.oid);
+
+create view user_ind_columns as
+    select attname as column_name, c1.relname as index_name, c2.relname as table_name
+      from (select unnest(indkey) attno, indexrelid, indrelid from pg_index) s
+           join pg_attribute on attno = attnum and attrelid = indrelid
+           join pg_class c1 on indexrelid = c1.oid
+           join pg_class c2 on indrelid = c2.oid
+           join pg_namespace n on c2.relnamespace = n.oid
+     where attno > 0 and nspname not in ('pg_catalog','information_schema');
 
 -- Oracle dirty functions
 CREATE OR REPLACE FUNCTION oracle.lpad(int, int, int)
