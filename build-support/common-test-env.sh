@@ -17,7 +17,6 @@ NON_GTEST_TESTS_RE=$( regex_from_list "
   compact_on_deletion_collector_test
   db_sanity_test
   merge_test
-  stringappend_test
 ")
 
 # There gtest suites have internal dependencies between tests, so those tests can't be run

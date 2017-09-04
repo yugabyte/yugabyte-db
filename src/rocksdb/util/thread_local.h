@@ -17,10 +17,10 @@
 #include "util/autovector.h"
 #include "port/port.h"
 
-#ifndef ROCKSDB_SUPPORT_THREAD_LOCAL
+#ifndef ROCKSDB_SUPPORT_THREAD_LOCAL  // NOLINT
 #define ROCKSDB_SUPPORT_THREAD_LOCAL \
   !defined(OS_WIN) && !defined(OS_MACOSX) && !defined(IOS_CROSS_COMPILE)
-#endif
+#endif  // NOLINT
 
 namespace rocksdb {
 
@@ -110,8 +110,13 @@ class ThreadLocalPtr {
 
     // Return the next available Id
     uint32_t GetId();
-    // Return the next available Id without claiming it
+
+    // Return the next available Id without claiming it.
     uint32_t PeekId() const;
+
+    // Return next available Ids in the order they will be used without claiming them.
+    std::vector<uint32_t> PeekIds() const;
+
     // Return the given Id back to the free pool. This also triggers
     // UnrefHandler for associated pointer value (if not NULL) for all threads.
     void ReclaimId(uint32_t id);
@@ -203,7 +208,7 @@ class ThreadLocalPtr {
 #if ROCKSDB_SUPPORT_THREAD_LOCAL
     // Thread local storage
     static __thread ThreadData* tls_;
-#endif
+#endif  // NOLINT
 
     // Used to make thread exit trigger possible if !defined(OS_MACOSX).
     // Otherwise, used to retrieve thread data.

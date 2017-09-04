@@ -223,7 +223,7 @@ if [[ $iteration -gt 0 ]]; then
       log "Iteration $iteration logging to $raw_test_log_path"
     fi
     ulimit -c unlimited
-    "${test_wrapper_cmd_line[@]}" &>"$raw_test_log_path"
+    ( set -x; "${test_wrapper_cmd_line[@]}" ) &>"$raw_test_log_path"
   )
   exit_code=$?
   set -e

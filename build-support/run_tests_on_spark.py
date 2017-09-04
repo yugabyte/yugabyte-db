@@ -54,15 +54,15 @@ CTEST_TEST_PROGRAM_RE = re.compile(r'^.* ctest test: \"(.*)\"$')
 
 spark_context = None
 
-# Non-gtest tests where we should not attempt to run --gtest_list_tests. This duplicates a list
-# from common-test-env.sh, but that is probably OK since we should not be adding new such tests.
-NON_GTEST_TESTS = set([
-        'merge-test',
+# Non-gtest tests and tests with internal dependencies that we should run in one shot. This almost
+# duplicates a  from common-test-env.sh, but that is probably OK since we should not be adding new
+# such tests.
+ONE_SHOT_TESTS = set([
+        'merge_test',
         'c_test',
         'compact_on_deletion_collector_test',
         'db_sanity_test',
-        'stringappend_test'
-        'tests-rocksdb/thread_local-test'])
+        'tests-rocksdb/thread_local_test'])
 
 HASH_COMMENT_RE = re.compile('#.*$')
 
@@ -262,10 +262,10 @@ def save_stats(stats_base_dir, results, total_elapsed_time_sec):
         output_file.write("\n")
 
 
-def is_non_gtest_test(rel_binary_path):
-    if rel_binary_path in NON_GTEST_TESTS:
+def is_one_shot_test(rel_binary_path):
+    if rel_binary_path in ONE_SHOT_TESTS:
         return True
-    for non_gtest_test in NON_GTEST_TESTS:
+    for non_gtest_test in ONE_SHOT_TESTS:
         if rel_binary_path.endswith('/' + non_gtest_test):
             return True
     return False
@@ -287,7 +287,7 @@ def collect_cpp_tests(max_tests, cpp_test_program_re_str):
         re_match = CTEST_TEST_PROGRAM_RE.match(line)
         if re_match:
             rel_ctest_prog_path = os.path.relpath(re_match.group(1), global_conf.build_root)
-            if is_non_gtest_test(rel_ctest_prog_path):
+            if is_one_shot_test(rel_ctest_prog_path):
                 test_descriptor_strs.append(rel_ctest_prog_path)
             else:
                 test_programs.append(rel_ctest_prog_path)

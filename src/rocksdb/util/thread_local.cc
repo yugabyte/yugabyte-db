@@ -8,9 +8,14 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "util/thread_local.h"
+
+#include <stdlib.h>
+
+#include <vector>
+#include <algorithm>
+
 #include "util/mutexlock.h"
 #include "port/likely.h"
-#include <stdlib.h>
 
 namespace rocksdb {
 
@@ -56,7 +61,7 @@ void NTAPI WinOnThreadExit(PVOID module, DWORD reason, PVOID reserved) {
   }
 }
 
-}  // wintlscleanup
+}  // namespace wintlscleanup
 
 #ifdef _WIN64
 
@@ -342,6 +347,11 @@ uint32_t ThreadLocalPtr::StaticMeta::PeekId() const {
     return free_instance_ids_.back();
   }
   return next_instance_id_;
+}
+
+std::vector<uint32_t> ThreadLocalPtr::StaticMeta::PeekIds() const {
+  MutexLock l(Mutex());
+  return std::vector<uint32_t>(free_instance_ids_.begin(), free_instance_ids_.end());
 }
 
 void ThreadLocalPtr::StaticMeta::ReclaimId(uint32_t id) {
