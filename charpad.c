@@ -416,19 +416,6 @@ orafce_rpad(PG_FUNCTION_ARGS)
 	ret = (text *) palloc(VARHDRSZ + total_blen);
 	ptr_ret = VARDATA(ret);
 
-	/*
-	 * add a half-width space as a padding necessary to satisfy the required
-	 * output_width
-	 *
-	 * (memory already allocated as reserved by either s1_add_blen
-	 *  or s2_add_blen)
-	 */
-	if (half_space)
-	{
-		memcpy(ptr_ret, spc, hslen);
-		ptr_ret += hslen;
-	}
-
 	/* string1 */
 	while(s1_add_blen > 0)
 	{
@@ -478,6 +465,19 @@ orafce_rpad(PG_FUNCTION_ARGS)
 		/* when get to the end of string2, reset ptr2 back to the start */
 		if (ptr2 == ptr2end)
 			ptr2 = ptr2start;
+	}
+
+	/*
+	 * add a half-width space as a padding necessary to satisfy the required
+	 * output_width
+	 *
+	 * (memory already allocated as reserved by either s1_add_blen
+	 *  or s2_add_blen)
+	 */
+	if (half_space)
+	{
+		memcpy(ptr_ret, spc, hslen);
+		ptr_ret += hslen;
 	}
 
 	SET_VARSIZE(ret, ptr_ret - (char *) ret);
