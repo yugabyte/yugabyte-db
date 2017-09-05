@@ -18,7 +18,9 @@ public class SimpleLoadGenerator {
     // The underlying key is an integer.
     Long key;
     // The randomized loadtester prefix.
-    String keyPrefix = CmdLineOpts.loadTesterUUID.toString();
+    String keyPrefix = (CmdLineOpts.loadTesterUUID != null)
+                           ? CmdLineOpts.loadTesterUUID.toString()
+                           : "key";
 
     public Key(long key, String keyPrefix) {
       this.key = new Long(key);

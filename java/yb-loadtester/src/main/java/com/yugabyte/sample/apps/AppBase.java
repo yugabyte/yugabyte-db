@@ -2,8 +2,6 @@
 
 package com.yugabyte.sample.apps;
 
-import com.yugabyte.cql.PartitionAwarePolicy;
-
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -14,8 +12,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.apache.log4j.Logger;
 
 import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.policies.DCAwareRoundRobinPolicy;
 import com.datastax.driver.core.Session;
+import com.datastax.driver.core.policies.DCAwareRoundRobinPolicy;
+import com.yugabyte.cql.PartitionAwarePolicy;
 import com.yugabyte.sample.common.CmdLineOpts;
 import com.yugabyte.sample.common.CmdLineOpts.Node;
 import com.yugabyte.sample.common.SimpleLoadGenerator;

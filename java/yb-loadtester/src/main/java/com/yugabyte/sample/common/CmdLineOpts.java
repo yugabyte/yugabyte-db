@@ -64,6 +64,9 @@ public class CmdLineOpts {
     if (commandLine.hasOption("uuid")) {
       loadTesterUUID = UUID.fromString(commandLine.getOptionValue("uuid"));
       LOG.info("Using given UUID : " + loadTesterUUID);
+    } else if (commandLine.hasOption("nouuid")) {
+      loadTesterUUID = null;
+      LOG.info("Using NO UUID");
     } else {
       loadTesterUUID = UUID.randomUUID();
       LOG.info("Using a randomly generated UUID : " + loadTesterUUID);
@@ -84,8 +87,9 @@ public class CmdLineOpts {
     if (commandLine.hasOption("read_only")) {
       AppBase.appConfig.readOnly = true;
       readOnly = true;
-      if (!commandLine.hasOption("uuid")) {
-        LOG.error("uuid needs to be provided when using --read-only");
+      if (!commandLine.hasOption("uuid") && !commandLine.hasOption("nouuid")) {
+        LOG.error(
+            "uuid (or nouuid) needs to be provided when using --read-only");
         System.exit(1);
       }
     }
@@ -314,6 +318,9 @@ public class CmdLineOpts {
     options.addOption("verbose", false, "Enable debug level logging.");
 
     options.addOption("uuid", true, "The UUID to use for this loadtester.");
+    options.addOption("nouuid", false,
+                      "Do not use a UUID. Keys will be key:1, key:2, key:3, "
+                          + "instead of <uuid>:1, <uuid>:2, <uuid>:3 etc.");
     options.addOption("reuse_table", false, "Reuse table if it already exists.");
     options.addOption("read_only", false, "Read-only workload. " +
         "Values must have been written previously and uuid must be provided. " +

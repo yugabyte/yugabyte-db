@@ -31,7 +31,10 @@ public class TimeseriesLoadGenerator {
 
   public TimeseriesLoadGenerator(int idx, long dataEmitRateMs, long tableTTLMillis) {
     // Add a unique uuid for each load tester.
-    this.id = idx + "-" + CmdLineOpts.loadTesterUUID;
+
+    this.id = ((CmdLineOpts.loadTesterUUID != null)
+                   ? idx + "-" + CmdLineOpts.loadTesterUUID
+                   : "" + idx);
     this.dataEmitRateMs = dataEmitRateMs;
     this.tableTTLMillis = tableTTLMillis;
   }
