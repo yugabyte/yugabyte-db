@@ -58,12 +58,11 @@ void RedisTableTestBase::PutKeyValue(string key, string value) {
   ASSERT_OK(session_->Flush());
 }
 
-void RedisTableTestBase::PutKeyValueWithTtl(string key, string value, int64_t ttl_msec) {
+void RedisTableTestBase::PutKeyValueWithTtlNoFlush(string key, string value, int64_t ttl_msec) {
   auto set_op = std::make_shared<YBRedisWriteOp>(table_);
   ASSERT_OK(ParseSet(set_op.get(),
       SlicesFromString({"set", key, value, "PX", std::to_string(ttl_msec)})));
   ASSERT_OK(session_->Apply(set_op));
-  ASSERT_OK(session_->Flush());
 }
 
 void RedisTableTestBase::GetKeyValue(
@@ -96,15 +95,16 @@ void RedisTableTestBase::RedisSimpleGetCommands() {
 
 void RedisTableTestBase::RedisTtlSetCommands() {
   session_ = NewSession(/* read_only = */ false);
-  PutKeyValueWithTtl("key456", "value456", 500);
-  PutKeyValueWithTtl("key567", "value567", 1500);
+  PutKeyValueWithTtlNoFlush("key456", "value456", 10000);
+  PutKeyValueWithTtlNoFlush("key567", "value567", 500);
   PutKeyValue("key678", "value678");
+  // The first two commands do not flush the session, but the last command does.
 }
 
 void RedisTableTestBase::RedisTtlGetCommands() {
   session_ = NewSession(/* read_only = */ true);
-  GetKeyValue("key456", "value456", true);
-  GetKeyValue("key567", "value567", false);
+  GetKeyValue("key456", "value456", false);
+  GetKeyValue("key567", "value567", true);
   GetKeyValue("key678", "value678", false);
 }
 

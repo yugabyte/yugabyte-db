@@ -43,7 +43,7 @@ TEST_F(RedisTableTest, SimpleRedisGetTest) {
 
 TEST_F(RedisTableTest, RedisTtlTest) {
   ASSERT_NO_FATALS(RedisTtlSetCommands());
-  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  std::this_thread::sleep_for(std::chrono::milliseconds(2500));
   ASSERT_NO_FATALS(RedisTtlGetCommands());
 }
 
