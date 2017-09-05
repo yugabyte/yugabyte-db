@@ -752,11 +752,20 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 			entry->opcintype[attn] = get_opclass_input_type(opclass);
 
 			/* setup the sort info if am handles it */
-			if ((entry->relam == BTREE_AM_OID) || entry->amcanorder)
+			if (entry->amcanorder)
 			{
+				/* setup NULLS LAST, NULLS FIRST cases are handled below */
+				entry->nulls_first[attn] = false;
+				/* default ordering is ASC */
 				entry->reverse_sort[attn] = (attribute->ordering == SORTBY_DESC);
-				entry->nulls_first[attn] = (attribute->nulls_ordering ==
-										 SORTBY_NULLS_FIRST);
+				/* default null ordering is LAST for ASC, FIRST for DESC */
+				if (attribute->nulls_ordering == SORTBY_NULLS_DEFAULT)
+				{
+					if (attribute->ordering == SORTBY_DESC)
+						entry->nulls_first[attn] = true;
+				}
+				else if (attribute->nulls_ordering == SORTBY_NULLS_FIRST)
+						entry->nulls_first[attn] = true;
 			}
 
 			/* handle index-only scan info */
