@@ -16,9 +16,9 @@
 #include <memory>
 #include <string>
 
-#include "rocksdb/db.h"
-#include "rocksdb/status.h"
-#include "rocksdb/util/statistics.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/util/statistics.h"
 
 #include "yb/common/hybrid_time.h"
 #include "yb/docdb/doc_rowwise_iterator.h"

@@ -14,11 +14,11 @@
 #ifndef YB_DOCDB_DOCDB_ROCKSDB_UTIL_H_
 #define YB_DOCDB_DOCDB_ROCKSDB_UTIL_H_
 
-#include "rocksdb/cache.h"
-#include "rocksdb/db.h"
-#include "rocksdb/include/rocksdb/cache.h"
-#include "rocksdb/include/rocksdb/options.h"
-#include "rocksdb/slice.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/options.h"
+#include "yb/util/slice.h"
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/value.h"

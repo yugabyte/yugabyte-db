@@ -25,7 +25,7 @@
 
 #include <boost/uuid/uuid_io.hpp>
 
-#include "rocksdb/write_batch.h"
+#include "yb/rocksdb/write_batch.h"
 
 #include "yb/client/transaction_rpc.h"
 

@@ -41,7 +41,7 @@
 #include <boost/optional/optional.hpp>
 
 #include <glog/logging.h>
-#include "rocksdb/memory_monitor.h"
+#include "yb/rocksdb/memory_monitor.h"
 #include "yb/client/client.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus_meta.h"

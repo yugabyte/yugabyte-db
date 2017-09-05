@@ -20,8 +20,8 @@
 #include "yb/util/test_util.h"
 #include "yb/util/bytes_formatter.h"
 
-#include "rocksdb/slice.h"
-#include "rocksdb/util/random.h"
+#include "yb/util/slice.h"
+#include "yb/rocksdb/util/random.h"
 
 using std::string;
 using yb::util::FormatBytesAsStr;

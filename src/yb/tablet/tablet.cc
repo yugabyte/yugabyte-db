@@ -44,11 +44,11 @@
 #include <utility>
 #include <vector>
 
-#include "rocksdb/db.h"
-#include "rocksdb/include/rocksdb/options.h"
-#include "rocksdb/statistics.h"
-#include "rocksdb/utilities/checkpoint.h"
-#include "rocksdb/write_batch.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/utilities/checkpoint.h"
+#include "yb/rocksdb/write_batch.h"
 
 #include "yb/cfile/cfile_writer.h"
 #include "yb/common/common.pb.h"

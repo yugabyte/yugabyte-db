@@ -39,10 +39,10 @@
 #include <string>
 #include <vector>
 
-#include "rocksdb/cache.h"
-#include "rocksdb/include/rocksdb/options.h"
-#include "rocksdb/statistics.h"
-#include "rocksdb/write_batch.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/write_batch.h"
 
 #include "yb/tserver/tserver.pb.h"
 

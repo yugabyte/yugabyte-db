@@ -17,8 +17,8 @@
 #include <memory>
 #include <sstream>
 
-#include "rocksdb/table.h"
-#include "rocksdb/util/statistics.h"
+#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/util/statistics.h"
 
 #include "yb/common/hybrid_time.h"
 #include "yb/docdb/doc_key.h"

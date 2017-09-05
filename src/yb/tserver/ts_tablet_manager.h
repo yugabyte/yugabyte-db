@@ -42,8 +42,8 @@
 #include <boost/thread/shared_mutex.hpp>
 #include <gtest/gtest_prod.h>
 
-#include "rocksdb/cache.h"
-#include "rocksdb/include/rocksdb/options.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/options.h"
 #include "yb/client/client_fwd.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/metadata.pb.h"

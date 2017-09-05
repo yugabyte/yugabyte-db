@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-#include "rocksdb/db.h"
+#include "yb/rocksdb/db.h"
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb.h"

@@ -16,9 +16,9 @@
 
 #include <sstream>
 
-#include "rocksdb/status.h"
-#include "rocksdb/types.h"
-#include "rocksdb/write_batch.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/types.h"
+#include "yb/rocksdb/write_batch.h"
 
 namespace yb {
 

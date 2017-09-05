@@ -44,7 +44,7 @@
 #include "yb/util/faststring.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
-#include "rocksdb/slice.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 

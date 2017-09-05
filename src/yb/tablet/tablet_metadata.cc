@@ -38,8 +38,8 @@
 
 #include <gflags/gflags.h>
 #include <boost/optional.hpp>
-#include "rocksdb/db.h"
-#include "rocksdb/include/rocksdb/options.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/options.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/docdb/docdb_rocksdb_util.h"

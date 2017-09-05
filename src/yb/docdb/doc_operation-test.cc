@@ -13,7 +13,7 @@
 
 #include <thread>
 
-#include "rocksdb/statistics.h"
+#include "yb/rocksdb/statistics.h"
 
 #include "yb/common/partial_row.h"
 

@@ -309,4 +309,11 @@ struct SliceMap {
 
 }  // namespace yb
 
+namespace rocksdb {
+
+typedef yb::Slice Slice;
+typedef yb::SliceParts SliceParts;
+
+}  // namespace rocksdb
+
 #endif // YB_UTIL_SLICE_H_

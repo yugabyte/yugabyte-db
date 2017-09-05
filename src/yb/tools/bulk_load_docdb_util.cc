@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#include "rocksdb/include/rocksdb/env.h"
-#include "rocksdb/include/rocksdb/statistics.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/statistics.h"
 #include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/tools/bulk_load_docdb_util.h"

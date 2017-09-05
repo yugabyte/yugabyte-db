@@ -13,7 +13,7 @@
 //
 //
 
-#include "rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db/dbformat.h"
 
 #include "yb/docdb/doc_key.h"
 

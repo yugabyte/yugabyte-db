@@ -15,7 +15,7 @@
 #define YB_ROCKSUTIL_YB_ROCKSDB_LOGGER_H
 
 #include <string>
-#include "rocksdb/env.h"
+#include "yb/rocksdb/env.h"
 
 namespace yb {
 

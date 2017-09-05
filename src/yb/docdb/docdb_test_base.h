@@ -17,7 +17,7 @@
 #include <string>
 #include <vector>
 
-#include "rocksdb/db.h"
+#include "yb/rocksdb/db.h"
 
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/docdb/key_bytes.h"

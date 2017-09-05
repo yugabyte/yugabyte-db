@@ -38,8 +38,8 @@
 
 #include <boost/thread/shared_mutex.hpp>
 
-#include "rocksdb/cache.h"
-#include "rocksdb/memory_monitor.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/memory_monitor.h"
 #include "yb/client/client_fwd.h"
 #include "yb/common/schema.h"
 #include "yb/consensus/log.pb.h"

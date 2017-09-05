@@ -37,8 +37,8 @@
 #include <string>
 #include <vector>
 
-#include "rocksdb/db.h"
-#include "rocksdb/write_batch.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/write_batch.h"
 
 #include "yb/common/schema.h"
 #include "yb/docdb/doc_operation.h"

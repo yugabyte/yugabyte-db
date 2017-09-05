@@ -19,7 +19,7 @@
 #include <glog/logging.h>
 
 #include "yb/util/enums.h"
-#include "rocksdb/slice.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 namespace docdb {

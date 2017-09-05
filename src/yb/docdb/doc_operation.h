@@ -16,7 +16,7 @@
 
 #include <list>
 
-#include "rocksdb/db.h"
+#include "yb/rocksdb/db.h"
 
 #include "yb/common/yql_storage_interface.h"
 #include "yb/docdb/doc_key.h"

@@ -17,7 +17,7 @@
 #include "yb/common/iterator.h"
 #include "yb/tablet/mvcc.h"
 
-#include "rocksdb/db.h"
+#include "yb/rocksdb/db.h"
 
 namespace yb {
 namespace tablet {

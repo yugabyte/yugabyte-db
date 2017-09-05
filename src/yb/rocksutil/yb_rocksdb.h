@@ -17,8 +17,8 @@
 #include <string>
 #include <cstddef>
 
-#include "rocksdb/env.h"
-#include "rocksdb/include/rocksdb/options.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/options.h"
 
 #include "yb/util/compare_util.h"
 #include "yb/util/slice.h"

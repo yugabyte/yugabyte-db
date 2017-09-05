@@ -17,8 +17,8 @@
 
 #include <glog/logging.h>
 
-#include "rocksdb/compaction_filter.h"
-#include "rocksdb/util/string_util.h"
+#include "yb/rocksdb/compaction_filter.h"
+#include "yb/rocksdb/util/string_util.h"
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb-internal.h"

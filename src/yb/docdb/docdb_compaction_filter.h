@@ -18,7 +18,7 @@
 #include <memory>
 #include <vector>
 
-#include "rocksdb/compaction_filter.h"
+#include "yb/rocksdb/compaction_filter.h"
 
 #include "yb/common/schema.h"
 #include "yb/common/hybrid_time.h"

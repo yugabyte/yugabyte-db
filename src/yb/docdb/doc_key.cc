@@ -16,7 +16,7 @@
 #include <memory>
 #include <sstream>
 
-#include "rocksdb/util/string_util.h"
+#include "yb/rocksdb/util/string_util.h"
 
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/doc_path.h"

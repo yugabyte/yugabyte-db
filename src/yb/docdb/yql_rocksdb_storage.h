@@ -14,7 +14,7 @@
 #ifndef YB_DOCDB_YQL_ROCKSDB_STORAGE_H
 #define YB_DOCDB_YQL_ROCKSDB_STORAGE_H
 
-#include "rocksdb/include/rocksdb/db.h"
+#include "yb/rocksdb/db.h"
 #include "yb/common/yql_rowwise_iterator_interface.h"
 #include "yb/common/yql_storage_interface.h"
 

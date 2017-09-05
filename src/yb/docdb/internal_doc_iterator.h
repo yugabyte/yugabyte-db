@@ -16,7 +16,7 @@
 
 #include <memory>
 
-#include "rocksdb/db.h"
+#include "yb/rocksdb/db.h"
 
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/common/doc_hybrid_time.h"

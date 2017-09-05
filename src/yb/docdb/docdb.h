@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-#include "rocksdb/db.h"
+#include "yb/rocksdb/db.h"
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"

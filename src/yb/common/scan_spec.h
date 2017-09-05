@@ -37,7 +37,7 @@
 
 #include "yb/common/scan_predicate.h"
 #include "yb/common/encoded_key.h"
-#include "rocksdb/cache.h"
+#include "yb/rocksdb/cache.h"
 
 namespace yb {
 

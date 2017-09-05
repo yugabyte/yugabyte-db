@@ -13,7 +13,7 @@
 
 #include <iostream>
 
-#include "rocksdb/util/statistics.h"
+#include "yb/rocksdb/util/statistics.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_util.h"
 #include "yb/rocksutil/write_batch_formatter.h"

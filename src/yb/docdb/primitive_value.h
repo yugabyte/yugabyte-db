@@ -20,7 +20,7 @@
 #include <vector>
 #include <ostream>
 
-#include "rocksdb/slice.h"
+#include "yb/util/slice.h"
 
 #include "yb/common/common.pb.h"
 #include "yb/common/hybrid_time.h"

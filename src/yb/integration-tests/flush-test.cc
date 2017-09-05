@@ -13,7 +13,7 @@
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/ts_itest-base.h"
 #include "yb/integration-tests/mini_cluster.h"
-#include "rocksdb/memory_monitor.h"
+#include "yb/rocksdb/memory_monitor.h"
 
 DECLARE_int64(global_memstore_size_percentage);
 DECLARE_int64(global_memstore_size_mb_max);

@@ -15,8 +15,8 @@
 
 #include <memory>
 
-#include "rocksdb/include/rocksdb/rate_limiter.h"
-#include "rocksdb/table.h"
+#include "yb/rocksdb/rate_limiter.h"
+#include "yb/rocksdb/table.h"
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb-internal.h"

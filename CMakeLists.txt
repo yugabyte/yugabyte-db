@@ -968,13 +968,13 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR}/src)
 
 if ("${YB_EDITION}" STREQUAL "enterprise")
   # Enterprise sources have higher priority than community code.
-  include_directories(ent/src ent/src/rocksdb ent/src/rocksdb/include)
+  include_directories(ent/src)
   add_definitions(-DYB_EDITION_NS_PREFIX=enterprise::)
 else()
   add_definitions(-DYB_EDITION_NS_PREFIX=)
 endif()
 
-include_directories(src src/rocksdb src/rocksdb/include)
+include_directories(src)
 
 ############################################################
 # Visibility
@@ -1532,11 +1532,7 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${COMMON_LINKER_FLAGS}")
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${COMMON_LINKER_FLAGS}")
 message("Linker flags common to YB and RocksDB code: ${COMMON_LINKER_FLAGS}")
 
-add_subdirectory(src/rocksdb)
-
-# Disabling the redis codebase build for now (12/2016) because we are not using it directly.
-# add_subdirectory(src/redis)
-
+add_subdirectory(src/yb/rocksdb)
 add_subdirectory(src/cpp_redis)
 add_subdirectory(src/yb/gutil)
 add_subdirectory(src/yb/util)

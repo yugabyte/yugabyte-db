@@ -11,19 +11,19 @@
 // under the License.
 //
 
-#include <rocksdb/db/compaction.h>
 #include "yb/docdb/doc_rowwise_iterator.h"
 
 #include "yb/common/iterator.h"
 #include "yb/common/partition.h"
 #include "yb/docdb/docdb.h"
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_yql_scanspec.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/rocksutil/yb_rocksdb.h"
+#include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_yql_scanspec.h"
 #include "yb/docdb/subdocument.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/rocksdb/db/compaction.h"
+#include "yb/rocksutil/yb_rocksdb.h"
 
 using std::string;
 

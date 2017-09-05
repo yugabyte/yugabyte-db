@@ -21,7 +21,7 @@
 
 #include "yb/docdb/primitive_value.h"
 #include "yb/gutil/strings/substitute.h"
-#include "rocksdb/util/string_util.h"
+#include "yb/rocksdb/util/string_util.h"
 
 namespace yb {
 namespace docdb {

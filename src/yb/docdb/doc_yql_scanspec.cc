@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "rocksdb/db/compaction.h"
+#include "yb/rocksdb/db/compaction.h"
 
 #include "yb/docdb/doc_yql_scanspec.h"
 

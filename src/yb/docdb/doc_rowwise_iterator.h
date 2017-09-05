@@ -17,7 +17,7 @@
 #include <string>
 #include <atomic>
 
-#include "rocksdb/db.h"
+#include "yb/rocksdb/db.h"
 
 #include "yb/common/encoded_key.h"
 #include "yb/common/iterator.h"

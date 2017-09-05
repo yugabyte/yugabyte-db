@@ -19,9 +19,9 @@
 
 #include <boost/container/small_vector.hpp>
 
-#include "rocksdb/env.h"
-#include "rocksdb/filter_policy.h"
-#include "rocksdb/slice.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/filter_policy.h"
+#include "yb/util/slice.h"
 
 #include "yb/common/encoded_key.h"
 #include "yb/common/schema.h"

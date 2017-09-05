@@ -16,7 +16,7 @@
 
 #include <map>
 
-#include "rocksdb/db.h"
+#include "yb/rocksdb/db.h"
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/subdocument.h"

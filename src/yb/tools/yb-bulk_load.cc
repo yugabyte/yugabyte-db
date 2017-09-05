@@ -19,8 +19,8 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
-#include "rocksdb/db.h"
-#include "rocksdb/options.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/options.h"
 #include "yb/client/client.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"

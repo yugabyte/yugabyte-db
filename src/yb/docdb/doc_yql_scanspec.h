@@ -14,7 +14,7 @@
 #ifndef YB_DOCDB_DOC_YQL_SCANSPEC_H
 #define YB_DOCDB_DOC_YQL_SCANSPEC_H
 
-#include "rocksdb/options.h"
+#include "yb/rocksdb/options.h"
 
 #include "yb/common/yql_scanspec.h"
 #include "yb/docdb/doc_key.h"

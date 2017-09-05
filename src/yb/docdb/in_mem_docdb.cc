@@ -15,7 +15,7 @@
 
 #include <sstream>
 
-#include "rocksdb/db.h"
+#include "yb/rocksdb/db.h"
 
 #include "yb/common/hybrid_time.h"
 #include "yb/docdb/docdb.h"

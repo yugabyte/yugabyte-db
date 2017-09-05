@@ -18,7 +18,7 @@
 
 #include <string>
 
-#include "rocksdb/slice.h"
+#include "yb/util/slice.h"
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/doc_hybrid_time.h"
