@@ -262,10 +262,10 @@ void TabletServer::Shutdown() {
   LOG(INFO) << "TabletServer shutting down...";
 
   if (initted_) {
-    scanner_manager_.reset();
     maintenance_manager_->Shutdown();
     WARN_NOT_OK(heartbeater_->Stop(), "Failed to stop TS Heartbeat thread");
     RpcAndWebServerBase::Shutdown();
+    scanner_manager_.reset();
     tablet_manager_->Shutdown();
   }
 
