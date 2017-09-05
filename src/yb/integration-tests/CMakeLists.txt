@@ -30,7 +30,7 @@
 # under the License.
 #
 
-include_directories(../../cpp_redis/includes)
+include_directories(../redisserver/cpp_redis/includes)
 
 set(INTEGRATION_TESTS_SRCS
   cluster_itest_util.cc

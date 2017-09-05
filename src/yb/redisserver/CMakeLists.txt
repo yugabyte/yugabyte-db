@@ -37,9 +37,7 @@ ADD_YB_LIBRARY(redis_service_proto
 # redis server
 #########################################
 
-include_directories(../../redis/src)
-include_directories(../../cpp_redis/includes)
-include_directories(../../redis/deps/lua/src)
+include_directories(cpp_redis/includes)
 
 set(REDISSERVER_SRCS
   redis_encoding.cc
