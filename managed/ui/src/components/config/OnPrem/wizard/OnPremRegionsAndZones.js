@@ -108,9 +108,8 @@ export default class OnPremRegionsAndZones extends Component {
   }
 
   render() {
-    const {handleSubmit, switchToJsonEntry} = this.props;
+    const {handleSubmit, switchToJsonEntry, isEditProvider} = this.props;
     return (
-
       <div className="on-prem-provider-form-container">
         <form name="onPremConfigForm" onSubmit={handleSubmit(this.createOnPremRegionsAndZones)}>
           <div className="on-prem-form-text">
@@ -133,6 +132,7 @@ export default class OnPremRegionsAndZones extends Component {
             </div>
           </div>
           <div className="form-action-button-container">
+            {isEditProvider ? <YBButton btnText={"Cancel"} btnClass={"btn btn-default save-btn cancel-btn"} onClick={this.props.cancelEdit}/> : <span/>}
             {switchToJsonEntry}
             <YBButton btnText={"Finish"} btnType={"submit"} btnClass={"btn btn-default save-btn"}/>
             <YBButton btnText={"Previous"}  btnClass={"btn btn-default back-btn"} onClick={this.props.prevPage}/>

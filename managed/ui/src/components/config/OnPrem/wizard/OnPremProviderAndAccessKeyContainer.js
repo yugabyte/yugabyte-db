@@ -4,7 +4,7 @@ import { connect } from 'react-redux';
 import { reduxForm } from 'redux-form';
 import {OnPremProviderAndAccessKey} from '../../../config';
 import {setOnPremConfigData} from '../../../../actions/cloud';
-import {isDefinedNotNull, isNonEmptyObject} from 'utils/ObjectUtils';
+import {isDefinedNotNull, isNonEmptyObject, isNonEmptyArray} from 'utils/ObjectUtils';
 
 const mapDispatchToProps = (dispatch, ownProps) => {
   return {
@@ -37,13 +37,13 @@ const mapStateToProps = (state, ownProps) => {
           code: item.instanceTypeCode,
           numCores: item.numCores,
           memSizeGB: item.memSizeGB,
-          volumeSizeGB: item.volumeDetailsList[0].volumeSizeGB,
-          mountPath: item.volumeDetailsList.map(function(volItem) {
+          volumeSizeGB: isNonEmptyArray(item.volumeDetailsList) ? item.volumeDetailsList[0].volumeSizeGB : 0,
+          mountPath: isNonEmptyArray(item.volumeDetailsList) ?  item.volumeDetailsList.map(function(volItem) {
             return volItem.mountPath;
-          }).join(", ")
+          }).join(", ") : "/"
         };
       }),
-      regionsZonesList: onPremJsonFormData.regions.map(function(regionZoneItem, rIdx){
+      regionsZonesList: onPremJsonFormData.regions.map(function(regionZoneItem) {
         return {code: regionZoneItem.code,
           location: Number(regionZoneItem.latitude) + ", " + Number(regionZoneItem.longitude),
           zones: regionZoneItem.zones.map(function(zoneItem){
