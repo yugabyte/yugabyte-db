@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import java.util.Collection;
 import java.util.Map;
 
+import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BulkImport;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteNode;
@@ -15,7 +16,6 @@ import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.TaskList;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
@@ -157,30 +157,30 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /**
    * Create a task to mark the change on a universe as success.
    */
-  public TaskList createMarkUniverseUpdateSuccessTasks() {
-    TaskList taskList = new TaskList("FinalizeUniverseUpdate", executor);
+  public SubTaskGroup createMarkUniverseUpdateSuccessTasks() {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("FinalizeUniverseUpdate", executor);
     UniverseUpdateSucceeded.Params params = new UniverseUpdateSucceeded.Params();
     params.universeUUID = taskParams().universeUUID;
     UniverseUpdateSucceeded task = new UniverseUpdateSucceeded();
     task.initialize(params);
-    taskList.addTask(task);
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
   /**
    * Create a task to mark the final software version on a universe.
    */
-  public TaskList createUpdateSoftwareVersionTask(String softwareVersion) {
-    TaskList taskList = new TaskList("FinalizeUniverseUpdate", executor);
+  public SubTaskGroup createUpdateSoftwareVersionTask(String softwareVersion) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("FinalizeUniverseUpdate", executor);
     UpdateSoftwareVersion.Params params = new UpdateSoftwareVersion.Params();
     params.universeUUID = taskParams().universeUUID;
     params.softwareVersion = softwareVersion;
     UpdateSoftwareVersion task = new UpdateSoftwareVersion();
     task.initialize(params);
-    taskList.addTask(task);
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
   /**
@@ -188,8 +188,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param nodes : a collection of nodes that need to be destroyed
    */
-  public TaskList createDestroyServerTasks(Collection<NodeDetails> nodes) {
-    TaskList taskList = new TaskList("AnsibleDestroyServers", executor);
+  public SubTaskGroup createDestroyServerTasks(Collection<NodeDetails> nodes) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleDestroyServers", executor);
     for (NodeDetails node : nodes) {
       NodeTaskParams params = new NodeTaskParams();
       // Set the device information (numVolumes, volumeSize, etc.)
@@ -208,10 +208,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       AnsibleDestroyServer task = new AnsibleDestroyServer();
       task.initialize(params);
       // Add it to the task list.
-      taskList.addTask(task);
+      subTaskGroup.addTask(task);
     }
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
   /**
@@ -221,9 +221,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param nodeState State into which these nodes will be transitioned.
    * @return
    */
-  public TaskList createSetNodeStateTasks(Collection<NodeDetails> nodes,
-                                          NodeDetails.NodeState nodeState) {
-    TaskList taskList = new TaskList("SetNodeState", executor);
+  public SubTaskGroup createSetNodeStateTasks(Collection<NodeDetails> nodes,
+                                              NodeDetails.NodeState nodeState) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("SetNodeState", executor);
     for (NodeDetails node : nodes) {
       SetNodeState.Params params = new SetNodeState.Params();
       params.universeUUID = taskParams().universeUUID;
@@ -232,10 +232,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.state = nodeState;
       SetNodeState task = new SetNodeState();
       task.initialize(params);
-      taskList.addTask(task);
+      subTaskGroup.addTask(task);
     }
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
   /**
@@ -245,14 +245,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param processType, Master/TServer process type
    * @param command, actual command (start, stop, create)
    * @param sleepAfterCmdMillis, number of seconds to sleep after the command execution
-   * @param subTaskGroupType, user subtask type to use for the tasklist
+   * @param subTaskGroupType, user subtask type to use for the SubTaskGroup
    */
   public void createServerControlTask(NodeDetails node,
                                       UniverseDefinitionTaskBase.ServerType processType,
                                       String command,
                                       int sleepAfterCmdMillis,
                                       UserTaskDetails.SubTaskGroupType subTaskGroupType) {
-    TaskList taskList = new TaskList("AnsibleClusterServerCtl", executor);
+    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleClusterServerCtl", executor);
     AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
     // Set the cloud name.
     params.cloud = CloudType.valueOf(node.cloudInfo.cloud);
@@ -272,10 +272,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     AnsibleClusterServerCtl task = new AnsibleClusterServerCtl();
     task.initialize(params);
     // Add it to the task list.
-    taskList.setSubTaskGroupType(subTaskGroupType);
-    taskList.addTask(task);
+    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+    subTaskGroup.addTask(task);
 
-    taskListQueue.add(taskList);
+    subTaskGroupQueue.add(subTaskGroup);
   }
 
   /**
@@ -284,8 +284,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param node node for which we need to update the state
    * @param nodeState State into which these nodes will be transitioned.
    */
-  public TaskList createSetNodeStateTask(NodeDetails node, NodeDetails.NodeState nodeState) {
-    TaskList taskList = new TaskList("SetNodeState", executor);
+  public SubTaskGroup createSetNodeStateTask(NodeDetails node, NodeDetails.NodeState nodeState) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("SetNodeState", executor);
     SetNodeState.Params params = new SetNodeState.Params();
     params.azUuid = node.azUuid;
     params.universeUUID = taskParams().universeUUID;
@@ -293,28 +293,28 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.state = nodeState;
     SetNodeState task = new SetNodeState();
     task.initialize(params);
-    taskList.addTask(task);
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
   /**
    * Create a task to update the swamper target file
    *
    * @param removeFile, flag to state if we want to remove the swamper or not
-   * @param subTask, user subtask type to use for the tasklist
+   * @param subTaskGroupType, user subtask type to use for the SubTaskGroup
    */
   public void createSwamperTargetUpdateTask(boolean removeFile,
-                                            UserTaskDetails.SubTaskGroupType subTask) {
-    TaskList taskList = new TaskList("SwamperTargetFileUpdate", executor);
+                                            UserTaskDetails.SubTaskGroupType subTaskGroupType) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("SwamperTargetFileUpdate", executor);
     SwamperTargetsFileUpdate.Params params = new SwamperTargetsFileUpdate.Params();
     SwamperTargetsFileUpdate task = new SwamperTargetsFileUpdate();
     params.universeUUID = taskParams().universeUUID;
     params.removeFile = removeFile;
     task.initialize(params);
-    taskList.setSubTaskGroupType(subTask);
-    taskList.addTask(task);
-    taskListQueue.add(taskList);
+    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
   }
 
   /**
@@ -323,9 +323,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param tableName name of the table.
    * @param numTablets number of tablets.
    */
-  public TaskList createTableTask(Common.TableType tableType, String tableName, int numTablets,
-                                  TableDetails tableDetails) {
-    TaskList taskList = new TaskList("CreateTable", executor);
+  public SubTaskGroup createTableTask(Common.TableType tableType, String tableName, int numTablets,
+                                      TableDetails tableDetails) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("CreateTable", executor);
     CreateTable task = new CreateTable();
     CreateTable.Params params = new CreateTable.Params();
     params.universeUUID = taskParams().universeUUID;
@@ -334,9 +334,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.tableDetails = tableDetails;
     params.numTablets = numTablets;
     task.initialize(params);
-    taskList.addTask(task);
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
   /**
@@ -344,13 +344,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param params The necessary parameters for dropping a table.
    */
-  public TaskList createDeleteTableFromUniverseTask(DeleteTableFromUniverse.Params params) {
-    TaskList taskList = new TaskList("DeleteTableFromUniverse", executor);
+  public SubTaskGroup createDeleteTableFromUniverseTask(DeleteTableFromUniverse.Params params) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("DeleteTableFromUniverse", executor);
     DeleteTableFromUniverse task = new DeleteTableFromUniverse();
     task.initialize(params);
-    taskList.addTask(task);
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
   /**
@@ -359,8 +359,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param nodes : a collection of nodes that need to be pinged.
    * @param type  : Master or tserver type server running on these nodes.
    */
-  public TaskList createWaitForServersTasks(Collection<NodeDetails> nodes, ServerType type) {
-    TaskList taskList = new TaskList("WaitForServer", executor);
+  public SubTaskGroup createWaitForServersTasks(Collection<NodeDetails> nodes, ServerType type) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForServer", executor);
     for (NodeDetails node : nodes) {
       WaitForServer.Params params = new WaitForServer.Params();
       params.universeUUID = taskParams().universeUUID;
@@ -368,25 +368,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.serverType = type;
       WaitForServer task = new WaitForServer();
       task.initialize(params);
-      taskList.addTask(task);
+      subTaskGroup.addTask(task);
     }
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
   /**
    * Creates a task to persist customized gflags to be used by server processes.
    */
-  public TaskList updateGFlagsPersistTasks(Map<String, String> newGflags) {
-    TaskList taskList = new TaskList("UpdateAndPersistGFlags", executor);
+  public SubTaskGroup updateGFlagsPersistTasks(Map<String, String> newGflags) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("UpdateAndPersistGFlags", executor);
     UpdateAndPersistGFlags.Params params = new UpdateAndPersistGFlags.Params();
     params.universeUUID = taskParams().universeUUID;
     params.newGflags = newGflags;
     UpdateAndPersistGFlags task = new UpdateAndPersistGFlags();
     task.initialize(params);
-    taskList.addTask(task);
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
   /**
@@ -394,25 +394,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param taskParams Info about the table and universe of the table to import into.
    */
-  public TaskList createBulkImportTask(BulkImportParams taskParams) {
-    TaskList taskList = new TaskList("BulkImport", executor);
+  public SubTaskGroup createBulkImportTask(BulkImportParams taskParams) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("BulkImport", executor);
     BulkImport task = new BulkImport();
     task.initialize(taskParams);
-    taskList.addTask(task);
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
-  public TaskList deleteNodeFromUniverseTask(String nodeName) {
-    TaskList taskList = new TaskList("RemoveNodeFromUniverse", executor);
+  public SubTaskGroup deleteNodeFromUniverseTask(String nodeName) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("RemoveNodeFromUniverse", executor);
     NodeTaskParams params = new NodeTaskParams();
     params.nodeName = nodeName;
     params.universeUUID = taskParams().universeUUID;
     params.cloud = taskParams().cloud;
     DeleteNode task = new DeleteNode();
     task.initialize(params);
-    taskList.addTask(task);
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 }

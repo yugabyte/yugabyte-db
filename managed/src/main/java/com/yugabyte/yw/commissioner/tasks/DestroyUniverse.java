@@ -6,8 +6,8 @@ package com.yugabyte.yw.commissioner.tasks;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.yugabyte.yw.commissioner.TaskList;
-import com.yugabyte.yw.commissioner.TaskListQueue;
+import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -20,7 +20,7 @@ public class DestroyUniverse extends UniverseTaskBase {
   public void run() {
     try {
       // Create the task list sequence.
-      taskListQueue = new TaskListQueue(userTaskUUID);
+      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
@@ -38,7 +38,7 @@ public class DestroyUniverse extends UniverseTaskBase {
       createSwamperTargetUpdateTask(true /* removeFile */, SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
-      taskListQueue.run();
+      subTaskGroupQueue.run();
     } catch (Throwable t) {
       // If for any reason destroy fails we would just unlock the universe for update
       try {
@@ -52,8 +52,8 @@ public class DestroyUniverse extends UniverseTaskBase {
     LOG.info("Finished {} task.", getName());
   }
 
-  public TaskList createRemoveUniverseEntryTask() {
-    TaskList taskList = new TaskList("RemoveUniverseEntry", executor);
+  public SubTaskGroup createRemoveUniverseEntryTask() {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("RemoveUniverseEntry", executor);
     UniverseTaskParams params = new UniverseTaskParams();
     // Add the universe uuid.
     params.universeUUID = taskParams().universeUUID;
@@ -61,8 +61,8 @@ public class DestroyUniverse extends UniverseTaskBase {
     RemoveUniverseEntry task = new RemoveUniverseEntry();
     task.initialize(params);
     // Add it to the task list.
-    taskList.addTask(task);
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 }

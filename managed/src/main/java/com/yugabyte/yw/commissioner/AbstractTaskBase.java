@@ -28,7 +28,7 @@ public abstract class AbstractTaskBase implements ITask {
   protected ExecutorService executor;
 
   // The sequence of task lists that should be executed.
-  protected TaskListQueue taskListQueue;
+  protected SubTaskGroupQueue subTaskGroupQueue;
 
   // The UUID of the top-level user-facing task at the top of Task tree. Eg. CreateUniverse, etc.
   protected UUID userTaskUUID;

@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.TaskListQueue;
+import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 
@@ -17,7 +17,7 @@ public class DeleteTable extends UniverseTaskBase {
   public void run() {
     try {
       // Create the task list sequence.
-      taskListQueue = new TaskListQueue(userTaskUUID);
+      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening. Does not alter 'updateSucceeded' flag so as not
@@ -29,7 +29,7 @@ public class DeleteTable extends UniverseTaskBase {
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeletingTable);
 
       // Run all the tasks.
-      taskListQueue.run();
+      subTaskGroupQueue.run();
     } catch (Throwable t) {
       LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
