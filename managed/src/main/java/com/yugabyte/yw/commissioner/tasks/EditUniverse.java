@@ -8,11 +8,11 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import com.yugabyte.yw.commissioner.SubTaskGroup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.yugabyte.yw.commissioner.TaskList;
-import com.yugabyte.yw.commissioner.TaskListQueue;
+import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
@@ -37,7 +37,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       verifyParams();
 
       // Create the task list sequence.
-      taskListQueue = new TaskListQueue(userTaskUUID);
+      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Update the universe DB with the changes to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
@@ -155,7 +155,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
-      taskListQueue.run();
+      subTaskGroupQueue.run();
     } catch (Throwable t) {
       LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
@@ -214,9 +214,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
                                       boolean isAdd,
                                       SubTaskGroupType subTask) {
     // Create a new task list for the change config so that it happens one by one.
-    String taskListName = "ChangeMasterConfig(" + node.nodeName + ", " + (isAdd? "add" : "remove")
-        + ")";
-    TaskList taskList = new TaskList(taskListName, executor);
+    String subtaskGroupName = "ChangeMasterConfig(" + node.nodeName + ", " +
+        (isAdd? "add" : "remove") + ")";
+    SubTaskGroup subTaskGroup = new SubTaskGroup(subtaskGroupName, executor);
     // Create the task params.
     ChangeMasterConfig.Params params = new ChangeMasterConfig.Params();
     // Set the cloud name.
@@ -234,38 +234,38 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     ChangeMasterConfig changeConfig = new ChangeMasterConfig();
     changeConfig.initialize(params);
     // Add it to the task list.
-    taskList.addTask(changeConfig);
+    subTaskGroup.addTask(changeConfig);
     // Add the task list to the task queue.
-    taskListQueue.add(taskList);
+    subTaskGroupQueue.add(subTaskGroup);
     // Configure the user facing subtask for this task list.
-    taskList.setSubTaskGroupType(subTask);
+    subTaskGroup.setSubTaskGroupType(subTask);
   }
 
-  private TaskList createWaitForDataMoveTask() {
-    TaskList taskList = new TaskList("WaitForDataMove", executor);
+  private SubTaskGroup createWaitForDataMoveTask() {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForDataMove", executor);
     WaitForDataMove.Params params = new WaitForDataMove.Params();
     params.universeUUID = taskParams().universeUUID;
     // Create the task.
     WaitForDataMove waitForMove = new WaitForDataMove();
     waitForMove.initialize(params);
     // Add it to the task list.
-    taskList.addTask(waitForMove);
+    subTaskGroup.addTask(waitForMove);
     // Add the task list to the task queue.
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
-  private TaskList createWaitForLoadBalanceTask() {
-    TaskList taskList = new TaskList("WaitForDataMove", executor);
+  private SubTaskGroup createWaitForLoadBalanceTask() {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForDataMove", executor);
     WaitForLoadBalance.Params params = new WaitForLoadBalance.Params();
     params.universeUUID = taskParams().universeUUID;
     // Create the task.
     WaitForLoadBalance waitForLoadBalance = new WaitForLoadBalance();
     waitForLoadBalance.initialize(params);
     // Add it to the task list.
-    taskList.addTask(waitForLoadBalance);
+    subTaskGroup.addTask(waitForLoadBalance);
     // Add the task list to the task queue.
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 }

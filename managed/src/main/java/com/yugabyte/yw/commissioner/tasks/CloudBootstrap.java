@@ -2,8 +2,8 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.TaskList;
-import com.yugabyte.yw.commissioner.TaskListQueue;
+import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudAccessKeySetup;
@@ -29,7 +29,7 @@ public class CloudBootstrap extends CloudTaskBase {
 
   @Override
   public void run() {
-    taskListQueue = new TaskListQueue(userTaskUUID);
+    subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
     taskParams().regionList.forEach(regionCode -> {
       createRegionSetupTask(regionCode)
@@ -40,11 +40,11 @@ public class CloudBootstrap extends CloudTaskBase {
     createInitializerTask()
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
 
-    taskListQueue.run();
+    subTaskGroupQueue.run();
   }
 
-  public TaskList createRegionSetupTask(String regionCode) {
-    TaskList taskList = new TaskList("Create Region task", executor);
+  public SubTaskGroup createRegionSetupTask(String regionCode) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("Create Region task", executor);
 
     CloudRegionSetup.Params params = new CloudRegionSetup.Params();
     params.providerUUID = taskParams().providerUUID;
@@ -53,31 +53,31 @@ public class CloudBootstrap extends CloudTaskBase {
     params.destVpcId = taskParams().destVpcId;
     CloudRegionSetup task = new CloudRegionSetup();
     task.initialize(params);
-    taskList.addTask(task);
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
-  public TaskList createAccessKeySetupTask(String regionCode) {
-    TaskList taskList = new TaskList("Create Access Key", executor);
+  public SubTaskGroup createAccessKeySetupTask(String regionCode) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("Create Access Key", executor);
     CloudAccessKeySetup.Params params = new CloudAccessKeySetup.Params();
     params.providerUUID = taskParams().providerUUID;
     params.regionCode = regionCode;
     CloudAccessKeySetup task = new CloudAccessKeySetup();
     task.initialize(params);
-    taskList.addTask(task);
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
-  public TaskList createInitializerTask() {
-    TaskList taskList = new TaskList("Create Cloud initializer task", executor);
+  public SubTaskGroup createInitializerTask() {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("Create Cloud initializer task", executor);
     CloudInitializer.Params params = new CloudInitializer.Params();
     params.providerUUID = taskParams().providerUUID;
     CloudInitializer task = new CloudInitializer();
     task.initialize(params);
-    taskList.addTask(task);
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 }

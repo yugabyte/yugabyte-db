@@ -1,8 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.TaskList;
-import com.yugabyte.yw.commissioner.TaskListQueue;
+import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudAccessKeyCleanup;
@@ -27,7 +27,7 @@ public class CloudCleanup extends CloudTaskBase {
 
   @Override
   public void run() {
-    taskListQueue = new TaskListQueue(userTaskUUID);
+    subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
     taskParams().regionList.forEach(regionCode -> {
       createAccessKeyCleanupTask(regionCode)
@@ -38,45 +38,45 @@ public class CloudCleanup extends CloudTaskBase {
     createProviderCleanupTask()
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CleanupCloud);
 
-    taskListQueue.run();
+    subTaskGroupQueue.run();
   }
 
-  public TaskList createRegionCleanupTask(String regionCode) {
-    TaskList taskList = new TaskList("Region cleanup task", executor);
+  public SubTaskGroup createRegionCleanupTask(String regionCode) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("Region cleanup task", executor);
 
     CloudRegionCleanup.Params params = new CloudRegionCleanup.Params();
     params.providerUUID = taskParams().providerUUID;
     params.regionCode = regionCode;
     CloudRegionCleanup task = new CloudRegionCleanup();
     task.initialize(params);
-    taskList.addTask(task);
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
-  public TaskList createAccessKeyCleanupTask(String regionCode) {
-    TaskList taskList = new TaskList("Access Key cleanup task", executor);
+  public SubTaskGroup createAccessKeyCleanupTask(String regionCode) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("Access Key cleanup task", executor);
 
     CloudAccessKeyCleanup.Params params = new CloudAccessKeyCleanup.Params();
     params.providerUUID = taskParams().providerUUID;
     params.regionCode = regionCode;
     CloudAccessKeyCleanup task = new CloudAccessKeyCleanup();
     task.initialize(params);
-    taskList.addTask(task);
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
-  public TaskList createProviderCleanupTask() {
-    TaskList taskList = new TaskList("Provider cleanup task", executor);
+  public SubTaskGroup createProviderCleanupTask() {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("Provider cleanup task", executor);
 
     CloudTaskParams params = new CloudTaskParams();
     params.providerUUID = taskParams().providerUUID;
     CloudProviderCleanup task = new CloudProviderCleanup();
     task.initialize(params);
-    taskList.addTask(task);
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
 }
