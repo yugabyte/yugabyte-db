@@ -28,7 +28,7 @@ export default class OnPremProviderAndAccessKey extends Component {
   }
 
   render() {
-    const {handleSubmit, switchToJsonEntry} = this.props;
+    const {handleSubmit, switchToJsonEntry, isEditProvider} = this.props;
     const hostOptionsIndicator =
       <i className={this.state.hostOptionsVisible ? "fa fa-chevron-down": "fa fa-chevron-right"} />;
 
@@ -70,6 +70,7 @@ export default class OnPremProviderAndAccessKey extends Component {
             </Collapse>
           </Row>
           <div className="form-action-button-container">
+            {isEditProvider ? <YBButton btnText={"Cancel"} btnClass={"btn btn-default save-btn cancel-btn"} onClick={this.props.cancelEdit}/> : <span/>}
             {switchToJsonEntry}
             <YBButton btnText={"Next"} btnType={"submit"} btnClass={"btn btn-default save-btn"}/>
           </div>
