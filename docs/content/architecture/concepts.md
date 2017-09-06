@@ -237,6 +237,275 @@ motivation was to prevent operations such as long-running scans (e.g., due to an
 query or background Spark jobs) from polluting the entire cache with poor quality data and wiping
 out useful/hot data.
 
+### DocDB Encoding Overview
+
+DocDB is the storage layer that acts as the common backbone of different APIs that are supported by
+YugaByte (currently CQL and Redis). Every tablet replica has an independent copy of DocDB. In DocDB,
+each stored entity is a Document, which can be one of the following:
+
+* Primitive Values: can be of type string, int64, float, decimal, inetAddress, etc.
+* Objects: a map from Primitive Value to Document.
+
+This model allows multiple levels of nesting, and corresponds to a JSON-like format. Other data
+structures like lists, sorted sets etc. are implemented using Objects with special keys. Currently
+collections made of other collections are not supported, but may be implemented in future using this
+framework. Upto a certain threshold, all updates are stored with timestamps, so that it is possible
+to recover the past state of any document at any point in that timeframe.
+
+#### **Mapping Documents to Key-Value Store**
+
+The documents are stored using a key-value store based on RocksDB, which is typeless. The documents
+are converted to multiple key-value pairs along with timestamps. Because documents are spread across
+many different key-values, it’s possible to partially modify them cheaply.
+
+For example, consider the following document stored in DocDB: 
+
+```
+DocumentKey1 = {
+	SubKey1 = {
+		SubKey2 = Value1
+		SubKey3 = Value2
+	},
+	SubKey4 = Value3
+}
+```
+
+Keys we store in RocksDB consist of a number of components, where the first component is a "document
+key", followed by a few scalar components, and finally followed by a MVCC timestamp (sorted in
+reverse order). Each component in the DocumentKey, SubKey, and Value, are PrimitiveValues, which are
+just (type, value) pairs, which can be encoded to and decoded from strings. When we encode primitive
+values in keys, we use a binary-comparable encoding for the value, so that sort order of the
+encoding is the same as the sort order of the value.
+
+Assume that the example document above was written at time T10 entirely. Internally the above
+example’s document is stored using 5 RocksDB key value pairs:
+
+```
+DocumentKey1, T10 -> {} // This is an init marker
+DocumentKey1, SubKey1, T10 -> {}
+DocumentKey1, SubKey1, SubKey2, T10 -> Value1
+DocumentKey1, SubKey1, SubKey3, T10 -> Value2
+DocumentKey1, SubKey4, T10 -> Value3
+```
+
+Deletions of Documents and SubDocuments are performed by writing a single Tombstone marker at the
+corresponding value. During compaction, overwritten or deleted values are cleaned up to reclaim
+space.
+
+#### **Mapping of CQL rows to Documents**
+
+For CQL tables, every row is a document in DocDB. The Document key contains the full primary key -
+the values of partition (hash) column(s) and clustering (range) column(s), in order. A 16-bit hash
+of the hash portion is also prefixed in the DocKey. The subdocuments within the Document are the
+rest of the columns, whose SubKey is the corresponding column ID. If a column is a non-primitive
+type (such as a map or set), the corresponding subdocument is an Object.
+
+There’s a unique byte for each data type we support in CQL. The values are prefixed with the
+corresponding byte. The type prefix is also present in the primary key’s hash or range components.
+We use a binary-comparable encoding to translate the value for each CQL type to strings that go to
+the KV-Store.
+
+In CQL there are two types of TTL, the table TTL and column level TTL. The column TTLs are stored
+with the value using the same encoding as Redis. The Table TTL is not stored in docdb (it is stored
+in master’s syscatalog as part of the table’s schema). If no TTL is present at the column’s value,
+the table TTL acts as the default value.
+
+Furthermore, CQL has a distinction between rows created using Insert vs Update. We keep track of
+this difference (and row level TTLs) using a "liveness column", a special system column invisible to
+the user. It is added for inserts, but not updates: making sure the row is present even if all
+non-primary key columns are deleted only in the case of inserts.
+
+![cql_row_encoding](/images/cql_row_encoding.png)
+
+**CQL Example: Rows with primitive and collection types**
+
+Consider the following CQL commands:
+
+```sql
+CREATE TABLE msgs (user_id text, 
+                   msg_id int, 
+                   msg text,
+                   msg_props map<text, text>, 
+      PRIMARY KEY ((user_id), msg_id));
+
+T1: INSERT INTO msgs (user_id, msg_id, msg, msg_props) 
+        VALUES ('user1', 10, 'msg1', {'from' : 'a@b.com', 'subject' : 'hello'});
+```
+
+The rows in docdb at this point will look like the following:
+
+```
+(hash1, 'user1', 10), liveness_column_id, T1 -> [NULL]
+(hash1, 'user1', 10), msg_column_id, T1 -> 'msg1'
+(hash1, 'user1', 10), msg_props_column_id, 'from', T1 -> 'a@b.com'
+(hash1, 'user1', 10), msg_props_column_id, 'subject', T1 -> 'hello'
+```
+
+```sql
+T2: UPDATE msgs 
+       SET msg_props = msg_props + {'read_status' : 'true'} 
+     WHERE user_id = 'user1', msg_id = 10
+```
+
+The rows in docdb at this point will look like the following:
+<pre>
+<code>(hash1, 'user1', 10), liveness_column_id, T1 -> [NULL]
+(hash1, 'user1', 10), msg_column_id, T1 -> 'msg1'
+(hash1, 'user1', 10), msg_props_column_id, 'from', T1 -> 'a@b.com'
+<b>(hash1, 'user1', 10), msg_props_column_id, 'read_status', T2 -> 'true'</b>
+(hash1, 'user1', 10), msg_props_column_id, 'subject', T1 -> 'hello'
+</code>
+</pre>
+
+```sql
+T3: INSERT INTO msgs (user_id, msg_id, msg, msg_props) 
+        VALUES (‘user1’, 20, 'msg2', {'from' : 'c@d.com', 'subject' : 'bar'});
+```
+
+The entries in docdb at this point will look like the following:
+
+<pre>
+<code>(hash1, 'user1', 10), liveness_column_id, T1 -> [NULL]
+(hash1, 'user1', 10), msg_column_id, T1 -> 'msg1'
+(hash1, 'user1', 10), msg_props_column_id, 'from', T1 -> 'a@b.com'
+(hash1, 'user1', 10), msg_props_column_id, 'read_status', T2 -> 'true'
+(hash1, 'user1', 10), msg_props_column_id, 'subject', T1 -> 'hello'
+<b>(hash1, 'user1', 20), liveness_column_id, T3 -> [NULL]
+(hash1, 'user1', 20), msg_column_id, T3 -> 'msg2'
+(hash1, 'user1', 20), msg_props_column_id, 'from', T3 -> 'c@d.com'
+(hash1, 'user1', 20), msg_props_column_id, 'subject', T3 -> 'bar'</b></code>
+</pre>
+
+```sql
+T4: DELETE msg_props       // Delete a single column from a row
+      FROM msgs
+     WHERE user_id = 'user1'
+       AND msg_id = 10;
+```
+
+Even though, in the example above, the column being deleted is a non-primitive column (a map), this
+operation only involves adding a delete marker at the correct level, and does not incur any read
+overhead. The logical layout in DocDB at this point is shown below.
+
+<pre>
+<code>(hash1, 'user1', 10), liveness_column_id, T1 -> [NULL]
+(hash1, 'user1', 10), msg_column_id, T1 -> 'msg1'
+<b>(hash1, 'user1', 10), msg_props_column_id, T4 -> [DELETE]</b>
+<s>(hash1, 'user1', 10), msg_props_column_id, 'from', T1 -> 'a@b.com'
+(hash1, 'user1', 10), msg_props_column_id, 'read_status', T2 -> 'true'
+(hash1, 'user1', 10), msg_props_column_id, 'subject', T1 -> 'hello'</s>
+(hash1, 'user1', 20), liveness_column_id, T3 -> [NULL]
+(hash1, 'user1', 20), msg_column_id, T3 -> 'msg2'
+(hash1, 'user1', 20), msg_props_column_id, 'from', T3 -> 'c@d.com'
+(hash1, 'user1', 20), msg_props_column_id, 'subject', T3 -> 'bar'</code>
+</pre>
+*Note: The KVs that are displayed in “strike-through” font are logically deleted.*
+
+Note: The above is not the physical layout per se, as the writes happen in a log-structured manner.
+When compactions happen, the space for the KVs corresponding to the deleted columns is reclaimed, as
+shown below.
+
+<pre>
+<code>(hash1, 'user1', 10), liveness_column_id, T1 -> [NULL]
+(hash1, 'user1', 10), msg_column_id, T1 -> 'msg1'
+(hash1, 'user1', 20), liveness_column_id, T3 -> [NULL]
+(hash1, 'user1', 20), msg_column_id, T3 -> 'msg2'
+(hash1, 'user1', 20), msg_props_column_id, 'from', T3 -> 'c@d.com'
+(hash1, 'user1', 20), msg_props_column_id, 'subject', T3 -> 'bar'
+
+T5: DELETE FROM msgs    // Delete entire row corresponding to msg_id 10
+     WHERE user_id = 'user1'
+            AND msg_id = 10;
+
+<b>(hash1, 'user1', 10), T5 -> [DELETE]</b>
+<s>(hash1, 'user1', 10), liveness_column_id, T1 -> [NULL]
+(hash1, 'user1', 10), msg_column_id, T1 -> 'msg1'</s>
+(hash1, 'user1', 20), liveness_column_id, T3 -> [NULL]
+(hash1, 'user1', 20), msg_column_id, T3 -> 'msg2'
+(hash1, 'user1', 20), msg_props_column_id, 'from', T3 -> 'c@d.com'
+(hash1, 'user1', 20), msg_props_column_id, 'subject', T3 -> 'bar'</code>
+</pre>
+
+**CQL Example #2: Time-To-Live (TTL) Handling**
+
+CQL allows the TTL property to be specified at the level of each INSERT/UPDATE operation. In such
+cases, the TTL is stored as part of the RocksDB value as shown below:
+
+<pre>
+<code>CREATE TABLE page_views (page_id text, 
+                         views int,
+                         category text, 
+     PRIMARY KEY ((page_id)));
+
+T1: INSERT INTO page_views (page_id, views) 
+        VALUES ('abc.com', 10) 
+        <b>USING TTL 86400</b>
+
+// The rows in docdb will look like the following
+
+(hash1, 'abc.com'), liveness_column_id, T1 -> (TTL = 86400) [NULL]
+(hash1, 'abc.com'), views_column_id, T1 -> (TTL = 86400) 10
+
+T2: UPDATE page_views 
+     <b>USING TTL 3600</b>
+       SET category = 'news' 
+     WHERE page_id = 'abc.com';
+
+// The rows in docdb will look like the following
+
+(hash1, 'abc.com'), liveness_column_id, T1 -> (TTL = 86400) [NULL]
+(hash1, 'abc.com'), views_column_id, T1 -> (TTL = 86400) 10
+<b>(hash1, 'abc.com'), category_column_id, T2 -> (TTL = 3600) 'news'</b></code>
+</pre>
+
+**Table Level TTL**: CQL also allows the TTL property to be specified at the table level. In that case,
+we do not store the TTL on a per KV basis in RocksDB; but the TTL is implicitly enforced on reads as
+well as during compactions (to reclaim space).
+
+#### **Mapping Redis Data to Documents**
+
+Redis is a schemaless data store. There is only one primitive type (string) and some collection
+types. In this case, the documents are pretty simple. For primitive values, the document consists of
+only one value. The document key is just a string prefixed with a hash. Redis collections are single
+level documents. Maps correspond to SubDocuments which are discussed above. Sets are stored as maps
+with empty values, and Lists have indexes as keys. For non-primitive values (e.g., hash, set type),
+we store the type in parent level initial value, which is sorted before the subkeys. Any redis value
+can have a TTL, which is stored in the RocksDB-value.
+
+![redis_docdb_overview](/images/redis_docdb_overview.png)
+
+**Redis Example**
+
+| Timestamp | Command                                   | New Key-Value pairs added in RocksDB                                                                            |
+|:---------:|:-----------------------------------------:|:---------------------------------------------------------------------------------------------------------------:|
+|T1         |SET key1 value1 EX 15                      |(h1, key1), T1 -> 15, value1                                                                                     |
+|T2         |HSET key2 subkey1 value1                   |(h2, key2), T2 -> [Redis-Hash-Type]<br/>(h2, key2), subkey1, T2 -> value1                                        |
+|T3         |HSET key2 subkey2 value2                   |(h2, key2), subkey2, T3 -> value2                                                                                |
+|T4         |DEL key2                                   |(h2, key2), T4 -> Tombstone                                                                                      |
+|T5         |HMSET key2 subkey1 new_val1 subkey3 value3 |(h2, key2), T2 -> [Redis-Hash-Type]<br/>(h2, key2), subkey1, T5 -> new_val1<br/>(h2, key2), subkey3, T5 -> value3|
+|T6         |SADD key3 value4 value5                    |(h3, key3), T6 -> [Redis-Set-Type]<br/>(h3, key3), value4, T6 -> [NULL]<br/>(h3, key3), value5, T6 -> [NULL]     |
+|T7         |SADD key3 value6                           |(h3, key3), value6, T7 -> [NULL]                                                                                  |                                                                                  
+
+Although they are added out of order, we get a sorted view of the items in the key value store when
+reading, as shown below:
+
+```
+(h1, key1), T1 -> 15, value1
+(h2, key2), T5 -> [Redis-Hash-Type]
+(h2, key2), T4 -> Tombstone
+(h2, key2), T2 -> [Redis-Hash-Type]
+(h2, key2), subkey1, T5 -> new_val1
+(h2, key2), subkey1, T2 -> value1
+(h2, key2), subkey2, T3 -> value2
+(h2, key2), subkey3, T5 -> value3
+(h3, key3), T6 -> [Redis-Set-Type]
+(h3, key3), value6, T7 -> [NULL]
+(h3, key3), value4, T6 -> [NULL]
+(h3, key3), value5, T6 -> [NULL]
+```
+
+Using an iterator, it is easy to reconstruct the hash and set contents efficiently.
+
 ## YugaByte Query Layer (YQL)
 
 The YQL layer implements the server-side of multiple protocols/APIs that YugaByte supports.
