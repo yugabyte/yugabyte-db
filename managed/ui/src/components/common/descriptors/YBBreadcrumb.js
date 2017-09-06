@@ -5,10 +5,6 @@ import PropTypes from 'prop-types';
 import { Link } from 'react-router';
 
 export default class YBBreadcrumb extends Component {
-  static propTypes = {
-    icon: PropTypes.string.isRequired,
-  };
-
   render() {
     return (
       <span>

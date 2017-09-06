@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import _ from 'lodash';
-import { isValidObject, isDefinedNotNull, isNonEmptyArray } from 'utils/ObjectUtils';
+import { isValidObject, isDefinedNotNull, isNonEmptyArray, isEmptyObject, isNonEmptyObject } from 'utils/ObjectUtils';
 import { OnPremConfigWizardContainer, OnPremConfigJSONContainer, OnPremSuccessContainer } from '../../config';
 import { YBButton } from '../../common/forms/fields';
 import emptyDataCenterConfig from '../templates/EmptyDataCenterConfig.json';
@@ -78,7 +78,18 @@ export default class OnPremConfiguration extends Component {
   }
 
   componentWillReceiveProps(nextProps) {
-    const { cloudBootstrap: {data: { response, type }, error, promiseState}} = nextProps;
+    const { cloudBootstrap: {data: { response, type }, error, promiseState}, accessKeys, cloud: {providers}} = nextProps;
+    let onPremAccessKey = {};
+    if (isNonEmptyArray(accessKeys.data) && isNonEmptyArray(providers.data)) {
+      const onPremProvider = providers.data.find(function(provider) {
+        return provider.code === "onprem";
+      });
+      if (isNonEmptyObject(onPremProvider)) {
+        onPremAccessKey = accessKeys.data.find(function(key) {
+          return key.idKey.providerCode === onPremProvider.uuid;
+        });
+      }
+    }
     const bootstrapSteps = this.state.bootstrapSteps;
     const currentStepIndex = bootstrapSteps.findIndex( (step) => step.type === type );
     if (currentStepIndex !== -1) {
@@ -158,7 +169,7 @@ export default class OnPremConfiguration extends Component {
           // Launch configuration of access keys once all node instances are bootstrapped
           if (numNodesConfigured === config.nodes.length) {
             bootstrapSteps[currentStepIndex + 1].status = "Running";
-            if (config.key && _.isString(config.key.privateKeyContent)) {
+            if (config.key && _.isString(config.key.privateKeyContent) && isEmptyObject(onPremAccessKey)) {
               this.props.createOnPremAccessKeys(this.state.providerUUID, this.state.regionsMap, config);
             }
           }
