@@ -118,6 +118,7 @@ DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
     ((echo, Echo, 2, LOCAL)) \
     ((auth, Auth, -1, LOCAL)) \
     ((config, Config, -1, LOCAL)) \
+    ((info, Info, -1, LOCAL)) \
     ((role, Role, 1, LOCAL)) \
     /**/
 
@@ -667,6 +668,7 @@ class RedisServiceImpl::Impl {
 
 RedisResponsePB ParseEcho(const RedisClientCommand& command) {
   RedisResponsePB responsePB;
+  responsePB.set_code(RedisResponsePB_RedisStatusCode_OK);
   responsePB.set_string_response(command[1].ToBuffer());
   return responsePB;
 }
@@ -692,6 +694,24 @@ RedisResponsePB ParseRole(const RedisClientCommand& command) {
   array_response->add_elements(
       redisserver::EncodeAsArrayOfEncodedElements(std::initializer_list<std::string>()));
   array_response->set_encoded(true);
+  return responsePB;
+}
+
+RedisResponsePB ParseInfo(const RedisClientCommand& command) {
+  RedisResponsePB responsePB;
+  responsePB.set_code(RedisResponsePB_RedisStatusCode_OK);
+  responsePB.set_string_response(
+      "# Replication\r\n"
+      "role:master\r\n"
+      "connected_slaves:0\r\n"
+      "master_replid:0000000000000000000000000000000000000000\r\n"
+      "master_replid2:0000000000000000000000000000000000000000\r\n"
+      "master_repl_offset:0\r\n"
+      "second_repl_offset:-1\r\n"
+      "repl_backlog_active:0\r\n"
+      "repl_backlog_size:0\r\n"
+      "repl_backlog_first_byte_offset:0\r\n"
+      "repl_backlog_histlen:0\r\n");
   return responsePB;
 }
 
