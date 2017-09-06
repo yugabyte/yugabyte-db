@@ -31,17 +31,19 @@ const mapDispatchToProps = (dispatch, ownProps) => {
       });
     },
 
-    createOnPremNodes: (nodePayload, pUUID) => {
-      Object.keys(nodePayload).forEach((zoneUUID, zoneIdx) => {
-        const nodesForZone = nodePayload[zoneUUID];
-        dispatch(createNodeInstances(zoneUUID, nodesForZone)).then((response) => {
-          dispatch(createNodeInstancesResponse(response.payload));
-          if (zoneIdx === Object.keys(nodePayload).length -1) {
-            dispatch(getNodeInstancesForProvider(pUUID)).then((response) => {
-              dispatch(getNodesInstancesForProviderResponse(response.payload));
-            });
-            dispatch(closeDialog());
-          }
+    createOnPremNodes: (nodePayloadData, pUUID) => {
+      nodePayloadData.forEach(function(nodePayload){
+        Object.keys(nodePayload).forEach((zoneUUID, zoneIdx) => {
+          const nodesForZone = nodePayload[zoneUUID];
+          dispatch(createNodeInstances(zoneUUID, nodesForZone)).then((response) => {
+            dispatch(createNodeInstancesResponse(response.payload));
+            if (zoneIdx === Object.keys(nodePayload).length -1) {
+              dispatch(getNodeInstancesForProvider(pUUID)).then((response) => {
+                dispatch(getNodesInstancesForProviderResponse(response.payload));
+              });
+              dispatch(closeDialog());
+            }
+          });
         });
       });
     },
