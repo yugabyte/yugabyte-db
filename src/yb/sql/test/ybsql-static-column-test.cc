@@ -45,6 +45,30 @@ class YbSqlStaticColumn : public YbSqlTestBase {
     ExecSelect(processor, 0);
   }
 
+  void VerifyPaginationSelect(YbSqlProcessor *processor,
+                              const string &select_query,
+                              int page_size,
+                              const string expected_rows) {
+    StatementParameters params;
+    params.set_page_size(page_size);
+    string rows;
+    do {
+      CHECK_OK(processor->Run(select_query, params));
+      std::shared_ptr<YQLRowBlock> row_block = processor->row_block();
+      if (row_block->row_count() > 0) {
+        rows.append(row_block->ToString());
+      } else {
+        // Skip appending empty rowblock but verify it happens only at the last fetch.
+        EXPECT_TRUE(processor->rows_result()->paging_state().empty());
+      }
+      if (processor->rows_result()->paging_state().empty()) {
+        break;
+      }
+      CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));
+    } while (true);
+    EXPECT_EQ(rows, expected_rows);
+  }
+
   // Create test table.
   void CreateTable(YbSqlProcessor *processor) {
     CHECK_VALID_STMT("create table t ("
@@ -211,7 +235,6 @@ TEST_F(YbSqlStaticColumn, TestSelect) {
   }
 }
 
-
 TEST_F(YbSqlStaticColumn, TestPagingSelect) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
@@ -233,71 +256,26 @@ TEST_F(YbSqlStaticColumn, TestPagingSelect) {
   CHECK_VALID_STMT("INSERT INTO t (h, r, s, c) VALUES (2, 2, 5, 22);");
   CHECK_VALID_STMT("INSERT INTO t (h, r, s, c) VALUES (2, 3, 6, 23);");
 
-  // Test seleting all rows and columns. Ensure the static column is not missed across pages.
-  {
-    StatementParameters params;
-    params.set_page_size(1);
-    string rows;
-    do {
-      CHECK_OK(processor->Run("SELECT * FROM t;", params));
-      std::shared_ptr<YQLRowBlock> row_block = processor->row_block();
-      rows.append(row_block->ToString());
-      if (processor->rows_result()->paging_state().empty()) {
-        break;
-      }
-      CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));
-    } while (true);
-    CHECK_EQ(rows,
-             "{ { int32:2, int32:1, int32:6, int32:21 } }"
-             "{ { int32:2, int32:2, int32:6, int32:22 } }"
-             "{ { int32:2, int32:3, int32:6, int32:23 } }"
-             "{ { int32:1, int32:1, int32:3, int32:11 } }"
-             "{ { int32:1, int32:2, int32:3, int32:12 } }"
-             "{ { int32:1, int32:3, int32:3, int32:13 } }"
-             "{  }");
-  }
+  // Test selecting all rows and columns. Ensure the static column is not missed across pages.
+  VerifyPaginationSelect(processor, "SELECT * FROM t;", 1,
+      "{ { int32:2, int32:1, int32:6, int32:21 } }"
+      "{ { int32:2, int32:2, int32:6, int32:22 } }"
+      "{ { int32:2, int32:3, int32:6, int32:23 } }"
+      "{ { int32:1, int32:1, int32:3, int32:11 } }"
+      "{ { int32:1, int32:2, int32:3, int32:12 } }"
+      "{ { int32:1, int32:3, int32:3, int32:13 } }");
 
-  // Test seleting all rows for the non-primary key columns using page-size 2. Ensure the static
+  // Test selecting all rows for the non-primary key columns using page-size 2. Ensure the static
   // column is not missed across pages also.
-  {
-    StatementParameters params;
-    params.set_page_size(2);
-    string rows;
-    do {
-      CHECK_OK(processor->Run("SELECT s, c FROM t;", params));
-      std::shared_ptr<YQLRowBlock> row_block = processor->row_block();
-      rows.append(row_block->ToString());
-      if (processor->rows_result()->paging_state().empty()) {
-        break;
-      }
-      CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));
-    } while (true);
-    CHECK_EQ(rows,
-             "{ { int32:6, int32:21 }, { int32:6, int32:22 } }"
-             "{ { int32:6, int32:23 }, { int32:3, int32:11 } }"
-             "{ { int32:3, int32:12 }, { int32:3, int32:13 } }"
-             "{  }");
-  }
+  VerifyPaginationSelect(processor, "SELECT s, c FROM t;", 2,
+      "{ { int32:6, int32:21 }, { int32:6, int32:22 } }"
+      "{ { int32:6, int32:23 }, { int32:3, int32:11 } }"
+      "{ { int32:3, int32:12 }, { int32:3, int32:13 } }");
 
-  // Test seleting all distinct static columns with page-size 1.
-  {
-    StatementParameters params;
-    params.set_page_size(1);
-    string rows;
-    do {
-      CHECK_OK(processor->Run("SELECT DISTINCT s FROM t;", params));
-      std::shared_ptr<YQLRowBlock> row_block = processor->row_block();
-      rows.append(row_block->ToString());
-      if (processor->rows_result()->paging_state().empty()) {
-        break;
-      }
-      CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));
-    } while (true);
-    CHECK_EQ(rows,
-             "{ { int32:6 } }"
-             "{ { int32:3 } }"
-             "{  }");
-  }
+  // Test selecting all distinct static columns with page-size 1.
+  VerifyPaginationSelect(processor, "SELECT DISTINCT s FROM t;", 1,
+      "{ { int32:6 } }"
+      "{ { int32:3 } }");
 }
 
 } // namespace sql
