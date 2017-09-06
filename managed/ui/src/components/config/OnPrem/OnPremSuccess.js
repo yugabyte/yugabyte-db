@@ -8,7 +8,7 @@ import { YBButton } from '../../common/forms/fields';
 import { Row, Col } from 'react-bootstrap';
 import { getPromiseState } from 'utils/PromiseUtils';
 
-import { isNonEmptyArray, isDefinedNotNull, isEmptyObject, pickArray } from 'utils/ObjectUtils';
+import { isNonEmptyArray, isDefinedNotNull, isEmptyObject, pickArray, isNonEmptyObject } from 'utils/ObjectUtils';
 import { YBConfirmModal } from '../../modals';
 import { DescriptionList } from '../../common/descriptors';
 import { RegionMap, YBMapLegend } from '../../maps';
@@ -76,11 +76,11 @@ class OnPremSuccess extends Component {
       }
       const jsonData = {
         provider: {name: currentProvider.name},
-        key: {
+        key: isNonEmptyObject(onPremAccessKey) ? {
           code: onPremAccessKey.idKey && onPremAccessKey.idKey.keyCode,
           privateKeyContent: onPremAccessKey.keyInfo && onPremAccessKey.keyInfo.privateKey,
           sshUser: onPremAccessKey.keyInfo && onPremAccessKey.keyInfo.sshUser,
-        },
+        } : {},
         regions: onPremRegions.map((regionItem) => {
           return {
             code: regionItem.code,

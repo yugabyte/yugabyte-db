@@ -37,38 +37,53 @@ class OnPremNodesList extends Component {
     const currentCloudAccessKey = accessKeys.data.filter(
       accessKey => accessKey.idKey.providerUUID === onPremProvider.uuid
     ).shift();
-
+    // function to construct list of all zones in current configuration
     const zoneList = currentCloudRegions.reduce(function(azs, r) {
       azs[r.code] = [];
       r.zones.map((z) => azs[r.code][z.code.trim()] = z.uuid);
       return azs;
     }, {});
-    let instanceTypeList = [];
-    if (isNonEmptyObject(vals.instances)) {
-      instanceTypeList = Object.keys(vals.instances).map(function(region) {
-        return vals.instances[region].reduce(function(acc, val) {
-          const currentZone = val.zone.trim();
-          const currentRegion = zoneList[region][currentZone];
-          if (acc[currentRegion]) {
-            val.instanceTypeIPs.split(",").forEach(function(ip){
-              acc[zoneList[region][currentZone]].push({
-                zone: val.zone, region: region, ip: ip.trim(),
-                instanceType: val.machineType,
-                sshUser: currentCloudAccessKey.keyInfo.sshUser
+
+    // function takes in node list and returns node object keyed by zone
+    const getInstancesKeyedByZone = function(instances, region, zoneList) {
+      if (isNonEmptyArray(instances[region])) {
+        return instances[region].reduce(function (acc, val) {
+          if (isNonEmptyObject(val)) {
+            const currentZone = val.zone.trim();
+            const currentZoneUUID = zoneList[region][currentZone];
+            acc[currentZoneUUID] = acc[currentZoneUUID] || [];
+            if (val.instanceTypeIPs) {
+              val.instanceTypeIPs.split(",").forEach((ip) => {
+                acc[currentZoneUUID].push({
+                  zone: currentZone,
+                  region: region,
+                  ip: ip.trim(),
+                  instanceType: val.machineType,
+                  sshUser: isNonEmptyObject(currentCloudAccessKey) ?
+                    currentCloudAccessKey.keyInfo.sshUser : ""
+                });
               });
-            });
-          } else {
-            acc[currentRegion] = val.instanceTypeIPs.split(",").map((ip) =>
-              ({zone: val.zone, region: region, ip: ip.trim(),
-                instanceType: val.machineType,
-                sshUser: currentCloudAccessKey.keyInfo.sshUser})
-            );
+            }
           }
           return acc;
         }, {});
-      });
-      // Submit Node Payload
-      self.props.createOnPremNodes(instanceTypeList[0], onPremProvider.uuid);
+      } else {
+        return null;
+      }
+    };
+
+    // function to construct final payload to be sent to middleware
+    let instanceTypeList = [];
+    if (isNonEmptyObject(vals.instances)) {
+      instanceTypeList = Object.keys(vals.instances).map(function(region) {
+        const instanceListByZone = getInstancesKeyedByZone(vals.instances, region, zoneList);
+        return isNonEmptyObject(instanceListByZone) ? instanceListByZone : null;
+      }).filter(Boolean);
+      if (isNonEmptyArray(instanceTypeList)) {
+        self.props.createOnPremNodes(instanceTypeList, onPremProvider.uuid);
+      } else {
+        this.hideModal();
+      }
     }
     this.props.reset();
   }
