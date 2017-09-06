@@ -47,6 +47,7 @@ export default class OnPremConfiguration extends Component {
     this.showEditProviderForm = this.showEditProviderForm.bind(this);
     this.submitEditProvider = this.submitEditProvider.bind(this);
     this.resetEdit = this.resetEdit.bind(this);
+    this.cancelEdit = this.cancelEdit.bind(this);
   }
 
   componentWillMount() {
@@ -208,6 +209,10 @@ export default class OnPremConfiguration extends Component {
     }
   }
 
+  cancelEdit() {
+    this.setState({isEditProvider: false});
+  }
+
   submitEditProvider(payloadData) {
     const {cloud: {providers}} = this.props;
     const self = this;
@@ -261,7 +266,7 @@ export default class OnPremConfiguration extends Component {
       const providerFound = configuredProviders.data.find(provider => provider.code === 'onprem');
       if (isDefinedNotNull(providerFound)) {
         if (this.state.isEditProvider) {
-          return <OnPremConfigWizardContainer submitWizardJson={this.submitWizardJson} isEditProvider={this.state.isEditProvider} submitEditProvider={this.submitEditProvider}/>;
+          return <OnPremConfigWizardContainer submitWizardJson={this.submitWizardJson} isEditProvider={this.state.isEditProvider} submitEditProvider={this.submitEditProvider} cancelEdit={this.cancelEdit}/>;
         }
         return <OnPremSuccessContainer showEditProviderForm={this.showEditProviderForm} params={params} />;
       }
