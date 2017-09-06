@@ -18,10 +18,12 @@ Dedicated hosts or cloud VMs running Centos 7+ with local or remote attached sto
 - python-pip
 - python-devel
 - python-psutil
+- libsemanage-python
+- policycoreutils-python
 
 Here's the command to install these packages.
 
 ```sh
 # install pre-requisite packages
-sudo yum install epel-release libstdc++ collectd ntp cyrus-sasl-plain cyrus-sasl-devel python-pip python-devel python-psutil
+sudo yum install -y epel-release libstdc++ collectd ntp cyrus-sasl-plain cyrus-sasl-devel python-pip python-devel python-psutil libsemanage-python policycoreutils-python
 ```
