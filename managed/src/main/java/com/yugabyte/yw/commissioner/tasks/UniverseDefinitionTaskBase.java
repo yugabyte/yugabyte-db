@@ -16,7 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.TaskList;
+import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
@@ -175,8 +175,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param nodes : a collection of nodes that need to be created
    */
-  public TaskList createSetupServerTasks(Collection<NodeDetails> nodes) {
-    TaskList taskList = new TaskList("AnsibleSetupServer", executor);
+  public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleSetupServer", executor);
     for (NodeDetails node : nodes) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
@@ -197,10 +197,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
       ansibleSetupServer.initialize(params);
       // Add it to the task list.
-      taskList.addTask(ansibleSetupServer);
+      subTaskGroup.addTask(ansibleSetupServer);
     }
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
   /**
@@ -209,8 +209,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param nodes : a collection of nodes that need to be created
    */
-  public TaskList createServerInfoTasks(Collection<NodeDetails> nodes) {
-    TaskList taskList = new TaskList("AnsibleUpdateNodeInfo", executor);
+  public SubTaskGroup createServerInfoTasks(Collection<NodeDetails> nodes) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleUpdateNodeInfo", executor);
     for (NodeDetails node : nodes) {
       NodeTaskParams params = new NodeTaskParams();
       // Set the device information (numVolumes, volumeSize, etc.)
@@ -227,10 +227,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleUpdateNodeInfo ansibleFindCloudHost = new AnsibleUpdateNodeInfo();
       ansibleFindCloudHost.initialize(params);
       // Add it to the task list.
-      taskList.addTask(ansibleFindCloudHost);
+      subTaskGroup.addTask(ansibleFindCloudHost);
     }
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
   /**
@@ -241,9 +241,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes : a collection of nodes that need to be created
    * @param isMasterInShellMode : true if we are configuring a master node in shell mode
    */
-  public TaskList createConfigureServerTasks(Collection<NodeDetails> nodes,
-                                             boolean isMasterInShellMode) {
-    TaskList taskList = new TaskList("AnsibleConfigureServers", executor);
+  public SubTaskGroup createConfigureServerTasks(Collection<NodeDetails> nodes,
+                                                 boolean isMasterInShellMode) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServers", executor);
     for (NodeDetails node : nodes) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
@@ -266,10 +266,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleConfigureServers task = new AnsibleConfigureServers();
       task.initialize(params);
       // Add it to the task list.
-      taskList.addTask(task);
+      subTaskGroup.addTask(task);
     }
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
   /**
@@ -279,9 +279,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes   : a collection of nodes that need to be created
    * @param isShell : Determines if the masters should be started in shell mode
    */
-  public TaskList createStartMasterTasks(Collection<NodeDetails> nodes,
-                                         boolean isShell) {
-    TaskList taskList = new TaskList("AnsibleClusterServerCtl", executor);
+  public SubTaskGroup createStartMasterTasks(Collection<NodeDetails> nodes,
+                                             boolean isShell) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleClusterServerCtl", executor);
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
       // Set the cloud name.
@@ -301,10 +301,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleClusterServerCtl task = new AnsibleClusterServerCtl();
       task.initialize(params);
       // Add it to the task list.
-      taskList.addTask(task);
+      subTaskGroup.addTask(task);
     }
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
   /**
@@ -313,8 +313,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param nodes : a collection of nodes that need to be created
    */
-  public TaskList createStartTServersTasks(Collection<NodeDetails> nodes) {
-    TaskList taskList = new TaskList("AnsibleClusterServerCtl", executor);
+  public SubTaskGroup createStartTServersTasks(Collection<NodeDetails> nodes) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleClusterServerCtl", executor);
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
       // Set the cloud name.
@@ -334,36 +334,36 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleClusterServerCtl task = new AnsibleClusterServerCtl();
       task.initialize(params);
       // Add it to the task list.
-      taskList.addTask(task);
+      subTaskGroup.addTask(task);
     }
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
-  public TaskList createWaitForMasterLeaderTask() {
-    TaskList taskList = new TaskList("WaitForMasterLeader", executor);
+  public SubTaskGroup createWaitForMasterLeaderTask() {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForMasterLeader", executor);
     WaitForMasterLeader task = new WaitForMasterLeader();
     WaitForMasterLeader.Params params = new WaitForMasterLeader.Params();
     params.universeUUID = taskParams().universeUUID;
     task.initialize(params);
-    taskList.addTask(task);
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
   /**
    * Creates a task list to wait for a minimum number of tservers to heartbeat
    * to the master leader.
    */
-  public TaskList createWaitForTServerHeartBeatsTask() {
-    TaskList taskList = new TaskList("WaitForTServerHeartBeats", executor);
+  public SubTaskGroup createWaitForTServerHeartBeatsTask() {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForTServerHeartBeats", executor);
     WaitForTServerHeartBeats task = new WaitForTServerHeartBeats();
     WaitForTServerHeartBeats.Params params = new WaitForTServerHeartBeats.Params();
     params.universeUUID = taskParams().universeUUID;
     task.initialize(params);
-    taskList.addTask(task);
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
   /**
@@ -372,8 +372,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param blacklistNodes    list of nodes which are being decommissioned.
    */
-  public TaskList createPlacementInfoTask(Collection<NodeDetails> blacklistNodes) {
-    TaskList taskList = new TaskList("UpdatePlacementInfo", executor);
+  public SubTaskGroup createPlacementInfoTask(Collection<NodeDetails> blacklistNodes) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("UpdatePlacementInfo", executor);
     UpdatePlacementInfo.Params params = new UpdatePlacementInfo.Params();
     // Set the cloud name.
     params.cloud = taskParams().userIntent.providerType;
@@ -393,9 +393,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     UpdatePlacementInfo task = new UpdatePlacementInfo();
     task.initialize(params);
     // Add it to the task list.
-    taskList.addTask(task);
-    taskListQueue.add(taskList);
-    return taskList;
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
   /**

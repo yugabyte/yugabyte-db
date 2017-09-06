@@ -5,27 +5,21 @@ package com.yugabyte.yw.commissioner;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.libs.Json;
 
-public class TaskList implements Runnable {
+public class SubTaskGroup implements Runnable {
 
-  public static final Logger LOG = LoggerFactory.getLogger(TaskList.class);
+  public static final Logger LOG = LoggerFactory.getLogger(SubTaskGroup.class);
 
   // User facing subtask. If this field is 'Invalid', the state of this task list  should
   // not be exposed to the user. Note that multiple task lists can be combined into a single user
@@ -61,7 +55,7 @@ public class TaskList implements Runnable {
    * @param name     : Name for the task list, used to name the threads.
    * @param executor : The threadpool to run the task on.
    */
-  public TaskList(String name, ExecutorService executor) {
+  public SubTaskGroup(String name, ExecutorService executor) {
     this.name = name;
     this.executor = executor;
     this.taskMap = new HashMap<>();
