@@ -173,7 +173,8 @@ TEST_F(MultiThreadedLogTest, TestAppends) {
 
   gscoped_ptr<LogReader> reader;
   ASSERT_OK(LogReader::Open(fs_manager_.get(), NULL, kTestTablet,
-                            fs_manager_->GetFirstTabletWalDirOrDie(kTestTablet), NULL, &reader));
+                            fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
+                            NULL, &reader));
   SegmentSequence segments;
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
 

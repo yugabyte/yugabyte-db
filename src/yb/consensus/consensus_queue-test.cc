@@ -58,6 +58,7 @@ namespace consensus {
 
 static const char* kLeaderUuid = "peer-0";
 static const char* kPeerUuid = "peer-1";
+static const char* kTestTable = "test-table";
 static const char* kTestTablet = "test-tablet";
 
 class ConsensusQueueTest : public YBTest {
@@ -77,7 +78,7 @@ class ConsensusQueueTest : public YBTest {
     CHECK_OK(log::Log::Open(log::LogOptions(),
                             fs_manager_.get(),
                             kTestTablet,
-                            fs_manager_->GetFirstTabletWalDirOrDie(kTestTablet),
+                            fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
                             schema_,
                             0, // schema_version
                             NULL,

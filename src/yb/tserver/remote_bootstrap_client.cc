@@ -508,12 +508,25 @@ Status RemoteBootstrapClient::DownloadWALs() {
 
   // Delete and recreate WAL dir if it already exists, to ensure stray files are
   // not kept from previous bootstraps and runs.
-  const string& path = meta_->wal_dir();
-  if (fs_manager_->env()->FileExists(path)) {
-    RETURN_NOT_OK(fs_manager_->env()->DeleteRecursively(path));
+  const string& wal_dir = meta_->wal_dir();
+  if (fs_manager_->env()->FileExists(wal_dir)) {
+    RETURN_NOT_OK(fs_manager_->env()->DeleteRecursively(wal_dir));
   }
-  RETURN_NOT_OK(fs_manager_->env()->CreateDir(path));
-  RETURN_NOT_OK(fs_manager_->env()->SyncDir(DirName(path))); // fsync() parent dir.
+  auto wal_table_top_dir = DirName(wal_dir);
+  RETURN_NOT_OK_PREPEND(fs_manager_->CreateDirIfMissing(wal_table_top_dir),
+                        Substitute("Failed to create WAL table directory $0", wal_table_top_dir));
+
+  // fsync() parent dir.
+  RETURN_NOT_OK_PREPEND(fs_manager_->env()->SyncDir(DirName(wal_table_top_dir)),
+                        Substitute("Failed to sync WAL root directory $0",
+                                   DirName(wal_table_top_dir)));
+
+  RETURN_NOT_OK_PREPEND(fs_manager_->env()->CreateDir(wal_dir),
+                        Substitute("Failed to create WAL tablet directory $0", wal_dir));
+
+  // fsync() parent dir.
+  RETURN_NOT_OK_PREPEND(fs_manager_->env()->SyncDir(wal_table_top_dir),
+                        Substitute("Failed to sync WAL table directory $0", wal_table_top_dir));
 
   // Download the WAL segments.
   int num_segments = wal_seqnos_.size();
@@ -533,11 +546,18 @@ Status RemoteBootstrapClient::DownloadWALs() {
 Status RemoteBootstrapClient::DownloadRocksDBFiles() {
   gscoped_ptr<TabletSuperBlockPB> new_sb(new TabletSuperBlockPB());
   new_sb->CopyFrom(*superblock_);
-  auto rocksdb_dir = meta_->rocksdb_dir();
+  const auto& rocksdb_dir = meta_->rocksdb_dir();
   // Replace rocksdb_dir with our rocksdb_dir
   new_sb->set_rocksdb_dir(rocksdb_dir);
+
+  // Create the directory table-uuid first.
+  RETURN_NOT_OK_PREPEND(meta_->fs_manager()->CreateDirIfMissing(DirName(rocksdb_dir)),
+                        Substitute("Failed to create RocksDB table directory $0",
+                                   DirName(rocksdb_dir)));
+
   RETURN_NOT_OK_PREPEND(meta_->fs_manager()->CreateDirIfMissing(rocksdb_dir),
-                        "Failed to create RocksDB directory for the tablet")
+                        Substitute("Failed to create RocksDB tablet directory $0",
+                                   rocksdb_dir));
 
   for (auto const& file_pb : new_sb->rocksdb_files()) {
     WritableFileOptions opts;

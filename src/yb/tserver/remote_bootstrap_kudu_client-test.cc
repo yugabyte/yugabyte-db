@@ -30,7 +30,7 @@
 // under the License.
 //
 
-#include "remote_bootstrap_client-test.h"
+#include "yb/tserver/remote_bootstrap_client-test.h"
 
 using std::shared_ptr;
 
@@ -75,7 +75,9 @@ TEST_F(RemoteBootstrapKuduClientTest, TestDownloadBlock) {
 
 // Basic WAL segment download unit test.
 TEST_F(RemoteBootstrapKuduClientTest, TestDownloadWalSegment) {
-  ASSERT_OK(fs_manager_->CreateDirIfMissing(fs_manager_->GetFirstTabletWalDirOrDie(GetTabletId())));
+  auto wal_dir = fs_manager_->GetFirstTabletWalDirOrDie(GetTableId(), GetTabletId());
+  ASSERT_OK(fs_manager_->CreateDirIfMissing(DirName(wal_dir)));
+  ASSERT_OK(fs_manager_->CreateDirIfMissing(wal_dir));
 
   uint64_t seqno = client_->wal_seqnos_[0];
   const string path = fs_manager_->GetWalSegmentFileName(meta_->wal_dir(), seqno);

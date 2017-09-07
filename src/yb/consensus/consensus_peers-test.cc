@@ -55,6 +55,7 @@ using log::Log;
 using log::LogOptions;
 using log::LogAnchorRegistry;
 
+const char* kTableId = "test-peers-table";
 const char* kTabletId = "test-peers-tablet";
 const char* kLeaderUuid = "peer-0";
 const char* kFollowerUuid = "peer-1";
@@ -75,7 +76,7 @@ class ConsensusPeersTest : public YBTest {
     CHECK_OK(Log::Open(options_,
                        fs_manager_.get(),
                        kTabletId,
-                       fs_manager_->GetFirstTabletWalDirOrDie(kTabletId),
+                       fs_manager_->GetFirstTabletWalDirOrDie(kTableId, kTabletId),
                        schema_,
                        0, // schema_version
                        NULL,

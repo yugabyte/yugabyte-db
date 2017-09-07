@@ -13,7 +13,7 @@
 
 #include <algorithm>
 
-#include "remote_bootstrap_client-test.h"
+#include "yb/tserver/remote_bootstrap_client-test.h"
 
 
 using std::shared_ptr;
@@ -72,7 +72,8 @@ TEST_F(RemoteBootstrapRocksDBClientTest, TestDownloadRocksDBFiles) {
     auto tablet_peer_rocksdb_file_path = JoinPathSegments(tablet_peer_checkpoint_dir,
                                                           tablet_peer_rocksdb_file);
 
-    LOG(INFO) << "Comparing file " << local_rocksdb_file_path << " and file " << tablet_peer_rocksdb_file_path;
+    LOG(INFO) << "Comparing file " << local_rocksdb_file_path
+              << " and file " << tablet_peer_rocksdb_file_path;
     ASSERT_OK(CompareFileContents(local_rocksdb_file_path, tablet_peer_rocksdb_file_path));
   }
 }

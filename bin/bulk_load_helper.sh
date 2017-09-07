@@ -105,7 +105,7 @@ for replica in "${REPLICAS[@]}"; do
   remote_tablet_data_dir=""
   for data_dir in "${data_dir_arr[@]}"; do
     remote_tablet_data_dir=$(eval $ssh_cmd_prefix@$replica "find $data_dir/data/rocksdb/ -name \
-    $tablet_id")
+    \"*$tablet_id\"")
     if [[ ! -z $remote_tablet_data_dir ]]; then
       break;
     fi

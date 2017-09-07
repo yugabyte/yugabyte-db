@@ -198,7 +198,7 @@ Status FsManager::Init() {
   }
 
   // All done, use the map to set the canonicalized state.
-  for (const string& wal_fs_root: wal_fs_roots_) {
+  for (const auto& wal_fs_root : wal_fs_roots_) {
     canonicalized_wal_fs_roots_.insert(FindOrDie(canonicalized_roots, wal_fs_root));
   }
   if (!data_fs_roots_.empty()) {
@@ -470,10 +470,12 @@ string FsManager::GetInstanceMetadataPath(const string& root) const {
   return JoinPathSegments(root, kInstanceMetadataFileName);
 }
 
-string FsManager::GetFirstTabletWalDirOrDie(const std::string& tablet_id) const {
+string FsManager::GetFirstTabletWalDirOrDie(const std::string& table_id,
+                                            const std::string& tablet_id) const {
   auto wal_root_dirs = GetWalRootDirs();
   CHECK(!wal_root_dirs.empty()) << "No WAL directories specified";
-  return JoinPathSegments(wal_root_dirs[0], tablet_id);
+  auto table_wal_dir = JoinPathSegments(wal_root_dirs[0], Substitute("table-$0", table_id));
+  return JoinPathSegments(table_wal_dir, Substitute("tablet-$0", tablet_id));
 }
 
 string FsManager::GetTabletWalRecoveryDir(const string& tablet_wal_path) const {

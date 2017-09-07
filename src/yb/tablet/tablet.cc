@@ -313,8 +313,14 @@ Status Tablet::OpenKeyValueTablet() {
   const string db_dir = metadata()->rocksdb_dir();
   LOG(INFO) << "Creating RocksDB database in dir " << db_dir;
 
+  // Create the directory table-uuid first.
+  RETURN_NOT_OK_PREPEND(metadata()->fs_manager()->CreateDirIfMissing(DirName(db_dir)),
+                        Substitute("Failed to create RocksDB table directory $0",
+                                   DirName(db_dir)));
+
   RETURN_NOT_OK_PREPEND(metadata()->fs_manager()->CreateDirIfMissing(db_dir),
-                        "Failed to create RocksDB directory for the tablet");
+                        Substitute("Failed to create RocksDB tablet directory $0",
+                                   db_dir));
 
   LOG(INFO) << "Opening RocksDB at: " << db_dir;
   rocksdb::DB* db = nullptr;

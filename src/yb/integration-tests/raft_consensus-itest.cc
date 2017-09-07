@@ -414,7 +414,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
   void TestRemoveTserverFailsWhenServerInTransition(RaftPeerPB::MemberType member_type);
   void TestRemoveTserverInTransitionSucceeds(RaftPeerPB::MemberType member_type);
 
-  shared_ptr<YBTable> table_;
+  const shared_ptr<YBTable> table_ = nullptr;
   std::vector<scoped_refptr<yb::Thread> > threads_;
   CountDownLatch inserters_;
 };
@@ -750,6 +750,7 @@ void RaftConsensusITest::CauseFollowerToFallBehindLogGC(string* leader_uuid,
 
   LOG(INFO) << "Waiting for log GC on " << leader->uuid();
   // Some WAL segments must exist, but wal segment 1 must not exist.
+
   ASSERT_OK(inspect_->WaitForFilePatternInTabletWalDirOnTs(
       leader_index, tablet_id_, { "wal-" }, { "wal-000000001" }));
 

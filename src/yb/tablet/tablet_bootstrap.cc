@@ -566,8 +566,11 @@ Status TabletBootstrap::PrepareRecoveryDir(bool* needs_recovery) {
                             "Could not recursively delete old log dir " + log_dir);
     }
 
+    RETURN_NOT_OK_PREPEND(fs_manager->CreateDirIfMissing(DirName(log_dir)),
+                          "Failed to create table log directory " + DirName(log_dir));
+
     RETURN_NOT_OK_PREPEND(fs_manager->CreateDirIfMissing(log_dir),
-                          "Failed to create log directory " + log_dir);
+                          "Failed to create tablet log directory " + log_dir);
 
     *needs_recovery = true;
     return Status::OK();
@@ -576,8 +579,11 @@ Status TabletBootstrap::PrepareRecoveryDir(bool* needs_recovery) {
   // If we made it here, there was no pre-existing recovery dir.
   // Now we look for log files in log_dir, and if we find any then we rename
   // the whole log_dir to a recovery dir and return needs_recovery = true.
+  RETURN_NOT_OK_PREPEND(fs_manager->CreateDirIfMissing(DirName(log_dir)),
+                        "Failed to create table log directory " + DirName(log_dir));
+
   RETURN_NOT_OK_PREPEND(fs_manager->CreateDirIfMissing(log_dir),
-                        "Failed to create log dir");
+                        "Failed to create tablet log directory " + log_dir);
 
   vector<string> children;
   RETURN_NOT_OK_PREPEND(fs_manager->ListDir(log_dir, &children),

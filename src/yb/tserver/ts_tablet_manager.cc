@@ -355,14 +355,14 @@ Status TSTabletManager::Init() {
       RETURN_NOT_OK(HandleNonReadyTabletOnStartup(meta));
       if (meta->tablet_data_state() == TABLET_DATA_TOMBSTONED) {
         RegisterDataAndWalDir(fs_manager_, meta->table_id(), meta->tablet_id(),
-                      meta->table_type(), meta->data_root_dir(),
-                      meta->wal_root_dir());
+                              meta->table_type(), meta->data_root_dir(),
+                              meta->wal_root_dir());
       }
       continue;
     }
     RegisterDataAndWalDir(fs_manager_, meta->table_id(), meta->tablet_id(),
-                      meta->table_type(), meta->data_root_dir(),
-                      meta->wal_root_dir());
+                          meta->table_type(), meta->data_root_dir(),
+                          meta->wal_root_dir());
     metas.push_back(meta);
   }
 
@@ -1313,7 +1313,7 @@ void TSTabletManager::UnregisterDataWalDir(const string& table_id,
                                            const TableType table_type,
                                            const string& data_root_dir,
                                            const string& wal_root_dir) {
-// Skip sys catalog table and kudu table from modifying the map.
+  // Skip sys catalog table and kudu table from modifying the map.
   if (table_id == master::kSysCatalogTableId || table_type == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     return;
   }

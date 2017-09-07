@@ -33,12 +33,13 @@
 #ifndef YB_FS_FS_MANAGER_H
 #define YB_FS_FS_MANAGER_H
 
-#include <gtest/gtest_prod.h>
 #include <iosfwd>
 #include <memory>
 #include <set>
 #include <string>
 #include <vector>
+
+#include <gtest/gtest_prod.h>
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
@@ -108,6 +109,7 @@ struct FsManagerOpts {
 //    <yb.root.dir>/data/<prefix-0>/<prefix-2>/<prefix-4>/<name>
 class FsManager {
  public:
+  static const char *kWalDirName;
   static const char *kWalFileNamePrefix;
   static const char *kWalsRecoveryDirSuffix;
   static const char *kRocksDBDirName;
@@ -159,7 +161,8 @@ class FsManager {
   std::vector<std::string> GetWalRootDirs() const;
 
   // Used for tests only. If GetWalRootDirs returns an empty vector, we will crash the process.
-  std::string GetFirstTabletWalDirOrDie(const std::string& tablet_id) const;
+  std::string GetFirstTabletWalDirOrDie(const std::string& table_id,
+                                        const std::string& tablet_id) const;
 
   std::string GetTabletWalRecoveryDir(const std::string& tablet_wal_path) const;
 
@@ -248,7 +251,6 @@ class FsManager {
 
   static const char *kDataDirName;
   static const char *kTabletMetadataDirName;
-  static const char *kWalDirName;
   static const char *kCorruptedSuffix;
   static const char *kInstanceMetadataFileName;
   static const char *kInstanceMetadataMagicNumber;
@@ -290,4 +292,4 @@ class FsManager {
 
 } // namespace yb
 
-#endif
+#endif  // YB_FS_FS_MANAGER_H

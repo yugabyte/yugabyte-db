@@ -111,6 +111,10 @@ class RemoteBootstrapTest : public TabletServerTestBase {
     return tablet_peer_->permanent_uuid();
   }
 
+  std::string GetTableId() const {
+    return tablet_peer_->tablet()->metadata()->table_id();
+  }
+
   const std::string& GetTabletId() const {
     return tablet_peer_->tablet()->tablet_id();
   }

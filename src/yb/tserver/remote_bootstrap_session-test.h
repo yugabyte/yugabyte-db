@@ -113,7 +113,8 @@ class RemoteBootstrapTest : public YBTabletTest {
   void SetUpTabletPeer() {
     scoped_refptr<Log> log;
     CHECK_OK(Log::Open(LogOptions(), fs_manager(), tablet()->tablet_id(),
-                       fs_manager()->GetFirstTabletWalDirOrDie(tablet()->tablet_id()),
+                       fs_manager()->GetFirstTabletWalDirOrDie(tablet()->metadata()->table_id(),
+                                                               tablet()->tablet_id()),
                        *tablet()->schema(),
                        0,  // schema_version
                        NULL, &log));

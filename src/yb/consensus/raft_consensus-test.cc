@@ -71,6 +71,7 @@ using ::testing::Mock;
 using ::testing::Property;
 using ::testing::Return;
 
+const char* kTestTable = "TestTable";
 const char* kTestTablet = "TestTablet";
 const char* kLocalPeerUuid = "peer-0";
 
@@ -211,7 +212,7 @@ class RaftConsensusTest : public YBTest {
     CHECK_OK(Log::Open(LogOptions(),
                        fs_manager_.get(),
                        kTestTablet,
-                       fs_manager_->GetFirstTabletWalDirOrDie(kTestTablet),
+                       fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
                        schema_,
                        0, // schema_version
                        NULL,

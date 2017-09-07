@@ -81,6 +81,7 @@ using rpc::RpcContext;
 using strings::Substitute;
 using strings::SubstituteAndAppend;
 
+const char* kTestTable = "TestTable";
 const char* kTestTablet = "TestTablet";
 
 void DoNothing(std::shared_ptr<consensus::StateChangeContext> context) {
@@ -125,7 +126,7 @@ class RaftConsensusQuorumTest : public YBTest {
       RETURN_NOT_OK(Log::Open(LogOptions(),
                               fs_manager.get(),
                               kTestTablet,
-                              fs_manager->GetFirstTabletWalDirOrDie(kTestTablet),
+                              fs_manager->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
                               schema_,
                               0, // schema_version
                               NULL,
@@ -410,7 +411,8 @@ class RaftConsensusQuorumTest : public YBTest {
     EXPECT_OK(log::LogReader::Open(fs_managers_[idx],
                                    scoped_refptr<log::LogIndex>(),
                                    kTestTablet,
-                                   fs_managers_[idx]->GetFirstTabletWalDirOrDie(kTestTablet),
+                                   fs_managers_[idx]->GetFirstTabletWalDirOrDie(kTestTable,
+                                                                                kTestTablet),
                                    metric_entity_.get(),
                                    &log_reader));
     log::LogEntries ret;

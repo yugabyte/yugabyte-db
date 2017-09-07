@@ -103,38 +103,30 @@ Status TabletMetadata::CreateNew(FsManager* fs_manager,
   if (fs_manager->env()->FileExists(fs_manager->GetTabletMetadataPath(tablet_id))) {
     return STATUS(AlreadyPresent, "Tablet already exists", tablet_id);
   }
-  string rocksdb_dir;
-  string wal_dir;
-  string rocksdb_top_dir;
+
+  auto wal_top_dir = wal_root_dir;
+  auto data_top_dir = data_root_dir;
   // Use the original randomized logic if the indices are not explicitly passed in
-  if (data_root_dir.empty() || wal_root_dir.empty()) {
-    yb::Random rand(GetCurrentTimeMicros());
-    if (data_root_dir.empty()) {
-      auto data_root_dirs = fs_manager->GetDataRootDirs();
-      CHECK(!data_root_dirs.empty()) << "No data root directories found";
-      rocksdb_top_dir = JoinPathSegments(data_root_dirs[rand.Uniform(data_root_dirs.size())],
-                                         FsManager::kRocksDBDirName);
-    } else {
-      rocksdb_top_dir = JoinPathSegments(data_root_dir, FsManager::kRocksDBDirName);
-    }
-
-    if (wal_root_dir.empty()) {
-      auto wal_root_dirs = fs_manager->GetWalRootDirs();
-      CHECK(!wal_root_dirs.empty()) << "No wal root directories found";
-      wal_dir = JoinPathSegments(wal_root_dirs[rand.Uniform(wal_root_dirs.size())], tablet_id);
-    } else {
-      wal_dir = JoinPathSegments(wal_root_dir, tablet_id);
-    }
-  } else {
-    wal_dir = JoinPathSegments(wal_root_dir, tablet_id);
-    rocksdb_top_dir = JoinPathSegments(data_root_dir, FsManager::kRocksDBDirName);
+  yb::Random rand(GetCurrentTimeMicros());
+  if (data_root_dir.empty()) {
+    auto data_root_dirs = fs_manager->GetDataRootDirs();
+    CHECK(!data_root_dirs.empty()) << "No data root directories found";
+    data_top_dir = data_root_dirs[rand.Uniform(data_root_dirs.size())];
   }
 
-  // Do we need this check anymore?
-  if (table_type != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    // Determine the data dir to use for this tablet. Pick one of the data dirs at random.
-    rocksdb_dir = JoinPathSegments(rocksdb_top_dir, tablet_id);
+  if (wal_root_dir.empty()) {
+    auto wal_root_dirs = fs_manager->GetWalRootDirs();
+    CHECK(!wal_root_dirs.empty()) << "No wal root directories found";
+    wal_top_dir = wal_root_dirs[rand.Uniform(wal_root_dirs.size())];
   }
+
+  auto wal_table_top_dir = JoinPathSegments(wal_top_dir, Substitute("table-$0", table_id));
+  auto wal_dir = JoinPathSegments(wal_table_top_dir, Substitute("tablet-$0", tablet_id));
+
+  auto rocksdb_top_dir = JoinPathSegments(data_top_dir, FsManager::kRocksDBDirName);
+  auto rocksdb_table_top_dir = JoinPathSegments(rocksdb_top_dir, Substitute("table-$0", table_id));
+  auto rocksdb_dir = JoinPathSegments(rocksdb_table_top_dir, Substitute("tablet-$0", tablet_id));
+
   scoped_refptr<TabletMetadata> ret(new TabletMetadata(fs_manager,
                                                        table_id,
                                                        tablet_id,
@@ -731,7 +723,11 @@ string TabletMetadata::data_root_dir() const {
   if (rocksdb_dir_.empty()) {
     return "";
   } else {
-    return DirName(DirName(rocksdb_dir_));
+    auto data_root_dir = DirName(DirName(rocksdb_dir_));
+    if (strcmp(BaseName(data_root_dir).c_str(), FsManager::kRocksDBDirName) == 0) {
+      data_root_dir = DirName(data_root_dir);
+    }
+    return data_root_dir;
   }
 }
 
@@ -739,7 +735,11 @@ string TabletMetadata::wal_root_dir() const {
   if (wal_dir_.empty()) {
     return "";
   } else {
-    return DirName(wal_dir_);
+    auto wal_root_dir = DirName(wal_dir_);
+    if (strcmp(BaseName(wal_root_dir).c_str(), FsManager::kWalDirName) != 0) {
+      wal_root_dir = DirName(wal_root_dir);
+    }
+    return wal_root_dir;
   }
 }
 

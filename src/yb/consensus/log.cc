@@ -269,7 +269,11 @@ Status Log::Open(const LogOptions &options,
                  const scoped_refptr<MetricEntity>& metric_entity,
                  scoped_refptr<Log>* log) {
 
-  RETURN_NOT_OK(fs_manager->CreateDirIfMissing(tablet_wal_path));
+  RETURN_NOT_OK_PREPEND(fs_manager->CreateDirIfMissing(DirName(tablet_wal_path)),
+                        Substitute("Failed to create table wal dir $0", DirName(tablet_wal_path)));
+
+  RETURN_NOT_OK_PREPEND(fs_manager->CreateDirIfMissing(tablet_wal_path),
+                        Substitute("Failed to create tablet wal dir $0", tablet_wal_path));
 
   scoped_refptr<Log> new_log(new Log(options,
                                      fs_manager,
@@ -847,6 +851,7 @@ Status Log::DeleteOnDiskData(FsManager* fs_manager,
   if (!env->FileExists(tablet_wal_path)) {
     return Status::OK();
   }
+  LOG(INFO) << Substitute("Deleting WAL dir $0 for tablet $1", tablet_wal_path, tablet_id);
   RETURN_NOT_OK_PREPEND(env->DeleteRecursively(tablet_wal_path),
                         "Unable to recursively delete WAL dir for tablet " + tablet_id);
   return Status::OK();

@@ -140,21 +140,27 @@ Status FsTool::ListAllLogSegments() {
     std::cout << "Root log directory: " << wals_dir << std::endl;
 
     vector<string> children;
-    RETURN_NOT_OK_PREPEND(fs_manager_->ListDir(wals_dir, &children),
-                          "Could not list log directories");
-    for (const string& child : children) {
-      if (HasPrefixString(child, ".")) {
-        // Hidden files or ./..
-        VLOG(1) << "Ignoring hidden file in root log directory " << child;
-        continue;
+    vector<string> tables;
+    RETURN_NOT_OK_PREPEND(fs_manager_->ListDir(wals_dir, &tables),
+                          "Could not list table directories");
+    for (const auto &table : tables) {
+      auto table_wal_dir = JoinPathSegments(wals_dir, table);
+      RETURN_NOT_OK_PREPEND(fs_manager_->ListDir(table_wal_dir, &children),
+                            "Could not list log directories");
+      for (const string &child : children) {
+        if (HasPrefixString(child, ".")) {
+          // Hidden files or ./..
+          VLOG(1) << "Ignoring hidden file in root log directory " << child;
+          continue;
+        }
+        string path = JoinPathSegments(table_wal_dir, child);
+        if (HasSuffixString(child, FsManager::kWalsRecoveryDirSuffix)) {
+          std::cout << "Log recovery dir found: " << path << std::endl;
+        } else {
+          std::cout << "Log directory: " << path << std::endl;
+        }
+        RETURN_NOT_OK(ListSegmentsInDir(path));
       }
-      string path = JoinPathSegments(wals_dir, child);
-      if (HasSuffixString(child, FsManager::kWalsRecoveryDirSuffix)) {
-        std::cout << "Log recovery dir found: " << path << std::endl;
-      } else {
-        std::cout << "Log directory: " << path << std::endl;
-      }
-      RETURN_NOT_OK(ListSegmentsInDir(path));
     }
   }
   return Status::OK();
