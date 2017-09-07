@@ -11,4 +11,8 @@ public class PublicCloudConstants {
     Dedicated,
     Host
   }
+  public enum EBSType {
+    IO1,
+    GP2
+  }
 }

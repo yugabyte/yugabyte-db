@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
@@ -251,7 +252,8 @@ public class NodeManager extends DevopsBase {
           if (deviceInfo.ebsType != null && nodeTaskParam.cloud == Common.CloudType.aws) {
             commandArgs.add("--volume_type");
             commandArgs.add(deviceInfo.ebsType.toString().toLowerCase());
-            if (deviceInfo.ebsType.equals(DeviceInfo.EBSType.IO1) && deviceInfo.diskIops != null) {
+            if (deviceInfo.ebsType.equals(PublicCloudConstants.EBSType.IO1) &&
+                deviceInfo.diskIops != null) {
               commandArgs.add("--disk_iops");
               commandArgs.add(Integer.toString(deviceInfo.diskIops));
             }

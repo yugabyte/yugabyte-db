@@ -2,12 +2,9 @@
 
 package com.yugabyte.yw.models.helpers;
 
-public class DeviceInfo {
+import com.yugabyte.yw.cloud.PublicCloudConstants;
 
-  public enum EBSType {
-    IO1,
-    GP2
-  }
+public class DeviceInfo {
 
   // The size of each volume in each instance (if specified).
   public Integer volumeSize;
@@ -22,7 +19,7 @@ public class DeviceInfo {
   public String mountPoints;
 
   // The type of EBS volumes attached to this instance (null if instance volume type is not EBS).
-  public EBSType ebsType;
+  public PublicCloudConstants.EBSType ebsType;
   
   public String toString() {
     StringBuilder sb = new StringBuilder("DeviceInfo: ");
@@ -31,7 +28,7 @@ public class DeviceInfo {
     sb.append(", mountPoints=").append(mountPoints);
     if (ebsType != null) {
       sb.append(", ebsType=").append(ebsType);
-      if (ebsType.equals(EBSType.IO1) && diskIops != null) {
+      if (ebsType.equals(PublicCloudConstants.EBSType.IO1) && diskIops != null) {
         sb.append(", iops=").append(diskIops);
       }
     }

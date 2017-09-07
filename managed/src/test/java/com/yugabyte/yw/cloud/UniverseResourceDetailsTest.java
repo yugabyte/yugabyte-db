@@ -106,7 +106,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   }
 
   private UniverseDefinitionTaskParams setUpValidEBS(Iterator<NodeDetails> mockIterator,
-                                                     DeviceInfo.EBSType ebsType) {
+                                                     PublicCloudConstants.EBSType ebsType) {
 
     // Set up instance type
     InstanceType.upsert(provider.code, testInstanceType, 10, 5.5, null);
@@ -200,7 +200,8 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   @Test
   public void testAddPriceToDetailsIO1() throws Exception {
     Iterator<NodeDetails> mockIterator = mock(Iterator.class);
-    UniverseDefinitionTaskParams params = setUpValidEBS(mockIterator, DeviceInfo.EBSType.IO1);
+    UniverseDefinitionTaskParams params = setUpValidEBS(mockIterator,
+        PublicCloudConstants.EBSType.IO1);
 
     UniverseResourceDetails details = new UniverseResourceDetails();
     details.addPrice(params);
@@ -216,7 +217,8 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   @Test
   public void testAddPriceToDetailsGP2() throws Exception {
     Iterator<NodeDetails> mockIterator = mock(Iterator.class);
-    UniverseDefinitionTaskParams params = setUpValidEBS(mockIterator, DeviceInfo.EBSType.GP2);
+    UniverseDefinitionTaskParams params = setUpValidEBS(mockIterator,
+        PublicCloudConstants.EBSType.GP2);
 
     UniverseResourceDetails details = new UniverseResourceDetails();
     details.addPrice(params);
