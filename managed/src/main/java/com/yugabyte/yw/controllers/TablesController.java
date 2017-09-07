@@ -137,6 +137,7 @@ public class TablesController extends AuthenticatedController {
       YBClient client = ybService.getClient(masterAddresses);
       GetTableSchemaResponse schemaResponse = client.getTableSchemaByUUID(
           tableUUID.toString().replace("-", ""));
+      ybService.closeClient(client, masterAddresses);
       if (schemaResponse == null) {
         String errMsg = "No table for UUID: " + tableUUID;
         LOG.error(errMsg);
@@ -191,24 +192,25 @@ public class TablesController extends AuthenticatedController {
   }
 
   public Result universeList(UUID customerUUID, UUID universeUUID) {
+
+    // Validate customer UUID
+    if (Customer.get(customerUUID) == null) {
+      String errMsg = "Invalid Customer UUID: " + customerUUID;
+      LOG.error(errMsg);
+      return ApiResponse.error(BAD_REQUEST, errMsg);
+    }
+
+    // Validate universe UUID and retrieve master addresses
+    final String masterAddresses = Universe.get(universeUUID).getMasterAddresses();
+    if (masterAddresses.isEmpty()) {
+      String errMsg = "Expected error. Masters are not currently queryable.";
+      LOG.warn(errMsg);
+      return ok(errMsg);
+    }
+
+    YBClient client = null;
     try {
-
-      // Validate customer UUID
-      if (Customer.get(customerUUID) == null) {
-        String errMsg = "Invalid Customer UUID: " + customerUUID;
-        LOG.error(errMsg);
-        return ApiResponse.error(BAD_REQUEST, errMsg);
-      }
-
-      // Validate universe UUID and retrieve master addresses
-      final String masterAddresses = Universe.get(universeUUID).getMasterAddresses();
-      if (masterAddresses.isEmpty()) {
-        String errMsg = "Expected error. Masters are not currently queryable.";
-        LOG.warn(errMsg);
-        return ok(errMsg);
-      }
-
-      YBClient client = ybService.getClient(masterAddresses);
+      client = ybService.getClient(masterAddresses);
       ListTablesResponse response = client.getTablesList();
       List<TableInfo> tableInfoList = response.getTableInfoList();
       ArrayNode resultNode = Json.newArray();
@@ -232,6 +234,8 @@ public class TablesController extends AuthenticatedController {
     } catch (Exception e) {
       LOG.error("Failed to get list of tables in universe " + universeUUID, e);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+    } finally {
+      ybService.closeClient(client, masterAddresses);
     }
   }
 
@@ -262,6 +266,7 @@ public class TablesController extends AuthenticatedController {
       YBClient client = ybService.getClient(masterAddresses);
       GetTableSchemaResponse response = client.getTableSchemaByUUID(
         tableUUID.toString().replace("-", ""));
+      ybService.closeClient(client, masterAddresses);
 
       return ok(Json.toJson(createFromResponse(universe, tableUUID, response)));
     } catch (IllegalArgumentException e) {

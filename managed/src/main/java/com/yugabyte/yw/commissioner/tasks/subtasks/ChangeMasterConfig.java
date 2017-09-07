@@ -88,6 +88,8 @@ public class ChangeMasterConfig extends AbstractTaskBase {
                    node.masterRpcPort;
       LOG.error(msg, e);
       throw new RuntimeException(msg);
+    } finally {
+      ybService.closeClient(client, masterAddresses);
     }
     // If there was an error, throw an exception.
     if (response.hasError()) {

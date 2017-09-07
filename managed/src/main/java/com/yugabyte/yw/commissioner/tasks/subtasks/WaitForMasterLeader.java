@@ -46,13 +46,16 @@ public class WaitForMasterLeader extends AbstractTaskBase {
   @Override
   public void run() {
     String hostPorts = Universe.get(taskParams().universeUUID).getMasterAddresses();
+    YBClient client = null;
     try {
       LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
-      YBClient client = ybService.getClient(hostPorts);
+      client = ybService.getClient(hostPorts);
       client.waitForMasterLeader(TIMEOUT_SERVER_WAIT_MS);
     } catch (Exception e) {
       LOG.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
+    } finally {
+      ybService.closeClient(client, hostPorts);
     }
   }
 }

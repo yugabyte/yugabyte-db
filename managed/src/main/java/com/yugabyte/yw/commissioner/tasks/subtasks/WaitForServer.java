@@ -58,6 +58,7 @@ public class WaitForServer extends AbstractTaskBase {
       throw new IllegalArgumentException("Unexpected server type " + taskParams().serverType);
     }
     String hostPorts = Universe.get(taskParams().universeUUID).getMasterAddresses();
+    YBClient client = null;
     try {
       LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
       NodeDetails node = Universe.get(taskParams().universeUUID).getNode(taskParams().nodeName);
@@ -75,11 +76,13 @@ public class WaitForServer extends AbstractTaskBase {
       HostAndPort hp = HostAndPort.fromParts(
           node.cloudInfo.private_ip,
           taskParams().serverType == ServerType.MASTER ? node.masterRpcPort : node.tserverRpcPort);
-      YBClient client = ybService.getClient(hostPorts);
+      client = ybService.getClient(hostPorts);
       ret = client.waitForServer(hp, TIMEOUT_SERVER_WAIT_MS);
     } catch (Exception e) {
       LOG.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
+    } finally {
+      ybService.closeClient(client, hostPorts);
     }
     if (!ret) {
       throw new RuntimeException(getName() + " did not respond to pings in the set time.");
