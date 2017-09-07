@@ -5,6 +5,7 @@ package com.yugabyte.yw.controllers;
 import java.util.List;
 import java.util.UUID;
 
+import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -143,6 +144,6 @@ public class InstanceTypeController extends AuthenticatedController {
    * @return a list of all supported types of EBS volumes.
    */
   public Result getEBSTypes() {
-    return ok(Json.toJson(DeviceInfo.EBSType.values()));
+    return ok(Json.toJson(PublicCloudConstants.EBSType.values()));
   }
 }
