@@ -58,6 +58,7 @@ public class WaitForTServerHeartBeats extends AbstractTaskBase {
     LOG.info("Running {}: hostPorts={}, numTservers={}.", getName(), hostPorts, numTservers);
     int numTries = 1;
     long start = System.currentTimeMillis();
+    boolean timedOut = false;
     do {
       try {
         int currentNumTservers = client.listTabletServers().getTabletServersCount();
@@ -65,7 +66,7 @@ public class WaitForTServerHeartBeats extends AbstractTaskBase {
         LOG.info("{} tservers heartbeating to master leader.", currentNumTservers);
 
         if (currentNumTservers >= numTservers) {
-          return;
+          break;
         }
 
         LOG.info("Waiting to make sure {} tservers are heartbeating to master leader; retrying " +
@@ -76,8 +77,13 @@ public class WaitForTServerHeartBeats extends AbstractTaskBase {
       } catch (Exception e) {
         LOG.warn("{}: ignoring error '{}'.", getName(), e.getMessage());
       }
-    } while (System.currentTimeMillis() < start + TIMEOUT_SERVER_WAIT_MS);
+      timedOut = System.currentTimeMillis() >= start + TIMEOUT_SERVER_WAIT_MS;
+    } while (!timedOut);
 
-    throw new RuntimeException(getName() + " timed out.");
+    ybService.closeClient(client, hostPorts);
+
+    if (timedOut) {
+      throw new RuntimeException(getName() + " timed out.");
+    }
   }
 }

@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.services.YBClientService;
 
+import org.yb.client.YBClient;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -26,16 +27,20 @@ public class TabletServerController extends AuthenticatedController {
    */
   public Result list() {
     ObjectNode result = Json.newObject();
+    YBClient client = null;
 
     try {
-        ListTabletServersResponse response = ybService.getClient(null).listTabletServers();
-        result.put("count", response.getTabletServersCount());
-        ArrayNode tabletServers = result.putArray("servers");
-        response.getTabletServersList().forEach(tabletServer->{
-            tabletServers.add(tabletServer.getHost());
-        });
+      client = ybService.getClient(null);
+      ListTabletServersResponse response = client.listTabletServers();
+      result.put("count", response.getTabletServersCount());
+      ArrayNode tabletServers = result.putArray("servers");
+      response.getTabletServersList().forEach(tabletServer->{
+        tabletServers.add(tabletServer.getHost());
+      });
     } catch (Exception e) {
-        return internalServerError("Error: " + e.getMessage());
+      return internalServerError("Error: " + e.getMessage());
+    } finally {
+      ybService.closeClient(client, null);
     }
 
     return ok(result);

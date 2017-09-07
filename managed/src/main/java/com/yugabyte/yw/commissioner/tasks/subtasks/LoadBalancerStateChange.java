@@ -12,6 +12,7 @@ import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 
+import org.yb.client.YBClient;
 import play.api.Play;
 
 // This class runs the task that helps modify the load balancer state maintained
@@ -48,14 +49,18 @@ public class LoadBalancerStateChange extends UniverseTaskBase {
   @Override
   public void run() {
     ChangeLoadBalancerStateResponse resp;
+    YBClient client = null;
+    Universe universe = Universe.get(taskParams().universeUUID);
+    String masterHostPorts = universe.getMasterAddresses();
     try {
-      Universe universe = Universe.get(taskParams().universeUUID);
-      String masterHostPorts = universe.getMasterAddresses();
       LOG.info("Running {}: masterHostPorts={}.", getName(), masterHostPorts);
-      resp = ybService.getClient(masterHostPorts).changeLoadBalancerState(taskParams().enable);
+      client = ybService.getClient(masterHostPorts);
+      resp = client.changeLoadBalancerState(taskParams().enable);
     } catch (Exception e) {
       LOG.error("{} hit exception : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
+    } finally {
+      ybService.closeClient(client, masterHostPorts);
     }
 
     if (resp != null && resp.hasError()) {
