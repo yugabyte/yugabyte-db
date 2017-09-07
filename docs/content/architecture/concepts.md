@@ -126,8 +126,6 @@ lazily in the background.
 
 ## Data persistence with DocDB
 
-[TODO] Add detailed docdb diagrams.
-
 DocDB is YugaByte’s Log Structured Merge tree (LSM) based storage engine. Once data is replicated
 via Raft  across a majority of the tablet-peers, it is applied to each tablet peer’s local DocDB.
 
@@ -147,9 +145,9 @@ structures like lists, sorted sets etc. are implemented using DocDB’s object t
 encodings. In DocDB, timestamps of each update are recorded carefully, so that it is possible to
 recover the state of any document at some point in the past.
 
-YugaByte’s DocDB uses a highly customized version of [RocksDB](http://rocksdb.org/), a log-structured merge tree (LSM)
-based key-value store. The primary motivation behind the enhancements or customizations to RocksDB
-are described below:
+YugaByte’s DocDB uses a highly customized version of [RocksDB](http://rocksdb.org/), a
+log-structured merge tree (LSM) based key-value store. The primary motivation behind the
+enhancements or customizations to RocksDB are described below:
 
 * **Efficient implementation of a row/document model on top of a KV store**: To implement a flexible data
   model- such as a row (comprising of columns), or collections types (such as list, map, set) with
@@ -240,17 +238,7 @@ out useful/hot data.
 ### DocDB Encoding Overview
 
 DocDB is the storage layer that acts as the common backbone of different APIs that are supported by
-YugaByte (currently CQL and Redis). Every tablet replica has an independent copy of DocDB. In DocDB,
-each stored entity is a Document, which can be one of the following:
-
-* Primitive Values: can be of type string, int64, float, decimal, inetAddress, etc.
-* Objects: a map from Primitive Value to Document.
-
-This model allows multiple levels of nesting, and corresponds to a JSON-like format. Other data
-structures like lists, sorted sets etc. are implemented using Objects with special keys. Currently
-collections made of other collections are not supported, but may be implemented in future using this
-framework. Upto a certain threshold, all updates are stored with timestamps, so that it is possible
-to recover the past state of any document at any point in that timeframe.
+YugaByte (currently CQL and Redis).
 
 #### **Mapping Documents to Key-Value Store**
 
@@ -306,7 +294,7 @@ We use a binary-comparable encoding to translate the value for each CQL type to 
 the KV-Store.
 
 In CQL there are two types of TTL, the table TTL and column level TTL. The column TTLs are stored
-with the value using the same encoding as Redis. The Table TTL is not stored in docdb (it is stored
+with the value using the same encoding as Redis. The Table TTL is not stored in DocDB (it is stored
 in master’s syscatalog as part of the table’s schema). If no TTL is present at the column’s value,
 the table TTL acts as the default value.
 
@@ -322,17 +310,17 @@ non-primary key columns are deleted only in the case of inserts.
 Consider the following CQL commands:
 
 ```sql
-CREATE TABLE msgs (user_id text, 
-                   msg_id int, 
+CREATE TABLE msgs (user_id text,
+                   msg_id int,
                    msg text,
-                   msg_props map<text, text>, 
+                   msg_props map<text, text>,
       PRIMARY KEY ((user_id), msg_id));
 
-T1: INSERT INTO msgs (user_id, msg_id, msg, msg_props) 
+T1: INSERT INTO msgs (user_id, msg_id, msg, msg_props)
         VALUES ('user1', 10, 'msg1', {'from' : 'a@b.com', 'subject' : 'hello'});
 ```
 
-The rows in docdb at this point will look like the following:
+The entries in DocDB at this point will look like the following:
 
 ```
 (hash1, 'user1', 10), liveness_column_id, T1 -> [NULL]
@@ -342,12 +330,12 @@ The rows in docdb at this point will look like the following:
 ```
 
 ```sql
-T2: UPDATE msgs 
-       SET msg_props = msg_props + {'read_status' : 'true'} 
+T2: UPDATE msgs
+       SET msg_props = msg_props + {'read_status' : 'true'}
      WHERE user_id = 'user1', msg_id = 10
 ```
 
-The rows in docdb at this point will look like the following:
+The entries in DocDB at this point will look like the following:
 <pre>
 <code>(hash1, 'user1', 10), liveness_column_id, T1 -> [NULL]
 (hash1, 'user1', 10), msg_column_id, T1 -> 'msg1'
@@ -362,7 +350,7 @@ T3: INSERT INTO msgs (user_id, msg_id, msg, msg_props)
         VALUES (‘user1’, 20, 'msg2', {'from' : 'c@d.com', 'subject' : 'bar'});
 ```
 
-The entries in docdb at this point will look like the following:
+The entries in DocDB at this point will look like the following:
 
 <pre>
 <code>(hash1, 'user1', 10), liveness_column_id, T1 -> [NULL]
@@ -432,26 +420,26 @@ CQL allows the TTL property to be specified at the level of each INSERT/UPDATE o
 cases, the TTL is stored as part of the RocksDB value as shown below:
 
 <pre>
-<code>CREATE TABLE page_views (page_id text, 
+<code>CREATE TABLE page_views (page_id text,
                          views int,
-                         category text, 
+                         category text,
      PRIMARY KEY ((page_id)));
 
-T1: INSERT INTO page_views (page_id, views) 
-        VALUES ('abc.com', 10) 
+T1: INSERT INTO page_views (page_id, views)
+        VALUES ('abc.com', 10)
         <b>USING TTL 86400</b>
 
-// The rows in docdb will look like the following
+// The entries in DocDB will look like the following
 
 (hash1, 'abc.com'), liveness_column_id, T1 -> (TTL = 86400) [NULL]
 (hash1, 'abc.com'), views_column_id, T1 -> (TTL = 86400) 10
 
-T2: UPDATE page_views 
+T2: UPDATE page_views
      <b>USING TTL 3600</b>
-       SET category = 'news' 
+       SET category = 'news'
      WHERE page_id = 'abc.com';
 
-// The rows in docdb will look like the following
+// The entries in DocDB will look like the following
 
 (hash1, 'abc.com'), liveness_column_id, T1 -> (TTL = 86400) [NULL]
 (hash1, 'abc.com'), views_column_id, T1 -> (TTL = 86400) 10
@@ -484,7 +472,7 @@ can have a TTL, which is stored in the RocksDB-value.
 |T4         |DEL key2                                   |(h2, key2), T4 -> Tombstone                                                                                      |
 |T5         |HMSET key2 subkey1 new_val1 subkey3 value3 |(h2, key2), T2 -> [Redis-Hash-Type]<br/>(h2, key2), subkey1, T5 -> new_val1<br/>(h2, key2), subkey3, T5 -> value3|
 |T6         |SADD key3 value4 value5                    |(h3, key3), T6 -> [Redis-Set-Type]<br/>(h3, key3), value4, T6 -> [NULL]<br/>(h3, key3), value5, T6 -> [NULL]     |
-|T7         |SADD key3 value6                           |(h3, key3), value6, T7 -> [NULL]                                                                                  |                                                                                  
+|T7         |SADD key3 value6                           |(h3, key3), value6, T7 -> [NULL]                                                                                 |
 
 Although they are added out of order, we get a sorted view of the items in the key value store when
 reading, as shown below:
@@ -632,8 +620,9 @@ The YugaByte code base has leveraged several open source projects as a starting 
 
 * Google Libraries (glog, gflags, protocol buffers, snappy, gperftools, gtest, gmock).
 
-* The DocDB layer uses a highly customized/enhanced version of RocksDB. The customizations and
-  enhancements are described [in this section](#data-persistence-with-docdb).
+* The DocDB layer uses a highly customized/enhanced version of RocksDB. A sample of the
+  customizations and enhancements we have done are described [in this
+  section](#data-persistence-with-docdb).
 
 * We used Apache Kudu's Raft implementation & the server framework as a starting point. Since then,
   we have implemented several enhancements such as leader-leases & pre-voting state during learner
