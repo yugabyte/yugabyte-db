@@ -7,7 +7,7 @@ theme = "hugo-material-docs"
 metadataformat = "yaml"
 canonifyurls = true
 # Enable Google Analytics by entering your tracking id
-googleAnalytics = ""
+googleAnalytics = "UA-104956980-1"
 
 [params]
 	# General information
@@ -52,10 +52,10 @@ googleAnalytics = ""
 	weight = 2
 
 [[menu.main]]
-	name = "Get Started"
-	identifier = "community-get-started"
+	name = "Quick Start"
+	identifier = "community-quick-start"
 	parent = "community-edition"
-	url = "community-edition/get-started/"
+	url = "community-edition/quick-start/"
 	weight = 5
 
 [[menu.main]]
@@ -96,7 +96,7 @@ googleAnalytics = ""
 [[menu.main]]
 	name   = "Architecture"
 	identifier = "architecture"
-	url = "architecture/"
+	url = "architecture/concepts/"
 	weight = 70
 
 [[menu.main]]
@@ -129,25 +129,25 @@ googleAnalytics = ""
 	url = "architecture/comparisons/"
 	weight = 110
 
-[[menu.main]]
-	name   = "Client API Reference"
-	weight = 120
-	identifier = "API"
-	url    = "api/"
+# [[menu.main]]
+#	name   = "Client API Reference"
+#	weight = 120
+#	identifier = "API"
+#	url    = "api/cql/"
 
-[[menu.main]]
-	name = "Apache Cassandra"
-	weight = 130
-	identifier = "API-CQL"
-	parent = "API"
-	url = "api/cql/"
+#[[menu.main]]
+#	name = "Apache Cassandra"
+#	weight = 130
+#	identifier = "API-CQL"
+#	parent = "API"
+#	url = "api/cql/"
 
-[[menu.main]]
-	name = "Redis"
-	weight = 140
-	identifier = "API-Redis"
-	parent = "API"
-	url = "api/redis/"
+#[[menu.main]]
+#	name = "Redis"
+#	weight = 140
+#	identifier = "API-Redis"
+#	parent = "API"
+#	url = "api/redis/"
 
 [[menu.main]]
 	name   = "FAQs"

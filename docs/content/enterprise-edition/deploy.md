@@ -42,7 +42,7 @@ For airgapped hosts a supported version of docker-engine (currently 1.7.1 to 17.
 - Attached disk storage (such as persistent EBS volumes on AWS): 100 GB minimum
 - A YugaByte license file (attached to your welcome email from YugaByte Support)
 
-If you are running on AWS, all you need is a dedicated [**c4.xlarge**] (https://aws.amazon.com/ec2/instance-types/) or higher instance running Ubuntu 16.04. Use `ami-a58d0dc5` to launch a new instance if you don't already have one.
+If you are running on AWS, all you need is a dedicated [**c4.xlarge**] (https://aws.amazon.com/ec2/instance-types/) or higher instance running Ubuntu 16.04. If you are running in the US West (Oregon) Region, use `ami-a58d0dc5` to launch a new instance if you don't already have one.
 
 
 ## Install on Internet-connected host
@@ -245,7 +245,7 @@ replicated app <appid> stop
 replicated app <appid> rm
 
 # remove all yugaware containers
-docker images | grep "yuga" | awk '{print $1}' | xargs docker rm
+docker images | grep "yuga" | awk '{print $3}' | xargs docker rmi -f
 
 # delete the mapped directory
 rm -rf /opt/yugabyte

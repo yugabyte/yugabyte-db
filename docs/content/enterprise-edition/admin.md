@@ -10,7 +10,7 @@ This section details how to administer YugaByte using the YugaWare admin console
 
 ### Public cloud
 
-If you plan to create YugaByte clusters on public cloud providers such as Amazon Web Services (AWS) or Google Cloud Platform (GCP), all you need to provide on YugaWare UI is your cloud provider credentials. YugaWare will use those credentials to automatically provision and de-provision instances that run YugaByte. An 'instance' for YugaByte includes a compute instance as well as local or remote disk storage attached to the compute instance.
+If you plan to run YugaByte nodes on public cloud providers such as Amazon Web Services (AWS) or Google Cloud Platform (GCP), all you need to provide on YugaWare UI is your cloud provider credentials. YugaWare will use those credentials to automatically provision and de-provision instances that run YugaByte. An 'instance' for YugaByte includes a compute instance as well as local or remote disk storage attached to the compute instance.
 
 If you are using AWS, you will also need to share your AWS Account ID with YugaByte Support so that we can make our YugaByte base AMI accessible to your account. You can find your AWS Account ID at the top of the [AWS My Account](https://console.aws.amazon.com/billing/home?#/account) page.
 
@@ -30,7 +30,7 @@ If no cloud providers are configured yet, the main Dashboard page highlights the
 
 ### Amazon Web Services
 
-YugaWare ensures that YugaByte instances run inside your own AWS account and are secured by a dedicated VPC and Key Pair. After you provide your [AWS Access Key ID and Secret Key](http://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html), YugaWare invokes AWS APIs to perform the following actions. Note that the AWS Account Name should be unique for each instance of YugaWare integrating with a given AWS Account.
+YugaWare ensures that YugaByte nodes run inside your own AWS account and are secured by a dedicated VPC and Key Pair. After you provide your [AWS Access Key ID and Secret Key](http://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html), YugaWare invokes AWS APIs to perform the following actions. Note that the AWS Account Name should be unique for each instance of YugaWare integrating with a given AWS Account.
 
 1. Retrieves the regions/AZs as well as the available instance types configured for this AWS account and initializes its own Amazon cloud provider.
 
@@ -62,7 +62,27 @@ As you can see above, the above initialization setup creates 2 dummy regions (US
 
 ### On-Premises Datacenters
 
-\<docs coming soon\>
+#### Prerequisites
+
+Dedicated hosts or cloud VMs running Centos 7+ with local or remote attached storage. All these hosts should be accessible over SSH from the YugaWare host. If your instance does not have public Internet access, make sure the following packages have been installed (all can be retrieved from the yum repo **epel**, make sure to use the latest epel release repo):
+
+- epel-release
+- ntp
+- cyrus-sasl-plain
+- cyrus-sasl-devel
+- collectd
+- python-pip
+- python-devel
+- python-psutil
+- libsemanage-python
+- policycoreutils-python
+
+Here's the command to install these packages.
+
+```sh
+# install pre-requisite packages
+sudo yum install -y epel-release ntp cyrus-sasl-plain cyrus-sasl-devel collectd python-pip python-devel python-psutil libsemanage-python policycoreutils-python
+```
 
 ## Create universe
 

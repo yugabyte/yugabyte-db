@@ -7,7 +7,7 @@ weight: 20
 ## Review sample app source
 
 ```sh
-jar xf ./java/yb-sample-apps-sources.jar
+$ jar xf ./java/yb-sample-apps-sources.jar
 ```
 The above command puts the sample apps Java files in `com/yugabyte/sample/apps` in the current directory.
 
