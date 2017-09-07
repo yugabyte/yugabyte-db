@@ -97,6 +97,7 @@ public class CreateTable extends AbstractTaskBase {
     }
     YBTable table = client.createRedisTable(taskParams().tableName, taskParams().numTablets);
     LOG.info("Created table '{}' of type {}.", table.getName(), table.getTableType());
+    ybService.closeClient(client, masterAddresses);
   }
 
   @Override

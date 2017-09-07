@@ -46,14 +46,17 @@ public class DeleteTableFromUniverse extends AbstractTaskBase {
   @Override
   public void run() {
     Params params = taskParams();
+    YBClient client = null;
     try {
-      YBClient client = ybService.getClient(params.masterAddresses);
+      client = ybService.getClient(params.masterAddresses);
       client.deleteTable(params.tableName, params.keyspace);
       LOG.info("Dropped table {}", params.getFullName());
     } catch (Exception e) {
       String msg = "Error " + e.getMessage() + " while dropping table " + params.getFullName();
       LOG.error(msg, e);
       throw new RuntimeException(msg);
+    } finally {
+      ybService.closeClient(client, params.masterAddresses);
     }
   }
 }

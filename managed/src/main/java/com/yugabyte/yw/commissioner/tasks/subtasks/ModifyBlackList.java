@@ -19,6 +19,7 @@ import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
+import org.yb.client.YBClient;
 import play.api.Play;
 
 // This class runs the task that helps modify the existing list of blacklisted servers maintained
@@ -63,6 +64,7 @@ public class ModifyBlackList extends AbstractTaskBase {
   public void run() {
     Universe universe = Universe.get(taskParams().universeUUID);
     String masterHostPorts = universe.getMasterAddresses();
+    YBClient client = null;
     try {
       LOG.info("Running {}: masterHostPorts={}.", getName(), masterHostPorts);
       List<HostPortPB> modifyHosts = new ArrayList<HostPortPB>();
@@ -73,14 +75,15 @@ public class ModifyBlackList extends AbstractTaskBase {
                       .setHost(node.cloudInfo.private_ip);
         modifyHosts.add(hpb.build());
       }
+      client = ybService.getClient(masterHostPorts);
       ModifyMasterClusterConfigBlacklist modifyBlackList =
-        new ModifyMasterClusterConfigBlacklist(ybService.getClient(masterHostPorts),
-                                               modifyHosts,
-                                               taskParams().isAdd);
+        new ModifyMasterClusterConfigBlacklist(client, modifyHosts, taskParams().isAdd);
       modifyBlackList.doCall();
     } catch (Exception e) {
       LOG.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
+    } finally {
+      ybService.closeClient(client, masterHostPorts);
     }
   }
 }

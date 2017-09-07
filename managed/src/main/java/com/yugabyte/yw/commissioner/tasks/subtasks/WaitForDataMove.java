@@ -46,15 +46,16 @@ public class WaitForDataMove extends AbstractTaskBase {
   @Override
   public void run() {
     String errorMsg = null;
-    try {
-      // Get the master addresses.
-      String masterAddresses = Universe.get(taskParams().universeUUID).getMasterAddresses();
-      LOG.info("Running {} on masterAddress = {}.", getName(), masterAddresses);
+    YBClient client = null;
+    int numErrors = 0;
+    double percent = 0;
+    int numIters = 0;
+    // Get the master addresses.
+    String masterAddresses = Universe.get(taskParams().universeUUID).getMasterAddresses();
+    LOG.info("Running {} on masterAddress = {}.", getName(), masterAddresses);
 
-      int numErrors = 0;
-      double percent = 0;
-      int numIters = 0;
-      YBClient client = ybService.getClient(masterAddresses);
+    try {
+      client = ybService.getClient(masterAddresses);
 
       LOG.info("Leader Master UUID={}, HostPort={}.",
                client.getLeaderMasterUUID(), client.getLeaderMasterHostAndPort().toString());
@@ -90,6 +91,8 @@ public class WaitForDataMove extends AbstractTaskBase {
     } catch (Exception e) {
       LOG.error("{} hit error {}.", getName(), e.getMessage(), e);
       throw new RuntimeException(getName() + " hit error: " , e);
+    } finally {
+      ybService.closeClient(client, masterAddresses);
     }
 
     if (errorMsg != null) {

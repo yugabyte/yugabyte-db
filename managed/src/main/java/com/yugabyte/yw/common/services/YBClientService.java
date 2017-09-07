@@ -6,4 +6,5 @@ import org.yb.client.YBClient;
 
 public interface YBClientService {
   YBClient getClient(String masterHostPorts);
+  void closeClient(YBClient client, String masterHostPorts);
 }
