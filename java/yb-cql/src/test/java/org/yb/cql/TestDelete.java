@@ -1,4 +1,15 @@
 // Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
 package org.yb.cql;
 
 import java.util.*;
@@ -18,7 +29,7 @@ import org.junit.Rule;
 
 public class TestDelete extends BaseCQLTest {
   @Rule
-  public ExpectedException exception = ExpectedException.none();  
+  public ExpectedException exception = ExpectedException.none();
 
   @Test
   public void testDeleteOneColumn() throws Exception {
@@ -34,22 +45,22 @@ public class TestDelete extends BaseCQLTest {
 		String select_stmt_1 = "SELECT v1 FROM test_delete" +
                          "  WHERE h1 = 0 AND h2 = 'h0';";
     ResultSet rs = session.execute(select_stmt_1);
-    
-    List<Row> rows = rs.all(); 
-    
+
+    List<Row> rows = rs.all();
+
     assertEquals(1, rows.size());
 		Row row = rows.get(0);
-	  assertTrue(row.isNull(0));  
+	  assertTrue(row.isNull(0));
 
 		String select_stmt_2 = "SELECT v2 FROM test_delete" +
                          "  WHERE h1 = 0 AND h2 = 'h0';";
     rs = session.execute(select_stmt_2);
-    rows = rs.all(); 
+    rows = rs.all();
     assertEquals(1, rows.size());
     row = rows.get(0);
 	  assertEquals("v1000",  row.getString(0));
 	}
-  
+
   @Test
   public void testDeleteMultipleColumns() throws Exception {
     LOG.info("TEST CQL DELETE - Start");
@@ -64,15 +75,15 @@ public class TestDelete extends BaseCQLTest {
 		String select_stmt_1 = "SELECT v1, v2 FROM test_delete" +
                          "  WHERE h1 = 0 AND h2 = 'h0';";
     ResultSet rs = session.execute(select_stmt_1);
-    
-    List<Row> rows = rs.all(); 
-    
+
+    List<Row> rows = rs.all();
+
     assertEquals(1, rows.size());
 		Row row = rows.get(0);
-	  assertTrue(row.isNull(0));  
+	  assertTrue(row.isNull(0));
 	  assertTrue(row.isNull(1));
 	}
-  
+
   @Test
   public void testStarDeleteSyntaxError() throws Exception {
     LOG.info("TEST CQL SyntaxError DELETE * - Start");
@@ -84,7 +95,7 @@ public class TestDelete extends BaseCQLTest {
     exception.expect(SyntaxError.class);
 		session.execute(delete_stmt);
 	}
-  
+
   @Test
   public void testPrimaryDeleteSyntaxError() throws Exception {
     LOG.info("TEST CQL SyntaxError DELETE primary - Start");
@@ -97,5 +108,5 @@ public class TestDelete extends BaseCQLTest {
 		session.execute(delete_stmt);
 	}
 }
-  
-	
+
+

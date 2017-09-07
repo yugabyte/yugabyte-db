@@ -1,4 +1,15 @@
 // Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
 package org.yb.cql;
 
 import java.util.*;
@@ -480,7 +491,7 @@ public class TestSelect extends BaseCQLTest {
     assertEquals(0, rows.size());
   }
 
-  @Test(expected=InvalidQueryException.class) 
+  @Test(expected=InvalidQueryException.class)
   public void testTtlOfCollectionsThrowsError() throws Exception {
       int []ttls = {100};
       LOG.info("CREATE TABLE test_ttl");
@@ -494,7 +505,7 @@ public class TestSelect extends BaseCQLTest {
         "  WHERE ttl(v1) < 150";
       session.execute(select_stmt);
   }
-  
+
   @Test(expected=InvalidQueryException.class)
   public void testTtlOfPrimaryThrowsError() throws Exception {
       int []ttls = {100};
@@ -509,8 +520,8 @@ public class TestSelect extends BaseCQLTest {
         "  WHERE ttl(h) < 150";
       session.execute(select_stmt);
   }
-  
-  @Test(expected=InvalidQueryException.class) 
+
+  @Test(expected=InvalidQueryException.class)
   public void testTtlWrongParametersThrowsError() throws Exception {
     int []ttls = {100};
     LOG.info("CREATE TABLE test_ttl");
@@ -523,8 +534,8 @@ public class TestSelect extends BaseCQLTest {
     String select_stmt = "SELECT h, v1, v2 FROM test_ttl WHERE ttl() < 150";
     session.execute(select_stmt);
   }
-  
-  @Test 
+
+  @Test
   public void testTtlOfDefault() throws Exception {
     LOG.info("CREATE TABLE test_ttl");
     String create_stmt = "CREATE TABLE test_ttl (h int, v1 list<int>, v2 int, primary key (h)) " +
@@ -537,12 +548,12 @@ public class TestSelect extends BaseCQLTest {
     ResultSet rs = session.execute(select_stmt);
     List<Row> rows = rs.all();
     assertEquals(1, rows.size());
-    
+
     select_stmt = "SELECT h, v1, v2 FROM test_ttl WHERE ttl(v2) >= 90";
     rs = session.execute(select_stmt);
     rows = rs.all();
     assertEquals(1, rows.size());
-    
+
     String insert_stmt_2 = "INSERT INTO test_ttl (h, v1, v2) VALUES(2, [2], 2) using ttl 150;";
     session.execute(insert_stmt_2);
     select_stmt = "SELECT h, v1, v2 FROM test_ttl WHERE ttl(v2) >= 140";
@@ -550,8 +561,8 @@ public class TestSelect extends BaseCQLTest {
     rows = rs.all();
     assertEquals(1, rows.size());
   }
-  
-  @Test 
+
+  @Test
   public void testTtlWhenNoneSpecified() throws Exception {
     LOG.info("CREATE TABLE test_ttl");
     String create_stmt = "CREATE TABLE test_ttl " +
@@ -565,7 +576,7 @@ public class TestSelect extends BaseCQLTest {
     List<Row> rows = rs.all();
     //The number of rows when we query ttl on v2 should be 0, since ttl(v2) isn't defined.
     assertEquals(0, rows.size());
-    
+
     select_stmt = "SELECT h, v1, v2 FROM test_ttl WHERE ttl(v2) <= 100";
     rs = session.execute(select_stmt);
     rows = rs.all();

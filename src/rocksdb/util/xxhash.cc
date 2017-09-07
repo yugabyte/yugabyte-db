@@ -38,6 +38,21 @@ You can contact the author at :
 // For others CPU, the compiler will be more cautious, and insert extra code to ensure aligned access is respected.
 // If you know your target CPU supports unaligned memory access, you want to force this option manually to improve performance.
 // You can also enable this parameter if you know your input data will always be aligned (boundaries of 4, for U32).
+//
+// The following only applies to changes made to this file as part of YugaByte development.
+//
+// Portions Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
 #if defined(__ARM_FEATURE_UNALIGNED) || defined(__i386) || defined(_M_IX86) || defined(__x86_64__) || defined(_M_X64)
 #  define XXH_USE_UNALIGNED_ACCESS 1
 #endif

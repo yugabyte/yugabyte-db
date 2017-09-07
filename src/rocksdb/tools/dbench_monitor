@@ -21,6 +21,20 @@
 #  will usually cleanly exit.
 #
 #
+# The following only applies to changes made to this file as part of YugaByte development.
+#
+# Portions Copyright (c) YugaByte, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.  You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software distributed under the License
+# is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+# or implied.  See the License for the specific language governing permissions and limitations
+# under the License.
+#
 DIR=`dirname $0`
 LOG=/tmp/`basename $0`.$$
 DB_BENCH="$DIR/../db_bench";
@@ -36,7 +50,7 @@ Usage: $0  [-h]
 This program will run the db_bench script to monitor memory usage
 using the 'pflag' program. It launches db_bench with default settings
 for certain arguments. You can change the defaults passed to
-'db_bench' program, by setting the following environment 
+'db_bench' program, by setting the following environment
 variables:
 
   bs [block_size]
@@ -73,7 +87,7 @@ touch $LOG;
 : ${num:=10000}
 : ${cs:=$((1*1024*1024*1024))};
 
-DEBUG=1    #Set to 0 to remove chattiness 
+DEBUG=1    #Set to 0 to remove chattiness
 
 
 if [ "x$DEBUG" != "x" ]; then
@@ -81,7 +95,7 @@ if [ "x$DEBUG" != "x" ]; then
   #NOTE: under some circumstances, --use_existing_db may leave LOCK files under ${TMPDIR}/rocksdb/*
   #cleanup the dir and re-run
   #
-  echo DEBUG: Will run $DB_BENCH --block_size=$bs --compression_type=$ztype --benchmarks="$benches" --reads="$reads" --threads="$threads" --cache_size=$cs  --value_size=$vsize --compression_ratio=$comp --num=$num --use_existing_db 
+  echo DEBUG: Will run $DB_BENCH --block_size=$bs --compression_type=$ztype --benchmarks="$benches" --reads="$reads" --threads="$threads" --cache_size=$cs  --value_size=$vsize --compression_ratio=$comp --num=$num --use_existing_db
 
 fi
 
