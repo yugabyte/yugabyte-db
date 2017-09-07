@@ -2,6 +2,7 @@
 package com.yugabyte.yw.common;
 
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
@@ -63,14 +64,14 @@ public class NodeManagerTest extends FakeDBApplication {
 
   private class TestData {
     public Common.CloudType cloudType;
-    public DeviceInfo.EBSType ebsType;
+    public PublicCloudConstants.EBSType ebsType;
     public Provider provider;
     public Region region;
     public AvailabilityZone zone;
     public NodeInstance node;
     public List<String> baseCommand = new ArrayList<>();
 
-    public TestData(Provider p, Common.CloudType cloud, DeviceInfo.EBSType ebs) {
+    public TestData(Provider p, Common.CloudType cloud, PublicCloudConstants.EBSType ebs) {
       cloudType = cloud;
       ebsType = ebs;
       provider = p;
@@ -112,8 +113,8 @@ public class NodeManagerTest extends FakeDBApplication {
     List<TestData> testDataList = new ArrayList<>();
     Provider provider = ModelFactory.newProvider(customer, cloud);
     if (cloud.equals(Common.CloudType.aws)) {
-      testDataList.add(new TestData(provider, cloud, DeviceInfo.EBSType.GP2));
-      testDataList.add(new TestData(provider, cloud, DeviceInfo.EBSType.IO1));
+      testDataList.add(new TestData(provider, cloud, PublicCloudConstants.EBSType.GP2));
+      testDataList.add(new TestData(provider, cloud, PublicCloudConstants.EBSType.IO1));
     } else {
       testDataList.add(new TestData(provider, cloud, null));
     }
@@ -139,7 +140,7 @@ public class NodeManagerTest extends FakeDBApplication {
     params.deviceInfo.numVolumes = 2;
     if (testData.cloudType.equals(Common.CloudType.aws)) {
       params.deviceInfo.ebsType = testData.ebsType;
-      if (testData.ebsType != null && testData.ebsType.equals(DeviceInfo.EBSType.IO1)) {
+      if (testData.ebsType != null && testData.ebsType.equals(PublicCloudConstants.EBSType.IO1)) {
         params.deviceInfo.diskIops = 240;
       }
     }
@@ -266,7 +267,7 @@ public class NodeManagerTest extends FakeDBApplication {
       if (type == NodeManager.NodeCommandType.Provision && deviceInfo.ebsType != null) {
         expectedCommand.add("--volume_type");
         expectedCommand.add(deviceInfo.ebsType.toString().toLowerCase());
-        if (deviceInfo.ebsType == DeviceInfo.EBSType.IO1 && deviceInfo.diskIops != null) {
+        if (deviceInfo.ebsType == PublicCloudConstants.EBSType.IO1 && deviceInfo.diskIops != null) {
           expectedCommand.add("--disk_iops");
           expectedCommand.add(Integer.toString(deviceInfo.diskIops));
         }
@@ -353,7 +354,7 @@ public class NodeManagerTest extends FakeDBApplication {
       int accessKeyIndexOffset = 5;
       if (params.cloud.equals(Common.CloudType.aws)) {
         accessKeyIndexOffset += 2;
-        if (params.deviceInfo.ebsType.equals(DeviceInfo.EBSType.IO1)) {
+        if (params.deviceInfo.ebsType.equals(PublicCloudConstants.EBSType.IO1)) {
           accessKeyIndexOffset += 2;
         }
       }

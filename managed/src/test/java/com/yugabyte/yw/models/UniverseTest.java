@@ -4,6 +4,7 @@ package com.yugabyte.yw.models;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import com.google.common.collect.Sets;
+import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -260,7 +261,7 @@ public class UniverseTest extends FakeDBApplication {
     userIntent.instanceType = instanceType;
     userIntent.provider = defaultProvider.uuid.toString();
     userIntent.deviceInfo = new DeviceInfo();
-    userIntent.deviceInfo.ebsType = DeviceInfo.EBSType.IO1;
+    userIntent.deviceInfo.ebsType = PublicCloudConstants.EBSType.IO1;
     userIntent.deviceInfo.numVolumes = 2;
     userIntent.deviceInfo.diskIops = 1000;
     userIntent.deviceInfo.volumeSize = 100;
