@@ -6,14 +6,17 @@ summary: CQL features.
 table {
   float: left;
 }
+#psyn {
+  text-indent: 50px;
+}
 </style>
 
 ## Introduction
 YugaByte supports the following Apache Cassandra features.
-<li> All primitive datatypes</li>
-<li> Data definition language (DDL) statements</li>
-<li> Data manipulation language (DML) statements</li>
-<li> Transaction control statements</li>
+<li> Data definition language (DDL) statements.</li>
+<li> Data manipulation language (DML) statements.</li>
+<li> Builtin functions and Expression operators.</li>
+<li> Primitive user-defined datatypes.</li>
 
 ## DDL Statements
 Data definition language (DDL) statements are instructions for the following database operations.
@@ -42,9 +45,6 @@ Statement | Description |
 [`UPDATE`](dml_update) | Update rows in a table.
 [`TRUNCATE`](.) | Not yet supported.
 
-## Transaction Control Statements
-Transaction control statements are under development.
-
 ## Expressions
 An expression is a finite combination of one or more values, operators, functions, and expressions that specifies a computation. Expression can be used in the following components.
 <li>The select list of [`SELECT`](dml_select) statement. For example, `SELECT id + 1 FROM yugatab;`.</li>
@@ -63,20 +63,38 @@ Expression | Description |
 [Function Call](expr_fcall) | Builtin function calls only |
 
 ## DataTypes
-All primitive datatypes in Apache Cassandra are supported.
+<li> [User-defined datatypes](ddl_create_type) in Apache Cassandra are supported.</li>
+<li> The following table lists all supported primitive types.
 
-Type | Description |
------|-------------|
+Primitive Type | Description |
+---------------|-------------|
 [`BIGINT`](type_int) | 64-bit signed integer |
-[`BLOB`](type_blob) | A string of binary characters |
-[`BOOL`](type_bool) | A Boolean value |
-[`DATE`](type_date) | A date |
-[`DECIMAL`](type_decimal) | An exact, fixed-point number |
-[`DOUBLE`](type_float) | A 64-bit, inexact, floating-point number |
-[`FLOAT`](type_float) | A 64-bit, inexact, floating-point number |
+[`BLOB`](type_blob) | String of binary characters |
+[`BOOLEAN`](type_bool) | boolean |
+[`COUNTER`](type_int) | 64-bit signed integer |
+[`DECIMAL`](type_number) | Exact, fixed-point number |
+[`DOUBLE`](type_number) | 64-bit, inexact, floating-point number |
+[`FLOAT`](type_number) | 64-bit, inexact, floating-point number |
+[`FROZEN`](type_frozen) | Collection in binary format |
+[`INET`](type_inet) | String representation of IP address |
 [<code>INT &#124; INTEGER</code>](type_int) | 32-bit signed integer |
-[`INTERVAL`](type_interval) | A span of time |
+[`LIST`](type_collection) | Collection of ordered elements |
+[`MAP`](type_collection) | Collection of pairs of key-and-value elements |
+[`SET`](type_collection) | Collection of ordered elements |
 [`SMALLINT`](type_int) | 16-bit signed integer |
-[`TEXT`](type_text) | A string of Unicode characters |
-[`TIMESTAMP`](type_timestamp) | A date and time pairing |
+[`TEXT`](type_text) | String of Unicode characters |
+[`TIMESTAMP`](type_timestamp) | Date-and-time |
+[`TIMEUUID`](type_uuid) | Timed UUID |
 [`TINYINT`](type_int) | 8-bit signed integer |
+[`UUID`](type_uuid) | Standard UUID |
+</li>
+
+<li> The following table lists all primitive types that are not yet implemented.
+
+Primitive Type |
+---------------|
+`DATE` | 
+`TIME` | 
+`TUPPLE` | 
+`VARINT` | 
+</li>
