@@ -87,7 +87,7 @@ public class Schema {
    * @param columns the columns in index order
    * @throws IllegalArgumentException If the key columns aren't specified first
    *
-   * See {@code ColumnPBsToSchema()} in {@code src/kudu/common/wire_protocol.cc}
+   * See {@code ColumnPBsToSchema()} in {@code src/yb/common/wire_protocol.cc}
    */
   public Schema(List<ColumnSchema> columns) {
     this(columns, null, -1L);
@@ -104,7 +104,7 @@ public class Schema {
    * @throws IllegalArgumentException If the primary key columns aren't specified first
    * @throws IllegalArgumentException If the column ids length does not match the columns length
    *
-   * See {@code ColumnPBsToSchema()} in {@code src/kudu/common/wire_protocol.cc}
+   * See {@code ColumnPBsToSchema()} in {@code src/yb/common/wire_protocol.cc}
    */
   public Schema(List<ColumnSchema> columns, List<Integer> columnIds, long timeToLiveInMillis) {
     boolean hasColumnIds = columnIds != null;

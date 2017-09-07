@@ -356,10 +356,6 @@ if [ ! -d "$BITSHUFFLE_DIR" ]; then
   fetch_and_expand bitshuffle-${BITSHUFFLE_VERSION}.tar.gz
 fi
 
-if [ ! -d "$TRACE_VIEWER_DIR" ]; then
-  fetch_and_expand "kudu-trace-viewer-${TRACE_VIEWER_VERSION}.tar.gz"
-fi
-
 if is_linux && [[ ! -d $NVML_DIR ]]; then
   fetch_and_expand "nvml-${NVML_VERSION}.tar.gz"
 fi

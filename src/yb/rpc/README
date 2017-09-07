@@ -23,9 +23,9 @@ function calls.  You can make either asynchronous calls, in which you provide a
 callback which is invoked later, or synchronous calls, where your thread blocks
 until the remote system responds.
 
-The wire format of Kudu RPC is very close to the wire format of Hadoop IPC in
+The wire format of YugaByte RPC is very close to the wire format of Hadoop IPC in
 hadoop-3 and beyond. It is not identical since there are still some java-isms
-left in Hadoop IPC which we did not want to inherit. In addition, Kudu RPC has
+left in Hadoop IPC which we did not want to inherit. In addition, YugaByte RPC has
 developed some extra features such as deadline propagation which are not
 available in Hadoop. However, the overall structure of the wire protocol is
 very similar.
@@ -296,7 +296,7 @@ An example call (captured with strace on rpc-test.cc) follows:
 
    "\x0c"  Request parameter varint: 12 bytes
     "\x08\xd4\x90\x80\x91\x01\x10\xf8\xcf\xc4\xed\x04" Request parameter
-      Decoded with protoc --decode=kudu.rpc_test.AddRequestPB rpc/rtest.proto
+      Decoded with protoc --decode=yb.rpc_test.AddRequestPB rpc/rtest.proto
       x: 304089172
       y: 1303455736
 
@@ -305,7 +305,7 @@ An example call (captured with strace on rpc-test.cc) follows:
 SASL negotiation
 ------------------
 After the initial connection header is sent, SASL negotiation begins.
-Kudu always uses SASL regardless of security settings. In the case that
+YugaByte always uses SASL regardless of security settings. In the case that
 no strong authentication is required, SASL PLAIN is used with no password.
 
 This SASL negotiation protocol matches the Hadoop protocol.

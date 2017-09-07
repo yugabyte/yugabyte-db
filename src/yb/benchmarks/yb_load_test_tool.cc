@@ -19,8 +19,6 @@
 #include <boost/bind.hpp>
 #include <boost/thread/mutex.hpp>
 
-#include "yb/benchmarks/tpch/line_item_tsv_importer.h"
-#include "yb/benchmarks/tpch/rpc_line_item_dao.h"
 #include "yb/client/client.h"
 #include "yb/redisserver/redis_constants.h"
 #include "yb/redisserver/redis_parser.h"

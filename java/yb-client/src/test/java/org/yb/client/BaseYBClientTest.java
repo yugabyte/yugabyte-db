@@ -53,8 +53,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.Assert.fail;
 
 /**
- * A base class for tests using the YB client (the Java client inherited from Kudu, not the CQL
- * client).
+ * A base class for tests using the the Java YB client.
  */
 public class BaseYBClientTest extends BaseMiniClusterTest {
 

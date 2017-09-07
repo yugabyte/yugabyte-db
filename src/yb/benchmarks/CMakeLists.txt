@@ -30,50 +30,11 @@
 # under the License.
 #
 
-set(TPCH_SRCS
-  tpch/rpc_line_item_dao.cc
-)
-
-add_library(tpch ${TPCH_SRCS})
-target_link_libraries(tpch
-  yb_client
-  integration-tests)
-
-# tpch1
-add_executable(tpch1 tpch/tpch1.cc)
-target_link_libraries(tpch1
-  tpch
-  ${YB_TEST_LINK_LIBS})
-
-# tpch_real_world
-add_executable(tpch_real_world tpch/tpch_real_world.cc)
-target_link_libraries(tpch_real_world
-  tpch
-  ${YB_TEST_LINK_LIBS})
-
-# rle
-add_executable(rle rle.cc)
-target_link_libraries(rle
-  yb_util
-  ${YB_TEST_LINK_LIBS})
-
-# wal_hiccup
-# Disabled on OS X since it relies on fdatasync and sync_file_range.
-if(NOT APPLE)
-  add_executable(wal_hiccup wal_hiccup.cc)
-  target_link_libraries(wal_hiccup
-    yb_util
-    ${YB_TEST_LINK_LIBS})
-endif()
-
-# Tests
-set(YB_TEST_LINK_LIBS tpch ${YB_TEST_LINK_LIBS})
-
-ADD_YB_TEST(tpch/rpc_line_item_dao-test)
-
 include_directories(../redisserver/cpp_redis/includes)
 
 add_executable(yb_load_test_tool yb_load_test_tool.cc)
 target_link_libraries(
     yb_load_test_tool
+    yb_client
+    integration-tests
     ${YB_TEST_LINK_LIBS})

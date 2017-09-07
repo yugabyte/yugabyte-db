@@ -16,7 +16,7 @@
 # 8. Create new tarball from the resulting source tree
 #
 LLVM_VERSION=3.9.0
-# This is the naming pattern Kudu is now using for all source directories instead of _DIR.
+# This is the naming pattern YugaByte is now using for all source directories instead of _DIR.
 # TODO: migrate to this pattern for all other third-party dependencies.
 # Note: we have the ".src" suffix at the end because that's what comes out of the tarball.
 LLVM_SOURCE=$TP_SOURCE_DIR/llvm-$LLVM_VERSION.src
@@ -69,7 +69,7 @@ build_llvm() {
       ;;
     "tsan")
       # Build just the core LLVM libraries, dependent on libc++.
-      # Kudu probably builds this because they use LLVM-based codegen. Until we start doing the
+      # YugaByte probably builds this because they use LLVM-based codegen. Until we start doing the
       # same, we can probably skip this mode.
       TOOLS_ARGS="$TOOLS_ARGS -DLLVM_ENABLE_LIBCXX=ON"
       TOOLS_ARGS="$TOOLS_ARGS -DLLVM_INCLUDE_TOOLS=OFF"

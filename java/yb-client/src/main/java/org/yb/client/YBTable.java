@@ -139,7 +139,7 @@ public class YBTable {
 
   /**
    * Get the async client that created this instance.
-   * @return an async kudu client
+   * @return an async yb java client.
    */
   public AsyncYBClient getAsyncClient() {
     return this.client;

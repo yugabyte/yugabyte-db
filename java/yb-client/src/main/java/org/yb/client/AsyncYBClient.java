@@ -225,7 +225,7 @@ public class AsyncYBClient implements AutoCloseable {
   /**
    * Timestamp required for HybridTime external consistency through timestamp
    * propagation.
-   * @see src/kudu/common/common.proto
+   * @see src/yb/common/common.proto
    */
   private long lastPropagatedTimestamp = NO_TIMESTAMP;
 
@@ -1950,7 +1950,7 @@ public class AsyncYBClient implements AutoCloseable {
                 defaultSocketReadTimeoutMs,
                 TimeUnit.MILLISECONDS));
       }
-      super.addLast("kudu-handler", client);
+      super.addLast("yb-handler", client);
 
       return client;
     }
@@ -2436,7 +2436,7 @@ public class AsyncYBClient implements AutoCloseable {
       if (boss == null || worker == null) {
         Executor defaultExec = Executors.newCachedThreadPool(
             new ThreadFactoryBuilder()
-                .setNameFormat("kudu-nio-%d")
+                .setNameFormat("yb-nio-%d")
                 .setDaemon(true)
                 .build());
         if (boss == null) boss = defaultExec;

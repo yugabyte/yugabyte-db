@@ -37,7 +37,7 @@ import org.yb.annotations.InterfaceStability;
 
 /**
  * The possible external consistency modes on which YB operates.
- * See {@code src/kudu/common/common.proto} for a detailed explanations on the
+ * See {@code src/yb/common/common.proto} for a detailed explanations on the
  *      meaning and implications of each mode.
  */
 @InterfaceAudience.Public

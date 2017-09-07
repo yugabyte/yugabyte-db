@@ -519,12 +519,6 @@ if is_linux; then
     python -c 'print "_" * 256'
   )_end_of_rpath"
 
-  # Explicitly disable the new gcc5 ABI. Until clang supports abi tags [1], Kudu's generated code
-  # (which always uses clang) must be built against the old ABI. There's no recourse for using both
-  # ABIs in the same process; gcc's advice [2] is to build everything against the old ABI.
-  #
-  # 1. https://llvm.org/bugs/show_bug.cgi?id=23529
-  # 2. https://gcc.gnu.org/onlinedocs/libstdc++/manual/using_dual_abi.html
   add_cxx_flags "-D_GLIBCXX_USE_CXX11_ABI=0"
   DYLIB_SUFFIX="so"
 elif is_mac; then
@@ -549,8 +543,8 @@ set_install_prefix_type common
 # Add tools to path
 export PATH=$PREFIX/bin:$PATH
 
-# Skip building non-TSAN libraries if YB_THIRDPARTY_TSAN_ONLY_BUILD is specified. This allows
-# building TSAN libraries only when debugging issues with the thirdparty build.
+# Skip building non-TSAN libraries if YB_THIRDPARTY_TSAN_ONLY_BUILD is specified. This
+# allows building TSAN libraries only when debugging issues with the thirdparty build.
 if [[ -z ${YB_THIRDPARTY_TSAN_ONLY_BUILD:-} ]]; then
   if is_linux; then
     if [[ -n "$F_ALL" || -n "$F_LLVM" ]] && [ -z ${YB_NO_BUILD_LLVM:-} ]; then

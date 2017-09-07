@@ -33,8 +33,6 @@ nbproject/
 www/tracing.*
 
 # Python
-python/kudu/*.so
-python/kudu/*.cpp
 *.py[ocd]
 
 # Backup files

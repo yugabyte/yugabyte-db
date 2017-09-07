@@ -22,7 +22,6 @@ install_manifest.txt
 .build-hash
 google-styleguide*
 *.a
-kudu-trace-viewer-*
 clang-*
 bitshuffle-*
 lz4-lz4-*

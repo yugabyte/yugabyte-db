@@ -150,7 +150,7 @@ $ mvn eclipse:eclipse -DdownloadJavadocs=true -DdownloadSources=true
 
 So what's the problem with maven-eclipse-plugin? The issue
 lies with maven-protoc-plugin. Because all of our .proto
-files are in src/kudu, the "resource path" in
+files are in src/yb, the "resource path" in
 maven-protoc-plugin must be absolute and prefixed with
 ${project.baseDir). This absolute path is copied verbatim
 to an Eclipse .classpath <classpathentry/>, and Eclipse

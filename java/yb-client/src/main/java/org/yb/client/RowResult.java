@@ -499,7 +499,7 @@ public class RowResult {
 
   /**
    * Transforms a timestamp into a string, whose formatting and timezone is consistent
-   * across kudu.
+   * across YB.
    * @param timestamp the timestamp, in microseconds
    * @return a string, in the format: YYYY-MM-DD HH:MM:SS.ssssss GMT
    */
