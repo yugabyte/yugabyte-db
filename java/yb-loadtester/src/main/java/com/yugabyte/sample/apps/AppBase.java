@@ -173,7 +173,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
 
   public void dropCassandraTable(String tableName) {
     try {
-      String drop_stmt = String.format("DROP TABLE %s;", tableName);
+      String drop_stmt = String.format("DROP TABLE IF EXISTS %s;", tableName);
       getCassandraClient().execute(drop_stmt);
       LOG.info("Dropped Cassandra table " + tableName + " using query: [" + drop_stmt + "]");
     } catch (Exception e) {
