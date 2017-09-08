@@ -133,3 +133,18 @@
   margin: 0 6px;
   min-width: 120px !important;
 }
+
+.az-selector-label h4 {
+  display: inline;
+}
+
+.az-selector-reset {
+  float: right;
+  padding-right: 4px;
+  color: $YB_FAIL_COLOR;
+  cursor: pointer;
+}
+
+.az-selector-reset:hover {
+  text-decoration: underline;
+}
