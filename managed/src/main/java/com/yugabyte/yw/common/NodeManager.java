@@ -169,6 +169,8 @@ public class NodeManager extends DevopsBase {
         if (taskParam.isMaster) {
           extra_gflags.put("cluster_uuid", String.valueOf(taskParam.universeUUID));
         }
+        // Add in the nodeName during configure.
+        extra_gflags.put("metric_node_name", taskParam.nodeName);
         if (!extra_gflags.isEmpty()) {
           subcommand.add("--extra_gflags");
           subcommand.add(Json.stringify(Json.toJson(extra_gflags)));

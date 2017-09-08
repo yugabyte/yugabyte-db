@@ -2,110 +2,120 @@
 # Prometheus metrics query, and related params
 ---
 cpu_usage_user:
-  metric: "collectd_cpu_percent"
-  function: "avg"
+  metric: "node_cpu"
+  function: "irate|avg"
+  range: "1m"
+  operator: "* 100"
   filters:
-    cpu: "user"
+    mode: "user"
   layout:
     title: "CPU Usage (User)"
     xaxis:
       type: "date"
 cpu_usage_system:
-  metric: "collectd_cpu_percent"
-  function: "avg"
+  metric: "node_cpu"
+  function: "irate|avg"
+  operator: "* 100"
   filters:
-    cpu: "system"
+    mode: "system"
   layout:
     title: "CPU Usage (System)"
     xaxis:
       type: "date"
 cpu_usage:
-  metric: "collectd_cpu_percent"
-  function: "avg"
+  metric: "node_cpu"
+  function: "irate|avg"
+  range: "1m"
+  operator: "* 100"
   filters:
-    cpu: "user|system"
-  group_by: "cpu"
+    mode: "user|system"
+  group_by: "mode"
   layout:
     title: "CPU Usage (pct)"
     xaxis:
       type: "date"
 disk_iops:
-  metric: "collectd_yb_system_counter_total"
+  metric: ""
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "iostat_write_count|iostat_read_count"
-  group_by: "type"
+    saved_name: "node_disk_reads_completed|node_disk_writes_completed"
+  group_by: "saved_name"
   layout:
-    title: "Disk IOPS / Node"
+    title: "Disk IOPS / Node / Device"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "iostat_write_count": "Writes"
-        "iostat_read_count": "Reads"
+          "node_disk_writes_completed": "Writes"
+          "node_disk_reads_completed": "Reads"
 
 tserver_rpcs_per_sec_by_universe:
-  metric: "collectd_yb_tserver_counter_total"
-  function: "rate|avg"
+  metric: "rpc_latency_count"
+  function: "irate|sum"
   range: "1m"
   filters:
-    type: "rpc_TabletServerService_Write.num|rpc_TabletServerService_Read.num"
-  group_by: "type, node_prefix"
+    export_type: "tserver_export"
+    server_type: "yb_tserver"
+    service_type: "TabletServerService"
+    service_method: "Read|Write"
+  group_by: "service_method"
   layout:
+    xaxis:
+      type: "date"
+
+memory_usage:
+  metric: ""
+  function: "avg"
+  filters:
+    saved_name: "node_memory_Cached|node_memory_Buffers|node_memory_MemFree"
+  group_by: "saved_name"
+  layout:
+    title: "Memory Usage (bytes)"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rpc_TabletServerService_Write.num": "Write"
-        "rpc_TabletServerService_Read.num": "Read"
-
-memory_usage:
-  metric: "collectd_memory"
-  function: "avg"
-  filters:
-    memory: "used|buffered|cached|free"
-  group_by: "memory"
-  layout:
-    title: "Memory Usage (bytes)"
-    xaxis:
-      type: "date"
+        "node_memory_Cached": "cached"
+        "node_memory_Buffers": "buffered"
+        "node_memory_MemFree": "free"
 
 memory_usage_all:
-  metric: "collectd_memory"
+  metric: "node_memory_MemFree"
   function: "avg"
-  filters:
-    memory: "used"
   group_by: "exported_instance"
   layout:
-    title: "Memory Usage (bytes)"
+    title: "Memory Free (bytes)"
     xaxis:
       type: "date"
 
 network_bytes:
-  metric: "collectd_yb_system_counter_total"
+  metric: ""
   function: "rate|avg"
   range: "1m"
+  operator: "/ 10"
   filters:
-    type: "net_bytes_sent|net_bytes_recv"
-  group_by: "type"
+    saved_name: "node_network_receive_bytes|node_network_transmit_bytes"
+    device: "eth0"
+  group_by: "saved_name"
   layout:
     title: "Network Bytes / Sec / Node"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "net_bytes_sent": "TX"
-        "net_bytes_recv": "RX"
+        "node_network_receive_bytes": "RX"
+        "node_network_transmit_bytes": "TX"
 
 network_packets:
-  metric: "collectd_yb_system_counter_total"
+  metric: ""
   function: "rate|avg"
   range: "1m"
   operator: "/ 10"
   filters:
-    type: "net_packets_sent|net_packets_recv"
-  group_by: "type"
+    saved_name: "node_network_receive_packets|node_network_transmit_packets"
+    device: "eth0"
+  group_by: "saved_name"
   layout:
     title: "Network Packets / Sec / Node"
     xaxis:
@@ -116,107 +126,110 @@ network_packets:
         "node_network_transmit_packets": "TX"
 
 network_errors:
-  metric: "collectd_yb_system_counter_total"
+  metric: ""
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "net_errin|net_errout"
-  group_by: "type"
+    saved_name: "node_network_receive_errs|node_network_transmit_errs"
+    device: "eth0"
+  group_by: "saved_name"
   layout:
     title: "Network Errors / Sec / Node"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "net_errin": "RX"
-        "net_errout": "TX"
+        "node_network_receive_errs": "RX"
+        "node_network_transmit_errs": "TX"
 
 system_load_over_time:
-  metric: "multi-metric"
+  metric: ""
   filters:
-    __name__: "collectd_load_.+"
+    saved_name: "node_load1|node_load5|node_load15"
+  group_by: "saved_name"
   function: "avg"
-  group_by: "__name__"
   layout:
     title: "System Load Over Time"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "collectd_load_0": "Small"
-        "collectd_load_1": "Medium"
-        "collectd_load_2": "Large"
+        "node_load1": "Small"
+        "node_load5": "Medium"
+        "node_load15": "Large"
 
 disk_bytes_per_second_per_node:
-  metric: "collectd_yb_system_counter_total"
+  metric: ""
   filters:
-    type: "iostat_read_bytes|iostat_write_bytes"
+    saved_name: "node_disk_bytes_read|node_disk_bytes_written"
+  group_by: "saved_name"
   range: "1m"
   function: "rate|avg"
-  group_by: "type"
   layout:
-    title: "Disk Bytes / Sec / Node"
+    title: "Disk Bytes / Sec / Node / Device"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "iostat_read_bytes": "Read"
-        "iostat_write_bytes": "Write"
+        "node_disk_bytes_read": "Read"
+        "node_disk_bytes_written": "Write"
 
 redis_rpcs_per_sec:
-  metric: "collectd_yb_redis_counter_total"
+  metric: "rpc_latency_count"
   function: "rate|sum"
   range: "1m"
   operator: "> 0"
   filters:
-    type: "rpc_RedisServerService_[^_]*.num"
-  group_by: "type"
+    server_type: "yb_redisserver"
+    service_type: "RedisServerService"
+  group_by: "service_method"
   layout:
     title: "Total Redis Ops / Sec"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rpc_RedisServerService_get.num": "Get"
-        "rpc_RedisServerService_set.num": "Set"
-        "rpc_RedisServerService_config.num": "Config"
-        "rpc_RedisServerService_mget.num": "MGet"
-        "rpc_RedisServerService_hget.num": "HGet"
-        "rpc_RedisServerService_hmget.num": "HMGet"
-        "rpc_RedisServerService_hgetall.num": "HGetAll"
-        "rpc_RedisServerService_hkeys.num": "HKeys"
-        "rpc_RedisServerService_hvals.num": "HVals"
-        "rpc_RedisServerService_hlen.num": "HLen"
-        "rpc_RedisServerService_hexists.num": "HExists"
-        "rpc_RedisServerService_hstrlen.num": "HStrLen"
-        "rpc_RedisServerService_smembers.num": "SMembers"
-        "rpc_RedisServerService_sismember.num": "SIsMember"
-        "rpc_RedisServerService_scard.num": "SCard"
-        "rpc_RedisServerService_strlen.num": "StrLen"
-        "rpc_RedisServerService_exists.num": "Exists"
-        "rpc_RedisServerService_getrange.num": "GetRange"
-        "rpc_RedisServerService_role.num": "Role"
-        "rpc_RedisServerService_mset.num": "MSet"
-        "rpc_RedisServerService_hset.num": "HSet"
-        "rpc_RedisServerService_hmset.num": "HMSet"
-        "rpc_RedisServerService_hdel.num": "HDel"
-        "rpc_RedisServerService_sadd.num": "SAdd"
-        "rpc_RedisServerService_srem.num": "SRem"
-        "rpc_RedisServerService_getset.num": "GetSet"
-        "rpc_RedisServerService_append.num": "Append"
-        "rpc_RedisServerService_del.num": "Del"
-        "rpc_RedisServerService_setrange.num": "SetRange"
-        "rpc_RedisServerService_incr.num": "Incr"
-        "rpc_RedisServerService_echo.num": "Echo"
-        "rpc_RedisServerService_auth.num": "Auth"
+        "get": "Get"
+        "set": "Set"
+        "config": "Config"
+        "mget": "MGet"
+        "hget": "HGet"
+        "hmget": "HMGet"
+        "hgetall": "HGetAll"
+        "hkeys": "HKeys"
+        "hvals": "HVals"
+        "hlen": "HLen"
+        "hexists": "HExists"
+        "hstrlen": "HStrLen"
+        "smembers": "SMembers"
+        "sismember": "SIsMember"
+        "scard": "SCard"
+        "strlen": "StrLen"
+        "exists": "Exists"
+        "getrange": "GetRange"
+        "role": "Role"
+        "mset": "MSet"
+        "hset": "HSet"
+        "hmset": "HMSet"
+        "hdel": "HDel"
+        "sadd": "SAdd"
+        "srem": "SRem"
+        "getset": "GetSet"
+        "append": "Append"
+        "del": "Del"
+        "setrange": "SetRange"
+        "incr": "Incr"
+        "echo": "Echo"
+        "auth": "Auth"
 
 redis_ops_latency:
-  metric: "collectd_yb_redis_counter_total"
+  metric: "rpc_latency.avg"
   function: "avg"
   operator: "/ 1000 > 0"
   filters:
-    type: "rpc_RedisServerService_[^_]*.avg"
-  group_by: "type"
+    server_type: "yb_redisserver"
+    service_type: "RedisServerService"
+  group_by: "service_method"
   layout:
     title: "Redis Op Latency"
     xaxis:
@@ -224,82 +237,87 @@ redis_ops_latency:
     yaxis:
       ticksuffix: "&nbsp;ms"
       alias:
-        "rpc_RedisServerService_get.avg": "Get"
-        "rpc_RedisServerService_set.avg": "Set"
-        "rpc_RedisServerService_config.avg": "Config"
-        "rpc_RedisServerService_mget.avg": "MGet"
-        "rpc_RedisServerService_hget.avg": "HGet"
-        "rpc_RedisServerService_hmget.avg": "HMGet"
-        "rpc_RedisServerService_hgetall.avg": "HGetAll"
-        "rpc_RedisServerService_hkeys.avg": "HKeys"
-        "rpc_RedisServerService_hvals.avg": "HVals"
-        "rpc_RedisServerService_hlen.avg": "HLen"
-        "rpc_RedisServerService_hexists.avg": "HExists"
-        "rpc_RedisServerService_hstrlen.avg": "HStrLen"
-        "rpc_RedisServerService_smembers.avg": "SMembers"
-        "rpc_RedisServerService_sismember.avg": "SIsMember"
-        "rpc_RedisServerService_scard.avg": "SCard"
-        "rpc_RedisServerService_strlen.avg": "StrLen"
-        "rpc_RedisServerService_exists.avg": "Exists"
-        "rpc_RedisServerService_getrange.avg": "GetRange"
-        "rpc_RedisServerService_role.avg": "Role"
-        "rpc_RedisServerService_mset.avg": "MSet"
-        "rpc_RedisServerService_hset.avg": "HSet"
-        "rpc_RedisServerService_hmset.avg": "HMSet"
-        "rpc_RedisServerService_hdel.avg": "HDel"
-        "rpc_RedisServerService_sadd.avg": "SAdd"
-        "rpc_RedisServerService_srem.avg": "SRem"
-        "rpc_RedisServerService_getset.avg": "GetSet"
-        "rpc_RedisServerService_append.avg": "Append"
-        "rpc_RedisServerService_del.avg": "Del"
-        "rpc_RedisServerService_setrange.avg": "SetRange"
-        "rpc_RedisServerService_incr.avg": "Incr"
-        "rpc_RedisServerService_echo.avg": "Echo"
-        "rpc_RedisServerService_auth.avg": "Auth"
+        "get": "Get"
+        "set": "Set"
+        "config": "Config"
+        "mget": "MGet"
+        "hget": "HGet"
+        "hmget": "HMGet"
+        "hgetall": "HGetAll"
+        "hkeys": "HKeys"
+        "hvals": "HVals"
+        "hlen": "HLen"
+        "hexists": "HExists"
+        "hstrlen": "HStrLen"
+        "smembers": "SMembers"
+        "sismember": "SIsMember"
+        "scard": "SCard"
+        "strlen": "StrLen"
+        "exists": "Exists"
+        "getrange": "GetRange"
+        "role": "Role"
+        "mset": "MSet"
+        "hset": "HSet"
+        "hmset": "HMSet"
+        "hdel": "HDel"
+        "sadd": "SAdd"
+        "srem": "SRem"
+        "getset": "GetSet"
+        "append": "Append"
+        "del": "Del"
+        "setrange": "SetRange"
+        "incr": "Incr"
+        "echo": "Echo"
+        "auth": "Auth"
 
+# what does this have to do with redis??
 redis_yb_local_vs_remote:
-  metric: "collectd_yb_redis_counter_total"
+  metric: "rpc_latency_count"
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "rpc_read_remote.num|rpc_write_remote.num|rpc_read_local.num|rpc_write_local.num"
-  group_by: "type"
+    export_type: "redis_export"
+    service_type: "read|write"
+    service_method: "local|remote"
+  group_by: "service_method,service_type"
   layout:
     title: "YBClient Ops Local vs Remote"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rpc_read_remote.num": "Remote Read"
-        "rpc_write_remote.num": "Remote Write"
-        "rpc_read_local.num": "Local Read"
-        "rpc_write_local.num": "Local Write"
+        "remote,read": "Remote Read"
+        "remote,write": "Remote Write"
+        "local,read": "Local Read"
+        "local,write": "Local Write"
 
 redis_yb_latency:
-  metric: "collectd_yb_redis_counter_total"
-  function: "avg"
-  operator: "/ 1000"
+  metric: "rpc_latency.avg"
+  function: "irate|avg"
+  range: "1m"
   filters:
-    type: "rpc_read_remote.avg|rpc_write_remote.avg|rpc_read_local.avg|rpc_write_local.avg"
-  group_by: "type"
+    export_type: "redis_export"
+    service_type: "read|write"
+    service_method: "local|remote"
+  group_by: "service_method,service_type"
   layout:
     title: "YBClient Latency"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rpc_read_remote.avg": "Remote Read"
-        "rpc_write_remote.avg": "Remote Write"
-        "rpc_read_local.avg": "Local Read"
-        "rpc_write_local.avg": "Local Write"
-      ticksuffix: "&nbsp;ms"
+         "remote,read": "Remote Read"
+         "remote,write": "Remote Write"
+         "local,read": "Local Read"
+         "local,write": "Local Write"
+      ticksuffix: "&nbsp;\u00B5s"
 
 redis_reactor_latency:
-  metric: "collectd_yb_redis_counter_total"
-  function: "avg"
+  metric: "rpc_incoming_queue_time.avg|handler_latency_outbound_transfer.avg|handler_latency_outbound_call_queue_time.avg"
+  function: "irate|avg"
+  range: "1m"
   filters:
-    type: "rpc_incoming_queue_time.avg|handler_latency_outbound_transfer.avg|handler_latency_outbound_call_queue_time.avg"
-  group_by: "type"
+    export_type: "redis_export"
   layout:
     title: "YBClient Reactor Delays"
     xaxis:
@@ -313,62 +331,62 @@ redis_reactor_latency:
 
 # tserver metrics
 tserver_ops_latency:
-  metric: "collectd_yb_tserver_counter_total"
-  function: "avg"
-  operator: "/ 1000"
+  metric: "rpc_latency.avg"
+  function: "irate|avg"
+  range: "1m"
+  # operator: "/ 1000"
   filters:
-    type: "rpc_TabletServerService_Scan.avg|rpc_TabletServerService_Write.avg|rpc_TabletServerService_Read.avg"
-  group_by: "type"
+    export_type: "tserver_export"
+    server_type: "yb_tserver"
+    service_type: "TabletServerService"
+    service_method: "Read|Write|Scan"
+  group_by: "service_method"
   layout:
     title: "YugaByte Op Latency"
     xaxis:
       type: "date"
     yaxis:
-      alias:
-        "rpc_TabletServerService_Scan.avg": "Scan"
-        "rpc_TabletServerService_Write.avg": "Write"
-        "rpc_TabletServerService_Read.avg": "Read"
       ticksuffix: "&nbsp;ms"
 
 tserver_write_latency:
-  metric: "collectd_yb_tserver_counter_total"
-  function: "avg"
-  operator: "/ 1000"
+  metric: "rpc_latency.avg"
+  function: "irate|avg"
+  range: "1m"
+  # operator: "/ 1000"
   filters:
-    type: "rpc_TabletServerService_Write.avg"
+    export_type: "tserver_export"
+    server_type: "yb_tserver"
+    service_type: "TabletServerService"
+    service_method: "Write"
   group_by: "exported_instance"
   layout:
     title: "YugaByte Write Latency"
     xaxis:
       type: "date"
-    yaxis:
-      alias:
-        "rpc_TabletServerService_Write.avg": "Write"
-      ticksuffix: "&nbsp;ms"
 
 tserver_read_latency:
-  metric: "collectd_yb_tserver_counter_total"
-  function: "avg"
-  operator: "/ 1000"
+  metric: "rpc_latency.avg"
+  function: "irate|avg"
+  # operator: "/ 1000"
+  range: "1m"
   filters:
-    type: "rpc_TabletServerService_Read.avg"
+    export_type: "tserver_export"
+    server_type: "yb_tserver"
+    service_type: "TabletServerService"
+    service_method: "Read"
   group_by: "exported_instance"
   layout:
     title: "YugaByte Read Latency"
     xaxis:
       type: "date"
-    yaxis:
-      alias:
-        "rpc_TabletServerService_Read.avg": "Read"
-      ticksuffix: "&nbsp;ms"
 
 tserver_handler_latency:
-  metric: "collectd_yb_tserver_counter_total"
-  function: "avg"
-  operator: "/ 1000"
+  metric: "rpc_incoming_queue_time.avg|handler_latency_outbound_call_queue_time.avg|handler_latency_outbound_transfer.avg"
+  function: "irate|avg"
+  range: "1m"
+  # operator: "/ 1000"
   filters:
-    type: "rpc_incoming_queue_time.avg|handler_latency_outbound_call_queue_time.avg|handler_latency_outbound_transfer.avg"
-  group_by: "type"
+    export_type: "tserver_export"
   layout:
     title: "YugaByte Reactor Delays"
     xaxis:
@@ -381,111 +399,107 @@ tserver_handler_latency:
       ticksuffix: "&nbsp;ms"
 
 tserver_rpcs_per_sec:
-  metric: "collectd_yb_tserver_counter_total"
-  function: "rate|avg"
+  metric: "rpc_latency_count"
+  function: "irate|avg"
   range: "1m"
   filters:
-    type: "rpc_TabletServerService_Scan.num|rpc_TabletServerService_Write.num|rpc_TabletServerService_Read.num"
-  group_by: "type"
+    export_type: "tserver_export"
+    server_type: "yb_tserver"
+    service_type: "TabletServerService"
+    service_method: "Write|Read|Scan"
+  group_by: "service_method"
   layout:
     title: "YugaByte RPCs / Sec / Node"
     xaxis:
       type: "date"
-    yaxis:
-      alias:
-        "rpc_TabletServerService_Scan.num": "Scan"
-        "rpc_TabletServerService_Write.num": "Write"
-        "rpc_TabletServerService_Read.num": "Read"
 
 tserver_consensus_rpcs_per_sec:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: "rpc_latency_count"
   function: "rate|sum"
   range: "1m"
   filters:
-    type: "rpc_ConsensusService_UpdateConsensus.num|rpc_ConsensusService_RequestConsensusVote.num"
-  group_by: "type"
+    export_type: "tserver_export"
+    server_type: "yb_consensus"
+    service_type: "ConsensusService"
+    service_method: "UpdateConsensus|RequestConsensusVote"
+  group_by: "service_method"
   layout:
     title: "Consensus Rpc Ops (Sum) per Sec"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rpc_ConsensusService_UpdateConsensus.num": "UpdateConsensus"
-        "rpc_ConsensusService_RequestConsensusVote.num": "RequestConsensusVote"
+        "UpdateConsensus": "UpdateConsensus"
+        "RequestConsensusVote": "RequestConsensusVote"
 
 tserver_change_config:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: "rpc_latency_count"
   function: "sum"
   filters:
-    type: "rpc_ConsensusService_ChangeConfig.num|rpc_ConsensusService_RunLeaderElection.num|rpc_ConsensusService_LeaderStepDown.num|rpc_ConsensusService_LeaderElectionLost.num"
-  group_by: "type"
+    export_type: "tserver_export"
+    server_type: "yb_consensus"
+    service_type: "ConsensusService"
+    service_method: "ChangeConfig|RunLeaderElection|LeaderStepDown|LeaderElectionLost"
+  group_by: "service_method"
   layout:
     title: "Change Config Ops (Sum) per Sec"
     xaxis:
       type: "date"
-    yaxis:
-      alias:
-        "rpc_ConsensusService_ChangeConfig.num": "Change Config"
-        "rpc_ConsensusService_RunLeaderElection.num": "RunLeaderElection"
-        "rpc_ConsensusService_LeaderStepDown.num": "LeaderStepDown"
-        "rpc_ConsensusService_LeaderElectionLost.num": "LeaderElectionLost"
 
 tserver_remote_bootstraps:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: "rpc_latency_count"
   function: "sum"
   filters:
-    type: "rpc_ConsensusService_StartRemoteBootstrap.num"
+    export_type: "tserver_export"
+    server_type: "yb_consensus"
+    service_type: "ConsensusService"
+    service_method: "StartRemoteBootstrap"
   group_by: "exported_instance"
   layout:
     title: "Remote Bootstraps"
     xaxis:
       type: "date"
-    yaxis:
-      alias:
-        "rpc_ConsensusService_StartRemoteBootstrap.num": "StartRemoteBootstrap"
 
 tserver_consensus_rpcs_latency:
-  metric: "collectd_yb_tserver_counter_total"
-  function: "rate|avg"
-  operator: "/ 1000"
+  metric: "rpc_latency.avg"
+  function: "irate|avg"
+  # operator: "/ 1000"
   range: "1m"
   filters:
-    type: "rpc_ConsensusService_UpdateConsensus.avg|rpc_ConsensusService_RequestConsensusVote.avg"
-  group_by: "type"
+    export_type: "tserver_export"
+    server_type: "yb_consensus"
+    service_type: "ConsensusService"
+    service_method: "UpdateConsensus|RequestConsensusVote"
+  group_by: "service_method"
   layout:
     title: "Consensus Rpc latencies"
     xaxis:
       type: "date"
-    yaxis:
-      alias:
-        "rpc_ConsensusService_UpdateConsensus.avg": "UpdateConsensus"
-        "rpc_ConsensusService_RequestConsensusVote.avg": "RequestConsensusVote"
-      ticksuffix: "&nbsp;ms"
 
 tserver_change_config_latency:
-  metric: "collectd_yb_tserver_counter_total"
-  function: "rate|avg"
-  operator: "/ 1000"
+  metric: "rpc_latency.avg"
+  function: "irate|avg"
+  # operator: "/ 1000"
   range: "1m"
   filters:
-    type: "rpc_ConsensusService_ChangeConfig.avg"
-  group_by: "type"
+    export_type: "tserver_export"
+    server_type: "yb_consensus"
+    service_type: "ConsensusService"
+    service_method: "ChangeConfig"
+  group_by: "service_method"
   layout:
     title: "Change Config Latency"
     xaxis:
       type: "date"
-    yaxis:
-      alias:
-        "rpc_ConsensusService_ChangeConfig.avg": "Change Config"
-      ticksuffix: "&nbsp;ms"
 
 tserver_threads:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: ""
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "threads_running|threads_started"
-  group_by: "type"
+    export_type: "tserver_export"
+    saved_name: "threads_running|threads_started"
+  group_by: "saved_name"
   layout:
     title: "Threads"
     xaxis:
@@ -496,12 +510,13 @@ tserver_threads:
         "threads_started": "Started"
 
 tserver_context_switches:
-  metric: "collectd_yb_tserver_counter_total"
-  function: "rate|avg"
+  metric: ""
+  function: "irate|avg"
   range: "1m"
   filters:
-    type: "involuntary_context_switches|voluntary_context_switches"
-  group_by: "type"
+    export_type: "tserver_export"
+    saved_name: "involuntary_context_switches|voluntary_context_switches"
+  group_by: "saved_name"
   layout:
     title: "Context Switches"
     xaxis:
@@ -511,13 +526,12 @@ tserver_context_switches:
         "involuntary_context_switches": "Involuntary"
         "voluntary_context_switches": "Voluntary"
 tserver_spinlock_server:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: "spinlock_contention_time"
   function: "rate|avg"
   operator: "/ 1000000"
   range: "1m"
   filters:
-    type: "spinlock_contention_time"
-  group_by: "type"
+    export_type: "tserver_export"
   layout:
     title: "SpinLock Time/Server"
     xaxis:
@@ -527,11 +541,9 @@ tserver_spinlock_server:
         "spinlock_contention_time": "SpinLock"
       ticksuffix: "&nbsp;sec"
 tserver_log_latency:
-  metric: "collectd_yb_tserver_counter_total"
-  function: "avg"
-  filters:
-    type: "log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg"
-  group_by: "type"
+  metric: "log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg"
+  function: "irate|avg"
+  range: "1m"
   layout:
     title: "TServer Log Latency"
     xaxis:
@@ -544,14 +556,13 @@ tserver_log_latency:
       ticksuffix: "&nbsp;\u00B5s"
 
 tserver_log_bytes_written:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: "log_bytes_logged"
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "log_bytes_logged"
-  group_by: "exported_instance"
+    export_type: "tserver_export"
   layout:
-    title: "Log Bytes Written / Sec / TServer"
+    title: "Log Bytes Written / Sec / Node / Table"
     xaxis:
       type: "date"
     yaxis:
@@ -559,14 +570,13 @@ tserver_log_bytes_written:
         "log_bytes_logged": "Log Bytes Logged"
 
 tserver_log_bytes_read:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: "log_reader_bytes_read"
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "log_reader_bytes_read"
-  group_by: "exported_instance"
+    export_type: "tserver_export"
   layout:
-    title: "Log Bytes Read / Sec / TServer"
+    title: "Log Bytes Read / Sec / Node / Table"
     xaxis:
       type: "date"
     yaxis:
@@ -574,29 +584,31 @@ tserver_log_bytes_read:
         "log_reader_bytes_read": "Log Bytes Read"
 
 tserver_log_ops_second:
-   metric: "collectd_yb_tserver_counter_total"
-   function: "rate|avg"
-   range: "1m"
-   filters:
-     type: "log_group_commit_latency.num|log_append_latency.num|log_sync_latency.num"
-   group_by: "type"
-   layout:
-     title: "TServer Log Ops / Sec / Node"
-     xaxis:
-       type: "date"
-     yaxis:
-       alias:
-         "log_group_commit_latency.num": "Commit"
-         "log_append_latency.num": "Append"
-         "log_sync_latency.num": "Sync"
-       ticksuffix: "&nbsp;ops"
+  metric: ""
+  function: "rate|avg"
+  range: "1m"
+  filters:
+    export_type: "tserver_export"
+    saved_name: "log_group_commit_latency_count|log_append_latency_count|log_sync_latency_count"
+  group_by: "saved_name"
+  layout:
+    title: "TServer Log Ops / Sec / Node / Table"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "log_group_commit_latency_count": "Commit"
+        "log_append_latency_count": "Append"
+        "log_sync_latency_count": "Sync"
+      ticksuffix: "&nbsp;ops"
 tserver_tc_malloc_stats:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: ""
   function: "avg"
   filters:
-    type: "tcmalloc_current_total_thread_cache_bytes|tcmalloc_max_total_thread_cache_bytes|
+    export_type: "tserver_export"
+    saved_name: "tcmalloc_current_total_thread_cache_bytes|tcmalloc_max_total_thread_cache_bytes|
            tcmalloc_pageheap_free_bytes|tcmalloc_pageheap_unmapped_bytes"
-  group_by: "type"
+  group_by: "saved_name"
   layout:
     title: "TServer TCMalloc Stats"
     xaxis:
@@ -609,13 +621,14 @@ tserver_tc_malloc_stats:
         "tcmalloc_pageheap_unmapped_bytes": "Small"
 
 tserver_log_stats:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: ""
   function: "avg"
   filters:
-    type: "log_reader_bytes_read|log_cache_size"
-  group_by: "type"
+    export_type: "tserver_export"
+    saved_name: "log_reader_bytes_read|log_cache_size"
+  group_by: "saved_name"
   layout:
-    title: "Log Stats"
+    title: "Log Stats / Node / Table"
     xaxis:
       type: "date"
     yaxis:
@@ -625,13 +638,12 @@ tserver_log_stats:
       ticksuffix: "&nbsp;KiB"
 
 tserver_cache_reader_num_ops:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: "log_cache_num_ops"
   function: "avg"
   filters:
-    type: "log_cache_num_ops"
-  group_by: "type"
+    export_type: "tserver_export"
   layout:
-    title: "Log Cache Num Ops"
+    title: "Log Cache Num Ops / Node / Table"
     xaxis:
       type: "date"
     yaxis:
@@ -639,11 +651,11 @@ tserver_cache_reader_num_ops:
         "log_cache_num_ops": "Num Ops"
 
 tserver_glog_info_messages:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: "glog_info_messages"
   function: "avg"
   filters:
-    type: "glog_info_messages"
-  group_by: "exported_instance"
+    export_type: "tserver_export"
+  # group_by: "exported_instance"
   layout:
     title: "TServer GLog Info Messages"
     xaxis:
@@ -653,11 +665,11 @@ tserver_glog_info_messages:
         "glog_info_messages": "GLog info messages"
 
 master_glog_info_messages:
-  metric: "collectd_yb_master_counter_total"
+  metric: "glog_info_messages"
   function: "avg"
   filters:
-    type: "glog_info_messages"
-  group_by: "exported_instance"
+    export_type: "master_export"
+  # group_by: "exported_instance"
   layout:
     title: "Master GLog Info Messages"
     xaxis:
@@ -672,392 +684,400 @@ node_up:
   group_by: "instance"
 
 lsm_rocksdb_num_seek_or_next:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: ""
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "rocksdb.number.db.seek|rocksdb.number.db.next"
-  group_by: "type"
+    export_type: "tserver_export"
+    saved_name: "rocksdb_number_db_seek|rocksdb_number_db_next"
+  group_by: "saved_name"
   layout:
-    title: "LSM-DB Seek/Next Num Ops"
+    title: "LSM-DB Seek/Next Num Ops / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rocksdb.number.db.seek": "Seek"
-        "rocksdb.number.db.next": "Next"
+        "rocksdb_number_db_seek": "Seek"
+        "rocksdb_number_db_next": "Next"
 
 lsm_rocksdb_num_seeks_per_node:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: "rocksdb_number_db_seek"
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "rocksdb.number.db.seek"
-  group_by: "exported_instance"
+    export_type: "tserver_export"
   layout:
-    title: "LSM-DB Seeks per node per sec"
+    title: "LSM-DB Seeks per node per sec / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rocksdb.number.db.seek": "Seek"
+        "rocksdb_number_db_seek": "Seek"
 
 lsm_rocksdb_blooms_checked_and_useful:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: ""
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "rocksdb.bloom.filter.checked|rocksdb.bloom.filter.useful"
-  group_by: "type"
+    export_type: "tserver_export"
+    saved_name: "rocksdb_bloom_filter_checked|rocksdb_bloom_filter_useful"
+  group_by: "saved_name"
   layout:
-    title: "LSM-DB Blooms usefulness"
+    title: "LSM-DB Blooms usefulness / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rocksdb.bloom.filter.checked": "Blooms checked"
-        "rocksdb.bloom.filter.useful": "Blooms useful"
+        "rocksdb_bloom_filter_checked": "Blooms checked"
+        "rocksdb_bloom_filter_useful": "Blooms useful"
 
 lsm_rocksdb_latencies_get:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: "rocksdb_db_get_micros.avg"
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "rocksdb.db.get.micros.avg"
-  group_by: "exported_instance"
+    export_type: "tserver_export"
   layout:
-    title: "LSM-DB Get latencies (\u00B5s)"
+    title: "LSM-DB Get latencies (\u00B5s) / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rocksdb.db.get.micros.avg": "Get"
+        "rocksdb_db_get_micros.avg": "Get"
 
 lsm_rocksdb_latencies_write:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: "rocksdb_db_write_micros.avg"
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "rocksdb.db.write.micros.avg"
-  group_by: "exported_instance"
+    export_type: "tserver_export"
   layout:
-    title: "LSM-DB Write latencies (\u00B5s)"
+    title: "LSM-DB Write latencies (\u00B5s) / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rocksdb.db.write.micros.avg": "Write"
+        "rocksdb_db_write_micros.avg": "Write"
 
 lsm_rocksdb_latencies_seek:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: "rocksdb_db_seek_micros.avg"
   function: "rate|avg"
   range: "1m"
-  filters:
-    type: "rocksdb.db.seek.micros.avg"
-  group_by: "exported_instance"
   layout:
-    title: "LSM-DB Seek latencies (\u00B5s)"
+    title: "LSM-DB Seek latencies (\u00B5s) / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rocksdb.db.seek.micros.avg": "Seek"
+        "rocksdb_db_seek_micros.avg": "Seek"
 
 lsm_rocksdb_latencies_mutex:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: "rocksdb_db_mutex_wait_micros.avg"
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "rocksdb.db.mutex.wait.micros.avg"
-  group_by: "exported_instance"
+    export_type: "tserver_export"
   layout:
-    title: "LSM-DB Mutex Wait latencies (\u00B5s)"
+    title: "LSM-DB Mutex Wait latencies (\u00B5s) / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rocksdb.db.mutex.wait.micros.avg": "Mutex"
+        "rocksdb_db_mutex_wait_micros.avg": "Mutex"
 
 lsm_rocksdb_block_cache_hit:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: ""
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "rocksdb.block.cache.hit|rocksdb.block.cache.single.touch.hit|rocksdb.block.cache.multi.touch.hit"
-  group_by: "type"
+    saved_name: "rocksdb_block_cache_hit|rocksdb_block_cache_single_touch_hit|rocksdb_block_cache_multi_touch_hit"
+    export_type: "tserver_export"
+  group_by: "saved_name"
   layout:
-    title: "Cache Hit"
+    title: "Cache Hit / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rocksdb.block.cache.hit": "Hit"
-        "rocksdb.block.cache.single.touch.hit": "Single Touch Hit"
-        "rocksdb.block.cache.multi.touch.hit": "Multi Touch Hit"
+        "rocksdb_block_cache_hit": "Hit"
+        "rocksdb_block_cache_single_touch_hit": "Single Touch Hit"
+        "rocksdb_block_cache_multi_touch_hit": "Multi Touch Hit"
 
 lsm_rocksdb_block_cache_miss:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: "rocksdb_block_cache_miss"
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "rocksdb.block.cache.miss"
-  group_by: "exported_instance"
+    export_type: "tserver_export"
   layout:
-    title: "Cache Miss"
+    title: "Cache Miss / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rocksdb.block.cache.miss": "Miss"
+        "rocksdb_block_cache_miss": "Miss"
 
 lsm_rocksdb_block_cache_add:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: ""
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "rocksdb.block.cache.add|rocksdb.block.cache.single.touch.add|rocksdb.block.cache.multi.touch.add"
-  group_by: "type"
+    saved_name: "rocksdb_block_cache_add|rocksdb_block_cache_single_touch_add|rocksdb_block_cache_multi_touch_add"
+    export_type: "tserver_export"
+  group_by: "saved_name"
   layout:
-    title: "Cache Add"
+    title: "Cache Add / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rocksdb.block.cache.add": "Add"
-        "rocksdb.block.cache.single.touch.add": "Single Touch Add"
-        "rocksdb.block.cache.multi.touch.add": "Multi Touch Add"
+        "rocksdb_block_cache_add": "Add"
+        "rocksdb_block_cache_single_touch_add": "Single Touch Add"
+        "rocksdb_block_cache_multi_touch_add": "Multi Touch Add"
 
 lsm_rocksdb_block_cache_bytes_read:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: ""
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "rocksdb.block.cache.bytes.read|rocksdb.block.cache.single.touch.bytes.read|rocksdb.block.cache.multi.touch.bytes.read"
-  group_by: "type"
+    saved_name: "rocksdb_block_cache_bytes_read|rocksdb_block_cache_single_touch_bytes_read|rocksdb_block_cache_multi_touch_bytes_read"
+  group_by: "saved_name"
   layout:
-    title: "Block Cache Bytes Read"
+    title: "Block Cache Bytes Read / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rocksdb.block.cache.bytes.read": "Total Bytes Read"
-        "rocksdb.block.cache.single.touch.bytes.read": "Single Touch Bytes Read"
-        "rocksdb.block.cache.multi.touch.bytes.read": "Multi Touch Bytes Read"
+        "rocksdb_block_cache_bytes_read": "Total Bytes Read"
+        "rocksdb_block_cache_single_touch_bytes_read": "Single Touch Bytes Read"
+        "rocksdb_block_cache_multi_touch_bytes_read": "Multi Touch Bytes Read"
 
 lsm_rocksdb_block_cache_bytes_write:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: ""
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "rocksdb.block.cache.bytes.write|rocksdb.block.cache.single.touch.bytes.write|rocksdb.block.cache.multi.touch.bytes.write"
-  group_by: "type"
+    saved_name: "rocksdb_block_cache_bytes_write|rocksdb_block_cache_single_touch_bytes_write|rocksdb_block_cache_multi_touch_bytes_write"
+  group_by: "saved_name"
   layout:
-    title: "Block Cache Bytes Write"
+    title: "Block Cache Bytes Write / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rocksdb.block.cache.bytes.write": "Total Bytes Written"
-        "rocksdb.block.cache.single.touch.bytes.write": "Single Touch Bytes Written"
-        "rocksdb.block.cache.multi.touch.bytes.write": "Multi Touch Bytes Written"
+        "rocksdb_block_cache_bytes_write": "Total Bytes Written"
+        "rocksdb_block_cache_single_touch_bytes_write": "Single Touch Bytes Written"
+        "rocksdb_block_cache_multi_touch_bytes_write": "Multi Touch Bytes Written"
 
 lsm_rocksdb_stalls:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: "rocksdb_stall_micros"
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "rocksdb.stall.micros"
-  group_by: "exported_instance"
+    export_type: "tserver_export"
   layout:
-    title: "Stalls (\u00B5s)"
+    title: "Stalls (\u00B5s) / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rocksdb.stall.micros": "Stalls"
+        "rocksdb_stall_micros": "Stalls"
 
 lsm_rocksdb_flush_size:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: "rocksdb_flush_write_bytes"
   function: "rate|avg"
   range: "1m"
-  filters:
-    type: "rocksdb.flush.write.bytes"
-  group_by: "exported_instance"
   layout:
-    title: "Flush write (bytes)"
+    title: "Flush write (bytes) / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rocksdb.flush.write.bytes": "Flush"
+        "rocksdb_flush_write_bytes": "Flush"
 
 lsm_rocksdb_compaction:
-  metric: "collectd_yb_tserver_counter_total"
+  metric: ""
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "rocksdb.compact.read.bytes|rocksdb.compact.write.bytes"
-  group_by: "exported_instance"
+    export_type: "tserver_export"
+    saved_name: "rocksdb_compact_read_bytes|rocksdb_compact_write_bytes"
+  group_by: "saved_name"
   layout:
-    title: "Compaction (bytes)"
+    title: "Compaction (bytes) / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rocksdb.compact.read.bytes": "Bytes Read"
-        "rocksdb.compact.write.bytes": "Bytes Written"
+        "rocksdb_compact_read_bytes": "Bytes Read"
+        "rocksdb_compact_write_bytes": "Bytes Written"
 
 lsm_rocksdb_compaction_numfiles:
-  metric: "collectd_yb_tserver_counter_total"
-  function: "avg"
-  operator: "> 0"
+  metric: "rocksdb_numfiles_in_singlecompaction.avg"
+  function: "irate|avg"
+  range: "1m"
   filters:
-    type: "rocksdb.numfiles.in.singlecompaction.avg"
-  group_by: "exported_instance"
+    export_type: "tserver_export"
   layout:
-    title: "Compaction num files"
+    title: "Compaction num files / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
-          "rocksdb.numfiles.in.singlecompaction.avg": "Avg"
+          "rocksdb_numfiles_in_singlecompaction.avg": "Avg"
 
 lsm_rocksdb_compaction_time:
-  metric: "collectd_yb_tserver_counter_total"
-  function: "rate|avg"
+  metric: "rocksdb_compaction_times_micros.avg"
+  function: "irate|avg"
   range: "1m"
   operator: "/ 1000000"
   filters:
-    type: "rocksdb.compaction.times.micros.avg"
-  group_by: "exported_instance"
+    export_type: "tserver_export"
   layout:
-    title: "Compaction time (sec)"
+    title: "Compaction time (sec) / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
-          "rocksdb.compaction.times.micros.avg": "Avg"
+          "rocksdb_compaction_times_micros.avg": "Avg"
 
 #Cassandra Metrics
 cql_server_rpc_per_second:
-  metric: "collectd_yb_cql_counter_total"
-  function: "rate|sum"
-  range: "1m"
+  metric: "rpc_latency_count"
+  function: "irate|sum"
+  range : "1m"
   filters:
-    type: "rpc_SQLProcessor_SelectStmt.num|rpc_SQLProcessor_InsertStmt.num|rpc_SQLProcessor_UpdateStmt.num|rpc_SQLProcessor_DeleteStmt.num|rpc_SQLProcessor_OtherStmts.num"
-  group_by: "type"
+    server_type: "yb_cqlserver"
+    service_type: "SQLProcessor"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts"
+  group_by: "service_method"
   layout:
     title: "Total CQL Ops / Sec"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rpc_SQLProcessor_SelectStmt.num": "Select"
-        "rpc_SQLProcessor_InsertStmt.num": "Insert"
-        "rpc_SQLProcessor_UpdateStmt.num": "Update"
-        "rpc_SQLProcessor_DeleteStmt.num": "Delete"
-        "rpc_SQLProcessor_OtherStmts.num": "Other"
+        "SelectStmt": "Select"
+        "InsertStmt": "Insert"
+        "UpdateStmt": "Update"
+        "DeleteStmt": "Delete"
+        "OtherStmts": "Other"
 
 cql_sql_latency:
-  metric: "collectd_yb_cql_counter_total"
-  function: "avg"
+  metric: "rpc_latency.avg"
+  function: "irate|avg"
+  range : "1m"
   filters:
-    type: "rpc_SQLProcessor_SelectStmt.avg|rpc_SQLProcessor_InsertStmt.avg|rpc_SQLProcessor_UpdateStmt.avg|rpc_SQLProcessor_DeleteStmt.avg|rpc_SQLProcessor_OtherStmts.avg"
-  group_by: "type"
+    server_type: "yb_cqlserver"
+    service_type: "SQLProcessor"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts"
+  group_by: "service_method"
   layout:
     title: "CQL Op Execute Latencies Avg"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rpc_SQLProcessor_SelectStmt.avg": "Select"
-        "rpc_SQLProcessor_InsertStmt.avg": "Insert"
-        "rpc_SQLProcessor_UpdateStmt.avg": "Update"
-        "rpc_SQLProcessor_DeleteStmt.avg": "Delete"
-        "rpc_SQLProcessor_OtherStmts.avg": "Others"
+        "SelectStmt": "Select"
+        "InsertStmt": "Insert"
+        "UpdateStmt": "Update"
+        "DeleteStmt": "Delete"
+        "OtherStmts": "Others"
       ticksuffix: "&nbsp;\u00B5s"
 
 cql_sql_latency_breakdown:
-  metric: "collectd_yb_cql_counter_total"
-  function: "avg"
+  metric: "rpc_latency.avg"
+  function: "irate|sum"
+  range : "1m"
   filters:
-    type: "rpc_CQLServerService_ProcessRequest.avg|rpc_SQLProcessor_ParseRequest.avg|rpc_SQLProcessor_AnalyseRequest.avg|rpc_SQLProcessor_ExecuteRequest.avg"
-  group_by: "type"
+    export_type: "cql_export"
+    server_type: "yb_cqlserver"
+    service_type: "CQLServerService"
+    service_method: "ProcessRequest|ParseRequest|AnalyzeRequest|ExecuteRequest"
+  group_by: "service_method"
   layout:
     title: "CQL Latency Breakdown"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rpc_CQLServerService_ProcessRequest.avg": "Total"
-        "rpc_SQLProcessor_ParseRequest.avg": "Parse"
-        "rpc_SQLProcessor_AnalyseRequest.avg": "Analyze"
-        "rpc_SQLProcessor_ExecuteRequest.avg": "Execute"
+        "ProcessRequest": "Total"
+        "ParseRequest": "Parse"
+        "AnalyzeRequest": "Analyze"
+        "ExecuteRequest": "Execute"
       ticksuffix: "&nbsp;\u00B5s"
 
 cql_yb_local_vs_remote:
-  metric: "collectd_yb_cql_counter_total"
+  metric: "rpc_latency_count"
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "rpc_read_remote.num|rpc_write_remote.num|rpc_read_local.num|rpc_write_local.num"
-  group_by: "type"
+    service_type: "read|write"
+    service_method: "local|remote"
+  group_by: "service_method,service_type"
   layout:
     title: "YBClient Ops Local vs Remote"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rpc_read_remote.num": "Remote Read"
-        "rpc_write_remote.num": "Remote Write"
-        "rpc_read_local.num": "Local Read"
-        "rpc_write_local.num": "Local Write"
+        "remote,read": "Remote Read"
+        "remote,write": "Remote Write"
+        "local,read": "Local Read"
+        "local,write": "Local Write"
 
 cql_yb_latency:
-  metric: "collectd_yb_cql_counter_total"
-  function: "avg"
+  metric: "rpc_latency.avg"
+  function: "irate|avg"
+  range: "1m"
   filters:
-    type: "rpc_read_remote.avg|rpc_write_remote.avg|rpc_read_local.avg|rpc_write_local.avg"
-  group_by: "type"
+    export_type: "cql_export"
+    service_type: "read|write"
+    service_method: "local|remote"
+  group_by: "service_method,service_type"
   layout:
     title: "YBClient Latency"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rpc_read_remote.avg": "Remote Read"
-        "rpc_write_remote.avg": "Remote Write"
-        "rpc_read_local.avg": "Local Read"
-        "rpc_write_local.avg": "Local Write"
+        "remote,read": "Remote Read"
+        "remote,write": "Remote Write"
+        "local,read": "Local Read"
+        "local,write": "Local Write"
       ticksuffix: "&nbsp;\u00B5s"
 
 cql_reactor_latency:
-  metric: "collectd_yb_cql_counter_total"
-  function: "avg"
+  metric: "rpc_incoming_queue_time.avg|handler_latency_outbound_call_queue_time.avg|handler_latency_outbound_transfer.avg"
+  function: "irate|avg"
+  range: "1m"
+  # operator: "/ 1000"
   filters:
-    type: "rpc_incoming_queue_time.avg|handler_latency_outbound_transfer.avg|handler_latency_outbound_call_queue_time.avg"
-  group_by: "type"
+    export_type: "cql_export"
   layout:
-    title: "YBClient Reactor Delays"
+    title: "YugaByte Reactor Delays"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rpc_incoming_queue_time.avg": "Incoming Queue"
-        "handler_latency_outbound_transfer.avg": "Outbound transfer time"
+        "rpc_incoming_queue_time.avg": "Incoming queue time"
         "handler_latency_outbound_call_queue_time.avg": "Outbound queue time"
-      ticksuffix: "&nbsp;\u00B5s"
+        "handler_latency_outbound_transfer.avg": "Outbound transfer time"
+      ticksuffix: "&nbsp;ms"
 
 response_sizes:
-  metric: "collectd_yb_cql_counter_total"
-  function: "avg"
+  metric: "rpc_latency.avg"
+  function: "irate|avg"
+  range: "1m"
   filters:
-    type: "rpc_SQLProcessor_ResponseSize.avg"
-  group_by: "type"
+    server_type: "yb_cqlserver"
+    service_type: "SQLProcessor"
+    service_method: "ResponseSize"
+  group_by: "service_method"
   layout:
     title: "Response Size (bytes)"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rpc_SQLProcessor_ResponseSize.avg": "Response Size"
+        "ResponseSize": "Response Size"
