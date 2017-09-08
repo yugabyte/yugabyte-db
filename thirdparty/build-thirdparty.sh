@@ -326,8 +326,6 @@ F_PROTOBUF=""
 F_RAPIDJSON=""
 F_SNAPPY=""
 F_SQUEASEL=""
-F_TRACE=""
-F_TRACE_VIEWER=""
 F_LIBBACKTRACE=""
 F_CQLSH=""
 F_REDIS_CLI=""
@@ -410,8 +408,6 @@ while [[ $# -gt 0 ]]; do
                     F_SNAPPY=1 ;;
     "squeasel")     building_what+=( squeasel )
                     F_SQUEASEL=1 ;;
-    "trace-viewer") building_what+=( trace_viewer )
-                    F_TRACE_VIEWER=1 ;;
     "zlib")         building_what+=( zlib )
                     F_ZLIB=1 ;;
     "libbacktrace") building_what+=( libbacktrace )
@@ -598,10 +594,6 @@ if [[ -z ${YB_THIRDPARTY_TSAN_ONLY_BUILD:-} ]]; then
 
   if [ -n "$F_ALL" -o -n "$F_GCOVR" ]; then
     do_build_if_necessary gcovr
-  fi
-
-  if [ -n "$F_ALL" -o -n "$F_TRACE_VIEWER" ]; then
-    do_build_if_necessary trace_viewer
   fi
 
   if is_linux && [ -n "$F_ALL" -o -n "$F_NVML" ]; then
