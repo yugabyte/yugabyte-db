@@ -17,9 +17,16 @@ export default class AZSelectorTable extends Component {
     this.state = {azItemState: {}};
     this.getGroupWithCounts = this.getGroupWithCounts.bind(this);
     this.updatePlacementInfo = this.updatePlacementInfo.bind(this);
+    this.resetAZSelectionConfig = this.resetAZSelectionConfig.bind(this);
   }
   static propTypes = {
     universe: PropTypes.object,
+  }
+
+  resetAZSelectionConfig() {
+    const {universe: {universeConfigTemplate}} = this.props;
+    const newTaskParams = _.clone(universeConfigTemplate.data.userIntent);
+    this.props.submitConfigureUniverse({userIntent: newTaskParams});
   }
 
   handleAZChange(listKey, event) {
@@ -227,7 +234,10 @@ export default class AZSelectorTable extends Component {
     ));
       return (
         <div className={"az-table-container form-field-grid"}>
-          <h4>Availability Zones</h4>
+          <div className="az-selector-label">
+            <h4>Availability Zones</h4>
+            <span className="az-selector-reset" onClick={this.resetAZSelectionConfig}>Reset Config</span>
+          </div>
           {azList}
         </div>
       );

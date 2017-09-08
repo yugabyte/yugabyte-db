@@ -432,8 +432,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementInfoUtil.updateUniverseDefinition(ud, customer.getCustomerId());
     Set<NodeDetails> nodes = ud.nodeDetailsSet;
     assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
-    assertEquals(0, t.universe.getMasters().size());
-    assertEquals(0, PlacementInfoUtil.getNumMasters(nodes));
+    assertEquals(1, t.universe.getMasters().size());
+    assertEquals(1, PlacementInfoUtil.getNumMasters(nodes));
     assertEquals(1, nodes.size());
   }
 
