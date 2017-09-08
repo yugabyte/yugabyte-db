@@ -1008,11 +1008,21 @@ public class PlacementInfoUtil {
     return maxNodeIdx + 1;
   }
 
+  public static boolean isRegionListMultiAZ(UserIntent userIntent) {
+    List<UUID> regionList = userIntent.regionList;
+    if (regionList.size() > 1) {
+      return true;
+    }
+    if (Region.get(regionList.get(0)).zones.size() > 1) {
+      return true;
+    }
+    return false;
+  }
+
   public static PlacementInfo getPlacementInfo(UserIntent userIntent) {
-    if (userIntent == null) {
+    if (userIntent == null || userIntent.regionList == null || userIntent.regionList.isEmpty()) {
       return null;
     }
-
     verifyNodesAndRF(userIntent.numNodes, userIntent.replicationFactor);
 
     // Make sure the preferred region is in the list of user specified regions.
@@ -1021,10 +1031,9 @@ public class PlacementInfoUtil {
       throw new RuntimeException("Preferred region " + userIntent.preferredRegion +
                                  " not in user region list.");
     }
-
     // Create the placement info object.
     PlacementInfo placementInfo = new PlacementInfo();
-    boolean useSingleAZ = !userIntent.isMultiAZ || (userIntent.replicationFactor == 1);
+    boolean useSingleAZ = !isRegionListMultiAZ(userIntent);
     // Handle the single AZ deployment case or RF=1 case.
     if (useSingleAZ) {
       // Select an AZ in the required region.
