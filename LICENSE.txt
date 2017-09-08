@@ -201,7 +201,7 @@
    limitations under the License.
 
 --------------------------------------------------------------------------------
-src/kudu/gutil (some portions): Apache 2.0, and 3-clause BSD
+src/yb/gutil (some portions): Apache 2.0, and 3-clause BSD
 
 This module is derived from code in the Chromium project, copyright
 (c) Google inc and (c) The Chromium Authors and licensed under the
@@ -237,7 +237,7 @@ Apache 2.0 License or the under the 3-clause BSD license:
 
 --------------------------------------------------------------------------------
 
-src/kudu/gutil/utf: licensed under the following terms:
+src/yb/gutil/utf: licensed under the following terms:
 
   UTF-8 Library
 
@@ -256,7 +256,7 @@ src/kudu/gutil/utf: licensed under the following terms:
 
 --------------------------------------------------------------------------------
 
-src/kudu/gutil/valgrind.h: Hybrid BSD (half BSD, half zlib)
+src/yb/gutil/valgrind.h: Hybrid BSD (half BSD, half zlib)
 
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
@@ -295,7 +295,7 @@ src/kudu/gutil/valgrind.h: Hybrid BSD (half BSD, half zlib)
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 --------------------------------------------------------------------------------
-src/kudu/util (some portions): 3-clause BSD license
+src/yb/util (some portions): 3-clause BSD license
 
 Some portions of this module are derived from code from LevelDB
 ( https://github.com/google/leveldb ):
@@ -329,7 +329,7 @@ Some portions of this module are derived from code from LevelDB
   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 --------------------------------------------------------------------------------
-src/kudu/util (HdrHistogram-related classes): public domain
+src/yb/util (HdrHistogram-related classes): public domain
 
 Portions of these classes were ported from Java to C++ from the sources
 available at https://github.com/HdrHistogram/HdrHistogram .
@@ -340,7 +340,7 @@ available at https://github.com/HdrHistogram/HdrHistogram .
 
 --------------------------------------------------------------------------------
 
-src/kudu/util/random-util.cc: some portions adapted from WebRTC project
+src/yb/util/random-util.cc: some portions adapted from WebRTC project
 (modules/video_coding/main/test/test_util.cc) under a 3-clause BSD license.
 
   Copyright (c) 2011, The WebRTC project authors. All rights reserved.
@@ -375,7 +375,7 @@ src/kudu/util/random-util.cc: some portions adapted from WebRTC project
 
 --------------------------------------------------------------------------------
 
-src/kudu/util/sync_point: adapted from the RocksDB project under a 3-clause
+src/yb/util/sync_point: adapted from the RocksDB project under a 3-clause
 BSD license with an additional grant of patent rights:
 
   Copyright (c) 2014, Facebook, Inc.
@@ -445,7 +445,7 @@ BSD license with an additional grant of patent rights:
 
 --------------------------------------------------------------------------------
 
-src/kudu/server/url-coding.cc: some portions adapted from the Boost project
+src/yb/server/url-coding.cc: some portions adapted from the Boost project
 thirdparty/boost_uuid/:
 
   Boost Software License - Version 1.0 - August 17th, 2003
@@ -576,7 +576,7 @@ www/jquery*.js: MIT license
 
 --------------------------------------------------------------------------------
 
-java/kudu-client/src/main/java/org/kududb/util/: Slice.java and Slices.java
+java/yb-client/src/main/java/org/ybdb/util/: Slice.java and Slices.java
 
   Derived from the LevelDB Java project at https://github.com/dain/leveldb/
   Licensed under the Apache 2.0 license with the following copyrights:
@@ -598,7 +598,7 @@ java/kudu-client/src/main/java/org/kududb/util/: Slice.java and Slices.java
 
 --------------------------------------------------------------------------------
 
-java/kudu-client/: Some classes are derived from the AsyncHBase project
+java/yb-client/: Some classes are derived from the AsyncHBase project
 under the following 3-clause BSD license:
 
   Copyright (C) 2010-2012  The Async HBase Authors.  All rights reserved.
