@@ -6,12 +6,6 @@ summary: Add a new row to a table.
 table {
   float: left;
 }
-#psyn {
-  text-indent: 50px;
-}
-#psyn2 {
-  text-indent: 100px;
-}
 #ptodo {
   color: red
 }
@@ -19,22 +13,22 @@ table {
 
 ## Synopsis
 `INSERT` adds a row to a specified table. Currently, YugaByte can only insert one row at a time. Inserting multiple rows is not yet supported. For example, the following insert command adds a new row to the table `yugatab` with the given values.
-<p id=psyn>`INSERT INTO yugatab(id, name) VALUES(7, 'Joe');`</p>
+
+`INSERT INTO yugatab(id, name) VALUES(7, 'Joe');`
 
 ## Syntax
-insert::=
-<p id=psyn><code>
-   INSERT INTO table_name '(' column [, column ... ] ')' VALUES '(' value [, value ... ] ')'
-</code></p>
-<p id=psyn2><code>
-   [ IF { [ NOT ] EXISTS | if_expression } ] [ USING TTL ttl_expression ];
-</code></p>
+```
+insert ::= INSERT INTO table_name '(' column [, column ... ] ')'
+               VALUES '(' value [, value ... ] ')'
+               [ IF { [ NOT ] EXISTS | if_expression } ]
+               [ USING TTL ttl_expression ];
+```
 
 where<br>
   <li>`table_name` and `column` is an identifier.</li>
   <li>`value` can be any expression although Apache Cassandra restricts that `value` must be literals.</li>
   <li>See [Expression](..#expressions) for more information on syntax rules.</li>
-</p>
+  <li>See Semantics Section for restrictions of `ttl_expression`, `where_expression`, and `if_expression`.</li>
 
 ## Semantics
 <li>An error is raised if the specified `table_name` does not exist.</li>
@@ -42,8 +36,9 @@ where<br>
 <li>The `if_expression` can contain any logical and boolean operators.</li>
 
 ## Examples
-
-cqlsh>`INSERT INTO yugatab(id, name) VALUES(7, 'Joe');`<br>
+``` sql
+cqlsh:yugaspace> INSERT INTO yugatab(id, name) VALUES(7, 'Joe');
+```
 
 ## See Also
 

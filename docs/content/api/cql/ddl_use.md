@@ -19,32 +19,35 @@ table {
 <p id=psyn>`USE yugaspace;`</p>
 
 ## Syntax
-use_keyspace::=
-<p id=psyn><code>
-   USE keyspace_name;
-</code></p>
-
-Where<br>
-  <li><code>keyspace_name</code> must be an identifier that cannot be any reserved keyword and cannot contains whitespaces, or it has to be double-quoted.</li>
-</p>
+```
+use_keyspace ::= USE keyspace_name;
+```
+Where
+  <li>`keyspace_name` must be an identifier that cannot be any reserved keyword and cannot contains whitespaces, or it has to be double-quoted.</li>
 
 ## Semantics
 
 <li>If the specified keyspace does not exists, an error is raised.</li>
 
-## Example
+## Examples
+``` sql
+cqlsh:yugaspace> CREATE KEYSPACE yugaspace;
 
-cqlsh>`CREATE KEYSPACE yugaspace;`<br>
+cqlsh:yugaspace> CREATE KEYSPACE myspace;
 
-cqlsh>`CREATE KEYSPACE myspace;`<br>
+cqlsh:yugaspace> USE yugaspace;
+```
 
-cqlsh> `USE yugaspace`<br>
-
-<i>Create a table in the default keyspace, "yugaspace".</i><br>
-cqlsh:yugaspace> `CREATE TABLE yugatab(id int primary key);`<br>
-
-<i>Create a table in "myspace".</i><br>
-cqlsh:yugaspace> `CREATE TABLE myspace.yugatab(id int primary key);`<br>
+<li>Create a table in the default keyspace, "yugaspace".
+```
+cqlsh:yugaspace> CREATE TABLE yugatab(id int primary key);
+```
+</li>
+<li>Create a table in "myspace".
+```
+cqlsh:yugaspace> CREATE TABLE myspace.yugatab(id int primary key);
+```
+</li>
 
 ## See Also
 [`CREATE KEYSPACE`](../ddl_create_keyspace)

@@ -3,20 +3,22 @@ title: HGET
 ---
 
 ## SYNOPSIS
-<code><b>HGET key field</b></code><br>
-This command is to fetch the value for the given <code>field</code> in the hash that is specified by the given <code>key</code>.
+<b>`HGET key field`</b><br>
+This command is to fetch the value for the given `field` in the hash that is specified by the given `key`.
 
-<li>If the given <code>key</code> or <code>field</code> does not exist, null is returned.</li>
-<li>If the given <code>key</code> is associated a non-hash data, an error is raised.</li>
+<li>If the given `key` or `field` does not exist, null is returned.</li>
+<li>If the given `key` is associated a non-hash data, an error is raised.</li>
 
 ## RETURN VALUE
-Returns the value for the given <code>field</code>
+Returns the value for the given `field`
 
 ## EXAMPLES
-% <code>HSET yugahash area1 "America"</code><br>
-1<br>
-% <code>HGET yugahash area1</code><br>
-"America"<br>
+```
+$ HSET yugahash area1 "America"
+1
+$ HGET yugahash area1
+"America"
+```
 
 ## SEE ALSO
 [`hdel`](../hdel/), [`hexists`](../hexists/), [`hgetall`](../hgetall/), [`hkeys`](../hkeys/), [`hlen`](../hlen/), [`hmget`](../hmget/), [`hmset`](../hmset/), [`hset`](../hset/), [`hstrlen`](../hstrlen/), [`hvals`](../hvals/)

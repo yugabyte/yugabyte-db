@@ -9,9 +9,6 @@ table {
 #psyn {
   text-indent: 50px;
 }
-#psyn2 {
-  text-indent: 100px;
-}
 #ptodo {
   color: red
 }
@@ -32,9 +29,9 @@ DataType | Min | Max |
 The following keywords are used to specify a column of type integer for different constraints including its value ranges.
 
 ```
-type_specification::= { TINYINT | SMALLINT | INT | INTEGER | BIGINT | COUNTER }
+type_specification ::= { TINYINT | SMALLINT | INT | INTEGER | BIGINT | COUNTER }
 
-integer_literal::= [{ + | - }] digit [ { digit | , } ... ]
+integer_literal ::= [{ + | - }] digit [ { digit | , } ... ]
 ```
 
 ## Semantics

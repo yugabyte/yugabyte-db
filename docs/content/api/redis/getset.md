@@ -3,20 +3,22 @@ title: GETSET
 ---
 
 ## SYNOPSIS
-<code><b>GETSET key value</b></code><br>
-This command is an atomic read and write operation that gets the existing value that is associated with the given <code>key</code> while rewriting it with the given <code>value</code>.
+<b>`GETSET key value`</b><br>
+This command is an atomic read and write operation that gets the existing value that is associated with the given `key` while rewriting it with the given `value`.
 
-<li>If the given <code>key</code> does not exist, the given <code>value</code> is inserted for the <code>key</code>, and null is returned.</li>
-<li>If the given <code>key</code> is associated with non-string data, an error is raised.</li>
+<li>If the given `key` does not exist, the given `value` is inserted for the `key`, and null is returned.</li>
+<li>If the given `key` is associated with non-string data, an error is raised.</li>
 
 ## RETURN VALUE
-Returns the old value of the given <code>key</code>.
+Returns the old value of the given `key`.
 
 ## EXAMPLES
-% <code>SET yugakey 1</code><br>
-"OK"<br>
-% <code>GETSET yugakey 2</code><br>
-1<br>
+```
+$ SET yugakey 1
+"OK"
+$ GETSET yugakey 2
+1
+```
 
 ## SEE ALSO
 [`append`](../append/), [`get`](../get/), [`getrange`](../getrange/), [`incr`](../incr/), [`mget`](../mget/), [`mset`](../mset/), [`set`](../set/), [`setrange`](../setrange/), [`strlen`](../strlen/)

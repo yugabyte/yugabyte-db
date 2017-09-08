@@ -3,21 +3,23 @@ title: HLEN
 ---
 
 ## SYNOPSIS
-<code><b>HLEN key</b></code><br>
-This command is to fetch the number of fields in the hash that is associated with the given <code>key</code>.
-<li>If the <code>key</code> does not exist, 0 is returned.</li>
-<li>If the <code>key</code> is associated with non-hash data, an error is raised.</li>
+<b>`HLEN key`</b><br>
+This command is to fetch the number of fields in the hash that is associated with the given `key`.
+<li>If the `key` does not exist, 0 is returned.</li>
+<li>If the `key` is associated with non-hash data, an error is raised.</li>
 
 ## RETURN VALUE
 Returns number of fields in the specified hash.
 
 ## EXAMPLES
-% <code>HSET yugahash area1 "Africa"</code><br>
-1<br>
-% <code>HSET yugahash area2 "America"</code><br>
-1<br>
-% <code>HLEN yugahash</code><br>
-2<br>
+```
+$ HSET yugahash area1 "Africa"
+1
+$ HSET yugahash area2 "America"
+1
+$ HLEN yugahash
+2
+```
 
 ## SEE ALSO
 [`hdel`](../hdel/), [`hexists`](../hexists/), [`hget`](../hget/), [`hgetall`](../hgetall/), [`hkeys`](../hkeys/), [`hmget`](../hmget/), [`hmset`](../hmset/), [`hset`](../hset/), [`hstrlen`](../hstrlen/), [`hvals`](../hvals/)

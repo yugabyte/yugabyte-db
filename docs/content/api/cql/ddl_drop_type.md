@@ -19,24 +19,22 @@ table {
 <p id=psyn>`DROP TYPE yugatype;`</p>
 
 ## Syntax
-drop_type::=
-<p id=psyn><code>
-   DROP TYPE [ IF EXISTS ] type_name;
-</code></p>
-
-Where<br>
-  <li>`type_name` is an identifier.</li>
-</p>
+```
+drop_type ::= DROP TYPE [ IF EXISTS ] type_name;
+```
+Where
+<li>`type_name` is an identifier.</li>
 
 ## Semantics
 
 <li>An error is raised if the specified `type_name` does not exist unless `IF EXISTS` option is present.</li>
 <li>A user-defined `type_name` cannot be dropped if it is currently used in a table or another type</li>
 
-## Example
-
-cqlsh:yugaspace>`CREATE TYPE yugatype(name TEXT, id INT);`<br>
-cqlsh:yugaspace>`DROP TYPE yugatype;`<br>
+## Examples
+``` sql
+cqlsh:yugaspace> CREATE TYPE yugatype(name TEXT, id INT);
+cqlsh:yugaspace> DROP TYPE yugatype;
+```
 
 ## See Also
 [`CREATE TABLE`](../ddl_create_table)

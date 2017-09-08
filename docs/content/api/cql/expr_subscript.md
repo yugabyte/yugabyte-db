@@ -11,9 +11,6 @@ table {
 #psyn {
   text-indent: 50px;
 }
-#psyn2 {
-  text-indent: 100px;
-}
 #ptodo {
   color: red
 }
@@ -28,9 +25,10 @@ Subscripted expression allows access to an element in a multi-element value such
 <li>Apache Cassandra does not allow subscripted expression in the select list of the SELECT statement.</li>
 
 ## Examples
-
-cqlsh:yugaspace> `CREATE TABLE t(id INT PRIMARY KEY,yugamap MAP<TEXT, TEXT>);`  
-cqlsh:yugaspace> `UPDATE yugatab SET map_value['key_value'] = 'yuga_string' WHERE id = 7;`  
+``` sql
+cqlsh:yugaspace> CREATE TABLE t(id INT PRIMARY KEY,yugamap MAP<TEXT, TEXT>);
+cqlsh:yugaspace> UPDATE yugatab SET map_value['key_value'] = 'yuga_string' WHERE id = 7;
+```
 
 ## See Also
 [All Expressions](..##expressions)

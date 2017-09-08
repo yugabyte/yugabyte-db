@@ -3,23 +3,25 @@ title: HKEYS
 ---
 
 ## SYNOPSIS
-<code><b>HKEYS key</b></code><br>
-This command is to fetch all fields of the hash that is associated with the given <code>key</code>.
+<b>`HKEYS key`</b><br>
+This command is to fetch all fields of the hash that is associated with the given `key`.
 
-<li>If the <code>key</code> does not exist, an empty list is returned.</li>
-<li>If the <code>key</code> is associated with non-hash data, an error is raised.</li>
+<li>If the `key` does not exist, an empty list is returned.</li>
+<li>If the `key` is associated with non-hash data, an error is raised.</li>
 
 ## RETURN VALUE
 Returns list of fields in the specified hash.
 
 ## EXAMPLES
-% <code>HSET yugahash area1 "Africa"</code><br>
-1<br>
-% <code>HSET yugahash area2 "America"</code><br>
-1<br>
-% <code>HKEYS yugahash</code><br>
-1) "area1"<br>
-1) "area2"<br>
+```
+$ HSET yugahash area1 "Africa"
+1
+$ HSET yugahash area2 "America"
+1
+$ HKEYS yugahash
+1) "area1"
+2) "area2"
+```
 
 ## SEE ALSO
 [`hdel`](../hdel/), [`hexists`](../hexists/), [`hget`](../hget/), [`hgetall`](../hgetall/), [`hlen`](../hlen/), [`hmget`](../hmget/), [`hmset`](../hmset/), [`hset`](../hset/), [`hstrlen`](../hstrlen/), [`hvals`](../hvals/)

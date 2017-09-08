@@ -3,22 +3,24 @@ title: APPEND
 ---
 
 ## SYNOPSIS
-<code><b>APPEND key string_value</b></code><br>
-This command appends a value to the end of the string that is associated with the given <code>key</code>.
-<li>If the <code>key</code> already exists, the given <code>string_value</code> is appended to the end of the string value that is associated with the <code>key</code>.</li>
-<li>If the <code>key</code> does not exist, it is created and associated with an empty string.</li>
-<li>If the <code>key</code> is associated with a non-string value, an error is raised.</li>
+<b>`APPEND key string_value`</b><br>
+This command appends a value to the end of the string that is associated with the given `key`.
+<li>If the `key` already exists, the given `string_value` is appended to the end of the string value that is associated with the `key`.</li>
+<li>If the `key` does not exist, it is created and associated with an empty string.</li>
+<li>If the `key` is associated with a non-string value, an error is raised.</li>
 
 ## RETURN VALUE
 Returns the length of the resulted string after appending.
 
 ## EXAMPLES
-% <code>GET yugakey</code><br>
-"Yuga"<br>
-% <code>APPEND yugakey "Byte"</code><br>
-8<br>
-% <code>GET yugakey</code><br>
-"YugaByte"<br>
+```
+$ GET yugakey
+"Yuga"
+$ APPEND yugakey "Byte"
+8
+$ GET yugakey
+"YugaByte"
+```
 
 ## SEE ALSO
 [`get`](../get/), [`getrange`](../getrange/), [`getset`](../getset/), [`incr`](../incr/), [`mget`](../mget/), [`mset`](../mset/), [`set`](../set/), [`setrange`](../setrange/), [`strlen`](../strlen/)

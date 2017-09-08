@@ -3,12 +3,14 @@ title: ECHO
 ---
 
 ## SYNOPSIS
-<code><b>ECHO message</b></code><br>
-This command is to output the given <code>message</code>.
+<b>`ECHO message`</b><br>
+This command is to output the given `message`.
 
 ## RETURN VALUE
 Returns the message.
 
 ## EXAMPLES
-% <code>ECHO "Yuga Yuga"</code><br>
-"Yuga Yuga"<br>
+```
+$ ECHO "Yuga Yuga"
+"Yuga Yuga"
+```

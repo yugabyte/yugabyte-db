@@ -19,19 +19,15 @@ table {
 <p id=psyn>`CREATE KEYSPACE yugaspace;`</p>
 
 ## Syntax
-create_keyspace::=
-<p id=psyn><code>
-   CREATE { KEYSPACE | SCHEMA } [ IF NOT EXIST ] keyspace_name [ keyspace_property [, keyspace_property ...]];
-</code></p>
+```
+create_keyspace ::= CREATE { KEYSPACE | SCHEMA } [ IF NOT EXIST ] keyspace_name
+                       [ keyspace_property [, keyspace_property ...]]
 
-keyspace_property::=
-<p id=psyn><code>
-property_name = property_value<br></code>
-</code></p>
+keyspace_property ::= property_name = property_value
+```
 Where<br>
   <li>`keyspace_name` and `property_name` are identifiers.</li>
-  <li><code>property_value</code> must be a literal of either boolean, text, or map datatype.</li>
-</p>
+  <li>`property_value` must be a literal of either boolean, text, or map datatype.</li>
 
 ## Semantics
 
@@ -39,16 +35,17 @@ Where<br>
 <li>An error is raised if the specified keyspace already exists unless `IF NOT EXISTS` option is present.</li>
 
 ## Examples
+``` sql
+cqlsh:yugaspace> CREATE KEYSPACE yugaspace;
 
-cqlsh>`CREATE KEYSPACE yugaspace;`<br>
+cqlsh:yugaspace> DESCRIBE KEYSPACES;
+yugaspace  system_schema  system  default_keyspace
 
-cqlsh> `DESCRIBE KEYSPACES;`<br>
-yugaspace  system_schema  system  default_keyspace<br>
-
-cqlsh> `CREATE DATABASE yugaspace;`<br>
-InvalidRequest: Error from server: code=2200 [Invalid query] message="SQL error (yb/sql/ptree/process_context.cc:41): Keyspace Already Exists - Already present (yb/common/wire_protocol.cc:130): Namespace yugaspace already exists: 346b3b58aa2c4a23b9e3b9552c4f5931<br>
-create keyspace yugaspace;<br>
-^^^^^^<br>
+cqlsh:yugaspace> CREATE DATABASE yugaspace;
+Error: Keyspace Already Exists
+create keyspace yugaspace;
+^^^^^^
+```
 
 ## See Also
 [`DROP KEYSPACE`](../ddl_drop_keyspace)

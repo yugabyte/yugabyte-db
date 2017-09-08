@@ -9,9 +9,6 @@ table {
 #psyn {
   text-indent: 50px;
 }
-#psyn2 {
-  text-indent: 100px;
-}
 #ptodo {
   color: red
 }
@@ -22,15 +19,13 @@ table {
 <p id=psyn>`SELECT * FROM yugatab;`</p>
 
 ## Syntax
-select::=
-<p id=psyn>
-   `SELECT [ DISTINCT ] { * | column_name [ column_name ... ] } FROM table_name WHERE where_expression`
-</p>
-
-where<br>
+```
+select ::= SELECT [ DISTINCT ] { * | column_name [ column_name ... ] } FROM table_name
+               WHERE where_expression
+```
+where
   <li>`table_name` and `column_name` are identifier.</li>
   <li>See [Expression](..#expressions) for more information on syntax rules.</li>
-</p>
 
 ## Semantics
 <li>An error is raised if the specified `table_name` does not exist.</li>
@@ -42,8 +37,9 @@ where<br>
 <li> `SELECT DISTINCT` can only be used for primary-key or static columns.</li>
 
 ## Examples
-
-cqlsh>`SELECT * FROM yugatab WHERE id = 7;`<br>
+```
+cqlsh:yugaspace> SELECT * FROM yugatab WHERE id = 7;
+```
 
 ## See Also
 

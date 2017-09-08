@@ -19,15 +19,11 @@ table {
 <p id=psyn>`DROP TABLE yugatab;`</p>
 
 ## Syntax
-drop_table::=
-<p id=psyn><code>
-   DROP TABLE [ IF EXISTS ] table_name;
-</code></p>
-
-Where<br>
+```
+drop_table ::= DROP TABLE [ IF EXISTS ] table_name;
+```
+Where
   <li>`table_name` is an identifier.</li>
-</p>
-
 
 ## Semantics
 
@@ -35,10 +31,11 @@ Where<br>
 <li>Associated objects to `table_name` such as prepared statements will be eventually invalidated after the drop statement is completed.</li>
 
 ## Examples
+```
+cqlsh:yugaspace> CREATE TABLE yugatab(name text, id int primary key);
 
-cqlsh>`CREATE TABLE yugatab(name text, id int primary key);`<br>
-
-cqlsh>`DROP TABLE yugatab;`<br>
+cqlsh:yugaspace> DROP TABLE yugatab;
+```
 
 ## See Also
 

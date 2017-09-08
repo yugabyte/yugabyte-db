@@ -3,22 +3,24 @@ title: HMGET
 ---
 
 ## SYNOPSIS
-<code><b>HMGET key field [field ...]</b></code><br>
-This command is to fetch one or more values for the given fields of the hash that is associated with the given <code>key</code>.
+<b>`HMGET key field [field ...]`</b><br>
+This command is to fetch one or more values for the given fields of the hash that is associated with the given `key`.
 
-<li>For every given <code>field</code>, (null) is returned if either <code>key</code> or <code>field</code> does not exist.</li>
-<li>If <code>key</code> is associated with a non-hash data, an error is raised.</li>
+<li>For every given `field`, (null) is returned if either `key` or `field` does not exist.</li>
+<li>If `key` is associated with a non-hash data, an error is raised.</li>
 
 ## RETURN VALUE
 Returns list of string values of the fields in the same order that was requested.
 
 ## EXAMPLES
-% <code>HMSET yugahash area1 "Africa" area2 "America"</code><br>
-"OK"<br>
-% <code>HMGET yugahash area1 area2 area_none</code><br>
-1) "Africa"<br>
-2) "America"<br>
-3) (null)<br>
+```
+$ HMSET yugahash area1 "Africa" area2 "America"
+"OK"
+$ HMGET yugahash area1 area2 area_none
+1) "Africa"
+2) "America"
+3) (null)
+```
 
 ## SEE ALSO
 [`hdel`](../hdel/), [`hexists`](../hexists/), [`hget`](../hget/), [`hgetall`](../hgetall/), [`hkeys`](../hkeys/), [`hlen`](../hlen/), [`hmset`](../hmset/), [`hset`](../hset/), [`hstrlen`](../hstrlen/), [`hvals`](../hvals/)

@@ -8,12 +8,6 @@ toc: false
 table {
   float: left;
 }
-#psyn {
-  text-indent: 50px;
-}
-#psyn2 {
-  text-indent: 100px;
-}
 #ptodo {
   color: red
 }
@@ -23,9 +17,9 @@ table {
 Function call expression applies the specified function to to given arguments between parentheses and return the result of the computation.
 
 ## Syntax
-<p id=psyn>
-   function_call::= <code>function_name '(' [ arguments ... ] ')'</code>
-</p>
+```
+function_call ::= function_name '(' [ arguments ... ] ')'
+```
 
 ## Builtin Functions
 
@@ -37,8 +31,8 @@ Function call expression applies the specified function to to given arguments be
 | MaxTimeUuid | `TIMEUUID` | (`TIMESTAMP`) | Returns the associated max time uuid  |
 | MinTimeUuid | `TIMEUUID` | (`TIMESTAMP`) | Returns the associated min time uuid  |
 | Now | `TIMEUUID` | () | Returns the UUID of the current timestamp |
-| TODate | `DATE` | (`TIMESTAMP`) | Conversion |
 | TTL | `BIGINT` | (<AnyType>) | Seek time-to-live of a column |
+| ToDate | `DATE` | (`TIMESTAMP`) | Conversion |
 | ToDate | `DATE` | (`TIMEUUID`) | Converts `TIMEUUID` to `DATE` |
 | ToTime | `TIME` | (`TIMESTAMP`) | Conversion |
 | ToTime | `TIME` | (`TIMEUUID`) | Conversion |

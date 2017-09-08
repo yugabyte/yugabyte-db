@@ -10,9 +10,6 @@ table {
 #psyn {
   text-indent: 50px;
 }
-#psyn2 {
-  text-indent: 100px;
-}
 #ptodo {
   color: red
 }
@@ -22,11 +19,10 @@ table {
 `BOOLEAN` datatype is used to specify values of either `true` or `false`.
 
 ## Syntax
-
 ```
-type_specification::= BOOLEAN
+type_specification ::= BOOLEAN
 
-boolean_literal::= { TRUE | FALSE }
+boolean_literal ::= { TRUE | FALSE }
 ```
 
 ## Semantics
@@ -37,10 +33,10 @@ boolean_literal::= { TRUE | FALSE }
 <li>Implicitly `BOOLEAN` is neither comparable nor convertible to any other datatypes.</li>
 
 ## Examples
-
 ``` sql
 cqlsh:myspace> CREATE TABLE bool (a INT PRIMARY KEY, b BOOLEAN);
 ```
+
 ## See Also
 
-[Data Types](data-types.html)
+[Data Types](..#datatypes)

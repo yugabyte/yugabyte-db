@@ -6,12 +6,6 @@ summary: Change values of a row in a table.
 table {
   float: left;
 }
-#psyn {
-  text-indent: 50px;
-}
-#psyn2 {
-  text-indent: 100px;
-}
 #ptodo {
   color: red
 }
@@ -19,26 +13,23 @@ table {
 
 ## Synopsis
 `UPDATE` removes rows from a specified table that meet a given condition. Currently, YugaByte can only update one row at a time. Updating multiple rows is not yet supported. For example, the following update command changes the value of the column `name` of the row in `yugatab` who has `id = 7`.
-<p id=psyn>`UPDATE yugatab SET name = 'Scott Tiger' WHERE id = 7;`</p>
+
+`UPDATE yugatab SET name = 'Scott Tiger' WHERE id = 7;`
 
 ## Syntax
-update::=
-<p id=psyn><code>
-   UPDATE table_name [ USING TTL ttl_expression ] SET assignment [, assignment ... ]
-</code></p>
-<p id=psyn2><code>
-   WHERE where_expression [ IF { [ NOT ] EXISTS | if_expression } ];
-</code></p>
+```
+update ::= UPDATE table_name
+              [ USING TTL ttl_expression ]
+              SET assignment [, assignment ... ]
+              WHERE where_expression
+              [ IF { [ NOT ] EXISTS | if_expression } ]
 
-assignment::=
-<p id=psyn><code>
-   { column_name | column_name'['index_expression']' } = expression
-</code></p>
-
-where<br>
+assignment ::= { column_name | column_name'['index_expression']' } '=' expression
+```
+where
   <li>`table_name` is an identifier.</li>
   <li>See [Expression](..#expressions) for more information on syntax rules.</li>
-</p>
+  <li>See Semantics Section for restrictions of `ttl_expression`, `where_expression`, and `if_expression`.</li>
 
 ## Semantics
 <li>An error is raised if the specified `table_name` does not exist.</li>
@@ -50,8 +41,9 @@ where<br>
 <li>The `if_expression` can contain any logical and boolean operators.</li>
 
 ## Examples
-
-cqlsh>`UPDATE yugatab USING TTL 1000 SET name = 'Joe' WHERE id = 7;`<br>
+``` sql
+cqlsh:yugaspace> UPDATE yugatab USING TTL 1000 SET name = 'Joe' WHERE id = 7;
+```
 
 ## See Also
 

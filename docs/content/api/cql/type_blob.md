@@ -9,9 +9,6 @@ table {
 #psyn {
   text-indent: 50px;
 }
-#psyn2 {
-  text-indent: 100px;
-}
 #ptodo {
   color: red
 }
@@ -24,7 +21,7 @@ table {
 ## Syntax
 
 ```
-type_specification::= BLOB
+type_specification ::= BLOB
 ```
 
 ## Semantics
@@ -34,8 +31,7 @@ type_specification::= BLOB
 <li>Two series of builtin-functions BlobAsType and TypeAsBlob are provided for convertion between `BLOB` and other datatypes.</li>
 <li>`BLOB` size is virtually unlimited.</li>
 
-## Example
-
+## Examples
 ``` sql
 cqlsh:yugaspace> CREATE TABLE yugatab(id INT PRIMARY KEY, content BLOB);
 ```

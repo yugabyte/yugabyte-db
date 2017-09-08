@@ -19,50 +19,32 @@ table {
 `ALTER TABLE` command is to change the schema or definition of an existing table.
 
 ## Syntax
-alter_table::=
-<p id=psyn><code>
-  ALTER TABLE table_name alter_operator [ alter_operator ...]
-</code></p>
+```
+alter_table ::= ALTER TABLE table_name alter_operator [ alter_operator ...]
 
-alter_operator::=
-<p id=psyn><code>
-{ add_op | drop_op | rename_op | alter_property_op }
-</code></p>
+alter_operator ::= { add_op | drop_op | rename_op | alter_property_op }
 
-add_op::=
-<p id=psyn><code>
-   ADD column_name column_type [ column_name column_type ...]
-</code></p>
+add_op ::= ADD column_name column_type [ column_name column_type ...]
 
-drop_op::=
-<p id=psyn><code>
-   DROP column_name [ column_name ...]
-</code></p>
+drop_op ::= DROP column_name [ column_name ...]
 
-rename_op::=
-<p id=psyn><code>
-   RENAME column_name TO column_name [ column_name TO column_name ... ]
-</code></p>
+rename_op ::= RENAME column_name TO column_name [ column_name TO column_name ... ]
 
-alter_property_op::=
-<p id=psyn><code>
-   WITH property_name = property_literal [ property_name = property_literal ... ]
-</code></p>
-
-Where<br>
+alter_property_op ::= WITH property_name = property_literal [ property_name = property_literal ... ]
+```
+Where
   <li>`table_name`, `column_name`, and `property_name` are identifiers.</li>
   <li>`property_literal` be a literal of either boolean, text, or map datatype.</li>
-</p>
 
 ## Semantics
 <li>An error is raised if `table_name` does not exists in the associate keyspace.</li>
 <li>Columns that are part of `PRIMARY KEY` can be not be altered</li>
 
 ## Examples
-
-cqlsh:yugaspace>`CREATE TABLE yugatab (id INT, name TEXT, salary FLOAT, PRIMARY KEY((id), name))`;<br>
-
-cqlsh:yugaspace>`ALTER TABLE yugatab ADD title TEXT`;<br>
+``` sql
+cqlsh:yugaspace> CREATE TABLE yugatab (id INT, name TEXT, salary FLOAT, PRIMARY KEY((id), name));
+cqlsh:yugaspace> ALTER TABLE yugatab ADD title TEXT;
+```
 
 ## See Also
 

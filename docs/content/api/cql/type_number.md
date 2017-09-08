@@ -10,9 +10,6 @@ table {
 #psyn {
   text-indent: 50px;
 }
-#psyn2 {
-  text-indent: 100px;
-}
 #ptodo {
   color: red
 }
@@ -29,12 +26,11 @@ DataType | Description | Decimal Precision |
 
 ## Syntax
 The following keywords are used to specify a column of non-integer number.
-
 ```
-type_specification::= { FLOAT | DOUBLE | DOUBLE PRECISION | DECIMAL }
+type_specification ::= { FLOAT | DOUBLE | DOUBLE PRECISION | DECIMAL }
 ```
-
-`DOUBLE` and `DOUBLE PRECISION` are aliases.
+Where
+<li>`DOUBLE` and `DOUBLE PRECISION` are aliases.</li>
 
 ## Semantics
 
@@ -42,9 +38,8 @@ type_specification::= { FLOAT | DOUBLE | DOUBLE PRECISION | DECIMAL }
 <li>Values of these non-integer numeric datatypes are neither comparable nor convertible to integer although integers are convertible to them.</li>
 
 ## Examples
-
 ``` sql
-CREATE TABLE yuga_floats (id INT PRIMARY KEY, f FLOAT, d1 DOUBLE, d2 DOUBLE PRECISION, d DECIMAL);
+cqlsh:yugaspace> CREATE TABLE yuga_floats (id INT PRIMARY KEY, f FLOAT, d1 DOUBLE, d2 DOUBLE PRECISION, d DECIMAL);
 ```
 
 ## See Also

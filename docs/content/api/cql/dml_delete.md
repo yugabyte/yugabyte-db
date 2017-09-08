@@ -6,9 +6,6 @@ summary: Deletes rows from a table.
 table {
   float: left;
 }
-#psyn {
-  text-indent: 50px;
-}
 #ptodo {
   color: red
 }
@@ -19,15 +16,15 @@ table {
 <p id=psyn>`DELETE FROM yugatab WHERE id = 7;`</p>
 
 ## Syntax
-delete::=
-<p id=psyn><code>
-   DELETE FROM table_name WHERE where_expression [ IF { [ NOT ] EXISTS | if_expression } ];
-</code></p>
-
-where<br>
+```
+delete ::= DELETE FROM table_name
+               WHERE where_expression
+               [ IF { [ NOT ] EXISTS | if_expression } ];
+```
+where
   <li>`table_name` is an identifier.</li>
   <li>See [Expression](..#expressions) for more information on syntax rules.</li>
-</p>
+  <li>See Semantics Section for restrictions on `where_expression` and `if_expression`.</li>
 
 ## Semantics
 <li>An error is raised if the specified `table_name` does not exist.</li>
@@ -40,8 +37,9 @@ where<br>
 <li>Deleting a column from a table is not yet supported.</li>
 
 ## Examples
-
-cqlsh>`DELETE FROM yugatab WHERE id = 7;`<br>
+``` sql
+cqlsh:yugaspace> DELETE FROM yugatab WHERE id = 7;
+```
 
 ## See Also
 

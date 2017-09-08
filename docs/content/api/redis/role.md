@@ -4,7 +4,7 @@ title: ROLE
 Early Releases: YugaByte only have master nodes for Redis services.
 
 ## SYNOPSIS
-<code><b>ROLE</b></code><br>
+<b>`ROLE`</b><br>
 This command is to provide information of a Redis instance, such as its role, its state of replication, its slaves, or its master. Roles are either "master", "slave", or "sentinel".
 <li>Information of a master instance may include the following.
   <ol>
@@ -35,15 +35,17 @@ This command is to provide information of a Redis instance, such as its role, it
 Returns an array of values.
 
 ## EXAMPLES
-% <code>ROLE</code><br>
-1) "master"<br>
-2) 0<br>
-3) 1) 1) "127.0.0.1"<br>
-      2) "9200"<br>
-      3) "0"<br>
-   2) 1) "127.0.0.1"<br>
-      2) "9201"<br>
-      3) "0"<br>
+```
+$ ROLE
+1) "master"
+2) 0
+3) 1) 1) "127.0.0.1"
+      2) "9200"
+      3) "0"
+   2) 1) "127.0.0.1"
+      2) "9201"
+      3) "0"
+```
 
 ## SEE ALSO
 [`auth`](../auth/), [`config`](../config/)

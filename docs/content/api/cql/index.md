@@ -77,7 +77,7 @@ Primitive Type | Description |
 [`FLOAT`](type_number) | 64-bit, inexact, floating-point number |
 [`FROZEN`](type_frozen) | Collection in binary format |
 [`INET`](type_inet) | String representation of IP address |
-[<code>INT &#124; INTEGER</code>](type_int) | 32-bit signed integer |
+[`INT` &#124; `INTEGER`](type_int) | 32-bit signed integer |
 [`LIST`](type_collection) | Collection of ordered elements |
 [`MAP`](type_collection) | Collection of pairs of key-and-value elements |
 [`SET`](type_collection) | Collection of ordered elements |
@@ -95,6 +95,6 @@ Primitive Type |
 ---------------|
 `DATE` | 
 `TIME` | 
-`TUPPLE` | 
+`TUPLE` | 
 `VARINT` | 
 </li>

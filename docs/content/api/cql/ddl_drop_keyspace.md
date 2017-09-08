@@ -19,24 +19,22 @@ table {
 <p id=psyn>`DROP KEYSPACE yugaspace;`</p>
 
 ## Syntax
-drop_keyspace::=
-<p id=psyn><code>
-   DROP { KEYSPACE | SCHEMA } [ IF EXISTS ] keyspace_name;
-</code></p>
-
-Where<br>
+```
+drop_keyspace ::= DROP { KEYSPACE | SCHEMA } [ IF EXISTS ] keyspace_name;
+```
+Where
   <li>`keyspace_name` is an identifier.</li>
-</p>
 
 ## Semantics
 
 <li>An error is raised if the specified `keyspace_name` does not exist unless `IF EXISTS` option is present.</li>
 
 ## Examples
+``` sql
+cqlsh:yugaspace> CREATE KEYSPACE yugaspace;
 
-cqlsh>`CREATE KEYSPACE yugaspace;`<br>
-
-cqlsh>`DROP KEYSPACE yugaspace;`<br>
+cqlsh:yugaspace> DROP KEYSPACE yugaspace;
+```
 
 ## See Also
 [`CREATE KEYSPACE`](../ddl_create_keyspace)
