@@ -13,6 +13,9 @@ import play.Configuration;
 import play.libs.Json;
 
 import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 
@@ -63,18 +66,24 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
     if (config == null) {
       responseJson.put("error", "Invalid Query Key");
     } else {
-      queryParam.put("query", config.getQuery(additionalFilters));
+      Map<String, String> queries = config.getQueries(additionalFilters);
       responseJson.set("layout", Json.toJson(config.getLayout()));
-      JsonNode queryResponseJson =
-        apiHelper.getRequest(queryUrl, new HashMap<String, String>(), queryParam);
-      MetricQueryResponse queryResponse =
-        Json.fromJson(queryResponseJson, MetricQueryResponse.class);
-
-      if (queryResponse.error != null) {
-        responseJson.put("error", queryResponse.error);
-      } else {
-        responseJson.set("data", queryResponse.getGraphData(config.getLayout()));
+      ArrayList<MetricGraphData> output = new ArrayList<>();
+      for (Map.Entry<String, String> e : queries.entrySet()) {
+        String metric = e.getKey();
+        queryParam.put("query", e.getValue());
+        JsonNode queryResponseJson =
+          apiHelper.getRequest(queryUrl, new HashMap<String, String>(), queryParam);
+        MetricQueryResponse queryResponse =
+          Json.fromJson(queryResponseJson, MetricQueryResponse.class);
+        if (queryResponse.error != null) {
+          responseJson.put("error", queryResponse.error);
+          break;
+        } else {
+          output.addAll(queryResponse.getGraphData(metric, config.getLayout()));
+        }
       }
+      responseJson.set("data", Json.toJson(output));
     }
     return responseJson;
   }

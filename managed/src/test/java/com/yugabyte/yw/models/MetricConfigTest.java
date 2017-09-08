@@ -20,6 +20,7 @@ import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertEquals;
 
 public class MetricConfigTest extends FakeDBApplication {
 
@@ -28,7 +29,7 @@ public class MetricConfigTest extends FakeDBApplication {
     // Make sure all the configs inside of metrics yaml are valid.
     Map<String, Object> configs = (HashMap<String, Object>) Yaml.load("metrics.yml");
     MetricConfig.loadConfig(configs);
-    for(MetricConfig config : MetricConfig.find.all()) {
+    for (MetricConfig config : MetricConfig.find.all()) {
       assertThat(config.getLayout(), allOf(notNullValue(), instanceOf(MetricConfig.Layout.class)));
       assertThat(config.getQuery(new HashMap<>()), allOf(notNullValue()));
     }
@@ -52,37 +53,60 @@ public class MetricConfigTest extends FakeDBApplication {
   }
 
   @Test
-  public void testMultiMetric() {
-    JsonNode configJson = Json.parse("{\"metric\": \"multi-metric\", \"function\": \"avg\"," +
-            "\"filters\": {\"__name__\": \"node_network_(.*)_packets\"}, \"group_by\": \"__name__\"}");
+  public void testAvgMetric() {
+    JsonNode configJson = Json.parse(
+        "{\"metric\": \"log_sync_latency.avg\", \"function\": \"irate|avg\"," +
+        "\"range\": \"1m\"," + 
+        "\"filters\": {\"export_type\":\"tserver_export\"}}");
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
     String query = metricConfig.getQuery(new HashMap<>());
-    assertThat(query, allOf(notNullValue(), equalTo("avg({__name__=~\"node_network_(.*)_packets\"}) by (__name__)")));
+    assertThat(query, allOf(notNullValue(), equalTo("avg(irate(log_sync_latency_sum{export_type=\"tserver_export\"}[1m])) / avg(irate(log_sync_latency_count{export_type=\"tserver_export\"}[1m]))")));
+  }
+
+  @Test
+  public void testMultiMetric() {
+    JsonNode configJson = Json.parse(
+        "{\"metric\": \"log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg\"," +
+        "\"function\": \"avg\", \"range\": \"1m\"}");
+    MetricConfig metricConfig = MetricConfig.create("metric", configJson);
+    metricConfig.save();
+    Map<String, String> queries = metricConfig.getQueries(new HashMap<>());
+    assertEquals(queries.size(), 3);
+    for (Map.Entry<String, String> e : queries.entrySet()) {
+      assertThat(e.getValue(), allOf(equalTo(metricConfig.getQuery(e.getKey(), new HashMap<>()))));
+    }
   }
 
   @Test
   public void testMultiMetricWithMultiFilters() {
-    JsonNode configJson = Json.parse("{\"metric\": \"multi-metric\", \"function\": \"avg\"," +
-            "\"filters\": {\"__name__\": \"node_network_(.*)_packets\", \"node_prefix\": \"foo\"}," +
-            " \"group_by\": \"__name__\"}");
+    JsonNode configJson = Json.parse(
+        "{\"metric\": \"rpc_latency_count\", \"function\": \"irate|sum\"," +
+        "\"range\": \"1m\"," +
+        "\"filters\": {\"export_type\": \"tserver_export\"," +
+        "\"service_type\": \"TabletServerService\"}," +
+        "\"service_method\": \"Read|Write\"}," +
+        " \"group_by\": \"service_method\"}");
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
     String query = metricConfig.getQuery(new HashMap<>());
-    assertThat(query, allOf(notNullValue(), equalTo("avg({__name__=~\"node_network_(.*)_packets\", " +
-            "node_prefix=\"foo\"}) by (__name__)")));
+    assertThat(query, allOf(notNullValue(), equalTo(
+            "sum(irate(rpc_latency_count{export_type=\"tserver_export\", " +
+            "service_type=\"TabletServerService\"}[1m]))")));
   }
 
   @Test
   public void testMultiMetricWithComplexFilters() {
-    JsonNode configJson = Json.parse("{\"metric\": \"multi-metric\", \"function\": \"avg\"," +
-            "\"filters\": {\"__name__\": \"node_network_(.*)_packets\", \"node_prefix\": \"foo|bar\"}," +
-            " \"group_by\": \"__name__\"}");
+    JsonNode configJson = Json.parse(
+        "{\"metric\": \"log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg\"," +
+        "\"function\": \"avg\", \"filters\": {\"node_prefix\": \"foo|bar\"}}");
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
-    String query = metricConfig.getQuery(new HashMap<>());
-    assertThat(query, allOf(notNullValue(), equalTo("avg({__name__=~\"node_network_(.*)_packets\", " +
-            "node_prefix=~\"foo|bar\"}) by (__name__)")));
+    Map<String, String> queries = metricConfig.getQueries(new HashMap<>());
+    assertEquals(queries.size(), 3);
+    for (Map.Entry<String, String> e : queries.entrySet()) {
+      assertThat(e.getValue(), allOf(equalTo(metricConfig.getQuery(e.getKey(), new HashMap<>()))));
+    }
   }
 
   @Test
@@ -90,7 +114,7 @@ public class MetricConfigTest extends FakeDBApplication {
     MetricConfig metricConfig = MetricConfig.create("metric", Json.newObject());
     metricConfig.save();
     try {
-      metricConfig.getQuery(new HashMap<>());
+      metricConfig.getQueries(new HashMap<>());
     } catch (RuntimeException re) {
       assertThat(re.getMessage(), allOf(notNullValue(), equalTo("Invalid MetricConfig: metric attribute is required")));
     }
@@ -186,5 +210,21 @@ public class MetricConfigTest extends FakeDBApplication {
 
     String query = metricConfig.getQuery(new HashMap<>());
     assertThat(query, allOf(notNullValue(), equalTo("avg(rate(metric{memory=\"used\"}[30m])) /10")));
+  }
+
+  @Test
+  public void testWithEmptyMetric() {
+    JsonNode configJson = Json.parse(
+        "{\"metric\":\"\", \"function\":\"avg\", \"filters\": {" +
+        "\"saved_name\": \"node_memory_Cached|node_memory_Buffers|node_memory_MemFree\"," +
+        "\"group_by\": \"saved_name\"}}");
+
+    MetricConfig metricConfig = MetricConfig.create("metric", configJson);
+    metricConfig.save();
+
+    String query = metricConfig.getQuery(new HashMap<>());
+    assertThat(query, allOf(notNullValue(), equalTo(
+            "avg({saved_name=~\"node_memory_Cached|node_memory_Buffers|node_memory_MemFree\", " +
+            "group_by=\"saved_name\"})")));
   }
 }

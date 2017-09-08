@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +15,8 @@ import play.libs.Json;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.UUID;
 
 @Singleton
@@ -24,17 +27,14 @@ public class SwamperHelper {
      Sample targets file
     [
       {
-        "targets": [ "10.129.45.47:9300", "10.129.52.122:9300", "10.129.27.0:9300"],
+        "targets": [
+          '10.150.0.64:9300', '10.150.0.49:9300', '10.150.0.62:9300',
+          '10.150.0.64:7000', '10.150.0.49:7000', '10.150.0.62:7000',
+          '10.150.0.64:9000', '10.150.0.49:9000', '10.150.0.62:9000',
+          '10.150.0.64:11000', '10.150.0.49:11000', '10.150.0.62:11000',
+          '10.150.0.64:12000', '10.150.0.49:12000', '10.150.0.62:12000'
+        ],
         "labels": {
-          "export_type": "node",
-          "node_prefix": "1-a-b"
-
-        }
-      },
-      {
-        "targets": [ "10.129.45.47:9303", "10.129.52.122:9303", "10.129.27.0:9303"],
-        "labels": {
-          "export_type": "collectd",
           "node_prefix": "1-a-b"
         }
       }
@@ -47,7 +47,10 @@ public class SwamperHelper {
 
   public enum TargetType {
     NODE_EXPORT(9300),
-    COLLECTD_EXPORT(9303);
+    MASTER_EXPORT(7000),
+    TSERVER_EXPORT(9000),
+    REDIS_EXPORT(11000),
+    CQL_EXPORT(12000);
 
     private int port;
     TargetType(int port) {
@@ -56,31 +59,49 @@ public class SwamperHelper {
   }
 
   public enum LabelType {
+    NODE_PREFIX,
     EXPORT_TYPE,
-    NODE_PREFIX
-  }
-  private JsonNode getLabels(TargetType targetType, Universe universe) {
-    ObjectNode labels = Json.newObject();
-    labels.put(LabelType.EXPORT_TYPE.toString().toLowerCase(), targetType.toString().toLowerCase());
-    labels.put(LabelType.NODE_PREFIX.toString().toLowerCase(), universe.getUniverseDetails().nodePrefix);
-    return labels;
+    EXPORTED_INSTANCE
   }
 
-  private ObjectNode getSwamperTargetJson(Universe universe, TargetType targetType) {
+  private ObjectNode getIndividualConfig(
+      Universe universe, TargetType t, Collection<NodeDetails> nodes, String exportedInstance) {
     ObjectNode target = Json.newObject();
     ArrayNode targetNodes = Json.newArray();
-
-    universe.getNodes().forEach((node) -> {
+    nodes.forEach((node) -> {
       if (node.isActive()) {
-        targetNodes.add(node.cloudInfo.private_ip + ":" + targetType.port);
+        targetNodes.add(node.cloudInfo.private_ip + ":" + t.port);
       }
     });
+
+    ObjectNode labels = Json.newObject();
+    labels.put(
+        LabelType.NODE_PREFIX.toString().toLowerCase(),
+        universe.getUniverseDetails().nodePrefix);
+    labels.put(
+        LabelType.EXPORT_TYPE.toString().toLowerCase(),
+        t.toString().toLowerCase());
+    if (exportedInstance != null) {
+      labels.put(LabelType.EXPORTED_INSTANCE.toString().toLowerCase(), exportedInstance);
+    }
+
     target.set("targets", targetNodes);
-    target.set("labels", getLabels(targetType, universe));
+    target.set("labels", labels);
     return target;
   }
 
-  private String getSwamperFile(UUID universeUUID) {
+  private ArrayNode getSwamperTargetJson(Universe universe) {
+    ArrayNode targets = Json.newArray();
+    for (TargetType t : TargetType.values()) {
+      if (t.toString().equals("NODE_EXPORT")) {
+      } else {
+        targets.add(getIndividualConfig(universe, t, universe.getNodes(), null));
+      }
+    }
+    return targets;
+  }
+
+  private String getSwamperFile(UUID universeUUID, String prefix) {
     if (appConfig.getString("yb.swamper.targetPath").isEmpty()) {
       return null;
     }
@@ -88,18 +109,13 @@ public class SwamperHelper {
     File swamperTargetFolder = new File(appConfig.getString("yb.swamper.targetPath"));
 
     if (swamperTargetFolder.exists() && swamperTargetFolder.isDirectory()) {
-      return swamperTargetFolder.toString() + "/" + universeUUID.toString() + ".json";
+      return String.format("%s/%s.%s.json",
+          swamperTargetFolder.toString(), prefix, universeUUID.toString());
     }
     return null;
   }
 
-  public void writeUniverseTargetJson(UUID universeUUID) {
-    ArrayNode targetsJson = Json.newArray();
-    Universe universe = Universe.get(universeUUID);
-    targetsJson.add(getSwamperTargetJson(universe, TargetType.NODE_EXPORT));
-    targetsJson.add(getSwamperTargetJson(universe, TargetType.COLLECTD_EXPORT));
-
-    String swamperFile = getSwamperFile(universeUUID);
+  private void writeTargetJsonFile(String swamperFile, ArrayNode targetsJson) {
     if (swamperFile != null) {
       try {
         FileWriter file = new FileWriter(swamperFile);
@@ -115,8 +131,30 @@ public class SwamperHelper {
     }
   }
 
-  public void removeUniverseTargetJson(UUID universeUUID) {
-    String swamperFile = getSwamperFile(universeUUID);
+  public void writeUniverseTargetJson(UUID universeUUID) {
+    Universe universe = Universe.get(universeUUID);
+
+    // Write out the node specific file.
+    ArrayNode nodeTargets = Json.newArray();
+    String swamperFile = getSwamperFile(universeUUID, "node");
+    universe.getNodes().forEach((node) -> {
+      nodeTargets.add(getIndividualConfig(
+          universe, TargetType.NODE_EXPORT, Arrays.asList(node), node.nodeName));
+    });
+    writeTargetJsonFile(swamperFile, nodeTargets);
+
+    // Write out the yugabyte specific file.
+    ArrayNode ybTargets = Json.newArray();
+    swamperFile = getSwamperFile(universeUUID, "yugabyte");
+    for (TargetType t : TargetType.values()) {
+      if (!t.toString().equals("NODE_EXPORT")) {
+        ybTargets.add(getIndividualConfig(universe, t, universe.getNodes(), null));
+      }
+    }
+    writeTargetJsonFile(swamperFile, ybTargets);
+  }
+  private void removeUniverseTargetJson(UUID universeUUID, String prefix) {
+    String swamperFile = getSwamperFile(universeUUID, prefix);
     if (swamperFile != null) {
       LOG.info("Going to delete the file... {}", swamperFile);
       File file = new File(swamperFile);
@@ -126,6 +164,12 @@ public class SwamperHelper {
         file.delete();
       }
     }
+  }
+
+  public void removeUniverseTargetJson(UUID universeUUID) {
+    // TODO: make these constants / enums.
+    removeUniverseTargetJson(universeUUID, "node");
+    removeUniverseTargetJson(universeUUID, "yugabyte");
   }
 }
 

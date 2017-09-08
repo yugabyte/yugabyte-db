@@ -11,6 +11,8 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.Transient;
+import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -76,6 +78,29 @@ public class MetricConfig extends Model {
     return new Layout();
   }
 
+  public Map<String, String> getQueries(Map<String, String> additionalFilters) {
+    MetricConfig metricConfig = getConfig();
+    if (metricConfig.metric == null) {
+      throw new RuntimeException("Invalid MetricConfig: metric attribute is required");
+    }
+    Map<String, String> output = new HashMap<>();
+    // We allow for the metric to be a | separated list of metric names, case in which we will split
+    // and execute the metric queries individually.
+    // Note: contains takes actual chars, while split takes a regex, hence the escape \\ there.
+    if (metricConfig.metric.contains("|")) {
+      for (String m : metricConfig.metric.split("\\|")) {
+        output.put(m, getQuery(m, additionalFilters));
+      }
+    } else {
+      output.put(metricConfig.metric, getQuery(metricConfig.metric, additionalFilters));
+    }
+    return output;
+  }
+
+  public String getQuery(Map<String, String> additionalFilters) {
+    return getQuery(this.getConfig().metric, additionalFilters);
+  }
+
   /**
    * This method construct the prometheus queryString based on the metric config
    * if additional filters are provided, it applies those filters as well.
@@ -86,18 +111,20 @@ public class MetricConfig extends Model {
    *  - avg(collectd_memory{memory=~"used|buffered|cached|free"}) by (memory) /10
    * @return, a valid prometheus query string
    */
-  public String getQuery(Map<String, String> additionalFilters) {
+  public String getQuery(String metric, Map<String, String> additionalFilters) {
+    // Special case searchs for .avg to convert into the respective ratio of
+    // avg(irate(metric_sum)) / avg(irate(metric_count))
+    if (metric.endsWith(".avg")) {
+      String metricPrefix = metric.substring(0, metric.length() - 4);
+      String sumQuery = getQuery(metricPrefix + "_sum", additionalFilters);
+      String countQuery = getQuery(metricPrefix + "_count", additionalFilters);
+      return sumQuery + " / " + countQuery;
+    }
+
     String queryStr;
     StringBuilder query = new StringBuilder();
     MetricConfig metricConfig = getConfig();
-    if (metricConfig.metric == null) {
-      throw new RuntimeException("Invalid MetricConfig: metric attribute is required");
-    } else if (!metricConfig.metric.equals("multi-metric")) {
-      // We will use a special metric key for any metric where we have to query
-      // multiple metrics in one. In those scenarios we would use the filter
-      // condition with wildcard to narrow the metrics. ex: network_packets
-      query.append(metricConfig.metric);
-    }
+    query.append(metric);
 
     Map<String, String> filters = this.getFilters();
     // If we have additional filters, we add them
@@ -160,7 +187,7 @@ public class MetricConfig extends Model {
   private String filtersToString(Map<String, String> filters) {
     StringBuilder filterStr = new StringBuilder();
     String prefix = "{";
-    for(Map.Entry<String, String> filter : filters.entrySet()) {
+    for (Map.Entry<String, String> filter : filters.entrySet()) {
       filterStr.append(prefix);
       if (specialFilterPattern.matcher(filter.getValue()).find()) {
         filterStr.append(filter.getKey() + "=~\"" + filter.getValue() + "\"");
