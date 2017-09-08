@@ -97,6 +97,9 @@ class MonoDelta {
   // Convert a nanosecond value to a timespec.
   static void NanosToTimeSpec(int64_t nanos, struct timespec* ts);
 
+  explicit operator bool() const { return Initialized(); }
+  bool operator !() const { return !Initialized(); }
+
  private:
   typedef int64_t NanoDeltaType;
   static const NanoDeltaType kUninitialized;
@@ -135,6 +138,9 @@ class MonoTime {
 
   static const MonoTime kMin;
   static const MonoTime kMax;
+  static const MonoTime kUninitialized;
+
+  typedef uint64_t NanoTimeType;
 
   // The coarse monotonic time is faster to retrieve, but "only"
   // accurate to within a millisecond or two.  The speed difference will
@@ -152,8 +158,9 @@ class MonoTime {
   // Return the earliest (minimum) of the two monotimes.
   static const MonoTime& Earliest(const MonoTime& a, const MonoTime& b);
 
-  MonoTime();
-  bool Initialized() const;
+  MonoTime() : nanos_(kUninitializedNanos) {}
+  bool Initialized() const { return nanos_ != kUninitializedNanos; }
+
   MonoDelta GetDeltaSince(const MonoTime &rhs) const;
   MonoDelta GetDeltaSinceMin() const { return GetDeltaSince(Min()); }
   void AddDelta(const MonoDelta &delta);
@@ -165,10 +172,15 @@ class MonoTime {
   uint64_t ToUint64() const { return nanos_; }
   static MonoTime FromUint64(uint64_t value) { return MonoTime(value); }
 
+  explicit operator bool() const { return Initialized(); }
+  bool operator !() const { return !Initialized(); }
+
   // Set this time to the given value if it is lower than that or uninitialized.
   void MakeAtLeast(MonoTime rhs);
 
  private:
+  static constexpr NanoTimeType kUninitializedNanos = 0;
+
   friend class MonoDelta;
   FRIEND_TEST(TestMonoTime, TestTimeSpec);
   FRIEND_TEST(TestMonoTime, TestDeltaConversions);
@@ -176,7 +188,7 @@ class MonoTime {
   explicit MonoTime(const struct timespec &ts);
   explicit MonoTime(int64_t nanos);
   double ToSeconds() const;
-  uint64_t nanos_;
+  NanoTimeType nanos_;
 };
 
 inline MonoTime& operator+=(MonoTime& lhs, const MonoDelta& rhs) { // NOLINT

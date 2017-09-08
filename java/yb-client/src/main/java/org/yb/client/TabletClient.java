@@ -479,6 +479,7 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
       ybClient.handleTabletNotFound(rpc, ex, this);
       // we're not calling rpc.callback() so we rely on the client to retry that RPC
     } else if (code == WireProtocol.AppStatusPB.ErrorCode.SERVICE_UNAVAILABLE ||
+               code == WireProtocol.AppStatusPB.ErrorCode.LEADER_NOT_READY_TO_SERVE ||
                error.getCode() ==
                  Tserver.TabletServerErrorPB.Code.LEADER_NOT_READY_CHANGE_CONFIG ||
                error.getCode() ==
@@ -486,8 +487,11 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
                error.getCode() ==
                  Tserver.TabletServerErrorPB.Code.LEADER_NOT_READY_TO_SERVE) {
       ybClient.handleRetryableError(rpc, ex, this);
-      // The following error codes are an indication that the tablet isn't a leader.
-    } else if (code == WireProtocol.AppStatusPB.ErrorCode.ILLEGAL_STATE ||
+      // The following error codes are an indication that the tablet isn't a leader, or, in case
+      // of LEADER_HAS_NO_LEASE, might no longer be the leader due to failing to replicate a leader
+      // lease, so we retry looking up the leader anyway.
+    } else if (code == WireProtocol.AppStatusPB.ErrorCode.LEADER_HAS_NO_LEASE ||
+               code == WireProtocol.AppStatusPB.ErrorCode.ILLEGAL_STATE ||
                code == WireProtocol.AppStatusPB.ErrorCode.ABORTED ||
                error.getCode() == Tserver.TabletServerErrorPB.Code.NOT_THE_LEADER) {
       ybClient.handleNotLeader(rpc, ex, this);

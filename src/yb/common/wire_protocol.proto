@@ -73,6 +73,8 @@ message AppStatusPB {
     SQL_ERROR = 20;
     INTERNAL_ERROR = 21;
     EXPIRED = 22;
+    LEADER_NOT_READY_TO_SERVE = 23;
+    LEADER_HAS_NO_LEASE = 24;
   }
 
   required ErrorCode code = 1;

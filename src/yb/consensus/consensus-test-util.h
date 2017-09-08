@@ -868,6 +868,7 @@ class TestRaftConsensusQueueIface : public PeerMessageQueueObserver {
 
  protected:
   virtual void UpdateMajorityReplicated(const OpId& majority_replicated,
+                                        MonoTime majority_replicated_leader_lease_expiration,
                                         OpId* committed_index) override {
     std::lock_guard<simple_spinlock> lock(lock_);
     majority_replicated_index_ = majority_replicated.index();

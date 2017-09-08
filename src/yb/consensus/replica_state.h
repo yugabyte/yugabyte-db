@@ -45,6 +45,7 @@
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/log_util.h"
+#include "yb/consensus/leader_lease.h"
 #include "yb/gutil/port.h"
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
@@ -130,6 +131,8 @@ class ReplicaState {
   CHECKED_STATUS LockForReplicate(UniqueLock* lock, const ReplicateMsg& msg) const;
   CHECKED_STATUS LockForReplicate(UniqueLock* lock) const;
 
+  Status CheckIsActiveLeaderAndHasLease() const;
+
   // Locks a replica down until an the critical section of an update completes.
   // Further updates from the same or some other leader will be blocked until
   // this completes. This also checks that the replica is in the appropriate
@@ -155,7 +158,7 @@ class ReplicaState {
 
   // Ensure the local peer is the active leader.
   // Returns OK if leader, IllegalState otherwise.
-  CHECKED_STATUS CheckActiveLeaderUnlocked() const;
+  CHECKED_STATUS CheckActiveLeaderUnlocked(LeaderLeaseCheckMode lease_check_mode) const;
 
   // Completes the Shutdown() of this replica. No more operations, local
   // or otherwise can happen after this point.
@@ -164,9 +167,7 @@ class ReplicaState {
   CHECKED_STATUS ShutdownUnlocked() WARN_UNUSED_RESULT;
 
   // Return current consensus state summary.
-  ConsensusStatePB ConsensusStateUnlocked(ConsensusConfigType type) const {
-    return cmeta_->ToConsensusStatePB(type);
-  }
+  ConsensusStatePB ConsensusStateUnlocked(ConsensusConfigType type) const;
 
   // Returns the currently active Raft role.
   RaftPeerPB::Role GetActiveRoleUnlocked() const;
@@ -340,6 +341,26 @@ class ReplicaState {
   // The update_lock_ must be held.
   ReplicaState::State state() const;
 
+  // Update the point in time we have to wait until before starting to act as a leader in case
+  // we win an election.
+  void UpdateOldLeaderLeaseExpirationUnlocked(MonoDelta lease_duration);
+  void UpdateOldLeaderLeaseExpirationUnlocked(MonoTime lease_expiration);
+
+  void SetMajorityReplicatedLeaseExpirationUnlocked(MonoTime majority_replicated_lease_expiration) {
+    majority_replicated_lease_expiration_ = majority_replicated_lease_expiration;
+  }
+
+  // Checks two conditions:
+  // - That the old leader definitely does not have a lease.
+  // - That this leader has a committed lease.
+  LeaderLeaseStatus GetLeaderLeaseStatusUnlocked(
+      MonoDelta* remaining_old_leader_lease = nullptr) const;
+
+  // Get the remaining duration of the old leader's lease. Optionally, return the current time in
+  // the "now" output parameter. In case the old leader's lease has already expired or is not known,
+  // returns an uninitialized MonoDelta value.
+  MonoDelta RemainingOldLeaderLeaseDuration(MonoTime* now = nullptr) const;
+
   // A lock-free way to read role and term atomically.
   std::pair<RaftPeerPB::Role, int64_t> GetRoleAndTerm() const;
 
@@ -354,6 +375,8 @@ class ReplicaState {
   // Updates last_committed_index_ to committed_index.
   CHECKED_STATUS ApplyPendingOperations(IndexToRoundMap::iterator iter,
                                         const OpId& committed_index);
+  CHECKED_STATUS ApplyPendingOperationsUnlocked(IndexToRoundMap::iterator iter,
+                                                const OpId& committed_index);
 
   void SetLastCommittedIndexUnlocked(const OpId& committed_index);
 
@@ -412,6 +435,21 @@ class ReplicaState {
   OpId pending_election_opid_;
 
   State state_;
+
+  // When a follower becomes the leader, it uses this field to wait out the old leader's lease
+  // before accepting writes or serving up-to-date reads. This is also used by candidates by
+  // granting a vote. We compute the amount of time the new leader has to wait to make sure the old
+  // leader's lease has expired.
+  //
+  // This is marked mutable because it can be reset on to MonoTime::kMin on the read path after the
+  // deadline has passed, so that we avoid querying the clock unnecessarily from that point on.
+  mutable MonoTime old_leader_lease_expiration_;
+
+  // LEADER only: the latest committed lease expiration deadline for the current leader. The leader
+  // is allowed to serve up-to-date reads and accept writes only while the current time is less than
+  // this. However, the leader might manage to replicate a lease extension without losing its
+  // leadership.
+  MonoTime majority_replicated_lease_expiration_;
 };
 
 }  // namespace consensus

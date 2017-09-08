@@ -217,6 +217,7 @@ class RaftConsensusQuorumTest : public YBTest {
     scoped_refptr<RaftConsensus> leader;
     RETURN_NOT_OK(peers_->GetPeerByIdx(kLeaderIdx, &leader));
     RETURN_NOT_OK(leader->EmulateElection());
+    RETURN_NOT_OK(leader->WaitUntilLeaderForTests(MonoDelta::FromSeconds(10)));
     return Status::OK();
   }
 

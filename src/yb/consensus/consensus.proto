@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 //
+//
 // The following only applies to changes made to this file as part of YugaByte development.
 //
 // Portions Copyright (c) YugaByte, Inc.
@@ -29,6 +30,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 package yb.consensus;
 
 option java_package = "org.yb.consensus";
@@ -176,22 +178,26 @@ message ChangeConfigResponsePB {
   optional fixed64 hybrid_time = 2;
 }
 
-// A Replicate message, sent to replicas by leader to indicate this operation must
-// be stored in the WAL/SM log, as part of the first phase of the two phase
-// commit.
+// A Replicate message, sent to replicas by leader to indicate this operation must be stored in the
+// write-ahead log.
 message ReplicateMsg {
   // The Raft operation ID (term and index) being replicated.
+
   required OpIdPB id = 1;
-  // The (hybrid or logical) hybrid_time assigned to this message.
+
+  // The hybrid time assigned to this message.
   required fixed64 hybrid_time = 2;
+
   // A counter that is forever increasing in a tablet (like hybrid time). Used for list indexing.
   optional int64 monotonic_counter = 9;
+
   // optional ExternalConsistencyMode external_consistency_mode = 3 [default = NO_CONSISTENCY];
   required OperationType op_type = 4;
   optional tserver.WriteRequestPB write_request = 5;
   optional tserver.AlterSchemaRequestPB alter_schema_request = 6;
   optional tserver.TransactionStatePB transaction_state = 10;
   optional ChangeConfigRecordPB change_config_record = 7;
+
   // The Raft operation ID known to the leader to be committed at the time this message was sent.
   // This is used during tablet bootstrap for RocksDB-backed tables.
   optional OpIdPB committed_op_id = 8;
@@ -307,6 +313,10 @@ message VoteResponsePB {
   // True if this peer voted for the caller, false otherwise.
   optional bool vote_granted = 3;
 
+  // An upper bound on the remainder of the old leader's lease that the new leader has to wait out
+  // before it can start serving read and write requests.
+  optional int32 remaining_leader_lease_duration_ms = 4;
+
   // TODO: Migrate ConsensusService to the AppStatusPB RPC style and merge these errors.
   // Error message from the consensus implementation.
   optional ConsensusErrorPB consensus_error = 998;
@@ -353,6 +363,13 @@ message ConsensusRequestPB {
   // these operations are already committed, in which case they will be
   // committed during the same request.
   repeated ReplicateMsg ops = 6;
+
+  // Leader lease duration in milliseconds. A leader is not allowed to serve up-to-date reads
+  // until it is able to replicate a lease extension. A new leader cannot assume its
+  // responsibilities until this amount time has definitely passed since the old leader sent the
+  // consensus request. Due to potential clock skew, we are not sending a timestamp, but an amount
+  // of time followers have to wait.
+  optional int32 leader_lease_duration_ms = 8;
 }
 
 message ConsensusResponsePB {
@@ -451,6 +468,12 @@ message LeaderStepDownResponsePB {
   optional tserver.TabletServerErrorPB error = 1;
 }
 
+enum LeaderLeaseStatus {
+  HAS_LEASE = 0;
+  OLD_LEADER_MAY_HAVE_LEASE = 1;
+  NO_MAJORITY_REPLICATED_LEASE = 2;
+}
+
 enum OpIdType {
   UNKNOWN_OPID_TYPE = 0;
   RECEIVED_OPID = 1;
@@ -487,8 +510,13 @@ message GetConsensusStateRequestPB {
 
 message GetConsensusStateResponsePB {
   optional ConsensusStatePB cstate = 1;
-    // A generic error message (such as tablet not found).
+
+  // A generic error message (such as tablet not found).
   optional tserver.TabletServerErrorPB error = 2;
+
+  // Allows returning the leader lease status in the same RPC. Useful for waiting for the leader
+  // to be allowed to serve requests.
+  optional LeaderLeaseStatus leader_lease_status = 3;
 }
 
 message StartRemoteBootstrapRequestPB {

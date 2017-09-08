@@ -38,6 +38,8 @@
 #include <string>
 #include <utility>
 
+#include <boost/container/small_vector.hpp>
+
 #include <gflags/gflags.h>
 
 #include "yb/common/wire_protocol.h"
@@ -63,6 +65,7 @@
 #include "yb/util/threadpool.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/enums.h"
+#include "yb/util/tostring.h"
 
 DEFINE_int32(consensus_max_batch_size_bytes, 1024 * 1024,
              "The maximum per-tablet RPC batch size when updating peers.");
@@ -303,6 +306,12 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
       return STATUS(NotFound, "Peer not tracked or queue not in leader mode.");
     }
 
+    if (FLAGS_use_leader_leases) {
+      request->set_leader_lease_duration_ms(FLAGS_leader_lease_duration_ms);
+      peer->last_leader_lease_expiration_sent_to_follower =
+          MonoTime::FineNow() + MonoDelta::FromMilliseconds(FLAGS_leader_lease_duration_ms);
+    }
+
     // Clear the requests without deleting the entries, as they may be in use by other peers.
     request->mutable_ops()->ExtractSubrange(0, request->ops_size(), nullptr);
 
@@ -352,17 +361,17 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
                                   &messages,
                                   &preceding_id);
     if (PREDICT_FALSE(!s.ok())) {
-      // It's normal to have a NotFound() here if a follower falls behind where
-      // the leader has GCed its logs.
       if (PREDICT_TRUE(s.IsNotFound())) {
+        // It's normal to have a NotFound() here if a follower falls behind where
+        // the leader has GCed its logs.
         string msg = Substitute("The logs necessary to catch up peer $0 have been "
                                 "garbage collected. The follower will never be able "
                                 "to catch up ($1)", uuid, s.ToString());
         NotifyObserversOfFailedFollower(uuid, queue_state_.current_term, msg);
         return s;
-      // IsIncomplete() means that we tried to read beyond the head of the log
-      // (in the future). See KUDU-1078.
       } else if (s.IsIncomplete()) {
+        // IsIncomplete() means that we tried to read beyond the head of the log
+        // (in the future). See KUDU-1078.
         LOG_WITH_PREFIX_UNLOCKED(ERROR) << "Error trying to read ahead of the log "
                                         << "while preparing peer request: "
                                         << s.ToString() << ". Destination peer: "
@@ -489,6 +498,49 @@ void PeerMessageQueue::AdvanceQueueWatermark(const char* type,
   }
 }
 
+MonoTime PeerMessageQueue::LeaderLeaseExpirationWatermark() {
+  DCHECK(queue_lock_.is_locked());
+  const int num_peers_required = queue_state_.majority_size_;
+  if (num_peers_required == kUninitializedMajoritySize) {
+    // We don't even know the quorum majority size yet.
+    return MonoTime();
+  }
+  CHECK_GE(num_peers_required, 0);
+  constexpr int kMaxPracticalReplicationFactor = 5;
+  boost::container::small_vector<MonoTime, kMaxPracticalReplicationFactor> watermarks;
+  const int num_peers = peers_map_.size();
+  if (num_peers < num_peers_required) {
+    return MonoTime();
+  }
+  watermarks.reserve(num_peers);
+  for (const PeersMap::value_type &peer_map_entry : peers_map_) {
+    const TrackedPeer &peer = *peer_map_entry.second;
+    if (peer.uuid == local_peer_pb_.permanent_uuid()) {
+      // For the purpose of watermark tracking we can assume we've replicated an infinite lease to
+      // ourselves. As long as there is at least one more peer, and num_peers_required is the
+      // majority (i.e. it is at least 2), we won't return this to the caller.
+      watermarks.push_back(MonoTime::kMax);
+      continue;
+    }
+    if (peer.is_last_exchange_successful) {
+      MonoTime lease_exp = peer.last_leader_lease_expiration_received_by_follower;
+      watermarks.push_back(lease_exp.Initialized() ? lease_exp : MonoTime::kMin);
+    }
+  }
+  VLOG(1) << "Leader lease expiration watermarks by peer: " << ::yb::ToString(watermarks)
+          << ", num_peers_required=" << num_peers_required;
+  if (watermarks.size() < num_peers_required) {
+    // There are not enough peers with which the last message exchange was successful.
+    return MonoTime();
+  }
+
+  const int index_of_interest = watermarks.size() - num_peers_required;
+  std::partial_sort(watermarks.begin(),
+                    watermarks.begin() + (index_of_interest + 1),
+                    watermarks.end());
+  return watermarks[index_of_interest];
+}
+
 void PeerMessageQueue::NotifyPeerIsResponsiveDespiteError(const std::string& peer_uuid) {
   LockGuard l(queue_lock_);
   TrackedPeer* peer = FindPtrOrNull(peers_map_, peer_uuid);
@@ -504,6 +556,7 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
 
   OpId updated_majority_replicated_opid;
   Mode mode_copy;
+  MonoTime majority_replicated_leader_lease_expiration;
   {
     LockGuard scoped_lock(queue_lock_);
     DCHECK_NE(State::kQueueConstructed, queue_state_.state);
@@ -660,6 +713,11 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
                             peer);
 
       updated_majority_replicated_opid = queue_state_.majority_replicated_opid;
+
+      peer->last_leader_lease_expiration_received_by_follower =
+          peer->last_leader_lease_expiration_sent_to_follower;
+
+      majority_replicated_leader_lease_expiration = LeaderLeaseExpirationWatermark();
     }
 
     // Advance the all replicated index.
@@ -676,7 +734,8 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
   }
 
   if (mode_copy == Mode::LEADER) {
-    NotifyObserversOfMajorityReplOpChange(updated_majority_replicated_opid);
+    NotifyObserversOfMajorityReplOpChange(updated_majority_replicated_opid,
+                                          majority_replicated_leader_lease_expiration);
   }
 }
 
@@ -807,12 +866,14 @@ bool PeerMessageQueue::IsOpInLog(const OpId& desired_op) const {
 }
 
 void PeerMessageQueue::NotifyObserversOfMajorityReplOpChange(
-    const OpId new_majority_replicated_op) {
+    const OpId new_majority_replicated_op,
+    const MonoTime majority_replicated_leader_lease_expiration) {
   WARN_NOT_OK(observers_pool_->SubmitClosure(
       Bind(&PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask,
-           Unretained(this), new_majority_replicated_op)),
-              LogPrefixUnlocked() + "Unable to notify RaftConsensus of "
-                                    "majority replicated op change.");
+           Unretained(this), new_majority_replicated_op,
+           majority_replicated_leader_lease_expiration)),
+           LogPrefixUnlocked() + "Unable to notify RaftConsensus of "
+                                 "majority replicated op change.");
 }
 
 void PeerMessageQueue::NotifyObserversOfTermChange(int64_t term) {
@@ -823,7 +884,8 @@ void PeerMessageQueue::NotifyObserversOfTermChange(int64_t term) {
 }
 
 void PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask(
-    const OpId new_majority_replicated_op) {
+    const OpId new_majority_replicated_op,
+    const MonoTime majority_replicated_leader_lease_expiration) {
   std::vector<PeerMessageQueueObserver*> copy;
   {
     LockGuard lock(queue_lock_);
@@ -834,7 +896,9 @@ void PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask(
   // consensus at all, but that requires a bit more work.
   OpId new_committed_index;
   for (PeerMessageQueueObserver* observer : copy) {
-    observer->UpdateMajorityReplicated(new_majority_replicated_op, &new_committed_index);
+    observer->UpdateMajorityReplicated(new_majority_replicated_op,
+                                       majority_replicated_leader_lease_expiration,
+                                       &new_committed_index);
   }
 
   {
@@ -880,6 +944,7 @@ void PeerMessageQueue::NotifyObserversOfFailedFollowerTask(const string& uuid,
     observer->NotifyFailedFollower(uuid, term, reason);
   }
 }
+
 bool PeerMessageQueue::CanPeerBecomeLeader(const std::string& peer_uuid) const {
   std::lock_guard<simple_spinlock> lock(queue_lock_);
   TrackedPeer* peer = FindPtrOrNull(peers_map_, peer_uuid);

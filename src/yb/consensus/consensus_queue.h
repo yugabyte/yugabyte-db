@@ -49,6 +49,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
 #include "yb/common/entity_ids.h"
+#include "yb/util/result.h"
 
 namespace yb {
 template<class T>
@@ -118,6 +119,18 @@ class PeerMessageQueue {
     // Defaults to the time of construction, so does not necessarily mean that
     // successful communication ever took place.
     MonoTime last_successful_communication_time;
+
+    // The leader sets this field to the time of sending request + leader lease duration, and uses
+    // it when handling the response to establish the majority replicated lease expiration
+    // timestamp. This is not actually sent to the follower: what we're sending is the lease
+    // duration, not an expiration timestamp, because the timestamp is specific to the leader's
+    // monotonic clock.
+    MonoTime last_leader_lease_expiration_sent_to_follower;
+
+    // The last leader lease expiration timestamp received by the follower described by this
+    // TrackedPeer. We set this to the value of what we sent to that follower
+    // (last_leader_lease_expiration_sent_to_follower) when we receive the follower's response.
+    MonoTime last_leader_lease_expiration_received_by_follower;
 
     // Whether the follower was detected to need remote bootstrap.
     bool needs_remote_bootstrap = false;
@@ -292,6 +305,8 @@ class PeerMessageQueue {
   static const char* StateToStr(State state);
   friend std::ostream& operator <<(std::ostream& out, State mode);
 
+  static constexpr int kUninitializedMajoritySize = -1;
+
   struct QueueState {
 
     // The first operation that has been replicated to all currently tracked peers.
@@ -314,7 +329,7 @@ class PeerMessageQueue {
     int64_t current_term = MinimumOpId().term();
 
     // The size of the majority for the queue.
-    int majority_size_ = -1;
+    int majority_size_ = kUninitializedMajoritySize;
 
     State state = State::kQueueConstructed;
 
@@ -332,8 +347,13 @@ class PeerMessageQueue {
   // If the log cache returns some error other than NotFound, crashes with a fatal error.
   bool IsOpInLog(const OpId& desired_op) const;
 
-  void NotifyObserversOfMajorityReplOpChange(const OpId new_majority_replicated_op);
-  void NotifyObserversOfMajorityReplOpChangeTask(const OpId new_majority_replicated_op);
+  void NotifyObserversOfMajorityReplOpChange(
+      OpId new_majority_replicated_op,
+      MonoTime majority_replicated_leader_lease_expiration);
+
+  void NotifyObserversOfMajorityReplOpChangeTask(
+      OpId new_majority_replicated_op,
+      MonoTime majority_replicated_leader_lease_expiration);
 
   void NotifyObserversOfTermChange(int64_t term);
   void NotifyObserversOfTermChangeTask(int64_t term);
@@ -379,6 +399,8 @@ class PeerMessageQueue {
                              const OpId& replicated_after,
                              int num_peers_required,
                              const TrackedPeer* who_caused);
+
+  MonoTime LeaderLeaseExpirationWatermark();
 
   std::vector<PeerMessageQueueObserver*> observers_;
 
@@ -429,6 +451,7 @@ class PeerMessageQueueObserver {
   // The implementation is idempotent, i.e. independently of the ordering of calls to this method
   // only non-triggered applys will be started.
   virtual void UpdateMajorityReplicated(const OpId& majority_replicated,
+                                        MonoTime majority_replicated_leader_lease_expiration,
                                         OpId* committed_index) = 0;
 
   // Notify the Consensus implementation that a follower replied with a term higher than that

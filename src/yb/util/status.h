@@ -150,6 +150,8 @@ namespace yb {
     ((Busy, 24, "Resource busy")) \
     ((Expired, 25, "Operation expired")) \
     ((TryAgain, 26, "Operation failed. Try again.")) \
+    ((LeaderNotReadyToServe, 27, "Leader not ready to serve requests.")) \
+    ((LeaderHasNoLease, 28, "Leader does not have a valid lease.")) \
     /**/
 
 #define YB_STATUS_CODE_DECLARE(name, value, message) \

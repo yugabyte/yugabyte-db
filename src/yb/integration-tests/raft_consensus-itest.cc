@@ -67,6 +67,7 @@ DEFINE_int64(client_inserts_per_thread, 50,
 DEFINE_int64(client_num_batches_per_thread, 5,
              "In how many batches to group the rows, for each client");
 DECLARE_int32(consensus_rpc_timeout_ms);
+DECLARE_int32(leader_lease_duration_ms);
 
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_counter(transaction_memory_pressure_rejections);
@@ -87,6 +88,7 @@ using consensus::MajoritySize;
 using consensus::MakeOpId;
 using consensus::RaftPeerPB;
 using consensus::ReplicateMsg;
+using consensus::LeaderLeaseCheckMode;
 using itest::AddServer;
 using itest::GetReplicaStatusAndCheckIfLeader;
 using itest::LeaderStepDown;
@@ -771,7 +773,7 @@ void RaftConsensusITest::CauseFollowerToFallBehindLogGC(string* leader_uuid,
   }
 
   // Resume the follower.
-  LOG(INFO) << "Resuming  " << replica->uuid();
+  LOG(INFO) << "Resuming " << replica->uuid();
   ASSERT_OK(replica_ets->Resume());
 
   // Ensure that none of the tablet servers crashed.
@@ -1949,14 +1951,14 @@ TEST_F(RaftConsensusITest, TestAtomicAddRemoveServer) {
                                   active_tablet_servers, tablet_id_, ++cur_log_index));
 }
 
-// Ensure that we can elect a server that is in the "pending" configuration.
-// This is required by the Raft protocol. See Diego Ongaro's PhD thesis, section
-// 4.1, where it states that "it is the caller's configuration that is used in
-// reaching consensus, both for voting and for log replication".
+// Ensure that we can elect a server that is in the "pending" configuration.  This is required by
+// the Raft protocol. See Diego Ongaro's PhD thesis, section 4.1, where it states that "it is the
+// caller's configuration that is used in reaching consensus, both for voting and for log
+// replication".
 //
-// This test also tests the case where a node comes back from the dead to a
-// leader that was not in its configuration when it died. That should also work, i.e.
-// the revived node should accept writes from the new leader.
+// This test also tests the case where a node comes back from the dead to a leader that was not in
+// its configuration when it died. That should also work, i.e.  the revived node should accept
+// writes from the new leader.
 TEST_F(RaftConsensusITest, TestElectPendingVoter) {
   // Test plan:
   //  1. Disable failure detection to avoid non-deterministic behavior.
@@ -2071,6 +2073,10 @@ TEST_F(RaftConsensusITest, TestElectPendingVoter) {
   ASSERT_OK(cluster_->tablet_server_by_uuid(tservers[3]->uuid())->Resume());
   active_tablet_servers = CreateTabletServerMapUnowned(tablet_servers_);
 
+  // Wait until the leader is sure that the old leader's lease is over.
+  ASSERT_OK(WaitUntilLeader(final_leader, tablet_id_,
+      MonoDelta::FromMilliseconds(FLAGS_leader_lease_duration_ms)));
+
   // Do one last operation on the new leader: an insert.
   ASSERT_OK(WriteSimpleTestRow(final_leader, tablet_id_, RowOperationsPB::INSERT,
                                kTestRowKey, kTestRowIntVal, "Ob-La-Di, Ob-La-Da",
@@ -2093,13 +2099,20 @@ void DoWriteTestRows(const TServerDetails* leader_tserver,
                      const string& tablet_id,
                      const MonoDelta& write_timeout,
                      std::atomic<int32_t>* rows_inserted,
+                     std::atomic<int32_t>* row_key,
                      const std::atomic<bool>* finish) {
-
   while (!finish->load()) {
-    int row_key = ++*rows_inserted;
-    CHECK_OK(WriteSimpleTestRow(leader_tserver, tablet_id, RowOperationsPB::INSERT,
-                                row_key, row_key, Substitute("key=$0", row_key),
-                                write_timeout));
+    int cur_row_key = ++*row_key;
+    Status write_status = WriteSimpleTestRow(
+        leader_tserver, tablet_id, RowOperationsPB::INSERT, cur_row_key, cur_row_key,
+        Substitute("key=$0", cur_row_key), write_timeout);
+    if (!write_status.IsLeaderHasNoLease() &&
+        !write_status.IsLeaderNotReadyToServe()) {
+      // Temporary failures to write because of not having a valid leader lease are OK. We don't
+      // increment the number of rows inserted in that case.
+      CHECK_OK(write_status);
+      ++*rows_inserted;
+    }
   }
 }
 
@@ -2127,6 +2140,7 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
   // Start a write workload.
   LOG(INFO) << "Starting write workload...";
   std::atomic<int32_t> rows_inserted(0);
+  std::atomic<int32_t> row_key(0);
   {
     std::atomic<bool> finish(false);
     vector<scoped_refptr<Thread> > threads;
@@ -2147,6 +2161,7 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
           tablet_id_,
           MonoDelta::FromSeconds(10),
           &rows_inserted,
+          &row_key,
           &finish,
           &thread));
       threads.push_back(thread);
@@ -2188,7 +2203,8 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
     }
   }
 
-  LOG(INFO) << "Waiting for replicas to agree...";
+  LOG(INFO) << "Waiting for replicas to agree... (rows_inserted=" << rows_inserted
+            << ", unique row keys used: " << row_key << ")";
   // Wait for all servers to replicate everything up through the last write op.
   // Since we don't batch, there should be at least # rows inserted log entries,
   // plus the initial leader's no-op, plus 2 for the removed servers, plus 2 for
@@ -2454,6 +2470,11 @@ TEST_F(RaftConsensusITest, TestMemoryRemainsConstantDespiteTwoDeadFollowers) {
   // the test can complete faster.
   vector<string> flags;
   flags.push_back("--tablet_transaction_memory_limit_mb=2");
+
+  // We can't use leader leases in this test, because requests will get rejected right away with two
+  // dead followers instead of being queued in the leader.
+  flags.push_back("--use_leader_leases=false");
+
   ASSERT_NO_FATALS(BuildAndStart(flags));
 
   // Kill both followers.
@@ -2592,6 +2613,7 @@ TEST_F(RaftConsensusITest, TestEvictAbandonedFollowers) {
   vector<string> ts_flags;
   AddFlagsForLogRolls(&ts_flags);  // For CauseFollowerToFallBehindLogGC().
   vector<string> master_flags;
+  LOG(INFO) << __func__ << ": starting the cluster";
   ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
   MonoDelta timeout = MonoDelta::FromSeconds(30);
@@ -2601,14 +2623,17 @@ TEST_F(RaftConsensusITest, TestEvictAbandonedFollowers) {
   string leader_uuid;
   int64_t orig_term;
   string follower_uuid;
+  LOG(INFO) << __func__ << ": causing followers to fall behind";
   ASSERT_NO_FATALS(CauseFollowerToFallBehindLogGC(&leader_uuid, &orig_term, &follower_uuid));
 
+  LOG(INFO) << __func__ << ": waiting for 2 voters in the committed config";
   // Wait for the abandoned follower to be evicted.
   ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(2,
                                                 tablet_servers_[leader_uuid].get(),
                                                 tablet_id_,
                                                 timeout));
   ASSERT_EQ(1, active_tablet_servers.erase(follower_uuid));
+  LOG(INFO) << __func__ << ": waiting for servers to agree";
   ASSERT_OK(WaitForServersToAgree(timeout, active_tablet_servers, tablet_id_, 2));
 }
 
@@ -2626,8 +2651,7 @@ TEST_F(RaftConsensusITest, TestMasterReplacesEvictedFollowers) {
   string follower_uuid;
   ASSERT_NO_FATALS(CauseFollowerToFallBehindLogGC(&leader_uuid, &orig_term, &follower_uuid));
 
-  // The follower will be evicted. Now wait for the master to cause it to be
-  // remotely bootstrapped.
+  // The follower will be evicted. Now wait for the master to cause it to be remotely bootstrapped.
   ASSERT_OK(WaitForServersToAgree(timeout, tablet_servers_, tablet_id_, 2));
 
   ClusterVerifier cluster_verifier(cluster_.get());
@@ -2635,10 +2659,9 @@ TEST_F(RaftConsensusITest, TestMasterReplacesEvictedFollowers) {
   ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(kTableName, ClusterVerifier::AT_LEAST, 1));
 }
 
-// Test that a ChangeConfig() request is rejected unless the leader has
-// replicated one of its own log entries during the current term.
-// This is required for correctness of Raft config change. For details,
-// see https://groups.google.com/forum/#!topic/raft-dev/t4xj6dJTP6E
+// Test that a ChangeConfig() request is rejected unless the leader has replicated one of its own
+// log entries during the current term.  This is required for correctness of Raft config change. For
+// details, see https://groups.google.com/forum/#!topic/raft-dev/t4xj6dJTP6E
 TEST_F(RaftConsensusITest, TestChangeConfigRejectedUnlessNoopReplicated) {
   vector<string> ts_flags = { "--enable_leader_failure_detection=false" };
   vector<string> master_flags = { "--catalog_manager_wait_for_new_tablets_to_elect_leader=false" };
@@ -2649,11 +2672,10 @@ TEST_F(RaftConsensusITest, TestChangeConfigRejectedUnlessNoopReplicated) {
   int kLeaderIndex = 0;
   TServerDetails* leader_ts = tablet_servers_[cluster_->tablet_server(kLeaderIndex)->uuid()].get();
 
-  // Prevent followers from accepting UpdateConsensus requests from the leader,
-  // even though they will vote. This will allow us to get the distributed
-  // system into a state where there is a valid leader (based on winning an
-  // election) but that leader will be unable to commit any entries from its
-  // own term, making it illegal to accept ChangeConfig() requests.
+  // Prevent followers from accepting UpdateConsensus requests from the leader, even though they
+  // will vote. This will allow us to get the distributed system into a state where there is a valid
+  // leader (based on winning an election) but that leader will be unable to commit any entries from
+  // its own term, making it illegal to accept ChangeConfig() requests.
   for (int i = 1; i <= 2; i++) {
     ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(i),
               "follower_reject_update_consensus_requests", "true"));
@@ -2661,24 +2683,27 @@ TEST_F(RaftConsensusITest, TestChangeConfigRejectedUnlessNoopReplicated) {
 
   // Elect the leader.
   ASSERT_OK(StartElection(leader_ts, tablet_id_, timeout));
-  ASSERT_OK(WaitUntilLeader(leader_ts, tablet_id_, timeout));
 
-  // Now attempt to do a config change. It should be rejected because there
-  // have not been any ops (notably the initial NO_OP) from the leader's term
-  // that have been committed yet.
+  // We don't need to wait until the leader obtains a lease here. In fact, that will never happen,
+  // because the followers are rejecting UpdateConsensus, and the leader needs to majority-replicate
+  // a lease expiration that is in the future in order to establish a leader lease.
+  ASSERT_OK(WaitUntilLeader(leader_ts, tablet_id_, timeout, LeaderLeaseCheckMode::DONT_NEED_LEASE));
+
+  // Now attempt to do a config change. It should be rejected because there have not been any ops
+  // (notably the initial NO_OP) from the leader's term that have been committed yet.
   Status s = itest::RemoveServer(leader_ts,
                                  tablet_id_,
                                  tablet_servers_[cluster_->tablet_server(1)->uuid()].get(),
                                  boost::none,
                                  timeout,
-                                 NULL,
+                                 nullptr /* error_code */,
                                  false /* retry */);
   ASSERT_TRUE(!s.ok()) << s.ToString();
   ASSERT_STR_CONTAINS(s.ToString(), "Leader is not ready for Config Change");
 }
 
-// Test that if for some reason none of the transactions can be prepared, that it will come
-// back as an error in UpdateConsensus().
+// Test that if for some reason none of the transactions can be prepared, that it will come back as
+// an error in UpdateConsensus().
 TEST_F(RaftConsensusITest, TestUpdateConsensusErrorNonePrepared) {
   const int kNumOps = 10;
 

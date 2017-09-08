@@ -90,8 +90,7 @@ MonoDelta MonoDelta::FromNanoseconds(int64_t ns) {
   return MonoDelta(ns);
 }
 
-MonoDelta::MonoDelta()
-  : nano_delta_(kUninitialized) {
+MonoDelta::MonoDelta() : nano_delta_(kUninitialized) {
 }
 
 bool MonoDelta::Initialized() const {
@@ -206,6 +205,7 @@ void MonoDelta::ToTimeSpec(struct timespec *ts) const {
 
 const MonoTime MonoTime::kMin = MonoTime::Min();
 const MonoTime MonoTime::kMax = MonoTime::Max();
+const MonoTime MonoTime::kUninitialized = MonoTime();
 
 MonoTime MonoTime::Now(enum Granularity granularity) {
 #if defined(__APPLE__)
@@ -244,14 +244,6 @@ const MonoTime& MonoTime::Earliest(const MonoTime& a, const MonoTime& b) {
     return b;
   }
   return a;
-}
-
-MonoTime::MonoTime()
-  : nanos_(0) {
-}
-
-bool MonoTime::Initialized() const {
-  return nanos_ != 0;
 }
 
 MonoDelta MonoTime::GetDeltaSince(const MonoTime &rhs) const {

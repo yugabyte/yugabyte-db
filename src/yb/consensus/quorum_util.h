@@ -94,7 +94,7 @@ int MajoritySize(int num_voters);
 // If the peer uuid is not a voter in the configuration, this function will return
 // NON_PARTICIPANT, regardless of whether it is listed as leader in cstate.
 RaftPeerPB::Role GetConsensusRole(const std::string& uuid,
-                                    const ConsensusStatePB& cstate);
+                                  const ConsensusStatePB& cstate);
 
 // Verifies that the provided configuration is well formed.
 // If type == COMMITTED_QUORUM, we enforce that opid_index is set.

@@ -46,6 +46,7 @@
 #include "yb/util/status.h"
 #include "yb/util/trace.h"
 #include "yb/util/tostring.h"
+#include "yb/util/enums.h"
 
 DEFINE_int32(inject_delay_commit_pre_voter_to_voter_secs, 0,
              "Amount of time to delay commit of a PRE_VOTER to VOTER transition. To be used for "
@@ -82,6 +83,8 @@ RaftPeerPB::Role UnpackRole(ReplicaState::PackedRoleAndTerm role_and_term) {
 }
 
 } // anonymous namespace
+
+using yb::util::to_underlying;
 
 //////////////////////////////////////////////////
 // ReplicaState
@@ -143,6 +146,7 @@ Status ReplicaState::LockForRead(UniqueLock* lock) const {
 
 Status ReplicaState::LockForReplicate(UniqueLock* lock, const ReplicateMsg& msg) const {
   DCHECK(!msg.has_id()) << "Should not have an ID yet: " << msg.ShortDebugString();
+  CHECK(msg.has_op_type());  // TODO: better checking?
   return LockForReplicate(lock);
 }
 
@@ -153,9 +157,16 @@ Status ReplicaState::LockForReplicate(UniqueLock* lock) const {
     return STATUS(IllegalState, "Replica not in running state");
   }
 
-  RETURN_NOT_OK(CheckActiveLeaderUnlocked());
   lock->swap(l);
   return Status::OK();
+}
+
+Status ReplicaState::CheckIsActiveLeaderAndHasLease() const {
+  UniqueLock l(update_lock_);
+  if (PREDICT_FALSE(state_ != kRunning)) {
+    return STATUS(IllegalState, "Replica not in running state");
+  }
+  return CheckActiveLeaderUnlocked(LeaderLeaseCheckMode::NEED_LEASE);
 }
 
 Status ReplicaState::LockForMajorityReplicatedIndexUpdate(UniqueLock* lock) const {
@@ -174,18 +185,36 @@ Status ReplicaState::LockForMajorityReplicatedIndexUpdate(UniqueLock* lock) cons
   return Status::OK();
 }
 
-Status ReplicaState::CheckActiveLeaderUnlocked() const {
-  RaftPeerPB::Role role = GetActiveRoleUnlocked();
-  switch (role) {
-    case RaftPeerPB::LEADER:
+Status ReplicaState::CheckActiveLeaderUnlocked(LeaderLeaseCheckMode lease_check_mode) const {
+  const RaftPeerPB::Role role = GetActiveRoleUnlocked();
+  if (role == RaftPeerPB::LEADER) {
+    // We don't need to check the lease in some cases, e.g. when replicating the NoOp entry.
+    if (lease_check_mode == LeaderLeaseCheckMode::DONT_NEED_LEASE)
       return Status::OK();
-    default:
-      ConsensusStatePB cstate = ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE);
-      return STATUS(IllegalState, Substitute("Replica $0 is not leader of this config. Role: $1. "
-                                             "Consensus state: $2",
-                                             peer_uuid_,
-                                             RaftPeerPB::Role_Name(role),
-                                             cstate.ShortDebugString()));
+
+    MonoDelta remaining_old_leader_lease;
+    const auto lease_status = GetLeaderLeaseStatusUnlocked(&remaining_old_leader_lease);
+    switch (lease_status) {
+      case LeaderLeaseStatus::HAS_LEASE:
+        return Status::OK();
+      case LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE:
+        // We return LeaderNotReady so that the client would retry on the same server.
+        return STATUS(LeaderNotReadyToServe,
+            Substitute("Previous leader's lease might still be active ($0 remaining).",
+                       remaining_old_leader_lease.ToString()));
+      case LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE:
+        // We are returning a NotTheLeader as opposed to LeaderNotReady, because there is a chance
+        // that we're a partitioned-away leader, and the client needs to do another leader lookup.
+        return STATUS(LeaderHasNoLease, "This leader has not yet acquired a lease.");
+    }
+    FATAL_INVALID_ENUM_VALUE(LeaderLeaseStatus, lease_status);
+  } else {
+    ConsensusStatePB cstate = ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE);
+    return STATUS(IllegalState, Substitute("Replica $0 is not leader of this config. Role: $1. "
+                                           "Consensus state: $2",
+                                           peer_uuid_,
+                                           RaftPeerPB::Role_Name(role),
+                                           cstate.ShortDebugString()));
   }
 }
 
@@ -233,6 +262,10 @@ Status ReplicaState::ShutdownUnlocked() {
   CHECK_EQ(state_, kShuttingDown);
   state_ = kShutDown;
   return Status::OK();
+}
+
+ConsensusStatePB ReplicaState::ConsensusStateUnlocked(ConsensusConfigType type) const {
+  return cmeta_->ToConsensusStatePB(type);
 }
 
 RaftPeerPB::Role ReplicaState::GetActiveRoleUnlocked() const {
@@ -618,7 +651,7 @@ Status ReplicaState::InitCommittedIndexUnlocked(const OpId& committed_index) {
   }
 
   if (!pending_txns_.empty() && committed_index.index() >= pending_txns_.begin()->first) {
-    auto status = ApplyPendingOperations(pending_txns_.begin(), committed_index);
+    auto status = ApplyPendingOperationsUnlocked(pending_txns_.begin(), committed_index);
     if (!status.ok()) {
       return status;
     }
@@ -657,6 +690,7 @@ Status ReplicaState::CheckOperationExist(const OpId& committed_index,
 
 Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
                                                    bool *committed_index_changed) {
+  DCHECK(update_lock_.is_locked());
   if (committed_index_changed) {
     *committed_index_changed = false;
   }
@@ -687,7 +721,7 @@ Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
   auto iter = pending_txns_.upper_bound(last_committed_index_.index());
   CHECK(iter != pending_txns_.end());
 
-  auto status = ApplyPendingOperations(iter, committed_index);
+  auto status = ApplyPendingOperationsUnlocked(iter, committed_index);
   if (!status.ok()) {
     return status;
   }
@@ -699,8 +733,9 @@ Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
   return Status::OK();
 }
 
-Status ReplicaState::ApplyPendingOperations(IndexToRoundMap::iterator iter,
-                                            const OpId& committed_index) {
+Status ReplicaState::ApplyPendingOperationsUnlocked(IndexToRoundMap::iterator iter,
+                                                    const OpId &committed_index) {
+  DCHECK(update_lock_.is_locked());
   VLOG_WITH_PREFIX_UNLOCKED(1) << "Last triggered apply was: "
       <<  last_committed_index_.ShortDebugString()
       << " Starting to apply from log index: " << (*iter).first;
@@ -906,6 +941,79 @@ Status ReplicaState::CheckOpInSequence(const OpId& previous, const OpId& current
         " op's index. Current: $0. Previous: $1", OpIdToString(current), OpIdToString(previous)));
   }
   return Status::OK();
+}
+
+void ReplicaState::UpdateOldLeaderLeaseExpirationUnlocked(MonoDelta lease_duration) {
+  old_leader_lease_expiration_.MakeAtLeast(MonoTime::FineNow() + lease_duration);
+}
+
+void ReplicaState::UpdateOldLeaderLeaseExpirationUnlocked(MonoTime lease_expiration) {
+  old_leader_lease_expiration_.MakeAtLeast(lease_expiration);
+}
+
+LeaderLeaseStatus ReplicaState::GetLeaderLeaseStatusUnlocked(
+    MonoDelta* remaining_old_leader_lease) const {
+  DCHECK_EQ(GetActiveRoleUnlocked(), RaftPeerPB_Role_LEADER);
+
+  if (remaining_old_leader_lease) {
+    *remaining_old_leader_lease = MonoDelta();
+  }
+
+  if (!FLAGS_use_leader_leases) {
+    return LeaderLeaseStatus::HAS_LEASE;
+  }
+
+  if (GetActiveConfigUnlocked().peers_size() == 1) {
+    // It is OK that majority_replicated_lease_expiration_ might be undefined in this case, because
+    // we are only reading it in this function (as of 08/09/2017).
+    return LeaderLeaseStatus::HAS_LEASE;
+  }
+
+  // We will query the current time at most once in this function, and only if necessary.
+  MonoTime now;
+
+  if (old_leader_lease_expiration_) {
+    const auto remaining_old_leader_lease_duration = RemainingOldLeaderLeaseDuration(&now);
+    if (remaining_old_leader_lease_duration) {
+      if (remaining_old_leader_lease) {
+        *remaining_old_leader_lease = remaining_old_leader_lease_duration;
+      }
+      return LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE;
+    }
+  }
+
+  if (!majority_replicated_lease_expiration_) {
+    return LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
+  }
+
+  if (!now) {
+    now = MonoTime::FineNow();
+  }
+
+  if (now >= majority_replicated_lease_expiration_) {
+    return LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
+  } else {
+    return LeaderLeaseStatus::HAS_LEASE;
+  }
+}
+
+MonoDelta ReplicaState::RemainingOldLeaderLeaseDuration(MonoTime* now) const {
+  MonoTime now_local;
+  if (!now) {
+    now = &now_local;
+  }
+  *now = MonoTime::FineNow();
+
+  if (old_leader_lease_expiration_) {
+    if (*now > old_leader_lease_expiration_) {
+      // Reset the old leader lease expiration time so that we don't have to check it anymore.
+      old_leader_lease_expiration_ = MonoTime::kMin;
+      return MonoDelta();
+    } else {
+      return old_leader_lease_expiration_.GetDeltaSince(*now);
+    }
+  }
+  return MonoDelta();
 }
 
 }  // namespace consensus

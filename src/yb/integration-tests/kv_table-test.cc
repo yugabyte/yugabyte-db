@@ -201,6 +201,16 @@ TEST_F(KVTableTest, Restart) {
   ASSERT_NO_FATALS(PutSampleKeysValues());
   ASSERT_NO_FATALS(CheckSampleKeysValues());
 
+  // Wait until all tablet servers come up.
+  vector<client::YBTabletServer*> tablet_servers;
+  do {
+    ASSERT_OK(client_->ListTabletServers(&tablet_servers));
+    if (tablet_servers.size() == num_tablet_servers()) {
+      break;
+    }
+    SleepFor(MonoDelta::FromMilliseconds(100));
+  } while (true);
+
   ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
   ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(table_->name(), ClusterVerifier::EXACTLY, 3));
 }

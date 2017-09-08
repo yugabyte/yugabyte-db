@@ -114,9 +114,14 @@ class VoteCounter {
 // The result of a leader election.
 struct ElectionResult {
  public:
-  ElectionResult(ConsensusTerm election_term, ElectionVote decision);
-  ElectionResult(ConsensusTerm election_term, ElectionVote decision,
-                 ConsensusTerm higher_term, const std::string& message);
+  ElectionResult(ConsensusTerm election_term,
+                 ElectionVote decision,
+                 MonoTime old_leader_lease_expiration);
+
+  ElectionResult(ConsensusTerm election_term,
+                 ElectionVote decision,
+                 ConsensusTerm higher_term,
+                 const std::string& message);
 
   // Term the election was run for.
   const ConsensusTerm election_term;
@@ -130,6 +135,8 @@ struct ElectionResult {
 
   // Human-readable explanation of the vote result, if any.
   const std::string message;
+
+  const MonoTime old_leader_lease_expiration;
 };
 
 // Driver class to run a leader election.
@@ -246,6 +253,8 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
 
   // Map of UUID -> VoterState.
   VoterStateMap voter_state_;
+
+  MonoTime old_leader_lease_expiration_;
 };
 
 } // namespace consensus

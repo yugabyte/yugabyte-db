@@ -284,6 +284,7 @@ Status RemoteYsckMaster::RetrieveTablesList(vector<shared_ptr<YsckTable> >* tabl
     DCHECK(info.namespace_().has_name());
     YBTableName name(info.namespace_().name(), info.name());
     RETURN_NOT_OK(GetTableInfo(name, &schema, &num_replicas));
+    LOG(INFO) << __func__ << ": name=" << name.ToString() << ", num_replicas=" << num_replicas;
     shared_ptr<YsckTable> table(new YsckTable(name, schema, num_replicas, info.table_type()));
     tables_temp.push_back(table);
   }

@@ -14,6 +14,7 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
+
 //
 // The following only applies to changes made to this file as part of YugaByte development.
 //
@@ -29,6 +30,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 package yb.consensus;
 
 option java_package = "org.yb.consensus";
@@ -127,35 +129,30 @@ message ConsensusStatePB {
 
   // There may not always be a leader of a configuration at any given time.
   //
-  // The node that the local peer considers to be leader changes based on rules
-  // defined in the Raft specification. Roughly, this corresponds either to
-  // being elected leader (in the case that the local peer is the leader), or
-  // when an update is accepted from another node, which basically just amounts
-  // to a term check on the UpdateConsensus() RPC request.
+  // The node that the local peer considers to be leader changes based on rules defined in the Raft
+  // specification. Roughly, this corresponds either to being elected leader (in the case that the
+  // local peer is the leader), or when an update is accepted from another node, which basically
+  // just amounts to a term check on the UpdateConsensus() RPC request.
   //
-  // Whenever the local peer sees a new term, the leader flag is cleared until
-  // a new leader is acknowledged based on the above critera. Simply casting a
-  // vote for a peer is not sufficient to assume that that peer has won the
-  // election, so we do not update this field based on our vote.
+  // Whenever the local peer sees a new term, the leader flag is cleared until a new leader is
+  // acknowledged based on the above critera. Simply casting a vote for a peer is not sufficient to
+  // assume that that peer has won the election, so we do not update this field based on our vote.
   //
-  // The leader listed here, if any, should always be a member of 'configuration', and
-  // the term that the node is leader of _must_ equal the term listed above in
-  // the 'current_term' field. The Master will use the combination of current
-  // term and leader uuid to determine when to update its cache of the current
-  // leader for client lookup purposes.
+  // The leader listed here, if any, should always be a member of 'configuration', and the term that
+  // the node is leader of _must_ equal the term listed above in the 'current_term' field. The
+  // Master will use the combination of current term and leader uuid to determine when to update its
+  // cache of the current leader for client lookup purposes.
   //
-  // There is a corner case in Raft where a node may be elected leader of a
-  // pending (uncommitted) configuration. In such a case, if the leader of the pending
-  // configuration is not a member of the committed configuration, and it is the committed
-  // configuration that is being reported, then the leader_uuid field should be
-  // cleared by the process filling in the ConsensusStatePB object.
+  // There is a corner case in Raft where a node may be elected leader of a pending (uncommitted)
+  // configuration. In such a case, if the leader of the pending configuration is not a member of
+  // the committed configuration, and it is the committed configuration that is being reported, then
+  // the leader_uuid field should be cleared by the process filling in the ConsensusStatePB object.
   optional string leader_uuid = 2;
 
-  // The peers. In some contexts, this will be the committed configuration,
-  // which will always have configuration.opid_index set. In other contexts, this may
-  // a "pending" configuration, which is active but in the process of being committed.
-  // In any case, initial peership is set on tablet start, so this
-  // field should always be present.
+  // The peers. In some contexts, this will be the committed configuration, which will always have
+  // configuration.opid_index set. In other contexts, this may a "pending" configuration, which is
+  // active but in the process of being committed.  In any case, initial peership is set on tablet
+  // start, so this field should always be present.
   required RaftConfigPB config = 3;
 }
 

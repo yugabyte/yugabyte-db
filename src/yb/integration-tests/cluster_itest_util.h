@@ -53,6 +53,7 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/opid_util.h"
+#include "yb/consensus/leader_lease.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/server/server_base.pb.h"
@@ -175,7 +176,8 @@ Status GetConsensusState(const TServerDetails* replica,
                          const TabletId& tablet_id,
                          consensus::ConsensusConfigType type,
                          const MonoDelta& timeout,
-                         consensus::ConsensusStatePB* consensus_state);
+                         consensus::ConsensusStatePB* consensus_state,
+                         consensus::LeaderLeaseStatus* leader_lease_status = nullptr);
 
 // Wait until the number of servers with the specified member type in the committed consensus
 // configuration is equal to config_size.
@@ -219,14 +221,20 @@ Status WaitUntilCommittedOpIdIndexGrow(int64_t* opid_index,
 // Status::OK() if the replica is alive and leader of the consensus configuration.
 // STATUS(NotFound, "") if the replica is not part of the consensus configuration or is dead.
 // Status::IllegalState() if the replica is live but not the leader.
-Status GetReplicaStatusAndCheckIfLeader(const TServerDetails* replica,
-                                        const TabletId& tablet_id,
-                                        const MonoDelta& timeout);
+Status GetReplicaStatusAndCheckIfLeader(
+    const TServerDetails* replica,
+    const TabletId& tablet_id,
+    const MonoDelta& timeout,
+    consensus::LeaderLeaseCheckMode lease_check_mode =
+        consensus::LeaderLeaseCheckMode::NEED_LEASE);
 
 // Wait until the specified replica is leader.
-Status WaitUntilLeader(const TServerDetails* replica,
-                       const TabletId& tablet_id,
-                       const MonoDelta& timeout);
+Status WaitUntilLeader(
+    const TServerDetails* replica,
+    const TabletId& tablet_id,
+    const MonoDelta& timeout,
+    consensus::LeaderLeaseCheckMode lease_check_mode =
+        consensus::LeaderLeaseCheckMode::NEED_LEASE);
 
 // Loops over the replicas, attempting to determine the leader, until it finds
 // the first replica that believes it is the leader.
@@ -263,7 +271,7 @@ Status LeaderStepDown(const TServerDetails* replica,
                       const TabletId& tablet_id,
                       const TServerDetails* new_leader,
                       const MonoDelta& timeout,
-                      tserver::TabletServerErrorPB* error = NULL);
+                      tserver::TabletServerErrorPB* error = nullptr);
 
 // Write a "simple test schema" row to the specified tablet on the given
 // replica. This schema is commonly used by tests and is defined in
@@ -286,7 +294,7 @@ Status AddServer(const TServerDetails* leader,
                  consensus::RaftPeerPB::MemberType member_type,
                  const boost::optional<int64_t>& cas_config_opid_index,
                  const MonoDelta& timeout,
-                 tserver::TabletServerErrorPB::Code* error_code = NULL,
+                 tserver::TabletServerErrorPB::Code* error_code = nullptr,
                  bool retry = true);
 
 // Run a ConfigChange to REMOVE_SERVER on 'replica_to_remove'.
@@ -296,7 +304,7 @@ Status RemoveServer(const TServerDetails* leader,
                     const TServerDetails* replica_to_remove,
                     const boost::optional<int64_t>& cas_config_opid_index,
                     const MonoDelta& timeout,
-                    tserver::TabletServerErrorPB::Code* error_code = NULL,
+                    tserver::TabletServerErrorPB::Code* error_code = nullptr,
                     bool retry = true);
 
 // Get the list of tablets from the remote server.
@@ -354,7 +362,7 @@ Status DeleteTablet(const TServerDetails* ts,
                     const tablet::TabletDataState delete_type,
                     const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
                     const MonoDelta& timeout,
-                    tserver::TabletServerErrorPB::Code* error_code = NULL);
+                    tserver::TabletServerErrorPB::Code* error_code = nullptr);
 
 // Cause the remote to initiate remote bootstrap using the specified host as a
 // source.

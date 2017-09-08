@@ -92,6 +92,8 @@ using consensus::RaftPeerPB;
 using consensus::RunLeaderElectionResponsePB;
 using consensus::RunLeaderElectionRequestPB;
 using consensus::kInvalidOpIdIndex;
+using consensus::LeaderLeaseCheckMode;
+using consensus::LeaderLeaseStatus;
 using master::ListTabletServersResponsePB;
 using master::MasterServiceProxy;
 using master::TabletLocationsPB;
@@ -359,7 +361,8 @@ Status GetConsensusState(const TServerDetails* replica,
                          const string& tablet_id,
                          consensus::ConsensusConfigType type,
                          const MonoDelta& timeout,
-                         ConsensusStatePB* consensus_state) {
+                         ConsensusStatePB* consensus_state,
+                         LeaderLeaseStatus* leader_lease_status) {
   GetConsensusStateRequestPB req;
   GetConsensusStateResponsePB resp;
   RpcController controller;
@@ -373,6 +376,11 @@ Status GetConsensusState(const TServerDetails* replica,
     return StatusFromPB(resp.error().status());
   }
   *consensus_state = resp.cstate();
+  if (leader_lease_status) {
+    *leader_lease_status = resp.has_leader_lease_status() ?
+        resp.leader_lease_status() :
+        LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;  // Could be anything but HAS_LEASE.
+  }
   return Status::OK();
 }
 
@@ -558,26 +566,32 @@ Status WaitUntilCommittedOpIdIndexGrow(int64_t* index,
 
 Status GetReplicaStatusAndCheckIfLeader(const TServerDetails* replica,
                                         const string& tablet_id,
-                                        const MonoDelta& timeout) {
+                                        const MonoDelta& timeout,
+                                        LeaderLeaseCheckMode lease_check_mode) {
   ConsensusStatePB cstate;
+  LeaderLeaseStatus leader_lease_status;
   Status s = GetConsensusState(replica, tablet_id, CONSENSUS_CONFIG_ACTIVE,
-                               timeout, &cstate);
+                               timeout, &cstate, &leader_lease_status);
   if (PREDICT_FALSE(!s.ok())) {
     VLOG(1) << "Error getting consensus state from replica: "
             << replica->instance_id.permanent_uuid();
     return STATUS(NotFound, "Error connecting to replica", s.ToString());
   }
   const string& replica_uuid = replica->instance_id.permanent_uuid();
-  if (cstate.has_leader_uuid() && cstate.leader_uuid() == replica_uuid) {
+  if (cstate.has_leader_uuid() && cstate.leader_uuid() == replica_uuid &&
+      (lease_check_mode == LeaderLeaseCheckMode::DONT_NEED_LEASE ||
+       leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE)) {
     return Status::OK();
   }
   VLOG(1) << "Replica not leader of config: " << replica->instance_id.permanent_uuid();
-  return STATUS(IllegalState, "Replica found but not leader");
+  return STATUS_FORMAT(IllegalState,
+      "Replica found but not leader; lease check mode: $0", lease_check_mode);
 }
 
 Status WaitUntilLeader(const TServerDetails* replica,
                        const string& tablet_id,
-                       const MonoDelta& timeout) {
+                       const MonoDelta& timeout,
+                       const LeaderLeaseCheckMode lease_check_mode) {
   MonoTime start = MonoTime::Now(MonoTime::FINE);
   MonoTime deadline = start;
   deadline.AddDelta(timeout);
@@ -587,7 +601,8 @@ Status WaitUntilLeader(const TServerDetails* replica,
   Status s;
   while (true) {
     MonoDelta remaining_timeout = deadline.GetDeltaSince(MonoTime::Now(MonoTime::FINE));
-    s = GetReplicaStatusAndCheckIfLeader(replica, tablet_id, remaining_timeout);
+    s = GetReplicaStatusAndCheckIfLeader(replica, tablet_id, remaining_timeout,
+                                         lease_check_mode);
     if (s.ok()) {
       return Status::OK();
     }

@@ -267,6 +267,8 @@ TEST_F(ConsensusQueueTest, TestGetPagedMessages) {
     page_size_estimator.set_caller_term(14);
     OpId* committed_index = page_size_estimator.mutable_committed_index();
     OpId* preceding_id = page_size_estimator.mutable_preceding_id();
+    // The actual leader lease duration does not matter here, we just want it to be set.
+    page_size_estimator.set_leader_lease_duration_ms(2000);
     committed_index->CopyFrom(MinimumOpId());
     preceding_id->CopyFrom(MinimumOpId());
 
@@ -651,7 +653,7 @@ TEST_F(ConsensusQueueTest, TestQueueMovesWatermarksBackward) {
   ASSERT_OPID_EQ(queue_->GetAllReplicatedIndexForTests(), MakeOpId(1, 10));
   // Now rewrite some of the operations and wait for the log to append.
   Synchronizer synch;
-  CHECK_OK(queue_->AppendOperations(
+  ASSERT_OK(queue_->AppendOperations(
       { CreateDummyReplicate(2, 5, clock_->Now(), 0) },
       synch.AsStatusCallback()));
 
@@ -661,7 +663,7 @@ TEST_F(ConsensusQueueTest, TestQueueMovesWatermarksBackward) {
   // Without the fix the following append would trigger a check failure
   // in log cache.
   synch.Reset();
-  CHECK_OK(queue_->AppendOperations(
+  ASSERT_OK(queue_->AppendOperations(
       { CreateDummyReplicate(2, 6, clock_->Now(), 0) },
       synch.AsStatusCallback()));
 

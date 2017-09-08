@@ -881,6 +881,15 @@ void GetTableSchemaRpc::SendRpcCb(const Status& status) {
         return;
       }
     }
+    if (resp_.error().status().code() == AppStatusPB::LEADER_NOT_READY_TO_SERVE ||
+        resp_.error().status().code() == AppStatusPB::LEADER_HAS_NO_LEASE) {
+      LOG(WARNING) << "Leader Master " << client_->data_->leader_master_hostport().ToString()
+                   << " does not have a valid exclusive lease: "
+                   << resp_.error().status().ShortDebugString() << ", re-trying...";
+      ResetLeaderMasterAndRetry();
+      return;
+    }
+    LOG(INFO) << "DEBUG: resp_.error().status()=" << resp_.error().status().DebugString();
     new_status = StatusFromPB(resp_.error().status());
   }
 

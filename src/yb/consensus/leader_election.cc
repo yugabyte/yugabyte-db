@@ -32,8 +32,8 @@
 
 #include "yb/consensus/leader_election.h"
 
-#include <boost/bind.hpp>
 #include <mutex>
+#include <functional>
 
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/metadata.pb.h"
@@ -143,11 +143,14 @@ bool VoteCounter::AreAllVotesIn() const {
 // ElectionResult
 ///////////////////////////////////////////////////
 
-ElectionResult::ElectionResult(ConsensusTerm election_term, ElectionVote decision)
+ElectionResult::ElectionResult(ConsensusTerm election_term,
+                               ElectionVote decision,
+                               MonoTime old_leader_lease_expiration)
   : election_term(election_term),
     decision(decision),
     has_higher_term(false),
-    higher_term(kMinimumTerm) {
+    higher_term(kMinimumTerm),
+    old_leader_lease_expiration(old_leader_lease_expiration) {
 }
 
 ElectionResult::ElectionResult(ConsensusTerm election_term, ElectionVote decision,
@@ -266,7 +269,7 @@ void LeaderElection::CheckForDecision() {
       CHECK_OK(vote_counter_->GetDecision(&decision));
       LOG_WITH_PREFIX(INFO) << "Election decided. Result: candidate "
                 << ((decision == VOTE_GRANTED) ? "won." : "lost.");
-      result_.reset(new ElectionResult(election_term(), decision));
+      result_.reset(new ElectionResult(election_term(), decision, old_leader_lease_expiration_));
     }
     // Check whether to respond. This can happen as a result of either getting
     // a majority vote or of something invalidating the election, like
@@ -362,6 +365,10 @@ void LeaderElection::HandleVoteGrantedUnlocked(const string& voter_uuid, const V
   DCHECK(lock_.is_locked());
   DCHECK_EQ(state.response.responder_term(), election_term());
   DCHECK(state.response.vote_granted());
+  if (state.response.has_remaining_leader_lease_duration_ms()) {
+    old_leader_lease_expiration_.MakeAtLeast(MonoTime::FineNow() +
+        MonoDelta::FromMilliseconds(state.response.remaining_leader_lease_duration_ms()));
+  }
 
   LOG_WITH_PREFIX(INFO) << "Vote granted by peer " << voter_uuid;
   RecordVoteUnlocked(voter_uuid, VOTE_GRANTED);

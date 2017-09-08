@@ -694,7 +694,10 @@ Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
   }
 
   // Wait for all transactions to be committed.
+  const MonoTime deadline = MonoTime::FineNow() + timeout;
   RETURN_NOT_OK(tablet_peer()->transaction_tracker()->WaitForAllToFinish(timeout));
+
+  RETURN_NOT_OK(tablet_peer()->consensus()->WaitForLeaderLeaseImprecise(deadline));
   return Status::OK();
 }
 
@@ -749,10 +752,10 @@ CHECKED_STATUS CatalogManager::WaitForWorkerPoolTests(const MonoDelta& timeout) 
 Status CatalogManager::VisitSysCatalog() {
 
   // Block new catalog operations, and wait for existing operations to finish.
-  LOG(INFO) << "Wait on leader_lock_ for any existing operations to finish.";
+  LOG(INFO) << __func__ << ": Wait on leader_lock_ for any existing operations to finish.";
   std::lock_guard<RWMutex> leader_lock_guard(leader_lock_);
 
-  LOG(INFO) << "Acquire catalog manager lock_ before loading sys catalog..";
+  LOG(INFO) << __func__ << ": Acquire catalog manager lock_ before loading sys catalog..";
   boost::lock_guard<LockType> lock(lock_);
 
   // Abort any outstanding tasks. All TableInfos are orphaned below, so
@@ -782,27 +785,34 @@ Status CatalogManager::VisitSysCatalog() {
   roles_map_.clear();
 
   // Visit tables and tablets, load them into memory.
+  LOG(INFO) << __func__ << ": Loading tables into memory.";
   unique_ptr<TableLoader> table_loader(new TableLoader(this));
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Visit(table_loader.get()), "Failed while visiting tables in sys catalog");
+
+  LOG(INFO) << __func__ << ": Loading tablets into memory.";
   unique_ptr<TabletLoader> tablet_loader(new TabletLoader(this));
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Visit(tablet_loader.get()), "Failed while visiting tablets in sys catalog");
 
+  LOG(INFO) << __func__ << ": Loading namespaces into memory.";
   unique_ptr<NamespaceLoader> namespace_loader(new NamespaceLoader(this));
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Visit(namespace_loader.get()),
       "Failed while visiting namespaces in sys catalog");
 
+  LOG(INFO) << __func__ << ": Loading user-defined types into memory.";
   unique_ptr<UDTypeLoader> udtype_loader(new UDTypeLoader(this));
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Visit(udtype_loader.get()),
       "Failed while visiting namespaces in sys catalog");
 
+  LOG(INFO) << __func__ << ": Loading cluster configuration into memory.";
   unique_ptr<ClusterConfigLoader> config_loader(new ClusterConfigLoader(this));
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Visit(config_loader.get()), "Failed while visiting config in sys catalog");
 
+  LOG(INFO) << __func__ << ": Loading roles into memory.";
   unique_ptr<RoleLoader> role_loader(new RoleLoader(this));
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Visit(role_loader.get()),
@@ -4520,7 +4530,7 @@ CatalogManager::ScopedLeaderSharedLock::ScopedLeaderSharedLock(CatalogManager* c
   }
   string uuid = catalog_->master_->fs_manager()->uuid();
   if (PREDICT_FALSE(catalog_->master_->IsShellMode())) {
-    // Consensus and other internal fields should not be checked when is shell mode as they may be
+    // Consensus and other internal fields should not be checked when in shell mode as they may be
     // in transition.
     leader_status_ = STATUS(IllegalState,
                          Substitute("Catalog manager of $0 is in shell mode, not the leader.",
@@ -4536,8 +4546,17 @@ CatalogManager::ScopedLeaderSharedLock::ScopedLeaderSharedLock(CatalogManager* c
                                     uuid, cstate.ShortDebugString()));
     return;
   }
+  // TODO: deduplicate the leadership check above and below (one is committed, one is active).
+  const Status s = consensus->CheckIsActiveLeaderAndHasLease();
+  if (!s.ok()) {
+    leader_status_ = s;
+    return;
+  }
   if (PREDICT_FALSE(catalog_->leader_ready_term_ != cstate.current_term())) {
-    leader_status_ = STATUS(ServiceUnavailable,
+    // Normally we use LeaderNotReadyToServe to indicate that the leader has not replicated its
+    // NO_OP entry or the previous leader's lease has not expired yet, and the handling logic is to
+    // to retry on the same server.
+    leader_status_ = STATUS(LeaderNotReadyToServe,
                          Substitute("Leader not yet ready to serve requests: "
                                     "leader_ready_term_ = $0; "
                                     "cstate.current_term = $1",

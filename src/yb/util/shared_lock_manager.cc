@@ -42,7 +42,7 @@ const char* ToString(LockType lock_type) {
   case LockType::SI_WRITE_STRONG:
     return "SI_WRITE_STRONG";
   }
-  LOG(FATAL) << "Invalid LockType value: " << to_underlying(lock_type);
+  FATAL_INVALID_ENUM_VALUE(LockType, lock_type);
 }
 
 static constexpr LockState Combine(std::initializer_list<LockType> lock_types) {

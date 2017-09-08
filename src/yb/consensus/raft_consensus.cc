@@ -54,6 +54,7 @@
 #include "yb/server/metadata.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/enums.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
@@ -163,7 +164,17 @@ METRIC_DEFINE_gauge_int64(tablet, raft_term,
                           "Current Term of the Raft Consensus algorithm. This number increments "
                           "each time a leader election is started.");
 
-namespace  {
+DEFINE_bool(use_leader_leases, true,
+            "Enables leader leases for guaranteed up-to-date reads in case of network "
+            "partitions.");
+
+DEFINE_int32(leader_lease_duration_ms, 2000,
+             "Leader lease duration. A leader keeps establishing a new lease or extending the "
+             "existing one with every UpdateConsensus. A new server is not allowed to serve as a "
+             "leader (i.e. serve up-to-date read requests or acknowledge write requests) until a "
+             "lease of this duration has definitely expired on the old leader's side.");
+
+namespace {
 
 // Return the mean interval at which to check for failures of the
 // leader.
@@ -195,6 +206,7 @@ using std::shared_ptr;
 using std::unique_ptr;
 using strings::Substitute;
 using tserver::TabletServerErrorPB;
+using yb::util::to_underlying;
 
 // Special string that represents any known leader to the failure detector.
 static const char* const kTimerId = "election-timer";
@@ -524,7 +536,7 @@ Status RaftConsensus::WaitUntilLeaderForTests(const MonoDelta& timeout) {
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(timeout);
   while (MonoTime::Now(MonoTime::FINE).ComesBefore(deadline)) {
-    if (role() == consensus::RaftPeerPB::LEADER) {
+    if (leader_status() == LeaderStatus::LEADER_AND_READY) {
       return Status::OK();
     }
     SleepFor(MonoDelta::FromMilliseconds(10));
@@ -793,6 +805,7 @@ Status RaftConsensus::Replicate(const ConsensusRoundPtr& round) {
 }
 
 Status RaftConsensus::ReplicateBatch(const ConsensusRounds& rounds) {
+  RETURN_NOT_OK(ExecuteHook(PRE_REPLICATE));
   {
     ReplicaState::UniqueLock lock;
 #ifndef NDEBUG
@@ -828,7 +841,7 @@ Status RaftConsensus::CheckLeadershipAndBindTerm(const scoped_refptr<ConsensusRo
     // OK to take the lock here, because this error case should be rare.
     ReplicaState::UniqueLock lock;
     RETURN_NOT_OK(state_->LockForReplicate(&lock, *round->replicate_msg()));
-    const ConsensusStatePB cstate = ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE);
+    const ConsensusStatePB cstate = state_->ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE);
     return STATUS(IllegalState, Substitute("Replica $0 is not leader of this config. Role: $1. "
                                            "Consensus state: $2",
                                            peer_uuid(),
@@ -907,8 +920,10 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
   return Status::OK();
 }
 
-void RaftConsensus::UpdateMajorityReplicated(const OpId& majority_replicated,
-                                             OpId* committed_index) {
+void RaftConsensus::UpdateMajorityReplicated(
+    const OpId& majority_replicated,
+    MonoTime majority_replicated_leader_lease_expiration,
+    OpId* committed_index) {
   ReplicaState::UniqueLock lock;
   Status s = state_->LockForMajorityReplicatedIndexUpdate(&lock);
   if (PREDICT_FALSE(!s.ok())) {
@@ -917,6 +932,9 @@ void RaftConsensus::UpdateMajorityReplicated(const OpId& majority_replicated,
         << s.ToString();
     return;
   }
+
+  state_->SetMajorityReplicatedLeaseExpirationUnlocked(majority_replicated_leader_lease_expiration);
+  leader_lease_wait_cond_.Broadcast();
 
   VLOG_WITH_PREFIX_UNLOCKED(1) << "Marking majority replicated up to "
       << majority_replicated.ShortDebugString();
@@ -1392,7 +1410,6 @@ Status RaftConsensus::UpdateReplica(ConsensusRequestPB* request,
   // TODO - These failure scenarios need to be exercised in an unit
   //        test. Moreover we need to add more fault injection spots (well that
   //        and actually use them) for each of these steps.
-  //        This will be done in a follow up patch.
   TRACE("Updating replica for $0 ops", request->ops_size());
 
   // The deduplicated request.
@@ -1419,6 +1436,13 @@ Status RaftConsensus::UpdateReplica(ConsensusRequestPB* request,
     // We are guaranteed to be acting as a FOLLOWER at this point by the above
     // sanity check.
     RETURN_NOT_OK(SnoozeFailureDetectorUnlocked());
+
+    // Update the expiration time of the current leader's lease, so that when this follower becomes
+    // a leader, it can wait out the time interval while the old leader might still be active.
+    if (FLAGS_use_leader_leases && request->has_leader_lease_duration_ms()) {
+      state_->UpdateOldLeaderLeaseExpirationUnlocked(
+          MonoDelta::FromMilliseconds(request->leader_lease_duration_ms()));
+    }
 
     // Also prohibit voting for anyone for the minimum election timeout.
     withhold_votes_until_ = MonoTime::FineNow() + MinimumElectionTimeout();
@@ -1759,8 +1783,7 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
                    state_->GetCurrentTermUnlocked(), request->candidate_term()));
   }
 
-  // Candidate must have last-logged OpId at least as large as our own to get
-  // our vote.
+  // Candidate must have last-logged OpId at least as large as our own to get our vote.
   OpId local_last_logged_opid = GetLatestOpIdFromLog();
   if (OpIdLessThan(request->candidate_status().last_received(), local_last_logged_opid)) {
     return RequestVoteRespondLastOpIdTooOld(local_last_logged_opid, request, response);
@@ -1770,6 +1793,11 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   // before we can catch up and start the election, let's not disrupt the quorum with another
   // election.
   state_->ClearPendingElectionOpIdUnlocked();
+
+  MonoDelta remaining_old_leader_lease = state_->RemainingOldLeaderLeaseDuration();
+  if (remaining_old_leader_lease.Initialized()) {
+    response->set_remaining_leader_lease_duration_ms(remaining_old_leader_lease.ToMilliseconds());
+  }
 
   // Passed all our checks. Vote granted.
   return RequestVoteRespondVoteGranted(request, response);
@@ -1841,7 +1869,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
   {
     ReplicaState::UniqueLock lock;
     RETURN_NOT_OK(state_->LockForConfigChange(&lock));
-    Status s = state_->CheckActiveLeaderUnlocked();
+    Status s = state_->CheckActiveLeaderUnlocked(LeaderLeaseCheckMode::DONT_NEED_LEASE);
     if (!s.ok()) {
       *error_code = TabletServerErrorPB::NOT_THE_LEADER;
       return s;
@@ -2076,6 +2104,50 @@ Status RaftConsensus::StartConsensusOnlyRoundUnlocked(const ReplicateMsgPtr& msg
   return state_->AddPendingOperation(round);
 }
 
+Status RaftConsensus::WaitForLeaderLeaseImprecise(MonoTime deadline) {
+  MonoTime now;
+  while ((now = MonoTime::FineNow()) < deadline) {
+    MonoDelta remaining_old_leader_lease;
+    LeaderLeaseStatus leader_lease_status;
+    {
+      ReplicaState::UniqueLock lock;
+      RETURN_NOT_OK(state_->LockForRead(&lock));
+      leader_lease_status = state_->GetLeaderLeaseStatusUnlocked(&remaining_old_leader_lease);
+    }
+    switch (leader_lease_status) {
+      case LeaderLeaseStatus::HAS_LEASE:
+        return Status::OK();
+      case LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE:
+        {
+          std::lock_guard<decltype(leader_lease_wait_mtx_)> lock(leader_lease_wait_mtx_);
+          // Because we're not taking the same lock (leader_lease_wait_mtx_) when we check the
+          // leader lease status, there is a possibility of a race condition when we miss the
+          // notification and by this point we already have a lease. Rather than re-taking the
+          // ReplicaState lock and re-checking, here we simply block for up to 100ms in that case,
+          // because this function is currently (08/14/2017) only used in a context when it is OK,
+          // such as catalog manager initialization.
+          leader_lease_wait_cond_.TimedWait(max(MonoDelta::FromMilliseconds(100), deadline - now));
+        }
+        continue;
+      case LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE:
+        if (now + remaining_old_leader_lease > deadline) {
+          return STATUS_FORMAT(
+              TimedOut,
+              "Old leader still has lease for $0 but we only have $1 left to wait",
+              remaining_old_leader_lease, deadline - now);
+        }
+        SleepFor(remaining_old_leader_lease);
+        continue;
+    }
+    FATAL_INVALID_ENUM_VALUE(LeaderLeaseStatus, leader_lease_status);
+  }
+  return STATUS_FORMAT(TimedOut, "Waited for $0 to acquire a leader lease", deadline);
+}
+
+Status RaftConsensus::CheckIsActiveLeaderAndHasLease() const {
+  return state_->CheckIsActiveLeaderAndHasLease();
+}
+
 std::string RaftConsensus::GetRequestVoteLogPrefixUnlocked() const {
   return state_->LogPrefixUnlocked() + "Leader election vote request";
 }
@@ -2221,8 +2293,29 @@ Consensus::LeaderStatus RaftConsensus::leader_status() const {
     return LeaderStatus::NOT_LEADER;
   }
 
-  return leader_no_op_committed_ ? LeaderStatus::LEADER_AND_READY
-                                 : LeaderStatus::LEADER_BUT_NOT_READY;
+  if (!leader_no_op_committed_) {
+    // This will cause the client to retry on the same server (won't try to find the new leader).
+    return LeaderStatus::LEADER_BUT_NOT_READY;
+  }
+
+  MonoDelta remaining_old_leader_lease;
+  const auto lease_status = state_->GetLeaderLeaseStatusUnlocked(&remaining_old_leader_lease);
+  switch (lease_status) {
+    case LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE:
+      // Will retry on the same server.
+      VLOG(1) << "Old leader lease might still be active for "
+              << remaining_old_leader_lease.ToString();
+      return LeaderStatus::LEADER_BUT_NOT_READY;
+
+    case LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE:
+      // Will retry to look up the leader, because it might have changed.
+      return LeaderStatus::NOT_LEADER;
+
+    case LeaderLeaseStatus::HAS_LEASE:
+      return LeaderStatus::LEADER_AND_READY;
+  }
+
+  FATAL_INVALID_ENUM_VALUE(LeaderLeaseStatus, lease_status);
 }
 
 std::string RaftConsensus::LogPrefixUnlocked() {
@@ -2289,14 +2382,26 @@ string RaftConsensus::tablet_id() const {
   return state_->GetOptions().tablet_id;
 }
 
-ConsensusStatePB RaftConsensus::ConsensusState(ConsensusConfigType type) const {
+ConsensusStatePB RaftConsensus::ConsensusState(
+    ConsensusConfigType type,
+    LeaderLeaseStatus* leader_lease_status) const {
   ReplicaState::UniqueLock lock;
   CHECK_OK(state_->LockForRead(&lock));
-  return state_->ConsensusStateUnlocked(type);
+  return ConsensusStateUnlocked(type, leader_lease_status);
 }
 
-ConsensusStatePB RaftConsensus::ConsensusStateUnlocked(ConsensusConfigType type) const {
+ConsensusStatePB RaftConsensus::ConsensusStateUnlocked(
+    ConsensusConfigType type,
+    LeaderLeaseStatus* leader_lease_status) const {
   CHECK(state_->IsLocked());
+  if (leader_lease_status) {
+    if (GetRoleUnlocked() == RaftPeerPB_Role_LEADER) {
+      *leader_lease_status = state_->GetLeaderLeaseStatusUnlocked();
+    } else {
+      // We'll still return a valid value if we're not a leader.
+      *leader_lease_status = LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
+    }
+  }
   return state_->ConsensusStateUnlocked(type);
 }
 
@@ -2447,6 +2552,11 @@ void RaftConsensus::DoElectionCallback(const std::string& originator_uuid,
   }
 
   LOG_WITH_PREFIX_UNLOCKED(INFO) << "Leader election won for term " << result.election_term;
+
+  if (result.old_leader_lease_expiration) {
+    // Voters told us about the old leader's lease that we have to wait out.
+    state_->UpdateOldLeaderLeaseExpirationUnlocked(result.old_leader_lease_expiration);
+  }
 
   // Convert role to LEADER.
   SetLeaderUuidUnlocked(state_->GetPeerUuid());

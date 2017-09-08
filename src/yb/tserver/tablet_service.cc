@@ -41,6 +41,7 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/leader_lease.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
@@ -124,6 +125,7 @@ using consensus::GetNodeInstanceRequestPB;
 using consensus::GetNodeInstanceResponsePB;
 using consensus::LeaderStepDownRequestPB;
 using consensus::LeaderStepDownResponsePB;
+using consensus::LeaderLeaseStatus;
 using consensus::RunLeaderElectionRequestPB;
 using consensus::RunLeaderElectionResponsePB;
 using consensus::StartRemoteBootstrapRequestPB;
@@ -1197,7 +1199,9 @@ void ConsensusServiceImpl::GetConsensusState(const consensus::GetConsensusStateR
                                            ConsensusConfigType_Name(type), type)));
     return;
   }
-  *resp->mutable_cstate() = scope->ConsensusState(req->type());
+  LeaderLeaseStatus leader_lease_status;
+  *resp->mutable_cstate() = scope->ConsensusState(req->type(), &leader_lease_status);
+  resp->set_leader_lease_status(leader_lease_status);
 }
 
 void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB* req,

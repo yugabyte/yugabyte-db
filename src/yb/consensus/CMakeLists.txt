@@ -128,6 +128,7 @@ set(CONSENSUS_SRCS
 
 add_library(consensus ${CONSENSUS_SRCS})
 cotire(consensus)
+
 target_link_libraries(consensus
   consensus_proto
   yb_common

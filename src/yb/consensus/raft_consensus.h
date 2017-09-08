@@ -50,6 +50,9 @@
 #include "yb/util/failure_detector.h"
 #include "yb/util/result.h"
 
+DECLARE_bool(use_leader_leases);
+DECLARE_int32(leader_lease_duration_ms);
+
 namespace yb {
 
 typedef std::lock_guard<simple_spinlock> Lock;
@@ -145,7 +148,7 @@ class RaftConsensus : public Consensus,
       ConsensusResponsePB* response) override;
 
   virtual CHECKED_STATUS RequestVote(const VoteRequestPB* request,
-                             VoteResponsePB* response) override;
+                                     VoteResponsePB* response) override;
 
   virtual CHECKED_STATUS ChangeConfig(const ChangeConfigRequestPB& req,
                               const StatusCallback& client_cb,
@@ -162,9 +165,13 @@ class RaftConsensus : public Consensus,
 
   virtual std::string tablet_id() const override;
 
-  virtual ConsensusStatePB ConsensusState(ConsensusConfigType type) const override;
+  virtual ConsensusStatePB ConsensusState(
+      ConsensusConfigType type,
+      LeaderLeaseStatus* leader_lease_status) const override;
 
-  virtual ConsensusStatePB ConsensusStateUnlocked(ConsensusConfigType type) const override;
+  virtual ConsensusStatePB ConsensusStateUnlocked(
+      ConsensusConfigType type,
+      LeaderLeaseStatus* leader_lease_status) const override;
 
   virtual RaftConfigPB CommittedConfig() const override;
 
@@ -184,7 +191,13 @@ class RaftConsensus : public Consensus,
   // transactions were pending.
   // This is idempotent.
   void UpdateMajorityReplicated(const OpId& majority_replicated,
+                                MonoTime majority_replicated_leader_lease_expiration,
                                 OpId* committed_index) override;
+
+  void UpdateMajorityReplicatedInTests(const OpId &majority_replicated,
+                                       OpId *committed_index) {
+    UpdateMajorityReplicated(majority_replicated, MonoTime::kMin, committed_index);
+  }
 
   virtual void NotifyTermChange(int64_t term) override;
 
@@ -214,6 +227,16 @@ class RaftConsensus : public Consensus,
   // As a follower, start a consensus round not associated with a Transaction.
   // Only virtual and protected for mocking purposes.
   virtual CHECKED_STATUS StartConsensusOnlyRoundUnlocked(const ReplicateMsgPtr& msg);
+
+  // Assuming we are the leader, wait until we have a valid leader lease (i.e. the old leader's
+  // lease has expired, and we have replicated a new lease that has not expired yet).
+  // This says "Imprecise" because there is a slight race condition where this could wait for an
+  // additional short time interval (e.g. 100 ms) in case we've just acquired the lease and the
+  // waiting thread missed the notification. However, as of 08/14/2017 this is only used in a
+  // context where this does not matter, such as catalog manager initialization.
+  Status WaitForLeaderLeaseImprecise(MonoTime deadline) override;
+
+  Status CheckIsActiveLeaderAndHasLease() const override;
 
  private:
   friend class ReplicaState;
@@ -557,6 +580,11 @@ class RaftConsensus : public Consensus,
   std::shared_ptr<MemTracker> parent_mem_tracker_;
 
   TableType table_type_;
+
+  // Mutex / condition used for waiting for acquiring a valid leader lease.
+  Mutex leader_lease_wait_mtx_;
+  ConditionVariable leader_lease_wait_cond_{&leader_lease_wait_mtx_};
+
   DISALLOW_COPY_AND_ASSIGN(RaftConsensus);
 };
 

@@ -240,6 +240,7 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   //     commit index, which tells them to apply the operation.
   //
   // This method can only be called on the leader, i.e. role() == LEADER
+
   virtual CHECKED_STATUS Replicate(const ConsensusRoundPtr& round) = 0;
 
   // A batch version of Replicate, which is what we try to use as much as possible for performance.
@@ -286,12 +287,12 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   // Messages sent from CANDIDATEs to voting peers to request their vote
   // in leader election.
   virtual CHECKED_STATUS RequestVote(const VoteRequestPB* request,
-                             VoteResponsePB* response) = 0;
+                                     VoteResponsePB* response) = 0;
 
   // Implement a ChangeConfig() request.
   virtual CHECKED_STATUS ChangeConfig(const ChangeConfigRequestPB& req,
-                              const StatusCallback& client_cb,
-                              boost::optional<tserver::TabletServerErrorPB::Code>* error) {
+                                      const StatusCallback& client_cb,
+                                      boost::optional<tserver::TabletServerErrorPB::Code>* error) {
     return STATUS(NotSupported, "Not implemented.");
   }
 
@@ -307,12 +308,17 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   // Returns the id of the tablet whose updates this consensus instance helps coordinate.
   virtual std::string tablet_id() const = 0;
 
-  // Returns a copy of the committed state of the Consensus system.
-  virtual ConsensusStatePB ConsensusState(ConsensusConfigType type) const = 0;
+  // Returns a copy of the committed state of the Consensus system. Also allows returning the
+  // leader lease status captured under the same lock.
+  virtual ConsensusStatePB ConsensusState(
+      ConsensusConfigType type,
+      LeaderLeaseStatus* leader_lease_status = nullptr) const = 0;
 
-  // Returns a copy of the committed state of the Consensus system,
-  // assuming caller holds the needed locks
-  virtual ConsensusStatePB ConsensusStateUnlocked(ConsensusConfigType type) const = 0;
+  // Returns a copy of the committed state of the Consensus system, assuming caller holds the needed
+  // locks.
+  virtual ConsensusStatePB ConsensusStateUnlocked(
+      ConsensusConfigType type,
+      LeaderLeaseStatus* leader_lease_status = nullptr) const = 0;
 
   // Returns a copy of the current committed Raft configuration.
   virtual RaftConfigPB CommittedConfig() const = 0;
@@ -326,12 +332,17 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   // Stops running the consensus algorithm.
   virtual void Shutdown() = 0;
 
-  // Returns the last OpId (either received or committed, depending on the
-  // 'type' argument) that the Consensus implementation knows about.
-  // Primarily used for testing purposes.
+  // Returns the last OpId (either received or committed, depending on the 'type' argument) that the
+  // Consensus implementation knows about.  Primarily used for testing purposes.
   virtual CHECKED_STATUS GetLastOpId(OpIdType type, OpId* id) {
     return STATUS(NotFound, "Not implemented.");
   }
+
+  // Assuming we are the leader, wait until we have a valid leader lease (i.e. the old leader's
+  // lease has expired, and we have replicated a new lease that has not expired yet).
+  virtual Status WaitForLeaderLeaseImprecise(MonoTime deadline) = 0;
+
+  virtual Status CheckIsActiveLeaderAndHasLease() const = 0;
 
  protected:
   friend class RefCountedThreadSafe<Consensus>;
