@@ -89,7 +89,9 @@ public class PartitionAwarePolicy implements ChainableLoadBalancingPolicy {
    * @param refreshFrequencySeconds the refresh frequency in seconds for partition metadata
    */
   public PartitionAwarePolicy(int refreshFrequencySeconds) {
-    this(new DCAwareRoundRobinPolicy.Builder().build(), refreshFrequencySeconds);
+    this(new DCAwareRoundRobinPolicy.Builder()
+        .withUsedHostsPerRemoteDc(Integer.MAX_VALUE)
+        .build(), refreshFrequencySeconds);
   }
 
   @Override

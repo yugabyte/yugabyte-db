@@ -193,6 +193,7 @@ public class TestConsistencyLevels extends BaseCQLTest {
     assertTrue(verifyNumRows(ConsistencyLevel.TWO));
   }
 
+  @Test
   public void testRegionLocalReads() throws Exception {
     // Destroy existing cluster and recreate it.
     destroyMiniCluster();
@@ -208,8 +209,11 @@ public class TestConsistencyLevels extends BaseCQLTest {
     for (int i = 0 ; i < NUM_TABLET_SERVERS; i++) {
       Cluster cluster = Cluster.builder()
         .addContactPointsWithPorts(miniCluster.getCQLContactPoints())
-        .withLoadBalancingPolicy(new PartitionAwarePolicy(DCAwareRoundRobinPolicy.builder()
-          .withLocalDc(REGION_PREFIX + i).build(),
+        .withLoadBalancingPolicy(new PartitionAwarePolicy(
+          DCAwareRoundRobinPolicy.builder()
+          .withLocalDc(REGION_PREFIX + i)
+          .withUsedHostsPerRemoteDc(Integer.MAX_VALUE)
+          .build(),
           PARTITION_POLICY_REFRESH_FREQUENCY_SECONDS)).build();
       Session session = cluster.connect();
 
@@ -245,15 +249,17 @@ public class TestConsistencyLevels extends BaseCQLTest {
         session.execute(statement);
       }
 
-      // Verify all reads went to the same tserver and cql proxy.
+      // Verify all reads went to the same tserver and cql proxy. There could be some background
+      // reads for system tables which increase the number of ops beyond NUM_OPS and hence we
+      // assert that we received atleast NUM_OPS instead of exactly NUM_OPS.
       tserverMetrics = new Metrics(tserver_webaddress.getHostText(), tserver_webaddress.getPort(),
         "server");
-      assertEquals(NUM_OPS,
+      assertTrue(NUM_OPS <=
         tserverMetrics.getHistogram(TSERVER_READ_METRIC).totalCount - tserverNumOpsBefore);
 
       cqlproxyMetrics = new Metrics(cqlproxy_webaddress.getHostText(),
         cqlproxy_webaddress.getPort(), "server");
-      assertEquals(NUM_OPS,
+      assertTrue(NUM_OPS <=
         cqlproxyMetrics.getHistogram(CQLPROXY_SELECT_METRIC).totalCount - cqlproxyNumOpsBefore);
     }
   }

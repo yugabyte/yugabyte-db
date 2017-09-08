@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
+import com.datastax.driver.core.ConsistencyLevel;
 import org.apache.log4j.Logger;
 
 import com.datastax.driver.core.Cluster;
@@ -92,10 +93,17 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   protected void createKeyspace(Session session, String ks) {
     String create_keyspace_stmt = "CREATE KEYSPACE IF NOT EXISTS " + ks +
       " WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor' : 1};";
-    cassandra_session.execute(create_keyspace_stmt);
+    // Use consistency level ONE to allow cross DC requests.
+    session.execute(
+      session.prepare(create_keyspace_stmt)
+        .setConsistencyLevel(ConsistencyLevel.ONE)
+        .bind());
     LOG.debug("Created a keyspace " + ks + " using query: [" + create_keyspace_stmt + "]");
     String use_keyspace_stmt = "USE " + ks + ";";
-    cassandra_session.execute(use_keyspace_stmt);
+    session.execute(
+      session.prepare(use_keyspace_stmt)
+        .setConsistencyLevel(ConsistencyLevel.ONE)
+        .bind());
     LOG.debug("Used the new keyspace " + ks + " using query: [" + use_keyspace_stmt + "]");
   }
 
@@ -113,7 +121,10 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
       if (appConfig.localDc != null && !appConfig.localDc.isEmpty()) {
         builder.withLoadBalancingPolicy((new PartitionAwarePolicy(
             DCAwareRoundRobinPolicy.builder()
-                .withLocalDc(appConfig.localDc).build(),
+              .withLocalDc(appConfig.localDc)
+              .withUsedHostsPerRemoteDc(Integer.MAX_VALUE)
+              .allowRemoteDCsForLocalConsistencyLevel()
+              .build(),
             appConfig.partitionMetadataRefreshSeconds)));
       } else if (!appConfig.disableYBLoadBalancingPolicy) {
         builder.withLoadBalancingPolicy(
@@ -186,7 +197,12 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    */
   public void createTablesIfNeeded() {
     for (String create_stmt : getCreateTableStatements()) {
-      getCassandraClient().execute(create_stmt);
+      Session session = getCassandraClient();
+      // consistency level of one to allow cross DC requests.
+      session.execute(
+        session.prepare(create_stmt)
+          .setConsistencyLevel(ConsistencyLevel.ONE)
+          .bind());
       LOG.info("Created a Cassandra table using query: [" + create_stmt + "]");
     }
   }

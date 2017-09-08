@@ -90,12 +90,12 @@ public class TestInsert extends BaseCQLTest {
 
     // Now insert with ttl.
     String insert_stmt = String.format(
-      "INSERT INTO %s(h1, h2, r1, r2, v1) VALUES(%d, 'h%d', %d, 'r%d', %d) USING TTL 1;",
+      "INSERT INTO %s(h1, h2, r1, r2, v1) VALUES(%d, 'h%d', %d, 'r%d', %d) USING TTL 2;",
       tableName, 1, 2, 3, 4, 5);
     session.execute(insert_stmt);
 
     insert_stmt = String.format(
-      "INSERT INTO %s(h1, h2, r1, r2, v2) VALUES(%d, 'h%d', %d, 'r%d', 'v%d') USING TTL 2;",
+      "INSERT INTO %s(h1, h2, r1, r2, v2) VALUES(%d, 'h%d', %d, 'r%d', 'v%d') USING TTL 4;",
       tableName, 1, 2, 3, 4, 6);
     session.execute(insert_stmt);
 
@@ -112,7 +112,7 @@ public class TestInsert extends BaseCQLTest {
     assertEquals("v6", row.getString(5));
 
     // Now verify v1 expires.
-    Thread.sleep(1100);
+    Thread.sleep(2100);
     row = runSelect(select_stmt).next();
     assertEquals(1, row.getInt(0));
     assertEquals("h2", row.getString(1));
@@ -122,7 +122,7 @@ public class TestInsert extends BaseCQLTest {
     assertEquals("v6", row.getString(5));
 
     // Now verify v2 expires.
-    Thread.sleep(1000);
+    Thread.sleep(2000);
     assertNoRow(select_stmt);
   }
 
