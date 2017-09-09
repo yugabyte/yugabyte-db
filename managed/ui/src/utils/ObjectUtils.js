@@ -167,6 +167,21 @@ export function normalizeToPositiveInt(value) {
   return parseInt(Math.abs(value), 10) || 0;
 }
 
+export function normalizeToPositiveFloat(value) {
+  if (value === ".") {
+    return "0.0";
+  }
+  const splitValue = value.split(".");
+  if (splitValue.length > 2) {
+    return splitValue[0] + "." + splitValue[1];
+  }
+  const positiveFloat = parseFloat(Math.abs(value));
+  if (splitValue.length < 2 || Number.isInteger(positiveFloat)) {
+    return positiveFloat.toFixed(1) || "0.0";
+  }
+  return positiveFloat || "0.0";
+}
+
 // TODO: Move the functions below to StringUtils.js?
 
 export function trimString(string) {
