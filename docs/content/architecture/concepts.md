@@ -336,6 +336,7 @@ T2: UPDATE msgs
 ```
 
 The entries in DocDB at this point will look like the following:
+
 <pre>
 <code>(hash1, 'user1', 10), liveness_column_id, T1 -> [NULL]
 (hash1, 'user1', 10), msg_column_id, T1 -> 'msg1'
@@ -346,7 +347,7 @@ The entries in DocDB at this point will look like the following:
 </pre>
 
 ```sql
-T3: INSERT INTO msgs (user_id, msg_id, msg, msg_props) 
+T3: INSERT INTO msgs (user_id, msg_id, msg, msg_props)
         VALUES (‘user1’, 20, 'msg2', {'from' : 'c@d.com', 'subject' : 'bar'});
 ```
 
