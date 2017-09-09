@@ -11,11 +11,7 @@ import java.util.UUID;
 import java.util.Objects;
 import java.util.Iterator;
 
-import com.yugabyte.yw.cloud.PublicCloudConstants;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -110,6 +106,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public DeviceInfo deviceInfo;
 
+    public double spotPrice = 0.0;
+
     // Info of all the gflags that the user would like to save to the universe. These will be
     // used during edit universe, for example, to set the flags on new nodes to match
     // existing nodes' settings.
@@ -137,6 +135,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.numNodes = numNodes;
       newUserIntent.ybSoftwareVersion = ybSoftwareVersion;
       newUserIntent.accessKeyCode = accessKeyCode;
+      newUserIntent.spotPrice = spotPrice;
       newUserIntent.gflags = gflags;
       return newUserIntent;
     }
@@ -153,6 +152,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           numNodes == other.numNodes &&
           ybSoftwareVersion.equals(other.ybSoftwareVersion) &&
           (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode)) &&
+          spotPrice == other.spotPrice &&
           gflags.equals(other.gflags)) {
          return true;
       }
@@ -166,6 +166,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return leftSet.equals(rightSet);
     }
   }
+
   // Helper API to remove node from nodeDetailSet
   public void removeNode(String nodeName) {
     for (Iterator<NodeDetails> i = this.nodeDetailsSet.iterator(); i.hasNext();) {

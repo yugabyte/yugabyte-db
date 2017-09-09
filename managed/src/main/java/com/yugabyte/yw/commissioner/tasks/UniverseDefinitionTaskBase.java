@@ -193,6 +193,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.subnetId = node.cloudInfo.subnet_id;
       // Set the instance type.
       params.instanceType = taskParams().userIntent.instanceType;
+      // Set the spot price.
+      params.spotPrice = taskParams().userIntent.spotPrice;
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
       ansibleSetupServer.initialize(params);

@@ -10,8 +10,10 @@ import { createUniverse, createUniverseResponse, editUniverse, editUniverseRespo
          configureUniverseTemplate, configureUniverseTemplateResponse, configureUniverseTemplateSuccess,
          configureUniverseResources, configureUniverseResourcesResponse,
          checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration,
-         fetchUniverseInfo, fetchUniverseInfoResponse, fetchUniverseMetadata, fetchUniverseTasks, fetchUniverseTasksResponse } from 'actions/universe';
-import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString } from 'utils/ObjectUtils';
+         fetchUniverseInfo, fetchUniverseInfoResponse, fetchUniverseMetadata, fetchUniverseTasks,
+         fetchUniverseTasksResponse } from 'actions/universe';
+import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString, normalizeToPositiveFloat }
+  from 'utils/ObjectUtils';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -26,7 +28,6 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(configureUniverseResourcesResponse(resourceData.payload));
       });
     },
-
 
     submitCreateUniverse: (values) => {
       dispatch(createUniverse(values)).then((response) => {
@@ -89,6 +90,7 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(fetchUniverseTasksResponse(response.payload));
       });
     },
+
     getExistingUniverseConfiguration: (universeDetail) => {
       dispatch(configureUniverseTemplateSuccess({data: universeDetail}));
       dispatch(configureUniverseResources(universeDetail)).then((resourceData) => {
@@ -105,7 +107,8 @@ const mapDispatchToProps = (dispatch) => {
 };
 
 const formFieldNames = ['formType', 'universeName', 'provider',  'providerType', 'regionList',
-  'numNodes', 'isMultiAZ', 'instanceType', 'ybSoftwareVersion', 'azSelectorFields', 'accessKeyCode'];
+  'numNodes', 'isMultiAZ', 'instanceType', 'ybSoftwareVersion', 'azSelectorFields', 'accessKeyCode',
+  'spotPrice'];
 
 function mapStateToProps(state, ownProps) {
   const {universe: { currentUniverse }} = state;
@@ -116,7 +119,9 @@ function mapStateToProps(state, ownProps) {
     "isMultiAZ": true,
     "instanceType": "m3.medium",
     "formType": "create",
-    "accessKeyCode": "yugabyte-default"
+    "accessKeyCode": "yugabyte-default",
+    "spotPrice": "$ 0.0 per hour",
+    "useSpotPrice": false
   };
   if (isNonEmptyObject(currentUniverse.data) && ownProps.type === "Edit") {
     const userIntent = currentUniverse.data.universeDetails && currentUniverse.data.universeDetails.userIntent;
@@ -128,6 +133,8 @@ function mapStateToProps(state, ownProps) {
     data.instanceType = userIntent && userIntent.instanceType;
     data.ybSoftwareVersion = userIntent && userIntent.ybSoftwareVersion;
     data.accessKeyCode = userIntent && userIntent.accessKeyCode;
+    data.spotPrice = "$ " + normalizeToPositiveFloat(userIntent.spotPrice.toString()) + " per hour";
+    data.useSpotPrice = parseFloat(userIntent.spotPrice) > 0.0;
     if (isDefinedNotNull(currentUniverse.data.universeDetails)  && userIntent.isMultiAZ) {
       data.regionList = currentUniverse.data.regions && currentUniverse.data.regions.map(function (item, idx) {
         return {value: item.uuid, name: item.name, label: item.name};
@@ -152,7 +159,8 @@ function mapStateToProps(state, ownProps) {
     initialValues: data,
     formValues: selector(state,
       'formType', 'universeName', 'provider', 'providerType', 'regionList',
-      'numNodes', 'isMultiAZ', 'instanceType', 'ybSoftwareVersion', 'accessKeyCode')
+      'numNodes', 'isMultiAZ', 'instanceType', 'ybSoftwareVersion', 'accessKeyCode',
+      'spotPrice', 'useSpotPrice')
   };
 }
 
@@ -183,6 +191,9 @@ const validate = values => {
   }
   if (!isDefinedNotNull(values.instanceType)) {
     errors.instanceType = 'Instance Type is Required';
+  }
+  if (values.useSpotPrice && values.spotPrice.split(' ')[1] === '0.0') {
+    errors.spotPrice = 'Spot Price must be greater than 0.0';
   }
   return errors;
 };

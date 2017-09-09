@@ -18,6 +18,8 @@ public class AnsibleSetupServer extends NodeTaskBase {
   public static class Params extends NodeTaskParams {
     // The VPC into which the node is to be provisioned.
     public String subnetId;
+    // Spot-price for universe (If aws and spot-price is desired, the value must be greater than 0).
+    public double spotPrice = 0.0;
   }
 
   @Override
