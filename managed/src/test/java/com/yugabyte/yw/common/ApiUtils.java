@@ -192,12 +192,13 @@ public class ApiUtils {
   }
 
   public static UserIntent getDummyUserIntent(DeviceInfo deviceInfo, Provider provider,
-                                              String instanceType) {
+                                              String instanceType, double spotPrice) {
     UserIntent userIntent = new UserIntent();
     userIntent.provider = provider.uuid.toString();
     userIntent.providerType = Common.CloudType.valueOf(provider.code);
     userIntent.instanceType = instanceType;
     userIntent.deviceInfo = deviceInfo;
+    userIntent.spotPrice = spotPrice;
     return userIntent;
   }
 }

@@ -1,13 +1,16 @@
+// Copyright (c) YugaByte, Inc.
+
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Row, Col, Grid, ButtonGroup } from 'react-bootstrap';
 import { Field, change } from 'redux-form';
 import {browserHistory, withRouter} from 'react-router';
 import _ from 'lodash';
-import { isDefinedNotNull, isNonEmptyObject, areIntentsEqual, isEmptyObject, isNonEmptyArray } from 'utils/ObjectUtils';
+import { isDefinedNotNull, isNonEmptyObject, areIntentsEqual, isEmptyObject, isNonEmptyArray,
+  normalizeToPositiveFloat } from 'utils/ObjectUtils';
 import { YBTextInputWithLabel, YBControlledNumericInput, YBControlledNumericInputWithLabel,
-  YBSelectWithLabel, YBControlledSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel, YBButton}
-  from 'components/common/forms/fields';
+  YBSelectWithLabel, YBControlledSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel,
+  YBButton, YBToggle } from 'components/common/forms/fields';
 import {getPromiseState} from 'utils/PromiseUtils';
 import AZSelectorTable from './AZSelectorTable';
 import { UniverseResources } from '../UniverseResources';
@@ -28,7 +31,9 @@ const initialState = {
   gflags: {},
   ebsType: 'GP2',
   accessKeyCode: 'yugabyte-default',
-  maxNumNodes: -1 // Maximum Number of nodes currently in use OnPrem case
+  maxNumNodes: -1, // Maximum Number of nodes currently in use OnPrem case
+  useSpotPrice: false,
+  spotPrice: '0.0'
 };
 
 class UniverseForm extends Component {
@@ -61,6 +66,8 @@ class UniverseForm extends Component {
     this.getCurrentUserIntent = this.getCurrentUserIntent.bind(this);
     this.setDeviceInfo = this.setDeviceInfo.bind(this);
     this.getFormPayload = this.getFormPayload.bind(this);
+    this.toggleSpotPrice = this.toggleSpotPrice.bind(this);
+    this.spotPriceChanged = this.spotPriceChanged.bind(this);
     this.state = initialState;
   }
 
@@ -106,7 +113,8 @@ class UniverseForm extends Component {
       replicationFactor: this.state.replicationFactor,
       deviceInfo: this.state.deviceInfo,
       accessKeyCode: this.state.accessKeyCode,
-      gflags: this.state.gflags
+      gflags: this.state.gflags,
+      spotPrice: this.state.spotPrice
     };
   }
 
@@ -152,7 +160,8 @@ class UniverseForm extends Component {
       replicationFactor: currentState.replicationFactor,
       isMultiAZ: true,
       deviceInfo: currentState.deviceInfo,
-      accessKeyCode: currentState.accessKeyCode
+      accessKeyCode: currentState.accessKeyCode,
+      spotPrice: currentState.spotPrice
     };
     if (isDefinedNotNull(currentState.instanceTypeSelected) && isNonEmptyArray(currentState.regionList)) {
       this.props.cloud.providers.data.forEach(function (providerItem, idx) {
@@ -210,7 +219,9 @@ class UniverseForm extends Component {
           deviceInfo: userIntent.deviceInfo,
           ebsType: ebsType,
           regionList: userIntent.regionList,
-          volumeType: (ebsType === null) ? "SSD" : "EBS"
+          volumeType: (ebsType === null) ? "SSD" : "EBS",
+          useSpotPrice: parseFloat(userIntent.spotPrice) > 0.0,
+          spotPrice: userIntent.spotPrice
         });
       }
       this.props.getRegionListItems(providerUUID, isMultiAZ);
@@ -353,21 +364,18 @@ class UniverseForm extends Component {
       currentDeviceInfo.diskIops = null;
     }
     this.setState({deviceInfo: currentDeviceInfo, ebsType: event.target.value});
-    this.configureUniverseNodeList("deviceInfo", currentDeviceInfo);
   }
 
   numVolumesChanged(val) {
     const currentDeviceInfo = this.state.deviceInfo;
     currentDeviceInfo.numVolumes = val;
     this.setState({deviceInfo: currentDeviceInfo});
-    this.configureUniverseNodeList("deviceInfo", currentDeviceInfo);
   }
 
   volumeSizeChanged(val) {
     const currentDeviceInfo = this.state.deviceInfo;
     currentDeviceInfo.volumeSize = val;
     this.setState({deviceInfo: currentDeviceInfo});
-    this.configureUniverseNodeList("deviceInfo", currentDeviceInfo);
   }
 
   diskIopsChanged(val) {
@@ -375,7 +383,6 @@ class UniverseForm extends Component {
       const currentDeviceInfo = this.state.deviceInfo;
       currentDeviceInfo.diskIops = val;
       this.setState({deviceInfo: currentDeviceInfo});
-      this.configureUniverseNodeList("deviceInfo", currentDeviceInfo);
     }
   }
 
@@ -383,7 +390,26 @@ class UniverseForm extends Component {
     const {formValues, universe: {universeConfigTemplate}} = this.props;
     const submitPayload = _.clone(universeConfigTemplate.data, true);
     submitPayload.userIntent.universeName = formValues.universeName;
+    submitPayload.userIntent.spotPrice = 0.0;
+    if (this.state.useSpotPrice) {
+      submitPayload.userIntent.spotPrice = parseFloat(this.state.spotPrice);
+    }
     return submitPayload;
+  }
+
+  toggleSpotPrice(event) {
+    const {formValues} = this.props;
+    const nextState = {useSpotPrice: event.target.checked};
+    if (event.target.checked) {
+      nextState['spotPrice'] = formValues.spotPrice.split(' ')[1];
+    } else {
+      nextState['spotPrice'] = '0.0';
+    }
+    this.setState(nextState);
+  }
+
+  spotPriceChanged(val) {
+    this.setState({spotPrice: val.split(' ')[1]});
   }
 
   componentWillReceiveProps(nextProps) {
@@ -627,6 +653,28 @@ class UniverseForm extends Component {
       }
     }
 
+    function spotPriceFormat(value) {
+      return '$ ' + normalizeToPositiveFloat(value.split(' ')[1]) + ' per hour';
+    }
+
+    let spotPriceField = <span />;
+    let spotPriceToggle = <span />;
+    const currentProvider = this.getCurrentProvider(this.state.providerSelected);
+    if (isDefinedNotNull(currentProvider) && currentProvider.code === "aws") {
+      spotPriceField = (
+        <Field name="spotPrice" type="text" component={YBTextInputWithLabel} label="Spot Price"
+               isReadOnly={isFieldReadOnly || !this.state.useSpotPrice} placeHolder="$ 0.0 per hour"
+               normalize={spotPriceFormat} onValueChanged={this.spotPriceChanged} />
+      );
+      spotPriceToggle = (
+        <Field name="useSpotPrice" component={YBToggle} label="Use Spot Price"
+               subLabel="spot pricing is suitable for test environments only, because spot instances might go away any time"
+               onToggle={this.toggleSpotPrice}
+               defaultChecked={this.state.useSpotPrice}
+               isReadOnly={isFieldReadOnly} />
+      );
+    }
+
     return (
 
       <Grid id="page-wrapper" fluid={true}>
@@ -665,6 +713,8 @@ class UniverseForm extends Component {
                 <Field name="instanceType" type="select" component={YBControlledSelectWithLabel} label="Instance Type"
                        options={universeInstanceTypeList} selectVal={this.state.instanceTypeSelected}
                        onInputChanged={this.instanceTypeChanged}/>
+                {spotPriceField}
+                {spotPriceToggle}
               </div>
             </Col>
             {deviceDetail &&

@@ -194,7 +194,11 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("--instance_type");
           expectedCommand.add(setupParams.instanceType);
           expectedCommand.add("--cloud_subnet");
-          expectedCommand.add(setupParams.subnetId );
+          expectedCommand.add(setupParams.subnetId);
+          if (setupParams.spotPrice > 0.0) {
+            expectedCommand.add("--spot_price");
+            expectedCommand.add(Double.toString(setupParams.spotPrice));
+          }
           if (params.cloud != Common.CloudType.aws) {
             expectedCommand.add("--machine_image");
             expectedCommand.add(setupParams.getRegion().ybImage);
@@ -294,6 +298,25 @@ public class NodeManagerTest extends FakeDBApplication {
       buildValidParams(t, params, createUniverse());
       addValidDeviceInfo(t, params);
       params.subnetId = t.zone.subnet;
+
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params));
+
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
+    }
+  }
+
+  @Test
+  public void testProvisionNodeCommandWithSpotPrice() {
+    for (TestData t : testData) {
+      AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
+      buildValidParams(t, params, createUniverse());
+      addValidDeviceInfo(t, params);
+      params.subnetId = t.zone.subnet;
+      if (t.cloudType.equals(Common.CloudType.aws)) {
+        params.spotPrice = 0.2;
+      }
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params));

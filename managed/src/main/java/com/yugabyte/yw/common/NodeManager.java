@@ -239,6 +239,10 @@ public class NodeManager extends DevopsBase {
           // one devops gives us, we need to transition to having this use versioning
           // like base_image_version [ENG-1859]
           Common.CloudType cloudType = nodeTaskParam.cloud;
+          if (cloudType == Common.CloudType.aws && taskParam.spotPrice > 0.0) {
+            commandArgs.add("--spot_price");
+            commandArgs.add(Double.toString(taskParam.spotPrice));
+          }
           if (cloudType != Common.CloudType.aws && cloudType != Common.CloudType.gcp) {
             commandArgs.add("--machine_image");
             commandArgs.add(taskParam.getRegion().ybImage);
