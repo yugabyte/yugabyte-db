@@ -34,10 +34,15 @@ Where
 
 ## Examples
 ```
-cqlsh:yugaspace> CREATE TYPE yugatype(name TEXT, id INT);
+cqlsh:example> CREATE TYPE person(first_name TEXT, last_name TEXT, email TEXT);
 
-cqlsh:yugaspace> DESCRIBE TYPES;
-yugatype
+cqlsh:yugaspace> DESCRIBE TYPE person;
+
+CREATE TYPE example.person (
+    first_name text,
+    last_name text,
+    email text
+);
 ```
 
 ## See Also

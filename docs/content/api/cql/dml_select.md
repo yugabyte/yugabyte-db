@@ -37,8 +37,56 @@ where
 <li> `SELECT DISTINCT` can only be used for primary-key or static columns.</li>
 
 ## Examples
+### Selecting all rows from a table
+
+``` sql
+cqlsh:example> CREATE TABLE employees(department_id INT, 
+                                      employee_id INT, 
+                                      name TEXT, 
+                                      PRIMARY KEY(department_id, employee_id));
+cqlsh:example> INSERT INTO employees(department_id, employee_id, name) values (1, 1, 'John');
+cqlsh:example> INSERT INTO employees(department_id, employee_id, name) values (1, 2, 'Jane');
+cqlsh:example> INSERT INTO employees(department_id, employee_id, name) values (2, 1, 'Joe');
+cqlsh:example> SELECT * FROM employees;
+
+ department_id | employee_id | name
+---------------+-------------+------
+             2 |           1 |  Joe
+             1 |           1 | John
+             1 |           2 | Jane
+             1 |           3 | John
 ```
-cqlsh:yugaspace> SELECT * FROM yugatab WHERE id = 7;
+
+
+### Select with a condition on the partitioning column
+
+``` sql
+cqlsh:example> SELECT * FROM employees WHERE department_id = 2;
+
+ department_id | employee_id | name
+---------------+-------------+------
+             2 |           1 |  Joe
+```
+
+### Select with condition on the clustering column
+
+``` sql
+cqlsh:example> SELECT * FROM employees where department_id = 1 AND employee_id = 2;
+
+ department_id | employee_id | name
+---------------+-------------+------
+             1 |           2 | Jane
+```
+
+### Select with condition on a value column
+
+``` sql
+cqlsh:example> SELECT * FROM employees where department_id = 1 AND name = 'John';
+
+ department_id | employee_id | name
+---------------+-------------+------
+             1 |           1 | John
+             1 |           3 | John
 ```
 
 ## See Also

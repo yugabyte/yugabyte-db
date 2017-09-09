@@ -36,8 +36,22 @@ where<br>
 <li>The `if_expression` can contain any logical and boolean operators.</li>
 
 ## Examples
+
 ``` sql
-cqlsh:yugaspace> INSERT INTO yugatab(id, name) VALUES(7, 'Joe');
+cqlsh:example> CREATE TABLE employees(department_id INT, 
+                                      employee_id INT, 
+                                      name TEXT, 
+                                      PRIMARY KEY(department_id, employee_id));
+cqlsh:example> INSERT INTO employees(department_id, employee_id, name) values (1, 1, 'John');
+cqlsh:example> INSERT INTO employees(department_id, employee_id, name) values (1, 2, 'Jane');
+cqlsh:example> INSERT INTO employees(department_id, employee_id, name) values (2, 1, 'Joe');
+cqlsh:example> SELECT * FROM employees;
+
+ department_id | employee_id | name
+---------------+-------------+------
+             2 |           1 |  Joe
+             1 |           1 | John
+             1 |           2 | Jane
 ```
 
 ## See Also

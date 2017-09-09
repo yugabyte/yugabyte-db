@@ -31,10 +31,11 @@ Where
 <li>Associated objects to `table_name` such as prepared statements will be eventually invalidated after the drop statement is completed.</li>
 
 ## Examples
-```
-cqlsh:yugaspace> CREATE TABLE yugatab(name text, id int primary key);
 
-cqlsh:yugaspace> DROP TABLE yugatab;
+```
+cqlsh:example> CREATE TABLE users(id INT PRIMARY KEY, name TEXT);
+
+cqlsh:example> DROP TABLE users;
 ```
 
 ## See Also

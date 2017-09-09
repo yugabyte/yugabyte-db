@@ -36,18 +36,21 @@ Where<br>
 
 ## Examples
 ``` sql
-cqlsh:yugaspace> CREATE KEYSPACE yugaspace;
+cqlsh> CREATE KEYSPACE example;
 
-cqlsh:yugaspace> DESCRIBE KEYSPACES;
-yugaspace  system_schema  system  default_keyspace
+cqlsh> DESCRIBE KEYSPACES;
+example  system_schema  system  default_keyspace
 
-cqlsh:yugaspace> CREATE DATABASE yugaspace;
-Error: Keyspace Already Exists
-create keyspace yugaspace;
+cqlsh> DESCRIBE example;
+CREATE KEYSPACE example WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '3'} AND durable_writes = true;
+
+cqlsh> CREATE SCHEMA example;
+SQL error: Keyspace Already Exists
+CREATE SCHEMA example;
 ^^^^^^
 ```
 
 ## See Also
 [`DROP KEYSPACE`](../ddl_drop_keyspace)
 [`USE`](../ddl_use)
-[Other SQL Statements](..)
+[Other CQL Statements](..)

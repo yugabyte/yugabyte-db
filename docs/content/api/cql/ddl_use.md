@@ -30,26 +30,45 @@ Where
 <li>If the specified keyspace does not exists, an error is raised.</li>
 
 ## Examples
+### Create and use keyspaces
+
 ``` sql
-cqlsh:yugaspace> CREATE KEYSPACE yugaspace;
+cqlsh> CREATE KEYSPACE example;
 
-cqlsh:yugaspace> CREATE KEYSPACE myspace;
+cqlsh> CREATE KEYSPACE other_keyspace;
 
-cqlsh:yugaspace> USE yugaspace;
+cqlsh> USE example;
 ```
 
-<li>Create a table in the default keyspace, "yugaspace".
+### Create a table in the current keyspace
+
+``` sql
+cqlsh:example> CREATE TABLE test(id INT PRIMARY KEY);
+cqlsh:example> INSERT INTO test(id) VALUES (1);
 ```
-cqlsh:yugaspace> CREATE TABLE yugatab(id int primary key);
+
+### Create a table in another keyspace
+
+``` sql
+cqlsh:example> CREATE TABLE other_keyspace.test(id INT PRIMARY KEY);
+cqlsh:example> INSERT INTO other_keyspace.test(id) VALUES (2);
 ```
-</li>
-<li>Create a table in "myspace".
+
+``` sql
+cqlsh:example> SELECT * FROM test;
+ id
+----
+  1
+
+cqlsh:example> SELECT * FROM other_keyspace.test;
+ id
+----
+  2
 ```
-cqlsh:yugaspace> CREATE TABLE myspace.yugatab(id int primary key);
-```
+
 </li>
 
 ## See Also
 [`CREATE KEYSPACE`](../ddl_create_keyspace)
 [`DROP KEYSPACE`](../ddl_drop_keyspace)
-[Other SQL Statements](..)
+[Other CQL Statements](..)

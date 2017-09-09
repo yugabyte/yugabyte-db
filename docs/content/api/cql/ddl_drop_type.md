@@ -31,9 +31,10 @@ Where
 <li>A user-defined `type_name` cannot be dropped if it is currently used in a table or another type</li>
 
 ## Examples
+
 ``` sql
-cqlsh:yugaspace> CREATE TYPE yugatype(name TEXT, id INT);
-cqlsh:yugaspace> DROP TYPE yugatype;
+cqlsh:example> CREATE TYPE person(first_name TEXT, last_name TEXT, email TEXT);
+cqlsh:example> DROP TYPE person;
 ```
 
 ## See Also

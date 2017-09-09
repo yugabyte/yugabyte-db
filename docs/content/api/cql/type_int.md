@@ -49,18 +49,34 @@ integer_literal ::= [{ + | - }] digit [ { digit | , } ... ]
 
 ## Examples
 
-<li>Using integer dattypes.</li>
-~~~ sql
-cqlsh:yugaspace> CREATE TABLE items(id INT PRIMARY KEY, item_count BIGINT);
-cqlsh:yugaspace> INSERT INTO items(id, item_count) VALUES(1, 1);
-cqlsh:yugaspace> UPDATE items SET  item_count = item_count + 1 WHERE id = 1;
-~~~
+### Using integer datatypes
 
-<li>Using `COUNTER` dattype.</li>
-~~~ sql
-cqlsh:yugaspace> CREATE TABLE item_counters(id INT PRIMARY KEY, item_counter COUNTER);
-cqlsh:yugaspace> UPDATE item_counters SET item_counter = item_counter + 1 WHERE id = 1;
-~~~
+``` sql
+cqlsh:example> CREATE TABLE items(id INT PRIMARY KEY, item_count BIGINT);
+cqlsh:example> INSERT INTO items(id, item_count) VALUES(1, 1);
+cqlsh:example> INSERT INTO items(id, item_count) VALUES(2, 2);
+cqlsh:example> UPDATE items SET item_count = 5 WHERE id = 1;
+cqlsh:example> UPDATE items SET item_count = item_count + 1 WHERE id = 2;
+cqlsh:example> SELECT * FROM items;
+
+ id | item_count
+----+------------
+  2 |          3
+  1 |          5
+```
+
+### Using `COUNTER` datatype
+
+``` sql
+cqlsh:example> CREATE TABLE item_counters(id INT PRIMARY KEY, item_counter COUNTER);
+cqlsh:example> -- For counter type, null values are treated as 0.
+cqlsh:example> UPDATE item_counters SET item_counter = item_counter + 1 WHERE id = 1;
+cqlsh:example> SELECT * FROM item_counters;
+
+ id | item_counter
+----+--------------
+  1 |            1
+```
 
 ## See Also
 

@@ -30,9 +30,22 @@ type_specification ::= { TEXT | VARCHAR }
 <li>The length of `TEXT` string is virtually unlimited.</li>
 
 ## Examples
+
 ``` sql
-cqlsh:yugaspace> CREATE TABLE yuga_text(name TEXT PRIMARY KEY, nick_name VARCHAR);
+cqlsh:example> CREATE TABLE users(user_name TEXT PRIMARY KEY, full_name VARCHAR);
+cqlsh:example> INSERT INTO users(user_name, full_name) VALUES ('jane', 'Jane Doe');
+cqlsh:example> INSERT INTO users(user_name, full_name) VALUES ('john', 'John Doe');
+cqlsh:example> UPDATE users set full_name = 'Jane Poe' WHERE user_name = 'jane';
+cqlsh:example> SELECT * FROM users;
 ```
+
+```
+ user_name | full_name
+-----------+-----------
+      jane |  Jane Poe
+      john |  John Doe
+```
+
 ## See Also
 
 [Data Types](..#datatypes)

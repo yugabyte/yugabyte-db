@@ -41,9 +41,51 @@ Where
 <li>Columns that are part of `PRIMARY KEY` can be not be altered</li>
 
 ## Examples
+
+### Add a column to a table
+
 ``` sql
-cqlsh:yugaspace> CREATE TABLE yugatab (id INT, name TEXT, salary FLOAT, PRIMARY KEY((id), name));
-cqlsh:yugaspace> ALTER TABLE yugatab ADD title TEXT;
+cqlsh:example> CREATE TABLE employees (id INT, name TEXT, salary FLOAT, PRIMARY KEY((id), name));
+cqlsh:example> -- Add a column 'title' of type 'TEXT'.
+cqlsh:example> ALTER TABLE employees ADD title TEXT;
+cqlsh:example> DESCRIBE TABLE employees;
+
+CREATE TABLE example.employees (
+    id int,
+    name text,
+    salary float,
+    title text,
+    PRIMARY KEY (id, name)
+) WITH CLUSTERING ORDER BY (name ASC);
+```
+
+### Remove a column from a table
+
+``` sql
+cqlsh:example> -- Remove the 'salary' column.
+cqlsh:example> ALTER TABLE employees DROP salary;
+cqlsh:example> DESCRIBE TABLE employees;
+
+CREATE TABLE example.employees (
+    id int,
+    name text,
+    title text,
+    PRIMARY KEY (id, name)
+) WITH CLUSTERING ORDER BY (name ASC);
+```
+
+### Rename a column in a table
+
+``` sql
+cqlsh:example> ALTER TABLE employees RENAME title TO job_title;
+cqlsh:example> DESCRIBE TABLE employees;
+
+CREATE TABLE example.employees (
+    id int,
+    name text,
+    job_title text,
+    PRIMARY KEY (id, name)
+) WITH CLUSTERING ORDER BY (name ASC);
 ```
 
 ## See Also

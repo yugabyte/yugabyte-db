@@ -61,17 +61,34 @@ Where
 ### TABLE PROPERTIES
 
 ## Examples
-<li>Use column constraint to define primary key.
+### Use column constraint to define primary key
+``` sql
+cqlsh:example> -- 'user_id' is the partitioning column and there is no clustering column.
+cqlsh:example> CREATE TABLE users(user_id INT PRIMARY KEY, full_name TEXT);
 ```
-cqlsh:yugaspace> CREATE TABLE simple(id INT PRIMARY KEY);
-```
-</li>
 
-<li> Use table constraint to define primary key where the nested column list `(id)` is the partitioning column while `name` is the range column
+### Use table constraint to define primary key
+
+``` sql
+cqlsh:example> -- 'supplier_id' and 'device_id' are the partitioning columns and 'model_year' is the clustering column.
+cqlsh:example> CREATE TABLE devices(supplier_id INT, 
+                                    device_id INT,
+                                    model_year INT,
+                                    value DOUBLE,
+                                    PRIMARY KEY((supplier_id, device_id), model_year));
 ```
-cqlsh:yugaspace> CREATE TABLE yugatab (id INT, name TEXT, salary DOUBLE, PRIMARY KEY((id), name));
+
+### Use table property to define the order (ascending or descending) for clustering columns
+
+``` sql
+cqlsh:example> -- timestmap column 'ts' will be stored in descending order (latest values first).
+cqlsh:example> CREATE TABLE user_actions(user_id INT,
+                                         ts TIMESTAMP,
+                                         action TEXT,
+                                         PRIMARY KEY((user_id), ts))
+                                         WITH CLUSTERING ORDER BY (ts DESC);
 ```
-</li>
+
 
 ## See Also
 
@@ -81,4 +98,4 @@ cqlsh:yugaspace> CREATE TABLE yugatab (id INT, name TEXT, salary DOUBLE, PRIMARY
 [`INSERT`](../dml_insert)
 [`SELECT`](../dml_select)
 [`UPDATE`](../dml_update)
-[Other SQL Statements](..)
+[Other CQL Statements](..)

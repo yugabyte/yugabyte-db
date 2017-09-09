@@ -41,8 +41,32 @@ where
 <li>The `if_expression` can contain any logical and boolean operators.</li>
 
 ## Examples
+
 ``` sql
-cqlsh:yugaspace> UPDATE yugatab USING TTL 1000 SET name = 'Joe' WHERE id = 7;
+cqlsh:example> CREATE TABLE employees(department_id INT, 
+                                      employee_id INT, 
+                                      name TEXT, 
+                                      PRIMARY KEY(department_id, employee_id));
+cqlsh:example> INSERT INTO employees(department_id, employee_id, name) values (1, 1, 'John');
+cqlsh:example> -- Update the value of a non primary-key column. 
+cqlsh:example> UPDATE employees SET name = 'Jack' WHERE department_id = 1 AND employee_id = 1;
+cqlsh:example> -- Using upsert semantics to update a non-existent row (i.e. add the row).
+cqlsh:example> UPDATE employees SET name = 'Jane' WHERE department_id = 1 AND  employee_id = 2;
+cqlsh:example> -- Using IF clause for conditional update.
+cqlsh:example> UPDATE employees SET name = 'Joe' WHERE department_id = 2 AND employee_id = 1 IF name = null;
+
+ [applied]
+-----------
+      True
+
+cqlsh:example> SELECT * FROM employees;
+
+ department_id | employee_id | name
+---------------+-------------+------
+             2 |           1 |  Joe
+             1 |           1 | Jack
+             1 |           2 | Jane
+
 ```
 
 ## See Also
@@ -52,4 +76,4 @@ cqlsh:yugaspace> UPDATE yugatab USING TTL 1000 SET name = 'Joe' WHERE id = 7;
 [`INSERT`](../dml_insert)
 [`SELECT`](../dml_select)
 [`Expression`](..#expressions)
-[Other SQL Statements](..)
+[Other CQL Statements](..)

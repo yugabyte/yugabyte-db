@@ -31,9 +31,9 @@ Where
 
 ## Examples
 ``` sql
-cqlsh:yugaspace> CREATE KEYSPACE yugaspace;
+cqlsh> CREATE KEYSPACE example;
 
-cqlsh:yugaspace> DROP KEYSPACE yugaspace;
+cqlsh> DROP KEYSPACE example;
 ```
 
 ## See Also

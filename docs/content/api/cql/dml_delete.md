@@ -37,8 +37,32 @@ where
 <li>Deleting a column from a table is not yet supported.</li>
 
 ## Examples
+
 ``` sql
-cqlsh:yugaspace> DELETE FROM yugatab WHERE id = 7;
+cqlsh:example> CREATE TABLE employees(department_id INT, 
+                                      employee_id INT, 
+                                      name TEXT, 
+                                      PRIMARY KEY(department_id, employee_id));
+cqlsh:example> INSERT INTO employees(department_id, employee_id, name) values (1, 1, 'John');
+cqlsh:example> INSERT INTO employees(department_id, employee_id, name) values (1, 2, 'Jane');
+cqlsh:example> INSERT INTO employees(department_id, employee_id, name) values (2, 1, 'Joe');
+cqlsh:example> SELECT * FROM employees;
+
+ department_id | employee_id | name
+---------------+-------------+------
+             2 |           1 |  Joe
+             1 |           1 | John
+             1 |           2 | Jane
+cqlsh:example> -- Delete statements identify rows by the primary key columns.
+cqlsh:example> DELETE FROM employees WHERE department_id = 1 AND employee_id = 1;
+cqlsh:example> -- Deletes on non-existent rows are no-ops.
+cqlsh:example> DELETE FROM employees WHERE department_id = 3 AND employee_id = 1;
+cqlsh:example> SELECT * FROM employees;
+
+ department_id | employee_id | name
+---------------+-------------+------
+             2 |           1 |  Joe
+             1 |           2 | Jane
 ```
 
 ## See Also
