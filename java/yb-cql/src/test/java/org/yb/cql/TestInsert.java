@@ -167,13 +167,13 @@ public class TestInsert extends BaseCQLTest {
     // Insert two rows with TTL 1000
     String insert_stmt = String.format(
       "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, 'h%d', %d, 'r%d', %d, 'v%d') USING TTL " +
-        "1;",
+        "2;",
       tableName, 1, 2, 3, 4, 5, 6);
     session.execute(insert_stmt);
 
     insert_stmt = String.format(
       "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, 'h%d', %d, 'r%d', %d, 'v%d') USING TTL " +
-        "1;",
+        "2;",
       tableName, 10, 20, 30, 40, 50, 60);
     session.execute(insert_stmt);
 
@@ -188,7 +188,7 @@ public class TestInsert extends BaseCQLTest {
     String select_stmt = String.format("SELECT h1, h2, r1, r2, v1, v2 FROM %s"
       + "  WHERE h1 = 1 AND h2 = 'h2';", tableName);
 
-    Thread.sleep(1100);
+    Thread.sleep(2100);
 
     // Verify row has expired.
     assertNoRow(select_stmt);

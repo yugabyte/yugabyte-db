@@ -116,13 +116,13 @@ public class TestTTLSemantics extends BaseCQLTest {
 
     // Insert with a TTL.
     session.execute(String.format("INSERT INTO %s (k1, k2, k3, k4, c1, c2, c3) VALUES (1, 2, 3, " +
-      "4, 1, 2, 3) USING TTL 2", tableName));
+      "4, 1, 2, 3) USING TTL 4", tableName));
 
     // Update TTL for the columns.
-    session.execute(String.format("UPDATE %s USING TTL 1 SET c1 = 100, c2 = 200, c3 = 300 WHERE " +
+    session.execute(String.format("UPDATE %s USING TTL 2 SET c1 = 100, c2 = 200, c3 = 300 WHERE " +
       "k1 = 1 AND k2 = 2 AND k3 = 3 AND k4 = 4", tableName));
 
-    Thread.sleep(1050);
+    Thread.sleep(2050);
 
     // Verify columns expire, primary key lives on.
     Row row = getFirstRowWithPrimaryKey(tableName, 1, 2, 3, 4);
@@ -131,7 +131,7 @@ public class TestTTLSemantics extends BaseCQLTest {
     assertTrue(row.isNull(5));
     assertTrue(row.isNull(6));
 
-    Thread.sleep(1000);
+    Thread.sleep(2000);
 
     // Verify row expires.
     assertNoRow(tableName, 1, 2, 3, 4);
@@ -144,17 +144,17 @@ public class TestTTLSemantics extends BaseCQLTest {
 
     // Insert with a TTL.
     session.execute(String.format("INSERT INTO %s (k1, k2, k3, k4, c1, c2, c3) VALUES (1, 2, 3, " +
-      "4, 1, 2, 3) USING TTL 1", tableName));
+      "4, 1, 2, 3) USING TTL 2", tableName));
 
     // Now increase the ttl for the columns.
-    session.execute(String.format("UPDATE %s USING TTL 2 SET c1 = 100 WHERE " +
+    session.execute(String.format("UPDATE %s USING TTL 4 SET c1 = 100 WHERE " +
       "k1 = 1 AND k2 = 2 AND k3 = 3 AND k4 = 4", tableName));
-    session.execute(String.format("UPDATE %s USING TTL 3 SET c2 = 200 WHERE " +
+    session.execute(String.format("UPDATE %s USING TTL 6 SET c2 = 200 WHERE " +
       "k1 = 1 AND k2 = 2 AND k3 = 3 AND k4 = 4", tableName));
-    session.execute(String.format("UPDATE %s USING TTL 4 SET c3 = 300 WHERE " +
+    session.execute(String.format("UPDATE %s USING TTL 8 SET c3 = 300 WHERE " +
       "k1 = 1 AND k2 = 2 AND k3 = 3 AND k4 = 4", tableName));
 
-    Thread.sleep(1050);
+    Thread.sleep(2050);
 
     // Verify whole row is present.
     Row row = getFirstRowWithPrimaryKey(tableName, 1, 2, 3, 4);
@@ -163,7 +163,7 @@ public class TestTTLSemantics extends BaseCQLTest {
     assertEquals(200, row.getInt(5));
     assertEquals(300, row.getInt(6));
 
-    Thread.sleep(1000);
+    Thread.sleep(2000);
 
     // Verify c1 is gone.
     row = getFirstRowWithPrimaryKey(tableName, 1, 2, 3, 4);
@@ -172,7 +172,7 @@ public class TestTTLSemantics extends BaseCQLTest {
     assertEquals(200, row.getInt(5));
     assertEquals(300, row.getInt(6));
 
-    Thread.sleep(1000);
+    Thread.sleep(2000);
 
     // Verify c2 is gone.
     row = getFirstRowWithPrimaryKey(tableName, 1, 2, 3, 4);
@@ -181,7 +181,7 @@ public class TestTTLSemantics extends BaseCQLTest {
     assertTrue(row.isNull(5));
     assertEquals(300, row.getInt(6));
 
-    Thread.sleep(1000);
+    Thread.sleep(2000);
 
     // Verify whole row is now gone.
     assertNoRow(tableName, 1, 2, 3, 4);
@@ -197,10 +197,10 @@ public class TestTTLSemantics extends BaseCQLTest {
       "4, 1, 2, 3) USING TTL 60", tableName));
 
     // Reduce the column's TTL with an update
-    session.execute(String.format("UPDATE %s USING TTL 1 SET c1 = 100, c2 = 200, c3 = 300 WHERE " +
+    session.execute(String.format("UPDATE %s USING TTL 2 SET c1 = 100, c2 = 200, c3 = 300 WHERE " +
       "k1 = 1 AND k2 = 2 AND k3 = 3 AND k4 = 4", tableName));
 
-    Thread.sleep(1050);
+    Thread.sleep(2050);
 
     // Verify all columns are gone, but primary key survives.
     Row row = getFirstRowWithPrimaryKey(tableName, 1, 2, 3, 4);
@@ -217,13 +217,13 @@ public class TestTTLSemantics extends BaseCQLTest {
 
     // Insert with a TTL.
     session.execute(String.format("INSERT INTO %s (k1, k2, k3, k4, c1, c2, c3) VALUES (1, 2, 3, " +
-      "4, 1, 2, 3) USING TTL 1", tableName));
+      "4, 1, 2, 3) USING TTL 2", tableName));
 
     // Overwrite a single column.
     session.execute(String.format("UPDATE %s SET c1 = 100 WHERE " +
       "k1 = 1 AND k2 = 2 AND k3 = 3 AND k4 = 4", tableName));
 
-    Thread.sleep(1050);
+    Thread.sleep(2050);
 
     // Verify row survives with single column.
     Row row = getFirstRowWithPrimaryKey(tableName, 1, 2, 3, 4);
@@ -240,13 +240,13 @@ public class TestTTLSemantics extends BaseCQLTest {
 
     // Insert with a TTL.
     session.execute(String.format("INSERT INTO %s (k1, k2, k3, k4, c1, c2, c3) VALUES (1, 2, 3, " +
-      "4, 1, 2, 3) USING TTL 2", tableName));
+      "4, 1, 2, 3) USING TTL 4", tableName));
 
     // Overwrite with new TTL.
     session.execute(String.format("INSERT INTO %s (k1, k2, k3, k4, c1, c2, c3) VALUES (1, 2, 3, " +
-      "4, 100, 200, 300) USING TTL 1", tableName));
+      "4, 100, 200, 300) USING TTL 2", tableName));
 
-    Thread.sleep(1050);
+    Thread.sleep(2050);
 
     // Verify whole row is gone due to new TTL.
     assertNoRow(tableName, 1, 2, 3, 4);
@@ -307,14 +307,14 @@ public class TestTTLSemantics extends BaseCQLTest {
 
     // Insert with a new TTL.
     session.execute(String.format("INSERT INTO %s (k1, k2, k3, k4, c1, c2, c3) VALUES (1, 2, 3, " +
-      "4, 100, 200, 300) USING TTL 2", tableName));
+      "4, 100, 200, 300) USING TTL 4", tableName));
 
     // Now overwrite the row again with a newer TTL.
     session.execute(String.format("INSERT INTO %s (k1, k2, k3, k4, c1, c2, c3) VALUES (1, 2, 3, " +
-      "4, 1000, 2000, 3000) USING TTL 1", tableName));
+      "4, 1000, 2000, 3000) USING TTL 2", tableName));
 
     // Update a single column with new TTL.
-    session.execute(String.format("UPDATE %s USING TTL 2 SET c1 = 1001 WHERE k1 = 1 " +
+    session.execute(String.format("UPDATE %s USING TTL 4 SET c1 = 1001 WHERE k1 = 1 " +
       "AND k2 = 2 AND k3 = 3 AND k4 = 4", tableName));
 
     // Verify row exists.
@@ -324,7 +324,7 @@ public class TestTTLSemantics extends BaseCQLTest {
     assertEquals(2000, row.getInt(5));
     assertEquals(3000, row.getInt(6));
 
-    Thread.sleep(1050);
+    Thread.sleep(2050);
 
     // One column and primary key survive.
     row = getFirstRowWithPrimaryKey(tableName, 1, 2, 3, 4);
@@ -333,7 +333,7 @@ public class TestTTLSemantics extends BaseCQLTest {
     assertTrue(row.isNull(5));
     assertTrue(row.isNull(6));
 
-    Thread.sleep(1000);
+    Thread.sleep(2000);
 
     // Now whole row is gone.
     assertNoRow(tableName, 1, 2, 3, 4);
@@ -346,13 +346,13 @@ public class TestTTLSemantics extends BaseCQLTest {
 
     // Insert a row with TTL.
     session.execute(String.format("INSERT INTO %s (k1, k2, k3, k4, c1, c2, c3) VALUES (1, 2, 3, " +
-      "4, 10, 20, 30) USING TTL 1", tableName));
+      "4, 10, 20, 30) USING TTL 2", tableName));
 
     // Overwrite all columns.
     session.execute(String.format("UPDATE %s SET c1 = 100, c2 = 200, c3 = 300 WHERE " +
       "k1 = 1 AND k2 = 2 AND k3 = 3 AND k4 = 4", tableName));
 
-    Thread.sleep(1050);
+    Thread.sleep(2050);
 
     // Liveness column has expired, but whole row still exists.
     Row row = getFirstRowWithPrimaryKey(tableName, 1, 2, 3, 4);
@@ -384,10 +384,10 @@ public class TestTTLSemantics extends BaseCQLTest {
       "4, 100, 200, 300)", tableName));
 
     // Update the ttl of c1.
-    session.execute(String.format("UPDATE %s USING TTL 1 SET c1 = 100 WHERE " +
+    session.execute(String.format("UPDATE %s USING TTL 2 SET c1 = 100 WHERE " +
       "k1 = 1 AND k2 = 2 AND k3 = 3 AND k4 = 4", tableName));
 
-    Thread.sleep(1050);
+    Thread.sleep(2050);
 
     // Verify correct set of rows.
     ResultSet rs = session.execute(String.format("SELECT c1 FROM %s WHERE k1 = 1 AND k2 = 2 AND " +

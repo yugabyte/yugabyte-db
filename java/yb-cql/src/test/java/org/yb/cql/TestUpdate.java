@@ -66,14 +66,14 @@ public class TestUpdate extends BaseCQLTest {
 
     // Update v1 with a TTL.
     String update_stmt = String.format(
-      "UPDATE %s USING TTL 1 SET v1 = 500 WHERE h1 = 1 AND h2 = 'h2' AND r1 = 3 AND " +
+      "UPDATE %s USING TTL 2 SET v1 = 500 WHERE h1 = 1 AND h2 = 'h2' AND r1 = 3 AND " +
         "r2 = 'r4';",
       tableName);
     session.execute(update_stmt);
 
     // Update v2 with a TTL.
     update_stmt = String.format(
-      "UPDATE %s USING TTL 2 SET v2 = 'v600' WHERE h1 = 1 AND h2 = 'h2' AND r1 = 3 AND " +
+      "UPDATE %s USING TTL 4 SET v2 = 'v600' WHERE h1 = 1 AND h2 = 'h2' AND r1 = 3 AND " +
         "r2 = 'r4';",
       tableName);
     session.execute(update_stmt);
@@ -91,7 +91,7 @@ public class TestUpdate extends BaseCQLTest {
     assertEquals("v600", row.getString(5));
 
     // Now verify v1 expires.
-    Thread.sleep(1100);
+    Thread.sleep(2100);
     row = runSelect(select_stmt).next();
     assertEquals(1, row.getInt(0));
     assertEquals("h2", row.getString(1));
@@ -101,7 +101,7 @@ public class TestUpdate extends BaseCQLTest {
     assertEquals("v600", row.getString(5));
 
     // Now verify v2 expires.
-    Thread.sleep(1000);
+    Thread.sleep(2000);
     row = runSelect(select_stmt).next();
     assertEquals(1, row.getInt(0));
     assertEquals("h2", row.getString(1));
