@@ -133,6 +133,9 @@ class HybridClock : public Clock {
   // error in micros. This may fail if the clock is unsynchronized or synchronized
   // but the error is too high and, since we can't do anything about it,
   // LOG(FATAL)'s in that case.
+  void NowWithErrorUnlocked(HybridTime* hybrid_time, uint64_t* max_error_usec);
+
+  // Variation of above method with locking.
   void NowWithError(HybridTime* hybrid_time, uint64_t* max_error_usec);
 
   virtual std::string Stringify(HybridTime hybrid_time) override;

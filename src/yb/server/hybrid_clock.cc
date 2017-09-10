@@ -216,7 +216,7 @@ HybridTime HybridClock::Now() {
   uint64_t error;
 
   std::lock_guard<simple_spinlock> lock(lock_);
-  NowWithError(&now, &error);
+  NowWithErrorUnlocked(&now, &error);
   return now;
 }
 
@@ -226,7 +226,7 @@ HybridTime HybridClock::NowLatest() {
 
   {
     std::lock_guard<simple_spinlock> lock(lock_);
-    NowWithError(&now, &error);
+    NowWithErrorUnlocked(&now, &error);
   }
 
   uint64_t now_latest = GetPhysicalValueMicros(now) + error;
@@ -243,8 +243,14 @@ Status HybridClock::GetGlobalLatest(HybridTime* t) {
   return Status::OK();
 }
 
-void HybridClock::NowWithError(HybridTime* hybrid_time, uint64_t* max_error_usec) {
+void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec) {
+  std::lock_guard<simple_spinlock> lock(lock_);
+  NowWithErrorUnlocked(hybrid_time, max_error_usec);
+}
 
+void HybridClock::NowWithErrorUnlocked(HybridTime *hybrid_time, uint64_t *max_error_usec) {
+
+  DCHECK(lock_.is_locked());
   DCHECK_EQ(state_, kInitialized) << "Clock not initialized. Must call Init() first.";
 
   uint64_t now_usec;
@@ -301,7 +307,7 @@ Status HybridClock::Update(const HybridTime& to_update) {
   std::lock_guard<simple_spinlock> lock(lock_);
   HybridTime now;
   uint64_t error_ignored;
-  NowWithError(&now, &error_ignored);
+  NowWithErrorUnlocked(&now, &error_ignored);
 
   if (PREDICT_TRUE(now.CompareTo(to_update) > 0)) return Status::OK();
 
@@ -332,7 +338,7 @@ Status HybridClock::WaitUntilAfter(const HybridTime& then_latest,
   uint64_t error;
   {
     std::lock_guard<simple_spinlock> lock(lock_);
-    NowWithError(&now, &error);
+    NowWithErrorUnlocked(&now, &error);
   }
 
   // "unshift" the hybrid_times so that we can measure actual time
@@ -376,7 +382,7 @@ Status HybridClock::WaitUntilAfterLocally(const HybridTime& then,
     uint64_t error;
     {
       std::lock_guard<simple_spinlock> lock(lock_);
-      NowWithError(&now, &error);
+      NowWithErrorUnlocked(&now, &error);
     }
     if (now.CompareTo(then) > 0) {
       return Status::OK();
@@ -471,7 +477,7 @@ uint64_t HybridClock::ErrorForMetrics() {
   uint64_t error;
 
   std::lock_guard<simple_spinlock> lock(lock_);
-  NowWithError(&now, &error);
+  NowWithErrorUnlocked(&now, &error);
   return error;
 }
 

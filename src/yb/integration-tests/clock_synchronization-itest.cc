@@ -66,7 +66,7 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
                   .table_type(client::YBTableType::YQL_TABLE_TYPE)
                   .schema(&schema_)
                   .num_replicas(cluster_->num_tablet_servers())
-                  .num_tablets(30)
+                  .num_tablets(10)
                   .wait(true)
                   .Create());
     ASSERT_OK(client_->OpenTable(*table_name_, &table_));
