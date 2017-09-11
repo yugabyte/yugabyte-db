@@ -24,7 +24,7 @@ const mapDispatchToProps = (dispatch) => {
 
 function mapStateToProps(state, ownProps) {
   const {universe: {currentUniverse}} = state;
-  let initalGFlagValues = null;
+  let initalGFlagValues = {};
   if (isNonEmptyObject(currentUniverse) && currentUniverse.data.universeDetails.userIntent) {
     const currentGFlags = currentUniverse.data.universeDetails.userIntent.gflags;
     const gFlagList = Object.keys(currentGFlags).map(function(gFlagKey){
@@ -34,6 +34,7 @@ function mapStateToProps(state, ownProps) {
       initalGFlagValues = {gflags: gFlagList};
     }
   }
+  initalGFlagValues.timeDelay = 180;
   return {
     universe: state.universe,
     softwareVersions: state.customer.softwareVersions,
