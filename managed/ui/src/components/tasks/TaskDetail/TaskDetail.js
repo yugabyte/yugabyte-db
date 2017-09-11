@@ -4,7 +4,6 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import {withRouter, browserHistory} from 'react-router';
 import {isNonEmptyString, isNonEmptyArray, isNonEmptyObject} from 'utils/ObjectUtils';
-import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import './TaskDetail.scss';
 import { StepProgressBar } from '../../common/indicators';
 import { YBResourceCount } from 'components/common/descriptors';
@@ -20,14 +19,14 @@ class TaskDetail extends Component {
     super(props);
     this.gotoTaskList = this.gotoTaskList.bind(this);
     this.toggleErrorStringDisplay = this.toggleErrorStringDisplay.bind(this);
-    this.state = {errorStringDisplay: false}
-  }
+    this.state = {errorStringDisplay: false};
+  };
   gotoTaskList() {
     browserHistory.push(this.context.prevPath);
-  }
+  };
   toggleErrorStringDisplay() {
-    this.setState({errorStringDisplay: !this.state.errorStringDisplay})
-  }
+    this.setState({errorStringDisplay: !this.state.errorStringDisplay});
+  };
   componentWillMount() {
     const {params} = this.props;
     const currentTaskUUID = params.taskUUID;
@@ -65,9 +64,6 @@ class TaskDetail extends Component {
       taskProgressBarData = <StepProgressBar progressData={taskProgressData.data}/>;
     }
     let taskFailureDetails = <span/>;
-    let getFullErrorString = function(errorString) {
-      return <Highlight className='json'>{errorString}</Highlight>;
-    }
     const getTruncatedErrorString = function(errorString) {
       return (
         <Highlight className='json'>
@@ -76,8 +72,8 @@ class TaskDetail extends Component {
             'separator': /,? +/
           })}
         </Highlight>
-      )
-    }
+      );
+    };
 
     const getErrorMessageDisplay = function(errorString) {
       let errorElement = getTruncatedErrorString(errorString);
@@ -96,17 +92,19 @@ class TaskDetail extends Component {
             {displayMessage}&nbsp;<i className={chevronClassName} />
           </div>
         </div>
-      )
-    }
+      );
+    };
 
     if (isNonEmptyArray(failedTasks.data.failedSubTasks)) {
       taskFailureDetails = failedTasks.data.failedSubTasks.map(function(subTask){
         let errorString = <span/>;
         if (subTask.errorString !== "null") {
           errorString =
-            <Col lg={12} className="error-string-detail-container">
-              {getErrorMessageDisplay(subTask.errorString)}
-            </Col>
+            (
+              <Col lg={12} className="error-string-detail-container">
+                {getErrorMessageDisplay(subTask.errorString)}
+              </Col>
+            );
         }
         return (
           <div key={subTask.creationTime}>
@@ -117,7 +115,7 @@ class TaskDetail extends Component {
             {errorString}
           </div>
         );
-      })
+      });
     }
 
     return (
