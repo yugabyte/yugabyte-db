@@ -2,9 +2,10 @@
 
 import React, { Component } from 'react';
 import {Field, FieldArray } from 'redux-form';
-import {Row, Col} from 'react-bootstrap';
+import {Row, Col, Tabs, Tab} from 'react-bootstrap';
 import { YBButton, YBModal, YBInputField, YBCheckBox, YBSelectWithLabel } from '../fields';
 import { isValidObject, isNonEmptyArray, isDefinedNotNull } from 'utils/ObjectUtils';
+import './RollingUpgradeForm.scss';
 
 class FlagInput extends Component {
   render() {
@@ -31,7 +32,6 @@ class FlagItems extends Component {
       this.props.fields.push({});
     }
   }
-
   render() {
     const { fields } = this.props;
     const addFlagItem = function() {
@@ -85,9 +85,30 @@ export default class RollingUpgradeForm extends Component {
     payload.nodeNames = nodeNames;
     payload.universeUUID = universeUUID;
     payload.userIntent = userIntent;
-    if (isNonEmptyArray(values.gflags)) {
-      payload.gflags = values.gflags;
+    let gflagList = [];
+    if (isNonEmptyArray(values.masterGFlags)) {
+      gflagList = values.masterGFlags.map((flag)=>{
+        if (flag.name && flag.value) {
+          return Object.assign({type: "master"}, flag);
+        } else {
+          return null;
+        }
+      }).filter(Boolean);
     }
+    if (isNonEmptyArray(values.tserverGFlags)) {
+      gflagList = gflagList.concat(
+        values.tserverGFlags.map((flag)=>{
+          if (flag.name && flag.value) {
+            return Object.assign({type: "tserver"}, flag);
+          } else {
+            return null;
+          }
+        }).filter(Boolean)
+      );
+    }
+    payload.gflags = gflagList;
+    payload.sleepAfterMasterRestartMillis = values.timeDelay * 1000;
+    payload.sleepAfterTServerRestartMillis = values.timeDelay * 1000;
     this.props.submitRollingUpgradeForm(payload, universeUUID);
     this.props.reset();
   }
@@ -121,15 +142,21 @@ export default class RollingUpgradeForm extends Component {
     } else {
       title = "GFlags";
       formBody = (
-        <span>
-          <Col lg={12} className="form-section-title">
-            Set Flag
-          </Col>
-          <FieldArray name="gflags" component={FlagItems} resetRollingUpgrade={resetRollingUpgrade}/>
-        </span>
+        <div>
+          <Tabs defaultActiveKey={2} className="gflag-display-container" id="gflag-container" >
+            <Tab eventKey={1} title="Master" className="gflag-class-1" bsClass="gflag-class-2">
+              <FieldArray name="masterGFlags" component={FlagItems} resetRollingUpgrade={resetRollingUpgrade}/>
+            </Tab>
+            <Tab eventKey={2} title="T-Server">
+              <FieldArray name="tserverGFlags" component={FlagItems} resetRollingUpgrade={resetRollingUpgrade}/>
+            </Tab>
+          </Tabs>
+          <div className="form-right-aligned-labels top-10 time-delay-container">
+            <Field name="timeDelay" component={YBInputField} label="Rolling Update Delay Between Servers (secs)"/>
+          </div>
+        </div>
       );
     }
-
     let itemList = <span/>;
     if (isDefinedNotNull(universeDetails) && isNonEmptyArray(universeDetails.nodeDetailsSet)) {
       itemList = <ItemList nodeList={universeDetails.nodeDetailsSet}/>;

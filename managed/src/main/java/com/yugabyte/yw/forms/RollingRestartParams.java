@@ -11,11 +11,11 @@ import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import play.data.validation.Constraints;
 
 public class RollingRestartParams extends UniverseDefinitionTaskParams {
-
-  // TODO: try to switch to Map<String, String>
+  
   public static class GFlag {
     public String name;
     public String value;
+    public String type;
   }
 
   // The universe that we want to perform a rolling restart on.
@@ -42,12 +42,32 @@ public class RollingRestartParams extends UniverseDefinitionTaskParams {
     return gflagsMap;
   }
 
+  @JsonIgnore
+  public Map<String, String> getMasterGFlagsAsMap() {
+    Map<String, String> gflagsMap = new HashMap<>();
+    for (GFlag gflag: gflags) {
+      if (gflag.type.equals("master")) {
+        gflagsMap.put(gflag.name, gflag.value);
+      }
+    }
+    return gflagsMap;
+  }
+
+  @JsonIgnore
+  public Map<String, String> getTServerGFlagsAsMap() {
+    Map<String, String> gflagsMap = new HashMap<>();
+    for (GFlag gflag: gflags) {
+      if (gflag.type.equals("tserver")) {
+        gflagsMap.put(gflag.name, gflag.value);
+      }
+    }
+    return gflagsMap;
+  }
+
   // The nodes that we want to perform the operation and the subsequent rolling restart on.
   @Constraints.Required()
   public List<String> nodeNames;
 
   public Integer sleepAfterMasterRestartMillis = 180000;
   public Integer sleepAfterTServerRestartMillis = 180000;
-  public Boolean upgradeMasters = true;
-  public Boolean upgradeTServers = true;
 }
