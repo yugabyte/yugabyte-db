@@ -162,8 +162,11 @@ class PartitionMetadata implements Host.StateListener, SchemaChangeListener {
       for (Map.Entry<InetAddress, String> entry : replicaAddresses.entrySet()) {
         Host host = hostMap.get(entry.getKey());
         if (host == null) {
-          LOG.debug("Host " + entry.getKey() + " not found in cluster metadata for table " +
-                    keyspace.getName() + "." + table.getName());
+          // Ignore tables in system keyspaces because they are hosted in master not tserver.
+          if (!isSystem(keyspace)) {
+            LOG.debug("Host " + entry.getKey() + " not found in cluster metadata for table " +
+                      keyspace.getName() + "." + table.getName());
+          }
           continue;
         }
         // Put the leader at the beginning and the rest after.
@@ -183,6 +186,18 @@ class PartitionMetadata implements Host.StateListener, SchemaChangeListener {
     loadCount.incrementAndGet();
 
     scheduleNextLoad();
+  }
+
+  /**
+   * Returns if a keyspace is a system keyspace.
+   */
+  private static boolean isSystem(KeyspaceMetadata keyspace) {
+    String ksname = keyspace.getName();
+    return (ksname.equals("system")             ||
+            ksname.equals("system_auth")        ||
+            ksname.equals("system_distributed") ||
+            ksname.equals("system_schema")      ||
+            ksname.equals("system_traces"));
   }
 
   /**
