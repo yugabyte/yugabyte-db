@@ -549,6 +549,10 @@ Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash, const QueryId q
         e->query_id = kInMultiTouchId;
         single_touch_sub_cache_.DecrementUsage(e->charge);
         multi_touch_sub_cache_.IncrementUsage(e->charge);
+       if (metrics_) {
+         metrics_->multi_touch_cache_usage->IncrementBy(e->charge);
+         metrics_->single_touch_cache_usage->DecrementBy(e->charge);
+       }
       }
     }
     if (statistics != nullptr) {
@@ -720,6 +724,7 @@ Status LRUCache::Insert(const Slice& key, uint32_t hash, const QueryId query_id,
       } else {
         metrics_->single_touch_cache_usage->IncrementBy(charge);
       }
+      metrics_->cache_usage->IncrementBy(charge);
     }
   }
 
