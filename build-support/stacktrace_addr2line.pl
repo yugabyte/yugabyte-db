@@ -18,27 +18,27 @@
 # under the License.
 #######################################################################
 # This script will convert a stack trace with addresses:
-#     @           0x5fb015 kudu::master::Master::Init()
-#     @           0x5c2d38 kudu::master::MiniMaster::StartOnPorts()
-#     @           0x5c31fa kudu::master::MiniMaster::Start()
-#     @           0x58270a kudu::MiniCluster::Start()
-#     @           0x57dc71 kudu::CreateTableStressTest::SetUp()
+#  0x5fb015 yb::master::Master::Init()
+#  0x5c2d38 yb::master::MiniMaster::Ports()
+#  0x5c31fa yb::master::MiniMaster::Start()
+#  0x58270a yb::MiniCluster::Start()
+#  0x57dc71 yb::CreateTableStressTest::SetUp()
 # To one with line numbers:
-#     @           0x5fb015 kudu::master::Master::Init() at /home/mpercy/src/kudu/src/master/master.cc:54
-#     @           0x5c2d38 kudu::master::MiniMaster::StartOnPorts() at /home/mpercy/src/kudu/src/master/mini_master.cc:52
-#     @           0x5c31fa kudu::master::MiniMaster::Start() at /home/mpercy/src/kudu/src/master/mini_master.cc:33
-#     @           0x58270a kudu::MiniCluster::Start() at /home/mpercy/src/kudu/src/integration-tests/mini_cluster.cc:48
-#     @           0x57dc71 kudu::CreateTableStressTest::SetUp() at /home/mpercy/src/kudu/src/integration-tests/create-table-stress-test.cc:61
+#  0x5fb015 yb::master::Master::Init() at /home/user/code/src/yb/src/master/master.cc:54
+#  0x5c2d38 yb::master::MiniMaster::Ports() at /home/user/code/src/yb/src/master/mini_master.cc:52
+#  0x5c31fa yb::master::MiniMaster::Start() at /home/user/code/src/yb/src/master/mini_master.cc:33
+#  0x58270a yb::MiniCluster::Start() at /home/user/code/src/yb/src/integration-tests/cluster.cc:48
+#  0x57dc71 yb::CreateTableStressTest::SetUp() at /home/user/code/src/yb/src/tests/stress-test.cc:61
 #
 # If the script detects that the output is not symbolized, it will also attempt
 # to determine the function names, i.e. it will convert:
-#     @           0x5fb015
-#     @           0x5c2d38
-#     @           0x5c31fa
+#  0x5fb015
+#  0x5c2d38
+#  0x5c31fa
 # To:
-#     @           0x5fb015 kudu::master::Master::Init() at /home/mpercy/src/kudu/src/master/master.cc:54
-#     @           0x5c2d38 kudu::master::MiniMaster::StartOnPorts() at /home/mpercy/src/kudu/src/master/mini_master.cc:52
-#     @           0x5c31fa kudu::master::MiniMaster::Start() at /home/mpercy/src/kudu/src/master/mini_master.cc:33
+#  0x5fb015 yb::master::Master::Init() at /home/user/code/src/yb/src/master/master.cc:54
+#  0x5c2d38 yb::master::MiniMaster::Ports() at /home/user/code/src/yb/src/master/mini_master.cc:52
+#  0x5c31fa yb::master::MiniMaster::Start() at /home/user/code/src/yb/src/master/mini_master.cc:33
 #######################################################################
 #
 # The following only applies to changes made to this file as part of YugaByte development.
@@ -68,7 +68,7 @@ if (!@ARGV) {
 Usage: $0 executable [stack-trace-file]
 
 This script will read addresses from a file containing stack traces and
-will convert the addresses that conform to the pattern " @ 0x123456" to line
+will convert the addresses that conform to the pattern "  0x123456" to line
 numbers by calling addr2line on the provided executable.
 If no stack-trace-file is specified, it will take input from stdin.
 EOF

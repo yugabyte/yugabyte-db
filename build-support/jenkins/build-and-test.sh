@@ -51,10 +51,6 @@
 #   Default: 1
 #     Build and test java code if this is set to 1.
 #
-#   YB_BUILD_PYTHON
-#   Default: 1
-#     Build and test the Python wrapper of the client API.
-#
 #   DONT_DELETE_BUILD_ROOT
 #   Default: 0 (meaning build root will be deleted) on Jenkins, 1 (don't delete) locally.
 #     Skip deleting BUILD_ROOT (useful for debugging).
@@ -155,7 +151,6 @@ set_common_test_paths
 
 # TODO: deduplicate this with similar logic in yb-jenkins-build.sh.
 YB_BUILD_JAVA=${YB_BUILD_JAVA:-1}
-YB_BUILD_PYTHON=${YB_BUILD_PYTHON:-0}
 YB_BUILD_CPP=${YB_BUILD_CPP:-1}
 if is_jenkins; then
   # Delete the build root by default on Jenkins.
@@ -295,13 +290,11 @@ if [[ $BUILD_TYPE == "asan" ]]; then
   log "Starting ASAN build"
   run_build_cmd $cmake_cmd_line "$YB_SRC_ROOT"
   log "CMake invocation for ASAN build finished (see timing information above)"
-  YB_BUILD_PYTHON=0
 elif [[ $BUILD_TYPE == "tsan" ]]; then
   log "Starting TSAN build"
   run_build_cmd $cmake_cmd_line -DYB_USE_TSAN=1 "$YB_SRC_ROOT"
   log "CMake invocation for TSAN build finished (see timing information above)"
   EXTRA_TEST_FLAGS+=" -LE no_tsan"
-  YB_BUILD_PYTHON=0
 elif [[ $BUILD_TYPE == "coverage" ]]; then
   DO_COVERAGE=1
   log "Starting coverage build"
@@ -533,7 +526,6 @@ else
   fi
 fi
 
-
 if [[ $YB_BUILD_CPP == "1" ]] && using_linuxbrew; then
   # -----------------------------------------------------------------------------------------------
   # Test package creation (i.e. relocating all the necessary libraries).  This only works on Linux
@@ -547,39 +539,6 @@ if [[ $YB_BUILD_CPP == "1" ]] && using_linuxbrew; then
     --build-dir "$BUILD_ROOT" \
     --dest-dir "$packaged_dest_dir"
   rm -rf "$packaged_dest_dir"
-fi
-
-if [[ $YB_BUILD_PYTHON == "1" ]]; then
-  show_disk_usage
-
-  heading "Building and testing python."
-
-  # Failing to compile the Python client should result in a build failure
-  set -e
-  export YB_HOME=$YB_SRC_ROOT
-  export YB_BUILD=$BUILD_ROOT
-  pushd $YB_SRC_ROOT/python
-
-  # Create a sane test environment
-  rm -Rf "$YB_BUILD/py_env"
-  virtualenv $YB_BUILD/py_env
-  source $YB_BUILD/py_env/bin/activate
-  pip install --upgrade pip
-  CC=$CLANG CXX=$CLANG++ pip install --disable-pip-version-check -r requirements.txt
-
-  # Delete old Cython extensions to force them to be rebuilt.
-  rm -Rf build kudu_python.egg-info kudu/*.so
-
-  # Assuming we run this script from base dir
-  CC=$CLANG CXX=$CLANG++ python setup.py build_ext
-  set +e
-  if ! python setup.py test \
-      --addopts="kudu --junit-xml=$YB_BUILD/test-logs/python_client.xml" \
-      2> $YB_BUILD/test-logs/python_client.log ; then
-    EXIT_STATUS=1
-    FAILURES+=$'Python tests failed\n'
-  fi
-  popd
 fi
 
 set -e

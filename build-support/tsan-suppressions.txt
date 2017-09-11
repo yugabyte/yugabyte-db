@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 race:_dl_deallocate_tls
-race:kudu::tablet::ScopedRowLock::Release
+race:yb::tablet::ScopedRowLock::Release
 
 # libunwind uses some double-checked locking which isn't perfectly safe.
 # Reported at http://savannah.nongnu.org/bugs/index.php?42677
@@ -41,11 +41,11 @@ race:concurrent_btree.h
 # We're currently a little lax on using atomic instructions for mutations where
 # we might need to. There are possible bugs lurking here, though likely we are
 # hiding behind x86 TSO for now.
-race:kudu::tablet::ApplyMutationsAndGenerateUndos
-race:kudu::tablet::MemRowSet::Iterator::ApplyMutationsToProjectedRow
-race:kudu::tablet::MemRowSet::Iterator::FetchRows
-race:kudu::tablet::Mutation::*
-race:kudu::RowChangeListDecoder::Init
+race:yb::tablet::ApplyMutationsAndGenerateUndos
+race:yb::tablet::MemRowSet::Iterator::ApplyMutationsToProjectedRow
+race:yb::tablet::MemRowSet::Iterator::FetchRows
+race:yb::tablet::Mutation::*
+race:yb::RowChangeListDecoder::Init
 
 # GLog's fatal signal handler isn't signal-safe -- it allocates memory.
 # This isn't great, but nothing we can do about it. See
@@ -54,7 +54,7 @@ signal:logging_fail
 
 # This method in Boost's UUID library operates on static state with impunity,
 # triggering (harmless) data races in TSAN when boost::uuids::random_generator
-# instances are created across threads (see kudu::ObjectIdGenerator).
+# instances are created across threads (see yb::ObjectIdGenerator).
 race:boost::uuids::detail::seed_rng::sha1_random_digest_
 
 # ------------------------------------------------------------
@@ -63,23 +63,23 @@ race:boost::uuids::detail::seed_rng::sha1_random_digest_
 # ------------------------------------------------------------
 
 # KUDU-1283: TSAN warning from consensus OpId
-race:kudu::consensus::OpId::CopyFrom
+race:yb::consensus::OpId::CopyFrom
 
 # KUDU-186: sketchy synchronization in catalog manager
-race:kudu::master::CatalogManager::Shutdown
-race:kudu::master::CatalogManagerBgTasks::Shutdown
-race:kudu::master::CatalogManager::~CatalogManager
+race:yb::master::CatalogManager::Shutdown
+race:yb::master::CatalogManagerBgTasks::Shutdown
+race:yb::master::CatalogManager::~CatalogManager
 
 # KUDU-189: unsynchronized access to 'state_' in DeferredCallback
-race:kudu::master::AsyncTabletRequestTask::DeferredCallback
+race:yb::master::AsyncTabletRequestTask::DeferredCallback
 
 # KUDU-574: raft_consensus_quorum-test race on LocalTestPeerProxy destruction
-race:kudu::consensus::LocalTestPeerProxy::~LocalTestPeerProxy
+race:yb::consensus::LocalTestPeerProxy::~LocalTestPeerProxy
 
 # KUDU-569: unsynchronized access to 'state_', 'acceptor_pools_', in
 # GetBoundAddresses()
-race:kudu::Webserver::GetBoundAddresses
-race:kudu::RpcServer::GetBoundAddresses
+race:yb::Webserver::GetBoundAddresses
+race:yb::RpcServer::GetBoundAddresses
 
 # https://yugabyte.atlassian.net/browse/ENG-354
 race:gutil::SubmitSpinLockProfileData
@@ -87,20 +87,6 @@ race:gutil::SubmitSpinLockProfileData
 # Setting width on a stream is not thread-safe, but some of our tests do it:
 # https://jenkins.dev.yugabyte.com/job/yugabyte-centos-phabricator-clang-tsan/42/artifact/build/tsan-clang-dynamic/yb-test-logs/bin__alter_table-randomized-test/AlterTableRandomized_TestRandomSequence.log
 race:std::ios_base::width
-
-# ------------------------------------------------------------------------------------------------
-# Bugs in Kudu's MemRowSet and related code (which we need to get rid of):
-
-# https://jenkins.dev.yugabyte.com/job/yugabyte-centos-phabricator-clang-tsan/42/artifact/build/tsan-clang-dynamic/yb-test-logs/bin__alter_table-test/AlterTableTest_TestAlterUnderWriteLoad.log
-race:yb::tablet::MemRowSet::Iterator::FetchRows
-
-# Another race condition in Kudu's MemRowSet:
-# https://detective.dev.yugabyte.com/job/yugabyte-centos-phabricator-clang-tsan/48/artifact/build/tsan-clang-dynamic/yb-test-logs/bin__tablet_random_access-test/TestRandomAccess_Test.log
-race:yb::tablet::MemRowSet::MutateRow
-
-# And another one:
-# https://detective.dev.yugabyte.com/job/yugabyte-centos-phabricator-clang-tsan/66/artifact/build/tsan-clang-dynamic/yb-test-logs/bin__mt-tablet-test/MultiThreadedTabletTest__4_DeleteAndReinsert.log
-race:yb::tablet::MemRowSet::Reinsert
 
 # -------------------------------------------------------------------------------------------------
 # Known YB concurrency issues
