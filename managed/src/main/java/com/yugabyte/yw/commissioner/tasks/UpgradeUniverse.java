@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.models.Universe;
+import play.libs.Json;
 
 import java.util.List;
 import java.util.function.Predicate;
@@ -62,6 +63,9 @@ public class UpgradeUniverse extends UniverseTaskBase {
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
+      List<NodeDetails> tServerNodes = filterByNodeName(universe.getTServers(), taskParams().nodeNames);
+      List<NodeDetails> masterNodes  = filterByNodeName(universe.getMasters(), taskParams().nodeNames);
+
       if (taskParams().taskType == UpgradeTaskType.Software) {
         if (taskParams().ybSoftwareVersion == null || taskParams().ybSoftwareVersion.isEmpty()) {
           throw new IllegalArgumentException("Invalid yugabyte software version: " + taskParams().ybSoftwareVersion);
@@ -73,39 +77,38 @@ public class UpgradeUniverse extends UniverseTaskBase {
         LOG.info("Upgrading software version to {} for {} nodes in universe {}",
                  taskParams().ybSoftwareVersion, taskParams().nodeNames.size(), universe.name);
       } else if (taskParams().taskType == UpgradeTaskType.GFlags) {
-        LOG.info("Updating gflags: {} for {} nodes in universe {}",
-                 taskParams().getGFlagsAsMap(), taskParams().nodeNames.size(), universe.name);
+        LOG.info("Updating Master gflags: {} for {} nodes in universe {}",
+          taskParams().getMasterGFlagsAsMap(), masterNodes.size(), universe.name);
+        LOG.info("Updating T-Server gflags: {} for {} nodes in universe {}",
+          taskParams().getTServerGFlagsAsMap(),  tServerNodes.size(), universe.name);
       }
 
-      if (taskParams().upgradeMasters) {
-        List<NodeDetails> nodes = filterByNodeName(universe.getMasters(), taskParams().nodeNames);
-        createAllUpgradeTasks(nodes, ServerType.MASTER); // Implicitly calls setSubTaskGroupType
-      }
-
-      if (taskParams().upgradeTServers) {
-        SubTaskGroupType subTaskGroupType;
-        switch (taskParams().taskType) {
-          case Software:
-            subTaskGroupType = SubTaskGroupType.DownloadingSoftware;
-            break;
-          case GFlags:
-            subTaskGroupType = SubTaskGroupType.UpdatingGFlags;
-            break;
-          default:
-            subTaskGroupType = SubTaskGroupType.Invalid;
-            break;
-        }
-
-        // Disable the load balancer.
-        createLoadBalancerStateChangeTask(false /*enable*/)
+      SubTaskGroupType subTaskGroupType;
+      switch (taskParams().taskType) {
+        case Software:
+          subTaskGroupType = SubTaskGroupType.DownloadingSoftware;
+          // Disable the load balancer.
+          createLoadBalancerStateChangeTask(false /*enable*/)
             .setSubTaskGroupType(subTaskGroupType);
-
-        List<NodeDetails> nodes = filterByNodeName(universe.getTServers(), taskParams().nodeNames);
-        createAllUpgradeTasks(nodes, ServerType.TSERVER); // Implicitly calls setSubTaskGroupType
-
-        // Enable the load balancer.
-        createLoadBalancerStateChangeTask(true /*enable*/)
+          createAllUpgradeTasks(tServerNodes, ServerType.TSERVER); // Implicitly calls setSubTaskGroupType
+          // Enable the load balancer.
+          createLoadBalancerStateChangeTask(true /*enable*/)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+          break;
+        case GFlags:
+          subTaskGroupType = SubTaskGroupType.UpdatingGFlags;
+          if (!taskParams().getMasterGFlagsAsMap().isEmpty()) {
+            createAllUpgradeTasks(masterNodes, ServerType.MASTER); // Implicitly calls setSubTaskGroupType
+          }
+          if (!taskParams().getTServerGFlagsAsMap().isEmpty()) {
+            // Disable the load balancer.
+            createLoadBalancerStateChangeTask(false /*enable*/)
+              .setSubTaskGroupType(subTaskGroupType);
+            createAllUpgradeTasks(tServerNodes, ServerType.TSERVER); // Implicitly calls setSubTaskGroupType
+            // Enable the load balancer.
+            createLoadBalancerStateChangeTask(true /*enable*/)
+              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+          }
       }
 
       // Update the software version on success.
@@ -225,7 +228,11 @@ public class UpgradeUniverse extends UniverseTaskBase {
     if (type == UpgradeTaskType.Software) {
       params.ybSoftwareVersion = taskParams().ybSoftwareVersion;
     } else if (type == UpgradeTaskType.GFlags) {
-      params.gflags = taskParams().getGFlagsAsMap();
+      if (processType.equals(ServerType.MASTER)) {
+        params.gflags = taskParams().getMasterGFlagsAsMap();
+      } else {
+        params.gflags = taskParams().getTServerGFlagsAsMap();
+      }
     }
 
     if (params.cloud == Common.CloudType.onprem) {
