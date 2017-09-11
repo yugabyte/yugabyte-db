@@ -335,6 +335,7 @@ start_tserver() {
       --placement_cloud "$placement_cloud" \
       --placement_region "$placement_region" \
       --placement_zone "$placement_zone" \
+      --tserver_yb_client_default_timeout_ms 20000 \
       $tserver_optional_params \
        >"$tserver_base_dir/tserver.out" \
        2>"$tserver_base_dir/tserver.err" &
