@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import PropTypes from 'prop-types';
 import { Link } from 'react-router';
 
 export default class YBBreadcrumb extends Component {
@@ -14,5 +13,5 @@ export default class YBBreadcrumb extends Component {
         <i className="fa fa-angle-right fa-fw"></i>
       </span>
     );
-  }
+  };
 }
