@@ -102,7 +102,7 @@ YugaByte offers two ways to get started with YugaByte DB.
 ![Product Editions](/images/editions.png)
 
 ### Community Edition
-[Community Edition](/community-edition/get-started/) is the best choice for the individual developer looking to develop applications and deploy the DB into production with traditional DevOps tools. 
+[Community Edition](/community-edition/quick-start/) is the best choice for the individual developer looking to develop applications and deploy the DB into production with traditional DevOps tools. 
 
 ### Enteprise Edition
 [Enterprise Edition](/enterprise-edition/deploy/) includes all the features of the Community Edition as well as additional features such as built-in cloud-native operations, advanced tunable consistency and enterprise security. It is the simplest way to run the DB in mission-critical production environments with one or more datacenters (across both public cloud and on-premises datacenters). 

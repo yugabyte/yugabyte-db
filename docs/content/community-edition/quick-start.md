@@ -7,7 +7,7 @@ weight: 15
  The easiest way to get started with the YugaByte Community Edition is to create a multi-node YugaByte **local cluster** on your laptop or desktop.
 
 {{< note title="Note" >}}
-Running local clusters is not recommended for production environments. You can either deploy the Community Edition manually on a set of instances or use the Enterprise Edition that automates all day-to-day operations including cluster administration across all major public clouds as well as on-premises datacenters.
+Running local clusters is not recommended for production environments. You can either deploy the [Community Edition] (/community-edition/deploy/) manually on a set of instances or use the [Enterprise Edition](/enterprise-edition/deploy/) that automates all day-to-day operations including cluster administration across all major public clouds as well as on-premises datacenters.
 {{< /note >}}
 
 ## Prerequisites
@@ -34,18 +34,18 @@ $ ./bin/configure
 
 ## Create local cluster
 
-Create a 3 node cluster with replication factor 3 using the [yugabyte-cli](/community-edition/cli-reference) CLI that has a set of pre-built commands to manage a local cluster. 
+### Create a 3 node cluster with replication factor 3 
+
+We will use the [yb-ctl](/admin/yb-ctl) utility that has a set of pre-built commands to administer a local cluster. The default data directory used is `/tmp/yugabyte-local-cluster`. You can change this directory with the `--data_dir` option. Detailed output for the *create* command is available in [yb-ctl Reference](/admin/yb-ctl/#create-cluster).
 
 ```sh
-$ ./bin/yugabyte-cli create
+$ ./bin/yb-ctl create
 ```
 
-Detailed output for the *create* command is available in the [CQL Reference](/community-edition/cli-reference/#create-cluster)
-
-Check the status of the cluster
+### Check the status of the cluster.
 
 ```sh
-$ ./bin/yugabyte-cli status
+$ ./bin/yb-ctl status
 2017-09-06 22:53:40,871 INFO: Server is running: type=master, node_id=1, PID=28494, URL=127.0.0.1:7000
 2017-09-06 22:53:40,876 INFO: Server is running: type=master, node_id=2, PID=28504, URL=127.0.0.1:7001
 2017-09-06 22:53:40,881 INFO: Server is running: type=master, node_id=3, PID=28507, URL=127.0.0.1:7002
@@ -54,14 +54,13 @@ $ ./bin/yugabyte-cli status
 2017-09-06 22:53:40,894 INFO: Server is running: type=tserver, node_id=3, PID=28519, URL=127.0.0.1:9002, cql port=9044, redis port=6381
 ```
 
-Setup the `redis_keyspace` keyspace and the `.redis` table so that this cluster becomes ready for redis clients.
+### Setup Redis service
+
+Setup the `redis_keyspace` keyspace and the `.redis` table so that this cluster becomes ready for redis clients. Detailed output for the *setup_redis* command is available in the [yb-ctl Reference](/admin/yb-ctl/#setup-redis)
 
 ```sh
-$ ./bin/yugabyte-cli setup_redis
+$ ./bin/yb-ctl setup_redis
 ```
-
-Detailed output for the *setup_redis* command is available in the [CQL Reference](/community-edition/cli-reference/#setup-redis)
-
 
 ## Connect with cqlsh or redis-cli
 
@@ -108,6 +107,8 @@ OK
 ```
 
 ## Run a sample app
+
+### Prerequisites
 
 - Verify that Java is installed on your localhost.
 
@@ -237,54 +238,29 @@ $ ./bin/redis-cli
 "val:2"
 ```
 
+
+## Test fault tolerance
+
+- Observe sample app output with 3 nodes.
+
+- Remove one node to bring the cluster to 2 nodes.
+
+```sh
+
+```
+
+- Observe sample app again to see no distruption
+
+
 ## Test automatic rebalancing
 
 
 Add a new node to the cluster. This will start a new yb-tserver process and give it a new `node_id` for tracking purposes.
 
 ```sh
-$ ./bin/yugabyte-cli add_node
-2017-08-24 20:32:18,015 INFO: Starting tserver with:
-/home/vagrant/yugabyte/bin/yb-tserver 
---fs_data_dirs "/tmp/yugabyte-local-cluster/tserver-4/data1,/tmp/yugabyte-local-cluster/tserver-4/data2" 
---fs_wal_dirs "/tmp/yugabyte-local-cluster/tserver-4/wal1,/tmp/yugabyte-local-cluster/tserver-4/wal2" 
---log_dir "/tmp/yugabyte-local-cluster/tserver-4/logs" 
---use_hybrid_clock=false 
---webserver_port 9004 
---rpc_bind_addresses 127.0.0.1:9104 
---placement_cloud cloud 
---placement_region region 
---placement_zone zone 
---webserver_doc_root "/home/vagrant/yugabyte/www" 
---tserver_master_addrs 127.0.0.1:7101,127.0.0.1:7102,127.0.0.1:7103 
---memory_limit_hard_bytes 268435456 
---redis_proxy_webserver_port 11004 
---redis_proxy_bind_address 127.0.0.1:10104 
---cql_proxy_webserver_port 12004 
---cql_proxy_bind_address 127.0.0.1:9046 
---local_ip_for_outbound_sockets 127.0.0.1 
---memstore_size_mb 2 
->"/tmp/yugabyte-local-cluster/tserver-4/tserver.out" 2>"/tmp/yugabyte-local-cluster/tserver-4/tserver.err" &
+$ ./bin/yb-ctl add_node
+
 ```
 
-## Test fault tolerance
-
-Remove one node to bring the cluster back to 3 nodes.
-
-```sh
-$ $ ./bin/yugabyte-cli remove_node 4
-2017-08-24 20:28:30,919 INFO: Removing server type=tserver index=2
-2017-08-24 20:28:30,925 INFO: Stopping server type=tserver index=2 PID=6298
-2017-08-24 20:28:30,925 INFO: Waiting for server type=tserver index=2 PID=6298 to stop...
-```
-
-Remove another node to see that the cluster continues to process client requests even with the 2 remaining nodes.
-
-```sh
-$ $ ./bin/yugabyte-cli remove_node 3
-2017-08-24 20:28:30,919 INFO: Removing server type=tserver index=2
-2017-08-24 20:28:30,925 INFO: Stopping server type=tserver index=2 PID=6298
-2017-08-24 20:28:30,925 INFO: Waiting for server type=tserver index=2 PID=6298 to stop...
-```
 
 

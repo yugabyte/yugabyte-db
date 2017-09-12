@@ -1,18 +1,18 @@
 ---
 date: 2016-03-09T00:11:02+01:00
-title: Community Edition - CLI Reference
+title: yb-ctl Reference
 weight: 15
 ---
 
-`yugabyte-cli`, located in the bin directory of YugaByte home, is a simple command line interface for administering local clusters.
+`yb-ctl`, located in the bin directory of YugaByte home, is a simple command line interface for administering local clusters. It invokes the [`yb-master`] (/admin/yb-master/) and [`yb-tserver`] (/admin/yb-tserver/) binaries to perform the necessary administration.
 
 ## Help command
 
-Use the **-h** option to see all the commands supported.
+Use the **-\-help** option to see all the commands supported.
 
 ```sh
-$ ./bin/yugabyte-cli -h
-usage: yugabyte-cli [-h] [--binary_dir BINARY_DIR] [--data_dir DATA_DIR]
+$ ./bin/yb-ctl --help
+usage: yb-ctl [-h] [--binary_dir BINARY_DIR] [--data_dir DATA_DIR]
                     [--replication_factor REPLICATION_FACTOR]
                     [--require_clock_sync REQUIRE_CLOCK_SYNC]
                     {create,destroy,status,add_node,remove_node,setup_redis}
@@ -48,7 +48,7 @@ Create a 3 node local cluster with replication factor 3.
 Each of these initial nodes run a `yb-tserver` process and a `yb-master` process. Note that the number of yb-masters in a cluster has to equal to the replication factor for the cluster to be considered as operating normally and the number of yb-tservers is equal to be the number of nodes.
 
 ```sh
-$ $ ./bin/yugabyte-cli create
+$ $ ./bin/yb-ctl create
 2017-09-06 22:52:36,400 INFO: Starting master with:
 /home/vagrant/yugabyte/bin/yb-master --fs_data_dirs "/tmp/yugabyte-local-cluster/master-1/data1,/tmp/yugabyte-local-cluster/master-1/data2" --fs_wal_dirs "/tmp/yugabyte-local-cluster/master-1/wal1,/tmp/yugabyte-local-cluster/master-1/wal2" --log_dir "/tmp/yugabyte-local-cluster/master-1/logs" --webserver_port 7000 --rpc_bind_addresses 127.0.0.1:7100 --use_hybrid_clock=False --placement_cloud cloud --placement_region region --placement_zone zone --webserver_doc_root "/home/vagrant/yugabyte/www" --create_cluster=true --master_addresses 127.0.0.1:7100,127.0.0.1:7101,127.0.0.1:7102 >"/tmp/yugabyte-local-cluster/master-1/master.out" 2>"/tmp/yugabyte-local-cluster/master-1/master.err" &
 2017-09-06 22:52:40,388 INFO: Starting master with:
@@ -68,7 +68,7 @@ Create a 5 node local cluster with replication factor 5.
 The number of nodes created with the initial create command is always equal to the replication factor in order to ensure that all the replicas for a given tablet can be placed on different nodes. With the [add_node](/community-edition/cli-reference/#add-a-node) and [remove_node]/community-edition/cli-reference/#remove-a-node commands the size of the cluster can thereafter be expanded or shrinked as necessary. 
 
 ```sh
-$ ./bin/yugabyte-cli --rf 5 create
+$ ./bin/yb-ctl --rf 5 create
 ```
 
 ## Check cluster status
@@ -76,7 +76,7 @@ $ ./bin/yugabyte-cli --rf 5 create
 Get the status of the local cluster including the URLs for the admin UIs for the YB-Master and YB-TServer.
 
 ```sh
-$ ./bin/yugabyte-cli status
+$ ./bin/yb-ctl status
 2017-09-06 22:53:40,871 INFO: Server is running: type=master, node_id=1, PID=28494, URL=127.0.0.1:7000
 2017-09-06 22:53:40,876 INFO: Server is running: type=master, node_id=2, PID=28504, URL=127.0.0.1:7001
 2017-09-06 22:53:40,881 INFO: Server is running: type=master, node_id=3, PID=28507, URL=127.0.0.1:7002
@@ -90,7 +90,7 @@ $ ./bin/yugabyte-cli status
 Run this command after creating the cluster in case you are looking to use YugaByte's Redis API.
 
 ```sh
-$ ./bin/yugabyte-cli setup_redis
+$ ./bin/yb-ctl setup_redis
 I0906 22:57:47.913584 29372 reactor.cc:109] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
 I0906 22:57:47.913799 29372 reactor.cc:109] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
 I0906 22:57:47.913830 29372 reactor.cc:109] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
@@ -116,7 +116,7 @@ I0906 22:57:49.039940 29372 client.cc:1169] Created table redis_keyspace..redis 
 Add a new node to the cluster. This will start a new yb-tserver process and give it a new `node_id` for tracking purposes.
 
 ```sh
-$ $ ./bin/yugabyte-cli add_node
+$ $ ./bin/yb-ctl add_node
 2017-09-06 22:54:20,687 INFO: Starting tserver with:
 /home/vagrant/yugabyte/bin/yb-tserver 
 --fs_data_dirs "/tmp/yugabyte-local-cluster/tserver-4/data1,/tmp/yugabyte-local-cluster/tserver-4/data2" 
@@ -142,8 +142,8 @@ Remove a node by executing the following command that takes the node_id of the n
 ### Help
 
 ```sh
-$ ./bin/yugabyte-cli remove_node -h
-usage: yugabyte-cli remove_node [-h] node_id
+$ ./bin/yb-ctl remove_node -h
+usage: yb-ctl remove_node [-h] node_id
 
 positional arguments:
   node_id     The index of the tserver to remove
@@ -155,7 +155,7 @@ optional arguments:
 ### Example
 
 ```sh
-$ ./bin/yugabyte-cli remove_node 4
+$ ./bin/yb-ctl remove_node 4
 2017-09-06 22:56:11,929 INFO: Removing server type=tserver node_id=4
 2017-09-06 22:56:11,935 INFO: Stopping server type=tserver node_id=4 PID=28874
 2017-09-06 22:56:11,935 INFO: Waiting for server type=tserver node_id=4 PID=28874 to stop...
@@ -166,7 +166,7 @@ $ ./bin/yugabyte-cli remove_node 4
 The command below destroys the cluster which includes deleting the data directories.
 
 ```sh
-$ ./bin/yugabyte-cli destroy
+$ ./bin/yb-ctl destroy
 2017-09-06 22:56:41,230 INFO: Stopping server type=master node_id=1 PID=28494
 2017-09-06 22:56:41,231 INFO: Waiting for server type=master node_id=1 PID=28494 to stop...
 2017-09-06 22:56:41,739 INFO: Stopping server type=master node_id=2 PID=28504

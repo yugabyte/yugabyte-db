@@ -46,10 +46,16 @@ googleAnalytics = "UA-104956980-1"
 	url    = "/"
 	weight = 1
 
+
+[[menu.main]]
+	name   = "FAQs"
+	url    = "faq/"
+	weight = 2
+
 [[menu.main]]
 	name = "Community Edition"
 	identifier = "community-edition"
-	weight = 2
+	weight = 3
 
 [[menu.main]]
 	name = "Quick Start"
@@ -69,12 +75,6 @@ googleAnalytics = "UA-104956980-1"
 	parent = "community-edition"
 	url    = "community-edition/deploy/"
 	weight = 20
-
-[[menu.main]]
-	name   = "CLI Reference"
-	parent = "community-edition"
-	url    = "community-edition/cli-reference/"
-	weight = 30
 
 [[menu.main]]
 	name = "Enterprise Edition"
@@ -129,7 +129,34 @@ googleAnalytics = "UA-104956980-1"
 	url = "architecture/comparisons/"
 	weight = 110
 
-# [[menu.main]]
+[[menu.main]]
+	name   = "Admin Reference"
+	weight = 115
+	identifier = "admin"
+	url    = "admin/yb-ctl/"
+
+[[menu.main]]
+	name = "yb-ctl"
+	weight = 116
+	identifier = "yb-ctl"
+	parent = "admin"
+	url = "admin/yb-ctl/"
+
+[[menu.main]]
+	name = "yb-master"
+	weight = 117
+	identifier = "yb-master"
+	parent = "admin"
+	url = "admin/yb-master/"
+
+[[menu.main]]
+	name = "yb-tserver"
+	weight = 118
+	identifier = "yb-tserver"
+	parent = "admin"
+	url = "admin/yb-tserver/"
+
+#[[menu.main]]
 #	name   = "Client API Reference"
 #	weight = 120
 #	identifier = "API"
@@ -138,21 +165,17 @@ googleAnalytics = "UA-104956980-1"
 #[[menu.main]]
 #	name = "Apache Cassandra"
 #	weight = 130
-#	identifier = "API-CQL"
+#	identifier = "api-cql"
 #	parent = "API"
 #	url = "api/cql/"
 
 #[[menu.main]]
 #	name = "Redis"
 #	weight = 140
-#	identifier = "API-Redis"
+#	identifier = "api-redis"
 #	parent = "API"
 #	url = "api/redis/"
 
-[[menu.main]]
-	name   = "FAQs"
-	url    = "faq/"
-	weight = 150
 
 [blackfriday]
 	smartypants	= true
