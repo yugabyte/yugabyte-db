@@ -3,29 +3,28 @@ title: UUID and TIMEUUID
 summary: UUID types.
 toc: false
 ---
-<style>
-table {
-  float: left;
-}
-#psyn {
-  text-indent: 50px;
-}
-#ptodo {
-  color: red
-}
-</style>
 
 ## Synopsis
-`UUID` datatype is used to specify columns for data of universally unique ids. `TIMEUUID` is a uuid that includes time.
+`UUID` datatype is used to specify columns for data of universally unique ids. `TIMEUUID` is a uuid variant that includes time information.
 
 ## Syntax
 ```
 type_specification ::= { UUID | TIMEUUID }
+
+uuid_literal ::= 4hex_block 4hex_block '-' 4hex_block '-' 4hex_block '-' 4hex_block '-' 4hex_block 4hex_block 4hex_block
+
+4hex_block ::= hex_digit hex_digit hex_digit hex_digit
+
 ```
 
+Where 
+
+- `hex_digit` is a hexadecimal digit (`[0-9a-fA-F]`);
+
 ## Semantics
-<li>Implicitly, values of type `UUID` and `TIMEUUID` datatypes are neither convertible nor comparable to other datatypes.</li>
-<li>Value of text datatypes with correct format are convertible to UUID types.</li>
+
+- Implicitly, values of type `UUID` and `TIMEUUID` datatypes are neither convertible nor comparable to other datatypes.
+- Value of text datatypes with correct format are convertible to UUID types.
 
 ## Examples
 ``` sql

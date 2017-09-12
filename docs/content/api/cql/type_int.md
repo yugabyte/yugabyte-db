@@ -1,21 +1,10 @@
 ---
-title: INTEGERS
+title: Integer Types
 summary: Signed integers of different ranges
 ---
-<style>
-table {
-  float: left;
-}
-#psyn {
-  text-indent: 50px;
-}
-#ptodo {
-  color: red
-}
-</style>
 
 ## Synopsis
-There are several different datatypes for integers of different value ranges. Intergers can be set, inserted, incremented, and decremented while `COUNTER` can only be incremented or decremented. We've extend Apache Cassandra to support increment and decrement operator for integer datatypes.
+There are several different datatypes for integers of different value ranges. Integers can be set, inserted, incremented, and decremented while `COUNTER` can only be incremented or decremented. We've extend Apache Cassandra to support increment and decrement operator for integer datatypes.
 
 DataType | Min | Max |
 ---------|-----|-----|
@@ -29,23 +18,24 @@ DataType | Min | Max |
 The following keywords are used to specify a column of type integer for different constraints including its value ranges.
 
 ```
-type_specification ::= { TINYINT | SMALLINT | INT | INTEGER | BIGINT | COUNTER }
+type_specification ::= TINYINT | SMALLINT | INT | INTEGER | BIGINT | COUNTER
 
-integer_literal ::= [{ + | - }] digit [ { digit | , } ... ]
+integer_literal ::= [ + | - ] digit [ { digit | , } ... ]
 ```
 
 ## Semantics
 
-<li>Values of different integer datatypes are comparable and convertible to one another.</li>
-<li>Values of integer datatypes are convertible but not comparable to floating point number.</li>
-<li>Values of floating point datatypes are not convertible to integers.</li>
+- Values of different integer datatypes are comparable and convertible to one another.
+- Values of integer datatypes are convertible but not comparable to floating point number.
+- Values of floating point datatypes are not convertible to integers.
 
 ### Counter DataType
 `COUNTER` is an alias of `BIGINT` but has additional constraints.
-<li>Columns of type `COUNTER` cannot be part of `PRIMARY KEY`.</li>
-<li>If a column is of type `COUNTER`, all non-primary-key columns must also be of type `COUNTER`.</li>
-<li>Column of type `COUNTER` cannot be set or inserted. They must be incremented or decremented.</li>
-<li>If a column of type `COUNTER` is NULL, its value is replaced with zero when incrementing or decrementing.</li>
+
+- Columns of type `COUNTER` cannot be part of `PRIMARY KEY`.
+- If a column is of type `COUNTER`, all non-primary-key columns must also be of type `COUNTER`.
+- Column of type `COUNTER` cannot be set or inserted. They must be incremented or decremented.
+- If a column of type `COUNTER` is NULL, its value is replaced with zero when incrementing or decrementing.
 
 ## Examples
 

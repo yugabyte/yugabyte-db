@@ -1,35 +1,30 @@
 ---
-title: BLOB
+title: BLOB Type
 summary: Binary strings of variable length.
 ---
-<style>
-table {
-  float: left;
-}
-#psyn {
-  text-indent: 50px;
-}
-#ptodo {
-  color: red
-}
-</style>
 
 ## Synopsis
 
-`BLOB` datatype is used to represent binary strings of variable length.
+`BLOB` datatype is used to represent arbitrary binary data of variable length.
 
 ## Syntax
 
 ```
 type_specification ::= BLOB
+
+blob_literal ::= "0x" [ hex_digit hex_digit ...]
 ```
+
+Where
+
+- `hex_digit` is a hexadecimal digit (`[0-9a-fA-F]`).
 
 ## Semantics
 
-<li>Columns of type `BLOB` cannot be part of `PRIMARY KEY`.</li>
-<li>`BLOB` are neither convertible nor comparable with other datatypes.</li>
-<li>Two series of builtin-functions BlobAsType and TypeAsBlob are provided for convertion between `BLOB` and other datatypes.</li>
-<li>`BLOB` size is virtually unlimited.</li>
+- Columns of type `BLOB` can be part of `PRIMARY KEY`.
+- Implicitly, `BLOB` datayype is neither convertible nor comparable with other datatypes.
+- Two series of builtin-functions `BlobAs<Type>` and `<Type>AsBlob` are provided for conversion between `BLOB` and other datatypes.
+- `BLOB` size is virtually unlimited.
 
 ## Examples
 

@@ -1,50 +1,56 @@
 ---
-title: Collection
-summary: Collection types.
+title: Collections Types
+summary: MAP, SET and LIST types.
 toc: false
 ---
-<style>
-table {
-  float: left;
-}
-#psyn {
-  text-indent: 50px;
-}
-#ptodo {
-  color: red
-}
-</style>
 
 ## Synopsis
 
-Collection datatypes are used to specify columns for data objects that can contains more than one values.
+Collection datatypes are used to specify columns for data objects that can contains more than one value.
 
 ### LIST
-`LIST` is an ordered collection of elements. All elements in a `LIST` must be of the same primitive types. Elements can be prepend or append by `+` operator to a list, removed by `-` operator, and referenced by their indexes of that list by `[]` operator.
+`LIST` is an ordered collection of elements. All elements in a `LIST` must be of the same primitive type. Elements can be prepend or append by `+` operator to a list, removed by `-` operator, and referenced by their indexes of that list by `[]` operator.
 
 ### MAP
-`MAP` is an unordered collection of pairs of elements, a key and a value. With their key values, elements in a `MAP` can be set by the `[]` operator, added by the `+` operator, and removed by the `-` operator.
+`MAP` is an sorted collection of pairs of elements, a key and a value. The sorting order is based on the key values and is implementation-dependent. With their key values, elements in a `MAP` can be set by the `[]` operator, added by the `+` operator, and removed by the `-` operator.
+When queries, the element pairs of a map willl be returned in the sorting order.
 
 ### SET
-`SET` is a sorted collection of elements. The sorting order is implementation-dependent. Elements can be added by `+` operator and removed by `-` operator. When queried, the elements of a set will be returned in sorting order.
+`SET` is a sorted collection of elements. The sorting order is implementation-dependent. Elements can be added by `+` operator and removed by `-` operator. When queried, the elements of a set will be returned in the sorting order.
 
 ## Syntax
 ```
-type_specification ::= { LIST<type> | MAP<key_type:type> | SET<type> }
+type_specification ::= { LIST<type> | MAP<key_type:type> | SET<key_type> }
+
+list_literal ::= '[' [ expression ...] ']'
+
+map_literal ::= '{' [ { expression ':' expression } ...] '}'
+
+set_literal ::= '{' [ expression ...] '}'
+
 ```
+
+Where 
+
+- `type` must be a [non-parametric datatype](../#datatypes) or a [frozen](../type_frozen) datatype.
+- `key_type` must be any datatype that is allowed in a primary key (Currently `FROZEN` and all non-parametric datatypes except `BOOL`).
+- For `map_literal` the left-side `expression` represents the key and the right-side one represents the value.
+- `expression` is any well formed CQL expresssion. See [Expression](..#expressions) for more information on syntax rules.
 
 ## Semantics
 
-### Restrictions
+- Type parameters must be simple types or [frozen types](../type_frozen) (collections and user-defined types must be frozen to be used as collection parameters).
+- Columns of type `LIST`, `MAP`, and `SET` cannot be part of `PRIMARY KEY`.
+- Implicitly, values of collection datatypes are neither convertible nor comparable to other datatypes.
+- Each expression in a collection literal must evaluate to a value convertible to the corresponding parameter datatype.
+- Comparisons on collection values are not allowed (e.g. in `WHERE` or `IF` clauses).
+- Empty collections are treated as null values.
 
-<li> Type parameters must be simple types or [frozen types](../type_frozen).
- <small> (Collections and user-defined types must be frozen to be used as collection parameters) </small></li>
-<li>Columns of type `LIST`, `MAP`, and `SET` cannot be part of `PRIMARY KEY`.</li>
-<li>Implicitly, values of collection datatypes are neither convertible nor comparable to other datatypes.</li>
-
-### Properties
-<li> Comparisons on collection values are not allowed. </li>
-<li> Empty collections are treated as null values. </li>
+{{< note title="Note" >}}
+Collections are designed for storing small sets of values that are not expected to grow to arbitrary size (such as phone numbers or addresses for a user rather than posts or messages).
+While collections of larger sizes are allowed, they may have a significant impact on performance for queries involving them. 
+In particular, some list operations (insert at an index and remove elements) require a read-before-write.
+{{< /note >}}
 
 ## Examples
 

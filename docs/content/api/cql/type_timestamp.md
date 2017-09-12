@@ -1,35 +1,38 @@
 ---
-title: DateTime
-summary: Date and time.
+title: DateTime Types
+summary: DATE, TIME and TIMESTAMP.
 toc: false
 ---
-<style>
-table {
-  float: left;
-}
-#psyn {
-  text-indent: 50px;
-}
-#ptodo {
-  color: red
-}
-</style>
 
 ## Synopsis
 
-Datetime datatypes are used to specify data of date and time at a timezone, `DATE` for a specific day, `TIME` for time of day, and `TIMESTAMP` for the combination of both date and time. If not specified, the default timezone is UTC.
+Datetime datatypes are used to specify data of date and time at a timezone, `DATE` for a specific day, `TIME` for time of day, and `TIMESTAMP` for the combination of both date and time.
+Of the three, YugaByte currently only supports the `TIMESTAMP` type.
 
 ## Syntax
 ```
-type_specification ::= { TIMESTAMP | DATE | TIME }
+type_specification ::= TIMESTAMP | DATE | TIME
+
+timestamp_format ::= date_format [ time_format ] [ timezone_format ]
+date_format ::= digit digit digit digit '-' digit [ digit ] '-' digit [ digit ]
+time_format ::= digit [ digit ] [ ':' digit [ digit ] [ ':' digit [digit]  [ '.' digit [ digit [ digit ] ] ] ] ] 
+timezone_format ::= [ 'UTC' ] ( '+' | '-' ) digit [ digit ] ':' digit [ digit ] 
 ```
 
+Where
+
+- the `timestamp_format` given above is not the timestamp literal but is used to match text literals when converting them to `TIMESTAMP` type.
+
 ## Semantics
-<li>Implicitly, value of type datetime type are neither convertible nor comparable to other datatypes.</li>
-<li>Value of integer and text datatypes with correct format are convertible to datetime types.</li>
+- Implicitly, value of type datetime type are neither convertible nor comparable to other datatypes.
+- Values of integer and text datatypes with correct format (given above) are convertible to datetime types.
+- Supported timestamp range is from year `1900` to year `9999`.
+- If not specified, the default value for hour, minute, second, and millisecond components is `0`.
+- If not specified, the default timezone is UTC.
 
 ## Examples
 
+### Using the timestamp type
 ``` sql
 cqlsh:example> CREATE TABLE sensor_data(sensor_id INT, ts TIMESTAMP, value FLOAT, PRIMARY KEY(sensor_id, ts));
 cqlsh:example> -- Timestamp values can be given using date-time literals
@@ -46,7 +49,7 @@ cqlsh:example> SELECT * FROM sensor_data;
          1 | 2017-07-04 12:31:00.000000+0000 |  13.5
 ```
 
-- Samples of supported timestamp literals are shown below:
+### Supported timestamp literals
 
 ```
 '1992-06-04 12:30'

@@ -27,7 +27,7 @@ from followers perform the read operation on only 1 node (and not 3).*
 
 ### Read-modify-write operations
 In Apache Cassandra, simple read-modify-write operations such as “increment”, conditional updates,
-“INSERT …  IF NOT EXISTS” or “UPDATE ... IF  exists” use a scheme known as light-weight transactions
+“INSERT …  IF NOT EXISTS” or “UPDATE ... IF EXISTS” use a scheme known as light-weight transactions
 [which incurs a 4-round-trip
 cost](https://teddyma.gitbooks.io/learncassandra/content/concurrent/concurrency_control.html) between replicas. With YugaByte these operations only involve
 1-round trip between the quorum members.

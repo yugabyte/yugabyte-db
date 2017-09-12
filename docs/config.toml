@@ -161,21 +161,20 @@ googleAnalytics = "UA-104956980-1"
 #	weight = 120
 #	identifier = "API"
 #	url    = "api/cql/"
-
+#
 #[[menu.main]]
 #	name = "Apache Cassandra"
 #	weight = 130
 #	identifier = "api-cql"
 #	parent = "API"
 #	url = "api/cql/"
-
+#
 #[[menu.main]]
 #	name = "Redis"
 #	weight = 140
 #	identifier = "api-redis"
 #	parent = "API"
 #	url = "api/redis/"
-
 
 [blackfriday]
 	smartypants	= true

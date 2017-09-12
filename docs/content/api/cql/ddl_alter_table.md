@@ -3,42 +3,41 @@ title: ALTER TABLE
 summary: Change the schema of a table. 
 ---
 
-<style>
-table {
-  float: left;
-}
-#psyn {
-  text-indent: 50px;
-}
-#ptodo {
-  color: red
-}
-</style>
-
 ## Synopsis
-`ALTER TABLE` command is to change the schema or definition of an existing table.
+The `ALTER TABLE` statement is used to change the schema or definition of an existing table.
+It allows adding, dropping, or renaming a column as well as updating a table property.
 
 ## Syntax
+
+### Diagram 
+<svg version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="676" height="140" viewbox="0 0 676 140"><defs><style type="text/css">.c{fill:none;stroke:#222222;}.j{fill:#000000;font-family:Verdana,Sans-serif;font-size:12px;}.l{fill:#90d9ff;stroke:#222222;}.r{fill:#d3f0ff;stroke:#222222;}</style></defs><path class="c" d="M0 37h5m58 0h10m58 0h10m91 0h30m-5 0q-5 0-5-5v-17q0-5 5-5h399q5 0 5 5v17q0 5-5 5m-394 0h20m46 0h10m106 0h10m98 0h99m-379 25q0 5 5 5h5m53 0h10m106 0h185q5 0 5-5m-369 30q0 5 5 5h5m71 0h10m106 0h10m36 0h10m106 0h5q5 0 5-5m-374-55q5 0 5 5v80q0 5 5 5h5m53 0h10m112 0h10m30 0h10m111 0h18q5 0 5-5v-80q0-5 5-5m5 0h25"/><rect class="l" x="5" y="20" width="58" height="25" rx="7"/><text class="j" x="15" y="37">ALTER</text><rect class="l" x="73" y="20" width="58" height="25" rx="7"/><text class="j" x="83" y="37">TABLE</text><a xlink:href="#table_name"><rect class="r" x="141" y="20" width="91" height="25"/><text class="j" x="151" y="37">table_name</text></a><rect class="l" x="282" y="20" width="46" height="25" rx="7"/><text class="j" x="292" y="37">ADD</text><a xlink:href="#column_name"><rect class="r" x="338" y="20" width="106" height="25"/><text class="j" x="348" y="37">column_name</text></a><a xlink:href="#column_type"><rect class="r" x="454" y="20" width="98" height="25"/><text class="j" x="464" y="37">column_type</text></a><rect class="l" x="282" y="50" width="53" height="25" rx="7"/><text class="j" x="292" y="67">DROP</text><a xlink:href="#column_name"><rect class="r" x="345" y="50" width="106" height="25"/><text class="j" x="355" y="67">column_name</text></a><rect class="l" x="282" y="80" width="71" height="25" rx="7"/><text class="j" x="292" y="97">RENAME</text><a xlink:href="#column_name"><rect class="r" x="363" y="80" width="106" height="25"/><text class="j" x="373" y="97">column_name</text></a><rect class="l" x="479" y="80" width="36" height="25" rx="7"/><text class="j" x="489" y="97">TO</text><a xlink:href="#column_name"><rect class="r" x="525" y="80" width="106" height="25"/><text class="j" x="535" y="97">column_name</text></a><rect class="l" x="282" y="110" width="53" height="25" rx="7"/><text class="j" x="292" y="127">WITH</text><a xlink:href="#property_name"><rect class="r" x="345" y="110" width="112" height="25"/><text class="j" x="355" y="127">property_name</text></a><rect class="l" x="467" y="110" width="30" height="25" rx="7"/><text class="j" x="477" y="127">=</text><a xlink:href="#property_literal"><rect class="r" x="507" y="110" width="111" height="25"/><text class="j" x="517" y="127">property_literal</text></a></svg>
+
+### Grammar 
 ```
 alter_table ::= ALTER TABLE table_name alter_operator [ alter_operator ...]
 
-alter_operator ::= { add_op | drop_op | rename_op | alter_property_op }
+alter_operator ::= add_op | drop_op | rename_op | alter_property_op
 
-add_op ::= ADD column_name column_type [ column_name column_type ...]
+add_op ::= ADD column_name column_type
 
-drop_op ::= DROP column_name [ column_name ...]
+drop_op ::= DROP column_name
 
-rename_op ::= RENAME column_name TO column_name [ column_name TO column_name ... ]
+rename_op ::= RENAME column_name TO column_name
 
-alter_property_op ::= WITH property_name = property_literal [ property_name = property_literal ... ]
+alter_property_op ::= WITH property_name '=' property_literal
 ```
+
+
 Where
-  <li>`table_name`, `column_name`, and `property_name` are identifiers.</li>
-  <li>`property_literal` be a literal of either boolean, text, or map datatype.</li>
+
+- `table_name`, `column_name`, and `property_name` are identifiers (`table_name` may be qualified with a keyspace name).
+- `property_literal` is a literal of either [boolean](../type_bool), [text](../type_text), or [map](../type_collection) datatype.
 
 ## Semantics
-<li>An error is raised if `table_name` does not exists in the associate keyspace.</li>
-<li>Columns that are part of `PRIMARY KEY` can be not be altered</li>
+- An error is raised if `table_name` does not exists in the associated keyspace.
+- Columns that are part of `PRIMARY KEY` cannot be be altered.
+- When adding a column its value for all existing rows in the table defaults to `null`.
+- After dropping a column all values currently stored for that column in the table are discarded (if any).
 
 ## Examples
 
@@ -88,6 +87,22 @@ CREATE TABLE example.employees (
 ) WITH CLUSTERING ORDER BY (name ASC);
 ```
 
+### Update a table property
+
+``` sql
+cqlsh:example> ALTER TABLE employees WITH default_time_to_live = 5;
+cqlsh:example> DESCRIBE TABLE employees;
+
+CREATE TABLE example.employees (
+    id int,
+    name text,
+    job_title text,
+    PRIMARY KEY (id, name)
+) WITH CLUSTERING ORDER BY (name ASC)
+    AND default_time_to_live = 5;
+```
+
+
 ## See Also
 
 [`CREATE TABLE`](../ddl_create_table)
@@ -96,4 +111,4 @@ CREATE TABLE example.employees (
 [`INSERT`](../dml_insert)
 [`SELECT`](../dml_select)
 [`UPDATE`](../dml_update)
-[Other SQL Statements](..)
+[Other CQL Statements](..)

@@ -1,19 +1,8 @@
 ---
-title: INET
+title: INET Type
 summary: IP Address String.
 toc: false
 ---
-<style>
-table {
-  float: left;
-}
-#psyn {
-  text-indent: 50px;
-}
-#ptodo {
-  color: red
-}
-</style>
 
 ## Synopsis
 
@@ -21,12 +10,14 @@ table {
 
 ## Syntax
 ```
-type_specification ::= { INET }
+type_specification ::= INET
 ```
 
 ## Semantics
-<li>Implicitly, values of type `INET` datatypes are neither convertible nor comparable to other datatypes.</li>
-<li>Value of text datatypes with correct format are convertible to `INET`.</li>
+
+- Implicitly, values of type `INET` datatypes are neither convertible nor comparable to other datatypes.
+- Values of text datatypes with correct format are convertible to `INET`.
+- `INET` value format supports text literals for both IPv4 and IPv6 addresses.
 
 ## Examples
 ``` sql

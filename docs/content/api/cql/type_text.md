@@ -1,33 +1,27 @@
 ---
-title: TEXT
+title: TEXT Type
 summary: String of Unicode characters.
 toc: false
 ---
-<style>
-table {
-  float: left;
-}
-#psyn {
-  text-indent: 50px;
-}
-#ptodo {
-  color: red
-}
-</style>
 
 ## Synopsis
 `TEXT` datatype is used to specify data of a string of unicode characters.
 
 ## Syntax
 ```
-type_specification ::= { TEXT | VARCHAR }
+type_specification ::= TEXT | VARCHAR
+
+text_literal ::= "'" [ letter ...] "'"
 ```
 
-`TEXT` and `VARCHAR` are aliases.
+Where 
+
+- `TEXT` and `VARCHAR` are aliases.
+- `letter` is any character except for single quote (`[^']`)
 
 ## Semantics
-<li>Implicitly, value of type `TEXT` datatype are neither convertible nor comparable to non-text datatypes.</li>
-<li>The length of `TEXT` string is virtually unlimited.</li>
+- Implicitly, value of type `TEXT` datatype are neither convertible nor comparable to non-text datatypes.
+- The length of `TEXT` string is virtually unlimited.
 
 ## Examples
 
@@ -37,9 +31,7 @@ cqlsh:example> INSERT INTO users(user_name, full_name) VALUES ('jane', 'Jane Doe
 cqlsh:example> INSERT INTO users(user_name, full_name) VALUES ('john', 'John Doe');
 cqlsh:example> UPDATE users set full_name = 'Jane Poe' WHERE user_name = 'jane';
 cqlsh:example> SELECT * FROM users;
-```
 
-```
  user_name | full_name
 -----------+-----------
       jane |  Jane Poe

@@ -2,50 +2,101 @@
 title: INSERT
 summary: Add a new row to a table.
 ---
-<style>
-table {
-  float: left;
-}
-#ptodo {
-  color: red
-}
-</style>
 
 ## Synopsis
-`INSERT` adds a row to a specified table. Currently, YugaByte can only insert one row at a time. Inserting multiple rows is not yet supported. For example, the following insert command adds a new row to the table `yugatab` with the given values.
 
-`INSERT INTO yugatab(id, name) VALUES(7, 'Joe');`
+The `INSERT` statement adds a row to a specified table. Currently, YugaByte can only insert one row at a time. Inserting multiple rows is not yet supported.
 
 ## Syntax
+### Diagram
+<svg version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="670" height="160" viewbox="0 0 670 160"><defs><style type="text/css">.c{fill:none;stroke:#222222;}.j{fill:#000000;font-family:Verdana,Sans-serif;font-size:12px;}.l{fill:#90d9ff;stroke:#222222;}.r{fill:#d3f0ff;stroke:#222222;}</style></defs><path class="c" d="M0 52h5m65 0h10m50 0h10m91 0h10m25 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h25m24 0h25q5 0 5 5v20q0 5-5 5m-5 0h30m25 0h10m68 0h10m25 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h19m24 0h19q5 0 5 5v20q0 5-5 5m-5 0h30m25 0h5m-670 35h25m32 0h50m45 0h20m-80 0q5 0 5 5v8q0 5 5 5h55q5 0 5-5v-8q0-5 5-5m5 0h10m64 0h20m-194 0q5 0 5 5v35q0 5 5 5h5m98 0h66q5 0 5-5v-35q0-5 5-5m5 0h20m-276 0q5 0 5 5v53q0 5 5 5h251q5 0 5-5v-53q0-5 5-5m5 0h30m60 0h10m41 0h10m104 0h20m-260 0q5 0 5 5v8q0 5 5 5h235q5 0 5-5v-8q0-5 5-5m5 0h5"/><rect class="l" x="5" y="35" width="65" height="25" rx="7"/><text class="j" x="15" y="52">INSERT</text><rect class="l" x="80" y="35" width="50" height="25" rx="7"/><text class="j" x="90" y="52">INTO</text><a xlink:href="#table_name"><rect class="r" x="140" y="35" width="91" height="25"/><text class="j" x="150" y="52">table_name</text></a><rect class="l" x="241" y="35" width="25" height="25" rx="7"/><text class="j" x="251" y="52">(</text><rect class="l" x="316" y="5" width="24" height="25" rx="7"/><text class="j" x="326" y="22">,</text><a xlink:href="#column"><rect class="r" x="296" y="35" width="64" height="25"/><text class="j" x="306" y="52">column</text></a><rect class="l" x="390" y="35" width="25" height="25" rx="7"/><text class="j" x="400" y="52">)</text><rect class="l" x="425" y="35" width="68" height="25" rx="7"/><text class="j" x="435" y="52">VALUES</text><rect class="l" x="503" y="35" width="25" height="25" rx="7"/><text class="j" x="513" y="52">(</text><rect class="l" x="572" y="5" width="24" height="25" rx="7"/><text class="j" x="582" y="22">,</text><a xlink:href="#value"><rect class="r" x="558" y="35" width="52" height="25"/><text class="j" x="568" y="52">value</text></a><rect class="l" x="640" y="35" width="25" height="25" rx="7"/><text class="j" x="650" y="52">)</text><rect class="l" x="25" y="70" width="32" height="25" rx="7"/><text class="j" x="35" y="87">IF</text><rect class="l" x="107" y="70" width="45" height="25" rx="7"/><text class="j" x="117" y="87">NOT</text><rect class="l" x="182" y="70" width="64" height="25" rx="7"/><text class="j" x="192" y="87">EXISTS</text><a xlink:href="#if_expression"><rect class="r" x="87" y="115" width="98" height="25"/><text class="j" x="97" y="132">if_expression</text></a><rect class="l" x="316" y="70" width="60" height="25" rx="7"/><text class="j" x="326" y="87">USING</text><rect class="l" x="386" y="70" width="41" height="25" rx="7"/><text class="j" x="396" y="87">TTL</text><a xlink:href="#ttl_expression"><rect class="r" x="437" y="70" width="104" height="25"/><text class="j" x="447" y="87">ttl_expression</text></a></svg>
+
+### Grammar
+
 ```
-insert ::= INSERT INTO table_name '(' column [, column ... ] ')'
-               VALUES '(' value [, value ... ] ')'
+insert ::= INSERT INTO table_name '(' column [ ',' column ... ] ')'
+               VALUES '(' value [ ',' value ... ] ')'
                [ IF { [ NOT ] EXISTS | if_expression } ]
                [ USING TTL ttl_expression ];
 ```
 
-where<br>
-  <li>`table_name` and `column` is an identifier.</li>
-  <li>`value` can be any expression although Apache Cassandra restricts that `value` must be literals.</li>
-  <li>See [Expression](..#expressions) for more information on syntax rules.</li>
-  <li>See Semantics Section for restrictions of `ttl_expression`, `where_expression`, and `if_expression`.</li>
+Where
+
+- `table_name` and `column` are identifiers (`table_name` may be qualified with a keyspace name).
+- `value` can be any expression although Apache Cassandra requires that `value`s must be literals.
+- Restrictions for `if_expression` and `ttl_expression` are covered in the Semantics section below.
+- See [Expression](..#expressions) for more information on syntax rules.
 
 ## Semantics
-<li>An error is raised if the specified `table_name` does not exist.</li>
-<li>The `if_expression` can only apply to non-key columns (regular columns).</li>
-<li>The `if_expression` can contain any logical and boolean operators.</li>
+ - An error is raised if the specified `table_name` does not exist. 
+ - The columns list must include all primary key columns.
+
+### `VALUES` Clause
+ - The values list must have the same length as the columns list.
+ - Each value must be convertible to its corresponding (by position) column type.
+ - Each value literal can be an expression that evaluates to a simple value.
+
+### `IF` Clause
+ - The `if_expression` can only apply to non-key columns (regular columns).
+ - The `if_expression` can contain any logical and boolean operators.
+
+### `USING` Clause
+ - `ttl_expression` must be an integer value (or a bind variable marker for prepared statements).
 
 ## Examples
 
+### Insert a row into a table
 ``` sql
 cqlsh:example> CREATE TABLE employees(department_id INT, 
                                       employee_id INT, 
                                       name TEXT, 
                                       PRIMARY KEY(department_id, employee_id));
-cqlsh:example> INSERT INTO employees(department_id, employee_id, name) values (1, 1, 'John');
-cqlsh:example> INSERT INTO employees(department_id, employee_id, name) values (1, 2, 'Jane');
-cqlsh:example> INSERT INTO employees(department_id, employee_id, name) values (2, 1, 'Joe');
+cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 1, 'John');
+cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 2, 'Jane');
 cqlsh:example> SELECT * FROM employees;
+
+ department_id | employee_id | name
+---------------+-------------+------
+             2 |           1 |  Joe
+             1 |           1 | John
+```
+
+### Conditional insert using the `IF` clause
+
+``` sql
+cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Joe') IF name = null;
+
+ [applied]
+-----------
+      True
+cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Jack') IF NOT EXISTS;
+
+ [applied]
+-----------
+     False
+cqlsh:example> SELECT * FROM employees;
+
+ department_id | employee_id | name
+---------------+-------------+------
+             2 |           1 |  Joe
+             1 |           1 | John
+             1 |           2 | Jane
+```
+
+### Insert a row with expiration time using the `USING TTL` clause
+
+``` sql
+cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 2, 'Jack') USING TTL 10;
+cqlsh:example> SELECT * FROM employees;
+
+ department_id | employee_id | name
+---------------+-------------+------
+             2 |           1 |  Joe
+             2 |           2 | Jack
+             1 |           1 | John
+             1 |           2 | Jane
+
+cqlsh:example> SELECT * FROM employees; -- 11 seconds after the insert. 
 
  department_id | employee_id | name
 ---------------+-------------+------
@@ -61,4 +112,4 @@ cqlsh:example> SELECT * FROM employees;
 [`SELECT`](../dml_select)
 [`UPDATE`](../dml_update)
 [`Expression`](..#expressions)
-[Other SQL Statements](..)
+[Other CQL Statements](..)

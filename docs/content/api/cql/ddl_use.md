@@ -2,41 +2,34 @@
 title: USE
 summary: Create a new database. 
 ---
-<style>
-table {
-  float: left;
-}
-#psyn {
-  text-indent: 50px;
-}
-#ptodo {
-  color: red
-}
-</style>
 
 ## Synopsis
-`USE` keyspace command is to specify the default keyspace for the current client session. When a database object name does not identify a keyspace, this default keyspace is used. For example, the following command identifies "yugaspace" as the default keyspace.
-<p id=psyn>`USE yugaspace;`</p>
+The `USE` keyspace statement is to specify a default keyspace for the current client session. When a database object (such as [table](../ddl_create_table) or [type](../ddl_create_type)) name does not identify a keyspace, this default keyspace is used.
 
 ## Syntax
+
+### Diagram
+<svg version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="181" height="35" viewbox="0 0 181 35"><defs><style type="text/css">.c{fill:none;stroke:#222222;}.j{fill:#000000;font-family:Verdana,Sans-serif;font-size:12px;}.l{fill:#90d9ff;stroke:#222222;}.r{fill:#d3f0ff;stroke:#222222;}</style></defs><path class="c" d="M0 22h5m45 0h10m116 0h5"/><rect class="l" x="5" y="5" width="45" height="25" rx="7"/><text class="j" x="15" y="22">USE</text><a xlink:href="#keyspace_name"><rect class="r" x="60" y="5" width="116" height="25"/><text class="j" x="70" y="22">keyspace_name</text></a></svg>
+
+### Grammar
 ```
 use_keyspace ::= USE keyspace_name;
 ```
 Where
-  <li>`keyspace_name` must be an identifier that cannot be any reserved keyword and cannot contains whitespaces, or it has to be double-quoted.</li>
+
+- `keyspace_name` must be an identifier that cannot be any reserved keyword and cannot contains whitespaces, or it has to be double-quoted.
 
 ## Semantics
 
-<li>If the specified keyspace does not exists, an error is raised.</li>
+- If the specified keyspace does not exist, an error is raised.
+- Any unqualified table or type name will use the current default keyspace (or raise an error if no keyspace is set).
 
 ## Examples
 ### Create and use keyspaces
 
 ``` sql
 cqlsh> CREATE KEYSPACE example;
-
 cqlsh> CREATE KEYSPACE other_keyspace;
-
 cqlsh> USE example;
 ```
 
@@ -45,6 +38,11 @@ cqlsh> USE example;
 ``` sql
 cqlsh:example> CREATE TABLE test(id INT PRIMARY KEY);
 cqlsh:example> INSERT INTO test(id) VALUES (1);
+cqlsh:example> SELECT * FROM test;
+
+ id
+----
+  1
 ```
 
 ### Create a table in another keyspace
@@ -52,21 +50,12 @@ cqlsh:example> INSERT INTO test(id) VALUES (1);
 ``` sql
 cqlsh:example> CREATE TABLE other_keyspace.test(id INT PRIMARY KEY);
 cqlsh:example> INSERT INTO other_keyspace.test(id) VALUES (2);
-```
-
-``` sql
-cqlsh:example> SELECT * FROM test;
- id
-----
-  1
-
 cqlsh:example> SELECT * FROM other_keyspace.test;
+
  id
 ----
   2
 ```
-
-</li>
 
 ## See Also
 [`CREATE KEYSPACE`](../ddl_create_keyspace)
