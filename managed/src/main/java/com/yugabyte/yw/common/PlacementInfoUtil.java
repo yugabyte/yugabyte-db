@@ -551,18 +551,30 @@ public class PlacementInfoUtil {
   // Create the ordered (by increasing node count per AZ) list of placement indices in the
   // given placement info.
   private static LinkedHashSet<PlacementIndexes> findPlacementsOfAZUuid(Map<UUID, Integer> azUuids,
-       PlacementInfo placementInfo) {
+                                                                        UniverseDefinitionTaskParams taskParams) {
     LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<PlacementIndexes>();
+    CloudType cloudType = taskParams.userIntent.providerType;
+    String instanceType = taskParams.userIntent.instanceType;
     for (UUID targetAZUuid : azUuids.keySet()) {
       int cIdx = 0;
-      for (PlacementCloud cloud : placementInfo.cloudList) {
+      for (PlacementCloud cloud : taskParams.placementInfo.cloudList) {
         int rIdx = 0;
         for (PlacementRegion region : cloud.regionList) {
           int aIdx = 0;
           for (PlacementAZ az : region.azList) {
             if (az.uuid.equals(targetAZUuid)) {
-              placements.add(new PlacementIndexes(aIdx, rIdx, cIdx));
-              continue;
+              UUID zoneUUID = region.azList.get(aIdx).uuid;
+              if (cloudType.equals(CloudType.onprem)){
+                List<NodeInstance> nodesInAZ = NodeInstance.listByZone(zoneUUID, instanceType);
+                int numNodesConfigured = getNumNodesInAZInPlacement(placements, new PlacementIndexes(aIdx, rIdx, cIdx, true));
+                if (numNodesConfigured < nodesInAZ.size()) {
+                  placements.add(new PlacementIndexes(aIdx, rIdx, cIdx));
+                  continue;
+                }
+              } else {
+                placements.add(new PlacementIndexes(aIdx, rIdx, cIdx));
+                continue;
+              }
             }
             aIdx++;
           }
@@ -575,19 +587,39 @@ public class PlacementInfoUtil {
     return placements;
   }
 
+  // Helper function to compare a given index combo against list of placement indexes of current placement
+  // to get number of nodes in current index
+  private static int getNumNodesInAZInPlacement(LinkedHashSet<PlacementIndexes> indexes, PlacementIndexes index) {
+    return (int) indexes.stream().filter(currentIndex -> (currentIndex.cloudIdx == index.cloudIdx
+      && currentIndex.azIdx == index.azIdx && currentIndex.regionIdx == index.regionIdx)).count();
+  }
+
   private static LinkedHashSet<PlacementIndexes> getBasePlacement(int numNodes,
-                                                                  PlacementInfo placementInfo) {
+                                                                  UniverseDefinitionTaskParams taskParams) {
     LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<PlacementIndexes>();
+    CloudType cloudType = taskParams.userIntent.providerType;
+    String instanceType = taskParams.userIntent.instanceType;
     int count = 0;
     while (count < numNodes) {
       int cIdx = 0;
-      for (PlacementCloud cloud : placementInfo.cloudList) {
+      for (PlacementCloud cloud : taskParams.placementInfo.cloudList) {
         int rIdx = 0;
         for (PlacementRegion region : cloud.regionList) {
           for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
-            placements.add(new PlacementIndexes(azIdx, rIdx, cIdx, true /* isAdd */));
-            LOG.info("Adding {}/{}/{} @ {}.", azIdx, rIdx, cIdx, count);
-            count++;
+            UUID zoneUUID = region.azList.get(azIdx).uuid;
+            if (cloudType.equals(CloudType.onprem)){
+              List<NodeInstance> nodesInAZ = NodeInstance.listByZone(zoneUUID, instanceType);
+              int numNodesConfigured = getNumNodesInAZInPlacement(placements, new PlacementIndexes(azIdx, rIdx, cIdx, true));
+              if (numNodesConfigured < nodesInAZ.size() && count < numNodes) {
+                placements.add(new PlacementIndexes(azIdx, rIdx, cIdx, true /* isAdd */));
+                LOG.info("Adding {}/{}/{} @ {}.", azIdx, rIdx, cIdx, count);
+                count++;
+              }
+            } else {
+              placements.add(new PlacementIndexes(azIdx, rIdx, cIdx, true /* isAdd */));
+              LOG.info("Adding {}/{}/{} @ {}.", azIdx, rIdx, cIdx, count);
+              count++;
+            }
           }
           rIdx++;
         }
@@ -764,7 +796,7 @@ public class PlacementInfoUtil {
       }
     } else {
       LinkedHashSet<PlacementIndexes> indexes =
-          findPlacementsOfAZUuid(sortByValues(azUuidToNumNodes, true), taskParams.placementInfo);
+          findPlacementsOfAZUuid(sortByValues(azUuidToNumNodes, true), taskParams);
       int startIndex = getNextIndexToConfigure(taskParams.nodeDetailsSet);
       addNodeDetailSetToTaskParams(indexes, startIndex, numDeltaNodes, taskParams, deltaNodesMap);
     }
@@ -776,7 +808,7 @@ public class PlacementInfoUtil {
     int numNodes = taskParams.userIntent.numNodes;
     int numMastersToChoose =  taskParams.userIntent.replicationFactor;
     Map<String, NodeDetails> deltaNodesMap = new HashMap<String, NodeDetails>();
-    LinkedHashSet<PlacementIndexes> indexes = getBasePlacement(numNodes, taskParams.placementInfo);
+    LinkedHashSet<PlacementIndexes> indexes = getBasePlacement(numNodes, taskParams);
     addNodeDetailSetToTaskParams(indexes, startIndex, numNodes, taskParams, deltaNodesMap);
 
     if (universe != null) {

@@ -9,11 +9,7 @@ import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
@@ -31,7 +27,9 @@ import java.util.*;
 
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -48,14 +46,8 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
 
+import org.w3c.dom.Node;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
@@ -645,6 +637,100 @@ public class UniverseControllerTest extends WithApplication {
     assertEquals(nodeDetailJson.size(), totalNumNodesAfterExpand);
     assertTrue(areConfigObjectsEqual(nodeDetailJson, azUuidToNumNodes));
   }
+
+  @Test
+  public void testConfigureCreateOnPrem() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskType.class),
+      Matchers.any(UniverseDefinitionTaskParams.class)))
+      .thenReturn(fakeTaskUUID);
+    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+    Provider p = ModelFactory.newProvider(customer, CloudType.onprem);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
+    InstanceType i =
+      InstanceType.upsert(p.code, "type.small", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    NodeInstanceFormData.NodeInstanceData node1 = new NodeInstanceFormData.NodeInstanceData();
+    NodeInstanceFormData.NodeInstanceData node2 = new NodeInstanceFormData.NodeInstanceData();
+    NodeInstanceFormData.NodeInstanceData node3 = new NodeInstanceFormData.NodeInstanceData();
+    node1.ip = "1.2.3.4";
+    node1.instanceType = i.getInstanceTypeCode();
+    node1.sshUser = "centos";
+    node1.region = r.code;
+    node1.zone = az1.code;
+    node2 = node1;
+    node3 = node1;
+    node1.ip = "2.3.4.5";
+    node2.zone = az1.code;
+    node3.ip = "3.4.5.6";
+    node3.zone = az1.code;
+    NodeInstance.create(az1.uuid, node1);
+    NodeInstance.create(az1.uuid, node2);
+    NodeInstance.create(az1.uuid, node3);
+    UniverseDefinitionTaskParams utd = new UniverseDefinitionTaskParams();
+    utd.userIntent = getTestUserIntent(r, p, i, 3);
+    utd.userIntent.providerType = CloudType.onprem;
+    PlacementInfoUtil.updateUniverseDefinition(utd, customer.getCustomerId());
+    ArrayList<UUID> nodeList = new ArrayList<>();
+    utd.nodeDetailsSet.stream().forEach(nodeDetail -> nodeList.add(nodeDetail.azUuid));
+    assertTrue(nodeList.contains(az1.uuid));
+    assertFalse(nodeList.contains(az2.uuid));
+    assertFalse(nodeList.contains(az3.uuid));
+  }
+
+  @Test
+  public void testConfigureEditOnPrem() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskType.class),
+      Matchers.any(UniverseDefinitionTaskParams.class)))
+      .thenReturn(fakeTaskUUID);
+    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+    Provider p = ModelFactory.newProvider(customer, CloudType.onprem);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
+    InstanceType i =
+      InstanceType.upsert(p.code, "type.small", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    NodeInstanceFormData.NodeInstanceData node1 = new NodeInstanceFormData.NodeInstanceData();
+
+    node1.ip = "1.2.3.4";
+    node1.instanceType = i.getInstanceTypeCode();
+    node1.sshUser = "centos";
+    node1.region = r.code;
+    node1.zone = az1.code;
+    NodeInstanceFormData.NodeInstanceData node2 = node1;
+    NodeInstanceFormData.NodeInstanceData node3 = node1;
+    NodeInstanceFormData.NodeInstanceData node4 = node1;
+    node1.ip = "2.3.4.5";
+    node2.zone = az1.code;
+    node3.ip = "3.4.5.6";
+    node3.zone = az1.code;
+    node4.ip = "9.6.5.4";
+    node4.zone = az1.code;
+    NodeInstance.create(az1.uuid, node1);
+    NodeInstance.create(az1.uuid, node2);
+    NodeInstance.create(az1.uuid, node3);
+    NodeInstance.create(az1.uuid, node4);
+    UniverseDefinitionTaskParams utd = new UniverseDefinitionTaskParams();
+    utd.userIntent = getTestUserIntent(r, p, i, 3);
+    utd.userIntent.providerType = CloudType.onprem;
+    PlacementInfoUtil.updateUniverseDefinition(utd, customer.getCustomerId());
+    universe.setUniverseDetails(utd);
+    universe.save();
+    UniverseDefinitionTaskParams editTestUTD = universe.getUniverseDetails();
+    editTestUTD.userIntent.numNodes = 4;
+
+    PlacementInfoUtil.updateUniverseDefinition(editTestUTD, customer.getCustomerId());
+    ArrayList<UUID> nodeList = new ArrayList<>();
+    editTestUTD.nodeDetailsSet.stream().forEach(nodeDetail -> nodeList.add(nodeDetail.azUuid));
+    assertTrue(nodeList.contains(az1.uuid));
+    assertFalse(nodeList.contains(az2.uuid));
+    assertFalse(nodeList.contains(az3.uuid));
+  }
+
 
   private PlacementInfo constructPlacementInfoObject(Map<UUID, Integer> azToNumNodesMap) {
     PlacementInfo placementInfo = new PlacementInfo();
