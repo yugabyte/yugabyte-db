@@ -14,6 +14,7 @@ package org.yb.cql;
 
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Test;
 
 import java.net.InetAddress;
@@ -40,28 +41,45 @@ public class TestInsert extends BaseCQLTest {
   }
 
   @Test
-  public void testInsertWithTimestamp() throws Exception {
-    String tableName = "test_insert_with_timestamp";
-    createTable(tableName, "timestamp");
-    // this includes both string and int inputs
-    Map<String, Date> ts_values = generateTimestampMap();
-    for (String key : ts_values.keySet()) {
-      Date date_value = ts_values.get(key);
-      String ins_stmt = String.format(
-              "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, %s, %d, %s, %d, %s);",
-              tableName, 1, key, 2, key, 3, key);
-      session.execute(ins_stmt);
-      String sel_stmt = String.format("SELECT h1, h2, r1, r2, v1, v2 FROM %s"
-              + " WHERE h1 = 1 AND h2 = %s;", tableName, key);
-      Row row = runSelect(sel_stmt).next();
-      assertEquals(1, row.getInt(0));
-      assertEquals(2, row.getInt(2));
-      assertEquals(3, row.getInt(4));
-      assertEquals(date_value, row.getTimestamp(1));
-      assertEquals(date_value, row.getTimestamp(3));
-      assertEquals(date_value, row.getTimestamp(5));
-    }
+  public void testLargeInsert() throws Exception {
+    final int STRING_SIZE = 4 * 1024 * 1024;
+    String tableName = "test_large_insert";
+    String create_stmt = String.format(
+        "CREATE TABLE %s (h int PRIMARY KEY, c varchar);", tableName);
+    session.execute(create_stmt);
+    String ins_stmt = "INSERT INTO test_large_insert (h, c) VALUES (1, ?);";
+    String value = RandomStringUtils.randomAscii(STRING_SIZE);
+    session.execute(ins_stmt, value);
+    String sel_stmt = String.format("SELECT h, c FROM %s"
+        + " WHERE h = 1 ;", tableName);
+    Row row = runSelect(sel_stmt).next();
+    assertEquals(1, row.getInt(0));
+    assertEquals(value, row.getString(1));
   }
+
+  @Test
+    public void testInsertWithTimestamp() throws Exception {
+      String tableName = "test_insert_with_timestamp";
+      createTable(tableName, "timestamp");
+      // this includes both string and int inputs
+      Map<String, Date> ts_values = generateTimestampMap();
+      for (String key : ts_values.keySet()) {
+        Date date_value = ts_values.get(key);
+        String ins_stmt = String.format(
+                "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, %s, %d, %s, %d, %s);",
+                tableName, 1, key, 2, key, 3, key);
+        session.execute(ins_stmt);
+        String sel_stmt = String.format("SELECT h1, h2, r1, r2, v1, v2 FROM %s"
+                + " WHERE h1 = 1 AND h2 = %s;", tableName, key);
+        Row row = runSelect(sel_stmt).next();
+        assertEquals(1, row.getInt(0));
+        assertEquals(2, row.getInt(2));
+        assertEquals(3, row.getInt(4));
+        assertEquals(date_value, row.getTimestamp(1));
+        assertEquals(date_value, row.getTimestamp(3));
+        assertEquals(date_value, row.getTimestamp(5));
+      }
+    }
 
   private void runInvalidInsertWithTimestamp(String tableName, String ts) {
     String insert_stmt = String.format(

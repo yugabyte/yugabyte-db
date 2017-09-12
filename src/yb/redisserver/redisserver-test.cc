@@ -363,6 +363,19 @@ TEST_F(TestRedisService, SimpleCommandInline) {
   SendCommandAndExpectResponse(__LINE__, "set foo bar\r\n", "+OK\r\n");
 }
 
+TEST_F(TestRedisService, HugeCommandInline) {
+  const int kStringRepeats = 1024 * 1024;
+  string value = "";
+  for (int i = 0; i < kStringRepeats; i++) {
+    value += "Test";
+  }
+  DoRedisTestOk(__LINE__, {"SET", "foo", value});
+  DoRedisTestBulkString(__LINE__, {"GET", "foo"}, value);
+  LOG(INFO) << yb::Format("I finished get $0", 1);
+  SyncClient();
+  VerifyCallbacks();
+}
+
 TEST_F(TestRedisService, SimpleCommandMulti) {
   SendCommandAndExpectResponse(
       __LINE__, "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
