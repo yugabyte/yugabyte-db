@@ -1013,7 +1013,8 @@ public class PlacementInfoUtil {
     if (regionList.size() > 1) {
       return true;
     }
-    if (Region.get(regionList.get(0)).zones.size() > 1) {
+    if (Region.get(regionList.get(0)).zones != null &&
+        Region.get(regionList.get(0)).zones.size() > 1) {
       return true;
     }
     return false;
