@@ -29,6 +29,9 @@
 
 #include "yb/client/transaction_rpc.h"
 
+#include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/key_bytes.h"
+
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/monotime.h"
@@ -192,11 +195,11 @@ class TransactionParticipant::Impl {
       }
     }
     if (store) {
-      // TODO(dtxn) Correct key
       // TODO(dtxn) Load value if it is not loaded.
-      auto key = '!' + data.transaction_id() + "!!";
+      docdb::KeyBytes key;
+      AppendTransactionKeyPrefix(*id, &key);
       auto value = data.SerializeAsString();
-      write_batch->Put(key, value);
+      write_batch->Put(key.data(), value);
     }
   }
 
@@ -204,6 +207,29 @@ class TransactionParticipant::Impl {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = transactions_.find(id);
     return it != transactions_.end() && it->committed_locally();
+  }
+
+  yb::IsolationLevel IsolationLevel(rocksdb::DB* db, const TransactionId& id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = transactions_.find(id);
+    if (it == transactions_.end()) {
+      docdb::KeyBytes key;
+      AppendTransactionKeyPrefix(id, &key);
+      auto iter = docdb::CreateRocksDBIterator(db,
+                                               docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
+                                               rocksdb::kDefaultQueryId);
+      iter->Seek(key.data());
+      if (iter->Valid() && iter->key() == key.data()) {
+        TransactionMetadataPB metadata;
+        if (metadata.ParseFromArray(iter->value().cdata(), iter->value().size())) {
+          it = transactions_.emplace(id, metadata).first;
+        } else {
+          LOG(DFATAL) << "Unable to parse stored metadata: " << iter->value().ToDebugHexString();
+        }
+      }
+    }
+    return it != transactions_.end() ? it->metadata().isolation()
+                                     : yb::IsolationLevel::NON_TRANSACTIONAL;
   }
 
   void RequestStatusAt(const TransactionId& id,
@@ -288,6 +314,10 @@ void TransactionParticipant::Add(const TransactionMetadataPB& data,
   impl_->Add(data, write_batch);
 }
 
+IsolationLevel TransactionParticipant::IsolationLevel(rocksdb::DB* db, const TransactionId& id) {
+  return impl_->IsolationLevel(db, id);
+}
+
 bool TransactionParticipant::CommittedLocally(const TransactionId& id) {
   return impl_->CommittedLocally(id);
 }
@@ -300,6 +330,12 @@ void TransactionParticipant::RequestStatusAt(const TransactionId& id,
 
 CHECKED_STATUS TransactionParticipant::ProcessApply(const TransactionApplyData& data) {
   return impl_->ProcessApply(data);
+}
+
+void AppendTransactionKeyPrefix(const TransactionId& transaction_id, docdb::KeyBytes* out) {
+  out->AppendValueType(docdb::ValueType::kIntentPrefix);
+  out->AppendValueType(docdb::ValueType::kTransactionId);
+  out->AppendRawBytes(Slice(transaction_id.data, transaction_id.size()));
 }
 
 } // namespace tablet

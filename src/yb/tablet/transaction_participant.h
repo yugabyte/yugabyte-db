@@ -32,6 +32,7 @@
 
 namespace rocksdb {
 
+class DB;
 class WriteBatch;
 
 }
@@ -40,6 +41,12 @@ namespace yb {
 
 class HybridTime;
 class TransactionMetadataPB;
+
+namespace docdb {
+
+class KeyBytes;
+
+}
 
 namespace tablet {
 
@@ -86,6 +93,8 @@ class TransactionParticipant {
   // Adds new running transaction.
   void Add(const TransactionMetadataPB& data, rocksdb::WriteBatch *write_batch);
 
+  yb::IsolationLevel IsolationLevel(rocksdb::DB* db, const TransactionId& id);
+
   bool CommittedLocally(const TransactionId& id);
 
   void RequestStatusAt(const TransactionId& id,
@@ -98,6 +107,8 @@ class TransactionParticipant {
   class Impl;
   std::unique_ptr<Impl> impl_;
 };
+
+void AppendTransactionKeyPrefix(const TransactionId& transaction_id, docdb::KeyBytes* out);
 
 } // namespace tablet
 } // namespace yb

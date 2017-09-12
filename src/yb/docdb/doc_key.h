@@ -81,6 +81,7 @@ class DocKey {
          const std::vector<PrimitiveValue>& range_components = std::vector<PrimitiveValue>());
 
   KeyBytes Encode() const;
+  void AppendTo(KeyBytes* out) const;
 
   // Resets the state to an empty document key.
   void Clear();
@@ -109,6 +110,8 @@ class DocKey {
   // Splits given RocksDB key into vector of slices that forms range_group of document key.
   static CHECKED_STATUS PartiallyDecode(rocksdb::Slice* slice,
                                         boost::container::small_vector_base<Slice>* out);
+
+  static Result<size_t> EncodedSize(Slice slice, DocKeyPart part);
 
   // Decode the current document key from the given slice, but expect all bytes to be consumed, and
   // return an error status if that is not the case.
@@ -300,6 +303,8 @@ class SubDocKey {
   //     hybrid_time.
   CHECKED_STATUS DecodeFrom(rocksdb::Slice* slice, bool require_hybrid_time = true);
 
+  static Result<bool> DecodeSubkey(Slice* slice, PrimitiveValue* out);
+
   // Similar to DecodeFrom, but requires that the entire slice is decoded, and thus takes a const
   // reference to a slice. This still respects the require_hybrid_time parameter, but in case a
   // hybrid_time is omitted, we don't allow any extra bytes to be present in the slice.
@@ -311,6 +316,8 @@ class SubDocKey {
   // hybrid_time.
   static CHECKED_STATUS PartiallyDecode(Slice* slice,
                                         boost::container::small_vector_base<Slice>* out);
+
+  static Result<bool> DecodeSubkey(Slice* slice);
 
   CHECKED_STATUS FullyDecodeFromKeyWithoutHybridTime(const rocksdb::Slice& slice) {
     return FullyDecodeFrom(slice, /* require_hybrid_time = */ false);
@@ -436,6 +443,9 @@ class SubDocKey {
  private:
   class DecodeCallback;
   friend class DecodeCallback;
+
+  template<class Callback>
+  static Result<bool> DecodeSubkey(Slice* slice, const Callback& callback);
 
   template<class Callback>
   static Status DoDecode(rocksdb::Slice* slice,

@@ -20,6 +20,8 @@
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/redis_protocol.pb.h"
+#include "yb/common/transaction.h"
+
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
@@ -67,8 +69,7 @@ const char kObjectValueType[] = { static_cast<char>(ValueType::kObject), 0 };
 // enough, does not perform a seek.
 void SeekPastSubKey(const SubDocKey& sub_doc_key, rocksdb::Iterator* iter) {
   KeyBytes key_bytes = sub_doc_key.Encode(/* include_hybrid_time */ false);
-  key_bytes.AppendValueType(ValueType::kHybridTime);
-  DocHybridTime::kMin.AppendEncodedInDocDbFormat(key_bytes.mutable_data());
+  AppendDocHybridTime(DocHybridTime::kMin, &key_bytes);
   SeekForward(key_bytes, iter);
 }
 
@@ -85,11 +86,11 @@ void PrepareDocWriteTransaction(const vector<unique_ptr<DocOperation>>& doc_writ
     for (const auto& doc_path : doc_paths) {
       KeyBytes current_prefix = doc_path.encoded_doc_key();
       for (int i = 0; i < doc_path.num_subkeys(); i++) {
-        string lock_string = current_prefix.AsStringRef(); // Copy the lock_key.
+        const string& lock_string = current_prefix.AsStringRef();
         keys_locked->emplace(lock_string, LockType::SI_WRITE_WEAK);
         doc_path.subkey(i).AppendToKey(&current_prefix);
       }
-      string lock_string = current_prefix.AsStringRef();
+      const string& lock_string = current_prefix.AsStringRef();
       (*keys_locked)[lock_string] = LockType::SI_WRITE_STRONG;
     }
     if (doc_op->RequireReadSnapshot()) {

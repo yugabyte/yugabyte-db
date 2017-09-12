@@ -75,7 +75,7 @@ class DeltaKey {
   // be used as a string key in indexing structures, etc.
   void EncodeTo(faststring *dst) const {
     EncodeRowId(dst, row_idx_);
-    hybrid_time_.EncodeTo(dst);
+    hybrid_time_.AppendAsUint64To(dst);
   }
 
 
@@ -145,4 +145,4 @@ inline int DeltaKey::CompareTo<UNDO>(const DeltaKey &other) const {
 } // namespace tablet
 } // namespace yb
 
-#endif
+#endif // YB_TABLET_DELTA_KEY_H

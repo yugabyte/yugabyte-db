@@ -369,8 +369,8 @@ TEST_F(DocDBTest, IntentEncodingTest) {
   SubDocKey subdoc_key(DocKey(PrimitiveValues("test_dockey")),
       PrimitiveValue("test_subdoc_key"), HybridTime(10));
   Intent intent(subdoc_key,
-      IntentType::kSnapshotParentWrite, uuid, Value(PrimitiveValue("test_intent_value")));
-  ASSERT_EQ("Intent(" + subdoc_key.ToString() + ", kSnapshotParentWrite, " + uuid.ToString()
+      IntentType::kWeakSnapshotWrite, uuid, Value(PrimitiveValue("test_intent_value")));
+  ASSERT_EQ("Intent(" + subdoc_key.ToString() + ", kWeakSnapshotWrite, " + uuid.ToString()
       + ", \"test_intent_value\")", intent.ToString());
   string encoded_intent_key = intent.EncodeKey();
   string encoded_intent_value = intent.EncodeValue();

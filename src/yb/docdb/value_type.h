@@ -33,6 +33,7 @@ enum class ValueType : char {
   // Note that intents also start with a ! character.
   // All intents are stored in the beginning of the keyspace to be able to read them without
   // polluting cache with other values. Later we'll put intents in a separate rocksdb.
+  kIntentPrefix = '"', // ASCII code 34
 
   // HybridTime must be lower than all other primitive types (other than kGroupEnd) so that
   // SubDocKeys that have fewer subkeys within a document sort above those that have all the same
@@ -84,9 +85,29 @@ enum class ValueType : char {
   kInvalidValueType = 127
 };
 
+constexpr int kWeakIntentFlag         = 0b000;
+constexpr int kStrongIntentFlag       = 0b001;
+
+constexpr int kReadIntentFlag         = 0b000;
+constexpr int kWriteIntentFlag        = 0b010;
+
+constexpr int kSerializableIntentFlag = 0b000;
+constexpr int kSnapshotIntentFlag     = 0b100;
+
 // The purpose of different types of intents is to ensure that they conflict
 // in appropriate ways according to the conflict matrix.
-YB_DEFINE_ENUM(IntentType, (kSnapshotWrite)(kSnapshotParentWrite)(kInvalidIntent));
+YB_DEFINE_ENUM(IntentType,
+    ((kStrongSnapshotWrite, kStrongIntentFlag | kWriteIntentFlag | kSnapshotIntentFlag))
+    ((kWeakSnapshotWrite, kWeakIntentFlag | kWriteIntentFlag | kSnapshotIntentFlag))
+    ((kStrongSerializableWrite, kStrongIntentFlag | kWriteIntentFlag | kSerializableIntentFlag))
+    ((kWeakSerializableWrite, kWeakIntentFlag | kWriteIntentFlag | kSerializableIntentFlag))
+    ((kStrongSerializableRead, kStrongIntentFlag | kReadIntentFlag | kSerializableIntentFlag))
+    ((kWeakSerializableRead, kWeakIntentFlag | kReadIntentFlag | kSerializableIntentFlag))
+    ((kInvalidIntent, 0xff)));
+
+inline bool StrongIntent(IntentType intent) {
+  return (static_cast<int>(intent) & kStrongIntentFlag) != 0;
+}
 
 // All primitive value types fall into this range, but not all value types in this range are
 // primitive (e.g. object and tombstone are not).

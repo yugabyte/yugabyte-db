@@ -279,9 +279,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       RowOp* row_op);
 
   // Apply a set of RocksDB row operations.
-  void ApplyKeyValueRowOperations(const docdb::KeyValueWriteBatchPB& put_batch,
+  void ApplyKeyValueRowOperations(
+      const docdb::KeyValueWriteBatchPB& put_batch,
       const consensus::OpId& op_id,
-      HybridTime hybrid_time);
+      HybridTime hybrid_time,
+      rocksdb::WriteBatch* rocksdb_write_batch = nullptr);
 
   // Takes a Redis WriteRequestPB as input with its redis_write_batch.
   // Constructs a WriteRequestPB containing a serialized WriteBatch that will be
@@ -710,6 +712,16 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void RegisterReaderTimestamp(HybridTime read_point) override;
   void UnregisterReader(HybridTime read_point) override;
   HybridTime SafeTimestampToRead() const override;
+
+  void PrepareTransactionWriteBatch(
+      const docdb::KeyValueWriteBatchPB& put_batch,
+      HybridTime hybrid_time,
+      rocksdb::WriteBatch* rocksdb_write_batch);
+
+  void PrepareNonTransactionWriteBatch(
+      const docdb::KeyValueWriteBatchPB& put_batch,
+      HybridTime hybrid_time,
+      rocksdb::WriteBatch* rocksdb_write_batch);
 
   // Lock protecting schema_ and key_schema_.
   //

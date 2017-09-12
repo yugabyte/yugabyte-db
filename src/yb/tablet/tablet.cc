@@ -843,25 +843,133 @@ Status Tablet::CreateCheckpoint(const std::string& dir,
   return Status::OK();
 }
 
-void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
-                                        const consensus::OpId& op_id,
-                                        const HybridTime hybrid_time) {
-  DCHECK_NE(table_type_, TableType::KUDU_COLUMNAR_TABLE_TYPE);
-  if (put_batch.kv_pairs_size() == 0) {
-    return;
+void AddIntent(const TransactionId& transaction_id,
+               Slice key,
+               Slice value,
+               WriteBatch* rocksdb_write_batch) {
+  KeyBytes reverse_key;
+  AppendTransactionKeyPrefix(transaction_id, &reverse_key);
+  int size = 0;
+  CHECK_OK(DocHybridTime::CheckAndGetEncodedSize(key, &size));
+  reverse_key.AppendRawBytes(key.cend() - size, size);
+
+  rocksdb_write_batch->Put(key, value);
+  rocksdb_write_batch->Put(reverse_key.data(), key);
+}
+
+void AppendIntentKeySuffix(docdb::IntentType intent_type,
+                           const DocHybridTime& doc_ht,
+                           KeyBytes* key) {
+  AppendIntentType(intent_type, key);
+  AppendDocHybridTime(doc_ht, key);
+}
+
+std::pair<docdb::IntentType, docdb::IntentType> WriteIntentsForIsolationLevel(
+    IsolationLevel level) {
+  switch(level) {
+  case IsolationLevel::SNAPSHOT_ISOLATION:
+    return std::make_pair(docdb::IntentType::kStrongSnapshotWrite,
+                          docdb::IntentType::kWeakSnapshotWrite);
+  case IsolationLevel::SERIALIZABLE_ISOLATION:
+    return std::make_pair(docdb::IntentType::kStrongSerializableRead,
+                          docdb::IntentType::kWeakSerializableWrite);
+  case IsolationLevel::NON_TRANSACTIONAL:
+    FATAL_INVALID_ENUM_VALUE(IsolationLevel, level);
+  }
+  FATAL_INVALID_ENUM_VALUE(IsolationLevel, level);
+}
+
+void AppendTransactionId(const TransactionId& id, std::string* value) {
+  value->push_back(static_cast<char>(ValueType::kTransactionId));
+  value->append(pointer_cast<const char*>(id.data), id.size());
+}
+
+// We have the following distinct types of data in this "intent store":
+// Main intent data:
+//   Prefix + SubDocKey (no HybridTime) + IntentType + HybridTime -> TxnId + value of the intent
+// Transaction metadata
+//   TxnId -> status tablet id + isolation level
+// Reverse index by txn id
+//   TxnId + HybridTime -> Main intent data key
+//
+// Where prefix is just a single byte prefix. TxnId, IntentType, HybridTime all prefixed with
+// appropriate value type.
+void Tablet::PrepareTransactionWriteBatch(
+    const KeyValueWriteBatchPB& put_batch,
+    HybridTime hybrid_time,
+    WriteBatch* rocksdb_write_batch) {
+
+  if (put_batch.transaction().has_isolation()) {
+    // Store transaction metadata (status tablet, isolation level etc.)
+    transaction_participant()->Add(put_batch.transaction(), rocksdb_write_batch);
   }
 
-  WriteBatch rocksdb_write_batch;
-  rocksdb_write_batch.SetUserOpId(rocksdb::OpId(op_id.term(), op_id.index()));
+  auto transaction_id = MakeTransactionIdFromBinaryRepresentation(
+      put_batch.transaction().transaction_id());
+  CHECK_OK(transaction_id);
+  auto isolation_level = transaction_participant()->IsolationLevel(rocksdb_.get(), *transaction_id);
+  auto intent_types = WriteIntentsForIsolationLevel(isolation_level);
 
-  std::string key_prefix;
-  // TODO(dtxn) use correct intents store
-  if (put_batch.has_transaction()) {
-    key_prefix = '!' + put_batch.transaction().transaction_id() + '!';
-    if (put_batch.transaction().has_isolation()) {
-      transaction_participant()->Add(put_batch.transaction(), &rocksdb_write_batch);
+  // TODO(dtxn) weak & strong intent in one batch
+  std::unordered_set<std::string> weak_intents;
+
+  KeyBytes encoded_key;
+  std::string value;
+
+  IntraTxnWriteId write_id = 0;
+
+  for (int index = 0; index < put_batch.kv_pairs_size(); ++index) {
+    const auto &kv_pair = put_batch.kv_pairs(index);
+    CHECK(kv_pair.has_key());
+    CHECK(kv_pair.has_value());
+    Slice key = kv_pair.key();
+    auto key_size = DocKey::EncodedSize(key, docdb::DocKeyPart::WHOLE_DOC_KEY);
+    CHECK_OK(key_size);
+
+    encoded_key.Clear();
+    encoded_key.AppendValueType(ValueType::kIntentPrefix);
+    encoded_key.AppendRawBytes(key.cdata(), *key_size);
+    key.remove_prefix(*key_size);
+
+    for (;;) {
+      auto subkey_begin = key.cdata();
+      auto decode_result = SubDocKey::DecodeSubkey(&key);
+      CHECK_OK(decode_result);
+      if (!decode_result.get()) {
+        break;
+      }
+      weak_intents.insert(encoded_key.data());
+      encoded_key.AppendRawBytes(subkey_begin, key.cdata() - subkey_begin);
     }
+
+    AppendIntentKeySuffix(intent_types.first,
+                          DocHybridTime(hybrid_time, write_id++),
+                          &encoded_key);
+
+    value.clear();
+    value.reserve(1 + transaction_id->size() + kv_pair.value().size());
+    AppendTransactionId(*transaction_id, &value);
+    value += kv_pair.value();
+    AddIntent(*transaction_id, encoded_key.data(), value, rocksdb_write_batch);
   }
+
+  for (const auto& intent : weak_intents) {
+    encoded_key.Clear();
+    encoded_key.AppendRawBytes(intent);
+    AppendIntentKeySuffix(intent_types.second,
+                          DocHybridTime(hybrid_time, write_id++),
+                          &encoded_key);
+    value.clear();
+    value.reserve(1 + transaction_id->size());
+    AppendTransactionId(*transaction_id, &value);
+    AddIntent(*transaction_id, encoded_key.data(), value, rocksdb_write_batch);
+  }
+}
+
+void Tablet::PrepareNonTransactionWriteBatch(
+    const KeyValueWriteBatchPB& put_batch,
+    HybridTime hybrid_time,
+    WriteBatch* rocksdb_write_batch) {
   for (int write_id = 0; write_id < put_batch.kv_pairs_size(); ++write_id) {
     const auto& kv_pair = put_batch.kv_pairs(write_id);
     CHECK(kv_pair.has_key());
@@ -881,8 +989,7 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
 #endif
 
     std::string patched_key;
-    patched_key.reserve(key_prefix.size() + kv_pair.key().size() + kMaxBytesPerEncodedHybridTime);
-    patched_key += key_prefix;
+    patched_key.reserve(kv_pair.key().size() + kMaxBytesPerEncodedHybridTime);
     patched_key += kv_pair.key();
     if (!put_batch.has_transaction()) {
       // We replicate encoded SubDocKeys without a HybridTime at the end, and only append it here.
@@ -898,7 +1005,32 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
       DocHybridTime(hybrid_time, write_id).AppendEncodedInDocDbFormat(&patched_key);
     }
 
-    rocksdb_write_batch.Put(patched_key, kv_pair.value());
+    rocksdb_write_batch->Put(patched_key, kv_pair.value());
+  }
+}
+
+void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
+                                        const consensus::OpId& op_id,
+                                        const HybridTime hybrid_time,
+                                        rocksdb::WriteBatch* rocksdb_write_batch) {
+  // Write batch could be preallocated, here we handle opposite case.
+  if (rocksdb_write_batch == nullptr) {
+    WriteBatch write_batch;
+    ApplyKeyValueRowOperations(put_batch, op_id, hybrid_time, &write_batch);
+    return;
+  }
+
+  DCHECK_NE(table_type_, TableType::KUDU_COLUMNAR_TABLE_TYPE);
+  if (put_batch.kv_pairs_size() == 0) {
+    return;
+  }
+
+  rocksdb_write_batch->SetUserOpId(rocksdb::OpId(op_id.term(), op_id.index()));
+
+  if (put_batch.has_transaction()) {
+    PrepareTransactionWriteBatch(put_batch, hybrid_time, rocksdb_write_batch);
+  } else {
+    PrepareNonTransactionWriteBatch(put_batch, hybrid_time, rocksdb_write_batch);
   }
 
   // We are using Raft replication index for the RocksDB sequence number for
@@ -907,9 +1039,9 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
   InitRocksDBWriteOptions(&write_options);
 
   flush_stats_->AboutToWriteToDb(hybrid_time);
-  auto rocksdb_write_status = rocksdb_->Write(write_options, &rocksdb_write_batch);
+  auto rocksdb_write_status = rocksdb_->Write(write_options, rocksdb_write_batch);
   if (!rocksdb_write_status.ok()) {
-    LOG(FATAL) << "Failed to write a batch with " << rocksdb_write_batch.Count() << " operations"
+    LOG(FATAL) << "Failed to write a batch with " << rocksdb_write_batch->Count() << " operations"
                << " into RocksDB: " << rocksdb_write_status.ToString();
   }
 }
@@ -1335,34 +1467,103 @@ Status Tablet::ImportData(const std::string& source_dir) {
   return rocksdb_->Import(source_dir);
 }
 
-// TODO(dtxn) apply intents correctly
-Status Tablet::ApplyIntents(const TransactionApplyData& data) {
-  LOG(INFO) << "ApplyIntents: " << data.transaction_id;
+#define INTENT_KEY_SCHECK(lhs, op, rhs, msg) \
+  BOOST_PP_CAT(SCHECK_, op)(lhs, \
+                            rhs, \
+                            Corruption, \
+                            Format("Bad intent key, $0 in $1, transaction: $2", \
+                                   msg, \
+                                   intent_iter->key().ToDebugHexString(), \
+                                   transaction_id_slice.ToDebugHexString()))
 
-  auto iter = docdb::CreateRocksDBIterator(rocksdb_.get(),
-                                           docdb::BloomFilterMode::USE_BLOOM_FILTER,
-                                           rocksdb::kDefaultQueryId);
-  iter->SeekToFirst();
-  std::string prefix = "!";
-  prefix.insert(prefix.end(), data.transaction_id.begin(), data.transaction_id.end());
-  prefix += '!';
+#define INTENT_VALUE_SCHECK(lhs, op, rhs, msg) \
+  BOOST_PP_CAT(SCHECK_, op)(lhs, \
+                            rhs, \
+                            Corruption, \
+                            Format("Bad intent value, $0 in $1, transaction: $2", \
+                                   msg, \
+                                   intent_iter->value().ToDebugHexString(), \
+                                   transaction_id_slice.ToDebugHexString()))
+
+// We apply intents using by iterating over whole transaction reverse index.
+// Using value of reverse index record we find original intent record and apply it.
+// After that we delete both intent record and reverse index record.
+// TODO(dtxn) use separate thread for applying intents.
+// TODO(dtxn) use multiple batches when applying really big transaction.
+Status Tablet::ApplyIntents(const TransactionApplyData& data) {
+  auto reverse_index_iter = docdb::CreateRocksDBIterator(
+      rocksdb_.get(),
+      docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
+      rocksdb::kDefaultQueryId);
+
+  auto intent_iter = docdb::CreateRocksDBIterator(rocksdb_.get(),
+                                                  docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
+                                                  rocksdb::kDefaultQueryId);
+
+  KeyBytes txn_reverse_index_prefix;
+  Slice transaction_id_slice(data.transaction_id.data, TransactionId::static_size());
+  AppendTransactionKeyPrefix(data.transaction_id, &txn_reverse_index_prefix);
+
+  reverse_index_iter->Seek(txn_reverse_index_prefix.data());
 
   KeyValueWriteBatchPB put_batch;
+  WriteBatch rocksdb_write_batch;
 
-  while (iter->Valid()) {
-    rocksdb::Slice key_slice(iter->key());
-    if (key_slice.starts_with(prefix)) {
-      key_slice.remove_prefix(prefix.size());
-      auto* pair = put_batch.add_kv_pairs();
-      LOG(INFO) << "  Intent found: " << key_slice.ToDebugHexString() << " => "
-                << iter->value().ToDebugHexString();
-      pair->set_key(key_slice.cdata(), key_slice.size());
-      pair->set_value(iter->value().cdata(), iter->value().size());
+  while (reverse_index_iter->Valid()) {
+    rocksdb::Slice key_slice(reverse_index_iter->key());
+
+    if (!key_slice.starts_with(txn_reverse_index_prefix.data())) {
+      break;
     }
-    iter->Next();
+
+    // If the key ends at the transaction id then it is transaction metadata (status tablet,
+    // isolation level etc.).
+    if (key_slice.size() > txn_reverse_index_prefix.size()) {
+      // Value of reverse index is a key of original intent record, so seek it and check match.
+      intent_iter->Seek(reverse_index_iter->value());
+      if (intent_iter->Valid() && intent_iter->key() == reverse_index_iter->value()) {
+        Slice intent_key(intent_iter->key());
+        intent_key.consume_byte();
+        int doc_ht_size = 0;
+        RETURN_NOT_OK(DocHybridTime::CheckAndGetEncodedSize(intent_key, &doc_ht_size));
+        INTENT_KEY_SCHECK(intent_key.size(), GE, 3, "key too short");
+        intent_key.remove_suffix(doc_ht_size + 3);
+        INTENT_KEY_SCHECK(intent_key.end()[0], EQ, static_cast<uint8_t>(ValueType::kIntentType),
+                          "intent type value type exepected");
+        INTENT_KEY_SCHECK(intent_key.end()[2], EQ, static_cast<uint8_t>(ValueType::kHybridTime),
+                          "hybrid time value type expected");
+        const auto intent_type = static_cast<docdb::IntentType>(intent_key.end()[1]);
+
+        if (StrongIntent(intent_type)) {
+          Slice intent_value(intent_iter->value());
+          INTENT_VALUE_SCHECK(intent_value[0], EQ, static_cast<uint8_t>(ValueType::kTransactionId),
+                              "prefix expected");
+          intent_value.consume_byte();
+          INTENT_VALUE_SCHECK(intent_value.starts_with(transaction_id_slice), EQ, true,
+                              "wrong transaction id");
+          intent_value.remove_prefix(transaction_id_slice.size());
+
+          auto* pair = put_batch.add_kv_pairs();
+          // After strip of prefix and suffix intent_key contains just SubDocKey w/o a hybrid time.
+          // Time will be added when writing batch to rocks db.
+          pair->set_key(intent_key.cdata(), intent_key.size());
+          pair->set_value(intent_value.cdata(), intent_value.size());
+        }
+        rocksdb_write_batch.Delete(intent_iter->key());
+      } else {
+        LOG(DFATAL) << "Unable to find intent: " << reverse_index_iter->value().ToDebugString()
+                    << " for " << reverse_index_iter->key().ToDebugString();
+      }
+    }
+
+    rocksdb_write_batch.Delete(reverse_index_iter->key());
+
+    reverse_index_iter->Next();
   }
 
-  ApplyKeyValueRowOperations(put_batch, data.op_id, data.hybrid_time);
+  // data.hybrid_time contains transaction commit time.
+  // We don't set transaction field of put_batch, otherwise we would write another bunch of intents.
+  ApplyKeyValueRowOperations(put_batch, data.op_id, data.hybrid_time, &rocksdb_write_batch);
   return Status::OK();
 }
 

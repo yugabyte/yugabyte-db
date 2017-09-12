@@ -910,7 +910,6 @@ size_t WriteBatchInternal::AppendedByteSize(size_t leftByteSize,
 }
 
 void WriteBatch::SetUserOpId(const OpId& op_id) {
-  DCHECK_EQ(Count(), 0);
   user_op_id_ = op_id;
 }
 

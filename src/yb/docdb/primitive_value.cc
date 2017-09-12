@@ -44,6 +44,7 @@ using yb::util::FastDecodeSignedVarInt;
 #define IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH \
     case ValueType::kArray: FALLTHROUGH_INTENDED; \
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED; \
+    case ValueType::kIntentPrefix: FALLTHROUGH_INTENDED; \
     case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED; \
     case ValueType::kObject: FALLTHROUGH_INTENDED; \
     case ValueType::kRedisSet: FALLTHROUGH_INTENDED; \
@@ -141,7 +142,8 @@ string PrimitiveValue::ToString() const {
       return Substitute("Intent($0)", docdb::ToString(static_cast<enum IntentType>(uint16_val_)));
 
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
-    case ValueType::kTtl:
+    case ValueType::kTtl: FALLTHROUGH_INTENDED;
+    case ValueType::kIntentPrefix:
       break;
   }
   FATAL_INVALID_ENUM_VALUE(ValueType, type_);
@@ -336,6 +338,7 @@ string PrimitiveValue::ToValue() const {
 
     case ValueType::kIntentType: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
+    case ValueType::kIntentPrefix: FALLTHROUGH_INTENDED;
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kSystemColumnId: FALLTHROUGH_INTENDED;
@@ -577,7 +580,9 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
     }
 
     case ValueType::kIntentType: {
-      out->uint16_val_ = static_cast<uint16_t>(*slice->data());
+      if (out) {
+        out->uint16_val_ = static_cast<uint16_t>(*slice->data());
+      }
       type_ref = value_type;
       slice->consume_byte();
       return Status::OK();
@@ -589,7 +594,9 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
 
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
   }
-  return STATUS_FORMAT(Corruption, "Cannot decode value type $0 from the key encoding format: $1",
+  return STATUS_FORMAT(
+      Corruption,
+      "Cannot decode value type $0 from the key encoding format: $1",
       value_type,
       ToShortDebugStr(input_slice));
 }
@@ -695,6 +702,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
 
     case ValueType::kIntentType: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
+    case ValueType::kIntentPrefix: FALLTHROUGH_INTENDED;
     case ValueType::kUInt16Hash: FALLTHROUGH_INTENDED;
     case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED;
     case ValueType::kTtl: FALLTHROUGH_INTENDED;

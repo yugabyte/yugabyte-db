@@ -122,8 +122,9 @@ class HybridTime {
   // Returns true upon success.
   bool DecodeFrom(Slice *input);
 
-  // Encode the hybrid time to the given buffer.
-  void EncodeTo(faststring *dst) const;
+  // Append the hybrid time to the given buffer.
+  void AppendAsUint64To(faststring *dst) const;
+  void AppendAsUint64To(std::string* dst) const;
 
   int CompareTo(const HybridTime &other) const;
 

@@ -94,9 +94,7 @@ Status SeekToValidKvAtTs(
   KeyBytes seek_key_bytes = KeyBytes(search_key);
 
   // TODO: use a utility function for appending the ValueType followed by encoded HybridTime.
-  seek_key_bytes.AppendValueType(ValueType::kHybridTime);
-  DocHybridTime(hybrid_time, kMaxWriteId).AppendEncodedInDocDbFormat(
-      seek_key_bytes.mutable_data());
+  AppendDocHybridTime(DocHybridTime(hybrid_time, kMaxWriteId), &seek_key_bytes);
 
   // If we end up at a descendant of the search key (i.e. a key that belongs to its subdocument),
   // the timestamp may be greater than hybrid_time, we skip over those cases in a loop.  In other

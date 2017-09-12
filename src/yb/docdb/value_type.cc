@@ -24,6 +24,7 @@ namespace docdb {
 string ToString(ValueType value_type) {
   switch (value_type) {
     case ValueType::kGroupEnd: return "GroupEnd";
+    case ValueType::kIntentPrefix: return "IntentPrefix";
     case ValueType::kNull: return "Null";
     case ValueType::kFalse: return "False";
     case ValueType::kTrue: return "True";

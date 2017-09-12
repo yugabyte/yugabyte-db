@@ -31,8 +31,8 @@
 // Most people will want to use the builtin bloom filter support (see
 // NewBloomFilterPolicy() below).
 
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_FILTER_POLICY_H
-#define ROCKSDB_INCLUDE_ROCKSDB_FILTER_POLICY_H
+#ifndef YB_ROCKSDB_FILTER_POLICY_H
+#define YB_ROCKSDB_FILTER_POLICY_H
 
 #include <string>
 #include <memory>
@@ -147,7 +147,7 @@ class FilterPolicy {
     virtual ~KeyTransformer() {}
 
     // Transform a key.
-    virtual Slice Transform(const Slice& key) const = 0;
+    virtual Slice Transform(Slice key) const = 0;
   };
 
   // Filter policy can optionally return key transformer to be used before writing key to filter or
@@ -206,4 +206,4 @@ extern const FilterPolicy* NewFixedSizeFilterPolicy(uint32_t total_bits,
                                                     Logger* logger);
 }  // namespace rocksdb
 
-#endif  // ROCKSDB_INCLUDE_ROCKSDB_FILTER_POLICY_H
+#endif  // YB_ROCKSDB_FILTER_POLICY_H

@@ -154,6 +154,14 @@ class DocBoundaryValuesExtractor : public rocksdb::BoundaryValuesExtractor {
   }
 
   Status Extract(Slice user_key, Slice value, rocksdb::UserBoundaryValues* values) override {
+    if (user_key.size() >= 2 &&
+        static_cast<ValueType>(user_key[0]) == ValueType::kIntentPrefix &&
+        static_cast<ValueType>(user_key[1]) == ValueType::kTransactionId) {
+      // Skipping reverse index from transaction id to keys of write intents belonging to that
+      // transaction.
+      return Status::OK();
+    }
+
     CHECK_NOTNULL(values);
     boost::container::small_vector<Slice, 20> slices;
     auto user_key_copy = user_key;

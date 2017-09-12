@@ -120,7 +120,9 @@ class YqlTabletTest : public YqlDmlTestBase {
   void VerifyTable(int begin, int end, TableHandle* table) {
     auto session = client_->NewSession(true /* read_only */);
     for (int i = begin; i != end; ++i) {
-      ASSERT_EQ(ValueForKey(i), GetValue(session, i, table));
+      auto value = GetValue(session, i, table);
+      ASSERT_TRUE(value.is_initialized()) << "i: " << i << ", table: " << table->name().ToString();
+      ASSERT_EQ(ValueForKey(i), *value) << "i: " << i << ", table: " << table->name().ToString();
     }
   }
 
@@ -221,6 +223,7 @@ class YqlTabletTest : public YqlDmlTestBase {
   CHECKED_STATUS Import() {
     std::this_thread::sleep_for(1s); // Wait until all tablets a synced and flushed.
     cluster_->FlushTablets();
+    std::this_thread::sleep_for(5s); // TODO flush became async after D2261, it should be reverted.
 
     auto source_infos = GetTabletInfos(kTable1Name);
     auto dest_infos = GetTabletInfos(kTable2Name);
@@ -292,6 +295,7 @@ TEST_F(YqlTabletTest, ImportToEmpty) {
 
   FillTable(0, kTotalKeys, &table1_);
   ASSERT_OK(Import());
+  VerifyTable(0, kTotalKeys, &table1_);
   VerifyTable(0, kTotalKeys, &table2_);
 }
 

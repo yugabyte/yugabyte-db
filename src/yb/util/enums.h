@@ -62,8 +62,8 @@ constexpr typename std::underlying_type<E>::type to_underlying(E e) {
 
 #define YB_ENUM_CASE_NAME(s, data, elem) \
   case BOOST_PP_TUPLE_ELEM(2, 0, data):: \
-      BOOST_PP_CAT(BOOST_PP_APPLY(BOOST_PP_TUPLE_ELEM(2, 1, data)), elem): \
-          return BOOST_PP_STRINGIZE(elem);
+      BOOST_PP_CAT(BOOST_PP_APPLY(BOOST_PP_TUPLE_ELEM(2, 1, data)), YB_ENUM_ITEM_NAME(elem)): \
+          return BOOST_PP_STRINGIZE(YB_ENUM_ITEM_NAME(elem));
 
 #define YB_DEFINE_ENUM_IMPL(enum_name, prefix, list) \
   enum class enum_name { \

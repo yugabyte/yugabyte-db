@@ -54,6 +54,14 @@ class KeyBytes {
     data_.append(raw_bytes, n);
   }
 
+  void AppendRawBytes(const Slice& slice) {
+    data_.append(slice.cdata(), slice.size());
+  }
+
+  void AppendRawBytes(const std::string& data) {
+    data_ += data;
+  }
+
   void AppendValueType(ValueType value_type) {
     data_.push_back(static_cast<char>(value_type));
   }
@@ -204,6 +212,9 @@ class KeyBytes {
 
   std::string data_;
 };
+
+void AppendIntentType(IntentType intent_type, KeyBytes* key);
+void AppendDocHybridTime(const DocHybridTime& time, KeyBytes* key);
 
 }  // namespace docdb
 }  // namespace yb

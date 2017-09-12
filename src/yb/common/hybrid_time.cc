@@ -49,7 +49,11 @@ bool HybridTime::DecodeFrom(Slice *input) {
   return GetMemcmpableVarint64(input, &v).ok();
 }
 
-void HybridTime::EncodeTo(faststring *dst) const {
+void HybridTime::AppendAsUint64To(faststring *dst) const {
+  PutMemcmpableVarint64(dst, v);
+}
+
+void HybridTime::AppendAsUint64To(std::string* dst) const {
   PutMemcmpableVarint64(dst, v);
 }
 

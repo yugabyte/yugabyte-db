@@ -57,7 +57,6 @@ class YqlTransactionTest : public YqlDmlTestBase {
  protected:
   void SetUp() override {
     YqlDmlTestBase::SetUp();
-    DontVerifyClusterBeforeNextTearDown(); // TODO(dtxn) temporary
 
     YBSchemaBuilder builder;
     builder.AddColumn("k")->Type(INT32)->HashPrimaryKey()->NotNull();
@@ -188,6 +187,8 @@ TEST_F(YqlTransactionTest, Heartbeat) {
 }
 
 TEST_F(YqlTransactionTest, Expire) {
+  DontVerifyClusterBeforeNextTearDown(); // TODO(dtxn) temporary
+
   google::FlagSaver flag_saver;
   FLAGS_transaction_disable_heartbeat_in_tests = true;
   auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);

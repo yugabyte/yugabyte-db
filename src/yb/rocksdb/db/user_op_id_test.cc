@@ -148,21 +148,6 @@ TEST_F(UserOpIdTest, Append) {
   ASSERT_EQ(4, b1.Count());
 }
 
-#ifndef NDEBUG
-// This test is only allowed in debug mode, because we're testing that an assertion fires under
-// certain conditions, and assertions are only enabled in debug mode.
-
-TEST_F(UserOpIdTest, DisallowStartingAddingUserSeqNumbersAfterAddingUpdates) {
-  ASSERT_DEATH({
-    WriteBatch b;
-    b.Put("a", "b");
-    // We don't allow specifying user-defined sequence numbers after we've already started adding
-    // updates to the write batch.
-    b.SetUserOpId(OpId(1, 123));
-  }, "Check failed: Count.*0.*");
-}
-#endif
-
 TEST_F(UserOpIdTest, SetUserSequenceNumber) {
   WriteBatch b;
 

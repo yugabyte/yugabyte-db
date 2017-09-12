@@ -168,8 +168,11 @@ class YQLValue {
   //----------------------------------- get value methods -----------------------------------
   // Get different datatype values. CHECK failure will result if the value stored is not of the
   // expected datatype or the value is null.
-#define YQL_GET_VALUE(v, type, field)                                   \
-  do { CHECK(v.has_##field()); return static_cast<type>(v.field()); } while (0)
+#define YQL_GET_VALUE(v, type, field) \
+  do { \
+    CHECK(v.has_##field()) << "Value: " << v.ShortDebugString(); \
+    return static_cast<type>(v.field()); \
+  } while (0)
 
   static int8_t int8_value(const YQLValuePB& v) { YQL_GET_VALUE(v, int8_t, int8_value); }
   static int16_t int16_value(const YQLValuePB& v) { YQL_GET_VALUE(v, int16_t, int16_value); }

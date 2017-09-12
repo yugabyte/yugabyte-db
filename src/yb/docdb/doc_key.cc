@@ -114,15 +114,19 @@ DocKey::DocKey(DocKeyHash hash,
 
 KeyBytes DocKey::Encode() const {
   KeyBytes result;
+  AppendTo(&result);
+  return result;
+}
+
+void DocKey::AppendTo(KeyBytes* out) const {
   if (hash_present_) {
     // We are not setting the "more items in group" bit on the hash field because it is not part
     // of "hashed" or "range" groups.
-    result.AppendValueType(ValueType::kUInt16Hash);
-    result.AppendUInt16(hash_);
-    AppendDocKeyItems(hashed_group_, &result);
+    out->AppendValueType(ValueType::kUInt16Hash);
+    out->AppendUInt16(hash_);
+    AppendDocKeyItems(hashed_group_, out);
   }
-  AppendDocKeyItems(range_group_, &result);
-  return result;
+  AppendDocKeyItems(range_group_, out);
 }
 
 void DocKey::Clear() {
@@ -155,12 +159,35 @@ class DecodeDocKeyCallback {
   boost::container::small_vector_base<Slice>* out_;
 };
 
+class DummyCallback {
+ public:
+  boost::container::small_vector_base<Slice>* hashed_group() const {
+    return nullptr;
+  }
+
+  boost::container::small_vector_base<Slice>* range_group() const {
+    return nullptr;
+  }
+
+  void SetHash(...) const {}
+
+  PrimitiveValue* AddSubkey() const {
+    return nullptr;
+  }
+};
+
 } // namespace
 
 yb::Status DocKey::PartiallyDecode(rocksdb::Slice *slice,
                                    boost::container::small_vector_base<Slice>* out) {
   CHECK_NOTNULL(out);
   return DoDecode(slice, DocKeyPart::WHOLE_DOC_KEY, DecodeDocKeyCallback(out));
+}
+
+Result<size_t> DocKey::EncodedSize(Slice slice, DocKeyPart part) {
+  auto initial_begin = slice.cdata();
+  RETURN_NOT_OK(DoDecode(&slice, part, DummyCallback()));
+  return slice.cdata() - initial_begin;
 }
 
 class DocKey::DecodeFromCallback {
@@ -194,8 +221,8 @@ yb::Status DocKey::DecodeFrom(rocksdb::Slice *slice, DocKeyPart part_to_decode) 
 
 template<class Callback>
 yb::Status DocKey::DoDecode(rocksdb::Slice *slice,
-                                DocKeyPart part_to_decode,
-                                const Callback& callback) {
+                            DocKeyPart part_to_decode,
+                            const Callback& callback) {
   if (slice->empty()) {
     return STATUS(Corruption, "Document key is empty");
   }
@@ -203,8 +230,8 @@ yb::Status DocKey::DoDecode(rocksdb::Slice *slice,
 
   if (!IsPrimitiveValueType(first_value_type) && first_value_type != ValueType::kGroupEnd) {
     return STATUS_FORMAT(Corruption,
-        "Expected first value type to be primitive or GroupEnd, got $0",
-        first_value_type);
+        "Expected first value type to be primitive or GroupEnd or IntentPrefix, got $0 in $1",
+        first_value_type, slice->ToDebugHexString());
   }
 
   if (first_value_type == ValueType::kUInt16Hash) {
@@ -343,8 +370,7 @@ KeyBytes SubDocKey::Encode(bool include_hybrid_time) const {
     subkey.AppendToKey(&key_bytes);
   }
   if (has_hybrid_time() && include_hybrid_time) {
-    key_bytes.AppendValueType(ValueType::kHybridTime);
-    doc_ht_.AppendEncodedInDocDbFormat(key_bytes.mutable_data());
+    AppendDocHybridTime(doc_ht_, &key_bytes);
   }
   return key_bytes;
 }
@@ -411,17 +437,38 @@ Status SubDocKey::DecodeFrom(rocksdb::Slice* slice, const bool require_hybrid_ti
   return DoDecode(slice, require_hybrid_time, DecodeCallback(this));
 }
 
+Result<bool> SubDocKey::DecodeSubkey(Slice* slice) {
+  return DecodeSubkey(slice, DummyCallback());
+}
+
+template<class Callback>
+Result<bool> SubDocKey::DecodeSubkey(Slice* slice, const Callback& callback) {
+  if (!slice->empty() && *slice->data() != static_cast<char>(ValueType::kHybridTime)) {
+    RETURN_NOT_OK(PrimitiveValue::DecodeKey(slice, callback.AddSubkey()));
+    return true;
+  }
+  return false;
+}
+
 template<class Callback>
 Status SubDocKey::DoDecode(rocksdb::Slice* slice,
                            const bool require_hybrid_time,
                            const Callback& callback) {
   const rocksdb::Slice original_bytes(*slice);
 
+  if (!slice->empty() && *slice->data() == static_cast<char>(ValueType::kIntentPrefix)) {
+    slice->consume_byte();
+  }
+
   RETURN_NOT_OK(callback.DecodeDocKey(slice));
-  while (!slice->empty() && *slice->data() != static_cast<char>(ValueType::kHybridTime)) {
+  for (;;) {
+    auto decode_result = DecodeSubkey(slice, callback);
     RETURN_NOT_OK_PREPEND(
-        PrimitiveValue::DecodeKey(slice, callback.AddSubkey()),
+        decode_result,
         Substitute("While decoding SubDocKey $0", ToShortDebugStr(original_bytes)));
+    if (!decode_result.get()) {
+      break;
+    }
   }
   if (slice->empty()) {
     if (!require_hybrid_time) {
@@ -611,21 +658,6 @@ KeyBytes SubDocKey::AdvanceOutOfDocKeyPrefix() const {
 
 namespace {
 
-int32_t GetEncodedDocKeyPrefixSize(const rocksdb::Slice& slice, DocKeyPart doc_key_part) {
-  // Copy the slice.
-  rocksdb::Slice copy(slice);
-  // Decode the slice as a DocKey.
-  docdb::DocKey encoded_key;
-  // TODO: don't check, but return errors somehow?
-  CHECK_OK(encoded_key.DecodeFrom(&copy, doc_key_part));
-  // Return the size of beginning of the initial slice which
-  // represents required part (whole or hashed components only) of encoded DocKey only.
-  return slice.size() - copy.size();
-  // TODO: this can be optimized to get the size without additional memory allocation and actual
-  // decoding, but need to test if such optimization will give any noticeable performance
-  // improvement.
-}
-
 class HashedComponentsExtractor : public rocksdb::FilterPolicy::KeyTransformer {
  public:
   HashedComponentsExtractor() {}
@@ -637,10 +669,14 @@ class HashedComponentsExtractor : public rocksdb::FilterPolicy::KeyTransformer {
     return instance;
   }
 
-  virtual rocksdb::Slice Transform(const rocksdb::Slice& key) const override {
-    int32_t size = GetEncodedDocKeyPrefixSize(key, DocKeyPart::HASHED_PART_ONLY);
-    return rocksdb::Slice(key.data(), size);
-  };
+  Slice Transform(Slice key) const override {
+    if (!key.empty() && key[0] == static_cast<uint8_t>(ValueType::kIntentPrefix)) {
+      key.consume_byte();
+    }
+    auto size = DocKey::EncodedSize(key, DocKeyPart::HASHED_PART_ONLY);
+    CHECK_OK(size);
+    return Slice(key.data(), *size);
+  }
 };
 
 } // namespace

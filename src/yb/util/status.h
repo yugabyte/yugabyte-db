@@ -57,8 +57,8 @@
 // Return the given status if it is not OK, but first clone it and
 // prepend the given message.
 #define YB_RETURN_NOT_OK_PREPEND(s, msg) do { \
-    ::yb::Status _s = (s); \
-    if (PREDICT_FALSE(!_s.ok())) return _s.CloneAndPrepend(msg); \
+    auto&& _s = (s); \
+    if (PREDICT_FALSE(!_s.ok())) return MoveStatus(_s).CloneAndPrepend(msg); \
   } while (0);
 
 // Return 'to_return' if 'to_call' returns a bad status.
