@@ -61,8 +61,8 @@ static constexpr int kNumSystemNamespaces = 3;
 // tests which don't have access to the master object (for ex: unit tests which use ExternalMaster).
 static constexpr int kNumSystemTables = 13;
 
-constexpr uint16_t kMasterDefaultPort = 7051;
-constexpr uint16_t kMasterDefaultWebPort = 8051;
+constexpr uint16_t kMasterDefaultPort = 7100;
+constexpr uint16_t kMasterDefaultWebPort = 7000;
 
 } // namespace master
 } // namespace yb

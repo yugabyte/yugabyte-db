@@ -66,8 +66,8 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
  public:
   // TODO: move this out of this header, since clients want to use this
   // constant as well.
-  static const uint16_t kDefaultPort = 7050;
-  static const uint16_t kDefaultWebPort = 8050;
+  static const uint16_t kDefaultPort = 9100;
+  static const uint16_t kDefaultWebPort = 9000;
 
   explicit TabletServer(const TabletServerOptions& opts);
   ~TabletServer();
