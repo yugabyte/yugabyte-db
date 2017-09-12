@@ -31,17 +31,13 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 // TODO: move pricing data fetch to ybcloud.
 @Singleton
-public class AWSInitializer {
-  public static final Logger LOG = LoggerFactory.getLogger(AWSInitializer.class);
+public class AWSInitializer extends AbstractInitializer {
   private static final boolean enableVerboseLogging = false;
 
   // TODO: fetch the EC2 price URL from the AWS EC2 price url:
   // https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/index.json
   private static String awsEc2PriceUrl =
       "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/index.json";
-
-  @Inject
-  ApiHelper apiHelper;
 
   private List<Map<String, String>> ec2AvailableInstances = new ArrayList<>();
   private Provider provider;
@@ -54,6 +50,7 @@ public class AWSInitializer {
    * @param providerUUID UUID of the Customer's configured AWS.
    * @return A response result that can be returned to the user to indicate success/failure.
    */
+  @Override
   public Result initialize(UUID customerUUID, UUID providerUUID) {
     try {
       provider = Provider.get(customerUUID, providerUUID);
