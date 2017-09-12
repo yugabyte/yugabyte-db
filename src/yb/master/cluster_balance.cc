@@ -14,17 +14,22 @@
 #include "yb/master/cluster_balance.h"
 
 #include <algorithm>
+#include <memory>
 
 #include <boost/thread/locks.hpp>
 
 #include "yb/consensus/quorum_util.h"
 #include "yb/master/master.h"
 #include "yb/util/random_util.h"
+#include "yb/util/monotime.h"
 
 using std::unique_ptr;
+using std::make_unique;
 using std::string;
 using std::set;
 using std::vector;
+
+DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 
 namespace yb {
 namespace master {
@@ -52,9 +57,10 @@ DEFINE_int32(load_balancer_max_concurrent_moves,
              1,
              "Maximum number of concurrent LeaderMoves/Adds/Removals.");
 
-class TabletMetadata {
- public:
-  bool is_missing_replicas() { return is_under_replicated || !under_replicated_placements.empty(); }
+struct TabletMetadata {
+  bool is_missing_replicas() {
+    return is_under_replicated || !under_replicated_placements.empty();
+  }
 
   bool has_wrong_placements() {
     return !wrong_placement_tablet_servers.empty() || !blacklisted_tablet_servers.empty();
@@ -98,6 +104,9 @@ class TabletMetadata {
 
   // The tablet server id of the leader in this tablet's peer group.
   TabletServerId leader_uuid;
+
+  // Leader stepdown failures. We use this to prevent retrying the same leader stepdown too soon.
+  LeaderStepDownFailureTimes leader_stepdown_failures;
 };
 
 class TabletServerMetadata {
@@ -117,7 +126,9 @@ class TabletServerMetadata {
 
 class ClusterLoadBalancer::ClusterLoadState {
  public:
-  ClusterLoadState() : leader_balance_threshold_(FLAGS_leader_balance_threshold) {}
+  ClusterLoadState()
+      : leader_balance_threshold_(FLAGS_leader_balance_threshold),
+        current_time_(MonoTime::FineNow()) {}
 
   // Comparators used for sorting by load.
   bool CompareByUuid(const TabletServerId& a, const TabletServerId& b) {
@@ -282,6 +293,10 @@ class ClusterLoadBalancer::ClusterLoadState {
         }
       }
     }
+
+    tablet->GetLeaderStepDownFailureTimes(
+        current_time_ - MonoDelta::FromMilliseconds(FLAGS_min_leader_stepdown_retry_interval_ms),
+        &tablet_meta.leader_stepdown_failures);
 
     // Prepare placement related sets for tablets that have placement info.
     if (tablet_meta.is_missing_replicas()) {
@@ -516,6 +531,8 @@ class ClusterLoadBalancer::ClusterLoadState {
     }
   }
 
+  // ClusterLoadState member fields
+
   // Map from tablet ids to the metadata we store for each.
   unordered_map<TabletId, TabletMetadata> per_tablet_meta_;
 
@@ -573,9 +590,12 @@ class ClusterLoadBalancer::ClusterLoadState {
   unordered_map<TableId, TabletToTabletServerMap> pending_remove_replica_tasks_;
   unordered_map<TableId, TabletToTabletServerMap> pending_stepdown_leader_tasks_;
 
+  // Time at which we started the current round of load balancing.
+  MonoTime current_time_;
+
  private:
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadState);
-};
+};  // ClusterLoadState
 
 bool ClusterLoadBalancer::UpdateTabletInfo(TabletInfo* tablet) {
   const auto& table_id = tablet->table()->id();
@@ -729,7 +749,7 @@ void ClusterLoadBalancer::RunLoadBalancer() {
 }
 
 void ClusterLoadBalancer::ResetState() {
-  state_ = unique_ptr<ClusterLoadState>(new ClusterLoadState());
+  state_ = make_unique<ClusterLoadState>();
 }
 
 bool ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
@@ -750,7 +770,7 @@ bool ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
 
   if (PREDICT_FALSE(!s.ok())) {
     LOG(INFO) << "Skipping table " << table_uuid << " load balance due to error : " << s.ToString();
-    return false;;
+    return false;
   }
 
   // Loop over tablet map to register the load that is already live in the cluster.
@@ -1096,6 +1116,7 @@ bool ClusterLoadBalancer::GetLeaderToMove(
   // We stop the whole algorithm if the left index reaches last_pos, or if we reset the right index
   // and are already breaking the invariance rule, as that means that any further differences in
   // the interval between left and right cannot have load > kMinLeaderLoadVarianceToBalance.
+  const auto current_time = MonoTime::FineNow();
   int last_pos = state_->sorted_leader_load_.size() - 1;
   for (int left = 0; left <= last_pos; ++left) {
     for (int right = last_pos; right >= 0; --right) {
@@ -1122,18 +1143,39 @@ bool ClusterLoadBalancer::GetLeaderToMove(
       set<TabletId> intersection;
       const auto& itr = std::inserter(intersection, intersection.begin());
       std::set_intersection(leaders.begin(), leaders.end(), peers.begin(), peers.end(), itr);
-      if (!intersection.empty()) {
-        *moving_tablet_id = *intersection.begin();
+
+      for (const auto& tablet_id : intersection) {
+        *moving_tablet_id = tablet_id;
         *from_ts = high_load_uuid;
         *to_ts = low_load_uuid;
+
+        const auto& per_tablet_meta = state_->per_tablet_meta_;
+        const auto tablet_meta_iter = per_tablet_meta.find(tablet_id);
+        if (PREDICT_TRUE(tablet_meta_iter != per_tablet_meta.end())) {
+          const auto& tablet_meta = tablet_meta_iter->second;
+          const auto& stepdown_failures = tablet_meta.leader_stepdown_failures;
+          const auto stepdown_failure_iter = stepdown_failures.find(low_load_uuid);
+          if (stepdown_failure_iter != stepdown_failures.end()) {
+            const auto time_since_failure = current_time - stepdown_failure_iter->second;
+            if (time_since_failure.ToMilliseconds() < FLAGS_min_leader_stepdown_retry_interval_ms) {
+              LOG(INFO) << "Cannot move tablet " << tablet_id << " leader from TS "
+                        << *from_ts << " to TS " << *to_ts << " yet: previous attempt with the same"
+                        << " intended leader failed only " << ToString(time_since_failure)
+                        << " ago (less " << "than " << FLAGS_min_leader_stepdown_retry_interval_ms
+                        << "ms).";
+            }
+            continue;
+          }
+        } else {
+          LOG(WARNING) << "Did not find load balancer metadata for tablet " << *moving_tablet_id;
+        }
         return true;
       }
     }
   }
 
   // Should never get here.
-  LOG(FATAL) << "Load balancing algorithm reached invalid state!";
-  return false;
+  FATAL_ERROR("Load balancing algorithm reached invalid state!");
 }
 
 bool ClusterLoadBalancer::HandleRemoveReplicas(

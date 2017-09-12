@@ -15,6 +15,7 @@
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
+#include "yb/util/format.h"
 #include "yb/master/master.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/catalog_manager.h"
@@ -618,9 +619,9 @@ bool AsyncAddServerTask::PrepareRequest(int attempt) {
   replacement_replica->GetRegistration(&peer_reg);
   if (peer_reg.common().rpc_addresses_size() == 0) {
     YB_LOG_EVERY_N(WARNING, 100) << LogPrefix() << "Candidate replacement "
-                               << replacement_replica->permanent_uuid()
-                               << " has no registered rpc address: "
-                               << peer_reg.ShortDebugString();
+                                 << replacement_replica->permanent_uuid()
+                                 << " has no registered rpc address: "
+                                 << peer_reg.ShortDebugString();
     return false;
   }
   *peer->mutable_last_known_addr() = peer_reg.common().rpc_addresses(0);
@@ -707,11 +708,17 @@ void AsyncTryStepDown::HandleResponse(int attempt) {
   }
 
   PerformStateTransition(kStateRunning, kStateComplete);
-  LOG(INFO) << Substitute("Leader step down done attempt=$0, leader_uuid=$1, change_uuid=$2, "
-                          "resp=$3, should_remove=$4.",
-                          attempt, permanent_uuid(), change_config_ts_uuid_,
-                          TabletServerErrorPB::Code_Name(stepdown_resp_.error().code()),
-                          should_remove_);
+  const bool stepdown_failed = stepdown_resp_.error().status().code() != AppStatusPB::OK;
+  LOG(INFO) << Format("Leader step down done attempt=$0, leader_uuid=$1, change_uuid=$2, "
+                      "error=$3, failed=$4, should_remove=$5.",
+                      attempt, permanent_uuid(), change_config_ts_uuid_, stepdown_resp_.error(),
+                      stepdown_failed, should_remove_);
+
+  if (stepdown_failed) {
+    tablet_->RegisterLeaderStepDownFailure(change_config_ts_uuid_,
+        MonoDelta::FromMilliseconds(stepdown_resp_.has_time_since_election_failure_ms() ?
+                                    stepdown_resp_.time_since_election_failure_ms() : 0));
+  }
 
   if (should_remove_) {
     auto task = std::make_shared<AsyncRemoveServerTask>(

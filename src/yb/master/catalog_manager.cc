@@ -4731,6 +4731,26 @@ std::string TabletInfo::ToString() const {
                     (table_ != nullptr ? table_->ToString() : "MISSING"));
 }
 
+void TabletInfo::RegisterLeaderStepDownFailure(const TabletServerId& dest_leader,
+                                               MonoDelta time_since_stepdown_failure) {
+  std::lock_guard<simple_spinlock> l(lock_);
+  leader_stepdown_failure_times_[dest_leader] = MonoTime::FineNow() - time_since_stepdown_failure;
+}
+
+void TabletInfo::GetLeaderStepDownFailureTimes(MonoTime forget_failures_before,
+                                               LeaderStepDownFailureTimes* dest) {
+  std::lock_guard<simple_spinlock> l(lock_);
+  for (auto iter = leader_stepdown_failure_times_.begin();
+       iter != leader_stepdown_failure_times_.end(); ) {
+    if (iter->second < forget_failures_before) {
+      iter = leader_stepdown_failure_times_.erase(iter);
+    } else {
+      iter++;
+    }
+  }
+  *dest = leader_stepdown_failure_times_;
+}
+
 void PersistentTabletInfo::set_state(SysTabletsEntryPB::State state, const string& msg) {
   pb.set_state(state);
   pb.set_state_msg(msg);

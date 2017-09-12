@@ -557,11 +557,17 @@ class RaftConsensus : public Consensus,
   // after the new leader successful election.
   bool leader_no_op_committed_ = false;
 
-  // UUID of new desired leader
-  std::string protege_leader_uuid_;
+  // UUID of new desired leader during stepdown.
+  TabletServerId protege_leader_uuid_;
 
-  // This is the time for which election should not start on this peer.
+  // This is the time (in the MonoTime's uint64 representation) for which election should not start
+  // on this peer.
   std::atomic<uint64_t> withhold_election_start_until_;
+
+  // We record the moment at which we discover that an election has been lost by our "protege"
+  // during leader stepdown. Then, when the master asks us to step down again in favor of the same
+  // server, we'll reply with the amount of time that has passed to avoid leader stepdown loops.s
+  MonoTime election_lost_by_protege_at_;
 
   const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk_;
 

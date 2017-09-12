@@ -92,6 +92,8 @@ using PlacementId = std::string;
 
 typedef unordered_map<TabletId, TabletServerId> TabletToTabletServerMap;
 
+typedef std::unordered_map<TabletServerId, MonoTime> LeaderStepDownFailureTimes;
+
 // This class is a base wrapper around the protos that get serialized in the data column of the
 // sys_catalog. Subclasses of this will provide convenience getter/setter methods around the
 // protos and instances of these will be wrapped around CowObjects and locks for access and
@@ -237,6 +239,17 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // Determines whether or not this tablet belongs to a system table.
   bool IsSupportedSystemTable(const SystemTableSet& supported_system_tables) const;
 
+  // This is called when a leader stepdown request fails. Optionally, takes an amount of time since
+  // the stepdown failure, in case it happened in the past (e.g. we talked to a tablet server and
+  // it told us that it previously tried to step down in favor of this server and that server lost
+  // the election).
+  void RegisterLeaderStepDownFailure(const TabletServerId& intended_leader,
+                                     MonoDelta time_since_stepdown_failure);
+
+  // Retrieves a map of recent leader step-down failures. At the same time, forgets about step-down
+  // failures that happened before a certain point in time.
+  void GetLeaderStepDownFailureTimes(MonoTime forget_failures_before,
+                                     LeaderStepDownFailureTimes* dest);
  private:
   friend class RefCountedThreadSafe<TabletInfo>;
   ~TabletInfo();
@@ -258,6 +271,8 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 
   // Reported schema version (in-memory only).
   uint32_t reported_schema_version_;
+
+  LeaderStepDownFailureTimes leader_stepdown_failure_times_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletInfo);
 };

@@ -39,6 +39,7 @@
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/util/rwc_lock.h"
+#include "yb/util/logging.h"
 
 namespace yb {
 
@@ -207,18 +208,18 @@ class CowLock {
     } else if (mode_ == WRITE) {
       return cow_->dirty();
     } else {
-      LOG(FATAL) << "Cannot access data after committing";
+      FATAL_ERROR("Cannot access data after committing");
     }
   }
 
   // Obtain the mutable data. This may only be called in WRITE mode.
   State* mutable_data() {
     if (mode_ == READ) {
-      LOG(FATAL) << "Cannot mutate data with READ lock";
+      FATAL_ERROR("Cannot mutate data with READ lock");
     } else if (mode_ == WRITE) {
       return cow_->mutable_dirty();
     } else {
-      LOG(FATAL) << "Cannot access data after committing";
+      FATAL_ERROR("Cannot access data after committing");
     }
   }
 

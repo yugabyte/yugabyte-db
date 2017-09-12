@@ -466,6 +466,11 @@ message LeaderStepDownRequestPB {
 message LeaderStepDownResponsePB {
   // A generic error message (such as tablet not found).
   optional tserver.TabletServerErrorPB error = 1;
+
+  // Time in milliseconds since previous election failure with the same intended ("protege") leader.
+  // This is used to track the remaining amount of time during which the load balancer should not
+  // attempt to ask (any) leader of this tablet to step down in favor of the same peer.
+  optional int64 time_since_election_failure_ms = 2;
 }
 
 enum LeaderLeaseStatus {

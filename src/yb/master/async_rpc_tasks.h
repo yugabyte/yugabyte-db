@@ -416,11 +416,16 @@ class AsyncRemoveServerTask : public AsyncChangeConfigTask {
 class AsyncTryStepDown : public CommonInfoForRaftTask {
  public:
   AsyncTryStepDown(
-      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-      const consensus::ConsensusStatePB& cstate, const std::string& change_config_ts_uuid,
-      bool should_remove, const std::string& new_leader_uuid = "")
-    : CommonInfoForRaftTask(master, callback_pool, tablet, cstate, change_config_ts_uuid),
-      should_remove_(should_remove), new_leader_uuid_(new_leader_uuid) {}
+      Master* master,
+      ThreadPool* callback_pool,
+      const scoped_refptr<TabletInfo>& tablet,
+      const consensus::ConsensusStatePB& cstate,
+      const std::string& change_config_ts_uuid,
+      bool should_remove,
+      const std::string& new_leader_uuid = "")
+      : CommonInfoForRaftTask(master, callback_pool, tablet, cstate, change_config_ts_uuid),
+        should_remove_(should_remove),
+        new_leader_uuid_(new_leader_uuid) {}
 
   Type type() const override { return ASYNC_TRY_STEP_DOWN; }
 

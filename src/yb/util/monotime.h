@@ -100,6 +100,8 @@ class MonoDelta {
   explicit operator bool() const { return Initialized(); }
   bool operator !() const { return !Initialized(); }
 
+  MonoDelta operator-() const { return MonoDelta(-nano_delta_); }
+
  private:
   typedef int64_t NanoDeltaType;
   static const NanoDeltaType kUninitialized;
@@ -203,6 +205,12 @@ inline MonoTime operator+(MonoTime lhs, const MonoDelta& rhs) {
 
 inline MonoDelta operator-(const MonoTime& lhs, const MonoTime& rhs) {
   return lhs.GetDeltaSince(rhs);
+}
+
+inline MonoTime operator-(const MonoTime& lhs, const MonoDelta& rhs) {
+  MonoTime result = lhs;
+  result.AddDelta(-rhs);
+  return MonoTime(lhs);
 }
 
 inline bool operator<(const MonoTime& lhs, const MonoTime& rhs) {

@@ -267,7 +267,12 @@ std::ostream& operator<<(std::ostream &os, const PRIVATE_ThrottleMsg&);
     GLOG_MSVC_POP_WARNING() CHECK_BETWEEN(val, lower_bound, upper_bound)
 #endif
 
-
+// Unlike plain LOG(FATAL), here the compiler always knows we're not returning.
+#define FATAL_ERROR(msg) \
+  do { \
+    LOG(FATAL) << (msg); \
+    abort(); \
+  } while (false)
 
 } // namespace yb
 

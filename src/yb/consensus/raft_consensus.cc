@@ -65,14 +65,10 @@
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
 #include "yb/util/url-coding.h"
+#include "yb/util/format.h"
+#include "yb/util/tsan_util.h"
 
-#if defined(THREAD_SANITIZER)
-constexpr int32_t kDefaultRaftHeartbeatIntervalMs = 1000;
-#else
-constexpr int32_t kDefaultRaftHeartbeatIntervalMs = 500;
-#endif
-
-DEFINE_int32(raft_heartbeat_interval_ms, kDefaultRaftHeartbeatIntervalMs,
+DEFINE_int32(raft_heartbeat_interval_ms, yb::NonTsanVsTsan(500, 1000),
              "The heartbeat interval for Raft replication. The leader produces heartbeats "
              "to followers at this interval. The followers expect a heartbeat at this interval "
              "and consider a leader to have failed if it misses several in a row.");
@@ -173,6 +169,13 @@ DEFINE_int32(leader_lease_duration_ms, 2000,
              "existing one with every UpdateConsensus. A new server is not allowed to serve as a "
              "leader (i.e. serve up-to-date read requests or acknowledge write requests) until a "
              "lease of this duration has definitely expired on the old leader's side.");
+
+DEFINE_int32(min_leader_stepdown_retry_interval_ms,
+             20 * 1000,
+             "Minimum amount of time between successive attempts to perform the leader stepdown "
+             "for the same combination of tablet and intended (target) leader. This is needed "
+             "to avoid infinite leader stepdown loops when the current leader never has a chance "
+             "to update the intended leader with its latest records.");
 
 namespace {
 
@@ -568,6 +571,19 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
   TRACE_EVENT0("consensus", "RaftConsensus::StepDown");
   ReplicaState::UniqueLock lock;
   RETURN_NOT_OK(state_->LockForConfigChange(&lock));
+
+  // A sanity check that this request was routed to the correct RaftConsensus.
+  const auto& tablet_id = req->tablet_id();
+  if (tablet_id != this->tablet_id()) {
+    resp->mutable_error()->set_code(TabletServerErrorPB::UNKNOWN_ERROR);
+    const auto msg = Format(
+        "Received a leader stepdown operation for wrong tablet id: $0, must be: $1",
+        tablet_id, this->tablet_id());
+    LOG_WITH_PREFIX_UNLOCKED(ERROR) << msg;
+    StatusToPB(STATUS(IllegalState, msg), resp->mutable_error()->mutable_status());
+    return Status::OK();
+  }
+
   if (state_->GetActiveRoleUnlocked() != RaftPeerPB::LEADER) {
     resp->mutable_error()->set_code(TabletServerErrorPB::NOT_THE_LEADER);
     StatusToPB(STATUS(IllegalState, "Not currently leader"),
@@ -582,7 +598,6 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
   if (!err_msg.empty()) {
     resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
     StatusToPB(STATUS(IllegalState, err_msg), resp->mutable_error()->mutable_status());
-    // We return OK so that the tablet service won't overwrite the error code.
     return Status::OK();
   }
 
@@ -600,7 +615,28 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
       // We return OK so that the tablet service won't overwrite the error code.
       return Status::OK();
     }
-    const auto& tablet_id = req->tablet_id();
+    const auto& local_peer_uuid = state_->GetPeerUuid();
+    const auto leadership_transfer_description =
+        Format("tablet $0 from $1 to $2", tablet_id, local_peer_uuid, new_leader_uuid);
+    if (new_leader_uuid == protege_leader_uuid_ && election_lost_by_protege_at_) {
+      const MonoDelta time_since_election_loss_by_protege =
+          MonoTime::FineNow() - election_lost_by_protege_at_;
+      if (time_since_election_loss_by_protege.ToMilliseconds() <
+              FLAGS_min_leader_stepdown_retry_interval_ms) {
+        LOG(INFO) << "Rejecting leader stepdown request for " << leadership_transfer_description
+                  << " because the intended leader already lost an election only "
+                  << ToString(time_since_election_loss_by_protege) << " ago (within "
+                  << FLAGS_min_leader_stepdown_retry_interval_ms << " ms).";
+        resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
+        resp->set_time_since_election_failure_ms(
+            time_since_election_loss_by_protege.ToMilliseconds());
+        StatusToPB(STATUS(IllegalState, "Suggested peer lost an election recently"),
+                   resp->mutable_error()->mutable_status());
+        // We return OK so that the tablet service won't overwrite the error code.
+        return Status::OK();
+      }
+      election_lost_by_protege_at_ = MonoTime();
+    }
     bool new_leader_found = false;
     const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
     for (const RaftPeerPB& peer : active_config.peers()) {
@@ -618,8 +654,7 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
             std::bind(&RaftConsensus::RunLeaderElectionResponseRpcCallback, this,
                 election_state));
         new_leader_found = true;
-        LOG(INFO) << "Transferring leadership of tablet " << tablet_id
-                  << " from " << state_->GetPeerUuid() << " to " << new_leader_uuid;
+        LOG(INFO) << "Transferring leadership of " << leadership_transfer_description;
         break;
       }
     }
@@ -655,6 +690,7 @@ Status RaftConsensus::ElectionLostByProtege(const std::string& election_lost_by_
                                      << ", lost election. Has leader: "
                                      << state_->HasLeaderUnlocked();
       withhold_election_start_until_.store(MonoTime::Min().ToUint64(), std::memory_order_relaxed);
+      election_lost_by_protege_at_ = MonoTime::FineNow();
 
       start_election = !state_->HasLeaderUnlocked();
     }
@@ -668,6 +704,7 @@ Status RaftConsensus::ElectionLostByProtege(const std::string& election_lost_by_
 }
 
 void RaftConsensus::WithholdElectionAfterStepDown(const std::string& protege_uuid) {
+  DCHECK(state_->IsLocked());
   protege_leader_uuid_ = protege_uuid;
   auto timeout = MonoDelta::FromMilliseconds(
       FLAGS_after_stepdown_delay_election_multiplier *
@@ -675,6 +712,7 @@ void RaftConsensus::WithholdElectionAfterStepDown(const std::string& protege_uui
       FLAGS_raft_heartbeat_interval_ms);
   auto deadline = MonoTime::FineNow() + timeout;
   withhold_election_start_until_.store(deadline.ToUint64(), std::memory_order_release);
+  election_lost_by_protege_at_ = MonoTime();
 }
 
 void RaftConsensus::RunLeaderElectionResponseRpcCallback(
