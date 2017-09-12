@@ -31,11 +31,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Singleton
-public class GCPInitializer {
-  public static final Logger LOG = LoggerFactory.getLogger(GCPInitializer.class);
-  
-  @Inject
-  CloudQueryHelper cloudQueryHelper;
+public class GCPInitializer extends AbstractInitializer {
 
   private Provider provider;
 
@@ -103,6 +99,7 @@ public class GCPInitializer {
    * @param providerUUID UUID of the Customer's configured GCP.
    * @return A response result that can be returned to the user to indicate success/failure.
    */
+  @Override
   public Result initialize(UUID customerUUID, UUID providerUUID) {
   	try {
   	  // Validate input

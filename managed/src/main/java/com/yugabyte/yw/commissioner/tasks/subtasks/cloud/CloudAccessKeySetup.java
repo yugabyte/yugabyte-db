@@ -24,7 +24,9 @@ public class CloudAccessKeySetup extends CloudTaskBase {
 
   @Override
   public void run() {
-    String accessKeyCode = String.format("yb-%s-key", getProvider().name).toLowerCase();
+    String accessKeyCode = String.format("yb-%s-key", getProvider().name
+                                                                   .replaceAll("\\s+", "-"))
+                                                                   .toLowerCase();
     String regionCode = taskParams().regionCode;
     Region region = Region.getByCode(getProvider(), regionCode);
     if (region == null) {
