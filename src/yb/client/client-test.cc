@@ -1010,7 +1010,7 @@ TEST_F(ClientTest, TestScanFaultTolerance) {
         scoped_refptr<TabletPeer> tablet_peer;
         ASSERT_TRUE(cluster_->mini_tablet_server(i)->server()->tablet_manager()->LookupTablet(
                 tablet_id, &tablet_peer));
-        ASSERT_OK(tablet_peer->tablet()->Flush());
+        ASSERT_OK(tablet_peer->tablet()->Flush(tablet::FlushMode::kSync));
       }
     }
 

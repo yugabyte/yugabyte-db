@@ -238,7 +238,7 @@ TEST_F(BootstrapTest, TestOrphanCommit) {
     // Step 3) Apply the operations in the log to the tablet and flush
     // the tablet to disk.
     ASSERT_OK(BootstrapTestTablet(-1, -1, &tablet, &boot_info));
-    ASSERT_OK(tablet->Flush());
+    ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
 
     // Create a new log segment.
     ASSERT_OK(RollLog());

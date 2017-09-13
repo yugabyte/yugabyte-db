@@ -702,7 +702,7 @@ class MyCommonHooks : public Tablet::FlushCompactCommonHooks,
 TEST_F(TabletServerTest, TestKUDU_176_RecoveryAfterMajorDeltaCompaction) {
   // Flush a DRS with 1 rows.
   ASSERT_NO_FATALS(InsertTestRowsRemote(0, 1, 1));
-  ASSERT_OK(tablet_peer_->tablet()->Flush());
+  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
   ASSERT_NO_FATALS(VerifyRows(schema_, { KeyValue(1, 1) }));
 
   // Update it, flush deltas.
@@ -723,7 +723,7 @@ TEST_F(TabletServerTest, TestKUDU_176_RecoveryAfterMajorDeltaCompaction) {
 TEST_F(TabletServerTest, TestKUDU_177_RecoveryOfDMSEditsAfterMajorDeltaCompaction) {
   // Flush a DRS with 1 rows.
   ASSERT_NO_FATALS(InsertTestRowsRemote(0, 1, 1));
-  ASSERT_OK(tablet_peer_->tablet()->Flush());
+  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
   ASSERT_NO_FATALS(VerifyRows(schema_, { KeyValue(1, 1) }));
 
   // Update it, flush deltas.
@@ -745,7 +745,7 @@ TEST_F(TabletServerTest, TestKUDU_177_RecoveryOfDMSEditsAfterMajorDeltaCompactio
 TEST_F(TabletServerTest, TestClientGetsErrorBackWhenRecoveryFailed) {
   ASSERT_NO_FATALS(InsertTestRowsRemote(0, 1, 7));
 
-  ASSERT_OK(tablet_peer_->tablet()->Flush());
+  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
 
   // Save the log path before shutting down the tablet (and destroying
   // the tablet peer).
@@ -964,7 +964,7 @@ TEST_F(TabletServerTest, TestSnapshotScan_OpenScanner) {
   vector<uint64_t> write_hybrid_times_collector;
   // Write and flush and write, so we have some rows in MRS and DRS
   InsertTestRowsRemote(0, 0, 100, 2, nullptr, kTabletId, &write_hybrid_times_collector);
-  ASSERT_OK(tablet_peer_->tablet()->Flush());
+  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
   InsertTestRowsRemote(0, 100, 100, 2, nullptr, kTabletId, &write_hybrid_times_collector);
 
   ScanRequestPB req;
@@ -1003,7 +1003,7 @@ TEST_F(TabletServerTest, TestSnapshotScan_LastRow) {
 
   // Generate some interleaved rows
   for (int i = 0; i < batch_size; i++) {
-    ASSERT_OK(tablet_peer_->tablet()->Flush());
+    ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
     for (int j = 0; j < num_rows; j++) {
       if (j % batch_size == i) {
         InsertTestRowsDirect(j, 1);
@@ -1469,9 +1469,9 @@ TEST_F(TabletServerTest, TestScan_InvalidScanSeqId) {
 void TabletServerTest::DoOrderedScanTest(const Schema& projection,
                                          const string& expected_rows_as_string) {
   InsertTestRowsDirect(0, 10);
-  ASSERT_OK(tablet_peer_->tablet()->Flush());
+  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
   InsertTestRowsDirect(10, 10);
-  ASSERT_OK(tablet_peer_->tablet()->Flush());
+  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
   InsertTestRowsDirect(20, 10);
 
   ScanResponsePB resp;
@@ -1576,7 +1576,7 @@ TEST_F(TabletServerTest, TestDeleteTablet) {
   // Put some data in the tablet. We flush and insert more rows to ensure that
   // there is data both in the MRS and on disk.
   ASSERT_NO_FATALS(InsertTestRowsRemote(0, 1, 1));
-  ASSERT_OK(tablet_peer_->tablet()->Flush());
+  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
   ASSERT_NO_FATALS(InsertTestRowsRemote(0, 2, 1));
 
   // Drop any local references to the tablet from within this test,

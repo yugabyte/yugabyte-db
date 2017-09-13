@@ -138,7 +138,7 @@ bool FlushMRSOp::Prepare() {
 void FlushMRSOp::Perform() {
   CHECK(!tablet_peer_->tablet()->rowsets_flush_sem_.try_lock());
 
-  CHECK_OK(tablet_peer_->tablet()->FlushUnlocked());
+  CHECK_OK(tablet_peer_->tablet()->FlushUnlocked(FlushMode::kAsync));
 
   {
     std::lock_guard<simple_spinlock> l(lock_);

@@ -223,7 +223,6 @@ class YqlTabletTest : public YqlDmlTestBase {
   CHECKED_STATUS Import() {
     std::this_thread::sleep_for(1s); // Wait until all tablets a synced and flushed.
     cluster_->FlushTablets();
-    std::this_thread::sleep_for(5s); // TODO flush became async after D2261, it should be reverted.
 
     auto source_infos = GetTabletInfos(kTable1Name);
     auto dest_infos = GetTabletInfos(kTable2Name);

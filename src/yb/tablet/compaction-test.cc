@@ -784,7 +784,7 @@ TEST_F(TestCompaction, TestCompactionFreesDiskSpace) {
         ASSERT_OK(row.SetInt32("val", val));
         ASSERT_OK(writer.Insert(row));
       }
-      ASSERT_OK(tablet()->Flush());
+      ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync));
     }
   }
 

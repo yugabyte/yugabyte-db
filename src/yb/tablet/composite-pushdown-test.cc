@@ -80,7 +80,7 @@ class CompositePushdownTest : public YBTabletTest {
             ASSERT_OK_FAST(writer.Insert(row));
 
             if (i == nrows * 9 / 10) {
-              ASSERT_OK(tablet()->Flush());
+              ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync));
             }
             ++i;
           }

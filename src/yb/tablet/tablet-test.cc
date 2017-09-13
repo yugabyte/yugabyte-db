@@ -97,7 +97,7 @@ TYPED_TEST(TestTablet, TestFlush) {
   this->InsertTestRows(0, max_rows, 0);
 
   // Flush it.
-  ASSERT_OK(this->tablet()->Flush());
+  ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
   TabletMetadata* tablet_meta = this->tablet()->metadata();
 
   // Make sure the files were created as expected.
@@ -156,7 +156,7 @@ TYPED_TEST(TestTablet, TestInsertsAndMutationsAreUndoneWithMVCCAfterFlush) {
                           snaps, &expected_rows);
 
   // Flush the tablet
-  ASSERT_OK(this->tablet()->Flush());
+  ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
 
   // Now verify that with undos we get the same thing.
   VerifySnapshotsHaveSameResult(this->tablet().get(), this->client_schema_,
@@ -187,7 +187,7 @@ TYPED_TEST(TestTablet, TestInsertsAndMutationsAreUndoneWithMVCCAfterFlush) {
                           snaps, &expected_rows);
 
   // now flush and the compact everything
-  ASSERT_OK(this->tablet()->Flush());
+  ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
   ASSERT_OK(this->tablet()->Compact(Tablet::FORCE_COMPACT_ALL));
 
   // Now verify that with undos and redos we get the same thing.
@@ -211,12 +211,12 @@ TYPED_TEST(TestTablet, TestGhostRowsOnDiskRowSets) {
   for (int i = 0; i < 3; i++) {
     CHECK_OK(this->InsertTestRow(&writer, 0, 0));
     ASSERT_OK(this->DeleteTestRow(&writer, 0));
-    ASSERT_OK(this->tablet()->Flush());
+    ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
   }
 
   // Create one more rowset on disk which has just an INSERT (ie a non-ghost row).
   CHECK_OK(this->InsertTestRow(&writer, 0, 0));
-  ASSERT_OK(this->tablet()->Flush());
+  ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
 
   // Compact. This should result in a rowset with just one row in it.
   ASSERT_OK(this->tablet()->Compact(Tablet::FORCE_COMPACT_ALL));
@@ -240,7 +240,7 @@ TYPED_TEST(TestTablet, TestInsertDuplicateKey) {
   ASSERT_EQ(1, this->TabletCount());
 
   // Flush, and make sure that inserting duplicate still fails
-  ASSERT_OK(this->tablet()->Flush());
+  ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
 
   ASSERT_EQ(1, this->TabletCount());
 
@@ -263,7 +263,7 @@ TYPED_TEST(TestTablet, TestDeleteWithFlushAndCompact) {
   ASSERT_EQ(0, rows.size());
 
   // Flush the tablet and make sure the data doesn't re-appear.
-  ASSERT_OK(this->tablet()->Flush());
+  ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
   ASSERT_OK(this->IterateToStringList(&rows));
   ASSERT_EQ(0, rows.size());
 
@@ -276,7 +276,7 @@ TYPED_TEST(TestTablet, TestDeleteWithFlushAndCompact) {
   EXPECT_EQ(this->setup_.FormatDebugRow(0, 1, false), rows[0]);
 
   // Flush again, so the DiskRowSet has the row.
-  ASSERT_OK(this->tablet()->Flush());
+  ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
   ASSERT_OK(this->IterateToStringList(&rows));
   ASSERT_EQ(1, rows.size());
   EXPECT_EQ(this->setup_.FormatDebugRow(0, 1, false), rows[0]);
@@ -298,7 +298,7 @@ TYPED_TEST(TestTablet, TestDeleteWithFlushAndCompact) {
   EXPECT_EQ(this->setup_.FormatDebugRow(0, 2, false), rows[0]);
 
   // Flush - now we have the row in two different DRSs.
-  ASSERT_OK(this->tablet()->Flush());
+  ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
   ASSERT_OK(this->IterateToStringList(&rows));
   ASSERT_EQ(1, rows.size());
   EXPECT_EQ(this->setup_.FormatDebugRow(0, 2, false), rows[0]);
@@ -322,7 +322,7 @@ TYPED_TEST(TestTablet, TestFlushWithReinsert) {
   CHECK_OK(this->InsertTestRow(&writer, 0, 1));
 
   // Flush the tablet and make sure the data persists.
-  ASSERT_OK(this->tablet()->Flush());
+  ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
   vector<string> rows;
   ASSERT_OK(this->IterateToStringList(&rows));
   ASSERT_EQ(1, rows.size());
@@ -373,7 +373,7 @@ TYPED_TEST(TestTablet, TestReinsertDuringFlush) {
   this->tablet()->SetFlushCompactCommonHooksForTests(common_hooks);
 
   // Flush the tablet and make sure the data persists.
-  ASSERT_OK(this->tablet()->Flush());
+  ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
   vector<string> rows;
   ASSERT_OK(this->IterateToStringList(&rows));
   ASSERT_EQ(1, rows.size());
@@ -391,11 +391,11 @@ TYPED_TEST(TestTablet, TestRowIteratorSimple) {
   // Put a row in disk rowset 1 (insert and flush)
   LocalTabletWriter writer(this->tablet().get(), &this->client_schema_);
   CHECK_OK(this->InsertTestRow(&writer, kInRowSet1, 0));
-  ASSERT_OK(this->tablet()->Flush());
+  ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
 
   // Put a row in disk rowset 2 (insert and flush)
   CHECK_OK(this->InsertTestRow(&writer, kInRowSet2, 0));
-  ASSERT_OK(this->tablet()->Flush());
+  ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
 
   // Put a row in memrowset
   CHECK_OK(this->InsertTestRow(&writer, kInMemRowSet, 0));
@@ -436,7 +436,7 @@ TYPED_TEST(TestTablet, TestRowIteratorOrdered) {
   LOG(INFO) << "Schema: " << this->schema_.ToString();
   LocalTabletWriter writer(this->tablet().get(), &this->client_schema_);
   for (int i = 0; i < kNumBatches; i++) {
-    ASSERT_OK(this->tablet()->Flush());
+    ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
     for (int j = 0; j < kNumRows; j++) {
       if (j % kNumBatches == i) {
         LOG(INFO) << "Inserting row " << j;
@@ -511,7 +511,7 @@ TYPED_TEST(TestTablet, TestRowIteratorComplex) {
 
     if (i % 300 == 0) {
       LOG(INFO) << "Flushing after " << i << " rows inserted";
-      ASSERT_OK(this->tablet()->Flush());
+      ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
     }
   }
   LOG(INFO) << "Successfully inserted " << max_rows << " rows";
@@ -585,7 +585,7 @@ TYPED_TEST(TestTablet, TestInsertsPersist) {
   ASSERT_EQ(max_rows, this->TabletCount());
 
   // Flush it.
-  ASSERT_OK(this->tablet()->Flush());
+  ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
 
   ASSERT_EQ(max_rows, this->TabletCount());
 
@@ -618,7 +618,7 @@ TYPED_TEST(TestTablet, TestMultipleUpdates) {
   ASSERT_EQ(this->setup_.FormatDebugRow(0, 3, false), out_rows[0]);
 
   // Flush it.
-  ASSERT_OK(this->tablet()->Flush());
+  ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
 
   // Should still see most recent value.
   ASSERT_OK(this->IterateToStringList(&out_rows));
@@ -641,7 +641,7 @@ TYPED_TEST(TestTablet, TestMultipleUpdates) {
 
   // Force a compaction after adding a new rowset with one row.
   CHECK_OK(this->InsertTestRow(&writer, 1, 0));
-  ASSERT_OK(this->tablet()->Flush());
+  ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
   ASSERT_EQ(2, this->tablet()->num_rowsets());
 
   ASSERT_OK(this->tablet()->Compact(Tablet::FORCE_COMPACT_ALL));
@@ -665,7 +665,7 @@ TYPED_TEST(TestTablet, TestCompaction) {
     this->InsertTestRows(0, n_rows, 0);
 
     LOG_TIMING(INFO, "Flushing rows") {
-      ASSERT_OK(this->tablet()->Flush());
+      ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
     }
 
     // first MemRowSet had id 0, current one should be 1
@@ -679,7 +679,7 @@ TYPED_TEST(TestTablet, TestCompaction) {
     this->InsertTestRows(n_rows, n_rows, 0);
 
     LOG_TIMING(INFO, "Flushing rows") {
-      ASSERT_OK(this->tablet()->Flush());
+      ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
     }
 
     // previous MemRowSet had id 1, current one should be 2
@@ -693,7 +693,7 @@ TYPED_TEST(TestTablet, TestCompaction) {
     this->InsertTestRows(n_rows * 2, n_rows, 0);
 
     LOG_TIMING(INFO, "Flushing rows") {
-      ASSERT_OK(this->tablet()->Flush());
+      ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
     }
 
     // previous MemRowSet had id 2, current one should be 3
@@ -832,7 +832,7 @@ TYPED_TEST(TestTablet, TestFlushWithConcurrentMutation) {
   ASSERT_OK(hooks->DoHook(MRS_MUTATION));
 
   // Then do the flush with the hooks enabled.
-  ASSERT_OK(this->tablet()->Flush());
+  ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
 
   // Now verify that the results saw all the mutated_stores.
   vector<string> out_rows;
@@ -882,15 +882,15 @@ TYPED_TEST(TestTablet, TestCompactionWithConcurrentMutation) {
 
   this->InsertTestRows(0, 2, 0);  // rows 0-1
   this->InsertTestRows(10, 2, 0); // rows 10-11
-  ASSERT_OK(this->tablet()->Flush());
+  ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
 
   this->InsertTestRows(2, 2, 0);  // rows 2-3
   this->InsertTestRows(12, 2, 0); // rows 12-13
-  ASSERT_OK(this->tablet()->Flush());
+  ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
 
   this->InsertTestRows(4, 3, 0);  // rows 4-6
   this->InsertTestRows(14, 3, 0); // rows 14-16
-  ASSERT_OK(this->tablet()->Flush());
+  ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
 
   // Rows 20-26 inclusive will be inserted during the flush.
 

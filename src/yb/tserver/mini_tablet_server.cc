@@ -116,7 +116,7 @@ void MiniTabletServer::FlushTablets() {
   std::vector<tablet::TabletPeerPtr> tablets;
   server_->tablet_manager()->GetTabletPeers(&tablets);
   for (const auto& tablet : tablets) {
-    CHECK_OK(tablet->tablet()->Flush());
+    CHECK_OK(tablet->tablet()->Flush(tablet::FlushMode::kSync));
   }
 }
 

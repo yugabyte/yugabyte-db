@@ -167,7 +167,7 @@ class TestRandomAccess : public YBTabletTest {
   void BackgroundOpThread() {
     int n_flushes = 0;
     while (!done_.WaitFor(MonoDelta::FromMilliseconds(FLAGS_sleep_between_background_ops_ms))) {
-      CHECK_OK(tablet()->Flush());
+      CHECK_OK(tablet()->Flush(tablet::FlushMode::kSync));
       ++n_flushes;
       switch (n_flushes % 3) {
         case 0:
@@ -417,7 +417,7 @@ void TestRandomAccess::RunFuzzCase(const vector<TestOp>& test_ops,
         cur_val = pending_val;
         break;
       case TEST_FLUSH_TABLET:
-        ASSERT_OK(tablet()->Flush());
+        ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync));
         break;
       case TEST_FLUSH_DELTAS:
         ASSERT_OK(tablet()->FlushBiggestDMS());

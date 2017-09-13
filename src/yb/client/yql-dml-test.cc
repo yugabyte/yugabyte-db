@@ -267,7 +267,7 @@ constexpr auto kTimeout = 30s;
 } // namespace
 
 TEST_F_EX(YqlDmlTest, RangeFilter, YqlDmlRangeFilterBase) {
-  constexpr size_t kTotalLines = NonTsanVsTsan(25000, 5000);
+  constexpr size_t kTotalLines = NonTsanVsTsan(25000ULL, 5000ULL);
   if (!FLAGS_mini_cluster_reuse_data) {
     shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));

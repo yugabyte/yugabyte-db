@@ -157,6 +157,11 @@ class TabletFlushStats : public rocksdb::EventListener {
   std::atomic<uint64_t> oldest_write_in_memstore_{std::numeric_limits<uint64_t>::max()};
 };
 
+enum class FlushMode {
+  kSync,
+  kAsync,
+};
+
 class Tablet : public AbstractTablet, public TransactionIntentApplier {
  public:
   typedef std::map<int64_t, int64_t> MaxIdxToSegmentMap;
@@ -353,7 +358,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //
   // This doesn't flush any DeltaMemStores for any existing RowSets.
   // To do that, call FlushBiggestDMS() for example.
-  CHECKED_STATUS Flush();
+  //
+  // For RocksDB backed tables it makes RocksDB Flush.
+  CHECKED_STATUS Flush(FlushMode mode);
 
   // Prepares the transaction context for the alter schema operation.
   // An error will be returned if the specified schema is invalid (e.g.
@@ -587,7 +594,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   friend class ScopedReadTransaction;
   FRIEND_TEST(TestTablet, TestGetLogRetentionSizeForIndex);
 
-  CHECKED_STATUS FlushUnlocked();
+  CHECKED_STATUS FlushUnlocked(FlushMode mode);
 
   // A version of Insert that does not acquire locks and instead assumes that
   // they were already acquired. Requires that handles for the relevant locks

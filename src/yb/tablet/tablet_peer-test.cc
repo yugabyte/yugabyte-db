@@ -334,7 +334,7 @@ TEST_P(TabletPeerTest, TestLogAnchorsAndGC) {
   ASSERT_EQ(0, num_gced) << "earliest needed: " << min_log_index;
 
   // Flush RocksDB to ensure that we don't have OpId in anchors.
-  ASSERT_OK(tablet_peer_->tablet()->Flush());
+  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
 
   // The first two segments should be deleted.
   // The last is anchored due to the commit in the last segment being the last
@@ -366,7 +366,7 @@ TEST_P(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   ASSERT_EQ(3, segments.size());
 
   // Flush RocksDB so the next mutation goes into a DMS.
-  ASSERT_OK(tablet_peer_->tablet()->Flush());
+  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
 
   int32_t earliest_needed = static_cast<int32_t>(tablet_peer_->tablet()->MaxPersistentOpId().index);
   auto total_segments = log->GetLogReader()->num_segments();

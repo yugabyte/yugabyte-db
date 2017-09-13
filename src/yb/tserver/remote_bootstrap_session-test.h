@@ -197,7 +197,7 @@ class RemoteBootstrapTest : public YBTabletTest {
       ASSERT_FALSE(resp.has_error()) << "Request failed: " << resp.error().ShortDebugString();
       ASSERT_EQ(0, resp.per_row_errors_size()) << "Insert error: " << resp.ShortDebugString();
     }
-    ASSERT_OK(tablet()->Flush());
+    ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync));
   }
 
   void InitSession() {

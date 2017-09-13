@@ -63,7 +63,7 @@ class TestTabletSchema : public YBTabletTest {
       // Half of the rows will be on disk
       // and the other half in the MemRowSet
       if (i == (nrows / 2)) {
-        ASSERT_OK(tablet()->Flush());
+        ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync));
       }
     }
   }

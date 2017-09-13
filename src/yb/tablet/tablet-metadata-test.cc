@@ -75,12 +75,12 @@ TEST_F(TestTabletMetadata, TestLoadFromSuperBlock) {
   gscoped_ptr<YBPartialRow> row;
   BuildPartialRow(0, 0, "foo", &row);
   ASSERT_OK(writer_->Insert(*row));
-  ASSERT_OK(harness_->tablet()->Flush());
+  ASSERT_OK(harness_->tablet()->Flush(tablet::FlushMode::kSync));
 
   // Create one more rowset. Write and flush.
   BuildPartialRow(1, 1, "bar", &row);
   ASSERT_OK(writer_->Insert(*row));
-  ASSERT_OK(harness_->tablet()->Flush());
+  ASSERT_OK(harness_->tablet()->Flush(tablet::FlushMode::kSync));
 
   // Shut down the tablet.
   harness_->tablet()->Shutdown();

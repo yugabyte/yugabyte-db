@@ -1425,23 +1425,23 @@ Status Tablet::DoMajorDeltaCompaction(const vector<ColumnId>& col_ids,
   return s;
 }
 
-Status Tablet::Flush() {
+Status Tablet::Flush(FlushMode mode) {
   if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    return FlushUnlocked();
+    return FlushUnlocked(mode);
   }
   TRACE_EVENT1("tablet", "Tablet::Flush", "id", tablet_id());
   std::lock_guard<Semaphore> lock(rowsets_flush_sem_);
-  return FlushUnlocked();
+  return FlushUnlocked(mode);
 }
 
-Status Tablet::FlushUnlocked() {
+Status Tablet::FlushUnlocked(FlushMode mode) {
   TRACE_EVENT0("tablet", "Tablet::FlushUnlocked");
 
   if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     // TODO(bojanserafimov): Can raise null pointer exception if
     // the tablet just got shutdown. Acquire a read lock on component_lock_?
     rocksdb::FlushOptions options;
-    options.wait = false; // TODO(bojanserafimov): Make this optional
+    options.wait = mode == FlushMode::kSync;
     rocksdb_->Flush(options);
     return Status::OK();
   }

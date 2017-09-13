@@ -30,10 +30,11 @@
 // under the License.
 //
 
+#include <memory>
+
 #include <boost/ptr_container/ptr_vector.hpp>
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
-#include <memory>
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/substitute.h"
@@ -279,7 +280,7 @@ class MultiThreadedTabletTest : public TabletTestBase<SETUP> {
     while (running_insert_count_.count() > 0) {
 
       if (tablet()->MemRowSetSize() > FLAGS_tablet_test_flush_threshold_mb * 1024 * 1024) {
-        CHECK_OK(tablet()->Flush());
+        CHECK_OK(tablet()->Flush(tablet::FlushMode::kSync));
       } else {
         LOG(INFO) << "Not flushing, memrowset not very full";
       }

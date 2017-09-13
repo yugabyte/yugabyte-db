@@ -30,11 +30,11 @@
 // under the License.
 //
 
-#include <glog/logging.h>
-#include <gtest/gtest.h>
-
 #include <algorithm>
 #include <vector>
+
+#include <glog/logging.h>
+#include <gtest/gtest.h>
 
 #include "yb/common/schema.h"
 #include "yb/tablet/tablet.h"
@@ -83,12 +83,12 @@ class TabletPushdownTest : public YBTabletTest,
       ASSERT_OK_FAST(writer.Insert(row));
 
       if (i == 205 && GetParam() == SPLIT_MEMORY_DISK) {
-        ASSERT_OK(tablet()->Flush());
+        ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync));
       }
     }
 
     if (GetParam() == ALL_ON_DISK) {
-      ASSERT_OK(tablet()->Flush());
+      ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync));
     }
   }
 

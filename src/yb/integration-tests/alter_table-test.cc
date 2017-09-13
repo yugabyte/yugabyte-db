@@ -335,7 +335,7 @@ TEST_F(AlterTableTest, TestAddNotNullableColumnWithoutDefaults) {
 // to a NULL default.
 TEST_F(AlterTableTest, TestAddNullableColumnWithoutDefault) {
   InsertRows(0, 1);
-  ASSERT_OK(tablet_peer_->tablet()->Flush());
+  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
 
   {
     gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
@@ -595,7 +595,7 @@ TEST_F(AlterTableTest, TestLogSchemaReplay) {
   UpdateRow(1, { {"c1", 0} });
 
   LOG(INFO) << "Flushing RocksDB";
-  ASSERT_OK(tablet_peer_->tablet()->Flush());
+  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
 
   UpdateRow(0, { {"c1", 1}, {"c2", 10001} });
 
@@ -641,7 +641,7 @@ TEST_F(AlterTableTest, TestBootstrapAfterAlters) {
 
   ASSERT_OK(AddNewI32Column(kTableName, "c2", 12345));
   InsertRows(0, 1);
-  ASSERT_OK(tablet_peer_->tablet()->Flush());
+  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
   InsertRows(1, 1);
 
   UpdateRow(0, { {"c1", 10001} });
@@ -693,9 +693,9 @@ TEST_F(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {
 
   ASSERT_OK(AddNewI32Column(kTableName, "c2", 12345));
   InsertRows(0, 1);
-  ASSERT_OK(tablet_peer_->tablet()->Flush());
+  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
   InsertRows(1, 1);
-  ASSERT_OK(tablet_peer_->tablet()->Flush());
+  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
 
 
   ASSERT_NO_FATALS(ScanToStrings(&rows));

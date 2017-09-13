@@ -100,7 +100,7 @@ class RemoteBootstrapTest : public TabletServerTestBase {
     LOG_TIMING(INFO, "Loading test data") {
       for (int row_id = 0; row_id < kNumLogRolls * kIncr; row_id += kIncr) {
         InsertTestRowsRemote(0, row_id, kIncr);
-        ASSERT_OK(tablet_peer_->tablet()->Flush());
+        ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
         ASSERT_OK(tablet_peer_->log()->AllocateSegmentAndRollOver());
       }
     }

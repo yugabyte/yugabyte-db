@@ -220,7 +220,7 @@ void TSTabletManager::MaybeFlushTablet() {
     // we will schedule a second flush, which will unnecessarily stall writes. This
     // will not happen often, but should be fixed.
     if (tablet_to_flush) {
-      WARN_NOT_OK(tablet_to_flush->tablet()->Flush(),
+      WARN_NOT_OK(tablet_to_flush->tablet()->Flush(tablet::FlushMode::kAsync),
           Substitute("Flush failed on $0", tablet_to_flush->tablet_id()));
     }
   }
