@@ -7,8 +7,8 @@ import { deleteUniverse, deleteUniverseResponse,
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    deleteUniverse: (uuid) => {
-      dispatch(deleteUniverse(uuid))
+    deleteUniverse: (uuid, isForceDelete) => {
+      dispatch(deleteUniverse(uuid, isForceDelete))
         .then((response) => {
           dispatch(deleteUniverseResponse(response.payload));
         });

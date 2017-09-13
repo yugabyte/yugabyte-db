@@ -1,17 +1,22 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import {Modal} from 'react-bootstrap';
+import {Modal, Checkbox} from 'react-bootstrap';
 import {getPromiseState} from 'utils/PromiseUtils';
 import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
 import { browserHistory } from 'react-router';
-import { YBButton } from '../../common/forms/fields';
+import { YBButton, YBCheckBox } from '../../common/forms/fields';
 export default class DeleteUniverse extends Component {
-
   constructor(props) {
     super(props);
     this.closeDeleteModal = this.closeDeleteModal.bind(this);
     this.confirmDelete = this.confirmDelete.bind(this);
+    this.toggleForceDelete = this.toggleForceDelete.bind(this);
+    this.state = {isForceDelete: false}
+  }
+
+  toggleForceDelete() {
+    this.setState({isForceDelete: !this.state.isForceDelete});
   }
 
   closeDeleteModal() {
@@ -20,7 +25,7 @@ export default class DeleteUniverse extends Component {
 
   confirmDelete() {
     this.props.onHide();
-    this.props.deleteUniverse(this.props.universe.currentUniverse.data.universeUUID);
+    this.props.deleteUniverse(this.props.universe.currentUniverse.data.universeUUID, this.state.isForceDelete);
   }
 
   componentWillReceiveProps(nextProps) {
@@ -35,12 +40,17 @@ export default class DeleteUniverse extends Component {
     return (
       <Modal show={visible} onHide={onHide}>
         <Modal.Header>
-          <Modal.Title>Delete Universe: { name }</Modal.Title>
+          <Modal.Title>
+            Delete Universe: { name }
+          </Modal.Title>
         </Modal.Header>
         <Modal.Body>
           Are you sure you want to delete the universe. You will lose all your data!
         </Modal.Body>
         <Modal.Footer>
+          <Checkbox inline className="delete-universe-check-container" checked={this.state.isForceDelete} onChange={this.toggleForceDelete}>
+            &nbsp;Ignore Errors and Force Delete
+          </Checkbox>
           <YBButton onClick={this.closeDeleteModal} btnText="No"/>
           <YBButton btnStyle="primary" onClick={this.confirmDelete} btnText="Yes"/>
         </Modal.Footer>
