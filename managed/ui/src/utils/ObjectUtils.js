@@ -167,19 +167,27 @@ export function normalizeToPositiveInt(value) {
   return parseInt(Math.abs(value), 10) || 0;
 }
 
+// Provided a String, return the corresponding positive float value. If invalid value, return 0.00.
 export function normalizeToPositiveFloat(value) {
-  if (value === ".") {
-    return "0.0";
+  // null -> "0.00"
+  if (!_.isString(value)) {
+    return "0.00";
   }
-  const splitValue = value.split(".");
-  if (splitValue.length > 2) {
-    return splitValue[0] + "." + splitValue[1];
+  // "1.2.3" -> ["1", "2"]; "a.b" -> ["0", "0"]; "." -> ["0", "0"]; "a" -> ["0"]; "" -> ["0"]
+  const splitValue = value.split(".").slice(0, 2).map((item) => {
+    if (item.length === 0 || isNaN(Math.abs(item))) {
+      return "0";
+    }
+    return item;
+  });
+  // ["1"] -> ["1", "00"]; ["1", "0"] -> ["1", "00"]
+  if (splitValue.length === 1 || splitValue[1] === "0") {
+    splitValue[1] = "00";
   }
-  const positiveFloat = parseFloat(Math.abs(value));
-  if (splitValue.length < 2 || Number.isInteger(positiveFloat)) {
-    return positiveFloat.toFixed(1) || "0.0";
-  }
-  return positiveFloat || "0.0";
+  // ["-5", "1"] -> ["5", "1"]; ["0005", "1"] -> ["5", "1"]
+  splitValue[0] = Math.abs(splitValue[0]).toString(10);
+  // ["1", "2"] -> "1.2"
+  return splitValue.join(".");
 }
 
 // TODO: Move the functions below to StringUtils.js?
