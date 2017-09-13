@@ -17,7 +17,6 @@ public class CloudProviderFormData {
     public Common.CloudType code;
 
     @Constraints.Required()
-    @Constraints.MinLength(5)
     public String name;
 
     public Boolean active = true;
