@@ -1915,6 +1915,7 @@ TEST_F(OptionsParserTest, DBOptionsAllFieldsSettable) {
       BLACKLIST_ENTRY(DBOptions, db_paths),
       BLACKLIST_ENTRY(DBOptions, db_log_dir),
       BLACKLIST_ENTRY(DBOptions, wal_dir),
+      BLACKLIST_ENTRY(DBOptions, memory_monitor),
       BLACKLIST_ENTRY(DBOptions, listeners),
       BLACKLIST_ENTRY(DBOptions, row_cache),
       BLACKLIST_ENTRY(DBOptions, wal_filter),
