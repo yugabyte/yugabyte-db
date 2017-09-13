@@ -34,7 +34,7 @@
 
 			<!--<aside class="copyright" role="note">
 				{{ with .Site.Params.copyright }}
-				&copy; {{ $.Now.Format "2006" }} {{ . }} &ndash;
+				&copy; {{ now.Format "2006" }} {{ . }} &ndash;
 				{{ end }}
 				Documentation built with
 				<a href="https://www.gohugo.io" target="_blank">Hugo</a>
@@ -43,7 +43,7 @@
 			</aside>-->
 			<aside class="copyright" role="note">
 				{{ with .Site.Params.copyright }}
-				&copy; {{ $.Now.Format "2006" }} YugaByte Inc.
+				&copy; {{ now.Format "2006" }} YugaByte Inc.
 				{{ end }}
 				<a href="http://www.yugabyte.com/privacy" target="_blank">Privacy Policy</a> ·
 				<a href="http://www.yugabyte.com/terms-of-service" target="_blank">Terms of Service</a>
