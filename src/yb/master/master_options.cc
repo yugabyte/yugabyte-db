@@ -62,19 +62,21 @@ DEFINE_bool(create_cluster, false,
     "be used in conjunction with the master_addresses flag, to inform the other masters of their "
     "starting peer group.");
 
+const char* MasterOptions::kServerType = "master";
+
 MasterOptions::MasterOptions(
     server::ServerBaseOptions::addresses_shared_ptr master_addresses,
     bool is_creating)
-    : is_creating_(is_creating),
-      is_shell_mode_(false) {
+    : is_creating_(is_creating) {
+  server_type = kServerType;
   rpc_opts.default_port = kMasterDefaultPort;
 
   SetMasterAddresses(master_addresses);
 }
 
 MasterOptions::MasterOptions()
-    : is_creating_(FLAGS_create_cluster),
-      is_shell_mode_(false) {
+    : is_creating_(FLAGS_create_cluster) {
+  server_type = kServerType;
   rpc_opts.default_port = kMasterDefaultPort;
   master_addresses_flag = FLAGS_master_addresses;
   vector<HostPort> master_addresses = std::vector<HostPort>();
@@ -90,9 +92,9 @@ MasterOptions::MasterOptions()
   SetMasterAddresses(make_shared<vector<HostPort>>(std::move(master_addresses)));
 }
 
-MasterOptions::MasterOptions(const MasterOptions& other)
-    : is_shell_mode_(false)  {
+MasterOptions::MasterOptions(const MasterOptions& other) {
   SetMasterAddresses(other.GetMasterAddresses());
+  server_type = other.server_type;
   is_creating_ = other.is_creating_;
   is_shell_mode_.Store(other.IsShellMode());
   rpc_opts.default_port = other.rpc_opts.default_port;

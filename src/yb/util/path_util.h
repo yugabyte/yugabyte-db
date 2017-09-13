@@ -36,8 +36,11 @@
 #include <string>
 
 #include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+
+class Env;
 
 // Join two path segments with the appropriate path separator,
 // if necessary.
@@ -54,6 +57,18 @@ std::string BaseName(const std::string& path);
 
 // Returns the absolute path for this binary file.
 Result<std::string> GetExecutablePath();
+
+// We ask the user to specify just a set of top level dirs where we can place data. However,
+// under those, we create our own structure, which includes one level worth of generic suffix
+// and another level under that splitting by server type (master vs tserver).
+std::string GetYbDataPath(const std::string& root);
+std::string GetServerTypeDataPath(const std::string& root, const std::string& server_type);
+
+// For the user specified root dirs, setup the two level heirarchy below it and report the final
+// path as well as whether we created the final path or not.
+Status SetupRootDir(
+    Env* env, const std::string& root, const std::string& server_type, std::string* out_dir,
+    bool* created);
 
 } // namespace yb
 #endif /* YB_UTIL_PATH_UTIL_H */

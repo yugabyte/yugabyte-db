@@ -52,7 +52,7 @@ const char* kTabletId = "TestTablet";
 class RaftConsensusStateTest : public YBTest {
  public:
   RaftConsensusStateTest()
-    : fs_manager_(env_.get(), GetTestPath("fs_root")),
+    : fs_manager_(env_.get(), GetTestPath("fs_root"), "tserver_test"),
       txn_factory_(new MockTransactionFactory()) {
   }
 

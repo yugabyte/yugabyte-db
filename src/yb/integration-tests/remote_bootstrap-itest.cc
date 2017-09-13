@@ -443,6 +443,7 @@ void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_t
   ASSERT_OK(env_->CreateDir(testbase));
   opts.wal_paths.push_back(JoinPathSegments(testbase, "wals"));
   opts.data_paths.push_back(JoinPathSegments(testbase, "data-0"));
+  opts.server_type = "tserver_test";
   gscoped_ptr<FsManager> fs_manager(new FsManager(env_.get(), opts));
   ASSERT_OK(fs_manager->CreateInitialFileSystemLayout());
   ASSERT_OK(fs_manager->Open());

@@ -206,7 +206,7 @@ class RaftConsensusTest : public YBTest {
 
     // TODO mock the Log too, since we're gonna mock the queue
     // monitors and pretty much everything else.
-    fs_manager_.reset(new FsManager(env_.get(), test_path));
+    fs_manager_.reset(new FsManager(env_.get(), test_path, "tserver_test"));
     CHECK_OK(fs_manager_->CreateInitialFileSystemLayout());
     CHECK_OK(fs_manager_->Open());
     CHECK_OK(Log::Open(LogOptions(),

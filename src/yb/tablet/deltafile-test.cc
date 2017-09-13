@@ -30,9 +30,10 @@
 // under the License.
 //
 
+#include <memory>
+
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
-#include <memory>
 
 #include "yb/common/schema.h"
 #include "yb/fs/fs-test-util.h"
@@ -73,7 +74,7 @@ class TestDeltaFile : public ::testing::Test {
 
  public:
   void SetUp() override {
-    fs_manager_.reset(new FsManager(env_.get(), kTestPath));
+    fs_manager_.reset(new FsManager(env_.get(), kTestPath, "tserver_test"));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
     ASSERT_OK(fs_manager_->Open());
   }

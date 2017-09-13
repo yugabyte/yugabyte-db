@@ -450,7 +450,9 @@ TEST_F(RaftConsensusITest, TestGetPermanentUuid) {
   std::shared_ptr<rpc::Messenger> messenger;
   ASSERT_OK(builder.Build(&messenger));
 
-  ASSERT_OK(consensus::SetPermanentUuidForRemotePeer(messenger, &peer));
+  // Set a decent timeout for allowing the masters to find eachother.
+  const uint64_t kTimeoutMs = 30000;
+  ASSERT_OK(consensus::SetPermanentUuidForRemotePeer(messenger, kTimeoutMs, &peer));
   ASSERT_EQ(expected_uuid, peer.permanent_uuid());
 }
 

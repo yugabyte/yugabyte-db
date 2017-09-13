@@ -91,6 +91,11 @@ DEFINE_bool(notify_peer_of_removal_from_cluster, true,
 TAG_FLAG(notify_peer_of_removal_from_cluster, hidden);
 TAG_FLAG(notify_peer_of_removal_from_cluster, advanced);
 
+DEFINE_int32(master_discovery_timeout_ms, 3600000,
+             "Timeout for masters to discover each other during cluster creation/startup");
+TAG_FLAG(master_discovery_timeout_ms, hidden);
+
+
 namespace yb {
 namespace master {
 
@@ -293,6 +298,7 @@ Status SysCatalogTable::SetupConfig(const MasterOptions& options,
       RETURN_NOT_OK_PREPEND(
         consensus::SetPermanentUuidForRemotePeer(
           master_->messenger(),
+          FLAGS_master_discovery_timeout_ms,
           &new_peer),
         Substitute("Unable to resolve UUID for peer $0", peer.ShortDebugString()));
       resolved_config.add_peers()->CopyFrom(new_peer);

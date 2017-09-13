@@ -63,10 +63,6 @@ DEFINE_int32(consensus_rpc_timeout_ms, 2000,
              "Timeout used for all consensus internal RPC communications.");
 TAG_FLAG(consensus_rpc_timeout_ms, advanced);
 
-DEFINE_int32(raft_get_node_instance_timeout_ms, 30000,
-             "Timeout for retrieving node instance data over RPC.");
-TAG_FLAG(consensus_rpc_timeout_ms, hidden);
-
 DECLARE_int32(raft_heartbeat_interval_ms);
 
 DEFINE_double(fault_crash_on_leader_request_fraction, 0.0,
@@ -475,8 +471,10 @@ Status RpcPeerProxyFactory::NewProxy(const RaftPeerPB& peer_pb,
 
 RpcPeerProxyFactory::~RpcPeerProxyFactory() {}
 
-Status SetPermanentUuidForRemotePeer(const shared_ptr<Messenger>& messenger,
-                                     RaftPeerPB* remote_peer) {
+Status SetPermanentUuidForRemotePeer(
+    const shared_ptr<Messenger>& messenger,
+    const uint64_t timeout_ms,
+    RaftPeerPB* remote_peer) {
   DCHECK(!remote_peer->has_permanent_uuid());
   HostPort hostport;
   RETURN_NOT_OK(HostPortFromPB(remote_peer->last_known_addr(), &hostport));
@@ -489,7 +487,7 @@ Status SetPermanentUuidForRemotePeer(const shared_ptr<Messenger>& messenger,
   // TODO generalize this exponential backoff algorithm, as we do the same thing in
   // catalog_manager.cc (AsyncTabletRequestTask::RpcCallBack).
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
-  deadline.AddDelta(MonoDelta::FromMilliseconds(FLAGS_raft_get_node_instance_timeout_ms));
+  deadline.AddDelta(MonoDelta::FromMilliseconds(timeout_ms));
   int attempt = 1;
   // Normal rand is seeded by default with 1. Using the same for rand_r seed.
   unsigned int seed = 1;
@@ -520,7 +518,7 @@ Status SetPermanentUuidForRemotePeer(const shared_ptr<Messenger>& messenger,
     } else {
       s = STATUS(TimedOut, Substitute("Getting permanent uuid from $0 timed out after $1 ms.",
                                       hostport.ToString(),
-                                      FLAGS_raft_get_node_instance_timeout_ms),
+                                      timeout_ms),
                            s.ToString());
       return s;
     }

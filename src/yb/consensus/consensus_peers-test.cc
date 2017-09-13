@@ -70,7 +70,7 @@ class ConsensusPeersTest : public YBTest {
 
   void SetUp() override {
     YBTest::SetUp();
-    fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root")));
+    fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root"), "tserver_test"));
 
     CHECK_OK(fs_manager_->CreateInitialFileSystemLayout());
     CHECK_OK(Log::Open(options_,

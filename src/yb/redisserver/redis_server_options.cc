@@ -20,6 +20,7 @@ namespace yb {
 namespace redisserver {
 
 RedisServerOptions::RedisServerOptions() {
+  server_type = "tserver";
   rpc_opts.default_port = RedisServer::kDefaultPort;
   connection_context_factory = &std::make_unique<RedisConnectionContext>;
 }

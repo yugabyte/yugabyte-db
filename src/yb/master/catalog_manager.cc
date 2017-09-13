@@ -139,9 +139,9 @@ DEFINE_bool(catalog_manager_wait_for_new_tablets_to_elect_leader, true,
             "election.");
 TAG_FLAG(catalog_manager_wait_for_new_tablets_to_elect_leader, hidden);
 
-DEFINE_int32(default_num_replicas, 3,
+DEFINE_int32(replication_factor, 3,
              "Default number of replicas for tables that do not have the num_replicas set.");
-TAG_FLAG(default_num_replicas, advanced);
+TAG_FLAG(replication_factor, advanced);
 
 DEFINE_int32(catalog_manager_bg_task_wait_ms, 1000,
              "Amount of time the catalog manager background task thread waits "
@@ -1367,7 +1367,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       num_replicas = l->data().pb.replication_info().live_replicas().num_replicas();
     }
 
-    num_replicas = num_replicas > 0 ? num_replicas : FLAGS_default_num_replicas;
+    num_replicas = num_replicas > 0 ? num_replicas : FLAGS_replication_factor;
     req.mutable_replication_info()->mutable_live_replicas()->set_num_replicas(num_replicas);
   }
 
@@ -4412,7 +4412,7 @@ Status CatalogManager::GetReplicationFactor(int* num_replicas) {
 
   *num_replicas = l->data().pb.replication_info().live_replicas().num_replicas();
   if (*num_replicas == 0) {
-    *num_replicas = FLAGS_default_num_replicas;
+    *num_replicas = FLAGS_replication_factor;
   }
 
   return Status::OK();

@@ -53,13 +53,13 @@ using tablet::TabletStatusListener;
 
 class RemoteBootstrapClientTest : public RemoteBootstrapTest {
  public:
-  RemoteBootstrapClientTest(TableType table_type = DEFAULT_TABLE_TYPE)
+  explicit RemoteBootstrapClientTest(TableType table_type = DEFAULT_TABLE_TYPE)
       : RemoteBootstrapTest(table_type) {}
 
   virtual void SetUp() override {
     RemoteBootstrapTest::SetUp();
 
-    fs_manager_.reset(new FsManager(Env::Default(), GetTestPath("client_tablet")));
+    fs_manager_.reset(new FsManager(Env::Default(), GetTestPath("client_tablet"), "tserver_test"));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
     ASSERT_OK(fs_manager_->Open());
 
@@ -116,4 +116,4 @@ Status RemoteBootstrapClientTest::CompareFileContents(const string& path1, const
 } // namespace tserver
 } // namespace yb
 
-#endif
+#endif // YB_TSERVER_REMOTE_BOOTSTRAP_CLIENT_TEST_H_

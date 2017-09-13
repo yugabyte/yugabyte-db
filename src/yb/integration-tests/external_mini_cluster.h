@@ -412,6 +412,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
     std::shared_ptr<rpc::Messenger> messenger,
     std::string exe,
     std::string data_dir,
+    std::string server_type,
     std::vector<std::string> extra_flags);
 
   HostPort bound_rpc_hostport() const;
@@ -440,7 +441,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
   virtual void Shutdown();
 
-  const std::string& data_dir() const { return data_dir_; }
+  const std::string& data_dir() const { return full_data_dir_; }
 
   // Return a pointer to the flags used for this server on restart.
   // Modifying these flags will only take effect on the next restart.
@@ -489,6 +490,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   const std::shared_ptr<rpc::Messenger> messenger_;
   const std::string exe_;
   const std::string data_dir_;
+  const std::string full_data_dir_;
   std::vector<std::string> extra_flags_;
 
   gscoped_ptr<Subprocess> process_;

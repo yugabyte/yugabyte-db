@@ -57,6 +57,10 @@ class ServerBaseOptions {
 
   Env* env;
 
+  // This field is to be used as a path component for all the fs roots by FsManager. For now, we
+  // expect it to be either master or tserver and passed in from the respective Server object.
+  std::string server_type;
+
   FsManagerOpts fs_opts;
   RpcServerOptions rpc_opts;
   WebserverOptions webserver_opts;

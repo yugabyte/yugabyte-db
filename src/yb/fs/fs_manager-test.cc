@@ -43,6 +43,9 @@
 
 using std::shared_ptr;
 
+DECLARE_string(fs_data_dirs);
+DECLARE_string(fs_wal_dirs);
+
 namespace yb {
 
 class FsManagerTestBase : public YBTest {
@@ -67,6 +70,11 @@ class FsManagerTestBase : public YBTest {
     FsManagerOpts opts;
     opts.wal_paths = wal_paths;
     opts.data_paths = data_paths;
+    opts.server_type = kServerType;
+    fs_manager_.reset(new FsManager(env_.get(), opts));
+  }
+
+  void ReinitFsManager(const FsManagerOpts& opts) {
     fs_manager_.reset(new FsManager(env_.get(), opts));
   }
 
@@ -89,7 +97,44 @@ class FsManagerTestBase : public YBTest {
     ASSERT_EQ(0, result.compare(data));
   }
 
+  void ValidateRootDataPaths(const string& data_path, const string& wal_path) {
+    ASSERT_TRUE(HasPrefixString(fs_manager()->GetConsensusMetadataDir(), data_path));
+    ASSERT_TRUE(HasPrefixString(fs_manager()->GetTabletMetadataDir(), data_path));
+    vector<string> data_dirs = fs_manager()->GetDataRootDirs();
+    ASSERT_EQ(1, data_dirs.size());
+    ASSERT_TRUE(HasPrefixString(data_dirs[0], data_path));
+    if (!wal_path.empty()) {
+      vector<string> wal_dirs = fs_manager()->GetWalRootDirs();
+      ASSERT_EQ(1, wal_dirs.size());
+      ASSERT_TRUE(HasPrefixString(wal_dirs[0], wal_path));
+    }
+  }
+
+  void SetupFlagsAndBaseDirs(
+      const string& data_path, const string& wal_path, FsManagerOpts* out_opts) {
+    // Setup data in case empty.
+    FLAGS_fs_data_dirs = data_path;
+    if (!data_path.empty()) {
+      string path = GetTestPath(data_path);
+      ASSERT_OK(env_->CreateDir(path));
+      FLAGS_fs_data_dirs = path;
+    }
+    // Setup wal in case empty.
+    FLAGS_fs_wal_dirs = wal_path;
+    if (!wal_path.empty()) {
+      string path = GetTestPath(wal_path);
+      ASSERT_OK(env_->CreateDir(path));
+      FLAGS_fs_wal_dirs = path;
+    }
+    // Setup opts from flags and add server type.
+    FsManagerOpts opts;
+    opts.server_type = kServerType;
+    *out_opts = opts;
+  }
+
   FsManager *fs_manager() const { return fs_manager_.get(); }
+
+  const char* kServerType = "tserver_test";
 
  private:
   gscoped_ptr<FsManager> fs_manager_;
@@ -132,10 +177,16 @@ TEST_F(FsManagerTestBase, TestDuplicatePaths) {
   const string data_path = GetTestPath("bar");
   ReinitFsManager({ wal_path, wal_path, wal_path }, { data_path, data_path, data_path });
   ASSERT_OK(fs_manager()->CreateInitialFileSystemLayout());
-  ASSERT_EQ(vector<string>({ JoinPathSegments(wal_path, fs_manager()->kWalDirName) }),
-            fs_manager()->GetWalRootDirs());
-  ASSERT_EQ(vector<string>({ JoinPathSegments(data_path, fs_manager()->kDataDirName) }),
-            fs_manager()->GetDataRootDirs());
+  ASSERT_EQ(
+      vector<string>({ JoinPathSegments(
+          GetServerTypeDataPath(wal_path, kServerType),
+          fs_manager()->kWalDirName) }),
+      fs_manager()->GetWalRootDirs());
+  ASSERT_EQ(
+      vector<string>({ JoinPathSegments(
+          GetServerTypeDataPath(data_path, kServerType),
+          fs_manager()->kDataDirName) }),
+      fs_manager()->GetDataRootDirs());
 }
 
 TEST_F(FsManagerTestBase, TestListTablets) {
@@ -160,40 +211,63 @@ TEST_F(FsManagerTestBase, TestListTablets) {
 
 TEST_F(FsManagerTestBase, TestCannotUseNonEmptyFsRoot) {
   string path = GetTestPath("new_fs_root");
-  ASSERT_OK(env_->CreateDir(path));
+  ReinitFsManager({ path }, { path });
+  ASSERT_OK(fs_manager()->CreateInitialFileSystemLayout());
   {
     gscoped_ptr<WritableFile> writer;
     ASSERT_OK(env_->NewWritableFile(
-        JoinPathSegments(path, "some_file"), &writer));
+        JoinPathSegments(GetServerTypeDataPath(path, kServerType), "some_file"), &writer));
   }
 
   // Try to create the FS layout. It should fail.
-  ReinitFsManager({ path }, { path });
   ASSERT_TRUE(fs_manager()->CreateInitialFileSystemLayout().IsAlreadyPresent());
 }
 
-TEST_F(FsManagerTestBase, TestEmptyWALPath) {
+TEST_F(FsManagerTestBase, TestEmptyDataPath) {
   ReinitFsManager(vector<string>(), vector<string>());
   Status s = fs_manager()->CreateInitialFileSystemLayout();
   ASSERT_TRUE(s.IsIOError());
   ASSERT_STR_CONTAINS(s.ToString(),
-                      "List of write-ahead log directories (fs_wal_dirs) not provided");
+                      "List of data directories (fs_data_dirs) not provided");
 }
 
-TEST_F(FsManagerTestBase, TestOnlyWALPath) {
+TEST_F(FsManagerTestBase, TestOnlyDataPath) {
   string path = GetTestPath("new_fs_root");
   ASSERT_OK(env_->CreateDir(path));
 
-  ReinitFsManager({ path }, vector<string>());
+  ReinitFsManager(vector<string>(), { path });
   ASSERT_OK(fs_manager()->CreateInitialFileSystemLayout());
-  vector<string> wal_dirs = fs_manager()->GetWalRootDirs();
-  ASSERT_EQ(1, wal_dirs.size());
-  ASSERT_TRUE(HasPrefixString(wal_dirs[0], path));
-  ASSERT_TRUE(HasPrefixString(fs_manager()->GetConsensusMetadataDir(), path));
-  ASSERT_TRUE(HasPrefixString(fs_manager()->GetTabletMetadataDir(), path));
-  vector<string> data_dirs = fs_manager()->GetDataRootDirs();
-  ASSERT_EQ(1, data_dirs.size());
-  ASSERT_TRUE(HasPrefixString(data_dirs[0], path));
+  ValidateRootDataPaths(path, "");
+}
+
+TEST_F(FsManagerTestBase, TestPathsFromFlags) {
+  FsManagerOpts opts;
+  // If no wal specified, we inherit from fs_data_dirs
+  {
+    SetupFlagsAndBaseDirs("new_data_root_1", "", &opts);
+    ReinitFsManager(opts);
+    Status s = fs_manager()->CreateInitialFileSystemLayout();
+    ASSERT_OK(s);
+    ValidateRootDataPaths(FLAGS_fs_data_dirs, FLAGS_fs_data_dirs);
+  }
+  // If they are both set, we expect them to be whatever they are set to.
+  {
+    SetupFlagsAndBaseDirs("new_data_root_2", "new_wal_root_2", &opts);
+    ReinitFsManager(opts);
+    Status s = fs_manager()->CreateInitialFileSystemLayout();
+    ASSERT_OK(s);
+    ValidateRootDataPaths(FLAGS_fs_data_dirs, FLAGS_fs_wal_dirs);
+  }
+
+  // If no data_dirs is set, we expect a failure!
+  {
+    SetupFlagsAndBaseDirs("", "new_wal_root_3", &opts);
+    ReinitFsManager(opts);
+    Status s = fs_manager()->CreateInitialFileSystemLayout();
+    ASSERT_TRUE(s.IsIOError());
+    ASSERT_STR_CONTAINS(s.ToString(),
+                        "List of data directories (fs_data_dirs) not provided");
+  }
 }
 
 } // namespace yb

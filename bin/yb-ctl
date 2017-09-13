@@ -37,6 +37,7 @@ Destroying your local cluster and its data
 
 import argparse
 import errno
+import glob
 import logging
 import signal
 import shutil
@@ -60,9 +61,7 @@ class ClusterOptions():
         self.build_bin_dir = os.path.realpath(
                 os.path.join(self.script_dir, "..", "build", "latest", "bin"))
 
-        self.wal_dir_suffixes = ["wal1", "wal2"]
-        self.data_dir_suffixes = ["data1", "data2"]
-        self.log_dir_suffix = "logs"
+        self.drives = ["disk1", "disk2"]
 
         self.placement_cloud = "cloud"
         self.placement_region = "region"
@@ -121,13 +120,9 @@ class ClusterOptions():
                 return path
         raise RuntimeError("No binary found for {}".format(binary_name))
 
-    def get_node_name(self, daemon_type, daemon_index):
-        self.validate_daemon_type(daemon_type)
-        self.validate_daemon_index(daemon_index)
-        return "{}-{}".format(daemon_type, daemon_index)
-
-    def get_base_node_dir(self, daemon_type, daemon_index):
-        return "{}/{}".format(self.cluster_base_dir, self.get_node_name(daemon_type, daemon_index))
+    def get_base_node_dirs(self, daemon_index):
+        return ["{}/{}/node-{}".format(self.cluster_base_dir, drive, daemon_index)
+                for drive in self.drives]
 
     def get_address(self, daemon_type, daemon_index, port_type, include_base_url=False):
         # We index nodes from 1, but we would like to always start from the actual base port for
@@ -193,11 +188,8 @@ class ClusterControl():
              for i in range(1, server_counts + 1)])
 
     def get_number_servers(self, daemon_type):
-        top_level = self.options.cluster_base_dir
-        dirs = os.listdir(top_level) \
-            if os.path.exists(top_level) and os.path.isdir(top_level) \
-            else []
-        return len([dir for dir in dirs if dir.startswith(daemon_type)])
+        return len(glob.glob("{}/{}/*/yb-data/{}".format(
+            self.options.cluster_base_dir, self.options.drives[0], daemon_type)))
 
     def get_pid(self, daemon_type, daemon_index):
         try:
@@ -219,17 +211,14 @@ class ClusterControl():
             return 0
 
     def build_command(self, daemon_type, daemon_index, specific_arg_list):
-        node_base_dir = self.options.get_base_node_dir(daemon_type, daemon_index)
+        node_base_dirs = self.options.get_base_node_dirs(daemon_index)
+        first_base_dir = node_base_dirs[0]
 
         command_list = [
             # Start with the actual binary
             self.options.get_server_binary_path(daemon_type),
             # Add in all the shared flags
-            "--fs_data_dirs \"{}\"".format(",".join(["{}/{}".format(
-                  node_base_dir, d) for d in self.options.data_dir_suffixes])),
-            "--fs_wal_dirs \"{}\"".format(",".join(["{}/{}".format(
-                  node_base_dir, d) for d in self.options.wal_dir_suffixes])),
-            "--log_dir \"{}/{}\"".format(node_base_dir, self.options.log_dir_suffix),
+            "--fs_data_dirs \"{}\"".format(",".join(node_base_dirs)),
             "--webserver_port {}".format(
                 self.options.get_address(daemon_type, daemon_index, "http")),
             "--rpc_bind_addresses {}".format(
@@ -247,12 +236,13 @@ class ClusterControl():
         command_list.extend(specific_arg_list)
         # Redirect out and err and launch in the background
         command_list.append(">\"{0}/{1}.out\" 2>\"{0}/{1}.err\" &".format(
-            node_base_dir, daemon_type))
+            first_base_dir, daemon_type))
         return " ".join(command_list)
 
     def get_master_only_flags(self, daemon_index):
         command_list = [
             "--create_cluster=true",
+            "--replication_factor={}".format(self.options.replication_factor),
             "--master_addresses {}".format(self.options.master_addresses)
         ]
         return command_list
@@ -276,16 +266,12 @@ class ClusterControl():
     def start_daemon(self, daemon_type, daemon_index):
         self.options.validate_daemon_type(daemon_type)
         self.options.validate_daemon_index(daemon_index)
-        node_name = "{}-{}".format(daemon_type, daemon_index)
 
         if not os.path.isdir(self.options.cluster_base_dir):
             raise RuntimeError("Found no cluster data at {}, cannot add node...".format(
                 self.options.cluster_base_dir))
 
-        suffixes = self.options.wal_dir_suffixes + self.options.data_dir_suffixes
-        suffixes += [self.options.log_dir_suffix]
-        for suffix in suffixes:
-            path = os.path.join(self.options.cluster_base_dir, node_name, suffix)
+        for path in self.options.get_base_node_dirs(daemon_index):
             if not os.path.exists(path):
                 os.makedirs(path)
 
@@ -386,8 +372,8 @@ class ClusterControl():
     def setup_redis(self):
         self.set_master_addresses(self.get_number_servers("master"))
         yb_admin_binary_path = self.options.get_binary_path("yb-admin")
-        os.system("{} --master_addresses {} setup_redis_table".format(
-            yb_admin_binary_path, self.options.master_addresses))
+        os.system("{} --master_addresses {} --redis_num_replicas {} setup_redis_table".format(
+            yb_admin_binary_path, self.options.master_addresses, self.options.replication_factor))
 
 
 if __name__ == "__main__":

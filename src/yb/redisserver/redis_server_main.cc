@@ -30,8 +30,6 @@ namespace yb {
 namespace redisserver {
 
 static int RedisServerMain(int argc, char** argv) {
-  InitYBOrDie();
-
   // Reset some default values before parsing gflags.
   FLAGS_redis_proxy_bind_address = strings::Substitute("0.0.0.0:$0", RedisServer::kDefaultPort);
   ParseCommandLineFlags(&argc, &argv, true);
@@ -39,6 +37,8 @@ static int RedisServerMain(int argc, char** argv) {
     std::cerr << "usage: " << argv[0] << std::endl;
     return 1;
   }
+  // TODO: update this to a valid server type if we ever use this!
+  InitYBOrDie("");
   InitGoogleLoggingSafe(argv[0]);
 
   RedisServerOptions opts;

@@ -45,7 +45,10 @@ using std::vector;
 namespace yb {
 namespace tserver {
 
+const char* TabletServerOptions::kServerType = "tserver";
+
 TabletServerOptions::TabletServerOptions() {
+  server_type = kServerType;
   rpc_opts.default_port = TabletServer::kDefaultPort;
 
   master_addresses_flag = FLAGS_tserver_master_addrs;

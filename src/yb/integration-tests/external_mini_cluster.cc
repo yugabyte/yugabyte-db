@@ -44,6 +44,7 @@
 
 #include "yb/client/client.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/fs/fs_manager.h"
 #include "yb/gutil/mathlimits.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -114,7 +115,7 @@ using yb::rpc::RpcController;
 typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
 
 DECLARE_string(vmodule);
-DECLARE_int32(default_num_replicas);
+DECLARE_int32(replication_factor);
 DECLARE_bool(mem_tracker_logging);
 DECLARE_bool(mem_tracker_log_stack_trace);
 
@@ -204,7 +205,7 @@ Status ExternalMiniCluster::Start() {
   CHECK(tablet_servers_.empty()) << "Tablet servers are not empty (size: "
       << tablet_servers_.size() << "). Maybe you meant Restart()?";
   RETURN_NOT_OK(HandleOptions());
-  FLAGS_default_num_replicas = opts_.num_masters;
+  FLAGS_replication_factor = opts_.num_masters;
 
   RETURN_NOT_OK_PREPEND(rpc::MessengerBuilder("minicluster-messenger")
                         .set_num_reactors(1)
@@ -1238,11 +1239,13 @@ ExternalDaemon::ExternalDaemon(
     std::shared_ptr<rpc::Messenger> messenger,
     string exe,
     string data_dir,
+    string server_type,
     vector<string> extra_flags)
   : short_description_(short_description),
     messenger_(std::move(messenger)),
     exe_(std::move(exe)),
     data_dir_(std::move(data_dir)),
+    full_data_dir_(GetServerTypeDataPath(data_dir_, std::move(server_type))),
     extra_flags_(std::move(extra_flags)) {}
 
 ExternalDaemon::~ExternalDaemon() {
@@ -1265,7 +1268,7 @@ Status ExternalDaemon::BuildServerStateFromInfoPath(
 }
 
 string ExternalDaemon::GetServerInfoPath() {
-  return JoinPathSegments(data_dir_, "info.pb");
+  return JoinPathSegments(full_data_dir_, "info.pb");
 }
 
 Status ExternalDaemon::DeleteServerInfoPaths() {
@@ -1286,7 +1289,7 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   // Even though we set -logtostderr down below, metrics logs end up being written
   // based on -log_dir. So, we have to set that too.
   argv.push_back("--metrics_log_interval_ms=1000");
-  argv.push_back("--log_dir=" + data_dir_);
+  argv.push_back("--log_dir=" + full_data_dir_);
 
   // Then the "extra flags" passed into the ctor (from the ExternalMiniCluster
   // options struct). These come at the end so they can override things like
@@ -1614,7 +1617,8 @@ ExternalMaster::ExternalMaster(
     const string& rpc_bind_address,
     uint16_t http_port,
     const string& master_addrs)
-    : ExternalDaemon(Substitute("m-$0", master_index), messenger, exe, data_dir, extra_flags),
+    : ExternalDaemon(
+          Substitute("m-$0", master_index), messenger, exe, data_dir, "master", extra_flags),
       rpc_bind_address_(std::move(rpc_bind_address)),
       master_addrs_(std::move(master_addrs)),
       http_port_(http_port) {
@@ -1625,7 +1629,6 @@ ExternalMaster::~ExternalMaster() {
 
 Status ExternalMaster::Start(bool shell_mode) {
   vector<string> flags;
-  flags.push_back("--fs_wal_dirs=" + data_dir_);
   flags.push_back("--fs_data_dirs=" + data_dir_);
   flags.push_back("--rpc_bind_addresses=" + rpc_bind_address_);
   flags.push_back("--webserver_interface=localhost");
@@ -1659,7 +1662,8 @@ ExternalTabletServer::ExternalTabletServer(
     uint16_t cql_rpc_port, uint16_t cql_http_port,
     const std::vector<HostPort>& master_addrs, const std::vector<std::string>& extra_flags)
     : ExternalDaemon(
-          Substitute("ts-$0", tablet_server_index), messenger, exe, data_dir, extra_flags),
+          Substitute("ts-$0", tablet_server_index), messenger, exe, data_dir, "tserver",
+          extra_flags),
       master_addrs_(HostPort::ToCommaSeparatedString(master_addrs)),
       bind_host_(std::move(bind_host)),
       rpc_port_(rpc_port),
@@ -1675,7 +1679,6 @@ ExternalTabletServer::~ExternalTabletServer() {
 Status ExternalTabletServer::Start(bool start_cql_proxy) {
   vector<string> flags;
   start_cql_proxy_ = start_cql_proxy;
-  flags.push_back("--fs_wal_dirs=" + data_dir_);
   flags.push_back("--fs_data_dirs=" + data_dir_);
   flags.push_back(Substitute("--rpc_bind_addresses=$0:$1",
                              bind_host_, rpc_port_));

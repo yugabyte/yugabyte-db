@@ -95,6 +95,10 @@ struct FsManagerOpts {
 
   // Whether or not read-write operations should be allowed. Defaults to false.
   bool read_only;
+
+  // This field is to be used as a path component for all the fs roots. For now, we expect it to be
+  // either master or tserver.
+  std::string server_type;
 };
 
 // FsManager provides helpers to read data and metadata files,
@@ -115,7 +119,7 @@ class FsManager {
   static const char *kRocksDBDirName;
 
   // Only for unit tests.
-  FsManager(Env* env, const std::string& root_path);
+  FsManager(Env* env, const std::string& root_path, const std::string& server_type);
 
   FsManager(Env* env, const FsManagerOpts& opts);
   ~FsManager();
@@ -126,7 +130,6 @@ class FsManager {
   // the on-disk structures.
   CHECKED_STATUS Open();
 
-  // Create the initial filesystem layout.
   //
   // Returns an error if the file system is already initialized.
   CHECKED_STATUS CreateInitialFileSystemLayout();
@@ -182,10 +185,7 @@ class FsManager {
   std::string GetInstanceMetadataPath(const std::string& root) const;
 
   // Return the directory where the consensus metadata is stored.
-  std::string GetConsensusMetadataDir() const {
-    DCHECK(initted_);
-    return JoinPathSegments(canonicalized_metadata_fs_root_, kConsensusMetadataDirName);
-  }
+  std::string GetConsensusMetadataDir() const;
 
   // Return the path where ConsensusMetadataPB is stored.
   std::string GetConsensusMetadataPath(const std::string& tablet_id) const {
@@ -232,8 +232,9 @@ class FsManager {
 
   // Save a InstanceMetadataPB to the filesystem.
   // Does not mutate the current state of the fsmanager.
-  CHECKED_STATUS WriteInstanceMetadata(const InstanceMetadataPB& metadata,
-                               const std::string& root);
+  CHECKED_STATUS WriteInstanceMetadata(
+      const InstanceMetadataPB& metadata,
+      const std::string& path);
 
   // Checks if 'path' is an empty directory.
   //
@@ -266,6 +267,7 @@ class FsManager {
   // as-is; they are first canonicalized during Init().
   const std::vector<std::string> wal_fs_roots_;
   const std::vector<std::string> data_fs_roots_;
+  const std::string server_type_;
 
   scoped_refptr<MetricEntity> metric_entity_;
 

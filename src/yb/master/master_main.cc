@@ -49,8 +49,6 @@ namespace yb {
 namespace master {
 
 static int MasterMain(int argc, char** argv) {
-  InitYBOrDie();
-
   // Reset some default values before parsing gflags.
   FLAGS_rpc_bind_addresses = strings::Substitute("0.0.0.0:$0", kMasterDefaultPort);
   FLAGS_webserver_port = kMasterDefaultWebPort;
@@ -66,6 +64,7 @@ static int MasterMain(int argc, char** argv) {
     std::cerr << "usage: " << argv[0] << std::endl;
     return 1;
   }
+  InitYBOrDie(MasterOptions::kServerType);
   InitGoogleLoggingSafe(argv[0]);
 
   MasterOptions opts;

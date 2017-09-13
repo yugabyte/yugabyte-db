@@ -30,15 +30,16 @@
 // under the License.
 //
 
-#ifndef YB_CFILE_TEST_BASE_H
-#define YB_CFILE_TEST_BASE_H
+#ifndef YB_CFILE_CFILE_TEST_BASE_H
+#define YB_CFILE_CFILE_TEST_BASE_H
 
-#include <glog/logging.h>
-#include <algorithm>
 #include <stdlib.h>
+
+#include <algorithm>
 #include <string>
 
-#include "yb/cfile/cfile-test-base.h"
+#include <glog/logging.h>
+
 #include "yb/cfile/cfile_reader.h"
 #include "yb/cfile/cfile_writer.h"
 #include "yb/cfile/cfile.pb.h"
@@ -315,7 +316,7 @@ class CFileTestBase : public YBTest {
   void SetUp() override {
     YBTest::SetUp();
 
-    fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root")));
+    fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root"), "tserver_test"));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
     ASSERT_OK(fs_manager_->Open());
   }
@@ -512,4 +513,4 @@ static void TimeReadFile(FsManager* fs_manager, const BlockId& block_id, size_t 
 } // namespace cfile
 } // namespace yb
 
-#endif
+#endif // YB_CFILE_CFILE_TEST_BASE_H

@@ -42,6 +42,7 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
+#include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"
 

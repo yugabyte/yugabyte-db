@@ -568,21 +568,22 @@ Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
 Status ClusterAdminClient::SetupRedisTable() {
   const YBTableName table_name(kRedisKeyspaceName, kRedisTableName);
   RETURN_NOT_OK(yb_client_->CreateNamespaceIfNotExists(kRedisKeyspaceName));
-  LOG(INFO) << "Checking if table '" << kRedisTableName << "' already exists";
-  {
-    yb::client::YBSchema existing_schema;
-    if (yb_client_->GetTableSchema(table_name, &existing_schema).ok()) {
-      LOG(INFO) << "Table '" << table_name.ToString() << "' already exists";
-    } else {
-      LOG(INFO) << "Table '" << table_name.ToString() << "' does not exist yet, creating...";
-      gscoped_ptr<yb::client::YBTableCreator> table_creator(yb_client_->NewTableCreator());
-      // TODO: tablets / RF for redis table creation?
-      RETURN_NOT_OK(table_creator->table_name(table_name)
-                                  .num_tablets(FLAGS_redis_num_tablets)
-                                  .num_replicas(FLAGS_redis_num_replicas)
-                                  .table_type(yb::client::YBTableType::REDIS_TABLE_TYPE)
-                                  .Create());
-    }
+  // Try to create the table.
+  gscoped_ptr<yb::client::YBTableCreator> table_creator(yb_client_->NewTableCreator());
+  Status s = table_creator->table_name(table_name)
+                              .num_tablets(FLAGS_redis_num_tablets)
+                              .num_replicas(FLAGS_redis_num_replicas)
+                              .table_type(yb::client::YBTableType::REDIS_TABLE_TYPE)
+                              .Create();
+  // If we could create it, then all good!
+  if (s.ok()) {
+    LOG(INFO) << "Table '" << table_name.ToString() << "' created.";
+    // If the table was already there, also not an error...
+  } else if (s.IsAlreadyPresent()) {
+    LOG(INFO) << "Table '" << table_name.ToString() << "' already exists";
+  } else {
+    // If any other error, report that!
+    RETURN_NOT_OK(s);
   }
   return Status::OK();
 }

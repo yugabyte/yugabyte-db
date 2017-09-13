@@ -24,7 +24,7 @@ cd "${BASH_SOURCE%/*}"/..
 bin/local_cluster_ctl.sh stop
 bin/local_cluster_ctl.sh destroy
 bin/local_cluster_ctl.sh \
-  --default_num_replicas 1 \
+  --replication_factor 1 \
   --num-masters 1 \
   --num-tservers 1 \
   --yb_num_shards_per_tserver 1 \

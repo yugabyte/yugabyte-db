@@ -31,7 +31,7 @@ Options:
     If specified, passed to tserver process. Otherwise tserver will use its own default.
   --tserver_db_block_cache_size_bytes <size in bytes>
     If specified, passed to tserver process. Otherwise tserver will use its own default.
-  --default_num_replicas <num_replicas>
+  --replication_factor <num_replicas>
     If specified, passed to master process. Otherwise master will use its own default.
   --use_cassandra_authentication
     If specified, passed to tserver process as true.
@@ -150,7 +150,7 @@ create_directories() {
   validate_num_servers "$num_servers"
   local i
   for i in $( $SEQ 1 $num_servers ); do
-    for subdir in logs wal1 wal2 data1 data2; do
+    for subdir in logs disk1 disk2; do
       mkdir -p "$cluster_base_dir/$daemon_type-$i/$subdir"
     done
   done
@@ -290,8 +290,7 @@ start_master() {
     echo "Starting master $master_index"
     set -x
     "$master_binary" \
-      --fs_data_dirs "$master_base_dir/data1,$master_base_dir/data2" \
-      --fs_wal_dirs "$master_base_dir/wal1,$master_base_dir/wal2" \
+      --fs_data_dirs "$master_base_dir/disk1,$master_base_dir/disk2" \
       --log_dir "$master_base_dir/logs" \
       --v "$verbose_level" \
       $master_flags \
@@ -318,8 +317,7 @@ start_tserver() {
     echo "Starting tablet server $tserver_index"
     set -x
     "$tserver_binary" \
-       --fs_data_dirs "$tserver_base_dir/data1,$tserver_base_dir/data2" \
-       --fs_wal_dirs "$tserver_base_dir/wal1,$tserver_base_dir/wal2" \
+       --fs_data_dirs "$tserver_base_dir/disk1,$tserver_base_dir/disk2" \
        --log_dir "$tserver_base_dir/logs" \
        --v "$verbose_level" \
        --tserver_master_addrs "$master_addresses" \
@@ -348,7 +346,7 @@ start_daemon() {
   local id=$2
   validate_daemon_index "$id"
 
-  for subdir in logs wal1 wal2 data1 data2; do
+  for subdir in logs disk1 disk2; do
     mkdir -p "$cluster_base_dir/$daemon_type-$id/$subdir"
   done
 
@@ -469,13 +467,13 @@ placement_region=""
 placement_zone=""
 yb_num_shards_per_tserver=""
 tserver_db_block_cache_size_bytes=""
-default_num_replicas=""
+replication_factor=""
 use_cassandra_authentication=false
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --placement_cloud|--placement_region|--placement_zone|--yb_num_shards_per_tserver|\
-    --tserver_db_block_cache_size_bytes|--default_num_replicas)
+    --tserver_db_block_cache_size_bytes|--replication_factor)
       eval "${1#--}=$2"
       shift
     ;;
@@ -555,8 +553,8 @@ redis_rpc_port=10100
 cql_rpc_port=9042
 
 master_optional_params=""
-if [[ -n "$default_num_replicas" ]]; then
-  master_optional_params+=" --default_num_replicas $default_num_replicas"
+if [[ -n "$replication_factor" ]]; then
+  master_optional_params+=" --replication_factor $replication_factor"
 fi
 
 tserver_optional_params=""

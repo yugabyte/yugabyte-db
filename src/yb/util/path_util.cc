@@ -40,6 +40,8 @@
 #include <glog/logging.h>
 
 #include "yb/util/errno.h"
+#include "yb/util/env.h"
+#include "yb/util/env_util.h"
 #include "yb/gutil/gscoped_ptr.h"
 
 #if defined(__APPLE__)
@@ -100,6 +102,29 @@ Result<string> GetExecutablePath() {
   }
   return string(path, count);
 #endif // defined(__APPLE__)
+}
+
+std::string GetYbDataPath(const std::string& root) {
+  return JoinPathSegments(root, "yb-data");
+}
+
+std::string GetServerTypeDataPath(
+    const std::string& root, const std::string& server_type) {
+  return JoinPathSegments(GetYbDataPath(root), server_type);
+}
+
+Status SetupRootDir(
+    Env* env, const std::string& root, const std::string& server_type, std::string* out_dir,
+    bool* created) {
+  RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(env, root, created),
+                        "Unable to create FS path component " + root);
+  *out_dir = GetYbDataPath(root);
+  RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(env, *out_dir, created),
+                        "Unable to create FS path component " + *out_dir);
+  *out_dir = GetServerTypeDataPath(root, server_type);
+  RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(env, *out_dir, created),
+                        "Unable to create FS path component " + *out_dir);
+  return Status::OK();
 }
 
 } // namespace yb

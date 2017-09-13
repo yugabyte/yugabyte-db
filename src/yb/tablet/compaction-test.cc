@@ -370,7 +370,7 @@ class TestCompaction : public YBRowSetTest {
       }
     } else {
       string tablet_id = "YBCompactionBenchTablet";
-      FsManager fs_manager(env_.get(), FLAGS_merge_benchmark_input_dir);
+      FsManager fs_manager(env_.get(), FLAGS_merge_benchmark_input_dir, "tserver_test");
       scoped_refptr<TabletMetadata> input_meta;
       ASSERT_OK(TabletMetadata::Load(&fs_manager, tablet_id, &input_meta));
 

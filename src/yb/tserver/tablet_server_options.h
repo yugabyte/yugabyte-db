@@ -52,6 +52,8 @@ class TabletServerOptions : public yb::server::ServerBaseOptions {
 
   ~TabletServerOptions() {}
 
+  static const char* kServerType;
+
  private:
   void ValidateMasterAddresses() const;
 };

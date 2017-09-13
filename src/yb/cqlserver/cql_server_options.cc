@@ -20,6 +20,7 @@ namespace yb {
 namespace cqlserver {
 
 CQLServerOptions::CQLServerOptions() {
+  server_type = "tserver";
   rpc_opts.default_port = CQLServer::kDefaultPort;
   connection_context_factory = &std::make_unique<CQLConnectionContext>;
 }

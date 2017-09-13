@@ -85,6 +85,7 @@ ServerBaseOptions::ServerBaseOptions()
 
 ServerBaseOptions::ServerBaseOptions(const ServerBaseOptions& options)
     : env(options.env),
+      server_type(options.server_type),
       fs_opts(options.fs_opts),
       rpc_opts(options.rpc_opts),
       webserver_opts(options.webserver_opts),

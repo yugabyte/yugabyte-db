@@ -315,7 +315,6 @@ public class MiniYBCluster implements AutoCloseable {
     final List<String> tsCmdLine = Lists.newArrayList(
         TestUtils.findBinary("yb-tserver"),
         "--flagfile=" + flagsPath,
-        "--fs_wal_dirs=" + dataDirPath,
         "--fs_data_dirs=" + dataDirPath,
         "--tserver_master_addrs=" + masterAddresses,
         "--webserver_interface=" + tserverBindAddress,

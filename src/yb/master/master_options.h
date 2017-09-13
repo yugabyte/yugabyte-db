@@ -58,13 +58,15 @@ class MasterOptions : public server::ServerBaseOptions {
   bool IsShellMode() const { return is_shell_mode_.Load(); }
   void SetShellMode(bool mode) { is_shell_mode_.Store(mode); }
 
+  static const char* kServerType;
+
  protected:
   // Set when its first setup of the cluster - master_addresses is non-empty and is_create is true.
   bool is_creating_;
 
   // Set during startup of a new master which is not part of any cluster yet - master_addresses is
   // not set and is_create is not set.
-  AtomicBool is_shell_mode_;
+  AtomicBool is_shell_mode_{false};
 };
 
 } // namespace master

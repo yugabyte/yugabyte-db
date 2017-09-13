@@ -40,8 +40,6 @@ namespace yb {
 namespace cqlserver {
 
 static int CQLServerMain(int argc, char** argv) {
-  InitYBOrDie();
-
   // Reset some default values before parsing gflags.
   FLAGS_cql_proxy_bind_address = strings::Substitute("0.0.0.0:$0", CQLServer::kDefaultPort);
   ParseCommandLineFlags(&argc, &argv, true);
@@ -49,6 +47,8 @@ static int CQLServerMain(int argc, char** argv) {
     std::cerr << "usage: " << argv[0] << std::endl;
     return 1;
   }
+  // TODO: update this to a valid server type if we ever use this!
+  InitYBOrDie("");
   InitGoogleLoggingSafe(argv[0]);
 
   CQLServerOptions cql_server_options;

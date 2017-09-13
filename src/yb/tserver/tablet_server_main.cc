@@ -66,8 +66,6 @@ namespace yb {
 namespace tserver {
 
 static int TabletServerMain(int argc, char** argv) {
-  InitYBOrDie();
-
   // Reset some default values before parsing gflags.
   FLAGS_rpc_bind_addresses = strings::Substitute("0.0.0.0:$0",
                                                  TabletServer::kDefaultPort);
@@ -82,6 +80,7 @@ static int TabletServerMain(int argc, char** argv) {
     std::cerr << "usage: " << argv[0] << std::endl;
     return 1;
   }
+  InitYBOrDie(TabletServerOptions::kServerType);
   InitGoogleLoggingSafe(argv[0]);
 
   TabletServerOptions tablet_server_options;

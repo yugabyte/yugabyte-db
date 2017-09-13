@@ -18,7 +18,7 @@
           "bin/bulk_load_helper.sh",
           "bin/bulk_load_cleanup.sh",
           "bin/configure",
-          "bin/yugabyte-cli",
+          "bin/yb-ctl",
           "build/latest/bin/yb-generate_partitions_main",
           "build/latest/bin/yb-bulk_load",
           "thirdparty/installed/uninstrumented/bin/*",

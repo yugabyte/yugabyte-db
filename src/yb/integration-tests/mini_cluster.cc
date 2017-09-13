@@ -64,7 +64,7 @@ DECLARE_int32(tablet_server_svc_num_threads);
 DECLARE_int32(ts_admin_svc_num_threads);
 DECLARE_int32(ts_consensus_svc_num_threads);
 DECLARE_int32(ts_remote_bootstrap_svc_num_threads);
-DECLARE_int32(default_num_replicas);
+DECLARE_int32(replication_factor);
 
 namespace yb {
 
@@ -135,7 +135,7 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
   FLAGS_ts_consensus_svc_num_threads = 8;
   FLAGS_ts_remote_bootstrap_svc_num_threads = 2;
 
-  FLAGS_default_num_replicas = num_masters_initial_;
+  FLAGS_replication_factor = num_masters_initial_;
 
   // start the masters
   RETURN_NOT_OK_PREPEND(StartMasters(),

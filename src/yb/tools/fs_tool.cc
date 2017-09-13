@@ -111,6 +111,8 @@ Status FsTool::Init() {
   // Allow read-only access to live blocks.
   FsManagerOpts opts;
   opts.read_only = true;
+  // TODO(bogdan): do we use this tool? would we use it for more than tservers?
+  opts.server_type = "tserver";
   fs_manager_.reset(new FsManager(Env::Default(), opts));
   RETURN_NOT_OK(fs_manager_->Open());
 
