@@ -156,9 +156,10 @@ export function resetUniverseList() {
   };
 }
 
-export function deleteUniverse(universeUUID) {
+export function deleteUniverse(universeUUID, isForceDelete) {
   const customerUUID = localStorage.getItem("customer_id");
-  const request=axios.delete(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}`);
+  const deleteRequestPayload = {isForceDelete: isForceDelete};
+  const request = axios.delete(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}`, {params: deleteRequestPayload});
   return {
     type: DELETE_UNIVERSE,
     payload: request

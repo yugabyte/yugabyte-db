@@ -133,7 +133,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
         // Send destroy old set of nodes to ansible and remove them from this universe.
-        createDestroyServerTasks(nodesToBeRemoved)
+        createDestroyServerTasks(nodesToBeRemoved, false)
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
         // Clearing the blacklist on the yb cluster master is handled on the server side.
       } else {
