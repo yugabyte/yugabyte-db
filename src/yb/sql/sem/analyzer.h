@@ -49,11 +49,6 @@ class Analyzer {
     return sem_context_->cache_used();
   }
 
-  // Access to error code.
-  ErrorCode error_code() {
-    return sem_context_->error_code();
-  }
-
  private:
   // Environment (YBClient) for analyzing statements.
   SqlEnv *sql_env_;

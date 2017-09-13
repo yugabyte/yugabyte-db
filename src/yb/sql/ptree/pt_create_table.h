@@ -292,18 +292,11 @@ class PTCreateTable : public TreeNode {
                                          const PTBaseType::SharedPtr& datatype);
 
   // Table name.
+  PTQualifiedName::SharedPtr table_name() const {
+    return relation_;
+  }
   client::YBTableName yb_table_name() const {
     return relation_->ToTableName();
-  }
-
-  // Returns location of table name.
-  const YBLocation& name_loc() const {
-    return relation_->loc();
-  }
-
-  // Returns location of table columns.
-  const YBLocation& columns_loc() const {
-    return elements_->loc();
   }
 
   PTTablePropertyListNode::SharedPtr table_properties() const {

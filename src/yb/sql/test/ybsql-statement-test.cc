@@ -39,7 +39,7 @@ class YbSqlStatement : public YbSqlTestBase {
     cb.Run(s);
   }
 
-  bool ExecuteAsync(Statement *stmt, SqlProcessor *processor, Callback<void(const Status&)> cb) {
+  Status ExecuteAsync(Statement *stmt, SqlProcessor *processor, Callback<void(const Status&)> cb) {
     return stmt->ExecuteAsync(processor, StatementParameters(),
                               Bind(&YbSqlStatement::ExecuteAsyncDone, Unretained(this), cb));
   }
@@ -67,10 +67,10 @@ TEST_F(YbSqlStatement, TestExecutePrepareAfterTableDrop) {
 
   // Try executing the statement. Should return STALE_PREPARED_STATEMENT error.
   Synchronizer sync;
-  CHECK(ExecuteAsync(&stmt, processor, Bind(&Synchronizer::StatusCB, Unretained(&sync))));
+  CHECK_OK(ExecuteAsync(&stmt, processor, Bind(&Synchronizer::StatusCB, Unretained(&sync))));
   Status s = sync.Wait();
-  CHECK(s.IsSqlError() && GetErrorCode(s) == ErrorCode::STALE_PREPARED_STATEMENT)
-      << "Expect STALE_PREPARED_STATEMENT but got " << s.ToString();
+  CHECK(s.IsSqlError() && GetErrorCode(s) == ErrorCode::STALE_METADATA)
+      << "Expect STALE_METADATA but got " << s.ToString();
 
   LOG(INFO) << "Done.";
 }

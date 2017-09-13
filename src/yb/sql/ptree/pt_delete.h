@@ -71,18 +71,11 @@ class PTDeleteStmt : public PTDmlStmt {
     return TreeNodeOpcode::kPTDeleteStmt;
   }
 
-  // IF clause.
-  const PTExpr::SharedPtr& if_clause() const {
-    return if_clause_;
-  }
-
   CHECKED_STATUS AnalyzeTarget(TreeNode *target, SemContext *sem_context);
 
  private:
   PTListNode::SharedPtr target_;
   PTTableRef::SharedPtr relation_;
-  PTExpr::SharedPtr where_clause_;
-  PTExpr::SharedPtr if_clause_;
 };
 
 }  // namespace sql

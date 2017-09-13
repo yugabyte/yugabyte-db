@@ -74,17 +74,11 @@ class PTInsertStmt : public PTDmlStmt {
     return relation_->loc();
   }
 
-  // IF clause.
-  const PTExpr::SharedPtr& if_clause() const {
-    return if_clause_;
-  }
-
  private:
   // The parser will constructs the following tree nodes.
   PTQualifiedName::SharedPtr relation_;
   PTQualifiedNameListNode::SharedPtr columns_;
   PTCollection::SharedPtr value_clause_;
-  PTExpr::SharedPtr if_clause_;
 };
 
 }  // namespace sql

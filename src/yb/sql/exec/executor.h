@@ -50,62 +50,83 @@ class Executor {
   Executor(SqlEnv *sql_env, const SqlMetrics* sql_metrics);
   virtual ~Executor();
 
-  // Execute the given parse tree.
-  void ExecuteAsync(
-      const std::string &sql_stmt, const ParseTree &ptree, const StatementParameters& params,
-      StatementExecutedCallback cb);
+  // Execute the given statement (parse tree).
+  void ExecuteAsync(const std::string &sql_stmt, const ParseTree &parse_tree,
+                    const StatementParameters* params, StatementExecutedCallback cb);
 
-  // Complete execution.
-  void Done();
+  // Batch execution of statements. StatementExecutedCallback will be invoked when the batch is
+  // applied and execution is complete, or when an error occurs.
+  void BeginBatch(StatementExecutedCallback cb);
+  void ExecuteBatch(const std::string &sql_stmt, const ParseTree &parse_tree,
+                    const StatementParameters* params);
+  void ApplyBatch();
+  void AbortBatch();
 
-  // Access to error code.
-  ErrorCode error_code() const {
-    return exec_context_->error_code();
-  }
+  // Invoke statement executed callback.
+  void StatementExecuted(const Status& s);
 
  private:
   //------------------------------------------------------------------------------------------------
   // Currently, we don't yet have code generator into byte code, so the following ExecTNode()
   // functions are operating directly on the parse tree.
 
+  // Execute a parse tree.
+  CHECKED_STATUS Execute(const std::string &sql_stmt, const ParseTree &parse_tree,
+                         const StatementParameters* params);
+
   // Execute any TreeNode. This function determines how to execute a node.
-  void ExecTreeNodeAsync(const TreeNode *tnode, StatementExecutedCallback cb);
+  CHECKED_STATUS ExecTreeNode(const TreeNode *tnode);
 
-  // Runs the execution on all of the entries in the list node.
-  void ExecPTNodeAsync(const PTListNode *tnode, StatementExecutedCallback cb, int idx = 0);
+  // Creates a table.
+  CHECKED_STATUS ExecPTNode(const PTCreateTable *tnode);
 
-  // Creates table.
-  void ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCallback cb);
-
-  // Alters table.
-  void ExecPTNodeAsync(const PTAlterTable *tnode, StatementExecutedCallback cb);
+  // Alters a table.
+  CHECKED_STATUS ExecPTNode(const PTAlterTable *tnode);
 
   // Drops a table.
-  void ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallback cb);
+  CHECKED_STATUS ExecPTNode(const PTDropStmt *tnode);
 
-  // Creates (user-defined) type;
-  void ExecPTNodeAsync(const PTCreateType *tnode, StatementExecutedCallback cb);
+  // Creates a user-defined type;
+  CHECKED_STATUS ExecPTNode(const PTCreateType *tnode);
 
-  // Select statement: current_result contains accummulated rows if any that are buffered locally
-  // to be returned.
-  void ExecPTNodeAsync(
-      const PTSelectStmt *tnode, StatementExecutedCallback cb,
-      RowsResult::SharedPtr current_result = nullptr);
+  // Select statement.
+  CHECKED_STATUS ExecPTNode(const PTSelectStmt *tnode);
 
   // Insert statement.
-  void ExecPTNodeAsync(const PTInsertStmt *tnode, StatementExecutedCallback cb);
+  CHECKED_STATUS ExecPTNode(const PTInsertStmt *tnode);
 
   // Delete statement.
-  void ExecPTNodeAsync(const PTDeleteStmt *tnode, StatementExecutedCallback cb);
+  CHECKED_STATUS ExecPTNode(const PTDeleteStmt *tnode);
 
   // Update statement.
-  void ExecPTNodeAsync(const PTUpdateStmt *tnode, StatementExecutedCallback cb);
+  CHECKED_STATUS ExecPTNode(const PTUpdateStmt *tnode);
 
-  // Create keyspace.
-  void ExecPTNodeAsync(const PTCreateKeyspace *tnode, StatementExecutedCallback cb);
+  // Creates a keyspace.
+  CHECKED_STATUS ExecPTNode(const PTCreateKeyspace *tnode);
 
-  // Use keyspace.
-  void ExecPTNodeAsync(const PTUseKeyspace *tnode, StatementExecutedCallback cb);
+  // Uses a keyspace.
+  CHECKED_STATUS ExecPTNode(const PTUseKeyspace *tnode);
+
+  //------------------------------------------------------------------------------------------------
+  // Result processing.
+
+  // Callback for FlushAsync.
+  void FlushAsyncDone(const Status& s);
+
+  // Process the status of executing a statement.
+  CHECKED_STATUS ProcessStatementStatus(const ParseTree& parse_tree, const Status& s);
+
+  // Process the read/write op response.
+  CHECKED_STATUS ProcessOpResponse(client::YBqlOp* op, ExecContext* exec_context);
+
+  // Process result of FlushAsyncDone.
+  CHECKED_STATUS ProcessAsyncResults();
+
+  // Append execution result.
+  CHECKED_STATUS AppendResult(const ExecutedResult::SharedPtr& result);
+
+  // Reset execution state.
+  void Reset();
 
   //------------------------------------------------------------------------------------------------
   // Expression evaluation.
@@ -199,27 +220,28 @@ class Executor {
   CHECKED_STATUS WhereSubColOpToPB(YQLConditionPB *condition, const SubscriptedColumnOp& subcol_op);
   CHECKED_STATUS FuncOpToPB(YQLConditionPB *condition, const FuncOp& func_op);
 
-
-  void SelectAsyncDone(const PTSelectStmt *tnode, std::shared_ptr<client::YBqlReadOp>,
-                       StatementExecutedCallback cb, RowsResult::SharedPtr current_result,
-                       const Status &s, const ExecutedResult::SharedPtr& new_result);
-
-  void PTNodeAsyncDone(
-      const PTListNode *lnode, int index, MonoTime start, StatementExecutedCallback cb,
-      const Status &s, const ExecutedResult::SharedPtr& result);
-
   //------------------------------------------------------------------------------------------------
   // Environment (YBClient) for executing statements.
   SqlEnv *sql_env_;
 
-  // Execution context which are created and destroyed for each execution.
-  ExecContext::UniPtr exec_context_;
+  // Execution contexts of the statements being executed. They are created and destroyed for each
+  // execution.
+  std::list<ExecContext> exec_contexts_;
 
-  // Parameters to execute the statement with.
-  const StatementParameters *params_ = nullptr;
+  // Execution context of the last statement being executed.
+  ExecContext* exec_context_;
+
+  // Execution result.
+  ExecutedResult::SharedPtr result_;
+
+  // Statement executed callback.
+  StatementExecutedCallback cb_;
 
   // SqlMetrics to keep track of node parsing etc.
   const SqlMetrics* sql_metrics_;
+
+  // FlushAsync callback.
+  Callback<void(const Status&)> flush_async_cb_;
 };
 
 }  // namespace sql

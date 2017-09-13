@@ -16,11 +16,19 @@ import com.datastax.driver.core.BatchStatement;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.SimpleStatement;
+import com.datastax.driver.core.exceptions.NoHostAvailableException;
+
+import org.yb.minicluster.IOMetrics;
+import org.yb.minicluster.MiniYBDaemon;
 
 import org.junit.Test;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
+
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Map;
 
 public class TestBatchRequest extends BaseCQLTest {
 
@@ -29,7 +37,7 @@ public class TestBatchRequest extends BaseCQLTest {
     // Setup table.
     setupTable("t", 0 /* num_rows */);
 
-    // Test batch of preapred statements.
+    // Test batch of prepared statements.
     PreparedStatement stmt = session.prepare("INSERT INTO t (h1, h2, r1, r2, v1, v2) " +
                                              "VALUES (?, ?, ?, ?, ?, ?);");
     BatchStatement batch = new BatchStatement();
@@ -59,8 +67,6 @@ public class TestBatchRequest extends BaseCQLTest {
     setupTable("t", 0 /* num_rows */);
 
     // Test batch of regular statements.
-    PreparedStatement stmt = session.prepare("INSERT INTO t (h1, h2, r1, r2, v1, v2) " +
-                                             "VALUES (?, ?, ?, ?, ?, ?);");
     BatchStatement batch = new BatchStatement();
     for (int i = 1; i <= 10; i++) {
       batch.add(new SimpleStatement(String.format("INSERT INTO t (h1, h2, r1, r2, v1, v2) " +
@@ -134,9 +140,310 @@ public class TestBatchRequest extends BaseCQLTest {
                                   "VALUES (1, 'h1', 1, 'v1');"));
     runInvalidStmt(batch);
 
-    // TODO (Robert): batch statement guarantees either all statements are executed or none is.
+    // Batch statement guarantees either all statements are executed or none is.
     // Should return no rows.
-    assertQuery("SELECT * from t",
-                "Row[1, h1, 1, r1, 1, v1]");
+    // TODO: add test for batch writes across hash keys.
+    assertQuery("SELECT * from t", "");
+  }
+
+  @Test
+  public void testHashKeyBatch() throws Exception {
+    // Setup table.
+    setupTable("t", 0 /* num_rows */);
+
+    // Get the initial metrics.
+    Map<MiniYBDaemon, IOMetrics> initialMetrics = getTSMetrics();
+
+    // Test batch of prepared statements.
+    PreparedStatement stmt = session.prepare("INSERT INTO t (h1, h2, r1, r2, v1, v2) " +
+                                             "VALUES (?, ?, ?, ?, ?, ?);");
+    BatchStatement batch = new BatchStatement();
+    final int NUM_HASH_KEYS = 3;
+    for (int i = 1; i <= NUM_HASH_KEYS; i++) {
+      for (int j = 1; j <= 5; j++) {
+        batch.add(stmt.bind(new Integer(i), "h" + i,
+                            new Integer(j), "r" + j,
+                            new Integer(j), "v" + j));
+      }
+    }
+    session.execute(batch);
+
+    // Check the metrics again.
+    IOMetrics totalMetrics = getCombinedMetrics(initialMetrics);
+
+    // Verify writes are batched by the hash keyes. So the total writes should equal just the no.
+    // of hash keys, not no. of rows inserted.
+    assertEquals(NUM_HASH_KEYS, totalMetrics.localWriteCount + totalMetrics.remoteWriteCount);
+
+    // Verify the rows are inserted.
+    assertQuery("SELECT * FROM t",
+                new HashSet<String>(Arrays.asList("Row[1, h1, 1, r1, 1, v1]",
+                                                  "Row[1, h1, 2, r2, 2, v2]",
+                                                  "Row[1, h1, 3, r3, 3, v3]",
+                                                  "Row[1, h1, 4, r4, 4, v4]",
+                                                  "Row[1, h1, 5, r5, 5, v5]",
+                                                  "Row[3, h3, 1, r1, 1, v1]",
+                                                  "Row[3, h3, 2, r2, 2, v2]",
+                                                  "Row[3, h3, 3, r3, 3, v3]",
+                                                  "Row[3, h3, 4, r4, 4, v4]",
+                                                  "Row[3, h3, 5, r5, 5, v5]",
+                                                  "Row[2, h2, 1, r1, 1, v1]",
+                                                  "Row[2, h2, 2, r2, 2, v2]",
+                                                  "Row[2, h2, 3, r3, 3, v3]",
+                                                  "Row[2, h2, 4, r4, 4, v4]",
+                                                  "Row[2, h2, 5, r5, 5, v5]")));
+  }
+
+  @Test
+  public void testRecreateTable() throws Exception {
+
+    // Test executing batch statements with recreated tables to verify metadata cache is flushed to
+    // handle new table definition.
+    for (int t = 0; t < 3; t++) {
+
+      // Create test table.
+      session.execute("CREATE TABLE test_batch (h INT, r TEXT, PRIMARY KEY ((h), r));");
+
+      // Test batch of prepared statements.
+      PreparedStatement stmt = session.prepare("INSERT INTO test_batch (h, r) VALUES (?, ?);");
+      BatchStatement batch = new BatchStatement();
+      for (int i = 1; i <= 3; i++) {
+        for (int j = 1; j <= 5; j++) {
+          batch.add(stmt.bind(Integer.valueOf(i), "r" + j));
+        }
+      }
+      session.execute(batch);
+
+      // Verify the rows are inserted.
+      assertQuery("SELECT * FROM test_batch",
+                  new HashSet<String>(Arrays.asList("Row[2, r1]",
+                                                    "Row[2, r2]",
+                                                    "Row[2, r3]",
+                                                    "Row[2, r4]",
+                                                    "Row[2, r5]",
+                                                    "Row[3, r1]",
+                                                    "Row[3, r2]",
+                                                    "Row[3, r3]",
+                                                    "Row[3, r4]",
+                                                    "Row[3, r5]",
+                                                    "Row[1, r1]",
+                                                    "Row[1, r2]",
+                                                    "Row[1, r3]",
+                                                    "Row[1, r4]",
+                                                    "Row[1, r5]")));
+
+      // Drop test table.
+      session.execute("DROP TABLE test_batch;");
+    }
+
+    for (int t = 0; t < 3; t++) {
+      {
+        // Create test table.
+        session.execute("CREATE TABLE test_batch (h INT, r BIGINT, PRIMARY KEY ((h), r));");
+
+        // Test batch of prepared statements.
+        BatchStatement batch = new BatchStatement();
+        for (int i = 1; i <= 3; i++) {
+          for (int j = 1; j <= 5; j++) {
+            batch.add(
+                new SimpleStatement(String.format(
+                    "INSERT INTO test_batch (h, r) VALUES (%d, %d);", i, j)));
+          }
+        }
+        session.execute(batch);
+
+        // Verify the rows are inserted.
+        assertQuery("SELECT * FROM test_batch",
+                    new HashSet<String>(Arrays.asList("Row[2, 1]",
+                                                      "Row[2, 2]",
+                                                      "Row[2, 3]",
+                                                      "Row[2, 4]",
+                                                      "Row[2, 5]",
+                                                      "Row[3, 1]",
+                                                      "Row[3, 2]",
+                                                      "Row[3, 3]",
+                                                      "Row[3, 4]",
+                                                      "Row[3, 5]",
+                                                      "Row[1, 1]",
+                                                      "Row[1, 2]",
+                                                      "Row[1, 3]",
+                                                      "Row[1, 4]",
+                                                      "Row[1, 5]")));
+
+        // Drop test table.
+        session.execute("DROP TABLE test_batch;");
+      }
+
+      {
+        // Create test table.
+        session.execute("CREATE TABLE test_batch (h INT, r TEXT, PRIMARY KEY ((h), r));");
+
+        // Test batch of prepared statements.
+        BatchStatement batch = new BatchStatement();
+        for (int i = 1; i <= 3; i++) {
+          for (int j = 1; j <= 5; j++) {
+            batch.add(
+                new SimpleStatement(
+                    "INSERT INTO test_batch (h, r) VALUES (?, ?);", Integer.valueOf(i), "R" + j));
+          }
+        }
+        session.execute(batch);
+
+        // Verify the rows are inserted.
+        assertQuery("SELECT * FROM test_batch",
+                    new HashSet<String>(Arrays.asList("Row[2, R1]",
+                                                      "Row[2, R2]",
+                                                      "Row[2, R3]",
+                                                      "Row[2, R4]",
+                                                      "Row[2, R5]",
+                                                      "Row[3, R1]",
+                                                      "Row[3, R2]",
+                                                      "Row[3, R3]",
+                                                      "Row[3, R4]",
+                                                      "Row[3, R5]",
+                                                      "Row[1, R1]",
+                                                      "Row[1, R2]",
+                                                      "Row[1, R3]",
+                                                      "Row[1, R4]",
+                                                      "Row[1, R5]")));
+
+        // Drop test table.
+        session.execute("DROP TABLE test_batch;");
+      }
+
+      {
+        // Recreate test table with same name but different schema to verify metadata cache is
+        // flushed to handle new table definition.
+        session.execute("CREATE TABLE test_batch (h INT, r INT, PRIMARY KEY ((h), r));");
+
+        // Test batch of prepared statements.
+        BatchStatement batch = new BatchStatement();
+        for (int i = 1; i <= 3; i++) {
+          for (int j = 1; j <= 5; j++) {
+            batch.add(
+                new SimpleStatement(String.format(
+                    "INSERT INTO test_batch (h, r) VALUES (%d, %d);", i, j)));
+          }
+        }
+        session.execute(batch);
+
+        // Verify the rows are inserted.
+        assertQuery("SELECT * FROM test_batch",
+                    new HashSet<String>(Arrays.asList("Row[2, 1]",
+                                                      "Row[2, 2]",
+                                                      "Row[2, 3]",
+                                                      "Row[2, 4]",
+                                                      "Row[2, 5]",
+                                                      "Row[3, 1]",
+                                                      "Row[3, 2]",
+                                                      "Row[3, 3]",
+                                                      "Row[3, 4]",
+                                                      "Row[3, 5]",
+                                                      "Row[1, 1]",
+                                                      "Row[1, 2]",
+                                                      "Row[1, 3]",
+                                                      "Row[1, 4]",
+                                                      "Row[1, 5]")));
+
+        // Drop test table.
+        session.execute("DROP TABLE test_batch;");
+      }
+    }
+  }
+
+  private void runInvalidPreparedBatchStmt(BatchStatement stmt) {
+    try {
+      session.execute(stmt);
+      fail(String.format("Statement did not fail: %s", stmt));
+    } catch (NoHostAvailableException e) {
+      // NoHostAvailableException is raised when a previously prepared statement fails to
+      // reprepare again.
+      LOG.info("Expected exception", e);
+    }
+  }
+
+  @Test
+  public void testBatchWithErrors() throws Exception {
+
+    {
+      // Create test table.
+      session.execute("CREATE TABLE test_batch_error (h INT, r INT, PRIMARY KEY ((h), r));");
+
+      // Test batch of prepared statements.
+      PreparedStatement stmt =
+          session.prepare("INSERT INTO test_batch_error (h, r) VALUES (?, ?);");
+      BatchStatement batch = new BatchStatement();
+      for (int i = 1; i <= 3; i++) {
+        for (int j = 1; j <= 5; j++) {
+          batch.add(stmt.bind(Integer.valueOf(i), Integer.valueOf(j)));
+        }
+      }
+      session.execute(batch);
+
+      // Verify the rows are inserted.
+      assertQuery("SELECT * FROM test_batch_error",
+                  new HashSet<String>(Arrays.asList("Row[2, 1]",
+                                                    "Row[2, 2]",
+                                                    "Row[2, 3]",
+                                                    "Row[2, 4]",
+                                                    "Row[2, 5]",
+                                                    "Row[3, 1]",
+                                                    "Row[3, 2]",
+                                                    "Row[3, 3]",
+                                                    "Row[3, 4]",
+                                                    "Row[3, 5]",
+                                                    "Row[1, 1]",
+                                                    "Row[1, 2]",
+                                                    "Row[1, 3]",
+                                                    "Row[1, 4]",
+                                                    "Row[1, 5]")));
+
+      // Drop test table.
+      session.execute("DROP TABLE test_batch_error;");
+
+      // Rerun the batch. Verify that error is raised.
+      runInvalidPreparedBatchStmt(batch);
+    }
+
+    {
+      // Create test table.
+      session.execute("CREATE TABLE test_batch_error (h INT, r INT, PRIMARY KEY ((h), r));");
+
+      // Test batch of simple statements.
+      BatchStatement batch = new BatchStatement();
+      for (int i = 1; i <= 3; i++) {
+        for (int j = 1; j <= 5; j++) {
+          batch.add(
+              new SimpleStatement(
+                  "INSERT INTO test_batch_error (h, r) VALUES (?, ?);",
+                  Integer.valueOf(i), Integer.valueOf(j)));
+        }
+      }
+      session.execute(batch);
+
+      // Verify the rows are inserted.
+      assertQuery("SELECT * FROM test_batch_error",
+                  new HashSet<String>(Arrays.asList("Row[2, 1]",
+                                                    "Row[2, 2]",
+                                                    "Row[2, 3]",
+                                                    "Row[2, 4]",
+                                                    "Row[2, 5]",
+                                                    "Row[3, 1]",
+                                                    "Row[3, 2]",
+                                                    "Row[3, 3]",
+                                                    "Row[3, 4]",
+                                                    "Row[3, 5]",
+                                                    "Row[1, 1]",
+                                                    "Row[1, 2]",
+                                                    "Row[1, 3]",
+                                                    "Row[1, 4]",
+                                                    "Row[1, 5]")));
+
+      // Drop test table.
+      session.execute("DROP TABLE test_batch_error;");
+
+      // Rerun the batch. Verify that error is raised.
+      runInvalidStmt(batch);
+    }
   }
 }

@@ -40,6 +40,7 @@ const unordered_map<int64_t, const char*> kYbSqlErrorMessage {
   // System errors [-1, -9).
   { static_cast<int64_t>(ErrorCode::FAILURE), "Internal Failure" },
   { static_cast<int64_t>(ErrorCode::SERVER_ERROR), "Server Error" },
+  { static_cast<int64_t>(ErrorCode::STALE_METADATA), "Stale Metadata" },
 
   //------------------------------------------------------------------------------------------------
   // Limitation related errors [-1, -50).
@@ -104,7 +105,7 @@ const unordered_map<int64_t, const char*> kYbSqlErrorMessage {
   { static_cast<int64_t>(ErrorCode::KEYSPACE_ALREADY_EXISTS), "Keyspace Already Exists" },
   { static_cast<int64_t>(ErrorCode::KEYSPACE_NOT_FOUND), "Keyspace Not Found" },
   { static_cast<int64_t>(ErrorCode::TABLET_NOT_FOUND), "Tablet Not Found" },
-  { static_cast<int64_t>(ErrorCode::STALE_PREPARED_STATEMENT), "Stale Prepared Statement" },
+  { static_cast<int64_t>(ErrorCode::UNPREPARED_STATEMENT), "Unprepared Statement" },
   { static_cast<int64_t>(ErrorCode::TYPE_NOT_FOUND), "Type Not Found" },
   { static_cast<int64_t>(ErrorCode::INVALID_TYPE_DEFINITION), "Invalid Type Definition" },
 };
@@ -113,8 +114,12 @@ ErrorCode GetErrorCode(const Status& s) {
   return s.IsSqlError() ? static_cast<ErrorCode>(s.sql_error_code()) : ErrorCode::FAILURE;
 }
 
-const char *ErrorText(ErrorCode error_code) {
+const char *ErrorText(const ErrorCode error_code) {
   return kYbSqlErrorMessage.at(static_cast<int64_t>(error_code));
+}
+
+Status ErrorStatus(const ErrorCode code, const std::string& mesg) {
+  return STATUS(SqlError, ErrorText(code), mesg, static_cast<int64_t>(code));
 }
 
 }  // namespace sql

@@ -457,7 +457,7 @@ public class TestSelect extends BaseCQLTest {
 
     // Select data from the test table.
     String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_ttl" +
-      "  WHERE ttl(v1) > 150";
+                         "  WHERE ttl(v1) > 150";
     ResultSet rs = session.execute(select_stmt);
     List<Row> rows = rs.all();
     assertEquals(1, rows.size());
@@ -470,10 +470,10 @@ public class TestSelect extends BaseCQLTest {
     assertEquals(1009, row.getInt(5));
 
     String update_stmt = "UPDATE test_ttl USING ttl 300 SET v1 = 1009" +
-      "  WHERE h1 = 9 and h2 = 'h9' and r1 = 109 and r2 = 'r109' ";
+                         "  WHERE h1 = 9 and h2 = 'h9' and r1 = 109 and r2 = 'r109' ";
     session.execute(update_stmt);
     select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_ttl" +
-      "  WHERE ttl(v1) > 250";
+                  "  WHERE ttl(v1) > 250";
 
     rs = session.execute(select_stmt);
     rows = rs.all();
@@ -485,7 +485,7 @@ public class TestSelect extends BaseCQLTest {
     assertEquals(1009, row.getInt(5));
 
     select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_ttl" +
-      "  WHERE ttl(v2) > 250";
+                  "  WHERE ttl(v2) > 250";
     rs = session.execute(select_stmt);
     rows = rs.all();
     assertEquals(0, rows.size());
@@ -493,32 +493,32 @@ public class TestSelect extends BaseCQLTest {
 
   @Test(expected=InvalidQueryException.class)
   public void testTtlOfCollectionsThrowsError() throws Exception {
-      int []ttls = {100};
-      LOG.info("CREATE TABLE test_ttl");
+    int []ttls = {100};
+    LOG.info("CREATE TABLE test_ttl");
     String create_stmt = "CREATE TABLE test_ttl " +
-                      " (h int, v1 list<int>, v2 int, primary key (h));";
+                         " (h int, v1 list<int>, v2 int, primary key (h));";
     session.execute(create_stmt);
     String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, [1], 1) using ttl 100;";
     session.execute(insert_stmt);
 
-      String select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
-        "  WHERE ttl(v1) < 150";
-      session.execute(select_stmt);
+    String select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
+                         "  WHERE ttl(v1) < 150";
+    session.execute(select_stmt);
   }
 
   @Test(expected=InvalidQueryException.class)
   public void testTtlOfPrimaryThrowsError() throws Exception {
-      int []ttls = {100};
-      LOG.info("CREATE TABLE test_ttl");
+    int []ttls = {100};
+    LOG.info("CREATE TABLE test_ttl");
     String create_stmt = "CREATE TABLE test_ttl " +
-                      " (h int, v1 list<int>, v2 int, primary key (h));";
+                         " (h int, v1 list<int>, v2 int, primary key (h));";
     session.execute(create_stmt);
     String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, [1], 1) using ttl 100;";
     session.execute(insert_stmt);
 
-      String select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
-        "  WHERE ttl(h) < 150";
-      session.execute(select_stmt);
+    String select_stmt = "SELECT h, v1, v2 FROM test_ttl" +
+                         "  WHERE ttl(h) < 150";
+    session.execute(select_stmt);
   }
 
   @Test(expected=InvalidQueryException.class)
@@ -526,7 +526,7 @@ public class TestSelect extends BaseCQLTest {
     int []ttls = {100};
     LOG.info("CREATE TABLE test_ttl");
     String create_stmt = "CREATE TABLE test_ttl " +
-                      " (h int, v1 int, v2 int, primary key (h));";
+                         " (h int, v1 int, v2 int, primary key (h));";
     session.execute(create_stmt);
     String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, 1, 1) using ttl 100;";
     session.execute(insert_stmt);
@@ -539,7 +539,7 @@ public class TestSelect extends BaseCQLTest {
   public void testTtlOfDefault() throws Exception {
     LOG.info("CREATE TABLE test_ttl");
     String create_stmt = "CREATE TABLE test_ttl (h int, v1 list<int>, v2 int, primary key (h)) " +
-            "with default_time_to_live = 100;";
+                         "with default_time_to_live = 100;";
     session.execute(create_stmt);
     String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, [1], 1);";
     session.execute(insert_stmt);
@@ -566,7 +566,7 @@ public class TestSelect extends BaseCQLTest {
   public void testTtlWhenNoneSpecified() throws Exception {
     LOG.info("CREATE TABLE test_ttl");
     String create_stmt = "CREATE TABLE test_ttl " +
-                      " (h int, v1 list<int>, v2 int, primary key (h));";
+                         " (h int, v1 list<int>, v2 int, primary key (h));";
     session.execute(create_stmt);
     String insert_stmt = "INSERT INTO test_ttl (h, v1, v2) VALUES(1, [1], 1);";
     session.execute(insert_stmt);
@@ -597,9 +597,9 @@ public class TestSelect extends BaseCQLTest {
       expected_values.add(7);
       // Check rows
       for (Row row : rs) {
-          Integer h1 = row.getInt("h1");
-          assertTrue(expected_values.contains(h1));
-          expected_values.remove(h1);
+        Integer h1 = row.getInt("h1");
+        assertTrue(expected_values.contains(h1));
+        expected_values.remove(h1);
       }
       assertTrue(expected_values.isEmpty());
     }
@@ -607,16 +607,16 @@ public class TestSelect extends BaseCQLTest {
     // Test basic IN condition on range column.
     {
       ResultSet rs = session.execute("SELECT * FROM in_test WHERE " +
-              "r2 IN ('foo', 'r101','r103','r107')");
+                                     "r2 IN ('foo', 'r101','r103','r107')");
       Set<String> expected_values = new HashSet<>();
       expected_values.add("r101");
       expected_values.add("r103");
       expected_values.add("r107");
       // Check rows
       for (Row row : rs) {
-          String r2 = row.getString("r2");
-          assertTrue(expected_values.contains(r2));
-          expected_values.remove(r2);
+        String r2 = row.getString("r2");
+        assertTrue(expected_values.contains(r2));
+        expected_values.remove(r2);
       }
       assertTrue(expected_values.isEmpty());
     }
@@ -713,4 +713,14 @@ public class TestSelect extends BaseCQLTest {
     LOG.info("TEST IN KEYWORD - End");
   }
 
+  public void testStatementList() throws Exception {
+    // Verify handling of empty statements.
+    assertEquals(0, session.execute("").all().size());
+    assertEquals(0, session.execute(";").all().size());
+    assertEquals(0, session.execute("  ;  ;  ").all().size());
+
+    // Verify handling of multi-statement (not supported yet).
+    setupTable("test_select", 0);
+    runInvalidStmt("SELECT * FROM test_select; SELECT * FROM test_select;");
+  }
 }

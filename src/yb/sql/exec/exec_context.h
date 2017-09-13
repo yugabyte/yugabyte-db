@@ -12,8 +12,9 @@
 // under the License.
 //
 //
-// This class represents the execution context which contains both the SQL code (parse tree) and
-// the environment (session context) within which the code is to be executed.
+// This class represents the context to execute a single statment. It contains the statement code
+// (parse tree) and the environment (parameters and session context) with which the code is to be
+// executed.
 //--------------------------------------------------------------------------------------------------
 
 #ifndef YB_SQL_EXEC_EXEC_CONTEXT_H_
@@ -35,7 +36,11 @@ class ExecContext : public ProcessContextBase {
 
   //------------------------------------------------------------------------------------------------
   // Constructor & destructor.
-  ExecContext(const char *sql_stmt, size_t stmt_len, SqlEnv *sql_env);
+  ExecContext(const char *sql_stmt,
+              size_t stmt_len,
+              const ParseTree *parse_tree,
+              const StatementParameters *params,
+              SqlEnv *sql_env);
   virtual ~ExecContext();
 
   // Get a table creator from YB client.
@@ -88,34 +93,68 @@ class ExecContext : public ProcessContextBase {
     return sql_env_->DeleteUDType(keyspace_name, type_name);
   }
 
+  // Access function for sql_env.
   SqlEnv* sql_env() const {
     return sql_env_;
   }
 
-  // Apply YBClient write operator.
-  void ApplyWriteAsync(
-      std::shared_ptr<client::YBqlWriteOp> yb_op, const TreeNode* tnode,
-      StatementExecutedCallback cb);
+  // Access function for parse_tree.
+  const ParseTree* parse_tree() const {
+    return parse_tree_;
+  }
 
-  // Apply YBClient read operator.
-  void ApplyReadAsync(
-      std::shared_ptr<client::YBqlReadOp> yb_op, const TreeNode* tnode,
-      StatementExecutedCallback cb);
+  // Returns the tree node of the statement being executed.
+  const TreeNode* tnode() const {
+    return parse_tree_->root().get();
+  }
+
+  // Access function for params.
+  const StatementParameters* params() const {
+    return params_;
+  }
+
+  // Access function for op.
+  const std::shared_ptr<client::YBqlOp>& op() const {
+    return op_;
+  }
+
+  // Access function for start_time.
+  const MonoTime& start_time() const {
+    return start_time_;
+  }
+
+  // Apply YBClient read/write operation.
+  CHECKED_STATUS ApplyWrite(std::shared_ptr<client::YBqlWriteOp> op) {
+    op_ = op;
+    return sql_env_->ApplyWrite(op);
+  }
+  CHECKED_STATUS ApplyRead(std::shared_ptr<client::YBqlReadOp> op) {
+    op_ = op;
+    return sql_env_->ApplyRead(op);
+  }
+
+  // Variants of ProcessContextBase::Error() that report location of statement tnode as the error
+  // location.
+  using ProcessContextBase::Error;
+  CHECKED_STATUS Error(ErrorCode error_code);
+  CHECKED_STATUS Error(const char *m, ErrorCode error_code);
+  CHECKED_STATUS Error(const Status& s, ErrorCode error_code);
 
  private:
-  void ApplyAsyncDone(
-      std::shared_ptr<client::YBqlOp> yb_op, const TreeNode* tnode,
-      StatementExecutedCallback cb, const Status& s);
-  // Check and return read/write response status and result if any.
-  CHECKED_STATUS ProcessResponseStatus(
-      std::shared_ptr<client::YBqlOp> yb_op, const TreeNode* tnode, const Status& s,
-      ExecutedResult::SharedPtr* result);
+  // Statement parse tree to execute.
+  const ParseTree *parse_tree_;
+
+  // Statement parameters to execute with.
+  const StatementParameters *params_;
+
+  // Read/write operation to execute.
+  std::shared_ptr<client::YBqlOp> op_;
+
+  // Execution start time.
+  const MonoTime start_time_;
 
   // SQL environment.
   SqlEnv *sql_env_;
-
-  // Async callback for ApplyRead/Write.
-  Callback<void(const Status&)> async_callback_;
 };
 
 }  // namespace sql

@@ -191,6 +191,40 @@ CHECKED_STATUS ProcessContextBase::Error(const YBLocation& l,
   return Error(l, "", error_code, token);
 }
 
+CHECKED_STATUS ProcessContextBase::Error(const TreeNode *tnode,
+                                         const char *m,
+                                         ErrorCode error_code) {
+  return Error(tnode->loc(), m, error_code);
+}
+
+CHECKED_STATUS ProcessContextBase::Error(const TreeNode *tnode,
+                                         ErrorCode error_code) {
+  return Error(tnode->loc(), error_code);
+}
+
+CHECKED_STATUS ProcessContextBase::Error(const TreeNode *tnode,
+                                         const Status& s,
+                                         ErrorCode error_code) {
+  return Error(tnode->loc(), s.ToString().c_str(), error_code);
+}
+
+CHECKED_STATUS ProcessContextBase::Error(const TreeNode::SharedPtr& tnode,
+                                         ErrorCode error_code) {
+  return Error(tnode->loc(), error_code);
+}
+
+CHECKED_STATUS ProcessContextBase::Error(const TreeNode::SharedPtr& tnode,
+                                         const char *m,
+                                         ErrorCode error_code) {
+  return Error(tnode->loc(), m, error_code);
+}
+
+CHECKED_STATUS ProcessContextBase::Error(const TreeNode::SharedPtr& tnode,
+                                         const Status& s,
+                                         ErrorCode error_code) {
+  return Error(tnode->loc(), s.ToString().c_str(), error_code);
+}
+
 //--------------------------------------------------------------------------------------------------
 
 //--------------------------------------------------------------------------------------------------

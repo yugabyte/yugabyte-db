@@ -42,7 +42,7 @@ class PreparedResult {
   typedef std::unique_ptr<const PreparedResult> UniPtrConst;
 
   // Constructors.
-  explicit PreparedResult(const PTDmlStmt *tnode);
+  explicit PreparedResult(const PTDmlStmt& stmt);
   virtual ~PreparedResult();
 
   // Accessors.

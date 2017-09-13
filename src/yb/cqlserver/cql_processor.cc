@@ -140,27 +140,9 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   // Execute the request (perhaps asynchronously).
   SetCurrentCall(call_);
   request_ = std::move(request);
-  switch (request_->opcode()) {
-    case CQLMessage::Opcode::PREPARE:
-      response.reset(ProcessPrepare(static_cast<const PrepareRequest&>(*request_)));
-      break;
-    case CQLMessage::Opcode::EXECUTE:
-      response.reset(ProcessExecute(static_cast<const ExecuteRequest&>(*request_)));
-      break;
-    case CQLMessage::Opcode::QUERY:
-      response.reset(ProcessQuery(static_cast<const QueryRequest&>(*request_)));
-      break;
-    case CQLMessage::Opcode::BATCH:
-      batch_index_ = 0;
-      response.reset(ProcessBatch(static_cast<const BatchRequest&>(*request_)));
-      break;
-    case CQLMessage::Opcode::AUTH_RESPONSE:
-      response.reset(ProcessAuthResponse(static_cast<const AuthResponseRequest&>(*request_)));
-      break;
-    default:
-      response.reset(request_->Execute());
-      break;
-  }
+  retry_count_ = 0;
+  unprepared_id_.clear();
+  response.reset(ProcessRequest(*request_));
   if (response != nullptr) {
     SendResponse(*response);
   }
@@ -188,26 +170,27 @@ void CQLProcessor::SendResponse(const CQLResponse& response) {
   // Release the processor.
   call_ = nullptr;
   request_ = nullptr;
-  stmt_ = nullptr;
+  stmts_.clear();
+  parse_trees_.clear();
   SetCurrentCall(nullptr);
   Return();
 }
 
-CQLResponse* CQLProcessor::ProcessAuthResponse(const AuthResponseRequest& req) {
-  const auto& params = req.params();
-  shared_ptr<Statement> stmt = service_impl_->GetAuthPreparedStatement();
-  if (!stmt->Prepare(this).ok()) {
-    return new ErrorResponse(
-        req, ErrorResponse::Code::SERVER_ERROR,
-        "Could not prepare statement for querying user " + params.username);
+CQLResponse* CQLProcessor::ProcessRequest(const CQLRequest& req) {
+  switch (req.opcode()) {
+    case CQLMessage::Opcode::PREPARE:
+      return ProcessPrepare(static_cast<const PrepareRequest&>(req));
+    case CQLMessage::Opcode::EXECUTE:
+      return ProcessExecute(static_cast<const ExecuteRequest&>(req));
+    case CQLMessage::Opcode::QUERY:
+      return ProcessQuery(static_cast<const QueryRequest&>(req));
+    case CQLMessage::Opcode::BATCH:
+      return ProcessBatch(static_cast<const BatchRequest&>(req));
+    case CQLMessage::Opcode::AUTH_RESPONSE:
+      return ProcessAuthResponse(static_cast<const AuthResponseRequest&>(req));
+    default:
+      return req.Execute();
   }
-  if (!stmt->ExecuteAsync(this, params, statement_executed_cb_)) {
-    LOG(ERROR) << "Could not execute prepared statement to fetch login info!";
-      return new ErrorResponse(
-          req, ErrorResponse::Code::SERVER_ERROR,
-          "Could not execute prepared statement for querying roles for user " + params.username);
-  }
-  return nullptr;
 }
 
 CQLResponse* CQLProcessor::ProcessPrepare(const PrepareRequest& req) {
@@ -226,24 +209,25 @@ CQLResponse* CQLProcessor::ProcessPrepare(const PrepareRequest& req) {
   const Status s = stmt->Prepare(this, service_impl_->prepared_stmts_mem_tracker(), &result);
   if (!s.ok()) {
     service_impl_->DeletePreparedStatement(stmt);
-    return new ErrorResponse(req, ErrorResponse::Code::SYNTAX_ERROR, s.ToString());
+    return ProcessResult(s);
   }
 
-  return result != nullptr ?
+  return (result != nullptr) ?
       new PreparedResultResponse(req, query_id, *result) :
       new PreparedResultResponse(req, query_id);
 }
 
 CQLResponse* CQLProcessor::ProcessExecute(const ExecuteRequest& req) {
   VLOG(1) << "EXECUTE " << b2a_hex(req.query_id());
-  stmt_ = service_impl_->GetPreparedStatement(req.query_id());
-  // Apart from saving the reference to the statement in "stmt_" for StatementExecuted callback,
-  // keep another reference locally to avoid it being deleted until ExecuteAsync returns.
-  const shared_ptr<const CQLStatement> stmt = stmt_;
-  if (stmt_ == nullptr || !stmt_->ExecuteAsync(this, req.params(), statement_executed_cb_)) {
-    // If the query is not found or it is not prepared successfully, return UNPREPARED error. Upon
-    // receiving the error, the client will reprepare the query and execute again.
-    return new UnpreparedErrorResponse(req, req.query_id());
+  const shared_ptr<const CQLStatement> stmt = GetPreparedStatement(req.query_id());
+  if (stmt == nullptr) {
+    unprepared_id_ = req.query_id();
+    StatementExecuted(ErrorStatus(ErrorCode::UNPREPARED_STATEMENT));
+  } else {
+    Status s = stmt->ExecuteAsync(this, req.params(), statement_executed_cb_);
+    if (PREDICT_FALSE(!s.ok())) {
+      StatementExecuted(s);
+    }
   }
   return nullptr;
 }
@@ -255,39 +239,81 @@ CQLResponse* CQLProcessor::ProcessQuery(const QueryRequest& req) {
 }
 
 CQLResponse* CQLProcessor::ProcessBatch(const BatchRequest& req) {
-  VLOG(1) << "BATCH " << batch_index_ << "/" << req.queries().size();
-  if (batch_index_ >= req.queries().size()) {
-    return ProcessResult(Status::OK(), nullptr /* result */);
-  }
-  const BatchRequest::Query& query = req.queries()[batch_index_];
-  if (query.is_prepared) {
-    VLOG(1) << "BATCH EXECUTE " << query.query_id;
-    stmt_ = service_impl_->GetPreparedStatement(query.query_id);
-    // Apart from saving the reference to the statement in "stmt_" for StatementExecuted callback,
-    // keep another reference locally to avoid it being deleted until ExecuteAsync returns.
-    const shared_ptr<const CQLStatement> stmt = stmt_;
-    if (stmt_ == nullptr || !stmt_->ExecuteAsync(this, query.params, statement_executed_cb_)) {
-      // If the query is not found or it is not prepared successfully, return UNPREPARED error. Upon
-      // receiving the error, the client will reprepare the query and execute again.
-      return new UnpreparedErrorResponse(req, query.query_id);
+  VLOG(1) << "BATCH " << req.queries().size();
+
+  int retry_count = retry_count_; // Save current retry count.
+
+  BeginBatch(statement_executed_cb_);
+
+  for (const BatchRequest::Query& query : req.queries()) {
+
+    if (query.is_prepared) {
+
+      VLOG(1) << "BATCH EXECUTE " << query.query_id;
+      const shared_ptr<const CQLStatement> stmt = GetPreparedStatement(query.query_id);
+      if (stmt == nullptr) {
+        unprepared_id_ = query.query_id;
+        StatementExecuted(ErrorStatus(ErrorCode::UNPREPARED_STATEMENT));
+      } else {
+        Status s = stmt->ExecuteBatch(this, query.params);
+        if (PREDICT_FALSE(!s.ok())) {
+          StatementExecuted(s);
+        }
+      }
+
+    } else {
+
+      VLOG(1) << "BATCH QUERY " << query.query;
+      sql::ParseTree::UniPtr parse_tree;
+      RunBatch(query.query, query.params, &parse_tree, retry_count > 0);
+      parse_trees_.insert(std::move(parse_tree));
+
     }
-  } else {
-    VLOG(1) << "BATCH QUERY " << query.query;
-    stmt_ = nullptr;
-    RunAsync(query.query, query.params, statement_executed_cb_);
+
+    // If an error occurs while a statement is queued in the batch above, our StatementExecuted
+    // callback will be called synchronously under us, which can either trigger a recursive retry
+    // or return an error response & end the call. If that has happened, just exit.
+    if (retry_count_ > retry_count || call_ == nullptr) {
+      return nullptr;
+    }
+  }
+
+  // Apply the batch that flushes the buffered operations. Our StatementExecuted callback will be
+  // called asynchronously to process the result when the operations complete.
+  ApplyBatch();
+
+  return nullptr;
+}
+
+CQLResponse* CQLProcessor::ProcessAuthResponse(const AuthResponseRequest& req) {
+  const auto& params = req.params();
+  shared_ptr<Statement> stmt = service_impl_->GetAuthPreparedStatement();
+  if (!stmt->Prepare(this).ok()) {
+    return new ErrorResponse(
+        req, ErrorResponse::Code::SERVER_ERROR,
+        "Could not prepare statement for querying user " + params.username);
+  }
+  if (!stmt->ExecuteAsync(this, params, statement_executed_cb_).ok()) {
+    LOG(ERROR) << "Could not execute prepared statement to fetch login info!";
+    return new ErrorResponse(
+        req, ErrorResponse::Code::SERVER_ERROR,
+        "Could not execute prepared statement for querying roles for user " + params.username);
   }
   return nullptr;
 }
 
-void CQLProcessor::StatementExecuted(
-    const Status& s, const sql::ExecutedResult::SharedPtr& result) {
-  unique_ptr<CQLResponse> response;
-  if (s.ok() && request_->opcode() == CQLMessage::Opcode::BATCH) {
-    batch_index_++;
-    response.reset(ProcessBatch(static_cast<const BatchRequest&>(*request_)));
-  } else {
-    response.reset(ProcessResult(s, result));
+shared_ptr<const CQLStatement> CQLProcessor::GetPreparedStatement(const CQLMessage::QueryId& id) {
+  shared_ptr<const CQLStatement> stmt = service_impl_->GetPreparedStatement(id);
+  if (stmt != nullptr) {
+    stmt->clear_reparsed();
+    stmts_.insert(stmt);
   }
+  return stmt;
+}
+
+void CQLProcessor::StatementExecuted(const Status& s,
+                                     const sql::ExecutedResult::SharedPtr& result) {
+  unique_ptr<CQLResponse> response(ProcessResult(s, result));
   if (response != nullptr) {
     SendResponse(*response);
   }
@@ -295,19 +321,35 @@ void CQLProcessor::StatementExecuted(
 
 CQLResponse* CQLProcessor::ProcessResult(Status s, const ExecutedResult::SharedPtr& result) {
   if (!s.ok()) {
+    // Abort batch if it is being executed.
+    if (request_->opcode() == CQLMessage::Opcode::BATCH) {
+      AbortBatch();
+    }
     if (s.IsSqlError()) {
       ErrorCode yql_errcode = GetErrorCode(s);
-      if (yql_errcode == ErrorCode::STALE_PREPARED_STATEMENT) {
-        if (stmt_ != nullptr) {
-          // The prepared statement is stale. Delete it and return UNPREPARED error to tell the
-          // client to reprepare it.
-          service_impl_->DeletePreparedStatement(stmt_);
-          return new UnpreparedErrorResponse(*request_, stmt_->query_id());
-        } else {
-          // This is an internal error as the caller should always provide the stale statement.
-          return new ErrorResponse(*request_, ErrorResponse::Code::SERVER_ERROR,
-                                   "internal error: stale prepared statement not provided");
+      if (yql_errcode == ErrorCode::UNPREPARED_STATEMENT ||
+          yql_errcode == ErrorCode::STALE_METADATA) {
+        // Delete all stale prepared statements from our cache. Since CQL protocol allows only one
+        // unprepared query id to be returned, we will return just the last unprepared / stale one
+        // we found.
+        for (auto stmt : stmts_) {
+          if (stmt->stale()) {
+            service_impl_->DeletePreparedStatement(stmt);
+          }
+          if (stmt->unprepared() || stmt->stale()) {
+            unprepared_id_ = stmt->query_id();
+          }
         }
+        if (!unprepared_id_.empty()) {
+          return new UnpreparedErrorResponse(*request_, unprepared_id_);
+        }
+        // When no unprepared_id is found, it means all statements we executed were queries
+        // (non-prepared statements). In that case, just retry the request (once only).
+        if (++retry_count_ == 1) {
+          return ProcessRequest(*request_);
+        }
+        return new ErrorResponse(*request_, ErrorResponse::Code::INVALID,
+                                 "Query failed to execute due to stale metadata cache");
       } else if (yql_errcode < ErrorCode::SUCCESS) {
         if (yql_errcode > ErrorCode::LIMITATION_ERROR) {
           // System errors, internal errors, or crashes.

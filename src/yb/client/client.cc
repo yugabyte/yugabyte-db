@@ -1326,6 +1326,10 @@ YBSession::~YBSession() {
   WARN_NOT_OK(data_->Close(true), "Closed Session with pending operations.");
 }
 
+void YBSession::Abort() {
+  return data_->Abort();
+}
+
 Status YBSession::Close() {
   return data_->Close(false);
 }

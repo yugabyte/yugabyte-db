@@ -39,10 +39,11 @@ std::shared_ptr<BufferAllocator> MakeAllocator(std::shared_ptr<MemTracker> mem_t
 
 } // namespace
 
-ParseTree::ParseTree(std::shared_ptr<MemTracker> mem_tracker)
+ParseTree::ParseTree(const bool reparsed, std::shared_ptr<MemTracker> mem_tracker)
     : buffer_allocator_(MakeAllocator(std::move(mem_tracker))),
       ptree_mem_(buffer_allocator_ ? buffer_allocator_.get() : HeapBufferAllocator::Get()),
-      psem_mem_(buffer_allocator_ ? buffer_allocator_.get() : HeapBufferAllocator::Get()) {
+      psem_mem_(buffer_allocator_ ? buffer_allocator_.get() : HeapBufferAllocator::Get()),
+      reparsed_(reparsed) {
 }
 
 ParseTree::~ParseTree() {
@@ -54,6 +55,23 @@ CHECKED_STATUS ParseTree::Analyze(SemContext *sem_context) {
   if (root_ == nullptr) {
     LOG(INFO) << "Parse tree is NULL";
     return Status::OK();
+  }
+
+  // Restrict statement list to single statement only and hoist the statement to the root node.
+  if (root_->opcode() == TreeNodeOpcode::kPTListNode) {
+    const auto lnode = std::static_pointer_cast<PTListNode>(root_);
+    switch (lnode->size()) {
+      case 0:
+        root_ = nullptr;
+        return Status::OK();
+      case 1:
+        root_ = lnode->node_list().front();
+        break;
+      default:
+        return sem_context->Error(
+            root_->loc(), ErrorCode::CQL_STATEMENT_INVALID,
+            "Multi-statement list not supported yet");
+    }
   }
 
   return root_->Analyze(sem_context);

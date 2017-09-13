@@ -39,9 +39,12 @@ Parser::~Parser() {
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Parser::Parse(const string& sql_stmt, shared_ptr<MemTracker> mem_tracker) {
+CHECKED_STATUS Parser::Parse(const string& sql_stmt,
+                             const bool reparsed,
+                             shared_ptr<MemTracker> mem_tracker) {
   parse_context_ = ParseContext::UniPtr(new ParseContext(sql_stmt.c_str(),
                                                          sql_stmt.length(),
+                                                         reparsed,
                                                          mem_tracker));
   lex_processor_.ScanInit(parse_context());
   gram_processor_.set_debug_level(parse_context_->trace_parsing());

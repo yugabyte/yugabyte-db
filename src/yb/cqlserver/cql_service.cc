@@ -189,6 +189,17 @@ shared_ptr<const CQLStatement> CQLServiceImpl::GetPreparedStatement(
   }
 
   shared_ptr<CQLStatement> stmt = itr->second;
+
+  // If the statement has not finished preparing, do not return it.
+  if (stmt->unprepared()) {
+    return nullptr;
+  }
+  // If the statement is stale, delete it.
+  if (stmt->stale()) {
+    DeletePreparedStatementUnlocked(stmt);
+    return nullptr;
+  }
+
   MoveLruPreparedStatementUnlocked(stmt);
   return stmt;
 }

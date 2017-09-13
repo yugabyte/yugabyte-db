@@ -1013,6 +1013,9 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   CHECKED_STATUS Flush() WARN_UNUSED_RESULT;
   void FlushAsync(YBStatusCallback* cb);
 
+  // Abort the unflushed or in-flight operations in the session.
+  void Abort();
+
   // Close the session.
   // Returns an error if there are unflushed or in-flight operations.
   CHECKED_STATUS Close() WARN_UNUSED_RESULT;

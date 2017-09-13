@@ -78,11 +78,6 @@ class PTDropStmt : public TreeNode {
     return names_->element(0)->ToTableName();
   }
 
-  // Returns location of dropping object name.
-  const YBLocation& name_loc() const {
-    return names_->loc();
-  }
-
  private:
   ObjectType drop_type_;
   PTQualifiedNameListNode::SharedPtr names_;

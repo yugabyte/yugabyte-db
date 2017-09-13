@@ -50,11 +50,28 @@ class Statement {
       SqlProcessor *processor, std::shared_ptr<MemTracker> mem_tracker = nullptr,
       PreparedResult::UniPtr *result = nullptr);
 
-  // Execute the prepared statement. Returns false if the statement has not been prepared
-  // successfully.
-  bool ExecuteAsync(
+  // Execute the prepared statement.
+  CHECKED_STATUS ExecuteAsync(
       SqlProcessor* processor, const StatementParameters& params, StatementExecutedCallback cb)
-      const WARN_UNUSED_RESULT;
+      const;
+
+  // Execute the prepared statement in a batch
+  CHECKED_STATUS ExecuteBatch(SqlProcessor* processor, const StatementParameters& params) const;
+
+  // Is this statement unprepared?
+  bool unprepared() const {
+    return !prepared_.load(std::memory_order_acquire);
+  }
+
+  // Is this statement stale?
+  bool stale() const {
+    return parse_tree_->stale();
+  }
+
+  // Clear the reparsed status.
+  void clear_reparsed() const {
+    parse_tree_->clear_reparsed();
+  }
 
  protected:
   // The keyspace this statement is parsed in.
@@ -64,6 +81,9 @@ class Statement {
   const std::string text_;
 
  private:
+  // Validate that the statement has been prepared and is not stale.
+  CHECKED_STATUS Validate() const;
+
   // The parse tree.
   ParseTree::UniPtr parse_tree_;
 

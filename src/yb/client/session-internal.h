@@ -71,6 +71,9 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
   // Called by Batcher when a flush has finished.
   void FlushFinished(internal::Batcher* b);
 
+  // Abort the unflushed or in-flight operations.
+  void Abort();
+
   // Returns Status::IllegalState() if 'force' is false and there are still pending
   // operations. If 'force' is true batcher_ is aborted even if there are pending
   // operations.

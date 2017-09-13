@@ -90,7 +90,8 @@ class YbSqlProcessor : public SqlProcessor {
   virtual ~YbSqlProcessor() { }
 
   void RunAsyncDone(
-      Callback<void(const Status&)> cb, const Status& s, const ExecutedResult::SharedPtr& result) {
+      Callback<void(const Status&)> cb, const Status& s,
+      const ExecutedResult::SharedPtr& result = nullptr) {
     result_ = result;
     cb.Run(s);
   }
@@ -163,13 +164,13 @@ class YbSqlTestBase : public YBTest {
   CHECKED_STATUS TestParser(const std::string& sql_stmt) {
     SqlProcessor *processor = GetSqlProcessor();
     ParseTree::UniPtr parse_tree;
-    return processor->Parse(sql_stmt, &parse_tree, nullptr /* mem_tracker */);
+    return processor->Parse(sql_stmt, &parse_tree);
   }
 
   // Tests parser and analyzer
   CHECKED_STATUS TestAnalyzer(const string& sql_stmt, ParseTree::UniPtr *parse_tree) {
     SqlProcessor *processor = GetSqlProcessor();
-    RETURN_NOT_OK(processor->Parse(sql_stmt, parse_tree, nullptr /* mem_tracker */));
+    RETURN_NOT_OK(processor->Parse(sql_stmt, parse_tree));
     RETURN_NOT_OK(processor->Analyze(sql_stmt, parse_tree));
     return Status::OK();
   }

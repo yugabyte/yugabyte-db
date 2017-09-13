@@ -39,28 +39,12 @@ using client::YBqlWriteOp;
 using client::YBqlReadOp;
 using strings::Substitute;
 
-// Runs the StatementExecutedCallback cb with no result and returns.
-#define CB_RETURN(cb, s)  \
-  do {                    \
-    (cb).Run(s, nullptr); \
-    return;               \
-  } while (0)
-
-// Runs the StatementExecutedCallback cb and returns if the status s is not OK.
-#define CB_RETURN_NOT_OK(cb, s)    \
-  do {                             \
-    ::yb::Status _s = (s);         \
-    if (PREDICT_FALSE(!_s.ok())) { \
-      (cb).Run(_s, nullptr);       \
-      return;                      \
-    }                              \
-  } while (0)
-
 //--------------------------------------------------------------------------------------------------
 
 Executor::Executor(SqlEnv *sql_env, const SqlMetrics* sql_metrics)
     : sql_env_(sql_env),
-      sql_metrics_(sql_metrics) {
+      sql_metrics_(sql_metrics),
+      flush_async_cb_(Bind(&Executor::FlushAsyncDone, Unretained(this))) {
 }
 
 Executor::~Executor() {
@@ -68,125 +52,138 @@ Executor::~Executor() {
 
 //--------------------------------------------------------------------------------------------------
 
-void Executor::ExecuteAsync(
-    const string &sql_stmt, const ParseTree &parse_tree, const StatementParameters& params,
-    StatementExecutedCallback cb) {
-  // Prepare execution context.
-  exec_context_ = ExecContext::UniPtr(new ExecContext(sql_stmt.c_str(),
-                                                      sql_stmt.length(),
-                                                      sql_env_));
-  params_ = &params;
-  // Execute the parse tree's root node.
-  ExecTreeNodeAsync(parse_tree.root().get(), std::move(cb));
-}
-
-void Executor::Done() {
-  exec_context_ = nullptr;
-  params_ = nullptr;
-}
-
-//--------------------------------------------------------------------------------------------------
-
-void Executor::ExecTreeNodeAsync(const TreeNode *tnode, StatementExecutedCallback cb) {
-  DCHECK_ONLY_NOTNULL(tnode);
-
-  switch (tnode->opcode()) {
-    case TreeNodeOpcode::kPTListNode:
-      return ExecPTNodeAsync(static_cast<const PTListNode *>(tnode), std::move(cb));
-
-    case TreeNodeOpcode::kPTCreateTable:
-      return ExecPTNodeAsync(static_cast<const PTCreateTable *>(tnode), std::move(cb));
-
-    case TreeNodeOpcode::kPTAlterTable:
-      return ExecPTNodeAsync(static_cast<const PTAlterTable *>(tnode), cb);
-
-    case TreeNodeOpcode::kPTCreateType:
-      return ExecPTNodeAsync(static_cast<const PTCreateType *>(tnode), cb);
-
-    case TreeNodeOpcode::kPTDropStmt:
-      return ExecPTNodeAsync(static_cast<const PTDropStmt *>(tnode), std::move(cb));
-
-    case TreeNodeOpcode::kPTSelectStmt:
-      return ExecPTNodeAsync(static_cast<const PTSelectStmt *>(tnode), std::move(cb));
-
-    case TreeNodeOpcode::kPTInsertStmt:
-      return ExecPTNodeAsync(static_cast<const PTInsertStmt *>(tnode), std::move(cb));
-
-    case TreeNodeOpcode::kPTDeleteStmt:
-      return ExecPTNodeAsync(static_cast<const PTDeleteStmt *>(tnode), std::move(cb));
-
-    case TreeNodeOpcode::kPTUpdateStmt:
-      return ExecPTNodeAsync(static_cast<const PTUpdateStmt *>(tnode), std::move(cb));
-
-    case TreeNodeOpcode::kPTCreateKeyspace:
-      return ExecPTNodeAsync(static_cast<const PTCreateKeyspace *>(tnode), std::move(cb));
-
-    case TreeNodeOpcode::kPTUseKeyspace:
-      return ExecPTNodeAsync(static_cast<const PTUseKeyspace *>(tnode), std::move(cb));
-
-    default:
-      CB_RETURN(cb, exec_context_->Error(tnode->loc(), ErrorCode::FEATURE_NOT_SUPPORTED));
-  }
-}
-
-//--------------------------------------------------------------------------------------------------
-
-void Executor::ExecPTNodeAsync(const PTListNode *lnode, StatementExecutedCallback cb, int idx) {
-  // Done if the list is empty.
-  if (lnode->size() == 0) {
-    CB_RETURN(cb, Status::OK());
-  }
-  ExecTreeNodeAsync(
-      lnode->element(idx).get(),
-      Bind(&Executor::PTNodeAsyncDone, Unretained(this), Unretained(lnode), idx,
-           MonoTime::Now(MonoTime::FINE), std::move(cb)));
-}
-
-void Executor::PTNodeAsyncDone(
-    const PTListNode *lnode, int index, MonoTime start, StatementExecutedCallback cb,
-    const Status &s, const ExecutedResult::SharedPtr& result) {
-  const TreeNode *tnode = lnode->element(index).get();
+void Executor::ExecuteAsync(const string &sql_stmt, const ParseTree &parse_tree,
+                            const StatementParameters* params, StatementExecutedCallback cb) {
+  DCHECK(cb_.is_null()) << "Another execution is in progress.";
+  cb_ = std::move(cb);
+  sql_env_->Reset();
+  // Execute the statement and invoke statement-executed callback either when there is an error or
+  // no async operation is pending.
+  const Status s = Execute(sql_stmt, parse_tree, params);
   if (PREDICT_FALSE(!s.ok())) {
-    // Before leaving the execution step, collect all errors and place them in return status.
-    VLOG(3) << "Failed to execute tree node <" << tnode << ">";
-    CB_RETURN(cb, exec_context_->GetStatus());
+    return StatementExecuted(s);
   }
+  if (!sql_env_->FlushAsync(&flush_async_cb_)) {
+    return StatementExecuted(Status::OK());
+  }
+}
 
-  VLOG(3) << "Successfully executed tree node <" << tnode << ">";
-  if (sql_metrics_ != nullptr) {
-    MonoDelta delta = MonoTime::Now(MonoTime::FINE).GetDeltaSince(start);
+//--------------------------------------------------------------------------------------------------
+
+void Executor::BeginBatch(StatementExecutedCallback cb) {
+  DCHECK(cb_.is_null()) << "Another execution is in progress.";
+  cb_ = std::move(cb);
+  sql_env_->Reset();
+}
+
+void Executor::ExecuteBatch(const std::string &sql_stmt, const ParseTree &parse_tree,
+                            const StatementParameters* params) {
+  Status s;
+
+  // Batch execution is supported for non-conditional DML statements only currently.
+  const TreeNode* tnode = parse_tree.root().get();
+  if (tnode != nullptr) {
     switch (tnode->opcode()) {
-      case TreeNodeOpcode::kPTSelectStmt:
-        sql_metrics_->sql_select_->Increment(delta.ToMicroseconds());
+      case TreeNodeOpcode::kPTInsertStmt: FALLTHROUGH_INTENDED;
+      case TreeNodeOpcode::kPTUpdateStmt: FALLTHROUGH_INTENDED;
+      case TreeNodeOpcode::kPTDeleteStmt: {
+        const PTExpr::SharedPtr& if_clause = static_cast<const PTDmlStmt*>(tnode)->if_clause();
+        if (if_clause != nullptr) {
+          s = ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
+                          "batch execution of conditional DML statement not supported yet");
+        }
         break;
-      case TreeNodeOpcode::kPTInsertStmt:
-        sql_metrics_->sql_insert_->Increment(delta.ToMicroseconds());
-        break;
-      case TreeNodeOpcode::kPTUpdateStmt:
-        sql_metrics_->sql_update_->Increment(delta.ToMicroseconds());
-        break;
-      case TreeNodeOpcode::kPTDeleteStmt:
-        sql_metrics_->sql_delete_->Increment(delta.ToMicroseconds());
-        break;
+      }
       default:
-        sql_metrics_->sql_others_->Increment(delta.ToMicroseconds());
+        s = ErrorStatus(ErrorCode::CQL_STATEMENT_INVALID,
+                        "batch execution of non-DML statement not supported yet");
+        break;
     }
   }
-  cb.Run(Status::OK(), result);
-  if (++index < lnode->size()) {
-    ExecPTNodeAsync(lnode, std::move(cb), index);
+
+  // Execute the statement and invoke statement-executed callback when there is an error.
+  if (s.ok()) {
+    s = Execute(sql_stmt, parse_tree, params);
+  }
+  if (PREDICT_FALSE(!s.ok())) {
+    return StatementExecuted(s);
+  }
+}
+
+void Executor::ApplyBatch() {
+  // Invoke statement-executed callback when no async operation is pending.
+  if (!sql_env_->FlushAsync(&flush_async_cb_)) {
+    return StatementExecuted(Status::OK());
+  }
+}
+
+void Executor::AbortBatch() {
+  sql_env_->AbortOps();
+  Reset();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+Status Executor::Execute(const string &sql_stmt, const ParseTree &parse_tree,
+                         const StatementParameters* params) {
+  // Prepare execution context and execute the parse tree's root node.
+  exec_contexts_.emplace_back(sql_stmt.c_str(), sql_stmt.length(), &parse_tree, params, sql_env_);
+  exec_context_ = &exec_contexts_.back();
+  return ProcessStatementStatus(parse_tree, ExecTreeNode(exec_context_->tnode()));
+}
+
+//--------------------------------------------------------------------------------------------------
+
+Status Executor::ExecTreeNode(const TreeNode *tnode) {
+  if (tnode == nullptr) {
+    return Status::OK();
+  }
+  switch (tnode->opcode()) {
+    case TreeNodeOpcode::kPTCreateTable:
+      return ExecPTNode(static_cast<const PTCreateTable *>(tnode));
+
+    case TreeNodeOpcode::kPTAlterTable:
+      return ExecPTNode(static_cast<const PTAlterTable *>(tnode));
+
+    case TreeNodeOpcode::kPTCreateType:
+      return ExecPTNode(static_cast<const PTCreateType *>(tnode));
+
+    case TreeNodeOpcode::kPTDropStmt:
+      return ExecPTNode(static_cast<const PTDropStmt *>(tnode));
+
+    case TreeNodeOpcode::kPTSelectStmt:
+      return ExecPTNode(static_cast<const PTSelectStmt *>(tnode));
+
+    case TreeNodeOpcode::kPTInsertStmt:
+      return ExecPTNode(static_cast<const PTInsertStmt *>(tnode));
+
+    case TreeNodeOpcode::kPTDeleteStmt:
+      return ExecPTNode(static_cast<const PTDeleteStmt *>(tnode));
+
+    case TreeNodeOpcode::kPTUpdateStmt:
+      return ExecPTNode(static_cast<const PTUpdateStmt *>(tnode));
+
+    case TreeNodeOpcode::kPTCreateKeyspace:
+      return ExecPTNode(static_cast<const PTCreateKeyspace *>(tnode));
+
+    case TreeNodeOpcode::kPTUseKeyspace:
+      return ExecPTNode(static_cast<const PTUseKeyspace *>(tnode));
+
+    default:
+      return exec_context_->Error(ErrorCode::FEATURE_NOT_SUPPORTED);
   }
 }
 
 //--------------------------------------------------------------------------------------------------
-void Executor::ExecPTNodeAsync(const PTCreateType *tnode, StatementExecutedCallback cb) {
+
+Status Executor::ExecPTNode(const PTCreateType *tnode) {
   YBTableName yb_name = tnode->yb_type_name();
 
   const std::string& type_name = yb_name.table_name();
   std::string keyspace_name = yb_name.namespace_name();
   if (!yb_name.has_namespace()) {
     if (exec_context_->CurrentKeyspace().empty()) {
-      CB_RETURN(cb, exec_context_->Error(tnode->name_loc(), ErrorCode::NO_NAMESPACE_USED));
+      return exec_context_->Error(tnode->type_name(), ErrorCode::NO_NAMESPACE_USED);
     }
     keyspace_name = exec_context_->CurrentKeyspace();
   }
@@ -200,7 +197,7 @@ void Executor::ExecPTNodeAsync(const PTCreateType *tnode, StatementExecutedCallb
   }
 
   Status s = exec_context_->CreateUDType(keyspace_name, type_name, field_names, field_types);
-  if (!s.ok()) {
+  if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
     if (s.IsAlreadyPresent()) {
       error_code = ErrorCode::DUPLICATE_TYPE;
@@ -209,30 +206,31 @@ void Executor::ExecPTNodeAsync(const PTCreateType *tnode, StatementExecutedCallb
     }
 
     if (tnode->create_if_not_exists() && error_code == ErrorCode::DUPLICATE_TYPE) {
-      CB_RETURN(cb, Status::OK());
+      return Status::OK();
     }
 
-    CB_RETURN(cb, exec_context_->Error(tnode->name_loc(), s.ToString().c_str(), error_code));
+    return exec_context_->Error(tnode->type_name(), s, error_code);
   }
-  cb.Run(Status::OK(),
-         std::make_shared<SchemaChangeResult>("CREATED", "TYPE", keyspace_name, type_name));
+
+  result_ = std::make_shared<SchemaChangeResult>("CREATED", "TYPE", keyspace_name, type_name);
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
 
-void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCallback cb) {
+Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   YBTableName table_name = tnode->yb_table_name();
 
   if (!table_name.has_namespace()) {
     if (exec_context_->CurrentKeyspace().empty()) {
-      CB_RETURN(cb, exec_context_->Error(tnode->name_loc(), ErrorCode::NO_NAMESPACE_USED));
+      return exec_context_->Error(tnode->table_name(), ErrorCode::NO_NAMESPACE_USED);
     }
 
     table_name.set_namespace_name(exec_context_->CurrentKeyspace());
   }
 
   if (table_name.is_system() && client::FLAGS_yb_system_namespace_readonly) {
-    CB_RETURN(cb, exec_context_->Error(tnode->name_loc(), ErrorCode::SYSTEM_NAMESPACE_READONLY));
+    return exec_context_->Error(tnode->table_name(), ErrorCode::SYSTEM_NAMESPACE_READONLY);
   }
 
   // Setting up columns.
@@ -243,9 +241,7 @@ void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCall
   const MCList<PTColumnDefinition *>& hash_columns = tnode->hash_columns();
   for (const auto& column : hash_columns) {
     if (column->sorting_type() != ColumnSchema::SortingType::kNotSpecified) {
-      CB_RETURN(
-          cb, exec_context_->Error(
-              tnode->columns_loc(), s.ToString().c_str(), ErrorCode::INVALID_TABLE_DEFINITION));
+      return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
     }
     b.AddColumn(column->yb_name())->Type(column->yql_type())
         ->HashPrimaryKey()
@@ -261,9 +257,7 @@ void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCall
   const MCList<PTColumnDefinition *>& columns = tnode->columns();
   for (const auto& column : columns) {
     if (column->sorting_type() != ColumnSchema::SortingType::kNotSpecified) {
-      CB_RETURN(
-          cb, exec_context_->Error(
-              tnode->columns_loc(), s.ToString().c_str(), ErrorCode::INVALID_TABLE_DEFINITION));
+      return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
     }
     YBColumnSpec *column_spec = b.AddColumn(column->yb_name())->Type(column->yql_type())
                                                               ->Nullable()
@@ -278,18 +272,14 @@ void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCall
 
   TableProperties table_properties;
   if (!tnode->ToTableProperties(&table_properties).ok()) {
-    CB_RETURN(
-        cb, exec_context_->Error(
-            tnode->columns_loc(), s.ToString().c_str(), ErrorCode::INVALID_TABLE_DEFINITION));
+    return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
   }
 
   b.SetTableProperties(table_properties);
 
   s = b.Build(&schema);
-  if (!s.ok()) {
-    CB_RETURN(
-        cb, exec_context_->Error(
-            tnode->columns_loc(), s.ToString().c_str(), ErrorCode::INVALID_TABLE_DEFINITION));
+  if (PREDICT_FALSE(!s.ok())) {
+    return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
   }
 
   // Create table.
@@ -298,7 +288,7 @@ void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCall
                     .table_type(YBTableType::YQL_TABLE_TYPE)
                     .schema(&schema)
                     .Create();
-  if (!s.ok()) {
+  if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
     if (s.IsAlreadyPresent()) {
       error_code = ErrorCode::DUPLICATE_TABLE;
@@ -309,25 +299,25 @@ void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCall
     }
 
     if (tnode->create_if_not_exists() && error_code == ErrorCode::DUPLICATE_TABLE) {
-      CB_RETURN(cb, Status::OK());
+      return Status::OK();
     }
 
-    CB_RETURN(cb, exec_context_->Error(tnode->name_loc(), s.ToString().c_str(), error_code));
+    return exec_context_->Error(tnode->table_name(), s, error_code);
   }
-  cb.Run(
-      Status::OK(),
-      std::make_shared<SchemaChangeResult>(
-          "CREATED", "TABLE", table_name.resolved_namespace_name(), table_name.table_name()));
+
+  result_ = std::make_shared<SchemaChangeResult>(
+      "CREATED", "TABLE", table_name.resolved_namespace_name(), table_name.table_name());
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
 
-void Executor::ExecPTNodeAsync(const PTAlterTable *tnode, StatementExecutedCallback cb) {
+Status Executor::ExecPTNode(const PTAlterTable *tnode) {
   YBTableName table_name = tnode->yb_table_name();
 
   if (!table_name.has_namespace()) {
     if (exec_context_->CurrentKeyspace().empty()) {
-      CB_RETURN(cb, exec_context_->Error(tnode->loc(), ErrorCode::NO_NAMESPACE_USED));
+      return exec_context_->Error(ErrorCode::NO_NAMESPACE_USED);
     }
 
     table_name.set_namespace_name(exec_context_->CurrentKeyspace());
@@ -350,42 +340,35 @@ void Executor::ExecPTNodeAsync(const PTAlterTable *tnode, StatementExecutedCallb
         break;
       case ALTER_TYPE:
         // Not yet supported by AlterTableRequestPB.
-        CB_RETURN(cb, exec_context_->Error(tnode->loc(), ErrorCode::FEATURE_NOT_YET_IMPLEMENTED));
+        return exec_context_->Error(ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
     }
   }
 
   if (!tnode->mod_props().empty()) {
     TableProperties table_properties;
     Status s = tnode->ToTableProperties(&table_properties);
-    if(!s.ok()) {
-      CB_RETURN(cb, exec_context_->Error(tnode->loc(), s.ToString().c_str(),
-                                         ErrorCode::INVALID_ARGUMENTS));
+    if(PREDICT_FALSE(!s.ok())) {
+      return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
     }
 
     table_alterer->SetTableProperties(table_properties);
   }
 
   Status s = table_alterer->Alter();
-
-  if (!s.ok()) {
-    ErrorCode error_code = ErrorCode::EXEC_ERROR;
-
-    CB_RETURN(cb, exec_context_->Error(tnode->loc(), s.ToString().c_str(), error_code));
+  if (PREDICT_FALSE(!s.ok())) {
+    return exec_context_->Error(s, ErrorCode::EXEC_ERROR);
   }
 
-  cb.Run(
-    Status::OK(),
-    std::make_shared<SchemaChangeResult>(
-        "UPDATED", "TABLE", table_name.resolved_namespace_name(), table_name.table_name()));
+  result_ = std::make_shared<SchemaChangeResult>(
+      "UPDATED", "TABLE", table_name.resolved_namespace_name(), table_name.table_name());
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
 
-void Executor::ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallback cb) {
-  DCHECK_NOTNULL(exec_context_.get());
+Status Executor::ExecPTNode(const PTDropStmt *tnode) {
   Status s;
   ErrorCode error_not_found = ErrorCode::SERVER_ERROR;
-  SchemaChangeResult::SharedPtr result;
 
   switch (tnode->drop_type()) {
     case OBJECT_TABLE: {
@@ -393,7 +376,7 @@ void Executor::ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallbac
 
       if (!table_name.has_namespace()) {
         if (exec_context_->CurrentKeyspace().empty()) {
-          CB_RETURN(cb, exec_context_->Error(tnode->name_loc(), ErrorCode::NO_NAMESPACE_USED));
+          return exec_context_->Error(tnode->name(), ErrorCode::NO_NAMESPACE_USED);
         }
 
         table_name.set_namespace_name(exec_context_->CurrentKeyspace());
@@ -401,7 +384,7 @@ void Executor::ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallbac
       // Drop the table.
       s = exec_context_->DeleteTable(table_name);
       error_not_found = ErrorCode::TABLE_NOT_FOUND;
-      result = std::make_shared<SchemaChangeResult>(
+      result_ = std::make_shared<SchemaChangeResult>(
           "DROPPED", "TABLE", table_name.resolved_namespace_name(), table_name.table_name());
       break;
     }
@@ -411,7 +394,7 @@ void Executor::ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallbac
       const string &keyspace_name(tnode->name()->last_name().c_str());
       s = exec_context_->DeleteKeyspace(keyspace_name);
       error_not_found = ErrorCode::KEYSPACE_NOT_FOUND;
-      result = std::make_shared<SchemaChangeResult>("DROPPED", "KEYSPACE", keyspace_name);
+      result_ = std::make_shared<SchemaChangeResult>("DROPPED", "KEYSPACE", keyspace_name);
       break;
     }
 
@@ -422,7 +405,7 @@ void Executor::ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallbac
       // If name has no explicit keyspace use default
       if (tnode->name()->IsSimpleName()) {
         if (exec_context_->CurrentKeyspace().empty()) {
-          CB_RETURN(cb, exec_context_->Error(tnode->name_loc(), ErrorCode::NO_NAMESPACE_USED));
+          return exec_context_->Error(tnode->name(), ErrorCode::NO_NAMESPACE_USED);
         }
         namespace_name = exec_context_->CurrentKeyspace();
       }
@@ -430,54 +413,50 @@ void Executor::ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallbac
       // Drop the type.
       s = exec_context_->DeleteUDType(namespace_name, type_name);
       error_not_found = ErrorCode::TYPE_NOT_FOUND;
-      result = std::make_shared<SchemaChangeResult>(
-          "DROPPED", "TYPE", namespace_name, type_name);
+      result_ = std::make_shared<SchemaChangeResult>("DROPPED", "TYPE", namespace_name, type_name);
       break;
     }
 
     default:
-      CB_RETURN(cb, exec_context_->Error(tnode->name_loc(), ErrorCode::FEATURE_NOT_SUPPORTED));
+      return exec_context_->Error(ErrorCode::FEATURE_NOT_SUPPORTED);
   }
 
-  if (!s.ok()) {
+  if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
 
     if (s.IsNotFound()) {
       // Ignore not found error for a DROP IF EXISTS statement.
       if (tnode->drop_if_exists()) {
-        CB_RETURN(cb, Status::OK());
+        return Status::OK();
       }
 
       error_code = error_not_found;
     }
 
-    CB_RETURN(
-        cb, exec_context_->Error(tnode->name_loc(), s.ToString().c_str(), error_code));
+    return exec_context_->Error(tnode->name(), s, error_code);
   }
 
-  cb.Run(Status::OK(), result);
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
 
-void Executor::ExecPTNodeAsync(
-    const PTSelectStmt *tnode, StatementExecutedCallback cb, RowsResult::SharedPtr current_result) {
+Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   const shared_ptr<client::YBTable>& table = tnode->table();
 
   if (table == nullptr) {
     // If this is a system table but the table does not exist, it is okay. Just return OK with void
     // result.
-    CB_RETURN(cb,
-              tnode->is_system() ? Status::OK() :
-              exec_context_->Error(tnode->loc(), ErrorCode::TABLE_NOT_FOUND));
+    return tnode->is_system() ? Status::OK() : exec_context_->Error(ErrorCode::TABLE_NOT_FOUND);
   }
 
-  // If there are rows buffered in current_result, use the paging state in it. Otherwise, use the
+  // If there are rows buffered in current result, use the paging state in it. Otherwise, use the
   // paging state from the client.
-  const StatementParameters *paging_params = params_;
+  const StatementParameters *paging_params = exec_context_->params();
   StatementParameters current_params;
+  RowsResult::SharedPtr current_result = std::static_pointer_cast<RowsResult>(result_);
   if (current_result != nullptr) {
-    CB_RETURN_NOT_OK(cb, current_params.set_paging_state(current_result->paging_state()));
+    RETURN_NOT_OK(current_params.set_paging_state(current_result->paging_state()));
     paging_params = &current_params;
   }
 
@@ -485,23 +464,20 @@ void Executor::ExecPTNodeAsync(
   // a prior SELECT statement. Verify that the same table still exists.
   const bool continue_select = !paging_params->table_id().empty();
   if (continue_select && paging_params->table_id() != table->id()) {
-    CB_RETURN(
-        cb,
-        exec_context_->Error(tnode->loc(), "Table no longer exists.", ErrorCode::TABLE_NOT_FOUND));
+    return exec_context_->Error("Table no longer exists.", ErrorCode::TABLE_NOT_FOUND);
   }
 
-  // See if there is any rows buffered in current_result locally.
+  // See if there is any rows buffered in current result locally.
   size_t current_row_count = 0;
   if (current_result != nullptr) {
-    CB_RETURN_NOT_OK(
-        cb, YQLRowBlock::GetRowCount(current_result->client(), current_result->rows_data(),
-                                     &current_row_count));
+    RETURN_NOT_OK(YQLRowBlock::GetRowCount(current_result->client(),
+                                           current_result->rows_data(),
+                                           &current_row_count));
   }
 
   // If the current result hits the request page size already, return the result.
-  if (current_row_count >= params_->page_size()) {
-    cb.Run(Status::OK(), current_result);
-    return;
+  if (current_row_count >= exec_context_->params()->page_size()) {
+    return Status::OK();
   }
 
   // Create the read request.
@@ -519,16 +495,18 @@ void Executor::ExecPTNodeAsync(
   Status s = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops(),
       tnode->subscripted_col_where_ops(), tnode->partition_key_ops(), tnode->func_ops(),
       &no_results);
-
-  if (!s.ok()) {
-    CB_RETURN(
-        cb,
-        exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+  if (PREDICT_FALSE(!s.ok())) {
+    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // If where clause restrictions guarantee no rows could match, return empty result immediately.
   if (no_results) {
-    return SelectAsyncDone(tnode, select_op, cb, current_result, Status::OK(), nullptr);
+    YQLRowBlock empty_row_block(tnode->table()->InternalSchema(), {});
+    faststring buffer;
+    empty_row_block.Serialize(select_op->request().client(), &buffer);
+    *select_op->mutable_rows_data() = buffer.ToString();
+    result_ = std::make_shared<RowsResult>(select_op.get());
+    return Status::OK();
   }
 
   if (req->has_max_hash_code()) {
@@ -538,35 +516,30 @@ void Executor::ExecPTNodeAsync(
     // if reached max_hash_code stop and return the current result
     if (next_hash_code >= req->max_hash_code()) {
       current_result->clear_paging_state();
-      cb.Run(Status::OK(), current_result);
-      return;
+      return Status::OK();
     }
   }
 
   // Setup the column values that need to be read.
   s = ColumnRefsToPB(tnode, req->mutable_column_refs());
-  if (!s.ok()) {
-    CB_RETURN(
-        cb,
-        exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+  if (PREDICT_FALSE(!s.ok())) {
+    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Specify distinct columns or non.
   req->set_distinct(tnode->distinct());
 
-  // Default row count limit is the page size less the rows buffered in current_result locally.
+  // Default row count limit is the page size less the rows buffered in current result locally.
   // And we should return paging state when page size limit is hit.
-  req->set_limit(params_->page_size() - current_row_count);
+  req->set_limit(exec_context_->params()->page_size() - current_row_count);
   req->set_return_paging_state(true);
 
   // Check if there is a limit and compute the new limit based on the number of returned rows.
   if (tnode->has_limit()) {
     YQLExpressionPB limit_pb;
-    CB_RETURN_NOT_OK(cb, PTExprToPB(tnode->limit(), &limit_pb));
+    RETURN_NOT_OK(PTExprToPB(tnode->limit(), &limit_pb));
     if (limit_pb.has_value() && YQLValue::IsNull(limit_pb.value())) {
-      CB_RETURN(cb, exec_context_->Error(tnode->loc(),
-                                         "LIMIT value cannot be null.",
-                                         ErrorCode::INVALID_ARGUMENTS));
+      return exec_context_->Error("LIMIT value cannot be null.", ErrorCode::INVALID_ARGUMENTS);
     }
 
     // this should be ensured by checks before getting here
@@ -575,13 +548,10 @@ void Executor::ExecPTNodeAsync(
 
     int64_t limit = limit_pb.value().int64_value();
     if (limit < 0) {
-      CB_RETURN(
-          cb, exec_context_->Error(
-              tnode->loc(), "LIMIT clause cannot be a negative value.",
-              ErrorCode::INVALID_ARGUMENTS));
+      return exec_context_->Error("LIMIT value cannot be negative.", ErrorCode::INVALID_ARGUMENTS);
     }
     if (limit == 0 || paging_params->total_num_rows_read() >= limit) {
-      CB_RETURN(cb, Status::OK());
+      return Status::OK();
     }
 
     // If the LIMIT clause, subtracting the number of rows we have returned so far, is lower than
@@ -608,114 +578,51 @@ void Executor::ExecPTNodeAsync(
     // Always use strong consistency for system tables.
     select_op->set_yb_consistency_level(YBConsistencyLevel::STRONG);
   } else {
-    select_op->set_yb_consistency_level(params_->yb_consistency_level());
+    select_op->set_yb_consistency_level(exec_context_->params()->yb_consistency_level());
   }
 
-  // Apply the operator. Call SelectAsyncDone when done to try to fetch more rows and buffer locally
-  // before returning the result to the client.
-  exec_context_->ApplyReadAsync(select_op, tnode,
-                                Bind(&Executor::SelectAsyncDone, Unretained(this),
-                                     Unretained(tnode), select_op, std::move(cb), current_result));
-}
-
-void Executor::SelectAsyncDone(const PTSelectStmt *tnode, std::shared_ptr<YBqlReadOp> select_op,
-                               StatementExecutedCallback cb, RowsResult::SharedPtr current_result,
-                               const Status &s, const ExecutedResult::SharedPtr& new_result) {
-
-  // If an error occurs, return current result if present and ignore the error. Otherwise, return
-  // the error.
-  if (PREDICT_FALSE(!s.ok())) {
-    cb.Run(current_result != nullptr ? Status::OK() : s, current_result);
-    return;
-  }
-
-  // Process the new result.
-  if (new_result != nullptr) {
-    // If there is a new non-rows result. Return the current result if present (shouldn't happen)
-    // and ignore the new one. Otherwise, return the new result.
-    if (new_result->type() != ExecutedResult::Type::ROWS) {
-      if (current_result != nullptr) {
-        LOG(WARNING) <<
-            Substitute("New execution result $0 ignored", static_cast<int>(new_result->type()));
-        cb.Run(Status::OK(), current_result);
-      } else {
-        cb.Run(Status::OK(), new_result);
-      }
-      return;
-    }
-    // If there is a new rows result, append the rows and merge the paging state into the current
-    // result if present.
-    const auto* rows_result = static_cast<RowsResult*>(new_result.get());
-    if (current_result == nullptr) {
-      current_result = std::static_pointer_cast<RowsResult>(new_result);
-    } else {
-      CB_RETURN_NOT_OK(cb, current_result->Append(*rows_result));
-    }
-  }
-
-  // If there is a paging state, try fetching more rows and buffer locally. ExecPTNodeAsync() will
-  // ensure we do not exceed the page size.
-  if (current_result != nullptr && !current_result->paging_state().empty()) {
-    ExecPTNodeAsync(tnode, std::move(cb), current_result);
-    return;
-  }
-
-  // If current_result is null, producing an empty result.
-  if (current_result == nullptr) {
-    YQLRowBlock empty_row_block(tnode->table()->InternalSchema(), {});
-    faststring buffer;
-    empty_row_block.Serialize(select_op->request().client(), &buffer);
-    *select_op->mutable_rows_data() = buffer.ToString();
-    current_result = std::make_shared<RowsResult>(select_op.get());
-  }
-
-  cb.Run(Status::OK(), current_result);
+  // Apply the operator.
+  return exec_context_->ApplyRead(select_op);
 }
 
 //--------------------------------------------------------------------------------------------------
 
-void Executor::ExecPTNodeAsync(const PTInsertStmt *tnode, StatementExecutedCallback cb) {
+Status Executor::ExecPTNode(const PTInsertStmt *tnode) {
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
   shared_ptr<YBqlWriteOp> insert_op(table->NewYQLInsert());
   YQLWriteRequestPB *req = insert_op->mutable_request();
 
   // Set the ttl
-  CB_RETURN_NOT_OK(cb, TtlToPB(tnode, insert_op->mutable_request()));
+  RETURN_NOT_OK(TtlToPB(tnode, insert_op->mutable_request()));
 
   // Set the values for columns.
   Status s = ColumnArgsToPB(table, tnode, req, insert_op->mutable_row());
-  if (!s.ok()) {
-    CB_RETURN(
-        cb,
-        exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+  if (PREDICT_FALSE(!s.ok())) {
+    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Setup the column values that need to be read.
   s = ColumnRefsToPB(tnode, req->mutable_column_refs());
-  if (!s.ok()) {
-    CB_RETURN(
-        cb,
-        exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+  if (PREDICT_FALSE(!s.ok())) {
+    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
     s = PTExprToPB(tnode->if_clause(), insert_op->mutable_request()->mutable_if_expr());
-    if (!s.ok()) {
-      CB_RETURN(
-          cb,
-          exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+    if (PREDICT_FALSE(!s.ok())) {
+      return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
     }
   }
 
   // Apply the operator.
-  exec_context_->ApplyWriteAsync(insert_op, tnode, std::move(cb));
+  return exec_context_->ApplyWrite(insert_op);
 }
 
 //--------------------------------------------------------------------------------------------------
 
-void Executor::ExecPTNodeAsync(const PTDeleteStmt *tnode, StatementExecutedCallback cb) {
+Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
   shared_ptr<YBqlWriteOp> delete_op(table->NewYQLDelete());
@@ -725,44 +632,36 @@ void Executor::ExecPTNodeAsync(const PTDeleteStmt *tnode, StatementExecutedCallb
   // NOTE: Currently, where clause for write op doesn't allow regular columns.
   YBPartialRow *row = delete_op->mutable_row();
   Status s = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops(),
-      tnode->subscripted_col_where_ops());
-  if (!s.ok()) {
-    CB_RETURN(
-        cb,
-        exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+                             tnode->subscripted_col_where_ops());
+  if (PREDICT_FALSE(!s.ok())) {
+    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Setup the column values that need to be read.
   s = ColumnRefsToPB(tnode, req->mutable_column_refs());
-  if (!s.ok()) {
-    CB_RETURN(
-        cb,
-        exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+  if (PREDICT_FALSE(!s.ok())) {
+    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
   s = ColumnArgsToPB(table, tnode, req, delete_op->mutable_row());
-  if (!s.ok()) {
-    CB_RETURN(
-        cb,
-        exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+  if (PREDICT_FALSE(!s.ok())) {
+    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
     s = PTExprToPB(tnode->if_clause(), delete_op->mutable_request()->mutable_if_expr());
-    if (!s.ok()) {
-      CB_RETURN(
-          cb,
-          exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+    if (PREDICT_FALSE(!s.ok())) {
+      return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
     }
   }
 
   // Apply the operator.
-  exec_context_->ApplyWriteAsync(delete_op, tnode, std::move(cb));
+  return exec_context_->ApplyWrite(delete_op);
 }
 
 //--------------------------------------------------------------------------------------------------
 
-void Executor::ExecPTNodeAsync(const PTUpdateStmt *tnode, StatementExecutedCallback cb) {
+Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
   shared_ptr<YBqlWriteOp> update_op(table->NewYQLUpdate());
@@ -773,86 +672,221 @@ void Executor::ExecPTNodeAsync(const PTUpdateStmt *tnode, StatementExecutedCallb
   YBPartialRow *row = update_op->mutable_row();
   Status s = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops(),
       tnode->subscripted_col_where_ops());
-  if (!s.ok()) {
-    CB_RETURN(
-        cb,
-        exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+  if (PREDICT_FALSE(!s.ok())) {
+    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the ttl
-  CB_RETURN_NOT_OK(cb, TtlToPB(tnode, update_op->mutable_request()));
+  RETURN_NOT_OK(TtlToPB(tnode, update_op->mutable_request()));
 
   // Setup the columns' new values.
   s = ColumnArgsToPB(table, tnode, update_op->mutable_request(), update_op->mutable_row());
-
-  if (!s.ok()) {
-    CB_RETURN(
-        cb,
-        exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+  if (PREDICT_FALSE(!s.ok())) {
+    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Setup the column values that need to be read.
   s = ColumnRefsToPB(tnode, req->mutable_column_refs());
-  if (!s.ok()) {
-    CB_RETURN(
-        cb,
-        exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+  if (PREDICT_FALSE(!s.ok())) {
+    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
     s = PTExprToPB(tnode->if_clause(), update_op->mutable_request()->mutable_if_expr());
-    if (!s.ok()) {
-      CB_RETURN(
-          cb,
-          exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+    if (PREDICT_FALSE(!s.ok())) {
+      return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
     }
   }
 
   // Apply the operator.
-  exec_context_->ApplyWriteAsync(update_op, tnode, std::move(cb));
+  return exec_context_->ApplyWrite(update_op);
 }
 
 //--------------------------------------------------------------------------------------------------
 
-void Executor::ExecPTNodeAsync(const PTCreateKeyspace *tnode, StatementExecutedCallback cb) {
-  DCHECK_NOTNULL(exec_context_.get());
+Status Executor::ExecPTNode(const PTCreateKeyspace *tnode) {
   Status s = exec_context_->CreateKeyspace(tnode->name());
 
-  if (!s.ok()) {
+  if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
 
     if (s.IsAlreadyPresent()) {
       if (tnode->create_if_not_exists()) {
         // Case: CREATE KEYSPACE IF NOT EXISTS name;
-        CB_RETURN(cb, Status::OK());
+        return Status::OK();
       }
 
       error_code = ErrorCode::KEYSPACE_ALREADY_EXISTS;
     }
 
-    CB_RETURN(cb, exec_context_->Error(tnode->loc(), s.ToString().c_str(), error_code));
+    return exec_context_->Error(s, error_code);
   }
 
-  cb.Run(Status::OK(), std::make_shared<SchemaChangeResult>("CREATED", "KEYSPACE", tnode->name()));
+  result_ = std::make_shared<SchemaChangeResult>("CREATED", "KEYSPACE", tnode->name());
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
 
-void Executor::ExecPTNodeAsync(const PTUseKeyspace *tnode, StatementExecutedCallback cb) {
-  DCHECK_NOTNULL(exec_context_.get());
+Status Executor::ExecPTNode(const PTUseKeyspace *tnode) {
   const Status s = exec_context_->UseKeyspace(tnode->name());
-
-  if (!s.ok()) {
-    ErrorCode error_code = ErrorCode::SERVER_ERROR;
-
-    if (s.IsNotFound()) {
-      error_code = ErrorCode::KEYSPACE_NOT_FOUND;
-    }
-
-    CB_RETURN(cb, exec_context_->Error(tnode->loc(), s.ToString().c_str(), error_code));
+  if (PREDICT_FALSE(!s.ok())) {
+    ErrorCode error_code = s.IsNotFound() ? ErrorCode::KEYSPACE_NOT_FOUND : ErrorCode::SERVER_ERROR;
+    return exec_context_->Error(s, error_code);
   }
-  cb.Run(Status::OK(), std::make_shared<SetKeyspaceResult>(tnode->name()));
+
+  result_ = std::make_shared<SetKeyspaceResult>(tnode->name());
+  return Status::OK();
+}
+
+void Executor::FlushAsyncDone(const Status &s) {
+  Status ss = s;
+  if (ss.ok()) {
+    ss = ProcessAsyncResults();
+    if (ss.ok() && exec_context_->tnode()->opcode() == TreeNodeOpcode::kPTSelectStmt) {
+      // If there is a paging state, try fetching more rows and buffer locally. ExecPTNode()
+      // will ensure we do not exceed the page size.
+      if (result_ != nullptr && !static_cast<const RowsResult&>(*result_).paging_state().empty()) {
+        sql_env_->Reset();
+        ss = ExecTreeNode(static_cast<const PTSelectStmt*>(exec_context_->tnode()));
+        if (ss.ok()) {
+          if (sql_env_->FlushAsync(&flush_async_cb_)) {
+            return;
+          }
+        }
+      }
+    }
+  }
+  StatementExecuted(ss);
+}
+
+Status Executor::ProcessStatementStatus(const ParseTree &parse_tree, const Status& s) {
+  if (PREDICT_FALSE(!s.ok() && s.IsSqlError() && !parse_tree.reparsed())) {
+    // If execution fails because the statement was analyzed with stale metadata cache, the
+    // statement needs to be reparsed and re-analyzed. Symptoms of stale metadata are as listed
+    // below. Expand the list in future as new cases arise.
+    // - TABLET_NOT_FOUND when the tserver fails to execute the YBSqlOp because the tablet is not
+    //   found (ENG-945).
+    // - WRONG_METADATA_VERSION when the schema version the tablet holds is different from the one
+    //   used by the semantic analyzer.
+    // - INVALID_TABLE_DEFINITION when a referenced user-defined type is not found.
+    // - INVALID_ARGUMENTS when the column datatype is inconsistent with the supplied value in an
+    //   INSERT or UPDATE statement.
+    const ErrorCode errcode = GetErrorCode(s);
+    if (errcode == ErrorCode::TABLET_NOT_FOUND ||
+        errcode == ErrorCode::WRONG_METADATA_VERSION ||
+        errcode == ErrorCode::INVALID_TABLE_DEFINITION ||
+        errcode == ErrorCode::INVALID_ARGUMENTS) {
+      parse_tree.ClearAnalyzedTableCache(sql_env_);
+      parse_tree.ClearAnalyzedUDTypeCache(sql_env_);
+      parse_tree.set_stale();
+      return ErrorStatus(ErrorCode::STALE_METADATA);
+    }
+  }
+  return s;
+}
+
+Status Executor::ProcessOpResponse(client::YBqlOp* op, ExecContext* exec_context) {
+  const YQLResponsePB &resp = op->response();
+  CHECK(resp.has_status()) << "YQLResponsePB status missing";
+  switch (resp.status()) {
+    case YQLResponsePB::YQL_STATUS_OK:
+      // Read the rows result if present.
+      return op->rows_data().empty() ?
+          Status::OK() : AppendResult(std::make_shared<RowsResult>(op));
+    case YQLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH:
+      return exec_context->Error(resp.error_message().c_str(), ErrorCode::WRONG_METADATA_VERSION);
+    case YQLResponsePB::YQL_STATUS_RUNTIME_ERROR:
+      return exec_context->Error(resp.error_message().c_str(), ErrorCode::SERVER_ERROR);
+    case YQLResponsePB::YQL_STATUS_USAGE_ERROR:
+      return exec_context->Error(resp.error_message().c_str(), ErrorCode::EXEC_ERROR);
+    // default: fall-through to below
+  }
+  LOG(FATAL) << "Unknown status: " << resp.DebugString();
+}
+
+Status Executor::ProcessAsyncResults() {
+  Status s, ss;
+  for (auto& exec_context : exec_contexts_) {
+    if (exec_context.tnode() == nullptr) {
+      continue; // Skip empty statement.
+    }
+    client::YBqlOp* op = exec_context.op().get();
+    ss = sql_env_->GetOpError(op);
+    if (PREDICT_FALSE(!ss.ok())) {
+      // YBOperation returns not-found error when the tablet is not found.
+      const auto error_code =
+          ss.IsNotFound() ? ErrorCode::TABLET_NOT_FOUND : ErrorCode::SQL_STATEMENT_INVALID;
+      ss = exec_context.Error(ss, error_code);
+    }
+    if (ss.ok()) {
+      ss = ProcessOpResponse(op, &exec_context);
+    }
+    ss = ProcessStatementStatus(*exec_context.parse_tree(), ss);
+    if (PREDICT_FALSE(!ss.ok())) {
+      s = ss;
+    }
+  }
+  return s;
+}
+
+Status Executor::AppendResult(const ExecutedResult::SharedPtr& result) {
+  if (result == nullptr) {
+    return Status::OK();
+  }
+  if (result_ == nullptr) {
+    result_ = result;
+    return Status::OK();
+  }
+  CHECK(result_->type() == ExecutedResult::Type::ROWS);
+  CHECK(result->type() == ExecutedResult::Type::ROWS);
+  return std::static_pointer_cast<RowsResult>(result_)->Append(
+      static_cast<const RowsResult&>(*result));
+}
+
+void Executor::StatementExecuted(const Status& s) {
+  // Update metrics for all statements executed.
+  if (s.ok() && sql_metrics_ != nullptr) {
+    for (const auto& exec_context : exec_contexts_) {
+      const TreeNode* tnode = exec_context.tnode();
+      if (tnode != nullptr) {
+        MonoDelta delta = MonoTime::Now(MonoTime::FINE).GetDeltaSince(exec_context.start_time());
+
+        sql_metrics_->time_to_execute_sql_query_->Increment(delta.ToMicroseconds());
+
+        switch (tnode->opcode()) {
+          case TreeNodeOpcode::kPTSelectStmt:
+            sql_metrics_->sql_select_->Increment(delta.ToMicroseconds());
+            break;
+          case TreeNodeOpcode::kPTInsertStmt:
+            sql_metrics_->sql_insert_->Increment(delta.ToMicroseconds());
+            break;
+          case TreeNodeOpcode::kPTUpdateStmt:
+            sql_metrics_->sql_update_->Increment(delta.ToMicroseconds());
+            break;
+          case TreeNodeOpcode::kPTDeleteStmt:
+            sql_metrics_->sql_delete_->Increment(delta.ToMicroseconds());
+            break;
+          default:
+            sql_metrics_->sql_others_->Increment(delta.ToMicroseconds());
+        }
+      }
+    }
+  }
+
+  // Clean up and invoke statement-executed callback.
+  ExecutedResult::SharedPtr result = s.ok() ? std::move(result_) : nullptr;
+  StatementExecutedCallback cb = std::move(cb_);
+  Reset();
+  cb.Run(s, result);
+}
+
+void Executor::Reset() {
+  exec_contexts_.clear();
+  exec_context_ = nullptr;
+  result_ = nullptr;
+  cb_.Reset();
 }
 
 }  // namespace sql

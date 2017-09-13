@@ -243,7 +243,6 @@ class PTSelectStmt : public PTDmlStmt {
   const bool distinct_;
   PTListNode::SharedPtr target_;
   PTTableRefListNode::SharedPtr from_clause_;
-  PTExpr::SharedPtr where_clause_;
   PTListNode::SharedPtr group_by_clause_;
   PTListNode::SharedPtr having_clause_;
   PTListNode::SharedPtr order_by_clause_;

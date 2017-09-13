@@ -30,11 +30,9 @@ PTDeleteStmt::PTDeleteStmt(MemoryContext *memctx,
                            TreeNode::SharedPtr using_clause,
                            PTExpr::SharedPtr where_clause,
                            PTExpr::SharedPtr if_clause)
-    : PTDmlStmt(memctx, loc, true),
+    : PTDmlStmt(memctx, loc, true, where_clause, if_clause),
       target_(target),
-      relation_(relation),
-      where_clause_(where_clause),
-      if_clause_(if_clause) {
+      relation_(relation) {
 }
 
 PTDeleteStmt::~PTDeleteStmt() {
@@ -52,7 +50,8 @@ CHECKED_STATUS PTDeleteStmt::Analyze(SemContext *sem_context) {
   column_args_->resize(num_columns());
 
   if (target_) {
-    TreeNodePtrOperator<SemContext> analyze = std::bind(&PTDeleteStmt::AnalyzeTarget, this, std::placeholders::_1,
+    TreeNodePtrOperator<SemContext> analyze = std::bind(&PTDeleteStmt::AnalyzeTarget, this,
+                                                        std::placeholders::_1,
                                                         std::placeholders::_2);
       RETURN_NOT_OK(target_->Analyze(sem_context, analyze));
   }

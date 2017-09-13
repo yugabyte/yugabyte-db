@@ -37,6 +37,9 @@ import org.slf4j.LoggerFactory;
 
 import org.yb.master.Master;
 import org.yb.minicluster.BaseMiniClusterTest;
+import org.yb.minicluster.IOMetrics;
+import org.yb.minicluster.Metrics;
+import org.yb.minicluster.MiniYBDaemon;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -455,4 +458,32 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     keyspacesToDrop.remove(keyspaceName);
   }
 
+  // Get IO metrics of all tservers.
+  public Map<MiniYBDaemon, IOMetrics> getTSMetrics() throws Exception {
+    Map<MiniYBDaemon, IOMetrics> initialMetrics = new HashMap<>();
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      IOMetrics metrics = new IOMetrics(new Metrics(ts.getLocalhostIP(),
+                                                    ts.getCqlWebPort(),
+                                                    "server"));
+      initialMetrics.put(ts, metrics);
+    }
+    return initialMetrics;
+  }
+
+  // Get combined IO metrics of all tservers since a certain point.
+  public IOMetrics getCombinedMetrics(Map<MiniYBDaemon, IOMetrics> initialMetrics)
+      throws Exception {
+    IOMetrics totalMetrics = new IOMetrics();
+    int tsCount = miniCluster.getTabletServers().values().size();
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      IOMetrics metrics = new IOMetrics(new Metrics(ts.getLocalhostIP(),
+                                                    ts.getCqlWebPort(),
+                                                    "server"))
+                          .subtract(initialMetrics.get(ts));
+      LOG.info("Metrics of " + ts.toString() + ": " + metrics.toString());
+      totalMetrics.add(metrics);
+    }
+    LOG.info("Total metrics: " + totalMetrics.toString());
+    return totalMetrics;
+  }
 }

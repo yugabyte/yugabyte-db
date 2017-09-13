@@ -37,13 +37,9 @@ TEST_F(YbSqlTestAnalyzer, TestCreateTablePropertyAnalyzer) {
   CHECK_OK(TestAnalyzer(create_stmt, &parse_tree));
 
   // Now verify the analysis was done correctly.
-  TreeNode *tnode = ((parse_tree.get())->root()).get();
-  PTListNode *list_node = static_cast<PTListNode*>(tnode);
-  EXPECT_EQ(1, list_node->size());
-  TreeNode::SharedPtr inner_node = list_node->element(0);
-  EXPECT_EQ(static_cast<int>(TreeNodeOpcode::kPTCreateTable), static_cast<int>(
-      inner_node->opcode()));
-  PTCreateTable *pt_create_table = static_cast<PTCreateTable*>(inner_node.get());
+  TreeNode::SharedPtr root = parse_tree->root();
+  EXPECT_EQ(TreeNodeOpcode::kPTCreateTable, root->opcode());
+  PTCreateTable::SharedPtr pt_create_table = std::static_pointer_cast<PTCreateTable>(root);
 
   // Verify table properties.
   PTTablePropertyListNode::SharedPtr table_properties = pt_create_table->table_properties();
@@ -176,6 +172,24 @@ TEST_F(YbSqlTestAnalyzer, TestBindVariableAnalyzer) {
   ANALYZE_INVALID_STMT("SELECT * FROM t WHERE h1 = (- :1)", &parse_tree);
 
   CHECK_OK(processor->Run("DROP TABLE t;"));
+}
+
+TEST_F(YbSqlTestAnalyzer, TestMisc) {
+  CreateSimulatedCluster();
+  YbSqlProcessor *processor = GetSqlProcessor();
+
+  // Analyze misc empty sql statements.
+  ParseTree::UniPtr parse_tree;
+  CHECK_OK(TestAnalyzer("", &parse_tree));
+  EXPECT_TRUE(parse_tree->root() == nullptr);
+  CHECK_OK(TestAnalyzer(";", &parse_tree));
+  EXPECT_TRUE(parse_tree->root() == nullptr);
+  CHECK_OK(TestAnalyzer(" ;  ;  ", &parse_tree));
+  EXPECT_TRUE(parse_tree->root() == nullptr);
+
+  // Invalid: multi-statement not supported.
+  CHECK_OK(processor->Run("CREATE TABLE t (h INT PRIMARY KEY, c INT);"));
+  ANALYZE_INVALID_STMT("SELECT * FROM t; SELECT C FROM t;", &parse_tree);
 }
 
 }  // namespace sql

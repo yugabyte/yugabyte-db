@@ -65,6 +65,9 @@ class CQLProcessor : public sql::SqlProcessor {
   void ProcessCall(rpc::InboundCallPtr call);
 
  private:
+  // Process a CQL request.
+  CQLResponse* ProcessRequest(const CQLRequest& req);
+
   // Process a PREPARE, EXECUTE, QUERY, BATCH or AUTH_RESPONSE request.
   CQLResponse* ProcessPrepare(const PrepareRequest& req);
   CQLResponse* ProcessExecute(const ExecuteRequest& req);
@@ -72,11 +75,14 @@ class CQLProcessor : public sql::SqlProcessor {
   CQLResponse* ProcessBatch(const BatchRequest& req);
   CQLResponse* ProcessAuthResponse(const AuthResponseRequest& req);
 
+  // Get a prepared statement and adds it to the set of statements currently being executed.
+  std::shared_ptr<const CQLStatement> GetPreparedStatement(const CQLMessage::QueryId& id);
+
   // Statement executed callback.
-  void StatementExecuted(const Status& s, const sql::ExecutedResult::SharedPtr& result);
+  void StatementExecuted(const Status& s, const sql::ExecutedResult::SharedPtr& result = nullptr);
 
   // Process statement execution result.
-  CQLResponse* ProcessResult(Status s, const sql::ExecutedResult::SharedPtr& result);
+  CQLResponse* ProcessResult(Status s, const sql::ExecutedResult::SharedPtr& result = nullptr);
 
   // Send response back to client.
   void SendResponse(const CQLResponse& response);
@@ -95,11 +101,17 @@ class CQLProcessor : public sql::SqlProcessor {
 
   //----------------------------- StatementExecuted callback and state ---------------------------
 
-  // Current call, request, statement, and batch index being processed.
+  // Current call, request, prepared statements and parse trees being processed.
   rpc::InboundCallPtr call_;
   std::unique_ptr<const CQLRequest> request_;
-  std::shared_ptr<const CQLStatement> stmt_;
-  int batch_index_ = 0;
+  std::unordered_set<std::shared_ptr<const CQLStatement>> stmts_;
+  std::unordered_set<sql::ParseTree::UniPtr> parse_trees_;
+
+  // Current retry count.
+  int retry_count_ = 0;
+
+  // Unprepared query id being executed.
+  CQLMessage::QueryId unprepared_id_;
 
   // Parse and execute begin times.
   MonoTime parse_begin_;

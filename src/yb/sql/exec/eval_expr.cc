@@ -83,15 +83,15 @@ Status Executor::PTExprToPB(const PTExpr::SharedPtr& expr, YQLExpressionPB *expr
 CHECKED_STATUS Executor::PTExprToPB(const PTBindVar *bind_pt, YQLExpressionPB *expr_pb) {
   // TODO(neil) This error should be raised by CQL when it compares between bind variables and
   // bind arguments before calling YQL layer to execute.
-  if (params_ == nullptr) {
+  if (exec_context_->params() == nullptr) {
     return STATUS(RuntimeError, "no bind variable supplied");
   }
 
   std::unique_ptr<YQLValueWithPB> value(new YQLValueWithPB());
-  RETURN_NOT_OK(params_->GetBindVariable(bind_pt->name()->c_str(),
-                                         bind_pt->pos(),
-                                         bind_pt->yql_type(),
-                                         value.get()));
+  RETURN_NOT_OK(exec_context_->params()->GetBindVariable(bind_pt->name()->c_str(),
+                                                         bind_pt->pos(),
+                                                         bind_pt->yql_type(),
+                                                         value.get()));
   expr_pb->set_allocated_value(value.release());
   return Status::OK();
 }

@@ -30,7 +30,6 @@
 #include "yb/cqlserver/cql_rpcserver_env.h"
 
 namespace yb {
-
 namespace sql {
 
 class SqlEnv {
@@ -55,16 +54,24 @@ class SqlEnv {
 
   virtual CHECKED_STATUS DeleteTable(const client::YBTableName& name);
 
-  virtual void ApplyWriteAsync(
-      std::shared_ptr<client::YBqlWriteOp> yb_op, Callback<void(const Status&)>* callback);
+  // Read/write related methods.
 
-  virtual void ApplyReadAsync(
-      std::shared_ptr<client::YBqlReadOp> yb_op, Callback<void(const Status&)>* callback);
+  // Apply a read/write operation. The operation is batched and needs to be flushed with FlushAsync.
+  // Mix of read/write operations in a batch is not supported currently.
+  virtual CHECKED_STATUS ApplyWrite(std::shared_ptr<client::YBqlWriteOp> op);
+  virtual CHECKED_STATUS ApplyRead(std::shared_ptr<client::YBqlReadOp> op);
 
+  // Flush batched operations. Returns false when there is no batched operation.
+  virtual bool FlushAsync(Callback<void(const Status &)>* cb);
+
+  // Get the status of an individual read/write op after it has been flushed and completed.
+  virtual Status GetOpError(const client::YBqlOp* op) const;
+
+  // Abort the batched ops.
+  virtual void AbortOps();
 
   virtual std::shared_ptr<client::YBTable> GetTableDesc(
       const client::YBTableName& table_name, bool *cache_used);
-
 
   virtual void RemoveCachedTableDesc(const client::YBTableName& table_name);
 
@@ -116,16 +123,9 @@ class SqlEnv {
   cqlserver::CQLRpcServerEnv* cql_rpcserver_env() { return cql_rpcserver_env_; }
 
  private:
-
   // Helpers to process the asynchronously received response from ybclient.
   void FlushAsyncDone(const Status &s);
-  void ResumeCQLCall(const Status& s);
-  // Process YBOperation status.
-  CHECKED_STATUS ProcessOpStatus(const client::YBOperation* op,
-                                 const Status& s,
-                                 client::YBSession* session) const;
-  CHECKED_STATUS ProcessWriteResult(const Status& s);
-  CHECKED_STATUS ProcessReadResult(const Status& s);
+  void ResumeCQLCall();
 
   cqlserver::CQLInboundCall* current_cql_call() const {
     return static_cast<cqlserver::CQLInboundCall*>(current_call_.get());
@@ -139,25 +139,33 @@ class SqlEnv {
   // YBMetaDataCache, a cache to avoid creating a new table or type for each call.
   std::shared_ptr<client::YBMetaDataCache> metadata_cache_;
 
-  // A specific session (within YBClient) to execute a statement.
+  // YBSession to apply write operations.
   std::shared_ptr<client::YBSession> write_session_;
 
-  // A specific session (within YBClient) to execute a statement.
+  // YBSession to apply read operations.
   std::shared_ptr<client::YBSession> read_session_;
+
+  // The YB read/write session with batch operations. Null when there is no batch operations.
+  std::shared_ptr<client::YBSession> batch_session_;
 
   // Messenger used to requeue the CQL call upon callback.
   std::weak_ptr<rpc::Messenger> messenger_;
 
   client::YBStatusMemberCallback<SqlEnv> flush_done_cb_;
+
   // Transient attributes.
   // The following attributes are reset implicitly for every execution.
 
-  // The "current" write/read op whose response we might be waiting for.
-  std::shared_ptr<client::YBqlWriteOp> current_write_op_;
-  std::shared_ptr<client::YBqlReadOp> current_read_op_;
+  // The "current" call whose response we might be waiting for.
   rpc::InboundCallPtr current_call_ = nullptr;
 
-  Callback<void(const Status&)>* requested_callback_;
+  // Last flush error if any.
+  Status flush_status_;
+
+  // Errors of read/write operations that failed.
+  std::unordered_map<const client::YBqlOp*, Status> op_errors_;
+
+  Callback<void(const Status&)>* requested_callback_ = nullptr;
   Callback<void(void)> resume_execution_;
 
   // The current keyspace. Used only in test environment when there is no current call.

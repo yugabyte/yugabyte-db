@@ -117,19 +117,12 @@ class PTCreateType : public TreeNode {
     return create_if_not_exists_;
   }
 
-  // Table name.
+  // Type name.
+  PTQualifiedName::SharedPtr type_name() const {
+    return name_;
+  }
   client::YBTableName yb_type_name() const {
     return name_->ToTableName();
-  }
-
-  // Returns location of table name.
-  const YBLocation& name_loc() const {
-    return name_->loc();
-  }
-
-  // Returns location of table columns.PTTypeField
-  const YBLocation& columns_loc() const {
-    return fields_->loc();
   }
 
  private:

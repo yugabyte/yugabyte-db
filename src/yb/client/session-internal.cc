@@ -87,6 +87,12 @@ void YBSessionData::FlushFinished(Batcher* batcher) {
   CHECK_EQ(flushed_batchers_.erase(batcher), 1);
 }
 
+void YBSessionData::Abort() {
+  if (batcher_->HasPendingOperations()) {
+    NewBatcher()->Abort(STATUS(Aborted, "Batch aborted"));
+  }
+}
+
 Status YBSessionData::Close(bool force) {
   if (batcher_->HasPendingOperations() && !force) {
     return STATUS(IllegalState, "Could not close. There are pending operations.");

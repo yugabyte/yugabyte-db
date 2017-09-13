@@ -37,14 +37,12 @@ public class TestAlterTable extends BaseCQLTest {
       try {
         LOG.info("Select thread started.");
 
+        PreparedStatement stmt = session.prepare("SELECT * FROM t WHERE id = ?;");
         for (int i = 0; i < 10; i++) {
-          PreparedStatement stmt = session.prepare("SELECT * FROM t WHERE id = ?;");
-          BatchStatement batch = new BatchStatement();
+          LOG.info("Executing select statements.");
           for (int j = 1; j <= 100; j++) {
-            batch.add(stmt.bind(new Integer(0)));
+            session.execute(stmt.bind(new Integer(0)));
           }
-          LOG.info("Sending batch select.");
-          session.execute(batch);
           Thread.sleep(100);
         }
 

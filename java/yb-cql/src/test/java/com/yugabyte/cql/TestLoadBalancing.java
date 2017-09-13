@@ -25,7 +25,6 @@ import com.yugabyte.cql.PartitionAwarePolicy;
 
 import org.yb.cql.BaseCQLTest;
 import org.yb.minicluster.IOMetrics;
-import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBDaemon;
 
 import org.apache.commons.lang3.RandomStringUtils;
@@ -308,35 +307,6 @@ public class TestLoadBalancing extends BaseCQLTest {
     assertTrue(metadata.loadCount.get() >= MIN_LOAD_COUNT);
   }
 
-  // Get IO metrics of all tservers.
-  private Map<MiniYBDaemon, IOMetrics> getTSMetrics() throws Exception {
-    Map<MiniYBDaemon, IOMetrics> initialMetrics = new HashMap<>();
-    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      IOMetrics metrics = new IOMetrics(new Metrics(ts.getLocalhostIP(),
-                                                    ts.getCqlWebPort(),
-                                                    "server"));
-      initialMetrics.put(ts, metrics);
-    }
-    return initialMetrics;
-  }
-
-  // Get combined IO metrics of all tservers since a certain point.
-  private IOMetrics getCombinedMetrics(Map<MiniYBDaemon, IOMetrics> initialMetrics)
-      throws Exception {
-    IOMetrics totalMetrics = new IOMetrics();
-    int tsCount = miniCluster.getTabletServers().values().size();
-    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      IOMetrics metrics = new IOMetrics(new Metrics(ts.getLocalhostIP(),
-                                                    ts.getCqlWebPort(),
-                                                    "server"))
-                          .subtract(initialMetrics.get(ts));
-      LOG.info("Metrics of " + ts.toString() + ": " + metrics.toString());
-      totalMetrics.add(metrics);
-    }
-    LOG.info("Total metrics: " + totalMetrics.toString());
-    return totalMetrics;
-  }
-
   // Test load-balancing policy with DMLs.
   @Test
   public void testDML() throws Exception {
@@ -433,6 +403,6 @@ public class TestLoadBalancing extends BaseCQLTest {
     // because as soon as the test table has been created and the partition metadata has been
     // loaded, the cluster's load-balancer may still be rebalancing the leaders.
     assertTrue(totalMetrics.localReadCount >= NUM_KEYS * 0.7);
-    assertTrue(totalMetrics.localWriteCount >= NUM_KEYS * 5 * 0.7);
+    assertTrue(totalMetrics.localWriteCount >= NUM_KEYS * 0.7);
   }
 }

@@ -31,8 +31,11 @@ using std::string;
 // ParseContext
 //--------------------------------------------------------------------------------------------------
 
-ParseContext::ParseContext(const char *stmt, size_t stmt_len, shared_ptr<MemTracker> mem_tracker)
-    : ProcessContext(stmt, stmt_len, ParseTree::UniPtr(new ParseTree(mem_tracker))),
+ParseContext::ParseContext(const char *stmt,
+                           size_t stmt_len,
+                           const bool reparsed,
+                           shared_ptr<MemTracker> mem_tracker)
+    : ProcessContext(stmt, stmt_len, ParseTree::UniPtr(new ParseTree(reparsed, mem_tracker))),
       bind_variables_(PTreeMem()),
       stmt_offset_(0),
       trace_scanning_(false),

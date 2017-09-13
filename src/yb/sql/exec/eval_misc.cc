@@ -23,13 +23,11 @@ using std::shared_ptr;
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS Executor::TtlToPB(const PTDmlStmt *tnode, YQLWriteRequestPB *req) {
-  if (tnode->has_ttl()) {
+  if (tnode->ttl_seconds() != nullptr) {
     YQLExpressionPB ttl_pb;
     RETURN_NOT_OK(PTExprToPB(tnode->ttl_seconds(), &ttl_pb));
     if (ttl_pb.has_value() && YQLValue::IsNull(ttl_pb.value())) {
-      return exec_context_->Error(tnode->loc(),
-                                  "TTL value cannot be null.",
-                                  ErrorCode::INVALID_ARGUMENTS);
+      return exec_context_->Error("TTL value cannot be null.", ErrorCode::INVALID_ARGUMENTS);
     }
 
     // this should be ensured by checks before getting here
@@ -39,11 +37,11 @@ CHECKED_STATUS Executor::TtlToPB(const PTDmlStmt *tnode, YQLWriteRequestPB *req)
     int64_t ttl_seconds = ttl_pb.value().int64_value();
 
     if (!yb::common::IsValidTTLSeconds(ttl_seconds)) {
-      return exec_context_->Error(tnode->ttl_seconds()->loc(),
-          strings::Substitute("Valid ttl range : [$0, $1]",
-              yb::common::kMinTtlSeconds,
-              yb::common::kMaxTtlSeconds).c_str(),
-          ErrorCode::INVALID_ARGUMENTS);
+      return exec_context_->Error(tnode->ttl_seconds(),
+                                  strings::Substitute("Valid ttl range : [$0, $1]",
+                                                      yb::common::kMinTtlSeconds,
+                                                      yb::common::kMaxTtlSeconds).c_str(),
+                                  ErrorCode::INVALID_ARGUMENTS);
     }
     req->set_ttl(static_cast<uint64_t>(ttl_seconds * MonoTime::kMillisecondsPerSecond));
   }

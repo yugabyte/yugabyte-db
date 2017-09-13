@@ -142,11 +142,6 @@ class PTUpdateStmt : public PTDmlStmt {
     return TreeNodeOpcode::kPTUpdateStmt;
   }
 
-  // IF clause.
-  const PTExpr::SharedPtr& if_clause() const {
-    return if_clause_;
-  }
-
   bool require_column_read() const {
     return require_column_read_;
   }
@@ -158,8 +153,6 @@ class PTUpdateStmt : public PTDmlStmt {
  private:
   PTTableRef::SharedPtr relation_;
   PTAssignListNode::SharedPtr set_clause_;
-  PTExpr::SharedPtr where_clause_;
-  PTExpr::SharedPtr if_clause_;
 
   // Indicate if a column read is required to execute this update statement.
   bool require_column_read_ = false;

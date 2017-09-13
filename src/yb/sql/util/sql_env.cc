@@ -81,73 +81,84 @@ CHECKED_STATUS SqlEnv::DeleteTable(const YBTableName& name) {
   return client_->DeleteTable(name);
 }
 
-CHECKED_STATUS SqlEnv::ProcessOpStatus(const YBOperation* op,
-                                       const Status& s,
-                                       YBSession* session) const {
-  // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
-  // returns IOError. When it happens, retrieves the error that corresponds to this op and return.
-  // Ignore overflow since there is nothing we can do but we will still search for the error for
-  // the given op.
-  if (s.IsIOError()) {
-    client::CollectedErrors errors;
-    bool overflowed;
-    session->GetPendingErrors(&errors, &overflowed);
-    for (const auto& error : errors) {
-      if (&error->failed_op() == op) {
-        return error->status();
-      }
-    }
-  }
-  return s;
-}
-
 void SqlEnv::SetCurrentCall(rpc::InboundCallPtr cql_call) {
   DCHECK(cql_call == nullptr || current_call_ == nullptr)
       << this << " Tried updating current call. Current call is " << current_call_;
   current_call_ = std::move(cql_call);
 }
 
-void SqlEnv::ApplyWriteAsync(
-    std::shared_ptr<YBqlWriteOp> yb_op, Callback<void(const Status &)>* cb) {
-  // The previous result must have been cleared.
-  DCHECK(current_read_op_ == nullptr);
-  DCHECK(current_write_op_ == nullptr);
-
-  // Execute the write.
-  CB_RETURN_NOT_OK(cb, write_session_->Apply(yb_op));
-  current_write_op_ = yb_op;
-  requested_callback_ = cb;
-  TRACE("Flushing Write");
-  write_session_->FlushAsync(&flush_done_cb_);
+CHECKED_STATUS SqlEnv::ApplyWrite(std::shared_ptr<YBqlWriteOp> op) {
+  CHECK(batch_session_ != read_session_) << "Mix read/write batch opeations not supported";
+  // Apply the write.
+  TRACE("Apply Write");
+  RETURN_NOT_OK(write_session_->Apply(op));
+  batch_session_ = write_session_;
+  return Status::OK();
 }
 
-void SqlEnv::ApplyReadAsync(
-    std::shared_ptr<YBqlReadOp> yb_op, Callback<void(const Status &)>* cb) {
-  // The previous result must have been cleared.
-  DCHECK(current_read_op_ == nullptr);
-  DCHECK(current_write_op_ == nullptr);
+CHECKED_STATUS SqlEnv::ApplyRead(std::shared_ptr<YBqlReadOp> op) {
+  CHECK(batch_session_ != write_session_) << "Mix read/write batch opeations not supported";
+  // Apply the read.
+  TRACE("Apply Read");
+  RETURN_NOT_OK(read_session_->Apply(op));
+  batch_session_ = read_session_;
+  return Status::OK();
+}
 
-  // Execute the read.
-  CB_RETURN_NOT_OK(cb, read_session_->Apply(yb_op));
-  current_read_op_ = yb_op;
+
+bool SqlEnv::FlushAsync(Callback<void(const Status &)>* cb) {
+  if (batch_session_ == nullptr) {
+    return false;
+  }
+  DCHECK(requested_callback_ == nullptr);
   requested_callback_ = cb;
-  TRACE("Flushing Read");
-  read_session_->FlushAsync(&flush_done_cb_);
+  TRACE("Flush Async");
+  batch_session_->FlushAsync(&flush_done_cb_);
+  return true;
+}
+
+Status SqlEnv::GetOpError(const client::YBqlOp* op) const {
+  const auto itr = op_errors_.find(op);
+  return itr != op_errors_.end() ? itr->second : Status::OK();
+}
+
+void SqlEnv::AbortOps() {
+  write_session_->Abort();
 }
 
 void SqlEnv::FlushAsyncDone(const Status &s) {
+  // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
+  // returns IOError. When it happens, retrieves the errors and discard the IOError.
+  DCHECK(batch_session_ != nullptr);
+  if (PREDICT_FALSE(!s.ok())) {
+    if (s.IsIOError()) {
+      client::CollectedErrors errors;
+      bool overflowed = false;
+      batch_session_->GetPendingErrors(&errors, &overflowed);
+      for (const auto& error : errors) {
+        op_errors_[static_cast<const client::YBqlOp*>(&error->failed_op())] = error->status();
+      }
+      if (overflowed) {
+       flush_status_ = STATUS(RuntimeError, "Too many read / write errors");
+      }
+    } else {
+      flush_status_ = s;
+    }
+  }
+  batch_session_ = nullptr;
+
   TRACE("Flush Async Done");
   if (current_call_ == nullptr) {
     // For unit tests. Run the callback in the current (reactor) thread and allow wait for the case
     // when a statement needs to be reprepared and we need to fetch table metadata synchronously.
     bool allowed = ThreadRestrictions::SetWaitAllowed(true);
-    ResumeCQLCall(s);
+    ResumeCQLCall();
     ThreadRestrictions::SetWaitAllowed(allowed);
     return;
   }
 
   // Production/cqlserver usecase. Enqueue the callback to run in the server's handler thread.
-  resume_execution_ = Bind(&SqlEnv::ResumeCQLCall, Unretained(this), s);
+  resume_execution_ = Bind(&SqlEnv::ResumeCQLCall, Unretained(this));
   current_cql_call()->SetResumeFrom(&resume_execution_);
 
   auto messenger = messenger_.lock();
@@ -155,29 +166,9 @@ void SqlEnv::FlushAsyncDone(const Status &s) {
   messenger->QueueInboundCall(current_call_);
 }
 
-void SqlEnv::ResumeCQLCall(const Status &s) {
+void SqlEnv::ResumeCQLCall() {
   TRACE("Resuming CQL Call");
-  if (current_write_op_.get() != nullptr) {
-    DCHECK(current_read_op_ == nullptr);
-    requested_callback_->Run(ProcessWriteResult(s));
-  } else {
-    DCHECK(current_write_op_ == nullptr);
-    requested_callback_->Run(ProcessReadResult(s));
-  }
-}
-
-Status SqlEnv::ProcessWriteResult(const Status &s) {
-  auto yb_op = current_write_op_;
-  current_write_op_ = nullptr;
-  RETURN_NOT_OK(ProcessOpStatus(yb_op.get(), s, write_session_.get()));
-  return Status::OK();
-}
-
-Status SqlEnv::ProcessReadResult(const Status &s) {
-  auto yb_op = current_read_op_;
-  current_read_op_ = nullptr;
-  RETURN_NOT_OK(ProcessOpStatus(yb_op.get(), s, read_session_.get()));
-  return Status::OK();
+  requested_callback_->Run(flush_status_);
 }
 
 shared_ptr<YBTable> SqlEnv::GetTableDesc(const YBTableName& table_name, bool* cache_used) {
@@ -215,8 +206,10 @@ void SqlEnv::RemoveCachedUDType(const std::string& keyspace_name, const std::str
 }
 
 void SqlEnv::Reset() {
-  current_read_op_ = nullptr;
-  current_write_op_ = nullptr;
+  batch_session_ = nullptr;
+  requested_callback_ = nullptr;
+  flush_status_ = Status::OK();
+  op_errors_.clear();
 }
 
 Status SqlEnv::DeleteKeyspace(const string& keyspace_name) {

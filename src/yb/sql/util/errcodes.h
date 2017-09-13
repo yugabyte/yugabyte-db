@@ -44,6 +44,7 @@ enum class ErrorCode : int64_t {
   // Failure with no specific reason. Most likely, this is used for a system or coding error.
   FAILURE = -1,
   SERVER_ERROR = -2,
+  STALE_METADATA = -3,
 
   //------------------------------------------------------------------------------------------------
   // Limitation errors [-10, -50).
@@ -107,7 +108,7 @@ enum class ErrorCode : int64_t {
   KEYSPACE_ALREADY_EXISTS = -307,
   KEYSPACE_NOT_FOUND = -308,
   TABLET_NOT_FOUND = -309,
-  STALE_PREPARED_STATEMENT = -310,
+  UNPREPARED_STATEMENT = -310,
   TYPE_NOT_FOUND = -311,
   INVALID_TYPE_DEFINITION = -312,
 };
@@ -117,6 +118,9 @@ ErrorCode GetErrorCode(const Status& s);
 
 // Mapping errcode to text messages.
 const char *ErrorText(ErrorCode code);
+
+// Return an error status with the error code.
+Status ErrorStatus(ErrorCode code, const std::string& mesg = "");
 
 // Font for error message is RED.
 constexpr const char *kErrorFontStart = "\033[31m";

@@ -56,6 +56,14 @@ class ProcessContextBase {
   CHECKED_STATUS Error(const YBLocation& l, const char *m, const char* token = nullptr);
   CHECKED_STATUS Error(const YBLocation& l, ErrorCode error_code, const char* token = nullptr);
 
+  // Variants of Error() that report location of tnode as the error location.
+  CHECKED_STATUS Error(const TreeNode *tnode, ErrorCode error_code);
+  CHECKED_STATUS Error(const TreeNode *tnode, const char *m, ErrorCode error_code);
+  CHECKED_STATUS Error(const TreeNode *tnode, const Status& s, ErrorCode error_code);
+
+  CHECKED_STATUS Error(const TreeNode::SharedPtr& tnode, ErrorCode error_code);
+  CHECKED_STATUS Error(const TreeNode::SharedPtr& tnode, const char *m, ErrorCode error_code);
+  CHECKED_STATUS Error(const TreeNode::SharedPtr& tnode, const Status& s, ErrorCode error_code);
 
   // Memory pool for allocating and deallocating operating memory spaces during a process.
   MemoryContext *PTempMem() const {
@@ -75,12 +83,9 @@ class ProcessContextBase {
     return stmt_len_;
   }
 
-  // Read and write access functions for error_code_.
+  // Access function for error_code_.
   ErrorCode error_code() const {
     return error_code_;
-  }
-  void set_error_code(ErrorCode error_code) {
-    error_code_ = error_code;
   }
 
   // Return status of a process.

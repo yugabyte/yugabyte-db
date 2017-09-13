@@ -58,33 +58,33 @@ class SqlProcessor {
   typedef std::unique_ptr<const SqlProcessor> UniPtrConst;
 
   // Constructors.
-  explicit SqlProcessor(
-      std::weak_ptr<rpc::Messenger> messenger, std::shared_ptr<client::YBClient> client,
-      std::shared_ptr<client::YBMetaDataCache> cache, SqlMetrics* sql_metrics,
-      cqlserver::CQLRpcServerEnv* cql_rpcserver_env = nullptr);
+  explicit SqlProcessor(std::weak_ptr<rpc::Messenger> messenger,
+                        std::shared_ptr<client::YBClient> client,
+                        std::shared_ptr<client::YBMetaDataCache> cache, SqlMetrics* sql_metrics,
+                        cqlserver::CQLRpcServerEnv* cql_rpcserver_env = nullptr);
   virtual ~SqlProcessor();
 
-  // Parse a SQL statement and generate a parse tree.
-  CHECKED_STATUS Parse(
-      const string& sql_stmt, ParseTree::UniPtr* parse_tree,
-      std::shared_ptr<MemTracker> mem_tracker);
+  // Prepare a SQL statement (parse and analyze).
+  CHECKED_STATUS Prepare(const string& sql_stmt, ParseTree::UniPtr* parse_tree,
+                         bool reparsed = false, std::shared_ptr<MemTracker> mem_tracker = nullptr);
 
-  // Semantically analyze a parse tree. Return "reparse" if an error was encountered that may be
-  // attributed to stale metadata cache. If that happens, the metadata cache will be purged and the
-  // statement should be reparsed and re-analyzed. When the statement is parsed for the first time,
-  // caller should check if the statement needs to be "reparsed".
-  CHECKED_STATUS Analyze(
-      const string& sql_stmt, ParseTree::UniPtr* parse_tree, bool* reparse = nullptr);
+  // Execute a prepared statement (parse tree).
+  void ExecuteAsync(const std::string& sql_stmt, const ParseTree& parse_tree,
+                    const StatementParameters& params, StatementExecutedCallback cb);
 
-  // Execute a parse tree.
-  void ExecuteAsync(
-      const string& sql_stmt, const ParseTree& parse_tree, const StatementParameters& params,
-      StatementExecutedCallback cb, bool reparsed = false);
+  // Run (parse, analyze and execute) a SQL statement.
+  void RunAsync(const std::string& sql_stmt, const StatementParameters& params,
+                StatementExecutedCallback cb, bool reparsed = false);
 
-  // Execute a SQL statement.
-  void RunAsync(
-      const std::string& sql_stmt, const StatementParameters& params,
-      StatementExecutedCallback cb);
+  // Batch execution of statements. StatementExecutedCallback will be invoked when the batch is
+  // applied and execution is complete, or when an error occurs.
+  void BeginBatch(StatementExecutedCallback cb);
+  void ExecuteBatch(const std::string& sql_stmt, const ParseTree& parse_tree,
+                    const StatementParameters& params);
+  void RunBatch(const std::string& sql_stmt, const StatementParameters& params,
+                ParseTree::UniPtr* parse_tree, bool reparsed = false);
+  void ApplyBatch();
+  void AbortBatch();
 
  protected:
   void SetCurrentCall(rpc::InboundCallPtr call);
@@ -105,12 +105,18 @@ class SqlProcessor {
   SqlMetrics* const sql_metrics_;
 
  private:
-  void ExecuteAsyncDone(
-      const MonoTime& begin_time, const ParseTree *parse_tree, StatementExecutedCallback cb,
-      bool reparsed, const Status& s, const ExecutedResult::SharedPtr& result);
-  void RunAsyncDone(
-      const std::string& sql_stmt, const StatementParameters* params, ParseTree *parse_tree,
-      StatementExecutedCallback cb, const Status& s, const ExecutedResult::SharedPtr& result);
+  friend class YbSqlTestBase;
+
+  // Parse a SQL statement and generate a parse tree.
+  CHECKED_STATUS Parse(const string& sql_stmt, ParseTree::UniPtr* parse_tree, bool reparsed = false,
+                       std::shared_ptr<MemTracker> mem_tracker = nullptr);
+
+  // Semantically analyze a parse tree.
+  CHECKED_STATUS Analyze(const string& sql_stmt, ParseTree::UniPtr* parse_tree);
+
+  void RunAsyncDone(const std::string& sql_stmt, const StatementParameters* params,
+                    const ParseTree *parse_tree, StatementExecutedCallback cb,
+                    const Status& s, const ExecutedResult::SharedPtr& result);
 };
 
 }  // namespace sql

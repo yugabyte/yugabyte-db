@@ -160,6 +160,8 @@ class PTDmlStmt : public PTCollection {
   explicit PTDmlStmt(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
                      bool write_only,
+                     PTExpr::SharedPtr where_clause = nullptr,
+                     PTExpr::SharedPtr if_clause = nullptr,
                      PTExpr::SharedPtr ttl_seconds = nullptr);
   virtual ~PTDmlStmt();
 
@@ -227,12 +229,15 @@ class PTDmlStmt : public PTCollection {
     return func_ops_;
   }
 
-  bool has_ttl() const {
-    return ttl_seconds_ != nullptr;
+  const PTExpr::SharedPtr& where_clause() const {
+    return where_clause_;
   }
 
-  PTExpr::SharedPtr ttl_seconds() const {
-    CHECK_NOTNULL(ttl_seconds_.get());
+  const PTExpr::SharedPtr& if_clause() const {
+    return if_clause_;
+  }
+
+  const PTExpr::SharedPtr& ttl_seconds() const {
     return ttl_seconds_;
   }
 
@@ -326,8 +331,11 @@ class PTDmlStmt : public PTCollection {
   // restrictions involving all hash/partition columns -- i.e. read requests using Token builtin
   MCList<PartitionKeyOp> partition_key_ops_;
 
-  // Predicate for write operator (UPDATE & DELETE).
+  // Predicate for write operator (INSERT/UPDATE/DELETE).
   bool write_only_;
+
+  PTExpr::SharedPtr where_clause_;
+  PTExpr::SharedPtr if_clause_;
   PTExpr::SharedPtr ttl_seconds_;
 
   // Bind variables set up by during parsing.

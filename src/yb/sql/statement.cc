@@ -32,62 +32,63 @@ Statement::Statement(const string& keyspace, const string& text)
 Statement::~Statement() {
 }
 
-CHECKED_STATUS Statement::Prepare(
+Status Statement::Prepare(
     SqlProcessor *processor, shared_ptr<MemTracker> mem_tracker, PreparedResult::UniPtr *result) {
   // Prepare the statement (parse and semantically analysis). Do so within an exclusive lock.
   if (!prepared_.load(std::memory_order_acquire)) {
     std::lock_guard<std::mutex> guard(parse_tree_mutex_);
 
     if (parse_tree_ == nullptr) {
-
       ParseTree::UniPtr parse_tree;
-      bool reparse = false;
-      RETURN_NOT_OK(processor->Parse(text_, &parse_tree, mem_tracker));
-      RETURN_NOT_OK(processor->Analyze(text_, &parse_tree, &reparse));
-      if (reparse) {
-        RETURN_NOT_OK(processor->Parse(text_, &parse_tree, mem_tracker));
-        RETURN_NOT_OK(processor->Analyze(text_, &parse_tree));
-      }
+      RETURN_NOT_OK(processor->Prepare(text_, &parse_tree, false /* reparsed */, mem_tracker));
       parse_tree_ = std::move(parse_tree);
       prepared_.store(true, std::memory_order_release);
     }
   }
 
-  // Return prepared result if requested and the statement is a SELECT statement. Do not need a
-  // lock here because we have verified that the parse tree is either present already or we have
-  // successfully prepared the statement above. The parse tree is guaranteed read-only afterwards.
-  if (result != nullptr) {
-    const TreeNode *root = parse_tree_->root().get();
-    if (root->opcode() != TreeNodeOpcode::kPTListNode) {
-      return STATUS(Corruption, "Internal error: statement list expected");
-    }
-    const PTListNode *stmts = static_cast<const PTListNode*>(root);
-    if (stmts->size() != 1) {
-      return STATUS(Corruption, "Internal error: only one statement expected");
-    }
-    const TreeNode *stmt = stmts->element(0).get();
-    if (stmt->opcode() == TreeNodeOpcode::kPTSelectStmt ||
-        stmt->opcode() == TreeNodeOpcode::kPTInsertStmt ||
-        stmt->opcode() == TreeNodeOpcode::kPTUpdateStmt ||
-        stmt->opcode() == TreeNodeOpcode::kPTDeleteStmt) {
-      result->reset(new PreparedResult(static_cast<const PTDmlStmt*>(stmt)));
+  // Return prepared result if requested and the statement is a DML. Do not need a lock here
+  // because we have verified that the parse tree is either present already or we have successfully
+  // prepared the statement above. The parse tree is guaranteed read-only afterwards.
+  if (result != nullptr && parse_tree_->root() != nullptr) {
+    const TreeNode& stmt = *parse_tree_->root();
+    switch (stmt.opcode()) {
+      case TreeNodeOpcode::kPTSelectStmt: FALLTHROUGH_INTENDED;
+      case TreeNodeOpcode::kPTInsertStmt: FALLTHROUGH_INTENDED;
+      case TreeNodeOpcode::kPTUpdateStmt: FALLTHROUGH_INTENDED;
+      case TreeNodeOpcode::kPTDeleteStmt:
+        result->reset(new PreparedResult(static_cast<const PTDmlStmt&>(stmt)));
+        break;
+      default:
+        break;
     }
   }
 
   return Status::OK();
 }
 
-bool Statement::ExecuteAsync(
+Status Statement::Validate() const {
+  if (!prepared_.load(std::memory_order_acquire)) {
+    return ErrorStatus(ErrorCode::UNPREPARED_STATEMENT);
+  }
+  DCHECK(parse_tree_ != nullptr) << "Parse tree missing";
+  if (parse_tree_->stale()) {
+    return ErrorStatus(ErrorCode::STALE_METADATA);
+  }
+  return Status::OK();
+}
+
+Status Statement::ExecuteAsync(
     SqlProcessor* processor, const StatementParameters& params, StatementExecutedCallback cb)
     const {
-  // Return false if the statement has not been prepared.
-  if (!prepared_.load(std::memory_order_acquire)) {
-    return false;
-  }
+  RETURN_NOT_OK(Validate());
+  processor->ExecuteAsync(text_, *parse_tree_, params, std::move(cb));
+  return Status::OK();
+}
 
-  DCHECK(parse_tree_ != nullptr) << "Parse tree missing";
-  processor->ExecuteAsync(text_, *parse_tree_.get(), params, cb);
-  return true;
+Status Statement::ExecuteBatch(SqlProcessor* processor, const StatementParameters& params) const {
+  RETURN_NOT_OK(Validate());
+  processor->ExecuteBatch(text_, *parse_tree_, params);
+  return Status::OK();
 }
 
 }  // namespace sql

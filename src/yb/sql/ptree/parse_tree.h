@@ -38,7 +38,7 @@ class ParseTree {
 
   //------------------------------------------------------------------------------------------------
   // Public functions.
-  explicit ParseTree(std::shared_ptr<MemTracker> mem_tracker = nullptr);
+  explicit ParseTree(bool reparsed = false, std::shared_ptr<MemTracker> mem_tracker = nullptr);
   ~ParseTree();
 
   // Run semantics analysis.
@@ -60,6 +60,22 @@ class ParseTree {
   // Access function to psem_mem_.
   MemoryContext *PSemMem() const {
     return &psem_mem_;
+  }
+
+  // Access function to reparsed_.
+  bool reparsed() const {
+    return reparsed_;
+  }
+  void clear_reparsed() const {
+    reparsed_ = false;
+  }
+
+  // Access function to stale_.
+  bool stale() const {
+    return stale_;
+  }
+  void set_stale() const {
+    stale_ = true;
   }
 
   // Add table to the set of tables used during semantic analysis.
@@ -99,6 +115,12 @@ class ParseTree {
   //------------------------------------------------------------------------------------------------
   // Private data members.
   TreeNode::SharedPtr root_;
+
+  // Has this statement been reparsed?
+  mutable bool reparsed_;
+
+  // Is this parse tree stale?
+  mutable bool stale_ = false;
 };
 
 }  // namespace sql

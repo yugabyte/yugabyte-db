@@ -44,6 +44,7 @@ class Parser {
   // semantic analysis. Otherwise, it returns one of the errcodes that are defined in file
   // "yb/sql/errcodes.h", and the caller (YbSql API) should stop the compiling process.
   CHECKED_STATUS Parse(const std::string& sql_stmt,
+                       bool reparsed = false,
                        std::shared_ptr<MemTracker> mem_tracker = nullptr);
 
   // Returns the generated parse tree.

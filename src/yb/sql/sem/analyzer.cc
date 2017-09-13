@@ -38,8 +38,25 @@ CHECKED_STATUS Analyzer::Analyze(const string& sql_stmt, ParseTree::UniPtr parse
                                                    sql_stmt.length(),
                                                    std::move(parse_tree),
                                                    sql_env_));
+  Status s = ptree->Analyze(sem_context_.get());
+  if (PREDICT_FALSE(!s.ok())) {
+    // When a statement is parsed for the first time, semantic analysis may fail because stale
+    // table metadata cache was used. If that happens, clear the cache and tell the caller to
+    // reparse. The only exception is when the keyspace, table or type or is not found in which
+    // case no cache is used.
+    if (!ptree->reparsed()) {
+      const ErrorCode errcode = GetErrorCode(s);
+      if (errcode != ErrorCode::KEYSPACE_NOT_FOUND &&
+          errcode != ErrorCode::TABLE_NOT_FOUND &&
+          errcode != ErrorCode::TYPE_NOT_FOUND &&
+          sem_context_->cache_used()) {
+        ptree->ClearAnalyzedTableCache(sql_env_);
+        ptree->ClearAnalyzedUDTypeCache(sql_env_);
+        ptree->set_stale();
+        return sem_context_->Error(ptree->root(), ErrorCode::STALE_METADATA);
+      }
+    }
 
-  if (!ptree->Analyze(sem_context_.get()).ok()) {
     // Before leaving the semantic step, collect all errors and place them in return status.
     VLOG(3) << "Failed to analyze parse-tree <" << ptree << ">";
     return sem_context_->GetStatus();
