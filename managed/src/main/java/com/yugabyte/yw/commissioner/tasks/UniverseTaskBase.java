@@ -188,10 +188,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param nodes : a collection of nodes that need to be destroyed
    */
-  public SubTaskGroup createDestroyServerTasks(Collection<NodeDetails> nodes) {
+  public SubTaskGroup createDestroyServerTasks(Collection<NodeDetails> nodes, Boolean isForceDelete) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleDestroyServers", executor);
     for (NodeDetails node : nodes) {
-      NodeTaskParams params = new NodeTaskParams();
+      DestroyUniverse.Params params = new DestroyUniverse.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = taskParams().deviceInfo;
       // Set the cloud name.
@@ -202,6 +202,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.nodeName = node.nodeName;
       // Add the universe uuid.
       params.universeUUID = taskParams().universeUUID;
+      // Flag to be set where errors during Ansible Destroy Server will be ignored.
+      params.isForceDelete = isForceDelete;
       // Add the instance type
       params.instanceType = node.cloudInfo.instance_type;
       // Create the Ansible task to destroy the server.

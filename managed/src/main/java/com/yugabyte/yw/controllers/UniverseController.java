@@ -7,7 +7,9 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
-import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,14 +24,11 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.forms.RollingRestartParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
@@ -262,6 +261,12 @@ public class UniverseController extends AuthenticatedController {
 
   public Result destroy(UUID customerUUID, UUID universeUUID) {
     LOG.info("Destroy universe, customer uuid: {}, universeUUID: {} ", customerUUID, universeUUID);
+
+    Boolean isForceDelete = false;
+    if (request().getQueryString("isForceDelete") != null) {
+      isForceDelete = Boolean.valueOf(request().getQueryString("isForceDelete"));
+    }
+
     // Verify the customer with this universe is present.
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
@@ -277,12 +282,13 @@ public class UniverseController extends AuthenticatedController {
     }
 
     // Create the Commissioner task to destroy the universe.
-    UniverseTaskParams taskParams = new UniverseTaskParams();
+    DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.universeUUID = universeUUID;
     // There is no staleness of a delete request. Perform it even if the universe has changed.
     taskParams.expectedUniverseVersion = -1;
     taskParams.cloud = universe.getUniverseDetails().userIntent.providerType;
-
+    taskParams.customerUUID = customerUUID;
+    taskParams.isForceDelete = isForceDelete;
     // Submit the task to destroy the universe.
     UUID taskUUID = commissioner.submit(TaskType.DestroyUniverse, taskParams);
     LOG.info("Submitted destroy universe for " + universeUUID + ", task uuid = " + taskUUID);
@@ -295,9 +301,6 @@ public class UniverseController extends AuthenticatedController {
       CustomerTask.TaskType.Delete,
       universe.name);
 
-    // Remove the entry for the universe from the customer table.
-    customer.removeUniverseUUID(universeUUID);
-    customer.save();
     LOG.info("Dropped universe " + universeUUID + " for customer [" + customer.name + "]");
 
     ObjectNode response = Json.newObject();
