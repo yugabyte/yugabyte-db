@@ -272,6 +272,7 @@ void UpdateScanDeltaCompactionTest::UpdateRows(CountDownLatch* stop_latch) {
       }
       CHECK_OK(WaitForLastBatchAndFlush(kSessionBatchSize, &last_s, &last_s_cb, session));
       CHECK_OK(last_s.Wait());
+      last_s.Reset();
     }
   }
 }

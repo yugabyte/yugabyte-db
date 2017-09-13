@@ -83,6 +83,7 @@ class MonoDelta {
   int64_t ToMilliseconds() const;
   int64_t ToMicroseconds() const;
   int64_t ToNanoseconds() const;
+  std::chrono::steady_clock::duration ToSteadyDuration() const;
 
   MonoDelta& operator+=(const MonoDelta& rhs);
 

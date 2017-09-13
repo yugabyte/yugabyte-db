@@ -33,6 +33,9 @@
 #ifndef YB_UTIL_ASYNC_UTIL_H
 #define YB_UTIL_ASYNC_UTIL_H
 
+#include <condition_variable>
+#include <mutex>
+
 #include "yb/gutil/bind.h"
 #include "yb/gutil/macros.h"
 #include "yb/util/countdown_latch.h"
@@ -48,14 +51,25 @@ namespace yb {
 //   CHECK_OK(s.Wait());
 class Synchronizer {
  public:
-  Synchronizer()
-    : l(1) {
-  }
+  Synchronizer(const Synchronizer&) = delete;
+  void operator=(const Synchronizer&) = delete;
+
+  Synchronizer() {}
+
   void StatusCB(const Status& status) {
-    s = status;
-    l.CountDown();
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!assigned_) {
+      assigned_ = true;
+      status_ = status;
+      cond_.notify_all();
+    } else {
+      LOG(DFATAL) << "Status already assigned, existing: " << status_ << ", new: " << status;
+    }
   }
+
   StatusCallback AsStatusCallback() {
+    DCHECK(!assigned_);
+
     // Synchronizers are often declared on the stack, so it doesn't make
     // sense for a callback to take a reference to its synchronizer.
     //
@@ -63,23 +77,38 @@ class Synchronizer {
     // its synchronizer.
     return Bind(&Synchronizer::StatusCB, Unretained(this));
   }
+
   CHECKED_STATUS Wait() {
-    l.Wait();
-    return s;
+    return WaitUntil(std::chrono::steady_clock::time_point::max());
   }
+
   CHECKED_STATUS WaitFor(const MonoDelta& delta) {
-    if (PREDICT_FALSE(!l.WaitFor(delta))) {
+    return WaitUntil(std::chrono::steady_clock::now() + delta.ToSteadyDuration());
+  }
+
+  CHECKED_STATUS WaitUntil(const std::chrono::steady_clock::time_point& time) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    auto predicate = [this] { return assigned_; };
+    if (time == std::chrono::steady_clock::time_point::max()) {
+      cond_.wait(lock, predicate);
+    } else if (!cond_.wait_until(lock, time, predicate)) {
       return STATUS(TimedOut, "Timed out while waiting for the callback to be called.");
     }
-    return s;
+
+    return status_;
   }
+
   void Reset() {
-    l.Reset(1);
+    std::lock_guard<std::mutex> lock(mutex_);
+    assigned_ = false;
+    status_ = Status::OK();
   }
+
  private:
-  DISALLOW_COPY_AND_ASSIGN(Synchronizer);
-  Status s;
-  CountDownLatch l;
+  std::mutex mutex_;
+  std::condition_variable cond_;
+  bool assigned_ = false;
+  Status status_;
 };
 
 } // namespace yb

@@ -135,6 +135,10 @@ int64_t MonoDelta::ToNanoseconds() const {
   return nano_delta_;
 }
 
+std::chrono::steady_clock::duration MonoDelta::ToSteadyDuration() const {
+  return std::chrono::nanoseconds(ToNanoseconds());
+}
+
 int64_t MonoDelta::ToMicroseconds() const {
   DCHECK(Initialized());
   return nano_delta_ / MonoTime::kNanosecondsPerMicrosecond;
