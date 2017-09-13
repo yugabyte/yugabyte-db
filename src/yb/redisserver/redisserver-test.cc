@@ -300,8 +300,6 @@ void TestRedisService::SendCommandAndExpectTimeout(const string& cmd) {
   ASSERT_TRUE(SendCommandAndGetResponse(cmd, 1).IsTimedOut());
 }
 
-
-
 void TestRedisService::SendCommandAndExpectResponse(int line,
                                                     const string& cmd,
                                                     const string& expected,
@@ -911,6 +909,13 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
         ASSERT_EQ(0, replies[2].as_array().size());
       }
   );
+
+  DoRedisTestBulkString(__LINE__, {"PING", "foo"}, "foo");
+  DoRedisTestBulkString(__LINE__, {"PING"}, "pong");
+
+  DoRedisTestOk(__LINE__, {"QUIT"});
+
+  DoRedisTestOk(__LINE__, {"FLUSHDB"});
 
   SyncClient();
 

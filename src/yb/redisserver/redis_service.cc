@@ -131,6 +131,9 @@ DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
     ((config, Config, -1, LOCAL)) \
     ((info, Info, -1, LOCAL)) \
     ((role, Role, 1, LOCAL)) \
+    ((ping, Ping, -1, LOCAL)) \
+    ((quit, Quit, 1, LOCAL)) \
+    ((flushdb, FlushDB, 1, LOCAL))
     /**/
 
 #define DO_DEFINE_HISTOGRAM(name, cname, arity, type) \
@@ -724,6 +727,27 @@ RedisResponsePB ParseInfo(const RedisClientCommand& command) {
       "repl_backlog_first_byte_offset:0\r\n"
       "repl_backlog_histlen:0\r\n");
   return responsePB;
+}
+
+RedisResponsePB ParsePing(const RedisClientCommand& command) {
+  RedisResponsePB responsePB;
+  responsePB.set_code(RedisResponsePB_RedisStatusCode_OK);
+  if (command.size() > 1) {
+    responsePB.set_string_response(command[1].cdata(), command[1].size());
+  } else {
+    responsePB.set_string_response("pong");
+  }
+  return responsePB;
+}
+
+RedisResponsePB ParseQuit(const RedisClientCommand& command) {
+  // TODO(hector): We need to implement its real meaning (close connection). Tracked by ENG-2107.
+  return RedisResponsePB();
+}
+
+RedisResponsePB ParseFlushDB(const RedisClientCommand& command) {
+  // TODO(hector): We need to implement its real meaning (delete all keys). Tracked by ENG-2107.
+  return RedisResponsePB();
 }
 
 #define REDIS_METRIC(name) \
