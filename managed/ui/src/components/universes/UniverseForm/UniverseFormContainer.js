@@ -120,7 +120,7 @@ function mapStateToProps(state, ownProps) {
     "instanceType": "m3.medium",
     "formType": "create",
     "accessKeyCode": "yugabyte-default",
-    "spotPrice": "$ 0.0 per hour",
+    "spotPrice": "0.00",
     "useSpotPrice": false
   };
   if (isNonEmptyObject(currentUniverse.data) && ownProps.type === "Edit") {
@@ -192,8 +192,8 @@ const validate = values => {
   if (!isDefinedNotNull(values.instanceType)) {
     errors.instanceType = 'Instance Type is Required';
   }
-  if (values.useSpotPrice && values.spotPrice.split(' ')[1] === '0.0') {
-    errors.spotPrice = 'Spot Price must be greater than 0.0';
+  if (values.useSpotPrice && values.spotPrice === '0.00') {
+    errors.spotPrice = 'Spot Price must be greater than $0.00';
   }
   return errors;
 };

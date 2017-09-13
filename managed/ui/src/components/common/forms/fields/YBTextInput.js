@@ -13,7 +13,7 @@ export class YBTextInput extends Component {
 
   render() {
     const self = this;
-    const { input, type, className, placeHolder, onValueChanged, isReadOnly } = this.props;
+    const { input, type, className, placeHolder, onValueChanged, isReadOnly, normalizeOnBlur } = this.props;
 
     function onChange(event) {
       if (isFunction(onValueChanged)) {
@@ -22,9 +22,17 @@ export class YBTextInput extends Component {
       self.props.input.onChange(event.target.value);
     }
 
+    function onBlur(event) {
+      if (isFunction(normalizeOnBlur)) {
+        self.props.input.onBlur(normalizeOnBlur(event.target.value));
+      } else {
+        self.props.input.onBlur(event.target.value);
+      }
+    }
+
     return (
       <FormControl {...input} placeholder={placeHolder} type={type} className={className}
-        onChange={onChange} readOnly={isReadOnly} />
+        onChange={onChange} readOnly={isReadOnly} onBlur={onBlur} />
     );
   }
 }

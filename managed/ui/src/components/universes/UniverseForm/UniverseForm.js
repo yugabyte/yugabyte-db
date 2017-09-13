@@ -16,6 +16,7 @@ import AZSelectorTable from './AZSelectorTable';
 import { UniverseResources } from '../UniverseResources';
 import './UniverseForm.scss';
 import AZPlacementInfo from './AZPlacementInfo';
+import { IN_DEVELOPMENT_MODE } from '../../../config';
 
 const initialState = {
   instanceTypeSelected: '',
@@ -32,7 +33,7 @@ const initialState = {
   ebsType: 'GP2',
   accessKeyCode: 'yugabyte-default',
   maxNumNodes: -1, // Maximum Number of nodes currently in use OnPrem case
-  useSpotPrice: false,
+  useSpotPrice: IN_DEVELOPMENT_MODE,
   spotPrice: '0.0'
 };
 
@@ -399,17 +400,15 @@ class UniverseForm extends Component {
 
   toggleSpotPrice(event) {
     const {formValues} = this.props;
-    const nextState = {useSpotPrice: event.target.checked};
-    if (event.target.checked) {
-      nextState['spotPrice'] = formValues.spotPrice.split(' ')[1];
-    } else {
-      nextState['spotPrice'] = '0.0';
-    }
+    const nextState = {
+      useSpotPrice: event.target.checked,
+      spotPrice: event.target.checked ? formValues.spotPrice : '0.00'
+    };
     this.setState(nextState);
   }
 
   spotPriceChanged(val) {
-    this.setState({spotPrice: val.split(' ')[1]});
+    this.setState({spotPrice: normalizeToPositiveFloat(val)});
   }
 
   componentWillReceiveProps(nextProps) {
@@ -653,26 +652,30 @@ class UniverseForm extends Component {
       }
     }
 
-    function spotPriceFormat(value) {
-      return '$ ' + normalizeToPositiveFloat(value.split(' ')[1]) + ' per hour';
-    }
-
-    let spotPriceField = <span />;
     let spotPriceToggle = <span />;
+    let spotPriceField = <span />;
     const currentProvider = this.getCurrentProvider(this.state.providerSelected);
     if (isDefinedNotNull(currentProvider) && currentProvider.code === "aws") {
-      spotPriceField = (
-        <Field name="spotPrice" type="text" component={YBTextInputWithLabel} label="Spot Price"
-               isReadOnly={isFieldReadOnly || !this.state.useSpotPrice} placeHolder="$ 0.0 per hour"
-               normalize={spotPriceFormat} onValueChanged={this.spotPriceChanged} />
-      );
       spotPriceToggle = (
-        <Field name="useSpotPrice" component={YBToggle} label="Use Spot Price"
+        <Field name="useSpotPrice"
+               component={YBToggle}
+               label="Use Spot Pricing"
                subLabel="spot pricing is suitable for test environments only, because spot instances might go away any time"
                onToggle={this.toggleSpotPrice}
                defaultChecked={this.state.useSpotPrice}
                isReadOnly={isFieldReadOnly} />
       );
+      if (this.state.useSpotPrice) {
+        spotPriceField = (
+          <Field name="spotPrice" type="text"
+                 component={YBTextInputWithLabel}
+                 label="Spot Price (Per Hour)"
+                 isReadOnly={isFieldReadOnly || !this.state.useSpotPrice}
+                 placeHolder="0.00"
+                 normalizeOnBlur={normalizeToPositiveFloat}
+                 onValueChanged={this.spotPriceChanged} />
+        );
+      }
     }
 
     return (
@@ -713,8 +716,8 @@ class UniverseForm extends Component {
                 <Field name="instanceType" type="select" component={YBControlledSelectWithLabel} label="Instance Type"
                        options={universeInstanceTypeList} selectVal={this.state.instanceTypeSelected}
                        onInputChanged={this.instanceTypeChanged}/>
-                {spotPriceField}
                 {spotPriceToggle}
+                {spotPriceField}
               </div>
             </Col>
             {deviceDetail &&
