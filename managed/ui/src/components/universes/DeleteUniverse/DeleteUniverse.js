@@ -5,14 +5,14 @@ import {Modal, Checkbox} from 'react-bootstrap';
 import {getPromiseState} from 'utils/PromiseUtils';
 import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
 import { browserHistory } from 'react-router';
-import { YBButton, YBCheckBox } from '../../common/forms/fields';
+import { YBButton } from '../../common/forms/fields';
 export default class DeleteUniverse extends Component {
   constructor(props) {
     super(props);
     this.closeDeleteModal = this.closeDeleteModal.bind(this);
     this.confirmDelete = this.confirmDelete.bind(this);
     this.toggleForceDelete = this.toggleForceDelete.bind(this);
-    this.state = {isForceDelete: false}
+    this.state = {isForceDelete: false};
   }
 
   toggleForceDelete() {
