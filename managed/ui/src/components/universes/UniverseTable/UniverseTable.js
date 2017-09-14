@@ -93,7 +93,7 @@ class CellLocationPanel extends Component {
   render() {
     const {universe, universe: {universeDetails: {userIntent}}} = this.props;
     const regionList = universe.regions && universe.regions.map(function(regionItem, idx){
-      return regionItem.name
+      return regionItem.name;
     }).join(", ");
     return (
       <div >
