@@ -530,47 +530,86 @@ The example below shows migration when a regular expression pattern is used to e
 <td align="left">
 <pre><code>
 SELECT
-    REGEXP_SUBSTR('one two three four five ', '(\S*)\s')
-FROM DUAL;
-Result: one
-
-SELECT
-    REGEXP_SUBSTR('one two three four five ', '(\S*)\s', 1, 3)
-FROM DUAL;
-Result: three
-
-SELECT
-    REGEXP_SUBSTR('one two three four five ', '(\S*)\s', 5, 3)
-FROM DUAL;
-Result: four
-
-SELECT
-    REGEXP_SUBSTR('one two three four five ', '(\S*)\s', 1, 1, 'i')
+    REGEXP_SUBSTR('one two three four five ',
+	'(\S*)\s') AS "REGEXP"
 FROM DUAL;
 Result: one
  </code></pre>
 </td>
-
 <td align="left">
 <pre><code>
-SELECT (SELECT array_to_string(a, '') AS "REGEXP"
-    FROM regexp_matches('one two three four five ', '(\S*)\s', 'g') AS f(a)
-    LIMIT 1);
+SELECT (
+    SELECT array_to_string(a, '') AS "REGEXP"
+    FROM regexp_matches('one two three four five ',
+	'(\S*)\s',
+	'g') AS f(a)
+    LIMIT 1
+);
 Result: one
-
-SELECT (SELECT array_to_string(a, '') AS "REGEXP"
-    FROM regexp_matches('one two three four five ', '(\S*)\s', 'g') AS f(a)
-    LIMIT 1 OFFSET (3 - 1));
+ </code></pre>
+</td>
+</tr><tr>
+<td align="left">
+<pre><code>
+SELECT
+    REGEXP_SUBSTR('one two three four five ',
+	'(\S*)\s', 1, 3) AS "REGEXP"
+FROM DUAL;
 Result: three
-
-SELECT (SELECT array_to_string(a, '') AS "REGEXP"
-    FROM regexp_matches(substring('one two three four five ', 5), '(\S*)\s', 'g') AS f(a)
-    LIMIT 1 OFFSET (3 - 1));
+ </code></pre>
+</td>
+<td align="left">
+<pre><code>
+SELECT (
+    SELECT array_to_string(a, '') AS "REGEXP"
+    FROM regexp_matches('one two three four five ',
+	'(\S*)\s', 'g') AS f(a)
+    LIMIT 1 OFFSET (3 - 1)
+);
+Result: three
+ </code></pre>
+</td>
+</tr><tr>
+<td align="left">
+<pre><code>
+SELECT
+    REGEXP_SUBSTR('one two three four five ',
+	'(\S*)\s', 5, 3)  AS "REGEXP"
+FROM DUAL;
 Result: four
-
-SELECT (SELECT array_to_string(a, '') AS "REGEXP"
-    FROM regexp_matches('one two three four five ', '(\S*)\s', 'gi') AS f(a)
-    LIMIT 1);
+ </code></pre>
+</td>
+<td align="left">
+<pre><code>
+SELECT (
+    SELECT array_to_string(a, '') AS "REGEXP"
+    FROM regexp_matches(substring(
+		'one two three four five ',
+		5
+	), '(\S*)\s', 'g') AS f(a)
+    LIMIT 1 OFFSET (3 - 1)
+);
+Result: four
+ </code></pre>
+</td>
+</tr><tr>
+<td align="left">
+<pre><code>
+SELECT
+    REGEXP_SUBSTR('one two three four five ',
+	'(\S*)\s', 1, 1, 'i')
+FROM DUAL;
+Result: one
+ </code></pre>
+</td>
+<td align="left">
+<pre><code>
+SELECT (
+    SELECT array_to_string(a, '') AS "REGEXP"
+    FROM regexp_matches('one two three four five ',
+	'(\S*)\s', 'gi') AS f(a)
+    LIMIT 1
+);
 Result: one
  </code></pre>
 </td>
