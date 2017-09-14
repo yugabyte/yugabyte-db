@@ -52,6 +52,18 @@ Status YQLTablesVTable::RetrieveData(const YQLReadRequestPB& request,
     // Note: table id is in host byte order.
     RETURN_NOT_OK(uuid.FromHexString(table->id()));
     RETURN_NOT_OK(SetColumnValue(kId, uuid, &row));
+
+    // Set the values for the table properties.
+    Schema schema;
+    RETURN_NOT_OK(table->GetSchema(&schema));
+
+    // Adjusting precision, we use milliseconds internally, CQL uses seconds.
+    // Sanity check, larger TTL values should be caught during analysis.
+    DCHECK_LE(schema.table_properties().DefaultTimeToLive(),
+              MonoTime::kMillisecondsPerSecond * std::numeric_limits<int32>::max());
+    int32_t cql_ttl = static_cast<int32_t>(
+        schema.table_properties().DefaultTimeToLive() / MonoTime::kMillisecondsPerSecond);
+    RETURN_NOT_OK(SetColumnValue(kDefaultTimeToLive, cql_ttl, &row));
   }
 
   return Status::OK();

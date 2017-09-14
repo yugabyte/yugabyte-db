@@ -26,8 +26,8 @@
 namespace yb {
 namespace common {
 
-static const MonoDelta kMaxTtl = MonoDelta::FromNanoseconds(
-    std::numeric_limits<int64_t>::max());
+// Upper bound for TTL in Cassandra is max int32 value (in seconds).
+static const MonoDelta kMaxTtl = MonoDelta::FromSeconds(std::numeric_limits<int32_t>::max());
 
 static const int64_t kMaxTtlSeconds = kMaxTtl.ToSeconds();
 

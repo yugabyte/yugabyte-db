@@ -280,7 +280,7 @@ public class TestSystemTables extends BaseCQLTest {
 
     // Create keyspace and table and verify it shows up.
     session.execute("CREATE KEYSPACE my_keyspace;");
-    session.execute("CREATE TABLE my_table (c1 int PRIMARY KEY);");
+    session.execute("CREATE TABLE my_table (c1 int PRIMARY KEY) WITH default_time_to_live = 5;");
     session.execute("CREATE TABLE my_keyspace.my_table (c1 int PRIMARY KEY);");
 
     // Verify results.
@@ -292,21 +292,23 @@ public class TestSystemTables extends BaseCQLTest {
     assertTrue(results.get(0).getBool("durable_writes"));
 
     results = session.execute(
-      String.format("SELECT keyspace_name, table_name, flags FROM system_schema.tables WHERE " +
-        "keyspace_name = " +
-        "'%s' and table_name = 'my_table';", DEFAULT_TEST_KEYSPACE)).all();
+      String.format("SELECT keyspace_name, table_name, flags, default_time_to_live " +
+          "FROM system_schema.tables WHERE keyspace_name = '%s' and table_name = 'my_table';",
+          DEFAULT_TEST_KEYSPACE)).all();
     assertEquals(1, results.size());
     assertEquals(DEFAULT_TEST_KEYSPACE, results.get(0).getString("keyspace_name"));
     assertEquals("my_table", results.get(0).getString("table_name"));
+    assertEquals(5, results.get(0).getInt("default_time_to_live"));
     assertEquals(new HashSet<String>(Arrays.asList("compound")),
       results.get(0).getSet("flags", String.class));
 
     results = session.execute(
-      "SELECT keyspace_name, table_name FROM system_schema.tables WHERE keyspace_name = " +
-        "'my_keyspace' and table_name = 'my_table';").all();
+        "SELECT keyspace_name, table_name, default_time_to_live FROM system_schema.tables " +
+        "WHERE keyspace_name = 'my_keyspace' and table_name = 'my_table';").all();
     assertEquals(1, results.size());
     assertEquals("my_keyspace", results.get(0).getString("keyspace_name"));
     assertEquals("my_table", results.get(0).getString("table_name"));
+    assertEquals(0, results.get(0).getInt("default_time_to_live"));
     assertFalse(results.get(0).getColumnDefinitions().contains("flags")); // flags was not selected.
 
     // Verify table id.

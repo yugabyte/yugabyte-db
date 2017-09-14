@@ -49,9 +49,8 @@ import java.util.*;
 public class BaseCQLTest extends BaseMiniClusterTest {
   protected static final Logger LOG = LoggerFactory.getLogger(BaseCQLTest.class);
 
-  // Long.MAX_VALUE / 1000000000 is the max allowed ttl, since internally in docdb we use MonoDelta
-  // to store the ttl, which uses nanoseconds.
-  protected static final long MAX_TTL_SEC = Long.MAX_VALUE / 1000000000;
+  // Integer.MAX_VALUE seconds is the maximum allowed TTL by Cassandra.
+  protected static final long MAX_TTL_SEC = Integer.MAX_VALUE;
 
   protected static final String DEFAULT_KEYSPACE = "default_keyspace";
 
