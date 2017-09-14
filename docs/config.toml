@@ -129,52 +129,53 @@ googleAnalytics = "UA-104956980-1"
 	url = "architecture/comparisons/"
 	weight = 110
 
+
+[[menu.main]]
+	name   = "Client API Reference"
+	weight = 120
+	identifier = "API"
+	url    = "api/cql/"
+
+[[menu.main]]
+	name = "Apache Cassandra"
+	weight = 130
+	identifier = "api-cql"
+	parent = "API"
+	url = "api/cql/"
+
+[[menu.main]]
+	name = "Redis"
+	weight = 140
+	identifier = "api-redis"
+	parent = "API"
+	url = "api/redis/"
+
 [[menu.main]]
 	name   = "Admin Reference"
-	weight = 115
+	weight = 150
 	identifier = "admin"
 	url    = "admin/yb-ctl/"
 
 [[menu.main]]
 	name = "yb-ctl"
-	weight = 116
+	weight = 160
 	identifier = "yb-ctl"
 	parent = "admin"
 	url = "admin/yb-ctl/"
 
 [[menu.main]]
 	name = "yb-master"
-	weight = 117
+	weight = 170
 	identifier = "yb-master"
 	parent = "admin"
 	url = "admin/yb-master/"
 
 [[menu.main]]
 	name = "yb-tserver"
-	weight = 118
+	weight = 180
 	identifier = "yb-tserver"
 	parent = "admin"
 	url = "admin/yb-tserver/"
-
-#[[menu.main]]
-#	name   = "Client API Reference"
-#	weight = 120
-#	identifier = "API"
-#	url    = "api/cql/"
-#
-#[[menu.main]]
-#	name = "Apache Cassandra"
-#	weight = 130
-#	identifier = "api-cql"
-#	parent = "API"
-#	url = "api/cql/"
-#
-#[[menu.main]]
-#	name = "Redis"
-#	weight = 140
-#	identifier = "api-redis"
-#	parent = "API"
-#	url = "api/redis/"
 
 [blackfriday]
 	smartypants	= true

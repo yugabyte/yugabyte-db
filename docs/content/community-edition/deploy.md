@@ -54,8 +54,11 @@ $ ./bin/configure
 - Create the directories necessary for the master and tserver to run.
 
 ```sh
-$ mkdir yb_data yb_data/master yb_data/tserver
-$ mkdir yb_data/master/data yb_data/master/wal yb_data/master/logs yb_data/tserver/data yb_data/tserver/wal yb_data/tserver/logs
+$ mkdir /home/centos/disk0 /home/centos/disk1 /home/centos/disk0/yb_data /home/centos/disk1/yb_data
+$ mkdir /home/centos/disk0/yb_data/master /home/centos/disk0/yb_data/tserver
+$ mkdir /home/centos/disk0/yb_data/master/data /home/centos/disk0/yb_data/master/wal /home/centos/disk0/yb_data/master/logs /home/centos/disk0/yb_data/tserver/data /home/centos/disk0/yb_data/tserver/wal /home/centos/disk0/yb_data/tserver/logs
+$ mkdir /home/centos/disk1/yb_data/master /home/centos/disk1/yb_data/tserver
+$ mkdir /home/centos/disk1/yb_data/master/data /home/centos/disk1/yb_data/master/wal /home/centos/disk1/yb_data/master/logs /home/centos/disk1/yb_data/tserver/data /home/centos/disk1/yb_data/tserver/wal /home/centos/disk1/yb_data/tserver/logs
 ```
 
 ## Start YB-Masters
@@ -63,12 +66,11 @@ $ mkdir yb_data/master/data yb_data/master/wal yb_data/master/logs yb_data/tserv
 - On each of the instances, create a `master.conf` file with the following contents.
 
 ```sh
---fs_data_dirs=/home/centos/yugabyte/yb_data/master/data
---fs_wal_dirs=/home/centos/yugabyte/yb_data/master/wal
---log_dir=/home/centos/yugabyte/yb_data/master/logs
+--fs_data_dirs=/home/centos/disk0/yb_data/master/data,/home/centos/disk1/yb_data/master/data
+--fs_wal_dirs=/home/centos/disk0/yb_data/master/wal,/home/centos/disk1/yb_data/master/wal
+--log_dir=/home/centos/disk0/yb_data/master/logs
 --webserver_port=7000
 --rpc_bind_addresses=0.0.0.0:7100
---use_hybrid_clock False
 --webserver_doc_root=/home/centos/yugabyte/www
 --create_cluster
 --master_addresses=172.151.17.127:7100,172.151.28.213:7100,172.151.17.136:7100
@@ -84,7 +86,7 @@ $ ./bin/yb-master --flagfile master.conf &
 - Make sure all the 3 yb-masters are now working as expected by inspecting the INFO log.
 
 ```sh
-$ cat yb_data/master/logs/yb-master.INFO
+$ cat /home/centos/disk0/yb_data/master/logs/yb-master.INFO
 ```
 
 You can see that the 3 yb-masters were able to discover each other and were also able to elect a Raft leader among themselves (the remaining two act as Raft followers).
@@ -106,20 +108,13 @@ Now we are ready to start the yb-tservers.
 - On each of the instances, create a `tserver.conf` file with the following contents.
 
 ```sh
---fs_data_dirs=/home/centos/yugabyte/yb_data/tserver/data
---fs_wal_dirs=/home/centos/yugabyte/yb_data/tserver/wal
---log_dir=/home/centos/yugabyte/yb_data/tserver/logs
+--fs_data_dirs=/home/centos/disk0/yb_data/tserver/data,/home/centos/disk1/yb_data/tserver/data
+--fs_wal_dirs=/home/centos/disk0/yb_data/tserver/wal,/home/centos/disk1/yb_data/tserver/wal
+--log_dir=/home/centos/disk0/yb_data/tserver/logs
 --webserver_port=9000
 --rpc_bind_addresses=0.0.0.0:9100
---use_hybrid_clock False
 --webserver_doc_root=/home/centos/yugabyte/www
 --tserver_master_addrs=172.151.17.127:7100,172.151.28.213:7100,172.151.17.136:7100
---memory_limit_hard_bytes=1073741824
---redis_proxy_webserver_port=11000
---redis_proxy_bind_address=0.0.0.0:6379
---cql_proxy_webserver_port=12000
---cql_proxy_bind_address=0.0.0.0:9042
---local_ip_for_outbound_sockets=0.0.0.0
 ```
 
 - Run `yb-tserver` as below. 
@@ -131,10 +126,10 @@ $ ./bin/yb-tserver --flagfile tserver.conf &
 - Make sure all the 3 yb-tservers are now working as expected by inspecting the INFO log.
 
 ```sh
-$ cat yb_data/tserver/logs/yb-tserver.INFO
+$ cat /home/centos/disk0/yb_data/tserver/logs/yb-tserver.INFO
 ```
 
-In all the 3 yb-tserver logs, you should see a similar log message.
+In all the 3 yb-tserver logs, you should see log messages similar to the following.
 
 ```sh
 I0912 16:27:18.296516  8168 heartbeater.cc:305] Connected to a leader master server at 172.151.17.136:7100
@@ -147,6 +142,14 @@ I0912 16:27:18.311408  8142 webserver.cc:161] Document root: /home/centos/yugaby
 I0912 16:27:18.311574  8142 webserver.cc:248] Webserver started. Bound to: http://0.0.0.0:12000/
 I0912 16:27:18.311748  8142 rpc_server.cc:158] RPC server started. Bound to: 0.0.0.0:9042
 I0912 16:27:18.311828  8142 tablet_server_main.cc:128] CQL server successfully started
+```
+
+In the current yb-master leader log, you should see log messages similar to the following.
+
+```sh
+I0912 22:26:32.832296  3162 ts_manager.cc:97] Registered new tablet server { permanent_uuid: "766ec935738f4ae89e5ff3ae26c66651" instance_seqno: 1505255192814357 } with Master
+I0912 22:26:39.111896  3162 ts_manager.cc:97] Registered new tablet server { permanent_uuid: "9de074ac78a0440c8fb6899e0219466f" instance_seqno: 1505255199069498 } with Master
+I0912 22:26:41.055996  3162 ts_manager.cc:97] Registered new tablet server { permanent_uuid: "60042249ad9e45b5a5d90f10fc2320dc" instance_seqno: 1505255201010923 } with Master
 ```
 
 ## Setup Redis service

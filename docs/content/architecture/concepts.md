@@ -204,7 +204,7 @@ enhancements or customizations to RocksDB are described below:
   components of the “key”, range queries can intelligently prune away the lookup of irrelevant SSTable
   files during the read operation.
 
-    ```
+    ```sql
         SELECT message_txt
           FROM messages
         WHERE user_id = 17
