@@ -110,9 +110,11 @@ class UniverseDetail extends Component {
         <NodeDetails {...this.props}/>
       </Tab>,
       <Tab eventKey={"metrics"} title="Metrics" key="metrics-tab">
-        <GraphPanelHeaderContainer origin={"universe"}>
-          {graphPanelContainers}
-        </GraphPanelHeaderContainer>
+        <div className="universe-detail-content-container">
+          <GraphPanelHeaderContainer origin={"universe"}>
+            {graphPanelContainers}
+          </GraphPanelHeaderContainer>
+        </div>
       </Tab>,
       <Tab eventKey={"tasks"} title="Tasks" key="tasks-tab">
         <UniverseTaskList universe={universe}/>
@@ -214,7 +216,7 @@ class UniverseTaskList extends Component {
       currentTaskProgress = <TaskProgressContainer taskUUIDs={universeTaskUUIDs} type="StepBar"/>;
     }
     return (
-      <div>
+      <div className="universe-detail-content-container">
         {currentTaskProgress}
         {universeTaskHistory}
       </div>
