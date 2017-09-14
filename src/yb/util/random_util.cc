@@ -39,6 +39,7 @@
 
 #include "yb/util/env.h"
 #include "yb/util/random.h"
+#include <boost/thread/tss.hpp>
 
 namespace yb {
 
@@ -73,9 +74,11 @@ std::string RandomHumanReadableString(int len, Random* rnd) {
 }
 
 namespace {
-
+#if __clang__ and __clang_major__ < 8
+boost::thread_specific_ptr<std::mt19937_64> thread_local_random_ptr;
+#else
 thread_local std::unique_ptr<std::mt19937_64> thread_local_random_ptr;
-
+#endif
 }
 
 std::mt19937_64& ThreadLocalRandom() {
