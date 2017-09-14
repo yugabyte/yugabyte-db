@@ -39,6 +39,8 @@
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/sync_point.h"
 
+#include "yb/util/logging.h"
+
 namespace rocksdb {
 
 namespace {
@@ -204,22 +206,32 @@ Status TableCache::FindTable(const EnvOptions& env_options,
   return s;
 }
 
-InternalIterator* TableCache::NewIterator(
-    const ReadOptions& options, const EnvOptions& env_options,
-    const InternalKeyComparator& icomparator, const FileDescriptor& fd,
-    TableReader** table_reader_ptr, HistogramImpl* file_read_hist,
-    bool for_compaction, Arena* arena, bool skip_filters) {
-  PERF_TIMER_GUARD(new_table_iterator_nanos);
+void TableCache::TableReaderWithHandle::Release() {
+  table_reader = nullptr;
+  handle = nullptr;
+  cache = nullptr;
+  created_new = false;
+}
 
-  RecordTick(ioptions_.statistics, NO_TABLE_CACHE_ITERATORS);
-
-  if (table_reader_ptr != nullptr) {
-    *table_reader_ptr = nullptr;
+TableCache::TableReaderWithHandle::~TableReaderWithHandle() {
+  if (created_new) {
+    DCHECK(handle == nullptr);
+    delete table_reader;
+  } else if (handle != nullptr) {
+    DCHECK_ONLY_NOTNULL(cache);
+    cache->Release(handle);
   }
+}
 
-  TableReader* table_reader = nullptr;
-  Cache::Handle* handle = nullptr;
-  bool create_new_table_reader =
+Status TableCache::DoGetTableReaderForIterator(
+    const ReadOptions& options,
+    const EnvOptions& env_options,
+    const InternalKeyComparator& icomparator,
+    const FileDescriptor& fd, TableReaderWithHandle* trwh,
+    HistogramImpl* file_read_hist,
+    bool for_compaction,
+    bool skip_filters) {
+  const bool create_new_table_reader =
       (for_compaction && ioptions_.new_table_reader_for_compaction_inputs);
   if (create_new_table_reader) {
     unique_ptr<TableReader> table_reader_unique_ptr;
@@ -227,38 +239,89 @@ InternalIterator* TableCache::NewIterator(
         env_options, icomparator, fd, /* sequential mode */ true,
         /* record stats */ false, nullptr, &table_reader_unique_ptr);
     if (!s.ok()) {
-      return NewErrorInternalIterator(s, arena);
+      return s;
     }
-    table_reader = table_reader_unique_ptr.release();
+    trwh->table_reader = table_reader_unique_ptr.release();
   } else {
-    table_reader = fd.table_reader;
-    if (table_reader == nullptr) {
-      Status s = FindTable(env_options, icomparator, fd, &handle,
+    trwh->table_reader = fd.table_reader;
+    if (trwh->table_reader == nullptr) {
+      Status s = FindTable(env_options, icomparator, fd, &trwh->handle,
                            options.query_id, options.read_tier == kBlockCacheTier /* no_io */,
                            !for_compaction /* record read_stats */, file_read_hist, skip_filters);
       if (!s.ok()) {
-        return NewErrorInternalIterator(s, arena);
+        return s;
       }
-      table_reader = GetTableReaderFromHandle(handle);
+      trwh->table_reader = GetTableReaderFromHandle(trwh->handle);
+      trwh->cache = cache_;
     }
   }
+  trwh->created_new = create_new_table_reader;
+  return Status::OK();
+}
+
+Status TableCache::GetTableReaderForIterator(
+    const ReadOptions& options, const EnvOptions& env_options,
+    const InternalKeyComparator& icomparator, const FileDescriptor& fd, TableReaderWithHandle* trwh,
+    HistogramImpl* file_read_hist, bool for_compaction, bool skip_filters) {
+  PERF_TIMER_GUARD(new_table_iterator_nanos);
+  return DoGetTableReaderForIterator(options, env_options, icomparator, fd, trwh, file_read_hist,
+      for_compaction, skip_filters);
+}
+
+InternalIterator* TableCache::NewIterator(
+    const ReadOptions& options, TableReaderWithHandle* trwh, bool for_compaction,
+    Arena* arena, bool skip_filters) {
+  PERF_TIMER_GUARD(new_table_iterator_nanos);
+  return DoNewIterator(options, trwh, for_compaction, arena, skip_filters);
+}
+
+InternalIterator* TableCache::DoNewIterator(
+    const ReadOptions& options, TableReaderWithHandle* trwh, bool for_compaction,
+    Arena* arena, bool skip_filters) {
+  RecordTick(ioptions_.statistics, NO_TABLE_CACHE_ITERATORS);
 
   InternalIterator* result =
-      table_reader->NewIterator(options, arena, skip_filters);
+      trwh->table_reader->NewIterator(options, arena, skip_filters);
 
-  if (create_new_table_reader) {
-    assert(handle == nullptr);
-    result->RegisterCleanup(&DeleteTableReader, table_reader, nullptr);
-  } else if (handle != nullptr) {
-    result->RegisterCleanup(&UnrefEntry, cache_, handle);
+  if (trwh->created_new) {
+    DCHECK(trwh->handle == nullptr);
+    result->RegisterCleanup(&DeleteTableReader, trwh->table_reader, nullptr);
+  } else if (trwh->handle != nullptr) {
+    result->RegisterCleanup(&UnrefEntry, cache_, trwh->handle);
   }
 
   if (for_compaction) {
-    table_reader->SetupForCompaction();
+    trwh->table_reader->SetupForCompaction();
   }
+
+  trwh->Release();
+
+  return result;
+}
+
+InternalIterator* TableCache::NewIterator(
+    const ReadOptions& options, const EnvOptions& env_options,
+    const InternalKeyComparator& icomparator, const FileDescriptor& fd,
+    TableReader** table_reader_ptr, HistogramImpl* file_read_hist,
+    bool for_compaction, Arena* arena, bool skip_filters) {
+  PERF_TIMER_GUARD(new_table_iterator_nanos);
+
   if (table_reader_ptr != nullptr) {
-    *table_reader_ptr = table_reader;
+    *table_reader_ptr = nullptr;
   }
+
+  TableReaderWithHandle trwh;
+  Status s = DoGetTableReaderForIterator(options, env_options, icomparator, fd, &trwh,
+      file_read_hist, for_compaction, skip_filters);
+  if (!s.ok()) {
+    return NewErrorInternalIterator(s, arena);
+  }
+
+  if (table_reader_ptr != nullptr) {
+    *table_reader_ptr = trwh.table_reader;
+  }
+
+  InternalIterator* result = DoNewIterator(options, &trwh, for_compaction, arena, skip_filters);
 
   return result;
 }

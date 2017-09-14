@@ -115,7 +115,7 @@ void InMemDocDbState::CaptureAt(rocksdb::DB* rocksdb, HybridTime hybrid_time,
   root_ = SubDocument();
 
   auto rocksdb_iter = CreateRocksDBIterator(rocksdb, BloomFilterMode::DONT_USE_BLOOM_FILTER,
-                                            query_id);
+      boost::none /* user_key_for_filter */, query_id);
   rocksdb_iter->SeekToFirst();
   KeyBytes prev_key;
   while (rocksdb_iter->Valid()) {

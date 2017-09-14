@@ -29,8 +29,8 @@
 // Example code is also available
 //   https://github.com/facebook/rocksdb/wiki/A-Tutorial-of-RocksDB-SST-formats#wiki-examples
 
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_TABLE_H
-#define ROCKSDB_INCLUDE_ROCKSDB_TABLE_H
+#ifndef YB_ROCKSDB_TABLE_H
+#define YB_ROCKSDB_TABLE_H
 
 #include <memory>
 #include <string>
@@ -460,6 +460,13 @@ class TableFactory {
   // Developers should use DB::SetOption() instead to dynamically change
   // options while the DB is open.
   virtual void* GetOptions() { return nullptr; }
+
+  // Returns SST file filter for pruning out files which doesn't contain some part of user_key.
+  // It should be in sync with FilterPolicy used for bloom filter construction. For example,
+  // file filter should only consider hashed components of the key when using with
+  // DocDbAwareFilterPolicy and HashedComponentsExtractor.
+  virtual std::shared_ptr<TableAwareReadFileFilter> NewTableAwareReadFileFilter(
+      const ReadOptions &read_options, const Slice &user_key) const { return nullptr; }
 };
 
 #ifndef ROCKSDB_LITE
@@ -481,4 +488,4 @@ extern TableFactory* NewAdaptiveTableFactory(
 
 }  // namespace rocksdb
 
-#endif  // ROCKSDB_INCLUDE_ROCKSDB_TABLE_H
+#endif  // YB_ROCKSDB_TABLE_H

@@ -22,8 +22,8 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 //
 // Thread-safe (provides internal synchronization)
-#ifndef ROCKSDB_DB_TABLE_CACHE_H
-#define ROCKSDB_DB_TABLE_CACHE_H
+#ifndef YB_ROCKSDB_DB_TABLE_CACHE_H
+#define YB_ROCKSDB_DB_TABLE_CACHE_H
 
 #pragma once
 #include <stdint.h>
@@ -54,6 +54,16 @@ class TableCache {
              const EnvOptions& storage_options, Cache* cache);
   ~TableCache();
 
+  struct TableReaderWithHandle {
+    TableReader* table_reader = nullptr;
+    Cache::Handle* handle = nullptr;
+    Cache* cache = nullptr;
+    bool created_new = false;
+
+    ~TableReaderWithHandle();
+    void Release();
+  };
+
   // Return an iterator for the specified file number (the corresponding
   // file length must be exactly "total_file_size" bytes).  If "tableptr" is
   // non-nullptr, also sets "*tableptr" to point to the Table object
@@ -68,6 +78,21 @@ class TableCache {
       const FileDescriptor& file_fd, TableReader** table_reader_ptr = nullptr,
       HistogramImpl* file_read_hist = nullptr, bool for_compaction = false,
       Arena* arena = nullptr, bool skip_filters = false);
+
+  // Return table reader wrapped in internal structure for future use to create iterator.
+  // Parameters meaning is the same as for NewIterator function above.
+  Status GetTableReaderForIterator(
+      const ReadOptions& options, const EnvOptions& toptions,
+      const InternalKeyComparator& internal_comparator,
+      const FileDescriptor& file_fd, TableReaderWithHandle* trwh,
+      HistogramImpl* file_read_hist = nullptr, bool for_compaction = false,
+      bool skip_filters = false);
+
+  // Version of NewIterator which uses provided table reader instead of getting it by
+  // itself.
+  InternalIterator* NewIterator(
+      const ReadOptions& options, TableReaderWithHandle* trwh,
+      bool for_compaction = false, Arena* arena = nullptr, bool skip_filters = false);
 
   // If a seek to internal key "k" in specified file finds an entry,
   // call (*handle_result)(arg, found_key, found_value) repeatedly until
@@ -126,6 +151,18 @@ class TableCache {
                         unique_ptr<TableReader>* table_reader,
                         bool skip_filters = false);
 
+  // Versions of corresponding public functions, but without performance metrics.
+  Status DoGetTableReaderForIterator(
+      const ReadOptions& options, const EnvOptions& toptions,
+      const InternalKeyComparator& internal_comparator,
+      const FileDescriptor& file_fd, TableReaderWithHandle* trwh,
+      HistogramImpl* file_read_hist = nullptr, bool for_compaction = false,
+      bool skip_filters = false);
+
+  InternalIterator* DoNewIterator(
+      const ReadOptions& options, TableReaderWithHandle* trwh,
+      bool for_compaction = false, Arena* arena = nullptr, bool skip_filters = false);
+
   const ImmutableCFOptions& ioptions_;
   const EnvOptions& env_options_;
   Cache* const cache_;
@@ -134,4 +171,4 @@ class TableCache {
 
 }  // namespace rocksdb
 
-#endif // ROCKSDB_DB_TABLE_CACHE_H
+#endif // YB_ROCKSDB_DB_TABLE_CACHE_H

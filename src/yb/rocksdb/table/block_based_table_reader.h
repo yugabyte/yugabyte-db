@@ -21,8 +21,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef ROCKSDB_TABLE_BLOCK_BASED_TABLE_READER_H
-#define ROCKSDB_TABLE_BLOCK_BASED_TABLE_READER_H
+#ifndef YB_ROCKSDB_TABLE_BLOCK_BASED_TABLE_READER_H
+#define YB_ROCKSDB_TABLE_BLOCK_BASED_TABLE_READER_H
 
 #include <stdint.h>
 #include <memory>
@@ -62,6 +62,38 @@ class InternalIterator;
 
 using std::unique_ptr;
 
+enum class DataIndexLoadMode {
+  // Preload on Open, store in block cache or in table reader depending on
+  // BlockBasedTableOptions::cache_index_and_filter_blocks.
+  PRELOAD_ON_OPEN,
+  // Load on first data index access, store in block cache or in table reader depending on
+  // BlockBasedTableOptions::cache_index_and_filter_blocks.
+  LAZY,
+  // Don't preload data index, access as needed, use block cache if available.
+  USE_CACHE
+};
+
+enum class PrefetchFilter {
+  YES,
+  NO
+};
+
+// BloomFilterAwareFileFilter should only be used when scanning within the same hashed components of
+// the key and it should be used together with DocDbAwareFilterPolicy which only takes into account
+// hashed components of key for filtering.
+// BloomFilterAwareFileFilter ignores an SST file completely if there are no keys with the same
+// hashed components as the key specified in constructor.
+class BloomFilterAwareFileFilter : public TableAwareReadFileFilter {
+ public:
+  BloomFilterAwareFileFilter(const ReadOptions& read_options, const Slice& user_key);
+
+  bool Filter(TableReader* reader) const override;
+
+ private:
+  const ReadOptions read_options_;
+  const Slice user_key_;
+};
+
 // A Table is a sorted map from strings to strings.  Tables are
 // immutable and persistent.  A Table may be safely accessed from
 // multiple threads without external synchronization.
@@ -83,12 +115,13 @@ class BlockBasedTable : public TableReader {
   // should delete "*table_reader" when no longer needed. If there was an error while initializing
   // the table, sets "*table_reader" to nullptr and returns a non-ok status.
   //
-  // @param base_file must remain live while this Table is in use.
-  // @param prefetch_index_and_filter can be used to disable prefetching of index and filter blocks
-  //    at startup. Prefetching is not used for fixed-size bloom filter independently of this
-  //    option.
-  // @param skip_filters Disables loading/accessing the filter block. Overrides
-  //   prefetch_index_and_filter, so filter will be skipped if both are set.
+  // base_file must remain live while this Table is in use.
+  // data_index_load_mode can be used to control loading of data index (see DataIndexLoadMode
+  // description).
+  // prefetch_filter can be used to disable prefetching of filter blocks at startup. For fixed-size
+  // bloom filter only filter index could be prefetched.
+  // skip_filters Disables loading/accessing the filter block. Overrides prefetch_filter, so filter
+  //   will be skipped if both are set.
   static Status Open(const ImmutableCFOptions& ioptions,
                      const EnvOptions& env_options,
                      const BlockBasedTableOptions& table_options,
@@ -96,7 +129,8 @@ class BlockBasedTable : public TableReader {
                      unique_ptr<RandomAccessFileReader>&& base_file,
                      uint64_t base_file_size,
                      unique_ptr<TableReader>* table_reader,
-                     bool prefetch_index_and_filter = true,
+                     DataIndexLoadMode data_index_load_mode = DataIndexLoadMode::LAZY,
+                     PrefetchFilter prefetch_filter = PrefetchFilter::YES,
                      bool skip_filters = false);
 
   bool IsSplitSst() const override { return true; }
@@ -148,7 +182,7 @@ class BlockBasedTable : public TableReader {
   ~BlockBasedTable();
 
   bool TEST_filter_block_preloaded() const;
-  bool TEST_index_reader_preloaded() const;
+  bool TEST_index_reader_loaded() const;
   // Implementation of IndexReader will be exposed to internal cc file only.
   class IndexReader;
 
@@ -171,8 +205,11 @@ class BlockBasedTable : public TableReader {
   Status GetFixedSizeFilterBlockHandle(const Slice& filter_key,
       BlockHandle* filter_block_handle) const;
 
-  // Returns key to be added to filter or verified against filter.
-  Slice GetFilterKey(const Slice& internal_key) const;
+  // Returns key to be added to filter or verified against filter based on internal_key.
+  Slice GetFilterKeyFromInternalKey(const Slice &internal_key) const;
+
+  // Returns key to be added to filter or verified against filter based on user_key.
+  Slice GetFilterKeyFromUserKey(const Slice& user_key) const;
 
   // If `no_io == true`, we will not try to read filter/index from sst file (except fixed-size
   // filter blocks) were they not present in cache yet.
@@ -225,7 +262,7 @@ class BlockBasedTable : public TableReader {
   // May not make such a call if filter policy says that key is not present.
   friend class TableCache;
   friend class BlockBasedTableBuilder;
-  friend class BloomFilterAwareIterator;
+  friend class BloomFilterAwareFileFilter;
 
   void ReadMeta(const Footer& footer);
 
@@ -281,4 +318,4 @@ class BlockBasedTable : public TableReader {
 
 }  // namespace rocksdb
 
-#endif  // ROCKSDB_TABLE_BLOCK_BASED_TABLE_READER_H
+#endif  // YB_ROCKSDB_TABLE_BLOCK_BASED_TABLE_READER_H

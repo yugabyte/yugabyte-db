@@ -805,10 +805,25 @@ void Version::AddIterators(const ReadOptions& read_options,
   // Merge all level zero files together since they may overlap
   for (size_t i = 0; i < storage_info_.LevelFilesBrief(0).num_files; i++) {
     const auto& file = storage_info_.LevelFilesBrief(0).files[i];
-    if (!read_options.file_filter || read_options.file_filter(file)) {
-      merge_iter_builder->AddIterator(cfd_->table_cache()->NewIterator(
-          read_options, soptions, cfd_->internal_comparator(), file.fd, nullptr,
-          cfd_->internal_stats()->GetFileReadHist(0), false, arena));
+    if (!read_options.file_filter || read_options.file_filter->Filter(file)) {
+      InternalIterator *file_iter;
+      TableCache::TableReaderWithHandle trwh;
+      Status s = cfd_->table_cache()->GetTableReaderForIterator(read_options, soptions,
+          cfd_->internal_comparator(), file.fd, &trwh, cfd_->internal_stats()->GetFileReadHist(0),
+          false);
+      if (s.ok()) {
+        if (!read_options.table_aware_file_filter ||
+            read_options.table_aware_file_filter->Filter(trwh.table_reader)) {
+          file_iter = cfd_->table_cache()->NewIterator(read_options, &trwh, false, arena);
+        } else {
+          file_iter = nullptr;
+        }
+      } else {
+        file_iter = NewErrorInternalIterator(s, arena);
+      }
+      if (file_iter) {
+        merge_iter_builder->AddIterator(file_iter);
+      }
     }
   }
 

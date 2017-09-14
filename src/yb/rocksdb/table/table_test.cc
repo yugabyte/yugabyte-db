@@ -1605,10 +1605,10 @@ TEST_F(BlockBasedTableTest, BlockCacheDisabledTest) {
   c.Finish(options, ioptions, table_options,
            GetPlainInternalComparator(options.comparator), &keys, &kvmap);
 
-  // preloading filter/index blocks is enabled.
+  // preloading is enabled for filter blocks, disabled for index blocks.
   auto reader = dynamic_cast<BlockBasedTable*>(c.GetTableReader());
   ASSERT_TRUE(reader->TEST_filter_block_preloaded());
-  ASSERT_TRUE(reader->TEST_index_reader_preloaded());
+  ASSERT_FALSE(reader->TEST_index_reader_loaded());
 
   {
     // nothing happens in the beginning
@@ -1627,6 +1627,9 @@ TEST_F(BlockBasedTableTest, BlockCacheDisabledTest) {
     props.AssertIndexBlockStat(0, 0);
     props.AssertFilterBlockStat(0, 0);
   }
+
+  // Index is loaded after first access.
+  ASSERT_TRUE(reader->TEST_index_reader_loaded());
 }
 
 // Due to the difficulities of the intersaction between statistics, this test
@@ -1653,7 +1656,7 @@ TEST_F(BlockBasedTableTest, FilterBlockInBlockCache) {
   // preloading filter/index blocks is prohibited.
   auto* reader = dynamic_cast<BlockBasedTable*>(c.GetTableReader());
   ASSERT_TRUE(!reader->TEST_filter_block_preloaded());
-  ASSERT_TRUE(!reader->TEST_index_reader_preloaded());
+  ASSERT_TRUE(!reader->TEST_index_reader_loaded());
 
   // -- PART 1: Open with regular block cache.
   // Since block_cache is disabled, no cache activities will be involved.
@@ -1663,8 +1666,8 @@ TEST_F(BlockBasedTableTest, FilterBlockInBlockCache) {
   // At first, no block will be accessed.
   {
     BlockCachePropertiesSnapshot props(options.statistics.get());
-    // index will be added to block cache.
-    props.AssertEqual(1,  // index block miss
+    // index won't be added to block cache.
+    props.AssertEqual(0,  // index block miss
                       0, 0, 0);
     ASSERT_EQ(props.GetCacheBytesRead(), 0);
     ASSERT_EQ(props.GetCacheBytesWrite(),
@@ -1676,13 +1679,10 @@ TEST_F(BlockBasedTableTest, FilterBlockInBlockCache) {
   {
     iter.reset(c.NewIterator());
     BlockCachePropertiesSnapshot props(options.statistics.get());
-    // NOTE: to help better highlight the "detla" of each ticker, I use
-    // <last_value> + <added_value> to indicate the increment of changed
-    // value; other numbers remain the same.
-    props.AssertEqual(1, 0 + 1,  // index block hit
-                      0, 0);
-    // Cache hit, bytes read from cache should increase
-    ASSERT_GT(props.GetCacheBytesRead(), last_cache_bytes_read);
+    props.AssertEqual(1,  // index block miss
+                      0, 0, 0);
+    // Cache miss, Bytes read from cache should not change
+    ASSERT_EQ(props.GetCacheBytesRead(), last_cache_bytes_read);
     ASSERT_EQ(props.GetCacheBytesWrite(),
               table_options.block_cache->GetUsage());
     last_cache_bytes_read = props.GetCacheBytesRead();
@@ -1692,7 +1692,10 @@ TEST_F(BlockBasedTableTest, FilterBlockInBlockCache) {
   {
     iter->SeekToFirst();
     BlockCachePropertiesSnapshot props(options.statistics.get());
-    props.AssertEqual(1, 1, 0 + 1,  // data block miss
+    // NOTE: to help better highlight the "detla" of each ticker, I use
+    // <last_value> + <added_value> to indicate the increment of changed
+    // value; other numbers remain the same.
+    props.AssertEqual(1, 0, 0 + 1,  // data block miss
                       0);
     // Cache miss, Bytes read from cache should not change
     ASSERT_EQ(props.GetCacheBytesRead(), last_cache_bytes_read);
@@ -1706,7 +1709,7 @@ TEST_F(BlockBasedTableTest, FilterBlockInBlockCache) {
     iter.reset(c.NewIterator());
     iter->SeekToFirst();
     BlockCachePropertiesSnapshot props(options.statistics.get());
-    props.AssertEqual(1, 1 + 1, /* index block hit */
+    props.AssertEqual(1, 0 + 1, /* index block hit */
                       1, 0 + 1 /* data block hit */);
     // Cache hit, bytes read from cache should increase
     ASSERT_GT(props.GetCacheBytesRead(), last_cache_bytes_read);
@@ -1727,7 +1730,7 @@ TEST_F(BlockBasedTableTest, FilterBlockInBlockCache) {
   c.Reopen(ioptions2);
   {
     BlockCachePropertiesSnapshot props(options.statistics.get());
-    props.AssertEqual(1,  // index block miss
+    props.AssertEqual(0,  // index block miss
                       0, 0, 0);
     // Cache miss, Bytes read from cache should not change
     ASSERT_EQ(props.GetCacheBytesRead(), 0);
@@ -1739,7 +1742,7 @@ TEST_F(BlockBasedTableTest, FilterBlockInBlockCache) {
     // is only 1, index block will be purged after data block is inserted.
     iter.reset(c.NewIterator());
     BlockCachePropertiesSnapshot props(options.statistics.get());
-    props.AssertEqual(1 + 1,  // index block miss
+    props.AssertEqual(0 + 1,  // index block miss
                       0, 0,   // data block miss
                       0);
     // Cache hit, bytes read from cache should increase
@@ -1751,7 +1754,7 @@ TEST_F(BlockBasedTableTest, FilterBlockInBlockCache) {
     // block's cache miss.
     iter->SeekToFirst();
     BlockCachePropertiesSnapshot props(options.statistics.get());
-    props.AssertEqual(2, 0, 0 + 1,  // data block miss
+    props.AssertEqual(1, 0, 0 + 1,  // data block miss
                       0);
     // Cache miss, Bytes read from cache should not change
     ASSERT_EQ(props.GetCacheBytesRead(), 0);
@@ -1838,14 +1841,14 @@ TEST_F(BlockBasedTableTest, BlockReadCountTest) {
   // bloom_filter_type = 0 -- block-based filter
   // bloom_filter_type = 1 -- full filter
   for (int bloom_filter_type = 0; bloom_filter_type < 2; ++bloom_filter_type) {
-    for (int index_and_filter_in_cache = 0; index_and_filter_in_cache < 2;
-         ++index_and_filter_in_cache) {
+    for (int filter_in_cache = 0; filter_in_cache < 2;
+         ++filter_in_cache) {
       Options options;
       options.create_if_missing = true;
 
       BlockBasedTableOptions table_options;
       table_options.block_cache = NewLRUCache(1, 0);
-      table_options.cache_index_and_filter_blocks = index_and_filter_in_cache;
+      table_options.cache_index_and_filter_blocks = filter_in_cache;
       table_options.filter_policy.reset(
           NewBloomFilterPolicy(10, bloom_filter_type == 0));
       options.table_factory.reset(new BlockBasedTableFactory(table_options));
@@ -1858,22 +1861,25 @@ TEST_F(BlockBasedTableTest, BlockReadCountTest) {
       std::string encoded_key = internal_key.Encode().ToString();
       c.Add(encoded_key, "hello");
       ImmutableCFOptions ioptions(options);
+      perf_context.Reset();
       // Generate table with filter policy
       c.Finish(options, ioptions, table_options,
                GetPlainInternalComparator(options.comparator), &keys, &kvmap);
       auto reader = c.GetTableReader();
+      // Meta, properties and filter blocks.
+      ASSERT_EQ(perf_context.block_read_count, 3);
       std::string value;
       GetContext get_context(options.comparator, nullptr, nullptr, nullptr,
                              GetContext::kNotFound, user_key, &value, nullptr,
                              nullptr, nullptr);
       perf_context.Reset();
       ASSERT_OK(reader->Get(ReadOptions(), encoded_key, &get_context));
-      if (index_and_filter_in_cache) {
-        // data, index and filter block
+      if (filter_in_cache) {
+        // Data, index and filter block.
         ASSERT_EQ(perf_context.block_read_count, 3);
       } else {
-        // just the data block
-        ASSERT_EQ(perf_context.block_read_count, 1);
+        // Index, data block (filter is preloaded on open).
+        ASSERT_EQ(perf_context.block_read_count, 2);
       }
       ASSERT_EQ(get_context.State(), GetContext::kFound);
       ASSERT_EQ(value, "hello");
@@ -1890,7 +1896,7 @@ TEST_F(BlockBasedTableTest, BlockReadCountTest) {
       ASSERT_OK(reader->Get(ReadOptions(), encoded_key, &get_context));
       ASSERT_EQ(get_context.State(), GetContext::kNotFound);
 
-      if (index_and_filter_in_cache) {
+      if (filter_in_cache) {
         if (bloom_filter_type == 0) {
           // with block-based, we read index and then the filter
           ASSERT_EQ(perf_context.block_read_count, 2);
@@ -1935,14 +1941,17 @@ TEST_F(BlockBasedTableTest, BlockCacheLeak) {
   const ImmutableCFOptions ioptions(opt);
   c.Finish(opt, ioptions, table_options, *ikc, &keys, &kvmap);
 
-  unique_ptr<InternalIterator> iter(c.NewIterator());
-  iter->SeekToFirst();
-  while (iter->Valid()) {
-    iter->key();
-    iter->value();
-    iter->Next();
+  {
+    // Put iterator into dedicated block, so it doesn't survive block_cache destruction.
+    unique_ptr<InternalIterator> iter(c.NewIterator());
+    iter->SeekToFirst();
+    while (iter->Valid()) {
+      iter->key();
+      iter->value();
+      iter->Next();
+    }
+    ASSERT_OK(iter->status());
   }
-  ASSERT_OK(iter->status());
 
   const ImmutableCFOptions ioptions1(opt);
   ASSERT_OK(c.Reopen(ioptions1));

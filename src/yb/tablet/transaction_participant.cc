@@ -217,6 +217,7 @@ class TransactionParticipant::Impl {
       AppendTransactionKeyPrefix(id, &key);
       auto iter = docdb::CreateRocksDBIterator(db,
                                                docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
+                                               boost::none,
                                                rocksdb::kDefaultQueryId);
       iter->Seek(key.data());
       if (iter->Valid() && iter->key() == key.data()) {

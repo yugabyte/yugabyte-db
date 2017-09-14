@@ -21,8 +21,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef ROCKSDB_TABLE_BLOCK_BASED_TABLE_FACTORY_H
-#define ROCKSDB_TABLE_BLOCK_BASED_TABLE_FACTORY_H
+#ifndef YB_ROCKSDB_TABLE_BLOCK_BASED_TABLE_FACTORY_H
+#define YB_ROCKSDB_TABLE_BLOCK_BASED_TABLE_FACTORY_H
 
 #include <stdint.h>
 
@@ -32,6 +32,7 @@
 #include "yb/rocksdb/flush_block_policy.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/table/block_based_table_reader.h"
 
 namespace rocksdb {
 
@@ -55,12 +56,13 @@ class BlockBasedTableFactory : public TableFactory {
                         unique_ptr<TableReader>* table_reader) const override;
 
   // This is a variant of virtual member function NewTableReader function with
-  // added capability to disable pre-fetching of blocks on BlockBasedTable::Open
+  // added capability to control pre-fetching of blocks on BlockBasedTable::Open
   Status NewTableReader(const TableReaderOptions& table_reader_options,
                         unique_ptr<RandomAccessFileReader>&& file,
                         uint64_t file_size,
                         unique_ptr<TableReader>* table_reader,
-                        bool prefetch_index_and_filter) const;
+                        DataIndexLoadMode prefetch_data_index,
+                        PrefetchFilter prefetch_filter) const;
 
   bool IsSplitSstForWriteSupported() const override { return true; }
 
@@ -81,6 +83,9 @@ class BlockBasedTableFactory : public TableFactory {
 
   void* GetOptions() override { return &table_options_; }
 
+  std::shared_ptr<TableAwareReadFileFilter> NewTableAwareReadFileFilter(
+      const ReadOptions &read_options, const Slice &user_key) const override;
+
  private:
   BlockBasedTableOptions table_options_;
 };
@@ -92,4 +97,4 @@ extern const char kPropFalse[];
 
 }  // namespace rocksdb
 
-#endif  // ROCKSDB_TABLE_BLOCK_BASED_TABLE_FACTORY_H
+#endif  // YB_ROCKSDB_TABLE_BLOCK_BASED_TABLE_FACTORY_H

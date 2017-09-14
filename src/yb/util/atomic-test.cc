@@ -30,11 +30,13 @@
 // under the License.
 //
 
-#include "yb/util/atomic.h"
-
-#include <gtest/gtest.h>
 #include <limits>
 #include <vector>
+#include <thread>
+
+#include <gtest/gtest.h>
+#include "yb/util/random_util.h"
+#include "yb/util/atomic.h"
 
 namespace yb {
 
@@ -141,6 +143,100 @@ TEST(Atomic, AtomicBool) {
     EXPECT_TRUE(b.Exchange(false, mem_order));
     EXPECT_FALSE(b.Load(mem_order));
   }
+}
+
+class TestObj {
+ public:
+  TestObj(size_t index, std::atomic<size_t>* counter) : index_(index), counter_(counter) {
+    ++(*counter_);
+  }
+  ~TestObj() { --(*counter_); }
+  size_t index() { return index_; }
+
+ private:
+  size_t index_;
+  std::atomic<size_t>* counter_;
+};
+
+TEST(Atomic, AtomicUniquePtr) {
+  static constexpr size_t kNumObjects = 1000;
+  static constexpr size_t kNumThreads = 32;
+  static constexpr size_t kNumIterations = 50000;
+
+  std::atomic<size_t> counter = { 0 };
+
+  {
+    std::vector<AtomicUniquePtr<TestObj>> ptrs;
+    ptrs.reserve(kNumObjects);
+
+    for (size_t i = 0; i < kNumObjects; ++i) {
+      ptrs.push_back(MakeAtomicUniquePtr<TestObj>(i, &counter));
+    }
+    EXPECT_EQ(kNumObjects, counter.load());
+    for (size_t i = 0; i < kNumObjects; ++i) {
+      ASSERT_EQ(ptrs[i].get()->index(), i);
+    }
+
+    auto task = [&ptrs, &counter]() {
+      std::mt19937 rng;
+      Seed(&rng);
+      std::uniform_int_distribution<size_t> random_op(0, 4);
+      std::uniform_int_distribution<size_t> random_index(0, kNumObjects - 1);
+
+      for (int i = 0; i < kNumIterations; ++i) {
+        switch (random_op(rng)) {
+          case 0: {
+            // Get.
+            auto i1 = random_index(rng);
+            ptrs[i1].get();
+            break;
+          }
+          case 1: {
+            // Release (only half of ptrs, keep the other half to test release on destruction).
+            auto i1 = random_index(rng);
+            if (i1 % 2 == 0) {
+              TestObj *ptr = ptrs[i1].release();
+              delete ptr;
+            }
+            break;
+          }
+          case 2: {
+            // Reset.
+            auto i1 = random_index(rng);
+            ptrs[i1].reset(new TestObj(i1, &counter));
+            break;
+          }
+          case 3: {
+            // Assign.
+            auto i1 = random_index(rng);
+            auto i2 = random_index(rng);
+            ptrs[i1] = std::move(ptrs[i2]);
+            break;
+          }
+          case 4: {
+            // Move construction.
+            auto i1 = random_index(rng);
+            AtomicUniquePtr<TestObj> ptr(std::move(ptrs[i1]));
+            break;
+          }
+          default:
+            ASSERT_TRUE(false) << "Test internal error, missed case in switch";
+            break;
+        }
+      }
+    };
+
+    std::vector<std::thread> threads;
+    threads.reserve(kNumThreads);
+    for (size_t i = 0; i < kNumThreads; ++i) {
+      threads.push_back(std::thread(task));
+    }
+    for (auto& thread : threads) {
+      thread.join();
+    }
+  }
+
+  EXPECT_EQ(0, counter.load());
 }
 
 } // namespace yb

@@ -36,6 +36,7 @@
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/date_time.h"
 #include "yb/util/logging.h"
 #include "yb/util/shared_lock_manager.h"
 #include "yb/util/status.h"
@@ -229,7 +230,7 @@ Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
   const bool is_deletion = value.primitive_value().value_type() == ValueType::kTombstone;
 
   InternalDocIterator doc_iter(rocksdb_, &cache_, BloomFilterMode::USE_BLOOM_FILTER,
-                               rocksdb::kDefaultQueryId, &num_rocksdb_seeks_);
+      encoded_doc_key, rocksdb::kDefaultQueryId, &num_rocksdb_seeks_);
 
   if (num_subkeys > 0 || is_deletion) {
     doc_iter.SetDocumentKey(encoded_doc_key);
@@ -351,13 +352,14 @@ Status DocWriteBatch::ReplaceInList(
     InitMarkerBehavior use_init_marker) {
   SubDocKey sub_doc_key;
   RETURN_NOT_OK(sub_doc_key.FromDocPath(doc_path));
-  auto iter = CreateRocksDBIterator(rocksdb_, BloomFilterMode::USE_BLOOM_FILTER, query_id);
-  SubDocKey found_key;
-  Value found_value;
   KeyBytes key_bytes = sub_doc_key.Encode( /*include_hybrid_time =*/ false);
   // Ensure we seek directly to indexes and skip init marker if it exists
   key_bytes.AppendValueType(ValueType::kArrayIndex);
   rocksdb::Slice seek_key = key_bytes.AsSlice();
+  auto iter = CreateRocksDBIterator(rocksdb_, BloomFilterMode::USE_BLOOM_FILTER, seek_key,
+      query_id);
+  SubDocKey found_key;
+  Value found_value;
   int current_index = 0;
   int replace_index = 0;
   ROCKSDB_SEEK(iter.get(), seek_key);
@@ -584,12 +586,10 @@ static yb::Status ScanSubDocument(const SubDocKey& higher_level_key,
 }  // anonymous namespace
 
 yb::Status ScanSubDocument(rocksdb::DB *rocksdb,
-                           const KeyBytes &subdocument_key,
-                           DocVisitor *visitor,
-                           const rocksdb::QueryId query_id,
-                           HybridTime scan_ht) {
-  auto rocksdb_iter = CreateRocksDBIterator(rocksdb, BloomFilterMode::USE_BLOOM_FILTER, query_id);
-
+    const KeyBytes &subdocument_key,
+    DocVisitor *visitor,
+    const rocksdb::QueryId query_id,
+    HybridTime scan_ht) {
   // TODO: Use a SubDocKey API to build the proper seek key without assuming anything about the
   //       internal structure of SubDocKey here.
   KeyBytes seek_key(subdocument_key);
@@ -598,7 +598,11 @@ yb::Status ScanSubDocument(rocksdb::DB *rocksdb,
   Value doc_value;
   bool is_found = false;
 
-  Status s = SeekToValidKvAtTs(rocksdb_iter.get(), seek_key.AsSlice(), scan_ht, &found_subdoc_key,
+  const Slice seek_key_as_slice = seek_key.AsSlice();
+  auto rocksdb_iter = CreateRocksDBIterator(rocksdb, BloomFilterMode::USE_BLOOM_FILTER,
+      seek_key_as_slice, query_id);
+
+  Status s = SeekToValidKvAtTs(rocksdb_iter.get(), seek_key_as_slice, scan_ht, &found_subdoc_key,
                                &is_found, &doc_value);
 
   {
@@ -832,7 +836,9 @@ yb::Status GetSubDocument(rocksdb::DB *db,
     HybridTime scan_ht,
     MonoDelta table_ttl,
     bool return_type_only) {
-  auto iter = CreateRocksDBIterator(db, BloomFilterMode::USE_BLOOM_FILTER, query_id);
+  const auto doc_key_encoded = subdocument_key.doc_key().Encode();
+  auto iter = CreateRocksDBIterator(db, BloomFilterMode::USE_BLOOM_FILTER,
+      doc_key_encoded.AsSlice(), query_id);
   return GetSubDocument(iter.get(), subdocument_key, result, doc_found, scan_ht, table_ttl,
       nullptr, return_type_only, false);
 }

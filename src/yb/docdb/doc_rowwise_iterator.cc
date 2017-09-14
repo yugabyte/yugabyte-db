@@ -77,7 +77,8 @@ DocRowwiseIterator::~DocRowwiseIterator() {
 Status DocRowwiseIterator::Init(ScanSpec *spec) {
   // TODO(bogdan): refactor this after we completely move away from the old ScanSpec. For now, just
   // default to not using bloom filters on scans for these codepaths.
-  db_iter_ = CreateRocksDBIterator(db_, BloomFilterMode::DONT_USE_BLOOM_FILTER, spec->query_id());
+  db_iter_ = CreateRocksDBIterator(db_, BloomFilterMode::DONT_USE_BLOOM_FILTER,
+      boost::none /* user_key_for_filter */, spec->query_id());
 
   if (spec->lower_bound_key() != nullptr) {
     row_key_ = KuduToDocKey(*spec->lower_bound_key());
@@ -110,11 +111,16 @@ Status DocRowwiseIterator::Init(const common::YQLScanSpec& spec) {
   const auto mode = is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER :
       BloomFilterMode::DONT_USE_BLOOM_FILTER;
 
-  db_iter_ = CreateRocksDBIterator(db_, mode, doc_spec.QueryId(), doc_spec.CreateFileFilter());
-
   // Start scan with the lower bound doc key.
   row_key_ = std::move(lower_doc_key);
-  ROCKSDB_SEEK(db_iter_.get(), row_key_.Encode().AsSlice());
+
+  const KeyBytes row_key_encoded = row_key_.Encode();
+  const Slice row_key_encoded_as_slice = row_key_encoded.AsSlice();
+
+  db_iter_ = CreateRocksDBIterator(db_, mode, row_key_encoded_as_slice,
+      doc_spec.QueryId(), doc_spec.CreateFileFilter());
+
+  ROCKSDB_SEEK(db_iter_.get(), row_key_encoded_as_slice);
   row_ready_ = false;
 
   // End scan with the upper bound key bytes.

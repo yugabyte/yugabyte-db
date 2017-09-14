@@ -66,18 +66,18 @@ Status BlockBasedTableFactory::NewTableReader(
     unique_ptr<RandomAccessFileReader>&& file, uint64_t file_size,
     unique_ptr<TableReader>* table_reader) const {
   return NewTableReader(table_reader_options, std::move(file), file_size,
-                        table_reader,
-                        /*prefetch_index_and_filter=*/true);
+                        table_reader, DataIndexLoadMode::LAZY, PrefetchFilter::YES);
 }
 
 Status BlockBasedTableFactory::NewTableReader(
     const TableReaderOptions& table_reader_options,
     unique_ptr<RandomAccessFileReader>&& base_file, uint64_t base_file_size,
-    unique_ptr<TableReader>* table_reader, const bool prefetch_enabled) const {
+    unique_ptr<TableReader>* table_reader, DataIndexLoadMode prefetch_data_index,
+    PrefetchFilter prefetch_filter) const {
   return BlockBasedTable::Open(
       table_reader_options.ioptions, table_reader_options.env_options,
       table_options_, table_reader_options.internal_comparator, std::move(base_file),
-      base_file_size, table_reader, prefetch_enabled,
+      base_file_size, table_reader, prefetch_data_index, prefetch_filter,
       table_reader_options.skip_filters);
 }
 
@@ -195,6 +195,10 @@ std::string BlockBasedTableFactory::GetPrintableTableOptions() const {
 
 const BlockBasedTableOptions& BlockBasedTableFactory::table_options() const {
   return table_options_;
+}
+std::shared_ptr<TableAwareReadFileFilter> BlockBasedTableFactory::NewTableAwareReadFileFilter(
+    const ReadOptions &read_options, const Slice &user_key) const {
+  return std::make_shared<BloomFilterAwareFileFilter>(read_options, user_key);
 }
 
 TableFactory* NewBlockBasedTableFactory(

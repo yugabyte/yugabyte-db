@@ -52,9 +52,14 @@ class InternalDocIterator {
  public:
   // @param rocksdb RocksDB database to operate on.
   // @param doc_write_batch_cache A utility that allows us to avoid redundant lookups.
+  // @param filter_key Only SST files containing at least one key with the same hashed
+  // components are considered.
+  // WARNING: filter_key should survive the InternalDocIterator lifetime, because we store
+  // reference to it in order to avoid copying.
   InternalDocIterator(rocksdb::DB* rocksdb,
                       DocWriteBatchCache* doc_write_batch_cache,
                       BloomFilterMode bloom_filter_mode,
+                      const KeyBytes& filter_key,
                       rocksdb::QueryId query_id,
                       int* seek_counter = nullptr);
 
@@ -133,6 +138,10 @@ class InternalDocIterator {
 
   rocksdb::DB* db_;
   BloomFilterMode bloom_filter_mode_;
+  // User key to be used for filtering SST files. Only files which contains the same hashed
+  // components are used.
+  const KeyBytes& filter_key_;
+
   // The iterator is created lazily as seek is needed.
   std::unique_ptr<rocksdb::Iterator> iter_;
 

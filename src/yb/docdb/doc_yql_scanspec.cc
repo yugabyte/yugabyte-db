@@ -174,7 +174,7 @@ bool GreaterOrEquals(const Slice& lhs, const Slice& rhs) {
   return lhs.compare(rhs) >= 0;
 }
 
-class RangeBasedFileFilter {
+class RangeBasedFileFilter : public rocksdb::ReadFileFilter {
  public:
   RangeBasedFileFilter(const std::vector<PrimitiveValue>& lower_bounds,
                        const std::vector<PrimitiveValue>& upper_bounds)
@@ -182,7 +182,7 @@ class RangeBasedFileFilter {
         upper_bounds_(EncodePrimitiveValues(upper_bounds, lower_bounds.size())) {
   }
 
-  bool operator()(const rocksdb::FdWithBoundaries& file) const {
+  bool Filter(const rocksdb::FdWithBoundaries& file) const override {
     for (size_t i = 0; i != lower_bounds_.size(); ++i) {
       auto lower_bound = lower_bounds_[i].AsSlice();
       auto upper_bound = upper_bounds_[i].AsSlice();
@@ -202,13 +202,13 @@ class RangeBasedFileFilter {
 
 } // namespace
 
-rocksdb::ReadFileFilter DocYQLScanSpec::CreateFileFilter() const {
+std::shared_ptr<rocksdb::ReadFileFilter> DocYQLScanSpec::CreateFileFilter() const {
   auto lower_bound = range_components(true, true);
   auto upper_bound = range_components(false, true);
   if (lower_bound.empty() && upper_bound.empty()) {
-    return rocksdb::ReadFileFilter();
+    return std::shared_ptr<rocksdb::ReadFileFilter>();
   } else {
-    return RangeBasedFileFilter(std::move(lower_bound), std::move(upper_bound));
+    return std::make_shared<RangeBasedFileFilter>(std::move(lower_bound), std::move(upper_bound));
   }
 }
 

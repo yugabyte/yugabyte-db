@@ -21,8 +21,8 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_OPTIONS_H
-#define ROCKSDB_INCLUDE_ROCKSDB_OPTIONS_H
+#ifndef YB_ROCKSDB_OPTIONS_H
+#define YB_ROCKSDB_OPTIONS_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -1350,7 +1350,22 @@ enum ReadTier {
 };
 
 struct FdWithBoundaries;
-typedef std::function<bool(const FdWithBoundaries&)> ReadFileFilter;
+class ReadFileFilter {
+ public:
+  virtual bool Filter(const FdWithBoundaries&) const = 0;
+
+ protected:
+  virtual ~ReadFileFilter() {}
+};
+
+class TableReader;
+class TableAwareReadFileFilter {
+ public:
+  virtual bool Filter(TableReader*) const = 0;
+
+ protected:
+  virtual ~TableAwareReadFileFilter() {}
+};
 
 // Options that control read operations
 struct ReadOptions {
@@ -1451,12 +1466,11 @@ struct ReadOptions {
   // Query id designated for the read.
   QueryId query_id = kDefaultQueryId;
 
-  // When scanning, choose whether to use the bloom filters for pruning the files to open or not.
-  // If true, this will check the bloom filters for the scan key and, iff the file might match the
-  // key, then we include the file in the iterator merge. Otherwise, the files are ignored.
-  bool use_bloom_on_scan = false;
+  // Filter for pruning SST files. RocksDB user can provide its own implementation to exclude SST
+  // files from being added to MergeIterator. By default doesn't filter files.
+  std::shared_ptr<TableAwareReadFileFilter> table_aware_file_filter;
 
-  ReadFileFilter file_filter;
+  std::shared_ptr<ReadFileFilter> file_filter;
 
   static const ReadOptions kDefault;
 
@@ -1576,4 +1590,4 @@ struct CompactRangeOptions {
 };
 }  // namespace rocksdb
 
-#endif // ROCKSDB_INCLUDE_ROCKSDB_OPTIONS_H
+#endif // YB_ROCKSDB_OPTIONS_H

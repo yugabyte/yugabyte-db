@@ -37,10 +37,12 @@ namespace docdb {
 InternalDocIterator::InternalDocIterator(rocksdb::DB* rocksdb,
                                          DocWriteBatchCache* doc_write_batch_cache,
                                          BloomFilterMode bloom_filter_mode,
+                                         const KeyBytes& filter_key,
                                          const rocksdb::QueryId query_id,
                                          int* num_rocksdb_seeks)
     : db_(rocksdb),
       bloom_filter_mode_(bloom_filter_mode),
+      filter_key_(filter_key),
       iter_(nullptr),
       doc_write_batch_cache_(doc_write_batch_cache),
       subdoc_exists_(Trilean::kUnknown),
@@ -96,7 +98,17 @@ Status InternalDocIterator::SeekToKeyPrefix() {
   } else {
     if (!iter_) {
       // If iter hasn't been created yet, do so now.
-      iter_ = CreateRocksDBIterator(db_, bloom_filter_mode_, query_id_);
+      switch (bloom_filter_mode_) {
+        case BloomFilterMode::USE_BLOOM_FILTER:
+          {
+            iter_ = CreateRocksDBIterator(db_, bloom_filter_mode_, filter_key_.AsSlice(),
+                query_id_);
+          }
+          break;
+        case BloomFilterMode::DONT_USE_BLOOM_FILTER:
+          iter_ = CreateRocksDBIterator(db_, bloom_filter_mode_, boost::none, query_id_);
+          break;
+      }
     }
     ROCKSDB_SEEK(iter_.get(), key_prefix_.AsSlice());
     if (num_rocksdb_seeks_ != nullptr) {

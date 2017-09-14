@@ -14,11 +14,11 @@
 #ifndef YB_DOCDB_DOCDB_ROCKSDB_UTIL_H_
 #define YB_DOCDB_DOCDB_ROCKSDB_UTIL_H_
 
+#include <boost/optional.hpp>
+
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
-#include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/options.h"
-#include "yb/util/slice.h"
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/value.h"
@@ -72,11 +72,14 @@ enum class BloomFilterMode {
 // because BloomFilterAwareIterator relies on it and ignores SST file completely if there are no
 // keys with the same hashed components as key specified for seek operation.
 // Note: bloom_filter_mode should be specified explicitly to avoid using it incorrectly by default.
+// user_key_for_filter is used with BloomFilterMode::USE_BLOOM_FILTER to exclude SST files which
+// have the same hashed components as (Sub)DocKey encoded in user_key_for_filter.
 std::unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(
     rocksdb::DB* rocksdb,
     BloomFilterMode bloom_filter_mode,
+    const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,
-    rocksdb::ReadFileFilter file_filter = rocksdb::ReadFileFilter());
+    std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr);
 
 // Initialize the RocksDB 'options' object for tablet identified by 'tablet_id'. The
 // 'statistics' object provided by the caller will be used by RocksDB to maintain

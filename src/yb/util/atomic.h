@@ -34,6 +34,7 @@
 #define YB_UTIL_ATOMIC_H
 
 #include <algorithm>
+#include <atomic>
 #include <boost/type_traits/make_signed.hpp>
 
 #include "yb/gutil/atomicops.h"
@@ -330,6 +331,47 @@ inline void AtomicInt<T>::StoreMin(T new_value, MemoryOrder mem_order) {
     old_value = prev_value;
   }
 }
+
+template<typename T>
+class AtomicUniquePtr {
+ public:
+  AtomicUniquePtr() {}
+  AtomicUniquePtr(const AtomicUniquePtr<T>&) = delete;
+  void operator=(const AtomicUniquePtr&) = delete;
+
+  explicit AtomicUniquePtr(T* ptr) : ptr_(ptr) {}
+
+  AtomicUniquePtr(AtomicUniquePtr<T>&& other) : ptr_(other.release()) {}
+
+  void operator=(AtomicUniquePtr<T>&& other) {
+    reset(other.release());
+  }
+
+  ~AtomicUniquePtr() {
+    delete get();
+  }
+
+  T* get(std::memory_order memory_order = std::memory_order_acquire) const {
+    return ptr_.load(memory_order);
+  }
+
+  void reset(T* ptr, std::memory_order memory_order = std::memory_order_acq_rel) {
+    delete ptr_.exchange(ptr, memory_order);
+  }
+
+  T* release(std::memory_order memory_order = std::memory_order_acq_rel) {
+    return ptr_.exchange(nullptr, memory_order);
+  }
+
+ private:
+  std::atomic<T*> ptr_ = { nullptr };
+};
+
+template<class T, class... Args>
+AtomicUniquePtr<T> MakeAtomicUniquePtr(Args&&... args) {
+  return AtomicUniquePtr<T>(new T(std::forward<Args>(args)...));
+}
+
 
 } // namespace yb
 #endif /* YB_UTIL_ATOMIC_H */

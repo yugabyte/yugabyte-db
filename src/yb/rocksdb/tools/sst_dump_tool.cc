@@ -137,7 +137,8 @@ Status SstFileReader::NewTableReader(
     return block_table_factory->NewTableReader(
         TableReaderOptions(ioptions_, soptions_, internal_comparator_,
                            /*skip_filters=*/false),
-        std::move(file_), file_size, &table_reader_, /*enable_prefetch=*/false);
+        std::move(file_), file_size, &table_reader_, DataIndexLoadMode::USE_CACHE,
+        PrefetchFilter::NO);
   }
 
   assert(!block_table_factory);

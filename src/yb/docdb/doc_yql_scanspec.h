@@ -50,7 +50,7 @@ class DocYQLScanSpec : public common::YQLScanSpec {
   }
 
   // Create file filter based on range components.
-  rocksdb::ReadFileFilter CreateFileFilter() const;
+  std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter() const;
 
   // Gets the query id.
   const rocksdb::QueryId QueryId() const {

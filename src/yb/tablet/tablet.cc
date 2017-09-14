@@ -1494,10 +1494,12 @@ Status Tablet::ApplyIntents(const TransactionApplyData& data) {
   auto reverse_index_iter = docdb::CreateRocksDBIterator(
       rocksdb_.get(),
       docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
+      boost::none,
       rocksdb::kDefaultQueryId);
 
   auto intent_iter = docdb::CreateRocksDBIterator(rocksdb_.get(),
                                                   docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
+                                                  boost::none,
                                                   rocksdb::kDefaultQueryId);
 
   KeyBytes txn_reverse_index_prefix;
