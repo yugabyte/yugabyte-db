@@ -4,7 +4,7 @@ title: ECHO
 
 ## SYNOPSIS
 <b>`ECHO message`</b><br>
-This command is to output the given `message`.
+This command outputs the given `message`.
 
 ## RETURN VALUE
 Returns the message.

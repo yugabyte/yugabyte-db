@@ -4,7 +4,7 @@ summary: Remove a table
 ---
 
 ## Synopsis
-The `DROP TABLE` statement is used to remove a table and all of its data from the database.
+The `DROP TABLE` statement removes a table and all of its data from the database.
 
 ## Syntax
 

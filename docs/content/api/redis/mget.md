@@ -4,7 +4,7 @@ title: MGET
 
 ## SYNOPSIS
 <b>`MGET key [key ...]`</b><br>
-This command is to collect string values of all given keys.
+This command collects string values of all given keys.
 <li>If a given `key` does not exist, an empty string is returned for that `key`.</li>
 <li>If a given `key` is associated with a non-string value, an empty string is returned for that `key`.</li>
 

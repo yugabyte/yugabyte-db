@@ -4,7 +4,7 @@ title: GET
 
 ## SYNOPSIS
 <b>`GET key`</b><br>
-This command is to fetch the value that is associated with the given `key`.
+This command fetches the value that is associated with the given `key`.
 
 <li>If the `key` does not exist, null is returned.</li>
 <li>If the `key` is associated with a non-string value, an error is raised.</li>

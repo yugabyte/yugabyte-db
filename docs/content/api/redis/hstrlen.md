@@ -4,7 +4,7 @@ title: HSTRLEN
 
 ## SYNOPSIS
 <b>`HSTRLEN key field`</b><br>
-This command is to seek the length of a string value that is associated with the given `field` in a hash table that is associated with the given `key`.
+This command seeks the length of a string value that is associated with the given `field` in a hash table that is associated with the given `key`.
 <li>If the `key` or `field` does not exist, 0 is returned.</li>
 <li>If the `key` is associated with a non-hash-table value, an error is raised.</li>
 

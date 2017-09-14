@@ -4,7 +4,7 @@ summary: Create a new datatype
 ---
 
 ## Synopsis
-To `CREATE TYPE` statement is used to create a new user-defined datatype in a keyspace.  It defines the name of the user-defined type and the names and datatypes for its fields.
+To `CREATE TYPE` statement creates a new user-defined datatype in a keyspace.  It defines the name of the user-defined type and the names and datatypes for its fields.
 
 ## Syntax
 

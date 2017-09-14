@@ -5,7 +5,7 @@ Early Releases: YugaByte only have master nodes for Redis services.
 
 ## SYNOPSIS
 <b>`ROLE`</b><br>
-This command is to provide information of a Redis instance, such as its role, its state of replication, its slaves, or its master. Roles are either "master", "slave", or "sentinel".
+This command provides information of a Redis instance, such as its role, its state of replication, its slaves, or its master. Roles are either "master", "slave", or "sentinel".
 <li>Information of a master instance may include the following.
   <ol>
   <li>"master"</li>

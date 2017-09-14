@@ -1,7 +1,7 @@
 {
   "name": "docs",
   "version": "1.0.0",
-  "description": "Yugabyte Docs",
+  "description": "YugaByte Docs",
   "main": "public/index.html",
   "scripts": {
     "start": "hugo serve",

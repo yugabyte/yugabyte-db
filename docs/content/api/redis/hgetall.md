@@ -4,7 +4,7 @@ title: HGETALL
 
 ## SYNOPSIS
 <b>`HGETALL key`</b><br>
-This command is to fetch the full content of all fields and all values of the hash that is associated with the given `key`.
+This command fetches the full content of all fields and all values of the hash that is associated with the given `key`.
 
 <li>If the given `key` does not exist, and empty list is returned.</li>
 <li>If the given `key` is associated with non-hash data, an error is raised.</li>

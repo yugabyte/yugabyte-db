@@ -4,7 +4,7 @@ title: HKEYS
 
 ## SYNOPSIS
 <b>`HKEYS key`</b><br>
-This command is to fetch all fields of the hash that is associated with the given `key`.
+This command fetches all fields of the hash that is associated with the given `key`.
 
 <li>If the `key` does not exist, an empty list is returned.</li>
 <li>If the `key` is associated with non-hash data, an error is raised.</li>

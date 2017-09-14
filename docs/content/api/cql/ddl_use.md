@@ -4,7 +4,7 @@ summary: Create a new database.
 ---
 
 ## Synopsis
-The `USE` keyspace statement is to specify a default keyspace for the current client session. When a database object (such as [table](../ddl_create_table) or [type](../ddl_create_type)) name does not identify a keyspace, this default keyspace is used.
+The `USE` keyspace statement specifies a default keyspace for the current client session. When a database object (such as [table](../ddl_create_table) or [type](../ddl_create_type)) name does not identify a keyspace, this default keyspace is used.
 
 ## Syntax
 

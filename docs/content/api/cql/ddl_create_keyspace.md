@@ -4,7 +4,7 @@ summary: Create a new database.
 ---
 
 ## Synopsis
-The `CREATE KEYSPACE` statement is used to create an abstract container for database objects (such as [tables](../ddl_create_table) or [types](../ddl_create_type)). 
+The `CREATE KEYSPACE` statement creates an abstract container for database objects (such as [tables](../ddl_create_table) or [types](../ddl_create_type)). 
 
 ## Syntax
 

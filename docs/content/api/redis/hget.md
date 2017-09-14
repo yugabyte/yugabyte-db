@@ -4,7 +4,7 @@ title: HGET
 
 ## SYNOPSIS
 <b>`HGET key field`</b><br>
-This command is to fetch the value for the given `field` in the hash that is specified by the given `key`.
+This command fetches the value for the given `field` in the hash that is specified by the given `key`.
 
 <li>If the given `key` or `field` does not exist, null is returned.</li>
 <li>If the given `key` is associated a non-hash data, an error is raised.</li>

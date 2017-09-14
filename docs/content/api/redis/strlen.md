@@ -4,7 +4,7 @@ title: STRLEN
 
 ## SYNOPSIS
 <b>`STRLEN key`</b><br>
-This command is to find the length of the string value that is associated with the given `key`.
+This command finds the length of the string value that is associated with the given `key`.
 <li> If `key` is associated with a non-string value, an error is raised.</li>
 <li> If `key` does not exist, 0 is returned.</li>
 

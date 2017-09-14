@@ -4,7 +4,7 @@ summary: Removes a keyspace and all of its database objects.
 ---
 
 ## Synopsis
-The `DROP KEYSPACE` statement is used to remove a keyspace and all its database objects (such as [tables](../ddl_create_table) or [types](../ddl_create_type)) from the system.
+The `DROP KEYSPACE` statement removes a keyspace and all its database objects (such as [tables](../ddl_create_table) or [types](../ddl_create_type)) from the system.
 
 ## Syntax
 

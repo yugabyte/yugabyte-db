@@ -4,7 +4,7 @@ summary: Drop a user-defined ddatatype
 ---
 
 ## Synopsis
-The `DROP TYPE` statement is used to remove an existing user-defined datatype.
+The `DROP TYPE` statement removes an existing user-defined datatype.
 
 ## Syntax
 

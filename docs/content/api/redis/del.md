@@ -5,7 +5,7 @@ Early Releases: Single-key request only. Requests with multiple keys are not yet
 
 ## SYNOPSIS
 <b>`DEL key [key ...]`</b><br>
-This command is to delete the given `key`.
+This command deletes the given `key`.
 
 <li>If the `key` does not exist, it is ignored and not counted toward the total number of removed keys.</li>
 

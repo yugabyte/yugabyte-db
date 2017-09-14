@@ -4,7 +4,7 @@ summary: Change the schema of a table.
 ---
 
 ## Synopsis
-The `ALTER TABLE` statement is used to change the schema or definition of an existing table.
+The `ALTER TABLE` statement changes the schema or definition of an existing table.
 It allows adding, dropping, or renaming a column as well as updating a table property.
 
 ## Syntax
