@@ -30,6 +30,18 @@ namespace redisserver {
 
 const std::string kNilResponse = "$-1\r\n";
 const std::string kOkResponse = "+OK\r\n";
+const std::string kInfoResponse =
+    "# Replication\r\n"
+    "role:master\r\n"
+    "connected_slaves:0\r\n"
+    "master_replid:0000000000000000000000000000000000000000\r\n"
+    "master_replid2:0000000000000000000000000000000000000000\r\n"
+    "master_repl_offset:0\r\n"
+    "second_repl_offset:-1\r\n"
+    "repl_backlog_active:0\r\n"
+    "repl_backlog_size:0\r\n"
+    "repl_backlog_first_byte_offset:0\r\n"
+    "repl_backlog_histlen:0\r\n";
 
 namespace {
 

@@ -132,6 +132,7 @@ DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
     ((info, Info, -1, LOCAL)) \
     ((role, Role, 1, LOCAL)) \
     ((ping, Ping, -1, LOCAL)) \
+    ((command, Command, -1, LOCAL)) \
     ((quit, Quit, 1, LOCAL)) \
     ((flushdb, FlushDB, 1, LOCAL))
     /**/
@@ -714,18 +715,7 @@ RedisResponsePB ParseRole(const RedisClientCommand& command) {
 RedisResponsePB ParseInfo(const RedisClientCommand& command) {
   RedisResponsePB responsePB;
   responsePB.set_code(RedisResponsePB_RedisStatusCode_OK);
-  responsePB.set_string_response(
-      "# Replication\r\n"
-      "role:master\r\n"
-      "connected_slaves:0\r\n"
-      "master_replid:0000000000000000000000000000000000000000\r\n"
-      "master_replid2:0000000000000000000000000000000000000000\r\n"
-      "master_repl_offset:0\r\n"
-      "second_repl_offset:-1\r\n"
-      "repl_backlog_active:0\r\n"
-      "repl_backlog_size:0\r\n"
-      "repl_backlog_first_byte_offset:0\r\n"
-      "repl_backlog_histlen:0\r\n");
+  responsePB.set_string_response(kInfoResponse);
   return responsePB;
 }
 
@@ -738,6 +728,10 @@ RedisResponsePB ParsePing(const RedisClientCommand& command) {
     responsePB.set_string_response("pong");
   }
   return responsePB;
+}
+
+RedisResponsePB ParseCommand(const RedisClientCommand& command) {
+  return RedisResponsePB();
 }
 
 RedisResponsePB ParseQuit(const RedisClientCommand& command) {

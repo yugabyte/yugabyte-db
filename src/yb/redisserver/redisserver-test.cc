@@ -116,6 +116,12 @@ class TestRedisService : public RedisTableTestBase {
     DoRedisTestString(line, command, "OK");
   }
 
+  void DoRedisTestExpectError(int line, const std::vector<std::string>& command) {
+    DoRedisTest(line, command, cpp_redis::reply::type::error,
+        [](const RedisReply& reply) {}
+    );
+  }
+
   void DoRedisTestInt(int line,
                       const std::vector<std::string>& command,
                       int expected) {
@@ -761,6 +767,19 @@ TEST_F(TestRedisService, TestTtl) {
   DoRedisTestBulkString(__LINE__, {"GET", "k1"}, "v1");
   DoRedisTestNull(__LINE__, {"GET", "k2"});
   DoRedisTestBulkString(__LINE__, {"GET", "k3"}, "v3");
+
+  SyncClient();
+  VerifyCallbacks();
+}
+
+TEST_F(TestRedisService, TestDummyLocal) {
+  expected_no_sessions_ = true;
+  DoRedisTestBulkString(__LINE__, {"INFO"}, kInfoResponse);
+  DoRedisTestBulkString(__LINE__, {"INFO", "Replication"}, kInfoResponse);
+  DoRedisTestBulkString(__LINE__, {"INFO", "foo", "bar", "whatever", "whatever"}, kInfoResponse);
+
+  DoRedisTestOk(__LINE__, {"COMMAND"});
+  DoRedisTestExpectError(__LINE__, {"EVAL"});
 
   SyncClient();
   VerifyCallbacks();

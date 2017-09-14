@@ -31,7 +31,7 @@ namespace redisserver {
 
 extern const std::string kNilResponse;
 extern const std::string kOkResponse;
-
+extern const std::string kInfoResponse;
 
 // Integer:
 // Encode the given input string as a integer string (eg "123"). Integer(s) are formatted as
