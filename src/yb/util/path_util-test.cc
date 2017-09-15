@@ -33,6 +33,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/util/path_util.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 
@@ -76,6 +77,14 @@ TEST(TestPathUtil, DirNameTest) {
 TEST(TestPathUtil, JoinPathSegments) {
   ASSERT_EQ(JoinPathSegments("/usr/bin", "vim"), "/usr/bin/vim");
   ASSERT_EQ(JoinPathSegments("/usr/bin/", "vim"), "/usr/bin/vim");
+}
+
+TEST(TestPathUtil, GetExecutablePath) {
+  auto result = GetExecutablePath();
+  ASSERT_OK(result);
+  ASSERT_EQ(BaseName(*result), "path_util-test");
+  // We expect an absolute path.
+  ASSERT_NE(*result, "path_util-test");
 }
 
 } // namespace yb

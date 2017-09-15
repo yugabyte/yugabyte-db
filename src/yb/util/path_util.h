@@ -35,6 +35,8 @@
 
 #include <string>
 
+#include "yb/util/result.h"
+
 namespace yb {
 
 // Join two path segments with the appropriate path separator,
@@ -49,6 +51,9 @@ std::string DirName(const std::string& path);
 // Return the terminal component of a path.
 // This is like basename(3) but for C++ strings.
 std::string BaseName(const std::string& path);
+
+// Returns the absolute path for this binary file.
+Result<std::string> GetExecutablePath();
 
 } // namespace yb
 #endif /* YB_UTIL_PATH_UTIL_H */

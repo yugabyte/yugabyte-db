@@ -32,13 +32,15 @@
 
 #include "yb/server/webserver_options.h"
 
-#include <string>
-#include <gflags/gflags.h>
+#include <limits.h>
 #include <string.h>
 #include <stdlib.h>
+#include <string>
 
+#include <gflags/gflags.h>
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/path_util.h"
 
 using std::string;
 
@@ -75,7 +77,6 @@ DEFINE_string(webserver_password_file, "",
     "(Optional) Location of .htpasswd file containing user names and hashed passwords for"
     " debug webserver authentication");
 
-
 DEFINE_int32(webserver_num_worker_threads, 50,
              "Maximum number of threads to start for handling web server requests");
 TAG_FLAG(webserver_num_worker_threads, advanced);
@@ -89,8 +90,22 @@ namespace yb {
 // Returns YB_HOME if set, otherwise we won't serve any static files.
 static string GetDefaultDocumentRoot() {
   char* yb_home = getenv("YB_HOME");
-  // Empty document root means don't serve static files
-  return yb_home ? strings::Substitute("$0/www", yb_home) : "";
+  if (yb_home) {
+    return strings::Substitute("$0/www", yb_home);
+  }
+
+  // If YB_HOME is not set, we use the path where the binary is located
+  // (e.g., /opt/yugabyte/tserver/bin/yb-tserver) to determine the doc root.
+  // We assume that the document root is the "www" directory at the same
+  // level as the "bin" directory. So, for our example, the doc root will
+  // be /opt/yugabyte/tserver/www.
+  auto executable_path = GetExecutablePath();
+  if (!executable_path.ok()) {
+    LOG(WARNING) << "Ignoring status error: " << executable_path.status().ToString();
+    return "";
+  }
+  const string base_dir = DirName(DirName(*executable_path));
+  return JoinPathSegments(base_dir, "www");
 }
 
 WebserverOptions::WebserverOptions()
