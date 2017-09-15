@@ -765,7 +765,7 @@ void Tablet::StartApplying(WriteTransactionState* tx_state) {
 }
 
 void Tablet::ApplyRowOperations(WriteTransactionState* tx_state) {
-  has_written_something_.store(true, std::memory_order_release);
+  last_committed_write_index_.store(tx_state->op_id().index(), std::memory_order_release);
   StartApplying(tx_state);
   switch (table_type_) {
     case TableType::KUDU_COLUMNAR_TABLE_TYPE: {

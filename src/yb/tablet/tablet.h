@@ -581,11 +581,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   std::string DocDBDumpStrInTest();
 
-  // Returns whether we had writes in this tablet.
+  // Returns last committed write index.
   // The main purpose of this method is to make correct log cleanup when tablet does not have
   // writes.
-  bool has_written_something() const {
-    return has_written_something_.load(std::memory_order_acquire);
+  int64_t last_committed_write_index() const {
+    return last_committed_write_index_.load(std::memory_order_acquire);
   }
 
  private:
@@ -867,7 +867,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   std::unique_ptr<TransactionParticipant> transaction_participant_;
 
-  std::atomic<bool> has_written_something_{false};
+  std::atomic<int64_t> last_committed_write_index_{0};
 
   // Remembers he HybridTime of the oldest write that is still not scheduled to
   // be flushed in RocksDB.

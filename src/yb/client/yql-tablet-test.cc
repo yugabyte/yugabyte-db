@@ -22,6 +22,8 @@
 
 #include "yb/client/yql-dml-test-base.h"
 
+#include "yb/consensus/consensus.pb.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 
@@ -346,6 +348,63 @@ TEST_F(YqlTabletTest, OverlappedImport) {
   FillTable(0, kTotalKeys, &table1_);
   FillTable(kTotalKeys, 2 * kTotalKeys, &table2_);
   ASSERT_NOK(Import());
+}
+
+void DoStepDowns(MiniCluster* cluster) {
+  for (int j = 0; j != 5; ++j) {
+    for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+      std::vector<tablet::TabletPeerPtr> peers;
+      cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
+      for (const auto& peer : peers) {
+        consensus::LeaderStepDownRequestPB req;
+        consensus::LeaderStepDownResponsePB resp;
+        ASSERT_OK(peer->consensus()->StepDown(&req, &resp));
+      }
+    }
+    std::this_thread::sleep_for(5s);
+  }
+}
+
+void VerifyLogIndicies(MiniCluster* cluster) {
+  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+    std::vector<tablet::TabletPeerPtr> peers;
+    cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
+
+    for (const auto& peer : peers) {
+      consensus::OpId op_id;
+      ASSERT_OK(peer->consensus()->GetLastOpId(consensus::OpIdType::COMMITTED_OPID, &op_id));
+      int64_t index = -1;
+      ASSERT_OK(peer->GetEarliestNeededLogIndex(&index));
+      ASSERT_EQ(op_id.index(), index);
+    }
+  }
+}
+
+TEST_F(YqlTabletTest, GCLogWithoutWrites) {
+  TableHandle table;
+  CreateTable(kTable1Name, &table);
+
+  FillTable(0, kTotalKeys, &table);
+
+  std::this_thread::sleep_for(5s);
+  cluster_->FlushTablets();
+  DoStepDowns(cluster_.get());
+  VerifyLogIndicies(cluster_.get());
+}
+
+TEST_F(YqlTabletTest, GCLogWithRestartWithoutWrites) {
+  TableHandle table;
+  CreateTable(kTable1Name, &table);
+
+  FillTable(0, kTotalKeys, &table);
+
+  std::this_thread::sleep_for(5s);
+  cluster_->FlushTablets();
+
+  ASSERT_OK(cluster_->RestartSync());
+
+  DoStepDowns(cluster_.get());
+  VerifyLogIndicies(cluster_.get());
 }
 
 } // namespace client

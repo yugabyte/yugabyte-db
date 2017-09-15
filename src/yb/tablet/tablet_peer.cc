@@ -523,9 +523,15 @@ Status TabletPeer::GetEarliestNeededLogIndex(int64_t* min_index) const {
   }
 
   if (tablet_->table_type() != KUDU_COLUMNAR_TABLE_TYPE) {
-    if (tablet_->has_written_something()) {
-      *min_index = std::min(*min_index, tablet_->MaxPersistentOpId().index);
+    int64_t last_committed_write_index = tablet_->last_committed_write_index();
+    int64_t max_persistent_index = tablet_->MaxPersistentOpId().index;
+    // Check whether we had writes after last persistent entry.
+    // Note that last_committed_write_index could be zero if logs were cleaned before restart.
+    // So correct check is 'less', and NOT 'not equals to'.
+    if (max_persistent_index < last_committed_write_index) {
+      *min_index = std::min(*min_index, max_persistent_index);
     }
+
     // We keep at least one committed operation in the log so that we can always recover safe time
     // during bootstrap.
     OpId committed_op_id;
