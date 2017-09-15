@@ -8,7 +8,7 @@ CRYPT_BLOWFISH_URL=\
 "https://github.com/YugaByte/crypt_blowfish/archive/${CRYPT_BLOWFISH_VERSION}.tar.gz"
 
 TP_NAME_TO_SRC_DIR["crypt_blowfish"]=$CRYPT_BLOWFISH_DIR
-TP_NAME_TO_ARCHIVE_NAME["crypt_blowfish"]=
+TP_NAME_TO_ARCHIVE_NAME["crypt_blowfish"]="crypt_blowfish-${CRYPT_BLOWFISH_VERSION}.tar.gz"
 TP_NAME_TO_URL["crypt_blowfish"]="$CRYPT_BLOWFISH_URL"
 
 build_crypt_blowfish() {

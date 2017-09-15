@@ -3,7 +3,7 @@
 LIBUNWIND_VERSION=1.1a
 LIBUNWIND_DIR=$TP_SOURCE_DIR/libunwind-${LIBUNWIND_VERSION}
 TP_NAME_TO_SRC_DIR["libunwind"]=$LIBUNWIND_DIR
-TP_NAME_TO_ARCHIVE_NAME["libunwind"]="libuwind-${LIBUNWIND_VERSION}.tar.gz"
+TP_NAME_TO_ARCHIVE_NAME["libunwind"]="libunwind-${LIBUNWIND_VERSION}.tar.gz"
 
 build_libunwind() {
   create_build_dir_and_prepare "$LIBUNWIND_DIR"
