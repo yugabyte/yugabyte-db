@@ -178,10 +178,21 @@ const asyncValidate = (values, dispatch ) => {
   }
 };
 
-const validate = values => {
+const validate = (values, props) => {
+  const cloud = props.cloud;
+  let currentProvider = null;
+  if (isDefinedNotNull(values.provider)) {
+    currentProvider = cloud.providers.data.find((provider) => provider.uuid === values.provider);
+  }
   const errors = {};
   if (!isNonEmptyString(values.universeName)) {
     errors.universeName = 'Universe Name is Required';
+  }
+  if (currentProvider && currentProvider.code === "gcp") {
+    const specialCharsRegex = /^[a-z0-9-]*$/;
+    if(!specialCharsRegex.test(values.universeName)) {
+      errors.universeName = 'GCP Universe name cannot contain capital letters or special characters except dashes';
+    }
   }
   if (!isDefinedNotNull(values.provider)) {
     errors.provider = 'Provider Value is Required';
