@@ -30,17 +30,19 @@ DECLARE_bool(trace_docdb_calls);
 
 using strings::Substitute;
 
+DEFINE_bool(emulate_redis_responses,
+    true,
+    "If emulate_redis_responses is false, we hope to get slightly better performance by just "
+    "returning OK for commands that might require us to read additional records viz. SADD, HSET, "
+    "and HDEL. If emulate_redis_responses is true, we read the required records to compute the "
+    "response as specified by the official Redis API documentation. https://redis.io/commands");
+
 namespace yb {
 namespace docdb {
 
 using std::set;
 using std::list;
 using strings::Substitute;
-
-DEFINE_bool(emulate_redis_responses,
-            true,
-            "For redis write commands, choose whether to send responses that requires reading."
-            "For HSET and SADD true value would return the number of new elements that were added");
 
 list<DocPath> KuduWriteOperation::DocPathsToLock() const {
   return { doc_path_ };
@@ -240,6 +242,8 @@ Status RedisWriteOperation::ApplySet(DocWriteBatch* doc_write_batch) {
           RedisDataType type;
           RETURN_NOT_OK(GetRedisValueType(
               doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, 0));
+          // For HSET, we return 0 or 1 depending on if the key already existed.
+          // If flag is false, no int response is returned.
           response_.set_int_response(type == REDIS_TYPE_NONE ? 1 : 0);
         }
         RETURN_NOT_OK(doc_write_batch->ExtendSubDocument(
@@ -345,7 +349,7 @@ Status RedisWriteOperation::ApplyDel(DocWriteBatch* doc_write_batch) {
     // Currently we only support deleting one key with DEL command.
     num_keys = data_type == REDIS_TYPE_NONE ? 0 : 1;
   } else {
-    num_keys = kv.subkey_size();
+    num_keys = kv.subkey_size(); // We know the subkeys are distinct.
     if (FLAGS_emulate_redis_responses) {
       for (int i = 0; i < kv.subkey_size(); i++) {
         RedisDataType type;
@@ -354,6 +358,7 @@ Status RedisWriteOperation::ApplyDel(DocWriteBatch* doc_write_batch) {
         if (type == REDIS_TYPE_STRING) {
           values.SetChild(PrimitiveValue(kv.subkey(i)), SubDocument(ValueType::kTombstone));
         } else {
+          // If the key is absent, it doesn't contribute to the count of keys being deleted.
           num_keys--;
         }
       }
@@ -366,7 +371,10 @@ Status RedisWriteOperation::ApplyDel(DocWriteBatch* doc_write_batch) {
   DocPath doc_path = DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key());
   RETURN_NOT_OK(doc_write_batch->ExtendSubDocument(doc_path, values, InitMarkerBehavior::REQUIRED));
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
-  response_.set_int_response(num_keys);
+  if (FLAGS_emulate_redis_responses) {
+    // If the flag is true, we respond with the number of keys actually being deleted.
+    response_.set_int_response(num_keys);
+  }
   return Status::OK();
 }
 
@@ -469,7 +477,7 @@ Status RedisWriteOperation::ApplyAdd(DocWriteBatch* doc_write_batch) {
 
   SubDocument set_entries = SubDocument();
 
-  for (int i = 0 ; i < kv.subkey_size(); i++) {
+  for (int i = 0 ; i < kv.subkey_size(); i++) { // We know that each subkey is distinct.
     if (FLAGS_emulate_redis_responses) {
       RedisDataType type;
       string value;
@@ -496,7 +504,10 @@ Status RedisWriteOperation::ApplyAdd(DocWriteBatch* doc_write_batch) {
   }
 
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
-  response_.set_int_response(kv.subkey_size() - num_keys_found);
+  if (FLAGS_emulate_redis_responses) {
+    // If flag is set, the actual number of new keys added is sent as response.
+    response_.set_int_response(kv.subkey_size() - num_keys_found);
+  }
   return Status::OK();
 }
 

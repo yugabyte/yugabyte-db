@@ -37,13 +37,14 @@
 DECLARE_uint64(redis_max_concurrent_commands);
 DECLARE_uint64(redis_max_batch);
 DECLARE_bool(redis_safe_batch);
+DECLARE_bool(emulate_redis_responses);
 
 DEFINE_uint64(test_redis_max_concurrent_commands, 20,
               "Value of redis_max_concurrent_commands for pipeline test");
 DEFINE_uint64(test_redis_max_batch, 250,
               "Value of redis_max_batch for pipeline test");
 
-using namespace std::literals;
+using namespace std::literals; // NOLINT
 
 namespace yb {
 namespace redisserver {
@@ -787,13 +788,16 @@ TEST_F(TestRedisService, TestDummyLocal) {
 
 TEST_F(TestRedisService, TestAdditionalCommands) {
 
+  // The default value is true, but we explicitly set this here for clarity.
+  FLAGS_emulate_redis_responses = true;
+
   DoRedisTestInt(__LINE__, {"HSET", "map_key", "subkey1", "42"}, 1);
   DoRedisTestInt(__LINE__, {"HSET", "map_key", "subkey2", "12"}, 1);
 
   SyncClient();
 
-  // This depends on the flag emulate_redis_responses
-  // TODO: test both settings of the flag, not just default value
+  // With emulate_redis_responses flag = true, we expect an int response 0 because the subkey
+  // already existed. If flag is false, we'll get an OK response, which is tested later.
   DoRedisTestInt(__LINE__, {"HSET", "map_key", "subkey1", "41"}, 0);
 
   SyncClient();
@@ -901,6 +905,7 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
 
   DoRedisTestInt(__LINE__, {"EXISTS", "set1"}, 0);
   DoRedisTestInt(__LINE__, {"SADD", "set1", "val1"}, 1);
+  DoRedisTestInt(__LINE__, {"SADD", "set2", "val5", "val5", "val5"}, 1);
   DoRedisTestInt(__LINE__, {"EXISTS", "set1"}, 1);
 
   SyncClient();
@@ -952,6 +957,21 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   SyncClient();
 
   VerifyCallbacks();
+}
+
+TEST_F(TestRedisService, TestEmulateFlagFalse) {
+  FLAGS_emulate_redis_responses = false;
+
+  DoRedisTestOk(__LINE__, {"HSET", "map_key", "subkey1", "42"});
+
+  DoRedisTestOk(__LINE__, {"SADD", "set_key", "val1", "val2", "val1"});
+
+  DoRedisTestOk(__LINE__, {"HDEL", "map_key", "subkey1", "subkey2"});
+
+  SyncClient();
+
+  VerifyCallbacks();
+
 }
 
 }  // namespace redisserver

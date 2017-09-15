@@ -151,9 +151,15 @@ Status ParseHMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_set_request(new RedisSetRequestPB());
   op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_HASH);
   op->mutable_request()->mutable_key_value()->set_key(args[1].cdata(), args[1].size());
+  // We remove duplicates from the subkeys here.
+  std::unordered_map<string, string> kv_map;
   for (int i = 2; i < args.size(); i += 2) {
-    op->mutable_request()->mutable_key_value()->add_subkey(args[i].cdata(), args[i].size());
-    op->mutable_request()->mutable_key_value()->add_value(args[i + 1].cdata(), args[i + 1].size());
+    kv_map[string(args[i].cdata(), args[i].size())] =
+        string(args[i + 1].cdata(), args[i + 1].size());
+  }
+  for (const auto& kv : kv_map) {
+    op->mutable_request()->mutable_key_value()->add_subkey(kv.first);
+    op->mutable_request()->mutable_key_value()->add_value(kv.second);
   }
   return Status::OK();
 }
@@ -161,15 +167,27 @@ Status ParseHMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
 template <class YBRedisOp>
 Status ParseCollection(YBRedisOp *op,
                        const RedisClientCommand& args,
-                       boost::optional<RedisDataType> type) {
+                       boost::optional<RedisDataType> type,
+                       bool remove_duplicates = true) {
   const auto& key = args[1];
   RETURN_NOT_OK(op->SetKey(key));
   op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
   if (type) {
     op->mutable_request()->mutable_key_value()->set_type(*type);
   }
-  for (size_t i = 2; i < args.size(); i++) {
-    op->mutable_request()->mutable_key_value()->add_subkey(args[i].cdata(), args[i].size());
+  if (remove_duplicates) {
+    // We remove duplicates from the subkeys here.
+    std::set<string> subkey_set;
+    for (size_t i = 2; i < args.size(); i++) {
+      subkey_set.insert(string(args[i].cdata(), args[i].size()));
+    }
+    for (const auto &val : subkey_set) {
+      op->mutable_request()->mutable_key_value()->add_subkey(val);
+    }
+  } else {
+    for (size_t i = 2; i < args.size(); i++) {
+      op->mutable_request()->mutable_key_value()->add_subkey(args[i].cdata(), args[i].size());
+    }
   }
   return Status::OK();
 }
@@ -260,11 +278,12 @@ Status ParseGet(YBRedisReadOp* op, const RedisClientCommand& args) {
 //  Used for HGET/HSTRLEN/HEXISTS. Also for HMGet
 //  CMD <KEY> [<SUB-KEY>]*
 Status ParseHGetLikeCommands(YBRedisReadOp* op, const RedisClientCommand& args,
-                             RedisGetRequestPB_GetRequestType request_type) {
+                             RedisGetRequestPB_GetRequestType request_type,
+                             bool remove_duplicates = false) {
   op->mutable_request()->set_allocated_get_request(new RedisGetRequestPB());
   op->mutable_request()->mutable_get_request()->set_request_type(request_type);
 
-  return ParseCollection(op, args, boost::none);
+  return ParseCollection(op, args, boost::none, remove_duplicates);
 }
 
 // TODO: Support MGET
