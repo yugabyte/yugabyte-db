@@ -3,6 +3,7 @@
 GCOVR_VERSION=3.0
 GCOVR_DIR=$TP_SOURCE_DIR/gcovr-${GCOVR_VERSION}
 TP_NAME_TO_SRC_DIR["gcovr"]=$GCOVR_DIR
+TP_NAME_TO_ARCHIVE_NAME["gcovr"]="gcovr-${GCOVR_VERSION}.tar.gz"
 
 build_gcovr() {
   (

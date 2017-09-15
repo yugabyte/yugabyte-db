@@ -13,15 +13,23 @@ Usage: ${0##*/} [<options>] [<dependency_names>]
 Options:
   -h, --help
     Show usage
+  --downloads, --download, -d
+    Also clean downloads for the chosen dependencies. This could cause large dependencies to be
+    re-downloaded, so should be used carefully.
   --all
     Clean all third-party dependency build artifacts. This is done using a "git clean" command.
 EOT
 }
 
+realpath() {
+  python -c "import os; import sys; print os.path.realpath(sys.argv[1])" "$@"
+}
+
 delete_dir() {
   expect_num_args 1 "$@"
-  local dir_path=$1
+  local dir_path=$( realpath "$1" )
   if [[ -d $dir_path ]]; then
+      log "DELETING directory '$dir_path'"
     ( set -x; rm -rf "$dir_path" )
   else
     log "'$dir_path' is not a directory or does not exist"
@@ -30,12 +38,18 @@ delete_dir() {
 
 delete_file() {
   expect_num_args 1 "$@"
-  local file_path=$1
-  if [[ -d $file_path ]]; then
-    ( set -x; rm -f "$file_path" )
-  else
-    log "'$file_path' is not a file or does not exist"
-  fi
+  local file_glob=$1
+  local file_paths=( $file_glob )
+  local file_path
+  for file_path in "${file_paths[@]}"; do
+    file_path=$( realpath "$file_path" )
+    if [[ -f $file_path ]]; then
+      log "DELETING file '$file_path'"
+      ( set -x; rm -f "$file_path" )
+    else
+      log "'$file_path' is not a file or does not exist"
+    fi
+  done
 }
 
 dependency_names_to_clean=()
@@ -45,6 +59,8 @@ if [[ $# -eq 0 ]]; then
 fi
 
 clean_all=false
+delete_downloads=false
+
 while [[ $# -gt 0 ]]; do
   case $1 in
     -h|--help)
@@ -53,6 +69,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --all)
       clean_all=true
+    ;;
+    --downloads|--download|-d)
+      delete_downloads=true
     ;;
     -*)
       fatal "Invalid option: $1"
@@ -75,7 +94,16 @@ fi
 found_errors=false
 for dep_name in "${dependency_names_to_clean[@]}"; do
   if [[ -z ${TP_VALID_DEP_NAME_SET[$dep_name]:-} ]]; then
-    log "Error: invalid third-party dependency name: '$dep_name'"
+    log "Possible valid dependency names:"
+    (
+      for possible_dep_name in "${!TP_VALID_DEP_NAME_SET[@]}"; do
+        echo "  ${possible_dep_name}"
+      done
+    ) | sort >&2
+    fatal "Error: invalid third-party dependency name: '$dep_name'"
+  fi
+  if [[ -z ${TP_NAME_TO_ARCHIVE_NAME[$dep_name]:-} ]]; then
+    fatal "Internal error: dependency name '$dep_name' not found in TP_NAME_TO_ARCHIVE_NAME"
   fi
 done
 
@@ -85,6 +113,7 @@ if "$found_errors"; then
 fi
 
 for dep_name in "${dependency_names_to_clean[@]}"; do
+  archive_name=${TP_NAME_TO_ARCHIVE_NAME[$dep_name]}
   (
     set -x
     rm -rfv $YB_THIRDPARTY_DIR/build/{common,uninstrumented,tsan}/{$dep_name,.build-stamp-$dep_name}
@@ -98,12 +127,20 @@ for dep_name in "${dependency_names_to_clean[@]}"; do
   fi
 
   for top_build_dir in $YB_THIRDPARTY_DIR/build/{common,uninstrumented,tsan}; do
-    delete_file "$top_build_dir/.build-stamp-$dep_name"
+    (
+      cd "$top_build_dir"
+      delete_file ".build-stamp-$dep_name"
 
-    if [[ -n $src_dir_name ]]; then
-      delete_dir "$top_build_dir/$src_dir_name"
-      delete_dir "$top_build_dir/${src_dir_name}_static"
-      delete_dir "$top_build_dir/${src_dir_name}_shared"
-    fi
+      if [[ -n $src_dir_name ]]; then
+        delete_dir "$src_dir_name"
+        delete_dir "${src_dir_name}_static"
+        delete_dir "${src_dir_name}_shared"
+      fi
+    )
   done
+
+  (
+    cd "$YB_THIRDPARTY_DIR"
+    delete_file "download/$archive_name"
+  )
 done

@@ -3,6 +3,7 @@
 CURL_VERSION=7.32.0
 CURL_DIR=$TP_SOURCE_DIR/curl-${CURL_VERSION}
 TP_NAME_TO_SRC_DIR["curl"]=$CURL_DIR
+TP_NAME_TO_ARCHIVE_NAME["curl"]="curl-${CURL_VERSION}.tar.gz"
 
 build_curl() {
   # Configure for a very minimal install - basically only HTTP, since we only

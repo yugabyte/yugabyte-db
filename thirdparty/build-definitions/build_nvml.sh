@@ -3,6 +3,7 @@
 NVML_VERSION=0.4-b2
 NVML_DIR=$TP_SOURCE_DIR/nvml-$NVML_VERSION
 TP_NAME_TO_SRC_DIR["nvml"]=$NVML_DIR
+TP_NAME_TO_ARCHIVE_NAME["nvml"]="nvml-${NVML_VERSION}.tar.gz"
 
 build_nvml() {
   create_build_dir_and_prepare "$NVML_DIR" src

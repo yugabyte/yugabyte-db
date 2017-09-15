@@ -10,6 +10,7 @@
 CRCUTIL_VERSION=440ba7babeff77ffad992df3a10c767f184e946e
 CRCUTIL_DIR=$TP_SOURCE_DIR/crcutil-${CRCUTIL_VERSION}
 TP_NAME_TO_SRC_DIR["crcutil"]=$CRCUTIL_DIR
+TP_NAME_TO_ARCHIVE_NAME["crcutil"]="crcutil-${CRCUTIL_VERSION}.tar.gz"
 
 build_crcutil() {
   create_build_dir_and_prepare "$CRCUTIL_DIR"

@@ -3,6 +3,7 @@
 LIBEV_VERSION=4.20
 LIBEV_DIR=$TP_SOURCE_DIR/libev-$LIBEV_VERSION
 TP_NAME_TO_SRC_DIR["libev"]=$LIBEV_DIR
+TP_NAME_TO_ARCHIVE_NAME["libev"]="libev-${LIBEV_VERSION}.tar.gz"
 
 build_libev() {
   create_build_dir_and_prepare "$LIBEV_DIR"

@@ -63,16 +63,16 @@ verify_archive_checksum() {
 }
 
 fetch_and_expand() {
-  if [[ $# -lt 1 || $# -gt 3 ]]; then
-    fatal "One or two arguments expected (archive name and optionally download URL)"
-  fi
+  expect_num_args 1 "$@"
+  local dependency_name=$1
 
-  local FILENAME=$1
-  if [ -z "$FILENAME" ]; then
-    fatal "Error: Must specify file to fetch"
+  set +u
+  local FILENAME=${TP_NAME_TO_ARCHIVE_NAME[$dependency_name]}
+  set -u
+  if [[ -z $FILENAME ]]; then
+    fatal "Third-party dependency '$dependency_name' not found in TP_NAME_TO_ARCHIVE_NAME"
   fi
-
-  local download_url=${2:-${CLOUDFRONT_URL_PREFIX}/${FILENAME}}
+  local download_url=${TP_NAME_TO_URL[$dependency_name]:-${CLOUDFRONT_URL_PREFIX}/${FILENAME}}
 
   set +u
   local expected_checksum=${expected_checksums_by_name[$FILENAME]}
@@ -191,7 +191,7 @@ GLOG_PATCHLEVEL=1
 delete_if_wrong_patchlevel "$GLOG_DIR" "$GLOG_PATCHLEVEL"
 
 if [ ! -d "$GLOG_DIR" ]; then
-  fetch_and_expand glog-${GLOG_VERSION}.tar.gz
+  fetch_and_expand glog
 
   if [ "$DOWNLOAD_ONLY" == "0" ]; then
     pushd "$GLOG_DIR"
@@ -204,11 +204,11 @@ if [ ! -d "$GLOG_DIR" ]; then
 fi
 
 if [ ! -d "$GMOCK_DIR" ]; then
-  fetch_and_expand gmock-${GMOCK_VERSION}.zip
+  fetch_and_expand gmock
 fi
 
 if [ ! -d "$GFLAGS_DIR" ]; then
-  fetch_and_expand gflags-${GFLAGS_VERSION}.tar.gz
+  fetch_and_expand gflags
 fi
 
 # Check that the gperftools patch has been applied.
@@ -217,7 +217,7 @@ fi
 GPERFTOOLS_PATCHLEVEL=3
 delete_if_wrong_patchlevel "$GPERFTOOLS_DIR" "$GPERFTOOLS_PATCHLEVEL"
 if [ ! -d "$GPERFTOOLS_DIR" ]; then
-  fetch_and_expand gperftools-${GPERFTOOLS_VERSION}.tar.gz
+  fetch_and_expand gperftools
 
   if [ "$DOWNLOAD_ONLY" == "0" ]; then
     pushd "$GPERFTOOLS_DIR"
@@ -232,7 +232,7 @@ if [ ! -d "$GPERFTOOLS_DIR" ]; then
 fi
 
 if [ ! -d "$PROTOBUF_DIR" ]; then
-  fetch_and_expand protobuf-${PROTOBUF_VERSION}.tar.gz
+  fetch_and_expand protobuf
   if [ "$DOWNLOAD_ONLY" == "0" ]; then
     pushd "$PROTOBUF_DIR"
     run_autoreconf -fvi
@@ -243,7 +243,7 @@ fi
 SNAPPY_PATCHLEVEL=1
 delete_if_wrong_patchlevel "$SNAPPY_DIR" "$SNAPPY_PATCHLEVEL"
 if [ ! -d "$SNAPPY_DIR" ]; then
-  fetch_and_expand snappy-${SNAPPY_VERSION}.tar.gz
+  fetch_and_expand snappy
   if [ "$DOWNLOAD_ONLY" == "0" ]; then
     pushd "$SNAPPY_DIR"
     patch -p1 < "$TP_DIR"/patches/snappy-define-guard-macro.patch
@@ -254,15 +254,15 @@ if [ ! -d "$SNAPPY_DIR" ]; then
 fi
 
 if [ ! -d "$ZLIB_DIR" ]; then
-  fetch_and_expand zlib-${ZLIB_VERSION}.tar.gz
+  fetch_and_expand zlib
 fi
 
 if [ ! -d "$LIBEV_DIR" ]; then
-  fetch_and_expand libev-${LIBEV_VERSION}.tar.gz
+  fetch_and_expand libev
 fi
 
 if [ ! -d "$RAPIDJSON_DIR" ]; then
-  fetch_and_expand rapidjson-${RAPIDJSON_VERSION}.zip
+  fetch_and_expand rapidjson
   if [[ ! -d $TP_SOURCE_DIR/rapidjson ]]; then
     fatal "Directory $TP_SOURCE_DIR/rapidjson was not extracted correctly from the rapidjson" \
           "archive. Contents of the source directory: $( ls -l "$TP_SOURCE_DIR" )."
@@ -273,25 +273,21 @@ if [ ! -d "$RAPIDJSON_DIR" ]; then
 fi
 
 if [ ! -d "$SQUEASEL_DIR" ]; then
-  fetch_and_expand squeasel-${SQUEASEL_VERSION}.tar.gz
-fi
-
-if [ ! -d "$GSG_DIR" ]; then
-  fetch_and_expand google-styleguide-${GSG_VERSION}.tar.gz
+  fetch_and_expand squeasel
 fi
 
 if [ ! -d "$GCOVR_DIR" ]; then
-  fetch_and_expand gcovr-${GCOVR_VERSION}.tar.gz
+  fetch_and_expand gcovr
 fi
 
 if [ ! -d "$CURL_DIR" ]; then
-  fetch_and_expand curl-${CURL_VERSION}.tar.gz
+  fetch_and_expand curl
 fi
 
 CRCUTIL_PATCHLEVEL=1
 delete_if_wrong_patchlevel "$CRCUTIL_DIR" "$CRCUTIL_PATCHLEVEL"
 if [ ! -d "$CRCUTIL_DIR" ]; then
-  fetch_and_expand crcutil-${CRCUTIL_VERSION}.tar.gz
+  fetch_and_expand crcutil
 
   if [ "$DOWNLOAD_ONLY" == "0" ]; then
     pushd "$CRCUTIL_DIR"
@@ -303,17 +299,13 @@ if [ ! -d "$CRCUTIL_DIR" ]; then
 fi
 
 if [ ! -d "$LIBUNWIND_DIR" ]; then
-  fetch_and_expand libunwind-${LIBUNWIND_VERSION}.tar.gz
-fi
-
-if [ ! -d "$PYTHON_DIR" ]; then
-  fetch_and_expand python-${PYTHON_VERSION}.tar.gz
+  fetch_and_expand libunwind
 fi
 
 LLVM_PATCHLEVEL=1
 delete_if_wrong_patchlevel "$LLVM_SOURCE" "$LLVM_PATCHLEVEL"
 if [ ! -d "$LLVM_SOURCE" ]; then
-  fetch_and_expand llvm-${LLVM_VERSION}.src.tar.gz
+  fetch_and_expand llvm
 
   if [ "$DOWNLOAD_ONLY" == "0" ]; then
     pushd "$LLVM_SOURCE"
@@ -327,7 +319,7 @@ fi
 GCC_PATCHLEVEL=2
 delete_if_wrong_patchlevel $GCC_DIR $GCC_PATCHLEVEL
 if [[ "$OSTYPE" =~ ^linux ]] && [[ ! -d "$GCC_DIR" ]]; then
-  fetch_and_expand gcc-${GCC_VERSION}.tar.gz
+  fetch_and_expand libstdcxx
   if [ "$DOWNLOAD_ONLY" == "0" ]; then
     pushd $GCC_DIR/libstdc++-v3
     patch -p0 < $TP_DIR/patches/libstdcxx-fix-string-dtor.patch
@@ -342,7 +334,7 @@ fi
 LZ4_PATCHLEVEL=1
 delete_if_wrong_patchlevel "$LZ4_DIR" "$LZ4_PATCHLEVEL"
 if [ ! -d "$LZ4_DIR" ]; then
-  fetch_and_expand "lz4-lz4-$LZ4_VERSION.tar.gz"
+  fetch_and_expand lz4
   if [ "$DOWNLOAD_ONLY" == "0" ]; then
     pushd "$LZ4_DIR"
     patch -p1 < $TP_DIR/patches/lz4-0001-Fix-cmake-build-to-use-gnu-flags-on-clang.patch
@@ -353,27 +345,27 @@ if [ ! -d "$LZ4_DIR" ]; then
 fi
 
 if [ ! -d "$BITSHUFFLE_DIR" ]; then
-  fetch_and_expand bitshuffle-${BITSHUFFLE_VERSION}.tar.gz
+  fetch_and_expand bitshuffle
 fi
 
 if is_linux && [[ ! -d $NVML_DIR ]]; then
-  fetch_and_expand "nvml-${NVML_VERSION}.tar.gz"
+  fetch_and_expand nvml
 fi
 
 if is_linux && [[ ! -d $LIBBACKTRACE_DIR ]]; then
-  fetch_and_expand "libbacktrace-$LIBBACKTRACE_VERSION.zip" "$LIBBACKTRACE_URL"
+  fetch_and_expand libbacktrace
 fi
 
 if [[ ! -d $CQLSH_DIR ]]; then
-  fetch_and_expand "cqlsh-${CQLSH_VERSION}.tar.gz" "$CQLSH_URL"
+  fetch_and_expand cqlsh
 fi
 
 if [[ ! -d $CRYPT_BLOWFISH_DIR ]]; then
-  fetch_and_expand "$CRYPT_BLOWFISH_ARCHIVE" "$CRYPT_BLOWFISH_URL"
+  fetch_and_expand crypt_blowfish
 fi
 
 if [[ ! -d $REDIS_DIR ]]; then
-  fetch_and_expand "redis-${REDIS_VERSION}.tar.gz" "$REDIS_URL"
+  fetch_and_expand redis_cli
 fi
 
 

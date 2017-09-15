@@ -3,6 +3,7 @@
 LZ4_VERSION=r130
 LZ4_DIR=$TP_SOURCE_DIR/lz4-lz4-$LZ4_VERSION
 TP_NAME_TO_SRC_DIR["lz4"]=$LZ4_DIR
+TP_NAME_TO_ARCHIVE_NAME["lz4"]="lz4-lz4-$LZ4_VERSION.tar.gz"
 
 build_lz4() {
   create_build_dir_and_prepare "$LZ4_DIR"

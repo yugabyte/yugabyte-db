@@ -3,6 +3,7 @@
 GFLAGS_VERSION=2.1.2
 GFLAGS_DIR=$TP_SOURCE_DIR/gflags-$GFLAGS_VERSION
 TP_NAME_TO_SRC_DIR["gflags"]=$GFLAGS_DIR
+TP_NAME_TO_ARCHIVE_NAME["gflags"]="gflags-${GFLAGS_VERSION}.tar.gz"
 
 build_gflags() {
   create_build_dir_and_prepare "$GFLAGS_DIR"

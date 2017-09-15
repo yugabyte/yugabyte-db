@@ -3,8 +3,13 @@
 CRYPT_BLOWFISH_VERSION=79ee670d1a2977328c481d6578387928ff92896a
 CRYPT_BLOWFISH_DIR=$TP_SOURCE_DIR/crypt_blowfish-$CRYPT_BLOWFISH_VERSION
 CRYPT_BLOWFISH_ARCHIVE=crypt_blowfish-${CRYPT_BLOWFISH_VERSION}.tar.gz
+
+CRYPT_BLOWFISH_URL=\
+"https://github.com/YugaByte/crypt_blowfish/archive/${CRYPT_BLOWFISH_VERSION}.tar.gz"
+
 TP_NAME_TO_SRC_DIR["crypt_blowfish"]=$CRYPT_BLOWFISH_DIR
-CRYPT_BLOWFISH_URL="https://github.com/YugaByte/crypt_blowfish/archive/${CRYPT_BLOWFISH_VERSION}.tar.gz"
+TP_NAME_TO_ARCHIVE_NAME["crypt_blowfish"]=
+TP_NAME_TO_URL["crypt_blowfish"]="$CRYPT_BLOWFISH_URL"
 
 build_crypt_blowfish() {
   create_build_dir_and_prepare "$CRYPT_BLOWFISH_DIR"

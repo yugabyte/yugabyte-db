@@ -3,6 +3,7 @@
 GMOCK_VERSION=1.7.0
 GMOCK_DIR=$TP_SOURCE_DIR/gmock-$GMOCK_VERSION
 TP_NAME_TO_SRC_DIR["gmock"]=$GMOCK_DIR
+TP_NAME_TO_ARCHIVE_NAME["gmock"]="gmock-${GMOCK_VERSION}.zip"
 
 build_gmock() {
   create_build_dir_and_prepare "$GMOCK_DIR"

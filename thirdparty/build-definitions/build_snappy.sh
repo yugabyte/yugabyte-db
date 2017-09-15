@@ -3,6 +3,7 @@
 SNAPPY_VERSION=1.1.0
 SNAPPY_DIR=$TP_SOURCE_DIR/snappy-$SNAPPY_VERSION
 TP_NAME_TO_SRC_DIR["snappy"]=$SNAPPY_DIR
+TP_NAME_TO_ARCHIVE_NAME["snappy"]="snappy-${SNAPPY_VERSION}.tar.gz"
 
 build_snappy() {
   create_build_dir_and_prepare "$SNAPPY_DIR"

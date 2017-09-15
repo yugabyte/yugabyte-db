@@ -2,7 +2,9 @@
 
 GLOG_VERSION=0.3.4
 GLOG_DIR=$TP_SOURCE_DIR/glog-$GLOG_VERSION
+
 TP_NAME_TO_SRC_DIR["glog"]=$GLOG_DIR
+TP_NAME_TO_ARCHIVE_NAME["glog"]="glog-${GLOG_VERSION}.tar.gz"
 
 build_glog() {
   create_build_dir_and_prepare "$GLOG_DIR"

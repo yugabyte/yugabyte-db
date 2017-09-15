@@ -5,6 +5,7 @@
 BITSHUFFLE_VERSION=55f9b4c
 BITSHUFFLE_DIR=$TP_SOURCE_DIR/bitshuffle-${BITSHUFFLE_VERSION}
 TP_NAME_TO_SRC_DIR["bitshuffle"]=$BITSHUFFLE_DIR
+TP_NAME_TO_ARCHIVE_NAME["bitshuffle"]="bitshuffle-${BITSHUFFLE_VERSION}.tar.gz"
 
 build_bitshuffle() {
   create_build_dir_and_prepare "$BITSHUFFLE_DIR"

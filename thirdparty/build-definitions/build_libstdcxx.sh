@@ -3,6 +3,7 @@
 GCC_VERSION=4.9.3
 GCC_DIR=$TP_SOURCE_DIR/gcc-${GCC_VERSION}
 TP_NAME_TO_SRC_DIR["libstdcxx"]=$GCC_DIR
+TP_NAME_TO_ARCHIVE_NAME["libstdcxx"]="gcc-${GCC_VERSION}.tar.gz"
 
 build_libstdcxx() {
   # Configure libstdcxx to use posix threads by default. Normally this symlink

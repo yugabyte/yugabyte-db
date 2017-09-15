@@ -21,32 +21,7 @@ LLVM_VERSION=3.9.0
 # Note: we have the ".src" suffix at the end because that's what comes out of the tarball.
 LLVM_SOURCE=$TP_SOURCE_DIR/llvm-$LLVM_VERSION.src
 TP_NAME_TO_SRC_DIR["llvm"]=$LLVM_SOURCE
-
-# Python 2.7 is required to build LLVM 3.6+. It is only built and installed if the system Python
-# version is not 2.7.
-PYTHON_VERSION=2.7.10
-PYTHON_DIR=$TP_SOURCE_DIR/python-${PYTHON_VERSION}
-
-build_or_find_python() {
-  if [ -n "${PYTHON_EXECUTABLE:-}" ]; then
-    return
-  fi
-
-  # Build Python only if necessary.
-  if [[ $(python2.7 -V 2>&1) =~ "Python 2.7." ]]; then
-    PYTHON_EXECUTABLE=$(which python2.7)
-  elif [[ $(python -V 2>&1) =~ "Python 2.7." ]]; then
-    PYTHON_EXECUTABLE=$(which python)
-  else
-    PYTHON_BUILD_DIR=$TP_BUILD_DIR/$PYTHON_NAME
-    mkdir -p $PYTHON_BUILD_DIR
-    pushd $PYTHON_BUILD_DIR
-    $PYTHON_SOURCE/configure
-    run_make
-    PYTHON_EXECUTABLE="$PYTHON_BUILD_DIR/python"
-    popd
-  fi
-}
+TP_NAME_TO_ARCHIVE_NAME["llvm"]="llvm-${LLVM_VERSION}.src.tar.gz"
 
 build_llvm() {
   create_build_dir_and_prepare "$LLVM_SOURCE"
@@ -56,8 +31,6 @@ build_llvm() {
   fi
   local TOOLS_ARGS=
   local LLVM_BUILD_TYPE=$1
-
-  build_or_find_python
 
   # Always disabled; these subprojects are built standalone.
   TOOLS_ARGS="$TOOLS_ARGS -DLLVM_TOOL_LIBCXX_BUILD=OFF"
@@ -102,6 +75,10 @@ build_llvm() {
          $PREFIX/lib/clang/ \
          $PREFIX/lib/cmake/{llvm,clang}
 
+  local PYTHON_EXECUTABLE=$( which python )
+  if [[ ! -f ${PYTHON_EXECUTABLE:-} ]]; then
+    fatal "Could not find Python -- needed to build LLVM."
+  fi
   (
     set_build_env_vars
     YB_REMOTE_BUILD=0 cmake \

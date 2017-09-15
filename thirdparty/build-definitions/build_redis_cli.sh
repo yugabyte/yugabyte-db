@@ -4,8 +4,11 @@
 
 REDIS_VERSION=4.0.1
 REDIS_DIR=$TP_SOURCE_DIR/redis-${REDIS_VERSION}
-TP_NAME_TO_SRC_DIR["redis"]=$REDIS_DIR
-REDIS_URL="s3://binaries.yugabyte.com/redis/redis-${REDIS_VERSION}.tar.gz"
+REDIS_URL="https://github.com/YugaByte/redis/archive/${REDIS_VERSION}.tar.gz"
+
+TP_NAME_TO_SRC_DIR["redis_cli"]=$REDIS_DIR
+TP_NAME_TO_ARCHIVE_NAME["redis_cli"]="redis-${REDIS_VERSION}.tar.gz"
+TP_NAME_TO_URL["redis_cli"]=$REDIS_URL
 
 build_redis_cli() {
   create_build_dir_and_prepare "$REDIS_DIR"

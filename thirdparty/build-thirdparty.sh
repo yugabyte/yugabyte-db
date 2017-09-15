@@ -314,7 +314,6 @@ F_GFLAGS=""
 F_GLOG=""
 F_GMOCK=""
 F_GPERFTOOLS=""
-F_GSG=""
 F_LIBEV=""
 F_LIBSTDCXX=""
 F_LIBUNWIND=""
@@ -386,8 +385,6 @@ while [[ $# -gt 0 ]]; do
                     F_GMOCK=1 ;;
     "gperftools")   building_what+=( gperftools )
                     F_GPERFTOOLS=1 ;;
-    "gsg")          building_what+=( gsg )
-                    F_GSG=1 ;;
     "libev")        building_what+=( libev )
                     F_LIBEV=1 ;;
     "libstdcxx")    building_what+=( libstdcxx )
@@ -414,7 +411,7 @@ while [[ $# -gt 0 ]]; do
                     F_LIBBACKTRACE=1 ;;
     "cqlsh")        building_what+=( cqlsh )
                     F_CQLSH=1 ;;
-    "redis-cli")    building_what+=( redis_cli )
+    "redis_cli")    building_what+=( redis_cli )
                     F_REDIS_CLI=1 ;;
     *)
       echo "Invalid option: $1" >&2
@@ -587,10 +584,6 @@ if [[ -z ${YB_THIRDPARTY_TSAN_ONLY_BUILD:-} ]]; then
   fi
 
   build_boost_uuid
-
-  if [ -n "$F_ALL" -o -n "$F_GSG" ]; then
-    do_build_if_necessary cpplint
-  fi
 
   if [ -n "$F_ALL" -o -n "$F_GCOVR" ]; then
     do_build_if_necessary gcovr

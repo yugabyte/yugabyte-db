@@ -12,6 +12,7 @@
 SQUEASEL_VERSION=8ac777a122fccf0358cb8562e900f8e9edd9ed11
 SQUEASEL_DIR=$TP_SOURCE_DIR/squeasel-${SQUEASEL_VERSION}
 TP_NAME_TO_SRC_DIR["squeasel"]=$SQUEASEL_DIR
+TP_NAME_TO_ARCHIVE_NAME["squeasel"]="squeasel-${SQUEASEL_VERSION}.tar.gz"
 
 build_squeasel() {
   # Mongoose's Makefile builds a standalone web server, whereas we just want

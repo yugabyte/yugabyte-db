@@ -54,6 +54,12 @@ declare -A TP_NAME_TO_SRC_DIR
 # A set of valid dependency names. Values are always 1.
 declare -A TP_VALID_DEP_NAME_SET
 
+# Third-party dependency name to the archive name (usually .tar.gz or .zip) used locally.
+declare -A TP_NAME_TO_ARCHIVE_NAME
+
+# Third-party dependency name to download URL.
+declare -A TP_NAME_TO_URL
+
 # These flags influence how third-party dependencies are being built. We show the values of these
 # flags before each third-party dependency build and also export them.
 readonly YB_THIRDPARTY_COMPILER_SETTING_VARS=(

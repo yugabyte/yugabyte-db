@@ -3,6 +3,7 @@
 PROTOBUF_VERSION=2.6.1
 PROTOBUF_DIR=$TP_SOURCE_DIR/protobuf-$PROTOBUF_VERSION
 TP_NAME_TO_SRC_DIR["protobuf"]=$PROTOBUF_DIR
+TP_NAME_TO_ARCHIVE_NAME["protobuf"]="protobuf-${PROTOBUF_VERSION}.tar.gz"
 
 build_protobuf() {
   create_build_dir_and_prepare "$PROTOBUF_DIR"
