@@ -115,7 +115,7 @@ void Webserver::RootHandler(const Webserver::WebRequest& args, stringstream* out
   }
   (*output) << "<hr/>\n";
   (*output) << "<h2>Version Info</h2>\n";
-  (*output) << "<pre>" << EscapeForHtmlToString(VersionInfo::GetAllVersionInfo()) << "</pre>";
+  (*output) << "<pre>" << EscapeForHtmlToString(VersionInfo::GetShortVersionString()) << "</pre>";
 }
 
 void Webserver::BuildArgumentMap(const string& args, ArgumentMap* output) {

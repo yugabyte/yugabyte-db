@@ -51,16 +51,16 @@ string VersionInfo::GetGitHash() {
 }
 
 string VersionInfo::GetShortVersionString() {
-  return strings::Substitute("yb $0 (rev $1)",
+  return strings::Substitute("version $0 (build_type $1)",
                              YB_VERSION_STRING,
-                             GetGitHash());
+                             YB_BUILD_TYPE);
 }
 
 string VersionInfo::GetAllVersionInfo() {
   string ret = strings::Substitute(
-      "yb $0\n"
+      "version $0\n"
       "revision $1\n"
-      "build type $2\n"
+      "build_type $2\n"
       "built by $3 at $4 on $5",
       YB_VERSION_STRING,
       GetGitHash(),

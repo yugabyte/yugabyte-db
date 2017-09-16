@@ -271,7 +271,7 @@ void DumpFlagsXML() {
 }
 
 void ShowVersionAndExit() {
-  cout << VersionInfo::GetAllVersionInfo() << endl;
+  cout << VersionInfo::GetShortVersionString() << endl;
   exit(0);
 }
 
