@@ -14,6 +14,8 @@
 #include <thread>
 
 #include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/db/column_family.h"
+#include "yb/rocksdb/db/internal_stats.h"
 
 #include "yb/common/partial_row.h"
 
@@ -30,6 +32,10 @@
 #include "yb/util/tostring.h"
 
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
+DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
+DECLARE_int32(rocksdb_level0_stop_writes_trigger);
+
+using namespace std::literals;
 
 namespace yb {
 namespace docdb {
@@ -683,19 +689,17 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(p=1000, l=1, w=2)]) -> 30; t
   EXPECT_EQ(30, row_block.row(0).column(3).int32_value());
 }
 
-TEST_F(DocOperationTest, MaxFileSizeForCompaction) {
-  google::FlagSaver flag_saver;
+namespace {
 
-  ASSERT_OK(DisableCompactions());
-  auto schema = CreateSchema();
+size_t GenerateFiles(int total_batches, DocOperationTest* test) {
+  auto schema = test->CreateSchema();
 
   auto t0 = HybridTime::FromMicrosecondsAndLogicalValue(1000, 0);
-  const int kTotalBatches = 20;
   const int kBigFileFrequency = 7;
   const int kBigFileRows = 10000;
   size_t expected_files = 0;
   bool first = true;
-  for (int i = 0; i != kTotalBatches; ++i) {
+  for (int i = 0; i != total_batches; ++i) {
     int base = i * kBigFileRows;
     int count;
     if (i % kBigFileFrequency == 0) {
@@ -710,10 +714,33 @@ TEST_F(DocOperationTest, MaxFileSizeForCompaction) {
       }
     }
     for (int j = base; j != base + count; ++j) {
-      WriteYQLRow(YQLWriteRequestPB_YQLStmtType_YQL_STMT_INSERT, schema, {j, j, j, j}, 1000000, t0);
+      test->WriteYQLRow(
+          YQLWriteRequestPB_YQLStmtType_YQL_STMT_INSERT, schema, {j, j, j, j}, 1000000, t0);
     }
-    ASSERT_OK(FlushRocksDB());
+    EXPECT_OK(test->FlushRocksDB());
   }
+  return expected_files;
+}
+
+void WaitCompactionsDone(rocksdb::DB* db) {
+  for (;;) {
+    std::this_thread::sleep_for(500ms);
+    uint64_t value = 0;
+    ASSERT_TRUE(db->GetIntProperty(rocksdb::DB::Properties::kNumRunningCompactions, &value));
+    if (value == 0) {
+      break;
+    }
+  }
+}
+
+} // namespace
+
+TEST_F(DocOperationTest, MaxFileSizeForCompaction) {
+  google::FlagSaver flag_saver;
+
+  ASSERT_OK(DisableCompactions());
+  const int kTotalBatches = 20;
+  auto expected_files = GenerateFiles(kTotalBatches, this);
 
   std::vector<rocksdb::LiveFileMetaData> files;
   rocksdb()->GetLiveFilesMetaData(&files);
@@ -722,12 +749,37 @@ TEST_F(DocOperationTest, MaxFileSizeForCompaction) {
   FLAGS_rocksdb_max_file_size_for_compaction = 100_KB;
   ASSERT_OK(ReinitDBOptions());
 
-  // Wait some time for background compactions to happen.
-  std::this_thread::sleep_for(std::chrono::seconds(2));
+  WaitCompactionsDone(rocksdb());
 
   files.clear();
   rocksdb()->GetLiveFilesMetaData(&files);
   ASSERT_EQ(expected_files, files.size());
+}
+
+TEST_F(DocOperationTest, MaxFileSizeWithWritesTrigger) {
+  google::FlagSaver flag_saver;
+
+  ASSERT_OK(DisableCompactions());
+  const int kTotalBatches = 20;
+  GenerateFiles(kTotalBatches, this);
+
+  FLAGS_rocksdb_max_file_size_for_compaction = 100_KB;
+  ASSERT_OK(ReinitDBOptions());
+
+  WaitCompactionsDone(rocksdb());
+
+  FLAGS_rocksdb_level0_slowdown_writes_trigger = 2;
+  FLAGS_rocksdb_level0_stop_writes_trigger = 1;
+  ASSERT_OK(ReinitDBOptions());
+
+  std::vector<rocksdb::LiveFileMetaData> files;
+  rocksdb()->GetLiveFilesMetaData(&files);
+  ASSERT_GE(files.size(), 3);
+
+  auto handle_impl = down_cast<rocksdb::ColumnFamilyHandleImpl*>(rocksdb_->DefaultColumnFamily());
+  auto stats = handle_impl->cfd()->internal_stats();
+  ASSERT_EQ(0, stats->GetCFStats(rocksdb::InternalStats::LEVEL0_NUM_FILES_TOTAL));
+  ASSERT_EQ(0, stats->GetCFStats(rocksdb::InternalStats::LEVEL0_SLOWDOWN_TOTAL));
 }
 
 }  // namespace docdb

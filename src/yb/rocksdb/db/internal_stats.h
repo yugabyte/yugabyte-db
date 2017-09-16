@@ -22,11 +22,14 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 //
 
-#pragma once
-#include "yb/rocksdb/db/version_set.h"
+#ifndef YB_ROCKSDB_DB_INTERNAL_STATS_H
+#define YB_ROCKSDB_DB_INTERNAL_STATS_H
 
+#pragma once
 #include <vector>
 #include <string>
+
+#include "yb/rocksdb/db/version_set.h"
 
 class ColumnFamilyData;
 
@@ -208,6 +211,10 @@ class InternalStats {
   void AddCFStats(InternalCFStatsType type, uint64_t value) {
     cf_stats_value_[type] += value;
     ++cf_stats_count_[type];
+  }
+
+  uint64_t GetCFStats(InternalCFStatsType type) {
+    return cf_stats_value_[type];
   }
 
   void AddDBStats(InternalDBStatsType type, uint64_t value) {
@@ -454,3 +461,5 @@ class InternalStats {
 #endif  // !ROCKSDB_LITE
 
 }  // namespace rocksdb
+
+#endif // YB_ROCKSDB_DB_INTERNAL_STATS_H
