@@ -35,7 +35,6 @@
 
 #include <string>
 
-#include "yb/util/result.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -54,9 +53,6 @@ std::string DirName(const std::string& path);
 // Return the terminal component of a path.
 // This is like basename(3) but for C++ strings.
 std::string BaseName(const std::string& path);
-
-// Returns the absolute path for this binary file.
-Result<std::string> GetExecutablePath();
 
 // We ask the user to specify just a set of top level dirs where we can place data. However,
 // under those, we create our own structure, which includes one level worth of generic suffix

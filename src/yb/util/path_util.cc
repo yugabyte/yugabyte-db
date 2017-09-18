@@ -37,15 +37,11 @@
 
 #include <string>
 
-#include <glog/logging.h>
-
-#include "yb/util/errno.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/gutil/gscoped_ptr.h"
 
 #if defined(__APPLE__)
-#include <mach-o/dyld.h>
 #include <mutex>
 #endif // defined(__APPLE__)
 
@@ -78,30 +74,6 @@ string DirName(const string& path) {
 string BaseName(const string& path) {
   gscoped_ptr<char[], FreeDeleter> path_copy(strdup(path.c_str()));
   return basename(path_copy.get());
-}
-
-Result<string> GetExecutablePath() {
-  char path[PATH_MAX];
-#if defined(__APPLE__)
-  uint32_t size = PATH_MAX;
-  if (_NSGetExecutablePath(path, &size) != 0) {
-    return STATUS(InternalError, "Got error from _NSGetExecutablePath(). Unable to determine path");
-  }
-
-  auto real_path = realpath(path, NULL);
-  if (!real_path) {
-    return STATUS_FORMAT(InternalError, "Got error from realpath(). Error: [$0] $1", errno,
-        ErrnoToString(errno));
-  }
-  return string(real_path);
-#else
-  auto count = readlink("/proc/self/exe", path, PATH_MAX);
-  if (count == -1) {
-    return STATUS_FORMAT(InternalError, "Error reading /proc/self/exe for determining path. "
-        "Error: [$0] $1", errno, ErrnoToString(errno));
-  }
-  return string(path, count);
-#endif // defined(__APPLE__)
 }
 
 std::string GetYbDataPath(const std::string& root) {

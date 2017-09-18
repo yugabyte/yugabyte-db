@@ -39,6 +39,7 @@
 
 #include <gflags/gflags.h>
 #include "yb/gutil/strings/substitute.h"
+#include "yb/util/env.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/path_util.h"
 
@@ -99,12 +100,13 @@ static string GetDefaultDocumentRoot() {
   // We assume that the document root is the "www" directory at the same
   // level as the "bin" directory. So, for our example, the doc root will
   // be /opt/yugabyte/tserver/www.
-  auto executable_path = GetExecutablePath();
-  if (!executable_path.ok()) {
-    LOG(WARNING) << "Ignoring status error: " << executable_path.status().ToString();
+  string executable_path;
+  auto status = Env::Default()->GetExecutablePath(&executable_path);
+  if (!status.ok()) {
+    LOG(WARNING) << "Ignoring status error: " << status.ToString();
     return "";
   }
-  const string base_dir = DirName(DirName(*executable_path));
+  const string base_dir = DirName(DirName(executable_path));
   return JoinPathSegments(base_dir, "www");
 }
 
