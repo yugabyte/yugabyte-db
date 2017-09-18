@@ -169,6 +169,7 @@ message ColumnSchemaPB {
 message TablePropertiesPB {
   optional uint64 default_time_to_live = 1;
   optional bool contain_counters = 2;
+  optional bool is_transactional = 3 [default = false];
 }
 
 message SchemaPB {

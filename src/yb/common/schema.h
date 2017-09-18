@@ -465,12 +465,14 @@ class ContiguousRow;
 
 class TableProperties {
  public:
-  TableProperties() : default_time_to_live_(kNoDefaultTtl), contain_counters_(false) {
+  TableProperties() : default_time_to_live_(kNoDefaultTtl), contain_counters_(false),
+      is_transactional_(false) {
   }
 
   TableProperties(const TableProperties& other) {
     default_time_to_live_ = other.default_time_to_live_;
     contain_counters_ = other.contain_counters_;
+    is_transactional_ = other.is_transactional_;
   }
 
   // Containing counters is a internal property instead of a user-defined property, so we don't use
@@ -499,8 +501,16 @@ class TableProperties {
     return contain_counters_;
   }
 
+  bool is_transactional() const {
+    return is_transactional_;
+  }
+
   void SetContainCounters(bool contain_counters) {
     contain_counters_ = contain_counters;
+  }
+
+  void SetTransactional(bool is_transactional) {
+    is_transactional_ = is_transactional;
   }
 
   void ToTablePropertiesPB(TablePropertiesPB *pb) const {
@@ -508,6 +518,7 @@ class TableProperties {
       pb->set_default_time_to_live(default_time_to_live_);
     }
     pb->set_contain_counters(contain_counters_);
+    pb->set_is_transactional(is_transactional_);
   }
 
   static TableProperties FromTablePropertiesPB(const TablePropertiesPB& pb) {
@@ -518,6 +529,9 @@ class TableProperties {
     if (pb.has_contain_counters()) {
       table_properties.SetContainCounters(pb.contain_counters());
     }
+    if (pb.has_is_transactional()) {
+      table_properties.SetTransactional(pb.is_transactional());
+    }
     return table_properties;
   }
 
@@ -525,17 +539,22 @@ class TableProperties {
     if (pb.has_default_time_to_live()) {
       SetDefaultTimeToLive(pb.default_time_to_live());
     }
+    if (pb.has_is_transactional()) {
+      SetTransactional(pb.is_transactional());
+    }
   }
 
   void Reset() {
     default_time_to_live_ = kNoDefaultTtl;
     contain_counters_ = false;
+    is_transactional_ = false;
   }
 
  private:
   static const int kNoDefaultTtl = -1;
   int64_t default_time_to_live_;
   bool contain_counters_;
+  bool is_transactional_;
 };
 
 // The schema for a set of rows.
