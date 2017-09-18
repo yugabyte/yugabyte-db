@@ -93,5 +93,13 @@ public class AppConfig {
   // The number of seconds after which we should refresh the partition metadata.
   public int partitionMetadataRefreshSeconds = 60;
 
+  // Name of the table to create or drop. When set, used along with shouldDropTable to detect
+  // the operation against the table name. If not provided on command line, defaults to the apps
+  // default chosen table name.
+  public String tableName = null;
+
+  // Does the table need to be dropped.
+  public boolean shouldDropTable = false;
+
   public String localDc;
 }

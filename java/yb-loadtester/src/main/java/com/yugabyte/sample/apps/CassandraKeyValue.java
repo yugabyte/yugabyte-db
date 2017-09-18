@@ -51,8 +51,8 @@ public class CassandraKeyValue extends AppBase {
     appConfig.numUniqueKeysToWrite = NUM_UNIQUE_KEYS;
   }
 
-  // The table name.
-  private String tableName = CassandraKeyValue.class.getSimpleName();
+  // The default table name to create and use for CRUD ops.
+  private static final String DEFAULT_TABLE_NAME = CassandraKeyValue.class.getSimpleName();
 
   // The shared prepared select statement for fetching the data.
   private static volatile PreparedStatement preparedSelect;
@@ -68,14 +68,14 @@ public class CassandraKeyValue extends AppBase {
    */
   @Override
   public void dropTable() {
-    dropCassandraTable(tableName);
+    dropCassandraTable(getTableName());
   }
 
   @Override
   public List<String> getCreateTableStatements() {
     String create_stmt = String.format(
-      "CREATE TABLE IF NOT EXISTS %s (k varchar, v varchar, primary key (k))",
-      tableName);
+      "CREATE TABLE IF NOT EXISTS %s (k varchar, v varchar, primary key (k))", getTableName());
+
     if (appConfig.tableTTLSeconds > 0) {
       create_stmt += " WITH default_time_to_live = " + appConfig.tableTTLSeconds;
     }
@@ -99,8 +99,12 @@ public class CassandraKeyValue extends AppBase {
     return preparedSelect;
   }
 
+  public String getTableName() {
+    return appConfig.tableName != null ? appConfig.tableName : DEFAULT_TABLE_NAME;
+  }
+
   private PreparedStatement getPreparedSelect()  {
-    return getPreparedSelect(String.format("SELECT k, v FROM %s WHERE k = ?;", tableName),
+    return getPreparedSelect(String.format("SELECT k, v FROM %s WHERE k = ?;", getTableName()),
                              appConfig.localReads);
   }
 
@@ -149,7 +153,8 @@ public class CassandraKeyValue extends AppBase {
   }
 
   protected PreparedStatement getPreparedInsert()  {
-    return getPreparedInsert(String.format("INSERT INTO %s (k, v) VALUES (?, ?);", tableName));
+    return getPreparedInsert(String.format("INSERT INTO %s (k, v) VALUES (?, ?);",
+                             getTableName()));
   }
 
   @Override

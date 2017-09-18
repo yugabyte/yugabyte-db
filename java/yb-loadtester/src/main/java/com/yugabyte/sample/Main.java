@@ -72,9 +72,10 @@ public class Main {
 
   public Main(CmdLineOpts cmdLineOpts) {
     this.cmdLineOpts = cmdLineOpts;
-    // Do not enable the metrics in app if it is a read-only workload.
+    // Do not enable metrics in app if it is a read-only workload or if it for dropping a table.
     // It will be enabled after the setup step is done in run().
-    this.app = cmdLineOpts.createAppInstance(cmdLineOpts.getNumWriterThreads() != 0);
+    this.app = cmdLineOpts.createAppInstance(cmdLineOpts.getNumWriterThreads() != 0 &&
+                                             cmdLineOpts.shouldDropTable());
   }
 
   /**
@@ -141,6 +142,12 @@ public class Main {
         return;
       }
 
+      // Only drop the table if that option is present in the command line.
+      if (cmdLineOpts.shouldDropTable()) {
+        app.dropTable();
+        System.exit(0);
+      }
+
       // Create the table if needed.
       if (!cmdLineOpts.getReuseExistingTable()) {
         app.dropTable();
@@ -157,12 +164,12 @@ public class Main {
       // Create the reader and writer threads.
       int idx = 0;
       for (; idx < cmdLineOpts.getNumWriterThreads(); idx++) {
-        iopsThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(), IOType.Write,
-            app.appConfig.printAllExceptions));
+        iopsThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(),
+                                       IOType.Write, app.appConfig.printAllExceptions));
       }
       for (; idx < cmdLineOpts.getNumWriterThreads() + cmdLineOpts.getNumReaderThreads(); idx++) {
-        iopsThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(), IOType.Read,
-            app.appConfig.printAllExceptions));
+        iopsThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(),
+                                       IOType.Read, app.appConfig.printAllExceptions));
       }
 
       // Start the reader and writer threads.
@@ -196,8 +203,8 @@ public class Main {
     AppBase.appConfig.numKeysToWrite = AppBase.appConfig.numUniqueKeysToWrite;
     List<IOPSThread> writeThreads = new ArrayList<IOPSThread>();
     for (int idx = 0; idx < 100; idx++) {
-      writeThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(false), IOType.Write,
-        app.appConfig.printAllExceptions));
+      writeThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(false),
+                                      IOType.Write, app.appConfig.printAllExceptions));
     }
     // Start the reader and writer threads.
     for (IOPSThread writeThread : writeThreads) {

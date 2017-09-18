@@ -156,7 +156,7 @@ public class CmdLineOpts {
    * Creates new instance of the app.
    */
   public AppBase createAppInstance() {
-    return createAppInstance(true);
+    return createAppInstance(true /* enableMetrics */);
   }
 
   /**
@@ -208,6 +208,10 @@ public class CmdLineOpts {
 
   public boolean doErrorChecking() {
     return AppBase.appConfig.sanityCheckAtEnd;
+  }
+
+  public boolean shouldDropTable() {
+    return AppBase.appConfig.shouldDropTable;
   }
 
   private static Class<? extends AppBase> getAppClass(AppName workloadType)
@@ -283,6 +287,19 @@ public class CmdLineOpts {
     if (cmd.hasOption("print_all_exceptions")) {
       AppBase.appConfig.printAllExceptions = true;
     }
+    if (cmd.hasOption("create_table_name") && cmd.hasOption("drop_table_name")) {
+      LOG.error("Both create and drop table options cannot be provided together.");
+      System.exit(1);
+    }
+    if (cmd.hasOption("create_table_name")) {
+      AppBase.appConfig.tableName = cmd.getOptionValue("create_table_name");
+      LOG.info("Create table name: " + AppBase.appConfig.tableName);
+    }
+    if (cmd.hasOption("drop_table_name")) {
+      AppBase.appConfig.tableName = cmd.getOptionValue("drop_table_name");
+      LOG.info("Drop table name: " + AppBase.appConfig.tableName);
+      AppBase.appConfig.shouldDropTable = true;
+    }
     if (cmd.hasOption("refresh_partition_metadata_seconds")) {
       int refreshFrequencySeconds = Integer.parseInt(
         cmd.getOptionValue("refresh_partition_metadata_seconds"));
@@ -344,6 +361,9 @@ public class CmdLineOpts {
     options.addOption("nouuid", false,
                       "Do not use a UUID. Keys will be key:1, key:2, key:3, "
                           + "instead of <uuid>:1, <uuid>:2, <uuid>:3 etc.");
+    options.addOption("create_table_name", true, "The name of the CQL table to create.");
+    options.addOption("drop_table_name", true, "The name of the CQL table to drop. " +
+                      "No other operations are performed.");
     options.addOption("reuse_table", false, "Reuse table if it already exists.");
     options.addOption("read_only", false, "Read-only workload. " +
         "Values must have been written previously and uuid must be provided. " +
