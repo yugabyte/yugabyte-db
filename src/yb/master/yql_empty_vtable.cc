@@ -23,10 +23,10 @@ YQLEmptyVTable::YQLEmptyVTable(const TableName& table_name,
     : YQLVirtualTable(table_name, master, schema) {
 }
 
-Status YQLEmptyVTable::RetrieveData(const YQLReadRequestPB& request,
-                                    std::unique_ptr<YQLRowBlock>* vtable) const {
+Status YQLEmptyVTable::RetrieveData(const QLReadRequestPB& request,
+                                    std::unique_ptr<QLRowBlock>* vtable) const {
   // Empty rowblock.
-  vtable->reset(new YQLRowBlock(schema_));
+  vtable->reset(new QLRowBlock(schema_));
   return Status::OK();
 }
 

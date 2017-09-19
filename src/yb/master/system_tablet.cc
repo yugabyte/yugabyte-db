@@ -28,7 +28,7 @@ const Schema& SystemTablet::SchemaRef() const {
   return schema_;
 }
 
-const common::YQLStorageIf& SystemTablet::YQLStorage() const {
+const common::QLStorageIf& SystemTablet::QLStorage() const {
   return *yql_virtual_table_;
 }
 
@@ -59,9 +59,9 @@ CHECKED_STATUS SystemTablet::HandleRedisReadRequest(
   return STATUS(NotSupported, "RedisReadRequest is not supported for system tablets!");
 }
 
-CHECKED_STATUS SystemTablet::CreatePagingStateForRead(const YQLReadRequestPB& yql_read_request,
-                                                      const YQLRowBlock& rowblock,
-                                                      YQLResponsePB* response) const {
+CHECKED_STATUS SystemTablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
+                                                      const QLRowBlock& rowblock,
+                                                      QLResponsePB* response) const {
   // We don't support pagination for system tablets. Although we need to return an OK() status
   // here since we don't want to raise this as an error to the client, but just want to avoid
   // populating any paging state here for the client.

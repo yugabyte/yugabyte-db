@@ -198,10 +198,10 @@ class WriteTransactionState : public TransactionState {
     row_ops_.swap(*new_ops);
   }
 
-  // The YQL write operations that return rowblocks that need to be returned as RPC sidecars
+  // The QL write operations that return rowblocks that need to be returned as RPC sidecars
   // after the transaction completes.
-  std::vector<std::unique_ptr<docdb::YQLWriteOperation>>* yql_write_ops() {
-    return &yql_write_ops_;
+  std::vector<std::unique_ptr<docdb::QLWriteOperation>>* ql_write_ops() {
+    return &ql_write_ops_;
   }
 
   void ReplaceDocDBLocks(LockBatch docdb_locks) {
@@ -241,9 +241,9 @@ class WriteTransactionState : public TransactionState {
   // Protected by superclass's txn_state_lock_.
   std::vector<RowOp*> row_ops_;
 
-  // The YQL write operations that return rowblocks that need to be returned as RPC sidecars
+  // The QL write operations that return rowblocks that need to be returned as RPC sidecars
   // after the transaction completes.
-  std::vector<std::unique_ptr<docdb::YQLWriteOperation>> yql_write_ops_;
+  std::vector<std::unique_ptr<docdb::QLWriteOperation>> ql_write_ops_;
 
   // Store the ids that have been locked for docdb transaction. They need to be released on commit.
   LockBatch docdb_locks_;

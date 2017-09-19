@@ -251,12 +251,12 @@ Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
   in_flight_op->yb_op = yb_op;
   in_flight_op->state = InFlightOpState::kLookingUpTablet;
 
-  if (yb_op->type() == YBOperation::Type::YQL_READ) {
+  if (yb_op->type() == YBOperation::Type::QL_READ) {
     if (!in_flight_op->partition_key.empty()) {
       down_cast<YBqlOp *>(yb_op.get())->SetHashCode(
         PartitionSchema::DecodeMultiColumnHashValue(in_flight_op->partition_key));
     }
-  } else if (yb_op->type() == YBOperation::Type::YQL_WRITE) {
+  } else if (yb_op->type() == YBOperation::Type::QL_WRITE) {
     down_cast<YBqlOp*>(yb_op.get())->SetHashCode(
       PartitionSchema::DecodeMultiColumnHashValue(in_flight_op->partition_key));
   } else if (yb_op->type() == YBOperation::Type::REDIS_READ) {
@@ -471,7 +471,7 @@ void Batcher::FlushBuffer(RemoteTablet* tablet, const InFlightOps& ops) {
     InFlightOps leader_only_reads;
     InFlightOps consistent_prefix_reads;
     for (InFlightOpPtr op : ops) {
-      if (op->yb_op->type() == YBOperation::Type::YQL_READ &&
+      if (op->yb_op->type() == YBOperation::Type::QL_READ &&
           std::static_pointer_cast<YBqlReadOp>(op->yb_op)->yb_consistency_level() ==
               YBConsistencyLevel::CONSISTENT_PREFIX) {
         consistent_prefix_reads.push_back(op);

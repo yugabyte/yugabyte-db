@@ -19,7 +19,7 @@
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_yql_scanspec.h"
+#include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksdb/db/compaction.h"
@@ -98,8 +98,8 @@ Status DocRowwiseIterator::Init(ScanSpec *spec) {
   return Status::OK();
 }
 
-Status DocRowwiseIterator::Init(const common::YQLScanSpec& spec) {
-  const DocYQLScanSpec& doc_spec = dynamic_cast<const DocYQLScanSpec&>(spec);
+Status DocRowwiseIterator::Init(const common::QLScanSpec& spec) {
+  const DocQLScanSpec& doc_spec = dynamic_cast<const DocQLScanSpec&>(spec);
 
   // TOOD(bogdan): decide if this is a good enough heuristic for using blooms for scans.
   DocKey lower_doc_key;
@@ -281,13 +281,13 @@ CHECKED_STATUS SetKuduPrimaryKeyColumnValues(const Schema& projection,
   return Status::OK();
 }
 
-// Set primary key column values (hashed or range columns) in a YQL row value map.
-CHECKED_STATUS SetYQLPrimaryKeyColumnValues(const Schema& schema,
+// Set primary key column values (hashed or range columns) in a QL row value map.
+CHECKED_STATUS SetQLPrimaryKeyColumnValues(const Schema& schema,
                                             const size_t begin_index,
                                             const size_t column_count,
                                             const char* column_type,
                                             const vector<PrimitiveValue>& values,
-                                            YQLTableRow* table_row) {
+                                            QLTableRow* table_row) {
   if (values.size() != column_count) {
     return STATUS_SUBSTITUTE(Corruption, "$0 $1 primary key columns found but $2 expected",
                              values.size(), column_type, column_count);
@@ -300,8 +300,8 @@ CHECKED_STATUS SetYQLPrimaryKeyColumnValues(const Schema& schema,
   }
   for (size_t i = 0, j = begin_index; i < column_count; i++, j++) {
     const auto column_id = schema.column_id(j);
-    const auto yql_type = schema.column(j).type();
-    PrimitiveValue::ToYQLValuePB(values[i], yql_type, &(*table_row)[column_id].value);
+    const auto ql_type = schema.column(j).type();
+    PrimitiveValue::ToQLValuePB(values[i], ql_type, &(*table_row)[column_id].value);
   }
   return Status::OK();
 }
@@ -363,7 +363,7 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
       RETURN_NOT_OK(PrimitiveValueToKudu(projection_, i, *value, &dst_row));
     }
     if (is_null && !is_nullable) {
-      // From D1319 (mikhail) to make some tests run with YQL tables:
+      // From D1319 (mikhail) to make some tests run with QL tables:
       // We can't use dst->schema().column(i) here, because it might not provide the correct read
       // default. Instead, we get the matching column's schema from the server-side schema that
       // the iterator was created with.
@@ -396,7 +396,7 @@ bool DocRowwiseIterator::IsNextStaticColumn() const {
   return schema_.has_statics() && row_key_.range_group().empty();
 }
 
-Status DocRowwiseIterator::NextRow(const Schema& projection, YQLTableRow* table_row) {
+Status DocRowwiseIterator::NextRow(const Schema& projection, QLTableRow* table_row) {
   if (!status_.ok()) {
     // An error happened in HasNext.
     return status_;
@@ -413,23 +413,23 @@ Status DocRowwiseIterator::NextRow(const Schema& projection, YQLTableRow* table_
   }
 
   // Populate the key column values from the doc key. The key column values in doc key were
-  // written in the same order as in the table schema (see DocKeyFromYQLKey). If the range columns
+  // written in the same order as in the table schema (see DocKeyFromQLKey). If the range columns
   // are present, read them also.
-  RETURN_NOT_OK(SetYQLPrimaryKeyColumnValues(
+  RETURN_NOT_OK(SetQLPrimaryKeyColumnValues(
       schema_, 0, schema_.num_hash_key_columns(),
       "hash", row_key_.hashed_group(), table_row));
   if (!row_key_.range_group().empty()) {
-    RETURN_NOT_OK(SetYQLPrimaryKeyColumnValues(
+    RETURN_NOT_OK(SetQLPrimaryKeyColumnValues(
         schema_, schema_.num_hash_key_columns(), schema_.num_range_key_columns(),
         "range", row_key_.range_group(), table_row));
   }
 
   for (size_t i = projection.num_key_columns(); i < projection.num_columns(); i++) {
     const auto& column_id = projection.column_id(i);
-    const auto yql_type = projection.column(i).type();
+    const auto ql_type = projection.column(i).type();
     const SubDocument* column_value = row_.GetChild(PrimitiveValue(column_id));
     if (column_value != nullptr) {
-      SubDocument::ToYQLValuePB(*column_value, yql_type, &(*table_row)[column_id].value);
+      SubDocument::ToQLValuePB(*column_value, ql_type, &(*table_row)[column_id].value);
       (*table_row)[column_id].ttl_seconds = column_value->GetTtl();
       (*table_row)[column_id].write_time = column_value->GetWritetime();
     }
@@ -440,7 +440,7 @@ Status DocRowwiseIterator::NextRow(const Schema& projection, YQLTableRow* table_
 
 void DocRowwiseIterator::GetIteratorStats(std::vector<IteratorStats>* stats) const {
   // A no-op implementation that adds new IteratorStats objects. This is an attempt to fix
-  // linked_list-test with the YQL table type.
+  // linked_list-test with the QL table type.
   for (int i = 0; i < projection_.num_columns(); i++) {
     stats->emplace_back();
   }
@@ -461,10 +461,10 @@ CHECKED_STATUS DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) 
   return Status::OK();
 }
 
-CHECKED_STATUS DocRowwiseIterator::SetPagingStateIfNecessary(const YQLReadRequestPB& request,
-                                                             const YQLRowBlock& rowblock,
+CHECKED_STATUS DocRowwiseIterator::SetPagingStateIfNecessary(const QLReadRequestPB& request,
+                                                             const QLRowBlock& rowblock,
                                                              const size_t row_count_limit,
-                                                             YQLResponsePB* response) const {
+                                                             QLResponsePB* response) const {
   // When the "limit" number of rows are returned and we are asked to return the paging state,
   // return the parition key and row key of the next row to read in the paging state if there are
   // still more rows to read. Otherwise, leave the paging state empty which means we are done
@@ -473,7 +473,7 @@ CHECKED_STATUS DocRowwiseIterator::SetPagingStateIfNecessary(const YQLReadReques
     SubDocKey next_key;
     RETURN_NOT_OK(GetNextReadSubDocKey(&next_key));
     if (!next_key.doc_key().empty()) {
-      YQLPagingStatePB* paging_state = response->mutable_paging_state();
+      QLPagingStatePB* paging_state = response->mutable_paging_state();
       paging_state->set_next_partition_key(
           PartitionSchema::EncodeMultiColumnHashValue(next_key.doc_key().hash()));
       paging_state->set_next_row_key(next_key.Encode(true /* include_hybrid_time */).data());

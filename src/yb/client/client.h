@@ -297,7 +297,7 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   CHECKED_STATUS CreateUDType(const std::string &namespace_name,
                               const std::string &type_name,
                               const std::vector<std::string> &field_names,
-                              const std::vector<std::shared_ptr<YQLType>> &field_types);
+                              const std::vector<std::shared_ptr<QLType>> &field_types);
 
   // Delete a (user-defined) type by name.
   CHECKED_STATUS DeleteUDType(const std::string &namespace_name, const std::string &type_name);
@@ -305,7 +305,7 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // Retrieve a (user-defined) type by name.
   CHECKED_STATUS GetUDType(const std::string &namespace_name,
                            const std::string &type_name,
-                           std::shared_ptr<YQLType> *yql_type);
+                           std::shared_ptr<QLType> *ql_type);
 
   // Find the number of tservers. This function should not be called frequently for reading or
   // writing actual data. Currently, it is called only for SQL DDL statements.
@@ -488,7 +488,7 @@ class YBMetaDataCache {
   // in this client, this will do an RPC to ensure that the type exists and look up its info.
   CHECKED_STATUS GetUDType(const string &keyspace_name,
                            const string &type_name,
-                           std::shared_ptr<YQLType> *yql_type,
+                           std::shared_ptr<QLType> *ql_type,
                            bool *cache_used);
 
   // Remove the type from cached_types_ if it is in the cache.
@@ -504,9 +504,9 @@ class YBMetaDataCache {
   YBTableMap cached_tables_;
   std::mutex cached_tables_mutex_;
 
-  // Map from type-name to YQLType instances.
+  // Map from type-name to QLType instances.
   typedef std::unordered_map<std::pair<string, string>,
-                             std::shared_ptr<YQLType>,
+                             std::shared_ptr<QLType>,
                              boost::hash<std::pair<string, string>>> YBTypeMap;
   YBTypeMap cached_types_;
   std::mutex cached_types_mutex_;
@@ -643,14 +643,14 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   YBUpdate* NewUpdate();
   YBDelete* NewDelete();
 
-  // Create a new YQL operation for this table.
-  YBqlWriteOp* NewYQLWrite();
-  YBqlWriteOp* NewYQLInsert();
-  YBqlWriteOp* NewYQLUpdate();
-  YBqlWriteOp* NewYQLDelete();
+  // Create a new QL operation for this table.
+  YBqlWriteOp* NewQLWrite();
+  YBqlWriteOp* NewQLInsert();
+  YBqlWriteOp* NewQLUpdate();
+  YBqlWriteOp* NewQLDelete();
 
-  YBqlReadOp* NewYQLRead();
-  YBqlReadOp* NewYQLSelect();
+  YBqlReadOp* NewQLRead();
+  YBqlReadOp* NewQLSelect();
 
   // Create a new comparison predicate which can be used for scanners
   // on this table.

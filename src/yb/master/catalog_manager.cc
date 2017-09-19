@@ -897,7 +897,7 @@ Status CatalogManager::PrepareSystemTables() {
       kSystemSchemaTriggersTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
   RETURN_NOT_OK((PrepareSystemTableTemplate<YQLViewsVTable>(
       kSystemSchemaViewsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLTypesVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<QLTypesVTable>(
       kSystemSchemaTypesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
 
   // System auth tables
@@ -2823,7 +2823,7 @@ Status CatalogManager::CreateUDType(const CreateUDTypeRequestPB* req,
       metadata->add_field_names(field_name);
     }
 
-    for (const YQLTypePB& field_type : req->field_types()) {
+    for (const QLTypePB& field_type : req->field_types()) {
       metadata->add_field_types()->CopyFrom(field_type);
     }
 
@@ -5040,7 +5040,7 @@ int UDTypeInfo::field_types_size() const {
   return l->data().pb.field_types_size();
 }
 
-const YQLTypePB& UDTypeInfo::field_types(int index) const {
+const QLTypePB& UDTypeInfo::field_types(int index) const {
   auto l = LockForRead();
   return l->data().pb.field_types(index);
 }

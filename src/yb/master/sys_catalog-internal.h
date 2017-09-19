@@ -73,12 +73,12 @@ class SysCatalogWriter {
   template <class PersistentDataEntryClass>
   Status MutateItem(
       const MetadataCowWrapper<PersistentDataEntryClass>* item,
-      const YQLWriteRequestPB::YQLStmtType& op_type) {
-    bool is_write = op_type == YQLWriteRequestPB::YQL_STMT_INSERT ||
-        op_type == YQLWriteRequestPB::YQL_STMT_UPDATE;
+      const QLWriteRequestPB::QLStmtType& op_type) {
+    bool is_write = op_type == QLWriteRequestPB::QL_STMT_INSERT ||
+        op_type == QLWriteRequestPB::QL_STMT_UPDATE;
 
-    YQLWriteRequestPB* yql_write = req_.add_yql_write_batch();
-    yql_write->set_type(op_type);
+    QLWriteRequestPB* ql_write = req_.add_ql_write_batch();
+    ql_write->set_type(op_type);
 
     faststring metadata_buf;
     if (is_write) {
@@ -89,24 +89,24 @@ class SysCatalogWriter {
       }
 
       // Add the metadata column.
-      YQLColumnValuePB* metadata = yql_write->add_column_values();
+      QLColumnValuePB* metadata = ql_write->add_column_values();
       RETURN_NOT_OK(SetColumnId(kSysCatalogTableColMetadata, metadata));
       SetBinaryValue(metadata_buf.ToString(), metadata);
     }
     // Add column type.
-    YQLColumnValuePB* entity_type = yql_write->add_range_column_values();
+    QLColumnValuePB* entity_type = ql_write->add_range_column_values();
     RETURN_NOT_OK(SetColumnId(kSysCatalogTableColType, entity_type));
     SetInt8Value(PersistentDataEntryClass::type(), entity_type);
 
     // Add column id.
-    YQLColumnValuePB* entity_id = yql_write->add_range_column_values();
+    QLColumnValuePB* entity_id = ql_write->add_range_column_values();
     RETURN_NOT_OK(SetColumnId(kSysCatalogTableColId, entity_id));
     SetBinaryValue(item->id(), entity_id);
 
     return Status::OK();
   }
 
-  CHECKED_STATUS SetColumnId(const std::string& column_name, YQLColumnValuePB* col_pb) {
+  CHECKED_STATUS SetColumnId(const std::string& column_name, QLColumnValuePB* col_pb) {
     size_t column_index = schema_with_ids_.find_column(column_name);
     if (column_index == Schema::kColumnNotFound) {
       return STATUS_SUBSTITUTE(NotFound, "Couldn't find column $0 in the schema", column_name);
@@ -115,12 +115,12 @@ class SysCatalogWriter {
     return Status::OK();
   }
 
-  void SetBinaryValue(const std::string& binary_value, YQLColumnValuePB* col_pb) {
-    YQLValue::set_binary_value(binary_value, col_pb->mutable_expr()->mutable_value());
+  void SetBinaryValue(const std::string& binary_value, QLColumnValuePB* col_pb) {
+    QLValue::set_binary_value(binary_value, col_pb->mutable_expr()->mutable_value());
   }
 
-  void SetInt8Value(const int8_t int8_value, YQLColumnValuePB* col_pb) {
-    YQLValue::set_int8_value(int8_value, col_pb->mutable_expr()->mutable_value());
+  void SetInt8Value(const int8_t int8_value, QLColumnValuePB* col_pb) {
+    QLValue::set_int8_value(int8_value, col_pb->mutable_expr()->mutable_value());
   }
 
   const Schema& schema_;
@@ -141,7 +141,7 @@ CHECKED_STATUS SysCatalogTable::AddItem(Item* item) {
 
 template <class Item>
 CHECKED_STATUS SysCatalogTable::AddItems(const vector<Item*>& items) {
-  return MutateItems(items, YQLWriteRequestPB::YQL_STMT_INSERT);
+  return MutateItems(items, QLWriteRequestPB::QL_STMT_INSERT);
 }
 
 template <class Item>
@@ -150,10 +150,10 @@ CHECKED_STATUS SysCatalogTable::AddAndUpdateItems(
     const vector<Item*>& updated_items) {
   auto w = NewWriter();
   for (const auto& item : added_items) {
-    RETURN_NOT_OK(w->MutateItem(item, YQLWriteRequestPB::YQL_STMT_INSERT));
+    RETURN_NOT_OK(w->MutateItem(item, QLWriteRequestPB::QL_STMT_INSERT));
   }
   for (const auto& item : updated_items) {
-    RETURN_NOT_OK(w->MutateItem(item, YQLWriteRequestPB::YQL_STMT_UPDATE));
+    RETURN_NOT_OK(w->MutateItem(item, QLWriteRequestPB::QL_STMT_UPDATE));
   }
   return SyncWrite(w.get());
 }
@@ -167,7 +167,7 @@ CHECKED_STATUS SysCatalogTable::UpdateItem(Item* item) {
 
 template <class Item>
 CHECKED_STATUS SysCatalogTable::UpdateItems(const vector<Item*>& items) {
-  return MutateItems(items, YQLWriteRequestPB::YQL_STMT_UPDATE);
+  return MutateItems(items, QLWriteRequestPB::QL_STMT_UPDATE);
 }
 
 template <class Item>
@@ -179,12 +179,12 @@ CHECKED_STATUS SysCatalogTable::DeleteItem(Item* item) {
 
 template <class Item>
 CHECKED_STATUS SysCatalogTable::DeleteItems(const vector<Item*>& items) {
-  return MutateItems(items, YQLWriteRequestPB::YQL_STMT_DELETE);
+  return MutateItems(items, QLWriteRequestPB::QL_STMT_DELETE);
 }
 
 template <class Item>
 CHECKED_STATUS SysCatalogTable::MutateItems(
-    const vector<Item*>& items, const YQLWriteRequestPB::YQLStmtType& op_type) {
+    const vector<Item*>& items, const QLWriteRequestPB::QLStmtType& op_type) {
   auto w = NewWriter();
   for (const auto& item : items) {
     RETURN_NOT_OK(w->MutateItem(item, op_type));

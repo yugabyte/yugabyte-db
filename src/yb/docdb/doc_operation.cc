@@ -12,15 +12,15 @@
 //
 
 #include "yb/common/partition.h"
-#include "yb/common/yql_scanspec.h"
-#include "yb/common/yql_storage_interface.h"
-#include "yb/common/yql_value.h"
+#include "yb/common/ql_scanspec.h"
+#include "yb/common/ql_storage_interface.h"
+#include "yb/common/ql_value.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
-#include "yb/docdb/doc_yql_scanspec.h"
+#include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/gutil/strings/substitute.h"
@@ -733,7 +733,7 @@ namespace {
 // (for read) and a WHERE / IF condition (for read / write). "schema" is the full table schema
 // and "rowblock_schema" is the selected columns from which we are splitting into static and
 // non-static column portions.
-CHECKED_STATUS CreateProjections(const Schema& schema, const YQLReferencedColumnsPB& column_refs,
+CHECKED_STATUS CreateProjections(const Schema& schema, const QLReferencedColumnsPB& column_refs,
                                  Schema* static_projection, Schema* non_static_projection) {
   // The projection schemas are used to scan docdb. Keep the columns to fetch in sorted order for
   // more efficient scan in the iterator.
@@ -766,7 +766,7 @@ CHECKED_STATUS CreateProjections(const Schema& schema, const YQLReferencedColumn
 }
 
 void PopulateRow(
-    const YQLTableRow& table_row, const Schema& projection, size_t col_idx, YQLRow* row) {
+    const QLTableRow& table_row, const Schema& projection, size_t col_idx, QLRow* row) {
   for (size_t i = 0; i < projection.num_columns(); i++) {
     const auto column_id = projection.column_id(i);
     const auto it = table_row.find(column_id);
@@ -779,8 +779,8 @@ void PopulateRow(
 
 // Join a static row with a non-static row.
 void JoinStaticRow(
-    const Schema& schema, const Schema& static_projection, const YQLTableRow& static_row,
-    YQLTableRow* non_static_row) {
+    const Schema& schema, const Schema& static_projection, const QLTableRow& static_row,
+    QLTableRow* non_static_row) {
   // No need to join if static row is empty or the hash key is different.
   if (static_row.empty()) {
     return;
@@ -804,8 +804,8 @@ void JoinStaticRow(
 
 } // namespace
 
-YQLWriteOperation::YQLWriteOperation(
-    YQLWriteRequestPB* request, const Schema& schema, YQLResponsePB* response)
+QLWriteOperation::QLWriteOperation(
+    QLWriteRequestPB* request, const Schema& schema, QLResponsePB* response)
     : schema_(schema), response_(response) {
   request_.Swap(request);
   // Determine if static / non-static columns are being written.
@@ -832,16 +832,16 @@ YQLWriteOperation::YQLWriteOperation(
       schema.num_range_key_columns() == 0));
 }
 
-Status YQLWriteOperation::InitializeKeys(const bool hashed_key, const bool primary_key) {
+Status QLWriteOperation::InitializeKeys(const bool hashed_key, const bool primary_key) {
   // Populate the hashed and range components in the same order as they are in the table schema.
   const auto& hashed_column_values = request_.hashed_column_values();
   const auto& range_column_values = request_.range_column_values();
   vector<PrimitiveValue> hashed_components;
   vector<PrimitiveValue> range_components;
-  RETURN_NOT_OK(YQLKeyColumnValuesToPrimitiveValues(
+  RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
       hashed_column_values, schema_, 0,
       schema_.num_hash_key_columns(), &hashed_components));
-  RETURN_NOT_OK(YQLKeyColumnValuesToPrimitiveValues(
+  RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
       range_column_values, schema_, schema_.num_hash_key_columns(),
       schema_.num_range_key_columns(), &range_components));
 
@@ -865,9 +865,9 @@ Status YQLWriteOperation::InitializeKeys(const bool hashed_key, const bool prima
   return Status::OK();
 }
 
-bool YQLWriteOperation::RequireReadSnapshot() const {
+bool QLWriteOperation::RequireReadSnapshot() const {
   // Because "IF EXISTS" and "IF NOT EXISTS" require reading primary key columns, we must require
-  // a snapshot. The "column_refs" only contains the IDs that YQL statements refers to. This field
+  // a snapshot. The "column_refs" only contains the IDs that QL statements refers to. This field
   // does not contains columns that DocDB itself chooses to read.
   return
       request_.has_if_expr() ||
@@ -875,7 +875,7 @@ bool YQLWriteOperation::RequireReadSnapshot() const {
                                       !request_.column_refs().static_ids().empty()));
 }
 
-list<DocPath> YQLWriteOperation::DocPathsToLock() const {
+list<DocPath> QLWriteOperation::DocPathsToLock() const {
   list<DocPath> paths;
   if (hashed_doc_path_ != nullptr)
     paths.push_back(*hashed_doc_path_);
@@ -884,11 +884,11 @@ list<DocPath> YQLWriteOperation::DocPathsToLock() const {
   return paths;
 }
 
-Status YQLWriteOperation::ReadColumns(rocksdb::DB *rocksdb,
+Status QLWriteOperation::ReadColumns(rocksdb::DB *rocksdb,
                                       const HybridTime& hybrid_time,
                                       Schema *param_static_projection,
                                       Schema *param_non_static_projection,
-                                      YQLTableRow *table_row,
+                                      QLTableRow *table_row,
                                       const rocksdb::QueryId query_id) {
   Schema *static_projection = param_static_projection;
   Schema *non_static_projection = param_non_static_projection;
@@ -913,7 +913,7 @@ Status YQLWriteOperation::ReadColumns(rocksdb::DB *rocksdb,
 
   // Scan docdb for the static and non-static columns of the row using the hashed / primary key.
   if (hashed_doc_key_ != nullptr) {
-    DocYQLScanSpec spec(*static_projection, *hashed_doc_key_, query_id);
+    DocQLScanSpec spec(*static_projection, *hashed_doc_key_, query_id);
     DocRowwiseIterator iterator(*static_projection, schema_, rocksdb, hybrid_time);
     RETURN_NOT_OK(iterator.Init(spec));
     if (iterator.HasNext()) {
@@ -921,7 +921,7 @@ Status YQLWriteOperation::ReadColumns(rocksdb::DB *rocksdb,
     }
   }
   if (pk_doc_key_ != nullptr) {
-    DocYQLScanSpec spec(*non_static_projection, *pk_doc_key_, query_id);
+    DocQLScanSpec spec(*non_static_projection, *pk_doc_key_, query_id);
     DocRowwiseIterator iterator(*non_static_projection, schema_, rocksdb, hybrid_time);
     RETURN_NOT_OK(iterator.Init(spec));
     if (iterator.HasNext()) {
@@ -936,12 +936,12 @@ Status YQLWriteOperation::ReadColumns(rocksdb::DB *rocksdb,
   return Status::OK();
 }
 
-Status YQLWriteOperation::IsConditionSatisfied(const YQLConditionPB& condition,
+Status QLWriteOperation::IsConditionSatisfied(const QLConditionPB& condition,
                                                rocksdb::DB *rocksdb,
                                                const HybridTime& hybrid_time,
                                                bool* should_apply,
-                                               std::unique_ptr<YQLRowBlock>* rowblock,
-                                               YQLTableRow* table_row,
+                                               std::unique_ptr<QLRowBlock>* rowblock,
+                                               QLTableRow* table_row,
                                                const rocksdb::QueryId query_id) {
 
   // Read column values.
@@ -962,8 +962,8 @@ Status YQLWriteOperation::IsConditionSatisfied(const YQLConditionPB& condition,
     columns.insert(columns.end(),
                    non_static_projection.columns().begin(), non_static_projection.columns().end());
   }
-  rowblock->reset(new YQLRowBlock(Schema(columns, 0)));
-  YQLRow& row = rowblock->get()->Extend();
+  rowblock->reset(new QLRowBlock(Schema(columns, 0)));
+  QLRow& row = rowblock->get()->Extend();
   row.mutable_column(0)->set_bool_value(*should_apply);
   if (!*should_apply && !table_row->empty()) {
     PopulateRow(*table_row, static_projection, 1 /* begin col_idx */, &row);
@@ -973,11 +973,11 @@ Status YQLWriteOperation::IsConditionSatisfied(const YQLConditionPB& condition,
   return Status::OK();
 }
 
-Status YQLWriteOperation::Apply(
+Status QLWriteOperation::Apply(
     DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) {
 
   bool should_apply = true;
-  YQLTableRow table_row;
+  QLTableRow table_row;
   if (request_.has_if_expr()) {
     RETURN_NOT_OK(IsConditionSatisfied(request_.if_expr().condition(),
                                        rocksdb,
@@ -996,16 +996,16 @@ Status YQLWriteOperation::Apply(
         request_.has_ttl() ? MonoDelta::FromMilliseconds(request_.ttl()) : Value::kMaxTtl;
 
     switch (request_.type()) {
-      // YQL insert == update (upsert) to be consistent with Cassandra's semantics. In either
+      // QL insert == update (upsert) to be consistent with Cassandra's semantics. In either
       // INSERT or UPDATE, if non-key columns are specified, they will be inserted which will cause
       // the primary key to be inserted also when necessary. Otherwise, we should insert the
       // primary key at least.
-      case YQLWriteRequestPB::YQL_STMT_INSERT:
-      case YQLWriteRequestPB::YQL_STMT_UPDATE: {
+      case QLWriteRequestPB::QL_STMT_INSERT:
+      case QLWriteRequestPB::QL_STMT_UPDATE: {
         // Add the appropriate liveness column only for inserts.
-        // We never use init markers for YQL to ensure we perform writes without any reads to
+        // We never use init markers for QL to ensure we perform writes without any reads to
         // ensure our write path is fast while complicating the read path a bit.
-        if (request_.type() == YQLWriteRequestPB::YQL_STMT_INSERT && pk_doc_path_ != nullptr) {
+        if (request_.type() == QLWriteRequestPB::QL_STMT_INSERT && pk_doc_path_ != nullptr) {
           const DocPath sub_path(pk_doc_path_->encoded_doc_key(),
                                  PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
           const auto value = Value(PrimitiveValue(), ttl);
@@ -1023,11 +1023,11 @@ Status YQLWriteOperation::Apply(
                 hashed_doc_path_->encoded_doc_key() : pk_doc_path_->encoded_doc_key(),
                 PrimitiveValue(column_id));
 
-            auto yql_type = column.type();
+            auto ql_type = column.type();
 
             WriteAction write_action = WriteAction::REPLACE; // default
             SubDocument sub_doc;
-            RETURN_NOT_OK(SubDocument::FromYQLExpressionPB(column_value.expr(),
+            RETURN_NOT_OK(SubDocument::FromQLExpressionPB(column_value.expr(),
                                                            column,
                                                            table_row,
                                                            &sub_doc,
@@ -1073,7 +1073,7 @@ Status YQLWriteOperation::Apply(
                   // TODO(akashnil or mihnea) this should call RemoveFromList once thats implemented
                   // Currently list subtraction is computed in memory using builtin call so this
                   // case should never be reached. Once it is implemented the corresponding case
-                  // from EvalYQLExpressionPB should be uncommented to enable this optimization.
+                  // from EvalQLExpressionPB should be uncommented to enable this optimization.
                   break;
               }
             } else {
@@ -1086,7 +1086,7 @@ Status YQLWriteOperation::Apply(
 
               switch (column.type()->main()) {
                 case MAP: {
-                  const PrimitiveValue &pv = PrimitiveValue::FromYQLExpressionPB(
+                  const PrimitiveValue &pv = PrimitiveValue::FromQLExpressionPB(
                       column_value.subscript_args(0), ColumnSchema::SortingType::kNotSpecified);
 
                   sub_path.AddSubKey(pv);
@@ -1110,8 +1110,8 @@ Status YQLWriteOperation::Apply(
                       InitMarkerBehavior::OPTIONAL);
 
                   // Don't crash tserver if this is index-out-of-bounds error
-                  if (s.IsSqlError()) {
-                    response_->set_status(YQLResponsePB::YQL_STATUS_USAGE_ERROR);
+                  if (s.IsQLError()) {
+                    response_->set_status(QLResponsePB::YQL_STATUS_USAGE_ERROR);
                     response_->set_error_message(s.ToString());
                     return Status::OK();
                   } else if (!s.ok()) {
@@ -1130,7 +1130,7 @@ Status YQLWriteOperation::Apply(
         }
         break;
       }
-      case YQLWriteRequestPB::YQL_STMT_DELETE: {
+      case QLWriteRequestPB::QL_STMT_DELETE: {
         // If non-key columns are specified, just the individual columns will be deleted. Otherwise,
         // the whole row is deleted.
         if (request_.column_values_size() > 0) {
@@ -1155,14 +1155,14 @@ Status YQLWriteOperation::Apply(
 
   }
 
-  response_->set_status(YQLResponsePB::YQL_STATUS_OK);
+  response_->set_status(QLResponsePB::YQL_STATUS_OK);
 
   return Status::OK();
 }
 
-Status YQLReadOperation::Execute(
-    const common::YQLStorageIf& yql_storage, const HybridTime& hybrid_time, const Schema& schema,
-    YQLRowBlock* rowblock) {
+Status QLReadOperation::Execute(
+    const common::QLStorageIf& ql_storage, const HybridTime& hybrid_time, const Schema& schema,
+    QLRowBlock* rowblock) {
 
   size_t row_count_limit = std::numeric_limits<std::size_t>::max();
   if (request_.has_limit()) {
@@ -1174,7 +1174,7 @@ Status YQLReadOperation::Execute(
 
   // Create the projections of the non-key columns selected by the row block plus any referenced in
   // the WHERE condition. When DocRowwiseIterator::NextRow() populates the value map, it uses this
-  // projection only to scan sub-documents. YQLRowBlock's own projection schema is used to populate
+  // projection only to scan sub-documents. QLRowBlock's own projection schema is used to populate
   // the row block, including key columns if any.
   Schema static_projection, non_static_projection;
   RETURN_NOT_OK(CreateProjections(schema, request_.column_refs(),
@@ -1182,27 +1182,27 @@ Status YQLReadOperation::Execute(
   const bool read_static_columns = !static_projection.columns().empty();
   const bool read_distinct_columns = request_.distinct();
 
-  std::unique_ptr<common::YQLRowwiseIteratorIf> iter;
-  std::unique_ptr<common::YQLScanSpec> spec, static_row_spec;
+  std::unique_ptr<common::QLRowwiseIteratorIf> iter;
+  std::unique_ptr<common::QLScanSpec> spec, static_row_spec;
   HybridTime req_hybrid_time;
-  RETURN_NOT_OK(yql_storage.BuildYQLScanSpec(request_, hybrid_time, schema, read_static_columns,
+  RETURN_NOT_OK(ql_storage.BuildQLScanSpec(request_, hybrid_time, schema, read_static_columns,
                                              static_projection, &spec, &static_row_spec,
                                              &req_hybrid_time));
-  RETURN_NOT_OK(yql_storage.GetIterator(request_, rowblock->schema(), schema, req_hybrid_time,
+  RETURN_NOT_OK(ql_storage.GetIterator(request_, rowblock->schema(), schema, req_hybrid_time,
                                         &iter));
   RETURN_NOT_OK(iter->Init(*spec));
   if (FLAGS_trace_docdb_calls) {
     TRACE("Initialized iterator");
   }
-  YQLTableRow static_row, non_static_row;
-  YQLTableRow& selected_row = read_distinct_columns ? static_row : non_static_row;
+  QLTableRow static_row, non_static_row;
+  QLTableRow& selected_row = read_distinct_columns ? static_row : non_static_row;
 
   // In case when we are continuing a select with a paging state, the static columns for the next
   // row to fetch are not included in the first iterator and we need to fetch them with a separate
   // spec and iterator before beginning the normal fetch below.
   if (static_row_spec != nullptr) {
-    std::unique_ptr<common::YQLRowwiseIteratorIf> static_row_iter;
-    RETURN_NOT_OK(yql_storage.GetIterator(request_, static_projection, schema, req_hybrid_time,
+    std::unique_ptr<common::QLRowwiseIteratorIf> static_row_iter;
+    RETURN_NOT_OK(ql_storage.GetIterator(request_, static_projection, schema, req_hybrid_time,
                                           &static_row_iter));
     RETURN_NOT_OK(static_row_iter->Init(*static_row_spec));
     if (static_row_iter->HasNext()) {
@@ -1261,7 +1261,7 @@ Status YQLReadOperation::Execute(
     bool match = false;
     RETURN_NOT_OK(spec->Match(selected_row, &match));
     if (match) {
-      YQLRow& row = rowblock->Extend();
+      QLRow& row = rowblock->Extend();
       PopulateRow(selected_row, row.schema(), 0 /* begin col_idx */, &row);
     }
   }
@@ -1274,7 +1274,7 @@ Status YQLReadOperation::Execute(
   return Status::OK();
 }
 
-const YQLResponsePB& YQLReadOperation::response() const { return response_; }
+const QLResponsePB& QLReadOperation::response() const { return response_; }
 
 }  // namespace docdb
 }  // namespace yb

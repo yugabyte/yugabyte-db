@@ -40,8 +40,8 @@
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/redis_protocol.pb.h"
-#include "yb/common/yql_protocol.pb.h"
-#include "yb/common/yql_rowblock.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_rowblock.h"
 #include "yb/redisserver/redis_constants.h"
 
 namespace yb {
@@ -177,7 +177,7 @@ void YBRedisReadOp::SetHashCode(uint16_t hash_code) {
 
 // YBqlOp -----------------------------------------------------------------
   YBqlOp::YBqlOp(const shared_ptr<YBTable>& table)
-      : YBOperation(table) , yql_response_(new YQLResponsePB()) {
+      : YBOperation(table) , ql_response_(new QLResponsePB()) {
 }
 
 YBqlOp::~YBqlOp() {
@@ -186,15 +186,15 @@ YBqlOp::~YBqlOp() {
 // YBqlWriteOp -----------------------------------------------------------------
 
 YBqlWriteOp::YBqlWriteOp(const shared_ptr<YBTable>& table)
-    : YBqlOp(table), yql_write_request_(new YQLWriteRequestPB()) {
+    : YBqlOp(table), ql_write_request_(new QLWriteRequestPB()) {
 }
 
 YBqlWriteOp::~YBqlWriteOp() {}
 
 static YBqlWriteOp *NewYBqlWriteOp(const shared_ptr<YBTable>& table,
-                                   YQLWriteRequestPB::YQLStmtType stmt_type) {
+                                   QLWriteRequestPB::QLStmtType stmt_type) {
   YBqlWriteOp *op = new YBqlWriteOp(table);
-  YQLWriteRequestPB *req = op->mutable_request();
+  QLWriteRequestPB *req = op->mutable_request();
   req->set_type(stmt_type);
   req->set_client(YQL_CLIENT_CQL);
   // TODO: Request ID should be filled with CQL stream ID. Query ID should be replaced too.
@@ -207,55 +207,55 @@ static YBqlWriteOp *NewYBqlWriteOp(const shared_ptr<YBTable>& table,
 }
 
 YBqlWriteOp *YBqlWriteOp::NewInsert(const std::shared_ptr<YBTable>& table) {
-  return NewYBqlWriteOp(table, YQLWriteRequestPB::YQL_STMT_INSERT);
+  return NewYBqlWriteOp(table, QLWriteRequestPB::QL_STMT_INSERT);
 }
 
 YBqlWriteOp *YBqlWriteOp::NewUpdate(const std::shared_ptr<YBTable>& table) {
-  return NewYBqlWriteOp(table, YQLWriteRequestPB::YQL_STMT_UPDATE);
+  return NewYBqlWriteOp(table, QLWriteRequestPB::QL_STMT_UPDATE);
 }
 
 YBqlWriteOp *YBqlWriteOp::NewDelete(const std::shared_ptr<YBTable>& table) {
-  return NewYBqlWriteOp(table, YQLWriteRequestPB::YQL_STMT_DELETE);
+  return NewYBqlWriteOp(table, QLWriteRequestPB::QL_STMT_DELETE);
 }
 
 std::string YBqlWriteOp::ToString() const {
-  return "YQL_WRITE " + yql_write_request_->ShortDebugString();
+  return "QL_WRITE " + ql_write_request_->ShortDebugString();
 }
 
 namespace {
 
-Status SetColumn(YBPartialRow* row, const int32 column_id, const YQLValuePB& value) {
+Status SetColumn(YBPartialRow* row, const int32 column_id, const QLValuePB& value) {
   const auto column_idx = row->schema()->find_column_by_id(ColumnId(column_id));
   CHECK_NE(column_idx, Schema::kColumnNotFound);
-  if (YQLValue::IsNull(value)) {
+  if (QLValue::IsNull(value)) {
     return row->SetNull(column_idx);
   }
   const DataType data_type = row->schema()->column(column_idx).type_info()->type();
   switch (data_type) {
-    case INT8:     return row->SetInt8(column_idx, YQLValue::int8_value(value));
-    case INT16:    return row->SetInt16(column_idx, YQLValue::int16_value(value));
-    case INT32:    return row->SetInt32(column_idx, YQLValue::int32_value(value));
-    case INT64:    return row->SetInt64(column_idx, YQLValue::int64_value(value));
-    case FLOAT:    return row->SetFloat(column_idx, YQLValue::float_value(value));
-    case DOUBLE:   return row->SetDouble(column_idx, YQLValue::double_value(value));
-    case DECIMAL:  return row->SetDecimal(column_idx, YQLValue::decimal_value(value));
-    case STRING:   return row->SetString(column_idx, Slice(YQLValue::string_value(value)));
-    case BOOL:     return row->SetBool(column_idx, YQLValue::bool_value(value));
+    case INT8:     return row->SetInt8(column_idx, QLValue::int8_value(value));
+    case INT16:    return row->SetInt16(column_idx, QLValue::int16_value(value));
+    case INT32:    return row->SetInt32(column_idx, QLValue::int32_value(value));
+    case INT64:    return row->SetInt64(column_idx, QLValue::int64_value(value));
+    case FLOAT:    return row->SetFloat(column_idx, QLValue::float_value(value));
+    case DOUBLE:   return row->SetDouble(column_idx, QLValue::double_value(value));
+    case DECIMAL:  return row->SetDecimal(column_idx, QLValue::decimal_value(value));
+    case STRING:   return row->SetString(column_idx, Slice(QLValue::string_value(value)));
+    case BOOL:     return row->SetBool(column_idx, QLValue::bool_value(value));
     case TIMESTAMP:
-      return row->SetTimestamp(column_idx, YQLValue::timestamp_value(value).ToInt64());
+      return row->SetTimestamp(column_idx, QLValue::timestamp_value(value).ToInt64());
     case INET: {
       string bytes;
-      RETURN_NOT_OK(YQLValue::inetaddress_value(value).ToBytes(&bytes));
+      RETURN_NOT_OK(QLValue::inetaddress_value(value).ToBytes(&bytes));
       return row->SetInet(column_idx, Slice(bytes));
     }
     case UUID: {
       string bytes;
-      RETURN_NOT_OK(YQLValue::uuid_value(value).ToBytes(&bytes));
+      RETURN_NOT_OK(QLValue::uuid_value(value).ToBytes(&bytes));
       return row->SetUuidCopy(column_idx, Slice(bytes));
     }
     case TIMEUUID: {
       string bytes;
-      RETURN_NOT_OK(YQLValue::timeuuid_value(value).ToBytes(&bytes));
+      RETURN_NOT_OK(QLValue::timeuuid_value(value).ToBytes(&bytes));
       return row->SetTimeUuidCopy(column_idx, Slice(bytes));
     };
 
@@ -284,25 +284,25 @@ Status SetColumn(YBPartialRow* row, const int32 column_id, const YQLValuePB& val
   return STATUS(RuntimeError, "unsupported datatype");
 }
 
-Status SetColumn(YBPartialRow* row, const int32 column_id, const YQLExpressionPB& yql_expr) {
-  switch (yql_expr.expr_case()) {
-    case YQLExpressionPB::ExprCase::kValue:
-      return SetColumn(row, column_id, yql_expr.value());
+Status SetColumn(YBPartialRow* row, const int32 column_id, const QLExpressionPB& ql_expr) {
+  switch (ql_expr.expr_case()) {
+    case QLExpressionPB::ExprCase::kValue:
+      return SetColumn(row, column_id, ql_expr.value());
 
-    case YQLExpressionPB::ExprCase::kBfcall:
+    case QLExpressionPB::ExprCase::kBfcall:
       LOG(FATAL) << "Builtin call is not yet supported";
       return Status::OK();
 
-    case YQLExpressionPB::ExprCase::kColumnId:
+    case QLExpressionPB::ExprCase::kColumnId:
       return STATUS(RuntimeError, "unexpected column reference");
 
-    case YQLExpressionPB::ExprCase::kSubscriptedCol:
+    case QLExpressionPB::ExprCase::kSubscriptedCol:
       return STATUS(RuntimeError, "unexpected subscripted-column reference");
 
-    case YQLExpressionPB::ExprCase::kCondition:
+    case QLExpressionPB::ExprCase::kCondition:
       return STATUS(RuntimeError, "unexpected relational expression");
 
-    case YQLExpressionPB::ExprCase::EXPR_NOT_SET:
+    case QLExpressionPB::ExprCase::EXPR_NOT_SET:
       return STATUS(Corruption, "expression not set");
   }
 
@@ -311,7 +311,7 @@ Status SetColumn(YBPartialRow* row, const int32 column_id, const YQLExpressionPB
 
 Status SetPartialRowKey(
     YBPartialRow* row,
-    const google::protobuf::RepeatedPtrField<YQLColumnValuePB>& hashed_column_values) {
+    const google::protobuf::RepeatedPtrField<QLColumnValuePB>& hashed_column_values) {
   // Set the partition key in partial row from the hashed columns.
   for (const auto& column_value : hashed_column_values) {
     RETURN_NOT_OK(SetColumn(row, column_value.column_id(), column_value.expr()));
@@ -329,18 +329,18 @@ Status SetPartialRowKey(
 } // namespace
 
 Status YBqlWriteOp::SetKey() {
-  return SetPartialRowKey(mutable_row(), yql_write_request_->hashed_column_values());
+  return SetPartialRowKey(mutable_row(), ql_write_request_->hashed_column_values());
 }
 
 void YBqlWriteOp::SetHashCode(const uint16_t hash_code) {
-  yql_write_request_->set_hash_code(hash_code);
+  ql_write_request_->set_hash_code(hash_code);
 }
 
 // YBqlReadOp -----------------------------------------------------------------
 
 YBqlReadOp::YBqlReadOp(const shared_ptr<YBTable>& table)
     : YBqlOp(table),
-      yql_read_request_(new YQLReadRequestPB()),
+      ql_read_request_(new QLReadRequestPB()),
       yb_consistency_level_(YBConsistencyLevel::STRONG) {
 }
 
@@ -348,7 +348,7 @@ YBqlReadOp::~YBqlReadOp() {}
 
 YBqlReadOp *YBqlReadOp::NewSelect(const shared_ptr<YBTable>& table) {
   YBqlReadOp *op = new YBqlReadOp(table);
-  YQLReadRequestPB *req = op->mutable_request();
+  QLReadRequestPB *req = op->mutable_request();
   req->set_client(YQL_CLIENT_CQL);
   // TODO: Request ID should be filled with CQL stream ID. Query ID should be replaced too.
   req->set_request_id(reinterpret_cast<uint64_t>(op));
@@ -360,40 +360,40 @@ YBqlReadOp *YBqlReadOp::NewSelect(const shared_ptr<YBTable>& table) {
 }
 
 std::string YBqlReadOp::ToString() const {
-  return "YQL_READ " + yql_read_request_->DebugString();
+  return "QL_READ " + ql_read_request_->DebugString();
 }
 
 Status YBqlReadOp::SetKey() {
-  return SetPartialRowKey(mutable_row(), yql_read_request_->hashed_column_values());
+  return SetPartialRowKey(mutable_row(), ql_read_request_->hashed_column_values());
 }
 
 void YBqlReadOp::SetHashCode(const uint16_t hash_code) {
-  yql_read_request_->set_hash_code(hash_code);
+  ql_read_request_->set_hash_code(hash_code);
 }
 
 Status YBqlReadOp::GetPartitionKey(string* partition_key) const {
   // if this is a continued query use the partition key from the paging state
-  if (yql_read_request_->has_paging_state() &&
-      yql_read_request_->paging_state().has_next_partition_key() &&
-      !yql_read_request_->paging_state().next_partition_key().empty()) {
-    *partition_key = yql_read_request_->paging_state().next_partition_key();
+  if (ql_read_request_->has_paging_state() &&
+      ql_read_request_->paging_state().has_next_partition_key() &&
+      !ql_read_request_->paging_state().next_partition_key().empty()) {
+    *partition_key = ql_read_request_->paging_state().next_partition_key();
     return Status::OK();
   }
 
   // otherwise, if hashed columns are set, use them to compute the exact key
-  if (!yql_read_request_->hashed_column_values().empty()) {
+  if (!ql_read_request_->hashed_column_values().empty()) {
     RETURN_NOT_OK(YBOperation::GetPartitionKey(partition_key));
 
     // make sure given key is not smaller than lower bound (if any)
-    if (yql_read_request_->has_hash_code()) {
-      uint16 hash_code = static_cast<uint16>(yql_read_request_->hash_code());
+    if (ql_read_request_->has_hash_code()) {
+      uint16 hash_code = static_cast<uint16>(ql_read_request_->hash_code());
       auto lower_bound = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
       if (*partition_key < lower_bound) *partition_key = std::move(lower_bound);
     }
 
     // make sure given key is not bigger than upper bound (if any)
-    if (yql_read_request_->has_max_hash_code()) {
-      uint16 hash_code = static_cast<uint16>(yql_read_request_->max_hash_code());
+    if (ql_read_request_->has_max_hash_code()) {
+      uint16 hash_code = static_cast<uint16>(ql_read_request_->max_hash_code());
       auto upper_bound = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
       if (*partition_key > upper_bound) *partition_key = std::move(upper_bound);
     }
@@ -402,8 +402,8 @@ Status YBqlReadOp::GetPartitionKey(string* partition_key) const {
   }
 
   // otherwise, use request hash code if set (i.e. lower-bound from condition using "token")
-  if (yql_read_request_->has_hash_code()) {
-    uint16 hash_code = static_cast<uint16>(yql_read_request_->hash_code());
+  if (ql_read_request_->has_hash_code()) {
+    uint16 hash_code = static_cast<uint16>(ql_read_request_->hash_code());
     *partition_key = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
     return Status::OK();
   }

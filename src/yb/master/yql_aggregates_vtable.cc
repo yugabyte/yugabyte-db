@@ -27,11 +27,11 @@ Schema YQLAggregatesVTable::CreateSchema() const {
   CHECK_OK(builder.AddKeyColumn("aggregate_name", DataType::STRING));
   // TODO: argument_types should be part of the primary key, but since we don't support the CQL
   // 'frozen' type, we can't have collections in our primary key.
-  CHECK_OK(builder.AddColumn("argument_types", YQLType::CreateTypeList(DataType::STRING)));
-  CHECK_OK(builder.AddColumn("final_func", YQLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn("initcond", YQLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn("state_func", YQLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn("state_type", YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn("argument_types", QLType::CreateTypeList(DataType::STRING)));
+  CHECK_OK(builder.AddColumn("final_func", QLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn("initcond", QLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn("state_func", QLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn("state_type", QLType::Create(DataType::STRING)));
   return builder.Build();
 }
 

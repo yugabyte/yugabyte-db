@@ -26,15 +26,15 @@
 #include "yb/cqlserver/cql_rpc.h"
 #include "yb/cqlserver/cql_statement.h"
 
-#include "yb/sql/sql_processor.h"
-#include "yb/sql/statement.h"
+#include "yb/ql/ql_processor.h"
+#include "yb/ql/statement.h"
 
 namespace yb {
 namespace cqlserver {
 
 class CQLServiceImpl;
 
-class CQLMetrics : public sql::SqlMetrics {
+class CQLMetrics : public ql::QLMetrics {
  public:
   explicit CQLMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity);
 
@@ -55,7 +55,7 @@ class CQLProcessor;
 using CQLProcessorList = std::list<std::unique_ptr<CQLProcessor>>;
 using CQLProcessorListPos = CQLProcessorList::iterator;
 
-class CQLProcessor : public sql::SqlProcessor {
+class CQLProcessor : public ql::QLProcessor {
  public:
   // Constructor and destructor.
   explicit CQLProcessor(CQLServiceImpl* service_impl, const CQLProcessorListPos& pos);
@@ -79,10 +79,10 @@ class CQLProcessor : public sql::SqlProcessor {
   std::shared_ptr<const CQLStatement> GetPreparedStatement(const CQLMessage::QueryId& id);
 
   // Statement executed callback.
-  void StatementExecuted(const Status& s, const sql::ExecutedResult::SharedPtr& result = nullptr);
+  void StatementExecuted(const Status& s, const ql::ExecutedResult::SharedPtr& result = nullptr);
 
   // Process statement execution result.
-  CQLResponse* ProcessResult(Status s, const sql::ExecutedResult::SharedPtr& result = nullptr);
+  CQLResponse* ProcessResult(Status s, const ql::ExecutedResult::SharedPtr& result = nullptr);
 
   // Send response back to client.
   void SendResponse(const CQLResponse& response);
@@ -105,7 +105,7 @@ class CQLProcessor : public sql::SqlProcessor {
   rpc::InboundCallPtr call_;
   std::unique_ptr<const CQLRequest> request_;
   std::unordered_set<std::shared_ptr<const CQLStatement>> stmts_;
-  std::unordered_set<sql::ParseTree::UniPtr> parse_trees_;
+  std::unordered_set<ql::ParseTree::UniPtr> parse_trees_;
 
   // Current retry count.
   int retry_count_ = 0;
@@ -118,7 +118,7 @@ class CQLProcessor : public sql::SqlProcessor {
   MonoTime execute_begin_;
 
   // Statement executed callback.
-  sql::StatementExecutedCallback statement_executed_cb_;
+  ql::StatementExecutedCallback statement_executed_cb_;
 
   //----------------------------------------------------------------------------------------------
 };

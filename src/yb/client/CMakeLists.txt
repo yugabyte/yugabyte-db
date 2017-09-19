@@ -97,15 +97,15 @@ target_link_libraries(yb_client_test_util
                       gmock
                       yb_client)
 
-add_library(yql-dml-test-base yql-dml-test-base.cc)
-target_link_libraries(yql-dml-test-base integration-tests)
+add_library(ql-dml-test-base ql-dml-test-base.cc)
+target_link_libraries(ql-dml-test-base integration-tests)
 
 # Tests
 
-set(YB_TEST_LINK_LIBS yb_client ybsql_util integration-tests yql-dml-test-base ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb_client ql_util integration-tests ql-dml-test-base ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(client-test)
 ADD_YB_TEST(client-unittest)
-ADD_YB_TEST(yql-dml-test)
-ADD_YB_TEST(yql-dml-ttl-test)
-ADD_YB_TEST(yql-tablet-test)
-ADD_YB_TEST(yql-transaction-test)
+ADD_YB_TEST(ql-dml-test)
+ADD_YB_TEST(ql-dml-ttl-test)
+ADD_YB_TEST(ql-tablet-test)
+ADD_YB_TEST(ql-transaction-test)

@@ -21,11 +21,11 @@ LocalVTable::LocalVTable(const Master* const master)
     : YQLVirtualTable(master::kSystemLocalTableName, master, CreateSchema()) {
 }
 
-Status LocalVTable::RetrieveData(const YQLReadRequestPB& request,
-                                 std::unique_ptr<YQLRowBlock>* vtable) const {
+Status LocalVTable::RetrieveData(const QLReadRequestPB& request,
+                                 std::unique_ptr<QLRowBlock>* vtable) const {
   vector<std::shared_ptr<TSDescriptor> > descs;
   GetSortedLiveDescriptors(&descs);
-  vtable->reset(new YQLRowBlock(schema_));
+  vtable->reset(new QLRowBlock(schema_));
 
   InetAddress remote_endpoint;
   RETURN_NOT_OK(remote_endpoint.FromString(request.remote_endpoint().host()));
@@ -39,7 +39,7 @@ Status LocalVTable::RetrieveData(const YQLReadRequestPB& request,
     // The system.local table contains only a single entry for the host that we are connected
     // to and hence we need to look for the 'remote_endpoint' here.
     if (util::RemoteEndpointMatchesTServer(ts_info, remote_endpoint)) {
-      YQLRow& row = (*vtable)->Extend();
+      QLRow& row = (*vtable)->Extend();
       CloudInfoPB cloud_info = ts_info.registration().common().cloud_info();
       RETURN_NOT_OK(SetColumnValue(kSystemLocalKeyColumn, "local", &row));
       RETURN_NOT_OK(SetColumnValue(kSystemLocalBootstrappedColumn, "COMPLETED", &row));
@@ -75,26 +75,26 @@ Status LocalVTable::RetrieveData(const YQLReadRequestPB& request,
 
 Schema LocalVTable::CreateSchema() const {
   SchemaBuilder builder;
-  CHECK_OK(builder.AddHashKeyColumn(kSystemLocalKeyColumn, YQLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn(kSystemLocalBootstrappedColumn, YQLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn(kSystemLocalBroadcastAddressColumn, YQLType::Create(DataType::INET)));
-  CHECK_OK(builder.AddColumn(kSystemLocalClusterNameColumn, YQLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn(kSystemLocalCQLVersionColumn, YQLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn(kSystemLocalDataCenterColumn, YQLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn(kSystemLocalGossipGenerationColumn, YQLType::Create(DataType::INT32)));
-  CHECK_OK(builder.AddColumn(kSystemLocalHostIdColumn, YQLType::Create(DataType::UUID)));
-  CHECK_OK(builder.AddColumn(kSystemLocalListenAddressColumn, YQLType::Create(DataType::INET)));
+  CHECK_OK(builder.AddHashKeyColumn(kSystemLocalKeyColumn, QLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSystemLocalBootstrappedColumn, QLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSystemLocalBroadcastAddressColumn, QLType::Create(DataType::INET)));
+  CHECK_OK(builder.AddColumn(kSystemLocalClusterNameColumn, QLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSystemLocalCQLVersionColumn, QLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSystemLocalDataCenterColumn, QLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSystemLocalGossipGenerationColumn, QLType::Create(DataType::INT32)));
+  CHECK_OK(builder.AddColumn(kSystemLocalHostIdColumn, QLType::Create(DataType::UUID)));
+  CHECK_OK(builder.AddColumn(kSystemLocalListenAddressColumn, QLType::Create(DataType::INET)));
   CHECK_OK(builder.AddColumn(kSystemLocalNativeProtocolVersionColumn,
-                             YQLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn(kSystemLocalPartitionerColumn, YQLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn(kSystemLocalRackColumn, YQLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn(kSystemLocalReleaseVersionColumn, YQLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn(kSystemLocalRpcAddressColumn, YQLType::Create(DataType::INET)));
-  CHECK_OK(builder.AddColumn(kSystemLocalSchemaVersionColumn, YQLType::Create(DataType::UUID)));
-  CHECK_OK(builder.AddColumn(kSystemLocalThriftVersionColumn, YQLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn(kSystemLocalTokensColumn, YQLType::CreateTypeSet(DataType::STRING)));
+                             QLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSystemLocalPartitionerColumn, QLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSystemLocalRackColumn, QLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSystemLocalReleaseVersionColumn, QLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSystemLocalRpcAddressColumn, QLType::Create(DataType::INET)));
+  CHECK_OK(builder.AddColumn(kSystemLocalSchemaVersionColumn, QLType::Create(DataType::UUID)));
+  CHECK_OK(builder.AddColumn(kSystemLocalThriftVersionColumn, QLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSystemLocalTokensColumn, QLType::CreateTypeSet(DataType::STRING)));
   CHECK_OK(builder.AddColumn(kSystemLocalTruncatedAtColumn,
-                             YQLType::CreateTypeMap(DataType::UUID, DataType::BINARY)));
+                             QLType::CreateTypeMap(DataType::UUID, DataType::BINARY)));
   return builder.Build();
 }
 

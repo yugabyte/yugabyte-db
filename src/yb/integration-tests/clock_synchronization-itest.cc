@@ -77,22 +77,22 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(client_->GetTablets(*table_name_, 0, &tablets));
     std::shared_ptr<client::YBSession> session =  client_->NewSession();
     for (int i = 0; i < num_writes_per_tserver; i++) {
-      auto yql_write = std::make_shared<client::YBqlWriteOp>(table_);
-      auto *const req = yql_write->mutable_request();
-      req->set_client(YQLClient::YQL_CLIENT_CQL);
-      req->set_type(YQLWriteRequestPB_YQLStmtType_YQL_STMT_INSERT);
-      YBPartialRow *prow = yql_write->mutable_row();
-      YQLColumnValuePB *hash_column = req->add_hashed_column_values();
+      auto ql_write = std::make_shared<client::YBqlWriteOp>(table_);
+      auto *const req = ql_write->mutable_request();
+      req->set_client(QLClient::YQL_CLIENT_CQL);
+      req->set_type(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT);
+      YBPartialRow *prow = ql_write->mutable_row();
+      QLColumnValuePB *hash_column = req->add_hashed_column_values();
       int64_t val = random_.Next64();
       hash_column->set_column_id(kFirstColumnId);
       hash_column->mutable_expr()->mutable_value()->set_int64_value(val);
 
-      YQLColumnValuePB *column = req->add_column_values();
+      QLColumnValuePB *column = req->add_column_values();
       column->set_column_id(kFirstColumnId + 1);
       column->mutable_expr()->mutable_value()->set_int64_value(val);
       EXPECT_OK(prow->SetInt64(0, val));
-      EXPECT_OK(session->Apply(yql_write));
-      EXPECT_EQ(yql_write->response().status(), YQLResponsePB::YQL_STATUS_OK);
+      EXPECT_OK(session->Apply(ql_write));
+      EXPECT_EQ(ql_write->response().status(), QLResponsePB::YQL_STATUS_OK);
     }
   }
 

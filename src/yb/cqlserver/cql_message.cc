@@ -14,7 +14,7 @@
 #include <regex>
 
 #include "yb/client/client.h"
-#include "yb/common/yql_protocol.pb.h"
+#include "yb/common/ql_protocol.pb.h"
 #include "yb/cqlserver/cql_message.h"
 #include "yb/cqlserver/cql_processor.h"
 
@@ -47,8 +47,8 @@ DEFINE_bool(use_cassandra_authentication, false, "If to require authentication o
 
 Status CQLMessage::QueryParameters::GetBindVariable(const std::string& name,
                                                     const int64_t pos,
-                                                    const shared_ptr<YQLType>& type,
-                                                    YQLValue* value) const {
+                                                    const shared_ptr<QLType>& type,
+                                                    QLValue* value) const {
   const Value* v = nullptr;
   if (!value_map.empty()) {
     const auto itr = value_map.find(name);
@@ -532,8 +532,8 @@ CQLResponse* AuthResponseRequest::Execute() const {
 CHECKED_STATUS AuthResponseRequest::AuthQueryParameters::GetBindVariable(
     const std::string& name,
     int64_t pos,
-    const std::shared_ptr<YQLType>& type,
-    YQLValue* value) const {
+    const std::shared_ptr<QLType>& type,
+    QLValue* value) const {
   if (pos == 0) {
     value->set_string_value(username);
     return Status::OK();
@@ -1137,10 +1137,10 @@ ResultResponse::RowsMetadata::Type::Type(const Type& t) : id(t.id) {
   LOG(ERROR) << "Internal error: unknown type id " << static_cast<uint32_t>(id);
 }
 
-ResultResponse::RowsMetadata::Type::Type(const shared_ptr<YQLType>& yql_type) {
-  auto type = yql_type;
+ResultResponse::RowsMetadata::Type::Type(const shared_ptr<QLType>& ql_type) {
+  auto type = ql_type;
   if (type->IsFrozen()) {
-    type = yql_type->param_type(0);
+    type = ql_type->param_type(0);
   }
   switch (type->main()) {
     case DataType::INT8:
@@ -1410,13 +1410,13 @@ void VoidResultResponse::SerializeResultBody(faststring* mesg) const {
 
 //----------------------------------------------------------------------------------------
 RowsResultResponse::RowsResultResponse(
-    const QueryRequest& request, const sql::RowsResult::SharedPtr& result)
+    const QueryRequest& request, const ql::RowsResult::SharedPtr& result)
     : ResultResponse(request, Kind::ROWS), result_(result),
       skip_metadata_(request.params_.flags & CQLMessage::QueryParameters::kSkipMetadataFlag) {
 }
 
 RowsResultResponse::RowsResultResponse(
-    const ExecuteRequest& request, const sql::RowsResult::SharedPtr& result)
+    const ExecuteRequest& request, const ql::RowsResult::SharedPtr& result)
     : ResultResponse(request, Kind::ROWS), result_(result),
       skip_metadata_(request.params_.flags & CQLMessage::QueryParameters::kSkipMetadataFlag) {
 }
@@ -1455,7 +1455,7 @@ PreparedResultResponse::PreparedResultResponse(const CQLRequest& request, const 
 }
 
 PreparedResultResponse::PreparedResultResponse(
-    const CQLRequest& request, const QueryId& query_id, const sql::PreparedResult& result)
+    const CQLRequest& request, const QueryId& query_id, const ql::PreparedResult& result)
     : ResultResponse(request, Kind::PREPARED), query_id_(query_id),
       prepared_metadata_(result.table_name(), result.hash_col_indices(),
                          result.bind_variable_schemas()),
@@ -1492,7 +1492,7 @@ void PreparedResultResponse::SerializeResultBody(faststring* mesg) const {
 
 //----------------------------------------------------------------------------------------
 SetKeyspaceResultResponse::SetKeyspaceResultResponse(
-    const CQLRequest& request, const sql::SetKeyspaceResult& result)
+    const CQLRequest& request, const ql::SetKeyspaceResult& result)
     : ResultResponse(request, Kind::SET_KEYSPACE), keyspace_(result.keyspace()) {
 }
 
@@ -1505,7 +1505,7 @@ void SetKeyspaceResultResponse::SerializeResultBody(faststring* mesg) const {
 
 //----------------------------------------------------------------------------------------
 SchemaChangeResultResponse::SchemaChangeResultResponse(
-    const CQLRequest& request, const sql::SchemaChangeResult& result)
+    const CQLRequest& request, const ql::SchemaChangeResult& result)
     : ResultResponse(request, Kind::SCHEMA_CHANGE),
       change_type_(result.change_type()), target_(result.object_type()),
       keyspace_(result.keyspace_name()), object_(result.object_name()) {

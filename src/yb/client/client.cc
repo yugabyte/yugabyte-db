@@ -464,7 +464,7 @@ Status YBClient::NamespaceExists(const std::string& namespace_name, bool* exists
 
 CHECKED_STATUS YBClient::GetUDType(const std::string &namespace_name,
                                    const std::string &type_name,
-                                   std::shared_ptr<YQLType> *yql_type) {
+                                   std::shared_ptr<QLType> *ql_type) {
   // Setting up request
   GetUDTypeInfoRequestPB req;
   req.mutable_type()->mutable_namespace_()->set_name(namespace_name);
@@ -487,12 +487,12 @@ CHECKED_STATUS YBClient::GetUDType(const std::string &namespace_name,
     field_names.push_back(field_name);
   }
 
-  std::vector<shared_ptr<YQLType>> field_types;
+  std::vector<shared_ptr<QLType>> field_types;
   for (const auto& field_type : resp.udtype().field_types()) {
-    field_types.push_back(YQLType::FromYQLTypePB(field_type));
+    field_types.push_back(QLType::FromQLTypePB(field_type));
   }
 
-  (*yql_type)->SetUDTypeFields(resp.udtype().id(), field_names, field_types);
+  (*ql_type)->SetUDTypeFields(resp.udtype().id(), field_names, field_types);
 
   return Status::OK();
 }
@@ -500,7 +500,7 @@ CHECKED_STATUS YBClient::GetUDType(const std::string &namespace_name,
 CHECKED_STATUS YBClient::CreateUDType(const std::string &namespace_name,
                                       const std::string &type_name,
                                       const std::vector<std::string> &field_names,
-                                      const std::vector<std::shared_ptr<YQLType>> &field_types) {
+                                      const std::vector<std::shared_ptr<QLType>> &field_types) {
   // Setting up request.
   CreateUDTypeRequestPB req;
   req.mutable_namespace_()->set_name(namespace_name);
@@ -508,8 +508,8 @@ CHECKED_STATUS YBClient::CreateUDType(const std::string &namespace_name,
   for (const string& field_name : field_names) {
     req.add_field_names(field_name);
   }
-  for (const std::shared_ptr<YQLType> field_type : field_types) {
-    field_type->ToYQLTypePB(req.add_field_types());
+  for (const std::shared_ptr<QLType> field_type : field_types) {
+    field_type->ToQLTypePB(req.add_field_types());
   }
 
   CreateUDTypeResponsePB resp;
@@ -868,7 +868,7 @@ void YBMetaDataCache::RemoveCachedTable(const YBTableName& table_name) {
 
 Status YBMetaDataCache::GetUDType(const string &keyspace_name,
                                   const string &type_name,
-                                  shared_ptr<YQLType> *type,
+                                  shared_ptr<QLType> *type,
                                   bool *cache_used) {
   auto type_path = std::make_pair(keyspace_name, type_name);
   {
@@ -1238,27 +1238,27 @@ YBDelete* YBTable::NewDelete() {
   return new YBDelete(shared_from_this());
 }
 
-YBqlWriteOp* YBTable::NewYQLWrite() {
+YBqlWriteOp* YBTable::NewQLWrite() {
   return new YBqlWriteOp(shared_from_this());
 }
 
-YBqlWriteOp* YBTable::NewYQLInsert() {
+YBqlWriteOp* YBTable::NewQLInsert() {
   return YBqlWriteOp::NewInsert(shared_from_this());
 }
 
-YBqlWriteOp* YBTable::NewYQLUpdate() {
+YBqlWriteOp* YBTable::NewQLUpdate() {
   return YBqlWriteOp::NewUpdate(shared_from_this());
 }
 
-YBqlWriteOp* YBTable::NewYQLDelete() {
+YBqlWriteOp* YBTable::NewQLDelete() {
   return YBqlWriteOp::NewDelete(shared_from_this());
 }
 
-YBqlReadOp* YBTable::NewYQLSelect() {
+YBqlReadOp* YBTable::NewQLSelect() {
   return YBqlReadOp::NewSelect(shared_from_this());
 }
 
-YBqlReadOp* YBTable::NewYQLRead() {
+YBqlReadOp* YBTable::NewQLRead() {
   return new YBqlReadOp(shared_from_this());
 }
 

@@ -24,8 +24,8 @@
 #include "yb/common/rowblock.h"
 #include "yb/common/scan_spec.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/yql_rowwise_iterator_interface.h"
-#include "yb/common/yql_scanspec.h"
+#include "yb/common/ql_rowwise_iterator_interface.h"
+#include "yb/common/ql_scanspec.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
@@ -36,7 +36,7 @@ namespace yb {
 namespace docdb {
 
 // An adapter between SQL-mapped-to-document-DB and Kudu's RowwiseIterator.
-class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
+class DocRowwiseIterator : public common::QLRowwiseIteratorIf {
 
  public:
   DocRowwiseIterator(const Schema &projection,
@@ -66,19 +66,19 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
 
   void GetIteratorStats(std::vector<IteratorStats>* stats) const override;
 
-  // Init YQL read scan.
-  CHECKED_STATUS Init(const common::YQLScanSpec& spec) override;
+  // Init QL read scan.
+  CHECKED_STATUS Init(const common::QLScanSpec& spec) override;
 
   // Is the next row to read a row with a static column?
   bool IsNextStaticColumn() const override;
 
   // Read next row into a value map using the specified projection.
-  CHECKED_STATUS NextRow(const Schema& projection, YQLTableRow* table_row) override;
+  CHECKED_STATUS NextRow(const Schema& projection, QLTableRow* table_row) override;
 
-  CHECKED_STATUS SetPagingStateIfNecessary(const YQLReadRequestPB& request,
-                                           const YQLRowBlock& rowblock,
+  CHECKED_STATUS SetPagingStateIfNecessary(const QLReadRequestPB& request,
+                                           const QLRowBlock& rowblock,
                                            const size_t row_count_limit,
-                                           YQLResponsePB* response) const override;
+                                           QLResponsePB* response) const override;
 
   // Skip the current row.
   void SkipRow() override;
@@ -92,7 +92,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
     return DocKey::FromKuduEncodedKey(encoded_key, schema_);
   }
 
-  // Get the non-key column values of a YQL row.
+  // Get the non-key column values of a QL row.
   CHECKED_STATUS GetValues(const Schema& projection, vector<SubDocument>* values);
 
   // Processes a value for a column(subdoc_key) and determines if the value is valid or not based on

@@ -74,13 +74,13 @@ Status YBPartitionGenerator::LookupTabletIdWithTokenizer(const CsvTokenizer& tok
         "key, found: $0 need atleast $1", ncolumns, schema.num_hash_key_columns());
   }
 
-  std::unique_ptr<client::YBqlReadOp> yb_op(table_->NewYQLRead());
+  std::unique_ptr<client::YBqlReadOp> yb_op(table_->NewQLRead());
   YBPartialRow* partial_row = yb_op->mutable_row();
 
   // Add empty hash column value to ensure GetPartitionKey knows we have hash column values. We
   // don't need to actually set the column values here.
-  YQLReadRequestPB* yql_read = yb_op->mutable_request();
-  yql_read->add_hashed_column_values();
+  QLReadRequestPB* ql_read = yb_op->mutable_request();
+  ql_read->add_hashed_column_values();
 
   auto it = tokenizer.begin();
   for (int i = 0; i < schema.num_hash_key_columns(); i++, it++) {

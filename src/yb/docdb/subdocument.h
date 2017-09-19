@@ -153,27 +153,27 @@ class SubDocument : public PrimitiveValue {
     return static_cast<int>(object_container().size());
   }
 
-  // Construct a SubDocument from a YQLValuePB.
-  static SubDocument FromYQLValuePB(const YQLValuePB& value,
-                                    ColumnSchema::SortingType sorting_type,
-                                    WriteAction write_action);
+  // Construct a SubDocument from a QLValuePB.
+  static SubDocument FromQLValuePB(const QLValuePB& value,
+                                   ColumnSchema::SortingType sorting_type,
+                                   WriteAction write_action);
 
-  // Construct a YQLValuePB from a SubDocument.
-  static void ToYQLValuePB(SubDocument doc,
-                           const std::shared_ptr<YQLType>& yql_type,
-                           YQLValuePB* v);
+  // Construct a QLValuePB from a SubDocument.
+  static void ToQLValuePB(SubDocument doc,
+                           const std::shared_ptr<QLType>& ql_type,
+                           QLValuePB* v);
 
-  // Construct a YQLExpressionPB from a SubDocument.
-  static void ToYQLExpressionPB(SubDocument doc,
-                                const std::shared_ptr<YQLType>& yql_type,
-                                YQLExpressionPB* yql_expr);
+  // Construct a QLExpressionPB from a SubDocument.
+  static void ToQLExpressionPB(SubDocument doc,
+                                const std::shared_ptr<QLType>& ql_type,
+                                QLExpressionPB* ql_expr);
 
 
 
-  // Construct a SubDocument from a YQLExpressionPB.
-  static CHECKED_STATUS FromYQLExpressionPB(const YQLExpressionPB& yql_expr,
+  // Construct a SubDocument from a QLExpressionPB.
+  static CHECKED_STATUS FromQLExpressionPB(const QLExpressionPB& ql_expr,
                                             const ColumnSchema& column_schema,
-                                            const YQLTableRow& table_row,
+                                            const QLTableRow& table_row,
                                             SubDocument* subdoc,
                                             WriteAction* write_action);
 

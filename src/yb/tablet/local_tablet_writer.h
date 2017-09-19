@@ -115,7 +115,7 @@ class LocalTabletWriter {
 
     tx_state_.reset(new WriteTransactionState(NULL, &req_, NULL));
     // Note: Order of lock/decode differs for these two table types, anyway temporary as KUDU
-    // codepath will be removed once all tests are converted to YQL.
+    // codepath will be removed once all tests are converted to QL.
     if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
       RETURN_NOT_OK(tablet_->AcquireLocksAndPerformDocOperations(tx_state_.get()));
       RETURN_NOT_OK(tablet_->DecodeWriteOperations(client_schema_, tx_state_.get()));

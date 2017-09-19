@@ -160,7 +160,7 @@ bool DocDBCompactionFilter::Filter(int level,
 
   if (prev_subdoc_key_.num_subkeys() > 0 &&
       prev_subdoc_key_.subkeys()[0].value_type() == ValueType::kColumnId) {
-    // Column ID is first subkey in YQL tables.
+    // Column ID is first subkey in QL tables.
     ColumnId col_id = prev_subdoc_key_.subkeys()[0].GetColumnId();
 
     if (deleted_cols_->find(col_id) != deleted_cols_->end()) {
@@ -179,7 +179,7 @@ bool DocDBCompactionFilter::Filter(int level,
   CHECK_OK(HasExpiredTTL(subdoc_key.hybrid_time(), ComputeTTL(ttl, table_ttl_), history_cutoff_,
                          &has_expired));
 
-  // As of 02/2017, we don't have init markers for top level documents in YQL. As a result, we can
+  // As of 02/2017, we don't have init markers for top level documents in QL. As a result, we can
   // compact away each column if it has expired, including the liveness system column. The init
   // markers in Redis wouldn't be affected since they don't have any TTL associated with them and
   // the ttl would default to kMaxTtl which would make has_expired false.

@@ -72,7 +72,7 @@ TAG_FLAG(fault_crash_during_log_replay, unsafe);
 
 DECLARE_uint64(max_clock_sync_error_usec);
 
-using namespace std::literals;
+using namespace std::literals; // NOLINT
 using namespace std::placeholders;
 
 namespace yb {
@@ -1200,7 +1200,7 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   // as of the point in time where the logs begin. We must replay the writes
   // in the logs with the correct point-in-time schema.
   //
-  // We only do this for legacy Kudu columnar-format tables. For YQL tables,
+  // We only do this for legacy Kudu columnar-format tables. For QL tables,
   // the write transactions write docdb key values directly, without checking the schema.
   // This means that we can replay them without rewinding the schema. Entries for columns
   // that were deleted will still be cleaned up by the compaction filter.

@@ -251,23 +251,23 @@ class WriteTransactionCompletionCallback : public TransactionCompletionCallback 
     if (!status_.ok()) {
       SetupErrorAndRespond(get_error(), status_, code_, context_.get());
     } else {
-      // Retrieve the rowblocks returned from the YQL write operations and return them as RPC
+      // Retrieve the rowblocks returned from the QL write operations and return them as RPC
       // sidecars. Populate the row schema also.
-      for (const auto& yql_write_op : *state_->yql_write_ops()) {
-        const auto& yql_write_req = yql_write_op->request();
-        auto* yql_write_resp = yql_write_op->response();
-        const YQLRowBlock* rowblock = yql_write_op->rowblock();
+      for (const auto& ql_write_op : *state_->ql_write_ops()) {
+        const auto& ql_write_req = ql_write_op->request();
+        auto* ql_write_resp = ql_write_op->response();
+        const QLRowBlock* rowblock = ql_write_op->rowblock();
         RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-            SchemaToColumnPBs(rowblock->schema(), yql_write_resp->mutable_column_schemas()),
+            SchemaToColumnPBs(rowblock->schema(), ql_write_resp->mutable_column_schemas()),
             response_, context_.get());
         faststring rows_data;
-        rowblock->Serialize(yql_write_req.client(), &rows_data);
+        rowblock->Serialize(ql_write_req.client(), &rows_data);
         int rows_data_sidecar_idx = 0;
         RETURN_UNKNOWN_ERROR_IF_NOT_OK(
             context_->AddRpcSidecar(RefCntBuffer(rows_data), &rows_data_sidecar_idx),
             response_,
             context_.get());
-        yql_write_resp->set_rows_data_sidecar(rows_data_sidecar_idx);
+        ql_write_resp->set_rows_data_sidecar(rows_data_sidecar_idx);
       }
       if (include_trace_ && Trace::CurrentTrace() != nullptr) {
         response_->set_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
@@ -718,8 +718,8 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
                               WriteResponsePB* resp,
                               rpc::RpcContext context) {
   if (FLAGS_tserver_noop_read_write) {
-    for (int i = 0; i < req->yql_write_batch_size(); ++i) {
-      resp->add_yql_response_batch();
+    for (int i = 0; i < req->ql_write_batch_size(); ++i) {
+      resp->add_ql_response_batch();
     }
     context.RespondSuccess();
     return;
@@ -907,33 +907,33 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
       break;
     }
     case TableType::YQL_TABLE_TYPE: {
-      for (const YQLReadRequestPB& yql_read_req : req->yql_batch()) {
+      for (const QLReadRequestPB& ql_read_req : req->ql_batch()) {
         // Update the remote endpoint.
         const auto& remote_address = context.remote_address();
         HostPortPB *hostPortPB =
-            const_cast<YQLReadRequestPB&>(yql_read_req).mutable_remote_endpoint();
+            const_cast<QLReadRequestPB&>(ql_read_req).mutable_remote_endpoint();
         hostPortPB->set_host(remote_address.address().to_string());
         hostPortPB->set_port(remote_address.port());
 
-        YQLResponsePB yql_response;
+        QLResponsePB ql_response;
         gscoped_ptr<faststring> rows_data;
         int rows_data_sidecar_idx = 0;
-        TRACE("Start HandleYQLReadRequest");
-        s = tablet->HandleYQLReadRequest(
-            read_tx.GetReadTimestamp(), yql_read_req, &yql_response, &rows_data);
-        TRACE("Done HandleYQLReadRequest");
+        TRACE("Start HandleQLReadRequest");
+        s = tablet->HandleQLReadRequest(
+            read_tx.GetReadTimestamp(), ql_read_req, &ql_response, &rows_data);
+        TRACE("Done HandleQLReadRequest");
         RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
         if (rows_data.get() != nullptr) {
           s = context.AddRpcSidecar(RefCntBuffer(*rows_data), &rows_data_sidecar_idx);
           RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
-          yql_response.set_rows_data_sidecar(rows_data_sidecar_idx);
+          ql_response.set_rows_data_sidecar(rows_data_sidecar_idx);
         }
-        *(resp->add_yql_batch()) = yql_response;
+        *(resp->add_ql_batch()) = ql_response;
       }
       break;
     }
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
-      LOG(FATAL) << "Currently, read requests are only supported for Redis and YQL table type. "
+      LOG(FATAL) << "Currently, read requests are only supported for Redis and QL table type. "
                  << "Existing tablet's table type is: " << tablet->table_type();
       break;
     default:

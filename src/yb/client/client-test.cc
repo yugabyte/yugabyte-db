@@ -64,7 +64,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/server/metadata.h"
 #include "yb/server/hybrid_clock.h"
-#include "yb/sql/util/statement_result.h"
+#include "yb/ql/util/statement_result.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transactions/write_transaction.h"
 #include "yb/tserver/mini_tablet_server.h"
@@ -810,7 +810,7 @@ TEST_F(ClientTest, TestScanPredicateKeyColNotProjected) {
   YBScanner scanner(client_table_.get());
   ASSERT_OK(scanner.SetProjectedColumns({ "int_val" }));
   ASSERT_EQ(scanner.GetProjectionSchema().num_columns(), 1);
-  ASSERT_EQ(scanner.GetProjectionSchema().Column(0).type(), YQLType::Create(INT32));
+  ASSERT_EQ(scanner.GetProjectionSchema().Column(0).type(), QLType::Create(INT32));
   ASSERT_OK(scanner.AddConjunctPredicate(
                 client_table_->NewComparisonPredicate("key", YBPredicate::GREATER_EQUAL,
                                                       YBValue::FromInt(5))));
@@ -2771,7 +2771,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
     tserver_proxy.reset(
         new tserver::TabletServerServiceProxy(client_messenger, *endpoint));
 
-    std::unique_ptr<YQLRowBlock> rowBlock;
+    std::unique_ptr<QLRowBlock> rowBlock;
     ASSERT_OK(WaitFor([&]() -> bool {
       // Setup read request.
       tserver::ReadRequestPB req;
@@ -2779,31 +2779,31 @@ TEST_F(ClientTest, TestReadFromFollower) {
       rpc::RpcController controller;
       req.set_tablet_id(tablet_id);
       req.set_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
-      YQLReadRequestPB *yql_read = req.mutable_yql_batch()->Add();
+      QLReadRequestPB *ql_read = req.mutable_ql_batch()->Add();
       for (int i = 0; i < schema_.num_columns(); i++) {
-        yql_read->add_column_ids(yb::kFirstColumnId + i);
-        yql_read->mutable_column_refs()->add_ids(yb::kFirstColumnId + i);
+        ql_read->add_column_ids(yb::kFirstColumnId + i);
+        ql_read->mutable_column_refs()->add_ids(yb::kFirstColumnId + i);
       }
       EXPECT_OK(tserver_proxy->Read(req, &resp, &controller));
 
       // Verify response.
       EXPECT_FALSE(resp.has_error());
-      EXPECT_EQ(1, resp.yql_batch_size());
-      const YQLResponsePB &yql_resp = resp.yql_batch(0);
-      EXPECT_EQ(YQLResponsePB_YQLStatus_YQL_STATUS_OK, yql_resp.status());
-      EXPECT_TRUE(yql_resp.has_rows_data_sidecar());
+      EXPECT_EQ(1, resp.ql_batch_size());
+      const QLResponsePB &ql_resp = resp.ql_batch(0);
+      EXPECT_EQ(QLResponsePB_QLStatus_YQL_STATUS_OK, ql_resp.status());
+      EXPECT_TRUE(ql_resp.has_rows_data_sidecar());
 
       Slice rows_data;
       EXPECT_TRUE(controller.finished());
-      EXPECT_OK(controller.GetSidecar(yql_resp.rows_data_sidecar(), &rows_data));
-      yb::sql::RowsResult
+      EXPECT_OK(controller.GetSidecar(ql_resp.rows_data_sidecar(), &rows_data));
+      yb::ql::RowsResult
           rowsResult(kReadFromFollowerTable, schema_.columns(), rows_data.ToBuffer());
       rowBlock = rowsResult.GetRowBlock();
       return FLAGS_test_scan_num_rows == rowBlock->row_count();
     }, MonoDelta::FromSeconds(30), "Waiting for replication to followers"));
 
     for (int i = 0; i < rowBlock->row_count(); i++) {
-      const YQLRow& row = rowBlock->row(i);
+      const QLRow& row = rowBlock->row(i);
       ASSERT_EQ(i, row.column(0).int32_value());
       ASSERT_EQ(i * 2, row.column(1).int32_value());
       ASSERT_EQ(StringPrintf("hello %d", i), row.column(2).string_value());

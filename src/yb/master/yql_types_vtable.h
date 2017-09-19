@@ -20,11 +20,11 @@ namespace yb {
 namespace master {
 
 // VTable implementation of system_schema.types.
-class YQLTypesVTable : public YQLVirtualTable {
+class QLTypesVTable : public YQLVirtualTable {
  public:
-  explicit YQLTypesVTable(const Master* const master);
-  CHECKED_STATUS RetrieveData(const YQLReadRequestPB& request,
-                              std::unique_ptr<YQLRowBlock>* vtable) const;
+  explicit QLTypesVTable(const Master* const master);
+  CHECKED_STATUS RetrieveData(const QLReadRequestPB& request,
+                              std::unique_ptr<QLRowBlock>* vtable) const;
  protected:
   Schema CreateSchema() const;
  private:

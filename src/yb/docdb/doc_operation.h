@@ -18,13 +18,13 @@
 
 #include "yb/rocksdb/db.h"
 
-#include "yb/common/yql_storage_interface.h"
+#include "yb/common/ql_storage_interface.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/common/redis_protocol.pb.h"
-#include "yb/common/yql_protocol.pb.h"
-#include "yb/common/yql_rowblock.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_rowblock.h"
 
 namespace yb {
 namespace docdb {
@@ -37,7 +37,7 @@ class DocOperation {
 
   // Does the operation require a read snapshot to be taken before being applied? If so, a
   // clean snapshot hybrid_time will be supplied when Apply() is called. For example,
-  // YQLWriteOperation for a DML with a "... IF <condition> ..." clause needs to read the row to
+  // QLWriteOperation for a DML with a "... IF <condition> ..." clause needs to read the row to
   // evaluate the condition before the write and needs a read snapshot for a consistent read.
   virtual bool RequireReadSnapshot() const = 0;
   virtual std::list<DocPath> DocPathsToLock() const = 0;
@@ -120,10 +120,10 @@ class RedisReadOperation {
   RedisResponsePB response_;
 };
 
-class YQLWriteOperation : public DocOperation {
+class QLWriteOperation : public DocOperation {
  public:
-  // Construct a YQLWriteOperation. Content of request will be swapped out by the constructor.
-  YQLWriteOperation(YQLWriteRequestPB* request, const Schema& schema, YQLResponsePB* response);
+  // Construct a QLWriteOperation. Content of request will be swapped out by the constructor.
+  QLWriteOperation(QLWriteRequestPB* request, const Schema& schema, QLResponsePB* response);
 
   bool RequireReadSnapshot() const override;
 
@@ -132,11 +132,11 @@ class YQLWriteOperation : public DocOperation {
   CHECKED_STATUS Apply(
       DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) override;
 
-  const YQLWriteRequestPB& request() const { return request_; }
-  YQLResponsePB* response() const { return response_; }
+  const QLWriteRequestPB& request() const { return request_; }
+  QLResponsePB* response() const { return response_; }
 
   // Rowblock to return the "[applied]" status for conditional DML.
-  const YQLRowBlock* rowblock() const { return rowblock_.get(); }
+  const QLRowBlock* rowblock() const { return rowblock_.get(); }
 
  private:
   // Initialize hashed_doc_key_ and/or pk_doc_key_.
@@ -146,15 +146,15 @@ class YQLWriteOperation : public DocOperation {
                              const HybridTime& hybrid_time,
                              Schema *static_projection,
                              Schema *non_static_projection,
-                             YQLTableRow *table_row,
+                             QLTableRow *table_row,
                              const rocksdb::QueryId query_id);
 
-  CHECKED_STATUS IsConditionSatisfied(const YQLConditionPB& condition,
+  CHECKED_STATUS IsConditionSatisfied(const QLConditionPB& condition,
                                       rocksdb::DB *rocksdb,
                                       const HybridTime& hybrid_time,
                                       bool* should_apply,
-                                      std::unique_ptr<YQLRowBlock>* rowblock,
-                                      YQLTableRow* table_row,
+                                      std::unique_ptr<QLRowBlock>* rowblock,
+                                      QLTableRow* table_row,
                                       const rocksdb::QueryId query_id);
 
   const Schema& schema_;
@@ -170,28 +170,28 @@ class YQLWriteOperation : public DocOperation {
   std::unique_ptr<DocKey> pk_doc_key_;
   std::unique_ptr<DocPath> pk_doc_path_;
 
-  YQLWriteRequestPB request_;
-  YQLResponsePB* response_;
+  QLWriteRequestPB request_;
+  QLResponsePB* response_;
   // The row and the column schema that is returned to the CQL client for an INSERT/UPDATE/DELETE
   // that has a "... IF <condition> ..." clause. The row contains the "[applied]" status column
   // plus the values of all columns referenced in the if-clause if the condition is not satisfied.
   std::unique_ptr<Schema> projection_;
-  std::unique_ptr<YQLRowBlock> rowblock_;
+  std::unique_ptr<QLRowBlock> rowblock_;
 };
 
-class YQLReadOperation {
+class QLReadOperation {
  public:
-  explicit YQLReadOperation(const YQLReadRequestPB& request) : request_(request) {}
+  explicit QLReadOperation(const QLReadRequestPB& request) : request_(request) {}
 
   CHECKED_STATUS Execute(
-      const common::YQLStorageIf& yql_storage, const HybridTime& hybrid_time, const Schema& schema,
-      YQLRowBlock* rowblock);
+      const common::QLStorageIf& ql_storage, const HybridTime& hybrid_time, const Schema& schema,
+      QLRowBlock* rowblock);
 
-  const YQLResponsePB& response() const;
+  const QLResponsePB& response() const;
 
  private:
-  const YQLReadRequestPB& request_;
-  YQLResponsePB response_;
+  const QLReadRequestPB& request_;
+  QLResponsePB response_;
 };
 
 }  // namespace docdb

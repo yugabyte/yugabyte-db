@@ -98,7 +98,7 @@ void StatusToPB(const Status& status, AppStatusPB* pb) {
     pb->set_code(AppStatusPB::END_OF_FILE);
   } else if (status.IsInvalidCommand()) {
     pb->set_code(AppStatusPB::INVALID_COMMAND);
-  } else if (status.IsSqlError()) {
+  } else if (status.IsQLError()) {
     pb->set_code(AppStatusPB::SQL_ERROR);
   } else if (status.IsInternalError()) {
     pb->set_code(AppStatusPB::INTERNAL_ERROR);
@@ -124,8 +124,8 @@ void StatusToPB(const Status& status, AppStatusPB* pb) {
     // will reconstruct the other parts of the ToString() response.
     pb->set_message(status.message().ToString());
   }
-  if (status.IsSqlError()) {
-    pb->set_sql_error_code(status.sql_error_code());
+  if (status.IsQLError()) {
+    pb->set_ql_error_code(status.ql_error_code());
   } else if (status.posix_code() != -1) {
     pb->set_posix_code(status.posix_code());
   }
@@ -176,10 +176,10 @@ Status StatusFromPB(const AppStatusPB& pb) {
     case AppStatusPB::INVALID_COMMAND:
       return STATUS(InvalidCommand, pb.message(), "", posix_code);
     case AppStatusPB::SQL_ERROR:
-      if (!pb.has_sql_error_code()) {
+      if (!pb.has_ql_error_code()) {
         return STATUS(InternalError, "SQL error code missing");
       }
-      return STATUS(SqlError, pb.message(), "", pb.sql_error_code());
+      return STATUS(QLError, pb.message(), "", pb.ql_error_code());
     case AppStatusPB::INTERNAL_ERROR:
       return STATUS(InternalError, pb.message(), "", posix_code);
     case AppStatusPB::EXPIRED:
@@ -276,7 +276,7 @@ Status SchemaFromPB(const SchemaPB& pb, Schema *schema) {
 void ColumnSchemaToPB(const ColumnSchema& col_schema, ColumnSchemaPB *pb, int flags) {
   pb->Clear();
   pb->set_name(col_schema.name());
-  col_schema.type()->ToYQLTypePB(pb->mutable_type());
+  col_schema.type()->ToQLTypePB(pb->mutable_type());
   pb->set_is_nullable(col_schema.is_nullable());
   pb->set_is_static(col_schema.is_static());
   pb->set_is_counter(col_schema.is_counter());
@@ -349,7 +349,7 @@ ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
   }
   // Only "is_hash_key" is used to construct ColumnSchema. The field "is_key" will be read when
   // processing SchemaPB.
-  return ColumnSchema(pb.name(), YQLType::FromYQLTypePB(pb.type()), pb.is_nullable(),
+  return ColumnSchema(pb.name(), QLType::FromQLTypePB(pb.type()), pb.is_nullable(),
                       pb.is_hash_key(), pb.is_static(), pb.is_counter(),
                       ColumnSchema::SortingType(pb.sorting_type()),
                       read_default_ptr, write_default_ptr, attributes);

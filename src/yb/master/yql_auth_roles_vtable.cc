@@ -22,15 +22,15 @@ YQLAuthRolesVTable::YQLAuthRolesVTable(const Master* const master)
     : YQLVirtualTable(master::kSystemAuthRolesTableName, master, CreateSchema()) {
 }
 
-Status YQLAuthRolesVTable::RetrieveData(const YQLReadRequestPB& request,
-                                        std::unique_ptr<YQLRowBlock>* vtable) const {
-  vtable->reset(new YQLRowBlock(schema_));
+Status YQLAuthRolesVTable::RetrieveData(const QLReadRequestPB& request,
+                                        std::unique_ptr<QLRowBlock>* vtable) const {
+  vtable->reset(new QLRowBlock(schema_));
   std::vector<scoped_refptr<RoleInfo>> roles;
   master_->catalog_manager()->GetAllRoles(&roles);
   for (const auto role : roles) {
     auto l = role->LockForRead();
     const auto& pb = l->data().pb;
-    YQLRow& row = (*vtable)->Extend();
+    QLRow& row = (*vtable)->Extend();
     RETURN_NOT_OK(SetColumnValue(kRole, pb.role(), &row));
     RETURN_NOT_OK(SetColumnValue(kCanLogin, pb.can_login(), &row));
     RETURN_NOT_OK(SetColumnValue(kIsSuperuser, pb.is_superuser(), &row));
@@ -46,10 +46,10 @@ Status YQLAuthRolesVTable::RetrieveData(const YQLReadRequestPB& request,
 Schema YQLAuthRolesVTable::CreateSchema() const {
   SchemaBuilder builder;
   CHECK_OK(builder.AddHashKeyColumn(kRole, DataType::STRING));
-  CHECK_OK(builder.AddColumn(kCanLogin, YQLType::Create(DataType::BOOL)));
-  CHECK_OK(builder.AddColumn(kIsSuperuser, YQLType::Create(DataType::BOOL)));
-  CHECK_OK(builder.AddColumn(kMemberOf, YQLType::CreateTypeList(DataType::STRING)));
-  CHECK_OK(builder.AddColumn(kSaltedHash, YQLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kCanLogin, QLType::Create(DataType::BOOL)));
+  CHECK_OK(builder.AddColumn(kIsSuperuser, QLType::Create(DataType::BOOL)));
+  CHECK_OK(builder.AddColumn(kMemberOf, QLType::CreateTypeList(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kSaltedHash, QLType::Create(DataType::STRING)));
   return builder.Build();
 }
 

@@ -24,7 +24,7 @@
 #include "yb/util/debug/trace_event.h"
 
 using yb::cqlserver::CQLMessage;
-using namespace std::literals;
+using namespace std::literals; // NOLINT
 using namespace std::placeholders;
 
 DECLARE_bool(rpc_dump_all_traces);
@@ -34,7 +34,7 @@ namespace yb {
 namespace cqlserver {
 
 CQLConnectionContext::CQLConnectionContext()
-    : sql_session_(new sql::SqlSession()) {
+    : ql_session_(new ql::QLSession()) {
 }
 
 void CQLConnectionContext::RunNegotiation(rpc::ConnectionPtr connection, const MonoTime& deadline) {
@@ -84,7 +84,7 @@ Status CQLConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& connect
 
   auto call = std::make_shared<CQLInboundCall>(connection,
       call_processed_listener(),
-      sql_session_);
+      ql_session_);
 
   Status s = call->ParseFrom(slice);
   if (!s.ok()) {
@@ -108,9 +108,9 @@ uint64_t CQLConnectionContext::ExtractCallId(rpc::InboundCall* call) {
 
 CQLInboundCall::CQLInboundCall(rpc::ConnectionPtr conn,
                                CallProcessedListener call_processed_listener,
-                               sql::SqlSession::SharedPtr sql_session)
+                               ql::QLSession::SharedPtr ql_session)
     : InboundCall(std::move(conn), std::move(call_processed_listener)),
-      sql_session_(std::move(sql_session)) {
+      ql_session_(std::move(ql_session)) {
 }
 
 Status CQLInboundCall::ParseFrom(Slice source) {

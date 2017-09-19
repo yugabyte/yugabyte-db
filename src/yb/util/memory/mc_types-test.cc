@@ -115,33 +115,33 @@ TEST_F(MemoryContextTypesTest, TestMCStl) {
   const int max_entry = 99;
 
   // Constructing vector.
-  MCVector<int> sql_vec(arena());
-  sql_vec.reserve(max_entry);
+  MCVector<int> ql_vec(arena());
+  ql_vec.reserve(max_entry);
   for (i = 0; i < max_entry; i++) {
-    sql_vec[i] = i*7;
+    ql_vec[i] = i*7;
   }
 
   // Checking vector.
   i = 0;
-  for (int entry : sql_vec) {
+  for (int entry : ql_vec) {
     CHECK_EQ(entry, i*7);
     i++;
   }
 
   // Constructing list.
-  MCList<int> sql_list(arena());
+  MCList<int> ql_list(arena());
   for (i = 0; i < max_entry; i++) {
-    sql_list.push_back(i*3);
+    ql_list.push_back(i*3);
   }
 
   // Checking list.
   i = 0;
-  for (int entry : sql_list) {
+  for (int entry : ql_list) {
     CHECK_EQ(entry, i*3);
     i++;
   }
 
-  MCList<int> list_copy = sql_list;
+  MCList<int> list_copy = ql_list;
   // Checking list.
   i = 0;
   for (int entry : list_copy) {

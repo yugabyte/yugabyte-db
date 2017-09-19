@@ -1113,7 +1113,7 @@ void RaftConsensusITest::AssertNoTabletServersCrashed() {
 // For example, KUDU-783 reproduces from this test approximately 5% of the
 // time on a slow-test debug build.
 //
-// This test is still on Kudu tables, because it crashes significantly more frequently on YQL:
+// This test is still on Kudu tables, because it crashes significantly more frequently on QL:
 // https://yugabyte.atlassian.net/browse/ENG-444
 TEST_F(RaftConsensusITest, InsertWithCrashyNodes) {
   int kCrashesToCause = 3;

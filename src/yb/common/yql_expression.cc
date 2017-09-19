@@ -25,19 +25,19 @@ namespace yb {
 // the expression evaluating process. The intermediate / temporary YQLValue should be allocated
 // in the pool. Currently, the argument structures are on stack, but their contents are in the
 // heap memory.
-CHECKED_STATUS YQLExpression::Evaluate(const YQLExpressionPB &yql_expr,
-                                       const YQLTableRow &table_row,
-                                       YQLValueWithPB *result,
+CHECKED_STATUS YQLExpression::Evaluate(const QLExpressionPB &ql_expr,
+                                       const QLTableRow &table_row,
+                                       QLValueWithPB *result,
                                        WriteAction *write_action) {
-  switch (yql_expr.expr_case()) {
-    case YQLExpressionPB::ExprCase::kValue:
-      result->Assign(yql_expr.value());
+  switch (ql_expr.expr_case()) {
+    case QLExpressionPB::ExprCase::kValue:
+      result->Assign(ql_expr.value());
       break;
 
-    case YQLExpressionPB::ExprCase::kBfcall: {
+    case QLExpressionPB::ExprCase::kBfcall: {
 
-      const YQLBFCallPB &bfcall = yql_expr.bfcall();
-      const bfyql::BFOperator::SharedPtr bf_op = bfyql::kBFOperators[bfcall.bfopcode()];
+      const QLBFCallPB &bfcall = ql_expr.bfcall();
+      const bfql::BFOperator::SharedPtr bf_op = bfql::kBFOperators[bfcall.bfopcode()];
       const string &bfop_name = bf_op->op_decl()->cpp_name();
 
       // Special cases: for collection operations of the form "cref = cref +/- <value>" we avoid
@@ -71,7 +71,7 @@ CHECKED_STATUS YQLExpression::Evaluate(const YQLExpressionPB &yql_expr,
       */
 
       // Default case: First evaluate the arguments.
-      vector <YQLValueWithPB> args(bfcall.operands().size());
+      vector <QLValueWithPB> args(bfcall.operands().size());
       int arg_index = 0;
       for (auto operand : bfcall.operands()) {
         RETURN_NOT_OK(Evaluate(operand, table_row, &args[arg_index], write_action));
@@ -79,12 +79,12 @@ CHECKED_STATUS YQLExpression::Evaluate(const YQLExpressionPB &yql_expr,
       }
 
       // Execute the builtin call associated with the given opcode.
-      YQLBfunc::Exec(static_cast<bfyql::BFOpcode>(bfcall.bfopcode()), &args, result);
+      QLBfunc::Exec(static_cast<bfql::BFOpcode>(bfcall.bfopcode()), &args, result);
       break;
     }
 
-    case YQLExpressionPB::ExprCase::kColumnId: {
-      auto iter = table_row.find(ColumnId(yql_expr.column_id()));
+    case QLExpressionPB::ExprCase::kColumnId: {
+      auto iter = table_row.find(ColumnId(ql_expr.column_id()));
       if (iter != table_row.end()) {
         result->Assign(iter->second.value);
       } else {
@@ -94,16 +94,16 @@ CHECKED_STATUS YQLExpression::Evaluate(const YQLExpressionPB &yql_expr,
     }
 
       // Cases below should have been caught by the analyzer so we just Fatal here.
-      // TODO When this is integrated into YQLExprExecutor some invariants might change here.
-    case YQLExpressionPB::ExprCase::kSubscriptedCol:
+      // TODO When this is integrated into QLExprExecutor some invariants might change here.
+    case QLExpressionPB::ExprCase::kSubscriptedCol:
       LOG(FATAL) << "Internal error: Subscripted column is not allowed in this context";
       break;
 
-    case YQLExpressionPB::ExprCase::kCondition:
+    case QLExpressionPB::ExprCase::kCondition:
       LOG(FATAL) << "Internal error: Conditional expression is not allowed in this context";
       break;
 
-    case YQLExpressionPB::ExprCase::EXPR_NOT_SET:
+    case QLExpressionPB::ExprCase::EXPR_NOT_SET:
       LOG(FATAL) << "Internal error: Null/Unset expression is not allowed in this context";
       break;
   }

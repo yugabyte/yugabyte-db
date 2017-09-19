@@ -26,7 +26,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/common/yql_protocol.pb.h"
+#include "yb/common/ql_protocol.pb.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/docdb/doc_operation.h"
@@ -96,7 +96,7 @@ class BulkLoadTask : public Runnable {
  private:
   CHECKED_STATUS PopulateColumnValue(const string &column,
                                      const DataType data_type,
-                                     YQLColumnValuePB *column_value);
+                                     QLColumnValuePB *column_value);
   CHECKED_STATUS InsertRow(const string &row,
                            const Schema &schema,
                            BulkLoadDocDBUtil *const db_fixture,
@@ -185,43 +185,43 @@ void BulkLoadTask::Run() {
 
 Status BulkLoadTask::PopulateColumnValue(const string &column,
                                          const DataType data_type,
-                                         YQLColumnValuePB *column_value) {
-  auto yql_valuepb = column_value->mutable_expr()->mutable_value();
+                                         QLColumnValuePB *column_value) {
+  auto ql_valuepb = column_value->mutable_expr()->mutable_value();
   int32_t int_val;
   int64_t long_val;
   double double_val;
   switch (data_type) {
     case DataType::INT8:
       RETURN_NOT_OK(CheckedStoi(column, &int_val));
-      yql_valuepb->set_int8_value(int_val);
+      ql_valuepb->set_int8_value(int_val);
       break;
     case DataType::INT16:
       RETURN_NOT_OK(CheckedStoi(column, &int_val));
-      yql_valuepb->set_int16_value(int_val);
+      ql_valuepb->set_int16_value(int_val);
       break;
     case DataType::INT32:
       RETURN_NOT_OK(CheckedStoi(column, &int_val));
-      yql_valuepb->set_int32_value(stoi(column));
+      ql_valuepb->set_int32_value(stoi(column));
       break;
     case DataType::INT64:
       RETURN_NOT_OK(CheckedStol(column, &long_val));
-      yql_valuepb->set_int64_value(stol(column));
+      ql_valuepb->set_int64_value(stol(column));
       break;
     case DataType::FLOAT:
       RETURN_NOT_OK(CheckedStold(column, &double_val));
-      yql_valuepb->set_float_value(double_val);
+      ql_valuepb->set_float_value(double_val);
       break;
     case DataType::DOUBLE:
       RETURN_NOT_OK(CheckedStold(column, &double_val));
-      yql_valuepb->set_double_value(double_val);
+      ql_valuepb->set_double_value(double_val);
       break;
     case DataType::STRING:
-      yql_valuepb->set_string_value(column);
+      ql_valuepb->set_string_value(column);
       break;
     case DataType::TIMESTAMP: {
       Timestamp ts;
       RETURN_NOT_OK(TimestampFromString(column, &ts));
-      yql_valuepb->set_timestamp_value(ts.ToInt64());
+      ql_valuepb->set_timestamp_value(ts.ToInt64());
       break;
     }
     default:
@@ -243,9 +243,9 @@ Status BulkLoadTask::InsertRow(const string &row,
                              ncolumns, schema.num_columns());
   }
 
-  YQLResponsePB resp;
-  YQLWriteRequestPB req;
-  req.set_type(YQLWriteRequestPB_YQLStmtType_YQL_STMT_INSERT);
+  QLResponsePB resp;
+  QLWriteRequestPB req;
+  req.set_type(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT);
   req.set_client(YQL_CLIENT_CQL);
 
   auto it = tokenizer.begin();
@@ -255,7 +255,7 @@ Status BulkLoadTask::InsertRow(const string &row,
       return STATUS_SUBSTITUTE(IllegalState, "Primary key cannot be null: $0", *it);
     }
 
-    YQLColumnValuePB *column_value = nullptr;
+    QLColumnValuePB *column_value = nullptr;
     if (schema.is_hash_key_column(i)) {
       column_value = req.add_hashed_column_values();
     } else {
@@ -269,7 +269,7 @@ Status BulkLoadTask::InsertRow(const string &row,
 
   // Finally process the regular columns.
   for (int i = schema.num_key_columns(); i < schema.num_columns(); i++, it++) {
-    YQLColumnValuePB *column_value = req.add_column_values();
+    QLColumnValuePB *column_value = req.add_column_values();
     column_value->set_column_id(kFirstColumnId + i);
     if (IsNull(*it)) {
       // Use empty value for null.
@@ -288,7 +288,7 @@ Status BulkLoadTask::InsertRow(const string &row,
   req.set_hash_code(PartitionSchema::DecodeMultiColumnHashValue(partition_key));
 
   // Finally apply the operation to the the doc_write_batch.
-  docdb::YQLWriteOperation op(&req, schema, &resp);
+  docdb::QLWriteOperation op(&req, schema, &resp);
   RETURN_NOT_OK(op.Apply(doc_write_batch, db_fixture->rocksdb(),
                          HybridTime::FromMicros(kYugaByteMicrosecondEpoch)));
   return Status::OK();

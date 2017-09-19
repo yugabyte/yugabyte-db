@@ -409,7 +409,7 @@ struct DataTypeTraits<MAP> : public DerivedTypeTraits<BINARY>{
   }
 
   // using the default implementation inherited from BINARY for AppendDebugStringForValue
-  // TODO much of this codepath should be retired and we should systematically use YQLValue instead
+  // TODO much of this codepath should be retired and we should systematically use QLValue instead
   // of Kudu Slice [ENG-1235]
 };
 
@@ -420,7 +420,7 @@ struct DataTypeTraits<SET> : public DerivedTypeTraits<BINARY>{
   }
 
   // using the default implementation inherited from BINARY for AppendDebugStringForValue
-  // TODO much of this codepath should be retired and we should systematically use YQLValue instead
+  // TODO much of this codepath should be retired and we should systematically use QLValue instead
   // of Kudu Slice [ENG-1235]
 };
 
@@ -431,7 +431,7 @@ struct DataTypeTraits<LIST> : public DerivedTypeTraits<BINARY>{
   }
 
   // using the default implementation inherited from BINARY for AppendDebugStringForValue
-  // TODO much of this codepath should be retired and we should systematically use YQLValue instead
+  // TODO much of this codepath should be retired and we should systematically use QLValue instead
   // of Kudu Slice [ENG-1235]
 };
 
@@ -442,7 +442,7 @@ struct DataTypeTraits<USER_DEFINED_TYPE> : public DerivedTypeTraits<BINARY>{
   }
 
   // using the default implementation inherited from BINARY for AppendDebugStringForValue
-  // TODO much of this codepath should be retired and we should systematically use YQLValue instead
+  // TODO much of this codepath should be retired and we should systematically use QLValue instead
   // of Kudu Slice [ENG-1235]
 };
 
@@ -453,7 +453,7 @@ struct DataTypeTraits<FROZEN> : public DerivedTypeTraits<BINARY>{
   }
 
   // using the default implementation inherited from BINARY for AppendDebugStringForValue
-  // TODO much of this codepath should be retired and we should systematically use YQLValue instead
+  // TODO much of this codepath should be retired and we should systematically use QLValue instead
   // of Kudu Slice [ENG-1235]
 };
 

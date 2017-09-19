@@ -61,7 +61,7 @@ YBColumnSpec::~YBColumnSpec() {
   delete data_;
 }
 
-YBColumnSpec* YBColumnSpec::Type(const std::shared_ptr<YQLType>& type) {
+YBColumnSpec* YBColumnSpec::Type(const std::shared_ptr<QLType>& type) {
   data_->has_type = true;
   data_->type = type;
   return this;
@@ -371,7 +371,7 @@ std::string YBColumnSchema::DataTypeToString(DataType type) {
 }
 
 YBColumnSchema::YBColumnSchema(const std::string &name,
-                               const shared_ptr<YQLType>& type,
+                               const shared_ptr<QLType>& type,
                                bool is_nullable,
                                bool is_hash_key,
                                bool is_static,
@@ -436,7 +436,7 @@ bool YBColumnSchema::is_static() const {
   return DCHECK_NOTNULL(col_)->is_static();
 }
 
-const shared_ptr<YQLType>& YBColumnSchema::type() const {
+const shared_ptr<QLType>& YBColumnSchema::type() const {
   return DCHECK_NOTNULL(col_)->type();
 }
 

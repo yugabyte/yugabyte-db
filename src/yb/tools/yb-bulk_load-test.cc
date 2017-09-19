@@ -22,14 +22,14 @@
 #include "yb/common/partition.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/docdb/docdb_test_util.h"
-#include "yb/docdb/yql_rocksdb_storage.h"
+#include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/mini_master.h"
 #include "yb/rpc/messenger.h"
-#include "yb/sql/util/statement_result.h"
+#include "yb/ql/util/statement_result.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tools/bulk_load_utils.h"
 #include "yb/tools/yb-generate_partitions.h"
@@ -158,7 +158,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_EQ(0, WEXITSTATUS(wait_status));
   }
 
-  CHECKED_STATUS CreateYQLReadRequest(const string& row, YQLReadRequestPB* req) {
+  CHECKED_STATUS CreateQLReadRequest(const string& row, QLReadRequestPB* req) {
     req->set_client(YQL_CLIENT_CQL);
     string tablet_id;
     string partition_key;
@@ -172,7 +172,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     auto it = tokenizer.begin();
     // Set hash columns.
     // hash_key .
-    YQLColumnValuePB* hashed_column = req->add_hashed_column_values();
+    QLColumnValuePB* hashed_column = req->add_hashed_column_values();
     hashed_column->mutable_expr()->mutable_value()->set_int64_value(
         std::stol(*it++));
     hashed_column->set_column_id(kFirstColumnId);
@@ -191,8 +191,8 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     hashed_column->set_column_id(kFirstColumnId + 2);
 
     // Set range column.
-    YQLConditionPB* condition = req->mutable_where_expr()->mutable_condition();
-    condition->set_op(YQLOperator::YQL_OP_EQUAL);
+    QLConditionPB* condition = req->mutable_where_expr()->mutable_condition();
+    condition->set_op(QLOperator::QL_OP_EQUAL);
     condition->add_operands()->set_column_id(kFirstColumnId + 3);
     RETURN_NOT_OK(TimestampFromString(*it++, &ts));
     condition->add_operands()->mutable_value()->set_timestamp_value(ts.ToInt64());
@@ -206,21 +206,21 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
 
-  void ValidateRow(const string& row, const YQLRow& yql_row) {
+  void ValidateRow(const string& row, const QLRow& ql_row) {
     // Get individual columns.
     CsvTokenizer tokenizer = Tokenize(row);
     auto it = tokenizer.begin();
     Timestamp ts;
-    ASSERT_EQ(std::stol(*it++), yql_row.column(0).int64_value());
+    ASSERT_EQ(std::stol(*it++), ql_row.column(0).int64_value());
     ASSERT_OK(TimestampFromString(*it++, &ts));
-    ASSERT_EQ(ts, yql_row.column(1).timestamp_value());
-    ASSERT_EQ(*it++, yql_row.column(2).string_value());
+    ASSERT_EQ(ts, ql_row.column(1).timestamp_value());
+    ASSERT_EQ(*it++, ql_row.column(2).string_value());
     ASSERT_OK(TimestampFromString(*it++, &ts));
-    ASSERT_EQ(ts, yql_row.column(3).timestamp_value());
-    ASSERT_EQ(*it++, yql_row.column(4).string_value());
-    ASSERT_EQ(std::stoi(*it++), yql_row.column(5).int32_value());
-    ASSERT_FLOAT_EQ(std::stof(*it++), yql_row.column(6).float_value());
-    ASSERT_DOUBLE_EQ(std::stold(*it++), yql_row.column(7).double_value());
+    ASSERT_EQ(ts, ql_row.column(3).timestamp_value());
+    ASSERT_EQ(*it++, ql_row.column(4).string_value());
+    ASSERT_EQ(std::stoi(*it++), ql_row.column(5).int32_value());
+    ASSERT_FLOAT_EQ(std::stof(*it++), ql_row.column(6).float_value());
+    ASSERT_DOUBLE_EQ(std::stold(*it++), ql_row.column(7).double_value());
   }
 
  protected:
@@ -251,22 +251,22 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
       controller.set_timeout(MonoDelta::FromSeconds(3));
 
       req.set_tablet_id(tablet_id);
-      YQLWriteRequestPB* yql_write = req.add_yql_write_batch();
-      YQLColumnValuePB* hash_column = yql_write->add_hashed_column_values();
+      QLWriteRequestPB* ql_write = req.add_ql_write_batch();
+      QLColumnValuePB* hash_column = ql_write->add_hashed_column_values();
 
       hash_column->set_column_id(kFirstColumnId);
       hash_column->mutable_expr()->mutable_value()->set_int64_value(random_.Next64());
 
-      hash_column = yql_write->add_hashed_column_values();
+      hash_column = ql_write->add_hashed_column_values();
       hash_column->set_column_id(kFirstColumnId + 1);
       hash_column->mutable_expr()->mutable_value()->set_timestamp_value(random_.Next32());
 
-      hash_column = yql_write->add_hashed_column_values();
+      hash_column = ql_write->add_hashed_column_values();
       hash_column->set_column_id(kFirstColumnId + 2);
       hash_column->mutable_expr()->mutable_value()->set_string_value(
           std::to_string(random_.Next32()));
 
-      YQLColumnValuePB* range_column = yql_write->add_range_column_values();
+      QLColumnValuePB* range_column = ql_write->add_range_column_values();
       range_column->set_column_id(kFirstColumnId + 3);
       range_column->mutable_expr()->mutable_value()->set_timestamp_value(random_.Next64());
 
@@ -330,22 +330,22 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
 
   void PerformRead(const tserver::ReadRequestPB& req,
                    tserver::TabletServerServiceProxy* tserver_proxy,
-                   std::unique_ptr<YQLRowBlock>* rowblock) {
+                   std::unique_ptr<QLRowBlock>* rowblock) {
     tserver::ReadResponsePB resp;
     rpc::RpcController controller;
     controller.set_timeout(MonoDelta::FromSeconds(3));
     ASSERT_OK(tserver_proxy->Read(req, &resp, &controller));
     ASSERT_FALSE(resp.has_error());
-    ASSERT_EQ(1, resp.yql_batch_size());
-    YQLResponsePB yql_resp = resp.yql_batch(0);
-    ASSERT_EQ(YQLResponsePB_YQLStatus_YQL_STATUS_OK, yql_resp.status());
-    ASSERT_TRUE(yql_resp.has_rows_data_sidecar());
+    ASSERT_EQ(1, resp.ql_batch_size());
+    QLResponsePB ql_resp = resp.ql_batch(0);
+    ASSERT_EQ(QLResponsePB_QLStatus_YQL_STATUS_OK, ql_resp.status());
+    ASSERT_TRUE(ql_resp.has_rows_data_sidecar());
 
     // Retrieve row.
     Slice rows_data;
     ASSERT_TRUE(controller.finished());
-    ASSERT_OK(controller.GetSidecar(yql_resp.rows_data_sidecar(), &rows_data));
-    yb::sql::RowsResult rowsResult(*table_name_, schema_.columns(), rows_data.ToBuffer());
+    ASSERT_OK(controller.GetSidecar(ql_resp.rows_data_sidecar(), &rows_data));
+    yb::ql::RowsResult rowsResult(*table_name_, schema_.columns(), rows_data.ToBuffer());
     *rowblock = rowsResult.GetRowBlock();
   }
 
@@ -535,26 +535,26 @@ TEST_F(YBBulkLoadTest, TestCLITool) {
       // Build read request.
       tserver::ReadRequestPB req;
       req.set_tablet_id(tablet_id);
-      YQLReadRequestPB* yql_req = req.mutable_yql_batch()->Add();
-      ASSERT_OK(CreateYQLReadRequest(row, yql_req));
+      QLReadRequestPB* ql_req = req.mutable_ql_batch()->Add();
+      ASSERT_OK(CreateQLReadRequest(row, ql_req));
 
-      std::unique_ptr<YQLRowBlock> rowblock;
+      std::unique_ptr<QLRowBlock> rowblock;
       PerformRead(req, tserver_proxy.get(), &rowblock);
 
       // Validate row.
       ASSERT_EQ(1, rowblock->row_count());
-      const YQLRow& yql_row = rowblock->row(0);
-      ASSERT_EQ(schema_.num_columns(), yql_row.column_count());
-      ValidateRow(row, yql_row);
+      const QLRow& ql_row = rowblock->row(0);
+      ASSERT_EQ(schema_.num_columns(), ql_row.column_count());
+      ValidateRow(row, ql_row);
     }
 
     // Perform a SELECT * and verify the number of rows present in the tablet is what we expected.
     tserver::ReadRequestPB req;
     tserver::ReadResponsePB resp;
     req.set_tablet_id(tablet_id);
-    YQLReadRequestPB* yql_req = req.mutable_yql_batch()->Add();
-    YQLConditionPB* condition = yql_req->mutable_where_expr()->mutable_condition();
-    condition->set_op(YQLOperator::YQL_OP_EQUAL);
+    QLReadRequestPB* ql_req = req.mutable_ql_batch()->Add();
+    QLConditionPB* condition = ql_req->mutable_where_expr()->mutable_condition();
+    condition->set_op(QLOperator::QL_OP_EQUAL);
     condition->add_operands()->set_column_id(kFirstColumnId + kV2Index);
     // kV2Value is common across all rows in the tablet and hence we use that value to verify the
     // expected number of rows. Note that since we have a parallel load tester running, we can't
@@ -563,11 +563,11 @@ TEST_F(YBBulkLoadTest, TestCLITool) {
 
     // Set all column ids.
     for (int i = 0; i < table_->InternalSchema().num_columns(); i++) {
-      yql_req->mutable_column_refs()->add_ids(kFirstColumnId + i);
-      yql_req->add_column_ids(kFirstColumnId + i);
+      ql_req->mutable_column_refs()->add_ids(kFirstColumnId + i);
+      ql_req->add_column_ids(kFirstColumnId + i);
     }
 
-    std::unique_ptr<YQLRowBlock> rowblock;
+    std::unique_ptr<QLRowBlock> rowblock;
     PerformRead(req, tserver_proxy.get(), &rowblock);
     ASSERT_EQ(tabletid_to_line[tablet_id].size(), rowblock->row_count());
 

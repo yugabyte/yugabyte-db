@@ -153,11 +153,11 @@ void AsyncRpc::Failed(const Status& status) {
         resp->set_error_message(error_message);
         break;
       }
-      case YBOperation::Type::YQL_READ: FALLTHROUGH_INTENDED;
-      case YBOperation::Type::YQL_WRITE: {
-        YQLResponsePB* resp = down_cast<YBqlOp*>(yb_op)->mutable_response();
+      case YBOperation::Type::QL_READ: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::QL_WRITE: {
+        QLResponsePB* resp = down_cast<YBqlOp*>(yb_op)->mutable_response();
         resp->Clear();
-        resp->set_status(YQLResponsePB::YQL_STATUS_RUNTIME_ERROR);
+        resp->set_status(QLResponsePB::YQL_STATUS_RUNTIME_ERROR);
         resp->set_error_message(error_message);
         break;
       }
@@ -234,12 +234,12 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
         req_.add_redis_write_batch()->Swap(redis_op->mutable_request());
         break;
       }
-      case YBOperation::Type::YQL_WRITE: {
+      case YBOperation::Type::QL_WRITE: {
         CHECK_EQ(table()->table_type(), YBTableType::YQL_TABLE_TYPE);
-        // Move YQL write request PB into tserver write request PB for performance. Will restore
+        // Move QL write request PB into tserver write request PB for performance. Will restore
         // in ProcessResponseFromTserver.
-        auto* yql_op = down_cast<YBqlWriteOp*>(op->yb_op.get());
-        req_.add_yql_write_batch()->Swap(yql_op->mutable_request());
+        auto* ql_op = down_cast<YBqlWriteOp*>(op->yb_op.get());
+        req_.add_ql_write_batch()->Swap(ql_op->mutable_request());
         break;
       }
       case YBOperation::Type::INSERT: FALLTHROUGH_INTENDED;
@@ -256,7 +256,7 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
         break;
       }
       case YBOperation::Type::REDIS_READ: FALLTHROUGH_INTENDED;
-      case YBOperation::Type::YQL_READ:
+      case YBOperation::Type::QL_READ:
         LOG(FATAL) << "Not a write operation " << op->yb_op->type();
         break;
       default:
@@ -325,8 +325,8 @@ void WriteRpc::ProcessResponseFromTserver(Status status) {
     return;
   }
   size_t redis_idx = 0;
-  size_t yql_idx = 0;
-  // Retrieve Redis and YQL responses and make sure we received all the responses back.
+  size_t ql_idx = 0;
+  // Retrieve Redis and QL responses and make sure we received all the responses back.
   for (auto& op : ops_) {
     YBOperation* yb_op = op->yb_op.get();
     switch (yb_op->type()) {
@@ -342,24 +342,24 @@ void WriteRpc::ProcessResponseFromTserver(Status status) {
         redis_idx++;
         break;
       }
-      case YBOperation::Type::YQL_WRITE: {
-        if (yql_idx >= resp_.yql_response_batch().size()) {
+      case YBOperation::Type::QL_WRITE: {
+        if (ql_idx >= resp_.ql_response_batch().size()) {
           batcher_->AddOpCountMismatchError();
           return;
         }
-        // Restore YQL write request PB and extract response.
-        auto* yql_op = down_cast<YBqlWriteOp*>(yb_op);
-        yql_op->mutable_request()->Swap(req_.mutable_yql_write_batch(yql_idx));
-        yql_op->mutable_response()->Swap(resp_.mutable_yql_response_batch(yql_idx));
-        const auto& yql_response = yql_op->response();
-        if (yql_response.has_rows_data_sidecar()) {
+        // Restore QL write request PB and extract response.
+        auto* ql_op = down_cast<YBqlWriteOp*>(yb_op);
+        ql_op->mutable_request()->Swap(req_.mutable_ql_write_batch(ql_idx));
+        ql_op->mutable_response()->Swap(resp_.mutable_ql_response_batch(ql_idx));
+        const auto& ql_response = ql_op->response();
+        if (ql_response.has_rows_data_sidecar()) {
           Slice rows_data;
           CHECK_OK(retrier().controller().GetSidecar(
-              yql_response.rows_data_sidecar(), &rows_data));
+              ql_response.rows_data_sidecar(), &rows_data));
           down_cast<YBqlWriteOp*>(yb_op)->mutable_rows_data()->assign(
               util::to_char_ptr(rows_data.data()), rows_data.size());
         }
-        yql_idx++;
+        ql_idx++;
         break;
       }
 
@@ -369,19 +369,19 @@ void WriteRpc::ProcessResponseFromTserver(Status status) {
         break; // these writes have no separate responses
 
       case YBOperation::Type::REDIS_READ: FALLTHROUGH_INTENDED;
-      case YBOperation::Type::YQL_READ:
+      case YBOperation::Type::QL_READ:
         LOG(FATAL) << "Not a write operation " << op->yb_op->type();
         break;
     }
   }
 
   if (redis_idx != resp_.redis_response_batch().size() ||
-      yql_idx != resp_.yql_response_batch().size()) {
+      ql_idx != resp_.ql_response_batch().size()) {
     LOG(ERROR) << Substitute("Write response count mismatch: "
                              "$0 Redis requests sent, $1 responses received. "
-                             "$2 YQL requests sent, $3 responses received.",
+                             "$2 QL requests sent, $3 responses received.",
                              redis_idx, resp_.redis_response_batch().size(),
-                             yql_idx, resp_.yql_response_batch().size());
+                             ql_idx, resp_.ql_response_batch().size());
     batcher_->AddOpCountMismatchError();
     Failed(STATUS(IllegalState, "Write response count mismatch"));
   }
@@ -406,19 +406,19 @@ ReadRpc::ReadRpc(
         req_.add_redis_batch()->Swap(redis_op->mutable_request());
         break;
       }
-      case YBOperation::Type::YQL_READ: {
+      case YBOperation::Type::QL_READ: {
         CHECK_EQ(table()->table_type(), YBTableType::YQL_TABLE_TYPE);
-        // Move YQL read request PB into tserver read request PB for performance. Will restore
+        // Move QL read request PB into tserver read request PB for performance. Will restore
         // in ProcessResponseFromTserver.
-        auto* yql_op = down_cast<YBqlReadOp*>(op->yb_op.get());
-        req_.add_yql_batch()->Swap(yql_op->mutable_request());
+        auto* ql_op = down_cast<YBqlReadOp*>(op->yb_op.get());
+        req_.add_ql_batch()->Swap(ql_op->mutable_request());
         break;
       }
       case YBOperation::Type::INSERT: FALLTHROUGH_INTENDED;
       case YBOperation::Type::UPDATE: FALLTHROUGH_INTENDED;
       case YBOperation::Type::DELETE: FALLTHROUGH_INTENDED;
       case YBOperation::Type::REDIS_WRITE: FALLTHROUGH_INTENDED;
-      case YBOperation::Type::YQL_WRITE:
+      case YBOperation::Type::QL_WRITE:
         LOG(FATAL) << "Not a read operation " << op->yb_op->type();
         break;
       default:
@@ -477,9 +477,9 @@ void ReadRpc::ProcessResponseFromTserver(Status status) {
     Failed(StatusFromPB(resp_.error().status()));
     return;
   }
-  // Retrieve Redis and YQL responses and make sure we received all the responses back.
+  // Retrieve Redis and QL responses and make sure we received all the responses back.
   size_t redis_idx = 0;
-  size_t yql_idx = 0;
+  size_t ql_idx = 0;
   for (auto& op : ops_) {
     YBOperation* yb_op = op->yb_op.get();
     switch (yb_op->type()) {
@@ -495,43 +495,43 @@ void ReadRpc::ProcessResponseFromTserver(Status status) {
         redis_idx++;
         break;
       }
-      case YBOperation::Type::YQL_READ: {
-        if (yql_idx >= resp_.yql_batch().size()) {
+      case YBOperation::Type::QL_READ: {
+        if (ql_idx >= resp_.ql_batch().size()) {
           batcher_->AddOpCountMismatchError();
           return;
         }
-        // Restore YQL read request PB and extract response.
-        auto* yql_op = down_cast<YBqlReadOp*>(yb_op);
-        yql_op->mutable_request()->Swap(req_.mutable_yql_batch(yql_idx));
-        yql_op->mutable_response()->Swap(resp_.mutable_yql_batch(yql_idx));
-        const auto& yql_response = yql_op->response();
-        if (yql_response.has_rows_data_sidecar()) {
+        // Restore QL read request PB and extract response.
+        auto* ql_op = down_cast<YBqlReadOp*>(yb_op);
+        ql_op->mutable_request()->Swap(req_.mutable_ql_batch(ql_idx));
+        ql_op->mutable_response()->Swap(resp_.mutable_ql_batch(ql_idx));
+        const auto& ql_response = ql_op->response();
+        if (ql_response.has_rows_data_sidecar()) {
           Slice rows_data;
           CHECK_OK(retrier().controller().GetSidecar(
-              yql_response.rows_data_sidecar(), &rows_data));
+              ql_response.rows_data_sidecar(), &rows_data));
           down_cast<YBqlReadOp*>(yb_op)->mutable_rows_data()->assign(
               util::to_char_ptr(rows_data.data()), rows_data.size());
         }
-        yql_idx++;
+        ql_idx++;
         break;
       }
       case YBOperation::Type::INSERT: FALLTHROUGH_INTENDED;
       case YBOperation::Type::UPDATE: FALLTHROUGH_INTENDED;
       case YBOperation::Type::DELETE: FALLTHROUGH_INTENDED;
       case YBOperation::Type::REDIS_WRITE: FALLTHROUGH_INTENDED;
-      case YBOperation::Type::YQL_WRITE:
+      case YBOperation::Type::QL_WRITE:
         LOG(FATAL) << "Not a read operation " << op->yb_op->type();
         break;
     }
   }
 
   if (redis_idx != resp_.redis_batch().size() ||
-      yql_idx != resp_.yql_batch().size()) {
+      ql_idx != resp_.ql_batch().size()) {
     LOG(ERROR) << Substitute("Read response count mismatch: "
                              "$0 Redis requests sent, $1 responses received. "
-                             "$2 YQL requests sent, $3 responses received.",
+                             "$2 QL requests sent, $3 responses received.",
                              redis_idx, resp_.redis_batch().size(),
-                             yql_idx, resp_.yql_batch().size());
+                             ql_idx, resp_.ql_batch().size());
     batcher_->AddOpCountMismatchError();
     Failed(STATUS(IllegalState, "Read response count mismatch"));
   }

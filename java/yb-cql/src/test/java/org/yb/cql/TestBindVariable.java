@@ -750,7 +750,7 @@ public class TestBindVariable extends BaseCQLTest {
     // Setup test table.
     setupTable("test_bind", 10 /* num_rows */);
 
-    // ">=" and "<=" not supported in YQL yet.
+    // ">=" and "<=" not supported in QL yet.
     //
     // {
     //   // Select bind marker with ">=" and "<=".
@@ -784,7 +784,7 @@ public class TestBindVariable extends BaseCQLTest {
       assertNull(row);
     }
 
-    // "<>" not supported in YQL yet.
+    // "<>" not supported in QL yet.
     //
     // {
     //   // Select bind marker with "<>".
@@ -796,7 +796,7 @@ public class TestBindVariable extends BaseCQLTest {
     //   assertNull(row);
     // }
 
-    // BETWEEN and NOT BETWEEN not supported in YQL yet.
+    // BETWEEN and NOT BETWEEN not supported in QL yet.
     //
     // {
     //   // Select bind marker with BETWEEN and NOT BETWEEN.
@@ -953,7 +953,7 @@ public class TestBindVariable extends BaseCQLTest {
       assertNull(row);
     }
 
-    // ">=" and "<=" not supported in YQL yet.
+    // ">=" and "<=" not supported in QL yet.
     //
     // {
     //   // Bind marker with ">=" and "<=" and no space in between column, operator and bind marker.
@@ -987,7 +987,7 @@ public class TestBindVariable extends BaseCQLTest {
       assertNull(row);
     }
 
-    // "<>" not supported in YQL yet.
+    // "<>" not supported in QL yet.
     //
     // {
     //   // Bind marker with "<>" and no space in between column, operator and bind marker.

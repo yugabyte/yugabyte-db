@@ -583,7 +583,7 @@ TEST_F(MasterTest, TestCreateTableInvalidSchema) {
   for (int i = 0; i < 2; i++) {
     ColumnSchemaPB* col = req.mutable_schema()->add_columns();
     col->set_name("col");
-    YQLType::Create(INT32)->ToYQLTypePB(col->mutable_type());
+    QLType::Create(INT32)->ToQLTypePB(col->mutable_type());
     col->set_is_key(true);
   }
 

@@ -22,7 +22,7 @@
 #include <list>
 
 #include "yb/cqlserver/cql_message.h"
-#include "yb/sql/statement.h"
+#include "yb/ql/statement.h"
 
 namespace yb {
 namespace cqlserver {
@@ -39,9 +39,9 @@ using CQLStatementList = std::list<std::shared_ptr<CQLStatement>>;
 using CQLStatementListPos = CQLStatementList::iterator;
 
 // A CQL statement that is prepared and cached.
-class CQLStatement : public sql::Statement {
+class CQLStatement : public ql::Statement {
  public:
-  CQLStatement(const std::string& keyspace, const std::string& sql_stmt, CQLStatementListPos pos);
+  CQLStatement(const std::string& keyspace, const std::string& ql_stmt, CQLStatementListPos pos);
   ~CQLStatement();
 
   // Return the query id.
@@ -52,7 +52,7 @@ class CQLStatement : public sql::Statement {
   void set_pos(CQLStatementListPos pos) const { pos_ = pos; }
 
   // Return the query id of a statement.
-  static CQLMessage::QueryId GetQueryId(const std::string& keyspace, const std::string& sql_stmt);
+  static CQLMessage::QueryId GetQueryId(const std::string& keyspace, const std::string& ql_stmt);
 
  private:
   // Position of the statement in the LRU.

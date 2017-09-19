@@ -32,7 +32,7 @@ set(DOCDB_SRCS
     doc_operation.cc
     doc_rowwise_iterator.cc
     doc_write_batch_cache.cc
-    doc_yql_scanspec.cc
+    doc_ql_scanspec.cc
     docdb.cc
     docdb_compaction_filter.cc
     docdb_rocksdb_util.cc
@@ -44,7 +44,7 @@ set(DOCDB_SRCS
     value.cc
     subdocument.cc
     value_type.cc
-    yql_rocksdb_storage.cc)
+    ql_rocksdb_storage.cc)
 
 set(DOCDB_DEPS
     rocksdb

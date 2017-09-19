@@ -31,7 +31,7 @@
 
 using std::string;
 using strings::Substitute;
-using yb::YQLValuePB;
+using yb::QLValuePB;
 using yb::util::Decimal;
 using yb::util::FormatBytesAsStr;
 using yb::util::CompareUsingLessThan;
@@ -972,61 +972,61 @@ PrimitiveValue PrimitiveValue::FromKuduValue(DataType data_type, Slice slice) {
     }
 }
 
-PrimitiveValue PrimitiveValue::FromYQLValuePB(const YQLValuePB& value,
+PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
                                               ColumnSchema::SortingType sorting_type) {
   const auto sort_order = SortOrderFromColumnSchemaSortingType(sorting_type);
 
   switch (value.value_case()) {
-    case YQLValuePB::kInt8Value:    return PrimitiveValue::Int32(YQLValue::int8_value(value),
+    case QLValuePB::kInt8Value:    return PrimitiveValue::Int32(QLValue::int8_value(value),
                                                                  sort_order);
-    case YQLValuePB::kInt16Value:   return PrimitiveValue::Int32(YQLValue::int16_value(value),
+    case QLValuePB::kInt16Value:   return PrimitiveValue::Int32(QLValue::int16_value(value),
                                                                  sort_order);
-    case YQLValuePB::kInt32Value:   return PrimitiveValue::Int32(YQLValue::int32_value(value),
+    case QLValuePB::kInt32Value:   return PrimitiveValue::Int32(QLValue::int32_value(value),
                                                                  sort_order);
-    case YQLValuePB::kInt64Value:   return PrimitiveValue(YQLValue::int64_value(value), sort_order);
-    case YQLValuePB::kFloatValue: {
+    case QLValuePB::kInt64Value:   return PrimitiveValue(QLValue::int64_value(value), sort_order);
+    case QLValuePB::kFloatValue: {
       if (sort_order != SortOrder::kAscending) {
         LOG(ERROR) << "Ignoring invalid sort order for FLOAT. Using SortOrder::kAscending.";
       }
-      float f = YQLValue::float_value(value);
+      float f = QLValue::float_value(value);
       return PrimitiveValue::Float(util::CanonicalizeFloat(f));
     }
-    case YQLValuePB::kDoubleValue: {
+    case QLValuePB::kDoubleValue: {
       if (sort_order != SortOrder::kAscending) {
         LOG(ERROR) << "Ignoring invalid sort order for DOUBLE. Using SortOrder::kAscending.";
       }
-      double d = YQLValue::double_value(value);
+      double d = QLValue::double_value(value);
       return PrimitiveValue::Double(util::CanonicalizeDouble(d));
     }
-    case YQLValuePB::kDecimalValue:
-      return PrimitiveValue::Decimal(YQLValue::decimal_value(value), sort_order);
-    case YQLValuePB::kStringValue:
-      return PrimitiveValue(YQLValue::string_value(value), sort_order);
-    case YQLValuePB::kBinaryValue:
+    case QLValuePB::kDecimalValue:
+      return PrimitiveValue::Decimal(QLValue::decimal_value(value), sort_order);
+    case QLValuePB::kStringValue:
+      return PrimitiveValue(QLValue::string_value(value), sort_order);
+    case QLValuePB::kBinaryValue:
       // TODO consider using dedicated encoding for binary (not string) to avoid overhead of
       // zero-encoding for keys (since zero-bytes could be common for binary)
-      return PrimitiveValue(YQLValue::binary_value(value), sort_order);
-    case YQLValuePB::kBoolValue:
+      return PrimitiveValue(QLValue::binary_value(value), sort_order);
+    case QLValuePB::kBoolValue:
       if (sort_order != SortOrder::kAscending) {
         LOG(ERROR) << "Ignoring invalid sort order for BOOL. Using SortOrder::kAscending.";
       }
-      return PrimitiveValue(YQLValue::bool_value(value) ? ValueType::kTrue : ValueType::kFalse);
-    case YQLValuePB::kTimestampValue:
-      return PrimitiveValue(YQLValue::timestamp_value(value), sort_order);
-    case YQLValuePB::kInetaddressValue:
-      return PrimitiveValue(YQLValue::inetaddress_value(value), sort_order);
-    case YQLValuePB::kUuidValue: return PrimitiveValue(YQLValue::uuid_value(value), sort_order);
-    case YQLValuePB::kTimeuuidValue:
-      return PrimitiveValue(YQLValue::timeuuid_value(value), sort_order);
-    case YQLValuePB::kFrozenValue:
-      return PrimitiveValue(YQLValue::frozen_value(value), sort_order);
-    case YQLValuePB::VALUE_NOT_SET:
+      return PrimitiveValue(QLValue::bool_value(value) ? ValueType::kTrue : ValueType::kFalse);
+    case QLValuePB::kTimestampValue:
+      return PrimitiveValue(QLValue::timestamp_value(value), sort_order);
+    case QLValuePB::kInetaddressValue:
+      return PrimitiveValue(QLValue::inetaddress_value(value), sort_order);
+    case QLValuePB::kUuidValue: return PrimitiveValue(QLValue::uuid_value(value), sort_order);
+    case QLValuePB::kTimeuuidValue:
+      return PrimitiveValue(QLValue::timeuuid_value(value), sort_order);
+    case QLValuePB::kFrozenValue:
+      return PrimitiveValue(QLValue::frozen_value(value), sort_order);
+    case QLValuePB::VALUE_NOT_SET:
       return PrimitiveValue(ValueType::kTombstone);
 
-    case YQLValuePB::kMapValue: FALLTHROUGH_INTENDED;
-    case YQLValuePB::kSetValue: FALLTHROUGH_INTENDED;
-    case YQLValuePB::kListValue: FALLTHROUGH_INTENDED;
-    case YQLValuePB::kVarintValue:
+    case QLValuePB::kMapValue: FALLTHROUGH_INTENDED;
+    case QLValuePB::kSetValue: FALLTHROUGH_INTENDED;
+    case QLValuePB::kListValue: FALLTHROUGH_INTENDED;
+    case QLValuePB::kVarintValue:
       break;
 
     // default: fall through
@@ -1035,62 +1035,62 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const YQLValuePB& value,
   LOG(FATAL) << "Unsupported datatype in PrimitiveValue: " << value.value_case();
 }
 
-void PrimitiveValue::ToYQLValuePB(const PrimitiveValue& primitive_value,
-                                  const std::shared_ptr<YQLType>& yql_type,
-                                  YQLValuePB* yql_value) {
+void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
+                                  const std::shared_ptr<QLType>& ql_type,
+                                  QLValuePB* ql_value) {
   // DocDB sets type to kInvalidValueType for SubDocuments that don't exist. That's why they need
-  // to be set to Null in YQLValue.
+  // to be set to Null in QLValue.
   if (primitive_value.value_type() == ValueType::kNull ||
       primitive_value.value_type() == ValueType::kInvalidValueType) {
-    YQLValue::SetNull(yql_value);
+    QLValue::SetNull(ql_value);
     return;
   }
 
-  switch (yql_type->main()) {
+  switch (ql_type->main()) {
     case INT8:
-      YQLValue::set_int8_value(static_cast<int8_t>(primitive_value.GetInt32()), yql_value);
+      QLValue::set_int8_value(static_cast<int8_t>(primitive_value.GetInt32()), ql_value);
       return;
     case INT16:
-      YQLValue::set_int16_value(static_cast<int16_t>(primitive_value.GetInt32()), yql_value);
+      QLValue::set_int16_value(static_cast<int16_t>(primitive_value.GetInt32()), ql_value);
       return;
     case INT32:
-      YQLValue::set_int32_value(static_cast<int32_t>(primitive_value.GetInt32()), yql_value);
+      QLValue::set_int32_value(static_cast<int32_t>(primitive_value.GetInt32()), ql_value);
       return;
     case INT64:
-      YQLValue::set_int64_value(static_cast<int64_t>(primitive_value.GetInt64()), yql_value);
+      QLValue::set_int64_value(static_cast<int64_t>(primitive_value.GetInt64()), ql_value);
       return;
     case FLOAT:
-      YQLValue::set_float_value(static_cast<float>(primitive_value.GetFloat()), yql_value);
+      QLValue::set_float_value(static_cast<float>(primitive_value.GetFloat()), ql_value);
       return;
     case DOUBLE:
-      YQLValue::set_double_value(primitive_value.GetDouble(), yql_value);
+      QLValue::set_double_value(primitive_value.GetDouble(), ql_value);
       return;
     case DECIMAL:
-      YQLValue::set_decimal_value(primitive_value.GetDecimal(), yql_value);
+      QLValue::set_decimal_value(primitive_value.GetDecimal(), ql_value);
       return;
     case BOOL:
-      YQLValue::set_bool_value((primitive_value.value_type() == ValueType::kTrue), yql_value);
+      QLValue::set_bool_value((primitive_value.value_type() == ValueType::kTrue), ql_value);
       return;
     case TIMESTAMP:
-      YQLValue::set_timestamp_value(primitive_value.GetTimestamp(), yql_value);
+      QLValue::set_timestamp_value(primitive_value.GetTimestamp(), ql_value);
       return;
     case INET:
-      YQLValue::set_inetaddress_value(*primitive_value.GetInetaddress(), yql_value);
+      QLValue::set_inetaddress_value(*primitive_value.GetInetaddress(), ql_value);
       return;
     case UUID:
-      YQLValue::set_uuid_value(primitive_value.GetUuid(), yql_value);
+      QLValue::set_uuid_value(primitive_value.GetUuid(), ql_value);
       return;
     case TIMEUUID:
-      YQLValue::set_timeuuid_value(primitive_value.GetUuid(), yql_value);
+      QLValue::set_timeuuid_value(primitive_value.GetUuid(), ql_value);
       return;
     case STRING:
-      YQLValue::set_string_value(primitive_value.GetString(), yql_value);
+      QLValue::set_string_value(primitive_value.GetString(), ql_value);
       return;
     case BINARY:
-      YQLValue::set_binary_value(primitive_value.GetString(), yql_value);
+      QLValue::set_binary_value(primitive_value.GetString(), ql_value);
       return;
     case FROZEN:
-      YQLValue::set_frozen_value(primitive_value.GetString(), yql_value);
+      QLValue::set_frozen_value(primitive_value.GetString(), ql_value);
       return;
 
     case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
@@ -1112,28 +1112,28 @@ void PrimitiveValue::ToYQLValuePB(const PrimitiveValue& primitive_value,
     // default: fall through
   }
 
-  LOG(FATAL) << "Unsupported datatype " << yql_type->ToString();
+  LOG(FATAL) << "Unsupported datatype " << ql_type->ToString();
 }
 
-PrimitiveValue PrimitiveValue::FromYQLExpressionPB(const YQLExpressionPB& yql_expr,
+PrimitiveValue PrimitiveValue::FromQLExpressionPB(const QLExpressionPB& ql_expr,
                                                    ColumnSchema::SortingType sorting_type) {
-  switch (yql_expr.expr_case()) {
-    case YQLExpressionPB::ExprCase::kValue:
-      return FromYQLValuePB(yql_expr.value(), sorting_type);
-    case YQLExpressionPB::ExprCase::kBfcall: FALLTHROUGH_INTENDED;
-    case YQLExpressionPB::ExprCase::kColumnId: FALLTHROUGH_INTENDED;
-    case YQLExpressionPB::ExprCase::kSubscriptedCol: FALLTHROUGH_INTENDED;
-    case YQLExpressionPB::ExprCase::kCondition: FALLTHROUGH_INTENDED;
-    case YQLExpressionPB::ExprCase::EXPR_NOT_SET:
+  switch (ql_expr.expr_case()) {
+    case QLExpressionPB::ExprCase::kValue:
+      return FromQLValuePB(ql_expr.value(), sorting_type);
+    case QLExpressionPB::ExprCase::kBfcall: FALLTHROUGH_INTENDED;
+    case QLExpressionPB::ExprCase::kColumnId: FALLTHROUGH_INTENDED;
+    case QLExpressionPB::ExprCase::kSubscriptedCol: FALLTHROUGH_INTENDED;
+    case QLExpressionPB::ExprCase::kCondition: FALLTHROUGH_INTENDED;
+    case QLExpressionPB::ExprCase::EXPR_NOT_SET:
       break;
   }
-  LOG(FATAL) << "Internal error: invalid column or value expression: " << yql_expr.expr_case();
+  LOG(FATAL) << "Internal error: invalid column or value expression: " << ql_expr.expr_case();
 }
 
-void PrimitiveValue::ToYQLExpressionPB(const PrimitiveValue& pv,
-                                       const std::shared_ptr<YQLType>& yql_type,
-                                       YQLExpressionPB* yql_expr) {
-  ToYQLValuePB(pv, yql_type, yql_expr->mutable_value());
+void PrimitiveValue::ToQLExpressionPB(const PrimitiveValue& pv,
+                                       const std::shared_ptr<QLType>& ql_type,
+                                       QLExpressionPB* ql_expr) {
+  ToQLValuePB(pv, ql_type, ql_expr->mutable_value());
 }
 
 }  // namespace docdb

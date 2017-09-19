@@ -48,7 +48,7 @@ set(CQLSERVER_SRCS
 
 add_library(yb-cql ${CQLSERVER_SRCS})
 target_link_libraries(yb-cql
-  ybsql_api
+  ql_api
   protobuf
   log
   yrpc

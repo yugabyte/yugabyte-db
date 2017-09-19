@@ -111,7 +111,7 @@ YBValue* YBValue::CopyString(Slice s) {
 }
 
 Status YBValue::Data::CheckTypeAndGetPointer(const string& col_name,
-                                             const shared_ptr<YQLType>& tp,
+                                             const shared_ptr<QLType>& tp,
                                              void** val_void) {
   const TypeInfo* ti = tp->type_info();
   switch (ti->physical_type()) {

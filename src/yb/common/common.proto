@@ -71,7 +71,7 @@ enum DataType {
   USER_DEFINED_TYPE = 21;
   FROZEN = 22;
 
-  // All unsigned datatypes will be removed from YQL because databases do not have these types.
+  // All unsigned datatypes will be removed from QL because databases do not have these types.
   UINT8 = 100;
   UINT16 = 101;
   UINT32 = 102;
@@ -113,7 +113,7 @@ enum TableType {
 
 // The type used in column schemas, which may have type parameters (i.e. for collections)
 // If types have parameters, they are stored in the params field. Otherwise params is empty.
-// e.g. (using lower case of YQLTypes and upper case for DataType):
+// e.g. (using lower case of QLTypes and upper case for DataType):
 //   string                     --> {main = STRING, params = []}
 //   set<int>                   --> {main = SET, params = [int]}
 //   map<int, string>           --> {main = MAP, params = [int, string]}
@@ -128,9 +128,9 @@ enum TableType {
 //                                    type_name = "employee",
 //                                    field_names = ["firstname", "lastname", "ssn"]}
 
-message YQLTypePB {
+message QLTypePB {
   optional DataType main = 1;
-  repeated YQLTypePB params = 2;
+  repeated QLTypePB params = 2;
 
   // Fields for user-defined types
   message UDTypeInfo {
@@ -149,7 +149,7 @@ message YQLTypePB {
 message ColumnSchemaPB {
   optional uint32 id = 1;
   required string name = 2;
-  required YQLTypePB type = 3;
+  required QLTypePB type = 3;
   optional bool is_key = 4 [default = false];
   optional bool is_hash_key = 5 [default = false];
   optional bool is_nullable = 6 [default = false];

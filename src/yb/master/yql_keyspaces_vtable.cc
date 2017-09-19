@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/common/yql_value.h"
+#include "yb/common/ql_value.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/yql_keyspaces_vtable.h"
@@ -23,13 +23,13 @@ YQLKeyspacesVTable::YQLKeyspacesVTable(const Master* const master)
     : YQLVirtualTable(master::kSystemSchemaKeyspacesTableName, master, CreateSchema()) {
 }
 
-Status YQLKeyspacesVTable::RetrieveData(const YQLReadRequestPB& request,
-                                        std::unique_ptr<YQLRowBlock>* vtable) const {
-  vtable->reset(new YQLRowBlock(schema_));
+Status YQLKeyspacesVTable::RetrieveData(const QLReadRequestPB& request,
+                                        std::unique_ptr<QLRowBlock>* vtable) const {
+  vtable->reset(new QLRowBlock(schema_));
   std::vector<scoped_refptr<NamespaceInfo> > namespaces;
   master_->catalog_manager()->GetAllNamespaces(&namespaces);
   for (scoped_refptr<NamespaceInfo> ns : namespaces) {
-    YQLRow& row = (*vtable)->Extend();
+    QLRow& row = (*vtable)->Extend();
     RETURN_NOT_OK(SetColumnValue(kKeyspaceName, ns->name(), &row));
     RETURN_NOT_OK(SetColumnValue(kDurableWrites, true, &row));
 
@@ -43,11 +43,11 @@ Status YQLKeyspacesVTable::RetrieveData(const YQLReadRequestPB& request,
 
 Schema YQLKeyspacesVTable::CreateSchema() const {
   SchemaBuilder builder;
-  CHECK_OK(builder.AddHashKeyColumn(kKeyspaceName, YQLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn(kDurableWrites, YQLType::Create(DataType::BOOL)));
+  CHECK_OK(builder.AddHashKeyColumn(kKeyspaceName, QLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kDurableWrites, QLType::Create(DataType::BOOL)));
   // TODO: replication needs to be a frozen map.
   CHECK_OK(builder.AddColumn(kReplication,
-                             YQLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
+                             QLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
   return builder.Build();
 }
 

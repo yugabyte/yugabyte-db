@@ -68,21 +68,21 @@ using std::unique_ptr;
 using client::YBClient;
 using client::YBSession;
 using client::YBMetaDataCache;
-using sql::ExecutedResult;
-using sql::PreparedResult;
-using sql::RowsResult;
-using sql::SetKeyspaceResult;
-using sql::SchemaChangeResult;
-using sql::SqlProcessor;
-using sql::Statement;
-using sql::StatementExecutedCallback;
-using sql::ErrorCode;
-using sql::GetErrorCode;
+using ql::ExecutedResult;
+using ql::PreparedResult;
+using ql::RowsResult;
+using ql::SetKeyspaceResult;
+using ql::SchemaChangeResult;
+using ql::QLProcessor;
+using ql::Statement;
+using ql::StatementExecutedCallback;
+using ql::ErrorCode;
+using ql::GetErrorCode;
 using yb::util::bcrypt_checkpw;
 
 //------------------------------------------------------------------------------------------------
 CQLMetrics::CQLMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity)
-    : SqlMetrics(metric_entity) {
+    : QLMetrics(metric_entity) {
   time_to_process_request_ =
       METRIC_handler_latency_yb_cqlserver_CQLServerService_ProcessRequest.Instantiate(
           metric_entity);
@@ -103,7 +103,7 @@ CQLMetrics::CQLMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity)
 
 //------------------------------------------------------------------------------------------------
 CQLProcessor::CQLProcessor(CQLServiceImpl* service_impl, const CQLProcessorListPos& pos)
-    : SqlProcessor(
+    : QLProcessor(
           service_impl->messenger(), service_impl->client(), service_impl->metadata_cache(),
           service_impl->cql_metrics().get(), service_impl->cql_rpc_env()),
       service_impl_(service_impl),
@@ -196,7 +196,7 @@ CQLResponse* CQLProcessor::ProcessRequest(const CQLRequest& req) {
 CQLResponse* CQLProcessor::ProcessPrepare(const PrepareRequest& req) {
   VLOG(1) << "PREPARE " << req.query();
   const CQLMessage::QueryId query_id = CQLStatement::GetQueryId(
-      sql_env_.CurrentKeyspace(), req.query());
+      ql_env_.CurrentKeyspace(), req.query());
   // To prevent multiple clients from preparing the same new statement in parallel and trying to
   // cache the same statement (a typical "login storm" scenario), each caller will try to allocate
   // the statement in the cached statement first. If it already exists, the existing one will be
@@ -204,7 +204,7 @@ CQLResponse* CQLProcessor::ProcessPrepare(const PrepareRequest& req) {
   // the actual prepare while the rest wait. As the rest do the prepare afterwards, the statement
   // is already prepared so it will be an no-op (see Statement::Prepare).
   shared_ptr<CQLStatement> stmt = service_impl_->AllocatePreparedStatement(
-      query_id, sql_env_.CurrentKeyspace(), req.query());
+      query_id, ql_env_.CurrentKeyspace(), req.query());
   PreparedResult::UniPtr result;
   const Status s = stmt->Prepare(this, service_impl_->prepared_stmts_mem_tracker(), &result);
   if (!s.ok()) {
@@ -264,7 +264,7 @@ CQLResponse* CQLProcessor::ProcessBatch(const BatchRequest& req) {
     } else {
 
       VLOG(1) << "BATCH QUERY " << query.query;
-      sql::ParseTree::UniPtr parse_tree;
+      ql::ParseTree::UniPtr parse_tree;
       RunBatch(query.query, query.params, &parse_tree, retry_count > 0);
       parse_trees_.insert(std::move(parse_tree));
 
@@ -312,7 +312,7 @@ shared_ptr<const CQLStatement> CQLProcessor::GetPreparedStatement(const CQLMessa
 }
 
 void CQLProcessor::StatementExecuted(const Status& s,
-                                     const sql::ExecutedResult::SharedPtr& result) {
+                                     const ql::ExecutedResult::SharedPtr& result) {
   unique_ptr<CQLResponse> response(ProcessResult(s, result));
   if (response != nullptr) {
     SendResponse(*response);
@@ -325,10 +325,10 @@ CQLResponse* CQLProcessor::ProcessResult(Status s, const ExecutedResult::SharedP
     if (request_->opcode() == CQLMessage::Opcode::BATCH) {
       AbortBatch();
     }
-    if (s.IsSqlError()) {
-      ErrorCode yql_errcode = GetErrorCode(s);
-      if (yql_errcode == ErrorCode::UNPREPARED_STATEMENT ||
-          yql_errcode == ErrorCode::STALE_METADATA) {
+    if (s.IsQLError()) {
+      ErrorCode ql_errcode = GetErrorCode(s);
+      if (ql_errcode == ErrorCode::UNPREPARED_STATEMENT ||
+          ql_errcode == ErrorCode::STALE_METADATA) {
         // Delete all stale prepared statements from our cache. Since CQL protocol allows only one
         // unprepared query id to be returned, we will return just the last unprepared / stale one
         // we found.
@@ -350,11 +350,11 @@ CQLResponse* CQLProcessor::ProcessResult(Status s, const ExecutedResult::SharedP
         }
         return new ErrorResponse(*request_, ErrorResponse::Code::INVALID,
                                  "Query failed to execute due to stale metadata cache");
-      } else if (yql_errcode < ErrorCode::SUCCESS) {
-        if (yql_errcode > ErrorCode::LIMITATION_ERROR) {
+      } else if (ql_errcode < ErrorCode::SUCCESS) {
+        if (ql_errcode > ErrorCode::LIMITATION_ERROR) {
           // System errors, internal errors, or crashes.
           return new ErrorResponse(*request_, ErrorResponse::Code::SERVER_ERROR, s.ToString());
-        } else if (yql_errcode > ErrorCode::SEM_ERROR) {
+        } else if (ql_errcode > ErrorCode::SEM_ERROR) {
           // Limitation, lexical, or parsing errors.
           return new ErrorResponse(*request_, ErrorResponse::Code::SYNTAX_ERROR, s.ToString());
         } else {
@@ -379,7 +379,7 @@ CQLResponse* CQLProcessor::ProcessResult(Status s, const ExecutedResult::SharedP
     case ExecutedResult::Type::ROWS: {
       const RowsResult::SharedPtr& rows_result = std::static_pointer_cast<RowsResult>(result);
       if (request_->opcode() != CQLMessage::Opcode::AUTH_RESPONSE) {
-        cql_metrics_->sql_response_size_bytes_->Increment(rows_result->rows_data().size());
+        cql_metrics_->ql_response_size_bytes_->Increment(rows_result->rows_data().size());
       }
       switch (request_->opcode()) {
         case CQLMessage::Opcode::EXECUTE:

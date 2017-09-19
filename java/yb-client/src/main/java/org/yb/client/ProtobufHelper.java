@@ -76,15 +76,15 @@ public class ProtobufHelper {
     return columnToPb(Common.ColumnSchemaPB.newBuilder(), column);
   }
 
-  public static Common.YQLTypePB YQLTypeToPb(YQLType yqlType) {
-    Common.YQLTypePB.Builder typeBuilder = Common.YQLTypePB.newBuilder();
+  public static Common.QLTypePB QLTypeToPb(QLType yqlType) {
+    Common.QLTypePB.Builder typeBuilder = Common.QLTypePB.newBuilder();
     typeBuilder.setMain(yqlType.getMain());
     typeBuilder.addAllParams(yqlType.getParams().stream()
-                                                .map(ProtobufHelper::YQLTypeToPb)
+                                                .map(ProtobufHelper::QLTypeToPb)
                                                 .collect(Collectors.toList()));
     // User-defined types have additional information (set declared keyspace and type name).
     if (yqlType.getMain() == Common.DataType.USER_DEFINED_TYPE) {
-      Common.YQLTypePB.UDTypeInfo.Builder udtBuilder = Common.YQLTypePB.UDTypeInfo.newBuilder();
+      Common.QLTypePB.UDTypeInfo.Builder udtBuilder = Common.QLTypePB.UDTypeInfo.newBuilder();
       udtBuilder.setName(yqlType.getUdtName());
       udtBuilder.setKeyspaceName(yqlType.getUdtKeyspaceName());
       typeBuilder.setUdtypeInfo(udtBuilder);
@@ -97,7 +97,7 @@ public class ProtobufHelper {
   columnToPb(Common.ColumnSchemaPB.Builder schemaBuilder, ColumnSchema column) {
     schemaBuilder
         .setName(column.getName())
-        .setType(YQLTypeToPb(column.getYQLType()))
+        .setType(QLTypeToPb(column.getQLType()))
         .setIsKey(column.isKey())
         .setIsHashKey(column.isHashKey())
         .setIsNullable(column.isNullable())

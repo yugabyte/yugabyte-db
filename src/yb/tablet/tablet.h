@@ -53,11 +53,11 @@
 #include "yb/common/schema.h"
 #include "yb/common/row_operations.h"
 #include "yb/common/transaction.h"
-#include "yb/common/yql_storage_interface.h"
+#include "yb/common/ql_storage_interface.h"
 
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_compaction_filter.h"
-#include "yb/docdb/yql_rocksdb_storage.h"
+#include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/doc_operation.h"
 
 #include "yb/gutil/atomicops.h"
@@ -306,16 +306,16 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       HybridTime timestamp, const RedisReadRequestPB& redis_read_request,
       RedisResponsePB* response) override;
 
-  CHECKED_STATUS HandleYQLReadRequest(
-      HybridTime timestamp, const YQLReadRequestPB& yql_read_request, YQLResponsePB* response,
+  CHECKED_STATUS HandleQLReadRequest(
+      HybridTime timestamp, const QLReadRequestPB& ql_read_request, QLResponsePB* response,
       gscoped_ptr<faststring>* rows_data) override;
 
-  CHECKED_STATUS CreatePagingStateForRead(const YQLReadRequestPB& yql_read_request,
-      const YQLRowBlock& rowblock,
-      YQLResponsePB* response) const override;
+  CHECKED_STATUS CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
+      const QLRowBlock& rowblock,
+      QLResponsePB* response) const override;
 
-  // The YQL equivalent of KeyValueBatchFromRedisWriteBatch, works similarly.
-  CHECKED_STATUS KeyValueBatchFromYQLWriteBatch(
+  // The QL equivalent of KeyValueBatchFromRedisWriteBatch, works similarly.
+  CHECKED_STATUS KeyValueBatchFromQLWriteBatch(
       tserver::WriteRequestPB* write_request,
       LockBatch *keys_locked, tserver::WriteResponsePB* write_response,
       WriteTransactionState* tx_state);
@@ -560,8 +560,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return metadata_->schema();
   }
 
-  const common::YQLStorageIf& YQLStorage() const override {
-    return *yql_storage_;
+  const common::QLStorageIf& QLStorage() const override {
+    return *ql_storage_;
   }
 
   // Used from tests
@@ -634,7 +634,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const ScanSpec *spec,
       vector<std::shared_ptr<RowwiseIterator> > *iters) const;
 
-  CHECKED_STATUS YQLCaptureConsistentIterators(
+  CHECKED_STATUS QLCaptureConsistentIterators(
       const Schema *projection,
       const MvccSnapshot &snap,
       const ScanSpec *spec,
@@ -834,7 +834,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // RocksDB database for key-value tables.
   std::unique_ptr<rocksdb::DB> rocksdb_;
 
-  std::unique_ptr<common::YQLStorageIf> yql_storage_;
+  std::unique_ptr<common::QLStorageIf> ql_storage_;
 
   // This is for docdb fine-grained locking.
   yb::util::SharedLockManager shared_lock_manager_;

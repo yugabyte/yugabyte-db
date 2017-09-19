@@ -16,7 +16,7 @@
 
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/common/schema.h"
-#include "yb/common/yql_storage_interface.h"
+#include "yb/common/ql_storage_interface.h"
 
 namespace yb {
 namespace tablet {
@@ -27,7 +27,7 @@ class AbstractTablet {
 
   virtual const Schema& SchemaRef() const = 0;
 
-  virtual const common::YQLStorageIf& YQLStorage() const = 0;
+  virtual const common::QLStorageIf& QLStorage() const = 0;
 
   virtual TableType table_type() const = 0;
 
@@ -37,13 +37,13 @@ class AbstractTablet {
       HybridTime timestamp, const RedisReadRequestPB& redis_read_request,
       RedisResponsePB* response) = 0;
 
-  virtual CHECKED_STATUS HandleYQLReadRequest(
-      HybridTime timestamp, const YQLReadRequestPB& yql_read_request, YQLResponsePB* response,
+  virtual CHECKED_STATUS HandleQLReadRequest(
+      HybridTime timestamp, const QLReadRequestPB& ql_read_request, QLResponsePB* response,
       gscoped_ptr<faststring>* rows_data);
 
-  virtual CHECKED_STATUS CreatePagingStateForRead(const YQLReadRequestPB& yql_read_request,
-                                                  const YQLRowBlock& rowblock,
-                                                  YQLResponsePB* response) const = 0;
+  virtual CHECKED_STATUS CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
+                                                  const QLRowBlock& rowblock,
+                                                  QLResponsePB* response) const = 0;
 
   virtual void RegisterReaderTimestamp(HybridTime read_point) = 0;
   virtual void UnregisterReader(HybridTime read_point) = 0;

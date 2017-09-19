@@ -23,19 +23,19 @@ namespace cqlserver {
 
 //------------------------------------------------------------------------------------------------
 CQLStatement::CQLStatement(
-    const string& keyspace, const string& sql_stmt, const CQLStatementListPos pos)
-    : Statement(keyspace, sql_stmt), pos_(pos) {
+    const string& keyspace, const string& ql_stmt, const CQLStatementListPos pos)
+    : Statement(keyspace, ql_stmt), pos_(pos) {
 }
 
 CQLStatement::~CQLStatement() {
 }
 
-CQLMessage::QueryId CQLStatement::GetQueryId(const string& keyspace, const string& sql_stmt) {
+CQLMessage::QueryId CQLStatement::GetQueryId(const string& keyspace, const string& ql_stmt) {
   unsigned char md5[16];
   MD5_CTX md5ctx;
   _sasl_MD5Init(&md5ctx);
   _sasl_MD5Update(&md5ctx, util::to_uchar_ptr(keyspace.data()), keyspace.length());
-  _sasl_MD5Update(&md5ctx, util::to_uchar_ptr(sql_stmt.data()), sql_stmt.length());
+  _sasl_MD5Update(&md5ctx, util::to_uchar_ptr(ql_stmt.data()), ql_stmt.length());
   _sasl_MD5Final(md5, &md5ctx);
   return CQLMessage::QueryId(util::to_char_ptr(md5), sizeof(md5));
 }

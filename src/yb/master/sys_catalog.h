@@ -124,7 +124,7 @@ class SysCatalogTable {
 
   template <class Item>
   CHECKED_STATUS MutateItems(
-      const vector<Item*>& items, const YQLWriteRequestPB::YQLStmtType& op_type);
+      const vector<Item*>& items, const QLWriteRequestPB::QLStmtType& op_type);
 
   // ==================================================================
   // Static schema related methods.

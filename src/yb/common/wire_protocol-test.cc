@@ -147,19 +147,19 @@ TEST_F(WireProtocolTest, TestBadSchema_NonContiguousKey) {
   // Column 0: key
   ColumnSchemaPB* col_pb = pbs.Add();
   col_pb->set_name("c0");
-  YQLType::Create(STRING)->ToYQLTypePB(col_pb->mutable_type());
+  QLType::Create(STRING)->ToQLTypePB(col_pb->mutable_type());
   col_pb->set_is_key(true);
 
   // Column 1: not a key
   col_pb = pbs.Add();
   col_pb->set_name("c1");
-  YQLType::Create(STRING)->ToYQLTypePB(col_pb->mutable_type());
+  QLType::Create(STRING)->ToQLTypePB(col_pb->mutable_type());
   col_pb->set_is_key(false);
 
   // Column 2: marked as key. This is an error.
   col_pb = pbs.Add();
   col_pb->set_name("c2");
-  YQLType::Create(STRING)->ToYQLTypePB(col_pb->mutable_type());
+  QLType::Create(STRING)->ToQLTypePB(col_pb->mutable_type());
   col_pb->set_is_key(true);
 
   Schema schema;
@@ -175,19 +175,19 @@ TEST_F(WireProtocolTest, TestBadSchema_DuplicateColumnName) {
   // Column 0:
   ColumnSchemaPB* col_pb = pbs.Add();
   col_pb->set_name("c0");
-  YQLType::Create(STRING)->ToYQLTypePB(col_pb->mutable_type());
+  QLType::Create(STRING)->ToQLTypePB(col_pb->mutable_type());
   col_pb->set_is_key(true);
 
   // Column 1:
   col_pb = pbs.Add();
   col_pb->set_name("c1");
-  YQLType::Create(STRING)->ToYQLTypePB(col_pb->mutable_type());
+  QLType::Create(STRING)->ToQLTypePB(col_pb->mutable_type());
   col_pb->set_is_key(false);
 
   // Column 2: same name as column 0
   col_pb = pbs.Add();
   col_pb->set_name("c0");
-  YQLType::Create(STRING)->ToYQLTypePB(col_pb->mutable_type());
+  QLType::Create(STRING)->ToQLTypePB(col_pb->mutable_type());
   col_pb->set_is_key(false);
 
   Schema schema;

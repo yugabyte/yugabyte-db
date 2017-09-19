@@ -21,7 +21,7 @@
 #include "yb/rpc/rpc_with_call_id.h"
 #include "yb/rpc/server_event.h"
 
-#include "yb/sql/sql_session.h"
+#include "yb/ql/ql_session.h"
 
 namespace yb {
 namespace cqlserver {
@@ -42,18 +42,18 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId {
 
   // SQL session of this CQL client connection.
   // TODO(robert): To get around the need for this RPC layer to link with the SQL layer for the
-  // reference to the SqlSession here, the whole SqlSession definition is contained in sql_session.h
-  // and #include'd in connection.h/.cc. When SqlSession gets more complicated (say when we support
+  // reference to the QLSession here, the whole QLSession definition is contained in ql_session.h
+  // and #include'd in connection.h/.cc. When QLSession gets more complicated (say when we support
   // Cassandra ROLE), consider adding a CreateNewConnection method in rpc::ServiceIf so that
   // CQLConnection can be created and returned from CQLServiceImpl.CreateNewConnection().
-  sql::SqlSession::SharedPtr sql_session_;
+  ql::QLSession::SharedPtr ql_session_;
 };
 
 class CQLInboundCall : public rpc::InboundCall {
  public:
   explicit CQLInboundCall(rpc::ConnectionPtr conn,
                           CallProcessedListener call_processed_listener,
-                          sql::SqlSession::SharedPtr sql_session);
+                          ql::QLSession::SharedPtr ql_session);
 
   CHECKED_STATUS ParseFrom(Slice source);
 
@@ -73,8 +73,8 @@ class CQLInboundCall : public rpc::InboundCall {
   }
 
   // Return the SQL session of this CQL call.
-  const sql::SqlSession::SharedPtr& sql_session() const {
-    return sql_session_;
+  const ql::QLSession::SharedPtr& ql_session() const {
+    return ql_session_;
   }
 
   void SetResumeFrom(Callback<void(void)>* resume_from) {
@@ -95,7 +95,7 @@ class CQLInboundCall : public rpc::InboundCall {
 
   Callback<void(void)>* resume_from_ = nullptr;
   RefCntBuffer response_msg_buf_;
-  sql::SqlSession::SharedPtr sql_session_;
+  ql::QLSession::SharedPtr ql_session_;
   uint16_t stream_id_;
 };
 

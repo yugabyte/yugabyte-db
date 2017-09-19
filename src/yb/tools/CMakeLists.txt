@@ -119,7 +119,7 @@ add_executable(yb-bulk_load yb-bulk_load.cc)
 target_link_libraries(yb-bulk_load
   gutil
   rocksdb
-  yql_protocol_proto
+  ql_protocol_proto
   yb_client
   bulk_load_docdb_util
   yb-generate_partitions
@@ -136,7 +136,7 @@ set(YB_TEST_LINK_LIBS
   yb-generate_partitions
   integration-tests
   yb_docdb_test_common
-  ybsql_util
+  ql_util
   ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(ysck-test)
 ADD_YB_TEST(yb-bulk_load-test)

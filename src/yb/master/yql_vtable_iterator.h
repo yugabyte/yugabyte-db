@@ -14,34 +14,34 @@
 #ifndef YB_MASTER_YQL_VTABLE_ITERATOR_H
 #define YB_MASTER_YQL_VTABLE_ITERATOR_H
 
-#include "yb/common/yql_rowwise_iterator_interface.h"
-#include "yb/common/yql_scanspec.h"
+#include "yb/common/ql_rowwise_iterator_interface.h"
+#include "yb/common/ql_scanspec.h"
 #include "yb/docdb/doc_key.h"
 
 namespace yb {
 namespace master {
 
 // An iterator over a YQLVirtualTable.
-class YQLVTableIterator : public common::YQLRowwiseIteratorIf {
+class YQLVTableIterator : public common::QLRowwiseIteratorIf {
  public:
-  explicit YQLVTableIterator(const std::unique_ptr<YQLRowBlock> vtable);
+  explicit YQLVTableIterator(const std::unique_ptr<QLRowBlock> vtable);
   CHECKED_STATUS Init(ScanSpec *spec) override;
 
-  CHECKED_STATUS Init(const common::YQLScanSpec& spec) override;
+  CHECKED_STATUS Init(const common::QLScanSpec& spec) override;
 
   CHECKED_STATUS NextBlock(RowBlock *dst) override;
 
-  CHECKED_STATUS NextRow(const Schema& projection, YQLTableRow* table_row) override;
+  CHECKED_STATUS NextRow(const Schema& projection, QLTableRow* table_row) override;
 
   // Virtual table does not contain any static column.
   bool IsNextStaticColumn() const override { return false; }
 
   void SkipRow() override;
 
-  CHECKED_STATUS SetPagingStateIfNecessary(const YQLReadRequestPB& request,
-                                           const YQLRowBlock& rowblock,
+  CHECKED_STATUS SetPagingStateIfNecessary(const QLReadRequestPB& request,
+                                           const QLRowBlock& rowblock,
                                            const size_t row_count_limit,
-                                           YQLResponsePB* response) const override;
+                                           QLResponsePB* response) const override;
 
   bool HasNext() const override;
 
@@ -53,7 +53,7 @@ class YQLVTableIterator : public common::YQLRowwiseIteratorIf {
 
   virtual ~YQLVTableIterator();
  private:
-  std::unique_ptr<YQLRowBlock> vtable_;
+  std::unique_ptr<QLRowBlock> vtable_;
   size_t vtable_index_;
 };
 

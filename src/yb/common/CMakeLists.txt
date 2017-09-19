@@ -65,17 +65,17 @@ ADD_YB_LIBRARY(redis_protocol_proto
   NONLINK_DEPS ${REDIS_PROTOCOL_PROTO_TGTS})
 
 PROTOBUF_GENERATE_CPP(
-  YQL_PROTOCOL_PROTO_SRCS YQL_PROTOCOL_PROTO_HDRS YQL_PROTOCOL_PROTO_TGTS
+  QL_PROTOCOL_PROTO_SRCS QL_PROTOCOL_PROTO_HDRS QL_PROTOCOL_PROTO_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES yql_protocol.proto)
-set(YQL_PROTOCOL_PROTO_LIBS
+  PROTO_FILES ql_protocol.proto)
+set(QL_PROTOCOL_PROTO_LIBS
   yb_common_proto
   protobuf)
-ADD_YB_LIBRARY(yql_protocol_proto
-  SRCS ${YQL_PROTOCOL_PROTO_SRCS}
-  DEPS ${YQL_PROTOCOL_PROTO_LIBS}
-  NONLINK_DEPS ${YQL_PROTOCOL_PROTO_TGTS})
+ADD_YB_LIBRARY(ql_protocol_proto
+  SRCS ${QL_PROTOCOL_PROTO_SRCS}
+  DEPS ${QL_PROTOCOL_PROTO_LIBS}
+  NONLINK_DEPS ${QL_PROTOCOL_PROTO_TGTS})
 
 set(COMMON_SRCS
   encoded_key.cc
@@ -99,11 +99,11 @@ set(COMMON_SRCS
   types.cc
   wire_protocol.cc
   yql_expression.cc
-  yql_type.cc
-  yql_value.cc
-  yql_bfunc.cc
-  yql_scanspec.cc
-  yql_rowblock.cc)
+  ql_type.cc
+  ql_value.cc
+  ql_bfunc.cc
+  ql_scanspec.cc
+  ql_rowblock.cc)
 
 # Workaround for clang bug https://llvm.org/bugs/show_bug.cgi?id=23757
 # in which it incorrectly optimizes row_key-util.cc and causes incorrect results.
@@ -116,15 +116,15 @@ set(COMMON_LIBS
   consensus_metadata_proto
   wire_protocol_proto
   redis_protocol_proto
-  yql_protocol_proto
+  ql_protocol_proto
   yb_util
-  yb_bfyql
+  yb_bfql
   gutil)
 
 ADD_YB_LIBRARY(yb_common
   SRCS ${COMMON_SRCS}
   DEPS ${COMMON_LIBS})
-add_dependencies(yb_common yb_bfyql)
+add_dependencies(yb_common yb_bfql)
 
 set(YB_TEST_LINK_LIBS yb_common ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(encoded_key-test)

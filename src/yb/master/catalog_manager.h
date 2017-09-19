@@ -496,7 +496,7 @@ struct PersistentUDTypeInfo : public Persistent<SysUDTypeEntryPB, SysRowEntry::U
     return pb.field_types_size();
   }
 
-  const YQLTypePB& field_types(int index) const {
+  const QLTypePB& field_types(int index) const {
     return pb.field_types(index);
   }
 };
@@ -519,7 +519,7 @@ class UDTypeInfo : public RefCountedThreadSafe<UDTypeInfo>,
 
   int field_types_size() const;
 
-  const YQLTypePB& field_types(int index) const;
+  const QLTypePB& field_types(int index) const;
 
   std::string ToString() const override;
 

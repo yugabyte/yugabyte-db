@@ -69,7 +69,7 @@ class YBColumnSpec::Data {
   const std::string name;
 
   bool has_type;
-  std::shared_ptr<YQLType> type;
+  std::shared_ptr<QLType> type;
 
   bool has_order;
   int32_t order;

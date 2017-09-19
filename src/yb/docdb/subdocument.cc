@@ -17,7 +17,7 @@
 #include <sstream>
 #include <vector>
 
-#include "yb/common/yql_bfunc.h"
+#include "yb/common/ql_bfunc.h"
 
 using std::endl;
 using std::make_pair;
@@ -304,30 +304,30 @@ void SubDocument::EnsureContainerAllocated() {
   }
 }
 
-SubDocument SubDocument::FromYQLValuePB(const YQLValuePB& value,
+SubDocument SubDocument::FromQLValuePB(const QLValuePB& value,
                                         ColumnSchema::SortingType sorting_type,
                                         WriteAction write_action) {
   switch (value.value_case()) {
-    case YQLValuePB::kMapValue: {
-      YQLMapValuePB map = YQLValue::map_value(value);
+    case QLValuePB::kMapValue: {
+      QLMapValuePB map = QLValue::map_value(value);
       // this equality should be ensured by checks before getting here
       DCHECK_EQ(map.keys_size(), map.values_size());
 
       SubDocument map_doc;
       for (int i = 0; i < map.keys_size(); i++) {
-        PrimitiveValue pv_key = PrimitiveValue::FromYQLValuePB(map.keys(i), sorting_type);
-        SubDocument pv_val = SubDocument::FromYQLValuePB(map.values(i), sorting_type, write_action);
+        PrimitiveValue pv_key = PrimitiveValue::FromQLValuePB(map.keys(i), sorting_type);
+        SubDocument pv_val = SubDocument::FromQLValuePB(map.values(i), sorting_type, write_action);
         map_doc.SetChild(pv_key, std::move(pv_val));
       }
       // ensure container allocated even if map is empty
       map_doc.EnsureContainerAllocated();
       return map_doc;
     }
-    case YQLValuePB::kSetValue: {
-      YQLSeqValuePB set = YQLValue::set_value(value);
+    case QLValuePB::kSetValue: {
+      QLSeqValuePB set = QLValue::set_value(value);
       SubDocument set_doc;
       for (auto& elem : set.elems()) {
-        PrimitiveValue pv_key = PrimitiveValue::FromYQLValuePB(elem, sorting_type);
+        PrimitiveValue pv_key = PrimitiveValue::FromQLValuePB(elem, sorting_type);
         if (write_action == WriteAction::REMOVE_KEYS) {
           // representing sets elems as keys pointing to tombstones to remove those entries
           set_doc.SetChildPrimitive(pv_key, PrimitiveValue(ValueType::kTombstone));
@@ -340,74 +340,74 @@ SubDocument SubDocument::FromYQLValuePB(const YQLValuePB& value,
       set_doc.EnsureContainerAllocated();
       return set_doc;
     }
-    case YQLValuePB::kListValue: {
-      YQLSeqValuePB list = YQLValue::list_value(value);
+    case QLValuePB::kListValue: {
+      QLSeqValuePB list = QLValue::list_value(value);
       SubDocument list_doc(ValueType::kArray);
       // ensure container allocated even if list is empty
       list_doc.EnsureContainerAllocated();
       for (int i = 0; i < list.elems_size(); i++) {
-        SubDocument pv_val = SubDocument::FromYQLValuePB(list.elems(i), sorting_type, write_action);
+        SubDocument pv_val = SubDocument::FromQLValuePB(list.elems(i), sorting_type, write_action);
         list_doc.AddListElement(std::move(pv_val));
       }
       return list_doc;
     }
 
     default:
-      return SubDocument(PrimitiveValue::FromYQLValuePB(value, sorting_type));
+      return SubDocument(PrimitiveValue::FromQLValuePB(value, sorting_type));
   }
 }
 
-void SubDocument::ToYQLValuePB(SubDocument doc,
-                               const shared_ptr<YQLType>& yql_type,
-                               YQLValuePB* yql_value) {
+void SubDocument::ToQLValuePB(SubDocument doc,
+                               const shared_ptr<QLType>& ql_type,
+                               QLValuePB* ql_value) {
   // interpreting empty collections as null values following Cassandra semantics
-  if (yql_type->HasComplexValues() && (!doc.has_valid_object_container() ||
+  if (ql_type->HasComplexValues() && (!doc.has_valid_object_container() ||
                                        doc.object_num_keys() == 0)) {
-    YQLValue::SetNull(yql_value);
+    QLValue::SetNull(ql_value);
     return;
   }
 
-  switch (yql_type->main()) {
+  switch (ql_type->main()) {
     case MAP: {
-      const shared_ptr<YQLType>& keys_type = yql_type->params()[0];
-      const shared_ptr<YQLType>& values_type = yql_type->params()[1];
-      YQLValue::set_map_value(yql_value);
+      const shared_ptr<QLType>& keys_type = ql_type->params()[0];
+      const shared_ptr<QLType>& values_type = ql_type->params()[1];
+      QLValue::set_map_value(ql_value);
       for (auto &pair : doc.object_container()) {
-        YQLValuePB *key = YQLValue::add_map_key(yql_value);
-        PrimitiveValue::ToYQLValuePB(pair.first, keys_type, key);
-        YQLValuePB *value = YQLValue::add_map_value(yql_value);
-        SubDocument::ToYQLValuePB(pair.second, values_type, value);
+        QLValuePB *key = QLValue::add_map_key(ql_value);
+        PrimitiveValue::ToQLValuePB(pair.first, keys_type, key);
+        QLValuePB *value = QLValue::add_map_value(ql_value);
+        SubDocument::ToQLValuePB(pair.second, values_type, value);
       }
       return;
     }
     case SET: {
-      const shared_ptr<YQLType>& elems_type = yql_type->params()[0];
-      YQLValue::set_set_value(yql_value);
+      const shared_ptr<QLType>& elems_type = ql_type->params()[0];
+      QLValue::set_set_value(ql_value);
       for (auto &pair : doc.object_container()) {
-        YQLValuePB *elem = YQLValue::add_set_elem(yql_value);
-        PrimitiveValue::ToYQLValuePB(pair.first, elems_type, elem);
+        QLValuePB *elem = QLValue::add_set_elem(ql_value);
+        PrimitiveValue::ToQLValuePB(pair.first, elems_type, elem);
         // set elems are represented as subdocument keys so we ignore the (empty) values
       }
       return;
     }
     case LIST: {
-      const shared_ptr<YQLType>& elems_type = yql_type->params()[0];
-      YQLValue::set_list_value(yql_value);
+      const shared_ptr<QLType>& elems_type = ql_type->params()[0];
+      QLValue::set_list_value(ql_value);
       for (auto &pair : doc.object_container()) {
         // list elems are represented as subdocument values with keys only used for ordering
-        YQLValuePB *elem = YQLValue::add_list_elem(yql_value);
-        SubDocument::ToYQLValuePB(pair.second, elems_type, elem);
+        QLValuePB *elem = QLValue::add_list_elem(ql_value);
+        SubDocument::ToQLValuePB(pair.second, elems_type, elem);
       }
       return;
     }
     case USER_DEFINED_TYPE: {
-      const shared_ptr<YQLType>& keys_type = YQLType::Create(INT16);
-      YQLValue::set_map_value(yql_value);
+      const shared_ptr<QLType>& keys_type = QLType::Create(INT16);
+      QLValue::set_map_value(ql_value);
       for (auto &pair : doc.object_container()) {
-        YQLValuePB *key = YQLValue::add_map_key(yql_value);
-        PrimitiveValue::ToYQLValuePB(pair.first, keys_type, key);
-        YQLValuePB *value = YQLValue::add_map_value(yql_value);
-        SubDocument::ToYQLValuePB(pair.second, yql_type->param_type(key->int16_value()), value);
+        QLValuePB *key = QLValue::add_map_key(ql_value);
+        PrimitiveValue::ToQLValuePB(pair.first, keys_type, key);
+        QLValuePB *value = QLValue::add_map_value(ql_value);
+        SubDocument::ToQLValuePB(pair.second, ql_type->param_type(key->int16_value()), value);
       }
       return;
     }
@@ -415,51 +415,51 @@ void SubDocument::ToYQLValuePB(SubDocument doc,
       break;
 
     default: {
-      return PrimitiveValue::ToYQLValuePB(doc, yql_type, yql_value);
+      return PrimitiveValue::ToQLValuePB(doc, ql_type, ql_value);
     }
   }
-  LOG(FATAL) << "Unsupported datatype in SubDocument: " << yql_type->ToString();
+  LOG(FATAL) << "Unsupported datatype in SubDocument: " << ql_type->ToString();
 }
 
-void SubDocument::ToYQLExpressionPB(SubDocument doc,
-                                    const shared_ptr<YQLType>& yql_type,
-                                    YQLExpressionPB* yql_expr) {
-  ToYQLValuePB(doc, yql_type, yql_expr->mutable_value());
+void SubDocument::ToQLExpressionPB(SubDocument doc,
+                                    const shared_ptr<QLType>& ql_type,
+                                    QLExpressionPB* ql_expr) {
+  ToQLValuePB(doc, ql_type, ql_expr->mutable_value());
 }
 
 
-CHECKED_STATUS SubDocument::FromYQLExpressionPB(const YQLExpressionPB& yql_expr,
+CHECKED_STATUS SubDocument::FromQLExpressionPB(const QLExpressionPB& ql_expr,
                                                 const ColumnSchema& column_schema,
-                                                const YQLTableRow& table_row,
+                                                const QLTableRow& table_row,
                                                 SubDocument* sub_doc,
                                                 WriteAction* write_action) {
-  switch (yql_expr.expr_case()) {
-    case YQLExpressionPB::ExprCase::kValue:  // Scenarios: SET column = constant.
-      *sub_doc = FromYQLValuePB(yql_expr.value(), column_schema.sorting_type(), *write_action);
+  switch (ql_expr.expr_case()) {
+    case QLExpressionPB::ExprCase::kValue:  // Scenarios: SET column = constant.
+      *sub_doc = FromQLValuePB(ql_expr.value(), column_schema.sorting_type(), *write_action);
       return Status::OK();
 
-    case YQLExpressionPB::ExprCase::kColumnId:  // Scenarios: SET column = column.
+    case QLExpressionPB::ExprCase::kColumnId:  // Scenarios: SET column = column.
       FALLTHROUGH_INTENDED;
 
-    case YQLExpressionPB::ExprCase::kSubscriptedCol:  // Scenarios: SET column = column[key].
+    case QLExpressionPB::ExprCase::kSubscriptedCol:  // Scenarios: SET column = column[key].
       FALLTHROUGH_INTENDED;
 
-    case YQLExpressionPB::ExprCase::kBfcall: {  // Scenarios: SET column = func().
-      YQLValueWithPB result;
-      RETURN_NOT_OK(YQLExpression::Evaluate(yql_expr, table_row, &result, write_action));
+    case QLExpressionPB::ExprCase::kBfcall: {  // Scenarios: SET column = func().
+      QLValueWithPB result;
+      RETURN_NOT_OK(YQLExpression::Evaluate(ql_expr, table_row, &result, write_action));
       // Type of the result could be changed for some write actions (e.g. REMOVE_KEYS from map)
-      *sub_doc = FromYQLValuePB(result.value(), column_schema.sorting_type(), *write_action);
+      *sub_doc = FromQLValuePB(result.value(), column_schema.sorting_type(), *write_action);
       return Status::OK();
     }
 
-    case YQLExpressionPB::ExprCase::kCondition:
+    case QLExpressionPB::ExprCase::kCondition:
       LOG(FATAL) << "Internal error: Conditional expression is not allowed in this context";
       break;
 
-    case YQLExpressionPB::ExprCase::EXPR_NOT_SET:
+    case QLExpressionPB::ExprCase::EXPR_NOT_SET:
       break;
   }
-  LOG(FATAL) << "Internal error: invalid column or value expression: " << yql_expr.expr_case();
+  LOG(FATAL) << "Internal error: invalid column or value expression: " << ql_expr.expr_case();
 }
 
 }  // namespace docdb

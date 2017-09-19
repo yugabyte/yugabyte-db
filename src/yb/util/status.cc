@@ -161,13 +161,13 @@ Slice Status::message() const {
 }
 
 int16_t Status::posix_code() const {
-  int64_t error_code = !IsSqlError() ? GetErrorCode() : 0;
+  int64_t error_code = !IsQLError() ? GetErrorCode() : 0;
   CHECK_LE(error_code, INT16_MAX) << "invalid posix_code";
   return static_cast<int16_t>(error_code);
 }
 
-int64_t Status::sql_error_code() const {
-  int64_t error_code = IsSqlError() ? GetErrorCode() : 0;
+int64_t Status::ql_error_code() const {
+  int64_t error_code = IsQLError() ? GetErrorCode() : 0;
   return error_code;
 }
 

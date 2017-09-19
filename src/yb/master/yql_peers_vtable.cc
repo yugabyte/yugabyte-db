@@ -26,8 +26,8 @@ PeersVTable::PeersVTable(const Master* const master)
     : YQLVirtualTable(master::kSystemPeersTableName, master, CreateSchema()) {
 }
 
-Status PeersVTable::RetrieveData(const YQLReadRequestPB& request,
-                                 unique_ptr<YQLRowBlock>* vtable) const {
+Status PeersVTable::RetrieveData(const QLReadRequestPB& request,
+                                 unique_ptr<QLRowBlock>* vtable) const {
   // Retrieve all lives nodes known by the master.
   // TODO: Ideally we would like to populate this table with all valid nodes of the cluster, but
   // currently the master just has a list of all nodes it has heard from and which one of those
@@ -42,7 +42,7 @@ Status PeersVTable::RetrieveData(const YQLReadRequestPB& request,
   RETURN_NOT_OK(remote_endpoint.FromString(request.remote_endpoint().host()));
 
   // Populate the YQL rows.
-  vtable->reset(new YQLRowBlock(schema_));
+  vtable->reset(new QLRowBlock(schema_));
 
   size_t index = 0;
   for (const shared_ptr<TSDescriptor>& desc : descs) {
@@ -58,7 +58,7 @@ Status PeersVTable::RetrieveData(const YQLReadRequestPB& request,
 
     // The system.peers table has one entry for each of its peers, whereas there is no entry for
     // the node that the CQL client connects to. In this case, this node is the 'remote_endpoint'
-    // in YQLReadRequestPB since that is address of the CQL proxy which sent this request. As a
+    // in QLReadRequestPB since that is address of the CQL proxy which sent this request. As a
     // result, skip 'remote_endpoint' in the results.
     if (!util::RemoteEndpointMatchesTServer(ts_info, remote_endpoint)) {
       InetAddress addr;
@@ -67,7 +67,7 @@ Status PeersVTable::RetrieveData(const YQLReadRequestPB& request,
       const string& ts_host = ts_info.registration().common().rpc_addresses(0).host();
       RETURN_NOT_OK(addr.FromString(ts_host));
 
-      YQLRow& row = (*vtable)->Extend();
+      QLRow& row = (*vtable)->Extend();
       RETURN_NOT_OK(SetColumnValue(kPeer, addr, &row));
       RETURN_NOT_OK(SetColumnValue(kRPCAddress, addr, &row));
       RETURN_NOT_OK(SetColumnValue(kPreferredIp, addr, &row));
@@ -98,15 +98,15 @@ Status PeersVTable::RetrieveData(const YQLReadRequestPB& request,
 
 Schema PeersVTable::CreateSchema() const {
   SchemaBuilder builder;
-  CHECK_OK(builder.AddHashKeyColumn(kPeer, YQLType::Create(DataType::INET)));
-  CHECK_OK(builder.AddColumn(kDataCenter, YQLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn(kHostId, YQLType::Create(DataType::UUID)));
-  CHECK_OK(builder.AddColumn(kPreferredIp, YQLType::Create(DataType::INET)));
-  CHECK_OK(builder.AddColumn(kRack, YQLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn(kReleaseVersion, YQLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn(kRPCAddress, YQLType::Create(DataType::INET)));
-  CHECK_OK(builder.AddColumn(kSchemaVersion, YQLType::Create(DataType::UUID)));
-  CHECK_OK(builder.AddColumn(kTokens, YQLType::CreateTypeSet(DataType::STRING)));
+  CHECK_OK(builder.AddHashKeyColumn(kPeer, QLType::Create(DataType::INET)));
+  CHECK_OK(builder.AddColumn(kDataCenter, QLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kHostId, QLType::Create(DataType::UUID)));
+  CHECK_OK(builder.AddColumn(kPreferredIp, QLType::Create(DataType::INET)));
+  CHECK_OK(builder.AddColumn(kRack, QLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kReleaseVersion, QLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kRPCAddress, QLType::Create(DataType::INET)));
+  CHECK_OK(builder.AddColumn(kSchemaVersion, QLType::Create(DataType::UUID)));
+  CHECK_OK(builder.AddColumn(kTokens, QLType::CreateTypeSet(DataType::STRING)));
   return builder.Build();
 }
 

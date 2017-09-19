@@ -24,8 +24,8 @@ namespace master {
 class PeersVTable : public YQLVirtualTable {
  public:
   explicit PeersVTable(const Master* const master_);
-  CHECKED_STATUS RetrieveData(const YQLReadRequestPB& request,
-                              std::unique_ptr<YQLRowBlock>* vtable) const;
+  CHECKED_STATUS RetrieveData(const QLReadRequestPB& request,
+                              std::unique_ptr<QLRowBlock>* vtable) const;
 
  protected:
   Schema CreateSchema() const;

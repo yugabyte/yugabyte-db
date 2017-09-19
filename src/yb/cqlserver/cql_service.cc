@@ -73,7 +73,7 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts)
   prepared_stmts_mem_tracker_->AddGcFunction(
       std::bind(&CQLServiceImpl::DeleteLruPreparedStatement, this));
 
-  auth_prepared_stmt_ = std::make_shared<sql::Statement>(
+  auth_prepared_stmt_ = std::make_shared<ql::Statement>(
       "",
       // TODO: enhance this once we need the other fields to create an AuthenticatedUser.
       Substitute("SELECT $0 FROM system_auth.roles WHERE role = ?", kRoleColumnNameSaltedHash));
@@ -151,7 +151,7 @@ void CQLServiceImpl::ReturnProcessor(const CQLProcessorListPos& pos) {
 }
 
 shared_ptr<CQLStatement> CQLServiceImpl::AllocatePreparedStatement(
-    const CQLMessage::QueryId& query_id, const string& keyspace, const string& sql_stmt) {
+    const CQLMessage::QueryId& query_id, const string& keyspace, const string& ql_stmt) {
   // Get exclusive lock before allocating a prepared statement and updating the LRU list.
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
 
@@ -163,7 +163,7 @@ shared_ptr<CQLStatement> CQLServiceImpl::AllocatePreparedStatement(
     // wait for the results.
     stmt = prepared_stmts_map_.emplace(
         query_id, std::make_shared<CQLStatement>(
-            keyspace, sql_stmt, prepared_stmts_list_.end())).first->second;
+            keyspace, ql_stmt, prepared_stmts_list_.end())).first->second;
     InsertLruPreparedStatementUnlocked(stmt);
   } else {
     // Return existing statement if found.

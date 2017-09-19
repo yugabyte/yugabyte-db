@@ -23,11 +23,11 @@ namespace util {
 // drivers and thus Cassandra's own token-aware policy, we still want the requests to hit our nodes
 // evenly. To do that, we split Cassandra's token ring (signed 64-bit number space) evenly and
 // return the token for each node in the node list.
-YQLValuePB GetTokensValue(size_t index, size_t node_count) {
+QLValuePB GetTokensValue(size_t index, size_t node_count) {
   CHECK_GT(node_count, 0);
-  YQLValuePB value_pb;
-  YQLValue::set_set_value(&value_pb);
-  YQLValuePB *token = YQLValue::add_set_elem(&value_pb);
+  QLValuePB value_pb;
+  QLValue::set_set_value(&value_pb);
+  QLValuePB *token = QLValue::add_set_elem(&value_pb);
   token->set_string_value(YBPartition::CqlTokenSplit(node_count, index));
   return value_pb;
 }
@@ -49,20 +49,20 @@ bool RemoteEndpointMatchesTServer(const TSInformationPB& ts_info,
   return false;
 }
 
-YQLValuePB GetReplicationValue(int replication_factor) {
-  YQLValuePB value_pb;
-  YQLValue::set_map_value(&value_pb);
+QLValuePB GetReplicationValue(int replication_factor) {
+  QLValuePB value_pb;
+  QLValue::set_map_value(&value_pb);
 
   // replication strategy
-  YQLValuePB *elem = YQLValue::add_map_key(&value_pb);
+  QLValuePB *elem = QLValue::add_map_key(&value_pb);
   elem->set_string_value("class");
-  elem = YQLValue::add_map_value(&value_pb);
+  elem = QLValue::add_map_value(&value_pb);
   elem->set_string_value("org.apache.cassandra.locator.SimpleStrategy");
 
   // replication factor
-  elem = YQLValue::add_map_key(&value_pb);
+  elem = QLValue::add_map_key(&value_pb);
   elem->set_string_value("replication_factor");
-  elem = YQLValue::add_map_value(&value_pb);
+  elem = QLValue::add_map_value(&value_pb);
   elem->set_string_value(std::to_string(replication_factor));
 
   return value_pb;

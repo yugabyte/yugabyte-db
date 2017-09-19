@@ -81,7 +81,7 @@ message AppStatusPB {
   optional string message = 2;
   oneof error_codes {
     int32 posix_code = 4;
-    int64 sql_error_code = 5;
+    int64 ql_error_code = 5;
   }
 }
 

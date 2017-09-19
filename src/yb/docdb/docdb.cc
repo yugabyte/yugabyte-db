@@ -369,7 +369,7 @@ Status DocWriteBatch::ReplaceInList(
 
     if (indexes[replace_index] <= 0 || !iter->Valid() || !iter->key().starts_with(seek_key)) {
       return STATUS_SUBSTITUTE(
-          SqlError,
+          QLError,
           "Unable to replace items into list, expecting index $0, reached end of list with size $1",
           indexes[replace_index],
           current_index);

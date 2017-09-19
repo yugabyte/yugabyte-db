@@ -58,7 +58,7 @@
 #include "yb/common/row_operations.h"
 #include "yb/common/scan_spec.h"
 #include "yb/common/schema.h"
-#include "yb/common/yql_rowblock.h"
+#include "yb/common/ql_rowblock.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
@@ -160,7 +160,7 @@ using yb::docdb::ValueType;
 using yb::docdb::KeyBytes;
 using yb::docdb::DocOperation;
 using yb::docdb::RedisWriteOperation;
-using yb::docdb::YQLWriteOperation;
+using yb::docdb::QLWriteOperation;
 using yb::docdb::DocDBCompactionFilterFactory;
 using yb::docdb::KuduWriteOperation;
 
@@ -334,7 +334,7 @@ Status Tablet::OpenKeyValueTablet() {
     return STATUS(IllegalState, rocksdb_open_status.ToString());
   }
   rocksdb_.reset(db);
-  yql_storage_.reset(new docdb::YQLRocksDBStorage(rocksdb_.get()));
+  ql_storage_.reset(new docdb::QLRocksDBStorage(rocksdb_.get()));
   LOG(INFO) << "Successfully opened a RocksDB database at " << db_dir;
   return Status::OK();
 }
@@ -1048,8 +1048,8 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
 
 namespace {
 
-// Separate Redis / YQL / row operations write batches from write_request in preparation for the
-// write transaction. Leave just the tablet id behind. Return Redis / YQL / row operations, etc.
+// Separate Redis / QL / row operations write batches from write_request in preparation for the
+// write transaction. Leave just the tablet id behind. Return Redis / QL / row operations, etc.
 // in batch_request.
 void SetupKeyValueBatch(WriteRequestPB* write_request, WriteRequestPB* batch_request) {
   batch_request->Swap(write_request);
@@ -1101,23 +1101,23 @@ Status Tablet::HandleRedisReadRequest(HybridTime timestamp,
   return Status::OK();
 }
 
-Status Tablet::HandleYQLReadRequest(
-    HybridTime timestamp, const YQLReadRequestPB& yql_read_request, YQLResponsePB* response,
+Status Tablet::HandleQLReadRequest(
+    HybridTime timestamp, const QLReadRequestPB& ql_read_request, QLResponsePB* response,
     gscoped_ptr<faststring>* rows_data) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
-  ScopedTabletMetricsTracker(metrics_->yql_read_latency);
+  ScopedTabletMetricsTracker(metrics_->ql_read_latency);
 
-  if (metadata()->schema_version() != yql_read_request.schema_version()) {
-    response->set_status(YQLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
+  if (metadata()->schema_version() != ql_read_request.schema_version()) {
+    response->set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
     return Status::OK();
   }
 
-  return AbstractTablet::HandleYQLReadRequest(timestamp, yql_read_request, response, rows_data);
+  return AbstractTablet::HandleQLReadRequest(timestamp, ql_read_request, response, rows_data);
 }
 
-CHECKED_STATUS Tablet::CreatePagingStateForRead(const YQLReadRequestPB& yql_read_request,
-                                                const YQLRowBlock& rowblock,
-                                                YQLResponsePB* response) const {
+CHECKED_STATUS Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
+                                                const QLRowBlock& rowblock,
+                                                QLResponsePB* response) const {
   // If there is no hash column in the read request, this is a full-table query. And if there is no
   // paging state in the response, we are done reading from the current tablet. In this case, we
   // should return the exclusive end partition key of this tablet if not empty which is the start
@@ -1125,9 +1125,9 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const YQLReadRequestPB& yql_read
   // haven't hit it, or we are asked to return paging state even when we have hit the limit.
   // Otherwise, leave the paging state empty which means we are completely done reading for the
   // whole SELECT statement.
-  if (yql_read_request.hashed_column_values().empty() && !response->has_paging_state() &&
-      (!yql_read_request.has_limit() || rowblock.row_count() < yql_read_request.limit() ||
-          yql_read_request.return_paging_state())) {
+  if (ql_read_request.hashed_column_values().empty() && !response->has_paging_state() &&
+      (!ql_read_request.has_limit() || rowblock.row_count() < ql_read_request.limit() ||
+          ql_read_request.return_paging_state())) {
     const string& next_partition_key = metadata_->partition().partition_key_end();
     if (!next_partition_key.empty()) {
       response->mutable_paging_state()->set_next_partition_key(next_partition_key);
@@ -1137,13 +1137,13 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const YQLReadRequestPB& yql_read
   // If there is a paging state, update the total number of rows read so far.
   if (response->has_paging_state()) {
     response->mutable_paging_state()->set_total_num_rows_read(
-        yql_read_request.paging_state().total_num_rows_read() + rowblock.row_count());
+        ql_read_request.paging_state().total_num_rows_read() + rowblock.row_count());
   }
   return Status::OK();
 }
 
-Status Tablet::KeyValueBatchFromYQLWriteBatch(
-    WriteRequestPB* yql_write_request,
+Status Tablet::KeyValueBatchFromQLWriteBatch(
+    WriteRequestPB* ql_write_request,
     LockBatch *keys_locked,
     WriteResponsePB* write_response,
     WriteTransactionState* tx_state) {
@@ -1151,28 +1151,28 @@ Status Tablet::KeyValueBatchFromYQLWriteBatch(
 
   vector<unique_ptr<DocOperation>> doc_ops;
   WriteRequestPB batch_request;
-  SetupKeyValueBatch(yql_write_request, &batch_request);
-  auto* yql_write_batch = batch_request.mutable_yql_write_batch();
+  SetupKeyValueBatch(ql_write_request, &batch_request);
+  auto* ql_write_batch = batch_request.mutable_ql_write_batch();
 
-  doc_ops.reserve(yql_write_batch->size());
-  for (size_t i = 0; i < yql_write_batch->size(); i++) {
-    YQLWriteRequestPB* req = yql_write_batch->Mutable(i);
-    YQLResponsePB* resp = write_response->add_yql_response_batch();
+  doc_ops.reserve(ql_write_batch->size());
+  for (size_t i = 0; i < ql_write_batch->size(); i++) {
+    QLWriteRequestPB* req = ql_write_batch->Mutable(i);
+    QLResponsePB* resp = write_response->add_ql_response_batch();
     if (metadata_->schema_version() != req->schema_version()) {
-      resp->set_status(YQLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
+      resp->set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
     } else {
-      doc_ops.emplace_back(new YQLWriteOperation(req, metadata_->schema(), resp));
+      doc_ops.emplace_back(new QLWriteOperation(req, metadata_->schema(), resp));
     }
   }
   RETURN_NOT_OK(StartDocWriteTransaction(
-      doc_ops, keys_locked, yql_write_request->mutable_write_batch()));
+      doc_ops, keys_locked, ql_write_request->mutable_write_batch()));
   for (size_t i = 0; i < doc_ops.size(); i++) {
-    YQLWriteOperation* yql_write_op = down_cast<YQLWriteOperation*>(doc_ops[i].get());
-    // If the YQL write op returns a rowblock, move the op to the transaction state to return the
+    QLWriteOperation* ql_write_op = down_cast<QLWriteOperation*>(doc_ops[i].get());
+    // If the QL write op returns a rowblock, move the op to the transaction state to return the
     // rows data as a sidecar after the transaction completes.
-    if (yql_write_op->rowblock() != nullptr) {
+    if (ql_write_op->rowblock() != nullptr) {
       doc_ops[i].release();
-      tx_state->yql_write_ops()->emplace_back(unique_ptr<YQLWriteOperation>(yql_write_op));
+      tx_state->ql_write_ops()->emplace_back(unique_ptr<QLWriteOperation>(ql_write_op));
     }
   }
 
@@ -1197,12 +1197,12 @@ Status Tablet::AcquireLocksAndPerformDocOperations(WriteTransactionState *state)
         break;
       }
       case TableType::YQL_TABLE_TYPE: {
-        CHECK_NE(key_value_write_request->yql_write_batch_size() > 0,
+        CHECK_NE(key_value_write_request->ql_write_batch_size() > 0,
                  key_value_write_request->row_operations().rows().size() > 0)
-            << "YQL write and Kudu row operations not supported in the same request";
-        if (key_value_write_request->yql_write_batch_size() > 0) {
-          vector<YQLResponsePB> responses;
-          RETURN_NOT_OK(KeyValueBatchFromYQLWriteBatch(
+            << "QL write and Kudu row operations not supported in the same request";
+        if (key_value_write_request->ql_write_batch_size() > 0) {
+          vector<QLResponsePB> responses;
+          RETURN_NOT_OK(KeyValueBatchFromQLWriteBatch(
               key_value_write_request, &locks_held, state->response(), state));
         } else {
           // Kudu-compatible codepath - we'll construct a new WriteRequestPB for Raft replication.
@@ -1224,8 +1224,8 @@ Status Tablet::AcquireLocksAndPerformDocOperations(WriteTransactionState *state)
         << "Rows operations not empty in key-value batch";
     DCHECK_EQ(key_value_write_request->redis_write_batch_size(), 0)
         << "Redis write batch not empty in key-value batch";
-    DCHECK_EQ(key_value_write_request->yql_write_batch_size(), 0)
-        << "YQL write batch not empty in key-value batch";
+    DCHECK_EQ(key_value_write_request->ql_write_batch_size(), 0)
+        << "QL write batch not empty in key-value batch";
   }
   return Status::OK();
 }
@@ -2431,14 +2431,14 @@ Status Tablet::CaptureConsistentIterators(
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
       return KuduColumnarCaptureConsistentIterators(projection, snap, spec, iters);
     case TableType::YQL_TABLE_TYPE:
-      return YQLCaptureConsistentIterators(projection, snap, spec, iters);
+      return QLCaptureConsistentIterators(projection, snap, spec, iters);
     default:
       LOG(FATAL) << __FUNCTION__ << " is undefined for table type " << table_type_;
   }
   return STATUS(IllegalState, "This should never happen");
 }
 
-Status Tablet::YQLCaptureConsistentIterators(
+Status Tablet::QLCaptureConsistentIterators(
     const Schema *projection,
     const MvccSnapshot &snap,
     const ScanSpec *spec,

@@ -66,7 +66,7 @@ set(TSERVER_PROTO_LIBS
   tablet_proto
   wire_protocol_proto
   redis_protocol_proto
-  yql_protocol_proto
+  ql_protocol_proto
   docdb_proto)
 ADD_YB_LIBRARY(tserver_proto
   SRCS ${TSERVER_PROTO_SRCS}

@@ -1044,7 +1044,7 @@ function(GET_TEST_PREFIX_AND_BINARY_NAME CTEST_PREFIX_RV TEST_BINARY_NAME_RV REL
   while (true)
     get_filename_component(DIR_NAME ${DIR} NAME_WE)
     # We want to use parent directory name as a prefix if test is located in "test" or "tests"
-    # directory, so tests from 'src/sql/test' will be compiled into 'tests-sql' rather than
+    # directory, so tests from 'src/ql/test' will be compiled into 'tests-ql' rather than
     # 'tests-test'.
     if (NOT "${DIR_NAME}" MATCHES "^(test|tests)$")
       set(${CTEST_PREFIX_RV} "${DIR_NAME}" PARENT_SCOPE)
@@ -1553,7 +1553,7 @@ add_subdirectory(src/yb/benchmarks)
 add_subdirectory(src/yb/tools)
 add_subdirectory(src/yb/rocksutil)
 add_subdirectory(src/yb/docdb)
-add_subdirectory(src/yb/sql)
+add_subdirectory(src/yb/ql)
 add_subdirectory(src/yb/cqlserver)
 
 if ("${YB_EDITION}" STREQUAL "enterprise")

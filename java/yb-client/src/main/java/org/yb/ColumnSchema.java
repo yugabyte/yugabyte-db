@@ -49,7 +49,7 @@ public class ColumnSchema {
   // TODO Having both type and yqlType is redundant. After YugaWare is updated and Kudu
   // dependencies cleaned up, type can be removed.
   private final Type type;
-  private final YQLType yqlType;
+  private final QLType yqlType;
   private final boolean key;
   private final boolean hashKey;
   private final boolean nullable;
@@ -134,7 +134,7 @@ public class ColumnSchema {
     }
   };
 
-  private ColumnSchema(Integer id, String name, YQLType yqlType, boolean key, boolean hashKey,
+  private ColumnSchema(Integer id, String name, QLType yqlType, boolean key, boolean hashKey,
                        boolean nullable, Object defaultValue, int desiredBlockSize,
                        Encoding encoding, CompressionAlgorithm compressionAlgorithm,
                        SortOrder sortOrder) {
@@ -167,10 +167,10 @@ public class ColumnSchema {
 
 
   /**
-   * Get the column's YQLType
+   * Get the column's QLType
    * @return the type
    */
-  public YQLType getYQLType() {
+  public QLType getQLType() {
     return yqlType;
   }
 
@@ -281,7 +281,7 @@ public class ColumnSchema {
   public static class ColumnSchemaBuilder {
     private Integer id = null;
     private final String name;
-    private final YQLType yqlType;
+    private final QLType yqlType;
     private boolean key = false;
     private boolean hashKey = false;
     private boolean nullable = false;
@@ -299,15 +299,15 @@ public class ColumnSchema {
     @Deprecated
     public ColumnSchemaBuilder(String name, Type type) {
       this.name = name;
-      this.yqlType = YQLType.fromType(type);
+      this.yqlType = QLType.fromType(type);
     }
 
     /**
      * Constructor for the required parameters.
      * @param name column's name
-     * @param yqlType column's YQL Type
+     * @param yqlType column's QL Type
      */
-    public ColumnSchemaBuilder(String name, YQLType yqlType) {
+    public ColumnSchemaBuilder(String name, QLType yqlType) {
       this.name = name;
       this.yqlType = yqlType;
     }

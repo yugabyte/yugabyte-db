@@ -143,7 +143,7 @@ namespace yb {
     ((Incomplete, 17, "Incomplete")) \
     ((EndOfFile, 18, "End of file")) \
     ((InvalidCommand, 19, "Invalid command")) \
-    ((SqlError, 20, "SQL error")) \
+    ((QLError, 20, "SQL error")) \
     ((InternalError, 21, "Internal error")) \
     ((ShutdownInProgress, 22, "Shutdown in progress")) \
     ((MergeInProgress, 23, "Merge in progress")) \
@@ -215,7 +215,7 @@ class Status {
   int16_t posix_code() const;
 
   // Get the error code associated with this Status, or -1 if there is none. For SQL errors only.
-  int64_t sql_error_code() const;
+  int64_t ql_error_code() const;
 
   // Return a new Status object with the same state plus an additional leading message.
   Status CloneAndPrepend(const Slice& msg) const;

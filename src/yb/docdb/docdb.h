@@ -269,7 +269,7 @@ yb::Status ScanSubDocument(rocksdb::DB *rocksdb,
 // If tombstone and other values are inserted at the same timestamp, it results in undefined
 // behavior. TODO: We should have write-id's to make sure timestamps are always unique.
 // The projection, if set, restricts the scan to a subset of keys in the first level.
-// The projection is used for YQL selects to get only a subset of columns.
+// The projection is used for QL selects to get only a subset of columns.
 yb::Status GetSubDocument(rocksdb::Iterator *iterator,
     const SubDocKey& subdocument_key,
     SubDocument *result,

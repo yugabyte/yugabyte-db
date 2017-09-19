@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/common/yql_value.h"
+#include "yb/common/ql_value.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/yql_columns_vtable.h"
 
@@ -26,7 +26,7 @@ Status YQLColumnsVTable::PopulateColumnInformation(const Schema& schema,
                                                    const string& keyspace_name,
                                                    const string& table_name,
                                                    const size_t col_idx,
-                                                   YQLRow* const row) const {
+                                                   QLRow* const row) const {
   RETURN_NOT_OK(SetColumnValue(kKeyspaceName, keyspace_name, row));
   RETURN_NOT_OK(SetColumnValue(kTableName, table_name, row));
   RETURN_NOT_OK(SetColumnValue(kColumnName, schema.column(col_idx).name(), row));
@@ -36,9 +36,9 @@ Status YQLColumnsVTable::PopulateColumnInformation(const Schema& schema,
   return Status::OK();
 }
 
-Status YQLColumnsVTable::RetrieveData(const YQLReadRequestPB& request,
-                                      std::unique_ptr<YQLRowBlock>* vtable) const {
-  vtable->reset(new YQLRowBlock(schema_));
+Status YQLColumnsVTable::RetrieveData(const QLReadRequestPB& request,
+                                      std::unique_ptr<QLRowBlock>* vtable) const {
+  vtable->reset(new QLRowBlock(schema_));
   std::vector<scoped_refptr<TableInfo> > tables;
   master_->catalog_manager()->GetAllTables(&tables, true);
   for (scoped_refptr<TableInfo> table : tables) {
@@ -57,7 +57,7 @@ Status YQLColumnsVTable::RetrieveData(const YQLReadRequestPB& request,
     // Fill in the hash keys first.
     int32_t num_hash_columns = schema.num_hash_key_columns();
     for (int32_t i = 0; i < num_hash_columns; i++) {
-      YQLRow& row = (*vtable)->Extend();
+      QLRow& row = (*vtable)->Extend();
       RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i,
                                               &row));
       // kind (always partition_key for hash columns)
@@ -68,7 +68,7 @@ Status YQLColumnsVTable::RetrieveData(const YQLReadRequestPB& request,
     // Now fill in the range columns
     int32_t num_range_columns = schema.num_range_key_columns();
     for (int32_t i = num_hash_columns; i < num_hash_columns + num_range_columns; i++) {
-      YQLRow& row = (*vtable)->Extend();
+      QLRow& row = (*vtable)->Extend();
       RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i,
                                               &row));
       // kind (always clustering for range columns)
@@ -78,7 +78,7 @@ Status YQLColumnsVTable::RetrieveData(const YQLReadRequestPB& request,
 
     // Now fill in the rest of the columns.
     for (int32_t i = num_hash_columns + num_range_columns; i < schema.num_columns(); i++) {
-      YQLRow &row = (*vtable)->Extend();
+      QLRow &row = (*vtable)->Extend();
       RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i,
                                               &row));
       // kind (always regular for regular columns)

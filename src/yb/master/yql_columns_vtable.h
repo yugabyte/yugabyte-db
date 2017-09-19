@@ -24,8 +24,8 @@ namespace master {
 class YQLColumnsVTable : public YQLVirtualTable {
  public:
   explicit YQLColumnsVTable(const Master* const master);
-  CHECKED_STATUS RetrieveData(const YQLReadRequestPB& request,
-                              std::unique_ptr<YQLRowBlock>* vtable) const;
+  CHECKED_STATUS RetrieveData(const QLReadRequestPB& request,
+                              std::unique_ptr<QLRowBlock>* vtable) const;
  protected:
   Schema CreateSchema() const;
  private:
@@ -33,7 +33,7 @@ class YQLColumnsVTable : public YQLVirtualTable {
                                            const std::string& keyspace_name,
                                            const std::string& table_name,
                                            const size_t col_idx,
-                                           YQLRow* const row) const;
+                                           QLRow* const row) const;
   static constexpr const char* const kKeyspaceName = "keyspace_name";
   static constexpr const char* const kTableName = "table_name";
   static constexpr const char* const kColumnName = "column_name";

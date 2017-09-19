@@ -14,7 +14,7 @@
 //
 // Utilities for DateTime parsing, processing and formatting
 // TODO: some parsing and formatting settings (e.g. default timezone) should be configurable using a
-// config file or YQL functions
+// config file or QL functions
 // currently hardcoding default_timezone(UTC), precision, output format and epoch
 //--------------------------------------------------------------------------------------------------
 

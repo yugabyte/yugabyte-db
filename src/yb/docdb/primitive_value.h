@@ -26,8 +26,8 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/schema.h"
-#include "yb/common/yql_protocol.pb.h"
-#include "yb/common/yql_rowblock.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_rowblock.h"
 #include "yb/docdb/key_bytes.h"
 #include "yb/docdb/value_type.h"
 #include "yb/util/decimal.h"
@@ -40,7 +40,7 @@ namespace docdb {
 class SubDocument;
 
 enum class SystemColumnIds : ColumnIdRep {
-  kLivenessColumn = 0  // Stores the TTL for YQL rows inserted using an INSERT statement.
+  kLivenessColumn = 0  // Stores the TTL for QL rows inserted using an INSERT statement.
 };
 
 enum class SortOrder : int8_t {
@@ -171,23 +171,23 @@ class PrimitiveValue {
   // Construct a primitive value from a Slice containing a Kudu value.
   static PrimitiveValue FromKuduValue(DataType data_type, Slice slice);
 
-  // Construct a primitive value from a YQLValuePB.
-  static PrimitiveValue FromYQLValuePB(const YQLValuePB& value,
+  // Construct a primitive value from a QLValuePB.
+  static PrimitiveValue FromQLValuePB(const QLValuePB& value,
                                        ColumnSchema::SortingType sorting_type);
 
-  // Set a primitive value in a YQLValuePB.
-  static void ToYQLValuePB(const PrimitiveValue& pv,
-                           const std::shared_ptr<YQLType>& yql_type,
-                           YQLValuePB* yql_val);
+  // Set a primitive value in a QLValuePB.
+  static void ToQLValuePB(const PrimitiveValue& pv,
+                           const std::shared_ptr<QLType>& ql_type,
+                           QLValuePB* ql_val);
 
-  // Construct a primitive value from a YQLExpressionPB.
-  static PrimitiveValue FromYQLExpressionPB(const YQLExpressionPB& yql_expr,
+  // Construct a primitive value from a QLExpressionPB.
+  static PrimitiveValue FromQLExpressionPB(const QLExpressionPB& ql_expr,
                                             ColumnSchema::SortingType sorting_type);
 
-  // Set a primitive value in a YQLExpressionPB.
-  static void ToYQLExpressionPB(const PrimitiveValue& pv,
-                                const std::shared_ptr<YQLType>& yql_type,
-                                YQLExpressionPB* yql_expr);
+  // Set a primitive value in a QLExpressionPB.
+  static void ToQLExpressionPB(const PrimitiveValue& pv,
+                                const std::shared_ptr<QLType>& ql_type,
+                                QLExpressionPB* ql_expr);
 
   ValueType value_type() const { return type_; }
 

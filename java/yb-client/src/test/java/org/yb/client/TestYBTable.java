@@ -57,23 +57,23 @@ public class TestYBTable extends BaseYBClientTest {
     pb.addColumns(Common.ColumnSchemaPB.newBuilder()
         .setId(0)
         .setName("key")
-        .setType(ProtobufHelper.YQLTypeToPb(YQLType.INT32))
+        .setType(ProtobufHelper.QLTypeToPb(QLType.INT32))
         .setIsKey(true)
         .build());
     pb.addColumns(Common.ColumnSchemaPB.newBuilder()
         .setId(1)
         .setName("column1_i")
-        .setType(ProtobufHelper.YQLTypeToPb(YQLType.INT32))
+        .setType(ProtobufHelper.QLTypeToPb(QLType.INT32))
         .build());
     pb.addColumns(Common.ColumnSchemaPB.newBuilder()
         .setId(2)
         .setName("column2_i")
-        .setType(ProtobufHelper.YQLTypeToPb(YQLType.INT32))
+        .setType(ProtobufHelper.QLTypeToPb(QLType.INT32))
         .build());
     pb.addColumns(Common.ColumnSchemaPB.newBuilder()
         .setId(3)
         .setName("column3_s")
-        .setType(ProtobufHelper.YQLTypeToPb(YQLType.STRING))
+        .setType(ProtobufHelper.QLTypeToPb(QLType.STRING))
         .setIsNullable(true)
         .setCfileBlockSize(4096)
         .setEncoding(Common.EncodingType.DICT_ENCODING)
@@ -82,7 +82,7 @@ public class TestYBTable extends BaseYBClientTest {
     pb.addColumns(Common.ColumnSchemaPB.newBuilder()
         .setId(4)
         .setName("column4_b")
-        .setType(ProtobufHelper.YQLTypeToPb(YQLType.BOOL))
+        .setType(ProtobufHelper.QLTypeToPb(QLType.BOOL))
         .build());
     if (!defaultTTL) {
       pb.setTableProperties(Common.TablePropertiesPB.newBuilder()

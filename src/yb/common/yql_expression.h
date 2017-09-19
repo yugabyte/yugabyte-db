@@ -20,11 +20,11 @@
 #ifndef YB_COMMON_YQL_EXPRESSION_H
 #define YB_COMMON_YQL_EXPRESSION_H
 
-#include "yb/common/yql_protocol.pb.h"
+#include "yb/common/ql_protocol.pb.h"
 #include "yb/util/status.h"
-#include "yb/common/yql_value.h"
-#include "yb/common/yql_rowblock.h"
-#include "yb/common/yql_bfunc.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/ql_rowblock.h"
+#include "yb/common/ql_bfunc.h"
 
 namespace yb {
 
@@ -40,9 +40,9 @@ enum class WriteAction : int {
 class YQLExpression {
  public:
 
-  static CHECKED_STATUS Evaluate(const YQLExpressionPB &yql_expr,
-                                 const YQLTableRow &table_row,
-                                 YQLValueWithPB *result,
+  static CHECKED_STATUS Evaluate(const QLExpressionPB &ql_expr,
+                                 const QLTableRow &table_row,
+                                 QLValueWithPB *result,
                                  WriteAction *write_action);
 };
 

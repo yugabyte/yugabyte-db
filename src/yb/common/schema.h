@@ -42,7 +42,7 @@
 
 #include <glog/logging.h>
 
-#include "yb/common/yql_type.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/id_mapping.h"
 #include "yb/common/key_encoder.h"
 #include "yb/common/hybrid_time.h"
@@ -234,7 +234,7 @@ class ColumnSchema {
   //   Slice default_str("Hello");
   //   ColumnSchema col_d("d", STRING, false, &default_str);
   ColumnSchema(string name,
-               const std::shared_ptr<YQLType>& type,
+               const std::shared_ptr<QLType>& type,
                bool is_nullable = false,
                bool is_hash_key = false,
                bool is_static = false,
@@ -271,10 +271,10 @@ class ColumnSchema {
                const void* read_default = NULL,
                const void* write_default = NULL,
                ColumnStorageAttributes attributes = ColumnStorageAttributes())
-      : ColumnSchema(name, YQLType::Create(type), is_nullable, is_hash_key, is_static, is_counter,
+      : ColumnSchema(name, QLType::Create(type), is_nullable, is_hash_key, is_static, is_counter,
                      sorting_type, read_default, write_default, attributes) { }
 
-  const std::shared_ptr<YQLType>& type() const {
+  const std::shared_ptr<QLType>& type() const {
     return type_;
   }
 
@@ -449,7 +449,7 @@ class ColumnSchema {
   }
 
   string name_;
-  std::shared_ptr<YQLType> type_;
+  std::shared_ptr<QLType> type_;
   bool is_nullable_;
   bool is_hash_key_;
   bool is_static_;
@@ -1179,39 +1179,39 @@ class SchemaBuilder {
   Schema BuildWithoutIds() const { return Schema(cols_, num_key_columns_, table_properties_); }
 
   // assumes type is allowed in primary key -- this should be checked before getting here
-  // using DataType (not YQLType) since primary key columns only support elementary types
-  CHECKED_STATUS AddKeyColumn(const string& name, const std::shared_ptr<YQLType>& type);
+  // using DataType (not QLType) since primary key columns only support elementary types
+  CHECKED_STATUS AddKeyColumn(const string& name, const std::shared_ptr<QLType>& type);
   CHECKED_STATUS AddKeyColumn(const string& name, DataType type);
 
   // assumes type is allowed in hash key -- this should be checked before getting here
-  // using DataType (not YQLType) since hash key columns only support elementary types
-  CHECKED_STATUS AddHashKeyColumn(const string& name, const std::shared_ptr<YQLType>& type);
+  // using DataType (not QLType) since hash key columns only support elementary types
+  CHECKED_STATUS AddHashKeyColumn(const string& name, const std::shared_ptr<QLType>& type);
   CHECKED_STATUS AddHashKeyColumn(const string& name, DataType type);
 
   CHECKED_STATUS AddColumn(const ColumnSchema& column, bool is_key);
 
-  CHECKED_STATUS AddColumn(const string& name, const std::shared_ptr<YQLType>& type) {
+  CHECKED_STATUS AddColumn(const string& name, const std::shared_ptr<QLType>& type) {
     return AddColumn(name, type, false, false, false, false,
                      ColumnSchema::SortingType::kNotSpecified, NULL, NULL);
   }
 
   // convenience function for adding columns with simple (non-parametric) data types
   CHECKED_STATUS AddColumn(const string& name, DataType type) {
-    return AddColumn(name, YQLType::Create(type));
+    return AddColumn(name, QLType::Create(type));
   }
 
-  CHECKED_STATUS AddNullableColumn(const string& name, const std::shared_ptr<YQLType>& type) {
+  CHECKED_STATUS AddNullableColumn(const string& name, const std::shared_ptr<QLType>& type) {
     return AddColumn(name, type, true, false, false, false,
                      ColumnSchema::SortingType::kNotSpecified, NULL, NULL);
   }
 
   // convenience function for adding columns with simple (non-parametric) data types
   CHECKED_STATUS AddNullableColumn(const string& name, DataType type) {
-    return AddNullableColumn(name, YQLType::Create(type));
+    return AddNullableColumn(name, QLType::Create(type));
   }
 
   CHECKED_STATUS AddColumn(const string& name,
-                           const std::shared_ptr<YQLType>& type,
+                           const std::shared_ptr<QLType>& type,
                            bool is_nullable,
                            bool is_hash_key,
                            bool is_static,
@@ -1230,7 +1230,7 @@ class SchemaBuilder {
                            yb::ColumnSchema::SortingType sorting_type,
                            const void *read_default,
                            const void *write_default) {
-    return AddColumn(name, YQLType::Create(type), is_nullable, is_hash_key, is_static, is_counter,
+    return AddColumn(name, QLType::Create(type), is_nullable, is_hash_key, is_static, is_counter,
                      sorting_type, read_default, write_default);
   }
 

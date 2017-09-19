@@ -426,7 +426,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT(p=3000)]) -> "value3"
       )#");
 }
 
-TEST_F(DocDBTest, SetPrimitiveYQL) {
+TEST_F(DocDBTest, SetPrimitiveQL) {
   const DocKey doc_key(PrimitiveValues("mydockey", 123456));
   SetupRocksDBState(doc_key.Encode(), InitMarkerBehavior::OPTIONAL);
   AssertDocDbDebugDumpStrEq(

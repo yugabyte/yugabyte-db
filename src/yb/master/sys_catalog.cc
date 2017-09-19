@@ -43,7 +43,7 @@
 #include "yb/common/row_operations.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/common/yql_value.h"
+#include "yb/common/ql_value.h"
 
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/consensus_meta.h"

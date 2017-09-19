@@ -31,7 +31,7 @@ class SystemTablet : public tablet::AbstractTablet {
 
   const Schema& SchemaRef() const override;
 
-  const common::YQLStorageIf& YQLStorage() const override;
+  const common::QLStorageIf& QLStorage() const override;
 
   TableType table_type() const override;
 
@@ -45,9 +45,9 @@ class SystemTablet : public tablet::AbstractTablet {
       HybridTime timestamp, const RedisReadRequestPB& redis_read_request,
       RedisResponsePB* response) override;
 
-  CHECKED_STATUS CreatePagingStateForRead(const YQLReadRequestPB& yql_read_request,
-                                          const YQLRowBlock& rowblock,
-                                          YQLResponsePB* response) const override;
+  CHECKED_STATUS CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
+                                          const QLRowBlock& rowblock,
+                                          QLResponsePB* response) const override;
   const TableName& GetTableName() const;
  private:
   Schema schema_;

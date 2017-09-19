@@ -307,7 +307,7 @@ message SysUDTypeEntryPB {
   optional string namespace_id = 1;
   optional string name = 2;
   repeated string field_names = 3;
-  repeated YQLTypePB field_types = 4;
+  repeated QLTypePB field_types = 4;
 }
 
 // The on-disk entry in the sys.catalog table for configuration information
@@ -890,7 +890,7 @@ message CreateUDTypeRequestPB {
   optional NamespaceIdentifierPB namespace = 1;
   optional string name = 2;
   repeated string field_names = 3;
-  repeated YQLTypePB field_types = 4;
+  repeated QLTypePB field_types = 4;
 }
 
 message CreateUDTypeResponsePB {
@@ -944,7 +944,7 @@ message UDTypeInfoPB {
   optional bytes id = 1;
   optional string name = 2;
   repeated string field_names = 3;
-  repeated YQLTypePB field_types = 4;
+  repeated QLTypePB field_types = 4;
   optional NamespaceIdentifierPB namespace = 5;
 }
 

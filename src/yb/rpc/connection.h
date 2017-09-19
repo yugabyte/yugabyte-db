@@ -33,6 +33,8 @@
 #ifndef YB_RPC_CONNECTION_H_
 #define YB_RPC_CONNECTION_H_
 
+#include <ev++.h>
+
 #include <atomic>
 #include <cstdint>
 #include <limits>
@@ -42,8 +44,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include <ev++.h>
-
 #include <boost/container/small_vector.hpp>
 
 #include "yb/gutil/gscoped_ptr.h"
@@ -52,7 +52,7 @@
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/inbound_call.h"
 #include "yb/rpc/server_event.h"
-#include "yb/sql/sql_session.h"
+#include "yb/ql/ql_session.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"

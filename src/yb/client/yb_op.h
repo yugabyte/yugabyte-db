@@ -48,9 +48,9 @@ class RedisWriteRequestPB;
 class RedisReadRequestPB;
 class RedisResponsePB;
 
-class YQLWriteRequestPB;
-class YQLReadRequestPB;
-class YQLResponsePB;
+class QLWriteRequestPB;
+class QLReadRequestPB;
+class QLResponsePB;
 
 namespace client {
 
@@ -80,8 +80,8 @@ class YBOperation {
     DELETE = 3,
     REDIS_WRITE = 4,
     REDIS_READ = 5,
-    YQL_WRITE = 6,
-    YQL_READ = 7,
+    QL_WRITE = 6,
+    QL_READ = 7,
   };
   virtual ~YBOperation();
 
@@ -283,9 +283,9 @@ class YBqlOp : public YBOperation {
  public:
   virtual ~YBqlOp();
 
-  const YQLResponsePB& response() const { return *yql_response_; }
+  const QLResponsePB& response() const { return *ql_response_; }
 
-  YQLResponsePB* mutable_response() { return yql_response_.get(); }
+  QLResponsePB* mutable_response() { return ql_response_.get(); }
 
   std::string&& rows_data() { return std::move(rows_data_); }
 
@@ -294,12 +294,12 @@ class YBqlOp : public YBOperation {
   // Set the row key in the YBPartialRow.
   virtual CHECKED_STATUS SetKey() = 0;
 
-  // Set the hash key in the partial row of this YQL operation.
+  // Set the hash key in the partial row of this QL operation.
   virtual void SetHashCode(uint16_t hash_code) = 0;
 
  protected:
   explicit YBqlOp(const std::shared_ptr<YBTable>& table);
-  std::unique_ptr<YQLResponsePB> yql_response_;
+  std::unique_ptr<QLResponsePB> ql_response_;
   std::string rows_data_;
 };
 
@@ -308,12 +308,12 @@ class YBqlWriteOp : public YBqlOp {
   explicit YBqlWriteOp(const std::shared_ptr<YBTable>& table);
   virtual ~YBqlWriteOp();
 
-  // Note: to avoid memory copy, this YQLWriteRequestPB is moved into tserver WriteRequestPB
+  // Note: to avoid memory copy, this QLWriteRequestPB is moved into tserver WriteRequestPB
   // when the request is sent to tserver. It is restored after response is received from tserver
   // (see WriteRpc's constructor).
-  const YQLWriteRequestPB& request() const { return *yql_write_request_; }
+  const QLWriteRequestPB& request() const { return *ql_write_request_; }
 
-  YQLWriteRequestPB* mutable_request() { return yql_write_request_.get(); }
+  QLWriteRequestPB* mutable_request() { return ql_write_request_.get(); }
 
   virtual std::string ToString() const override;
 
@@ -325,7 +325,7 @@ class YBqlWriteOp : public YBqlOp {
 
  protected:
   virtual Type type() const override {
-    return YQL_WRITE;
+    return QL_WRITE;
   }
 
  private:
@@ -333,7 +333,7 @@ class YBqlWriteOp : public YBqlOp {
   static YBqlWriteOp *NewInsert(const std::shared_ptr<YBTable>& table);
   static YBqlWriteOp *NewUpdate(const std::shared_ptr<YBTable>& table);
   static YBqlWriteOp *NewDelete(const std::shared_ptr<YBTable>& table);
-  std::unique_ptr<YQLWriteRequestPB> yql_write_request_;
+  std::unique_ptr<QLWriteRequestPB> ql_write_request_;
 };
 
 class YBqlReadOp : public YBqlOp {
@@ -342,12 +342,12 @@ class YBqlReadOp : public YBqlOp {
 
   static YBqlReadOp *NewSelect(const std::shared_ptr<YBTable>& table);
 
-  // Note: to avoid memory copy, this YQLReadRequestPB is moved into tserver ReadRequestPB
+  // Note: to avoid memory copy, this QLReadRequestPB is moved into tserver ReadRequestPB
   // when the request is sent to tserver. It is restored after response is received from tserver
   // (see ReadRpc's constructor).
-  const YQLReadRequestPB& request() const { return *yql_read_request_; }
+  const QLReadRequestPB& request() const { return *ql_read_request_; }
 
-  YQLReadRequestPB* mutable_request() { return yql_read_request_.get(); }
+  QLReadRequestPB* mutable_request() { return ql_read_request_.get(); }
 
   virtual std::string ToString() const override;
 
@@ -369,12 +369,12 @@ class YBqlReadOp : public YBqlOp {
   }
 
  protected:
-  virtual Type type() const override { return YQL_READ; }
+  virtual Type type() const override { return QL_READ; }
 
  private:
   friend class YBTable;
   explicit YBqlReadOp(const std::shared_ptr<YBTable>& table);
-  std::unique_ptr<YQLReadRequestPB> yql_read_request_;
+  std::unique_ptr<QLReadRequestPB> ql_read_request_;
   YBConsistencyLevel yb_consistency_level_;
 };
 

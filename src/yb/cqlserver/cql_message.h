@@ -27,8 +27,8 @@
 
 #include "yb/common/wire_protocol.h"
 #include "yb/rpc/server_event.h"
-#include "yb/sql/util/statement_params.h"
-#include "yb/sql/util/statement_result.h"
+#include "yb/ql/util/statement_params.h"
+#include "yb/ql/util/statement_result.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/net/sockaddr.h"
@@ -157,7 +157,7 @@ class CQLMessage {
 
     Kind kind = Kind::NOT_NULL;
     std::string name;
-    std::string value; // As required by YQLValue::Deserialize() for CQL, the value includes
+    std::string value; // As required by QLValue::Deserialize() for CQL, the value includes
                        // the 4-byte length header, i.e. "<4-byte-length><value>".
   };
 
@@ -165,7 +165,7 @@ class CQLMessage {
   using QueryId = std::string;
 
   // Query parameters for QUERY, EXECUTE and BATCH requests
-  struct QueryParameters : sql::StatementParameters {
+  struct QueryParameters : ql::StatementParameters {
     using Flags = uint8_t;
     static constexpr Flags kWithValuesFlag            = 0x01;
     static constexpr Flags kSkipMetadataFlag          = 0x02;
@@ -182,12 +182,12 @@ class CQLMessage {
     Consistency serial_consistency = Consistency::ANY;
     int64_t default_timestamp = 0;
 
-    QueryParameters() : sql::StatementParameters() { }
+    QueryParameters() : ql::StatementParameters() { }
 
     virtual CHECKED_STATUS GetBindVariable(const std::string& name,
                                            int64_t pos,
-                                           const std::shared_ptr<YQLType>& type,
-                                           YQLValue* value) const override;
+                                           const std::shared_ptr<QLType>& type,
+                                           QLValue* value) const override;
 
     CHECKED_STATUS ValidateConsistency();
   };
@@ -321,14 +321,14 @@ class StartupRequest : public CQLRequest {
 //------------------------------------------------------------
 class AuthResponseRequest : public CQLRequest {
  public:
-  class AuthQueryParameters : public sql::StatementParameters {
+  class AuthQueryParameters : public ql::StatementParameters {
    public:
-    AuthQueryParameters() : sql::StatementParameters() {}
+    AuthQueryParameters() : ql::StatementParameters() {}
 
     CHECKED_STATUS GetBindVariable(const std::string& name,
                                    int64_t pos,
-                                   const std::shared_ptr<YQLType>& type,
-                                   YQLValue* value) const override;
+                                   const std::shared_ptr<QLType>& type,
+                                   QLValue* value) const override;
     std::string username;
     std::string password;
   };
@@ -674,7 +674,7 @@ class ResultResponse : public CQLResponse {
       explicit Type(std::shared_ptr<const UDTType> udt_type);
       explicit Type(std::shared_ptr<const TupleComponentTypes> tuple_component_types);
       explicit Type(const Type& t);
-      explicit Type(const std::shared_ptr<YQLType>& type);
+      explicit Type(const std::shared_ptr<QLType>& type);
       ~Type();
     };
     struct ColSpec {
@@ -726,22 +726,22 @@ class VoidResultResponse : public ResultResponse {
 //------------------------------------------------------------
 class RowsResultResponse : public ResultResponse {
  public:
-  RowsResultResponse(const QueryRequest& request, const sql::RowsResult::SharedPtr& result);
-  RowsResultResponse(const ExecuteRequest& request, const sql::RowsResult::SharedPtr& result);
+  RowsResultResponse(const QueryRequest& request, const ql::RowsResult::SharedPtr& result);
+  RowsResultResponse(const ExecuteRequest& request, const ql::RowsResult::SharedPtr& result);
   virtual ~RowsResultResponse() override;
 
  protected:
   virtual void SerializeResultBody(faststring* mesg) const override;
 
  private:
-  const sql::RowsResult::SharedPtr result_;
+  const ql::RowsResult::SharedPtr result_;
   const bool skip_metadata_;
 };
 
 //------------------------------------------------------------
 class SetKeyspaceResultResponse : public ResultResponse {
  public:
-  SetKeyspaceResultResponse(const CQLRequest& request, const sql::SetKeyspaceResult& result);
+  SetKeyspaceResultResponse(const CQLRequest& request, const ql::SetKeyspaceResult& result);
   virtual ~SetKeyspaceResultResponse() override;
  protected:
   virtual void SerializeResultBody(faststring* mesg) const override;
@@ -754,7 +754,7 @@ class PreparedResultResponse : public ResultResponse {
  public:
   PreparedResultResponse(const CQLRequest& request, const QueryId& query_id);
   PreparedResultResponse(
-      const CQLRequest& request, const QueryId& query_id, const sql::PreparedResult& result);
+      const CQLRequest& request, const QueryId& query_id, const ql::PreparedResult& result);
   virtual ~PreparedResultResponse() override;
 
  protected:
@@ -786,7 +786,7 @@ class PreparedResultResponse : public ResultResponse {
 //------------------------------------------------------------
 class SchemaChangeResultResponse : public ResultResponse {
  public:
-  SchemaChangeResultResponse(const CQLRequest& request, const sql::SchemaChangeResult& result);
+  SchemaChangeResultResponse(const CQLRequest& request, const ql::SchemaChangeResult& result);
   virtual ~SchemaChangeResultResponse() override;
 
   void Serialize(faststring* mesg) const override;
