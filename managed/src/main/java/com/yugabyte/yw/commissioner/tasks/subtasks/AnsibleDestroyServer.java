@@ -42,6 +42,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       // Free up the node.
       NodeInstance node = NodeInstance.getByName(nodeName);
       node.inUse = false;
+      node.setNodeName("");
       node.save();
     }
   }
