@@ -129,6 +129,7 @@ const char* const kSetLoadBalancerEnabled = "set_load_balancer_enabled";
 const char* const kGetLoadMoveCompletion = "get_load_move_completion";
 const char* const kListLeaderCounts = "list_leader_counts";
 const char* const kSetupRedisTable = "setup_redis_table";
+const char* const kDropRedisTable = "drop_redis_table";
 static const char* g_progname = nullptr;
 
 // Maximum number of elements to dump on unexpected errors.
@@ -200,6 +201,8 @@ class ClusterAdminClient {
   Status ListLeaderCounts(const YBTableName& table_name);
 
   Status SetupRedisTable();
+
+  Status DropRedisTable();
 
  private:
   // Fetch the locations of the replicas for a given tablet from the Master.
@@ -583,6 +586,19 @@ Status ClusterAdminClient::SetupRedisTable() {
     LOG(INFO) << "Table '" << table_name.ToString() << "' already exists";
   } else {
     // If any other error, report that!
+    RETURN_NOT_OK(s);
+  }
+  return Status::OK();
+}
+
+Status ClusterAdminClient::DropRedisTable() {
+  const YBTableName table_name(kRedisKeyspaceName, kRedisTableName);
+  Status s = yb_client_->DeleteTable(table_name, true /* wait */);
+  if (s.ok()) {
+    LOG(INFO) << "Table '" << table_name.ToString() << "' deleted.";
+  } else if (s.IsNotFound()) {
+    LOG(INFO) << "Table '" << table_name.ToString() << "' does not exist.";
+  } else {
     RETURN_NOT_OK(s);
   }
   return Status::OK();
@@ -1029,7 +1045,8 @@ static void SetUsage(const char* argv0) {
       << " 12. " << kSetLoadBalancerEnabled << " <0|1>" << std::endl
       << " 13. " << kGetLoadMoveCompletion << std::endl
       << " 14. " << kListLeaderCounts << " <table_name>" << std::endl
-      << " 15. " << kSetupRedisTable;
+      << " 15. " << kSetupRedisTable << std::endl
+      << " 16. " << kDropRedisTable;
 
   google::SetUsageMessage(str.str());
 }
@@ -1206,6 +1223,12 @@ static int ClusterAdminCliMain(int argc, char** argv) {
     Status s = client.SetupRedisTable();
     if (!s.ok()) {
       std::cerr << "Unable to setup Redis keyspace and table: " << s.ToString() << std::endl;
+      return 1;
+    }
+  } else if (op == kDropRedisTable) {
+    Status s = client.DropRedisTable();
+    if (!s.ok()) {
+      std::cerr << "Unable to drop Redis table: " << s.ToString() << std::endl;
       return 1;
     }
   } else {
