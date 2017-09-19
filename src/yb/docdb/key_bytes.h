@@ -145,6 +145,14 @@ class KeyBytes {
     AppendColumnIdToKey(column_id, &data_);
   }
 
+  void AppendFloat(float x) {
+    AppendFloatToKey(x, &data_);
+  }
+
+  void AppendDouble(double x) {
+    AppendDoubleToKey(x, &data_);
+  }
+
   void RemoveValueTypeSuffix(ValueType value_type) {
     CHECK_GE(data_.size(), sizeof(char));
     CHECK_EQ(data_.back(), static_cast<char>(value_type));

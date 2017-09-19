@@ -122,8 +122,6 @@ shared_ptr<YQLType> YQLType::Create(DataType data_type) {
 
 bool YQLType::IsValidPrimaryType(DataType type) {
   switch (type) {
-    case DataType::DOUBLE: FALLTHROUGH_INTENDED;
-    case DataType::FLOAT: FALLTHROUGH_INTENDED;
     case DataType::BOOL:FALLTHROUGH_INTENDED;
     case DataType::MAP: FALLTHROUGH_INTENDED;
     case DataType::SET: FALLTHROUGH_INTENDED;

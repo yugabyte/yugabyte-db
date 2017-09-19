@@ -67,8 +67,22 @@ int YQLValue::CompareTo(const YQLValue& other) const {
     case InternalType::kInt16Value:  return GenericCompare(int16_value(), other.int16_value());
     case InternalType::kInt32Value:  return GenericCompare(int32_value(), other.int32_value());
     case InternalType::kInt64Value:  return GenericCompare(int64_value(), other.int64_value());
-    case InternalType::kFloatValue:  return GenericCompare(float_value(), other.float_value());
-    case InternalType::kDoubleValue: return GenericCompare(double_value(), other.double_value());
+    case InternalType::kFloatValue:  {
+      bool is_nan_0 = util::IsNanFloat(float_value());
+      bool is_nan_1 = util::IsNanFloat(other.float_value());
+      if (is_nan_0 && is_nan_1) return 0;
+      if (is_nan_0 && !is_nan_1) return 1;
+      if (!is_nan_0 && is_nan_1) return -1;
+      return GenericCompare(float_value(), other.float_value());
+    }
+    case InternalType::kDoubleValue: {
+      bool is_nan_0 = util::IsNanDouble(double_value());
+      bool is_nan_1 = util::IsNanDouble(other.double_value());
+      if (is_nan_0 && is_nan_1) return 0;
+      if (is_nan_0 && !is_nan_1) return 1;
+      if (!is_nan_0 && is_nan_1) return -1;
+      return GenericCompare(double_value(), other.double_value());
+    }
     // Encoded decimal is byte-comparable.
     case InternalType::kDecimalValue: return decimal_value().compare(other.decimal_value());
     case InternalType::kStringValue: return string_value().compare(other.string_value());
@@ -523,8 +537,22 @@ int YQLValue::CompareTo(const YQLValuePB& lhs, const YQLValuePB& rhs) {
     case YQLValuePB::kInt16Value:  return GenericCompare(lhs.int16_value(), rhs.int16_value());
     case YQLValuePB::kInt32Value:  return GenericCompare(lhs.int32_value(), rhs.int32_value());
     case YQLValuePB::kInt64Value:  return GenericCompare(lhs.int64_value(), rhs.int64_value());
-    case YQLValuePB::kFloatValue:  return GenericCompare(lhs.float_value(), rhs.float_value());
-    case YQLValuePB::kDoubleValue: return GenericCompare(lhs.double_value(), rhs.double_value());
+    case InternalType::kFloatValue:  {
+      bool is_nan_0 = util::IsNanFloat(lhs.float_value());
+      bool is_nan_1 = util::IsNanFloat(rhs.float_value());
+      if (is_nan_0 && is_nan_1) return 0;
+      if (is_nan_0 && !is_nan_1) return 1;
+      if (!is_nan_0 && is_nan_1) return -1;
+      return GenericCompare(lhs.float_value(), rhs.float_value());
+    }
+    case InternalType::kDoubleValue: {
+      bool is_nan_0 = util::IsNanDouble(lhs.double_value());
+      bool is_nan_1 = util::IsNanDouble(rhs.double_value());
+      if (is_nan_0 && is_nan_1) return 0;
+      if (is_nan_0 && !is_nan_1) return 1;
+      if (!is_nan_0 && is_nan_1) return -1;
+      return GenericCompare(lhs.double_value(), rhs.double_value());
+    }
     // Encoded decimal is byte-comparable.
     case YQLValuePB::kDecimalValue: return lhs.decimal_value().compare(rhs.decimal_value());
     case YQLValuePB::kStringValue: return lhs.string_value().compare(rhs.string_value());
@@ -567,8 +595,22 @@ int YQLValue::CompareTo(const YQLValuePB& lhs, const YQLValue& rhs) {
     case YQLValuePB::kInt16Value:  return GenericCompare(int16_value(lhs), rhs.int16_value());
     case YQLValuePB::kInt32Value:  return GenericCompare(int32_value(lhs), rhs.int32_value());
     case YQLValuePB::kInt64Value:  return GenericCompare(int64_value(lhs), rhs.int64_value());
-    case YQLValuePB::kFloatValue:  return GenericCompare(float_value(lhs), rhs.float_value());
-    case YQLValuePB::kDoubleValue: return GenericCompare(double_value(lhs), rhs.double_value());
+    case InternalType::kFloatValue:  {
+      bool is_nan_0 = util::IsNanFloat(lhs.float_value());
+      bool is_nan_1 = util::IsNanFloat(rhs.float_value());
+      if (is_nan_0 && is_nan_1) return 0;
+      if (is_nan_0 && !is_nan_1) return 1;
+      if (!is_nan_0 && is_nan_1) return -1;
+      return GenericCompare(lhs.float_value(), rhs.float_value());
+    }
+    case InternalType::kDoubleValue: {
+      bool is_nan_0 = util::IsNanDouble(lhs.double_value());
+      bool is_nan_1 = util::IsNanDouble(rhs.double_value());
+      if (is_nan_0 && is_nan_1) return 0;
+      if (is_nan_0 && !is_nan_1) return 1;
+      if (!is_nan_0 && is_nan_1) return -1;
+      return GenericCompare(lhs.double_value(), rhs.double_value());
+    }
     // Encoded decimal is byte-comparable.
     case YQLValuePB::kDecimalValue: return decimal_value(lhs).compare(rhs.decimal_value());
     case YQLValuePB::kStringValue: return string_value(lhs).compare(rhs.string_value());

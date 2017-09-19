@@ -181,11 +181,11 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
       return;
 
     case ValueType::kDouble:
-      LOG(FATAL) << "Double cannot be used as a key";
+      key_bytes->AppendDouble(double_val_);
       return;
 
     case ValueType::kFloat:
-      LOG(FATAL) << "Float cannot be used as a key";
+      key_bytes->AppendFloat(float_val_);
       return;
 
     case ValueType::kDecimal:
@@ -588,9 +588,28 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       return Status::OK();
     }
 
-    case ValueType::kFloat: FALLTHROUGH_INTENDED;
-    case ValueType::kDouble:
-      return STATUS_FORMAT(Corruption, "ValueType $0 cannot be decoded to key", value_type);
+    case ValueType::kFloat: {
+      if (slice->size() < sizeof(float_t)) {
+        return STATUS_FORMAT(Corruption, "Not enough bytes to decode a float: $0", slice->size());
+      }
+      if (out) {
+        out->float_val_ = DecodeFloatFromKey(*slice);
+      }
+      slice->remove_prefix(sizeof(float_t));
+      type_ref = value_type;
+      return Status::OK();
+    }
+    case ValueType::kDouble: {
+      if (slice->size() < sizeof(double_t)) {
+        return STATUS_FORMAT(Corruption, "Not enough bytes to decode a float: $0", slice->size());
+      }
+      if (out) {
+        out->double_val_ = DecodeDoubleFromKey(*slice);
+      }
+      slice->remove_prefix(sizeof(double_t));
+      type_ref = value_type;
+      return Status::OK();
+    }
 
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
   }
@@ -818,8 +837,18 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
     case ValueType::kArrayIndex: return int64_val_ == other.int64_val_;
 
-    case ValueType::kFloat: return float_val_ == other.float_val_;
-    case ValueType::kDouble: return double_val_ == other.double_val_;
+    case ValueType::kFloat: {
+      if (util::IsNanFloat(float_val_) && util::IsNanFloat(other.float_val_)) {
+        return true;
+      }
+      return float_val_ == other.float_val_;
+    }
+    case ValueType::kDouble: {
+      if (util::IsNanDouble(double_val_) && util::IsNanDouble(other.double_val_)) {
+        return true;
+      }
+      return double_val_ == other.double_val_;
+    }
     case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
     case ValueType::kDecimal: return decimal_val_ == other.decimal_val_;
     case ValueType::kIntentType: FALLTHROUGH_INTENDED;
@@ -955,16 +984,20 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const YQLValuePB& value,
     case YQLValuePB::kInt32Value:   return PrimitiveValue::Int32(YQLValue::int32_value(value),
                                                                  sort_order);
     case YQLValuePB::kInt64Value:   return PrimitiveValue(YQLValue::int64_value(value), sort_order);
-    case YQLValuePB::kFloatValue:
+    case YQLValuePB::kFloatValue: {
       if (sort_order != SortOrder::kAscending) {
         LOG(ERROR) << "Ignoring invalid sort order for FLOAT. Using SortOrder::kAscending.";
       }
-      return PrimitiveValue::Float(YQLValue::float_value(value));
-    case YQLValuePB::kDoubleValue:
+      float f = YQLValue::float_value(value);
+      return PrimitiveValue::Float(util::CanonicalizeFloat(f));
+    }
+    case YQLValuePB::kDoubleValue: {
       if (sort_order != SortOrder::kAscending) {
         LOG(ERROR) << "Ignoring invalid sort order for DOUBLE. Using SortOrder::kAscending.";
       }
-      return PrimitiveValue::Double(YQLValue::double_value(value));
+      double d = YQLValue::double_value(value);
+      return PrimitiveValue::Double(util::CanonicalizeDouble(d));
+    }
     case YQLValuePB::kDecimalValue:
       return PrimitiveValue::Decimal(YQLValue::decimal_value(value), sort_order);
     case YQLValuePB::kStringValue:

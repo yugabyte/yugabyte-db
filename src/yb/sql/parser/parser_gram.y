@@ -539,9 +539,9 @@ using namespace yb::sql;
                           HANDLER HAVING HEADER_P HOLD HOUR_P
 
                           IDENTITY_P IF_P ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IMPORT_P IN_P
-                          INCLUDING INCREMENT INDEX INDEXES INET INHERIT INHERITS INITIALLY INLINE_P
-                          INNER_P INOUT INPUT_P INSENSITIVE INSERT INSTEAD INT_P INTEGER
-                          INTERSECT INTERVAL INTO INVOKER IS ISNULL ISOLATION
+                          INCLUDING INCREMENT INDEX INDEXES INET INFINITY INHERIT INHERITS
+                          INITIALLY INLINE_P INNER_P INOUT INPUT_P INSENSITIVE INSERT INSTEAD
+                          INT_P INTEGER INTERSECT INTERVAL INTO INVOKER IS ISNULL ISOLATION
 
                           JOIN
 
@@ -554,7 +554,7 @@ using namespace yb::sql;
                           MAP MAPPING MATCH MATERIALIZED MAXVALUE MINUTE_P MINVALUE MODE MONTH_P
                           MOVE
 
-                          NAME_P NAMES NATIONAL NATURAL NCHAR NEXT NO NONE NOT NOTHING NOTIFY
+                          NAME_P NAMES NAN NATIONAL NATURAL NCHAR NEXT NO NONE NOT NOTHING NOTIFY
                           NOTNULL NOWAIT NULL_P NULLIF NULLS_P NUMERIC
 
                           OBJECT_P OF OFF OFFSET OIDS ON ONLY OPERATOR OPTION OPTIONS OR ORDER
@@ -4163,6 +4163,12 @@ AexprConst:
   | FCONST {
     $$ = MAKE_NODE(@1, PTConstDecimal, $1);
   }
+  | INFINITY {
+    $$ = MAKE_NODE(@1, PTConstDecimal, parser_->MakeString("Infinity"));
+  }
+  | NAN {
+    $$ = MAKE_NODE(@1, PTConstDecimal, parser_->MakeString("NaN"));
+  }
   | UCONST {
     $$ = MAKE_NODE(@1, PTConstUuid, $1);
   }
@@ -5093,6 +5099,7 @@ reserved_keyword:
   | GROUP_P { $$ = $1; }
   | HAVING { $$ = $1; }
   | IN_P { $$ = $1; }
+  | INFINITY { $$ = $1; }
   | INITIALLY { $$ = $1; }
   | INTERSECT { $$ = $1; }
   | INTO { $$ = $1; }
@@ -5102,6 +5109,7 @@ reserved_keyword:
   | LIMIT { $$ = $1; }
   | LOCALTIME { $$ = $1; }
   | LOCALTIMESTAMP { $$ = $1; }
+  | NAN { $$ = $1; }
   | NOT { $$ = $1; }
   | NULL_P { $$ = $1; }
   | OFFSET { $$ = $1; }

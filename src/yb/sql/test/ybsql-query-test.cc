@@ -1713,6 +1713,70 @@ TEST_F(YbSqlQuery, TestTtlWritetimeInWhereClauseOfSelectStatements) {
   ASSERT_EQ(0, row_block->row_count());
 }
 
+TEST_F(YbSqlQuery, TestFloatPrimaryKey) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  YbSqlProcessor *processor = GetSqlProcessor();
+
+  float my_keys[] = {0.0f, 1.5f, 1.5001f, 1.51f, 2.0f};
+
+  const string create_stmt = "CREATE TABLE float_key (a float, b int, primary key (a))";
+  string insert_template = "INSERT INTO float_key (a, b) VALUES ($0, $1);";
+  string select_template = "SELECT $0 FROM float_key where a = $1;";
+
+  CHECK_OK(processor->Run(create_stmt));
+  for (int i = 0; i < 5; i++) {
+    LOG(INFO) << "Inserting " << my_keys[i];
+    CHECK_OK(processor->Run(Substitute(insert_template, my_keys[i], i)));
+  }
+
+  for (int i = 0; i < 5; i++) {
+    LOG(INFO) << "Selecting " << my_keys[i];
+    CHECK_OK(processor->Run(Substitute(select_template, "*", my_keys[i])));
+    auto row_block = processor->row_block();
+    ASSERT_EQ(1, row_block->row_count());
+    std::vector<YQLRow> &returned_rows = row_block->rows();
+    YQLRow &row = returned_rows.at(0);
+    EXPECT_EQ(my_keys[i], row.column(0).float_value());
+    EXPECT_EQ(i, row.column(1).int32_value());
+  }
+}
+
+TEST_F(YbSqlQuery, TestDoublePrimaryKey) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  YbSqlProcessor *processor = GetSqlProcessor();
+
+  double my_keys[] = {0.0l, 1.5l, 1.5000000001l, 1.51l, 2.0l};
+  //Assert that the two numbers are equal as floats but not equal as doubles.
+  ASSERT_EQ(1.5f, 1.5000000001f);
+  ASSERT_LT(1.5l, 1.5000000001l);
+
+  const string create_stmt = "CREATE TABLE double_key (a double, b int, primary key (a))";
+  string insert_template = "INSERT INTO double_key (a, b) VALUES ($0, $1);";
+  string select_template = "SELECT $0 FROM double_key where a = $1;";
+
+  CHECK_OK(processor->Run(create_stmt));
+  for (int i = 0; i < 5; i++) {
+    LOG(INFO) << "Inserting " << my_keys[i];
+    CHECK_OK(processor->Run(Substitute(insert_template, my_keys[i], i)));
+  }
+
+  for (int i = 0; i < 5; i++) {
+    LOG(INFO) << "Selecting " << my_keys[i];
+    CHECK_OK(processor->Run(Substitute(select_template, "*", my_keys[i])));
+    auto row_block = processor->row_block();
+    ASSERT_EQ(1, row_block->row_count());
+    std::vector<YQLRow> &returned_rows = row_block->rows();
+    YQLRow &row = returned_rows.at(0);
+    EXPECT_EQ(my_keys[i], row.column(0).double_value());
+    EXPECT_EQ(i, row.column(1).int32_value());
+  }
+}
 
 } // namespace sql
 } // namespace yb

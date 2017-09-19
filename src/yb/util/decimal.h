@@ -174,6 +174,63 @@ Decimal DecimalFromComparable(const std::string& string);
 
 std::ostream& operator<<(ostream& os, const Decimal& d);
 
+template <typename T>
+inline T BitMask(int32_t a, int32_t b) {
+  T r = 0l;
+  for (int i = a; i < b; i++) {
+    r |= (1l << i);
+  }
+  return r;
+}
+
+inline int GetFloatFraction(float f) {
+  return BitMask<int32_t>(0, 23) & *(reinterpret_cast<int32_t *>(&f));
+}
+
+inline int GetFloatExp(float f) {
+  return (BitMask<int32_t>(23, 31) & (*(reinterpret_cast<int32_t *>(&f)))) >> 23;
+}
+
+inline int64_t GetDoubleFraction(double d) {
+  return BitMask<int64_t>(0, 52) & *(reinterpret_cast<int64_t *>(&d));
+}
+
+inline int64_t GetDoubleExp(double d) {
+  return (BitMask<int64_t>(52, 63) & (*(reinterpret_cast<int64_t *>(&d)))) >> 52;
+}
+
+inline float CreateFloat(int32_t sign, int32_t exponent, int32_t fraction) {
+  int32_t f = (sign << 31) | (exponent << 23) | fraction;
+  return *reinterpret_cast<float *>(&f);
+}
+
+inline double CreateDouble(int64_t sign, int64_t exp, int64_t fraction) {
+  int64_t d = (sign << 63) | (exp << 52) | fraction;
+  return *reinterpret_cast<double *>(&d);
+}
+
+inline bool IsNanFloat(float f) {
+  return (GetFloatExp(f) == 0b11111111) && GetFloatFraction(f);
+}
+
+inline bool IsNanDouble(double d) {
+  return (GetDoubleExp(d) == 0b11111111111) && GetDoubleFraction(d);
+}
+
+inline float CanonicalizeFloat(float f) {
+  if (IsNanFloat(f)) {
+    return CreateFloat(0, 0b11111111, (1 << 22));
+  }
+  return f;
+}
+
+inline double CanonicalizeDouble(double d) {
+  if (IsNanDouble(d)) {
+    return CreateDouble(0, 0b11111111111, (1l << 51));
+  }
+  return d;
+}
+
 } // namespace util
 } // namespace yb
 

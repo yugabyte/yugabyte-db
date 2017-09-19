@@ -269,5 +269,35 @@ TEST_F(DecimalTest, TestBigDecimalEncoding) {
   EXPECT_TRUE(is_out_of_range);
 }
 
+TEST_F(DecimalTest, TestFloatDoubleCanonicalization) {
+  const float float_nan_0 = CreateFloat(1, 0b11111111, (1 << 22));
+  const float float_nan_1 = CreateFloat(0, 0b11111111, 1);
+  const float float_not_nan_0 = CreateFloat(0, 0b11111110, 1);
+  const float float_not_nan_1 = CreateFloat(0, 0b11111111, 0);
+
+  const double double_nan_0 = CreateDouble(1, 0b11111111111, (1l << 51));
+  const double double_nan_1 = CreateDouble(0, 0b11111111111, 1);
+  const double double_not_nan_0 = CreateDouble(0, 0b11111111110, 1);
+  const double double_not_nan_1 = CreateDouble(0, 0b11111111111, 0);
+
+  EXPECT_TRUE(IsNanFloat(float_nan_0));
+  EXPECT_TRUE(IsNanFloat(float_nan_1));
+  EXPECT_FALSE(IsNanFloat(float_not_nan_0));
+  EXPECT_FALSE(IsNanFloat(float_not_nan_1));
+
+  EXPECT_TRUE(IsNanDouble(double_nan_0));
+  EXPECT_TRUE(IsNanDouble(double_nan_1));
+  EXPECT_FALSE(IsNanDouble(double_not_nan_0));
+  EXPECT_FALSE(IsNanDouble(double_not_nan_1));
+
+  float f1 = CanonicalizeFloat(float_nan_0);
+  float f2 = CanonicalizeFloat(float_nan_1);
+  EXPECT_EQ(*(reinterpret_cast<int32_t *>(&f1)), *(reinterpret_cast<int32_t *>(&f2)));
+
+  double d1 = CanonicalizeDouble(double_nan_0);
+  double d2 = CanonicalizeDouble(double_nan_1);
+  EXPECT_EQ(*(reinterpret_cast<int64_t *>(&d1)), *(reinterpret_cast<int64_t *>(&d2)));
+}
+
 } // namespace util
 } // namespace yb

@@ -43,6 +43,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/bitmap.h"
 #include "yb/util/status.h"
+#include "yb/util/decimal.h"
 
 using strings::Substitute;
 
@@ -346,10 +347,10 @@ Status YBPartialRow::SetDecimal(int col_idx, const Slice& val) {
   return Set<TypeTraits<DECIMAL> >(col_idx, val, false);
 }
 Status YBPartialRow::SetFloat(int col_idx, float val) {
-  return Set<TypeTraits<FLOAT> >(col_idx, val);
+  return Set<TypeTraits<FLOAT> >(col_idx, util::CanonicalizeFloat(val));
 }
 Status YBPartialRow::SetDouble(int col_idx, double val) {
-  return Set<TypeTraits<DOUBLE> >(col_idx, val);
+  return Set<TypeTraits<DOUBLE> >(col_idx, util::CanonicalizeDouble(val));
 }
 
 Status YBPartialRow::SetBinaryCopy(const Slice& col_name, const Slice& val) {

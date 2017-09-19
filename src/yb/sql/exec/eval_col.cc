@@ -152,10 +152,13 @@ CHECKED_STATUS Executor::SetupPartialRow(const ColumnDesc *col_desc,
     case InternalType::kFrozenValue:
       RETURN_NOT_OK(row->SetFrozen(col_desc->index(), YQLValue::frozen_value(value_pb)));
       break;
-
+    case InternalType::kFloatValue:
+      RETURN_NOT_OK(row->SetFloat(col_desc->index(), YQLValue::float_value(value_pb)));
+      break;
+    case InternalType::kDoubleValue:
+      RETURN_NOT_OK(row->SetDouble(col_desc->index(), YQLValue::double_value(value_pb)));
+      break;
     case InternalType::kBoolValue: FALLTHROUGH_INTENDED;
-    case InternalType::kFloatValue: FALLTHROUGH_INTENDED;
-    case InternalType::kDoubleValue: FALLTHROUGH_INTENDED;
     case InternalType::kMapValue: FALLTHROUGH_INTENDED;
     case InternalType::kSetValue: FALLTHROUGH_INTENDED;
     case InternalType::kListValue:

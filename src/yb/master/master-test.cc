@@ -569,23 +569,7 @@ TEST_F(MasterTest, TestCreateTableInvalidKeyType) {
     Status s = CreateTableWithSplits(kTableName, kTableSchema, vector<YBPartialRow>());
     ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
     ASSERT_STR_CONTAINS(s.ToString(),
-        "Key column may not have type of BOOL, FLOAT, or DOUBLE");
-  }
-
-  {
-    const Schema kTableSchema({ ColumnSchema("key", FLOAT) }, 1);
-    Status s = CreateTableWithSplits(kTableName, kTableSchema, vector<YBPartialRow>());
-    ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
-    ASSERT_STR_CONTAINS(s.ToString(),
-        "Key column may not have type of BOOL, FLOAT, or DOUBLE");
-  }
-
-  {
-    const Schema kTableSchema({ ColumnSchema("key", DOUBLE) }, 1);
-    Status s = CreateTableWithSplits(kTableName, kTableSchema, vector<YBPartialRow>());
-    ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
-    ASSERT_STR_CONTAINS(s.ToString(),
-        "Key column may not have type of BOOL, FLOAT, or DOUBLE");
+        "Invalid datatype for primary key column");
   }
 }
 

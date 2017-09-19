@@ -78,8 +78,8 @@ struct KeyEncoderTraits<Type,
     switch (sizeof(x)) {
       case 1: return x;
       case 2: return BigEndian::FromHost16(x);
-      case 4: return BigEndian::FromHost32(x);
-      case 8: return BigEndian::FromHost64(x);
+      case 4: return BigEndian::FromHost32(*reinterpret_cast<uint32*>(&x));
+      case 8: return BigEndian::FromHost64(*reinterpret_cast<uint64*>(&x));
       default: LOG(FATAL) << "bad type: " << x;
     }
     return 0;
@@ -93,10 +93,36 @@ struct KeyEncoderTraits<Type,
   static void Encode(const void* key_ptr, Buffer* dst) {
     unsigned_cpp_type key_unsigned;
     memcpy(&key_unsigned, key_ptr, sizeof(key_unsigned));
-
     // To encode signed integers, swap the MSB.
     if (MathLimits<cpp_type>::kIsSigned) {
-      key_unsigned ^= 1UL << (sizeof(key_unsigned) * CHAR_BIT - 1);
+      switch (sizeof(key_unsigned)) {
+        // Since integral types now include floats and doubles, we need to always cast to
+        // the appropriate intx_t before doing any bitwise operations. Cases for 1 and 2
+        // are to make the compiler happy.
+        case 1: {
+          int8_t& key = reinterpret_cast<int8_t&> (key_unsigned);
+          key ^= 1UL << (sizeof(key_unsigned) * CHAR_BIT - 1);
+          break;
+        }
+        case 2: {
+          int16_t& key = reinterpret_cast<int16_t&> (key_unsigned);
+          key ^= 1UL << (sizeof(key_unsigned) * CHAR_BIT - 1);
+          break;
+        }
+        case 4: {
+          int32_t& key = reinterpret_cast<int32_t&> (key_unsigned);
+          key ^= 1UL << (sizeof(key_unsigned) * CHAR_BIT - 1);
+          break;
+        }
+        case 8: {
+          int64_t& key = reinterpret_cast<int64_t&> (key_unsigned);
+          key ^= 1UL << (sizeof(key_unsigned) * CHAR_BIT - 1);
+          break;
+        }
+        default: {
+          LOG(FATAL) << "bad type " << key_unsigned;
+        }
+      }
     }
     key_unsigned = SwapEndian(key_unsigned);
     dst->append(reinterpret_cast<const char*>(&key_unsigned), sizeof(key_unsigned));
@@ -118,7 +144,31 @@ struct KeyEncoderTraits<Type,
     memcpy(&val,  encoded_key->data(), sizeof(cpp_type));
     val = SwapEndian(val);
     if (MathLimits<cpp_type>::kIsSigned) {
-      val ^= 1UL << (sizeof(val) * CHAR_BIT - 1);
+      switch (sizeof(val)) {
+        case 1: {
+          int8_t& key = reinterpret_cast<int8_t&> (val);
+          key ^= 1UL << (sizeof(key) * CHAR_BIT - 1);
+          break;
+        }
+        case 2: {
+          int16_t& key = reinterpret_cast<int16_t&> (val);
+          key ^= 1UL << (sizeof(key) * CHAR_BIT - 1);
+          break;
+        }
+        case 4: {
+          int32_t& key = reinterpret_cast<int32_t&> (val);
+          key ^= 1UL << (sizeof(key) * CHAR_BIT - 1);
+          break;
+        }
+        case 8: {
+          int64_t& key = reinterpret_cast<int64_t&> (val);
+          key ^= 1UL << (sizeof(key) * CHAR_BIT - 1);
+          break;
+        }
+        default: {
+          LOG(FATAL) << "bad type " << val;
+        }
+      }
     }
     memcpy(cell_ptr, &val, sizeof(val));
     encoded_key->remove_prefix(sizeof(cpp_type));
@@ -137,7 +187,7 @@ struct KeyEncoderTraits<BINARY, Buffer> {
 
   // simple slice encoding that just adds to the buffer
   inline static void Encode(const Slice& s, Buffer* dst) {
-    dst->append(reinterpret_cast<const char*>(s.data()),s.size());
+    dst->append(reinterpret_cast<const char*>(s.data()), s.size());
   }
   static void EncodeWithSeparators(const void* key, bool is_last, Buffer* dst) {
     EncodeWithSeparators(*reinterpret_cast<const Slice*>(key), is_last, dst);
