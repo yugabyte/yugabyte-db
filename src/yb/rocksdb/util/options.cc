@@ -50,7 +50,7 @@
 #include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/xfunc.h"
 
-DEFINE_int32(memstore_size_mb, 16,
+DEFINE_int32(memstore_size_mb, 128,
              "Max size (in mb) of the memstore, before needing to flush.");
 
 namespace rocksdb {

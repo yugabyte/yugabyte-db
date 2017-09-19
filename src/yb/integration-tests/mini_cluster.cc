@@ -57,6 +57,7 @@ DEFINE_string(mini_cluster_base_dir, "", "Directory for master/ts data");
 DEFINE_bool(mini_cluster_reuse_data, false, "Reuse data of mini cluster");
 DEFINE_int32(mini_cluster_base_port, 0, "Allocate RPC ports starting from this one");
 DECLARE_int32(master_svc_num_threads);
+DECLARE_int32(memstore_size_mb);
 DECLARE_int32(master_consensus_svc_num_threads);
 DECLARE_int32(master_remote_bootstrap_svc_num_threads);
 DECLARE_int32(generic_svc_num_threads);
@@ -136,6 +137,7 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
   FLAGS_ts_remote_bootstrap_svc_num_threads = 2;
 
   FLAGS_replication_factor = num_masters_initial_;
+  FLAGS_memstore_size_mb = 16;
 
   // start the masters
   RETURN_NOT_OK_PREPEND(StartMasters(),
