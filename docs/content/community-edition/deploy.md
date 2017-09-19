@@ -28,11 +28,14 @@ Here's the command to install these packages.
 $ sudo yum install -y epel-release ntp cyrus-sasl-plain cyrus-sasl-devel
 ```
 
-## Install
+## Download and install
 
-For the purpose of this document, let's assume that we have 3 instances with private IP addresses as `172.151.17.127, 172.151.28.213, 172.151.17.136` and are accessible from each other over the network. On each of these instances, run the following steps.
+### Download
 
-### Install YugaByte DB  
+Download the YugaByte DB package [here](https://s3-us-west-2.amazonaws.com/download.yugabyte.com/0.9.0.0/yugabyte.ce.0.9.0.0-b0.tar.gz). Thereafter, follow the instructions below.
+
+### Install
+For the purpose of this document, let's assume that we have 3 instances with private IP addresses as `172.151.17.130, 172.151.17.220, 172.151.17.140` and are accessible from each other over the network. On each of these instances, run the following steps.
 
 Copy the YugaByte DB package into each instace and then running the following commands.
 
@@ -51,31 +54,25 @@ $ cd yugabyte
 $ ./bin/configure
 ```
 
-- Create the directories necessary for the master and tserver to run.
+- YugaByte DB can be configured to use multiple disks that have been previously mounted to the instance. For the purpose of this document, we will create 2 separate directories on the same disk and then use those directories as YugaByte's data directories.
 
 ```sh
-$ mkdir /home/centos/disk0 /home/centos/disk1 /home/centos/disk0/yb_data /home/centos/disk1/yb_data
-$ mkdir /home/centos/disk0/yb_data/master /home/centos/disk0/yb_data/tserver
-$ mkdir /home/centos/disk0/yb_data/master/data /home/centos/disk0/yb_data/master/wal /home/centos/disk0/yb_data/master/logs /home/centos/disk0/yb_data/tserver/data /home/centos/disk0/yb_data/tserver/wal /home/centos/disk0/yb_data/tserver/logs
-$ mkdir /home/centos/disk1/yb_data/master /home/centos/disk1/yb_data/tserver
-$ mkdir /home/centos/disk1/yb_data/master/data /home/centos/disk1/yb_data/master/wal /home/centos/disk1/yb_data/master/logs /home/centos/disk1/yb_data/tserver/data /home/centos/disk1/yb_data/tserver/wal /home/centos/disk1/yb_data/tserver/logs
+$ mkdir /home/centos/disk1 /home/centos/disk2
 ```
 
 ## Start YB-Masters
 
-- On each of the instances, create a `master.conf` file with the following contents.
+Execute the following steps on each of the instances.
+
+- Create a `master.conf` file with the following flags. For the full list of flags, see the [yb-master Reference](/admin/yb-master/). 
 
 ```sh
---fs_data_dirs=/home/centos/disk0/yb_data/master/data,/home/centos/disk1/yb_data/master/data
---fs_wal_dirs=/home/centos/disk0/yb_data/master/wal,/home/centos/disk1/yb_data/master/wal
---log_dir=/home/centos/disk0/yb_data/master/logs
---webserver_port=7000
---rpc_bind_addresses=0.0.0.0:7100
---webserver_doc_root=/home/centos/yugabyte/www
+--master_addresses=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
+--fs_data_dirs=/home/centos/disk1,/home/centos/disk2
 --create_cluster
---master_addresses=172.151.17.127:7100,172.151.28.213:7100,172.151.17.136:7100
---default_num_replicas=3
 ```
+
+Note how multiple directories can be provided to the `--fs_data_dirs` flag.
 
 - Run `yb-master` as below. 
 
@@ -83,10 +80,10 @@ $ mkdir /home/centos/disk1/yb_data/master/data /home/centos/disk1/yb_data/master
 $ ./bin/yb-master --flagfile master.conf &
 ```
 
-- Make sure all the 3 yb-masters are now working as expected by inspecting the INFO log.
+- Make sure all the 3 yb-masters are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
 
 ```sh
-$ cat /home/centos/disk0/yb_data/master/logs/yb-master.INFO
+$ cat /home/centos/disk1/yb-data/master/logs/yb-master.INFO
 ```
 
 You can see that the 3 yb-masters were able to discover each other and were also able to elect a Raft leader among themselves (the remaining two act as Raft followers).
@@ -105,16 +102,11 @@ Now we are ready to start the yb-tservers.
 
 ## Start YB-TServers
 
-- On each of the instances, create a `tserver.conf` file with the following contents.
+- On each of the instances, create a `tserver.conf` file with the following flags. For the full list of flags, see the [yb-tserver Reference](/admin/yb-tserver/). 
 
 ```sh
---fs_data_dirs=/home/centos/disk0/yb_data/tserver/data,/home/centos/disk1/yb_data/tserver/data
---fs_wal_dirs=/home/centos/disk0/yb_data/tserver/wal,/home/centos/disk1/yb_data/tserver/wal
---log_dir=/home/centos/disk0/yb_data/tserver/logs
---webserver_port=9000
---rpc_bind_addresses=0.0.0.0:9100
---webserver_doc_root=/home/centos/yugabyte/www
---tserver_master_addrs=172.151.17.127:7100,172.151.28.213:7100,172.151.17.136:7100
+--tserver_master_addrs=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
+--fs_data_dirs=/home/centos/disk1,/home/centos/disk2
 ```
 
 - Run `yb-tserver` as below. 
@@ -123,20 +115,20 @@ Now we are ready to start the yb-tservers.
 $ ./bin/yb-tserver --flagfile tserver.conf &
 ```
 
-- Make sure all the 3 yb-tservers are now working as expected by inspecting the INFO log.
+- Make sure all the 3 yb-tservers are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
 
 ```sh
-$ cat /home/centos/disk0/yb_data/tserver/logs/yb-tserver.INFO
+$ cat /home/centos/disk1/yb-data/tserver/logs/yb-tserver.INFO
 ```
 
 In all the 3 yb-tserver logs, you should see log messages similar to the following.
 
 ```sh
-I0912 16:27:18.296516  8168 heartbeater.cc:305] Connected to a leader master server at 172.151.17.136:7100
+I0912 16:27:18.296516  8168 heartbeater.cc:305] Connected to a leader master server at 172.151.17.140:7100
 I0912 16:27:18.296794  8168 heartbeater.cc:368] Registering TS with master...
 I0912 16:27:18.297732  8168 heartbeater.cc:374] Sending a full tablet report to master...
 I0912 16:27:18.298435  8142 client-internal.cc:1112] Reinitialize master addresses from file: ../tserver.conf
-I0912 16:27:18.298691  8142 client-internal.cc:1123] New master addresses: 172.151.17.127:7100,172.151.28.213:7100,172.151.17.136:7100
+I0912 16:27:18.298691  8142 client-internal.cc:1123] New master addresses: 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
 I0912 16:27:18.311367  8142 webserver.cc:156] Starting webserver on 0.0.0.0:12000
 I0912 16:27:18.311408  8142 webserver.cc:161] Document root: /home/centos/yugabyte/www
 I0912 16:27:18.311574  8142 webserver.cc:248] Webserver started. Bound to: http://0.0.0.0:12000/
@@ -154,17 +146,17 @@ I0912 22:26:41.055996  3162 ts_manager.cc:97] Registered new tablet server { per
 
 ## Setup Redis service
 
-While CQL service is turned on by default after all the yb-tservers start, Redis service is off by default. Run the following command from any of the 3 instances in case you want this cluster to be able to support Redis clients. The command below will add the special Redis table into the DB and also start the Redis server on port 6379 on all instances.
+While the CQL service is turned on by default after all the yb-tservers start, the Redis service is off by default. If you want this cluster to be able to support Redis clients, run the following command from any of the 3 instances. The command below will add the special Redis table into the DB and also start the Redis server on port 6379 on all instances.
 
 ```sh
-$ ./bin/yb-admin --master_addresses 172.151.17.127:7100,172.151.28.213:7100,172.151.17.136:7100 setup_redis_table
+$ ./bin/yb-admin --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 setup_redis_table
 ```
 
 ## Connect clients
 
-- Clients can connect to YugaByte CQL service at `172.151.17.127:9042,172.151.28.213:9042,172.151.17.136:9042`
+- Clients can connect to YugaByte's CQL service at `172.151.17.130:9042,172.151.17.220:9042,172.151.17.140:9042`
 
-- Clients can connect to YugaByte Redis service at  `172.151.17.127:6379,172.151.28.213:6379,172.151.17.136:6379`
+- Clients can connect to YugaByte's Redis service at  `172.151.17.130:6379,172.151.17.220:6379,172.151.17.140:6379`
 
 ## Default ports reference
 
@@ -173,11 +165,11 @@ The above deployment uses the various default ports listed below.
 Service | Type | Port 
 --------|------| -------
 yb-master | rpc | 7100
-yb-master | webserver | 7000
+yb-master | monitoring web server | 7000
 yb-tserver | rpc | 9100
-yb-tserver | webserver | 9000
+yb-tserver | monitoring web server | 9000
 cql | rpc | 9042
-cql | webserver | 12000
+cql | monitoring web server | 12000
 redis | rpc | 6379
-redis | webserver | 11000
+redis | monitoring web server | 11000
 

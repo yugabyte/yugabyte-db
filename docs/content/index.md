@@ -5,7 +5,7 @@ type: index
 weight: 1
 ---
 
-YugaByte is a new open-source, cloud-native database for mission-critical applications that brings together the best of both NewSQL and NoSQL. 
+YugaByte is an open-source, cloud-native database for mission-critical applications that brings together the best of both NewSQL and NoSQL. 
 
 - NewSQL databases are a good fit for mission-critical applications given their strongly consistent cores. However, these databases are typically limited to single datacenter deployments given the need for a highly reliable network. 
 - NoSQL databases are comparably easier to run across multi-datacenters given their ability to scale both reads and writes linearly. However, these databases are incredibly difficult to develop and reason about given the loose guarantees of eventually consistent data replication. 
@@ -32,7 +32,7 @@ All nodes in the universe are identical from a client perspective since all node
 
 ### Multi-active availability
 
-YugaByte’s unique distributed storage and replication architecture provides high availability for most practical situations even while remaining strongly consistent. While this may seem as a violation of the CAP theorem, that is not the case in reality. During network partitions, the replicas for the impacted tablets form two groups: majority partition that can still establish a Raft consensus and a minority partition that cannot establish such a consensus given the lack of quorum. Majority partitions are available for both reads and writes. Minority partitions are available for reads only (even if the data may get stale as time passes) but not available for writes. Requiring majority of replicas to synchronously agree on the value written is by design to ensure strong write consistency and thus obviate the need for any performance impacting anti-entropy operations.
+In terms of the CAP theorem, YugaByte DB is a Consistent and Partition-tolerant (CP) database. It provides High Availability (HA) for most practical situations even while remaining strongly consistent. While this may seem a violation of the CAP theorem, that is not the case since CAP treats availability as a binary option whereas YugaByte treats availability as a percentage that can be tuned to achieve high write availability (reads are always available as long as a single node is available). During network partitions, the replicas for the impacted tablets form two groups: majority partition that can still establish a Raft consensus and a minority partition that cannot establish such a consensus (given the lack of quorum). Majority partitions are available for both reads and writes. Minority partitions are available for reads only (even if the data may get stale as time passes) but not available for writes. **Multi-active availability** here refers to YugaByte's ability to serve reads in any partition of a cluster. Note that requiring majority of replicas to synchronously agree on the value written is by design to ensure strong write consistency and thus obviate the need for any unpredictable background anti-entropy operations. 
 
 ### Strong write consistency
 
@@ -49,27 +49,19 @@ Given the use of distributed consensus where reads are either served only by one
 ![Tunably consistent reads](/images/tunably-consistent-reads.png)
 
 ### Multi-datacenter ready with sync and async replication options
-YugaByte can be easily deployed across multiple datacenters. 
+YugaByte can be easily deployed across multiple datacenters with sync replication for primary data (where replicas act as voting members) and async replication for timeline consistent data (where replicas act as non-voting/observing members). Note that async replication is a feature restricted to [YugaByte Enterprise Edition](/#product-editions).
 
 ### Multi-API
-YugaByte currently supports 2 open APIs namely [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html) and [Redis] (https://redis.io/commands) command library. SQL support is on the roadmap.
+YugaByte currently supports 2 popular APIs namely [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html) and [Redis] (https://redis.io/commands) command library. SQL support is on the roadmap.
 
 ### Multi-model
-YugaByte can be used to model multiple different data workloads such as Flexible schema, Time-series, Key-value. The first 2 models are best built using CQL while the last one lends itself to the Redis command library.
+YugaByte can be used to model multiple different data workloads such as flexible schema, time-series, key-value. The first 2 models are best built using CQL while the last one lends itself to the Redis command library.
 
 ### Multi-cloud
 YugaByte is inspired by [Google Cloud Spanner](https://cloud.google.com/spanner/) from an architectural standpoint but instead of using proprietary infrastructure (such as TrueTime) that Spanner uses, YugaByte is built to run on commodity infrastructure. In other words, there is no cloud lock-in with YugaByte and it can be run on any of the public clouds or an on-premises/private datacenter.
 
 
 ## Key benefits
-
-### Cloud-native technical operations
-
-- **Simple scalability**: Linear, fast & reliable scalability from 1 to 1000s nodes with automatic sharding and re-balancing
-- **Zero downtime and zero data loss operations**: Highly available under any unplanned infrastructure failure or any planned software/hardware upgrade
-- **Multi-datacenter deployments simplified**: 1-click geo-redundant deployments across multiple availability zones & regions on public/private/hybrid clouds as well as across multiple on-premises data centers 
-- **Online cross-cloud mobility**: move across cloud infrastructure providers without any lock-in
-- **Hardware flexibility**: seamlessly move from one type of compute and storage to another for cost and performance reasons
 
 ### Agile application development
 
@@ -78,6 +70,13 @@ YugaByte is inspired by [Google Cloud Spanner](https://cloud.google.com/spanner/
 - **High performance**: A ground-up C++ implementation combined with 3x read throughput compared to simple quorum-based consistency of traditional NoSQL
 - **Converged caching**: Avoid explicit management of the memory and consistency associated with an independent cache that typically fronts a persistent database
 
+### Cloud-native technical operations
+
+- **Simple scalability**: Linear, fast & reliable scalability from 1 to 1000s nodes with automatic sharding and re-balancing
+- **Zero downtime and zero data loss operations**: Highly available under any unplanned infrastructure failure or any planned software/hardware upgrade
+- **Multi-datacenter deployments simplified**: 1-click geo-redundant deployments across multiple availability zones & regions on public/private/hybrid clouds as well as across multiple on-premises data centers 
+- **Online cross-cloud mobility**: move across cloud infrastructure providers without any lock-in
+- **Hardware flexibility**: seamlessly move from one type of compute and storage to another for cost and performance reasons
 
 ## Enterprise apps best served
 

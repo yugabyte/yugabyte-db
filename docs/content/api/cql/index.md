@@ -9,7 +9,7 @@ table {
 </style>
 
 ## Introduction
-YugaByte supports the following Apache Cassandra features.
+YugaByte supports the following CQL features.
 
 - Data definition language (DDL) statements.
 - Data manipulation language (DML) statements.
@@ -34,7 +34,7 @@ Statement | Description |
 [`USE`](ddl_use) | Use an existing keyspace for subsequent commands|
 
 ## DML Statements
-Data manipulation language (DML) statements are used to read from and write to the existing database objects. Similar to Apache Cassandra behavior, YugaByte implicitly commits any updates by DML statements.
+Data manipulation language (DML) statements are used to read from and write to the existing database objects. YugaByte implicitly commits any updates by DML statements (similar to how Apache Cassandra behaves).
 
 Statement | Description |
 ----------|-------------|

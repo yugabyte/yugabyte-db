@@ -34,8 +34,8 @@ googleAnalytics = "UA-104956980-1"
     	accent  = "brown"
 
     [params.font]
-    	text = "Lato"
-    	code = "Ubuntu Mono"
+    	text = "Open Sans"
+    	code = "Inconsolata"
 
 [social]
 	# twitter = "YugaByte"
@@ -117,11 +117,11 @@ googleAnalytics = "UA-104956980-1"
 	url = "architecture/operations/"
 	weight = 95
 
-[[menu.main]]
-	name   = "Enterprise Features"
-	parent = "architecture"
-	url = "architecture/enterprise-features/"
-	weight = 100
+#[[menu.main]]
+#	name   = "Enterprise Features"
+#	parent = "architecture"
+#	url = "architecture/enterprise-features/"
+#	weight = 100
 
 [[menu.main]]
 	name   = "Comparisons"

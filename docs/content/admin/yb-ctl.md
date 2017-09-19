@@ -3,6 +3,12 @@ date: 2016-03-09T00:11:02+01:00
 title: yb-ctl Reference
 weight: 15
 ---
+<style>
+table {
+  float: left;
+}
+</style>
+
 
 `yb-ctl`, located in the bin directory of YugaByte home, is a simple command line interface for administering local clusters. It invokes the [`yb-master`] (/admin/yb-master/) and [`yb-tserver`] (/admin/yb-tserver/) binaries to perform the necessary administration.
 
@@ -13,10 +19,9 @@ Use the **-\-help** option to see all the commands supported.
 ```sh
 $ ./bin/yb-ctl --help
 usage: yb-ctl [-h] [--binary_dir BINARY_DIR] [--data_dir DATA_DIR]
-                    [--replication_factor REPLICATION_FACTOR]
-                    [--require_clock_sync REQUIRE_CLOCK_SYNC]
-                    {create,destroy,status,add_node,remove_node,setup_redis}
-                    ...
+              [--replication_factor REPLICATION_FACTOR]
+              [--require_clock_sync REQUIRE_CLOCK_SYNC]
+              {create,destroy,status,add_node,remove_node,setup_redis} ...
 
 positional arguments:
   {create,destroy,status,add_node,remove_node,setup_redis}
@@ -41,6 +46,16 @@ optional arguments:
                         time dependent use-cases.
 ```
 
+Here are the default values for all the optional arguments.
+
+Optional Argument | Default | Description
+----------------------------|-----------|---------------------------------------
+`--binary_dir` | Same directory as the `yb-ctl` binary | Location of the `yb-master` and the `yb-tserver` binaries
+`--data_dir` | `/tmp/yugabyte-local-cluster` | Location of the data directory for the YugaByte DB
+`--replication_factor`| `3` | Number of replicas for each tablet, should be an odd number (e.g. `1`,`3`,`5`) so that majority consensus can be established
+`--require_clock_sync`| `false` | Tells YugaByte DB whether to depend on clock synchronization between the nodes in the cluster
+
+
 ## Create cluster
 
 Create a 3 node local cluster with replication factor 3. 
@@ -48,19 +63,20 @@ Create a 3 node local cluster with replication factor 3.
 Each of these initial nodes run a `yb-tserver` process and a `yb-master` process. Note that the number of yb-masters in a cluster has to equal to the replication factor for the cluster to be considered as operating normally and the number of yb-tservers is equal to be the number of nodes.
 
 ```sh
-$ $ ./bin/yb-ctl create
-2017-09-06 22:52:36,400 INFO: Starting master with:
-/home/vagrant/yugabyte/bin/yb-master --fs_data_dirs "/tmp/yugabyte-local-cluster/master-1/data1,/tmp/yugabyte-local-cluster/master-1/data2" --fs_wal_dirs "/tmp/yugabyte-local-cluster/master-1/wal1,/tmp/yugabyte-local-cluster/master-1/wal2" --log_dir "/tmp/yugabyte-local-cluster/master-1/logs" --webserver_port 7000 --rpc_bind_addresses 127.0.0.1:7100 --use_hybrid_clock=False --placement_cloud cloud --placement_region region --placement_zone zone --webserver_doc_root "/home/vagrant/yugabyte/www" --create_cluster=true --master_addresses 127.0.0.1:7100,127.0.0.1:7101,127.0.0.1:7102 >"/tmp/yugabyte-local-cluster/master-1/master.out" 2>"/tmp/yugabyte-local-cluster/master-1/master.err" &
-2017-09-06 22:52:40,388 INFO: Starting master with:
-/home/vagrant/yugabyte/bin/yb-master --fs_data_dirs "/tmp/yugabyte-local-cluster/master-2/data1,/tmp/yugabyte-local-cluster/master-2/data2" --fs_wal_dirs "/tmp/yugabyte-local-cluster/master-2/wal1,/tmp/yugabyte-local-cluster/master-2/wal2" --log_dir "/tmp/yugabyte-local-cluster/master-2/logs" --webserver_port 7001 --rpc_bind_addresses 127.0.0.1:7101 --use_hybrid_clock=False --placement_cloud cloud --placement_region region --placement_zone zone --webserver_doc_root "/home/vagrant/yugabyte/www" --create_cluster=true --master_addresses 127.0.0.1:7100,127.0.0.1:7101,127.0.0.1:7102 >"/tmp/yugabyte-local-cluster/master-2/master.out" 2>"/tmp/yugabyte-local-cluster/master-2/master.err" &
-2017-09-06 22:52:43,694 INFO: Starting master with:
-/home/vagrant/yugabyte/bin/yb-master --fs_data_dirs "/tmp/yugabyte-local-cluster/master-3/data1,/tmp/yugabyte-local-cluster/master-3/data2" --fs_wal_dirs "/tmp/yugabyte-local-cluster/master-3/wal1,/tmp/yugabyte-local-cluster/master-3/wal2" --log_dir "/tmp/yugabyte-local-cluster/master-3/logs" --webserver_port 7002 --rpc_bind_addresses 127.0.0.1:7102 --use_hybrid_clock=False --placement_cloud cloud --placement_region region --placement_zone zone --webserver_doc_root "/home/vagrant/yugabyte/www" --create_cluster=true --master_addresses 127.0.0.1:7100,127.0.0.1:7101,127.0.0.1:7102 >"/tmp/yugabyte-local-cluster/master-3/master.out" 2>"/tmp/yugabyte-local-cluster/master-3/master.err" &
-2017-09-06 22:52:44,178 INFO: Starting tserver with:
-/home/vagrant/yugabyte/bin/yb-tserver --fs_data_dirs "/tmp/yugabyte-local-cluster/tserver-1/data1,/tmp/yugabyte-local-cluster/tserver-1/data2" --fs_wal_dirs "/tmp/yugabyte-local-cluster/tserver-1/wal1,/tmp/yugabyte-local-cluster/tserver-1/wal2" --log_dir "/tmp/yugabyte-local-cluster/tserver-1/logs" --webserver_port 9000 --rpc_bind_addresses 127.0.0.1:9100 --use_hybrid_clock=False --placement_cloud cloud --placement_region region --placement_zone zone --webserver_doc_root "/home/vagrant/yugabyte/www" --tserver_master_addrs 127.0.0.1:7100,127.0.0.1:7101,127.0.0.1:7102 --memory_limit_hard_bytes 1073741824 --redis_proxy_webserver_port 11000 --redis_proxy_bind_address 127.0.0.1:6379 --cql_proxy_webserver_port 12000 --cql_proxy_bind_address 127.0.0.1:9042 --local_ip_for_outbound_sockets 127.0.0.1 >"/tmp/yugabyte-local-cluster/tserver-1/tserver.out" 2>"/tmp/yugabyte-local-cluster/tserver-1/tserver.err" &
-2017-09-06 22:52:45,693 INFO: Starting tserver with:
-/home/vagrant/yugabyte/bin/yb-tserver --fs_data_dirs "/tmp/yugabyte-local-cluster/tserver-2/data1,/tmp/yugabyte-local-cluster/tserver-2/data2" --fs_wal_dirs "/tmp/yugabyte-local-cluster/tserver-2/wal1,/tmp/yugabyte-local-cluster/tserver-2/wal2" --log_dir "/tmp/yugabyte-local-cluster/tserver-2/logs" --webserver_port 9001 --rpc_bind_addresses 127.0.0.1:9101 --use_hybrid_clock=False --placement_cloud cloud --placement_region region --placement_zone zone --webserver_doc_root "/home/vagrant/yugabyte/www" --tserver_master_addrs 127.0.0.1:7100,127.0.0.1:7101,127.0.0.1:7102 --memory_limit_hard_bytes 1073741824 --redis_proxy_webserver_port 11001 --redis_proxy_bind_address 127.0.0.1:6380 --cql_proxy_webserver_port 12001 --cql_proxy_bind_address 127.0.0.1:9043 --local_ip_for_outbound_sockets 127.0.0.1 >"/tmp/yugabyte-local-cluster/tserver-2/tserver.out" 2>"/tmp/yugabyte-local-cluster/tserver-2/tserver.err" &
-2017-09-06 22:52:45,704 INFO: Starting tserver with:
-/home/vagrant/yugabyte/bin/yb-tserver --fs_data_dirs "/tmp/yugabyte-local-cluster/tserver-3/data1,/tmp/yugabyte-local-cluster/tserver-3/data2" --fs_wal_dirs "/tmp/yugabyte-local-cluster/tserver-3/wal1,/tmp/yugabyte-local-cluster/tserver-3/wal2" --log_dir "/tmp/yugabyte-local-cluster/tserver-3/logs" --webserver_port 9002 --rpc_bind_addresses 127.0.0.1:9102 --use_hybrid_clock=False --placement_cloud cloud --placement_region region --placement_zone zone --webserver_doc_root "/home/vagrant/yugabyte/www" --tserver_master_addrs 127.0.0.1:7100,127.0.0.1:7101,127.0.0.1:7102 --memory_limit_hard_bytes 1073741824 --redis_proxy_webserver_port 11002 --redis_proxy_bind_address 127.0.0.1:6381 --cql_proxy_webserver_port 12002 --cql_proxy_bind_address 127.0.0.1:9044 --local_ip_for_outbound_sockets 127.0.0.1 >"/tmp/yugabyte-local-cluster/tserver-3/tserver.out" 2>"/tmp/yugabyte-local-cluster/tserver-3/tserver.err" &
+$ ./bin/yb-ctl create
+2017-09-18 23:10:16,290 INFO: Starting master with:
+/home/vagrant/yugabyte/bin/yb-master --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-1,/tmp/yugabyte-local-cluster/disk2/node-1" --webserver_port 7000 --rpc_bind_addresses 127.0.0.1:7100 --use_hybrid_clock=False --placement_cloud cloud --placement_region region --placement_zone zone --webserver_doc_root "/home/vagrant/yugabyte/www" --create_cluster=true --replication_factor=3 --master_addresses 127.0.0.1:7100,127.0.0.1:7101,127.0.0.1:7102 >"/tmp/yugabyte-local-cluster/disk1/node-1/master.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-1/master.err" &
+2017-09-18 23:10:16,308 INFO: Starting master with:
+/home/vagrant/yugabyte/bin/yb-master --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-2,/tmp/yugabyte-local-cluster/disk2/node-2" --webserver_port 7001 --rpc_bind_addresses 127.0.0.1:7101 --use_hybrid_clock=False --placement_cloud cloud --placement_region region --placement_zone zone --webserver_doc_root "/home/vagrant/yugabyte/www" --create_cluster=true --replication_factor=3 --master_addresses 127.0.0.1:7100,127.0.0.1:7101,127.0.0.1:7102 >"/tmp/yugabyte-local-cluster/disk1/node-2/master.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-2/master.err" &
+2017-09-18 23:10:16,340 INFO: Starting master with:
+/home/vagrant/yugabyte/bin/yb-master --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-3,/tmp/yugabyte-local-cluster/disk2/node-3" --webserver_port 7002 --rpc_bind_addresses 127.0.0.1:7102 --use_hybrid_clock=False --placement_cloud cloud --placement_region region --placement_zone zone --webserver_doc_root "/home/vagrant/yugabyte/www" --create_cluster=true --replication_factor=3 --master_addresses 127.0.0.1:7100,127.0.0.1:7101,127.0.0.1:7102 >"/tmp/yugabyte-local-cluster/disk1/node-3/master.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-3/master.err" &
+2017-09-18 23:10:16,391 INFO: Starting tserver with:
+/home/vagrant/yugabyte/bin/yb-tserver --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-1,/tmp/yugabyte-local-cluster/disk2/node-1" --webserver_port 9000 --rpc_bind_addresses 127.0.0.1:9100 --use_hybrid_clock=False --placement_cloud cloud --placement_region region --placement_zone zone --webserver_doc_root "/home/vagrant/yugabyte/www" --tserver_master_addrs 127.0.0.1:7100,127.0.0.1:7101,127.0.0.1:7102 --memory_limit_hard_bytes 1073741824 --redis_proxy_webserver_port 11000 --redis_proxy_bind_address 127.0.0.1:6379 --cql_proxy_webserver_port 12000 --cql_proxy_bind_address 127.0.0.1:9042 --local_ip_for_outbound_sockets 127.0.0.1 >"/tmp/yugabyte-local-cluster/disk1/node-1/tserver.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-1/tserver.err" &
+2017-09-18 23:10:16,471 INFO: Starting tserver with:
+/home/vagrant/yugabyte/bin/yb-tserver --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-2,/tmp/yugabyte-local-cluster/disk2/node-2" --webserver_port 9001 --rpc_bind_addresses 127.0.0.1:9101 --use_hybrid_clock=False --placement_cloud cloud --placement_region region --placement_zone zone --webserver_doc_root "/home/vagrant/yugabyte/www" --tserver_master_addrs 127.0.0.1:7100,127.0.0.1:7101,127.0.0.1:7102 --memory_limit_hard_bytes 1073741824 --redis_proxy_webserver_port 11001 --redis_proxy_bind_address 127.0.0.1:6380 --cql_proxy_webserver_port 12001 --cql_proxy_bind_address 127.0.0.1:9043 --local_ip_for_outbound_sockets 127.0.0.1 >"/tmp/yugabyte-local-cluster/disk1/node-2/tserver.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-2/tserver.err" &
+2017-09-18 23:10:16,559 INFO: Starting tserver with:
+/home/vagrant/yugabyte/bin/yb-tserver --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-3,/tmp/yugabyte-local-cluster/disk2/node-3" --webserver_port 9002 --rpc_bind_addresses 127.0.0.1:9102 --use_hybrid_clock=False --placement_cloud cloud --placement_region region --placement_zone zone --webserver_doc_root "/home/vagrant/yugabyte/www" --tserver_master_addrs 127.0.0.1:7100,127.0.0.1:7101,127.0.0.1:7102 --memory_limit_hard_bytes 1073741824 --redis_proxy_webserver_port 11002 --redis_proxy_bind_address 127.0.0.1:6381 --cql_proxy_webserver_port 12002 --cql_proxy_bind_address 127.0.0.1:9044 --local_ip_for_outbound_sockets 127.0.0.1 >"/tmp/yugabyte-local-cluster/disk1/node-3/tserver.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-3/tserver.err" &
+
 ```
 
 Create a 5 node local cluster with replication factor 5. 
@@ -91,22 +107,17 @@ Run this command after creating the cluster in case you are looking to use YugaB
 
 ```sh
 $ ./bin/yb-ctl setup_redis
-I0906 22:57:47.913584 29372 reactor.cc:109] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
-I0906 22:57:47.913799 29372 reactor.cc:109] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
-I0906 22:57:47.913830 29372 reactor.cc:109] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
-I0906 22:57:47.913838 29372 reactor.cc:109] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
-I0906 22:57:47.915663 29372 client-internal.cc:1101] Skipping reinitialize of master addresses, no REST endpoint or file specified
-I0906 22:57:47.922495 29372 reactor.cc:109] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
-I0906 22:57:47.922603 29372 reactor.cc:109] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
-I0906 22:57:47.922618 29372 reactor.cc:109] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
-I0906 22:57:47.922631 29372 reactor.cc:109] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
-I0906 22:57:47.927392 29372 yb-admin.cc:557] Checking if table '.redis' already exists
-W0906 22:57:47.928550 29380 client-internal.cc:913] GetTableSchemaRpc(table_name: redis_keyspace..redis, num_attempts: 1) failed: Not found (yb/common/wire_protocol.cc:122): The table does not exist: table_name: ".redis"
-namespace {
-  name: "redis_keyspace"
-}
-I0906 22:57:47.928647 29372 yb-admin.cc:563] Table 'redis_keyspace..redis' does not exist yet, creating...
-I0906 22:57:49.039940 29372 client.cc:1169] Created table redis_keyspace..redis of type REDIS_TABLE_TYPE
+I0918 22:48:20.253942 12246 reactor.cc:124] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
+I0918 22:48:20.254120 12246 reactor.cc:124] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
+I0918 22:48:20.254149 12246 reactor.cc:124] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
+I0918 22:48:20.254155 12246 reactor.cc:124] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
+I0918 22:48:20.256132 12246 client-internal.cc:1125] Skipping reinitialize of master addresses, no REST endpoint or file specified
+I0918 22:48:20.262192 12246 reactor.cc:124] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
+I0918 22:48:20.262212 12246 reactor.cc:124] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
+I0918 22:48:20.262218 12246 reactor.cc:124] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
+I0918 22:48:20.262228 12246 reactor.cc:124] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
+I0918 22:48:21.376051 12246 client.cc:1184] Created table redis_keyspace..redis of type REDIS_TABLE_TYPE
+I0918 22:48:21.376237 12246 yb-admin.cc:580] Table 'redis_keyspace..redis' created.
 ```
 
 
@@ -137,7 +148,7 @@ $ $ ./bin/yb-ctl add_node
 
 ## Remove a node
 
-Remove a node by executing the following command that takes the node_id of the node to be removed.
+Remove a node from the cluster by executing the following command. The command takes the node_id of the node to be removed as input.
 
 ### Help
 

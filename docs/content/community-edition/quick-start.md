@@ -18,11 +18,17 @@ Operation systems supported for local clusters are
 
 ## Download and install
 
-Download the YugaByte DB package using the link you were provided at registration. Thereafter, follow the instructions below.
+### Download
+
+Download the YugaByte DB package [here](https://s3-us-west-2.amazonaws.com/download.yugabyte.com/0.9.0.0/yugabyte.ce.0.9.0.0-b0.tar.gz). Thereafter, follow the instructions below.
+
+### Install
+
+On your localhost, execute the following commands.
 
 ```sh
 $ mkdir ~/yugabyte
-$ tar xvfz yugabyte-community-<version>-centos.tar.gz -C yugabyte
+$ tar xvfz yugabyte.ce.<version>.tar.gz -C yugabyte
 $ cd yugabyte
 ```
 
@@ -42,6 +48,8 @@ We will use the [yb-ctl](/admin/yb-ctl) utility that has a set of pre-built comm
 $ ./bin/yb-ctl create
 ```
 
+You can now check `/tmp/yugabyte-local-cluster` to see 2 directories `disk1` and `disk2` created. Inside each of these you will find the data for all the nodes in the respective `node-i` directores where `i` represents the `node_id` of the node.
+
 ### Check the status of the cluster.
 
 ```sh
@@ -54,17 +62,9 @@ $ ./bin/yb-ctl status
 2017-09-06 22:53:40,894 INFO: Server is running: type=tserver, node_id=3, PID=28519, URL=127.0.0.1:9002, cql port=9044, redis port=6381
 ```
 
-### Setup Redis service
+## Test CQL service
 
-Setup the `redis_keyspace` keyspace and the `.redis` table so that this cluster becomes ready for redis clients. Detailed output for the *setup_redis* command is available in the [yb-ctl Reference](/admin/yb-ctl/#setup-redis)
-
-```sh
-$ ./bin/yb-ctl setup_redis
-```
-
-## Connect with cqlsh or redis-cli
-
-### cqlsh
+### Connect with cqlsh
 
 [**cqlsh**](http://cassandra.apache.org/doc/latest/tools/cqlsh.html) is a command line shell for interacting with Apache Cassandra through [CQL (the Cassandra Query Language)](http://cassandra.apache.org/doc/latest/cql/index.html). It utilizes the Python CQL driver, and connects to the single node specified on the command line.
 
@@ -90,33 +90,13 @@ system_schema  redis_keyspace  system_auth  system  default_keyspace
 cqlsh> 
 ```
 
-### redis-cli
-
-[redis-cli](https://redis.io/topics/rediscli) is a command line interface to interact with a Redis server. 
-
-- Run redis-cli
-
-For ease of use, the YugaByte DB package ships with the 4.0.1 version of redis-cli in its bin directory.
-
-```
-$ ./bin/redis-cli
-127.0.0.1:6379> set mykey somevalue
-OK
-127.0.0.1:6379> get mykey
-"somevalue"
-```
-
-## Run a sample app
-
-### Prerequisites
+### Run a CQL sample app
 
 - Verify that Java is installed on your localhost.
 
 ```sh
 $ java -version
 ```
-
-### Cassandra sample app
 
 - Run the Cassandra time-series sample app using the executable jar
 
@@ -200,7 +180,39 @@ cqlsh:ybdemo_keyspace>
 
 ```
 
-### Redis sample app
+## Test Redis service 
+
+### Setup Redis service
+
+Setup the `redis_keyspace` keyspace and the `.redis` table so that this cluster becomes ready for redis clients. Detailed output for the *setup_redis* command is available in the [yb-ctl Reference](/admin/yb-ctl/#setup-redis)
+
+```sh
+$ ./bin/yb-ctl setup_redis
+```
+
+### Connect with redis-cli
+
+[redis-cli](https://redis.io/topics/rediscli) is a command line interface to interact with a Redis server. 
+
+- Run redis-cli
+
+For ease of use, the YugaByte DB package ships with the 4.0.1 version of redis-cli in its bin directory.
+
+```
+$ ./bin/redis-cli
+127.0.0.1:6379> set mykey somevalue
+OK
+127.0.0.1:6379> get mykey
+"somevalue"
+```
+
+### Run a Redis sample app
+
+- Verify that Java is installed on your localhost.
+
+```sh
+$ java -version
+```
 
 - Run the Redis key-value sample app using the executable jar
 
@@ -236,31 +248,7 @@ $ ./bin/redis-cli
 "val:1"
 127.0.0.1:6379> get key:2
 "val:2"
+127.0.0.1:6379> get key:100
+"val:100"
+127.0.0.1:6379> 
 ```
-
-
-## Test fault tolerance
-
-- Observe sample app output with 3 nodes.
-
-- Remove one node to bring the cluster to 2 nodes.
-
-```sh
-
-```
-
-- Observe sample app again to see no distruption
-
-
-## Test automatic rebalancing
-
-
-Add a new node to the cluster. This will start a new yb-tserver process and give it a new `node_id` for tracking purposes.
-
-```sh
-$ ./bin/yb-ctl add_node
-
-```
-
-
-

@@ -4,11 +4,13 @@ title: Frequently Asked Questions
 weight: 70
 ---
 
-## Architecture & Concepts
+## Architecture
 
-### How can YugaByte DB with both CP and HA at the same time?
+### How can YugaByte DB be both CP and HA at the same time?
 
-### Why is a group of YugaByte nodes called a universe instead of the more commonly used term clusters?
+In terms of the CAP theorem, YugaByte DB is a Consistent and Partition-tolerant (CP) database. It provides High Availability (HA) for most practical situations even while remaining strongly consistent. While this may seem a violation of the CAP theorem, that is not the case since CAP treats availability as a binary option whereas YugaByte treats availability as a percentage that can be tuned to achieve high write availability (reads are always available as long as a single node is available). During network partitions, the replicas for the impacted tablets form two groups: majority partition that can still establish a Raft consensus and a minority partition that cannot establish such a consensus (given the lack of quorum). Majority partitions are available for both reads and writes. Minority partitions are available for reads only (even if the data may get stale as time passes) but not available for writes. **Multi-active availability** here refers to YugaByte's ability to serve reads in any partition of a cluster. Note that requiring majority of replicas to synchronously agree on the value written is by design to ensure strong write consistency and thus obviate the need for any unpredictable background anti-entropy operations. 
+
+### Why is a group of YugaByte nodes called a `universe` instead of the more commonly used term `clusters`?
 
 The YugaByte universe packs a lot more functionality that what people think of when referring to a cluster. In fact, in certain deployment choices, the universe subsumes the equivalent of multiple clusters and some of the operational work needed to run these. Here are just a few concrete differences, which made us feel like giving it a different name would help earmark the differences and avoid confusion.
 
@@ -21,13 +23,17 @@ The YugaByte universe packs a lot more functionality that what people think of w
 ### Why did YugaByte use RocksDB as a starting point for its DocDB storage engine instead of simply using it as a library?
 
 
-## Product Editions 
+## Community Edition 
 
 ### Is the Community Edition open-source?
 
-### How does the Enterprise Edition differ from the Community Edition?
+Yes, the Community Edition is completely open-source, fully functioning version of YugaByte DB. 
 
-### How is the Enterprise Edition priced?
+### How do the Community Edition and the Enterprise Edition differ from each other?
+
+[Community Edition](/community-edition/quick-start/) is the best choice for the individual developer looking to develop applications and deploy the DB into production with traditional DevOps tools. 
+
+[Enterprise Edition](/enterprise-edition/deploy/) includes all the features of the Community Edition as well as additional features such as built-in cloud-native operations, advanced tunable consistency and enterprise security. It is the simplest way to run the DB in mission-critical production environments with one or more datacenters (across both public cloud and on-premises datacenters).
 
 ## Enterprise Edition 
 
@@ -90,11 +96,19 @@ In general, we are be able to fill the gaps quickly if we are missing some featu
 
 ### How is YugaByte different than the standard Apache Cassandra?
 
+See [YugaByte vs. Apache Cassandra](/architecture/comparisons/#yugabyte-vs-apache-cassandra)
+
 ### How is YugaByte different than the standard Redis?
+
+See [YugaByte vs. Redis](/architecture/comparisons/#yugabyte-vs-redis)
 
 ### How does YugaByte compare against other NoSQL databases such as Apache HBase and MongoDB?
 
-### Why would I not use a mixture of Redis cluster and a sharded SQL solution?
+See [YugaByte vs. Apache HBase](/architecture/comparisons/#yugabyte-vs-apache-hbase)
+
+### Why not use a Redis cluser alongside a sharded SQL cluster?
+
+Such 2 independent siloed database clusters should be avoided for multiple reasons.
 
 #### Development and operational complexity
 
@@ -135,9 +149,6 @@ Yes, you can have collection data types as primary keys as long as they are mark
 ### What is the difference between a `COUNTER` type and `INTEGER` types?
 
 Unlike Apache Cassandra, YugaByte COUNTER type is almost the same as INTEGER types. There is no need of lightweight transactions requiring 4 round trips to perform increments in YugaByte - these are efficiently performed with just one round trip.
-
-
-## Redis
 
 
 

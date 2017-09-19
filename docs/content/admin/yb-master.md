@@ -16,17 +16,17 @@ $ ./bin/yb-master --help
 
 ## Supported config flags
 
-Flag | Type | Default | Description 
--------------------|-------------|---------|-------------------------------------------------------
-`--fs_data_dirs` | string | none | Comma-separated list of directories where the YB-Master will place all its data. 
-`--fs_wal_dirs`| string | If not specified, then same as `--fs_data_dirs` | The directory where the Master will place its write-ahead logs. May be the same as one of the directories listed in `--fs_data_dirs`, but not a sub-directory of a data directory. 
-`--log_dir`| string | If not specified, then same as the first value in `--fs_data_dirs`   | The directory to store YB-Master log files.  
-`--webserver_port`| string |  `8051` |
-`--rpc_bind_addresses`| string | `0.0.0.0` | Comma-separated list of addresses to bind to for RPC connections.
-`--webserver_doc_root`| string | none | Files under <webserver_doc_root> are accessible via the debug webserver.
-`--create_cluster`| boolean |   |
-`--master_addresses` | string | none |Comma-separated list of all the RPC addresses for YB-Master consensus-configuration. 
-`--default_num_replicas`| string | `3`  | Number of replicas to store for each tablet.
-`--flagfile`| string | none  | Load flags from the specified file.
-`--version` | string | false | Show version and build info
+Flag | Mandatory | Default | Description 
+----------------------|------|---------|------------------------
+`--master_addresses` | Y | N/A |Comma-separated list of all the RPC addresses for `yb-master` consensus-configuration. 
+`--fs_data_dirs` | Y | N/A | Comma-separated list of directories where the `yb-master` will place all it's `yb-data/master` data directory. 
+`--fs_wal_dirs`| N | Same value as `--fs_data_dirs` | The directory where the `yb-master` will place its write-ahead logs. May be the same as one of the directories listed in `--fs_data_dirs`, but not a sub-directory of a data directory. 
+`--log_dir`| N | Same value as `--fs_data_dirs`   | The directory to store `yb-master` log files.  
+`--rpc_bind_addresses`| N |`0.0.0.0:7100` | Comma-separated list of addresses to bind to for RPC connections.
+`--webserver_port`| N | `7000` | Monitoring web server port
+`--webserver_doc_root`| N | The `www` directory in the YugaByte home directory | Monitoring web server home
+`--create_cluster`| N | N/A | Set this flag only when starting the `yb-master` for the very first time.
+`--replication_factor`| N |`3`  | Number of replicas to store for each tablet in the universe.
+`--flagfile`| N | N/A  | Load flags from the specified file.
+`--version` | N | N/A | Show version and build info
 
