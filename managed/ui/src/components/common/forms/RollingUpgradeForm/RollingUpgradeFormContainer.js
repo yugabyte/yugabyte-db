@@ -8,12 +8,19 @@ import { rollingUpgrade, rollingUpgradeResponse, closeDialog, resetRollingUpgrad
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    submitRollingUpgradeForm: (values, universeUUID) => {
+    /**
+     * Dispatch Rolling Upgrade/ Gflag restart to endpoint and handle response.
+     * @param values form data payload
+     * @param universeUUID UUID of the current Universe
+     * @param reset function that sets the value of the form to pristine state
+     */
+    submitRollingUpgradeForm: (values, universeUUID, reset) => {
       dispatch(rollingUpgrade(values, universeUUID)).then((response) => {
         dispatch(rollingUpgradeResponse(response.payload));
-        if(response.payload.status === 200) {
-          dispatch(closeDialog());
-        }
+        dispatch(closeDialog());
+        // Reset the Rolling upgrade form fields to pristine state,
+        // component may be called multiple times within the context of Universe Detail.
+        reset();
       });
     },
     resetRollingUpgrade: () => {
