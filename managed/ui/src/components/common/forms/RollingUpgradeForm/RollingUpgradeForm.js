@@ -60,13 +60,10 @@ export default class RollingUpgradeForm extends Component {
     super(props);
     this.setRollingUpgradeProperties = this.setRollingUpgradeProperties.bind(this);
   }
-  componentWillUnmount() {
-    this.props.reset();
-  }
 
   setRollingUpgradeProperties(values) {
     const { universe: {visibleModal, currentUniverse: {data: {universeDetails: {nodeDetailsSet,
-      userIntent}, universeUUID}}}} = this.props;
+      userIntent}, universeUUID}}}, reset} = this.props;
     const nodeNames = [];
     const payload = {};
     nodeDetailsSet.forEach((item) => {
@@ -109,8 +106,7 @@ export default class RollingUpgradeForm extends Component {
     payload.gflags = gflagList;
     payload.sleepAfterMasterRestartMillis = values.timeDelay * 1000;
     payload.sleepAfterTServerRestartMillis = values.timeDelay * 1000;
-    this.props.submitRollingUpgradeForm(payload, universeUUID);
-    this.props.reset();
+    this.props.submitRollingUpgradeForm(payload, universeUUID, reset);
   }
 
   render() {
