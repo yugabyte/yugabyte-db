@@ -76,7 +76,7 @@ using MCSet = std::set<MCObject, Compare, ArenaAllocator<MCObject>>;
 
 // Class MCMap.
 template<class MCKey, class MCObject, class Compare = std::less<MCKey>>
-using MCMap = std::map<MCKey, MCObject, Compare, ArenaAllocator<MCObject>>;
+using MCMap = std::map<MCKey, MCObject, Compare, ArenaAllocator<std::pair<const MCKey, MCObject>>>;
 
 template<class Key, class Tp, class Hash = std::hash<Key>, class Pred = std::equal_to<Key>>
 using MCUnorderedMap = std::unordered_map<Key,
