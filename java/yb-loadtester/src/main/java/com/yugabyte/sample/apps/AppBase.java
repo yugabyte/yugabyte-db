@@ -59,15 +59,15 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   // The number of keys that have been read so far.
   protected static AtomicLong numKeysRead = new AtomicLong(0);
   // Object to track read and write metrics.
-  private static MetricsTracker metricsTracker;
+  private static volatile MetricsTracker metricsTracker;
   // State variable to track if this workload has finished.
   protected AtomicBoolean hasFinished = new AtomicBoolean(false);
   // The Cassandra client variables.
-  protected Cluster cassandra_cluster = null;
-  protected Session cassandra_session = null;
+  protected static volatile Cluster cassandra_cluster = null;
+  protected static volatile Session cassandra_session = null;
   // The Java redis client.
-  private Jedis jedisClient = null;
-  private Pipeline jedisPipeline = null;
+  private volatile Jedis jedisClient = null;
+  private volatile Pipeline jedisPipeline = null;
   private Node redisServerInUse = null;
   // Instance of the load generator.
   private static volatile SimpleLoadGenerator loadGenerator = null;
@@ -77,20 +77,20 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   //////////// Helper methods to return the client objects (Redis, Cassandra, etc). ////////////////
 
   /**
-   * We create one Cassandra client per app instance. This is a non-synchronized
-   * method, so multiple threads can call it without any performance penalty. If there is no client,
-   * a synchronized thread is created so that exactly only one thread will create a client. If there
-   * is a pre-existing client, we just return it.
+   * We create one shared Cassandra client. This is a non-synchronized method, so multiple threads
+   * can call it without any performance penalty. If there is no client, a synchronized thread is
+   * created so that exactly only one thread will create a client. If there is a pre-existing
+   * client, we just return it.
    * @return a Cassandra Session object.
    */
   protected Session getCassandraClient() {
     if (cassandra_cluster == null) {
-      createCassandraClient();
+      createCassandraClient(getNodesAsInet());
     }
     return cassandra_session;
   }
 
-  protected void createKeyspace(Session session, String ks) {
+  protected static void createKeyspace(Session session, String ks) {
     String create_keyspace_stmt = "CREATE KEYSPACE IF NOT EXISTS " + ks +
       " WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor' : 1};";
     // Use consistency level ONE to allow cross DC requests.
@@ -115,9 +115,9 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    * Private method that is thread-safe and creates the Cassandra client. Exactly one calling thread
    * will succeed in creating the client. This method does nothing for the other threads.
    */
-  private synchronized void createCassandraClient() {
+  private static synchronized void createCassandraClient(List<InetSocketAddress> nodes) {
     if (cassandra_cluster == null) {
-      Cluster.Builder builder = Cluster.builder().addContactPointsWithPorts(getNodesAsInet());
+      Cluster.Builder builder = Cluster.builder().addContactPointsWithPorts(nodes);
       if (appConfig.localDc != null && !appConfig.localDc.isEmpty()) {
         builder.withLoadBalancingPolicy((new PartitionAwarePolicy(
             DCAwareRoundRobinPolicy.builder()

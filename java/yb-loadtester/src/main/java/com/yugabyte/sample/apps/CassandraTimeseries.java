@@ -78,12 +78,12 @@ public class CassandraTimeseries extends AppBase {
   private AtomicBoolean verificationDisabled = new AtomicBoolean(false);
   // Max write lag across data sources.
   private AtomicLong maxWriteLag = new AtomicLong(0);
-  // The prepared select statement for fetching the data.
-  PreparedStatement preparedSelect;
-  // The prepared statement for inserting into the table.
-  PreparedStatement preparedInsert;
+  // The shared prepared select statement for fetching the data.
+  private static volatile PreparedStatement preparedSelect;
+  // The shared prepared statement for inserting into the table.
+  private static volatile PreparedStatement preparedInsert;
   // Lock for initializing prepared statement objects.
-  Object prepareInitLock = new Object();
+  private static final Object prepareInitLock = new Object();
 
   @Override
   public void initialize(CmdLineOpts configuration) {

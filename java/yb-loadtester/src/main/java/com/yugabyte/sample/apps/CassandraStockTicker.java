@@ -57,14 +57,14 @@ public class CassandraStockTicker extends AppBase {
   // The total number of rows read from the DB so far.
   private static AtomicLong num_rows_read;
   static Random random = new Random();
-  // The prepared select statement for fetching the latest data point.
-  PreparedStatement preparedSelectLatest;
-  // The prepared statement for inserting into the raw table.
-  PreparedStatement preparedInsertRaw;
-  // The prepared statement for inserting into the 1 min table.
-  PreparedStatement preparedInsertMin;
+  // The shared prepared select statement for fetching the latest data point.
+  private static volatile PreparedStatement preparedSelectLatest;
+  // The shared prepared statement for inserting into the raw table.
+  private static volatile PreparedStatement preparedInsertRaw;
+  // The shared prepared statement for inserting into the 1 min table.
+  private static volatile PreparedStatement preparedInsertMin;
   // Lock for initializing prepared statement objects.
-  Object prepareInitLock = new Object();
+  private static final Object prepareInitLock = new Object();
 
   @Override
   public void initialize(CmdLineOpts configuration) {
