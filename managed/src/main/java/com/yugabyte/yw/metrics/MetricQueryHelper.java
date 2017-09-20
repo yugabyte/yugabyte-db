@@ -60,8 +60,10 @@ public class MetricQueryHelper {
       timeDifference = endTime - Long.parseLong(startTime);
     }
 
-    Integer resolution = Math.round(timeDifference / STEP_SIZE);
-    params.put("step", resolution.toString());
+    if (params.get("step") == null) {
+      Integer resolution = Math.round(timeDifference / STEP_SIZE);
+      params.put("step", resolution.toString());
+    }
 
     HashMap<String, String> additionalFilters = new HashMap<String, String>();
     if (params.containsKey("filters")) {

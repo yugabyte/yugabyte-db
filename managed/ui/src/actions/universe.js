@@ -2,6 +2,7 @@
 
 import axios from 'axios';
 import { ROOT_URL } from '../config';
+import { getCustomerEndpoint } from "./common";
 
 // Create Universe
 export const CREATE_UNIVERSE = 'CREATE_NEW_UNIVERSE';
@@ -52,6 +53,9 @@ export const CONFIGURE_UNIVERSE_TEMPLATE_SUCCESS = 'CONFIGURE_UNIVERSE_TEMPLATE_
 export const CONFIGURE_UNIVERSE_RESOURCES = 'CONFIGURE_UNIVERSE_RESOURCES';
 export const CONFIGURE_UNIVERSE_RESOURCES_RESPONSE = 'CONFIGURE_UNIVERSE_RESOURCES_RESPONSE';
 
+// Universe per-node status
+export const GET_UNIVERSE_PER_NODE_STATUS = 'GET_UNIVERSE_PER_NODE_STATUS';
+export const GET_UNIVERSE_PER_NODE_STATUS_RESPONSE = 'GET_UNIVERSE_PER_NODE_STATUS_RESPONSE';
 
 //Validation Tasks
 export const CHECK_IF_UNIVERSE_EXISTS = 'CHECK_IF_UNIVERSE_EXISTS';
@@ -276,6 +280,22 @@ export function configureUniverseResources(values) {
 export function configureUniverseResourcesResponse(response) {
   return {
     type: CONFIGURE_UNIVERSE_RESOURCES_RESPONSE,
+    payload: response
+  };
+}
+
+export function getUniversePerNodeStatus(universeUUID) {
+  const requestUrl = `${getCustomerEndpoint()}/universes/${universeUUID}/status`;
+  const request = axios.get(requestUrl);
+  return {
+    type: GET_UNIVERSE_PER_NODE_STATUS,
+    payload: request
+  };
+}
+
+export function getUniversePerNodeStatusResponse(response) {
+  return {
+    type: GET_UNIVERSE_PER_NODE_STATUS_RESPONSE,
     payload: response
   };
 }

@@ -639,6 +639,34 @@ tserver_cache_reader_num_ops:
       alias:
         "log_cache_num_ops": "Num Ops"
 
+tserver_glog_info_messages:
+  metric: "collectd_yb_tserver_counter_total"
+  function: "avg"
+  filters:
+    type: "glog_info_messages"
+  group_by: "exported_instance"
+  layout:
+    title: "TServer GLog Info Messages"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "glog_info_messages": "GLog info messages"
+
+master_glog_info_messages:
+  metric: "collectd_yb_master_counter_total"
+  function: "avg"
+  filters:
+    type: "glog_info_messages"
+  group_by: "exported_instance"
+  layout:
+    title: "Master GLog Info Messages"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "glog_info_messages": "GLog info messages"
+
 lsm_rocksdb_num_seek_or_next:
   metric: "collectd_yb_tserver_counter_total"
   function: "rate|avg"
