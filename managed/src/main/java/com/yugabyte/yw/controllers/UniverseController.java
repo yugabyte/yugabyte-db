@@ -8,7 +8,6 @@ import java.util.Set;
 import java.util.UUID;
 
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
@@ -432,6 +431,40 @@ public class UniverseController extends AuthenticatedController {
     } catch (Throwable t) {
       LOG.error("Error updating universe", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
+    }
+  }
+
+  /**
+   * API that checks the status of the the tservers and masters in the universe.
+   *
+   * @return result of the universe status operation.
+   */
+  public Result status(UUID customerUUID, UUID universeUUID) {
+
+    // Verify the customer with this universe is present.
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+
+    // Make sure the universe exists, this method will throw an exception if it does not.
+    Universe universe;
+    try {
+      universe = Universe.get(universeUUID);
+    }
+    catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
+    }
+
+    // Get alive status
+    try {
+      JsonNode result = PlacementInfoUtil.getUniverseAliveStatus(universe);
+      if (result.has("error")) {
+        return ApiResponse.error(BAD_REQUEST, result.get("error"));
+      }
+      return ApiResponse.success(result);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, e.getMessage());
     }
   }
 

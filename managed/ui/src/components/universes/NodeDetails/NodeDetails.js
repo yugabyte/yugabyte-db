@@ -7,12 +7,22 @@ import { YBPanelItem } from '../../panels';
 import { isValidObject, isNonEmptyArray, isDefinedNotNull } from 'utils/ObjectUtils';
 import NodeConnectModal from './NodeConnectModal';
 import {isNodeRemovable} from 'utils/UniverseUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 
 export default class NodeDetails extends Component {
+
   componentWillReceiveProps(nextProps) {
     if (isValidObject(this.refs.nodeDetailTable)) {
       this.refs.nodeDetailTable.handleSort('asc', 'name');
     }
+  }
+
+  componentWillMount() {
+    let uuid = this.props.uuid;
+    if (typeof this.props.universeSelectionId !== "undefined") {
+      uuid = this.props.universeUUID;
+    }
+    this.props.getUniversePerNodeStatus(uuid);
   }
 
   deleteNode(node) {
@@ -22,7 +32,7 @@ export default class NodeDetails extends Component {
   }
 
   render() {
-    const { universe: {currentUniverse}} = this.props;
+    const { universe: {currentUniverse, universePerNodeStatus}} = this.props;
     const self = this;
     const nodeDetails = currentUniverse.data.universeDetails.nodeDetailsSet;
     if (!isNonEmptyArray(nodeDetails)) {
@@ -32,10 +42,10 @@ export default class NodeDetails extends Component {
       return {
         name: nodeDetail.nodeName,
         regionAz: `${nodeDetail.cloudInfo.region}/${nodeDetail.cloudInfo.az}`,
-        isMaster: nodeDetail.isMaster ? "Yes" : "No",
+        isMaster: nodeDetail.isMaster ? "Details" : "-",
         masterPort: nodeDetail.masterHttpPort,
         tserverPort: nodeDetail.tserverHttpPort,
-        isTServer: nodeDetail.isTserver ? "Yes" : "No",
+        isTServer: nodeDetail.isTserver ? "Details" : "-",
         privateIP: nodeDetail.cloudInfo.private_ip,
         publicIP: nodeDetail.cloudInfo.public_ip,
         nodeStatus: nodeDetail.state,
@@ -43,17 +53,30 @@ export default class NodeDetails extends Component {
       };
     });
 
+    const loadingIcon = <i className="fa fa-spinner fa-spin" />;
+    const successIcon = <i className="fa fa-check-circle yb-success-color" />;
+    const warningIcon = <i className="fa fa-warning yb-fail-color" />;
+
     const formatIpPort = function(cell, row, type) {
-      if (cell === "No") {
+      if (cell === "-") {
         return <span>{cell}</span>;
       }
-      let href;
-      if (type === "master") {
-        href = "http://" + row.privateIP + ":" + row.masterPort;
+      const isMaster = type === "master";
+      const href = "http://" + row.privateIP + ":" + (isMaster ? row.masterPort : row.tserverPort);
+      const promiseState = getPromiseState(universePerNodeStatus);
+      const inLoadingState = promiseState.isLoading() ||promiseState.isInit();
+      let statusDisplay = inLoadingState ? loadingIcon : warningIcon;
+      if (isDefinedNotNull(currentUniverse.data) && !inLoadingState) {
+        if (isDefinedNotNull(universePerNodeStatus.data) &&
+            universePerNodeStatus.data.universe_uuid === currentUniverse.data.universeUUID &&
+            isDefinedNotNull(universePerNodeStatus.data[row.name]) &&
+            universePerNodeStatus.data[row.name][isMaster ? "master_alive" : "tserver_alive"]) {
+          statusDisplay = successIcon;
+        }
+        return <span>{statusDisplay}&nbsp;<a href={href} target="_blank" rel="noopener noreferrer">{cell}</a></span>;
       } else {
-        href = "http://" + row.privateIP + ":" + row.tserverPort;
+        return <span>{statusDisplay}&nbsp;{cell}</span>;
       }
-      return <a href={href} target="_blank" rel="noopener noreferrer">{cell}</a>;
     };
 
     const nodeIPs = nodeDetailRows.map(function(node) {
