@@ -157,22 +157,24 @@ public class AWSInitializer extends AbstractInitializer {
         }
         continue;
       }
-      switch (productDetailsJson.get("productFamily").textValue()) {
-        case "Storage":
-          JsonNode volumeType = attributesJson.get("volumeType");
-          if (volumeType.textValue().equals("Provisioned IOPS")) {
-            storeEBSPriceComponent(sku, PublicCloudConstants.IO1_SIZE, region, onDemandJson);
-          } else if (volumeType.textValue().equals("General Purpose")) {
-            storeEBSPriceComponent(sku, PublicCloudConstants.GP2_SIZE, region, onDemandJson);
-          }
-          break;
-        case "System Operation":
-          if (attributesJson.get("group").textValue().equals("EBS IOPS")) {
-            storeEBSPriceComponent(sku, PublicCloudConstants.IO1_PIOPS, region, onDemandJson);
-          }
-          break;
-        default:
-          break;
+      if (productDetailsJson.get("productFamily") != null) {
+        switch (productDetailsJson.get("productFamily").textValue()) {
+          case "Storage":
+            JsonNode volumeType = attributesJson.get("volumeType");
+            if (volumeType.textValue().equals("Provisioned IOPS")) {
+              storeEBSPriceComponent(sku, PublicCloudConstants.IO1_SIZE, region, onDemandJson);
+            } else if (volumeType.textValue().equals("General Purpose")) {
+              storeEBSPriceComponent(sku, PublicCloudConstants.GP2_SIZE, region, onDemandJson);
+            }
+            break;
+          case "System Operation":
+            if (attributesJson.get("group").textValue().equals("EBS IOPS")) {
+              storeEBSPriceComponent(sku, PublicCloudConstants.IO1_PIOPS, region, onDemandJson);
+            }
+            break;
+          default:
+            break;
+        }
       }
     }
   }
@@ -411,7 +413,8 @@ public class AWSInitializer extends AbstractInitializer {
   private Map<String, String> extractAllAttributes(JsonNode productDetailsJson) {
     Map<String, String> productAttrs = new HashMap<>();
     productAttrs.put("sku", productDetailsJson.get("sku").textValue());
-    productAttrs.put("productFamily", productDetailsJson.get("productFamily").textValue());
+    productAttrs.put("productFamily", productDetailsJson.get("productFamily") !=  null ?
+      productDetailsJson.get("productFamily").textValue() : "");
 
     // Iterate over all the attributes.
     Iterator<String> iter = productDetailsJson.get("attributes").fieldNames();
