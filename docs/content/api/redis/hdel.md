@@ -16,8 +16,7 @@ If `emulate_redis_responses` is `true`, returns
 the number of existing fields in the hash that were removed by this command.
 </li>
 <li>
-If `emulate_redis_responses` is `false`, returns
-the number of members that were requested to be removed by this command.
+If `emulate_redis_responses` is `false`, returns OK.
 </li>
 
 
