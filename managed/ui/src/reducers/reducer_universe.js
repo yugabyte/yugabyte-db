@@ -8,7 +8,8 @@ import { FETCH_UNIVERSE_INFO, RESET_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_RESPONSE,
   CONFIGURE_UNIVERSE_TEMPLATE_RESPONSE, CONFIGURE_UNIVERSE_TEMPLATE_SUCCESS,
   CONFIGURE_UNIVERSE_RESOURCES, CONFIGURE_UNIVERSE_RESOURCES_RESPONSE, ROLLING_UPGRADE,
   ROLLING_UPGRADE_RESPONSE, RESET_ROLLING_UPGRADE, SET_UNIVERSE_METRICS, SET_PLACEMENT_STATUS,
-  RESET_UNIVERSE_CONFIGURATION, FETCH_UNIVERSE_METADATA
+  RESET_UNIVERSE_CONFIGURATION, FETCH_UNIVERSE_METADATA, GET_UNIVERSE_PER_NODE_STATUS,
+  GET_UNIVERSE_PER_NODE_STATUS_RESPONSE
 } from '../actions/universe';
 import _ from 'lodash';
 import { getInitialState, setLoadingState, setPromiseResponse, setSuccessState } from 'utils/PromiseUtils.js';
@@ -28,7 +29,8 @@ const INITIAL_STATE = {
   universeResourceTemplate: getInitialState({}),
   currentPlacementStatus: null,
   fetchUniverseMetadata: false,
-  universeTasks: getInitialState([])
+  universeTasks: getInitialState([]),
+  universePerNodeStatus: getInitialState({})
 };
 
 export default function(state = INITIAL_STATE, action) {
@@ -67,6 +69,10 @@ export default function(state = INITIAL_STATE, action) {
       return {...setPromiseResponse(state, "universeList", action), fetchUniverseMetadata: false};
     case RESET_UNIVERSE_LIST:
       return { ...state, universeList: getInitialState([]), universeCurrentCostList: [], currentTotalCost: 0, error: null};
+    case GET_UNIVERSE_PER_NODE_STATUS:
+      return setLoadingState(state, "universePerNodeStatus", {});
+    case GET_UNIVERSE_PER_NODE_STATUS_RESPONSE:
+      return setPromiseResponse(state, "universePerNodeStatus", action);
 
     // Universe Tasks Operations
     case FETCH_UNIVERSE_TASKS:

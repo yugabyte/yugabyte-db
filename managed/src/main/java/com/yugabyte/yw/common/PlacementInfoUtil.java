@@ -18,6 +18,12 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.ArrayList;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.inject.Inject;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
+import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,10 +40,10 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
+import play.api.Play;
 import play.libs.Json;
 
 public class PlacementInfoUtil {
@@ -1237,5 +1243,100 @@ public class PlacementInfoUtil {
       }
     }
     return false;
+  }
+
+  /**
+   * Given a node, return its alive/not-alive status.
+   *
+   * @param nodeDetails The node to get the status of.
+   * @param tserverJson Metadata about all tservers in the node's universe.
+   * @param masterJson Metadata about all the masters in the node's universe.
+   * @return JsonNode with the following format:
+   *  {
+   *    tserver_alive: true/false,
+   *    master_alive: true/false
+   *  }
+   */
+  public static JsonNode getNodeAliveStatus(NodeDetails nodeDetails, JsonNode tserverJson,
+                                            JsonNode masterJson) {
+
+    ObjectNode nodeJson = Json.newObject();
+
+    // Add tserver status
+    if (tserverJson.get("data") == null) {
+      nodeJson.put("tserver_alive", false);
+    } else {
+      boolean tserver_alive = false;
+      for (JsonNode json : tserverJson.get("data")) {
+        tserver_alive = tserver_alive || json.get("name").asText().equals(nodeDetails.nodeName);
+      }
+      nodeJson.put("tserver_alive", tserver_alive);
+    }
+
+    // Add master status
+    if (masterJson.get("data") == null) {
+      nodeJson.put("master_alive", false);
+    } else {
+      boolean master_alive = false;
+      for (JsonNode json : masterJson.get("data")) {
+        master_alive = master_alive || json.get("name").asText().equals(nodeDetails.nodeName);
+      }
+      nodeJson.put("master_alive", master_alive);
+    }
+
+    return nodeJson;
+  }
+
+  /**
+   * Given a universe, return a status for each node as alive/not alive.
+   *
+   * @param universe The universe to query alive status for.
+   * @return JsonNode with the following format:
+   *  {
+   *    universe_uuid: <universeUUID>,
+   *    <node_name_n>: {tserver_alive: true/false, master_alive: true/false}
+   *  }
+   */
+  public static JsonNode getUniverseAliveStatus(Universe universe) {
+    // Metrics list.
+    String tserverMetric = "tserver_glog_info_messages";
+    String masterMetric = "master_glog_info_messages";
+    List<String> metricKeys = ImmutableList.of(tserverMetric, masterMetric);
+
+    // Set up params. E.g. { start=1505739890, end=1505783090,
+    // filters={"node_prefix":"yb-1-jeff-test1"}, metrics[0]=tserver_rpcs_per_sec_by_universe }
+    Map<String, String> params = new HashMap<>();
+    DateTime now = DateTime.now();
+    params.put("end", Long.toString(now.getMillis()/1000, 10));
+    DateTime start = now.minusMinutes(1);
+    params.put("start", Long.toString(start.getMillis()/1000, 10));
+    ObjectNode filterJson = Json.newObject();
+    filterJson.put("node_prefix", universe.getUniverseDetails().nodePrefix);
+    params.put("filters", Json.stringify(filterJson));
+    params.put("metrics[0]", tserverMetric);
+    params.put("metrics[1]", masterMetric);
+    params.put("step", "30");
+
+    // Execute query and check for errors.
+    MetricQueryHelper metricQueryHelper = Play.current().injector()
+        .instanceOf(MetricQueryHelper.class);
+    JsonNode metricQueryResult = metricQueryHelper.query(metricKeys, params);
+    if (metricQueryResult.has("error")) {
+      return metricQueryResult;
+    }
+
+    // Set up response if no errors.
+    ObjectNode response = Json.newObject();
+    response.put("universe_uuid", universe.universeUUID.toString());
+    JsonNode tserverJson = metricQueryResult.get(tserverMetric);
+    JsonNode masterJson = metricQueryResult.get(masterMetric);
+
+    // Get per-node liveness.
+    for (NodeDetails nodeDetails : universe.getNodes()) {
+      JsonNode nodeJson = getNodeAliveStatus(nodeDetails, tserverJson, masterJson);
+      response.put(nodeDetails.nodeName, nodeJson);
+    }
+
+    return response;
   }
 }
