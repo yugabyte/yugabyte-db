@@ -11,12 +11,16 @@
 // under the License.
 //
 
-#ifndef YB_REDISSERVER_REDIS_CONSTANTS_H
-#define YB_REDISSERVER_REDIS_CONSTANTS_H
+#ifndef YB_COMMON_REDIS_CONSTANTS_COMMON_H
+#define YB_COMMON_REDIS_CONSTANTS_COMMON_H
 
-#include "yb/common/redis_constants_common.h"
+namespace yb {
+namespace common {
 
-static constexpr const char* const kRedisKeyColumnName = "key";
-static constexpr uint16_t kRedisClusterSlots = 16384;
+static constexpr const char* const kRedisTableName = "redis";
+static constexpr const char* const kRedisKeyspaceName = "system_redis";
 
-#endif  // YB_REDISSERVER_REDIS_CONSTANTS_H
+}  // namespace common
+}  // namespace yb
+
+#endif // YB_COMMON_REDIS_CONSTANTS_COMMON_H

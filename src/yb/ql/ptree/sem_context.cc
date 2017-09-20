@@ -63,7 +63,8 @@ CHECKED_STATUS SemContext::LookupTable(YBTableName name, shared_ptr<YBTable>* ta
 
   VLOG(3) << "Loading table descriptor for " << name.ToString();
   *table = GetTableDesc(name);
-  if (*table == nullptr) {
+  if (*table == nullptr || name.is_redis_table()) {
+    // Hide redis table by return table not found error.
     return Error(loc, ErrorCode::TABLE_NOT_FOUND);
   }
   set_current_table(*table);

@@ -242,9 +242,9 @@ void SetupYBTable(const shared_ptr<YBClient> &client) {
   string keyspace = "my_keyspace";
   if (!FLAGS_target_redis_server_addresses.empty() || FLAGS_create_redis_table_and_exit) {
     LOG(INFO) << "Ignoring FLAGS_table_name. Redis proxy expects table name to be "
-              << kRedisKeyspaceName << '.' << kRedisTableName;
-    FLAGS_table_name = kRedisTableName;
-    keyspace = kRedisKeyspaceName;
+              << yb::common::kRedisKeyspaceName << '.' << yb::common::kRedisTableName;
+    FLAGS_table_name = yb::common::kRedisTableName;
+    keyspace = yb::common::kRedisKeyspaceName;
   }
   const YBTableName table_name(keyspace, FLAGS_table_name);
   CHECK_OK(client->CreateNamespaceIfNotExists(table_name.namespace_name()));

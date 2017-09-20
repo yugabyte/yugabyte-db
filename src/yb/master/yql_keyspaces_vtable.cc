@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include "yb/common/redis_constants_common.h"
 #include "yb/common/ql_value.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_defaults.h"
@@ -29,6 +30,11 @@ Status YQLKeyspacesVTable::RetrieveData(const QLReadRequestPB& request,
   std::vector<scoped_refptr<NamespaceInfo> > namespaces;
   master_->catalog_manager()->GetAllNamespaces(&namespaces);
   for (scoped_refptr<NamespaceInfo> ns : namespaces) {
+    // Skip redis keyspace for YQL.
+    if (ns->name() == common::kRedisKeyspaceName) {
+      continue;
+    }
+
     QLRow& row = (*vtable)->Extend();
     RETURN_NOT_OK(SetColumnValue(kKeyspaceName, ns->name(), &row));
     RETURN_NOT_OK(SetColumnValue(kDurableWrites, true, &row));

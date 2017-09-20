@@ -467,7 +467,7 @@ Status YBClient::Data::CreateTable(
       string table_id;
       PartitionSchema actual_partition_schema;
       string keyspace = req.has_namespace_() ? req.namespace_().name() :
-                        (req.name() == kRedisTableName ? kRedisKeyspaceName : "");
+                        (req.name() == common::kRedisTableName ? common::kRedisKeyspaceName : "");
       const YBTableName table_name(!keyspace.empty()
           ? YBTableName(keyspace, req.name()) : YBTableName(req.name()));
 

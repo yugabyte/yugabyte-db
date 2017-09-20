@@ -814,7 +814,7 @@ Status RedisServiceImpl::Impl::SetUpYBClient() {
           server_->tserver()->permanent_uuid(), server_->tserver()->proxy());
     }
 
-    const YBTableName table_name(kRedisKeyspaceName, kRedisTableName);
+    const YBTableName table_name(common::kRedisKeyspaceName, common::kRedisTableName);
     RETURN_NOT_OK(client_->OpenTable(table_name, &table_));
 
     session_pools_[0].Init(client_, server_->metric_entity(), false);

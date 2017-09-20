@@ -38,6 +38,13 @@ PTCreateKeyspace::~PTCreateKeyspace() {
 }
 
 CHECKED_STATUS PTCreateKeyspace::Analyze(SemContext *sem_context) {
+  if (*name_ == common::kRedisKeyspaceName) {
+    return sem_context->Error(loc(),
+                              strings::Substitute("$0 is a reserved keyspace name",
+                                                  common::kRedisKeyspaceName).c_str(),
+                              ErrorCode::INVALID_ARGUMENTS);
+  }
+
   if (keyspace_properties_ != nullptr) {
     // Process table properties.
     RETURN_NOT_OK(keyspace_properties_->Analyze(sem_context));

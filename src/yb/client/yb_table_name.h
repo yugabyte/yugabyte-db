@@ -22,6 +22,8 @@
 #include "yb/client/stubs.h"
 #endif
 
+#include "yb/common/redis_constants_common.h"
+
 
 namespace yb {
 
@@ -84,6 +86,16 @@ class YBTableName {
 
   bool is_system() const {
     return IsSystemNamespace(resolved_namespace_name());
+  }
+
+  bool is_redis_table() const {
+    return ((has_namespace() && resolved_namespace_name() == common::kRedisKeyspaceName) &&
+        table_name_ == common::kRedisTableName);
+  }
+
+  bool is_redis_keyspace_or_table() const {
+    return ((has_namespace() && resolved_namespace_name() == common::kRedisKeyspaceName) ||
+        table_name_ == common::kRedisTableName);
   }
 
   std::string ToString() const {

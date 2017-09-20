@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include "yb/common/redis_constants_common.h"
 #include "yb/common/ql_value.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/yql_tables_vtable.h"
@@ -28,6 +29,11 @@ Status YQLTablesVTable::RetrieveData(const QLReadRequestPB& request,
   std::vector<scoped_refptr<TableInfo> > tables;
   master_->catalog_manager()->GetAllTables(&tables, true);
   for (scoped_refptr<TableInfo> table : tables) {
+    // Hide redis table from YQL.
+    if (table->name() == common::kRedisTableName) {
+      continue;
+    }
+
     // Get namespace for table.
     NamespaceIdentifierPB nsId;
     nsId.set_id(table->namespace_id());

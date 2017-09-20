@@ -33,6 +33,7 @@ import com.datastax.driver.core.exceptions.QueryValidationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.yb.client.YBClient;
 import org.yb.master.Master;
 import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.IOMetrics;
@@ -299,6 +300,10 @@ public class BaseCQLTest extends BaseMiniClusterTest {
            keyspaceName.equals("system_schema");
   }
 
+  private boolean IsRedisKeyspace(String keyspaceName) {
+    return keyspaceName.equals(YBClient.REDIS_KEYSPACE_NAME);
+  }
+
   protected void dropTables() throws Exception {
     if (miniCluster == null) {
       return;
@@ -307,7 +312,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
         miniCluster.getClient().getTablesList().getTableInfoList()) {
       // Drop all non-system tables.
       String namespaceName = tableInfo.getNamespace().getName();
-      if (!IsSystemKeyspace(namespaceName)) {
+      if (!IsSystemKeyspace(namespaceName) && !IsRedisKeyspace(namespaceName)) {
         dropTable(namespaceName + "." + tableInfo.getName());
       }
     }

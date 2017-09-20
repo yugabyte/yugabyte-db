@@ -569,8 +569,8 @@ Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
 }
 
 Status ClusterAdminClient::SetupRedisTable() {
-  const YBTableName table_name(kRedisKeyspaceName, kRedisTableName);
-  RETURN_NOT_OK(yb_client_->CreateNamespaceIfNotExists(kRedisKeyspaceName));
+  const YBTableName table_name(common::kRedisKeyspaceName, common::kRedisTableName);
+  RETURN_NOT_OK(yb_client_->CreateNamespaceIfNotExists(common::kRedisKeyspaceName));
   // Try to create the table.
   gscoped_ptr<yb::client::YBTableCreator> table_creator(yb_client_->NewTableCreator());
   Status s = table_creator->table_name(table_name)
@@ -592,7 +592,7 @@ Status ClusterAdminClient::SetupRedisTable() {
 }
 
 Status ClusterAdminClient::DropRedisTable() {
-  const YBTableName table_name(kRedisKeyspaceName, kRedisTableName);
+  const YBTableName table_name(common::kRedisKeyspaceName, common::kRedisTableName);
   Status s = yb_client_->DeleteTable(table_name, true /* wait */);
   if (s.ok()) {
     LOG(INFO) << "Table '" << table_name.ToString() << "' deleted.";

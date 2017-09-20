@@ -70,10 +70,10 @@ public class YBClient implements AutoCloseable {
   private static final int MAX_NUM_RETRIES = 25;
 
   // Redis default table name.
-  public static final String REDIS_DEFAULT_TABLE_NAME = ".redis";
+  public static final String REDIS_DEFAULT_TABLE_NAME = "redis";
 
   // Redis keyspace name.
-  public static final String REDIS_KEYSPACE_NAME = "redis_keyspace";
+  public static final String REDIS_KEYSPACE_NAME = "system_redis";
 
   // Redis keyspace name.
   public static final String DEFAULT_KEYSPACE_NAME = "default_keyspace";

@@ -53,6 +53,16 @@ CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
   // Processing table name.
   RETURN_NOT_OK(relation_->Analyze(sem_context));
 
+  // We don't support redis keyspace and table name in YQL.
+  const client::YBTableName& table_name = relation_->ToTableName();
+  if (table_name.is_redis_keyspace_or_table()) {
+    return sem_context->Error(relation_->loc(),
+                              strings::Substitute("$0 and $1 are reserved names",
+                                                  common::kRedisKeyspaceName,
+                                                  common::kRedisTableName).c_str(),
+                              ErrorCode::INVALID_ARGUMENTS);
+  }
+
   // Save context state, and set "this" as current column in the context.
   SymbolEntry cached_entry = *sem_context->current_processing_id();
   sem_context->set_current_create_table_stmt(this);
