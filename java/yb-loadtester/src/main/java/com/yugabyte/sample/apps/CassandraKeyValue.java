@@ -13,6 +13,7 @@
 
 package com.yugabyte.sample.apps;
 
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
 
@@ -63,6 +64,10 @@ public class CassandraKeyValue extends AppBase {
   // Lock for initializing prepared statement objects.
   private static final Object prepareInitLock = new Object();
 
+  public CassandraKeyValue() {
+    buffer = new byte[appConfig.valueSize];
+  }
+
   /**
    * Drop the table created by this app.
    */
@@ -74,7 +79,7 @@ public class CassandraKeyValue extends AppBase {
   @Override
   public List<String> getCreateTableStatements() {
     String create_stmt = String.format(
-      "CREATE TABLE IF NOT EXISTS %s (k varchar, v varchar, primary key (k))", getTableName());
+      "CREATE TABLE IF NOT EXISTS %s (k varchar, v blob, primary key (k))", getTableName());
 
     if (appConfig.tableTTLSeconds > 0) {
       create_stmt += " WITH default_time_to_live = " + appConfig.tableTTLSeconds;
@@ -134,8 +139,15 @@ public class CassandraKeyValue extends AppBase {
       }
       return 1;
     }
-    String value = rows.get(0).getString(1);
-    key.verify(value);
+    if (appConfig.valueSize == 0) {
+      String value = rows.get(0).getString(1);
+      key.verify(value);
+    } else {
+      ByteBuffer value = rows.get(0).getBytes(1);
+      byte[] bytes = new byte[value.capacity()];
+      value.get(bytes);
+      verifyRandomValue(key, bytes);
+    }
     LOG.debug("Read key: " + key.toString());
     return 1;
   }
@@ -162,7 +174,14 @@ public class CassandraKeyValue extends AppBase {
     Key key = getSimpleLoadGenerator().getKeyToWrite();
     try {
       // Do the write to Cassandra.
-      BoundStatement insert = getPreparedInsert().bind(key.asString(), key.getValueStr());
+      BoundStatement insert = null;
+      if (appConfig.valueSize == 0) {
+        String value = key.getValueStr();
+        insert = getPreparedInsert().bind(key.asString(), value);
+      } else {
+        byte[] value = getRandomValue(key);
+        insert = getPreparedInsert().bind(key.asString(), ByteBuffer.wrap(value));
+      }
       ResultSet resultSet = getCassandraClient().execute(insert);
       LOG.debug("Wrote key: " + key.toString() + ", return code: " + resultSet.toString());
       getSimpleLoadGenerator().recordWriteSuccess(key);
