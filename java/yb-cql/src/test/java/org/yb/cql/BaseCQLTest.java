@@ -21,8 +21,6 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-import com.yugabyte.cql.PartitionAwarePolicy;
-
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
@@ -84,12 +82,6 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     socketOptions.setConnectTimeoutMillis(60 * 1000);
     return Cluster.builder()
               .addContactPointsWithPorts(miniCluster.getCQLContactPoints())
-              .withLoadBalancingPolicy(
-                new PartitionAwarePolicy(PARTITION_POLICY_REFRESH_FREQUENCY_SECONDS))
-              // To sniff the CQL wire protocol using Wireshark and debug, uncomment the following
-              // line to force the use of CQL V3 protocol. Wireshark does not decode V4 or higher
-              // protocol yet.
-              // .withProtocolVersion(com.datastax.driver.core.ProtocolVersion.V3)
               .withSocketOptions(socketOptions);
   }
 

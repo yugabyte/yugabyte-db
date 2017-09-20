@@ -18,7 +18,7 @@ import com.datastax.driver.core.exceptions.ProtocolError;
 import com.datastax.driver.core.policies.DCAwareRoundRobinPolicy;
 import com.datastax.driver.core.querybuilder.QueryBuilder;
 import com.google.common.net.HostAndPort;
-import com.yugabyte.cql.PartitionAwarePolicy;
+import com.yugabyte.driver.core.policies.PartitionAwarePolicy;
 import org.junit.Before;
 import org.junit.Test;
 import org.slf4j.Logger;

@@ -10,7 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-package com.yugabyte.cql;
+package com.yugabyte.driver.core.policies;
 
 import org.junit.Test;
 
@@ -18,10 +18,7 @@ import com.datastax.driver.core.BatchStatement;
 import com.datastax.driver.core.BoundStatement;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.Row;
-import com.datastax.driver.core.TableMetadata;
 import com.datastax.driver.core.utils.UUIDs;
-
-import com.yugabyte.cql.PartitionAwarePolicy;
 
 import org.yb.cql.BaseCQLTest;
 import org.yb.minicluster.IOMetrics;
@@ -32,7 +29,6 @@ import org.apache.commons.lang3.RandomStringUtils;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertFalse;
 
 import java.nio.ByteBuffer;
 import java.net.InetAddress;
@@ -42,101 +38,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 
-public class TestLoadBalancing extends BaseCQLTest {
-
-  // Test Jenkins 64-bit hash function to verify it produces identical results as the C++
-  // counterpart does.
-  @Test
-  public void testJenkins64() throws Exception {
-    final long seed = 97;
-    // 17, 40 and 256-byte sequences generated randomly.
-    final byte b1[] = {
-      (byte)0xc7, (byte)0x25, (byte)0x1d, (byte)0x5d,
-      (byte)0x75, (byte)0x3a, (byte)0x4e, (byte)0x46,
-      (byte)0x22, (byte)0x29, (byte)0x4d, (byte)0x6c,
-      (byte)0x67, (byte)0x7a, (byte)0xa8, (byte)0x25,
-      (byte)0x71};
-    final byte b2[] = {
-      (byte)0x83, (byte)0x8e, (byte)0x7e, (byte)0xf0,
-      (byte)0x71, (byte)0xef, (byte)0x9b, (byte)0x3e,
-      (byte)0x4a, (byte)0xe6, (byte)0x12, (byte)0x60,
-      (byte)0xc0, (byte)0xa1, (byte)0xf9, (byte)0x94,
-      (byte)0x5a, (byte)0x85, (byte)0x9b, (byte)0xb1,
-      (byte)0xf6, (byte)0x86, (byte)0x97, (byte)0xe1,
-      (byte)0xab, (byte)0x87, (byte)0xc8, (byte)0xab,
-      (byte)0xc1, (byte)0x28, (byte)0xd1, (byte)0x72,
-      (byte)0x73, (byte)0x0b, (byte)0xda, (byte)0x50,
-      (byte)0xe3, (byte)0xe6, (byte)0xf9, (byte)0x42};
-    final byte b3[] = {
-      (byte)0xad, (byte)0xe3, (byte)0xaa, (byte)0xb7,
-      (byte)0xd2, (byte)0xbc, (byte)0x3a, (byte)0xe6,
-      (byte)0x60, (byte)0xe4, (byte)0xc6, (byte)0xc1,
-      (byte)0x02, (byte)0x0a, (byte)0x3a, (byte)0x50,
-      (byte)0x66, (byte)0xb2, (byte)0x26, (byte)0x6c,
-      (byte)0x1d, (byte)0x1b, (byte)0x16, (byte)0xb1,
-      (byte)0x1b, (byte)0x51, (byte)0x74, (byte)0x9c,
-      (byte)0xa7, (byte)0xbb, (byte)0xad, (byte)0x46,
-      (byte)0x25, (byte)0x54, (byte)0xca, (byte)0x30,
-      (byte)0x3a, (byte)0x31, (byte)0xd0, (byte)0x34,
-      (byte)0x56, (byte)0xac, (byte)0xb1, (byte)0xca,
-      (byte)0xaf, (byte)0x7f, (byte)0x5c, (byte)0xf3,
-      (byte)0x9e, (byte)0x16, (byte)0x94, (byte)0x78,
-      (byte)0x84, (byte)0xca, (byte)0x60, (byte)0x66,
-      (byte)0x27, (byte)0x59, (byte)0xe1, (byte)0x99,
-      (byte)0xb4, (byte)0xc4, (byte)0xbd, (byte)0x50,
-      (byte)0x48, (byte)0x50, (byte)0xcb, (byte)0xa6,
-      (byte)0x0b, (byte)0xe1, (byte)0x71, (byte)0x31,
-      (byte)0x49, (byte)0x27, (byte)0x11, (byte)0x9e,
-      (byte)0xcc, (byte)0xcd, (byte)0xd8, (byte)0x19,
-      (byte)0x09, (byte)0xc6, (byte)0xdf, (byte)0x15,
-      (byte)0x64, (byte)0x0d, (byte)0xf7, (byte)0x25,
-      (byte)0x5c, (byte)0x48, (byte)0x19, (byte)0xc7,
-      (byte)0x6b, (byte)0x10, (byte)0x02, (byte)0x7e,
-      (byte)0x31, (byte)0x54, (byte)0x2a, (byte)0xd8,
-      (byte)0x92, (byte)0xe5, (byte)0xc5, (byte)0xab,
-      (byte)0xe9, (byte)0x3d, (byte)0x57, (byte)0x99,
-      (byte)0x9a, (byte)0x93, (byte)0x4f, (byte)0x48,
-      (byte)0x3f, (byte)0xfa, (byte)0x73, (byte)0x36,
-      (byte)0x03, (byte)0xe1, (byte)0xbd, (byte)0x27,
-      (byte)0xe5, (byte)0x06, (byte)0x8a, (byte)0x21,
-      (byte)0x33, (byte)0xff, (byte)0x91, (byte)0x80,
-      (byte)0x36, (byte)0x4d, (byte)0x2d, (byte)0x04,
-      (byte)0xc7, (byte)0x11, (byte)0xcc, (byte)0x2a,
-      (byte)0xc0, (byte)0xa9, (byte)0x17, (byte)0x18,
-      (byte)0x73, (byte)0xff, (byte)0xd5, (byte)0x0e,
-      (byte)0x0d, (byte)0x8b, (byte)0x6f, (byte)0x8b,
-      (byte)0xba, (byte)0x8c, (byte)0x37, (byte)0x49,
-      (byte)0xb1, (byte)0x31, (byte)0x5b, (byte)0xf4,
-      (byte)0x4d, (byte)0xd7, (byte)0x19, (byte)0x10,
-      (byte)0x40, (byte)0x6e, (byte)0x61, (byte)0x41,
-      (byte)0xf1, (byte)0x55, (byte)0xaa, (byte)0x44,
-      (byte)0x79, (byte)0x13, (byte)0x57, (byte)0x3b,
-      (byte)0x72, (byte)0xac, (byte)0xfe, (byte)0xce,
-      (byte)0xf8, (byte)0xd7, (byte)0x07, (byte)0x82,
-      (byte)0x05, (byte)0xef, (byte)0x0f, (byte)0x53,
-      (byte)0x6c, (byte)0xfe, (byte)0x7d, (byte)0x94,
-      (byte)0x48, (byte)0xa5, (byte)0x48, (byte)0x42,
-      (byte)0x47, (byte)0x70, (byte)0x29, (byte)0xe7,
-      (byte)0x7e, (byte)0x53, (byte)0xca, (byte)0x88,
-      (byte)0x89, (byte)0x8a, (byte)0xec, (byte)0xe5,
-      (byte)0x01, (byte)0x44, (byte)0xf5, (byte)0xc5,
-      (byte)0xc9, (byte)0x89, (byte)0x6d, (byte)0x6a,
-      (byte)0xf1, (byte)0x26, (byte)0x61, (byte)0xae,
-      (byte)0x30, (byte)0x50, (byte)0x61, (byte)0x68,
-      (byte)0x41, (byte)0xac, (byte)0x82, (byte)0x40,
-      (byte)0xdb, (byte)0x12, (byte)0x00, (byte)0x68,
-      (byte)0xad, (byte)0x34, (byte)0x52, (byte)0xb2,
-      (byte)0xbb, (byte)0xc5, (byte)0x74, (byte)0xf1,
-      (byte)0x3e, (byte)0x00, (byte)0x98, (byte)0x6e,
-      (byte)0x1d, (byte)0xc2, (byte)0xd7, (byte)0x7d,
-      (byte)0xc6, (byte)0xc7, (byte)0x10, (byte)0xb2,
-      (byte)0xac, (byte)0xcf, (byte)0x8b, (byte)0x25,
-      (byte)0xd9, (byte)0x7d, (byte)0xd5, (byte)0x20};
-
-    assertEquals(Long.parseUnsignedLong("1789751740810280356"), Jenkins.hash64(b1, seed));
-    assertEquals(Long.parseUnsignedLong("4001818822847464429"), Jenkins.hash64(b2, seed));
-    assertEquals(Long.parseUnsignedLong("15240025333683105143"), Jenkins.hash64(b3, seed));
-  }
+public class TestLoadBalancingPolicy extends BaseCQLTest {
 
   // Test hash-key function in PartitionAwarePolicy to verify it is consistent with the hash
   // function used in YB (the token() function).
@@ -255,56 +157,6 @@ public class TestLoadBalancing extends BaseCQLTest {
 
       session.execute("drop table t3;");
     }
-  }
-
-  // Test PartitionMetadata
-  @Test
-  public void testPartitionMetadata() throws Exception {
-
-    // Create a PartitionMetadata with no refresh cycle.
-    PartitionMetadata metadata = new PartitionMetadata(cluster, 0);
-    final int MAX_WAIT_SECONDS = 10;
-
-    // Create test table. Verify that the PartitionMetadata gets notified of the table creation
-    // and loads the metadata.
-    session.execute("create table test_partition1 (k int primary key);");
-    TableMetadata table = cluster
-                          .getMetadata()
-                          .getKeyspace(BaseCQLTest.DEFAULT_TEST_KEYSPACE)
-                          .getTable("test_partition1");
-    boolean found = false;
-    for (int i = 0; i < MAX_WAIT_SECONDS; i++) {
-      if (metadata.getHostsForKey(table, 0).size() > 0) {
-        found = true;
-        break;
-      }
-      Thread.sleep(1000);
-    }
-    assertTrue(found);
-
-    // Drop test table. Verify that the PartitionMetadata gets notified of the table drop
-    // and clears the the metadata.
-    session.execute("Drop table test_partition1;");
-    for (int i = 0; i < MAX_WAIT_SECONDS; i++) {
-      if (metadata.getHostsForKey(table, 0).size() == 0) {
-        found = false;
-        break;
-      }
-      Thread.sleep(1000);
-    }
-    assertFalse(found);
-
-    // Create a PartitionMetadata with 1-second refresh cycle. Verify the metadata is refreshed
-    // periodically even without table creation/drop.
-    metadata = new PartitionMetadata(cluster, 1);
-    final int MIN_LOAD_COUNT = 5;
-    for (int i = 0; i < MAX_WAIT_SECONDS; i++) {
-      if (metadata.loadCount.get() >= MIN_LOAD_COUNT)
-        break;
-      Thread.sleep(1000);
-    }
-    LOG.info("PartitionMetadata load count = " + metadata.loadCount.get());
-    assertTrue(metadata.loadCount.get() >= MIN_LOAD_COUNT);
   }
 
   // Test load-balancing policy with DMLs.
