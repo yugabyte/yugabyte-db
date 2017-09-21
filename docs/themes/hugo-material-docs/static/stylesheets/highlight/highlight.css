@@ -15,6 +15,7 @@
 
 .hljs {
 display:block;
+/*white-space: pre-wrap;*/
 overflow-x:auto;
 }
 

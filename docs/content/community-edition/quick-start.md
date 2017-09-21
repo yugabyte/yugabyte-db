@@ -98,48 +98,35 @@ cqlsh>
 $ java -version
 ```
 
-- Run the Cassandra time-series sample app using the executable jar
+- Run the CQL time-series sample app using the executable jar
 
 ```sh
 $ java -jar ./java/yb-sample-apps.jar --workload CassandraTimeseries --nodes localhost:9042
-2017-09-06 23:14:48,817 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Using a randomly generated UUID : b03bb542-7009-4302-8141-f30c2245181b
-2017-09-06 23:14:48,835 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] App: CassandraTimeseries
-2017-09-06 23:14:48,836 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Adding node: localhost:9042
-2017-09-06 23:14:48,838 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Num reader threads: 1, num writer threads: 16
-2017-09-06 23:14:48,843 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Num unique keys to insert: 0
-2017-09-06 23:14:48,843 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Num keys to update: -1
-2017-09-06 23:14:48,843 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Num keys to read: -1
-2017-09-06 23:14:48,843 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Value size: 100
-2017-09-06 23:14:48,843 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Restrict values to ASCII strings: false
-2017-09-06 23:14:48,843 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Perform sanity check at end of app run: false
-2017-09-06 23:14:48,843 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Table TTL (secs): 86400
-2017-09-06 23:14:48,843 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Local reads: false
-2017-09-06 23:14:48,844 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Read only load: false
-2017-09-06 23:14:50,215 [INFO|com.yugabyte.sample.apps.AppBase|AppBase] Ignoring exception dropping table: SQL error (yb/sql/ptree/process_context.cc:41): Table Not Found - Not found (yb/common/wire_protocol.cc:122): The table does not exist: table_name: "ts_metrics_raw"
-namespace {
-  name: "ybdemo_keyspace"
-}
-
-DROP TABLE ts_metrics_raw;
-           ^^^^^^^^^^^^^^
- (error -301)
-2017-09-06 23:14:54,046 [INFO|com.yugabyte.sample.common.metrics.MetricsTracker|MetricsTracker] Read: 0.00 ops/sec (0.00 ms/op), 0 total ops  |  Write: 0.00 ops/sec (0.00 ms/op), 0 total ops  |  Uptime: 5202 ms | Verification: ON | 
-2017-09-06 23:14:54,337 [INFO|com.yugabyte.sample.apps.AppBase|AppBase] Created a Cassandra table using query: [CREATE TABLE IF NOT EXISTS ts_metrics_raw (  user_id varchar, metric_id varchar, node_id varchar, ts timestamp, value varchar, primary key ((user_id, metric_id), node_id, ts)) WITH default_time_to_live = 86400;]
+2017-09-19 04:07:13,675 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Using a randomly generated UUID : a22ba332-70bd-4c1d-b5ba-dbbf6e1298bb
+2017-09-19 04:07:13,682 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] App: CassandraTimeseries
+2017-09-19 04:07:13,682 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Adding node: localhost:9042
+2017-09-19 04:07:13,683 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Num reader threads: 1, num writer threads: 16
+2017-09-19 04:07:13,688 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Num unique keys to insert: 0
+2017-09-19 04:07:13,688 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Num keys to update: -1
+2017-09-19 04:07:13,688 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Num keys to read: -1
+2017-09-19 04:07:13,688 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Value size: 100
+2017-09-19 04:07:13,688 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Restrict values to ASCII strings: false
+2017-09-19 04:07:13,688 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Perform sanity check at end of app run: false
+2017-09-19 04:07:13,688 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Table TTL (secs): 86400
+2017-09-19 04:07:13,688 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Local reads: false
+2017-09-19 04:07:13,688 [INFO|com.yugabyte.sample.common.CmdLineOpts|CmdLineOpts] Read only load: false
+2017-09-19 04:07:14,973 [INFO|com.yugabyte.sample.apps.AppBase|AppBase] Dropped Cassandra table ts_metrics_raw using query: [DROP TABLE IF EXISTS ts_metrics_raw;]
+2017-09-19 04:07:16,698 [INFO|com.yugabyte.sample.apps.AppBase|AppBase] Created a Cassandra table using query: [CREATE TABLE IF NOT EXISTS ts_metrics_raw (  user_id varchar, metric_id varchar, node_id varchar, ts timestamp, value varchar, primary key ((user_id, metric_id), node_id, ts)) WITH default_time_to_live = 86400;]
 log4j:WARN No appenders could be found for logger (io.netty.util.ResourceLeakDetector).
 log4j:WARN Please initialize the log4j system properly.
 log4j:WARN See http://logging.apache.org/log4j/1.2/faq.html#noconfig for more info.
-2017-09-06 23:14:59,047 [INFO|com.yugabyte.sample.common.metrics.MetricsTracker|MetricsTracker] Read: 12.78 ops/sec (51.84 ms/op), 64 total ops  |  Write: 700.03 ops/sec (145.36 ms/op), 3501 total ops  |  Uptime: 10203 ms | Verification: ON | 
-2017-09-06 23:15:04,052 [INFO|com.yugabyte.sample.common.metrics.MetricsTracker|MetricsTracker] Read: 59.74 ops/sec (16.75 ms/op), 363 total ops  |  Write: 1085.97 ops/sec (105.62 ms/op), 8936 total ops  |  Uptime: 15208 ms | Verification: ON | 
-2017-09-06 23:15:09,054 [INFO|com.yugabyte.sample.common.metrics.MetricsTracker|MetricsTracker] Read: 98.16 ops/sec (10.17 ms/op), 854 total ops  |  Write: 1172.08 ops/sec (98.10 ms/op), 14799 total ops  |  Uptime: 20210 ms | Verification: ON | 
-2017-09-06 23:15:14,058 [INFO|com.yugabyte.sample.common.metrics.MetricsTracker|MetricsTracker] Read: 93.34 ops/sec (10.72 ms/op), 1321 total ops  |  Write: 1129.43 ops/sec (102.95 ms/op), 20450 total ops  |  Uptime: 25214 ms | Verification: ON | 
-2017-09-06 23:15:19,058 [INFO|com.yugabyte.sample.common.metrics.MetricsTracker|MetricsTracker] Read: 92.18 ops/sec (10.85 ms/op), 1782 total ops  |  Write: 1002.22 ops/sec (117.08 ms/op), 25462 total ops  |  Uptime: 30214 ms | Verification: ON | 
-2017-09-06 23:15:24,060 [INFO|com.yugabyte.sample.common.metrics.MetricsTracker|MetricsTracker] Read: 94.37 ops/sec (10.58 ms/op), 2254 total ops  |  Write: 1100.50 ops/sec (106.65 ms/op), 30966 total ops  |  Uptime: 35216 ms | Verification: ON | 
-2017-09-06 23:15:29,060 [INFO|com.yugabyte.sample.common.metrics.MetricsTracker|MetricsTracker] Read: 99.59 ops/sec (10.05 ms/op), 2752 total ops  |  Write: 1127.67 ops/sec (103.92 ms/op), 36605 total ops  |  Uptime: 40216 ms | Verification: ON | 
-2017-09-06 23:15:34,061 [INFO|com.yugabyte.sample.common.metrics.MetricsTracker|MetricsTracker] Read: 101.19 ops/sec (9.88 ms/op), 3258 total ops  |  Write: 1106.70 ops/sec (105.74 ms/op), 42139 total ops  |  Uptime: 45217 ms | Verification: ON | 
-2017-09-06 23:15:39,065 [INFO|com.yugabyte.sample.common.metrics.MetricsTracker|MetricsTracker] Read: 101.72 ops/sec (9.83 ms/op), 3767 total ops  |  Write: 1046.02 ops/sec (110.82 ms/op), 47373 total ops  |  Uptime: 50221 ms | Verification: ON |
+2017-09-19 04:07:18,895 [INFO|com.yugabyte.sample.common.metrics.MetricsTracker|MetricsTracker] Read: 0.59 ops/sec (225.00 ms/op), 3 total ops  |  Write: 162.78 ops/sec (290.38 ms/op), 822 total ops  |  Uptime: 5206 ms | Verification: ON | 
+2017-09-19 04:07:23,898 [INFO|com.yugabyte.sample.common.metrics.MetricsTracker|MetricsTracker] Read: 25.98 ops/sec (39.42 ms/op), 133 total ops  |  Write: 1722.46 ops/sec (55.21 ms/op), 9439 total ops  |  Uptime: 10209 ms | Verification: ON | 
+2017-09-19 04:07:28,902 [INFO|com.yugabyte.sample.common.metrics.MetricsTracker|MetricsTracker] Read: 38.97 ops/sec (25.72 ms/op), 328 total ops  |  Write: 1904.02 ops/sec (56.59 ms/op), 18967 total ops  |  Uptime: 15213 ms | Verification: ON | 
+2017-09-19 04:07:33,903 [INFO|com.yugabyte.sample.common.metrics.MetricsTracker|MetricsTracker] Read: 47.99 ops/sec (20.90 ms/op), 568 total ops  |  Write: 2014.28 ops/sec (54.81 ms/op), 29040 total ops  |  Uptime: 20214 ms | Verification: ON | 
 ```
 
-As you can see above, the Cassandra time-series sample app first creates a keyspace `ybdemo_keyspace` and a table `ts_metrics_raw`. It then starts multiple writer and reader threads to generate the load. The read/write ops count and latency metrics observed should not be used for performance testing purposes.
+As you can see above, the CQL time-series sample app first creates a keyspace `ybdemo_keyspace` and a table `ts_metrics_raw`. It then starts multiple writer and reader threads to generate the load. The read/write ops count and latency metrics observed should not be used for performance testing purposes.
 
 - Verify using cqlsh
 
@@ -244,11 +231,11 @@ $ java -jar ./java/yb-sample-apps.jar --workload RedisKeyValue --nodes localhost
 
 ```sh
 $ ./bin/redis-cli
-127.0.0.1:6379> get key:1
-"val:1"
-127.0.0.1:6379> get key:2
-"val:2"
-127.0.0.1:6379> get key:100
-"val:100"
-127.0.0.1:6379> 
+127.0.0.1:6379> get key:1  
+"val:1"  
+127.0.0.1:6379> get key:2  
+"val:2"  
+127.0.0.1:6379> get key:100  
+"val:100"  
+127.0.0.1:6379>   
 ```

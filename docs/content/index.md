@@ -5,14 +5,22 @@ type: index
 weight: 1
 ---
 
-YugaByte is an open-source, cloud-native database for mission-critical applications that brings together the best of both NewSQL and NoSQL. 
+## Overview
+
+### What is YugaByte?
+YugaByte is a cloud-native database for mission-critical enterprise applications. It is meant to be a system-of-record/authoritative database that applications can rely on for correctness and availability. It allows applications to easily scale up and scale down in the cloud, on-premises or across hybrid environments without creating operational complexity or increasing the risk of outages.
+
+In terms of data model and APIs, YugaByte currently supports **Apache Cassandra Query Language** & its client drivers natively. In addition, it also supports an automatically sharded, clustered & elastic **Redis-as-a-Database** in a Redis driver compatible manner. **Distributed transactions** to support **strongly consistent secondary indexes**, multi-table/row ACID operations and in general ANSI SQL support is on the roadmap.
+
+### What makes YugaByte unique?
+YugaByte brings together the best of both NewSQL and NoSQL along with cloud-native infrastructure orchestration. 
 
 - NewSQL databases are a good fit for mission-critical applications given their strongly consistent cores. However, these databases are typically limited to single datacenter deployments given the need for a highly reliable network. 
 - NoSQL databases are comparably easier to run across multi-datacenters given their ability to scale both reads and writes linearly. However, these databases are incredibly difficult to develop and reason about given the loose guarantees of eventually consistent data replication. 
 
 ![YugaByte value prop](/images/value-prop.png)
 
-YugaByte ensures that the above long-held compromises are no longer impeding the development and deployment of mission-critical applications. YugaByte has a strongly consistent core similar to NewSQL systems and is also highly available even in multi-datacenter deployments similar to NoSQL systems. Additionally, it adds the much needed layer of cloud native operational simplicity so that modern technical operations teams can easily exploit the full potential of their chosen cloud(s).
+YugaByte ensures that the above long-held compromises are no longer impeding the development and deployment of mission-critical applications. YugaByte has a strongly consistent core similar to NewSQL systems and is also highly available even in multi-datacenter deployments similar to NoSQL systems. Additionally, it adds the much needed layer of cloud-native operational simplicity so that modern technical operations teams can easily exploit the full potential of their chosen cloud(s).
 
 ## Key features 
 
@@ -57,9 +65,8 @@ YugaByte currently supports 2 popular APIs namely [Apache Cassandra Query Langua
 ### Multi-model
 YugaByte can be used to model multiple different data workloads such as flexible schema, time-series, key-value. The first 2 models are best built using CQL while the last one lends itself to the Redis command library.
 
-### Multi-cloud
-YugaByte is inspired by [Google Cloud Spanner](https://cloud.google.com/spanner/) from an architectural standpoint but instead of using proprietary infrastructure (such as TrueTime) that Spanner uses, YugaByte is built to run on commodity infrastructure. In other words, there is no cloud lock-in with YugaByte and it can be run on any of the public clouds or an on-premises/private datacenter.
-
+### Cloud-native
+YugaByte is inspired by [Google Cloud Spanner](https://cloud.google.com/spanner/) from an architectural standpoint but instead of using proprietary infrastructure (such as TrueTime) that Spanner uses, YugaByte is built to run on commodity infrastructure while still remaining decoupled from the exact cloud platform. In other words, there is no cloud lock-in with YugaByte and it can be run on any of the public clouds or an on-premises/private datacenter.
 
 ## Key benefits
 
@@ -78,32 +85,7 @@ YugaByte is inspired by [Google Cloud Spanner](https://cloud.google.com/spanner/
 - **Online cross-cloud mobility**: move across cloud infrastructure providers without any lock-in
 - **Hardware flexibility**: seamlessly move from one type of compute and storage to another for cost and performance reasons
 
-## Enterprise apps best served
+## Get started 
 
-Three types of mission-critical Online Transaction Processing (OLTP) or Hybrid Transactional & Analytical Processing (HTAP) enterprise applications are best served by YugaByte. These map to the three types of data models offered.
-
-### Flexible schema
-
-Distributed OLTP applications (such as retail product catalog, unified customer profile, global identity, transactional systems-of-record, centralized configuration management etc.) that need to be run across multi-datacenters for high availability and also require a semi-structured yet easily changeable schema. These applications can benefit heavily from YugaByte’s tunable consistency options as well as the ability to add/remove attributes in the schema in a completely online manner without any hidden performance issues. Such applications use YugaByte’s CQL support.
-
-### Time-series
-
-HTAP applications (such as application/infrastructure monitoring as well as industrial/consumer Internet-of-Things) that ingest time-series metrics and events essentially require high write throughput for append-only workloads deployed on cost-efficient tiered storage as well as Apache Spark integration for batch/real-time analytics. These applications can directly leverage YugaByte’s CQL support or use other open-source time-series frameworks such as [KairosDB](https://kairosdb.github.io/) that can use Apache Cassandra as a backing store.
-
-### Key-value
-
-Mission-critical key-value applications (such as financial transaction processing, stock quotes and sports feeds) that require low latency reads and writes without the overhead of explicit memory management. Such applications use YugaByte’s Redis API support.
-
-## Product editions
-
-YugaByte offers two ways to get started with YugaByte DB. 
-
-![Product Editions](/images/editions.png)
-
-### Community Edition
-[Community Edition](/community-edition/quick-start/) is the best choice for the individual developer looking to develop applications and deploy the DB into production with traditional DevOps tools. 
-
-### Enteprise Edition
-[Enterprise Edition](/enterprise-edition/deploy/) includes all the features of the Community Edition as well as additional features such as built-in cloud-native operations, advanced tunable consistency and enterprise security. It is the simplest way to run the DB in mission-critical production environments with one or more datacenters (across both public cloud and on-premises datacenters). 
-
+The easiest way to get started with YugaByte is to quick start a Community Edition local cluster using the instructions provided [here](/community-edition/quick-start/).
 

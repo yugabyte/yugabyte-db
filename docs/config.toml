@@ -27,17 +27,18 @@ googleAnalytics = "UA-104956980-1"
 	custom_js  = []
 
 	# Syntax highlighting theme
-	highlight_css  = ""
+	# highlight_css  = "stylesheets/highlight/dracula.css"
 
 	[params.palette]
     	primary = "orange"
-    	accent  = "brown"
+    	accent  = "amber"
 
     [params.font]
     	text = "Open Sans"
-    	code = "Inconsolata"
+    	code = "Consolas"
 
 [social]
+	# github = "YugaByte"
 	# twitter = "YugaByte"
 	email   = "support@yugabyte.com"
 
@@ -111,11 +112,11 @@ googleAnalytics = "UA-104956980-1"
 	url = "architecture/core-functions/"
 	weight = 90
 
-[[menu.main]]
-	name   = "Operations"
-	parent = "architecture"
-	url = "architecture/operations/"
-	weight = 95
+#[[menu.main]]
+#	name   = "Operations"
+#	parent = "architecture"
+#	url = "architecture/operations/"
+#	weight = 95
 
 #[[menu.main]]
 #	name   = "Enterprise Features"

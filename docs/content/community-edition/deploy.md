@@ -35,7 +35,7 @@ $ sudo yum install -y epel-release ntp cyrus-sasl-plain cyrus-sasl-devel
 Download the YugaByte DB package [here](https://s3-us-west-2.amazonaws.com/download.yugabyte.com/0.9.0.0/yugabyte.ce.0.9.0.0-b0.tar.gz). Thereafter, follow the instructions below.
 
 ### Install
-For the purpose of this document, let's assume that we have 3 instances with private IP addresses as `172.151.17.130, 172.151.17.220, 172.151.17.140` and are accessible from each other over the network. On each of these instances, run the following steps.
+For the purpose of this document, let's assume that we have 3 instances with private IP addresses as `172.151.17.130, 172.151.17.220, 172.151.17.140` and are accessible from each other over the network. As noted in the [default ports reference](/community-edition/deploy/#default-ports-reference) section, YB-Masters will run on port 7100 and YB-TServers will run on port 9100 of these instances. On each of these instances, run the following steps.
 
 Copy the YugaByte DB package into each instace and then running the following commands.
 
@@ -62,19 +62,26 @@ $ mkdir /home/centos/disk1 /home/centos/disk2
 
 ## Start YB-Masters
 
-Execute the following steps on each of the instances.
+Execute the following steps on each of the instances. 
 
-- Create a `master.conf` file with the following flags. For the full list of flags, see the [yb-master Reference](/admin/yb-master/). 
+- Run `yb-master` as below. Note how multiple directories can be provided to the `--fs_data_dirs` flag. For the full list of flags, see the [yb-master Reference](/admin/yb-master/). 
+
+```sh
+$ ./bin/yb-master \
+--master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
+--fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
+--create_cluster &
+```
+
+Remove the `--create_cluster` flag when restarting the `yb-master` on an existing cluster.
+
+- Alternatively, you can also create a `master.conf` file with the following flags and then run the `yb-master` with the `--flagfile` option as shown below.
 
 ```sh
 --master_addresses=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
 --fs_data_dirs=/home/centos/disk1,/home/centos/disk2
 --create_cluster
 ```
-
-Note how multiple directories can be provided to the `--fs_data_dirs` flag.
-
-- Run `yb-master` as below. 
 
 ```sh
 $ ./bin/yb-master --flagfile master.conf &
@@ -102,14 +109,22 @@ Now we are ready to start the yb-tservers.
 
 ## Start YB-TServers
 
-- On each of the instances, create a `tserver.conf` file with the following flags. For the full list of flags, see the [yb-tserver Reference](/admin/yb-tserver/). 
+Execute the following steps on each of the instances. 
+
+- Run `yb-tserver` as below. Note that all the master addresses have to be provided as a flag. For the full list of flags, see the [yb-tserver Reference](/admin/yb-tserver/). 
+
+```sh
+$ ./bin/yb-tserver \
+--tserver_master_addrs 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
+--fs_data_dirs "/home/centos/disk1,/home/centos/disk2" &
+```
+
+- Alternatively, you can also create a `tserver.conf` file with the following flags and then run the `yb-tserver` with the `--flagfile` option as shown below.
 
 ```sh
 --tserver_master_addrs=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
 --fs_data_dirs=/home/centos/disk1,/home/centos/disk2
 ```
-
-- Run `yb-tserver` as below. 
 
 ```sh
 $ ./bin/yb-tserver --flagfile tserver.conf &
@@ -164,12 +179,12 @@ The above deployment uses the various default ports listed below.
 
 Service | Type | Port 
 --------|------| -------
-yb-master | rpc | 7100
-yb-master | monitoring web server | 7000
-yb-tserver | rpc | 9100
-yb-tserver | monitoring web server | 9000
-cql | rpc | 9042
-cql | monitoring web server | 12000
-redis | rpc | 6379
-redis | monitoring web server | 11000
+`yb-master` | rpc | 7100
+`yb-master` | monitoring web server | 7000
+`yb-tserver` | rpc | 9100
+`yb-tserver` | monitoring web server | 9000
+`cql` | rpc | 9042
+`cql` | monitoring web server | 12000
+`redis` | rpc | 6379
+`redis` | monitoring web server | 11000
 
