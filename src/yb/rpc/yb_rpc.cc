@@ -33,7 +33,13 @@
 using yb::operator"" _MB;
 
 DECLARE_bool(rpc_dump_all_traces);
-DEFINE_int32(rpc_max_message_size, 8_MB,
+// Maximum size of RPC should be larger than size of consensus batch
+// At each layer, we embed the "message" from the previous layer.
+// In order to send a string of 32MB, the request from cql/redis will be larger
+// than that because we will have overheads from that layer.
+// Hence, we have a limit of 33MB at the consensus layer.
+// The rpc layer adds its own headers, so we limit the rpc message size to 34MB.
+DEFINE_int32(rpc_max_message_size, 34_MB,
              "The maximum size of a message of any RPC that the server will accept.");
 
 using std::placeholders::_1;

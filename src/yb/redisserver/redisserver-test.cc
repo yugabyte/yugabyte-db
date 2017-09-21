@@ -371,14 +371,15 @@ TEST_F(TestRedisService, SimpleCommandInline) {
 }
 
 TEST_F(TestRedisService, HugeCommandInline) {
-  const int kStringRepeats = 1024 * 1024;
-  string value = "";
-  for (int i = 0; i < kStringRepeats; i++) {
-    value += "Test";
-  }
+  const int kStringRepeats = 32 * 1024 * 1024;
+  string value(kStringRepeats, 'T');
   DoRedisTestOk(__LINE__, {"SET", "foo", value});
   DoRedisTestBulkString(__LINE__, {"GET", "foo"}, value);
-  LOG(INFO) << yb::Format("I finished get $0", 1);
+  DoRedisTestOk(__LINE__, {"SET", "foo", "Test"});
+  DoRedisTestBulkString(__LINE__, {"GET", "foo"}, "Test");
+  SyncClient();
+  VerifyCallbacks();
+  DoRedisTestExpectError(__LINE__, {"SET", "foo", value+value});
   SyncClient();
   VerifyCallbacks();
 }

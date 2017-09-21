@@ -202,7 +202,7 @@ TEST_F(RpcStubTest, TestIncoherence) {
 // in sending the entire data in one go.
 TEST_F(RpcStubTest, TestBigCallData) {
   const int kNumSentAtOnce = 20;
-  const size_t kMessageSize = 5 * 1024 * 1024;
+  const size_t kMessageSize = 32 * 1024 * 1024;
   string data;
   data.resize(kMessageSize);
 

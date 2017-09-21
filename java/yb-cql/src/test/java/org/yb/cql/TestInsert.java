@@ -14,6 +14,7 @@ package org.yb.cql;
 
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
+import com.datastax.driver.core.exceptions.TransportException;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Test;
 
@@ -42,10 +43,12 @@ public class TestInsert extends BaseCQLTest {
 
   @Test
   public void testLargeInsert() throws Exception {
-    final int STRING_SIZE = 4 * 1024 * 1024;
+    final int STRING_SIZE = 32 * 1024 * 1024;
+    final String errorMessage = "Connection has been closed";
     String tableName = "test_large_insert";
     String create_stmt = String.format(
         "CREATE TABLE %s (h int PRIMARY KEY, c varchar);", tableName);
+    String exceptionString = null;
     session.execute(create_stmt);
     String ins_stmt = "INSERT INTO test_large_insert (h, c) VALUES (1, ?);";
     String value = RandomStringUtils.randomAscii(STRING_SIZE);
@@ -55,6 +58,13 @@ public class TestInsert extends BaseCQLTest {
     Row row = runSelect(sel_stmt).next();
     assertEquals(1, row.getInt(0));
     assertEquals(value, row.getString(1));
+    try {
+      session.execute(ins_stmt, value+value);
+    }
+    catch (TransportException e) {
+      exceptionString = e.getCause().getMessage();
+    }
+    assertTrue(exceptionString.contains(errorMessage));
   }
 
   @Test

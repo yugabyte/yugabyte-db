@@ -60,7 +60,9 @@ class CQLMessage {
   static constexpr int32_t kHeaderPosLength     = 5;
   static constexpr int32_t kMessageHeaderLength = 9;
 
-  static constexpr int32_t kMaxMessageLength    = 256 * 1024 * 1024; // Max msg length per CQL spec
+  // Max msg length per CQL spec. Since yb_rpc limit is 64MB, we limit it to 33MB
+  // This length corresponds to a string size of 32MB along with any additional fields and overheads
+  static constexpr int32_t kMaxMessageLength    = 33 * 1024 * 1024;
 
   // Datatypes for CQL message header
   using Version = uint8_t;

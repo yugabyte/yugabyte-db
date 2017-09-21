@@ -93,7 +93,7 @@ Status ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
     if (args[idx] == "EX" || args[idx] == "PX") {
       if (args.size() < idx + 2) {
         return STATUS_SUBSTITUTE(InvalidArgument,
-            "Expected TTL field after the EX flag, no vale found");
+            "Expected TTL field after the EX flag, no value found");
       }
       auto ttl_val = ParseInt64(args[idx + 1], "TTL");
       RETURN_NOT_OK(ttl_val);

@@ -47,6 +47,9 @@
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/memory/mc_types.h"
+#include "yb/util/size_literals.h"
+
+using yb::operator"" _MB;
 
 #define DEFINE_REDIS_histogram_EX(name_identifier, label_str, desc_str) \
   METRIC_DEFINE_histogram( \
@@ -94,6 +97,10 @@ constexpr int32_t kDefaultRedisServiceTimeoutMs = 60000;
 
 DEFINE_int32(redis_service_yb_client_timeout_millis, kDefaultRedisServiceTimeoutMs,
              "Timeout in milliseconds for RPC calls from Redis service to master/tserver");
+
+// In order to support 32MB strings, we add an overhead for the redis command for headers
+DEFINE_int32(redis_max_command_size, 33_MB,
+             "Maximum size of the command in redis");
 
 DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
 
@@ -829,6 +836,14 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
   auto call = std::static_pointer_cast<RedisInboundCall>(call_ptr);
 
   DVLOG(4) << "Asked to handle a call " << call->ToString();
+  if (call->serialized_request().size() > FLAGS_redis_max_command_size) {
+    auto message = StrCat("Size of redis command ", call->serialized_request().size(),
+                          ", but we only support up to length of ", FLAGS_redis_max_command_size);
+    for (size_t idx = 0; idx != call->client_batch().size(); ++idx) {
+      RespondWithFailure(call, idx, message);
+    }
+    return;
+  }
 
   // Ensure that we have the required YBClient(s) initialized.
   if (!yb_client_initialized_.load(std::memory_order_acquire)) {

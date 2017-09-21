@@ -61,7 +61,7 @@ struct OpIdBiggerThanFunctor;
 
 namespace log {
 
-// Suffix for temprorary files
+// Suffix for temporary files
 extern const char kTmpSuffix[];
 
 // Each log entry is prefixed by its length (4 bytes), CRC (4 bytes),

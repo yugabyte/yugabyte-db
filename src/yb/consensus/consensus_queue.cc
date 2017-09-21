@@ -62,12 +62,18 @@
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/enums.h"
 #include "yb/util/tostring.h"
 
-DEFINE_int32(consensus_max_batch_size_bytes, 32 * 1024 * 1024,
+using yb::operator"" _MB;
+
+// The maximum size of the protobuf is 64MB by default, and this limits the size of the rpc
+// Since we intend to support value sizes of 32MB, with the additional overhead we limit
+// the consensus batch size to 33 MB. An alternate value below 64MB would work.
+DEFINE_int32(consensus_max_batch_size_bytes, 33_MB,
              "The maximum per-tablet RPC batch size when updating peers.");
 TAG_FLAG(consensus_max_batch_size_bytes, advanced);
 
@@ -83,6 +89,8 @@ DEFINE_int32(consensus_inject_latency_ms_in_notifications, 0,
              "consensus implementation.");
 TAG_FLAG(consensus_inject_latency_ms_in_notifications, hidden);
 TAG_FLAG(consensus_inject_latency_ms_in_notifications, unsafe);
+
+DECLARE_int32(rpc_max_message_size);
 
 namespace yb {
 namespace consensus {
@@ -350,7 +358,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   // send, so we'll send a status-only request. Otherwise, we grab requests
   // from the log starting at the last_received point.
   if (!peer->is_new) {
-
+    DCHECK_LT(FLAGS_consensus_max_batch_size_bytes + 1_KB, FLAGS_rpc_max_message_size);
     // The batch of messages to send to the peer.
     ReplicateMsgs messages;
     int max_batch_size = FLAGS_consensus_max_batch_size_bytes - request->ByteSize();
