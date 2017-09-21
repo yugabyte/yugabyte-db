@@ -97,10 +97,8 @@ public class TestConsistencyLevels extends BaseCQLTest {
     CreateTableOptions options = new CreateTableOptions();
     options.setNumTablets(1);
     options.setTableType(Common.TableType.YQL_TABLE_TYPE);
-    client.createTable(TABLE_NAME, new Schema(
+    ybTable = client.createTable(TABLE_NAME, new Schema(
       Arrays.asList(hash_column.build(), range_column.build(), regular_column.build())), options);
-
-    ybTable = client.openTable(TABLE_NAME);
 
     // Verify number of replicas.
     List<LocatedTablet> tablets = ybTable.getTabletsLocations(0);
@@ -154,7 +152,13 @@ public class TestConsistencyLevels extends BaseCQLTest {
     // Wait for replicas to converge. Assuming 10 ops will end up hitting each tserver.
     for (int i = 0; i < 10; i++) {
       TestUtils.waitFor(() -> {
-        return verifyNumRows(ConsistencyLevel.ONE);
+        // Ensure the condition is consistently true before returning.
+        for (int j = 0; j < 10; j++) {
+          if (!verifyNumRows(ConsistencyLevel.ONE)) {
+            return false;
+          }
+        }
+        return true;
       }, WAIT_FOR_REPLICATION_TIMEOUT_MS);
     }
 
