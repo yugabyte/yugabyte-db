@@ -134,6 +134,9 @@ class RowsResult : public ExecutedResult {
 
   CHECKED_STATUS Append(const RowsResult& other);
   void clear_paging_state() { paging_state_.clear(); }
+  void set_paging_state(const QLPagingStatePB& paging_state) {
+    paging_state.SerializeToString(&paging_state_);
+  }
 
   // Parse the rows data and return it as a row block. It is the caller's responsibility to free
   // the row block after use.

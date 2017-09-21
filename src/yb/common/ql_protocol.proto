@@ -166,7 +166,7 @@ enum QLClient {
 // is populated in DocDB (QLReadOperation) with the DocKey of the next row to read. We also embed a
 // hybrid-time which is the clean snapshot time for read consistency. We also populate the
 // "next_partition_key" for the next row, which is the hash code of the hash portion of the DocKey.
-// This next parition key is needed by YBClient (Batcher) to locate the tablet to send the request
+// This next partition key is needed by YBClient (Batcher) to locate the tablet to send the request
 // to and it doesn't have access to the DocDB function to decode and extract from the DocKey.
 //
 // When we are done returning rows from the current tablet and the next fetch should continue in
@@ -189,6 +189,11 @@ message QLPagingStatePB {
   // Running total number of rows read across fetches so far. Needed to ensure we read up to the
   // number of rows in the SELECT's LIMIT clause across fetches.
   optional uint64 total_num_rows_read = 4;
+
+  // For selects with IN condition on the hash columns there are mutiple partitions that need to be
+  // queried, one for each combination of allowed values for the hash columns.
+  // This holds the index of the next partition and is used to resume the read from the right place.
+  optional uint64 next_partition_index = 5;
 }
 
 //-------------------------------------- Column request --------------------------------------

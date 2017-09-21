@@ -125,6 +125,9 @@ class Executor {
   // Append execution result.
   CHECKED_STATUS AppendResult(const ExecutedResult::SharedPtr& result);
 
+  // Continue a multi-partition select (e.g. table scan or query with 'IN' condition on hash cols).
+  CHECKED_STATUS FetchMoreRowsIfNeeded();
+
   // Reset execution state.
   void Reset();
 

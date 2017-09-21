@@ -611,18 +611,17 @@ public class TestSelect extends BaseCQLTest {
 
     // Test basic IN condition on hash column.
     {
-      ResultSet rs = session.execute("SELECT * FROM in_test WHERE h1 IN (1, 3, -1, 7)");
-      Set<Integer> expected_values = new HashSet<>();
-      expected_values.add(1);
-      expected_values.add(3);
-      expected_values.add(7);
-      // Check rows
-      for (Row row : rs) {
-        Integer h1 = row.getInt("h1");
-        assertTrue(expected_values.contains(h1));
-        expected_values.remove(h1);
-      }
-      assertTrue(expected_values.isEmpty());
+      Iterator<Row> rows = session.execute("SELECT * FROM in_test WHERE " +
+              "h1 IN (3, -1, 1, 7, 1) AND h2 in ('h7', 'h3', 'h1', 'h2')").iterator();
+
+      // Check rows: expecting no duplicates and ascending order.
+      assertTrue(rows.hasNext());
+      assertEquals(1, rows.next().getInt("h1"));
+      assertTrue(rows.hasNext());
+      assertEquals(3, rows.next().getInt("h1"));
+      assertTrue(rows.hasNext());
+      assertEquals(7, rows.next().getInt("h1"));
+      assertFalse(rows.hasNext());
     }
 
     // Test basic IN condition on range column.

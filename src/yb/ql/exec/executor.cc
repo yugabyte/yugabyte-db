@@ -16,10 +16,8 @@
 #include "yb/ql/exec/executor.h"
 #include "yb/util/logging.h"
 #include "yb/client/callbacks.h"
-#include "yb/common/partition.h"
 #include "yb/ql/ql_processor.h"
 #include "yb/util/decimal.h"
-#include "yb/util/yb_partition.h"
 
 namespace yb {
 namespace ql {
@@ -410,34 +408,12 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
     return tnode->is_system() ? Status::OK() : exec_context_->Error(ErrorCode::TABLE_NOT_FOUND);
   }
 
-  // If there are rows buffered in current result, use the paging state in it. Otherwise, use the
-  // paging state from the client.
-  const StatementParameters *paging_params = exec_context_->params();
-  StatementParameters current_params;
-  RowsResult::SharedPtr current_result = std::static_pointer_cast<RowsResult>(result_);
-  if (current_result != nullptr) {
-    RETURN_NOT_OK(current_params.set_paging_state(current_result->paging_state()));
-    paging_params = &current_params;
-  }
-
+  const StatementParameters& params = *exec_context_->params();
   // If there is a table id in the statement parameter's paging state, this is a continuation of
   // a prior SELECT statement. Verify that the same table still exists.
-  const bool continue_select = !paging_params->table_id().empty();
-  if (continue_select && paging_params->table_id() != table->id()) {
+  const bool continue_select = !params.table_id().empty();
+  if (continue_select && params.table_id() != table->id()) {
     return exec_context_->Error("Table no longer exists.", ErrorCode::TABLE_NOT_FOUND);
-  }
-
-  // See if there is any rows buffered in current result locally.
-  size_t current_row_count = 0;
-  if (current_result != nullptr) {
-    RETURN_NOT_OK(QLRowBlock::GetRowCount(current_result->client(),
-                                           current_result->rows_data(),
-                                           &current_row_count));
-  }
-
-  // If the current result hits the request page size already, return the result.
-  if (current_row_count >= exec_context_->params()->page_size()) {
-    return Status::OK();
   }
 
   // Create the read request.
@@ -461,17 +437,6 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
     *select_op->mutable_rows_data() = buffer.ToString();
     result_ = std::make_shared<RowsResult>(select_op.get());
     return Status::OK();
-  }
-
-  if (req->has_max_hash_code()) {
-    uint16_t next_hash_code = paging_params->next_partition_key().empty() ? 0
-        : PartitionSchema::DecodeMultiColumnHashValue(paging_params->next_partition_key());
-
-    // if reached max_hash_code stop and return the current result
-    if (next_hash_code >= req->max_hash_code()) {
-      current_result->clear_paging_state();
-      return Status::OK();
-    }
   }
 
   // Specify selected list by adding the expressions to selected_exprs in read request.
@@ -501,9 +466,9 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   // Specify distinct columns or non.
   req->set_distinct(tnode->distinct());
 
-  // Default row count limit is the page size less the rows buffered in current result locally.
-  // And we should return paging state when page size limit is hit.
-  req->set_limit(exec_context_->params()->page_size() - current_row_count);
+  // Default row count limit is the page size.
+  // We should return paging state when page size limit is hit.
+  req->set_limit(params.page_size());
   req->set_return_paging_state(true);
 
   // Check if there is a limit and compute the new limit based on the number of returned rows.
@@ -523,15 +488,15 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
     }
 
     uint64_t limit = limit_pb.value().int32_value();
-    if (limit == 0 || paging_params->total_num_rows_read() >= limit) {
+    if (limit == 0 || params.total_num_rows_read() >= limit) {
       return Status::OK();
     }
 
     // If the LIMIT clause, subtracting the number of rows we have returned so far, is lower than
     // the page size limit set from above, set the lower limit and do not return paging state when
     // this limit is hit.
-    limit -= paging_params->total_num_rows_read();
-    if (limit < req->limit()) {
+    limit -= params.total_num_rows_read();
+    if (limit <= req->limit()) {
       req->set_limit(limit);
       req->set_return_paging_state(false);
     }
@@ -541,9 +506,9 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   // of rows read in the request's paging state.
   if (continue_select) {
     QLPagingStatePB *paging_state = req->mutable_paging_state();
-    paging_state->set_next_partition_key(paging_params->next_partition_key());
-    paging_state->set_next_row_key(paging_params->next_row_key());
-    paging_state->set_total_num_rows_read(paging_params->total_num_rows_read());
+    paging_state->set_next_partition_key(params.next_partition_key());
+    paging_state->set_next_row_key(params.next_row_key());
+    paging_state->set_total_num_rows_read(params.total_num_rows_read());
   }
 
   // Set the correct consistency level for the operation.
@@ -551,11 +516,119 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
     // Always use strong consistency for system tables.
     select_op->set_yb_consistency_level(YBConsistencyLevel::STRONG);
   } else {
-    select_op->set_yb_consistency_level(exec_context_->params()->yb_consistency_level());
+    select_op->set_yb_consistency_level(params.yb_consistency_level());
+  }
+
+  // If we have several hash partitions (i.e. IN condition on hash columns) we initialize the
+  // start partition here, and then iteratively scan the rest in FetchMoreRowsIfNeeded.
+  // Otherwise, the request will already have the right hashed column values set.
+  if (exec_context_->UnreadPartitionsRemaining() > 0) {
+    if (continue_select) {
+      exec_context_->InitializePartition(select_op->mutable_request(),
+          params.next_partition_index());
+    } else {
+      exec_context_->InitializePartition(select_op->mutable_request(), 0);
+    }
   }
 
   // Apply the operator.
   return exec_context_->ApplyRead(select_op);
+}
+
+Status Executor::FetchMoreRowsIfNeeded() {
+  if (result_ == nullptr) {
+    return Status::OK();
+  }
+
+  // The current select statement.
+  const PTSelectStmt *tnode = static_cast<const PTSelectStmt *>(exec_context_->tnode());
+
+  // Rows read so far: in this fetch, previous fetches (for paging selects), and in total.
+  RowsResult::SharedPtr current_result = std::static_pointer_cast<RowsResult>(result_);
+  size_t current_fetch_row_count = 0;
+  RETURN_NOT_OK(QLRowBlock::GetRowCount(current_result->client(),
+                                        current_result->rows_data(),
+                                        &current_fetch_row_count));
+
+  size_t previous_fetches_row_count = exec_context_->params()->total_num_rows_read();
+  size_t total_row_count = previous_fetches_row_count + current_fetch_row_count;
+
+  // Statement (paging) parameters.
+  StatementParameters current_params;
+  RETURN_NOT_OK(current_params.set_paging_state(current_result->paging_state()));
+
+  // The limit for this select: min of page size and result limit (if set).
+  uint64_t fetch_limit = exec_context_->params()->page_size(); // default;
+  if (tnode->has_limit()) {
+    QLExpressionPB limit_pb;
+    RETURN_NOT_OK(PTExprToPB(tnode->limit(), &limit_pb));
+    int64_t limit = limit_pb.value().int32_value() - previous_fetches_row_count;
+    if (limit < fetch_limit) {
+      fetch_limit = limit;
+    }
+  }
+
+  // The current read operation.
+  std::shared_ptr<YBqlReadOp> op = std::static_pointer_cast<YBqlReadOp>(exec_context_->op());
+
+  //------------------------------------------------------------------------------------------------
+  // Check if we should fetch more rows (return with 'done=true' otherwise).
+
+  // If there is no paging state the current scan has exhausted its results.
+  bool finished_current_read_partition = current_result->paging_state().empty();
+  if (finished_current_read_partition) {
+
+    // If there or no other partitions to query, we are done.
+    if (exec_context_->UnreadPartitionsRemaining() <= 1) {
+      return Status::OK();
+    }
+
+    // Otherwise, we continue to the next partition.
+    exec_context_->AdvanceToNextPartition(op->mutable_request());
+    op->mutable_request()->clear_hash_code();
+  }
+
+  // If we reached the fetch limit (min of paging state and limit clause) we are done.
+  if (current_fetch_row_count >= fetch_limit) {
+
+    // If we reached the paging limit at the end of the previous partition for a multi-partition
+    // select the next fetch should continue directly from the current partition.
+    // We create a paging state here so that we can resume from the right partition.
+    if (finished_current_read_partition && op->request().return_paging_state()) {
+      QLPagingStatePB paging_state;
+      paging_state.set_total_num_rows_read(total_row_count);
+      paging_state.set_table_id(tnode->table()->id());
+      paging_state.set_next_partition_index(exec_context_->current_partition_index());
+      current_result->set_paging_state(paging_state);
+    }
+
+    return Status::OK();
+  }
+
+  // If we reached the hash_code limit (upper bound restriction for token function) we are done.
+  if (op->request().has_max_hash_code()) {
+    uint16_t next_hash_code = current_params.next_partition_key().empty() ? 0
+        : PartitionSchema::DecodeMultiColumnHashValue(current_params.next_partition_key());
+
+    // if reached max_hash_code stop and return the current result
+    if (next_hash_code >= op->request().max_hash_code()) {
+      current_result->clear_paging_state();
+      return Status::OK();
+    }
+  }
+
+  //------------------------------------------------------------------------------------------------
+  // Fetch more results.
+
+  // Update limit and paging_state information for next scan request.
+  op->mutable_request()->set_limit(fetch_limit - current_fetch_row_count);
+  QLPagingStatePB *paging_state = op->mutable_request()->mutable_paging_state();
+  paging_state->set_next_partition_key(current_params.next_partition_key());
+  paging_state->set_next_row_key(current_params.next_row_key());
+  paging_state->set_total_num_rows_read(total_row_count);
+
+  // Apply the request.
+  return exec_context_->ApplyRead(op);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -716,15 +789,12 @@ void Executor::FlushAsyncDone(const Status &s) {
   if (ss.ok()) {
     ss = ProcessAsyncResults();
     if (ss.ok() && exec_context_->tnode()->opcode() == TreeNodeOpcode::kPTSelectStmt) {
-      // If there is a paging state, try fetching more rows and buffer locally. ExecPTNode()
-      // will ensure we do not exceed the page size.
-      if (result_ != nullptr && !static_cast<const RowsResult&>(*result_).paging_state().empty()) {
-        ql_env_->Reset();
-        ss = ExecTreeNode(static_cast<const PTSelectStmt*>(exec_context_->tnode()));
-        if (ss.ok()) {
-          if (ql_env_->FlushAsync(&flush_async_cb_)) {
-            return;
-          }
+
+      ql_env_->Reset();
+      ss = FetchMoreRowsIfNeeded();
+      if (ss.ok()) {
+        if (ql_env_->FlushAsync(&flush_async_cb_)) {
+          return;
         }
       }
     }

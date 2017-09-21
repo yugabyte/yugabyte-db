@@ -418,8 +418,31 @@ TEST_F(TestQLQuery, TestPagingState) {
                                                static_cast<double>(kPageSize))));
     CHECK_GE(sum, (1 + kLimit) * kLimit / 2);
   }
-}
 
+  // Test queries with IN condition on hash key.
+  // Verify rows and that they are read in the number of pages expected.
+  {
+    string select_stmt = "SELECT h, r, v FROM t WHERE h IN (1, 12, 23, 34, 45) AND r > 98;";
+    VerifyPaginationSelect(processor, select_stmt, 2,
+        "{ { int32:1, int32:99, int32:199 }, { int32:1, int32:100, int32:200 } }"
+        "{ { int32:1, int32:101, int32:201 }, { int32:12, int32:112, int32:212 } }"
+        "{ { int32:23, int32:123, int32:223 }, { int32:34, int32:134, int32:234 } }"
+        "{ { int32:45, int32:145, int32:245 } }");
+  }
+
+  // Read rows with a LIMIT. Verify rows and that they are read in the number of pages expected.
+  {
+    string select_stmt = "SELECT h, r, v FROM t WHERE h IN (1, 12, 23, 34, 45) AND r > 98 LIMIT 5;";
+    VerifyPaginationSelect(processor, select_stmt, 2,
+        "{ { int32:1, int32:99, int32:199 }, { int32:1, int32:100, int32:200 } }"
+            "{ { int32:1, int32:101, int32:201 }, { int32:12, int32:112, int32:212 } }"
+            "{ { int32:23, int32:123, int32:223 } }");
+
+    select_stmt = "SELECT h, r, v FROM t WHERE h IN (1, 12, 23, 34, 45) AND r > 98 LIMIT 2;";
+    VerifyPaginationSelect(processor, select_stmt, 3,
+        "{ { int32:1, int32:99, int32:199 }, { int32:1, int32:100, int32:200 } }");
+  }
+}
 
 #define RUN_PAGINATION_WITH_DESC_TEST(processor, type, values, rows)                               \
 do {                                                                                               \

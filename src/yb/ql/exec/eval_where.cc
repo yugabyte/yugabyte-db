@@ -77,7 +77,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
     RETURN_NOT_OK(YQLExpression::Evaluate(expr_pb, QLTableRow{}, &result, &write_action));
     hash_code = YBPartition::CqlToYBHashCode(result.int64_value());
 
-    // internally we use [start, end) intervals -- start-inclusive, end-exclusive
+    // Internally we use [start, end) intervals -- start-inclusive, end-exclusive
     switch (op.yb_op()) {
       case QL_OP_GREATER_THAN:
         if (hash_code != YBPartition::kMaxHashCode) {
@@ -103,7 +103,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
         req->set_hash_code(hash_code);
         if (hash_code != YBPartition::kMaxHashCode) {
           req->set_max_hash_code(hash_code + 1);
-        }  // Token hash equality restriction with max value needs no upper bound.
+        } // Token hash equality restriction with max value needs no upper bound.
         break;
 
       default:
@@ -111,47 +111,91 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
     }
   }
 
-  // Try to set up key_where_ops as the requests hash key columns. This may be empty.
-  bool key_ops_are_set = true;
+  // Try to set up key_where_ops as the requests' hash key columns.
+  // For selects with 'IN' conditions on the hash keys we may need to read several partitions.
+  // If we find an 'IN', we add subsequent hash column values options to the execution context.
+  // Then, the executor will use them to produce the partitions that need to be read.
+  bool is_multi_partition = false;
+  uint64_t partitions_count = 0;
   for (const auto& op : key_where_ops) {
     const ColumnDesc *col_desc = op.desc();
-    QLExpressionPB *col_pb;
     CHECK(col_desc->is_hash()) << "Unexpected non partition column in this context";
-    col_pb = req->add_hashed_column_values();
+
     VLOG(3) << "READ request, column id = " << col_desc->id();
-    RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb));
-    if (op.yb_op() == QL_OP_IN) {
-      int in_size = col_pb->value().list_value().elems_size();
-      if (in_size == 0) {
-        // Empty 'IN' condition guarantees no results.
-        *no_results = true;
-        return Status::OK();
-      } else if (in_size == 1) {
-        // 'IN' condition with one element is treated as equality for efficiency.
-        QLValuePB* value_pb = col_pb->mutable_value()->mutable_list_value()->mutable_elems(0);
-        col_pb->mutable_value()->Swap(value_pb);
-      } else {
-        // For now doing filtering in this case TODO(Mihnea) optimize this later.
-        key_ops_are_set = false;
-        req->clear_hashed_column_values();
+
+    switch (op.yb_op()) {
+      case QL_OP_EQUAL: {
+        if (!is_multi_partition) {
+          QLExpressionPB *col_pb = req->add_hashed_column_values();
+          col_pb->set_column_id(col_desc->id());
+          Status s = PTExprToPB(op.expr(), col_pb);
+          if (PREDICT_FALSE(!s.ok())) {
+            return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+          }
+        } else {
+          QLExpressionPB col_pb;
+          col_pb.set_column_id(col_desc->id());
+          Status s = PTExprToPB(op.expr(), &col_pb);
+          if (PREDICT_FALSE(!s.ok())) {
+            return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+          }
+          exec_context_->hash_values_options()->push_back({col_pb});
+        }
         break;
       }
+
+      case QL_OP_IN: {
+        if (!is_multi_partition) {
+          is_multi_partition = true;
+          partitions_count = 1;
+        }
+        auto *in_expr = static_cast<const PTCollectionExpr *>(op.expr().get());
+        if (in_expr->size() == 0) {
+          *no_results = true;
+          return Status::OK();
+        } else {
+          // De-duplicating and ordering values from the 'IN' expression.
+          QLExpressionPB col_pb;
+          Status s = PTExprToPB(op.expr(), &col_pb);
+          if (PREDICT_FALSE(!s.ok())) {
+            return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+          }
+
+          std::set<QLValuePB> set_values;
+          for (const QLValuePB &value_pb : col_pb.value().list_value().elems()) {
+            set_values.insert(value_pb);
+          }
+
+          // Adding partition options information to the execution context.
+          partitions_count *= set_values.size();
+          exec_context_->hash_values_options()->emplace_back();
+          auto& options = exec_context_->hash_values_options()->back();
+          for (const QLValuePB &value_pb : set_values) {
+            options.emplace_back();
+            options.back().set_column_id(col_desc->id());
+            options.back().mutable_value()->CopyFrom(value_pb);
+          }
+        }
+        break;
+      }
+
+      default:
+        // This should be caught by the analyzer before getting here.
+        LOG(FATAL) << "Only '=' and 'IN' operators allowed on hash keys";
     }
   }
 
+  // Set the partitions count in the execution context, will be 0 if not IN conditions found.
+  exec_context_->set_partitions_count(partitions_count);
+
   // Skip generation of query condition if where clause is empty.
-  if (key_ops_are_set && where_ops.empty() && subcol_where_ops.empty() && func_ops.empty()) {
+  if (where_ops.empty() && subcol_where_ops.empty() && func_ops.empty()) {
     return Status::OK();
   }
 
   // Setup the where clause.
   QLConditionPB *where_pb = req->mutable_where_expr()->mutable_condition();
   where_pb->set_op(QL_OP_AND);
-  if (!key_ops_are_set) {
-    for (const auto& col_op : key_where_ops) {
-      RETURN_NOT_OK(WhereOpToPB(where_pb->add_operands()->mutable_condition(), col_op));
-    }
-  }
   for (const auto& col_op : where_ops) {
     RETURN_NOT_OK(WhereOpToPB(where_pb->add_operands()->mutable_condition(), col_op));
   }

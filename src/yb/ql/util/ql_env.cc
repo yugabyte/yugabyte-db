@@ -88,7 +88,7 @@ void QLEnv::SetCurrentCall(rpc::InboundCallPtr cql_call) {
 }
 
 CHECKED_STATUS QLEnv::ApplyWrite(std::shared_ptr<YBqlWriteOp> op) {
-  CHECK(batch_session_ != read_session_) << "Mix read/write batch opeations not supported";
+  CHECK(batch_session_ != read_session_) << "Mix read/write batch operations not supported";
   // Apply the write.
   TRACE("Apply Write");
   RETURN_NOT_OK(write_session_->Apply(op));
@@ -97,14 +97,13 @@ CHECKED_STATUS QLEnv::ApplyWrite(std::shared_ptr<YBqlWriteOp> op) {
 }
 
 CHECKED_STATUS QLEnv::ApplyRead(std::shared_ptr<YBqlReadOp> op) {
-  CHECK(batch_session_ != write_session_) << "Mix read/write batch opeations not supported";
+  CHECK(batch_session_ != write_session_) << "Mix read/write batch operations not supported";
   // Apply the read.
   TRACE("Apply Read");
   RETURN_NOT_OK(read_session_->Apply(op));
   batch_session_ = read_session_;
   return Status::OK();
 }
-
 
 bool QLEnv::FlushAsync(Callback<void(const Status &)>* cb) {
   if (batch_session_ == nullptr) {

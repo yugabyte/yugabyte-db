@@ -106,7 +106,7 @@ TEST_F(TestQLQuery, TestQLQuerySimple) {
 
 #define CHECK_EXPECTED_ROW(processor, name, balance, rate)                                         \
 do {                                                                                               \
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();                                 \
+  std::shared_ptr<QLRowBlock> row_block = processor->row_block();                                  \
   CHECK_EQ(row_block->row_count(), 1);                                                             \
   CHECK_EQ(row_block->row(0).column(0).string_value(), name);                                      \
   util::Decimal expected_decimal(balance), ret_decimal;                                            \

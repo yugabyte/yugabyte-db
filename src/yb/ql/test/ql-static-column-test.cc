@@ -45,30 +45,6 @@ class TestQLStaticColumn : public QLTestBase {
     ExecSelect(processor, 0);
   }
 
-  void VerifyPaginationSelect(TestQLProcessor *processor,
-                              const string &select_query,
-                              int page_size,
-                              const string expected_rows) {
-    StatementParameters params;
-    params.set_page_size(page_size);
-    string rows;
-    do {
-      CHECK_OK(processor->Run(select_query, params));
-      std::shared_ptr<QLRowBlock> row_block = processor->row_block();
-      if (row_block->row_count() > 0) {
-        rows.append(row_block->ToString());
-      } else {
-        // Skip appending empty rowblock but verify it happens only at the last fetch.
-        EXPECT_TRUE(processor->rows_result()->paging_state().empty());
-      }
-      if (processor->rows_result()->paging_state().empty()) {
-        break;
-      }
-      CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));
-    } while (true);
-    EXPECT_EQ(rows, expected_rows);
-  }
-
   // Create test table.
   void CreateTable(TestQLProcessor *processor) {
     CHECK_VALID_STMT("create table t ("

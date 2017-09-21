@@ -118,6 +118,43 @@ class ExecContext : public ProcessContextBase {
     return op_;
   }
 
+  // Used for multi-partition selects (i.e. with 'IN' conditions on hash columns).
+  // Called from Executor::FetchMoreRowsIfNeeded to check if request is finished.
+  uint64_t UnreadPartitionsRemaining() const {
+    return partitions_count_ - current_partition_index_;
+  }
+
+  // Used for multi-partition selects (i.e. with 'IN' conditions on hash columns).
+  // Initializes the current partition index and sets the corresponding hashed column values in the
+  // request object so that it references the appropriate partition.
+  // Called from Executor::ExecPTNode for PTSelectStmt.
+  // E.g. for a query "h1 = 1 and h2 in (2,3) and h3 in (4,5) and h4 = 6" start_position 0:
+  // this will set req->hashed_column_values() to [1, 2, 4, 6].
+  void InitializePartition(QLReadRequestPB *req, uint64_t start_partition);
+
+  // Used for multi-partition selects (i.e. with 'IN' conditions on hash columns).
+  // Increments the current partition index and updates the corresponding hashed column values in
+  // passed request object so that it references the appropriate partition.
+  // Called from Executor::FetchMoreRowsIfNeeded.
+  // E.g. for a query "h1 = 1 and h2 in (2,3) and h3 in (4,5) and h4 = 6" partition index 2:
+  // this will do, index: 2 -> 3 and hashed_column_values: [1, 3, 4, 6] -> [1, 3, 5, 6].
+  void AdvanceToNextPartition(QLReadRequestPB *req);
+
+  std::unique_ptr<std::vector<std::vector<QLExpressionPB>>>& hash_values_options() {
+    if (hash_values_options_ == nullptr) {
+      hash_values_options_ = std::make_unique<std::vector<std::vector<QLExpressionPB>>>();
+    }
+    return hash_values_options_;
+  }
+
+  uint64_t current_partition_index() const {
+    return current_partition_index_;
+  }
+
+  void set_partitions_count(uint64_t count) {
+    partitions_count_ = count;
+  }
+
   // Access function for start_time.
   const MonoTime& start_time() const {
     return start_time_;
@@ -128,6 +165,7 @@ class ExecContext : public ProcessContextBase {
     op_ = op;
     return ql_env_->ApplyWrite(op);
   }
+
   CHECKED_STATUS ApplyRead(std::shared_ptr<client::YBqlReadOp> op) {
     op_ = op;
     return ql_env_->ApplyRead(op);
@@ -155,6 +193,16 @@ class ExecContext : public ProcessContextBase {
 
   // SQL environment.
   QLEnv *ql_env_;
+
+  // For multi-partition selects (e.g. selects with 'IN' condition on hash cols) we hold the options
+  // for each hash column (starting from first 'IN') as we iteratively query each partition.
+  // e.g. for a query "h1 = 1 and h2 in (2,3) and h3 in (4,5) and h4 = 6".
+  //  hash_values_options_ = [[2, 3], [4, 5], [6]]
+  //  partitions_count_ = 4 (i.e. [2,4,6], [2,5,6], [3,4,6], [4,5,6]).
+  //  current_partition_index_ starts from 0 unless set in the paging state.
+  std::unique_ptr<std::vector<std::vector<QLExpressionPB>>> hash_values_options_;
+  uint64_t partitions_count_;
+  uint64_t current_partition_index_;
 };
 
 }  // namespace ql
