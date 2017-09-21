@@ -26,7 +26,7 @@ import org.apache.log4j.Logger;
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.policies.DCAwareRoundRobinPolicy;
-import com.yugabyte.cql.PartitionAwarePolicy;
+import com.yugabyte.driver.core.policies.PartitionAwarePolicy;
 import com.yugabyte.sample.common.CmdLineOpts;
 import com.yugabyte.sample.common.CmdLineOpts.Node;
 import com.yugabyte.sample.common.SimpleLoadGenerator;
