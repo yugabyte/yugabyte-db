@@ -136,7 +136,9 @@ public class TestClusterBase extends BaseCQLTest {
     }
 
     if (loadTesterThread != null) {
+      LOG.info("Waiting for load tester thread to exit");
       loadTesterThread.join();
+      LOG.info("Load tester thread completed!");
       loadTesterThread = null;
     }
   }
@@ -170,6 +172,7 @@ public class TestClusterBase extends BaseCQLTest {
     public void run() {
       try {
         testRunner.run();
+        LOG.info("Load tester completed!");
       } catch (Exception e) {
         LOG.error("Load tester exited!", e);
         testRunnerFailed = true;
@@ -233,6 +236,7 @@ public class TestClusterBase extends BaseCQLTest {
       Metrics metrics = new Metrics(masterHostAndPort.getHostText(), masterLeaderWebPort,
         "cluster");
       int live_tservers = metrics.getCounter("num_tablet_servers_live").value;
+      LOG.info("Live tservers: " + live_tservers + ", expected: " + expected_live);
       return live_tservers == expected_live;
     }, EXPECTED_TSERVERS_TIMEOUT_MS);
   }
@@ -308,6 +312,7 @@ public class TestClusterBase extends BaseCQLTest {
   }
 
   protected void addNewTServers(int numTservers) throws Exception {
+    int expectedTServers = miniCluster.getTabletServers().size() + numTservers;
     // Now double the number of tservers to expand the cluster and verify load spreads.
     for (int i = 0; i < numTservers; i++) {
       miniCluster.startTServer(null);
@@ -315,6 +320,9 @@ public class TestClusterBase extends BaseCQLTest {
 
     // Wait for the CQL client to discover the new nodes.
     Thread.sleep(2 * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
+
+    // Wait for tservers to be up.
+    miniCluster.waitForTabletServers(expectedTServers);
   }
 
   protected void verifyStateAfterTServerAddition() throws Exception {
