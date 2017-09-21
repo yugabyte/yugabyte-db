@@ -75,21 +75,19 @@ CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
     // Remove a column from regular column list if it's already in hash or primary list.
     if (coldef->is_hash_key()) {
       if (coldef->is_static()) {
-        return sem_context->Error(coldef->loc(),
-                                  "Hash column cannot be static",
+        return sem_context->Error(coldef, "Hash column cannot be static",
                                   ErrorCode::INVALID_TABLE_DEFINITION);
       }
       iter = columns_.erase(iter);
     } else if (coldef->is_primary_key()) {
       if (coldef->is_static()) {
-        return sem_context->Error(coldef->loc(),
-                                  "Primary key column cannot be static",
+        return sem_context->Error(coldef, "Primary key column cannot be static",
                                   ErrorCode::INVALID_TABLE_DEFINITION);
       }
       iter = columns_.erase(iter);
     } else {
       if (contain_counters_ != coldef->is_counter()) {
-        return sem_context->Error(coldef->loc(),
+        return sem_context->Error(coldef,
                                   "Table cannot contain both counter and non-counter columns",
                                   ErrorCode::INVALID_TABLE_DEFINITION);
       }
@@ -105,7 +103,7 @@ CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
       primary_columns_.pop_front();
     } else {
       // ERROR: Primary key is not defined.
-      return sem_context->Error(elements_->loc(), ErrorCode::MISSING_PRIMARY_KEY);
+      return sem_context->Error(elements_, ErrorCode::MISSING_PRIMARY_KEY);
     }
   }
 
@@ -115,7 +113,7 @@ CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
   if (primary_columns_.empty()) {
     for (const auto& column : columns_) {
       if (column->is_static()) {
-        return sem_context->Error(column->loc(),
+        return sem_context->Error(column,
                                   "Static column not allowed in a table without a range column",
                                   ErrorCode::INVALID_TABLE_DEFINITION);
       }
@@ -164,7 +162,7 @@ CHECKED_STATUS PTCreateTable::CheckPrimaryType(SemContext *sem_context,
                                                const PTBaseType::SharedPtr& datatype) {
   RETURN_NOT_OK(CheckType(sem_context, datatype));
   if (!YQLType::IsValidPrimaryType(datatype->yql_type()->main())) {
-    return sem_context->Error(datatype->loc(), ErrorCode::INVALID_PRIMARY_COLUMN_TYPE);
+    return sem_context->Error(datatype, ErrorCode::INVALID_PRIMARY_COLUMN_TYPE);
   }
 
   return Status::OK();
@@ -183,7 +181,7 @@ CHECKED_STATUS PTCreateTable::CheckType(SemContext *sem_context,
     }
 
     if (table_keyspace != datatype->yql_type()->udtype_keyspace_name()) {
-      return sem_context->Error(datatype->loc(),
+      return sem_context->Error(datatype,
           "User Defined Types can only be used in the same keyspace where they are defined",
           ErrorCode::INVALID_COLUMN_DEFINITION);
     }
@@ -296,7 +294,7 @@ CHECKED_STATUS PTPrimaryKey::Analyze(SemContext *sem_context) {
   // Check if primary key is defined more than one time.
   PTCreateTable *table = sem_context->current_create_table_stmt();
   if (table->primary_columns().size() > 0 || table->hash_columns().size() > 0) {
-    return sem_context->Error(loc(), "Too many primary key", ErrorCode::INVALID_TABLE_DEFINITION);
+    return sem_context->Error(this, "Too many primary key", ErrorCode::INVALID_TABLE_DEFINITION);
   }
 
   if (columns_ == nullptr) {

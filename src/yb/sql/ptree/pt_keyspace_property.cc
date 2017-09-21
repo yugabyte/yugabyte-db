@@ -60,8 +60,7 @@ CHECKED_STATUS PTKeyspacePropertyListNode::Analyze(SemContext *sem_context) {
     }
   }
   if (!has_replication) {
-    return sem_context->Error(loc(),
-                              "Missing mandatory replication strategy class",
+    return sem_context->Error(this, "Missing mandatory replication strategy class",
                               ErrorCode::INVALID_ARGUMENTS);
   }
 
@@ -73,13 +72,13 @@ CHECKED_STATUS PTKeyspacePropertyListNode::Analyze(SemContext *sem_context) {
                                                                        "durable_writes", &val));
     } else if (property_name == "replication") {
       if (tnode->property_type() != KeyspacePropertyType::kPropertyMap) {
-        return sem_context->Error(loc(),
+        return sem_context->Error(this,
                                   "Invalid value for property 'replication'. It should be a map",
                                   ErrorCode::INVALID_ARGUMENTS);
       }
       RETURN_SEM_CONTEXT_ERROR_NOT_OK(tnode->Analyze(sem_context));
     } else {
-      return sem_context->Error(loc(),
+      return sem_context->Error(this,
                                 Substitute("Invalid property $0", property_name).c_str(),
                                 ErrorCode::INVALID_ARGUMENTS);
     }
@@ -124,19 +123,19 @@ CHECKED_STATUS PTKeyspacePropertyMap::Analyze(SemContext *sem_context) {
   }
 
   if (class_name == nullptr) {
-    return sem_context->Error(loc(), "Missing mandatory replication strategy class",
+    return sem_context->Error(this, "Missing mandatory replication strategy class",
                               ErrorCode::INVALID_ARGUMENTS);
   }
 
   if (*class_name != "SimpleStrategy" && *class_name != "NetworkTopologyStrategy") {
-    return sem_context->Error(loc(),
+    return sem_context->Error(this,
         Substitute("Unable to find replication strategy class 'org.apache.cassandra.locator.$0",
                    *class_name).c_str(),
         ErrorCode::INVALID_ARGUMENTS);
   }
   if (*class_name == "NetworkTopologyStrategy") {
     if (replication_factor != nullptr) {
-      return sem_context->Error(loc(),
+      return sem_context->Error(this,
           "replication_factor is an option for SimpleStrategy, not NetworkTopologyStrategy",
           ErrorCode::INVALID_ARGUMENTS);
     }
@@ -148,7 +147,7 @@ CHECKED_STATUS PTKeyspacePropertyMap::Analyze(SemContext *sem_context) {
     }
   } else {
     if (!other_subproperties.empty()) {
-      return sem_context->Error(loc(),
+      return sem_context->Error(this,
                                 Substitute(
                                     "Unrecognized strategy option $0 passed to SimpleStrategy",
                                     other_subproperties.front()->lhs()->c_str()).c_str(),
@@ -156,7 +155,7 @@ CHECKED_STATUS PTKeyspacePropertyMap::Analyze(SemContext *sem_context) {
 
     }
     if (replication_factor == nullptr) {
-      return sem_context->Error(loc(),
+      return sem_context->Error(this,
                                 "SimpleStrategy requires a replication_factor strategy option",
                                 ErrorCode::INVALID_ARGUMENTS);
     }

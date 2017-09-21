@@ -54,14 +54,14 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
   // Get table descriptor.
   RETURN_NOT_OK(LookupTable(sem_context));
   if (table_->schema().table_properties().contain_counters()) {
-    return sem_context->Error(relation_->loc(), ErrorCode::INSERT_TABLE_OF_COUNTERS);
+    return sem_context->Error(relation_, ErrorCode::INSERT_TABLE_OF_COUNTERS);
   }
 
   // Check the selected columns. Cassandra only supports inserting one tuple / row at a time.
   const int num_cols = num_columns();
   PTValues *value_clause = static_cast<PTValues *>(value_clause_.get());
   if (value_clause->TupleCount() == 0) {
-    return sem_context->Error(value_clause_->loc(), ErrorCode::TOO_FEW_ARGUMENTS);
+    return sem_context->Error(value_clause_, ErrorCode::TOO_FEW_ARGUMENTS);
   }
 
   int idx = 0;
@@ -74,9 +74,9 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
     if (names.size() != exprs.size()) {
       // Mismatch between number column names and their associated values.
       if (names.size() > exprs.size()) {
-        return sem_context->Error(value_clause_->loc(), ErrorCode::TOO_FEW_ARGUMENTS);
+        return sem_context->Error(value_clause_, ErrorCode::TOO_FEW_ARGUMENTS);
       } else {
-        return sem_context->Error(value_clause_->loc(), ErrorCode::TOO_MANY_ARGUMENTS);
+        return sem_context->Error(value_clause_, ErrorCode::TOO_MANY_ARGUMENTS);
       }
     }
 
@@ -88,7 +88,7 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
 
       // Check that the column exists.
       if (col_desc == nullptr) {
-        return sem_context->Error(name->loc(), ErrorCode::UNDEFINED_COLUMN);
+        return sem_context->Error(name, ErrorCode::UNDEFINED_COLUMN);
       }
 
       // Process values arguments.
@@ -101,7 +101,7 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
       // Check that the given column is not a duplicate and initialize the argument entry.
       idx = col_desc->index();
       if (column_args_->at(idx).IsInitialized()) {
-        return sem_context->Error((*iter)->loc(), ErrorCode::DUPLICATE_COLUMN);
+        return sem_context->Error(*iter, ErrorCode::DUPLICATE_COLUMN);
       }
       column_args_->at(idx).Init(col_desc, *iter);
       iter++;
@@ -113,9 +113,9 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
     if (exprs.size() != num_cols) {
       // Wrong number of arguments.
       if (exprs.size() > num_cols) {
-        return sem_context->Error(value_clause_->loc(), ErrorCode::TOO_MANY_ARGUMENTS);
+        return sem_context->Error(value_clause_, ErrorCode::TOO_MANY_ARGUMENTS);
       } else {
-        return sem_context->Error(value_clause_->loc(), ErrorCode::TOO_FEW_ARGUMENTS);
+        return sem_context->Error(value_clause_, ErrorCode::TOO_FEW_ARGUMENTS);
       }
     }
 
@@ -143,7 +143,7 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
   // NOTE: we assumed that primary_indexes and arguments are sorted by column_index.
   for (idx = 0; idx < num_hash_key_columns_; idx++) {
     if (!column_args_->at(idx).IsInitialized()) {
-      return sem_context->Error(value_clause_->loc(), ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY);
+      return sem_context->Error(value_clause_, ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY);
     }
   }
   // If inserting static columns only, check that either each column in the range key is associated
@@ -157,16 +157,16 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
   }
   if (StaticColumnArgsOnly()) {
     if (range_keys != num_key_columns_ - num_hash_key_columns_ && range_keys != 0)
-      return sem_context->Error(value_clause_->loc(), ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY);
+      return sem_context->Error(value_clause_, ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY);
   } else {
     if (range_keys != num_key_columns_ - num_hash_key_columns_)
-      return sem_context->Error(value_clause_->loc(), ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY);
+      return sem_context->Error(value_clause_, ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY);
   }
 
   // Primary key cannot be null.
   for (idx = 0; idx < num_key_columns_; idx++) {
     if (column_args_->at(idx).IsInitialized() && column_args_->at(idx).expr()->is_null()) {
-      return sem_context->Error(value_clause_->loc(), ErrorCode::NULL_ARGUMENT_FOR_PRIMARY_KEY);
+      return sem_context->Error(value_clause_, ErrorCode::NULL_ARGUMENT_FOR_PRIMARY_KEY);
     }
   }
 

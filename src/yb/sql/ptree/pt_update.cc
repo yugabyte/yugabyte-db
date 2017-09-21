@@ -46,7 +46,7 @@ CHECKED_STATUS PTAssign::Analyze(SemContext *sem_context) {
 
   col_desc_ = sem_context->GetColumnDesc(lhs_->last_name(), false /* reading_column */);
   if (col_desc_ == nullptr) {
-    return sem_context->Error(loc(), "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
+    return sem_context->Error(this, "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
   }
 
   std::shared_ptr<YQLType> curr_ytype = col_desc_->yql_type();
@@ -55,9 +55,8 @@ CHECKED_STATUS PTAssign::Analyze(SemContext *sem_context) {
   if (has_subscripted_column()) {
     for (const auto &arg : subscript_args_->node_list()) {
       if (curr_ytype->keys_type() == nullptr) {
-        return sem_context->Error(loc(),
-            "Columns with elementary types cannot take arguments",
-            ErrorCode::CQL_STATEMENT_INVALID);
+        return sem_context->Error(this, "Columns with elementary types cannot take arguments",
+                                  ErrorCode::CQL_STATEMENT_INVALID);
       }
 
       sem_state.SetExprState(curr_ytype->keys_type(),
@@ -122,7 +121,7 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
   int num_keys = num_key_columns();
   for (int idx = 0; idx < num_keys; idx++) {
     if (column_args_->at(idx).IsInitialized()) {
-      return sem_context->Error(set_clause_->loc(), ErrorCode::INVALID_ARGUMENTS);
+      return sem_context->Error(set_clause_, ErrorCode::INVALID_ARGUMENTS);
     }
   }
 

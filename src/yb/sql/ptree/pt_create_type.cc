@@ -49,13 +49,13 @@ CHECKED_STATUS PTTypeField::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(datatype_->Analyze(sem_context));
 
   if (datatype_->yql_type()->IsCollection()) {
-    return sem_context->Error(loc(), ErrorCode::INVALID_TYPE_DEFINITION,
-        "UDT field types cannot be (un-frozen) collections");
+    return sem_context->Error(this, "UDT field types cannot be (un-frozen) collections",
+                              ErrorCode::INVALID_TYPE_DEFINITION);
   }
 
   if (!datatype_->yql_type()->GetUserDefinedTypeIds().empty()) {
-    return sem_context->Error(loc(), ErrorCode::FEATURE_NOT_SUPPORTED,
-        "UDT field types cannot refer to other user-defined types");
+    return sem_context->Error(this, "UDT field types cannot refer to other user-defined types",
+                              ErrorCode::FEATURE_NOT_SUPPORTED);
   }
 
   // Restore the context value as we are done with this colummn.

@@ -37,7 +37,7 @@ CHECKED_STATUS PTName::SetupPrimaryKey(SemContext *sem_context) {
   PTColumnDefinition *column = sem_context->GetColumnDefinition(*name_);
   if (column == nullptr) {
     LOG(INFO) << "Column \"" << *name_ << "\" doesn't exist";
-    return sem_context->Error(loc(), "Column does not exist", ErrorCode::UNDEFINED_COLUMN);
+    return sem_context->Error(this, "Column does not exist", ErrorCode::UNDEFINED_COLUMN);
   }
   column->set_is_primary_key();
 
@@ -52,7 +52,7 @@ CHECKED_STATUS PTName::SetupHashAndPrimaryKey(SemContext *sem_context) {
   PTColumnDefinition *column = sem_context->GetColumnDefinition(*name_);
   if (column == nullptr) {
     LOG(INFO) << "Column \"" << *name_ << "\" doesn't exist";
-    return sem_context->Error(loc(), "Column does not exist", ErrorCode::UNDEFINED_COLUMN);
+    return sem_context->Error(this, "Column does not exist", ErrorCode::UNDEFINED_COLUMN);
   }
   column->set_is_hash_key();
 
@@ -105,7 +105,7 @@ CHECKED_STATUS PTQualifiedName::Analyze(SemContext *sem_context) {
   // We don't support qualified name yet except for a keyspace.
   // Support only the names like: '<keyspace_name>.<table_name>'.
   if (ptnames_.size() >= 3) {
-    return sem_context->Error(loc(), ErrorCode::FEATURE_NOT_SUPPORTED);
+    return sem_context->Error(this, ErrorCode::FEATURE_NOT_SUPPORTED);
   }
 
   return Status::OK();

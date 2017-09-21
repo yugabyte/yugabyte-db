@@ -102,39 +102,41 @@ class ColumnOp : public ColumnArg {
 };
 
 class FuncOp {
-  public:
-    typedef std::shared_ptr<FuncOp> SharedPtr;
-    typedef std::shared_ptr<const FuncOp> SharedPtrConst;
+ public:
+  typedef std::shared_ptr<FuncOp> SharedPtr;
+  typedef std::shared_ptr<const FuncOp> SharedPtrConst;
 
-    FuncOp(PTExpr::SharedPtr value_expr,
-           PTBcall::SharedPtr func_expr,
-           yb::YQLOperator yb_op = yb::YQLOperator::YQL_OP_NOOP)
+  FuncOp(const PTExpr::SharedPtr& value_expr,
+         const PTBcall::SharedPtr& func_expr,
+         yb::YQLOperator yb_op = yb::YQLOperator::YQL_OP_NOOP)
       : value_expr_(value_expr), func_expr_(func_expr), yb_op_(yb_op) {
-    }
+  }
 
-    void Init(const PTExpr::SharedPtr value_expr, const PTExpr::SharedPtr func_expr, yb::YQLOperator yb_op) {
-      value_expr_ = value_expr;
-      func_expr_ = func_expr_;
-      yb_op_ = yb_op;
-    }
+  void Init(const PTExpr::SharedPtr& value_expr,
+            const PTBcall::SharedPtr& func_expr,
+            yb::YQLOperator yb_op) {
+    value_expr_ = value_expr;
+    func_expr_ = func_expr;
+    yb_op_ = yb_op;
+  }
 
-    yb::YQLOperator yb_op() const {
-      return yb_op_;
-    }
+  yb::YQLOperator yb_op() const {
+    return yb_op_;
+  }
 
-    PTExpr::SharedPtr value_expr() const {
-      return value_expr_;
-    }
+  PTExpr::SharedPtr value_expr() const {
+    return value_expr_;
+  }
 
-    PTBcall::SharedPtr func_expr() const {
-      return func_expr_;
-    }
+  PTBcall::SharedPtr func_expr() const {
+    return func_expr_;
+  }
 
-  private:
-    PTExpr::SharedPtr value_expr_;
-    PTBcall::SharedPtr func_expr_;
-    yb::YQLOperator yb_op_;
-  };
+ private:
+  PTExpr::SharedPtr value_expr_;
+  PTBcall::SharedPtr func_expr_;
+  yb::YQLOperator yb_op_;
+};
 
 // This class represents a sub-column argument (e.g. "SET l[1] = 'b'")
 class SubscriptedColumnArg : public ColumnArg {
@@ -145,8 +147,8 @@ class SubscriptedColumnArg : public ColumnArg {
   typedef std::shared_ptr<const SubscriptedColumnArg> SharedPtrConst;
 
   SubscriptedColumnArg(const ColumnDesc *desc = nullptr,
-                 const PTExprListNode::SharedPtr& args = nullptr,
-                 const PTExpr::SharedPtr& expr = nullptr)
+                       const PTExprListNode::SharedPtr& args = nullptr,
+                       const PTExpr::SharedPtr& expr = nullptr)
       : ColumnArg(desc, expr), args_(args) {
   }
 
@@ -173,9 +175,9 @@ class SubscriptedColumnOp : public SubscriptedColumnArg {
   typedef std::shared_ptr<const SubscriptedColumnOp> SharedPtrConst;
 
   SubscriptedColumnOp(const ColumnDesc *desc = nullptr,
-              const PTExprListNode::SharedPtr& args = nullptr,
-              const PTExpr::SharedPtr& expr = nullptr,
-              yb::YQLOperator yb_op = yb::YQLOperator::YQL_OP_NOOP)
+                      const PTExprListNode::SharedPtr& args = nullptr,
+                      const PTExpr::SharedPtr& expr = nullptr,
+                      yb::YQLOperator yb_op = yb::YQLOperator::YQL_OP_NOOP)
       : SubscriptedColumnArg(desc, args, expr), yb_op_(yb_op) {
   }
   SubscriptedColumnOp(const SubscriptedColumnOp &subcol_op)

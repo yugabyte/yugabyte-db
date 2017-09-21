@@ -97,7 +97,7 @@ CHECKED_STATUS SemContext::LookupTable(YBTableName name, shared_ptr<YBTable>* ta
 
 CHECKED_STATUS SemContext::MapSymbol(const MCString& name, PTColumnDefinition *entry) {
   if (symtab_[name].column_ != nullptr) {
-    RETURN_NOT_OK(Error(entry->loc(), ErrorCode::DUPLICATE_COLUMN));
+    RETURN_NOT_OK(Error(entry, ErrorCode::DUPLICATE_COLUMN));
   }
   symtab_[name].column_ = entry;
   return Status::OK();
@@ -105,7 +105,7 @@ CHECKED_STATUS SemContext::MapSymbol(const MCString& name, PTColumnDefinition *e
 
 CHECKED_STATUS SemContext::MapSymbol(const MCString& name, PTAlterColumnDefinition *entry) {
   if (symtab_[name].alter_column_ != nullptr) {
-    RETURN_NOT_OK(Error(entry->loc(), ErrorCode::DUPLICATE_COLUMN));
+    RETURN_NOT_OK(Error(entry, ErrorCode::DUPLICATE_COLUMN));
   }
   symtab_[name].alter_column_ = entry;
   return Status::OK();
@@ -113,7 +113,7 @@ CHECKED_STATUS SemContext::MapSymbol(const MCString& name, PTAlterColumnDefiniti
 
 CHECKED_STATUS SemContext::MapSymbol(const MCString& name, PTCreateTable *entry) {
   if (symtab_[name].create_table_ != nullptr) {
-    RETURN_NOT_OK(Error(entry->loc(), ErrorCode::DUPLICATE_TABLE));
+    RETURN_NOT_OK(Error(entry, ErrorCode::DUPLICATE_TABLE));
   }
   symtab_[name].create_table_ = entry;
   return Status::OK();
@@ -131,7 +131,7 @@ CHECKED_STATUS SemContext::MapSymbol(const MCString& name, ColumnDesc *entry) {
 
 CHECKED_STATUS SemContext::MapSymbol(const MCString& name, PTTypeField *entry) {
   if (symtab_[name].type_field_ != nullptr) {
-    RETURN_NOT_OK(Error(entry->loc(), ErrorCode::DUPLICATE_TYPE_FIELD));
+    RETURN_NOT_OK(Error(entry, ErrorCode::DUPLICATE_TYPE_FIELD));
   }
   symtab_[name].type_field_ = entry;
   return Status::OK();

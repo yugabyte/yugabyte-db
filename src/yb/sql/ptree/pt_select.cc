@@ -98,7 +98,7 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
 
   // Get the table descriptor.
   if (from_clause_->size() > 1) {
-    return sem_context->Error(from_clause_->loc(), "Only one selected table is allowed",
+    return sem_context->Error(from_clause_, "Only one selected table is allowed",
                               ErrorCode::CQL_STATEMENT_INVALID);
   }
   RETURN_NOT_OK(from_clause_->Analyze(sem_context));
@@ -149,14 +149,12 @@ CHECKED_STATUS AnalyzeDistinctColumn(TreeNode *target,
                                      const ColumnDesc *col_desc,
                                      SemContext *sem_context) {
   if (col_desc->is_primary() && !col_desc->is_hash()) {
-    return sem_context->Error(
-        target->loc(), "Selecting distinct range column is not yet supported",
-        ErrorCode::CQL_STATEMENT_INVALID);
+    return sem_context->Error(target, "Selecting distinct range column is not yet supported",
+                              ErrorCode::CQL_STATEMENT_INVALID);
   }
   if (!col_desc->is_primary() && !col_desc->is_static()) {
-    return sem_context->Error(
-        target->loc(), "Selecting distinct non-static column is not yet supported",
-        ErrorCode::CQL_STATEMENT_INVALID);
+    return sem_context->Error(target, "Selecting distinct non-static column is not yet supported",
+                              ErrorCode::CQL_STATEMENT_INVALID);
   }
   return Status::OK();
 }
@@ -167,7 +165,7 @@ CHECKED_STATUS PTSelectStmt::AnalyzeTarget(TreeNode *target, SemContext *sem_con
   // Walking through the target expressions and collect all columns. Currently, CQL doesn't allow
   // any expression except for references to table column.
   if (target->opcode() != TreeNodeOpcode::kPTRef) {
-    return sem_context->Error(target->loc(), "Selecting expression is not allowed in CQL",
+    return sem_context->Error(target, "Selecting expression is not allowed in CQL",
                               ErrorCode::CQL_STATEMENT_INVALID);
   }
 
@@ -175,7 +173,7 @@ CHECKED_STATUS PTSelectStmt::AnalyzeTarget(TreeNode *target, SemContext *sem_con
 
   if (ref->name() == nullptr) { // This ref is pointing to the whole table (SELECT *)
     if (target_->size() != 1) {
-      return sem_context->Error(target->loc(), "Selecting '*' is not allowed in this context",
+      return sem_context->Error(target, "Selecting '*' is not allowed in this context",
                                 ErrorCode::CQL_STATEMENT_INVALID);
     }
     int num_cols = num_columns();
@@ -239,7 +237,7 @@ PTTableRef::~PTTableRef() {
 
 CHECKED_STATUS PTTableRef::Analyze(SemContext *sem_context) {
   if (alias_ != nullptr) {
-    return sem_context->Error(loc(), "Alias is not allowed", ErrorCode::CQL_STATEMENT_INVALID);
+    return sem_context->Error(this, "Alias is not allowed", ErrorCode::CQL_STATEMENT_INVALID);
   }
   return name_->Analyze(sem_context);
 }

@@ -24,13 +24,14 @@ namespace yb {
 namespace sql {
 
 static const auto invalid_argument_len = std::strlen("Invalid argument: ");
-#define RETURN_SEM_CONTEXT_ERROR_NOT_OK(s) do { \
-    ::yb::Status _s = (s); \
-    if (PREDICT_FALSE(!_s.ok())) { \
-      auto err_str = s.ToString(false); \
-      err_str.replace(0, invalid_argument_len, ""); \
-      return sem_context->Error(loc(), err_str.c_str()); \
-    } \
+#define RETURN_SEM_CONTEXT_ERROR_NOT_OK(s) do {                     \
+    ::yb::Status _s = (s);                                          \
+    if (PREDICT_FALSE(!_s.ok())) {                                  \
+      auto err_str = s.ToString(false);                             \
+      err_str.replace(0, invalid_argument_len, "");                 \
+      return sem_context->Error(this, err_str.c_str(),              \
+                                ErrorCode::INVALID_TABLE_PROPERTY); \
+    }                                                               \
   } while (0)
 
 class PTProperty : public TreeNode {
@@ -107,8 +108,8 @@ class PTPropertyListNode : public TreeListNode<PTProperty> {
   typedef MCSharedPtr<const PTPropertyListNode> SharedPtrConst;
 
   explicit PTPropertyListNode(MemoryContext *memory_context,
-                                   YBLocation::SharedPtr loc,
-                                   const MCSharedPtr<PTProperty>& tnode = nullptr)
+                              YBLocation::SharedPtr loc,
+                              const MCSharedPtr<PTProperty>& tnode = nullptr)
       : TreeListNode<PTProperty>(memory_context, loc, tnode) {
   }
 
@@ -127,7 +128,7 @@ class PTPropertyListNode : public TreeListNode<PTProperty> {
 
   template<typename... TypeArgs>
   inline static PTPropertyListNode::SharedPtr MakeShared(MemoryContext *memctx,
-                                                              TypeArgs&&...args) {
+                                                         TypeArgs&&...args) {
     return MCMakeShared<PTPropertyListNode>(memctx, std::forward<TypeArgs>(args)...);
   }
 

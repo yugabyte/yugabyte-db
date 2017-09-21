@@ -84,11 +84,11 @@ CHECKED_STATUS PTAlterTable::AppendModColumn(SemContext *sem_context,
     const ColumnDesc* desc = sem_context->GetColumnDesc(column->old_name()->last_name(),
                                  /* reading column = */ false);
     if (desc == nullptr) {
-      return sem_context->Error(loc(), "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
+      return sem_context->Error(this, "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
     }
 
     if (desc->is_hash() && column->mod_type() != ALTER_RENAME) {
-      return sem_context->Error(loc(), "Can't alter key column", ErrorCode::ALTER_KEY_COLUMN);
+      return sem_context->Error(this, "Can't alter key column", ErrorCode::ALTER_KEY_COLUMN);
     }
   }
 
@@ -98,7 +98,7 @@ CHECKED_STATUS PTAlterTable::AppendModColumn(SemContext *sem_context,
     const ColumnDesc* desc = sem_context->GetColumnDesc(name,
                                  /* reading column = */ false);
     if (desc != nullptr) {
-      return sem_context->Error(loc(), "Duplicate column name", ErrorCode::DUPLICATE_COLUMN);
+      return sem_context->Error(this, "Duplicate column name", ErrorCode::DUPLICATE_COLUMN);
     }
   }
 

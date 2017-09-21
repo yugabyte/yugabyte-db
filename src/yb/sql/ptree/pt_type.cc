@@ -97,14 +97,17 @@ CHECKED_STATUS PTMap::Analyze(SemContext *sem_context) {
   // Both key and value types cannot be collection.
   if (keys_type_->yql_type()->IsCollection() || keys_type_->yql_type()->IsUserDefined() ||
       values_type_->yql_type()->IsCollection() || values_type_->yql_type()->IsUserDefined()) {
-    return sem_context->Error(loc(), ErrorCode::INVALID_TABLE_DEFINITION,
-        "Collection type parameters cannot be (un-frozen) collections or UDTs");
+    return sem_context->Error(this,
+                              "Collection type parameters cannot be (un-frozen) collections "
+                              "or UDTs",  ErrorCode::INVALID_TABLE_DEFINITION);
   }
 
   // Data types of map keys must be valid primary key types since they are encoded as keys in DocDB
   if (!keys_type_->IsApplicableForPrimaryKey()) {
-    return sem_context->Error(loc(), ErrorCode::INVALID_TABLE_DEFINITION,
-        "Invalid datatype for map key or set element, must be valid primary key type");
+    return sem_context->Error(this,
+                              "Invalid datatype for map key or set element, "
+                              "must be valid primary key type",
+                              ErrorCode::INVALID_TABLE_DEFINITION);
   }
 
   return Status::OK();
@@ -127,14 +130,17 @@ CHECKED_STATUS PTSet::Analyze(SemContext *sem_context) {
 
   // Elems type cannot be collection.
   if (elems_type_->yql_type()->IsCollection() || elems_type_->yql_type()->IsUserDefined()) {
-    return sem_context->Error(loc(), ErrorCode::INVALID_TABLE_DEFINITION,
-        "Collection type parameters cannot be (un-frozen) collections or UDTs");
+    return sem_context->Error(this,
+                              "Collection type parameters cannot be (un-frozen) collections "
+                              "or UDTs",  ErrorCode::INVALID_TABLE_DEFINITION);
   }
 
   // Data types of set elems must be valid primary key types since they are encoded as keys in DocDB
   if (!elems_type_->IsApplicableForPrimaryKey()) {
-    return sem_context->Error(loc(), ErrorCode::INVALID_TABLE_DEFINITION,
-        "Invalid datatype for map key or set element, must be valid primary key type");
+    return sem_context->Error(this,
+                              "Invalid datatype for map key or set element, "
+                              "must be valid primary key type",
+                              ErrorCode::INVALID_TABLE_DEFINITION);
   }
 
   return Status::OK();
@@ -157,8 +163,9 @@ CHECKED_STATUS PTList::Analyze(SemContext *sem_context) {
 
   // Elems type cannot be collection.
   if (elems_type_->yql_type()->IsCollection() || elems_type_->yql_type()->IsUserDefined()) {
-    return sem_context->Error(loc(), ErrorCode::INVALID_TABLE_DEFINITION,
-        "Collection type parameters cannot be (un-frozen) collections or UDTs");
+    return sem_context->Error(this,
+                              "Collection type parameters cannot be (un-frozen) collections "
+                              "or UDTs", ErrorCode::INVALID_TABLE_DEFINITION);
   }
 
   return Status::OK();
@@ -181,14 +188,14 @@ CHECKED_STATUS PTUserDefinedType::Analyze(SemContext *sem_context) {
   auto ybname = name_->ToTableName();
   if (!ybname.has_namespace()) {
     if (sem_context->CurrentKeyspace().empty()) {
-      return sem_context->Error(loc(), ErrorCode::NO_NAMESPACE_USED);
+      return sem_context->Error(this, ErrorCode::NO_NAMESPACE_USED);
     }
     ybname.set_namespace_name(sem_context->CurrentKeyspace());
   }
 
   yql_type_ = sem_context->GetUDType(ybname.namespace_name(), ybname.table_name());
   if (yql_type_ == nullptr) {
-    return sem_context->Error(loc(), ErrorCode::TYPE_NOT_FOUND, "Could not find user defined type");
+    return sem_context->Error(this, "Could not find user defined type", ErrorCode::TYPE_NOT_FOUND);
   }
 
   return Status::OK();
@@ -210,8 +217,8 @@ CHECKED_STATUS PTFrozen::Analyze(SemContext *sem_context) {
   yql_type_ = YQLType::CreateTypeFrozen(elems_type_->yql_type());
 
   if (!elems_type_->yql_type()->IsCollection() && !elems_type_->yql_type()->IsUserDefined()) {
-    return sem_context->Error(loc(), ErrorCode::INVALID_TABLE_DEFINITION,
-        "Can only freeze collections or user defined types");
+    return sem_context->Error(this, "Can only freeze collections or user defined types",
+                              ErrorCode::INVALID_TABLE_DEFINITION);
   }
   return Status::OK();
 }

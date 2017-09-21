@@ -37,8 +37,7 @@ PTDropStmt::~PTDropStmt() {
 
 CHECKED_STATUS PTDropStmt::Analyze(SemContext *sem_context) {
   if (names_->size() > 1) {
-    return sem_context->Error(names_->loc(),
-                              "Only one object name is allowed in a drop statement",
+    return sem_context->Error(names_, "Only one object name is allowed in a drop statement",
                               ErrorCode::CQL_STATEMENT_INVALID);
   }
 

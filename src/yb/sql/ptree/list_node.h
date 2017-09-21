@@ -122,12 +122,12 @@ class TreeListNode : public TreeNode {
 
       } else {
         if (++nested_count > max_nested_count) {
-          return context->Error(loc(), "Number of nested lists exceeds allowable limit",
+          return context->Error(this, "Number of nested lists exceeds allowable limit",
                                 ErrorCode::SYNTAX_ERROR);
         }
 
         if (++nested_level > max_nested_level) {
-          return context->Error(loc(), "Nested level of parenthesis exceeds allowable limit",
+          return context->Error(this, "Nested level of parenthesis exceeds allowable limit",
                                 ErrorCode::SYNTAX_ERROR);
         }
 

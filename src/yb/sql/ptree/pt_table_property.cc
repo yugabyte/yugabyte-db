@@ -112,7 +112,7 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
   const auto& table_property_name = lhs_->c_str();
   auto iterator = kPropertyDataTypes.find(table_property_name);
   if (iterator == kPropertyDataTypes.end()) {
-    return sem_context->Error(loc(), Substitute("Unknown property '$0'", lhs_->c_str()).c_str(),
+    return sem_context->Error(this, Substitute("Unknown property '$0'", lhs_->c_str()).c_str(),
                               ErrorCode::INVALID_TABLE_PROPERTY);
   }
 
@@ -125,7 +125,7 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
       RETURN_SEM_CONTEXT_ERROR_NOT_OK(GetDoubleValueFromExpr(rhs_, table_property_name,
                                                              &double_val));
       if (double_val <= 0.0 || double_val > 1.0) {
-        return sem_context->Error(loc(),
+        return sem_context->Error(this,
             Substitute("$0 must be larger than 0 and less than or equal to 1.0 (got $1)",
                        table_property_name, std::to_string(double_val)).c_str(),
             ErrorCode::INVALID_ARGUMENTS);
@@ -137,7 +137,7 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
       RETURN_SEM_CONTEXT_ERROR_NOT_OK(GetDoubleValueFromExpr(rhs_, table_property_name,
                                                              &double_val));
       if (double_val < 0.0 || double_val > 1.0) {
-        return sem_context->Error(loc(),
+        return sem_context->Error(this,
             Substitute(
                 "$0 must be larger than or equal to 0 and smaller than or equal to 1.0 (got $1)",
                 table_property_name, std::to_string(double_val)).c_str(),
@@ -148,9 +148,9 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
       RETURN_SEM_CONTEXT_ERROR_NOT_OK(GetIntValueFromExpr(rhs_, table_property_name, &int_val));
       // TTL value is entered by user in seconds, but we store internally in milliseconds.
       if (!common::IsValidTTLSeconds(int_val)) {
-        return sem_context->Error(loc(), Substitute("Valid ttl range : [$0, $1]",
-                                                    common::kMinTtlSeconds,
-                                                    common::kMaxTtlSeconds).c_str(),
+        return sem_context->Error(this, Substitute("Valid ttl range : [$0, $1]",
+                                                   common::kMinTtlSeconds,
+                                                   common::kMaxTtlSeconds).c_str(),
                                   ErrorCode::INVALID_ARGUMENTS);
       }
       break;
@@ -158,10 +158,10 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
     case KVProperty::kMemtableFlushPeriodInMs:
       RETURN_SEM_CONTEXT_ERROR_NOT_OK(GetIntValueFromExpr(rhs_, table_property_name, &int_val));
       if (int_val < 0) {
-        return sem_context->Error(loc(),
-            Substitute("$0 must be greater than or equal to 0 (got $1)",
-                       table_property_name, std::to_string(int_val)).c_str(),
-            ErrorCode::INVALID_ARGUMENTS);
+        return sem_context->Error(this,
+                                  Substitute("$0 must be greater than or equal to 0 (got $1)",
+                                             table_property_name, std::to_string(int_val)).c_str(),
+                                  ErrorCode::INVALID_ARGUMENTS);
       }
       break;
     case KVProperty::kIndexInterval: FALLTHROUGH_INTENDED;
@@ -170,10 +170,10 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
       // TODO(hector): Check that kMaxIndexInterval is greater than kMinIndexInterval.
       RETURN_SEM_CONTEXT_ERROR_NOT_OK(GetIntValueFromExpr(rhs_, table_property_name, &int_val));
       if (int_val < 1) {
-        return sem_context->Error(loc(),
-            Substitute("$0 must be greater than or equal to 1 (got $1)",
-                       table_property_name, std::to_string(int_val)).c_str(),
-            ErrorCode::INVALID_ARGUMENTS);
+        return sem_context->Error(this,
+                                  Substitute("$0 must be greater than or equal to 1 (got $1)",
+                                             table_property_name, std::to_string(int_val)).c_str(),
+                                  ErrorCode::INVALID_ARGUMENTS);
       }
       break;
     case KVProperty::kSpeculativeRetry:
@@ -188,7 +188,7 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
     case KVProperty::kCompaction: FALLTHROUGH_INTENDED;
     case KVProperty::kCaching: FALLTHROUGH_INTENDED;
     case KVProperty::kCompression:
-      return sem_context->Error(loc(),
+      return sem_context->Error(this,
                                 Substitute("Invalid value for option '$0'. Value must be a map",
                                            table_property_name).c_str(),
                                 ErrorCode::DATATYPE_MISMATCH);
@@ -236,7 +236,7 @@ CHECKED_STATUS PTTablePropertyListNode::Analyze(SemContext *sem_context) {
       case PropertyType::kTablePropertyMap: {
         string table_property_name = tnode->lhs()->c_str();
         if (table_properties.find(table_property_name) != table_properties.end()) {
-          return sem_context->Error(loc(), ErrorCode::DUPLICATE_TABLE_PROPERTY);
+          return sem_context->Error(this, ErrorCode::DUPLICATE_TABLE_PROPERTY);
         }
         RETURN_NOT_OK(tnode->Analyze(sem_context));
         table_properties.insert(table_property_name);
@@ -273,7 +273,7 @@ CHECKED_STATUS PTTablePropertyListNode::Analyze(SemContext *sem_context) {
         msg = Substitute("Bad Request: Missing CLUSTERING ORDER for column $0",
                                   pc->yb_name());
       }
-      return sem_context->Error(tnode->loc(), msg.c_str(), ErrorCode::INVALID_TABLE_PROPERTY);
+      return sem_context->Error(tnode, msg.c_str(), ErrorCode::INVALID_TABLE_PROPERTY);
     }
     if(tnode->direction() == PTOrderBy::Direction::kASC) {
       pc->set_sorting_type(ColumnSchema::SortingType::kAscending);
@@ -286,7 +286,7 @@ CHECKED_STATUS PTTablePropertyListNode::Analyze(SemContext *sem_context) {
     const auto &tnode = order_tnodes[*order_column_iter];
     auto msg = Substitute(
         "Bad Request: Only clustering key columns can be defined in CLUSTERING ORDER directive");
-    return sem_context->Error(tnode->loc(), msg.c_str(), ErrorCode::INVALID_TABLE_PROPERTY);
+    return sem_context->Error(tnode, msg.c_str(), ErrorCode::INVALID_TABLE_PROPERTY);
   }
   return Status::OK();
 }
@@ -358,10 +358,11 @@ CHECKED_STATUS PTTablePropertyMap::Analyze(SemContext *sem_context) {
   auto iterator = kPropertyDataTypes.find(property_name);
   if (iterator == kPropertyDataTypes.end()) {
     if (IsValidProperty(property_name)) {
-      return sem_context->Error(loc(), Substitute("Invalid map value for property '$0'",
-          property_name).c_str(), ErrorCode::DATATYPE_MISMATCH);
+      return sem_context->Error(this, Substitute("Invalid map value for property '$0'",
+                                                 property_name).c_str(),
+                                ErrorCode::DATATYPE_MISMATCH);
     }
-    return sem_context->Error(loc(), Substitute("Unknown property '$0'", property_name).c_str(),
+    return sem_context->Error(this, Substitute("Unknown property '$0'", property_name).c_str(),
                               ErrorCode::INVALID_TABLE_PROPERTY);
   }
 

@@ -68,9 +68,8 @@ CHECKED_STATUS ParseTree::Analyze(SemContext *sem_context) {
         root_ = lnode->node_list().front();
         break;
       default:
-        return sem_context->Error(
-            root_->loc(), ErrorCode::CQL_STATEMENT_INVALID,
-            "Multi-statement list not supported yet");
+        return sem_context->Error(root_, "Multi-statement list not supported yet",
+                                  ErrorCode::CQL_STATEMENT_INVALID);
     }
   }
 

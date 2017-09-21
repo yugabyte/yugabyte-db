@@ -92,7 +92,7 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
     err_msg += ")";
     err_msg = s.ToString() + ". " + err_msg;
     LOG(INFO) << s.ToString() << ". " << err_msg;
-    return sem_context->Error(loc(), err_msg.c_str(), ErrorCode::INVALID_FUNCTION_CALL);
+    return sem_context->Error(this, err_msg.c_str(), ErrorCode::INVALID_FUNCTION_CALL);
   }
 
   // Collection operations require special handling during type analysis
@@ -110,9 +110,8 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
         strcmp(bfdecl->cpp_name(), "SubListList") == 0) {
 
       if (!sem_context->processing_set_clause()) {
-        return sem_context->Error(loc(),
-            "Collection operations only allowed in set clause",
-            ErrorCode::INVALID_FUNCTION_CALL);
+        return sem_context->Error(this, "Collection operations only allowed in set clause",
+                                  ErrorCode::INVALID_FUNCTION_CALL);
       }
 
       auto it = exprs.begin();
@@ -127,7 +126,7 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
       }
 
       if (col_ref->expr_op() != ExprOperator::kRef) {
-        return sem_context->Error(loc(),
+        return sem_context->Error(this,
             "Expected main argument for collection operation to be column reference",
             ErrorCode::INVALID_FUNCTION_CALL);
       }
@@ -135,13 +134,13 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
       PTRef *pt_ref = static_cast<PTRef *>(col_ref.get());
 
       if (sem_context->lhs_col() != pt_ref->desc()) {
-        return sem_context->Error(loc(),
+        return sem_context->Error(this,
             "Expected main argument for collection operation to reference the column being set",
             ErrorCode::INVALID_FUNCTION_CALL);
       }
 
       if (arg->expr_op() != ExprOperator::kCollection) {
-        return sem_context->Error(loc(),
+        return sem_context->Error(this,
             "Expected auxiliary argument for collection operations to be collection literal",
             ErrorCode::INVALID_FUNCTION_CALL);
       }
@@ -168,8 +167,7 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
     }
 
     // default
-    return sem_context->Error(loc(),
-                              "Unsupported builtin call for collections",
+    return sem_context->Error(this, "Unsupported builtin call for collections",
                               ErrorCode::INVALID_FUNCTION_CALL);
 
   } else {
@@ -206,7 +204,7 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
                      << "its signature but converting the argument to the desired type failed";
           string err_msg = (s.ToString() + "CAST " + expr->yql_type()->ToString() + " AS " +
               YQLType::ToCQLString(formal_types[pindex]) + " failed");
-          return sem_context->Error(loc(), err_msg.c_str(), ErrorCode::INVALID_FUNCTION_CALL);
+          return sem_context->Error(this, err_msg.c_str(), ErrorCode::INVALID_FUNCTION_CALL);
         }
       }
       pindex++;
@@ -236,7 +234,7 @@ CHECKED_STATUS PTBcall::CheckOperator(SemContext *sem_context) {
     if (strcmp(name_->c_str(), "+") == 0 || strcmp(name_->c_str(), "-") == 0) {
       name_->append("counter");
     } else if (strcmp(name_->c_str(), "+counter") != 0 && strcmp(name_->c_str(), "-counter") != 0) {
-      return sem_context->Error(loc(), ErrorCode::INVALID_COUNTING_EXPR);
+      return sem_context->Error(this, ErrorCode::INVALID_COUNTING_EXPR);
     }
   }
 
@@ -244,7 +242,7 @@ CHECKED_STATUS PTBcall::CheckOperator(SemContext *sem_context) {
   // The following error report on builtin call is to disallow function call for non-COUNTER
   // datatypes. This code block should be enabled if we decide to do so.
   else {
-    return sem_context->Error(loc(), "This operator is only allowed for COUNTER in SET clause",
+    return sem_context->Error(this, "This operator is only allowed for COUNTER in SET clause",
                               ErrorCode::CQL_STATEMENT_INVALID);
   }
   */
@@ -255,15 +253,13 @@ CHECKED_STATUS PTBcall::CheckOperator(SemContext *sem_context) {
 CHECKED_STATUS PTBcall::CheckCounterUpdateSupport(SemContext *sem_context) const {
   PTExpr::SharedPtr arg1 = args_->element(0);
   if (arg1->expr_op() != ExprOperator::kRef) {
-    return sem_context->Error(arg1->loc(),
-                              "Right and left arguments must reference the same counter",
+    return sem_context->Error(arg1, "Right and left arguments must reference the same counter",
                               ErrorCode::INVALID_COUNTING_EXPR);
   }
 
   const PTRef *ref = static_cast<const PTRef*>(arg1.get());
   if (ref->desc() != sem_context->lhs_col()) {
-    return sem_context->Error(arg1->loc(),
-                              "Right and left arguments must reference the same counter",
+    return sem_context->Error(arg1, "Right and left arguments must reference the same counter",
                               ErrorCode::INVALID_COUNTING_EXPR);
   }
 
@@ -275,7 +271,7 @@ CHECKED_STATUS PTBcall::CheckCounterUpdateSupport(SemContext *sem_context) const
 // Collection constants.
 CHECKED_STATUS PTToken::Analyze(SemContext *sem_context) {
   if (sem_context->sem_state()->where_state() == nullptr) {
-    return sem_context->Error(loc(), "Token builtin call currently only allowed in where clause",
+    return sem_context->Error(this, "Token builtin call currently only allowed in where clause",
         ErrorCode::FEATURE_NOT_SUPPORTED);
   }
 
@@ -284,9 +280,8 @@ CHECKED_STATUS PTToken::Analyze(SemContext *sem_context) {
   // Analyzing the arguments: their types need to be inferred based on table schema (hash columns).
   size_t size = sem_context->current_table()->schema().num_hash_key_columns();
   if (args().size() != size) {
-    return sem_context->Error(loc(),
-        "Invalid token call, wrong number of arguments",
-        ErrorCode::CQL_STATEMENT_INVALID);
+    return sem_context->Error(this, "Invalid token call, wrong number of arguments",
+                              ErrorCode::CQL_STATEMENT_INVALID);
   }
 
   // Check if reference to partition key.
@@ -294,7 +289,7 @@ CHECKED_STATUS PTToken::Analyze(SemContext *sem_context) {
     size_t index = 0;
     for (const PTExpr::SharedPtr &arg : args()) {
       if (arg->expr_op() != ExprOperator::kRef) {
-        return sem_context->Error(arg->loc(),
+        return sem_context->Error(arg,
             "Invalid token call, all arguments must be either column references or literals",
             ErrorCode::CQL_STATEMENT_INVALID);
       }
@@ -302,9 +297,9 @@ CHECKED_STATUS PTToken::Analyze(SemContext *sem_context) {
       PTRef *col_ref = static_cast<PTRef *>(arg.get());
       RETURN_NOT_OK(col_ref->Analyze(sem_context));
       if (col_ref->desc()->index() != index) {
-        return sem_context->Error(col_ref->loc(),
-            "Invalid token call, found reference to unexpected column",
-            ErrorCode::CQL_STATEMENT_INVALID);
+        return sem_context->Error(col_ref,
+                                  "Invalid token call, found reference to unexpected column",
+                                  ErrorCode::CQL_STATEMENT_INVALID);
       }
       index++;
     }
@@ -320,7 +315,7 @@ CHECKED_STATUS PTToken::Analyze(SemContext *sem_context) {
         arg->expr_op() != ExprOperator::kUMinus &&
         arg->expr_op() != ExprOperator::kCollection &&
         arg->expr_op() != ExprOperator::kBindVar) {
-      return sem_context->Error(arg->loc(),
+      return sem_context->Error(arg,
           "Invalid token call, all arguments must be either column references or literals",
           ErrorCode::CQL_STATEMENT_INVALID);
     }

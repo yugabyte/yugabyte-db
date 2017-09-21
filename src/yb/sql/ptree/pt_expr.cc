@@ -44,7 +44,7 @@ CHECKED_STATUS PTExpr::CheckOperator(SemContext *sem_context) {
       case YQL_OP_NOOP:
         break;
       default:
-        return sem_context->Error(loc(), "This operator is not allowed in where clause",
+        return sem_context->Error(this, "This operator is not allowed in where clause",
                                   ErrorCode::CQL_STATEMENT_INVALID);
     }
   }
@@ -99,7 +99,7 @@ CHECKED_STATUS PTExpr::CheckExpectedTypeCompatibility(SemContext *sem_context) {
   // Check if RHS is convertible to LHS.
   if (!sem_context->expr_expected_yql_type()->IsUnknown()) {
     if (!sem_context->IsConvertible(sem_context->expr_expected_yql_type(), yql_type_)) {
-      return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
+      return sem_context->Error(this, ErrorCode::DATATYPE_MISMATCH);
     }
   }
 
@@ -118,7 +118,7 @@ CHECKED_STATUS PTExpr::CheckInequalityOperands(SemContext *sem_context,
                                                PTExpr::SharedPtr lhs,
                                                PTExpr::SharedPtr rhs) {
   if (!sem_context->IsComparable(lhs->yql_type_id(), rhs->yql_type_id())) {
-    return sem_context->Error(loc(), "Cannot compare values of these datatypes",
+    return sem_context->Error(this, "Cannot compare values of these datatypes",
                               ErrorCode::INCOMPARABLE_DATATYPES);
   }
   return Status::OK();
@@ -137,7 +137,7 @@ CHECKED_STATUS PTExpr::CheckEqualityOperands(SemContext *sem_context,
 
 CHECKED_STATUS PTExpr::CheckLhsExpr(SemContext *sem_context) {
   if (op_ != ExprOperator::kRef && op_ != ExprOperator::kBcall) {
-    return sem_context->Error(loc(),
+    return sem_context->Error(this,
                               "Only column refs and builtin calls are allowed for left hand value",
                               ErrorCode::CQL_STATEMENT_INVALID);
   }
@@ -155,14 +155,14 @@ CHECKED_STATUS PTExpr::CheckRhsExpr(SemContext *sem_context) {
     case ExprOperator::kBcall:
       break;
     default:
-      return sem_context->Error(loc(), "Operator not allowed as right hand value",
+      return sem_context->Error(this, "Operator not allowed as right hand value",
                                 ErrorCode::CQL_STATEMENT_INVALID);
   }
   return Status::OK();
 }
 
 CHECKED_STATUS PTExpr::CheckCounterUpdateSupport(SemContext *sem_context) const {
-  return sem_context->Error(loc(), ErrorCode::INVALID_COUNTING_EXPR);
+  return sem_context->Error(this, ErrorCode::INVALID_COUNTING_EXPR);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -244,7 +244,7 @@ CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
   // Ensuring expected type is compatible with parsing/literal type.
   auto conversion_mode = YQLType::GetConversionMode(expected_type->main(), yql_type_->main());
   if (conversion_mode > YQLType::ConversionMode::kFurtherCheck) {
-    return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
+    return sem_context->Error(this, ErrorCode::DATATYPE_MISMATCH);
   }
 
   const MCSharedPtr<MCString>& bindvar_name = sem_context->bindvar_name();
@@ -253,7 +253,7 @@ CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
   switch (expected_type->main()) {
     case MAP: {
       if (yql_type_->main() == SET && values_.size() > 0) {
-        return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
+        return sem_context->Error(this, ErrorCode::DATATYPE_MISMATCH);
       }
       SemState sem_state(sem_context);
 
@@ -308,23 +308,21 @@ CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
         // column references (for tables) to simplify this path.
         PTRef* field_ref = dynamic_cast<PTRef *>(key.get());
         if (field_ref == nullptr) {
-          return sem_context->Error(loc(),
-              "Field names for user-defined types must be field reference",
-              ErrorCode::INVALID_ARGUMENTS);
+          return sem_context->Error(this,
+                                    "Field names for user-defined types must be field reference",
+                                    ErrorCode::INVALID_ARGUMENTS);
         }
         if (!field_ref->name()->IsSimpleName()) {
-          return sem_context->Error(loc(),
-              "Qualified names not allowed for fields of user-defined",
-              ErrorCode::INVALID_ARGUMENTS);
+          return sem_context->Error(this, "Qualified names not allowed for fields of user-defined",
+                                    ErrorCode::INVALID_ARGUMENTS);
         }
         string field_name(field_ref->name()->last_name().c_str());
 
         // All keys must be existing field names from the UDT
         int field_idx = expected_type->GetUDTypeFieldIdxByName(field_name);
         if (field_idx < 0) {
-          return sem_context->Error(loc(),
-              "Invalid field name found for user defined type instance",
-              ErrorCode::INVALID_ARGUMENTS);
+          return sem_context->Error(this, "Invalid field name found for user defined type instance",
+                                    ErrorCode::INVALID_ARGUMENTS);
         }
 
         // Setting the corresponding field value
@@ -354,12 +352,11 @@ CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
     }
 
     case TUPLE:
-      return sem_context->Error(loc(),
-                                "Tuple type not supported yet",
+      return sem_context->Error(this, "Tuple type not supported yet",
                                 ErrorCode::FEATURE_NOT_SUPPORTED);
 
     default:
-      return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
+      return sem_context->Error(this, ErrorCode::DATATYPE_MISMATCH);
   }
 
   // Assign correct datatype.
@@ -404,7 +401,7 @@ CHECKED_STATUS PTLogicExpr::AnalyzeOperator(SemContext *sem_context,
   switch (yql_op_) {
     case YQL_OP_NOT:
       if (op1->yql_type_id() != BOOL) {
-        return sem_context->Error(loc(), "Only boolean value is allowed in this context",
+        return sem_context->Error(this, "Only boolean value is allowed in this context",
                                   ErrorCode::INVALID_DATATYPE);
       }
       internal_type_ = yb::InternalType::kBoolValue;
@@ -412,7 +409,7 @@ CHECKED_STATUS PTLogicExpr::AnalyzeOperator(SemContext *sem_context,
 
     case YQL_OP_IS_TRUE: FALLTHROUGH_INTENDED;
     case YQL_OP_IS_FALSE:
-      return sem_context->Error(loc(), "Operator not supported yet",
+      return sem_context->Error(this, "Operator not supported yet",
                                 ErrorCode::CQL_STATEMENT_INVALID);
     default:
       LOG(FATAL) << "Invalid operator";
@@ -428,11 +425,11 @@ CHECKED_STATUS PTLogicExpr::AnalyzeOperator(SemContext *sem_context,
 
   // "op1" and "op2" must have been analyzed before getting here
   if (op1->yql_type_id() != BOOL) {
-    return sem_context->Error(op1->loc(), "Only boolean value is allowed in this context",
+    return sem_context->Error(op1, "Only boolean value is allowed in this context",
                               ErrorCode::INVALID_DATATYPE);
   }
   if (op2->yql_type_id() != BOOL) {
-    return sem_context->Error(op2->loc(), "Only boolean value is allowed in this context",
+    return sem_context->Error(op2, "Only boolean value is allowed in this context",
                               ErrorCode::INVALID_DATATYPE);
   }
 
@@ -530,7 +527,7 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
   switch (yql_op_) {
     case YQL_OP_IS_NULL: FALLTHROUGH_INTENDED;
     case YQL_OP_IS_NOT_NULL:
-      return sem_context->Error(loc(), "Operator not supported yet",
+      return sem_context->Error(this, "Operator not supported yet",
                                 ErrorCode::CQL_STATEMENT_INVALID);
     default:
       LOG(FATAL) << "Invalid operator" << int(yql_op_);
@@ -568,7 +565,7 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
       break;
 
     default:
-      return sem_context->Error(loc(), "Operator not supported yet",
+      return sem_context->Error(this, "Operator not supported yet",
           ErrorCode::CQL_STATEMENT_INVALID);
   }
 
@@ -591,7 +588,7 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
         if (token->is_partition_key_ref()) {
           return where_state->AnalyzePartitionKeyOp(sem_context, this, op2);
         } else {
-          return sem_context->Error(loc(), "Only token calls that reference partition key allowed",
+          return sem_context->Error(this, "Only token calls that reference partition key allowed",
               ErrorCode::FEATURE_NOT_SUPPORTED);
         }
       }
@@ -647,11 +644,11 @@ CHECKED_STATUS PTOperatorExpr::AnalyzeOperator(SemContext *sem_context,
       // "op1" must have been analyzed before we get here.
       // Check to make sure that it is allowed in this context.
       if (op1->expr_op() != ExprOperator::kConst) {
-        return sem_context->Error(loc(), "Only numeric constant is allowed in this context",
+        return sem_context->Error(this, "Only numeric constant is allowed in this context",
                                   ErrorCode::FEATURE_NOT_SUPPORTED);
       }
       if (!YQLType::IsNumeric(op1->yql_type_id())) {
-        return sem_context->Error(loc(), "Only numeric data type is allowed in this context",
+        return sem_context->Error(this, "Only numeric data type is allowed in this context",
                                   ErrorCode::INVALID_DATATYPE);
       }
 
@@ -684,14 +681,15 @@ CHECKED_STATUS PTRef::AnalyzeOperator(SemContext *sem_context) {
 
   // Check if this refers to the whole table (SELECT *).
   if (name_ == nullptr) {
-    return sem_context->Error(loc(), "Cannot do type resolution for wildcard reference (SELECT *)");
+    return sem_context->Error(this, "Cannot do type resolution for wildcard reference (SELECT *)",
+                              ErrorCode::SQL_STATEMENT_INVALID);
   }
 
   // Look for a column descriptor from symbol table.
   RETURN_NOT_OK(name_->Analyze(sem_context));
   desc_ = sem_context->GetColumnDesc(name_->last_name(), true /* reading_column */);
   if (desc_ == nullptr) {
-    return sem_context->Error(loc(), "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
+    return sem_context->Error(this, "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
   }
 
   // Type resolution: Ref(x) should have the same datatype as (x).
@@ -706,10 +704,10 @@ CHECKED_STATUS PTRef::CheckLhsExpr(SemContext *sem_context) {
   // and counters.
   if (sem_context->processing_if_clause()) {
     if (desc_->is_primary()) {
-      return sem_context->Error(loc(), "Primary key column reference is not allowed in if clause",
+      return sem_context->Error(this, "Primary key column reference is not allowed in if clause",
                                 ErrorCode::CQL_STATEMENT_INVALID);
     } else if (desc_->is_counter()) {
-      return sem_context->Error(loc(), "Counter column reference is not allowed in if clause",
+      return sem_context->Error(this, "Counter column reference is not allowed in if clause",
                                 ErrorCode::CQL_STATEMENT_INVALID);
     }
   }
@@ -739,7 +737,8 @@ CHECKED_STATUS PTSubscriptedColumn::AnalyzeOperator(SemContext *sem_context) {
 
   // Check if this refers to the whole table (SELECT *).
   if (name_ == nullptr) {
-    return sem_context->Error(loc(), "Cannot do type resolution for wildcard reference (SELECT *)");
+    return sem_context->Error(this, "Cannot do type resolution for wildcard reference (SELECT *)",
+                              ErrorCode::SQL_STATEMENT_INVALID);
   }
 
   // Look for a column descriptor from symbol table.
@@ -747,7 +746,7 @@ CHECKED_STATUS PTSubscriptedColumn::AnalyzeOperator(SemContext *sem_context) {
 
   desc_ = sem_context->GetColumnDesc(name_->last_name(), true /* reading column */);
   if (desc_ == nullptr) {
-    return sem_context->Error(loc(), "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
+    return sem_context->Error(this, "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
   }
 
   SemState sem_state(sem_context);
@@ -758,9 +757,8 @@ CHECKED_STATUS PTSubscriptedColumn::AnalyzeOperator(SemContext *sem_context) {
   if (args_ != nullptr) {
     for (const auto &arg : args_->node_list()) {
       if (curr_ytype->keys_type() == nullptr) {
-        return sem_context->Error(loc(),
-            "Columns with elementary types cannot take arguments",
-            ErrorCode::CQL_STATEMENT_INVALID);
+        return sem_context->Error(this, "Columns with elementary types cannot take arguments",
+                                  ErrorCode::CQL_STATEMENT_INVALID);
       }
 
       sem_state.SetExprState(curr_ytype->keys_type(),
@@ -783,8 +781,8 @@ CHECKED_STATUS PTSubscriptedColumn::CheckLhsExpr(SemContext *sem_context) {
   // If where_state is null, we are processing the IF clause. In that case, disallow reference to
   // primary key columns.
   if (sem_context->where_state() == nullptr && desc_->is_primary()) {
-    return sem_context->Error(loc(), "Primary key column reference is not allowed in if expression",
-        ErrorCode::CQL_STATEMENT_INVALID);
+    return sem_context->Error(this, "Primary key column reference is not allowed in if expression",
+                              ErrorCode::CQL_STATEMENT_INVALID);
   }
   return Status::OK();
 }
