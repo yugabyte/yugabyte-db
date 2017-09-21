@@ -9,6 +9,8 @@ import argparse
 import tarfile
 import random
 import string
+import requests
+import json
 from subprocess import check_output, CalledProcessError
 from ybops.utils import init_env, log_message, get_release_file, publish_release, \
     generate_checksum, latest_release, download_release, docker_push_to_registry
@@ -37,11 +39,13 @@ parser.add_argument('--destination', help='Copy release to Destination folder.')
 parser.add_argument('--tag', help='Release tag name')
 parser.add_argument('--packages', nargs='+',  help='Comma separated release packages' +
                     'ex. devops-sha.tar.gz, yugaware-sha.tar.gz, yugabyte-sha.tar.gz ')
+parser.add_argument('--release_notes', help='Release notes', nargs='+', default="")
 args = parser.parse_args()
 
 output = None
 SECRET_CHOICE = string.ascii_lowercase + string.digits + '!@#$%^&*(-_=+)'
 REQUIRED_PACKAGES = ('devops', 'yugaware', 'yugabyte')
+REPLICATED_VENDOR_API = 'https://api.replicated.com/vendor/v1/app/'
 
 try:
     init_env(logging.INFO)
@@ -116,9 +120,52 @@ try:
             yaml_str = yaml_file.read()\
                 .replace('YUGABYTE_RELEASE_VERSION', args.tag)\
                 .replace('YUGAWARE_APP_SECRET', secret_str)
-            # TODO: replace this with replicated rest api's to create the release
-            with open("/tmp/replicated-{}.yml".format(args.tag), "w") as outfile:
-                outfile.write(yaml_str)
+            api_token = os.environ.get('REPLICATED_API_TOKEN')
+            app_id = os.environ.get('REPLICATED_APP_ID')
+            if api_token is None or app_id is None:
+                raise YBOpsRuntimeError("REPLICATED_API_TOKEN and REPLICATED_APP_ID are required.")
+
+            headers = {'authorization': api_token, 'content-type': 'application/json'}
+            params = {'start': 0, 'count': 1}
+            # Fetch the current releases and channel information
+            response = requests.get(os.path.join(REPLICATED_VENDOR_API, app_id, 'releases', 'paged'),
+                                    headers=headers, json=params)
+            response.raise_for_status()
+            releases = json.loads(response.text)
+            current_beta_release = None
+            beta_channel_id = None
+
+            for release in releases['releases']:
+                release_channels = [channel for channel in release['ActiveChannels']
+                                    if channel['Name'] == "Beta"]
+                print release_channels
+                if len(release_channels) >= 1:
+                    current_beta_release = release_channels[0]['ReleaseLabel']
+                    beta_channel_id = release_channels[0]['Id']
+                    break
+            if beta_channel_id is None or current_beta_release is None:
+                raise YBOpsRuntimeError("Unable to fetch current release version.")
+            elif current_beta_release == args.tag:
+                raise YBOpsRuntimeError("Release already promoted")
+            # Create a new release in replicated
+            params = {'name': args.tag, 'source': 'latest', 'sourcedata': 0}
+            response = requests.post(os.path.join(REPLICATED_VENDOR_API, app_id, 'release'),
+                                     headers=headers, json=params)
+            response.raise_for_status()
+            response_json = json.loads(response.text)
+            release_sequence = str(response_json['Sequence'])
+            headers['content-type'] = 'text/plain'
+            # Update the release with new replicated yaml
+            response = requests.put(os.path.join(REPLICATED_VENDOR_API, app_id, release_sequence, 'raw'),
+                                    headers=headers, data=yaml_str)
+            response.raise_for_status()
+            headers['content-type'] = 'application/json'
+            params = {'channels': [beta_channel_id], 'label': args.tag,
+                      'release_notes': ' '.join(args.release_notes), 'required': False}
+            # Promote the release with Beta tag
+            response = requests.post(os.path.join(REPLICATED_VENDOR_API, app_id, release_sequence, 'promote'),
+                                    headers=headers, json=params)
+            response.raise_for_status()
     else:
         output = check_output(["sbt", "clean"])
         shutil.rmtree(os.path.join(script_dir, "ui", "node_modules"), ignore_errors=True)
