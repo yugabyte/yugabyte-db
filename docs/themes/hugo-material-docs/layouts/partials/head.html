@@ -62,13 +62,14 @@
     {{ $text := or .Site.Params.font.text "Roboto" }}
     {{ $code := or .Site.Params.font.code "Roboto Mono" }}
     <link rel="stylesheet" href="//fonts.googleapis.com/css?family={{ $text }}:400,700|{{ replace  $code " " "+" | safeURL }}">
+    <link href="https://fonts.googleapis.com/css?family=Open+Sans" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css?family=Inconsolata" rel="stylesheet">
     <style>
       body, input {
         font-family: '{{ $text }}', Helvetica, Arial, sans-serif;
       }
       pre, code {
-        font-family: '{{ $code }}', 'Inconsolata', 'Courier New', 'Courier', monospace;
+        font-family: '{{ $code }}', 'Courier New', 'Courier', monospace;
       }
     </style>
 

@@ -35,7 +35,7 @@ googleAnalytics = "UA-104956980-1"
 
     [params.font]
     	text = "Open Sans"
-    	code = "Consolas"
+    	code = "Inconsolata"
 
 [social]
 	# github = "YugaByte"
