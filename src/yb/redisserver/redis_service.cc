@@ -46,6 +46,7 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/logging.h"
 #include "yb/util/memory/mc_types.h"
 #include "yb/util/size_literals.h"
 
@@ -789,9 +790,10 @@ const RedisCommandInfo* RedisServiceImpl::Impl::FetchHandler(const RedisClientCo
   Slice cmd_name = cmd_args[0];
   auto iter = command_name_to_info_map_.find(cmd_args[0]);
   if (iter == command_name_to_info_map_.end()) {
-    LOG(ERROR) << "Command " << cmd_name << " not yet supported. "
-               << "Arguments: " << ToString(cmd_args) << ". "
-               << "Raw: " << Slice(cmd_args[0].data(), cmd_args.back().end()).ToDebugString();
+    YB_LOG_EVERY_N_SECS(ERROR, 60)
+        << "Command " << cmd_name << " not yet supported. "
+        << "Arguments: " << ToString(cmd_args) << ". "
+        << "Raw: " << Slice(cmd_args[0].data(), cmd_args.back().end()).ToDebugString();
     return nullptr;
   }
   return iter->second.get();
@@ -876,13 +878,14 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
       RespondWithFailure(call, idx, "Unsupported call.");
     } else if (cmd_info->arity < 0 && c.size() < static_cast<size_t>(-1 * cmd_info->arity)) {
       // -X means that the command needs >= X arguments.
-      LOG(ERROR) << "Requested command " << c[0] << " does not have enough arguments."
-                 << " At least " << -cmd_info->arity << " expected, but " << c.size()
-                 << " found.";
+      YB_LOG_EVERY_N_SECS(ERROR, 60)
+          << "Requested command " << c[0] << " does not have enough arguments."
+          << " At least " << -cmd_info->arity << " expected, but " << c.size() << " found.";
       RespondWithFailure(call, idx, "Too few arguments.");
     } else if (cmd_info->arity > 0 && c.size() != cmd_info->arity) {
       // X (> 0) means that the command needs exactly X arguments.
-      LOG(ERROR) << "Requested command " << c[0] << " has wrong number of arguments.";
+      YB_LOG_EVERY_N_SECS(ERROR, 60) << "Requested command " << c[0]
+                                     << " has wrong number of arguments.";
       RespondWithFailure(call, idx, "Wrong number of arguments.");
     } else {
       // Handle the call.
