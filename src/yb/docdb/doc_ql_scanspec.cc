@@ -74,20 +74,22 @@ DocKey DocQLScanSpec::bound_key(const bool lower_bound) const {
 
   // if hash_code not set (-1) default to 0 (start from the beginning)
   return DocKey(hash_code_ == - 1 ? 0 : hash_code_,
-                *hashed_components_,
-                range_components(lower_bound, /* allow_null */ false));
+                *hashed_components_, range_components(lower_bound));
 }
 
-std::vector<PrimitiveValue> DocQLScanSpec::range_components(const bool lower_bound,
-                                                             const bool allow_null) const {
+std::vector<PrimitiveValue> DocQLScanSpec::range_components(const bool lower_bound) const {
   std::vector<PrimitiveValue> result;
   if (range_ != nullptr) {
-    const std::vector<QLValuePB> range_values = range_->range_values(lower_bound, allow_null);
+    const std::vector<QLValuePB> range_values = range_->range_values(lower_bound);
     result.reserve(range_values.size());
     size_t column_idx = schema_.num_hash_key_columns();
     for (const auto& value : range_values) {
       const auto& column = schema_.column(column_idx);
-      result.emplace_back(PrimitiveValue::FromQLValuePB(value, column.sorting_type()));
+      if (QLValue::IsNull(value)) {
+        result.emplace_back(PrimitiveValue(lower_bound ? ValueType::kLowest : ValueType::kHighest));
+      } else {
+        result.emplace_back(PrimitiveValue::FromQLValuePB(value, column.sorting_type()));
+      }
       column_idx++;
     }
   }
@@ -202,8 +204,8 @@ class RangeBasedFileFilter : public rocksdb::ReadFileFilter {
 } // namespace
 
 std::shared_ptr<rocksdb::ReadFileFilter> DocQLScanSpec::CreateFileFilter() const {
-  auto lower_bound = range_components(true, true);
-  auto upper_bound = range_components(false, true);
+  auto lower_bound = range_components(true);
+  auto upper_bound = range_components(false);
   if (lower_bound.empty() && upper_bound.empty()) {
     return std::shared_ptr<rocksdb::ReadFileFilter>();
   } else {

@@ -19,6 +19,7 @@ import org.junit.Test;
 import org.yb.minicluster.IOMetrics;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBDaemon;
+import org.yb.minicluster.RocksDBMetrics;
 
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
@@ -737,6 +738,7 @@ public class TestSelect extends BaseCQLTest {
     LOG.info("TEST IN KEYWORD - End");
   }
 
+  @Test
   public void testStatementList() throws Exception {
     // Verify handling of empty statements.
     assertEquals(0, session.execute("").all().size());
@@ -746,5 +748,122 @@ public class TestSelect extends BaseCQLTest {
     // Verify handling of multi-statement (not supported yet).
     setupTable("test_select", 0);
     runInvalidStmt("SELECT * FROM test_select; SELECT * FROM test_select;");
+  }
+
+  // Execute query, assert results and return RocksDB metrics.
+  private RocksDBMetrics assertPartialRangeSpec(String tableName, String query, Set<String> rows)
+      throws Exception {
+    RocksDBMetrics beforeMetrics = getRocksDBMetric(tableName);
+    LOG.info(tableName + " metric before: " + beforeMetrics);
+    assertQuery(query, rows);
+    RocksDBMetrics afterMetrics = getRocksDBMetric(tableName);
+    LOG.info(tableName + " metric after: " + afterMetrics);
+    return afterMetrics.subtract(afterMetrics);
+  }
+
+  @Test
+  public void testPartialRangeSpec() throws Exception {
+    {
+      // Create test table and populate data.
+      session.execute("CREATE TABLE test_range (h INT, r1 TEXT, r2 INT, c INT, " +
+                      "PRIMARY KEY ((h), r1, r2));");
+      for (int i = 1; i <= 3; i++) {
+        for (int j = 1; j <= 5; j++) {
+          for (int k = 1; k <= 3; k++) {
+            session.execute("INSERT INTO test_range (h, r1, r2, c) VALUES (?, ?, ?, ?);",
+                            Integer.valueOf(i), "r" + j, Integer.valueOf(k), Integer.valueOf(k));
+          }
+        }
+      }
+
+      // Specify only r1 range in SELECT. Verify result.
+      String query = "SELECT * FROM test_range WHERE h = 2 AND r1 >= 'r2' AND r1 <= 'r3';";
+      Set<String> rows = new HashSet<>(Arrays.asList("Row[2, r2, 1, 1]",
+                                                     "Row[2, r2, 2, 2]",
+                                                     "Row[2, r2, 3, 3]",
+                                                     "Row[2, r3, 1, 1]",
+                                                     "Row[2, r3, 2, 2]",
+                                                     "Row[2, r3, 3, 3]"));
+      RocksDBMetrics metrics1 = assertPartialRangeSpec("test_range", query, rows);
+
+      // Insert some more rows
+      for (int i = 1; i <= 3; i++) {
+        for (int j = 6; j <= 10; j++) {
+          for (int k = 1; k <= 3; k++) {
+            session.execute("INSERT INTO test_range (h, r1, r2, c) VALUES (?, ?, ?, ?);",
+                            Integer.valueOf(i), "r" + j, Integer.valueOf(k), Integer.valueOf(k));
+          }
+        }
+      }
+
+      // Specify only r1 range in SELECT again. Verify result.
+      RocksDBMetrics metrics2 = assertPartialRangeSpec("test_range", query, rows);
+
+      // Verify that the seek/next metrics is the same despite more rows in the range.
+      assertEquals(metrics1, metrics2);
+
+      session.execute("DROP TABLE test_range;");
+    }
+
+    {
+      // Create test table and populate data.
+      session.execute("CREATE TABLE test_range (h INT, r1 INT, r2 TEXT, r3 INT, c INT, " +
+                      "PRIMARY KEY ((h), r1, r2, r3));");
+      for (int i = 1; i <= 3; i++) {
+        for (int j = 1; j <= 5; j++) {
+          for (int k = 1; k <= 3; k++) {
+            for (int l = 1; l <= 5; l++) {
+              session.execute("INSERT INTO test_range (h, r1, r2, r3, c) VALUES (?, ?, ?, ?, ?);",
+                              Integer.valueOf(i),
+                              Integer.valueOf(j),
+                              "r" + k,
+                              Integer.valueOf(l),
+                              Integer.valueOf(l));
+            }
+          }
+        }
+      }
+
+      // Specify only r1 and r3 ranges in SELECT. Verify result.
+      String query = "SELECT * FROM test_range WHERE " +
+                     "h = 2 AND r1 >= 2 AND r1 <= 3 AND r3 >= 4 and r3 <= 5;";
+      Set<String> rows = new HashSet<>(Arrays.asList("Row[2, 2, r1, 4, 4]",
+                                                     "Row[2, 2, r1, 5, 5]",
+                                                     "Row[2, 2, r2, 4, 4]",
+                                                     "Row[2, 2, r2, 5, 5]",
+                                                     "Row[2, 2, r3, 4, 4]",
+                                                     "Row[2, 2, r3, 5, 5]",
+                                                     "Row[2, 3, r1, 4, 4]",
+                                                     "Row[2, 3, r1, 5, 5]",
+                                                     "Row[2, 3, r2, 4, 4]",
+                                                     "Row[2, 3, r2, 5, 5]",
+                                                     "Row[2, 3, r3, 4, 4]",
+                                                     "Row[2, 3, r3, 5, 5]"));
+      RocksDBMetrics metrics1 = assertPartialRangeSpec("test_range", query, rows);
+
+      // Insert some more rows
+      for (int i = 1; i <= 3; i++) {
+        for (int j = 6; j <= 10; j++) {
+          for (int k = 1; k <= 3; k++) {
+            for (int l = 1; l <= 5; l++) {
+              session.execute("INSERT INTO test_range (h, r1, r2, r3, c) VALUES (?, ?, ?, ?, ?);",
+                              Integer.valueOf(i),
+                              Integer.valueOf(j),
+                              "r" + k,
+                              Integer.valueOf(l),
+                              Integer.valueOf(l));
+            }
+          }
+        }
+      }
+
+      // Specify only r1 range in SELECT again. Verify result.
+      RocksDBMetrics metrics2 = assertPartialRangeSpec("test_range", query, rows);
+
+      // Verify that the seek/next metrics is the same despite more rows in the range.
+      assertEquals(metrics1, metrics2);
+
+      session.execute("DROP TABLE test_range;");
+    }
   }
 }

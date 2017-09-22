@@ -39,11 +39,7 @@ class QLScanRange {
   QLScanRange(const Schema& schema, const QLConditionPB& condition);
 
   // Return the inclusive lower and upper range values to scan.
-  // If allow_null is false and the full range group can be determined, it will be returned.
-  // Otherwise, an empty group will be returned instead.
-  // If allow_null is true, then returned range group could contain null values.
-  // TODO(robert): allow only a subset (prefix) of range components to be specified as optimization.
-  std::vector<QLValuePB> range_values(bool lower_bound, bool allow_null = false) const;
+  std::vector<QLValuePB> range_values(bool lower_bound) const;
 
   // Interact / union / complement operators.
   QLScanRange& operator&=(const QLScanRange& other);

@@ -65,8 +65,7 @@ class DocQLScanSpec : public common::QLScanSpec {
   DocKey bound_key(const bool lower_bound) const;
 
   // Returns the lower/upper range components of the key.
-  std::vector<PrimitiveValue> range_components(const bool lower_bound,
-                                               const bool allow_null) const;
+  std::vector<PrimitiveValue> range_components(const bool lower_bound) const;
 
   // The scan range within the hash key when a WHERE condition is specified.
   const std::unique_ptr<const common::QLScanRange> range_;

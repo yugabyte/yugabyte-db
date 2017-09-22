@@ -145,6 +145,10 @@ string PrimitiveValue::ToString() const {
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
     case ValueType::kIntentPrefix:
       break;
+    case ValueType::kLowest:
+      return "-Inf";
+    case ValueType::kHighest:
+      return "+Inf";
   }
   FATAL_INVALID_ENUM_VALUE(ValueType, type_);
 }
@@ -152,6 +156,8 @@ string PrimitiveValue::ToString() const {
 void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
   key_bytes->AppendValueType(type_);
   switch (type_) {
+    case ValueType::kLowest: return;
+    case ValueType::kHighest: return;
     case ValueType::kNull: return;
     case ValueType::kFalse: return;
     case ValueType::kTrue: return;
@@ -343,7 +349,9 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kSystemColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kHybridTime: FALLTHROUGH_INTENDED;
-    case ValueType::kInvalidValueType:
+    case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED;
+    case ValueType::kLowest: FALLTHROUGH_INTENDED;
+    case ValueType::kHighest:
       break;
   }
 
@@ -377,7 +385,9 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
   switch (value_type) {
     case ValueType::kNull: FALLTHROUGH_INTENDED;
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
-    case ValueType::kTrue:
+    case ValueType::kTrue: FALLTHROUGH_INTENDED;
+    case ValueType::kHighest: FALLTHROUGH_INTENDED;
+    case ValueType::kLowest:
       type_ref = value_type;
       return Status::OK();
 
@@ -732,7 +742,9 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
     case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
     case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kTimestampDescending:
+    case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kLowest: FALLTHROUGH_INTENDED;
+    case ValueType::kHighest:
       return STATUS_FORMAT(Corruption, "$0 is not allowed in a RocksDB PrimitiveValue", value_type);
   }
   FATAL_INVALID_ENUM_VALUE(ValueType, type_);
@@ -824,9 +836,12 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     return false;
   }
   switch (type_) {
-    case ValueType::kNull: return true;
-    case ValueType::kFalse: return true;
-    case ValueType::kTrue: return true;
+    case ValueType::kNull: FALLTHROUGH_INTENDED;
+    case ValueType::kFalse: FALLTHROUGH_INTENDED;
+    case ValueType::kTrue: FALLTHROUGH_INTENDED;
+    case ValueType::kLowest: FALLTHROUGH_INTENDED;
+    case ValueType::kHighest: return true;
+
     case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kString: return str_val_ == other.str_val_;
 
@@ -876,9 +891,12 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     return result;
   }
   switch (type_) {
-    case ValueType::kNull: return 0;
-    case ValueType::kFalse: return 0;
-    case ValueType::kTrue: return 0;
+    case ValueType::kNull: FALLTHROUGH_INTENDED;
+    case ValueType::kFalse: FALLTHROUGH_INTENDED;
+    case ValueType::kTrue: FALLTHROUGH_INTENDED;
+    case ValueType::kLowest: FALLTHROUGH_INTENDED;
+    case ValueType::kHighest:
+      return 0;
     case ValueType::kStringDescending:
       return other.str_val_.compare(str_val_);
     case ValueType::kString:
@@ -1015,7 +1033,8 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
       return PrimitiveValue(QLValue::timestamp_value(value), sort_order);
     case QLValuePB::kInetaddressValue:
       return PrimitiveValue(QLValue::inetaddress_value(value), sort_order);
-    case QLValuePB::kUuidValue: return PrimitiveValue(QLValue::uuid_value(value), sort_order);
+    case QLValuePB::kUuidValue:
+      return PrimitiveValue(QLValue::uuid_value(value), sort_order);
     case QLValuePB::kTimeuuidValue:
       return PrimitiveValue(QLValue::timeuuid_value(value), sort_order);
     case QLValuePB::kFrozenValue:

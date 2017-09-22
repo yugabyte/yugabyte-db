@@ -56,6 +56,8 @@ string ToString(ValueType value_type) {
     case ValueType::kIntentType: return "IntentType";
     case ValueType::kColumnId: return "ColumnId";
     case ValueType::kSystemColumnId: return "SystemColumnId";
+    case ValueType::kLowest: return "-Inf";
+    case ValueType::kHighest: return "+Inf";
     case ValueType::kInvalidValueType: return "InvalidValueType";
     // No default case so that we get a compiler warning (which we treat as an error) if we miss
     // a valid enum value here.

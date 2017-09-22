@@ -269,11 +269,8 @@ QLScanRange& QLScanRange::operator=(QLScanRange&& other) {
   return *this;
 }
 
-// Return the lower/upper range components for the scan. We can use the range group as the bounds
-// in DocRowwiseIterator only when all the range columns have bounded values. So return an empty
-// group if any of the range column does not have a bound.
-vector<QLValuePB> QLScanRange::range_values(const bool lower_bound,
-                                              const bool allow_null) const {
+// Return the lower/upper range components for the scan.
+vector<QLValuePB> QLScanRange::range_values(const bool lower_bound) const {
   vector<QLValuePB> range_values;
   range_values.reserve(schema_.num_range_key_columns());
   for (size_t i = 0; i < schema_.num_key_columns(); i++) {
@@ -283,10 +280,6 @@ vector<QLValuePB> QLScanRange::range_values(const bool lower_bound,
       // lower bound for ASC column and upper bound for DESC column -> min value
       // otherwise -> max value
       const auto& value = lower_bound ^ desc_col ? range.min_value : range.max_value;
-      if (!allow_null && QLValue::IsNull(value)) {
-        range_values.clear();
-        break;
-      }
       range_values.emplace_back(value);
     }
   }

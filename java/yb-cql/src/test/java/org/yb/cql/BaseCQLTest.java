@@ -38,11 +38,20 @@ import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.IOMetrics;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBDaemon;
+import org.yb.minicluster.RocksDBMetrics;
+import org.yb.util.ServerInfo;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.nio.ByteBuffer;
 import java.util.*;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 public class BaseCQLTest extends BaseMiniClusterTest {
   protected static final Logger LOG = LoggerFactory.getLogger(BaseCQLTest.class);
@@ -507,5 +516,36 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     }
     LOG.info("Total metrics: " + totalMetrics.toString());
     return totalMetrics;
+  }
+
+  public RocksDBMetrics getRocksDBMetric(String tableName) throws IOException {
+    Set<String> tabletIDs = new HashSet<>();
+    for (Row row : session.execute("SELECT id FROM system.partitions " +
+                                   "WHERE keyspace_name = ? and table_name = ?;",
+                                   DEFAULT_TEST_KEYSPACE, tableName).all()) {
+      tabletIDs.add(ServerInfo.UUIDToHostString(row.getUUID("id")));
+    }
+
+    RocksDBMetrics metrics = new RocksDBMetrics();
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      try {
+        URL url = new URL(String.format("http://%s:%d/metrics",
+                                        ts.getLocalhostIP(),
+                                        ts.getWebPort()));
+        Scanner scanner = new Scanner(url.openConnection().getInputStream());
+        JsonParser parser = new JsonParser();
+        JsonElement tree = parser.parse(scanner.useDelimiter("\\A").next());
+        for (JsonElement elem : tree.getAsJsonArray()) {
+          JsonObject obj = elem.getAsJsonObject();
+          if (obj.get("type").getAsString().equals("tablet") &&
+              tabletIDs.contains(obj.get("id").getAsString())) {
+            metrics.add(new RocksDBMetrics(new Metrics(obj)));
+          }
+        }
+      } catch (MalformedURLException e) {
+        throw new InternalError(e.getMessage());
+      }
+    }
+    return metrics;
   }
 }

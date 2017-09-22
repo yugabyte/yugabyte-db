@@ -13,6 +13,9 @@
 
 package org.yb.util;
 
+import java.nio.ByteOrder;
+import java.util.UUID;
+
 // Class to track common info provided by master or tablet server.
 public class ServerInfo {
   private String uuid;
@@ -42,5 +45,21 @@ public class ServerInfo {
 
   public boolean isLeader() {
     return isLeader;
+  }
+
+  // Converts a UUID to string in host byte-order, which is how UUIDs are shown in web server and
+  // log.
+  public static String UUIDToHostString(UUID uuid) {
+    // Strip "-".
+    String id = uuid.toString().replaceAll("\\-", "");
+    if (ByteOrder.nativeOrder().equals(ByteOrder.BIG_ENDIAN)) {
+      return id;
+    }
+    // Reverse byte-order if host is not in network (big-endian) order.
+    StringBuilder sb = new StringBuilder(id.length());
+    for (int pos = id.length() - 2; pos >= 0; pos -= 2) {
+      sb.append(id.substring(pos, pos + 2));
+    }
+    return sb.toString();
   }
 }

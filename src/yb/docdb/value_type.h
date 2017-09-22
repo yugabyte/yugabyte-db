@@ -26,6 +26,9 @@ namespace docdb {
 
 // Changes to this enum may invalidate persistent data.
 enum class ValueType : char {
+  // This ValueType is used as -infinity for scanning purposes only.
+  kLowest = ' ', // ASCII code 32
+
   // This indicates the end of the "hashed" or "range" group of components of the primary key. This
   // needs to sort before all other value types, so that a DocKey that has a prefix of the sequence
   // of components of another key sorts before the other key.
@@ -80,6 +83,9 @@ enum class ValueType : char {
 
   kObject = '{',  // ASCII code 123
   kRedisSet = '(', // ASCII code 40
+
+  // This ValueType is used as +infinity for scanning purposes only.
+  kHighest = '~', // ASCII code 126
 
   // This is used for sanity checking. TODO: rename to kInvalid since this is an enum class.
   kInvalidValueType = 127
