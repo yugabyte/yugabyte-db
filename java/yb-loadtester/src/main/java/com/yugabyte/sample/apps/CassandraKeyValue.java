@@ -148,7 +148,7 @@ public class CassandraKeyValue extends AppBase {
     return preparedInsert;
   }
 
-  private PreparedStatement getPreparedInsert()  {
+  protected PreparedStatement getPreparedInsert()  {
     return getPreparedInsert(String.format("INSERT INTO %s (k, v) VALUES (?, ?);", tableName));
   }
 

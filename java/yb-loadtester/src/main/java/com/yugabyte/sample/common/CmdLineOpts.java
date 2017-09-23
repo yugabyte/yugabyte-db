@@ -46,6 +46,7 @@ public class CmdLineOpts {
   public static enum AppName {
     CassandraHelloWorld,
     CassandraKeyValue,
+    CassandraBatchKeyValue,
     CassandraStockTicker,
     CassandraTimeseries,
     CassandraUserId,
@@ -120,6 +121,17 @@ public class CmdLineOpts {
     }
     LOG.info("Local reads: " + localReads);
     LOG.info("Read only load: " + readOnly);
+    if (appName == AppName.CassandraBatchKeyValue) {
+      if (commandLine.hasOption("batch_size")) {
+        AppBase.appConfig.cassandraBatchSize =
+            Integer.parseInt(commandLine.getOptionValue("batch_size"));
+        if (AppBase.appConfig.cassandraBatchSize > AppBase.appConfig.numUniqueKeysToWrite) {
+          LOG.fatal("The batch size cannot be more than the number of unique keys");
+          System.exit(-1);
+        }
+      }
+      LOG.info("CassandraBatchKeyValue batch size : " + AppBase.appConfig.cassandraBatchSize);
+    }
     if (appName == AppName.RedisPipelinedKeyValue) {
       if (commandLine.hasOption("pipeline_length")) {
         AppBase.appConfig.redisPipelineLength =
@@ -383,6 +395,10 @@ public class CmdLineOpts {
                       "[KV workloads only] Number of unique keys to write into the DB.");
     options.addOption("max_written_key", true,
         "[KV workloads only, reusing existing table] Max written key number.");
+
+    // Options for CassandraBatchKeyValue app.
+    options.addOption("batch_size", true,
+                      "[CassandraBatchKeyValue] Number of keys to write in a batch.");
 
     options.addOption("with_local_dc", true, "Local DC name.");
     // Options for CassandraSparkWordCount app.

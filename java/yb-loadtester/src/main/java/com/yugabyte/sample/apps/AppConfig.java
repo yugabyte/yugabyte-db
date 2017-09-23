@@ -69,6 +69,9 @@ public class AppConfig {
   // Batch size to send from client for redis pipeline app.
   public int redisPipelineLength = 1;
 
+  // Batch size to send from client for Cassandra batch key-value app.
+  public int cassandraBatchSize = 1;
+
   // Perform sanity checks at the termination of app.
   public boolean sanityCheckAtEnd = false;
 

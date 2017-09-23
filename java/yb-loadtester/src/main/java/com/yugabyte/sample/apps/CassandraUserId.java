@@ -99,7 +99,7 @@ public class CassandraUserId extends CassandraKeyValue {
     return 1;
   }
 
-  private PreparedStatement getPreparedInsert()  {
+  protected PreparedStatement getPreparedInsert()  {
     return getPreparedInsert(String.format(
         "INSERT INTO %s (user_name, password, update_time) VALUES (?, ?, ?);", tableName));
   }
