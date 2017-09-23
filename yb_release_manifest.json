@@ -13,8 +13,6 @@
           "build/latest/bin/yb-cqlserver",
           "build/latest/bin/log-dump",
           "build/latest/bin/yb_load_test_tool",
-          "bin/zip_purge_yb_logs.sh",
-          "bin/clean_cores.sh",
           "bin/bulk_load_helper.sh",
           "bin/bulk_load_cleanup.sh",
           "bin/configure",
