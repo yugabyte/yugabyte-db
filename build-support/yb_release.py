@@ -25,7 +25,8 @@ import imp
 from subprocess import call
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.release_manager import ReleaseManager
-from ybops.utils import init_env, log_message
+from ybops.utils import init_env, log_message, RELEASE_EDITION_ALLOWED_VALUES, \
+    RELEASE_EDITION_ENTERPRISE
 from yb.library_packager import LibraryPackager
 
 
@@ -42,6 +43,9 @@ def main():
     parser.add_argument('--destination', help='Copy release to Destination folder.')
     parser.add_argument('--verbose', help='Show verbose output', action='store_true')
     parser.add_argument('--force', help='Skip prompts', action='store_true')
+    parser.add_argument('--edition', help='Which edition the code is built as.',
+                        default=RELEASE_EDITION_ENTERPRISE,
+                        choices=RELEASE_EDITION_ALLOWED_VALUES)
     args = parser.parse_args()
 
     init_env(logging.DEBUG if args.verbose else logging.INFO)
@@ -70,6 +74,7 @@ def main():
     release_manager = ReleaseManager({"repository": repository_root,
                                       "name": "yugabyte",
                                       "type": args.build_type,
+                                      "edition": args.edition,
                                       "force_yes": args.force})
 
     # This points to the release manifest within the release_manager, and we are modifying that
