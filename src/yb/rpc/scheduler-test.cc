@@ -75,7 +75,11 @@ TEST_F(SchedulerTest, TestFunctionIsCalledAtTheRightTime) {
     ASSERT_OK(promise.get_future().get());
     auto after = std::chrono::steady_clock::now();
     auto delta = after - before;
-    auto upper = delay + 10ms;
+#if defined(OS_MACOSX)
+    auto upper = delay + 200ms;
+#else
+    auto upper = delay + 50ms;
+#endif
     CHECK(delta >= delay) << "Delta: " << ToString(delta) << ", lower bound: " << ToString(delay);
     CHECK(delta < upper) << "Delta: " << ToString(delta) << ", upper bound: " << ToString(upper);
   }
