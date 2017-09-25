@@ -56,6 +56,7 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/join.h"
+
 #include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 
@@ -103,7 +104,6 @@ Batcher::Batcher(YBClient* client,
     read_only_(session_data->is_read_only()),
     flush_callback_(NULL),
     next_op_sequence_number_(0),
-    outstanding_lookups_(0),
     max_buffer_size_(7 * 1024 * 1024),
     buffer_bytes_used_(0) {
   const auto metric_entity = client_->data_->messenger_->metric_entity();
@@ -270,8 +270,6 @@ Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
   AddInFlightOp(in_flight_op);
   VLOG(3) << "Looking up tablet for " << in_flight_op->yb_op->ToString();
 
-  // Increment our reference count for the outstanding callback.
-  base::RefCountInc(&outstanding_lookups_);
   if (yb_op->tablet()) {
     in_flight_op->tablet = yb_op->tablet();
     TabletLookupFinished(std::move(in_flight_op), Status::OK());
@@ -293,6 +291,7 @@ void Batcher::AddInFlightOp(const InFlightOpPtr& op) {
   CHECK_EQ(state_, kGatheringOps);
   CHECK(ops_.insert(op).second);
   op->sequence_number_ = next_op_sequence_number_++;
+  ++outstanding_lookups_;
 }
 
 bool Batcher::IsAbortedUnlocked() const {
@@ -317,12 +316,11 @@ void Batcher::MarkInFlightOpFailedUnlocked(const InFlightOpPtr& in_flight_op, co
 }
 
 void Batcher::TabletLookupFinished(InFlightOpPtr op, const Status& s) {
-  base::RefCountDec(&outstanding_lookups_);
-
   // Acquire the batcher lock early to atomically:
   // 1. Test if the batcher was aborted, and
   // 2. Change the op state.
   std::unique_lock<simple_spinlock> l(lock_);
+  --outstanding_lookups_;
 
   if (IsAbortedUnlocked()) {
     VLOG(1) << "Aborted batch: TabletLookupFinished for " << op->yb_op->ToString();
@@ -357,26 +355,7 @@ void Batcher::TabletLookupFinished(InFlightOpPtr op, const Status& s) {
 
     op->state = InFlightOpState::kBufferedToTabletServer;
 
-    InFlightOps& to_ts = per_tablet_ops_[op->tablet.get()];
-    to_ts.push_back(std::move(op));
-
-    // "Reverse bubble sort" the operation into the right spot in the tablet server's
-    // buffer, based on the sequence numbers of the ops.
-    //
-    // There is a rare race (KUDU-743) where two operations in the same batch can get
-    // their order inverted with respect to the order that the user originally performed
-    // the operations. This loop re-sequences them back into the correct order. In
-    // the common case, it will break on the first iteration, so we expect the loop to be
-    // constant time, with worst case O(n). This is usually much better than something
-    // like a priority queue which would have O(lg n) in every case and a more complex
-    // code path.
-    for (size_t i = to_ts.size() - 1; i > 0; --i) {
-      if (to_ts[i]->sequence_number_ < to_ts[i - 1]->sequence_number_) {
-        std::swap(to_ts[i], to_ts[i - 1]);
-      } else {
-        break;
-      }
-    }
+    ops_queue_.push_back(op);
   }
 
   l.unlock();
@@ -393,7 +372,7 @@ void Batcher::TransactionReady(const Status& status, const BatcherPtr& self) {
 }
 
 void Batcher::FlushBuffersIfReady() {
-  std::unordered_map<RemoteTablet*, InFlightOps> ops_copy;
+  InFlightOps ops;
 
   // We're only ready to flush if:
   // 1. The batcher is in the flushing state (i.e. FlushAsync was called).
@@ -406,10 +385,8 @@ void Batcher::FlushBuffersIfReady() {
       return;
     }
 
-    if (!base::RefCountIsZero(&outstanding_lookups_)) {
-      VLOG(3) << "FlushBuffersIfReady: "
-              << base::subtle::NoBarrier_Load(&outstanding_lookups_)
-              << " ops still in lookup";
+    if (outstanding_lookups_ != 0) {
+      VLOG(3) << "FlushBuffersIfReady: " << outstanding_lookups_ << " ops still in lookup";
       return;
     }
 
@@ -430,19 +407,32 @@ void Batcher::FlushBuffersIfReady() {
       }
     }
 
-    // Take ownership of the ops while we're under the lock.
-    ops_copy.swap(per_tablet_ops_);
+    ops.swap(ops_queue_);
   }
+
+  if (ops.empty()) {
+    return;
+  }
+
+  std::sort(ops.begin(),
+            ops.end(),
+            [](const InFlightOpPtr& lhs, const InFlightOpPtr& rhs) {
+    if (lhs->tablet.get() == rhs->tablet.get()) {
+      return lhs->sequence_number_ < rhs->sequence_number_;
+    }
+    return lhs->tablet.get() < rhs->tablet.get();
+  });
 
   // Now flush the ops for each tablet.
-  for (const OpsMap::value_type& e : ops_copy) {
-    RemoteTablet* tablet = e.first;
-    const InFlightOps& ops = e.second;
-
-    VLOG(3) << "FlushBuffersIfReady: already in flushing state, immediately flushing to "
-            << tablet->tablet_id();
-    FlushBuffer(tablet, ops);
+  auto start = ops.begin();
+  for (auto it = start; it != ops.end(); ++it) {
+    if (it->get()->tablet.get() != start->get()->tablet.get()) {
+      FlushBuffer(start->get()->tablet.get(), start, it);
+      start = it;
+    }
   }
+
+  FlushBuffer(start->get()->tablet.get(), start, ops.end());
 }
 
 const std::shared_ptr<rpc::Messenger>& Batcher::messenger() const {
@@ -457,8 +447,13 @@ YBTransactionPtr Batcher::transaction() const {
   return nullptr;
 }
 
-void Batcher::FlushBuffer(RemoteTablet* tablet, const InFlightOps& ops) {
-  CHECK(!ops.empty());
+void Batcher::FlushBuffer(RemoteTablet* tablet,
+                          InFlightOps::const_iterator begin,
+                          InFlightOps::const_iterator end) {
+  VLOG(3) << "FlushBuffersIfReady: already in flushing state, immediately flushing to "
+          << tablet->tablet_id();
+
+  CHECK(begin != end);
 
   // Create and send an RPC that aggregates the ops. The RPC is freed when
   // its callback completes.
@@ -470,7 +465,8 @@ void Batcher::FlushBuffer(RemoteTablet* tablet, const InFlightOps& ops) {
     // levels the read algorithm would differ.
     InFlightOps leader_only_reads;
     InFlightOps consistent_prefix_reads;
-    for (InFlightOpPtr op : ops) {
+    for (auto it = begin; it != end; ++it) {
+      auto& op = *it;
       if (op->yb_op->type() == YBOperation::Type::QL_READ &&
           std::static_pointer_cast<YBqlReadOp>(op->yb_op)->yb_consistency_level() ==
               YBConsistencyLevel::CONSISTENT_PREFIX) {
@@ -491,7 +487,7 @@ void Batcher::FlushBuffer(RemoteTablet* tablet, const InFlightOps& ops) {
       consistent_prefix_rpc->SendRpc();
     }
   } else {
-    AsyncRpc* rpc = new WriteRpc(this, tablet, ops);
+    AsyncRpc* rpc = new WriteRpc(this, tablet, InFlightOps(begin, end));
     rpc->SendRpc();
   }
 }

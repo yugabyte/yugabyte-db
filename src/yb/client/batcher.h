@@ -173,7 +173,9 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   void CheckForFinishedFlush();
   void FlushBuffersIfReady();
-  void FlushBuffer(RemoteTablet* tablet, const InFlightOps& ops);
+  void FlushBuffer(RemoteTablet* tablet,
+                   InFlightOps::const_iterator begin,
+                   InFlightOps::const_iterator end);
 
   // Log an error where an Rpc callback has response count mismatch.
   void AddOpCountMismatchError();
@@ -230,9 +232,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // All buffered or in-flight ops.
   // Added to this set during apply, removed during SendRpcCb of AsyncRpc.
   std::unordered_set<InFlightOpPtr> ops_;
-  // Each tablet's buffered ops.
-  typedef std::unordered_map<RemoteTablet*, InFlightOps> OpsMap;
-  OpsMap per_tablet_ops_;
+  InFlightOps ops_queue_;
 
   // When each operation is added to the batcher, it is assigned a sequence number
   // which preserves the user's intended order. Preserving order is critical when
@@ -250,9 +250,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   MonoTime deadline_;
 
   // Number of outstanding lookups across all in-flight ops.
-  //
-  // Note: _not_ protected by lock_!
-  Atomic32 outstanding_lookups_;
+  int outstanding_lookups_ = 0;
 
   // The maximum number of bytes of encoded operations which will be allowed to
   // be buffered.
