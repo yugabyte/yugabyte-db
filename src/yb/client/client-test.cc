@@ -516,8 +516,7 @@ TEST_F(ClientTest, TestListTables) {
 }
 
 TEST_F(ClientTest, TestListTabletServers) {
-  vector<YBTabletServer*> tss;
-  ElementDeleter deleter(&tss);
+  std::vector<std::unique_ptr<YBTabletServer>> tss;
   ASSERT_OK(client_->ListTabletServers(&tss));
   ASSERT_EQ(1, tss.size());
   ASSERT_EQ(cluster_->mini_tablet_server(0)->server()->instance_pb().permanent_uuid(),

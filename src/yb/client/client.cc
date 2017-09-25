@@ -568,7 +568,7 @@ Status YBClient::TabletServerCount(int *tserver_count) {
   return Status::OK();
 }
 
-Status YBClient::ListTabletServers(vector<YBTabletServer*>* tablet_servers) {
+Status YBClient::ListTabletServers(vector<std::unique_ptr<YBTabletServer>>* tablet_servers) {
   ListTabletServersRequestPB req;
   ListTabletServersResponsePB resp;
 
@@ -589,10 +589,10 @@ Status YBClient::ListTabletServers(vector<YBTabletServer*>* tablet_servers) {
   }
   for (int i = 0; i < resp.servers_size(); i++) {
     const ListTabletServersResponsePB_Entry& e = resp.servers(i);
-    auto ts = new YBTabletServer();
+    std::unique_ptr<YBTabletServer> ts(new YBTabletServer());
     ts->data_ = new YBTabletServer::Data(
         e.instance_id().permanent_uuid(), e.registration().common().rpc_addresses(0).host());
-    tablet_servers->push_back(ts);
+    tablet_servers->push_back(std::move(ts));
   }
   return Status::OK();
 }
