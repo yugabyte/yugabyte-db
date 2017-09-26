@@ -67,6 +67,11 @@ Enter it again:
 yugaware=> \q
 ```
 
+* Install third-parties
+```
+yb_devops_home=~/code/devops/ ansible-playbook ~/code/devops/docker/images/thirdparty-deps/dependencies.yml
+```
+
 ### Setup AWS credentials
 
 *  To download yb client jars from S3
