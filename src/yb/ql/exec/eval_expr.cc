@@ -90,12 +90,12 @@ CHECKED_STATUS Executor::PTExprToPB(const PTBindVar *bind_pt, QLExpressionPB *ex
     return STATUS(RuntimeError, "no bind variable supplied");
   }
 
-  std::unique_ptr<QLValueWithPB> value(new QLValueWithPB());
+  QLValue ql_bind;
   RETURN_NOT_OK(exec_context_->params()->GetBindVariable(bind_pt->name()->c_str(),
                                                          bind_pt->pos(),
                                                          bind_pt->ql_type(),
-                                                         value.get()));
-  expr_pb->set_allocated_value(value.release());
+                                                         &ql_bind));
+  expr_pb->mutable_value()->Swap(ql_bind.mutable_value());
   return Status::OK();
 }
 

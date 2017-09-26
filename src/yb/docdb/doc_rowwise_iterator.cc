@@ -351,11 +351,11 @@ CHECKED_STATUS SetKuduPrimaryKeyColumnValues(const Schema& projection,
 
 // Set primary key column values (hashed or range columns) in a QL row value map.
 CHECKED_STATUS SetQLPrimaryKeyColumnValues(const Schema& schema,
-                                            const size_t begin_index,
-                                            const size_t column_count,
-                                            const char* column_type,
-                                            const vector<PrimitiveValue>& values,
-                                            QLTableRow* table_row) {
+                                           const size_t begin_index,
+                                           const size_t column_count,
+                                           const char* column_type,
+                                           const vector<PrimitiveValue>& values,
+                                           const QLTableRow::SharedPtr& table_row) {
   if (values.size() != column_count) {
     return STATUS_SUBSTITUTE(Corruption, "$0 $1 primary key columns found but $2 expected",
                              values.size(), column_type, column_count);
@@ -367,9 +367,9 @@ CHECKED_STATUS SetQLPrimaryKeyColumnValues(const Schema& schema,
         column_type, begin_index, begin_index + column_count - 1, schema.num_columns());
   }
   for (size_t i = 0, j = begin_index; i < column_count; i++, j++) {
-    const auto column_id = schema.column_id(j);
     const auto ql_type = schema.column(j).type();
-    PrimitiveValue::ToQLValuePB(values[i], ql_type, &(*table_row)[column_id].value);
+    QLTableColumn& column = table_row->AllocColumn(schema.column_id(j));
+    PrimitiveValue::ToQLValuePB(values[i], ql_type, &column.value);
   }
   return Status::OK();
 }
@@ -472,7 +472,8 @@ bool DocRowwiseIterator::IsNextStaticColumn() const {
   return schema_.has_statics() && row_key_.range_group().empty();
 }
 
-Status DocRowwiseIterator::NextRow(const Schema& projection, QLTableRow* table_row) {
+Status DocRowwiseIterator::NextRow(const Schema& projection,
+                                   const QLTableRow::SharedPtr& table_row) {
   if (!status_.ok()) {
     // An error happened in HasNext.
     return status_;
@@ -505,9 +506,10 @@ Status DocRowwiseIterator::NextRow(const Schema& projection, QLTableRow* table_r
     const auto ql_type = projection.column(i).type();
     const SubDocument* column_value = row_.GetChild(PrimitiveValue(column_id));
     if (column_value != nullptr) {
-      SubDocument::ToQLValuePB(*column_value, ql_type, &(*table_row)[column_id].value);
-      (*table_row)[column_id].ttl_seconds = column_value->GetTtl();
-      (*table_row)[column_id].write_time = column_value->GetWriteTime();
+      QLTableColumn& column = table_row->AllocColumn(column_id);
+      SubDocument::ToQLValuePB(*column_value, ql_type, &column.value);
+      column.ttl_seconds = column_value->GetTtl();
+      column.write_time = column_value->GetWriteTime();
     }
   }
   row_ready_ = false;

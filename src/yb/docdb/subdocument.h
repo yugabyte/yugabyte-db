@@ -20,7 +20,7 @@
 #include <initializer_list>
 
 #include "yb/docdb/primitive_value.h"
-#include "yb/common/yql_expression.h"
+#include "yb/common/ql_expr.h"
 
 namespace yb {
 namespace docdb {
@@ -157,31 +157,12 @@ class SubDocument : public PrimitiveValue {
   // Construct a SubDocument from a QLValuePB.
   static SubDocument FromQLValuePB(const QLValuePB& value,
                                    ColumnSchema::SortingType sorting_type,
-                                   WriteAction write_action);
+                                   yb::bfql::TSOpcode write_instr);
 
   // Construct a QLValuePB from a SubDocument.
   static void ToQLValuePB(const SubDocument& doc,
                           const std::shared_ptr<QLType>& ql_type,
                           QLValuePB* v);
-
-  // Construct a QLExpressionPB from a SubDocument.
-  static void ToQLExpressionPB(const SubDocument& doc,
-                               const std::shared_ptr<QLType>& ql_type,
-                               QLExpressionPB* ql_expr);
-
-
-
-  // Construct a SubDocument from a QLExpressionPB.
-  static CHECKED_STATUS FromQLExpressionPB(const QLExpressionPB& ql_expr,
-                                           const ColumnSchema& column_schema,
-                                           const QLTableRow& table_row,
-                                           SubDocument* subdoc,
-                                           WriteAction* write_action);
-
-  // Evaluate tablet server operators.
-  static CHECKED_STATUS EvalQLBFCallTServerPB(const QLBCallPB& tscall,
-                                              const QLTableRow& table_row,
-                                              QLValueWithPB *result);
 
  private:
 

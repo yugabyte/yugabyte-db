@@ -31,12 +31,12 @@ using std::vector;
 // execution. Note that the plan is to have two different data structures for two different.
 // - QL treenode is used during compilation.
 // - QLValue is used during execution.
-class BFTestValue : public QLValueWithPB {
+class BFTestValue : public QLValue {
  public:
   typedef std::shared_ptr<BFTestValue> SharedPtr;
   typedef std::shared_ptr<const BFTestValue> SharedPtrConst;
 
-  BFTestValue() : QLValueWithPB() {
+  BFTestValue() : QLValue() {
     ql_type_id_ = DataType::UNKNOWN_DATA;
   }
 

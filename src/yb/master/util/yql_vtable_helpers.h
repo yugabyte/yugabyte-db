@@ -38,10 +38,10 @@ template<> struct GetValueHelper<std::string> {
     QLValuePB value_pb;
     switch (data_type) {
       case STRING:
-        QLValue::set_string_value(strval, &value_pb);
+        value_pb.set_string_value(strval);
         break;
       case BINARY:
-        QLValue::set_binary_value(strval, &value_pb);
+        value_pb.set_binary_value(strval);
         break;
       default:
         LOG(ERROR) << "unexpected string type " << data_type;
@@ -63,7 +63,7 @@ template<> struct GetValueHelper<int32_t> {
 
   static QLValuePB Apply(const int32_t intval, const DataType data_type) {
     QLValuePB value_pb;
-    QLValue::set_int32_value(intval, &value_pb);
+    value_pb.set_int32_value(intval);
     return value_pb;
   }
 };
@@ -71,18 +71,18 @@ template<> struct GetValueHelper<int32_t> {
 template<> struct GetValueHelper<InetAddress> {
 
   static QLValuePB Apply(const InetAddress& inet_val, const DataType data_type) {
-    QLValuePB value_pb;
-    QLValue::set_inetaddress_value(inet_val, &value_pb);
-    return value_pb;
+    QLValue ql_value;
+    ql_value.set_inetaddress_value(inet_val);
+    return ql_value.value();
   }
 };
 
 template<> struct GetValueHelper<Uuid> {
 
   static QLValuePB Apply(const Uuid& uuid_val, const DataType data_type) {
-    QLValuePB value_pb;
-    QLValue::set_uuid_value(uuid_val, &value_pb);
-    return value_pb;
+    QLValue ql_value;
+    ql_value.set_uuid_value(uuid_val);
+    return ql_value.value();
   }
 };
 
@@ -90,7 +90,7 @@ template<> struct GetValueHelper<bool> {
 
   static QLValuePB Apply(const bool bool_val, const DataType data_type) {
     QLValuePB value_pb;
-    QLValue::set_bool_value(bool_val, &value_pb);
+    value_pb.set_bool_value(bool_val);
     return value_pb;
   }
 };

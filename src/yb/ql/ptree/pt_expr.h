@@ -188,6 +188,17 @@ class PTExpr : public TreeNode {
     return ((expr_op() == ExprOperator::kConst) ||
             (expr_op() == ExprOperator::kUMinus && op1()->expr_op() == ExprOperator::kConst));
   }
+  virtual bool IsDummyStar() const {
+    return false;
+  }
+
+  // Predicate for calls to aggregate functions.
+  virtual bool IsAggregateCall() const {
+    return false;
+  }
+  virtual yb::bfql::TSOpcode aggregate_opcode() const {
+    return yb::bfql::TSOpcode::kNoOp;
+  }
 
   // Predicate for updating counter.  Only '+' and '-' expression support counter update.
   virtual CHECKED_STATUS CheckCounterUpdateSupport(SemContext *sem_context) const;
@@ -635,6 +646,32 @@ using PTNull = PTExprConst<InternalType::VALUE_NOT_SET,
                            DataType::NULL_VALUE_TYPE,
                            void*>;
 
+// This class is used only for the dummy (meaningless) '*' such as in COUNT(*).
+class PTStar : public PTNull {
+ public:
+  // Public types.
+  typedef MCSharedPtr<PTStar> SharedPtr;
+  typedef MCSharedPtr<const PTStar> SharedPtrConst;
+
+  // Constructor and destructor.
+  PTStar(MemoryContext *memctx, YBLocation::SharedPtr loc)
+      : PTNull(memctx, loc, nullptr) {
+  }
+
+  // Shared pointer support.
+  template<typename... TypeArgs>
+  inline static PTStar::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
+    return MCMakeShared<PTStar>(memctx, std::forward<TypeArgs>(args)...);
+  }
+
+  virtual string QLName() const override {
+    return "*";
+  }
+  virtual bool IsDummyStar() const override {
+    return true;
+  }
+};
+
 // String base classes for constant expression.
 class PTLiteralString : public PTLiteral<MCSharedPtr<MCString>> {
  public:
@@ -978,11 +1015,22 @@ class PTExprAlias : public PTOperator1 {
     return MCMakeShared<PTExprAlias>(memctx, std::forward<TypeArgs>(args)...);
   }
 
+  virtual CHECKED_STATUS SetupSemStateForOp1(SemState *sem_state) override;
+
   using PTOperatorExpr::AnalyzeOperator;
   virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context, PTExpr::SharedPtr op1) override;
 
   virtual string QLName() const override {
     return alias_->c_str();
+  }
+
+  // Predicate for calls to aggregate functions.
+  virtual bool IsAggregateCall() const override {
+    return (op1_ != nullptr && op1_->IsAggregateCall());
+  }
+  virtual yb::bfql::TSOpcode aggregate_opcode() const override {
+    DCHECK(op1_ != nullptr) << "Reading aggregate opcode from a NULL operator";
+    return op1_->aggregate_opcode();
   }
 
  private:

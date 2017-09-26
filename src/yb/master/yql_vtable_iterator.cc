@@ -34,7 +34,8 @@ CHECKED_STATUS YQLVTableIterator::NextBlock(RowBlock *dst) {
   return STATUS(NotSupported, "YQLVTableIterator::NextBlock(RowBlock*) not supported!");
 }
 
-CHECKED_STATUS YQLVTableIterator::NextRow(const Schema& projection, QLTableRow* table_row) {
+CHECKED_STATUS YQLVTableIterator::NextRow(const Schema& projection,
+                                          const QLTableRow::SharedPtr& table_row) {
   if (vtable_index_ >= vtable_->row_count()) {
     return STATUS(NotFound, "No more rows left!");
   }
@@ -42,8 +43,8 @@ CHECKED_STATUS YQLVTableIterator::NextRow(const Schema& projection, QLTableRow* 
   // TODO: return columns in projection only.
   QLRow& row = vtable_->row(vtable_index_);
   for (int i = 0; i < row.schema().num_columns(); i++) {
-    (*table_row)[row.schema().column_id(i)].value =
-        down_cast<const QLValueWithPB&>(row.column(i)).value();
+    table_row->AllocColumn(row.schema().column_id(i),
+                           down_cast<const QLValue&>(row.column(i)));
   }
   vtable_index_++;
   return Status::OK();

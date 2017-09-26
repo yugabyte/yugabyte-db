@@ -66,13 +66,13 @@ class QLRSRow {
   explicit QLRSRow(int32_t rscol_count);
   virtual ~QLRSRow();
 
-  const std::vector<QLValueWithPB>& rscols() const {
+  const std::vector<QLValue>& rscols() const {
     return rscols_;
   }
 
   size_t rscol_count() const { return rscols_.size(); }
 
-  QLValueWithPB *rscol(int32_t index) {
+  QLValue *rscol(int32_t index) {
     return &rscols_[index];
   }
 
@@ -81,7 +81,7 @@ class QLRSRow {
                               faststring* buffer) const;
 
  private:
-  std::vector<QLValueWithPB> rscols_;
+  std::vector<QLValue> rscols_;
 };
 
 // A set of rsrows.

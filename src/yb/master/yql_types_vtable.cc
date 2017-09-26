@@ -43,22 +43,22 @@ Status QLTypesVTable::RetrieveData(const QLReadRequestPB& request,
 
     // Create appropriate field_names entry.
     QLValuePB field_names;
-    QLValue::set_list_value(&field_names);
+    QLSeqValuePB *list_value = field_names.mutable_list_value();
     for (int i = 0; i < type->field_names_size(); i++) {
       QLValuePB field_name;
-      QLValue::set_string_value(type->field_names(i), &field_name);
-      *QLValue::add_list_elem(&field_names) = field_name;
+      field_name.set_string_value(type->field_names(i));
+      *list_value->add_elems() = field_name;
     }
     RETURN_NOT_OK(SetColumnValue(kFieldNames, field_names, &row));
 
     // Create appropriate field_types entry.
     QLValuePB field_types;
-    QLValue::set_list_value(&field_types);
+    list_value = field_types.mutable_list_value();
     for (int i = 0; i < type->field_types_size(); i++) {
       QLValuePB field_type;
       const string& field_type_name = QLType::FromQLTypePB(type->field_types(i))->ToString();
-      QLValue::set_string_value(field_type_name, &field_type);
-      *QLValue::add_list_elem(&field_types) = field_type;
+      field_type.set_string_value(field_type_name);
+      *list_value->add_elems() = field_type;
     }
     RETURN_NOT_OK(SetColumnValue(kFieldTypes, field_types, &row));
   }

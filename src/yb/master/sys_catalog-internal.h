@@ -114,11 +114,11 @@ class SysCatalogWriter {
   }
 
   void SetBinaryValue(const std::string& binary_value, QLExpressionPB* expr_pb) {
-    QLValue::set_binary_value(binary_value, expr_pb->mutable_value());
+    expr_pb->mutable_value()->set_binary_value(binary_value);
   }
 
   void SetInt8Value(const int8_t int8_value, QLExpressionPB* expr_pb) {
-    QLValue::set_int8_value(int8_value, expr_pb->mutable_value());
+    expr_pb->mutable_value()->set_int8_value(int8_value);
   }
 
   const Schema& schema_;

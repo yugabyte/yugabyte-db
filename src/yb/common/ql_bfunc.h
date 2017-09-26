@@ -53,18 +53,6 @@ class QLBfunc {
   static Status Exec(bfql::BFOpcode opcode,
                      std::vector<QLValue> *params,
                      QLValue *result);
-
-  static Status Exec(bfql::BFOpcode opcode,
-                     const std::vector<std::shared_ptr<QLValueWithPB>>& params,
-                     const std::shared_ptr<QLValueWithPB>& result);
-
-  static Status Exec(bfql::BFOpcode opcode,
-                     const std::vector<QLValueWithPB*>& params,
-                     QLValueWithPB *result);
-
-  static Status Exec(bfql::BFOpcode opcode,
-                     std::vector<QLValueWithPB> *params,
-                     QLValueWithPB *result);
 };
 
 } // namespace yb

@@ -332,6 +332,9 @@ message QLReadRequestPB {
 
   // Id used to track different queries.
   optional int64 query_id = 16;
+
+  // Flag for reading aggregate values.
+  optional bool is_aggregate = 19 [default = false];
 }
 
 //------------------------------ Response (for both read and write) -----------------------------

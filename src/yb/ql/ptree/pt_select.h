@@ -238,8 +238,13 @@ class PTSelectStmt : public PTDmlStmt {
     return from_clause_->loc();
   }
 
+
   PTOrderByListNode::SharedPtr order_by_clause() const {
     return order_by_clause_;
+  }
+
+  bool is_aggregate() const {
+    return is_aggregate_;
   }
 
  private:
@@ -266,6 +271,7 @@ class PTSelectStmt : public PTDmlStmt {
   PTListNode::SharedPtr having_clause_;
   PTOrderByListNode::SharedPtr order_by_clause_;
   PTExpr::SharedPtr limit_clause_;
+  bool is_aggregate_ = false;
 };
 
 }  // namespace ql

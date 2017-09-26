@@ -15,6 +15,7 @@
 
 #include "yb/ql/exec/exec_context.h"
 #include "yb/client/callbacks.h"
+#include "yb/ql/ptree/pt_select.h"
 
 namespace yb {
 namespace ql {
@@ -34,6 +35,14 @@ ExecContext::ExecContext(const char *ql_stmt,
 }
 
 ExecContext::~ExecContext() {
+}
+
+bool ExecContext::SelectingAggregate() {
+  if (tnode()->opcode() == TreeNodeOpcode::kPTSelectStmt) {
+    const PTSelectStmt *pt_select = static_cast<const PTSelectStmt*>(tnode());
+    return pt_select->is_aggregate();
+  }
+  return false;
 }
 
 Status ExecContext::Error(ErrorCode error_code) {

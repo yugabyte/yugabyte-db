@@ -166,6 +166,8 @@ class ExecContext : public ProcessContextBase {
     return ql_env_->Apply(op);
   }
 
+  bool SelectingAggregate();
+
   // Variants of ProcessContextBase::Error() that report location of statement tnode as the error
   // location.
   using ProcessContextBase::Error;

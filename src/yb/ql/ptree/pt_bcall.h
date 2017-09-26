@@ -89,6 +89,12 @@ class PTBcall : public PTExpr {
     return strings::Substitute("$0$1$2$3", name_->c_str(), "(", arg_names, ")");
   }
 
+  virtual bool IsAggregateCall() const override;
+  virtual yb::bfql::TSOpcode aggregate_opcode() const override {
+    return is_server_operator_ ? static_cast<yb::bfql::TSOpcode>(bfopcode_)
+                               : yb::bfql::TSOpcode::kNoOp;
+  }
+
  private:
   // Builtin function name.
   MCSharedPtr<MCString> name_;

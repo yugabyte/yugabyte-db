@@ -27,6 +27,8 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 
+using yb::bfql::TSOpcode;
+
 namespace yb {
 namespace docdb {
 
@@ -327,17 +329,17 @@ void SubDocument::EnsureContainerAllocated() {
 
 SubDocument SubDocument::FromQLValuePB(const QLValuePB& value,
                                        ColumnSchema::SortingType sorting_type,
-                                       WriteAction write_action) {
+                                       TSOpcode write_instr) {
   switch (value.value_case()) {
     case QLValuePB::kMapValue: {
-      QLMapValuePB map = QLValue::map_value(value);
+      QLMapValuePB map = value.map_value();
       // this equality should be ensured by checks before getting here
       DCHECK_EQ(map.keys_size(), map.values_size());
 
       SubDocument map_doc;
       for (int i = 0; i < map.keys_size(); i++) {
         PrimitiveValue pv_key = PrimitiveValue::FromQLValuePB(map.keys(i), sorting_type);
-        SubDocument pv_val = SubDocument::FromQLValuePB(map.values(i), sorting_type, write_action);
+        SubDocument pv_val = SubDocument::FromQLValuePB(map.values(i), sorting_type, write_instr);
         map_doc.SetChild(pv_key, std::move(pv_val));
       }
       // ensure container allocated even if map is empty
@@ -345,11 +347,11 @@ SubDocument SubDocument::FromQLValuePB(const QLValuePB& value,
       return map_doc;
     }
     case QLValuePB::kSetValue: {
-      QLSeqValuePB set = QLValue::set_value(value);
+      QLSeqValuePB set = value.set_value();
       SubDocument set_doc;
       for (auto& elem : set.elems()) {
         PrimitiveValue pv_key = PrimitiveValue::FromQLValuePB(elem, sorting_type);
-        if (write_action == WriteAction::REMOVE_KEYS) {
+        if (write_instr == TSOpcode::kSetRemove || write_instr == TSOpcode::kMapRemove ) {
           // representing sets elems as keys pointing to tombstones to remove those entries
           set_doc.SetChildPrimitive(pv_key, PrimitiveValue::kTombstone);
         }  else {
@@ -362,12 +364,12 @@ SubDocument SubDocument::FromQLValuePB(const QLValuePB& value,
       return set_doc;
     }
     case QLValuePB::kListValue: {
-      QLSeqValuePB list = QLValue::list_value(value);
+      QLSeqValuePB list = value.list_value();
       SubDocument list_doc(ValueType::kArray);
       // ensure container allocated even if list is empty
       list_doc.EnsureContainerAllocated();
       for (int i = 0; i < list.elems_size(); i++) {
-        SubDocument pv_val = SubDocument::FromQLValuePB(list.elems(i), sorting_type, write_action);
+        SubDocument pv_val = SubDocument::FromQLValuePB(list.elems(i), sorting_type, write_instr);
         list_doc.AddListElement(std::move(pv_val));
       }
       return list_doc;
@@ -384,7 +386,7 @@ void SubDocument::ToQLValuePB(const SubDocument& doc,
   // interpreting empty collections as null values following Cassandra semantics
   if (ql_type->HasComplexValues() && (!doc.has_valid_object_container() ||
                                        doc.object_num_keys() == 0)) {
-    QLValue::SetNull(ql_value);
+    SetNull(ql_value);
     return;
   }
 
@@ -392,20 +394,20 @@ void SubDocument::ToQLValuePB(const SubDocument& doc,
     case MAP: {
       const shared_ptr<QLType>& keys_type = ql_type->params()[0];
       const shared_ptr<QLType>& values_type = ql_type->params()[1];
-      QLValue::set_map_value(ql_value);
+      QLMapValuePB *value_pb = ql_value->mutable_map_value();
       for (auto &pair : doc.object_container()) {
-        QLValuePB *key = QLValue::add_map_key(ql_value);
+        QLValuePB *key = value_pb->add_keys();
         PrimitiveValue::ToQLValuePB(pair.first, keys_type, key);
-        QLValuePB *value = QLValue::add_map_value(ql_value);
+        QLValuePB *value = value_pb->add_values();
         SubDocument::ToQLValuePB(pair.second, values_type, value);
       }
       return;
     }
     case SET: {
       const shared_ptr<QLType>& elems_type = ql_type->params()[0];
-      QLValue::set_set_value(ql_value);
+      QLSeqValuePB *value_pb = ql_value->mutable_set_value();
       for (auto &pair : doc.object_container()) {
-        QLValuePB *elem = QLValue::add_set_elem(ql_value);
+        QLValuePB *elem = value_pb->add_elems();
         PrimitiveValue::ToQLValuePB(pair.first, elems_type, elem);
         // set elems are represented as subdocument keys so we ignore the (empty) values
       }
@@ -413,21 +415,21 @@ void SubDocument::ToQLValuePB(const SubDocument& doc,
     }
     case LIST: {
       const shared_ptr<QLType>& elems_type = ql_type->params()[0];
-      QLValue::set_list_value(ql_value);
+      QLSeqValuePB *value_pb = ql_value->mutable_list_value();
       for (auto &pair : doc.object_container()) {
         // list elems are represented as subdocument values with keys only used for ordering
-        QLValuePB *elem = QLValue::add_list_elem(ql_value);
+        QLValuePB *elem = value_pb->add_elems();
         SubDocument::ToQLValuePB(pair.second, elems_type, elem);
       }
       return;
     }
     case USER_DEFINED_TYPE: {
       const shared_ptr<QLType>& keys_type = QLType::Create(INT16);
-      QLValue::set_map_value(ql_value);
+      QLMapValuePB *value_pb = ql_value->mutable_map_value();
       for (auto &pair : doc.object_container()) {
-        QLValuePB *key = QLValue::add_map_key(ql_value);
+        QLValuePB *key = value_pb->add_keys();
         PrimitiveValue::ToQLValuePB(pair.first, keys_type, key);
-        QLValuePB *value = QLValue::add_map_value(ql_value);
+        QLValuePB *value = value_pb->add_values();
         SubDocument::ToQLValuePB(pair.second, ql_type->param_type(key->int16_value()), value);
       }
       return;
@@ -440,106 +442,6 @@ void SubDocument::ToQLValuePB(const SubDocument& doc,
     }
   }
   LOG(FATAL) << "Unsupported datatype in SubDocument: " << ql_type->ToString();
-}
-
-void SubDocument::ToQLExpressionPB(const SubDocument& doc,
-                                   const shared_ptr<QLType>& ql_type,
-                                   QLExpressionPB* ql_expr) {
-  ToQLValuePB(doc, ql_type, ql_expr->mutable_value());
-}
-
-
-CHECKED_STATUS SubDocument::FromQLExpressionPB(const QLExpressionPB& ql_expr,
-                                               const ColumnSchema& column_schema,
-                                               const QLTableRow& table_row,
-                                               SubDocument* sub_doc,
-                                               WriteAction* write_action) {
-  switch (ql_expr.expr_case()) {
-    case QLExpressionPB::ExprCase::kValue:  // Scenarios: SET column = constant.
-      *sub_doc = FromQLValuePB(ql_expr.value(), column_schema.sorting_type(), *write_action);
-      return Status::OK();
-
-    case QLExpressionPB::ExprCase::kColumnId:  // Scenarios: SET column = column.
-      FALLTHROUGH_INTENDED;
-    case QLExpressionPB::ExprCase::kSubscriptedCol:  // Scenarios: SET column = column[key].
-      FALLTHROUGH_INTENDED;
-    case QLExpressionPB::ExprCase::kBfcall: {  // Scenarios: SET column = func().
-      QLValueWithPB result;
-      RETURN_NOT_OK(YQLExpression::Evaluate(ql_expr, table_row, &result, write_action));
-      // Type of the result could be changed for some write actions (e.g. REMOVE_KEYS from map)
-      *sub_doc = FromQLValuePB(result.value(), column_schema.sorting_type(), *write_action);
-      return Status::OK();
-    }
-
-    case QLExpressionPB::ExprCase::kTscall: {  // Scenarios: SELECT TTL(col).
-      QLValueWithPB result;
-      RETURN_NOT_OK(EvalQLBFCallTServerPB(ql_expr.tscall(), table_row, &result));
-      *sub_doc = FromQLValuePB(result.value(), column_schema.sorting_type(), *write_action);
-      return Status::OK();
-    }
-
-    case QLExpressionPB::ExprCase::kCondition:
-      LOG(FATAL) << "Internal error: Conditional expression is not allowed in this context";
-      break;
-
-    case QLExpressionPB::ExprCase::kBocall: FALLTHROUGH_INTENDED;
-    case QLExpressionPB::ExprCase::kBindId: FALLTHROUGH_INTENDED;
-    case QLExpressionPB::ExprCase::EXPR_NOT_SET:
-      break;
-  }
-  LOG(FATAL) << "Internal error: invalid column or value expression: " << ql_expr.expr_case();
-}
-
-// TODO(neil)
-// - Need to work with Mihnea on collection function and merge this work with DocExprExecutor().
-// - When memory pool is implemented in DocDB, we should run some perf tool to optimize the
-// expression evaluating process. The intermediate / temporary QLValue should be allocated
-// in the pool. Currently, the argument structures are on stack, but their contents are in the
-// heap memory.
-CHECKED_STATUS SubDocument::EvalQLBFCallTServerPB(const QLBCallPB& tscall,
-                                                  const QLTableRow& table_row,
-                                                  QLValueWithPB *result) {
-  bfql::TSOpcode tsopcode = static_cast<bfql::TSOpcode>(tscall.opcode());
-  switch (tsopcode) {
-    case bfql::TSOpcode::kNoOp:
-      break;
-
-    case bfql::TSOpcode::kWriteTime: {
-      // TODO(neil) Call Docdb for the value and fill in the result.
-      // "args" should be just one "kColumnId". The variable "table_row" is not enough for this
-      // operator, so we must pass other information together with value.
-      DCHECK_EQ(tscall.operands().size(), 1) << "WriteTime takes only one argument, a column";
-      const QLExpressionPB& operand = tscall.operands().Get(0);
-      DCHECK(operand.has_column_id()) << "WriteTime operator expects a column ID";
-      LOG(INFO) << "Seek WRITETIME for column " << operand.column_id();
-
-      LOG(FATAL) << "Failed to execute WRITETIME";
-    }
-
-    case bfql::TSOpcode::kTtl: {
-      // TODO(neil) Call Docdb for the value and fill in the result.
-      // "args" should be just one "kColumnId". The variable "table_row" is not enough for this
-      // operator, so we must pass other information together with value.
-      DCHECK_EQ(tscall.operands().size(), 1) << "WriteTime takes only one argument, a column";
-      const QLExpressionPB& operand = tscall.operands().Get(0);
-      DCHECK(operand.has_column_id()) << "WriteTime operator expects a column ID";
-      LOG(INFO) << "Seek WRITETIME for column " << operand.column_id();
-
-      LOG(FATAL) << "Failed to execute TTL";
-    }
-
-    case bfql::TSOpcode::kCount: FALLTHROUGH_INTENDED;
-    case bfql::TSOpcode::kSum: FALLTHROUGH_INTENDED;
-    case bfql::TSOpcode::kAvg: FALLTHROUGH_INTENDED;
-    case bfql::TSOpcode::kMin: FALLTHROUGH_INTENDED;
-    case bfql::TSOpcode::kMax:
-      // TODO(neil) Call DocDB to execute aggregate functions.
-      // These functions operate across many rows, so some state variables must be kept beyond the
-      // scope of one row. The variable "table_row" is not enough for these operators.
-      LOG(FATAL) << "Failed to execute aggregate function";
-  }
-
-  return Status::OK();
 }
 
 }  // namespace docdb

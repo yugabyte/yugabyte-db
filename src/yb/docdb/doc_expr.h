@@ -17,15 +17,28 @@ namespace docdb {
 
 class DocExprExecutor : public QLExprExecutor {
  public:
+  // Public types.
+  typedef std::shared_ptr<DocExprExecutor> SharedPtr;
+  typedef std::shared_ptr<const DocExprExecutor> SharedPtrConst;
+
   // Constructor.
-  // TODO(neil) Investigate to see if constructor should take column_map and bind_map.
+  // TODO(neil) Investigate to see if constructor should take 'table_row' and bind_map.
   DocExprExecutor() { }
   virtual ~DocExprExecutor() { }
 
   // Evaluate call to tablet-server builtin operator.
   virtual CHECKED_STATUS EvalTSCall(const QLBCallPB& ql_expr,
-                                    const QLTableRow& column_map,
-                                    QLValueWithPB *result) override;
+                                    const QLTableRow::SharedPtrConst& table_row,
+                                    QLValue *result) override;
+
+  // Evaluate aggregate functions for each row.
+  CHECKED_STATUS EvalCount(QLValue *aggr_count);
+  CHECKED_STATUS EvalSum(const QLValue& val, QLValue *aggr_sum);
+  CHECKED_STATUS EvalMax(const QLValue& val, QLValue *aggr_max);
+  CHECKED_STATUS EvalMin(const QLValue& val, QLValue *aggr_min);
+
+ protected:
+  vector<QLValue> aggr_result_;
 };
 
 } // namespace docdb

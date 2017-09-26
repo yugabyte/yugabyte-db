@@ -206,15 +206,15 @@ QLScanRange& QLScanRange::operator&=(const QLScanRange& other) {
     // Interact operation:
     // - min_value = max(min_value, other_min_value)
     // - max_value = min(max_value, other_max_value)
-    if (QLValue::BothNotNull(range.min_value, other_range.min_value)) {
+    if (BothNotNull(range.min_value, other_range.min_value)) {
       range.min_value = std::max(range.min_value, other_range.min_value);
-    } else if (!QLValue::IsNull(other_range.min_value)) {
+    } else if (!IsNull(other_range.min_value)) {
       range.min_value = other_range.min_value;
     }
 
-    if (QLValue::BothNotNull(range.max_value, other_range.max_value)) {
+    if (BothNotNull(range.max_value, other_range.max_value)) {
       range.max_value = std::min(range.max_value, other_range.max_value);
-    } else if (!QLValue::IsNull(other_range.max_value)) {
+    } else if (!IsNull(other_range.max_value)) {
       range.max_value = other_range.max_value;
     }
   }
@@ -229,16 +229,16 @@ QLScanRange& QLScanRange::operator|=(const QLScanRange& other) {
     // Union operation:
     // - min_value = min(min_value, other_min_value)
     // - max_value = max(max_value, other_max_value)
-    if (QLValue::BothNotNull(range.min_value, other_range.min_value)) {
+    if (BothNotNull(range.min_value, other_range.min_value)) {
       range.min_value = std::min(range.min_value, other_range.min_value);
-    } else if (QLValue::IsNull(other_range.min_value)) {
-      QLValue::SetNull(&range.min_value);
+    } else if (IsNull(other_range.min_value)) {
+      SetNull(&range.min_value);
     }
 
-    if (QLValue::BothNotNull(range.max_value, other_range.max_value)) {
+    if (BothNotNull(range.max_value, other_range.max_value)) {
       range.max_value = std::max(range.max_value, other_range.max_value);
-    } else if (QLValue::IsNull(other_range.max_value)) {
-      QLValue::SetNull(&range.max_value);
+    } else if (IsNull(other_range.max_value)) {
+      SetNull(&range.max_value);
     }
   }
   return *this;
@@ -249,12 +249,12 @@ QLScanRange& QLScanRange::operator~() {
     auto& range = elem.second;
 
     // Complement operation:
-    if (QLValue::BothNotNull(range.min_value, range.max_value)) {
+    if (BothNotNull(range.min_value, range.max_value)) {
       // If the condition's min and max values are defined, the negation of it will be
       // disjoint ranges at the two ends, which is not representable as a simple range. So
       // we will treat the result as unbounded.
-      QLValue::SetNull(&range.min_value);
-      QLValue::SetNull(&range.max_value);
+      SetNull(&range.min_value);
+      SetNull(&range.max_value);
     } else {
       // Otherwise, for one-sided range or unbounded range, the resulting min/max values are
       // just the reverse of the bounds.
@@ -287,25 +287,26 @@ vector<QLValuePB> QLScanRange::range_values(const bool lower_bound) const {
 }
 
 //-------------------------------------- QL scan spec ---------------------------------------
-QLScanSpec::QLScanSpec(const QLConditionPB* condition)
-    : condition_(condition), is_forward_scan_(true) {
+
+QLScanSpec::QLScanSpec(QLExprExecutor::SharedPtr executor) : QLScanSpec(nullptr, true, executor) {
 }
 
-QLScanSpec::QLScanSpec(const QLConditionPB* condition, const bool is_forward_scan)
-    : condition_(condition), is_forward_scan_(is_forward_scan) {
+QLScanSpec::QLScanSpec(const QLConditionPB* condition,
+                       const bool is_forward_scan,
+                       QLExprExecutor::SharedPtr executor)
+    : condition_(condition), is_forward_scan_(is_forward_scan), executor_(executor) {
+  if (executor_ == nullptr) {
+    executor_ = std::make_shared<QLExprExecutor>();
+  }
 }
 
 // Evaluate the WHERE condition for the given row.
-Status QLScanSpec::Match(const QLTableRow& table_row, bool* match) const {
+CHECKED_STATUS QLScanSpec::Match(const QLTableRow::SharedPtr& table_row, bool* match) const {
   if (condition_ != nullptr) {
-    return EvaluateCondition(*condition_, table_row, match);
+    return executor_->EvalCondition(*condition_, table_row, match);
   }
   *match = true;
   return Status::OK();
-}
-
-bool QLScanSpec::is_forward_scan() const {
-  return is_forward_scan_;
 }
 
 } // namespace common

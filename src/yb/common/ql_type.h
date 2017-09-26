@@ -306,6 +306,10 @@ class QLType {
     return IsUnknown(id_);
   }
 
+  bool IsAnyType() const {
+    return IsNull(id_);
+  }
+
   bool IsInteger() const {
     return IsInteger(id_);
   }

@@ -81,6 +81,42 @@ class BFDecl {
     return implemented_;
   }
 
+  bool is_collection_bcall() const {
+    return is_collection_op(tsopcode_);
+  }
+
+  bool is_aggregate_bcall() const {
+    return is_aggregate_op(tsopcode_);
+  }
+
+  static bool is_collection_op(TSOpcode tsopcode) {
+    switch (tsopcode) {
+      case TSOpcode::kMapExtend: FALLTHROUGH_INTENDED;
+      case TSOpcode::kMapRemove: FALLTHROUGH_INTENDED;
+      case TSOpcode::kSetExtend: FALLTHROUGH_INTENDED;
+      case TSOpcode::kSetRemove: FALLTHROUGH_INTENDED;
+      case TSOpcode::kListAppend: FALLTHROUGH_INTENDED;
+      case TSOpcode::kListPrepend: FALLTHROUGH_INTENDED;
+      case TSOpcode::kListRemove:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  static bool is_aggregate_op(TSOpcode tsopcode) {
+    switch (tsopcode) {
+      case TSOpcode::kAvg: FALLTHROUGH_INTENDED;
+      case TSOpcode::kCount: FALLTHROUGH_INTENDED;
+      case TSOpcode::kMax: FALLTHROUGH_INTENDED;
+      case TSOpcode::kMin: FALLTHROUGH_INTENDED;
+      case TSOpcode::kSum:
+        return true;
+      default:
+        return false;
+    }
+  }
+
  private:
   const char *cpp_name_;
   const char *ql_name_;

@@ -31,7 +31,8 @@ class YQLVTableIterator : public common::QLRowwiseIteratorIf {
 
   CHECKED_STATUS NextBlock(RowBlock *dst) override;
 
-  CHECKED_STATUS NextRow(const Schema& projection, QLTableRow* table_row) override;
+  CHECKED_STATUS NextRow(const Schema& projection,
+                         const QLTableRow::SharedPtr& table_row) override;
 
   // Virtual table does not contain any static column.
   bool IsNextStaticColumn() const override { return false; }

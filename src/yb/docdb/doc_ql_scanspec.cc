@@ -11,51 +11,52 @@
 // under the License.
 //
 
+#include "yb/docdb/doc_expr.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/rocksdb/db/compaction.h"
 
 namespace yb {
 namespace docdb {
 
-DocQLScanSpec::DocQLScanSpec(const Schema& schema, const DocKey& doc_key,
-    const rocksdb::QueryId query_id, const bool is_forward_scan)
-    : QLScanSpec(nullptr, is_forward_scan),
-    range_(nullptr),
-    schema_(schema),
-    hash_code_(kUnspecifiedHashCode_),
-    max_hash_code_(kUnspecifiedHashCode_),
-    hashed_components_(nullptr),
-    doc_key_(doc_key),
-    start_doc_key_(DocKey()),
-    lower_doc_key_(DocKey()),
-    upper_doc_key_(DocKey()),
-    include_static_columns_(false),
-    query_id_(query_id) {
+DocQLScanSpec::DocQLScanSpec(const Schema& schema,
+                             const DocKey& doc_key,
+                             const rocksdb::QueryId query_id,
+                             const bool is_forward_scan)
+    : QLScanSpec(nullptr, is_forward_scan, std::make_shared<DocExprExecutor>()),
+      range_(nullptr),
+      schema_(schema),
+      hash_code_(kUnspecifiedHashCode_),
+      max_hash_code_(kUnspecifiedHashCode_),
+      hashed_components_(nullptr),
+      doc_key_(doc_key),
+      start_doc_key_(DocKey()),
+      lower_doc_key_(DocKey()),
+      upper_doc_key_(DocKey()),
+      include_static_columns_(false),
+      query_id_(query_id) {
 }
 
-
-DocQLScanSpec::DocQLScanSpec(const Schema& schema, const int32_t hash_code,
-    const int32_t max_hash_code,
-    const std::vector<PrimitiveValue>& hashed_components,
-    const QLConditionPB* condition,
-    const rocksdb::QueryId query_id,
-    const bool is_forward_scan,
-    const bool include_static_columns,
-    const DocKey& start_doc_key)
-    : QLScanSpec(condition, is_forward_scan),
-    range_(condition ? new common::QLScanRange(schema, *condition) : nullptr),
-    schema_(schema),
-    hash_code_(hash_code),
-    max_hash_code_(max_hash_code),
-    hashed_components_(&hashed_components),
-    doc_key_(),
-    start_doc_key_(start_doc_key),
-    lower_doc_key_(bound_key(true)),
-    upper_doc_key_(bound_key(false)),
-    include_static_columns_(include_static_columns),
-    query_id_(query_id) {
-  // Initialize the upper and lower doc keys.
-  CHECK(hashed_components_ != nullptr) << "hashed primary key columns missing";
+DocQLScanSpec::DocQLScanSpec(const Schema& schema,
+                             const int32_t hash_code,
+                             const int32_t max_hash_code,
+                             const std::vector<PrimitiveValue>& hashed_components,
+                             const QLConditionPB* condition,
+                             const rocksdb::QueryId query_id,
+                             const bool is_forward_scan,
+                             const bool include_static_columns,
+                             const DocKey& start_doc_key)
+    : QLScanSpec(condition, is_forward_scan, std::make_shared<DocExprExecutor>()),
+      range_(condition ? new common::QLScanRange(schema, *condition) : nullptr),
+      schema_(schema),
+      hash_code_(hash_code),
+      max_hash_code_(max_hash_code),
+      hashed_components_(&hashed_components),
+      doc_key_(),
+      start_doc_key_(start_doc_key),
+      lower_doc_key_(bound_key(true)),
+      upper_doc_key_(bound_key(false)),
+      include_static_columns_(include_static_columns),
+      query_id_(query_id) {
 }
 
 DocKey DocQLScanSpec::bound_key(const bool lower_bound) const {
@@ -91,7 +92,7 @@ std::vector<PrimitiveValue> DocQLScanSpec::range_components(const bool lower_bou
     size_t column_idx = schema_.num_hash_key_columns();
     for (const auto& value : range_values) {
       const auto& column = schema_.column(column_idx);
-      if (QLValue::IsNull(value)) {
+      if (IsNull(value)) {
         result.emplace_back(PrimitiveValue(lower_bound ? ValueType::kLowest : ValueType::kHighest));
       } else {
         result.emplace_back(PrimitiveValue::FromQLValuePB(value, column.sorting_type()));

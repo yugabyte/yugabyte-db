@@ -405,13 +405,13 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
       ReadHybridTime::FromMicros(3000));
   ASSERT_OK(ql_iter.Init(ql_scan_spec));
   ASSERT_TRUE(ql_iter.HasNext());
-  QLTableRow value_map;
-  ASSERT_OK(ql_iter.NextRow(schema, &value_map));
-  ASSERT_EQ(4, value_map.size());
-  EXPECT_EQ(100, value_map.at(ColumnId(0)).value.int32_value());
-  EXPECT_TRUE(QLValue::IsNull(value_map.at(ColumnId(1)).value));
-  EXPECT_TRUE(QLValue::IsNull(value_map.at(ColumnId(2)).value));
-  EXPECT_EQ(101, value_map.at(ColumnId(3)).value.int32_value());
+  QLTableRow::SharedPtr value_map = std::make_shared<QLTableRow>();
+  ASSERT_OK(ql_iter.NextRow(schema, value_map));
+  ASSERT_EQ(4, value_map->ColumnCount());
+  EXPECT_EQ(100, value_map->TestValue(0).value.int32_value());
+  EXPECT_TRUE(IsNull(value_map->TestValue(1).value));
+  EXPECT_TRUE(IsNull(value_map->TestValue(2).value));
+  EXPECT_EQ(101, value_map->TestValue(3).value.int32_value());
 
   // Now verify row exists as long as liveness system column exists.
   doc_key = DocKey(0, PrimitiveValues(PrimitiveValue::Int32(101)), PrimitiveValues());
@@ -450,13 +450,13 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
       ReadHybridTime::FromMicros(3000));
   ASSERT_OK(ql_iter_system.Init(ql_scan_spec_system));
   ASSERT_TRUE(ql_iter_system.HasNext());
-  QLTableRow value_map_system;
-  ASSERT_OK(ql_iter_system.NextRow(schema, &value_map_system));
-  ASSERT_EQ(4, value_map_system.size());
-  EXPECT_EQ(101, value_map_system.at(ColumnId(0)).value.int32_value());
-  EXPECT_TRUE(QLValue::IsNull(value_map_system.at(ColumnId(1)).value));
-  EXPECT_TRUE(QLValue::IsNull(value_map_system.at(ColumnId(2)).value));
-  EXPECT_TRUE(QLValue::IsNull(value_map_system.at(ColumnId(3)).value));
+  QLTableRow::SharedPtr value_map_system = std::make_shared<QLTableRow>();
+  ASSERT_OK(ql_iter_system.NextRow(schema, value_map_system));
+  ASSERT_EQ(4, value_map_system->ColumnCount());
+  EXPECT_EQ(101, value_map_system->TestValue(0).value.int32_value());
+  EXPECT_TRUE(IsNull(value_map_system->TestValue(1).value));
+  EXPECT_TRUE(IsNull(value_map_system->TestValue(2).value));
+  EXPECT_TRUE(IsNull(value_map_system->TestValue(3).value));
 }
 
 namespace {
@@ -589,13 +589,13 @@ void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType 
       LOG(INFO) << "Expected rows: " << yb::ToString(expected_rows);
       it = expected_rows.begin();
       while(ql_iter.HasNext()) {
-        QLTableRow value_map;
-        ASSERT_OK(ql_iter.NextRow(schema, &value_map));
-        ASSERT_EQ(3, value_map.size());
+        QLTableRow::SharedPtr value_map = std::make_shared<QLTableRow>();
+        ASSERT_OK(ql_iter.NextRow(schema, value_map));
+        ASSERT_EQ(3, value_map->ColumnCount());
 
-        RowData fetched_row = { value_map[0_ColId].value.int32_value(),
-                                value_map[1_ColId].value.int32_value(),
-                                value_map[2_ColId].value.int32_value() };
+        RowData fetched_row = { value_map->TestValue(0_ColId).value.int32_value(),
+                                value_map->TestValue(1_ColId).value.int32_value(),
+                                value_map->TestValue(2_ColId).value.int32_value() };
         LOG(INFO) << "Fetched row: " << fetched_row;
         ASSERT_EQ(*it, fetched_row);
         it++;

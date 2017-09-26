@@ -55,6 +55,10 @@ PTBcall::PTBcall(MemoryContext *memctx,
 PTBcall::~PTBcall() {
 }
 
+bool PTBcall::IsAggregateCall() const {
+  return is_server_operator_ && BFDecl::is_aggregate_op(static_cast<TSOpcode>(bfopcode_));
+}
+
 CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(CheckOperator(sem_context));
 
@@ -103,48 +107,59 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
     return sem_context->Error(this, err_msg.c_str(), ErrorCode::INVALID_FUNCTION_CALL);
   }
 
-  // Check error for special cases.
-  // TODO(neil) This should be part of the builtin table. Each entry in builtin table should have
-  // a function pointer for CheckRequirement().  During analysis, QL will all apply these function
-  // pointers to check for any special requirement of an entry.
-  if (strcmp(name_->c_str(), "ttl") == 0 || strcmp(name_->c_str(), "writetime") == 0) {
-    const PTExpr::SharedPtr& expr = exprs.front();
-    if (expr->expr_op() != ExprOperator::kRef) {
-      string errmsg = Substitute("Input argument for $0 must be a column", name_->c_str());
-      return sem_context->Error(expr->loc(), errmsg.c_str(), ErrorCode::INVALID_ARGUMENTS);
-    }
-    const PTRef *ref = static_cast<const PTRef *>(expr.get());
-    if (ref->desc()->is_primary()) {
-      string errmsg = Substitute("Input argument for $0 cannot be primary key", name_->c_str());
-      return sem_context->Error(expr->loc(), errmsg.c_str(), ErrorCode::INVALID_ARGUMENTS);
-    }
-    if (ref->desc()->ql_type()->IsParametric()) {
-      string errmsg = Substitute("Input argument for $0 is of wrong datatype", name_->c_str());
-      return sem_context->Error(expr->loc(), errmsg.c_str(), ErrorCode::INVALID_ARGUMENTS);
-    }
-  }
-
-  // Set the opcode.
   if (!bfdecl->is_server_operator()) {
     // Use the builtin-function opcode since this is a regular builtin call.
     bfopcode_ = static_cast<int32_t>(bfopcode);
+
   } else {
     // Use the server opcode since this is a server operator. Ignore the BFOpcode.
     is_server_operator_ = true;
-    bfopcode_ = static_cast<int32_t>(bfdecl->tsopcode());
-  }
+    TSOpcode tsop = bfdecl->tsopcode();
+    bfopcode_ = static_cast<int32_t>(tsop);
 
-  // Collection operations require special handling during type analysis
-  // 1. Casting check is not needed since type conversion between collection types is not allowed
-  // 2. Additional type inference is needed for the parameter types of the collections
-  if (pt_result->ql_type()->IsParametric()) {
-    cast_ops_.resize(exprs.size(), BFOPCODE_NOOP);
-    if (strcmp(bfdecl->cpp_name(), "AddMapMap") == 0 ||
-        strcmp(bfdecl->cpp_name(), "AddSetSet") == 0 ||
-        strcmp(bfdecl->cpp_name(), "AddListList") == 0 ||
-        strcmp(bfdecl->cpp_name(), "SubMapSet") == 0 ||
-        strcmp(bfdecl->cpp_name(), "SubSetSet") == 0 ||
-        strcmp(bfdecl->cpp_name(), "SubListList") == 0) {
+    // Check error for special cases.
+    // TODO(neil) This should be part of the builtin table. Each entry in builtin table should have
+    // a function pointer for CheckRequirement().  During analysis, QL will all apply these function
+    // pointers to check for any special requirement of an entry.
+    if (bfql::IsAggregateOpcode(tsop)) {
+      if (!sem_context->allowing_aggregate()) {
+        string errmsg =
+          Substitute("Aggregate function $0() cannot be called in this context", name_->c_str());
+        return sem_context->Error(loc(), errmsg.c_str(), ErrorCode::INVALID_ARGUMENTS);
+      }
+      const PTExpr::SharedPtr& expr = exprs.front();
+      if (expr->expr_op() != ExprOperator::kRef &&
+          (!expr->IsDummyStar() || tsop != TSOpcode::kCount)) {
+        string errmsg = Substitute("Input argument for $0 must be a column", name_->c_str());
+        return sem_context->Error(expr->loc(), errmsg.c_str(), ErrorCode::INVALID_ARGUMENTS);
+      }
+      if (tsop == TSOpcode::kMin || tsop == TSOpcode::kMax) {
+        if (pt_result->ql_type()->IsAnyType()) {
+          pt_result->set_ql_type(args_->element(0)->ql_type());
+        }
+      }
+    } else if (tsop == TSOpcode::kTtl || tsop == TSOpcode::kWriteTime) {
+      const PTExpr::SharedPtr& expr = exprs.front();
+      if (expr->expr_op() != ExprOperator::kRef) {
+        string errmsg = Substitute("Input argument for $0 must be a column", name_->c_str());
+        return sem_context->Error(expr->loc(), errmsg.c_str(), ErrorCode::INVALID_ARGUMENTS);
+      }
+      const PTRef *ref = static_cast<const PTRef *>(expr.get());
+      if (ref->desc()->is_primary()) {
+        string errmsg = Substitute("Input argument for $0 cannot be primary key", name_->c_str());
+        return sem_context->Error(expr->loc(), errmsg.c_str(), ErrorCode::INVALID_ARGUMENTS);
+      }
+      if (ref->desc()->ql_type()->IsParametric()) {
+        string errmsg = Substitute("Input argument for $0 is of wrong datatype", name_->c_str());
+        return sem_context->Error(expr->loc(), errmsg.c_str(), ErrorCode::INVALID_ARGUMENTS);
+      }
+
+    } else if (bfdecl->is_collection_bcall()) {
+      // Collection operations require special handling during type analysis
+      // 1. Casting check is not needed since conversion between collection types is not allowed
+      // 2. Additional type inference is needed for the parameter types of the collections
+      DCHECK(pt_result->ql_type()->IsParametric());
+      cast_ops_.resize(exprs.size(), BFOPCODE_NOOP);
 
       if (!sem_context->processing_set_clause()) {
         return sem_context->Error(this, "Collection operations only allowed in set clause",
@@ -156,28 +171,29 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
       auto arg = *(++it);
 
       // list addition allows column ref to be second argument
-      if (strcmp(bfdecl->cpp_name(), "AddListList") == 0 &&
+      if (strcmp(bfdecl->ql_name(), "+list") == 0 &&
           col_ref->expr_op() != ExprOperator::kRef) {
         arg = col_ref;
         col_ref = *it;
       }
 
       if (col_ref->expr_op() != ExprOperator::kRef) {
-        return sem_context->Error(this,
-            "Expected main argument for collection operation to be column reference",
-            ErrorCode::INVALID_FUNCTION_CALL);
+        return sem_context->Error(col_ref.get(),
+                                  "Expected reference to column of a collection datatype",
+                                  ErrorCode::INVALID_FUNCTION_CALL);
       }
 
       PTRef *pt_ref = static_cast<PTRef *>(col_ref.get());
-
       if (sem_context->lhs_col() != pt_ref->desc()) {
-        return sem_context->Error(this,
+        return sem_context->Error(
+            this,
             "Expected main argument for collection operation to reference the column being set",
             ErrorCode::INVALID_FUNCTION_CALL);
       }
 
       if (arg->expr_op() != ExprOperator::kCollection && arg->expr_op() != ExprOperator::kBindVar) {
-        return sem_context->Error(this,
+        return sem_context->Error(
+            this,
             "Expected auxiliary argument for collection operations to be collection literal",
             ErrorCode::INVALID_FUNCTION_CALL);
       }
@@ -187,7 +203,7 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
       auto arg_ytype = col_ref->ql_type();
       auto arg_itype = col_ref->internal_type();
       // Subtraction from MAP takes keys to be removed as param so arg type for MAP<A,B> is SET<A>
-      if (strcmp(bfdecl->cpp_name(), "SubMapSet") == 0) {
+      if (strcmp(bfdecl->ql_name(), "map-") == 0) {
         arg_ytype = QLType::CreateTypeSet(col_ref->ql_type()->param_type(0));
         arg_itype = InternalType::kSetValue;
       }
@@ -205,17 +221,12 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
 
       // For "UPDATE ... SET list = list - x ..." , the list needs to be read first in order to
       // subtract (remove) elements from it.
-      if (strcmp(bfdecl->cpp_name(), "SubListList") == 0) {
+      if (strcmp(bfdecl->ql_name(), "list-") == 0) {
         sem_context->current_dml_stmt()->AddColumnRef(*pt_ref->desc());
       }
 
       return Status::OK();
     }
-
-    // default
-    return sem_context->Error(this, "Unsupported builtin call for collections",
-                              ErrorCode::INVALID_FUNCTION_CALL);
-
   }
 
   // Find the cast operator if arguments' ql_type_id are not an exact match with signature.
@@ -275,35 +286,27 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
 }
 
 CHECKED_STATUS PTBcall::CheckOperator(SemContext *sem_context) {
-  if (sem_context->processing_set_clause() &&
-      sem_context->lhs_col() != nullptr &&
-      sem_context->lhs_col()->ql_type()->IsCollection()) {
-    // Only increment ("+") and decrement ("-") operators are allowed for collections.
-    const string type_name = QLType::ToCQLString(sem_context->lhs_col()->ql_type()->main());
-    if (*name_ == "+" || *name_ == "-") {
-      name_->append(type_name.c_str());
+  if (sem_context->processing_set_clause() && sem_context->lhs_col() != nullptr) {
+    if (sem_context->lhs_col()->ql_type()->IsCollection()) {
+      // Only increment ("+") and decrement ("-") operators are allowed for collections.
+      const string type_name = QLType::ToCQLString(sem_context->lhs_col()->ql_type()->main());
+      if (*name_ == "+" || *name_ == "-") {
+        if (args_->element(0)->opcode() == TreeNodeOpcode::kPTRef) {
+          name_->insert(0, type_name.c_str());
+        } else {
+          name_->append(type_name.c_str());
+        }
+      }
+    } else if (sem_context->lhs_col()->is_counter()) {
+      // Only increment ("+") and decrement ("-") operators are allowed for counters.
+      if (strcmp(name_->c_str(), "+") == 0 || strcmp(name_->c_str(), "-") == 0) {
+        name_->insert(0, "counter");
+      } else if (strcmp(name_->c_str(), "counter+") != 0 &&
+                 strcmp(name_->c_str(), "counter-") != 0) {
+        return sem_context->Error(this, ErrorCode::INVALID_COUNTING_EXPR);
+      }
     }
   }
-
-  if (sem_context->processing_set_clause() &&
-      sem_context->lhs_col() != nullptr &&
-      sem_context->lhs_col()->is_counter()) {
-    // Only increment ("+") and decrement ("-") operators are allowed for counters.
-    if (*name_ == "+" || *name_ == "-") {
-      name_->append("counter");
-    } else if (*name_ !=  "+counter" && *name_ != "-counter") {
-      return sem_context->Error(this, ErrorCode::INVALID_COUNTING_EXPR);
-    }
-  }
-
-  /*
-  // The following error report on builtin call is to disallow function call for non-COUNTER
-  // datatypes. This code block should be enabled if we decide to do so.
-  else {
-    return sem_context->Error(this, "This operator is only allowed for COUNTER in SET clause",
-                              ErrorCode::CQL_STATEMENT_INVALID);
-  }
-  */
 
   return Status::OK();
 }

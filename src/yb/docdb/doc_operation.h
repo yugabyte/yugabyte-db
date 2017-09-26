@@ -20,14 +20,16 @@
 #include "yb/rocksdb/db.h"
 
 #include "yb/common/ql_storage_interface.h"
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_path.h"
-#include "yb/docdb/primitive_value.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_resultset.h"
+
+#include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_path.h"
+#include "yb/docdb/primitive_value.h"
+#include "yb/docdb/doc_expr.h"
 
 namespace yb {
 namespace docdb {
@@ -150,7 +152,7 @@ class RedisReadOperation {
   ReadHybridTime read_time_;
 };
 
-class QLWriteOperation : public DocOperation {
+class QLWriteOperation : public DocOperation, public DocExprExecutor {
  public:
   // Construct a QLWriteOperation. Content of request will be swapped out by the constructor.
   QLWriteOperation(
@@ -176,13 +178,13 @@ class QLWriteOperation : public DocOperation {
   CHECKED_STATUS ReadColumns(const DocOperationApplyData& data,
                              Schema *static_projection,
                              Schema *non_static_projection,
-                             QLTableRow *table_row);
+                             const QLTableRow::SharedPtr& table_row);
 
   CHECKED_STATUS IsConditionSatisfied(const QLConditionPB& condition,
                                       const DocOperationApplyData& data,
                                       bool* should_apply,
                                       std::unique_ptr<QLRowBlock>* rowblock,
-                                      QLTableRow* table_row);
+                                      const QLTableRow::SharedPtr& table_row);
 
   CHECKED_STATUS DeleteRow(DocWriteBatch* doc_write_batch,
                            const DocPath row_path);
@@ -214,7 +216,7 @@ class QLWriteOperation : public DocOperation {
   const bool require_read_;
 };
 
-class QLReadOperation {
+class QLReadOperation : public DocExprExecutor {
  public:
   QLReadOperation(
       const QLReadRequestPB& request,
@@ -228,7 +230,10 @@ class QLReadOperation {
                          QLResultSet* result_set,
                          HybridTime* restart_read_ht);
 
-  CHECKED_STATUS PopulateResultSet(const QLTableRow& table_row, QLResultSet *result_set);
+  CHECKED_STATUS PopulateResultSet(const QLTableRow::SharedPtr& table_row, QLResultSet *result_set);
+
+  CHECKED_STATUS EvalAggregate(const QLTableRow::SharedPtr& table_row);
+  CHECKED_STATUS PopulateAggregate(const QLTableRow::SharedPtr& table_row, QLResultSet *resultset);
 
   QLResponsePB& response() { return response_; }
 

@@ -31,6 +31,7 @@
 DECLARE_bool(trace_docdb_calls);
 
 using strings::Substitute;
+using yb::bfql::TSOpcode;
 
 DEFINE_bool(emulate_redis_responses,
     true,
@@ -44,6 +45,7 @@ namespace docdb {
 
 using std::set;
 using std::list;
+using std::make_shared;
 using strings::Substitute;
 
 void KuduWriteOperation::GetDocPathsToLock(list<DocPath> *paths, IsolationLevel *level) const {
@@ -1039,40 +1041,37 @@ CHECKED_STATUS CreateProjections(const Schema& schema, const QLReferencedColumns
   return Status::OK();
 }
 
-void PopulateRow(
-    const QLTableRow& table_row, const Schema& projection, size_t col_idx, QLRow* row) {
-  for (size_t i = 0; i < projection.num_columns(); i++) {
-    const auto column_id = projection.column_id(i);
-    const auto it = table_row.find(column_id);
-    if (it != table_row.end()) {
-      *row->mutable_column(col_idx) = std::move(it->second.value);
-    }
-    col_idx++;
+CHECKED_STATUS PopulateRow(const QLTableRow::SharedPtr& table_row,
+                           const Schema& projection, size_t col_idx, QLRow* row) {
+  for (size_t i = 0; i < projection.num_columns(); i++, col_idx++) {
+    RETURN_NOT_OK(table_row->GetValue(projection.column_id(i), row->mutable_column(col_idx)));
   }
+  return Status::OK();
 }
 
 // Join a static row with a non-static row.
 void JoinStaticRow(
-    const Schema& schema, const Schema& static_projection, const QLTableRow& static_row,
-    QLTableRow* non_static_row) {
+    const Schema& schema, const Schema& static_projection, const QLTableRow::SharedPtr& static_row,
+    const QLTableRow::SharedPtr& non_static_row) {
   // No need to join if static row is empty or the hash key is different.
-  if (static_row.empty()) {
+  if (static_row->IsEmpty()) {
     return;
   }
+
+  // TODO(neil)
+  // - Need to assign TTL and WriteTime to their default values.
+  // - Check if they should be compared and copied over. Most likely not needed as we don't allow
+  //   selecting TTL and WriteTime for static columns.
+  // - This copying function should be moved to QLTableRow class.
   for (size_t i = 0; i < schema.num_hash_key_columns(); i++) {
-    const ColumnId column_id = schema.column_id(i);
-    if (static_row.at(column_id).value != non_static_row->at(column_id).value) {
+    if (!non_static_row->MatchColumn(schema.column_id(i), static_row)) {
       return;
     }
   }
 
   // Join the static columns in the static row into the non-static row.
   for (size_t i = 0; i < static_projection.num_columns(); i++) {
-    const ColumnId column_id = static_projection.column_id(i);
-    const auto itr = static_row.find(column_id);
-    if (itr != static_row.end()) {
-      non_static_row->emplace(column_id, itr->second);
-    }
+    CHECK(non_static_row->CopyColumn(static_projection.column_id(i), static_row).ok());
   }
 }
 
@@ -1161,8 +1160,7 @@ void QLWriteOperation::GetDocPathsToLock(list<DocPath> *paths, IsolationLevel *l
 Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
                                      Schema *param_static_projection,
                                      Schema *param_non_static_projection,
-                                     QLTableRow *table_row) {
-
+                                     const QLTableRow::SharedPtr& table_row) {
   Schema *static_projection = param_static_projection;
   Schema *non_static_projection = param_non_static_projection;
 
@@ -1205,7 +1203,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
     } else {
       // If no non-static column is found, the row does not exist and we should clear the static
       // columns in the map to indicate the row does not exist.
-      table_row->clear();
+      table_row->Clear();
     }
     data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
   }
@@ -1217,20 +1215,19 @@ Status QLWriteOperation::IsConditionSatisfied(const QLConditionPB& condition,
                                               const DocOperationApplyData& data,
                                               bool* should_apply,
                                               std::unique_ptr<QLRowBlock>* rowblock,
-                                              QLTableRow* table_row) {
-
+                                              const QLTableRow::SharedPtr& table_row) {
   // Read column values.
   Schema static_projection, non_static_projection;
   RETURN_NOT_OK(ReadColumns(data, &static_projection, &non_static_projection, table_row));
 
   // See if the if-condition is satisfied.
-  RETURN_NOT_OK(EvaluateCondition(condition, *table_row, should_apply));
+  RETURN_NOT_OK(EvalCondition(condition, table_row, should_apply));
 
   // Populate the result set to return the "applied" status, and optionally the present column
   // values if the condition is not satisfied and the row does exist (value_map is not empty).
   std::vector<ColumnSchema> columns;
   columns.emplace_back(ColumnSchema("[applied]", BOOL));
-  if (!*should_apply && !table_row->empty()) {
+  if (!*should_apply && !table_row->IsEmpty()) {
     columns.insert(columns.end(),
                    static_projection.columns().begin(), static_projection.columns().end());
     columns.insert(columns.end(),
@@ -1239,9 +1236,10 @@ Status QLWriteOperation::IsConditionSatisfied(const QLConditionPB& condition,
   rowblock->reset(new QLRowBlock(Schema(columns, 0)));
   QLRow& row = rowblock->get()->Extend();
   row.mutable_column(0)->set_bool_value(*should_apply);
-  if (!*should_apply && !table_row->empty()) {
-    PopulateRow(*table_row, static_projection, 1 /* begin col_idx */, &row);
-    PopulateRow(*table_row, non_static_projection, 1 + static_projection.num_columns(), &row);
+  if (!*should_apply && !table_row->IsEmpty()) {
+    RETURN_NOT_OK(PopulateRow(table_row, static_projection, 1 /* begin col_idx */, &row));
+    RETURN_NOT_OK(PopulateRow(table_row, non_static_projection,
+                              1 + static_projection.num_columns(), &row));
   }
 
   return Status::OK();
@@ -1249,15 +1247,15 @@ Status QLWriteOperation::IsConditionSatisfied(const QLConditionPB& condition,
 
 Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
   bool should_apply = true;
-  QLTableRow table_row;
+  QLTableRow::SharedPtr table_row = make_shared<QLTableRow>();
   if (request_.has_if_expr()) {
     RETURN_NOT_OK(IsConditionSatisfied(request_.if_expr().condition(),
                                        data,
                                        &should_apply,
                                        &rowblock_,
-                                       &table_row));
+                                       table_row));
   } else if (RequireReadForExpressions(request_)) {
-    RETURN_NOT_OK(ReadColumns(data, nullptr, nullptr, &table_row));
+    RETURN_NOT_OK(ReadColumns(data, nullptr, nullptr, table_row));
   }
 
   if (should_apply) {
@@ -1283,112 +1281,108 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
           RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
               sub_path, value, request_.query_id()));
         }
-        if (request_.column_values_size() > 0) {
-          for (const auto& column_value : request_.column_values()) {
-            CHECK(column_value.has_column_id())
-                << "column id missing: " << column_value.DebugString();
-            const ColumnId column_id(column_value.column_id());
-            const auto& column = schema_.column_by_id(column_id);
-            DocPath sub_path(
-                column.is_static() ?
-                hashed_doc_path_->encoded_doc_key() : pk_doc_path_->encoded_doc_key(),
-                PrimitiveValue(column_id));
 
-            auto ql_type = column.type();
+        if (request_.column_values_size() <= 0) {
+          break;
+        }
 
-            WriteAction write_action = WriteAction::REPLACE; // default
-            SubDocument sub_doc;
-            RETURN_NOT_OK(SubDocument::FromQLExpressionPB(column_value.expr(),
-                                                          column,
-                                                          table_row,
-                                                          &sub_doc,
-                                                          &write_action));
+        for (const auto& column_value : request_.column_values()) {
+          CHECK(column_value.has_column_id())
+              << "column id missing: " << column_value.DebugString();
+          const ColumnId column_id(column_value.column_id());
+          const auto& column = schema_.column_by_id(column_id);
+          DocPath sub_path(column.is_static() ? hashed_doc_path_->encoded_doc_key()
+                                              : pk_doc_path_->encoded_doc_key(),
+                           PrimitiveValue(column_id));
 
-            // Typical case, setting a columns value
-            if (column_value.subscript_args().empty()) {
-              switch (write_action) {
-                case WriteAction::REPLACE:
-                  RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-                      sub_path, sub_doc, request_.query_id(),
-                      ttl, user_timestamp));
-                  break;
-                case WriteAction::EXTEND:
-                  RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
-                  RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
-                      sub_path, sub_doc, request_.query_id(), ttl));
-                  break;
-                case WriteAction::APPEND:
-                  RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
-                  RETURN_NOT_OK(data.doc_write_batch->ExtendList(
-                      sub_path, sub_doc, ListExtendOrder::APPEND,
-                      request_.query_id(), ttl));
-                  break;
-                case WriteAction::PREPEND:
-                  RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
-                  RETURN_NOT_OK(data.doc_write_batch->ExtendList(
-                      sub_path, sub_doc, ListExtendOrder::PREPEND,
-                      request_.query_id(), ttl));
-                  break;
-                case WriteAction::REMOVE_KEYS:
-                  RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
-                  RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
-                      sub_path, sub_doc, request_.query_id(), ttl));
-                  break;
-                case WriteAction::REMOVE_VALUES:
-                  LOG(ERROR) << "Unsupported operation";
-                  // TODO(akashnil or mihnea) this should call RemoveFromList once thats implemented
-                  // Currently list subtraction is computed in memory using builtin call so this
-                  // case should never be reached. Once it is implemented the corresponding case
-                  // from EvalQLExpressionPB should be uncommented to enable this optimization.
-                  break;
+          QLValue expr_result;
+          RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result));
+          const TSOpcode write_instr = GetTSWriteInstruction(column_value.expr());
+          const SubDocument& sub_doc =
+              SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type(), write_instr);
+
+          // Typical case, setting a columns value
+          if (column_value.subscript_args().empty()) {
+            switch (write_instr) {
+              case TSOpcode::kScalarInsert:
+                RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+                    sub_path, sub_doc, request_.query_id(), ttl, user_timestamp));
+                break;
+              case TSOpcode::kMapExtend:
+              case TSOpcode::kSetExtend:
+              case TSOpcode::kMapRemove:
+              case TSOpcode::kSetRemove:
+                RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
+                RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
+                    sub_path, sub_doc, request_.query_id(), ttl));
+                break;
+              case TSOpcode::kListAppend:
+                RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
+                RETURN_NOT_OK(data.doc_write_batch->ExtendList(
+                    sub_path, sub_doc, ListExtendOrder::APPEND, request_.query_id(), ttl));
+                break;
+              case TSOpcode::kListPrepend:
+                RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
+                RETURN_NOT_OK(data.doc_write_batch->ExtendList(
+                    sub_path, sub_doc, ListExtendOrder::PREPEND, request_.query_id(), ttl));
+                break;
+              case TSOpcode::kListRemove:
+                // TODO(akashnil or mihnea) this should call RemoveFromList once thats implemented
+                // Currently list subtraction is computed in memory using builtin call so this
+                // case should never be reached. Once it is implemented the corresponding case
+                // from EvalQLExpressionPB should be uncommented to enable this optimization.
+                RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
+                RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+                    sub_path, sub_doc, request_.query_id(), ttl, user_timestamp));
+                break;
+              default:
+                LOG(FATAL) << "Unsupported operation: " << static_cast<int>(write_instr);
+                break;
+            }
+          } else {
+            RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
+
+            // Setting the value for a sub-column
+            // Currently we only support two cases here: `map['key'] = v` and `list[index] = v`)
+            // Any other case should be rejected by the semantic analyser before getting here
+            // Later when we support frozen or nested collections this code may need refactoring
+            DCHECK_EQ(column_value.subscript_args().size(), 1);
+            DCHECK(column_value.subscript_args(0).has_value()) << "An index must be a constant";
+            switch (column.type()->main()) {
+              case MAP: {
+                const PrimitiveValue &pv = PrimitiveValue::FromQLValuePB(
+                    column_value.subscript_args(0).value(),
+                    ColumnSchema::SortingType::kNotSpecified);
+                sub_path.AddSubKey(pv);
+                RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+                    sub_path, sub_doc, request_.query_id(), ttl, user_timestamp));
+                break;
               }
-            } else {
-              RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
+              case LIST: {
+                MonoDelta table_ttl = schema_.table_properties().HasDefaultTimeToLive() ?
+                  MonoDelta::FromMilliseconds(schema_.table_properties().DefaultTimeToLive()) :
+                  MonoDelta::kMax;
 
-              // Setting the value for a sub-column
-              // Currently we only support two cases here: `map['key'] = v` and `list[index] = v`)
-              // Any other case should be rejected by the semantic analyser before getting here
-              // Later when we support frozen or nested collections this code may need refactoring
-              DCHECK_EQ(column_value.subscript_args().size(), 1);
-              DCHECK(write_action == WriteAction::REPLACE);
+                int index = column_value.subscript_args(0).value().int32_value();
+                Status s = data.doc_write_batch->ReplaceInList(
+                    sub_path, {index}, {sub_doc}, data.read_time.read, request_.query_id(),
+                    table_ttl, ttl);
 
-              switch (column.type()->main()) {
-                case MAP: {
-                  const PrimitiveValue &pv = PrimitiveValue::FromQLExpressionPB(
-                      column_value.subscript_args(0), ColumnSchema::SortingType::kNotSpecified);
-
-                  sub_path.AddSubKey(pv);
-                  RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-                      sub_path, sub_doc, request_.query_id(), ttl,
-                      user_timestamp));
-                  break;
+                // Don't crash tserver if this is index-out-of-bounds error
+                if (s.IsQLError()) {
+                  response_->set_status(QLResponsePB::YQL_STATUS_USAGE_ERROR);
+                  response_->set_error_message(s.ToString());
+                  return Status::OK();
+                } else if (!s.ok()) {
+                  return s;
                 }
-                case LIST: {
-                  MonoDelta table_ttl = schema_.table_properties().HasDefaultTimeToLive() ?
-                      MonoDelta::FromMilliseconds(schema_.table_properties().DefaultTimeToLive()) :
-                      MonoDelta::kMax;
 
-                  int index = column_value.subscript_args(0).value().int32_value();
-                  Status s = data.doc_write_batch->ReplaceInList(
-                      sub_path, {index}, {sub_doc}, data.read_time.read, request_.query_id(),
-                      table_ttl, ttl);
-
-                  // Don't crash tserver if this is index-out-of-bounds error
-                  if (s.IsQLError()) {
-                    response_->set_status(QLResponsePB::YQL_STATUS_USAGE_ERROR);
-                    response_->set_error_message(s.ToString());
-                    return Status::OK();
-                  } else if (!s.ok()) {
-                    return s;
-                  }
-
-                  break;
-                }
-                default:
-                  LOG(ERROR) << "Unexpected type for setting subcolumn: "
-                             << column.type()->ToString();
+                break;
               }
-
+              default: {
+                LOG(ERROR) << "Unexpected type for setting subcolumn: "
+                           << column.type()->ToString();
+              }
             }
           }
         }
@@ -1444,10 +1438,10 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
           // Iterate through rows and delete those that match the condition.
           // TODO We do not lock here, so other write transactions coming in might appear partially
           // applied if they happen in the middle of a ranged delete.
-          QLTableRow row;
+          QLTableRow::SharedPtr row = make_shared<QLTableRow>();
           while (iterator.HasNext()) {
-            row.clear();
-            RETURN_NOT_OK(iterator.NextRow(projection, &row));
+            row->Clear();
+            RETURN_NOT_OK(iterator.NextRow(projection, row));
 
             // Match the row with the where condition before deleting it.
             bool match = false;
@@ -1536,8 +1530,9 @@ Status QLReadOperation::Execute(const common::QLStorageIf& ql_storage,
   if (FLAGS_trace_docdb_calls) {
     TRACE("Initialized iterator");
   }
-  QLTableRow static_row, non_static_row;
-  QLTableRow& selected_row = read_distinct_columns ? static_row : non_static_row;
+  QLTableRow::SharedPtr static_row = make_shared<QLTableRow>();
+  QLTableRow::SharedPtr non_static_row = make_shared<QLTableRow>();
+  QLTableRow::SharedPtr selected_row = read_distinct_columns ? static_row : non_static_row;
 
   // In case when we are continuing a select with a paging state, the static columns for the next
   // row to fetch are not included in the first iterator and we need to fetch them with a separate
@@ -1548,13 +1543,13 @@ Status QLReadOperation::Execute(const common::QLStorageIf& ql_storage,
                                          req_read_time, &static_row_iter));
     RETURN_NOT_OK(static_row_iter->Init(*static_row_spec));
     if (static_row_iter->HasNext()) {
-      RETURN_NOT_OK(static_row_iter->NextRow(static_projection, &static_row));
+      RETURN_NOT_OK(static_row_iter->NextRow(static_projection, static_row));
     }
   }
 
   // Begin the normal fetch.
+  int match_count = 0;
   while (resultset->rsrow_count() < row_count_limit && iter->HasNext()) {
-
     // Note that static columns are sorted before non-static columns in DocDB as follows. This is
     // because "<empty_range_components>" is empty and terminated by kGroupEnd which sorts before
     // all other ValueType characters in a non-empty range component.
@@ -1565,8 +1560,8 @@ Status QLReadOperation::Execute(const common::QLStorageIf& ql_storage,
       // If the next row is a row that contains a static column, read it if the select list contains
       // a static column. Otherwise, skip this row and continue to read the next row.
       if (read_static_columns) {
-        static_row.clear();
-        RETURN_NOT_OK(iter->NextRow(static_projection, &static_row));
+        static_row->Clear();
+        RETURN_NOT_OK(iter->NextRow(static_projection, static_row));
 
         // If we are not selecting distinct columns (i.e. hash and static columns only), continue
         // to scan for the non-static (regular) row.
@@ -1589,13 +1584,13 @@ Status QLReadOperation::Execute(const common::QLStorageIf& ql_storage,
       }
 
       // Read this regular row.
-      non_static_row.clear();
-      RETURN_NOT_OK(iter->NextRow(non_static_projection, &non_static_row));
+      non_static_row->Clear();
+      RETURN_NOT_OK(iter->NextRow(non_static_projection, non_static_row));
 
       // If select list contains static columns and we have read a row that contains the static
       // columns for the same hash key, copy the static columns into this row.
       if (read_static_columns) {
-        JoinStaticRow(schema, static_projection, static_row, &non_static_row);
+        JoinStaticRow(schema, static_projection, static_row, non_static_row);
       }
     }
 
@@ -1603,33 +1598,66 @@ Status QLReadOperation::Execute(const common::QLStorageIf& ql_storage,
     bool match = false;
     RETURN_NOT_OK(spec->Match(selected_row, &match));
     if (match) {
-      RETURN_NOT_OK(PopulateResultSet(selected_row, resultset));
+      match_count++;
+      if (request_.is_aggregate()) {
+        RETURN_NOT_OK(EvalAggregate(selected_row));
+      } else {
+        RETURN_NOT_OK(PopulateResultSet(selected_row, resultset));
+      }
     }
   }
+
+  if (request_.is_aggregate() && match_count > 0) {
+    RETURN_NOT_OK(PopulateAggregate(selected_row, resultset));
+  }
+
   if (FLAGS_trace_docdb_calls) {
     TRACE("Fetched $0 rows.", resultset->rsrow_count());
   }
   *restart_read_ht = iter->RestartReadHt();
 
-  if (resultset->rsrow_count() >= row_count_limit) {
+  if (resultset->rsrow_count() >= row_count_limit && !request_.is_aggregate()) {
     RETURN_NOT_OK(iter->SetPagingStateIfNecessary(request_, &response_));
   }
 
   return Status::OK();
 }
 
-CHECKED_STATUS QLReadOperation::PopulateResultSet(const QLTableRow& table_row,
+CHECKED_STATUS QLReadOperation::PopulateResultSet(const QLTableRow::SharedPtr& table_row,
                                                   QLResultSet *resultset) {
-  DocExprExecutor executor;
   int column_count = request_.selected_exprs().size();
   QLRSRow *rsrow = resultset->AllocateRSRow(column_count);
 
   int rscol_index = 0;
   for (const QLExpressionPB& expr : request_.selected_exprs()) {
-    RETURN_NOT_OK(executor.EvalExpr(expr, table_row, rsrow->rscol(rscol_index)));
+    RETURN_NOT_OK(EvalExpr(expr, table_row, rsrow->rscol(rscol_index)));
     rscol_index++;
   }
 
+  return Status::OK();
+}
+
+CHECKED_STATUS QLReadOperation::EvalAggregate(const QLTableRow::SharedPtr& table_row) {
+  if (aggr_result_.empty()) {
+    int column_count = request_.selected_exprs().size();
+    aggr_result_.resize(column_count);
+  }
+
+  int aggr_index = 0;
+  for (const QLExpressionPB& expr : request_.selected_exprs()) {
+    RETURN_NOT_OK(EvalExpr(expr, table_row, &aggr_result_[aggr_index]));
+    aggr_index++;
+  }
+  return Status::OK();
+}
+
+CHECKED_STATUS QLReadOperation::PopulateAggregate(const QLTableRow::SharedPtr& table_row,
+                                                  QLResultSet *resultset) {
+  int column_count = request_.selected_exprs().size();
+  QLRSRow *rsrow = resultset->AllocateRSRow(column_count);
+  for (int rscol_index = 0; rscol_index < column_count; rscol_index++) {
+    *rsrow->rscol(rscol_index) = aggr_result_[rscol_index];
+  }
   return Status::OK();
 }
 

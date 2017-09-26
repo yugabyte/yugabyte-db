@@ -21,6 +21,7 @@
 #include "yb/common/schema.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
+#include "yb/common/ql_expr.h"
 
 namespace yb {
 namespace common {
@@ -57,27 +58,31 @@ class QLScanRange {
   std::unordered_map<ColumnId, QLRange> ranges_;
 };
 
-
 // A scan specification for a QL scan. It may be used to scan either a specified doc key
 // or a hash key + optional WHERE condition clause.
 class QLScanSpec {
  public:
-  virtual ~QLScanSpec() {}
+  explicit QLScanSpec(QLExprExecutor::SharedPtr executor = nullptr);
 
   // Scan for the given hash key and a condition.
-  explicit QLScanSpec(const QLConditionPB* condition);
+  QLScanSpec(const QLConditionPB* condition,
+             const bool is_forward_scan,
+             QLExprExecutor::SharedPtr executor = nullptr);
 
-  QLScanSpec(const QLConditionPB* condition, const bool is_forward_scan);
+  virtual ~QLScanSpec() {}
 
   // Evaluate the WHERE condition for the given row to decide if it is selected or not.
   // virtual to make the class polymorphic.
-  virtual CHECKED_STATUS Match(const QLTableRow& table_row, bool* match) const;
+  virtual CHECKED_STATUS Match(const QLTableRow::SharedPtr& table_row, bool* match) const;
 
-  bool is_forward_scan() const;
+  bool is_forward_scan() const {
+    return is_forward_scan_;
+  }
 
- private:
+ protected:
   const QLConditionPB* condition_;
   const bool is_forward_scan_;
+  QLExprExecutor::SharedPtr executor_;
 };
 
 } // namespace common

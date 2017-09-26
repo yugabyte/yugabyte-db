@@ -189,15 +189,6 @@ class PrimitiveValue {
                           const std::shared_ptr<QLType>& ql_type,
                           QLValuePB* ql_val);
 
-  // Construct a primitive value from a QLExpressionPB.
-  static PrimitiveValue FromQLExpressionPB(const QLExpressionPB& ql_expr,
-                                           ColumnSchema::SortingType sorting_type);
-
-  // Set a primitive value in a QLExpressionPB.
-  static void ToQLExpressionPB(const PrimitiveValue& pv,
-                               const std::shared_ptr<QLType>& ql_type,
-                               QLExpressionPB* ql_expr);
-
   ValueType value_type() const { return type_; }
 
   void AppendToKey(KeyBytes* key_bytes) const;

@@ -28,6 +28,22 @@ using strings::Substitute;
 namespace yb {
 namespace bfql {
 
+//--------------------------------------------------------------------------------------------------
+bool IsAggregateOpcode(TSOpcode op) {
+  switch (op) {
+  case TSOpcode::kAvg: FALLTHROUGH_INTENDED;
+  case TSOpcode::kCount: FALLTHROUGH_INTENDED;
+  case TSOpcode::kMax: FALLTHROUGH_INTENDED;
+  case TSOpcode::kMin: FALLTHROUGH_INTENDED;
+  case TSOpcode::kSum:
+    return true;
+  default:
+    return false;
+  }
+}
+
+//--------------------------------------------------------------------------------------------------
+// Check compatible type in function call.
 inline bool IsCompatible(DataType left, DataType right) {
   return QLType::IsPotentiallyConvertible(left, right);
 }

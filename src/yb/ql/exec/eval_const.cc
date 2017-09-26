@@ -33,7 +33,7 @@ CHECKED_STATUS Executor::PTConstToPB(const PTExpr::SharedPtr& expr,
          expr->expr_op() == ExprOperator::kBindVar);
 
   if (expr->internal_type() == InternalType::VALUE_NOT_SET) {
-      QLValue::SetNull(const_pb);
+      SetNull(const_pb);
   }
 
   if (expr->expr_op() == ExprOperator::kUMinus) {
@@ -50,7 +50,7 @@ CHECKED_STATUS Executor::PTConstToPB(const PTExpr::SharedPtr& expr,
   const PTExpr *const_pt = expr.get();
   switch (const_pt->ql_type_id()) {
     case DataType::NULL_VALUE_TYPE: {
-      QLValue::SetNull(const_pb);
+      SetNull(const_pb);
       break;
     }
     case DataType::VARINT: {
@@ -269,7 +269,10 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstText *const_pt, QLValuePB *cons
     case InternalType::kInetaddressValue: {
       InetAddress value;
       RETURN_NOT_OK(const_pt->ToInetaddress(&value));
-      QLValue::set_inetaddress_value(value, const_pb);
+
+      QLValue ql_const;
+      ql_const.set_inetaddress_value(value);
+      const_pb->CopyFrom(ql_const.value());
       break;
     }
 
@@ -316,14 +319,20 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstUuid *const_pt, QLValuePB *cons
     case InternalType::kUuidValue: {
       Uuid uuid;
       RETURN_NOT_OK(uuid.FromString(value->c_str()));
-      QLValue::set_uuid_value(uuid, const_pb);
+
+      QLValue ql_const;
+      ql_const.set_uuid_value(uuid);
+      const_pb->CopyFrom(ql_const.value());
       break;
     }
     case InternalType::kTimeuuidValue: {
       Uuid uuid;
       RETURN_NOT_OK(uuid.FromString(value->c_str()));
       RETURN_NOT_OK(uuid.IsTimeUuid());
-      QLValue::set_timeuuid_value(uuid, const_pb);
+
+      QLValue ql_const;
+      ql_const.set_timeuuid_value(uuid);
+      const_pb->CopyFrom(ql_const.value());
       break;
     }
     default:
@@ -335,38 +344,36 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstUuid *const_pt, QLValuePB *cons
 CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_pb) {
   switch (const_pt->ql_type()->main()) {
     case MAP: {
-      QLValue::set_map_value(const_pb);
-
+      QLMapValuePB *map_value = const_pb->mutable_map_value();
       for (auto &key : const_pt->keys()) {
         // Expect key to be constant because CQL only allows collection of constants.
-        QLValuePB *key_pb = QLValue::add_map_key(const_pb);
+        QLValuePB *key_pb = map_value->add_keys();
         RETURN_NOT_OK(PTConstToPB(key, key_pb));
       }
 
       for (auto &value : const_pt->values()) {
         // Expect value to be constant because CQL only allows collection of constants.
-        QLValuePB *value_pb = QLValue::add_map_value(const_pb);
+        QLValuePB *value_pb = map_value->add_values();
         RETURN_NOT_OK(PTConstToPB(value, value_pb));
       }
       break;
     }
 
     case SET: {
-      QLValue::set_set_value(const_pb);
-
+      QLSeqValuePB *set_value = const_pb->mutable_set_value();
       for (auto &elem : const_pt->values()) {
         // Expected elem to be constant because CQL only allows collection of constants.
-        QLValuePB *elem_pb = QLValue::add_set_elem(const_pb);
+        QLValuePB *elem_pb = set_value->add_elems();
         RETURN_NOT_OK(PTConstToPB(elem, elem_pb));
       }
       break;
     }
 
     case LIST: {
-      QLValue::set_list_value(const_pb);
+      QLSeqValuePB *list_value = const_pb->mutable_list_value();
       for (auto &elem : const_pt->values()) {
         // Expected elem to be constant because CQL only allows collection of constants.
-        QLValuePB *elem_pb = QLValue::add_list_elem(const_pb);
+        QLValuePB *elem_pb = list_value->add_elems();
         RETURN_NOT_OK(PTConstToPB(elem, elem_pb));
       }
       break;
@@ -374,15 +381,15 @@ CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB 
 
     case USER_DEFINED_TYPE: {
       // Internally UDTs are maps with field names as keys
-      QLValue::set_map_value(const_pb);
+      QLMapValuePB *map_value = const_pb->mutable_map_value();
       auto field_values = const_pt->udtype_field_values();
       for (int i = 0; i < field_values.size(); i++) {
         // Skipping unset fields.
         if (field_values[i] != nullptr) {
-          QLValuePB *key_pb = QLValue::add_map_key(const_pb);
+          QLValuePB *key_pb = map_value->add_keys();
           key_pb->set_int16_value(i);
           // Expect value to be constant because CQL only allows collection of constants.
-          QLValuePB *value_pb = QLValue::add_map_value(const_pb);
+          QLValuePB *value_pb = map_value->add_values();
           RETURN_NOT_OK(PTConstToPB(field_values[i], value_pb));
         }
       }
@@ -392,7 +399,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB 
     case FROZEN: {
       // For frozen types we need to do the de-duplication and ordering at the QL level since we
       // serialize it here already.
-      QLValue::set_frozen_value(const_pb);
+      QLSeqValuePB *frozen_value = const_pb->mutable_frozen_value();
 
       switch (const_pt->ql_type()->param_type(0)->main()) {
         case MAP: {
@@ -408,9 +415,9 @@ CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB 
           }
 
           for (const auto &pair : map_values) {
-            QLValuePB *key_pb = QLValue::add_frozen_elem(const_pb);
+            QLValuePB *key_pb = frozen_value->add_elems();
             key_pb->CopyFrom(pair.first);
-            QLValuePB *value_pb = QLValue::add_frozen_elem(const_pb);
+            QLValuePB *value_pb = frozen_value->add_elems();
             value_pb->CopyFrom(pair.second);
           }
           break;
@@ -425,7 +432,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB 
           }
 
           for (const auto &elem : set_values) {
-            QLValuePB *elem_pb = QLValue::add_frozen_elem(const_pb);
+            QLValuePB *elem_pb = frozen_value->add_elems();
             elem_pb->CopyFrom(elem);
           }
           break;
@@ -434,7 +441,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB 
         case LIST: {
           for (auto &elem : const_pt->values()) {
             // Expected elem to be constant because CQL only allows collection of constants.
-            QLValuePB *elem_pb = QLValue::add_frozen_elem(const_pb);
+            QLValuePB *elem_pb = frozen_value->add_elems();
             RETURN_NOT_OK(PTConstToPB(elem, elem_pb));
           }
           break;
@@ -444,7 +451,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB 
           // Internally UDTs are maps with field names as keys
           auto field_values = const_pt->udtype_field_values();
           for (int i = 0; i < field_values.size(); i++) {
-            QLValuePB *value_pb = QLValue::add_frozen_elem(const_pb);
+            QLValuePB *value_pb = frozen_value->add_elems();
             if (field_values[i] != nullptr) {
               // Expect value to be constant because CQL only allows collection of constants.
               RETURN_NOT_OK(PTConstToPB(field_values[i], value_pb));

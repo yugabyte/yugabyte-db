@@ -20,6 +20,7 @@ add_library(ql_exec
             eval_col.cc
             eval_where.cc
             eval_misc.cc
+            eval_aggr.cc
             exec_context.cc
             executor.cc)
 

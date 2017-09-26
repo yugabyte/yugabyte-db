@@ -129,6 +129,7 @@ class RowsResult : public ExecutedResult {
   const client::YBTableName& table_name() const { return table_name_; }
   const std::vector<ColumnSchema>& column_schemas() const { return *column_schemas_; }
   const std::string& rows_data() const { return rows_data_; }
+  void set_rows_data(const char *str, size_t size) { rows_data_.assign(str, size); }
   const std::string& paging_state() const { return paging_state_; }
   QLClient client() const { return client_; }
 

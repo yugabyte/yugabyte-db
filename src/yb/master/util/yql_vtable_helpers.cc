@@ -26,8 +26,7 @@ namespace util {
 QLValuePB GetTokensValue(size_t index, size_t node_count) {
   CHECK_GT(node_count, 0);
   QLValuePB value_pb;
-  QLValue::set_set_value(&value_pb);
-  QLValuePB *token = QLValue::add_set_elem(&value_pb);
+  QLValuePB *token = value_pb.mutable_set_value()->add_elems();
   token->set_string_value(YBPartition::CqlTokenSplit(node_count, index));
   return value_pb;
 }
@@ -51,18 +50,18 @@ bool RemoteEndpointMatchesTServer(const TSInformationPB& ts_info,
 
 QLValuePB GetReplicationValue(int replication_factor) {
   QLValuePB value_pb;
-  QLValue::set_map_value(&value_pb);
+  QLMapValuePB *map_value = value_pb.mutable_map_value();
 
   // replication strategy
-  QLValuePB *elem = QLValue::add_map_key(&value_pb);
+  QLValuePB *elem = map_value->add_keys();
   elem->set_string_value("class");
-  elem = QLValue::add_map_value(&value_pb);
+  elem = map_value->add_values();
   elem->set_string_value("org.apache.cassandra.locator.SimpleStrategy");
 
   // replication factor
-  elem = QLValue::add_map_key(&value_pb);
+  elem = map_value->add_keys();
   elem->set_string_value("replication_factor");
-  elem = QLValue::add_map_value(&value_pb);
+  elem = map_value->add_values();
   elem->set_string_value(std::to_string(replication_factor));
 
   return value_pb;

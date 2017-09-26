@@ -33,8 +33,8 @@ QLRSRow::~QLRSRow() {
 }
 
 CHECKED_STATUS QLRSRow::CQLSerialize(const QLClient& client,
-                                      const QLRSRowDesc& rsrow_desc,
-                                      faststring* buffer) const {
+                                     const QLRSRowDesc& rsrow_desc,
+                                     faststring* buffer) const {
   int count = rsrow_desc.rscol_count();
   DCHECK_EQ(count, rscol_count()) << "Wrong count of fields in result set";
 

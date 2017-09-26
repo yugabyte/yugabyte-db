@@ -77,7 +77,7 @@ class DocRowwiseIterator : public common::QLRowwiseIteratorIf {
   bool IsNextStaticColumn() const override;
 
   // Read next row into a value map using the specified projection.
-  CHECKED_STATUS NextRow(const Schema& projection, QLTableRow* table_row) override;
+  CHECKED_STATUS NextRow(const Schema& projection, const QLTableRow::SharedPtr& table_row) override;
 
   CHECKED_STATUS SetPagingStateIfNecessary(const QLReadRequestPB& request,
                                            QLResponsePB* response) const override;

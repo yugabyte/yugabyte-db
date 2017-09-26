@@ -63,7 +63,7 @@ CHECKED_STATUS Executor::ColumnArgsToPB(const shared_ptr<client::YBTable>& table
 
     RETURN_NOT_OK(PTExprToPB(col.expr(), expr_pb));
     // null values not allowed for primary key: checking here catches nulls introduced by bind
-    if (col_desc->is_primary() && expr_pb->has_value() && QLValue::IsNull(expr_pb->value())) {
+    if (col_desc->is_primary() && expr_pb->has_value() && IsNull(expr_pb->value())) {
       LOG(INFO) << "Unexpected null value. Current request: " << req->DebugString();
       return exec_context_->Error(ErrorCode::NULL_ARGUMENT_FOR_PRIMARY_KEY);
     }

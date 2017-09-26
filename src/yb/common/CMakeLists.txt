@@ -98,7 +98,6 @@ set(COMMON_SRCS
   transaction.cc
   types.cc
   wire_protocol.cc
-  yql_expression.cc
   ql_type.cc
   ql_value.cc
   ql_bfunc.cc

@@ -21,7 +21,6 @@ using std::vector;
 
 using yb::bfql::BFOpcode;
 using QLBfuncExecApi = yb::bfql::BFExecApi<QLValue, QLValue>;
-using QLBfuncExecApiPB = yb::bfql::BFExecApi<QLValueWithPB, QLValueWithPB>;
 
 Status QLBfunc::Exec(BFOpcode opcode,
                       const vector<shared_ptr<QLValue>>& params,
@@ -39,24 +38,6 @@ Status QLBfunc::Exec(BFOpcode opcode,
                       vector<QLValue> *params,
                       QLValue *result) {
   return QLBfuncExecApi::ExecQLOpcode(opcode, params, result);
-}
-
-Status QLBfunc::Exec(BFOpcode opcode,
-                      const vector<shared_ptr<QLValueWithPB>>& params,
-                      const shared_ptr<QLValueWithPB>& result) {
-  return QLBfuncExecApiPB::ExecQLOpcode(opcode, params, result);
-}
-
-Status QLBfunc::Exec(BFOpcode opcode,
-                      const vector<QLValueWithPB*>& params,
-                      QLValueWithPB *result) {
-  return QLBfuncExecApiPB::ExecQLOpcode(opcode, params, result);
-}
-
-Status QLBfunc::Exec(BFOpcode opcode,
-                      vector<QLValueWithPB> *params,
-                      QLValueWithPB *result) {
-  return QLBfuncExecApiPB::ExecQLOpcode(opcode, params, result);
 }
 
 } // namespace yb

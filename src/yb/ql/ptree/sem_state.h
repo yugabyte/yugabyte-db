@@ -62,6 +62,11 @@ class SemState {
   // Destructor: Reset sem_context back to previous_state_.
   virtual ~SemState();
 
+  // Read previous state.
+  const SemState *previous_state() const {
+    return previous_state_;
+  }
+
   // Reset the sem_context back to its previous state.
   void ResetContextState();
 
@@ -108,6 +113,13 @@ class SemState {
   bool processing_if_clause() const { return processing_if_clause_; }
   void set_processing_if_clause(bool value) { processing_if_clause_ = value; }
 
+  bool allowing_aggregate() const {
+    return allowing_aggregate_;
+  }
+  void set_allowing_aggregate(bool val) {
+    allowing_aggregate_ = val;
+  }
+
  private:
   // Context that owns this SemState.
   SemContext *sem_context_;
@@ -139,6 +151,9 @@ class SemState {
 
   // State variable for assignee.
   bool processing_assignee_ = false;
+
+  // State variable for aggregate function.
+  bool allowing_aggregate_ = false;
 };
 
 }  // namespace ql

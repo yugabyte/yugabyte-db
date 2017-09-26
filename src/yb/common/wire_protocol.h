@@ -259,9 +259,14 @@ static inline void CQLFinishCollection(int32_t start_pos, faststring* buffer) {
 template<typename num_type, typename data_type>
 static inline CHECKED_STATUS CQLDecodeNum(
     size_t len, data_type (*converter)(const void*), Slice* data, num_type* val) {
+
   static_assert(sizeof(data_type) == sizeof(num_type), "inconsistent num type size");
-  if (len != sizeof(num_type)) return STATUS_SUBSTITUTE(NetworkError, "unexpected number byte "
-        "length: expected $0, provided $1", static_cast<int64_t>(sizeof(num_type)), len);
+  if (len != sizeof(num_type)) {
+    return STATUS_SUBSTITUTE(NetworkError,
+                             "unexpected number byte length: expected $0, provided $1",
+                             static_cast<int64_t>(sizeof(num_type)), len);
+  }
+
   RETURN_NOT_ENOUGH(data, sizeof(num_type));
   *val = static_cast<num_type>((*converter)(data->data()));
   data->remove_prefix(sizeof(num_type));

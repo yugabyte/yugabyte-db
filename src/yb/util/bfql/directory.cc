@@ -190,20 +190,22 @@ const vector<BFDecl> kBFDirectory = {
   { "SubDoubleDouble", "-", DOUBLE, {DOUBLE, DOUBLE} },
 
   // Collection functions.
-  { "AddMapMap", "+map", MAP, {MAP, MAP} },
-  { "AddSetSet", "+set", SET, {SET, SET} },
-  { "AddListList", "+list", LIST, {LIST, LIST} },
+  { "ServerOperator", "map+", MAP, {MAP, MAP}, TSOpcode::kMapExtend },
+  { "ServerOperator", "map-", MAP, {MAP, SET}, TSOpcode::kMapRemove },
 
-  { "SubMapSet", "-map", MAP, {MAP, SET} },
-  { "SubSetSet", "-set", SET, {SET, SET} },
-  { "SubListList", "-list", LIST, {LIST, LIST} },
+  { "ServerOperator", "set+", SET, {SET, SET}, TSOpcode::kSetExtend },
+  { "ServerOperator", "set-", SET, {SET, SET}, TSOpcode::kSetRemove },
+
+  { "ServerOperator", "list+", LIST, {LIST, LIST}, TSOpcode::kListAppend },
+  { "ServerOperator", "+list", LIST, {LIST, LIST}, TSOpcode::kListPrepend },
+  { "ServerOperator", "list-", LIST, {LIST, LIST}, TSOpcode::kListRemove },
 
   // Token().
   { "Token", "token", INT64, {TYPEARGS} },
 
   // Counter functions.
-  { "IncCounter", "+counter", INT64, {INT64, INT64} },
-  { "DecCounter", "-counter", INT64, {INT64, INT64} },
+  { "IncCounter", "counter+", INT64, {INT64, INT64} },
+  { "DecCounter", "counter-", INT64, {INT64, INT64} },
 
   // Uuid and timeuuid functions.
   { "NowTimeUuid", "now", TIMEUUID, {} },
@@ -217,17 +219,19 @@ const vector<BFDecl> kBFDirectory = {
   // - Have TSERVER_OPCODE to instruct tablet server how to execute these calls.
   // - SUM and AVG only take numeric arguments.
   // - MIN and MAX can take arguments of any types.
-  { "ServerOperator", "count", INT64, {ANYTYPE}, TSOpcode::kCount, false },
+  { "ServerOperator", "count", INT64, {ANYTYPE}, TSOpcode::kCount },
 
-  { "ServerOperator", "sum", INT8, {INT8}, TSOpcode::kSum, false },
-  { "ServerOperator", "sum", INT16, {INT16}, TSOpcode::kSum, false },
-  { "ServerOperator", "sum", INT32, {INT32}, TSOpcode::kSum, false },
-  { "ServerOperator", "sum", INT64, {INT64}, TSOpcode::kSum, false },
-  { "ServerOperator", "sum", FLOAT, {FLOAT}, TSOpcode::kSum, false },
-  { "ServerOperator", "sum", DOUBLE, {DOUBLE}, TSOpcode::kSum, false },
+  // Cassandra behavior: SUM() has exactly the same datatype as the input argument's type.
+  { "ServerOperator", "sum", INT8, {INT8}, TSOpcode::kSum },
+  { "ServerOperator", "sum", INT16, {INT16}, TSOpcode::kSum },
+  { "ServerOperator", "sum", INT32, {INT32}, TSOpcode::kSum },
+  { "ServerOperator", "sum", INT64, {INT64}, TSOpcode::kSum },
+  { "ServerOperator", "sum", FLOAT, {FLOAT}, TSOpcode::kSum },
+  { "ServerOperator", "sum", DOUBLE, {DOUBLE}, TSOpcode::kSum },
   { "ServerOperator", "sum", VARINT, {VARINT}, TSOpcode::kSum, false },
   { "ServerOperator", "sum", DECIMAL, {DECIMAL}, TSOpcode::kSum, false },
 
+  // Cassandra behavior: AVG() has exactly the same datatype as the input argument's type.
   { "ServerOperator", "avg", INT8, {INT8}, TSOpcode::kAvg, false },
   { "ServerOperator", "avg", INT16, {INT16}, TSOpcode::kAvg, false },
   { "ServerOperator", "avg", INT32, {INT32}, TSOpcode::kAvg, false },
@@ -237,8 +241,8 @@ const vector<BFDecl> kBFDirectory = {
   { "ServerOperator", "avg", VARINT, {VARINT}, TSOpcode::kAvg, false },
   { "ServerOperator", "avg", DECIMAL, {DECIMAL}, TSOpcode::kAvg, false },
 
-  { "ServerOperator", "min", ANYTYPE, {ANYTYPE}, TSOpcode::kMin, false },
-  { "ServerOperator", "max", ANYTYPE, {ANYTYPE}, TSOpcode::kMax, false },
+  { "ServerOperator", "min", ANYTYPE, {ANYTYPE}, TSOpcode::kMin },
+  { "ServerOperator", "max", ANYTYPE, {ANYTYPE}, TSOpcode::kMax },
 
   { "ConvertVarintToI8",       "cast", INT8,   {VARINT, INT8} },
   { "ConvertVarintToI16",      "cast", INT16,  {VARINT, INT16} },

@@ -47,11 +47,10 @@ Status YQLTablesVTable::RetrieveData(const QLReadRequestPB& request,
     RETURN_NOT_OK(SetColumnValue(kTableName, table->name(), &row));
 
     // Create appropriate flags entry.
-    QLValuePB flags_set;
-    QLValue::set_set_value(&flags_set);
     QLValuePB flags_elem;
-    QLValue::set_string_value("compound", &flags_elem);
-    *QLValue::add_set_elem(&flags_set) = flags_elem;
+    flags_elem.set_string_value("compound");
+    QLValuePB flags_set;
+    *flags_set.mutable_set_value()->add_elems() = flags_elem;
     RETURN_NOT_OK(SetColumnValue(kFlags, flags_set, &row));
 
     // Create appropriate table uuid entry.

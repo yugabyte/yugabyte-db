@@ -13,7 +13,6 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/common/yql_expression.h"
 #include "yb/ql/exec/executor.h"
 #include "yb/util/yb_partition.h"
 
@@ -73,11 +72,11 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
   for (const auto& op : partition_key_ops) {
     QLExpressionPB expr_pb;
     RETURN_NOT_OK(PTExprToPB(op.expr(), &expr_pb));
-    uint16_t hash_code;
-    QLValueWithPB result;
-    WriteAction write_action = WriteAction::REPLACE; // default
-    RETURN_NOT_OK(YQLExpression::Evaluate(expr_pb, QLTableRow{}, &result, &write_action));
-    hash_code = YBPartition::CqlToYBHashCode(result.int64_value());
+    QLValue result;
+    RETURN_NOT_OK(EvalExpr(expr_pb, nullptr, &result));
+    DCHECK(result.value().has_int64_value())
+      << "Partition key operations are expected to return BIGINT";
+    uint16_t hash_code = YBPartition::CqlToYBHashCode(result.int64_value());
 
     // We always use inclusive intervals [start, end] for hash_code
     switch (op.yb_op()) {

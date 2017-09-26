@@ -400,7 +400,7 @@ Status ConvertStringToInet(PTypePtr source, RTypePtr target) {
   } else {
     InetAddress addr;
     RETURN_NOT_OK(addr.FromString(source->string_value()));
-    QLValue::set_inetaddress_value(addr, target);
+    target->set_inetaddress_value(addr);
   }
   return Status::OK();
 }

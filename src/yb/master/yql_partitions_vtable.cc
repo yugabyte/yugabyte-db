@@ -65,13 +65,18 @@ Status YQLPartitionsVTable::RetrieveData(const QLReadRequestPB& request,
 
       // Get replicas for tablet.
       QLValuePB replica_addresses;
-      QLValue::set_map_value(&replica_addresses);
+      QLMapValuePB *map_value = replica_addresses.mutable_map_value();
       for (const auto replica : tabletLocationsPB.replicas()) {
         InetAddress addr;
         RETURN_NOT_OK(addr.FromString(replica.ts_info().rpc_addresses(0).host()));
-        QLValue::set_inetaddress_value(addr, QLValue::add_map_key(&replica_addresses));
+        QLValue elem_key;
+        elem_key.set_inetaddress_value(addr);
+        *map_value->add_keys() = elem_key.value();
+
         const string& role = consensus::RaftPeerPB::Role_Name(replica.role());
-        QLValue::set_string_value(role, QLValue::add_map_value(&replica_addresses));
+        QLValue elem_value;
+        elem_value.set_string_value(role);
+        *map_value->add_values() = elem_value.value();
       }
       RETURN_NOT_OK(SetColumnValue(kReplicaAddresses, replica_addresses, &row));
     }

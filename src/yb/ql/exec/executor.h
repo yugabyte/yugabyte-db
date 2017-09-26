@@ -18,6 +18,8 @@
 #ifndef YB_QL_EXEC_EXECUTOR_H_
 #define YB_QL_EXEC_EXECUTOR_H_
 
+#include "yb/common/ql_expr.h"
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/partial_row.h"
 #include "yb/ql/exec/exec_context.h"
 #include "yb/ql/ptree/pt_create_keyspace.h"
@@ -38,7 +40,7 @@ namespace ql {
 
 class QLMetrics;
 
-class Executor {
+class Executor : public QLExprExecutor {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
@@ -127,6 +129,22 @@ class Executor {
 
   // Continue a multi-partition select (e.g. table scan or query with 'IN' condition on hash cols).
   CHECKED_STATUS FetchMoreRowsIfNeeded();
+
+  // Aggregate all result sets from all tablet servers to form the requested resultset.
+  CHECKED_STATUS AggregateResultSets();
+  CHECKED_STATUS EvalCount(const std::shared_ptr<QLRowBlock>& row_block,
+                           int column_index,
+                           QLValue *ql_value);
+  CHECKED_STATUS EvalMax(const std::shared_ptr<QLRowBlock>& row_block,
+                         int column_index,
+                         QLValue *ql_value);
+  CHECKED_STATUS EvalMin(const std::shared_ptr<QLRowBlock>& row_block,
+                         int column_index,
+                         QLValue *ql_value);
+  CHECKED_STATUS EvalSum(const std::shared_ptr<QLRowBlock>& row_block,
+                         int column_index,
+                         DataType data_type,
+                         QLValue *ql_value);
 
   // Reset execution state.
   void Reset();

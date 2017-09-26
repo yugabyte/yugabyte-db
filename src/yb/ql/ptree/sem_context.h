@@ -235,6 +235,11 @@ class SemContext : public ProcessContext {
     return sem_state_->processing_if_clause();
   }
 
+  bool allowing_aggregate() const {
+    DCHECK(sem_state_) << "State variable is not set for the expression";
+    return sem_state_->allowing_aggregate();
+  }
+
   void set_sem_state(SemState *new_state, SemState **existing_state_holder) {
     *existing_state_holder = sem_state_;
     sem_state_ = new_state;

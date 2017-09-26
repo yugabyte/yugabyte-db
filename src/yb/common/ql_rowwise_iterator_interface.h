@@ -39,7 +39,8 @@ class QLRowwiseIteratorIf : public RowwiseIterator {
   virtual bool IsNextStaticColumn() const = 0;
 
   // Read next row using the specified projection.
-  virtual CHECKED_STATUS NextRow(const Schema& projection, QLTableRow* table_row) = 0;
+  virtual CHECKED_STATUS NextRow(const Schema& projection,
+                                 const QLTableRow::SharedPtr& table_row) = 0;
 
   // Skip the current row.
   virtual void SkipRow() = 0;

@@ -1188,49 +1188,49 @@ PrimitiveValue PrimitiveValue::FromKuduValue(DataType data_type, Slice slice) {
 }
 
 PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
-                                              ColumnSchema::SortingType sorting_type) {
+                                             ColumnSchema::SortingType sorting_type) {
   const auto sort_order = SortOrderFromColumnSchemaSortingType(sorting_type);
 
   switch (value.value_case()) {
     case QLValuePB::kInt8Value:
-      return PrimitiveValue::Int32(QLValue::int8_value(value), sort_order);
+      return PrimitiveValue::Int32(value.int8_value(), sort_order);
     case QLValuePB::kInt16Value:
-      return PrimitiveValue::Int32(QLValue::int16_value(value), sort_order);
+      return PrimitiveValue::Int32(value.int16_value(), sort_order);
     case QLValuePB::kInt32Value:
-      return PrimitiveValue::Int32(QLValue::int32_value(value), sort_order);
+      return PrimitiveValue::Int32(value.int32_value(), sort_order);
     case QLValuePB::kInt64Value:
-      return PrimitiveValue(QLValue::int64_value(value), sort_order);
+      return PrimitiveValue(value.int64_value(), sort_order);
     case QLValuePB::kFloatValue: {
-      float f = QLValue::float_value(value);
+      float f = value.float_value();
       return PrimitiveValue::Float(util::CanonicalizeFloat(f), sort_order);
     }
     case QLValuePB::kDoubleValue: {
-      double d = QLValue::double_value(value);
+      double d = value.double_value();
       return PrimitiveValue::Double(util::CanonicalizeDouble(d), sort_order);
     }
     case QLValuePB::kDecimalValue:
-      return PrimitiveValue::Decimal(QLValue::decimal_value(value), sort_order);
+      return PrimitiveValue::Decimal(value.decimal_value(), sort_order);
     case QLValuePB::kStringValue:
-      return PrimitiveValue(QLValue::string_value(value), sort_order);
+      return PrimitiveValue(value.string_value(), sort_order);
     case QLValuePB::kBinaryValue:
       // TODO consider using dedicated encoding for binary (not string) to avoid overhead of
       // zero-encoding for keys (since zero-bytes could be common for binary)
-      return PrimitiveValue(QLValue::binary_value(value), sort_order);
+      return PrimitiveValue(value.binary_value(), sort_order);
     case QLValuePB::kBoolValue:
       if (sort_order != SortOrder::kAscending) {
         LOG(ERROR) << "Ignoring invalid sort order for BOOL. Using SortOrder::kAscending.";
       }
-      return PrimitiveValue(QLValue::bool_value(value) ? ValueType::kTrue : ValueType::kFalse);
+      return PrimitiveValue(value.bool_value() ? ValueType::kTrue : ValueType::kFalse);
     case QLValuePB::kTimestampValue:
-      return PrimitiveValue(QLValue::timestamp_value(value), sort_order);
+      return PrimitiveValue(QLValue(value).timestamp_value(), sort_order);
     case QLValuePB::kInetaddressValue:
-      return PrimitiveValue(QLValue::inetaddress_value(value), sort_order);
+      return PrimitiveValue(QLValue(value).inetaddress_value(), sort_order);
     case QLValuePB::kUuidValue:
-      return PrimitiveValue(QLValue::uuid_value(value), sort_order);
+      return PrimitiveValue(QLValue(value).uuid_value(), sort_order);
     case QLValuePB::kTimeuuidValue:
-      return PrimitiveValue(QLValue::timeuuid_value(value), sort_order);
+      return PrimitiveValue(QLValue(value).timeuuid_value(), sort_order);
     case QLValuePB::kFrozenValue: {
-      QLSeqValuePB frozen = QLValue::frozen_value(value);
+      QLSeqValuePB frozen = value.frozen_value();
       PrimitiveValue pv(ValueType::kFrozen);
       auto null_value_type = ValueType::kNull;
       if (sort_order == SortOrder::kDescending) {
@@ -1239,7 +1239,7 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
       }
 
       for (int i = 0; i < frozen.elems_size(); i++) {
-        if (QLValue::IsNull(frozen.elems(i))) {
+        if (IsNull(frozen.elems(i))) {
           pv.frozen_val_->emplace_back(null_value_type);
         } else {
           pv.frozen_val_->push_back(PrimitiveValue::FromQLValuePB(frozen.elems(i), sorting_type));
@@ -1247,7 +1247,6 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
       }
       return pv;
     }
-
     case QLValuePB::VALUE_NOT_SET:
       return PrimitiveValue::kTombstone;
 
@@ -1264,73 +1263,82 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
 }
 
 void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
-                                  const std::shared_ptr<QLType>& ql_type,
-                                  QLValuePB* ql_value) {
+                                 const std::shared_ptr<QLType>& ql_type,
+                                 QLValuePB* ql_value) {
   // DocDB sets type to kInvalidValueType for SubDocuments that don't exist. That's why they need
   // to be set to Null in QLValue.
   if (primitive_value.value_type() == ValueType::kNull ||
       primitive_value.value_type() == ValueType::kNullDescending ||
       primitive_value.value_type() == ValueType::kInvalidValueType) {
-    QLValue::SetNull(ql_value);
+    SetNull(ql_value);
     return;
   }
 
   switch (ql_type->main()) {
     case INT8:
-      QLValue::set_int8_value(static_cast<int8_t>(primitive_value.GetInt32()), ql_value);
+      ql_value->set_int8_value(static_cast<int8_t>(primitive_value.GetInt32()));
       return;
     case INT16:
-      QLValue::set_int16_value(static_cast<int16_t>(primitive_value.GetInt32()), ql_value);
+      ql_value->set_int16_value(static_cast<int16_t>(primitive_value.GetInt32()));
       return;
     case INT32:
-      QLValue::set_int32_value(static_cast<int32_t>(primitive_value.GetInt32()), ql_value);
+      ql_value->set_int32_value(static_cast<int32_t>(primitive_value.GetInt32()));
       return;
     case INT64:
-      QLValue::set_int64_value(static_cast<int64_t>(primitive_value.GetInt64()), ql_value);
+      ql_value->set_int64_value(static_cast<int64_t>(primitive_value.GetInt64()));
       return;
     case FLOAT:
-      QLValue::set_float_value(static_cast<float>(primitive_value.GetFloat()), ql_value);
+      ql_value->set_float_value(static_cast<float>(primitive_value.GetFloat()));
       return;
     case DOUBLE:
-      QLValue::set_double_value(primitive_value.GetDouble(), ql_value);
+      ql_value->set_double_value(primitive_value.GetDouble());
       return;
     case DECIMAL:
-      QLValue::set_decimal_value(primitive_value.GetDecimal(), ql_value);
+      ql_value->set_decimal_value(primitive_value.GetDecimal());
       return;
     case BOOL:
-      QLValue::set_bool_value((primitive_value.value_type() == ValueType::kTrue), ql_value);
+      ql_value->set_bool_value((primitive_value.value_type() == ValueType::kTrue));
       return;
     case TIMESTAMP:
-      QLValue::set_timestamp_value(primitive_value.GetTimestamp(), ql_value);
+      ql_value->set_timestamp_value(primitive_value.GetTimestamp().ToInt64());
       return;
-    case INET:
-      QLValue::set_inetaddress_value(*primitive_value.GetInetaddress(), ql_value);
+    case INET: {
+      QLValue temp_value;
+      temp_value.set_inetaddress_value(*primitive_value.GetInetaddress());
+      ql_value->CopyFrom(temp_value.value());
       return;
-    case UUID:
-      QLValue::set_uuid_value(primitive_value.GetUuid(), ql_value);
+    }
+    case UUID: {
+      QLValue temp_value;
+      temp_value.set_uuid_value(primitive_value.GetUuid());
+      ql_value->CopyFrom(temp_value.value());
       return;
-    case TIMEUUID:
-      QLValue::set_timeuuid_value(primitive_value.GetUuid(), ql_value);
+    }
+    case TIMEUUID: {
+      QLValue temp_value;
+      temp_value.set_timeuuid_value(primitive_value.GetUuid());
+      ql_value->CopyFrom(temp_value.value());
       return;
+    }
     case STRING:
-      QLValue::set_string_value(primitive_value.GetString(), ql_value);
+      ql_value->set_string_value(primitive_value.GetString());
       return;
     case BINARY:
-      QLValue::set_binary_value(primitive_value.GetString(), ql_value);
+      ql_value->set_binary_value(primitive_value.GetString());
       return;
     case FROZEN: {
       const auto& type = ql_type->param_type(0);
-      QLValue::set_frozen_value(ql_value);
+      QLSeqValuePB *frozen_value = ql_value->mutable_frozen_value();
       switch (type->main()) {
         case MAP: {
           const std::shared_ptr<QLType>& keys_type = type->param_type(0);
           const std::shared_ptr<QLType>& values_type = type->param_type(1);
           for (int i = 0; i < primitive_value.frozen_val_->size(); i++) {
             if (i % 2 == 0) {
-              QLValuePB *key = QLValue::add_frozen_elem(ql_value);
+              QLValuePB *key = frozen_value->add_elems();
               PrimitiveValue::ToQLValuePB(primitive_value.frozen_val_->at(i), keys_type, key);
             } else {
-              QLValuePB *value = QLValue::add_frozen_elem(ql_value);
+              QLValuePB *value = frozen_value->add_elems();
               PrimitiveValue::ToQLValuePB(primitive_value.frozen_val_->at(i), values_type, value);
             }
           }
@@ -1340,14 +1348,14 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
         case LIST: {
           const std::shared_ptr<QLType>& elems_type = type->param_type(0);
           for (const auto &pv : *primitive_value.frozen_val_) {
-            QLValuePB *elem = QLValue::add_frozen_elem(ql_value);
+            QLValuePB *elem = frozen_value->add_elems();
             PrimitiveValue::ToQLValuePB(pv, elems_type, elem);
           }
           return;
         }
         case USER_DEFINED_TYPE: {
           for (int i = 0; i < primitive_value.frozen_val_->size(); i++) {
-            QLValuePB *value = QLValue::add_frozen_elem(ql_value);
+            QLValuePB *value = frozen_value->add_elems();
             PrimitiveValue::ToQLValuePB(primitive_value.frozen_val_->at(i), type->param_type(i),
                 value);
           }
@@ -1382,30 +1390,6 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
   }
 
   LOG(FATAL) << "Unsupported datatype " << ql_type->ToString();
-}
-
-PrimitiveValue PrimitiveValue::FromQLExpressionPB(const QLExpressionPB& ql_expr,
-                                                  ColumnSchema::SortingType sorting_type) {
-  switch (ql_expr.expr_case()) {
-    case QLExpressionPB::ExprCase::kValue:
-      return FromQLValuePB(ql_expr.value(), sorting_type);
-    case QLExpressionPB::ExprCase::kColumnId: FALLTHROUGH_INTENDED;
-    case QLExpressionPB::ExprCase::kSubscriptedCol: FALLTHROUGH_INTENDED;
-    case QLExpressionPB::ExprCase::kCondition: FALLTHROUGH_INTENDED;
-    case QLExpressionPB::ExprCase::kBfcall: FALLTHROUGH_INTENDED;
-    case QLExpressionPB::ExprCase::kTscall: FALLTHROUGH_INTENDED;
-    case QLExpressionPB::ExprCase::kBocall: FALLTHROUGH_INTENDED;
-    case QLExpressionPB::ExprCase::kBindId: FALLTHROUGH_INTENDED;
-    case QLExpressionPB::ExprCase::EXPR_NOT_SET:
-      break;
-  }
-  LOG(FATAL) << "Internal error: invalid column or value expression: " << ql_expr.expr_case();
-}
-
-void PrimitiveValue::ToQLExpressionPB(const PrimitiveValue& pv,
-                                       const std::shared_ptr<QLType>& ql_type,
-                                       QLExpressionPB* ql_expr) {
-  ToQLValuePB(pv, ql_type, ql_expr->mutable_value());
 }
 
 }  // namespace docdb

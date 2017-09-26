@@ -422,15 +422,16 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   // Where clause - Hash, range, and regular columns.
 
   bool no_results = false;
-  Status s = WhereClauseToPB(req, tnode->key_where_ops(), tnode->where_ops(),
-                             tnode->subscripted_col_where_ops(), tnode->partition_key_ops(),
-                             tnode->func_ops(), &no_results);
-  if (PREDICT_FALSE(!s.ok())) {
-    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+  req->set_is_aggregate(tnode->is_aggregate());
+  Status st = WhereClauseToPB(req, tnode->key_where_ops(), tnode->where_ops(),
+                              tnode->subscripted_col_where_ops(), tnode->partition_key_ops(),
+                              tnode->func_ops(), &no_results);
+  if (PREDICT_FALSE(!st.ok())) {
+    return exec_context_->Error(st, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // If where clause restrictions guarantee no rows could match, return empty result immediately.
-  if (no_results) {
+  if (no_results && !tnode->is_aggregate()) {
     QLRowBlock empty_row_block(tnode->table()->InternalSchema(), {});
     faststring buffer;
     empty_row_block.Serialize(select_op->request().client(), &buffer);
@@ -445,11 +446,11 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   QLRSRowDescPB *rsrow_desc_pb = req->mutable_rsrow_desc();
   for (const auto& expr : tnode->selected_exprs()) {
     if (expr->opcode() == TreeNodeOpcode::kPTAllColumns) {
-      s = PTExprToPB(static_cast<const PTAllColumns*>(expr.get()), req);
+      st = PTExprToPB(static_cast<const PTAllColumns*>(expr.get()), req);
     } else {
-      s = PTExprToPB(expr, req->add_selected_exprs());
-      if (PREDICT_FALSE(!s.ok())) {
-        return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+      st = PTExprToPB(expr, req->add_selected_exprs());
+      if (PREDICT_FALSE(!st.ok())) {
+        return exec_context_->Error(st, ErrorCode::INVALID_ARGUMENTS);
       }
 
       // Add the expression metadata (rsrow descriptor).
@@ -460,9 +461,9 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   }
 
   // Setup the column values that need to be read.
-  s = ColumnRefsToPB(tnode, req->mutable_column_refs());
-  if (PREDICT_FALSE(!s.ok())) {
-    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+  st = ColumnRefsToPB(tnode, req->mutable_column_refs());
+  if (PREDICT_FALSE(!st.ok())) {
+    return exec_context_->Error(st, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Specify distinct columns or non.
@@ -477,7 +478,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   if (tnode->has_limit()) {
     QLExpressionPB limit_pb;
     RETURN_NOT_OK(PTExprToPB(tnode->limit(), &limit_pb));
-    if (limit_pb.has_value() && QLValue::IsNull(limit_pb.value())) {
+    if (limit_pb.has_value() && IsNull(limit_pb.value())) {
       return exec_context_->Error("LIMIT value cannot be null.", ErrorCode::INVALID_ARGUMENTS);
     }
 
@@ -795,6 +796,9 @@ void Executor::FlushAsyncDone(const Status &s) {
       if (ss.ok()) {
         if (ql_env_->FlushAsync(&flush_async_cb_)) {
           return;
+        } else {
+          // Evaluate aggregate functions if they are selected.
+          ss = AggregateResultSets();
         }
       }
     }

@@ -23,14 +23,27 @@ namespace bfql {
 
 enum class TSOpcode : int32_t {
   kNoOp = 0,
+
   kWriteTime,
   kTtl,
-  kCount,
-  kSum,
+
   kAvg,
-  kMin,
+  kCount,
   kMax,
+  kMin,
+  kSum,
+
+  kScalarInsert,
+  kMapExtend,
+  kMapRemove,
+  kSetExtend,
+  kSetRemove,
+  kListAppend,
+  kListPrepend,
+  kListRemove,
 };
+
+bool IsAggregateOpcode(TSOpcode op);
 
 } // namespace bfql
 } // namespace yb

@@ -112,10 +112,30 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
   // Analyze clauses in select statements and check that references to columns in selected_exprs
   // are valid and used appropriately.
   SemState sem_state(sem_context);
+  sem_state.set_allowing_aggregate(true);
   RETURN_NOT_OK(selected_exprs_->Analyze(sem_context));
+  sem_state.set_allowing_aggregate(false);
   if (distinct_) {
     RETURN_NOT_OK(AnalyzeDistinctClause(sem_context));
   }
+
+  // Check if this is an aggregate read.
+  bool has_aggregate_expr = false;
+  bool has_singular_expr = false;
+  for (auto expr_node : selected_exprs_->node_list()) {
+    if (expr_node->IsAggregateCall()) {
+      has_aggregate_expr = true;
+    } else {
+      has_singular_expr = true;
+    }
+  }
+  if (has_aggregate_expr && has_singular_expr) {
+    return sem_context->Error(
+        selected_exprs_,
+        "Selecting aggregate together with rows of non-aggregate values is not allowed",
+        ErrorCode::CQL_STATEMENT_INVALID);
+  }
+  is_aggregate_ = has_aggregate_expr;
 
   // Run error checking on the WHERE conditions.
   RETURN_NOT_OK(AnalyzeWhereClause(sem_context, where_clause_));

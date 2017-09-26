@@ -853,6 +853,11 @@ PTExprAlias::PTExprAlias(MemoryContext *memctx,
 PTExprAlias::~PTExprAlias() {
 }
 
+CHECKED_STATUS PTExprAlias::SetupSemStateForOp1(SemState *sem_state) {
+  sem_state->set_allowing_aggregate(sem_state->previous_state()->allowing_aggregate());
+  return Status::OK();
+}
+
 CHECKED_STATUS PTExprAlias::AnalyzeOperator(SemContext *sem_context, PTExpr::SharedPtr op1) {
   // Type resolution: Alias of (x) should have the same datatype as (x).
   ql_type_ = op1->ql_type();

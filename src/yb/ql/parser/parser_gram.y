@@ -3380,7 +3380,13 @@ func_application:
     PARSER_UNSUPPORTED(@1);
   }
   | func_name '(' '*' ')' {
-    PARSER_UNSUPPORTED(@1);
+    if (*$1 == "count") {
+      PTExpr::SharedPtr arg = MAKE_NODE(@3, PTStar);
+      PTExprListNode::SharedPtr args = MAKE_NODE(@2, PTExprListNode, arg);
+      $$ = MAKE_NODE(@1, PTBcall, $1, args);
+    } else {
+      PARSER_INVALID(@1);
+    }
   }
 ;
 

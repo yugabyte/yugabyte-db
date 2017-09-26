@@ -26,8 +26,8 @@ using std::shared_ptr;
 CHECKED_STATUS Executor::PTExprToPBValidated(const PTExpr::SharedPtr& expr,
                                              QLExpressionPB *expr_pb) {
   RETURN_NOT_OK(PTExprToPB(expr, expr_pb));
-  if (expr_pb->has_value() && QLValue::IsNull(expr_pb->value())) {
-    return exec_context_->Error("value cannot be null.", ErrorCode::INVALID_ARGUMENTS);
+  if (expr_pb->has_value() && IsNull(expr_pb->value())) {
+    return exec_context_->Error("Value cannot be null.", ErrorCode::INVALID_ARGUMENTS);
   }
   return Status::OK();
 }
