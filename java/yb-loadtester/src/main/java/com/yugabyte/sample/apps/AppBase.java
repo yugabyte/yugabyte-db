@@ -25,6 +25,7 @@ import org.apache.log4j.Logger;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
+import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.policies.DCAwareRoundRobinPolicy;
 import com.yugabyte.driver.core.policies.PartitionAwarePolicy;
 import com.yugabyte.sample.common.CmdLineOpts;
@@ -183,13 +184,9 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   public void dropTable() {}
 
   public void dropCassandraTable(String tableName) {
-    try {
-      String drop_stmt = String.format("DROP TABLE IF EXISTS %s;", tableName);
-      getCassandraClient().execute(drop_stmt);
-      LOG.info("Dropped Cassandra table " + tableName + " using query: [" + drop_stmt + "]");
-    } catch (Exception e) {
-      LOG.info("Ignoring exception dropping table: " + e.getMessage());
-    }
+    String drop_stmt = String.format("DROP TABLE IF EXISTS %s;", tableName);
+    getCassandraClient().execute(new SimpleStatement(drop_stmt).setReadTimeoutMillis(60000));
+    LOG.info("Dropped Cassandra table " + tableName + " using query: [" + drop_stmt + "]");
   }
 
   /**
