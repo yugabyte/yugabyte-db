@@ -88,7 +88,7 @@ yb_devops_home=~/code/devops/ ansible-playbook ~/code/devops/docker/images/third
 
 * To compile and run the code:
 ```
-  $ sbt run -Dyb.devops.home=<path to your devops repo>
+  $ sbt "run -Dyb.devops.home=<path to your devops repo>"
   # Test that everything is running by going to http://localhost:9000 in a browser (or curl). This page will show 
   expected error 'Action not found' and list of possible API routes.
 ```
