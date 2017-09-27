@@ -30,15 +30,15 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TRANSACTIONS_TRANSACTION_DRIVER_H_
-#define YB_TABLET_TRANSACTIONS_TRANSACTION_DRIVER_H_
+#ifndef YB_TABLET_OPERATIONS_OPERATION_DRIVER_H
+#define YB_TABLET_OPERATIONS_OPERATION_DRIVER_H
 
 #include <string>
 
 #include "yb/consensus/consensus.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/walltime.h"
-#include "yb/tablet/transactions/transaction.h"
+#include "yb/tablet/operations/operation.h"
 #include "yb/util/status.h"
 #include "yb/util/trace.h"
 
@@ -50,14 +50,14 @@ class Log;
 } // namespace log
 
 namespace tablet {
-class TransactionOrderVerifier;
-class TransactionTracker;
-class TransactionDriver;
+class OperationOrderVerifier;
+class OperationTracker;
+class OperationDriver;
 class PrepareThread;
 
-// Base class for transaction drivers.
+// Base class for operation drivers.
 //
-// TransactionDriver classes encapsulate the logic of coordinating the execution of
+// OperationDriver classes encapsulate the logic of coordinating the execution of
 // an operation. The exact triggering of the methods differs based on whether the
 // operation is being executed on a leader or replica, but the general flow is:
 //
@@ -66,17 +66,17 @@ class PrepareThread;
 //      the operation is already "REPLICATING" (and thus we don't need to
 //      trigger replication ourself later on).
 //
-//  2 - ExecuteAsync() is called. This submits the transaction driver to the PrepareThread
+//  2 - ExecuteAsync() is called. This submits the operation driver to the PrepareThread
 //      and returns immediately.
 //
-//  3 - PrepareAndStartTask() calls Prepare() and Start() on the transaction.
+//  3 - PrepareAndStartTask() calls Prepare() and Start() on the operation.
 //
 //      Once successfully prepared, if we have not yet replicated (i.e we are leader),
 //      also triggers consensus->Replicate() and changes the replication state to
 //      REPLICATING.
 //
 //      What happens in reality is more complicated, as PrepareThread tries to batch leader-side
-//      transactions before submitting them to consensus.
+//      operations before submitting them to consensus.
 
 //      On the other hand, if we have already successfully replicated (e.g. we are the
 //      follower and ConsensusCommitted() has already been called, then we can move
@@ -93,7 +93,7 @@ class PrepareThread;
 //      If Prepare() has already completed, then we trigger ApplyAsync().
 //
 //  5 - ApplyAsync() submits ApplyTask() to the apply_pool_.
-//      ApplyTask() calls transaction_->Apply().
+//      ApplyTask() calls operation_->Apply().
 //
 //      When Apply() is called, changes are made to the in-memory data structures. These
 //      changes are not visible to clients yet. After Apply() completes, a CommitMsg
@@ -101,46 +101,46 @@ class PrepareThread;
 //      and provide correct recovery.
 //
 //      After the commit message has been enqueued in the Log, the driver executes Finalize()
-//      which, in turn, makes transactions make their changes visible to other transactions.
-//      After this step the driver replies to the client if needed and the transaction
+//      which, in turn, makes operations make their changes visible to other operations.
+//      After this step the driver replies to the client if needed and the operation
 //      is completed.
-//      In-mem data structures that contain the changes made by the transaction can now
+//      In-mem data structures that contain the changes made by the operation can now
 //      be made durable.
 //
 // [1] - see 'Implementation Techniques for Main Memory Database Systems', DeWitt et. al.
 //
 // This class is thread safe.
-class TransactionDriver : public RefCountedThreadSafe<TransactionDriver>,
-                          public consensus::ConsensusAppendCallback {
+class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
+                        public consensus::ConsensusAppendCallback {
 
  public:
-  // Construct TransactionDriver. TransactionDriver does not take ownership
+  // Construct OperationDriver. OperationDriver does not take ownership
   // of any of the objects pointed to in the constructor's arguments.
-  TransactionDriver(TransactionTracker* txn_tracker,
-                    consensus::Consensus* consensus,
-                    log::Log* log,
-                    PrepareThread* prepare_thread,
-                    ThreadPool* apply_pool,
-                    TransactionOrderVerifier* order_verifier,
-                    TableType table_type_);
+  OperationDriver(OperationTracker* operation_tracker,
+                  consensus::Consensus* consensus,
+                  log::Log* log,
+                  PrepareThread* prepare_thread,
+                  ThreadPool* apply_pool,
+                  OperationOrderVerifier* order_verifier,
+                  TableType table_type_);
 
-  // Perform any non-constructor initialization. Sets the transaction
+  // Perform any non-constructor initialization. Sets the operation
   // that will be executed.
-  CHECKED_STATUS Init(std::unique_ptr<Transaction> transaction, consensus::DriverType driver);
+  CHECKED_STATUS Init(std::unique_ptr<Operation> operation, consensus::DriverType driver);
 
-  // Returns the OpId of the transaction being executed or an uninitialized
+  // Returns the OpId of the operation being executed or an uninitialized
   // OpId if none has been assigned. Returns a copy and thus should not
   // be used in tight loops.
   consensus::OpId GetOpId();
 
-  // Submits the transaction for execution.
+  // Submits the operation for execution.
   // The returned status acknowledges any error on the submission process.
-  // The transaction will be replied to asynchronously.
+  // The operation will be replied to asynchronously.
   CHECKED_STATUS ExecuteAsync();
 
-  // Aborts the transaction, if possible. Since transactions are executed in
+  // Aborts the operation, if possible. Since operations are executed in
   // multiple stages by multiple executors it might not be possible to stop
-  // the transaction immediately, but this will make sure it is aborted
+  // the operation immediately, but this will make sure it is aborted
   // at the next synchronization point.
   void Abort(const Status& status);
 
@@ -158,11 +158,11 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver>,
 
   std::string LogPrefix() const;
 
-  // Returns the type of the transaction being executed by this driver.
-  Transaction::TransactionType tx_type() const;
+  // Returns the type of the operation being executed by this driver.
+  Operation::OperationType operation_type() const;
 
-  // Returns the state of the transaction being executed by this driver.
-  const TransactionState* state() const;
+  // Returns the state of the operation being executed by this driver.
+  const OperationState* state() const;
 
   const MonoTime& start_time() const { return start_time_; }
 
@@ -176,18 +176,18 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver>,
     return replication_state_ == ReplicationState::NOT_REPLICATING;
   }
 
-  // Actually prepare and start. In case of leader-side transactions, this stops short of calling
+  // Actually prepare and start. In case of leader-side operations, this stops short of calling
   // Consensus::Replicate, which is the responsibility of the caller. This is being done so that
   // we can append multiple rounds to the consensus queue together.
   CHECKED_STATUS PrepareAndStart();
 
-  // The task used to be submitted to the prepare threadpool to prepare and start the transaction.
+  // The task used to be submitted to the prepare threadpool to prepare and start the operation.
   // If PrepareAndStart() fails, calls HandleFailure. Since 07/07/2017 this is being used for
-  // non-leader-side transactions from PrepareThread, and for leader-side transactions the handling
+  // non-leader-side operations from PrepareThread, and for leader-side operations the handling
   // is a bit more complicated due to batching.
   void PrepareAndStartTask();
 
-  // This should be called in case of a failure to submit the transaction for replication.
+  // This should be called in case of a failure to submit the operation for replication.
   void SetReplicationFailed(const Status& replication_status);
 
   // Handle a failure in any of the stages of the operation.
@@ -202,7 +202,7 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver>,
   }
 
  private:
-  friend class RefCountedThreadSafe<TransactionDriver>;
+  friend class RefCountedThreadSafe<OperationDriver>;
   enum ReplicationState {
     // The operation has not yet been sent to consensus for replication
     NOT_REPLICATING,
@@ -225,63 +225,63 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver>,
     PREPARED
   };
 
-  ~TransactionDriver() override {}
+  ~OperationDriver() override {}
 
   // Submits ApplyTask to the apply pool.
   CHECKED_STATUS ApplyAsync();
 
-  // Calls Transaction::Apply() followed by Consensus::Commit() with the
+  // Calls Operation::Apply() followed by Consensus::Commit() with the
   // results from the Apply().
   void ApplyTask();
 
-  // Sleeps until the transaction is allowed to commit based on the
+  // Sleeps until the operation is allowed to commit based on the
   // requested consistency mode.
   CHECKED_STATUS CommitWait();
 
-  // Called on Transaction::Apply() after the CommitMsg has been successfully
+  // Called on Operation::Apply() after the CommitMsg has been successfully
   // appended to the WAL.
   void Finalize();
 
-  // Returns the mutable state of the transaction being executed by
+  // Returns the mutable state of the operation being executed by
   // this driver.
-  TransactionState* mutable_state();
+  OperationState* mutable_state();
 
-  // Return a short string indicating where the transaction currently is in the
+  // Return a short string indicating where the operation currently is in the
   // state machine.
   static std::string StateString(ReplicationState repl_state,
                                  PrepareState prep_state);
 
   // Sets the timestamp on the response PB, if there is one.
-  void SetResponseHybridTime(TransactionState* transaction_state,
+  void SetResponseHybridTime(OperationState* operation_state,
                             const HybridTime& hybrid_time);
-  TransactionTracker* const txn_tracker_;
+  OperationTracker* const operation_tracker_;
   consensus::Consensus* const consensus_;
   log::Log* const log_;
   PrepareThread* const prepare_thread_;
   ThreadPool* const apply_pool_;
-  TransactionOrderVerifier* const order_verifier_;
+  OperationOrderVerifier* const order_verifier_;
 
-  Status transaction_status_;
+  Status operation_status_;
 
-  // Lock that synchronizes access to the transaction's state.
+  // Lock that synchronizes access to the operation's state.
   mutable simple_spinlock lock_;
 
-  // A copy of the transaction's OpId, set when the transaction first
+  // A copy of the operation's OpId, set when the operation first
   // receives one from Consensus and uninitialized until then.
-  // TODO(todd): we have three separate copies of this now -- in TransactionState,
+  // TODO(todd): we have three separate copies of this now -- in OperationState,
   // CommitMsg, and here... we should be able to consolidate!
   consensus::OpId op_id_copy_;
 
   // Lock that protects access to the driver's copy of the op_id, specifically.
   // GetOpId() is the only method expected to be called by threads outside
   // of the control of the driver, so we use a special lock to control access
-  // otherwise callers would block for a long time for long running transactions.
+  // otherwise callers would block for a long time for long running operations.
   mutable simple_spinlock opid_lock_;
 
-  // The transaction to be executed by this driver.
-  std::unique_ptr<Transaction> transaction_;
+  // The operation to be executed by this driver.
+  std::unique_ptr<Operation> operation_;
 
-  // Trace object for tracing any transactions started by this driver.
+  // Trace object for tracing any operations started by this driver.
   scoped_refptr<Trace> trace_;
 
   const MonoTime start_time_;
@@ -295,10 +295,10 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver>,
 
   TableType table_type_;
 
-  DISALLOW_COPY_AND_ASSIGN(TransactionDriver);
+  DISALLOW_COPY_AND_ASSIGN(OperationDriver);
 };
 
 }  // namespace tablet
 }  // namespace yb
 
-#endif /* YB_TABLET_TRANSACTIONS_TRANSACTION_DRIVER_H_ */
+#endif // YB_TABLET_OPERATIONS_OPERATION_DRIVER_H

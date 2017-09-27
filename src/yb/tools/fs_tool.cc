@@ -526,9 +526,9 @@ Status FsTool::DumpDeltaCFileBlockInternal(const Schema& schema,
 
   MvccSnapshot snap_all;
   if (delta_type == tablet::REDO) {
-    snap_all = MvccSnapshot::CreateSnapshotIncludingAllTransactions();
+    snap_all = MvccSnapshot::CreateSnapshotIncludingAllOperations();
   } else if (delta_type == tablet::UNDO) {
-    snap_all = MvccSnapshot::CreateSnapshotIncludingNoTransactions();
+    snap_all = MvccSnapshot::CreateSnapshotIncludingNoOperations();
   }
 
   Status s = delta_reader->NewDeltaIterator(&schema, snap_all, &raw_iter);

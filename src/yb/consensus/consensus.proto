@@ -390,9 +390,9 @@ message ConsensusResponsePB {
 }
 
 // A message reflecting the status of an in-flight transaction.
-message TransactionStatusPB {
+message OperationStatusPB {
   required OpIdPB op_id = 1;
-  required OperationType tx_type = 2;
+  required OperationType operation_type = 2;
   // Time the transaction has been in flight.
   required int64 running_for_micros = 3;
   // Quick human-readable description (e.g., ToString() output).

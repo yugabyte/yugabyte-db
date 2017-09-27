@@ -90,7 +90,7 @@ TEST_F(MvccTest, TestMvccBasic) {
   ASSERT_FALSE(snap.IsCommitted(HybridTime(2)));
 
   // Start hybrid_time 1
-  HybridTime t = mgr.StartTransaction();
+  HybridTime t = mgr.StartOperation();
   ASSERT_EQ(1, t.value());
 
   // State should still have no committed transactions, since 1 is in-flight.
@@ -100,13 +100,13 @@ TEST_F(MvccTest, TestMvccBasic) {
   ASSERT_FALSE(snap.IsCommitted(HybridTime(2)));
 
   // Mark hybrid_time 1 as "applying"
-  mgr.StartApplyingTransaction(t);
+  mgr.StartApplyingOperation(t);
 
   // This should not change the set of committed transactions.
   ASSERT_FALSE(snap.IsCommitted(HybridTime(1)));
 
   // Commit hybrid_time 1
-  mgr.CommitTransaction(t);
+  mgr.CommitOperation(t);
 
   // State should show 0 as committed, 1 as uncommitted.
   mgr.TakeSnapshot(&snap);
@@ -120,9 +120,9 @@ TEST_F(MvccTest, TestMvccMultipleInFlight) {
   MvccSnapshot snap;
 
   // Start hybrid_time 1, hybrid_time 2
-  HybridTime t1 = mgr.StartTransaction();
+  HybridTime t1 = mgr.StartOperation();
   ASSERT_EQ(1, t1.value());
-  HybridTime t2 = mgr.StartTransaction();
+  HybridTime t2 = mgr.StartOperation();
   ASSERT_EQ(2, t2.value());
 
   // State should still have no committed transactions, since both are in-flight.
@@ -133,8 +133,8 @@ TEST_F(MvccTest, TestMvccMultipleInFlight) {
   ASSERT_FALSE(snap.IsCommitted(t2));
 
   // Commit hybrid_time 2
-  mgr.StartApplyingTransaction(t2);
-  mgr.CommitTransaction(t2);
+  mgr.StartApplyingOperation(t2);
+  mgr.CommitOperation(t2);
 
   // State should show 2 as committed, 1 as uncommitted.
   mgr.TakeSnapshot(&snap);
@@ -145,7 +145,7 @@ TEST_F(MvccTest, TestMvccMultipleInFlight) {
   ASSERT_TRUE(snap.IsCommitted(t2));
 
   // Start another transaction. This gets hybrid_time 3
-  HybridTime t3 = mgr.StartTransaction();
+  HybridTime t3 = mgr.StartOperation();
   ASSERT_EQ(3, t3.value());
 
   // State should show 2 as committed, 1 and 4 as uncommitted.
@@ -158,8 +158,8 @@ TEST_F(MvccTest, TestMvccMultipleInFlight) {
   ASSERT_FALSE(snap.IsCommitted(t3));
 
   // Commit 3
-  mgr.StartApplyingTransaction(t3);
-  mgr.CommitTransaction(t3);
+  mgr.StartApplyingOperation(t3);
+  mgr.CommitOperation(t3);
 
   // 2 and 3 committed
   mgr.TakeSnapshot(&snap);
@@ -171,8 +171,8 @@ TEST_F(MvccTest, TestMvccMultipleInFlight) {
   ASSERT_TRUE(snap.IsCommitted(t3));
 
   // Commit 1
-  mgr.StartApplyingTransaction(t1);
-  mgr.CommitTransaction(t1);
+  mgr.StartApplyingOperation(t1);
+  mgr.CommitOperation(t1);
 
   // all committed
   mgr.TakeSnapshot(&snap);
@@ -188,19 +188,19 @@ TEST_F(MvccTest, TestOutOfOrderTxns) {
   MvccManager mgr(hybrid_clock);
 
   // Start a normal non-commit-wait txn.
-  HybridTime normal_txn = mgr.StartTransaction();
+  HybridTime normal_txn = mgr.StartOperation();
 
   MvccSnapshot s1(mgr);
 
   // Start a transaction as if it were using commit-wait (i.e. started in future)
-  HybridTime cw_txn = mgr.StartTransactionAtLatest();
+  HybridTime cw_txn = mgr.StartOperationAtLatest();
 
   // Commit the original txn
-  mgr.StartApplyingTransaction(normal_txn);
-  mgr.CommitTransaction(normal_txn);
+  mgr.StartApplyingOperation(normal_txn);
+  mgr.CommitOperation(normal_txn);
 
   // Start a new txn
-  HybridTime normal_txn_2 = mgr.StartTransaction();
+  HybridTime normal_txn_2 = mgr.StartOperation();
 
   // The old snapshot should not have either txn
   EXPECT_FALSE(s1.IsCommitted(normal_txn));
@@ -213,8 +213,8 @@ TEST_F(MvccTest, TestOutOfOrderTxns) {
 
   // Commit the commit-wait one once it is time.
   ASSERT_OK(hybrid_clock->WaitUntilAfter(cw_txn, MonoTime::Max()));
-  mgr.StartApplyingTransaction(cw_txn);
-  mgr.CommitTransaction(cw_txn);
+  mgr.StartApplyingOperation(cw_txn);
+  mgr.CommitOperation(cw_txn);
 
   // A new snapshot at this point should still think that normal_txn_2 is uncommitted
   MvccSnapshot s3(mgr);
@@ -224,22 +224,22 @@ TEST_F(MvccTest, TestOutOfOrderTxns) {
 // Tests starting transaction at a point-in-time in the past and committing them.
 // This is disconnected from the current time (whatever is returned from clock->Now())
 // for replication/bootstrap.
-TEST_F(MvccTest, TestOfflineTransactions) {
+TEST_F(MvccTest, TestOfflineOperations) {
   MvccManager mgr(clock_.get());
 
   // set the clock to some time in the "future"
   ASSERT_OK(clock_->Update(HybridTime(100)));
 
   // now start a transaction in the "past"
-  ASSERT_OK(mgr.StartTransactionAtHybridTime(HybridTime(50)));
+  ASSERT_OK(mgr.StartOperationAtHybridTime(HybridTime(50)));
 
   ASSERT_GE(mgr.GetMaxSafeTimeToReadAt(), HybridTime::kMin);
 
   // and committing this transaction "offline" this
   // should not advance the MvccManager 'all_committed_before_'
   // watermark.
-  mgr.StartApplyingTransaction(HybridTime(50));
-  mgr.OfflineCommitTransaction(HybridTime(50));
+  mgr.StartApplyingOperation(HybridTime(50));
+  mgr.OfflineCommitOperation(HybridTime(50));
 
   // Now take a snaphsot.
   MvccSnapshot snap1;
@@ -261,13 +261,13 @@ TEST_F(MvccTest, TestOfflineTransactions) {
   ASSERT_TRUE(snap2.IsCommitted(HybridTime(40)));
 }
 
-TEST_F(MvccTest, TestScopedTransaction) {
+TEST_F(MvccTest, TestScopedOperation) {
   MvccManager mgr(clock_.get());
   MvccSnapshot snap;
 
   {
-    ScopedWriteTransaction t1(&mgr);
-    ScopedWriteTransaction t2(&mgr);
+    ScopedWriteOperation t1(&mgr);
+    ScopedWriteOperation t2(&mgr);
 
     ASSERT_EQ(1, t1.hybrid_time().value());
     ASSERT_EQ(2, t2.hybrid_time().value());
@@ -295,77 +295,77 @@ TEST_F(MvccTest, TestPointInTimeSnapshot) {
   ASSERT_FALSE(snap.IsCommitted(HybridTime(11)));
 }
 
-TEST_F(MvccTest, TestMayHaveCommittedTransactionsAtOrAfter) {
+TEST_F(MvccTest, TestMayHaveCommittedOperationsAtOrAfter) {
   MvccSnapshot snap;
   snap.all_committed_before_ = HybridTime(10);
   snap.committed_hybrid_times_.push_back(11);
   snap.committed_hybrid_times_.push_back(13);
   snap.none_committed_at_or_after_ = HybridTime(14);
 
-  ASSERT_TRUE(snap.MayHaveCommittedTransactionsAtOrAfter(HybridTime(9)));
-  ASSERT_TRUE(snap.MayHaveCommittedTransactionsAtOrAfter(HybridTime(10)));
-  ASSERT_TRUE(snap.MayHaveCommittedTransactionsAtOrAfter(HybridTime(12)));
-  ASSERT_TRUE(snap.MayHaveCommittedTransactionsAtOrAfter(HybridTime(13)));
-  ASSERT_FALSE(snap.MayHaveCommittedTransactionsAtOrAfter(HybridTime(14)));
-  ASSERT_FALSE(snap.MayHaveCommittedTransactionsAtOrAfter(HybridTime(15)));
+  ASSERT_TRUE(snap.MayHaveCommittedOperationsAtOrAfter(HybridTime(9)));
+  ASSERT_TRUE(snap.MayHaveCommittedOperationsAtOrAfter(HybridTime(10)));
+  ASSERT_TRUE(snap.MayHaveCommittedOperationsAtOrAfter(HybridTime(12)));
+  ASSERT_TRUE(snap.MayHaveCommittedOperationsAtOrAfter(HybridTime(13)));
+  ASSERT_FALSE(snap.MayHaveCommittedOperationsAtOrAfter(HybridTime(14)));
+  ASSERT_FALSE(snap.MayHaveCommittedOperationsAtOrAfter(HybridTime(15)));
 
   // Test for "all committed" snapshot
   MvccSnapshot all_committed =
-      MvccSnapshot::CreateSnapshotIncludingAllTransactions();
+      MvccSnapshot::CreateSnapshotIncludingAllOperations();
   ASSERT_TRUE(
-      all_committed.MayHaveCommittedTransactionsAtOrAfter(HybridTime(1)));
+      all_committed.MayHaveCommittedOperationsAtOrAfter(HybridTime(1)));
   ASSERT_TRUE(
-      all_committed.MayHaveCommittedTransactionsAtOrAfter(HybridTime(12345)));
+      all_committed.MayHaveCommittedOperationsAtOrAfter(HybridTime(12345)));
 
   // And "none committed" snapshot
   MvccSnapshot none_committed =
-      MvccSnapshot::CreateSnapshotIncludingNoTransactions();
+      MvccSnapshot::CreateSnapshotIncludingNoOperations();
   ASSERT_FALSE(
-      none_committed.MayHaveCommittedTransactionsAtOrAfter(HybridTime(1)));
+      none_committed.MayHaveCommittedOperationsAtOrAfter(HybridTime(1)));
   ASSERT_FALSE(
-      none_committed.MayHaveCommittedTransactionsAtOrAfter(HybridTime(12345)));
+      none_committed.MayHaveCommittedOperationsAtOrAfter(HybridTime(12345)));
 
   // Test for a "clean" snapshot
   MvccSnapshot clean_snap(HybridTime(10));
-  ASSERT_TRUE(clean_snap.MayHaveCommittedTransactionsAtOrAfter(HybridTime(9)));
-  ASSERT_FALSE(clean_snap.MayHaveCommittedTransactionsAtOrAfter(HybridTime(10)));
+  ASSERT_TRUE(clean_snap.MayHaveCommittedOperationsAtOrAfter(HybridTime(9)));
+  ASSERT_FALSE(clean_snap.MayHaveCommittedOperationsAtOrAfter(HybridTime(10)));
 }
 
-TEST_F(MvccTest, TestMayHaveUncommittedTransactionsBefore) {
+TEST_F(MvccTest, TestMayHaveUncommittedOperationsBefore) {
   MvccSnapshot snap;
   snap.all_committed_before_ = HybridTime(10);
   snap.committed_hybrid_times_.push_back(11);
   snap.committed_hybrid_times_.push_back(13);
   snap.none_committed_at_or_after_ = HybridTime(14);
 
-  ASSERT_FALSE(snap.MayHaveUncommittedTransactionsAtOrBefore(HybridTime(9)));
-  ASSERT_TRUE(snap.MayHaveUncommittedTransactionsAtOrBefore(HybridTime(10)));
-  ASSERT_TRUE(snap.MayHaveUncommittedTransactionsAtOrBefore(HybridTime(11)));
-  ASSERT_TRUE(snap.MayHaveUncommittedTransactionsAtOrBefore(HybridTime(13)));
-  ASSERT_TRUE(snap.MayHaveUncommittedTransactionsAtOrBefore(HybridTime(14)));
-  ASSERT_TRUE(snap.MayHaveUncommittedTransactionsAtOrBefore(HybridTime(15)));
+  ASSERT_FALSE(snap.MayHaveUncommittedOperationsAtOrBefore(HybridTime(9)));
+  ASSERT_TRUE(snap.MayHaveUncommittedOperationsAtOrBefore(HybridTime(10)));
+  ASSERT_TRUE(snap.MayHaveUncommittedOperationsAtOrBefore(HybridTime(11)));
+  ASSERT_TRUE(snap.MayHaveUncommittedOperationsAtOrBefore(HybridTime(13)));
+  ASSERT_TRUE(snap.MayHaveUncommittedOperationsAtOrBefore(HybridTime(14)));
+  ASSERT_TRUE(snap.MayHaveUncommittedOperationsAtOrBefore(HybridTime(15)));
 
   // Test for "all committed" snapshot
   MvccSnapshot all_committed =
-      MvccSnapshot::CreateSnapshotIncludingAllTransactions();
+      MvccSnapshot::CreateSnapshotIncludingAllOperations();
   ASSERT_FALSE(
-      all_committed.MayHaveUncommittedTransactionsAtOrBefore(HybridTime(1)));
+      all_committed.MayHaveUncommittedOperationsAtOrBefore(HybridTime(1)));
   ASSERT_FALSE(
-      all_committed.MayHaveUncommittedTransactionsAtOrBefore(HybridTime(12345)));
+      all_committed.MayHaveUncommittedOperationsAtOrBefore(HybridTime(12345)));
 
   // And "none committed" snapshot
   MvccSnapshot none_committed =
-      MvccSnapshot::CreateSnapshotIncludingNoTransactions();
+      MvccSnapshot::CreateSnapshotIncludingNoOperations();
   ASSERT_TRUE(
-      none_committed.MayHaveUncommittedTransactionsAtOrBefore(HybridTime(1)));
+      none_committed.MayHaveUncommittedOperationsAtOrBefore(HybridTime(1)));
   ASSERT_TRUE(
-      none_committed.MayHaveUncommittedTransactionsAtOrBefore(
+      none_committed.MayHaveUncommittedOperationsAtOrBefore(
           HybridTime(12345)));
 
   // Test for a "clean" snapshot
   MvccSnapshot clean_snap(HybridTime(10));
-  ASSERT_FALSE(clean_snap.MayHaveUncommittedTransactionsAtOrBefore(HybridTime(9)));
-  ASSERT_TRUE(clean_snap.MayHaveUncommittedTransactionsAtOrBefore(HybridTime(10)));
+  ASSERT_FALSE(clean_snap.MayHaveUncommittedOperationsAtOrBefore(HybridTime(9)));
+  ASSERT_TRUE(clean_snap.MayHaveUncommittedOperationsAtOrBefore(HybridTime(10)));
 
   // Test for the case where we have a single transaction in flight. Since this is
   // also the earliest transaction, all_committed_before_ is equal to the txn's
@@ -376,43 +376,43 @@ TEST_F(MvccTest, TestMayHaveUncommittedTransactionsBefore) {
   snap2.all_committed_before_ = HybridTime(10);
   snap2.committed_hybrid_times_.push_back(10);
 
-  ASSERT_FALSE(snap2.MayHaveUncommittedTransactionsAtOrBefore(HybridTime(10)));
+  ASSERT_FALSE(snap2.MayHaveUncommittedOperationsAtOrBefore(HybridTime(10)));
 }
 
-TEST_F(MvccTest, TestAreAllTransactionsCommitted) {
+TEST_F(MvccTest, TestAreAllOperationsCommitted) {
   MvccManager mgr(clock_.get());
 
   // start several transactions and take snapshots along the way
-  HybridTime tx1 = mgr.StartTransaction();
-  HybridTime tx2 = mgr.StartTransaction();
-  HybridTime tx3 = mgr.StartTransaction();
+  HybridTime tx1 = mgr.StartOperation();
+  HybridTime tx2 = mgr.StartOperation();
+  HybridTime tx3 = mgr.StartOperation();
 
-  ASSERT_FALSE(mgr.AreAllTransactionsCommitted(HybridTime(1)));
-  ASSERT_FALSE(mgr.AreAllTransactionsCommitted(HybridTime(2)));
-  ASSERT_FALSE(mgr.AreAllTransactionsCommitted(HybridTime(3)));
+  ASSERT_FALSE(mgr.AreAllOperationsCommitted(HybridTime(1)));
+  ASSERT_FALSE(mgr.AreAllOperationsCommitted(HybridTime(2)));
+  ASSERT_FALSE(mgr.AreAllOperationsCommitted(HybridTime(3)));
 
   // commit tx3, should all still report as having as having uncommitted
   // transactions.
-  mgr.StartApplyingTransaction(tx3);
-  mgr.CommitTransaction(tx3);
-  ASSERT_FALSE(mgr.AreAllTransactionsCommitted(HybridTime(1)));
-  ASSERT_FALSE(mgr.AreAllTransactionsCommitted(HybridTime(2)));
-  ASSERT_FALSE(mgr.AreAllTransactionsCommitted(HybridTime(3)));
+  mgr.StartApplyingOperation(tx3);
+  mgr.CommitOperation(tx3);
+  ASSERT_FALSE(mgr.AreAllOperationsCommitted(HybridTime(1)));
+  ASSERT_FALSE(mgr.AreAllOperationsCommitted(HybridTime(2)));
+  ASSERT_FALSE(mgr.AreAllOperationsCommitted(HybridTime(3)));
 
   // commit tx1, first snap with in-flights should now report as all committed
   // and remaining snaps as still having uncommitted transactions
-  mgr.StartApplyingTransaction(tx1);
-  mgr.CommitTransaction(tx1);
-  ASSERT_TRUE(mgr.AreAllTransactionsCommitted(HybridTime(1)));
-  ASSERT_FALSE(mgr.AreAllTransactionsCommitted(HybridTime(2)));
-  ASSERT_FALSE(mgr.AreAllTransactionsCommitted(HybridTime(3)));
+  mgr.StartApplyingOperation(tx1);
+  mgr.CommitOperation(tx1);
+  ASSERT_TRUE(mgr.AreAllOperationsCommitted(HybridTime(1)));
+  ASSERT_FALSE(mgr.AreAllOperationsCommitted(HybridTime(2)));
+  ASSERT_FALSE(mgr.AreAllOperationsCommitted(HybridTime(3)));
 
   // Now they should all report as all committed.
-  mgr.StartApplyingTransaction(tx2);
-  mgr.CommitTransaction(tx2);
-  ASSERT_TRUE(mgr.AreAllTransactionsCommitted(HybridTime(1)));
-  ASSERT_TRUE(mgr.AreAllTransactionsCommitted(HybridTime(2)));
-  ASSERT_TRUE(mgr.AreAllTransactionsCommitted(HybridTime(3)));
+  mgr.StartApplyingOperation(tx2);
+  mgr.CommitOperation(tx2);
+  ASSERT_TRUE(mgr.AreAllOperationsCommitted(HybridTime(1)));
+  ASSERT_TRUE(mgr.AreAllOperationsCommitted(HybridTime(2)));
+  ASSERT_TRUE(mgr.AreAllOperationsCommitted(HybridTime(3)));
 }
 
 TEST_F(MvccTest, TestWaitForCleanSnapshot_SnapWithNoInflights) {
@@ -429,47 +429,47 @@ TEST_F(MvccTest, TestWaitForCleanSnapshot_SnapWithInFlights) {
 
   MvccManager mgr(clock_.get());
 
-  HybridTime tx1 = mgr.StartTransaction();
-  HybridTime tx2 = mgr.StartTransaction();
+  HybridTime tx1 = mgr.StartOperation();
+  HybridTime tx2 = mgr.StartOperation();
 
   thread waiting_thread = thread(
       &MvccTest::WaitForSnapshotAtTSThread, this, &mgr, clock_->Now());
 
   ASSERT_FALSE(HasResultSnapshot());
-  mgr.StartApplyingTransaction(tx1);
-  mgr.CommitTransaction(tx1);
+  mgr.StartApplyingOperation(tx1);
+  mgr.CommitOperation(tx1);
   ASSERT_FALSE(HasResultSnapshot());
-  mgr.StartApplyingTransaction(tx2);
-  mgr.CommitTransaction(tx2);
+  mgr.StartApplyingOperation(tx2);
+  mgr.CommitOperation(tx2);
   waiting_thread.join();
   ASSERT_TRUE(HasResultSnapshot());
 }
 
-TEST_F(MvccTest, TestWaitForApplyingTransactionsToCommit) {
+TEST_F(MvccTest, TestWaitForApplyingOperationsToCommit) {
   MvccManager mgr(clock_.get());
 
-  HybridTime tx1 = mgr.StartTransaction();
-  HybridTime tx2 = mgr.StartTransaction();
+  HybridTime tx1 = mgr.StartOperation();
+  HybridTime tx2 = mgr.StartOperation();
 
   // Wait should return immediately, since we have no transactions "applying"
   // yet.
-  mgr.WaitForApplyingTransactionsToCommit();
+  mgr.WaitForApplyingOperationsToCommit();
 
-  mgr.StartApplyingTransaction(tx1);
+  mgr.StartApplyingOperation(tx1);
 
   thread waiting_thread = thread(
-      &MvccManager::WaitForApplyingTransactionsToCommit, &mgr);
+      &MvccManager::WaitForApplyingOperationsToCommit, &mgr);
   while (mgr.GetNumWaitersForTests() == 0) {
     SleepFor(MonoDelta::FromMilliseconds(5));
   }
   ASSERT_EQ(mgr.GetNumWaitersForTests(), 1);
 
   // Aborting the other transaction shouldn't affect our waiter.
-  mgr.AbortTransaction(tx2);
+  mgr.AbortOperation(tx2);
   ASSERT_EQ(mgr.GetNumWaitersForTests(), 1);
 
   // Committing our transaction should wake the waiter.
-  mgr.CommitTransaction(tx1);
+  mgr.CommitOperation(tx1);
   ASSERT_EQ(mgr.GetNumWaitersForTests(), 0);
   waiting_thread.join();
 }
@@ -478,10 +478,10 @@ TEST_F(MvccTest, TestWaitForCleanSnapshot_SnapAtHybridTimeWithInFlights) {
 
   MvccManager mgr(clock_.get());
 
-  // Transactions with hybrid_time 1 through 3
-  HybridTime tx1 = mgr.StartTransaction();
-  HybridTime tx2 = mgr.StartTransaction();
-  HybridTime tx3 = mgr.StartTransaction();
+  // Operations with hybrid_time 1 through 3
+  HybridTime tx1 = mgr.StartOperation();
+  HybridTime tx2 = mgr.StartOperation();
+  HybridTime tx3 = mgr.StartOperation();
 
   // Start a thread waiting for transactions with ht <= 2 to commit
   thread waiting_thread = thread(
@@ -489,20 +489,20 @@ TEST_F(MvccTest, TestWaitForCleanSnapshot_SnapAtHybridTimeWithInFlights) {
   ASSERT_FALSE(HasResultSnapshot());
 
   // Commit tx 1 - thread should still wait.
-  mgr.StartApplyingTransaction(tx1);
-  mgr.CommitTransaction(tx1);
+  mgr.StartApplyingOperation(tx1);
+  mgr.CommitOperation(tx1);
   SleepFor(MonoDelta::FromMilliseconds(1));
   ASSERT_FALSE(HasResultSnapshot());
 
   // Commit tx 3 - thread should still wait.
-  mgr.StartApplyingTransaction(tx3);
-  mgr.CommitTransaction(tx3);
+  mgr.StartApplyingOperation(tx3);
+  mgr.CommitOperation(tx3);
   SleepFor(MonoDelta::FromMilliseconds(1));
   ASSERT_FALSE(HasResultSnapshot());
 
   // Commit tx 2 - thread can now continue
-  mgr.StartApplyingTransaction(tx2);
-  mgr.CommitTransaction(tx2);
+  mgr.StartApplyingOperation(tx2);
+  mgr.CommitOperation(tx2);
   waiting_thread.join();
   ASSERT_TRUE(HasResultSnapshot());
 }
@@ -513,47 +513,47 @@ TEST_F(MvccTest, TestTxnAbort) {
 
   MvccManager mgr(clock_.get());
 
-  // Transactions with hybrid_times 1 through 3
-  HybridTime tx1 = mgr.StartTransaction();
-  HybridTime tx2 = mgr.StartTransaction();
-  HybridTime tx3 = mgr.StartTransaction();
+  // Operations with hybrid_times 1 through 3
+  HybridTime tx1 = mgr.StartOperation();
+  HybridTime tx2 = mgr.StartOperation();
+  HybridTime tx3 = mgr.StartOperation();
 
   // Now abort tx1, this shouldn't move the clean time and the transaction
   // shouldn't be reported as committed.
-  mgr.AbortTransaction(tx1);
+  mgr.AbortOperation(tx1);
   ASSERT_FALSE(mgr.cur_snap_.IsCommitted(tx1));
 
   // Committing tx3 shouldn't advance the clean time since it is not the earliest
   // in-flight, but it should advance 'no_new_transactions_at_or_before_', the "safe"
   // time, to 3.
-  mgr.StartApplyingTransaction(tx3);
-  mgr.CommitTransaction(tx3);
+  mgr.StartApplyingOperation(tx3);
+  mgr.CommitOperation(tx3);
   ASSERT_TRUE(mgr.cur_snap_.IsCommitted(tx3));
   ASSERT_EQ(mgr.no_new_transactions_at_or_before_.CompareTo(tx3), 0);
 
   // Committing tx2 should advance the clean time to 3.
-  mgr.StartApplyingTransaction(tx2);
-  mgr.CommitTransaction(tx2);
+  mgr.StartApplyingOperation(tx2);
+  mgr.CommitOperation(tx2);
   ASSERT_TRUE(mgr.cur_snap_.IsCommitted(tx2));
   ASSERT_GE(mgr.GetMaxSafeTimeToReadAt().CompareTo(tx3), 0);
 }
 
 // This tests for a bug we were observing, where a clean snapshot would not
 // coalesce to the latest hybrid_time, for offline transactions.
-TEST_F(MvccTest, TestCleanTimeCoalescingOnOfflineTransactions) {
+TEST_F(MvccTest, TestCleanTimeCoalescingOnOfflineOperations) {
 
   MvccManager mgr(clock_.get());
   CHECK_OK(clock_->Update(HybridTime(20)));
 
-  CHECK_OK(mgr.StartTransactionAtHybridTime(HybridTime(10)));
-  CHECK_OK(mgr.StartTransactionAtHybridTime(HybridTime(15)));
+  CHECK_OK(mgr.StartOperationAtHybridTime(HybridTime(10)));
+  CHECK_OK(mgr.StartOperationAtHybridTime(HybridTime(15)));
   mgr.OfflineAdjustSafeTime(HybridTime(15));
 
-  mgr.StartApplyingTransaction(HybridTime(15));
-  mgr.OfflineCommitTransaction(HybridTime(15));
+  mgr.StartApplyingOperation(HybridTime(15));
+  mgr.OfflineCommitOperation(HybridTime(15));
 
-  mgr.StartApplyingTransaction(HybridTime(10));
-  mgr.OfflineCommitTransaction(HybridTime(10));
+  mgr.StartApplyingOperation(HybridTime(10));
+  mgr.OfflineCommitOperation(HybridTime(10));
   ASSERT_EQ(mgr.cur_snap_.ToString(), "MvccSnapshot[committed={T|T < 16}]");
 }
 
@@ -569,14 +569,14 @@ TEST_F(MvccTest, TestIllegalStateTransitionsCrash) {
   MvccSnapshot snap;
 
   EXPECT_DEATH({
-      mgr.StartApplyingTransaction(HybridTime(1));
+      mgr.StartApplyingOperation(HybridTime(1));
     }, "Cannot mark hybrid_time 1 as APPLYING: not in the in-flight map");
 
   // Depending whether this is a DEBUG or RELEASE build, the error message
   // could be different for this case -- the "future hybrid_time" check is only
   // run in DEBUG builds.
   EXPECT_DEATH({
-      mgr.CommitTransaction(HybridTime(1));
+      mgr.CommitOperation(HybridTime(1));
     },
     "Trying to commit a transaction with a future hybrid_time|"
     "Trying to remove hybrid_time which isn't in the in-flight set: 1");
@@ -584,47 +584,47 @@ TEST_F(MvccTest, TestIllegalStateTransitionsCrash) {
   CHECK_OK(clock_->Update(HybridTime(20)));
 
   EXPECT_DEATH({
-      mgr.CommitTransaction(HybridTime(1));
+      mgr.CommitOperation(HybridTime(1));
     }, "Trying to remove hybrid_time which isn't in the in-flight set: 1");
 
   // Start a transaction, and try committing it without having moved to "Applying"
   // state.
-  HybridTime t = mgr.StartTransaction();
+  HybridTime t = mgr.StartOperation();
   EXPECT_DEATH({
-      mgr.CommitTransaction(t);
+      mgr.CommitOperation(t);
     }, "Trying to commit a transaction which never entered APPLYING state");
 
   // Aborting should succeed, since we never moved to Applying.
-  mgr.AbortTransaction(t);
+  mgr.AbortOperation(t);
 
   // Aborting a second time should fail
   EXPECT_DEATH({
-      mgr.AbortTransaction(t);
+      mgr.AbortOperation(t);
     }, "Trying to remove hybrid_time which isn't in the in-flight set: 21");
 
   // Start a new transaction. This time, mark it as Applying.
-  t = mgr.StartTransaction();
-  mgr.StartApplyingTransaction(t);
+  t = mgr.StartOperation();
+  mgr.StartApplyingOperation(t);
 
   // Can only call StartApplying once.
   EXPECT_DEATH({
-      mgr.StartApplyingTransaction(t);
+      mgr.StartApplyingOperation(t);
     }, "Cannot mark hybrid_time 22 as APPLYING: wrong state: 1");
 
   // Cannot Abort() a transaction once we start applying it.
   EXPECT_DEATH({
-      mgr.AbortTransaction(t);
+      mgr.AbortOperation(t);
     }, "transaction with hybrid_time 22 cannot be aborted in state 1");
 
   // We can commit it successfully.
-  mgr.CommitTransaction(t);
+  mgr.CommitOperation(t);
 }
 
 TEST_F(MvccTest, TestWaitUntilCleanDeadline) {
   MvccManager mgr(clock_.get());
 
-  // Transactions with hybrid_time 1 through 3
-  HybridTime tx1 = mgr.StartTransaction();
+  // Operations with hybrid_time 1 through 3
+  HybridTime tx1 = mgr.StartOperation();
 
   // Wait until the 'tx1' hybrid_time is clean -- this won't happen because the
   // transaction isn't committed yet.
@@ -638,13 +638,13 @@ TEST_F(MvccTest, TestWaitUntilCleanDeadline) {
 TEST_F(MvccTest, TestMaxSafeTimeToReadAt) {
   MvccManager mgr(clock_.get());
   auto apply_and_commit = [&](HybridTime tx_to_commit) {
-    mgr.StartApplyingTransaction(tx_to_commit);
-    mgr.CommitTransaction(tx_to_commit);
+    mgr.StartApplyingOperation(tx_to_commit);
+    mgr.CommitOperation(tx_to_commit);
   };
 
   // Start four transactions, don't commit them yet.
   for (int i = 1; i <= 4; ++i) {
-    ASSERT_EQ(i, mgr.StartTransaction().ToUint64());
+    ASSERT_EQ(i, mgr.StartOperation().ToUint64());
     // We haven't committed any transactions yet, so the safe time is zero.
     ASSERT_EQ(HybridTime::kMin, mgr.GetMaxSafeTimeToReadAt());
   }
@@ -653,7 +653,7 @@ TEST_F(MvccTest, TestMaxSafeTimeToReadAt) {
   // then just keep committing txns until all but one are committed.
   for (int i = 5; i <= 13; ++i) {
     if (i <= 10) {
-      ASSERT_EQ(i, mgr.StartTransaction().ToUint64());
+      ASSERT_EQ(i, mgr.StartOperation().ToUint64());
     }
     const HybridTime tx_to_commit(i - 4);
     apply_and_commit(tx_to_commit);

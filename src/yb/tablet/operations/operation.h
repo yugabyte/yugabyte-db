@@ -30,8 +30,8 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TRANSACTIONS_TRANSACTION_H_
-#define YB_TABLET_TRANSACTIONS_TRANSACTION_H_
+#ifndef YB_TABLET_OPERATIONS_OPERATION_H
+#define YB_TABLET_OPERATIONS_OPERATION_H
 
 #include <mutex>
 #include <string>
@@ -50,12 +50,12 @@ namespace yb {
 
 namespace tablet {
 class TabletPeer;
-class TransactionCompletionCallback;
-class TransactionState;
+class OperationCompletionCallback;
+class OperationState;
 
-// All metrics associated with a Transaction.
-struct TransactionMetrics {
-  TransactionMetrics();
+// All metrics associated with a Operation.
+struct OperationMetrics {
+  OperationMetrics();
   void Reset();
   int successful_inserts;
   int successful_updates;
@@ -65,17 +65,17 @@ struct TransactionMetrics {
 
 // Base class for transactions.
 // There are different implementations for different types (Write, AlterSchema, etc.).
-// TransactionDriver implementations use Transactions along with Consensus to execute
+// OperationDriver implementations use Operations along with Consensus to execute
 // and replicate operations in a consensus configuration.
-class Transaction {
+class Operation {
  public:
 
-  enum TransactionType {
+  enum OperationType {
     WRITE_TXN,
     ALTER_SCHEMA_TXN,
     UPDATE_TRANSACTION_TXN,
 
-    kTransactionTypes // Must be the last one (number of types above).
+    kOperationTypes // Must be the last one (number of types above).
   };
 
   enum TraceType {
@@ -83,25 +83,25 @@ class Transaction {
     TRACE_TXNS = 1
   };
 
-  enum TransactionResult {
+  enum OperationResult {
     COMMITTED,
     ABORTED
   };
 
-  Transaction(std::unique_ptr<TransactionState> state,
-              consensus::DriverType type,
-              TransactionType tx_type);
+  Operation(std::unique_ptr<OperationState> state,
+            consensus::DriverType type,
+            OperationType operation_type);
 
-  // Returns the TransactionState for this transaction.
-  virtual TransactionState* state() { return state_.get(); }
-  virtual const TransactionState* state() const { return state_.get(); }
+  // Returns the OperationState for this transaction.
+  virtual OperationState* state() { return state_.get(); }
+  virtual const OperationState* state() const { return state_.get(); }
 
   // Returns whether this transaction is being executed on the leader or on a
   // replica.
   consensus::DriverType type() const { return type_; }
 
   // Returns this transaction's type.
-  TransactionType tx_type() const { return tx_type_; }
+  OperationType operation_type() const { return operation_type_; }
 
   // Builds the ReplicateMsg for this transaction.
   virtual consensus::ReplicateMsgPtr NewReplicateMsg() = 0;
@@ -137,25 +137,25 @@ class Transaction {
   // will reply to the client after this method call returns.
   // 'result' will be either COMMITTED or ABORTED, letting implementations
   // know what was the final status of the transaction.
-  virtual void Finish(TransactionResult result) {}
+  virtual void Finish(OperationResult result) {}
 
   // Each implementation should have its own ToString() method.
   virtual std::string ToString() const = 0;
 
-  virtual ~Transaction() {}
+  virtual ~Operation() {}
 
  private:
   // A private version of this transaction's transaction state so that
-  // we can use base TransactionState methods on destructors.
-  std::unique_ptr<TransactionState> state_;
+  // we can use base OperationState methods on destructors.
+  std::unique_ptr<OperationState> state_;
   const consensus::DriverType type_;
-  const TransactionType tx_type_;
+  const OperationType operation_type_;
 };
 
-class TransactionState {
+class OperationState {
  public:
-  TransactionState(const TransactionState&) = delete;
-  void operator=(const TransactionState&) = delete;
+  OperationState(const OperationState&) = delete;
+  void operator=(const OperationState&) = delete;
 
   // Returns the request PB associated with this transaction. May be NULL if
   // the transaction's state has been reset.
@@ -188,20 +188,20 @@ class TransactionState {
   }
 
   // Return metrics related to this transaction.
-  const TransactionMetrics& metrics() const {
+  const OperationMetrics& metrics() const {
     return tx_metrics_;
   }
 
-  TransactionMetrics* mutable_metrics() {
+  OperationMetrics* mutable_metrics() {
     return &tx_metrics_;
   }
 
-  void set_completion_callback(std::unique_ptr<TransactionCompletionCallback> completion_clbk) {
+  void set_completion_callback(std::unique_ptr<OperationCompletionCallback> completion_clbk) {
     completion_clbk_ = std::move(completion_clbk);
   }
 
   // Returns the completion callback.
-  TransactionCompletionCallback* completion_callback() {
+  OperationCompletionCallback* completion_callback() {
     return DCHECK_NOTNULL(completion_clbk_.get());
   }
 
@@ -260,18 +260,18 @@ class TransactionState {
     return external_consistency_mode_;
   }
 
-  virtual ~TransactionState();
+  virtual ~OperationState();
 
  protected:
-  explicit TransactionState(TabletPeer* tablet_peer);
+  explicit OperationState(TabletPeer* tablet_peer);
 
-  TransactionMetrics tx_metrics_;
+  OperationMetrics tx_metrics_;
 
   // The tablet peer that is coordinating this transaction.
   TabletPeer* const tablet_peer_;
 
   // Optional callback to be called once the transaction completes.
-  std::unique_ptr<TransactionCompletionCallback> completion_clbk_;
+  std::unique_ptr<OperationCompletionCallback> completion_clbk_;
 
   AutoReleasePool pool_;
 
@@ -298,16 +298,16 @@ class TransactionState {
 // A parent class for the callback that gets called when transactions
 // complete.
 //
-// This must be set in the TransactionState if the transaction initiator is to
+// This must be set in the OperationState if the transaction initiator is to
 // be notified of when a transaction completes. The callback belongs to the
 // transaction context and is deleted along with it.
 //
 // NOTE: this is a concrete class so that we can use it as a default implementation
 // which avoids callers having to keep checking for NULL.
-class TransactionCompletionCallback {
+class OperationCompletionCallback {
  public:
 
-  TransactionCompletionCallback();
+  OperationCompletionCallback();
 
   // Allows to set an error for this transaction and a mapping to a server level code.
   // Calling this method does not mean the transaction is completed.
@@ -322,30 +322,30 @@ class TransactionCompletionCallback {
   const tserver::TabletServerErrorPB::Code error_code() const;
 
   // Subclasses should override this.
-  virtual void TransactionCompleted();
+  virtual void OperationCompleted();
 
-  virtual ~TransactionCompletionCallback();
+  virtual ~OperationCompletionCallback();
 
  protected:
   Status status_;
   tserver::TabletServerErrorPB::Code code_;
 };
 
-// TransactionCompletionCallback implementation that can be waited on.
+// OperationCompletionCallback implementation that can be waited on.
 // Helper to make async transactions, sync.
 // This is templated to accept any response PB that has a TabletServerError
 // 'error' field and to set the error before performing the latch countdown.
 // The callback does *not* take ownership of either latch or response.
 template<class ResponsePB>
-class LatchTransactionCompletionCallback : public TransactionCompletionCallback {
+class LatchOperationCompletionCallback : public OperationCompletionCallback {
  public:
-  explicit LatchTransactionCompletionCallback(CountDownLatch* latch,
-                                              ResponsePB* response)
+  explicit LatchOperationCompletionCallback(CountDownLatch* latch,
+                                            ResponsePB* response)
     : latch_(DCHECK_NOTNULL(latch)),
       response_(DCHECK_NOTNULL(response)) {
   }
 
-  virtual void TransactionCompleted() override {
+  virtual void OperationCompleted() override {
     if (!status_.ok()) {
       StatusToPB(status_, response_->mutable_error()->mutable_status());
     }
@@ -360,4 +360,4 @@ class LatchTransactionCompletionCallback : public TransactionCompletionCallback 
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_TRANSACTIONS_TRANSACTION_H_
+#endif  // YB_TABLET_OPERATIONS_OPERATION_H

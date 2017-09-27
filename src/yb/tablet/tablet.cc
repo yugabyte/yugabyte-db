@@ -94,8 +94,8 @@
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
-#include "yb/tablet/transactions/alter_schema_transaction.h"
-#include "yb/tablet/transactions/write_transaction.h"
+#include "yb/tablet/operations/alter_schema_operation.h"
+#include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/util/bloom_filter.h"
 #include "yb/util/debug/trace_event.h"
@@ -489,25 +489,25 @@ Status Tablet::NewRowIterator(const Schema &projection,
 }
 
 Status Tablet::DecodeWriteOperations(const Schema* client_schema,
-                                     WriteTransactionState* tx_state) {
+                                     WriteOperationState* operation_state) {
   TRACE_EVENT0("tablet", "Tablet::DecodeWriteOperations");
 
-  DCHECK_EQ(tx_state->row_ops().size(), 0);
+  DCHECK_EQ(operation_state->row_ops().size(), 0);
 
   if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    CHECK(tx_state->request()->has_write_batch())
+    CHECK(operation_state->request()->has_write_batch())
         << "Write request for kv-table has no write batch";
-    CHECK(!tx_state->request()->has_row_operations())
+    CHECK(!operation_state->request()->has_row_operations())
         << "Write request for kv-table has row operations";
     // We construct a RocksDB write batch immediately before applying it.
   } else {
-    CHECK(!tx_state->request()->has_write_batch())
+    CHECK(!operation_state->request()->has_write_batch())
         << "Write request for kudu-table has write batch";
-    CHECK(tx_state->request()->has_row_operations())
+    CHECK(operation_state->request()->has_row_operations())
         << "Write request for kudu-table has no row operations";
     // Acquire the schema lock in shared mode, so that the schema doesn't
     // change while this transaction is in-flight.
-    tx_state->AcquireSchemaLock(&schema_lock_);
+    operation_state->AcquireSchemaLock(&schema_lock_);
 
     // The Schema needs to be held constant while any transactions are between
     // PREPARE and APPLY stages
@@ -515,10 +515,10 @@ Status Tablet::DecodeWriteOperations(const Schema* client_schema,
     vector<DecodedRowOperation> ops;
 
     // Decode the ops
-    RowOperationsPBDecoder dec(&tx_state->request()->row_operations(),
+    RowOperationsPBDecoder dec(&operation_state->request()->row_operations(),
                                client_schema,
                                schema(),
-                               tx_state->arena());
+                               operation_state->arena());
     RETURN_NOT_OK(dec.DecodeOperations(&ops));
 
     // Create RowOp objects for each
@@ -530,20 +530,20 @@ Status Tablet::DecodeWriteOperations(const Schema* client_schema,
 
     // Important to set the schema before the ops -- we need the
     // schema in order to stringify the ops.
-    tx_state->set_schema_at_decode_time(schema());
-    tx_state->swap_row_ops(&row_ops);
+    operation_state->set_schema_at_decode_time(schema());
+    operation_state->swap_row_ops(&row_ops);
   }
 
   return Status::OK();
 }
 
-Status Tablet::AcquireKuduRowLocks(WriteTransactionState *tx_state) {
+Status Tablet::AcquireKuduRowLocks(WriteOperationState *operation_state) {
   if (table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     TRACE_EVENT1("tablet", "Tablet::AcquireKuduRowLocks",
-                 "num_locks", tx_state->row_ops().size());
-    TRACE("PREPARE: Acquiring locks for $0 operations", tx_state->row_ops().size());
-    for (RowOp* op : tx_state->row_ops()) {
-      RETURN_NOT_OK(AcquireLockForOp(tx_state, op));
+                 "num_locks", operation_state->row_ops().size());
+    TRACE("PREPARE: Acquiring locks for $0 operations", operation_state->row_ops().size());
+    for (RowOp* op : operation_state->row_ops()) {
+      RETURN_NOT_OK(AcquireLockForOp(operation_state, op));
     }
     TRACE("PREPARE: locks acquired");
   }
@@ -566,7 +566,7 @@ Status Tablet::CheckRowInTablet(const ConstContiguousRow& row) const {
   return Status::OK();
 }
 
-Status Tablet::AcquireLockForOp(WriteTransactionState* tx_state, RowOp* op) {
+Status Tablet::AcquireLockForOp(WriteOperationState* operation_state, RowOp* op) {
   CHECK_EQ(TableType::KUDU_COLUMNAR_TABLE_TYPE, table_type_);
 
   ConstContiguousRow row_key(&key_schema_, op->decoded_op.row_data);
@@ -574,50 +574,50 @@ Status Tablet::AcquireLockForOp(WriteTransactionState* tx_state, RowOp* op) {
   RETURN_NOT_OK(CheckRowInTablet(row_key));
 
   ScopedRowLock row_lock(&lock_manager_,
-                         tx_state,
+                         operation_state,
                          op->key_probe->encoded_key_slice(),
                          LockManager::LOCK_EXCLUSIVE);
   op->row_lock = row_lock.Pass();
   return Status::OK();
 }
 
-void Tablet::StartTransaction(WriteTransactionState* tx_state) {
-  gscoped_ptr<ScopedWriteTransaction> mvcc_tx;
+void Tablet::StartOperation(WriteOperationState* operation_state) {
+  std::unique_ptr<ScopedWriteOperation> mvcc_tx;
 
   // If the state already has a hybrid_time then we're replaying a transaction that occurred
   // before a crash or at another node...
-  const HybridTime existing_hybrid_time = tx_state->hybrid_time_even_if_unset();
+  const HybridTime existing_hybrid_time = operation_state->hybrid_time_even_if_unset();
 
   if (existing_hybrid_time != HybridTime::kInvalidHybridTime) {
-    mvcc_tx.reset(new ScopedWriteTransaction(&mvcc_, existing_hybrid_time));
+    mvcc_tx.reset(new ScopedWriteOperation(&mvcc_, existing_hybrid_time));
     // ... otherwise this is a new transaction and we must assign a new hybrid_time. We either
     // assign a hybrid_time in the future, if the consistency mode is COMMIT_WAIT, or we assign
     // one in the present if the consistency mode is any other one.
-  } else if (tx_state->external_consistency_mode() == COMMIT_WAIT) {
-    mvcc_tx.reset(new ScopedWriteTransaction(&mvcc_, ScopedWriteTransaction::NOW_LATEST));
+  } else if (operation_state->external_consistency_mode() == COMMIT_WAIT) {
+    mvcc_tx.reset(new ScopedWriteOperation(&mvcc_, ScopedWriteOperation::NOW_LATEST));
   } else {
-    mvcc_tx.reset(new ScopedWriteTransaction(&mvcc_, ScopedWriteTransaction::NOW));
+    mvcc_tx.reset(new ScopedWriteOperation(&mvcc_, ScopedWriteOperation::NOW));
   }
-  tx_state->SetMvccTxAndHybridTime(mvcc_tx.Pass());
+  operation_state->SetMvccTxAndHybridTime(std::move(mvcc_tx));
 }
 
-Status Tablet::InsertUnlocked(WriteTransactionState *tx_state,
+Status Tablet::InsertUnlocked(WriteOperationState *operation_state,
                               RowOp* insert) {
   // A check only needed for Kudu's columnar format that has to happen before the row lock.
   const TabletComponents* comps =
       table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE ?
-      DCHECK_NOTNULL(tx_state->tablet_components()) : nullptr;
+      DCHECK_NOTNULL(operation_state->tablet_components()) : nullptr;
 
   CHECK(state_ == kOpen || state_ == kBootstrapping);
-  // make sure that the WriteTransactionState has the component lock and that
+  // make sure that the WriteOperationState has the component lock and that
   // there the RowOp has the row lock.
 
   if (table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     DCHECK(insert->has_row_lock()) << "RowOp must hold the row lock.";
   }
 
-  DCHECK_EQ(tx_state->schema_at_decode_time(), schema()) << "Raced against schema change";
-  DCHECK(tx_state->op_id().IsInitialized()) << "TransactionState OpId needed for anchoring";
+  DCHECK_EQ(operation_state->schema_at_decode_time(), schema()) << "Raced against schema change";
+  DCHECK(operation_state->op_id().IsInitialized()) << "OperationState OpId needed for anchoring";
 
   ProbeStats stats;
 
@@ -626,7 +626,7 @@ Status Tablet::InsertUnlocked(WriteTransactionState *tx_state,
 
   switch (table_type_) {
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
-      return KuduColumnarInsertUnlocked(tx_state, insert, comps, &stats);
+      return KuduColumnarInsertUnlocked(operation_state, insert, comps, &stats);
     default:
       LOG(FATAL) << "Cannot perform an unlocked insert for table type " << table_type_;
   }
@@ -634,7 +634,7 @@ Status Tablet::InsertUnlocked(WriteTransactionState *tx_state,
 }
 
 Status Tablet::KuduColumnarInsertUnlocked(
-    WriteTransactionState *tx_state,
+    WriteOperationState *operation_state,
     RowOp* insert,
     const TabletComponents* comps,
     ProbeStats* stats) {
@@ -659,7 +659,7 @@ Status Tablet::KuduColumnarInsertUnlocked(
     }
   }
 
-  HybridTime ht = tx_state->hybrid_time();
+  HybridTime ht = operation_state->hybrid_time();
   ConstContiguousRow row(schema(), insert->decoded_op.row_data);
 
   // TODO: the Insert() call below will re-encode the key, which is a
@@ -667,7 +667,7 @@ Status Tablet::KuduColumnarInsertUnlocked(
 
   // Now try to insert into memrowset. The memrowset itself will return
   // AlreadyPresent if it has already been inserted there.
-  Status s = comps->memrowset->Insert(ht, row, tx_state->op_id());
+  Status s = comps->memrowset->Insert(ht, row, operation_state->op_id());
   if (PREDICT_TRUE(s.ok())) {
     insert->SetInsertSucceeded(comps->memrowset->mrs_id());
   } else {
@@ -679,15 +679,15 @@ Status Tablet::KuduColumnarInsertUnlocked(
   return s;
 }
 
-Status Tablet::MutateRowUnlocked(WriteTransactionState *tx_state,
+Status Tablet::MutateRowUnlocked(WriteOperationState *operation_state,
                                  RowOp* mutate) {
-  DCHECK(tx_state != nullptr) << "you must have a WriteTransactionState";
-  DCHECK(tx_state->op_id().IsInitialized()) << "TransactionState OpId needed for anchoring";
-  DCHECK_EQ(tx_state->schema_at_decode_time(), schema());
+  DCHECK(operation_state != nullptr) << "you must have a WriteOperationState";
+  DCHECK(operation_state->op_id().IsInitialized()) << "OperationState OpId needed for anchoring";
+  DCHECK_EQ(operation_state->schema_at_decode_time(), schema());
 
   gscoped_ptr<OperationResultPB> result(new OperationResultPB());
 
-  const TabletComponents* comps = DCHECK_NOTNULL(tx_state->tablet_components());
+  const TabletComponents* comps = DCHECK_NOTNULL(operation_state->tablet_components());
 
   // Validate the update.
   RowChangeListDecoder rcl_decoder(mutate->decoded_op.changelist);
@@ -702,7 +702,7 @@ Status Tablet::MutateRowUnlocked(WriteTransactionState *tx_state,
     return s;
   }
 
-  HybridTime ht = tx_state->hybrid_time();
+  HybridTime ht = operation_state->hybrid_time();
 
   ProbeStats stats;
   // Submit the stats before returning from this function
@@ -712,7 +712,7 @@ Status Tablet::MutateRowUnlocked(WriteTransactionState *tx_state,
   s = comps->memrowset->MutateRow(ht,
                                   *mutate->key_probe,
                                   mutate->decoded_op.changelist,
-                                  tx_state->op_id(),
+                                  operation_state->op_id(),
                                   &stats,
                                   result.get());
   if (s.ok()) {
@@ -736,7 +736,7 @@ Status Tablet::MutateRowUnlocked(WriteTransactionState *tx_state,
     s = rs->MutateRow(ht,
                       *mutate->key_probe,
                       mutate->decoded_op.changelist,
-                      tx_state->op_id(),
+                      operation_state->op_id(),
                       &stats,
                       result.get());
     if (s.ok()) {
@@ -754,38 +754,38 @@ Status Tablet::MutateRowUnlocked(WriteTransactionState *tx_state,
   return s;
 }
 
-void Tablet::StartApplying(WriteTransactionState* tx_state) {
+void Tablet::StartApplying(WriteOperationState* operation_state) {
   if (table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     shared_lock<rw_spinlock> lock(component_lock_);
-    tx_state->StartApplying();
-    tx_state->set_tablet_components(components_);
+    operation_state->StartApplying();
+    operation_state->set_tablet_components(components_);
   } else {
-    tx_state->StartApplying();
+    operation_state->StartApplying();
   }
 }
 
-void Tablet::ApplyRowOperations(WriteTransactionState* tx_state) {
-  last_committed_write_index_.store(tx_state->op_id().index(), std::memory_order_release);
-  StartApplying(tx_state);
+void Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
+  last_committed_write_index_.store(operation_state->op_id().index(), std::memory_order_release);
+  StartApplying(operation_state);
   switch (table_type_) {
     case TableType::KUDU_COLUMNAR_TABLE_TYPE: {
-      for (RowOp* row_op : tx_state->row_ops()) {
-        ApplyKuduRowOperation(tx_state, row_op);
+      for (RowOp* row_op : operation_state->row_ops()) {
+        ApplyKuduRowOperation(operation_state, row_op);
       }
       return;
     }
     case TableType::YQL_TABLE_TYPE:
     case TableType::REDIS_TABLE_TYPE: {
       const KeyValueWriteBatchPB& put_batch =
-          tx_state->consensus_round() && tx_state->consensus_round()->replicate_msg()
+          operation_state->consensus_round() && operation_state->consensus_round()->replicate_msg()
               // Online case.
-              ? tx_state->consensus_round()->replicate_msg()->write_request().write_batch()
+              ? operation_state->consensus_round()->replicate_msg()->write_request().write_batch()
               // Bootstrap case.
-              : tx_state->request()->write_batch();
+              : operation_state->request()->write_batch();
 
       ApplyKeyValueRowOperations(put_batch,
-                                 tx_state->op_id(),
-                                 tx_state->hybrid_time());
+                                 operation_state->op_id(),
+                                 operation_state->hybrid_time());
       return;
     }
   }
@@ -1079,7 +1079,7 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(
     doc_ops.emplace_back(new RedisWriteOperation(
         redis_write_batch->Mutable(i), read_hybrid_time));
   }
-  RETURN_NOT_OK(StartDocWriteTransaction(
+  RETURN_NOT_OK(StartDocWriteOperation(
       doc_ops, keys_locked, redis_write_request->mutable_write_batch()));
   for (size_t i = 0; i < doc_ops.size(); i++) {
     responses->emplace_back(
@@ -1146,7 +1146,7 @@ Status Tablet::KeyValueBatchFromQLWriteBatch(
     WriteRequestPB* ql_write_request,
     LockBatch *keys_locked,
     WriteResponsePB* write_response,
-    WriteTransactionState* tx_state) {
+    WriteOperationState* operation_state) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
 
   vector<unique_ptr<DocOperation>> doc_ops;
@@ -1164,7 +1164,7 @@ Status Tablet::KeyValueBatchFromQLWriteBatch(
       doc_ops.emplace_back(new QLWriteOperation(req, metadata_->schema(), resp));
     }
   }
-  RETURN_NOT_OK(StartDocWriteTransaction(
+  RETURN_NOT_OK(StartDocWriteOperation(
       doc_ops, keys_locked, ql_write_request->mutable_write_batch()));
   for (size_t i = 0; i < doc_ops.size(); i++) {
     QLWriteOperation* ql_write_op = down_cast<QLWriteOperation*>(doc_ops[i].get());
@@ -1172,14 +1172,14 @@ Status Tablet::KeyValueBatchFromQLWriteBatch(
     // rows data as a sidecar after the transaction completes.
     if (ql_write_op->rowblock() != nullptr) {
       doc_ops[i].release();
-      tx_state->ql_write_ops()->emplace_back(unique_ptr<QLWriteOperation>(ql_write_op));
+      operation_state->ql_write_ops()->emplace_back(unique_ptr<QLWriteOperation>(ql_write_op));
     }
   }
 
   return Status::OK();
 }
 
-Status Tablet::AcquireLocksAndPerformDocOperations(WriteTransactionState *state) {
+Status Tablet::AcquireLocksAndPerformDocOperations(WriteOperationState *state) {
   if (table_type_ != KUDU_COLUMNAR_TABLE_TYPE) {
     LockBatch locks_held;
     WriteRequestPB* key_value_write_request = state->mutable_request();
@@ -1343,21 +1343,21 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
       }
     }
   }
-  return StartDocWriteTransaction(doc_ops, keys_locked, write_batch);
+  return StartDocWriteOperation(doc_ops, keys_locked, write_batch);
 }
 
-void Tablet::ApplyKuduRowOperation(WriteTransactionState *tx_state,
+void Tablet::ApplyKuduRowOperation(WriteOperationState *operation_state,
                                    RowOp *row_op) {
   CHECK_EQ(TableType::KUDU_COLUMNAR_TABLE_TYPE, table_type_)
       << "Failed while trying to apply Kudu row operations on a non-Kudu table";
   switch (row_op->decoded_op.type) {
     case RowOperationsPB::INSERT:
-      ignore_result(InsertUnlocked(tx_state, row_op));
+      ignore_result(InsertUnlocked(operation_state, row_op));
       return;
 
     case RowOperationsPB::UPDATE:
     case RowOperationsPB::DELETE:
-      ignore_result(MutateRowUnlocked(tx_state, row_op));
+      ignore_result(MutateRowUnlocked(operation_state, row_op));
       return;
 
     default:
@@ -1456,7 +1456,7 @@ Status Tablet::FlushUnlocked(FlushMode mode) {
 
   // Wait for any in-flight transactions to finish against the old MRS
   // before we flush it.
-  mvcc_.WaitForApplyingTransactionsToCommit();
+  mvcc_.WaitForApplyingOperationsToCommit();
 
   // Note: "input" should only contain old_mrs.
   return FlushInternal(input, old_mrs);
@@ -1632,7 +1632,7 @@ Status Tablet::FlushInternal(const RowSetsInCompaction& input,
   return Status::OK();
 }
 
-Status Tablet::CreatePreparedAlterSchema(AlterSchemaTransactionState *tx_state,
+Status Tablet::CreatePreparedAlterSchema(AlterSchemaOperationState *operation_state,
                                          const Schema* schema) {
   if (!key_schema_.KeyEquals(*schema)) {
     return STATUS(InvalidArgument, "Schema keys cannot be altered",
@@ -1647,14 +1647,14 @@ Status Tablet::CreatePreparedAlterSchema(AlterSchemaTransactionState *tx_state,
   // Alter schema must run when no reads/writes are in progress.
   // However, compactions and flushes can continue to run in parallel
   // with the schema change,
-  tx_state->AcquireSchemaLock(&schema_lock_);
+  operation_state->AcquireSchemaLock(&schema_lock_);
 
-  tx_state->set_schema(schema);
+  operation_state->set_schema(schema);
   return Status::OK();
 }
 
-Status Tablet::AlterSchema(AlterSchemaTransactionState *tx_state) {
-  DCHECK(key_schema_.KeyEquals(*DCHECK_NOTNULL(tx_state->schema())))
+Status Tablet::AlterSchema(AlterSchemaOperationState *operation_state) {
+  DCHECK(key_schema_.KeyEquals(*DCHECK_NOTNULL(operation_state->schema())))
       << "Schema keys cannot be altered";
 
   // Prevent any concurrent flushes. Otherwise, we run into issues where
@@ -1665,35 +1665,35 @@ Status Tablet::AlterSchema(AlterSchemaTransactionState *tx_state) {
   RowSetsInCompaction input;
   shared_ptr<MemRowSet> old_ms;
   {
-    bool same_schema = schema()->Equals(*tx_state->schema());
+    bool same_schema = schema()->Equals(*operation_state->schema());
 
     // If the current version >= new version, there is nothing to do.
-    if (metadata_->schema_version() >= tx_state->schema_version()) {
+    if (metadata_->schema_version() >= operation_state->schema_version()) {
       LOG(INFO) << "Already running schema version " << metadata_->schema_version()
-                << " got alter request for version " << tx_state->schema_version();
+                << " got alter request for version " << operation_state->schema_version();
       return Status::OK();
     }
 
     LOG(INFO) << "Alter schema from " << schema()->ToString()
               << " version " << metadata_->schema_version()
-              << " to " << tx_state->schema()->ToString()
-              << " version " << tx_state->schema_version();
+              << " to " << operation_state->schema()->ToString()
+              << " version " << operation_state->schema_version();
     DCHECK(schema_lock_.is_locked());
 
     // Find out which columns have been deleted in this schema change, and add them to metadata.
     for (const auto& col : schema()->column_ids()) {
-      if (tx_state->schema()->find_column_by_id(col) == Schema::kColumnNotFound) {
+      if (operation_state->schema()->find_column_by_id(col) == Schema::kColumnNotFound) {
         DeletedColumn deleted_col(col, clock_->Now());
         LOG(INFO) << "Column " << col.ToString() << " recorded as deleted.";
         metadata_->AddDeletedColumn(deleted_col);
       }
     }
 
-    metadata_->SetSchema(*tx_state->schema(), tx_state->schema_version());
-    if (tx_state->has_new_table_name()) {
-      metadata_->SetTableName(tx_state->new_table_name());
+    metadata_->SetSchema(*operation_state->schema(), operation_state->schema_version());
+    if (operation_state->has_new_table_name()) {
+      metadata_->SetTableName(operation_state->new_table_name());
       if (metric_entity_) {
-        metric_entity_->SetAttribute("table_name", tx_state->new_table_name());
+        metric_entity_->SetAttribute("table_name", operation_state->new_table_name());
       }
     }
 
@@ -2252,7 +2252,7 @@ Status Tablet::DoCompactionOrFlush(const RowSetsInCompaction &input, int64_t mrs
     // We need to make sure all such transactions end up in the
     // 'applying_during_swap' list, the 'non_duplicated_txns_snap' snapshot,
     // or both. Thus it's crucial that these next two lines are in this order!
-    mvcc_.GetApplyingTransactionsHybridTimes(&applying_during_swap);
+    mvcc_.GetApplyingOperationsHybridTimes(&applying_during_swap);
     non_duplicated_txns_snap = MvccSnapshot(mvcc_);
   }
 
@@ -2273,7 +2273,7 @@ Status Tablet::DoCompactionOrFlush(const RowSetsInCompaction &input, int64_t mrs
   // those transactions in 'applying_during_swap', but MVCC doesn't implement the
   // ability to wait for a specific set. So instead we wait for all currently applying --
   // a bit more than we need, but still correct.
-  mvcc_.WaitForApplyingTransactionsToCommit();
+  mvcc_.WaitForApplyingOperationsToCommit();
 
   // Then we want to consider all those transactions that were in-flight when we did the
   // swap as committed in 'non_duplicated_txns_snap'.
@@ -2506,21 +2506,21 @@ Status Tablet::KuduColumnarCaptureConsistentIterators(
   return Status::OK();
 }
 
-Status Tablet::StartDocWriteTransaction(const vector<unique_ptr<DocOperation>> &doc_ops,
-                                        LockBatch *keys_locked,
-                                        KeyValueWriteBatchPB* write_batch) {
+Status Tablet::StartDocWriteOperation(const vector<unique_ptr<DocOperation>> &doc_ops,
+                                      LockBatch *keys_locked,
+                                      KeyValueWriteBatchPB* write_batch) {
   bool need_read_snapshot = false;
   HybridTime hybrid_time;
-  docdb::PrepareDocWriteTransaction(
+  docdb::PrepareDocWriteOperation(
       doc_ops, &shared_lock_manager_, keys_locked, &need_read_snapshot);
-  unique_ptr<ScopedReadTransaction> read_txn;
+  unique_ptr<ScopedReadOperation> read_txn;
   if (need_read_snapshot) {
-    read_txn.reset(new ScopedReadTransaction(this));
+    read_txn.reset(new ScopedReadOperation(this));
     hybrid_time = read_txn->GetReadTimestamp();
   }
-  // We expect all read operations for this transaction to be done in ApplyDocWriteTransaction.
+  // We expect all read operations for this transaction to be done in ApplyDocWriteOperation.
   // Once read_txn goes out of scope, the read point is deregistered.
-  return docdb::ApplyDocWriteTransaction(
+  return docdb::ApplyDocWriteOperation(
       doc_ops, hybrid_time, rocksdb_.get(), write_batch, &monotonic_counter_);
 }
 
@@ -2933,16 +2933,16 @@ std::string Tablet::DocDBDumpStrInTest() {
   return docdb::DocDBDebugDumpToStr(rocksdb_.get(), false);
 }
 
-ScopedReadTransaction::ScopedReadTransaction(AbstractTablet* tablet)
+ScopedReadOperation::ScopedReadOperation(AbstractTablet* tablet)
     : tablet_(tablet), timestamp_(tablet_->SafeTimestampToRead()) {
   tablet_->RegisterReaderTimestamp(timestamp_);
 }
 
-ScopedReadTransaction::~ScopedReadTransaction() {
+ScopedReadOperation::~ScopedReadOperation() {
   tablet_->UnregisterReader(timestamp_);
 }
 
-HybridTime ScopedReadTransaction::GetReadTimestamp() {
+HybridTime ScopedReadOperation::GetReadTimestamp() {
   return timestamp_;
 }
 

@@ -30,9 +30,9 @@
 // under the License.
 //
 
-#include <glog/logging.h>
+#include "yb/tablet/operations/alter_schema_operation.h"
 
-#include "yb/tablet/transactions/alter_schema_transaction.h"
+#include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/rpc/rpc_context.h"
@@ -56,39 +56,39 @@ using tserver::TabletServerErrorPB;
 using tserver::AlterSchemaRequestPB;
 using tserver::AlterSchemaResponsePB;
 
-string AlterSchemaTransactionState::ToString() const {
-  return Substitute("AlterSchemaTransactionState "
+string AlterSchemaOperationState::ToString() const {
+  return Substitute("AlterSchemaOperationState "
                     "[hybrid_time=$0, schema=$1, request=$2]",
                     hybrid_time_even_if_unset().ToString(),
                     schema_ == nullptr ? "(none)" : schema_->ToString(),
                     request_ == nullptr ? "(none)" : request_->ShortDebugString());
 }
 
-void AlterSchemaTransactionState::AcquireSchemaLock(rw_semaphore* l) {
+void AlterSchemaOperationState::AcquireSchemaLock(rw_semaphore* l) {
   TRACE("Acquiring schema lock in exclusive mode");
   schema_lock_ = std::unique_lock<rw_semaphore>(*l);
   TRACE("Acquired schema lock");
 }
 
-void AlterSchemaTransactionState::ReleaseSchemaLock() {
+void AlterSchemaOperationState::ReleaseSchemaLock() {
   CHECK(schema_lock_.owns_lock());
   schema_lock_ = std::unique_lock<rw_semaphore>();
   TRACE("Released schema lock");
 }
 
 
-AlterSchemaTransaction::AlterSchemaTransaction(std::unique_ptr<AlterSchemaTransactionState> state,
-                                               DriverType type)
-    : Transaction(std::move(state), type, Transaction::ALTER_SCHEMA_TXN) {}
+AlterSchemaOperation::AlterSchemaOperation(std::unique_ptr<AlterSchemaOperationState> state,
+                                           DriverType type)
+    : Operation(std::move(state), type, Operation::ALTER_SCHEMA_TXN) {}
 
-consensus::ReplicateMsgPtr AlterSchemaTransaction::NewReplicateMsg() {
+consensus::ReplicateMsgPtr AlterSchemaOperation::NewReplicateMsg() {
   auto result = std::make_shared<ReplicateMsg>();
   result->set_op_type(ALTER_SCHEMA_OP);
   result->mutable_alter_schema_request()->CopyFrom(*state()->request());
   return result;
 }
 
-Status AlterSchemaTransaction::Prepare() {
+Status AlterSchemaOperation::Prepare() {
   TRACE("PREPARE ALTER-SCHEMA: Starting");
 
   // Decode schema
@@ -108,7 +108,7 @@ Status AlterSchemaTransaction::Prepare() {
   return s;
 }
 
-void AlterSchemaTransaction::Start() {
+void AlterSchemaOperation::Start() {
   if (!state()->has_hybrid_time()) {
     state()->set_hybrid_time(state()->tablet_peer()->clock().Now());
   }
@@ -116,7 +116,7 @@ void AlterSchemaTransaction::Start() {
       server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));
 }
 
-Status AlterSchemaTransaction::Apply(gscoped_ptr<CommitMsg>* commit_msg) {
+Status AlterSchemaOperation::Apply(gscoped_ptr<CommitMsg>* commit_msg) {
   TRACE("APPLY ALTER-SCHEMA: Starting");
 
   Tablet* tablet = state()->tablet_peer()->tablet();
@@ -130,8 +130,8 @@ Status AlterSchemaTransaction::Apply(gscoped_ptr<CommitMsg>* commit_msg) {
   return Status::OK();
 }
 
-void AlterSchemaTransaction::Finish(TransactionResult result) {
-  if (PREDICT_FALSE(result == Transaction::ABORTED)) {
+void AlterSchemaOperation::Finish(OperationResult result) {
+  if (PREDICT_FALSE(result == Operation::ABORTED)) {
     TRACE("AlterSchemaCommitCallback: transaction aborted");
     state()->Finish();
     return;
@@ -144,15 +144,15 @@ void AlterSchemaTransaction::Finish(TransactionResult result) {
   // Tablet::AlterSchema().
   state()->ReleaseSchemaLock();
 
-  DCHECK_EQ(result, Transaction::COMMITTED);
+  DCHECK_EQ(result, Operation::COMMITTED);
   // Now that all of the changes have been applied and the commit is durable
   // make the changes visible to readers.
   TRACE("AlterSchemaCommitCallback: making alter schema visible");
   state()->Finish();
 }
 
-string AlterSchemaTransaction::ToString() const {
-  return Substitute("AlterSchemaTransaction [state=$0]", state()->ToString());
+string AlterSchemaOperation::ToString() const {
+  return Substitute("AlterSchemaOperation [state=$0]", state()->ToString());
 }
 
 }  // namespace tablet

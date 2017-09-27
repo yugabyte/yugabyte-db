@@ -49,9 +49,9 @@
 #include "yb/tablet/row_op.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/transactions/alter_schema_transaction.h"
-#include "yb/tablet/transactions/update_txn_transaction.h"
-#include "yb/tablet/transactions/write_transaction.h"
+#include "yb/tablet/operations/alter_schema_operation.h"
+#include "yb/tablet/operations/update_txn_operation.h"
+#include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/transaction_coordinator.h"
 
 #include "yb/util/debug/trace_event.h"
@@ -223,26 +223,26 @@ class TabletBootstrap {
                          const CommitMsg* commit_msg);
 
   // Plays operations, skipping those that have already been flushed.
-  Status PlayRowOperations(WriteTransactionState* tx_state,
+  Status PlayRowOperations(WriteOperationState* operation_state,
                            const TxResultPB* result);
 
-  // Pass through all of the decoded operations in tx_state. For
+  // Pass through all of the decoded operations in operation_state. For
   // each op:
   // - if it was previously failed, mark as failed
   // - if it previously succeeded but was flushed, mark as skipped
   // - otherwise, re-apply to the tablet being bootstrapped.
-  Status FilterAndApplyOperations(WriteTransactionState* tx_state,
+  Status FilterAndApplyOperations(WriteOperationState* operation_state,
                                   const TxResultPB* orig_result);
 
   // Filter a single insert operation, setting it to failed if
   // it was already flushed.
-  Status FilterInsert(WriteTransactionState* tx_state,
+  Status FilterInsert(WriteOperationState* operation_state,
                       RowOp* op,
                       const OperationResultPB* op_result);
 
   // Filter a single mutate operation, setting it to failed if
   // it was already flushed.
-  Status FilterMutate(WriteTransactionState* tx_state,
+  Status FilterMutate(WriteOperationState* operation_state,
                       RowOp* op,
                       const OperationResultPB* op_result);
 
@@ -1374,19 +1374,19 @@ Status TabletBootstrap::PlayWriteRequest(ReplicateMsg* replicate_msg,
   DCHECK(replicate_msg->has_hybrid_time());
   WriteRequestPB* write = replicate_msg->mutable_write_request();
 
-  WriteTransactionState tx_state(nullptr, write, nullptr);
-  tx_state.mutable_op_id()->CopyFrom(replicate_msg->id());
-  tx_state.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
+  WriteOperationState operation_state(nullptr, write, nullptr);
+  operation_state.mutable_op_id()->CopyFrom(replicate_msg->id());
+  operation_state.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
 
-  tablet_->StartTransaction(&tx_state);
+  tablet_->StartOperation(&operation_state);
   if (tablet_->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     // In case of RocksDB-backed tables we will call ApplyRowOperations, which will itself call
     // StartApplying.
-    tablet_->StartApplying(&tx_state);
+    tablet_->StartApplying(&operation_state);
   }
 
   // Use committed OpId for mem store anchoring.
-  tx_state.mutable_op_id()->CopyFrom(replicate_msg->id());
+  operation_state.mutable_op_id()->CopyFrom(replicate_msg->id());
 
   if (write->has_row_operations()) {
     assert(!write->has_write_batch());
@@ -1399,7 +1399,7 @@ Status TabletBootstrap::PlayWriteRequest(ReplicateMsg* replicate_msg,
   }
 
   if (write->has_row_operations() || write->has_write_batch()) {
-    RETURN_NOT_OK(PlayRowOperations(&tx_state,
+    RETURN_NOT_OK(PlayRowOperations(&operation_state,
                                     commit_msg == nullptr ? nullptr : &commit_msg->result()));
   }
 
@@ -1409,7 +1409,7 @@ Status TabletBootstrap::PlayWriteRequest(ReplicateMsg* replicate_msg,
     commit_entry.set_type(log::COMMIT);
     CommitMsg* commit = commit_entry.mutable_commit();
     commit->CopyFrom(*commit_msg);
-    tx_state.ReleaseTxResultPB(commit->mutable_result());
+    operation_state.ReleaseTxResultPB(commit->mutable_result());
     RETURN_NOT_OK(log_->Append(&commit_entry));
   }
 
@@ -1424,20 +1424,20 @@ Status TabletBootstrap::PlayAlterSchemaRequest(ReplicateMsg* replicate_msg,
   Schema schema;
   RETURN_NOT_OK(SchemaFromPB(alter_schema->schema(), &schema));
 
-  AlterSchemaTransactionState tx_state(nullptr, alter_schema, nullptr);
+  AlterSchemaOperationState operation_state(nullptr, alter_schema, nullptr);
 
   // TODO(KUDU-860): we should somehow distinguish if an alter table failed on its original
   // attempt (e.g due to being an invalid request, or a request with a too-early
   // schema version).
 
-  RETURN_NOT_OK(tablet_->CreatePreparedAlterSchema(&tx_state, &schema));
+  RETURN_NOT_OK(tablet_->CreatePreparedAlterSchema(&operation_state, &schema));
 
   // Apply the alter schema to the tablet
-  RETURN_NOT_OK_PREPEND(tablet_->AlterSchema(&tx_state), "Failed to AlterSchema:");
+  RETURN_NOT_OK_PREPEND(tablet_->AlterSchema(&operation_state), "Failed to AlterSchema:");
 
   // Also update the log information. Normally, the AlterSchema() call above
   // takes care of this, but our new log isn't hooked up to the tablet yet.
-  log_->SetSchemaForNextLogSegment(schema, tx_state.schema_version());
+  log_->SetSchemaForNextLogSegment(schema, operation_state.schema_version());
 
   return commit_msg == nullptr ? Status::OK() : AppendCommitMsg(*commit_msg);
 }
@@ -1477,46 +1477,48 @@ Status TabletBootstrap::PlayUpdateTransactionRequest(ReplicateMsg* replicate_msg
                                                      const CommitMsg* commit_msg) {
   DCHECK(replicate_msg->has_hybrid_time());
 
-  UpdateTxnTransactionState tx_state(nullptr, replicate_msg->mutable_transaction_state());
-  tx_state.mutable_op_id()->CopyFrom(replicate_msg->id());
-  tx_state.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
+  UpdateTxnOperationState operation_state(nullptr, replicate_msg->mutable_transaction_state());
+  operation_state.mutable_op_id()->CopyFrom(replicate_msg->id());
+  operation_state.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
 
   auto transaction_coordinator = tablet_->transaction_coordinator();
 
   TransactionCoordinator::ReplicatedData replicated_data = {
       ProcessingMode::NON_LEADER,
       tablet_.get(),
-      *tx_state.request(),
-      tx_state.op_id(),
-      tx_state.hybrid_time()
+      *operation_state.request(),
+      operation_state.op_id(),
+      operation_state.hybrid_time()
   };
   RETURN_NOT_OK(transaction_coordinator->ProcessReplicated(replicated_data));
 
   return Status::OK();
 }
 
-Status TabletBootstrap::PlayRowOperations(WriteTransactionState* tx_state,
+Status TabletBootstrap::PlayRowOperations(WriteOperationState* operation_state,
                                           const TxResultPB* result) {
   Schema inserts_schema;
-  RETURN_NOT_OK_PREPEND(SchemaFromPB(tx_state->request()->schema(), &inserts_schema),
+  RETURN_NOT_OK_PREPEND(SchemaFromPB(operation_state->request()->schema(), &inserts_schema),
                         "Couldn't decode client schema");
 
-  RETURN_NOT_OK_PREPEND(tablet_->DecodeWriteOperations(&inserts_schema, tx_state),
-                        Substitute("Could not decode row operations: $0",
-                                   tx_state->request()->row_operations().ShortDebugString()));
+  RETURN_NOT_OK_PREPEND(
+      tablet_->DecodeWriteOperations(&inserts_schema, operation_state),
+      Substitute("Could not decode row operations: $0",
+                 operation_state->request()->row_operations().ShortDebugString()));
+
   if (result != nullptr) {
-    CHECK_EQ(tx_state->row_ops().size(), result->ops_size());
+    CHECK_EQ(operation_state->row_ops().size(), result->ops_size());
   }
 
   switch (tablet_->table_type()) {
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
-      RETURN_NOT_OK_PREPEND(tablet_->AcquireKuduRowLocks(tx_state),
+      RETURN_NOT_OK_PREPEND(tablet_->AcquireKuduRowLocks(operation_state),
                             "Failed to acquire row locks");
-      RETURN_NOT_OK(FilterAndApplyOperations(tx_state, result));
+      RETURN_NOT_OK(FilterAndApplyOperations(operation_state, result));
       break;
     case TableType::YQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
     case TableType::REDIS_TABLE_TYPE:
-      tablet_->ApplyRowOperations(tx_state);
+      tablet_->ApplyRowOperations(operation_state);
       break;
     default:
       LOG(FATAL) << "Invalid table type: " << tablet_->table_type();
@@ -1525,10 +1527,10 @@ Status TabletBootstrap::PlayRowOperations(WriteTransactionState* tx_state,
   return Status::OK();
 }
 
-Status TabletBootstrap::FilterAndApplyOperations(WriteTransactionState* tx_state,
+Status TabletBootstrap::FilterAndApplyOperations(WriteOperationState* operation_state,
                                                  const TxResultPB* orig_result) {
   int32_t op_idx = 0;
-  for (RowOp* op : tx_state->row_ops()) {
+  for (RowOp* op : operation_state->row_ops()) {
     const OperationResultPB* orig_op_result =
         orig_result == nullptr ? nullptr : &orig_result->ops(op_idx++);
 
@@ -1537,7 +1539,7 @@ Status TabletBootstrap::FilterAndApplyOperations(WriteTransactionState* tx_state
       Status status = StatusFromPB(orig_op_result->failed_status());
       if (VLOG_IS_ON(1)) {
         VLOG_WITH_PREFIX(1) << "Skipping operation that originally resulted in error. OpId: "
-                            << tx_state->op_id().DebugString() << " op index: "
+                            << operation_state->op_id().DebugString() << " op index: "
                             << op_idx - 1 << " original error: "
                             << status.ToString();
       }
@@ -1550,7 +1552,7 @@ Status TabletBootstrap::FilterAndApplyOperations(WriteTransactionState* tx_state
       case RowOperationsPB::INSERT:
         stats_.inserts_seen++;
         if (orig_op_result == nullptr || !orig_op_result->flushed()) {
-          RETURN_NOT_OK(FilterInsert(tx_state, op, orig_op_result));
+          RETURN_NOT_OK(FilterInsert(operation_state, op, orig_op_result));
         } else {
           op->SetAlreadyFlushed();
           stats_.inserts_ignored++;
@@ -1561,7 +1563,7 @@ Status TabletBootstrap::FilterAndApplyOperations(WriteTransactionState* tx_state
       case RowOperationsPB::DELETE:
         stats_.mutations_seen++;
         if (orig_op_result == nullptr || !orig_op_result->flushed()) {
-          RETURN_NOT_OK(FilterMutate(tx_state, op, orig_op_result));
+          RETURN_NOT_OK(FilterMutate(operation_state, op, orig_op_result));
         } else {
           op->SetAlreadyFlushed();
           stats_.mutations_ignored++;
@@ -1577,7 +1579,7 @@ Status TabletBootstrap::FilterAndApplyOperations(WriteTransactionState* tx_state
     }
 
     // Actually apply it.
-    tablet_->ApplyKuduRowOperation(tx_state, op);
+    tablet_->ApplyKuduRowOperation(operation_state, op);
     DCHECK(op->result != nullptr);
 
     // We expect that the above Apply() will always succeed, because we're
@@ -1595,7 +1597,7 @@ Status TabletBootstrap::FilterAndApplyOperations(WriteTransactionState* tx_state
   return Status::OK();
 }
 
-Status TabletBootstrap::FilterInsert(WriteTransactionState* tx_state,
+Status TabletBootstrap::FilterInsert(WriteOperationState* operation_state,
                                      RowOp* op,
                                      const OperationResultPB* op_result) {
   DCHECK_EQ(op->decoded_op.type, RowOperationsPB::INSERT);
@@ -1610,7 +1612,7 @@ Status TabletBootstrap::FilterInsert(WriteTransactionState* tx_state,
   if (flushed_stores_.WasStoreAlreadyFlushed(op_result->mutated_stores(0))) {
     if (VLOG_IS_ON(1)) {
       VLOG_WITH_PREFIX(1) << "Skipping insert that was already flushed. OpId: "
-                          << tx_state->op_id().DebugString()
+                          << operation_state->op_id().DebugString()
                           << " flushed to: " << op_result->mutated_stores(0).mrs_id()
                           << " latest durable mrs id: "
                           << tablet_->metadata()->last_durable_mrs_id();
@@ -1622,7 +1624,7 @@ Status TabletBootstrap::FilterInsert(WriteTransactionState* tx_state,
   return Status::OK();
 }
 
-Status TabletBootstrap::FilterMutate(WriteTransactionState* tx_state,
+Status TabletBootstrap::FilterMutate(WriteOperationState* operation_state,
                                      RowOp* op,
                                      const OperationResultPB* op_result) {
   DCHECK(op->decoded_op.type == RowOperationsPB::UPDATE ||
@@ -1647,7 +1649,7 @@ Status TabletBootstrap::FilterMutate(WriteTransactionState* tx_state,
         string mutation = op->decoded_op.changelist.ToString(*tablet_->schema());
         VLOG_WITH_PREFIX(1) << "Skipping mutation to " << mutated_store.ShortDebugString()
                             << " that was already flushed. "
-                            << "OpId: " << tx_state->op_id().DebugString();
+                            << "OpId: " << operation_state->op_id().DebugString();
       }
     }
   }

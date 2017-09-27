@@ -129,12 +129,12 @@ bool LookupTabletPeerOrRespond(TabletPeerLookupIf* tablet_manager,
 // A transaction completion callback that responds to the client when transactions
 // complete and sets the client error if there is one to set.
 template<class Response>
-class RpcTransactionCompletionCallback : public tablet::TransactionCompletionCallback {
+class RpcOperationCompletionCallback : public tablet::OperationCompletionCallback {
  public:
-  RpcTransactionCompletionCallback(rpc::RpcContext context, Response* const response)
+  RpcOperationCompletionCallback(rpc::RpcContext context, Response* const response)
       : context_(std::move(context)), response_(response) {}
 
-  void TransactionCompleted() override {
+  void OperationCompleted() override {
     if (!status_.ok()) {
       SetupErrorAndRespond(get_error(), status_, code_, &context_);
     } else {
@@ -153,10 +153,10 @@ class RpcTransactionCompletionCallback : public tablet::TransactionCompletionCal
 };
 
 template<class Response>
-std::unique_ptr<tablet::TransactionCompletionCallback> MakeRpcTransactionCompletionCallback(
+std::unique_ptr<tablet::OperationCompletionCallback> MakeRpcOperationCompletionCallback(
     rpc::RpcContext context,
     Response* response) {
-  return std::make_unique<RpcTransactionCompletionCallback<Response>>(std::move(context), response);
+  return std::make_unique<RpcOperationCompletionCallback<Response>>(std::move(context), response);
 }
 
 }  // namespace tserver

@@ -128,7 +128,7 @@ class RaftConsensusSpy : public RaftConsensus {
                    const scoped_refptr<MetricEntity>& metric_entity,
                    const std::string& peer_uuid,
                    const scoped_refptr<server::Clock>& clock,
-                   ReplicaTransactionFactory* txn_factory,
+                   ReplicaOperationFactory* operation_factory,
                    const scoped_refptr<log::Log>& log,
                    const shared_ptr<MemTracker>& parent_mem_tracker,
                    const Callback<void(std::shared_ptr<consensus::StateChangeContext> context)>&
@@ -142,7 +142,7 @@ class RaftConsensusSpy : public RaftConsensus {
                     metric_entity,
                     peer_uuid,
                     clock,
-                    txn_factory,
+                    operation_factory,
                     log,
                     parent_mem_tracker,
                     mark_dirty_clbk,
@@ -220,7 +220,7 @@ class RaftConsensusTest : public YBTest {
 
     queue_ = new MockQueue(metric_entity_, log_.get());
     peer_manager_ = new MockPeerManager;
-    txn_factory_.reset(new MockTransactionFactory);
+    operation_factory_.reset(new MockOperationFactory);
 
     ON_CALL(*queue_, AppendOperationsMock(_, _))
         .WillByDefault(Invoke(this, &RaftConsensusTest::AppendToLog));
@@ -250,7 +250,7 @@ class RaftConsensusTest : public YBTest {
                                           metric_entity_,
                                           peer_uuid,
                                           clock_,
-                                          txn_factory_.get(),
+                                          operation_factory_.get(),
                                           log_.get(),
                                           MemTracker::GetRootTracker(),
                                           Bind(&DoNothing)));
@@ -351,7 +351,7 @@ class RaftConsensusTest : public YBTest {
   // the test is.
   MockQueue* queue_;
   MockPeerManager* peer_manager_;
-  gscoped_ptr<MockTransactionFactory> txn_factory_;
+  gscoped_ptr<MockOperationFactory> operation_factory_;
 };
 
 ConsensusRequestPB RaftConsensusTest::MakeConsensusRequest(int64_t caller_term,
@@ -473,7 +473,7 @@ MATCHER(IsAborted, "") { return arg.IsAborted(); }
 // - It tests that consensus does the right thing with pending transactions from the the WAL.
 // - It tests that when a follower gets promoted to leader it does the right thing
 //   with the pending operations.
-TEST_F(RaftConsensusTest, TestPendingTransactions) {
+TEST_F(RaftConsensusTest, TestPendingOperations) {
   SetUpConsensus(10);
 
   // Emulate a stateful system by having a bunch of operations in flight when consensus starts.
@@ -504,7 +504,7 @@ TEST_F(RaftConsensusTest, TestPendingTransactions) {
   ASSERT_OK(consensus_->Start(info));
 
   ASSERT_TRUE(testing::Mock::VerifyAndClearExpectations(queue_));
-  ASSERT_TRUE(testing::Mock::VerifyAndClearExpectations(txn_factory_.get()));
+  ASSERT_TRUE(testing::Mock::VerifyAndClearExpectations(operation_factory_.get()));
   ASSERT_TRUE(testing::Mock::VerifyAndClearExpectations(peer_manager_));
   ASSERT_TRUE(testing::Mock::VerifyAndClearExpectations(consensus_.get()));
 
@@ -527,7 +527,7 @@ TEST_F(RaftConsensusTest, TestPendingTransactions) {
   ASSERT_OK(consensus_->EmulateElection());
 
   ASSERT_TRUE(testing::Mock::VerifyAndClearExpectations(queue_));
-  ASSERT_TRUE(testing::Mock::VerifyAndClearExpectations(txn_factory_.get()));
+  ASSERT_TRUE(testing::Mock::VerifyAndClearExpectations(operation_factory_.get()));
   ASSERT_TRUE(testing::Mock::VerifyAndClearExpectations(peer_manager_));
 
   // Commit the 10 no-ops from the previous term, along with the one pushed to

@@ -74,7 +74,7 @@ Status ConsensusRound::CheckBoundTerm(int64_t current_term) const {
                     bound_term_ != current_term)) {
     return STATUS(Aborted,
       strings::Substitute(
-        "Transaction submitted in term $0 cannot be replicated in term $1",
+        "Operation submitted in term $0 cannot be replicated in term $1",
         bound_term_, current_term));
   }
   return Status::OK();

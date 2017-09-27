@@ -60,7 +60,7 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tserver/ts_tablet_manager.h"
-#include "yb/tablet/transactions/write_transaction.h"
+#include "yb/tablet/operations/write_operation.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/threadpool.h"
@@ -75,7 +75,7 @@ using yb::consensus::RaftConfigPB;
 using yb::consensus::RaftPeerPB;
 using yb::log::Log;
 using yb::log::LogAnchorRegistry;
-using yb::tablet::LatchTransactionCompletionCallback;
+using yb::tablet::LatchOperationCompletionCallback;
 using yb::tablet::Tablet;
 using yb::tablet::TabletPeer;
 using yb::tserver::WriteRequestPB;
@@ -527,13 +527,13 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   tserver::WriteResponsePB resp;
 
   CountDownLatch latch(1);
-  auto txn_callback = std::make_unique<LatchTransactionCompletionCallback<WriteResponsePB>>(
+  auto txn_callback = std::make_unique<LatchOperationCompletionCallback<WriteResponsePB>>(
       &latch, &resp);
-  auto tx_state = std::make_unique<tablet::WriteTransactionState>(
+  auto operation_state = std::make_unique<tablet::WriteOperationState>(
       tablet_peer_.get(), &writer->req_, &resp);
-  tx_state->set_completion_callback(std::move(txn_callback));
+  operation_state->set_completion_callback(std::move(txn_callback));
 
-  RETURN_NOT_OK(tablet_peer_->SubmitWrite(std::move(tx_state)));
+  RETURN_NOT_OK(tablet_peer_->SubmitWrite(std::move(operation_state)));
   latch.Wait();
 
   if (resp.has_error()) {

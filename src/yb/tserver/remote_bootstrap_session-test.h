@@ -85,7 +85,7 @@ using tablet::YBTabletTest;
 using tablet::RowSetDataPB;
 using tablet::TabletPeer;
 using tablet::TabletSuperBlockPB;
-using tablet::WriteTransactionState;
+using tablet::WriteOperationState;
 
 class RemoteBootstrapTest : public YBTabletTest {
  public:
@@ -189,8 +189,8 @@ class RemoteBootstrapTest : public YBTabletTest {
       WriteResponsePB resp;
       CountDownLatch latch(1);
 
-      auto state = std::make_unique<WriteTransactionState>(tablet_peer_.get(), req.get(), &resp);
-      typedef tablet::LatchTransactionCompletionCallback<WriteResponsePB> LatchWriteCallback;
+      auto state = std::make_unique<WriteOperationState>(tablet_peer_.get(), req.get(), &resp);
+      typedef tablet::LatchOperationCompletionCallback<WriteResponsePB> LatchWriteCallback;
       state->set_completion_callback(std::make_unique<LatchWriteCallback>(&latch, &resp));
       ASSERT_OK(tablet_peer_->SubmitWrite(std::move(state)));
       latch.Wait();

@@ -51,7 +51,7 @@
 #include "yb/tablet/delta_tracker.h"
 #include "yb/tablet/diskrowset.h"
 #include "yb/tablet/tablet.pb.h"
-#include "yb/tablet/transactions/write_transaction.h"
+#include "yb/tablet/operations/write_operation.h"
 #include "yb/util/debug/trace_event.h"
 
 using std::shared_ptr;
@@ -558,11 +558,11 @@ Status CompactionInput::Create(const DiskRowSet &rowset,
   RETURN_NOT_OK_PREPEND(rowset.delta_tracker_->NewDeltaIterator(projection, snap, &redo_deltas),
                         "Could not open REDOs");
   // Creates a DeltaIteratorMerger that will only include undo deltas, since
-  // MvccSnapshot::CreateSnapshotIncludingNoTransactions() excludes all redo
+  // MvccSnapshot::CreateSnapshotIncludingNoOperations() excludes all redo
   // deltas's min transaction ID.
   shared_ptr<DeltaIterator> undo_deltas;
   RETURN_NOT_OK_PREPEND(rowset.delta_tracker_->NewDeltaIterator(projection,
-          MvccSnapshot::CreateSnapshotIncludingNoTransactions(),
+          MvccSnapshot::CreateSnapshotIncludingNoOperations(),
           &undo_deltas), "Could not open UNDOs");
 
   out->reset(new DiskRowSetCompactionInput(base_iter.Pass(), redo_deltas, undo_deltas));

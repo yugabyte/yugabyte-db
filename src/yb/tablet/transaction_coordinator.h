@@ -51,7 +51,7 @@ namespace tablet {
 
 class TransactionIntentApplier;
 class TransactionParticipant;
-class UpdateTxnTransactionState;
+class UpdateTxnOperationState;
 
 // Context for transaction coordinator. I.e. access to external facilities required by
 // transaction coordinator to do its job.
@@ -63,9 +63,9 @@ class TransactionCoordinatorContext {
   virtual consensus::Consensus::LeaderStatus LeaderStatus() const = 0;
   virtual HybridTime LastCommittedHybridTime() const = 0;
 
-  virtual std::unique_ptr<UpdateTxnTransactionState> CreateUpdateTransactionState(
+  virtual std::unique_ptr<UpdateTxnOperationState> CreateUpdateTransactionState(
       tserver::TransactionStatePB* request) = 0;
-  virtual void SubmitUpdateTransaction(std::unique_ptr<UpdateTxnTransactionState> state) = 0;
+  virtual void SubmitUpdateTransaction(std::unique_ptr<UpdateTxnOperationState> state) = 0;
 
  protected:
   ~TransactionCoordinatorContext() {}
@@ -97,7 +97,7 @@ class TransactionCoordinator {
   void ClearLocks();
 
   // Handles new request for transaction udpate.
-  void Handle(std::unique_ptr<tablet::UpdateTxnTransactionState> request);
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request);
 
   // Prepares log garbage collection. Return min index that should be preserved.
   int64_t PrepareGC();

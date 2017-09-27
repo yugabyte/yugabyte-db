@@ -107,21 +107,21 @@ class MaintenanceOpStats;
 
 namespace tablet {
 
-class AlterSchemaTransactionState;
+class AlterSchemaOperationState;
 class CompactionPolicy;
 class MemRowSet;
 class MvccSnapshot;
 struct RowOp;
 class RowSetsInCompaction;
 class RowSetTree;
-class ScopedReadTransaction;
+class ScopedReadOperation;
 struct TabletComponents;
 struct TabletMetrics;
 struct TransactionApplyData;
 class TransactionCoordinator;
 class TransactionCoordinatorContext;
 class TransactionParticipant;
-class WriteTransactionState;
+class WriteOperationState;
 
 using util::LockBatch;
 
@@ -211,9 +211,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS ApplyIntents(const TransactionApplyData& data) override;
 
   // Decode the Write (insert/mutate) operations from within a user's request.
-  // Either fills in tx_state->row_ops or tx_state->kv_write_batch depending on TableType.
-  CHECKED_STATUS DecodeWriteOperations(const Schema* client_schema,
-      WriteTransactionState* tx_state);
+  // Either fills in operation_state->row_ops or tx_state->kv_write_batch depending on TableType.
+  CHECKED_STATUS DecodeWriteOperations(
+      const Schema* client_schema,
+      WriteOperationState* operation_state);
 
   // Kudu-specific. To be removed with the rest of Kudu storage engine. This is a no-op for YB
   // tables.
@@ -224,7 +225,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // state holds _some_ of the locks. In that case, we expect that
   // the transaction will still clean them up when it is aborted (or
   // otherwise destructed).
-  CHECKED_STATUS AcquireKuduRowLocks(WriteTransactionState *tx_state);
+  CHECKED_STATUS AcquireKuduRowLocks(WriteOperationState *operation_state);
 
   // Finish the Prepare phase of a write transaction.
   //
@@ -252,7 +253,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //
   // TODO: rename this to something like "FinishPrepare" or "StartApply", since
   // it's not the first thing in a transaction!
-  void StartTransaction(WriteTransactionState* tx_state);
+  void StartOperation(WriteOperationState* operation_state);
 
   // Insert a new row into the tablet.
   //
@@ -269,18 +270,18 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //
   // Acquires the row lock for the given operation, setting it in the
   // RowOp struct. This also sets the row op's RowSetKeyProbe.
-  CHECKED_STATUS AcquireLockForOp(WriteTransactionState* tx_state,
+  CHECKED_STATUS AcquireLockForOp(WriteOperationState* operation_state,
       RowOp* op);
 
   // Signal that the given transaction is about to Apply.
-  void StartApplying(WriteTransactionState* tx_state);
+  void StartApplying(WriteOperationState* operation_state);
 
   // Apply all of the row operations associated with this transaction.
-  void ApplyRowOperations(WriteTransactionState* tx_state);
+  void ApplyRowOperations(WriteOperationState* operation_state);
 
   // Apply a single row operation, which must already be prepared.
   // The result is set back into row_op->result
-  void ApplyKuduRowOperation(WriteTransactionState* tx_state,
+  void ApplyKuduRowOperation(WriteOperationState* operation_state,
       RowOp* row_op);
 
   // Apply a set of RocksDB row operations.
@@ -318,7 +319,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS KeyValueBatchFromQLWriteBatch(
       tserver::WriteRequestPB* write_request,
       LockBatch *keys_locked, tserver::WriteResponsePB* write_response,
-      WriteTransactionState* tx_state);
+      WriteOperationState* operation_state);
 
   // The Kudu equivalent of KeyValueBatchFromRedisWriteBatch, works similarly.
   CHECKED_STATUS KeyValueBatchFromKuduRowOps(
@@ -365,12 +366,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Prepares the transaction context for the alter schema operation.
   // An error will be returned if the specified schema is invalid (e.g.
   // key mismatch, or missing IDs)
-  CHECKED_STATUS CreatePreparedAlterSchema(AlterSchemaTransactionState *tx_state,
+  CHECKED_STATUS CreatePreparedAlterSchema(AlterSchemaOperationState *operation_state,
       const Schema* schema);
 
   // Apply the Schema of the specified transaction.
   // This operation will trigger a flush on the current MemRowSet.
-  CHECKED_STATUS AlterSchema(AlterSchemaTransactionState* tx_state);
+  CHECKED_STATUS AlterSchema(AlterSchemaOperationState* operation_state);
 
   // Rewind the schema to an earlier version than is written in the on-disk
   // metadata. This is done during bootstrap to roll the schema back to the
@@ -540,7 +541,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // For non-kudu table type fills key-value batch in transaction state request and updates
   // request in state. Due to acquiring locks it can block the thread.
-  CHECKED_STATUS AcquireLocksAndPerformDocOperations(WriteTransactionState *state);
+  CHECKED_STATUS AcquireLocksAndPerformDocOperations(WriteOperationState *state);
 
   static const char* kDMSMemTrackerId;
 
@@ -591,7 +592,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
  private:
   friend class Iterator;
   friend class TabletPeerTest;
-  friend class ScopedReadTransaction;
+  friend class ScopedReadOperation;
   FRIEND_TEST(TestTablet, TestGetLogRetentionSizeForIndex);
 
   CHECKED_STATUS FlushUnlocked(FlushMode mode);
@@ -600,11 +601,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // they were already acquired. Requires that handles for the relevant locks
   // and MVCC transaction are present in the transaction state.
   CHECKED_STATUS InsertUnlocked(
-      WriteTransactionState *tx_state,
+      WriteOperationState *operation_state,
       RowOp* insert);
 
   CHECKED_STATUS KuduColumnarInsertUnlocked(
-      WriteTransactionState *tx_state,
+      WriteOperationState *operation_state,
       RowOp* insert,
       const TabletComponents* comps,
       ProbeStats* stats);
@@ -612,7 +613,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // A version of MutateRow that does not acquire locks and instead assumes
   // they were already acquired. Requires that handles for the relevant locks
   // and MVCC transaction are present in the transaction state.
-  CHECKED_STATUS MutateRowUnlocked(WriteTransactionState *tx_state,
+  CHECKED_STATUS MutateRowUnlocked(
+      WriteOperationState *operation_state,
       RowOp* mutate);
 
   // Capture a set of iterators which, together, reflect all of the data in the tablet.
@@ -640,7 +642,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const ScanSpec *spec,
       vector<std::shared_ptr<RowwiseIterator> > *iters) const;
 
-  CHECKED_STATUS StartDocWriteTransaction(
+  CHECKED_STATUS StartDocWriteOperation(
       const std::vector<std::unique_ptr<docdb::DocOperation>> &doc_ops,
       LockBatch *keys_locked,
       docdb::KeyValueWriteBatchPB* write_batch);
@@ -880,11 +882,11 @@ typedef std::shared_ptr<Tablet> TabletPtr;
 
 // A helper class to manage read transactions. Grabs and registers a read point with the tablet
 // when created, and deregisters the read point when this object is destructed.
-class ScopedReadTransaction {
+class ScopedReadOperation {
  public:
-  explicit ScopedReadTransaction(AbstractTablet* tablet);
+  explicit ScopedReadOperation(AbstractTablet* tablet);
 
-  ~ScopedReadTransaction();
+  ~ScopedReadOperation();
 
   HybridTime GetReadTimestamp();
 

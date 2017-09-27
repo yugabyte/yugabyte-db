@@ -144,7 +144,7 @@ class RaftConsensusQuorumTest : public YBTest {
       auto proxy_factory = new LocalTestPeerProxyFactory(peers_.get());
       proxy_factories.push_back(proxy_factory);
 
-      auto txn_factory = new TestTransactionFactory(logs_[i].get());
+      auto operation_factory = new TestOperationFactory(logs_[i].get());
 
       string peer_uuid = Substitute("peer-$0", i);
 
@@ -181,14 +181,14 @@ class RaftConsensusQuorumTest : public YBTest {
                             metric_entity_,
                             config_.peers(i).permanent_uuid(),
                             clock_,
-                            txn_factory,
+                            operation_factory,
                             logs_[i],
                             parent_mem_trackers_[i],
                             Bind(&DoNothing),
                             DEFAULT_TABLE_TYPE));
 
-      txn_factory->SetConsensus(peer.get());
-      txn_factories_.push_back(txn_factory);
+      operation_factory->SetConsensus(peer.get());
+      operation_factories_.emplace_back(operation_factory);
       peers_->AddPeer(config_.peers(i).permanent_uuid(), peer);
     }
   }
@@ -433,7 +433,7 @@ class RaftConsensusQuorumTest : public YBTest {
   void VerifyLogs(int leader_idx, int first_replica_idx, int last_replica_idx) {
     // Wait for in-flight transactions to be done. We're destroying the
     // peers next and leader transactions won't be able to commit anymore.
-    for (TestTransactionFactory* factory : txn_factories_) {
+    for (const auto& factory : operation_factories_) {
       factory->WaitDone();
     }
 
@@ -548,7 +548,7 @@ class RaftConsensusQuorumTest : public YBTest {
 
   ~RaftConsensusQuorumTest() {
     peers_->Clear();
-    STLDeleteElements(&txn_factories_);
+    operation_factories_.clear();
     // We need to clear the logs before deleting the fs_managers_ or we'll
     // get a SIGSEGV when closing the logs.
     logs_.clear();
@@ -564,7 +564,7 @@ class RaftConsensusQuorumTest : public YBTest {
   vector<FsManager*> fs_managers_;
   vector<scoped_refptr<Log> > logs_;
   gscoped_ptr<TestPeerMapManager> peers_;
-  vector<TestTransactionFactory*> txn_factories_;
+  std::vector<std::unique_ptr<TestOperationFactory>> operation_factories_;
   scoped_refptr<server::Clock> clock_;
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;

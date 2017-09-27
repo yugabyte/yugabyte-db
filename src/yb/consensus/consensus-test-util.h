@@ -595,7 +595,7 @@ class LocalTestPeerProxyFactory : public PeerProxyFactory {
 };
 
 // A simple implementation of the transaction driver.
-// This is usually implemented by TransactionDriver but here we
+// This is usually implemented by OperationDriver but here we
 // keep the implementation to the minimally required to have consensus
 // work.
 class TestDriver {
@@ -648,31 +648,30 @@ class TestDriver {
   Log* log_;
 };
 
-// Fake ReplicaTransactionFactory that allows for instantiating and unit
+// Fake ReplicaOperationFactory that allows for instantiating and unit
 // testing RaftConsensusState. Does not actually support running transactions.
-class MockTransactionFactory : public ReplicaTransactionFactory {
+class MockOperationFactory : public ReplicaOperationFactory {
  public:
-  virtual CHECKED_STATUS StartReplicaTransaction(const scoped_refptr<ConsensusRound>& round)
+  virtual CHECKED_STATUS StartReplicaOperation(const scoped_refptr<ConsensusRound>& round)
       override {
-    return StartReplicaTransactionMock(round.get());
+    return StartReplicaOperationMock(round.get());
   }
-  MOCK_METHOD1(StartReplicaTransactionMock, Status(ConsensusRound* round));
+  MOCK_METHOD1(StartReplicaOperationMock, Status(ConsensusRound* round));
 };
 
 // A transaction factory for tests, usually this is implemented by TabletPeer.
-class TestTransactionFactory : public ReplicaTransactionFactory {
+class TestOperationFactory : public ReplicaOperationFactory {
  public:
-  explicit TestTransactionFactory(Log* log) : consensus_(NULL),
-                                              log_(log) {
+  explicit TestOperationFactory(Log* log) : log_(log) {
 
-    CHECK_OK(ThreadPoolBuilder("test-txn-factory").set_max_threads(1).Build(&pool_));
+    CHECK_OK(ThreadPoolBuilder("test-operation-factory").set_max_threads(1).Build(&pool_));
   }
 
   void SetConsensus(Consensus* consensus) {
     consensus_ = consensus;
   }
 
-  CHECKED_STATUS StartReplicaTransaction(const scoped_refptr<ConsensusRound>& round) override {
+  CHECKED_STATUS StartReplicaOperation(const scoped_refptr<ConsensusRound>& round) override {
     auto txn = new TestDriver(pool_.get(), log_, round);
     txn->round_->SetConsensusReplicatedCallback(Bind(&TestDriver::ReplicationFinished,
                                                      Unretained(txn)));
@@ -692,13 +691,13 @@ class TestTransactionFactory : public ReplicaTransactionFactory {
     pool_->Shutdown();
   }
 
-  ~TestTransactionFactory() {
+  ~TestOperationFactory() {
     ShutDown();
   }
 
  private:
   gscoped_ptr<ThreadPool> pool_;
-  Consensus* consensus_;
+  Consensus* consensus_ = nullptr;
   Log* log_;
 };
 

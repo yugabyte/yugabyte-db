@@ -30,7 +30,7 @@
 // under the License.
 //
 
-#include "yb/tablet/transactions/transaction_driver.h"
+#include "yb/tablet/operations/operation_driver.h"
 
 #include <mutex>
 
@@ -38,7 +38,7 @@
 #include "yb/consensus/consensus.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/transactions/transaction_tracker.h"
+#include "yb/tablet/operations/operation_tracker.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/logging.h"
@@ -62,17 +62,17 @@ static const char* kHybridTimeFieldName = "hybrid_time";
 
 
 ////////////////////////////////////////////////////////////
-// TransactionDriver
+// OperationDriver
 ////////////////////////////////////////////////////////////
 
-TransactionDriver::TransactionDriver(TransactionTracker *txn_tracker,
-                                     Consensus* consensus,
-                                     Log* log,
-                                     PrepareThread* prepare_thread,
-                                     ThreadPool* apply_pool,
-                                     TransactionOrderVerifier* order_verifier,
-                                     TableType table_type)
-    : txn_tracker_(txn_tracker),
+OperationDriver::OperationDriver(OperationTracker *operation_tracker,
+                                 Consensus* consensus,
+                                 Log* log,
+                                 PrepareThread* prepare_thread,
+                                 ThreadPool* apply_pool,
+                                 OperationOrderVerifier* order_verifier,
+                                 TableType table_type)
+    : operation_tracker_(operation_tracker),
       consensus_(consensus),
       log_(log),
       prepare_thread_(prepare_thread),
@@ -88,75 +88,74 @@ TransactionDriver::TransactionDriver(TransactionTracker *txn_tracker,
   }
 }
 
-Status TransactionDriver::Init(std::unique_ptr<Transaction> transaction,
-                               DriverType type) {
-  transaction_ = std::move(transaction);
+Status OperationDriver::Init(std::unique_ptr<Operation> operation, DriverType type) {
+  operation_ = std::move(operation);
 
   if (type == consensus::REPLICA) {
     std::lock_guard<simple_spinlock> lock(opid_lock_);
-    op_id_copy_ = transaction_->state()->op_id();
+    op_id_copy_ = operation_->state()->op_id();
     DCHECK(op_id_copy_.IsInitialized());
     replication_state_ = REPLICATING;
   } else {
     DCHECK_EQ(type, consensus::LEADER);
     if (consensus_) {  // sometimes NULL in tests
       // Unretained is required to avoid a refcount cycle.
-      consensus::ReplicateMsgPtr replicate_msg = transaction_->NewReplicateMsg();
+      consensus::ReplicateMsgPtr replicate_msg = operation_->NewReplicateMsg();
       mutable_state()->set_consensus_round(
         consensus_->NewRound(std::move(replicate_msg),
-                             Bind(&TransactionDriver::ReplicationFinished, Unretained(this))));
+                             Bind(&OperationDriver::ReplicationFinished, Unretained(this))));
       if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
         mutable_state()->consensus_round()->SetAppendCallback(this);
       }
     }
   }
 
-  RETURN_NOT_OK(txn_tracker_->Add(this));
+  RETURN_NOT_OK(operation_tracker_->Add(this));
 
   return Status::OK();
 }
 
-consensus::OpId TransactionDriver::GetOpId() {
+consensus::OpId OperationDriver::GetOpId() {
   std::lock_guard<simple_spinlock> lock(opid_lock_);
   return op_id_copy_;
 }
 
-const TransactionState* TransactionDriver::state() const {
-  return transaction_ != nullptr ? transaction_->state() : nullptr;
+const OperationState* OperationDriver::state() const {
+  return operation_ != nullptr ? operation_->state() : nullptr;
 }
 
-TransactionState* TransactionDriver::mutable_state() {
-  return transaction_ != nullptr ? transaction_->state() : nullptr;
+OperationState* OperationDriver::mutable_state() {
+  return operation_ != nullptr ? operation_->state() : nullptr;
 }
 
-Transaction::TransactionType TransactionDriver::tx_type() const {
-  return transaction_->tx_type();
+Operation::OperationType OperationDriver::operation_type() const {
+  return operation_->operation_type();
 }
 
-string TransactionDriver::ToString() const {
+string OperationDriver::ToString() const {
   std::lock_guard<simple_spinlock> lock(lock_);
   return ToStringUnlocked();
 }
 
-string TransactionDriver::ToStringUnlocked() const {
+string OperationDriver::ToStringUnlocked() const {
   string ret = StateString(replication_state_, prepare_state_);
-  if (transaction_ != nullptr) {
-    ret += " " + transaction_->ToString();
+  if (operation_ != nullptr) {
+    ret += " " + operation_->ToString();
   } else {
-    ret += "[unknown txn]";
+    ret += "[unknown operation]";
   }
   return ret;
 }
 
 
-Status TransactionDriver::ExecuteAsync() {
+Status OperationDriver::ExecuteAsync() {
   VLOG_WITH_PREFIX(4) << "ExecuteAsync()";
-  TRACE_EVENT_FLOW_BEGIN0("txn", "ExecuteAsync", this);
+  TRACE_EVENT_FLOW_BEGIN0("operation", "ExecuteAsync", this);
   ADOPT_TRACE(trace());
 
   Status s;
   if (replication_state_ == NOT_REPLICATING) {
-    // We're a leader transaction. Before submitting, check that we are the leader and
+    // We're a leader operation. Before submitting, check that we are the leader and
     // determine the current term.
     s = consensus_->CheckLeadershipAndBindTerm(mutable_state()->consensus_round());
   }
@@ -173,33 +172,33 @@ Status TransactionDriver::ExecuteAsync() {
   return Status::OK();
 }
 
-void TransactionDriver::HandleConsensusAppend() {
+void OperationDriver::HandleConsensusAppend() {
   // YB tables only.
   CHECK_NE(table_type_, TableType::KUDU_COLUMNAR_TABLE_TYPE);
   ADOPT_TRACE(trace());
-  transaction_->Start();
-  auto* const replicate_msg = transaction_->state()->consensus_round()->replicate_msg().get();
+  operation_->Start();
+  auto* const replicate_msg = operation_->state()->consensus_round()->replicate_msg().get();
   CHECK(!replicate_msg->has_hybrid_time());
-  replicate_msg->set_hybrid_time(transaction_->state()->hybrid_time().ToUint64());
+  replicate_msg->set_hybrid_time(operation_->state()->hybrid_time().ToUint64());
   replicate_msg->set_monotonic_counter(
-      *transaction_->state()->tablet_peer()->tablet()->monotonic_counter());
+      *operation_->state()->tablet_peer()->tablet()->monotonic_counter());
 }
 
-void TransactionDriver::PrepareAndStartTask() {
-  TRACE_EVENT_FLOW_END0("txn", "PrepareAndStartTask", this);
+void OperationDriver::PrepareAndStartTask() {
+  TRACE_EVENT_FLOW_END0("operation", "PrepareAndStartTask", this);
   Status prepare_status = PrepareAndStart();
   if (PREDICT_FALSE(!prepare_status.ok())) {
     HandleFailure(prepare_status);
   }
 }
 
-Status TransactionDriver::PrepareAndStart() {
+Status OperationDriver::PrepareAndStart() {
   ADOPT_TRACE(trace());
-  TRACE_EVENT1("txn", "PrepareAndStart", "txn", this);
+  TRACE_EVENT1("operation", "PrepareAndStart", "operation", this);
   VLOG_WITH_PREFIX(4) << "PrepareAndStart()";
-  // Actually prepare and start the transaction.
+  // Actually prepare and start the operation.
   prepare_physical_hybrid_time_ = GetMonoTimeMicros();
-  RETURN_NOT_OK(transaction_->Prepare());
+  RETURN_NOT_OK(operation_->Prepare());
 
   // Only take the lock long enough to take a local copy of the
   // replication state and set our prepare state. This ensures that
@@ -215,36 +214,36 @@ Status TransactionDriver::PrepareAndStart() {
   if (table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE ||
       repl_state_copy != NOT_REPLICATING) {
     // For Kudu tables and for non-leader codepath in YB tables, we want to call Start() as soon
-    // as possible, because the transaction already has the hybrid_time assigned. This will get a
+    // as possible, because the operation already has the hybrid_time assigned. This will get a
     // bit simpler as Kudu tables go away.
-    transaction_->Start();
+    operation_->Start();
   }
 
   {
     std::lock_guard<simple_spinlock> lock(lock_);
     // No one should have modified prepare_state_ since we've read it under the lock a few lines
-    // above, because PrepareAndStart should only run once per transaction.
+    // above, because PrepareAndStart should only run once per operation.
     CHECK_EQ(prepare_state_, NOT_PREPARED);
-    // After this update, the ReplicationFinished callback will be able to apply this transaction.
+    // After this update, the ReplicationFinished callback will be able to apply this operation.
     // We can only do this after we've called Start()
     prepare_state_ = PREPARED;
 
     // On the replica (non-leader) side, the replication state might have been REPLICATING during
     // our previous acquisition of this lock, but it might have changed to REPLICATED in the
     // meantime. That would mean ReplicationFinished got called, but ReplicationFinished would not
-    // trigger Apply unless the transaction is PREPARED, so we are responsible for doing that.
-    // If we fail to capture the new replication state here, the transaction will never be applied.
+    // trigger Apply unless the operation is PREPARED, so we are responsible for doing that.
+    // If we fail to capture the new replication state here, the operation will never be applied.
     repl_state_copy = replication_state_;
   }
 
   switch (repl_state_copy) {
     case NOT_REPLICATING:
     {
-      ReplicateMsg* replicate_msg = transaction_->state()->consensus_round()->replicate_msg().get();
+      ReplicateMsg* replicate_msg = operation_->state()->consensus_round()->replicate_msg().get();
 
       if (table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
         // Kudu tables only: set the hybrid_time in the message, now that it's prepared.
-        replicate_msg->set_hybrid_time(transaction_->state()->hybrid_time().ToUint64());
+        replicate_msg->set_hybrid_time(operation_->state()->hybrid_time().ToUint64());
 
         // For YB tables, we set the hybrid_time at the same time as we append the entry to the
         // consensus queue, to guarantee that hybrid_times increase monotonically with Raft indexes.
@@ -265,7 +264,7 @@ Status TransactionDriver::PrepareAndStart() {
       return Status::OK();
     }
     case REPLICATION_FAILED:
-      DCHECK(!transaction_status_.ok());
+      DCHECK(!operation_status_.ok());
       FALLTHROUGH_INTENDED;
     case REPLICATED:
     {
@@ -278,15 +277,15 @@ Status TransactionDriver::PrepareAndStart() {
   FATAL_INVALID_ENUM_VALUE(ReplicationState, repl_state_copy);
 }
 
-void TransactionDriver::SetReplicationFailed(const Status& replication_status) {
+void OperationDriver::SetReplicationFailed(const Status& replication_status) {
   std::lock_guard<simple_spinlock> lock(lock_);
   CHECK_EQ(replication_state_, REPLICATING);
-  transaction_status_ = replication_status;
+  operation_status_ = replication_status;
   replication_state_ = REPLICATION_FAILED;
 }
 
-void TransactionDriver::HandleFailure(const Status& s) {
-  VLOG_WITH_PREFIX(2) << "Failed transaction: " << s.ToString();
+void OperationDriver::HandleFailure(const Status& s) {
+  VLOG_WITH_PREFIX(2) << "Failed operation: " << s.ToString();
   CHECK(!s.ok());
   ADOPT_TRACE(trace());
   TRACE("HandleFailure($0)", s.ToString());
@@ -295,7 +294,7 @@ void TransactionDriver::HandleFailure(const Status& s) {
 
   {
     std::lock_guard<simple_spinlock> lock(lock_);
-    transaction_status_ = s;
+    operation_status_ = s;
     repl_state_copy = replication_state_;
   }
 
@@ -304,31 +303,31 @@ void TransactionDriver::HandleFailure(const Status& s) {
     case NOT_REPLICATING:
     case REPLICATION_FAILED:
     {
-      VLOG_WITH_PREFIX(1) << "Transaction " << ToString() << " failed prior to "
+      VLOG_WITH_PREFIX(1) << "Operation " << ToString() << " failed prior to "
           "replication success: " << s.ToString();
-      transaction_->Finish(Transaction::ABORTED);
-      mutable_state()->completion_callback()->set_error(transaction_status_);
-      mutable_state()->completion_callback()->TransactionCompleted();
-      txn_tracker_->Release(this);
+      operation_->Finish(Operation::ABORTED);
+      mutable_state()->completion_callback()->set_error(operation_status_);
+      mutable_state()->completion_callback()->OperationCompleted();
+      operation_tracker_->Release(this);
       return;
     }
 
     case REPLICATING:
     case REPLICATED:
     {
-      LOG_WITH_PREFIX(FATAL) << "Cannot cancel transactions that have already replicated"
-          << ": " << transaction_status_.ToString()
-          << " transaction:" << ToString();
+      LOG_WITH_PREFIX(FATAL) << "Cannot cancel operations that have already replicated"
+          << ": " << operation_status_.ToString()
+          << " operation:" << ToString();
     }
   }
 }
 
-void TransactionDriver::ReplicationFinished(const Status& status) {
+void OperationDriver::ReplicationFinished(const Status& status) {
   consensus::OpId op_id_local;
   {
     std::lock_guard<simple_spinlock> op_id_lock(opid_lock_);
     // TODO: it's a bit silly that we have three copies of the opid:
-    // one here, one in ConsensusRound, and one in TransactionState.
+    // one here, one in ConsensusRound, and one in OperationState.
 
     op_id_copy_ = DCHECK_NOTNULL(mutable_state()->consensus_round())->id();
     DCHECK(op_id_copy_.IsInitialized());
@@ -347,14 +346,14 @@ void TransactionDriver::ReplicationFinished(const Status& status) {
       replication_state_ = REPLICATED;
     } else {
       replication_state_ = REPLICATION_FAILED;
-      transaction_status_ = status;
+      operation_status_ = status;
     }
     prepare_state_copy = prepare_state_;
   }
 
   // If we have prepared and replicated, we're ready to move ahead and apply this operation.
   // Note that if we set the state to REPLICATION_FAILED above, ApplyAsync() will actually abort the
-  // transaction, i.e. ApplyTask() will never be called and the transaction will never be applied to
+  // operation, i.e. ApplyTask() will never be called and the operation will never be applied to
   // the tablet.
   if (prepare_state_copy == PREPARED) {
     // We likely need to do cleanup if this fails so for now just
@@ -363,49 +362,49 @@ void TransactionDriver::ReplicationFinished(const Status& status) {
   }
 }
 
-void TransactionDriver::Abort(const Status& status) {
+void OperationDriver::Abort(const Status& status) {
   CHECK(!status.ok());
 
   ReplicationState repl_state_copy;
   {
     std::lock_guard<simple_spinlock> lock(lock_);
     repl_state_copy = replication_state_;
-    transaction_status_ = status;
+    operation_status_ = status;
   }
 
-  // If the state is not NOT_REPLICATING we abort immediately and the transaction
+  // If the state is not NOT_REPLICATING we abort immediately and the operation
   // will never be replicated.
-  // In any other state we just set the transaction status, if the transaction's
+  // In any other state we just set the operation status, if the operation's
   // Apply hasn't started yet this prevents it from starting, but if it has then
-  // the transaction runs to completion.
+  // the operation runs to completion.
   if (repl_state_copy == NOT_REPLICATING) {
     HandleFailure(status);
   }
 }
 
-Status TransactionDriver::ApplyAsync() {
+Status OperationDriver::ApplyAsync() {
   {
     std::unique_lock<simple_spinlock> lock(lock_);
     DCHECK_EQ(prepare_state_, PREPARED);
-    if (transaction_status_.ok()) {
+    if (operation_status_.ok()) {
       DCHECK_EQ(replication_state_, REPLICATED);
       order_verifier_->CheckApply(op_id_copy_.index(),
                                   prepare_physical_hybrid_time_);
-      // Now that the transaction is committed in consensus advance the safe time.
-      if (transaction_->state()->external_consistency_mode() != COMMIT_WAIT) {
-        transaction_->state()->tablet_peer()->tablet()->mvcc_manager()->
-            OfflineAdjustSafeTime(transaction_->state()->hybrid_time());
+      // Now that the operation is committed in consensus advance the safe time.
+      if (operation_->state()->external_consistency_mode() != COMMIT_WAIT) {
+        operation_->state()->tablet_peer()->tablet()->mvcc_manager()->
+            OfflineAdjustSafeTime(operation_->state()->hybrid_time());
       }
     } else {
       DCHECK_EQ(replication_state_, REPLICATION_FAILED);
-      DCHECK(!transaction_status_.ok());
+      DCHECK(!operation_status_.ok());
       lock.unlock();
-      HandleFailure(transaction_status_);
+      HandleFailure(operation_status_);
       return Status::OK();
     }
   }
 
-  TRACE_EVENT_FLOW_BEGIN0("txn", "ApplyTask", this);
+  TRACE_EVENT_FLOW_BEGIN0("operation", "ApplyTask", this);
   switch (table_type_) {
     case TableType::YQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
     case TableType::REDIS_TABLE_TYPE:
@@ -414,14 +413,14 @@ Status TransactionDriver::ApplyAsync() {
       ApplyTask();
       return Status::OK();
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
-      return apply_pool_->SubmitClosure(Bind(&TransactionDriver::ApplyTask, Unretained(this)));
+      return apply_pool_->SubmitClosure(Bind(&OperationDriver::ApplyTask, Unretained(this)));
   }
   LOG(FATAL) << "Invalid table type: " << table_type_;
   return STATUS_FORMAT(IllegalState, "Invalid table type: $0", table_type_);
 }
 
-void TransactionDriver::ApplyTask() {
-  TRACE_EVENT_FLOW_END0("txn", "ApplyTask", this);
+void OperationDriver::ApplyTask() {
+  TRACE_EVENT_FLOW_END0("operation", "ApplyTask", this);
   ADOPT_TRACE(trace());
 
 #ifndef NDEBUG
@@ -434,15 +433,15 @@ void TransactionDriver::ApplyTask() {
 
   // We need to ref-count ourself, since Commit() may run very quickly
   // and end up calling Finalize() while we're still in this code.
-  scoped_refptr<TransactionDriver> ref(this);
+  scoped_refptr<OperationDriver> ref(this);
 
   {
     gscoped_ptr<CommitMsg> commit_msg;
-    CHECK_OK(transaction_->Apply(&commit_msg));
+    CHECK_OK(operation_->Apply(&commit_msg));
     if (commit_msg) {
       commit_msg->mutable_commited_op_id()->CopyFrom(op_id_copy_);
     }
-    SetResponseHybridTime(transaction_->state(), transaction_->state()->hybrid_time());
+    SetResponseHybridTime(operation_->state(), operation_->state()->hybrid_time());
 
     // If the client requested COMMIT_WAIT as the external consistency mode
     // calculate the latest that the prepare hybrid_time could be and wait
@@ -458,12 +457,12 @@ void TransactionDriver::ApplyTask() {
       CHECK_OK(CommitWait());
     }
 
-    transaction_->PreCommit();
+    operation_->PreCommit();
 
     // We only write the "commit" records to the local log for legacy Kudu tables. We are not
     // writing these records for RocksDB-based tables.
     if (table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-      TRACE_EVENT1("txn", "AsyncAppendCommit", "txn", this);
+      TRACE_EVENT1("operation", "AsyncAppendCommit", "operation", this);
       CHECK_OK(log_->AsyncAppendCommit(commit_msg.Pass(), Bind(DoNothingStatusCB)));
     }
 
@@ -471,9 +470,9 @@ void TransactionDriver::ApplyTask() {
   }
 }
 
-void TransactionDriver::SetResponseHybridTime(TransactionState* transaction_state,
-                                             const HybridTime& hybrid_time) {
-  google::protobuf::Message* response = transaction_state->response();
+void OperationDriver::SetResponseHybridTime(OperationState* operation_state,
+                                            const HybridTime& hybrid_time) {
+  google::protobuf::Message* response = operation_state->response();
   if (response) {
     const google::protobuf::FieldDescriptor* ts_field =
         response->GetDescriptor()->FindFieldByName(kHybridTimeFieldName);
@@ -481,7 +480,7 @@ void TransactionDriver::SetResponseHybridTime(TransactionState* transaction_stat
   }
 }
 
-Status TransactionDriver::CommitWait() {
+Status OperationDriver::CommitWait() {
   MonoTime before = MonoTime::Now(MonoTime::FINE);
   DCHECK(mutable_state()->external_consistency_mode() == COMMIT_WAIT);
   // TODO: we could plumb the RPC deadline in here, and not bother commit-waiting
@@ -494,19 +493,19 @@ Status TransactionDriver::CommitWait() {
   return Status::OK();
 }
 
-void TransactionDriver::Finalize() {
+void OperationDriver::Finalize() {
   ADOPT_TRACE(trace());
   // TODO: this is an ugly hack so that the Release() call doesn't delete the
   // object while we still hold the lock.
-  scoped_refptr<TransactionDriver> ref(this);
+  scoped_refptr<OperationDriver> ref(this);
   std::lock_guard<simple_spinlock> lock(lock_);
-  transaction_->Finish(Transaction::COMMITTED);
-  mutable_state()->completion_callback()->TransactionCompleted();
-  txn_tracker_->Release(this);
+  operation_->Finish(Operation::COMMITTED);
+  mutable_state()->completion_callback()->OperationCompleted();
+  operation_tracker_->Release(this);
 }
 
 
-std::string TransactionDriver::StateString(ReplicationState repl_state,
+std::string OperationDriver::StateString(ReplicationState repl_state,
                                            PrepareState prep_state) {
   string state_str;
   switch (repl_state) {
@@ -538,7 +537,7 @@ std::string TransactionDriver::StateString(ReplicationState repl_state,
   return state_str;
 }
 
-std::string TransactionDriver::LogPrefix() const {
+std::string OperationDriver::LogPrefix() const {
 
   ReplicationState repl_state_copy;
   PrepareState prep_state_copy;
@@ -553,7 +552,7 @@ std::string TransactionDriver::LogPrefix() const {
 
   string state_str = StateString(repl_state_copy, prep_state_copy);
   // We use the tablet and the peer (T, P) to identify ts and tablet and the hybrid_time (Ts) to
-  // (help) identify the transaction. The state string (S) describes the state of the transaction.
+  // (help) identify the operation. The state string (S) describes the state of the operation.
   return strings::Substitute("T $0 P $1 S $2 Ts $3: ",
                              // consensus_ is NULL in some unit tests.
                              PREDICT_TRUE(consensus_) ? consensus_->tablet_id() : "(unknown)",

@@ -78,11 +78,7 @@ namespace {
 
 } // namespace
 
-DeltaFileWriter::DeltaFileWriter(gscoped_ptr<WritableBlock> block)
-#ifndef NDEBUG
- : has_appended_(false)
-#endif
-{ // NOLINT(*)
+DeltaFileWriter::DeltaFileWriter(gscoped_ptr<WritableBlock> block) {
   cfile::WriterOptions opts;
   opts.write_validx = true;
   opts.storage_attributes.cfile_block_size = FLAGS_deltafile_default_block_size;
@@ -261,10 +257,10 @@ bool DeltaFileReader::IsRelevantForSnapshot(const MvccSnapshot& snap) const {
     return true;
   }
   if (delta_type_ == REDO) {
-    return snap.MayHaveCommittedTransactionsAtOrAfter(delta_stats_->min_hybrid_time());
+    return snap.MayHaveCommittedOperationsAtOrAfter(delta_stats_->min_hybrid_time());
   }
   if (delta_type_ == UNDO) {
-    return snap.MayHaveUncommittedTransactionsAtOrBefore(delta_stats_->max_hybrid_time());
+    return snap.MayHaveUncommittedOperationsAtOrBefore(delta_stats_->max_hybrid_time());
   }
   LOG(DFATAL) << "Cannot reach here";
   return false;
@@ -304,7 +300,7 @@ Status DeltaFileReader::NewDeltaIterator(const Schema *projection,
 }
 
 Status DeltaFileReader::CheckRowDeleted(rowid_t row_idx, bool *deleted) const {
-  MvccSnapshot snap_all(MvccSnapshot::CreateSnapshotIncludingAllTransactions());
+  MvccSnapshot snap_all(MvccSnapshot::CreateSnapshotIncludingAllOperations());
 
   // TODO: would be nice to avoid allocation here, but we don't want to
   // duplicate all the logic from NewDeltaIterator. So, we'll heap-allocate
@@ -587,7 +583,7 @@ inline bool IsRedoRelevant(const MvccSnapshot& snap,
                             bool* continue_visit) {
   *continue_visit = true;
   if (!snap.IsCommitted(hybrid_time)) {
-    if (!snap.MayHaveCommittedTransactionsAtOrAfter(hybrid_time)) {
+    if (!snap.MayHaveCommittedOperationsAtOrAfter(hybrid_time)) {
       *continue_visit = false;
     }
     return false;
@@ -603,7 +599,7 @@ inline bool IsUndoRelevant(const MvccSnapshot& snap,
                            bool* continue_visit) {
   *continue_visit = true;
   if (snap.IsCommitted(hybrid_time)) {
-    if (!snap.MayHaveUncommittedTransactionsAtOrBefore(hybrid_time)) {
+    if (!snap.MayHaveUncommittedOperationsAtOrBefore(hybrid_time)) {
       *continue_visit = false;
     }
     return false;

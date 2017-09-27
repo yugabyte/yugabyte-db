@@ -92,12 +92,12 @@ using yb::util::to_underlying;
 
 ReplicaState::ReplicaState(ConsensusOptions options, string peer_uuid,
                            gscoped_ptr<ConsensusMetadata> cmeta,
-                           ReplicaTransactionFactory* txn_factory)
+                           ReplicaOperationFactory* operation_factory)
     : options_(std::move(options)),
       peer_uuid_(std::move(peer_uuid)),
       cmeta_(cmeta.Pass()),
       next_index_(0),
-      txn_factory_(txn_factory),
+      operation_factory_(operation_factory),
       last_received_op_id_(MinimumOpId()),
       last_received_op_id_current_leader_(MinimumOpId()),
       last_committed_index_(MinimumOpId()),
@@ -380,7 +380,7 @@ bool ReplicaState::IsOpCommittedOrPending(const OpId& op_id, bool* term_mismatch
                << "last_received_index=" << last_received_index << ", "
                << "tablet: " << options_.tablet_id << ", current state: "
                << ToStringUnlocked();
-    DumpPendingTransactionsUnlocked();
+    DumpPendingOperationsUnlocked();
     CHECK(false);
   }
 
@@ -447,8 +447,8 @@ const std::string& ReplicaState::GetVotedForCurrentTermUnlocked() const {
   return cmeta_->voted_for();
 }
 
-ReplicaTransactionFactory* ReplicaState::GetReplicaTransactionFactoryUnlocked() const {
-  return txn_factory_;
+ReplicaOperationFactory* ReplicaState::GetReplicaOperationFactoryUnlocked() const {
+  return operation_factory_;
 }
 
 const string& ReplicaState::GetPeerUuid() const {
@@ -459,16 +459,16 @@ const ConsensusOptions& ReplicaState::GetOptions() const {
   return options_;
 }
 
-void ReplicaState::DumpPendingTransactionsUnlocked() {
+void ReplicaState::DumpPendingOperationsUnlocked() {
   DCHECK(update_lock_.is_locked());
   LOG_WITH_PREFIX_UNLOCKED(INFO) << "Dumping " << pending_txns_.size()
-                                 << " pending transactions.";
+                                 << " pending operations.";
   for (const auto &txn : pending_txns_) {
     LOG_WITH_PREFIX_UNLOCKED(INFO) << txn.second->replicate_msg()->ShortDebugString();
   }
 }
 
-Status ReplicaState::CancelPendingTransactions() {
+Status ReplicaState::CancelPendingOperations() {
   {
     ThreadRestrictions::AssertWaitAllowed();
     UniqueLock lock(update_lock_);
@@ -480,13 +480,13 @@ Status ReplicaState::CancelPendingTransactions() {
     }
 
     LOG_WITH_PREFIX_UNLOCKED(INFO) << "Trying to abort " << pending_txns_.size()
-                                   << " pending transactions.";
+                                   << " pending operations.";
     for (const auto& txn : pending_txns_) {
       const scoped_refptr<ConsensusRound>& round = txn.second;
-      // We cancel only transactions whose applies have not yet been triggered.
-      LOG_WITH_PREFIX_UNLOCKED(INFO) << "Aborting transaction as it isn't in flight: "
+      // We cancel only operations whose applies have not yet been triggered.
+      LOG_WITH_PREFIX_UNLOCKED(INFO) << "Aborting operation as it isn't in flight: "
                                      << txn.second->replicate_msg()->ShortDebugString();
-      round->NotifyReplicationFinished(STATUS(Aborted, "Transaction aborted"));
+      round->NotifyReplicationFinished(STATUS(Aborted, "Operation aborted"));
     }
   }
   return Status::OK();
@@ -494,7 +494,7 @@ Status ReplicaState::CancelPendingTransactions() {
 
 Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
   DCHECK(update_lock_.is_locked());
-  LOG_WITH_PREFIX_UNLOCKED(INFO) << "Aborting all transactions after (but not including): "
+  LOG_WITH_PREFIX_UNLOCKED(INFO) << "Aborting all operations after (but not including): "
       << new_preceding_idx << ". Current State: " << ToStringUnlocked();
 
   DCHECK_GE(new_preceding_idx, 0);
@@ -522,7 +522,7 @@ Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
     const scoped_refptr<ConsensusRound>& round = (*iter).second;
     LOG_WITH_PREFIX_UNLOCKED(INFO) << "Aborting uncommitted operation due to leader change: "
                                    << round->replicate_msg()->id();
-    round->NotifyReplicationFinished(STATUS(Aborted, "Transaction aborted by new leader"));
+    round->NotifyReplicationFinished(STATUS(Aborted, "Operation aborted by new leader"));
     // Erase the entry from pendings.
     pending_txns_.erase(iter++);
   }
@@ -706,7 +706,7 @@ Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
   }
 
   if (pending_txns_.empty()) {
-    VLOG_WITH_PREFIX_UNLOCKED(1) << "No transactions to mark as committed up to: "
+    VLOG_WITH_PREFIX_UNLOCKED(1) << "No operations to mark as committed up to: "
                                  << committed_index.ShortDebugString();
     return STATUS_SUBSTITUTE(
         NotFound,
@@ -848,7 +848,7 @@ const OpId& ReplicaState::GetLastReceivedOpIdCurLeaderUnlocked() const {
   return last_received_op_id_current_leader_;
 }
 
-OpId ReplicaState::GetLastPendingTransactionOpIdUnlocked() const {
+OpId ReplicaState::GetLastPendingOperationOpIdUnlocked() const {
   DCHECK(update_lock_.is_locked());
   return pending_txns_.empty()
       ? MinimumOpId() : (--pending_txns_.end())->second->id();

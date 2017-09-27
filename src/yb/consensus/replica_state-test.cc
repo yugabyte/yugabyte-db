@@ -53,7 +53,7 @@ class RaftConsensusStateTest : public YBTest {
  public:
   RaftConsensusStateTest()
     : fs_manager_(env_.get(), GetTestPath("fs_root"), "tserver_test"),
-      txn_factory_(new MockTransactionFactory()) {
+      operation_factory_(new MockOperationFactory()) {
   }
 
   void SetUp() override {
@@ -71,7 +71,7 @@ class RaftConsensusStateTest : public YBTest {
     ASSERT_OK(ConsensusMetadata::Create(&fs_manager_, kTabletId, fs_manager_.uuid(),
                                         config_, kMinimumTerm, &cmeta));
     state_.reset(new ReplicaState(ConsensusOptions(), fs_manager_.uuid(), cmeta.Pass(),
-                                  txn_factory_.get()));
+                                  operation_factory_.get()));
 
     // Start up the ReplicaState.
     ReplicaState::UniqueLock lock;
@@ -82,7 +82,7 @@ class RaftConsensusStateTest : public YBTest {
  protected:
   FsManager fs_manager_;
   RaftConfigPB config_;
-  gscoped_ptr<MockTransactionFactory> txn_factory_;
+  gscoped_ptr<MockOperationFactory> operation_factory_;
   gscoped_ptr<ReplicaState> state_;
 };
 

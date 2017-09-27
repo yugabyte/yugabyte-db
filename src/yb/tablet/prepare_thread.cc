@@ -23,7 +23,7 @@
 
 #include "yb/util/logging.h"
 #include "yb/tablet/prepare_thread.h"
-#include "yb/tablet/transactions/transaction_driver.h"
+#include "yb/tablet/operations/operation_driver.h"
 
 DEFINE_int32(max_group_replicate_batch_size, 16,
              "Maximum number of transactions to submit to consensus for replication in a batch.");
@@ -54,10 +54,10 @@ class PrepareThreadImpl {
   CHECKED_STATUS Start();
   void Stop();
 
-  CHECKED_STATUS Submit(TransactionDriver* txn_driver);
+  CHECKED_STATUS Submit(OperationDriver* txn_driver);
 
  private:
-  using TransactionDrivers = std::vector<TransactionDriver*>;
+  using OperationDrivers = std::vector<OperationDriver*>;
 
   scoped_refptr<yb::Thread> thread_;
 
@@ -72,7 +72,7 @@ class PrepareThreadImpl {
 
   std::atomic<bool> processing_{false};
 
-  boost::lockfree::queue<TransactionDriver*> queue_;
+  boost::lockfree::queue<OperationDriver*> queue_;
 
   std::mutex mtx_;
   std::condition_variable cond_;
@@ -86,7 +86,7 @@ class PrepareThreadImpl {
   std::mutex stop_mtx_;
   std::condition_variable stop_cond_;
 
-  TransactionDrivers leader_side_batch_;
+  OperationDrivers leader_side_batch_;
 
   // A temporary buffer of rounds to replicate, used to reduce reallocation.
   consensus::ConsensusRounds rounds_to_replicate_;
@@ -97,7 +97,7 @@ class PrepareThreadImpl {
   }
 
   void Run();
-  void ProcessItem(TransactionDriver* item);
+  void ProcessItem(OperationDriver* item);
 
   // @return true if at least one item was processed.
   // @param lock This unique_lock of mtx_ is provided so that we can release it if we need to submit
@@ -110,8 +110,8 @@ class PrepareThreadImpl {
   // A wrapper around ProcessAndClearLeaderSideBatch that assumes we are currently holding the
   // mutex.
 
-  void ReplicateSubBatch(TransactionDrivers::iterator begin,
-                         TransactionDrivers::iterator end,
+  void ReplicateSubBatch(OperationDrivers::iterator begin,
+                         OperationDrivers::iterator end,
                          std::unique_lock<std::mutex>* lock);
 };
 
@@ -155,7 +155,7 @@ void PrepareThreadImpl::Stop() {
   }
 }
 
-Status PrepareThreadImpl::Submit(TransactionDriver* txnd) {
+Status PrepareThreadImpl::Submit(OperationDriver* txnd) {
   if (stop_requested_.load(std::memory_order_acquire)) {
     return STATUS(IllegalState, "Prepare thread is shutting down");
   }
@@ -227,7 +227,7 @@ void PrepareThreadImpl::Run() {
     }
 
     for (;;) {
-      TransactionDriver* item = nullptr;
+      OperationDriver* item = nullptr;
       while (queue_.pop(item)) {
         ProcessItem(item);
       }
@@ -238,17 +238,17 @@ void PrepareThreadImpl::Run() {
   }
 }
 
-void PrepareThreadImpl::ProcessItem(TransactionDriver* item) {
+void PrepareThreadImpl::ProcessItem(OperationDriver* item) {
   CHECK_NOTNULL(item);
 
   if (item->is_leader_side()) {
     const int64_t bound_term = item->consensus_round()->bound_term();
 
-    // AlterSchemaTransaction::Prepare calls Tablet::CreatePreparedAlterSchema, which acquires the
-    // schema lock. Because of this, we must not attempt to process two AlterSchemaTransactions in
+    // AlterSchemaOperation::Prepare calls Tablet::CreatePreparedAlterSchema, which acquires the
+    // schema lock. Because of this, we must not attempt to process two AlterSchemaOperations in
     // one batch, otherwise we'll deadlock. Furthermore, for simplicity, we choose to process each
-    // AlterSchemaTransaction in a batch of its own.
-    const bool is_alter = item->tx_type() == Transaction::ALTER_SCHEMA_TXN;
+    // AlterSchemaOperation in a batch of its own.
+    const bool is_alter = item->operation_type() == Operation::ALTER_SCHEMA_TXN;
 
     // Don't add more than the max number of transactions to a batch, and also don't add
     // transactions bound to different terms, so as not to fail unrelated transactions
@@ -313,8 +313,8 @@ bool PrepareThreadImpl::ProcessAndClearLeaderSideBatch(std::unique_lock<std::mut
 }
 
 void PrepareThreadImpl::ReplicateSubBatch(
-    TransactionDrivers::iterator txnd_begin,
-    TransactionDrivers::iterator txnd_end,
+    OperationDrivers::iterator txnd_begin,
+    OperationDrivers::iterator txnd_end,
     std::unique_lock<std::mutex>* lock) {
   DCHECK(!lock || lock->mutex() == &mtx_);
   DCHECK_GE(std::distance(txnd_begin, txnd_end), 0);
@@ -375,7 +375,7 @@ void PrepareThread::Stop() {
   VLOG(1) << "The prepare thread has stopped";
 }
 
-Status PrepareThread::Submit(TransactionDriver* txnd) {
+Status PrepareThread::Submit(OperationDriver* txnd) {
   return impl_->Submit(txnd);
 }
 

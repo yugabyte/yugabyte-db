@@ -63,14 +63,14 @@ using yb::consensus::GetConsensusRole;
 using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
 using yb::consensus::ConsensusStatePB;
 using yb::consensus::RaftPeerPB;
-using yb::consensus::TransactionStatusPB;
+using yb::consensus::OperationStatusPB;
 using yb::tablet::MaintenanceManagerStatusPB;
 using yb::tablet::MaintenanceManagerStatusPB_CompletedOpPB;
 using yb::tablet::MaintenanceManagerStatusPB_MaintenanceOpPB;
 using yb::tablet::Tablet;
 using yb::tablet::TabletPeer;
 using yb::tablet::TabletStatusPB;
-using yb::tablet::Transaction;
+using yb::tablet::Operation;
 using std::endl;
 using std::shared_ptr;
 using std::vector;
@@ -126,8 +126,8 @@ void TabletServerPathHandlers::HandleTransactionsPage(const Webserver::WebReques
   tserver_->tablet_manager()->GetTabletPeers(&peers);
 
   string arg = FindWithDefault(req.parsed_args, "include_traces", "false");
-  Transaction::TraceType trace_type = ParseLeadingBoolValue(
-      arg.c_str(), false) ? Transaction::TRACE_TXNS : Transaction::NO_TRACE_TXNS;
+  Operation::TraceType trace_type = ParseLeadingBoolValue(
+      arg.c_str(), false) ? Operation::TRACE_TXNS : Operation::NO_TRACE_TXNS;
 
   if (!as_text) {
     *output << "<h1>Transactions</h1>\n";
@@ -138,17 +138,17 @@ void TabletServerPathHandlers::HandleTransactionsPage(const Webserver::WebReques
   }
 
   for (const scoped_refptr<TabletPeer>& peer : peers) {
-    vector<TransactionStatusPB> inflight;
+    vector<OperationStatusPB> inflight;
 
     if (peer->tablet() == nullptr) {
       continue;
     }
 
-    peer->GetInFlightTransactions(trace_type, &inflight);
-    for (const TransactionStatusPB& inflight_tx : inflight) {
+    peer->GetInFlightOperations(trace_type, &inflight);
+    for (const auto& inflight_tx : inflight) {
       string total_time_str = Substitute("$0 us.", inflight_tx.running_for_micros());
       string description;
-      if (trace_type == Transaction::TRACE_TXNS) {
+      if (trace_type == Operation::TRACE_TXNS) {
         description = Substitute("$0, Trace: $1",
                                   inflight_tx.description(), inflight_tx.trace_buffer());
       } else {
@@ -160,13 +160,13 @@ void TabletServerPathHandlers::HandleTransactionsPage(const Webserver::WebReques
           "<tr><th>$0</th><th>$1</th><th>$2</th><th>$3</th><th>$4</th></tr>\n",
           EscapeForHtmlToString(peer->tablet_id()),
           EscapeForHtmlToString(inflight_tx.op_id().ShortDebugString()),
-          OperationType_Name(inflight_tx.tx_type()),
+          OperationType_Name(inflight_tx.operation_type()),
           total_time_str,
           EscapeForHtmlToString(description));
       } else {
         (*output) << "Tablet: " << peer->tablet_id() << endl;
         (*output) << "Op ID: " << inflight_tx.op_id().ShortDebugString() << endl;
-        (*output) << "Type: " << OperationType_Name(inflight_tx.tx_type()) << endl;
+        (*output) << "Type: " << OperationType_Name(inflight_tx.operation_type()) << endl;
         (*output) << "Running: " << total_time_str;
         (*output) << description << endl;
         (*output) << endl;

@@ -29,8 +29,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_TRANSACTION_ORDER_VERIFIER_H
-#define YB_TABLET_TRANSACTION_ORDER_VERIFIER_H
+#ifndef YB_TABLET_OPERATION_ORDER_VERIFIER_H
+#define YB_TABLET_OPERATION_ORDER_VERIFIER_H
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/walltime.h"
@@ -75,10 +75,10 @@ namespace tablet {
 // Because the above reasoning is somewhat complex, and the assumptions may change in the
 // future, this class uses a DFAKE_MUTEX. This way, if we break any assumptions, we'll
 // hopefully see the bug with an assertion error if not from a TSAN failure.
-class TransactionOrderVerifier {
+class OperationOrderVerifier {
  public:
-  TransactionOrderVerifier();
-  ~TransactionOrderVerifier();
+  OperationOrderVerifier();
+  ~OperationOrderVerifier();
 
   // Verify that it would be correct to apply an operation with the given
   // index and prepare timestamp. This ensures that the indexes are increasing
@@ -98,9 +98,10 @@ class TransactionOrderVerifier {
   int64_t prev_idx_;
   MicrosecondsInt64 prev_prepare_phys_timestamp_;
 
-  DISALLOW_COPY_AND_ASSIGN(TransactionOrderVerifier);
+  DISALLOW_COPY_AND_ASSIGN(OperationOrderVerifier);
 };
 
 } // namespace tablet
 } // namespace yb
-#endif /* YB_TABLET_TRANSACTION_ORDER_VERIFIER_H */
+
+#endif // YB_TABLET_OPERATION_ORDER_VERIFIER_H

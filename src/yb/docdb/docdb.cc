@@ -77,10 +77,10 @@ void SeekPastSubKey(const SubDocKey& sub_doc_key, rocksdb::Iterator* iter) {
 }  // namespace
 
 
-void PrepareDocWriteTransaction(const vector<unique_ptr<DocOperation>>& doc_write_ops,
-                                util::SharedLockManager *lock_manager,
-                                LockBatch *keys_locked,
-                                bool *need_read_snapshot) {
+void PrepareDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_ops,
+                              util::SharedLockManager *lock_manager,
+                              LockBatch *keys_locked,
+                              bool *need_read_snapshot) {
   *need_read_snapshot = false;
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
     const list<DocPath> doc_paths = doc_op->DocPathsToLock();
@@ -101,11 +101,11 @@ void PrepareDocWriteTransaction(const vector<unique_ptr<DocOperation>>& doc_writ
   lock_manager->Lock(*keys_locked);
 }
 
-Status ApplyDocWriteTransaction(const vector<unique_ptr<DocOperation>>& doc_write_ops,
-                                const HybridTime& hybrid_time,
-                                rocksdb::DB *rocksdb,
-                                KeyValueWriteBatchPB* write_batch,
-                                std::atomic<int64_t>* monotonic_counter) {
+Status ApplyDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_ops,
+                              const HybridTime& hybrid_time,
+                              rocksdb::DB *rocksdb,
+                              KeyValueWriteBatchPB* write_batch,
+                              std::atomic<int64_t>* monotonic_counter) {
   DocWriteBatch doc_write_batch(rocksdb, monotonic_counter);
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
     RETURN_NOT_OK(doc_op->Apply(&doc_write_batch, rocksdb, hybrid_time));

@@ -24,7 +24,7 @@ using strings::Substitute;
 namespace yb {
 namespace util {
 
-// The implementation is based on TransactionTracker::WaitForAllToFinish.
+// The implementation is based on OperationTracker::WaitForAllToFinish.
 Status PendingOperationCounter::WaitForAllOpsToFinish(const MonoDelta& timeout) const {
   const int complain_ms = 1000;
   MonoTime start_time = MonoTime::Now(MonoTime::FINE);

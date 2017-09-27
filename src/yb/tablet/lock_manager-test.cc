@@ -54,15 +54,15 @@ DEFINE_int32(num_iterations, 1000, "number of iterations per client thread");
 namespace yb {
 namespace tablet {
 
-static const TransactionState* kFakeTransaction =
-  reinterpret_cast<TransactionState*>(0xdeadbeef);
+static const OperationState* kFakeOperation =
+  reinterpret_cast<OperationState*>(0xdeadbeef);
 
 class LockManagerTest : public YBTest {
  public:
   void VerifyAlreadyLocked(const Slice& key) {
     LockEntry *entry;
     ASSERT_EQ(LockManager::LOCK_BUSY,
-              lock_manager_.TryLock(key, kFakeTransaction, LockManager::LOCK_EXCLUSIVE, &entry));
+              lock_manager_.TryLock(key, kFakeOperation, LockManager::LOCK_EXCLUSIVE, &entry));
   }
 
   LockManager lock_manager_;
@@ -70,20 +70,20 @@ class LockManagerTest : public YBTest {
 
 TEST_F(LockManagerTest, TestLockUnlockSingleRow) {
   Slice key_a("a");
-  ScopedRowLock(&lock_manager_, kFakeTransaction, key_a, LockManager::LOCK_EXCLUSIVE);
-  ScopedRowLock(&lock_manager_, kFakeTransaction, key_a, LockManager::LOCK_EXCLUSIVE);
-  ScopedRowLock(&lock_manager_, kFakeTransaction, key_a, LockManager::LOCK_EXCLUSIVE);
+  ScopedRowLock(&lock_manager_, kFakeOperation, key_a, LockManager::LOCK_EXCLUSIVE);
+  ScopedRowLock(&lock_manager_, kFakeOperation, key_a, LockManager::LOCK_EXCLUSIVE);
+  ScopedRowLock(&lock_manager_, kFakeOperation, key_a, LockManager::LOCK_EXCLUSIVE);
 }
 
 // Test if the same transaction locks the same row multiple times.
 TEST_F(LockManagerTest, TestMultipleLockSameRow) {
   Slice key_a("a");
-  ScopedRowLock first_lock(&lock_manager_, kFakeTransaction, key_a, LockManager::LOCK_EXCLUSIVE);
+  ScopedRowLock first_lock(&lock_manager_, kFakeOperation, key_a, LockManager::LOCK_EXCLUSIVE);
   ASSERT_EQ(LockManager::LOCK_ACQUIRED, first_lock.GetLockStatusForTests());
   VerifyAlreadyLocked(key_a);
 
   {
-    ScopedRowLock second_lock(&lock_manager_, kFakeTransaction, key_a, LockManager::LOCK_EXCLUSIVE);
+    ScopedRowLock second_lock(&lock_manager_, kFakeOperation, key_a, LockManager::LOCK_EXCLUSIVE);
     ASSERT_EQ(LockManager::LOCK_ACQUIRED, second_lock.GetLockStatusForTests());
     VerifyAlreadyLocked(key_a);
   }
@@ -95,8 +95,8 @@ TEST_F(LockManagerTest, TestMultipleLockSameRow) {
 TEST_F(LockManagerTest, TestLockUnlockMultipleRows) {
   Slice key_a("a"), key_b("b");
   for (int i = 0; i < 3; ++i) {
-    ScopedRowLock l1(&lock_manager_, kFakeTransaction, key_a, LockManager::LOCK_EXCLUSIVE);
-    ScopedRowLock l2(&lock_manager_, kFakeTransaction, key_b, LockManager::LOCK_EXCLUSIVE);
+    ScopedRowLock l1(&lock_manager_, kFakeOperation, key_a, LockManager::LOCK_EXCLUSIVE);
+    ScopedRowLock l2(&lock_manager_, kFakeOperation, key_b, LockManager::LOCK_EXCLUSIVE);
     VerifyAlreadyLocked(key_a);
     VerifyAlreadyLocked(key_b);
   }
@@ -104,14 +104,14 @@ TEST_F(LockManagerTest, TestLockUnlockMultipleRows) {
 
 TEST_F(LockManagerTest, TestRelockSameRow) {
   Slice key_a("a");
-  ScopedRowLock row_lock(&lock_manager_, kFakeTransaction, key_a, LockManager::LOCK_EXCLUSIVE);
+  ScopedRowLock row_lock(&lock_manager_, kFakeOperation, key_a, LockManager::LOCK_EXCLUSIVE);
   VerifyAlreadyLocked(key_a);
 }
 
 TEST_F(LockManagerTest, TestMoveLock) {
   // Acquire a lock.
   Slice key_a("a");
-  ScopedRowLock row_lock(&lock_manager_, kFakeTransaction, key_a, LockManager::LOCK_EXCLUSIVE);
+  ScopedRowLock row_lock(&lock_manager_, kFakeOperation, key_a, LockManager::LOCK_EXCLUSIVE);
   ASSERT_TRUE(row_lock.acquired());
 
   // Move it to a new instance.
@@ -149,12 +149,12 @@ class LmTestResource {
   }
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(LmTestResource);
-
   const Slice* id_;
   std::mutex lock_;
   uint64_t owner_;
   bool is_owned_;
+
+  DISALLOW_COPY_AND_ASSIGN(LmTestResource);
 };
 
 class LmTestThread {
@@ -169,7 +169,7 @@ class LmTestThread {
 
   void Run() {
     tid_ = Env::Default()->gettid();
-    const TransactionState* my_txn = reinterpret_cast<TransactionState*>(tid_);
+    const OperationState* my_txn = reinterpret_cast<OperationState*>(tid_);
 
     std::sort(keys_.begin(), keys_.end());
     for (int i = 0; i < FLAGS_num_iterations; i++) {
@@ -199,12 +199,13 @@ class LmTestThread {
   }
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(LmTestThread);
   LockManager* manager_;
   vector<const Slice*> keys_;
   const vector<LmTestResource*> resources_;
   uint64_t tid_;
   scoped_refptr<yb::Thread> thread_;
+
+  DISALLOW_COPY_AND_ASSIGN(LmTestThread);
 };
 
 static void runPerformanceTest(const char *test_type,

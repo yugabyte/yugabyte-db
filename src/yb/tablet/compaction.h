@@ -45,7 +45,7 @@
 namespace yb {
 namespace tablet {
 struct CompactionInputRow;
-class WriteTransactionState;
+class WriteOperationState;
 
 // Interface for an input feeding into a compaction or flush.
 class CompactionInput {
@@ -187,4 +187,4 @@ Status DebugDumpCompactionInput(CompactionInput *input, vector<string> *lines);
 } // namespace tablet
 } // namespace yb
 
-#endif
+#endif // YB_TABLET_COMPACTION_H

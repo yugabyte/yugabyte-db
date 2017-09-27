@@ -39,13 +39,13 @@ set(TABLET_SRCS
   tablet_peer.cc
   transaction_coordinator.cc
   transaction_participant.cc
-  transaction_order_verifier.cc
-  transactions/transaction.cc
-  transactions/alter_schema_transaction.cc
-  transactions/transaction_driver.cc
-  transactions/transaction_tracker.cc
-  transactions/update_txn_transaction.cc
-  transactions/write_transaction.cc
+  operation_order_verifier.cc
+  operations/operation.cc
+  operations/alter_schema_operation.cc
+  operations/operation_driver.cc
+  operations/operation_tracker.cc
+  operations/update_txn_operation.cc
+  operations/write_operation.cc
   cfile_set.cc
   compaction.cc
   compaction_policy.cc
@@ -133,7 +133,7 @@ ADD_YB_TEST(rowset_tree-test)
 ADD_YB_TEST(composite-pushdown-test)
 ADD_YB_TEST(delta_compaction-test)
 ADD_YB_TEST(mt-rowset_delta_compaction-test)
-ADD_YB_TEST(transactions/transaction_tracker-test)
+ADD_YB_TEST(operations/operation_tracker-test)
 ADD_YB_TEST(tablet_peer-test)
 ADD_YB_TEST(tablet_random_access-test)
 

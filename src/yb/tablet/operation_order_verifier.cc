@@ -31,26 +31,26 @@
 //
 
 #include <glog/logging.h>
-#include "yb/tablet/transaction_order_verifier.h"
+#include "yb/tablet/operation_order_verifier.h"
 
 namespace yb {
 namespace tablet {
 
-TransactionOrderVerifier::TransactionOrderVerifier()
+OperationOrderVerifier::OperationOrderVerifier()
   : prev_idx_(0),
     prev_prepare_phys_timestamp_(0) {
 }
 
-TransactionOrderVerifier::~TransactionOrderVerifier() {
+OperationOrderVerifier::~OperationOrderVerifier() {
 }
 
-void TransactionOrderVerifier::CheckApply(int64_t op_idx,
-                                          MicrosecondsInt64 prepare_phys_timestamp) {
+void OperationOrderVerifier::CheckApply(int64_t op_idx,
+                                        MicrosecondsInt64 prepare_phys_timestamp) {
   DFAKE_SCOPED_LOCK(fake_lock_);
 
   if (prev_idx_ != 0) {
     // We need to allow skips because certain ops (like NO_OP) don't have an
-    // Apply() phase and are not managed by Transactions.
+    // Apply() phase and are not managed by Operations.
     CHECK_GE(op_idx, prev_idx_ + 1) << "Should apply operations in monotonic index order";
     CHECK_GE(prepare_phys_timestamp, prev_prepare_phys_timestamp_)
       << "Prepare phases should have executed in the same order as the op indexes. "

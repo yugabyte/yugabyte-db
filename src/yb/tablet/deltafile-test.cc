@@ -140,8 +140,8 @@ class TestDeltaFile : public ::testing::Test {
                                          const shared_ptr<DeltaFileReader>& reader,
                                          gscoped_ptr<DeltaIterator>* out) {
     MvccSnapshot snap = type == REDO ?
-                        MvccSnapshot::CreateSnapshotIncludingAllTransactions() :
-                        MvccSnapshot::CreateSnapshotIncludingNoTransactions();
+                        MvccSnapshot::CreateSnapshotIncludingAllOperations() :
+                        MvccSnapshot::CreateSnapshotIncludingNoOperations();
     DeltaIterator* raw_iter;
     RETURN_NOT_OK(reader->NewDeltaIterator(&schema_, snap, &raw_iter));
     out->reset(raw_iter);
@@ -328,7 +328,7 @@ TEST_F(TestDeltaFile, TestSkipsDeltasOutOfRange) {
 
   // should skip
   MvccSnapshot snap1(HybridTime(9));
-  ASSERT_FALSE(snap1.MayHaveCommittedTransactionsAtOrAfter(HybridTime(10)));
+  ASSERT_FALSE(snap1.MayHaveCommittedOperationsAtOrAfter(HybridTime(10)));
   DeltaIterator* raw_iter = nullptr;
   Status s = reader->NewDeltaIterator(&schema_, snap1, &raw_iter);
   ASSERT_TRUE(s.IsNotFound());

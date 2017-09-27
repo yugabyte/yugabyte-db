@@ -32,10 +32,11 @@
 #ifndef YB_TABLET_DELTAFILE_H
 #define YB_TABLET_DELTAFILE_H
 
-#include <boost/ptr_container/ptr_deque.hpp>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include <boost/ptr_container/ptr_deque.hpp>
 
 #include "yb/cfile/block_handle.h"
 #include "yb/cfile/cfile_reader.h"
@@ -107,7 +108,7 @@ class DeltaFileWriter {
   // This is used in debug mode to make sure that rows are appended
   // in order.
   DeltaKey last_key_;
-  bool has_appended_;
+  bool has_appended_ = false;
   #endif
 
   DISALLOW_COPY_AND_ASSIGN(DeltaFileWriter);
@@ -171,8 +172,6 @@ class DeltaFileReader : public DeltaStore,
  private:
   friend class DeltaFileIterator;
 
-  DISALLOW_COPY_AND_ASSIGN(DeltaFileReader);
-
   const std::shared_ptr<cfile::CFileReader> &cfile_reader() const {
     return reader_;
   }
@@ -194,6 +193,8 @@ class DeltaFileReader : public DeltaStore,
   const DeltaType delta_type_;
 
   YBOnceDynamic init_once_;
+
+  DISALLOW_COPY_AND_ASSIGN(DeltaFileReader);
 };
 
 // Iterator over the deltas contained in a delta file.
@@ -223,8 +224,6 @@ class DeltaFileIterator : public DeltaIterator {
   friend struct DeletingVisitor<REDO>;
   friend struct DeletingVisitor<UNDO>;
   friend struct FilterAndAppendVisitor;
-
-  DISALLOW_COPY_AND_ASSIGN(DeltaFileIterator);
 
   // PrepareBatch() will read forward all blocks from the deltafile
   // which overlap with the block being prepared, enqueueing them onto
@@ -320,10 +319,12 @@ class DeltaFileIterator : public DeltaIterator {
   const DeltaType delta_type_;
 
   CFileReader::CacheControl cache_blocks_;
+
+  DISALLOW_COPY_AND_ASSIGN(DeltaFileIterator);
 };
 
 
 } // namespace tablet
 } // namespace yb
 
-#endif
+#endif // YB_TABLET_DELTAFILE_H

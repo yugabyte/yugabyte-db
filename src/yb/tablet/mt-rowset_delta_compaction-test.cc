@@ -108,7 +108,7 @@ class TestMultiThreadedRowSetDeltaCompaction : public TestRowSet {
     RowBlock dst(schema_, 1000, &arena);
     gscoped_ptr<RowwiseIterator> iter;
     ASSERT_OK(rs->NewRowIterator(&schema_,
-                                 MvccSnapshot::CreateSnapshotIncludingAllTransactions(),
+                                 MvccSnapshot::CreateSnapshotIncludingAllOperations(),
                                  &iter));
     uint32_t expected = NoBarrier_Load(&update_counter_);
     ASSERT_OK(iter->Init(nullptr));

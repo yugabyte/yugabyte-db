@@ -52,7 +52,7 @@ class HybridTime;
 namespace tablet {
 class Tablet;
 class TabletPeer;
-class TransactionState;
+class OperationState;
 class MvccSnapshot;
 }  // namespace tablet
 

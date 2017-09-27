@@ -201,7 +201,7 @@ class TestRowSet : public YBRowSetTest {
     RowSetKeyProbe probe(rb.row());
 
     ProbeStats stats;
-    ScopedWriteTransaction tx(&mvcc_);
+    ScopedWriteOperation tx(&mvcc_);
     tx.StartApplying();
     Status s = rs->MutateRow(tx.hybrid_time(), probe, mutation, op_id_, &stats, result);
     tx.Commit();
@@ -229,7 +229,7 @@ class TestRowSet : public YBRowSetTest {
   void VerifyUpdatesWithRowIter(const DiskRowSet &rs,
                                 const unordered_set<uint32_t> &updated) {
     Schema proj_val = CreateProjection(schema_, { "val" });
-    MvccSnapshot snap = MvccSnapshot::CreateSnapshotIncludingAllTransactions();
+    MvccSnapshot snap = MvccSnapshot::CreateSnapshotIncludingAllOperations();
     gscoped_ptr<RowwiseIterator> row_iter;
     CHECK_OK(rs.NewRowIterator(&proj_val, snap, &row_iter));
     CHECK_OK(row_iter->Init(NULL));
@@ -276,7 +276,7 @@ class TestRowSet : public YBRowSetTest {
     RangePredicateEncoder enc(&schema_, &arena);
     enc.EncodeRangePredicates(&spec, true);
 
-    MvccSnapshot snap = MvccSnapshot::CreateSnapshotIncludingAllTransactions();
+    MvccSnapshot snap = MvccSnapshot::CreateSnapshotIncludingAllOperations();
     gscoped_ptr<RowwiseIterator> row_iter;
     ASSERT_OK(rs.NewRowIterator(&schema_, snap, &row_iter));
     ASSERT_OK(row_iter->Init(&spec));
@@ -290,7 +290,7 @@ class TestRowSet : public YBRowSetTest {
   // using the given schema as a projection.
   static void IterateProjection(const DiskRowSet &rs, const Schema &schema,
                                 int expected_rows, bool do_log = true) {
-    MvccSnapshot snap = MvccSnapshot::CreateSnapshotIncludingAllTransactions();
+    MvccSnapshot snap = MvccSnapshot::CreateSnapshotIncludingAllOperations();
     gscoped_ptr<RowwiseIterator> row_iter;
     CHECK_OK(rs.NewRowIterator(&schema, snap, &row_iter));
     CHECK_OK(row_iter->Init(NULL));

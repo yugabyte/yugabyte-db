@@ -38,7 +38,7 @@
 #include "yb/server/clock.h"
 
 #include "yb/tablet/transaction_participant.h"
-#include "yb/tablet/transactions/update_txn_transaction.h"
+#include "yb/tablet/operations/update_txn_operation.h"
 
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.pb.h"
@@ -72,7 +72,7 @@ class TransactionStateContext {
 
   // Submits update transaction to the RAFT log. Returns false if was not able to submit.
   virtual MUST_USE_RESULT bool SubmitUpdateTransaction(
-      std::unique_ptr<UpdateTxnTransactionState> state) = 0;
+      std::unique_ptr<UpdateTxnOperationState> state) = 0;
  protected:
   ~TransactionStateContext() {}
 };
@@ -170,13 +170,13 @@ class DTransactionState { // TODO(dtxn) remove D prefix
     return Status::OK();
   }
 
-  void Handle(std::unique_ptr<tablet::UpdateTxnTransactionState> request) {
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request) {
     VLOG(1) << "Handle: " << request->request()->ShortDebugString();
     if (request->request()->status() ==
         tserver::TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS) {
       auto status = AppliedInOneOfInvolvedTablets(*request->request());
       request->completion_callback()->set_error(status);
-      request->completion_callback()->TransactionCompleted();
+      request->completion_callback()->OperationCompleted();
       return;
     }
     if (replicating_) {
@@ -254,7 +254,7 @@ class DTransactionState { // TODO(dtxn) remove D prefix
     FATAL_INVALID_ENUM_VALUE(tserver::TransactionStatus, data.state.status());
   }
 
-  void DoHandle(std::unique_ptr<tablet::UpdateTxnTransactionState> request) {
+  void DoHandle(std::unique_ptr<tablet::UpdateTxnOperationState> request) {
     const auto& state = *request->request();
 
     Status status;
@@ -266,7 +266,7 @@ class DTransactionState { // TODO(dtxn) remove D prefix
 
     if (!status.ok()) {
       request->completion_callback()->set_error(status);
-      request->completion_callback()->TransactionCompleted();
+      request->completion_callback()->OperationCompleted();
       return;
     }
 
@@ -385,8 +385,8 @@ class DTransactionState { // TODO(dtxn) remove D prefix
 
   // The operation that we a currently replicating in RAFT.
   // It is owned by TransactionDriver (that will be renamed to OperationDriver).
-  tablet::UpdateTxnTransactionState* replicating_ = nullptr;
-  std::deque<std::unique_ptr<tablet::UpdateTxnTransactionState>> request_queue_;
+  tablet::UpdateTxnOperationState* replicating_ = nullptr;
+  std::deque<std::unique_ptr<tablet::UpdateTxnOperationState>> request_queue_;
 };
 
 // Contains actions that should be executed after lock in transaction coordinator is released.
@@ -396,7 +396,7 @@ struct PostponedLeaderActions {
   // is applying.
   std::vector<std::pair<TabletId, TransactionId>> notify_applying;
   // List of update transaction records, that should be replicated via RAFT.
-  std::vector<std::unique_ptr<UpdateTxnTransactionState>> updates;
+  std::vector<std::unique_ptr<UpdateTxnOperationState>> updates;
 
   void Swap(PostponedLeaderActions* other) {
     std::swap(leader, other->leader);
@@ -505,7 +505,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     }
   }
 
-  void Handle(std::unique_ptr<tablet::UpdateTxnTransactionState> request) {
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request) {
     auto& state = *request->request();
     auto id = MakeTransactionIdFromBinaryRepresentation(state.transaction_id());
     CHECK_OK(id);
@@ -515,7 +515,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
           &FLAGS_transaction_ignore_appying_probability_in_tests);
       if (RandomActWithProbability(atomic_flag.load())) {
         request->completion_callback()->set_error(Status::OK());
-        request->completion_callback()->TransactionCompleted();
+        request->completion_callback()->OperationCompleted();
         return;
       }
       context_.SubmitUpdateTransaction(std::move(request));
@@ -534,7 +534,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
           LOG(WARNING) << "Request to unknown transaction " << id << ": "
                        << state.ShortDebugString();
           request->completion_callback()->set_error(STATUS(Expired, "Transaction expired"));
-          request->completion_callback()->TransactionCompleted();
+          request->completion_callback()->OperationCompleted();
           return;
         }
       }
@@ -635,7 +635,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   }
 
   MUST_USE_RESULT bool SubmitUpdateTransaction(
-      std::unique_ptr<UpdateTxnTransactionState> state) override {
+      std::unique_ptr<UpdateTxnOperationState> state) override {
     if (postponed_leader_actions_.leader) {
       postponed_leader_actions_.updates.push_back(std::move(state));
       return true;
@@ -722,7 +722,7 @@ size_t TransactionCoordinator::test_count_transactions() const {
   return impl_->test_count_transactions();
 }
 
-void TransactionCoordinator::Handle(std::unique_ptr<tablet::UpdateTxnTransactionState> request) {
+void TransactionCoordinator::Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request) {
   impl_->Handle(std::move(request));
 }
 

@@ -48,9 +48,9 @@
 #include "yb/server/clock.h"
 #include "yb/server/logical_clock.h"
 #include "yb/tablet/maintenance_manager.h"
-#include "yb/tablet/transactions/transaction.h"
-#include "yb/tablet/transactions/transaction_driver.h"
-#include "yb/tablet/transactions/write_transaction.h"
+#include "yb/tablet/operations/operation.h"
+#include "yb/tablet/operations/operation_driver.h"
+#include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_peer_mm_ops.h"
 #include "yb/tablet/tablet-test-util.h"
@@ -94,7 +94,7 @@ static Schema GetTestSchema() {
   return Schema({ ColumnSchema("key", INT32) }, 1);
 }
 
-typedef LatchTransactionCompletionCallback<WriteResponsePB> LatchWriteCallback;
+typedef LatchOperationCompletionCallback<WriteResponsePB> LatchWriteCallback;
 
 class TabletPeerTest : public YBTabletTest,
                        public ::testing::WithParamInterface<TableType> {
@@ -216,12 +216,13 @@ class TabletPeerTest : public YBTabletTest,
 
   Status ExecuteWriteAndRollLog(TabletPeer* tablet_peer, const WriteRequestPB& req) {
     gscoped_ptr<WriteResponsePB> resp(new WriteResponsePB());
-    auto tx_state = std::make_unique<WriteTransactionState>(tablet_peer, &req, resp.get());
+    auto operation_state = std::make_unique<WriteOperationState>(tablet_peer, &req, resp.get());
 
     CountDownLatch rpc_latch(1);
-    tx_state->set_completion_callback(std::make_unique<LatchWriteCallback>(&rpc_latch, resp.get()));
+    operation_state->set_completion_callback(
+        std::make_unique<LatchWriteCallback>(&rpc_latch, resp.get()));
 
-    CHECK_OK(tablet_peer->SubmitWrite(std::move(tx_state)));
+    CHECK_OK(tablet_peer->SubmitWrite(std::move(operation_state)));
     rpc_latch.Wait();
     CHECK(!resp->has_error())
         << "\nReq:\n" << req.DebugString() << "Resp:\n" << resp->DebugString();
@@ -283,13 +284,13 @@ class TabletPeerTest : public YBTabletTest,
   TableType table_type_;
 };
 
-// A Transaction that waits on the apply_continue latch inside of Apply().
-class DelayedApplyTransaction : public WriteTransaction {
+// An operation that waits on the apply_continue latch inside of Apply().
+class DelayedApplyOperation : public WriteOperation {
  public:
-  DelayedApplyTransaction(CountDownLatch* apply_started,
-                          CountDownLatch* apply_continue,
-                          std::unique_ptr<WriteTransactionState> state)
-      : WriteTransaction(std::move(state), consensus::LEADER),
+  DelayedApplyOperation(CountDownLatch* apply_started,
+                        CountDownLatch* apply_continue,
+                        std::unique_ptr<WriteOperationState> state)
+      : WriteOperation(std::move(state), consensus::LEADER),
         apply_started_(DCHECK_NOTNULL(apply_started)),
         apply_continue_(DCHECK_NOTNULL(apply_continue)) {
   }
@@ -299,13 +300,13 @@ class DelayedApplyTransaction : public WriteTransaction {
     LOG(INFO) << "Delaying apply...";
     apply_continue_->Wait();
     LOG(INFO) << "Apply proceeding";
-    return WriteTransaction::Apply(commit_msg);
+    return WriteOperation::Apply(commit_msg);
   }
 
  private:
   CountDownLatch* apply_started_;
   CountDownLatch* apply_continue_;
-  DISALLOW_COPY_AND_ASSIGN(DelayedApplyTransaction);
+  DISALLOW_COPY_AND_ASSIGN(DelayedApplyOperation);
 };
 
 // Ensure that Log::GC() doesn't delete logs with anchors.
@@ -431,7 +432,7 @@ TEST_P(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
 }
 
 // Ensure that Log::GC() doesn't compact logs with OpIds of active transactions.
-TEST_P(TabletPeerTest, TestActiveTransactionPreventsLogGC) {
+TEST_P(TabletPeerTest, TestActiveOperationPreventsLogGC) {
   FLAGS_log_min_seconds_to_retain = 0;
   ConsensusBootstrapInfo info;
   ASSERT_OK(StartPeer(info));

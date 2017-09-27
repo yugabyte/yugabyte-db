@@ -29,7 +29,7 @@ class Consensus;
 
 namespace tablet {
 
-class TransactionDriver;
+class OperationDriver;
 
 class PrepareThreadImpl;
 
@@ -37,7 +37,6 @@ class PrepareThreadImpl;
 // leader-side transactions, submits them for replication to the consensus in batches. This is
 // useful because we have a "fat lock" in the consensus.
 class PrepareThread {
-
  public:
   explicit PrepareThread(consensus::Consensus* consensus);
   ~PrepareThread();
@@ -45,7 +44,7 @@ class PrepareThread {
   CHECKED_STATUS Start();
   void Stop();
 
-  CHECKED_STATUS Submit(TransactionDriver* txn_driver);
+  CHECKED_STATUS Submit(OperationDriver* txn_driver);
 
  private:
   std::unique_ptr<PrepareThreadImpl> impl_;

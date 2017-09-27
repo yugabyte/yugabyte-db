@@ -79,7 +79,7 @@ namespace consensus {
 
 class ConsensusCommitContinuation;
 class ConsensusRound;
-class ReplicaTransactionFactory;
+class ReplicaOperationFactory;
 
 typedef int64_t ConsensusTerm;
 
@@ -475,7 +475,7 @@ struct StateChangeContext {
 // Replica transactions execute the following way:
 //
 // - When a ReplicateMsg is first received from the leader, the Consensus
-//   instance creates the ConsensusRound and calls StartReplicaTransaction().
+//   instance creates the ConsensusRound and calls StartReplicaOperation().
 //   This will trigger the Prepare(). At the same time replica consensus
 //   instance immediately stores the ReplicateMsg in the Log. Once the replicate
 //   message is stored in stable storage an ACK is sent to the leader (i.e. the
@@ -486,20 +486,20 @@ struct StateChangeContext {
 //   not completed yet) and then proceeds to trigger the Apply().
 // TODO (mbautin, 03/11/2016): Outdated? (Does the leader still ever send CommitMsg to followers?)
 //
-// - Once Apply() completes the ReplicaTransactionFactory is responsible for logging
+// - Once Apply() completes the ReplicaOperationFactory is responsible for logging
 //   a CommitMsg to the log to ensure that the operation can be properly restored
 //   on a restart.
-class ReplicaTransactionFactory {
+class ReplicaOperationFactory {
  public:
-  virtual CHECKED_STATUS StartReplicaTransaction(const ConsensusRoundPtr& context) = 0;
+  virtual CHECKED_STATUS StartReplicaOperation(const ConsensusRoundPtr& context) = 0;
 
-  virtual ~ReplicaTransactionFactory() {}
+  virtual ~ReplicaOperationFactory() {}
 };
 
 // Context for a consensus round on the LEADER side, typically created as an
 // out-parameter of Consensus::Append.
 // This class is ref-counted because we want to ensure it stays alive for the
-// duration of the Transaction when it is associated with a Transaction, while
+// duration of the Operation when it is associated with a Operation, while
 // we also want to ensure it has a proper lifecycle when a ConsensusRound is
 // pushed that is not associated with a Tablet transaction.
 class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {

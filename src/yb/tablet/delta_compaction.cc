@@ -130,7 +130,7 @@ Status MajorDeltaCompaction::FlushRowSetAndDeltas() {
   uint64_t num_rows_history_truncated = 0;
   size_t nrows = 0;
   // We know that we're reading everything from disk so we're including all transactions.
-  MvccSnapshot snap = MvccSnapshot::CreateSnapshotIncludingAllTransactions();
+  MvccSnapshot snap = MvccSnapshot::CreateSnapshotIncludingAllOperations();
   while (old_base_data_rwise->HasNext()) {
 
     // 1) Get the next batch of base data for the columns we're compacting.

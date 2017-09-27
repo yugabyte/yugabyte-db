@@ -30,76 +30,76 @@
 // under the License.
 //
 
-#include "yb/tablet/transactions/transaction.h"
+#include "yb/tablet/operations/operation.h"
 
 namespace yb {
 namespace tablet {
 
 using consensus::DriverType;
 
-Transaction::Transaction(std::unique_ptr<TransactionState> state,
-                         DriverType type,
-                         TransactionType tx_type)
+Operation::Operation(std::unique_ptr<OperationState> state,
+                     DriverType type,
+                     OperationType operation_type)
     : state_(std::move(state)),
       type_(type),
-      tx_type_(tx_type) {
+      operation_type_(operation_type) {
 }
 
-TransactionState::TransactionState(TabletPeer* tablet_peer)
+OperationState::OperationState(TabletPeer* tablet_peer)
     : tablet_peer_(tablet_peer),
-      completion_clbk_(new TransactionCompletionCallback()),
+      completion_clbk_(new OperationCompletionCallback()),
       hybrid_time_error_(0),
       external_consistency_mode_(CLIENT_PROPAGATED) {
 }
 
-Arena* TransactionState::arena() {
+Arena* OperationState::arena() {
   if (!arena_) {
     arena_.emplace(32 * 1024, 4 * 1024 * 1024);
   }
   return arena_.get_ptr();
 }
 
-TransactionState::~TransactionState() {
+OperationState::~OperationState() {
 }
 
-TransactionCompletionCallback::TransactionCompletionCallback()
+OperationCompletionCallback::OperationCompletionCallback()
     : code_(tserver::TabletServerErrorPB::UNKNOWN_ERROR) {
 }
 
-void TransactionCompletionCallback::set_error(const Status& status,
-                                              tserver::TabletServerErrorPB::Code code) {
+void OperationCompletionCallback::set_error(const Status& status,
+                                            tserver::TabletServerErrorPB::Code code) {
   status_ = status;
   code_ = code;
 }
 
-void TransactionCompletionCallback::set_error(const Status& status) {
+void OperationCompletionCallback::set_error(const Status& status) {
   status_ = status;
 }
 
-bool TransactionCompletionCallback::has_error() const {
+bool OperationCompletionCallback::has_error() const {
   return !status_.ok();
 }
 
-const Status& TransactionCompletionCallback::status() const {
+const Status& OperationCompletionCallback::status() const {
   return status_;
 }
 
-const tserver::TabletServerErrorPB::Code TransactionCompletionCallback::error_code() const {
+const tserver::TabletServerErrorPB::Code OperationCompletionCallback::error_code() const {
   return code_;
 }
 
-void TransactionCompletionCallback::TransactionCompleted() {}
+void OperationCompletionCallback::OperationCompleted() {}
 
-TransactionCompletionCallback::~TransactionCompletionCallback() {}
+OperationCompletionCallback::~OperationCompletionCallback() {}
 
-TransactionMetrics::TransactionMetrics()
+OperationMetrics::OperationMetrics()
   : successful_inserts(0),
     successful_updates(0),
     successful_deletes(0),
     commit_wait_duration_usec(0) {
 }
 
-void TransactionMetrics::Reset() {
+void OperationMetrics::Reset() {
   successful_inserts = 0;
   successful_updates = 0;
   successful_deletes = 0;

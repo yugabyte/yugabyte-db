@@ -67,10 +67,10 @@ class MvccSnapshot {
 
   // Create a snapshot which considers all transactions as committed.
   // This is mostly useful in test contexts.
-  static MvccSnapshot CreateSnapshotIncludingAllTransactions();
+  static MvccSnapshot CreateSnapshotIncludingAllOperations();
 
   // Creates a snapshot which considers no transactions committed.
-  static MvccSnapshot CreateSnapshotIncludingNoTransactions();
+  static MvccSnapshot CreateSnapshotIncludingNoOperations();
 
   // Return true if the given transaction ID should be considered committed
   // in this snapshot.
@@ -91,22 +91,22 @@ class MvccSnapshot {
   // equal to or higher than the provided 'hybrid_time'.
   //
   // Kudu-specific:
-  // If MayHaveCommittedTransactionsAtOrAfter(delta_stats.min) returns true
+  // If MayHaveCommittedOperationsAtOrAfter(delta_stats.min) returns true
   // it means that there might be transactions that need to be applied in the
   // context of this snapshot; otherwise no scanning is necessary.
   // This is mostly useful to avoid scanning REDO deltas in certain cases.
-  bool MayHaveCommittedTransactionsAtOrAfter(const HybridTime& hybrid_time) const;
+  bool MayHaveCommittedOperationsAtOrAfter(const HybridTime& hybrid_time) const;
 
   // Returns true if this snapshot may have any uncommitted transactions with ID
   // equal to or lower than the provided 'hybrid_time'.
   //
   // Kudu-specific:
   // This is mostly useful to avoid scanning UNDO deltas in certain cases.
-  // If MayHaveUncommittedTransactionsAtOrBefore(delta_stats.max) returns false it
+  // If MayHaveUncommittedOperationsAtOrBefore(delta_stats.max) returns false it
   // means that all UNDO delta transactions are committed in the context of this
   // snapshot and no scanning is necessary; otherwise there might be some
   // transactions that need to be undone.
-  bool MayHaveUncommittedTransactionsAtOrBefore(const HybridTime& hybrid_time) const;
+  bool MayHaveUncommittedOperationsAtOrBefore(const HybridTime& hybrid_time) const;
 
   // Return a string representation of the set of committed transactions
   // in this snapshot, suitable for debug printouts.
@@ -137,8 +137,8 @@ class MvccSnapshot {
 
  private:
   friend class MvccManager;
-  FRIEND_TEST(MvccTest, TestMayHaveCommittedTransactionsAtOrAfter);
-  FRIEND_TEST(MvccTest, TestMayHaveUncommittedTransactionsBefore);
+  FRIEND_TEST(MvccTest, TestMayHaveCommittedOperationsAtOrAfter);
+  FRIEND_TEST(MvccTest, TestMayHaveUncommittedOperationsBefore);
   FRIEND_TEST(MvccTest, TestWaitUntilAllCommitted_SnapAtHybridTimeWithInFlights);
 
   bool IsCommittedFallback(const HybridTime& hybrid_time) const;
@@ -180,57 +180,57 @@ class MvccSnapshot {
 
 };
 
-// Coordinator of MVCC transactions. Threads wishing to make updates use
-// the MvccManager to obtain a unique hybrid_time, usually through the ScopedWriteTransaction
+// Coordinator of MVCC operations. Threads wishing to make updates use
+// the MvccManager to obtain a unique hybrid_time, usually through the ScopedWriteOperation
 // class defined below.
 //
 // MVCC is used to defer updates until commit time, and allow iterators to
-// operate on a snapshot which contains only committed transactions.
+// operate on a snapshot which contains only committed operations.
 //
-// There are two valid paths for a transaction:
+// There are two valid paths for a operation:
 //
-// 1) StartTransaction() -> StartApplyingTransaction() -> CommitTransaction()
+// 1) StartOperation() -> StartApplyingOperation() -> CommitOperation()
 //   or
-// 2) StartTransaction() -> AbortTransaction()
+// 2) StartOperation() -> AbortOperation()
 //
-// When a transaction is started, a hybrid_time is assigned. The manager will
-// never assign a hybrid_time if there is already another transaction with
+// When a operation is started, a hybrid_time is assigned. The manager will
+// never assign a hybrid_time if there is already another operation with
 // the same hybrid_time in flight or previously committed.
 //
-// When a transaction is ready to start making changes to in-memory data,
-// it should transition to APPLYING state by calling StartApplyingTransaction().
-// At this point, the transaction should apply its in-memory operations and
+// When a operation is ready to start making changes to in-memory data,
+// it should transition to APPLYING state by calling StartApplyingOperation().
+// At this point, the operation should apply its in-memory operations and
 // must commit in a bounded amount of time (i.e it should not wait on external
 // input such as an RPC from another host).
 //
 // NOTE: we do not support "rollback" of in-memory edits. Thus, once we call
-// StartApplyingTransaction(), the transaction _must_ commit.
+// StartApplyingOperation(), the operation _must_ commit.
 //
 class MvccManager {
  public:
   explicit MvccManager(const scoped_refptr<server::Clock>& clock, bool enforce_invariants = false);
 
   // Begin a new transaction, assigning it a transaction ID.
-  // Callers should generally prefer using the ScopedWriteTransaction class defined
+  // Callers should generally prefer using the ScopedWriteOperation class defined
   // below, which will automatically finish the transaction when it goes out
   // of scope.
-  HybridTime StartTransaction();
+  HybridTime StartOperation();
 
   // The same as the above but but starts the transaction at the latest possible
   // time, i.e. now + max_error. Returns HybridTime::kInvalidHybridTime if it was
   // not possible to obtain the latest time.
-  HybridTime StartTransactionAtLatest();
+  HybridTime StartOperationAtLatest();
 
   // Begins a new transaction, which is assigned the provided hybrid_time.
   // Returns Status::OK() if the transaction was started successfully or
   // Status::IllegalState() if the provided hybrid_time is already considered
   // committed, e.g. if hybrid_time < 'all_committed_before_'.
-  CHECKED_STATUS StartTransactionAtHybridTime(HybridTime hybrid_time);
+  CHECKED_STATUS StartOperationAtHybridTime(HybridTime hybrid_time);
 
   // Mark that the transaction with the given hybrid_time is starting to apply
-  // its writes to in-memory stores. This must be called before CommitTransaction().
-  // If this is called, then AbortTransaction(hybrid_time) must never be called.
-  void StartApplyingTransaction(HybridTime hybrid_time);
+  // its writes to in-memory stores. This must be called before CommitOperation().
+  // If this is called, then AbortOperation(hybrid_time) must never be called.
+  void StartApplyingOperation(HybridTime hybrid_time);
 
   // Commit the given transaction.
   //
@@ -244,8 +244,8 @@ class MvccManager {
   // when possible.
   //
   // The transaction must already have been marked as 'APPLYING' by calling
-  // StartApplyingTransaction(), or else this logs a FATAL error.
-  void CommitTransaction(HybridTime hybrid_time);
+  // StartApplyingOperation(), or else this logs a FATAL error.
+  void CommitOperation(HybridTime hybrid_time);
 
   // Abort the given transaction.
   //
@@ -258,17 +258,17 @@ class MvccManager {
   // transaction with a lower hybrid_time might be executed later.
   //
   // The transaction must not have been marked as 'APPLYING' by calling
-  // StartApplyingTransaction(), or else this logs a FATAL error.
-  void AbortTransaction(HybridTime hybrid_time);
+  // StartApplyingOperation(), or else this logs a FATAL error.
+  void AbortOperation(HybridTime hybrid_time);
 
   // Same as commit transaction but does not advance 'all_committed_before_'.
   // Used for bootstrap and delayed processing in FOLLOWERS/LEARNERS.
   //
   // The transaction must already have been marked as 'APPLYING' by calling
-  // StartApplyingTransaction(), or else this logs a FATAL error.
-  void OfflineCommitTransaction(HybridTime hybrid_time);
+  // StartApplyingOperation(), or else this logs a FATAL error.
+  void OfflineCommitOperation(HybridTime hybrid_time);
 
-  // Used in conjunction with OfflineCommitTransaction() so that the mvcc
+  // Used in conjunction with OfflineCommitOperation() so that the mvcc
   // manager can trim state.
   void OfflineAdjustSafeTime(HybridTime safe_time);
 
@@ -297,9 +297,9 @@ class MvccManager {
   // NOTE: this does _not_ guarantee that no transactions are APPLYING upon
   // return -- just that those that were APPLYING at call time are finished
   // upon return.
-  void WaitForApplyingTransactionsToCommit() const;
+  void WaitForApplyingOperationsToCommit() const;
 
-  bool AreAllTransactionsCommitted(HybridTime ts) const;
+  bool AreAllOperationsCommitted(HybridTime ts) const;
 
   // Returns the earliest possible hybrid_time for an uncommitted transaction.
   // All hybrid_times before this one are guaranteed to be committed.
@@ -308,11 +308,11 @@ class MvccManager {
   // Return the hybrid_times of all transactions which are currently 'APPLYING'
   // (i.e. those which have started to apply their operations to in-memory data
   // structures). Other transactions may have reserved their hybrid_times via
-  // StartTransaction() but not yet been applied.
+  // StartOperation() but not yet been applied.
   //
   // These transactions are guaranteed to eventually Commit() -- i.e. they will
   // never Abort().
-  void GetApplyingTransactionsHybridTimes(std::vector<HybridTime>* hybrid_times) const;
+  void GetApplyingOperationsHybridTimes(std::vector<HybridTime>* hybrid_times) const;
 
   HybridTime LastCommittedHybridTime() const {
     std::lock_guard<LockType> l(lock_);
@@ -323,17 +323,17 @@ class MvccManager {
 
  private:
   friend class MvccTest;
-  FRIEND_TEST(MvccTest, TestAreAllTransactionsCommitted);
+  FRIEND_TEST(MvccTest, TestAreAllOperationsCommitted);
   FRIEND_TEST(MvccTest, TestTxnAbort);
-  FRIEND_TEST(MvccTest, TestCleanTimeCoalescingOnOfflineTransactions);
-  FRIEND_TEST(MvccTest, TestWaitForApplyingTransactionsToCommit);
+  FRIEND_TEST(MvccTest, TestCleanTimeCoalescingOnOfflineOperations);
+  FRIEND_TEST(MvccTest, TestWaitForApplyingOperationsToCommit);
 
   enum TxnState {
     RESERVED,
     APPLYING
   };
 
-  bool InitTransactionUnlocked(const HybridTime& hybrid_time);
+  bool InitOperationUnlocked(const HybridTime& hybrid_time);
 
   enum WaitFor {
     ALL_COMMITTED,
@@ -350,7 +350,7 @@ class MvccManager {
   //
   // If 'ts' is not in the past, it's still possible that new transactions could
   // start with a lower hybrid_time after this returns.
-  bool AreAllTransactionsCommittedUnlocked(HybridTime ts) const;
+  bool AreAllOperationsCommittedUnlocked(HybridTime ts) const;
 
   // Return true if there is any APPLYING operation with a hybrid_time
   // less than or equal to 'ts'.
@@ -366,7 +366,7 @@ class MvccManager {
 
   // Commits the given transaction.
   // Sets *was_earliest to true if this was the earliest in-flight transaction.
-  void CommitTransactionUnlocked(HybridTime hybrid_time,
+  void CommitOperationUnlocked(HybridTime hybrid_time,
                                  bool* was_earliest);
 
   // Remove the hybrid_time 'ts' from the in-flight map.
@@ -422,7 +422,7 @@ class MvccManager {
 // A scoped handle to a running transaction.
 // When this object goes out of scope, the transaction is automatically
 // committed.
-class ScopedWriteTransaction {
+class ScopedWriteOperation {
  public:
 
   // How to assign the hybrid_time to this transaction:
@@ -436,22 +436,22 @@ class ScopedWriteTransaction {
   };
 
   // Create a new transaction from the given MvccManager.
-  // If 'latest' is true this transaction will use MvccManager::StartTransactionAtLatest()
-  // instead of MvccManager::StartTransaction().
+  // If 'latest' is true this transaction will use MvccManager::StartOperationAtLatest()
+  // instead of MvccManager::StartOperation().
   //
   // The MvccManager must remain valid for the lifetime of this object.
-  explicit ScopedWriteTransaction(
+  explicit ScopedWriteOperation(
       MvccManager* manager, HybridTimeAssignmentType assignment_type = NOW);
 
   // Like the ctor above but starts the transaction at a pre-defined hybrid_time.
-  // When this transaction is committed it will use MvccManager::OfflineCommitTransaction()
+  // When this transaction is committed it will use MvccManager::OfflineCommitOperation()
   // so this is appropriate for offline replaying of transactions for replica catch-up or
   // bootstrap.
-  explicit ScopedWriteTransaction(MvccManager* manager, HybridTime hybrid_time);
+  explicit ScopedWriteOperation(MvccManager* manager, HybridTime hybrid_time);
 
   // Commit the transaction referenced by this scoped object, if it hasn't
   // already been committed.
-  ~ScopedWriteTransaction();
+  ~ScopedWriteOperation();
 
   HybridTime hybrid_time() const {
     return hybrid_time_;
@@ -480,7 +480,7 @@ class ScopedWriteTransaction {
   HybridTimeAssignmentType assignment_type_;
   HybridTime hybrid_time_;
 
-  DISALLOW_COPY_AND_ASSIGN(ScopedWriteTransaction);
+  DISALLOW_COPY_AND_ASSIGN(ScopedWriteOperation);
 };
 
 }  // namespace tablet

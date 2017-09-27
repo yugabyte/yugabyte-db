@@ -56,9 +56,9 @@
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet_metrics.h"
 
-#include "yb/tablet/transactions/alter_schema_transaction.h"
-#include "yb/tablet/transactions/update_txn_transaction.h"
-#include "yb/tablet/transactions/write_transaction.h"
+#include "yb/tablet/operations/alter_schema_operation.h"
+#include "yb/tablet/operations/update_txn_operation.h"
+#include "yb/tablet/operations/write_operation.h"
 
 #include "yb/tserver/scanners.h"
 #include "yb/tserver/tablet_server.h"
@@ -141,12 +141,12 @@ using std::shared_ptr;
 using std::vector;
 using std::string;
 using strings::Substitute;
-using tablet::AlterSchemaTransactionState;
+using tablet::AlterSchemaOperationState;
 using tablet::Tablet;
 using tablet::TabletPeer;
 using tablet::TabletStatusPB;
-using tablet::TransactionCompletionCallback;
-using tablet::WriteTransactionState;
+using tablet::OperationCompletionCallback;
+using tablet::WriteOperationState;
 
 namespace {
 
@@ -240,14 +240,14 @@ void SetupErrorAndRespond(TabletServerErrorPB* error,
   context->RespondSuccess();
 }
 
-class WriteTransactionCompletionCallback : public TransactionCompletionCallback {
+class WriteOperationCompletionCallback : public OperationCompletionCallback {
  public:
-  WriteTransactionCompletionCallback(
+  WriteOperationCompletionCallback(
       std::shared_ptr<rpc::RpcContext> context, WriteResponsePB* response,
-      tablet::WriteTransactionState* state, bool trace = false)
+      tablet::WriteOperationState* state, bool trace = false)
       : context_(std::move(context)), response_(response), state_(state), include_trace_(trace) {}
 
-  void TransactionCompleted() override {
+  void OperationCompleted() override {
     if (!status_.ok()) {
       SetupErrorAndRespond(get_error(), status_, code_, context_.get());
     } else {
@@ -284,7 +284,7 @@ class WriteTransactionCompletionCallback : public TransactionCompletionCallback 
 
   const std::shared_ptr<rpc::RpcContext> context_;
   WriteResponsePB* const response_;
-  tablet::WriteTransactionState* const state_;
+  tablet::WriteOperationState* const state_;
   const bool include_trace_;
 };
 
@@ -538,13 +538,14 @@ void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
     return;
   }
 
-  auto tx_state = std::make_unique<AlterSchemaTransactionState>(tablet_peer.get(), req, resp);
+  auto operation_state = std::make_unique<AlterSchemaOperationState>(tablet_peer.get(), req, resp);
 
-  tx_state->set_completion_callback(MakeRpcTransactionCompletionCallback(std::move(context), resp));
+  operation_state->set_completion_callback(
+      MakeRpcOperationCompletionCallback(std::move(context), resp));
 
   // Submit the alter schema op. The RPC will be responded to asynchronously.
-  tablet_peer->Submit(
-      std::make_unique<tablet::AlterSchemaTransaction>(std::move(tx_state), consensus::LEADER));
+  tablet_peer->Submit(std::make_unique<tablet::AlterSchemaOperation>(
+      std::move(operation_state), consensus::LEADER));
 }
 
 void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
@@ -561,9 +562,9 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
 
   LOG(INFO) << "UpdateTransaction: " << req->ShortDebugString();
 
-  auto state = std::make_unique<tablet::UpdateTxnTransactionState>(tablet_peer.get(),
-                                                                   &req->state());
-  state->set_completion_callback(MakeRpcTransactionCompletionCallback(std::move(context), resp));
+  auto state = std::make_unique<tablet::UpdateTxnOperationState>(tablet_peer.get(),
+                                                                 &req->state());
+  state->set_completion_callback(MakeRpcOperationCompletionCallback(std::move(context), resp));
 
   tablet_peer->tablet()->transaction_coordinator()->Handle(std::move(state));
 }
@@ -771,19 +772,19 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   if (!req->has_row_operations() && tablet->table_type() != TableType::REDIS_TABLE_TYPE) {
     // An empty request. This is fine, can just exit early with ok status instead of working hard.
     // This doesn't need to go to Raft log.
-    RpcTransactionCompletionCallback<WriteResponsePB> rpc(std::move(context), resp);
-    rpc.TransactionCompleted();
+    RpcOperationCompletionCallback<WriteResponsePB> callback(std::move(context), resp);
+    callback.OperationCompleted();
     return;
   }
 
-  auto tx_state = std::make_unique<WriteTransactionState>(tablet_peer.get(), req, resp);
+  auto operation_state = std::make_unique<WriteOperationState>(tablet_peer.get(), req, resp);
 
   auto context_ptr = std::make_shared<RpcContext>(std::move(context));
-  tx_state->set_completion_callback(
-      std::make_unique<WriteTransactionCompletionCallback>(
-          context_ptr, resp, tx_state.get(), req->include_trace()));
+  operation_state->set_completion_callback(
+      std::make_unique<WriteOperationCompletionCallback>(
+          context_ptr, resp, operation_state.get(), req->include_trace()));
 
-  s = tablet_peer->SubmitWrite(std::move(tx_state));
+  s = tablet_peer->SubmitWrite(std::move(operation_state));
 
   // Check that we could submit the write
   RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context_ptr.get());
@@ -894,7 +895,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   }
 
   Status s;
-  tablet::ScopedReadTransaction read_tx(tablet.get());
+  tablet::ScopedReadOperation read_tx(tablet.get());
   switch (tablet->table_type()) {
     case TableType::REDIS_TABLE_TYPE: {
       for (const RedisReadRequestPB& redis_read_req : req->redis_batch()) {
@@ -943,8 +944,8 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   if (req->include_trace() && Trace::CurrentTrace() != nullptr) {
     resp->set_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
   }
-  RpcTransactionCompletionCallback<ReadResponsePB> rpc(std::move(context), resp);
-  rpc.TransactionCompleted();
+  RpcOperationCompletionCallback<ReadResponsePB> callback(std::move(context), resp);
+  callback.OperationCompleted();
   TRACE("Done Read");
 }
 

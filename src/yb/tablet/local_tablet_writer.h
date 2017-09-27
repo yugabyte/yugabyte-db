@@ -40,7 +40,7 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/tablet/row_op.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/transactions/write_transaction.h"
+#include "yb/tablet/operations/write_operation.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/singleton.h"
 
@@ -113,7 +113,7 @@ class LocalTabletWriter {
       encoder.Add(op.type, *op.row);
     }
 
-    tx_state_.reset(new WriteTransactionState(NULL, &req_, NULL));
+    tx_state_.reset(new WriteOperationState(nullptr, &req_, nullptr));
     // Note: Order of lock/decode differs for these two table types, anyway temporary as KUDU
     // codepath will be removed once all tests are converted to QL.
     if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
@@ -123,9 +123,9 @@ class LocalTabletWriter {
       RETURN_NOT_OK(tablet_->DecodeWriteOperations(client_schema_, tx_state_.get()));
       RETURN_NOT_OK(tablet_->AcquireKuduRowLocks(tx_state_.get()));
     }
-    tablet_->StartTransaction(tx_state_.get());
+    tablet_->StartOperation(tx_state_.get());
 
-    // Create a "fake" OpId and set it in the TransactionState for anchoring.
+    // Create a "fake" OpId and set it in the OperationState for anchoring.
     if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
       tx_state_->mutable_op_id()->set_term(0);
       tx_state_->mutable_op_id()->set_index(
@@ -164,7 +164,7 @@ class LocalTabletWriter {
 
   TxResultPB result_;
   tserver::WriteRequestPB req_;
-  gscoped_ptr<WriteTransactionState> tx_state_;
+  std::unique_ptr<WriteOperationState> tx_state_;
 
   DISALLOW_COPY_AND_ASSIGN(LocalTabletWriter);
 };

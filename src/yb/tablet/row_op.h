@@ -45,7 +45,7 @@ class Schema;
 
 namespace tablet {
 
-// Structure tracking the progress of a single row operation within a WriteTransaction.
+// Structure tracking the progress of a single row operation within a WriteOperation.
 struct RowOp {
  public:
   explicit RowOp(DecodedRowOperation decoded_op);

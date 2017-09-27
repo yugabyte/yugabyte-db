@@ -199,7 +199,7 @@ TEST_F(TestDeltaCompaction, TestMergeMultipleSchemas) {
   }
 
   // Merge
-  MvccSnapshot snap(MvccSnapshot::CreateSnapshotIncludingAllTransactions());
+  MvccSnapshot snap(MvccSnapshot::CreateSnapshotIncludingAllOperations());
   const Schema& merge_schema = schemas.back();
   shared_ptr<DeltaIterator> merge_iter;
   ASSERT_OK(DeltaIteratorMerger::Create(inputs, &merge_schema,

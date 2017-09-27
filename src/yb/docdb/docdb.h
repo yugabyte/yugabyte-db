@@ -204,21 +204,21 @@ class DocWriteBatch {
 // Input: doc_write_ops
 // Context: lock_manager
 // Outputs: write_batch, need_read_snapshot
-void PrepareDocWriteTransaction(const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
-                                util::SharedLockManager *lock_manager,
-                                LockBatch *keys_locked,
-                                bool *need_read_snapshot);
+void PrepareDocWriteOperation(const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
+                              util::SharedLockManager *lock_manager,
+                              LockBatch *keys_locked,
+                              bool *need_read_snapshot);
 
 // This function reads from rocksdb and constructs the write batch.
 //
-// Input: doc_write_ops, read snapshot hybrid_time if requested in PrepareDocWriteTransaction().
+// Input: doc_write_ops, read snapshot hybrid_time if requested in PrepareDocWriteOperation().
 // Context: rocksdb
 // Outputs: keys_locked, write_batch
-Status ApplyDocWriteTransaction(const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
-                                const HybridTime& hybrid_time,
-                                rocksdb::DB *rocksdb,
-                                KeyValueWriteBatchPB* write_batch,
-                                std::atomic<int64_t>* monotonic_counter);
+Status ApplyDocWriteOperation(const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
+                              const HybridTime& hybrid_time,
+                              rocksdb::DB *rocksdb,
+                              KeyValueWriteBatchPB* write_batch,
+                              std::atomic<int64_t>* monotonic_counter);
 
 // A visitor class that could be overridden to consume results of scanning SubDocuments.
 // See e.g. SubDocumentBuildingVisitor (used in implementing GetSubDocument) as example usage.

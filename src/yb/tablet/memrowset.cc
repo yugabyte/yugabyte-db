@@ -289,7 +289,7 @@ MemRowSet::Iterator *MemRowSet::NewIterator(const Schema *projection,
 
 MemRowSet::Iterator *MemRowSet::NewIterator() const {
   // TODO: can we kill this function? should be only used by tests?
-  return NewIterator(&schema(), MvccSnapshot::CreateSnapshotIncludingAllTransactions());
+  return NewIterator(&schema(), MvccSnapshot::CreateSnapshotIncludingAllOperations());
 }
 
 Status MemRowSet::NewRowIterator(const Schema *projection,
@@ -531,7 +531,7 @@ Status MemRowSet::Iterator::ApplyMutationsToProjectedRow(
        mut != nullptr;
        mut = mut->next_) {
     if (!mvcc_snap_.IsCommitted(mut->hybrid_time_)) {
-      // Transaction which wasn't committed yet in the reader's snapshot.
+      // Operation which wasn't committed yet in the reader's snapshot.
       continue;
     }
 

@@ -13,25 +13,25 @@
 //
 //
 
-#ifndef YB_TABLET_TRANSACTIONS_UPDATE_TXN_TRANSACTION_H
-#define YB_TABLET_TRANSACTIONS_UPDATE_TXN_TRANSACTION_H
+#ifndef YB_TABLET_OPERATIONS_UPDATE_TXN_OPERATION_H
+#define YB_TABLET_OPERATIONS_UPDATE_TXN_OPERATION_H
 
 #include "yb/tablet/transaction_coordinator.h"
 
-#include "yb/tablet/transactions/transaction.h"
+#include "yb/tablet/operations/operation.h"
 
 namespace yb {
 namespace tablet {
 
 class TransactionCoordinator;
 
-class UpdateTxnTransactionState : public TransactionState {
+class UpdateTxnOperationState : public OperationState {
  public:
-  UpdateTxnTransactionState(TabletPeer* tablet_peer, const tserver::TransactionStatePB* request)
-      : TransactionState(tablet_peer), request_(request) {}
+  UpdateTxnOperationState(TabletPeer* tablet_peer, const tserver::TransactionStatePB* request)
+      : OperationState(tablet_peer), request_(request) {}
 
-  explicit UpdateTxnTransactionState(TabletPeer* tablet_peer)
-      : UpdateTxnTransactionState(tablet_peer, nullptr) {}
+  explicit UpdateTxnOperationState(TabletPeer* tablet_peer)
+      : UpdateTxnOperationState(tablet_peer, nullptr) {}
 
   const tserver::TransactionStatePB* request() const override { return request_; }
 
@@ -50,17 +50,17 @@ class UpdateTxnTransactionState : public TransactionState {
   const tserver::TransactionStatePB* request_;
 };
 
-class UpdateTxnTransaction : public Transaction {
+class UpdateTxnOperation : public Operation {
  public:
-  UpdateTxnTransaction(std::unique_ptr<UpdateTxnTransactionState> state, consensus::DriverType type)
-      : Transaction(std::move(state), type, Transaction::UPDATE_TRANSACTION_TXN) {}
+  UpdateTxnOperation(std::unique_ptr<UpdateTxnOperationState> state, consensus::DriverType type)
+      : Operation(std::move(state), type, Operation::UPDATE_TRANSACTION_TXN) {}
 
-  UpdateTxnTransactionState* state() override {
-    return down_cast<UpdateTxnTransactionState*>(Transaction::state());
+  UpdateTxnOperationState* state() override {
+    return down_cast<UpdateTxnOperationState*>(Operation::state());
   }
 
-  const UpdateTxnTransactionState* state() const override {
-    return down_cast<const UpdateTxnTransactionState*>(Transaction::state());
+  const UpdateTxnOperationState* state() const override {
+    return down_cast<const UpdateTxnOperationState*>(Operation::state());
   }
 
  private:
@@ -77,4 +77,4 @@ class UpdateTxnTransaction : public Transaction {
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_TRANSACTIONS_UPDATE_TXN_TRANSACTION_H
+#endif // YB_TABLET_OPERATIONS_UPDATE_TXN_OPERATION_H

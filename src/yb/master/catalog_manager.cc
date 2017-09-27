@@ -695,7 +695,7 @@ Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
 
   // Wait for all transactions to be committed.
   const MonoTime deadline = MonoTime::FineNow() + timeout;
-  RETURN_NOT_OK(tablet_peer()->transaction_tracker()->WaitForAllToFinish(timeout));
+  RETURN_NOT_OK(tablet_peer()->operation_tracker()->WaitForAllToFinish(timeout));
 
   RETURN_NOT_OK(tablet_peer()->consensus()->WaitForLeaderLeaseImprecise(deadline));
   return Status::OK();

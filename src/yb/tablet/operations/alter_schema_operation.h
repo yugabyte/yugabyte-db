@@ -30,14 +30,14 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TRANSACTIONS_ALTER_SCHEMA_TRANSACTION_H_
-#define YB_TABLET_TRANSACTIONS_ALTER_SCHEMA_TRANSACTION_H_
+#ifndef YB_TABLET_OPERATIONS_ALTER_SCHEMA_OPERATION_H
+#define YB_TABLET_OPERATIONS_ALTER_SCHEMA_OPERATION_H
 
 #include <mutex>
 #include <string>
 
 #include "yb/gutil/macros.h"
-#include "yb/tablet/transactions/transaction.h"
+#include "yb/tablet/operations/operation.h"
 #include "yb/util/locks.h"
 
 namespace yb {
@@ -50,17 +50,17 @@ class Consensus;
 
 namespace tablet {
 
-// Transaction Context for the AlterSchema operation.
-// Keeps track of the Transaction states (request, result, ...)
-class AlterSchemaTransactionState : public TransactionState {
+// Operation Context for the AlterSchema operation.
+// Keeps track of the Operation states (request, result, ...)
+class AlterSchemaOperationState : public OperationState {
  public:
-  ~AlterSchemaTransactionState() {
+  ~AlterSchemaOperationState() {
   }
 
-  AlterSchemaTransactionState(TabletPeer* tablet_peer,
-                              const tserver::AlterSchemaRequestPB* request = nullptr,
-                              tserver::AlterSchemaResponsePB* response = nullptr)
-      : TransactionState(tablet_peer),
+  AlterSchemaOperationState(TabletPeer* tablet_peer,
+                            const tserver::AlterSchemaRequestPB* request = nullptr,
+                            tserver::AlterSchemaResponsePB* response = nullptr)
+      : OperationState(tablet_peer),
         schema_(nullptr),
         request_(request),
         response_(response) {
@@ -115,21 +115,21 @@ class AlterSchemaTransactionState : public TransactionState {
   // The lock held on the tablet's schema_lock_.
   std::unique_lock<rw_semaphore> schema_lock_;
 
-  DISALLOW_COPY_AND_ASSIGN(AlterSchemaTransactionState);
+  DISALLOW_COPY_AND_ASSIGN(AlterSchemaOperationState);
 };
 
 // Executes the alter schema transaction,.
-class AlterSchemaTransaction : public Transaction {
+class AlterSchemaOperation : public Operation {
  public:
-  AlterSchemaTransaction(std::unique_ptr<AlterSchemaTransactionState> tx_state,
-                         consensus::DriverType type);
+  AlterSchemaOperation(std::unique_ptr<AlterSchemaOperationState> operation_state,
+                       consensus::DriverType type);
 
-  AlterSchemaTransactionState* state() override {
-    return down_cast<AlterSchemaTransactionState*>(Transaction::state());
+  AlterSchemaOperationState* state() override {
+    return down_cast<AlterSchemaOperationState*>(Operation::state());
   }
 
-  const AlterSchemaTransactionState* state() const override {
-    return down_cast<const AlterSchemaTransactionState*>(Transaction::state());
+  const AlterSchemaOperationState* state() const override {
+    return down_cast<const AlterSchemaOperationState*>(Operation::state());
   }
 
   consensus::ReplicateMsgPtr NewReplicateMsg() override;
@@ -140,22 +140,22 @@ class AlterSchemaTransaction : public Transaction {
 
   virtual CHECKED_STATUS Prepare() override;
 
-  // Starts the AlterSchemaTransaction by assigning it a timestamp.
+  // Starts the AlterSchemaOperation by assigning it a timestamp.
   virtual void Start() override;
 
   // Executes an Apply for the alter schema transaction
   virtual CHECKED_STATUS Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) override;
 
   // Actually commits the transaction.
-  virtual void Finish(TransactionResult result) override;
+  virtual void Finish(OperationResult result) override;
 
   virtual std::string ToString() const override;
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(AlterSchemaTransaction);
+  DISALLOW_COPY_AND_ASSIGN(AlterSchemaOperation);
 };
 
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_TRANSACTIONS_ALTER_SCHEMA_TRANSACTION_H_
+#endif  // YB_TABLET_OPERATIONS_ALTER_SCHEMA_OPERATION_H

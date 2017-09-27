@@ -575,7 +575,7 @@ Status DiskRowSet::NewMajorDeltaCompaction(const vector<ColumnId>& col_ids,
   shared_ptr<DeltaIterator> delta_iter;
   RETURN_NOT_OK(delta_tracker_->NewDeltaFileIterator(
     schema,
-    MvccSnapshot::CreateSnapshotIncludingAllTransactions(),
+    MvccSnapshot::CreateSnapshotIncludingAllOperations(),
     REDO,
     &included_stores,
     &delta_iter));
@@ -754,7 +754,7 @@ Status DiskRowSet::DebugDump(vector<string> *lines) {
   // rows and deltas.
   gscoped_ptr<CompactionInput> input;
   RETURN_NOT_OK(NewCompactionInput(&rowset_metadata_->tablet_schema(),
-                                   MvccSnapshot::CreateSnapshotIncludingAllTransactions(),
+                                   MvccSnapshot::CreateSnapshotIncludingAllOperations(),
                                    &input));
   return DebugDumpCompactionInput(input.get(), lines);
 }

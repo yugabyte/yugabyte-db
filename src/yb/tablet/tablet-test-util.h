@@ -45,8 +45,8 @@
 #include "yb/tablet/row_op.h"
 #include "yb/tablet/tablet-harness.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/transactions/alter_schema_transaction.h"
-#include "yb/tablet/transactions/write_transaction.h"
+#include "yb/tablet/operations/alter_schema_operation.h"
+#include "yb/tablet/operations/write_operation.h"
 #include "yb/util/metrics.h"
 #include "yb/util/test_util.h"
 
@@ -116,10 +116,10 @@ class YBTabletTest : public YBTest {
     tserver::AlterSchemaRequestPB req;
     req.set_schema_version(tablet()->metadata()->schema_version() + 1);
 
-    AlterSchemaTransactionState tx_state(NULL, &req, NULL);
-    ASSERT_OK(tablet()->CreatePreparedAlterSchema(&tx_state, &schema));
-    ASSERT_OK(tablet()->AlterSchema(&tx_state));
-    tx_state.Finish();
+    AlterSchemaOperationState operation_state(nullptr, &req, nullptr);
+    ASSERT_OK(tablet()->CreatePreparedAlterSchema(&operation_state, &schema));
+    ASSERT_OK(tablet()->AlterSchema(&operation_state));
+    operation_state.Finish();
   }
 
   const std::shared_ptr<Tablet>& tablet() const {

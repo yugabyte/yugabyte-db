@@ -86,7 +86,7 @@ class RaftConsensus : public Consensus,
     const RaftPeerPB& local_peer_pb,
     const scoped_refptr<MetricEntity>& metric_entity,
     const scoped_refptr<server::Clock>& clock,
-    ReplicaTransactionFactory* txn_factory,
+    ReplicaOperationFactory* operation_factory,
     const std::shared_ptr<rpc::Messenger>& messenger,
     const scoped_refptr<log::Log>& log,
     const std::shared_ptr<MemTracker>& parent_mem_tracker,
@@ -102,7 +102,7 @@ class RaftConsensus : public Consensus,
     const scoped_refptr<MetricEntity>& metric_entity,
     const std::string& peer_uuid,
     const scoped_refptr<server::Clock>& clock,
-    ReplicaTransactionFactory* txn_factory,
+    ReplicaOperationFactory* operation_factory,
     const scoped_refptr<log::Log>& log,
     std::shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
@@ -188,7 +188,7 @@ class RaftConsensus : public Consensus,
   ReplicaState* GetReplicaStateForTests();
 
   // Updates the committed_index and triggers the Apply()s for whatever
-  // transactions were pending.
+  // operations were pending.
   // This is idempotent.
   void UpdateMajorityReplicated(const OpId& majority_replicated,
                                 MonoTime majority_replicated_leader_lease_expiration,
@@ -208,7 +208,7 @@ class RaftConsensus : public Consensus,
   virtual CHECKED_STATUS GetLastOpId(OpIdType type, OpId* id) override;
 
  protected:
-  // Trigger that a non-Transaction ConsensusRound has finished replication.
+  // Trigger that a non-Operation ConsensusRound has finished replication.
   // If the replication was successful, an status will be OK. Otherwise, it
   // may be Aborted or some other error status.
   // If 'status' is OK, write a Commit message to the local WAL based on the
@@ -224,7 +224,7 @@ class RaftConsensus : public Consensus,
   virtual CHECKED_STATUS AppendNewRoundsToQueueUnlocked(
       const std::vector<scoped_refptr<ConsensusRound>>& rounds);
 
-  // As a follower, start a consensus round not associated with a Transaction.
+  // As a follower, start a consensus round not associated with a Operation.
   // Only virtual and protected for mocking purposes.
   virtual CHECKED_STATUS StartConsensusOnlyRoundUnlocked(const ReplicateMsgPtr& msg);
 
@@ -282,8 +282,8 @@ class RaftConsensus : public Consensus,
   CHECKED_STATUS RefreshConsensusQueueAndPeersUnlocked();
 
   // Makes the peer become leader.
-  // Returns OK once the change config transaction that has this peer as leader
-  // has been enqueued, the transaction will complete asynchronously.
+  // Returns OK once the change config operation that has this peer as leader
+  // has been enqueued, the operation will complete asynchronously.
   //
   // The ReplicaState must be locked for configuration change before calling.
   CHECKED_STATUS BecomeLeaderUnlocked();
@@ -294,7 +294,7 @@ class RaftConsensus : public Consensus,
   CHECKED_STATUS BecomeReplicaUnlocked();
 
   // Updates the state in a replica by storing the received operations in the log
-  // and triggering the required transactions. This method won't return until all
+  // and triggering the required operations. This method won't return until all
   // operations have been stored in the log and all Prepares() have been completed,
   // and a replica cannot accept any more Update() requests until this is done.
   CHECKED_STATUS UpdateReplica(
@@ -330,8 +330,8 @@ class RaftConsensus : public Consensus,
   // - The request is in the right term
   // - The log matching property holds
   // - Messages are de-duplicated so that we only process previously unprocessed requests.
-  // - We abort transactions if the leader sends transactions that have the same index as
-  //   transactions currently on the pendings set, but different terms.
+  // - We abort operations if the leader sends operations that have the same index as
+  //   operations currently on the pendings set, but different terms.
   // If this returns ok and the response has no errors, 'deduped_req' is set with only
   // the messages to add to our state machine.
   CHECKED_STATUS CheckLeaderRequestUnlocked(
@@ -342,9 +342,9 @@ class RaftConsensus : public Consensus,
   // Returns the most recent OpId written to the Log.
   OpId GetLatestOpIdFromLog();
 
-  // Begin a replica transaction. If the type of message in 'msg' is not a type
-  // that uses transactions, delegates to StartConsensusOnlyRoundUnlocked().
-  CHECKED_STATUS StartReplicaTransactionUnlocked(const ReplicateMsgPtr& msg);
+  // Begin a replica operation. If the type of message in 'msg' is not a type
+  // that uses operations, delegates to StartConsensusOnlyRoundUnlocked().
+  CHECKED_STATUS StartReplicaOperationUnlocked(const ReplicateMsgPtr& msg);
 
   // Return header string for RequestVote log messages. The ReplicaState lock must be held.
   std::string GetRequestVoteLogPrefixUnlocked() const;
@@ -515,9 +515,9 @@ class RaftConsensus : public Consensus,
   // Returns last op id received from leader.
   OpId EnqueueWritesUnlocked(const LeaderRequest& deduped_req,
                              const StatusCallback& sync_status_cb);
-  CHECKED_STATUS MarkTransactionsAsCommittedUnlocked(const ConsensusRequestPB& request,
-                                                     const LeaderRequest& deduped_req,
-                                                     OpId last_from_leader);
+  CHECKED_STATUS MarkOperationsAsCommittedUnlocked(const ConsensusRequestPB& request,
+                                                   const LeaderRequest& deduped_req,
+                                                   OpId last_from_leader);
   CHECKED_STATUS WaitWritesUnlocked(const LeaderRequest& deduped_req,
                                     Synchronizer* log_synchronizer);
 

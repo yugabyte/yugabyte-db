@@ -30,8 +30,8 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TRANSACTIONS_TRANSACTION_TRACKER_H
-#define YB_TABLET_TRANSACTIONS_TRANSACTION_TRACKER_H
+#ifndef YB_TABLET_OPERATIONS_OPERATION_TRACKER_H
+#define YB_TABLET_OPERATIONS_OPERATION_TRACKER_H
 
 #include <memory>
 #include <string>
@@ -40,7 +40,7 @@
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/tablet/transactions/transaction.h"
+#include "yb/tablet/operations/operation.h"
 #include "yb/util/locks.h"
 
 namespace yb {
@@ -52,30 +52,30 @@ class MemTracker;
 class MetricEntity;
 
 namespace tablet {
-class TransactionDriver;
+class OperationDriver;
 
-// Each TabletPeer has a TransactionTracker which keeps track of pending transactions.
-// Each "LeaderTransaction" will register itself by calling Add().
+// Each TabletPeer has a OperationTracker which keeps track of pending operations.
+// Each "LeaderOperation" will register itself by calling Add().
 // It will remove itself by calling Release().
-class TransactionTracker {
+class OperationTracker {
  public:
-  TransactionTracker();
-  ~TransactionTracker();
+  OperationTracker();
+  ~OperationTracker();
 
-  // Adds a transaction to the set of tracked transactions.
+  // Adds a operation to the set of tracked operations.
   //
   // In the event that the tracker's memory limit is exceeded, returns a
   // ServiceUnavailable status.
-  CHECKED_STATUS Add(TransactionDriver* driver);
+  CHECKED_STATUS Add(OperationDriver* driver);
 
-  // Removes the txn from the pending list.
-  // Also triggers the deletion of the Transaction object, if its refcount == 0.
-  void Release(TransactionDriver* driver);
+  // Removes the operation from the pending list.
+  // Also triggers the deletion of the Operation object, if its refcount == 0.
+  void Release(OperationDriver* driver);
 
-  // Populates list of currently-running transactions into 'pending_out' vector.
-  void GetPendingTransactions(std::vector<scoped_refptr<TransactionDriver> >* pending_out) const;
+  // Populates list of currently-running operations into 'pending_out' vector.
+  std::vector<scoped_refptr<OperationDriver>> GetPendingOperations() const;
 
-  // Returns number of pending transactions.
+  // Returns number of pending operations.
   int GetNumPendingForTests() const;
 
   void WaitForAllToFinish() const;
@@ -88,43 +88,43 @@ class TransactionTracker {
   struct Metrics {
     explicit Metrics(const scoped_refptr<MetricEntity>& entity);
 
-    scoped_refptr<AtomicGauge<uint64_t> > all_transactions_inflight;
-    scoped_refptr<AtomicGauge<uint64_t> > transactions_inflight[Transaction::kTransactionTypes];
+    scoped_refptr<AtomicGauge<uint64_t> > all_operations_inflight;
+    scoped_refptr<AtomicGauge<uint64_t> > operations_inflight[Operation::kOperationTypes];
 
-    scoped_refptr<Counter> transaction_memory_pressure_rejections;
+    scoped_refptr<Counter> operation_memory_pressure_rejections;
   };
 
   // Increments relevant metric counters.
-  void IncrementCounters(const TransactionDriver& driver) const;
+  void IncrementCounters(const OperationDriver& driver) const;
 
   // Decrements relevant metric counters.
-  void DecrementCounters(const TransactionDriver& driver) const;
+  void DecrementCounters(const OperationDriver& driver) const;
 
   mutable simple_spinlock lock_;
 
-  // Per-transaction state that is tracked along with the transaction itself.
+  // Per-operation state that is tracked along with the operation itself.
   struct State {
     State();
 
-    // Approximate memory footprint of the transaction.
+    // Approximate memory footprint of the operation.
     int64_t memory_footprint;
   };
 
   // Protected by 'lock_'.
-  typedef std::unordered_map<scoped_refptr<TransactionDriver>,
+  typedef std::unordered_map<scoped_refptr<OperationDriver>,
       State,
-      ScopedRefPtrHashFunctor<TransactionDriver>,
-      ScopedRefPtrEqualToFunctor<TransactionDriver> > TxnMap;
-  TxnMap pending_txns_;
+      ScopedRefPtrHashFunctor<OperationDriver>,
+      ScopedRefPtrEqualToFunctor<OperationDriver> > OperationMap;
+  OperationMap pending_operations_;
 
   gscoped_ptr<Metrics> metrics_;
 
   std::shared_ptr<MemTracker> mem_tracker_;
 
-  DISALLOW_COPY_AND_ASSIGN(TransactionTracker);
+  DISALLOW_COPY_AND_ASSIGN(OperationTracker);
 };
 
 }  // namespace tablet
 }  // namespace yb
 
-#endif // YB_TABLET_TRANSACTIONS_TRANSACTION_TRACKER_H
+#endif // YB_TABLET_OPERATIONS_OPERATION_TRACKER_H

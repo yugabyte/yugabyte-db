@@ -144,7 +144,7 @@ Status DeltaTracker::MakeDeltaIteratorMergerUnlocked(size_t start_idx, size_t en
   }
   RETURN_NOT_OK(DeltaIteratorMerger::Create(
       inputs, projection,
-      MvccSnapshot::CreateSnapshotIncludingAllTransactions(), out));
+      MvccSnapshot::CreateSnapshotIncludingAllOperations(), out));
   return Status::OK();
 }
 

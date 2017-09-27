@@ -47,8 +47,8 @@
 #include "yb/tablet/tablet.h"
 
 #include "yb/tablet/transaction_coordinator.h"
-#include "yb/tablet/transaction_order_verifier.h"
-#include "yb/tablet/transactions/transaction_tracker.h"
+#include "yb/tablet/operation_order_verifier.h"
+#include "yb/tablet/operations/operation_tracker.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/util/metrics.h"
 #include "yb/util/semaphore.h"
@@ -70,13 +70,13 @@ class MaintenanceManager;
 class MaintenanceOp;
 
 namespace tablet {
-class LeaderTransactionDriver;
-class ReplicaTransactionDriver;
+class LeaderOperationDriver;
+class ReplicaOperationDriver;
 class TabletPeer;
 class TabletStatusPB;
 class TabletStatusListener;
-class TransactionDriver;
-class UpdateTxnTransactionState;
+class OperationDriver;
+class UpdateTxnOperationState;
 
 // A peer in a tablet consensus configuration, which coordinates writes to tablets.
 // Each time Write() is called this class appends a new entry to a replicated
@@ -84,7 +84,7 @@ class UpdateTxnTransactionState;
 // peers see the same updates in the same order. In addition to this, this
 // class also splits the work and coordinates multi-threaded execution.
 class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
-                   public consensus::ReplicaTransactionFactory,
+                   public consensus::ReplicaOperationFactory,
                    public TransactionParticipantContext,
                    public TransactionCoordinatorContext {
  public:
@@ -123,23 +123,23 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   CHECKED_STATUS WaitUntilConsensusRunning(const MonoDelta& timeout);
 
   // Submits a write to a tablet and executes it asynchronously.
-  // The caller is expected to build and pass a WriteTransactionState that points
+  // The caller is expected to build and pass a WriteOperationState that points
   // to the RPC WriteRequest, WriteResponse, RpcContext and to the tablet's
   // MvccManager.
-  // The tx_state is deallocated after use by this function.
-  CHECKED_STATUS SubmitWrite(std::unique_ptr<WriteTransactionState> tx_state);
+  // The operation_state is deallocated after use by this function.
+  CHECKED_STATUS SubmitWrite(std::unique_ptr<WriteOperationState> operation_state);
 
-  void Submit(std::unique_ptr<Transaction> transaction);
+  void Submit(std::unique_ptr<Operation> operation);
 
-  std::unique_ptr<UpdateTxnTransactionState> CreateUpdateTransactionState(
+  std::unique_ptr<UpdateTxnOperationState> CreateUpdateTransactionState(
       tserver::TransactionStatePB* request) override;
 
-  void SubmitUpdateTransaction(std::unique_ptr<UpdateTxnTransactionState> state) override;
+  void SubmitUpdateTransaction(std::unique_ptr<UpdateTxnOperationState> state) override;
 
   void GetTabletStatusPB(TabletStatusPB* status_pb_out) const;
 
-  // Used by consensus to create and start a new ReplicaTransaction.
-  virtual CHECKED_STATUS StartReplicaTransaction(
+  // Used by consensus to create and start a new ReplicaOperation.
+  virtual CHECKED_STATUS StartReplicaOperation(
       const scoped_refptr<consensus::ConsensusRound>& round) override;
 
   consensus::Consensus* consensus() const {
@@ -206,10 +206,10 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   std::string HumanReadableState() const;
 
   // Adds list of transactions in-flight at the time of the call to
-  // 'out'. TransactionStatusPB objects are used to allow this method
+  // 'out'. OperationStatusPB objects are used to allow this method
   // to be used by both the web-UI and ts-cli.
-  void GetInFlightTransactions(Transaction::TraceType trace_type,
-                               std::vector<consensus::TransactionStatusPB>* out) const;
+  void GetInFlightOperations(Operation::TraceType trace_type,
+                             std::vector<consensus::OperationStatusPB>* out) const;
 
   // Returns the minimum known log index that is in-memory or in-flight.
   // Used for selection of log segments to delete during Log GC.
@@ -258,18 +258,18 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
     return tablet_ != nullptr ? tablet_->metadata()->fs_manager()->uuid() : "";
   }
 
-  CHECKED_STATUS NewTransactionDriver(std::unique_ptr<Transaction> transaction,
-                                      consensus::DriverType type,
-                                      scoped_refptr<TransactionDriver>* driver);
+  CHECKED_STATUS NewOperationDriver(std::unique_ptr<Operation> operation,
+                                    consensus::DriverType type,
+                                    scoped_refptr<OperationDriver>* driver);
 
-  CHECKED_STATUS NewLeaderTransactionDriver(std::unique_ptr<Transaction> transaction,
-                                            scoped_refptr<TransactionDriver>* driver) {
-    return NewTransactionDriver(std::move(transaction), consensus::LEADER, driver);
+  CHECKED_STATUS NewLeaderOperationDriver(std::unique_ptr<Operation> operation,
+                                          scoped_refptr<OperationDriver>* driver) {
+    return NewOperationDriver(std::move(operation), consensus::LEADER, driver);
   }
 
-  CHECKED_STATUS NewReplicaTransactionDriver(std::unique_ptr<Transaction> transaction,
-                                             scoped_refptr<TransactionDriver>* driver) {
-    return NewTransactionDriver(std::move(transaction), consensus::REPLICA, driver);
+  CHECKED_STATUS NewReplicaOperationDriver(std::unique_ptr<Operation> operation,
+                                           scoped_refptr<OperationDriver>* driver) {
+    return NewOperationDriver(std::move(operation), consensus::REPLICA, driver);
   }
 
   // Tells the tablet's log to garbage collect.
@@ -284,7 +284,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   void UnregisterMaintenanceOps();
 
   // Return pointer to the transaction tracker for this peer.
-  const TransactionTracker* transaction_tracker() const { return &txn_tracker_; }
+  const OperationTracker* operation_tracker() const { return &operation_tracker_; }
 
   const scoped_refptr<TabletMetadata>& tablet_metadata() const {
     return meta_;
@@ -299,7 +299,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   friend class RefCountedThreadSafe<TabletPeer>;
   friend class TabletPeerTest;
   FRIEND_TEST(TabletPeerTest, TestDMSAnchorPreventsLogGC);
-  FRIEND_TEST(TabletPeerTest, TestActiveTransactionPreventsLogGC);
+  FRIEND_TEST(TabletPeerTest, TestActiveOperationPreventsLogGC);
 
   ~TabletPeer();
 
@@ -309,12 +309,12 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   // After bootstrap is complete and consensus is setup this initiates the transactions
   // that were not complete on bootstrap.
   // Not implemented yet. See .cc file.
-  CHECKED_STATUS StartPendingTransactions(consensus::RaftPeerPB::Role my_role,
-                                  const consensus::ConsensusBootstrapInfo& bootstrap_info);
+  CHECKED_STATUS StartPendingOperations(consensus::RaftPeerPB::Role my_role,
+                                        const consensus::ConsensusBootstrapInfo& bootstrap_info);
 
-  scoped_refptr<TransactionDriver> CreateTransactionDriver();
+  scoped_refptr<OperationDriver> CreateOperationDriver();
 
-  std::unique_ptr<Transaction> CreateTransaction(consensus::ReplicateMsg* replicate_msg);
+  std::unique_ptr<Operation> CreateOperation(consensus::ReplicateMsg* replicate_msg);
 
   const scoped_refptr<TabletMetadata> meta_;
 
@@ -324,8 +324,8 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
 
   TabletStatePB state_;
   Status error_;
-  TransactionTracker txn_tracker_;
-  TransactionOrderVerifier txn_order_verifier_;
+  OperationTracker operation_tracker_;
+  OperationOrderVerifier operation_order_verifier_;
   scoped_refptr<log::Log> log_;
   std::shared_ptr<Tablet> tablet_;
   std::shared_ptr<rpc::Messenger> messenger_;

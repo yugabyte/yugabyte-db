@@ -66,7 +66,7 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/ql/util/statement_result.h"
 #include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/transactions/write_transaction.h"
+#include "yb/tablet/operations/write_operation.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/scanners.h"
 #include "yb/tserver/tablet_server.h"

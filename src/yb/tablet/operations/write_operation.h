@@ -30,8 +30,8 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TRANSACTIONS_WRITE_TRANSACTION_H_
-#define YB_TABLET_TRANSACTIONS_WRITE_TRANSACTION_H_
+#ifndef YB_TABLET_OPERATIONS_WRITE_OPERATION_H
+#define YB_TABLET_OPERATIONS_WRITE_OPERATION_H
 
 #include <mutex>
 #include <string>
@@ -46,7 +46,7 @@
 #include "yb/tablet/lock_manager.h"
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/tablet.pb.h"
-#include "yb/tablet/transactions/transaction.h"
+#include "yb/tablet/operations/operation.h"
 #include "yb/util/locks.h"
 #include "yb/util/shared_lock_manager_fwd.h"
 
@@ -72,7 +72,7 @@ class Tablet;
 
 using util::LockBatch;
 
-// A TransactionState for a batch of inserts/mutates. This class holds and
+// A OperationState for a batch of inserts/mutates. This class holds and
 // owns most everything related to a transaction, including:
 // - A RowOp structure for each of the rows being inserted or mutated, which itself
 //   contains:
@@ -84,7 +84,7 @@ using util::LockBatch;
 // All the transaction related pointers are owned by this class
 // and destroyed on Reset() or by the destructor.
 //
-// IMPORTANT: All the acquired locks will not be released unless the TransactionState
+// IMPORTANT: All the acquired locks will not be released unless the OperationState
 // is either destroyed or Reset() or release_locks() is called. Beware of this
 // or else there will be lock leaks.
 //
@@ -93,12 +93,12 @@ using util::LockBatch;
 // on the WAL.
 //
 // NOTE: this class isn't thread safe.
-class WriteTransactionState : public TransactionState {
+class WriteOperationState : public OperationState {
  public:
-  WriteTransactionState(TabletPeer* tablet_peer = nullptr,
-                        const tserver::WriteRequestPB *request = nullptr,
-                        tserver::WriteResponsePB *response = nullptr);
-  virtual ~WriteTransactionState();
+  WriteOperationState(TabletPeer* tablet_peer = nullptr,
+                      const tserver::WriteRequestPB *request = nullptr,
+                      tserver::WriteResponsePB *response = nullptr);
+  virtual ~WriteOperationState();
 
   // Returns the result of this transaction in its protocol buffers form.
   // The transaction result holds information on exactly which memory stores
@@ -133,8 +133,8 @@ class WriteTransactionState : public TransactionState {
   // This must be called exactly once, during the PREPARE phase just
   // after the MvccManager has assigned a hybrid_time.
   // This also copies the hybrid_time from the MVCC transaction into the
-  // WriteTransactionState object.
-  void SetMvccTxAndHybridTime(gscoped_ptr<ScopedWriteTransaction> mvcc_tx);
+  // WriteOperationState object.
+  void SetMvccTxAndHybridTime(std::unique_ptr<ScopedWriteOperation> mvcc_tx);
 
   // Set the Tablet components that this transaction will write into.
   // Called exactly once at the beginning of Apply, before applying its
@@ -214,7 +214,7 @@ class WriteTransactionState : public TransactionState {
   // Releases all the DocDB locks acquired by this transaction.
   void ReleaseDocDbLocks(Tablet* tablet);
 
-  // Resets this TransactionState, releasing all locks, destroying all prepared
+  // Resets this OperationState, releasing all locks, destroying all prepared
   // writes, clearing the transaction result _and_ committing the current Mvcc
   // transaction.
   void Reset();
@@ -223,12 +223,12 @@ class WriteTransactionState : public TransactionState {
 
  private:
   // Reset the response, and row_ops_ (which refers to data
-  // from the request). Request is owned by WriteTransaction using a unique_ptr.
+  // from the request). Request is owned by WriteOperation using a unique_ptr.
   // A copy is made at initialization, so we don't need to reset it.
   void ResetRpcFields();
 
   // Sets mvcc_tx_ to nullptr after commit/abort in a thread-safe manner.
-  void ResetMvccTx(std::function<void(ScopedWriteTransaction*)> txn_action);
+  void ResetMvccTx(std::function<void(ScopedWriteOperation*)> txn_action);
 
   // pointers to the rpc context, request and response, lifecyle
   // is managed by the rpc subsystem. These pointers maybe nullptr if the
@@ -249,7 +249,7 @@ class WriteTransactionState : public TransactionState {
   LockBatch docdb_locks_;
 
   // The MVCC transaction, set up during PREPARE phase
-  gscoped_ptr<ScopedWriteTransaction> mvcc_tx_;
+  std::unique_ptr<ScopedWriteOperation> mvcc_tx_;
 
   // A lock protecting mvcc_tx_. This is important at least because mvcc_tx_ can be reset to nullptr
   // when a transaction is being aborted (e.g. on server shutdown), and we don't want that to race
@@ -272,20 +272,20 @@ class WriteTransactionState : public TransactionState {
   // Protected by superclass's txn_state_lock_.
   const Schema* schema_at_decode_time_;
 
-  DISALLOW_COPY_AND_ASSIGN(WriteTransactionState);
+  DISALLOW_COPY_AND_ASSIGN(WriteOperationState);
 };
 
 // Executes a write transaction.
-class WriteTransaction : public Transaction {
+class WriteOperation : public Operation {
  public:
-  WriteTransaction(std::unique_ptr<WriteTransactionState> tx_state, consensus::DriverType type);
+  WriteOperation(std::unique_ptr<WriteOperationState> operation_state, consensus::DriverType type);
 
-  WriteTransactionState* state() override {
-    return down_cast<WriteTransactionState*>(Transaction::state());
+  WriteOperationState* state() override {
+    return down_cast<WriteOperationState*>(Operation::state());
   }
 
-  const WriteTransactionState* state() const override {
-    return down_cast<const WriteTransactionState*>(Transaction::state());
+  const WriteOperationState* state() const override {
+    return down_cast<const WriteOperationState*>(Operation::state());
   }
 
   consensus::ReplicateMsgPtr NewReplicateMsg() override;
@@ -294,7 +294,7 @@ class WriteTransaction : public Transaction {
   //
   // Decodes the operations in the request PB and acquires row locks for each of the
   // affected rows. This results in adding 'RowOp' objects for each of the operations
-  // into the WriteTransactionState.
+  // into the WriteOperationState.
   virtual CHECKED_STATUS Prepare() override;
 
   // Actually starts the Mvcc transaction and assigns a hybrid_time to this transaction.
@@ -325,7 +325,7 @@ class WriteTransaction : public Transaction {
 
   // If result == COMMITTED, commits the mvcc transaction and updates
   // the metrics, if result == ABORTED aborts the mvcc transaction.
-  virtual void Finish(TransactionResult result) override;
+  virtual void Finish(OperationResult result) override;
 
   virtual std::string ToString() const override;
 
@@ -335,10 +335,10 @@ class WriteTransaction : public Transaction {
 
   TabletPeer* tablet_peer() { return state()->tablet_peer(); }
 
-  DISALLOW_COPY_AND_ASSIGN(WriteTransaction);
+  DISALLOW_COPY_AND_ASSIGN(WriteOperation);
 };
 
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_TRANSACTIONS_WRITE_TRANSACTION_H_
+#endif  // YB_TABLET_OPERATIONS_WRITE_OPERATION_H

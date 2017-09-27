@@ -60,10 +60,10 @@
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer_mm_ops.h"
 
-#include "yb/tablet/transactions/alter_schema_transaction.h"
-#include "yb/tablet/transactions/transaction_driver.h"
-#include "yb/tablet/transactions/write_transaction.h"
-#include "yb/tablet/transactions/update_txn_transaction.h"
+#include "yb/tablet/operations/alter_schema_operation.h"
+#include "yb/tablet/operations/operation_driver.h"
+#include "yb/tablet/operations/write_operation.h"
+#include "yb/tablet/operations/update_txn_operation.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -192,9 +192,9 @@ Status TabletPeer::Init(const shared_ptr<Tablet>& tablet,
 
   if (tablet_->metrics() != nullptr) {
     TRACE("Starting instrumentation");
-    txn_tracker_.StartInstrumentation(tablet_->GetMetricEntity());
+    operation_tracker_.StartInstrumentation(tablet_->GetMetricEntity());
   }
-  txn_tracker_.StartMemoryTracking(tablet_->mem_tracker());
+  operation_tracker_.StartMemoryTracking(tablet_->mem_tracker());
 
   if (tablet_->transaction_coordinator()) {
     tablet_->transaction_coordinator()->Start();
@@ -265,8 +265,8 @@ void TabletPeer::Shutdown() {
 
   // TODO: KUDU-183: Keep track of the pending tasks and send an "abort" message.
   LOG_SLOW_EXECUTION(WARNING, 1000,
-      Substitute("TabletPeer: tablet $0: Waiting for Transactions to complete", tablet_id())) {
-    txn_tracker_.WaitForAllToFinish();
+      Substitute("TabletPeer: tablet $0: Waiting for Operations to complete", tablet_id())) {
+    operation_tracker_.WaitForAllToFinish();
   }
 
   if (prepare_thread_) {
@@ -364,39 +364,39 @@ Status TabletPeer::WaitUntilConsensusRunning(const MonoDelta& timeout) {
   return Status::OK();
 }
 
-Status TabletPeer::SubmitWrite(std::unique_ptr<WriteTransactionState> state) {
-  auto transaction = std::make_unique<WriteTransaction>(std::move(state), consensus::LEADER);
+Status TabletPeer::SubmitWrite(std::unique_ptr<WriteOperationState> state) {
+  auto operation = std::make_unique<WriteOperation>(std::move(state), consensus::LEADER);
   RETURN_NOT_OK(CheckRunning());
 
-  RETURN_NOT_OK(tablet_->AcquireLocksAndPerformDocOperations(transaction->state()));
-  scoped_refptr<TransactionDriver> driver;
-  RETURN_NOT_OK(NewLeaderTransactionDriver(std::move(transaction), &driver));
+  RETURN_NOT_OK(tablet_->AcquireLocksAndPerformDocOperations(operation->state()));
+  scoped_refptr<OperationDriver> driver;
+  RETURN_NOT_OK(NewLeaderOperationDriver(std::move(operation), &driver));
   return driver->ExecuteAsync();
 }
 
-void TabletPeer::Submit(std::unique_ptr<Transaction> transaction) {
+void TabletPeer::Submit(std::unique_ptr<Operation> operation) {
   auto status = CheckRunning();
 
   if (status.ok()) {
-    scoped_refptr<TransactionDriver> driver;
-    status = NewLeaderTransactionDriver(std::move(transaction), &driver);
+    scoped_refptr<OperationDriver> driver;
+    status = NewLeaderOperationDriver(std::move(operation), &driver);
     if (status.ok()) {
       status = driver->ExecuteAsync();
     }
   }
   if (!status.ok()) {
-    transaction->state()->completion_callback()->set_error(status);
-    transaction->state()->completion_callback()->TransactionCompleted();
+    operation->state()->completion_callback()->set_error(status);
+    operation->state()->completion_callback()->OperationCompleted();
   }
 }
 
-void TabletPeer::SubmitUpdateTransaction(std::unique_ptr<UpdateTxnTransactionState> state) {
-  Submit(std::make_unique<tablet::UpdateTxnTransaction>(std::move(state), consensus::LEADER));
+void TabletPeer::SubmitUpdateTransaction(std::unique_ptr<UpdateTxnOperationState> state) {
+  Submit(std::make_unique<tablet::UpdateTxnOperation>(std::move(state), consensus::LEADER));
 }
 
-std::unique_ptr<UpdateTxnTransactionState> TabletPeer::CreateUpdateTransactionState(
+std::unique_ptr<UpdateTxnOperationState> TabletPeer::CreateUpdateTransactionState(
     tserver::TransactionStatePB* request) {
-  auto result = std::make_unique<UpdateTxnTransactionState>(this);
+  auto result = std::make_unique<UpdateTxnOperationState>(this);
   result->TakeRequest(request);
   return result;
 }
@@ -444,33 +444,31 @@ string TabletPeer::HumanReadableState() const {
   return TabletStatePB_Name(state_);
 }
 
-void TabletPeer::GetInFlightTransactions(Transaction::TraceType trace_type,
-                                         vector<consensus::TransactionStatusPB>* out) const {
-  vector<scoped_refptr<TransactionDriver> > pending_transactions;
-  txn_tracker_.GetPendingTransactions(&pending_transactions);
-  for (const scoped_refptr<TransactionDriver>& driver : pending_transactions) {
+void TabletPeer::GetInFlightOperations(Operation::TraceType trace_type,
+                                       vector<consensus::OperationStatusPB>* out) const {
+  for (const auto& driver : operation_tracker_.GetPendingOperations()) {
     if (driver->state() != nullptr) {
-      consensus::TransactionStatusPB status_pb;
+      consensus::OperationStatusPB status_pb;
       status_pb.mutable_op_id()->CopyFrom(driver->GetOpId());
-      switch (driver->tx_type()) {
-        case Transaction::WRITE_TXN:
-          status_pb.set_tx_type(consensus::WRITE_OP);
+      switch (driver->operation_type()) {
+        case Operation::WRITE_TXN:
+          status_pb.set_operation_type(consensus::WRITE_OP);
           break;
-        case Transaction::ALTER_SCHEMA_TXN:
-          status_pb.set_tx_type(consensus::ALTER_SCHEMA_OP);
+        case Operation::ALTER_SCHEMA_TXN:
+          status_pb.set_operation_type(consensus::ALTER_SCHEMA_OP);
           break;
-        case Transaction::UPDATE_TRANSACTION_TXN:
-          status_pb.set_tx_type(consensus::UPDATE_TRANSACTION_OP);
+        case Operation::UPDATE_TRANSACTION_TXN:
+          status_pb.set_operation_type(consensus::UPDATE_TRANSACTION_OP);
           break;
 
         default:
-          FATAL_INVALID_ENUM_VALUE(Transaction::TransactionType, driver->tx_type());
+          FATAL_INVALID_ENUM_VALUE(Operation::OperationType, driver->operation_type());
       }
       status_pb.set_description(driver->ToString());
       int64_t running_for_micros =
           MonoTime::Now(MonoTime::FINE).GetDeltaSince(driver->start_time()).ToMicroseconds();
       status_pb.set_running_for_micros(running_for_micros);
-      if (trace_type == Transaction::TRACE_TXNS) {
+      if (trace_type == Operation::TRACE_TXNS) {
         status_pb.set_trace_buffer(driver->trace()->DumpToString(true));
       }
       out->push_back(status_pb);
@@ -505,12 +503,10 @@ Status TabletPeer::GetEarliestNeededLogIndex(int64_t* min_index) const {
     }
   }
 
-  // Next, interrogate the TransactionTracker.
-  vector<scoped_refptr<TransactionDriver> > pending_transactions;
-  txn_tracker_.GetPendingTransactions(&pending_transactions);
-  for (const scoped_refptr<TransactionDriver>& driver : pending_transactions) {
+  // Next, interrogate the OperationTracker.
+  for (const auto& driver : operation_tracker_.GetPendingOperations()) {
     OpId tx_op_id = driver->GetOpId();
-    // A transaction which doesn't have an opid hasn't been submitted for replication yet and
+    // A operation which doesn't have an opid hasn't been submitted for replication yet and
     // thus has no need to anchor the log.
     if (tx_op_id.IsInitialized()) {
       *min_index = std::min(*min_index, tx_op_id.index());
@@ -564,25 +560,25 @@ Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
   return Status::OK();
 }
 
-std::unique_ptr<Transaction> TabletPeer::CreateTransaction(consensus::ReplicateMsg* replicate_msg) {
+std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* replicate_msg) {
   switch (replicate_msg->op_type()) {
     case consensus::WRITE_OP:
       DCHECK(replicate_msg->has_write_request()) << "WRITE_OP replica"
-          " transaction must receive a WriteRequestPB";
-      return std::make_unique<WriteTransaction>(
-          std::make_unique<WriteTransactionState>(this), consensus::REPLICA);
+          " operation must receive a WriteRequestPB";
+      return std::make_unique<WriteOperation>(
+          std::make_unique<WriteOperationState>(this), consensus::REPLICA);
 
     case consensus::ALTER_SCHEMA_OP:
       DCHECK(replicate_msg->has_alter_schema_request()) << "ALTER_SCHEMA_OP replica"
-          " transaction must receive an AlterSchemaRequestPB";
-      return std::make_unique<AlterSchemaTransaction>(
-          std::make_unique<AlterSchemaTransactionState>(this), consensus::REPLICA);
+          " operation must receive an AlterSchemaRequestPB";
+      return std::make_unique<AlterSchemaOperation>(
+          std::make_unique<AlterSchemaOperationState>(this), consensus::REPLICA);
 
     case consensus::UPDATE_TRANSACTION_OP:
       DCHECK(replicate_msg->has_transaction_state()) << "UPDATE_TRANSACTION_OP replica"
-          " transaction must receive an TransactionStateRequestPB";
-      return std::make_unique<UpdateTxnTransaction>(
-          std::make_unique<UpdateTxnTransactionState>(this), consensus::REPLICA);
+          " operation must receive an TransactionStatePB";
+      return std::make_unique<UpdateTxnOperation>(
+          std::make_unique<UpdateTxnOperationState>(this), consensus::REPLICA);
 
     case consensus::UNKNOWN_OP: FALLTHROUGH_INTENDED;
     case consensus::NO_OP: FALLTHROUGH_INTENDED;
@@ -592,7 +588,7 @@ std::unique_ptr<Transaction> TabletPeer::CreateTransaction(consensus::ReplicateM
   FATAL_INVALID_ENUM_VALUE(consensus::OperationType, replicate_msg->op_type());
 }
 
-Status TabletPeer::StartReplicaTransaction(const scoped_refptr<ConsensusRound>& round) {
+Status TabletPeer::StartReplicaOperation(const scoped_refptr<ConsensusRound>& round) {
   {
     std::lock_guard<simple_spinlock> lock(lock_);
     if (state_ != RUNNING && state_ != BOOTSTRAPPING) {
@@ -602,11 +598,11 @@ Status TabletPeer::StartReplicaTransaction(const scoped_refptr<ConsensusRound>& 
 
   consensus::ReplicateMsg* replicate_msg = round->replicate_msg().get();
   DCHECK(replicate_msg->has_hybrid_time());
-  auto transaction = CreateTransaction(replicate_msg);
+  auto operation = CreateOperation(replicate_msg);
 
   // TODO(todd) Look at wiring the stuff below on the driver
-  TransactionState* state = transaction->state();
-  // It's imperative that we set the round here on any type of transaction, as this
+  OperationState* state = operation->state();
+  // It's imperative that we set the round here on any type of operation, as this
   // allows us to keep the reference to the request in the round instead of copying it.
   state->set_consensus_round(round);
   HybridTime ht(replicate_msg->hybrid_time());
@@ -616,23 +612,23 @@ Status TabletPeer::StartReplicaTransaction(const scoped_refptr<ConsensusRound>& 
   // This sets the monotonic counter to at least replicate_msg.monotonic_counter() atomically.
   tablet_->UpdateMonotonicCounter(replicate_msg->monotonic_counter());
 
-  scoped_refptr<TransactionDriver> driver;
-  RETURN_NOT_OK(NewReplicaTransactionDriver(std::move(transaction), &driver));
+  scoped_refptr<OperationDriver> driver;
+  RETURN_NOT_OK(NewReplicaOperationDriver(std::move(operation), &driver));
 
   // Unretained is required to avoid a refcount cycle.
   state->consensus_round()->SetConsensusReplicatedCallback(
-      Bind(&TransactionDriver::ReplicationFinished, Unretained(driver.get())));
+      Bind(&OperationDriver::ReplicationFinished, Unretained(driver.get())));
 
   RETURN_NOT_OK(driver->ExecuteAsync());
   return Status::OK();
 }
 
-Status TabletPeer::NewTransactionDriver(std::unique_ptr<Transaction> transaction,
-                                        consensus::DriverType type,
-                                        scoped_refptr<TransactionDriver>* driver) {
-  scoped_refptr<TransactionDriver> tx_driver = CreateTransactionDriver();
-  RETURN_NOT_OK(tx_driver->Init(std::move(transaction), type));
-  driver->swap(tx_driver);
+Status TabletPeer::NewOperationDriver(std::unique_ptr<Operation> operation,
+                                      consensus::DriverType type,
+                                      scoped_refptr<OperationDriver>* driver) {
+  auto operation_driver = CreateOperationDriver();
+  RETURN_NOT_OK(operation_driver->Init(std::move(operation), type));
+  driver->swap(operation_driver);
 
   return Status::OK();
 }
@@ -713,9 +709,9 @@ Status FlushInflightsToLogCallback::WaitForInflightsAndFlushLog() {
   // This ensures that the above-mentioned commit messages are not just enqueued
   // to the log, but also on disk.
   VLOG(1) << "T " << tablet_->metadata()->tablet_id()
-      <<  ": Waiting for in-flight transactions to commit.";
+      <<  ": Waiting for in-flight operations to commit.";
   LOG_SLOW_EXECUTION(WARNING, 200, "Committing in-flights took a long time.") {
-    tablet_->mvcc_manager()->WaitForApplyingTransactionsToCommit();
+    tablet_->mvcc_manager()->WaitForApplyingOperationsToCommit();
   }
   VLOG(1) << "T " << tablet_->metadata()->tablet_id()
       << ": Waiting for the log queue to be flushed.";
@@ -725,14 +721,14 @@ Status FlushInflightsToLogCallback::WaitForInflightsAndFlushLog() {
   return Status::OK();
 }
 
-scoped_refptr<TransactionDriver> TabletPeer::CreateTransactionDriver() {
-  return scoped_refptr<TransactionDriver>(new TransactionDriver(
-      &txn_tracker_,
+scoped_refptr<OperationDriver> TabletPeer::CreateOperationDriver() {
+  return scoped_refptr<OperationDriver>(new OperationDriver(
+      &operation_tracker_,
       consensus_.get(),
       log_.get(),
       prepare_thread_.get(),
       apply_pool_,
-      &txn_order_verifier_,
+      &operation_order_verifier_,
       tablet_->table_type()));
 }
 

@@ -110,7 +110,7 @@ class ReplicaState {
 
   ReplicaState(ConsensusOptions options, std::string peer_uuid,
                gscoped_ptr<ConsensusMetadata> cmeta,
-               ReplicaTransactionFactory* txn_factory);
+               ReplicaOperationFactory* operation_factory);
 
   CHECKED_STATUS StartUnlocked(const OpId& last_in_wal);
 
@@ -234,7 +234,7 @@ class ReplicaState {
   // The vote must be set; use HasVotedCurrentTermUnlocked() to check.
   const std::string& GetVotedForCurrentTermUnlocked() const;
 
-  ReplicaTransactionFactory* GetReplicaTransactionFactoryUnlocked() const;
+  ReplicaOperationFactory* GetReplicaOperationFactoryUnlocked() const;
 
   // Returns the uuid of the peer to which this replica state belongs.
   // Safe to call with or without locks held.
@@ -254,7 +254,7 @@ class ReplicaState {
   // Add 'round' to the set of rounds waiting to be committed.
   CHECKED_STATUS AddPendingOperation(const scoped_refptr<ConsensusRound>& round);
 
-  // Marks ReplicaTransactions up to 'id' as majority replicated, meaning the
+  // Marks ReplicaOperations up to 'id' as majority replicated, meaning the
   // transaction may Apply() (immediately if Prepare() has completed or when Prepare()
   // completes, if not).
   //
@@ -295,15 +295,15 @@ class ReplicaState {
 
   // Returns the id of the latest pending transaction (i.e. the one with the
   // latest index). This must be called under the lock.
-  OpId GetLastPendingTransactionOpIdUnlocked() const;
+  OpId GetLastPendingOperationOpIdUnlocked() const;
 
   // Used by replicas to cancel pending transactions. Pending transaction are those
   // that have completed prepare/replicate but are waiting on the LEADER's commit
   // to complete. This does not cancel transactions being applied.
-  CHECKED_STATUS CancelPendingTransactions();
+  CHECKED_STATUS CancelPendingOperations();
 
   // API to dump pending transactions. Added to debug ENG-520.
-  void DumpPendingTransactionsUnlocked();
+  void DumpPendingOperationsUnlocked();
 
   void NewIdUnlocked(OpId* id);
 
@@ -368,7 +368,7 @@ class ReplicaState {
 
   // To maintain safety, we need to check that the committed entry is actually
   // present in our log (and as a result, is either already committed locally, which means there
-  // is nothing to do, or present in the pending transactions map).
+  // is nothing to do, or present in the pending operations map).
   Status CheckOperationExist(const OpId& committed_index, IndexToRoundMap::iterator* end_iter);
 
   // Apply pending operations beginning at iter up to committed_index.
@@ -407,9 +407,9 @@ class ReplicaState {
   // The key is the index of the replicate operation.
   IndexToRoundMap pending_txns_;
 
-  // When we receive a message from a remote peer telling us to start a transaction, we use
+  // When we receive a message from a remote peer telling us to start a operation, we use
   // this factory to start it.
-  ReplicaTransactionFactory* txn_factory_;
+  ReplicaOperationFactory* operation_factory_;
 
   // The id of the last received operation, which corresponds to the last entry
   // written to the local log. Operations whose id is lower than or equal to

@@ -70,7 +70,7 @@ DECLARE_int32(consensus_rpc_timeout_ms);
 DECLARE_int32(leader_lease_duration_ms);
 
 METRIC_DECLARE_entity(tablet);
-METRIC_DECLARE_counter(transaction_memory_pressure_rejections);
+METRIC_DECLARE_counter(operation_memory_pressure_rejections);
 METRIC_DECLARE_gauge_int64(raft_term);
 
 namespace yb {
@@ -473,7 +473,7 @@ TEST_F(RaftConsensusITest, TestInsertAndMutateThroughConsensus) {
   ASSERT_ALL_REPLICAS_AGREE(FLAGS_client_inserts_per_thread * num_iters);
 }
 
-TEST_F(RaftConsensusITest, TestFailedTransaction) {
+TEST_F(RaftConsensusITest, TestFailedOperation) {
   ASSERT_NO_FATALS(BuildAndStart(vector<string>()));
 
   // Wait until we have a stable leader.
@@ -1416,7 +1416,7 @@ void RaftConsensusITest::StubbornlyWriteSameRowThread(int replica_idx, const Ato
 // index is higher.
 //
 // The test works by setting up three replicas and manually hammering them with write
-// requests targeting a single row. If the bug exists, then TransactionOrderVerifier
+// requests targeting a single row. If the bug exists, then OperationOrderVerifier
 // will trigger an assertion because the prepare order and the op indexes will become
 // misaligned.
 TEST_F(RaftConsensusITest, TestKUDU_597) {
@@ -2314,7 +2314,7 @@ TEST_F(RaftConsensusITest, TestEarlyCommitDespiteMemoryPressure) {
   ts_flags.push_back("--memory_limit_hard_bytes=4194304");
 
   // Don't let transaction memory tracking get in the way.
-  ts_flags.push_back("--tablet_transaction_memory_limit_mb=-1");
+  ts_flags.push_back("--tablet_operation_memory_limit_mb=-1");
 
   ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
@@ -2472,7 +2472,7 @@ TEST_F(RaftConsensusITest, TestMemoryRemainsConstantDespiteTwoDeadFollowers) {
   // Start the cluster with a low per-tablet transaction memory limit, so that
   // the test can complete faster.
   vector<string> flags;
-  flags.push_back("--tablet_transaction_memory_limit_mb=2");
+  flags.push_back("--tablet_operation_memory_limit_mb=2");
 
   // We can't use leader leases in this test, because requests will get rejected right away with two
   // dead followers instead of being queued in the leader.
@@ -2516,7 +2516,7 @@ TEST_F(RaftConsensusITest, TestMemoryRemainsConstantDespiteTwoDeadFollowers) {
     ASSERT_OK(cluster_->tablet_server(leader_ts_idx)->GetInt64Metric(
         &METRIC_ENTITY_tablet,
         nullptr,
-        &METRIC_transaction_memory_pressure_rejections,
+        &METRIC_operation_memory_pressure_rejections,
         "value",
         &num_rejections));
     if (num_rejections >= kMinRejections) {
@@ -2745,7 +2745,7 @@ TEST_F(RaftConsensusITest, TestUpdateConsensusErrorNonePrepared) {
   LOG(INFO) << resp.ShortDebugString();
   ASSERT_TRUE(resp.status().has_error());
   ASSERT_EQ(consensus::ConsensusErrorPB::CANNOT_PREPARE, resp.status().error().code());
-  ASSERT_STR_CONTAINS(resp.ShortDebugString(), "Could not prepare a single transaction");
+  ASSERT_STR_CONTAINS(resp.ShortDebugString(), "Could not prepare a single operation");
 }
 
 TEST_F(RaftConsensusITest, TestRemoveTserverFailsWhenVoterInTransition) {

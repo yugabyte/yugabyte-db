@@ -30,7 +30,7 @@
 // under the License.
 //
 
-#include "yb/tablet/transactions/write_transaction.h"
+#include "yb/tablet/operations/write_operation.h"
 
 #include <algorithm>
 #include <vector>
@@ -53,7 +53,7 @@
 #include "yb/util/trace.h"
 
 DEFINE_int32(tablet_inject_latency_on_apply_write_txn_ms, 0,
-             "How much latency to inject when a write transaction is applied. "
+             "How much latency to inject when a write operation is applied. "
              "For testing only!");
 TAG_FLAG(tablet_inject_latency_on_apply_write_txn_ms, unsafe);
 TAG_FLAG(tablet_inject_latency_on_apply_write_txn_ms, runtime);
@@ -73,20 +73,20 @@ using tserver::WriteRequestPB;
 using tserver::WriteResponsePB;
 using strings::Substitute;
 
-WriteTransaction::WriteTransaction(std::unique_ptr<WriteTransactionState> state, DriverType type)
-  : Transaction(std::move(state), type, Transaction::WRITE_TXN),
+WriteOperation::WriteOperation(std::unique_ptr<WriteOperationState> state, DriverType type)
+  : Operation(std::move(state), type, Operation::WRITE_TXN),
     start_time_(MonoTime::FineNow()) {
 }
 
-consensus::ReplicateMsgPtr WriteTransaction::NewReplicateMsg() {
+consensus::ReplicateMsgPtr WriteOperation::NewReplicateMsg() {
   auto result = std::make_shared<ReplicateMsg>();
   result->set_op_type(WRITE_OP);
   result->set_allocated_write_request(state()->mutable_request());
   return result;
 }
 
-Status WriteTransaction::Prepare() {
-  TRACE_EVENT0("txn", "WriteTransaction::Prepare");
+Status WriteOperation::Prepare() {
+  TRACE_EVENT0("txn", "WriteOperation::Prepare");
   TRACE("PREPARE: Starting");
 
   // Decode everything first so that we give up if something major is wrong.
@@ -117,15 +117,15 @@ Status WriteTransaction::Prepare() {
   return Status::OK();
 }
 
-void WriteTransaction::Start() {
+void WriteOperation::Start() {
   TRACE("Start()");
-  state()->tablet_peer()->tablet()->StartTransaction(state());
+  state()->tablet_peer()->tablet()->StartOperation(state());
 }
 
 // FIXME: Since this is called as a void in a thread-pool callback,
 // it seems pointless to return a Status!
-Status WriteTransaction::Apply(gscoped_ptr<CommitMsg>* commit_msg) {
-  TRACE_EVENT0("txn", "WriteTransaction::Apply");
+Status WriteOperation::Apply(gscoped_ptr<CommitMsg>* commit_msg) {
+  TRACE_EVENT0("txn", "WriteOperation::Apply");
   TRACE("APPLY: Starting");
 
   if (PREDICT_FALSE(
@@ -167,23 +167,23 @@ Status WriteTransaction::Apply(gscoped_ptr<CommitMsg>* commit_msg) {
   return Status::OK();
 }
 
-void WriteTransaction::PreCommit() {
-  TRACE_EVENT0("txn", "WriteTransaction::PreCommit");
+void WriteOperation::PreCommit() {
+  TRACE_EVENT0("txn", "WriteOperation::PreCommit");
   TRACE("PRECOMMIT: Releasing row and schema locks");
   // Perform early lock release after we've applied all changes
   state()->ReleaseDocDbLocks(tablet_peer()->tablet());
   state()->ReleaseSchemaLock();
 }
 
-void WriteTransaction::Finish(TransactionResult result) {
-  TRACE_EVENT0("txn", "WriteTransaction::Finish");
-  if (PREDICT_FALSE(result == Transaction::ABORTED)) {
-    TRACE("FINISH: aborting transaction");
+void WriteOperation::Finish(OperationResult result) {
+  TRACE_EVENT0("txn", "WriteOperation::Finish");
+  if (PREDICT_FALSE(result == Operation::ABORTED)) {
+    TRACE("FINISH: aborting operation");
     state()->Abort();
     return;
   }
 
-  DCHECK_EQ(result, Transaction::COMMITTED);
+  DCHECK_EQ(result, Operation::COMMITTED);
   // Now that all of the changes have been applied and the commit is durable
   // make the changes visible to readers.
   TRACE("FINISH: making edits visible");
@@ -217,20 +217,20 @@ void WriteTransaction::Finish(TransactionResult result) {
   }
 }
 
-string WriteTransaction::ToString() const {
+string WriteOperation::ToString() const {
   MonoTime now(MonoTime::Now(MonoTime::FINE));
   MonoDelta d = now.GetDeltaSince(start_time_);
   WallTime abs_time = WallTime_Now() - d.ToSeconds();
   string abs_time_formatted;
   StringAppendStrftime(&abs_time_formatted, "%Y-%m-%d %H:%M:%S", (time_t)abs_time, true);
-  return Substitute("WriteTransaction [type=$0, start_time=$1, state=$2]",
+  return Substitute("WriteOperation [type=$0, start_time=$1, state=$2]",
                     DriverType_Name(type()), abs_time_formatted, state()->ToString());
 }
 
-WriteTransactionState::WriteTransactionState(TabletPeer* tablet_peer,
-                                             const tserver::WriteRequestPB *request,
-                                             tserver::WriteResponsePB *response)
-    : TransactionState(tablet_peer),
+WriteOperationState::WriteOperationState(TabletPeer* tablet_peer,
+                                         const tserver::WriteRequestPB *request,
+                                         tserver::WriteResponsePB *response)
+    : OperationState(tablet_peer),
       // We need to copy over the request from the RPC layer, as we're modifying it in the tablet
       // layer.
       request_(request ? new WriteRequestPB(*request) : nullptr),
@@ -244,8 +244,8 @@ WriteTransactionState::WriteTransactionState(TabletPeer* tablet_peer,
   }
 }
 
-void WriteTransactionState::SetMvccTxAndHybridTime(gscoped_ptr<ScopedWriteTransaction> mvcc_tx) {
-  DCHECK(!mvcc_tx_) << "Mvcc transaction already started/set.";
+void WriteOperationState::SetMvccTxAndHybridTime(std::unique_ptr<ScopedWriteOperation> mvcc_tx) {
+  DCHECK(!mvcc_tx_) << "Mvcc operation already started/set.";
   if (has_hybrid_time()) {
     DCHECK_EQ(hybrid_time(), mvcc_tx->hybrid_time());
   } else {
@@ -253,30 +253,30 @@ void WriteTransactionState::SetMvccTxAndHybridTime(gscoped_ptr<ScopedWriteTransa
   }
 
   lock_guard<mutex> lock(mvcc_tx_mutex_);
-  mvcc_tx_ = mvcc_tx.Pass();
+  mvcc_tx_ = std::move(mvcc_tx);
 }
 
-void WriteTransactionState::set_tablet_components(
+void WriteOperationState::set_tablet_components(
     const scoped_refptr<const TabletComponents>& components) {
   DCHECK(!tablet_components_) << "Already set";
   DCHECK(components);
   tablet_components_ = components;
 }
 
-void WriteTransactionState::AcquireSchemaLock(rw_semaphore* schema_lock) {
+void WriteOperationState::AcquireSchemaLock(rw_semaphore* schema_lock) {
   TRACE("Acquiring schema lock in shared mode");
   shared_lock<rw_semaphore> temp(*schema_lock);
   schema_lock_.swap(temp);
   TRACE("Acquired schema lock");
 }
 
-void WriteTransactionState::ReleaseSchemaLock() {
+void WriteOperationState::ReleaseSchemaLock() {
   shared_lock<rw_semaphore> temp;
   schema_lock_.swap(temp);
   TRACE("Released schema lock");
 }
 
-void WriteTransactionState::StartApplying() {
+void WriteOperationState::StartApplying() {
   lock_guard<mutex> lock(mvcc_tx_mutex_);
   if (!mvcc_tx_) {
     LOG(INFO) << "mvcc_tx is nullptr for hybrid_time " << hybrid_time() << ":\n" << GetStackTrace();
@@ -284,8 +284,8 @@ void WriteTransactionState::StartApplying() {
   CHECK_NOTNULL(mvcc_tx_.get())->StartApplying();
 }
 
-void WriteTransactionState::Abort() {
-  ResetMvccTx([](ScopedWriteTransaction* mvcc_tx) { mvcc_tx->Abort(); });
+void WriteOperationState::Abort() {
+  ResetMvccTx([](ScopedWriteOperation* mvcc_tx) { mvcc_tx->Abort(); });
 
   ReleaseDocDbLocks(tablet_peer()->tablet());
   ReleaseSchemaLock();
@@ -295,15 +295,15 @@ void WriteTransactionState::Abort() {
   ResetRpcFields();
 }
 
-void WriteTransactionState::Commit() {
-  ResetMvccTx([](ScopedWriteTransaction* mvcc_tx) { mvcc_tx->Commit(); });
+void WriteOperationState::Commit() {
+  ResetMvccTx([](ScopedWriteOperation* mvcc_tx) { mvcc_tx->Commit(); });
 
   // After committing, we may respond to the RPC and delete the
   // original request, so null them out here.
   ResetRpcFields();
 }
 
-void WriteTransactionState::ReleaseTxResultPB(TxResultPB* result) const {
+void WriteOperationState::ReleaseTxResultPB(TxResultPB* result) const {
   result->Clear();
   result->mutable_ops()->Reserve(row_ops_.size());
   for (RowOp* op : row_ops_) {
@@ -311,7 +311,7 @@ void WriteTransactionState::ReleaseTxResultPB(TxResultPB* result) const {
   }
 }
 
-void WriteTransactionState::UpdateMetricsForOp(const RowOp& op) {
+void WriteOperationState::UpdateMetricsForOp(const RowOp& op) {
   if (op.result->has_failed_status()) {
     return;
   }
@@ -331,7 +331,7 @@ void WriteTransactionState::UpdateMetricsForOp(const RowOp& op) {
   }
 }
 
-void WriteTransactionState::ReleaseDocDbLocks(Tablet* tablet) {
+void WriteOperationState::ReleaseDocDbLocks(Tablet* tablet) {
   // Free docdb multi-level locks.
   tablet->shared_lock_manager()->Unlock(docdb_locks_);
 
@@ -345,7 +345,7 @@ void WriteTransactionState::ReleaseDocDbLocks(Tablet* tablet) {
   }
 }
 
-WriteTransactionState::~WriteTransactionState() {
+WriteOperationState::~WriteOperationState() {
   Reset();
   // Ownership is with the Round object, if one exists, else with us.
   if (!consensus_round() && request_ != nullptr) {
@@ -353,7 +353,7 @@ WriteTransactionState::~WriteTransactionState() {
   }
 }
 
-void WriteTransactionState::Reset() {
+void WriteOperationState::Reset() {
   // We likely shouldn't Commit() here. See KUDU-625.
   Commit();
   tx_metrics_.Reset();
@@ -362,22 +362,22 @@ void WriteTransactionState::Reset() {
   schema_at_decode_time_ = nullptr;
 }
 
-void WriteTransactionState::ResetRpcFields() {
+void WriteOperationState::ResetRpcFields() {
   std::lock_guard<simple_spinlock> l(txn_state_lock_);
   response_ = nullptr;
   STLDeleteElements(&row_ops_);
 }
 
-void WriteTransactionState::ResetMvccTx(std::function<void(ScopedWriteTransaction*)> txn_action) {
+void WriteOperationState::ResetMvccTx(std::function<void(ScopedWriteOperation*)> txn_action) {
   lock_guard<mutex> lock(mvcc_tx_mutex_);
   if (mvcc_tx_.get() != nullptr) {
-    // Abort the transaction.
+    // Abort the operation.
     txn_action(mvcc_tx_.get());
   }
   mvcc_tx_.reset();
 }
 
-string WriteTransactionState::ToString() const {
+string WriteOperationState::ToString() const {
   string ts_str;
   if (has_hybrid_time()) {
     ts_str = hybrid_time().ToString();
@@ -404,7 +404,7 @@ string WriteTransactionState::ToString() const {
     row_ops_str.append("]");
   }
 
-  return Substitute("WriteTransactionState $0 [op_id=($1), ts=$2, rows=$3]",
+  return Substitute("WriteOperationState $0 [op_id=($1), ts=$2, rows=$3]",
                     this,
                     op_id().ShortDebugString(),
                     ts_str,

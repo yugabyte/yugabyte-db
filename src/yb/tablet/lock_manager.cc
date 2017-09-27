@@ -32,13 +32,14 @@
 
 #include "yb/tablet/lock_manager.h"
 
+#include <semaphore.h>
+
 #include <atomic>
 #include <mutex>
 #include <string>
 
 #include <boost/thread/shared_mutex.hpp>
 #include <glog/logging.h>
-#include <semaphore.h>
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/hash/city.h"
@@ -50,7 +51,7 @@ using std::atomic;
 namespace yb {
 namespace tablet {
 
-class TransactionState;
+class OperationState;
 
 // ============================================================================
 //  LockTable
@@ -105,7 +106,7 @@ class LockEntry {
   faststring key_buf_;
 
   // The transaction currently holding the lock
-  const TransactionState* holder_;
+  const OperationState* holder_;
 };
 
 class LockTable {
@@ -282,7 +283,7 @@ void LockTable::Resize() {
 // ============================================================================
 
 ScopedRowLock::ScopedRowLock(LockManager *manager,
-                             const TransactionState* tx,
+                             const OperationState* tx,
                              const Slice &key,
                              LockManager::LockMode mode)
   : manager_(DCHECK_NOTNULL(manager)),
@@ -342,7 +343,7 @@ LockManager::~LockManager() {
 }
 
 LockManager::LockStatus LockManager::Lock(const Slice& key,
-                                          const TransactionState* tx,
+                                          const OperationState* tx,
                                           LockManager::LockMode mode,
                                           LockEntry** entry) {
   *entry = locks_->GetLockEntry(key);
@@ -374,7 +375,7 @@ LockManager::LockStatus LockManager::Lock(const Slice& key,
     // time.
     int waited_seconds = 0;
     while (!(*entry)->sem.TimedAcquire(MonoDelta::FromSeconds(1))) {
-      const TransactionState* cur_holder = ANNOTATE_UNPROTECTED_READ((*entry)->holder_);
+      const OperationState* cur_holder = ANNOTATE_UNPROTECTED_READ((*entry)->holder_);
       LOG(WARNING) << "Waited " << (++waited_seconds) << " seconds to obtain row lock on key "
                    << key.ToDebugString() << " cur holder: " << cur_holder;
       // TODO: add RPC trace annotation here. Above warning should also include an RPC
@@ -390,7 +391,7 @@ LockManager::LockStatus LockManager::Lock(const Slice& key,
 }
 
 LockManager::LockStatus LockManager::TryLock(const Slice& key,
-                                             const TransactionState* tx,
+                                             const OperationState* tx,
                                              LockManager::LockMode mode,
                                              LockEntry **entry) {
   *entry = locks_->GetLockEntry(key);
