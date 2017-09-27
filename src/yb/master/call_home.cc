@@ -32,7 +32,7 @@ static const char* kHighLevel = "high";
 
 DEFINE_bool(callhome_enabled, true,
             "Enables callhome feature that sends analytics data to yugabyte");
-DEFINE_int32(callhome_interval_secs, 60, "How often to run callhome");
+DEFINE_int32(callhome_interval_secs, 3600, "How often to run callhome");
 DEFINE_string(callhome_url, "http://diagnostics.platform.yugabyte.com:8080",
               "URL of callhome server");
 DEFINE_string(callhome_collection_level, kMediumLevel, "Level of details sent by callhome");

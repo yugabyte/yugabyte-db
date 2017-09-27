@@ -550,6 +550,8 @@ class PosixDirectIOWritableFile : public PosixWritableFile {
 
     while (data_slice.size() > 0) {
       size_t max_data = IOV_MAX * block_size_ - BufferedByteCount();
+      CHECK_GT(IOV_MAX, 0);
+      CHECK_GT(IOV_MAX * block_size_, BufferedByteCount());
       CHECK_GT(max_data, 0);
       const auto data = Slice(data_slice.data(), std::min(data_slice.size(), max_data));
 
