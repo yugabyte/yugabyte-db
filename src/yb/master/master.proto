@@ -315,6 +315,7 @@ message SysUDTypeEntryPB {
 // used for ensuring that client read-modify-writes are valid.
 message SysClusterConfigEntryPB {
   optional int32 version = 1;
+  optional string cluster_uuid = 4;
   optional ReplicationInfoPB replication_info = 2;
   optional BlacklistPB server_blacklist = 3;
 }
@@ -439,6 +440,9 @@ message TSHeartbeatResponsePB {
 
   // List of all live nodes that the master knows about.
   repeated TSInformationPB tservers = 8;
+
+  // Cluster UUID. Sent by the master only after registration.
+  optional string cluster_uuid = 9;
 }
 
 message TSInformationPB {

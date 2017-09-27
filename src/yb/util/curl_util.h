@@ -32,7 +32,10 @@
 #ifndef YB_UTIL_CURL_UTIL_H
 #define YB_UTIL_CURL_UTIL_H
 
+#include <curl/curl.h>
 #include <string>
+
+#include <boost/optional.hpp>
 
 #include "yb/gutil/macros.h"
 #include "yb/util/status.h"
@@ -55,21 +58,31 @@ class EasyCurl {
   // Fetch the given URL into the provided buffer.
   // Any existing data in the buffer is replaced.
   CHECKED_STATUS FetchURL(const std::string& url,
-                  faststring* dst);
+                          faststring* dst);
 
   // Issue an HTTP POST to the given URL with the given data.
   // Returns results in 'dst' as above.
   CHECKED_STATUS PostToURL(const std::string& url,
-                   const std::string& post_data,
-                   faststring* dst);
+                           const std::string& post_data,
+                           faststring* dst);
+
+  CHECKED_STATUS PostToURL(const std::string& url,
+                           const std::string& post_data,
+                           const std::string& content_type,
+                           faststring* dst);
+
+  std::string EscapeString(const std::string& data);
 
  private:
   // Do a request. If 'post_data' is non-NULL, does a POST.
   // Otherwise, does a GET.
   CHECKED_STATUS DoRequest(const std::string& url,
-                   const std::string* post_data,
-                   faststring* dst);
+                           const boost::optional<const std::string>& post_data,
+                           const boost::optional<const std::string>& content_type,
+                           faststring* dst);
+
   CURL* curl_;
+  struct curl_slist *http_header_list_ = NULL;
   DISALLOW_COPY_AND_ASSIGN(EasyCurl);
 };
 

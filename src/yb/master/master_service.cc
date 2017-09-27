@@ -129,6 +129,13 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
       rpc.RespondFailure(s);
       return;
     }
+    SysClusterConfigEntryPB cluster_config;
+    s = server_->catalog_manager()->GetClusterConfig(&cluster_config);
+    if (!s.ok()) {
+      LOG(WARNING) << "Unable to get cluster configuration: " << s.ToString();
+      rpc.RespondFailure(s);
+    }
+    resp->set_cluster_uuid(cluster_config.cluster_uuid());
   }
 
   // TODO: KUDU-86 if something fails after this point the TS will not be able

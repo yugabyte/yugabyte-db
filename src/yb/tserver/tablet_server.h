@@ -133,6 +133,10 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   const TabletServerOptions& options() const { return opts_; }
 
+  void set_cluster_uuid(const std::string& cluster_uuid) { cluster_uuid_ = cluster_uuid; }
+
+  const std::string& cluster_uuid() { return cluster_uuid_; }
+
  protected:
   virtual CHECKED_STATUS RegisterServices();
 
@@ -181,6 +185,9 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   // Proxy to call this tablet server locally.
   std::shared_ptr<TabletServerServiceProxy> proxy_;
+
+  // Cluster uuid. This is sent by the master leader during the first hearbeat.
+  std::string cluster_uuid_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

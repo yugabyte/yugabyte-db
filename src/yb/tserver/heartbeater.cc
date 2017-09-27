@@ -404,6 +404,10 @@ Status Heartbeater::Thread::DoHeartbeat() {
   }
   last_hb_response_.Swap(&resp);
 
+  if (resp.has_cluster_uuid() && !resp.cluster_uuid().empty()) {
+    server_->set_cluster_uuid(resp.cluster_uuid());
+  }
+
   if (resp.has_master_config()) {
     LOG(INFO) << "Received heartbeat response with config " << resp.DebugString();
 

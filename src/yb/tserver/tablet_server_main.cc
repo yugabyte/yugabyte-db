@@ -30,13 +30,18 @@
 // under the License.
 //
 
+#include <chrono>
 #include <iostream>
 
+#include <boost/optional/optional.hpp>
 #include <glog/logging.h>
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/redisserver/redis_server.h"
 #include "yb/cqlserver/cql_server.h"
+#include "yb/master/call_home.h"
+#include "yb/rpc/io_thread_pool.h"
+#include "yb/rpc/scheduler.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/flags.h"
 #include "yb/util/init.h"
@@ -60,6 +65,7 @@ DEFINE_string(cql_proxy_bind_address, "", "Address to bind the CQL proxy to");
 DEFINE_int32(cql_proxy_webserver_port, 0, "Webserver port for CQL proxy");
 
 DECLARE_string(rpc_bind_addresses);
+DECLARE_bool(callhome_enabled);
 DECLARE_int32(webserver_port);
 
 namespace yb {
@@ -90,6 +96,12 @@ static int TabletServerMain(int argc, char** argv) {
   LOG(INFO) << "Starting tablet server...";
   CHECK_OK(server.Start());
   LOG(INFO) << "Tablet server successfully started.";
+
+  std::unique_ptr<CallHome> call_home;
+  if (FLAGS_callhome_enabled) {
+    call_home = std::make_unique<CallHome>(&server, ServerType::TSERVER);
+    call_home->ScheduleCallHome();
+  }
 
   std::unique_ptr<RedisServer> redis_server;
   if (FLAGS_start_redis_proxy) {

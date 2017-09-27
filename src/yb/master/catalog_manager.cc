@@ -849,6 +849,9 @@ Status CatalogManager::PrepareDefaultClusterConfig() {
   SysClusterConfigEntryPB config;
   config.set_version(0);
 
+  ObjectIdGenerator oid_generator;
+  config.set_cluster_uuid(oid_generator.Next());
+
   // Create in memory object.
   cluster_config_ = new ClusterConfigInfo();
 

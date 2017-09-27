@@ -88,6 +88,7 @@ set(MASTER_SRCS
   ts_manager.cc
   master_tablet_service.cc
   master_tserver.cc
+  call_home.cc
   ${MASTER_SRCS_EXTENTIONS})
 
 add_library(master ${MASTER_SRCS})

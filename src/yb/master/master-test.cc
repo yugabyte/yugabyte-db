@@ -32,6 +32,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <sstream>
 #include <tuple>
 #include <vector>
 
@@ -42,6 +43,7 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master-test-util.h"
+#include "yb/master/call_home.h"
 #include "yb/master/master.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
@@ -51,6 +53,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/server/rpc_server.h"
 #include "yb/server/server_base.proxy.h"
+#include "yb/util/jsonreader.h"
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
 
@@ -60,6 +63,8 @@ using yb::rpc::RpcController;
 using std::make_shared;
 using std::shared_ptr;
 
+DECLARE_string(callhome_collection_level);
+DECLARE_string(callhome_url);
 DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
 
 #define NAMESPACE_ENTRY(namespace) \
@@ -218,6 +223,63 @@ TEST_F(MasterTest, TestShutdownWithoutStart) {
   MiniMaster m(Env::Default(), "/xxxx", AllocateFreePort(), AllocateFreePort(),
                true /* is_creating */);
   m.Shutdown();
+}
+
+TEST_F(MasterTest, TestCallHome) {
+  string json;
+  CountDownLatch latch(1);
+
+  auto webserver_dir = GetTestPath("webserver-docroot");
+  CHECK_OK(env_->CreateDir(webserver_dir));
+
+  WebserverOptions opts;
+  opts.port = 0;
+  opts.doc_root = webserver_dir;
+  Webserver webserver(opts, "WebserverTest");
+  ASSERT_OK(webserver.Start());
+
+  std::vector<Endpoint> addrs;
+  ASSERT_OK(webserver.GetBoundAddresses(&addrs));
+  ASSERT_EQ(addrs.size(), 1);
+  auto addr = addrs[0];
+
+  auto handler = [&json, &latch](const Webserver::WebRequest& req, std::stringstream* output) {
+    ASSERT_EQ(req.request_method, "POST");
+    ASSERT_EQ(json, req.post_data);
+    latch.CountDown();
+  };
+
+  webserver.RegisterPathHandler("/callhome", "callhome", handler);
+  FLAGS_callhome_url = Substitute("http://$0/callhome", ToString(addr));
+
+  std::unordered_map<string, vector<string>> collection_levels;
+  collection_levels["low"] = {"cluster_uuid", "node_uuid", "server_type", "timestamp", "tables",
+                              "masters", "tservers", "tablets", "gflags"};
+  auto& medium = collection_levels["medium"];
+  medium = collection_levels["low"];
+  medium.push_back("metrics");
+  medium.push_back("rpcs");
+  collection_levels["high"] = medium;
+
+  for (const auto& collection_level : collection_levels) {
+    LOG(INFO) << "Collection level: " << collection_level.first;
+    FLAGS_callhome_collection_level = collection_level.first;
+    CallHome call_home(mini_master_->master(), ServerType::MASTER);
+    json = call_home.BuildJson();
+    ASSERT_TRUE(!json.empty());
+    JsonReader reader(json);
+    ASSERT_OK(reader.Init());
+    for (const auto& field : collection_level.second) {
+      LOG(INFO) << "Checking json has field: " << field;
+      ASSERT_TRUE(reader.root()->HasMember(field.c_str()));
+    }
+    auto count = reader.root()->MemberEnd() - reader.root()->MemberBegin();
+    ASSERT_EQ(count, collection_level.second.size());
+
+    call_home.SendData(json);
+    ASSERT_TRUE(latch.WaitFor(MonoDelta::FromSeconds(10)));
+    latch.Reset(1);
+  }
 }
 
 TEST_F(MasterTest, TestRegisterAndHeartbeat) {

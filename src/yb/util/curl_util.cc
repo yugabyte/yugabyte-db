@@ -32,10 +32,9 @@
 
 #include "yb/util/curl_util.h"
 
-#include "yb/gutil/strings/substitute.h"
-
-#include <curl/curl.h>
 #include <glog/logging.h>
+
+using std::string;
 
 namespace yb {
 
@@ -65,21 +64,40 @@ EasyCurl::EasyCurl() {
 }
 
 EasyCurl::~EasyCurl() {
+  curl_slist_free_all(http_header_list_);
   curl_easy_cleanup(curl_);
 }
 
-Status EasyCurl::FetchURL(const std::string& url, faststring* buf) {
-  return DoRequest(url, nullptr, buf);
+Status EasyCurl::FetchURL(const string& url, faststring* buf) {
+  return DoRequest(url, boost::none, boost::none, buf);
 }
 
-Status EasyCurl::PostToURL(const std::string& url,
-                           const std::string& post_data,
+Status EasyCurl::PostToURL(const string& url,
+                           const string& post_data,
                            faststring* dst) {
-  return DoRequest(url, &post_data, dst);
+  return DoRequest(url, post_data, string("application/x-www-form-urlencoded"), dst);
 }
 
-Status EasyCurl::DoRequest(const std::string& url,
-                           const std::string* post_data,
+Status EasyCurl::PostToURL(const string& url,
+                           const string& post_data,
+                           const string& content_type,
+                           faststring* dst) {
+  return DoRequest(url, post_data, content_type, dst);
+}
+
+string EasyCurl::EscapeString(const string& data) {
+  string escaped_str;
+  auto str = curl_easy_escape(curl_, data.c_str(), data.length());
+  if (str) {
+    escaped_str = str;
+    curl_free(str);
+  }
+  return escaped_str;
+}
+
+Status EasyCurl::DoRequest(const string& url,
+                           const boost::optional<const string>& post_data,
+                           const boost::optional<const string>& content_type,
                            faststring* dst) {
   CHECK_NOTNULL(dst)->clear();
 
@@ -87,9 +105,17 @@ Status EasyCurl::DoRequest(const std::string& url,
   RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, WriteCallback)));
   RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_WRITEDATA,
                                                 static_cast<void *>(dst))));
+
+  if (content_type) {
+    curl_slist_free_all(http_header_list_);
+    http_header_list_ = curl_slist_append(http_header_list_,
+        strings::Substitute("Content-Type: $0", *content_type).c_str());
+  }
+
   if (post_data) {
-    RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_POSTFIELDS,
-                                                  post_data->c_str())));
+    RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_POSTFIELDS, post_data->c_str())));
+    RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_POSTFIELDSIZE,
+                                                  post_data->size())));
   }
 
   RETURN_NOT_OK(TranslateError(curl_easy_perform(curl_)));

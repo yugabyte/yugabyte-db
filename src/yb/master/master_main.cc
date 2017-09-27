@@ -35,11 +35,13 @@
 #include <glog/logging.h>
 
 #include "yb/gutil/strings/substitute.h"
+#include "yb/master/call_home.h"
 #include "yb/master/master.h"
 #include "yb/util/flags.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
 
+DECLARE_bool(callhome_enabled);
 DECLARE_bool(evict_failed_followers);
 DECLARE_double(default_memory_limit_to_ram_ratio);
 DECLARE_int32(webserver_port);
@@ -76,6 +78,13 @@ static int MasterMain(int argc, char** argv) {
   CHECK_OK(server.Start());
 
   LOG(INFO) << "Master server successfully started.";
+
+  std::unique_ptr<CallHome> call_home;
+  if (FLAGS_callhome_enabled) {
+    call_home = std::make_unique<CallHome>(&server, ServerType::MASTER);
+    call_home->ScheduleCallHome();
+  }
+
   while (true) {
     SleepFor(MonoDelta::FromSeconds(60));
   }
