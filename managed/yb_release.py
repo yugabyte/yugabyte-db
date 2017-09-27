@@ -14,9 +14,9 @@ import json
 import glob
 from subprocess import check_output, CalledProcessError
 from ybops.utils import init_env, log_message, get_release_file, publish_release, \
-    generate_checksum, latest_release, download_release, docker_push_to_registry
-from ybops.utils.release import get_package_info, S3_RELEASE_BUCKET, \
-    _extract_components_from_package_name
+    generate_checksum, latest_release, download_release, docker_push_to_registry, \
+    ReleasePackage
+from ybops.utils.release import get_package_info, S3_RELEASE_BUCKET
 from ybops.common.exceptions import YBOpsRuntimeError
 
 """This script is basically builds and packages yugaware application.
@@ -72,12 +72,12 @@ try:
             yugaware_package = None
             for package in packages:
                 package_name = os.path.basename(package)
-                repo, commit, version = _extract_components_from_package_name(package_name, True)
-                download_folder = os.path.join(packages_folder, repo)
-                if repo == "yugaware":
+                release = ReleasePackage.from_package_name(package_name, is_official_release=True)
+                download_folder = os.path.join(packages_folder, release.repo)
+                if release.repo == "yugaware":
                     yugaware_package = os.path.join(download_folder, package_name)
-                elif repo == "yugabyte":
-                    download_folder = os.path.join(packages_folder, repo, version)
+                elif release.repo == "yugabyte":
+                    download_folder = os.path.join(packages_folder, release.repo, release.version)
                     yugabyte_package = os.path.join(download_folder, package_name)
 
                 if not os.path.exists(download_folder):
@@ -176,7 +176,7 @@ try:
             os.makedirs(mapDownloadPath)
         output = check_output(['aws', 's3', 'sync', 's3://no-such-url', mapDownloadPath])
         log_message(logging.INFO, "Building/Packaging UI code")
-        output = check_output(["npm", "install"], cwd=os.path.join(script_dir, 'ui'))
+        output = check_output(["yarn", "--ignore-engines"], cwd=os.path.join(script_dir, 'ui'))
         output = check_output(["npm", "run", "build"], cwd=os.path.join(script_dir, 'ui'))
         log_message(logging.INFO, "Kick off SBT universal packaging")
         output = check_output(["sbt", "universal:packageZipTarball"])
