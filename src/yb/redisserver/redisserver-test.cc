@@ -44,6 +44,11 @@ DEFINE_uint64(test_redis_max_concurrent_commands, 20,
 DEFINE_uint64(test_redis_max_batch, 250,
               "Value of redis_max_batch for pipeline test");
 
+METRIC_DECLARE_gauge_uint64(available_read_sessions);
+METRIC_DECLARE_gauge_uint64(allocated_read_sessions);
+METRIC_DECLARE_gauge_uint64(available_write_sessions);
+METRIC_DECLARE_gauge_uint64(allocated_write_sessions);
+
 using namespace std::literals; // NOLINT
 
 namespace yb {
@@ -174,19 +179,12 @@ class TestRedisService : public RedisTableTestBase {
   Status SendCommandAndGetResponse(
       const string& cmd, int expected_resp_length, int timeout_in_millis = kDefaultTimeoutMs);
 
-  size_t CountSessions(const std::string& prefix) {
-    size_t result = 0;
-
-    auto map = server_->metric_entity()->UnsafeMetricsMapForTests();
-    for (const auto& p : map) {
-      if (p.first->name() == prefix + "_read_sessions" ||
-          p.first->name() == prefix + "_write_sessions") {
-        auto gauge = down_cast<AtomicGauge<uint64_t>*>(p.second.get());
-        result += gauge->value();
-      }
-    }
-
-    return result;
+  size_t CountSessions(const GaugePrototype<uint64_t>& read_proto,
+                       const GaugePrototype<uint64_t>& write_proto) {
+    constexpr uint64_t kInitialValue = 0UL;
+    auto read_counter = server_->metric_entity()->FindOrCreateGauge(&read_proto, kInitialValue);
+    auto write_counter = server_->metric_entity()->FindOrCreateGauge(&write_proto, kInitialValue);
+    return read_counter->value() + write_counter->value();
   }
 
   bool expected_no_sessions_ = false;
@@ -257,13 +255,15 @@ void TestRedisService::RestartClient() {
 }
 
 void TestRedisService::TearDown() {
-  size_t allocated_sessions = CountSessions("allocated");
+  size_t allocated_sessions = CountSessions(METRIC_allocated_read_sessions,
+                                            METRIC_allocated_write_sessions);
   if (!expected_no_sessions_) {
     ASSERT_GT(allocated_sessions, 0); // Check that metric is sane.
   } else {
     ASSERT_EQ(0, allocated_sessions);
   }
-  ASSERT_EQ(allocated_sessions, CountSessions("available"));
+  ASSERT_EQ(allocated_sessions, CountSessions(METRIC_available_read_sessions,
+                                              METRIC_available_write_sessions));
 
   test_client_.disconnect();
   StopClient();
