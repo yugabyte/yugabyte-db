@@ -2,15 +2,30 @@
 
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableSet;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.*;
 
 import static com.yugabyte.yw.common.PlacementInfoUtil.removeNodeByName;
+import static com.yugabyte.yw.common.PlacementInfoUtil.MASTER_METRIC;
+import static com.yugabyte.yw.common.PlacementInfoUtil.NODE_METRIC;
+import static com.yugabyte.yw.common.PlacementInfoUtil.TSERVER_METRIC;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Unreachable;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Running;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Matchers.anyList;
+import static org.mockito.Matchers.anyMap;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -29,6 +44,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
+import play.libs.Json;
 
 public class PlacementInfoUtilTest extends FakeDBApplication {
   private static final int REPLICATION_FACTOR = 3;
@@ -513,6 +529,170 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     }
     assertEquals(nodeFound, false);
     assertEquals(nodes.size(), 9);
+  }
+
+  private JsonNode getPerNodeStatus(Universe u, Set<NodeDetails> deadTservers, Set<NodeDetails> deadMasters,
+                                    Set<NodeDetails> deadNodes) {
+    ObjectNode status = Json.newObject();
+    ArrayNode tserverDataArray = Json.newArray();
+    ArrayNode masterDataArray = Json.newArray();
+    ArrayNode nodeDataArray = Json.newArray();
+
+    for (NodeDetails nodeDetails : u.getNodes()) {
+      // Set up tserver status for node
+      if (deadTservers == null || !deadTservers.contains(nodeDetails)) {
+        tserverDataArray.add(Json.newObject().put("name", nodeDetails.nodeName));
+      }
+
+      // Set up master status for node
+      if (deadMasters == null || !deadMasters.contains(nodeDetails)) {
+        masterDataArray.add(Json.newObject().put("name", nodeDetails.nodeName));
+      }
+
+      // Set up node running status for node
+      ArrayNode values = Json.newArray();
+      if (deadNodes == null || !deadNodes.contains(nodeDetails)) {
+        values.add("1").add("1").add("1");
+      } else {
+        values.add("0").add("0").add("0");
+      }
+      nodeDataArray.add(Json.newObject().put("name", nodeDetails.cloudInfo.private_ip).set("y", values));
+    }
+
+    status.set(TSERVER_METRIC, Json.newObject().set("data", tserverDataArray));
+    status.set(MASTER_METRIC, Json.newObject().set("data", masterDataArray));
+    status.set(NODE_METRIC, Json.newObject().set("data", nodeDataArray));
+
+    MetricQueryHelper mockMetricQueryHelper = mock(MetricQueryHelper.class);
+    when(mockMetricQueryHelper.query(anyList(), anyMap())).thenReturn(status);
+
+    return PlacementInfoUtil.getUniverseAliveStatus(u, mockMetricQueryHelper);
+  }
+
+  private void validatePerNodeStatus(JsonNode result, Collection<NodeDetails> baseNodeDetails, Set<NodeDetails> deadTservers,
+                                     Set<NodeDetails> deadMasters, Set<NodeDetails> deadNodes) {
+    for (NodeDetails nodeDetails : baseNodeDetails) {
+      JsonNode jsonNode = result.get(nodeDetails.nodeName);
+      assertNotNull(jsonNode);
+      boolean tserverAlive = deadTservers == null || !deadTservers.contains(nodeDetails);
+      assertTrue(tserverAlive == jsonNode.get("tserver_alive").asBoolean());
+      boolean masterAlive = deadMasters == null || !deadMasters.contains(nodeDetails);
+      assertTrue(masterAlive == jsonNode.get("master_alive").asBoolean());
+      NodeDetails.NodeState nodeState = deadNodes != null && deadNodes.contains(nodeDetails) ? Unreachable : Running;
+      assertEquals(jsonNode.get("node_status").asText(), nodeState.toString());
+    }
+  }
+
+  @Test
+  public void testGetUniversePerNodeStatusAllHealthy() {
+    for (TestData t : testData) {
+      JsonNode result = getPerNodeStatus(t.universe, null, null, null);
+
+      assertFalse(result.has("error"));
+      assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
+      validatePerNodeStatus(result, t.universe.getNodes(), null, null, null);
+    }
+  }
+
+  @Test
+  public void testGetUniversePerNodeStatusAllDead() {
+    for (TestData t : testData) {
+      Set<NodeDetails> deadNodes = ImmutableSet.copyOf(t.universe.getNodes());
+      JsonNode result = getPerNodeStatus(t.universe, deadNodes, deadNodes, deadNodes);
+
+      assertFalse(result.has("error"));
+      assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
+      validatePerNodeStatus(result, t.universe.getNodes(), deadNodes, deadNodes, deadNodes);
+    }
+  }
+
+  @Test
+  public void testGetUniversePerNodeStatusError() {
+    for (TestData t : testData) {
+      ObjectNode fakeReturn = Json.newObject().put("error", "foobar");
+      MetricQueryHelper mockMetricQueryHelper = mock(MetricQueryHelper.class);
+      when(mockMetricQueryHelper.query(anyList(), anyMap())).thenReturn(fakeReturn);
+
+      JsonNode result = PlacementInfoUtil.getUniverseAliveStatus(t.universe, mockMetricQueryHelper);
+
+      assertTrue(result.has("error"));
+      assertEquals("foobar", result.get("error").asText());
+    }
+  }
+
+  @Test
+  public void testGetUniversePerNodeStatusOneTserverDead() {
+    for (TestData t : testData) {
+      Set<NodeDetails> deadTservers = ImmutableSet.of(t.universe.getNodes().stream().findFirst().get());
+      JsonNode result = getPerNodeStatus(t.universe, deadTservers, null, null);
+
+      assertFalse(result.has("error"));
+      assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
+      validatePerNodeStatus(result, t.universe.getNodes(), deadTservers, null, null);
+    }
+  }
+
+  @Test
+  public void testGetUniversePerNodeStatusManyTserversDead() {
+    for (TestData t : testData) {
+      Iterator<NodeDetails> nodesIt = t.universe.getNodes().iterator();
+      Set<NodeDetails> deadTservers = ImmutableSet.of(nodesIt.next(), nodesIt.next());
+      JsonNode result = getPerNodeStatus(t.universe, deadTservers, null, null);
+
+      assertFalse(result.has("error"));
+      assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
+      validatePerNodeStatus(result, t.universe.getNodes(), deadTservers, null, null);
+    }
+  }
+
+  @Test
+  public void testGetUniversePerNodeStatusOneMasterDead() {
+    for (TestData t : testData) {
+      Set<NodeDetails> deadMasters = ImmutableSet.of(t.universe.getNodes().iterator().next());
+      JsonNode result = getPerNodeStatus(t.universe, null, deadMasters, null);
+
+      assertFalse(result.has("error"));
+      assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
+      validatePerNodeStatus(result, t.universe.getNodes(), null, deadMasters, null);
+    }
+  }
+
+  @Test
+  public void testGetUniversePerNodeStatusManyMastersDead() {
+    for (TestData t : testData) {
+      Iterator<NodeDetails> nodesIt = t.universe.getNodes().iterator();
+      Set<NodeDetails> deadMasters = ImmutableSet.of(nodesIt.next(), nodesIt.next());
+      JsonNode result = getPerNodeStatus(t.universe, null, deadMasters, null);
+
+      assertFalse(result.has("error"));
+      assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
+      validatePerNodeStatus(result, t.universe.getNodes(), null, deadMasters, null);
+    }
+  }
+
+  @Test
+  public void testGetUniversePerNodeStatusOneNodeDead() {
+    for (TestData t : testData) {
+      Set<NodeDetails> deadNodes = ImmutableSet.of(t.universe.getNodes().iterator().next());
+      JsonNode result = getPerNodeStatus(t.universe, null, null, deadNodes);
+
+      assertFalse(result.has("error"));
+      assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
+      validatePerNodeStatus(result, t.universe.getNodes(), null, null, deadNodes);
+    }
+  }
+
+  @Test
+  public void testGetUniversePerNodeStatusManyNodesDead() {
+    for (TestData t : testData) {
+      Iterator<NodeDetails> nodesIt = t.universe.getNodes().iterator();
+      Set<NodeDetails> deadNodes = ImmutableSet.of(nodesIt.next(), nodesIt.next());
+      JsonNode result = getPerNodeStatus(t.universe, null, null, deadNodes);
+
+      assertFalse(result.has("error"));
+      assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
+      validatePerNodeStatus(result, t.universe.getNodes(), null, null, deadNodes);
+    }
   }
 
 }

@@ -10,6 +10,7 @@ import java.util.UUID;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.*;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,6 +48,9 @@ public class UniverseController extends AuthenticatedController {
 
   @Inject
   Commissioner commissioner;
+
+  @Inject
+  MetricQueryHelper metricQueryHelper;
 
   // The YB client to use.
   public YBClientService ybService;
@@ -468,11 +472,8 @@ public class UniverseController extends AuthenticatedController {
 
     // Get alive status
     try {
-      JsonNode result = PlacementInfoUtil.getUniverseAliveStatus(universe);
-      if (result.has("error")) {
-        return ApiResponse.error(BAD_REQUEST, result.get("error"));
-      }
-      return ApiResponse.success(result);
+      JsonNode result = PlacementInfoUtil.getUniverseAliveStatus(universe, metricQueryHelper);
+      return result.has("error") ? ApiResponse.error(BAD_REQUEST, result.get("error")) : ApiResponse.success(result);
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, e.getMessage());
     }

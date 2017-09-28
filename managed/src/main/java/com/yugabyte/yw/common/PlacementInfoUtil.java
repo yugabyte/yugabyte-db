@@ -21,7 +21,6 @@ import java.util.ArrayList;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Inject;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
@@ -43,7 +42,6 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
-import play.api.Play;
 import play.libs.Json;
 
 public class PlacementInfoUtil {
@@ -55,6 +53,11 @@ public class PlacementInfoUtil {
 
   // List of replication factors supported currently.
   private static final List<Integer> supportedRFs = ImmutableList.of(1, 3, 5, 7);
+
+  // Metrics used to determine tserver, master, and node liveness.
+  public static final String TSERVER_METRIC = "tserver_glog_info_messages";
+  public static final String MASTER_METRIC = "master_glog_info_messages";
+  public static final String NODE_METRIC = "node_up";
 
   // Mode of node distribution across the given AZ configuration.
   enum ConfigureNodesMode {
@@ -1246,62 +1249,114 @@ public class PlacementInfoUtil {
   }
 
   /**
-   * Given a node, return its alive/not-alive status.
+   * Given a node, return its tserver & master alive/not-alive status and detect if the node isn't running.
    *
    * @param nodeDetails The node to get the status of.
    * @param tserverJson Metadata about all tservers in the node's universe.
    * @param masterJson Metadata about all the masters in the node's universe.
+   * @param nodeJson Metadata about all the nodes in the node's universe.
    * @return JsonNode with the following format:
    *  {
    *    tserver_alive: true/false,
-   *    master_alive: true/false
+   *    master_alive: true/false,
+   *    node_status: <NodeDetails.NodeState>
    *  }
    */
-  public static JsonNode getNodeAliveStatus(NodeDetails nodeDetails, JsonNode tserverJson,
-                                            JsonNode masterJson) {
+  private static ObjectNode getNodeAliveStatus(NodeDetails nodeDetails, JsonNode tserverJson,
+                                               JsonNode masterJson, JsonNode nodeJson) {
 
-    ObjectNode nodeJson = Json.newObject();
+    ObjectNode result = Json.newObject();
 
     // Add tserver status
     if (tserverJson.get("data") == null) {
-      nodeJson.put("tserver_alive", false);
+      result.put("tserver_alive", false);
     } else {
-      boolean tserver_alive = false;
+      boolean tserverAlive = false;
       for (JsonNode json : tserverJson.get("data")) {
-        tserver_alive = tserver_alive || json.get("name").asText().equals(nodeDetails.nodeName);
+        tserverAlive = tserverAlive || json.get("name").asText().equals(nodeDetails.nodeName);
       }
-      nodeJson.put("tserver_alive", tserver_alive);
+      result.put("tserver_alive", tserverAlive);
     }
 
     // Add master status
     if (masterJson.get("data") == null) {
-      nodeJson.put("master_alive", false);
+      result.put("master_alive", false);
     } else {
-      boolean master_alive = false;
+      boolean masterAlive = false;
       for (JsonNode json : masterJson.get("data")) {
-        master_alive = master_alive || json.get("name").asText().equals(nodeDetails.nodeName);
+        masterAlive = masterAlive || json.get("name").asText().equals(nodeDetails.nodeName);
       }
-      nodeJson.put("master_alive", master_alive);
+      result.put("master_alive", masterAlive);
     }
 
-    return nodeJson;
+    // Add node status
+    if (nodeJson.get("data") == null) {
+      result.put("node_status", NodeDetails.NodeState.Unreachable.toString());
+    } else {
+      boolean nodeAlive = false;
+      String privateIp = nodeDetails.cloudInfo.private_ip;
+      for (JsonNode json : nodeJson.get("data")) {
+        if (json.get("name").asText().startsWith(privateIp)) {
+          for (JsonNode upData : json.get("y")) {
+            nodeAlive = nodeAlive || upData.asText().equals("1");
+          }
+          if (!nodeAlive && nodeDetails.isQueryable()) {
+            nodeDetails.state = NodeDetails.NodeState.Unreachable;
+          }
+        }
+      }
+      result.put("node_status", nodeDetails.state.toString());
+    }
+
+    return result;
   }
 
   /**
-   * Given a universe, return a status for each node as alive/not alive.
+   * Helper function to get the status for each node and the alive/not alive status for each master and tserver.
+   *
+   * @param universe The universe to process alive status for.
+   * @param metricQueryResult The result of the query for node, master, and tserver status of the universe.
+   * @return The response object containing the status of each node in the universe.
+   */
+  private static ObjectNode constructUniverseAliveStatus(Universe universe, JsonNode metricQueryResult) {
+    ObjectNode response = Json.newObject();
+
+    // If error detected, update state and exit. Otherwise, get and return per-node liveness.
+    if (metricQueryResult.has("error")) {
+      for (NodeDetails nodeDetails : universe.getNodes()) {
+        nodeDetails.state = NodeDetails.NodeState.Unreachable;
+        ObjectNode result = Json.newObject()
+            .put("tserver_alive", false)
+            .put("master_alive", false)
+            .put("node_status", nodeDetails.state.toString());
+        response.put(nodeDetails.nodeName, result);
+      }
+    } else {
+      JsonNode tserverJson = metricQueryResult.get(TSERVER_METRIC);
+      JsonNode masterJson = metricQueryResult.get(MASTER_METRIC);
+      JsonNode nodeJson = metricQueryResult.get(NODE_METRIC);
+      for (NodeDetails nodeDetails : universe.getNodes()) {
+        ObjectNode result = getNodeAliveStatus(nodeDetails, tserverJson, masterJson, nodeJson);
+        response.put(nodeDetails.nodeName, result);
+      }
+    }
+    return response;
+  }
+
+  /**
+   * Given a universe, return a status for each master and tserver as alive/not alive and the node's status.
    *
    * @param universe The universe to query alive status for.
+   * @param metricQueryHelper Helper to execute the metrics query.
    * @return JsonNode with the following format:
    *  {
    *    universe_uuid: <universeUUID>,
-   *    <node_name_n>: {tserver_alive: true/false, master_alive: true/false}
+   *    <node_name_n>: {tserver_alive: true/false, master_alive: true/false, node_status: <NodeDetails.NodeState>}
    *  }
    */
-  public static JsonNode getUniverseAliveStatus(Universe universe) {
-    // Metrics list.
-    String tserverMetric = "tserver_glog_info_messages";
-    String masterMetric = "master_glog_info_messages";
-    List<String> metricKeys = ImmutableList.of(tserverMetric, masterMetric);
+  public static JsonNode getUniverseAliveStatus(Universe universe, MetricQueryHelper metricQueryHelper) {
+
+    List<String> metricKeys = ImmutableList.of(TSERVER_METRIC, MASTER_METRIC, NODE_METRIC);
 
     // Set up params. E.g. { start=1505739890, end=1505783090,
     // filters={"node_prefix":"yb-1-jeff-test1"}, metrics[0]=tserver_rpcs_per_sec_by_universe }
@@ -1313,30 +1368,18 @@ public class PlacementInfoUtil {
     ObjectNode filterJson = Json.newObject();
     filterJson.put("node_prefix", universe.getUniverseDetails().nodePrefix);
     params.put("filters", Json.stringify(filterJson));
-    params.put("metrics[0]", tserverMetric);
-    params.put("metrics[1]", masterMetric);
+    for (int i = 0; i < metricKeys.size(); ++i) {
+      params.put("metrics[" + Integer.toString(i) + "]", metricKeys.get(i));
+    }
     params.put("step", "30");
 
     // Execute query and check for errors.
-    MetricQueryHelper metricQueryHelper = Play.current().injector()
-        .instanceOf(MetricQueryHelper.class);
     JsonNode metricQueryResult = metricQueryHelper.query(metricKeys, params);
-    if (metricQueryResult.has("error")) {
-      return metricQueryResult;
-    }
 
-    // Set up response if no errors.
-    ObjectNode response = Json.newObject();
+    // Persist the desired node information into the DB.
+    ObjectNode response = constructUniverseAliveStatus(universe, metricQueryResult);
     response.put("universe_uuid", universe.universeUUID.toString());
-    JsonNode tserverJson = metricQueryResult.get(tserverMetric);
-    JsonNode masterJson = metricQueryResult.get(masterMetric);
 
-    // Get per-node liveness.
-    for (NodeDetails nodeDetails : universe.getNodes()) {
-      JsonNode nodeJson = getNodeAliveStatus(nodeDetails, tserverJson, masterJson);
-      response.put(nodeDetails.nodeName, nodeJson);
-    }
-
-    return response;
+    return metricQueryResult.has("error") ? metricQueryResult : response;
   }
 }
