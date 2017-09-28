@@ -64,7 +64,6 @@ EasyCurl::EasyCurl() {
 }
 
 EasyCurl::~EasyCurl() {
-  curl_slist_free_all(http_header_list_);
   curl_easy_cleanup(curl_);
 }
 
@@ -106,10 +105,24 @@ Status EasyCurl::DoRequest(const string& url,
   RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_WRITEDATA,
                                                 static_cast<void *>(dst))));
 
+  typedef std::unique_ptr<curl_slist, std::function<void(curl_slist*)>> CurlSlistPtr;
+  CurlSlistPtr http_header_list;
   if (content_type) {
-    curl_slist_free_all(http_header_list_);
-    http_header_list_ = curl_slist_append(http_header_list_,
-        strings::Substitute("Content-Type: $0", *content_type).c_str());
+    auto list =
+        curl_slist_append(NULL, strings::Substitute("Content-Type: $0", *content_type).c_str());
+
+    if (!list) {
+      return STATUS(InternalError, "Unable to set Content-Type header field");
+    }
+
+    http_header_list = CurlSlistPtr(list, [](curl_slist *list) {
+      if (list != nullptr) {
+        curl_slist_free_all(list);
+      }
+    });
+
+    RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_HTTPHEADER,
+                                                  http_header_list.get())));
   }
 
   if (post_data) {

@@ -82,7 +82,6 @@ class EasyCurl {
                            faststring* dst);
 
   CURL* curl_;
-  struct curl_slist *http_header_list_ = NULL;
   DISALLOW_COPY_AND_ASSIGN(EasyCurl);
 };
 
