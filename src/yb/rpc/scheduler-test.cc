@@ -99,7 +99,7 @@ TEST_F(SchedulerTest, Abort) {
     auto task_id = scheduler_->Schedule(SetPromiseValueToStatusFunctor(&promise), 1s);
     scheduler_->Abort(task_id);
     auto future = promise.get_future();
-    ASSERT_EQ(std::future_status::ready, future.wait_for(10ms));
+    ASSERT_EQ(std::future_status::ready, future.wait_for(100ms));
     auto status = future.get();
     ASSERT_TRUE(status.IsAborted());
   }
