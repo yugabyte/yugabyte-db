@@ -133,9 +133,9 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   const TabletServerOptions& options() const { return opts_; }
 
-  void set_cluster_uuid(const std::string& cluster_uuid) { cluster_uuid_ = cluster_uuid; }
+  void set_cluster_uuid(const std::string& cluster_uuid);
 
-  const std::string& cluster_uuid() { return cluster_uuid_; }
+  std::string cluster_uuid() const;
 
  protected:
   virtual CHECKED_STATUS RegisterServices();
@@ -180,7 +180,7 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   // List of tservers that are alive from the master's perspective.
   std::vector<master::TSInformationPB> live_tservers_;
 
-  // Lock to protect live_tservers_.
+  // Lock to protect live_tservers_ and cluster_uuid_.
   mutable simple_spinlock lock_;
 
   // Proxy to call this tablet server locally.

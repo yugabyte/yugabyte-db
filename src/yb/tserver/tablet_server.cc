@@ -298,5 +298,15 @@ Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& h
   return Status::OK();
 }
 
+void TabletServer::set_cluster_uuid(const std::string& cluster_uuid) {
+  std::lock_guard<simple_spinlock> l(lock_);
+  cluster_uuid_ = cluster_uuid;
+}
+
+std::string TabletServer::cluster_uuid() const {
+  std::lock_guard<simple_spinlock> l(lock_);
+  return cluster_uuid_;
+}
+
 }  // namespace tserver
 }  // namespace yb

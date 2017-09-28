@@ -102,12 +102,18 @@ bool CollectorBase::Run(CollectionLevel level) {
 
 namespace {
 
-void AppendPairToJson(const string &key, const string &value, string *out) {
+template<class Key, class Value>
+void AppendPairToJson(const Key& key, const Value& value, std::string *out) {
   if (!out->empty()) {
     *out += ",";
   }
-  *out += Substitute("\"$0\":\"$1\"", key, value);
+  *out += '\"';
+  *out += key;
+  *out += "\":\"";
+  *out += value;
+  *out += '\"';
 }
+
 } // namespace
 
 class BasicCollector : public CollectorBase {
