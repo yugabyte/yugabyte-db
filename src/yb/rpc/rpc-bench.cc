@@ -31,16 +31,16 @@
 //
 
 #include <string>
+#include <thread>
 
-#include <boost/ptr_container/ptr_vector.hpp>
-#include <boost/thread/thread.hpp>
 #include <gtest/gtest.h>
 
-#include "yb/gutil/atomicops.h"
 #include "yb/rpc/rpc-test-base.h"
 #include "yb/rpc/rtest.proxy.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/test_util.h"
+
+using namespace std::literals;
 
 using std::string;
 using std::shared_ptr;
@@ -51,7 +51,6 @@ namespace rpc {
 class RpcBench : public RpcTestBase {
  public:
   RpcBench()
-    : should_run_(true)
   {}
 
  protected:
@@ -59,7 +58,7 @@ class RpcBench : public RpcTestBase {
 
   Endpoint server_endpoint_;
   shared_ptr<Messenger> client_messenger_;
-  Atomic32 should_run_;
+  std::atomic<bool> should_run_{true};
 };
 
 class ClientThread {
@@ -70,7 +69,7 @@ class ClientThread {
   }
 
   void Start() {
-    thread_.reset(new boost::thread(&ClientThread::Run, this));
+    thread_.reset(new std::thread(&ClientThread::Run, this));
   }
 
   void Join() {
@@ -84,7 +83,7 @@ class ClientThread {
 
     rpc_test::AddRequestPB req;
     rpc_test::AddResponsePB resp;
-    while (Acquire_Load(&bench_->should_run_)) {
+    while (bench_->should_run_.load(std::memory_order_acquire)) {
       req.set_x(request_count_);
       req.set_y(request_count_);
       RpcController controller;
@@ -95,7 +94,7 @@ class ClientThread {
     }
   }
 
-  gscoped_ptr<boost::thread> thread_;
+  std::unique_ptr<std::thread> thread_;
   RpcBench *bench_;
   int request_count_;
 };
@@ -118,21 +117,26 @@ TEST_F(RpcBench, BenchmarkCalls) {
   Stopwatch sw(Stopwatch::ALL_THREADS);
   sw.start();
 
-  boost::ptr_vector<ClientThread> threads;
-  for (int i = 0; i < 16; i++) {
-    auto thr = new ClientThread(this);
+  std::vector<std::unique_ptr<ClientThread>> threads;
+#if defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
+  constexpr int kNumThreads = 4;
+#else
+  constexpr int kNumThreads = 16;
+#endif
+  for (int i = 0; i < kNumThreads; i++) {
+    auto thr = std::make_unique<ClientThread>(this);
     thr->Start();
-    threads.push_back(thr);
+    threads.push_back(std::move(thr));
   }
 
-  SleepFor(MonoDelta::FromSeconds(AllowSlowTests() ? 10 : 1));
-  Release_Store(&should_run_, false);
+  std::this_thread::sleep_for(10s);
+  should_run_.store(false, std::memory_order_release);
 
   int total_reqs = 0;
 
-  for (ClientThread &thr : threads) {
-    thr.Join();
-    total_reqs += thr.request_count_;
+  for (const auto& thr : threads) {
+    thr->Join();
+    total_reqs += thr->request_count_;
   }
   sw.stop();
 
