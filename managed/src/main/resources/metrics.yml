@@ -213,8 +213,7 @@ redis_rpcs_per_sec:
 redis_ops_latency:
   metric: "collectd_yb_redis_counter_total"
   function: "avg"
-  operator: "/ 1000"
-  operator: "> 0"
+  operator: "/ 1000 > 0"
   filters:
     type: "rpc_RedisServerService_[^_]*.avg"
   group_by: "type"
