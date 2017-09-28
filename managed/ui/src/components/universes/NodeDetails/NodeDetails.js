@@ -4,12 +4,20 @@ import React, { Component } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBPanelItem } from '../../panels';
-import { isValidObject, isNonEmptyArray, isDefinedNotNull } from 'utils/ObjectUtils';
+import { isValidObject, isNonEmptyArray, isDefinedNotNull, insertSpacesFromCamelCase } from 'utils/ObjectUtils';
 import NodeConnectModal from './NodeConnectModal';
-import {isNodeRemovable} from 'utils/UniverseUtils';
+import { isNodeRemovable } from 'utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 
 export default class NodeDetails extends Component {
+  constructor(props) {
+    super(props);
+    this.deleteNode = this.deleteNode.bind(this);
+    this.state = {
+      dimensions: {},
+    };
+  }
+
 
   componentWillReceiveProps(nextProps) {
     if (isValidObject(this.refs.nodeDetailTable)) {
@@ -38,7 +46,18 @@ export default class NodeDetails extends Component {
     if (!isNonEmptyArray(nodeDetails)) {
       return <span />;
     }
-    const nodeDetailRows = nodeDetails.map(function(nodeDetail){
+
+    const promiseState = getPromiseState(universePerNodeStatus);
+    const inLoadingOrInitState = promiseState.isLoading() || promiseState.isInit();
+    const loadingIcon = <i className="fa fa-spinner fa-spin" />;
+    const successIcon = <i className="fa fa-check-circle yb-success-color" />;
+    const warningIcon = <i className="fa fa-warning yb-fail-color" />;
+
+    const nodeDetailRows = nodeDetails.map((nodeDetail) => {
+      let nodeStatus = "-";
+      if (!inLoadingOrInitState && isDefinedNotNull(universePerNodeStatus.data)) {
+        nodeStatus = insertSpacesFromCamelCase(universePerNodeStatus.data[nodeDetail.nodeName]["node_status"]);
+      }
       return {
         name: nodeDetail.nodeName,
         regionAz: `${nodeDetail.cloudInfo.region}/${nodeDetail.cloudInfo.az}`,
@@ -48,14 +67,10 @@ export default class NodeDetails extends Component {
         isTServer: nodeDetail.isTserver ? "Details" : "-",
         privateIP: nodeDetail.cloudInfo.private_ip,
         publicIP: nodeDetail.cloudInfo.public_ip,
-        nodeStatus: nodeDetail.state,
+        nodeStatus: nodeStatus,
         cloudInfo: nodeDetail.cloudInfo
       };
     });
-
-    const loadingIcon = <i className="fa fa-spinner fa-spin" />;
-    const successIcon = <i className="fa fa-check-circle yb-success-color" />;
-    const warningIcon = <i className="fa fa-warning yb-fail-color" />;
 
     const formatIpPort = function(cell, row, type) {
       if (cell === "-") {
@@ -67,10 +82,8 @@ export default class NodeDetails extends Component {
         cell += " (Leader)";
       }
       const href = "http://" + row.privateIP + ":" + (isMaster ? row.masterPort : row.tserverPort);
-      const promiseState = getPromiseState(universePerNodeStatus);
-      const inLoadingState = promiseState.isLoading() ||promiseState.isInit();
-      let statusDisplay = inLoadingState ? loadingIcon : warningIcon;
-      if (isDefinedNotNull(currentUniverse.data) && !inLoadingState) {
+      let statusDisplay = inLoadingOrInitState ? loadingIcon : warningIcon;
+      if (isDefinedNotNull(currentUniverse.data) && !inLoadingOrInitState) {
         if (isDefinedNotNull(universePerNodeStatus.data) &&
             universePerNodeStatus.data.universe_uuid === currentUniverse.data.universeUUID &&
             isDefinedNotNull(universePerNodeStatus.data[row.name]) &&
@@ -112,21 +125,15 @@ export default class NodeDetails extends Component {
         <BootstrapTable ref='nodeDetailTable' data={nodeDetailRows} >
           <TableHeaderColumn dataField="name" isKey={true} dataFormat={getNodeNameLink}>Name</TableHeaderColumn>
           <TableHeaderColumn dataField="regionAz">Region/Zone</TableHeaderColumn>
-          <TableHeaderColumn
-              dataField="isMaster"
-              dataFormat={ formatIpPort }
-              formatExtraData="master" >
+          <TableHeaderColumn dataField="isMaster" dataFormat={ formatIpPort } formatExtraData="master" >
             Master
           </TableHeaderColumn>
-          <TableHeaderColumn
-              dataField="isTServer"
-              dataFormat={ formatIpPort }
-              formatExtraData="tserver" >
+          <TableHeaderColumn dataField="isTServer" dataFormat={ formatIpPort } formatExtraData="tserver" >
             TServer
           </TableHeaderColumn>
           <TableHeaderColumn dataField="privateIP">Private IP</TableHeaderColumn>
           <TableHeaderColumn dataField="nodeStatus">Status</TableHeaderColumn>
-          <TableHeaderColumn dataField="nodeStatus" dataFormat={getNodeAction}>Action</TableHeaderColumn>
+          <TableHeaderColumn dataField="nodeAction" dataFormat={getNodeAction}>Action</TableHeaderColumn>
         </BootstrapTable>
       </YBPanelItem>
     );

@@ -666,6 +666,11 @@ master_glog_info_messages:
       alias:
         "glog_info_messages": "GLog info messages"
 
+node_up:
+  metric: "up"
+  function: "avg"
+  group_by: "instance"
+
 lsm_rocksdb_num_seek_or_next:
   metric: "collectd_yb_tserver_counter_total"
   function: "rate|avg"

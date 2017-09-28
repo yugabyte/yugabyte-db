@@ -15,16 +15,24 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(fetchUniverseInfoResponse(response.payload));
       });
     },
+
     getMasterLeader: (uuid) => {
       dispatch(getMasterLeader(uuid)).then((response) => {
         dispatch(getMasterLeaderResponse(response.payload));
       });
     },
+
+    /**
+     * Get per-node status for a universe.
+     *
+     * uuid: UUID of the universe to get the per-node status of.
+     */
     getUniversePerNodeStatus: (uuid) => {
-      dispatch(getUniversePerNodeStatus(uuid)).then((response) => {
-        dispatch(getUniversePerNodeStatusResponse(response.payload));
+      dispatch(getUniversePerNodeStatus(uuid)).then((perNodeResponse) => {
+        dispatch(getUniversePerNodeStatusResponse(perNodeResponse.payload));
       });
     },
+
     resetUniverseInfo: () => {
       dispatch(resetUniverseInfo());
     },
