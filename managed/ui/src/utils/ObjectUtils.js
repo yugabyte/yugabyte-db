@@ -200,6 +200,12 @@ export function convertSpaceToDash(string) {
   return string && string.replace(/\s+/g, '-');
 }
 
+export function insertSpacesFromCamelCase(string) {
+  string = string.replace(/([a-z])([A-Z])/g, '$1 $2');
+  string = string.replace(/([A-Z])([A-Z][a-z])/g, '$1 $2');
+  return string;
+}
+
 // Sorting such that 0.0.19.14 > 0.0.3.1 > A > B
 export function sortVersionStrings(arr) {
   return arr.sort((a,b) => {

@@ -40,6 +40,8 @@ public class NodeDetails {
     // Set after all the services (master, tserver, etc) on a node are started and successfully
     // running.
     Running,
+    // Set when node is unreachable but has not been decommissioned from the universe.
+    Unreachable,
     // Set when a node is marked for removal. Note that we will wait to get all its data out during
     // edit universe.
     ToBeDecommissioned,
@@ -86,7 +88,8 @@ public class NodeDetails {
 
   @JsonIgnore
   public boolean isActive() {
-    return !(state == NodeState.ToBeDecommissioned ||
+    return !(state == NodeState.Unreachable ||
+             state == NodeState.ToBeDecommissioned ||
              state == NodeState.BeingDecommissioned ||
              state == NodeState.Destroyed);
   }

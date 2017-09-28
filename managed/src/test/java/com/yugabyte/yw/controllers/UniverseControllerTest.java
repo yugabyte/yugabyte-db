@@ -3,15 +3,24 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.PlacementInfoUtil.getAzUuidToNumNodes;
-
+import static com.yugabyte.yw.common.PlacementInfoUtil.MASTER_METRIC;
+import static com.yugabyte.yw.common.PlacementInfoUtil.TSERVER_METRIC;
+import static com.yugabyte.yw.common.PlacementInfoUtil.NODE_METRIC;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
+import static org.mockito.Matchers.anyList;
+import static org.mockito.Matchers.anyMap;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -23,7 +32,11 @@ import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.ModelFactory;
@@ -31,7 +44,14 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -49,7 +69,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 
-import org.w3c.dom.Node;
 import org.yb.client.YBClient;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -560,7 +579,6 @@ public class UniverseControllerTest extends WithApplication {
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.UpgradeGflags)));
   }
 
-
   @Test
   public void testUniverseGFlagsUpgradeWithInvalidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
@@ -585,7 +603,46 @@ public class UniverseControllerTest extends WithApplication {
     assertThat(json.get("error").toString(), is(containsString("gflags param is required for taskType: GFlags")));
   }
 
+  @Test
+  public void testUniverseStatusSuccess() {
+    ObjectNode fakeReturn = Json.newObject();
+    fakeReturn.set(TSERVER_METRIC, Json.newObject());
+    fakeReturn.set(MASTER_METRIC, Json.newObject());
+    fakeReturn.set(NODE_METRIC, Json.newObject());
+    when(mockMetricQueryHelper.query(anyList(), anyMap())).thenReturn(fakeReturn);
+    UUID universeUUID = UUID.randomUUID();
+    Universe.create("TestUniverse", universeUUID, customer.getCustomerId());
+    String method = "GET";
+    String uri = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/status";
+    Result result = route(fakeRequest(method, uri).cookie(validCookie));
+    assertEquals(OK, result.status());
+  }
 
+  @Test
+  public void testUniverseStatusError() {
+    ObjectNode fakeReturn = Json.newObject();
+    fakeReturn.put("error", "foobar");
+    when(mockMetricQueryHelper.query(anyList(), anyMap())).thenReturn(fakeReturn);
+    UUID universeUUID = UUID.randomUUID();
+    Universe.create("TestUniverse", universeUUID, customer.getCustomerId());
+    String method = "GET";
+    String uri = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/status";
+    Result result = route(fakeRequest(method, uri).cookie(validCookie));
+    assertEquals(BAD_REQUEST, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertThat(json.get("error").toString(), containsString("foobar"));
+  }
+
+  @Test
+  public void testUniverseStatusBadParams() {
+    UUID universeUUID = UUID.randomUUID();
+    String method = "GET";
+    String uri = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/status";
+    Result result = route(fakeRequest(method, uri).cookie(validCookie));
+    assertEquals(BAD_REQUEST, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertThat(json.get("error").toString(), containsString("No universe found with UUID: " + universeUUID));
+  }
 
   @Test
   public void testFindByNameWithUniverseNameExists() {
