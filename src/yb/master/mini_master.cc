@@ -52,10 +52,8 @@ DECLARE_bool(rpc_server_allow_ephemeral_ports);
 namespace yb {
 namespace master {
 
-MiniMaster::MiniMaster(Env* env, string fs_root, uint16_t rpc_port, uint16_t web_port,
-                       bool is_creating)
+MiniMaster::MiniMaster(Env* env, string fs_root, uint16_t rpc_port, uint16_t web_port)
     : running_(false),
-      is_creating_(is_creating),
       env_(env),
       fs_root_(std::move(fs_root)),
       rpc_port_(rpc_port),
@@ -96,7 +94,7 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port) {
   HostPort local_host_port("127.0.0.1", rpc_port);
   auto master_addresses = std::make_shared<std::vector<HostPort>>();
   master_addresses->push_back(local_host_port);
-  MasterOptions opts(master_addresses, is_creating_);
+  MasterOptions opts(master_addresses);
 
   Status start_status = StartOnPorts(rpc_port, web_port, &opts);
   if (!start_status.ok()) {
@@ -135,20 +133,19 @@ Status MiniMaster::StartDistributedMasterOnPorts(uint16_t rpc_port, uint16_t web
     HostPort peer_address("127.0.0.1", peer_port);
     peer_addresses->push_back(peer_address);
   }
-  MasterOptions opts(peer_addresses, is_creating_);
+  MasterOptions opts(peer_addresses);
 
   return StartOnPorts(rpc_port, web_port, &opts);
 }
 
 Status MiniMaster::Restart() {
   CHECK(running_);
-  is_creating_ = false;
 
   Endpoint prev_rpc = bound_rpc_addr();
   Endpoint prev_http = bound_http_addr();
   Shutdown();
 
-  MasterOptions opts(std::make_shared<std::vector<HostPort>>(), is_creating_);
+  MasterOptions opts(std::make_shared<std::vector<HostPort>>());
   RETURN_NOT_OK(StartOnPorts(prev_rpc.port(), prev_http.port(), &opts));
   CHECK(running_);
   return WaitForCatalogManagerInit();

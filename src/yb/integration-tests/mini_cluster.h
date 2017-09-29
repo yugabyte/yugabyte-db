@@ -196,9 +196,6 @@ class MiniCluster : public MiniClusterBase {
 
   bool running_;
 
-  // This is set to true initially, but is set to false when Start() finishes.
-  bool is_creating_;
-
   Env* const env_;
   const std::string fs_root_;
   const int num_masters_initial_;

@@ -45,37 +45,30 @@ namespace yb {
 namespace master {
 
 DEFINE_string(master_addresses, "",
-    "Comma-separated list of all the RPC addresses of the initial Masters when you "
-    "create a cluster. This should only be set the very first time when the cluster is "
-    "brought up and must be used together with the create_cluster flag. "
-    "If this flag is set and it is not the first start of this node (local consensus metadata "
-    "already exists) that is considered a fatal error and will intentionally crash the process! "
+    "Comma-separated list of the host/port RPC addresses of the peer masters. This is needed "
+    "for initial cluster create, and is recreated from persisted metadata on master restart."
     "This flag also defaults to empty, which is overloaded to be able to either: "
-    "a) start a non-distributed mode Master if create_cluster is true. "
-    "b) allow for a Master to be restarted gracefully and get its peer list from the "
-    "local cmeta file of the last committed config, if create_cluster is false.");
+    "a) start a non-distributed mode master if local instance file is not present. "
+    "b) allow for a master to be restarted gracefully and get its peer list from the "
+    "local cmeta file of the last committed config, if local instance file is present.");
 TAG_FLAG(master_addresses, experimental);
 
+// NOTE: This flag is deprecated.
 DEFINE_bool(create_cluster, false,
-    "This should only be set the very first time a cluster is brought up. It signals that we wish "
-    "to start a new clean deployment and generate the filesystem data from scratch. This has to "
-    "be used in conjunction with the master_addresses flag, to inform the other masters of their "
-    "starting peer group.");
+  "(DEPRECATED). This flag was earlier used to distinguish if the master process is "
+  "being started to create a cluster or if this just a restart.");
+TAG_FLAG(create_cluster, hidden);
 
 const char* MasterOptions::kServerType = "master";
 
-MasterOptions::MasterOptions(
-    server::ServerBaseOptions::addresses_shared_ptr master_addresses,
-    bool is_creating)
-    : is_creating_(is_creating) {
+MasterOptions::MasterOptions(server::ServerBaseOptions::addresses_shared_ptr master_addresses) {
   server_type = kServerType;
   rpc_opts.default_port = kMasterDefaultPort;
 
   SetMasterAddresses(master_addresses);
 }
 
-MasterOptions::MasterOptions()
-    : is_creating_(FLAGS_create_cluster) {
+MasterOptions::MasterOptions() {
   server_type = kServerType;
   rpc_opts.default_port = kMasterDefaultPort;
   master_addresses_flag = FLAGS_master_addresses;
@@ -95,7 +88,6 @@ MasterOptions::MasterOptions()
 MasterOptions::MasterOptions(const MasterOptions& other) {
   SetMasterAddresses(other.GetMasterAddresses());
   server_type = other.server_type;
-  is_creating_ = other.is_creating_;
   is_shell_mode_.Store(other.IsShellMode());
   rpc_opts.default_port = other.rpc_opts.default_port;
 }

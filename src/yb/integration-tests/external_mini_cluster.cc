@@ -1633,10 +1633,9 @@ Status ExternalMaster::Start(bool shell_mode) {
   flags.push_back("--rpc_bind_addresses=" + rpc_bind_address_);
   flags.push_back("--webserver_interface=localhost");
   flags.push_back(Substitute("--webserver_port=$0", http_port_));
-  // On first start, we need to tell the masters what their list of expected peers is and set the
-  // create_cluster flag. For 'shell' master, there is no create flag or master addresses needed.
+  // On first start, we need to tell the masters their list of expected peers.
+  // For 'shell' master, there is no master addresses.
   if (!shell_mode) {
-    flags.push_back("--create_cluster=true");
     flags.push_back("--master_addresses=" + master_addrs_);
   }
   RETURN_NOT_OK(StartProcess(flags));

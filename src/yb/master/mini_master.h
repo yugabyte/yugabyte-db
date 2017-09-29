@@ -57,7 +57,7 @@ class MasterOptions;
 class MiniMaster {
 
  public:
-  MiniMaster(Env* env, std::string fs_root, uint16_t rpc_port, uint16_t web_port, bool is_creating);
+  MiniMaster(Env* env, std::string fs_root, uint16_t rpc_port, uint16_t web_port);
   ~MiniMaster();
 
   // Start a master running on the loopback interface and

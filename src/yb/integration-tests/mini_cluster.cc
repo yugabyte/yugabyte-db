@@ -100,7 +100,6 @@ MiniClusterOptions::MiniClusterOptions()
 
 MiniCluster::MiniCluster(Env* env, const MiniClusterOptions& options)
     : running_(false),
-      is_creating_(!FLAGS_mini_cluster_reuse_data),
       env_(env),
       fs_root_(GetFsRoot(options)),
       num_masters_initial_(options.num_masters),
@@ -163,7 +162,6 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
                         "Waiting for tablet servers to start");
 
   running_ = true;
-  is_creating_ = false;
   return Status::OK();
 }
 
@@ -176,8 +174,7 @@ Status MiniCluster::StartMasters() {
 
   for (int i = 0; i < num_masters_initial_; i++) {
     gscoped_ptr<MiniMaster> mini_master(
-        new MiniMaster(env_, GetMasterFsRoot(i), master_rpc_ports_[i], master_web_ports_[i],
-                       is_creating_));
+        new MiniMaster(env_, GetMasterFsRoot(i), master_rpc_ports_[i], master_web_ports_[i]));
     RETURN_NOT_OK_PREPEND(mini_master->StartDistributedMaster(master_rpc_ports_),
                           Substitute("Couldn't start follower $0", i));
     VLOG(1) << "Started MiniMaster with UUID " << mini_master->permanent_uuid()

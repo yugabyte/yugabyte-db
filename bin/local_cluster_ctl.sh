@@ -36,21 +36,12 @@ Options:
   --use_cassandra_authentication
     If specified, passed to tserver process as true.
 Commands:
-  create
-    Creates a brand new cluster. Starts the master and tablet server processes after creating
-    the required directories.
-     --num-masters <num_masters>
-       Number of master processes to create. 3 by default.
-     --num-tservers <num_tablet_servers>
-       Number of tablet server processes to create. 3 by default.
   start
-    Start master & tablet server processes. This expects a 'create' to have been issued before.
+    Start master & tablet server processes.
      --num-masters <num_masters>
        Number of master processes to start. 3 by default.
-       Ideally should match the num-masters used in the corresponding 'create' option.
      --num-tservers <num_tablet_servers>
        Number of tablet server processes to start. 3 by default.
-       Ideally should match the num-tservers used in the corresponding 'create' option.
   stop
     Stop all master & tablet server processes.
   restart
@@ -137,7 +128,7 @@ validate_running_daemon_index() {
   esac
 }
 
-create_directories() {
+create_directories_if_needed() {
   if [ -z "${cluster_base_dir:-}" ]; then
     echo "Internal error: cluster_base_dir is not set" >&2
     exit 1
@@ -282,10 +273,6 @@ start_master() {
     echo "Internal error: directory '$master_base_dir' does not exist" >&2
     exit 1
   fi
-  local master_flags=""
-  if "$create"; then
-    master_flags="--create_cluster=true --master_addresses $master_addresses"
-  fi
   (
     echo "Starting master $master_index"
     set -x
@@ -293,7 +280,7 @@ start_master() {
       --fs_data_dirs "$master_base_dir/disk1,$master_base_dir/disk2" \
       --log_dir "$master_base_dir/logs" \
       --v "$verbose_level" \
-      $master_flags \
+      --master_addresses "$master_addresses" \
       --webserver_port $(( $master_http_port_base + $master_index )) \
       --rpc_bind_addresses 127.0.0.$master_index:$(( $master_rpc_port )) \
       --placement_cloud "$placement_cloud" \
@@ -361,13 +348,11 @@ start_daemon() {
 }
 
 start_cluster() {
-  if "$create"; then
-    create_directories master $num_masters
-    create_directories tserver $num_tservers
-  else
-    validate_num_servers "$num_masters"
-    validate_num_servers "$num_tservers"
-  fi
+  create_directories_if_needed master $num_masters
+  create_directories_if_needed tserver $num_tservers
+
+  validate_num_servers "$num_masters"
+  validate_num_servers "$num_tservers"
 
   master_indexes=$( $SEQ 1 $num_masters )
   tserver_indexes=$( $SEQ 1 $num_tservers )
@@ -461,7 +446,6 @@ daemon_index_to_restart=""
 master_indexes=""
 tserver_indexes=""
 verbose_level=0
-create=false
 placement_cloud=""
 placement_region=""
 placement_zone=""
@@ -506,7 +490,7 @@ while [ $# -gt 0 ]; do
       daemon_index_to_restart="$2"
       shift
     ;;
-    create|start|stop|status|add|start-master|add-tserver|destroy|restart|wipe-restart)
+    start|stop|status|add|start-master|add-tserver|destroy|restart|wipe-restart)
       set_cmd "$1"
     ;;
     *)
@@ -581,10 +565,6 @@ if [[ "$cmd" =~ ^[a-z]+-(master|tserver)$ ]]; then
 fi
 
 case "$cmd" in
-  create)
-    create=true
-    start_cluster
-  ;;
   start)
     start_cluster
   ;;
@@ -601,7 +581,6 @@ case "$cmd" in
     output_separator
     destroy_cluster
     output_separator
-    create=true
     start_cluster_as_before
   ;;
   start-master|add-tserver)

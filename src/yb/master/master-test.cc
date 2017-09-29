@@ -125,7 +125,7 @@ class MasterTest : public YBTest {
     // Start master with the create flag on.
     mini_master_.reset(
         new MiniMaster(Env::Default(), GetTestPath("Master"),
-                       AllocateFreePort(), AllocateFreePort(), true /* is_creating */));
+                       AllocateFreePort(), AllocateFreePort()));
     ASSERT_OK(mini_master_->Start());
     ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
@@ -220,8 +220,7 @@ static void MakeHostPortPB(const std::string& host, uint32_t port, HostPortPB* p
 // Test that shutting down a MiniMaster without starting it does not
 // SEGV.
 TEST_F(MasterTest, TestShutdownWithoutStart) {
-  MiniMaster m(Env::Default(), "/xxxx", AllocateFreePort(), AllocateFreePort(),
-               true /* is_creating */);
+  MiniMaster m(Env::Default(), "/xxxx", AllocateFreePort(), AllocateFreePort());
   m.Shutdown();
 }
 

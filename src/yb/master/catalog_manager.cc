@@ -1077,7 +1077,7 @@ Status CatalogManager::InitSysCatalogAsync(bool is_first_run) {
                                          Bind(&CatalogManager::ElectedAsLeaderCb,
                                               Unretained(this))));
   if (is_first_run) {
-    if (!master_->opts().IsClusterCreationMode()) {
+    if (!master_->opts().AreMasterAddressesProvided()) {
       master_->SetShellMode(true);
       LOG(INFO) << "Starting master in shell mode.";
       return Status::OK();

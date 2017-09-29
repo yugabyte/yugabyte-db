@@ -168,11 +168,6 @@ Status SysCatalogTable::CreateAndFlushConsensusMeta(
 
 Status SysCatalogTable::Load(FsManager* fs_manager) {
   LOG(INFO) << "Trying to load previous SysCatalogTable data from disk";
-  if (master_->opts().IsClusterCreationMode()) {
-    return STATUS(IllegalState, Substitute(
-        "In cluster creation mode for ($0), but found local consensus metadata",
-        HostPort::ToCommaSeparatedString(*master_->opts().GetMasterAddresses())));
-  }
   // Load Metadata Information from disk
   scoped_refptr<tablet::TabletMetadata> metadata;
   RETURN_NOT_OK(tablet::TabletMetadata::Load(fs_manager, kSysCatalogTabletId, &metadata));
@@ -229,9 +224,6 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
 
 Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   LOG(INFO) << "Creating new SysCatalogTable data";
-  if (!master_->opts().IsClusterCreationMode()) {
-    return STATUS(IllegalState, "Need to create data, but am not in cluster creation mode!");
-  }
   // Create the new Metadata
   scoped_refptr<tablet::TabletMetadata> metadata;
   Schema schema = BuildTableSchema();

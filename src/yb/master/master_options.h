@@ -48,12 +48,16 @@ class MasterOptions : public server::ServerBaseOptions {
   MasterOptions();
 
   // To be used for testing
-  MasterOptions(server::ServerBaseOptions::addresses_shared_ptr master_addresses, bool is_creating);
+  explicit MasterOptions(server::ServerBaseOptions::addresses_shared_ptr master_addresses);
 
   // Need copy constructor as AtomicBool doesnt allow default copy.
-  MasterOptions(const MasterOptions& other);
+  explicit MasterOptions(const MasterOptions& other);
 
-  bool IsClusterCreationMode() const { return is_creating_; }
+  // Checks if the master_addresses flags has any peer masters provided.
+  // Used to detect 'shell' master startup.
+  bool AreMasterAddressesProvided() const {
+    return GetMasterAddresses().get()->size() >= 1;
+  }
 
   bool IsShellMode() const { return is_shell_mode_.Load(); }
   void SetShellMode(bool mode) { is_shell_mode_.Store(mode); }
@@ -61,11 +65,8 @@ class MasterOptions : public server::ServerBaseOptions {
   static const char* kServerType;
 
  protected:
-  // Set when its first setup of the cluster - master_addresses is non-empty and is_create is true.
-  bool is_creating_;
-
   // Set during startup of a new master which is not part of any cluster yet - master_addresses is
-  // not set and is_create is not set.
+  // not set and there is no local instance file.
   AtomicBool is_shell_mode_{false};
 };
 

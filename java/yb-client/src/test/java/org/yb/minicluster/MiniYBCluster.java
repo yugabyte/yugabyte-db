@@ -464,7 +464,6 @@ public class MiniYBCluster implements AutoCloseable {
       final int masterWebPort = masterAlloc.webPort;
       List<String> masterCmdLine = getCommonMasterCmdLine(flagsPath, dataDirPath,
         masterBindAddress, masterRpcPort, masterWebPort);
-      masterCmdLine.add(1, "--create_cluster");
       masterCmdLine.addAll(getCommonDaemonFlags());
       masterCmdLine.add("--master_addresses=" + masterAddresses);
       if (extraMasterArgs != null) {
