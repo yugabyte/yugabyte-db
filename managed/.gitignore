@@ -39,3 +39,4 @@ docker/yugaware/*.yml
 src/itest/static/*.log
 
 ui/.env
+ui/public/map/

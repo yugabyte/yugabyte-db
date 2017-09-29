@@ -1,8 +1,6 @@
 name := """yugaware"""
 import com.typesafe.sbt.packager.MappingsHelper._
-import com.typesafe.sbt.packager.docker._
-
-version := "1.0-SNAPSHOT"
+import sbtrelease.ReleaseStateTransformations._
 
 lazy val root = (project in file("."))
   .enablePlugins(PlayJava, PlayEbean, SbtWeb, JavaAppPackaging)
@@ -45,3 +43,15 @@ mappings in Universal ++= contentOf(baseDirectory.value / "ui/build").map {
 }
 
 topLevelDirectory := None
+
+releaseProcess := Seq(
+  inquireVersions,
+  runClean,
+  runTest,
+  setReleaseVersion,
+  commitReleaseVersion,
+  tagRelease,
+  setNextVersion,
+  commitNextVersion
+)
+
