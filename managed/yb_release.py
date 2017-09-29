@@ -11,6 +11,7 @@ import random
 import string
 import requests
 import json
+import glob
 from subprocess import check_output, CalledProcessError
 from ybops.utils import init_env, log_message, get_release_file, publish_release, \
     generate_checksum, latest_release, download_release, docker_push_to_registry
@@ -181,9 +182,11 @@ try:
         output = check_output(["sbt", "universal:packageZipTarball"])
         log_message(logging.INFO, "Get a release file name based on the current commit sha")
         release_file = get_release_file(script_dir, 'yugaware')
-        packaged_file = os.path.join(script_dir, 'target', 'universal', 'yugaware-1.0-SNAPSHOT.tgz')
+        packaged_files = glob.glob(os.path.join(script_dir, 'target', 'universal', 'yugaware*.tgz'))
+        if (len(packaged_files) == 0):
+            raise YBOpsRuntimeError("Yugaware packaging failed")
         log_message(logging.INFO, "Rename the release file to have current commit sha")
-        shutil.copyfile(packaged_file, release_file)
+        shutil.copyfile(packaged_files[0], release_file)
         shutil.rmtree(mapDownloadPath, ignore_errors=True)
         if args.publish:
             log_message(logging.INFO, "Publish the release to S3")

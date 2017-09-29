@@ -13,3 +13,6 @@ addSbtPlugin("com.frugalmechanic" % "fm-sbt-s3-resolver" % "0.4.0")
 addSbtPlugin("com.typesafe.sbt" % "sbt-play-ebean" % "3.0.0")
 
 addSbtPlugin("com.typesafe.sbt" % "sbt-native-packager" % "1.0.3")
+
+// Release Versioning
+addSbtPlugin("com.github.gseitz" % "sbt-release" % "1.0.6")
