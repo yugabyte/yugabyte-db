@@ -6,7 +6,7 @@ import { Accordion, Panel } from 'react-bootstrap';
 import { MetricsPanel } from '../../metrics';
 import './GraphPanel.scss';
 import {YBLoadingIcon} from '../../common/indicators';
-import { isNonEmptyObject, isNonEmptyArray, isEmptyArray } from 'utils/ObjectUtils';
+import { isNonEmptyObject, isNonEmptyArray, isEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
 
 const panelTypes = {
   server:  { title: "Node",
@@ -78,10 +78,10 @@ class GraphPanel extends Component {
       start: startMoment.format('X'),
       end: endMoment.format('X')
     };
-    if (isNonEmptyObject(nodePrefix) && nodePrefix !== "all") {
+    if (isNonEmptyString(nodePrefix) && nodePrefix !== "all") {
       params.nodePrefix = nodePrefix;
     }
-    if (isNonEmptyObject(nodeName) && nodeName !== "all") {
+    if (isNonEmptyString(nodeName) && nodeName !== "all") {
       params.nodeName = nodeName;
     }
     // In case of universe metrics , nodePrefix comes from component itself
