@@ -72,6 +72,13 @@ public class TestHideRedis extends BaseCQLTest {
         YBClient.REDIS_KEYSPACE_NAME, YBClient.REDIS_DEFAULT_TABLE_NAME,
         YBClient.REDIS_KEY_COLUMN_NAME));
 
+      // Verify system_schema.columns and system.partitions don't list the redis table.
+      assertEquals(0, session.execute(String.format("SELECT * FROM system_schema.columns WHERE " +
+        "table_name = '%s'", YBClient.REDIS_DEFAULT_TABLE_NAME)).all().size());
+
+      assertEquals(0, session.execute(String.format("SELECT * FROM system.partitions WHERE " +
+        "table_name = '%s'", YBClient.REDIS_DEFAULT_TABLE_NAME)).all().size());
+
     } finally {
       client.deleteTable(YBClient.REDIS_DEFAULT_TABLE_NAME, YBClient.REDIS_KEYSPACE_NAME);
       runInvalidQuery(String.format("DROP KEYSPACE %s", YBClient.REDIS_KEYSPACE_NAME));

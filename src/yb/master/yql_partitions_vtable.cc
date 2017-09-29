@@ -12,6 +12,7 @@
 //
 
 #include "yb/common/ql_value.h"
+#include "yb/common/redis_constants_common.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/yql_partitions_vtable.h"
 
@@ -35,6 +36,11 @@ Status YQLPartitionsVTable::RetrieveData(const QLReadRequestPB& request,
     nsId.set_id(table->namespace_id());
     scoped_refptr<NamespaceInfo> nsInfo;
     RETURN_NOT_OK(catalog_manager->FindNamespace(nsId, &nsInfo));
+
+    // Hide redis table from YQL.
+    if (nsInfo->name() == common::kRedisKeyspaceName && table->name() == common::kRedisTableName) {
+      continue;
+    }
 
     // Get tablets for table.
     std::vector<scoped_refptr<TabletInfo> > tablets;

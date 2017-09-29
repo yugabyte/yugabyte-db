@@ -12,6 +12,7 @@
 //
 
 #include "yb/common/ql_value.h"
+#include "yb/common/redis_constants_common.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/yql_columns_vtable.h"
 
@@ -53,6 +54,11 @@ Status YQLColumnsVTable::RetrieveData(const QLReadRequestPB& request,
 
     const string& keyspace_name = nsInfo->name();
     const string& table_name = table->name();
+
+    // Hide redis table from YQL.
+    if (keyspace_name == common::kRedisKeyspaceName && table_name == common::kRedisTableName) {
+      continue;
+    }
 
     // Fill in the hash keys first.
     int32_t num_hash_columns = schema.num_hash_key_columns();
