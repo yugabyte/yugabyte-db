@@ -15,6 +15,7 @@ import { GET_REGION_LIST, GET_REGION_LIST_RESPONSE, GET_PROVIDER_LIST, GET_PROVI
 
 import { getInitialState, setInitialState, setSuccessState, setFailureState, setLoadingState, setPromiseResponse }
   from '../utils/PromiseUtils';
+import {isNonEmptyArray} from 'utils/ObjectUtils';
 import _ from 'lodash';
 
 const INITIAL_STATE = {
@@ -151,19 +152,20 @@ export default function(state = INITIAL_STATE, action) {
       return setInitialState(state, "bootstrap");
 
     case LIST_ACCESS_KEYS:
-
       return setLoadingState(state, "accessKeys", state.accessKeys.data || []);
+
     case LIST_ACCESS_KEYS_RESPONSE:
       // When we have multiple providers, we would have multiple access keys,
       // we just concat all those into an array.
       if (_.isArray(state.accessKeys.data) &&
           !state.accessKeys.data.find( (a) => (
             action.payload.data.find( (b) => _.isEqual(a.idKey, b.idKey))
-          ))) {
+          )) && isNonEmptyArray(action.payload.data) ) {
         action.payload.data = state.accessKeys.data.concat(action.payload.data);
+      } else {
+        action.payload.data = state.accessKeys.data
       }
       return setPromiseResponse(state, "accessKeys", action);
-
     case GET_EBS_TYPE_LIST:
       return {...state, ebsTypes: [], status: 'storage', error: null, loading: _.assign(state.loading, {ebsTypes: true})};
     case GET_EBS_TYPE_LIST_RESPONSE:
