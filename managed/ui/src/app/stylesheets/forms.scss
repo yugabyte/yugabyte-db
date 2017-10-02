@@ -71,4 +71,15 @@ form a {
     width: 100%;
     padding-bottom: 6px;
   }
+
+  .yb-info-tip {
+    display: inline;
+    padding: 8px 10px 0 0;
+    vertical-align: top;
+    font-size: 1.2em;
+  }
+}
+
+.fade.in.yb-popover {
+  opacity: 0.85;
 }

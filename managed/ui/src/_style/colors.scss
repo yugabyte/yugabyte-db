@@ -19,6 +19,8 @@ $YB_GRAY_20: #dddbd9;
 $YB_DARK_GREY: #A9A9A9;
 $YB_SIDEBAR_GRAY: #333;
 
+$YB_HELP_BLUE: #0068cd;
+
 .yb-orange {
   color: $YB_ORANGE
 }
@@ -37,6 +39,10 @@ $YB_SIDEBAR_GRAY: #333;
 
 .yb-warn-color {
   color: #ff9933;
+}
+
+.yb-help-color {
+  color: $YB_HELP_BLUE;
 }
 
 .color-grey {
