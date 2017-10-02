@@ -52,7 +52,7 @@ class ClusterOptions():
     def __init__(self):
         self.max_daemon_index = 20
         self.replication_factor = None
-        self.base_local_url = "127.0.0.1"
+        self.base_local_url_format = "127.0.0.{}"
 
         self.cluster_base_dir = None
 
@@ -124,11 +124,15 @@ class ClusterOptions():
         return ["{}/{}/node-{}".format(self.cluster_base_dir, drive, daemon_index)
                 for drive in self.drives]
 
+    def get_local_url_for_index(self, daemon_index):
+        return self.base_local_url_format.format(daemon_index)
+
     def get_address(self, daemon_type, daemon_index, port_type, include_base_url=False):
         # We index nodes from 1, but we would like to always start from the actual base port for
         # all use cases, hence the -1.
-        port_str = str(self.base_ports[daemon_type][port_type] + daemon_index - 1)
-        return port_str if not include_base_url else "{}:{}".format(self.base_local_url, port_str)
+        port_str = str(self.base_ports[daemon_type][port_type])
+        base_local_url = self.get_local_url_for_index(daemon_index)
+        return port_str if not include_base_url else "{}:{}".format(base_local_url, port_str)
 
 
 class ClusterControl():
@@ -196,8 +200,7 @@ class ClusterControl():
             return int(subprocess.check_output(
                 ["pgrep", "-f", "yb-{} .* --rpc_bind_addresses {}".format(
                     daemon_type,
-                    self.options.get_address(
-                        daemon_type, daemon_index, "rpc", include_base_url=True))]))
+                    self.options.get_local_url_for_index(daemon_index))]))
         except subprocess.CalledProcessError as e:
             # From man pgrep
             #
@@ -219,14 +222,8 @@ class ClusterControl():
             self.options.get_server_binary_path(daemon_type),
             # Add in all the shared flags
             "--fs_data_dirs \"{}\"".format(",".join(node_base_dirs)),
-            "--webserver_port {}".format(
-                self.options.get_address(daemon_type, daemon_index, "http")),
-            "--rpc_bind_addresses {}".format(
-                    self.options.get_address(daemon_type, daemon_index, "rpc", True)),
-            "--use_hybrid_clock={}".format(self.options.require_clock_sync),
-            "--placement_cloud {}".format(self.options.placement_cloud),
-            "--placement_region {}".format(self.options.placement_region),
-            "--placement_zone {}".format(self.options.placement_zone)
+            "--webserver_interface {}".format(self.options.get_local_url_for_index(daemon_index)),
+            "--rpc_bind_addresses {}".format(self.options.get_local_url_for_index(daemon_index))
         ]
         binary_path = self.options.get_server_binary_path(daemon_type)
         www_path = os.path.realpath(os.path.join(os.path.dirname(binary_path), "..", "www"))
@@ -241,7 +238,6 @@ class ClusterControl():
 
     def get_master_only_flags(self, daemon_index):
         command_list = [
-            "--create_cluster=true",
             "--replication_factor={}".format(self.options.replication_factor),
             "--master_addresses {}".format(self.options.master_addresses)
         ]
@@ -252,15 +248,12 @@ class ClusterControl():
         return [
             "--tserver_master_addrs {}".format(self.options.master_addresses),
             "--memory_limit_hard_bytes {}".format(1024 * 1024 * 1024),
-            "--redis_proxy_webserver_port {}".format(
-                self.options.get_address(daemon_type, daemon_index, "redis_http")),
             "--redis_proxy_bind_address {}".format(
-                self.options.get_address(daemon_type, daemon_index, "redis_rpc", True)),
-            "--cql_proxy_webserver_port {}".format(
-                self.options.get_address(daemon_type, daemon_index, "cql_http")),
+                self.options.get_local_url_for_index(daemon_index)),
             "--cql_proxy_bind_address {}".format(
-                self.options.get_address(daemon_type, daemon_index, "cql_rpc", True)),
-            "--local_ip_for_outbound_sockets {}".format(self.options.base_local_url)
+                self.options.get_local_url_for_index(daemon_index)),
+            "--local_ip_for_outbound_sockets {}".format(
+                self.options.get_local_url_for_index(daemon_index))
         ]
 
     def start_daemon(self, daemon_type, daemon_index):
@@ -346,12 +339,12 @@ class ClusterControl():
                         ("type", t),
                         ("node_id", i),
                         ("PID", pid),
-                        ("URL", self.options.get_address(t, i, "http", True))
+                        ("admin service", self.options.get_address(t, i, "http", True))
                         ]
                     if t == "tserver":
                         info_list.extend([
-                            ("cql port", self.options.get_address(t, i, "cql_rpc")),
-                            ("redis port", self.options.get_address(t, i, "redis_rpc"))
+                            ("cql service", self.options.get_address(t, i, "cql_rpc", True)),
+                            ("redis service", self.options.get_address(t, i, "redis_rpc", True))
                             ])
                     logging.info("Server is running: {}".format(
                         ", ".join(["{}={}".format(k, v) for k, v in info_list])))
