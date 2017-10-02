@@ -602,6 +602,7 @@ void RemoteBootstrapITest::ConcurrentRemoteBootstraps(YBTableType table_type) {
                           .split_rows(splits)
                           .schema(&client_schema)
                           .num_replicas(3)
+                          .table_type(table_type)
                           .Create());
 
   const int kTsIndex = 0; // We'll test with the first TS.

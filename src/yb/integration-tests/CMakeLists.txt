@@ -105,7 +105,6 @@ set(YB_TEST_LINK_LIBS yb_client yb_tools_util ${YB_TEST_LINK_LIBS})
 ADD_YB_TEST(full_stack-insert-scan-test RUN_SERIAL true)
 ADD_YB_TEST(redis_table-test RUN_SERIAL true)
 ADD_YB_TEST(update_scan_delta_compact-test RUN_SERIAL true)
-ADD_YB_TEST(flex_partitioning-itest)
 
 # Additional tests
 YB_INCLUDE_EXTENSIONS()

@@ -91,7 +91,7 @@ class TabletServerTestBase : public YBTest {
  public:
   typedef pair<int32_t, int32_t> KeyValue;
 
-  explicit TabletServerTestBase(TableType table_type = DEFAULT_TABLE_TYPE)
+  explicit TabletServerTestBase(TableType table_type = YQL_TABLE_TYPE)
       : schema_(GetSimpleTestSchema()),
         table_type_(table_type),
         ts_test_metric_entity_(METRIC_ENTITY_test.Instantiate(

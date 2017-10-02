@@ -107,8 +107,7 @@ enum TableType {
   YQL_TABLE_TYPE = 2;
   REDIS_TABLE_TYPE = 3;
 
-  // This is KUDU_COLUMNAR for now but we'll change this as we deprecate Kudu's columnar format.
-  DEFAULT_TABLE_TYPE = 1;
+  DEFAULT_TABLE_TYPE = 2;
 }
 
 // The type used in column schemas, which may have type parameters (i.e. for collections)

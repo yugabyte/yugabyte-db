@@ -229,8 +229,8 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   }
 
   CHECKED_STATUS GetLeaderReplicaWithRetries(const std::string& tablet_id,
-                                     TServerDetails** leader,
-                                     int max_attempts = 100) {
+                                             TServerDetails** leader,
+                                             int max_attempts = 100) {
     int attempts = 0;
     while (attempts < max_attempts) {
       *leader = GetLeaderReplicaOrNull(tablet_id);
@@ -429,7 +429,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   }
 
   // Create a table with a single tablet, with 'num_replicas'.
-  void CreateTable() {
+  void CreateTable(TableType type = DEFAULT_TABLE_TYPE) {
     ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
     // The tests here make extensive use of server schemas, but we need
     // a client schema to create the table.
@@ -438,11 +438,11 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
     ASSERT_OK(table_creator->table_name(kTableName)
              .schema(&client_schema)
              .num_replicas(FLAGS_num_replicas)
-             .table_type(static_cast<YBTableType>(TableType::KUDU_COLUMNAR_TABLE_TYPE))
              // NOTE: this is quite high as a timeout, but the default (5 sec) does not
              // seem to be high enough in some cases (see KUDU-550). We should remove
              // this once that ticket is addressed.
              .timeout(MonoDelta::FromSeconds(20))
+             .table_type(static_cast<YBTableType>(type))
              .Create());
     ASSERT_OK(client_->OpenTable(kTableName, &table_));
   }
@@ -451,10 +451,11 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   // to 'FLAGS_num_replicas'. The caller can pass 'ts_flags' to specify non-default
   // flags to pass to the tablet servers.
   void BuildAndStart(const std::vector<std::string>& ts_flags = std::vector<std::string>(),
-                     const std::vector<std::string>& master_flags = std::vector<std::string>()) {
+                     const std::vector<std::string>& master_flags = std::vector<std::string>(),
+                     TableType type = DEFAULT_TABLE_TYPE) {
     CreateCluster("raft_consensus-itest-cluster", ts_flags, master_flags);
     ASSERT_NO_FATALS(CreateClient(&client_));
-    ASSERT_NO_FATALS(CreateTable());
+    ASSERT_NO_FATALS(CreateTable(type));
     WaitForTSAndReplicas();
     CHECK_GT(tablet_replicas_.size(), 0);
     tablet_id_ = (*tablet_replicas_.begin()).first;

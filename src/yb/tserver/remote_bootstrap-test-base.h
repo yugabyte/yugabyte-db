@@ -77,14 +77,6 @@ class RemoteBootstrapTest : public TabletServerTestBase {
   }
 
  protected:
-  // Grab the first column block we find in the SuperBlock.
-  static BlockId FirstColumnBlockId(const tablet::TabletSuperBlockPB& superblock) {
-    const tablet::RowSetDataPB& rowset = superblock.rowsets(0);
-    const tablet::ColumnDataPB& column = rowset.columns(0);
-    const BlockIdPB& block_id_pb = column.block();
-    return BlockId::FromPB(block_id_pb);
-  }
-
   // Check that the contents and CRC32C of a DataChunkPB are equal to a local buffer.
   static void AssertDataEqual(const uint8_t* local, int64_t size, const DataChunkPB& remote) {
     ASSERT_EQ(size, remote.data().size());
@@ -106,7 +98,7 @@ class RemoteBootstrapTest : public TabletServerTestBase {
     }
   }
 
-  // Return the permananent_uuid of the local service.
+  // Return the permanent_uuid of the local service.
   const std::string GetLocalUUID() const {
     return tablet_peer_->permanent_uuid();
   }
@@ -117,26 +109,6 @@ class RemoteBootstrapTest : public TabletServerTestBase {
 
   const std::string& GetTabletId() const {
     return tablet_peer_->tablet()->tablet_id();
-  }
-
-  // Read a block file from the file system fully into memory and return a
-  // Slice pointing to it.
-  CHECKED_STATUS ReadLocalBlockFile(FsManager* fs_manager, const BlockId& block_id,
-                            faststring* scratch, Slice* slice) {
-    gscoped_ptr<fs::ReadableBlock> block;
-    RETURN_NOT_OK(fs_manager->OpenBlock(block_id, &block));
-
-    uint64_t size = 0;
-    RETURN_NOT_OK(block->Size(&size));
-    scratch->resize(size);
-    RETURN_NOT_OK(block->Read(0, size, slice, scratch->data()));
-
-    // Since the mmap will go away on return, copy the data into scratch.
-    if (slice->data() != scratch->data()) {
-      memcpy(scratch->data(), slice->data(), slice->size());
-      *slice = Slice(scratch->data(), slice->size());
-    }
-    return Status::OK();
   }
 
   log::LogAnchor anchor_;

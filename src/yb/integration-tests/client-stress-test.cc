@@ -255,7 +255,7 @@ TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
 
   TestWorkload work(cluster_.get());
 
-  work.Setup(client::YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
+  work.Setup();
   work.Start();
 
   // Wait until we've rejected some number of requests.

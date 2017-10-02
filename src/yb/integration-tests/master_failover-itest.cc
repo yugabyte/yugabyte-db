@@ -57,6 +57,7 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 using client::YBTableName;
+using client::YBTableType;
 
 class MasterFailoverTest : public YBTest {
  public:

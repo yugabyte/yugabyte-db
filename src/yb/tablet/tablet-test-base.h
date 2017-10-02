@@ -461,13 +461,6 @@ class TabletTestBase : public YBTabletTest {
     return yb::tablet::IterateToStringList(iter.get(), out);
   }
 
-  // Return the number of rows in the tablet.
-  uint64_t TabletCount() const {
-    uint64_t count;
-    CHECK_OK(tablet()->CountRows(&count));
-    return count;
-  }
-
   // because some types are small we need to
   // make sure that we don't overflow the type on inserts
   // or else we get errors because the key already exists

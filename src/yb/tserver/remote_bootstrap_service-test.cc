@@ -187,11 +187,11 @@ class RemoteBootstrapServiceTest : public RemoteBootstrapTest {
     LOG(INFO) << app_status.ToString();
   }
 
-  // Return BlockId in format suitable for a FetchData() call.
-  static DataIdPB AsDataTypeId(const BlockId& block_id) {
+  // Wrap given file name in the protobuf format suitable for a FetchData() call.
+  static DataIdPB AsDataTypeId(const string& file_name) {
     DataIdPB data_id;
-    data_id.set_type(DataIdPB::BLOCK);
-    block_id.CopyToPB(data_id.mutable_block_id());
+    data_id.set_type(DataIdPB::ROCKSDB_FILE);
+    data_id.set_file_name(file_name);
     return data_id;
   }
 
@@ -299,6 +299,19 @@ TEST_F(RemoteBootstrapServiceTest, TestInvalidBlockOrOpId) {
                         STATUS(NotFound, "").CodeAsString());
   }
 
+  // Invalid file name for rocksdb file fetch.
+  {
+    FetchDataResponsePB resp;
+    RpcController controller;
+    DataIdPB data_id;
+    data_id.set_type(DataIdPB::ROCKSDB_FILE);
+    data_id.set_file_name("random_file_name");
+    Status status = DoFetchData(session_id, data_id, nullptr, nullptr, &resp, &controller);
+    ASSERT_REMOTE_ERROR(status, controller.error_response(),
+                        RemoteBootstrapErrorPB::ROCKSDB_FILE_NOT_FOUND,
+                        STATUS(NotFound, "").CodeAsString());
+  }
+
   // Empty data type with BlockId.
   // The RPC system will not let us send the required type field.
   {
@@ -310,7 +323,7 @@ TEST_F(RemoteBootstrapServiceTest, TestInvalidBlockOrOpId) {
     ASSERT_TRUE(status.IsInvalidArgument());
   }
 
-  // Empty data type id (no BlockId, no Segment Sequence Number);
+  // Empty data type id (no BlockId, no Segment Sequence Number and no RocksDB file);
   {
     FetchDataResponsePB resp;
     RpcController controller;
@@ -335,71 +348,19 @@ TEST_F(RemoteBootstrapServiceTest, TestInvalidBlockOrOpId) {
                         RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST,
                         STATUS(InvalidArgument, "").CodeAsString());
   }
-}
 
-// Test invalid file offset error condition.
-TEST_F(RemoteBootstrapServiceTest, TestFetchInvalidBlockOffset) {
-  string session_id;
-  tablet::TabletSuperBlockPB superblock;
-  ASSERT_OK(DoBeginValidRemoteBootstrapSession(&session_id, &superblock));
-
-  FetchDataResponsePB resp;
-  RpcController controller;
-  // Impossible offset.
-  uint64_t offset = std::numeric_limits<uint64_t>::max();
-  Status status = DoFetchData(session_id, AsDataTypeId(FirstColumnBlockId(superblock)),
-                              &offset, nullptr, &resp, &controller);
-  ASSERT_REMOTE_ERROR(status, controller.error_response(),
-                      RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST,
-                      STATUS(InvalidArgument, "").CodeAsString());
-}
-
-// Test that we are able to fetch an entire block.
-TEST_F(RemoteBootstrapServiceTest, TestFetchBlockAtOnce) {
-  string session_id;
-  tablet::TabletSuperBlockPB superblock;
-  ASSERT_OK(DoBeginValidRemoteBootstrapSession(&session_id, &superblock));
-
-  // Local.
-  BlockId block_id = FirstColumnBlockId(superblock);
-  Slice local_data;
-  faststring scratch;
-  ASSERT_OK(ReadLocalBlockFile(mini_server_->server()->fs_manager(), block_id,
-                               &scratch, &local_data));
-
-  // Remote.
-  FetchDataResponsePB resp;
-  RpcController controller;
-  ASSERT_OK(DoFetchData(session_id, AsDataTypeId(block_id), nullptr, nullptr, &resp, &controller));
-
-  AssertDataEqual(local_data.data(), local_data.size(), resp.chunk());
-}
-
-// Test that we are able to incrementally fetch blocks.
-TEST_F(RemoteBootstrapServiceTest, TestFetchBlockIncrementally) {
-  string session_id;
-  tablet::TabletSuperBlockPB superblock;
-  ASSERT_OK(DoBeginValidRemoteBootstrapSession(&session_id, &superblock));
-
-  BlockId block_id = FirstColumnBlockId(superblock);
-  Slice local_data;
-  faststring scratch;
-  ASSERT_OK(ReadLocalBlockFile(mini_server_->server()->fs_manager(), block_id,
-                               &scratch, &local_data));
-
-  // Grab the remote data in several chunks.
-  int64_t block_size = local_data.size();
-  int64_t max_chunk_size = block_size / 5;
-  uint64_t offset = 0;
-  while (offset < block_size) {
+  // Both RocksDB file and Segment Sequence Number in the same "union" PB (illegal).
+  {
     FetchDataResponsePB resp;
     RpcController controller;
-    ASSERT_OK(DoFetchData(session_id, AsDataTypeId(block_id),
-                                 &offset, &max_chunk_size, &resp, &controller));
-    int64_t returned_bytes = resp.chunk().data().size();
-    ASSERT_LE(returned_bytes, max_chunk_size);
-    AssertDataEqual(local_data.data() + offset, returned_bytes, resp.chunk());
-    offset += returned_bytes;
+    DataIdPB data_id;
+    data_id.set_type(DataIdPB::LOG_SEGMENT);
+    data_id.set_wal_segment_seqno(0);
+    data_id.set_file_name("dummy_file_name");
+    Status status = DoFetchData(session_id, data_id, nullptr, nullptr, &resp, &controller);
+    ASSERT_REMOTE_ERROR(status, controller.error_response(),
+                        RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST,
+                        STATUS(InvalidArgument, "").CodeAsString());
   }
 }
 

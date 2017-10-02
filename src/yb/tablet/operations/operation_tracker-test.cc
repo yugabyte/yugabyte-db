@@ -113,7 +113,7 @@ class OperationTrackerTest : public YBTest {
           nullptr,
           nullptr,
           nullptr,
-          TableType::KUDU_COLUMNAR_TABLE_TYPE));
+          TableType::DEFAULT_TABLE_TYPE));
       auto tx = std::make_unique<NoOpOperation>(std::make_unique<NoOpOperationState>());
       RETURN_NOT_OK(driver->Init(std::move(tx), consensus::LEADER));
       local_drivers.push_back(driver);

@@ -59,6 +59,7 @@ using client::YBSchemaBuilder;
 using client::YBTable;
 using client::YBTableCreator;
 using client::YBTableName;
+using client::YBTableType;
 using std::shared_ptr;
 
 const std::string kKeyspaceName("my_keyspace");

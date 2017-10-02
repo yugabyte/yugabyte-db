@@ -456,11 +456,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Return the current number of rowsets in the tablet.
   size_t num_rowsets() const;
 
-  // Attempt to count the total number of rows in the tablet.
-  // This is not super-efficient since it must iterate over the
-  // memrowset in the current implementation.
-  CHECKED_STATUS CountRows(uint64_t *count) const;
-
   // Verbosely dump this entire tablet to the logs. This is only
   // really useful when debugging unit tests failures where the tablet
   // has a very small number of rows.

@@ -138,26 +138,6 @@ class YBTabletTest : public YBTest {
   gscoped_ptr<TabletHarness> harness_;
 };
 
-class YBRowSetTest : public YBTabletTest {
- public:
-  explicit YBRowSetTest(const Schema& schema)
-    : YBTabletTest(schema) {
-  }
-
-  virtual void SetUp() override {
-    YBTabletTest::SetUp();
-    ASSERT_OK(tablet()->metadata()->CreateRowSet(&rowset_meta_,
-                                                       SchemaBuilder(schema_).Build()));
-  }
-
-  CHECKED_STATUS FlushMetadata() {
-    return tablet()->metadata()->Flush();
-  }
-
- protected:
-  std::shared_ptr<RowSetMetadata> rowset_meta_;
-};
-
 static inline CHECKED_STATUS IterateToStringList(RowwiseIterator *iter,
                                          vector<string> *out,
                                          int limit = INT_MAX) {
@@ -230,22 +210,6 @@ static inline void VerifySnapshotsHaveSameResult(Tablet* tablet,
   }
 }
 
-// Construct a new iterator from the given rowset, and dump
-// all of its results into 'out'. The previous contents
-// of 'out' are cleared.
-static inline CHECKED_STATUS DumpRowSet(const RowSet &rs,
-                                        const Schema &projection,
-                                        const MvccSnapshot &snap,
-                                        vector<string> *out,
-                                        int limit = INT_MAX) {
-  gscoped_ptr<RowwiseIterator> iter;
-  RETURN_NOT_OK(rs.NewRowIterator(&projection, snap, &iter));
-  ScanSpec scan_spec;
-  RETURN_NOT_OK(iter->Init(&scan_spec));
-  RETURN_NOT_OK(IterateToStringList(iter.get(), out, limit));
-  return Status::OK();
-}
-
 // Take an un-initialized iterator, Init() it, and iterate through all of its rows.
 // The resulting string contains a line per entry.
 static inline string InitAndDumpIterator(gscoped_ptr<RowwiseIterator> iter) {
@@ -270,21 +234,6 @@ static inline CHECKED_STATUS DumpTablet(const Tablet& tablet,
   std::sort(rows.begin(), rows.end());
   out->swap(rows);
   return Status::OK();
-}
-
-// Write a single row to the given RowSetWriter (which may be of the rolling
-// or non-rolling variety).
-template<class RowSetWriterClass>
-static CHECKED_STATUS WriteRow(const Slice &row_slice, RowSetWriterClass *writer) {
-  const Schema &schema = writer->schema();
-  DCHECK_EQ(row_slice.size(), schema.byte_size());
-
-  RowBlock block(schema, 1, NULL);
-  ConstContiguousRow row(&schema, row_slice.data());
-  RowBlockRow dst_row = block.row(0);
-  RETURN_NOT_OK(CopyRow(row, &dst_row, reinterpret_cast<Arena*>(NULL)));
-
-  return writer->AppendBlock(block);
 }
 
 } // namespace tablet

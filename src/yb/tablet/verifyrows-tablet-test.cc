@@ -75,8 +75,6 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
     // Warm up code cache with all the projections we'll be using.
     gscoped_ptr<RowwiseIterator> iter;
     CHECK_OK(tablet()->NewRowIterator(client_schema_, &iter));
-    uint64_t count;
-    CHECK_OK(tablet()->CountRows(&count));
     const Schema* schema = tablet()->schema();
     ColumnSchema valcol = schema->column(schema->find_column("val"));
     valcol_projection_ = Schema({ valcol }, 0);
@@ -166,21 +164,9 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
     }
   }
 
-  // Thread which repeatedly issues CountRows() and makes sure
-  // that the count doesn't go ever down.
-  void CountThread(int tid) {
-    rowid_t last_count = 0;
-    while (running_insert_count_.count() > 0) {
-      uint64_t count;
-      CHECK_OK(tablet()->CountRows(&count));
-      ASSERT_GE(count, last_count);
-      last_count = count;
-    }
-  }
-
   // Thread which iterates slowly over the first 10% of the data.
   // This is meant to test that outstanding iterators don't end up
-  // trying to reference already-freed memrowset memory.
+  // trying to reference already-freed memory.
   void SlowReaderThread(int tid) {
     Arena arena(32*1024, 256*1024);
     RowBlock block(schema_, 1, &arena);
@@ -324,7 +310,6 @@ TYPED_TEST(VerifyRowsTabletTest, DoTestAllAtOnce) {
 
   // Spawn a bunch of threads, each of which will do updates.
   this->StartThreads(kNumInsertThreads, &TestFixture::InsertThread);
-  this->StartThreads(FLAGS_num_counter_threads, &TestFixture::CountThread);
   this->StartThreads(FLAGS_num_summer_threads, &TestFixture::SummerThread);
   this->StartThreads(FLAGS_num_slowreader_threads, &TestFixture::SlowReaderThread);
   this->JoinThreads();

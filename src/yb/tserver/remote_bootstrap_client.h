@@ -101,7 +101,7 @@ class RemoteBootstrapClient {
   // 'caller_term' is lower than the current term stored in that consensus
   // metadata, then this method will fail with a Status::InvalidArgument error.
   CHECKED_STATUS SetTabletToReplace(const scoped_refptr<tablet::TabletMetadata>& meta,
-                            int64_t caller_term);
+                                    int64_t caller_term);
 
   // Start up a remote bootstrap session to bootstrap from the specified
   // bootstrap peer. Place a new superblock indicating that remote bootstrap is
@@ -112,9 +112,9 @@ class RemoteBootstrapClient {
   // data and wal directories for the bootstrapped tablets.
   // TODO: Rename these parameters to bootstrap_source_*.
   CHECKED_STATUS Start(const std::string& bootstrap_peer_uuid,
-               const HostPort& bootstrap_peer_addr,
-               scoped_refptr<tablet::TabletMetadata>* metadata,
-               TSTabletManager* ts_manager = nullptr);
+                       const HostPort& bootstrap_peer_addr,
+                       scoped_refptr<tablet::TabletMetadata>* metadata,
+                       TSTabletManager* ts_manager = nullptr);
 
   // Runs a "full" remote bootstrap, copying the physical layout of a tablet
   // from the leader of the specified consensus configuration.
@@ -238,4 +238,4 @@ class RemoteBootstrapClient {
 
 } // namespace tserver
 } // namespace yb
-#endif /* YB_TSERVER_REMOTE_BOOTSTRAP_CLIENT_H */
+#endif // YB_TSERVER_REMOTE_BOOTSTRAP_CLIENT_H

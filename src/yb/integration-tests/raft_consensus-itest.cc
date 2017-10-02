@@ -1056,7 +1056,8 @@ TEST_F(RaftConsensusITest, TestFollowerFallsBehindLeaderGC) {
   // Disable follower eviction to maintain the original intent of this test.
   vector<string> extra_flags = { "--evict_failed_followers=false" };
   AddFlagsForLogRolls(&extra_flags);  // For CauseFollowerToFallBehindLogGC().
-  ASSERT_NO_FATALS(BuildAndStart(extra_flags));
+  ASSERT_NO_FATALS(BuildAndStart(extra_flags, std::vector<std::string>(),
+                                 TableType::KUDU_COLUMNAR_TABLE_TYPE));
 
   string leader_uuid;
   int64_t orig_term;
@@ -1160,7 +1161,7 @@ TEST_F(RaftConsensusITest, InsertWithCrashyNodes) {
   workload.set_write_timeout_millis(1000);
   workload.set_num_write_threads(10);
   workload.set_write_batch_size(1);
-  workload.Setup(client::YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
+  workload.Setup(client::YBTableType::YQL_TABLE_TYPE);
   workload.Start();
 
   int num_crashes = 0;
@@ -2627,7 +2628,7 @@ TEST_F(RaftConsensusITest, TestEvictAbandonedFollowers) {
   AddFlagsForLogRolls(&ts_flags);  // For CauseFollowerToFallBehindLogGC().
   vector<string> master_flags;
   LOG(INFO) << __func__ << ": starting the cluster";
-  ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags));
+  ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags, TableType::KUDU_COLUMNAR_TABLE_TYPE));
 
   MonoDelta timeout = MonoDelta::FromSeconds(30);
   auto active_tablet_servers = CreateTabletServerMapUnowned(tablet_servers_);
@@ -2655,7 +2656,8 @@ TEST_F(RaftConsensusITest, TestEvictAbandonedFollowers) {
 TEST_F(RaftConsensusITest, TestMasterReplacesEvictedFollowers) {
   vector<string> extra_flags;
   AddFlagsForLogRolls(&extra_flags);  // For CauseFollowerToFallBehindLogGC().
-  ASSERT_NO_FATALS(BuildAndStart(extra_flags, {"--enable_load_balancing=true"}));
+  ASSERT_NO_FATALS(BuildAndStart(extra_flags, {"--enable_load_balancing=true"},
+                                 TableType::KUDU_COLUMNAR_TABLE_TYPE));
 
   MonoDelta timeout = MonoDelta::FromSeconds(30);
 

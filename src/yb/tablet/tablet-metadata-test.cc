@@ -77,7 +77,7 @@ TEST_F(TestTabletMetadata, TestLoadFromSuperBlock) {
   ASSERT_OK(writer_->Insert(*row));
   ASSERT_OK(harness_->tablet()->Flush(tablet::FlushMode::kSync));
 
-  // Create one more rowset. Write and flush.
+  // Create one more row. Write and flush.
   BuildPartialRow(1, 1, "bar", &row);
   ASSERT_OK(writer_->Insert(*row));
   ASSERT_OK(harness_->tablet()->Flush(tablet::FlushMode::kSync));

@@ -2828,31 +2828,6 @@ Status Tablet::StartDocWriteOperation(const vector<unique_ptr<DocOperation>> &do
   return Status::OK();
 }
 
-Status Tablet::CountRows(uint64_t *count) const {
-  *count = 0;
-  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    // TODO: Could use DocRowwiseIterator to get the count right.
-    return Status::OK();
-  }
-  // First grab a consistent view of the components of the tablet.
-  scoped_refptr<TabletComponents> comps;
-  GetComponents(&comps);
-
-  // Now sum up the counts.
-  if (comps->memrowset != nullptr) {
-    *count = comps->memrowset->entry_count();
-  }
-  if (comps->rowsets != nullptr) {
-    for (const shared_ptr <RowSet> &rowset : comps->rowsets->all_rowsets()) {
-      rowid_t l_count;
-      RETURN_NOT_OK(rowset->CountRows(&l_count));
-      *count += l_count;
-    }
-  }
-
-  return Status::OK();
-}
-
 size_t Tablet::MemRowSetSize() const {
   if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     return 0;

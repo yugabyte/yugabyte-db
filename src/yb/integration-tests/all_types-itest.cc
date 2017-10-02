@@ -215,15 +215,9 @@ class AllTypesItest : public YBTest {
     builder.AddColumn("int16_val")->Type(INT16);
     builder.AddColumn("int32_val")->Type(INT32);
     builder.AddColumn("int64_val")->Type(INT64);
-    builder.AddColumn("timestamp_val")->Type(TIMESTAMP);
     builder.AddColumn("string_val")->Type(STRING);
     builder.AddColumn("bool_val")->Type(BOOL);
-    builder.AddColumn("float_val")->Type(FLOAT);
-    builder.AddColumn("double_val")->Type(DOUBLE);
     builder.AddColumn("binary_val")->Type(BINARY);
-    builder.AddColumn("inet_val")->Type(INET);
-    builder.AddColumn("uuid_val")->Type(UUID);
-    builder.AddColumn("timeuuid_val")->Type(TIMEUUID);
     CHECK_OK(builder.Build(&schema_));
   }
 
@@ -262,6 +256,7 @@ class AllTypesItest : public YBTest {
                   .schema(&schema_)
                   .split_rows(split_rows)
                   .num_replicas(kNumTabletServers)
+                  .table_type(client::YBTableType::YQL_TABLE_TYPE)
                   .Create());
     return client_->OpenTable(table_name, &table_);
   }
@@ -275,17 +270,10 @@ class AllTypesItest : public YBTest {
     RETURN_NOT_OK(row->SetInt16("int16_val", int_val));
     RETURN_NOT_OK(row->SetInt32("int32_val", int_val));
     RETURN_NOT_OK(row->SetInt64("int64_val", int_val));
-    RETURN_NOT_OK(row->SetTimestamp("timestamp_val", int_val));
     string content = StringPrintf("hello %010x", int_val);
     Slice slice_val(content);
     RETURN_NOT_OK(row->SetStringCopy("string_val", slice_val));
     RETURN_NOT_OK(row->SetBinaryCopy("binary_val", slice_val));
-    RETURN_NOT_OK(row->SetInet("inet_val", slice_val));
-    RETURN_NOT_OK(row->SetUuidCopy("uuid_val", slice_val));
-    RETURN_NOT_OK(row->SetTimeUuidCopy("timeuuid_val", slice_val));
-    double double_val = int_val;
-    RETURN_NOT_OK(row->SetDouble("double_val", double_val));
-    RETURN_NOT_OK(row->SetFloat("float_val", double_val));
     RETURN_NOT_OK(row->SetBool("bool_val", int_val % 2));
     VLOG(1) << "Inserting row[" << split_idx << "," << row_idx << "]" << insert->ToString();
     RETURN_NOT_OK(session->Apply(shared_ptr<YBInsert>(insert)));
@@ -320,14 +308,8 @@ class AllTypesItest : public YBTest {
     projection->push_back("int16_val");
     projection->push_back("int32_val");
     projection->push_back("int64_val");
-    projection->push_back("timestamp_val");
-    projection->push_back("inet_val");
-    projection->push_back("uuid_val");
-    projection->push_back("timeuuid_val");
     projection->push_back("string_val");
     projection->push_back("binary_val");
-    projection->push_back("double_val");
-    projection->push_back("float_val");
     projection->push_back("bool_val");
   }
 
@@ -347,9 +329,6 @@ class AllTypesItest : public YBTest {
     int64_t int64_val;
     ASSERT_OK(row.GetInt64("int64_val", &int64_val));
     ASSERT_EQ(int64_val, expected_int_val);
-    int64_t timestamp_val;
-    ASSERT_OK(row.GetTimestamp("timestamp_val", &timestamp_val));
-    ASSERT_EQ(timestamp_val, expected_int_val);
 
     string content = StringPrintf("hello %010" PRIx64, expected_int_val);
     Slice expected_slice_val(content);
@@ -360,27 +339,10 @@ class AllTypesItest : public YBTest {
     ASSERT_OK(row.GetBinary("binary_val", &binary_val));
     ASSERT_EQ(binary_val, expected_slice_val);
     Slice inet_val;
-    ASSERT_OK(row.GetInet("inet_val", &inet_val));
-    ASSERT_EQ(inet_val, expected_slice_val);
-    Slice uuid_val;
-    ASSERT_OK(row.GetUuid("uuid_val", &uuid_val));
-    ASSERT_EQ(uuid_val, expected_slice_val);
-    Slice timeuuid_val;
-    ASSERT_OK(row.GetTimeUuid("timeuuid_val", &timeuuid_val));
-    ASSERT_EQ(timeuuid_val, expected_slice_val);
-
     bool expected_bool_val = expected_int_val % 2;
     bool bool_val;
     ASSERT_OK(row.GetBool("bool_val", &bool_val));
     ASSERT_EQ(bool_val, expected_bool_val);
-
-    double expected_double_val = expected_int_val;
-    double double_val;
-    ASSERT_OK(row.GetDouble("double_val", &double_val));
-    ASSERT_EQ(double_val, expected_double_val);
-    float float_val;
-    ASSERT_OK(row.GetFloat("float_val", &float_val));
-    ASSERT_EQ(float_val, static_cast<float>(double_val));
   }
 
   Status VerifyRows() {
@@ -464,16 +426,12 @@ struct KeyTypeWrapper {
   static const DataType type = KeyType;
 };
 
-typedef ::testing::Types<IntKeysTestSetup<KeyTypeWrapper<INT8> >,
-                         IntKeysTestSetup<KeyTypeWrapper<INT16> >,
-                         IntKeysTestSetup<KeyTypeWrapper<INT32> >,
-                         IntKeysTestSetup<KeyTypeWrapper<INT64> >,
-                         IntKeysTestSetup<KeyTypeWrapper<TIMESTAMP> >,
-                         SliceKeysTestSetup<KeyTypeWrapper<STRING> >,
-                         SliceKeysTestSetup<KeyTypeWrapper<INET> >,
-                         SliceKeysTestSetup<KeyTypeWrapper<UUID> >,
-                         SliceKeysTestSetup<KeyTypeWrapper<TIMEUUID> >,
-                         SliceKeysTestSetup<KeyTypeWrapper<BINARY> >
+typedef ::testing::Types<IntKeysTestSetup<KeyTypeWrapper<INT8>>,
+                         IntKeysTestSetup<KeyTypeWrapper<INT16>>,
+                         IntKeysTestSetup<KeyTypeWrapper<INT32>>,
+                         IntKeysTestSetup<KeyTypeWrapper<INT64>>,
+                         SliceKeysTestSetup<KeyTypeWrapper<STRING>>,
+                         SliceKeysTestSetup<KeyTypeWrapper<BINARY>>
                          > KeyTypes;
 
 TYPED_TEST_CASE(AllTypesItest, KeyTypes);

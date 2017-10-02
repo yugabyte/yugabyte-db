@@ -995,16 +995,15 @@ PrimitiveValue PrimitiveValue::FromKuduValue(DataType data_type, Slice slice) {
     case DataType::STRING:
       return PrimitiveValue(slice.ToString());
     case DataType::INT32:
-      // TODO: fix cast when variable length integer encoding is implemented.
       return PrimitiveValue::Int32(*reinterpret_cast<const int32_t*>(slice.data()));
+    case DataType::INT16:
+      return PrimitiveValue::Int32(*reinterpret_cast<const int16_t*>(slice.data()));
     case DataType::INT8:
-      // TODO: fix cast when variable length integer encoding is implemented.
       return PrimitiveValue::Int32(*reinterpret_cast<const int8_t*>(slice.data()));
     case DataType::BOOL:
-      // TODO(mbautin): check if this is the right way to interpret a bool value in Kudu.
       return PrimitiveValue(*slice.data() == 0 ? ValueType::kFalse: ValueType::kTrue);
     default:
-      LOG(FATAL) << "Converting Kudu value of type " << data_type
+      LOG(FATAL) << "Converting Kudu value of type " << DataType_Name(data_type)
                  << " to docdb PrimitiveValue is currently not supported";
     }
 }

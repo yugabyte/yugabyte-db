@@ -82,7 +82,6 @@ using strings::Substitute;
 using tablet::ColumnDataPB;
 using tablet::DeltaDataPB;
 using tablet::YBTabletTest;
-using tablet::RowSetDataPB;
 using tablet::TabletPeer;
 using tablet::TabletPeerClass;
 using tablet::TabletSuperBlockPB;

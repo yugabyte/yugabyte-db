@@ -642,62 +642,6 @@ TEST_F(TabletServerTest, TestInvalidWriteRequest_BadSchema) {
   }
 }
 
-// Executes mutations each time a Tablet goes through a compaction/flush
-// lifecycle hook. This allows to create mutations of all possible types
-// deterministically. The purpose is to make sure such mutations are replayed
-// correctly on tablet bootstrap.
-class MyCommonHooks : public Tablet::FlushCompactCommonHooks,
-                      public Tablet::FlushFaultHooks,
-                      public Tablet::CompactionFaultHooks {
- public:
-  explicit MyCommonHooks(TabletServerTest* test)
-  : test_(test),
-    iteration_(0) {}
-
-  Status DoHook(int32_t key, int32_t new_int_val) {
-    test_->UpdateTestRowRemote(0, key, new_int_val);
-    return Status::OK();
-  }
-
-  // This should go in pre-flush and get flushed
-  Status PostSwapNewMemRowSet() override {
-    return DoHook(1, 10 + iteration_);
-  }
-  // This should go in after the flush, but before
-  // the duplicating row set, i.e., this should appear as
-  // a missed delta.
-  Status PostTakeMvccSnapshot() override {
-    return DoHook(2, 20 + iteration_);
-  }
-  // This too should appear as a missed delta.
-  Status PostWriteSnapshot() override {
-    return DoHook(3, 30 + iteration_);
-  }
-  // This should appear as a duplicated mutation
-  Status PostSwapInDuplicatingRowSet() override {
-    return DoHook(4, 40 + iteration_);
-  }
-  // This too should appear as a duplicated mutation
-  Status PostReupdateMissedDeltas() override {
-    return DoHook(5, 50 + iteration_);
-  }
-  // This should go into the new delta.
-  Status PostSwapNewRowSet() override {
-    return DoHook(6, 60 + iteration_);
-  }
-  // This should go in pre-flush (only on compactions)
-  Status PostSelectIterators() override {
-    return DoHook(7, 70 + iteration_);
-  }
-  void increment_iteration() {
-    iteration_++;
-  }
- protected:
-  TabletServerTest* test_;
-  int iteration_;
-};
-
-
 TEST_F(TabletServerTest, TestClientGetsErrorBackWhenRecoveryFailed) {
   ASSERT_NO_FATALS(InsertTestRowsRemote(0, 1, 7));
 

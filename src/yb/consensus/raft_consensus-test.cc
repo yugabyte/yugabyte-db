@@ -146,7 +146,7 @@ class RaftConsensusSpy : public RaftConsensus {
                     log,
                     parent_mem_tracker,
                     mark_dirty_clbk,
-                    DEFAULT_TABLE_TYPE,
+                    YQL_TABLE_TYPE,
                     LostLeadershipListener()) {
     // These "aliases" allow us to count invocations and assert on them.
     ON_CALL(*this, StartConsensusOnlyRoundUnlocked(_))

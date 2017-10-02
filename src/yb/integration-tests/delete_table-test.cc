@@ -800,7 +800,6 @@ TEST_F(DeleteTableTest, TestDeleteFollowerWithReplicatingOperation) {
 
 // Test that orphaned blocks are cleared from the superblock when a tablet is
 // tombstoned.
-// This test relies on Kudu's file format, so it can't run on top of RocksDB yet.
 TEST_F(DeleteTableTest, TestOrphanedBlocksClearedOnDelete) {
   const MonoDelta timeout = MonoDelta::FromSeconds(30);
   vector<string> ts_flags, master_flags;
@@ -816,7 +815,7 @@ TEST_F(DeleteTableTest, TestOrphanedBlocksClearedOnDelete) {
 
   // Create the table.
   TestWorkload workload(cluster_.get());
-  workload.Setup(client::YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
+  workload.Setup();
 
   // Figure out the tablet id of the created tablet.
   vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
@@ -836,30 +835,19 @@ TEST_F(DeleteTableTest, TestOrphanedBlocksClearedOnDelete) {
   ASSERT_OK(itest::StartElection(leader_ts, tablet_id, timeout));
   ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, 1));
 
-  // Run a write workload and wait until we see some rowsets flush on the follower.
+  // Run a write workload and wait some time for the workload to add data.
   workload.Start();
-  TabletSuperBlockPB superblock_pb;
-  for (int i = 0; i < 3000; i++) {
-    ASSERT_OK(inspect_->ReadTabletSuperBlockOnTS(kFollowerIndex, tablet_id, &superblock_pb));
-    if (!superblock_pb.rowsets().empty()) break;
-    SleepFor(MonoDelta::FromMilliseconds(10));
-  }
-  ASSERT_GT(superblock_pb.rowsets_size(), 0)
-      << "Timed out waiting for rowset flush on TS " << follower_ts->uuid() << ": "
-      << "Superblock:\n" << superblock_pb.DebugString();
-
+  SleepFor(MonoDelta::FromMilliseconds(2000));
   // Shut down the leader so it doesn't try to bootstrap our follower later.
   workload.StopAndJoin();
   cluster_->tablet_server(kLeaderIndex)->Shutdown();
 
-  // Tombstone the follower and check that there are no rowsets or orphaned
-  // blocks retained in the superblock.
+  // Tombstone the follower and check that follower superblock is still accessible.
   ASSERT_OK(itest::DeleteTablet(follower_ts, tablet_id, TABLET_DATA_TOMBSTONED,
                                 boost::none, timeout));
   ASSERT_NO_FATALS(WaitForTabletTombstonedOnTS(kFollowerIndex, tablet_id, CMETA_EXPECTED));
+  TabletSuperBlockPB superblock_pb;
   ASSERT_OK(inspect_->ReadTabletSuperBlockOnTS(kFollowerIndex, tablet_id, &superblock_pb));
-  ASSERT_EQ(0, superblock_pb.rowsets_size()) << superblock_pb.DebugString();
-  ASSERT_EQ(0, superblock_pb.orphaned_blocks_size()) << superblock_pb.DebugString();
 }
 
 vector<const string*> Grep(const string& needle, const vector<string>& haystack) {

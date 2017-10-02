@@ -101,10 +101,6 @@ class BootstrapTest : public LogTestBase {
       partition.second,
       TABLET_DATA_READY,
       meta));
-    (*meta)->SetLastDurableMrsIdForTests(mrs_id);
-    if ((*meta)->GetRowSetForTests(0) != nullptr) {
-      (*meta)->GetRowSetForTests(0)->SetLastDurableRedoDmsIdForTests(delta_id);
-    }
     return (*meta)->Flush();
   }
 

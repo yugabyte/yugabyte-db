@@ -221,30 +221,10 @@ TYPED_TEST(TestTablet, TestRowIteratorComplex) {
   ASSERT_EQ(rows.size(), max_rows);
 }
 
-// TODO: Enable this test once TabletCount() is enabled for YQL tables.
-TYPED_TEST(TestTablet, DISABLED_TestInsertsPersist) {
-  uint64_t max_rows = this->ClampRowCount(FLAGS_testiterator_num_inserts);
-
-  this->InsertTestRows(0, max_rows, 0);
-  ASSERT_EQ(max_rows, this->TabletCount());
-
-  // Flush it.
-  ASSERT_OK(this->tablet()->Flush(tablet::FlushMode::kSync));
-
-  ASSERT_EQ(max_rows, this->TabletCount());
-
-  // Close and re-open tablet
-  this->TabletReOpen();
-
-  // Ensure that rows exist
-  ASSERT_EQ(max_rows, this->TabletCount());
-  this->VerifyTestRows(0, max_rows);
-}
-
 // Test that when a row has been updated many times, it always yields
 // the most recent value.
 TYPED_TEST(TestTablet, TestMultipleUpdates) {
-  // Insert and update several times in MemRowSet
+  // Insert and update same row several times.
   LocalTabletWriter writer(this->tablet().get(), &this->client_schema_);
   ASSERT_OK(this->InsertTestRow(&writer, 0, 0));
   ASSERT_OK(this->UpdateTestRow(&writer, 0, 1));
