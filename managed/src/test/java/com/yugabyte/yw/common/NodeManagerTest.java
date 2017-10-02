@@ -281,9 +281,6 @@ public class NodeManagerTest extends FakeDBApplication {
       if (type == NodeManager.NodeCommandType.Provision && packagePath != null) {
         expectedCommand.add("--local_package_path");
         expectedCommand.add(packagePath);
-        if (params.cloud.equals(Common.CloudType.onprem)) {
-          expectedCommand.add("--air_gap");
-        }
       }
     }
 

@@ -269,9 +269,12 @@ public class NodeManager extends DevopsBase {
           commandArgs.add("--local_package_path");
           commandArgs.add(localPackagePath);
 
+          /**
+           * --air_gap is not supported until we allow the UI to specify this flag for a
+           * particular provider.
           if (nodeTaskParam.cloud == Common.CloudType.onprem) {
             commandArgs.add("--air_gap");
-          }
+          }*/
         }
         break;
       }
