@@ -4,6 +4,7 @@ import React, { Component } from 'react';
 import {Field} from 'redux-form';
 import {Row, Col, Collapse} from 'react-bootstrap';
 import {YBInputField, YBButton, YBTextArea} from '../../../common/forms/fields';
+import constants from './OnPremWizardConstants.json';
 const Dropzone = require('react-dropzone');
 
 export default class OnPremProviderAndAccessKey extends Component {
@@ -29,6 +30,7 @@ export default class OnPremProviderAndAccessKey extends Component {
 
   render() {
     const {handleSubmit, switchToJsonEntry, isEditProvider} = this.props;
+    const {nameHelpContent, userHelpContent, pkHelpContent} = constants;
     const hostOptionsIndicator =
       <i className={this.state.hostOptionsVisible ? "fa fa-chevron-down": "fa fa-chevron-right"} />;
 
@@ -39,9 +41,13 @@ export default class OnPremProviderAndAccessKey extends Component {
           <Row>
             <Col lg={6}>
               <div className="form-right-aligned-labels">
-                <Field name="name" component={YBInputField} label="Name" insetError={true} isReadOnly={isReadOnly}/>
-                <Field name="sshUser" component={YBInputField} label="SSH User" insetError={true} isReadOnly={isReadOnly}/>
-                <Field name="privateKeyContent" component={YBTextArea} label="SSH Key" insetError={true} className="ssh-key-container" isReadOnly={isReadOnly}/>
+                <Field name="name" component={YBInputField} label="Provider Name" insetError={true} isReadOnly={isReadOnly}
+                       infoContent={nameHelpContent} infoTitle="Provider Name" />
+                <Field name="sshUser" component={YBInputField} label="SSH User" insetError={true} isReadOnly={isReadOnly}
+                       infoContent={userHelpContent} infoTitle="SSH User" />
+                <Field name="privateKeyContent" component={YBTextArea} label="SSH Key" insetError={true}
+                       className="ssh-key-container" isReadOnly={isReadOnly} infoContent={pkHelpContent}
+                       infoTitle="SSH Key" />
               </div>
               <div className="add-host-options-container" onClick={this.toggleAdditionalHostOptions}>
                 {hostOptionsIndicator} Additional Host Options

@@ -44,9 +44,10 @@ export class YBTextInput extends Component {
 
 export default class YBTextInputWithLabel extends Component {
   render() {
-    const { label, meta, insetError, ...otherProps } = this.props;
+    const { label, meta, insetError, infoContent, infoTitle, infoPlacement, ...otherProps } = this.props;
     return (
-      <YBLabel label={label} meta={meta} insetError={insetError}>
+      <YBLabel label={label} meta={meta} insetError={insetError} infoContent={infoContent} infoTitle={infoTitle}
+               infoPlacement={infoPlacement}>
         <YBTextInput {...otherProps} />
       </YBLabel>
     );
@@ -55,9 +56,10 @@ export default class YBTextInputWithLabel extends Component {
 
 export class YBControlledTextInput extends Component {
   render() {
-    const { label, meta, input, type, className, placeHolder, onValueChanged, isReadOnly, val } = this.props;
+    const { label, meta, input, type, className, placeHolder, onValueChanged, isReadOnly, val, infoContent, infoTitle,
+      infoPlacement } = this.props;
     return (
-      <YBLabel label={label} meta={meta}>
+      <YBLabel label={label} meta={meta} infoContent={infoContent} infoTitle={infoTitle} infoPlacement={infoPlacement}>
         <FormControl {...input} placeholder={placeHolder} type={type} className={className}
                      onChange={onValueChanged} readOnly={isReadOnly} value={val}/>
       </YBLabel>
