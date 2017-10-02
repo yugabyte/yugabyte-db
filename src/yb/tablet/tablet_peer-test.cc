@@ -125,12 +125,12 @@ class TabletPeerTest : public YBTabletTest,
 
     // "Bootstrap" and start the TabletPeer.
     tablet_peer_.reset(
-      new TabletPeer(make_scoped_refptr(tablet()->metadata()),
-                     config_peer,
-                     apply_pool_.get(),
-                     Bind(&TabletPeerTest::TabletPeerStateChangedCallback,
-                          Unretained(this),
-                          tablet()->tablet_id())));
+      new TabletPeerClass(make_scoped_refptr(tablet()->metadata()),
+                          config_peer,
+                          apply_pool_.get(),
+                          Bind(&TabletPeerTest::TabletPeerStateChangedCallback,
+                               Unretained(this),
+                               tablet()->tablet_id())));
 
     // Make TabletPeer use the same LogAnchorRegistry as the Tablet created by the harness.
     // TODO: Refactor TabletHarness to allow taking a LogAnchorRegistry, while also providing

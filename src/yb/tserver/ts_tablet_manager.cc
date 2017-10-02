@@ -58,7 +58,7 @@
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet.pb.h"
-#include "yb/tablet/tablet_bootstrap.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_options.h"
@@ -200,14 +200,15 @@ using std::string;
 using std::vector;
 using std::unordered_set;
 using strings::Substitute;
-using tablet::Tablet;
 using tablet::TABLET_DATA_COPYING;
 using tablet::TABLET_DATA_DELETED;
 using tablet::TABLET_DATA_READY;
 using tablet::TABLET_DATA_TOMBSTONED;
 using tablet::TabletDataState;
 using tablet::TabletMetadata;
+using tablet::TabletClass;
 using tablet::TabletPeer;
+using tablet::TabletPeerClass;
 using tablet::TabletStatusListener;
 using tablet::TabletStatusPB;
 using tserver::RemoteBootstrapClient;
@@ -215,7 +216,7 @@ using tserver::RemoteBootstrapClient;
 // Only called from the background task to ensure it's synchronized
 void TSTabletManager::MaybeFlushTablet() {
   while (memory_monitor()->Exceeded()) {
-    scoped_refptr<tablet::TabletPeer> tablet_to_flush = TabletToFlush();
+    scoped_refptr<TabletPeer> tablet_to_flush = TabletToFlush();
     // TODO(bojanserafimov): If tablet_to_flush flushes now because of other reasons,
     // we will schedule a second flush, which will unnecessarily stall writes. This
     // will not happen often, but should be fixed.
@@ -228,7 +229,7 @@ void TSTabletManager::MaybeFlushTablet() {
 
 // Return the tablet with the oldest write in memstore, or nullptr if all
 // tablet memstores are empty or about to flush.
-scoped_refptr<tablet::TabletPeer> TSTabletManager::TabletToFlush() {
+scoped_refptr<TabletPeer> TSTabletManager::TabletToFlush() {
   boost::shared_lock<rw_spinlock> lock(lock_); // For using the tablet map
   HybridTime oldest_write_in_memstore = HybridTime::kMax;
   scoped_refptr<TabletPeer> tablet_to_flush;
@@ -518,7 +519,7 @@ Status CheckLeaderTermNotLower(
 
 Status HandleReplacingStaleTablet(
     scoped_refptr<TabletMetadata> meta,
-    scoped_refptr<tablet::TabletPeer> old_tablet_peer,
+    scoped_refptr<TabletPeer> old_tablet_peer,
     const string& tablet_id,
     const string& uuid,
     const int64_t& leader_term) {
@@ -672,10 +673,12 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 scoped_refptr<TabletPeer> TSTabletManager::CreateAndRegisterTabletPeer(
     const scoped_refptr<TabletMetadata>& meta, RegisterTabletPeerMode mode) {
   scoped_refptr<TabletPeer> tablet_peer(
-      new TabletPeer(meta,
-                     local_peer_pb_,
-                     apply_pool_.get(),
-                     Bind(&TSTabletManager::ApplyChange, Unretained(this), meta->tablet_id())));
+      new TabletPeerClass(meta,
+                          local_peer_pb_,
+                          apply_pool_.get(),
+                          Bind(&TSTabletManager::ApplyChange,
+                               Unretained(this),
+                               meta->tablet_id())));
   RegisterTablet(meta->tablet_id(), tablet_peer, mode);
   return tablet_peer;
 }
@@ -834,7 +837,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
   CHECK(LookupTablet(tablet_id, &tablet_peer))
       << "Tablet not registered prior to OpenTabletAsync call: " << tablet_id;
 
-  shared_ptr<Tablet> tablet;
+  shared_ptr<TabletClass> tablet;
   scoped_refptr<Log> log;
   const string kLogPrefix = LogPrefix(tablet_id, fs_manager_->uuid());
 
@@ -1105,7 +1108,7 @@ void TSTabletManager::GenerateIncrementalTabletReport(TabletReportPB* report) {
   report->set_is_incremental(true);
   for (const DirtyMap::value_type& dirty_entry : dirty_tablets_) {
     const string& tablet_id = dirty_entry.first;
-    scoped_refptr<tablet::TabletPeer>* tablet_peer = FindOrNull(tablet_map_, tablet_id);
+    scoped_refptr<TabletPeer>* tablet_peer = FindOrNull(tablet_map_, tablet_id);
     if (tablet_peer) {
       // Dirty entry, report on it.
       CreateReportedTabletPB(tablet_id, *tablet_peer, report->add_updated_tablets());

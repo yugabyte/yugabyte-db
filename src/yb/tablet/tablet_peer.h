@@ -50,6 +50,7 @@
 #include "yb/tablet/operation_order_verifier.h"
 #include "yb/tablet/operations/operation_tracker.h"
 #include "yb/tablet/tablet_options.h"
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/util/metrics.h"
 #include "yb/util/semaphore.h"
 #include "yb/tablet/prepare_thread.h"
@@ -96,7 +97,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
 
   // Initializes the TabletPeer, namely creating the Log and initializing
   // Consensus.
-  CHECKED_STATUS Init(const std::shared_ptr<tablet::Tablet>& tablet,
+  CHECKED_STATUS Init(const std::shared_ptr<TabletClass>& tablet,
                       const client::YBClientPtr& client,
                       const scoped_refptr<server::Clock>& clock,
                       const std::shared_ptr<rpc::Messenger>& messenger,
@@ -152,12 +153,12 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
     return consensus_;
   }
 
-  Tablet* tablet() const {
+  TabletClass* tablet() const {
     std::lock_guard<simple_spinlock> lock(lock_);
     return tablet_.get();
   }
 
-  std::shared_ptr<Tablet> shared_tablet() const {
+  std::shared_ptr<TabletClass> shared_tablet() const {
     std::lock_guard<simple_spinlock> lock(lock_);
     return tablet_;
   }
@@ -295,7 +296,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
     return tablet()->table_type();
   }
 
- private:
+ protected:
   friend class RefCountedThreadSafe<TabletPeer>;
   friend class TabletPeerTest;
   FRIEND_TEST(TabletPeerTest, TestDMSAnchorPreventsLogGC);
@@ -314,7 +315,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
 
   scoped_refptr<OperationDriver> CreateOperationDriver();
 
-  std::unique_ptr<Operation> CreateOperation(consensus::ReplicateMsg* replicate_msg);
+  virtual std::unique_ptr<Operation> CreateOperation(consensus::ReplicateMsg* replicate_msg);
 
   const scoped_refptr<TabletMetadata> meta_;
 
@@ -327,7 +328,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   OperationTracker operation_tracker_;
   OperationOrderVerifier operation_order_verifier_;
   scoped_refptr<log::Log> log_;
-  std::shared_ptr<Tablet> tablet_;
+  std::shared_ptr<TabletClass> tablet_;
   std::shared_ptr<rpc::Messenger> messenger_;
   scoped_refptr<consensus::Consensus> consensus_;
   gscoped_ptr<TabletStatusListener> status_listener_;
@@ -370,6 +371,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   // can provide.
   std::vector<MaintenanceOp*> maintenance_ops_;
 
+ private:
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);
 };
 

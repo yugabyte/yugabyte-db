@@ -48,7 +48,7 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 #include "yb/integration-tests/test_workload.h"
-#include "yb/tablet/tablet_bootstrap.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/util/metrics.h"

@@ -49,7 +49,7 @@
 #include "yb/server/webui_util.h"
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.pb.h"
-#include "yb/tablet/tablet_bootstrap.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/scanners.h"
 #include "yb/tserver/tablet_server.h"

@@ -56,7 +56,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/rpc/rpc_context.h"
-#include "yb/tablet/tablet_bootstrap.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -76,8 +76,8 @@ using yb::consensus::RaftPeerPB;
 using yb::log::Log;
 using yb::log::LogAnchorRegistry;
 using yb::tablet::LatchOperationCompletionCallback;
-using yb::tablet::Tablet;
-using yb::tablet::TabletPeer;
+using yb::tablet::TabletClass;
+using yb::tablet::TabletPeerClass;
 using yb::tserver::WriteRequestPB;
 using yb::tserver::WriteResponsePB;
 using strings::Substitute;
@@ -430,12 +430,12 @@ void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::TabletMetadata
   // TODO: handle crash mid-creation of tablet? do we ever end up with a
   // partially created tablet here?
   tablet_peer_.reset(
-    new TabletPeer(metadata,
-                   local_peer_pb_,
-                   apply_pool_.get(),
-                   Bind(&SysCatalogTable::SysCatalogStateChanged,
-                        Unretained(this),
-                        metadata->tablet_id())));
+    new TabletPeerClass(metadata,
+                        local_peer_pb_,
+                        apply_pool_.get(),
+                        Bind(&SysCatalogTable::SysCatalogStateChanged,
+                             Unretained(this),
+                             metadata->tablet_id())));
 }
 
 Status SysCatalogTable::SetupTablet(const scoped_refptr<tablet::TabletMetadata>& metadata) {
@@ -449,7 +449,7 @@ Status SysCatalogTable::SetupTablet(const scoped_refptr<tablet::TabletMetadata>&
 Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& metadata) {
   CHECK(tablet_peer_);
 
-  shared_ptr<Tablet> tablet;
+  shared_ptr<TabletClass> tablet;
   scoped_refptr<Log> log;
   consensus::ConsensusBootstrapInfo consensus_info;
   tablet_peer_->SetBootstrapping();

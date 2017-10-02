@@ -30,6 +30,8 @@
 # under the License.
 #
 
+YB_INCLUDE_EXTENSIONS()
+
 #########################################
 # remote_bootstrap_proto
 #########################################
@@ -132,7 +134,7 @@ set(TSERVER_SRCS
   tablet_service.cc
   ts_tablet_manager.cc
   tserver-path-handlers.cc
-)
+  ${TSERVER_SRCS_EXTENTIONS})
 
 add_library(tserver ${TSERVER_SRCS})
 target_link_libraries(tserver

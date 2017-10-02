@@ -47,7 +47,6 @@
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
 
-using yb::tserver::TabletServer;
 using yb::redisserver::RedisServer;
 using yb::redisserver::RedisServerOptions;
 using yb::cqlserver::CQLServer;
@@ -90,7 +89,7 @@ static int TabletServerMain(int argc, char** argv) {
   InitGoogleLoggingSafe(argv[0]);
 
   TabletServerOptions tablet_server_options;
-  TabletServer server(tablet_server_options);
+  YB_EDITION_NS_PREFIX TabletServer server(tablet_server_options);
   LOG(INFO) << "Initializing tablet server...";
   CHECK_OK(server.Init());
   LOG(INFO) << "Starting tablet server...";

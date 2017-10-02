@@ -42,6 +42,7 @@
 #include "yb/server/logical_clock.h"
 #include "yb/server/metadata.h"
 
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/util/env.h"
@@ -123,14 +124,14 @@ class TabletHarness {
 
     clock_ = server::LogicalClock::CreateStartingAt(HybridTime::kInitialHybridTime);
     TabletOptions tablet_options;
-    tablet_.reset(new Tablet(metadata,
-                             clock_,
-                             std::shared_ptr<MemTracker>(),
-                             metrics_registry_.get(),
-                             new log::LogAnchorRegistry(),
-                             tablet_options,
-                             nullptr /* transaction_participant_context */,
-                             nullptr /* transaction_coordinator_context */));
+    tablet_.reset(new TabletClass(metadata,
+                                  clock_,
+                                  std::shared_ptr<MemTracker>(),
+                                  metrics_registry_.get(),
+                                  new log::LogAnchorRegistry(),
+                                  tablet_options,
+                                  nullptr /* transaction_participant_context */,
+                                  nullptr /* transaction_coordinator_context */));
     return Status::OK();
   }
 
@@ -144,7 +145,7 @@ class TabletHarness {
     return clock_.get();
   }
 
-  const std::shared_ptr<Tablet>& tablet() {
+  const std::shared_ptr<TabletClass>& tablet() {
     return tablet_;
   }
 
@@ -164,7 +165,7 @@ class TabletHarness {
   scoped_refptr<server::Clock> clock_;
   Schema schema_;
   gscoped_ptr<FsManager> fs_manager_;
-  std::shared_ptr<Tablet> tablet_;
+  std::shared_ptr<TabletClass> tablet_;
 };
 
 } // namespace tablet

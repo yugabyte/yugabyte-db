@@ -144,7 +144,7 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   // Auto initialize some of the service flags that are defaulted to -1.
   void AutoInitServiceFlags();
 
- private:
+ protected:
   friend class TabletServerTestBase;
 
   CHECKED_STATUS ValidateMasterAddressResolution() const;
@@ -189,6 +189,7 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   // Cluster uuid. This is sent by the master leader during the first hearbeat.
   std::string cluster_uuid_;
 
+ private:
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };
 

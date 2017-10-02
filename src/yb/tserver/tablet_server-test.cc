@@ -1716,7 +1716,7 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
 
   reg.Clear();
   tbo.rpc_opts = opts3;
-  TabletServer server(tbo);
+  YB_EDITION_NS_PREFIX TabletServer server(tbo);
   ASSERT_NO_FATALS(WARN_NOT_OK(server.Init(), "Ignore"));
   // This call will fail for http binding, but this test is for rpc.
   ASSERT_NO_FATALS(WARN_NOT_OK(server.GetRegistration(&reg), "Ignore"));
@@ -1728,7 +1728,7 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
   FLAGS_rpc_bind_addresses = "10.20.30.40:2017,20.30.40.50:2018";
   RpcServerOptions opts4;
   tbo.rpc_opts = opts4;
-  TabletServer tserver2(tbo);
+  YB_EDITION_NS_PREFIX TabletServer tserver2(tbo);
   ASSERT_NO_FATALS(WARN_NOT_OK(tserver2.Init(), "Ignore"));
   // This call will fail for http binding, but this test is for rpc.
   ASSERT_NO_FATALS(WARN_NOT_OK(tserver2.GetRegistration(&reg), "Ignore"));

@@ -56,7 +56,7 @@
 #include "yb/gutil/sysinfo.h"
 
 #include "yb/tablet/tablet.pb.h"
-#include "yb/tablet/tablet_bootstrap.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer_mm_ops.h"
 
@@ -110,8 +110,6 @@ using consensus::RaftConfigPB;
 using consensus::RaftPeerPB;
 using consensus::RaftConsensus;
 using consensus::ReplicateMsg;
-using consensus::ALTER_SCHEMA_OP;
-using consensus::WRITE_OP;
 using consensus::OpIdType;
 using log::Log;
 using log::LogAnchorRegistry;
@@ -145,7 +143,7 @@ TabletPeer::~TabletPeer() {
       << TabletStatePB_Name(state_);
 }
 
-Status TabletPeer::Init(const shared_ptr<Tablet>& tablet,
+Status TabletPeer::Init(const shared_ptr<TabletClass>& tablet,
                         const client::YBClientPtr& client,
                         const scoped_refptr<server::Clock>& clock,
                         const shared_ptr<Messenger>& messenger,

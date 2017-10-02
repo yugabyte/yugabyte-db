@@ -10,18 +10,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#include "yb/master/master_service_base.h"
-#include "yb/master/master.h"
+#ifndef YB_TABLET_TABLET_FWD_H
+#define YB_TABLET_TABLET_FWD_H
 
 namespace yb {
-namespace master {
+namespace tablet {
 
-// Available overloaded handlers of different types:
+class Tablet;
+class TabletPeer;
 
-YB_EDITION_NS_PREFIX CatalogManager* MasterServiceBase::handler(CatalogManager*) {
-  return server_->catalog_manager();
-}
+typedef YB_EDITION_NS_PREFIX Tablet TabletClass;
+typedef YB_EDITION_NS_PREFIX TabletPeer TabletPeerClass;
 
-} // namespace master
-} // namespace yb
+}  // namespace tablet
+}  // namespace yb
+
+#endif  // YB_TABLET_TABLET_FWD_H

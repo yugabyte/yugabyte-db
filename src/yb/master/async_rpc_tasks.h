@@ -10,9 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#ifndef YB_MASTER_ASYNC_RPC_TASKS_H_
-#define YB_MASTER_ASYNC_RPC_TASKS_H_
+#ifndef YB_MASTER_ASYNC_RPC_TASKS_H
+#define YB_MASTER_ASYNC_RPC_TASKS_H
 
 #include <atomic>
 #include <string>
@@ -451,4 +450,4 @@ class AsyncTryStepDown : public CommonInfoForRaftTask {
 } // namespace master
 } // namespace yb
 
-#endif // YB_MASTER_ASYNC_RPC_TASKS_H_
+#endif // YB_MASTER_ASYNC_RPC_TASKS_H

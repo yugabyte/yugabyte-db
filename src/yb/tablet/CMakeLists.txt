@@ -30,10 +30,13 @@
 # under the License.
 #
 
+YB_INCLUDE_EXTENSIONS()
+
 set(TABLET_SRCS
   abstract_tablet.cc
   tablet.cc
   tablet_bootstrap.cc
+  tablet_bootstrap_if.cc
   tablet_metrics.cc
   tablet_peer_mm_ops.cc
   tablet_peer.cc
@@ -74,7 +77,8 @@ set(TABLET_SRCS
   delta_tracker.cc
   key_value_iterator.cc
   tablet_retention_policy.cc
-  prepare_thread.cc)
+  prepare_thread.cc
+  ${TABLET_SRCS_EXTENTIONS})
 
 PROTOBUF_GENERATE_CPP(
   TABLET_PROTO_SRCS TABLET_PROTO_HDRS TABLET_PROTO_TGTS

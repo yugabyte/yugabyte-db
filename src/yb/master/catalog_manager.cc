@@ -765,6 +765,26 @@ Status CatalogManager::VisitSysCatalog() {
   AppendValuesFromMap(table_ids_map_, &tables);
   AbortAndWaitForAllTasks(tables);
 
+  // Clear internal maps and run data loaders.
+  RETURN_NOT_OK(RunLoaders());
+
+  // Create the system namespaces (created only if they don't already exist).
+  RETURN_NOT_OK(PrepareDefaultNamespaces());
+
+  // Create the system tables (created only if they don't already exist).
+  RETURN_NOT_OK(PrepareSystemTables());
+
+  // Create the default cassandra (created only if they don't already exist).
+  RETURN_NOT_OK(PrepareDefaultRoles());
+
+  // If this is the first time we start up, we have no config information as default. We write an
+  // empty version 0.
+  RETURN_NOT_OK(PrepareDefaultClusterConfig());
+
+  return Status::OK();
+}
+
+Status CatalogManager::RunLoaders() {
   // Clear the table and tablet state.
   table_names_map_.clear();
   table_ids_map_.clear();
@@ -817,19 +837,6 @@ Status CatalogManager::VisitSysCatalog() {
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Visit(role_loader.get()),
       "Failed while visiting roles in sys catalog");
-
-  // Create the system namespaces (created only if they don't already exist).
-  RETURN_NOT_OK(PrepareDefaultNamespaces());
-
-  // Create the system tables (created only if they don't already exist).
-  RETURN_NOT_OK(PrepareSystemTables());
-
-  // Create the default cassandra (created only if they don't already exist).
-  RETURN_NOT_OK(PrepareDefaultRoles());
-
-  // If this is the first time we start up, we have no config information as default. We write an
-  // empty version 0.
-  RETURN_NOT_OK(PrepareDefaultClusterConfig());
 
   return Status::OK();
 }

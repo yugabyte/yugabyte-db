@@ -84,6 +84,7 @@ using tablet::DeltaDataPB;
 using tablet::YBTabletTest;
 using tablet::RowSetDataPB;
 using tablet::TabletPeer;
+using tablet::TabletPeerClass;
 using tablet::TabletSuperBlockPB;
 using tablet::WriteOperationState;
 
@@ -129,12 +130,12 @@ class RemoteBootstrapTest : public YBTabletTest {
     config_peer.mutable_last_known_addr()->set_port(0);
 
     tablet_peer_.reset(
-        new TabletPeer(tablet()->metadata(),
-                       config_peer,
-                       apply_pool_.get(),
-                       Bind(&RemoteBootstrapTest::TabletPeerStateChangedCallback,
-                            Unretained(this),
-                            tablet()->tablet_id())));
+        new TabletPeerClass(tablet()->metadata(),
+                            config_peer,
+                            apply_pool_.get(),
+                            Bind(&RemoteBootstrapTest::TabletPeerStateChangedCallback,
+                                 Unretained(this),
+                                 tablet()->tablet_id())));
 
     // TODO similar to code in tablet_peer-test, consider refactor.
     RaftConfigPB config;

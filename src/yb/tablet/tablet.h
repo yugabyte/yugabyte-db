@@ -589,7 +589,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return last_committed_write_index_.load(std::memory_order_acquire);
   }
 
- private:
+ protected:
   friend class Iterator;
   friend class TabletPeerTest;
   friend class ScopedReadOperation;
@@ -875,6 +875,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // be flushed in RocksDB.
   std::shared_ptr<TabletFlushStats> flush_stats_;
 
+ private:
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };
 

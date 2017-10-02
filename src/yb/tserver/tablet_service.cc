@@ -49,7 +49,7 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/server/hybrid_clock.h"
-#include "yb/tablet/tablet_bootstrap.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tserver/remote_bootstrap_service.h"
 
 #include "yb/tablet/abstract_tablet.h"

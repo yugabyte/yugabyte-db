@@ -827,7 +827,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Dump all of the current state about tables and tablets to the
   // given output stream. This is verbose, meant for debugging.
-  void DumpState(std::ostream* out, bool on_disk_dump = false) const;
+  virtual void DumpState(std::ostream* out, bool on_disk_dump = false) const;
 
   void SetLoadBalancerEnabled(bool is_enabled);
 
@@ -923,6 +923,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // and 'tablet_map_'), loads tables metadata into memory and if successful
   // loads the tablets metadata.
   CHECKED_STATUS VisitSysCatalog();
+  virtual CHECKED_STATUS RunLoaders();
 
   // Waits for the worker queue to finish processing, returns OK if worker queue is idle before
   // the provided timeout, TimedOut Status otherwise.
@@ -936,7 +937,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS FindNamespace(const NamespaceIdentifierPB& ns_identifier,
                                scoped_refptr<NamespaceInfo>* ns_info) const;
 
- private:
+ protected:
   friend class TableLoader;
   friend class TabletLoader;
   friend class NamespaceLoader;
@@ -1340,6 +1341,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   SystemTablesHandler sys_tables_handler_;
 
+ private:
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };
 

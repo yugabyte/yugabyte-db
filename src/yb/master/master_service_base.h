@@ -17,6 +17,12 @@
 #include "yb/gutil/macros.h"
 
 namespace yb {
+class Status;
+
+namespace rpc {
+class RpcContext;
+} // namespace rpc
+
 namespace master {
 
 class Master;
