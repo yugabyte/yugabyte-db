@@ -2,6 +2,8 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
+import {isNonEmptyString} from "../../../utils/ObjectUtils";
+import YBInfoTip from "./YBInfoTip";
 
 export default class YBLabel extends Component {
   static propTypes = {
@@ -9,7 +11,13 @@ export default class YBLabel extends Component {
   };
 
   render() {
-    const { label, insetError, meta: { touched, error, invalid }, onLabelClick } = this.props;
+    const { label, insetError, meta: { touched, error, invalid }, onLabelClick, infoContent, infoTitle, infoPlacement
+    } = this.props;
+
+    let infoTip = <span />;
+    if (isNonEmptyString(infoContent)) {
+      infoTip = <span>&nbsp;<YBInfoTip content={infoContent} title={infoTitle} placement={infoPlacement} /></span>;
+    }
 
     return (
       <div className={`form-group ${ touched && invalid ? 'has-error' : ''}`} onClick={onLabelClick}>
@@ -26,6 +34,7 @@ export default class YBLabel extends Component {
             </div>
           }
         </div>
+        {infoTip}
       </div>
     );
   }
