@@ -14,6 +14,10 @@ class CatalogManager : public yb::master::CatalogManager {
  public:
   explicit CatalogManager(yb::master::Master* master) : super(master) {}
 
+  CHECKED_STATUS RunLoaders() override;
+
+  void DumpState(std::ostream* out, bool on_disk_dump = false) const override;
+
  private:
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };
