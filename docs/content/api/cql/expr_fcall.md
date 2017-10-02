@@ -4,15 +4,6 @@ summary: Combination of one or more values.
 toc: false
 ---
 
-<style>
-table {
-  float: left;
-}
-#ptodo {
-  color: red
-}
-</style>
-
 ## Synopsis
 Function call expression applies the specified function to to given arguments between parentheses and return the result of the computation.
 

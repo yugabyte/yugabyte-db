@@ -4,19 +4,6 @@ summary: Subscripted Columns.
 toc: false
 ---
 
-<style>
-table {
-  float: left;
-}
-#psyn {
-  text-indent: 50px;
-}
-#ptodo {
-  color: red
-}
-</style>
-
-
 Subscripted expression allows access to an element in a multi-element value such as a map collection by using operator `[]`. Subscripted column expressions can be used when writing the same way as a [column expression](../expr_simple##Column). For example, if `ids` refers to a column of type `LIST`, `ids[7]` refers to the third element of the list `ids`, which can be set in an [UPDATE](../dml_update) statement.
 
 <li>Subscripted expression can only be applied to columns of type `LIST`, `MAP`, or user-defined datatypes.</li>

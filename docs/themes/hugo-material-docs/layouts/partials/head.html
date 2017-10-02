@@ -35,6 +35,13 @@
     <link rel="shortcut icon" type="image/x-icon" href="{{ with .Site.Params.favicon }}{{ . | absURL }}{{ else }}{{ "images/favicon.ico" | absURL }}{{ end }}">
     <link rel="icon" type="image/x-icon" href="{{ with .Site.Params.favicon }}{{ . | absURL }}{{ else }}{{ "images/favicon.ico" | absURL }}{{ end }}">
 
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+    <script src="/js/bootstrap-hover-dropdown.min.js"></script>
+
     <style>
       @font-face {
         font-family: 'Icon';
@@ -54,6 +61,9 @@
 
     <link rel="stylesheet" href="{{ "stylesheets/application.css" | absURL }}">
     <link rel="stylesheet" type="text/css" href="{{.Site.BaseURL}}/css/yuga-overrides.css" />
+    <link rel="stylesheet" type="text/css" href="{{.Site.BaseURL}}/css/buttons.css" />
+    <link rel="stylesheet" type="text/css" href="{{.Site.BaseURL}}/css/navbar.css" />
+    <link rel="stylesheet" type="text/css" href="{{.Site.BaseURL}}/css/footer.css" />
     <link rel="stylesheet" href="{{ "stylesheets/temporary.css" | absURL }}">
     <link rel="stylesheet" href="{{ "stylesheets/palettes.css" | absURL }}">
     <link rel="stylesheet" href="{{ with .Site.Params.highlight_css }}{{ . | absURL }}{{ else }}{{ "stylesheets/highlight/highlight.css" | absURL }}{{ end }}">

@@ -1,74 +1,34 @@
-{{ if .IsPage }}
-{{ if .Prev | or .Next }}
-<nav class="pagination" aria-label="Footer">
-  <div class="previous">
-  {{ if .Prev }}
-      <a href="{{ .Prev.Permalink }}" title="{{ .Prev.Title }}">
-        <span class="direction">
-          Previous
-        </span>
-        <div class="page">
-          <div class="button button-previous" role="button" aria-label="Previous">
-            <i class="icon icon-back"></i>
-          </div>
-          <div class="stretch">
-            <div class="title">
-              {{ .Prev.Title }}
-            </div>
-          </div>
-        </div>
+<div class="container">
+  <div class="row">
+    <div class="col-md-4">
+      <img alt="YugaByte" src="/images/yblogo_darkbg.cc9908a9.png" class="nav-logo not-scrolled"/>
+    </div>
+    <div class="col-md-8 text-right">
+      <a class="social" href="http://www.github.com/yugabyte">
+        <i class="fa fa-github"></i>
       </a>
-  {{ end }}
+      <a class="social" href="http://www.twitter.com/yugabyte">
+        <i class="fa fa-twitter-square"></i>
+      </a>
+      <a class="social" href="http://www.linkedin.com/company/yugabyte">
+        <i class="fa fa-linkedin-square"></i>
+      </a>
+      <a class="social" href="http://www.facebook.com/yugabyte">
+        <i class="fa fa-facebook-square"></i>
+      </a>
+      <a class="social" href="https://www.youtube.com/channel/UCL9BhSLRowqQ1TyBndhiCEw">
+        <i class="fa fa-youtube-square"></i>
+      </a>
+    </div>
   </div>
 
-  <div class="next">
-  {{ if .Next }}
-      <a href="{{ .Next.Permalink }}" title="{{ .Next.Title }}">
-        <span class="direction">
-          Next
-        </span>
-        <div class="page">
-          <div class="stretch">
-            <div class="title">
-              {{ .Next.Title }}
-            </div>
-          </div>
-          <div class="button button-next" role="button" aria-label="Next">
-            <i class="icon icon-forward"></i>
-          </div>
-        </div>
-      </a>
-  {{ end }}
-  </div>
-</nav>
-{{ end }}
-{{ end }}
+  <p>
+    Copyright © 2017 YugaByte, Inc. All rights reserved.
+    <a href="http://www.yugabyte.com/terms/">Terms of Use</a>
+    <a href="http://www.yugabyte.com/privacy/">Privacy Policy</a>
+  </p>
 
-{{ if .IsHome }}
-{{ if gt (len .Site.Pages) 2 }}
-<nav class="pagination" aria-label="Footer">
-  <div class="previous">
-  </div>
-
-  {{ $title := (index (.Site.Pages.ByWeight) 1).Title  }}
-  {{ $permalink := (index (.Site.Pages.ByWeight) 1).Permalink }}
-  <div class="next">
-      <a href="{{ $permalink }}" title="{{ $title }}">
-        <span class="direction">
-          Next
-        </span>
-        <div class="page">
-          <div class="stretch">
-            <div class="title">
-              {{ $title }}
-            </div>
-          </div>
-          <div class="button button-next" role="button" aria-label="Next">
-            <i class="icon icon-forward"></i>
-          </div>
-        </div>
-      </a>
-  </div>
-</nav>
-{{ end }}
-{{ end }}
+  <p class="disclaimers">
+    Apache®, Apache Cassandra®, are either registered trademarks or trademarks of the Apache Software Foundation in the United States and/or other countries. Redis®, and the Redis logo are the trademarks of Salvatore Sanfilippo in the U.S. and other countries. No endorsement by these organizations is implied by the use of these marks.
+  </p>
+</div>

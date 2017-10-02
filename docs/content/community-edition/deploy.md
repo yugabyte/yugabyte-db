@@ -4,12 +4,6 @@ title: Community Edition - Deploy
 weight: 30
 ---
 
-<style>
-table {
-  float: left;
-}
-</style>
-
 Multi-node clusters of YugaByte Community Edition can be manually deployed on any cloud provider of choice including major public cloud platforms and private on-premises datacenters.
 
 ## Prerequisites

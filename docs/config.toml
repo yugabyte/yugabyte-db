@@ -27,7 +27,7 @@ googleAnalytics = "UA-104956980-1"
 	custom_js  = []
 
 	# Syntax highlighting theme
-	# highlight_css  = "stylesheets/highlight/dracula.css"
+	highlight_css  = "stylesheets/highlight/dracula.css"
 
 	[params.palette]
     	primary = "orange"
@@ -97,7 +97,6 @@ googleAnalytics = "UA-104956980-1"
 [[menu.main]]
 	name   = "Architecture"
 	identifier = "architecture"
-	url = "architecture/concepts/"
 	weight = 70
 
 [[menu.main]]
@@ -135,7 +134,6 @@ googleAnalytics = "UA-104956980-1"
 	name   = "Client API Reference"
 	weight = 120
 	identifier = "API"
-	url    = "api/cql/"
 
 [[menu.main]]
 	name = "Apache Cassandra"
@@ -152,10 +150,16 @@ googleAnalytics = "UA-104956980-1"
 	url = "api/redis/"
 
 [[menu.main]]
+	name = "APPEND"
+	weight = 140
+	identifier = "api-redis-append"
+	parent = "api-redis"
+	url = "api/redis/append/"
+
+[[menu.main]]
 	name   = "Admin Reference"
 	weight = 150
 	identifier = "admin"
-	url    = "admin/yb-ctl/"
 
 [[menu.main]]
 	name = "yb-ctl"

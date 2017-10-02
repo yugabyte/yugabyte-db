@@ -1,0 +1,18 @@
+{{ $bundle := . }}
+
+{{ if gt (len .menu) 0 }}
+  <ul>
+    {{ range .menu }}
+      <li>
+        {{ $.context.Scratch.Set "currentMenuEntry" . }}
+        {{ partial "nav_link" $.context }}
+
+        {{ $absoluteLinkUrl := .URL | absURL | printf "%s" }}
+        {{ $isPrefix := eq $absoluteLinkUrl (substr $.context.Permalink 0 (len $absoluteLinkUrl)) }}
+        {{ if and .HasChildren (or $isPrefix (lt $.level 2)) }}
+          {{ partial "nav_menu" (dict "context" $.context "menu" .Children "level" (add $.level 1)) }}
+        {{ end }}
+      </li>
+    {{ end }}
+  </ul>
+{{ end }}

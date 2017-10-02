@@ -2,11 +2,6 @@
 title: Redis
 summary: Redis overview and commands.
 ---
-<style>
-table {
-  float: left;
-}
-</style>
 
 ## Introduction
 YugaByte supports an automatically sharded, clustered & elastic Redis-as-a-Database in a Redis driver compatible manner. A Redis client can connect, send request, and receive result from YugaByte servers.

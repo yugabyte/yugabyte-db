@@ -2,11 +2,6 @@
 title: Apache Cassandra Query Language (CQL)
 summary: CQL features.
 ---
-<style>
-table {
-  float: left;
-}
-</style>
 
 ## Introduction
 YugaByte supports the following CQL features.

@@ -1,49 +1,73 @@
-<nav aria-label="Header">
-  <div class="bar default">
-    <div class="button button-menu" role="button" aria-label="Menu">
-      <label class="toggle-button icon icon-menu" for="toggle-drawer">
-        <span></span>
-      </label>
-    </div>
-    <div class="stretch">
-      <div class="title">
-        {{ with .Site.Params.logo }}
-          <a class="logo" href="http://www.yugabyte.com/">
-            <img src="{{ $.Site.BaseURL }}{{ . }}">
+<nav id="nav_bar" class="nav-bar navbar navbar-inverse navbar-fixed-top scrolled">
+  <div class="container-fluid">
+    <div class="container">
+      <div id="nav_bar_content">
+        <div class="navbar-header">
+          <a href="http://www.yugabyte.com/" class="navbar-link">
+            <span class="navbar-brand">
+              <img alt="YugaByte" src="/images/yblogo_darkbg.cc9908a9.png" class="nav-logo not-scrolled"/>
+              <img alt="YugaByte" src="/images/yblogo_whitebg.3fea4ef9.png" class="nav-logo scrolled"/>
+            </span>
           </a>
-        {{ end }}
+          <button type="button" class="navbar-toggle collapsed">
+            <span class="sr-only">
+              Toggle navigation
+            </span>
+            <span class="icon-bar">
+            </span>
+            <span class="icon-bar">
+            </span>
+            <span class="icon-bar">
+            </span>
+          </button>
+        </div>
+        <div class="navbar-collapse collapse">
+          <div class="navbar-text">
+            <div class="dropdown">
+              <a class="navbar-link" data-hover="dropdown" aria-haspopup="true" aria-expanded="false" id="navbar_product_dropdown" href="http://www.yugabyte.com/product/">
+                Product
+              </a>
+              <div class="dropdown-menu" aria-labelledby="navbar_product_dropdown">
+                <a class="dropdown-item" href="http://www.yugabyte.com/product/">Enterprise Edition</a>
+                <a class="dropdown-item" href="http://www.yugabyte.com/product/community/">Community Edition</a>
+                <a class="dropdown-item" href="http://www.yugabyte.com/product/compare/">Compare</a>
+              </div>
+            </div>
+          </div>
+          <div class="navbar-text">
+            <a href="http://www.yugabyte.com/use-cases/" class="navbar-link">
+              Use Cases
+            </a>
+          </div>
+          <div class="navbar-text">
+            <a href="http://docs.yugabyte.com" target="_blank" class="navbar-link">
+              Docs
+            </a>
+          </div>
+          <div class="navbar-text">
+            <a href="http://forum.yugabyte.com" target="_blank" class="navbar-link">
+              Community
+            </a>
+          </div>
+          <div class="navbar-text">
+            <a href="http://www.yugabyte.com/about/" class="navbar-link">
+              About
+            </a>
+          </div>
+          <div class="navbar-text">
+            <a href="https://blog.yugabyte.com" target="_blank" class="navbar-link">
+              Blog
+            </a>
+          </div>
+          <div class="navbar-text">
+            <button id="download-button" class="btn cta-button"
+                    data-type="download-community" data-toggle="modal"
+                    data-target="#downloadModal">
+              Download
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
-
-    {{ with .Site.Social.twitter }}
-    <div class="button button-twitter" role="button" aria-label="Twitter">
-       <a href="https://twitter.com/{{ . }}" title="@{{ . }} on Twitter" target="_blank" class="toggle-button icon icon-twitter"></a>
-    </div>
-    {{ end }}
-
-    {{ with .Site.Social.github }}
-    <div class="button button-github" role="button" aria-label="GitHub">
-      <a href="https://github.com/{{ . }}" title="@{{ . }} on GitHub" target="_blank" class="toggle-button icon icon-github"></a>
-    </div>
-    {{ end }}
-    
-    <!-- TODO: disabled until Hugo supports the generation of a content index natively 
-    <div class="button button-search" role="button" aria-label="Search">
-      <label class="toggle-button icon icon-search" title="Search" for="toggle-search"></label>
-    </div>
-    -->    
-  </div>
-  <div class="bar search">
-    <div class="button button-close" role="button" aria-label="Close">
-      <label class="toggle-button icon icon-back" for="toggle-search"></label>
-    </div>
-    <div class="stretch">
-      <div class="field">
-        <input class="query" type="text" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck>
-      </div>
-    </div>
-    <div class="button button-reset" role="button" aria-label="Search">
-      <button class="toggle-button icon icon-close" id="reset-search"></button>
     </div>
   </div>
 </nav>

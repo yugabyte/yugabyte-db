@@ -1,0 +1,53 @@
+.btn, button {
+  position: relative;
+  font-family: "Open Sans", sans-serif;
+  font-weight: 400;
+  transition: all 0.2s;
+  padding: 16px 20px 18px;
+  margin-bottom: 8px;
+  color: #f75821;
+  background-color: transparent;
+  border: 2px solid #f75821;
+  border-radius: 10px; }
+  .btn:hover, button:hover {
+    box-shadow: 0 0 20px rgba(153, 204, 255, 0.8);
+    transform: scale(1.02, 1.04);
+    color: #fff; }
+  .btn:focus, button:focus {
+    color: #fff !important; }
+
+.cta-button {
+  font-size: 18px;
+  color: white;
+  background-color: #f75821;
+  border: 2px solid #f75821 !important;
+  border-radius: 10px; }
+  .cta-button:hover {
+    background-color: #f75821; }
+
+.learn-more-button {
+  background-color: transparent;
+  border: 2px solid #fff;
+  border-radius: 10px;
+  font-size: 18px;
+  font-weight: 400;
+  color: white; }
+
+.more-button {
+  font-size: 18px;
+  font-weight: 500;
+  color: #c86709;
+  background-color: white;
+  box-shadow: 0 0 30px 6px rgba(255, 255, 255, 0.2); }
+
+.link-button {
+  background-color: #f75821;
+  border-radius: 10px;
+  font-size: 20px;
+  font-weight: 400;
+  color: white; }
+  .link-button:hover {
+    background-color: #f75821; }
+
+.longer-buttons .btn {
+  min-width: 240px !important; }

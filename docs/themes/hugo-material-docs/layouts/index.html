@@ -13,9 +13,7 @@
 <input class="toggle" type="checkbox" id="toggle-search">
 <label class="toggle-button overlay" for="toggle-drawer"></label>
 
-<header class="header">
-	{{ partial "header" . }}
-</header>
+{{ partial "header" . }}
 
 <main class="main">
 	<div class="drawer">
@@ -40,17 +38,7 @@
 				<a href="http://github.com/digitalcraftsman/hugo-material-docs" target="_blank">Material</a> theme.
 			</aside>-->
 
-			<aside class="copyright" role="note">
-				{{ with .Site.Params.copyright }}
-				&copy; {{ now.Format "2006" }} YugaByte Inc. All rights reserved. 
-				<!--<a href="http://www.yugabyte.com/privacy" target="_blank">Privacy Policy</a> ·
-				<a href="http://www.yugabyte.com/terms" target="_blank">Terms of Use</a>-->
-				<br>
-				Apache®, Apache Cassandra®, are either registered trademarks or trademarks of the Apache Software Foundation in the United States and/or other countries. No endorsement by The Apache Software Foundation is implied by the use of these marks.
-				<br>
-      			Redis®, and the Redis logo are the trademarks of Salvatore Sanfilippo in the U.S. and other countries. No endorsement by Redis is implied by the use of these marks.
-				{{ end }}
-			</aside>		
+			{{ partial "pagination" . }}
 			
 			<footer class="footer">
 				{{ partial "footer" . }}

@@ -3,17 +3,6 @@ title: Simple Expressions
 summary: Columns, constants, and null.
 toc: false
 ---
-<style>
-table {
-  float: left;
-}
-#psyn {
-  text-indent: 50px;
-}
-#ptodo {
-  color: red
-}
-</style>
 
 Simple expression can be either a column, a constant, or NULL.
 
