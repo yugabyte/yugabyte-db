@@ -8,19 +8,20 @@ Vagrant.configure(2) do |config|
     # Provision the VM
     config.vm.provision "shell", inline: <<-SHELL
         # Setup environment
-        export PG_VERSION=9.6
-        export PG_VERSION_NODOT=96
-        export PG_PACKAGE=pgdg-centos${PG_VERSION_NODOT?}-${PG_VERSION?}-3.noarch.rpm
-        export PG_PATH=$PATH:/usr/pgsql-${PG_VERSION?}/bin
+        echo 'export PG_VERSION=9.6' >> /etc/bashrc
+        echo 'export PG_VERSION_NODOT=96' >> /etc/bashrc
+        echo 'export PG_PACKAGE=pgdg-centos${PG_VERSION_NODOT?}-${PG_VERSION?}-3.noarch.rpm' >> /etc/bashrc
+        echo 'export PG_TESTING=' >> /etc/bashrc
+        echo 'export PATH=$PATH:/usr/pgsql-${PG_VERSION?}/bin' >> /etc/bashrc
+        source /etc/bashrc
 
         # Install PostgreSQL
-        rpm -ivh http://yum.postgresql.org/${PG_VERSION?}/redhat/rhel-6-x86_64/${PG_PACKAGE?}
+        rpm -ivh http://yum.postgresql.org/${PG_TESTING?}${PG_VERSION?}/redhat/rhel-6-x86_64/${PG_PACKAGE?}
         yum install -y postgresql${PG_VERSION_NODOT?}-server
 
         # Compile & install pgaudit
-        cd /
         yum install -y postgresql${PG_VERSION_NODOT?}-devel gcc openssl-devel
-        bash -c "export PATH='${PG_PATH?}' && make -C /pgaudit install USE_PGXS=1"
+        make -C /pgaudit install USE_PGXS=1
 
         # Create PostgreSQL cluster
         sudo -u postgres /usr/pgsql-${PG_VERSION?}/bin/initdb -A trust -k /var/lib/pgsql/${PG_VERSION?}/data
@@ -29,7 +30,7 @@ Vagrant.configure(2) do |config|
         sudo -u postgres psql -Xc 'create user vagrant superuser' postgres
 
         # Test pgaudit
-        sudo -u vagrant bash -c "export PATH='${PG_PATH?}' && make -C /pgaudit installcheck USE_PGXS=1"
+        sudo -u vagrant bash -cl 'make -C /pgaudit installcheck USE_PGXS=1'
     SHELL
 
   # Don't share the default vagrant folder
