@@ -2086,8 +2086,13 @@ static bool
 hypo_can_return(hypoEntry *entry, Oid atttype, int i, char *amname)
 {
 	/* no amcanreturn entry, am does not handle IOS */
-	if (!OidIsValid(entry->amcanreturn))
+#if PG_VERSION_NUM >= 90600
+	if (entry->amcanreturn == NULL)
 		return false;
+#else
+	if (!RegProcedureIsValid(entry->amcanreturn))
+		return false;
+#endif
 
 	switch (entry->relam)
 	{
