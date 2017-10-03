@@ -329,8 +329,8 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 	entry->amoptionalkey = amroutine->amoptionalkey;
 	entry->amsearcharray = amroutine->amsearcharray;
 	entry->amsearchnulls = amroutine->amsearchnulls;
-	entry->amhasgettuple = OidIsValid(amroutine->amgettuple);
-	entry->amhasgetbitmap = OidIsValid(amroutine->amgetbitmap);
+	entry->amhasgettuple = (amroutine->amgettuple != NULL);
+	entry->amhasgetbitmap = (amroutine->amgetbitmap != NULL);
 	entry->amcanunique = amroutine->amcanunique;
 	entry->amcanmulticol = amroutine->amcanmulticol;
 	amoptions = amroutine->amoptions;
