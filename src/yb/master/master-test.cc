@@ -64,6 +64,7 @@ using std::make_shared;
 using std::shared_ptr;
 
 DECLARE_string(callhome_collection_level);
+DECLARE_string(callhome_tag);
 DECLARE_string(callhome_url);
 DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
 
@@ -227,6 +228,7 @@ TEST_F(MasterTest, TestShutdownWithoutStart) {
 TEST_F(MasterTest, TestCallHome) {
   string json;
   CountDownLatch latch(1);
+  const char* tag_value = "callhome-test";
 
   auto webserver_dir = GetTestPath("webserver-docroot");
   CHECK_OK(env_->CreateDir(webserver_dir));
@@ -242,13 +244,14 @@ TEST_F(MasterTest, TestCallHome) {
   ASSERT_EQ(addrs.size(), 1);
   auto addr = addrs[0];
 
-  auto handler = [&json, &latch](const Webserver::WebRequest& req, std::stringstream* output) {
+  auto handler = [&json, &latch] (const Webserver::WebRequest& req, std::stringstream* output) {
     ASSERT_EQ(req.request_method, "POST");
     ASSERT_EQ(json, req.post_data);
     latch.CountDown();
   };
 
   webserver.RegisterPathHandler("/callhome", "callhome", handler);
+  FLAGS_callhome_tag = tag_value;
   FLAGS_callhome_url = Substitute("http://$0/callhome", ToString(addr));
 
   std::unordered_map<string, vector<string>> collection_levels;
@@ -272,8 +275,16 @@ TEST_F(MasterTest, TestCallHome) {
       LOG(INFO) << "Checking json has field: " << field;
       ASSERT_TRUE(reader.root()->HasMember(field.c_str()));
     }
+    LOG(INFO) << "Checking json has field: tag";
+    ASSERT_TRUE(reader.root()->HasMember("tag"));
+
+    string received_tag;
+    ASSERT_OK(reader.ExtractString(reader.root(), "tag", &received_tag));
+    ASSERT_EQ(received_tag, tag_value);
+
     auto count = reader.root()->MemberEnd() - reader.root()->MemberBegin();
-    ASSERT_EQ(count, collection_level.second.size());
+    // The number of fields should be equal to the number of collectors plus one for the tag field.
+    ASSERT_EQ(count, collection_level.second.size() + 1);
 
     call_home.SendData(json);
     ASSERT_TRUE(latch.WaitFor(MonoDelta::FromSeconds(10)));

@@ -436,8 +436,6 @@ output_separator() {
   echo
 }
 
-
-
 cmd=""
 num_masters=3
 num_tservers=3
@@ -540,6 +538,7 @@ master_optional_params=""
 if [[ -n "$replication_factor" ]]; then
   master_optional_params+=" --replication_factor $replication_factor"
 fi
+master_optional_params+=" --callhome_enabled=false"
 
 tserver_optional_params=""
 if [[ -n "$yb_num_shards_per_tserver" ]]; then
@@ -549,6 +548,7 @@ if [[ -n "$tserver_db_block_cache_size_bytes" ]]; then
   tserver_optional_params+=" --db_block_cache_size_bytes $tserver_db_block_cache_size_bytes"
 fi
 tserver_optional_params+=" --use_cassandra_authentication=$use_cassandra_authentication"
+tserver_optional_params+=" --callhome_enabled=false"
 
 master_binary="$build_root/bin/yb-master"
 ensure_binary_exists "$master_binary"

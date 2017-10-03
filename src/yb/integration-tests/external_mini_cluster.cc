@@ -1285,6 +1285,9 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   // Then all the flags coming from the minicluster framework.
   argv.insert(argv.end(), user_flags.begin(), user_flags.end());
 
+  // Disable callhome.
+  argv.push_back("--callhome_enabled=false");
+
   // Enable metrics logging.
   // Even though we set -logtostderr down below, metrics logs end up being written
   // based on -log_dir. So, we have to set that too.
