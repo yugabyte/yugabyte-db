@@ -779,6 +779,7 @@ SET client_min_messages = 'warning';
 
 ALTER ROLE :current_user RESET pgaudit.log;
 ALTER ROLE :current_user RESET pgaudit.log_catalog;
+ALTER ROLE :current_user RESET pgaudit.log_client;
 ALTER ROLE :current_user RESET pgaudit.log_level;
 ALTER ROLE :current_user RESET pgaudit.log_parameter;
 ALTER ROLE :current_user RESET pgaudit.log_relation;
