@@ -1,3 +1,15 @@
+3.1.0
+-- Add support for index & foreign key inheritance in native partitioning for PostgreSQL 10. This is done using a template table that is automatically created in the same schema the pg_partman was installed to. The template table is based off the given parent and any indexes or foreign keys that you would like to be created on child tables can be created on this table. Note that the initial child tables created when create_parent() is called will not have these indexes or FKs unless you run reapply_indexes.py and/or reapply_foreign_keys.py after creating them on the template table. You can also have the initial child tables contain indexes/FKs if you premake the template table and provide it as a parameter to create_parent().
+    -- Updated reapply_indexes.py and reapply_foreign_keys.py scripts to handle template table feature for native partitioning
+    -- IMPORTANT NOTE: This is hopefully only a temporary option until there is built in support for applying these table properties natively. Once native support for these features is added, this template table will be phased out quickly.
+
+-- Retention policy will no longer allow the final child table of a partition set to be dropped. pg_partman always requires at least one child table to work properly. If retention attempts to remove the final child table in a partition set, a WARNING is issued but the child table is not dropped. (Github Issue #189)
+
+-- Fixed bug in partition trigger function creation for time-based partitioning where the target tables defined in the trigger code itself may not match the child tables that exist. This could occur only if the create_function_time() function was called independently of normal maintenance and the child tables were behind "now" as of when the function was ran. The target tables in the function are now based on the data that exists in the table as long as infinite_time_partitions is not set. If that is set, the tables defined in the trigger are always based on the current time as of when the function itself is run (same behavior as before). This function is rarely called independently and this is not an issue that would occur with normal maintenance runs since the partition trigger function is never rewritten unless a new child table is actually created. (Github Issue #176)
+
+-- The show_partition_name() function now returns the child table schema as a separate field.
+
+
 3.0.2
 -- Allow maintenance background worker to restart itself if it crashes. Previously if the main background worker process exited for any reason, the only way to restart it was to restart the whole postgresql instance. Now it will try to restart itself every 10 minutes. A warning will be issued into the logs if this event occurs. (Github Issue #180).
     -- NOTE: You will have to restart the PostgreSQL cluster to load the new library with the auto-restart option.

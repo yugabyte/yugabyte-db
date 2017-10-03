@@ -37,6 +37,7 @@ v_sub_control           text;
 v_sub_partition_type    text; 
 v_sub_id_max            bigint;
 v_sub_id_min            bigint;
+v_template_table        text;
 v_unlogged              char;
 
 BEGIN
@@ -49,11 +50,13 @@ SELECT control
     , partition_interval
     , inherit_fk
     , jobmon
+    , template_table
 INTO v_control
     , v_partition_type
     , v_partition_interval
     , v_inherit_fk
     , v_jobmon
+    , v_template_table
 FROM @extschema@.part_config
 WHERE parent_table = p_parent_table;
 
@@ -138,7 +141,8 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
     FROM @extschema@.part_config_sub 
     WHERE sub_parent = p_parent_table;
     IF v_sub_partition_type = 'native' THEN
-        -- Cannot include indexes since they cannot exist on native parents
+        -- NOTE: Need to handle this differently when index inheritance is supported natively
+        -- Cannot include indexes since they cannot exist on native parents.
         v_sql := v_sql || format(') PARTITION BY RANGE (%I) ', v_sub_control);
     ELSE
         v_sql := v_sql || format(' INCLUDING INDEXES) ', v_sub_control);
@@ -160,6 +164,10 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
     END IF;
 
     IF v_partition_type = 'native' THEN
+
+        IF v_template_table IS NOT NULL THEN
+            PERFORM @extschema@.inherit_template_properties(p_parent_table, v_parent_schema, v_partition_name);
+        END IF;
 
         EXECUTE format('ALTER TABLE %I.%I ATTACH PARTITION %I.%I FOR VALUES FROM (%L) TO (%L)'
             , v_parent_schema
@@ -220,6 +228,7 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
             , sub_infinite_time_partitions
             , sub_jobmon
             , sub_trigger_exception_handling
+            , sub_template_table
         FROM @extschema@.part_config_sub
         WHERE sub_parent = p_parent_table
     LOOP
@@ -236,6 +245,7 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
                 , p_automatic_maintenance := %L
                 , p_inherit_fk := %L
                 , p_epoch := %L
+                , p_template_table := %L
                 , p_jobmon := %L )'
             , v_parent_schema||'.'||v_partition_name
             , v_row.sub_control
@@ -246,6 +256,7 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
             , v_row.sub_automatic_maintenance
             , v_row.sub_inherit_fk
             , v_row.sub_epoch
+            , v_row.sub_template_table
             , v_row.sub_jobmon);
         EXECUTE v_sql;
 

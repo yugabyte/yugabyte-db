@@ -2,7 +2,7 @@
 
 import argparse, psycopg2, sys
 
-partman_version = "2.0.0"
+partman_version = "3.1.0"
 
 parser = argparse.ArgumentParser(description="This script will reapply the foreign keys on a parent table to all child tables in an inheritance set. Any existing foreign keys on child tables will be dropped in order to match the parent. A commit is done after each foreign key application to avoid excessive contention. Note that this script can work on any inheritance set, not just partition sets managed by pg_partman.")
 parser.add_argument('-p','--parent', help="Parent table of an already created partition set. (Required)")
@@ -15,10 +15,16 @@ parser.add_argument('--version', action="store_true", help="Print out the minimu
 args = parser.parse_args()
 
 
-def apply_foreign_keys(conn, child_tables):
+def apply_foreign_keys(conn, child_tables, partman_schema):
     if not args.quiet:
         print("Applying foreign keys to child tables...")
     cur = conn.cursor()
+
+    # Get template table if exists to use its indexes
+    sql = "SELECT template_table FROM " + partman_schema + ".part_config WHERE parent_table = %s AND partition_type = 'native'"
+    cur.execute(sql, [args.parent])
+    template_table = cur.fetchone()
+
     for c in child_tables:
         sql = """SELECT pg_get_constraintdef(con.oid) AS constraint_def
                     FROM pg_catalog.pg_constraint con
@@ -27,9 +33,15 @@ def apply_foreign_keys(conn, child_tables):
                     WHERE n.nspname ||'.'|| c.relname = %s
                     AND contype = 'f'""";
 
-        if args.debug:
-            print(cur.mogrify(sql, [args.parent]))
-        cur.execute(sql, [args.parent])
+        if template_table == None:
+            if args.debug:
+                print(cur.mogrify(sql, [args.parent]))
+            cur.execute(sql, [args.parent])
+        else:
+            if args.debug:
+                print(cur.mogrify(sql, [template_table]))
+            cur.execute(sql, [template_table])
+
         parent_fkeys = cur.fetchall()
         for pfk in parent_fkeys:
             alter_sql = "ALTER TABLE \"" + c[0] + "\".\"" + c[1] + "\" ADD " + pfk[0]
@@ -125,7 +137,7 @@ if __name__ == "__main__":
     child_tables = get_child_tables(conn, partman_schema)
 
     drop_foreign_keys(conn, child_tables)
-    apply_foreign_keys(conn, child_tables)
+    apply_foreign_keys(conn, child_tables, partman_schema)
 
     if not args.quiet:
         print("Done!")

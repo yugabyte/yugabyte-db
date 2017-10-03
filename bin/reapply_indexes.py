@@ -3,7 +3,7 @@
 import argparse, psycopg2, re, sys, time
 from multiprocessing import Process
 
-partman_version = "2.3.0"
+partman_version = "3.1.0"
 
 parser = argparse.ArgumentParser(description="Script for reapplying indexes on child tables in a partition set to match the parent table. Any indexes that currently exist on the children and match the definition on the parent will be left as is. There is an option to recreate matching as well indexes if desired, as well as the primary key. Indexes that do not exist on the parent will be dropped. Commits are done after each index is dropped/created to help prevent long running transactions & locks.", epilog="NOTE: New index names are made based off the child table name & columns used, so their naming may differ from the name given on the parent. This is done to allow the tool to account for long or duplicate index names. If an index name would be duplicated, an incremental counter is added on to the end of the index name to allow it to be created. Use the --dryrun option first to see what it will do and which names may cause dupes to be handled like this.")
 parser.add_argument('-p', '--parent', help="Parent table of an already created partition set. (Required)")
@@ -192,8 +192,14 @@ def get_child_index_list(conn, child_schemaname, child_tablename):
     return child_index_list
 
 
-def get_parent_index_list(conn):
+def get_parent_index_list(conn, partman_schema):
     cur = conn.cursor()
+
+    # Get template table if exists to use its indexes
+    sql = "SELECT template_table FROM " + partman_schema + ".part_config WHERE parent_table = %s AND partition_type = 'native'"
+    cur.execute(sql, [args.parent])
+    template_table = cur.fetchone()
+
     sql = """
             WITH parent_info AS (
                 SELECT c1.oid FROM pg_catalog.pg_class c1
@@ -215,7 +221,10 @@ def get_parent_index_list(conn):
             JOIN parent_info pi ON i.indrelid = pi.oid
             WHERE i.indisvalid
             ORDER BY 1"""
-    cur.execute(sql, [args.parent])
+    if template_table == None:
+        cur.execute(sql, [args.parent])
+    else:
+        cur.execute(sql, [template_table[0]])
     parent_index_list = cur.fetchall()
     return parent_index_list
 
@@ -288,7 +297,7 @@ if __name__ == "__main__":
 
     partman_schema = get_partman_schema(conn)
     quoted_parent_table = get_quoted_parent_table(conn)
-    parent_index_list = get_parent_index_list(conn)
+    parent_index_list = get_parent_index_list(conn, partman_schema)
     child_list = get_children(conn, partman_schema)
     close_conn(conn)
 

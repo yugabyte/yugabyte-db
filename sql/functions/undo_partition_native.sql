@@ -37,6 +37,10 @@ v_step_id               bigint;
 v_sub_count             int;
 v_target_schema         text;
 v_target_tablename      text;
+v_template_schema       text;
+v_template_siblings     int;
+v_template_table        text;
+v_template_tablename    text;
 v_total                 bigint := 0;
 v_undo_count            int := 0;
 
@@ -64,10 +68,12 @@ SELECT partition_interval::text
     , control
     , jobmon
     , epoch
+    , template_table
 INTO v_partition_interval
     , v_control
     , v_jobmon
     , v_epoch
+    , v_template_table
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table 
 AND partition_type = 'native';
@@ -130,8 +136,7 @@ END IF;
 EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
 
 -- Check if any child tables are themselves partitioned or part of an inheritance tree. Prevent undo at this level if so.
--- Need to either lock child tables at all levels or handle the proper removal of triggers on all child tables first 
---  before multi-level undo can be performed safely.
+-- Need to lock child tables at all levels before multi-level undo can be performed safely.
 FOR v_row IN 
     SELECT partition_schemaname, partition_tablename FROM @extschema@.show_partitions(p_parent_table)
 LOOP
@@ -352,8 +357,25 @@ LOOP
 END LOOP outer_child_loop;
 
 SELECT partition_tablename INTO v_child_table FROM @extschema@.show_partitions(p_parent_table, 'ASC') LIMIT 1;
+
 IF v_child_table IS NULL THEN
     DELETE FROM @extschema@.part_config WHERE parent_table = p_parent_table;
+    
+    -- Check if any other config entries still have this template table and don't remove if so
+    -- Allows other sibling/parent tables to still keep using in case entire partition set isn't being undone
+    SELECT count(*) INTO v_template_siblings FROM @extschema@.part_config WHERE template_table = v_template_table;
+
+    SELECT n.nspname, c.relname
+    INTO v_template_schema, v_template_tablename
+    FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+    WHERE n.nspname = split_part(v_template_table, '.', 1)::name
+    AND c.relname = split_part(v_template_table, '.', 2)::name;
+
+    IF v_template_siblings = 0 AND v_template_tablename IS NOT NULL THEN
+        EXECUTE format('DROP TABLE IF EXISTS %I.%I', v_template_schema, v_template_tablename);
+    END IF;
+
     IF v_jobmon_schema IS NOT NULL THEN
         v_step_id := add_step(v_job_id, 'Removing config from pg_partman');
         PERFORM update_step(v_step_id, 'OK', 'Done');

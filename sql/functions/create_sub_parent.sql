@@ -43,6 +43,7 @@ v_row_last_part         record;
 v_run_maint             boolean;
 v_sql                   text;
 v_success               boolean := false;
+v_template_table        text;
 v_top_type              text;
 
 BEGIN
@@ -70,8 +71,8 @@ IF v_parent_relkind = 'p' AND p_type <> 'native' THEN
     RAISE EXCEPTION 'Cannot create a non-native sub-partition of a native parent table. All levels of a sub-partition set must be either all native or all non-native';
 END IF;
  
-SELECT partition_type, partition_interval, control, automatic_maintenance, epoch
-INTO v_parent_type, v_parent_interval, v_control, v_run_maint, v_parent_epoch 
+SELECT partition_type, partition_interval, control, automatic_maintenance, epoch, template_table
+INTO v_parent_type, v_parent_interval, v_control, v_run_maint, v_parent_epoch, v_template_table
 FROM @extschema@.part_config 
 WHERE parent_table = p_top_parent;
 IF v_parent_type IS NULL THEN
@@ -97,6 +98,7 @@ SELECT current_setting('search_path') INTO v_old_search_path;
 EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
 
 -- Add the given parameters to the part_config_sub table first in case create_partition_* functions are called below 
+-- All sub-partition parents must use the same template table for native partitioning, so ensure the one from the given parent is obtained and used.
 INSERT INTO @extschema@.part_config_sub (
     sub_parent
     , sub_control
@@ -109,7 +111,8 @@ INSERT INTO @extschema@.part_config_sub (
     , sub_epoch
     , sub_upsert
     , sub_jobmon
-    , sub_trigger_return_null)
+    , sub_trigger_return_null
+    , sub_template_table)
 VALUES (
     p_top_parent
     , p_control
@@ -122,7 +125,8 @@ VALUES (
     , p_epoch
     , p_upsert
     , p_jobmon
-    , p_trigger_return_null);
+    , p_trigger_return_null
+    , v_template_table);
 
 FOR v_row IN 
     -- Loop through all current children to turn them into partitioned tables
@@ -236,6 +240,7 @@ LOOP
                 , p_epoch := %L
                 , p_upsert := %L
                 , p_trigger_return_null := %L
+                , p_template_table := %L
                 , p_jobmon := %L
                 , p_debug := %L )'
             , v_row.child_schema||'.'||v_row.child_tablename
@@ -250,6 +255,7 @@ LOOP
             , p_epoch
             , p_upsert
             , p_trigger_return_null
+            , v_template_table
             , p_jobmon
             , p_debug);
         EXECUTE v_sql;
@@ -265,4 +271,5 @@ RETURN v_success;
 
 END
 $$;
+
 

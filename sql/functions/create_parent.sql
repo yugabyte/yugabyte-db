@@ -11,6 +11,7 @@ CREATE FUNCTION create_parent(
     , p_epoch text DEFAULT 'none' 
     , p_upsert text DEFAULT ''
     , p_trigger_return_null boolean DEFAULT true
+    , p_template_table text DEFAULT NULL
     , p_jobmon boolean DEFAULT true
     , p_debug boolean DEFAULT false) 
 RETURNS boolean 
@@ -59,6 +60,8 @@ v_step_id                       bigint;
 v_step_overflow_id              bigint;
 v_sub_parent                    text;
 v_success                       boolean := false;
+v_template_schema               text;
+v_template_tablename            text;
 v_time_interval                 interval;
 v_top_datetime_string           text;
 v_top_parent_schema             text := split_part(p_parent_table, '.', 1);
@@ -154,6 +157,22 @@ IF p_type = 'native' THEN
         RAISE EXCEPTION 'Only date/time or integer types are allowed for the control column with native partitioning.';
     END IF;
 
+    -- Table to handle properties not natively inherited yet (indexes, fks, etc)
+    IF p_template_table IS NULL THEN
+        v_template_schema := '@extschema@';
+        v_template_tablename := @extschema@.check_name_length('template_'||v_parent_schema||'_'||v_parent_tablename);
+        EXECUTE format('CREATE TABLE IF NOT EXISTS %I.%I (LIKE %I.%I)', '@extschema@', v_template_tablename, v_parent_schema, v_parent_tablename);
+    ELSE
+        SELECT n.nspname, c.relname INTO v_template_schema, v_template_tablename
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+        WHERE n.nspname = split_part(p_template_table, '.', 1)::name
+        AND c.relname = split_part(p_template_table, '.', 2)::name;
+            IF v_template_tablename IS NULL THEN
+                RAISE EXCEPTION 'Unable to find given template table in system catalogs (%). Please create template table first or leave parameter NULL to have a default one created for you.', p_parent_table;
+            END IF;
+    END IF;
+
 ELSE
 
     IF current_setting('server_version_num')::int >= 100000 THEN
@@ -221,6 +240,7 @@ FOR v_row IN
         , sub_trigger_exception_handling
         , sub_upsert
         , sub_trigger_return_null
+        , sub_template_table
     FROM @extschema@.part_config_sub a
     JOIN sibling_children b on a.sub_parent = b.tablename LIMIT 1
 LOOP
@@ -244,7 +264,8 @@ LOOP
         , sub_jobmon
         , sub_trigger_exception_handling
         , sub_upsert
-        , sub_trigger_return_null)
+        , sub_trigger_return_null
+        , sub_template_table)
     VALUES (
         p_parent_table
         , v_row.sub_partition_type
@@ -265,7 +286,9 @@ LOOP
         , v_row.sub_jobmon
         , v_row.sub_trigger_exception_handling
         , v_row.sub_upsert
-        , v_row.sub_trigger_return_null);
+        , v_row.sub_trigger_return_null
+        , v_row.sub_template_table);
+    
 END LOOP;
 
 IF v_control_type = 'time' OR (v_control_type = 'id' AND p_epoch <> 'none') THEN
@@ -375,7 +398,8 @@ IF v_control_type = 'time' OR (v_control_type = 'id' AND p_epoch <> 'none') THEN
         , inherit_fk
         , jobmon 
         , upsert
-        , trigger_return_null)
+        , trigger_return_null
+        , template_table)
     VALUES (
         p_parent_table
         , p_type
@@ -389,7 +413,8 @@ IF v_control_type = 'time' OR (v_control_type = 'id' AND p_epoch <> 'none') THEN
         , p_inherit_fk
         , p_jobmon
         , p_upsert
-        , p_trigger_return_null);
+        , p_trigger_return_null
+        , v_template_schema||'.'||v_template_tablename); 
 
     v_last_partition_created := @extschema@.create_partition_time(p_parent_table, v_partition_time_array, false);
 
@@ -523,7 +548,8 @@ IF v_control_type = 'id' AND p_epoch = 'none' THEN
         , inherit_fk
         , jobmon
         , upsert
-        , trigger_return_null) 
+        , trigger_return_null
+        , template_table)
     VALUES (
         p_parent_table
         , p_type
@@ -535,7 +561,8 @@ IF v_control_type = 'id' AND p_epoch = 'none' THEN
         , p_inherit_fk
         , p_jobmon
         , p_upsert
-        , p_trigger_return_null);
+        , p_trigger_return_null
+        , v_template_schema||'.'||v_template_tablename); 
 
     v_last_partition_created := @extschema@.create_partition_id(p_parent_table, v_partition_id_array, false);
     IF v_last_partition_created = false THEN
@@ -652,5 +679,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

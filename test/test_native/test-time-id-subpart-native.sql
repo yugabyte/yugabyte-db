@@ -1,5 +1,6 @@
 -- ########## TIME PARENT / ID SUBPARENT NATIVE TESTS ##########
--- Revisit when default partition is supported. Sections commented out below.
+-- Leaving pk/fk test out of this one so it can be used to test the native support in 11+
+
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
 

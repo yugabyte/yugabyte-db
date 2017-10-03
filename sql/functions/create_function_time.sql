@@ -16,6 +16,7 @@ v_datetime_string               text;
 v_epoch                         text;
 v_final_partition_timestamp     timestamptz;
 v_function_name                 text;
+v_infinite_time_partitions      boolean;
 v_job_id                        bigint;
 v_jobmon                        boolean;
 v_jobmon_schema                 text;
@@ -31,9 +32,11 @@ v_partition_interval            interval;
 v_prev_partition_name           text;
 v_prev_partition_timestamp      timestamptz;
 v_relkind                       char;
+v_row_max_time                  record;
 v_step_id                       bigint;
 v_trig_func                     text;
 v_optimize_trigger              int;
+v_table_exists                  boolean;
 v_trigger_exception_handling    boolean;
 v_trigger_return_null           boolean;
 v_type                          text;
@@ -54,6 +57,7 @@ SELECT partition_type
     , trigger_exception_handling
     , upsert
     , trigger_return_null
+    , infinite_time_partitions
 INTO v_type
     , v_partition_interval
     , v_epoch
@@ -64,6 +68,7 @@ INTO v_type
     , v_trigger_exception_handling
     , v_upsert
     , v_trigger_return_null
+    , v_infinite_time_partitions
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
 AND (partition_type = 'partman' OR partition_type = 'time-custom');
@@ -111,6 +116,37 @@ IF v_jobmon_schema IS NOT NULL THEN
     v_step_id := add_step(v_job_id, format('Creating partition function for table %s', p_parent_table));
 END IF;
 
+IF v_infinite_time_partitions IS TRUE THEN
+    -- Set it to "now" to line up with maintenance always making new partitions despite no new data
+    -- Also, don't need to bother getting the max value in the partitions
+    v_current_partition_timestamp := CURRENT_TIMESTAMP;
+ELSE 
+
+    v_partition_expression := CASE
+        WHEN v_epoch = 'seconds' THEN format('to_timestamp(%I)', v_control)
+        WHEN v_epoch = 'milliseconds' THEN format('to_timestamp((%I/1000)::float)', v_control)
+        ELSE format('%I', v_control)
+    END;
+
+    FOR v_row_max_time IN
+        SELECT partition_schemaname, partition_tablename FROM @extschema@.show_partitions(p_parent_table, 'DESC')
+    LOOP
+        EXECUTE format('SELECT max(%s)::text FROM %I.%I'
+                            , v_partition_expression
+                            , v_row_max_time.partition_schemaname
+                            , v_row_max_time.partition_tablename
+                        ) INTO v_current_partition_timestamp;
+
+        IF v_current_partition_timestamp IS NOT NULL THEN
+            EXIT;
+        END IF;
+    END LOOP;
+    IF v_current_partition_timestamp IS NULL THEN
+        v_current_partition_timestamp := CURRENT_TIMESTAMP;
+    END IF;
+END IF; -- end infinite time check
+
+-- Reset for use in trigger function
 v_partition_expression := CASE
     WHEN v_epoch = 'seconds' THEN format('to_timestamp(NEW.%I)', v_control)
     WHEN v_epoch = 'milliseconds' THEN format('to_timestamp((NEW.%I/1000)::float)', v_control)
@@ -129,38 +165,31 @@ IF v_type = 'partman' THEN
     , v_parent_schema
     , v_function_name);
 
+    SELECT suffix_timestamp, partition_table, table_exists
+    INTO v_current_partition_timestamp, v_current_partition_name, v_table_exists
+    FROM @extschema@.show_partition_name(p_parent_table, v_current_partition_timestamp::text);
+
     CASE
         WHEN v_partition_interval = '15 mins' THEN
             v_trig_func := v_trig_func||format('v_partition_timestamp := date_trunc(''hour'', %s) +
                 ''15min''::interval * floor(date_part(''minute'', %1$s) / 15.0);' , v_partition_expression);
-            v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP) +
-                '15min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 15.0);
         WHEN v_partition_interval = '30 mins' THEN
             v_trig_func := v_trig_func||format('v_partition_timestamp := date_trunc(''hour'', %s) +
                 ''30min''::interval * floor(date_part(''minute'', %1$s) / 30.0);' , v_partition_expression);
-            v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP) +
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0);
         WHEN v_partition_interval = '1 hour' THEN
             v_trig_func := v_trig_func||format('v_partition_timestamp := date_trunc(''hour'', %s);', v_partition_expression);
-            v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP);
-         WHEN v_partition_interval = '1 day' THEN
+        WHEN v_partition_interval = '1 day' THEN
             v_trig_func := v_trig_func||format('v_partition_timestamp := date_trunc(''day'', %s);', v_partition_expression);
-            v_current_partition_timestamp := date_trunc('day', CURRENT_TIMESTAMP);
         WHEN v_partition_interval = '1 week' THEN
             v_trig_func := v_trig_func||format('v_partition_timestamp := date_trunc(''week'', %s);', v_partition_expression);
-            v_current_partition_timestamp := date_trunc('week', CURRENT_TIMESTAMP);
         WHEN v_partition_interval = '1 month' THEN
             v_trig_func := v_trig_func||format('v_partition_timestamp := date_trunc(''month'', %s);', v_partition_expression);
-            v_current_partition_timestamp := date_trunc('month', CURRENT_TIMESTAMP);
         WHEN v_partition_interval = '3 months' THEN
             v_trig_func := v_trig_func||format('v_partition_timestamp := date_trunc(''quarter'', %s);', v_partition_expression);
-            v_current_partition_timestamp := date_trunc('quarter', CURRENT_TIMESTAMP);
         WHEN v_partition_interval = '1 year' THEN
             v_trig_func := v_trig_func||format('v_partition_timestamp := date_trunc(''year'', %s);', v_partition_expression);
-            v_current_partition_timestamp := date_trunc('year', CURRENT_TIMESTAMP);
     END CASE;
 
-    v_current_partition_name := @extschema@.check_name_length(v_parent_tablename, to_char(v_current_partition_timestamp, v_datetime_string), TRUE); 
     v_next_partition_timestamp := v_current_partition_timestamp + v_partition_interval::interval;
 
     v_trig_func := v_trig_func ||format('
@@ -169,8 +198,7 @@ IF v_type = 'partman' THEN
             , v_current_partition_timestamp
             , v_next_partition_timestamp);
 
-    SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema::name AND tablename = v_current_partition_name::name;
-    IF v_count > 0 THEN
+    IF v_table_exists THEN
         v_trig_func := v_trig_func || format('
             INSERT INTO %I.%I VALUES (NEW.*) %s; ', v_parent_schema, v_current_partition_name, v_upsert);
     ELSE
@@ -347,5 +375,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

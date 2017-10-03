@@ -10,6 +10,7 @@ ex_message                  text;
 v_adv_lock                  boolean;
 v_control                   text;
 v_control_type              text;
+v_count                     int;
 v_drop_count                int := 0;
 v_index                     record;
 v_job_id                    bigint;
@@ -145,6 +146,14 @@ LOOP
 
     -- Add one interval since partition names contain the start of the constraint period
     IF v_retention <= (v_max - (v_partition_id + v_partition_interval)) THEN
+
+        -- Do not allow final partition to be dropped
+        SELECT count(*) INTO v_count FROM @extschema@.show_partitions(p_parent_table);
+        IF v_count = 1 THEN
+            RAISE WARNING 'Attempt to drop final partition in partition set % as part of retention policy. Advise reviewing retention policy and/or data entry into the partition set.', p_parent_table;
+            CONTINUE;
+        END IF;
+
         -- Only create a jobmon entry if there's actual retention work done
         IF v_jobmon_schema IS NOT NULL AND v_job_id IS NULL THEN
             v_job_id := add_job(format('PARTMAN DROP ID PARTITION: %s', p_parent_table));

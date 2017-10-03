@@ -46,6 +46,7 @@ v_sub_parent                    text;
 v_sub_partition_type            text;
 v_sub_timestamp_max             timestamptz;
 v_sub_timestamp_min             timestamptz;
+v_template_table                text;
 v_trunc_value                   text;
 v_time                          timestamptz;
 v_partition_type                          text;
@@ -57,13 +58,14 @@ BEGIN
  * Function to create a child table in a time-based partition set
  */
 
-SELECT c.partition_type
-    , c.control
-    , c.partition_interval
-    , c.epoch
-    , c.inherit_fk
-    , c.jobmon
-    , c.datetime_string
+SELECT partition_type
+    , control
+    , partition_interval
+    , epoch
+    , inherit_fk
+    , jobmon
+    , datetime_string
+    , template_table
 INTO v_partition_type
     , v_control
     , v_partition_interval
@@ -71,7 +73,8 @@ INTO v_partition_type
     , v_inherit_fk
     , v_jobmon
     , v_datetime_string
-FROM @extschema@.part_config c
+    , v_template_table
+FROM @extschema@.part_config
 WHERE parent_table = p_parent_table;
 
 IF NOT FOUND THEN
@@ -183,6 +186,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     FROM @extschema@.part_config_sub 
     WHERE sub_parent = p_parent_table;
     IF v_sub_partition_type = 'native' THEN
+        -- NOTE: Need to handle this differently when index inheritance is supported natively
         -- Cannot include indexes since they cannot exist on native parents
         v_sql := v_sql || format(') PARTITION BY RANGE (%I) ', v_sub_control);
     ELSE
@@ -207,6 +211,11 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     END IF;
 
     IF v_partition_type = 'native' THEN
+
+        IF v_template_table IS NOT NULL THEN
+            PERFORM @extschema@.inherit_template_properties(p_parent_table, v_parent_schema, v_partition_name);
+        END IF;
+
         IF v_epoch = 'none' THEN
             -- Attach with normal, time-based values for native constraint
             EXECUTE format('ALTER TABLE %I.%I ATTACH PARTITION %I.%I FOR VALUES FROM (%L) TO (%L)'
@@ -324,6 +333,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
             , sub_infinite_time_partitions
             , sub_jobmon
             , sub_trigger_exception_handling
+            , sub_template_table
         FROM @extschema@.part_config_sub
         WHERE sub_parent = p_parent_table
     LOOP
@@ -340,6 +350,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
                 , p_automatic_maintenance := %L
                 , p_inherit_fk := %L
                 , p_epoch := %L
+                , p_template_table := %L
                 , p_jobmon := %L )'
             , v_parent_schema||'.'||v_partition_name
             , v_row.sub_control
@@ -350,6 +361,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
             , v_row.sub_automatic_maintenance
             , v_row.sub_inherit_fk
             , v_row.sub_epoch
+            , v_row.sub_template_table
             , v_row.sub_jobmon);
         IF p_debug THEN
             RAISE NOTICE 'create_partition_time (create_parent loop): %', v_sql;

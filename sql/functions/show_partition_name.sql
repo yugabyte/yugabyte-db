@@ -1,4 +1,4 @@
-CREATE FUNCTION show_partition_name(p_parent_table text, p_value text, OUT partition_table text, OUT suffix_timestamp timestamptz, OUT suffix_id bigint, OUT table_exists boolean) RETURNS record
+CREATE FUNCTION show_partition_name(p_parent_table text, p_value text, OUT partition_schema text, OUT partition_table text, OUT suffix_timestamp timestamptz, OUT suffix_id bigint, OUT table_exists boolean) RETURNS record
     LANGUAGE plpgsql STABLE
     AS $$
 DECLARE
@@ -48,6 +48,8 @@ IF v_parent_tablename IS NULL THEN
     RAISE EXCEPTION 'Parent table given does not exist (%)', p_parent_table;
 END IF;
 
+partition_schema := v_parent_schema;
+
 SELECT general_type INTO v_control_type FROM @extschema@.check_control_type(v_parent_schema, v_parent_tablename, v_control);
 
 IF ( (v_control_type = 'time') OR (v_control_type = 'id' AND v_epoch <> 'none') )
@@ -73,11 +75,12 @@ THEN
         WHEN v_partition_interval::interval = '1 year' THEN
             suffix_timestamp := date_trunc('year', p_value::timestamptz);
     END CASE;
-    partition_table := v_parent_schema||'.'||@extschema@.check_name_length(v_parent_tablename, to_char(suffix_timestamp, v_datetime_string), TRUE);
+    partition_schema := v_parent_schema;
+    partition_table := @extschema@.check_name_length(v_parent_tablename, to_char(suffix_timestamp, v_datetime_string), TRUE);
 
 ELSIF v_control_type = 'id' AND v_type <> 'time-custom' THEN
     suffix_id := (p_value::bigint - (p_value::bigint % v_partition_interval::bigint));
-    partition_table := v_parent_schema||'.'||@extschema@.check_name_length(v_parent_tablename, suffix_id::text, TRUE);
+    partition_table := @extschema@.check_name_length(v_parent_tablename, suffix_id::text, TRUE);
 
 ELSIF v_type = 'time-custom' THEN
 
@@ -112,14 +115,14 @@ ELSIF v_type = 'time-custom' THEN
             RAISE EXCEPTION 'Unable to determine a valid child table for the given parent table and value';
         END IF;
 
-        partition_table := v_parent_schema||'.'||@extschema@.check_name_length(v_parent_tablename, to_char(suffix_timestamp, v_datetime_string), TRUE);
+        partition_table := @extschema@.check_name_length(v_parent_tablename, to_char(suffix_timestamp, v_datetime_string), TRUE);
     END IF;
 END IF;
 
 SELECT tablename INTO v_child_exists
 FROM pg_catalog.pg_tables
-WHERE schemaname = split_part(partition_table, '.', 1)::name
-AND tablename = split_part(partition_table, '.', 2)::name;
+WHERE schemaname = partition_schema::name
+AND tablename = partition_table::name;
 
 IF v_child_exists IS NOT NULL THEN
     table_exists := true;
@@ -131,4 +134,5 @@ RETURN;
 
 END
 $$;
+
 

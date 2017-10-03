@@ -1,6 +1,7 @@
 -- ########## NATIVE TIME WEEKLY EPOCH TESTS ##########
 -- Other tests: combination of start_partition & constraint_cols/optimize_constraint. Requires manually running apply_constraint to set other old partitions
 -- No need to test optimize trigger with native
+-- Leaving pk/fk test out of this one so it can be used to test the native support in 11+
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true

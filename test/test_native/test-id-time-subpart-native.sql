@@ -1,6 +1,6 @@
 -- ########## NATIVE ID PARENT / TIME SUBPARENT TESTS ##########
--- Additional test: no pg_jobmon
--- Checks for primary keys have been commented out until native support is added
+-- Additional tests: no pg_jobmon
+    -- Test using a pre-created template table and passing to create_parent. Should allow indexes to be made for initial children.
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
@@ -8,18 +8,27 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(239);
+SELECT plan(299);
 CREATE SCHEMA partman_test;
+
+CREATE TABLE partman_test.fk_test_reference (col2 text unique not null);
+INSERT INTO partman_test.fk_test_reference VALUES ('stuff');
 
 -- Restore back when native supports primary key
 --CREATE TABLE partman_test.id_taptest_table (col1 int primary key, col2 text, col3 timestamptz NOT NULL DEFAULT now());
 CREATE TABLE partman_test.id_taptest_table (
     col1 int 
-    , col2 text
+    , col2 text DEFAULT 'stuff'
     , col3 timestamptz NOT NULL DEFAULT now())
     PARTITION BY RANGE (col1);
 CREATE TABLE partman_test.undo_taptest (LIKE partman_test.id_taptest_table INCLUDING ALL);
-SELECT partman.create_parent('partman_test.id_taptest_table', 'col1', 'native', '10', '{"col3"}', p_jobmon := false);
+-- Template table
+CREATE TABLE partman_test.template_id_taptest_table (LIKE partman_test.id_taptest_table);
+ALTER TABLE partman_test.template_id_taptest_table ADD PRIMARY KEY (col1);
+ALTER TABLE partman_test.template_id_taptest_table ADD FOREIGN KEY (col2) REFERENCES partman_test.fk_test_reference(col2);
+CREATE INDEX ON partman_test.template_id_taptest_table (col3);
+
+SELECT partman.create_parent('partman_test.id_taptest_table', 'col1', 'native', '10', '{"col3"}', p_jobmon := false, p_template_table := 'partman_test.template_id_taptest_table');
 INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(1,9));
 
 SELECT has_partition('partman_test', 'id_taptest_table', 'Check that id_taptest_table is natively partitioned');
@@ -30,12 +39,21 @@ SELECT has_table('partman_test', 'id_taptest_table_p20', 'Check id_taptest_table
 SELECT has_table('partman_test', 'id_taptest_table_p30', 'Check id_taptest_table_p30 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p40', 'Check id_taptest_table_p40 exists');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p50', 'Check id_taptest_table_p50 doesn''t exists yet');
--- Restore back when native supports primary key
---SELECT col_is_pk('partman_test', 'id_taptest_table_p0', ARRAY['col1'], 'Check for primary key in id_taptest_table_p0');
---SELECT col_is_pk('partman_test', 'id_taptest_table_p10', ARRAY['col1'], 'Check for primary key in id_taptest_table_p10');
---SELECT col_is_pk('partman_test', 'id_taptest_table_p20', ARRAY['col1'], 'Check for primary key in id_taptest_table_p20');
---SELECT col_is_pk('partman_test', 'id_taptest_table_p30', ARRAY['col1'], 'Check for primary key in id_taptest_table_p30');
---SELECT col_is_pk('partman_test', 'id_taptest_table_p40', ARRAY['col1'], 'Check for primary key in id_taptest_table_p40');
+SELECT col_is_pk('partman_test', 'id_taptest_table_p0', ARRAY['col1'], 'Check for primary key in id_taptest_table_p0');
+SELECT col_is_pk('partman_test', 'id_taptest_table_p10', ARRAY['col1'], 'Check for primary key in id_taptest_table_p10');
+SELECT col_is_pk('partman_test', 'id_taptest_table_p20', ARRAY['col1'], 'Check for primary key in id_taptest_table_p20');
+SELECT col_is_pk('partman_test', 'id_taptest_table_p30', ARRAY['col1'], 'Check for primary key in id_taptest_table_p30');
+SELECT col_is_pk('partman_test', 'id_taptest_table_p40', ARRAY['col1'], 'Check for primary key in id_taptest_table_p40');
+SELECT col_is_fk('partman_test', 'id_taptest_table_p0', ARRAY['col2'], 'Check for foreign key in id_taptest_table_p0');
+SELECT col_is_fk('partman_test', 'id_taptest_table_p10', ARRAY['col2'], 'Check for foreign key in id_taptest_table_p10');
+SELECT col_is_fk('partman_test', 'id_taptest_table_p20', ARRAY['col2'], 'Check for foreign key in id_taptest_table_p20');
+SELECT col_is_fk('partman_test', 'id_taptest_table_p30', ARRAY['col2'], 'Check for foreign key in id_taptest_table_p30');
+SELECT col_is_fk('partman_test', 'id_taptest_table_p40', ARRAY['col2'], 'Check for foreign key in id_taptest_table_p40');
+SELECT has_index('partman_test', 'id_taptest_table_p0', 'id_taptest_table_p0_col3_idx', ARRAY['col3'], 'Check for index in id_taptest_table_p0');
+SELECT has_index('partman_test', 'id_taptest_table_p10', 'id_taptest_table_p10_col3_idx', ARRAY['col3'], 'Check for index key in id_taptest_table_p10');
+SELECT has_index('partman_test', 'id_taptest_table_p20', 'id_taptest_table_p20_col3_idx', ARRAY['col3'], 'Check for index key in id_taptest_table_p20');
+SELECT has_index('partman_test', 'id_taptest_table_p30', 'id_taptest_table_p30_col3_idx', ARRAY['col3'], 'Check for index key in id_taptest_table_p30');
+SELECT has_index('partman_test', 'id_taptest_table_p40', 'id_taptest_table_p40_col3_idx', ARRAY['col3'], 'Check for index key in id_taptest_table_p40');
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table', 'Check that parent table has had data moved to partition');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table', ARRAY[9], 'Check count from parent table');
@@ -75,11 +93,14 @@ SELECT has_table('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMEST
     'Check id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
--- Restore back when native supports primary key
---SELECT col_is_pk('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col1'], 
---    'Check for primary key in id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
---SELECT col_is_pk('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
---    'Check for primary key in d_dynamic_table_p0_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in d_dynamic_table_p0_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table', 'Check for no data in top parent');
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table_p0', 'Check for no data in sub-parent');
@@ -111,11 +132,14 @@ SELECT has_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMES
     'Check id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
--- Restore back when native supports primary key
---SELECT col_is_pk('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col1'], 
---    'Check for primary key in id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
---SELECT col_is_pk('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
---    'Check for primary key in d_dynamic_table_p10_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in d_dynamic_table_p10_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table_p10', 'Check that subparent table has had data moved to partition');
 SELECT is_empty('SELECT * FROM partman_test.id_taptest_table_p10', 'Check count from parent table _p10 (should be empty)');
@@ -142,11 +166,14 @@ SELECT has_table('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMES
     'Check id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
--- Restore back when native supports primary key
---SELECT col_is_pk('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col1'], 
---    'Check for primary key in id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
---SELECT col_is_pk('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
---    'Check for primary key in d_dynamic_table_p20_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in d_dynamic_table_p20_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table_p20', 'Check that subparent table itself _p20 is empty');
 SELECT is_empty('SELECT * FROM partman_test.id_taptest_table_p20', 'Check count from parent table _p20 (should be empty)');
@@ -173,11 +200,14 @@ SELECT has_table('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMES
     'Check id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
--- Restore back when native supports primary key
---SELECT col_is_pk('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col1'], 
---    'Check for primary key in id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
---SELECT col_is_pk('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
---    'Check for primary key in d_dynamic_table_p30_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in d_dynamic_table_p30_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table_p30', 'Check that subparent table itself _p30 is empty');
 SELECT is_empty('SELECT * FROM partman_test.id_taptest_table_p30', 'Check count from parent table _p30 (should be empty)');
@@ -204,11 +234,14 @@ SELECT has_table('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMES
     'Check id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
--- Restore back when native supports primary key
---SELECT col_is_pk('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col1'], 
---    'Check for primary key in id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
---SELECT col_is_pk('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
---    'Check for primary key in d_dynamic_table_p40_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table_p40', 'Check that subparent table itself _p40 is empty');
 SELECT is_empty('SELECT * FROM partman_test.id_taptest_table_p40', 'Check count from parent table _p40 (should be empty)');
@@ -233,8 +266,6 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p20_p
 
 -- p50
 SELECT has_partition('partman_test', 'id_taptest_table_p50', 'Check id_taptest_table_p50 is natively partitioned');
--- Restore back when native supports primary key
---SELECT col_is_pk('partman_test', 'id_taptest_table_p50', ARRAY['col1'], 'Check for primary key in id_taptest_table_p50');
 
 SELECT has_table('partman_test', 'id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 'Check id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD')||' exists');
 SELECT has_table('partman_test', 'id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), 
@@ -257,11 +288,15 @@ SELECT has_table('partman_test', 'id_taptest_table_p50_p'||to_char(CURRENT_TIMES
     'Check id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
--- Restore back when native supports primary key
---SELECT col_is_pk('partman_test', 'id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col1'], 
---    'Check for primary key in id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
---SELECT col_is_pk('partman_test', 'id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
---    'Check for primary key in d_dynamic_table_p50_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in d_dynamic_table_p50_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
+
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table', 'Check that parent table has had data moved to partition');
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table_p50', 'Check that subparent table itself _p50 is empty');
@@ -269,8 +304,6 @@ SELECT is_empty('SELECT * FROM partman_test.id_taptest_table_p50', 'Check count 
 
 -- p60
 SELECT has_partition('partman_test', 'id_taptest_table_p60', 'Check id_taptest_table_p60 is natively partitioned');
--- Restore back when native supports primary key
---SELECT col_is_pk('partman_test', 'id_taptest_table_p60', ARRAY['col1'], 'Check for primary key in id_taptest_table_p60');
 
 SELECT has_table('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 'Check id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD')||' exists');
 SELECT has_table('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), 
@@ -293,11 +326,15 @@ SELECT has_table('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIMES
     'Check id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
--- Restore back when native supports primary key
---SELECT col_is_pk('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col1'], 
---    'Check for primary key in id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
---SELECT col_is_pk('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
---    'Check for primary key in d_dynamic_table_p60_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in d_dynamic_table_p60_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
+
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table', 'Check that parent table has had data moved to partition');
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table_p60', 'Check that subparent table itself _p60 is empty');
@@ -324,9 +361,11 @@ SELECT has_table('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMEST
     'Check id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD')||' does not exist');
--- Restore back when native supports primary key
---SELECT col_is_pk('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
---    'Check for primary key in id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'));
+
 
 -- Time data exists for now+1 day in p10, so 2 additional tables will be created
 SELECT has_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), 
@@ -335,11 +374,14 @@ SELECT has_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMES
     'Check id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'7 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'7 days'::interval, 'YYYY_MM_DD')||' does not exist');
--- Restore back when native supports primary key
---SELECT col_is_pk('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
---    'Check for primary key in id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'));
---SELECT col_is_pk('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
---    'Check for primary key in id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'));
 
 -- Time data exists for now+1 day in p20, so 2 additional tables will be created
 SELECT has_table('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), 
@@ -348,11 +390,15 @@ SELECT has_table('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMES
     'Check id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'7 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'7 days'::interval, 'YYYY_MM_DD')||' does not exist');
--- Restore back when native supports primary key
---SELECT col_is_pk('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
---    'Check for primary key in id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'));
---SELECT col_is_pk('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
---    'Check for primary key in id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'));
+
 
 -- No time data has been inserted for p30 and higher, so no more partitions should be created for them
 SELECT hasnt_table('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), 
@@ -445,11 +491,17 @@ SELECT hasnt_table('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIM
     'Check id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
 
 SELECT undo_partition_native('partman_test.id_taptest_table_p10', 'partman_test.undo_taptest', 20, p_keep_table := false); 
+SELECT has_table('partman_test', 'template_id_taptest_table', 'Check that template table was not removed yet');
 SELECT undo_partition_native('partman_test.id_taptest_table_p20', 'partman_test.undo_taptest', 20, p_keep_table := false);
+SELECT has_table('partman_test', 'template_id_taptest_table', 'Check that template table was not removed yet');
 SELECT undo_partition_native('partman_test.id_taptest_table_p30', 'partman_test.undo_taptest', 20, p_keep_table := false);
+SELECT has_table('partman_test', 'template_id_taptest_table', 'Check that template table was not removed yet');
 SELECT undo_partition_native('partman_test.id_taptest_table_p40', 'partman_test.undo_taptest', 20, p_keep_table := false);
+SELECT has_table('partman_test', 'template_id_taptest_table', 'Check that template table was not removed yet');
 SELECT undo_partition_native('partman_test.id_taptest_table_p50', 'partman_test.undo_taptest', 20, p_keep_table := false);
+SELECT has_table('partman_test', 'template_id_taptest_table', 'Check that template table was not removed yet');
 SELECT undo_partition_native('partman_test.id_taptest_table_p60', 'partman_test.undo_taptest', 20, p_keep_table := false);
+SELECT has_table('partman_test', 'template_id_taptest_table', 'Check that template table was not removed yet');
 
 
 SELECT results_eq('SELECT count(*)::int FROM partman_test.undo_taptest', ARRAY[11], 'Check count from target of undo_partition_native');
@@ -586,6 +638,9 @@ SELECT hasnt_table('partman_test', 'id_taptest_table_p60', 'Check id_taptest_tab
 
 SELECT is_empty('SELECT parent_table from part_config where parent_table = ''partman_test.id_taptest_table''', 
     'Check that partman_test.id_taptest_table was removed from part_config');
+
+
+SELECT hasnt_table('partman_test', 'template_id_taptest_table', 'Check that template table was removed');
 
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.undo_taptest', ARRAY[11], 'Check count from final unpartitioned target table');
 
