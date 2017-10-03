@@ -67,9 +67,9 @@ Clone the PostgreSQL repository:
 ```
 git clone https://github.com/postgres/postgres.git
 ```
-Checkout `REL9_6_STABLE` branch:
+Checkout `REL_10_STABLE` branch:
 ```
-git checkout REL9_6_STABLE
+git checkout REL_10_STABLE
 ```
 Make PostgreSQL:
 ```
@@ -103,7 +103,7 @@ Settings may be modified only by a superuser. Allowing normal users to change th
 
 Settings can be specified globally (in `postgresql.conf` or using `ALTER SYSTEM ... SET`), at the database level (using `ALTER DATABASE ... SET`), or at the role level (using `ALTER ROLE ... SET`). Note that settings are not inherited through normal role inheritance and `SET ROLE` will not alter a user's pgAudit settings. This is a limitation of the roles system and not inherent to pgAudit.
 
-The pgAudit extension must be loaded in [shared_preload_libraries](http://www.postgresql.org/docs/9.6/static/runtime-config-client.html#GUC-SHARED-PRELOAD-LIBRARIES). Otherwise, an error will be raised at load time and no audit logging will occur. In addition, `CREATE EXTENSION pgaudit` must be called before `pgaudit.log` is set. If the `pgaudit` extension is dropped and needs to be recreated then `pgaudit.log` must be unset first otherwise an error will be raised.
+The pgAudit extension must be loaded in [shared_preload_libraries](http://www.postgresql.org/docs/10/static/runtime-config-client.html#GUC-SHARED-PRELOAD-LIBRARIES). Otherwise, an error will be raised at load time and no audit logging will occur. In addition, `CREATE EXTENSION pgaudit` must be called before `pgaudit.log` is set. If the `pgaudit` extension is dropped and needs to be recreated then `pgaudit.log` must be unset first otherwise an error will be raised.
 
 ### pgaudit.log
 
@@ -326,7 +326,7 @@ Audit entries are written to the standard logging facility and contain the follo
 
 - **PARAMETER** - If `pgaudit.log_parameter` is set then this field will contain the statement parameters as quoted CSV.
 
-Use [log_line_prefix](http://www.postgresql.org/docs/9.6/static/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) to add any other fields that are needed to satisfy your audit log requirements. A typical log line prefix might be `'\%m \%u \%d: '` which would provide the date/time, user name, and database name for each audit log.
+Use [log_line_prefix](http://www.postgresql.org/docs/10/static/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) to add any other fields that are needed to satisfy your audit log requirements. A typical log line prefix might be `'\%m \%u \%d: '` which would provide the date/time, user name, and database name for each audit log.
 
 ## Caveats
 

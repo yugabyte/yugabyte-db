@@ -35,6 +35,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
+#include "utils/varlena.h"
 
 PG_MODULE_MAGIC;
 
@@ -598,6 +599,7 @@ log_audit_event(AuditEventStackItem *stackItem)
             {
                 /* READ statements */
                 case T_CopyStmt:
+                case T_DeclareCursorStmt:
                 case T_SelectStmt:
                 case T_PrepareStmt:
                 case T_PlannedStmt:
@@ -1342,10 +1344,11 @@ pgaudit_ExecutorCheckPerms_hook(List *rangeTabls, bool abort)
  * Hook ProcessUtility to do session auditing for DDL and utility commands.
  */
 static void
-pgaudit_ProcessUtility_hook(Node *parsetree,
+pgaudit_ProcessUtility_hook(PlannedStmt *pstmt,
                             const char *queryString,
                             ProcessUtilityContext context,
                             ParamListInfo params,
+                            QueryEnvironment *queryEnv,
                             DestReceiver *dest,
                             char *completionTag)
 {
@@ -1371,9 +1374,9 @@ pgaudit_ProcessUtility_hook(Node *parsetree,
             stackItem = stack_push();
 
         stackId = stackItem->stackId;
-        stackItem->auditEvent.logStmtLevel = GetCommandLogLevel(parsetree);
-        stackItem->auditEvent.commandTag = nodeTag(parsetree);
-        stackItem->auditEvent.command = CreateCommandTag(parsetree);
+        stackItem->auditEvent.logStmtLevel = GetCommandLogLevel(pstmt->utilityStmt);
+        stackItem->auditEvent.commandTag = nodeTag(pstmt->utilityStmt);
+        stackItem->auditEvent.command = CreateCommandTag(pstmt->utilityStmt);
         stackItem->auditEvent.commandText = queryString;
 
         /*
@@ -1388,11 +1391,11 @@ pgaudit_ProcessUtility_hook(Node *parsetree,
 
     /* Call the standard process utility chain. */
     if (next_ProcessUtility_hook)
-        (*next_ProcessUtility_hook) (parsetree, queryString, context,
-                                     params, dest, completionTag);
+        (*next_ProcessUtility_hook) (pstmt, queryString, context, params,
+                                     queryEnv, dest, completionTag);
     else
-        standard_ProcessUtility(parsetree, queryString, context,
-                                params, dest, completionTag);
+        standard_ProcessUtility(pstmt, queryString, context, params,
+                                queryEnv, dest, completionTag);
 
     /*
      * Process the audit event if there is one.  Also check that this event
