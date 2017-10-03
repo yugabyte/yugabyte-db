@@ -5,7 +5,7 @@
  * object level logging, and fully-qualified object names for all DML and DDL
  * statements where possible (See README.md for details).
  *
- * Copyright (c) 2014-2015, PostgreSQL Global Development Group
+ * Copyright (c) 2014-2017, PostgreSQL Global Development Group
  *------------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -494,7 +494,7 @@ log_audit_event(AuditEventStackItem *stackItem)
 
             switch (stackItem->auditEvent.commandTag)
             {
-                    /* Currently, only EXECUTE is different */
+                /* Currently, only EXECUTE is different */
                 case T_ExecuteStmt:
                     className = CLASS_MISC;
                     class = LOG_MISC;
@@ -596,7 +596,7 @@ log_audit_event(AuditEventStackItem *stackItem)
         case LOGSTMT_ALL:
             switch (stackItem->auditEvent.commandTag)
             {
-                    /* READ statements */
+                /* READ statements */
                 case T_CopyStmt:
                 case T_SelectStmt:
                 case T_PrepareStmt:
@@ -605,7 +605,7 @@ log_audit_event(AuditEventStackItem *stackItem)
                     class = LOG_READ;
                     break;
 
-                    /* FUNCTION statements */
+                /* FUNCTION statements */
                 case T_DoStmt:
                     className = CLASS_FUNCTION;
                     class = LOG_FUNCTION;
@@ -1343,11 +1343,11 @@ pgaudit_ExecutorCheckPerms_hook(List *rangeTabls, bool abort)
  */
 static void
 pgaudit_ProcessUtility_hook(Node *parsetree,
-                             const char *queryString,
-                             ProcessUtilityContext context,
-                             ParamListInfo params,
-                             DestReceiver *dest,
-                             char *completionTag)
+                            const char *queryString,
+                            ProcessUtilityContext context,
+                            ParamListInfo params,
+                            DestReceiver *dest,
+                            char *completionTag)
 {
     AuditEventStackItem *stackItem = NULL;
     int64 stackId = 0;
@@ -1845,7 +1845,7 @@ _PG_init(void)
 
         "Specifies that session logging should be enabled in the case where "
         "all relations in a statement are in pg_catalog.  Disabling this "
-         "setting will reduce noise in the log from tools like psql and PgAdmin "
+        "setting will reduce noise in the log from tools like psql and PgAdmin "
         "that query the catalog heavily.",
 
         NULL,
