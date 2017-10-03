@@ -68,7 +68,11 @@ build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 				att_tup = SystemAttributeDefinition(indexkey,
 										   heapRelation->rd_rel->relhasoids);
 			else
+#if PG_VERSION_NUM >= 110000
+				att_tup = TupleDescAttr(heapRelation->rd_att, indexkey - 1);
+#else
 				att_tup = heapRelation->rd_att->attrs[indexkey - 1];
+#endif
 
 			indexvar = (Expr *) makeVar(varno,
 										indexkey,
