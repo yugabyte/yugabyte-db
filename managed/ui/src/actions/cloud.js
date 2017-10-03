@@ -80,6 +80,9 @@ export const DELETE_NODE_RESPONSE = 'DELETE_NODE_RESPONSE';
 export const BOOTSTRAP_PROVIDER = 'BOOTSTRAP_PROVIDER';
 export const BOOTSTRAP_PROVIDER_RESPONSE = 'BOOTSTRAP_PROVIDER_RESPONSE';
 
+export const GET_SUGGESTED_SPOT_PRICE = 'GET_SUGGESTED_SPOT_PRICE';
+export const GET_SUGGESTED_SPOT_PRICE_RESPONSE = 'GET_SUGGESTED_SPOT_PRICE_RESPONSE';
+
 export function getProviderList() {
   const cUUID = localStorage.getItem("customer_id");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers`);
@@ -124,6 +127,23 @@ export function getInstanceTypeList(providerUUID) {
 export function getInstanceTypeListResponse(responsePayload) {
   return {
     type: GET_INSTANCE_TYPE_LIST_RESPONSE,
+    payload: responsePayload
+  };
+}
+
+export function getSuggestedSpotPrice(providerUUID, instanceType, regions) {
+  const payload = {'regions': regions};
+  const url =`${getProviderEndpoint(providerUUID)}/instance_types/${instanceType}/spot_price`;
+  const request = axios.post(url, payload);
+  return {
+    type: GET_SUGGESTED_SPOT_PRICE,
+    payload: request
+  };
+}
+
+export function getSuggestedSpotPriceResponse(responsePayload) {
+  return {
+    type: GET_SUGGESTED_SPOT_PRICE_RESPONSE,
     payload: responsePayload
   };
 }
