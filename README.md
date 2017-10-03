@@ -40,6 +40,19 @@ sudo ln -s /usr/bin/ctest3 /usr/local/bin/ctest
 
 You could also symlink them into another directory that is on your PATH.
 
+We also use [Linuxbrew](https://github.com/linuxbrew/brew) to provide some of the third-party
+dependencies on CentOS. We install Linuxbrew in a separate directory, `~/.linuxbrew-yb-build`,
+so that it does not conflict with any other Linuxbrew installation on your workstation, and does
+not contain any unnecessary packages that would interfere with the build.
+
+```
+git clone git@github.com:linuxbrew/brew.git ~/.linuxbrew-yb-build
+~/.linuxbrew-yb-build/bin/brew install autoconf automake boost flex gcc libtool
+```
+
+We don't need to add `~/.linuxbrew-yb-build/bin` to PATH. The build scripts will automatically
+discover this Linuxbrew installation.
+
 ### Mac OS X
 
 Install [Homebrew](https://brew.sh/):
@@ -76,18 +89,19 @@ For building YugaByte Java code, you'll need to install Java and Apache Maven.
 
 ### Cassandra Java Driver
 
-Build and install our modified version of Datastax's Cassandra Java driver. Clients using the
-unmodified Cassandra driver will still work, but will be less efficient, because YugaByte and
-Cassandra use different approaches to splitting data between nodes. In order to route client
-requests to the right server without extra hops, we provide a custom LoadBalancingPolicy in our
-version of the driver.
+Build and install [our modified version
+](https://github.com/YugaByte/datastax-cassandra-java-driver) of Datastax's Apache Cassandra Java
+driver. Clients using the unmodified driver will still work, but will be less efficient, because
+YugaByte and Apache Cassandra use different approaches to splitting data between nodes. In order to
+route client requests to the right server without extra hops, we provide a [custom
+LoadBalancingPolicy](https://goo.gl/At7kvu) in our version of the driver.
 
 ```
 mkdir -p ~/code
 cd ~/code
 git clone https://github.com/YugaByte/datastax-cassandra-java-driver
 cd datastax-cassandra-java-driver
-git checkout 3.2.0-yb-3
+git checkout 3.2.0-yb-5
 mvn -DskipTests -Dmaven.javadoc.skip install
 ```
 
@@ -119,10 +133,12 @@ Also feel free to post on the [YugaByte Community Forum](http://forum.yugabyte.c
 
 ## Contributing
 
-We accept contributions as GitHub pull requests. Our code style is available [here](https://docs.google.com/document/d/1UPy4l1ixYt1M8rhvC_g9pG3HxO4KfZzUB71VMr2pAEQ/edit?usp=sharing)
+We accept contributions as GitHub pull requests. Our code style is available
+[here](https://goo.gl/Hkt5BU)
 (mostly based on [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html)).
 
 ## License
 
-YugaByte Community Edition is distributed under an Apache 2.0 license. See the LICENSE.txt file for
+YugaByte Community Edition is distributed under an Apache 2.0 license. See the
+[LICENSE.txt](https://github.com/YugaByte/yugabyte-db/blob/master/LICENSE.txt) file for
 details.
