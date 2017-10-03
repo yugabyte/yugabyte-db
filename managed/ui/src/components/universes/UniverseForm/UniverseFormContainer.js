@@ -5,7 +5,8 @@ import { connect } from 'react-redux';
 import { fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure } from '../../../actions/tasks';
 import UniverseForm from './UniverseForm';
 import { getInstanceTypeList, getRegionList, getRegionListResponse, getInstanceTypeListResponse,
-         getNodeInstancesForProvider, getNodesInstancesForProviderResponse } from 'actions/cloud';
+         getNodeInstancesForProvider, getNodesInstancesForProviderResponse, getSuggestedSpotPrice,
+         getSuggestedSpotPriceResponse } from 'actions/cloud';
 import { createUniverse, createUniverseResponse, editUniverse, editUniverseResponse, closeDialog,
          configureUniverseTemplate, configureUniverseTemplateResponse, configureUniverseTemplateSuccess,
          configureUniverseResources, configureUniverseResourcesResponse,
@@ -74,6 +75,12 @@ const mapDispatchToProps = (dispatch) => {
     getRegionListItems: (provider, isMultiAZ) => {
       dispatch(getRegionList(provider, isMultiAZ)).then((response) => {
         dispatch(getRegionListResponse(response.payload));
+      });
+    },
+
+    getSuggestedSpotPrice: (providerUUID, instanceType, regions) => {
+      dispatch(getSuggestedSpotPrice(providerUUID, instanceType, regions)).then((response) => {
+        dispatch(getSuggestedSpotPriceResponse(response.payload));
       });
     },
 

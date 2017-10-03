@@ -13,7 +13,7 @@ export class YBTextInput extends Component {
 
   render() {
     const self = this;
-    const { input, type, className, placeHolder, onValueChanged, isReadOnly, normalizeOnBlur } = this.props;
+    const { input, type, className, placeHolder, onValueChanged, isReadOnly, normalizeOnBlur, initValue } = this.props;
 
     function onChange(event) {
       if (isFunction(onValueChanged)) {
@@ -31,7 +31,7 @@ export class YBTextInput extends Component {
     }
 
     return (
-      <FormControl {...input} placeholder={placeHolder} type={type} className={className}
+      <FormControl {...input} placeholder={placeHolder} type={type} className={className} value={initValue}
         onChange={onChange} readOnly={isReadOnly} onBlur={onBlur} />
     );
   }

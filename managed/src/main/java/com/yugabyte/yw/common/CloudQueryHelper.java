@@ -3,7 +3,9 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -66,5 +68,28 @@ public class CloudQueryHelper extends DevopsBase {
   	commandArgs.add("--regions");
   	regionList.forEach(region -> commandArgs.add(region.code));
   	return execCommand(regionList.get(0).uuid, "instance_types", commandArgs);
+  }
+
+  /**
+   * Get a suggested spot price for a given list of regions. Will find the max spot price amongst all the regions and
+   * return a suggested spot price of double the max spot price found.
+   *
+   * @param regions
+   * @param instanceType
+   * @return
+   */
+  public double getSuggestedSpotPrice(List<Region> regions, String instanceType) {
+    String command = "spot-pricing";
+    double maxPriceFound = 0.0;
+    for (Region region : regions) {
+      for (AvailabilityZone availabilityZone : AvailabilityZone.getAZsForRegion(region.uuid)) {
+        List<String> cloudArgs = ImmutableList.of("--zone", availabilityZone.code);
+        List<String> commandArgs = ImmutableList.of("--instance_type", instanceType);
+        JsonNode result = parseShellResponse(execCommand(region.uuid, command, commandArgs, cloudArgs), command);
+        double price = result.get("SpotPrice").asDouble();
+        if (price > maxPriceFound) maxPriceFound = price;
+      }
+    }
+    return 2.0 * maxPriceFound;
   }
 }

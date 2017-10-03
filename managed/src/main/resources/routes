@@ -34,6 +34,7 @@ DELETE  /api/customers/:cUUID/providers/:pUUID/regions/:rUUID/zones/:azUUID  com
 GET     /api/customers/:cUUID/providers/:pUUID/instance_types/:code    com.yugabyte.yw.controllers.InstanceTypeController.index(cUUID: java.util.UUID, pUUID: java.util.UUID, code: java.lang.String)
 GET     /api/customers/:cUUID/providers/:pUUID/instance_types          com.yugabyte.yw.controllers.InstanceTypeController.list(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /api/customers/:cUUID/providers/:pUUID/instance_types          com.yugabyte.yw.controllers.InstanceTypeController.create(cUUID: java.util.UUID, pUUID: java.util.UUID)
+POST    /api/customers/:cUUID/providers/:pUUID/instance_types/:code/spot_price      com.yugabyte.yw.controllers.InstanceTypeController.suggestSpotPrice(cUUID: java.util.UUID, pUUID: java.util.UUID, code: java.lang.String)
 DELETE  /api/customers/:cUUID/providers/:pUUID/instance_types/:code    com.yugabyte.yw.controllers.InstanceTypeController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, code: java.lang.String)
 POST    /api/customers/:cUUID/providers/setup_docker        com.yugabyte.yw.controllers.CloudProviderController.setupDocker(cUUID: java.util.UUID)
 

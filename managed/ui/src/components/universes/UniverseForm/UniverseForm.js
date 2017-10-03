@@ -34,7 +34,8 @@ const initialState = {
   accessKeyCode: 'yugabyte-default',
   maxNumNodes: -1, // Maximum Number of nodes currently in use OnPrem case
   useSpotPrice: IN_DEVELOPMENT_MODE,
-  spotPrice: '0.0'
+  spotPrice: '0.0',
+  gettingSuggestedSpotPrice: false
 };
 
 class UniverseForm extends Component {
@@ -69,6 +70,7 @@ class UniverseForm extends Component {
     this.getFormPayload = this.getFormPayload.bind(this);
     this.toggleSpotPrice = this.toggleSpotPrice.bind(this);
     this.spotPriceChanged = this.spotPriceChanged.bind(this);
+    this.getSuggestedSpotPrice = this.getSuggestedSpotPrice.bind(this);
     this.state = initialState;
   }
 
@@ -259,14 +261,29 @@ class UniverseForm extends Component {
     }
   }
 
+  getSuggestedSpotPrice(instanceType, regions) {
+    const currentProvider = this.getCurrentProvider(this.state.providerSelected);
+    const regionUUIDs = regions.map(region => region.value);
+    if (isDefinedNotNull(currentProvider) && currentProvider.code === "aws" && isNonEmptyArray(regionUUIDs)) {
+      this.props.getSuggestedSpotPrice(this.state.providerSelected, instanceType, regionUUIDs);
+      this.setState({gettingSuggestedSpotPrice: true});
+    }
+  }
+
   regionListChanged(value) {
     this.setState({nodeSetViaAZList: false, regionList: value});
+    if (this.state.useSpotPrice) {
+      this.getSuggestedSpotPrice(this.state.instanceTypeSelected, value);
+    }
   }
 
   instanceTypeChanged(event) {
     const instanceTypeValue = event.target.value;
     this.setState({instanceTypeSelected: instanceTypeValue});
     this.setDeviceInfo(instanceTypeValue, this.props.cloud.instanceTypes.data);
+    if (this.state.useSpotPrice) {
+      this.getSuggestedSpotPrice(instanceTypeValue, this.state.regionList);
+    }
   }
 
   numNodesChanged(value) {
@@ -399,12 +416,10 @@ class UniverseForm extends Component {
   }
 
   toggleSpotPrice(event) {
-    const {formValues} = this.props;
-    const nextState = {
-      useSpotPrice: event.target.checked,
-      spotPrice: event.target.checked ? formValues.spotPrice : '0.00'
-    };
-    this.setState(nextState);
+    this.setState({useSpotPrice: event.target.checked});
+    if (event.target.checked) {
+      this.getSuggestedSpotPrice(this.state.instanceTypeSelected, this.state.regionList);
+    }
   }
 
   spotPriceChanged(val) {
@@ -412,7 +427,10 @@ class UniverseForm extends Component {
   }
 
   componentWillReceiveProps(nextProps) {
-    const {universe: {showModal, visibleModal, currentUniverse}, cloud: {nodeInstanceList, instanceTypes}} = nextProps;
+    const {
+      universe: {showModal, visibleModal, currentUniverse},
+      cloud: {nodeInstanceList, instanceTypes, suggestedSpotPrice}
+    } = nextProps;
 
     if (nextProps.cloud.instanceTypes.data !== this.props.cloud.instanceTypes.data
       && isNonEmptyArray(nextProps.cloud.instanceTypes.data) && this.state.providerSelected
@@ -438,6 +456,16 @@ class UniverseForm extends Component {
       && isNonEmptyArray(nextProps.softwareVersions)
       && !isNonEmptyArray(this.props.softwareVersions)) {
       this.setState({ybSoftwareVersion: nextProps.softwareVersions[0]});
+    }
+
+    // Set spot price
+    const currentPromiseState = getPromiseState(this.props.cloud.suggestedSpotPrice);
+    const nextPromiseState = getPromiseState(suggestedSpotPrice);
+    if ((currentPromiseState.isInit() || currentPromiseState.isLoading()) && nextPromiseState.isSuccess()) {
+      this.setState({
+        spotPrice: normalizeToPositiveFloat(suggestedSpotPrice.data.toString()),
+        gettingSuggestedSpotPrice: false
+      });
     }
 
     // If dialog has been closed and opened again in-case of edit, then repopulate current config
@@ -655,7 +683,27 @@ class UniverseForm extends Component {
     let spotPriceToggle = <span />;
     let spotPriceField = <span />;
     const currentProvider = this.getCurrentProvider(this.state.providerSelected);
-    if (isDefinedNotNull(currentProvider) && currentProvider.code === "aws") {
+    if (isDefinedNotNull(currentProvider) && currentProvider.code === "aws"
+        && isDefinedNotNull(self.props.universe.currentPlacementStatus)) {
+      if (this.state.gettingSuggestedSpotPrice) {
+        spotPriceField = (
+          <div className="form-group">
+            <label className="form-item-label">Spot Price (Per Hour)</label>
+            <div className="extra-info-field text-center">Loading suggested spot price...</div>
+          </div>
+        );
+      } else if (!this.state.gettingSuggestedSpotPrice && this.state.useSpotPrice) {
+        spotPriceField = (
+          <Field name="spotPrice" type="text"
+                 component={YBTextInputWithLabel}
+                 label="Spot Price (Per Hour)"
+                 isReadOnly={isFieldReadOnly || !this.state.useSpotPrice}
+                 placeHolder="0.00"
+                 initValue={this.state.spotPrice.toString()}
+                 normalizeOnBlur={normalizeToPositiveFloat}
+                 onValueChanged={this.spotPriceChanged}/>
+        );
+      }
       spotPriceToggle = (
         <Field name="useSpotPrice"
                component={YBToggle}
@@ -663,19 +711,8 @@ class UniverseForm extends Component {
                subLabel="spot pricing is suitable for test environments only, because spot instances might go away any time"
                onToggle={this.toggleSpotPrice}
                defaultChecked={this.state.useSpotPrice}
-               isReadOnly={isFieldReadOnly} />
+               isReadOnly={isFieldReadOnly || this.state.gettingSuggestedSpotPrice}/>
       );
-      if (this.state.useSpotPrice) {
-        spotPriceField = (
-          <Field name="spotPrice" type="text"
-                 component={YBTextInputWithLabel}
-                 label="Spot Price (Per Hour)"
-                 isReadOnly={isFieldReadOnly || !this.state.useSpotPrice}
-                 placeHolder="0.00"
-                 normalizeOnBlur={normalizeToPositiveFloat}
-                 onValueChanged={this.spotPriceChanged} />
-        );
-      }
     }
 
     return (
