@@ -462,6 +462,10 @@ class QLType {
     return GetConversionMode(left, right) <= ConversionMode::kImplicit;
   }
 
+  static bool IsPotentiallyConvertible(DataType left, DataType right) {
+    return GetConversionMode(left, right) <= ConversionMode::kFurtherCheck;
+  }
+
   static bool IsImplicitlyConvertible(const std::shared_ptr<QLType>& lhs_type,
                                       const std::shared_ptr<QLType>& rhs_type) {
     switch (QLType::GetConversionMode(lhs_type->main(), rhs_type->main())) {

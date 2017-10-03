@@ -29,7 +29,7 @@ namespace yb {
 namespace bfql {
 
 inline bool IsCompatible(DataType left, DataType right) {
-  return QLType::IsImplicitlyConvertible(left, right);
+  return QLType::IsPotentiallyConvertible(left, right);
 }
 
 //--------------------------------------------------------------------------------------------------

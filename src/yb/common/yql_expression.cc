@@ -41,7 +41,7 @@ CHECKED_STATUS YQLExpression::Evaluate(const QLExpressionPB &ql_expr,
 
       // Special cases: for collection operations of the form "cref = cref +/- <value>" we avoid
       // reading column cref and instead tell doc writer to modify it in-place
-      if (bfop_name == "AddMapMap" || bfop_name == "AddMapSet" || bfop_name == "AddSetSet") {
+      if (bfop_name == "AddMapMap" || bfop_name == "AddSetSet") {
         *write_action = WriteAction::EXTEND;
         return Evaluate(bfcall.operands(1), table_row, result, write_action);
       }

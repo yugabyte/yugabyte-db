@@ -896,7 +896,13 @@ CHECKED_STATUS PTBindVar::Analyze(SemContext *sem_context) {
     pos_--;
   }
 
-  ql_type_ = sem_context->expr_expected_ql_type();
+  if (sem_context->expr_expected_ql_type()->main() == DataType::UNKNOWN_DATA) {
+    // By default bind variables are compatible with any type.
+    ql_type_ = QLType::Create(NULL_VALUE_TYPE);
+  } else {
+    ql_type_ = sem_context->expr_expected_ql_type();
+  }
+
   internal_type_ = sem_context->expr_expected_internal_type();
   expected_internal_type_ = internal_type_;
   hash_col_ = sem_context->hash_col();

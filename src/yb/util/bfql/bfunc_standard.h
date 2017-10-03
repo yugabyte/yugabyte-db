@@ -245,12 +245,6 @@ Status AddMapMap(PTypePtr x, PTypePtr y, RTypePtr result) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status AddMapSet(PTypePtr x, PTypePtr y, RTypePtr result) {
-  // All calls allowed for this builtin are optimized away to avoid evaluating such expressions
-  return STATUS(RuntimeError, "Arbitrary collection expressions are not supported");
-}
-
-template<typename PTypePtr, typename RTypePtr>
 Status AddSetSet(PTypePtr x, PTypePtr y, RTypePtr result) {
   // All calls allowed for this builtin are optimized away to avoid evaluating such expressions
   return STATUS(RuntimeError, "Arbitrary collection expressions are not supported");

@@ -326,6 +326,25 @@ public class TestArith extends BaseCQLTest {
   }
 
   @Test
+  public void testCounterWithBind() throws Exception {
+    // Setting up
+    session.execute("CREATE TABLE test_arith_bind_counter(h INT PRIMARY KEY, c COUNTER);");
+
+    // Testing plus.
+    session.execute("UPDATE test_arith_bind_counter SET c = c + ? where h = ?",
+            new Long(3), new Integer(1));
+    Row row = runSelect("SELECT * from test_arith_bind_counter where h = 1").next();
+    assertEquals(3, row.getLong("c"));
+
+    // Testing minus.
+    session.execute("UPDATE test_arith_bind_counter SET c = c - ? where h = ?",
+            new Long(2), new Integer(1));
+
+    row = runSelect("SELECT * from test_arith_bind_counter where h = 1").next();
+    assertEquals(1, row.getLong("c"));
+  }
+
+  @Test
   public void testCounterError() throws Exception {
     LOG.info("TEST CQL ERRONEOUS COUNTER ARITHMETIC - Start");
 

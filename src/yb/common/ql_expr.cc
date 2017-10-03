@@ -59,7 +59,6 @@ CHECKED_STATUS QLExprExecutor::EvalBFCall(const QLBCallPB& bfcall,
   // Special cases: for collection operations of the form "cref = cref +/- <value>" we avoid
   // reading column cref and instead tell doc writer to modify it in-place.
   //   "AddMapMap"
-  //   "AddMapSet"
   //   "AddSetSet"
   //   "SubMapSet"
   //   "SubSetSet"

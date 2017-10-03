@@ -65,8 +65,7 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
   // - If the datatype of an argument (such as bind variable) is not determined, and the overloaded
   //   function call cannot be resolved by the rest of the arguments, the parser should raised
   //   error for multiple matches.
-  SemState sem_state(sem_context);
-  sem_state.SetExprState(QLType::Create(UNKNOWN_DATA), InternalType::VALUE_NOT_SET);
+  SemState sem_state(sem_context, QLType::Create(UNKNOWN_DATA), InternalType::VALUE_NOT_SET);
 
   int pindex = 0;
   const MCList<PTExpr::SharedPtr>& exprs = args_->node_list();
@@ -127,7 +126,7 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
 
   // Set the opcode.
   if (!bfdecl->is_server_operator()) {
-    // Use the builtin-function opcode since this is a regular buitlin call.
+    // Use the builtin-function opcode since this is a regular builtin call.
     bfopcode_ = static_cast<int32_t>(bfopcode);
   } else {
     // Use the server opcode since this is a server operator. Ignore the BFOpcode.
@@ -141,7 +140,6 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
   if (pt_result->ql_type()->IsParametric()) {
     cast_ops_.resize(exprs.size(), BFOPCODE_NOOP);
     if (strcmp(bfdecl->cpp_name(), "AddMapMap") == 0 ||
-        strcmp(bfdecl->cpp_name(), "AddMapSet") == 0 ||
         strcmp(bfdecl->cpp_name(), "AddSetSet") == 0 ||
         strcmp(bfdecl->cpp_name(), "AddListList") == 0 ||
         strcmp(bfdecl->cpp_name(), "SubMapSet") == 0 ||
@@ -178,7 +176,7 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
             ErrorCode::INVALID_FUNCTION_CALL);
       }
 
-      if (arg->expr_op() != ExprOperator::kCollection) {
+      if (arg->expr_op() != ExprOperator::kCollection && arg->expr_op() != ExprOperator::kBindVar) {
         return sem_context->Error(this,
             "Expected auxiliary argument for collection operations to be collection literal",
             ErrorCode::INVALID_FUNCTION_CALL);
@@ -194,6 +192,7 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
         arg_itype = InternalType::kSetValue;
       }
       state.SetExprState(arg_ytype, arg_itype);
+      state.set_bindvar_name(pt_ref->desc()->name());
       RETURN_NOT_OK(arg->Analyze(sem_context));
 
       // Type resolution (for map/set): (cref + <expr>) should have same type as (cref).
@@ -217,71 +216,82 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
     return sem_context->Error(this, "Unsupported builtin call for collections",
                               ErrorCode::INVALID_FUNCTION_CALL);
 
-  } else {
-    // Find the cast operator if arguments' ql_type_id are not an exact match with signature.
-    pindex = 0;
-    cast_ops_.resize(exprs.size(), BFOPCODE_NOOP);
-    const std::vector<DataType> &formal_types = bfdecl->param_types();
-    for (const auto &expr : exprs) {
-      if (formal_types[pindex] == DataType::TYPEARGS) {
-        // For variadic functions, accept all arguments without casting.
-        break;
-      }
-
-      // Converting or casting arguments to expected type for the function call.
-      // - If argument and formal datatypes are the same, no conversion is needed. It's a NOOP.
-      // - Currently, we only allowed constant expressions which would be folded to the correct type
-      //   by the QL engine before creating protobuf messages.
-      // - When we support more complex expressions, CAST would be used for the conversion. It'd be
-      //   a bug if casting failed.
-      if (expr->expr_op() == ExprOperator::kConst) {
-        // Check if constant folding is possible between the two datatype.
-        SemState arg_state(sem_context);
-        arg_state.SetExprState(
-            QLType::Create(formal_types[pindex]),
-            YBColumnSchema::ToInternalDataType(QLType::Create(formal_types[pindex])));
-            RETURN_NOT_OK(expr->Analyze(sem_context));
-
-      } else if (expr->ql_type_id() != formal_types[pindex]) {
-        // Future usage: Need to cast from argument type to formal type.
-        s = BfuncCompile::FindCastOpcode(expr->ql_type_id(), formal_types[pindex],
-            &cast_ops_[pindex]);
-        if (!s.ok()) {
-          LOG(ERROR) << "Arguments to builtin call " << name_->c_str() << "() is compatible with "
-                     << "its signature but converting the argument to the desired type failed";
-          string err_msg = (s.ToString() + "CAST " + expr->ql_type()->ToString() + " AS " +
-              QLType::ToCQLString(formal_types[pindex]) + " failed");
-          return sem_context->Error(this, err_msg.c_str(), ErrorCode::INVALID_FUNCTION_CALL);
-        }
-      }
-      pindex++;
-    }
-
-    // TODO(neil) Not just BCALL, but each expression should have a "result_cast_op_". At execution
-    // time if the cast is present, the result of the expression must be casted to the correct type.
-    // Find the correct casting op for the result if expected type is not the same as return type.
-    if (!sem_context->expr_expected_ql_type()->IsUnknown()) {
-      s = BfuncCompile::FindCastOpcode(pt_result->ql_type()->main(),
-          sem_context->expr_expected_ql_type()->main(),
-          &result_cast_op_);
-      ql_type_ = sem_context->expr_expected_ql_type();
-    } else {
-      ql_type_ = pt_result->ql_type();
-    }
-
-    internal_type_ = yb::client::YBColumnSchema::ToInternalDataType(ql_type_);
-    return CheckExpectedTypeCompatibility(sem_context);
   }
 
-  return Status::OK();
+  // Find the cast operator if arguments' ql_type_id are not an exact match with signature.
+  pindex = 0;
+  cast_ops_.resize(exprs.size(), BFOPCODE_NOOP);
+  const std::vector<DataType> &formal_types = bfdecl->param_types();
+  for (const auto &expr : exprs) {
+    if (formal_types[pindex] == DataType::TYPEARGS) {
+      // For variadic functions, accept all arguments without casting.
+      break;
+    }
+
+    // Converting or casting arguments to expected type for the function call.
+    // - If argument and formal datatypes are the same, no conversion is needed. It's a NOOP.
+    // - Currently, we only allowed constant expressions which would be folded to the correct type
+    //   by the QL engine before creating protobuf messages.
+    // - When we support more complex expressions, CAST would be used for the conversion. It'd be
+    //   a bug if casting failed.
+    if (expr->expr_op() == ExprOperator::kConst || expr->expr_op() == ExprOperator::kBindVar) {
+      // Check if constant folding is possible between the two datatype.
+      SemState arg_state(sem_context,
+                         QLType::Create(formal_types[pindex]),
+                         YBColumnSchema::ToInternalDataType(QLType::Create(formal_types[pindex])),
+                         sem_context->bindvar_name());
+
+      RETURN_NOT_OK(expr->Analyze(sem_context));
+
+    } else if (expr->ql_type_id() != formal_types[pindex]) {
+      // Future usage: Need to cast from argument type to formal type.
+      s = BfuncCompile::FindCastOpcode(expr->ql_type_id(), formal_types[pindex],
+          &cast_ops_[pindex]);
+      if (!s.ok()) {
+        LOG(ERROR) << "Arguments to builtin call " << name_->c_str() << "() is compatible with "
+                   << "its signature but converting the argument to the desired type failed";
+        string err_msg = (s.ToString() + "CAST " + expr->ql_type()->ToString() + " AS " +
+            QLType::ToCQLString(formal_types[pindex]) + " failed");
+        return sem_context->Error(this, err_msg.c_str(), ErrorCode::INVALID_FUNCTION_CALL);
+      }
+    }
+    pindex++;
+  }
+
+  // TODO(neil) Not just BCALL, but each expression should have a "result_cast_op_". At execution
+  // time if the cast is present, the result of the expression must be casted to the correct type.
+  // Find the correct casting op for the result if expected type is not the same as return type.
+  if (!sem_context->expr_expected_ql_type()->IsUnknown()) {
+    s = BfuncCompile::FindCastOpcode(pt_result->ql_type()->main(),
+        sem_context->expr_expected_ql_type()->main(),
+        &result_cast_op_);
+    ql_type_ = sem_context->expr_expected_ql_type();
+  } else {
+    ql_type_ = pt_result->ql_type();
+  }
+
+  internal_type_ = yb::client::YBColumnSchema::ToInternalDataType(ql_type_);
+  return CheckExpectedTypeCompatibility(sem_context);
 }
 
 CHECKED_STATUS PTBcall::CheckOperator(SemContext *sem_context) {
-  if (sem_context->processing_set_clause() && sem_context->lhs_col()->is_counter()) {
+  if (sem_context->processing_set_clause() &&
+      sem_context->lhs_col() != nullptr &&
+      sem_context->lhs_col()->ql_type()->IsCollection()) {
+    // Only increment ("+") and decrement ("-") operators are allowed for collections.
+    const string type_name = QLType::ToCQLString(sem_context->lhs_col()->ql_type()->main());
+    if (*name_ == "+" || *name_ == "-") {
+      name_->append(type_name.c_str());
+    }
+  }
+
+  if (sem_context->processing_set_clause() &&
+      sem_context->lhs_col() != nullptr &&
+      sem_context->lhs_col()->is_counter()) {
     // Only increment ("+") and decrement ("-") operators are allowed for counters.
-    if (strcmp(name_->c_str(), "+") == 0 || strcmp(name_->c_str(), "-") == 0) {
+    if (*name_ == "+" || *name_ == "-") {
       name_->append("counter");
-    } else if (strcmp(name_->c_str(), "+counter") != 0 && strcmp(name_->c_str(), "-counter") != 0) {
+    } else if (*name_ !=  "+counter" && *name_ != "-counter") {
       return sem_context->Error(this, ErrorCode::INVALID_COUNTING_EXPR);
     }
   }
