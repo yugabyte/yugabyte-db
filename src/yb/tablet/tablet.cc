@@ -1093,7 +1093,7 @@ Status Tablet::HandleRedisReadRequest(HybridTime timestamp,
                                       const RedisReadRequestPB& redis_read_request,
                                       RedisResponsePB* response) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
-  ScopedTabletMetricsTracker(metrics_->redis_read_latency);
+  ScopedTabletMetricsTracker metrics_tracker(metrics_->redis_read_latency);
 
   docdb::RedisReadOperation doc_op(redis_read_request);
   RETURN_NOT_OK(doc_op.Execute(rocksdb_.get(), timestamp));
@@ -1105,7 +1105,7 @@ Status Tablet::HandleQLReadRequest(
     HybridTime timestamp, const QLReadRequestPB& ql_read_request, QLResponsePB* response,
     gscoped_ptr<faststring>* rows_data) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
-  ScopedTabletMetricsTracker(metrics_->ql_read_latency);
+  ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);
 
   if (metadata()->schema_version() != ql_read_request.schema_version()) {
     response->set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
