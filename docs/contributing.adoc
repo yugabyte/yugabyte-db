@@ -1,0 +1,385 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+[[contributing]]
+= Contributing to Apache Kudu (incubating)
+:author: Kudu Team
+:imagesdir: ./images
+:icons: font
+:toc:
+:toclevels: 3
+:doctype: book
+:backend: html5
+:sectlinks:
+:experimental:
+
+== Contributing Patches Using Gerrit
+
+The Kudu team uses Gerrit for code review, rather than Github pull requests. Typically,
+you pull from Github but push to Gerrit, and Gerrit is used to review code and merge
+it into Github.
+
+See the link:https://www.mediawiki.org/wiki/Gerrit/Tutorial[Gerrit Tutorial]
+for an overview of using Gerrit for code review.
+
+=== Initial Setup for Gerrit
+
+. Sign in to link:http://gerrit.cloudera.org:8080[Gerrit] using your Github username.
+
+. Go to link:http://gerrit.cloudera.org:8080/#/settings/[Settings]. Update your name
+and email address on the *Contact Information* page, and upload a SSH public key.
+If you do not update your name, it will show up as "Anonymous Coward" in Gerrit reviews.
+
+. If you have not done so, clone the main Kudu repository. By default, the main remote
+is called `origin`. When you fetch or pull, you will do so from `origin`.
++
+[source,bash]
+----
+git clone https://github.com/cloudera/kudu
+----
+
+. Change to the new `kudu` directory.
+
+. Add a `gerrit` remote. In the following command, substitute <username> with your
+Github username.
++
+[source,bash]
+----
+git remote add gerrit ssh://<username>@gerrit.cloudera.org:29418/kudu
+----
+
+. Run the following command to install the
+Gerrit `commit-msg` hook. Use the following command, replacing `<username>` with your
+Github username.
++
+----
+gitdir=$(git rev-parse --git-dir); scp -p -P 29418 <username>@gerrit.cloudera.org:hooks/commit-msg ${gitdir}/hooks/
+----
+
+. Be sure you have set the Kudu repository to use `pull --rebase` by default. You
+can use the following two commands, assuming you have only ever checked out `master`
+so far:
++
+----
+git config branch.autosetuprebase always
+git config branch.master.rebase true
+----
++
+If for some reason you had already checked out branches other than `master`, substitute
+`master` for the other branch names in the second command above.
+
+=== Submitting Patches
+
+To submit a patch, first commit your change (using a descriptive multi-line
+commit message if possible), then push the request to the `gerrit` remote. For instance, to push a change
+to the `master` branch:
+----
+git push gerrit HEAD:refs/for/master --no-thin
+----
+
+or to push a change to the `gh-pages` branch (to update the website):
+----
+git push gerrit HEAD:refs/for/gh-pages --no-thin
+----
+
+NOTE: The `--no-thin` argument is a workaround to prevent an error in Gerrit. See
+https://code.google.com/p/gerrit/issues/detail?id=1582.
+
+TIP: Consider creating Git aliases for the above commands. Gerrit also includes
+a command-line tool called
+link:https://www.mediawiki.org/wiki/Gerrit/Tutorial#Installing_git-review[git-review],
+which you may find helpful.
+
+Gerrit will add a change ID to your commit message and will create a Gerrit review,
+whose URL will be emitted as part of the push reply. If desired, you can send a message
+to the `kudu-dev` mailing list, explaining your patch and requesting review.
+
+After getting feedback, you can update or amend your commit, (for instance, using
+a command like `git commit --amend`) while leaving the Change
+ID intact. Push your change to Gerrit again, and this will create a new patch set
+in Gerrit and notify all reviewers about the change.
+
+When your code has been reviewed and is ready to be merged into the Kudu code base,
+a Kudu committer will merge it using Gerrit. You can discard your local branch.
+
+=== Abandoning a Review
+
+If your patch is not accepted or you decide to pull it from consideration, you can
+use the Gerrit UI to *Abandon* the patch. It will still show in Gerrit's history,
+but will not be listed as a pending review.
+
+=== Reviewing Patches In Gerrit
+
+You can view a unified or side-by-side diff of changes in Gerrit using the web UI.
+To leave a comment, click the relevant line number or highlight the relevant part
+of the line, and type 'c' to bring up a comment box. To submit your comments and/or
+your review status, go up to the top level of the review and click *Reply*. You can
+add additional top-level comments here, and submit them.
+
+To check out code from a Gerrit review, click *Download* and paste the relevant Git
+commands into your Git client. You can then update the commit and push to Gerrit to
+submit a patch to the review, even if you were not the original reviewer.
+
+Gerrit allows you to vote on a review. A vote of `+2` from at least one committer
+(besides the submitter) is required before the patch can be merged.
+
+== Code Style
+
+Get familiar with these guidelines so that your contributions can be reviewed and
+integrated quickly and easily.
+
+In general, Kudu follows the
+link:http://google-styleguide.googlecode.com/svn/trunk/cppguide.xml[Google {cpp} Style Guide],
+with the following exceptions:
+
+=== Limitations on `boost` Library Use
+
+`boost` libraries can be used in cases where a suitable
+replacement does not exist in the Kudu code base. However, try to avoid introducing
+dependencies on new `boost` libraries, and use Kudu code in preference
+to `boost` where available. For example, do not use `boost`'s scoped pointer
+implementations.
+
+.Approved `boost` Libraries
+
+- `boost::assign` (container literals)
+- `boost::shared_mutex` (but prefer Kudu's spin lock implementation for short
+  critical sections)
+
+Check that any features from `boost` you use are present in *`boost` 1.46*
+or earlier, for compatibility with RHEL 6.
+
+.`boost` Libraries and the Kudu {cpp} Client
+Do not use `boost` in any public headers for the Kudu {cpp} client, because
+`boost` commonly breaks backward compatibility, and passing data between two `boost`
+versions (one by the user, one by Kudu) causes serious issues.
+
+In addition, do not create dependencies from the Kudu {cpp} client to any `boost`
+libraries. `libboost_system` is particularly troublesome, as any `boost` code
+that throws exceptions will grow a dependency on it. Among other things, you
+cannot use `boost::{lock_guard,unique_lock,shared_lock}` in any code consumed
+by the {cpp} client (such as _common/_ and _util/_).
+
+=== Line length
+
+The Kudu team allows line lengths of 100 characters per line, rather than Google's standard of 80. Try to
+keep under 80 where possible, but you can spill over to 100 or so if necessary.
+
+=== Pointers
+
+.Smart Pointers and Singly-Owned Pointers
+
+Generally, most objects should have clear "single-owner" semantics.
+Most of the time, singly-owned objects can be wrapped in a `gscoped_ptr<>`
+which ensures deletion on scope exit and prevents accidental copying.
+`gscoped_ptr` is similar to {cpp}11's `unique_ptr` in that it has a `release`
+method and also provides emulated `move` semantics (see _gscoped_ptr.h_ for
+example usage).
+
+If an object is singly owned, but referenced from multiple places, such as when
+the pointed-to object is known to be valid at least as long as the pointer itself,
+associate a comment with the constructor which takes and stores the raw pointer,
+as in the following example.
+
+[source,c++]
+----
+  // 'blah' must remain valid for the lifetime of this class
+  MyClass(const Blah* blah) :
+    blah_(blah) {
+  }
+----
+
+If you use raw pointers within STL collections or inside of vectors and other containers,
+associate a comment with the container, which explains the ownership
+semantics (owned or un-owned). Use utility code from _gutil/stl_util.h_, such as
+`STLDeleteElements` or `ElementDeleter`, to ease handling of deletion of the
+contained elements.
+
+WARNING: Using `std::auto_ptr` is strictly disallowed because of its difficult and
+bug-prone semantics.
+
+.Smart Pointers for Multiply-Owned Pointers:
+
+Although single ownership is ideal, sometimes it is not possible, particularly
+when multiple threads are in play and the lifetimes of the pointers are not
+clearly defined. In these cases, you can use either `std::tr1::shared_ptr` or
+Kudu's own `scoped_refptr` from _gutil/ref_counted.hpp_. Each of these mechanisms
+relies on reference counting to automatically delete the referent once no more
+pointers remain. The key difference between these two types of pointers is that
+`scoped_refptr` requires that the object extend a `RefCounted` base class, and
+stores its reference count inside the object storage itself, while `shared_ptr`
+maintains a separate reference count on the heap.
+
+The pros and cons are:
+
+.`shared_ptr`
+[none]
+* icon:plus-circle[role="green",alt="pro"] can be used with any type of object, without the
+object deriving from a special base class
+* icon:plus-circle[role="green",alt="pro"] part of the standard library and familiar to most
+{cpp} developers
+* icon:minus-circle[role="red",alt="con"] creating a new object requires two allocations instead
+of one (one to create the ref count, and one to create the object)
+* icon:minus-circle[role="red",alt="con"] the ref count may not be near the object on the heap,
+so extra cache misses may be incurred on access
+* icon:minus-circle[role="red",alt="con"] the `shared_ptr` instance itself requires 16 bytes
+(pointer to the ref count and pointer to the object)
+* icon:minus-circle[role="red",alt="con"] if you convert from the `shared_ptr` to a raw pointer,
+you can't get back the `shared_ptr`
+
+
+.`scoped_refptr`
+[none]
+* icon:plus-circle[pro, role="green"] only requires a single allocation, and ref count
+is on the same cache line as the object
+* icon:plus-circle[pro, role="green"] the pointer only requires 8 bytes (since
+the ref count is within the object)
+* icon:plus-circle[pro, role="green"] you can manually increase or decrease
+reference counts when more control is required
+* icon:plus-circle[pro, role="green"] you can convert from a raw pointer back
+to a `scoped_refptr` safely without worrying about double freeing
+* icon:plus-circle[pro, role="green"] since we control the implementation, we
+can implement features, such as debug builds that capture the stack trace of every
+referent to help debug leaks.
+* icon:minus-circle[con, role="red"] the referred-to object must inherit
+from `RefCounted`
+* icon:minus-circle[con, role="red"] does not support `weak_ptr<>` use cases
+
+Since `scoped_refptr` is generally faster and smaller, try to use it
+rather than `shared_ptr` in new code. Existing code uses `shared_ptr`
+in many places. When interfacing with that code, you can continue to use `shared_ptr`.
+
+=== Function Binding and Callbacks
+
+Existing code uses `boost::bind` and `boost::function` for function binding and
+callbacks. For new code, use the `Callback` and `Bind` classes in `gutil` instead.
+While less full-featured (`Bind` doesn't support argument
+place holders, wrapped function pointers, or function objects), they provide
+more options by the way of argument lifecycle management. For example, a
+bound argument whose class extends `RefCounted` will be incremented during `Bind`
+and decremented when the `Callback` goes out of scope.
+
+See the large file comment in _gutil/callback.h_ for more details, and
+_util/callback_bind-test.cc_ for examples.
+
+=== `CMake` Style Guide
+
+`CMake` allows commands in lower, upper, or mixed case. To keep
+the CMake files consistent, please use the following guidelines:
+
+- *built-in commands* in lowercase
+----
+add_subdirectory(some/path)
+----
+- *built-in arguments* in uppercase
+----
+message(STATUS "message goes here")
+----
+- *custom commands or macros* in uppercase
+----
+ADD_KUDU_TEST(some-test)
+----
+
+=== GFlags
+
+Kudu uses gflags for both command-line and file-based configuration. Use these guidelines
+to add a new gflag. All new gflags must conform to these
+guidelines. Existing non-conformant ones will be made conformant in time.
+
+.Name
+
+The gflag's name conveys a lot of information, so choose a good name. The name
+will propagate into other systems, such as the link:configuration_reference.html[Configuration
+Reference].
+- The different parts of a multi-word name should be separated by underscores.
+  For example, `fs_data_dirs`.
+- The name should be prefixed with the context that it affects. For example,
+  `webserver_num_worker_threads` and `cfile_default_block_size`. Context can be
+  difficult to define, so bear in mind that this prefix will be
+  used to group similar gflags together. If the gflag affects the entire
+  process, it should not be prefixed.
+- If the gflag is for a quantity, the name should be suffixed with the units.
+  For example, `remote_bootstrap_idle_timeout_ms`.
+- Where possible, use short names. This will save time for those entering
+  command line options by hand.
+- The name is part of Kudu's compatibility contract, and should not change
+  without very good reason.
+
+.Default value
+
+Choosing a default value is generally simple, but like the name, it propagates
+into other systems.
+- The default value is part of Kudu's compatibility contract, and should not
+  change without very good reason.
+
+.Description
+
+The gflag's description should supplement the name and provide additional
+context and information. Like the name, the description propagates into other
+systems.
+- The description may include multiple sentences. Each should begin with a
+  capital letter, end with a period, and begin one space after the previous.
+- The description should NOT include the gflag's type or default value; they are
+  provided out-of-band.
+- The description should be in the third person. Do not use words like `you`.
+- A gflag description can be changed freely; it is not expected to remain the
+  same across Kudu releases.
+
+.Tags
+
+Kudu's gflag tagging mechanism adds machine-readable context to each gflag, for
+use in consuming systems such as documentation or management tools. See the large block
+comment in _flag_tags.h_ for guidelines.
+
+.Miscellaneous
+
+- Avoid creating multiple gflags for the same logical parameter. For
+  example, many Kudu binaries need to configure a WAL directory. Rather than
+  creating `foo_wal_dir` and `bar_wal_dir` gflags, better to have a single
+  `kudu_wal_dir` gflag for use universally.
+
+== Testing
+
+All new code should have tests.::
+  Add new tests either in existing files, or create new test files as necessary.
+
+All bug fixes should have tests.::
+  It's OK to fix a bug without adding a
+  new test if it's triggered by an existing test case. For example, if a
+  race shows up when running a multi-threaded system test after 20
+  minutes or so, it's worth trying to make a more targeted test case to
+  trigger the bug. But if that's hard to do, the existing system test
+  should be enough.
+
+Tests should run quickly (< 1s).::
+  If you want to write a time-intensive
+  test, make the runtime dependent on `KuduTest#AllowSlowTests`, which is
+  enabled via the `KUDU_ALLOW_SLOW_TESTS` environment variable and is
+  used by Jenkins test execution.
+
+Tests which run a number of iterations of some task should use a `gflags` command-line argument for the number of iterations.::
+ This is handy for writing quick stress tests or performance tests.
+
+Commits which may affect performance should include before/after `perf-stat(1)` output.::
+  This will show performance improvement or non-regression.
+  Performance-sensitive code should include some test case which can be used as a
+  targeted benchmark.
+
+
+== Documentation
+See link:style_guide.html[Documentation Style Guide] for guidelines about contributing
+to the official Kudu documentation.

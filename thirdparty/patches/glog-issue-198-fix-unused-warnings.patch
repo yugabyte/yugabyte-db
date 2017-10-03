@@ -1,0 +1,47 @@
+Index: configure.ac
+===================================================================
+--- configure.ac	(revision 142)
++++ configure.ac	(working copy)
+@@ -80,15 +80,17 @@
+                         [Define if you have the 'pwrite' function]))
+ 
+ AX_C___ATTRIBUTE__
+-# We only care about these two attributes.
++# We only care about these attributes.
+ if test x"$ac_cv___attribute__" = x"yes"; then
+   ac_cv___attribute___noreturn="__attribute__ ((noreturn))"
+   ac_cv___attribute___noinline="__attribute__ ((noinline))"
+   ac_cv___attribute___printf_4_5="__attribute__((__format__ (__printf__, 4, 5)))"
++  ac_cv___attribute___unused="__attribute__ ((unused))"
+ else
+   ac_cv___attribute___noreturn=
+   ac_cv___attribute___noinline=
+   ac_cv___attribute___printf_4_5=
++  ac_cv___attribute___unused=
+ fi
+ 
+ AX_C___BUILTIN_EXPECT
+@@ -214,6 +216,7 @@
+ AC_SUBST(ac_cv___attribute___noreturn)
+ AC_SUBST(ac_cv___attribute___noinline)
+ AC_SUBST(ac_cv___attribute___printf_4_5)
++AC_SUBST(ac_cv___attribute___unused)
+ AC_SUBST(ac_cv_have___builtin_expect)
+ AC_SUBST(ac_cv_have_stdint_h)
+ AC_SUBST(ac_cv_have_systypes_h)
+Index: src/glog/logging.h.in
+===================================================================
+--- src/glog/logging.h.in	(revision 142)
++++ src/glog/logging.h.in	(working copy)
+@@ -908,8 +908,10 @@
+ struct CrashReason;
+ }  // namespace glog_internal_namespace_
+ 
++#define GOOGLE_GLOG_ATTRIBUTE_UNUSED @ac_cv___attribute___unused@
++
+ #define GOOGLE_GLOG_COMPILE_ASSERT(expr, msg) \
+-  typedef @ac_google_namespace@::glog_internal_namespace_::CompileAssert<(bool(expr))> msg[bool(expr) ? 1 : -1]
++  typedef @ac_google_namespace@::glog_internal_namespace_::CompileAssert<(bool(expr))> msg[bool(expr) ? 1 : -1] GOOGLE_GLOG_ATTRIBUTE_UNUSED
+ 
+ #define LOG_EVERY_N(severity, n)                                        \
+   GOOGLE_GLOG_COMPILE_ASSERT(@ac_google_namespace@::GLOG_ ## severity < \

@@ -1,0 +1,11 @@
+# Workaround so the generated cmake file works in older versions of
+# cmake
+if(NOT CMAKE_CURRENT_LIST_DIR)
+  get_filename_component(CMAKE_CURRENT_LIST_DIR ${CMAKE_CURRENT_LIST_FILE} PATH)
+endif()
+
+@PACKAGE_INIT@
+
+set_and_check(KUDU_CLIENT_INCLUDE_DIR "@PACKAGE_CMAKE_INSTALL_INCLUDEDIR@")
+
+include("${CMAKE_CURRENT_LIST_DIR}/kuduClientTargets.cmake")

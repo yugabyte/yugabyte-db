@@ -1,0 +1,291 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+//
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.kududb</groupId>
+    <artifactId>kudu-parent</artifactId>
+    <version>0.8.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>Kudu</name>
+
+    <description>
+        Kudu.
+    </description>
+
+    <!-- Properties Management -->
+    <properties>
+        <!-- Platform encoding override -->
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+        <!-- Maven plugins -->
+        <maven-antrun-plugin.version>1.7</maven-antrun-plugin.version>
+        <maven-assembly-plugin.version>2.2.1</maven-assembly-plugin.version>
+        <maven-enforcer-plugin.version>1.4</maven-enforcer-plugin.version>
+        <maven-protoc-plugin.version>0.1.10</maven-protoc-plugin.version>
+        <maven-surefire-plugin.version>2.18</maven-surefire-plugin.version>
+        <maven-failsafe-plugin.version>2.18</maven-failsafe-plugin.version>
+        <schema-validator-maven-plugin.version>5.5.0-SNAPSHOT</schema-validator-maven-plugin.version>
+
+        <!-- Library dependencies -->
+        <async.version>1.4.1</async.version>
+        <guava.version>12.0.1</guava.version>
+        <hadoop.version>2.6.0-cdh5.4.7</hadoop.version>
+        <junit.version>4.11</junit.version>
+        <log4j.version>1.2.17</log4j.version>
+        <mockito-all.version>1.9.0</mockito-all.version>
+        <netty.version>3.8.0.Final</netty.version>
+        <protobuf.version>2.6.1</protobuf.version>
+        <slf4j.version>1.7.12</slf4j.version>
+        <commons-io.version>2.4</commons-io.version>
+        <murmur.version>1.0.0</murmur.version>
+
+        <!-- Misc variables -->
+        <testdata.dir>target/testdata</testdata.dir>
+        <testArgLine>-enableassertions -Xmx1900m -XX:MaxPermSize=100m
+        -Djava.security.egd=file:/dev/./urandom -Djava.net.preferIPv4Stack=true
+        -Djava.awt.headless=true</testArgLine>
+    </properties>
+
+    <modules>
+        <module>interface-annotations</module>
+        <module>kudu-client</module>
+        <module>kudu-client-tools</module>
+        <module>kudu-mapreduce</module>
+        <module>kudu-spark</module>
+    </modules>
+
+    <build>
+
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-enforcer-plugin</artifactId>
+                    <version>${maven-enforcer-plugin.version}</version>
+                    <configuration>
+                        <rules>
+                            <requireMavenVersion>
+                                <version>[3.0.2,)</version>
+                            </requireMavenVersion>
+                            <requireJavaVersion>
+                                <version>[1.7,)</version>
+                            </requireJavaVersion>
+                        </rules>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <version>${maven-failsafe-plugin.version}</version>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>integration-test</goal>
+                                <goal>verify</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                    <configuration>
+                        <failIfNoTests>false</failIfNoTests>
+                        <reuseForks>false</reuseForks>
+                        <redirectTestOutputToFile>true</redirectTestOutputToFile>
+                        <argLine>${testArgLine}</argLine>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>${maven-surefire-plugin.version}</version>
+                    <configuration>
+                        <failIfNoTests>false</failIfNoTests>
+                        <reuseForks>false</reuseForks>
+                        <redirectTestOutputToFile>true</redirectTestOutputToFile>
+                        <argLine>${testArgLine}</argLine>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <inherited>false</inherited>
+                <executions>
+                    <execution>
+                        <id>clean</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <phase>pre-clean</phase>
+                    </execution>
+                    <execution>
+                        <id>default</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <phase>validate</phase>
+                    </execution>
+                    <execution>
+                        <id>site</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <phase>pre-site</phase>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>2.3.2</version>
+                <configuration>
+                    <source>1.7</source>
+                    <target>1.7</target>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>2.3.2</version>
+                <executions>
+                    <execution>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>test-jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>${maven-antrun-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <phase>test-compile</phase>
+                        <configuration>
+                            <target>
+                                <delete dir="${testdata.dir}"/>
+                                <mkdir dir="${testdata.dir}"/>
+                            </target>
+                        </configuration>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>2.10.3</version>
+                <configuration>
+                    <maxmemory>2048m</maxmemory>
+                    <notimestamp>true</notimestamp>
+                    <doclet>
+                        org.kududb.annotations.tools.IncludePublicAnnotationsStandardDoclet
+                    </doclet>
+                    <docletArtifact>
+                        <groupId>org.kududb</groupId>
+                        <artifactId>interface-annotations</artifactId>
+                        <version>${project.version}</version>
+                    </docletArtifact>
+                    <name>User API</name>
+                    <description>The Kudu Application Programmer's API</description>
+                    <excludePackageNames>
+                        com.google:org.kududb.cfile:org.kududb.consensus:org.kududb.log:org.kududb.master:org.kududb.rpc:org.kududb.server:org.kududb.tablet:org.kududb.tserver
+                    </excludePackageNames>
+                    <includeDependencySources>false</includeDependencySources>
+
+                    <dependencySourceIncludes>
+                        <dependencySourceInclude>
+                            org.kududb:interface-annotations
+                        </dependencySourceInclude>
+                    </dependencySourceIncludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <pluginRepositories>
+      <!-- For maven-protoc-plugin -->
+      <pluginRepository>
+        <id>protoc-plugin</id>
+        <url>http://maven.davidtrott.com/repository</url>
+      </pluginRepository>
+    </pluginRepositories>
+
+  <repositories>
+    <repository>
+      <id>cdh.repo</id>
+      <url>https://repository.cloudera.com/artifactory/cloudera-repos</url>
+      <name>Cloudera Repositories</name>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+ </repositories>
+
+  <distributionManagement>
+    <repository>
+      <id>cdh.releases.repo</id>
+      <url>${deploy.maven}</url>
+      <name>Releases Repository</name>
+    </repository>
+    <snapshotRepository>
+      <id>cdh.snapshots.repo</id>
+      <url>http://maven.jenkins.cloudera.com:8081/artifactory/libs-snapshot-local</url>
+      <name>Snapshots Repository</name>
+    </snapshotRepository>
+  </distributionManagement>
+
+  <profiles>
+    <!-- Build the CSD.
+
+         Disabled by default; add -PbuildCSD to the maven command line. -->
+    <profile>
+      <id>buildCSD</id>
+      <modules>
+        <module>kudu-csd</module>
+      </modules>
+    </profile>
+    <profile>
+      <id>deploy-local</id>
+      <activation>
+        <activeByDefault>true</activeByDefault>
+      </activation>
+      <properties>
+         <deploy.maven>http://maven.jenkins.cloudera.com:8081/artifactory/libs-release-local</deploy.maven>
+       </properties>
+    </profile>
+    <profile>
+      <id>deploy-remote</id>
+      <properties>
+         <deploy.maven>https://repository.cloudera.com/cloudera/libs-release-local</deploy.maven>
+      </properties>
+    </profile>
+  </profiles>
+</project>

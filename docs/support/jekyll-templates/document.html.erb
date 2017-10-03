@@ -1,0 +1,133 @@
+<%
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+%>
+---
+title: <%= doctitle(:sanitize => true) || (attr 'untitled-label') %>
+layout: default
+active_nav: docs
+last_updated: '<%= %(#{attr 'last-update-label'} #{attr :docdatetime}) %>'
+---
+<!--
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+<%
+case attr 'source-highlighter'
+when 'coderay'
+  if (attr 'coderay-css', 'class') == 'class'
+    if @safe >= Asciidoctor::SafeMode::SECURE || (attr? :linkcss) %>
+<link rel="stylesheet" href="<%= normalize_web_path('asciidoctor-coderay.css', (attr :stylesdir, '')) %>"><%
+    else %>
+<%= Asciidoctor::Stylesheets.embed_coderay_stylesheet %>
+<%
+    end
+  end
+when 'pygments'
+  if (attr 'pygments-css', 'class') == 'class'
+    if @safe >= Asciidoctor::SafeMode::SECURE || (attr? :linkcss) %>
+<link rel="stylesheet" href="<%= normalize_web_path('asciidoctor-pygments.css', (attr :stylesdir, '')) %>"><%
+    else %>
+<%= Asciidoctor::Stylesheets.embed_pygments_stylesheet(attr 'pygments-style') %>
+<%
+    end
+  end
+when 'highlightjs' %>
+<link rel="stylesheet" href="<%= attr 'highlightjsdir', 'http://cdnjs.cloudflare.com/ajax/libs/highlight.js/7.4' %>/styles/<%= attr 'highlightjs-theme', 'googlecode' %>.min.css">
+<script src="<%= attr 'highlightjsdir', 'http://cdnjs.cloudflare.com/ajax/libs/highlight.js/7.4' %>/highlight.min.js"></script>
+<script src="<%= attr 'highlightjsdir', 'http://cdnjs.cloudflare.com/ajax/libs/highlight.js/7.4' %>/lang/common.min.js"></script>
+<script>hljs.initHighlightingOnLoad()</script><%
+when 'prettify' %>
+<link rel="stylesheet" href="<%= attr 'prettifydir', 'http://cdnjs.cloudflare.com/ajax/libs/prettify/r298' %>/<%= attr 'prettify-theme', 'prettify' %>.min.css">
+<script src="<%= attr 'prettifydir', 'http://cdnjs.cloudflare.com/ajax/libs/prettify/r298' %>/prettify.min.js"></script>
+<script>document.addEventListener('DOMContentLoaded', prettyPrint)</script><%
+end %>
+
+<div class="container">
+  <div class="row">
+    <div class="col-md-9">
+<%
+      unless notitle %>
+<h1><%= @header.title %></h1><%
+      end
+%>
+      <%= content %>
+    </div>
+    <div class="col-md-3">
+<%  if (attr? :toc) %>
+  <div id="toc" data-spy="affix" data-offset-top="70">
+  <ul>
+<%
+      toplevels = [
+        :introduction, "Introducing Kudu",
+        :release_notes, "Kudu Release Notes",
+        :quickstart, "Getting Started with Kudu",
+        :installation, "Installation Guide",
+        :configuration, "Configuring Kudu",
+        :kudu_impala_integration, "Using Impala with Kudu",
+        :administration, "Administering Kudu",
+        :troubleshooting, "Troubleshooting Kudu",
+        :developing, "Developing Applications with Kudu",
+        :schema_design, "Kudu Schema Design",
+        :transaction_semantics, "Kudu Transaction Semantics",
+        :contributing, "Contributing to Kudu",
+        :style_guide, "Kudu Documentation Style Guide",
+        :configuration_reference, "Kudu Configuration Reference"
+      ]
+      toplevels.each_slice(2) do |page, pagename|
+%>
+      <li>
+<%       if page.to_s == (attr 'docname')
+          %><span class="active-toc"><%= pagename %></span>
+            <%= converter.convert self, 'outline' %> <%
+        else %>
+          <a href="<%= page %>.html"><%= pagename %></a> <%
+        end %>
+      </li> <%
+      end %>
+  </ul>
+  </div><%
+    end
+%>
+    </div>
+  </div>
+</div>
+
+<%
+unless footnotes.empty? || !footnotes? || attr?(:nofootnotes) %>
+  <div id="footnotes">
+  <hr><%
+    footnotes.each do |fn| %>
+      <div class="footnote" id="_footnote_<%= fn.index %>">
+      <a href="#_footnoteref_<%= fn.index %>"><%= fn.index %></a>. <%= fn.text %>
+      </div><%
+    end %>
+  </div><%
+end #footnotes
+%>
+

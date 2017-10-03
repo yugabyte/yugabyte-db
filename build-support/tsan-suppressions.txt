@@ -1,0 +1,82 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+race:_dl_deallocate_tls
+race:kudu::tablet::ScopedRowLock::Release
+
+# libunwind uses some double-checked locking which isn't perfectly safe.
+# Reported at http://savannah.nongnu.org/bugs/index.php?42677
+#
+# With TSAN in clang 3.5, it's the init() function that's flagged as a data
+# race (not local_addr_space_init()), due to the former calling sigfillset()
+# on an unprotected global variable. Given that init() invokes
+# local_addr_space_init(), suppressing init() suppresses both races.
+race:_ULx86_64_init
+
+# libev uses some lock-free synchronization, but doesn't have TSAN annotations.
+# See http://lists.schmorp.de/pipermail/libev/2013q2/002178.html or KUDU-366
+# for examples.
+race:evpipe_write
+race:evpipe_init
+race:epoll_ctl
+
+# concurrent btree uses optimistic concurrency, needs to be annotated a bunch
+# more before it would pass. Relatively confident that it is correct based on
+# a lot of stress testing.
+race:concurrent_btree.h
+
+# We're currently a little lax on using atomic instructions for mutations where
+# we might need to. There are possible bugs lurking here, though likely we are
+# hiding behind x86 TSO for now.
+race:kudu::tablet::ApplyMutationsAndGenerateUndos
+race:kudu::tablet::MemRowSet::Iterator::ApplyMutationsToProjectedRow
+race:kudu::tablet::MemRowSet::Iterator::FetchRows
+race:kudu::tablet::Mutation::*
+race:kudu::RowChangeListDecoder::Init
+
+# GLog's fatal signal handler isn't signal-safe -- it allocates memory.
+# This isn't great, but nothing we can do about it. See
+# https://code.google.com/p/google-glog/issues/detail?id=191
+signal:logging_fail
+
+# This method in Boost's UUID library operates on static state with impunity,
+# triggering (harmless) data races in TSAN when boost::uuids::random_generator
+# instances are created across threads (see kudu::ObjectIdGenerator).
+race:boost::uuids::detail::seed_rng::sha1_random_digest_
+
+# ------------------------------------------------------------
+# Known bugs below. As these JIRAs are resolved, please remove the relevant
+# suppression.
+# ------------------------------------------------------------
+
+# KUDU-1283: TSAN warning from consensus OpId
+race:kudu::consensus::OpId::CopyFrom
+
+# KUDU-186: sketchy synchronization in catalog manager
+race:kudu::master::CatalogManager::Shutdown
+race:kudu::master::CatalogManagerBgTasks::Shutdown
+race:kudu::master::CatalogManager::~CatalogManager
+
+# KUDU-189: unsynchronized access to 'state_' in DeferredCallback
+race:kudu::master::AsyncTabletRequestTask::DeferredCallback
+
+# KUDU-574: raft_consensus_quorum-test race on LocalTestPeerProxy destruction
+race:kudu::consensus::LocalTestPeerProxy::~LocalTestPeerProxy
+
+# KUDU-569: unsynchronized access to 'state_', 'acceptor_pools_', in
+# GetBoundAddresses()
+race:kudu::Webserver::GetBoundAddresses
+race:kudu::RpcServer::GetBoundAddresses

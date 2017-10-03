@@ -1,0 +1,80 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+package kudu.cfile;
+
+option java_package = "org.kududb.cfile";
+
+import "kudu/common/common.proto";
+
+message FileMetadataPairPB {
+  required string key = 1;
+  required bytes value = 2;
+}
+
+message CFileHeaderPB {
+  required int32 major_version = 1;
+  required int32 minor_version = 2;
+
+  repeated FileMetadataPairPB metadata = 3;
+}
+
+message BlockPointerPB {
+  required int64 offset = 1;
+  required int32 size = 2;
+}
+
+message BTreeInfoPB {
+  required BlockPointerPB root_block = 1;
+}
+
+message IndexBlockTrailerPB {
+  required int32 num_entries = 1;
+
+  enum BlockType {
+    UNKNOWN = 999;
+    LEAF = 0;
+    INTERNAL = 1;
+  };
+  required BlockType type = 2;
+}
+// TODO: name all the PBs with *PB convention
+
+message CFileFooterPB {
+  required kudu.DataType data_type = 1;
+  required EncodingType encoding = 2;
+
+  // Total number of values in the file.
+  required int64 num_values = 3;
+
+  optional BTreeInfoPB posidx_info = 4;
+  optional BTreeInfoPB validx_info = 5;
+
+  optional CompressionType compression = 6 [default=NO_COMPRESSION];
+
+  repeated FileMetadataPairPB metadata = 7;
+
+  optional bool is_type_nullable = 8 [default=false]; // TODO use enum with encoding?
+
+  // Block pointer for dictionary block if the cfile is dictionary encoded.
+  // Only for dictionary encoding.
+  optional BlockPointerPB dict_block_ptr = 9;
+}
+
+
+message BloomBlockHeaderPB {
+  required int32 num_hash_functions = 1;
+}

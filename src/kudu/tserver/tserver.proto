@@ -1,0 +1,329 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+package kudu.tserver;
+
+option java_package = "org.kududb.tserver";
+
+import "kudu/common/common.proto";
+import "kudu/common/wire_protocol.proto";
+import "kudu/tablet/tablet.proto";
+
+// Tablet-server specific errors use this protobuf.
+message TabletServerErrorPB {
+  enum Code {
+    // An error which has no more specific error code.
+    // The code and message in 'status' may reveal more details.
+    //
+    // RPCs should avoid returning this, since callers will not be
+    // able to easily parse the error.
+    UNKNOWN_ERROR = 1;
+
+    // The schema provided for a request was not well-formed.
+    INVALID_SCHEMA = 2;
+
+    // The row data provided for a request was not well-formed.
+    INVALID_ROW_BLOCK = 3;
+
+    // The mutations or mutation keys provided for a request were
+    // not well formed.
+    INVALID_MUTATION = 4;
+
+    // The schema provided for a request didn't match the actual
+    // schema of the tablet.
+    MISMATCHED_SCHEMA = 5;
+
+    // The requested tablet_id is not currently hosted on this server.
+    TABLET_NOT_FOUND = 6;
+
+    // A request was made against a scanner ID that was either never
+    // created or has expired.
+    SCANNER_EXPIRED = 7;
+
+    // An invalid scan was specified -- e.g the values passed for
+    // predicates were incorrect sizes.
+    INVALID_SCAN_SPEC = 8;
+
+    // The provided configuration was not well-formed and/or
+    // had a sequence number that was below the current config.
+    INVALID_CONFIG = 9;
+
+    // On a create tablet request, signals that the tablet already exists.
+    TABLET_ALREADY_EXISTS = 10;
+
+    // If the tablet has a newer schema than the requested one the "alter"
+    // request will be rejected with this error.
+    TABLET_HAS_A_NEWER_SCHEMA = 11;
+
+    // The tablet is hosted on this server, but not in RUNNING state.
+    TABLET_NOT_RUNNING = 12;
+
+    // Client requested a snapshot read but the snapshot was invalid.
+    INVALID_SNAPSHOT = 13;
+
+    // An invalid scan call sequence ID was specified.
+    INVALID_SCAN_CALL_SEQ_ID = 14;
+
+    // This tserver is not the leader of the consensus configuration.
+    NOT_THE_LEADER = 15;
+
+    // The destination UUID in the request does not match this server.
+    WRONG_SERVER_UUID = 16;
+
+    // The compare-and-swap specified by an atomic RPC operation failed.
+    CAS_FAILED = 17;
+  }
+
+  // The error code.
+  required Code code = 1 [ default = UNKNOWN_ERROR ];
+
+  // The Status object for the error. This will include a textual
+  // message that may be more useful to present in log messages, etc,
+  // though its error code is less specific.
+  required AppStatusPB status = 2;
+}
+
+
+message PingRequestPB {
+}
+
+message PingResponsePB {
+}
+
+// A batched set of insert/mutate requests.
+message WriteRequestPB {
+  required bytes tablet_id = 1;
+
+  // The schema as seen by the client. This may be out-of-date, in which case
+  // it will be projected to the current schema automatically, with defaults/NULLs
+  // being filled in.
+  optional SchemaPB schema = 2;
+
+  // Operations to perform (insert/update/delete)
+  optional RowOperationsPB row_operations = 3;
+
+  // The required consistency mode for this write.
+  optional ExternalConsistencyMode external_consistency_mode = 4 [default = CLIENT_PROPAGATED];
+
+  // A timestamp obtained by the client from a previous request.
+  // TODO crypto sign this and propagate the signature along with
+  // the timestamp.
+  optional fixed64 propagated_timestamp = 5;
+}
+
+message WriteResponsePB {
+  // If the entire WriteResponsePB request failed, the error status that
+  // caused the failure. This type of error is triggered for
+  // cases such as the tablet not being on this server, or the
+  // schema not matching. If any error specific to a given row
+  // occurs, this error will be recorded in per_row_errors below,
+  // even if all rows failed.
+  optional TabletServerErrorPB error = 1;
+
+  // If errors occurred with particular row operations, then the errors
+  // for those operations will be passed back in 'per_row_errors'.
+  message PerRowErrorPB {
+    // The index of the row in the incoming batch.
+    required int32 row_index = 1;
+    // The error that occurred.
+    required AppStatusPB error = 2;
+  }
+  repeated PerRowErrorPB per_row_errors = 2;
+
+  // The timestamp chosen by the server for this write.
+  // TODO KUDU-611 propagate timestamps with server signature.
+  optional fixed64 timestamp = 3;
+}
+
+// A list tablets request
+message ListTabletsRequestPB {
+}
+
+// A list tablets response
+message ListTabletsResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  message StatusAndSchemaPB {
+    required tablet.TabletStatusPB tablet_status = 1;
+    required SchemaPB schema = 2;
+    optional PartitionSchemaPB partition_schema = 3;
+  }
+
+  repeated StatusAndSchemaPB status_and_schema = 2;
+}
+
+// A range predicate on one of the columns in the underlying
+// data.
+message ColumnRangePredicatePB {
+  required ColumnSchemaPB column = 1;
+
+  // These bounds should be encoded as follows:
+  // - STRING values: simply the exact string value for the bound.
+  // - other type: the canonical x86 in-memory representation -- eg for
+  //   uint32s, a little-endian value.
+  //
+  // Note that this predicate type should not be used for NULL data --
+  // NULL is defined to neither be greater than or less than other values
+  // for the comparison operator. We will eventually add a special
+  // predicate type for null-ness.
+  optional bytes lower_bound = 2;
+  optional bytes upper_bound = 3;
+}
+
+// List of predicates used by the Java client. Will rapidly evolve into something more reusable
+// as a way to pass scanner configurations.
+message ColumnRangePredicateListPB {
+  repeated ColumnRangePredicatePB range_predicates = 1;
+}
+
+message NewScanRequestPB {
+  // The tablet to scan.
+  required bytes tablet_id = 1;
+
+  // The maximum number of rows to scan.
+  // The scanner will automatically stop yielding results and close
+  // itself after reaching this number of result rows.
+  optional uint64 limit = 2;
+
+  // Any column range predicates to enforce.
+  repeated ColumnRangePredicatePB range_predicates = 3;
+
+  // Encoded primary key to begin scanning at (inclusive).
+  optional bytes start_primary_key = 8;
+  // Encoded primary key to stop scanning at (exclusive).
+  optional bytes stop_primary_key = 9;
+
+  // Which columns to select.
+  // if this is an empty list, no data will be returned, but the num_rows
+  // field of the returned RowBlock will indicate how many rows passed
+  // the predicates. Note that in some cases, the scan may still require
+  // multiple round-trips, and the caller must aggregate the counts.
+  repeated ColumnSchemaPB projected_columns = 4;
+
+  // The read mode for this scan request.
+  // See common.proto for further information about read modes.
+  optional ReadMode read_mode = 5 [default = READ_LATEST];
+
+  // The requested snapshot timestamp. This is only used
+  // when the read mode is set to READ_AT_SNAPSHOT.
+  optional fixed64 snap_timestamp = 6;
+
+  // Sent by clients which previously executed CLIENT_PROPAGATED writes.
+  // This updates the server's time so that no transaction will be assigned
+  // a timestamp lower than or equal to 'previous_known_timestamp'
+  optional fixed64 propagated_timestamp = 7;
+
+  // Whether data blocks will be cached when read from the files or discarded after use.
+  // Disable this to lower cache churn when doing large scans.
+  optional bool cache_blocks = 10 [default = true];
+
+  // Whether to order the returned rows by primary key.
+  // This is used for scanner fault-tolerance.
+  optional OrderMode order_mode = 11 [default = UNORDERED];
+
+  // If retrying a scan, the final primary key retrieved in the previous scan
+  // attempt. If set, this will take precedence over the `start_primary_key`
+  // field, and functions as an exclusive start primary key.
+  optional bytes last_primary_key = 12;
+}
+
+// A scan request. Initially, it should specify a scan. Later on, you
+// can use the scanner id returned to fetch result batches with a different
+// scan request.
+//
+// The scanner will remain open if there are more results, and it's not
+// asked to be closed explicitly. Some errors on the Tablet Server may
+// close the scanner automatically if the scanner state becomes
+// inconsistent.
+//
+// Clients may choose to retry scan requests that fail to complete (due to, for
+// example, a timeout or network error). If a scan request completes with an
+// error result, the scanner should be closed by the client.
+//
+// You can fetch the results and ask the scanner to be closed to save
+// a trip if you are not interested in remaining results.
+//
+// This is modeled somewhat after HBase's scanner API.
+message ScanRequestPB {
+  // If continuing an existing scan, then you must set scanner_id.
+  // Otherwise, you must set 'new_scan_request'.
+  optional bytes scanner_id = 1;
+  optional NewScanRequestPB new_scan_request = 2;
+
+  // The sequence ID of this call. The sequence ID should start at 0
+  // with the request for a new scanner, and after each successful request,
+  // the client should increment it by 1. When retrying a request, the client
+  // should _not_ increment this value. If the server detects that the client
+  // missed a chunk of rows from the middle of a scan, it will respond with an
+  // error.
+  optional uint32 call_seq_id = 3;
+
+  // The maximum number of bytes to send in the response.
+  // This is a hint, not a requirement: the server may send
+  // arbitrarily fewer or more bytes than requested.
+  optional uint32 batch_size_bytes = 4;
+
+  // If set, the server will close the scanner after responding to
+  // this request, regardless of whether all rows have been delivered.
+  // In order to simply close a scanner without selecting any rows, you
+  // may set batch_size_bytes to 0 in conjunction with setting this flag.
+  optional bool close_scanner = 5;
+}
+
+message ScanResponsePB {
+  // The error, if an error occurred with this request.
+  optional TabletServerErrorPB error = 1;
+
+  // When a scanner is created, returns the scanner ID which may be used
+  // to pull new rows from the scanner.
+  optional bytes scanner_id = 2;
+
+  // Set to true to indicate that there may be further results to be fetched
+  // from this scanner. If the scanner has no more results, then the scanner
+  // ID will become invalid and cannot continue to be used.
+  //
+  // Note that if a scan returns no results, then the initial response from
+  // the first RPC may return false in this flag, in which case there will
+  // be no scanner ID assigned.
+  optional bool has_more_results = 3;
+
+  // The block of returned rows.
+  //
+  // NOTE: the schema-related fields will not be present in this row block.
+  // The schema will match the schema requested by the client when it created
+  // the scanner.
+  optional RowwiseRowBlockPB data = 4;
+
+  // The snapshot timestamp at which the scan was executed. This is only set
+  // in the first response (i.e. the response to the request that had
+  // 'new_scan_request' set) and only for READ_AT_SNAPSHOT scans.
+  optional fixed64 snap_timestamp = 6;
+
+  // If this is a fault-tolerant scanner, this is set to the encoded primary
+  // key of the last row returned in the response.
+  optional bytes last_primary_key = 7;
+}
+
+// A scanner keep-alive request.
+// Updates the scanner access time, increasing its time-to-live.
+message ScannerKeepAliveRequestPB {
+  required bytes scanner_id = 1;
+}
+
+message ScannerKeepAliveResponsePB {
+  // The error, if an error occurred with this request.
+  optional TabletServerErrorPB error = 1;
+}

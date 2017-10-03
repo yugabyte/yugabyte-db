@@ -1,0 +1,115 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+[[configuration]]
+= Configuring Apache Kudu (incubating)
+
+:author: Kudu Team
+:imagesdir: ./images
+:icons: font
+:toc: left
+:toclevels: 3
+:doctype: book
+:backend: html5
+:sectlinks:
+:experimental:
+
+NOTE: Kudu is easier to configure with link:http://www.cloudera.com/content/www/en-us/products/cloudera-manager.html[Cloudera Manager]
+than in a standalone installation. See Cloudera's
+link:http://www.cloudera.com/content/www/en-us/documentation/betas/kudu/0-5-0/topics/kudu_installation.html[Kudu documentation]
+for more details about using Kudu with Cloudera Manager.
+
+== Configure Kudu
+
+=== Configuration Basics
+To configure the behavior of each Kudu process, you can pass command-line flags when
+you start it, or read those options from configuration files by passing them using
+one or more `--flagfile=<file>` options. You can even include the
+`--flagfile` option within your configuration file to include other files. Learn more about gflags
+by reading link:http://google-gflags.googlecode.com/svn/trunk/doc/gflags.html[its documentation].
+
+You can place options for masters and tablet servers into the same configuration
+file, and each will ignore options that do not apply.
+
+Flags can be prefixed with either one or two `-` characters. This
+documentation standardizes on two: `--example_flag`.
+
+=== Discovering Configuration Options
+Only the most common configuration options are documented here. For a more exhaustive
+list of configuration options, see the link:configuration_reference.html[Configuration Reference].
+
+To see all configuration flags for a given executable, run it with the `--help` option.
+Take care when configuring undocumented flags, as not every possible
+configuration has been tested, and undocumented options are not guaranteed to be
+maintained in future releases.
+
+=== Configuring the Kudu Master
+To see all available configuration options for the `kudu-master` executable, run it
+with the `--help` option:
+----
+$ kudu-master --help
+----
+
+[cols="m,d,m,d"]
+.Supported Configuration Flags for Kudu Masters
+|===
+| Flag      | Valid Options     | Default     | Description
+
+// TODO commented out for the beta|--master_addresses | string | localhost |  Comma-separated list of all the RPC
+// addresses for Master quorum. If not specified, assumes a standalone Master.
+|--fs_data_dirs | string | | Comma-separated list of
+directories where the Master will place its data blocks.
+|--fs_wal_dir | string | | The directory where the Master will
+place its write-ahead logs. May be the same as _one of_ the directories listed in
+`--fs_data_dirs`, but not a sub-directory of a data directory.
+|--log_dir | string | /var/log/kudu | The directory to store Master log files.
+|===
+
+For the full list of flags for masters, see the
+link:configuration_reference.html#master_configuration_reference[Kudu Master Configuration Reference].
+
+=== Configuring Tablet Servers
+To see all available configuration options for the `kudu-tserver` executable,
+run it with the `--help` option:
+----
+$ kudu-tserver --help
+----
+
+.Supported Configuration Flags for Kudu Tablet Servers
+|===
+| Flag      | Valid Options     | Default     | Description
+
+|--fs_data_dirs | string |  | Comma-separated list
+of directories where the Tablet Server will place its data blocks.
+|--fs_wal_dir | string | | The directory where the Tablet Server will
+place its write-ahead logs. May be the same as _one of_ the directories listed in
+`--fs_data_dirs`, but not a sub-directory of a data directory.
+|--log_dir | string | /var/log/kudu | The directory to store Tablet Server log files
+|--tserver_master_addrs | string | `127.0.0.1:7051` |  Comma separated
+addresses of the masters which the tablet server should connect to. The masters
+do not read this flag.
+|--block_cache_capacity_mb | integer | 512 | Maximum amount of memory allocated to the Kudu Tablet Server's block cache.
+|--memory_limit_hard_bytes | integer | 4294967296 | Maximum amount of memory a Tablet Server can consume before it starts rejecting all incoming writes.
+|===
+
+For the full list of flags for tablet servers, see the
+link:configuration_reference.html#tablet_server_configuration_reference[Kudu Tablet Server Configuration Reference].
+
+
+== Next Steps
+- link:quickstart.html[Get Started With Kudu]
+- link:developing.html[Developing Applications With Kudu]

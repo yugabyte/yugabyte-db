@@ -1,0 +1,61 @@
+[ {
+  "metric" : "OVERALL",
+  "measurement" : "RunTime(ms)",
+  "value" : 382028.0
+}, {
+  "metric" : "OVERALL",
+  "measurement" : "Throughput(ops/sec)",
+  "value" : 26176.09180478918
+}, {
+  "metric" : "CLEANUP",
+  "measurement" : "Operations",
+  "value" : 64.0
+}, {
+  "metric" : "CLEANUP",
+  "measurement" : "AverageLatency(us)",
+  "value" : 80.03125
+}, {
+  "metric" : "CLEANUP",
+  "measurement" : "MinLatency(us)",
+  "value" : 23.0
+}, {
+  "metric" : "CLEANUP",
+  "measurement" : "MaxLatency(us)",
+  "value" : 2201.0
+}, {
+  "metric" : "CLEANUP",
+  "measurement" : "95thPercentileLatency(us)",
+  "value" : 66.0
+}, {
+  "metric" : "CLEANUP",
+  "measurement" : "99thPercentileLatency(us)",
+  "value" : 178.0
+}, {
+  "metric" : "READ",
+  "measurement" : "Operations",
+  "value" : 1.0E7
+}, {
+  "metric" : "READ",
+  "measurement" : "AverageLatency(us)",
+  "value" : 2415.2632466
+}, {
+  "metric" : "READ",
+  "measurement" : "MinLatency(us)",
+  "value" : 686.0
+}, {
+  "metric" : "READ",
+  "measurement" : "MaxLatency(us)",
+  "value" : 101759.0
+}, {
+  "metric" : "READ",
+  "measurement" : "95thPercentileLatency(us)",
+  "value" : 4531.0
+}, {
+  "metric" : "READ",
+  "measurement" : "99thPercentileLatency(us)",
+  "value" : 6539.0
+}, {
+  "metric" : "READ",
+  "measurement" : "Return=0",
+  "value" : 10000000
+} ]

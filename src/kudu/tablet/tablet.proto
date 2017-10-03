@@ -1,0 +1,127 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+package kudu.tablet;
+
+option java_package = "org.kududb.tablet";
+
+import "kudu/common/common.proto";
+import "kudu/common/wire_protocol.proto";
+import "kudu/tablet/metadata.proto";
+
+// Stores the id of the MemRowSet (for inserts or mutations against MRS)
+// or of the (row set, delta ID) pair for mutations against a DiskRowSet.
+message MemStoreTargetPB {
+  // -1 defaults here are so that, if a caller forgets to check has_mrs_id(),
+  // they won't accidentally see real-looking (i.e 0) IDs.
+
+  // Either this field...
+  optional int64 mrs_id = 1 [ default = -1];
+
+  // ... or both of the following fields are set.
+  optional int64 rs_id = 2 [ default = -1 ];
+  optional int64 dms_id = 3 [ default = -1 ];
+}
+
+// Stores the result of an Insert or Mutate.
+message OperationResultPB {
+
+  // set on replay if this operation was already flushed.
+  optional bool flushed = 1 [ default = false ];
+
+  // set if this particular operation failed
+  optional kudu.AppStatusPB failed_status = 2;
+
+  // The stores that the operation affected.
+  // For INSERTs, this will always be just one store.
+  // For MUTATE, it may be more than one if the mutation arrived during
+  // a compaction.
+  repeated MemStoreTargetPB mutated_stores = 3;
+}
+
+// The final result of a transaction, including the result of each individual
+// operation.
+message TxResultPB {
+  // all the operations in this transaction
+  repeated OperationResultPB ops = 1;
+}
+
+// Delta statistics for a flushed deltastore
+message DeltaStatsPB {
+  // Number of deletes (deletes result in deletion of an entire row)
+  required int64 delete_count = 1;
+
+  // REMOVED: replaced by column_stats, which maps by column ID,
+  // whereas this older version mapped by index.
+  // repeated int64 per_column_update_count = 2;
+
+  // The min Timestamp that was stored in this delta.
+  required fixed64 min_timestamp = 3;
+  // The max Timestamp that was stored in this delta.
+  required fixed64 max_timestamp = 4;
+
+  // Per-column statistics about this delta file.
+  message ColumnStats {
+    // The column ID.
+    required int32 col_id = 1;
+    // The number of updates which refer to this column ID.
+    optional int64 update_count = 2 [ default = 0 ];
+  }
+  repeated ColumnStats column_stats = 5;
+}
+
+message TabletStatusPB {
+  required string tablet_id = 1;
+  required string table_name = 2;
+  optional TabletStatePB state = 3 [ default = UNKNOWN ];
+  optional tablet.TabletDataState tablet_data_state = 8 [ default = TABLET_DATA_UNKNOWN ];
+  required string last_status = 4;
+  // DEPRECATED.
+  optional bytes start_key = 5;
+  // DEPRECATED.
+  optional bytes end_key = 6;
+  optional PartitionPB partition = 9;
+  optional int64 estimated_on_disk_size = 7;
+}
+
+// Used to present the maintenance manager's internal state.
+message MaintenanceManagerStatusPB {
+  message MaintenanceOpPB {
+    required string name = 1;
+    // Number of times this operation is currently running.
+    required uint32 running = 2;
+    required bool runnable = 3;
+    required uint64 ram_anchored_bytes = 4;
+    required int64 logs_retained_bytes = 5;
+    required double perf_improvement = 6;
+  }
+
+  message CompletedOpPB {
+    required string name = 1;
+    required int32 duration_millis = 2;
+    // Number of seconds since this operation started.
+    required int32 secs_since_start = 3;
+  }
+
+  // The next operation that would run.
+  optional MaintenanceOpPB best_op = 1;
+
+  // List of all the operations.
+  repeated MaintenanceOpPB registered_operations = 2;
+
+  // This list isn't in order of anything. Can contain the same operation mutiple times.
+  repeated CompletedOpPB completed_operations = 3;
+}

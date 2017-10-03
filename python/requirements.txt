@@ -1,0 +1,6 @@
+pytest
+numpy>=1.7.0
+cython >= 0.21
+setuptools >= 0.8
+six
+unittest2

@@ -1,0 +1,35 @@
+# Most common in-tree build directory.
+#
+# Note: build output files are not explicitly listed here because they are
+# expected to fall within in the build directory (and indeed, if they're
+# outside for some reason, we want to know as it's likely an error).
+build/
+
+perf.data
+perf.data.old
+oprofile_data
+.ycm_extra_conf.pyc
+*.kdev4
+.kdev4/
+.metadata/
+*.iml
+
+# VIM/emacs stuff
+*.swp
+*~
+
+# IDE cruft
+.settings/
+.idea/
+nbproject/
+.project
+.cproject
+.csettings/
+
+# WWW dependencies which are not checked in directly
+www/tracing.*
+
+# Python
+python/kudu/*.so
+python/kudu/*.cpp
+*.py[ocd]

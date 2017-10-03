@@ -1,0 +1,73 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    asciidoctor (1.5.3)
+    blankslate (2.1.2.4)
+    classifier (1.3.4)
+      fast-stemmer (>= 1.0.0)
+    colorator (0.1)
+    commander (4.1.6)
+      highline (~> 1.6.11)
+    fast-stemmer (1.0.2)
+    ffi (1.9.10)
+    highline (1.6.21)
+    jekyll (1.5.1)
+      classifier (~> 1.3)
+      colorator (~> 0.1)
+      commander (~> 4.1.3)
+      liquid (~> 2.5.5)
+      listen (~> 1.3)
+      maruku (= 0.7.0)
+      pygments.rb (~> 0.5.0)
+      redcarpet (~> 2.3.0)
+      safe_yaml (~> 1.0)
+      toml (~> 0.1.0)
+    json (1.8.3)
+    libv8 (3.16.14.13)
+    liquid (2.5.5)
+    listen (1.3.1)
+      rb-fsevent (>= 0.9.3)
+      rb-inotify (>= 0.9)
+      rb-kqueue (>= 0.2)
+    maruku (0.7.0)
+    parslet (1.5.0)
+      blankslate (~> 2.0)
+    posix-spawn (0.3.11)
+    pygments.rb (0.5.4)
+      posix-spawn (~> 0.3.6)
+      yajl-ruby (~> 1.1.0)
+    rb-fsevent (0.9.6)
+    rb-inotify (0.9.5)
+      ffi (>= 0.5.0)
+    rb-kqueue (0.2.4)
+      ffi (>= 0.5.0)
+    rdoc (4.2.0)
+      json (~> 1.4)
+    redcarpet (2.3.0)
+    ref (1.0.5)
+    safe_yaml (1.0.4)
+    therubyracer (0.12.2)
+      libv8 (~> 3.16.14.0)
+      ref
+    thread_safe (0.3.5)
+    tilt (2.0.1)
+    toml (0.1.2)
+      parslet (~> 1.5.0)
+    yajl-ruby (1.1.0)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  asciidoctor
+  jekyll (~> 1.5.1)
+  json
+  rdoc
+  redcarpet (~> 2.3.0)
+  ref (~> 1.0)
+  therubyracer
+  thread_safe
+  tilt
+
+BUNDLED WITH
+   1.10.6

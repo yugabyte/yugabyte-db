@@ -1,0 +1,195 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+[[administration]]
+= Apache Kudu (incubating) Administration
+
+:author: Kudu Team
+:imagesdir: ./images
+:icons: font
+:toc: left
+:toclevels: 3
+:doctype: book
+:backend: html5
+:sectlinks:
+:experimental:
+
+NOTE: Kudu is easier to manage with link:http://www.cloudera.com/content/cloudera/en/products-and-services/cloudera-enterprise/cloudera-manager.htm[Cloudera Manager]
+than in a standalone installation. See Cloudera's
+link:http://www.cloudera.com/content/cloudera/en/downloads/betas/kudu/0-5-0.html[Kudu documentation]
+for more details about using Kudu with Cloudera Manager.
+
+== Starting and Stopping Kudu Processes
+
+include::installation.adoc[tags=start_stop]
+
+== Kudu Web Interfaces
+
+Kudu tablet servers and masters expose useful operational information on a built-in web interface,
+
+=== Kudu Master Web Interface
+
+Kudu master processes serve their web interface on port 8051. The interface exposes several pages
+with information about the cluster state:
+
+- A list of tablet servers, their host names, and the time of their last heartbeat.
+- A list of tables, including schema and tablet location information for each.
+- SQL code which you can paste into Impala Shell to add an existing table to Impala's list of known data sources.
+
+=== Kudu Tablet Server Web Interface
+
+Each tablet server serves a web interface on port 8050. The interface exposes information
+about each tablet hosted on the server, its current state, and debugging information
+about maintenance background operations.
+
+=== Common Web Interface Pages
+
+Both Kudu masters and tablet servers expose a common set of information via their web interfaces:
+
+- HTTP access to server logs.
+- an `/rpcz` endpoint which lists currently running RPCs via JSON.
+- pages giving an overview and detailed information on the memory usage of different
+  components of the process.
+- information on the current set of configuration flags.
+- information on the currently running threads and their resource consumption.
+- a JSON endpoint exposing metrics about the server.
+- information on the deployed version number of the daemon.
+
+These interfaces are linked from the landing page of each daemon's web UI.
+
+== Kudu Metrics
+
+Kudu daemons expose a large number of metrics. Some metrics are associated with an entire
+server process, whereas others are associated with a particular tablet replica.
+
+=== Listing available metrics
+
+The full set of available metrics for a Kudu server can be dumped via a special command
+line flag:
+
+[source,bash]
+----
+$ kudu-tserver --dump_metrics_json
+$ kudu-master --dump_metrics_json
+----
+
+This will output a large JSON document. Each metric indicates its name, label, description,
+units, and type. Because the output is JSON-formatted, this information can easily be
+parsed and fed into other tooling which collects metrics from Kudu servers.
+
+=== Collecting metrics via HTTP
+
+Metrics can be collected from a server process via its HTTP interface by visiting
+`/metrics`. The output of this page is JSON for easy parsing by monitoring services.
+This endpoint accepts several `GET` parameters in its query string:
+
+- `/metrics?metrics=<substring1>,<substring2>,...` - limits the returned metrics to those which contain
+at least one of the provided substrings. The substrings also match entity names, so this
+may be used to collect metrics for a specific tablet.
+
+- `/metrics?include_schema=1` - includes metrics schema information such as unit, description,
+and label in the JSON output. This information is typically elided to save space.
+
+- `/metrics?compact=1` - eliminates unnecessary whitespace from the resulting JSON, which can decrease
+bandwidth when fetching this page from a remote host.
+
+- `/metrics?include_raw_histograms=1` - include the raw buckets and values for histogram metrics,
+enabling accurate aggregation of percentile metrics over time and across hosts.
+
+For example:
+
+[source,bash]
+----
+$ curl -s 'http://example-ts:8050/metrics?include_schema=1&metrics=connections_accepted'
+----
+
+[source,json]
+----
+[
+    {
+        "type": "server",
+        "id": "kudu.tabletserver",
+        "attributes": {},
+        "metrics": [
+            {
+                "name": "rpc_connections_accepted",
+                "label": "RPC Connections Accepted",
+                "type": "counter",
+                "unit": "connections",
+                "description": "Number of incoming TCP connections made to the RPC server",
+                "value": 92
+            }
+        ]
+    }
+]
+
+[source,bash]
+----
+$ curl -s 'http://example-ts:8050/metrics?metrics=log_append_latency'
+----
+
+[source,json]
+----
+[
+    {
+        "type": "tablet",
+        "id": "c0ebf9fef1b847e2a83c7bd35c2056b1",
+        "attributes": {
+            "table_name": "lineitem",
+            "partition": "hash buckets: (55), range: [(<start>), (<end>))",
+            "table_id": ""
+        },
+        "metrics": [
+            {
+                "name": "log_append_latency",
+                "total_count": 7498,
+                "min": 4,
+                "mean": 69.3649,
+                "percentile_75": 29,
+                "percentile_95": 38,
+                "percentile_99": 45,
+                "percentile_99_9": 95,
+                "percentile_99_99": 167,
+                "max": 367244,
+                "total_sum": 520098
+            }
+        ]
+    }
+]
+----
+
+NOTE: All histograms and counters are measured since the server start time, and are not reset upon collection.
+
+=== Collecting metrics to a log
+
+Kudu may be configured to periodically dump all of its metrics to a local log file using the
+`--metrics_log_interval_ms` flag. Set this flag to the interval at which metrics should be written
+to a log file.
+
+The metrics log will be written to the same directory as the other Kudu log files, with the same
+naming format. After any metrics log file reaches 64MB uncompressed, the log will be rolled and
+the previous file will be gzip-compressed.
+
+The log file generated has three space-separated fields. The first field is the word
+`metrics`. The second field is the current timestamp in microseconds since the Unix epoch.
+The third is the current value of all metrics on the server, using a compact JSON encoding.
+The encoding is the same as the metrics fetched via HTTP described above.
+
+WARNING: Although metrics logging automatically rolls and compresses previous log files, it does
+not remove old ones. Since metrics logging can use significant amounts of disk space,
+consider setting up a system utility to monitor space in the log directory and archive or
+delete old segments.

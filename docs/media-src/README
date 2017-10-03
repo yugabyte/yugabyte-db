@@ -1,0 +1,5 @@
+Source files (i.e. .graffle, .psd, .eps, .xcf files) for artifacts used in docs
+or the web site.
+
+Don't put display-resolution images for the docs here, better to put those in
+the images/ directory, or even on a CDN.

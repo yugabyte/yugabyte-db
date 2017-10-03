@@ -1,0 +1,131 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+package kudu.server;
+
+option java_package = "org.kududb.server";
+
+import "kudu/common/common.proto";
+import "kudu/common/wire_protocol.proto";
+import "kudu/util/version_info.proto";
+
+// The status information dumped by a server after it starts.
+//
+// This is optionally exposed on the local host in a text file which the server writes out
+// at startup.
+//
+// Additionally, it is exposed via RPC through the GenericService interface.
+message ServerStatusPB {
+  required NodeInstancePB node_instance = 1;
+  repeated HostPortPB bound_rpc_addresses = 2;
+  repeated HostPortPB bound_http_addresses = 3;
+  optional VersionInfoPB version_info = 4;
+}
+
+// Attempt to set a command line flag.
+// Note that many command line flags do not take effect if changed
+// at runtime.
+//
+// TODO: We plan to add tags indicating which flags can be modified at
+// runtime. For now, this is an advanced option.
+message SetFlagRequestPB {
+  required string flag = 1;
+  required string value = 2;
+
+  // Force the change, even if the flag is not marked as safe to change
+  // at runtime. This can cause crashes or other bad behavior, so should
+  // only be used as a last resort.
+  optional bool force = 3 [default = false];
+}
+
+message SetFlagResponsePB {
+  enum Code {
+    UNKNOWN = 0;
+    SUCCESS = 1;
+    NO_SUCH_FLAG = 2;
+    BAD_VALUE = 3;
+
+    // The flag is not safe to change at runtime without the 'force' flag.
+    NOT_SAFE = 4;
+  }
+
+  required Code result = 1;
+
+  // A string describing the new value that the option has been set to.
+  // This passes through the return value of SetCommandLineOption() from
+  // gflags, which doesn't specify anything about the format of this message.
+  //
+  // Using 'result' above is more reliable.
+  optional string msg = 2;
+
+  // If the flag exists, the prior value of the flag. This is set even in the
+  // case of BAD_VALUE.
+  optional string old_value = 3;
+}
+
+// Attempt to flush coverage information to disk, if running a coverage build.
+message FlushCoverageRequestPB {
+}
+message FlushCoverageResponsePB {
+  // If the current build is not a coverage build, returns false.
+  optional bool success = 1;
+}
+
+// Requests the server's current timestamp.
+message ServerClockRequestPB {
+}
+message ServerClockResponsePB {
+  // The current timestamp of the server.
+  optional fixed64 timestamp = 1;
+}
+
+// Requests the server's status and version info
+message GetStatusRequestPB {
+}
+message GetStatusResponsePB {
+  required ServerStatusPB status = 1;
+}
+
+// Makes the HybridClock of the server use these values for wall clock time and error,
+// for testing purposes.
+// Requires that the server was started with '--use_mock_wall_clock=true'.
+message SetServerWallClockForTestsRequestPB {
+  optional uint64 now_usec = 1;
+  optional uint64 max_error_usec = 2;
+}
+
+// Response corresponding to the request above.
+message SetServerWallClockForTestsResponsePB {
+  // Set to 'true' if the clock was updated successfully.
+  required bool success = 1;
+}
+
+service GenericService {
+  rpc SetFlag(SetFlagRequestPB)
+    returns (SetFlagResponsePB);
+
+  rpc FlushCoverage(FlushCoverageRequestPB)
+    returns (FlushCoverageResponsePB);
+
+  rpc ServerClock(ServerClockRequestPB)
+    returns (ServerClockResponsePB);
+
+  rpc SetServerWallClockForTests(SetServerWallClockForTestsRequestPB)
+    returns (SetServerWallClockForTestsResponsePB);
+
+  rpc GetStatus(GetStatusRequestPB)
+    returns (GetStatusResponsePB);
+}

@@ -1,0 +1,100 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+package kudu.log;
+
+option java_package = "org.kududb.log";
+
+import "kudu/common/common.proto";
+import "kudu/consensus/consensus.proto";
+import "kudu/consensus/metadata.proto";
+
+// ===========================================================================
+//  Log Entries - Log specific messages + single node messages
+// ===========================================================================
+
+// Types of log entries.
+enum LogEntryTypePB {
+  UNKNOWN = 0;
+  REPLICATE = 1;
+  COMMIT = 2;
+  // Marker entry for dummy log messages. These will never end up in the log,
+  // just serve the purpose of making sure that all entries up to the FLUSH_MARKER
+  // entry are flushed.
+  FLUSH_MARKER = 999;
+};
+
+// An entry in the WAL/state machine log.
+message LogEntryPB {
+  required LogEntryTypePB type = 1;
+  optional consensus.ReplicateMsg replicate = 2;
+  optional consensus.CommitMsg commit = 3;
+}
+
+// A batch of entries in the WAL.
+message LogEntryBatchPB {
+  repeated LogEntryPB entry = 1;
+}
+
+// A header for a log segment.
+message LogSegmentHeaderPB {
+  // Log format major version.
+  required uint32 major_version = 1;
+
+  // Log format minor version.
+  required uint32 minor_version = 2;
+
+  // The ID of the tablet this WAL segment stores entries for.
+  required bytes tablet_id = 5;
+
+  // The tablet-specific sequence number of this WAL segment.
+  required uint64 sequence_number = 6;
+
+  // Schema used when appending entries to this log, and its version.
+  required SchemaPB schema = 7;
+  optional uint32 schema_version = 8;
+}
+
+// A footer for a log segment.
+//
+// Log segment footers might not be present (e.g. if the server
+// crashed) so they should contain no information that cannot
+// be obtained by actually reading the entries in the log.
+//
+// We use the footer to keep sparse index entries mapping
+// op_id->offset (right now we just keep the first entry with an
+// id in the log)
+message LogSegmentFooterPB {
+  // the total number of operations inside this segment
+  required int64 num_entries = 1;
+
+  // The minimum and maximum index of a REPLICATE message in this segment.
+  // NOTE: because of log truncation, the min/max are not necessarily the first/last!
+  // For example, a log segment may contain entries "1.5, 1.6, 3.3, 2.3" due to multiple
+  // term changes.
+  //
+  // Because it's possible for a segment to have no replicate messages in it,
+  // these are optional. We set the default to -1 to avoid accidentally reading
+  // 0, which might look like a real log index.
+  optional int64 min_replicate_index = 2 [ default = -1 ];
+  optional int64 max_replicate_index = 3 [ default = -1 ];
+
+  // The time (microseconds since epoch) when this segment was closed.
+  // NOTE: since log segments are rewritten during bootstrap, these will all
+  // be reset to the time of the bootstrap on a newly-restarted server, rather
+  // than copied over from the old log segments.
+  optional int64 close_timestamp_micros = 4;
+}

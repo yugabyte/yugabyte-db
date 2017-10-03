@@ -1,0 +1,152 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+package kudu.tablet;
+
+option java_package = "org.kududb.tablet";
+
+import "kudu/common/common.proto";
+import "kudu/consensus/opid.proto";
+import "kudu/fs/fs.proto";
+
+// ============================================================================
+//  Tablet Metadata
+// ============================================================================
+
+message ColumnDataPB {
+  required BlockIdPB block = 2;
+  // REMOVED: optional ColumnSchemaPB OBSOLETE_schema = 3;
+  optional int32 column_id = 4;
+}
+
+message DeltaDataPB {
+  required BlockIdPB block = 2;
+}
+
+message RowSetDataPB {
+  required uint64 id = 1;
+  required int64 last_durable_dms_id = 2;
+  repeated ColumnDataPB columns = 3;
+  repeated DeltaDataPB redo_deltas = 4;
+  repeated DeltaDataPB undo_deltas = 5;
+  optional BlockIdPB bloom_block = 6;
+  optional BlockIdPB adhoc_index_block = 7;
+}
+
+// State flags indicating whether the tablet is in the middle of being copied
+// and is therefore not possible to bring up, whether it has been deleted, or
+// whether the data is in a usable state.
+enum TabletDataState {
+  TABLET_DATA_UNKNOWN = 999;
+
+  // The tablet is set to TABLET_DATA_COPYING state when in the middle of
+  // remote bootstrap while copying data files from a remote peer. If a tablet
+  // server crashes with a tablet in this state, the tablet must be deleted and
+  // the remote bootstrap process must be restarted for that tablet.
+  TABLET_DATA_COPYING = 0;
+
+  // Fresh empty tablets and successfully copied tablets are set to the
+  // TABLET_DATA_READY state.
+  TABLET_DATA_READY = 1;
+
+  // This tablet is in the process of being deleted.
+  // The tablet server should "roll forward" the deletion during boot,
+  // rather than trying to load the tablet.
+  TABLET_DATA_DELETED = 2;
+
+  // The tablet has been deleted, and now just consists of a "tombstone".
+  TABLET_DATA_TOMBSTONED = 3;
+}
+
+// The super-block keeps track of the tablet data blocks.
+// A tablet contains one or more RowSets, which contain
+// a set of blocks (one for each column), a set of delta blocks
+// and optionally a block containing the bloom filter
+// and a block containing the compound-keys.
+message TabletSuperBlockPB {
+  // Table ID of the table this tablet is part of.
+  required bytes table_id = 1;
+
+  // Tablet Id
+  required bytes tablet_id = 2;
+
+  // The latest durable MemRowSet id
+  required int64 last_durable_mrs_id = 3;
+
+  // DEPRECATED.
+  optional bytes start_key = 4;
+
+  // DEPRECATED.
+  optional bytes end_key = 5;
+
+  // The partition of the table.
+  optional PartitionPB partition = 13;
+
+  // Tablet RowSets
+  repeated RowSetDataPB rowsets = 6;
+
+  // The latest schema
+  // TODO: maybe this should be TableSchemaPB? Need to actually put those attributes
+  // into use throughout the code. Using the simpler one for now.
+  required string table_name = 7;
+  required SchemaPB schema = 8;
+  required uint32 schema_version = 9;
+
+  // The partition schema of the table.
+  optional PartitionSchemaPB partition_schema = 14;
+
+  // The current state of the tablet's data.
+  optional TabletDataState tablet_data_state = 10 [ default = TABLET_DATA_UNKNOWN ];
+
+  // Blocks that became orphans after flushing this superblock. In other
+  // words, the set difference of the blocks belonging to the previous
+  // superblock and this one.
+  //
+  // It's always safe to delete the blocks found here.
+  repeated BlockIdPB orphaned_blocks = 11;
+
+  // For tablets that have been tombstoned, stores the last OpId stored in the
+  // WAL before tombstoning.
+  // Only relevant for TOMBSTONED tablets.
+  optional consensus.OpId tombstone_last_logged_opid = 12;
+}
+
+// The enum of tablet states.
+// Tablet states are sent in TabletReports and kept in TabletPeer.
+enum TabletStatePB {
+  UNKNOWN = 999;
+
+  // Tablet has not yet started.
+  NOT_STARTED = 5;
+
+  // Indicates the Tablet is bootstrapping, i.e. that the Tablet is not
+  // available for RPC.
+  BOOTSTRAPPING = 0;
+
+  // Once the configuration phase is over Peers are in RUNNING state. In this
+  // state Peers are available for client RPCs.
+  RUNNING = 1;
+
+  // The tablet failed to for some reason. TabletPeer::error() will return
+  // the reason for the failure.
+  FAILED = 2;
+
+  // The Tablet is shutting down, and will not accept further requests.
+  QUIESCING = 3;
+
+  // The Tablet has been stopped.
+  SHUTDOWN = 4;
+}

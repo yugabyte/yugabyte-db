@@ -1,0 +1,311 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+{
+  "name" : "KUDU",
+  "label" : "Kudu (Beta)",
+  "description" : "Kudu is a true column store for the Hadoop ecosystem. <span class=\"error\">Kudu is currently in Beta and is not supported. Before adding this service, ensure that you have installed the Kudu binaries, which are not included in CDH.</span>",
+  "version" : "0.6.0",
+  "compatibility" : {
+    "generation" : 1
+  },
+  "runAs" : {
+    "user" : "kudu",
+    "group" : "kudu"
+  },
+  "parcel" : {
+    "repoUrl" : "http://archive.cloudera.com/beta/kudu/parcels/latest/",
+    "requiredTags" : [ "kudu" ]
+  },
+  "icon" : "images/icon.png",
+  "parameters" : [
+    {
+      "name" : "enable_core_dump",
+      "label" : "Enable Core Dump",
+      "description" : "Used to generate a core dump to get more information about a Kudu crash. Unless otherwise configured systemwide using /proc/sys/kernel/core_pattern, the dump is generated in the configured core dump directory. The core file can be very large.",
+      "type" : "boolean",
+      "required" : "true",
+      "default" : "false"
+    },
+    {
+      "name" : "core_dump_directory",
+      "label" : "Core Dump Directory",
+      "description" : "If Enable Core Dump is set, Kudu processes will dump cores to this location.",
+      "type" : "path",
+      "pathType" : "serviceSpecific",
+      "required" : "true",
+      "default" : "/var/log/kudu"
+    }
+  ],
+  "rolesWithExternalLinks" : [
+    "KUDU_MASTER"
+  ],
+  "roles" : [
+    {
+      "name" : "KUDU_MASTER",
+      "label" : "Master",
+      "pluralLabel" : "Masters",
+      "startRunner" : {
+        "program" : "scripts/kudu.sh",
+        "args" : [
+          "master"
+        ],
+        "environmentVariables" : {
+          "ENABLE_CORE_DUMP" : "${enable_core_dump}",
+          "CORE_DUMP_DIRECTORY" : "${core_dump_directory}"
+        }
+      },
+      "logging" : {
+        "dir" : "/var/log/kudu",
+        "filename" : "kudu-master.INFO",
+        "modifiable" : true,
+        "loggingType" : "glog"
+      },
+      "externalLink" : {
+        "name" : "kudu_master_web_ui",
+        "label" : "Kudu Master Web UI",
+        "url" : "http://${host}:${webserver_port}"
+      },
+      "topology" : { "minInstances" : 1 },
+      "parameters" : [
+        {
+          "name" : "webserver_port",
+          "label" : "Kudu Master Web UI Port",
+          "description" : "The port of the Kudu Master Web UI.",
+          "type" : "port",
+          "required" : "true",
+          "default" : 8051
+        },
+        {
+          "name" : "webserver_interface",
+          "label" : "Kudu Master Web UI Interface",
+          "description" : "The interface of the Kudu Master Web UI. If blank, binds to 0.0.0.0.",
+          "type" : "string"
+        },
+        {
+          "name" : "master_address",
+          "label" : "Master Address",
+          "description" : "Configuration that's automatically set by Cloudera Manager to propagate the Master's address to the Tablet Servers.",
+          "configName" : "server.address",
+          "required" : "false",
+          "type" : "string",
+          "default" : ""
+        },
+        {
+          "name" : "default_num_replicas",
+          "label" : "Default Number of Replicas",
+          "description" : "Default number of replicas for each tablet.",
+          "required" : "true",
+          "type" : "long",
+          "min" : "1",
+          "softMin" : "3",
+          "default" : "3"
+        },
+        {
+          "name" : "fs_wal_dir",
+          "label" : "Kudu Master WAL Directory",
+          "description" : "Directory where Kudu masters will store write-ahead logs. It can be the same as one of the data directories, but not a sub-directory of a data directory. Master and tablet servers must use different directories when co-located on the same machine.",
+          "required" : "true",
+          "configurableInWizard" : true,
+          "type" : "path",
+          "pathType" : "localDataDir"
+        },
+        {
+          "name" : "fs_data_dirs",
+          "label" : "Kudu Master Data Directories",
+          "description" : "Directories where Kudu masters will store data blocks.",
+          "required" : "true",
+          "configurableInWizard" : true,
+          "type" : "path_array",
+          "pathType" : "localDataDir"
+        },
+        {
+          "name" : "log_force_fsync_all",
+          "label" : "Kudu Master WAL Fsyncs All Entries",
+          "description" : "If true, the Master will use the fsync system call to ensure that all modifications to the catalog table are durably written to disk. WARNING: In this release, enabling this option can cause serious issues.",
+          "required" : "true",
+          "default" : "false",
+          "type" : "boolean"
+        }
+      ],
+      "configWriter" : {
+        "generators" : [
+          {
+            "filename" : "gflagfile",
+            "configFormat" : "gflags",
+            "excludedParams" : [
+              "master_address",
+              "enable_core_dump",
+              "core_dump_directory"
+            ]
+          },
+          {
+            "filename" : "kudu-monitoring.properties",
+            "configFormat" : "properties",
+            "includedParams" : [
+              "webserver_interface",
+              "webserver_port"
+            ]
+          }
+        ],
+        "peerConfigGenerators" : [
+          {
+            "filename" : "master.properties",
+            "params" : [ "master_address" ],
+            "roleName" : "KUDU_MASTER"
+          }
+        ]
+      }
+    },
+    {
+      "name" : "KUDU_TSERVER",
+      "label" : "Tablet Server",
+      "pluralLabel" : "Tablet Servers",
+      "startRunner" : {
+        "program" : "scripts/kudu.sh",
+        "args" : [
+          "tserver"
+        ],
+        "environmentVariables" : {
+          "ENABLE_CORE_DUMP" : "${enable_core_dump}",
+          "CORE_DUMP_DIRECTORY" : "${core_dump_directory}"
+        }
+      },
+      "logging" : {
+        "dir" : "/var/log/kudu",
+        "filename" : "kudu-tserver.INFO",
+        "modifiable" : true,
+        "loggingType" : "glog"
+      },
+      "externalLink" : {
+        "name" : "kudu_ts_web_ui",
+        "label" : "Kudu Tablet Server Web UI",
+        "url" : "http://${host}:${webserver_port}"
+      },
+      "topology" : { "minInstances" : 1 },
+      "parameters" : [
+        {
+          "name" : "webserver_interface",
+          "label" : "Kudu Tablet Server Web UI Interface",
+          "description" : "The interface of the Kudu Tablet Server Web UI. If blank, binds to 0.0.0.0.",
+          "type" : "string"
+        },
+        {
+          "name" : "webserver_port",
+          "label" : "Kudu Tablet Server Web UI Port",
+          "description" : "The port of the Kudu Tablet Server Web UI.",
+          "type" : "port",
+          "required" : "true",
+          "default" : 8050
+        },
+        {
+          "name" : "fs_wal_dir",
+          "label" : "Kudu Tablet Server WAL Directory",
+          "description" : "Directory where Kudu tablet servers will store write-ahead logs. It can be the same as one of the data directories, but not a sub-directory of a data directory. Master and tablet servers must use different directories when co-located on the same machine.",
+          "required" : "true",
+          "configurableInWizard" : true,
+          "type" : "path",
+          "pathType" : "localDataDir"
+        },
+        {
+          "name" : "fs_data_dirs",
+          "label" : "Kudu Tablet Server Data Directories",
+          "description" : "Directories where Kudu tablet servers will store data blocks.",
+          "required" : "true",
+          "configurableInWizard" : true,
+          "type" : "path_array",
+          "pathType" : "localDataDir"
+        },
+        {
+          "name" : "memory_limit_hard_bytes",
+          "label" : "Kudu Tablet Server Hard Memory Limit",
+          "description" : "Maximum amount of memory that the Kudu Tablet Server will use before it starts rejecting all incoming writes.",
+          "required" : "true",
+          "type" : "memory",
+          "unit" : "bytes",
+          "min" : 1073741824,
+          "default" : 4294967296,
+          "scaleFactor" : 1.3
+        },
+        {
+          "name" : "block_cache_capacity_mb",
+          "label" : "Kudu Tablet Server Block Cache Capacity",
+          "description" : "Maximum amount of memory allocated to the Kudu Tablet Server's block cache.",
+          "required" : "true",
+          "type" : "long",
+          "unit" : "megabytes",
+          "softMin" : 256,
+          "min" : 16,
+          "default" : 512
+        },
+        {
+          "name" : "log_force_fsync_all",
+          "label" : "Kudu Tablet Server WAL Fsyncs All Entries",
+          "description" : "If true, the Tablet Server will use the fsync system call to ensure that all writes are durably written to to the write-ahead log (WAL) before responding. If false, edits will be written to the Linux buffer cache on a majority of replicas before responding.",
+          "required" : "true",
+          "type" : "boolean",
+          "default" : "false"
+        },
+        {
+          "name" : "maintenance_manager_num_threads",
+          "label" : "Kudu Tablet Server Maintenance Threads",
+          "description" : "The number of threads devoted to background maintenance operations such as flushes and compactions. If the tablet server appears to be falling behind on write operations (inserts, updates, and deletes) but CPU and disk resources are not saturated, increasing this thread count will devote more resources to these background operations.",
+          "required" : "true",
+          "default" : 1,
+          "type" : "long",
+          "min" : 1,
+          "softMax" : 8
+        }
+
+      ],
+      "configWriter" : {
+        "generators" : [
+          {
+            "filename" : "gflagfile",
+            "configFormat" : "gflags",
+            "excludedParams" : [
+              "enable_core_dump",
+              "core_dump_directory"
+            ]
+          },
+          {
+            "filename" : "kudu-monitoring.properties",
+            "configFormat" : "properties",
+            "includedParams" : [
+              "webserver_interface",
+              "webserver_port"
+            ]
+          }
+        ],
+        "peerConfigGenerators" : [
+          {
+            "filename" : "master.properties",
+            "params" : [ "master_address" ],
+            "roleName" : "KUDU_MASTER"
+          }
+        ]
+      },
+      "cgroup" : {
+        "cpu" : {
+          "autoConfigured" : true
+        },
+        "blkio" : {
+          "autoConfigured" : true
+        }
+      }
+    }
+  ]
+}

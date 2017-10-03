@@ -1,0 +1,135 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+package kudu.tserver;
+
+option java_package = "org.kududb.tserver";
+
+import "kudu/common/common.proto";
+import "kudu/consensus/metadata.proto";
+import "kudu/tablet/metadata.proto";
+import "kudu/tserver/tserver.proto";
+
+message AlterSchemaRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 5;
+
+  required bytes tablet_id = 1;
+
+  // TODO: Replace with the table descriptor
+  // (Schema, Column IDs, Column Attributes)
+  required SchemaPB schema = 2;
+
+  required uint32 schema_version = 3;
+  optional string new_table_name = 4;
+}
+
+message AlterSchemaResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  // The timestamp chosen by the server for this alter schema operation.
+  // TODO KUDU-611 propagate timestamps with server signature.
+  optional fixed64 timestamp = 2;
+}
+
+// A create tablet request.
+message CreateTabletRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 8;
+
+  required bytes table_id = 1;
+  required bytes tablet_id = 2;
+  // DEPRECATED.
+  optional bytes start_key = 3;
+  // DEPRECATED.
+  optional bytes end_key = 4;
+  // The partition of the tablet.
+  optional PartitionPB partition = 9;
+
+  required string table_name = 5;
+  required SchemaPB schema = 6;
+  // The partition schema of the table which the tablet belongs to.
+  optional PartitionSchemaPB partition_schema = 10;
+
+  // Initial consensus configuration for the tablet.
+  required consensus.RaftConfigPB config = 7;
+}
+
+message CreateTabletResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
+// A delete tablet request.
+message DeleteTabletRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 4;
+
+  required bytes tablet_id = 1;
+
+  // Reason the tablet is being deleted (for logging purposes)
+  optional string reason = 2;
+
+  // Must be one of TABLET_DATA_DELETED (for table deletes) or
+  // TABLET_DATA_TOMBSTONED (for replica retirement).
+  optional tablet.TabletDataState delete_type = 3 [ default = TABLET_DATA_TOMBSTONED ];
+
+  // The highest allowed OpId index of the latest known committed config.
+  // This optional parameter is here to provide an atomic (compare-and-swap)
+  // DeleteTablet operation. If this parameter is specified, the DeleteTablet()
+  // operation will succeed only if the committed config has an opid_index that
+  // is less than or equal to this value.
+  // See also the definition of RaftConfigPB.
+  // Note: At the time of this writing, there is a small race between checking
+  // the value of the committed config opid index and shutting down the tablet
+  // for deletion. See comments in ts_tablet_manager.cc
+  optional int64 cas_config_opid_index_less_or_equal = 5;
+}
+
+message DeleteTabletResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
+// Enum of the server's Tablet Manager state: currently this is only
+// used for assertions, but this can also be sent to the master.
+enum TSTabletManagerStatePB {
+  UNKNOWN = 999;
+
+  // Indicates that Tablet Manager is initializing.
+  MANAGER_INITIALIZING = 0;
+
+  // Indicates that Tablet Manager is running and can create new
+  // tablets.
+  MANAGER_RUNNING = 1;
+
+  // Indicates that tablet manager is shutting down and no new tablets
+  // can be created.
+  MANAGER_QUIESCING = 2;
+
+  // Tablet Manager has shutdown.
+  MANAGER_SHUTDOWN = 3;
+}
+
+service TabletServerAdminService {
+  // Create a new, empty tablet with the specified parameters. Only used for
+  // brand-new tablets, not for "moves".
+  rpc CreateTablet(CreateTabletRequestPB) returns (CreateTabletResponsePB);
+
+  // Delete a tablet replica.
+  rpc DeleteTablet(DeleteTabletRequestPB) returns (DeleteTabletResponsePB);
+
+  // Alter a tablet's schema.
+  rpc AlterSchema(AlterSchemaRequestPB) returns (AlterSchemaResponsePB);
+}

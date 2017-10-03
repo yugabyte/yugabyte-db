@@ -1,0 +1,268 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+[[quickstart]]
+= Apache Kudu (incubating) Quickstart
+:author: Kudu Team
+:imagesdir: ./images
+:icons: font
+:toc: left
+:toclevels: 2
+:doctype: book
+:backend: html5
+:sectlinks:
+:experimental:
+
+Follow these instructions to set up and run the Kudu VM, and start with Kudu, Kudu_Impala,
+and CDH in minutes.
+
+
+[[quickstart_vm]]
+== Get The Kudu Quickstart VM
+
+=== Prerequisites
+
+1. Install https://www.virtualbox.org/[Oracle Virtualbox]. The VM has been tested to work
+with VirtualBox version 4.3 on Ubuntu 14.04 and VirtualBox version 5 on OSX
+10.9. VirtualBox is also included in most package managers: apt-get, brew, etc.
+
+2. After the installation, make sure that `VBoxManage` is in your `PATH` by using the
+`which VBoxManage` command.
+
+=== Installation
+
+To download and start the VM, execute the following command in a terminal window.
+
+[source,bash]
+----
+$ curl -s https://raw.githubusercontent.com/cloudera/kudu-examples/master/demo-vm-setup/bootstrap.sh | bash
+----
+
+This command downloads a shell script which clones the `kudu-examples` Git repository and
+then downloads a VM image of about 1.2GB size into the current working
+directory.footnote:[In addition, the script will create a host-only network between host
+and guest and setup an enty in the `/etc/hosts` file with the name `quickstart.cloudera`
+and the guest's IP address.] You can examine the script after downloading it by removing
+the `| bash` component of the command above. Once the setup is complete, you can verify
+that everything works by connecting to the guest via SSH:
+
+[source,bash]
+----
+$ ssh demo@quickstart.cloudera
+----
+
+The username and password for the demo account are both `demo`. In addition, the `demo`
+user has password-less `sudo` privileges so that you can install additional software or
+manage the guest OS. You can also access the `kudu-examples` as a shared folder in
+`/home/demo/kudu-examples/` on the guest or from your VirtualBox shared folder location on
+the host. This is a quick way to make scripts or data visible to the guest.
+
+You can quickly verify if Kudu and Impala are running by executing the following commands:
+
+[source,bash]
+----
+$ ps aux | grep kudu
+$ ps aux | grep impalad
+----
+
+If you have issues connecting to the VM or one of the processes is not running, make sure
+to consult the <<trouble, Troubleshooting>> section.
+
+== Load Data
+
+To perform some typical operations with Kudu and Impala, you can load the
+http://www.flysfo.com/media/facts-statistics/air-traffic-statistics[SFO Passenger Data]
+into Impala and then load it into Kudu.
+
+1. Upload the sample data from the home directory to HDFS.
++
+[source,bash]
+----
+$ hdfs dfs -mkdir /data
+$ hdfs dfs -put examples/SFO_Passenger_Data/MonthlyPassengerData_200507_to_201506.csv /data
+----
+2. Create a new external Impala table to access the plain text data. To connect to Impala
+in the virtual machine issue the following command:
++
+[source,bash]
+----
+ssh demo@quickstart.cloudera -t impala-shell
+----
++
+Now, you can execute the following commands:
++
+[source,sql]
+----
+CREATE EXTERNAL TABLE passenger_data_raw (
+  id int,
+  activity_period int,
+  operating_airline string,
+  airline_iata_code string,
+  published_airline string,
+  published_airline_iata_code string,
+  geo_summary string,
+  geo_region string,
+  activity_type_code string,
+  price_category_code string,
+  terminal string,
+  boarding_area string,
+  passenger_count bigint
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+LOCATION '/data/';
+----
++
+3. Validate if the data was actually loaded run the following command:
++
+[source,sql]
+----
+SELECT count(*) FROM passenger_data_raw;
+
++----------+
+| count(*) |
++----------+
+| 13901    |
++----------+
+----
++
+4. It's easy to convert data from any Hadoop file format and store it Kudu using the
+`CREATE TABLE AS SELECT` statement.
++
+[source,sql]
+----
+CREATE TABLE passenger_data
+TBLPROPERTIES(
+'storage_handler' = 'com.cloudera.kudu.hive.KuduStorageHandler',
+'kudu.table_name' = 'passenger_data',
+'kudu.master_addresses' = '127.0.0.1',
+'kudu.key_columns' = 'id'
+ ) AS SELECT * FROM passenger_data_raw;
+
++-----------------------+
+| summary               |
++-----------------------+
+| Inserted 13901 row(s) |
++-----------------------+
+Fetched 1 row(s) in 1.26s
+----
+[NOTE]
+====
+For `CREATE TABLE ... AS SELECT` we currently require that the first columns that are
+projected in the `SELECT` statement correspond to the Kudu table keys and are in the
+same order  (`id` in the example above). If the default projection generated by `*`
+does not meet this requirement, the user should avoid using `*` and explicitly mention
+the columns to project, in the correct order.
+====
++
+The created table uses a simple single column primary key. See
+<<kudu_impala_integration.adoc#kudu_impala,Kudu Impala Integration>> for a more detailed
+introduction to the extended SQL syntax for Impala.
++
+The columns of the created table are copied from the `passenger_data_raw` base table. See
+http://www.cloudera.com/content/www/en-us/documentation/enterprise/latest/topics/impala_create_table.html[Impala's
+documentation] for more details about the extended SQL syntax for Impala.
+
+== Read and Modify Data
+
+Now that the data is stored in Kudu, you can run queries against it. The following query
+lists the airline with the highest passenger volume over the entire reporting timeframe.
+
+[source,sql]
+----
+SELECT sum(passenger_count) AS total, operating_airline FROM passenger_data
+  GROUP BY operating_airline
+  HAVING total IS NOT null
+  ORDER BY total DESC LIMIT 10;
+
++-----------+----------------------------------+
+| total     | operating_airline                |
++-----------+----------------------------------+
+| 105363917 | United Airlines - Pre 07/01/2013 |
+| 51319845  | United Airlines                  |
+| 32657456  | SkyWest Airlines                 |
+| 31727343  | American Airlines                |
+| 23801507  | Delta Air Lines                  |
+| 23685267  | Virgin America                   |
+| 22507320  | Southwest Airlines               |
+| 16235520  | US Airways                       |
+| 11860630  | Alaska Airlines                  |
+| 6706438   | JetBlue Airways                  |
++-----------+----------------------------------+
+----
+
+Looking at the result, you can already see a problem with the dataset. There is a
+duplicate airline name. Since the data is stored in Kudu rather than HDFS, you can quickly
+change any individual record and fix the problem without having to rewrite the entire
+table.
+
+[source,sql]
+----
+UPDATE passenger_data
+  SET operating_airline="United Airlines"
+  WHERE operating_airline LIKE "United Airlines - Pre%";
+
+SELECT sum(passenger_count) AS total, operating_airline FROM passenger_data
+  GROUP BY operating_airline
+  HAVING total IS NOT null
+  ORDER BY total DESC LIMIT 10;
+
++-----------+--------------------+
+| total     | operating_airline  |
++-----------+--------------------+
+| 156683762 | United Airlines    |
+| 32657456  | SkyWest Airlines   |
+| 31727343  | American Airlines  |
+| 23801507  | Delta Air Lines    |
+| 23685267  | Virgin America     |
+| 22507320  | Southwest Airlines |
+| 16235520  | US Airways         |
+| 11860630  | Alaska Airlines    |
+| 6706438   | JetBlue Airways    |
+| 6266220   | Northwest Airlines |
++-----------+--------------------+
+----
+
+[[trouble]]
+=== Troubleshooting
+
+==== Problems accessing the VM via SSH
+
+* Make sure the host has a SSH client installed.
+* Make sure the VM is running, by running the following command and checking for a VM called `kudu-demo`:
++
+[source,bash]
+----
+$ VBoxManage list runningvms
+----
+ * Verify that the VM's IP address is included in the host's `/etc/hosts` file. You should
+   see a line that includes an IP address followed by the hostname
+   `quickstart.cloudera`. To check the running VM's IP address, use the `VBoxManage`
+   command below.
++
+[source,bash]
+----
+$ VBoxManage guestproperty get kudu-demo /VirtualBox/GuestInfo/Net/0/V4/IP
+Value: 192.168.56.100
+----
+ * If you've used a Cloudera Quickstart VM before, your `.ssh/known_hosts` file may
+   contain references to the previous VM's SSH credentials. Remove any references to
+   `quickstart.cloudera` from this file.
+
+== Next Steps
+- link:installation.html[Installing Kudu]
+- link:configuration.html[Configuring Kudu]

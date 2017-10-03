@@ -1,0 +1,237 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+[[troubleshooting]]
+= Apache Kudu (incubating) Troubleshooting
+
+:author: Kudu Team
+:imagesdir: ./images
+:icons: font
+:toc: left
+:toclevels: 2
+:doctype: book
+:backend: html5
+:sectlinks:
+:experimental:
+
+== Issues starting the Master or Tablet Server
+
+[[req_hole_punching]]
+=== Errors During Hole Punching Test
+Kudu requires hole punching capabilities in order to be efficient. Hole punching support
+depends upon your operation system kernel version and local filesystem implementation.
+
+ - RHEL or CentOS 6.4 or later, patched to kernel version of 2.6.32-358 or later.
+  Unpatched RHEL or CentOS 6.4 does not include a kernel with support for hole punching.
+  - Ubuntu 14.04 includes version 3.13 of the Linux kernel, which supports hole punching.
+  - Newer versions of the EXT4 or XFS file systems support hole punching, but EXT3 does
+  not. Older versions of XFS that do not support hole punching return a `EOPNOTSUPP`
+  (operation not supported) error. Older versions of either EXT4 or XFS that do
+  not support hole punching cause Kudu to emit an error message such as the following
+  and to fail to start:
++
+----
+Error during hole punch test. The log block manager requires a
+filesystem with hole punching support such as ext4 or xfs. On el6,
+kernel version 2.6.32-358 or newer is required. To run without hole
+punching (at the cost of some efficiency and scalability), reconfigure
+Kudu with --block_manager=file. Refer to the Kudu documentation for more
+details. Raw error message follows.
+----
+
+Without hole punching support, the log block manager is unsafe to use. It won't
+ever delete blocks, and will consume ever more space on disk.
+
+If you can't use hole punching in your environment, you can still
+try Kudu. Enable the file block manager instead of the log block manager by
+adding the `--block_manager=file` flag to the commands you use to start the master
+and tablet servers. The file block manager does not scale as well as the log block
+manager.
+
+WARNING: The file block manager is known to scale and perform poorly, and should
+only be used for small-scale evaluation and development.
+
+[[ntp]]
+=== NTP clock synchronization
+For the master and tablet server daemons, the server's clock must be synchronized using NTP.
+In addition, the *maximum clock error* (not to be mistaken with the estimated error)
+be below a configurable threshold. The default value is 10 seconds, but it can be set with the flag
+`--max_clock_sync_error_usec`.
+
+If NTP is not installed, or if the clock is reported as unsynchronized, Kudu will not
+start, and will emit a message such as:
+----
+F0924 20:24:36.336809 14550 hybrid_clock.cc:191 Couldn't get the current time: Clock unsynchronized. Status: Service unavailable: Error reading clock. Clock considered unsynchronized.
+----
+If NTP is installed and synchronized, but the maximum clock error is too high,
+the user will see a message such as:
+----
+Sep 17, 8:13:09.873 PM FATAL hybrid_clock.cc:196 Couldn't get the current time: Clock synchronized, but error: 11130000, is past the maximum allowable error: 10000000
+----
+or
+----
+Sep 17, 8:32:31.135 PM FATAL tablet_server_main.cc:38 Check failed: _s.ok() Bad status: Service unavailable: Cannot initialize clock: Cannot initialize HybridClock. Clock synchronized but error was too high (11711000 us).
+----
+
+TIP: If NTP is installed the user can monitor the synchronization status by running
+`ntptime`. The relevant value is what is reported for `maximum error`.
+
+To install NTP, use the appropriate command for your operating system:
+[cols="1,1", options="header"]
+|===
+| OS | Command
+| Debian/Ubuntu | `sudo apt-get install ntp`
+| RHEL/CentOS | `sudo yum install ntp`
+|===
+
+If NTP is installed but not running, start it using one of these commands:
+[cols="1,1", options="header"]
+|===
+| OS | Command
+| Debian/Ubuntu | `sudo service ntp restart`
+| RHEL/CentOS | `sudo /etc/init.d/ntpd restart`
+|===
+
+TIP: NTP requires a network connection and may take a few minutes to synchronize the clock.
+In some cases a spotty network connection may make NTP report the clock as unsynchronized.
+A common, though temporary, workaround for this is to restart NTP with one of the commands above.
+
+If the clock is being reported as synchronized by NTP, but the maximum error is too high,
+the user can increase the threshold to a higher value by setting the above
+mentioned flag. For example to increase the possible maximum error to
+20 seconds the flag should be set like: `--max_clock_sync_error_usec=20000000`
+
+== Troubleshooting Performance Issues
+
+[[kudu_tracing]]
+=== Kudu Tracing
+
+The `kudu-master` and `kudu-tserver` daemons include built-in tracing support
+based on the open source
+link:https://www.chromium.org/developers/how-tos/trace-event-profiling-tool[Chromium Tracing]
+framework. You can use tracing to help diagnose latency issues or other problems
+on Kudu servers.
+
+==== Accessing the tracing interface
+The tracing interface is accessed via a web browser as part of the
+embedded web server in each of the Kudu daemons.
+
+.Tracing Interface URLs
+|===
+| Daemon | URL
+| Tablet Server | http://tablet-server-1.example.com:8050/tracing.html
+| Master | http://master-1.example.com:8051/tracing.html
+|===
+
+WARNING: The tracing interface is known to work in recent versions of Google Chrome.
+Other browsers may not work as expected.
+
+==== Collecting a trace
+
+After navigating to the tracing interface, click the *Record* button on the top left corner
+of the screen. When beginning to diagnose a problem, start by selecting all categories.
+Click *Record* to begin recording a trace.
+
+During the trace collection, events are collected into an in-memory ring buffer.
+This ring buffer is fixed in size, so it will eventually fill up to 100%. However, new events
+are still being collected while older events are being removed. While recording the trace,
+trigger the behavior or workload you are interested in exploring.
+
+After collecting for several seconds, click *Stop*. The collected trace will be
+downloaded and displayed. Use the *?* key to display help text about using the tracing
+interface to explore the trace.
+
+==== Saving a trace
+
+You can save collected traces as JSON files for later analysis by clicking *Save*
+after collecting the trace. To load and analyze a saved JSON file, click *Load*
+and choose the file.
+
+=== RPC Timeout Traces
+
+If client applications are experiencing RPC timeouts, the Kudu tablet server
+`WARNING` level logs should contain a log entry which includes an RPC-level trace. For example:
+
+----
+W0922 00:56:52.313848 10858 inbound_call.cc:193] Call kudu.consensus.ConsensusService.UpdateConsensus
+from 192.168.1.102:43499 (request call id 3555909) took 1464ms (client timeout 1000).
+W0922 00:56:52.314888 10858 inbound_call.cc:197] Trace:
+0922 00:56:50.849505 (+     0us) service_pool.cc:97] Inserting onto call queue
+0922 00:56:50.849527 (+    22us) service_pool.cc:158] Handling call
+0922 00:56:50.849574 (+    47us) raft_consensus.cc:1008] Updating replica for 2 ops
+0922 00:56:50.849628 (+    54us) raft_consensus.cc:1050] Early marking committed up to term: 8 index: 880241
+0922 00:56:50.849968 (+   340us) raft_consensus.cc:1056] Triggering prepare for 2 ops
+0922 00:56:50.850119 (+   151us) log.cc:420] Serialized 1555 byte log entry
+0922 00:56:50.850213 (+    94us) raft_consensus.cc:1131] Marking committed up to term: 8 index: 880241
+0922 00:56:50.850218 (+     5us) raft_consensus.cc:1148] Updating last received op as term: 8 index: 880243
+0922 00:56:50.850219 (+     1us) raft_consensus.cc:1195] Filling consensus response to leader.
+0922 00:56:50.850221 (+     2us) raft_consensus.cc:1169] Waiting on the replicates to finish logging
+0922 00:56:52.313763 (+1463542us) raft_consensus.cc:1182] finished
+0922 00:56:52.313764 (+     1us) raft_consensus.cc:1190] UpdateReplicas() finished
+0922 00:56:52.313788 (+    24us) inbound_call.cc:114] Queueing success response
+----
+
+These traces can give an indication of which part of the request was slow. Please
+include them in bug reports related to RPC latency outliers.
+
+=== Kernel Stack Watchdog Traces
+
+Each Kudu server process has a background thread called the Stack Watchdog, which
+monitors the other threads in the server in case they have blocked for
+longer-than-expected periods of time. These traces can indicate operating system issues
+or bottlenecked storage.
+
+When the watchdog thread identifies a case of thread blockage, it logs an entry
+in the `WARNING` log like the following:
+
+----
+W0921 23:51:54.306350 10912 kernel_stack_watchdog.cc:111] Thread 10937 stuck at /data/kudu/consensus/log.cc:505 for 537ms:
+Kernel stack:
+[<ffffffffa00b209d>] do_get_write_access+0x29d/0x520 [jbd2]
+[<ffffffffa00b2471>] jbd2_journal_get_write_access+0x31/0x50 [jbd2]
+[<ffffffffa00fe6d8>] __ext4_journal_get_write_access+0x38/0x80 [ext4]
+[<ffffffffa00d9b23>] ext4_reserve_inode_write+0x73/0xa0 [ext4]
+[<ffffffffa00d9b9c>] ext4_mark_inode_dirty+0x4c/0x1d0 [ext4]
+[<ffffffffa00d9e90>] ext4_dirty_inode+0x40/0x60 [ext4]
+[<ffffffff811ac48b>] __mark_inode_dirty+0x3b/0x160
+[<ffffffff8119c742>] file_update_time+0xf2/0x170
+[<ffffffff8111c1e0>] __generic_file_aio_write+0x230/0x490
+[<ffffffff8111c4c8>] generic_file_aio_write+0x88/0x100
+[<ffffffffa00d3fb1>] ext4_file_write+0x61/0x1e0 [ext4]
+[<ffffffff81180f5b>] do_sync_readv_writev+0xfb/0x140
+[<ffffffff81181ee6>] do_readv_writev+0xd6/0x1f0
+[<ffffffff81182046>] vfs_writev+0x46/0x60
+[<ffffffff81182102>] sys_pwritev+0xa2/0xc0
+[<ffffffff8100b072>] system_call_fastpath+0x16/0x1b
+[<ffffffffffffffff>] 0xffffffffffffffff
+
+User stack:
+    @       0x3a1ace10c4  (unknown)
+    @          0x1262103  (unknown)
+    @          0x12622d4  (unknown)
+    @          0x12603df  (unknown)
+    @           0x8e7bfb  (unknown)
+    @           0x8f478b  (unknown)
+    @           0x8f55db  (unknown)
+    @          0x12a7b6f  (unknown)
+    @       0x3a1b007851  (unknown)
+    @       0x3a1ace894d  (unknown)
+    @              (nil)  (unknown)
+----
+
+These traces can be useful for diagnosing root-cause latency issues when they are caused by systems
+below Kudu, such as disk controllers or file systems.

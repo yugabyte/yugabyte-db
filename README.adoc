@@ -1,0 +1,397 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+= Kudu Developer Documentation
+
+== Building and installing Kudu
+
+Follow the steps in the http://getkudu.io/docs/installation.html#_build_from_source[documentation]
+to build and install Kudu from source
+
+=== Building Kudu out of tree
+
+A single Kudu source tree may be used for multiple builds, each with its
+own build directory. Build directories may be placed anywhere in the
+filesystem with the exception of the root directory of the source tree. The
+Kudu build is invoked with a working directory of the build directory
+itself, so you must ensure it exists (i.e. create it with _mkdir -p_). It's
+recommended to place all build directories within the _build_ subdirectory;
+_build/latest_ will be symlinked to most recently created one.
+
+The rest of this document assumes the build directory
+_<root directory of kudu source tree>/build/debug_.
+
+=== Automatic rebuilding of dependencies
+
+The script `thirdparty/build-if-necessary.sh` is invoked by cmake, so
+new thirdparty dependencies added by other developers will be downloaded
+and built automatically in subsequent builds if necessary.
+
+To disable the automatic invocation of `build-if-necessary.sh`, set the
+`NO_REBUILD_THIRDPARTY` environment variable:
+
+[source,bash]
+----
+$ cd build/debug
+$ NO_REBUILD_THIRDPARTY=1 cmake ../..
+----
+
+This can be particularly useful when trying to run tools like `git bisect`
+between two commits which may have different dependencies.
+
+
+=== Building Kudu itself
+
+[source,bash]
+----
+# Add <root of kudu tree>/thirdparty/installed/bin to your $PATH
+# before other parts of $PATH that may contain cmake, such as /usr/bin
+# For example: "export PATH=$HOME/git/kudu/thirdparty/installed/bin:$PATH"
+# if using bash.
+$ mkdir -p build/debug
+$ cd build/debug
+$ cmake ../..
+$ make -j8  # or whatever level of parallelism your machine can handle
+----
+
+The build artifacts, including the test binaries, will be stored in
+_build/debug/bin/_.
+
+To omit the Kudu unit tests during the build, add -DNO_TESTS=1 to the
+invocation of cmake. For example:
+
+[source,bash]
+----
+$ cd build/debug
+$ cmake -DNO_TESTS=1 ../..
+----
+
+== Running unit/functional tests
+
+To run the Kudu unit tests, you can use the `ctest` command from within the
+_build/debug_ directory:
+
+[source,bash]
+----
+$ cd build/debug
+$ ctest -j8
+----
+
+This command will report any tests that failed, and the test logs will be
+written to _build/debug/test-logs_.
+
+Individual tests can be run by directly invoking the test binaries in
+_build/debug/bin_. Since Kudu uses the Google C++ Test Framework (gtest),
+specific test cases can be run with gtest flags:
+
+[source,bash]
+----
+# List all the tests within a test binary, then run a single test
+$ build/debug/bin/tablet-test --gtest_list_tests
+$ build/debug/bin/tablet-test --gtest_filter=TestTablet/9.TestFlush
+----
+
+gtest also allows more complex filtering patterns. See the upstream
+documentation for more details.
+
+=== Running tests with the clang AddressSanitizer enabled
+
+
+AddressSanitizer is a nice clang feature which can detect many types of memory
+errors. The Jenkins setup for kudu runs these tests automatically on a regular
+basis, but if you make large changes it can be a good idea to run it locally
+before pushing. To do so, you'll need to build using `clang`:
+
+[source,bash]
+----
+$ mkdir -p build/asan
+$ cd build/asan
+$ CC=../../thirdparty/clang-toolchain/bin/clang \
+  CXX=../../thirdparty/clang-toolchain/bin/clang++ \
+  cmake -DKUDU_USE_ASAN=1 ../..
+$ make -j8
+$ ctest -j8
+----
+
+The tests will run significantly slower than without ASAN enabled, and if any
+memory error occurs, the test that triggered it will fail. You can then use a
+command like:
+
+
+[source,bash]
+----
+$ cd build/asan
+$ ctest -R failing-test
+----
+
+to run just the failed test.
+
+NOTE: For more information on AddressSanitizer, please see the
+http://clang.llvm.org/docs/AddressSanitizer.html[ASAN web page].
+
+=== Running tests with the clang Undefined Behavior Sanitizer (UBSAN) enabled
+
+
+Similar to the above, you can use a special set of clang flags to enable the Undefined
+Behavior Sanitizer. This will generate errors on certain pieces of code which may
+not themselves crash but rely on behavior which isn't defined by the C++ standard
+(and thus are likely bugs). To enable UBSAN, follow the same directions as for
+ASAN above, but pass the `-DKUDU_USE_UBSAN=1` flag to the `cmake` invocation.
+
+In order to get a stack trace from UBSan, you can use gdb on the failing test, and
+set a breakpoint as follows:
+
+----
+(gdb) b __ubsan::Diag::~Diag
+----
+
+Then, when the breakpoint fires, gather a backtrace as usual using the `bt` command.
+
+=== Running tests with ThreadSanitizer enabled
+
+ThreadSanitizer (TSAN) is a feature of recent Clang and GCC compilers which can
+detect improperly synchronized access to data along with many other threading
+bugs. To enable TSAN, pass `-DKUDU_USE_TSAN=1` to the `cmake` invocation,
+recompile, and run tests. For example:
+
+[source,bash]
+----
+$ mkdir -p build/tsan
+$ cd build/tsan
+$ CC=../../thirdparty/clang-toolchain/bin/clang \
+    CXX=../../thirdparty/clang-toolchain/bin/clang++ \
+    cmake -DKUDU_USE_TSAN=1 .
+$ make -j8
+$ ctest -j8
+----
+
+. Enabling TSAN supressions while running tests
+[NOTE]
+====
+Note that we rely on a list of runtime suppressions in _build-support/tsan-suppressions.txt_.
+If you simply run a unit test like _build/tsan/bin/foo-test_, you won't get these suppressions.
+Instead, use a command like:
+
+[source,bash]
+----
+$ ctest -R foo-test
+----
+
+or
+
+[source,bash]
+----
+$ build-support/run-test.sh build/tsan/bin/foo-test [--test-arguments-here]
+----
+
+
+...and then view the logs in _build/tsan/test-logs/_
+
+====
+
+TSAN may truncate a few lines of the stack trace when reporting where the error
+is. This can be bewildering. It's documented for TSANv1 here:
+http://code.google.com/p/data-race-test/wiki/ThreadSanitizerAlgorithm
+It is not mentioned in the documentation for TSANv2, but has been observed.
+In order to find out what is _really_ happening, set a breakpoint on the TSAN
+report in GDB using the following incantation:
+
+[source,bash]
+----
+$ gdb -ex 'set disable-randomization off' -ex 'b __tsan::PrintReport' ./some-test
+----
+
+
+=== Generating code coverage reports
+
+
+In order to generate a code coverage report, you must build with gcc (not clang)
+and use the following flags:
+
+[source,bash]
+----
+$ mkdir -p build/coverage
+$ cd build/coverage
+$ cmake -DKUDU_GENERATE_COVERAGE=1 ../..
+$ make -j4
+$ ctest -j4
+----
+
+This will generate the code coverage files with extensions .gcno and .gcda. You can then
+use a tool like `lcov` or `gcovr` to visualize the results. For example, using gcovr:
+
+[source,bash]
+----
+$ mkdir cov_html
+$ ./thirdparty/gcovr-3.0/scripts/gcovr -r src/
+----
+
+Or using `lcov` (which seems to produce better HTML output):
+
+[source,bash]
+----
+$ lcov  --capture --directory src --output-file coverage.info
+$ genhtml coverage.info --output-directory out
+----
+
+=== Running lint checks
+
+
+Kudu uses cpplint.py from Google to enforce coding style guidelines. You can run the
+lint checks via cmake using the `ilint` target:
+
+[source,bash]
+----
+$ make ilint
+----
+
+This will scan any file which is dirty in your working tree, or changed since the last
+gerrit-integrated upstream change in your git log. If you really want to do a full
+scan of the source tree, you may use the `lint` target instead.
+
+=== Building Kudu documentation
+
+Kudu's documentation is written in asciidoc and lives in the _docs_ subdirectory.
+
+To build the documentation (this is primarily useful if you would like to
+inspect your changes before submitting them to Gerrit), use the `docs` target:
+
+[source,bash]
+----
+$ make docs
+----
+
+This will invoke `docs/support/scripts/make_docs.sh`, which requires
+`asciidoctor` to process the doc sources and produce the HTML documentation,
+emitted to _build/docs_. This script requires `ruby` and `gem` to be installed
+on the system path, and will attempt to install `asciidoctor` and other related
+dependencies into `$HOME/.gems` using http://bundler.io/[bundler].
+
+=== Updating the documentation on the Kudu web site
+
+To update the documentation that is integrated into the Kudu web site,
+including Javadoc documentation, you may run the following command:
+
+[source,bash]
+----
+$ ./docs/support/script/make_site.sh
+----
+
+This script will use your local Git repository to check out a shallow clone of
+the 'gh-pages' branch and use `make_docs.sh` to generate the HTML documentation
+for the web site. It will also build the Javadoc documentation. These will be
+placed inside the checked-out web site, along with a tarball containing only
+the generated documentation (the _docs/_ and _apidocs/_ paths on the web site).
+Everything can be found in the _build/site_ subdirectory.
+
+You can proceed to commit the changes in the pages repository and send a code
+review for your changes. In the future, this step may be automated whenever
+changes are checked into the main Kudu repository.
+
+== Improving build times
+
+=== Caching build output
+
+The kudu build is compatible with ccache. Simply install your distro's _ccache_ package,
+prepend _/usr/lib/ccache_ to your `PATH`, and watch your object files get cached. Link
+times won't be affected, but you will see a noticeable improvement in compilation
+times. You may also want to increase the size of your cache using "ccache -M new_size".
+
+=== Improving linker speed
+
+One of the major time sinks in the Kudu build is linking. GNU ld is historically
+quite slow at linking large C++ applications. The alternative linker `gold` is much
+better at it. It's part of the `binutils` package in modern distros (try `binutils-gold`
+in older ones). To enable it, simply repoint the _/usr/bin/ld_ symlink from `ld.bfd` to
+`ld.gold`.
+
+Note that gold doesn't handle weak symbol overrides properly (see
+https://sourceware.org/bugzilla/show_bug.cgi?id=16979[this bug report] for details).
+As such, it cannot be used with shared objects (see below) because it'll cause
+tcmalloc's alternative malloc implementation to be ignored.
+
+=== Building Kudu with dynamic linking
+
+Kudu can be built into shared objects, which, when used with ccache, can result in a
+dramatic build time improvement in the steady state. Even after a `make clean` in the build
+tree, all object files can be served from ccache. By default, `debug` and `fastdebug` will
+use dynamic linking, while other build types will use static linking. To enable
+dynamic linking explicitly, run:
+
+[source,bash]
+----
+$ cmake -DKUDU_LINK=dynamic ../..
+----
+
+Subsequent builds will create shared objects instead of archives and use them when
+linking the kudu binaries and unit tests. The full range of options for `KUDU_LINK` are
+`static`, `dynamic`, and `auto`. The default is `auto` and only the first letter
+matters for the purpose of matching.
+
+NOTE: Dynamic linking is incompatible with ASAN and static linking is incompatible
+with TSAN.
+
+
+== Developing Kudu in Eclipse
+
+Eclipse can be used as an IDE for Kudu. To generate Eclipse project files, run:
+
+[source,bash]
+----
+$ mkdir -p <sibling directory to source tree>
+$ cd <sibling directory to source tree>
+$ rm -rf CMakeCache.txt CMakeFiles/
+$ cmake -G "Eclipse CDT4 - Unix Makefiles" -DCMAKE_CXX_COMPILER_ARG1=-std=c++11 <source tree>
+----
+
+When the Eclipse generator is run in a subdirectory of the source tree, the
+resulting project is incomplete. That's why it's recommended to use a directory
+that's a sibling to the source tree. See [1] for more details.
+
+It's critical that _CMakeCache.txt_ be removed prior to running the generator,
+otherwise the extra Eclipse generator logic (the CMakeFindEclipseCDT4.make module)
+won't run and standard system includes will be missing from the generated project.
+
+Thanks to [2], the Eclipse generator ignores the `-std=c++11` definition and we must
+add it manually on the command line via `CMAKE_CXX_COMPILER_ARG1`.
+
+By default, the Eclipse CDT indexer will index everything under the _kudu/_
+source tree. It tends to choke on certain complicated source files within
+_thirdparty_. In CDT 8.7.0, the indexer will generate so many errors that it'll
+exit early, causing many spurious syntax errors to be highlighted. In older
+versions of CDT, it'll spin forever.
+
+Either way, these complicated source files must be excluded from indexing. To do
+this, right click on the project in the Project Explorer and select Properties. In
+the dialog box, select "C/C++ Project Paths", select the Source tab, highlight
+"Exclusion filter: (None)", and click "Edit...". In the new dialog box, click
+"Add Multiple...". Select every subdirectory inside _thirdparty_ except _installed_
+and _installed-deps_. Click OK all the way out and rebuild the project index by
+right clicking the project in the Project Explorer and selecting Index -> Rebuild.
+
+With this exclusion, the only false positives (shown as "red squigglies") that
+CDT presents appear to be in atomicops functions (`NoBarrier_CompareAndSwap` for
+example).
+
+Another Eclipse annoyance stems from the "[Targets]" linked resource that Eclipse
+generates for each unit test. These are probably used for building within Eclipse,
+but one side effect is that nearly every source file appears in the indexer twice:
+once via a target and once via the raw source file. To fix this, simply delete the
+[Targets] linked resource via the Project Explorer. Doing this should have no effect
+on writing code, though it may affect your ability to build from within Eclipse.
+
+1. https://cmake.org/pipermail/cmake-developers/2011-November/014153.html
+2. http://public.kitware.com/Bug/view.php?id=15102

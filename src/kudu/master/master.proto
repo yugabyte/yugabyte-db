@@ -1,0 +1,577 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+package kudu.master;
+
+option java_package = "org.kududb.master";
+
+import "kudu/common/common.proto";
+import "kudu/common/wire_protocol.proto";
+import "kudu/consensus/metadata.proto";
+import "kudu/tablet/metadata.proto";
+
+////////////////////////////////////////////////////////////
+// Common data structures
+////////////////////////////////////////////////////////////
+
+// Master specific errors use this protobuf.
+message MasterErrorPB {
+  enum Code {
+    // An error which has no more specific error code.
+    // The code and message in 'status' may reveal more details.
+    //
+    // RPCs should avoid returning this, since callers will not be
+    // able to easily parse the error.
+    UNKNOWN_ERROR = 1;
+
+    // The schema provided for a request was not well-formed.
+    INVALID_SCHEMA = 2;
+
+    // The requested table does not exist
+    TABLE_NOT_FOUND = 3;
+
+    // The name requested for the table is already in use
+    TABLE_ALREADY_PRESENT = 4;
+
+    // The number of tablets requested for a new table is over the per TS limit.
+    TOO_MANY_TABLETS = 5;
+
+    // Catalog manager is not yet initialized.
+    CATALOG_MANAGER_NOT_INITIALIZED = 6;
+
+    // The operation attempted can only be invoked against either the
+    // leader or a single non-distributed master, which this node
+    // isn't.
+    NOT_THE_LEADER = 7;
+
+    // The number of replicas requested is greater than the number of live servers
+    // in the cluster.
+    REPLICATION_FACTOR_TOO_HIGH = 8;
+  }
+
+  // The error code.
+  required Code code = 1;
+
+  // The Status object for the error. This will include a textual
+  // message that may be more useful to present in log messages, etc,
+  // though its error code is less specific.
+  required AppStatusPB status = 2;
+}
+
+// Common information sent with every request from the tablet server
+// to the master.
+message TSToMasterCommonPB {
+  // The instance of the tablet server sending the heartbeat.
+  required NodeInstancePB ts_instance = 1;
+}
+
+message TableIdentifierPB {
+  // The table ID to fetch info.
+  optional bytes table_id = 1;
+
+  // The table name to fetch info.
+  optional string table_name = 2;
+}
+
+////////////////////////////////////////////////////////////
+// Sys Tables Metadata
+////////////////////////////////////////////////////////////
+
+// The on-disk entry in the sys.catalog table ("metadata" column) for
+// tablets entries.
+message SysTabletsEntryPB {
+  enum State {
+    UNKNOWN = 999;
+    PREPARING = 0;
+    CREATING = 1;
+    RUNNING = 2;
+    REPLACED = 3;
+    DELETED = 4;
+  }
+
+  // DEPRECATED. Replaced by 'partition'.
+  optional bytes DEPRECATED_start_key = 1;
+  optional bytes DEPRECATED_end_key   = 2;
+
+  // Tablet partition.
+  optional PartitionPB partition = 7;
+
+  // The latest committed consensus configuration consensus configuration reported to the Master.
+  optional consensus.ConsensusStatePB committed_consensus_state = 3;
+
+  // Debug state for the tablet.
+  optional State state = 4 [ default = UNKNOWN ];
+  optional bytes state_msg = 5;
+
+  // The table id for the tablet.
+  required bytes table_id = 6;
+}
+
+// The on-disk entry in the sys.catalog table ("metadata" column) for
+// tables entries.
+message SysTablesEntryPB {
+  enum State {
+    UNKNOWN = 0;
+    PREPARING = 1;
+    RUNNING = 2;
+    ALTERING = 3;
+    REMOVED = 4;
+  }
+
+  // Table name
+  required bytes name = 1;
+
+  // sequence-id for the table metadata.
+  // Used on tablet-report to avoid sending "alter-table" notifications.
+  required uint32 version = 2;
+
+  // Newest table schema (every TS will eventually have it).
+  required SchemaPB schema = 3;
+
+  // Last table schema that is guaranteed to have reached every TS, though
+  // not necessarily the newest schema.
+  //
+  // This is the schema provided to the user on client->GetSchema(tableName).
+  optional SchemaPB fully_applied_schema = 4;
+
+  // The table's partitioning schema.
+  optional PartitionSchemaPB partition_schema = 9;
+
+  // The next column ID to assign to newly added columns in this table.
+  // This prevents column ID reuse.
+  optional int32 next_column_id = 8;
+
+  // Number of TS replicas
+  required int32 num_replicas = 5;
+
+  // Debug state for the table.
+  optional State state = 6 [ default = UNKNOWN ];
+  optional bytes state_msg = 7;
+}
+
+////////////////////////////////////////////////////////////
+// RPCs
+////////////////////////////////////////////////////////////
+
+message PingRequestPB {
+}
+
+message PingResponsePB {
+}
+
+// Sent by the TS when it first heartbeats with a master. This sends the
+// master all of the necessary information about the current instance
+// of the TS.
+message TSRegistrationPB {
+  repeated HostPortPB rpc_addresses = 1;
+  repeated HostPortPB http_addresses = 2;
+
+  // TODO: add stuff like software version, etc.
+}
+
+message ReportedTabletPB {
+  required bytes tablet_id = 1;
+  optional tablet.TabletStatePB state = 2 [ default = UNKNOWN ];
+  optional tablet.TabletDataState tablet_data_state = 6 [ default = TABLET_DATA_UNKNOWN ];
+
+  // The latest _committed_ consensus state.
+  // This will be missing if the tablet is not in a RUNNING state
+  // (i.e. if it is BOOTSTRAPPING).
+  optional consensus.ConsensusStatePB committed_consensus_state = 3;
+
+  optional AppStatusPB error = 4;
+  optional uint32 schema_version = 5;
+}
+
+// Sent by the tablet server to report the set of tablets hosted by that TS.
+message TabletReportPB {
+  // If false, then this is a full report, and any prior information about
+  // tablets hosted by this server should be dropped.
+  required bool is_incremental = 1;
+
+  // Tablets for which to update information. If 'is_incremental' is false,
+  // then this is the full set of tablets on the server, and any tablets
+  // which the master is aware of but not listed in this protobuf should
+  // be assumed to have been removed from this server.
+  repeated ReportedTabletPB updated_tablets = 2;
+
+  // Tablet IDs which the tablet server has removed and should no longer be
+  // considered hosted here. This will always be empty in a non-incremental
+  // report.
+  repeated bytes removed_tablet_ids = 3;
+
+  // Every time the TS generates a tablet report, it creates a sequence
+  // number. This can be useful in debugging, and also determining which
+  // changes have not yet been reported to the master.
+  // The first tablet report (non-incremental) is sequence number 0.
+  required int32 sequence_number = 4;
+}
+
+message ReportedTabletUpdatesPB {
+  required bytes tablet_id = 1;
+  optional string state_msg = 2;
+}
+
+// Sent by the Master in response to the TS tablet report (part of the heartbeats)
+message TabletReportUpdatesPB {
+  repeated ReportedTabletUpdatesPB tablets = 1;
+}
+
+// Heartbeat sent from the tablet-server to the master
+// to establish liveness and report back any status changes.
+message TSHeartbeatRequestPB {
+  required TSToMasterCommonPB common = 1;
+
+  // Sent upon start-up of the TS, or in response to 'needs_reregister' on a heartbeat
+  // response.
+  optional TSRegistrationPB registration = 2;
+
+  // Sent when the tablet information has changed, or in response to
+  // 'needs_full_tablet_report'.
+  optional TabletReportPB tablet_report = 3;
+
+  // TODO; add a heartbeat sequence number?
+
+  // TODO: perhaps add some very basic metrics reporting here, like
+  // free space, reqs/sec, etc?
+
+  // The number of tablets that are BOOTSTRAPPING or RUNNING.
+  // Used by the master to determine load when creating new tablet replicas.
+  optional int32 num_live_tablets = 4;
+}
+
+message TSHeartbeatResponsePB {
+  optional MasterErrorPB error = 1;
+
+  // As with most other master RPC responses (e.g.,
+  // ListTablesResponsePB), all fields below are optional as they may
+  // not be set if there is an error.
+
+  optional NodeInstancePB master_instance = 2;
+
+  // Indicates that the server which heartbeated needs to re-register
+  // with the master -- i.e send a heartbeat with the 'registration'
+  // filled in.
+  optional bool needs_reregister = 3 [ default = false ];
+
+  optional bool needs_full_tablet_report = 4 [ default = false ];
+
+  // Sent when the master receives a TabletReport
+  optional TabletReportUpdatesPB tablet_report = 5;
+
+  // Specify whether or not the node is the leader master.
+  optional bool leader_master = 6;
+}
+
+//////////////////////////////
+// GetTabletLocations
+//////////////////////////////
+
+message TabletLocationsPB {
+  message ReplicaPB {
+    required TSInfoPB ts_info = 1;
+    required consensus.RaftPeerPB.Role role = 2;
+  }
+
+  required bytes tablet_id = 1;
+
+  // DEPRECATED.
+  optional bytes start_key = 2;
+  optional bytes end_key = 3;
+
+  optional PartitionPB partition = 6;
+
+  repeated ReplicaPB replicas = 4;
+
+  // true if the tablet was running but no tablet server has reported it yet.
+  // The set of replicas will be the last one that was hosting the tablet.
+  // This should happen on Master restart when the request is issued before
+  // the TS has the time to notify the Master about the tablets that is hosting.
+  required bool stale = 5;
+}
+
+// Info about a single tablet server, returned to the client as part
+// of the GetTabletLocations response. This can be used on the client
+// to update the local cache of where each TS UUID is located. In
+// the future we may also want to transmit software version info,
+// load info, topology, etc.
+message TSInfoPB {
+  required bytes permanent_uuid = 1;
+
+  repeated HostPortPB rpc_addresses = 2;
+}
+
+message GetTabletLocationsRequestPB {
+  // The tablet IDs about which to fetch info.
+  repeated bytes tablet_ids = 1;
+}
+
+message GetTabletLocationsResponsePB {
+  optional MasterErrorPB error = 1;
+
+  repeated TabletLocationsPB tablet_locations = 2;
+
+  message Error {
+    required bytes tablet_id = 1;
+    required AppStatusPB status = 2;
+  }
+  repeated Error errors = 3;
+}
+
+// ============================================================================
+//  Catalog
+// ============================================================================
+message CreateTableRequestPB {
+  required string name = 1;
+  required SchemaPB schema = 2;
+  // repeated bytes pre_split_keys = 3;
+  // repeated PartialRowPB split_rows = 5;
+  optional RowOperationsPB split_rows = 6;
+  optional PartitionSchemaPB partition_schema = 7;
+  optional int32 num_replicas = 4;
+}
+
+message CreateTableResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  optional bytes table_id = 2;
+}
+
+message IsCreateTableDoneRequestPB {
+  required TableIdentifierPB table = 1;
+}
+
+message IsCreateTableDoneResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  // true if the create operation is completed, false otherwise
+  optional bool done = 3;
+}
+
+message DeleteTableRequestPB {
+  required TableIdentifierPB table = 1;
+}
+
+message DeleteTableResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
+message ListTablesRequestPB {
+  // When used, only returns tables that satisfy a substring match on name_filter.
+  optional string name_filter = 1;
+}
+
+message ListTablesResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  message TableInfo {
+    required bytes id = 1;
+    required string name = 2;
+  }
+
+  repeated TableInfo tables = 2;
+}
+
+message GetTableLocationsRequestPB {
+  required TableIdentifierPB table = 1;
+
+  // Partition-key range.
+  optional bytes partition_key_start = 3;
+  optional bytes partition_key_end = 4;
+
+  optional uint32 max_returned_locations = 5 [ default = 10 ];
+}
+
+message GetTableLocationsResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  repeated TabletLocationsPB tablet_locations = 2;
+}
+
+message AlterTableRequestPB {
+  enum StepType {
+    UNKNOWN = 0;
+    ADD_COLUMN = 1;
+    DROP_COLUMN = 2;
+    RENAME_COLUMN = 3;
+
+    // TODO(KUDU-861): this will subsume RENAME_COLUMN, but not yet implemented
+    // on the master side.
+    ALTER_COLUMN = 4;
+  }
+  message AddColumn {
+    // The schema to add.
+    // NOTE: the 'id' field of the schema should not be provided here --
+    // the server will assign an ID.
+    required ColumnSchemaPB schema = 1;
+  }
+  message DropColumn {
+    // Name of the column to drop.
+    required string name = 1;
+  }
+  message RenameColumn {
+    // Name of the column to rename;
+    required string old_name = 1;
+    required string new_name = 2;
+  }
+
+  message Step {
+    optional StepType type = 1 [ default = UNKNOWN ];
+
+    // Exactly one of the following must be set, based on 'type'
+    optional AddColumn add_column = 2;
+    optional DropColumn drop_column = 3;
+    optional RenameColumn rename_column = 4;
+  }
+
+  required TableIdentifierPB table = 1;
+  repeated Step alter_schema_steps = 2;
+  optional string new_table_name = 3;
+}
+
+message AlterTableResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  optional uint32 schema_version = 2;
+}
+
+message IsAlterTableDoneRequestPB {
+  required TableIdentifierPB table = 1;
+}
+
+message IsAlterTableDoneResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  // this is the current schema, or the 'new' schema version if an alter is in progress
+  optional uint32 schema_version = 2;
+
+  // true if the alter operation is completed, false otherwise
+  optional bool done = 3;
+}
+
+message GetTableSchemaRequestPB {
+  required TableIdentifierPB table = 1;
+}
+
+message GetTableSchemaResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  // This is the schema that every TS should be able to understand
+  // if your alter is keeping the schema compatible.
+  // In case of an alter table in progress, this is the previous schema;
+  // otherwise it is the latest schema.
+  optional SchemaPB schema = 2;
+
+  // The table's partition schema.
+  optional PartitionSchemaPB partition_schema = 5;
+
+  optional int32 num_replicas = 3;
+
+  // The ID of the table.
+  optional bytes table_id = 4;
+
+  // True if the create operation is completed, false otherwise.
+  optional bool create_table_done = 6;
+}
+
+// ============================================================================
+//  Administration/monitoring
+// ============================================================================
+
+message ListTabletServersRequestPB {
+}
+
+message ListTabletServersResponsePB {
+  optional MasterErrorPB error = 1;
+
+  message Entry {
+    required NodeInstancePB instance_id = 1;
+    optional TSRegistrationPB registration = 2;
+    optional int32 millis_since_heartbeat = 3;
+  }
+  repeated Entry servers = 2;
+}
+
+// GetMasterRegistrationRequest/Response: get the instance id and
+// HTTP/RPC addresses for this Master server.
+message GetMasterRegistrationRequestPB {
+}
+
+// TODO: Just use ServerRegistration here.
+message GetMasterRegistrationResponsePB {
+  // Node instance information is always set.
+  required NodeInstancePB instance_id = 1;
+
+  // These fields are optional, as they won't be set if there's an
+  // error retrieving the host/port information.
+  optional ServerRegistrationPB registration = 2;
+
+  // This server's role in the consensus configuration.
+  optional consensus.RaftPeerPB.Role role = 3;
+
+  // Set if there an error retrieving the registration information.
+  optional MasterErrorPB error = 4;
+}
+
+// ListMastersRequest/Response: get information about all of the known
+// master servers, including this node.
+message ListMastersRequestPB {
+}
+
+message ListMastersResponsePB {
+  // An entry for each individual master server.
+  repeated ServerEntryPB masters = 1;
+
+  // Set only if there's an error in retrieving the list of servers or
+  // in getting this server's own local registration information.
+  optional AppStatusPB error = 2;
+}
+
+service MasterService {
+  rpc Ping(PingRequestPB) returns (PingResponsePB);
+
+  // TS->Master RPCs
+  rpc TSHeartbeat(TSHeartbeatRequestPB) returns (TSHeartbeatResponsePB);
+
+  // Client->Master RPCs
+  rpc GetTabletLocations(GetTabletLocationsRequestPB) returns (GetTabletLocationsResponsePB);
+
+  rpc CreateTable(CreateTableRequestPB) returns (CreateTableResponsePB);
+  rpc IsCreateTableDone(IsCreateTableDoneRequestPB) returns (IsCreateTableDoneResponsePB);
+
+  rpc DeleteTable(DeleteTableRequestPB) returns (DeleteTableResponsePB);
+
+  rpc AlterTable(AlterTableRequestPB) returns (AlterTableResponsePB);
+  rpc IsAlterTableDone(IsAlterTableDoneRequestPB) returns (IsAlterTableDoneResponsePB);
+
+  rpc ListTables(ListTablesRequestPB) returns (ListTablesResponsePB);
+  rpc GetTableLocations(GetTableLocationsRequestPB) returns (GetTableLocationsResponsePB);
+  rpc GetTableSchema(GetTableSchemaRequestPB) returns (GetTableSchemaResponsePB);
+
+  // Administrative/monitoring RPCs
+  rpc ListTabletServers(ListTabletServersRequestPB) returns (ListTabletServersResponsePB);
+  rpc ListMasters(ListMastersRequestPB) returns (ListMastersResponsePB);
+  rpc GetMasterRegistration(GetMasterRegistrationRequestPB) returns
+    (GetMasterRegistrationResponsePB);
+}

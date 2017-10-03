@@ -1,0 +1,267 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+[[documentation_style_guide]]
+= Apache Kudu (incubating) Documentation Style Guide
+
+:author: Kudu Team
+:imagesdir: ./images
+:icons: font
+:toc: left
+:toclevels: 3
+:doctype: book
+:backend: html5
+:sectlinks:
+:experimental:
+
+This document gives you the information you need to get started contributing to Kudu
+documentation. For code contribution guidelines, see
+link:contributing.html[Contributing to Kudu].
+
+== Asciidoc
+Kudu documentation is written in link:https://en.wikipedia.org/wiki/AsciiDoc[Asciidoc]
+and compiled into HTML and output using the link:http://asciidoctor.org/[Asciidoctor]
+toolchain. This provides several advantages. Among them:
+
+- Asciidoc is a superset of Markdown, so if you already know Markdown you can get
+started right away.
+- Github includes support for Asciidoc in its Atom editor, as well as real-time
+simplified HTML rendering.
+- Patch submissions are small and easy to review.
+
+== Code Standards
+Within reason, try to adhere to these standards:
+
+- 100 or fewer columns per line
+- 2 spaces rather than tabs for indentation
+- No more than 4 nested levels in the documentation if possible: `(Document -> Chapter
+-> Section -> Subsection)`
+- When possible, provide the language that a code listing is in, using the
+`[source,<language>]` macro. for example, `[source,sql]`
+- In general, do not indent Asciidoc, as indentation is significant. Code listings
+are one exception.
+
+== Building Documentation
+To build the documentation locally, you need the Asciidoctor Ruby application. To build the
+entire Kudu documentation set, change to the `docs/` directory and run:
+[source,bash]
+----
+asciidoctor -d book -D docs *.adoc
+----
+This builds the HTML output in a new _docs/_ directory within the current directory.
+Some content, such as the per-daemon configuration reference files, is not populated
+during a local build.
+
+To view the HTML, open _docs/index.html_ in your local browser.
+
+You can also build only a single chapter. such as _introduction.adoc_, by passing its name instead.
+
+== Asciidoc Style Guide
+Asciidoc supports a lot of syntax that we do not need to use. When possible, stick
+with the following, adapted from the
+link:https://hbase.apache.org/book.html#_hbase_reference_guide_style_guide_and_cheat_sheet[HBase Reference Guide]:
+
+.AsciiDoc Cheat Sheet
+[cols="1,1,a",options="header"]
+|===
+| Element Type | Desired Rendering | How to do it
+| A paragraph | a paragraph | Just type some text with a blank line at the top and bottom.
+| Add line breaks within a paragraph without adding blank lines | Manual line breaks | This will break + at the plus sign. Or prefix the whole paragraph with a line containing '[%hardbreaks]'
+| Give a title to anything | Colored italic bold differently-sized text | .MyTitle (no space between the period and the words) on the line before the thing to be titled
+| In-Line Code or commands | monospace | \`text`
+| In-line literal content (things to be typed exactly as shown) | bold mono | \*\`typethis`*
+| In-line replaceable content (things to substitute with your own values) | bold italic mono | \*\_typesomething_*
+| Code blocks with highlighting | monospace, highlighted, preserve space |
+........
+[source,java]
+----
+  myAwesomeCode() {
+}
+----
+........
+| Code block included from a separate file | included just as though it were part of the main file |
+................
+[source,ruby]
+----
+\include::path/to/app.rb[]
+----
+................
+| Include only part of a separate file | Similar to Javadoc | See http://asciidoctor.org/docs/user-manual/#by-tagged-regions
+| File names, directory names, new terms | italic | \_hbase-default.xml_
+| External naked URLs | A link with the URL as link text |
+----
+http://www.google.com
+----
+
+| External URLs with text | A link with arbitrary link text |
+----
+link:http://www.google.com[Google]
+----
+
+| Create an internal anchor to cross-reference | not rendered |
+----
+[[anchor_name]]
+----
+| Cross-reference an existing anchor using its default title| an internal hyperlink using the element title if available, otherwise using the anchor name |
+----
+<<anchor_name>>
+----
+| Cross-reference an existing anchor using custom text | an internal hyperlink using arbitrary text |
+----
+<<anchor_name,Anchor Text>>
+----
+| A block image | The image with alt text |
+----
+image::sunset.jpg[Alt Text]
+----
+(put the image in the src/main/site/resources/images directory)
+| An inline image | The image with alt text, as part of the text flow |
+----
+image:sunset.jpg [Alt Text]
+----
+(only one colon)
+| Link to a remote image | show an image hosted elsewhere |
+----
+image::http://inkscape.org/doc/examples/tux.svg[Tux,250,350]
+----
+(or `image:`)
+| Add dimensions or a URL to the image | depends | inside the brackets after the alt text, specify width, height and/or link="http://my_link.com"
+| A footnote | subscript link which takes you to the footnote |
+----
+Some text.footnote:[The footnote text.]
+----
+| A note or warning with no title | The admonition image followed by the admonition |
+----
+NOTE: My note here
+----
+
+----
+WARNING: My warning here
+----
+| A complex note | The note has a title and/or multiple paragraphs and/or code blocks or lists, etc |
+........
+.The Title
+[NOTE]
+====
+Here is the note text.
+Everything until the second set of four equals signs
+is part of the note.
+----
+some source code
+----
+====
+........
+| Bullet lists | bullet lists |
+----
+* list item 1
+----
+(see http://asciidoctor.org/docs/user-manual/#unordered-lists)
+| Numbered lists | numbered list |
+----
+. list item 2
+----
+(see http://asciidoctor.org/docs/user-manual/#ordered-lists)
+| Checklists | Checked or unchecked boxes |
+Checked:
+----
+- [*]
+----
+Unchecked:
+----
+- [ ]
+----
+| Multiple levels of lists | bulleted or numbered or combo |
+----
+. Numbered (1), at top level
+* Bullet (2), nested under 1
+* Bullet (3), nested under 1
+. Numbered (4), at top level
+* Bullet (5), nested under 4
+** Bullet (6), nested under 5
+- [x] Checked (7), at top level
+----
+| Labelled lists / variablelists | a list item title or summary followed by content |
+----
+Title:: content
+
+Title::
+  content
+----
+|GUI menu cascades | bold text with arrows to show levels | Use an ASCII arrow.
+........
+*File -> Print*
+........
+renders like *File -> Print*
+| Sidebars, quotes, or other blocks of text | a block of text, formatted differently from the default | Delimited using different delimiters, see http://asciidoctor.org/docs/user-manual/#built-in-blocks-summary. Some of the examples above use delimiters like \...., ----,====.
+........
+[example]
+====
+This is an example block.
+====
+
+[source]
+----
+This is a source block.
+----
+
+[note]
+====
+This is a note block.
+====
+
+[quote]
+____
+This is a quote block.
+____
+........
+
+*If you want to insert literal Asciidoc content that keeps being interpreted, when in doubt, use eight dots as the delimiter at the top and bottom.*
+| Nested Sections | chapter, section, sub-section, etc |
+----
+= Book (or chapter if the chapter can be built alone, see leveloffset below)
+
+== Chapter (or section if the chapter is standalone)
+
+=== Section (or subsection, etc)
+
+==== Subsection
+----
+
+and so on up to 6 levels (think carefully about going deeper than 4 levels, maybe you can just titled paragraphs or lists instead). Note that you can include a book inside another book by adding the `:leveloffset:+1` macro directive directly before your include, and resetting it to 0 directly after. See the _book.adoc_ source for examples, as this is how this guide handles chapters. *Don't do it for prefaces, glossaries, appendixes, or other special types of chapters.*
+
+| Include one file from another | Content is included as though it were inline |
+
+----
+include::[/path/to/file.adoc]
+----
+
+For plenty of examples. see _docs/docs.adoc_.
+| A table | a table | See http://asciidoctor.org/docs/user-manual/#tables. Generally rows are separated by newlines and columns by pipes
+| Comment out a single line | A  line is skipped during rendering |
+`+//+ This line won't show up`
+| Comment out a block | A section of the file is skipped during rendering |
+----
+////
+Nothing between the slashes will show up.
+////
+----
+| Highlight text for review | text shows up with yellow background |
+----
+Test between #hash marks# is highlighted yellow.
+----
+|===
+

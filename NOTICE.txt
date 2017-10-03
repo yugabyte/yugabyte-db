@@ -1,0 +1,4 @@
+Kudu
+
+Portions of this software were developed at
+Cloudera, Inc (http://www.cloudera.com/).

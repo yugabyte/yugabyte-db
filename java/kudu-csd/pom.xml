@@ -1,0 +1,129 @@
+<!--
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.kududb</groupId>
+    <artifactId>kudu-parent</artifactId>
+    <version>0.8.0-SNAPSHOT</version>
+  </parent>
+
+  <groupId>com.cloudera.csd</groupId>
+  <artifactId>KUDU</artifactId>
+  <version>0.8.0</version>
+  <name>The Kudu CSD</name>
+  <packaging>pom</packaging>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>1.2</version>
+        <executions>
+          <!-- Make the target descriptor directory if necessary. -->
+          <execution>
+            <configuration>
+              <executable>mkdir</executable>
+              <arguments>
+                <argument>-p</argument>
+                <argument>${project.build.directory}/descriptor</argument>
+              </arguments>
+            </configuration>
+            <id>generate-target-descriptor-directory</id>
+            <phase>compile</phase>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+          </execution>
+          <!-- Generate the MDL. -->
+          <execution>
+            <configuration>
+              <executable>${basedir}/generate_mdl.py</executable>
+              <arguments>
+                <argument>${project.build.directory}/descriptor/service.mdl</argument>
+              </arguments>
+            </configuration>
+            <id>generate-mdl</id>
+            <phase>compile</phase>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin> 
+      <!-- Assemble the CSD. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-assembly-plugin</artifactId>
+        <configuration>
+          <appendAssemblyId>false</appendAssemblyId>
+          <descriptors>
+            <descriptor>../assembly.xml</descriptor>
+          </descriptors>
+        </configuration>
+         <executions>
+          <execution>
+            <id>make-assembly</id>
+            <phase>package</phase>
+            <goals>
+              <goal>single</goal>
+            </goals>
+           </execution>
+         </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <!-- Validate the SDL/MDL.
+
+         Disabled by default; add -PvalidateCSD to the maven command line. -->
+    <profile>
+      <id>validateCSD</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>com.cloudera.enterprise</groupId>
+            <artifactId>schema-validator-maven-plugin</artifactId>
+            <version>${schema-validator-maven-plugin.version}</version>
+            <executions>
+              <execution>
+                <id>validate-descriptors</id>
+                <phase>test</phase>
+                <goals>
+                  <goal>validate</goal>
+                </goals>
+                <configuration>
+                  <!-- The directory containing pom.xml. The plugin will recurse
+                       and find both the SDL and MDL from here.
+
+                       TODO: when the SDL becomes generated, this can probably be
+                       narrowed to just the build directory. -->
+                  <sourceDirectory>${project.basedir}</sourceDirectory>
+                  <!-- Will flag any JSON element that is unrecognized by the
+                       CSD framework. -->
+                  <strictMode>true</strictMode>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+</project>

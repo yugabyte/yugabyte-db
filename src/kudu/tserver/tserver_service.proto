@@ -1,0 +1,70 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+package kudu.tserver;
+
+option java_package = "org.kududb.tserver";
+
+import "kudu/tserver/tserver.proto";
+
+service TabletServerService {
+
+  rpc Ping(PingRequestPB) returns (PingResponsePB);
+  rpc Write(WriteRequestPB) returns (WriteResponsePB);
+  rpc Scan(ScanRequestPB) returns (ScanResponsePB);
+  rpc ScannerKeepAlive(ScannerKeepAliveRequestPB) returns (ScannerKeepAliveResponsePB);
+  rpc ListTablets(ListTabletsRequestPB) returns (ListTabletsResponsePB);
+
+  // Run full-scan data checksum on a tablet to verify data integrity.
+  //
+  // TODO: Consider refactoring this as a scan that runs a checksum aggregation
+  // function.
+  rpc Checksum(ChecksumRequestPB)
+      returns (ChecksumResponsePB);
+}
+
+message ChecksumRequestPB {
+  // Only one of 'new_request' or 'continue_request' should be specified.
+  optional NewScanRequestPB new_request = 1;
+  optional ContinueChecksumRequestPB continue_request = 2;
+
+  // See documentation for ScanRequestPB for info about these fields.
+  optional uint32 call_seq_id = 3;
+  optional uint32 batch_size_bytes = 4;
+  optional bool close_scanner = 5;
+}
+
+message ContinueChecksumRequestPB {
+  // Scanner ID returned from a previous request.
+  required bytes scanner_id = 1;
+
+  // Checksum returned from a previous request.
+  required uint64 previous_checksum = 2;
+}
+
+message ChecksumResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+
+  // The (possibly partial) checksum of the tablet data.
+  // This checksum is only complete if 'has_more_results' is false.
+  optional uint64 checksum = 2;
+
+  // See documentation for ScanResponsePB for info about these fields.
+  optional bytes scanner_id = 3;
+  optional bool has_more_results = 4;
+  optional fixed64 snap_timestamp = 5;
+}
