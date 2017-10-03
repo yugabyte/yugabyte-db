@@ -1,6 +1,21 @@
 Changelog
 =========
 
+WIP version 1.1.0:
+  New features
+    - add support for hypothetical indexes on expression
+    - add a hypopg_get_indexdef() function to get definition of a stored
+      hypothetical index
+  Bug fixes:
+    - don't allow hypothetical unique or multi-column index if the AM doesn't
+      support it
+    - disallow hypothetical indexes on system columns (except OID)
+    - fix indexes using DESC clause and default NULLS ordering, thanks to
+      Andrew Kane for the report and test case.
+    - fix PostgreSQL 9.6+ support, thanks to Rob Stolarz for the report
+  Miscellaneous:
+    - add support for PostgreSQL 10
+
 2016-10-24 version 1.0.0:
 
   - fix memory leak in hypopg() function
