@@ -2,11 +2,16 @@
 
 package com.yugabyte.yw.controllers;
 
+import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.UUID;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.common.CloudQueryHelper;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Region;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,12 +26,18 @@ import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
+import static com.yugabyte.yw.commissioner.Common.CloudType.aws;
 import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
 
 public class InstanceTypeController extends AuthenticatedController {
+
+  public static final Logger LOG = LoggerFactory.getLogger(InstanceTypeController.class);
+
   @Inject
   FormFactory formFactory;
-  public static final Logger LOG = LoggerFactory.getLogger(InstanceTypeController.class);
+
+  @Inject
+  CloudQueryHelper cloudQueryHelper;
 
   /**
    * GET endpoint for listing instance types
@@ -145,5 +156,47 @@ public class InstanceTypeController extends AuthenticatedController {
    */
   public Result getEBSTypes() {
     return ok(Json.toJson(PublicCloudConstants.EBSType.values()));
+  }
+
+  /**
+   * Info endpoint to get a suggested spot price for a given instanceType. Only works for AWS.
+   *
+   * @param customerUUID UUID of customer.
+   * @param providerUUID UUID of AWS provider.
+   * @param instanceTypeCode Instance type code.
+   * @return JSON response with suggested spot price (2x current max spot price).
+   */
+  public Result suggestSpotPrice(UUID customerUUID, UUID providerUUID, String instanceTypeCode) {
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+    Provider provider = Provider.get(customerUUID, providerUUID);
+    if (provider == null || !provider.code.equals(aws.toString())) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
+    }
+    InstanceType instanceType = InstanceType.get(provider.code, instanceTypeCode);
+    if (instanceType == null) {
+      return ApiResponse.error(BAD_REQUEST, "Instance Type not found: " + instanceTypeCode);
+    }
+    try {
+      List<Region> regions = new LinkedList<>();
+      ObjectNode body = (ObjectNode)request().body().asJson();
+      LOG.info(Json.stringify(body));
+      for (JsonNode regionJson : body.get("regions")) {
+        String regionUUID = regionJson.asText();
+        Region region = Region.get(UUID.fromString(regionUUID));
+        if (region == null) {
+          return ApiResponse.error(BAD_REQUEST, "Region not found: " + regionUUID);
+        }
+        regions.add(region);
+      }
+      LOG.info(regions.toString());
+      return ApiResponse.success(cloudQueryHelper.getSuggestedSpotPrice(regions, instanceTypeCode));
+    } catch (Exception e) {
+      String errMsg = "Unable to get spot price for instance type: " + instanceTypeCode;
+      LOG.error("{}: {}", errMsg, e.getMessage());
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, errMsg);
+    }
   }
 }

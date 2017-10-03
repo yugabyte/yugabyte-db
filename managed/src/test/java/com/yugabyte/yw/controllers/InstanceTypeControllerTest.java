@@ -6,7 +6,6 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
-import static com.yugabyte.yw.controllers.TablesControllerTest.LOG;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.core.IsNull.notNullValue;
@@ -15,17 +14,28 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertFalse;
+import static org.mockito.Matchers.anyList;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Region;
+import org.hamcrest.CoreMatchers;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -38,13 +48,27 @@ import com.yugabyte.yw.models.InstanceType.VolumeDetails;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.Provider;
 
+import play.Application;
+import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
+import play.test.Helpers;
 
 public class InstanceTypeControllerTest extends FakeDBApplication {
   Customer customer;
   Provider awsProvider;
   Provider onPremProvider;
+  CloudQueryHelper mockCloudQueryHelper;
+
+  @Override
+  protected Application provideApplication() {
+    mockCloudQueryHelper = mock(CloudQueryHelper.class);
+
+    return new GuiceApplicationBuilder()
+        .configure((Map) Helpers.inMemoryDatabase())
+        .overrides(bind(CloudQueryHelper.class).toInstance(mockCloudQueryHelper))
+        .build();
+  }
 
   @Before
   public void setUp() {
@@ -84,6 +108,21 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     return Json.parse(contentAsString(result));
   }
 
+  private InstanceType[] setUpValidInstanceTypes(int numInstanceTypes) {
+    InstanceType[] instanceTypes = new InstanceType[numInstanceTypes];
+    for (int i = 0; i < numInstanceTypes; ++i) {
+      InstanceType.VolumeDetails volDetails = new InstanceType.VolumeDetails();
+      volDetails.volumeSizeGB = 100;
+      volDetails.volumeType = InstanceType.VolumeType.EBS;
+      InstanceTypeDetails instanceDetails = new InstanceTypeDetails();
+      instanceDetails.volumeDetailsList.add(volDetails);
+      instanceDetails.setDefaultMountPaths();
+      String code = "test-i" + Integer.toString(i);
+      instanceTypes[i] = InstanceType.upsert(awsProvider.code, code, 2, 10.5, instanceDetails);
+    }
+    return instanceTypes;
+  }
+
   @Test
   public void testListInstanceTypeWithInvalidProviderUUID() {
     UUID randomUUID = UUID.randomUUID();
@@ -99,25 +138,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
 
   @Test
   public void testListInstanceTypeWithValidProviderUUID() {
-    InstanceType[] instanceTypes = new InstanceType[2];
-
-    // Add first InstanceType.
-    InstanceType.VolumeDetails i1VolDetails = new InstanceType.VolumeDetails();
-    i1VolDetails.volumeSizeGB = 100;
-    i1VolDetails.volumeType = InstanceType.VolumeType.EBS;
-    InstanceTypeDetails i1InstanceDetails = new InstanceTypeDetails();
-    i1InstanceDetails.volumeDetailsList.add(i1VolDetails);
-    i1InstanceDetails.setDefaultMountPaths();
-    instanceTypes[0] = InstanceType.upsert(awsProvider.code, "test-i1", 2, 10.5, i1InstanceDetails);
-
-    // Add second InstanceType.
-    InstanceType.VolumeDetails i2VolDetails = new InstanceType.VolumeDetails();
-    i2VolDetails.volumeSizeGB = 80;
-    i2VolDetails.volumeType = InstanceType.VolumeType.EBS;
-    InstanceTypeDetails i2InstanceDetails = new InstanceTypeDetails();
-    i2InstanceDetails.volumeDetailsList.add(i2VolDetails);
-    i2InstanceDetails.setDefaultMountPaths();
-    instanceTypes[1] = InstanceType.upsert(awsProvider.code, "test-i2", 3, 9.0, i2InstanceDetails);
+    InstanceType[] instanceTypes = setUpValidInstanceTypes(2);
 
     JsonNode json = doListInstanceTypesAndVerify(awsProvider.uuid, OK);
     assertEquals(2, json.size());
@@ -132,7 +153,6 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
       InstanceTypeDetails itd = it.instanceTypeDetails;
       List<VolumeDetails> detailsList = itd.volumeDetailsList;
       VolumeDetails targetDetails = detailsList.get(0);
-      LOG.error(instance.toString());
       JsonNode itdNode = instance.get("instanceTypeDetails");
       JsonNode detailsListNode = itdNode.get("volumeDetailsList");
       JsonNode jsonDetails = detailsListNode.get(0);
@@ -140,7 +160,9 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
       assertValue(jsonDetails, "volumeType", targetDetails.volumeType.toString());
       assertValue(jsonDetails, "mountPath", targetDetails.mountPath);
     }
-    List<String> expectedCodes = ImmutableList.of("test-i1", "test-i2");
+    List<String> expectedCodes = Arrays.asList(instanceTypes).stream()
+        .map(instanceType -> instanceType.idKey.instanceTypeCode)
+        .collect(Collectors.toList());
     assertValues(json, "instanceTypeCode", expectedCodes);
   }
 
@@ -279,5 +301,22 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     UUID randomUUID = UUID.randomUUID();
     JsonNode json = doDeleteInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST);
     assertErrorNodeValue(json, "Invalid Provider UUID: " + randomUUID);
+  }
+
+  @Test
+  public void testGetSpotPrice() {
+    String regionCode = "test-region";
+    Region region = Region.create(awsProvider, regionCode, regionCode, "0.0.19.37");
+    String instanceTypeCode = setUpValidInstanceTypes(1)[0].idKey.instanceTypeCode;
+    when(mockCloudQueryHelper.getSuggestedSpotPrice(ImmutableList.of(region), instanceTypeCode)).thenReturn(0.5);
+
+    JsonNode body = Json.newObject().set("regions", Json.newArray().add(region.uuid.toString()));
+    String method = "POST";
+    String uri =  "/api/customers/" + customer.uuid + "/providers/" + awsProvider.uuid + "/instance_types/" +
+        instanceTypeCode + "/spot_price";
+    Result result = FakeApiHelper.doRequestWithBody(method, uri, body);
+
+    assertEquals(OK, result.status());
+    assertThat(Double.parseDouble(contentAsString(result)), equalTo(0.5));
   }
 }
