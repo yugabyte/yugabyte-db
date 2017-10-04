@@ -1925,7 +1925,7 @@ select_clause:
 // NOTE: only the leftmost component SelectStmt should have INTO.
 // However, this is not checked by the grammar; parse analysis must check it.
 simple_select:
-  SELECT opt_all_clause opt_target_list into_clause from_clause opt_where_clause
+  SELECT opt_all_clause target_list into_clause from_clause opt_where_clause
   group_clause having_clause opt_window_clause {
     $$ = MAKE_NODE(@1, PTSelectStmt, false, $3, $5, $6, $7, $8, nullptr, nullptr);
   }

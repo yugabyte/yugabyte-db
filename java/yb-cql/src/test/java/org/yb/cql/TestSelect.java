@@ -897,4 +897,11 @@ public class TestSelect extends BaseCQLTest {
       assertTrue(999 >= row.getLong(0));
     }
   }
+  
+  @Test
+  public void testInvalidSelectQuery() throws Exception {
+    session.execute("CREATE TABLE t (a int, primary key (a));");
+    runInvalidStmt("SELECT FROM t;");
+    runInvalidStmt("SELECT t;");
+  }
 }
