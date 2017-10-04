@@ -69,6 +69,7 @@ class Connection;
 class DumpRunningRpcsRequestPB;
 class YBInboundTransfer;
 class RpcCallInProgressPB;
+class RpcCallDetailsPB;
 class RpcController;
 
 // Client-side user credentials, such as a user's username & password.

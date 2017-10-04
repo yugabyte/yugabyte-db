@@ -33,7 +33,6 @@
 #ifndef YB_RPC_CONNECTION_H_
 #define YB_RPC_CONNECTION_H_
 
-#include <ev++.h>
 
 #include <atomic>
 #include <cstdint>
@@ -45,6 +44,7 @@
 #include <vector>
 
 #include <boost/container/small_vector.hpp>
+#include <ev++.h>
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
@@ -237,6 +237,10 @@ class Connection final : public std::enable_shared_from_this<Connection> {
 
   ConnectionContext& context() { return *context_; }
 
+  void CallCompleted() { processed_call_count_++; }
+
+  int64_t processed_call_count() const { return processed_call_count_; }
+
  private:
   CHECKED_STATUS DoWrite();
 
@@ -337,6 +341,9 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   // Connection is responsible for sending and receiving bytes.
   // Context is responsible for what to do with them.
   std::unique_ptr<ConnectionContext> context_;
+
+  // Number of calls processed on this connection
+  std::atomic_int64_t processed_call_count_ = {0};
 };
 
 }  // namespace rpc

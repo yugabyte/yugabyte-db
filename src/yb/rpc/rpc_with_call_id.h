@@ -31,10 +31,10 @@ class ConnectionContextWithCallId : public ConnectionContext {
   }
 
   CHECKED_STATUS Store(InboundCall* call);
+  void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) override;
  private:
   virtual uint64_t ExtractCallId(InboundCall* call) = 0;
 
-  void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) override;
   bool Idle() override;
 
   void CallProcessed(InboundCall* call);

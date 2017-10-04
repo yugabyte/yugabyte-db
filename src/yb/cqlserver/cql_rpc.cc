@@ -15,6 +15,8 @@
 #include "yb/cqlserver/cql_rpc.h"
 
 #include "yb/cqlserver/cql_message.h"
+#include "yb/cqlserver/cql_service.h"
+#include "yb/cqlserver/cql_statement.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/negotiation.h"
@@ -22,13 +24,19 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/size_literals.h"
 
 using yb::cqlserver::CQLMessage;
 using namespace std::literals; // NOLINT
 using namespace std::placeholders;
+using yb::operator"" _KB;
 
 DECLARE_bool(rpc_dump_all_traces);
 DECLARE_int32(rpc_slow_query_threshold_ms);
+DEFINE_int32(rpcz_max_cql_query_dump_size, 4_KB,
+             "The maximum size of the CQL query string in the RPCZ dump.");
+DEFINE_int32(rpcz_max_cql_batch_dump_count, 4_KB,
+             "The maximum number of CQL batch elements in the RPCZ dump.");
 
 namespace yb {
 namespace cqlserver {
@@ -106,6 +114,15 @@ uint64_t CQLConnectionContext::ExtractCallId(rpc::InboundCall* call) {
   return down_cast<CQLInboundCall*>(call)->stream_id();
 }
 
+void CQLConnectionContext::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
+                                  rpc::RpcConnectionPB* resp) {
+  const string keyspace = ql_session_->current_keyspace();
+  if (!keyspace.empty()) {
+    resp->mutable_connection_details()->mutable_cql_connection_details()->set_keyspace(keyspace);
+  }
+  ConnectionContextWithCallId::DumpPB(req, resp);
+}
+
 CQLInboundCall::CQLInboundCall(rpc::ConnectionPtr conn,
                                CallProcessedListener call_processed_listener,
                                ql::QLSession::SharedPtr ql_session)
@@ -160,6 +177,74 @@ void CQLInboundCall::RespondSuccess(const RefCntBuffer& buffer,
   QueueResponse(true);
 }
 
+void CQLInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) {
+  std::shared_ptr<const CQLRequest> request =
+      std::atomic_load_explicit(&request_, std::memory_order_acquire);
+  if (request == nullptr) {
+    return;
+  }
+  rpc::CQLCallDetailsPB* call_in_progress = call_in_progress_pb->mutable_cql_details();
+  rpc::CQLStatementsDetailsPB* details_pb;
+  std::shared_ptr<const CQLStatement> statement_ptr;
+  string query_id;
+  int j = 0;
+  switch (request->opcode()) {
+    case CQLMessage::Opcode::PREPARE:
+      call_in_progress->set_type("PREPARE");
+      details_pb = call_in_progress->add_call_details();
+      details_pb->set_sql_string((static_cast<const PrepareRequest&>(*request)).query()
+                                    .substr(0, FLAGS_rpcz_max_cql_query_dump_size));
+      return;
+    case CQLMessage::Opcode::EXECUTE:
+      call_in_progress->set_type("EXECUTE");
+      details_pb = call_in_progress->add_call_details();
+      query_id = (static_cast<const ExecuteRequest&>(*request)).query_id();
+      details_pb->set_sql_id(b2a_hex(query_id));
+      statement_ptr = service_impl_->GetPreparedStatement(query_id);
+      if (statement_ptr != nullptr) {
+        details_pb->set_sql_string(statement_ptr->text()
+                                       .substr(0, FLAGS_rpcz_max_cql_query_dump_size));
+      }
+      return;
+    case CQLMessage::Opcode::QUERY:
+      call_in_progress->set_type("QUERY");
+      details_pb = call_in_progress->add_call_details();
+      details_pb->set_sql_string((static_cast<const QueryRequest&>(*request)).query()
+                                    .substr(0, FLAGS_rpcz_max_cql_query_dump_size));
+      return;
+    case CQLMessage::Opcode::BATCH:
+      call_in_progress->set_type("BATCH");
+      for (const BatchRequest::Query& batchQuery :
+          (static_cast<const BatchRequest&>(*request)).queries()) {
+        details_pb = call_in_progress->add_call_details();
+        if (batchQuery.is_prepared) {
+          details_pb->set_sql_id(b2a_hex(batchQuery.query_id));
+          statement_ptr = service_impl_->GetPreparedStatement(batchQuery.query_id);
+          if (statement_ptr != nullptr) {
+            if (statement_ptr->text().size() > FLAGS_rpcz_max_cql_query_dump_size) {
+              string short_text = statement_ptr->text()
+                  .substr(0, FLAGS_rpcz_max_cql_query_dump_size);
+              details_pb->set_sql_string(short_text);
+            } else {
+              details_pb->set_sql_string(statement_ptr->text());
+            }
+          }
+        } else {
+          details_pb->set_sql_string(batchQuery.query
+                                         .substr(0, FLAGS_rpcz_max_cql_query_dump_size));
+        }
+        if (++j >= FLAGS_rpcz_max_cql_batch_dump_count) {
+          // Showing only rpcz_max_cql_batch_dump_count queries
+          break;
+        }
+      }
+      return;
+    default:
+      return;
+  }
+}
+
+
 void CQLInboundCall::LogTrace() const {
   MonoTime now = MonoTime::Now(MonoTime::FINE);
   int total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
@@ -176,11 +261,13 @@ std::string CQLInboundCall::ToString() const {
 
 void CQLInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
                             rpc::RpcCallInProgressPB* resp) {
+
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
   }
   resp->set_micros_elapsed(
       MonoTime::FineNow().GetDeltaSince(timing_.time_received).ToMicroseconds());
+  GetCallDetails(resp);
 }
 
 MonoTime CQLInboundCall::GetClientDeadline() const {

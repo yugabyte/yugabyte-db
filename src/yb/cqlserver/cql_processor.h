@@ -102,8 +102,8 @@ class CQLProcessor : public ql::QLProcessor {
   //----------------------------- StatementExecuted callback and state ---------------------------
 
   // Current call, request, prepared statements and parse trees being processed.
-  rpc::InboundCallPtr call_;
-  std::unique_ptr<const CQLRequest> request_;
+  CQLInboundCallPtr call_;
+  std::shared_ptr<const CQLRequest> request_;
   std::unordered_set<std::shared_ptr<const CQLStatement>> stmts_;
   std::unordered_set<ql::ParseTree::UniPtr> parse_trees_;
 

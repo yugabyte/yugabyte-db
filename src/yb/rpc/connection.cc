@@ -297,6 +297,7 @@ void Connection::Handler(ev::io& watcher, int revents) {  // NOLINT
   } else {
     reactor_->DestroyConnection(this, status);
   }
+  CallCompleted();
 }
 
 Status Connection::ReadHandler() {
@@ -564,6 +565,13 @@ Status Connection::DumpPB(const DumpRunningRpcsRequestPB& req,
     resp->set_state(RpcConnectionPB::NEGOTIATING);
   }
 
+  const uint64_t processed_call_count = this->processed_call_count();
+  if (processed_call_count > 0) {
+    resp->set_processed_call_count(processed_call_count);
+  }
+
+  context_->DumpPB(req, resp);
+
   if (direction_ == Direction::CLIENT) {
     for (auto& entry : awaiting_response_) {
       if (entry.second) {
@@ -578,7 +586,6 @@ Status Connection::DumpPB(const DumpRunningRpcsRequestPB& req,
   } else if (direction_ != Direction::SERVER) {
     LOG(FATAL) << "Invalid direction: " << util::to_underlying(direction_);
   }
-  context_->DumpPB(req, resp);
 
   return Status::OK();
 }

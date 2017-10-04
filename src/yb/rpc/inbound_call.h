@@ -74,6 +74,8 @@ namespace rpc {
 
 class DumpRunningRpcsRequestPB;
 class RpcCallInProgressPB;
+class RpcCallDetailsPB;
+class CQLCallDetailsPB;
 class UserCredentials;
 
 struct InboundCallTiming {

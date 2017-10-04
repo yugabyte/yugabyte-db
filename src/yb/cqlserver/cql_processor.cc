@@ -120,7 +120,7 @@ void CQLProcessor::Return() {
 }
 
 void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
-  call_ = std::move(call);
+  call_ = std::dynamic_pointer_cast<CQLInboundCall>(std::move(call));
   unique_ptr<CQLRequest> request;
   unique_ptr<CQLResponse> response;
 
@@ -140,6 +140,7 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   // Execute the request (perhaps asynchronously).
   SetCurrentCall(call_);
   request_ = std::move(request);
+  call_->SetRequest(request_, service_impl_);
   retry_count_ = 0;
   unprepared_id_.clear();
   response.reset(ProcessRequest(*request_));
@@ -154,8 +155,7 @@ void CQLProcessor::SendResponse(const CQLResponse& response) {
   MonoTime response_begin = MonoTime::Now(MonoTime::FINE);
   faststring msg;
   response.Serialize(&msg);
-  auto* cql_call = down_cast<CQLInboundCall*>(call_.get());
-  cql_call->RespondSuccess(RefCntBuffer(msg), cql_metrics_->rpc_method_metrics_);
+  call_->RespondSuccess(RefCntBuffer(msg), cql_metrics_->rpc_method_metrics_);
 
   MonoTime response_done = MonoTime::Now(MonoTime::FINE);
   cql_metrics_->time_to_process_request_->Increment(
@@ -249,7 +249,7 @@ CQLResponse* CQLProcessor::ProcessBatch(const BatchRequest& req) {
 
     if (query.is_prepared) {
 
-      VLOG(1) << "BATCH EXECUTE " << query.query_id;
+      VLOG(1) << "BATCH EXECUTE " << b2a_hex(query.query_id);
       const shared_ptr<const CQLStatement> stmt = GetPreparedStatement(query.query_id);
       if (stmt == nullptr) {
         unprepared_id_ = query.query_id;

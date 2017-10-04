@@ -26,9 +26,14 @@
 namespace yb {
 namespace cqlserver {
 
+class CQLStatement;
+class CQLServiceImpl;
+
 class CQLConnectionContext : public rpc::ConnectionContextWithCallId {
  public:
   CQLConnectionContext();
+  void DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
+              rpc::RpcConnectionPB* resp) override;
 
  private:
   uint64_t ExtractCallId(rpc::InboundCall* call) override;
@@ -89,6 +94,11 @@ class CQLInboundCall : public rpc::InboundCall {
   const std::string& method_name() const override;
   void RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code, const Status& status) override;
   void RespondSuccess(const RefCntBuffer& buffer, const yb::rpc::RpcMethodMetrics& metrics);
+  void GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb);
+  void SetRequest(std::shared_ptr<const CQLRequest> request, CQLServiceImpl* service_impl) {
+    service_impl_ = service_impl;
+    std::atomic_store_explicit(&request_, request, std::memory_order_release);
+  }
 
  private:
   void RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time) override;
@@ -97,7 +107,12 @@ class CQLInboundCall : public rpc::InboundCall {
   RefCntBuffer response_msg_buf_;
   ql::QLSession::SharedPtr ql_session_;
   uint16_t stream_id_;
+  std::shared_ptr<const CQLRequest> request_;
+  // Pointer to the containing CQL service implementation.
+  CQLServiceImpl* service_impl_;
 };
+
+using CQLInboundCallPtr = std::shared_ptr<CQLInboundCall>;
 
 } // namespace cqlserver
 } // namespace yb

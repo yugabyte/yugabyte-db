@@ -38,10 +38,33 @@ option java_package = "org.yb";
 
 import "yb/rpc/rpc_header.proto";
 
+message CQLStatementsDetailsPB {
+  optional string sql_id = 1;
+  optional string sql_string = 2;
+}
+
+message CQLCallDetailsPB {
+  optional string type = 1;
+  repeated CQLStatementsDetailsPB call_details = 2;
+}
+
 message RpcCallInProgressPB {
   required RequestHeader header = 1;
   optional string trace_buffer = 2;
   optional uint64 micros_elapsed = 3;
+  oneof call_details {
+    CQLCallDetailsPB cql_details = 4;
+  }
+}
+
+message CQLConnectionDetailsPB {
+  optional string keyspace = 1;
+}
+
+message RpcConnectionDetailsPB {
+  oneof connection_details {
+    CQLConnectionDetailsPB cql_connection_details = 1;
+  }
 }
 
 message RpcConnectionPB {
@@ -55,7 +78,9 @@ message RpcConnectionPB {
   required StateType state = 2;
   // TODO: swap out for separate fields
   optional string remote_user_credentials = 3;
-  repeated RpcCallInProgressPB calls_in_flight = 4;
+  optional uint64 processed_call_count = 4;
+  optional RpcConnectionDetailsPB connection_details = 5;
+  repeated RpcCallInProgressPB calls_in_flight = 6;
 }
 
 message DumpRunningRpcsRequestPB {
