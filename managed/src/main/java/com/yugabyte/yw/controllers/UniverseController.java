@@ -8,6 +8,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
@@ -28,6 +29,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import org.yb.client.YBClient;
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
@@ -45,6 +47,14 @@ public class UniverseController extends AuthenticatedController {
 
   @Inject
   Commissioner commissioner;
+
+  // The YB client to use.
+  public YBClientService ybService;
+
+  @Inject
+  public UniverseController(YBClientService service) {
+    this.ybService = service;
+  }
 
   /**
    * API that checks if a Universe with a given name already exists.
@@ -462,6 +472,40 @@ public class UniverseController extends AuthenticatedController {
       if (result.has("error")) {
         return ApiResponse.error(BAD_REQUEST, result.get("error"));
       }
+      return ApiResponse.success(result);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, e.getMessage());
+    }
+  }
+
+  /**
+   * Endpoint to retrieve the IP of the master leader for a given universe.
+   *
+   * @param customerUUID UUID of Customer the target Universe belongs to.
+   * @param universeUUID UUID of Universe to retrieve the master leader private IP of.
+   * @return The private IP of the master leader.
+   */
+  public Result getMasterLeaderIP(UUID customerUUID, UUID universeUUID) {
+    // Verify the customer with this universe is present.
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+
+    // Make sure the universe exists, this method will throw an exception if it does not.
+    Universe universe;
+    try {
+      universe = Universe.get(universeUUID);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
+    }
+
+    // Get and return Leader IP
+    try {
+      String hostPorts = universe.getMasterAddresses();
+      YBClient client = ybService.getClient(hostPorts);
+      ObjectNode result = Json.newObject().put("privateIP", client.getLeaderMasterHostAndPort().getHostText());
+      ybService.closeClient(client, hostPorts);
       return ApiResponse.success(result);
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, e.getMessage());

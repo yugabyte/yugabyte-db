@@ -30,6 +30,9 @@ export const RESET_UNIVERSE_LIST = 'RESET_UNIVERSE_LIST';
 export const DELETE_UNIVERSE = 'DELETE_UNIVERSE';
 export const DELETE_UNIVERSE_RESPONSE = 'DELETE_UNIVERSE_RESPONSE';
 
+// Get the Master Leader for a Universe
+export const GET_MASTER_LEADER = 'GET_MASTER_LEADER';
+export const GET_MASTER_LEADER_RESPONSE = 'GET_MASTER_LEADER_RESPONSE';
 
 // Commissioner Tasks for Universe
 export const FETCH_UNIVERSE_TASKS = 'FETCH_UNIVERSE_TASKS';
@@ -296,6 +299,21 @@ export function getUniversePerNodeStatus(universeUUID) {
 export function getUniversePerNodeStatusResponse(response) {
   return {
     type: GET_UNIVERSE_PER_NODE_STATUS_RESPONSE,
+    payload: response
+  };
+}
+
+export function getMasterLeader(universeUUID) {
+  const request = axios.get(`${getCustomerEndpoint()}/universes/${universeUUID}/leader`);
+  return {
+    type: GET_MASTER_LEADER,
+    payload: request
+  };
+}
+
+export function getMasterLeaderResponse(response) {
+  return {
+    type: GET_MASTER_LEADER_RESPONSE,
     payload: response
   };
 }

@@ -32,7 +32,7 @@ export default class NodeDetails extends Component {
   }
 
   render() {
-    const { universe: {currentUniverse, universePerNodeStatus}} = this.props;
+    const { universe: {currentUniverse, universePerNodeStatus, universeMasterLeader}} = this.props;
     const self = this;
     const nodeDetails = currentUniverse.data.universeDetails.nodeDetailsSet;
     if (!isNonEmptyArray(nodeDetails)) {
@@ -62,6 +62,10 @@ export default class NodeDetails extends Component {
         return <span>{cell}</span>;
       }
       const isMaster = type === "master";
+      if (isMaster && isDefinedNotNull(universeMasterLeader) && getPromiseState(universeMasterLeader).isSuccess()
+          && universeMasterLeader.data.privateIP === row.privateIP) {
+        cell += " (Leader)";
+      }
       const href = "http://" + row.privateIP + ":" + (isMaster ? row.masterPort : row.tserverPort);
       const promiseState = getPromiseState(universePerNodeStatus);
       const inLoadingState = promiseState.isLoading() ||promiseState.isInit();
