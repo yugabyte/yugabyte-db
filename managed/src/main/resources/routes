@@ -62,6 +62,7 @@ GET     /api/customers/:cUUID/universes/:uniUUID/cost     com.yugabyte.yw.contro
 GET     /api/customers/:cUUID/universes/:uniUUID/masters  com.yugabyte.yw.controllers.MetaMasterController.getMasterAddresses(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /api/customers/:cUUID/universes/:uniUUID/yqlservers  com.yugabyte.yw.controllers.MetaMasterController.getYQLServerAddresses(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /api/customers/:cUUID/universes/:uniUUID/redisservers  com.yugabyte.yw.controllers.MetaMasterController.getRedisServerAddresses(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /api/customers/:cUUID/universes/:uniUUID/leader   com.yugabyte.yw.controllers.UniverseController.getMasterLeaderIP(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /api/customers/:cUUID/universes/:uniUUID/upgrade  com.yugabyte.yw.controllers.UniverseController.upgrade(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /api/customers/:cUUID/universes/:uniUUID/status   com.yugabyte.yw.controllers.UniverseController.status(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /api/customers/:cUUID/universes/find/:universeName  com.yugabyte.yw.controllers.UniverseController.findByName(cUUID: java.util.UUID, universeName: String)
