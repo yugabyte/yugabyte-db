@@ -132,7 +132,15 @@ void Proxy::AsyncRequest(const string& method,
     resp->Clear();
     call->SetQueued();
     call->SetSent();
-    messenger_->QueueInboundCall(static_cast<LocalOutboundCall*>(call)->CreateLocalInboundCall());
+    // If currrent thread is RPC worker thread, it is ok to call the handler in the current thread.
+    // Otherwise, enqueue the call to be handled by the service's handler thread.
+    const shared_ptr<LocalYBInboundCall>& local_call =
+        static_cast<LocalOutboundCall*>(call)->CreateLocalInboundCall();
+    if (ThreadPool::IsCurrentThreadRpcWorker()) {
+      messenger_->Handle(local_call);
+    } else {
+      messenger_->QueueInboundCall(local_call);
+    }
   } else {
     // If this fails to queue, the callback will get called immediately
     // and the controller will be in an ERROR state.

@@ -62,6 +62,8 @@ class ThreadPool {
   bool Enqueue(ThreadPoolTask* task);
   void Shutdown();
 
+  static bool IsCurrentThreadRpcWorker();
+
  private:
   class Impl;
 

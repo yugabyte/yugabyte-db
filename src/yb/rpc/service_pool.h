@@ -73,6 +73,7 @@ class ServicePool : public RpcService {
   virtual void Shutdown();
 
   virtual void QueueInboundCall(InboundCallPtr call) override;
+  virtual void Handle(InboundCallPtr call) override;
   const Counter* RpcsTimedOutInQueueMetricForTests() const;
   const Counter* RpcsQueueOverflowMetric() const;
   std::string service_name() const;

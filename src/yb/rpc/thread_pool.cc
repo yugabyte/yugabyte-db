@@ -46,12 +46,16 @@ struct ThreadPoolShare {
   }
 };
 
+namespace {
+const std::string kRpcThreadCategory = "rpc_thread_pool";
+} // namespace
+
 class Worker {
  public:
   explicit Worker(ThreadPoolShare* share, size_t index)
       : share_(share) {
     auto name = strings::Substitute("rpc_tp_$0_$1", share_->options.name, index);
-    CHECK_OK(yb::Thread::Create("rpc_thread_pool", name, &Worker::Execute, this, &thread_));
+    CHECK_OK(yb::Thread::Create(kRpcThreadCategory, name, &Worker::Execute, this, &thread_));
   }
 
   ~Worker() {
@@ -260,6 +264,11 @@ ThreadPool::~ThreadPool() {
   if (impl_) {
     impl_->Shutdown();
   }
+}
+
+bool ThreadPool::IsCurrentThreadRpcWorker() {
+  const Thread* thread = Thread::current_thread();
+  return thread != nullptr && thread->category() == kRpcThreadCategory;
 }
 
 bool ThreadPool::Enqueue(ThreadPoolTask* task) {

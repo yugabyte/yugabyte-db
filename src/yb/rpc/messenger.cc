@@ -335,17 +335,32 @@ void Messenger::QueueOutboundCall(OutboundCallPtr call) {
 void Messenger::QueueInboundCall(InboundCallPtr call) {
   auto service = rpc_service(call->service_name());
   if (PREDICT_FALSE(!service)) {
-    Status s =  STATUS_FORMAT(ServiceUnavailable,
-                              "Service $0 not registered on $1",
-                              call->service_name(),
-                              name_);
-    LOG(INFO) << s.ToString();
+    Status s = STATUS_FORMAT(ServiceUnavailable,
+                             "Service $0 not registered on $1",
+                             call->service_name(),
+                             name_);
+    LOG(WARNING) << s;
     call->RespondFailure(ErrorStatusPB::ERROR_NO_SUCH_SERVICE, s);
     return;
   }
 
   // The RpcService will respond to the client on success or failure.
   service->QueueInboundCall(std::move(call));
+}
+
+void Messenger::Handle(InboundCallPtr call) {
+  auto service = rpc_service(call->service_name());
+  if (PREDICT_FALSE(!service)) {
+    Status s = STATUS_FORMAT(ServiceUnavailable,
+                             "Service $0 not registered on $1",
+                             call->service_name(),
+                             name_);
+    LOG(WARNING) << s;
+    call->RespondFailure(ErrorStatusPB::ERROR_NO_SUCH_SERVICE, s);
+    return;
+  }
+
+  service->Handle(std::move(call));
 }
 
 void Messenger::RegisterInboundSocket(Socket *new_socket, const Endpoint& remote) {

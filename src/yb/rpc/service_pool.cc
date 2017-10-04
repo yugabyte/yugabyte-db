@@ -229,6 +229,10 @@ void ServicePool::QueueInboundCall(InboundCallPtr call) {
   impl_->Enqueue(std::move(call));
 }
 
+void ServicePool::Handle(InboundCallPtr call) {
+  impl_->Handle(std::move(call));
+}
+
 const Counter* ServicePool::RpcsTimedOutInQueueMetricForTests() const {
   return impl_->RpcsTimedOutInQueueMetricForTests();
 }
