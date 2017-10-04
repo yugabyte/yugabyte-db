@@ -92,7 +92,6 @@ DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
 #define EXPECTED_SYSTEM_TABLES \
     TABLE_ENTRY(System, Peers), \
     TABLE_ENTRY(System, Local), \
-    TABLE_ENTRY(System, Partitions), \
     TABLE_ENTRY(SystemSchema, Aggregates), \
     TABLE_ENTRY(SystemSchema, Columns), \
     TABLE_ENTRY(SystemSchema, Functions), \
@@ -102,6 +101,7 @@ DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
     TABLE_ENTRY(SystemSchema, Views), \
     TABLE_ENTRY(SystemSchema, Keyspaces), \
     TABLE_ENTRY(SystemSchema, Tables), \
+    TABLE_ENTRY(SystemSchema, Partitions), \
     TABLE_ENTRY(SystemAuth, Roles), \
     /**/
 

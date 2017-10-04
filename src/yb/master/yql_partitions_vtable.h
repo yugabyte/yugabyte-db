@@ -20,7 +20,7 @@
 namespace yb {
 namespace master {
 
-// VTable implementation of system.partitions.
+// VTable implementation of system_schema.partitions.
 class YQLPartitionsVTable : public YQLVirtualTable {
  public:
   explicit YQLPartitionsVTable(const Master* const master);

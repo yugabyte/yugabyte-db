@@ -525,7 +525,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
 
   public RocksDBMetrics getRocksDBMetric(String tableName) throws IOException {
     Set<String> tabletIDs = new HashSet<>();
-    for (Row row : session.execute("SELECT id FROM system.partitions " +
+    for (Row row : session.execute("SELECT id FROM system_schema.partitions " +
                                    "WHERE keyspace_name = ? and table_name = ?;",
                                    DEFAULT_TEST_KEYSPACE, tableName).all()) {
       tabletIDs.add(ServerInfo.UUIDToHostString(row.getUUID("id")));

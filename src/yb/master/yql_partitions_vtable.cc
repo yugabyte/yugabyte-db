@@ -19,7 +19,7 @@ namespace yb {
 namespace master {
 
 YQLPartitionsVTable::YQLPartitionsVTable(const Master* const master)
-    : YQLVirtualTable(master::kSystemPartitionsTableName, master, CreateSchema()) {
+    : YQLVirtualTable(master::kSystemSchemaPartitionsTableName, master, CreateSchema()) {
 }
 
 Status YQLPartitionsVTable::RetrieveData(const QLReadRequestPB& request,

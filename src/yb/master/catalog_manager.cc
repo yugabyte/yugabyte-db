@@ -887,8 +887,6 @@ Status CatalogManager::PrepareSystemTables() {
       kSystemPeersTableName, kSystemNamespaceName, kSystemNamespaceId)));
   RETURN_NOT_OK((PrepareSystemTableTemplate<LocalVTable>(
       kSystemLocalTableName, kSystemNamespaceName, kSystemNamespaceId)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLPartitionsVTable>(
-      kSystemPartitionsTableName, kSystemNamespaceName, kSystemNamespaceId)));
   RETURN_NOT_OK((PrepareSystemTableTemplate<YQLKeyspacesVTable>(
       kSystemSchemaKeyspacesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
   RETURN_NOT_OK((PrepareSystemTableTemplate<YQLTablesVTable>(
@@ -909,6 +907,8 @@ Status CatalogManager::PrepareSystemTables() {
       kSystemSchemaViewsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
   RETURN_NOT_OK((PrepareSystemTableTemplate<QLTypesVTable>(
       kSystemSchemaTypesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLPartitionsVTable>(
+      kSystemSchemaPartitionsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
 
   // System auth tables
   RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAuthRolesVTable>(

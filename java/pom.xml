@@ -53,7 +53,7 @@
 
     <!-- Library dependencies -->
     <async.version>1.4.1</async.version>
-    <cassandra-driver-core.version>3.2.0-yb-5</cassandra-driver-core.version>
+    <cassandra-driver-core.version>3.2.0-yb-6</cassandra-driver-core.version>
     <commons-cli.version>1.2</commons-cli.version>
     <commons-io.version>2.4</commons-io.version>
     <commons-lang3.version>3.6</commons-lang3.version>
