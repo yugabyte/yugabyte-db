@@ -2,9 +2,9 @@
 
 import { connect } from 'react-redux';
 import { UniverseDetail } from '../../universes';
-import {fetchUniverseInfo, fetchUniverseInfoResponse, resetUniverseInfo, fetchUniverseTasks,
+import { fetchUniverseInfo, fetchUniverseInfoResponse, resetUniverseInfo, fetchUniverseTasks,
   fetchUniverseTasksResponse, resetUniverseTasks, openDialog, closeDialog, getUniversePerNodeStatus,
-  getUniversePerNodeStatusResponse } from '../../../actions/universe';
+  getUniversePerNodeStatusResponse, getMasterLeader, getMasterLeaderResponse } from '../../../actions/universe';
 import {deleteNode, deleteNodeResponse} from '../../../actions/cloud';
 
 const mapDispatchToProps = (dispatch) => {
@@ -13,6 +13,11 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(fetchUniverseInfo(uuid))
       .then((response) => {
         dispatch(fetchUniverseInfoResponse(response.payload));
+      });
+    },
+    getMasterLeader: (uuid) => {
+      dispatch(getMasterLeader(uuid)).then((response) => {
+        dispatch(getMasterLeaderResponse(response.payload));
       });
     },
     getUniversePerNodeStatus: (uuid) => {

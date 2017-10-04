@@ -175,7 +175,7 @@ export default function(state = INITIAL_STATE, action) {
           )) && isNonEmptyArray(action.payload.data) ) {
         action.payload.data = state.accessKeys.data.concat(action.payload.data);
       } else {
-        action.payload.data = state.accessKeys.data
+        action.payload.data = state.accessKeys.data;
       }
       return setPromiseResponse(state, "accessKeys", action);
     case GET_EBS_TYPE_LIST:

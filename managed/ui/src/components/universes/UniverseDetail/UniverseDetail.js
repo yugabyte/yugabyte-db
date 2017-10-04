@@ -46,6 +46,7 @@ class UniverseDetail extends Component {
         uuid = this.props.universeUUID;
       }
       this.props.getUniverseInfo(uuid);
+      this.props.getMasterLeader(uuid);
       this.props.fetchUniverseTasks(uuid);
     }
   }

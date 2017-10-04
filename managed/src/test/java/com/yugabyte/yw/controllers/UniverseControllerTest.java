@@ -25,8 +25,10 @@ import static play.test.Helpers.route;
 
 import java.util.*;
 
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.*;
@@ -48,6 +50,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 
 import org.w3c.dom.Node;
+import org.yb.client.YBClient;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
@@ -61,11 +64,15 @@ public class UniverseControllerTest extends WithApplication {
   private static Commissioner mockCommissioner;
   private Http.Cookie validCookie;
   private static MetricQueryHelper mockMetricQueryHelper;
+  private YBClientService mockService;
+  private YBClient mockClient;
 
   @Override
   protected Application provideApplication() {
     mockCommissioner = mock(Commissioner.class);
     mockMetricQueryHelper = mock(MetricQueryHelper.class);
+    mockClient = mock(YBClient.class);
+    mockService = mock(YBClientService.class);
     return new GuiceApplicationBuilder()
       .configure((Map) Helpers.inMemoryDatabase())
       .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
@@ -162,6 +169,41 @@ public class UniverseControllerTest extends WithApplication {
       assertEquals(node.getKey(), "host-n" + idx);
       idx++;
     }
+  }
+
+  @Test
+  public void testGetMasterLeaderWithValidParams() {
+    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+    String host = "1.2.3.4";
+    HostAndPort hostAndPort = HostAndPort.fromParts(host, 9000);
+    when(mockClient.getLeaderMasterHostAndPort()).thenReturn(hostAndPort);
+    when(mockService.getClient(any(String.class))).thenReturn(mockClient);
+    UniverseController universeController = new UniverseController(mockService);
+
+    Result result = universeController.getMasterLeaderIP(customer.uuid, universe.universeUUID);
+
+    assertEquals(OK, result.status());
+    JsonNode json = Json.parse(contentAsString(result)).get("privateIP");
+    assertThat(json, notNullValue());
+    assertThat(json.asText(), equalTo(host));
+  }
+
+  @Test
+  public void testGetMasterLeaderWithInvalidCustomerUUID() {
+    UniverseController universeController = new UniverseController(mockService);
+    UUID invalidUUID = UUID.randomUUID();
+    Result result = universeController.getMasterLeaderIP(invalidUUID, UUID.randomUUID());
+    assertEquals(BAD_REQUEST, result.status());
+    assertThat(contentAsString(result), is(containsString("Invalid Customer UUID: " + invalidUUID.toString())));
+  }
+
+  @Test
+  public void testGetMasterLeaderWithInvalidUniverseUUID() {
+    UniverseController universeController = new UniverseController(mockService);
+    UUID invalidUUID = UUID.randomUUID();
+    Result result = universeController.getMasterLeaderIP(customer.uuid, invalidUUID);
+    assertEquals(BAD_REQUEST, result.status());
+    assertThat(contentAsString(result), is(containsString("No universe found with UUID: " + invalidUUID.toString())));
   }
 
   @Test
