@@ -176,7 +176,7 @@ try:
             os.makedirs(mapDownloadPath)
         output = check_output(['aws', 's3', 'sync', 's3://no-such-url', mapDownloadPath])
         log_message(logging.INFO, "Building/Packaging UI code")
-        output = check_output(["yarn", "--ignore-engines"], cwd=os.path.join(script_dir, 'ui'))
+        output = check_output(["npm", "install"], cwd=os.path.join(script_dir, 'ui'))
         output = check_output(["npm", "run", "build"], cwd=os.path.join(script_dir, 'ui'))
         log_message(logging.INFO, "Kick off SBT universal packaging")
         output = check_output(["sbt", "universal:packageZipTarball"])
