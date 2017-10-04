@@ -277,8 +277,8 @@ export default class OnPremConfiguration extends Component {
     if (this.state.isJsonEntry) {
       ConfigurationDataForm = (
         <OnPremConfigJSONContainer updateConfigJsonVal={this.updateConfigJsonVal}
-          configJsonVal={_.isString(this.state.configJsonVal) ? this.state.configJsonVal : JSON.stringify(JSON.parse(JSON.stringify(this.state.configJsonVal)), null, 2)}
-          switchToWizardEntry={switchToWizardEntry} submitJson={this.submitJson}/>
+                                   configJsonVal={_.isString(this.state.configJsonVal) ? this.state.configJsonVal : JSON.stringify(JSON.parse(JSON.stringify(this.state.configJsonVal)), null, 2)}
+                                   switchToWizardEntry={switchToWizardEntry} submitJson={this.submitJson}/>
       );
     }
     return (

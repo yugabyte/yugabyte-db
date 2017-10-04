@@ -33,12 +33,13 @@ public class CloudBootstrap extends CloudTaskBase {
 
     taskParams().regionList.forEach(regionCode -> {
       createRegionSetupTask(regionCode)
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);;
-      createAccessKeySetupTask(regionCode)
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
+        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingRegion);
+    });
+    taskParams().regionList.forEach(regionCode -> {
+      createAccessKeySetupTask(regionCode).setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreateAccessKey);
     });
     createInitializerTask()
-        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
+        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InitializeCloudMetadata);
 
     subTaskGroupQueue.run();
   }

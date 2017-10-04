@@ -35,7 +35,7 @@ export default class UniverseTable extends Component {
       let universeTaskUUIDs = [];
       if (isNonEmptyArray(tasks.customerTaskList)) {
         universeTaskUUIDs = tasks.customerTaskList.map(function(taskItem){
-          if (taskItem.universeUUID === item.universeUUID) {
+          if (taskItem.targetUUID === item.universeUUID) {
             return {"id": taskItem.id, "data": taskItem, "universe": item.universeUUID};
           } else {
             return null;
