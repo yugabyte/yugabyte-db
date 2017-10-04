@@ -13,14 +13,15 @@
 
 package com.yugabyte.sample.apps;
 
+import java.nio.ByteBuffer;
 import java.util.HashSet;
 
-import com.yugabyte.sample.common.CmdLineOpts;
 import org.apache.log4j.Logger;
 
 import com.datastax.driver.core.BatchStatement;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
+import com.yugabyte.sample.common.CmdLineOpts;
 import com.yugabyte.sample.common.SimpleLoadGenerator.Key;
 
 /**
@@ -44,8 +45,14 @@ public class CassandraBatchKeyValue extends CassandraKeyValue {
     try {
       for (int i = 0; i < appConfig.cassandraBatchSize; i++) {
         Key key = getSimpleLoadGenerator().getKeyToWrite();
+        ByteBuffer value = null;
+        if (appConfig.valueSize == 0) {
+          value = ByteBuffer.wrap(key.getValueStr().getBytes());
+        } else {
+          value = ByteBuffer.wrap(getRandomValue(key));
+        }
         keys.add(key);
-        batch.add(insert.bind(key.asString(), key.getValueStr()));
+        batch.add(insert.bind(key.asString(), value));
       }
       // Do the write to Cassandra.
       ResultSet resultSet = getCassandraClient().execute(batch);

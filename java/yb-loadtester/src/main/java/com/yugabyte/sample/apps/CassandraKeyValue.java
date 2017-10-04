@@ -140,7 +140,8 @@ public class CassandraKeyValue extends AppBase {
       return 1;
     }
     if (appConfig.valueSize == 0) {
-      String value = rows.get(0).getString(1);
+      ByteBuffer buf = rows.get(0).getBytes(1);
+      String value = new String(buf.array());
       key.verify(value);
     } else {
       ByteBuffer value = rows.get(0).getBytes(1);
@@ -177,7 +178,7 @@ public class CassandraKeyValue extends AppBase {
       BoundStatement insert = null;
       if (appConfig.valueSize == 0) {
         String value = key.getValueStr();
-        insert = getPreparedInsert().bind(key.asString(), value);
+        insert = getPreparedInsert().bind(key.asString(), ByteBuffer.wrap(value.getBytes()));
       } else {
         byte[] value = getRandomValue(key);
         insert = getPreparedInsert().bind(key.asString(), ByteBuffer.wrap(value));
