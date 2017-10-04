@@ -2,9 +2,8 @@
 
 import React, { Component } from 'react';
 import { ListGroup, ListGroupItem, Col, Row } from 'react-bootstrap';
-import { YBInputField, YBButton } from '../../common/forms/fields';
+import { YBInputField, YBButton } from '../../../common/forms/fields';
 import { Field } from 'redux-form';
-
 import { withRouter } from 'react-router';
 
 class FormDataCell extends Component {

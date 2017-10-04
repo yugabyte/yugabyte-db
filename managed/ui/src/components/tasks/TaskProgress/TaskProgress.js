@@ -38,8 +38,10 @@ export default class TaskProgress extends Component {
     if (this.props.taskProgressData !== nextProps.taskProgressData &&
           !getPromiseState(nextProps.taskProgressData).isLoading()) {
       clearTimeout(this.timeout);
-
       const { taskProgressData: { data }} = nextProps;
+      if (data.status === "Success" && this.props.onTaskSuccess) {
+        this.props.onTaskSuccess();
+      }
         // Check to make sure if the current state is running
       if (isValidObject(data) && (data.status === "Running" || data.status === "Initializing")) {
         this.scheduleFetch();
@@ -49,7 +51,7 @@ export default class TaskProgress extends Component {
 
   scheduleFetch() {
     const { taskUUIDs } = this.props;
-    this.timeout = setTimeout(() => this.props.fetchTaskProgress(taskUUIDs[0]), 60000);
+    this.timeout = setTimeout(() => this.props.fetchTaskProgress(taskUUIDs[0]), 6000);
   }
 
   render() {

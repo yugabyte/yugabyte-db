@@ -2,12 +2,12 @@
 
 import React, {Component} from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
-import { YBButton } from '../../common/forms/fields';
+import { YBButton } from '../../../common/forms/fields';
 import {withRouter} from 'react-router';
 import {isValidObject} from 'utils/ObjectUtils';
 import { getPromiseState } from 'utils/PromiseUtils';
-import { YBConfirmModal } from '../../modals';
-import { RegionMap, YBMapLegend } from '../../maps';
+import { YBConfirmModal } from '../../../modals';
+import { RegionMap, YBMapLegend } from '../../../maps';
 
 const PROVIDER_TYPE = "docker";
 
@@ -38,7 +38,6 @@ class DockerProviderConfiguration extends Component {
     if (cloudBootstrap.promiseState !== this.props.cloudBootstrap.promiseState && cloudBootstrap.data.type === "cleanup") {
       this.props.reloadCloudMetadata();
     }
-
   }
 
   render() {

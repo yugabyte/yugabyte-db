@@ -11,7 +11,8 @@ import { GET_REGION_LIST, GET_REGION_LIST_RESPONSE, GET_PROVIDER_LIST, GET_PROVI
   CREATE_DOCKER_PROVIDER_RESPONSE,CREATE_INSTANCE_TYPE, CREATE_INSTANCE_TYPE_RESPONSE,
   FETCH_CLOUD_METADATA, CREATE_ZONES, CREATE_ZONES_RESPONSE, CREATE_NODE_INSTANCES,
   CREATE_NODE_INSTANCES_RESPONSE, SET_ON_PREM_CONFIG_DATA, GET_NODE_INSTANCE_LIST,
-  GET_NODE_INSTANCE_LIST_RESPONSE, RESET_ON_PREM_CONFIG_DATA } from '../actions/cloud';
+  GET_NODE_INSTANCE_LIST_RESPONSE, RESET_ON_PREM_CONFIG_DATA, BOOTSTRAP_PROVIDER, BOOTSTRAP_PROVIDER_RESPONSE,
+  CREATE_ONPREM_PROVIDER, CREATE_ONPREM_PROVIDER_RESPONSE } from '../actions/cloud';
 
 import { getInitialState, setInitialState, setSuccessState, setFailureState, setLoadingState, setPromiseResponse }
   from '../utils/PromiseUtils';
@@ -39,7 +40,9 @@ const INITIAL_STATE = {
   dockerBootstrap: getInitialState({}),
   status : 'init',
   fetchMetadata: false,
-  nodeInstanceList: getInitialState([])
+  nodeInstanceList: getInitialState([]),
+  createProvider: getInitialState({}),
+  bootstrapProvider: getInitialState({})
 };
 
 export default function(state = INITIAL_STATE, action) {
@@ -82,12 +85,21 @@ export default function(state = INITIAL_STATE, action) {
       return setSuccessState(state, "supportedRegionList", _.sortBy(action.payload.data, "name"));
 
     case CREATE_PROVIDER:
-      return setLoadingState(state, "bootstrap", {type: "provider", response: null});
+      return setLoadingState(state, "createProvider", {});
     case CREATE_PROVIDER_RESPONSE:
+      return setPromiseResponse(state, "createProvider", action);
+
+    case CREATE_ONPREM_PROVIDER:
+      return setLoadingState(state, "bootstrap", {type: "provider", response: null});
+    case CREATE_ONPREM_PROVIDER_RESPONSE:
       if (action.payload.status === 200) {
         return setSuccessState(state, "bootstrap", {type: "provider", response: action.payload.data});
       }
       return setFailureState(state, "bootstrap", action.payload.data.error, {type: "provider"});
+    case BOOTSTRAP_PROVIDER:
+      return setLoadingState(state, "bootstrapProvider", {});
+    case BOOTSTRAP_PROVIDER_RESPONSE:
+      return setPromiseResponse(state, "bootstrapProvider", action);
 
     case CREATE_INSTANCE_TYPE:
       return setLoadingState(state, "bootstrap", {type: "instanceType", response: null});

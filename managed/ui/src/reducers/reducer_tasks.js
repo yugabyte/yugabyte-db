@@ -26,7 +26,7 @@ export default function(state = INITIAL_STATE, action) {
       const taskListResultArray = [];
       Object.keys(taskData).forEach(function(taskIdx){
         taskData[taskIdx].forEach(function(taskItem){
-          taskItem.universeUUID = taskIdx;
+          taskItem.targetUUID = taskIdx;
           taskListResultArray.push(taskItem);
         });
       });
