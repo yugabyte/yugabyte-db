@@ -3,11 +3,11 @@
 import { connect } from 'react-redux';
 import { isObject } from 'lodash';
 import { OnPremConfiguration } from '../../config';
-import { createProvider, createProviderResponse, createInstanceType, createInstanceTypeResponse,
+import { createInstanceType, createInstanceTypeResponse,
   createRegion, createRegionResponse, createZones, createZonesResponse, createNodeInstances,
   createNodeInstancesResponse, createAccessKey, createAccessKeyResponse, resetProviderBootstrap,
   fetchCloudMetadata, getProviderList, getProviderListResponse, resetOnPremConfigData,
-  setOnPremConfigData } from '../../../actions/cloud';
+  setOnPremConfigData, createOnPremProvider, createOnPremProviderResponse } from '../../../actions/cloud';
 import { isNonEmptyArray } from 'utils/ObjectUtils';
 import {destroy} from 'redux-form';
 
@@ -50,8 +50,8 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     createOnPremProvider: (providerType, config) => {
-      dispatch(createProvider(providerType, config.provider.name, null)).then((response) => {
-        dispatch(createProviderResponse(response.payload));
+      dispatch(createOnPremProvider(providerType, config.provider.name, null)).then((response) => {
+        dispatch(createOnPremProviderResponse(response.payload));
       });
     },
 

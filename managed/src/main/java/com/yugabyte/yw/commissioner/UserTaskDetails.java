@@ -45,6 +45,15 @@ public class UserTaskDetails {
     // Bootstrap Cloud
     BootstrappingCloud,
 
+    // Bootstrapping Region
+    BootstrappingRegion,
+
+    // Creating Access Key
+    CreateAccessKey,
+
+    // Initializing Cloud Metadata
+    InitializeCloudMetadata,
+
     // Cleanup Cloud
     CleanupCloud,
 
@@ -104,6 +113,18 @@ public class UserTaskDetails {
       case BootstrappingCloud:
         title = "Bootstrapping Cloud";
         description = "Set up AccessKey, Region, and Provider for a given cloud Provider.";
+        break;
+      case BootstrappingRegion:
+        title = "Bootstrapping Region";
+        description = "Set up AccessKey, Region, and Provider for a given cloud Provider.";
+        break;
+      case CreateAccessKey:
+        title = "Creating AccessKey";
+        description = "Set up AccessKey in the given Provider Vault";
+        break;
+      case InitializeCloudMetadata:
+        title = "Initializing Cloud Metadata";
+        description = "Initialize Instance Pricing and Zone Metadata from Cloud Provider";
         break;
       case CleanupCloud:
         title = "Cleaning Up Cloud";

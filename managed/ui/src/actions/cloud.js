@@ -3,7 +3,7 @@
 import axios from 'axios';
 import { ROOT_URL } from '../config';
 
-import { PROVIDER_TYPES, getProviderEndpoint } from './common';
+import { PROVIDER_TYPES, getProviderEndpoint, getCustomerEndpoint } from './common';
 
 // Get Region List
 export const GET_REGION_LIST = 'GET_REGION_LIST';
@@ -24,6 +24,11 @@ export const GET_SUPPORTED_REGION_DATA_RESPONSE = 'GET_SUPPORTED_REGION_DATA_RES
 
 export const CREATE_PROVIDER = 'CREATE_PROVIDER';
 export const CREATE_PROVIDER_RESPONSE = 'CREATE_PROVIDER_RESPONSE';
+
+
+// UI bootstrap for On-Prem provider, will be removed when OnPrem moves to Yugaware side Bootstrap
+export const CREATE_ONPREM_PROVIDER = 'CREATE_ONPREM_PROVIDER';
+export const CREATE_ONPREM_PROVIDER_RESPONSE = 'CREATE_ONPREM_PROVIDER_RESPONSE';
 
 export const CREATE_INSTANCE_TYPE = 'CREATE_INSTANCE_TYPE';
 export const CREATE_INSTANCE_TYPE_RESPONSE = 'CREATE_INSTANCE_TYPE_RESPONSE';
@@ -71,6 +76,9 @@ export const RESET_ON_PREM_CONFIG_DATA = 'RESET_ON_PREM_CONFIG_DATA';
 
 export const DELETE_NODE = 'DELETE_NODE';
 export const DELETE_NODE_RESPONSE = 'DELETE_NODE_RESPONSE';
+
+export const BOOTSTRAP_PROVIDER = 'BOOTSTRAP_PROVIDER';
+export const BOOTSTRAP_PROVIDER_RESPONSE = 'BOOTSTRAP_PROVIDER_RESPONSE';
 
 export function getProviderList() {
   const cUUID = localStorage.getItem("customer_id");
@@ -177,7 +185,6 @@ export function createProvider(type, name, config) {
     'name': name,
     'config': config
   };
-
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/providers`, formValues);
   return {
     type: CREATE_PROVIDER,
@@ -424,6 +431,41 @@ export function deleteNode(nodeName, universeUUID) {
 export function deleteNodeResponse(response) {
   return {
     type: DELETE_NODE_RESPONSE,
+    payload: response
+  };
+}
+
+export function bootstrapProvider(pUUID, params) {
+  const request = axios.post(`${getProviderEndpoint(pUUID)}/bootstrap`, params);
+  return {
+    type: BOOTSTRAP_PROVIDER,
+    payload: request
+  };
+}
+
+export function bootstrapProviderResponse(response) {
+  return {
+    type: BOOTSTRAP_PROVIDER_RESPONSE,
+    payload: response
+  };
+}
+
+export function createOnPremProvider(type, name, config) {
+  const formValues = {
+    'code': type,
+    'name': name,
+    'config': config
+  };
+  const request = axios.post(`${getCustomerEndpoint()}/providers`, formValues);
+  return {
+    type: CREATE_ONPREM_PROVIDER,
+    payload: request
+  };
+}
+
+export function createOnPremProviderResponse(response) {
+  return {
+    type: CREATE_ONPREM_PROVIDER_RESPONSE,
     payload: response
   };
 }

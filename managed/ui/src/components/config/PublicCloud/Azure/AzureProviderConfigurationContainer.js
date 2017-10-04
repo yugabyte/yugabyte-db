@@ -2,7 +2,7 @@
 
 import { reduxForm } from 'redux-form';
 import { connect } from 'react-redux';
-import { AzureProviderConfiguration } from '../../config';
+import { AzureProviderConfiguration } from '../../../config';
 
 const mapStateToProps = (state) => {
   return {

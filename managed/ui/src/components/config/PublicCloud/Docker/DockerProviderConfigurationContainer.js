@@ -2,10 +2,10 @@
 
 import { connect } from 'react-redux';
 import { reduxForm } from 'redux-form';
-import { DockerProviderConfiguration } from '../../config';
+import { DockerProviderConfiguration } from '../../../config';
 import { createDockerProvider, createDockerProviderResponse,
- deleteProvider, deleteProviderFailure, deleteProviderSuccess, fetchCloudMetadata } from '../../../actions/cloud';
-import { openDialog, closeDialog } from '../../../actions/universe';
+ deleteProvider, deleteProviderFailure, deleteProviderSuccess, fetchCloudMetadata } from '../../../../actions/cloud';
+import { openDialog, closeDialog } from '../../../../actions/universe';
 
 const mapStateToProps = (state) => {
   return {

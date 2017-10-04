@@ -13,17 +13,10 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.forms.CloudBootstrapFormData;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
@@ -203,15 +196,23 @@ public class CloudProviderController extends AuthenticatedController {
     if (provider == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID:" + providerUUID);
     }
-
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      ApiResponse.error(BAD_REQUEST, "Invalid Customer Context.");
+    }
     CloudBootstrap.Params taskParams = new CloudBootstrap.Params();
     taskParams.providerUUID = providerUUID;
     taskParams.regionList = formData.get().regionList;
     taskParams.hostVpcId = formData.get().hostVpcId;
     taskParams.destVpcId = formData.get().destVpcId;
     UUID taskUUID = commissioner.submit(TaskType.CloudBootstrap, taskParams);
+    CustomerTask.create(customer,
+      providerUUID,
+      taskUUID,
+      CustomerTask.TargetType.Provider,
+      CustomerTask.TaskType.Create,
+      provider.name);
 
-    // TODO: add customer task
     ObjectNode resultNode = Json.newObject();
     resultNode.put("taskUUID", taskUUID.toString());
     return ApiResponse.success(resultNode);
