@@ -22,35 +22,35 @@ Redis-cli or any Redis applications can access YugaByte database system. The fol
 
 Command | Description |
 --------|-------------|
-[`append`](append/) | Append data to end of string |
-[`auth`](auth/) | Not supported. Accepted without processing |
-[`config`](config/) | Not supported. Accepted without processing |
-[`del`](del/) | Delete keys from database |
-[`echo`](echo/) | Output messages |
-[`exists`](exists/) | Check if the keys are present |
-[`get`](get/) | Read string value |
-[`getrange`](getrange/) | Read substring |
-[`getset`](getset/) | Atomically read and write a string |
-[`hdel`](hdel/) | Remove specified entries from a hash |
-[`hexists`](hexists/) | Check if the subkeys are present in the hash |
-[`hget`](hget/) | Read a field in hash |
-[`hgetall`](hgetall/) | Read all the contents in a hash |
-[`hkeys`](hkeys/) | Read all value-keys in a hash |
-[`hlen`](hlen/) | Get the number of entries in a hash |
-[`hmget`](hmget/) | Read values for the given keys in a hash |
-[`hmset`](hmset/) | Write values for the given keys in a hash |
-[`hset`](hset/) | Write one entry in a hash |
-[`hstrlen`](hstrlen/) | Read the length of a specified entry in a hash |
-[`hvals`](hvals/) | Read all values in a hash |
-[`incr`](incr/) | Increment the value by one |
-[`mget`](mget/) | Read multiple keys |
-[`mset`](mset/) | Write multiple key values |
-[`role`](role/) | Read role of a node |
-[`sadd`](sadd/) | Add entries to a set |
-[`scard`](scard/) | Read the number of entries in a set |
-[`set`](set/) | Write or overwrite a string value |
-[`setrange`](setrange/) | Write a subsection of a string |
-[`sismember`](sismember/) | Check if the members are present in a set |
-[`smembers`](smembers/) | Read all members of a set |
-[`srem`](srem/) | Remove members from a set |
-[`strlen`](strlen/) | Read the length of a string|
+[`APPEND`](append/) | Append data to end of string |
+[`AUTH`](auth/) | Not supported. Accepted without processing |
+[`CONFIG`](config/) | Not supported. Accepted without processing |
+[`DEL`](del/) | Delete keys from database |
+[`ECHO`](echo/) | Output messages |
+[`EXISTS`](exists/) | Check if the keys are present |
+[`GET`](get/) | Read string value |
+[`GETRANGE`](getrange/) | Read substring |
+[`GETSET`](getset/) | Atomically read and write a string |
+[`HDEL`](hdel/) | Remove specified entries from a hash |
+[`HEXISTS`](hexists/) | Check if the subkeys are present in the hash |
+[`HGET`](hget/) | Read a field in hash |
+[`HGETALL`](hgetall/) | Read all the contents in a hash |
+[`HKEYS`](hkeys/) | Read all value-keys in a hash |
+[`HLEN`](hlen/) | Get the number of entries in a hash |
+[`HMGET`](hmget/) | Read values for the given keys in a hash |
+[`HMSET`](hmset/) | Write values for the given keys in a hash |
+[`HSET`](hset/) | Write one entry in a hash |
+[`HSTRLEN`](hstrlen/) | Read the length of a specified entry in a hash |
+[`HVALS`](hvals/) | Read all values in a hash |
+[`INCR`](incr/) | Increment the value by one |
+[`MGET`](mget/) | Read multiple keys |
+[`MSET`](mset/) | Write multiple key values |
+[`ROLE`](role/) | Read role of a node |
+[`SADD`](sadd/) | Add entries to a set |
+[`SCARD`](scard/) | Read the number of entries in a set |
+[`SET`](set/) | Write or overwrite a string value |
+[`SETRANGE`](setrange/) | Write a subsection of a string |
+[`SISMEMBER`](sismember/) | Check if the members are present in a set |
+[`SMEMBERS`](smembers/) | Read all members of a set |
+[`SREM`](srem/) | Remove members from a set |
+[`STRLEN`](strlen/) | Read the length of a string|

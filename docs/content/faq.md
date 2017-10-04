@@ -20,28 +20,26 @@ The YugaByte universe packs a lot more functionality that what people think of w
 
 - Failover to async replicas as the primary data and failback once the original datacenter is up and running are both natively supported within a universe.
 
-### Why did YugaByte use RocksDB as a starting point for its DocDB storage engine instead of simply using it as a library?
-
-
 ## Community Edition 
 
-### Is the Community Edition open-source?
+### Is the Community Edition open source?
 
-Yes, the Community Edition is completely open-source, fully functioning version of YugaByte DB. 
+Yes, the Community Edition is a completely open source, fully functioning version of YugaByte DB. 
 
 ### How do the Community Edition and the Enterprise Edition differ from each other?
 
-[Community Edition](/community-edition/quick-start/) is the best choice for the individual developer looking to develop applications and deploy the DB into production with traditional DevOps tools. 
+[Community Edition](/community-edition/quick-start/) is the best choice for the individual developer looking to develop applications and deploy YugaByte DB into production with traditional DevOps tools. 
 
-[Enterprise Edition](/enterprise-edition/deploy/) includes all the features of the Community Edition as well as additional features such as built-in cloud-native operations, advanced tunable consistency and enterprise security. It is the simplest way to run the DB in mission-critical production environments with one or more datacenters (across both public cloud and on-premises datacenters).
+[Enterprise Edition](/enterprise-edition/deploy/) includes all the features of the Community Edition as well as additional features such as built-in cloud-native operations, enterprise-grade deployment flexibility and world-class support. It is the simplest way to run YugaByte DB in mission-critical production environments with one or more datacenters (across both public cloud and on-premises datacenters).
 
 ## Enterprise Edition 
 
 ### What is YugaWare?
 
-YugaWare is the orchestration/UI/Admin console for the YugaByte Enterprise Edition.
+YugaWare, shipped as a part of YugaByte Enterprise, is the Admin Console for YugaByte DB. It has a built-in orchestration and monitoring engine for deploying YugaByte DB in any public or private cloud.
 
 ### How does the installation process work for YugaByte Enterprise?
+
 YugaWare first needs to be installed on any machine. The next step is to configure YugaWare to work with public and/or private clouds. In the case of public clouds, Yugaware spawns the machines to orchestrate bringing up the data platform. In the case of private clouds, you add the nodes you want to be a part of the data platform into Yugaware. Yugaware would need ssh access into these nodes in order to manage them.
 
 ### What are the OS requirements and permissions to run YugaWare, the YugaByte admin console?
@@ -63,7 +61,6 @@ The data node software is packaged into the YugaWare application. YugaWare distr
 The YugaWare admin console does a password-less ssh to interact with the data nodes. It needs to have the access key file (like a PEM file) uploaded into it via the UI. The setup on each of the data nodes to configure password-less ssh is documented [here](/deploy/#private-cloud-or-on-premises-data-centers).
 
 A REST API is also exposed by the admin console to the end users in addition to the UI as another means of interacting with the data platform.
-
 
 ### Would we have access to the database machines that get spawned in public clouds?
 
@@ -108,18 +105,15 @@ See [YugaByte vs. Apache HBase](/architecture/comparisons/#yugabyte-vs-apache-hb
 
 ### Why not use a Redis cluser alongside a sharded SQL cluster?
 
-Such 2 independent siloed database clusters should be avoided for multiple reasons.
+Independent cache and database clusters should be avoided for multiple reasons.
 
 #### Development and operational complexity
 
-Sharding has to be implemented at two tiers. 
-Scale out (expanding/shrinking the cluster) has to be re-implemented twice - once at the Redis layer and again for the sharded SQL layer. You need to also worry about resharding the data in the Redis layer.
-The application has to be aware of two tiers and move data between then, deal with consistency issues, etc. It has to write to Redis and Cockroach, read from Redis, deal with staleness of data, etc.
+Sharding has to be implemented at two tiers. Scale out (expanding/shrinking the cluster) has to be re-implemented twice - once at the Redis layer and again for the sharded SQL layer. You need to also worry about resharding the data in the Redis layer. The application has to be aware of two tiers, move data between them, deal with consistency issues, etc. It has to write to Redis and sharded SQL, read from Redis, deal with staleness of data, etc.
 
 #### Higher cost
 
-Typically not all the data needs to be cached, and the cache has to adapt to the query pattern. Most people deploying Redis this way end up caching all the data.
-Some queries need to be answered with low latency from the cache, and others are longer running queries that should not pollute the cache. This is hard to achieve if two systems deal with different access patterns for the same data.
+Typically not all the data needs to be cached, and the cache has to adapt to the query pattern. Most people deploying Redis this way end up caching all the data. Some queries need to be answered with low latency from the cache, and others are longer running queries that should not pollute the cache. This is hard to achieve if two systems deal with different access patterns for the same data.
 
 #### Cross-DC administration complexity
 

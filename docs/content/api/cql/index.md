@@ -33,10 +33,10 @@ Data manipulation language (DML) statements are used to read from and write to t
 
 Statement | Description |
 ----------|-------------|
-[`DELETE`](dml_delete) | Delete specific rows from a table.
 [`INSERT`](dml_insert) | Insert rows into a table.
 [`SELECT`](dml_select) | Select rows from a table.
 [`UPDATE`](dml_update) | Update rows in a table.
+[`DELETE`](dml_delete) | Delete specific rows from a table.
 `TRUNCATE` | Not yet supported.
 
 ## Expressions
@@ -57,7 +57,7 @@ Expression | Description |
 [Operator Call](expr_ocall) | Builtin operators only |
 [Function Call](expr_fcall) | Builtin function calls only |
 
-## DataTypes
+## Data Types
 - The following table lists all supported primitive types.
 
 Primitive Type | Allowed in Key | Type Parameters | Description |

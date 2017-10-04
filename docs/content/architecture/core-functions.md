@@ -175,7 +175,3 @@ Let us look at how the failures of each of the YQL layer, tablet-peer followers 
 * **Tablet-peer follower failure** <br> The tablet-peer followers are not in the critical path. Their failure does not impact availability of the user requests.
 
 * **Tablet-peer leader failure** <br> The failure of any tablet-peer leader automatically triggers a new RAFT level leader election within seconds, and another tablet-peer on a different YB-TServer takes its place as the new leader. The unavailability window is in the order of a couple of seconds (assuming the default heartbeat interval of 500 ms) in the event of a failure of the tablet-peer leader.
-
-## Distributed transactions
-
-[TODO]

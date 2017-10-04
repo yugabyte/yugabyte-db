@@ -75,7 +75,7 @@ $ ./bin/yb-ctl create
 
 Create a 5 node local cluster with replication factor 5. 
 
-The number of nodes created with the initial create command is always equal to the replication factor in order to ensure that all the replicas for a given tablet can be placed on different nodes. With the [add_node](/community-edition/cli-reference/#add-a-node) and [remove_node]/community-edition/cli-reference/#remove-a-node commands the size of the cluster can thereafter be expanded or shrinked as necessary. 
+The number of nodes created with the initial create command is always equal to the replication factor in order to ensure that all the replicas for a given tablet can be placed on different nodes. With the [add_node](/community-edition/cli-reference/#add-a-node) and [remove_node](/community-edition/cli-reference/#remove-a-node) commands the size of the cluster can thereafter be expanded or shrinked as necessary. 
 
 ```sh
 $ ./bin/yb-ctl --rf 5 create

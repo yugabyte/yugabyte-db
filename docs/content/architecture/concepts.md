@@ -26,8 +26,6 @@ A YugaByte universe can be deployed in a variety of configurations depending on 
 - Multiple AZs in a region
 - Multiple regions (with synchronous and asynchronous replication choices)
 
-See here [TODO] for a more elaborate discussion on these deployment options.
-
 A YugaByte *universe* can consist of one or more keyspaces (a.k.a databases in other databases such as MySQL or Postgres). A keyspace is essentially a namespace and can contain one or more tables. YugaByte automatically shards, replicates and load-balances these tables across the nodes in the universe, while respecting user-intent such as cross-AZ or region placement requirements, desired replication factor, and so on. YugaByte automatically handles failures (e.g., node, AZ or region
 failures), and re-distributes and re-replicates data back to desired levels across the remaining available nodes while still respecting any data placement requirements.
 
@@ -617,7 +615,7 @@ The YB-Master receives heartbeats from all the YB-TServers, and tracks their liv
 
 ## Acknowledgements
 
-The YugaByte code base has leveraged several open-source projects as a starting point.
+The YugaByte code base has leveraged several open source projects as a starting point.
 
 * Google Libraries (glog, gflags, protocol buffers, snappy, gperftools, gtest, gmock).
 

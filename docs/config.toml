@@ -40,7 +40,7 @@ googleAnalytics = "UA-104956980-1"
 [social]
 	# github = "YugaByte"
 	# twitter = "YugaByte"
-	email   = "support@yugabyte.com"
+	# email   = "support@yugabyte.com"
 
 [[menu.main]]
 	name   = "Introduction"
@@ -129,7 +129,6 @@ googleAnalytics = "UA-104956980-1"
 	url = "architecture/comparisons/"
 	weight = 110
 
-
 [[menu.main]]
 	name   = "Client API Reference"
 	weight = 120
@@ -137,47 +136,442 @@ googleAnalytics = "UA-104956980-1"
 
 [[menu.main]]
 	name = "Apache Cassandra"
-	weight = 130
+	weight = 121
 	identifier = "api-cql"
 	parent = "API"
 	url = "api/cql/"
 
 [[menu.main]]
-	name = "Redis"
+	name = "ALTER TABLE"
+	weight = 122
+	parent = "api-cql"
+	url = "api/cql/ddl_alter_table/"
+
+[[menu.main]]
+	name = "CREATE KEYSPACE"
+	weight = 123
+	parent = "api-cql"
+	url = "api/cql/ddl_create_keyspace/"
+
+[[menu.main]]
+	name = "CREATE TABLE"
+	weight = 124
+	parent = "api-cql"
+	url = "api/cql/ddl_create_table/"
+
+[[menu.main]]
+	name = "CREATE TYPE"
+	weight = 125
+	parent = "api-cql"
+	url = "api/cql/ddl_create_type/"
+
+[[menu.main]]
+	name = "DROP KEYSPACE"
+	weight = 126
+	parent = "api-cql"
+	url = "api/cql/ddl_drop_keyspace/"
+
+[[menu.main]]
+	name = "DROP TABLE"
+	weight = 127
+	parent = "api-cql"
+	url = "api/cql/ddl_drop_table/"
+
+[[menu.main]]
+	name = "DROP TYPE"
+	weight = 128
+	parent = "api-cql"
+	url = "api/cql/ddl_drop_type/"
+
+[[menu.main]]
+	name = "USE"
+	weight = 129
+	parent = "api-cql"
+	url = "api/cql/ddl_use/"
+
+[[menu.main]]
+	name = "INSERT"
+	weight = 130
+	parent = "api-cql"
+	url = "api/cql/dml_insert/"
+
+[[menu.main]]
+	name = "SELECT"
+	weight = 131
+	parent = "api-cql"
+	url = "api/cql/dml_select/"
+
+[[menu.main]]
+	name = "UPDATE"
+	weight = 132
+	parent = "api-cql"
+	url = "api/cql/dml_update/"
+
+[[menu.main]]
+	name = "DELETE"
+	weight = 133
+	parent = "api-cql"
+	url = "api/cql/dml_delete/"
+
+[[menu.main]]
+	name = "Simple Value"
+	weight = 134
+	parent = "api-cql"
+	url = "api/cql/expr_simple/"
+
+[[menu.main]]
+	name = "Subscript"
+	weight = 135
+	parent = "api-cql"
+	url = "api/cql/expr_subscript/"
+
+[[menu.main]]
+	name = "Operator Call"
+	weight = 136
+	parent = "api-cql"
+	url = "api/cql/expr_ocall/"
+
+[[menu.main]]
+	name = "Function Call"
+	weight = 137
+	parent = "api-cql"
+	url = "api/cql/expr_fcall/"
+
+[[menu.main]]
+	name = "BIGINT"
+	weight = 138
+	parent = "api-cql"
+	url = "api/cql/type_int/"
+
+[[menu.main]]
+	name = "BLOB"
+	weight = 139
+	parent = "api-cql"
+	url = "api/cql/type_blob/"
+
+[[menu.main]]
+	name = "BOOLEAN"
 	weight = 140
+	parent = "api-cql"
+	url = "api/cql/type_bool/"
+
+[[menu.main]]
+	name = "COUNTER"
+	weight = 141
+	parent = "api-cql"
+	url = "api/cql/type_int/"
+
+[[menu.main]]
+	name = "DECIMAL"
+	weight = 142
+	parent = "api-cql"
+	url = "api/cql/type_number/"
+
+[[menu.main]]
+	name = "DOUBLE"
+	weight = 143
+	parent = "api-cql"
+	url = "api/cql/type_number/"
+
+[[menu.main]]
+	name = "FLOAT"
+	weight = 144
+	parent = "api-cql"
+	url = "api/cql/type_number/"
+
+[[menu.main]]
+	name = "FROZEN"
+	weight = 145
+	parent = "api-cql"
+	url = "api/cql/type_frozen/"
+
+[[menu.main]]
+	name = "INET"
+	weight = 146
+	parent = "api-cql"
+	url = "api/cql/type_inet/"
+
+[[menu.main]]
+	name = "INT"
+	weight = 147
+	parent = "api-cql"
+	url = "api/cql/type_int/"
+
+[[menu.main]]
+	name = "LIST"
+	weight = 148
+	parent = "api-cql"
+	url = "api/cql/type_collection/"
+
+[[menu.main]]
+	name = "MAP"
+	weight = 149
+	parent = "api-cql"
+	url = "api/cql/type_collection/"
+
+[[menu.main]]
+	name = "SET"
+	weight = 150
+	parent = "api-cql"
+	url = "api/cql/type_collection/"
+
+[[menu.main]]
+	name = "SMALLINT"
+	weight = 151
+	parent = "api-cql"
+	url = "api/cql/type_int/"
+
+[[menu.main]]
+	name = "TEXT"
+	weight = 152
+	parent = "api-cql"
+	url = "api/cql/type_text/"
+
+[[menu.main]]
+	name = "TIMESTAMP"
+	weight = 153
+	parent = "api-cql"
+	url = "api/cql/type_timestamp/"
+
+[[menu.main]]
+	name = "TIMEUUID"
+	weight = 154
+	parent = "api-cql"
+	url = "api/cql/type_uuid/"
+
+[[menu.main]]
+	name = "TINYINT"
+	weight = 155
+	parent = "api-cql"
+	url = "api/cql/type_int/"
+
+[[menu.main]]
+	name = "UUID"
+	weight = 156
+	parent = "api-cql"
+	url = "api/cql/type_uuid/"
+
+[[menu.main]]
+	name = "Redis"
+	weight = 200
 	identifier = "api-redis"
 	parent = "API"
 	url = "api/redis/"
 
 [[menu.main]]
 	name = "APPEND"
-	weight = 140
-	identifier = "api-redis-append"
+	weight = 201
 	parent = "api-redis"
 	url = "api/redis/append/"
 
 [[menu.main]]
+	name = "AUTH"
+	weight = 202
+	parent = "api-redis"
+	url = "api/redis/auth/"
+
+[[menu.main]]
+	name = "CONFIG"
+	weight = 203
+	parent = "api-redis"
+	url = "api/redis/config/"
+
+[[menu.main]]
+	name = "DEL"
+	weight = 204
+	parent = "api-redis"
+	url = "api/redis/del/"
+
+[[menu.main]]
+	name = "ECHO"
+	weight = 205
+	parent = "api-redis"
+	url = "api/redis/echo/"
+
+[[menu.main]]
+	name = "EXISTS"
+	weight = 206
+	parent = "api-redis"
+	url = "api/redis/exists/"
+
+[[menu.main]]
+	name = "GET"
+	weight = 207
+	parent = "api-redis"
+	url = "api/redis/get/"
+
+[[menu.main]]
+	name = "GETRANGE"
+	weight = 208
+	parent = "api-redis"
+	url = "api/redis/getrange/"
+
+[[menu.main]]
+	name = "GETSET"
+	weight = 209
+	parent = "api-redis"
+	url = "api/redis/getset/"
+
+[[menu.main]]
+	name = "HDEL"
+	weight = 210
+	parent = "api-redis"
+	url = "api/redis/hdel/"
+
+[[menu.main]]
+	name = "HEXISTS"
+	weight = 211
+	parent = "api-redis"
+	url = "api/redis/hexists/"
+
+[[menu.main]]
+	name = "HGET"
+	weight = 212
+	parent = "api-redis"
+	url = "api/redis/hget/"
+
+[[menu.main]]
+	name = "HGETALL"
+	weight = 213
+	parent = "api-redis"
+	url = "api/redis/hgetall/"
+
+[[menu.main]]
+	name = "HKEYS"
+	weight = 214
+	parent = "api-redis"
+	url = "api/redis/hkeys/"
+
+[[menu.main]]
+	name = "HLEN"
+	weight = 215
+	parent = "api-redis"
+	url = "api/redis/hlen/"
+
+[[menu.main]]
+	name = "HMGET"
+	weight = 216
+	parent = "api-redis"
+	url = "api/redis/hmget/"
+
+[[menu.main]]
+	name = "HMSET"
+	weight = 217
+	parent = "api-redis"
+	url = "api/redis/hmset/"
+
+[[menu.main]]
+	name = "HSET"
+	weight = 218
+	parent = "api-redis"
+	url = "api/redis/hmet/"
+
+[[menu.main]]
+	name = "HSTRLEN"
+	weight = 219
+	parent = "api-redis"
+	url = "api/redis/hstrlen/"
+
+[[menu.main]]
+	name = "HVALS"
+	weight = 220
+	parent = "api-redis"
+	url = "api/redis/hvals/"
+
+[[menu.main]]
+	name = "INCR"
+	weight = 221
+	parent = "api-redis"
+	url = "api/redis/incr/"
+
+[[menu.main]]
+	name = "MGET"
+	weight = 222
+	parent = "api-redis"
+	url = "api/redis/mget/"
+
+[[menu.main]]
+	name = "MSET"
+	weight = 223
+	parent = "api-redis"
+	url = "api/redis/mset/"
+
+[[menu.main]]
+	name = "ROLE"
+	weight = 224
+	parent = "api-redis"
+	url = "api/redis/role/"
+
+[[menu.main]]
+	name = "SADD"
+	weight = 225
+	parent = "api-redis"
+	url = "api/redis/sadd/"
+
+[[menu.main]]
+	name = "SCARD"
+	weight = 226
+	parent = "api-redis"
+	url = "api/redis/scard/"
+
+[[menu.main]]
+	name = "SET"
+	weight = 227
+	parent = "api-redis"
+	url = "api/redis/set/"
+
+[[menu.main]]
+	name = "SETRANGE"
+	weight = 228
+	parent = "api-redis"
+	url = "api/redis/setrange/"
+
+[[menu.main]]
+	name = "SISMEMBER"
+	weight = 229
+	parent = "api-redis"
+	url = "api/redis/sismember/"
+
+[[menu.main]]
+	name = "SMEMBERS"
+	weight = 230
+	parent = "api-redis"
+	url = "api/redis/smembers/"
+
+[[menu.main]]
+	name = "SREM"
+	weight = 231
+	parent = "api-redis"
+	url = "api/redis/srem/"
+
+[[menu.main]]
+	name = "STRLEN"
+	weight = 232
+	parent = "api-redis"
+	url = "api/redis/strlen/"
+
+[[menu.main]]
 	name   = "Admin Reference"
-	weight = 150
+	weight = 240
 	identifier = "admin"
 
 [[menu.main]]
 	name = "yb-ctl"
-	weight = 160
+	weight = 241
 	identifier = "yb-ctl"
 	parent = "admin"
 	url = "admin/yb-ctl/"
 
 [[menu.main]]
 	name = "yb-master"
-	weight = 170
+	weight = 242
 	identifier = "yb-master"
 	parent = "admin"
 	url = "admin/yb-master/"
 
 [[menu.main]]
 	name = "yb-tserver"
-	weight = 180
+	weight = 243
 	identifier = "yb-tserver"
 	parent = "admin"
 	url = "admin/yb-tserver/"

@@ -8,19 +8,19 @@ weight: 1
 ## Overview
 
 ### What is YugaByte?
-YugaByte is a cloud-native database for mission-critical enterprise applications. It is meant to be a system-of-record/authoritative database that applications can rely on for correctness and availability. It allows applications to easily scale up and scale down in the cloud, on-premises or across hybrid environments without creating operational complexity or increasing the risk of outages.
+YugaByte is an open source, cloud-native database for mission-critical enterprise applications. It is meant to be a system-of-record/authoritative database that applications can rely on for correctness and availability. It allows applications to easily scale up and scale down in the cloud, on-premises or across hybrid environments without creating operational complexity or increasing the risk of outages.
 
 In terms of data model and APIs, YugaByte currently supports **Apache Cassandra Query Language** & its client drivers natively. In addition, it also supports an automatically sharded, clustered & elastic **Redis-as-a-Database** in a Redis driver compatible manner. **Distributed transactions** to support **strongly consistent secondary indexes**, multi-table/row ACID operations and SQL support is on the roadmap.
 
 ### What makes YugaByte unique?
-YugaByte brings together the best of both NewSQL and NoSQL along with cloud-native infrastructure orchestration. 
+YugaByte brings together the best of both SQL and NoSQL along with cloud-native infrastructure orchestration. 
 
-- NewSQL databases are a good fit for mission-critical applications given their strongly consistent cores. However, these databases are typically limited to single datacenter deployments given the need for a highly reliable network. 
+- Manually sharded SQL databases are a good fit for mission-critical applications given their strongly consistent cores. However, these databases are typically limited to single datacenter deployments given the need for a highly reliable network. 
 - NoSQL databases are comparably easier to run across multi-datacenters given their ability to scale both reads and writes linearly. However, these databases are incredibly difficult to develop and reason about given the loose guarantees of eventually consistent data replication. 
 
 ![YugaByte value prop](/images/value-prop.png)
 
-YugaByte ensures that the above long-held compromises are no longer impeding the development and deployment of mission-critical applications. YugaByte has a strongly consistent core similar to NewSQL systems and is also highly available even in multi-datacenter deployments similar to NoSQL systems. Additionally, it adds the much needed layer of cloud-native operational simplicity so that modern technical operations teams can easily exploit the full potential of their chosen cloud(s).
+YugaByte ensures that the above long-held compromises are no longer impeding the development and deployment of mission-critical applications. YugaByte has a strongly consistent core similar to SQL databases and is also highly available even in multi-datacenter deployments similar to NoSQL systems. Additionally, it adds the much needed layer of cloud-native operational simplicity so that modern technical operations teams can easily exploit the full potential of their chosen cloud(s).
 
 ## Key features 
 
