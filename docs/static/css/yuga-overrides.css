@@ -156,3 +156,7 @@ a {
 .pagination .page {
   top: 16px !important;
 }
+
+.nav-bar.scrolled .navbar-text .download-btn {
+  color: white !important;
+}

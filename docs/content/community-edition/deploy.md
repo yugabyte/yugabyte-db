@@ -14,19 +14,20 @@ Dedicated hosts or cloud VMs running Centos 7+ with local or remote attached sto
 - ntp
 - cyrus-sasl-plain
 - cyrus-sasl-devel
+- file
 
 Here's the command to install these packages.
 
 ```sh
 # install prerequisite packages
-$ sudo yum install -y epel-release ntp cyrus-sasl-plain cyrus-sasl-devel
+$ sudo yum install -y epel-release ntp cyrus-sasl-plain cyrus-sasl-devel file
 ```
 
 ## Download and install
 
 ### Download
 
-Download the YugaByte DB package [here](https://s3-us-west-2.amazonaws.com/download.yugabyte.com/0.9.0.0/yugabyte.ce.0.9.0.0-b0.tar.gz). Thereafter, follow the instructions below.
+Download the YugaByte CE package [here](http://new.yugabyte.com#download). Thereafter, follow the instructions below.
 
 ### Install
 For the purpose of this document, let's assume that we have 3 instances with private IP addresses as `172.151.17.130, 172.151.17.220, 172.151.17.140` and are accessible from each other over the network. As noted in the [default ports reference](/community-edition/deploy/#default-ports-reference) section, YB-Masters will run on port 7100 and YB-TServers will run on port 9100 of these instances. On each of these instances, run the following steps.
@@ -41,7 +42,7 @@ $ cd yugabyte
 
 ### Configure the installation
 
-- Run the **configure** script to ensure all dependencies get auto-installed. If not already installed, this script will also install a two libraries (`cyrus-sasl` and `cyrus-sasl-plain`) and will request for a sudo password in case you are not running the script as root.
+- Run the **configure** script to ensure all dependencies get auto-installed. If not already installed, this script will also install a couple of libraries (`cyrus-sasl`, `cyrus-sasl-plain` and `file`) and will request for a sudo password in case you are not running the script as root.
 
 
 ```sh

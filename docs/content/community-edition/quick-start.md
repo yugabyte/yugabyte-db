@@ -20,7 +20,7 @@ Operation systems supported for local clusters are
 
 ### Download
 
-Download the YugaByte DB package [here](https://s3-us-west-2.amazonaws.com/download.yugabyte.com/0.9.0.0/yugabyte.ce.0.9.0.0-b0.tar.gz). Thereafter, follow the instructions below.
+Download the YugaByte CE package [here](http://new.yugabyte.com#download). Thereafter, follow the instructions below.
 
 ### Install
 
@@ -32,7 +32,7 @@ $ tar xvfz yugabyte.ce.<version>.tar.gz -C yugabyte
 $ cd yugabyte
 ```
 
-Run the **configure** script to ensure all dependencies get auto-installed. This script will also install a two libraries (`cyrus-sasl` and `cyrus-sasl-plain`) and will request for a sudo password in case you are not running the script as root.
+Run the **configure** script to ensure all dependencies get auto-installed. This script will also install a couple of libraries (`cyrus-sasl`, `cyrus-sasl-plain` and `file`) and will request for a sudo password in case you are not running the script as root.
 
 ```sh
 $ ./bin/configure
