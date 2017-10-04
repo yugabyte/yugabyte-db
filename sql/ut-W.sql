@@ -26,6 +26,9 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1;
 /*+Parallel(t1 8 hard)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1;
 
+/*+Parallel(t1 4 hard) */ /* to be gather merge*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 ORDER BY s1.t1.c1 LIMIT 4;
+
 -- Queries on inheritance tables
 SET parallel_setup_cost to 0;
 SET parallel_tuple_cost to 0;
