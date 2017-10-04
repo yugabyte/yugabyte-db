@@ -73,6 +73,13 @@ a {
   color: #f75821 !important;
 }
 
+.palette-primary-orange .article a.headerlink {
+  color: #cecdcc !important;
+}
+.palette-primary-orange .article a.headerlink:hover {
+  color: #f75821 !important;
+}
+
 .palette-primary-orange .article pre {
   background: none !important;
   padding-top: 0;
