@@ -71,6 +71,11 @@ class ProviderConfiguration extends Component {
     if (!_.isEqual(configuredProviders.data, this.props.configuredProviders.data)) {
       this.setState({currentView: isNonEmptyObject(currentProvider) ? 'result' : 'init'});
     }
+
+    if (getPromiseState(configuredProviders).isEmpty() && !getPromiseState(this.props.configuredProviders).isEmpty()) {
+      this.setState({currentView: 'init'});
+    }
+
     if (isNonEmptyArray(customerTaskList) && isNonEmptyObject(currentProvider) && this.props.tasks.customerTaskList.length === 0) {
       currentProviderTask = customerTaskList.find((task) => task.targetUUID === currentProvider.uuid);
       if (currentProviderTask) {
@@ -138,7 +143,7 @@ class ProviderConfiguration extends Component {
   }
 
   getBootstrapView() {
-    const {reloadCloudMetadata, cloud: {createProvider}, providerType, showDeleteProviderModal,
+    const {configuredProviders, reloadCloudMetadata, cloud: {createProvider}, providerType, showDeleteProviderModal,
            visibleModal, deleteProviderConfig, hideDeleteProviderModal} = this.props;
     let currentModal = "";
     if (providerType === "aws") {
@@ -146,8 +151,17 @@ class ProviderConfiguration extends Component {
     } else if (providerType === "gcp") {
       currentModal = "deleteGCPProvider";
     }
+
+    const currentConfiguredProvider = configuredProviders.data.find((provider) => provider.code === providerType);
+    let provider = {};
+    if (isNonEmptyObject(createProvider.data)) {
+      provider = createProvider.data;
+    } else if (isNonEmptyObject(currentConfiguredProvider)) {
+      provider = currentConfiguredProvider;
+    }
+
     return (<ProviderBootstrapView taskUUIDs={[this.state.currentTaskUUID]}
-                                  currentProvider={createProvider.data}
+                                  currentProvider={provider}
                                   showDeleteProviderModal={showDeleteProviderModal}
                                   visibleModal={visibleModal}
                                   reloadCloudMetadata={reloadCloudMetadata}
