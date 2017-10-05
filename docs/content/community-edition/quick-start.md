@@ -20,7 +20,7 @@ Operation systems supported for local clusters are
 
 ### Download
 
-Download the YugaByte CE package [here](http://new.yugabyte.com#download). Thereafter, follow the instructions below.
+Download the YugaByte CE package [here](http://www.yugabyte.com#download). Thereafter, follow the instructions below.
 
 ### Install
 
