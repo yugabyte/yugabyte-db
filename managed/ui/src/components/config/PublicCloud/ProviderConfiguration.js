@@ -9,6 +9,7 @@ import ProviderResultView from './views/ProviderResultView';
 import ProviderBootstrapView from './views/ProviderBootstrapView';
 import AWSProviderInitView from './views/AWSProviderInitView';
 import GCPProviderInitView from './views/GCPProviderInitView';
+import YBloadingIcon from '../../common/indicators/YBLoadingIcon';
 
 class ProviderConfiguration extends Component {
   constructor(props) {
@@ -16,6 +17,7 @@ class ProviderConfiguration extends Component {
     this.state = {
       currentView: '',
       currentTaskUUID: '',
+      refreshSucceeded: false
     };
     this.getResultView = this.getResultView.bind(this);
     this.getBootstrapView = this.getBootstrapView.bind(this);
@@ -38,13 +40,17 @@ class ProviderConfiguration extends Component {
   componentDidMount() {
     const {configuredProviders, tasks: {customerTaskList}, providerType, getCurrentTaskData} = this.props;
     const currentProvider = configuredProviders.data.find((provider) => provider.code === providerType);
-    this.setState({currentView: isNonEmptyObject(currentProvider) ? 'result' : "init"});
-    let currentProviderTask = null;
-    if (isNonEmptyArray(customerTaskList) && isDefinedNotNull(currentProvider)) {
-      currentProviderTask = customerTaskList.find((task) => task.targetUUID === currentProvider.uuid);
-      if (isDefinedNotNull(currentProviderTask) && currentProviderTask.status !== "Success") {
-        getCurrentTaskData(currentProviderTask.id);
-        this.setState({currentTaskUUID: currentProviderTask.id, currentView: 'bootstrap'});
+    if (getPromiseState(configuredProviders).isLoading() || getPromiseState(configuredProviders).isInit()) {
+      this.setState({currentView: 'loading'});
+    } else {
+      this.setState({currentView: isNonEmptyObject(currentProvider) ? 'result' : "init"});
+      let currentProviderTask = null;
+      if (isNonEmptyArray(customerTaskList) && isDefinedNotNull(currentProvider)) {
+        currentProviderTask = customerTaskList.find((task) => task.targetUUID === currentProvider.uuid);
+        if (isDefinedNotNull(currentProviderTask) && currentProviderTask.status !== "Success") {
+          getCurrentTaskData(currentProviderTask.id);
+          this.setState({currentTaskUUID: currentProviderTask.id, currentView: 'bootstrap'});
+        }
       }
     }
   }
@@ -80,7 +86,13 @@ class ProviderConfiguration extends Component {
       this.setState({currentTaskUUID: bootstrapProvider.data.taskUUID, currentView: 'bootstrap'});
       this.props.getCurrentTaskData(bootstrapProvider.data.taskUUID);
     }
+
+    if (type === "initialize" && nextProps.cloudBootstrap.promiseState.name === "SUCCESS"
+      && this.props.cloudBootstrap.promiseState.name === "LOADING") {
+      this.setState({refreshSucceeded: true});
+    }
   }
+
 
   getResultView() {
     const { configuredProviders, visibleModal, configuredRegions, universeList,
@@ -121,7 +133,7 @@ class ProviderConfiguration extends Component {
                                  visibleModal={visibleModal} deleteProviderConfig={deleteProviderConfig}
                                  hideDeleteProviderModal={hideDeleteProviderModal}
                                  currentModal={currentModal} providerType={providerType}
-                                 deleteButtonDisabled={deleteButtonDisabled}/>);
+                                 deleteButtonDisabled={deleteButtonDisabled} refreshSucceeded={this.state.refreshSucceeded}/>);
     }
   }
 
@@ -149,6 +161,8 @@ class ProviderConfiguration extends Component {
     let currentProviderView = <span/>;
     if (this.state.currentView === 'init') {
       currentProviderView = this.getInitView();
+    } else if (this.state.currentView === "loading") {
+      currentProviderView = <YBloadingIcon/>;
     } else if (this.state.currentView === 'bootstrap') {
       currentProviderView = this.getBootstrapView();
     } else if (this.state.currentView === 'result') {
