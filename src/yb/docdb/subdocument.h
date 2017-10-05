@@ -31,9 +31,7 @@ class SubDocument : public PrimitiveValue {
  public:
 
   explicit SubDocument(ValueType value_type);
-  SubDocument() : SubDocument(ValueType::kObject) {
-    complex_data_structure_ = nullptr;
-  }
+  SubDocument() : SubDocument(ValueType::kObject) {}
 
   ~SubDocument();
 

@@ -353,9 +353,10 @@ void TestRedisService::DoRedisTest(int line,
                                    cpp_redis::reply::type reply_type,
                                    const Callback& callback) {
   expected_callbacks_called_++;
+  VLOG(4) << "Testing with line: " << __FILE__ << ":" << line;
   test_client_.send(command, [this, line, reply_type, callback] (RedisReply& reply) {
-    VLOG(4) << "Received response : " << reply.as_string() << ", of type: "
-              << util::to_underlying(reply.get_type());
+    VLOG(4) << "Received response for line: " << __FILE__ << ":" << line
+            << " : " << reply.as_string() << ", of type: " << util::to_underlying(reply.get_type());
     num_callbacks_called_++;
     ASSERT_EQ(reply_type, reply.get_type()) << "Originator: " << __FILE__ << ":" << line;
     callback(reply);
@@ -896,6 +897,8 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   // subkey7 doesn't exists
   DoRedisTestInt(__LINE__, {"HDEL", "map_key", "subkey2", "subkey7", "subkey5"}, 2);
   SyncClient();
+  DoRedisTestInt(__LINE__, {"HDEL", "map_key", "subkey9"}, 0);
+  SyncClient();
   DoRedisTestInt(__LINE__, {"EXISTS", "map_key"}, 1);
   DoRedisTestArray(__LINE__, {"HGETALL", "map_key"}, {"subkey1", "41", "subkey6", "14"});
   DoRedisTestInt(__LINE__, {"DEL", "map_key"}, 1); // Delete the whole map with a del
@@ -957,6 +960,52 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
 
   SyncClient();
 
+  VerifyCallbacks();
+}
+
+TEST_F(TestRedisService, TestDel) {
+  // The default value is true, but we explicitly set this here for clarity.
+  FLAGS_emulate_redis_responses = true;
+
+  DoRedisTestOk(__LINE__, {"SET", "key", "value"});
+  DoRedisTestInt(__LINE__, {"DEL", "key"}, 0);
+  DoRedisTestInt(__LINE__, {"DEL", "key"}, 0);
+  DoRedisTestInt(__LINE__, {"DEL", "non_existent"}, 0);
+  SyncClient();
+  VerifyCallbacks();
+}
+
+TEST_F(TestRedisService, TestHDel) {
+  // The default value is true, but we explicitly set this here for clarity.
+  FLAGS_emulate_redis_responses = true;
+
+  DoRedisTestInt(__LINE__, {"HSET", "map_key", "subkey1", "42"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"HDEL", "map_key", "subkey1", "non_existent_1", "non_existent_2"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"HDEL", "map_key", "non_existent_1"}, 0);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"HDEL", "map_key", "non_existent_1", "non_existent_2"}, 0);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"HDEL", "map_key", "non_existent_1", "non_existent_1"}, 0);
+  SyncClient();
+  VerifyCallbacks();
+}
+
+TEST_F(TestRedisService, TestSRem) {
+  // The default value is true, but we explicitly set this here for clarity.
+  FLAGS_emulate_redis_responses = true;
+
+  DoRedisTestInt(__LINE__, {"SADD", "set_key", "subkey1"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"SREM", "set_key", "subkey1", "non_existent_1", "non_existent_2"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"SREM", "set_key", "non_existent_1"}, 0);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"SREM", "set_key", "non_existent_1", "non_existent_2"}, 0);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"SREM", "set_key", "non_existent_1", "non_existent_1"}, 0);
+  SyncClient();
   VerifyCallbacks();
 }
 

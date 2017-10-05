@@ -32,6 +32,11 @@ namespace docdb {
 
 SubDocument::SubDocument(ValueType value_type) : PrimitiveValue(value_type) {
   complex_data_structure_ = nullptr;
+  if (value_type == ValueType::kObject ||
+      value_type == ValueType::kRedisSet ||
+      value_type == ValueType::kArray) {
+    EnsureContainerAllocated();
+  }
 }
 
 SubDocument::~SubDocument() {
@@ -296,7 +301,7 @@ void SubDocumentToStreamInternal(ostream& out,
 
 void SubDocument::EnsureContainerAllocated() {
   if (complex_data_structure_ == nullptr) {
-    if (type_ == ValueType::kObject) {
+    if (type_ == ValueType::kObject || type_ == ValueType::kRedisSet) {
       complex_data_structure_ = new ObjectContainer();
     } else if (type_ == ValueType::kArray) {
       complex_data_structure_ = new ArrayContainer();
