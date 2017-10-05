@@ -30,3 +30,6 @@ h1 {
 #TableOfContents ul {
   margin-bottom: 6px;
 }
+#TableOfContents ul ul ul ul {
+  display: none;
+}
