@@ -9,7 +9,7 @@ h1 {
   border-radius: 12px;
 }
 #TableOfContents:before {
-  content: 'On this page:';
+  content: 'On this page';
   margin-left: 10px;
   font-weight: 700;
   color: #322;
@@ -30,6 +30,6 @@ h1 {
 #TableOfContents ul {
   margin-bottom: 6px;
 }
-#TableOfContents ul ul ul ul {
+#TableOfContents ul ul ul {
   display: none;
 }
