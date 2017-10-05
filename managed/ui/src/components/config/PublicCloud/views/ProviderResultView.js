@@ -34,6 +34,12 @@ class ProviderResultView extends Component {
     }
   }
 
+  componentWillReceiveProps(nextProps) {
+    if (nextProps.refreshSucceeded === true && this.props.refreshSucceeded == false) {
+      this.setState({refreshing: false});
+    }
+  }
+
   render() {
     const { regions, deleteButtonTitle, currentProvider, handleSubmit,
             providerInfo, buttonBaseClassName, currentModal,
