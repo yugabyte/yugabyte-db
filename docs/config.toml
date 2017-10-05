@@ -1,6 +1,6 @@
 # Copyright (c) YugaByte, Inc.
 
-baseurl = "http://docs.yugabyte.com"
+baseurl = "https://docs.yugabyte.com"
 languageCode = "en-us"
 title = "YugaByte Docs"
 theme = "hugo-material-docs"

@@ -5,7 +5,7 @@
   "main": "public/index.html",
   "scripts": {
     "start": "hugo serve",
-    "build": "hugo -b http://docs.yugabyte.com",
+    "build": "hugo -b https://docs.yugabyte.com",
     "publish": "npm run build && aws s3 sync public/ s3://docs.yugabyte.com"
   },
   "repository": {
