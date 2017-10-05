@@ -1,0 +1,32 @@
+h1 {
+  padding-bottom: 15px !important;
+  border-bottom: none !important;
+}
+
+#TableOfContents {
+  padding: 10px 5px;
+  background: #fef0ea;
+  border-radius: 12px;
+}
+#TableOfContents:before {
+  content: 'On this page:';
+  margin-left: 10px;
+  font-weight: 700;
+  color: #322;
+}
+#TableOfContents > ul {
+  margin: 0 0 10px;
+}
+#TableOfContents a {
+  border-bottom: none !important;
+}
+#TableOfContents > ul > li:before {
+  content: '';
+}
+#TableOfContents ul,
+#TableOfContents li {
+  margin-top: 2px;
+}
+#TableOfContents ul {
+  margin-bottom: 6px;
+}

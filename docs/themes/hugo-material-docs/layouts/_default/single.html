@@ -24,6 +24,8 @@
 		<div class="wrapper">
 			<h1>{{ .Title }} {{ if .IsDraft }} (Draft){{ end }}</h1>
 
+			{{ .TableOfContents }}
+
 			{{ .Content }}
 
 			<!--<aside class="copyright" role="note">

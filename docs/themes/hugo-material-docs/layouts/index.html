@@ -25,6 +25,8 @@
 			{{ range where .Site.Pages "Type" "index" }}
 				<h1>{{ .Title }} {{ if .IsDraft }} (Draft){{ end }}</h1>
 
+				{{ .TableOfContents }}
+
 				{{ .Content }}
 			{{ end }}
 
