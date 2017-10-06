@@ -113,6 +113,7 @@ function(YRPC_GENERATE SRCS HDRS TGTS)
     # must be unique; adding parts of the filename helps ensure this.
     set(TGT_NAME ${REL_DIR}${FIL})
     string(REPLACE "/" "-" TGT_NAME ${TGT_NAME})
+    string(REPLACE "@" "-" TGT_NAME ${TGT_NAME})
     add_custom_target(${TGT_NAME}
       DEPENDS "${SERVICE_CC}" "${SERVICE_H}"
       "${PROXY_CC}" "${PROXY_H}"
