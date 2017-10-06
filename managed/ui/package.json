@@ -60,7 +60,7 @@
     "react-app-rewired": "1.0.5",
     "react-bootstrap": "^0.30.10",
     "react-bootstrap-multiselect": "^2.2.0",
-    "react-bootstrap-table": "^2.5.8",
+    "react-bootstrap-table": "^4.0.3",
     "react-dom": "^15.4.0",
     "react-dropzone": "^3.7.3",
     "react-gauge": "0.0.5",
