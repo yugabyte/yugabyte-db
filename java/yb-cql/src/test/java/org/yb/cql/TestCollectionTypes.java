@@ -15,6 +15,7 @@ package org.yb.cql;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import org.junit.Test;
+import org.yb.client.TestUtils;
 
 import java.util.*;
 
@@ -520,7 +521,7 @@ public class TestCollectionTypes extends BaseCQLTest {
         "WHERE h = 1 and r = 1 ";
     String update_stmt1 = String.format(update_template, 1, "vs", "{'d', 'e'}");
     session.execute(update_stmt1);
-    Thread.sleep(1050);
+    TestUtils.waitForTTL(1000L);
 
     String select_stmt = "SELECT * FROM " + tableName + " WHERE h = 1 and r = 1";
     Row row = runSelect(select_stmt).next();
@@ -529,7 +530,7 @@ public class TestCollectionTypes extends BaseCQLTest {
     // check set expired
     assertTrue(row.getSet(3, String.class).isEmpty());
 
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
     // check entire row expired
 
     ResultSet rs = session.execute(select_stmt);

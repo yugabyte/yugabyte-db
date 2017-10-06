@@ -19,6 +19,8 @@ import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 
 import org.junit.Test;
+import org.yb.client.TestUtils;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -404,7 +406,7 @@ public class TestStaticColumn extends BaseCQLTest {
                 "Row[1, h1, 2, r2, 14, s13, 2, c2]"+
                 "Row[1, h1, 3, r3, 14, s13, 3, c3]");
 
-    Thread.sleep(5000);
+    TestUtils.waitForTTL(5000L);
 
     // Test select rows with a hash key (1, h1) again. Expect s1 and c1 gone.
     assertQuery("select * from t where h1 = 1 and h2 = 'h1';",
@@ -425,7 +427,7 @@ public class TestStaticColumn extends BaseCQLTest {
                 "Row[1, h1, 2, r2, 15, s13, 2, c2]"+
                 "Row[1, h1, 3, r3, 15, s13, 3, c3]");
 
-    Thread.sleep(5000);
+    TestUtils.waitForTTL(5000L);
 
     // Test select rows with a hash key (1, h1) again. Expect c1 gone but s1 hasn't.
     assertQuery("select * from t where h1 = 1 and h2 = 'h1';",
@@ -433,7 +435,7 @@ public class TestStaticColumn extends BaseCQLTest {
                 "Row[1, h1, 2, r2, 15, s13, 2, c2]"+
                 "Row[1, h1, 3, r3, 15, s13, 3, c3]");
 
-    Thread.sleep(5000);
+    TestUtils.waitForTTL(5000L);
 
     // Test select rows with a hash key (1, h1) again. Expect s1 gone also.
     assertQuery("select * from t where h1 = 1 and h2 = 'h1';",
@@ -448,7 +450,7 @@ public class TestStaticColumn extends BaseCQLTest {
     assertQuery("select distinct h1, h2, s1, s2 from t where h1 = 7 and h2 = 'h7';",
                 "Row[7, h7, 17, s17]");
 
-    Thread.sleep(5000);
+    TestUtils.waitForTTL(5000L);
 
     // Verify the static column is gone.
     assertQuery("select distinct h1, h2, s1, s2 from t where h1 = 7 and h2 = 'h7';",

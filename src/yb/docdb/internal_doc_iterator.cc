@@ -45,6 +45,8 @@ InternalDocIterator::InternalDocIterator(rocksdb::DB* rocksdb,
       filter_key_(filter_key),
       iter_(nullptr),
       doc_write_batch_cache_(doc_write_batch_cache),
+      subdoc_user_timestamp_(Value::kInvalidUserTimestamp),
+      found_exact_key_prefix_(false),
       subdoc_exists_(Trilean::kUnknown),
       query_id_(query_id),
       num_rocksdb_seeks_(num_rocksdb_seeks) {}
@@ -92,8 +94,10 @@ Status InternalDocIterator::SeekToKeyPrefix() {
   boost::optional<DocWriteBatchCache::Entry> cached_ht_and_type =
       doc_write_batch_cache_->Get(KeyBytes(key_prefix_.AsStringRef()));
   if (cached_ht_and_type) {
-    subdoc_ht_ = cached_ht_and_type->first;
-    subdoc_type_ = cached_ht_and_type->second;
+    subdoc_ht_ = cached_ht_and_type->doc_hybrid_time;
+    subdoc_type_ = cached_ht_and_type->value_type;
+    subdoc_user_timestamp_ = cached_ht_and_type->user_timestamp;
+    found_exact_key_prefix_ = cached_ht_and_type->found_exact_key_prefix;
     subdoc_exists_ = ToTrilean(subdoc_type_ != ValueType::kTombstone);
   } else {
     if (!iter_) {
@@ -125,6 +129,8 @@ Status InternalDocIterator::SeekToKeyPrefix() {
       if (key_prefix_.IsPrefixOf(key)) {
         // TODO: make this return a Status and propagate it to the caller.
         RETURN_NOT_OK(Value::DecodePrimitiveValueType(iter_->value(), &subdoc_type_));
+        RETURN_NOT_OK(Value::DecodeUserTimestamp(iter_->value(), &subdoc_user_timestamp_));
+        RETURN_NOT_OK(key_prefix_.OnlyLacksHybridTimeFrom(key, &found_exact_key_prefix_));
 
         // TODO: with optional init markers we can find something that is more than one level
         //       deep relative to the current prefix.
@@ -156,7 +162,8 @@ Status InternalDocIterator::SeekToKeyPrefix() {
           // therefore we can't create "a.y.x", which would be incorrect.
           subdoc_exists_ = Trilean::kFalse;
         } else {
-          doc_write_batch_cache_->Put(key_prefix_, subdoc_ht_, subdoc_type_);
+          doc_write_batch_cache_->Put(key_prefix_, subdoc_ht_, subdoc_type_,
+                                      subdoc_user_timestamp_, found_exact_key_prefix_);
           if (subdoc_type_ != ValueType::kTombstone) {
             subdoc_exists_ = ToTrilean(true);
           }

@@ -246,6 +246,10 @@ class PTDmlStmt : public PTCollection {
     return using_clause_ != nullptr ? using_clause_->ttl_seconds() : kNullPointerRef;
   }
 
+  const PTExpr::SharedPtr& user_timestamp_usec() const {
+    return using_clause_ != nullptr ? using_clause_->user_timestamp_usec() : kNullPointerRef;
+  }
+
   const MCVector<PTBindVar*> &bind_variables() const {
     return bind_variables_;
   }

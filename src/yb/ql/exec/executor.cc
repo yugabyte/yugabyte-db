@@ -642,6 +642,9 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode) {
   // Set the ttl
   RETURN_NOT_OK(TtlToPB(tnode, insert_op->mutable_request()));
 
+  // Set the timestamp
+  RETURN_NOT_OK(TimestampToPB(tnode, insert_op->mutable_request()));
+
   // Set the values for columns.
   Status s = ColumnArgsToPB(table, tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
@@ -722,6 +725,9 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
 
   // Set the ttl
   RETURN_NOT_OK(TtlToPB(tnode, update_op->mutable_request()));
+
+  // Set the timestamp
+  RETURN_NOT_OK(TimestampToPB(tnode, update_op->mutable_request()));
 
   // Setup the columns' new values.
   s = ColumnArgsToPB(table, tnode, update_op->mutable_request());

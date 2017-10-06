@@ -283,6 +283,7 @@ Status DocDBRocksDBUtil::ReplaceInList(
     const rocksdb::QueryId query_id,
     MonoDelta table_ttl,
     MonoDelta ttl,
+    UserTimeMicros user_timestamp,
     InitMarkerBehavior use_init_marker) {
   DocWriteBatch dwb(rocksdb_.get(), &monotonic_counter_);
   RETURN_NOT_OK(dwb.ReplaceInList(

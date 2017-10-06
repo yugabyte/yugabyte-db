@@ -1669,5 +1669,152 @@ SubDocKey(DocKey(0x0000, ["h1"], ["r2"]), ["c8"; HT(p=1000)]) -> "v82"
       )#");
 }
 
+TEST_F(DocDBTest, TestUserTimestamp) {
+  const DocKey doc_key(PrimitiveValues("k1"));
+  KeyBytes encoded_doc_key(doc_key.Encode());
+  // Only optional init marker supported for user timestamp.
+  ASSERT_NOK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue("s10")),
+                         Value(PrimitiveValue("v10"), Value::kMaxTtl, 1000),
+                         HybridTime::FromMicros(1000),
+                         InitMarkerBehavior::REQUIRED));
+
+  HybridTime ht = HybridTime::FromMicros(10000);
+  // Use same doc_write_batch to test cache.
+  DocWriteBatch doc_write_batch(rocksdb());
+  ASSERT_OK(doc_write_batch.SetPrimitive(
+      DocPath(encoded_doc_key, PrimitiveValue("s1"), PrimitiveValue("s2")),
+      Value(PrimitiveValue("v1"), Value::kMaxTtl, 1000),
+      InitMarkerBehavior::OPTIONAL));
+  ASSERT_OK(doc_write_batch.SetPrimitive(
+      DocPath(encoded_doc_key, PrimitiveValue("s1")),
+      Value(PrimitiveValue(ValueType::kObject), Value::kMaxTtl, 500),
+      InitMarkerBehavior::OPTIONAL));
+  ASSERT_OK(WriteToRocksDB(doc_write_batch, ht));
+
+  AssertDocDbDebugDumpStrEq(R"#(
+      SubDocKey(DocKey([], ["k1"]), ["s1"; HT(p=10000, w=1)]) -> {}; user_timestamp: 500
+      SubDocKey(DocKey([], ["k1"]), ["s1", "s2"; HT(p=10000)]) -> "v1"; user_timestamp: 1000
+      )#");
+
+  doc_write_batch.Clear();
+  // Use same doc_write_batch to test cache.
+  ASSERT_OK(doc_write_batch.SetPrimitive(
+      DocPath(encoded_doc_key, PrimitiveValue("s3")),
+      Value(PrimitiveValue(ValueType::kObject), Value::kMaxTtl, 1000),
+      InitMarkerBehavior::OPTIONAL));
+  ASSERT_OK(doc_write_batch.SetPrimitive(
+      DocPath(encoded_doc_key, PrimitiveValue("s3"), PrimitiveValue("s4")),
+      Value(PrimitiveValue("v1"), Value::kMaxTtl, 500),
+      InitMarkerBehavior::OPTIONAL));
+  ASSERT_OK(WriteToRocksDB(doc_write_batch, ht));
+
+  AssertDocDbDebugDumpStrEq(R"#(
+      SubDocKey(DocKey([], ["k1"]), ["s1"; HT(p=10000, w=1)]) -> {}; user_timestamp: 500
+      SubDocKey(DocKey([], ["k1"]), ["s1", "s2"; HT(p=10000)]) -> "v1"; user_timestamp: 1000
+      SubDocKey(DocKey([], ["k1"]), ["s3"; HT(p=10000)]) -> {}; user_timestamp: 1000
+      )#");
+
+  doc_write_batch.Clear();
+  // Use same doc_write_batch to test cache.
+  ASSERT_OK(doc_write_batch.SetPrimitive(
+      DocPath(encoded_doc_key, PrimitiveValue("s3"), PrimitiveValue("s4")),
+      Value(PrimitiveValue("v1"), Value::kMaxTtl, 2000),
+      InitMarkerBehavior::OPTIONAL));
+  ASSERT_OK(doc_write_batch.SetPrimitive(
+      DocPath(encoded_doc_key, PrimitiveValue("s3"), PrimitiveValue("s5")),
+      Value(PrimitiveValue("v1"), Value::kMaxTtl, 2000),
+      InitMarkerBehavior::OPTIONAL));
+  ASSERT_OK(WriteToRocksDB(doc_write_batch, ht));
+
+  AssertDocDbDebugDumpStrEq(R"#(
+      SubDocKey(DocKey([], ["k1"]), ["s1"; HT(p=10000, w=1)]) -> {}; user_timestamp: 500
+      SubDocKey(DocKey([], ["k1"]), ["s1", "s2"; HT(p=10000)]) -> "v1"; user_timestamp: 1000
+      SubDocKey(DocKey([], ["k1"]), ["s3"; HT(p=10000)]) -> {}; user_timestamp: 1000
+      SubDocKey(DocKey([], ["k1"]), ["s3", "s4"; HT(p=10000)]) -> "v1"; user_timestamp: 2000
+      SubDocKey(DocKey([], ["k1"]), ["s3", "s5"; HT(p=10000, w=1)]) -> "v1"; user_timestamp: 2000
+      )#");
+}
+
+TEST_F(DocDBTest, TestCompactionWithUserTimestamp) {
+  const DocKey doc_key(PrimitiveValues("k1"));
+  HybridTime t3000 = HybridTime::FromMicros(3000);
+  HybridTime t5000 = HybridTime::FromMicros(5000);
+  KeyBytes encoded_doc_key(doc_key.Encode());
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue("s1")),
+                         Value(PrimitiveValue("v11")), t3000, InitMarkerBehavior::OPTIONAL));
+
+  AssertDocDbDebugDumpStrEq(R"#(
+      SubDocKey(DocKey([], ["k1"]), ["s1"; HT(p=3000)]) -> "v11"
+      )#");
+
+  // Delete the row.
+  ASSERT_OK(DeleteSubDoc(DocPath(encoded_doc_key, PrimitiveValue("s1")),
+                         t5000, InitMarkerBehavior::OPTIONAL));
+  AssertDocDbDebugDumpStrEq(R"#(
+      SubDocKey(DocKey([], ["k1"]), ["s1"; HT(p=5000)]) -> DEL
+      SubDocKey(DocKey([], ["k1"]), ["s1"; HT(p=3000)]) -> "v11"
+      )#");
+
+  // Try insert with lower timestamp.
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue("s1")),
+                         Value(PrimitiveValue("v13"), Value::kMaxTtl, 4000), t3000,
+                         InitMarkerBehavior::OPTIONAL));
+
+  // No effect on DB.
+  AssertDocDbDebugDumpStrEq(R"#(
+      SubDocKey(DocKey([], ["k1"]), ["s1"; HT(p=5000)]) -> DEL
+      SubDocKey(DocKey([], ["k1"]), ["s1"; HT(p=3000)]) -> "v11"
+      )#");
+
+  // Compaction takes away everything.
+  CompactHistoryBefore(t5000);
+  AssertDocDbDebugDumpStrEq(R"#(
+      )#");
+
+  // Same insert with lower timestamp now works!
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue("s1")),
+                         Value(PrimitiveValue("v13"), Value::kMaxTtl, 4000), t3000,
+                         InitMarkerBehavior::OPTIONAL));
+  AssertDocDbDebugDumpStrEq(R"#(
+      SubDocKey(DocKey([], ["k1"]), ["s1"; HT(p=3000)]) -> "v13"; user_timestamp: 4000
+      )#");
+
+  // Now try the same with TTL.
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue("s2")),
+                         Value(PrimitiveValue("v11"), MonoDelta::FromMicroseconds(1000)), t3000,
+                         InitMarkerBehavior::OPTIONAL));
+
+  // Insert with TTL.
+  AssertDocDbDebugDumpStrEq(R"#(
+      SubDocKey(DocKey([], ["k1"]), ["s1"; HT(p=3000)]) -> "v13"; user_timestamp: 4000
+      SubDocKey(DocKey([], ["k1"]), ["s2"; HT(p=3000)]) -> "v11"; ttl: 0.001s
+      )#");
+
+  // Try insert with lower timestamp.
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue("s2")),
+                         Value(PrimitiveValue("v13"), Value::kMaxTtl, 2000), t3000,
+                         InitMarkerBehavior::OPTIONAL));
+
+  AssertDocDbDebugDumpStrEq(R"#(
+      SubDocKey(DocKey([], ["k1"]), ["s1"; HT(p=3000)]) -> "v13"; user_timestamp: 4000
+      SubDocKey(DocKey([], ["k1"]), ["s2"; HT(p=3000)]) -> "v11"; ttl: 0.001s
+      )#");
+
+  CompactHistoryBefore(t5000);
+
+  AssertDocDbDebugDumpStrEq(R"#(
+      SubDocKey(DocKey([], ["k1"]), ["s1"; HT(p=3000)]) -> "v13"; user_timestamp: 4000
+      )#");
+
+  // Insert with lower timestamp after compaction works!
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue("s2")),
+                         Value(PrimitiveValue("v13"), Value::kMaxTtl, 2000), t3000,
+                         InitMarkerBehavior::OPTIONAL));
+  AssertDocDbDebugDumpStrEq(R"#(
+      SubDocKey(DocKey([], ["k1"]), ["s1"; HT(p=3000)]) -> "v13"; user_timestamp: 4000
+      SubDocKey(DocKey([], ["k1"]), ["s2"; HT(p=3000)]) -> "v13"; user_timestamp: 2000
+      )#");
+}
+
 }  // namespace docdb
 }  // namespace yb

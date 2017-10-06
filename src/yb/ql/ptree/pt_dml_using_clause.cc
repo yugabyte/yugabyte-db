@@ -23,7 +23,7 @@ Status PTDmlUsingClause::Analyze(SemContext* sem_context) {
     if (tnode->IsTTL()) {
       ttl_seconds_ = tnode->value();
     } else if (tnode->IsTimestamp()) {
-      user_timestamp_micros_ = tnode->value();
+      user_timestamp_usec_ = tnode->value();
     }
   }
   return Status::OK();
@@ -33,8 +33,8 @@ const PTExpr::SharedPtr& PTDmlUsingClause::ttl_seconds() const {
   return ttl_seconds_;
 }
 
-const PTExpr::SharedPtr& PTDmlUsingClause::user_timestamp_micros() const {
-  return user_timestamp_micros_;
+const PTExpr::SharedPtr& PTDmlUsingClause::user_timestamp_usec() const {
+  return user_timestamp_usec_;
 }
 
 } // namespace ql

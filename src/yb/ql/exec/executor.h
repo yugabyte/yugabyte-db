@@ -187,6 +187,12 @@ class Executor {
   // Set the time to live for the values affected by the current write request
   CHECKED_STATUS TtlToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req);
 
+  // Set the timestamp for the values affected by the current write request
+  CHECKED_STATUS TimestampToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req);
+
+  // Convert PTExpr to appropriate QLExpressionPB with appropriate validation
+  CHECKED_STATUS PTExprToPBValidated(const PTExpr::SharedPtr& expr, QLExpressionPB *expr_pb);
+
   //------------------------------------------------------------------------------------------------
   // Column evaluation.
 

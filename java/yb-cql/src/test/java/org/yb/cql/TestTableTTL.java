@@ -15,6 +15,7 @@ package org.yb.cql;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import org.junit.Test;
+import org.yb.client.TestUtils;
 
 import java.util.Iterator;
 
@@ -102,7 +103,7 @@ public class TestTableTTL extends BaseCQLTest {
     assertEquals(3, row.getInt(2));
 
     // Now row should expire.
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
 
     // Verify row has expired.
     assertNoRow(tableName, 1);
@@ -120,7 +121,7 @@ public class TestTableTTL extends BaseCQLTest {
     session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (2, 3, 4) USING TTL 4;",
       tableName));
 
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
 
     // c1=1 should have expired.
     assertNoRow(tableName, 1);
@@ -131,14 +132,14 @@ public class TestTableTTL extends BaseCQLTest {
     assertEquals(3, row.getInt(1));
     assertEquals(4, row.getInt(2));
 
-    Thread.sleep(2000);
+    TestUtils.waitForTTL(2000L);
 
     // c1 = 2 should have expired.
     assertNoRow(tableName, 2);
 
     session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (3, 4, 5) USING TTL 2;",
       tableName));
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
     // c1 = 3 should have expired.
     assertNoRow(tableName, 3);
   }
@@ -152,7 +153,7 @@ public class TestTableTTL extends BaseCQLTest {
     session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3) USING TTL 0;",
       tableName));
 
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
 
     // Row should not have expired.
     Row row = getFirstRow(tableName, 1);
@@ -172,7 +173,7 @@ public class TestTableTTL extends BaseCQLTest {
     session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (2, 2, 3);",
       tableName));
 
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
 
     // TTL 1 should have expired.
     assertNoRow(tableName, 1);
@@ -195,7 +196,7 @@ public class TestTableTTL extends BaseCQLTest {
     session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (2, 2, 3);",
       tableName));
 
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
 
     // c1 = 1 should have expired.
     assertNoRow(tableName, 1);
@@ -206,7 +207,7 @@ public class TestTableTTL extends BaseCQLTest {
     assertEquals(2, row.getInt(1));
     assertEquals(3, row.getInt(2));
 
-    Thread.sleep(2000);
+    TestUtils.waitForTTL(2000L);
 
     // Row c1 = 2 should now expire, with init marker.
     assertNoRow(tableName, 2);
@@ -226,7 +227,7 @@ public class TestTableTTL extends BaseCQLTest {
     session.execute(String.format("DELETE FROM %s WHERE c1 = 1;", tableName));
     session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 4);", tableName));
 
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
 
     // Verify row still exists.
     Row row = getFirstRow(tableName, 1);
@@ -234,7 +235,7 @@ public class TestTableTTL extends BaseCQLTest {
     assertEquals(2, row.getInt(1));
     assertEquals(4, row.getInt(2));
 
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
 
     // Now verify row is gone due to table level TTL.
     assertNoRow(tableName, 1);
@@ -249,12 +250,12 @@ public class TestTableTTL extends BaseCQLTest {
     session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3);",
       tableName));
 
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
 
     // Overwrite the row.
     session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 4);", tableName));
 
-    Thread.sleep(2000);
+    TestUtils.waitForTTL(2000L);
 
     // Row shouldn't expire since a new liveness column is written.
     Row row = getFirstRow(tableName, 1);
@@ -292,7 +293,7 @@ public class TestTableTTL extends BaseCQLTest {
     // Update a single column.
     session.execute(String.format("UPDATE %s USING TTL 60 SET c2 = 20 WHERE c1 = 1", tableName));
 
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
 
     // Verify primary key and one column survive.
     Row row = getFirstRow(tableName, 1);
@@ -331,7 +332,7 @@ public class TestTableTTL extends BaseCQLTest {
     assertEquals(6, row.getInt(2));
 
     // Wait for rows to expire.
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
 
     // Verify rows have expired.
     assertNoRow(tableName, 1);
@@ -354,7 +355,7 @@ public class TestTableTTL extends BaseCQLTest {
     session.execute(String.format("ALTER TABLE %s WITH default_time_to_live=2;", tableName));
 
     // Wait for rows to expire.
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
 
     // Verify first row is gone.
     assertNoRow(tableName, 1);
@@ -372,7 +373,7 @@ public class TestTableTTL extends BaseCQLTest {
     session.execute(String.format("ALTER TABLE %s WITH default_time_to_live=20;", tableName));
 
     // Wait for rows to expire.
-    Thread.sleep(4050);
+    TestUtils.waitForTTL(4000L);
 
     // Verify second row is gone.
     assertNoRow(tableName, 4);
@@ -399,7 +400,7 @@ public class TestTableTTL extends BaseCQLTest {
     session.execute(String.format("ALTER TABLE %s WITH default_time_to_live=50;", tableName));
 
     // Wait for columns to expire.
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
 
     // Verify that only c2 is deleted.
     Row row = getFirstRow(tableName, 1);
@@ -423,7 +424,7 @@ public class TestTableTTL extends BaseCQLTest {
     session.execute(String.format("ALTER TABLE %s WITH default_time_to_live=2;", tableName));
 
     // Wait for columns to expire.
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
 
     // Verify that only c3 is deleted.
     Row row = getFirstRow(tableName, 1);

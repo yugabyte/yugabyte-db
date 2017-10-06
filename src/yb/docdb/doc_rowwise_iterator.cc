@@ -446,7 +446,7 @@ Status DocRowwiseIterator::NextRow(const Schema& projection, QLTableRow* table_r
     if (column_value != nullptr) {
       SubDocument::ToQLValuePB(*column_value, ql_type, &(*table_row)[column_id].value);
       (*table_row)[column_id].ttl_seconds = column_value->GetTtl();
-      (*table_row)[column_id].write_time = column_value->GetWritetime();
+      (*table_row)[column_id].write_time = column_value->GetWriteTime();
     }
   }
   row_ready_ = false;

@@ -133,5 +133,36 @@ TEST(SubDocumentTest, Equality) {
   ASSERT_NE(SubDocument({{1, 2}, {3, 4}}), SubDocument({{1, 2}, {5, 4}}));
 }
 
+TEST(SubDocumentTest, TestCopyMove) {
+  // Try Copies.
+  SubDocument s1(ValueType::kObject);
+  s1.SetTtl(1000);
+  s1.SetWritetime(1000);
+  SubDocument s2 = s1;
+  ASSERT_EQ(s1, s2);
+  ASSERT_EQ(s1.GetTtl(), s2.GetTtl());
+  ASSERT_EQ(s1.GetWriteTime(), s2.GetWriteTime());
+
+  SubDocument s3;
+  s3 = s1;
+  ASSERT_EQ(s1, s3);
+  ASSERT_EQ(s1.GetTtl(), s3.GetTtl());
+  ASSERT_EQ(s1.GetWriteTime(), s3.GetWriteTime());
+
+  // Try Moves.
+  SubDocument s4 = std::move(s1);
+  ASSERT_EQ(s3, s4);
+  ASSERT_EQ(s3.GetTtl(), s4.GetTtl());
+  ASSERT_EQ(s3.GetWriteTime(), s4.GetWriteTime());
+  ASSERT_EQ(ValueType::kNull, s1.value_type());
+
+  SubDocument s5;
+  s5 = std::move(s2);
+  ASSERT_EQ(s3, s5);
+  ASSERT_EQ(s3.GetTtl(), s5.GetTtl());
+  ASSERT_EQ(s3.GetWriteTime(), s5.GetWriteTime());
+  ASSERT_EQ(ValueType::kNull, s2.value_type());
+}
+
 } // namespace docdb
 } // namespace yb

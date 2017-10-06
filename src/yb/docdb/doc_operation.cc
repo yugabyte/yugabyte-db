@@ -145,7 +145,7 @@ Status GetRedisValueType(
   }
   if (cached_entry) {
     doc_found = true;
-    doc = SubDocument(cached_entry->second);
+    doc = SubDocument(cached_entry->value_type);
   } else {
     // TODO(dtxn) - pass correct transaction context when we implement cross-shard transactions
     // support for Redis.
@@ -286,6 +286,14 @@ CHECKED_STATUS AddPrimitiveValueToResponseArray(const PrimitiveValue& value,
   } else {
     return STATUS_SUBSTITUTE(InvalidArgument, "Invalid value type: $0",
                              static_cast<int>(value.value_type()));
+  }
+  return Status::OK();
+}
+
+CHECKED_STATUS CheckUserTimestampForCollections(const UserTimeMicros user_timestamp) {
+  if (user_timestamp != Value::kInvalidUserTimestamp) {
+    return STATUS(InvalidArgument, "User supplied timestamp is only allowed for "
+        "replacing the whole collection");
   }
   return Status::OK();
 }
@@ -953,7 +961,7 @@ const RedisResponsePB& RedisReadOperation::response() {
 
 namespace {
 
-bool RequireRead(const QLWriteRequestPB& request) {
+bool RequireReadForExpressions(const QLWriteRequestPB& request) {
   // A QLWriteOperation requires a read if it contains an IF clause or an UPDATE assignment that
   // involves an expresion with a column reference. If the IF clause contains a condition that
   // involves a column reference, the column will be included in "column_refs". However, we cannot
@@ -961,7 +969,14 @@ bool RequireRead(const QLWriteRequestPB& request) {
   // "IF NOT EXISTS" do not involve a column reference explicitly.
   return request.has_if_expr()
       || request.has_column_refs() && (!request.column_refs().ids().empty() ||
-                                       !request.column_refs().static_ids().empty());
+          !request.column_refs().static_ids().empty());
+}
+
+bool RequireRead(const QLWriteRequestPB& request) {
+  // In case of a user supplied timestamp, we need a read (and hence appropriate locks for read
+  // modify write) but it is at the docdb level on a per key basis instead of a QL read of the
+  // latest row.
+  return RequireReadForExpressions(request) || request.has_user_timestamp_usec();
 }
 
 // Create projection schemas of static and non-static columns from a rowblock projection schema
@@ -1221,7 +1236,7 @@ Status QLWriteOperation::Apply(
                                        &rowblock_,
                                        &table_row,
                                        request_.query_id()));
-  } else if (require_read_) {
+  } else if (RequireReadForExpressions(request_)) {
     RETURN_NOT_OK(ReadColumns(rocksdb, hybrid_time, nullptr, nullptr, &table_row,
                               request_.query_id()));
   }
@@ -1229,6 +1244,8 @@ Status QLWriteOperation::Apply(
   if (should_apply) {
     const MonoDelta ttl =
         request_.has_ttl() ? MonoDelta::FromMilliseconds(request_.ttl()) : Value::kMaxTtl;
+    const UserTimeMicros user_timestamp = request_.has_user_timestamp_usec() ?
+        request_.user_timestamp_usec() : Value::kInvalidUserTimestamp;
 
     switch (request_.type()) {
       // QL insert == update (upsert) to be consistent with Cassandra's semantics. In either
@@ -1243,7 +1260,7 @@ Status QLWriteOperation::Apply(
         if (request_.type() == QLWriteRequestPB::QL_STMT_INSERT && pk_doc_path_ != nullptr) {
           const DocPath sub_path(pk_doc_path_->encoded_doc_key(),
                                  PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
-          const auto value = Value(PrimitiveValue(), ttl);
+          const auto value = Value(PrimitiveValue(), ttl, user_timestamp);
           RETURN_NOT_OK(doc_write_batch->SetPrimitive(sub_path, value,
               InitMarkerBehavior::OPTIONAL));
         }
@@ -1275,15 +1292,18 @@ Status QLWriteOperation::Apply(
                   RETURN_NOT_OK(doc_write_batch->InsertSubDocument(sub_path,
                                                                    sub_doc,
                                                                    InitMarkerBehavior::OPTIONAL,
-                                                                   ttl));
+                                                                   ttl,
+                                                                   user_timestamp));
                   break;
                 case WriteAction::EXTEND:
+                  RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
                   RETURN_NOT_OK(doc_write_batch->ExtendSubDocument(sub_path,
                                                                    sub_doc,
                                                                    InitMarkerBehavior::OPTIONAL,
                                                                    ttl));
                   break;
                 case WriteAction::APPEND:
+                  RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
                   RETURN_NOT_OK(doc_write_batch->ExtendList(sub_path,
                                                             sub_doc,
                                                             ListExtendOrder::APPEND,
@@ -1291,6 +1311,7 @@ Status QLWriteOperation::Apply(
                                                             ttl));
                   break;
                 case WriteAction::PREPEND:
+                  RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
                   RETURN_NOT_OK(doc_write_batch->ExtendList(sub_path,
                                                             sub_doc,
                                                             ListExtendOrder::PREPEND,
@@ -1298,6 +1319,7 @@ Status QLWriteOperation::Apply(
                                                             ttl));
                   break;
                 case WriteAction::REMOVE_KEYS:
+                  RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
                   RETURN_NOT_OK(doc_write_batch->ExtendSubDocument(sub_path,
                                                                    sub_doc,
                                                                    InitMarkerBehavior::OPTIONAL,
@@ -1312,6 +1334,8 @@ Status QLWriteOperation::Apply(
                   break;
               }
             } else {
+              RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
+
               // Setting the value for a sub-column
               // Currently we only support two cases here: `map['key'] = v` and `list[index] = v`)
               // Any other case should be rejected by the semantic analyser before getting here
@@ -1328,7 +1352,8 @@ Status QLWriteOperation::Apply(
                   RETURN_NOT_OK(doc_write_batch->InsertSubDocument(sub_path,
                                                                    sub_doc,
                                                                    InitMarkerBehavior::OPTIONAL,
-                                                                   ttl));
+                                                                   ttl,
+                                                                   user_timestamp));
                   break;
                 }
                 case LIST: {
@@ -1378,11 +1403,12 @@ Status QLWriteOperation::Apply(
                 column.is_static() ?
                 hashed_doc_path_->encoded_doc_key() : pk_doc_path_->encoded_doc_key(),
                 PrimitiveValue(column_id));
-            RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path, InitMarkerBehavior::OPTIONAL));
+            RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path, InitMarkerBehavior::OPTIONAL,
+                                                        user_timestamp));
           }
         } else {
           RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(
-              *pk_doc_path_, InitMarkerBehavior::OPTIONAL));
+              *pk_doc_path_, InitMarkerBehavior::OPTIONAL, user_timestamp));
         }
         break;
       }

@@ -14,6 +14,7 @@
 #ifndef YB_DOCDB_VALUE_H_
 #define YB_DOCDB_VALUE_H_
 
+#include "yb/common/typedefs.h"
 #include "yb/docdb/value_type.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/util/monotime.h"
@@ -21,19 +22,22 @@
 namespace yb {
 namespace docdb {
 
+// This class represents the data stored in the value portion of rocksdb. It consists of the TTL
+// for the given key, the user specified timestamp and finally the value. These items are encoded
+// into a RocksDB Slice in the order mentioned above. The TTL and user timestamp are optional.
 class Value {
  public:
   Value() : primitive_value_(),
             ttl_(kMaxTtl),
-            user_timestamp_micros_(kInvalidUserTimestamp) {
+            user_timestamp_(kInvalidUserTimestamp) {
   }
 
   explicit Value(PrimitiveValue primitive_value,
                  MonoDelta ttl = kMaxTtl,
-                 int64_t user_timestamp_micros = kInvalidUserTimestamp)
+                 UserTimeMicros user_timestamp = kInvalidUserTimestamp)
       : primitive_value_(primitive_value),
         ttl_(ttl),
-        user_timestamp_micros_(user_timestamp_micros) {
+        user_timestamp_(user_timestamp) {
   }
 
   static const MonoDelta kMaxTtl;
@@ -42,9 +46,11 @@ class Value {
 
   MonoDelta ttl() const { return ttl_; }
 
-  int64_t user_timestamp_micros() const { return user_timestamp_micros_; }
+  UserTimeMicros user_timestamp() const { return user_timestamp_; }
 
   bool has_ttl() const { return !ttl_.Equals(kMaxTtl); }
+
+  bool has_user_timestamp() const { return user_timestamp_ != kInvalidUserTimestamp; }
 
   ValueType value_type() const { return primitive_value_.value_type(); }
 
@@ -74,10 +80,14 @@ class Value {
   static CHECKED_STATUS DecodePrimitiveValueType(const rocksdb::Slice& rocksdb_value,
                                                  ValueType* value_type);
 
+  // Return the user timestamp portion from a slice that points to the rocksdb_value.
+  static CHECKED_STATUS DecodeUserTimestamp(const rocksdb::Slice& rocksdb_value,
+                                            UserTimeMicros* user_timestamp);
+
  private:
   // Consume the timestamp portion of the slice assuming the beginning of the slice points to
   // the timestamp.
-  CHECKED_STATUS DecodeUserTimestamp(rocksdb::Slice* rocksdb_value);
+  static CHECKED_STATUS DecodeUserTimestamp(rocksdb::Slice* slice, UserTimeMicros* user_timestamp);
 
   // Returns true if the expected_value_type is found, otherwise returns false and sets val to
   // default_value.
@@ -93,7 +103,7 @@ class Value {
   MonoDelta ttl_;
 
   // The timestamp provided by the user as part of a 'USING TIMESTAMP' clause in CQL.
-  int64_t user_timestamp_micros_;
+  UserTimeMicros user_timestamp_;
 };
 
 }  // namespace docdb

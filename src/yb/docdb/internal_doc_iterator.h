@@ -102,7 +102,37 @@ class InternalDocIterator {
   // @return The type of subdocument pointed to by this iterator, if it exists.
   ValueType subdoc_type() const {
     CHECK(subdoc_exists());
+    return subdoc_type_unchecked();
+  }
+
+  // Retrieves the type without checking for existence of the doc. This is useful when we
+  // encounter a tombstone and would like to still expose information about the subdoc we found.
+  ValueType subdoc_type_unchecked() const {
     return subdoc_type_;
+  }
+
+  // Retrieves whether the key_prefix only lacks hybrid time from the key found without checking for
+  // existence of the doc. This is useful when we encounter a tombstone and would like to still
+  // expose information about the subdoc we found.
+  bool found_exact_key_prefix_unchecked() const {
+    return found_exact_key_prefix_;
+  }
+
+  const DocHybridTime& subdoc_ht() const {
+    CHECK(subdoc_exists());
+    return subdoc_ht_unchecked();
+  }
+
+  // Retrieves the hybrid time without checking for existence of the doc. This is useful when we
+  // encounter a tombstone and would like to still expose information about the subdoc we found.
+  const DocHybridTime& subdoc_ht_unchecked() const {
+    return subdoc_ht_;
+  }
+
+  // Retrieves the user timestamp without checking for existence of the doc. This is useful when we
+  // encounter a tombstone and would like to still expose information about the subdoc we found.
+  const UserTimeMicros subdoc_user_timestamp_unchecked() const {
+    return subdoc_user_timestamp_;
   }
 
   bool subdoc_deleted() {
@@ -157,6 +187,15 @@ class InternalDocIterator {
   // document was last fully overwritten or deleted. The notion of "last" may mean "last as of the
   // hybrid time we're scanning at". Only valid if subdoc_exists() or subdoc_deleted().
   DocHybridTime subdoc_ht_;
+
+  // The user supplied timestamp in the value portion.
+  UserTimeMicros subdoc_user_timestamp_;
+
+  // We found a key which matched the exact key_prefix_ we were searching for (excluding the
+  // hybrid time). Since we search for a key prefix, we could search for a.b.c, but end up
+  // finding a key like a.b.c.d.e. This field indicates that we searched for something like a.b.c
+  // and found a key for a.b.c.
+  bool found_exact_key_prefix_;
 
   Trilean subdoc_exists_;
 

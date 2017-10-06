@@ -69,6 +69,9 @@ public class TestUtils {
   private static final long startTimeMillis = System.currentTimeMillis();
   private static Random randomGenerator;
 
+  // The amount of time to wait for in addition to the ttl specified.
+  private static final long WAIT_FOR_TTL_EXTENSION_MS = 100;
+
   private static String NONBLOCKING_RANDOM_DEVICE = "/dev/urandom";
   static {
     long seed = System.nanoTime();
@@ -465,5 +468,14 @@ public class TestUtils {
 
   public static int randomNonNegNumber() {
     return randomGenerator.nextInt(Integer.MAX_VALUE);
+  }
+
+  /**
+   * Waits for the given ttl (in msec) to expire.
+   * @param ttl the ttl (in msec) to wait for expiry.
+   * @throws Exception
+   */
+  public static void waitForTTL(Long ttl) throws Exception {
+    Thread.sleep(ttl + WAIT_FOR_TTL_EXTENSION_MS);
   }
 }

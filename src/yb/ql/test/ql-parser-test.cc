@@ -77,6 +77,10 @@ TEST_F(QLTestParser, TestQLParser) {
   // Valid statement: INSERT with TIMESTAMP.
   PARSE_VALID_STMT("INSERT INTO human_resource (id, name) values (1, \"Joe\") USING TIMESTAMP 100");
 
+  // Valid statement: INSERT with negative TIMESTAMP.
+  PARSE_VALID_STMT("INSERT INTO human_resource (id, name) values (1, \"Joe\") USING TIMESTAMP "
+                       "-100");
+
   // Valid statement: INSERT with multiple TTL and TIMESTAMP.
   PARSE_VALID_STMT("INSERT INTO human_resource (id, name) values (1, \"Joe\") USING TTL 1 AND "
                        "TIMESTAMP 100 AND TTL 100 AND TIMESTAMP 200");

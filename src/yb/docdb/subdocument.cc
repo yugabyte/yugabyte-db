@@ -63,6 +63,8 @@ SubDocument::SubDocument(const SubDocument& other) {
     new(this) PrimitiveValue(other);
   } else {
     type_ = other.type_;
+    ttl_seconds_ = other.ttl_seconds_;
+    write_time_ = other.write_time_;
     complex_data_structure_ = nullptr;
     switch (type_) {
       case ValueType::kObject:

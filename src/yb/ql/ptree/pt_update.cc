@@ -117,6 +117,11 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
   // Collect table's schema for semantic analysis.
   RETURN_NOT_OK(LookupTable(sem_context));
 
+  SemState sem_state(sem_context);
+  // Run error checking on USING clause. Need to run this before analyzing the SET clause, so the
+  // user supplied timestamp is filled in.
+  RETURN_NOT_OK(AnalyzeUsingClause(sem_context));
+
   // Process set clause.
   column_args_->resize(num_columns());
   TreeNodePtrOperator<SemContext, PTAssign> analyze = std::bind(&PTUpdateStmt::AnalyzeSetExpr,
@@ -124,7 +129,6 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
                                                                 std::placeholders::_1,
                                                                 std::placeholders::_2);
 
-  SemState sem_state(sem_context);
   sem_state.set_processing_set_clause(true);
   RETURN_NOT_OK(set_clause_->Analyze(sem_context, analyze));
   sem_state.ResetContextState();
@@ -143,15 +147,19 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
   // Run error checking on the IF conditions.
   RETURN_NOT_OK(AnalyzeIfClause(sem_context, if_clause_));
 
-  // Run error checking on USING clause.
-  RETURN_NOT_OK(AnalyzeUsingClause(sem_context));
-
   return Status::OK();
 }
 
 CHECKED_STATUS PTUpdateStmt::AnalyzeSetExpr(PTAssign *assign_expr, SemContext *sem_context) {
   // Analyze the expression.
   RETURN_NOT_OK(assign_expr->Analyze(sem_context));
+
+  if (assign_expr->col_desc()->ql_type()->IsCollection() &&
+      using_clause_ != nullptr && using_clause_->has_user_timestamp_usec()) {
+    return sem_context->Error(assign_expr, "UPDATE statement with collection and USING TIMESTAMP "
+        "is not supported", ErrorCode::INVALID_ARGUMENTS);
+  }
+
   if (!require_column_read_ && assign_expr->require_column_read()) {
     require_column_read_ = true;
   }

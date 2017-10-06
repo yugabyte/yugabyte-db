@@ -110,8 +110,10 @@ class DocWriteBatch {
   CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path,
       const PrimitiveValue& value,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED) {
-    return SetPrimitive(doc_path, Value(value), use_init_marker);
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED,
+      UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp) {
+    return SetPrimitive(doc_path, Value(value, Value::kMaxTtl, user_timestamp),
+                        use_init_marker);
   }
 
   // Extend the SubDocument in the given key. We'll support List with Append and Prepend mode later.
@@ -122,20 +124,23 @@ class DocWriteBatch {
       const DocPath& doc_path,
       const SubDocument& value,
       InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL,
-      MonoDelta ttl = Value::kMaxTtl);
+      MonoDelta ttl = Value::kMaxTtl,
+      UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
 
   CHECKED_STATUS InsertSubDocument(
       const DocPath& doc_path,
       const SubDocument& value,
       InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL,
-      MonoDelta ttl = Value::kMaxTtl);
+      MonoDelta ttl = Value::kMaxTtl,
+      UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
 
   CHECKED_STATUS ExtendList(
       const DocPath& doc_path,
       const SubDocument& value,
       ListExtendOrder extend_order = ListExtendOrder::APPEND,
       InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL,
-      MonoDelta ttl = Value::kMaxTtl);
+      MonoDelta ttl = Value::kMaxTtl,
+      UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
 
   // 'indexes' must be sorted. List indexes are not zero indexed, the first element is list[1].
   CHECKED_STATUS ReplaceInList(
@@ -150,7 +155,8 @@ class DocWriteBatch {
 
   CHECKED_STATUS DeleteSubDoc(
       const DocPath& doc_path,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED);
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED,
+      UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
 
   void Clear();
   bool IsEmpty() const { return put_batch_.empty(); }
@@ -189,6 +195,10 @@ class DocWriteBatch {
       bool is_deletion,
       int num_subkeys,
       InitMarkerBehavior use_init_marker);
+
+  // Handle the user provided timestamp during writes.
+  Result<bool> SetPrimitiveInternalHandleUserTimestamp(const Value &value,
+                                                       InternalDocIterator* doc_iter);
 
   DocWriteBatchCache cache_;
 

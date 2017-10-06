@@ -30,17 +30,28 @@ TEST_F(ValueTest, TestEncodeDecode) {
   Value value(primitive_value, ttl, timestamp);
   LOG(INFO) << "Testing Value: " << value.ToString();
 
-  const std::string value_bytes = value.Encode();
+  std::string value_bytes = value.Encode();
   Value decoded_value;
   // Test values without decoding.
   ASSERT_TRUE(decoded_value.ttl().Equals(Value::kMaxTtl));
-  ASSERT_EQ(Value::kInvalidUserTimestamp, decoded_value.user_timestamp_micros());
+  ASSERT_EQ(Value::kInvalidUserTimestamp, decoded_value.user_timestamp());
 
   // Now decode and test.
   ASSERT_OK(decoded_value.Decode(value_bytes));
   ASSERT_EQ(primitive_value, decoded_value.primitive_value());
   ASSERT_TRUE(ttl.Equals(decoded_value.ttl()));
-  ASSERT_EQ(timestamp, decoded_value.user_timestamp_micros());
+  ASSERT_EQ(timestamp, decoded_value.user_timestamp());
+
+  // Test decode value type.
+  ValueType value_type;
+  ASSERT_OK(Value::DecodePrimitiveValueType(value_bytes, &value_type));
+  ASSERT_EQ(ValueType::kInt64, value_type);
+
+  // Test decode value type without ttl and timestamp.
+  Value val1(PrimitiveValue(r.Next64()));
+  value_bytes = val1.Encode();
+  ASSERT_OK(Value::DecodePrimitiveValueType(value_bytes, &value_type));
+  ASSERT_EQ(ValueType::kInt64, value_type);
 }
 
 }  // namespace docdb

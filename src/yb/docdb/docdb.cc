@@ -306,6 +306,34 @@ DocWriteBatch::DocWriteBatch(rocksdb::DB* rocksdb, std::atomic<int64_t>* monoton
       num_rocksdb_seeks_(0) {
 }
 
+Result<bool> DocWriteBatch::SetPrimitiveInternalHandleUserTimestamp(
+    const Value &value,
+    InternalDocIterator* doc_iter) {
+  bool should_apply = true;
+  if (value.user_timestamp() != Value::kInvalidUserTimestamp) {
+    // Seek for the older version of the key that we're about to write to. This is essentially a
+    // NOOP if we've already performed the seek due to the cache used in our iterator.
+    RETURN_NOT_OK(doc_iter->SeekToKeyPrefix());
+    // We'd like to include tombstones in our timestamp comparisons as well.
+    if ((doc_iter->subdoc_exists() || doc_iter->subdoc_type_unchecked() == ValueType::kTombstone) &&
+        doc_iter->found_exact_key_prefix_unchecked()) {
+      UserTimeMicros user_timestamp = doc_iter->subdoc_user_timestamp_unchecked();
+
+      if (user_timestamp != Value::kInvalidUserTimestamp) {
+        should_apply = value.user_timestamp() >= user_timestamp;
+      } else {
+        // Look at the hybrid time instead.
+        const DocHybridTime& doc_hybrid_time = doc_iter->subdoc_ht_unchecked();
+        if (doc_hybrid_time.hybrid_time().is_valid()) {
+          should_apply = value.user_timestamp() >=
+              doc_hybrid_time.hybrid_time().GetPhysicalValueMicros();
+        }
+      }
+    }
+  }
+  return should_apply;
+}
+
 CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
     const DocPath& doc_path,
     const Value& value,
@@ -320,6 +348,11 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
         NotSupported,
         "Trying to add more than $0 key/value pairs in the same single-shard txn.",
         numeric_limits<IntraTxnWriteId>::max());
+  }
+
+  if (value.has_user_timestamp() && use_init_marker != InitMarkerBehavior::OPTIONAL) {
+    return STATUS(IllegalState,
+                  "User Timestamp is only supported for Optional Init Markers");
   }
 
   const auto write_id = static_cast<IntraTxnWriteId>(put_batch_.size());
@@ -347,7 +380,16 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
         // point in seeking to intermediate document levels to verify their existence.
         if (use_init_marker == InitMarkerBehavior::OPTIONAL) {
           // In the case where init markers are optional, we don't need to check existence of
-          // the current subdocument.
+          // the current subdocument. Although if we have a user timestamp specified, we need to
+          // check whether the provided user timestamp is higher than what is already present. If
+          // an intermediate subdocument is found with a higher timestamp, we consider it as an
+          // overwrite and skip the entire write.
+          auto should_apply = SetPrimitiveInternalHandleUserTimestamp(value, doc_iter);
+          RETURN_NOT_OK(should_apply);
+
+          if (!should_apply.get()) {
+            return Status::OK();
+          }
           doc_iter->AppendToPrefix(subkey);
         } else {
           // TODO: convert CHECKs inside the function below to a returned Status.
@@ -375,6 +417,7 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
         return Status::OK();
       }
 
+      DCHECK(!value.has_user_timestamp());
       // The document/subdocument that this subkey is supposed to live in does not exist, create it.
       KeyBytes parent_key(doc_iter->key_prefix());
 
@@ -391,12 +434,19 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
     }
   }
 
-  // The key we use in the DocWriteBatchCache does not have a final hybrid_time, because that's the
-  // key we expect to look up.
-  cache_.Put(doc_iter->key_prefix(), hybrid_time, value.primitive_value().value_type());
+  // We need to handle the user timestamp if present.
+  auto should_apply = SetPrimitiveInternalHandleUserTimestamp(value, doc_iter);
+  RETURN_NOT_OK(should_apply);
 
-  // The key in the key/value batch does not have an encoded HybridTime.
-  put_batch_.emplace_back(doc_iter->key_prefix().AsStringRef(), value.Encode());
+  if (should_apply.get()) {
+    // The key in the key/value batch does not have an encoded HybridTime.
+    put_batch_.emplace_back(doc_iter->key_prefix().AsStringRef(), value.Encode());
+
+    // The key we use in the DocWriteBatchCache does not have a final hybrid_time, because that's
+    // the key we expect to look up.
+    cache_.Put(doc_iter->key_prefix(), hybrid_time, value.primitive_value().value_type(),
+               value.user_timestamp());
+  }
 
   return Status::OK();
 }
@@ -444,23 +494,27 @@ Status DocWriteBatch::ExtendSubDocument(
     const DocPath& doc_path,
     const SubDocument& value,
     InitMarkerBehavior use_init_marker,
-    MonoDelta ttl) {
+    MonoDelta ttl,
+    UserTimeMicros user_timestamp) {
   if (IsObjectType(value.value_type())) {
     const auto& map = value.object_container();
     for (const auto& ent : map) {
       DocPath child_doc_path = doc_path;
       child_doc_path.AddSubKey(ent.first);
-      RETURN_NOT_OK(ExtendSubDocument(child_doc_path, ent.second, use_init_marker, ttl));
+      RETURN_NOT_OK(ExtendSubDocument(child_doc_path, ent.second, use_init_marker, ttl,
+                                      user_timestamp));
     }
   } else if (value.value_type() == ValueType::kArray) {
-      RETURN_NOT_OK(ExtendList(doc_path, value, ListExtendOrder::APPEND, use_init_marker, ttl));
+      RETURN_NOT_OK(ExtendList(doc_path, value, ListExtendOrder::APPEND, use_init_marker, ttl,
+                               user_timestamp));
   } else {
     if (!value.IsPrimitive() && value.value_type() != ValueType::kTombstone) {
       return STATUS_FORMAT(InvalidArgument,
           "Found unexpected value type $0. Expecting a PrimitiveType or a Tombstone",
           value.value_type());
     }
-    RETURN_NOT_OK(SetPrimitive(doc_path, Value(value, ttl), use_init_marker));
+    RETURN_NOT_OK(SetPrimitive(doc_path, Value(value, ttl, user_timestamp),
+                  use_init_marker));
   }
   return Status::OK();
 }
@@ -469,18 +523,22 @@ Status DocWriteBatch::InsertSubDocument(
     const DocPath& doc_path,
     const SubDocument& value,
     InitMarkerBehavior use_init_marker,
-    MonoDelta ttl) {
+    MonoDelta ttl,
+    UserTimeMicros user_timestamp) {
   if (!value.IsPrimitive() && value.value_type() != ValueType::kTombstone) {
     RETURN_NOT_OK(SetPrimitive(
-        doc_path, Value(PrimitiveValue(value.value_type()), ttl), use_init_marker));
+        doc_path, Value(PrimitiveValue(value.value_type()), ttl, user_timestamp),
+        use_init_marker));
   }
-  return ExtendSubDocument(doc_path, value, use_init_marker, ttl);
+  return ExtendSubDocument(doc_path, value, use_init_marker, ttl, user_timestamp);
 }
 
 Status DocWriteBatch::DeleteSubDoc(
     const DocPath& doc_path,
-    InitMarkerBehavior use_init_marker) {
-  return SetPrimitive(doc_path, PrimitiveValue(ValueType::kTombstone), use_init_marker);
+    InitMarkerBehavior use_init_marker,
+    UserTimeMicros user_timestamp) {
+  return SetPrimitive(doc_path, PrimitiveValue(ValueType::kTombstone), use_init_marker,
+                      user_timestamp);
 }
 
 Status DocWriteBatch::ExtendList(
@@ -488,7 +546,8 @@ Status DocWriteBatch::ExtendList(
     const SubDocument& value,
     ListExtendOrder extend_order,
     InitMarkerBehavior use_init_marker,
-    MonoDelta ttl) {
+    MonoDelta ttl,
+    UserTimeMicros user_timestamp) {
   if (monotonic_counter_ == nullptr) {
     return STATUS(IllegalState, "List cannot be extended if monotonic_counter_ is uninitialized");
   }
@@ -509,14 +568,16 @@ Status DocWriteBatch::ExtendList(
       DocPath child_doc_path = doc_path;
       index++;
       child_doc_path.AddSubKey(PrimitiveValue::ArrayIndex(index));
-      RETURN_NOT_OK(ExtendSubDocument(child_doc_path, list[i], use_init_marker, ttl));
+      RETURN_NOT_OK(ExtendSubDocument(child_doc_path, list[i], use_init_marker, ttl,
+                                      user_timestamp));
     }
   } else { // PREPEND - adding in reverse order with negated index
     for (size_t i = list.size(); i > 0; i--) {
       DocPath child_doc_path = doc_path;
       index++;
       child_doc_path.AddSubKey(PrimitiveValue::ArrayIndex(-index));
-      RETURN_NOT_OK(ExtendSubDocument(child_doc_path, list[i - 1], use_init_marker, ttl));
+      RETURN_NOT_OK(ExtendSubDocument(child_doc_path, list[i - 1], use_init_marker, ttl,
+                                      user_timestamp));
     }
   }
   return Status::OK();
@@ -572,6 +633,7 @@ Status DocWriteBatch::ReplaceInList(
       }
     }
     current_index++;
+
     // Should we verify that the subkeys are indeed numbers as list indexes should be?
     // Or just go in order for the index'th largest key in any subdocument?
     if (current_index == indexes[replace_index]) {
@@ -698,10 +760,7 @@ CHECKED_STATUS BuildSubDocument(
     bool only_lacks_ht = false;
     RETURN_NOT_OK(encoded_key.OnlyLacksHybridTimeFrom(iter->key(), &only_lacks_ht));
     if (only_lacks_ht) {
-      MonoDelta ttl;
-      RETURN_NOT_OK(Value::DecodeTTL(&value, &ttl));
-
-      ttl = ComputeTTL(ttl, table_ttl);
+      const MonoDelta ttl = ComputeTTL(doc_value.ttl(), table_ttl);
 
       DocHybridTime write_time = found_key.doc_hybrid_time();
 
@@ -762,7 +821,13 @@ CHECKED_STATUS BuildSubDocument(
               ttl.ToMilliseconds() / MonoTime::kMillisecondsPerSecond - time_since_write_seconds);
           doc_value.mutable_primitive_value()->SetTtl(ttl_seconds);
         }
-        doc_value.mutable_primitive_value()->SetWritetime(write_time.hybrid_time().ToUint64());
+
+        // Choose the user supplied timestamp if present.
+        const UserTimeMicros user_timestamp = doc_value.user_timestamp();
+        doc_value.mutable_primitive_value()->SetWritetime(
+            user_timestamp == Value::kInvalidUserTimestamp
+                ? write_time.hybrid_time().GetPhysicalValueMicros()
+                : doc_value.user_timestamp());
         *subdocument = SubDocument(doc_value.primitive_value());
         DOCDB_DEBUG_LOG("SeekForward: $0.AdvanceOutOfSubDoc() = $1", found_key.ToString(),
             found_key.AdvanceOutOfSubDoc().ToString());

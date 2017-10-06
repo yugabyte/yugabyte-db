@@ -24,6 +24,7 @@
 #include "yb/util/string_case.h"
 
 namespace yb {
+
 namespace common {
 
 static const MonoDelta kMaxTtl = MonoDelta::FromNanoseconds(std::numeric_limits<int64_t>::max());

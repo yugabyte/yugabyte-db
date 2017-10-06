@@ -20,6 +20,7 @@ import java.util.Iterator;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
 import org.junit.Test;
+import org.yb.client.TestUtils;
 
 /**
  * This an extensive test suite ensures that we appropriately test the tricky cassandra TTL
@@ -103,7 +104,7 @@ public class TestTTLSemantics extends BaseCQLTest {
     assertEquals(3, row.getInt(2));
 
     // Wait for ttl expiry.
-    Thread.sleep(5000);
+    TestUtils.waitForTTL(5000L);
 
     // Now verify the row is completely gone.
     assertNoRow(tableName, 1, 2, 3, 4);
@@ -122,7 +123,7 @@ public class TestTTLSemantics extends BaseCQLTest {
     session.execute(String.format("UPDATE %s USING TTL 2 SET c1 = 100, c2 = 200, c3 = 300 WHERE " +
       "k1 = 1 AND k2 = 2 AND k3 = 3 AND k4 = 4", tableName));
 
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
 
     // Verify columns expire, primary key lives on.
     Row row = getFirstRowWithPrimaryKey(tableName, 1, 2, 3, 4);
@@ -131,7 +132,7 @@ public class TestTTLSemantics extends BaseCQLTest {
     assertTrue(row.isNull(5));
     assertTrue(row.isNull(6));
 
-    Thread.sleep(2000);
+    TestUtils.waitForTTL(2000L);
 
     // Verify row expires.
     assertNoRow(tableName, 1, 2, 3, 4);
@@ -154,7 +155,7 @@ public class TestTTLSemantics extends BaseCQLTest {
     session.execute(String.format("UPDATE %s USING TTL 8 SET c3 = 300 WHERE " +
       "k1 = 1 AND k2 = 2 AND k3 = 3 AND k4 = 4", tableName));
 
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
 
     // Verify whole row is present.
     Row row = getFirstRowWithPrimaryKey(tableName, 1, 2, 3, 4);
@@ -163,7 +164,7 @@ public class TestTTLSemantics extends BaseCQLTest {
     assertEquals(200, row.getInt(5));
     assertEquals(300, row.getInt(6));
 
-    Thread.sleep(2000);
+    TestUtils.waitForTTL(2000L);
 
     // Verify c1 is gone.
     row = getFirstRowWithPrimaryKey(tableName, 1, 2, 3, 4);
@@ -172,7 +173,7 @@ public class TestTTLSemantics extends BaseCQLTest {
     assertEquals(200, row.getInt(5));
     assertEquals(300, row.getInt(6));
 
-    Thread.sleep(2000);
+    TestUtils.waitForTTL(2000L);
 
     // Verify c2 is gone.
     row = getFirstRowWithPrimaryKey(tableName, 1, 2, 3, 4);
@@ -181,7 +182,7 @@ public class TestTTLSemantics extends BaseCQLTest {
     assertTrue(row.isNull(5));
     assertEquals(300, row.getInt(6));
 
-    Thread.sleep(2000);
+    TestUtils.waitForTTL(2000L);
 
     // Verify whole row is now gone.
     assertNoRow(tableName, 1, 2, 3, 4);
@@ -200,7 +201,7 @@ public class TestTTLSemantics extends BaseCQLTest {
     session.execute(String.format("UPDATE %s USING TTL 2 SET c1 = 100, c2 = 200, c3 = 300 WHERE " +
       "k1 = 1 AND k2 = 2 AND k3 = 3 AND k4 = 4", tableName));
 
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
 
     // Verify all columns are gone, but primary key survives.
     Row row = getFirstRowWithPrimaryKey(tableName, 1, 2, 3, 4);
@@ -223,7 +224,7 @@ public class TestTTLSemantics extends BaseCQLTest {
     session.execute(String.format("UPDATE %s SET c1 = 100 WHERE " +
       "k1 = 1 AND k2 = 2 AND k3 = 3 AND k4 = 4", tableName));
 
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
 
     // Verify row survives with single column.
     Row row = getFirstRowWithPrimaryKey(tableName, 1, 2, 3, 4);
@@ -246,7 +247,7 @@ public class TestTTLSemantics extends BaseCQLTest {
     session.execute(String.format("INSERT INTO %s (k1, k2, k3, k4, c1, c2, c3) VALUES (1, 2, 3, " +
       "4, 100, 200, 300) USING TTL 2", tableName));
 
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
 
     // Verify whole row is gone due to new TTL.
     assertNoRow(tableName, 1, 2, 3, 4);
@@ -324,7 +325,7 @@ public class TestTTLSemantics extends BaseCQLTest {
     assertEquals(2000, row.getInt(5));
     assertEquals(3000, row.getInt(6));
 
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
 
     // One column and primary key survive.
     row = getFirstRowWithPrimaryKey(tableName, 1, 2, 3, 4);
@@ -333,7 +334,7 @@ public class TestTTLSemantics extends BaseCQLTest {
     assertTrue(row.isNull(5));
     assertTrue(row.isNull(6));
 
-    Thread.sleep(2000);
+    TestUtils.waitForTTL(2000L);
 
     // Now whole row is gone.
     assertNoRow(tableName, 1, 2, 3, 4);
@@ -352,7 +353,7 @@ public class TestTTLSemantics extends BaseCQLTest {
     session.execute(String.format("UPDATE %s SET c1 = 100, c2 = 200, c3 = 300 WHERE " +
       "k1 = 1 AND k2 = 2 AND k3 = 3 AND k4 = 4", tableName));
 
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
 
     // Liveness column has expired, but whole row still exists.
     Row row = getFirstRowWithPrimaryKey(tableName, 1, 2, 3, 4);
@@ -387,7 +388,7 @@ public class TestTTLSemantics extends BaseCQLTest {
     session.execute(String.format("UPDATE %s USING TTL 2 SET c1 = 100 WHERE " +
       "k1 = 1 AND k2 = 2 AND k3 = 3 AND k4 = 4", tableName));
 
-    Thread.sleep(2050);
+    TestUtils.waitForTTL(2000L);
 
     // Verify correct set of rows.
     ResultSet rs = session.execute(String.format("SELECT c1 FROM %s WHERE k1 = 1 AND k2 = 2 AND " +

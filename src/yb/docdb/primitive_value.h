@@ -77,6 +77,8 @@ class PrimitiveValue {
     } else {
       memmove(this, &other, sizeof(PrimitiveValue));
     }
+    ttl_seconds_ = other.ttl_seconds_;
+    write_time_ = other.write_time_;
   }
 
   PrimitiveValue(PrimitiveValue&& other) {
@@ -358,7 +360,7 @@ class PrimitiveValue {
     return ttl_seconds_;
   }
 
-  int64_t GetWritetime() const {
+  int64_t GetWriteTime() const {
     return write_time_;
   }
 
@@ -407,8 +409,9 @@ class PrimitiveValue {
       return;
     }
 
-    if (other->type_ == ValueType::kString ||
-        other->type_ == ValueType::kStringDescending) {
+    ttl_seconds_ = other->ttl_seconds_;
+    write_time_ = other->write_time_;
+    if (other->type_ == ValueType::kString || other->type_ == ValueType::kStringDescending) {
       type_ = other->type_;
       new(&str_val_) std::string(std::move(other->str_val_));
       // The moved-from object should now be in a "valid but unspecified" state as per the standard.

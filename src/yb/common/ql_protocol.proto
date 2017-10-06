@@ -242,7 +242,7 @@ message QLWriteRequestPB {
   // If clause condition
   optional QLExpressionPB if_expr = 9;
 
-  // Time to live in millisecondss.
+  // Time to live in milliseconds.
   optional uint64 ttl = 10;
 
   // Listing of all columns that this write operation is referencing. TServers will need to read
@@ -251,6 +251,9 @@ message QLWriteRequestPB {
 
   // Id used to track different queries.
   optional int64 query_id = 12;
+
+  // User-provided timestamp in microseconds.
+  optional uint64 user_timestamp_usec = 13;
 }
 
 //-------------------------------------- Read request ----------------------------------------

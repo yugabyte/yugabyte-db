@@ -29,6 +29,7 @@ using std::ostringstream;
 using std::pair;
 using std::sort;
 using std::string;
+using std::tuple;
 using std::vector;
 
 using yb::util::FormatBytesAsStr;
@@ -38,13 +39,16 @@ namespace docdb {
 
 void DocWriteBatchCache::Put(const KeyBytes& key_bytes,
                              DocHybridTime gen_ht,
-                             ValueType value_type) {
+                             ValueType value_type,
+                             UserTimeMicros user_timestamp,
+                             bool found_exact_key_prefix) {
   DOCDB_DEBUG_LOG(
       "Writing to DocWriteBatchCache: encoded_key_prefix=$0, gen_ht=$1, value_type=$2",
       BestEffortDocDBKeyToStr(key_bytes),
       gen_ht.ToString(),
       ToString(value_type));
-  prefix_to_gen_ht_[key_bytes.AsStringRef()] = std::make_pair(gen_ht, value_type);
+  prefix_to_gen_ht_[key_bytes.AsStringRef()] =
+      {gen_ht, value_type, user_timestamp, found_exact_key_prefix};
 }
 
 boost::optional<DocWriteBatchCache::Entry> DocWriteBatchCache::Get(
@@ -79,8 +83,12 @@ string DocWriteBatchCache::ToDebugString() {
 string DocWriteBatchCache::EntryToStr(const Entry& entry) {
   ostringstream ss;
   ss << "("
-     << entry.first.ToString() << ", "
-     << entry.second
+     << entry.doc_hybrid_time.ToString() << ", "
+     << entry.value_type << ", "
+     << ((entry.user_timestamp == Value::kInvalidUserTimestamp) ?
+        string("InvalidUserTimestamp") :
+        std::to_string(entry.user_timestamp)) << ", "
+     << entry.found_exact_key_prefix
      << ")";
   return ss.str();
 }

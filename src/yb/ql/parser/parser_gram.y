@@ -2530,7 +2530,7 @@ ttl_timestamp_clause:
     $$ = MAKE_NODE(@1, PTDmlUsingClauseElement, parser_->MakeString($1), $2);
   }
   |
-  TIMESTAMP c_expr {
+  TIMESTAMP b_expr {
     $$ = MAKE_NODE(@1, PTDmlUsingClauseElement, parser_->MakeString($1), $2);
   }
 ;
@@ -3200,12 +3200,15 @@ inactive_a_expr:
 // just eliminate all the boolean-keyword-operator productions from b_expr.
 b_expr:
   c_expr {
+    $$ = $1;
   }
   | b_expr TYPECAST Typename {
   }
   | '+' b_expr                                                 %prec UMINUS {
+    $$ = $2;
   }
   | '-' b_expr                                                 %prec UMINUS {
+    $$ = MAKE_NODE(@1, PTOperator1, ExprOperator::kUMinus, QL_OP_NOOP, $2);
   }
   | b_expr '+' b_expr {
   }

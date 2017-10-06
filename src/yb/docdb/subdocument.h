@@ -47,8 +47,11 @@ class SubDocument : public PrimitiveValue {
     }
   }
 
-  // Don't need this for now.
-  SubDocument& operator =(const SubDocument& other) = delete;
+  SubDocument& operator =(const SubDocument& other) {
+    this->~SubDocument();
+    new(this) SubDocument(other);
+    return *this;
+  }
 
   // A good way to construct single-level subdocuments. Not very performant, primarily useful
   // for tests.
@@ -199,6 +202,8 @@ class SubDocument : public PrimitiveValue {
     } else {
       // For objects/arrays the internal state is just a type and a pointer.
       type_ = other->type_;
+      ttl_seconds_ = other->ttl_seconds_;
+      write_time_ = other->write_time_;
       complex_data_structure_ = other->complex_data_structure_;
       // The internal state of the other subdocument is now owned by this one. Replace it with dummy
       // data without calling the destructor.

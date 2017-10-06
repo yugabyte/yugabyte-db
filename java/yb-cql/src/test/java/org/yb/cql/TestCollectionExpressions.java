@@ -15,6 +15,7 @@ package org.yb.cql;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import org.junit.Test;
+import org.yb.client.TestUtils;
 
 import java.util.*;
 
@@ -973,7 +974,7 @@ public class TestCollectionExpressions extends BaseCQLTest {
     assertEquals("a", list.get(0));
     assertEquals("b1", list.get(1));
     assertEquals("c", list.get(2));
-    Thread.sleep(1050);
+    TestUtils.waitForTTL(1000L);
 
     // Check entry expired
     row = runSelect(String.format(select_template, 1, 1)).next();
@@ -989,7 +990,7 @@ public class TestCollectionExpressions extends BaseCQLTest {
     assertEquals(2, list.size());
     assertEquals("a", list.get(0));
     assertEquals("c1", list.get(1));
-    Thread.sleep(1050);
+    TestUtils.waitForTTL(1000L);
 
     // Check entry expired
     row = runSelect(String.format(select_template, 1, 1)).next();

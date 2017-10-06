@@ -130,6 +130,7 @@ class DocDBRocksDBUtil {
       const rocksdb::QueryId query_id,
       MonoDelta table_ttl = Value::kMaxTtl,
       MonoDelta ttl = Value::kMaxTtl,
+      UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp,
       InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL);
 
   CHECKED_STATUS DeleteSubDoc(

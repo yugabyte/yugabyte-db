@@ -83,6 +83,41 @@ void CompareSlices(KeyBytes key_bytes1, KeyBytes key_bytes2, T val1, T val2) {
   }
 }
 
+void TestCopy(PrimitiveValue&& v1, int64_t ttl, int64_t write_time) {
+  v1.SetTtl(ttl);
+  v1.SetWritetime(write_time);
+  // Uses copy constructor.
+  PrimitiveValue v2 = v1;
+  ASSERT_EQ(v1, v2);
+  ASSERT_EQ(v1.GetTtl(), v2.GetTtl());
+  ASSERT_EQ(v1.GetWriteTime(), v2.GetWriteTime());
+
+  // Uses copy assignment operator.
+  PrimitiveValue v3;
+  v3 = v1;
+  ASSERT_EQ(v1, v3);
+  ASSERT_EQ(v1.GetTtl(), v3.GetTtl());
+  ASSERT_EQ(v1.GetWriteTime(), v3.GetWriteTime());
+}
+
+void TestMove(PrimitiveValue&& v1, int64_t ttl, int64_t write_time) {
+  v1.SetTtl(ttl);
+  v1.SetWritetime(write_time);
+  PrimitiveValue vtemp = v1;
+  // Uses move constructor.
+  PrimitiveValue v2 = std::move(v1);
+  ASSERT_EQ(vtemp, v2);
+  ASSERT_EQ(vtemp.GetTtl(), v2.GetTtl());
+  ASSERT_EQ(vtemp.GetWriteTime(), v2.GetWriteTime());
+
+  // Uses move assignment operator.
+  PrimitiveValue v3;
+  v3 = std::move(v2);
+  ASSERT_EQ(vtemp, v3);
+  ASSERT_EQ(vtemp.GetTtl(), v3.GetTtl());
+  ASSERT_EQ(vtemp.GetWriteTime(), v3.GetWriteTime());
+}
+
 }  // unnamed namespace
 
 TEST(PrimitiveValueTest, TestToString) {
@@ -300,6 +335,30 @@ TEST(PrimitiveValueTest, TestRandomComparableInt32) {
     CompareSlices(PrimitiveValue::Int32(val1).ToKeyBytes(),
                   PrimitiveValue::Int32(val2).ToKeyBytes(), val1, val2);
   }
+}
+
+TEST(PrimitiveValueTest, TestCopy) {
+  TestCopy(PrimitiveValue(1000), 1000, 1000);
+  TestCopy(PrimitiveValue("a"), 1000, 1000);
+  TestCopy(PrimitiveValue::Double(3.0), 1000, 1000);
+  TestCopy(PrimitiveValue::Int32(1000), 1000, 1000);
+  TestCopy(PrimitiveValue(Timestamp(1000)), 1000, 1000);
+  InetAddress addr;
+  ASSERT_OK(addr.FromString("1.2.3.4"));
+  TestCopy(PrimitiveValue(addr), 1000, 1000);
+  TestCopy(PrimitiveValue(HybridTime(1000)), 1000, 1000);
+}
+
+TEST(PrimitiveValueTest, TestMove) {
+  TestMove(PrimitiveValue(1000), 1000, 1000);
+  TestMove(PrimitiveValue("a"), 1000, 1000);
+  TestMove(PrimitiveValue::Double(3.0), 1000, 1000);
+  TestMove(PrimitiveValue::Int32(1000), 1000, 1000);
+  TestMove(PrimitiveValue(Timestamp(1000)), 1000, 1000);
+  InetAddress addr;
+  ASSERT_OK(addr.FromString("1.2.3.4"));
+  TestMove(PrimitiveValue(addr), 1000, 1000);
+  TestMove(PrimitiveValue(HybridTime(1000)), 1000, 1000);
 }
 
 }  // namespace docdb

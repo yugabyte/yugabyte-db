@@ -15,6 +15,7 @@ package org.yb.cql;
 import com.datastax.driver.core.Row;
 
 import org.junit.Test;
+import org.yb.client.TestUtils;
 
 import java.net.InetAddress;
 import java.util.Date;
@@ -91,7 +92,7 @@ public class TestUpdate extends BaseCQLTest {
     assertEquals("v600", row.getString(5));
 
     // Now verify v1 expires.
-    Thread.sleep(2100);
+    TestUtils.waitForTTL(2000L);
     row = runSelect(select_stmt).next();
     assertEquals(1, row.getInt(0));
     assertEquals("h2", row.getString(1));
@@ -101,7 +102,7 @@ public class TestUpdate extends BaseCQLTest {
     assertEquals("v600", row.getString(5));
 
     // Now verify v2 expires.
-    Thread.sleep(2000);
+    TestUtils.waitForTTL(2000L);
     row = runSelect(select_stmt).next();
     assertEquals(1, row.getInt(0));
     assertEquals("h2", row.getString(1));

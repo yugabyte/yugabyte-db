@@ -22,6 +22,8 @@ import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 
 import org.junit.Test;
+import org.yb.client.TestUtils;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -31,11 +33,11 @@ import static org.junit.Assert.fail;
 
 public class TestBindVariable extends BaseCQLTest {
 
-  private void testBindSyntaxError(String stmt, Object... values) {
+  private void testBindServerError(String stmt, Object... values) {
     try {
       session.execute(stmt, values);
       fail("Statement \"" + stmt + "\" did not fail");
-    } catch (com.datastax.driver.core.exceptions.SyntaxError e) {
+    } catch (com.datastax.driver.core.exceptions.ServerError e) {
       LOG.info("Expected exception", e);
     }
   }
@@ -67,9 +69,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Select data from the test table. Bind by position.
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1 = ? AND h2 = ? AND r1 = ?;";
-      ResultSet rs = session.execute(select_stmt, new Integer(7), "h7", new Integer(107));
+      ResultSet rs = session.execute(selectStmt, new Integer(7), "h7", new Integer(107));
       Row row = rs.one();
       // Assert exactly 1 row is returned with expected column values.
       assertNotNull(row);
@@ -85,9 +87,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Select data from the test table. Bind by name.
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1 = ? AND h2 = ? AND r1 = ?;";
-      ResultSet rs = session.execute(select_stmt,
+      ResultSet rs = session.execute(selectStmt,
                                      new HashMap<String, Object>() {{
                                          put("h1", new Integer(7));
                                          put("h2", "h7");
@@ -108,9 +110,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Select data from the test table. Bind by name with named markers.
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1 = :b1 AND h2 = :b2 AND r1 = :b3;";
-      ResultSet rs = session.execute(select_stmt,
+      ResultSet rs = session.execute(selectStmt,
                                      new HashMap<String, Object>() {{
                                          put("b1", new Integer(7));
                                          put("b2", "h7");
@@ -141,9 +143,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // insert data into the test table. Bind by position.
-      String insert_stmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
+      String insertStmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
                            "VALUES (?, ?, ?, ?, ?, ?);";
-      session.execute(insert_stmt,
+      session.execute(insertStmt,
                       new Integer(1), "h2",
                       new Integer(1), "r1",
                       new Integer(1), "v1");
@@ -151,9 +153,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // insert data into the test table. Bind by name.
-      String insert_stmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
+      String insertStmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
                            "VALUES (?, ?, ?, ?, ?, ?);";
-      session.execute(insert_stmt,
+      session.execute(insertStmt,
                       new HashMap<String, Object>() {{
                         put("h1", new Integer(1));
                         put("h2", "h2");
@@ -166,9 +168,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // insert data into the test table. Bind by name with named markers.
-      String insert_stmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
+      String insertStmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
                            "VALUES (:b1, :b2, :b3, :b4, :b5, :b6);";
-      session.execute(insert_stmt,
+      session.execute(insertStmt,
                       new HashMap<String, Object>() {{
                         put("b1", new Integer(1));
                         put("b2", "h2");
@@ -181,9 +183,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Select data from the test table.
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1 = 1 AND h2 = 'h2';";
-      ResultSet rs = session.execute(select_stmt);
+      ResultSet rs = session.execute(selectStmt);
 
       for (int i = 1; i <= 3; i++) {
         Row row = rs.one();
@@ -210,9 +212,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // update data in the test table. Bind by position.
-      String update_stmt = "UPDATE test_bind set v1 = ?, v2 = ?" +
+      String updateStmt = "UPDATE test_bind set v1 = ?, v2 = ?" +
                            " WHERE h1 = ? AND h2 = ? AND r1 = ? AND r2 = ?;";
-      session.execute(update_stmt,
+      session.execute(updateStmt,
                       new Integer(1), "v1",
                       new Integer(1), "h2",
                       new Integer(1), "r1");
@@ -220,9 +222,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // update data in the test table. Bind by name.
-      String update_stmt = "UPDATE test_bind set v1 = ?, v2 = ?" +
+      String updateStmt = "UPDATE test_bind set v1 = ?, v2 = ?" +
                            " WHERE h1 = ? AND h2 = ? AND r1 = ? AND r2 = ?;";
-      session.execute(update_stmt,
+      session.execute(updateStmt,
                       new HashMap<String, Object>() {{
                         put("h1", new Integer(1));
                         put("h2", "h2");
@@ -235,9 +237,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // update data in the test table. Bind by name with named markers.
-      String update_stmt = "UPDATE test_bind set v1 = :b5, v2 = :b6" +
+      String updateStmt = "UPDATE test_bind set v1 = :b5, v2 = :b6" +
                            " WHERE h1 = :b1 AND h2 = :b2 AND r1 = :b3 AND r2 = :b4;";
-      session.execute(update_stmt,
+      session.execute(updateStmt,
                       new HashMap<String, Object>() {{
                         put("b1", new Integer(1));
                         put("b2", "h2");
@@ -250,9 +252,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Select data from the test table.
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1 = 1 AND h2 = 'h2';";
-      ResultSet rs = session.execute(select_stmt);
+      ResultSet rs = session.execute(selectStmt);
 
       for (int i = 1; i <= 3; i++) {
         Row row = rs.one();
@@ -279,26 +281,26 @@ public class TestBindVariable extends BaseCQLTest {
 
     // Insert 4 rows.
     for (int i = 1; i <= 4; i++) {
-      String insert_stmt = String.format("INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
+      String insertStmt = String.format("INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
                                          "VALUES (%d, 'h%s', %d, 'r%s', %d, 'v%s');",
                                          1, 2, i, i, i, i);
-      session.execute(insert_stmt);
+      session.execute(insertStmt);
     }
 
     {
       // delete 1 row in the test table. Bind by position.
-      String delete_stmt = "DELETE FROM test_bind" +
+      String deleteStmt = "DELETE FROM test_bind" +
                            " WHERE h1 = ? AND h2 = ? AND r1 = ? AND r2 = ?;";
-      session.execute(delete_stmt,
+      session.execute(deleteStmt,
                       new Integer(1), "h2",
                       new Integer(1), "r1");
     }
 
     {
       // delete 1 row in the test table. Bind by name.
-      String delete_stmt = "DELETE FROM test_bind" +
+      String deleteStmt = "DELETE FROM test_bind" +
                            " WHERE h1 = ? AND h2 = ? AND r1 = ? AND r2 = ?;";
-      session.execute(delete_stmt,
+      session.execute(deleteStmt,
                       new HashMap<String, Object>() {{
                         put("h1", new Integer(1));
                         put("h2", "h2");
@@ -309,9 +311,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // delete 1 row in the test table. Bind by name with named markers.
-      String delete_stmt = "DELETE FROM test_bind" +
+      String deleteStmt = "DELETE FROM test_bind" +
                            " WHERE h1 = :b1 AND h2 = :b2 AND r1 = :b3 AND r2 = :b4;";
-      session.execute(delete_stmt,
+      session.execute(deleteStmt,
                       new HashMap<String, Object>() {{
                         put("b1", new Integer(1));
                         put("b2", "h2");
@@ -322,9 +324,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Select data from the test table.
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1 = 1 AND h2 = 'h2';";
-      ResultSet rs = session.execute(select_stmt);
+      ResultSet rs = session.execute(selectStmt);
       Row row = rs.one();
       // Assert only 1 row is left.
       assertNotNull(row);
@@ -350,9 +352,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Select data from the test table. Bind by position.
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1 = ? AND h2 = ? AND r1 = ?;";
-      PreparedStatement stmt = session.prepare(select_stmt);
+      PreparedStatement stmt = session.prepare(selectStmt);
       ResultSet rs = session.execute(stmt.bind(new Integer(7), "h7", new Integer(107)));
       Row row = rs.one();
       // Assert exactly 1 row is returned with expected column values.
@@ -369,9 +371,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Select data from the test table. Bind by name.
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1 = ? AND h2 = ? AND r1 = ?;";
-      PreparedStatement stmt = session.prepare(select_stmt);
+      PreparedStatement stmt = session.prepare(selectStmt);
       ResultSet rs = session.execute(stmt
                                      .bind()
                                      .setInt("h1", 7)
@@ -392,9 +394,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Select data from the test table. Bind by name with named markers.
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1 = :b1 AND h2 = :b2 AND r1 = :b3;";
-      PreparedStatement stmt = session.prepare(select_stmt);
+      PreparedStatement stmt = session.prepare(selectStmt);
       ResultSet rs = session.execute(stmt
                                      .bind()
                                      .setInt("b1", 7)
@@ -425,17 +427,17 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // insert data into the test table. Bind by position.
-      String insert_stmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
+      String insertStmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
                            "VALUES (?, ?, ?, ?, ?, ?);";
-      PreparedStatement stmt = session.prepare(insert_stmt);
+      PreparedStatement stmt = session.prepare(insertStmt);
       session.execute(stmt.bind(new Integer(1), "h2", new Integer(1), "r1", new Integer(1), "v1"));
     }
 
     {
       // insert data into the test table. Bind by name.
-      String insert_stmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
+      String insertStmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
                            "VALUES (?, ?, ?, ?, ?, ?);";
-      PreparedStatement stmt = session.prepare(insert_stmt);
+      PreparedStatement stmt = session.prepare(insertStmt);
       session.execute(stmt
                       .bind()
                       .setInt("h1", 1)
@@ -448,9 +450,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // insert data into the test table. Bind by name with named markers.
-      String insert_stmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
+      String insertStmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
                            "VALUES (:b1, :b2, :b3, :b4, :b5, :b6);";
-      PreparedStatement stmt = session.prepare(insert_stmt);
+      PreparedStatement stmt = session.prepare(insertStmt);
       session.execute(stmt
                       .bind()
                       .setInt("b1", 1)
@@ -463,9 +465,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Select data from the test table.
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1 = 1 AND h2 = 'h2';";
-      ResultSet rs = session.execute(select_stmt);
+      ResultSet rs = session.execute(selectStmt);
 
       for (int i = 1; i <= 3; i++) {
         Row row = rs.one();
@@ -492,17 +494,17 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // update data in the test table. Bind by position.
-      String update_stmt = "UPDATE test_bind set v1 = ?, v2 = ?" +
+      String updateStmt = "UPDATE test_bind set v1 = ?, v2 = ?" +
                            " WHERE h1 = ? AND h2 = ? AND r1 = ? AND r2 = ?;";
-      PreparedStatement stmt = session.prepare(update_stmt);
+      PreparedStatement stmt = session.prepare(updateStmt);
       session.execute(stmt.bind(new Integer(1), "v1", new Integer(1), "h2", new Integer(1), "r1"));
     }
 
     {
       // update data in the test table. Bind by name.
-      String update_stmt = "UPDATE test_bind set v1 = ?, v2 = ?" +
+      String updateStmt = "UPDATE test_bind set v1 = ?, v2 = ?" +
                            " WHERE h1 = ? AND h2 = ? AND r1 = ? AND r2 = ?;";
-      PreparedStatement stmt = session.prepare(update_stmt);
+      PreparedStatement stmt = session.prepare(updateStmt);
       session.execute(stmt
                       .bind()
                       .setInt("h1", 1)
@@ -515,9 +517,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // update data in the test table. Bind by name with named markers.
-      String update_stmt = "UPDATE test_bind set v1 = :b5, v2 = :b6" +
+      String updateStmt = "UPDATE test_bind set v1 = :b5, v2 = :b6" +
                            " WHERE h1 = :b1 AND h2 = :b2 AND r1 = :b3 AND r2 = :b4;";
-      PreparedStatement stmt = session.prepare(update_stmt);
+      PreparedStatement stmt = session.prepare(updateStmt);
       session.execute(stmt
                       .bind()
                       .setInt("b1", 1)
@@ -530,9 +532,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Select data from the test table.
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1 = 1 AND h2 = 'h2';";
-      ResultSet rs = session.execute(select_stmt);
+      ResultSet rs = session.execute(selectStmt);
 
       for (int i = 1; i <= 3; i++) {
         Row row = rs.one();
@@ -559,25 +561,25 @@ public class TestBindVariable extends BaseCQLTest {
 
     // Insert 4 rows.
     for (int i = 1; i <= 4; i++) {
-      String insert_stmt = String.format("INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
+      String insertStmt = String.format("INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
                                          "VALUES (%d, 'h%s', %d, 'r%s', %d, 'v%s');",
                                          1, 2, i, i, i, i);
-      session.execute(insert_stmt);
+      session.execute(insertStmt);
     }
 
     {
       // delete 1 row in the test table. Bind by position.
-      String delete_stmt = "DELETE FROM test_bind" +
+      String deleteStmt = "DELETE FROM test_bind" +
                            " WHERE h1 = ? AND h2 = ? AND r1 = ? AND r2 = ?;";
-      PreparedStatement stmt = session.prepare(delete_stmt);
+      PreparedStatement stmt = session.prepare(deleteStmt);
       session.execute(stmt.bind(new Integer(1), "h2", new Integer(1), "r1"));
     }
 
     {
       // delete 1 row in the test table. Bind by name.
-      String delete_stmt = "DELETE FROM test_bind" +
+      String deleteStmt = "DELETE FROM test_bind" +
                            " WHERE h1 = ? AND h2 = ? AND r1 = ? AND r2 = ?;";
-      PreparedStatement stmt = session.prepare(delete_stmt);
+      PreparedStatement stmt = session.prepare(deleteStmt);
       session.execute(stmt.bind()
                       .setInt("h1", 1)
                       .setString("h2", "h2")
@@ -587,9 +589,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // delete 1 row in the test table. Bind by name with named markers.
-      String delete_stmt = "DELETE FROM test_bind" +
+      String deleteStmt = "DELETE FROM test_bind" +
                            " WHERE h1 = :b1 AND h2 = :b2 AND r1 = :b3 AND r2 = :b4;";
-      PreparedStatement stmt = session.prepare(delete_stmt);
+      PreparedStatement stmt = session.prepare(deleteStmt);
       session.execute(stmt
                       .bind()
                       .setInt("b1", 1)
@@ -600,9 +602,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Select data from the test table.
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1 = 1 AND h2 = 'h2';";
-      ResultSet rs = session.execute(select_stmt);
+      ResultSet rs = session.execute(selectStmt);
       Row row = rs.one();
       // Assert only 1 row is left.
       assertNotNull(row);
@@ -624,7 +626,7 @@ public class TestBindVariable extends BaseCQLTest {
     LOG.info("Begin test");
 
     // Create table
-    String create_stmt = "CREATE TABLE test_bind " +
+    String createStmt = "CREATE TABLE test_bind " +
                          "(c1 tinyint, c2 smallint, c3 integer, c4 bigint, " +
                          "c5 float, c6 double, " +
                          "c7 varchar, " +
@@ -636,16 +638,16 @@ public class TestBindVariable extends BaseCQLTest {
                          "c13 blob," +
                          "c14 decimal, " +
                          "primary key (c1));";
-    session.execute(create_stmt);
+    session.execute(createStmt);
 
     // Insert data of all supported datatypes with bind by position.
-    String insert_stmt = "INSERT INTO test_bind " +
+    String insertStmt = "INSERT INTO test_bind " +
                          "(c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14) " +
                          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
     // For CQL <-> Java datatype mapping, see
     // http://docs.datastax.com/en/drivers/java/3.1/com/datastax/driver/core/TypeCodec.html
     LOG.info("EXECUTING");
-    session.execute(insert_stmt,
+    session.execute(insertStmt,
                     new Byte((byte)1), new Short((short)2), new Integer(3), new Long(4),
                     new Float(5.0), new Double(6.0),
                     "c7",
@@ -660,8 +662,8 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Select data from the test table.
-      String select_stmt = "SELECT * FROM test_bind WHERE c1 = 1;";
-      ResultSet rs = session.execute(select_stmt);
+      String selectStmt = "SELECT * FROM test_bind WHERE c1 = 1;";
+      ResultSet rs = session.execute(selectStmt);
       Row row = rs.one();
       // Assert 1 row is returned with expected column values.
       assertNotNull(row);
@@ -683,7 +685,7 @@ public class TestBindVariable extends BaseCQLTest {
     }
 
     // Update data of all supported datatypes with bind by position.
-    String update_stmt = "UPDATE test_bind SET " +
+    String updateStmt = "UPDATE test_bind SET " +
                          "c2 = ?, " +
                          "c3 = ?, " +
                          "c4 = ?, " +
@@ -698,7 +700,7 @@ public class TestBindVariable extends BaseCQLTest {
                          "c13 = ?, " +
                          "c14 = ? " +
                          "WHERE c1 = ?;";
-    session.execute(update_stmt,
+    session.execute(updateStmt,
                     new HashMap<String, Object>() {{
                       put("c1", new Byte((byte)11));
                       put("c2", new Short((short)12));
@@ -718,8 +720,8 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Select data from the test table.
-      String select_stmt = "SELECT * FROM test_bind WHERE c1 = 11;";
-      ResultSet rs = session.execute(select_stmt);
+      String selectStmt = "SELECT * FROM test_bind WHERE c1 = 11;";
+      ResultSet rs = session.execute(selectStmt);
       Row row = rs.one();
       // Assert 1 row is returned with expected column values.
       assertNotNull(row);
@@ -754,9 +756,9 @@ public class TestBindVariable extends BaseCQLTest {
     //
     // {
     //   // Select bind marker with ">=" and "<=".
-    //   String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+    //   String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
     //                        " WHERE h1 = ? AND h2 = ? AND r1 >= ? AND r1 <= ?;";
-    //   ResultSet rs = session.execute(select_stmt,
+    //   ResultSet rs = session.execute(selectStmt,
     //                                  new Integer(7), "h7",
     //                                  new Integer(107), new Integer(107));
     //   Row row = rs.one();
@@ -774,9 +776,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Select bind marker with ">" and "<".
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1 = ? AND h2 = ? AND r1 > ? AND r1 < ?;";
-      ResultSet rs = session.execute(select_stmt,
+      ResultSet rs = session.execute(selectStmt,
                                      new Integer(7), "h7",
                                      new Integer(107), new Integer(107));
       Row row = rs.one();
@@ -788,9 +790,9 @@ public class TestBindVariable extends BaseCQLTest {
     //
     // {
     //   // Select bind marker with "<>".
-    //   String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+    //   String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
     //                        " WHERE h1 = :1 AND h2 = :2 AND r1 <> :3;";
-    //   ResultSet rs = session.execute(select_stmt, new Integer(7), "h7", new Integer(107));
+    //   ResultSet rs = session.execute(selectStmt, new Integer(7), "h7", new Integer(107));
     //   Row row = rs.one();
     //   // Assert no row is returned.
     //   assertNull(row);
@@ -800,10 +802,10 @@ public class TestBindVariable extends BaseCQLTest {
     //
     // {
     //   // Select bind marker with BETWEEN and NOT BETWEEN.
-    //   String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+    //   String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
     //                        " WHERE h1 = :1 AND h2 = :2 AND" +
     //                        " r1 BETWEEN ? AND ? AND r1 NOT BETWEEN ? AND ?;";
-    //   ResultSet rs = session.execute(select_stmt,
+    //   ResultSet rs = session.execute(selectStmt,
     //                                  new Integer(7), "h7",
     //                                  new Integer(106), new Integer(108),
     //                                  new Integer(1000), new Integer(2000));
@@ -832,9 +834,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Position bind marker with mixed order.
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1 = :2 AND h2 = :3 AND r1 = :1;";
-      ResultSet rs = session.execute(select_stmt, new Integer(107), new Integer(7), "h7");
+      ResultSet rs = session.execute(selectStmt, new Integer(107), new Integer(7), "h7");
       Row row = rs.one();
       // Assert exactly 1 row is returned with expected column values.
       assertNotNull(row);
@@ -850,9 +852,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Named markers with quoted identifier and space between colon and id.
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1 = :\"Bind1\" AND h2 = :  \"Bind2\" AND r1 = :  \"Bind3\";";
-      ResultSet rs = session.execute(select_stmt,
+      ResultSet rs = session.execute(selectStmt,
                                      new HashMap<String, Object>() {{
                                          put("Bind1", new Integer(7));
                                          put("Bind2", "h7");
@@ -873,9 +875,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Named bind marker with unreserved keywords ("key", "type" and "partition").
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1=:key AND h2=:type AND r1=:partition;";
-      ResultSet rs = session.execute(select_stmt,
+      ResultSet rs = session.execute(selectStmt,
                                      new HashMap<String, Object>() {{
                                          put("key", new Integer(7));
                                          put("type", "h7");
@@ -896,9 +898,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Position bind marker no space between "col=?".
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1=? AND h2=? AND r1=?;";
-      ResultSet rs = session.execute(select_stmt, new Integer(7), "h7", new Integer(107));
+      ResultSet rs = session.execute(selectStmt, new Integer(7), "h7", new Integer(107));
       Row row = rs.one();
       // Assert exactly 1 row is returned with expected column values.
       assertNotNull(row);
@@ -914,9 +916,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Number bind marker no space between "col=:number".
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1=:1 AND h2=:2 AND r1=:3;";
-      ResultSet rs = session.execute(select_stmt, new Integer(7), "h7", new Integer(107));
+      ResultSet rs = session.execute(selectStmt, new Integer(7), "h7", new Integer(107));
       Row row = rs.one();
       // Assert exactly 1 row is returned with expected column values.
       assertNotNull(row);
@@ -932,9 +934,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Named bind marker no space between "col=:id".
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1=:b1 AND h2=:b2 AND r1=:b3;";
-      ResultSet rs = session.execute(select_stmt,
+      ResultSet rs = session.execute(selectStmt,
                                      new HashMap<String, Object>() {{
                                          put("b1", new Integer(7));
                                          put("b2", "h7");
@@ -957,9 +959,9 @@ public class TestBindVariable extends BaseCQLTest {
     //
     // {
     //   // Bind marker with ">=" and "<=" and no space in between column, operator and bind marker.
-    //   String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+    //   String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
     //                        " WHERE h1=? AND h2=? AND r1>=? AND r1<=?;";
-    //   ResultSet rs = session.execute(select_stmt,
+    //   ResultSet rs = session.execute(selectStmt,
     //                                  new Integer(7), "h7",
     //                                  new Integer(107), new Integer(107));
     //   Row row = rs.one();
@@ -977,9 +979,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Bind marker with ">" and "<" and no space in between column, operator and bind marker.
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1=? AND h2=? AND r1>? AND r1<?;";
-      ResultSet rs = session.execute(select_stmt,
+      ResultSet rs = session.execute(selectStmt,
                                      new Integer(7), "h7",
                                      new Integer(107), new Integer(107));
       Row row = rs.one();
@@ -991,9 +993,9 @@ public class TestBindVariable extends BaseCQLTest {
     //
     // {
     //   // Bind marker with "<>" and no space in between column, operator and bind marker.
-    //   String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+    //   String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
     //                        " WHERE h1=:1 AND h2=:2 AND r1<>:3;";
-    //   ResultSet rs = session.execute(select_stmt, new Integer(7), "h7", new Integer(107));
+    //   ResultSet rs = session.execute(selectStmt, new Integer(7), "h7", new Integer(107));
     //   Row row = rs.one();
     //   // Assert no row is returned.
     //   assertNull(row);
@@ -1001,9 +1003,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Named, case-insensitive bind markers.
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1=:Bind1 AND h2=:Bind2 AND r1=:Bind3;";
-      ResultSet rs = session.execute(select_stmt,
+      ResultSet rs = session.execute(selectStmt,
                                      new HashMap<String, Object>() {{
                                          put("bind1", new Integer(7));
                                          put("bind2", "h7");
@@ -1122,7 +1124,7 @@ public class TestBindVariable extends BaseCQLTest {
     LOG.info("Begin test");
 
     // Create table
-    String create_stmt = "CREATE TABLE test_bind " +
+    String createStmt = "CREATE TABLE test_bind " +
                          "(k int primary key, " +
                          "c1 tinyint, c2 smallint, c3 integer, c4 bigint, " +
                          "c5 float, c6 double, " +
@@ -1133,16 +1135,16 @@ public class TestBindVariable extends BaseCQLTest {
                          "c11 uuid, " +
                          "c12 blob, " +
                          "c13 decimal);";
-    session.execute(create_stmt);
+    session.execute(createStmt);
 
     // Insert data of all supported datatypes with bind by position.
-    String insert_stmt = "INSERT INTO test_bind " +
+    String insertStmt = "INSERT INTO test_bind " +
                          "(k, c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13) " +
                          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
     // For CQL <-> Java datatype mapping, see
     // http://docs.datastax.com/en/drivers/java/3.1/com/datastax/driver/core/TypeCodec.html
     LOG.info("EXECUTING");
-    session.execute(insert_stmt,
+    session.execute(insertStmt,
                     new Integer(1),
                     null, null, null, null,
                     null, null,
@@ -1157,8 +1159,8 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Select data from the test table.
-      String select_stmt = "SELECT * FROM test_bind WHERE k = 1;";
-      ResultSet rs = session.execute(select_stmt);
+      String selectStmt = "SELECT * FROM test_bind WHERE k = 1;";
+      ResultSet rs = session.execute(selectStmt);
       Row row = rs.one();
       // Assert 1 row is returned with expected column values.
       assertNotNull(row);
@@ -1185,23 +1187,23 @@ public class TestBindVariable extends BaseCQLTest {
     LOG.info("Begin test");
 
     // Create table
-    String create_stmt = "CREATE TABLE test_bind (k int primary key, c1 varchar, c2 blob);";
-    session.execute(create_stmt);
+    String createStmt = "CREATE TABLE test_bind (k int primary key, c1 varchar, c2 blob);";
+    session.execute(createStmt);
 
     // Insert data of all supported datatypes with bind by position.
-    String insert_stmt = "INSERT INTO test_bind (k, c1, c2) VALUES (?, ?, ?);";
+    String insertStmt = "INSERT INTO test_bind (k, c1, c2) VALUES (?, ?, ?);";
     // For CQL <-> Java datatype mapping, see
     // http://docs.datastax.com/en/drivers/java/3.1/com/datastax/driver/core/TypeCodec.html
     LOG.info("EXECUTING");
-    session.execute(insert_stmt,
+    session.execute(insertStmt,
                     new Integer(1),
                     "", ByteBuffer.allocate(0));
     LOG.info("EXECUTED");
 
     {
       // Select data from the test table.
-      String select_stmt = "SELECT * FROM test_bind WHERE k = 1;";
-      ResultSet rs = session.execute(select_stmt);
+      String selectStmt = "SELECT * FROM test_bind WHERE k = 1;";
+      ResultSet rs = session.execute(selectStmt);
       Row row = rs.one();
       // Assert 1 row is returned with expected column values.
       assertNotNull(row);
@@ -1217,15 +1219,15 @@ public class TestBindVariable extends BaseCQLTest {
     LOG.info("Begin test");
 
     // this is the (virtual column) name CQL uses for binding the LIMIT clause
-    String limit_vcol_name = "[limit]";
+    String limitVcolName = "[limit]";
 
     // Setup test table.
     setupTable("test_bind", 10 /* num_rows */);
 
     {
       // Simple bind (by position) for limit.
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind where r1 <= ? LIMIT ?;";
-      ResultSet rs = session.execute(select_stmt, new Integer(109), new Integer(7));
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind where r1 <= ? LIMIT ?;";
+      ResultSet rs = session.execute(selectStmt, new Integer(109), new Integer(7));
 
       // Checking result.
       assertEquals(7, rs.getAvailableWithoutFetching());
@@ -1233,8 +1235,8 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Simple bind (by position) for limit.
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind where r1 <= ? LIMIT ?;";
-      PreparedStatement stmt = session.prepare(select_stmt);
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind where r1 <= ? LIMIT ?;";
+      PreparedStatement stmt = session.prepare(selectStmt);
 
       ResultSet rs = session.execute(stmt.bind(new Integer(109), new Integer(7)));
 
@@ -1244,8 +1246,8 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Prepare named bind (referenced by name).
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind WHERE r1 > :b1 LIMIT :b2;";
-      PreparedStatement stmt = session.prepare(select_stmt);
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind WHERE r1 > :b1 LIMIT :b2;";
+      PreparedStatement stmt = session.prepare(selectStmt);
       ResultSet rs = session.execute(stmt.bind().setInt("b1", 102).setInt("b2", 5));
 
       // Checking result.
@@ -1254,8 +1256,8 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Prepare named bind (referenced by position).
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind WHERE r1 > :b1 LIMIT :b2;";
-      PreparedStatement stmt = session.prepare(select_stmt);
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind WHERE r1 > :b1 LIMIT :b2;";
+      PreparedStatement stmt = session.prepare(selectStmt);
       ResultSet rs = session.execute(stmt.bind(new Integer(106), new Integer(6)));
 
       // Checking result: only 3 rows (107, 108, 109) satisfy condition so limit is redundant.
@@ -1263,11 +1265,11 @@ public class TestBindVariable extends BaseCQLTest {
     }
 
     {
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind where r1 > ? LIMIT ?;";
-      PreparedStatement stmt = session.prepare(select_stmt);
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind where r1 > ? LIMIT ?;";
+      PreparedStatement stmt = session.prepare(selectStmt);
       ResultSet rs = session.execute(stmt.bind()
                                          .setInt("r1", 99)
-                                         .setInt(limit_vcol_name, 8));
+                                         .setInt(limitVcolName, 8));
 
       // Checking result.
       assertEquals(8, rs.getAvailableWithoutFetching());
@@ -1279,87 +1281,198 @@ public class TestBindVariable extends BaseCQLTest {
     LOG.info("End test");
   }
 
+  private void verifyBindUserTimestamp(String selectStmt, int v1, String v2, long writeTimeV1,
+                                       long writeTimeV2) {
+    ResultSet rs = session.execute(selectStmt);
+    assertEquals(1, rs.getAvailableWithoutFetching());
+    Row row = rs.one();
+    assertEquals(v1, row.getInt("v1"));
+    assertEquals(v2, row.getString("v2"));
+    assertEquals(writeTimeV1, row.getLong(2));
+    assertEquals(writeTimeV2, row.getLong(3));
+  }
+
+  private String insertStmtBindUserTimestamp(String tableName, String v1, String v2,
+                                             Long timestamp) {
+    return String.format("INSERT INTO %s (h1, h2, r1, r2, v1, v2) " +
+        "VALUES (1, '1', 1, '1', %s, %s) USING TIMESTAMP %s", tableName, v1, v2,
+        (timestamp == null) ? "?" : Long.toString(timestamp));
+  }
+
+  @Test
+  public void testBindingUserTimestamp() throws Exception {
+    LOG.info("Begin test");
+
+    // This is the (virtual column) name CQL uses for binding the USING TIMESTAMP clause
+    String timestampVColName = "[timestamp]";
+
+    // Setup test table.
+    String tableName = "test_bind_timestamp";
+    createTable(tableName);
+
+    String selectStmt = String.format("SELECT v1, v2, writetime(v1), writetime(v2) FROM %s WHERE" +
+        " h1 = 1 AND h2 = '1' AND r1 = 1 AND r2 = '1'", tableName);
+
+    //---------------------------------- Testing Insert ------------------------------------------
+
+    // simple bind
+    {
+      session.execute(insertStmtBindUserTimestamp(tableName, "?", "?", null),
+        new Integer(2), "2", new Long(1000));
+
+      // checking result
+      verifyBindUserTimestamp(selectStmt, 2, "2", 1000, 1000);
+    }
+
+    // named bind -- using default names
+    {
+      PreparedStatement stmt = session.prepare(insertStmtBindUserTimestamp(tableName, "?", "?",
+        null));
+      session.execute(stmt.bind()
+        .setInt("v1", 3)
+        .setString("v2", "3")
+        .setLong(timestampVColName, 1000));
+
+      // checking result
+      verifyBindUserTimestamp(selectStmt, 3, "3", 1000, 1000);
+    }
+
+    //---------------------------------- Testing Update ------------------------------------------
+
+    // prepare bind
+    {
+      // setting up row to be updated
+      session.execute(insertStmtBindUserTimestamp(tableName, "0", "'0'", 1000L));
+
+      String updateStmt = String.format("UPDATE %s USING TIMESTAMP ? SET v1 = ?, v2 = ? " +
+          "WHERE h1 = 1 AND h2 = '1' AND r1 = 1 and r2 = '1'", tableName);
+      PreparedStatement stmt = session.prepare(updateStmt);
+      session.execute(stmt.bind(new Long(2000), new Integer(4), "4"));
+
+      // checking row is updated
+      verifyBindUserTimestamp(selectStmt, 4, "4", 2000, 2000);
+    }
+
+    // named bind -- using given names
+    {
+      // setting up row to be updated
+      session.execute(insertStmtBindUserTimestamp(tableName, "0", "'0'", 1000L));
+
+      String updateStmt = String.format("UPDATE %s USING TIMESTAMP :b1 SET v1 = :b2, v2 = :b3 " +
+          "WHERE h1 = 1 AND h2 = '1' AND r1 = 1 and r2 = '1'", tableName);
+
+      PreparedStatement stmt = session.prepare(updateStmt);
+      session.execute(stmt.bind()
+        .setLong("b1", 2000)
+        .setInt("b2", 5)
+        .setString("b3", "5"));
+
+      // checking row is update
+      verifyBindUserTimestamp(selectStmt, 5, "5", 2000, 2000);
+    }
+
+    //------------------------------- Testing Invalid Stmts --------------------------------------
+
+    // null timestamp values
+    testInvalidBindStatement(String.format("INSERT INTO %s (h1, h2, r1, r2, v1, v2) " +
+        "VALUES (0, '0', 0, '0', 0, ?) USING TIMESTAMP ?", tableName), "0", null);
+
+    // invalid timestamp value.
+    testInvalidBindStatement(String.format("INSERT INTO %s (h1, h2, r1, r2, v1, v2) " +
+        "VALUES (0, '0', 0, '0', 0, ?) USING TIMESTAMP ?", tableName), "0", Long.MIN_VALUE);
+
+    // timestamp value of wrong types.
+    testBindServerError(String.format("INSERT INTO %s (h1, h2, r1, r2, v1, v2) " +
+        "VALUES (0, '0', 0, '0', 0, ?) USING TIMESTAMP ?", tableName), "0", new Integer(100));
+    testBindServerError(String.format("INSERT INTO %s (h1, h2, r1, r2, v1, v2) " +
+        "VALUES (0, '0', 0, '0', 0, ?) USING TIMESTAMP ?", tableName), "0", "abc");
+    testBindServerError(String.format("INSERT INTO %s (h1, h2, r1, r2, v1, v2) " +
+        "VALUES (0, '0', 0, '0', 0, ?) USING TIMESTAMP ?", tableName), "0", new Float(3.0));
+
+    LOG.info("End test");
+  }
+
   @Test
   public void testBindingTTL() throws Exception {
     LOG.info("Begin test");
 
     // this is the (virtual column) name CQL uses for binding the USING TTL clause
-    String ttl_vcol_name = "[ttl]";
+    String ttlVcolName = "[ttl]";
 
     // Setup test table.
     createTable("test_bind");
 
-    String select_stmt = "SELECT v1, v2 FROM test_bind WHERE " +
+    String selectStmt = "SELECT v1, v2 FROM test_bind WHERE " +
             "h1 = 1 AND h2 = '1' AND r1 = 1 AND r2 = '1'";
 
-    //---------------------------------- Testing Insert ------------------------------------------\\
+    //---------------------------------- Testing Insert ------------------------------------------
 
     // simple bind
     {
-      String insert_stmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
+      String insertStmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
               "VALUES (1, '1', 1, '1', ?, ?) USING TTL ?";
-      session.execute(insert_stmt, new Integer(2), "2", new Integer(1));
+      session.execute(insertStmt, new Integer(2), "2", new Integer(1));
 
       // checking result
-      ResultSet rs = session.execute(select_stmt);
+      ResultSet rs = session.execute(selectStmt);
       assertEquals(1, rs.getAvailableWithoutFetching());
       Row row = rs.one();
       assertEquals(2, row.getInt("v1"));
       assertEquals("2", row.getString("v2"));
 
       // checking value expires
-      Thread.sleep(1100);
-      rs = session.execute(select_stmt);
+      TestUtils.waitForTTL(1000L);
+      rs = session.execute(selectStmt);
       assertEquals(0, rs.getAvailableWithoutFetching());
     }
 
     // named bind -- using default names
     {
-      String insert_stmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
+      String insertStmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
               "VALUES (1, '1', 1, '1', ?, ?) USING TTL ?";
-      PreparedStatement stmt = session.prepare(insert_stmt);
+      PreparedStatement stmt = session.prepare(insertStmt);
       session.execute(stmt.bind()
                           .setInt("v1", 3)
                           .setString("v2", "3")
-                          .setInt(ttl_vcol_name, 1));
+                          .setInt(ttlVcolName, 1));
 
       // checking result
-      ResultSet rs = session.execute(select_stmt);
+      ResultSet rs = session.execute(selectStmt);
       assertEquals(1, rs.getAvailableWithoutFetching());
       Row row = rs.one();
       assertEquals(3, row.getInt("v1"));
       assertEquals("3", row.getString("v2"));
 
       // checking value expires
-      Thread.sleep(1100);
-      rs = session.execute(select_stmt);
+      TestUtils.waitForTTL(1000L);
+      rs = session.execute(selectStmt);
       assertEquals(0, rs.getAvailableWithoutFetching());
     }
 
-    //---------------------------------- Testing Update ------------------------------------------\\
+    //---------------------------------- Testing Update ------------------------------------------
 
     // prepare bind
     {
       // setting up row to be updated
-      String insert_stmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
+      String insertStmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
               "VALUES (1, '1', 1, '1', 0, '0')";
-      session.execute(insert_stmt);
+      session.execute(insertStmt);
 
-      String update_stmt = "UPDATE test_bind USING TTL ? SET v1 = ?, v2 = ? " +
+      String updateStmt = "UPDATE test_bind USING TTL ? SET v1 = ?, v2 = ? " +
               "WHERE h1 = 1 AND h2 = '1' AND r1 = 1 and r2 = '1'";
-      PreparedStatement stmt = session.prepare(update_stmt);
+      PreparedStatement stmt = session.prepare(updateStmt);
       session.execute(stmt.bind(new Integer(2), new Integer(4), "4"));
 
       // checking row is updated
-      ResultSet rs = session.execute(select_stmt);
+      ResultSet rs = session.execute(selectStmt);
       assertEquals(1, rs.getAvailableWithoutFetching());
       Row row = rs.one();
       assertEquals(4, row.getInt("v1"));
       assertEquals("4", row.getString("v2"));
 
       // checking updated values expire (row should remain, values should be null)
-      Thread.sleep(2100);
-      rs = session.execute(select_stmt);
+      TestUtils.waitForTTL(2000L);
+      rs = session.execute(selectStmt);
       assertEquals(1, rs.getAvailableWithoutFetching());
       row = rs.one();
       assertTrue(row.isNull("v1"));
@@ -1369,36 +1482,36 @@ public class TestBindVariable extends BaseCQLTest {
     // named bind -- using given names
     {
       // setting up row to be updated
-      String insert_stmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
+      String insertStmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
               "VALUES (1, '1', 1, '1', 0, '0')";
-      session.execute(insert_stmt);
+      session.execute(insertStmt);
 
-      String update_stmt = "UPDATE test_bind USING TTL :b1 SET v1 = :b2, v2 = :b3 " +
+      String updateStmt = "UPDATE test_bind USING TTL :b1 SET v1 = :b2, v2 = :b3 " +
               "WHERE h1 = 1 AND h2 = '1' AND r1 = 1 and r2 = '1'";
 
-      PreparedStatement stmt = session.prepare(update_stmt);
+      PreparedStatement stmt = session.prepare(updateStmt);
       session.execute(stmt.bind()
                           .setInt("b1", 1)
                           .setInt("b2", 5)
                           .setString("b3", "5"));
 
       // checking row is update
-      ResultSet rs = session.execute(select_stmt);
+      ResultSet rs = session.execute(selectStmt);
       assertEquals(1, rs.getAvailableWithoutFetching());
       Row row = rs.one();
       assertEquals(5, row.getInt("v1"));
       assertEquals("5", row.getString("v2"));
 
       // checking updated values expire (row should remain, values should be null)
-      Thread.sleep(1100);
-      rs = session.execute(select_stmt);
+      TestUtils.waitForTTL(1000L);
+      rs = session.execute(selectStmt);
       assertEquals(1, rs.getAvailableWithoutFetching());
       row = rs.one();
       assertTrue(row.isNull("v1"));
       assertTrue(row.isNull("v2"));
     }
 
-    //------------------------------- Testing Invalid Stmts --------------------------------------\\
+    //------------------------------- Testing Invalid Stmts --------------------------------------
 
     // null ttl values
     testInvalidBindStatement("INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
@@ -1424,16 +1537,16 @@ public class TestBindVariable extends BaseCQLTest {
     //----------------------------------------------------------------------------------------------
 
     // this is the name CQL uses for the virtual column that token() references
-    String token_vcol_name = "partition key token";
+    String tokenVcolName = "partition key token";
 
     // Setup test table.
     setupTable("test_bind", 10 /* num_rows */);
 
     {
       // Simple bind (by position) with token.
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
               " WHERE h1 = ? AND h2 = ? AND token(h1, h2) >= ?;";
-      ResultSet rs = session.execute(select_stmt, new Integer(7), "h7", Long.MIN_VALUE);
+      ResultSet rs = session.execute(selectStmt, new Integer(7), "h7", Long.MIN_VALUE);
 
       // Checking result.
       assertEquals(1, rs.getAvailableWithoutFetching());
@@ -1448,13 +1561,13 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Simple bind (by name) with token.
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
               " WHERE h1 = ? AND h2 = ? AND token(h1, h2) >= ?;";
-      ResultSet rs = session.execute(select_stmt,
+      ResultSet rs = session.execute(selectStmt,
               new HashMap<String, Object>() {{
                 put("h1", new Integer(7));
                 put("h2", "h7");
-                put(token_vcol_name, Long.MIN_VALUE);
+                put(tokenVcolName, Long.MIN_VALUE);
               }});
 
       // Checking result.
@@ -1470,9 +1583,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Prepare bind (by position) with token
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
               " WHERE h1 = ? AND h2 = ? AND token(h1, h2) >= ?;";
-      PreparedStatement stmt = session.prepare(select_stmt);
+      PreparedStatement stmt = session.prepare(selectStmt);
       ResultSet rs = session.execute(stmt.bind(new Integer(7), "h7", Long.MIN_VALUE));
       // Checking result.
       assertEquals(1, rs.getAvailableWithoutFetching());
@@ -1487,14 +1600,14 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Prepare bind (by name) with token
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
               " WHERE h1 = ? AND h2 = ? AND token(h1, h2) >= ?;";
-      PreparedStatement stmt = session.prepare(select_stmt);
+      PreparedStatement stmt = session.prepare(selectStmt);
       ResultSet rs = session.execute(stmt
               .bind()
               .setInt("h1", 7)
               .setString("h2", "h7")
-              .setLong(token_vcol_name, Long.MIN_VALUE));
+              .setLong(tokenVcolName, Long.MIN_VALUE));
       // Checking result.
       assertEquals(1, rs.getAvailableWithoutFetching());
       Row row = rs.one();
@@ -1508,9 +1621,9 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Prepare bind (by name with named markers) with token
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
               " WHERE h1 = :b1 AND h2 = :b2 AND token(h1, h2) >= :b3;";
-      PreparedStatement stmt = session.prepare(select_stmt);
+      PreparedStatement stmt = session.prepare(selectStmt);
       ResultSet rs = session.execute(stmt
               .bind()
               .setInt("b1", 7)
@@ -1532,12 +1645,12 @@ public class TestBindVariable extends BaseCQLTest {
     //----------------------------------------------------------------------------------------------
 
     // This is the name template CQL uses for binding args of token builtin call.
-    String arg_name_template = "arg%d(system.token)";
+    String argNameTemplate = "arg%d(system.token)";
 
     {
       // Bind by position for token bcall arguments.
-      String select_stmt = "SELECT * FROM test_bind WHERE token(h1, h2) = token(?, ?)";
-      Iterator<Row> rows = session.execute(select_stmt, new Integer(6), "h6").iterator();
+      String selectStmt = "SELECT * FROM test_bind WHERE token(h1, h2) = token(?, ?)";
+      Iterator<Row> rows = session.execute(selectStmt, new Integer(6), "h6").iterator();
 
       assertTrue(rows.hasNext());
       // Checking result.
@@ -1553,13 +1666,13 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Bind by name -- simple bind, all args.
-      String select_stmt = "SELECT * FROM test_bind WHERE token(h1, h2) = token(?, ?);";
+      String selectStmt = "SELECT * FROM test_bind WHERE token(h1, h2) = token(?, ?);";
 
-      Map<String, Object> bvar_map = new HashMap<>();
-      bvar_map.put(String.format(arg_name_template, 0), new Integer(5));
-      bvar_map.put(String.format(arg_name_template, 1), "h5");
+      Map<String, Object> bvarMap = new HashMap<>();
+      bvarMap.put(String.format(argNameTemplate, 0), new Integer(5));
+      bvarMap.put(String.format(argNameTemplate, 1), "h5");
 
-      Iterator<Row> rows = session.execute(select_stmt, bvar_map).iterator();
+      Iterator<Row> rows = session.execute(selectStmt, bvarMap).iterator();
 
       assertTrue(rows.hasNext());
       // Checking result.
@@ -1575,12 +1688,12 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Bind by name -- prepare bind, some of the args.
-      String select_stmt = "SELECT * FROM test_bind WHERE token(h1, h2) = token(3, ?);";
+      String selectStmt = "SELECT * FROM test_bind WHERE token(h1, h2) = token(3, ?);";
 
-      Map<String, Object> bvar_map = new HashMap<>();
-      bvar_map.put(String.format(arg_name_template, 1), "h3");
+      Map<String, Object> bvarMap = new HashMap<>();
+      bvarMap.put(String.format(argNameTemplate, 1), "h3");
 
-      Iterator<Row> rows = session.execute(select_stmt, bvar_map).iterator();
+      Iterator<Row> rows = session.execute(selectStmt, bvarMap).iterator();
 
       assertTrue(rows.hasNext());
       // Checking result.
@@ -1596,13 +1709,13 @@ public class TestBindVariable extends BaseCQLTest {
 
     {
       // Bind by name -- prepare bind, mixed un-named and named markers.
-      String select_stmt = "SELECT * FROM test_bind WHERE token(h1, h2) = token(?, :second);";
+      String selectStmt = "SELECT * FROM test_bind WHERE token(h1, h2) = token(?, :second);";
 
-      Map<String, Object> bvar_map = new HashMap<>();
-      bvar_map.put(String.format(arg_name_template, 0), new Integer(8));
-      bvar_map.put("second", "h8");
+      Map<String, Object> bvarMap = new HashMap<>();
+      bvarMap.put(String.format(argNameTemplate, 0), new Integer(8));
+      bvarMap.put("second", "h8");
 
-      Iterator<Row> rows = session.execute(select_stmt, bvar_map).iterator();
+      Iterator<Row> rows = session.execute(selectStmt, bvarMap).iterator();
 
       assertTrue(rows.hasNext());
       // Checking result.
@@ -1627,94 +1740,94 @@ public class TestBindVariable extends BaseCQLTest {
 
     // Test basic bind.
     {
-      List<Integer> int_list = new LinkedList<>();
-      int_list.add(1);
-      int_list.add(-1);
-      int_list.add(3);
-      int_list.add(7);
+      List<Integer> intList = new LinkedList<>();
+      intList.add(1);
+      intList.add(-1);
+      intList.add(3);
+      intList.add(7);
 
-      ResultSet rs = session.execute("SELECT * FROM in_bind_test WHERE h1 IN ?", int_list);
-      Set<Integer> expected_values = new HashSet<>();
-      expected_values.add(1);
-      expected_values.add(3);
-      expected_values.add(7);
+      ResultSet rs = session.execute("SELECT * FROM in_bind_test WHERE h1 IN ?", intList);
+      Set<Integer> expectedValues = new HashSet<>();
+      expectedValues.add(1);
+      expectedValues.add(3);
+      expectedValues.add(7);
       // Check rows
       for (Row row : rs) {
         Integer h1 = row.getInt("h1");
-        assertTrue(expected_values.contains(h1));
-        expected_values.remove(h1);
+        assertTrue(expectedValues.contains(h1));
+        expectedValues.remove(h1);
       }
-      assertTrue(expected_values.isEmpty());
+      assertTrue(expectedValues.isEmpty());
     }
 
     // Test prepare bind.
     {
-      List<String> string_list = new LinkedList<>();
-      string_list.add("r106");
-      string_list.add("r104");
-      string_list.add("r_non_existent");
-      string_list.add("r101");
+      List<String> stringList = new LinkedList<>();
+      stringList.add("r106");
+      stringList.add("r104");
+      stringList.add("r_non_existent");
+      stringList.add("r101");
 
       PreparedStatement prepared =
               session.prepare("SELECT * FROM in_bind_test WHERE r2 IN ?");
-      ResultSet rs = session.execute(prepared.bind(string_list));
-      Set<Integer> expected_values = new HashSet<>();
-      expected_values.add(1);
-      expected_values.add(4);
-      expected_values.add(6);
+      ResultSet rs = session.execute(prepared.bind(stringList));
+      Set<Integer> expectedValues = new HashSet<>();
+      expectedValues.add(1);
+      expectedValues.add(4);
+      expectedValues.add(6);
       // Check rows
       for (Row row : rs) {
         Integer h1 = row.getInt("h1");
-        assertTrue(expected_values.contains(h1));
-        expected_values.remove(h1);
+        assertTrue(expectedValues.contains(h1));
+        expectedValues.remove(h1);
       }
-      assertTrue(expected_values.isEmpty());
+      assertTrue(expectedValues.isEmpty());
     }
 
     // Test binding IN elems individually - one element
     {
       ResultSet rs = session.execute("SELECT * FROM in_bind_test WHERE h1 IN (?)",
               new Integer(2));
-      Set<Integer> expected_values = new HashSet<>();
-      expected_values.add(2);
+      Set<Integer> expectedValues = new HashSet<>();
+      expectedValues.add(2);
       // Check rows
       for (Row row : rs) {
         Integer h1 = row.getInt("h1");
-        assertTrue(expected_values.contains(h1));
-        expected_values.remove(h1);
+        assertTrue(expectedValues.contains(h1));
+        expectedValues.remove(h1);
       }
-      assertTrue(expected_values.isEmpty());
+      assertTrue(expectedValues.isEmpty());
     }
 
     // Test binding IN elems individually - multiple conditions
     {
       ResultSet rs = session.execute("SELECT * FROM in_bind_test WHERE h1 IN (?) AND r1 IN (?)",
               new Integer(5), new Integer(105));
-      Set<Integer> expected_values = new HashSet<>();
-      expected_values.add(5);
+      Set<Integer> expectedValues = new HashSet<>();
+      expectedValues.add(5);
       // Check rows
       for (Row row : rs) {
         Integer h1 = row.getInt("h1");
-        assertTrue(expected_values.contains(h1));
-        expected_values.remove(h1);
+        assertTrue(expectedValues.contains(h1));
+        expectedValues.remove(h1);
       }
-      assertTrue(expected_values.isEmpty());
+      assertTrue(expectedValues.isEmpty());
     }
 
     // Test binding IN elems individually - several elements
     {
       ResultSet rs = session.execute("SELECT * FROM in_bind_test WHERE h1 IN (?, ?, ?)",
               new Integer(9), new Integer(4), new Integer(-1));
-      Set<Integer> expected_values = new HashSet<>();
-      expected_values.add(4);
-      expected_values.add(9);
+      Set<Integer> expectedValues = new HashSet<>();
+      expectedValues.add(4);
+      expectedValues.add(9);
       // Check rows
       for (Row row : rs) {
         Integer h1 = row.getInt("h1");
-        assertTrue(expected_values.contains(h1));
-        expected_values.remove(h1);
+        assertTrue(expectedValues.contains(h1));
+        expectedValues.remove(h1);
       }
-      assertTrue(expected_values.isEmpty());
+      assertTrue(expectedValues.isEmpty());
     }
   }
 

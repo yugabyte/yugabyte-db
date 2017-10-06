@@ -14,6 +14,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/ql/exec/executor.h"
+#include "yb/common/typedefs.h"
 
 namespace yb {
 namespace ql {
@@ -22,13 +23,38 @@ using std::shared_ptr;
 
 //--------------------------------------------------------------------------------------------------
 
+CHECKED_STATUS Executor::PTExprToPBValidated(const PTExpr::SharedPtr& expr,
+                                             QLExpressionPB *expr_pb) {
+  RETURN_NOT_OK(PTExprToPB(expr, expr_pb));
+  if (expr_pb->has_value() && QLValue::IsNull(expr_pb->value())) {
+    return exec_context_->Error("value cannot be null.", ErrorCode::INVALID_ARGUMENTS);
+  }
+  return Status::OK();
+}
+
+CHECKED_STATUS Executor::TimestampToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
+  if (tnode->user_timestamp_usec() != nullptr) {
+    QLExpressionPB timestamp_pb;
+    RETURN_NOT_OK(PTExprToPBValidated(tnode->user_timestamp_usec(), &timestamp_pb));
+
+    // This should be ensured by checks before getting here.
+    DCHECK(timestamp_pb.has_value() && timestamp_pb.value().has_int64_value())
+        << "Integer constant expected for USING TIMESTAMP clause";
+
+    UserTimeMicros user_timestamp = timestamp_pb.value().int64_value();
+    if (user_timestamp == common::kInvalidUserTimestamp) {
+      return exec_context_->Error(tnode->user_timestamp_usec(), "Invalid timestamp",
+                                  ErrorCode::INVALID_ARGUMENTS);
+    }
+    req->set_user_timestamp_usec(timestamp_pb.value().int64_value());
+  }
+  return Status::OK();
+}
+
 CHECKED_STATUS Executor::TtlToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
   if (tnode->ttl_seconds() != nullptr) {
     QLExpressionPB ttl_pb;
-    RETURN_NOT_OK(PTExprToPB(tnode->ttl_seconds(), &ttl_pb));
-    if (ttl_pb.has_value() && QLValue::IsNull(ttl_pb.value())) {
-      return exec_context_->Error("TTL value cannot be null.", ErrorCode::INVALID_ARGUMENTS);
-    }
+    RETURN_NOT_OK(PTExprToPBValidated(tnode->ttl_seconds(), &ttl_pb));
 
     // this should be ensured by checks before getting here
     DCHECK(ttl_pb.has_value() && ttl_pb.value().has_int32_value())

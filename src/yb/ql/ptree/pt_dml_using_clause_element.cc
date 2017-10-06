@@ -38,6 +38,13 @@ Status PTDmlUsingClauseElement::Analyze(SemContext *sem_context) {
         ErrorCode::INVALID_ARGUMENTS);
   }
 
+  if (value_ == nullptr) {
+    return sem_context->Error(
+        this,
+        strings::Substitute("Invalid value for parameter $0", name_->c_str()).c_str(),
+        ErrorCode::INVALID_ARGUMENTS);
+  }
+
   RETURN_NOT_OK(value_->CheckRhsExpr(sem_context));
 
   SemState sem_state(sem_context);

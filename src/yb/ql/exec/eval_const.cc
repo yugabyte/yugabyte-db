@@ -105,37 +105,55 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *co
   switch (const_pt->expected_internal_type()) {
     case InternalType::kInt8Value: {
       int64_t value;
-      RETURN_NOT_OK(const_pt->ToInt64(&value, negate));
+      if (!const_pt->ToInt64(&value, negate).ok()) {
+        return exec_context_->Error(const_pt->loc(), "Invalid integer.",
+                                    ErrorCode::INVALID_ARGUMENTS);
+      }
       const_pb->set_int8_value(value);
       break;
     }
     case InternalType::kInt16Value: {
       int64_t value;
-      RETURN_NOT_OK(const_pt->ToInt64(&value, negate));
+      if (!const_pt->ToInt64(&value, negate).ok()) {
+        return exec_context_->Error(const_pt->loc(), "Invalid integer.",
+                                    ErrorCode::INVALID_ARGUMENTS);
+      }
       const_pb->set_int16_value(value);
       break;
     }
     case InternalType::kInt32Value: {
       int64_t value;
-      RETURN_NOT_OK(const_pt->ToInt64(&value, negate));
+      if (!const_pt->ToInt64(&value, negate).ok()) {
+        return exec_context_->Error(const_pt->loc(), "Invalid integer.",
+                                    ErrorCode::INVALID_ARGUMENTS);
+      }
       const_pb->set_int32_value(value);
       break;
     }
     case InternalType::kInt64Value: {
       int64_t value;
-      RETURN_NOT_OK(const_pt->ToInt64(&value, negate));
+      if (!const_pt->ToInt64(&value, negate).ok()) {
+        return exec_context_->Error(const_pt->loc(), "Invalid integer.",
+                                    ErrorCode::INVALID_ARGUMENTS);
+      }
       const_pb->set_int64_value(value);
       break;
     }
     case InternalType::kFloatValue: {
       long double value;
-      RETURN_NOT_OK(const_pt->ToDouble(&value, negate));
+      if (!const_pt->ToDouble(&value, negate).ok()) {
+        return exec_context_->Error(const_pt->loc(), "Invalid float.",
+                                    ErrorCode::INVALID_ARGUMENTS);
+      }
       const_pb->set_float_value(value);
       break;
     }
     case InternalType::kDoubleValue: {
       long double value;
-      RETURN_NOT_OK(const_pt->ToDouble(&value, negate));
+      if (!const_pt->ToDouble(&value, negate).ok()) {
+        return exec_context_->Error(const_pt->loc(), "Invalid double.",
+                                    ErrorCode::INVALID_ARGUMENTS);
+      }
       const_pb->set_double_value(value);
       break;
     }
@@ -144,7 +162,10 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *co
     }
     case InternalType::kTimestampValue: {
       int64_t value;
-      RETURN_NOT_OK(const_pt->ToInt64(&value, negate));
+      if (!const_pt->ToInt64(&value, negate).ok()) {
+        return exec_context_->Error(const_pt->loc(), "Invalid integer.",
+                                    ErrorCode::INVALID_ARGUMENTS);
+      }
       const_pb->set_timestamp_value(DateTime::TimestampFromInt(value).ToInt64());
       break;
     }
