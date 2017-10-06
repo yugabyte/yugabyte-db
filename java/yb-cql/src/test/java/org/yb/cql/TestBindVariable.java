@@ -1033,9 +1033,15 @@ public class TestBindVariable extends BaseCQLTest {
     setupTable("test_bind", 0 /* num_rows */);
 
     // Illegal (non-positive) bind position marker.
-    testBindSyntaxError("SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
-                        " WHERE h1 = :0 AND h2 = :1 AND r1 = :2;",
-                        new Integer(7), "h7", new Integer(107));
+    testInvalidBindStatement("SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+                             " WHERE h1 = :0 AND h2 = :1 AND r1 = :2;",
+                             new Integer(7), "h7", new Integer(107));
+
+    // Illegal (too large) bind position marker.
+    testInvalidBindStatement("SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+                             " WHERE h1 = :9223372036854775808 AND h2 = :1 AND r1 = :2;",
+                             new Integer(7), "h7", new Integer(107));
+
 
     // Missing bind variable at position 3.
     testInvalidBindStatement("SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +

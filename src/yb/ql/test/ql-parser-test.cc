@@ -126,9 +126,6 @@ TEST_F(QLTestParser, TestQLParser) {
   // Valid statement: SELECT statement with "=" and ":number" with no space in between.
   PARSE_VALID_STMT("SELECT * FROM t WHERE C1=:1;");
 
-  // Valid statement: SELECT statement with non-positive ":" bind position marker.
-  PARSE_INVALID_STMT("SELECT * from t WHERE C1 = :0;");
-
   // Invalid statement: CREATE TABLE with "?" bind marker.
   PARSE_INVALID_STMT("CREATE TABLE t (c int PRIMARY KEY) WITH default_time_to_live = ?;");
 

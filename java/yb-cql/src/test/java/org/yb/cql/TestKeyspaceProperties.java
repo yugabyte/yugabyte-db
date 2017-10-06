@@ -85,6 +85,9 @@ public class TestKeyspaceProperties extends BaseCQLTest {
     runInvalidKeyspaceProperty(
         "REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 3.0 }");
     runInvalidKeyspaceProperty(
+      "REPLICATION = { 'class' : 'SimpleStrategy', " +
+        "'replication_factor' : 9223372036854775808e9223372036854775808}");
+    runInvalidKeyspaceProperty(
         "REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 3, 'dc1' : 1 }");
     runInvalidKeyspaceProperty(
         "REPLICATION = { 'class' : 'NetworkTopologyStrategy', 'replication_factor' : 3 }");
@@ -92,6 +95,8 @@ public class TestKeyspaceProperties extends BaseCQLTest {
         "REPLICATION = { 'class' : 'NetworkTopologyStrategy', 'd' : 1, 'replication_factor' : 3 }");
     runInvalidKeyspaceProperty(
         "REPLICATION = { 'class' : 'NetworkTopologyStrategy', 'dc1' : true }");
+    runInvalidKeyspaceProperty(
+      "REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 9223372036854775808 }");
 
     // Valid cases.
     runValidKeyspaceProperty(

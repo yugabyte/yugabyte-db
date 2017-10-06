@@ -18,6 +18,7 @@
 #include "yb/tools/yb-generate_partitions.h"
 #include "yb/util/date_time.h"
 #include "yb/util/enums.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/status.h"
 #include "yb/util/timestamp.h"
 
@@ -29,7 +30,6 @@ using client::YBTableName;
 using google::protobuf::RepeatedPtrField;
 using master::TabletLocationsPB;
 using std::map;
-using std::stoi;
 using std::string;
 using std::vector;
 
@@ -93,19 +93,19 @@ Status YBPartitionGenerator::LookupTabletIdWithTokenizer(const CsvTokenizer& tok
     int64_t long_val;
     switch(column_type) {
       case DataType::INT8:
-        RETURN_NOT_OK(CheckedStoi(*it, &int_val));
+        RETURN_NOT_OK(util::CheckedStoi(*it, &int_val));
         RETURN_NOT_OK(partial_row->SetInt8(i, int_val));
         break;
       case DataType::INT16:
-        RETURN_NOT_OK(CheckedStoi(*it, &int_val));
+        RETURN_NOT_OK(util::CheckedStoi(*it, &int_val));
         RETURN_NOT_OK(partial_row->SetInt16(i, int_val));
         break;
       case DataType::INT32:
-        RETURN_NOT_OK(CheckedStoi(*it, &int_val));
+        RETURN_NOT_OK(util::CheckedStoi(*it, &int_val));
         RETURN_NOT_OK(partial_row->SetInt32(i, int_val));
         break;
       case DataType::INT64:
-        RETURN_NOT_OK(CheckedStol(*it, &long_val));
+        RETURN_NOT_OK(util::CheckedStoll(*it, &long_val));
         RETURN_NOT_OK(partial_row->SetInt64(i, long_val));
         break;
       case DataType::STRING:

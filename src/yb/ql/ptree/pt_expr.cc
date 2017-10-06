@@ -20,6 +20,7 @@
 #include "yb/ql/ptree/sem_context.h"
 #include "yb/util/decimal.h"
 #include "yb/util/net/inetaddress.h"
+#include "yb/util/stol_utils.h"
 
 namespace yb {
 namespace ql {
@@ -176,19 +177,18 @@ PTLiteralString::~PTLiteralString() {
 
 CHECKED_STATUS PTLiteralString::ToInt64(int64_t *value, bool negate) const {
   if (negate) {
-    string negate = string("-") + value_->c_str();
-    *value = std::stol(negate.c_str());
+    RETURN_NOT_OK(util::CheckedStoll(string("-") + value_->c_str(), value));
   } else {
-    *value = std::stol(value_->c_str());
+    RETURN_NOT_OK(util::CheckedStoll(value_->c_str(), value));
   }
   return Status::OK();
 }
 
 CHECKED_STATUS PTLiteralString::ToDouble(long double *value, bool negate) const {
   if (negate) {
-    *value = -std::stold(value_->c_str());
+    RETURN_NOT_OK(util::CheckedStold(string("-") + value_->c_str(), value));
   } else {
-    *value = std::stold(value_->c_str());
+    RETURN_NOT_OK(util::CheckedStold(value_->c_str(), value));
   }
   return Status::OK();
 }
@@ -854,15 +854,17 @@ PTBindVar::PTBindVar(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
                      const MCSharedPtr<MCString>& name)
     : PTExpr(memctx, loc, ExprOperator::kBindVar),
+      user_pos_(nullptr),
       pos_(kUnsetPosition),
       name_(name) {
 }
 
 PTBindVar::PTBindVar(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
-                     int64_t pos)
+                     PTConstVarInt::SharedPtr user_pos)
     : PTExpr(memctx, loc, ExprOperator::kBindVar),
-      pos_(pos),
+      user_pos_(user_pos),
+      pos_(kUnsetPosition),
       name_(nullptr) {
 }
 
@@ -874,6 +876,20 @@ CHECKED_STATUS PTBindVar::Analyze(SemContext *sem_context) {
 
   if (name_ == nullptr) {
     name_ = sem_context->bindvar_name();
+  }
+
+  if (user_pos_ != nullptr) {
+    if (!user_pos_->ToInt64(&pos_, false).ok()) {
+      return sem_context->Error(this, "Bind position is invalid!",
+                                ErrorCode::INVALID_ARGUMENTS);
+    }
+
+    if (pos_ <= 0) {
+      return sem_context->Error(this, "Bind variable position should be positive!",
+                                ErrorCode::INVALID_ARGUMENTS);
+    }
+    // Convert from 1 based to 0 based.
+    pos_--;
   }
 
   ql_type_ = sem_context->expr_expected_ql_type();

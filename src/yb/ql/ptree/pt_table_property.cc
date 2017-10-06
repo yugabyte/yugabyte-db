@@ -15,6 +15,7 @@
 #include "yb/client/schema.h"
 #include "yb/ql/ptree/pt_table_property.h"
 #include "yb/ql/ptree/sem_context.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 
 namespace yb {
@@ -79,22 +80,14 @@ Status PTTableProperty::AnalyzeSpeculativeRetry(const string &val) {
   string numeric_val;
   if (StringEndsWith(val, common::kSpeculativeRetryMs, common::kSpeculativeRetryMsLen,
                      &numeric_val)) {
-    try {
-      std::stold(numeric_val);
-    } catch (std::invalid_argument e) {
-      return STATUS(InvalidArgument, generic_error);
-    }
-    return Status::OK();
+    long double placeholder;
+    return util::CheckedStold(numeric_val, &placeholder);
   }
 
   if (StringEndsWith(val, common::kSpeculativeRetryPercentile,
                      common::kSpeculativeRetryPercentileLen, &numeric_val)) {
     long double percentile;
-    try {
-      percentile = std::stold(numeric_val);
-    } catch (std::invalid_argument e) {
-      return STATUS(InvalidArgument, generic_error);
-    }
+    RETURN_NOT_OK(util::CheckedStold(numeric_val, &percentile));
 
     if (percentile < 0.0 || percentile > 100.0) {
       return STATUS(InvalidArgument, Substitute(
@@ -116,7 +109,7 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
                               ErrorCode::INVALID_TABLE_PROPERTY);
   }
 
-  double double_val;
+  long double double_val;
   int64_t int_val;
   string str_val;
 
@@ -436,7 +429,7 @@ Status PTTablePropertyMap::AnalyzeCompaction() {
   // Verify that the types for subproperties values are valid. Also verify that elements in
   // subproperties are valid for the given class.
   auto const& valid_subproperties_for_class = class_subproperties_iter->second;
-  double bucket_high = 1.5, bucket_low = 0.5;
+  long double bucket_high = 1.5, bucket_low = 0.5;
   int64_t max_threshold = 32, min_threshold = 4;
   for (const auto& subproperty : subproperties) {
     string subproperty_name;
@@ -450,7 +443,7 @@ Status PTTablePropertyMap::AnalyzeCompaction() {
     // Even if we already know that we have a subproperty that is not valid for a given class,
     // Cassandra will first complain about invalid values for a valid subproperty.
     int64_t int_val;
-    double double_val;
+    long double double_val;
     bool bool_val;
     string str_val;
     switch(subproperty_enum) {
@@ -631,7 +624,7 @@ Status PTTablePropertyMap::AnalyzeCompression() {
     }
 
     int64_t int_val;
-    double double_val;
+    long double double_val;
     bool bool_val;
     switch(iter->second) {
       case Compression::Subproperty::kChunkLengthKb:

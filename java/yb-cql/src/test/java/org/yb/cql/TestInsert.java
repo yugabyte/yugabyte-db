@@ -68,6 +68,33 @@ public class TestInsert extends BaseCQLTest {
   }
 
   @Test
+  public void testInsertWithLargeNumbers() throws Exception {
+    String tableName = "test_insert_with_large_numbers";
+    session.execute(String.format("CREATE TABLE %s (c1 bigint, c2 double, PRIMARY KEY(c1))",
+      tableName));
+
+    // Invalid
+    runInvalidStmt(String.format("INSERT INTO %s (c1, c2) values (9223372036854775808, 1)",
+      tableName));
+    runInvalidStmt(String.format("INSERT INTO %s (c1, c2) values (1, " +
+      "9223372036854775808e9223372036854775808)", tableName));
+    runInvalidStmt(String.format("INSERT INTO %s (c1, c2) values (1, " +
+      "-9223372036854775808e9223372036854775808)", tableName));
+    runInvalidStmt(String.format("INSERT INTO %s (c1, c2) values (-9223372036854775809, 1)",
+      tableName));
+
+    // Valid
+    session.execute(String.format("INSERT INTO %s (c1, c2) values (9223372036854775807, 1)",
+      tableName));
+    session.execute(String.format("INSERT INTO %s (c1, c2) values (-9223372036854775808, 1)",
+      tableName));
+    session.execute(String.format("INSERT INTO %s (c1, c2) values (1, " +
+      "1.7e308)", tableName));
+    session.execute(String.format("INSERT INTO %s (c1, c2) values (1, " +
+      "-1.7e308)", tableName));
+  }
+
+  @Test
     public void testInsertWithTimestamp() throws Exception {
       String tableName = "test_insert_with_timestamp";
       createTable(tableName, "timestamp");

@@ -187,6 +187,7 @@ set(UTIL_SRCS
   spinlock_profiling.cc
   status.cc
   status_callback.cc
+  stol_utils.cc
   string_case.cc
   striped64.cc
   subprocess.cc
@@ -367,6 +368,7 @@ ADD_YB_TEST(spinlock_profiling-test)
 ADD_YB_TEST(split-test)
 ADD_YB_TEST(stack_watchdog-test)
 ADD_YB_TEST(status-test)
+ADD_YB_TEST(stol_utils-test)
 ADD_YB_TEST(string_case-test)
 ADD_YB_TEST(striped64-test)
 ADD_YB_TEST(subprocess-test)

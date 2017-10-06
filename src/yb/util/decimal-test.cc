@@ -151,7 +151,7 @@ TEST_F(DecimalTest, IsIntegerTest) {
 }
 
 TEST_F(DecimalTest, TestDoubleConversions) {
-  double dbl;
+  long double dbl;
   // Note: Rounding errors are expected
 
   EXPECT_OK(Decimal("12.301").ToDouble(&dbl));
@@ -192,8 +192,8 @@ TEST_F(DecimalTest, TestDoubleConversions) {
 
   // Can convert from denorm values.
   EXPECT_OK(decimal.FromDouble(std::numeric_limits<double>::denorm_min()));
-  // Cannot convert to denorm values.
-  EXPECT_TRUE(decimal.ToDouble(&dbl).IsInvalidArgument());
+  // Can convert to denorm values.
+  EXPECT_OK(decimal.ToDouble(&dbl));
   EXPECT_EQ("4.9406564584124654418e-324", decimal.ToString());
 
   EXPECT_TRUE(decimal.FromDouble(std::numeric_limits<double>::infinity()).IsCorruption());

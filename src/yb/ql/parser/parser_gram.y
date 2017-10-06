@@ -152,6 +152,7 @@ typedef FunctionParameterMode          fun_param_mode;
 
 #include "yb/ql/parser/parser.h"
 #include "yb/ql/parser/scanner_util.h"
+#include "yb/util/stol_utils.h"
 
 using namespace std;
 using namespace yb::ql;
@@ -939,13 +940,13 @@ keyspace_property_map_list:
 ;
 
 keyspace_property_map_list_element:
-  Sconst ':' Iconst {
-    PTConstInt::SharedPtr pt_constint = MAKE_NODE(@3, PTConstInt, $3);
-    $$ = MAKE_NODE(@1, PTKeyspaceProperty, $1, pt_constint);
+  Sconst ':' ICONST {
+    PTConstVarInt::SharedPtr pt_constvarint = MAKE_NODE(@3, PTConstVarInt, $3);
+    $$ = MAKE_NODE(@1, PTKeyspaceProperty, $1, pt_constvarint);
   }
   | Sconst ':' FCONST {
-    PTConstDouble::SharedPtr pt_constdouble = MAKE_NODE(@3, PTConstDouble, stold($3->c_str()));
-    $$ = MAKE_NODE(@1, PTKeyspaceProperty, $1, pt_constdouble);
+    PTConstDecimal::SharedPtr pt_constdecimal = MAKE_NODE(@3, PTConstDecimal, $3);
+    $$ = MAKE_NODE(@1, PTKeyspaceProperty, $1, pt_constdecimal);
   }
   | Sconst ':' TRUE_P {
     PTConstBool::SharedPtr pt_constbool = MAKE_NODE(@3, PTConstBool, true);
@@ -1377,9 +1378,9 @@ table_property:
     $$ = MAKE_NODE(@1, PTTablePropertyListNode, pt_table_property);
   }
   | property_name '=' FCONST {
-    PTConstDouble::SharedPtr pt_constdouble = MAKE_NODE(@3, PTConstDouble, stold($3->c_str()));
+    PTConstDecimal::SharedPtr pt_constdecimal= MAKE_NODE(@3, PTConstDecimal, $3);
     PTTableProperty::SharedPtr pt_table_property = MAKE_NODE(@1, PTTableProperty, $1,
-                                                             pt_constdouble);
+                                                             pt_constdecimal);
     $$ = MAKE_NODE(@1, PTTablePropertyListNode, pt_table_property);
   }
   | property_name '=' TRUE_P {
@@ -1427,13 +1428,13 @@ property_map_list:
 ;
 
 property_map_list_element:
-  Sconst ':' Iconst {
-    PTConstInt::SharedPtr pt_constint = MAKE_NODE(@3, PTConstInt, $3);
-    $$ = MAKE_NODE(@1, PTTableProperty, $1, pt_constint);
+  Sconst ':' ICONST {
+    PTConstVarInt::SharedPtr pt_constvarint = MAKE_NODE(@3, PTConstVarInt, $3);
+    $$ = MAKE_NODE(@1, PTTableProperty, $1, pt_constvarint);
   }
   | Sconst ':' FCONST {
-    PTConstDouble::SharedPtr pt_constdouble = MAKE_NODE(@3, PTConstDouble, stold($3->c_str()));
-    $$ = MAKE_NODE(@1, PTTableProperty, $1, pt_constdouble);
+    PTConstDecimal::SharedPtr pt_constdecimal = MAKE_NODE(@3, PTConstDecimal, $3);
+    $$ = MAKE_NODE(@1, PTTableProperty, $1, pt_constdecimal);
   }
   | Sconst ':' TRUE_P {
     PTConstBool::SharedPtr pt_constbool = MAKE_NODE(@3, PTConstBool, true);
@@ -3904,13 +3905,9 @@ bindvar:
   | ':' unreserved_keyword {
     $$ = MAKE_NODE(@1, PTBindVar, parser_->MakeString($2));
   }
-  | ':' Iconst {
-    if ($2 <= 0) {
-      PARSER_CQL_INVALID_MSG(@2, "bind position must be a positive integer");
-      $$ = nullptr;
-    } else {
-      $$ = MAKE_NODE(@1, PTBindVar, $2 - 1); // convert from 1-based to 0-based bind position.
-    }
+  | ':' ICONST {
+    PTConstVarInt::SharedPtr pt_constvarint = MAKE_NODE(@1, PTConstVarInt, $2);
+    $$ = MAKE_NODE(@1, PTBindVar, pt_constvarint);
   }
 ;
 
@@ -4207,7 +4204,16 @@ AexprConst:
   }
 ;
 
-Iconst:   ICONST                  { $$ = stoll($1->c_str()); };
+Iconst: ICONST {
+  int64_t val;
+  Status s = util::CheckedStoll($1->c_str(), &val);
+  if (!s.ok()) {
+    PARSER_CQL_INVALID_MSG(@1, "invalid integer");
+  } else {
+    $$ = val;
+  }
+};
+
 Sconst:   SCONST                  { $$ = $1; };
 
 SignedIconst:

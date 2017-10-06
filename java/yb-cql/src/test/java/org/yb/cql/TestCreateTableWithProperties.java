@@ -140,6 +140,16 @@ public class TestCreateTableWithProperties extends BaseCQLTest {
     RunInvalidTableProperty("compaction = ''");
     RunInvalidTableProperty("compaction = { 'a' : 1 }");
     RunValidTableProperty("compaction = { 'class' : 'SizeTieredCompactionStrategy' }");
+    RunInvalidTableProperty("compaction = " +
+      "{ " +
+      "  'class' : 'SizeTieredCompactionStrategy', " +
+      "  'bucket_high':  9223372036854775808e9223372036854775808" +
+      "}");
+    RunInvalidTableProperty("compaction = " +
+      "{ " +
+      "  'class' : 'SizeTieredCompactionStrategy', " +
+      "  'max_threshold':  9223372036854775808" +
+      "}");
     RunInvalidTableProperty("compaction = { 'class' : 'SizeTieredCompactionStrategy-' }");
     RunValidTableProperty("compaction = " +
         "{ " +
@@ -436,6 +446,8 @@ public class TestCreateTableWithProperties extends BaseCQLTest {
   @Test
   public void testCrcCheckChance() throws Exception {
     testDoubleMinMaxValue(0, 1, "crc_check_chance");
+    RunInvalidTableProperty("crc_check_chance = 9223372036854775808e9223372036854775808");
+    RunInvalidTableProperty("crc_check_chance = -9223372036854775808e9223372036854775808");
   }
 
   @Test
@@ -506,6 +518,10 @@ public class TestCreateTableWithProperties extends BaseCQLTest {
   public void testSpeculativeRetry() throws Exception {
     testInvalidString("speculative_retry");
     RunInvalidTableProperty("speculative_retry = 'ms'");
+    RunInvalidTableProperty("speculative_retry = " +
+      "'9223372036854775808e9223372036854775808PERCENTILE'");
+    RunInvalidTableProperty("speculative_retry = '9223372036854775808e9223372036854775808ms'");
+
     RunValidTableProperty("speculative_retry = '3ms'");
     RunValidTableProperty("speculative_retry = 'ALWAYS'");
     RunValidTableProperty("speculative_retry = 'Always'");

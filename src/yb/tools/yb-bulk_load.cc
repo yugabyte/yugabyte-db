@@ -37,6 +37,7 @@
 #include "yb/tools/yb-generate_partitions.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/status.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/threadpool.h"
@@ -46,9 +47,6 @@
 #include "yb/util/subprocess.h"
 
 using std::pair;
-using std::stoi;
-using std::stol;
-using std::stold;
 using std::string;
 using std::shared_ptr;
 using std::unique_ptr;
@@ -189,30 +187,30 @@ Status BulkLoadTask::PopulateColumnValue(const string &column,
   auto ql_valuepb = column_value->mutable_expr()->mutable_value();
   int32_t int_val;
   int64_t long_val;
-  double double_val;
+  long double double_val;
   switch (data_type) {
     case DataType::INT8:
-      RETURN_NOT_OK(CheckedStoi(column, &int_val));
+      RETURN_NOT_OK(util::CheckedStoi(column, &int_val));
       ql_valuepb->set_int8_value(int_val);
       break;
     case DataType::INT16:
-      RETURN_NOT_OK(CheckedStoi(column, &int_val));
+      RETURN_NOT_OK(util::CheckedStoi(column, &int_val));
       ql_valuepb->set_int16_value(int_val);
       break;
     case DataType::INT32:
-      RETURN_NOT_OK(CheckedStoi(column, &int_val));
-      ql_valuepb->set_int32_value(stoi(column));
+      RETURN_NOT_OK(util::CheckedStoi(column, &int_val));
+      ql_valuepb->set_int32_value(int_val);
       break;
     case DataType::INT64:
-      RETURN_NOT_OK(CheckedStol(column, &long_val));
-      ql_valuepb->set_int64_value(stol(column));
+      RETURN_NOT_OK(util::CheckedStoll(column, &long_val));
+      ql_valuepb->set_int64_value(long_val);
       break;
     case DataType::FLOAT:
-      RETURN_NOT_OK(CheckedStold(column, &double_val));
+      RETURN_NOT_OK(util::CheckedStold(column, &double_val));
       ql_valuepb->set_float_value(double_val);
       break;
     case DataType::DOUBLE:
-      RETURN_NOT_OK(CheckedStold(column, &double_val));
+      RETURN_NOT_OK(util::CheckedStold(column, &double_val));
       ql_valuepb->set_double_value(double_val);
       break;
     case DataType::STRING:

@@ -12,6 +12,7 @@
 //
 
 #include "yb/ql/ptree/pt_property.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 
 namespace yb {
@@ -53,13 +54,7 @@ Status PTProperty::GetIntValueFromExpr(PTExpr::SharedPtr expr,
       DCHECK(expr->ql_type_id() == DataType::VARINT);
       str_val = std::dynamic_pointer_cast<PTConstVarInt>(expr)->Eval();
     }
-    try {
-      *val = std::stoll(str_val->c_str());
-    } catch (...) {
-      return STATUS(InvalidArgument, Substitute("Invalid integer value $0 for '$1'",
-                                                str_val->c_str(), property_name));
-    }
-    return Status::OK();
+    return util::CheckedStoll(str_val->c_str(), val);
   } else if (QLType::IsInteger(expr->ql_type_id())) {
     *val = std::dynamic_pointer_cast<PTConstInt>(expr)->Eval();
     return Status::OK();
@@ -69,7 +64,7 @@ Status PTProperty::GetIntValueFromExpr(PTExpr::SharedPtr expr,
 
 Status PTProperty::GetDoubleValueFromExpr(PTExpr::SharedPtr expr,
                                           const string& property_name,
-                                          double *val) {
+                                          long double *val) {
   DCHECK_ONLY_NOTNULL(val);
 
   if (expr == nullptr) {
@@ -77,20 +72,16 @@ Status PTProperty::GetDoubleValueFromExpr(PTExpr::SharedPtr expr,
   }
   if (QLType::IsNumeric(expr->ql_type_id())) {
     if (QLType::IsInteger(expr->ql_type_id())) {
-      *val = std::dynamic_pointer_cast<PTConstInt>(expr)->Eval();
+      DCHECK(expr->ql_type_id() == DataType::VARINT);
+      RETURN_NOT_OK(std::static_pointer_cast<PTConstVarInt>(expr)->ToDouble(val, false));
     } else {
-      DCHECK(expr->ql_type_id() == DataType::DOUBLE);
-      *val = std::dynamic_pointer_cast<PTConstDouble>(expr)->Eval();
+      DCHECK(expr->ql_type_id() == DataType::DECIMAL);
+      RETURN_NOT_OK(std::static_pointer_cast<PTConstDecimal>(expr)->ToDouble(val, false));
     }
     return Status::OK();
   } else if (expr->ql_type_id() == DataType::STRING) {
     auto str_val = std::dynamic_pointer_cast<PTConstText>(expr)->Eval();
-    try {
-      *val = std::stold(str_val->c_str());
-    } catch (...) {
-      return STATUS(InvalidArgument, Substitute("Invalid float value $0 for '$1'",
-                                                str_val->c_str(), property_name));
-    }
+    RETURN_NOT_OK(util::CheckedStold(str_val->c_str(), val));
     return Status::OK();
   }
   return STATUS(InvalidArgument, Substitute("Invalid float value for '$0'", property_name));

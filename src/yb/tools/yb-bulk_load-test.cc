@@ -591,28 +591,5 @@ TEST_F(YBBulkLoadTest, TestCLITool) {
   }
 }
 
-TEST_F(YBBulkLoadTest, TestCheckedStoild) {
-  int32_t int_val;
-  ASSERT_OK(CheckedStoi("123", &int_val));
-  ASSERT_OK(CheckedStoi("-123", &int_val));
-  ASSERT_NOK(CheckedStoi("123.1", &int_val));
-  ASSERT_NOK(CheckedStoi("123456789011", &int_val));
-  ASSERT_NOK(CheckedStoi("123-abc", &int_val));
-  ASSERT_NOK(CheckedStoi("123 123", &int_val));
-
-  int64_t long_val;
-  ASSERT_OK(CheckedStol("123", &long_val));
-  ASSERT_OK(CheckedStol("-123", &long_val));
-  ASSERT_NOK(CheckedStol("123.1", &long_val));
-  ASSERT_NOK(CheckedStol("123456789123456789123456789", &long_val));
-  ASSERT_NOK(CheckedStol("123 123", &long_val));
-
-  double double_val;
-  ASSERT_OK(CheckedStold("123", &double_val));
-  ASSERT_OK(CheckedStold("-123", &double_val));
-  ASSERT_OK(CheckedStold("123.1", &double_val));
-  ASSERT_NOK(CheckedStold("123 123", &double_val));
-}
-
 } // namespace tools
 } // namespace yb

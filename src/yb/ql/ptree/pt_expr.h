@@ -1031,7 +1031,7 @@ class PTBindVar : public PTExpr {
             const MCSharedPtr<MCString>& name = nullptr);
   PTBindVar(MemoryContext *memctx,
             YBLocation::SharedPtr loc,
-            int64_t pos);
+            PTConstVarInt::SharedPtr user_pos);
   virtual ~PTBindVar();
 
   // Support for shared_ptr.
@@ -1100,7 +1100,8 @@ class PTBindVar : public PTExpr {
 
  private:
   // 0-based position.
-  int64_t pos_;
+  PTConstVarInt::SharedPtr user_pos_; // pos used for parsing.
+  int64_t pos_; // pos after parsing is done.
   // Variable name.
   MCSharedPtr<MCString> name_;
   // Hash column descriptor.

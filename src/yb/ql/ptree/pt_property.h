@@ -76,7 +76,7 @@ class PTProperty : public TreeNode {
 
   static CHECKED_STATUS GetDoubleValueFromExpr(PTExpr::SharedPtr expr,
                                                const string& property_name,
-                                               double *val);
+                                               long double *val);
 
   static CHECKED_STATUS GetBoolValueFromExpr(PTExpr::SharedPtr expr,
                                              const string& property_name,

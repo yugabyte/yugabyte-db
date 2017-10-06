@@ -18,6 +18,7 @@
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/decimal.h"
+#include "yb/util/stol_utils.h"
 
 using std::string;
 using std::vector;
@@ -125,14 +126,8 @@ string Decimal::ToString() const {
   }
 }
 
-Status Decimal::ToDouble(double* double_val) const {
-  try {
-    *double_val = std::stod(ToString());
-  } catch (std::exception& e) {
-    // Possible exception types: std::invalid_argument, std::out_of_range.
-    return STATUS(InvalidArgument, e.what());
-  }
-  return Status::OK();
+Status Decimal::ToDouble(long double* double_val) const {
+  return CheckedStold(ToString(), double_val);
 }
 
 Status Decimal::ToVarInt(VarInt *varint_value, const int max_length) const {
