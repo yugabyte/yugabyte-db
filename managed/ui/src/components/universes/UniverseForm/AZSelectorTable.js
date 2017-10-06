@@ -1,7 +1,7 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Field } from 'redux-form';
-import { YBControlledSelect, YBControlledNumericInput } from 'components/common/forms/fields';
+import { YBControlledSelect, YBControlledNumericInput, YBCheckBox } from 'components/common/forms/fields';
 import { isNonEmptyArray, isValidObject, areUniverseConfigsEqual, isEmptyObject } from 'utils/ObjectUtils';
 import {Row, Col} from 'react-bootstrap';
 import _ from 'lodash';
@@ -46,6 +46,14 @@ export default class AZSelectorTable extends Component {
     this.updatePlacementInfo(currentAZState, universeTemplate);
   }
 
+  handleAffinitizedZoneChange(idx) {
+    const {universe: {universeConfigTemplate}} = this.props;
+    const currentAZState = this.state.azItemState;
+    const universeTemplate = _.clone(universeConfigTemplate.data);
+    currentAZState[idx].isAffinitized = !currentAZState[idx].isAffinitized;
+    this.updatePlacementInfo(currentAZState, universeTemplate);
+  }
+
   updatePlacementInfo(currentAZState, universeConfigTemplate) {
     const {universe: {currentUniverse}, cloud, numNodesChangedViaAzList, currentProvider, maxNumNodes, minNumNodes} = this.props;
     this.setState({azItemState: currentAZState});
@@ -71,7 +79,8 @@ export default class AZSelectorTable extends Component {
                 replicationFactor: 1,
                 subnet: zoneItem.subnet,
                 name: zoneItem.name,
-                numNodesInAZ: azItem.count
+                numNodesInAZ: azItem.count,
+                isAffinitized: azItem.isAffinitized
               });
             }
           });
@@ -154,7 +163,8 @@ export default class AZSelectorTable extends Component {
         regionItem.azList.forEach(function(azItem) {
           uniConfigArray.forEach(function(configArrayItem) {
             if (configArrayItem.value === azItem.uuid) {
-              groupsArray.push({value: azItem.uuid, count: configArrayItem.count});
+              groupsArray.push({value: azItem.uuid, count: configArrayItem.count, 
+                                isAffinitized: azItem.isAffinitized === undefined ? true : azItem.isAffinitized});
               if (uniqueRegions.indexOf(regionItem.uuid) === -1) {
                 uniqueRegions.push(regionItem.uuid);
               }
@@ -228,10 +238,14 @@ export default class AZSelectorTable extends Component {
                  options={azListOptions} selectVal={azGroupItem.value}
                  onInputChanged={self.handleAZChange.bind(self, idx)}/>
           </Col>
-          <Col sm={6}>
+          <Col sm={4}>
             <Field name={`nodes${idx}`} component={YBControlledNumericInput}
             val={azGroupItem.count}
             onInputChanged={self.handleAZNodeCountChange.bind(self, idx)}/>
+          </Col>
+          <Col sm={2} key={idx}>
+            <Field name={"test"} component={YBCheckBox} checkState={azGroupItem.isAffinitized} 
+                   onClick={self.handleAffinitizedZoneChange.bind(self, idx)}/>
           </Col>
         </Row>
     ));

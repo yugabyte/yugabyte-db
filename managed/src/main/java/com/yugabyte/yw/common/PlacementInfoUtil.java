@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -17,12 +18,14 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
-import java.util.ArrayList;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import org.joda.time.DateTime;
+
+import javafx.util.Pair;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -66,6 +69,56 @@ public class PlacementInfoUtil {
   }
 
   /**
+   * Method to check whether the affinitized leaders info changed between the old and new
+   * placements. If an AZ is present in the new placement but not the old or vice versa, 
+   * returns false.
+   * @param universe
+   * @param taskParams
+   * @return boolean 
+   */
+  private static boolean didAffinitizedLeadersChange(
+      Universe universe,
+      UniverseDefinitionTaskParams taskParams) {
+    boolean isEditUniverse = universe != null;
+    if (!isEditUniverse) {
+      return false;
+    }
+    PlacementInfo newPlacementInfo = taskParams.placementInfo;
+    PlacementInfo oldPlacementInfo = universe.getUniverseDetails().placementInfo;
+    Collection<NodeDetails> nodeDetailsSet = isEditUniverse ? universe.getNodes() :
+      taskParams.nodeDetailsSet;
+    
+    // Map between the old placement's AZs and the affinitized leader info.
+    HashMap<UUID, Boolean> oldAZMap = new HashMap<UUID, Boolean>();
+    
+    for (PlacementCloud oldCloud : oldPlacementInfo.cloudList) {
+      for (PlacementRegion oldRegion : oldCloud.regionList) {
+        for (PlacementAZ oldAZ : oldRegion.azList) {
+          oldAZMap.put(oldAZ.uuid, oldAZ.isAffinitized);
+        }
+      }
+    }
+    
+    for (PlacementCloud newCloud : newPlacementInfo.cloudList) {
+      for (PlacementRegion newRegion : newCloud.regionList) {
+        for (PlacementAZ newAZ : newRegion.azList) {
+          if (oldAZMap.get(newAZ.uuid)) {
+             if (oldAZMap.get(newAZ.uuid) != newAZ.isAffinitized) {
+               // affinitized leader info has changed, return true.
+               return true;
+             }
+           } else {
+             // The AZ config has changed, return false.
+             return false;
+           }
+        }
+      }
+    }
+    // No affinitized leader info has changed, return false.
+    return false;
+  }
+  
+  /**
    * Method to check if the given set of nodes match the placement info AZ to detect pure
    * expand/shrink type.
    * The following cases are _not_ considered Expand/Shrink and will be treated as full move.
@@ -105,8 +158,9 @@ public class PlacementInfoUtil {
       }
     }
 
-    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodeDetailsSet);
     boolean atleastOneCountChanged = false;
+    
+    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodeDetailsSet);   
     for (Map.Entry<UUID, Integer> azUuidToNumNode : azUuidToNumNodes.entrySet()) {
       boolean targetAZFound = false;
       for (PlacementCloud cloud : placementInfo.cloudList) {
@@ -156,7 +210,7 @@ public class PlacementInfoUtil {
       // The user intent numNodes matches the sum of the nodes in the placement, then the
       // user chose a custom placement across AZ's.
       if (atleastOneCountChanged) {
-        // The user changed the count for sure on the per AZ palcement.
+        // The user changed the count for sure on the per AZ placement.
         mode = ConfigureNodesMode.UPDATE_CONFIG_FROM_PLACEMENT_INFO;
       }
     } else {
@@ -298,7 +352,12 @@ public class PlacementInfoUtil {
     LOG.info("Placement={}, nodes={}.", taskParams.placementInfo,
              taskParams.nodeDetailsSet.size());
     taskParams.userIntent.isMultiAZ = isMultiAZSetup(taskParams);
-    ConfigureNodesMode mode = getPureExpandOrShrinkMode(universe, taskParams);
+    ConfigureNodesMode mode;
+    if (didAffinitizedLeadersChange(universe, taskParams)) {
+      mode = ConfigureNodesMode.UPDATE_CONFIG_FROM_PLACEMENT_INFO;
+    } else {
+      mode = getPureExpandOrShrinkMode(universe, taskParams);
+    }
     if (mode == ConfigureNodesMode.NEW_CONFIG) {
       // Not a pure expand or shrink.
       boolean providerOrRegionListChanged =
@@ -412,29 +471,32 @@ public class PlacementInfoUtil {
     return nodesToProvision;
   }
 
-  // Helper function to check if the AZ and per AZ node distribution is the same compared to
-  // given placementInfo.
-  private static boolean isSamePlacement(Collection<NodeDetails> nodeDetailsSet,
-                                         PlacementInfo placementInfo) {
-    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodeDetailsSet);
-    for (Map.Entry<UUID, Integer> azUuidToNumNode : azUuidToNumNodes.entrySet()) {
-      boolean targetAZFound = false;
-      for (PlacementCloud cloud : placementInfo.cloudList) {
-        for (PlacementRegion region : cloud.regionList) {
-          for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
-            PlacementAZ az =  region.azList.get(azIdx);
-            if (azUuidToNumNode.getKey().equals(az.uuid)) {
-              targetAZFound = true;
-               int azDifference = az.numNodesInAZ - azUuidToNumNode.getValue();
-               if (azDifference != 0) {
-                 return false;
-               }
-             }
-          }
+  // Helper function to check if the old placement and new placement after edit
+  // are the same.
+  private static boolean isSamePlacement(PlacementInfo oldPlacementInfo,
+                                         PlacementInfo newPlacementInfo) {
+    HashMap<UUID, Pair<Boolean, Integer>> oldAZMap = new HashMap<UUID, Pair<Boolean, Integer>>();
+    
+    for (PlacementCloud oldCloud : oldPlacementInfo.cloudList) {
+      for (PlacementRegion oldRegion : oldCloud.regionList) {
+        for (PlacementAZ oldAZ : oldRegion.azList) {
+          oldAZMap.put(oldAZ.uuid, new Pair<Boolean, Integer>(oldAZ.isAffinitized, oldAZ.numNodesInAZ));
         }
       }
-      if (!targetAZFound) {
-        return false;
+    }
+    
+    for (PlacementCloud newCloud : newPlacementInfo.cloudList) {
+      for (PlacementRegion newRegion : newCloud.regionList) {
+        for (PlacementAZ newAZ : newRegion.azList) {
+          if (oldAZMap.get(newAZ.uuid) != null) {
+             if (oldAZMap.get(newAZ.uuid).getKey() != newAZ.isAffinitized ||
+                 oldAZMap.get(newAZ.uuid).getValue() != newAZ.numNodesInAZ) {
+               return false;
+             }
+           } else {
+             return false;
+           }
+        }
       }
     }
     return true;
@@ -452,7 +514,7 @@ public class PlacementInfoUtil {
     UserIntent userIntent = taskParams.userIntent;
     // Error out if no fields are modified.
     if (userIntent.equals(existingIntent) &&
-        isSamePlacement(universeDetails.nodeDetailsSet, taskParams.placementInfo)) {
+        isSamePlacement(universeDetails.placementInfo, taskParams.placementInfo)) {
       LOG.error("No fields were modified for edit universe.");
       throw new IllegalArgumentException("Invalid operation: At least one field should be " +
                                          "modified for editing the universe.");
@@ -1217,6 +1279,7 @@ public class PlacementInfoUtil {
       placementAZ.name = az.name;
       placementAZ.replicationFactor = 0;
       placementAZ.subnet = az.subnet;
+      placementAZ.isAffinitized = true;
       placementRegion.azList.add(placementAZ);
     }
     placementAZ.replicationFactor++;
