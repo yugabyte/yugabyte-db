@@ -5,9 +5,9 @@ import PropTypes from 'prop-types';
 import { isValidObject } from '../../../utils/ObjectUtils';
 import { FormattedDate } from 'react-intl';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import './AlertsList.css';
 import { Link } from 'react-router';
 import {YBFormattedNumber} from '../../common/descriptors';
+import './TasksList.scss';
 
 export default class TaskListTable extends Component {
   static defaultProps = {
@@ -76,32 +76,33 @@ export default class TaskListTable extends Component {
     const tableBodyContainer = {marginBottom: "1%", paddingBottom: "1%"};
     return (
       <div id="page-wrapper" className="dashboard-widget-container">
-        <h2>{title}</h2>
-        <BootstrapTable data={taskList} bodyStyle={tableBodyContainer}>
+        <h2 className="task-list-header">{title}</h2>
+        <BootstrapTable data={taskList} bodyStyle={tableBodyContainer} pagination={true}
+                        search multiColumnSearch searchPlaceholder='Search by Name or Type'>
           <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
           <TableHeaderColumn dataField="type" dataFormat={typeFormatter}
                              columnClassName="no-border name-column" className="no-border">
             Type
           </TableHeaderColumn>
-          <TableHeaderColumn dataField="title" dataFormat={nameFormatter}
+          <TableHeaderColumn dataField="title" dataFormat={nameFormatter} dataSort
                              columnClassName="no-border name-column" className="no-border">
             Name
           </TableHeaderColumn>
-          <TableHeaderColumn dataField="percentComplete"
+          <TableHeaderColumn dataField="percentComplete" dataSort
                              columnClassName="no-border name-column" className="no-border"
                              dataFormat={successStringFormatter}>
             Status
           </TableHeaderColumn>
-          <TableHeaderColumn dataField="createTime" dataFormat={timeFormatter}
+          <TableHeaderColumn dataField="createTime" dataFormat={timeFormatter} dataSort
                              columnClassName="no-border " className="no-border"
                              dataAlign="left">
             Start Time
           </TableHeaderColumn>
-          <TableHeaderColumn dataField="completionTime" dataFormat={timeFormatter}
+          <TableHeaderColumn dataField="completionTime" dataFormat={timeFormatter} dataSort
                              columnClassName="no-border name-column" className="no-border">
             End Time
           </TableHeaderColumn>
-          <TableHeaderColumn dataField="id" dataFormat={taskDetailLinkFormatter}/>
+          <TableHeaderColumn dataField="id" dataFormat={taskDetailLinkFormatter} dataSort/>
         </BootstrapTable>
       </div>
     );
