@@ -61,6 +61,8 @@ public class PlacementInfo {
     public String subnet;
     // Number of nodes in each Az.
     public int numNodesInAZ;
+    // Is this an affinitized zone.
+    public boolean isAffinitized;
     @Override
     public String toString() {
       return "(AZ=" + name + ", count=" + numNodesInAZ + ")";

@@ -129,16 +129,19 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
       Collection<NodeDetails> tserversToBeRemoved = PlacementInfoUtil.getTserversToBeRemoved(
           taskParams().nodeDetailsSet);
+      
+      // Persist the placement info and blacklisted node info into the YB master.
+      // This is done after master config change jobs, so that the new master leader can perform
+      // the auto load-balancing, and all tablet servers are heart beating to new set of masters.
       if (!nodesToBeRemoved.isEmpty()) {
         // Add any nodes to be removed to tserver removal to be considered for blacklisting.
         tserversToBeRemoved.addAll(nodesToBeRemoved);
+      }
+      
+      createPlacementInfoTask(tserversToBeRemoved)
+      .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
-        // Persist the placement info and blacklisted node info into the YB master.
-        // This is done after master config change jobs, so that the new master leader can perform
-        // the auto load-balancing, and all tablet servers are heart beating to new set of masters.
-        createPlacementInfoTask(tserversToBeRemoved)
-            .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
-
+      if (!nodesToBeRemoved.isEmpty()) {
         // Wait for %age completion of the tablet move from master.
         createWaitForDataMoveTask()
             .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
