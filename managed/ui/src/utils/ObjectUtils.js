@@ -83,7 +83,7 @@ export function areIntentsEqual(userIntent1, userIntent2) {
 
 // Helper method to check if AZ objects equal
 function areAZObjectsEqual(az1, az2) {
-  if (az1.name === az2.name && az1.numNodesInAZ === az2.numNodesInAZ) {
+  if (az1.name === az2.name && az1.numNodesInAZ === az2.numNodesInAZ && az1.isAffinitized === az2.isAffinitized) {
     return true;
   }
   return false;

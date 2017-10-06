@@ -112,9 +112,12 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
       Master.SysClusterConfigEntryPB.Builder configBuilder =
           Master.SysClusterConfigEntryPB.newBuilder(config);
 
-      // Clear the placement info, as it is no longer valid.
+      // Clear the replication info, as it is no longer valid.
+      Master.ReplicationInfoPB.Builder replicationInfoPB = 
+          configBuilder.clearReplicationInfo().getReplicationInfoBuilder();
+      // Build the live replicas from the replication info.
       Master.PlacementInfoPB.Builder placementInfoPB =
-          configBuilder.clearReplicationInfo().getReplicationInfoBuilder().getLiveReplicasBuilder();
+          replicationInfoPB.getLiveReplicasBuilder();
       // Set the replication factor to the number of masters.
       placementInfoPB.setNumReplicas(numReplicas);
       LOG.info("Starting modify config with {} masters.", numReplicas);
@@ -138,10 +141,14 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
             // Set the minimum number of replicas in this PlacementAZ.
             pbb.setMinNumReplicas(placementAz.replicationFactor);
             placementInfoPB.addPlacementBlocks(pbb);
+            if (placementAz.isAffinitized) {
+              replicationInfoPB.addAffinitizedLeaders(ccb);
+            }
           }
         }
       }
       placementInfoPB.build();
+      replicationInfoPB.build();
 
       // Add in any black listed nodes of tablet servers.
       if (blacklistNodes != null) {
