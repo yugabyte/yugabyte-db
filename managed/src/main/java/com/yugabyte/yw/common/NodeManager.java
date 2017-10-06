@@ -166,6 +166,9 @@ public class NodeManager extends DevopsBase {
         subcommand.add(ybServerPackage);
         Map<String, String> extra_gflags =
            Universe.get(taskParam.universeUUID).getUniverseDetails().userIntent.gflags;
+        if (taskParam.isMaster) {
+          extra_gflags.put("cluster_uuid", String.valueOf(taskParam.universeUUID));
+        }
         if (!extra_gflags.isEmpty()) {
           subcommand.add("--extra_gflags");
           subcommand.add(Json.stringify(Json.toJson(extra_gflags)));

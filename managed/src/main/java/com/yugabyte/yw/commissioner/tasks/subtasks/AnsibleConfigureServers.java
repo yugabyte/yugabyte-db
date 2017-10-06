@@ -21,9 +21,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
 
     // Optional params
     public boolean isMasterInShellMode = false;
+    public boolean isMaster = false;
     public Map<String, String> gflags = new HashMap<>();
-    // Field to track whether to use DIRECT_IO on the servers.
-    public boolean durableWalWrite = true;
   }
 
   @Override

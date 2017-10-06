@@ -258,6 +258,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.universeUUID = taskParams().universeUUID;
       // Add the az uuid.
       params.azUuid = node.azUuid;
+      // Sets the isMaster field
+      params.isMaster = node.isMaster;
       // Set if this node is a master in shell mode.
       params.isMasterInShellMode = isMasterInShellMode;
       // The software package to install for this cluster.
