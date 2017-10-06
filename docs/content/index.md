@@ -8,21 +8,37 @@ weight: 1
 ## Overview
 
 ### What is YugaByte?
+
 YugaByte is an open source, cloud-native database for mission-critical enterprise applications. It is meant to be a system-of-record/authoritative database that applications can rely on for correctness and availability. It allows applications to easily scale up and scale down in the cloud, on-premises or across hybrid environments without creating operational complexity or increasing the risk of outages.
 
 In terms of data model and APIs, YugaByte currently supports **Apache Cassandra Query Language** & its client drivers natively. In addition, it also supports an automatically sharded, clustered & elastic **Redis-as-a-Database** in a Redis driver compatible manner. **Distributed transactions** to support **strongly consistent secondary indexes**, multi-table/row ACID operations and SQL support is on the roadmap.
 
 ### What makes YugaByte unique?
-YugaByte brings together the best of both SQL and NoSQL along with cloud-native infrastructure orchestration. 
 
-- Manually sharded SQL databases are a good fit for mission-critical applications given their strongly consistent cores. However, these databases are typically limited to single datacenter deployments given the need for a highly reliable network. 
-- NoSQL databases are comparably easier to run across multi-datacenters given their ability to scale both reads and writes linearly. However, these databases are incredibly difficult to develop and reason about given the loose guarantees of eventually consistent data replication. 
+Mission-critical applications are typically composed of microservices with diverse access patterns
+such as key/value, flexible schema, graph or relational.
 
-![YugaByte value prop](/images/value-prop.png)
+The workload requirements vary as well. SaaS services or mobile/web applications keeping customer
+records, order history or messages really care about zero-data loss, geo-replication, low-latency
+reads/writes and a consistent customer experience. While fast data infrastructure use cases (such as
+IOT, finance, timeseries data) care about near real-time & high-volume ingest, low-latency reads,
+and native integration with analytics frameworks like Apache Spark.
 
-YugaByte ensures that the above long-held compromises are no longer impeding the development and deployment of mission-critical applications. YugaByte has a strongly consistent core similar to SQL databases and is also highly available even in multi-datacenter deployments similar to NoSQL systems. Additionally, it adds the much needed layer of cloud-native operational simplicity so that modern technical operations teams can easily exploit the full potential of their chosen cloud(s).
+YugaByte offers polyglot persistence to power these diverse data access patterns and requirements
+in a unified database, while providing strong correctness guarantees and high availability. You are
+no longer forced to create infrastructure silos for each access pattern or choose between different
+flavors SQL and NoSQL databases. YugaByte breaks down the barrier between SQL and NoSQL by offering
+both.
 
-## Key features 
+Another theme common across these microservices is the move to a cloud-native architecture, be it on
+the public cloud, on-premises or hybrid environment. The primary driver for this move is making the
+infrastructure agile, scalable, re-configurabile with zero downtime, geo-distributed and portable
+across clouds. While the container ecosystem led by Docker & Kubernetes has enabled enterprises to
+realize this vision for the stateless tier, the data tier has remained a big challenge.  YugaByte is
+purpose-built to address these challenges, but for the data tier, and serves as the stateful
+complement to containers.
+
+## Key features
 
 ### Linear scalability
 
@@ -32,11 +48,11 @@ Each node runs on top of a instance that provides a Linux-based compute and a se
 
 ![YugaByte Architecture](/images/linear-scalability.png)
 
-Shards of tables, also known as Tablets, are automatically created and managed via the YB-TServer. Application clients connect to the YB-TServer using either [Apache Cassandra Query Language (CQL)] (https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html) or the [Redis API] (https://redis.io/commands). The YB-Masters manage the metadata of these shards and can be configured to run on nodes different than the Tablet Server. Tablets are stored in DocDB, YugaByte's own Log Structured Merge (LSM) based transactional data store that has been purpose-built for mission-critical use cases. Finally, data for each tablet is consistently replicated onto other nodes using the [Raft distributed consensus algorithm] (https://raft.github.io/raft.pdf). 
+Shards of tables, also known as Tablets, are automatically created and managed via the YB-TServer. Application clients connect to the YB-TServer using either [Apache Cassandra Query Language (CQL)] (https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html) or the [Redis API] (https://redis.io/commands). The YB-Masters manage the metadata of these shards and can be configured to run on nodes different than the Tablet Server. Tablets are stored in DocDB, YugaByte's own Log Structured Merge (LSM) based transactional data store that has been purpose-built for mission-critical use cases. Finally, data for each tablet is consistently replicated onto other nodes using the [Raft distributed consensus algorithm] (https://raft.github.io/raft.pdf).
 
 ### Decentralized
 
-All nodes in the universe are identical from a client perspective since all nodes run the YB-TServer. Some nodes additionally run the YB-Master but these servers do not participate in the critical path unless there has been a configuration change (resulting from nodes getting added/removed or underlying infrastructure failures) in the universe. At that time, the client collects the new metadata from the YB-Master leader just once and caches the metadata for future use. 
+All nodes in the universe are identical from a client perspective since all nodes run the YB-TServer. Some nodes additionally run the YB-Master but these servers do not participate in the critical path unless there has been a configuration change (resulting from nodes getting added/removed or underlying infrastructure failures) in the universe. At that time, the client collects the new metadata from the YB-Master leader just once and caches the metadata for future use.
 
 ### Multi-active availability
 

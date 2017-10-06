@@ -5,7 +5,7 @@ summary: Add a new row to a table.
 
 ## Synopsis
 
-The `INSERT` statement adds a row to a specified table. Currently, YugaByte can only insert one row at a time. Inserting multiple rows is not yet supported.
+The `INSERT` statement adds a row to a specified table.
 
 ## Syntax
 ### Diagram
