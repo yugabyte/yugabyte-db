@@ -69,7 +69,7 @@ yugaware=> \q
 
 * Install third-parties
 ```
-yb_devops_home=~/code/devops/ ansible-playbook ~/code/devops/docker/images/thirdparty-deps/dependencies.yml
+yb_devops_home=~/code/devops/ ~/code/devops/bin/py_wrapper ansible-playbook ~/code/devops/docker/images/thirdparty-deps/dependencies.yml
 ```
 
 ### Setup AWS credentials
