@@ -31,10 +31,10 @@ CHECKED_STATUS Executor::TtlToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) 
     }
 
     // this should be ensured by checks before getting here
-    DCHECK(ttl_pb.has_value() && ttl_pb.value().has_int64_value())
+    DCHECK(ttl_pb.has_value() && ttl_pb.value().has_int32_value())
         << "Integer constant expected for USING TTL clause";
 
-    int64_t ttl_seconds = ttl_pb.value().int64_value();
+    int32_t ttl_seconds = ttl_pb.value().int32_value();
 
     if (!yb::common::IsValidTTLSeconds(ttl_seconds)) {
       return exec_context_->Error(tnode->ttl_seconds(),

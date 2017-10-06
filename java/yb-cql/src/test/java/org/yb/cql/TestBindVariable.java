@@ -1219,7 +1219,7 @@ public class TestBindVariable extends BaseCQLTest {
     {
       // Simple bind (by position) for limit.
       String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind where r1 <= ? LIMIT ?;";
-      ResultSet rs = session.execute(select_stmt, new Integer(109), new Long(7));
+      ResultSet rs = session.execute(select_stmt, new Integer(109), new Integer(7));
 
       // Checking result.
       assertEquals(7, rs.getAvailableWithoutFetching());
@@ -1230,7 +1230,7 @@ public class TestBindVariable extends BaseCQLTest {
       String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind where r1 <= ? LIMIT ?;";
       PreparedStatement stmt = session.prepare(select_stmt);
 
-      ResultSet rs = session.execute(stmt.bind(new Integer(109), new Long(7)));
+      ResultSet rs = session.execute(stmt.bind(new Integer(109), new Integer(7)));
 
       // Checking result.
       assertEquals(7, rs.getAvailableWithoutFetching());
@@ -1240,7 +1240,7 @@ public class TestBindVariable extends BaseCQLTest {
       // Prepare named bind (referenced by name).
       String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind WHERE r1 > :b1 LIMIT :b2;";
       PreparedStatement stmt = session.prepare(select_stmt);
-      ResultSet rs = session.execute(stmt.bind().setInt("b1", 102).setLong("b2", 5));
+      ResultSet rs = session.execute(stmt.bind().setInt("b1", 102).setInt("b2", 5));
 
       // Checking result.
       assertEquals(5, rs.getAvailableWithoutFetching());
@@ -1250,7 +1250,7 @@ public class TestBindVariable extends BaseCQLTest {
       // Prepare named bind (referenced by position).
       String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind WHERE r1 > :b1 LIMIT :b2;";
       PreparedStatement stmt = session.prepare(select_stmt);
-      ResultSet rs = session.execute(stmt.bind(new Integer(106), new Long(6)));
+      ResultSet rs = session.execute(stmt.bind(new Integer(106), new Integer(6)));
 
       // Checking result: only 3 rows (107, 108, 109) satisfy condition so limit is redundant.
       assertEquals(3, rs.getAvailableWithoutFetching());
@@ -1261,7 +1261,7 @@ public class TestBindVariable extends BaseCQLTest {
       PreparedStatement stmt = session.prepare(select_stmt);
       ResultSet rs = session.execute(stmt.bind()
                                          .setInt("r1", 99)
-                                         .setLong(limit_vcol_name, 8));
+                                         .setInt(limit_vcol_name, 8));
 
       // Checking result.
       assertEquals(8, rs.getAvailableWithoutFetching());
@@ -1292,7 +1292,7 @@ public class TestBindVariable extends BaseCQLTest {
     {
       String insert_stmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
               "VALUES (1, '1', 1, '1', ?, ?) USING TTL ?";
-      session.execute(insert_stmt, new Integer(2), "2", new Long(1));
+      session.execute(insert_stmt, new Integer(2), "2", new Integer(1));
 
       // checking result
       ResultSet rs = session.execute(select_stmt);
@@ -1315,7 +1315,7 @@ public class TestBindVariable extends BaseCQLTest {
       session.execute(stmt.bind()
                           .setInt("v1", 3)
                           .setString("v2", "3")
-                          .setLong(ttl_vcol_name, 1));
+                          .setInt(ttl_vcol_name, 1));
 
       // checking result
       ResultSet rs = session.execute(select_stmt);
@@ -1342,7 +1342,7 @@ public class TestBindVariable extends BaseCQLTest {
       String update_stmt = "UPDATE test_bind USING TTL ? SET v1 = ?, v2 = ? " +
               "WHERE h1 = 1 AND h2 = '1' AND r1 = 1 and r2 = '1'";
       PreparedStatement stmt = session.prepare(update_stmt);
-      session.execute(stmt.bind(new Long(2), new Integer(4), "4"));
+      session.execute(stmt.bind(new Integer(2), new Integer(4), "4"));
 
       // checking row is updated
       ResultSet rs = session.execute(select_stmt);
@@ -1372,7 +1372,7 @@ public class TestBindVariable extends BaseCQLTest {
 
       PreparedStatement stmt = session.prepare(update_stmt);
       session.execute(stmt.bind()
-                          .setLong("b1", 1)
+                          .setInt("b1", 1)
                           .setInt("b2", 5)
                           .setString("b3", "5"));
 
@@ -1400,11 +1400,11 @@ public class TestBindVariable extends BaseCQLTest {
 
     // ttl values below minimum allowed (i.e. below 0)
     testInvalidBindStatement("INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
-            "VALUES (0, '0', 0, '0', 0, ?) USING TTL ?", "0", new Long(-1));
+            "VALUES (0, '0', 0, '0', 0, ?) USING TTL ?", "0", new Integer(-1));
 
     // ttl value above maximum allowed
     testInvalidBindStatement("INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
-            "VALUES (0, '0', 0, '0', 0, ?) USING TTL ?", "0", new Long(MAX_TTL_SEC + 1));
+            "VALUES (0, '0', 0, '0', 0, ?) USING TTL ?", "0", new Integer(MAX_TTL_SEC + 1));
 
     LOG.info("End test");
   }

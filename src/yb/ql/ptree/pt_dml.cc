@@ -180,7 +180,7 @@ CHECKED_STATUS PTDmlStmt::AnalyzeUsingClause(SemContext *sem_context) {
 
   RETURN_NOT_OK(ttl_seconds_->CheckRhsExpr(sem_context));
 
-  SemState sem_state(sem_context, QLType::Create(INT64), InternalType::kInt64Value);
+  SemState sem_state(sem_context, QLType::Create(INT32), InternalType::kInt32Value);
   sem_state.set_bindvar_name(PTBindVar::ttl_bindvar_name());
   RETURN_NOT_OK(ttl_seconds_->Analyze(sem_context));
 

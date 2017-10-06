@@ -555,13 +555,14 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
     }
 
     // this should be ensured by checks before getting here
-    DCHECK(limit_pb.has_value() && limit_pb.value().has_int64_value())
+    DCHECK(limit_pb.has_value() && limit_pb.value().has_int32_value())
         << "Integer constant expected for LIMIT clause";
 
-    int64_t limit = limit_pb.value().int64_value();
-    if (limit < 0) {
+    if (limit_pb.value().int32_value() < 0) {
       return exec_context_->Error("LIMIT value cannot be negative.", ErrorCode::INVALID_ARGUMENTS);
     }
+
+    uint64_t limit = limit_pb.value().int32_value();
     if (limit == 0 || paging_params->total_num_rows_read() >= limit) {
       return Status::OK();
     }
