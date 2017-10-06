@@ -46,7 +46,7 @@ class PTInsertStmt : public PTDmlStmt {
                PTQualifiedNameListNode::SharedPtr columns,
                PTCollection::SharedPtr value_clause,
                PTExpr::SharedPtr if_clause = nullptr,
-               PTExpr::SharedPtr ttl_seconds = nullptr);
+               PTDmlUsingClause::SharedPtr using_clause = nullptr);
   virtual ~PTInsertStmt();
 
   template<typename... TypeArgs>

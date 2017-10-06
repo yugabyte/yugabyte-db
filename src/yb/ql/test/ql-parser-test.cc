@@ -59,6 +59,28 @@ TEST_F(QLTestParser, TestQLParser) {
   // Valid statement: UPDATE with TTL.
   PARSE_VALID_STMT("UPDATE human_resource USING TTL 1 SET name = \"Joe Street\" WHERE id = 7;");
 
+  // Valid statement: UPDATE with TTL and TIMESTAMP.
+  PARSE_VALID_STMT("UPDATE human_resource USING TTL 1 AND TIMESTAMP 100 SET name = \"Joe Street\" "
+                       "WHERE id = 7;");
+
+  // Valid statement: UPDATE with TIMESTAMP.
+  PARSE_VALID_STMT("UPDATE human_resource USING TIMESTAMP 100 SET name = \"Joe Street\" "
+                       "WHERE id = 7;");
+
+  // Valid statement: INSERT with TTL and TIMESTAMP.
+  PARSE_VALID_STMT("INSERT INTO human_resource (id, name) values (1, \"Joe\") USING TTL 1 AND "
+                       "TIMESTAMP 100");
+
+  // Valid statement: INSERT with TTL.
+  PARSE_VALID_STMT("INSERT INTO human_resource (id, name) values (1, \"Joe\") USING TTL 1");
+
+  // Valid statement: INSERT with TIMESTAMP.
+  PARSE_VALID_STMT("INSERT INTO human_resource (id, name) values (1, \"Joe\") USING TIMESTAMP 100");
+
+  // Valid statement: INSERT with multiple TTL and TIMESTAMP.
+  PARSE_VALID_STMT("INSERT INTO human_resource (id, name) values (1, \"Joe\") USING TTL 1 AND "
+                       "TIMESTAMP 100 AND TTL 100 AND TIMESTAMP 200");
+
   // Invalid statement: UPDATE with TTL.
   PARSE_INVALID_STMT("UPDATE human_resource USING 1 SET name = \"Joe Street\" WHERE id = 7;");
 

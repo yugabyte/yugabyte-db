@@ -1087,6 +1087,12 @@ class PTBindVar : public PTExpr {
     return ttl_bindvar_name;
   }
 
+  // The name Cassandra uses for the virtual column when binding USING TIMESTAMP clause
+  static const string& timestamp_bindvar_name() {
+    static string timestamp_bindvar_name = "[timestamp]";
+    return timestamp_bindvar_name;
+  }
+
   // The name Cassandra uses for the virtual column when binding the partition key (i.e. with token)
   static const string& token_bindvar_name() {
     static string token_bindvar_name = "partition key token";

@@ -25,6 +25,7 @@
 #include "yb/ql/ptree/tree_node.h"
 #include "yb/ql/ptree/pt_expr.h"
 #include "yb/ql/ptree/pt_bcall.h"
+#include "yb/ql/ptree/pt_dml_using_clause.h"
 #include "yb/ql/ptree/column_arg.h"
 #include "yb/common/table_properties_constants.h"
 
@@ -162,7 +163,7 @@ class PTDmlStmt : public PTCollection {
                      bool write_only,
                      PTExpr::SharedPtr where_clause = nullptr,
                      PTExpr::SharedPtr if_clause = nullptr,
-                     PTExpr::SharedPtr ttl_seconds = nullptr);
+                     PTDmlUsingClause::SharedPtr using_clause = nullptr);
   virtual ~PTDmlStmt();
 
   template<typename... TypeArgs>
@@ -242,7 +243,7 @@ class PTDmlStmt : public PTCollection {
   }
 
   const PTExpr::SharedPtr& ttl_seconds() const {
-    return ttl_seconds_;
+    return using_clause_ != nullptr ? using_clause_->ttl_seconds() : kNullPointerRef;
   }
 
   const MCVector<PTBindVar*> &bind_variables() const {
@@ -352,7 +353,7 @@ class PTDmlStmt : public PTCollection {
 
   PTExpr::SharedPtr where_clause_;
   PTExpr::SharedPtr if_clause_;
-  PTExpr::SharedPtr ttl_seconds_;
+  PTDmlUsingClause::SharedPtr using_clause_;
 
   // Bind variables set up by during parsing.
   MCVector<PTBindVar*> bind_variables_;
@@ -377,6 +378,8 @@ class PTDmlStmt : public PTCollection {
   // NOTE: Only SELECT and DML with RETURN clause statements have outputs.
   //       We prepare this vector once at compile time and use it at execution times.
   std::shared_ptr<vector<ColumnSchema>> selected_schemas_;
+
+  static const PTExpr::SharedPtr kNullPointerRef;
 };
 
 }  // namespace ql

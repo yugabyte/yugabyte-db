@@ -30,12 +30,14 @@ using client::YBTableType;
 using client::YBTableName;
 using client::YBColumnSchema;
 
+const PTExpr::SharedPtr PTDmlStmt::kNullPointerRef = nullptr;
+
 PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
                      bool write_only,
                      PTExpr::SharedPtr where_clause,
                      PTExpr::SharedPtr if_clause,
-                     PTExpr::SharedPtr ttl_seconds)
+                     PTDmlUsingClause::SharedPtr using_clause)
   : PTCollection(memctx, loc),
     is_system_(false),
     table_columns_(memctx),
@@ -49,7 +51,7 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
     write_only_(write_only),
     where_clause_(where_clause),
     if_clause_(if_clause),
-    ttl_seconds_(ttl_seconds),
+    using_clause_(using_clause),
     bind_variables_(memctx),
     hash_col_bindvars_(memctx),
     column_args_(nullptr),
@@ -174,16 +176,11 @@ CHECKED_STATUS PTDmlStmt::AnalyzeIfClause(SemContext *sem_context,
 }
 
 CHECKED_STATUS PTDmlStmt::AnalyzeUsingClause(SemContext *sem_context) {
-  if (ttl_seconds_ == nullptr) {
+  if (using_clause_ == nullptr) {
     return Status::OK();
   }
 
-  RETURN_NOT_OK(ttl_seconds_->CheckRhsExpr(sem_context));
-
-  SemState sem_state(sem_context, QLType::Create(INT32), InternalType::kInt32Value);
-  sem_state.set_bindvar_name(PTBindVar::ttl_bindvar_name());
-  RETURN_NOT_OK(ttl_seconds_->Analyze(sem_context));
-
+  RETURN_NOT_OK(using_clause_->Analyze(sem_context));
   return Status::OK();
 }
 

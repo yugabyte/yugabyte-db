@@ -113,6 +113,8 @@ typedef PTAssign::SharedPtr            PAssign;
 typedef PTKeyspaceProperty::SharedPtr     PKeyspaceProperty;
 typedef PTKeyspacePropertyListNode::SharedPtr     PKeyspacePropertyListNode;
 typedef PTKeyspacePropertyMap::SharedPtr  PKeyspacePropertyMap;
+typedef PTDmlUsingClause::SharedPtr     PDmlUsingClause;
+typedef PTDmlUsingClauseElement::SharedPtr     PDmlUsingClauseElement;
 typedef PTTableProperty::SharedPtr     PTableProperty;
 typedef PTTablePropertyListNode::SharedPtr     PTablePropertyListNode;
 typedef PTTablePropertyMap::SharedPtr  PTablePropertyMap;
@@ -236,7 +238,6 @@ using namespace yb::ql;
                           where_clause opt_where_clause
                           where_or_current_clause opt_where_or_current_clause
                           opt_select_limit select_limit limit_clause select_limit_value
-                          using_ttl_clause opt_using_ttl_clause
 
 %type <PListNode>         // Clauses as list of tree nodes.
                           group_clause group_by_list having_clause into_clause
@@ -267,6 +268,13 @@ using namespace yb::ql;
 %type <PExprListNode>     // A list of expressions.
                           target_list opt_target_list
                           ctext_row ctext_expr_list func_arg_list col_arg_list
+
+%type <PDmlUsingClause>   // Using clause for DML statements.
+                          opt_using_ttl_timestamp_clause using_ttl_timestamp_clause
+                          recursive_ttl_timestamp_clause
+
+%type <PDmlUsingClauseElement>   // Using clause element for DML statements.
+                                 ttl_timestamp_clause
 
 %type <PType>             // Datatype nodes.
                           Typename SimpleTypename ParametricTypename Numeric
@@ -2400,7 +2408,7 @@ InsertStmt:
     $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8);
   }
   | opt_with_clause INSERT INTO insert_target '(' insert_column_list ')' values_clause
-  using_ttl_clause
+  using_ttl_timestamp_clause
   {
     $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, nullptr, $9);
   }
@@ -2409,7 +2417,7 @@ InsertStmt:
     $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, $9);
   }
   | opt_with_clause INSERT INTO insert_target '(' insert_column_list ')' values_clause if_clause
-  using_ttl_clause
+  using_ttl_timestamp_clause
   {
     $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, $9, $10);
   }
@@ -2479,18 +2487,40 @@ opt_on_conflict:
   }
 ;
 
-opt_using_ttl_clause:
+opt_using_ttl_timestamp_clause:
   /*EMPTY*/ {
     $$ = nullptr;
   }
-  | using_ttl_clause {
+  | using_ttl_timestamp_clause {
     $$ = $1;
   }
 ;
 
-using_ttl_clause:
-  USING TTL c_expr {
-    $$ = $3;
+using_ttl_timestamp_clause:
+  USING recursive_ttl_timestamp_clause {
+    $$ = $2;
+  }
+;
+
+recursive_ttl_timestamp_clause:
+  ttl_timestamp_clause {
+    $$ = MAKE_NODE(@1, PTDmlUsingClause);
+    $$->Append($1);
+  }
+  |
+  recursive_ttl_timestamp_clause AND ttl_timestamp_clause {
+    $1->Append($3);
+    $$ = $1;
+  }
+;
+
+ttl_timestamp_clause:
+  TTL c_expr {
+    $$ = MAKE_NODE(@1, PTDmlUsingClauseElement, parser_->MakeString($1), $2);
+  }
+  |
+  TIMESTAMP c_expr {
+    $$ = MAKE_NODE(@1, PTDmlUsingClauseElement, parser_->MakeString($1), $2);
   }
 ;
 
@@ -2545,12 +2575,12 @@ using_clause:
 //--------------------------------------------------------------------------------------------------
 
 UpdateStmt:
-  opt_with_clause UPDATE relation_expr_opt_alias opt_using_ttl_clause SET set_clause_list
+  opt_with_clause UPDATE relation_expr_opt_alias opt_using_ttl_timestamp_clause SET set_clause_list
   opt_where_or_current_clause returning_clause {
     $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $6, $7, nullptr, $4);
   }
-  | opt_with_clause UPDATE relation_expr_opt_alias opt_using_ttl_clause SET set_clause_list
-  opt_where_or_current_clause if_clause {
+  | opt_with_clause UPDATE relation_expr_opt_alias opt_using_ttl_timestamp_clause SET
+  set_clause_list opt_where_or_current_clause if_clause {
     $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $6, $7, $8, $4);
   }
 ;
