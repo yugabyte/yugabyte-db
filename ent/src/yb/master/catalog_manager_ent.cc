@@ -219,7 +219,7 @@ void CatalogManager::SendCreateTabletSnapshotRequest(const scoped_refptr<TabletI
 }
 
 Status CatalogManager::HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) {
-  DCHECK_NOTNULL(tablet);
+  DCHECK_ONLY_NOTNULL(tablet);
 
   LOG(INFO) << "Handling Create Tablet Snapshot Response for tablet " << tablet->ToString()
             << (error ? "  ERROR" : "  OK");
