@@ -944,6 +944,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   friend class UDTypeLoader;
   friend class ClusterConfigLoader;
   friend class RoleLoader;
+  FRIEND_TEST(SysCatalogTest, TestPrepareDefaultClusterConfig);
 
   // Called by SysCatalog::SysCatalogStateChanged when this node
   // becomes the leader of a consensus configuration.

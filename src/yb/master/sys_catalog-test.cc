@@ -57,6 +57,8 @@ using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
 
+DECLARE_string(cluster_uuid);
+
 namespace yb {
 namespace master {
 
@@ -125,6 +127,56 @@ static bool MetadatasEqual(C* ti_a, C* ti_b) {
   auto l_a = ti_a->LockForRead();
   auto l_b = ti_b->LockForRead();
   return PbEquals(l_a->data().pb, l_b->data().pb);
+}
+
+TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
+
+  FLAGS_cluster_uuid = "invalid_uuid";
+
+  CatalogManager catalog_manager(nullptr);
+
+  ASSERT_NOK(catalog_manager.PrepareDefaultClusterConfig());
+
+  auto dir = GetTestPath("Master") + "valid_cluster_uuid_test";
+  ASSERT_OK(Env::Default()->CreateDir(dir));
+  std::unique_ptr<MiniMaster> mini_master =
+      std::make_unique<MiniMaster>(Env::Default(), dir, AllocateFreePort(), AllocateFreePort());
+
+
+  // Test that config.cluster_uuid gets set to the value that we specify through flag cluster_uuid.
+  FLAGS_cluster_uuid = to_string(Uuid::Generate());
+  ASSERT_OK(mini_master->Start());
+  auto master = mini_master->master();
+  ASSERT_OK(master->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+
+  SysClusterConfigEntryPB config;
+  ASSERT_OK(master->catalog_manager()->GetClusterConfig(&config));
+
+  // Verify that the cluster uuid was set in the config.
+  ASSERT_EQ(FLAGS_cluster_uuid, config.cluster_uuid());
+
+  master->Shutdown();
+
+  // Test that config.cluster_uuid gets set to a valid uuid when cluster_uuid flag is empty.
+  dir = GetTestPath("Master") + "empty_cluster_uuid_test";
+  ASSERT_OK(Env::Default()->CreateDir(dir));
+  mini_master =
+      std::make_unique<MiniMaster>(Env::Default(), dir, AllocateFreePort(), AllocateFreePort());
+  FLAGS_cluster_uuid = "";
+  ASSERT_OK(mini_master->Start());
+  master = mini_master->master();
+  ASSERT_OK(master->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+
+  ASSERT_OK(master->catalog_manager()->GetClusterConfig(&config));
+
+  // Check that the cluster_uuid was set.
+  ASSERT_FALSE(config.cluster_uuid().empty());
+
+  // Check that the cluster uuid is valid.
+  Uuid uuid;
+  ASSERT_OK(uuid.FromString(config.cluster_uuid()));
+
+  master->Shutdown();
 }
 
 // Test the sys-catalog tables basic operations (add, update, delete,
@@ -495,6 +547,15 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
     ChangeMasterClusterConfigRequestPB req;
     *req.mutable_cluster_config() = l->mutable_data()->pb;
     ChangeMasterClusterConfigResponsePB resp;
+
+    // Verify that we receive an error when trying to change the cluster uuid.
+    req.mutable_cluster_config()->set_cluster_uuid("some-cluster-uuid");
+    auto status = master_->catalog_manager()->SetClusterConfig(&req, &resp);
+    ASSERT_TRUE(status.IsInvalidArgument());
+
+    // Setting the cluster uuid should make the request succeed.
+    req.mutable_cluster_config()->set_cluster_uuid(config.cluster_uuid());
+
     ASSERT_OK(master_->catalog_manager()->SetClusterConfig(&req, &resp));
     l->Commit();
   }

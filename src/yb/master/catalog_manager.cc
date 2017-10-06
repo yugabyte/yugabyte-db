@@ -121,6 +121,7 @@
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
+#include "yb/util/uuid.h"
 #include "yb/tserver/remote_bootstrap_client.h"
 
 DEFINE_int32(master_ts_rpc_timeout_ms, 30 * 1000,  // 30 sec
@@ -180,6 +181,9 @@ DEFINE_uint64(inject_latency_during_remote_bootstrap_secs, 0,
               "Number of seconds to sleep during a remote bootstrap. (For testing only!)");
 TAG_FLAG(inject_latency_during_remote_bootstrap_secs, unsafe);
 TAG_FLAG(inject_latency_during_remote_bootstrap_secs, hidden);
+
+DEFINE_string(cluster_uuid, "", "Cluster UUID to be used by this cluster");
+TAG_FLAG(cluster_uuid, hidden);
 
 namespace yb {
 namespace master {
@@ -856,8 +860,14 @@ Status CatalogManager::PrepareDefaultClusterConfig() {
   SysClusterConfigEntryPB config;
   config.set_version(0);
 
-  ObjectIdGenerator oid_generator;
-  config.set_cluster_uuid(oid_generator.Next());
+  if (!FLAGS_cluster_uuid.empty()) {
+    Uuid uuid;
+    RETURN_NOT_OK(uuid.FromString(FLAGS_cluster_uuid));
+    config.set_cluster_uuid(FLAGS_cluster_uuid);
+  } else {
+    auto uuid = Uuid::Generate();
+    config.set_cluster_uuid(to_string(uuid));
+  }
 
   // Create in memory object.
   cluster_config_ = new ClusterConfigInfo();
@@ -4400,6 +4410,12 @@ Status CatalogManager::SetClusterConfig(
       "Config version does not match, got $0, but most recent one is $1. Should call Get again",
       config.version(), l->data().pb.version()));
     SetupError(resp->mutable_error(), MasterErrorPB::CONFIG_VERSION_MISMATCH, s);
+    return s;
+  }
+
+  if (config.cluster_uuid() != l->data().pb.cluster_uuid()) {
+    Status s = STATUS(InvalidArgument, "Config cluster UUID cannot be updated");
+    SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
     return s;
   }
 
