@@ -2,9 +2,9 @@
 
 #include "yb/master/master_backup_service.h"
 
+#include "yb/master/catalog_manager-internal.h"
 #include "yb/master/master.h"
 #include "yb/master/master_service_base-internal.h"
-#include "yb/rpc/rpc_context.h"
 
 namespace yb {
 namespace master {
@@ -19,6 +19,11 @@ MasterBackupServiceImpl::MasterBackupServiceImpl(Master* server)
 void MasterBackupServiceImpl::CreateSnapshot(
     const CreateSnapshotRequestPB* req, CreateSnapshotResponsePB* resp, RpcContext rpc) {
   HandleIn(req, resp, &rpc, &enterprise::CatalogManager::CreateSnapshot);
+}
+
+void MasterBackupServiceImpl::IsCreateSnapshotDone(const IsCreateSnapshotDoneRequestPB* req,
+    IsCreateSnapshotDoneResponsePB* resp, RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::IsCreateSnapshotDone);
 }
 
 } // namespace master
