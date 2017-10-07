@@ -19,6 +19,7 @@ import java.util.UUID;
 
 public abstract class DevopsBase {
   public static final String YBCLOUD_SCRIPT = "bin/ybcloud.sh";
+  public static final String PY_WRAPPER = "bin/py_wrapper";
   public static final Logger LOG = LoggerFactory.getLogger(DevopsBase.class);
 
   // Command that we would need to execute eg: instance, network, access.
@@ -31,29 +32,33 @@ public abstract class DevopsBase {
   @Inject
   ShellProcessHandler shellProcessHandler;
 
-  protected JsonNode execCommand(Common.CloudType cloudType, String command,
-                                 List<String> commandArgs) {
+  protected JsonNode parseShellResponse(ShellProcessHandler.ShellResponse response, String command) {
+    if (response.code == 0) {
+      return Json.parse(response.message);
+    } else {
+      LOG.error(response.message);
+      return ApiResponse.errorJSON("YBCloud command " + getCommandType() + " (" + command + ") failed to execute.");
+    }
+  }
+
+  protected JsonNode execAndParseCommand(Common.CloudType cloudType, String command, List<String> commandArgs) {
     ShellProcessHandler.ShellResponse response = execCommand(new UUID(0L, 0L), command,
         commandArgs, cloudType, Collections.emptyList());
     // WARNING: Does not pass environment variables from config. 
     return parseShellResponse(response, command);
   }
 
-  protected JsonNode execCommand(UUID regionUUID, String command, List<String> commandArgs) {
+  protected JsonNode execAndParseCommand(UUID regionUUID, String command, List<String> commandArgs) {
     ShellProcessHandler.ShellResponse response = execCommand(regionUUID, command, commandArgs,
         null, Collections.emptyList());
     return parseShellResponse(response, command);
   }
 
-  protected JsonNode parseShellResponse(ShellProcessHandler.ShellResponse response,
-                                        String command) {
-    if (response.code == 0) {
-      return Json.parse(response.message);
-    } else {
-      LOG.error(response.message);
-      return ApiResponse.errorJSON("YBCloud command " + getCommandType() + " (" + command +
-          ") failed to execute.");
-    }
+  protected ShellProcessHandler.ShellResponse execCommand(UUID regionUUID,
+                                                          String command,
+                                                          List<String> commandArgs,
+                                                          List<String> cloudArgs) {
+    return execCommand(regionUUID, command, commandArgs, null, cloudArgs);
   }
 
   protected ShellProcessHandler.ShellResponse execCommand(UUID regionUUID,
@@ -84,19 +89,5 @@ public abstract class DevopsBase {
 
     LOG.info("Command to run: [" + String.join(" ", commandList) + "]");
     return shellProcessHandler.run(commandList, extraVars);
-  }
-
-  protected ShellProcessHandler.ShellResponse execCommand(UUID regionUUID,
-                                                          String command,
-                                                          List<String> commandArgs,
-                                                          List<String> cloudArgs) {
-    return execCommand(regionUUID, command, commandArgs, null, cloudArgs);
-  }
-
-  protected ShellProcessHandler.ShellResponse execCommand(Common.CloudType cloudType,
-                                                          String command,
-                                                          List<String> commandArgs,
-                                                          List<String> cloudArgs) {
-    return execCommand(new UUID(0L, 0L), command, commandArgs, cloudType, cloudArgs);
   }
 }

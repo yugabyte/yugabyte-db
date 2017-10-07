@@ -5,25 +5,19 @@ package com.yugabyte.yw.common;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.forms.BulkImportParams;
-import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 @Singleton
 public class TableManager extends DevopsBase {
   private static final int EMR_MULTIPLE = 8;
   private static final String YB_CLOUD_COMMAND_TYPE = "table";
-  static final String PY_WRAPPER = "bin/py_wrapper";
   static final String BULK_LOAD_SCRIPT = "bin/yb_bulk_load.py";
 
   @Inject

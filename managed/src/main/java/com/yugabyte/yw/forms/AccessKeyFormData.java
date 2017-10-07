@@ -19,4 +19,6 @@ public class AccessKeyFormData {
     public String keyContent;
 
     public String sshUser;
+
+    public boolean passwordlessSudoAccess = true;
 }

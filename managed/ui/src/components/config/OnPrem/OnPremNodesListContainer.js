@@ -4,9 +4,11 @@ import { connect } from 'react-redux';
 
 import { reset } from 'redux-form';
 import  OnPremNodesList from './OnPremNodesList';
-import { getInstanceTypeList, getInstanceTypeListResponse, getRegionList, getRegionListResponse,
+import {
+  getInstanceTypeList, getInstanceTypeListResponse, getRegionList, getRegionListResponse,
   createNodeInstances, createNodeInstancesResponse, getNodeInstancesForProvider,
-  getNodesInstancesForProviderResponse, deleteInstance, deleteInstanceResponse } from '../../../actions/cloud';
+  getNodesInstancesForProviderResponse, deleteInstance, deleteInstanceResponse
+} from '../../../actions/cloud';
 import { reduxForm } from 'redux-form';
 import {openDialog, closeDialog} from '../../../actions/universe';
 

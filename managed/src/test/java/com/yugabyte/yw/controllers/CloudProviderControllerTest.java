@@ -2,13 +2,24 @@
 
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.common.AssertHelper.*;
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.assertValues;
+import static com.yugabyte.yw.common.TemplateManager.PROVISION_SCRIPT;
 import static junit.framework.TestCase.assertTrue;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.test.Helpers.contentAsString;
 
@@ -18,8 +29,10 @@ import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
+import com.yugabyte.yw.common.TemplateManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Region;
@@ -29,11 +42,12 @@ import org.junit.Test;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
@@ -41,26 +55,31 @@ import play.mvc.Result;
 import play.test.Helpers;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 public class CloudProviderControllerTest extends FakeDBApplication {
+  public static final Logger LOG = LoggerFactory.getLogger(CloudProviderControllerTest.class);
   Customer customer;
 
   AccessManager mockAccessManager;
   NetworkManager mockNetworkManager;
+  TemplateManager mockTemplateManager;
 
   @Override
   protected Application provideApplication() {
     ApiHelper mockApiHelper = mock(ApiHelper.class);
     mockAccessManager = mock(AccessManager.class);
     mockNetworkManager = mock(NetworkManager.class);
+    mockTemplateManager = mock(TemplateManager.class);
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
         .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
         .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
+        .overrides(bind(TemplateManager.class).toInstance(mockTemplateManager))
         .build();
   }
 
@@ -229,5 +248,18 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertThat(json.asText(),
         allOf(notNullValue(), equalTo("Deleted provider: " + p.uuid)));
     assertNull(Provider.get(p.uuid));
+  }
+
+  @Test
+  public void testDeleteProviderWithProvisionScript() {
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.onprem);
+    String provisionDir = "/test/dir";
+    AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
+    keyInfo.provisionInstanceScript = provisionDir + "/provision_instance.py";
+    AccessKey.create(p.uuid, "access-key-code", keyInfo);
+    when(mockTemplateManager.getOrCreateProvisionFilePath(p.uuid)).thenReturn(provisionDir);
+    Result result = deleteProvider(p.uuid);
+    assertOk(result);
+    verify(mockTemplateManager, times(1)).getOrCreateProvisionFilePath(p.uuid);
   }
 }

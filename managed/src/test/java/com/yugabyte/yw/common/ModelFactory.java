@@ -6,6 +6,8 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 
+import java.util.Map;
+
 public class ModelFactory {
   public static Customer testCustomer() {
     return testCustomer("test@customer.com");
@@ -21,5 +23,8 @@ public class ModelFactory {
   }
   public static Provider newProvider(Customer customer, Common.CloudType cloud) {
     return Provider.create(customer.uuid, cloud, cloud.toString());
+  }
+  public static Provider newProvider(Customer customer, Common.CloudType cloud, Map<String, String> config) {
+    return Provider.create(customer.uuid, cloud, cloud.toString(), config);
   }
 }

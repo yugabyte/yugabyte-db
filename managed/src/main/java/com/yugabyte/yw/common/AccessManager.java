@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,7 +21,6 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -138,7 +136,7 @@ public class AccessManager extends DevopsBase {
       commandArgs.add(accessKey.getKeyInfo().privateKey);
     }
 
-    JsonNode response = execCommand(regionUUID, "add-key", commandArgs);
+    JsonNode response = execAndParseCommand(regionUUID, "add-key", commandArgs);
     if (response.has("error")) {
       throw new RuntimeException(response.get("error").asText());
     }
@@ -166,11 +164,11 @@ public class AccessManager extends DevopsBase {
     }
     commandArgs.add("--private_key_file");
     commandArgs.add(privateKeyFile);
-    return execCommand(regionUUID, "create-vault", commandArgs);
+    return execAndParseCommand(regionUUID, "create-vault", commandArgs);
   }
 
   public JsonNode listKeys(UUID regionUUID) {
-    return execCommand(regionUUID, "list-keys", Collections.emptyList());
+    return execAndParseCommand(regionUUID, "list-keys", Collections.emptyList());
   }
 
   public JsonNode deleteKey(UUID regionUUID, String keyCode) {
@@ -185,7 +183,7 @@ public class AccessManager extends DevopsBase {
     commandArgs.add(keyCode);
     commandArgs.add("--key_file_path");
     commandArgs.add(keyFilePath);
-    JsonNode response = execCommand(regionUUID, "delete-key", commandArgs);
+    JsonNode response = execAndParseCommand(regionUUID, "delete-key", commandArgs);
     if (response.has("error")) {
       throw new RuntimeException(response.get("error").asText());
     }

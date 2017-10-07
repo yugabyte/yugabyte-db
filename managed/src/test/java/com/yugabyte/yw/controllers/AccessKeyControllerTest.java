@@ -7,9 +7,11 @@ import akka.stream.javadsl.Source;
 import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.TemplateManager;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
@@ -20,7 +22,6 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mockito;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
@@ -33,18 +34,31 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static com.yugabyte.yw.common.AssertHelper.*;
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
+import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
+import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
-import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.*;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThat;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -56,13 +70,16 @@ public class AccessKeyControllerTest extends WithApplication {
   Customer defaultCustomer;
   Region defaultRegion;
   AccessManager mockAccessManager;
+  TemplateManager mockTemplateManager;
 
   @Override
   protected Application provideApplication() {
     mockAccessManager = mock(AccessManager.class);
+    mockTemplateManager = mock(TemplateManager.class);
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
+        .overrides(bind(TemplateManager.class).toInstance(mockTemplateManager))
         .build();
   }
 
@@ -94,14 +111,18 @@ public class AccessKeyControllerTest extends WithApplication {
 
   private Result createAccessKey(UUID providerUUID, String keyCode, boolean uploadFile,
                                  boolean useRawString) {
-    String uri = "/api/customers/" + defaultCustomer.uuid +
-        "/providers/" + providerUUID + "/access_keys";
+    return createAccessKey(providerUUID, keyCode, uploadFile, useRawString, defaultRegion, true);
+  }
+
+  private Result createAccessKey(UUID providerUUID, String keyCode, boolean uploadFile, boolean useRawString,
+                                 Region region, boolean passwordlessSudoAccess) {
+    String uri = "/api/customers/" + defaultCustomer.uuid + "/providers/" + providerUUID + "/access_keys";
 
     if (uploadFile) {
       List<Http.MultipartFormData.Part<Source<ByteString, ?>>> bodyData = new ArrayList<>();
       if (keyCode != null) {
         bodyData.add(new Http.MultipartFormData.DataPart("keyCode", keyCode));
-        bodyData.add(new Http.MultipartFormData.DataPart("regionUUID", defaultRegion.uuid.toString()));
+        bodyData.add(new Http.MultipartFormData.DataPart("regionUUID", region.uuid.toString()));
         bodyData.add(new Http.MultipartFormData.DataPart("keyType", "PRIVATE"));
         bodyData.add(new Http.MultipartFormData.DataPart("sshUser", "ssh-user"));
         String tmpFile = createTempFile("PRIVATE KEY DATA");
@@ -118,14 +139,14 @@ public class AccessKeyControllerTest extends WithApplication {
       ObjectNode bodyJson = Json.newObject();
       if (keyCode != null) {
         bodyJson.put("keyCode", keyCode);
-        bodyJson.put("regionUUID", defaultRegion.uuid.toString());
+        bodyJson.put("regionUUID", region.uuid.toString());
       }
       if(useRawString) {
         bodyJson.put("keyType", AccessManager.KeyType.PRIVATE.toString());
         bodyJson.put("keyContent", "PRIVATE KEY DATA");
       }
-      return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri,
-          defaultCustomer.createAuthToken(), bodyJson);
+      bodyJson.put("passwordlessSudoAccess", passwordlessSudoAccess);
+      return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, defaultCustomer.createAuthToken(), bodyJson);
     }
   }
 
@@ -243,7 +264,7 @@ public class AccessKeyControllerTest extends WithApplication {
     when(mockAccessManager.uploadKeyFile(eq(defaultRegion.uuid), any(File.class),
         eq("key-code-1"), eq(AccessManager.KeyType.PRIVATE), eq("ssh-user"))).thenReturn(accessKey);
     Result result = createAccessKey(defaultProvider.uuid, "key-code-1", true, false);
-    Mockito.verify(mockAccessManager, times(1)).uploadKeyFile(eq(defaultRegion.uuid),
+    verify(mockAccessManager, times(1)).uploadKeyFile(eq(defaultRegion.uuid),
         updatedFile.capture(), eq("key-code-1"), eq(AccessManager.KeyType.PRIVATE), eq("ssh-user"));
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
@@ -267,7 +288,7 @@ public class AccessKeyControllerTest extends WithApplication {
     when(mockAccessManager.uploadKeyFile(eq(defaultRegion.uuid), any(File.class),
         eq("key-code-1"), eq(AccessManager.KeyType.PRIVATE), eq(null))).thenReturn(accessKey);
     Result result = createAccessKey(defaultProvider.uuid, "key-code-1", false, true);
-    Mockito.verify(mockAccessManager, times(1)).uploadKeyFile(eq(defaultRegion.uuid),
+    verify(mockAccessManager, times(1)).uploadKeyFile(eq(defaultRegion.uuid),
         updatedFile.capture(), eq("key-code-1"), eq(AccessManager.KeyType.PRIVATE), eq(null));
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
@@ -286,6 +307,28 @@ public class AccessKeyControllerTest extends WithApplication {
     when(mockAccessManager.addKey(defaultRegion.uuid, "key-code-1"))
         .thenThrow(new RuntimeException("Something went wrong!!"));
     Result result = createAccessKey(defaultProvider.uuid, "key-code-1", false, false);
+    assertErrorResponse(result, "Unable to create access key: key-code-1");
+  }
+
+  @Test
+  public void testCreateAccessKeyWithoutPasswordlessSudoAccessSuccess() {
+    Provider onpremProvider = ModelFactory.newProvider(defaultCustomer, Common.CloudType.onprem);
+    Region onpremRegion = Region.create(onpremProvider, "onprem-a", "onprem-a", "yb-image");
+    AccessKey accessKey = AccessKey.create(onpremProvider.uuid, "key-code-1", new AccessKey.KeyInfo());
+    when(mockAccessManager.addKey(onpremRegion.uuid, "key-code-1")).thenReturn(accessKey);
+    Result result = createAccessKey(onpremProvider.uuid, "key-code-1", false, false, onpremRegion, false);
+    assertOk(result);
+    verify(mockTemplateManager, times(1)).createProvisionTemplate(accessKey);
+  }
+
+  @Test
+  public void testCreateAccessKeyWithoutPasswordlessSudoAccessError() {
+    Provider onpremProvider = ModelFactory.newProvider(defaultCustomer, Common.CloudType.onprem);
+    Region onpremRegion = Region.create(onpremProvider, "onprem-a", "onprem-a", "yb-image");
+    AccessKey accessKey = AccessKey.create(onpremProvider.uuid, "key-code-1", new AccessKey.KeyInfo());
+    when(mockAccessManager.addKey(onpremRegion.uuid, "key-code-1")).thenReturn(accessKey);
+    doThrow(new RuntimeException("foobar")).when(mockTemplateManager).createProvisionTemplate(accessKey);
+    Result result = createAccessKey(onpremProvider.uuid, "key-code-1", false, false, onpremRegion, false);
     assertErrorResponse(result, "Unable to create access key: key-code-1");
   }
 

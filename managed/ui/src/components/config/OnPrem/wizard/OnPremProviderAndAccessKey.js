@@ -5,6 +5,8 @@ import {Field} from 'redux-form';
 import {Row, Col, Collapse} from 'react-bootstrap';
 import {YBInputField, YBButton, YBTextArea} from '../../../common/forms/fields';
 import constants from './OnPremWizardConstants.json';
+import YBToggle from "../../../common/forms/fields/YBToggle";
+import {isDefinedNotNull} from "../../../../utils/ObjectUtils";
 const Dropzone = require('react-dropzone');
 
 export default class OnPremProviderAndAccessKey extends Component {
@@ -17,6 +19,9 @@ export default class OnPremProviderAndAccessKey extends Component {
   }
 
   submitProviderKeyForm(vals) {
+    if (!isDefinedNotNull(vals.passwordlessSudoAccess)) {
+      vals.passwordlessSudoAccess = true;
+    }
     this.props.setOnPremProviderAndAccessKey(vals);
   }
 
@@ -35,6 +40,10 @@ export default class OnPremProviderAndAccessKey extends Component {
       <i className={this.state.hostOptionsVisible ? "fa fa-chevron-down": "fa fa-chevron-right"} />;
 
     const isReadOnly = this.props.isEditProvider;
+    const subLabel = (
+      <i>If enabled, the SSH User specified above must have passwordless sudo access to all machines.
+        If not enabled, you are responsible for pre-provisioning all machines before use.</i>
+    );
     return (
       <div className="on-prem-provider-form-container">
         <form name="onPremConfigForm" onSubmit={handleSubmit(this.submitProviderKeyForm)}>
@@ -45,6 +54,11 @@ export default class OnPremProviderAndAccessKey extends Component {
                        infoContent={nameHelpContent} infoTitle="Provider Name" />
                 <Field name="sshUser" component={YBInputField} label="SSH User" insetError={true} isReadOnly={isReadOnly}
                        infoContent={userHelpContent} infoTitle="SSH User" />
+                <Field name="passwordlessSudoAccess"
+                       component={YBToggle}
+                       label="Passwordless Sudo"
+                       subLabel={subLabel}
+                       defaultChecked={true} />
                 <Field name="privateKeyContent" component={YBTextArea} label="SSH Key" insetError={true}
                        className="ssh-key-container" isReadOnly={isReadOnly} infoContent={pkHelpContent}
                        infoTitle="SSH Key" />
