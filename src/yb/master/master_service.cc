@@ -38,6 +38,7 @@
 #include <gflags/gflags.h>
 
 #include "yb/common/wire_protocol.h"
+#include "yb/master/catalog_manager-internal.h"
 #include "yb/master/master_service_base-internal.h"
 #include "yb/master/master.h"
 #include "yb/master/ts_descriptor.h"

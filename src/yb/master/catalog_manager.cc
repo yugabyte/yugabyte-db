@@ -49,6 +49,7 @@
 //   acquire the lock on the table first. This strict ordering prevents deadlocks.
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager-internal.h"
 
 #include <stdlib.h>
 
@@ -104,7 +105,6 @@
 #include "yb/master/yql_partitions_vtable.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/rpc/messenger.h"
-#include "yb/rpc/rpc_context.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/redisserver/redis_constants.h"
 #include "yb/tserver/tserver_admin.proxy.h"
@@ -608,25 +608,6 @@ std::string RequestorString(RpcContext* rpc) {
     return rpc->requestor_string();
   } else {
     return "internal request";
-  }
-}
-
-// If 's' indicates that the node is no longer the leader, setup
-// Service::UnavailableError as the error, set NOT_THE_LEADER as the
-// error code and return true.
-template<class RespClass>
-void CheckIfNoLongerLeaderAndSetupError(Status s, RespClass* resp) {
-  // TODO (KUDU-591): This is a bit of a hack, as right now
-  // there's no way to propagate why a write to a consensus configuration has
-  // failed. However, since we use Status::IllegalState()/IsAborted() to
-  // indicate the situation where a write was issued on a node
-  // that is no longer the leader, this suffices until we
-  // distinguish this cause of write failure more explicitly.
-  if (s.IsIllegalState() || s.IsAborted()) {
-    Status new_status = STATUS(ServiceUnavailable,
-        "operation requested can only be executed on a leader master, but this"
-        " master is no longer the leader", s.ToString());
-    SetupError(resp->mutable_error(), MasterErrorPB::NOT_THE_LEADER, new_status);
   }
 }
 
@@ -1188,13 +1169,6 @@ void CatalogManager::Shutdown() {
   if (sys_catalog_) {
     sys_catalog_->Shutdown();
   }
-}
-
-static void SetupError(MasterErrorPB* error,
-                       MasterErrorPB::Code code,
-                       const Status& s) {
-  StatusToPB(s, error->mutable_status());
-  error->set_code(code);
 }
 
 Status CatalogManager::CheckOnline() const {
@@ -4596,103 +4570,6 @@ CatalogManager::ScopedLeaderSharedLock::ScopedLeaderSharedLock(CatalogManager* c
     return;
   }
 }
-
-template<typename RespClass>
-bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedOrRespond(
-    RespClass* resp, RpcContext* rpc) {
-  if (PREDICT_FALSE(!catalog_status_.ok())) {
-    StatusToPB(catalog_status_, resp->mutable_error()->mutable_status());
-    resp->mutable_error()->set_code(MasterErrorPB::CATALOG_MANAGER_NOT_INITIALIZED);
-    rpc->RespondSuccess();
-    return false;
-  }
-  return true;
-}
-
-template<typename RespClass, typename ErrorClass>
-bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrRespondInternal(
-    RespClass* resp,
-    RpcContext* rpc) {
-  Status& s = catalog_status_;
-  if (PREDICT_TRUE(s.ok())) {
-    s = leader_status_;
-    if (PREDICT_TRUE(s.ok())) {
-      return true;
-    }
-  }
-
-  StatusToPB(s, resp->mutable_error()->mutable_status());
-  resp->mutable_error()->set_code(ErrorClass::NOT_THE_LEADER);
-  rpc->RespondSuccess();
-  return false;
-}
-
-template<typename RespClass>
-bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrRespond(
-    RespClass* resp,
-    RpcContext* rpc) {
-  return CheckIsInitializedAndIsLeaderOrRespondInternal<RespClass, MasterErrorPB>(resp, rpc);
-}
-
-// Variation of the above method which uses TabletServerErrorPB instead.
-template<typename RespClass>
-bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrRespondTServer(
-    RespClass* resp,
-    RpcContext* rpc) {
-  return CheckIsInitializedAndIsLeaderOrRespondInternal<RespClass, TabletServerErrorPB>(resp, rpc);
-}
-
-// Explicit instantiation for callers outside this compilation unit.
-#define INITTED_OR_RESPOND(RespClass) \
-template bool \
-CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedOrRespond( \
-    RespClass* resp, RpcContext* rpc)
-#define INITTED_AND_LEADER_OR_RESPOND(RespClass) \
-template bool \
-CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrRespond( \
-    RespClass* resp, RpcContext* rpc)
-
-#define INITTED_AND_LEADER_OR_RESPOND_TSERVER(RespClass) \
-template bool \
-CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrRespondTServer( \
-    RespClass* resp, RpcContext* rpc)
-
-INITTED_OR_RESPOND(GetMasterRegistrationResponsePB);
-INITTED_OR_RESPOND(TSHeartbeatResponsePB);
-INITTED_OR_RESPOND(DumpMasterStateResponsePB);
-INITTED_OR_RESPOND(RemovedMasterUpdateResponsePB);
-
-INITTED_AND_LEADER_OR_RESPOND(AlterTableResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(CreateTableResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(DeleteTableResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(IsDeleteTableDoneResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(IsAlterTableDoneResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(IsCreateTableDoneResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(ListTablesResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(ListTabletServersResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(CreateNamespaceResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(DeleteNamespaceResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(ListNamespacesResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(CreateUDTypeResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(DeleteUDTypeResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(ListUDTypesResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(GetUDTypeInfoResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(GetTableLocationsResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(GetTableSchemaResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(GetTabletLocationsResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(ChangeLoadBalancerStateResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(GetMasterClusterConfigResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(ChangeMasterClusterConfigResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(GetLoadMovePercentResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(IsMasterLeaderReadyResponsePB);
-INITTED_AND_LEADER_OR_RESPOND(IsLoadBalancedResponsePB);
-
-// TServer variants.
-INITTED_AND_LEADER_OR_RESPOND_TSERVER(tserver::ReadResponsePB);
-
-#undef INITTED_OR_RESPOND
-#undef INITTED_AND_LEADER_OR_RESPOND
-#undef INITTED_AND_LEADER_OR_RESPOND_TSERVER
 
 ////////////////////////////////////////////////////////////
 // TabletInfo

@@ -10,9 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#include "yb/master/catalog_manager.h"
 #include "yb/master/master_tablet_service.h"
+
+#include "yb/master/catalog_manager-internal.h"
 
 namespace yb {
 namespace master {
