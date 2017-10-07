@@ -53,6 +53,7 @@
 #include "yb/util/mutex.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
+#include "yb/util/logging.h"
 
 DEFINE_int64(memory_limit_hard_bytes, 0,
              "Maximum amount of memory this daemon should use, in bytes. "
@@ -123,7 +124,9 @@ static bool ValidatePercentage(const char* flagname, int value) {
                            flagname, value);
   return false;
 }
-static bool dummy[] = {
+
+// Marked as unused because this is not referenced in release mode.
+static bool dummy[] __attribute__((unused)) = {
   google::RegisterFlagValidator(&FLAGS_memory_limit_soft_percentage, &ValidatePercentage),
   google::RegisterFlagValidator(&FLAGS_memory_limit_warn_threshold_percentage, &ValidatePercentage)
 #ifdef TCMALLOC_ENABLED
@@ -146,7 +149,7 @@ static int64_t GetTCMallocCurrentAllocatedBytes() {
 #endif
 
 void MemTracker::CreateRootTracker() {
-  DCHECK(dummy);
+  DCHECK_ONLY_NOTNULL(dummy);
   int64_t limit = FLAGS_memory_limit_hard_bytes;
   if (limit == 0) {
     // If no limit is provided, we'll use

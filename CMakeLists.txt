@@ -249,10 +249,6 @@ ADD_CXX_YB_COMMON_FLAGS("-fno-strict-aliasing -msse4.2 -Wall -Wno-sign-compare -
 ADD_CXX_YB_COMMON_FLAGS("-Winvalid-pch")
 ADD_CXX_YB_COMMON_FLAGS("-pthread -Wno-parentheses -DBOOST_BIND_NO_PLACEHOLDERS")
 ADD_CXX_YB_COMMON_FLAGS("-DROCKSDB_PLATFORM_POSIX")
-if (NOT IS_CLANG)
-  # To enable 16-byte atomics support in GCC we should specify appropriate architecture.
-  ADD_CXX_YB_COMMON_FLAGS("-march=ivybridge")
-endif()
 
 # CXX_GLOBAL_COMMON_FLAGS are flags that are common to C++ code in both the YB and RocksDB parts of
 # the codebase.
@@ -438,7 +434,12 @@ include(CompilerInfo)
 
 message("Using COMPILER_FAMILY=${COMPILER_FAMILY}")
 
+# We can only use IS_CLANG after calling VALIDATE_COMPILER_TYPE.
 VALIDATE_COMPILER_TYPE()
+if (NOT IS_CLANG)
+  # To enable 16-byte atomics support in GCC we should specify appropriate architecture.
+  ADD_CXX_YB_COMMON_FLAGS("-march=ivybridge")
+endif()
 
 # Include compiler type and version in the compiler command line so that binaries built by different
 # versions of the compiler will have different keys in ccache.

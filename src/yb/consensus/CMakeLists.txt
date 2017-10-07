@@ -158,6 +158,9 @@ ADD_YB_TEST(mt-log-test)
 ADD_YB_TEST(quorum_util-test)
 ADD_YB_TEST(raft_consensus_quorum-test)
 ADD_YB_TEST(replica_state-test)
+
+set_source_files_properties(raft_consensus-test.cc PROPERTIES COMPILE_FLAGS
+  "-Wno-inconsistent-missing-override")
 ADD_YB_TEST(raft_consensus-test)
 
 #Tools

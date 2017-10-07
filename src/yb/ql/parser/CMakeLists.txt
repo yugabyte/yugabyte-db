@@ -52,7 +52,8 @@ add_custom_command(
   COMMAND sed -e '${PARSER_GRAM_Y_CC_SED_PATTERN}' ${PARSER_GRAM_Y_CC} > ${PARSER_GRAM_Y_CC_FINAL}
   COMMAND sed -e '${PARSER_GRAM_Y_HH_SED_PATTERN}' ${PARSER_GRAM_Y_HH} > ${PARSER_GRAM_Y_HH_FINAL})
 
-set(PARSER_CUSTOM_FLAGS "-Wno-tautological-undefined-compare -Wno-implicit-fallthrough")
+set(PARSER_CUSTOM_FLAGS
+    "-Wno-tautological-undefined-compare -Wno-implicit-fallthrough -Wno-null-conversion")
 
 set_source_files_properties(${SCANNER_LEX_L_CC} ${PARSER_GRAM_Y_CC_FINAL} PROPERTIES
                             COMPILE_FLAGS ${PARSER_CUSTOM_FLAGS})

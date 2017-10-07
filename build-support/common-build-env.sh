@@ -677,8 +677,15 @@ build_yb_java_code_filter_save_output() {
     --batch-mode
     -Dyb.thirdparty.dir="$YB_THIRDPARTY_DIR"
     -Dmaven.repo.local="$YB_MVN_LOCAL_REPO"
-    --settings "$YB_MVN_SETTINGS_PATH"
   )
+  if [[ -f $YB_MVN_SETTINGS_PATH  ]]; then
+    mvn_opts+=(
+      --settings "$YB_MVN_SETTINGS_PATH"
+    )
+  elif [[ $YB_MVN_SETTINGS_PATH != $HOME/.m2/settings.xml ]]; then
+    log "Maven user settings file specified by YB_MVN_SETTINGS_PATH does not exist:" \
+        "'$YB_MVN_SETTINGS_PATH'"
+  fi
   if ! is_jenkins; then
     mvn_opts+=( -Dmaven.javadoc.skip )
   fi
