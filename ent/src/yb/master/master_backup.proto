@@ -48,7 +48,20 @@ message CreateSnapshotResponsePB {
   optional bytes snapshot_id = 2;
 }
 
+message IsCreateSnapshotDoneRequestPB {
+  required bytes snapshot_id = 1;
+}
+
+message IsCreateSnapshotDoneResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  // true if the create operation is completed, false otherwise
+  optional bool done = 2;
+}
+
 service MasterBackupService {
   // Client->Master RPCs
   rpc CreateSnapshot(CreateSnapshotRequestPB) returns (CreateSnapshotResponsePB);
+  rpc IsCreateSnapshotDone(IsCreateSnapshotDoneRequestPB) returns (IsCreateSnapshotDoneResponsePB);
 }

@@ -56,6 +56,8 @@ using yb::master::ListTablesRequestPB;
 using yb::master::ListTablesResponsePB;
 using yb::master::CreateSnapshotRequestPB;
 using yb::master::CreateSnapshotResponsePB;
+using yb::master::IsCreateSnapshotDoneRequestPB;
+using yb::master::IsCreateSnapshotDoneResponsePB;
 
 class MiniClusterMasterTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
@@ -290,9 +292,26 @@ TEST_F(MiniClusterMasterTest, TestCreateSnapshot) {
 
   is_create_req.mutable_table()->set_table_name(kTableName);
   is_create_req.mutable_table()->mutable_namespace_()->set_name(other_ns_name);
-  int wait_ms = 100;
 
-  for (int num_retries = 12; num_retries > 0; --num_retries) {
+  // Do a set of iterations to check that the operation is done.
+  // Sleep if the operation is not done by the moment.
+  // Increase sleep time on each iteration in accordance with the formula:
+  //   X[0] = 100 ms
+  //   X[i+1] = X[i] * 1.5    // +50%
+  //   Sleep(100 ms + X[i] ms)
+  // So, sleep time:
+  //   Iteration  0: 0,20 sec
+  //   Iteration  1: 0,25 sec
+  //   Iteration  2: 0,32 sec
+  //   ...
+  //   Iteration  9: 3,94 sec
+  //   Iteration 10: 5,87 sec
+  //   Iteration 11: 8,75 sec
+  //   Sum: 27 seconds (in 12 iterations)
+  int wait_ms = 100;
+  static const int kMaxNumRetries = 12;
+
+  for (int num_retries = kMaxNumRetries; num_retries > 0; --num_retries) {
     Status s = proxy_->IsCreateTableDone(is_create_req, &is_create_resp, ResetAndGetController());
     ASSERT_TRUE(s.ok());
     ASSERT_FALSE(is_create_resp.has_error());
@@ -301,7 +320,7 @@ TEST_F(MiniClusterMasterTest, TestCreateSnapshot) {
       LOG(INFO) << "IsCreateTableDone: DONE";
       break;
     }
-    LOG(INFO) << "IsCreateTableDone: not done - sleep";
+    LOG(INFO) << "IsCreateTableDone: not done - sleep " << (100 + wait_ms) << " ms";
     SleepFor(MonoDelta::FromMilliseconds(100 + wait_ms));
     wait_ms = wait_ms * 3 / 2; // +50%
   }
@@ -353,9 +372,48 @@ TEST_F(MiniClusterMasterTest, TestCreateSnapshot) {
     LOG(INFO) << "Started snapshot creation: ID=" << snapshot_id;
   }
 
-  // Give TServers some time to do snapshot before the tablets deletion.
-  // TODO: Replace it by IsSnapshotComplete() RPC.
-  SleepFor(MonoDelta::FromMilliseconds(1000));
+  // Check the snapshot creation complete.
+  {
+    IsCreateSnapshotDoneRequestPB is_snapshot_done_req;
+    IsCreateSnapshotDoneResponsePB is_snapshot_done_resp;
+
+    is_snapshot_done_req.set_snapshot_id(snapshot_id);
+    // Do a set of iterations to check that the operation is done.
+    // Sleep if the operation is not done by the moment.
+    // Increase sleep time on each iteration in accordance with the formula:
+    //   X[0] = 100 ms
+    //   X[i+1] = X[i] * 1.5    // +50%
+    //   Sleep(100 ms + X[i] ms)
+    // So, sleep time:
+    //   Iteration  0: 0,20 sec
+    //   Iteration  1: 0,25 sec
+    //   Iteration  2: 0,32 sec
+    //   ...
+    //   Iteration  9: 3,94 sec
+    //   Iteration 10: 5,87 sec
+    //   Iteration 11: 8,75 sec
+    //   Sum: 27 seconds (in 12 iterations)
+    wait_ms = 100;
+
+    for (int num_retries = kMaxNumRetries; num_retries > 0; --num_retries) {
+      const Status s = proxy_backup_->IsCreateSnapshotDone(
+          is_snapshot_done_req, &is_snapshot_done_resp, ResetAndGetController());
+
+      ASSERT_TRUE(s.ok());
+      ASSERT_FALSE(is_snapshot_done_resp.has_error());
+      ASSERT_TRUE(is_snapshot_done_resp.has_done());
+      if (is_snapshot_done_resp.done()) {
+        LOG(INFO) << "IsCreateSnapshotDone: DONE";
+        break;
+      }
+      LOG(INFO) << "IsCreateSnapshotDone: not done - sleep " << (100 + wait_ms) << " ms";
+      SleepFor(MonoDelta::FromMilliseconds(100 + wait_ms));
+      wait_ms = wait_ms * 3 / 2; // +50%
+    }
+
+    // Test fails if snapshot was not successfully completed.
+    ASSERT_TRUE(is_snapshot_done_resp.done());
+  }
 
   // Check snapshot files existence.
   for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
