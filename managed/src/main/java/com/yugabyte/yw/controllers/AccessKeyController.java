@@ -5,6 +5,7 @@ package com.yugabyte.yw.controllers;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.TemplateManager;
 import com.yugabyte.yw.forms.AccessKeyFormData;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
@@ -24,12 +25,18 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 
+import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
+
 public class AccessKeyController extends AuthenticatedController {
+
   @Inject
   FormFactory formFactory;
 
   @Inject
   AccessManager accessManager;
+
+  @Inject
+  TemplateManager templateManager;
 
   public static final Logger LOG = LoggerFactory.getLogger(AccessKeyController.class);
 
@@ -77,6 +84,7 @@ public class AccessKeyController extends AuthenticatedController {
     String keyContent = formData.get().keyContent;
     AccessManager.KeyType keyType = formData.get().keyType;
     String sshUser =  formData.get().sshUser;
+    boolean passwordlessSudoAccess = formData.get().passwordlessSudoAccess;
 
     AccessKey accessKey;
     // Check if a public/private key was uploaded as part of the request
@@ -102,10 +110,16 @@ public class AccessKeyController extends AuthenticatedController {
       } else {
         accessKey = accessManager.addKey(regionUUID, keyCode);
       }
+
+      // Create provision instance script if provider is onprem with no passwordless sudo access.
+      if (region.provider.code.equals(onprem.name()) && !passwordlessSudoAccess) {
+        templateManager.createProvisionTemplate(accessKey);
+      }
     } catch(RuntimeException | IOException e) {
       LOG.error(e.getMessage());
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create access key: " + keyCode);
     }
+
     return ApiResponse.success(accessKey);
   }
 

@@ -11,10 +11,12 @@ import com.yugabyte.yw.commissioner.tasks.CloudCleanup;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.AccessManager;
+import com.yugabyte.yw.common.TemplateManager;
 import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.forms.CloudBootstrapFormData;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.TaskType;
+import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,6 +31,7 @@ import play.mvc.Result;
 
 import javax.persistence.PersistenceException;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -60,6 +63,9 @@ public class CloudProviderController extends AuthenticatedController {
   @Inject
   AccessManager accessManager;
 
+  @Inject
+  TemplateManager templateManager;
+
   /**
    * GET endpoint for listing providers
    * @return JSON response with provider's
@@ -85,15 +91,18 @@ public class CloudProviderController extends AuthenticatedController {
 
     // TODO: move this to task framework
     try {
-      List<AccessKey> accessKeys = AccessKey.getAll(providerUUID);
-      accessKeys.forEach((accessKey) -> {
+      for (AccessKey accessKey : AccessKey.getAll(providerUUID)) {
+        if (accessKey.getKeyInfo().provisionInstanceScript.length() > 0) {
+          String dirPath = templateManager.getOrCreateProvisionFilePath(providerUUID);
+          FileUtils.deleteDirectory(new File(dirPath));
+        }
         accessKey.delete();
-      });
+      }
       InstanceType.deleteInstanceTypesForProvider(provider);
       NodeInstance.deleteByProvider(providerUUID);
       provider.delete();
       return ApiResponse.success("Deleted provider: " + providerUUID);
-    } catch (RuntimeException e) {
+    } catch (RuntimeException | IOException e) {
       LOG.error(e.getMessage());
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete provider: " + providerUUID);
     }

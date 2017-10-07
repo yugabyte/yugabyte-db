@@ -12,9 +12,12 @@ const mapDispatchToProps = (dispatch, ownProps) => {
       if (!ownProps.isEditProvider) {
         const formSubmitVals = {
           provider: {name: formData.name},
-          key: {code: formData.name.toLowerCase().replace(/ /g, "-") + "-key",
+          key: {
+            code: formData.name.toLowerCase().replace(/ /g, "-") + "-key",
             privateKeyContent: formData.privateKeyContent,
-            sshUser: formData.sshUser }
+            sshUser: formData.sshUser,
+            passwordlessSudoAccess: formData.passwordlessSudoAccess
+          }
         };
         dispatch(setOnPremConfigData(formSubmitVals));
       }
@@ -32,6 +35,7 @@ const mapStateToProps = (state, ownProps) => {
       keyCode: onPremJsonFormData.key.code,
       privateKeyContent: onPremJsonFormData.key.privateKeyContent,
       sshUser: onPremJsonFormData.key.sshUser,
+      passwordlessSudoAccess: true,
       machineTypeList : onPremJsonFormData.instanceTypes.map(function (item) {
         return {
           code: item.instanceTypeCode,
@@ -75,6 +79,7 @@ const validate = values => {
 
 const onPremProviderConfigForm = reduxForm({
   form: 'onPremConfigForm',
+  fields: ['name', 'sshUser', 'privateKeyContent', 'passwordlessSudoAccess'],
   validate,
   destroyOnUnmount: false,
   enableReinitialize: true,

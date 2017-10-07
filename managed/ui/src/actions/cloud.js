@@ -25,7 +25,6 @@ export const GET_SUPPORTED_REGION_DATA_RESPONSE = 'GET_SUPPORTED_REGION_DATA_RES
 export const CREATE_PROVIDER = 'CREATE_PROVIDER';
 export const CREATE_PROVIDER_RESPONSE = 'CREATE_PROVIDER_RESPONSE';
 
-
 // UI bootstrap for On-Prem provider, will be removed when OnPrem moves to Yugaware side Bootstrap
 export const CREATE_ONPREM_PROVIDER = 'CREATE_ONPREM_PROVIDER';
 export const CREATE_ONPREM_PROVIDER_RESPONSE = 'CREATE_ONPREM_PROVIDER_RESPONSE';
@@ -283,7 +282,8 @@ export function createAccessKey(providerUUID, regionUUID, keyInfo) {
     regionUUID: regionUUID,
     keyType: "PRIVATE",
     keyContent: keyInfo.privateKeyContent,
-    sshUser: keyInfo.sshUser
+    sshUser: keyInfo.sshUser,
+    passwordlessSudoAccess: keyInfo.passwordlessSudoAccess
   };
   const url = getProviderEndpoint(providerUUID) + '/access_keys';
   const request = axios.post(url, formValues);

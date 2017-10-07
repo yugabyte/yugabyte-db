@@ -32,15 +32,15 @@ public class NetworkManager extends DevopsBase {
       commandArgs.add(destVpcId);
     }
 
-    return execCommand(regionUUID, "bootstrap", commandArgs);
+    return execAndParseCommand(regionUUID, "bootstrap", commandArgs);
   }
 
   public JsonNode query(UUID regionUUID) {
-    return execCommand(regionUUID, "query", Collections.emptyList());
+    return execAndParseCommand(regionUUID, "query", Collections.emptyList());
   }
 
   public JsonNode cleanup(UUID regionUUID) {
-    JsonNode response = execCommand(regionUUID, "cleanup", Collections.emptyList());
+    JsonNode response = execAndParseCommand(regionUUID, "cleanup", Collections.emptyList());
     if (response.has("error")) {
       throw new RuntimeException(response.get("error").asText());
     }

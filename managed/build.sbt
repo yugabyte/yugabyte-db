@@ -17,6 +17,7 @@ libraryDependencies ++= Seq(
   "org.mindrot" % "jbcrypt" % "0.3m",
   "mysql" % "mysql-connector-java" % "5.1.27",
   "org.postgresql" % "postgresql" % "9.2-1003-jdbc4",
+  "commons-io" % "commons-io" % "2.4",
   "org.apache.httpcomponents" % "httpcore" % "4.4.5",
   "org.apache.httpcomponents" % "httpclient" % "4.5.2",
   "org.flywaydb" %% "flyway-play" % "3.0.1",

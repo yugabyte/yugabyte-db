@@ -23,6 +23,7 @@ public class AccessKey extends Model {
     public String vaultPasswordFile;
     public String vaultFile;
     public String sshUser;
+    public String provisionInstanceScript = "";
   }
 
   @EmbeddedId
