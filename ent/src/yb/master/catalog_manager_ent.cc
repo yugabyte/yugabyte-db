@@ -1,11 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager-internal.h"
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/tostring.h"
 #include "yb/tserver/backup.proxy.h"
-#include "yb/rpc/rpc_context.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog-internal.h"
 #include "yb/master/async_snapshot_tasks.h"
@@ -52,37 +52,6 @@ class SnapshotLoader : public Visitor<PersistentSnapshotInfo> {
 
   DISALLOW_COPY_AND_ASSIGN(SnapshotLoader);
 };
-
-// TODO: Fix code duplication
-static void SetupError(MasterErrorPB* error,
-                       MasterErrorPB::Code code,
-                       const Status& s) {
-  StatusToPB(s, error->mutable_status());
-  error->set_code(code);
-}
-
-namespace {
-
-// If 's' indicates that the node is no longer the leader, setup
-// Service::UnavailableError as the error, set NOT_THE_LEADER as the
-// error code and return true.
-template<class RespClass>
-void CheckIfNoLongerLeaderAndSetupError(Status s, RespClass* resp) {
-  // TODO (KUDU-591): This is a bit of a hack, as right now
-  // there's no way to propagate why a write to a consensus configuration has
-  // failed. However, since we use Status::IllegalState()/IsAborted() to
-  // indicate the situation where a write was issued on a node
-  // that is no longer the leader, this suffices until we
-  // distinguish this cause of write failure more explicitly.
-  if (s.IsIllegalState() || s.IsAborted()) {
-    Status new_status = STATUS(ServiceUnavailable,
-        "operation requested can only be executed on a leader master, but this"
-        " master is no longer the leader", s.ToString());
-    SetupError(resp->mutable_error(), MasterErrorPB::NOT_THE_LEADER, new_status);
-  }
-}
-
-}  // anonymous namespace
 
 ////////////////////////////////////////////////////////////
 // CatalogManager
@@ -210,6 +179,52 @@ Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
   return Status::OK();
 }
 
+Status CatalogManager::IsCreateSnapshotDone(const IsCreateSnapshotDoneRequestPB* req,
+                                            IsCreateSnapshotDoneResponsePB* resp) {
+  RETURN_NOT_OK(CheckOnline());
+
+  scoped_refptr<SnapshotInfo> snapshot;
+
+  // Lookup the snapshot and verify if it exists.
+  TRACE("Looking up snapshot");
+  {
+    std::lock_guard<LockType> manager_l(lock_);
+    TRACE("Acquired catalog manager lock");
+
+    snapshot = FindPtrOrNull(snapshot_ids_map_, req->snapshot_id());
+    if (snapshot == nullptr) {
+      const Status s = STATUS(NotFound, "The snapshot does not exist", req->snapshot_id());
+      // TODO: SNAPSHOT_NOT_FOUND
+      SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+      return s;
+    }
+  }
+
+  TRACE("Locking snapshot");
+  auto l = snapshot->LockForRead();
+
+  VLOG(1) << "Snapshot " << snapshot->ToString() << " state " << l->data().pb.state();
+
+  if (l->data().started_deleting()) {
+    Status s = STATUS(NotFound, "The snapshot was deleted", req->snapshot_id());
+    // TODO: SNAPSHOT_NOT_FOUND
+    SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+    return s;
+  }
+
+  if (l->data().is_failed()) {
+    Status s = STATUS(NotFound, "The snapshot has failed", req->snapshot_id());
+    // TODO: SNAPSHOT_FAILED
+    SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+    return s;
+  }
+
+  // Verify if the create is in-progress.
+  TRACE("Verify if the snapshot creation is in progress for $0", req->snapshot_id());
+  resp->set_done(l->data().is_complete());
+  return Status::OK();
+}
+
 void CatalogManager::SendCreateTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
                                                      const string& snapshot_id) {
   auto call = std::make_shared<AsyncCreateTabletSnapshot>(
@@ -300,42 +315,6 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
 }
 
 } // namespace enterprise
-
-// TODO: Fix template code duplication
-template<typename RespClass, typename ErrorClass>
-bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrRespondInternal(
-    RespClass* resp,
-    RpcContext* rpc) {
-  Status& s = catalog_status_;
-  if (PREDICT_TRUE(s.ok())) {
-    s = leader_status_;
-    if (PREDICT_TRUE(s.ok())) {
-      return true;
-    }
-  }
-
-  StatusToPB(s, resp->mutable_error()->mutable_status());
-  resp->mutable_error()->set_code(ErrorClass::NOT_THE_LEADER);
-  rpc->RespondSuccess();
-  return false;
-}
-
-template<typename RespClass>
-bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrRespond(
-    RespClass* resp,
-    RpcContext* rpc) {
-  return CheckIsInitializedAndIsLeaderOrRespondInternal<RespClass, MasterErrorPB>(resp, rpc);
-}
-
-// Explicit instantiation for callers outside this compilation unit.
-#define INITTED_AND_LEADER_OR_RESPOND(RespClass) \
-template bool \
-CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrRespond( \
-    RespClass* resp, RpcContext* rpc)
-
-INITTED_AND_LEADER_OR_RESPOND(CreateSnapshotResponsePB);
-
-#undef INITTED_AND_LEADER_OR_RESPOND
 
 ////////////////////////////////////////////////////////////
 // SnapshotInfo
