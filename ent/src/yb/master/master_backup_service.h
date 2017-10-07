@@ -19,6 +19,10 @@ class MasterBackupServiceImpl : public MasterBackupServiceIf,
       const CreateSnapshotRequestPB* req, CreateSnapshotResponsePB* resp,
       rpc::RpcContext rpc) override;
 
+  virtual void IsCreateSnapshotDone(
+      const IsCreateSnapshotDoneRequestPB* req, IsCreateSnapshotDoneResponsePB* resp,
+      rpc::RpcContext rpc) override;
+
  private:
   DISALLOW_COPY_AND_ASSIGN(MasterBackupServiceImpl);
 };
