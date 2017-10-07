@@ -27,14 +27,14 @@ public class CloudQueryHelper extends DevopsBase {
     List<String> commandArgs = new ArrayList<String>();
     commandArgs.add("--metadata_types");
     commandArgs.addAll(metadataTypes);
-    return execCommand(cloudType, "current-host", commandArgs);
+    return execAndParseCommand(cloudType, "current-host", commandArgs);
   }
 
   public JsonNode getZones(Region region) {
   	List<String> commandArgs = new ArrayList<String>();
   	commandArgs.add("--regions");
   	commandArgs.add(region.code);
-    return execCommand(region.uuid, "zones", commandArgs);
+    return execAndParseCommand(region.uuid, "zones", commandArgs);
   }
 
   /*
@@ -67,7 +67,7 @@ public class CloudQueryHelper extends DevopsBase {
   	List<String> commandArgs = new ArrayList<String>();
   	commandArgs.add("--regions");
   	regionList.forEach(region -> commandArgs.add(region.code));
-  	return execCommand(regionList.get(0).uuid, "instance_types", commandArgs);
+  	return execAndParseCommand(regionList.get(0).uuid, "instance_types", commandArgs);
   }
 
   /**

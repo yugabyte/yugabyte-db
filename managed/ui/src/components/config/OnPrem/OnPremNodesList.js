@@ -11,6 +11,8 @@ import { isNonEmptyObject, isNonEmptyArray } from 'utils/ObjectUtils';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import InstanceTypeForRegion from '../OnPrem/wizard/InstanceTypeForRegion';
 import { YBBreadcrumb } from '../../common/descriptors';
+import { isDefinedNotNull, isNonEmptyString } from "../../../utils/ObjectUtils";
+import { YBCodeBlock } from "../../common/descriptors/index";
 
 class OnPremNodesList extends Component {
   constructor(props) {
@@ -105,7 +107,7 @@ class OnPremNodesList extends Component {
   }
 
   render() {
-    const {cloud :{nodeInstanceList, instanceTypes, supportedRegionList}, handleSubmit} = this.props;
+    const {cloud: {nodeInstanceList, instanceTypes, supportedRegionList, accessKeys, providers}, handleSubmit} = this.props;
     const self = this;
     let nodeListItems = [];
     if (getPromiseState(nodeInstanceList).isSuccess()) {
@@ -129,6 +131,22 @@ class OnPremNodesList extends Component {
         }
       }
     };
+
+    let provisionMessage = <span />;
+    const onPremProvider = providers.data.find((provider)=>provider.code === "onprem");
+    if (isDefinedNotNull(onPremProvider)) {
+      const onPremKey = accessKeys.data.find((accessKey) => accessKey.idKey.providerUUID === onPremProvider.uuid);
+      if (isDefinedNotNull(onPremKey) && isNonEmptyString(onPremKey.keyInfo.provisionInstanceScript)) {
+        provisionMessage = (
+          <div>
+            <i>Warning: The SSH User associated with this provider does not have passwordless sudo access to instances in this provider. Please execute the following script on the YugaWare host machine, once for each instance that you add here.</i>
+            <YBCodeBlock>
+              {'python ' + onPremKey.keyInfo.provisionInstanceScript + ' --ip '}<b>{'<IP Address> '}</b>{'--mount_points '}<b>{'<instance type mount points>'}</b>
+            </YBCodeBlock>
+          </div>
+        );
+      }
+    }
 
     const currentCloudRegions = supportedRegionList.data.filter(region => region.provider.code === "onprem");
     const regionFormTemplate = isNonEmptyArray(currentCloudRegions) ?
@@ -161,6 +179,8 @@ class OnPremNodesList extends Component {
           On-Premises Datacenter Config
         </YBBreadcrumb>
         <h3 className="no-top-margin">Instances</h3>
+
+        {provisionMessage}
 
         <Row>
           <Col xs={12}>
