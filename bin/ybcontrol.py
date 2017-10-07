@@ -25,7 +25,7 @@ def list_command(service):
 
 
 def service_command(service, command):
-    return "yb-{0}-ctl.sh {1}".format(service, command)
+    return "sudo -u yugabyte /home/yugabyte/bin/yb-server-ctl.sh {0} {1}".format(service, command)
 
 
 def stop_command(service):
@@ -265,13 +265,13 @@ class CopyTarProcedure(Procedure):
             tar_prefix = self.manager.tar_prefix
             if self.step == 1:
                 print("Tar copied to {0}".format(self.host))
-                command = "sudo -u yugabyte mkdir -p /opt/yugabyte/{0}".format(tar_prefix)
+                command = "sudo -u yugabyte mkdir -p /home/yugabyte/releases/{0}".format(tar_prefix)
                 self.process = self.manager.remote_launch(self.host, command)
             elif self.step == 2:
                 print("Extracting tar at {0}".format(self.host))
-                command = "cd /opt/yugabyte/{0} && " \
-                          "sudo -u yugabyte tar xvf /tmp/{0}.tar.gz && " \
-                          "sudo /opt/yugabyte/{0}/bin/post_install.sh".format(tar_prefix)
+                command = "{0} tar xvf /tmp/{1}.tar.gz -C /home/yugabyte/releases/{1} && " \
+                          "{0} /home/yugabyte/releases/{1}/bin/post_install.sh".format(
+                              "sudo -u yugabyte", tar_prefix)
                 self.process = self.manager.remote_launch(self.host, command)
             else:
                 print("Tar extracted at {0}".format(self.host))
@@ -326,9 +326,16 @@ class RollTask:
         print(self.description)
         wait_all([StopProcedure(self.manager, self.host, self.service)], self.timeout)
         if self.upgrade:
-            pattern = "sudo -u yugabyte rm /opt/yugabyte/{0} && " \
-                      "sudo -u yugabyte ln -s /opt/yugabyte/{1} /opt/yugabyte/{0}"
-            self.__execute(pattern.format(self.service, self.manager.tar_prefix), "Update link")
+            pattern = "for dir in $({0} ls {1}/{3}); do " \
+                      "{0} ln -sfn {1}/{3}/$dir /home/yugabyte/{2}/$dir;" \
+                      "done"
+            self.__execute(
+                pattern.format(
+                    "sudo -u yugabyte",
+                    "/home/yugabyte/releases",
+                    self.service,
+                    self.manager.tar_prefix),
+                "Update link")
         self.__execute(service_command(self.service, 'start'), "Start {0}".format(self.service))
 
     def __execute(self, command, title):
