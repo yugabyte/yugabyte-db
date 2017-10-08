@@ -43,6 +43,7 @@ namespace yb {
 
 namespace client {
 
+using internal::AsyncRpcMetrics;
 using internal::Batcher;
 using internal::ErrorCollector;
 
@@ -55,6 +56,8 @@ YBSessionData::YBSessionData(shared_ptr<YBClient> client,
       read_only_(read_only),
       transaction_(transaction),
       error_collector_(new ErrorCollector()) {
+  const auto metric_entity = client_->messenger()->metric_entity();
+  async_rpc_metrics_ = metric_entity ? std::make_shared<AsyncRpcMetrics>(metric_entity) : nullptr;
 }
 
 YBSessionData::~YBSessionData() {

@@ -105,9 +105,8 @@ Batcher::Batcher(YBClient* client,
     flush_callback_(NULL),
     next_op_sequence_number_(0),
     max_buffer_size_(7 * 1024 * 1024),
-    buffer_bytes_used_(0) {
-  const auto metric_entity = client_->data_->messenger_->metric_entity();
-  async_rpc_metrics_ = metric_entity ? std::make_shared<AsyncRpcMetrics>(metric_entity) : nullptr;
+    buffer_bytes_used_(0),
+    async_rpc_metrics_(session_data->async_rpc_metrics_) {
 }
 
 void Batcher::Abort(const Status& status) {

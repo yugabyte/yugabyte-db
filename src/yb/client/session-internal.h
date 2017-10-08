@@ -34,6 +34,7 @@
 
 #include <unordered_set>
 
+#include "yb/client/async_rpc.h"
 #include "yb/client/client.h"
 #include "yb/util/locks.h"
 
@@ -116,6 +117,8 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
 
   // Timeout for the next batch.
   int timeout_ms_ = -1;
+
+  std::shared_ptr<yb::client::internal::AsyncRpcMetrics> async_rpc_metrics_;
 };
 
 }  // namespace client
