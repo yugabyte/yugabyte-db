@@ -28,9 +28,11 @@
 #include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/internal_doc_iterator.h"
+#include "yb/docdb/shared_lock_manager.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
+
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/write_batch_formatter.h"
 #include "yb/rocksutil/yb_rocksdb.h"
@@ -38,7 +40,6 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/logging.h"
-#include "yb/util/shared_lock_manager.h"
 #include "yb/util/status.h"
 
 using std::endl;
@@ -53,7 +54,6 @@ using std::make_shared;
 
 using yb::HybridTime;
 using yb::util::FormatBytesAsStr;
-using yb::util::LockType;
 using yb::FormatRocksDBSliceAsStr;
 using strings::Substitute;
 
@@ -78,7 +78,7 @@ void SeekPastSubKey(const SubDocKey& sub_doc_key, rocksdb::Iterator* iter) {
 
 
 void PrepareDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_ops,
-                              util::SharedLockManager *lock_manager,
+                              SharedLockManager *lock_manager,
                               LockBatch *keys_locked,
                               bool *need_read_snapshot) {
   *need_read_snapshot = false;
@@ -88,11 +88,11 @@ void PrepareDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_
       KeyBytes current_prefix = doc_path.encoded_doc_key();
       for (int i = 0; i < doc_path.num_subkeys(); i++) {
         const string& lock_string = current_prefix.AsStringRef();
-        keys_locked->emplace(lock_string, LockType::SI_WRITE_WEAK);
+        keys_locked->emplace(lock_string, IntentType::kWeakSnapshotWrite);
         doc_path.subkey(i).AppendToKey(&current_prefix);
       }
       const string& lock_string = current_prefix.AsStringRef();
-      (*keys_locked)[lock_string] = LockType::SI_WRITE_STRONG;
+      (*keys_locked)[lock_string] = IntentType::kStrongSnapshotWrite;
     }
     if (doc_op->RequireReadSnapshot()) {
       *need_read_snapshot = true;

@@ -11,28 +11,22 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_SHARED_LOCK_MANAGER_FWD_H_
-#define YB_UTIL_SHARED_LOCK_MANAGER_FWD_H_
+#ifndef YB_DOCDB_SHARED_LOCK_MANAGER_FWD_H
+#define YB_DOCDB_SHARED_LOCK_MANAGER_FWD_H
+
+#include <bitset>
+
+#include "yb/docdb/value_type.h"
 
 namespace yb {
-namespace util {
+namespace docdb {
 
-const size_t NUM_LOCK_TYPES = 6;
-enum class LockType {
-  SR_READ_WEAK = 0,
-  SR_READ_STRONG = 1,
-  SR_WRITE_WEAK = 2,
-  SR_WRITE_STRONG = 3,
-  SI_WRITE_WEAK = 4,
-  SI_WRITE_STRONG = 5
-};
-
-typedef std::map<std::string, LockType> LockBatch;
-typedef uint32_t LockState;
+typedef std::map<std::string, IntentType> LockBatch;
+typedef std::bitset<kIntentTypeMapSize> LockState;
 
 class SharedLockManager;
 
-}  // namespace util
+}  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_UTIL_SHARED_LOCK_MANAGER_FWD_H_
+#endif  // YB_DOCDB_SHARED_LOCK_MANAGER_FWD_H

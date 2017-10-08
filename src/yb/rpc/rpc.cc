@@ -34,6 +34,7 @@
 
 #include <functional>
 #include <string>
+#include <thread>
 
 #include "yb/gutil/basictypes.h"
 #include "yb/gutil/strings/substitute.h"
@@ -43,13 +44,14 @@
 
 #include "yb/util/random_util.h"
 
+using namespace std::literals;
+using namespace std::placeholders;
+
 namespace yb {
 
 using std::shared_ptr;
 using strings::Substitute;
 using strings::SubstituteAndAppend;
-
-using namespace std::placeholders;
 
 namespace rpc {
 
@@ -82,11 +84,26 @@ void RpcRetrier::DelayedRetry(RpcCommand* rpc, const Status& why_status) {
   // If the delay causes us to miss our deadline, RetryCb will fail the
   // RPC on our behalf.
   int num_ms = ++attempt_num_ + RandomUniformInt(0, 4);
-  messenger_->ScheduleOnReactor(
+
+  state_ = RpcRetrierState::kWaiting;
+  task_id_ = messenger_->ScheduleOnReactor(
       std::bind(&RpcRetrier::DelayedRetryCb, this, rpc, _1), MonoDelta::FromMilliseconds(num_ms));
 }
 
 void RpcRetrier::DelayedRetryCb(RpcCommand* rpc, const Status& status) {
+  auto retain_rpc = rpc->shared_from_this();
+
+  RpcRetrierState expected_state = RpcRetrierState::kWaiting;
+  bool run = state_.compare_exchange_strong(expected_state, RpcRetrierState::kRunning);
+  if (!run && expected_state == RpcRetrierState::kIdle) {
+    run = state_.compare_exchange_strong(expected_state, RpcRetrierState::kRunning);
+  }
+  task_id_ = -1;
+  if (!run) {
+    rpc->SendRpcCb(STATUS_FORMAT(
+        Aborted, "$0 aborted: $1", rpc->ToString(), ToString(expected_state)));
+    return;
+  }
   Status new_status = status;
   if (new_status.ok()) {
     // Has this RPC timed out?
@@ -108,6 +125,132 @@ void RpcRetrier::DelayedRetryCb(RpcCommand* rpc, const Status& status) {
     rpc->SendRpc();
   } else {
     rpc->SendRpcCb(new_status);
+  }
+  expected_state = RpcRetrierState::kRunning;
+  state_.compare_exchange_strong(expected_state, RpcRetrierState::kIdle);
+}
+
+RpcRetrier::~RpcRetrier() {
+  DCHECK_EQ(-1, task_id_);
+}
+
+void RpcRetrier::Abort() {
+  RpcRetrierState expected_state = RpcRetrierState::kIdle;
+  while (!state_.compare_exchange_weak(expected_state, RpcRetrierState::kFinished)) {
+    if (expected_state == RpcRetrierState::kFinished) {
+      break;
+    }
+    if (expected_state != RpcRetrierState::kWaiting) {
+      expected_state = RpcRetrierState::kIdle;
+    }
+    std::this_thread::sleep_for(10ms);
+  }
+  for (;;) {
+    auto task_id = task_id_.load(std::memory_order_acquire);
+    if (task_id == -1) {
+      break;
+    }
+    messenger_->AbortOnReactor(task_id);
+    std::this_thread::sleep_for(10ms);
+  }
+}
+
+Rpcs::Rpcs(std::mutex* mutex) {
+  if (mutex) {
+    mutex_ = mutex;
+  } else {
+    mutex_holder_.emplace();
+    mutex_ = &mutex_holder_.get();
+  }
+}
+
+void Rpcs::Shutdown() {
+  auto calls_copy = ToVector(calls_, mutex_);
+  for (auto& call : calls_copy) {
+    CHECK(call);
+    call->Abort();
+  }
+  auto deadline = std::chrono::steady_clock::now() + 15s;
+  {
+    std::unique_lock<std::mutex> lock(*mutex_);
+    // cond_.wait(lock, [this]{ return calls_.empty(); });
+    while (!calls_.empty()) {
+      LOG(INFO) << "Waiting calls: " << calls_.size();
+      if (cond_.wait_until(lock, deadline) == std::cv_status::timeout) {
+        break;
+      }
+    }
+    CHECK(calls_.empty());
+  }
+}
+
+void Rpcs::Register(RpcCommandPtr call, Handle* handle) {
+  if (*handle == calls_.end()) {
+    *handle = Register(std::move(call));
+  }
+}
+
+Rpcs::Handle Rpcs::Register(RpcCommandPtr call) {
+  std::lock_guard<std::mutex> lock(*mutex_);
+#ifndef NDEBUG
+  for (const auto& existing : calls_) {
+    CHECK(existing.get() != call.get());
+  }
+#endif
+
+  calls_.push_back(std::move(call));
+  return --calls_.end();
+}
+
+void Rpcs::RegisterAndStart(RpcCommandPtr call, Handle* handle) {
+  CHECK(*handle == calls_.end());
+  Register(std::move(call), handle);
+  (***handle).SendRpc();
+}
+
+RpcCommandPtr Rpcs::Unregister(Handle* handle) {
+  if (*handle == calls_.end()) {
+    return RpcCommandPtr();
+  }
+  auto result = **handle;
+  {
+    std::lock_guard<std::mutex> lock(*mutex_);
+    calls_.erase(*handle);
+    cond_.notify_one();
+  }
+  *handle = calls_.end();
+  return result;
+}
+
+Rpcs::Handle Rpcs::Prepare() {
+  std::lock_guard<std::mutex> lock(*mutex_);
+  calls_.emplace_back();
+  return --calls_.end();
+}
+
+void Rpcs::Abort(std::initializer_list<Handle*> list) {
+  std::vector<RpcCommandPtr> to_abort;
+  {
+    std::lock_guard<std::mutex> lock(*mutex_);
+    for (auto& handle : list) {
+      if (*handle != calls_.end()) {
+        to_abort.push_back(**handle);
+      }
+    }
+  }
+  if (to_abort.empty()) {
+    return;
+  }
+  for (auto& rpc : to_abort) {
+    rpc->Abort();
+  }
+  {
+    std::unique_lock<std::mutex> lock(*mutex_);
+    for (auto& handle : list) {
+      while (*handle != calls_.end()) {
+        cond_.wait(lock);
+      }
+    }
   }
 }
 

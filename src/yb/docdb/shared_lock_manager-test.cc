@@ -17,7 +17,8 @@
 #include <stack>
 #include <thread>
 
-#include "yb/util/shared_lock_manager.h"
+#include "yb/docdb/shared_lock_manager.h"
+
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -27,7 +28,7 @@ using std::stack;
 using std::thread;
 
 namespace yb {
-namespace util {
+namespace docdb {
 
 class SharedLockManagerTest : public YBTest {
  protected:
@@ -54,19 +55,19 @@ class SharedLockManagerTest : public YBTest {
   std::mutex mutex_;
 
   // vals_[k][t] stores the number of locks of type t on the key k.
-  int vals_[kMaxNumKeys][NUM_LOCK_TYPES];
+  int vals_[kMaxNumKeys][kIntentTypeMapSize];
 
   // Attempt to take the lock, log the attempt and result
-  void Lock(int thread_id, int op_id, int key, LockType lt);
+  void Lock(int thread_id, int op_id, int key, IntentType lt);
 
   // Release the lock and print to log associated info.
-  LockType Unlock(int thread_id, int op_id, int key, LockType lt);
+  IntentType Unlock(int thread_id, int op_id, int key, IntentType lt);
 
   // Increments atomic ints for correctness verification
-  void Increment(size_t key, LockType lt);
+  void Increment(size_t key, IntentType lt);
 
   // Decrements atomic ints for correctness verification
-  void Decrement(size_t key, LockType lt);
+  void Decrement(size_t key, IntentType lt);
 
   // This function verifies that the vals_[] array has permissible numbers, e.g.
   // there's no key with 2 exclusive locks, etc.
@@ -87,7 +88,7 @@ SharedLockManagerTest::SharedLockManagerTest() {
   memset(vals_, 0, sizeof(vals_));
 }
 
-void SharedLockManagerTest::Lock(int thread_id, int op_id, int key, LockType lt) {
+void SharedLockManagerTest::Lock(int thread_id, int op_id, int key, IntentType lt) {
   string type(ToString(lt));
   type.resize(16, ' ');
   if (kLogOps)
@@ -97,7 +98,7 @@ void SharedLockManagerTest::Lock(int thread_id, int op_id, int key, LockType lt)
     LOG(INFO) << "\t" << thread_id << "\t" << op_id << "\t" << type << "\t" << key << "\ttaken";
 }
 
-LockType SharedLockManagerTest::Unlock(int thread_id, int op_id, int key, LockType lt) {
+IntentType SharedLockManagerTest::Unlock(int thread_id, int op_id, int key, IntentType lt) {
   lm_.Unlock("key" + std::to_string(key), lt);
   string type(ToString(lt));
   type.resize(16, ' ');
@@ -129,12 +130,12 @@ void SharedLockManagerTest::RandomDelay(double rand) {
   }
 }
 
-void SharedLockManagerTest::Increment(size_t key, LockType lt) {
+void SharedLockManagerTest::Increment(size_t key, IntentType lt) {
   std::lock_guard<std::mutex> lock(mutex_);
   vals_[key][static_cast<int>(lt)]++;
 }
 
-void SharedLockManagerTest::Decrement(size_t key, LockType lt) {
+void SharedLockManagerTest::Decrement(size_t key, IntentType lt) {
   std::lock_guard<std::mutex> lock(mutex_);
   vals_[key][static_cast<int>(lt)]--;
 }
@@ -142,14 +143,16 @@ void SharedLockManagerTest::Decrement(size_t key, LockType lt) {
 void SharedLockManagerTest::Verify() {
   std::lock_guard<std::mutex> lock(mutex_);
   for (int i = 0; i < kMaxNumKeys; i++) {
-    LockState state = 0;
-    for (int j = 0; j < NUM_LOCK_TYPES; j++) {
+    LockState state;
+    for (auto intent_type : kIntentTypeList) {
+      size_t j = static_cast<size_t>(intent_type);
       ASSERT_GE(vals_[i][j], 0) << "KEY " << i << " INVALID STATE";
       if (vals_[i][j] > 0) {
-        state |= (1 << j);
+        state.set(j);
       }
     }
-    ASSERT_TRUE(SharedLockManager::VerifyState(state)) << "KEY " << i << " INVALID STATE";
+    ASSERT_TRUE(SharedLockManager::VerifyState(state))
+        << "KEY " << i << " INVALID STATE: " << SharedLockManager::ToString(state);
   }
 }
 
@@ -162,7 +165,7 @@ void SharedLockManagerTest::RandomLockOps(int thread_id, size_t num_keys) {
   // Keep a stack of locks currently taken.
   // These two stacks are always pushed to and popped from in sync.
   stack<int> locked_keys;
-  stack<LockType> lock_types;
+  stack<IntentType> lock_types;
   // Guaranteed to be sorted with top() being largest.
 
   int op_id = 0;
@@ -178,7 +181,7 @@ void SharedLockManagerTest::RandomLockOps(int thread_id, size_t num_keys) {
     if (!locked_keys.empty() && locked_keys.top() == num_keys - 1) {
       // If the last key is taken, there's no choice but to release it.
       const int last_key = locked_keys.top();
-      const LockType lock_type = lock_types.top();
+      const IntentType lock_type = lock_types.top();
 
       locked_keys.pop();
       lock_types.pop();
@@ -194,7 +197,7 @@ void SharedLockManagerTest::RandomLockOps(int thread_id, size_t num_keys) {
       while (new_key < num_keys - 1 && dis(gen) < 0.5) new_key++;
 
       // Randomly pick if shared or exclusive lock is to be taken.
-      const LockType lock_type = static_cast<LockType>(int_dis(gen));
+      const IntentType lock_type = static_cast<IntentType>(int_dis(gen));
 
       locked_keys.push(new_key);
       lock_types.push(lock_type);
@@ -205,7 +208,7 @@ void SharedLockManagerTest::RandomLockOps(int thread_id, size_t num_keys) {
       // We get here only if the lock stack is non-empty.
       // Release the last lock taken with remaining 50% probability.
       const int last_key = locked_keys.top();
-      const LockType lock_type = lock_types.top();
+      const IntentType lock_type = lock_types.top();
 
       locked_keys.pop();
       lock_types.pop();
@@ -221,7 +224,7 @@ void SharedLockManagerTest::RandomLockOps(int thread_id, size_t num_keys) {
     RandomDelay(dis(gen));
     Verify();
     const int key = locked_keys.top();
-    const LockType lock_type = lock_types.top();
+    const IntentType lock_type = lock_types.top();
 
     locked_keys.pop();
     lock_types.pop();
@@ -258,5 +261,5 @@ TEST_F(SharedLockManagerTest, RandomLockUnlockManyThreadsTest) {
   Run(2, 8);
 }
 
-} // namespace util
+} // namespace docdb
 } // namespace yb

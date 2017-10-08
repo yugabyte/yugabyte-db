@@ -32,8 +32,11 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/key_bytes.h"
 
+#include "yb/rpc/rpc.h"
+
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 
 using namespace std::placeholders;
@@ -45,8 +48,16 @@ namespace {
 
 class RunningTransaction {
  public:
-  explicit RunningTransaction(const TransactionId& id, const TransactionMetadataPB& metadata)
-      : id_(id), metadata_(metadata) {
+  explicit RunningTransaction(const TransactionId& id,
+                              const TransactionMetadataPB& metadata,
+                              rpc::Rpcs* rpcs)
+      : id_(id), metadata_(metadata), rpcs_(*rpcs),
+        get_status_handle_(rpcs->InvalidHandle()),
+        abort_handle_(rpcs->InvalidHandle()) {
+  }
+
+  ~RunningTransaction() {
+    rpcs_.Abort({&get_status_handle_, &abort_handle_});
   }
 
   const TransactionId& id() const {
@@ -67,7 +78,7 @@ class RunningTransaction {
 
   void RequestStatusAt(client::YBClient* client,
                        HybridTime time,
-                       RequestTransactionStatusCallback callback,
+                       TransactionStatusCallback callback,
                        std::unique_lock<std::mutex>* lock) const {
     if (last_known_status_hybrid_time_ != HybridTime::kMin) {
       auto transaction_status =
@@ -75,6 +86,7 @@ class RunningTransaction {
       if (transaction_status) {
         lock->unlock();
         callback(*transaction_status);
+        return;
       }
     }
     bool was_empty = status_waiters_.empty();
@@ -87,12 +99,37 @@ class RunningTransaction {
     tserver::GetTransactionStatusRequestPB req;
     req.set_tablet_id(metadata_.status_tablet());
     req.set_transaction_id(id_.begin(), id_.size());
-    client::GetTransactionStatus(
-        deadline,
-        nullptr /* tablet */,
-        client,
-        &req,
-        std::bind(&RunningTransaction::StatusReceived, this, _1, _2, lock->mutex()));
+    rpcs_.RegisterAndStart(
+        client::GetTransactionStatus(
+            deadline,
+            nullptr /* tablet */,
+            client,
+            &req,
+            std::bind(&RunningTransaction::StatusReceived, this, _1, _2, lock->mutex())),
+        &get_status_handle_);
+  }
+
+  void Abort(client::YBClient* client,
+             TransactionStatusCallback callback,
+             std::unique_lock<std::mutex>* lock) const {
+    lock->unlock();
+    auto deadline = MonoTime::FineNow() + MonoDelta::FromSeconds(5); // TODO(dtxn)
+    tserver::AbortTransactionRequestPB req;
+    req.set_tablet_id(metadata_.status_tablet());
+    req.set_transaction_id(id_.begin(), id_.size());
+    rpcs_.RegisterAndStart(
+        client::AbortTransaction(
+            deadline,
+            nullptr /* tablet */,
+            client,
+            &req,
+            std::bind(&RunningTransaction::AbortReceived,
+                      this,
+                      _1,
+                      _2,
+                      std::move(callback),
+                      lock->mutex())),
+        &abort_handle_);
   }
 
  private:
@@ -121,14 +158,15 @@ class RunningTransaction {
   void StatusReceived(const Status& status,
                       const tserver::GetTransactionStatusResponsePB& response,
                       std::mutex* mutex) const {
-    std::vector<std::pair<RequestTransactionStatusCallback, HybridTime>> status_waiters;
+    rpcs_.Unregister(&get_status_handle_);
+    std::vector<std::pair<TransactionStatusCallback, HybridTime>> status_waiters;
     HybridTime time;
     tserver::TransactionStatus transaction_status;
     {
       std::unique_lock<std::mutex> lock(*mutex);
       status_waiters_.swap(status_waiters);
       if (status.ok()) {
-        auto time = response.has_status_hybrid_time()
+        time = response.has_status_hybrid_time()
             ? HybridTime(response.status_hybrid_time())
             : HybridTime::kMax;
         if (last_known_status_hybrid_time_ <= time) {
@@ -160,13 +198,28 @@ class RunningTransaction {
     }
   }
 
+  void AbortReceived(const Status& status,
+                     const tserver::AbortTransactionResponsePB& response,
+                     TransactionStatusCallback callback,
+                     std::mutex* mutex) const {
+    rpcs_.Unregister(&abort_handle_);
+    if (!status.ok()) {
+      callback(status);
+    } else {
+      callback(response.status());
+    }
+  }
+
   TransactionId id_;
   TransactionMetadataPB metadata_;
+  rpc::Rpcs& rpcs_;
   bool committed_locally_ = false;
 
   mutable tserver::TransactionStatus last_known_status_;
   mutable HybridTime last_known_status_hybrid_time_ = HybridTime::kMin;
-  mutable std::vector<std::pair<RequestTransactionStatusCallback, HybridTime>> status_waiters_;
+  mutable std::vector<std::pair<TransactionStatusCallback, HybridTime>> status_waiters_;
+  mutable rpc::Rpcs::Handle get_status_handle_;
+  mutable rpc::Rpcs::Handle abort_handle_;
 };
 
 } // namespace
@@ -175,6 +228,11 @@ class TransactionParticipant::Impl {
  public:
   explicit Impl(TransactionParticipantContext* context)
       : context_(*context) {}
+
+  ~Impl() {
+    transactions_.clear();
+    rpcs_.Shutdown();
+  }
 
   // Adds new running transaction.
   void Add(const TransactionMetadataPB& data, rocksdb::WriteBatch *write_batch) {
@@ -188,7 +246,7 @@ class TransactionParticipant::Impl {
       std::lock_guard<std::mutex> lock(mutex_);
       auto it = transactions_.find(*id);
       if (it == transactions_.end()) {
-        transactions_.emplace(*id, data);
+        transactions_.emplace(*id, data, &rpcs_);
         store = true;
       } else {
         DCHECK_EQ(it->metadata().ShortDebugString(), data.ShortDebugString());
@@ -211,31 +269,20 @@ class TransactionParticipant::Impl {
 
   yb::IsolationLevel IsolationLevel(rocksdb::DB* db, const TransactionId& id) {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto it = transactions_.find(id);
-    if (it == transactions_.end()) {
-      docdb::KeyBytes key;
-      AppendTransactionKeyPrefix(id, &key);
-      auto iter = docdb::CreateRocksDBIterator(db,
-                                               docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
-                                               boost::none,
-                                               rocksdb::kDefaultQueryId);
-      iter->Seek(key.data());
-      if (iter->Valid() && iter->key() == key.data()) {
-        TransactionMetadataPB metadata;
-        if (metadata.ParseFromArray(iter->value().cdata(), iter->value().size())) {
-          it = transactions_.emplace(id, metadata).first;
-        } else {
-          LOG(DFATAL) << "Unable to parse stored metadata: " << iter->value().ToDebugHexString();
-        }
-      }
-    }
+    auto it = FindOrLoad(db, id);
     return it != transactions_.end() ? it->metadata().isolation()
                                      : yb::IsolationLevel::NON_TRANSACTIONAL;
   }
 
+  uint64_t Priority(rocksdb::DB* db, const TransactionId& id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = FindOrLoad(db, id);
+    return it != transactions_.end() ? it->metadata().priority() : 0;
+  }
+
   void RequestStatusAt(const TransactionId& id,
                        HybridTime time,
-                       RequestTransactionStatusCallback callback) {
+                       TransactionStatusCallback callback) {
     std::unique_lock<std::mutex> lock(mutex_);
     auto it = transactions_.find(id);
     if (it == transactions_.end()) {
@@ -244,6 +291,18 @@ class TransactionParticipant::Impl {
       return;
     }
     return it->RequestStatusAt(context_.client().get(), time, std::move(callback), &lock);
+  }
+
+  void Abort(const TransactionId& id,
+             TransactionStatusCallback callback) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    auto it = transactions_.find(id);
+    if (it == transactions_.end()) {
+      lock.unlock();
+      callback(STATUS_FORMAT(NotFound, "Unknown transaction: $1", id));
+      return;
+    }
+    return it->Abort(context_.client().get(), std::move(callback), &lock);
   }
 
   CHECKED_STATUS ProcessApply(const TransactionApplyData& data) {
@@ -264,24 +323,27 @@ class TransactionParticipant::Impl {
         });
         // TODO(dtxn) cleanup
       }
-    }
+      if (data.mode == ProcessingMode::LEADER) {
+        auto deadline = MonoTime::FineNow() + MonoDelta::FromSeconds(5); // TODO(dtxn)
+        tserver::UpdateTransactionRequestPB req;
+        req.set_tablet_id(data.status_tablet);
+        auto& state = *req.mutable_state();
+        state.set_transaction_id(data.transaction_id.begin(), data.transaction_id.size());
+        state.set_status(tserver::TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS);
+        state.add_tablets(context_.tablet_id());
 
-    if (data.mode == ProcessingMode::LEADER) {
-      auto deadline = MonoTime::FineNow() + MonoDelta::FromSeconds(5); // TODO(dtxn)
-      tserver::UpdateTransactionRequestPB req;
-      req.set_tablet_id(data.status_tablet);
-      auto& state = *req.mutable_state();
-      state.set_transaction_id(data.transaction_id.begin(), data.transaction_id.size());
-      state.set_status(tserver::TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS);
-      state.add_tablets(context_.tablet_id());
-      UpdateTransaction(
-          deadline,
-          nullptr /* remote_tablet */,
-          context_.client().get(),
-          &req,
-          [](const Status& status) {
-            LOG_IF(WARNING, !status.ok()) << "Failed to send applied: " << status.ToString();
-          });
+        auto handle = rpcs_.Prepare();
+        *handle = UpdateTransaction(
+            deadline,
+            nullptr /* remote_tablet */,
+            context_.client().get(),
+            &req,
+            [this, handle](const Status& status) {
+              rpcs_.Unregister(handle);
+              LOG_IF(WARNING, !status.ok()) << "Failed to send applied: " << status.ToString();
+            });
+        (**handle).SendRpc();
+      }
     }
     return Status::OK();
   }
@@ -297,9 +359,35 @@ class TransactionParticipant::Impl {
       >
   > Transactions;
 
+  Transactions::const_iterator FindOrLoad(rocksdb::DB* db, const TransactionId& id) {
+    auto it = transactions_.find(id);
+    if (it != transactions_.end()) {
+      return it;
+    }
+
+    docdb::KeyBytes key;
+    AppendTransactionKeyPrefix(id, &key);
+    auto iter = docdb::CreateRocksDBIterator(db,
+                                             docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
+                                             boost::none,
+                                             rocksdb::kDefaultQueryId);
+    iter->Seek(key.data());
+    if (iter->Valid() && iter->key() == key.data()) {
+      TransactionMetadataPB metadata;
+      if (metadata.ParseFromArray(iter->value().cdata(), iter->value().size())) {
+        it = transactions_.emplace(id, metadata, &rpcs_).first;
+      } else {
+        LOG(DFATAL) << "Unable to parse stored metadata: " << iter->value().ToDebugHexString();
+      }
+    }
+
+    return it;
+  }
+
   TransactionParticipantContext& context_;
 
   std::mutex mutex_;
+  rpc::Rpcs rpcs_;
   Transactions transactions_;
 };
 
@@ -319,14 +407,23 @@ IsolationLevel TransactionParticipant::IsolationLevel(rocksdb::DB* db, const Tra
   return impl_->IsolationLevel(db, id);
 }
 
+uint64_t TransactionParticipant::Priority(rocksdb::DB* db, const TransactionId& id) {
+  return impl_->Priority(db, id);
+}
+
 bool TransactionParticipant::CommittedLocally(const TransactionId& id) {
   return impl_->CommittedLocally(id);
 }
 
 void TransactionParticipant::RequestStatusAt(const TransactionId& id,
                                              HybridTime time,
-                                             RequestTransactionStatusCallback callback) {
+                                             TransactionStatusCallback callback) {
   return impl_->RequestStatusAt(id, time, std::move(callback));
+}
+
+void TransactionParticipant::Abort(const TransactionId& id,
+                                   TransactionStatusCallback callback) {
+  return impl_->Abort(id, std::move(callback));
 }
 
 CHECKED_STATUS TransactionParticipant::ProcessApply(const TransactionApplyData& data) {

@@ -195,6 +195,24 @@ class YBStatusFunctionCallback : public YBStatusCallback {
   T arg_;
 };
 
+template <class Functor>
+class YBStatusFunctorCallback : public YBStatusCallback {
+ public:
+  explicit YBStatusFunctorCallback(const Functor& functor) : functor_(functor) {}
+
+  void Run(const Status& status) override {
+    functor_(status);
+    delete this;
+  }
+ private:
+  Functor functor_;
+};
+
+template <class Functor>
+YBStatusFunctorCallback<Functor>* MakeYBStatusFunctorCallback(const Functor& functor) {
+  return new YBStatusFunctorCallback<Functor>(functor);
+}
+
 }  // namespace client
 }  // namespace yb
 

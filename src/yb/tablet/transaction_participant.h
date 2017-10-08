@@ -50,7 +50,7 @@ class KeyBytes;
 
 namespace tablet {
 
-typedef std::function<void(Result<tserver::TransactionStatus>)> RequestTransactionStatusCallback;
+typedef std::function<void(Result<tserver::TransactionStatus>)> TransactionStatusCallback;
 
 class TransactionIntentApplier;
 
@@ -94,12 +94,15 @@ class TransactionParticipant {
   void Add(const TransactionMetadataPB& data, rocksdb::WriteBatch *write_batch);
 
   yb::IsolationLevel IsolationLevel(rocksdb::DB* db, const TransactionId& id);
+  uint64_t Priority(rocksdb::DB* db, const TransactionId& id);
 
   bool CommittedLocally(const TransactionId& id);
 
   void RequestStatusAt(const TransactionId& id,
                        HybridTime time,
-                       RequestTransactionStatusCallback callback);
+                       TransactionStatusCallback callback);
+
+  void Abort(const TransactionId& id, TransactionStatusCallback callback);
 
   CHECKED_STATUS ProcessApply(const TransactionApplyData& data);
 

@@ -99,6 +99,7 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
 
   MonoTime start_;
   std::shared_ptr<AsyncRpcMetrics> async_rpc_metrics_;
+  rpc::RpcCommandPtr retained_self_;
 };
 
 class WriteRpc : public AsyncRpc {

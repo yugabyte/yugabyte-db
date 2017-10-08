@@ -196,7 +196,9 @@ void RemoteTablet::Refresh(const TabletServerMap& tservers,
   replicas_.clear();
   for (const TabletLocationsPB_ReplicaPB& r : replicas) {
     RemoteReplica rep;
-    rep.ts = FindOrDie(tservers, r.ts_info().permanent_uuid());
+    auto it = tservers.find(r.ts_info().permanent_uuid());
+    CHECK(it != tservers.end());
+    rep.ts = it->second.get();
     rep.role = r.role();
     rep.failed = false;
     replicas_.push_back(rep);
@@ -322,25 +324,30 @@ MetaCache::MetaCache(YBClient* client)
 }
 
 MetaCache::~MetaCache() {
-  STLDeleteValues(&ts_cache_);
+  Shutdown();
+}
+
+void MetaCache::Shutdown() {
+  rpcs_.Shutdown();
 }
 
 void MetaCache::AddTabletServerProxy(const string& permanent_uuid,
                                      const shared_ptr<TabletServerServiceProxy>& proxy) {
-  CHECK(ts_cache_.emplace(permanent_uuid, new RemoteTabletServer(permanent_uuid, proxy)).second);
+  CHECK(ts_cache_.emplace(
+      permanent_uuid, std::make_unique<RemoteTabletServer>(permanent_uuid, proxy)).second);
 }
 
 void MetaCache::UpdateTabletServer(const master::TSInfoPB& pb) {
   DCHECK(lock_.is_write_locked());
   const std::string& permanent_uuid = pb.permanent_uuid();
-  RemoteTabletServer* ts = FindPtrOrNull(ts_cache_, permanent_uuid);
-  if (ts) {
-    ts->Update(pb);
+  auto it = ts_cache_.find(permanent_uuid);
+  if (it != ts_cache_.end()) {
+    it->second->Update(pb);
     return;
   }
 
   VLOG(1) << "Client caching new TabletServer " << permanent_uuid;
-  InsertOrDie(&ts_cache_, permanent_uuid, new RemoteTabletServer(pb));
+  CHECK(ts_cache_.emplace(permanent_uuid, std::make_unique<RemoteTabletServer>(pb)).second);
 }
 
 // A (table, partition_key) --> tablet lookup. May be in-flight to a master, or
@@ -402,6 +409,8 @@ class LookupRpc : public Rpc {
 
   // Whether this lookup has acquired a master lookup permit.
   bool has_permit_ = false;
+
+  rpc::Rpcs::Handle retained_self_;
 };
 
 LookupRpc::LookupRpc(const scoped_refptr<MetaCache>& meta_cache,
@@ -412,7 +421,8 @@ LookupRpc::LookupRpc(const scoped_refptr<MetaCache>& meta_cache,
     : Rpc(deadline, messenger),
       meta_cache_(meta_cache),
       user_cb_(std::move(user_cb)),
-      remote_tablet_(remote_tablet) {
+      remote_tablet_(remote_tablet),
+      retained_self_(meta_cache_->rpcs_.InvalidHandle()) {
   DCHECK(deadline.Initialized());
 }
 
@@ -431,9 +441,11 @@ void LookupRpc::SendRpc() {
       *remote_tablet_ = result;
     }
     user_cb_.Run(Status::OK());
-    delete this;
+    meta_cache_->rpcs_.Unregister(&retained_self_);
     return;
   }
+
+  meta_cache_->rpcs_.Register(shared_from_this(), &retained_self_);
 
   // Slow path: must lookup the tablet in the master.
   VLOG(3) << "Fast lookup: no known tablet for " << ToString()
@@ -486,14 +498,12 @@ template <class Response, class ApplyFunctor>
 void LookupRpc::DoSendRpcCb(const Status& status,
                             const Response& resp,
                             const ApplyFunctor& apply_functor) {
-  std::unique_ptr<LookupRpc> delete_me(this); // delete on scope exit
   if (resp.has_error()) {
     LOG(INFO) << "Got resp error " << resp.error().code() << ", code=" << status.CodeAsString();
   }
   // Prefer early failures over controller failures.
   Status new_status = status;
   if (new_status.ok() && mutable_retrier()->HandleResponse(this, &new_status)) {
-    ignore_result(delete_me.release());
     return;
   }
 
@@ -504,7 +514,6 @@ void LookupRpc::DoSendRpcCb(const Status& status,
       if (client()->IsMultiMaster()) {
         LOG(WARNING) << "Leader Master has changed, re-trying...";
         ResetMasterLeaderAndRetry();
-        ignore_result(delete_me.release());
         return;
       }
     }
@@ -516,7 +525,6 @@ void LookupRpc::DoSendRpcCb(const Status& status,
       if (client()->IsMultiMaster()) {
         LOG(WARNING) << "Leader Master timed out, re-trying...";
         ResetMasterLeaderAndRetry();
-        ignore_result(delete_me.release());
         return;
       }
     } else {
@@ -530,7 +538,6 @@ void LookupRpc::DoSendRpcCb(const Status& status,
       LOG(WARNING) << "Encountered a network error from the Master: "
                    << new_status.ToString() << ", retrying...";
       ResetMasterLeaderAndRetry();
-      ignore_result(delete_me.release());
       return;
     }
   }
@@ -539,6 +546,8 @@ void LookupRpc::DoSendRpcCb(const Status& status,
   if (new_status.ok() && resp.tablet_locations_size() == 0) {
     new_status = STATUS(NotFound, "No such tablet found");
   }
+
+  auto retained_self = meta_cache_->rpcs_.Unregister(&retained_self_);
 
   if (new_status.ok()) {
     Notify(Status::OK(), apply_functor());
@@ -743,27 +752,25 @@ void MetaCache::LookupTabletByKey(const YBTable* table,
                                   const MonoTime& deadline,
                                   RemoteTabletPtr* remote_tablet,
                                   const StatusCallback& callback) {
-  LookupRpc* rpc = new LookupByKeyRpc(this,
-                                      callback,
-                                      table,
-                                      partition_key,
-                                      remote_tablet,
-                                      deadline,
-                                      client_->data_->messenger_);
-  rpc->SendRpc();
+  rpc::StartRpc<LookupByKeyRpc>(this,
+                                callback,
+                                table,
+                                partition_key,
+                                remote_tablet,
+                                deadline,
+                                client_->data_->messenger_);
 }
 
 void MetaCache::LookupTabletById(const string& tablet_id,
                                  const MonoTime& deadline,
                                  RemoteTabletPtr* remote_tablet,
                                  const StatusCallback& callback) {
-  LookupRpc* rpc = new LookupByIdRpc(this,
-                                     callback,
-                                     tablet_id,
-                                     remote_tablet,
-                                     deadline,
-                                     client_->data_->messenger_);
-  rpc->SendRpc();
+  rpc::StartRpc<LookupByIdRpc>(this,
+                               callback,
+                               tablet_id,
+                               remote_tablet,
+                               deadline,
+                               client_->data_->messenger_);
 }
 
 void MetaCache::MarkTSFailed(RemoteTabletServer* ts,

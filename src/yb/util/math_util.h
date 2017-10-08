@@ -18,8 +18,18 @@
 
 namespace yb {
 
-  // Returns the standard deviation of a bunch of numbers.
-  double standard_deviation(std::vector<double> data);
+// Returns the standard deviation of a bunch of numbers.
+double standard_deviation(std::vector<double> data);
+
+template <class T>
+constexpr T constexpr_max(const T& lhs, const T& rhs) {
+  return lhs > rhs ? lhs : rhs;
+}
+
+template <class T1, class T2, class... Args>
+constexpr T1 constexpr_max(const T1& t1, const T2& t2, const Args&&... args) {
+  return constexpr_max(t1, constexpr_max(t2, args...));
+}
 
 }  // namespace yb
 

@@ -946,7 +946,6 @@ Status ExternalMiniCluster::GetLeaderMasterIndex(int* idx) {
 }
 
 Status ExternalMiniCluster::GetPeerMasterIndex(int* idx, bool is_leader) {
-  scoped_refptr<GetLeaderMasterRpc> rpc;
   Synchronizer sync;
   std::vector<Endpoint> addrs;
   HostPort leader_master_hp;
@@ -958,13 +957,11 @@ Status ExternalMiniCluster::GetPeerMasterIndex(int* idx, bool is_leader) {
   for (const scoped_refptr<ExternalMaster>& master : masters_) {
     addrs.push_back(master->bound_rpc_addr());
   }
-  rpc.reset(new GetLeaderMasterRpc(Bind(&LeaderMasterCallback,
-                                        &leader_master_hp,
-                                        &sync),
-                                   addrs,
-                                   deadline,
-                                   messenger_));
-  rpc->SendRpc();
+  auto rpc = rpc::StartRpc<GetLeaderMasterRpc>(
+      Bind(&LeaderMasterCallback, &leader_master_hp, &sync),
+      addrs,
+      deadline,
+      messenger_);
   RETURN_NOT_OK(sync.Wait());
   bool found = false;
   for (int i = 0; i < masters_.size(); i++) {

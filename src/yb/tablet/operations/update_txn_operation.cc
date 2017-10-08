@@ -73,5 +73,11 @@ string UpdateTxnOperation::ToString() const {
   return Format("UpdateTxnOperation [state=$0]", state()->ToString());
 }
 
+void UpdateTxnOperation::Finish(OperationResult result) {
+  if (result == OperationResult::ABORTED) {
+    LOG(INFO) << "Aborted: " << state()->request()->ShortDebugString();
+  }
+}
+
 } // namespace tablet
 } // namespace yb

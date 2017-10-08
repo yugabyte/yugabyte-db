@@ -325,6 +325,11 @@ class OperationCompletionCallback {
   // Subclasses should override this.
   virtual void OperationCompleted();
 
+  void CompleteWithStatus(const Status& status) {
+    set_error(status);
+    OperationCompleted();
+  }
+
   virtual ~OperationCompletionCallback();
 
  protected:

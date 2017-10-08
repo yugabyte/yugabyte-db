@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_SHARED_LOCK_MANAGER_H_
-#define YB_UTIL_SHARED_LOCK_MANAGER_H_
+#ifndef YB_DOCDB_SHARED_LOCK_MANAGER_H
+#define YB_DOCDB_SHARED_LOCK_MANAGER_H
 
 #include <map>
 #include <mutex>
@@ -20,27 +20,27 @@
 #include <unordered_map>
 #include <vector>
 
+#include "yb/docdb/shared_lock_manager_fwd.h"
+
 #include "yb/gutil/spinlock.h"
-#include "yb/util/shared_lock_manager_fwd.h"
+
 #include "yb/util/cross_thread_mutex.h"
 
 namespace yb {
-namespace util {
-
-const char* ToString(LockType lock_type);
+namespace docdb {
 
 // This class manages six types of locks on string keys. On each key, the possibilities are:
 // - No locks
-// - A single SI_WRITE_STRONG
-// - Multiple SR_READ_STRONG and SR_READ_WEAK
-// - Multiple SR_WRITE_STRONG and SR_WRITE_WEAK
-// - Multiple SI_WRITE_WEAK, SR_READ_WEAK, and SR_WRITE_WEAK
+// - A single kStrongSnapshotWrite
+// - Multiple kStrongSerializableRead and kWeakSerializableRead
+// - Multiple kStrongSerializableWrite and kWeakSerializableWrite
+// - Multiple kWeakSnapshotWrite, kWeakSerializableRead, and kWeakSerializableWrite
 class SharedLockManager {
  public:
 
   // Attempt to lock the key with certain type. The call may be blocked waiting for other
   // locks to be released. If LockEntry doesn't exist, it creates a LockEntry.
-  void Lock(std::string key, LockType lock_type) {
+  void Lock(std::string key, IntentType lock_type) {
     Lock({ {std::move(key), lock_type} });
   }
 
@@ -53,12 +53,13 @@ class SharedLockManager {
 
   // Release one lock of the specified type. Requires that the lock is held by the specified
   // type. If all locks are released, the LockEntry is deallocated.
-  void Unlock(std::string key, LockType lock_type) {
+  void Unlock(std::string key, IntentType lock_type) {
     Unlock({ {std::move(key), lock_type} });
   }
 
   // Whether or not the state is possible
-  static bool VerifyState(LockState state);
+  static bool VerifyState(const LockState& state);
+  static std::string ToString(const LockState& state);
 
  private:
 
@@ -72,13 +73,16 @@ class SharedLockManager {
     size_t num_using = 0;
 
     // Number of holders for each type
-    size_t num_holding[NUM_LOCK_TYPES] {0};
-    LockState state = 0;
+    std::array<size_t, kIntentTypeMapSize> num_holding;
+    LockState state;
 
-    void Lock(LockType lock_type);
+    void Lock(IntentType lock_type);
 
-    void Unlock(LockType lock_type);
+    void Unlock(IntentType lock_type);
 
+    LockEntry() {
+      num_holding.fill(0);
+    }
   };
 
   typedef std::unordered_map<std::string, std::unique_ptr<LockEntry>> LockEntryMap;
@@ -98,7 +102,9 @@ class SharedLockManager {
   LockEntryMap locks_;
 };
 
-}  // namespace util
+extern const std::array<LockState, kIntentTypeMapSize> kIntentConflicts;
+
+}  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_UTIL_SHARED_LOCK_MANAGER_H_
+#endif // YB_DOCDB_SHARED_LOCK_MANAGER_H

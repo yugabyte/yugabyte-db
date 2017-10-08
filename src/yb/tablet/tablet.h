@@ -57,8 +57,9 @@
 
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_compaction_filter.h"
-#include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/doc_operation.h"
+#include "yb/docdb/ql_rocksdb_storage.h"
+#include "yb/docdb/shared_lock_manager.h"
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/gscoped_ptr.h"
@@ -79,7 +80,6 @@
 #include "yb/util/semaphore.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
-#include "yb/util/shared_lock_manager.h"
 #include "yb/util/countdown_latch.h"
 
 namespace rocksdb {
@@ -123,7 +123,7 @@ class TransactionCoordinatorContext;
 class TransactionParticipant;
 class WriteOperationState;
 
-using util::LockBatch;
+using docdb::LockBatch;
 
 class TabletFlushStats : public rocksdb::EventListener {
  public:
@@ -477,7 +477,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Return the MVCC manager for this tablet.
   MvccManager* mvcc_manager() { return &mvcc_; }
 
-  yb::util::SharedLockManager* shared_lock_manager() { return &shared_lock_manager_; }
+  docdb::SharedLockManager* shared_lock_manager() { return &shared_lock_manager_; }
 
   std::atomic<int64_t>* monotonic_counter() { return &monotonic_counter_; }
 
@@ -588,6 +588,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   int64_t last_committed_write_index() const {
     return last_committed_write_index_.load(std::memory_order_acquire);
   }
+
+  void LostLeadership();
 
  protected:
   friend class Iterator;
@@ -839,7 +841,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::unique_ptr<common::QLStorageIf> ql_storage_;
 
   // This is for docdb fine-grained locking.
-  yb::util::SharedLockManager shared_lock_manager_;
+  docdb::SharedLockManager shared_lock_manager_;
 
   // For the block cache and memory manager shared across tablets
   TabletOptions tablet_options_;

@@ -38,14 +38,16 @@ set(DOCDB_SRCS
     docdb_compaction_filter.cc
     docdb_rocksdb_util.cc
     in_mem_docdb.cc
+    intent.cc
     internal_doc_iterator.cc
     key_bytes.cc
+    ql_rocksdb_storage.cc
     primitive_value.cc
-    intent.cc
-    value.cc
     subdocument.cc
+    shared_lock_manager.cc
+    value.cc
     value_type.cc
-    ql_rocksdb_storage.cc)
+)
 
 set(DOCDB_DEPS
     rocksdb
@@ -74,8 +76,9 @@ set(YB_TEST_LINK_LIBS yb_docdb_test_common ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(doc_key-test)
 ADD_YB_TEST(doc_kv_util-test)
+ADD_YB_TEST(doc_operation-test)
 ADD_YB_TEST(docdb-test)
 ADD_YB_TEST(primitive_value-test)
 ADD_YB_TEST(randomized_docdb-test)
+ADD_YB_TEST(shared_lock_manager-test)
 ADD_YB_TEST(subdocument-test)
-ADD_YB_TEST(doc_operation-test)

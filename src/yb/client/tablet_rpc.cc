@@ -56,7 +56,7 @@ void TabletInvoker::SelectTabletServer()  {
   //    or the write's deadline expires.
   current_ts_ = tablet_->LeaderTServer();
   if (current_ts_ && ContainsKey(followers_, current_ts_)) {
-    VLOG(2) << "Tablet " << tablet_->tablet_id() << ": We have a follower for a leader: "
+    VLOG(2) << "Tablet " << tablet_id_ << ": We have a follower for a leader: "
             << current_ts_->ToString();
 
     // Mark the node as a follower in the cache so that on the next go-round,
@@ -80,7 +80,7 @@ void TabletInvoker::SelectTabletServer()  {
     if (current_ts_) {
       // Mark this next replica "preemptively" as the leader in the meta cache,
       // so we go to it first on the next write if writing was successful.
-      VLOG(1) << "Tablet " << tablet_->tablet_id() << ": Previous leader failed. "
+      VLOG(1) << "Tablet " << tablet_id_ << ": Previous leader failed. "
               << "Preemptively marking tserver " << current_ts_->ToString()
               << " as leader in the meta cache.";
       tablet_->MarkTServerAsLeader(current_ts_);
@@ -88,7 +88,21 @@ void TabletInvoker::SelectTabletServer()  {
   }
 }
 
-void TabletInvoker::Execute() {
+void TabletInvoker::Execute(const std::string& tablet_id) {
+  if (tablet_id_.empty()) {
+    if (!tablet_id.empty()) {
+      tablet_id_ = tablet_id;
+    } else {
+      tablet_id_ = CHECK_NOTNULL(tablet_.get())->tablet_id();
+    }
+  }
+
+  if (!tablet_) {
+    client_->LookupTabletById(tablet_id_, retrier_->deadline(), &tablet_,
+                              Bind(&TabletInvoker::InitialLookupTabletDone, Unretained(this)));
+    return;
+  }
+
   // Sets current_ts_.
   if (!consistent_prefix_) {
     SelectTabletServer();
@@ -108,7 +122,7 @@ void TabletInvoker::Execute() {
   // TODO: When we support tablet splits, we should let the lookup shift
   // the write to another tablet (i.e. if it's since been split).
   if (!current_ts_) {
-    client_->LookupTabletById(tablet_->tablet_id(),
+    client_->LookupTabletById(tablet_id_,
                               retrier_->deadline(),
                               nullptr /* remote_tablet */,
                               Bind(&TabletInvoker::LookupTabletCb, Unretained(this)));
@@ -128,7 +142,7 @@ void TabletInvoker::InitTSProxyCb(const Status& status) {
     return;
   }
 
-  VLOG(2) << "Tablet " << tablet_->tablet_id() << ": Writing batch to replica "
+  VLOG(2) << "Tablet " << tablet_id_ << ": Writing batch to replica "
           << current_ts_->ToString();
 
   rpc_->SendRpcToTserver();
@@ -137,11 +151,11 @@ void TabletInvoker::InitTSProxyCb(const Status& status) {
 void TabletInvoker::FailToNewReplica(const Status& reason) {
   VLOG(1) << "Failing " << command_->ToString() << " to a new replica: " << reason.ToString();
 
-  bool found = tablet_->MarkReplicaFailed(current_ts_, reason);
+  bool found = !tablet_ || tablet_->MarkReplicaFailed(current_ts_, reason);
   if (!found) {
     // Its possible that current_ts_ is not part of replicas if RemoteTablet.Refresh() is invoked
     // which updates the set of replicas.
-    LOG(WARNING) << "Tablet " << tablet_->tablet_id() << ": Unable to mark replica "
+    LOG(WARNING) << "Tablet " << tablet_id_ << ": Unable to mark replica "
                  << current_ts_->ToString()
                  << " as failed. Replicas: " << tablet_->ReplicasAsString();
   }
@@ -152,6 +166,10 @@ void TabletInvoker::FailToNewReplica(const Status& reason) {
 bool TabletInvoker::Done(Status* status) {
   TRACE_TO(trace_, "Done($0)", status->ToString(false));
   ADOPT_TRACE(trace_);
+
+  if (status->IsAborted()) {
+    return true;
+  }
 
   // Prefer early failures over controller failures.
   if (status->ok() && retrier_->HandleResponse(command_, status)) {
@@ -207,7 +225,7 @@ bool TabletInvoker::Done(Status* status) {
     *status = old_status.CloneAndPrepend(
         Format("Failed $0 to tablet $1 $2 after $3 attempt(s)",
                command_->ToString(),
-               tablet_->tablet_id(),
+               tablet_id_,
                current_ts_string,
                retrier_->attempt_num()));
     LOG(WARNING) << status->ToString();
@@ -217,14 +235,9 @@ bool TabletInvoker::Done(Status* status) {
   return true;
 }
 
-void TabletInvoker::LookupTablet(const std::string& tablet_id) {
-  client_->LookupTabletById(tablet_id, retrier_->deadline(), &tablet_,
-                            Bind(&TabletInvoker::InitialLookupTabletDone, Unretained(this)));
-}
-
 void TabletInvoker::InitialLookupTabletDone(const Status& status) {
   if (status.ok()) {
-    Execute();
+    Execute(std::string());
   } else {
     command_->SendRpcCb(status);
   }

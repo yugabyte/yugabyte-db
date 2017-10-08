@@ -252,5 +252,66 @@ TEST_F(QLTransactionTest, ResendApplying) {
   CHECK_OK(cluster_->RestartSync());
 }
 
+TEST_F(QLTransactionTest, ConflictResolution) {
+  google::FlagSaver flag_saver;
+
+  constexpr size_t kTotalTransactions = 5;
+  constexpr size_t kNumRows = 10;
+  std::vector<YBTransactionPtr> transactions;
+  std::vector<YBSessionPtr> sessions;
+
+  CountDownLatch latch(kTotalTransactions);
+  for (size_t i = 0; i != kTotalTransactions; ++i) {
+    transactions.push_back(std::make_shared<YBTransaction>(transaction_manager_.get_ptr(),
+                                                           SNAPSHOT_ISOLATION));
+    auto session = std::make_shared<YBSession>(client_,
+                                               false /* read_only */,
+                                               transactions.back());
+    sessions.push_back(session);
+    session->SetTimeout(5s);
+    ASSERT_OK(session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
+    for (size_t r = 0; r != kNumRows; ++r) {
+      InsertRow(sessions.back(), r, i);
+    }
+    session->FlushAsync(MakeYBStatusFunctorCallback([&latch](const Status& status) {
+      latch.CountDown();
+    }));
+  }
+  latch.Wait();
+
+  latch.Reset(transactions.size());
+  std::atomic<size_t> successes(0);
+  std::atomic<size_t> failures(0);
+
+  for (auto& transaction : transactions) {
+    transaction->Commit([&latch, &successes, &failures](const Status& status) {
+      if (status.ok()) {
+        successes.fetch_add(1, std::memory_order_release);
+      } else {
+        failures.fetch_add(1, std::memory_order_release);
+      }
+      latch.CountDown(1);
+    });
+  }
+
+  latch.Wait();
+  LOG(INFO) << "Committed, successes: " << successes.load() << ", failures: " << failures.load();
+
+  ASSERT_GE(successes.load(std::memory_order_acquire), 1);
+
+  std::this_thread::sleep_for(1s); // TODO(dtxn) wait for intents to apply
+  auto session = client_->NewSession(true /* read_only */);
+  session->SetTimeout(5s);
+  std::vector<int32_t> values;
+  for (size_t r = 0; r != kNumRows; ++r) {
+    auto row = SelectRow(session, r);
+    ASSERT_OK(row);
+    values.push_back(*row);
+  }
+  for (const auto& value : values) {
+    ASSERT_EQ(values.front(), value) << "Values: " << ToString(values);
+  }
+}
+
 } // namespace client
 } // namespace yb

@@ -562,6 +562,13 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
 
   LOG(INFO) << "UpdateTransaction: " << req->ShortDebugString();
 
+  TabletServerErrorPB::Code error_code;
+  auto status = CheckPeerIsLeader(*tablet_peer, &error_code);
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, error_code, &context);
+    return;
+  }
+
   auto state = std::make_unique<tablet::UpdateTxnOperationState>(tablet_peer.get(),
                                                                  &req->state());
   state->set_completion_callback(MakeRpcOperationCompletionCallback(std::move(context), resp));
@@ -589,6 +596,38 @@ void TabletServiceImpl::GetTransactionStatus(const GetTransactionStatusRequestPB
     SetupErrorAndRespond(
         resp->mutable_error(), status, TabletServerErrorPB::UNKNOWN_ERROR, &context);
   }
+
+  context.RespondSuccess();
+}
+
+void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
+                                         AbortTransactionResponsePB* resp,
+                                         rpc::RpcContext context) {
+  TRACE("AbortTransaction");
+
+  tablet::TabletPeerPtr tablet_peer;
+  if (!LookupTabletPeerOrRespond(server_->tablet_manager(),
+                                 req->tablet_id(),
+                                 resp,
+                                 &context,
+                                 &tablet_peer)) {
+    return;
+  }
+
+  auto context_ptr = std::make_shared<rpc::RpcContext>(std::move(context));
+  tablet_peer->tablet()->transaction_coordinator()->Abort(
+      req->transaction_id(),
+      [resp, context_ptr](Result<TransactionStatus> result) {
+        if (result.ok()) {
+          resp->set_status(*result);
+          context_ptr->RespondSuccess();
+        } else {
+          SetupErrorAndRespond(resp->mutable_error(),
+                               result.status(),
+                               TabletServerErrorPB::UNKNOWN_ERROR,
+                               context_ptr.get());
+        }
+      });
 }
 
 void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,

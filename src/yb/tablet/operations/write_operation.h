@@ -41,14 +41,18 @@
 #include "yb/rocksdb/write_batch.h"
 
 #include "yb/common/schema.h"
+
 #include "yb/docdb/doc_operation.h"
+#include "yb/docdb/shared_lock_manager_fwd.h"
+
 #include "yb/gutil/macros.h"
+
 #include "yb/tablet/lock_manager.h"
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/operations/operation.h"
+
 #include "yb/util/locks.h"
-#include "yb/util/shared_lock_manager_fwd.h"
 
 namespace yb {
 struct DecodedRowOperation;
@@ -70,7 +74,7 @@ class RowSetKeyProbe;
 struct TabletComponents;
 class Tablet;
 
-using util::LockBatch;
+using docdb::LockBatch;
 
 // A OperationState for a batch of inserts/mutates. This class holds and
 // owns most everything related to a transaction, including:

@@ -477,17 +477,17 @@ void Batcher::FlushBuffer(RemoteTablet* tablet,
     }
 
     if (!leader_only_reads.empty()) {
-      ReadRpc* rpc = new ReadRpc(this, tablet, leader_only_reads);
+      auto rpc = std::make_shared<ReadRpc>(this, tablet, leader_only_reads);
       rpc->SendRpc();
     }
 
     if (!consistent_prefix_reads.empty()) {
-      ReadRpc* consistent_prefix_rpc =
-          new ReadRpc(this, tablet, consistent_prefix_reads, YBConsistencyLevel::CONSISTENT_PREFIX);
+      auto consistent_prefix_rpc = std::make_shared<ReadRpc>(
+          this, tablet, consistent_prefix_reads, YBConsistencyLevel::CONSISTENT_PREFIX);
       consistent_prefix_rpc->SendRpc();
     }
   } else {
-    AsyncRpc* rpc = new WriteRpc(this, tablet, InFlightOps(begin, end));
+    auto rpc = std::make_shared<WriteRpc>(this, tablet, InFlightOps(begin, end));
     rpc->SendRpc();
   }
 }

@@ -75,6 +75,8 @@ class PeerManager;
 class ReplicaState;
 struct ElectionResult;
 
+typedef std::function<void()> LostLeadershipListener;
+
 class RaftConsensus : public Consensus,
                       public PeerMessageQueueObserver {
  public:
@@ -91,7 +93,8 @@ class RaftConsensus : public Consensus,
     const scoped_refptr<log::Log>& log,
     const std::shared_ptr<MemTracker>& parent_mem_tracker,
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
-    TableType table_type);
+    TableType table_type,
+    LostLeadershipListener lost_leadership_listener);
 
   RaftConsensus(const ConsensusOptions& options,
     gscoped_ptr<ConsensusMetadata> cmeta,
@@ -106,7 +109,8 @@ class RaftConsensus : public Consensus,
     const scoped_refptr<log::Log>& log,
     std::shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
-    TableType table_type);
+    TableType table_type,
+    LostLeadershipListener lost_leadership_listener);
 
   virtual ~RaftConsensus();
 
@@ -590,6 +594,8 @@ class RaftConsensus : public Consensus,
   // Mutex / condition used for waiting for acquiring a valid leader lease.
   Mutex leader_lease_wait_mtx_;
   ConditionVariable leader_lease_wait_cond_{&leader_lease_wait_mtx_};
+
+  std::function<void()> lost_leadership_listener_;
 
   DISALLOW_COPY_AND_ASSIGN(RaftConsensus);
 };

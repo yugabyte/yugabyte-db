@@ -70,6 +70,8 @@ GetMasterRegistrationRpc::~GetMasterRegistrationRpc() {
 }
 
 void GetMasterRegistrationRpc::SendRpc() {
+  retained_self_ = shared_from_this();
+
   MasterServiceProxy proxy(retrier().messenger(), addr_);
   GetMasterRegistrationRequestPB req;
   proxy.GetMasterRegistrationAsync(
@@ -83,10 +85,12 @@ string GetMasterRegistrationRpc::ToString() const {
 }
 
 void GetMasterRegistrationRpc::SendRpcCb(const Status& status) {
-  gscoped_ptr<GetMasterRegistrationRpc> deleter(this);
+  rpc::RpcCommandPtr retained_self;
+  retained_self.swap(retained_self_);
+
   Status new_status = status;
   if (new_status.ok() && mutable_retrier()->HandleResponse(this, &new_status)) {
-    ignore_result(deleter.release());
+    retained_self.swap(retained_self_);
     return;
   }
   if (new_status.ok() && resp_.has_error()) {
@@ -144,15 +148,16 @@ string GetLeaderMasterRpc::ToString() const {
 
 void GetLeaderMasterRpc::SendRpc() {
   std::lock_guard<simple_spinlock> l(lock_);
+  retained_self_ = shared_from_this();
+
   for (int i = 0; i < addrs_.size(); i++) {
-    GetMasterRegistrationRpc* rpc = new GetMasterRegistrationRpc(
+    rpc::StartRpc<GetMasterRegistrationRpc>(
         Bind(&GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode,
-             this, ConstRef(addrs_[i]), ConstRef(responses_[i])),
+             Unretained(this), ConstRef(addrs_[i]), ConstRef(responses_[i])),
         addrs_[i],
         retrier().deadline(),
         retrier().messenger(),
         &responses_[i]);
-    rpc->SendRpc();
     ++pending_responses_;
   }
 }
@@ -188,9 +193,16 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(const Endpoint& node_
   // The proper way to do so is to add term/index to the responses
   // from the Master, wait for majority of the Masters to respond, and
   // pick the one with the highest term/index as the leader.
+  rpc::RpcCommandPtr retained_self;
   Status new_status = status;
   {
     std::lock_guard<simple_spinlock> lock(lock_);
+    --pending_responses_;
+    if (pending_responses_ == 0) {
+      retained_self_.swap(retained_self);
+    } else {
+      retained_self = retained_self_;
+    }
     if (completed_) {
       // If 'user_cb_' has been invoked (see SendRpcCb above), we can
       // stop.
@@ -210,7 +222,6 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(const Endpoint& node_
         leader_master_ = HostPort(node_addr);
       }
     }
-    --pending_responses_;
     if (!new_status.ok()) {
       if (pending_responses_ > 0) {
         // Don't call SendRpcCb() on error unless we're the last

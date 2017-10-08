@@ -109,7 +109,8 @@ AsyncRpc::~AsyncRpc() {
 void AsyncRpc::SendRpc() {
   TRACE_TO(trace_, "SendRpc() called.");
 
-  tablet_invoker_.Execute();
+  retained_self_ = shared_from_this();
+  tablet_invoker_.Execute(std::string());
 }
 
 std::string AsyncRpc::ToString() const {
@@ -130,7 +131,7 @@ void AsyncRpc::SendRpcCb(const Status& status) {
     ProcessResponseFromTserver(new_status);
     batcher_->RemoveInFlightOpsAfterFlushing(ops_, new_status);
     batcher_->CheckForFinishedFlush();
-    delete this;
+    retained_self_.reset();
   }
 }
 

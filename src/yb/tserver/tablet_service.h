@@ -107,6 +107,10 @@ class TabletServiceImpl : public TabletServerServiceIf {
                             GetTransactionStatusResponsePB* resp,
                             rpc::RpcContext context) override;
 
+  void AbortTransaction(const AbortTransactionRequestPB* req,
+                        AbortTransactionResponsePB* resp,
+                        rpc::RpcContext context) override;
+
   void Shutdown() override;
 
  private:

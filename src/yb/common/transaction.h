@@ -34,7 +34,7 @@ YB_DEFINE_ENUM(ProcessingMode, (NON_LEADER)(LEADER));
 
 // Makes transaction id from its binary representation string.
 Result<TransactionId> MakeTransactionIdFromBinaryRepresentation(
-  const std::string& binary_representation_of_transaction_id);
+  Slice binary_representation_of_transaction_id);
 
 } // namespace yb
 

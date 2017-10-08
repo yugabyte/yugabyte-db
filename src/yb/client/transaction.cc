@@ -20,6 +20,7 @@
 #include "yb/rpc/scheduler.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/random_util.h"
 #include "yb/util/result.h"
 
 #include "yb/common/transaction.h"
@@ -55,9 +56,16 @@ class YBTransaction::Impl final {
       : manager_(manager),
         transaction_(transaction),
         isolation_(isolation),
+        priority_(RandomUniformInt<uint64_t>()),
         id_(Uuid::Generate()),
-        log_prefix_(Format("$0: ", to_string(id_))) {
+        log_prefix_(Format("$0: ", to_string(id_))),
+        heartbeat_handle_(manager->rpcs().InvalidHandle()),
+        commit_handle_(manager->rpcs().InvalidHandle()) {
     VLOG_WITH_PREFIX(1) << "Started, isolation level: " << IsolationLevel_Name(isolation_);
+  }
+
+  ~Impl() {
+    manager_->rpcs().Abort({&heartbeat_handle_, &commit_handle_});
   }
 
   bool Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
@@ -91,6 +99,7 @@ class YBTransaction::Impl final {
     metadata->set_transaction_id(id_.begin(), id_.size());
     if (has_tablets_without_parameters) {
       metadata->set_isolation(isolation_);
+      metadata->set_priority(priority_);
       metadata->set_status_tablet(status_tablet_->tablet_id());
     }
     return true;
@@ -109,18 +118,27 @@ class YBTransaction::Impl final {
           it->second.has_parameters = true;
         }
       }
+    } else if (status.IsTryAgain()) {
+      SetError(status);
     }
+    // We should not handle other errors, because it is just notification that batch was failed.
+    // And they are handled during processing of that batch.
   }
 
   void Commit(CommitCallback callback) {
     auto transaction = transaction_->shared_from_this();
     {
-      std::lock_guard<std::mutex> lock(mutex_);
-      if (complete_) {
-        LOG_WITH_PREFIX(DFATAL) << "Commit of already complete transaction";
+      std::unique_lock<std::mutex> lock(mutex_);
+      if (complete_.load(std::memory_order_acquire)) {
+        auto status = error_;
+        lock.unlock();
+        if (status.ok()) {
+          status = STATUS(IllegalState, "Transaction already committed");
+        }
+        callback(status);
         return;
       }
-      complete_ = true;
+      complete_.store(true, std::memory_order_release);
       commit_callback_ = std::move(callback);
       if (tablets_.empty()) { // TODO(dtxn) abort empty transaction?
         commit_callback_(Status::OK());
@@ -160,15 +178,20 @@ class YBTransaction::Impl final {
       state.add_tablets(tablet.first);
     }
 
-    UpdateTransaction(TransactionDeadline(),
-                      status_tablet_.get(),
-                      manager_->client().get(),
-                      &req,
-                      std::bind(&Impl::CommitDone, this, _1, transaction));
+    manager_->rpcs().RegisterAndStart(
+        UpdateTransaction(
+            TransactionDeadline(),
+            status_tablet_.get(),
+            manager_->client().get(),
+            &req,
+            std::bind(&Impl::CommitDone, this, _1, transaction)),
+        &commit_handle_);
   }
 
   void CommitDone(const Status& status, const YBTransactionPtr& transaction) {
     VLOG_WITH_PREFIX(1) << "Committed: " << status.ToString();
+
+    manager_->rpcs().Unregister(&commit_handle_);
     commit_callback_(status);
   }
 
@@ -193,7 +216,7 @@ class YBTransaction::Impl final {
           &status_tablet_holder_,
           Bind(&Impl::LookupTabletDone, Unretained(this), transaction));
     } else {
-      LOG(DFATAL) << "Failed to pick status tablet"; // TODO(dtxn) Handle errors.
+      SetError(tablet.status());
     }
   }
 
@@ -223,13 +246,21 @@ class YBTransaction::Impl final {
     auto& state = *req.mutable_state();
     state.set_transaction_id(id_.begin(), id_.size());
     state.set_status(status);
-    UpdateTransaction(TransactionDeadline(), status_tablet_.get(), manager_->client().get(), &req,
-                      std::bind(&Impl::HeartbeatDone, this, _1, status, transaction));
+    manager_->rpcs().RegisterAndStart(
+        UpdateTransaction(
+            TransactionDeadline(),
+            status_tablet_.get(),
+            manager_->client().get(),
+            &req,
+            std::bind(&Impl::HeartbeatDone, this, _1, status, transaction)),
+        &heartbeat_handle_);
   }
 
   void HeartbeatDone(const Status& status,
                      tserver::TransactionStatus transaction_status,
                      const YBTransactionPtr& transaction) {
+    manager_->rpcs().Unregister(&heartbeat_handle_);
+
     if (status.ok()) {
       if (transaction_status == tserver::TransactionStatus::CREATED) {
         std::vector<Waiter> waiters;
@@ -248,7 +279,21 @@ class YBTransaction::Impl final {
           std::chrono::microseconds(FLAGS_transaction_heartbeat_usec));
     } else {
       LOG_WITH_PREFIX(WARNING) << "Send heartbeat failed: " << status;
+      if (status.IsExpired()) {
+        SetError(status);
+        return;
+      }
+      // Other errors could have different causes, but we should just retry sending heartbeat
+      // in this case.
       SendHeartbeat(transaction_status, transaction);
+    }
+  }
+
+  void SetError(const Status& status) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (error_.ok()) {
+      error_ = status;
+      complete_.store(true, std::memory_order_release);
     }
   }
 
@@ -259,6 +304,7 @@ class YBTransaction::Impl final {
   YBTransaction* const transaction_;
 
   const IsolationLevel isolation_;
+  const uint64_t priority_;
   const TransactionId id_;
   const std::string log_prefix_;
   bool requested_status_tablet_ = false;
@@ -268,6 +314,9 @@ class YBTransaction::Impl final {
   // Transaction is successfully initialized and ready to process intents.
   bool ready_ = false;
   CommitCallback commit_callback_;
+  Status error_;
+  rpc::Rpcs::Handle heartbeat_handle_;
+  rpc::Rpcs::Handle commit_handle_;
 
   struct TabletState {
     bool has_parameters = false;

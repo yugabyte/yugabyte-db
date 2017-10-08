@@ -47,6 +47,10 @@
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/rpc.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
@@ -137,7 +141,7 @@ struct RemoteReplica {
   bool failed;
 };
 
-typedef std::unordered_map<std::string, RemoteTabletServer*> TabletServerMap;
+typedef std::unordered_map<std::string, std::unique_ptr<RemoteTabletServer>> TabletServerMap;
 
 // The client's view of a given tablet. This object manages lookups of
 // the tablet's locations, status, etc.
@@ -231,7 +235,10 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
  public:
   // The passed 'client' object must remain valid as long as MetaCache is alive.
   explicit MetaCache(YBClient* client);
+
   ~MetaCache();
+
+  void Shutdown();
 
   // Add a tablet server proxy.
   void AddTabletServerProxy(const std::string& permanent_uuid,
@@ -322,6 +329,8 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // Prevents master lookup "storms" by delaying master lookups when all
   // permits have been acquired.
   Semaphore master_lookup_sem_;
+
+  rpc::Rpcs rpcs_;
 
   DISALLOW_COPY_AND_ASSIGN(MetaCache);
 };

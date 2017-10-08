@@ -864,15 +864,29 @@ void AppendIntentKeySuffix(docdb::IntentType intent_type,
   AppendDocHybridTime(doc_ht, key);
 }
 
-std::pair<docdb::IntentType, docdb::IntentType> WriteIntentsForIsolationLevel(
+enum class IntentKind {
+  kWeak,
+  kStrong
+};
+
+struct IntentTypePair {
+  docdb::IntentType strong;
+  docdb::IntentType weak;
+
+  docdb::IntentType operator[](IntentKind kind) {
+    return kind == IntentKind::kWeak ? weak : strong;
+  }
+};
+
+IntentTypePair WriteIntentsForIsolationLevel(
     IsolationLevel level) {
   switch(level) {
   case IsolationLevel::SNAPSHOT_ISOLATION:
-    return std::make_pair(docdb::IntentType::kStrongSnapshotWrite,
-                          docdb::IntentType::kWeakSnapshotWrite);
+    return { docdb::IntentType::kStrongSnapshotWrite,
+             docdb::IntentType::kWeakSnapshotWrite };
   case IsolationLevel::SERIALIZABLE_ISOLATION:
-    return std::make_pair(docdb::IntentType::kStrongSerializableRead,
-                          docdb::IntentType::kWeakSerializableWrite);
+    return { docdb::IntentType::kStrongSerializableRead,
+             docdb::IntentType::kWeakSerializableWrite };
   case IsolationLevel::NON_TRANSACTIONAL:
     FATAL_INVALID_ENUM_VALUE(IsolationLevel, level);
   }
@@ -882,6 +896,44 @@ std::pair<docdb::IntentType, docdb::IntentType> WriteIntentsForIsolationLevel(
 void AppendTransactionId(const TransactionId& id, std::string* value) {
   value->push_back(static_cast<char>(ValueType::kTransactionId));
   value->append(pointer_cast<const char*>(id.data), id.size());
+}
+
+// Enumerate intents corresponding to provided key value pairs.
+// For each key in generates a strong intent and for each parent of each it generates a weak one.
+template <class Functor>
+CHECKED_STATUS EnumerateIntents(
+    const google::protobuf::RepeatedPtrField<yb::docdb::KeyValuePairPB>& kv_pairs,
+    Functor functor) {
+  KeyBytes encoded_key;
+
+  for (int index = 0; index < kv_pairs.size(); ++index) {
+    const auto &kv_pair = kv_pairs.Get(index);
+    CHECK(kv_pair.has_key());
+    CHECK(kv_pair.has_value());
+    Slice key = kv_pair.key();
+    auto key_size = DocKey::EncodedSize(key, docdb::DocKeyPart::WHOLE_DOC_KEY);
+    CHECK_OK(key_size);
+
+    encoded_key.Clear();
+    encoded_key.AppendValueType(ValueType::kIntentPrefix);
+    encoded_key.AppendRawBytes(key.cdata(), *key_size);
+    key.remove_prefix(*key_size);
+
+    for (;;) {
+      auto subkey_begin = key.cdata();
+      auto decode_result = SubDocKey::DecodeSubkey(&key);
+      CHECK_OK(decode_result);
+      if (!decode_result.get()) {
+        break;
+      }
+      RETURN_NOT_OK(functor(IntentKind::kWeak, Slice(), &encoded_key));
+      encoded_key.AppendRawBytes(subkey_begin, key.cdata() - subkey_begin);
+    }
+
+    RETURN_NOT_OK(functor(IntentKind::kStrong, kv_pair.value(), &encoded_key));
+  }
+
+  return Status::OK();
 }
 
 // We have the following distinct types of data in this "intent store":
@@ -913,50 +965,35 @@ void Tablet::PrepareTransactionWriteBatch(
   // TODO(dtxn) weak & strong intent in one batch
   std::unordered_set<std::string> weak_intents;
 
-  KeyBytes encoded_key;
   std::string value;
 
   IntraTxnWriteId write_id = 0;
 
-  for (int index = 0; index < put_batch.kv_pairs_size(); ++index) {
-    const auto &kv_pair = put_batch.kv_pairs(index);
-    CHECK(kv_pair.has_key());
-    CHECK(kv_pair.has_value());
-    Slice key = kv_pair.key();
-    auto key_size = DocKey::EncodedSize(key, docdb::DocKeyPart::WHOLE_DOC_KEY);
-    CHECK_OK(key_size);
-
-    encoded_key.Clear();
-    encoded_key.AppendValueType(ValueType::kIntentPrefix);
-    encoded_key.AppendRawBytes(key.cdata(), *key_size);
-    key.remove_prefix(*key_size);
-
-    for (;;) {
-      auto subkey_begin = key.cdata();
-      auto decode_result = SubDocKey::DecodeSubkey(&key);
-      CHECK_OK(decode_result);
-      if (!decode_result.get()) {
-        break;
+  CHECK_OK(EnumerateIntents(put_batch.kv_pairs(),
+                   [&](IntentKind intent_kind, Slice value_slice, KeyBytes* key) {
+      if (intent_kind == IntentKind::kWeak) {
+        weak_intents.insert(key->data());
+        return Status::OK();
       }
-      weak_intents.insert(encoded_key.data());
-      encoded_key.AppendRawBytes(subkey_begin, key.cdata() - subkey_begin);
-    }
 
-    AppendIntentKeySuffix(intent_types.first,
-                          DocHybridTime(hybrid_time, write_id++),
-                          &encoded_key);
+      AppendIntentKeySuffix(intent_types.strong,
+                            DocHybridTime(hybrid_time, write_id++),
+                            key);
 
-    value.clear();
-    value.reserve(1 + transaction_id->size() + kv_pair.value().size());
-    AppendTransactionId(*transaction_id, &value);
-    value += kv_pair.value();
-    AddIntent(*transaction_id, encoded_key.data(), value, rocksdb_write_batch);
-  }
+      value.clear();
+      value.reserve(1 + transaction_id->size() + value_slice.size());
+      AppendTransactionId(*transaction_id, &value);
+      value.append(value_slice.cdata(), value_slice.size());
+      AddIntent(*transaction_id, key->data(), value, rocksdb_write_batch);
 
+      return Status::OK();
+  }));
+
+  KeyBytes encoded_key;
   for (const auto& intent : weak_intents) {
     encoded_key.Clear();
     encoded_key.AppendRawBytes(intent);
-    AppendIntentKeySuffix(intent_types.second,
+    AppendIntentKeySuffix(intent_types.weak,
                           DocHybridTime(hybrid_time, write_id++),
                           &encoded_key);
     value.clear();
@@ -991,19 +1028,18 @@ void Tablet::PrepareNonTransactionWriteBatch(
     std::string patched_key;
     patched_key.reserve(kv_pair.key().size() + kMaxBytesPerEncodedHybridTime);
     patched_key += kv_pair.key();
-    if (!put_batch.has_transaction()) {
-      // We replicate encoded SubDocKeys without a HybridTime at the end, and only append it here.
-      // The reason for this is that the HybridTime timestamp is only picked at the time of
-      // appending  an entry to the tablet's Raft log. Also this is a good way to save network
-      // bandwidth.
-      //
-      // "Write id" is the final component of our HybridTime encoding (or, to be more precise,
-      // DocHybridTime encoding) that helps disambiguate between different updates to the
-      // same key (row/column) within a transaction. We set it based on the position of the write
-      // operation in its write batch.
-      patched_key.push_back(static_cast<char>(ValueType::kHybridTime));  // Don't forget ValueType!
-      DocHybridTime(hybrid_time, write_id).AppendEncodedInDocDbFormat(&patched_key);
-    }
+
+    // We replicate encoded SubDocKeys without a HybridTime at the end, and only append it here.
+    // The reason for this is that the HybridTime timestamp is only picked at the time of
+    // appending  an entry to the tablet's Raft log. Also this is a good way to save network
+    // bandwidth.
+    //
+    // "Write id" is the final component of our HybridTime encoding (or, to be more precise,
+    // DocHybridTime encoding) that helps disambiguate between different updates to the
+    // same key (row/column) within a transaction. We set it based on the position of the write
+    // operation in its write batch.
+    patched_key.push_back(static_cast<char>(ValueType::kHybridTime));  // Don't forget ValueType!
+    DocHybridTime(hybrid_time, write_id).AppendEncodedInDocDbFormat(&patched_key);
 
     rocksdb_write_batch->Put(patched_key, kv_pair.value());
   }
@@ -1494,6 +1530,21 @@ Status Tablet::ImportData(const std::string& source_dir) {
                                    intent_iter->value().ToDebugHexString(), \
                                    transaction_id_slice.ToDebugHexString()))
 
+Result<docdb::IntentType> ExtractIntentType(
+    const rocksdb::Iterator* intent_iter, // used in INTENT_*_SCHECK macros
+    const Slice& transaction_id_slice, // used in INTENT_*_SCHECK macros
+    Slice* intent_key) {
+  int doc_ht_size = 0;
+  RETURN_NOT_OK(DocHybridTime::CheckAndGetEncodedSize(*intent_key, &doc_ht_size));
+  INTENT_KEY_SCHECK(intent_key->size(), GE, 3, "key too short");
+  intent_key->remove_suffix(doc_ht_size + 3);
+  INTENT_KEY_SCHECK(intent_key->end()[0], EQ, static_cast<uint8_t>(ValueType::kIntentType),
+                    "intent type value type exepected");
+  INTENT_KEY_SCHECK(intent_key->end()[2], EQ, static_cast<uint8_t>(ValueType::kHybridTime),
+                    "hybrid time value type expected");
+  return static_cast<docdb::IntentType>(intent_key->end()[1]);
+}
+
 // We apply intents using by iterating over whole transaction reverse index.
 // Using value of reverse index record we find original intent record and apply it.
 // After that we delete both intent record and reverse index record.
@@ -1535,17 +1586,10 @@ Status Tablet::ApplyIntents(const TransactionApplyData& data) {
       if (intent_iter->Valid() && intent_iter->key() == reverse_index_iter->value()) {
         Slice intent_key(intent_iter->key());
         intent_key.consume_byte();
-        int doc_ht_size = 0;
-        RETURN_NOT_OK(DocHybridTime::CheckAndGetEncodedSize(intent_key, &doc_ht_size));
-        INTENT_KEY_SCHECK(intent_key.size(), GE, 3, "key too short");
-        intent_key.remove_suffix(doc_ht_size + 3);
-        INTENT_KEY_SCHECK(intent_key.end()[0], EQ, static_cast<uint8_t>(ValueType::kIntentType),
-                          "intent type value type exepected");
-        INTENT_KEY_SCHECK(intent_key.end()[2], EQ, static_cast<uint8_t>(ValueType::kHybridTime),
-                          "hybrid time value type expected");
-        const auto intent_type = static_cast<docdb::IntentType>(intent_key.end()[1]);
+        auto intent_type = ExtractIntentType(intent_iter.get(), transaction_id_slice, &intent_key);
+        RETURN_NOT_OK(intent_type);
 
-        if (StrongIntent(intent_type)) {
+        if (StrongIntent(*intent_type)) {
           Slice intent_value(intent_iter->value());
           INTENT_VALUE_SCHECK(intent_value[0], EQ, static_cast<uint8_t>(ValueType::kTransactionId),
                               "prefix expected");
@@ -2537,6 +2581,210 @@ Status Tablet::KuduColumnarCaptureConsistentIterators(
   return Status::OK();
 }
 
+class TransactionConflictResolver {
+ public:
+  explicit TransactionConflictResolver(const KeyValueWriteBatchPB& write_batch,
+                                       HybridTime hybrid_time,
+                                       rocksdb::DB* db,
+                                       TransactionParticipant* transaction_participant)
+      : write_batch_(write_batch),
+        hybrid_time_(hybrid_time),
+        db_(db),
+        transaction_id_(MakeTransactionIdFromBinaryRepresentation(
+            write_batch.transaction().transaction_id())),
+        intent_iter_(docdb::CreateRocksDBIterator(
+                     db,
+                     docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
+                     boost::none,
+                     rocksdb::kDefaultQueryId)),
+        transaction_participant_(transaction_participant)
+  {}
+
+  CHECKED_STATUS Resolve() {
+    RETURN_NOT_OK(transaction_id_);
+
+    IsolationLevel isolation_level;
+    if (write_batch_.transaction().has_isolation()) {
+      isolation_level = write_batch_.transaction().isolation();
+    } else {
+      isolation_level = transaction_participant_->IsolationLevel(db_, *transaction_id_);
+      if (isolation_level == IsolationLevel::NON_TRANSACTIONAL) {
+        return STATUS_FORMAT(IllegalState, "Unknown transaction: $0", *transaction_id_);
+      }
+    }
+
+    intent_types_ = WriteIntentsForIsolationLevel(isolation_level);
+
+    RETURN_NOT_OK(EnumerateIntents(
+        write_batch_.kv_pairs(),
+        std::bind(&TransactionConflictResolver::ProcessIntent, this, _1, _2, _3)));
+
+    if (!conflicts_.empty()) {
+      transactions_.reserve(conflicts_.size());
+      for (const auto& transaction : conflicts_) {
+        transactions_.push_back({ transaction });
+      }
+
+      return ResolveConflicts();
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  CHECKED_STATUS ResolveConflicts() {
+    for (;;) {
+      for (auto& transaction : transactions_) {
+        if (transaction_participant_->CommittedLocally(transaction.id)) {
+          return MakeConflictStatus(transaction.id, "committed");
+        }
+      }
+
+      FetchTransactionStatuses();
+
+      RETURN_NOT_OK(Cleanup());
+      if (transactions_.empty()) {
+        return Status::OK();
+      }
+
+      auto our_priority = write_batch_.transaction().priority();
+      for (const auto& transaction : transactions_) {
+        auto their_priority = transaction_participant_->Priority(db_, transaction.id);
+        if (our_priority < their_priority) {
+          return MakeConflictStatus(transaction.id, "higher priority");
+        }
+      }
+
+      AbortTransactions();
+
+      RETURN_NOT_OK(Cleanup());
+
+      if (transactions_.empty()) {
+        return Status::OK();
+      }
+    }
+  }
+
+  // Remove aborted transactions, or fail if we have committed ones.
+  CHECKED_STATUS Cleanup() {
+    auto write_iterator = transactions_.begin();
+    for (const auto& transaction : transactions_) {
+      auto status = transaction.status;
+      if (status == tserver::TransactionStatus::COMMITTED ||
+          status == tserver::TransactionStatus::APPLYING) {
+        return MakeConflictStatus(transaction.id, "committed");
+      } else if (status == tserver::TransactionStatus::ABORTED) {
+        continue;
+      } else {
+        DCHECK_EQ(tserver::TransactionStatus::PENDING, status);
+      }
+      *write_iterator = transaction;
+      ++write_iterator;
+    }
+    transactions_.erase(write_iterator, transactions_.end());
+
+    return Status::OK();
+  }
+
+  CHECKED_STATUS MakeConflictStatus(const TransactionId& id, const char* reason) {
+    return STATUS_FORMAT(TryAgain,
+                         "Conflicts with $0 transaction: $1",
+                         reason,
+                         Slice(id.data, id.size()).ToDebugHexString());
+  }
+
+  // Processes intent generated by enum intents.
+  // I.e. fetches conflicting intents and fills list of conflicting transactions.
+  CHECKED_STATUS ProcessIntent(IntentKind kind, Slice value_slice, KeyBytes* key) {
+    auto intent_type = intent_types_[kind];
+    const auto& conflicts = docdb::kIntentConflicts[static_cast<size_t>(intent_type)];
+    intent_iter_->Seek(key->data());
+    while (intent_iter_->Valid()) {
+      auto existing_key = intent_iter_->key();
+      auto existing_value = intent_iter_->value();
+      if (!existing_key.starts_with(key->data())) {
+        break;
+      }
+      if (existing_value.empty() ||
+          existing_value[0] != static_cast<uint8_t>(ValueType::kTransactionId)) {
+        return STATUS_FORMAT(Corruption,
+            "Transaction prefix expected in intent: $0 => $1",
+            existing_key.ToDebugHexString(),
+            existing_value.ToDebugHexString());
+      }
+      existing_value.consume_byte();
+      auto existing_intent_type = ExtractIntentType(
+          intent_iter_.get(), existing_value, &existing_key);
+
+      auto transaction_id = MakeTransactionIdFromBinaryRepresentation(
+          Slice(existing_value.data(), TransactionId::static_size()));
+      RETURN_NOT_OK(transaction_id);
+
+      RETURN_NOT_OK(existing_intent_type);
+      if (conflicts.test(static_cast<size_t>(*existing_intent_type))) {
+        conflicts_.insert(*transaction_id);
+      }
+
+      intent_iter_->Next();
+    }
+    return Status::OK();
+  }
+
+  void FetchTransactionStatuses() {
+    CountDownLatch latch(transactions_.size());
+    for (auto& i : transactions_) {
+      auto& transaction = i;
+      transaction_participant_->RequestStatusAt(
+          transaction.id,
+          hybrid_time_,
+          [&transaction, &latch](Result<tserver::TransactionStatus> result) {
+            if (result.ok()) {
+              transaction.status = *result;
+            } else {
+              CHECK(result.status().IsTryAgain()); // TODO(dtxn) Handle errors.
+              transaction.status = tserver::TransactionStatus::PENDING;
+            }
+            latch.CountDown();
+          });
+    }
+    latch.Wait();
+  }
+
+  void AbortTransactions() {
+    CountDownLatch latch(transactions_.size());
+    for (auto& i : transactions_) {
+      auto& transaction = i;
+      transaction_participant_->Abort(
+          transaction.id,
+          [&transaction, &latch](Result<tserver::TransactionStatus> result) {
+            if (result.ok()) {
+              transaction.status = *result;
+            } else {
+              LOG(INFO) << "Abort failed, would retry: " << result.status();
+            }
+            latch.CountDown();
+      });
+    }
+    latch.Wait();
+  }
+
+  struct TransactionData {
+    TransactionId id;
+    tserver::TransactionStatus status;
+  };
+
+  const KeyValueWriteBatchPB& write_batch_;
+  HybridTime hybrid_time_;
+  rocksdb::DB* db_;
+  Result<TransactionId> transaction_id_;
+  unique_ptr<rocksdb::Iterator> intent_iter_;
+  TransactionParticipant* transaction_participant_;
+  IntentTypePair intent_types_;
+  Status result_ = Status::OK();
+  std::unordered_set<TransactionId, TransactionIdHash> conflicts_;
+  std::vector<TransactionData> transactions_;
+};
+
 Status Tablet::StartDocWriteOperation(const vector<unique_ptr<DocOperation>> &doc_ops,
                                       LockBatch *keys_locked,
                                       KeyValueWriteBatchPB* write_batch) {
@@ -2551,8 +2799,22 @@ Status Tablet::StartDocWriteOperation(const vector<unique_ptr<DocOperation>> &do
   }
   // We expect all read operations for this transaction to be done in ApplyDocWriteOperation.
   // Once read_txn goes out of scope, the read point is deregistered.
-  return docdb::ApplyDocWriteOperation(
-      doc_ops, hybrid_time, rocksdb_.get(), write_batch, &monotonic_counter_);
+  RETURN_NOT_OK(docdb::ApplyDocWriteOperation(
+      doc_ops, hybrid_time, rocksdb_.get(), write_batch, &monotonic_counter_));
+
+  if (write_batch->has_transaction()) {
+    TransactionConflictResolver resolver(*write_batch,
+                                         hybrid_time,
+                                         rocksdb_.get(),
+                                         transaction_participant_.get());
+    auto result = resolver.Resolve();
+    if (!result.ok()) {
+      shared_lock_manager()->Unlock(*keys_locked);
+      return result;
+    }
+  }
+
+  return Status::OK();
 }
 
 Status Tablet::CountRows(uint64_t *count) const {
@@ -2972,6 +3234,12 @@ void Tablet::ForceRocksDBCompactInTest() {
 
 std::string Tablet::DocDBDumpStrInTest() {
   return docdb::DocDBDebugDumpToStr(rocksdb_.get(), false);
+}
+
+void Tablet::LostLeadership() {
+  if (transaction_coordinator_) {
+    transaction_coordinator_->ClearLocks();
+  }
 }
 
 ScopedReadOperation::ScopedReadOperation(AbstractTablet* tablet)

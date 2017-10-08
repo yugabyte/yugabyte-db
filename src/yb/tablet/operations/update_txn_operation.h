@@ -72,6 +72,7 @@ class UpdateTxnOperation : public Operation {
   void Start() override;
   CHECKED_STATUS Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) override;
   std::string ToString() const override;
+  void Finish(OperationResult result) override;
 };
 
 } // namespace tablet

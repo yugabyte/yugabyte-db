@@ -35,10 +35,13 @@ namespace rpc {
 
 class AcceptorPool;
 class Messenger;
-class RpcCommand;
 class RpcContext;
 class RpcController;
+class Rpcs;
 class Scheduler;
+
+class RpcCommand;
+typedef std::shared_ptr<RpcCommand> RpcCommandPtr;
 
 class Connection;
 typedef std::shared_ptr<Connection> ConnectionPtr;

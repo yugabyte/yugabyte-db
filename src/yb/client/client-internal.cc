@@ -948,15 +948,15 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
                                       PartitionSchema* partition_schema,
                                       string* table_id) {
   Synchronizer sync;
-  GetTableSchemaRpc rpc(client,
-                        sync.AsStatusCallback(),
-                        table_name,
-                        schema,
-                        partition_schema,
-                        table_id,
-                        deadline,
-                        messenger_);
-  rpc.SendRpc();
+  auto rpc = rpc::StartRpc<GetTableSchemaRpc>(
+      client,
+      sync.AsStatusCallback(),
+      table_name,
+      schema,
+      partition_schema,
+      table_id,
+      deadline,
+      messenger_);
   return sync.Wait();
 }
 
@@ -1049,12 +1049,12 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
   }
   if (!leader_master_rpc_) {
     // No one is sending a request yet - we need to be the one to do it.
-    leader_master_rpc_.reset(new GetLeaderMasterRpc(
-                               Bind(&YBClient::Data::LeaderMasterDetermined,
-                                    Unretained(this)),
-                               master_sockaddrs,
-                               actual_deadline,
-                               messenger_));
+    leader_master_rpc_ = std::make_shared<GetLeaderMasterRpc>(
+        Bind(&YBClient::Data::LeaderMasterDetermined,
+            Unretained(this)),
+        master_sockaddrs,
+        actual_deadline,
+        messenger_);
     l.unlock();
     leader_master_rpc_->SendRpc();
   }

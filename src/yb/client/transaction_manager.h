@@ -39,6 +39,7 @@ class TransactionManager {
   ~TransactionManager();
 
   void PickStatusTablet(PickStatusTabletCallback callback);
+  rpc::Rpcs& rpcs();
 
   const YBClientPtr& client() const;
 

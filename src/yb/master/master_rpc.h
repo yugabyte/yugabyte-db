@@ -67,9 +67,9 @@ class GetMasterRegistrationRpc : public rpc::Rpc {
 
   ~GetMasterRegistrationRpc();
 
-  virtual void SendRpc() override;
+  void SendRpc() override;
 
-  virtual std::string ToString() const override;
+  std::string ToString() const override;
 
  private:
   virtual void SendRpcCb(const Status& status) override;
@@ -80,6 +80,8 @@ class GetMasterRegistrationRpc : public rpc::Rpc {
   ServerEntryPB* out_;
 
   GetMasterRegistrationResponsePB resp_;
+
+  rpc::RpcCommandPtr retained_self_;
 };
 
 // In parallel, send requests to the specified Master servers until a
@@ -100,8 +102,7 @@ class GetMasterRegistrationRpc : public rpc::Rpc {
 // The class is reference counted to avoid a "use-after-free"
 // scenario, when responses to the RPC return to the caller _after_ a
 // leader has already been found.
-class GetLeaderMasterRpc : public rpc::Rpc,
-                           public RefCountedThreadSafe<GetLeaderMasterRpc> {
+class GetLeaderMasterRpc : public rpc::Rpc {
  public:
   typedef Callback<void(const Status&, const HostPort&)> LeaderCallback;
   // The host and port of the leader master server is stored in
@@ -115,14 +116,14 @@ class GetLeaderMasterRpc : public rpc::Rpc,
                      const MonoTime& deadline,
                      const std::shared_ptr<rpc::Messenger>& messenger);
 
-  virtual void SendRpc() override;
-
-  virtual std::string ToString() const override;
- private:
-  friend class RefCountedThreadSafe<GetLeaderMasterRpc>;
   ~GetLeaderMasterRpc();
 
-  virtual void SendRpcCb(const Status& status) override;
+  void SendRpc() override;
+
+  std::string ToString() const override;
+
+ private:
+  void SendRpcCb(const Status& status) override;
 
   // Invoked when a response comes back from a Master with address
   // 'node_addr'.
@@ -153,6 +154,8 @@ class GetLeaderMasterRpc : public rpc::Rpc,
 
   // Protects 'pending_responses_' and 'completed_'.
   mutable simple_spinlock lock_;
+
+  rpc::RpcCommandPtr retained_self_;
 };
 
 } // namespace master

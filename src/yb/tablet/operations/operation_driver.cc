@@ -148,7 +148,7 @@ string OperationDriver::ToStringUnlocked() const {
 }
 
 
-Status OperationDriver::ExecuteAsync() {
+void OperationDriver::ExecuteAsync() {
   VLOG_WITH_PREFIX(4) << "ExecuteAsync()";
   TRACE_EVENT_FLOW_BEGIN0("operation", "ExecuteAsync", this);
   ADOPT_TRACE(trace());
@@ -167,9 +167,6 @@ Status OperationDriver::ExecuteAsync() {
   if (!s.ok()) {
     HandleFailure(s);
   }
-
-  // TODO: make this return void
-  return Status::OK();
 }
 
 void OperationDriver::HandleConsensusAppend() {
@@ -306,8 +303,7 @@ void OperationDriver::HandleFailure(const Status& s) {
       VLOG_WITH_PREFIX(1) << "Operation " << ToString() << " failed prior to "
           "replication success: " << s.ToString();
       operation_->Finish(Operation::ABORTED);
-      mutable_state()->completion_callback()->set_error(operation_status_);
-      mutable_state()->completion_callback()->OperationCompleted();
+      mutable_state()->completion_callback()->CompleteWithStatus(operation_status_);
       operation_tracker_->Release(this);
       return;
     }

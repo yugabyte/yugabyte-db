@@ -226,11 +226,16 @@ yb::Status DocKey::DoDecode(rocksdb::Slice *slice,
   if (slice->empty()) {
     return STATUS(Corruption, "Document key is empty");
   }
+  if ((*slice)[0] == static_cast<uint8_t>(ValueType::kIntentPrefix)) {
+    slice->consume_byte();
+  }
+
+
   const ValueType first_value_type = static_cast<ValueType>(*slice->data());
 
   if (!IsPrimitiveValueType(first_value_type) && first_value_type != ValueType::kGroupEnd) {
     return STATUS_FORMAT(Corruption,
-        "Expected first value type to be primitive or GroupEnd or IntentPrefix, got $0 in $1",
+        "Expected first value type to be primitive or GroupEnd, got $0 in $1",
         first_value_type, slice->ToDebugHexString());
   }
 
@@ -460,10 +465,6 @@ Status SubDocKey::DoDecode(rocksdb::Slice* slice,
                            const Callback& callback) {
   const rocksdb::Slice original_bytes(*slice);
 
-  if (!slice->empty() && *slice->data() == static_cast<char>(ValueType::kIntentPrefix)) {
-    slice->consume_byte();
-  }
-
   RETURN_NOT_OK(callback.DecodeDocKey(slice));
   for (;;) {
     auto decode_result = DecodeSubkey(slice, callback);
@@ -674,9 +675,6 @@ class HashedComponentsExtractor : public rocksdb::FilterPolicy::KeyTransformer {
   }
 
   Slice Transform(Slice key) const override {
-    if (!key.empty() && key[0] == static_cast<uint8_t>(ValueType::kIntentPrefix)) {
-      key.consume_byte();
-    }
     auto size = DocKey::EncodedSize(key, DocKeyPart::HASHED_PART_ONLY);
     CHECK_OK(size);
     return Slice(key.data(), *size);

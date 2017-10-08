@@ -179,12 +179,11 @@ TEST_F(PlacementInfoTest, TestSelectTServer) {
   internal::TabletServerMap tserver_map;
   for (const master::TabletLocationsPB::ReplicaPB& replica : tablet_locations.replicas()) {
     tserver_map.emplace(replica.ts_info().permanent_uuid(),
-                        new internal::RemoteTabletServer(replica.ts_info()));
+                        std::make_unique<internal::RemoteTabletServer>(replica.ts_info()));
   }
 
   // Refresh replicas for RemoteTablet.
   remote_tablet->Refresh(tserver_map, tablet_locations.replicas());
-
 
   for (int ts_index = 0; ts_index < kNumTservers; ts_index++) {
     ValidateSelectTServer(
@@ -199,11 +198,6 @@ TEST_F(PlacementInfoTest, TestSelectTServer) {
         cluster_->mini_tablet_server(ts_index)->server()->permanent_uuid(),
         PlacementZone((ts_index + 1) % kNumTservers),
         PlacementRegion((ts_index + 2) % kNumTservers), ts_index, remote_tablet.get());
-  }
-
-  // Cleanup RemoteTabletServer.
-  for (const auto& entry : tserver_map) {
-    delete entry.second;
   }
 }
 

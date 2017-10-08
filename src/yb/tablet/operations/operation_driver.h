@@ -136,7 +136,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // Submits the operation for execution.
   // The returned status acknowledges any error on the submission process.
   // The operation will be replied to asynchronously.
-  CHECKED_STATUS ExecuteAsync();
+  void ExecuteAsync();
 
   // Aborts the operation, if possible. Since operations are executed in
   // multiple stages by multiple executors it might not be possible to stop

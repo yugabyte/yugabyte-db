@@ -45,7 +45,7 @@ class PickStatusTabletTask {
   void Run() {
     auto status = EnsureStatusTableExists();
     if (!status.ok()) {
-      callback_(status);
+      callback_(status.CloneAndPrepend("Failed to create status table"));
       return;
     }
 
@@ -79,8 +79,13 @@ class PickStatusTabletTask {
       return Status::OK();
     }
     std::shared_ptr<YBTable> table;
-    auto status = client_->OpenTable(kTransactionTableName, &table);
-    if (!status.ok()) {
+    constexpr int kNumRetries = 5;
+    Status status;
+    for (int i = 0; i != kNumRetries; ++i) {
+      status = client_->OpenTable(kTransactionTableName, &table);
+      if (status.ok()) {
+        break;
+      }
       LOG(WARNING) << "Failed to open transaction table: " << status.ToString();
       auto tablets = FLAGS_transaction_table_default_num_tablets;
       if (tablets > 0 && status.IsNotFound()) {
@@ -96,7 +101,6 @@ class PickStatusTabletTask {
         } else {
           LOG(DFATAL) << "Failed to create namespace: " << status;
         }
-        status = client_->OpenTable(kTransactionTableName, &table);
       }
     }
     if (status.ok()) {
@@ -132,12 +136,17 @@ class TransactionManager::Impl {
     return client_;
   }
 
+  rpc::Rpcs& rpcs() {
+    return rpcs_;
+  }
+
  private:
   YBClientPtr client_;
   std::atomic<bool> status_table_exists_{false};
   std::atomic<bool> closed_{false};
   yb::rpc::ThreadPool thread_pool_; // TODO async operations instead of pool
   yb::rpc::TasksPool<PickStatusTabletTask> tasks_pool_;
+  yb::rpc::Rpcs rpcs_;
 };
 
 TransactionManager::TransactionManager(const YBClientPtr& client)
@@ -152,6 +161,10 @@ void TransactionManager::PickStatusTablet(PickStatusTabletCallback callback) {
 
 const YBClientPtr& TransactionManager::client() const {
   return impl_->client();
+}
+
+rpc::Rpcs& TransactionManager::rpcs() {
+  return impl_->rpcs();
 }
 
 } // namespace client

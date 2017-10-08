@@ -23,8 +23,10 @@
 #include <boost/preprocessor/facilities/apply.hpp>
 #include <boost/preprocessor/punctuation/is_begin_parens.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
 
 #include "yb/util/debug-util.h"
+#include "yb/util/math_util.h"
 
 namespace yb {
 namespace util {
@@ -60,10 +62,22 @@ constexpr typename std::underlying_type<E>::type to_underlying(E e) {
 #define YB_ENUM_ITEM(s, data, elem) \
     BOOST_PP_CAT(BOOST_PP_APPLY(data), YB_ENUM_ITEM_NAME(elem)) YB_ENUM_ITEM_VALUE(elem),
 
+#define YB_ENUM_LIST_ITEM(s, data, elem) \
+    BOOST_PP_TUPLE_ELEM(2, 0, data):: \
+        BOOST_PP_CAT(BOOST_PP_APPLY(BOOST_PP_TUPLE_ELEM(2, 1, data)), YB_ENUM_ITEM_NAME(elem)),
+
 #define YB_ENUM_CASE_NAME(s, data, elem) \
   case BOOST_PP_TUPLE_ELEM(2, 0, data):: \
       BOOST_PP_CAT(BOOST_PP_APPLY(BOOST_PP_TUPLE_ELEM(2, 1, data)), YB_ENUM_ITEM_NAME(elem)): \
           return BOOST_PP_STRINGIZE(YB_ENUM_ITEM_NAME(elem));
+
+#define YB_ENUM_MAX_ENUM_NAME(enum_name, prefix, value) enum_name
+#define YB_ENUM_MAX_PREFIX(enum_name, prefix, value) prefix
+#define YB_ENUM_MAX_VALUE(enum_name, prefix, value) value
+#define YB_ENUM_MAX_OP(s, data, x) \
+    (YB_ENUM_MAX_ENUM_NAME data, \
+     YB_ENUM_MAX_PREFIX data, \
+     constexpr_max(YB_ENUM_MAX_VALUE data, YB_ENUM_MAX_ENUM_NAME data::YB_ENUM_ITEM_NAME(x)))
 
 #define YB_DEFINE_ENUM_IMPL(enum_name, prefix, list) \
   enum class enum_name { \
@@ -90,6 +104,16 @@ constexpr typename std::underlying_type<E>::type to_underlying(E e) {
   \
   constexpr __attribute__((unused)) size_t BOOST_PP_CAT(kElementsIn, enum_name) = \
       BOOST_PP_SEQ_SIZE(list); \
+  constexpr __attribute__((unused)) size_t BOOST_PP_CAT(k, BOOST_PP_CAT(enum_name, MapSize)) = \
+      static_cast<size_t>(BOOST_PP_TUPLE_ELEM(3, 2, \
+          BOOST_PP_SEQ_FOLD_LEFT( \
+              YB_ENUM_MAX_OP, \
+              (enum_name, prefix, enum_name::YB_ENUM_ITEM_NAME(BOOST_PP_SEQ_HEAD(list))), \
+              BOOST_PP_SEQ_TAIL(list)))) + 1; \
+  constexpr __attribute__((unused)) std::initializer_list<enum_name> \
+      BOOST_PP_CAT(k, BOOST_PP_CAT(enum_name, List)) = {\
+          BOOST_PP_SEQ_FOR_EACH(YB_ENUM_LIST_ITEM, (enum_name, prefix), list) \
+  };\
   /**/
 
 // Please see the usage of YB_DEFINE_ENUM before the auxiliary macros above.

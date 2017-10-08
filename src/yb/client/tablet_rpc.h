@@ -61,15 +61,15 @@ class TabletInvoker {
         command_(command),
         rpc_(rpc),
         tablet_(tablet),
+        tablet_id_(tablet != nullptr ? tablet->tablet_id() : std::string()),
         retrier_(retrier),
         trace_(trace),
         consistent_prefix_(consistent_prefix) {}
 
   virtual ~TabletInvoker() {}
 
-  void Execute();
+  void Execute(const std::string& tablet_id);
   bool Done(Status* status);
-  void LookupTablet(const std::string& tablet_id);
 
   bool IsLocalCall() const;
   const RemoteTabletPtr& tablet() const { return tablet_; }
@@ -105,6 +105,8 @@ class TabletInvoker {
 
   // The tablet that should receive this rpc.
   RemoteTabletPtr tablet_;
+
+  std::string tablet_id_;
 
   rpc::RpcRetrier* const retrier_;
 

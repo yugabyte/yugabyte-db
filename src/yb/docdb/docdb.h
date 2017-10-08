@@ -23,6 +23,7 @@
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
+
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/doc_operation.h"
@@ -31,10 +32,11 @@
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/internal_doc_iterator.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/subdocument.h"
+
 #include "yb/tablet/mvcc.h"
-#include "yb/util/shared_lock_manager_fwd.h"
 #include "yb/util/status.h"
 
 // Document DB mapping on top of the key-value map in RocksDB:
@@ -72,8 +74,6 @@
 
 namespace yb {
 namespace docdb {
-
-using util::LockBatch;
 
 enum class InitMarkerBehavior {
   REQUIRED = 0,
@@ -205,7 +205,7 @@ class DocWriteBatch {
 // Context: lock_manager
 // Outputs: write_batch, need_read_snapshot
 void PrepareDocWriteOperation(const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
-                              util::SharedLockManager *lock_manager,
+                              SharedLockManager *lock_manager,
                               LockBatch *keys_locked,
                               bool *need_read_snapshot);
 

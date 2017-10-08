@@ -181,7 +181,8 @@ Status TabletPeer::Init(const shared_ptr<TabletClass>& tablet,
                                        log_.get(),
                                        tablet_->mem_tracker(),
                                        mark_dirty_clbk_,
-                                       tablet_->table_type());
+                                       tablet_->table_type(),
+                                       std::bind(&Tablet::LostLeadership, tablet.get()));
 
     prepare_thread_ = std::make_unique<PrepareThread>(consensus_.get());
   }
@@ -369,7 +370,8 @@ Status TabletPeer::SubmitWrite(std::unique_ptr<WriteOperationState> state) {
   RETURN_NOT_OK(tablet_->AcquireLocksAndPerformDocOperations(operation->state()));
   scoped_refptr<OperationDriver> driver;
   RETURN_NOT_OK(NewLeaderOperationDriver(std::move(operation), &driver));
-  return driver->ExecuteAsync();
+  driver->ExecuteAsync();
+  return Status::OK();
 }
 
 void TabletPeer::Submit(std::unique_ptr<Operation> operation) {
@@ -379,12 +381,11 @@ void TabletPeer::Submit(std::unique_ptr<Operation> operation) {
     scoped_refptr<OperationDriver> driver;
     status = NewLeaderOperationDriver(std::move(operation), &driver);
     if (status.ok()) {
-      status = driver->ExecuteAsync();
+      driver->ExecuteAsync();
     }
   }
   if (!status.ok()) {
-    operation->state()->completion_callback()->set_error(status);
-    operation->state()->completion_callback()->OperationCompleted();
+    operation->state()->completion_callback()->CompleteWithStatus(status);
   }
 }
 
@@ -621,7 +622,7 @@ Status TabletPeer::StartReplicaOperation(const scoped_refptr<ConsensusRound>& ro
   state->consensus_round()->SetConsensusReplicatedCallback(
       Bind(&OperationDriver::ReplicationFinished, Unretained(driver.get())));
 
-  RETURN_NOT_OK(driver->ExecuteAsync());
+  driver->ExecuteAsync();
   return Status::OK();
 }
 

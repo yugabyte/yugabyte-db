@@ -28,6 +28,8 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/rpc/rpc_fwd.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status.h"
@@ -42,6 +44,7 @@ class Clock;
 
 namespace tserver {
 
+class AbortTransactionResponsePB;
 class GetTransactionStatusResponsePB;
 class TransactionStatePB;
 
@@ -70,6 +73,8 @@ class TransactionCoordinatorContext {
  protected:
   ~TransactionCoordinatorContext() {}
 };
+
+typedef std::function<void(Result<tserver::TransactionStatus>)> TransactionAbortCallback;
 
 // Coordinates all transactions managed by specific tablet, i.e. all transactions
 // that selected this tablet as status tablet for it.
@@ -111,6 +116,8 @@ class TransactionCoordinator {
 
   CHECKED_STATUS GetStatus(const std::string& transaction_id,
                            tserver::GetTransactionStatusResponsePB* response);
+
+  void Abort(const std::string& transaction_id, TransactionAbortCallback callback);
 
   // Returns count of managed transactions. Used in tests.
   size_t test_count_transactions() const;

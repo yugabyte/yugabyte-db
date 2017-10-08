@@ -225,7 +225,8 @@ scoped_refptr<RaftConsensus> RaftConsensus::Create(
     const scoped_refptr<log::Log>& log,
     const shared_ptr<MemTracker>& parent_mem_tracker,
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
-    TableType table_type) {
+    TableType table_type,
+    LostLeadershipListener lost_leadership_listener) {
   gscoped_ptr<PeerProxyFactory> rpc_factory(new RpcPeerProxyFactory(messenger));
 
   // The message queue that keeps track of which operations need to be replicated
@@ -266,7 +267,8 @@ scoped_refptr<RaftConsensus> RaftConsensus::Create(
                               log,
                               parent_mem_tracker,
                               mark_dirty_clbk,
-                              table_type));
+                              table_type,
+                              std::move(lost_leadership_listener)));
 }
 
 RaftConsensus::RaftConsensus(
@@ -279,7 +281,8 @@ RaftConsensus::RaftConsensus(
     ReplicaOperationFactory* operation_factory, const scoped_refptr<log::Log>& log,
     shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
-    TableType table_type)
+    TableType table_type,
+    LostLeadershipListener lost_leadership_listener)
     : thread_pool_(thread_pool.Pass()),
       log_(log),
       clock_(clock),
@@ -301,7 +304,8 @@ RaftConsensus::RaftConsensus(
       term_metric_(metric_entity->FindOrCreateGauge(&METRIC_raft_term,
                                                     cmeta->current_term())),
       parent_mem_tracker_(std::move(parent_mem_tracker)),
-      table_type_(table_type) {
+      table_type_(table_type),
+      lost_leadership_listener_(std::move(lost_leadership_listener)) {
   DCHECK_NOTNULL(log_.get());
 
   state_.reset(new ReplicaState(options,
@@ -835,6 +839,11 @@ Status RaftConsensus::BecomeReplicaUnlocked() {
   queue_->SetNonLeaderMode();
 
   peer_manager_->Close();
+
+  if (lost_leadership_listener_) {
+    lost_leadership_listener_();
+  }
+
   return Status::OK();
 }
 

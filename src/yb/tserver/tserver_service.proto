@@ -58,6 +58,7 @@ service TabletServerService {
   rpc ImportData(ImportDataRequestPB) returns (ImportDataResponsePB);
   rpc UpdateTransaction(UpdateTransactionRequestPB) returns (UpdateTransactionResponsePB);
   rpc GetTransactionStatus(GetTransactionStatusRequestPB) returns (GetTransactionStatusResponsePB);
+  rpc AbortTransaction(AbortTransactionRequestPB) returns (AbortTransactionResponsePB);
 }
 
 message GetLogLocationRequestPB {
@@ -146,4 +147,16 @@ message GetTransactionStatusResponsePB {
 
   optional TransactionStatus status = 2;
   optional fixed64 status_hybrid_time = 3;
+}
+
+message AbortTransactionRequestPB {
+  optional bytes tablet_id = 1;
+  optional bytes transaction_id = 2;
+}
+
+message AbortTransactionResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+
+  optional TransactionStatus status = 2;
 }

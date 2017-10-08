@@ -185,7 +185,8 @@ class RaftConsensusQuorumTest : public YBTest {
                             logs_[i],
                             parent_mem_trackers_[i],
                             Bind(&DoNothing),
-                            DEFAULT_TABLE_TYPE));
+                            DEFAULT_TABLE_TYPE,
+                            LostLeadershipListener()));
 
       operation_factory->SetConsensus(peer.get());
       operation_factories_.emplace_back(operation_factory);

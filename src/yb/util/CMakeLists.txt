@@ -203,7 +203,6 @@ set(UTIL_SRCS
   version_info.cc
   string_packer.cc
   bytes_formatter.cc
-  shared_lock_manager.cc
   cross_thread_mutex.cc
   string_trim.cc
   trilean.cc
@@ -382,7 +381,6 @@ ADD_YB_TEST(user-test)
 ADD_YB_TEST(string_packer-test)
 ADD_YB_TEST(bytes_formatter-test)
 ADD_YB_TEST(string_trim-test)
-ADD_YB_TEST(shared_lock_manager-test)
 ADD_YB_TEST(varint-test)
 ADD_YB_TEST(decimal-test)
 ADD_YB_TEST(net/inetaddress-test)

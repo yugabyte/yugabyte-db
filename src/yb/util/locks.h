@@ -87,7 +87,9 @@ class simple_spinlock {
 };
 
 struct padded_spinlock : public simple_spinlock {
-  char padding[CACHELINE_SIZE - (sizeof(simple_spinlock) % CACHELINE_SIZE)];
+  static constexpr size_t kPaddingSize =
+      CACHELINE_SIZE - (sizeof(simple_spinlock) % CACHELINE_SIZE);
+  char padding[kPaddingSize];
 };
 
 // Reader-writer lock.
@@ -240,7 +242,8 @@ class percpu_rwlock {
  private:
   struct padded_lock {
     rw_spinlock lock;
-    char padding[CACHELINE_SIZE - (sizeof(rw_spinlock) % CACHELINE_SIZE)];
+    static constexpr size_t kPaddingSize = CACHELINE_SIZE - (sizeof(rw_spinlock) % CACHELINE_SIZE);
+    char padding[kPaddingSize];
   };
 
   int n_cpus_;
@@ -258,12 +261,12 @@ class shared_lock {
       : m_(nullptr) {
   }
 
-  explicit shared_lock(Mutex& m)
+  explicit shared_lock(Mutex& m) // NOLINT
       : m_(&m) {
     m_->lock_shared();
   }
 
-  shared_lock(Mutex& m, std::try_to_lock_t t)
+  shared_lock(Mutex& m, std::try_to_lock_t t) // NOLINT
       : m_(nullptr) {
     if (m.try_lock_shared()) {
       m_ = &m;
@@ -275,7 +278,7 @@ class shared_lock {
   }
 
   void swap(shared_lock& other) {
-    std::swap(m_,other.m_);
+    std::swap(m_, other.m_);
   }
 
   ~shared_lock() {
@@ -289,6 +292,17 @@ class shared_lock {
   DISALLOW_COPY_AND_ASSIGN(shared_lock<Mutex>);
 };
 
+template <class Container>
+auto ToVector(const Container& container, std::mutex* mutex) {
+  std::vector<typename Container::value_type> result;
+  {
+    std::lock_guard<std::mutex> lock(*mutex);
+    result.reserve(container.size());
+    result.assign(container.begin(), container.end());
+  }
+  return result;
+}
+
 } // namespace yb
 
-#endif
+#endif // YB_UTIL_LOCKS_H

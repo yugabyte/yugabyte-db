@@ -19,6 +19,7 @@
 #include <functional>
 
 #include "yb/client/client_fwd.h"
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
@@ -27,6 +28,8 @@ namespace yb {
 
 namespace tserver {
 
+class AbortTransactionRequestPB;
+class AbortTransactionResponsePB;
 class GetTransactionStatusRequestPB;
 class GetTransactionStatusResponsePB;
 class UpdateTransactionRequestPB;
@@ -36,22 +39,43 @@ class UpdateTransactionRequestPB;
 namespace client {
 
 class RemoteTablet;
+
 typedef std::function<void(const Status&)> UpdateTransactionCallback;
 
-void UpdateTransaction(const MonoTime& deadline,
-                       internal::RemoteTablet* tablet,
-                       YBClient* client,
-                       tserver::UpdateTransactionRequestPB* req,
-                       UpdateTransactionCallback callback);
+// Common arguments for all functions from this header.
+// deadline - operation deadline, i.e. timeout.
+// tablet - handle of status tablet for this transaction, could be null when unknown.
+// client - YBClient that should be used to send this request.
+
+// Updates specified transaction.
+MUST_USE_RESULT rpc::RpcCommandPtr UpdateTransaction(
+    const MonoTime& deadline,
+    internal::RemoteTablet* tablet,
+    YBClient* client,
+    tserver::UpdateTransactionRequestPB* req,
+    UpdateTransactionCallback callback);
 
 typedef std::function<void(const Status&, const tserver::GetTransactionStatusResponsePB&)>
     GetTransactionStatusCallback;
 
-void GetTransactionStatus(const MonoTime& deadline,
-                          internal::RemoteTablet* tablet,
-                          YBClient* client,
-                          tserver::GetTransactionStatusRequestPB* req,
-                          GetTransactionStatusCallback callback);
+// Gets status of specified transaction.
+MUST_USE_RESULT rpc::RpcCommandPtr GetTransactionStatus(
+    const MonoTime& deadline,
+    internal::RemoteTablet* tablet,
+    YBClient* client,
+    tserver::GetTransactionStatusRequestPB* req,
+    GetTransactionStatusCallback callback);
+
+typedef std::function<void(const Status&, const tserver::AbortTransactionResponsePB&)>
+    AbortTransactionCallback;
+
+// Aborts specified transaction.
+MUST_USE_RESULT rpc::RpcCommandPtr AbortTransaction(
+    const MonoTime& deadline,
+    internal::RemoteTablet* tablet,
+    YBClient* client,
+    tserver::AbortTransactionRequestPB* req,
+    AbortTransactionCallback callback);
 
 } // namespace client
 } // namespace yb

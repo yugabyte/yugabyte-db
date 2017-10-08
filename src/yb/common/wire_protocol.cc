@@ -108,6 +108,8 @@ void StatusToPB(const Status& status, AppStatusPB* pb) {
     pb->set_code(AppStatusPB::LEADER_HAS_NO_LEASE);
   } else if (status.IsLeaderNotReadyToServe()) {
     pb->set_code(AppStatusPB::LEADER_NOT_READY_TO_SERVE);
+  } else if (status.IsTryAgain()) {
+    pb->set_code(AppStatusPB::TRY_AGAIN_CODE);
   } else {
     LOG(WARNING) << "Unknown error code translation from internal error "
                  << status.ToString() << ": sending UNKNOWN_ERROR";
@@ -188,6 +190,8 @@ Status StatusFromPB(const AppStatusPB& pb) {
       return STATUS(LeaderHasNoLease, pb.message(), "", posix_code);
     case AppStatusPB::LEADER_NOT_READY_TO_SERVE:
       return STATUS(LeaderNotReadyToServe, pb.message(), "", posix_code);
+    case AppStatusPB::TRY_AGAIN_CODE:
+      return STATUS(TryAgain, pb.message(), "", posix_code);
     case AppStatusPB::UNKNOWN_ERROR:
     default:
       LOG(WARNING) << "Unknown error code in status: " << pb.ShortDebugString();

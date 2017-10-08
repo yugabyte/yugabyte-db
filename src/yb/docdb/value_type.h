@@ -19,6 +19,7 @@
 #include <glog/logging.h>
 
 #include "yb/util/enums.h"
+#include "yb/util/math_util.h"
 #include "yb/util/slice.h"
 
 namespace yb {
@@ -109,7 +110,7 @@ YB_DEFINE_ENUM(IntentType,
     ((kWeakSerializableWrite, kWeakIntentFlag | kWriteIntentFlag | kSerializableIntentFlag))
     ((kStrongSerializableRead, kStrongIntentFlag | kReadIntentFlag | kSerializableIntentFlag))
     ((kWeakSerializableRead, kWeakIntentFlag | kReadIntentFlag | kSerializableIntentFlag))
-    ((kInvalidIntent, 0xff)));
+);
 
 inline bool StrongIntent(IntentType intent) {
   return (static_cast<int>(intent) & kStrongIntentFlag) != 0;

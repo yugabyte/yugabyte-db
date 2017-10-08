@@ -251,7 +251,7 @@ class YBClient::Data {
   // Ref-counted RPC instance: since 'SetMasterServerProxyAsync' call
   // is asynchronous, we need to hold a reference in this class
   // itself, as to avoid a "use-after-free" scenario.
-  scoped_refptr<master::GetLeaderMasterRpc> leader_master_rpc_;
+  std::shared_ptr<master::GetLeaderMasterRpc> leader_master_rpc_;
   std::vector<StatusCallback> leader_master_callbacks_;
 
   // Protects 'leader_master_rpc_', 'leader_master_hostport_',

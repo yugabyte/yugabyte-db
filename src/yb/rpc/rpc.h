@@ -32,11 +32,18 @@
 #ifndef YB_RPC_RPC_H
 #define YB_RPC_RPC_H
 
+#include <atomic>
 #include <memory>
 #include <string>
 
+#include <boost/container/stable_vector.hpp>
+
+#include <boost/optional/optional.hpp>
+
 #include "yb/gutil/callback.h"
 #include "yb/rpc/rpc_controller.h"
+
+#include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_callback.h"
 
@@ -48,7 +55,7 @@ class Messenger;
 class Rpc;
 
 // The command that could be retried by RpcRetrier.
-class RpcCommand {
+class RpcCommand : public std::enable_shared_from_this<RpcCommand> {
  public:
   // Asynchronously sends the RPC to the remote end.
   //
@@ -62,9 +69,13 @@ class RpcCommand {
   // before the RPC was sent.
   virtual void SendRpcCb(const Status& status) = 0;
 
+  virtual void Abort() = 0;
+
  protected:
   ~RpcCommand() {}
 };
+
+YB_DEFINE_ENUM(RpcRetrierState, (kIdle)(kRunning)(kWaiting)(kFinished));
 
 // Provides utilities for retrying failed RPCs.
 //
@@ -80,6 +91,8 @@ class RpcRetrier {
     }
     controller_.Reset();
   }
+
+  ~RpcRetrier();
 
   // Tries to handle a failed RPC.
   //
@@ -115,6 +128,8 @@ class RpcRetrier {
   // Called when an RPC comes up for retrying. Actually sends the RPC.
   void DelayedRetryCb(RpcCommand* rpc, const Status& status);
 
+  void Abort();
+
  private:
   // The next sent rpc will be the nth attempt (indexed from 1).
   int attempt_num_;
@@ -135,6 +150,10 @@ class RpcRetrier {
   // Errors from the server take precedence over timeout errors.
   Status last_error_;
 
+  std::atomic<int64_t> task_id_{-1};
+
+  std::atomic<RpcRetrierState> state_{RpcRetrierState::kIdle};
+
   DISALLOW_COPY_AND_ASSIGN(RpcRetrier);
 };
 
@@ -153,6 +172,10 @@ class Rpc : public RpcCommand {
   int num_attempts() const { return retrier().attempt_num(); }
   const MonoTime& deadline() const { return retrier_.deadline(); }
 
+  void Abort() override {
+    retrier_.Abort();
+  }
+
  protected:
   const RpcRetrier& retrier() const { return retrier_; }
   RpcRetrier* mutable_retrier() { return &retrier_; }
@@ -165,6 +188,43 @@ class Rpc : public RpcCommand {
 
   DISALLOW_COPY_AND_ASSIGN(Rpc);
 };
+
+class Rpcs {
+ public:
+  explicit Rpcs(std::mutex* mutex = nullptr);
+  ~Rpcs() { Shutdown(); }
+
+  typedef boost::container::stable_vector<rpc::RpcCommandPtr> Calls;
+  typedef Calls::iterator Handle;
+
+  void Shutdown();
+  Handle Register(RpcCommandPtr call);
+  void Register(RpcCommandPtr call, Handle* handle);
+  void RegisterAndStart(RpcCommandPtr call, Handle* handle);
+  RpcCommandPtr Unregister(Handle* handle);
+  void Abort(std::initializer_list<Handle*> list);
+  Rpcs::Handle Prepare();
+
+  RpcCommandPtr Unregister(Handle handle) {
+    return Unregister(&handle);
+  }
+
+
+  Handle InvalidHandle() { return calls_.end(); }
+
+ private:
+  boost::optional<std::mutex> mutex_holder_;
+  std::mutex* mutex_;
+  std::condition_variable cond_;
+  Calls calls_;
+};
+
+template <class T, class... Args>
+RpcCommandPtr StartRpc(Args&&... args) {
+  auto rpc = std::make_shared<T>(std::forward<Args>(args)...);
+  rpc->SendRpc();
+  return rpc;
+}
 
 } // namespace rpc
 } // namespace yb

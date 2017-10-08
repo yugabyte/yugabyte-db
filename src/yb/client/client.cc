@@ -336,6 +336,9 @@ Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
 YBClient::YBClient() : data_(new YBClient::Data()), client_id_(ObjectIdGenerator().Next()) {}
 
 YBClient::~YBClient() {
+  if (data_->meta_cache_) {
+    data_->meta_cache_->Shutdown();
+  }
   delete data_;
 }
 
@@ -1067,14 +1070,14 @@ Status YBTableCreator::Create() {
   }
   // For a redis table, no external schema is passed to TableCreator, we make a unique schema
   // and manage its memory withing here.
-  YBSchema* redis_schema = nullptr;
+  std::unique_ptr<YBSchema> redis_schema;
   if (data_->table_type_ == TableType::REDIS_TABLE_TYPE) {
     CHECK(!data_->schema_) << "Schema should not be set for redis table creation";
-    redis_schema = new YBSchema();
+    redis_schema.reset(new YBSchema());
     YBSchemaBuilder b;
     b.AddColumn(kRedisKeyColumnName)->Type(BINARY)->NotNull()->HashPrimaryKey();
-    RETURN_NOT_OK(b.Build(redis_schema));
-    schema(redis_schema);
+    RETURN_NOT_OK(b.Build(redis_schema.get()));
+    schema(redis_schema.get());
   }
   if (!data_->schema_) {
     return STATUS(InvalidArgument, "Missing schema");
@@ -1183,9 +1186,7 @@ Status YBTableCreator::Create() {
 
   LOG(INFO) << "Created table " << data_->table_name_.ToString()
             << " of type " << TableType_Name(data_->table_type_);
-  if (redis_schema) {
-    delete redis_schema;
-  }
+
   return Status::OK();
 }
 

@@ -49,27 +49,23 @@ class TransactionRpcBase : public rpc::Rpc, public internal::TabletRpc {
   virtual ~TransactionRpcBase() {}
 
   void SendRpc() override {
-    invoker_.Execute();
-  }
-
-  void Start() {
-    if (invoker_.tablet()) {
-      SendRpc();
-    } else {
-      invoker_.LookupTablet(tablet_id());
-    }
+    invoker_.Execute(tablet_id());
   }
 
   void SendRpcCb(const Status& status) override {
     Status new_status = status;
     if (invoker_.Done(&new_status)) {
+      auto retain_self = shared_from_this();
       InvokeCallback(new_status);
-      delete this;
     }
   }
 
   // TODO(dtxn)
   void Failed(const Status& status) override {}
+
+  void Abort() override {
+    rpc::Rpc::Abort();
+  }
 
  private:
   void SendRpcToTserver() override {
@@ -178,26 +174,59 @@ struct GetTransactionStatusTraits {
 
 constexpr const char* GetTransactionStatusTraits::kName;
 
+struct AbortTransactionTraits {
+  static constexpr const char* kName = "AbortTransaction";
+
+  typedef tserver::AbortTransactionRequestPB Request;
+  typedef tserver::AbortTransactionResponsePB Response;
+  typedef AbortTransactionCallback Callback;
+
+  static void CallCallback(
+      const Callback& callback, const Status& status, const Response& response) {
+    callback(status, response);
+  }
+
+  static void InvokeAsync(tserver::TabletServerServiceProxy* proxy,
+                          const Request& request,
+                          Response* response,
+                          rpc::RpcController* controller,
+                          rpc::ResponseCallback callback) {
+    proxy->AbortTransactionAsync(request, response, controller, std::move(callback));
+  }
+};
+
+constexpr const char* AbortTransactionTraits::kName;
+
 } // namespace
 
-void UpdateTransaction(const MonoTime& deadline,
-                       internal::RemoteTablet* tablet,
-                       YBClient* client,
-                       tserver::UpdateTransactionRequestPB* req,
-                       UpdateTransactionCallback callback) {
-  auto* rpc = new TransactionRpc<UpdateTransactionTraits>(
+rpc::RpcCommandPtr UpdateTransaction(
+    const MonoTime& deadline,
+    internal::RemoteTablet* tablet,
+    YBClient* client,
+    tserver::UpdateTransactionRequestPB* req,
+    UpdateTransactionCallback callback) {
+  return std::make_shared<TransactionRpc<UpdateTransactionTraits>>(
       deadline, tablet, client, req, std::move(callback));
-  rpc->Start();
 }
 
-void GetTransactionStatus(const MonoTime& deadline,
-                          internal::RemoteTablet* tablet,
-                          YBClient* client,
-                          tserver::GetTransactionStatusRequestPB* req,
-                          GetTransactionStatusCallback callback) {
-  auto* rpc = new TransactionRpc<GetTransactionStatusTraits>(
+rpc::RpcCommandPtr GetTransactionStatus(
+    const MonoTime& deadline,
+    internal::RemoteTablet* tablet,
+    YBClient* client,
+    tserver::GetTransactionStatusRequestPB* req,
+    GetTransactionStatusCallback callback) {
+  return std::make_shared<TransactionRpc<GetTransactionStatusTraits>>(
       deadline, tablet, client, req, std::move(callback));
-  rpc->Start();
+}
+
+rpc::RpcCommandPtr AbortTransaction(
+    const MonoTime& deadline,
+    internal::RemoteTablet* tablet,
+    YBClient* client,
+    tserver::AbortTransactionRequestPB* req,
+    AbortTransactionCallback callback) {
+  return std::make_shared<TransactionRpc<AbortTransactionTraits>>(
+      deadline, tablet, client, req, std::move(callback));
 }
 
 } // namespace client
