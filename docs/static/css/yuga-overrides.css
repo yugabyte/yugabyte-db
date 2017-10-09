@@ -160,3 +160,24 @@ a {
 .nav-bar.scrolled .navbar-text .download-btn {
   color: white !important;
 }
+
+.rrdiagram .connector {
+  fill:none;
+  stroke:#222222;
+}
+
+.rrdiagram .text {
+  fill:#000000;
+  font-family:Verdana,Sans-serif;
+  font-size:12px;
+}
+
+.rrdiagram .literal {
+  fill:#90d9ff;
+  stroke:#222222;
+}
+
+.rrdiagram .rule {
+  fill:#d3f0ff;
+  stroke:#222222;
+}

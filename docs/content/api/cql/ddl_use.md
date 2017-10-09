@@ -9,7 +9,7 @@ The `USE` keyspace statement specifies a default keyspace for the current client
 ## Syntax
 
 ### Diagram
-<svg version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="181" height="35" viewbox="0 0 181 35"><defs><style type="text/css">.c{fill:none;stroke:#222222;}.j{fill:#000000;font-family:Verdana,Sans-serif;font-size:12px;}.l{fill:#90d9ff;stroke:#222222;}.r{fill:#d3f0ff;stroke:#222222;}</style></defs><path class="c" d="M0 22h5m45 0h10m116 0h5"/><rect class="l" x="5" y="5" width="45" height="25" rx="7"/><text class="j" x="15" y="22">USE</text><a xlink:href="#keyspace_name"><rect class="r" x="60" y="5" width="116" height="25"/><text class="j" x="70" y="22">keyspace_name</text></a></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="181" height="35" viewbox="0 0 181 35"><path class="connector" d="M0 22h5m45 0h10m116 0h5"/><rect class="literal" x="5" y="5" width="45" height="25" rx="7"/><text class="text" x="15" y="22">USE</text><a xlink:href="../grammar_diagrams#keyspace-name"><rect class="rule" x="60" y="5" width="116" height="25"/><text class="text" x="70" y="22">keyspace_name</text></a></svg>
 
 ### Grammar
 ```

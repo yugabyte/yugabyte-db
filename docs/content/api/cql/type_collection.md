@@ -1,5 +1,5 @@
 ---
-title: Collections Types
+title: Collection Types
 summary: MAP, SET and LIST types.
 toc: false
 ---
@@ -32,6 +32,7 @@ set_literal ::= '{' [ expression ...] '}'
 
 Where 
 
+- Columns of type `LIST`, 'MAP', or `SET` cannot be part of the `PRIMARY KEY`.
 - `type` must be a [non-parametric datatype](../#datatypes) or a [frozen](../type_frozen) datatype.
 - `key_type` must be any datatype that is allowed in a primary key (Currently `FROZEN` and all non-parametric datatypes except `BOOL`).
 - For `map_literal` the left-side `expression` represents the key and the right-side one represents the value.
@@ -40,7 +41,7 @@ Where
 ## Semantics
 
 - Type parameters must be simple types or [frozen types](../type_frozen) (collections and user-defined types must be frozen to be used as collection parameters).
-- Columns of type `LIST`, `MAP`, and `SET` cannot be part of `PRIMARY KEY`.
+- Columns of type `LIST`, `MAP`, and `SET` cannot be part of the `PRIMARY KEY`.
 - Implicitly, values of collection datatypes are neither convertible nor comparable to other datatypes.
 - Each expression in a collection literal must evaluate to a value convertible to the corresponding parameter datatype.
 - Comparisons on collection values are not allowed (e.g. in `WHERE` or `IF` clauses).
@@ -141,9 +142,9 @@ cqlsh:example> UPDATE users SET top_cities[2] = 'Mumbai' WHERE username = 'foo' 
 cqlsh:example> SELECT * FROM users;
 
  username | emails              | phones                                       | top_cities
-----------+---------------------+----------------------------------------------+----------------------------------
-      bar | {'bar@example.com'} |  {'home': '123-45678', 'mobile': '345-6789'} |       ['San Francisco', 'Tokyo']
-      foo | {'foo@example.com'} | {'mobile': '111-1111', 'office': '333-3333'} | ['Mumbai', 'Sunnyvale', 'Delhi']
+----------+---------------------+----------------------------------------------+----------------------------
+      bar | {'bar@example.com'} |  {'home': '123-45678', 'mobile': '345-6789'} | ['San Francisco', 'Tokyo']
+      foo | {'foo@example.com'} | {'mobile': '111-1111', 'office': '333-3333'} |    ['Sunnyvale', 'Mumbai']
 ```
 
 ## See Also

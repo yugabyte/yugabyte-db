@@ -17,7 +17,7 @@ boolean_literal ::= TRUE | FALSE
 
 ## Semantics
 
-- Columns of type `BOOLEAN` can not be a part of `PRRIMARY KEY`.
+- Columns of type `BOOLEAN` cannot be part of the `PRIMARY KEY`.
 - Columns of type `BOOLEAN` can be set, inserted, and compared.
 - In `WHERE` and `IF` clause, `BOOLEAN` columns cannot be used as a standalone expression. They must be compared with either `true` or `false`. For example, `WHERE boolean_column = TRUE` is valid while `WHERE boolean_column` is not.
 - Implicitly, `BOOLEAN` is neither comparable nor convertible to any other datatypes.

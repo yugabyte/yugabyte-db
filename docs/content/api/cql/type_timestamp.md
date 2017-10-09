@@ -24,8 +24,10 @@ Where
 - the `timestamp_format` given above is not the timestamp literal but is used to match text literals when converting them to `TIMESTAMP` type.
 
 ## Semantics
+
+- Columns of type `TIMESTAMP` can be part of the `PRIMARY KEY`.
 - Implicitly, value of type datetime type are neither convertible nor comparable to other datatypes.
-- Values of integer and text datatypes with correct format (given above) are convertible to datetime types.
+- Values of integer and text datatypes with the correct format (given above) are convertible to datetime types.
 - Supported timestamp range is from year `1900` to year `9999`.
 - If not specified, the default value for hour, minute, second, and millisecond components is `0`.
 - If not specified, the default timezone is UTC.

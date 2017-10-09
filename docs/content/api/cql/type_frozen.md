@@ -17,7 +17,7 @@ Where
 
 ## Semantics
 
-- Columns of type `FROZEN` can be part of `PRIMARY KEY`.
+- Columns of type `FROZEN` can be part of the `PRIMARY KEY`.
 - Type parameters of `FROZEN` type must be either [collection types](../type_collection) (`LIST`, `MAP`, or `SET`) or [user-defined types](../ddl_create_type).
 - `FROZEN` types can be parameters of collection types.
 - For any valid frozen type parameter `type`, values of `type` are convertible into `FROZEN<type>`.

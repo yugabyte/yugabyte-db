@@ -15,6 +15,7 @@ type_specification ::= INET
 
 ## Semantics
 
+- Columns of type `INET` can be part of the `PRIMARY KEY`.
 - Implicitly, values of type `INET` datatypes are neither convertible nor comparable to other datatypes.
 - Values of text datatypes with correct format are convertible to `INET`.
 - `INET` value format supports text literals for both IPv4 and IPv6 addresses.

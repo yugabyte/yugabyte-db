@@ -26,6 +26,7 @@ non_integer_fixed_point_literal ::= [ + | - ] { digit [ digit ...] '.' [ digit .
 
 Where
 
+- Columns of type `FLOAT`, `DOUBLE`, `DOUBLE PRECISION`, or `DECIMAL` can be part of the `PRIMARY KEY`.
 - `DOUBLE` and `DOUBLE PRECISION` are aliases.
 - `non_integer_floating_point_literal` is used for values of `FLOAT`, `DOUBLE` and `DOUBLE PRECISION` types.
 - `non_integer_fixed_point_literal` is used for values of `DECIMAL` type.

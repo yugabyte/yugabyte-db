@@ -23,8 +23,9 @@ Where
 
 ## Semantics
 
+- Columns of type `UUID` or `TIMEUUID` can be part of the `PRIMARY KEY`.
 - Implicitly, values of type `UUID` and `TIMEUUID` datatypes are neither convertible nor comparable to other datatypes.
-- Value of text datatypes with correct format are convertible to UUID types.
+- Value of text datatypes with the correct format are convertible to UUID types.
 
 ## Examples
 ``` sql

@@ -25,6 +25,7 @@ integer_literal ::= [ + | - ] digit [ { digit | , } ... ]
 
 ## Semantics
 
+- Columns of type `TINYINT`, `SMALLINT`, `INT`, `INTEGER`, or `BIGINT` can be part of the `PRIMARY KEY`.
 - Values of different integer datatypes are comparable and convertible to one another.
 - Values of integer datatypes are convertible but not comparable to floating point number.
 - Values of floating point datatypes are not convertible to integers.
@@ -32,7 +33,7 @@ integer_literal ::= [ + | - ] digit [ { digit | , } ... ]
 ### Counter DataType
 `COUNTER` is an alias of `BIGINT` but has additional constraints.
 
-- Columns of type `COUNTER` cannot be part of `PRIMARY KEY`.
+- Columns of type `COUNTER` cannot be part of the`PRIMARY KEY`.
 - If a column is of type `COUNTER`, all non-primary-key columns must also be of type `COUNTER`.
 - Column of type `COUNTER` cannot be set or inserted. They must be incremented or decremented.
 - If a column of type `COUNTER` is NULL, its value is replaced with zero when incrementing or decrementing.

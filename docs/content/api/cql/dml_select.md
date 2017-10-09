@@ -7,8 +7,9 @@ summary: Retrieves rows from a table.
 The `SELECT` statement retrieves (part of) rows of specified columns that meet a given condition from a table. It specifies the columns to be retrieved, the name of the table, and the condition each selected row must satisfy.
 
 ## Syntax
+
 ### Diagram
-<svg version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="565" height="145" viewbox="0 0 565 145"><defs><style type="text/css">.c{fill:none;stroke:#222222;}.j{fill:#000000;font-family:Verdana,Sans-serif;font-size:12px;}.l{fill:#90d9ff;stroke:#222222;}.r{fill:#d3f0ff;stroke:#222222;}</style></defs><path class="c" d="M0 22h5m66 0h30m78 0h20m-113 0q5 0 5 5v8q0 5 5 5h88q5 0 5-5v-8q0-5 5-5m5 0h30m28 0h138m-181 0q5 0 5 5v50q0 5 5 5h25m-5 0q-5 0-5-5v-20q0-5 5-5h46m24 0h46q5 0 5 5v20q0 5-5 5m-5 0h25q5 0 5-5v-50q0-5 5-5m5 0h10m54 0h10m91 0h5m-565 95h25m65 0h10m128 0h20m-238 0q5 0 5 5v8q0 5 5 5h213q5 0 5-5v-8q0-5 5-5m5 0h30m54 0h10m117 0h20m-216 0q5 0 5 5v8q0 5 5 5h191q5 0 5-5v-8q0-5 5-5m5 0h5"/><rect class="l" x="5" y="5" width="66" height="25" rx="7"/><text class="j" x="15" y="22">SELECT</text><rect class="l" x="101" y="5" width="78" height="25" rx="7"/><text class="j" x="111" y="22">DISTINCT</text><rect class="l" x="229" y="5" width="28" height="25" rx="7"/><text class="j" x="239" y="22">*</text><rect class="l" x="290" y="35" width="24" height="25" rx="7"/><text class="j" x="300" y="52">,</text><a xlink:href="#column_name"><rect class="r" x="249" y="65" width="106" height="25"/><text class="j" x="259" y="82">column_name</text></a><rect class="l" x="405" y="5" width="54" height="25" rx="7"/><text class="j" x="415" y="22">FROM</text><a xlink:href="#table_name"><rect class="r" x="469" y="5" width="91" height="25"/><text class="j" x="479" y="22">table_name</text></a><rect class="l" x="25" y="100" width="65" height="25" rx="7"/><text class="j" x="35" y="117">WHERE</text><a xlink:href="#where_expression"><rect class="r" x="100" y="100" width="128" height="25"/><text class="j" x="110" y="117">where_expression</text></a><rect class="l" x="278" y="100" width="54" height="25" rx="7"/><text class="j" x="288" y="117">LIMIT</text><a xlink:href="#limit_expression"><rect class="r" x="342" y="100" width="117" height="25"/><text class="j" x="352" y="117">limit_expression</text></a></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="565" height="145" viewbox="0 0 565 145"><path class="connector" d="M0 22h5m66 0h30m78 0h20m-113 0q5 0 5 5v8q0 5 5 5h88q5 0 5-5v-8q0-5 5-5m5 0h30m28 0h138m-181 0q5 0 5 5v50q0 5 5 5h25m-5 0q-5 0-5-5v-20q0-5 5-5h46m24 0h46q5 0 5 5v20q0 5-5 5m-5 0h25q5 0 5-5v-50q0-5 5-5m5 0h10m54 0h10m91 0h5m-565 95h25m65 0h10m128 0h20m-238 0q5 0 5 5v8q0 5 5 5h213q5 0 5-5v-8q0-5 5-5m5 0h30m54 0h10m117 0h20m-216 0q5 0 5 5v8q0 5 5 5h191q5 0 5-5v-8q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="66" height="25" rx="7"/><text class="text" x="15" y="22">SELECT</text><rect class="literal" x="101" y="5" width="78" height="25" rx="7"/><text class="text" x="111" y="22">DISTINCT</text><rect class="literal" x="229" y="5" width="28" height="25" rx="7"/><text class="text" x="239" y="22">*</text><rect class="literal" x="290" y="35" width="24" height="25" rx="7"/><text class="text" x="300" y="52">,</text><a xlink:href="../grammar_diagrams#column-name"><rect class="rule" x="249" y="65" width="106" height="25"/><text class="text" x="259" y="82">column_name</text></a><rect class="literal" x="405" y="5" width="54" height="25" rx="7"/><text class="text" x="415" y="22">FROM</text><a xlink:href="../grammar_diagrams#table-name"><rect class="rule" x="469" y="5" width="91" height="25"/><text class="text" x="479" y="22">table_name</text></a><rect class="literal" x="25" y="100" width="65" height="25" rx="7"/><text class="text" x="35" y="117">WHERE</text><a xlink:href="../grammar_diagrams#where-expression"><rect class="rule" x="100" y="100" width="128" height="25"/><text class="text" x="110" y="117">where_expression</text></a><rect class="literal" x="278" y="100" width="54" height="25" rx="7"/><text class="text" x="288" y="117">LIMIT</text><a xlink:href="../grammar_diagrams#limit-expression"><rect class="rule" x="342" y="100" width="117" height="25"/><text class="text" x="352" y="117">limit_expression</text></a></svg>
 
 ### Grammar
 ```
@@ -22,7 +23,7 @@ Where
 - `table_name` and `column_name` are identifiers (`table_name` may be qualified with a keyspace name).
 - `limit_expression` is an integer literal (or a bind variable marker for prepared statements).
 - Restrictions for `where_expression` are discussed in the Semantics section below.
-- See [Expression](..#expressions) for more information on syntax rules.
+- See [Expressions](..#expressions) for more information on syntax rules.
 
 ## Semantics
  - An error is raised if the specified `table_name` does not exist.
@@ -89,7 +90,7 @@ cqlsh:example> SELECT * FROM employees LIMIT 2;
 
 ### Select distinct values
 
-```
+``` sql
 cqlsh:example> SELECT DISTINCT dept_name FROM employees;
 
  dept_name
