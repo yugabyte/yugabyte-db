@@ -43,9 +43,17 @@ message CQLStatementsDetailsPB {
   optional string sql_string = 2;
 }
 
+message RedisStatementsDetailsPB {
+  optional string redis_string = 1;
+}
+
 message CQLCallDetailsPB {
   optional string type = 1;
   repeated CQLStatementsDetailsPB call_details = 2;
+}
+
+message RedisCallDetailsPB {
+  repeated RedisStatementsDetailsPB call_details = 1;
 }
 
 message RpcCallInProgressPB {
@@ -54,6 +62,7 @@ message RpcCallInProgressPB {
   optional uint64 micros_elapsed = 3;
   oneof call_details {
     CQLCallDetailsPB cql_details = 4;
+    RedisCallDetailsPB redis_details = 5;
   }
 }
 

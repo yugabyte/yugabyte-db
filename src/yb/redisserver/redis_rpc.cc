@@ -31,12 +31,16 @@
 
 #include "yb/util/memory/memory.h"
 
+using yb::operator"" _KB;
+
 DECLARE_bool(rpc_dump_all_traces);
 DECLARE_int32(rpc_slow_query_threshold_ms);
 DEFINE_uint64(redis_max_concurrent_commands, 1,
               "Max number of redis commands received from single connection, "
               "that could be processed concurrently");
 DEFINE_uint64(redis_max_batch, 500, "Max number of redis commands that forms batch");
+DEFINE_int32(rpcz_max_redis_query_dump_size, 4_KB,
+             "The maximum size of the Redis query string in the RPCZ dump.");
 
 
 using namespace std::literals; // NOLINT
@@ -193,6 +197,16 @@ void RedisInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
   }
   resp->set_micros_elapsed(MonoTime::Now(MonoTime::FINE).GetDeltaSince(timing_.time_received)
       .ToMicroseconds());
+
+  // RedisClientBatch client_batch_
+  rpc::RedisCallDetailsPB* redis_details = resp->mutable_redis_details();
+  for (RedisClientCommand command : client_batch_) {
+    string query = "";
+    for (Slice arg : command) {
+      query += " " + arg.ToDebugString(FLAGS_rpcz_max_redis_query_dump_size);
+    }
+    redis_details->add_call_details()->set_redis_string(query);
+  }
 }
 
 template <class Collection, class Out>
