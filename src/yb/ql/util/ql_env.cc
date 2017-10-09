@@ -157,14 +157,7 @@ void QLEnv::FlushAsyncDone(const Status &s) {
     return;
   }
 
-  // Production/cqlserver usecase: if currrent thread is RPC worker thread, it is ok to call the
-  // callback in the current thread directly. Otherwise, enqueue the callback to run in the server's
-  // handler thread.
-  if (rpc::ThreadPool::IsCurrentThreadRpcWorker()) {
-    ResumeCQLCall();
-    return;
-  }
-
+  // Production/cqlserver usecase: enqueue the callback to run in the server's handler thread.
   resume_execution_ = Bind(&QLEnv::ResumeCQLCall, Unretained(this));
   current_cql_call()->SetResumeFrom(&resume_execution_);
 
