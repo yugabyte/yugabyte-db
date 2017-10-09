@@ -811,27 +811,23 @@ Status TabletServiceImpl::CheckPeerIsLeader(const TabletPeer& tablet_peer,
                                             TabletServerErrorPB::Code* error_code) {
   scoped_refptr<consensus::Consensus> consensus = tablet_peer.shared_consensus();
   const Consensus::LeaderStatus leader_status = consensus->leader_status();
-  const string details = Substitute("tablet $0 peer $1. Peer role is $2. Leader status is $3.",
-                                    tablet_peer.tablet_id(), tablet_peer.permanent_uuid(),
-                                    consensus->role(), static_cast<int>(leader_status));
-  VLOG(1) << "Check for " << details;
+  VLOG(1) << "Check for " << Substitute("tablet $0 peer $1. Peer role is $2. Leader status is $3.",
+                                        tablet_peer.tablet_id(), tablet_peer.permanent_uuid(),
+                                        consensus->role(), static_cast<int>(leader_status));
 
   switch (leader_status) {
     case Consensus::LeaderStatus::NOT_LEADER:
       *error_code = TabletServerErrorPB::NOT_THE_LEADER;
-      return STATUS_SUBSTITUTE(IllegalState, "Not the leader for $0", details);
+      return STATUS(IllegalState, "Not the leader");
 
     case Consensus::LeaderStatus::LEADER_BUT_NOT_READY:
       *error_code = TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE;
-      return STATUS_SUBSTITUTE(ServiceUnavailable, "Leader is not ready for $0", details);
+      return STATUS(ServiceUnavailable, "Leader is not ready");
 
     case Consensus::LeaderStatus::LEADER_AND_READY:
       return Status::OK();
   }
-
-  LOG(FATAL) << "Unknown leader status = " << static_cast<int>(leader_status);
-  return STATUS_SUBSTITUTE(InternalError,
-                           "Unknown leader status $0.", static_cast<int>(leader_status));
+  FATAL_INVALID_ENUM_VALUE(consensus::Consensus::LeaderStatus, leader_status);
 }
 
 Status TabletServiceImpl::CheckPeerIsLeaderAndReady(const TabletPeer& tablet_peer,

@@ -2313,8 +2313,7 @@ Status RaftConsensus::RequestVoteRespondVoteGranted(const VoteRequestPB* request
 
 RaftPeerPB::Role RaftConsensus::GetRoleUnlocked() const {
   DCHECK(state_->IsLocked());
-  return GetConsensusRole(state_->GetPeerUuid(),
-                          state_->ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE));
+  return state_->GetActiveRoleUnlocked();
 }
 
 RaftPeerPB::Role RaftConsensus::role() const {
