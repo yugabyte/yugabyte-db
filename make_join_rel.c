@@ -20,7 +20,7 @@ static void populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 										List *restrictlist);
 /*
  * adjust_rows: tweak estimated row numbers according to the hint.
-*/
+ */
 static double
 adjust_rows(double rows, RowsHint *hint)
 {
