@@ -319,6 +319,10 @@ postgres$# $$ LANGUAGE plpgsql;
 </pre>
 </dd>
 
+<h3>Letter case in a hinted object</h3>
+<dd>Unlike the way PostgreSQL handles object names, pg_hint_plan compares bare object names in hints against the database internal object names in case sensitive way. Therefore an object name TBL in a hint matches only "TBL" in database and does not match any unquoted names like TBL, tbl or Tbl.
+</dd>
+
 <h3>Escaping special chacaters in object names</h3>
 <dd>The objects as the hint parameter should be enclosed by double quotes if they includes parentheses, double quotes and white spaces. The escaping rule is the same as PostgreSQL.
 </dd>
@@ -364,12 +368,6 @@ enables them to be manipulated from outside the view.
    ->  Hash  (cost=2.01..2.01 rows=101 width=4)
          ->  Seq Scan on t2  (cost=0.00..2.01 rows=101 width=4)
 </pre>
-</dd>
-
-<h3>Inheritance tables</h3>
-<dd>Hints can point only the parent of an inheritance tables and the
-hint affect all the inheritance. Hints simultaneously point directly
-to children are not in effect.
 </dd>
 
 <h3>Inheritance tables</h3>
@@ -436,17 +434,12 @@ IN (SELECT ... {<b>LIMIT | OFFSET</b> ...} ...)
 <h3>Behavior of NoIndexScan</h3>
 <dd>NoIndexScan hint involes NoIndexOnlyScan.</dd>
 
-<h3>Parallel vs Scan hints</h3>
-<dd>Scan hints also affect building partial paths. Since parallel
-paths are currently consists of partial sequential scans, inhibiting
-seqscan beats parallel hint on the same relation.</dd>
-
 <h3>Parallel hint and UNION</h3>
 <dd>A UNION can run in parallel only when all underlying subqueries
 are parallel-safe. Conversely enforcing parallel on any of
 the subqueries let a parallel-executable UNION run in
-parallel. Meanwhile, a parallel hint with zero workers makes a scan
-parallel-inexecutable.</dd>
+parallel. Meanwhile, a parallel hint with zero workers hinhibits a scan
+from executed in parallel.</dd>
 
 <h3>Setting pg_hint_plan parameters by Set hints</h3>
 <dd><p>pg_hint_plan paramters change the behavior of itself so some parameters doesn't work as expected.</p>
