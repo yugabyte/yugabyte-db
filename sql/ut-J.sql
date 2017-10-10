@@ -743,6 +743,17 @@ EXPLAIN (COSTS false) SELECT * FROM s1.p1, s1.p2 WHERE p1.c1 = p2.c1;
 EXPLAIN (COSTS false) SELECT * FROM s1.p1, s1.p2 WHERE p1.c1 = p2.c1;
 
 ----
+---- No. J-3-2-2 join partitioned tables
+----
+EXPLAIN (COSTS false) SELECT * FROM s1.pt1, s1.p2 WHERE pt1.c1 = p2.c1;
+
+/*+MergeJoin(pt1 p2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.pt1, s1.p2 WHERE pt1.c1 = p2.c1;
+
+/*+MergeJoin(pt1_c1 p2c1)*/ /* will ignored */
+EXPLAIN (COSTS false) SELECT * FROM s1.pt1, s1.p2 WHERE pt1.c1 = p2.c1;
+
+----
 ---- No. J-3-3 conflict join method hint
 ----
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;

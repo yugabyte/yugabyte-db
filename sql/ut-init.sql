@@ -44,6 +44,7 @@ CREATE TABLE s1.p2c2c1 (LIKE s1.p2c2 INCLUDING ALL, CHECK (c1 > 100 AND c1 <= 15
 CREATE TABLE s1.p2c2c2 (LIKE s1.p2c2 INCLUDING ALL, CHECK (c1 > 150 AND c1 <= 200)) INHERITS(s1.p2c2);
 CREATE TABLE s1.p2c3c1 (LIKE s1.p2c3 INCLUDING ALL, CHECK (c1 > 200 AND c1 <= 250)) INHERITS(s1.p2c3);
 CREATE TABLE s1.p2c3c2 (LIKE s1.p2c3 INCLUDING ALL, CHECK (c1 > 250)) INHERITS(s1.p2c3);
+
 CREATE TABLE s1.r1 (LIKE s1.t1);
 CREATE TABLE s1.r2 (LIKE s1.t1);
 CREATE TABLE s1.r3 (LIKE s1.t1);
@@ -53,6 +54,10 @@ CREATE TABLE s1.r1_ (LIKE s1.t1);
 CREATE TABLE s1.r2_ (LIKE s1.t1);
 CREATE TABLE s1.r3_ (LIKE s1.t1);
 CREATE TABLE s1.ti1 (c1 int, c2 int, c3 int, c4 text, PRIMARY KEY (c1), UNIQUE (c2));
+CREATE TABLE s1.pt1 (c1 int, c2 int, c3 int, c4 int) PARTITION BY RANGE (c1);
+CREATE TABLE s1.pt1_c1 PARTITION OF s1.pt1 FOR VALUES FROM (MINVALUE) TO (101);
+CREATE TABLE s1.pt1_c2 PARTITION OF s1.pt1 FOR VALUES FROM (101) TO (201);
+CREATE TABLE s1.pt1_c3 PARTITION OF s1.pt1 FOR VALUES FROM (201) TO (MAXVALUE);
 CREATE UNLOGGED TABLE s1.ul1 (LIKE s1.t1 INCLUDING ALL);
 
 INSERT INTO s1.t1 SELECT i, i, i % 100, i FROM (SELECT generate_series(1, 1000) i) t;
@@ -68,7 +73,7 @@ INSERT INTO s1.p2c2c2 SELECT i, i, i % 10, i FROM (SELECT generate_series(151, 2
 INSERT INTO s1.p2c3c1 SELECT i, i, i % 10, i FROM (SELECT generate_series(201, 250) i) t;
 INSERT INTO s1.p2c3c2 SELECT i, i, i % 10, i FROM (SELECT generate_series(251, 300) i) t;
 INSERT INTO s1.ti1 SELECT i, i, i % 100, i FROM (SELECT generate_series(1, 1000) i) t;
-
+INSERT INTO s1.pt1 SELECT i, i, i % 10, i FROM (SELECT generate_series(0, 300) i) t;
 
 CREATE INDEX t1_i ON s1.t1 (c3);
 CREATE INDEX t1_i1 ON s1.t1 (c1);
@@ -103,6 +108,12 @@ CREATE INDEX ti1_pred  ON s1.ti1 (lower(c4));
 CREATE UNIQUE INDEX ti1_uniq ON s1.ti1 (c1);
 CREATE INDEX ti1_multi ON s1.ti1 (c1, c2, c3, c4);
 CREATE INDEX ti1_ts    ON s1.ti1 USING gin(to_tsvector('english', c4));
+CREATE INDEX pt1_c1_c2_i ON s1.pt1_c1(c2);
+CREATE INDEX pt1_c1_c3_i ON s1.pt1_c1(c3);
+CREATE INDEX pt1_c2_c2_i ON s1.pt1_c2(c2);
+CREATE INDEX pt1_c2_c3_i ON s1.pt1_c2(c3);
+CREATE INDEX pt1_c3_c2_i ON s1.pt1_c3(c2);
+CREATE INDEX pt1_c3_c3_i ON s1.pt1_c3(c3);
 
 CREATE VIEW s1.v1 AS SELECT v1t1.c1, v1t1.c2, v1t1.c3, v1t1.c4 FROM s1.t1 v1t1;
 CREATE VIEW s1.v1_ AS SELECT v1t1_.c1, v1t1_.c2, v1t1_.c3, v1t1_.c4 FROM s1.t1 v1t1_;
@@ -124,6 +135,7 @@ ANALYZE s1.p2c2c2;
 ANALYZE s1.p2c3c1;
 ANALYZE s1.p2c3c2;
 ANALYZE s1.ti1;
+ANALYZE s1.pt1;
 
 CREATE FUNCTION s1.f1 () RETURNS s1.t1 AS $$
 VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')
