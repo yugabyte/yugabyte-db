@@ -5,7 +5,7 @@
 #
 
 MODULES = pg_hint_plan
-HINTPLANVER = 1.2.0
+HINTPLANVER = 1.3.0
 
 REGRESS = init base_plan pg_hint_plan ut-init ut-A ut-S ut-J ut-L ut-G ut-R ut-fdw ut-W ut-T ut-fini
 
@@ -14,7 +14,7 @@ REGRESSION_EXPECTED = expected/init.out expected/base_plan.out expected/pg_hint_
 REGRESS_OPTS = --encoding=UTF8
 
 EXTENSION = pg_hint_plan
-DATA = pg_hint_plan--1.2.0.sql pg_hint_plan--1.1.3--1.2.0.sql
+DATA = pg_hint_plan--1.3.0.sql
 
 EXTRA_CLEAN = sql/ut-fdw.sql expected/ut-fdw.out RPMS
 
