@@ -14,31 +14,35 @@
 set -euo pipefail
 
 code_root=/home/centos/code/
-itest_yw_repo="$code_root"/yugaware
-itest_devops_repo="$code_root"/devops
+ptest_yw_repo="$code_root"/yugaware
+ptest_devops_repo="$code_root"/devops
 
-if [ ! -d "$itest_yw_repo" ]; then
+if [ ! -d "$ptest_yw_repo" ]; then
   cd $code_root
   git clone git@bitbucket.org:yugabyte/yugaware.git
 fi
 
-if [ ! -d "$itest_devops_repo" ]; then
+if [ ! -d "$ptest_devops_repo" ]; then
   cd $code_root
   git clone git@bitbucket.org:yugabyte/devops.git
 fi
 
-export DEVOPS_HOME=$itest_devops_repo
+export DEVOPS_HOME=$ptest_devops_repo
 
-cd $itest_devops_repo
+cd $ptest_yw_repo
+git stash
+git checkout master
+git pull --rebase
+
+cd $ptest_devops_repo
 git stash
 git checkout master
 git pull --rebase
 cd bin
+# This should be the last step before starting the actual workload.
 ./install_python_requirements.sh
 
-cd $itest_yw_repo
-git stash
-git checkout master
-git pull --rebase
+"$ptest_yw_repo"/perf_itest --run_time 60 --run_all_workload_combos --notify
 
-"$itest_yw_repo"/perf_itest --run_all_workload_combos --notify
+# Run all workloads, for 90sec each, on a GCP cluster and do not delete it after the workloads end.
+#"$ptest_yw_repo"/perf_itest --run_time 90 --run_all_workload_combos --keep_created_universe --perf_test_provider gcp
