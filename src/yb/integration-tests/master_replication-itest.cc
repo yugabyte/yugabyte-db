@@ -67,8 +67,6 @@ const YBTableName kTableName2(kKeyspaceName, "testMasterReplication-2");
 
 const int kNumTabletServerReplicas = 3;
 
-DECLARE_bool(create_cluster);
-
 class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
   MasterReplicationTest() {
@@ -96,8 +94,6 @@ class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
     LOG(INFO) << "Sleeping for "  << micros << " micro seconds...";
     SleepFor(MonoDelta::FromMicroseconds(micros));
     LOG(INFO) << "Attempting to start the cluster...";
-    // Set flag to mark we are restarting the cluster, rather than recreating it.
-    FLAGS_create_cluster = false;
     CHECK_OK(cluster_->Start());
     CHECK_OK(cluster_->WaitForTabletServerCount(kNumTabletServerReplicas));
   }
@@ -152,15 +148,11 @@ class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
 
     // Restart the first master successfully.
     auto* first_master = cluster_->mini_master(0);
-    LOG(INFO) << "---------------------------------> " << FLAGS_create_cluster;
     CHECK_OK(first_master->Restart());
     // Shutdown the master.
     first_master->Shutdown();
-    // Set the create flag on so we mimic a re-create issued on a node with data.
-    first_master->SetIsCreatingForFailureTesting(true);
-    // Start it back up as if creating it, rather than normal restart and expect failure.
-    Status s = first_master->Start();
-    ASSERT_TRUE(s.IsIllegalState()) << s.ToString();
+    // Normal start call should also work fine (and just reload the sys catalog.
+    CHECK_OK(first_master->Start());
   }
 
  protected:
@@ -170,8 +162,7 @@ class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
 
 TEST_F(MasterReplicationTest, TestMasterClusterCreate) {
   DontVerifyClusterBeforeNextTearDown();
-  // We want to confirm that the cluster starts properly and fails if you restart it with the
-  // create_cluster flag on.
+  // We want to confirm that the cluster starts properly and fails if you restart it.
   VerifyMasterRestart();
 }
 

@@ -88,12 +88,6 @@ class MiniMaster {
 
   std::string bound_rpc_addr_str() const;
 
-  // This class is essentially the driver for starting up masters properly. As such, it handles
-  // Start and Restart properly by knowing if there is state. That is provided by the MiniCluster
-  // class, that is essentially the driver for the whole cluster. If we want to fake a mistake, we
-  // need a setter for the is_creating_ field.
-  void SetIsCreatingForFailureTesting(bool is_creating) { is_creating_ = is_creating; }
-
   size_t NumSystemTables() const;
 
  private:
@@ -106,7 +100,6 @@ class MiniMaster {
                       MasterOptions* options);
 
   bool running_;
-  bool is_creating_;
 
   ATTRIBUTE_MEMBER_UNUSED Env* const env_;
   const std::string fs_root_;
