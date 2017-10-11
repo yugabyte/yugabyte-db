@@ -15,6 +15,8 @@
 #ifndef YB_CQLSERVER_CQL_RPC_H
 #define YB_CQLSERVER_CQL_RPC_H
 
+#include <atomic>
+
 #include "yb/cqlserver/cql_message.h"
 
 #include "yb/rpc/connection.h"
@@ -97,7 +99,11 @@ class CQLInboundCall : public rpc::InboundCall {
   void GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb);
   void SetRequest(std::shared_ptr<const CQLRequest> request, CQLServiceImpl* service_impl) {
     service_impl_ = service_impl;
+#ifdef THREAD_SANITIZER
+    request_ = request;
+#else
     std::atomic_store_explicit(&request_, request, std::memory_order_release);
+#endif
   }
 
  private:
