@@ -182,8 +182,8 @@ TEST(PrimitiveValueTest, TestRoundTrip) {
 }
 
 TEST(PrimitiveValueTest, TestEncoding) {
-  TestEncoding(R"#("$foo\x00\x00")#", PrimitiveValue("foo"));
-  TestEncoding(R"#("$foo\x00\x01bar\x01\x00\x00")#", PrimitiveValue(string("foo\0bar\x01", 8)));
+  TestEncoding(R"#("Sfoo\x00\x00")#", PrimitiveValue("foo"));
+  TestEncoding(R"#("Sfoo\x00\x01bar\x01\x00\x00")#", PrimitiveValue(string("foo\0bar\x01", 8)));
   TestEncoding(R"#("I\x80\x00\x00\x00\x00\x00\x00{")#", PrimitiveValue(123L));
   TestEncoding(R"#("I\x00\x00\x00\x00\x00\x00\x00\x00")#",
       PrimitiveValue(std::numeric_limits<int64_t>::min()));

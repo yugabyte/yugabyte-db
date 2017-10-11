@@ -72,79 +72,9 @@ Status Token(const vector<PTypePtr>& params, RTypePtr result) {
   for (int i = 0; i < params.size(); i++) {
     const PTypePtr& param = params[i];
     bool is_last = i == params.size() - 1;
-    switch (param->type()) {
-      case InternalType::kInt8Value: {
-        YBPartition::AppendIntToKey<int8, uint8>(param->int8_value(), &encoded_key);
-        break;
-      }
-      case InternalType::kInt16Value: {
-        YBPartition::AppendIntToKey<int16, uint16>(param->int16_value(), &encoded_key);
-        break;
-      }
-      case InternalType::kInt32Value: {
-        YBPartition::AppendIntToKey<int32, uint32>(param->int32_value(), &encoded_key);
-        break;
-      }
-      case InternalType::kInt64Value: {
-        YBPartition::AppendIntToKey<int64, uint64>(param->int64_value(), &encoded_key);
-        break;
-      }
-      case InternalType::kTimestampValue: {
-        YBPartition::AppendIntToKey<int64, uint64>(param->timestamp_value().value(), &encoded_key);
-        break;
-      }
-
-      case InternalType::kStringValue: {
-        string val = param->string_value();
-        YBPartition::AppendBytesToKey(val.c_str(), val.length(), is_last, &encoded_key);
-        break;
-      }
-      case InternalType::kUuidValue: {
-        string val;
-        RETURN_NOT_OK(param->uuid_value().ToBytes(&val));
-        YBPartition::AppendBytesToKey(val.c_str(), val.length(), is_last, &encoded_key);
-        break;
-      }
-      case InternalType::kTimeuuidValue: {
-        string val;
-        RETURN_NOT_OK(param->timeuuid_value().ToBytes(&val));
-        YBPartition::AppendBytesToKey(val.c_str(), val.length(), is_last, &encoded_key);
-        break;
-      }
-      case InternalType::kInetaddressValue: {
-        string val;
-        RETURN_NOT_OK(param->inetaddress_value().ToBytes(&val));
-        YBPartition::AppendBytesToKey(val.c_str(), val.length(), is_last, &encoded_key);
-        break;
-      }
-      case InternalType::kDecimalValue: {
-        string val = param->decimal_value();
-        YBPartition::AppendBytesToKey(val.c_str(), val.length(), is_last, &encoded_key);
-        break;
-      }
-      case InternalType::kBinaryValue: {
-        string val = param->binary_value();
-        YBPartition::AppendBytesToKey(val.c_str(), val.length(), is_last, &encoded_key);
-        break;
-      }
-      case InternalType::kFrozenValue: {
-        string val = param->frozen_value();
-        YBPartition::AppendBytesToKey(val.c_str(), val.length(), is_last, &encoded_key);
-        break;
-      }
-      case InternalType::kBoolValue: FALLTHROUGH_INTENDED;
-      case InternalType::kFloatValue: FALLTHROUGH_INTENDED;
-      case InternalType::kDoubleValue: FALLTHROUGH_INTENDED;
-      case InternalType::kVarintValue: FALLTHROUGH_INTENDED;
-      case InternalType::kMapValue: FALLTHROUGH_INTENDED;
-      case InternalType::kSetValue: FALLTHROUGH_INTENDED;
-      case InternalType::kListValue: FALLTHROUGH_INTENDED;
-      case InternalType::VALUE_NOT_SET:
-        LOG(FATAL) << "Runtime error: This datatype("
-                   << int(param->type())
-                   << ") is not supported in hash key";
-    }
+    RETURN_NOT_OK(param->AppendToKeyBytes(is_last, &encoded_key));
   }
+
   uint16_t hash = YBPartition::HashColumnCompoundValue(encoded_key);
   // Convert to CQL hash since this may be used in expressions above.
   result->set_int64_value(YBPartition::YBToCqlHashCode(hash));

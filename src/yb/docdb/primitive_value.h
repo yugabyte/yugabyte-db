@@ -69,6 +69,9 @@ class PrimitiveValue {
     } else if (other.type_ == ValueType::kUuid || other.type_ == ValueType::kUuidDescending) {
       type_ = other.type_;
       new(&uuid_val_) Uuid(std::move((other.uuid_val_)));
+    } else if (other.type_ == ValueType::kFrozen || other.type_ == ValueType::kFrozenDescending ) {
+      type_ = other.type_;
+      frozen_val_ = new FrozenContainer(*(other.frozen_val_));
     } else {
       memmove(this, &other, sizeof(PrimitiveValue));
     }
@@ -173,16 +176,16 @@ class PrimitiveValue {
 
   // Construct a primitive value from a QLValuePB.
   static PrimitiveValue FromQLValuePB(const QLValuePB& value,
-                                       ColumnSchema::SortingType sorting_type);
+                                      ColumnSchema::SortingType sorting_type);
 
   // Set a primitive value in a QLValuePB.
   static void ToQLValuePB(const PrimitiveValue& pv,
-                           const std::shared_ptr<QLType>& ql_type,
-                           QLValuePB* ql_val);
+                          const std::shared_ptr<QLType>& ql_type,
+                          QLValuePB* ql_val);
 
   // Construct a primitive value from a QLExpressionPB.
   static PrimitiveValue FromQLExpressionPB(const QLExpressionPB& ql_expr,
-                                            ColumnSchema::SortingType sorting_type);
+                                           ColumnSchema::SortingType sorting_type);
 
   // Set a primitive value in a QLExpressionPB.
   static void ToQLExpressionPB(const PrimitiveValue& pv,
@@ -205,6 +208,8 @@ class PrimitiveValue {
       delete inetaddress_val_;
     } else if (type_ == ValueType::kDecimal || type_ == ValueType::kDecimalDescending) {
       decimal_val_.~basic_string();
+    } else if (type_ == ValueType::kFrozen) {
+      delete frozen_val_;
     }
     // HybridTime does not need its destructor to be called, because it is a simple wrapper over an
     // unsigned 64-bit integer.
@@ -338,6 +343,7 @@ class PrimitiveValue {
   void SetWritetime(const int64_t write_time) {
     write_time_ = write_time;
   }
+  typedef std::vector<PrimitiveValue> FrozenContainer;
 
  protected:
 
@@ -359,6 +365,7 @@ class PrimitiveValue {
     Timestamp timestamp_val_;
     InetAddress* inetaddress_val_;
     Uuid uuid_val_;
+    FrozenContainer* frozen_val_;
     // This is used in SubDocument to hold a pointer to a map or a vector.
     void* complex_data_structure_;
     ColumnId column_id_val_;
@@ -374,7 +381,8 @@ class PrimitiveValue {
       return;
     }
 
-    if (other->type_ == ValueType::kString || other->type_ == ValueType::kStringDescending) {
+    if (other->type_ == ValueType::kString ||
+        other->type_ == ValueType::kStringDescending) {
       type_ = other->type_;
       new(&str_val_) std::string(std::move(other->str_val_));
       // The moved-from object should now be in a "valid but unspecified" state as per the standard.
@@ -389,6 +397,9 @@ class PrimitiveValue {
     } else if (other->type_ == ValueType::kUuid || other->type_ == ValueType::kUuidDescending) {
       type_ = other->type_;
       new(&uuid_val_) Uuid(std::move((other->uuid_val_)));
+    } else if (other->type_ == ValueType::kFrozen) {
+      type_ = other->type_;
+      frozen_val_ = new FrozenContainer(std::move(*(other->frozen_val_)));
     } else {
       // Non-string primitive values only have plain old data. We are assuming there is no overlap
       // between the two objects, so we're using memcpy instead of memmove.

@@ -24,8 +24,10 @@ namespace docdb {
 string ToString(ValueType value_type) {
   switch (value_type) {
     case ValueType::kGroupEnd: return "GroupEnd";
+    case ValueType::kGroupEndDescending: return "GroupEndDescending";
     case ValueType::kIntentPrefix: return "IntentPrefix";
     case ValueType::kNull: return "Null";
+    case ValueType::kNullDescending: return "NullDescending";
     case ValueType::kFalse: return "False";
     case ValueType::kTrue: return "True";
     case ValueType::kStringDescending: return "StringDescending";
@@ -38,6 +40,8 @@ string ToString(ValueType value_type) {
     case ValueType::kDoubleDescending: return "DoubleDescending";
     case ValueType::kFloat: return "Float";
     case ValueType::kFloatDescending: return "FloatDescending";
+    case ValueType::kFrozen: return "Frozen";
+    case ValueType::kFrozenDescending: return "FrozenDescending";
     case ValueType::kDecimalDescending: return "DecimalDescending";
     case ValueType::kDecimal: return "Decimal";
     case ValueType::kTimestampDescending: return "TimestampDescending";

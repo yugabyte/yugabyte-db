@@ -311,21 +311,17 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstUuid *const_pt, QLValuePB *cons
   return Status::OK();
 }
 
-
 CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_pb) {
-  auto ql_type = const_pt->ql_type();
-  if (ql_type->IsFrozen()) {
-    ql_type = ql_type->param_type(0);
-  }
-
-  switch (ql_type->main()) {
+  switch (const_pt->ql_type()->main()) {
     case MAP: {
       QLValue::set_map_value(const_pb);
+
       for (auto &key : const_pt->keys()) {
         // Expect key to be constant because CQL only allows collection of constants.
         QLValuePB *key_pb = QLValue::add_map_key(const_pb);
         RETURN_NOT_OK(PTConstToPB(key, key_pb));
       }
+
       for (auto &value : const_pt->values()) {
         // Expect value to be constant because CQL only allows collection of constants.
         QLValuePB *value_pb = QLValue::add_map_value(const_pb);
@@ -336,6 +332,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB 
 
     case SET: {
       QLValue::set_set_value(const_pb);
+
       for (auto &elem : const_pt->values()) {
         // Expected elem to be constant because CQL only allows collection of constants.
         QLValuePB *elem_pb = QLValue::add_set_elem(const_pb);
@@ -371,15 +368,78 @@ CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB 
       break;
     }
 
-    default:
-      LOG(FATAL) << "Illegal datatype conversion";
-  }
+    case FROZEN: {
+      // For frozen types we need to do the de-duplication and ordering at the QL level since we
+      // serialize it here already.
+      QLValue::set_frozen_value(const_pb);
 
-  if (const_pt->ql_type()->IsFrozen()) {
-    faststring enc_bytes;
-    QLValueWithPB(*const_pb).Serialize(ql_type, YQL_CLIENT_CQL, &enc_bytes);
-    // skipping length
-    const_pb->set_frozen_value(enc_bytes.c_str() + 4, enc_bytes.size() - 4);
+      switch (const_pt->ql_type()->param_type(0)->main()) {
+        case MAP: {
+          std::map<QLValuePB, QLValuePB> map_values;
+          auto keys_it = const_pt->keys().begin();
+          auto values_it = const_pt->values().begin();
+          while (keys_it != const_pt->keys().end() && values_it != const_pt->values().end()) {
+            QLValuePB key_pb;
+            RETURN_NOT_OK(PTConstToPB(*keys_it, &key_pb));
+            RETURN_NOT_OK(PTConstToPB(*values_it, &map_values[key_pb]));
+            keys_it++;
+            values_it++;
+          }
+
+          for (const auto &pair : map_values) {
+            QLValuePB *key_pb = QLValue::add_frozen_elem(const_pb);
+            key_pb->CopyFrom(pair.first);
+            QLValuePB *value_pb = QLValue::add_frozen_elem(const_pb);
+            value_pb->CopyFrom(pair.second);
+          }
+          break;
+        }
+
+        case SET: {
+          std::set<QLValuePB> set_values;
+          for (const auto &elem : const_pt->values()) {
+            QLValuePB elem_pb;
+            RETURN_NOT_OK(PTConstToPB(elem, &elem_pb));
+            set_values.insert(elem_pb);
+          }
+
+          for (const auto &elem : set_values) {
+            QLValuePB *elem_pb = QLValue::add_frozen_elem(const_pb);
+            elem_pb->CopyFrom(elem);
+          }
+          break;
+        }
+
+        case LIST: {
+          for (auto &elem : const_pt->values()) {
+            // Expected elem to be constant because CQL only allows collection of constants.
+            QLValuePB *elem_pb = QLValue::add_frozen_elem(const_pb);
+            RETURN_NOT_OK(PTConstToPB(elem, elem_pb));
+          }
+          break;
+        }
+
+        case USER_DEFINED_TYPE: {
+          // Internally UDTs are maps with field names as keys
+          auto field_values = const_pt->udtype_field_values();
+          for (int i = 0; i < field_values.size(); i++) {
+            QLValuePB *value_pb = QLValue::add_frozen_elem(const_pb);
+            if (field_values[i] != nullptr) {
+              // Expect value to be constant because CQL only allows collection of constants.
+              RETURN_NOT_OK(PTConstToPB(field_values[i], value_pb));
+            }
+          }
+          break;
+        }
+
+        default:
+          FATAL_INVALID_ENUM_VALUE(DataType, const_pt->ql_type()->param_type(0)->main());
+      }
+      break;
+    }
+
+    default:
+      FATAL_INVALID_ENUM_VALUE(DataType, const_pt->ql_type()->main());
   }
 
   return Status::OK();

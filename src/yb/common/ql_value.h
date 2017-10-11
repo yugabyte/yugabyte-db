@@ -19,11 +19,12 @@
 #include <stdint.h>
 
 #include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_type.h"
 #include "yb/util/decimal.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/timestamp.h"
-#include "yb/common/ql_type.h"
 #include "yb/util/uuid.h"
+#include "yb/util/yb_partition.h"
 
 namespace yb {
 
@@ -63,10 +64,10 @@ class QLValue {
   virtual Timestamp timestamp_value() const = 0;
   virtual const std::string& binary_value() const = 0;
   virtual InetAddress inetaddress_value() const = 0;
-  virtual const QLMapValuePB map_value() const = 0;
-  virtual const QLSeqValuePB set_value() const = 0;
-  virtual const QLSeqValuePB list_value() const = 0;
-  virtual const std::string& frozen_value() const = 0;
+  virtual const QLMapValuePB& map_value() const = 0;
+  virtual const QLSeqValuePB& set_value() const = 0;
+  virtual const QLSeqValuePB& list_value() const = 0;
+  virtual const QLSeqValuePB& frozen_value() const = 0;
   virtual Uuid uuid_value() const = 0;
   virtual Uuid timeuuid_value() const = 0;
 
@@ -95,18 +96,20 @@ class QLValue {
   virtual std::string* mutable_decimal_value() = 0;
   virtual std::string* mutable_string_value() = 0;
   virtual std::string* mutable_binary_value() = 0;
-  virtual std::string* mutable_frozen_value() = 0;
 
   // for collections the setters just allocate the message and set the correct value type
   virtual void set_map_value() = 0;
   virtual void set_set_value() = 0;
   virtual void set_list_value() = 0;
+  virtual void set_frozen_value() = 0;
+
   // the `add_foo` methods append a new element to the corresponding collection and return a pointer
   // so that its value can be set by the caller
   virtual QLValuePB* add_map_key() = 0;
   virtual QLValuePB* add_map_value() = 0;
   virtual QLValuePB* add_set_elem() = 0;
   virtual QLValuePB* add_list_elem() = 0;
+  virtual QLValuePB* add_frozen_elem() = 0;
 
   //----------------------------------- assignment methods ----------------------------------
   QLValue& operator=(const QLValuePB& other) {
@@ -143,7 +146,7 @@ class QLValue {
   virtual void Serialize(const std::shared_ptr<QLType>& ql_type,
                          const QLClient& client,
                          faststring* buffer) const;
-  virtual CHECKED_STATUS Deserialize(const std::shared_ptr<QLType>& ql_type,
+  virtual CHECKED_STATUS Deserialize(const std::shared_ptr<QLType>& type,
                                      const QLClient& client,
                                      Slice* data);
 
@@ -197,19 +200,19 @@ class QLValue {
     CHECK(v.has_binary_value());
     return v.binary_value();
   }
-  static QLMapValuePB map_value(const QLValuePB& v) {
+  static const QLMapValuePB& map_value(const QLValuePB& v) {
     CHECK(v.has_map_value());
     return v.map_value();
   }
-  static QLSeqValuePB set_value(const QLValuePB& v) {
+  static const QLSeqValuePB& set_value(const QLValuePB& v) {
     CHECK(v.has_set_value());
     return v.set_value();
   }
-  static QLSeqValuePB list_value(const QLValuePB& v) {
+  static const QLSeqValuePB& list_value(const QLValuePB& v) {
     CHECK(v.has_list_value());
     return v.list_value();
   }
-  static const std::string& frozen_value(const QLValuePB& v) {
+  static const QLSeqValuePB& frozen_value(const QLValuePB& v) {
     CHECK(v.has_frozen_value());
     return v.frozen_value();
   }
@@ -237,6 +240,10 @@ class QLValue {
   }
 
 #undef QL_GET_VALUE
+
+  // TODO (Mihnea) the 'is_last' parameter should be removed entirely in a follow-up commit.
+  static CHECKED_STATUS AppendToKeyBytes(const QLValuePB &value_pb, bool is_last, string *bytes);
+  virtual CHECKED_STATUS AppendToKeyBytes(bool is_last, string *bytes) const = 0;
 
   //----------------------------------- set value methods -----------------------------------
   // Set different datatype values.
@@ -286,13 +293,13 @@ class QLValue {
   static void set_binary_value(const void* val, const size_t size, QLValuePB *v) {
     v->set_binary_value(static_cast<const char *>(val), size);
   }
-  static void set_frozen_value(const std::string& val, QLValuePB *v) { v->set_frozen_value(val); }
 
   // For collections, the call to `mutable_foo` takes care of setting the correct type to `foo`
   // internally and allocating the message if needed
   static void set_map_value(QLValuePB *v) {v->mutable_map_value();}
   static void set_set_value(QLValuePB *v) {v->mutable_set_value();}
   static void set_list_value(QLValuePB *v) {v->mutable_list_value();}
+  static void set_frozen_value(QLValuePB *v) { v->mutable_frozen_value(); }
 
   // To extend/construct collections we return freshly allocated elements for the caller to set.
   static QLValuePB* add_map_key(QLValuePB *v) {
@@ -307,12 +314,14 @@ class QLValue {
   static QLValuePB* add_list_elem(QLValuePB *v) {
     return v->mutable_list_value()->add_elems();
   }
+  static QLValuePB* add_frozen_elem(QLValuePB *v) {
+    return v->mutable_frozen_value()->add_elems();
+  }
 
   //--------------------------------- mutable value methods ----------------------------------
   static std::string* mutable_decimal_value(QLValuePB *v) { return v->mutable_decimal_value(); }
   static std::string* mutable_string_value(QLValuePB *v) { return v->mutable_string_value(); }
   static std::string* mutable_binary_value(QLValuePB *v) { return v->mutable_binary_value(); }
-  static std::string* mutable_frozen_value(QLValuePB *v) { return v->mutable_frozen_value(); }
 
   //----------------------------------- comparison methods -----------------------------------
   static bool Comparable(const QLValuePB& lhs, const QLValuePB& rhs) {
@@ -325,6 +334,7 @@ class QLValue {
     return IsNull(lhs) || IsNull(rhs);
   }
   static int CompareTo(const QLValuePB& lhs, const QLValuePB& rhs);
+  static int CompareTo(const QLSeqValuePB& lhs, const QLSeqValuePB& rhs);
 
   static bool Comparable(const QLValuePB& lhs, const QLValue& rhs) {
     return type(lhs) == rhs.type() || EitherIsNull(lhs, rhs);
@@ -396,6 +406,10 @@ class QLValueWithPB : public QLValue, public QLValuePB {
   const QLValuePB& value() const { return *static_cast<const QLValuePB*>(this); }
   QLValuePB* mutable_value() { return static_cast<QLValuePB*>(this); }
 
+  virtual CHECKED_STATUS AppendToKeyBytes(bool is_last, string *bytes) const override {
+    return QLValue::AppendToKeyBytes(value(), is_last, bytes);
+  }
+
   //------------------------------------ Nullness methods -----------------------------------
   virtual bool IsNull() const override { return QLValue::IsNull(value()); }
   virtual void SetNull() override { QLValue::SetNull(mutable_value()); }
@@ -419,12 +433,13 @@ class QLValueWithPB : public QLValue, public QLValuePB {
   virtual InetAddress inetaddress_value() const override {
     return QLValue::inetaddress_value(value());
   }
-  virtual const QLMapValuePB map_value() const override { return QLValue::map_value(value()); }
-  virtual const QLSeqValuePB set_value() const override { return QLValue::set_value(value()); }
-  virtual const QLSeqValuePB list_value() const override { return QLValue::list_value(value()); }
-  virtual const std::string& frozen_value() const override {
+  virtual const QLMapValuePB& map_value() const override { return QLValue::map_value(value()); }
+  virtual const QLSeqValuePB& set_value() const override { return QLValue::set_value(value()); }
+  virtual const QLSeqValuePB& list_value() const override { return QLValue::list_value(value()); }
+  virtual const QLSeqValuePB& frozen_value() const override {
     return QLValue::frozen_value(value());
   }
+
   virtual Uuid uuid_value() const override { return QLValue::uuid_value(value()); }
   virtual Uuid timeuuid_value() const override { return QLValue::timeuuid_value(value()); }
 
@@ -492,6 +507,9 @@ class QLValueWithPB : public QLValue, public QLValuePB {
   virtual void set_list_value() override {
     QLValue::set_list_value(mutable_value());
   }
+  virtual void set_frozen_value() override {
+    QLValue::set_frozen_value(mutable_value());
+  }
   virtual QLValuePB* add_map_key() override {
     return QLValue::add_map_key(mutable_value());
   }
@@ -504,6 +522,9 @@ class QLValueWithPB : public QLValue, public QLValuePB {
   virtual QLValuePB* add_list_elem() override {
     return QLValue::add_list_elem(mutable_value());
   }
+  virtual QLValuePB* add_frozen_elem() override {
+    return QLValue::add_frozen_elem(mutable_value());
+  }
 
   //--------------------------------- mutable value methods ---------------------------------
   virtual std::string* mutable_decimal_value() override {
@@ -514,9 +535,6 @@ class QLValueWithPB : public QLValue, public QLValuePB {
   }
   virtual std::string* mutable_binary_value() override {
     return QLValue::mutable_binary_value(mutable_value());
-  }
-  virtual std::string* mutable_frozen_value() override {
-    return QLValue::mutable_frozen_value(mutable_value());
   }
 
   //----------------------------------- assignment methods ----------------------------------

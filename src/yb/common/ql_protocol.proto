@@ -44,8 +44,7 @@ message QLValuePB {
     QLSeqValuePB list_value = 14;
     bytes decimal_value = 15;
     bytes varint_value = 16;
-    // raw bytes for frozen collections
-    bytes frozen_value = 17;
+    QLSeqValuePB frozen_value = 17;
     // raw bytes for uuid value.
     bytes uuid_value = 18;
     // raw bytes for timeuuid value.

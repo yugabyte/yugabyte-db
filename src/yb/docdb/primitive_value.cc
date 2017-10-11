@@ -44,6 +44,7 @@ using yb::util::FastDecodeSignedVarInt;
 #define IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH \
     case ValueType::kArray: FALLTHROUGH_INTENDED; \
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED; \
+    case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED; \
     case ValueType::kIntentPrefix: FALLTHROUGH_INTENDED; \
     case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED; \
     case ValueType::kObject: FALLTHROUGH_INTENDED; \
@@ -78,6 +79,7 @@ string DoubleToString(T val) {
 
 string PrimitiveValue::ToString() const {
   switch (type_) {
+    case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
     case ValueType::kNull:
       return "null";
     case ValueType::kFalse:
@@ -86,7 +88,7 @@ string PrimitiveValue::ToString() const {
       return "true";
     case ValueType::kInvalidValueType:
       return "invalid";
-    case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kStringDescending:
     case ValueType::kString:
       return FormatBytesAsStr(str_val_);
     case ValueType::kInt32Descending: FALLTHROUGH_INTENDED;
@@ -99,6 +101,22 @@ string PrimitiveValue::ToString() const {
     case ValueType::kFloat:
       return FloatToString(float_val_);
     case ValueType::kDoubleDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kFrozenDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kFrozen: {
+      std::stringstream ss;
+      bool first = true;
+      ss << "<";
+      for (const auto& pv : *frozen_val_) {
+        if (first) {
+          first = false;
+        } else {
+          ss << ",";
+        }
+        ss << pv.ToString();
+      }
+      ss << ">";
+      return ss.str();
+    }
     case ValueType::kDouble:
       return DoubleToString(double_val_);
     case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
@@ -144,6 +162,7 @@ string PrimitiveValue::ToString() const {
       return Substitute("Intent($0)", docdb::ToString(static_cast<enum IntentType>(uint16_val_)));
 
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
+    case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
     case ValueType::kIntentPrefix:
       break;
@@ -160,6 +179,7 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
   switch (type_) {
     case ValueType::kLowest: return;
     case ValueType::kHighest: return;
+    case ValueType::kNullDescending: return;
     case ValueType::kNull: return;
     case ValueType::kFalse: return;
     case ValueType::kTrue: return;
@@ -203,6 +223,19 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
     case ValueType::kFloatDescending:
       key_bytes->AppendDescendingFloat(float_val_);
       return;
+
+    case ValueType::kFrozenDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kFrozen: {
+      for (const auto& pv : *frozen_val_) {
+        pv.AppendToKey(key_bytes);
+      }
+      if (type_ == ValueType::kFrozenDescending) {
+        key_bytes->AppendValueType(ValueType::kGroupEndDescending);
+      } else {
+        key_bytes->AppendValueType(ValueType::kGroupEnd);
+      }
+      return;
+    }
 
     case ValueType::kDecimal:
       key_bytes->AppendDecimal(decimal_val_);
@@ -279,6 +312,7 @@ string PrimitiveValue::ToValue() const {
   string result;
   result.push_back(static_cast<char>(type_));
   switch (type_) {
+    case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
     case ValueType::kNull: FALLTHROUGH_INTENDED;
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
     case ValueType::kTrue: FALLTHROUGH_INTENDED;
@@ -323,6 +357,22 @@ string PrimitiveValue::ToValue() const {
       AppendBigEndianUInt32(int32_val_, &result);
       return result;
 
+    case ValueType::kFrozenDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kFrozen: {
+      KeyBytes key(result);
+      for (const auto &pv : *frozen_val_) {
+        pv.AppendToKey(&key);
+      }
+
+      // Still need the end marker for values in case of nested frozen collections.
+      if (type_ == ValueType::kFrozenDescending) {
+        key.AppendValueType(ValueType::kGroupEndDescending);
+      } else {
+        key.AppendValueType(ValueType::kGroupEnd);
+      }
+      return key.data();
+    }
+
     case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
     case ValueType::kDecimal:
       result.append(decimal_val_);
@@ -356,6 +406,7 @@ string PrimitiveValue::ToValue() const {
 
     case ValueType::kIntentType: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
+    case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED;
     case ValueType::kIntentPrefix: FALLTHROUGH_INTENDED;
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
@@ -395,6 +446,7 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
   type_ref = ValueType::kNull;
 
   switch (value_type) {
+    case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
     case ValueType::kNull: FALLTHROUGH_INTENDED;
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
     case ValueType::kTrue: FALLTHROUGH_INTENDED;
@@ -427,6 +479,42 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       // Only set type to string after string field initialization succeeds.
       type_ref = value_type;
       return Status::OK();
+    }
+
+    case ValueType::kFrozenDescending:
+    case ValueType::kFrozen: {
+      ValueType end_marker_value_type = ValueType::kGroupEnd;
+      if (value_type == ValueType::kFrozenDescending) {
+        end_marker_value_type = ValueType::kGroupEndDescending;
+      }
+
+      if (out) {
+        out->frozen_val_ = new FrozenContainer();
+        while (!slice->empty()) {
+          ValueType current_value_type = static_cast<ValueType>(*slice->data());
+          if (current_value_type == end_marker_value_type) {
+            slice->consume_byte();
+            type_ref = value_type;
+            return Status::OK();
+          } else {
+            PrimitiveValue pv;
+            RETURN_NOT_OK(DecodeKey(slice, &pv));
+            out->frozen_val_->push_back(pv);
+          }
+        }
+      } else {
+        while (!slice->empty()) {
+          ValueType current_value_type = static_cast<ValueType>(*slice->data());
+          if (current_value_type == end_marker_value_type) {
+            slice->consume_byte();
+            return Status::OK();
+          } else {
+            RETURN_NOT_OK(DecodeKey(slice, nullptr));
+          }
+        }
+      }
+
+      return STATUS(Corruption, "Reached end of slice looking for frozen group end marker");
     }
 
     case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
@@ -666,6 +754,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
 
   // TODO: ensure we consume all data from the given slice.
   switch (value_type) {
+    case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
     case ValueType::kNull: FALLTHROUGH_INTENDED;
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
     case ValueType::kTrue: FALLTHROUGH_INTENDED;
@@ -677,6 +766,30 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       complex_data_structure_ = nullptr;
       return Status::OK();
 
+    case ValueType::kFrozenDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kFrozen: {
+      ValueType end_marker_value_type = ValueType::kGroupEnd;
+      if (value_type == ValueType::kFrozenDescending) {
+        end_marker_value_type = ValueType::kGroupEndDescending;
+      }
+
+      frozen_val_ = new FrozenContainer();
+      while (!slice.empty()) {
+        ValueType current_value_type = static_cast<ValueType>(*slice.data());
+        if (current_value_type == end_marker_value_type) {
+          slice.consume_byte();
+          type_ = value_type;
+          return Status::OK();
+        } else {
+          PrimitiveValue pv;
+          // Frozen elems are encoded as keys even in values.
+          RETURN_NOT_OK(pv.DecodeFromKey(&slice));
+          frozen_val_->push_back(pv);
+        }
+      }
+
+      return STATUS(Corruption, "Reached end of slice looking for frozen group end marker");
+    }
     case ValueType::kString:
       new(&str_val_) string(slice.cdata(), slice.size());
       // Only set type to string after string field initialization succeeds.
@@ -755,6 +868,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
 
     case ValueType::kIntentType: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
+    case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED;
     case ValueType::kIntentPrefix: FALLTHROUGH_INTENDED;
     case ValueType::kUInt16Hash: FALLTHROUGH_INTENDED;
     case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED;
@@ -868,6 +982,7 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     return false;
   }
   switch (type_) {
+    case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
     case ValueType::kNull: FALLTHROUGH_INTENDED;
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
     case ValueType::kTrue: FALLTHROUGH_INTENDED;
@@ -876,6 +991,9 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
 
     case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kString: return str_val_ == other.str_val_;
+
+    case ValueType::kFrozenDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kFrozen: return *frozen_val_ == *other.frozen_val_;
 
     case ValueType::kInt32Descending: FALLTHROUGH_INTENDED;
     case ValueType::kInt32: return int32_val_ == other.int32_val_;
@@ -925,6 +1043,7 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     return result;
   }
   switch (type_) {
+    case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
     case ValueType::kNull: FALLTHROUGH_INTENDED;
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
     case ValueType::kTrue: FALLTHROUGH_INTENDED;
@@ -965,6 +1084,24 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       return CompareUsingLessThan(timestamp_val_, other.timestamp_val_);
     case ValueType::kInetaddressDescending:
       return CompareUsingLessThan(*(other.inetaddress_val_), *inetaddress_val_);
+    case ValueType::kFrozenDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kFrozen: {
+      // Compare elements one by one.
+      size_t min_size = std::min(frozen_val_->size(), other.frozen_val_->size());
+      for (size_t i = 0; i < min_size; i++) {
+        result = frozen_val_->at(i).CompareTo(other.frozen_val_->at(i));
+        if (result != 0) {
+          return result;
+        }
+      }
+
+      // If elements are equal, compare lengths.
+      if (type_ == ValueType::kFrozenDescending) {
+        return CompareUsingLessThan(other.frozen_val_->size(), frozen_val_->size());
+      } else {
+        return CompareUsingLessThan(frozen_val_->size(), other.frozen_val_->size());
+      }
+    }
     case ValueType::kInetaddress:
       return CompareUsingLessThan(*inetaddress_val_, *(other.inetaddress_val_));
     case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
@@ -983,7 +1120,7 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
   LOG(FATAL) << "Comparing invalid PrimitiveValues: " << *this << " and " << other;
 }
 
-// This is used to initialize kNull, kTrue, kFalse constants.
+// This is used to initialize kNull, kNullDescending, kTrue, kFalse constants.
 PrimitiveValue::PrimitiveValue(ValueType value_type)
     : type_(value_type) {
   if (value_type == ValueType::kString || value_type == ValueType::kStringDescending) {
@@ -995,6 +1132,8 @@ PrimitiveValue::PrimitiveValue(ValueType value_type)
     new(&decimal_val_) std::string();
   } else if (value_type == ValueType::kUuid || value_type == ValueType::kUuidDescending) {
     new(&uuid_val_) Uuid();
+  } else if (value_type == ValueType::kFrozen || value_type == ValueType::kFrozenDescending) {
+    frozen_val_ = new FrozenContainer();
   }
 }
 
@@ -1032,13 +1171,14 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
   const auto sort_order = SortOrderFromColumnSchemaSortingType(sorting_type);
 
   switch (value.value_case()) {
-    case QLValuePB::kInt8Value:    return PrimitiveValue::Int32(QLValue::int8_value(value),
-                                                                 sort_order);
-    case QLValuePB::kInt16Value:   return PrimitiveValue::Int32(QLValue::int16_value(value),
-                                                                 sort_order);
-    case QLValuePB::kInt32Value:   return PrimitiveValue::Int32(QLValue::int32_value(value),
-                                                                 sort_order);
-    case QLValuePB::kInt64Value:   return PrimitiveValue(QLValue::int64_value(value), sort_order);
+    case QLValuePB::kInt8Value:
+      return PrimitiveValue::Int32(QLValue::int8_value(value), sort_order);
+    case QLValuePB::kInt16Value:
+      return PrimitiveValue::Int32(QLValue::int16_value(value), sort_order);
+    case QLValuePB::kInt32Value:
+      return PrimitiveValue::Int32(QLValue::int32_value(value), sort_order);
+    case QLValuePB::kInt64Value:
+      return PrimitiveValue(QLValue::int64_value(value), sort_order);
     case QLValuePB::kFloatValue: {
       float f = QLValue::float_value(value);
       return PrimitiveValue::Float(util::CanonicalizeFloat(f), sort_order);
@@ -1068,8 +1208,25 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
       return PrimitiveValue(QLValue::uuid_value(value), sort_order);
     case QLValuePB::kTimeuuidValue:
       return PrimitiveValue(QLValue::timeuuid_value(value), sort_order);
-    case QLValuePB::kFrozenValue:
-      return PrimitiveValue(QLValue::frozen_value(value), sort_order);
+    case QLValuePB::kFrozenValue: {
+      QLSeqValuePB frozen = QLValue::frozen_value(value);
+      PrimitiveValue pv(ValueType::kFrozen);
+      auto null_value_type = ValueType::kNull;
+      if (sort_order == SortOrder::kDescending) {
+        null_value_type = ValueType::kNullDescending;
+        pv.type_ = ValueType::kFrozenDescending;
+      }
+
+      for (int i = 0; i < frozen.elems_size(); i++) {
+        if (QLValue::IsNull(frozen.elems(i))) {
+          pv.frozen_val_->emplace_back(null_value_type);
+        } else {
+          pv.frozen_val_->push_back(PrimitiveValue::FromQLValuePB(frozen.elems(i), sorting_type));
+        }
+      }
+      return pv;
+    }
+
     case QLValuePB::VALUE_NOT_SET:
       return PrimitiveValue(ValueType::kTombstone);
 
@@ -1091,6 +1248,7 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
   // DocDB sets type to kInvalidValueType for SubDocuments that don't exist. That's why they need
   // to be set to Null in QLValue.
   if (primitive_value.value_type() == ValueType::kNull ||
+      primitive_value.value_type() == ValueType::kNullDescending ||
       primitive_value.value_type() == ValueType::kInvalidValueType) {
     QLValue::SetNull(ql_value);
     return;
@@ -1139,9 +1297,47 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
     case BINARY:
       QLValue::set_binary_value(primitive_value.GetString(), ql_value);
       return;
-    case FROZEN:
-      QLValue::set_frozen_value(primitive_value.GetString(), ql_value);
-      return;
+    case FROZEN: {
+      const auto& type = ql_type->param_type(0);
+      QLValue::set_frozen_value(ql_value);
+      switch (type->main()) {
+        case MAP: {
+          const std::shared_ptr<QLType>& keys_type = type->param_type(0);
+          const std::shared_ptr<QLType>& values_type = type->param_type(1);
+          for (int i = 0; i < primitive_value.frozen_val_->size(); i++) {
+            if (i % 2 == 0) {
+              QLValuePB *key = QLValue::add_frozen_elem(ql_value);
+              PrimitiveValue::ToQLValuePB(primitive_value.frozen_val_->at(i), keys_type, key);
+            } else {
+              QLValuePB *value = QLValue::add_frozen_elem(ql_value);
+              PrimitiveValue::ToQLValuePB(primitive_value.frozen_val_->at(i), values_type, value);
+            }
+          }
+          return;
+        }
+        case SET: FALLTHROUGH_INTENDED;
+        case LIST: {
+          const std::shared_ptr<QLType>& elems_type = type->param_type(0);
+          for (const auto &pv : *primitive_value.frozen_val_) {
+            QLValuePB *elem = QLValue::add_frozen_elem(ql_value);
+            PrimitiveValue::ToQLValuePB(pv, elems_type, elem);
+          }
+          return;
+        }
+        case USER_DEFINED_TYPE: {
+          for (int i = 0; i < primitive_value.frozen_val_->size(); i++) {
+            QLValuePB *value = QLValue::add_frozen_elem(ql_value);
+            PrimitiveValue::ToQLValuePB(primitive_value.frozen_val_->at(i), type->param_type(i),
+                value);
+          }
+          return;
+        }
+
+        default:
+          break;
+      }
+      FATAL_INVALID_ENUM_VALUE(DataType, type->main());
+    }
 
     case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case VARINT: FALLTHROUGH_INTENDED;
@@ -1168,7 +1364,7 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
 }
 
 PrimitiveValue PrimitiveValue::FromQLExpressionPB(const QLExpressionPB& ql_expr,
-                                                   ColumnSchema::SortingType sorting_type) {
+                                                  ColumnSchema::SortingType sorting_type) {
   switch (ql_expr.expr_case()) {
     case QLExpressionPB::ExprCase::kValue:
       return FromQLValuePB(ql_expr.value(), sorting_type);

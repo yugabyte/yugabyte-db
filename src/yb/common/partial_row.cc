@@ -243,6 +243,8 @@ void YBPartialRow::DeallocateStringIfSet(int col_idx, const ColumnSchema& col) {
       dst = schema_->ExtractColumnFromRow<UUID>(row, col_idx);
     } else if (col.type_info()->type() == TIMEUUID) {
       dst = schema_->ExtractColumnFromRow<TIMEUUID>(row, col_idx);
+    } else if (col.type_info()->type() == FROZEN) {
+      dst = schema_->ExtractColumnFromRow<FROZEN>(row, col_idx);
     } else {
       CHECK(col.type_info()->type() == STRING);
       dst = schema_->ExtractColumnFromRow<STRING>(row, col_idx);

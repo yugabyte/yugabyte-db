@@ -149,19 +149,25 @@ CHECKED_STATUS Executor::SetupPartialRow(const ColumnDesc *col_desc,
     case InternalType::kBinaryValue:
       RETURN_NOT_OK(row->SetBinary(col_desc->index(), QLValue::binary_value(value_pb)));
       break;
-    case InternalType::kFrozenValue:
-      RETURN_NOT_OK(row->SetFrozen(col_desc->index(), QLValue::frozen_value(value_pb)));
-      break;
     case InternalType::kFloatValue:
       RETURN_NOT_OK(row->SetFloat(col_desc->index(), QLValue::float_value(value_pb)));
       break;
     case InternalType::kDoubleValue:
       RETURN_NOT_OK(row->SetDouble(col_desc->index(), QLValue::double_value(value_pb)));
       break;
-    case InternalType::kBoolValue: FALLTHROUGH_INTENDED;
+    case InternalType::kFrozenValue: {
+      std::string bytes;
+      for (const auto& val : value_pb.frozen_value().elems()) {
+        // Setting is_last to true to not encode the frozen elements (for string/bytes types).
+        RETURN_NOT_OK(QLValue::AppendToKeyBytes(val, /* is_last = */ true, &bytes));
+      }
+      RETURN_NOT_OK(row->SetFrozenCopy(col_desc->index(), Slice(bytes)));
+      break;
+    }
+    case InternalType::kListValue: FALLTHROUGH_INTENDED;
     case InternalType::kMapValue: FALLTHROUGH_INTENDED;
     case InternalType::kSetValue: FALLTHROUGH_INTENDED;
-    case InternalType::kListValue:
+    case InternalType::kBoolValue:
       LOG(FATAL) << "Invalid datatype for partition column";
 
     case InternalType::kVarintValue: FALLTHROUGH_INTENDED;

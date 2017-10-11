@@ -33,6 +33,7 @@ enum class ValueType : char {
   // This indicates the end of the "hashed" or "range" group of components of the primary key. This
   // needs to sort before all other value types, so that a DocKey that has a prefix of the sequence
   // of components of another key sorts before the other key.
+  // kGroupEnd is also used as the end marker for a frozen value.
   kGroupEnd = '!',  // ASCII code 33 -- we pick the lowest code graphic character.
   // Note that intents also start with a ! character.
   // All intents are stored in the beginning of the keyspace to be able to read them without
@@ -46,9 +47,14 @@ enum class ValueType : char {
   kHybridTime = '#',  // ASCII code 35 (34 is double quote, which would be a bit confusing here).
 
   // Primitive value types
-  kString = '$',  // ASCII code 36
+
+  // Null must be lower than the other primitive types so that it compares as smaller than them.
+  // It is used for frozen CQL user-defined types (which can contain null elements) on ASC columns.
+  kNull = '$',  // ASCII code 36
   kInetaddress = '-',  // ASCII code 45
   kInetaddressDescending = '.',  // ASCII code 46
+  kFrozen = '<', // ASCII code 60
+  kFrozenDescending = '>', // ASCII code 62
   kArray = 'A',  // ASCII code 65.
   kFloat = 'C',  // ASCII code 67
   kDouble = 'D',  // ASCII code 68
@@ -61,7 +67,7 @@ enum class ValueType : char {
   kColumnId = 'K',  // ASCII code 75
   kDoubleDescending = 'L',  // ASCII code 76
   kFloatDescending = 'M', // ASCII code 77
-  kNull = 'N',  // ASCII code 78
+  kString = 'S',  // ASCII code 83
   kTrue = 'T',  // ASCII code 84
   kTombstone = 'X',  // ASCII code 88
   kArrayIndex = '[',  // ASCII code 91.
@@ -86,6 +92,14 @@ enum class ValueType : char {
 
   kObject = '{',  // ASCII code 123
   kRedisSet = '(', // ASCII code 40
+
+  // Null desc must be higher than the other descending primitive types so that it compares as
+  // bigger than them.
+  // It is used for frozen CQL user-defined types (which can contain null elements) on DESC columns.
+  kNullDescending = '|', // ASCII code 124
+
+  // This is only needed when used as the end marker for a frozen value on a DESC column.
+  kGroupEndDescending = '}',  // ASCII code 125 -- we pick the highest value below kHighest.
 
   // This ValueType is used as +infinity for scanning purposes only.
   kHighest = '~', // ASCII code 126
@@ -141,8 +155,8 @@ inline bool SerializableIntent(IntentType intent) {
 // All primitive value types fall into this range, but not all value types in this range are
 // primitive (e.g. object and tombstone are not).
 
-constexpr ValueType kMinPrimitiveValueType = ValueType::kString;
-constexpr ValueType kMaxPrimitiveValueType = ValueType::kObject;
+constexpr ValueType kMinPrimitiveValueType = ValueType::kNull;
+constexpr ValueType kMaxPrimitiveValueType = ValueType::kNullDescending;
 
 std::string ToString(ValueType value_type);
 

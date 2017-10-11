@@ -34,11 +34,11 @@ TEST(SubDocumentTest, TestGetOrAddChild) {
   ASSERT_FALSE(d.GetOrAddChild(PrimitiveValue(string("\x00", 1))).second);  // No new subdoc added.
   ASSERT_STR_EQ_VERBOSE_TRIMMED(R"#(
 {
+  100: {},
+  200: {},
   "\x00": {},
   "bar": {},
-  "foo": {},
-  100: {},
-  200: {}
+  "foo": {}
 }
 )#", d.ToString());
 }
@@ -124,7 +124,7 @@ TEST(SubDocumentTest, InitializerListConstructor) {
   10: 100
 }
       )#", SubDocument({{10, 100}, {1, 1}, {2, 4}, {3, 9}, {4, 16}, {5, 25}}).ToString());
-};
+}
 
 TEST(SubDocumentTest, Equality) {
   ASSERT_EQ(SubDocument({{1, 2}, {3, 4}}), SubDocument({{1, 2}, {3, 4}}));
@@ -133,6 +133,5 @@ TEST(SubDocumentTest, Equality) {
   ASSERT_NE(SubDocument({{1, 2}, {3, 4}}), SubDocument({{1, 2}, {5, 4}}));
 }
 
-
-}
-}
+} // namespace docdb
+} // namespace yb

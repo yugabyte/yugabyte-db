@@ -1040,10 +1040,10 @@ Status QLWriteOperation::Apply(
             WriteAction write_action = WriteAction::REPLACE; // default
             SubDocument sub_doc;
             RETURN_NOT_OK(SubDocument::FromQLExpressionPB(column_value.expr(),
-                                                           column,
-                                                           table_row,
-                                                           &sub_doc,
-                                                           &write_action));
+                                                          column,
+                                                          table_row,
+                                                          &sub_doc,
+                                                          &write_action));
 
             // Typical case, setting a columns value
             if (column_value.subscript_args().empty()) {

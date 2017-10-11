@@ -1022,7 +1022,7 @@ SubDocKey(DocKey([], ["k1"]), ["s3"; HT(p=2000)]) -> "v3"; ttl: 0.000s
 
 TEST_F(DocDBTest, BasicTest) {
   // A few points to make it easier to understand the expected binary representations here:
-  // - Initial bytes such as '$' (kString), 'I' (kInt64) correspond to members of the enum
+  // - Initial bytes such as 'S' (kString), 'I' (kInt64) correspond to members of the enum
   //   ValueType.
   // - Strings are terminated with \x00\x00.
   // - Groups of key components in the document key ("hashed" and "range" components) are terminated
@@ -1037,15 +1037,15 @@ TEST_F(DocDBTest, BasicTest) {
   // Two zeros indicate the end of a string primitive field, and the '!' indicates the end
   // of the "range" part of the DocKey. There is no "hash" part, because the first
   // PrimitiveValue is not a hash value.
-      "\"$my_key_where_value_is_a_string\\x00\\x00!\"",
+      "\"Smy_key_where_value_is_a_string\\x00\\x00!\"",
       string_valued_doc_key.Encode().ToString());
 
   TestInsertion(
       DocPath(string_valued_doc_key.Encode()),
       PrimitiveValue("value1"),
       HybridTime::FromMicros(1000),
-      R"#(1. PutCF('$my_key_where_value_is_a_string\x00\x00\
-                    !', '$value1'))#");
+      R"#(1. PutCF('Smy_key_where_value_is_a_string\x00\x00\
+                    !', 'Svalue1'))#");
 
   DocKey doc_key(PrimitiveValues("mydockey", 123456));
   KeyBytes encoded_doc_key(doc_key.Encode());
@@ -1055,13 +1055,13 @@ TEST_F(DocDBTest, BasicTest) {
       PrimitiveValue("value_a"),
       HybridTime::FromMicros(2000),
       R"#(
-1. PutCF('$mydockey\x00\x00\
+1. PutCF('Smydockey\x00\x00\
           I\x80\x00\x00\x00\x00\x01\xe2@\
           !', '{')
-2. PutCF('$mydockey\x00\x00\
+2. PutCF('Smydockey\x00\x00\
           I\x80\x00\x00\x00\x00\x01\xe2@\
           !\
-          $subkey_a\x00\x00', '$value_a')
+          Ssubkey_a\x00\x00', 'Svalue_a')
       )#");
 
   TestInsertion(
@@ -1069,15 +1069,15 @@ TEST_F(DocDBTest, BasicTest) {
       PrimitiveValue("value_bc"),
       HybridTime::FromMicros(3000),
       R"#(
-1. PutCF('$mydockey\x00\x00\
+1. PutCF('Smydockey\x00\x00\
           I\x80\x00\x00\x00\x00\x01\xe2@\
           !\
-          $subkey_b\x00\x00', '{')
-2. PutCF('$mydockey\x00\x00\
+          Ssubkey_b\x00\x00', '{')
+2. PutCF('Smydockey\x00\x00\
           I\x80\x00\x00\x00\x00\x01\xe2@\
           !\
-          $subkey_b\x00\x00\
-          $subkey_c\x00\x00', '$value_bc')
+          Ssubkey_b\x00\x00\
+          Ssubkey_c\x00\x00', 'Svalue_bc')
       )#");
 
   // This only has one insertion, because the object at subkey "subkey_b" already exists.
@@ -1086,11 +1086,11 @@ TEST_F(DocDBTest, BasicTest) {
       PrimitiveValue("value_bd"),
       HybridTime::FromMicros(3500),
       R"#(
-1. PutCF('$mydockey\x00\x00\
+1. PutCF('Smydockey\x00\x00\
           I\x80\x00\x00\x00\x00\x01\xe2@\
           !\
-          $subkey_b\x00\x00\
-          $subkey_d\x00\x00', '$value_bd')
+          Ssubkey_b\x00\x00\
+          Ssubkey_d\x00\x00', 'Svalue_bd')
       )#");
 
   // Delete a non-existent top-level document. We don't expect any tombstones to be created.
@@ -1104,11 +1104,11 @@ TEST_F(DocDBTest, BasicTest) {
       DocPath(encoded_doc_key, "subkey_b", "subkey_c"),
       HybridTime::FromMicros(5000),
       R"#(
-1. PutCF('$mydockey\x00\x00\
+1. PutCF('Smydockey\x00\x00\
           I\x80\x00\x00\x00\x00\x01\xe2@\
           !\
-          $subkey_b\x00\x00\
-          $subkey_c\x00\x00', 'X')
+          Ssubkey_b\x00\x00\
+          Ssubkey_c\x00\x00', 'X')
       )#");
 
   // Now delete an entire object.
@@ -1116,10 +1116,10 @@ TEST_F(DocDBTest, BasicTest) {
       DocPath(encoded_doc_key, "subkey_b"),
       HybridTime::FromMicros(6000),
       R"#(
-1. PutCF('$mydockey\x00\x00\
+1. PutCF('Smydockey\x00\x00\
           I\x80\x00\x00\x00\x00\x01\xe2@\
           !\
-          $subkey_b\x00\x00', 'X')
+          Ssubkey_b\x00\x00', 'X')
       )#");
 
   // Re-insert a value at subkey_b.subkey_c. This should see the tombstone from the previous
@@ -1129,15 +1129,15 @@ TEST_F(DocDBTest, BasicTest) {
       PrimitiveValue("value_bc_prime"),
       HybridTime::FromMicros(7000),
       R"#(
-1. PutCF('$mydockey\x00\x00\
+1. PutCF('Smydockey\x00\x00\
           I\x80\x00\x00\x00\x00\x01\xe2@\
           !\
-          $subkey_b\x00\x00', '{')
-2. PutCF('$mydockey\x00\x00\
+          Ssubkey_b\x00\x00', '{')
+2. PutCF('Smydockey\x00\x00\
           I\x80\x00\x00\x00\x00\x01\xe2@\
           !\
-          $subkey_b\x00\x00\
-          $subkey_c\x00\x00', '$value_bc_prime')
+          Ssubkey_b\x00\x00\
+          Ssubkey_c\x00\x00', 'Svalue_bc_prime')
       )#");
 
   // Check the final state of the database.
@@ -1213,7 +1213,7 @@ TEST_F(DocDBTest, BasicTest) {
         PrimitiveValue(ValueType::kObject),
         HybridTime::FromMicros(8000),
         R"#(
-1. PutCF('$mydockey\x00\x00\
+1. PutCF('Smydockey\x00\x00\
           I\x80\x00\x00\x00\x00\x01\xe2@\
           !', '{')
         )#");
@@ -1295,11 +1295,11 @@ TEST_F(DocDBTest, MultiOperationDocWriteBatch) {
   ASSERT_OK(FormatDocWriteBatch(dwb, &dwb_str));
   EXPECT_STR_EQ_VERBOSE_TRIMMED(
       R"#(
-          1. PutCF('$a\x00\x00!', '{')
-          2. PutCF('$a\x00\x00!$b\x00\x00', '$v1')
-          3. PutCF('$a\x00\x00!$c\x00\x00', '{')
-          4. PutCF('$a\x00\x00!$c\x00\x00$d\x00\x00', '$v2')
-          5. PutCF('$a\x00\x00!$c\x00\x00$e\x00\x00', '$v3')
+          1. PutCF('Sa\x00\x00!', '{')
+          2. PutCF('Sa\x00\x00!Sb\x00\x00', 'Sv1')
+          3. PutCF('Sa\x00\x00!Sc\x00\x00', '{')
+          4. PutCF('Sa\x00\x00!Sc\x00\x00Sd\x00\x00', 'Sv2')
+          5. PutCF('Sa\x00\x00!Sc\x00\x00Se\x00\x00', 'Sv3')
       )#", dwb_str);
 }
 

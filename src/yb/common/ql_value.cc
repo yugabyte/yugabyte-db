@@ -24,6 +24,7 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
+#include "yb/util/enums.h"
 
 // The list of unsupported datypes to use in switch statements
 #define QL_UNSUPPORTED_TYPES_IN_SWITCH \
@@ -100,7 +101,9 @@ int QLValue::CompareTo(const QLValue& other) const {
       return GenericCompare(uuid_value(), other.uuid_value());
     case InternalType::kTimeuuidValue:
       return GenericCompare(timeuuid_value(), other.timeuuid_value());
-    case InternalType::kFrozenValue: return frozen_value().compare(other.frozen_value());
+    case QLValuePB::kFrozenValue: {
+      return QLValue::CompareTo(frozen_value(), other.frozen_value());
+    }
     case QLValuePB::kMapValue: FALLTHROUGH_INTENDED;
     case QLValuePB::kSetValue: FALLTHROUGH_INTENDED;
     case QLValuePB::kListValue:
@@ -118,6 +121,86 @@ int QLValue::CompareTo(const QLValue& other) const {
 
   LOG(FATAL) << "Internal error: unsupported type " << type();
   return 0;
+}
+
+CHECKED_STATUS QLValue::AppendToKeyBytes(const QLValuePB &value_pb, bool is_last, string *bytes) {
+  switch (value_pb.value_case()) {
+    case QLValue::InternalType::kInt8Value: {
+      YBPartition::AppendIntToKey<int8, uint8>(value_pb.int8_value(), bytes);
+      break;
+    }
+    case QLValue::InternalType::kInt16Value: {
+      YBPartition::AppendIntToKey<int16, uint16>(value_pb.int16_value(), bytes);
+      break;
+    }
+    case QLValue::InternalType::kInt32Value: {
+      YBPartition::AppendIntToKey<int32, uint32>(value_pb.int32_value(), bytes);
+      break;
+    }
+    case QLValue::InternalType::kInt64Value: {
+      YBPartition::AppendIntToKey<int64, uint64>(value_pb.int64_value(), bytes);
+      break;
+    }
+    case QLValue::InternalType::kTimestampValue: {
+      YBPartition::AppendIntToKey<int64, uint64>(QLValue::timestamp_value(value_pb).value(), bytes);
+      break;
+    }
+    case QLValue::InternalType::kStringValue: {
+      string str = value_pb.string_value();
+      YBPartition::AppendBytesToKey(str.c_str(), str.length(), is_last, bytes);
+      break;
+    }
+    case QLValue::InternalType::kUuidValue: {
+      string str;
+      RETURN_NOT_OK(QLValue::uuid_value(value_pb).ToBytes(&str));
+      YBPartition::AppendBytesToKey(str.c_str(), str.length(), is_last, bytes);
+      break;
+    }
+    case QLValue::InternalType::kTimeuuidValue: {
+      string str;
+      RETURN_NOT_OK(QLValue::timeuuid_value(value_pb).ToBytes(&str));
+      YBPartition::AppendBytesToKey(str.c_str(), str.length(), is_last, bytes);
+      break;
+    }
+    case QLValue::InternalType::kInetaddressValue: {
+      string str;
+      RETURN_NOT_OK(QLValue::inetaddress_value(value_pb).ToBytes(&str));
+      YBPartition::AppendBytesToKey(str.c_str(), str.length(), is_last, bytes);
+      break;
+    }
+    case QLValue::InternalType::kDecimalValue: {
+      string str = value_pb.decimal_value();
+      YBPartition::AppendBytesToKey(str.c_str(), str.length(), is_last, bytes);
+      break;
+    }
+    case QLValue::InternalType::kBinaryValue: {
+      string str = value_pb.binary_value();
+      YBPartition::AppendBytesToKey(str.c_str(), str.length(), is_last, bytes);
+      break;
+    }
+    case QLValue::InternalType::kFrozenValue: {
+      string str;
+      for (const auto& elem_pb : value_pb.frozen_value().elems()) {
+        // Setting is_last to true to not encode the frozen elements (for string/bytes types).
+        RETURN_NOT_OK(AppendToKeyBytes(elem_pb, /* is_last = */ true, &str));
+      }
+      YBPartition::AppendBytesToKey(str.c_str(), str.length(), is_last, bytes);
+      break;
+    }
+    case QLValue::InternalType::kBoolValue: FALLTHROUGH_INTENDED;
+    case QLValue::InternalType::kFloatValue: FALLTHROUGH_INTENDED;
+    case QLValue::InternalType::kDoubleValue: FALLTHROUGH_INTENDED;
+    case QLValue::InternalType::kVarintValue: FALLTHROUGH_INTENDED;
+    case QLValue::InternalType::kMapValue: FALLTHROUGH_INTENDED;
+    case QLValue::InternalType::kSetValue: FALLTHROUGH_INTENDED;
+    case QLValue::InternalType::kListValue: FALLTHROUGH_INTENDED;
+    case QLValue::InternalType::VALUE_NOT_SET:
+      LOG(FATAL) << "Runtime error: This datatype("
+                 << int(value_pb.value_case())
+                 << ") is not supported in hash key";
+  }
+
+  return Status::OK();
 }
 
 void QLValue::Serialize(
@@ -253,9 +336,50 @@ void QLValue::Serialize(
       CQLFinishCollection(start_pos, buffer);
       return;
     }
-    case FROZEN:
-      CQLEncodeBytes(frozen_value(), buffer);
-      return;
+    case FROZEN: {
+      QLSeqValuePB frozen = frozen_value();
+      const auto& type = ql_type->param_type(0);
+      switch (type->main()) {
+        case MAP: {
+          DCHECK_EQ(frozen.elems_size() % 2, 0);
+          int32_t start_pos = CQLStartCollection(buffer);
+          int32_t length = static_cast<int32_t>(frozen.elems_size() / 2);
+          CQLEncodeLength(length, buffer);
+          const shared_ptr<QLType> &keys_type = type->params()[0];
+          const shared_ptr<QLType> &values_type = type->params()[1];
+          for (int i = 0; i < length; i++) {
+            QLValueWithPB(frozen.elems(2 * i)).Serialize(keys_type, client, buffer);
+            QLValueWithPB(frozen.elems(2 * i + 1)).Serialize(values_type, client, buffer);
+          }
+          CQLFinishCollection(start_pos, buffer);
+          return;
+        }
+        case SET: FALLTHROUGH_INTENDED;
+        case LIST: {
+          int32_t start_pos = CQLStartCollection(buffer);
+          int32_t length = static_cast<int32_t>(frozen.elems_size());
+          CQLEncodeLength(length, buffer); // number of elements in collection
+          const shared_ptr<QLType> &elems_type = type->param_type(0);
+          for (auto &elem : frozen.elems()) {
+            QLValueWithPB(elem).Serialize(elems_type, client, buffer);
+          }
+          CQLFinishCollection(start_pos, buffer);
+          return;
+        }
+        case USER_DEFINED_TYPE: {
+          int32_t start_pos = CQLStartCollection(buffer);
+          for (int i = 0; i < frozen.elems_size(); i++) {
+            QLValueWithPB(frozen.elems(i)).Serialize(type->param_type(i), client, buffer);
+          }
+          CQLFinishCollection(start_pos, buffer);
+          return;
+        }
+
+        default:
+          break;
+      }
+      break;
+    }
 
     QL_UNSUPPORTED_TYPES_IN_SWITCH:
       break;
@@ -394,8 +518,6 @@ Status QLValue::Deserialize(
       }
       return Status::OK();
     }
-    case FROZEN:
-      return CQLDecodeBytes(len, data, mutable_frozen_value());
 
     case USER_DEFINED_TYPE: {
       set_map_value();
@@ -409,8 +531,66 @@ Status QLValue::Deserialize(
           add_map_value()->CopyFrom(value.value());
         }
       }
-
       return Status::OK();
+    }
+
+    case FROZEN: {
+      set_frozen_value();
+      const auto& type = ql_type->param_type(0);
+      switch (type->main()) {
+        case MAP: {
+          const shared_ptr<QLType> &keys_type = type->param_type(0);
+          const shared_ptr<QLType> &values_type = type->param_type(1);
+          int32_t nr_elems = 0;
+          RETURN_NOT_OK(CQLDecodeNum(sizeof(nr_elems), NetworkByteOrder::Load32, data, &nr_elems));
+          for (int i = 0; i < nr_elems; i++) {
+            QLValueWithPB key;
+            RETURN_NOT_OK(key.Deserialize(keys_type, client, data));
+            add_frozen_elem()->CopyFrom(key.value());
+            QLValueWithPB value;
+            RETURN_NOT_OK(value.Deserialize(values_type, client, data));
+            add_frozen_elem()->CopyFrom(value.value());
+          }
+          return Status::OK();
+        }
+        case SET: {
+          const shared_ptr<QLType> &elems_type = type->param_type(0);
+          int32_t nr_elems = 0;
+          RETURN_NOT_OK(CQLDecodeNum(sizeof(nr_elems), NetworkByteOrder::Load32, data, &nr_elems));
+          for (int i = 0; i < nr_elems; i++) {
+            QLValueWithPB elem;
+            RETURN_NOT_OK(elem.Deserialize(elems_type, client, data));
+            add_frozen_elem()->CopyFrom(elem.value());
+          }
+          return Status::OK();
+        }
+        case LIST: {
+          const shared_ptr<QLType> &elems_type = type->param_type(0);
+          int32_t nr_elems = 0;
+          RETURN_NOT_OK(CQLDecodeNum(sizeof(nr_elems), NetworkByteOrder::Load32, data, &nr_elems));
+          for (int i = 0; i < nr_elems; i++) {
+            QLValueWithPB elem;
+            RETURN_NOT_OK(elem.Deserialize(elems_type, client, data));
+            add_frozen_elem()->CopyFrom(elem.value());
+          }
+          return Status::OK();
+        }
+
+        case USER_DEFINED_TYPE: {
+          size_t fields_size = type->udtype_field_names().size();
+          for (size_t i = 0; i < fields_size; i++) {
+            // TODO (mihnea) default to null if value missing (CQL behavior)
+            QLValueWithPB value;
+            RETURN_NOT_OK(value.Deserialize(type->param_type(i), client, data));
+            add_frozen_elem()->CopyFrom(value.value());
+          }
+          return Status::OK();
+        }
+        default:
+          break;
+
+      }
+      break;
     }
 
     QL_UNSUPPORTED_TYPES_IN_SWITCH:
@@ -447,7 +627,6 @@ string QLValue::ToString() const {
     case InternalType::kTimeuuidValue: return "timeuuid:" + timeuuid_value().ToString();
     case InternalType::kBoolValue: return (bool_value() ? "bool:true" : "bool:false");
     case InternalType::kBinaryValue: return "binary:0x" + b2a_hex(binary_value());
-    case InternalType::kFrozenValue: return "frozen:" + b2a_hex(frozen_value());
 
     case InternalType::kMapValue: {
       std::stringstream ss;
@@ -491,6 +670,20 @@ string QLValue::ToString() const {
       return ss.str();
     }
 
+    case InternalType::kFrozenValue: {
+      std::stringstream ss;
+      QLSeqValuePB frozen = frozen_value();
+      ss << "frozen:<";
+      for (int i = 0; i < frozen.elems_size(); i++) {
+        if (i > 0) {
+          ss << ", ";
+        }
+        ss << QLValueWithPB(frozen.elems(i)).ToString();
+      }
+      ss << ">";
+      return ss.str();
+    }
+
     case InternalType::kVarintValue:
       LOG(FATAL) << "Internal error: varint not implemented";
     case InternalType::VALUE_NOT_SET:
@@ -529,6 +722,29 @@ void QLValue::SetNull(QLValuePB* v) {
     case QLValuePB::VALUE_NOT_SET: return;
   }
   LOG(FATAL) << "Internal error: unknown or unsupported type " << v->value_case();
+}
+
+int QLValue::CompareTo(const QLSeqValuePB& lhs, const QLSeqValuePB& rhs) {
+  // Compare elements one by one.
+  int result = 0;
+  int min_size = std::min(lhs.elems_size(), rhs.elems_size());
+  for (int i = 0; i < min_size; i++) {
+    bool lhs_is_null = QLValue::IsNull(lhs.elems(i));
+    bool rhs_is_null = QLValue::IsNull(rhs.elems(i));
+
+    if (lhs_is_null && rhs_is_null) result = 0;
+    else if (lhs_is_null) result = -1;
+    else if (rhs_is_null) result = 1;
+    else
+      result = QLValue::CompareTo(lhs.elems(i), rhs.elems(i));
+
+    if (result != 0) {
+      return result;
+    }
+  }
+
+  // If elements are equal, compare lengths.
+  return GenericCompare(lhs.elems_size(), rhs.elems_size());
 }
 
 int QLValue::CompareTo(const QLValuePB& lhs, const QLValuePB& rhs) {
@@ -570,7 +786,9 @@ int QLValue::CompareTo(const QLValuePB& lhs, const QLValuePB& rhs) {
       return GenericCompare(lhs.uuid_value(), rhs.uuid_value());
     case QLValuePB::kTimeuuidValue:
       return GenericCompare(lhs.timeuuid_value(), rhs.timeuuid_value());
-    case QLValuePB::kFrozenValue: return lhs.frozen_value().compare(rhs.frozen_value());
+    case QLValuePB::kFrozenValue: {
+      return QLValue::CompareTo(lhs.frozen_value(), rhs.frozen_value());
+    }
     case QLValuePB::kMapValue: FALLTHROUGH_INTENDED;
     case QLValuePB::kSetValue: FALLTHROUGH_INTENDED;
     case QLValuePB::kListValue:
@@ -628,7 +846,9 @@ int QLValue::CompareTo(const QLValuePB& lhs, const QLValue& rhs) {
       return GenericCompare(uuid_value(lhs), rhs.uuid_value());
     case QLValuePB::kTimeuuidValue:
       return GenericCompare(timeuuid_value(lhs), rhs.timeuuid_value());
-    case QLValuePB::kFrozenValue: return frozen_value(lhs).compare(rhs.frozen_value());
+    case QLValuePB::kFrozenValue: {
+      return QLValue::CompareTo(lhs.frozen_value(), rhs.frozen_value());
+    }
     case QLValuePB::kMapValue: FALLTHROUGH_INTENDED;
     case QLValuePB::kSetValue: FALLTHROUGH_INTENDED;
     case QLValuePB::kListValue:
@@ -643,8 +863,7 @@ int QLValue::CompareTo(const QLValuePB& lhs, const QLValue& rhs) {
     // default: fall through
   }
 
-  LOG(FATAL) << "Internal error: unknown or unsupported type " << type(lhs);
-  return 0;
+  FATAL_INVALID_ENUM_VALUE(QLValuePB::ValueCase, type(lhs));
 }
 
 //----------------------------------- QLValuePB operators --------------------------------

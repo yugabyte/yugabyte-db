@@ -161,7 +161,7 @@ TEST(DocKeyTest, TestSubDocKeyToString) {
 
 TEST(DocKeyTest, TestDocKeyEncoding) {
   // A few points to make it easier to understand the expected binary representations here:
-  // - Initial bytes such as '$', 'I' correspond the ValueType enum.
+  // - Initial bytes such as 'S', 'I' correspond the ValueType enum.
   // - Strings are terminated with \x00\x00.
   // - Groups of key components in the document key ("hashed" and "range" components) are separated
   //   with '!'.
@@ -169,9 +169,9 @@ TEST(DocKeyTest, TestDocKeyEncoding) {
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       ApplyEagerLineContinuation(
           R"#(
-              "$val1\x00\x00\
+              "Sval1\x00\x00\
                I\x80\x00\x00\x00\x00\x00\x03\xe8\
-               $val2\x00\x00\
+               Sval2\x00\x00\
                I\x80\x00\x00\x00\x00\x00\x07\xd0\
                !"
           )#"),
@@ -212,12 +212,12 @@ TEST(DocKeyTest, TestDocKeyEncoding) {
       ApplyEagerLineContinuation(
           R"#("G\
                \xca\xfe\
-               $hashed1\x00\x00\
-               $hashed2\x00\x00\
+               Shashed1\x00\x00\
+               Shashed2\x00\x00\
                !\
-               $range1\x00\x00\
+               Srange1\x00\x00\
                I\x80\x00\x00\x00\x00\x00\x03\xe8\
-               $range2\x00\x00\
+               Srange2\x00\x00\
                I\x80\x00\x00\x00\x00\x00\x07\xd0\
                !")#"),
       FormatBytesAsStr(DocKey(
@@ -235,10 +235,10 @@ TEST(DocKeyTest, TestBasicSubDocKeyEncodingDecoding) {
   const KeyBytes encoded_subdoc_key(subdoc_key.Encode());
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       ApplyEagerLineContinuation(
-          R"#("$some_doc_key\x00\x00\
+          R"#("Ssome_doc_key\x00\x00\
                !\
-               $sk1\x00\x00\
-               $sk2\x00\x00\
+               Ssk1\x00\x00\
+               Ssk2\x00\x00\
                a\x8c\x94\xcc\xff\xfe\xff\xff\
                #\x80\xff\x05T=\xf7)\xbc\x18\x80K"
           )#"
