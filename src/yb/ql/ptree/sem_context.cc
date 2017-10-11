@@ -184,22 +184,47 @@ PTColumnDefinition *SemContext::GetColumnDefinition(const MCString& col_name) {
   return entry->column_;
 }
 
-const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name, bool reading_column) {
+const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name) {
   SymbolEntry * entry = SeekSymbol(col_name);
   if (entry == nullptr) {
     return nullptr;
   }
 
-  // To indicate that DocDB must read a columm value to execute an expression, the column is added
-  // to the column_refs list.
-  if (reading_column) {
-    // TODO(neil) Currently AddColumnRef() relies on MCSet datatype to guarantee that we have a
-    // unique list of IDs, but we should take advantage to "symbol table" when collecting data
-    // for execution. Symbol table and "column_read_count_" need to be corrected so that we can
-    // use MCList instead.
+  if (current_dml_stmt_ != nullptr) {
+    // To indicate that DocDB must read a columm value to execute an expression, the column is added
+    // to the column_refs list.
+    bool reading_column = false;
 
-    // Indicate that this column must be read for the statement execution.
-    current_dml_stmt_->AddColumnRef(*entry->column_desc_);
+    switch (current_dml_stmt_->opcode()) {
+      case TreeNodeOpcode::kPTSelectStmt:
+        reading_column = true;
+        break;
+      case TreeNodeOpcode::kPTUpdateStmt:
+        if (sem_state() != nullptr && processing_set_clause() && !processing_assignee()) {
+          reading_column = true;
+          break;
+        }
+        FALLTHROUGH_INTENDED;
+      case TreeNodeOpcode::kPTInsertStmt:
+      case TreeNodeOpcode::kPTDeleteStmt:
+        if (sem_state() != nullptr && processing_if_clause()) {
+          reading_column = true;
+          break;
+        }
+        break;
+      default:
+        break;
+    }
+
+    if (reading_column) {
+      // TODO(neil) Currently AddColumnRef() relies on MCSet datatype to guarantee that we have a
+      // unique list of IDs, but we should take advantage to "symbol table" when collecting data
+      // for execution. Symbol table and "column_read_count_" need to be corrected so that we can
+      // use MCList instead.
+
+      // Indicate that this column must be read for the statement execution.
+      current_dml_stmt_->AddColumnRef(*entry->column_desc_);
+    }
   }
 
   return entry->column_desc_;

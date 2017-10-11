@@ -38,6 +38,7 @@ SemState::SemState(SemContext *sem_context,
   if (sem_context->sem_state() != nullptr) {
     processing_if_clause_ = sem_context_->processing_if_clause();
     processing_set_clause_ = sem_context_->processing_set_clause();
+    processing_assignee_ = sem_context_->processing_assignee();
   }
 
   // Use this new state for semantic analysis.

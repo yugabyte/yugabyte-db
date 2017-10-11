@@ -99,6 +99,9 @@ class SemState {
   bool processing_set_clause() const { return processing_set_clause_; }
   void set_processing_set_clause(bool value) { processing_set_clause_ = value; }
 
+  bool processing_assignee() const { return processing_assignee_; }
+  void set_processing_assignee(bool value) { processing_assignee_ = value; }
+
   void set_processing_column_definition(bool val) { processing_column_definition_ = val; }
   bool processing_column_definition() const { return processing_column_definition_; }
 
@@ -133,6 +136,9 @@ class SemState {
 
   // State variable for set clause.
   bool processing_set_clause_ = false;
+
+  // State variable for assignee.
+  bool processing_assignee_ = false;
 };
 
 }  // namespace ql

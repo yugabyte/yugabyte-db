@@ -83,18 +83,24 @@ void PrepareDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_
                               bool *need_read_snapshot) {
   *need_read_snapshot = false;
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
+    const bool require_read_snapshot = doc_op->RequireReadSnapshot();
     const list<DocPath> doc_paths = doc_op->DocPathsToLock();
+    // For each path to lock, acquire snapshot lock if the write operation requires read-snapshot.
+    // Otherwise, acquire serializable lock.
     for (const auto& doc_path : doc_paths) {
       KeyBytes current_prefix = doc_path.encoded_doc_key();
       for (int i = 0; i < doc_path.num_subkeys(); i++) {
         const string& lock_string = current_prefix.AsStringRef();
-        keys_locked->emplace(lock_string, IntentType::kWeakSnapshotWrite);
+        keys_locked->emplace(lock_string,
+                             require_read_snapshot ? IntentType::kWeakSnapshotWrite
+                                                   : IntentType::kWeakSerializableWrite);
         doc_path.subkey(i).AppendToKey(&current_prefix);
       }
       const string& lock_string = current_prefix.AsStringRef();
-      (*keys_locked)[lock_string] = IntentType::kStrongSnapshotWrite;
+      (*keys_locked)[lock_string] = require_read_snapshot ? IntentType::kStrongSnapshotWrite
+                                                          : IntentType::kStrongSerializableWrite;
     }
-    if (doc_op->RequireReadSnapshot()) {
+    if (require_read_snapshot) {
       *need_read_snapshot = true;
     }
   }

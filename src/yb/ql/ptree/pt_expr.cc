@@ -688,7 +688,7 @@ CHECKED_STATUS PTRef::AnalyzeOperator(SemContext *sem_context) {
 
   // Look for a column descriptor from symbol table.
   RETURN_NOT_OK(name_->Analyze(sem_context));
-  desc_ = sem_context->GetColumnDesc(name_->last_name(), true /* reading_column */);
+  desc_ = sem_context->GetColumnDesc(name_->last_name());
   if (desc_ == nullptr) {
     return sem_context->Error(this, "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
   }
@@ -744,8 +744,7 @@ CHECKED_STATUS PTSubscriptedColumn::AnalyzeOperator(SemContext *sem_context) {
 
   // Look for a column descriptor from symbol table.
   RETURN_NOT_OK(name_->Analyze(sem_context));
-
-  desc_ = sem_context->GetColumnDesc(name_->last_name(), true /* reading column */);
+  desc_ = sem_context->GetColumnDesc(name_->last_name());
   if (desc_ == nullptr) {
     return sem_context->Error(this, "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
   }

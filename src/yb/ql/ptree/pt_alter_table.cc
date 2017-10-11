@@ -81,8 +81,7 @@ CHECKED_STATUS PTAlterTable::AppendModColumn(SemContext *sem_context,
                                              PTAlterColumnDefinition *column) {
   // Make sure column already exists and isn't key column.
   if (column->old_name() != nullptr) {
-    const ColumnDesc* desc = sem_context->GetColumnDesc(column->old_name()->last_name(),
-                                 /* reading column = */ false);
+    const ColumnDesc* desc = sem_context->GetColumnDesc(column->old_name()->last_name());
     if (desc == nullptr) {
       return sem_context->Error(this, "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
     }
@@ -95,8 +94,7 @@ CHECKED_STATUS PTAlterTable::AppendModColumn(SemContext *sem_context,
   // Make sure column already doesn't exist with the same name.
   if (column->new_name() != nullptr) {
     MCString name = *column->new_name();
-    const ColumnDesc* desc = sem_context->GetColumnDesc(name,
-                                 /* reading column = */ false);
+    const ColumnDesc* desc = sem_context->GetColumnDesc(name);
     if (desc != nullptr) {
       return sem_context->Error(this, "Duplicate column name", ErrorCode::DUPLICATE_COLUMN);
     }

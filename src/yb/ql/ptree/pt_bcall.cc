@@ -202,7 +202,15 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
 
       // return type is same as type of the referenced column
       state.SetExprState(col_ref->ql_type(), col_ref->internal_type());
-      return CheckExpectedTypeCompatibility(sem_context);
+      RETURN_NOT_OK(CheckExpectedTypeCompatibility(sem_context));
+
+      // For "UPDATE ... SET list = list - x ..." , the list needs to be read first in order to
+      // subtract (remove) elements from it.
+      if (strcmp(bfdecl->cpp_name(), "SubListList") == 0) {
+        sem_context->current_dml_stmt()->AddColumnRef(*pt_ref->desc());
+      }
+
+      return Status::OK();
     }
 
     // default

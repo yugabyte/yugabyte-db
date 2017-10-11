@@ -156,10 +156,9 @@ class SemContext : public ProcessContext {
   // Find column descriptor from symbol table.
   PTColumnDefinition *GetColumnDefinition(const MCString& col_name);
 
-  // Find column descriptor from symbol table.
-  // The parameter "reading_column" is to indicate if the column value is to be read by the
-  // when executin the QL statement before its execution.
-  const ColumnDesc *GetColumnDesc(const MCString& col_name, bool reading_column);
+  // Find column descriptor from symbol table. From the context, the column value will be marked to
+  // be read if necessary when executing the QL statement.
+  const ColumnDesc *GetColumnDesc(const MCString& col_name);
 
   // Check if the the lhs_type is convertible to rhs_type.
   bool IsConvertible(const std::shared_ptr<QLType>& lhs_type,
@@ -219,6 +218,11 @@ class SemContext : public ProcessContext {
   bool processing_set_clause() const {
     DCHECK(sem_state_) << "State variable is not set for the expression";
     return sem_state_->processing_set_clause();
+  }
+
+  bool processing_assignee() const {
+    DCHECK(sem_state_) << "State variable is not set for the expression";
+    return sem_state_->processing_assignee();
   }
 
   bool processing_if_clause() const {

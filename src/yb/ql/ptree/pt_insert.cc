@@ -83,8 +83,7 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
     // Mismatch between arguments and columns.
     MCList<PTExpr::SharedPtr>::const_iterator iter = exprs.begin();
     for (PTQualifiedName::SharedPtr name : names) {
-      const ColumnDesc *col_desc = sem_context->GetColumnDesc(name->last_name(),
-                                                              false /* reading_column */);
+      const ColumnDesc *col_desc = sem_context->GetColumnDesc(name->last_name());
 
       // Check that the column exists.
       if (col_desc == nullptr) {

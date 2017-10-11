@@ -41,10 +41,12 @@ PTAssign::~PTAssign() {
 CHECKED_STATUS PTAssign::Analyze(SemContext *sem_context) {
   SemState sem_state(sem_context);
 
+  sem_state.set_processing_assignee(true);
+
   // Analyze left value (column name).
   RETURN_NOT_OK(lhs_->Analyze(sem_context));
 
-  col_desc_ = sem_context->GetColumnDesc(lhs_->last_name(), false /* reading_column */);
+  col_desc_ = sem_context->GetColumnDesc(lhs_->last_name());
   if (col_desc_ == nullptr) {
     return sem_context->Error(this, "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
   }
@@ -66,7 +68,14 @@ CHECKED_STATUS PTAssign::Analyze(SemContext *sem_context) {
       curr_ytype = curr_ytype->values_type();
       curr_itype = client::YBColumnSchema::ToInternalDataType(curr_ytype);
     }
+    // For "UPDATE ... SET list[x] = ...", the list needs to be read first in order to set an
+    // element in it.
+    if (col_desc_->ql_type()->main() == DataType::LIST) {
+      sem_context->current_dml_stmt()->AddColumnRef(*col_desc_);
+    }
   }
+
+  sem_state.set_processing_assignee(false);
 
   // Setup the expected datatypes, and analyze the rhs value.
   sem_state.SetExprState(curr_ytype, curr_itype, lhs_->bindvar_name(), col_desc_);
