@@ -168,6 +168,7 @@ message PlacementInfoPB {
 message ReplicationInfoPB {
   optional PlacementInfoPB live_replicas = 1;
   optional PlacementInfoPB async_replicas = 2;
+  repeated CloudInfoPB affinitized_leaders = 3;
 }
 
 // This is used to mark servers in the load balancer that should be considered

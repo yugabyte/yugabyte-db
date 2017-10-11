@@ -161,7 +161,7 @@ class TSDescriptor {
                                   std::shared_ptr<TProxy>* result_cache);
 
   FRIEND_TEST(TestTSDescriptor, TestReplicaCreationsDecay);
-  friend class TestLoadBalancer;
+  template<class ClusterLoadBalancerClass> friend class TestLoadBalancerBase;
 
   explicit TSDescriptor(std::string perm_id);
 

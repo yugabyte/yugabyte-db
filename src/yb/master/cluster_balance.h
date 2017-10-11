@@ -26,11 +26,12 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/util/random.h"
+#include "yb/master/cluster_balance_util.h"
+
+DECLARE_int32(load_balancer_max_concurrent_moves);
 
 namespace yb {
 namespace master {
-
-DECLARE_int32(load_balancer_max_concurrent_moves);
 
 //  This class keeps state with regards to the full cluster load of tablets on tablet servers. We
 //  count a tablet towards a tablet server's load if it is either RUNNING, or is in the process of
@@ -180,7 +181,7 @@ class ClusterLoadBalancer {
   // Goes over the tablet_map_ and the set of live TSDescriptors to compute the load distribution
   // across the tablets for the given table. Returns false if we encounter transient errors that
   // should stop the load balancing.
-  bool AnalyzeTablets(const TableId& table_uuid);
+  virtual bool AnalyzeTablets(const TableId& table_uuid);
 
   // Processes any required replica additions, as part of moving load from a highly loaded TS to
   // one that is less loaded.
@@ -227,7 +228,7 @@ class ClusterLoadBalancer {
   // Processes any tablet leaders that are on a highly loaded tablet server and need to be moved.
   //
   // Returns true if a move was actually made.
-  bool HandleLeaderMoves(
+  virtual bool HandleLeaderMoves(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts);
 
   // Go through sorted_load_ and figure out which tablet to rebalance and from which TS that is
@@ -292,6 +293,15 @@ class ClusterLoadBalancer {
   int get_total_wrong_placement() const;
   int get_total_blacklisted_servers() const;
 
+  // The state of the load in the cluster, as far as this run of the algorithm is concerned.
+  std::unique_ptr<YB_EDITION_NS_PREFIX ClusterLoadState> state_;
+
+  // The catalog manager of the Master that actually has the Tablet and TS state. The object is not
+  // managed by this class, but by the Master's unique_ptr.
+  CatalogManager* catalog_manager_;
+
+  template <class ClusterLoadBalancerClass> friend class TestLoadBalancerBase;
+
  private:
   // Returns true if at least one member in the tablet's configuration is transitioning into a
   // VOTER, but it's not a VOTER yet.
@@ -300,19 +310,11 @@ class ClusterLoadBalancer {
   // Dump the sorted load on tservers (it is usually per table).
   void DumpSortedLoad() const;
 
-  // The catalog manager of the Master that actually has the Tablet and TS state. The object is not
-  // managed by this class, but by the Master's unique_ptr.
-  CatalogManager* catalog_manager_;
-
   // Random number generator for picking items at random from sets, using ReservoirSample.
   ThreadSafeRandom random_;
 
   // Controls whether to run the load balancing algorithm or not.
   std::atomic<bool> is_enabled_;
-
-  // The state of the load in the cluster, as far as this run of the algorithm is concerned.
-  class ClusterLoadState;
-  std::unique_ptr<ClusterLoadState> state_;
 
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadBalancer);
 };

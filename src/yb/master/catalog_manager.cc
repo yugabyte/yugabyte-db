@@ -618,7 +618,7 @@ CatalogManager::CatalogManager(Master* master)
       state_(kConstructed),
       leader_ready_term_(-1),
       leader_lock_(RWMutex::Priority::PREFER_WRITING),
-      load_balance_policy_(new ClusterLoadBalancer(this)) {
+      load_balance_policy_(new YB_EDITION_NS_PREFIX ClusterLoadBalancer(this)) {
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
            .set_max_threads(1)
            .Build(&worker_pool_));
