@@ -42,6 +42,7 @@ Status ConnectionContextWithCallId::Store(InboundCall* call) {
 }
 
 void ConnectionContextWithCallId::CallProcessed(InboundCall* call) {
+  ++processed_call_count_;
   auto id = ExtractCallId(call);
   auto it = calls_being_handled_.find(id);
   if (it == calls_being_handled_.end() || it->second != call) {

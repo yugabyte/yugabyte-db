@@ -32,6 +32,11 @@ class ConnectionContextWithCallId : public ConnectionContext {
 
   CHECKED_STATUS Store(InboundCall* call);
   void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) override;
+
+  uint64_t ProcessedCallCount() override {
+    return processed_call_count_.load(std::memory_order_acquire);
+  }
+
  private:
   virtual uint64_t ExtractCallId(InboundCall* call) = 0;
 
@@ -43,6 +48,7 @@ class ConnectionContextWithCallId : public ConnectionContext {
   // Calls which have been received on the server and are currently
   // being handled.
   std::unordered_map<uint64_t, InboundCall*> calls_being_handled_;
+  std::atomic<uint64_t> processed_call_count_{0};
 };
 
 } // namespace rpc

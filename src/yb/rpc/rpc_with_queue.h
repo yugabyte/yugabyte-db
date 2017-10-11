@@ -53,6 +53,11 @@ class ConnectionContextWithQueue : public ConnectionContext {
   }
 
   void Enqueue(std::shared_ptr<QueueableInboundCall> call);
+
+  uint64_t ProcessedCallCount() override {
+    return processed_call_count_.load(std::memory_order_acquire);
+  }
+
  private:
   void AssignConnection(const ConnectionPtr& conn) override;
   void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) override;
@@ -76,6 +81,7 @@ class ConnectionContextWithQueue : public ConnectionContext {
 
   // First call that does not have reply yet.
   std::atomic<QueueableInboundCall*> first_without_reply_{nullptr};
+  std::atomic<uint64_t> processed_call_count_{0};
 };
 
 } // namespace rpc

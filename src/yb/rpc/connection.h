@@ -104,6 +104,8 @@ class ConnectionContext {
   virtual void QueueResponse(const ConnectionPtr& connection, InboundCallPtr call) = 0;
 
   virtual void AssignConnection(const ConnectionPtr& connection) {}
+
+  virtual uint64_t ProcessedCallCount() = 0;
 };
 
 typedef std::function<std::unique_ptr<ConnectionContext>()> ConnectionContextFactory;
@@ -237,10 +239,6 @@ class Connection final : public std::enable_shared_from_this<Connection> {
 
   ConnectionContext& context() { return *context_; }
 
-  void CallCompleted() { processed_call_count_++; }
-
-  uint64_t processed_call_count() const { return processed_call_count_; }
-
  private:
   CHECKED_STATUS DoWrite();
 
@@ -342,8 +340,7 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   // Context is responsible for what to do with them.
   std::unique_ptr<ConnectionContext> context_;
 
-  // Number of calls processed on this connection
-  std::atomic<uint64_t> processed_call_count_ = {0};
+  std::atomic<uint64_t> responded_call_count_{0};
 };
 
 }  // namespace rpc

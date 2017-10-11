@@ -55,6 +55,7 @@ void ConnectionContextWithQueue::Enqueue(std::shared_ptr<QueueableInboundCall> c
 }
 
 void ConnectionContextWithQueue::CallProcessed(InboundCall* call) {
+  ++processed_call_count_;
   auto reactor = call->connection()->reactor();
   DCHECK(reactor->IsCurrentThread());
 

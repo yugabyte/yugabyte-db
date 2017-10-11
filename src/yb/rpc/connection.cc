@@ -297,7 +297,6 @@ void Connection::Handler(ev::io& watcher, int revents) {  // NOLINT
   } else {
     reactor_->DestroyConnection(this, status);
   }
-  CallCompleted();
 }
 
 Status Connection::ReadHandler() {
@@ -391,6 +390,7 @@ Status Connection::HandleCallResponse(Slice call_data) {
   CallResponse resp;
   RETURN_NOT_OK(resp.ParseFrom(call_data));
 
+  ++responded_call_count_;
   auto awaiting = awaiting_response_.find(resp.call_id());
   if (awaiting == awaiting_response_.end()) {
     LOG(ERROR) << ToString() << ": Got a response for call id " << resp.call_id() << " which "
@@ -565,7 +565,9 @@ Status Connection::DumpPB(const DumpRunningRpcsRequestPB& req,
     resp->set_state(RpcConnectionPB::NEGOTIATING);
   }
 
-  const uint64_t processed_call_count = this->processed_call_count();
+  const uint64_t processed_call_count =
+      direction_ == Direction::CLIENT ? responded_call_count_.load(std::memory_order_acquire)
+                                      : context_->ProcessedCallCount();
   if (processed_call_count > 0) {
     resp->set_processed_call_count(processed_call_count);
   }

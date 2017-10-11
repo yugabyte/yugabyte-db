@@ -71,7 +71,7 @@ Status CQLConnectionContext::ProcessCalls(const rpc::ConnectionPtr& connection,
       break;
     }
 
-        RETURN_NOT_OK(HandleInboundCall(connection, Slice(pos, total_length)));
+    RETURN_NOT_OK(HandleInboundCall(connection, Slice(pos, total_length)));
     pos += total_length;
   }
 
