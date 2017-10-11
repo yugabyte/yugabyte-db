@@ -75,7 +75,6 @@ class TestRedisService : public RedisTableTestBase {
   void SetUp() override;
   void TearDown() override;
 
- protected:
   void StartServer();
   void StopServer();
   void StartClient();
@@ -174,9 +173,9 @@ class TestRedisService : public RedisTableTestBase {
 
   int server_port() { return redis_server_port_; }
 
-  Status Send(const std::string& cmd);
+  CHECKED_STATUS Send(const std::string& cmd);
 
-  Status SendCommandAndGetResponse(
+  CHECKED_STATUS SendCommandAndGetResponse(
       const string& cmd, int expected_resp_length, int timeout_in_millis = kDefaultTimeoutMs);
 
   size_t CountSessions(const GaugePrototype<uint64_t>& read_proto,
@@ -641,13 +640,69 @@ TEST_F(TestRedisService, IncompleteCommandInline) {
 
 TEST_F(TestRedisService, MalformedCommandsFollowedByAGoodOne) {
   expected_no_sessions_ = true;
-  ASSERT_FALSE(SendCommandAndGetResponse("*3\r\n.1\r\n", 1).ok());
+  ASSERT_NOK(SendCommandAndGetResponse("*3\r\n.1\r\n", 1));
   RestartClient();
-  ASSERT_FALSE(SendCommandAndGetResponse("*0\r\n.2\r\n", 1).ok());
+  ASSERT_NOK(SendCommandAndGetResponse("*0\r\n.2\r\n", 1));
   RestartClient();
-  ASSERT_FALSE(SendCommandAndGetResponse("*-4\r\n.3\r\n", 1).ok());
+  ASSERT_NOK(SendCommandAndGetResponse("*-4\r\n.3\r\n", 1));
   RestartClient();
   SendCommandAndExpectResponse(__LINE__, "*2\r\n$4\r\necho\r\n$3\r\nfoo\r\n", "$3\r\nfoo\r\n");
+}
+
+namespace {
+
+void TestBadCommand(std::string command, TestRedisService* test) {
+  ASSERT_NOK(test->SendCommandAndGetResponse(command, 1)) << "Command: " << command;
+  test->RestartClient();
+
+  command.erase(std::remove(command.begin(), command.end(), '\n'), command.end());
+
+  if (!command.empty()) {
+    ASSERT_NOK(test->SendCommandAndGetResponse(command, 1)) << "Command: " << command;
+    test->RestartClient();
+  }
+}
+
+} // namespace
+
+TEST_F(TestRedisService, BadCommand) {
+  expected_no_sessions_ = true;
+
+  TestBadCommand("\n", this);
+  TestBadCommand(" \r\n", this);
+  TestBadCommand("*\r\n9\r\n", this);
+  TestBadCommand("1\r\n\r\n", this);
+  TestBadCommand("1\r\n \r\n", this);
+  TestBadCommand("1\r\n*0\r\n", this);
+}
+
+TEST_F(TestRedisService, BadRandom) {
+  expected_no_sessions_ = true;
+  const std::string allowed = " -$*\r\n0123456789";
+  std::string command;
+  constexpr size_t kTotalProbes = 100;
+  constexpr size_t kMinCommandLength = 1;
+  constexpr size_t kMaxCommandLength = 100;
+  constexpr int kTimeoutInMillis = 250;
+  for (int i = 0; i != kTotalProbes; ++i) {
+    size_t len = RandomUniformInt(kMinCommandLength, kMaxCommandLength);
+    command.clear();
+    for (size_t idx = 0; idx != len; ++idx) {
+      command += RandomElement(allowed);
+      if (command[command.length() - 1] == '\r') {
+        command += '\n';
+      }
+    }
+
+    LOG(INFO) << "Command: " << command;
+    auto status = SendCommandAndGetResponse(command, 1, kTimeoutInMillis);
+    // We don't care about status here, because even usually it fails,
+    // sometimes it has non empty response.
+    // Our main goal is to test that server does not crash.
+    LOG(INFO) << "Status: " << status;
+
+    RestartClient();
+  }
 }
 
 TEST_F(TestRedisService, IncompleteCommandMulti) {

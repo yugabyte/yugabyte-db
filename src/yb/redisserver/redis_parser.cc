@@ -444,8 +444,16 @@ Status RedisParser::SingleLine() {
   if (!status.ok() || incomplete_) {
     return status;
   }
+  auto start = token_begin_;
+  auto finish = pos_ - 2;
+  while (start < finish && isspace(*start)) {
+    ++start;
+  }
+  if (start >= finish) {
+    return STATUS(InvalidArgument, "Empty line");
+  }
   if (args_) {
-    RETURN_NOT_OK(util::SplitArgs(Slice(token_begin_, pos_), args_));
+    RETURN_NOT_OK(util::SplitArgs(Slice(start, finish), args_));
   }
   state_ = State::FINISHED;
   return Status::OK();
@@ -534,13 +542,16 @@ Status RedisParser::ParseNumber(char prefix,
                              prefix,
                              static_cast<char>(*token_begin_));
   }
+  auto number_begin = pointer_cast<const char*>(token_begin_ + 1);
+  if (!isdigit(*number_begin)) { // disable skip of space characters by strtoll
+    return STATUS_FORMAT(Corruption, "Number starts with invalid character: $0", *number_begin);
+  }
   char* token_end;
-  auto parsed_number =
-      std::strtoll(pointer_cast<const char*>(token_begin_ + 1), &token_end, 10);
+  auto parsed_number = std::strtoll(number_begin, &token_end, 10);
   static_assert(sizeof(parsed_number) == sizeof(*out), "Expected size");
   const char* expected_stop = pointer_cast<const char*>(pos_ - kLineEndLength);
   if (token_end != expected_stop) {
-    return STATUS_SUBSTITUTE(NetworkError,
+    return STATUS_SUBSTITUTE(Corruption,
                              "$0 was failed to parse, extra data after number: $1",
                              name,
                              Slice(token_end, expected_stop).ToDebugString());

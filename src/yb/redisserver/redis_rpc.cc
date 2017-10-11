@@ -148,6 +148,10 @@ Status RedisInboundCall::ParseFrom(size_t commands, Slice source) {
   for (size_t i = 0; i != commands; ++i) {
     parser.SetArgs(&client_batch_[i]);
     RETURN_NOT_OK(parser.NextCommand(&end_of_command));
+    DCHECK_NE(0, client_batch_[i].size());
+    if (client_batch_[i].empty()) { // Should not be there
+      return STATUS(Corruption, "Empty command");
+    }
     if (!end_of_command) {
       break;
     }
