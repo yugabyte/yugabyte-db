@@ -972,11 +972,11 @@ pg_decode_message(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 		else
 			appendStringInfoString(ctx->out, "\"transactional\":false,");
 
-		appendStringInfo(ctx->out, "\"prefix\":");
-		quote_escape_json(ctx->out, prefix);
+		appendStringInfo(ctx->out, "\"prefix\":\"%s\"", prefix);
 		appendStringInfoChar(ctx->out, ',');
-		appendStringInfoString(ctx->out, "\"content\":");
-		quote_escape_json(ctx->out, content);
+		appendStringInfoString(ctx->out, "\"content\":\"");
+		appendBinaryStringInfo(ctx->out, content, content_size);
+		appendStringInfoChar(ctx->out, '"');
 		appendStringInfoChar(ctx->out, '}');
 
 		/* build a complete JSON object for non-transactional message */
