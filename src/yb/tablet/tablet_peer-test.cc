@@ -154,12 +154,12 @@ class TabletPeerTest : public YBTabletTest,
                         tablet()->metadata()->schema_version(), metric_entity_.get(), &log));
 
     tablet_peer_->SetBootstrapping();
-    ASSERT_OK(tablet_peer_->Init(tablet(),
-                                 nullptr /* client */,
-                                 clock(),
-                                 messenger_,
-                                 log,
-                                 metric_entity_));
+    ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
+                                           nullptr /* client */,
+                                           clock(),
+                                           messenger_,
+                                           log,
+                                           metric_entity_));
   }
 
   Status StartPeer(const ConsensusBootstrapInfo& info) {

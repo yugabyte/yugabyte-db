@@ -65,18 +65,16 @@ TAG_FLAG(consensus_rpc_timeout_ms, advanced);
 
 DECLARE_int32(raft_heartbeat_interval_ms);
 
-DEFINE_double(fault_crash_on_leader_request_fraction, 0.0,
-              "Fraction of the time when the leader will crash just before sending an "
-              "UpdateConsensus RPC. (For testing only!)");
-TAG_FLAG(fault_crash_on_leader_request_fraction, unsafe);
+DEFINE_test_flag(double, fault_crash_on_leader_request_fraction, 0.0,
+                 "Fraction of the time when the leader will crash just before sending an "
+                 "UpdateConsensus RPC.");
 
 // Allow for disabling remote bootstrap in unit tests where we want to test
 // certain scenarios without triggering bootstrap of a remote peer.
-DEFINE_bool(enable_remote_bootstrap, true,
-            "Whether remote bootstrap will be initiated by the leader when it "
-            "detects that a follower is out of date or does not have a tablet "
-            "replica. For testing purposes only.");
-TAG_FLAG(enable_remote_bootstrap, unsafe);
+DEFINE_test_flag(bool, enable_remote_bootstrap, true,
+                 "Whether remote bootstrap will be initiated by the leader when it "
+                 "detects that a follower is out of date or does not have a tablet "
+                 "replica.");
 
 namespace yb {
 namespace consensus {

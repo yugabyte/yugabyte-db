@@ -153,12 +153,12 @@ class RemoteBootstrapTest : public YBTabletTest {
 
     log_anchor_registry_.reset(new LogAnchorRegistry());
     tablet_peer_->SetBootstrapping();
-    CHECK_OK(tablet_peer_->Init(tablet(),
-                                nullptr /* client */,
-                                clock(),
-                                messenger,
-                                log,
-                                metric_entity));
+    CHECK_OK(tablet_peer_->InitTabletPeer(tablet(),
+                                          nullptr /* client */,
+                                          clock(),
+                                          messenger,
+                                          log,
+                                          metric_entity));
     consensus::ConsensusBootstrapInfo boot_info;
     CHECK_OK(tablet_peer_->Start(boot_info));
 

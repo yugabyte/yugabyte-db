@@ -97,12 +97,12 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
 
   // Initializes the TabletPeer, namely creating the Log and initializing
   // Consensus.
-  CHECKED_STATUS Init(const std::shared_ptr<TabletClass>& tablet,
-                      const client::YBClientPtr& client,
-                      const scoped_refptr<server::Clock>& clock,
-                      const std::shared_ptr<rpc::Messenger>& messenger,
-                      const scoped_refptr<log::Log>& log,
-                      const scoped_refptr<MetricEntity>& metric_entity);
+  CHECKED_STATUS InitTabletPeer(const std::shared_ptr<TabletClass> &tablet,
+                                const client::YBClientPtr &client,
+                                const scoped_refptr<server::Clock> &clock,
+                                const std::shared_ptr<rpc::Messenger> &messenger,
+                                const scoped_refptr<log::Log> &log,
+                                const scoped_refptr<MetricEntity> &metric_entity);
 
   // Starts the TabletPeer, making it available for Write()s. If this
   // TabletPeer is part of a consensus configuration this will connect it to other peers
@@ -170,11 +170,6 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
 
   // Returns the current Raft configuration.
   const consensus::RaftConfigPB RaftConfig() const;
-
-  // If any peers in the consensus configuration lack permanent uuids, get them via an
-  // RPC call and update.
-  // TODO: move this to raft_consensus.h.
-  CHECKED_STATUS UpdatePermanentUuids();
 
   TabletStatusListener* status_listener() const {
     return status_listener_.get();
@@ -255,9 +250,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   const std::string& tablet_id() const override { return tablet_id_; }
 
   // Convenience method to return the permanent_uuid of this peer.
-  std::string permanent_uuid() const {
-    return tablet_ != nullptr ? tablet_->metadata()->fs_manager()->uuid() : "";
-  }
+  std::string permanent_uuid() const;
 
   CHECKED_STATUS NewOperationDriver(std::unique_ptr<Operation> operation,
                                     consensus::DriverType type,
@@ -370,6 +363,10 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   // List of maintenance operations for the tablet that need information that only the peer
   // can provide.
   std::vector<MaintenanceOp*> maintenance_ops_;
+
+  // Cache the permanent of the tablet UUID to retrieve it without a lock in the common case.
+  mutable std::atomic<bool> cached_permanent_uuid_initialized_ { false };
+  mutable std::string cached_permanent_uuid_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);

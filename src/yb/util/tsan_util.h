@@ -25,6 +25,15 @@ constexpr T NonTsanVsTsan(T value_not_in_tsan, T value_in_tsan) {
 #endif
 }
 
+template <class T>
+constexpr T RegularBuildVsSanitizers(T regular_build_value, T sanitizer_value) {
+#if defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
+  return sanitizer_value;
+#else
+  return regular_build_value;
+#endif
+}
+
 }  // namespace yb
 
 #endif  // YB_UTIL_TSAN_UTIL_H

@@ -102,13 +102,12 @@ DEFINE_int32(log_inject_latency_ms_mean, 100,
 DEFINE_int32(log_inject_latency_ms_stddev, 100,
              "The standard deviation of latency to inject in the log. "
              "Only takes effect if --log_inject_latency is true");
-DEFINE_double(fault_crash_before_append_commit, 0.0,
-              "Fraction of the time when the server will crash just before appending a "
-              "COMMIT message to the log. (For testing only!)");
+DEFINE_test_flag(double, fault_crash_before_append_commit, 0.0,
+                 "Fraction of the time when the server will crash just before appending a "
+                 "COMMIT message to the log.");
 TAG_FLAG(log_inject_latency, unsafe);
 TAG_FLAG(log_inject_latency_ms_mean, unsafe);
 TAG_FLAG(log_inject_latency_ms_stddev, unsafe);
-TAG_FLAG(fault_crash_before_append_commit, unsafe);
 
 // Validate that log_min_segments_to_retain >= 1
 static bool ValidateLogsToRetain(const char* flagname, int value) {

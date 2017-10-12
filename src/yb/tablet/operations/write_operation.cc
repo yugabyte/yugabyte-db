@@ -52,10 +52,8 @@
 #include "yb/util/locks.h"
 #include "yb/util/trace.h"
 
-DEFINE_int32(tablet_inject_latency_on_apply_write_txn_ms, 0,
-             "How much latency to inject when a write operation is applied. "
-             "For testing only!");
-TAG_FLAG(tablet_inject_latency_on_apply_write_txn_ms, unsafe);
+DEFINE_test_flag(int32, tablet_inject_latency_on_apply_write_txn_ms, 0,
+                 "How much latency to inject when a write operation is applied.");
 TAG_FLAG(tablet_inject_latency_on_apply_write_txn_ms, runtime);
 
 namespace yb {

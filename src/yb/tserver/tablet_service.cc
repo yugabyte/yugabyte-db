@@ -850,9 +850,11 @@ Status TabletServiceImpl::CheckPeerIsLeader(const TabletPeer& tablet_peer,
                                             TabletServerErrorPB::Code* error_code) {
   scoped_refptr<consensus::Consensus> consensus = tablet_peer.shared_consensus();
   const Consensus::LeaderStatus leader_status = consensus->leader_status();
-  VLOG(1) << "Check for " << Substitute("tablet $0 peer $1. Peer role is $2. Leader status is $3.",
-                                        tablet_peer.tablet_id(), tablet_peer.permanent_uuid(),
-                                        consensus->role(), static_cast<int>(leader_status));
+
+  VLOG(1) << "Check for " << Format(
+      "tablet $0 peer $1. Peer role is $2. Leader status is $3.",
+      tablet_peer.tablet_id(), tablet_peer.permanent_uuid(),
+      consensus->role(), static_cast<int>(leader_status));
 
   switch (leader_status) {
     case Consensus::LeaderStatus::NOT_LEADER:

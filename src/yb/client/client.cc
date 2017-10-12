@@ -145,10 +145,8 @@ MAKE_ENUM_LIMITS(yb::client::YBScanner::OrderMode,
 DEFINE_int32(yb_num_shards_per_tserver, yb::NonTsanVsTsan(8, 2),
              "The default number of shards per table per tablet server when a table is created.");
 
-DEFINE_int32(yb_num_total_tablets, 0,
-             "The total number of tablets per table when a table is created. (For testing only!)");
-TAG_FLAG(yb_num_total_tablets, unsafe);
-TAG_FLAG(yb_num_total_tablets, hidden);
+DEFINE_test_flag(int32, yb_num_total_tablets, 0,
+                 "The total number of tablets per table when a table is created.");
 
 namespace yb {
 namespace client {

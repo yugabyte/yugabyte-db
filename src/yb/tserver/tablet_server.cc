@@ -105,15 +105,15 @@ namespace yb {
 namespace tserver {
 
 TabletServer::TabletServer(const TabletServerOptions& opts)
-  : RpcAndWebServerBase("TabletServer", opts, "yb.tabletserver"),
-    initted_(false),
-    fail_heartbeats_for_tests_(false),
-    opts_(opts),
-    tablet_manager_(new TSTabletManager(fs_manager_.get(), this, metric_registry())),
-    scanner_manager_(new ScannerManager(metric_entity())),
-    path_handlers_(new TabletServerPathHandlers(this)),
-    maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
-    master_config_index_(0) {
+    : RpcAndWebServerBase("TabletServer", opts, "yb.tabletserver"),
+      initted_(false),
+      fail_heartbeats_for_tests_(false),
+      opts_(opts),
+      tablet_manager_(new TSTabletManager(fs_manager_.get(), this, metric_registry())),
+      scanner_manager_(new ScannerManager(metric_entity())),
+      path_handlers_(new TabletServerPathHandlers(this)),
+      maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
+      master_config_index_(0) {
 }
 
 TabletServer::~TabletServer() {

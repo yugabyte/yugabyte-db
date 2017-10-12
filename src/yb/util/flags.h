@@ -32,8 +32,9 @@
 #ifndef YB_UTIL_FLAGS_H
 #define YB_UTIL_FLAGS_H
 
-#include "yb/gutil/macros.h"
 #include <gflags/gflags.h>
+
+#include "yb/gutil/macros.h"
 
 DECLARE_string(tserver_master_addrs);
 

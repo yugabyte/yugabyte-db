@@ -76,6 +76,7 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
+#include "yb/util/tsan_util.h"
 
 DEFINE_int32(num_tablets_to_open_simultaneously, 0,
              "Number of threads available to open tablets during startup. If this "
@@ -90,30 +91,25 @@ DEFINE_int32(tablet_start_warn_threshold_ms, 500,
              "a warning with a trace.");
 TAG_FLAG(tablet_start_warn_threshold_ms, hidden);
 
-DEFINE_double(fault_crash_after_blocks_deleted, 0.0,
-              "Fraction of the time when the tablet will crash immediately "
-              "after deleting the data blocks during tablet deletion. "
-              "(For testing only!)");
-TAG_FLAG(fault_crash_after_blocks_deleted, unsafe);
+DEFINE_test_flag(double, fault_crash_after_blocks_deleted, 0.0,
+                 "Fraction of the time when the tablet will crash immediately "
+                 "after deleting the data blocks during tablet deletion.");
 
-DEFINE_double(fault_crash_after_wal_deleted, 0.0,
-              "Fraction of the time when the tablet will crash immediately "
-              "after deleting the WAL segments during tablet deletion. "
-              "(For testing only!)");
-TAG_FLAG(fault_crash_after_wal_deleted, unsafe);
+DEFINE_test_flag(double, fault_crash_after_wal_deleted, 0.0,
+                 "Fraction of the time when the tablet will crash immediately "
+                 "after deleting the WAL segments during tablet deletion.");
 
-DEFINE_double(fault_crash_after_cmeta_deleted, 0.0,
-              "Fraction of the time when the tablet will crash immediately "
-              "after deleting the consensus metadata during tablet deletion. "
-              "(For testing only!)");
-TAG_FLAG(fault_crash_after_cmeta_deleted, unsafe);
+DEFINE_test_flag(double, fault_crash_after_cmeta_deleted, 0.0,
+                 "Fraction of the time when the tablet will crash immediately "
+                 "after deleting the consensus metadata during tablet deletion.");
 
-DEFINE_double(fault_crash_after_rb_files_fetched, 0.0,
-              "Fraction of the time when the tablet will crash immediately "
-              "after fetching the files during a remote bootstrap but before "
-              "marking the superblock as TABLET_DATA_READY. "
-              "(For testing only!)");
-TAG_FLAG(fault_crash_after_rb_files_fetched, unsafe);
+DEFINE_test_flag(double, fault_crash_after_rb_files_fetched, 0.0,
+                 "Fraction of the time when the tablet will crash immediately "
+                 "after fetching the files during a remote bootstrap but before "
+                 "marking the superblock as TABLET_DATA_READY.")
+
+DEFINE_test_flag(bool, pretend_memory_exceeded_enforce_flush, false,
+                 "Always pretend memory has been exceeded to enforce background flush.");
 
 namespace {
 
@@ -146,17 +142,10 @@ DEFINE_int32(db_block_cache_size_percentage, 50,
              "Default percentage of total available memory to use as block cache size, if not "
              "asking for a raw number, through FLAGS_db_block_cache_size_bytes.");
 
-DEFINE_int32(sleep_after_tombstoning_tablet_secs, 0,
-             "Whether we sleep in LogAndTombstone after calling DeleteTabletData "
-             "(For testing only!)");
-TAG_FLAG(sleep_after_tombstoning_tablet_secs, unsafe);
-TAG_FLAG(sleep_after_tombstoning_tablet_secs, hidden);
+DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
+                 "Whether we sleep in LogAndTombstone after calling DeleteTabletData.");
 
-#if defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
-constexpr int kTServerYbClientDefaultTimeoutMs = 60 * 1000;
-#else
-constexpr int kTServerYbClientDefaultTimeoutMs = 5 * 1000;
-#endif
+constexpr int kTServerYbClientDefaultTimeoutMs = yb::RegularBuildVsSanitizers(5, 60) * 1000;
 
 DEFINE_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeoutMs,
              "Default timeout for the YBClient embedded into the tablet server that is used "
@@ -215,10 +204,12 @@ using tserver::RemoteBootstrapClient;
 
 // Only called from the background task to ensure it's synchronized
 void TSTabletManager::MaybeFlushTablet() {
-  while (memory_monitor()->Exceeded()) {
+  int iteration = 0;
+  while (memory_monitor()->Exceeded() ||
+         (iteration++ == 0 && FLAGS_pretend_memory_exceeded_enforce_flush)) {
     scoped_refptr<TabletPeer> tablet_to_flush = TabletToFlush();
     // TODO(bojanserafimov): If tablet_to_flush flushes now because of other reasons,
-    // we will schedule a second flush, which will unnecessarily stall writes. This
+    // we will schedule a second flush, which will unnecessarily stall writes for a short time. This
     // will not happen often, but should be fixed.
     if (tablet_to_flush) {
       WARN_NOT_OK(tablet_to_flush->tablet()->Flush(tablet::FlushMode::kAsync),
@@ -231,13 +222,16 @@ void TSTabletManager::MaybeFlushTablet() {
 // tablet memstores are empty or about to flush.
 scoped_refptr<TabletPeer> TSTabletManager::TabletToFlush() {
   boost::shared_lock<rw_spinlock> lock(lock_); // For using the tablet map
-  HybridTime oldest_write_in_memstore = HybridTime::kMax;
+  HybridTime oldest_write_in_memstores = HybridTime::kMax;
   scoped_refptr<TabletPeer> tablet_to_flush;
   for (const TabletMap::value_type& entry : tablet_map_) {
-    HybridTime ow = entry.second->tablet()->flush_stats()->oldest_write_in_memstore();
-    if (ow < oldest_write_in_memstore) {
-      oldest_write_in_memstore = ow;
-      tablet_to_flush = entry.second;
+    const auto tablet = entry.second->shared_tablet();
+    if (tablet) {
+      const HybridTime oldest_write_in_memstore = tablet->flush_stats()->oldest_write_in_memstore();
+      if (oldest_write_in_memstore < oldest_write_in_memstores) {
+        oldest_write_in_memstores = oldest_write_in_memstore;
+        tablet_to_flush = entry.second;
+      }
     }
   }
   return tablet_to_flush;
@@ -872,12 +866,12 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
   MonoTime start(MonoTime::Now(MonoTime::FINE));
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "starting tablet") {
     TRACE("Initializing tablet peer");
-    s =  tablet_peer->Init(tablet,
-                           client_,
-                           scoped_refptr<server::Clock>(server_->clock()),
-                           server_->messenger(),
-                           log,
-                           tablet->GetMetricEntity());
+    s = tablet_peer->InitTabletPeer(tablet,
+                                    client_,
+                                    scoped_refptr<server::Clock>(server_->clock()),
+                                    server_->messenger(),
+                                    log,
+                                    tablet->GetMetricEntity());
 
     if (!s.ok()) {
       LOG(ERROR) << kLogPrefix << "Tablet failed to init: "

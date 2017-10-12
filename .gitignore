@@ -60,3 +60,7 @@ java/yb-loadtester/src/main/csharp/*/packages/
 # These files might appear when applying patches.
 *.orig
 *.rej
+
+.tags
+.tags_sorted_by_file
+cscope.out

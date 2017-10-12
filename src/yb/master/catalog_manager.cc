@@ -177,10 +177,8 @@ METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_live,
                            "in the time interval defined by the gflag "
                            "FLAGS_tserver_unresponsive_timeout_ms.");
 
-DEFINE_uint64(inject_latency_during_remote_bootstrap_secs, 0,
-              "Number of seconds to sleep during a remote bootstrap. (For testing only!)");
-TAG_FLAG(inject_latency_during_remote_bootstrap_secs, unsafe);
-TAG_FLAG(inject_latency_during_remote_bootstrap_secs, hidden);
+DEFINE_test_flag(uint64, inject_latency_during_remote_bootstrap_secs, 0,
+                 "Number of seconds to sleep during a remote bootstrap.");
 
 DEFINE_string(cluster_uuid, "", "Cluster UUID to be used by this cluster");
 TAG_FLAG(cluster_uuid, hidden);

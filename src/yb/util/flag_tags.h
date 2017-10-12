@@ -53,7 +53,7 @@
 //         removed at any point. Users should not expect any compatibility
 //         of these flags.
 //
-//         TODO: we should add a new flag like -unlock_experimental_flags
+//         TODO: we should add a new flag like -unlock_experimental_flags (NOLINT)
 //         which would be required if the user wants to use any of these,
 //         similar to the JVM's -XX:+UnlockExperimentalVMOptions.
 //
@@ -73,7 +73,7 @@
 //         happening. These flags are automatically excluded from user-facing
 //         documentation even if they are not also marked 'hidden'.
 //
-//         TODO: we should add a flag -unlock_unsafe_flags which would be required
+//         TODO: we should add a flag -unlock_unsafe_flags which would be required (NOLINT)
 //         to use any of these flags.
 //
 // - "runtime":
@@ -119,11 +119,13 @@
 #ifndef YB_UTIL_FLAG_TAGS_H
 #define YB_UTIL_FLAG_TAGS_H
 
-#include "yb/gutil/macros.h"
-
 #include <string>
 #include <unordered_set>
 #include <vector>
+
+#include <boost/preprocessor/cat.hpp>
+
+#include "yb/gutil/macros.h"
 
 namespace yb {
 
@@ -177,4 +179,10 @@ class FlagTagger {
 } // namespace flag_tags_internal
 
 } // namespace yb
+
+#define DEFINE_test_flag(type, name, default_value, description) \
+    BOOST_PP_CAT(DEFINE_, type)(name, default_value, description " (For testing only!)"); \
+    TAG_FLAG(name, unsafe); \
+    TAG_FLAG(name, hidden);
+
 #endif /* YB_UTIL_FLAG_TAGS_H */

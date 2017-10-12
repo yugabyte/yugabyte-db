@@ -85,14 +85,11 @@ TAG_FLAG(committed_config_change_role_timeout_sec, hidden);
 
 DECLARE_int32(rpc_max_message_size);
 
-DEFINE_double(fault_crash_bootstrap_client_before_changing_role, 0.0,
-              "The remote bootstrap client will crash before closing the session with the leader. "
-              "Because the session won't be closed successfully, the leader won't issue a "
-              "ChangeConfig request to change this tserver role *(from PRE_VOTER or PRE_OBSERVER "
-              "to VOTER or OBSERVER respectively). "
-              "For testing only!)");
-TAG_FLAG(fault_crash_bootstrap_client_before_changing_role, unsafe);
-TAG_FLAG(fault_crash_bootstrap_client_before_changing_role, hidden);
+DEFINE_test_flag(double, fault_crash_bootstrap_client_before_changing_role, 0.0,
+                 "The remote bootstrap client will crash before closing the session with the "
+                 "leader. Because the session won't be closed successfully, the leader won't issue "
+                 "a ChangeConfig request to change this tserver role *(from PRE_VOTER or "
+                 "PRE_OBSERVER to VOTER or OBSERVER respectively).");
 
 // RETURN_NOT_OK_PREPEND() with a remote-error unwinding step.
 #define RETURN_NOT_OK_UNWIND_PREPEND(status, controller, msg) \

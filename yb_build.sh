@@ -570,7 +570,8 @@ if "$build_cxx"; then
     exit "$exit_code"
   fi
 
-  if "$test_existence_check"; then
+  # Don't check for test binary existence in case targets are explicitly specified.
+  if "$test_existence_check" && [[ ${#make_targets[@]} -eq 0 ]]; then
     (
       cd "$BUILD_ROOT"
       log "Checking if all test binaries referenced by CMakeLists.txt files exist."

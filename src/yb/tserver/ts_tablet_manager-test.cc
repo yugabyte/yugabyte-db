@@ -35,10 +35,12 @@
 #include <string>
 
 #include <gtest/gtest.h>
+#include <gflags/gflags.h>
 
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
 #include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/consensus.pb.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/master/master.pb.h"
 #include "yb/tablet/tablet_peer.h"
@@ -46,6 +48,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/test_util.h"
+#include "yb/util/format.h"
 
 #define ASSERT_REPORT_HAS_UPDATED_TABLET(report, tablet_id) \
   ASSERT_NO_FATALS(AssertReportHasUpdatedTablet(report, tablet_id))
@@ -53,17 +56,22 @@
 #define ASSERT_MONOTONIC_REPORT_SEQNO(report_seqno, tablet_report) \
   ASSERT_NO_FATALS(AssertMonotonicReportSeqno(report_seqno, tablet_report))
 
+DECLARE_bool(pretend_memory_exceeded_enforce_flush);
+
 namespace yb {
 namespace tserver {
 
 using consensus::kInvalidOpIdIndex;
 using consensus::RaftConfigPB;
+using consensus::ConsensusRound;
+using consensus::ConsensusRoundPtr;
+using consensus::ReplicateMsg;
 using master::ReportedTabletPB;
 using master::TabletReportPB;
 using tablet::TabletPeer;
+using gflags::FlagSaver;
 
 static const char* const kTabletId = "my-tablet-id";
-
 
 class TsTabletManagerTest : public YBTest {
  public:
@@ -74,8 +82,8 @@ class TsTabletManagerTest : public YBTest {
   void SetUp() override {
     YBTest::SetUp();
 
-    mini_server_.reset(
-        new MiniTabletServer(GetTestPath("TsTabletManagerTest-fsroot"), 0));
+    test_data_root_ = GetTestPath("TsTabletManagerTest-fsroot");
+    mini_server_.reset(new MiniTabletServer(test_data_root_, 0));
     ASSERT_OK(mini_server_->Start());
     mini_server_->FailHeartbeats();
 
@@ -111,6 +119,8 @@ class TsTabletManagerTest : public YBTest {
 
   Schema schema_;
   RaftConfigPB config_;
+
+  string test_data_root_;
 };
 
 TEST_F(TsTabletManagerTest, TestCreateTablet) {
@@ -124,8 +134,7 @@ TEST_F(TsTabletManagerTest, TestCreateTablet) {
   LOG(INFO) << "Shutting down tablet manager";
   mini_server_->Shutdown();
   LOG(INFO) << "Restarting tablet manager";
-  mini_server_.reset(
-      new MiniTabletServer(GetTestPath("TsTabletManagerTest-fsroot"), 0));
+  mini_server_.reset(new MiniTabletServer(test_data_root_, 0));
   ASSERT_OK(mini_server_->Start());
   ASSERT_OK(mini_server_->WaitStarted());
   tablet_manager_ = mini_server_->server()->tablet_manager();
@@ -133,6 +142,49 @@ TEST_F(TsTabletManagerTest, TestCreateTablet) {
   // Ensure that the tablet got re-loaded and re-opened off disk.
   ASSERT_TRUE(tablet_manager_->LookupTablet(kTabletId, &peer));
   ASSERT_EQ(kTabletId, peer->tablet()->tablet_id());
+}
+
+TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
+  FlagSaver flag_saver;
+  FLAGS_pretend_memory_exceeded_enforce_flush = true;
+
+  const int kNumTablets = 2;
+  const int kNumRestarts = 3;
+
+  std::vector<TabletId> tablet_ids;
+  std::vector<ConsensusRoundPtr> consensus_rounds;
+
+  for (int i = 0; i < kNumTablets; ++i) {
+    scoped_refptr<TabletPeer> peer;
+    const auto tablet_id = Format("my-tablet-$0", i + 1);
+    tablet_ids.emplace_back(tablet_id);
+    ASSERT_OK(CreateNewTablet(tablet_id, schema_, &peer));
+    ASSERT_EQ(tablet_id, peer->tablet()->tablet_id());
+
+    auto replicate_ptr = std::make_shared<ReplicateMsg>();
+    replicate_ptr->set_op_type(consensus::NO_OP);
+    replicate_ptr->set_hybrid_time(peer->clock().Now().ToUint64());
+    ConsensusRoundPtr round(new ConsensusRound(peer->consensus(), std::move(replicate_ptr)));
+    consensus_rounds.emplace_back(round);
+    ASSERT_OK(peer->consensus()->Replicate(round));
+  }
+
+  for (int i = 0; i < kNumRestarts; ++i) {
+    LOG(INFO) << "Shutting down tablet manager";
+    mini_server_->Shutdown();
+    LOG(INFO) << "Restarting tablet manager";
+    mini_server_.reset(new MiniTabletServer(test_data_root_, 0));
+    ASSERT_OK(mini_server_->Start());
+    auto* tablet_manager = mini_server_->server()->tablet_manager();
+    ASSERT_NE(nullptr, tablet_manager);
+    tablet_manager->MaybeFlushTablet();
+    ASSERT_OK(mini_server_->WaitStarted());
+    for (auto& tablet_id : tablet_ids) {
+      scoped_refptr<TabletPeer> peer;
+      ASSERT_TRUE(tablet_manager->LookupTablet(tablet_id, &peer));
+      ASSERT_EQ(tablet_id, peer->tablet()->tablet_id());
+    }
+  }
 }
 
 static void AssertMonotonicReportSeqno(int64_t* report_seqno,

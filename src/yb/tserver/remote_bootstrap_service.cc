@@ -78,36 +78,26 @@ DEFINE_uint64(remote_bootstrap_timeout_poll_period_ms, 10000,
               "remote bootstrap sessions, in millis");
 TAG_FLAG(remote_bootstrap_timeout_poll_period_ms, hidden);
 
-DEFINE_double(fault_crash_on_handle_rb_fetch_data, 0.0,
-              "Fraction of the time when the tablet will crash while "
-              "servicing a RemoteBootstrapService FetchData() RPC call. "
-              "(For testing only!)");
-TAG_FLAG(fault_crash_on_handle_rb_fetch_data, unsafe);
+DEFINE_test_flag(double, fault_crash_on_handle_rb_fetch_data, 0.0,
+                 "Fraction of the time when the tablet will crash while "
+                 "servicing a RemoteBootstrapService FetchData() RPC call.");
 
-DEFINE_uint64(inject_latency_before_change_role_secs, 0,
-              "Number of seconds to sleep before we call ChangeRole. "
-              "(For testing only!)");
-TAG_FLAG(inject_latency_before_change_role_secs, unsafe);
+DEFINE_test_flag(uint64, inject_latency_before_change_role_secs, 0,
+                 "Number of seconds to sleep before we call ChangeRole.");
 
-DEFINE_bool(skip_change_role, false,
-            "When set, we don't call ChangeRole after successfully finishing a remote bootstrap. "
-            "(For testing only!)");
-TAG_FLAG(skip_change_role, unsafe);
+DEFINE_test_flag(bool, skip_change_role, false,
+                 "When set, we don't call ChangeRole after successfully finishing a remote "
+                 "bootstrap.");
 
-DEFINE_double(fault_crash_leader_before_changing_role, 0.0,
-              "The leader will crash before changing the role (from PRE_VOTER or PRE_OBSERVER to "
-              "VOTER or OBSERVER respectively) of the tablet server it is remote bootstrapping. "
-              "For testing only!)");
-TAG_FLAG(fault_crash_leader_before_changing_role, unsafe);
-TAG_FLAG(fault_crash_leader_before_changing_role, hidden);
+DEFINE_test_flag(double, fault_crash_leader_before_changing_role, 0.0,
+                 "The leader will crash before changing the role (from PRE_VOTER or PRE_OBSERVER "
+                 "to VOTER or OBSERVER respectively) of the tablet server it is remote "
+                 "bootstrapping.");
 
-DEFINE_double(fault_crash_leader_after_changing_role, 0.0,
-              "The leader will crash after successfully sending a ChangeConfig (CHANGE_ROLE from "
-              "PRE_VOTER or PRE_OBSERVER to VOTER or OBSERVER respectively) for the tablet server "
-              "it is remote bootstrapping, but before it sends a success response."
-              "For testing only!)");
-TAG_FLAG(fault_crash_leader_after_changing_role, unsafe);
-TAG_FLAG(fault_crash_leader_after_changing_role, hidden);
+DEFINE_test_flag(double, fault_crash_leader_after_changing_role, 0.0,
+                 "The leader will crash after successfully sending a ChangeConfig (CHANGE_ROLE "
+                 "from PRE_VOTER or PRE_OBSERVER to VOTER or OBSERVER respectively) for the tablet "
+                 "server it is remote bootstrapping, but before it sends a success response.");
 
 namespace yb {
 namespace tserver {

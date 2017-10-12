@@ -72,6 +72,7 @@
 #include "yb/util/trace.h"
 
 using std::shared_ptr;
+using std::string;
 
 namespace yb {
 namespace tablet {
@@ -143,12 +144,12 @@ TabletPeer::~TabletPeer() {
       << TabletStatePB_Name(state_);
 }
 
-Status TabletPeer::Init(const shared_ptr<TabletClass>& tablet,
-                        const client::YBClientPtr& client,
-                        const scoped_refptr<server::Clock>& clock,
-                        const shared_ptr<Messenger>& messenger,
-                        const scoped_refptr<Log>& log,
-                        const scoped_refptr<MetricEntity>& metric_entity) {
+Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
+                                  const client::YBClientPtr &client,
+                                  const scoped_refptr<server::Clock> &clock,
+                                  const shared_ptr<Messenger> &messenger,
+                                  const scoped_refptr<Log> &log,
+                                  const scoped_refptr<MetricEntity> &metric_entity) {
 
   DCHECK(tablet) << "A TabletPeer must be provided with a Tablet";
   DCHECK(log) << "A TabletPeer must be provided with a Log";
@@ -626,6 +627,21 @@ Status TabletPeer::StartReplicaOperation(const scoped_refptr<ConsensusRound>& ro
   return Status::OK();
 }
 
+string TabletPeer::permanent_uuid() const {
+  if (cached_permanent_uuid_initialized_.load(std::memory_order_acquire)) {
+    return cached_permanent_uuid_;
+  }
+  std::lock_guard<simple_spinlock> lock(lock_);
+  if (tablet_ == nullptr)
+    return "";
+
+  if (!cached_permanent_uuid_initialized_.load(std::memory_order_acquire)) {
+    cached_permanent_uuid_ = tablet_->metadata()->fs_manager()->uuid();
+    cached_permanent_uuid_initialized_.store(std::memory_order_release);
+  }
+  return cached_permanent_uuid_;
+}
+
 Status TabletPeer::NewOperationDriver(std::unique_ptr<Operation> operation,
                                       consensus::DriverType type,
                                       scoped_refptr<OperationDriver>* driver) {
@@ -649,13 +665,15 @@ void TabletPeer::RegisterMaintenanceOps(MaintenanceManager* maint_mgr) {
 
   DCHECK(maintenance_ops_.empty());
 
-  gscoped_ptr<MaintenanceOp> mrs_flush_op(new FlushMRSOp(this));
-  maint_mgr->RegisterOp(mrs_flush_op.get());
-  maintenance_ops_.push_back(mrs_flush_op.release());
+  if (table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    gscoped_ptr<MaintenanceOp> mrs_flush_op(new FlushMRSOp(this));
+    maint_mgr->RegisterOp(mrs_flush_op.get());
+    maintenance_ops_.push_back(mrs_flush_op.release());
 
-  gscoped_ptr<MaintenanceOp> dms_flush_op(new FlushDeltaMemStoresOp(this));
-  maint_mgr->RegisterOp(dms_flush_op.get());
-  maintenance_ops_.push_back(dms_flush_op.release());
+    gscoped_ptr<MaintenanceOp> dms_flush_op(new FlushDeltaMemStoresOp(this));
+    maint_mgr->RegisterOp(dms_flush_op.get());
+    maintenance_ops_.push_back(dms_flush_op.release());
+  }
 
   gscoped_ptr<MaintenanceOp> log_gc(new LogGCOp(this));
   maint_mgr->RegisterOp(log_gc.get());

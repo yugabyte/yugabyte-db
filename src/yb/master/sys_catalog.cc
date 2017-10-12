@@ -467,12 +467,12 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& 
   // TODO: Do we have a setSplittable(false) or something from the outside is
   // handling split in the TS?
 
-  RETURN_NOT_OK_PREPEND(tablet_peer_->Init(tablet,
-                                           nullptr,
-                                           scoped_refptr<server::Clock>(master_->clock()),
-                                           master_->messenger(),
-                                           log,
-                                           tablet->GetMetricEntity()),
+  RETURN_NOT_OK_PREPEND(tablet_peer_->InitTabletPeer(tablet,
+                                                     nullptr,
+                                                     scoped_refptr<server::Clock>(master_->clock()),
+                                                     master_->messenger(),
+                                                     log,
+                                                     tablet->GetMetricEntity()),
                         "Failed to Init() TabletPeer");
 
   RETURN_NOT_OK_PREPEND(tablet_peer_->Start(consensus_info),
