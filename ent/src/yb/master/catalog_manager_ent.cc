@@ -107,14 +107,14 @@ Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
 
       if (table->metadata().state().table_type() != TableType::YQL_TABLE_TYPE) {
         const Status s = STATUS(InvalidArgument, "Invalid table type", table_id_pb.DebugString());
-        SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+        SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_TYPE, s);
         return s;
       }
 
       if (table->IsCreateInProgress()) {
         const Status s = STATUS(IllegalState,
             "Table creation is in progress", table->ToString());
-        SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+        SetupError(resp->mutable_error(), MasterErrorPB::TABLE_CREATION_IS_IN_PROGRESS, s);
         return s;
       }
 
@@ -194,8 +194,7 @@ Status CatalogManager::IsCreateSnapshotDone(const IsCreateSnapshotDoneRequestPB*
     snapshot = FindPtrOrNull(snapshot_ids_map_, req->snapshot_id());
     if (snapshot == nullptr) {
       const Status s = STATUS(NotFound, "The snapshot does not exist", req->snapshot_id());
-      // TODO: SNAPSHOT_NOT_FOUND
-      SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+      SetupError(resp->mutable_error(), MasterErrorPB::SNAPSHOT_NOT_FOUND, s);
       return s;
     }
   }
@@ -207,21 +206,46 @@ Status CatalogManager::IsCreateSnapshotDone(const IsCreateSnapshotDoneRequestPB*
 
   if (l->data().started_deleting()) {
     Status s = STATUS(NotFound, "The snapshot was deleted", req->snapshot_id());
-    // TODO: SNAPSHOT_NOT_FOUND
-    SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+    SetupError(resp->mutable_error(), MasterErrorPB::SNAPSHOT_NOT_FOUND, s);
     return s;
   }
 
   if (l->data().is_failed()) {
     Status s = STATUS(NotFound, "The snapshot has failed", req->snapshot_id());
-    // TODO: SNAPSHOT_FAILED
-    SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+    SetupError(resp->mutable_error(), MasterErrorPB::SNAPSHOT_FAILED, s);
+    return s;
+  }
+
+  if (l->data().is_cancelled()) {
+    Status s = STATUS(NotFound, "The snapshot has been cancelled", req->snapshot_id());
+    SetupError(resp->mutable_error(), MasterErrorPB::SNAPSHOT_CANCELLED, s);
     return s;
   }
 
   // Verify if the create is in-progress.
   TRACE("Verify if the snapshot creation is in progress for $0", req->snapshot_id());
   resp->set_done(l->data().is_complete());
+  return Status::OK();
+}
+
+Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB*,
+                                     ListSnapshotsResponsePB* resp) {
+  RETURN_NOT_OK(CheckOnline());
+
+  boost::shared_lock<LockType> l(lock_);
+
+  if (!current_snapshot_id_.empty()) {
+    resp->set_current_snapshot_id(current_snapshot_id_);
+  }
+
+  for (const SnapshotInfoMap::value_type& entry : snapshot_ids_map_) {
+    auto snapshot_lock = entry.second->LockForRead();
+
+    ListSnapshotsResponsePB::SnapshotInfo* const snapshot = resp->add_snapshots();
+    snapshot->set_id(entry.first);
+    *(snapshot->mutable_entry()) = entry.second->metadata().state().pb;
+  }
+
   return Status::OK();
 }
 
