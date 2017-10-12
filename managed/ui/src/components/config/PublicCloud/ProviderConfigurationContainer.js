@@ -17,6 +17,7 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(createProvider(type, name, config)).then((response) => {
         dispatch(createProviderResponse(response.payload));
         if (response.payload.status === 200) {
+          dispatch(fetchCloudMetadata());
           const providerUUID = response.payload.data.uuid;
           dispatch(bootstrapProvider(providerUUID, regionFormVals)).then((boostrapResponse) => {
             dispatch(bootstrapProviderResponse(boostrapResponse.payload));
@@ -29,6 +30,7 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(createProvider("gcp", providerName, providerConfig)).then((response) => {
         dispatch(createProviderResponse(response.payload));
         if (response.payload.status === 200) {
+          dispatch(fetchCloudMetadata());
           const providerUUID = response.payload.data.uuid;
           const params = {"regionList": ["us-west1"], "hostVpcId": ""};
           dispatch(bootstrapProvider(providerUUID, params)).then((boostrapResponse) => {
