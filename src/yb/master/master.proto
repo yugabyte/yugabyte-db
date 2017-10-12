@@ -101,6 +101,13 @@ message MasterErrorPB {
     TYPE_NOT_FOUND = 17;
     INVALID_TYPE = 18;
     TYPE_ALREADY_PRESENT = 19;
+
+    // Snapshot related errors.
+    INVALID_TABLE_TYPE = 20;
+    TABLE_CREATION_IS_IN_PROGRESS = 21;
+    SNAPSHOT_NOT_FOUND = 22;
+    SNAPSHOT_FAILED = 23;
+    SNAPSHOT_CANCELLED = 24;
   }
 
   // The error code.
