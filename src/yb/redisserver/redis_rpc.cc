@@ -163,6 +163,7 @@ Status RedisInboundCall::ParseFrom(size_t commands, Slice source) {
                              source.size());
   }
 
+  parsed_.store(true, std::memory_order_release);
   return Status::OK();
 }
 
@@ -201,6 +202,10 @@ void RedisInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
   }
   resp->set_micros_elapsed(MonoTime::Now(MonoTime::FINE).GetDeltaSince(timing_.time_received)
       .ToMicroseconds());
+
+  if (!parsed_.load(std::memory_order_acquire)) {
+    return;
+  }
 
   // RedisClientBatch client_batch_
   rpc::RedisCallDetailsPB* redis_details = resp->mutable_redis_details();

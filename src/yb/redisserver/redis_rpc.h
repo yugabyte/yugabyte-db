@@ -83,6 +83,9 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
   std::atomic<size_t> ready_count_{0};
   std::atomic<bool> had_failures_{false};
   RedisClientBatch client_batch_;
+
+  // Atomic bool to indicate if the command batch has been parsed.
+  std::atomic<bool> parsed_ = {false};
 };
 
 } // namespace redisserver
