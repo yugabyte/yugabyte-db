@@ -51,6 +51,7 @@ using yb::util::FastDecodeSignedVarInt;
     case ValueType::kRedisSet: FALLTHROUGH_INTENDED; \
     case ValueType::kRedisTS: FALLTHROUGH_INTENDED; \
     case ValueType::kTtl: FALLTHROUGH_INTENDED; \
+    case ValueType::kUserTimestamp: FALLTHROUGH_INTENDED; \
     case ValueType::kTombstone: \
       break
 
@@ -165,6 +166,7 @@ string PrimitiveValue::ToString() const {
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
+    case ValueType::kUserTimestamp: FALLTHROUGH_INTENDED;
     case ValueType::kIntentPrefix:
       break;
     case ValueType::kLowest:
@@ -411,6 +413,7 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED;
     case ValueType::kIntentPrefix: FALLTHROUGH_INTENDED;
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
+    case ValueType::kUserTimestamp: FALLTHROUGH_INTENDED;
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kSystemColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kHybridTime: FALLTHROUGH_INTENDED;
@@ -876,6 +879,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kUInt16Hash: FALLTHROUGH_INTENDED;
     case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED;
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
+    case ValueType::kUserTimestamp: FALLTHROUGH_INTENDED;
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kSystemColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kHybridTime: FALLTHROUGH_INTENDED;

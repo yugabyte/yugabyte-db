@@ -91,6 +91,7 @@ enum class ValueType : char {
   kTimestamp = 's',  // ASCII code 115
   // TTL value in milliseconds, optionally present at the start of a value.
   kTtl = 't',  // ASCII code 116
+  kUserTimestamp = 'u',  // ASCII code 117
   kTransactionId = 'x', // ASCII code 120
 
   kObject = '{',  // ASCII code 123

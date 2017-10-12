@@ -59,6 +59,7 @@ string ToString(ValueType value_type) {
     case ValueType::kArrayIndex: return "ArrayIndex";
     case ValueType::kTombstone: return "Tombstone";
     case ValueType::kTtl: return "Ttl";
+    case ValueType::kUserTimestamp: return "UserTimestamp";
     case ValueType::kTransactionId: return "TransactionId";
     case ValueType::kIntentType: return "IntentType";
     case ValueType::kColumnId: return "ColumnId";

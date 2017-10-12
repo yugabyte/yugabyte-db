@@ -32,7 +32,7 @@ class PTDmlUsingClause: public TreeListNode<PTDmlUsingClauseElement> {
                             const MCSharedPtr<PTDmlUsingClauseElement>& tnode = nullptr)
       : TreeListNode<PTDmlUsingClauseElement>(memory_context, loc, tnode),
         ttl_seconds_(nullptr),
-        timestamp_microseconds_(nullptr) {
+        user_timestamp_micros_(nullptr) {
   }
 
   virtual ~PTDmlUsingClause() {
@@ -48,11 +48,11 @@ class PTDmlUsingClause: public TreeListNode<PTDmlUsingClauseElement> {
 
   const PTExpr::SharedPtr& ttl_seconds() const;
 
-  const PTExpr::SharedPtr& timestamp_microseconds() const;
+  const PTExpr::SharedPtr& user_timestamp_micros() const;
 
  private:
   PTExpr::SharedPtr ttl_seconds_;
-  PTExpr::SharedPtr timestamp_microseconds_;
+  PTExpr::SharedPtr user_timestamp_micros_;
 };
 
 } // namespace ql

@@ -23,17 +23,26 @@ namespace docdb {
 
 class Value {
  public:
-  Value() : primitive_value_(), ttl_(kMaxTtl) {
+  Value() : primitive_value_(),
+            ttl_(kMaxTtl),
+            user_timestamp_micros_(kInvalidUserTimestamp) {
   }
 
-  explicit Value(PrimitiveValue primitive_value, MonoDelta ttl = kMaxTtl)
-      : primitive_value_(primitive_value), ttl_(ttl) {
+  explicit Value(PrimitiveValue primitive_value,
+                 MonoDelta ttl = kMaxTtl,
+                 int64_t user_timestamp_micros = kInvalidUserTimestamp)
+      : primitive_value_(primitive_value),
+        ttl_(ttl),
+        user_timestamp_micros_(user_timestamp_micros) {
   }
 
   static const MonoDelta kMaxTtl;
-  static constexpr int kBytesPerTtl = 8;
+  static const int64_t kInvalidUserTimestamp;
+  static constexpr int kBytesPerInt64 = sizeof(int64_t);
 
   MonoDelta ttl() const { return ttl_; }
+
+  int64_t user_timestamp_micros() const { return user_timestamp_micros_; }
 
   bool has_ttl() const { return !ttl_.Equals(kMaxTtl); }
 
@@ -52,7 +61,7 @@ class Value {
     return DecodeTTL(&value_copy, ttl);
   }
 
-  // Decoded the endtire value
+  // Decode the entire value
   CHECKED_STATUS Decode(const rocksdb::Slice &rocksdb_value);
 
   std::string ToString() const;
@@ -62,11 +71,25 @@ class Value {
   void EncodeAndAppend(std::string* value_bytes) const;
 
  private:
+  // Consume the timestamp portion of the slice assuming the beginning of the slice points to
+  // the timestamp.
+  CHECKED_STATUS DecodeUserTimestamp(rocksdb::Slice* rocksdb_value);
+
+  // Returns true if the expected_value_type is found, otherwise returns false and sets val to
+  // default_value.
+  template <typename T>
+  static bool DecodeType(const ValueType& expected_value_type, const T& default_value,
+                         rocksdb::Slice* slice, T* val);
+
   PrimitiveValue primitive_value_;
+
   // The ttl of the Value. kMaxTtl is the default value. TTL is not included in encoded
   // form if it is equal to kMax.
   // The unit is milliseconds.
   MonoDelta ttl_;
+
+  // The timestamp provided by the user as part of a 'USING TIMESTAMP' clause in CQL.
+  int64_t user_timestamp_micros_;
 };
 
 }  // namespace docdb

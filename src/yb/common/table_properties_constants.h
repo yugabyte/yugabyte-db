@@ -29,6 +29,8 @@ namespace common {
 // Upper bound for TTL in Cassandra is max int32 value (in seconds).
 static const MonoDelta kMaxTtl = MonoDelta::FromSeconds(std::numeric_limits<int32_t>::max());
 
+static constexpr int64_t kInvalidUserTimestamp = std::numeric_limits<int64_t>::min();
+
 static const int64_t kMaxTtlSeconds = kMaxTtl.ToSeconds();
 
 static const int64_t kMinTtlSeconds = 0;

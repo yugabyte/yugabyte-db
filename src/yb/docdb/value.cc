@@ -24,25 +24,46 @@ using std::string;
 using strings::Substitute;
 
 const MonoDelta Value::kMaxTtl = yb::common::kMaxTtl;
+const int64_t Value::kInvalidUserTimestamp = yb::common::kInvalidUserTimestamp;
 
-Status Value::DecodeTTL(rocksdb::Slice* slice, MonoDelta* ttl) {
-
+template <typename T>
+bool Value::DecodeType(const ValueType& expected_value_type, const T& default_value,
+                       rocksdb::Slice* slice, T* val) {
   const ValueType value_type = DecodeValueType(*slice);
 
-  if (value_type != ValueType::kTtl) {
-    *ttl = kMaxTtl;
-    return Status::OK();
+  if (value_type != expected_value_type) {
+    *val = default_value;
+    return false;
   }
 
   ConsumeValueType(slice);
+  return true;
+}
 
-  if (slice->size() < kBytesPerTtl) {
-    return STATUS(Corruption, Substitute(
-        "Failed to decode TTL from value, size too small: $0, need $1",
-        slice->size(), kBytesPerTtl));
+Status Value::DecodeTTL(rocksdb::Slice* slice, MonoDelta* ttl) {
+  if (DecodeType(ValueType::kTtl, kMaxTtl, slice, ttl)) {
+    int64_t val;
+    int decoded_size;
+    RETURN_NOT_OK(yb::util::FastDecodeSignedVarInt(slice->data(), slice->size(),
+                                                   &val, &decoded_size));
+    slice->remove_prefix(decoded_size);
+    *ttl = MonoDelta::FromMilliseconds(val);
   }
-  *ttl = MonoDelta::FromMilliseconds(BigEndian::Load64(slice->data()));
-  slice->remove_prefix(kBytesPerTtl);
+  return Status::OK();
+}
+
+Status Value::DecodeUserTimestamp(rocksdb::Slice* slice) {
+  if (DecodeType(ValueType::kUserTimestamp, kInvalidUserTimestamp, slice,
+                 &user_timestamp_micros_)) {
+    if (slice->size() < kBytesPerInt64) {
+      return STATUS(Corruption, Substitute(
+          "Failed to decode TTL from value, size too small: $1, need $2",
+          slice->size(), kBytesPerInt64));
+    }
+
+    user_timestamp_micros_ = BigEndian::Load64(slice->data());
+    slice->remove_prefix(kBytesPerInt64);
+  }
   return Status::OK();
 }
 
@@ -54,14 +75,19 @@ Status Value::Decode(const rocksdb::Slice& rocksdb_value) {
   rocksdb::Slice slice = rocksdb_value;
 
   RETURN_NOT_OK(DecodeTTL(&slice, &ttl_));
+  RETURN_NOT_OK(DecodeUserTimestamp(&slice));
   return primitive_value_.DecodeFromValue(slice);
 }
 
 string Value::ToString() const {
+  string to_string = primitive_value_.ToString();
   if (!ttl_.Equals(kMaxTtl)) {
-    return primitive_value_.ToString() + "; ttl: " + ttl_.ToString();
+    to_string += "; ttl: " + ttl_.ToString();
   }
-  return primitive_value_.ToString();
+  if (user_timestamp_micros_ != kInvalidUserTimestamp) {
+    to_string += "; user_timestamp: " + std::to_string(user_timestamp_micros_);
+  }
+  return to_string;
 }
 
 string Value::Encode() const {
@@ -73,7 +99,11 @@ string Value::Encode() const {
 void Value::EncodeAndAppend(std::string *value_bytes) const {
   if (!ttl_.Equals(kMaxTtl)) {
     value_bytes->push_back(static_cast<char>(ValueType::kTtl));
-    AppendBigEndianUInt64(ttl_.ToMilliseconds(), value_bytes);
+    yb::util::FastAppendSignedVarIntToStr(ttl_.ToMilliseconds(), value_bytes);
+  }
+  if (user_timestamp_micros_ != kInvalidUserTimestamp) {
+    value_bytes->push_back(static_cast<char>(ValueType::kUserTimestamp));
+    AppendBigEndianUInt64(user_timestamp_micros_, value_bytes);
   }
   value_bytes->append(primitive_value_.ToValue());
 }
