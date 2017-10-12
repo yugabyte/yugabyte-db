@@ -698,9 +698,8 @@ class UniverseForm extends Component {
                  component={YBTextInputWithLabel}
                  label="Spot Price (Per Hour)"
                  isReadOnly={isFieldReadOnly || !this.state.useSpotPrice}
-                 placeHolder="0.00"
-                 initValue={this.state.spotPrice.toString()}
                  normalizeOnBlur={normalizeToPositiveFloat}
+                 initValue={this.state.spotPrice.toString()}
                  onValueChanged={this.spotPriceChanged}/>
         );
       }

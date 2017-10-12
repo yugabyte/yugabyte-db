@@ -4,6 +4,7 @@ import React, { Component } from 'react';
 import { FormControl } from 'react-bootstrap';
 import { isFunction } from 'lodash';
 import { YBLabel } from 'components/common/descriptors';
+import { isDefinedNotNull } from "../../../../utils/ObjectUtils";
 
 // TODO: Make default export after checking all corresponding imports.
 export class YBTextInput extends Component {
@@ -30,9 +31,13 @@ export class YBTextInput extends Component {
       }
     }
 
+    if (isDefinedNotNull(initValue)) {
+      input["value"] = initValue;
+    }
+
     return (
-      <FormControl {...input} placeholder={placeHolder} type={type} className={className} value={initValue}
-        onChange={onChange} readOnly={isReadOnly} onBlur={onBlur} />
+      <FormControl {...input} placeholder={placeHolder} type={type} className={className} onChange={onChange}
+                   readOnly={isReadOnly} onBlur={onBlur} />
     );
   }
 }
