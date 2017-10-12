@@ -26,5 +26,11 @@ void MasterBackupServiceImpl::IsCreateSnapshotDone(const IsCreateSnapshotDoneReq
   HandleIn(req, resp, &rpc, &enterprise::CatalogManager::IsCreateSnapshotDone);
 }
 
+void MasterBackupServiceImpl::ListSnapshots(const ListSnapshotsRequestPB* req,
+                                            ListSnapshotsResponsePB* resp,
+                                            RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::ListSnapshots);
+}
+
 } // namespace master
 } // namespace yb
