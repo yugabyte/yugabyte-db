@@ -35,6 +35,7 @@ SemContext::SemContext(const char *ql_stmt,
       symtab_(PTempMem()),
       ql_env_(ql_env),
       cache_used_(false),
+      current_dml_stmt_(nullptr),
       current_table_(nullptr),
       sem_state_(nullptr) {
 }
