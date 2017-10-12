@@ -15,6 +15,7 @@ message SysSnapshotEntryPB {
     DELETING = 3;
     DELETED = 4;
     FAILED = 5;
+    CANCELLED = 6;
   }
 
   // Note: The id of the snapshot is not stored here as it is already part of
@@ -60,8 +61,26 @@ message IsCreateSnapshotDoneResponsePB {
   optional bool done = 2;
 }
 
+message ListSnapshotsRequestPB {
+}
+
+message ListSnapshotsResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  message SnapshotInfo {
+    required bytes id = 1;
+    // Detailed snapshot entries.
+    required SysSnapshotEntryPB entry = 2;
+  }
+
+  optional bytes current_snapshot_id = 2; // Snapshot currently being created.
+  repeated SnapshotInfo snapshots = 3;
+}
+
 service MasterBackupService {
   // Client->Master RPCs
   rpc CreateSnapshot(CreateSnapshotRequestPB) returns (CreateSnapshotResponsePB);
   rpc IsCreateSnapshotDone(IsCreateSnapshotDoneRequestPB) returns (IsCreateSnapshotDoneResponsePB);
+  rpc ListSnapshots(ListSnapshotsRequestPB) returns (ListSnapshotsResponsePB);
 }

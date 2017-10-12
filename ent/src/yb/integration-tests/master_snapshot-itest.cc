@@ -39,6 +39,7 @@ using yb::master::MasterBackupServiceProxy;
 using yb::master::TableInfo;
 using yb::master::TabletInfo;
 
+using yb::master::SysSnapshotEntryPB;
 using yb::master::CreateNamespaceRequestPB;
 using yb::master::CreateNamespaceResponsePB;
 using yb::master::DeleteNamespaceRequestPB;
@@ -58,6 +59,8 @@ using yb::master::CreateSnapshotRequestPB;
 using yb::master::CreateSnapshotResponsePB;
 using yb::master::IsCreateSnapshotDoneRequestPB;
 using yb::master::IsCreateSnapshotDoneResponsePB;
+using yb::master::ListSnapshotsRequestPB;
+using yb::master::ListSnapshotsResponsePB;
 
 class MiniClusterMasterTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
@@ -256,6 +259,42 @@ class MiniClusterMasterTest : public YBMiniClusterTestBase<MiniCluster> {
     }
   }
 
+  void ListAllSnapshots(
+      const std::set<std::tuple<SnapshotId, SysSnapshotEntryPB::State>>& snapshot_info,
+      SnapshotId cur_id = "") {
+    ListSnapshotsRequestPB list_req;
+    ListSnapshotsResponsePB list_resp;
+
+    LOG(INFO) << "Requested available snapshots.";
+    const Status s = proxy_backup_->ListSnapshots(
+        list_req, &list_resp, ResetAndGetController());
+
+    ASSERT_TRUE(s.ok());
+    SCOPED_TRACE(list_resp.DebugString());
+    ASSERT_FALSE(list_resp.has_error());
+
+    LOG(INFO) << "Number of snapshots: " << list_resp.snapshots_size();
+    ASSERT_EQ(list_resp.snapshots_size(), snapshot_info.size());
+
+    if (cur_id.empty()) {
+      ASSERT_FALSE(list_resp.has_current_snapshot_id());
+    } else {
+      ASSERT_TRUE(list_resp.has_current_snapshot_id());
+      ASSERT_EQ(list_resp.current_snapshot_id(), cur_id);
+      LOG(INFO) << "Current snapshot: " << list_resp.current_snapshot_id();
+    }
+
+    for (int i = 0; i < list_resp.snapshots_size(); ++i) {
+      LOG(INFO) << "Snapshot " << i << ": " << list_resp.snapshots(i).DebugString();
+
+      auto search_key = std::make_tuple(
+          list_resp.snapshots(i).id(), list_resp.snapshots(i).entry().state());
+      ASSERT_TRUE(snapshot_info.find(search_key) != snapshot_info.end())
+          << strings::Substitute("Couldn't find snapshot id $0 in state $1",
+              list_resp.snapshots(i).id(), list_resp.snapshots(i).entry().state());
+    }
+  }
+
  protected:
   shared_ptr<Messenger> messenger_;
   gscoped_ptr<MasterServiceProxy> proxy_;
@@ -351,6 +390,8 @@ TEST_F(MiniClusterMasterTest, TestCreateSnapshot) {
     }
   }
 
+  ListAllSnapshots({});
+
   string snapshot_id;
 
   // Check CreateSnapshot().
@@ -371,6 +412,11 @@ TEST_F(MiniClusterMasterTest, TestCreateSnapshot) {
     snapshot_id = resp.snapshot_id();
     LOG(INFO) << "Started snapshot creation: ID=" << snapshot_id;
   }
+
+  ListAllSnapshots(
+      {
+          std::make_tuple(snapshot_id, SysSnapshotEntryPB::CREATING)
+      }, snapshot_id);
 
   // Check the snapshot creation complete.
   {
@@ -438,6 +484,11 @@ TEST_F(MiniClusterMasterTest, TestCreateSnapshot) {
       ASSERT_TRUE(fs->Exists(JoinPathSegments(tablet_dir, "MANIFEST-000001")));
     }
   }
+
+  ListAllSnapshots(
+      {
+          std::make_tuple(snapshot_id, SysSnapshotEntryPB::COMPLETE)
+      });
 
   LOG(INFO) << "CreateSnapshot finished. Deleting test table & namespace.";
   // Delete the table in the namespace 'testns'.

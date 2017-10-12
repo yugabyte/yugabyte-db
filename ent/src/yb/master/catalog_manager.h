@@ -27,6 +27,10 @@ struct PersistentSnapshotInfo : public Persistent<SysSnapshotEntryPB, SysRowEntr
     return pb.state() == SysSnapshotEntryPB::FAILED;
   }
 
+  bool is_cancelled() const {
+    return pb.state() == SysSnapshotEntryPB::CANCELLED;
+  }
+
   bool is_complete() const {
     return pb.state() == SysSnapshotEntryPB::COMPLETE;
   }
@@ -78,6 +82,10 @@ class CatalogManager : public yb::master::CatalogManager {
   // API to check if this snapshot creation operation has finished.
   CHECKED_STATUS IsCreateSnapshotDone(const IsCreateSnapshotDoneRequestPB* req,
                                       IsCreateSnapshotDoneResponsePB* resp);
+
+  // API to list all available snapshots.
+  CHECKED_STATUS ListSnapshots(const ListSnapshotsRequestPB*,
+                               ListSnapshotsResponsePB* resp);
 
   CHECKED_STATUS HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error);
 
