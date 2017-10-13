@@ -97,18 +97,18 @@ create view oracle.user_objects as
       from pg_proc p join pg_namespace n on p.pronamespace = n.oid
      where nspname not in ('pg_toast','pg_catalog','information_schema') order by 1;
 
-create view user_procedures as
+create view oracle.user_procedures as
     select proname as object_name
       from pg_proc p join pg_namespace n on p.pronamespace = n.oid
        and nspname <> 'pg_catalog';
 
-create view user_source as
+create view oracle.user_source as
     select row_number() over (partition by oid) as line, *
       from ( select oid, unnest(string_to_array(prosrc, e'\n')) as text,
                     proname as name, 'FUNCTION'::text as type
                from pg_proc) s;
 
-create view user_views
+create view oracle.user_views
    as select c.relname as view_name,
   pg_catalog.pg_get_userbyid(c.relowner) as owner
 from pg_catalog.pg_class c
@@ -119,7 +119,7 @@ where c.relkind in ('v','')
       and n.nspname !~ '^pg_toast'
   and pg_catalog.pg_table_is_visible(c.oid);
 
-create view user_ind_columns as
+create view oracle.user_ind_columns as
     select attname as column_name, c1.relname as index_name, c2.relname as table_name
       from (select unnest(indkey) attno, indexrelid, indrelid from pg_index) s
            join pg_attribute on attno = attnum and attrelid = indrelid
@@ -127,6 +127,34 @@ create view user_ind_columns as
            join pg_class c2 on indrelid = c2.oid
            join pg_namespace n on c2.relnamespace = n.oid
      where attno > 0 and nspname not in ('pg_catalog','information_schema');
+
+CREATE VIEW oracle.dba_segments AS
+SELECT
+    pg_namespace.nspname AS owner,
+    pg_class.relname AS segment_name,
+    CASE
+        WHEN pg_class.relkind = 'r' THEN CAST( 'TABLE' AS VARCHAR( 18 ) )
+        WHEN pg_class.relkind = 'i' THEN CAST( 'INDEX' AS VARCHAR( 18 ) )
+        WHEN pg_class.relkind = 'f' THEN CAST( 'FOREIGN TABLE' AS VARCHAR( 18 ) )
+        WHEN pg_class.relkind = 'S' THEN CAST( 'SEQUENCE' AS VARCHAR( 18 ) )
+        WHEN pg_class.relkind = 's' THEN CAST( 'SPECIAL' AS VARCHAR( 18 ) )
+        WHEN pg_class.relkind = 't' THEN CAST( 'TOAST TABLE' AS VARCHAR( 18 ) )
+        WHEN pg_class.relkind = 'v' THEN CAST( 'VIEW' AS VARCHAR( 18 ) )
+        ELSE CAST( pg_class.relkind AS VARCHAR( 18 ) )
+    END AS segment_type,
+    spcname AS tablespace_name,
+    relfilenode AS header_file,
+    NULL::oid AS header_block,
+    pg_relation_size( pg_class.oid ) AS bytes,
+    relpages AS blocks
+FROM
+    pg_class
+    INNER JOIN pg_namespace
+     ON pg_class.relnamespace = pg_namespace.oid
+    LEFT OUTER JOIN pg_tablespace
+     ON pg_class.reltablespace = pg_tablespace.oid
+WHERE
+    pg_class.relkind not in ('f','S','v');
 
 -- Oracle dirty functions
 CREATE OR REPLACE FUNCTION oracle.lpad(int, int, int)

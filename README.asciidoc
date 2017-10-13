@@ -708,6 +708,7 @@ Some byte-based string functions to be used with VARCHAR2 strings
 * oracle.user_constraints
 * oracle.product_componenent_version
 * oracle.user_objects
+* oracle.dba_segments
 
 == TODO
 
