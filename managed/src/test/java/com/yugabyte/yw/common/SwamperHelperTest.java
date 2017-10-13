@@ -18,6 +18,9 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 
 import static org.hamcrest.CoreMatchers.*;
@@ -53,7 +56,8 @@ public class SwamperHelperTest extends FakeDBApplication {
 
     try {
       swamperHelper.writeUniverseTargetJson(u.universeUUID);
-      BufferedReader br = new BufferedReader(new FileReader(SWAMPER_TMP_PATH + u.universeUUID + ".json"));
+      BufferedReader br = new BufferedReader(new FileReader(
+          SWAMPER_TMP_PATH + "yugabyte." + u.universeUUID + ".json"));
       String line;
       StringBuilder sb = new StringBuilder();
       while ((line = br.readLine()) != null) {
@@ -61,21 +65,22 @@ public class SwamperHelperTest extends FakeDBApplication {
       }
 
       JsonNode targetsJson = Json.parse(sb.toString());
-      assertThat(targetsJson.size(), is(equalTo(2)));
-      assertTrue(targetsJson.get(0).get("targets").isArray());
-      JsonNode target1 = targetsJson.get(0);
-      JsonNode target2 = targetsJson.get(1);
-      assertTrue(target1.get("targets").isArray());
-      assertThat(target1.get("targets").size(), equalTo(3));
-      assertThat(target1.get("targets").toString(), RegexMatcher.matchesRegex("(.*)(|:)([0-9]*)"));
-      assertThat(target1.get("labels").toString(), equalTo("{\"export_type\":\"node_export\",\"node_prefix\":\"host\"}"));
-
-      assertTrue(target2.get("targets").isArray());
-      assertThat(target2.get("targets").size(), equalTo(3));
-      assertThat(target2.get("targets").toString(), RegexMatcher.matchesRegex("(.*)(|:)([0-9]*)"));
-      assertThat(target2.get("labels").toString(), equalTo("{\"export_type\":\"collectd_export\",\"node_prefix\":\"host\"}"));
+      assertThat(targetsJson.size(), is(equalTo(4)));
+      List<String> targetTypes = new ArrayList<>();
+      for (SwamperHelper.TargetType t : Arrays.asList(SwamperHelper.TargetType.values())) {
+        targetTypes.add(t.toString());
+      }
+      for (int i = 0; i < targetsJson.size(); ++i) {
+        JsonNode target = targetsJson.get(i);
+        assertTrue(target.get("targets").isArray());
+        assertThat(target.get("targets").size(), equalTo(3));
+        assertThat(target.get("targets").toString(), RegexMatcher.matchesRegex("(.*)(|:)([0-9]*)"));
+        JsonNode labels = target.get("labels");
+        assertThat(labels.get("node_prefix").asText(), equalTo("host"));
+        assertTrue(targetTypes.contains(labels.get("export_type").asText().toUpperCase()));
+      }
     } catch (Exception e) {
-      assertNotNull(e.getMessage());
+      assertTrue(false);
     }
   }
 
@@ -83,13 +88,17 @@ public class SwamperHelperTest extends FakeDBApplication {
   public void testRemoveUniverseTargetJson() {
     when(appConfig.getString("yb.swamper.targetPath")).thenReturn(SWAMPER_TMP_PATH);
     UUID universeUUID = UUID.randomUUID();
+    String yugabyteFilePath = SWAMPER_TMP_PATH + "yugabyte." + universeUUID + ".json";
+    String nodeFilePath = SWAMPER_TMP_PATH + "node." + universeUUID + ".json";
     try {
-      new File(SWAMPER_TMP_PATH + universeUUID + ".json").createNewFile();
+      new File(yugabyteFilePath).createNewFile();
+      new File(nodeFilePath).createNewFile();
     } catch (IOException e) {
-      assertNotNull(e.getMessage());
+      assertTrue(false);
     }
     swamperHelper.removeUniverseTargetJson(universeUUID);
-    assertFalse(new File(SWAMPER_TMP_PATH + universeUUID + ".json").exists());
+    assertFalse(new File(yugabyteFilePath).exists());
+    assertFalse(new File(nodeFilePath).exists());
   }
 
   @Test(expected = RuntimeException.class)
