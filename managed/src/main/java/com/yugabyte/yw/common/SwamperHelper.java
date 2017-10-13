@@ -90,17 +90,6 @@ public class SwamperHelper {
     return target;
   }
 
-  private ArrayNode getSwamperTargetJson(Universe universe) {
-    ArrayNode targets = Json.newArray();
-    for (TargetType t : TargetType.values()) {
-      if (t.toString().equals("NODE_EXPORT")) {
-      } else {
-        targets.add(getIndividualConfig(universe, t, universe.getNodes(), null));
-      }
-    }
-    return targets;
-  }
-
   private String getSwamperFile(UUID universeUUID, String prefix) {
     if (appConfig.getString("yb.swamper.targetPath").isEmpty()) {
       return null;
