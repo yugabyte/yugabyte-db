@@ -94,7 +94,6 @@ public class SwamperHelper {
     if (appConfig.getString("yb.swamper.targetPath").isEmpty()) {
       return null;
     }
-
     File swamperTargetFolder = new File(appConfig.getString("yb.swamper.targetPath"));
 
     if (swamperTargetFolder.exists() && swamperTargetFolder.isDirectory()) {
