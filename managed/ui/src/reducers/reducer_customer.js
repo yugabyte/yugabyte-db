@@ -4,7 +4,8 @@ import { VALIDATE_FROM_TOKEN, VALIDATE_FROM_TOKEN_RESPONSE,
          REGISTER, REGISTER_RESPONSE, LOGIN, LOGIN_RESPONSE, RESET_CUSTOMER,
          LOGOUT, LOGOUT_SUCCESS, LOGOUT_FAILURE, FETCH_SOFTWARE_VERSIONS_FAILURE, FETCH_SOFTWARE_VERSIONS_SUCCESS,
          FETCH_SOFTWARE_VERSIONS, FETCH_HOST_INFO, FETCH_HOST_INFO_SUCCESS, FETCH_HOST_INFO_FAILURE,
-         FETCH_CUSTOMER_COUNT, UPDATE_PROFILE, UPDATE_PROFILE_SUCCESS, UPDATE_PROFILE_FAILURE } from '../actions/customers';
+         FETCH_CUSTOMER_COUNT, FETCH_YUGAWARE_VERSION, FETCH_YUGAWARE_VERSION_RESPONSE,
+         UPDATE_PROFILE, UPDATE_PROFILE_SUCCESS, UPDATE_PROFILE_FAILURE } from '../actions/customers';
 import {sortVersionStrings} from '../utils/ObjectUtils';
 import { getInitialState, setLoadingState, setSuccessState, setFailureState, setPromiseResponse }  from '../utils/PromiseUtils';
 
@@ -18,6 +19,7 @@ const INITIAL_STATE = {
   softwareVersions: [],
   hostInfo: null,
   customerCount: {},
+  yugawareVersion: getInitialState({}),
   profile: getInitialState({})
 };
 
@@ -67,6 +69,10 @@ export default function(state = INITIAL_STATE, action) {
       return setFailureState(state, "profile", action.payload.data.error);
     case FETCH_CUSTOMER_COUNT:
       return setLoadingState(state, "customerCount");
+    case FETCH_YUGAWARE_VERSION:
+      return setLoadingState(state, "yugawareVersion", {});
+    case FETCH_YUGAWARE_VERSION_RESPONSE:
+      return setPromiseResponse(state, "yugawareVersion", action);
     default:
       return state;
   }

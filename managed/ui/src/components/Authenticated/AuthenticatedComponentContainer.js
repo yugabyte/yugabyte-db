@@ -12,7 +12,8 @@ import { getProviderList, getProviderListResponse, getSupportedRegionData,
   from '../../actions/cloud';
 import { fetchColumnTypes, fetchColumnTypesSuccess, fetchColumnTypesFailure }
   from '../../actions/tables';
-import { fetchSoftwareVersions, fetchSoftwareVersionsSuccess, fetchSoftwareVersionsFailure }
+import { fetchSoftwareVersions, fetchSoftwareVersionsSuccess,
+  fetchSoftwareVersionsFailure, fetchYugaWareVersion, fetchYugaWareVersionResponse }
   from 'actions/customers';
 import {setUniverseMetrics} from '../../actions/universe';
 import { queryMetrics } from '../../actions/graph';
@@ -72,6 +73,12 @@ const mapDispatchToProps = (dispatch) => {
     getEBSListItems: () => {
       dispatch(getEBSTypeList()).then((response) => {
         dispatch(getEBSTypeListResponse(response.payload));
+      });
+    },
+
+    getYugaWareVersion: () => {
+      dispatch(fetchYugaWareVersion()).then((response) => {
+        dispatch(fetchYugaWareVersionResponse(response.payload));
       });
     },
 

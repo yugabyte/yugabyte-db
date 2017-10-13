@@ -1,13 +1,12 @@
 name := """yugaware"""
 import com.typesafe.sbt.packager.MappingsHelper._
-import sbtrelease.ReleaseStateTransformations._
 
 lazy val root = (project in file("."))
   .enablePlugins(PlayJava, PlayEbean, SbtWeb, JavaAppPackaging)
   .disablePlugins(PlayLayoutPlugin)
 
-
 scalaVersion := "2.11.7"
+version := (sys.process.Process("cat version.txt").lines_!.head)
 
 libraryDependencies ++= Seq(
   javaJdbc,
@@ -43,15 +42,4 @@ mappings in Universal ++= contentOf(baseDirectory.value / "ui/build").map {
 }
 
 topLevelDirectory := None
-
-releaseProcess := Seq(
-  inquireVersions,
-  runClean,
-  runTest,
-  setReleaseVersion,
-  commitReleaseVersion,
-  tagRelease,
-  setNextVersion,
-  commitNextVersion
-)
 

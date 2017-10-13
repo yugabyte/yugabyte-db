@@ -15,6 +15,7 @@ GET     /api/logout                                   com.yugabyte.yw.controller
 POST    /api/register                                 com.yugabyte.yw.controllers.SessionController.register()
 GET     /api/customer_count                           com.yugabyte.yw.controllers.SessionController.customerCount()
 GET     /api/customers/:cUUID/host_info               com.yugabyte.yw.controllers.CustomerController.getHostInfo(cUUID: java.util.UUID)
+GET     /api/app_version                              com.yugabyte.yw.controllers.SessionController.appVersion()
 
 # Initialize cloud information.
 GET     /api/customers/:cUUID/regions                 com.yugabyte.yw.controllers.RegionController.listAllRegions(cUUID: java.util.UUID)

@@ -38,6 +38,9 @@ export const FETCH_HOST_INFO_FAILURE = 'FETCH_HOST_INFO_FAILURE';
 
 export const FETCH_CUSTOMER_COUNT = 'FETCH_CUSTOMER_COUNT';
 
+export const FETCH_YUGAWARE_VERSION = 'FETCH_YUGAWARE_VERSION';
+export const FETCH_YUGAWARE_VERSION_RESPONSE = 'FETCH_YUGAWARE_VERSION_RESPONSE';
+
 export function validateToken(tokenFromStorage) {
   const cUUID = localStorage.getItem("customer_id");
   const auth_token = localStorage.getItem("customer_token");
@@ -187,5 +190,20 @@ export function fetchCustomerCount() {
   return {
     type: FETCH_CUSTOMER_COUNT,
     payload: request
+  };
+}
+
+export function fetchYugaWareVersion() {
+  const request = axios.get(`${ROOT_URL}/app_version`);
+  return {
+    type: FETCH_YUGAWARE_VERSION,
+    payload: request
+  };
+}
+
+export function fetchYugaWareVersionResponse(response) {
+  return {
+    type: FETCH_YUGAWARE_VERSION_RESPONSE,
+    payload: response
   };
 }

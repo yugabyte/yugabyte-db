@@ -5,6 +5,7 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.models.Customer;
@@ -24,6 +25,9 @@ public class SessionController extends Controller {
 
   @Inject
   Configuration appConfig;
+
+  @Inject
+  ConfigHelper configHelper;
 
   public static final String AUTH_TOKEN = "authToken";
   public static final String CUSTOMER_UUID = "customerUUID";
@@ -99,4 +103,9 @@ public class SessionController extends Controller {
     response.put("count", customerCount);
     return ApiResponse.success(response);
   }
+
+  public Result appVersion() {
+    return ApiResponse.success(configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion));
+  }
+
 }
