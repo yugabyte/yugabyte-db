@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.avaje.ebean.Ebean;
+import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.AWSInitializer;
@@ -21,6 +22,8 @@ import play.Configuration;
 import play.Environment;
 import play.Logger;
 import play.libs.Yaml;
+
+import static com.yugabyte.yw.common.ConfigHelper.ConfigType.SoftwareVersion;
 
 
 /**
@@ -59,6 +62,9 @@ public class AppInit {
         );
         Ebean.saveAll(all);
       }
+
+      Object version = Yaml.load(application.resourceAsStream("version.txt"), application.classloader());
+      configHelper.loadConfigToDB(SoftwareVersion, ImmutableMap.of("version", version));
 
       // Initialize AWS if any of its instance types have an empty volumeDetailsList
       List<Provider> providerList = Provider.find.where().findList();

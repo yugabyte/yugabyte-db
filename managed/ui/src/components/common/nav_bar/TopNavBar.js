@@ -2,12 +2,13 @@
 
 import React, { Component } from 'react';
 import 'react-fa';
-import { MenuItem , NavDropdown, Navbar, Nav } from 'react-bootstrap';
+import { MenuItem , NavDropdown, Navbar, Nav, NavItem } from 'react-bootstrap';
 import { Link } from 'react-router';
 import { HighlightedStatsPanelContainer } from '../../panels';
 import { TaskAlertsContainer } from '../../tasks';
 import YBLogo from '../YBLogo/YBLogo';
 import './stylesheets/TopNavBar.scss';
+import { getPromiseState } from 'utils/PromiseUtils';
 import {LinkContainer} from 'react-router-bootstrap';
 
 export default class TopNavBar extends Component {
@@ -22,6 +23,9 @@ export default class TopNavBar extends Component {
   }
 
   render() {
+    const { customer: { yugawareVersion } } = this.props;
+    const version = getPromiseState(yugawareVersion).isSuccess() ? yugawareVersion.data.version : null;
+
     return (
       <Navbar fixedTop>
         <Navbar.Header>
@@ -30,6 +34,7 @@ export default class TopNavBar extends Component {
           </Link>
         </Navbar.Header>
         <Nav pullRight>
+          { version && <NavItem eventKey={3} disabled>Version: {version}</NavItem> }
           <NavDropdown eventKey="1" title={<i className="fa fa-list fa-fw"></i>} id="task-alert-dropdown">
             <TaskAlertsContainer eventKey="1"/>
           </NavDropdown>

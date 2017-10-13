@@ -17,6 +17,7 @@ import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
 
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import org.junit.After;
 import org.junit.Test;
@@ -185,5 +186,21 @@ public class SessionControllerTest {
     json = Json.parse(contentAsString(result));
     assertOk(result);
     assertValue(json, "count", "1");
+  }
+
+  @Test
+  public void testAppVersion() {
+    startApp(false);
+    Result result = route(fakeRequest("GET", "/api/app_version"));
+    JsonNode json = Json.parse(contentAsString(result));
+    assertOk(result);
+    assertEquals(json, Json.newObject());
+    ConfigHelper configHelper = new ConfigHelper();
+    configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareVersion,
+        ImmutableMap.of("version", "0.0.1"));
+    result = route(fakeRequest("GET", "/api/app_version"));
+    json = Json.parse(contentAsString(result));
+    assertOk(result);
+    assertValue(json, "version", "0.0.1");
   }
 }

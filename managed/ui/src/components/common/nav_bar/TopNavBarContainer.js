@@ -21,4 +21,10 @@ const mapDispatchToProps = (dispatch) => {
   };
 };
 
-export default connect(null, mapDispatchToProps)(TopNavBar);
+const mapStateToProps = (state) => {
+  return {
+    customer: state.customer
+  };
+};
+
+export default connect(mapStateToProps, mapDispatchToProps)(TopNavBar);
