@@ -23,7 +23,8 @@ public class ConfigHelper {
     GCPInstanceTypeMetadata,
     DockerRegionMetadata,
     DockerInstanceTypeMetadata,
-    SoftwareReleases;
+    SoftwareReleases,
+    SoftwareVersion;
 
     public String getConfigFile() {
       switch (this) {
@@ -57,6 +58,8 @@ public class ConfigHelper {
           return "Docker Region Metadata";
         case SoftwareReleases:
           return "Software Releases";
+        case SoftwareVersion:
+          return "Software Version";
         default:
           return null;
       }

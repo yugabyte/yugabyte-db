@@ -22,6 +22,7 @@ class AuthenticatedComponent extends Component {
     this.props.getEBSListItems();
     this.props.getProviderListItems();
     this.props.getSupportedRegionList();
+    this.props.getYugawareVersion();
   }
 
   componentWillUnmount() {
