@@ -6,7 +6,7 @@ import { reset } from 'redux-form';
 import  OnPremNodesList from './OnPremNodesList';
 import { getInstanceTypeList, getInstanceTypeListResponse, getRegionList, getRegionListResponse,
   createNodeInstances, createNodeInstancesResponse, getNodeInstancesForProvider,
-  getNodesInstancesForProviderResponse } from '../../../actions/cloud';
+  getNodesInstancesForProviderResponse, deleteInstance, deleteInstanceResponse } from '../../../actions/cloud';
 import { reduxForm } from 'redux-form';
 import {openDialog, closeDialog} from '../../../actions/universe';
 
@@ -60,6 +60,17 @@ const mapDispatchToProps = (dispatch, ownProps) => {
     fetchConfiguredNodeList: (pUUID) => {
       dispatch(getNodeInstancesForProvider(pUUID)).then((response) => {
         dispatch(getNodesInstancesForProviderResponse(response.payload));
+      });
+    },
+
+    deleteInstance: (providerUUID, instanceIP) => {
+      dispatch(deleteInstance(providerUUID, instanceIP)).then((response) => {
+        dispatch(deleteInstanceResponse(response.payload));
+        if (response.payload.status === 200) {
+          dispatch(getNodeInstancesForProvider(providerUUID)).then((response) => {
+            dispatch(getNodesInstancesForProviderResponse(response.payload));
+          });
+        }
       });
     }
   };

@@ -80,6 +80,9 @@ export const DELETE_NODE_RESPONSE = 'DELETE_NODE_RESPONSE';
 export const BOOTSTRAP_PROVIDER = 'BOOTSTRAP_PROVIDER';
 export const BOOTSTRAP_PROVIDER_RESPONSE = 'BOOTSTRAP_PROVIDER_RESPONSE';
 
+export const DELETE_INSTANCE = 'DELETE_INSTANCE';
+export const DELETE_INSTANCE_RESPONSE = 'DELETE_INSTANCE_RESPONSE';
+
 export const GET_SUGGESTED_SPOT_PRICE = 'GET_SUGGESTED_SPOT_PRICE';
 export const GET_SUGGESTED_SPOT_PRICE_RESPONSE = 'GET_SUGGESTED_SPOT_PRICE_RESPONSE';
 
@@ -486,6 +489,22 @@ export function createOnPremProvider(type, name, config) {
 export function createOnPremProviderResponse(response) {
   return {
     type: CREATE_ONPREM_PROVIDER_RESPONSE,
+    payload: response
+  };
+}
+
+export function deleteInstance(providerUUID, instanceIP) {
+  const uri = `${getProviderEndpoint(providerUUID)}/instances/${instanceIP}`;
+  const request = axios.delete(uri);
+  return {
+    type: DELETE_INSTANCE,
+    payload: request
+  };
+}
+
+export function deleteInstanceResponse(response) {
+  return {
+    type: DELETE_INSTANCE_RESPONSE,
     payload: response
   };
 }

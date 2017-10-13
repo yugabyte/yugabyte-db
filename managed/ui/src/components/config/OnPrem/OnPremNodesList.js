@@ -18,6 +18,7 @@ class OnPremNodesList extends Component {
     this.addNodeToList = this.addNodeToList.bind(this);
     this.hideModal = this.hideModal.bind(this);
     this.submitAddNodesForm = this.submitAddNodesForm.bind(this);
+    this.deleteInstance = this.deleteInstance.bind(this);
   }
 
   addNodeToList() {
@@ -27,6 +28,14 @@ class OnPremNodesList extends Component {
   hideModal() {
     this.props.reset();
     this.props.hideAddNodesDialog();
+  }
+
+  deleteInstance(row) {
+    const {cloud: { providers }} = this.props;
+    const onPremProvider = providers.data.find((provider) => provider.code === "onprem");
+    if (!row.inUse) {
+      this.props.deleteInstance(onPremProvider.uuid, row.ip);
+    }
   }
 
   submitAddNodesForm(vals) {
@@ -97,6 +106,7 @@ class OnPremNodesList extends Component {
 
   render() {
     const {cloud :{nodeInstanceList, instanceTypes, supportedRegionList}, handleSubmit} = this.props;
+    const self = this;
     let nodeListItems = [];
     if (getPromiseState(nodeInstanceList).isSuccess()) {
       nodeListItems = nodeInstanceList.data.map(function(item) {
@@ -110,9 +120,14 @@ class OnPremNodesList extends Component {
         };
       });
     }
-    const removeNodeItem = function(row, cell) {
-      if (cell)
-        return <i className={`fa fa-trash remove-cell-container`}/>;
+    const removeNodeItem = function(cell, row) {
+      if (row) {
+        if (row.inUse) {
+          return <i className={`fa fa-trash remove-cell-container`}/>;
+        } else {
+          return <i className={`fa fa-trash remove-cell-container remove-cell-active`} onClick={self.deleteInstance.bind(self, row)}/>;
+        }
+      }
     };
 
     const currentCloudRegions = supportedRegionList.data.filter(region => region.provider.code === "onprem");
