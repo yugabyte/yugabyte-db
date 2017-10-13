@@ -171,10 +171,8 @@ public class NodeManager extends DevopsBase {
         }
         // Add in the nodeName during configure.
         extra_gflags.put("metric_node_name", taskParam.nodeName);
-        if (!extra_gflags.isEmpty()) {
-          subcommand.add("--extra_gflags");
-          subcommand.add(Json.stringify(Json.toJson(extra_gflags)));
-        }
+        subcommand.add("--extra_gflags");
+        subcommand.add(Json.stringify(Json.toJson(extra_gflags)));
         break;
       case Software:
         {
@@ -215,8 +213,13 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("Invalid processType property: " + processType);
           }
           subcommand.add("--replace_gflags");
+
+          // Add in the nodeName during configure.
+          Map<String, String> gflags = taskParam.gflags;
+          gflags.put("metric_node_name", taskParam.nodeName);
+
           subcommand.add("--gflags");
-          subcommand.add(Json.stringify(Json.toJson(taskParam.gflags)));
+          subcommand.add(Json.stringify(Json.toJson(gflags)));
         }
         break;
     }

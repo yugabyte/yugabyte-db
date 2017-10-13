@@ -31,6 +31,7 @@ import java.util.UUID;
 
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Download;
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Install;
+import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Everything;
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.GFlags;
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Software;
 import static org.hamcrest.CoreMatchers.*;
@@ -235,19 +236,27 @@ public class NodeManagerTest extends FakeDBApplication {
           }
         }
 
-        if (!configureParams.gflags.isEmpty()) {
-          String processType = configureParams.getProperty("processType");
-          if (processType.equals(UniverseDefinitionTaskBase.ServerType.MASTER.toString())) {
-            expectedCommand.add("--tags");
-            expectedCommand.add("master-gflags");
-          } else if (processType.equals(UniverseDefinitionTaskBase.ServerType.TSERVER.toString())) {
-            expectedCommand.add("--tags");
-            expectedCommand.add("tserver-gflags");
+        Map<String, String> gflags = configureParams.gflags;
+        gflags.put("metric_node_name", params.nodeName);
+
+        if (configureParams.type == Everything) {
+          expectedCommand.add("--extra_gflags");
+          expectedCommand.add(Json.stringify(Json.toJson(gflags)));
+        } else if (configureParams.type == GFlags) {
+          if (!configureParams.gflags.isEmpty()) {
+            String processType = configureParams.getProperty("processType");
+            if (processType.equals(UniverseDefinitionTaskBase.ServerType.MASTER.toString())) {
+              expectedCommand.add("--tags");
+              expectedCommand.add("master-gflags");
+            } else if (processType.equals(UniverseDefinitionTaskBase.ServerType.TSERVER.toString())) {
+              expectedCommand.add("--tags");
+              expectedCommand.add("tserver-gflags");
+            }
+            String gflagsJson =  Json.stringify(Json.toJson(gflags));
+            expectedCommand.add("--replace_gflags");
+            expectedCommand.add("--gflags");
+            expectedCommand.add(gflagsJson);
           }
-          String gflagsJson =  Json.stringify(Json.toJson(configureParams.gflags));
-          expectedCommand.add("--replace_gflags");
-          expectedCommand.add("--gflags");
-          expectedCommand.add(gflagsJson);
         }
         break;
       case Destroy:
@@ -485,9 +494,9 @@ public class NodeManagerTest extends FakeDBApplication {
       // Set up expected command
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params));
-      List<String> accessKeyCommand = ImmutableList.of("--vars_file", "/path/to/vault_file",
-          "--vault_password_file", "/path/to/vault_password", "--private_key_file",
-          "/path/to/private.key");
+      List<String> accessKeyCommand = ImmutableList.of(
+          "--vars_file", "/path/to/vault_file", "--vault_password_file", "/path/to/vault_password",
+          "--private_key_file", "/path/to/private.key");
       expectedCommand.addAll(expectedCommand.size() - 5, accessKeyCommand);
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
@@ -547,7 +556,8 @@ public class NodeManagerTest extends FakeDBApplication {
       params.setProperty("taskSubType", Download.toString());
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Configure, params));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(expectedInvocations.get(t.cloudType))).run(expectedCommand,
           t.region.provider.getConfig());
