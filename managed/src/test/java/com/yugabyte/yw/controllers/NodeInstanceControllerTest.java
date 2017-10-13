@@ -1,6 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.*;
@@ -76,6 +78,11 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     formData.nodes.add(node.getDetails());
     JsonNode body = Json.toJson(formData);
     return FakeApiHelper.doRequestWithBody("POST", uri, body);
+  }
+
+  private Result deleteNode(UUID customerUUID, UUID providerUUID, String instanceIP) {
+    String uri= "/api/customers/" + customerUUID + "/providers/" + providerUUID + "/instances/" + instanceIP;
+    return FakeApiHelper.doRequest("DELETE", uri);
   }
 
   private void checkOk(Result r) { assertEquals(OK, r.status()); }
@@ -181,5 +188,31 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     String error =
       "Invalid com.yugabyte.yw.models.AvailabilityZoneUUID: " + wrongUuid.toString();
     checkNotOk(r, error);
+  }
+  // Test for Delete Instance, use case is only for OnPrem, but test can be validated with AWS provider as well
+  @Test
+  public void testDeleteInstanceWithValidInstanceIP() {
+    Result r = deleteNode(customer.uuid, provider.uuid, FAKE_IP);
+    assertOk(r);
+  }
+  
+  @Test
+  public void testDeleteInstanceWithInvalidProviderValidInstanceIP() {
+    UUID invalidProviderUUID = UUID.randomUUID();
+    Result r = deleteNode(customer.uuid, invalidProviderUUID, FAKE_IP);
+    assertBadRequest(r, "Invalid Provider UUID: " + invalidProviderUUID);
+  }
+
+  @Test
+  public void testDeleteInstanceWithValidProviderInvalidInstanceIP() {
+    Result r = deleteNode(customer.uuid, provider.uuid, "abc");
+    assertBadRequest(r, "Node Not Found");
+  }
+
+  @Test
+  public void testDeleteInstanceWithInvalidCustomerUUID() {
+    UUID invalidCustomerUUID = UUID.randomUUID();
+    Result r = deleteNode(invalidCustomerUUID, provider.uuid, "random_ip");
+    assertBadRequest(r, "Invalid Customer UUID: " + invalidCustomerUUID);
   }
 }

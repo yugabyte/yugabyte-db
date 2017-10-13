@@ -106,7 +106,7 @@ public class NodeInstanceController extends AuthenticatedController {
   }
 
 
-  public Result delete(UUID customerUUID, UUID universeUUID, String nodeName) {
+  public Result deleteNode(UUID customerUUID, UUID universeUUID, String nodeName) {
     try {
       // Validate customer UUID and universe UUID and AWS provider.
       Customer customer = Customer.get(customerUUID);
@@ -145,7 +145,44 @@ public class NodeInstanceController extends AuthenticatedController {
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }
+  }
 
+  /**
+   * Endpoint deletes the configured instance for a provider.
+   * Since instance name and instance uuid are absent in a pristine (unused) instance
+   * We use IP to query for Instance and delete it
+   */
+  public Result deleteInstance(UUID customerUUID, UUID providerUUID, String instanceIP) {
+   try {
+     // Validate customer UUID and universe UUID and AWS provider.
+     Customer customer = Customer.get(customerUUID);
+     if (customer == null) {
+       String errMsg = "Invalid Customer UUID: " + customerUUID;
+       LOG.error(errMsg);
+       return ApiResponse.error(BAD_REQUEST, errMsg);
+     }
+     Provider provider = Provider.get(providerUUID);
+     if (provider == null) {
+       String errMsg = "Invalid Provider UUID: " + providerUUID;
+       LOG.error(errMsg);
+       return ApiResponse.error(BAD_REQUEST, errMsg);
+     }
+     List<NodeInstance> nodesInProvider = NodeInstance.listByProvider(providerUUID);
+     NodeInstance nodeToBeFound = null;
+     for (int a = 0; a < nodesInProvider.size(); a++) {
+       if (nodesInProvider.get(a).getDetails().ip.equals(instanceIP)) {
+         nodeToBeFound = nodesInProvider.get(a);
+       }
+     }
+     if (nodeToBeFound != null) {
+       nodeToBeFound.delete();
+       return Results.status(OK);
+     } else {
+       return ApiResponse.error(BAD_REQUEST, "Node Not Found");
+     }
+   } catch (Exception e) {
+     return ApiResponse.error(500, e.getMessage());
+   }
   }
 
   private String validateParams(UUID customerUuid, UUID zoneUuid) {
