@@ -34,6 +34,13 @@ PTUseKeyspace::~PTUseKeyspace() {
 }
 
 CHECKED_STATUS PTUseKeyspace::Analyze(SemContext *sem_context) {
+  if (*name_ == common::kRedisKeyspaceName) {
+    return sem_context->Error(loc(),
+                              strings::Substitute("$0 is a reserved keyspace name",
+                                                  common::kRedisKeyspaceName).c_str(),
+                              ErrorCode::INVALID_ARGUMENTS);
+  }
+
   if (VLOG_IS_ON(3)) {
     PrintSemanticAnalysisResult(sem_context);
   }

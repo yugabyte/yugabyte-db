@@ -183,16 +183,8 @@ PTUserDefinedType::~PTUserDefinedType() {
 
 CHECKED_STATUS PTUserDefinedType::Analyze(SemContext *sem_context) {
 
-  RETURN_NOT_OK(name_->Analyze(sem_context));
-
+  RETURN_NOT_OK(name_->AnalyzeName(sem_context, OBJECT_TYPE));
   auto ybname = name_->ToTableName();
-  if (!ybname.has_namespace()) {
-    if (sem_context->CurrentKeyspace().empty()) {
-      return sem_context->Error(this, ErrorCode::NO_NAMESPACE_USED);
-    }
-    ybname.set_namespace_name(sem_context->CurrentKeyspace());
-  }
-
   ql_type_ = sem_context->GetUDType(ybname.namespace_name(), ybname.table_name());
   if (ql_type_ == nullptr) {
     return sem_context->Error(this, "Could not find user defined type", ErrorCode::TYPE_NOT_FOUND);

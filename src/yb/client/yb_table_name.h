@@ -88,13 +88,12 @@ class YBTableName {
     return IsSystemNamespace(resolved_namespace_name());
   }
 
-  bool is_redis_table() const {
-    return ((has_namespace() && resolved_namespace_name() == common::kRedisKeyspaceName) &&
-        table_name_ == common::kRedisTableName);
+  bool is_redis_namespace() const {
+    return ((has_namespace() && resolved_namespace_name() == common::kRedisKeyspaceName));
   }
 
-  bool is_redis_keyspace_or_table() const {
-    return ((has_namespace() && resolved_namespace_name() == common::kRedisKeyspaceName) ||
+  bool is_redis_table() const {
+    return ((has_namespace() && resolved_namespace_name() == common::kRedisKeyspaceName) &&
         table_name_ == common::kRedisTableName);
   }
 

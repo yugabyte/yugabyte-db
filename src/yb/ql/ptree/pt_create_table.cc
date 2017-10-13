@@ -51,17 +51,7 @@ CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
   SemState sem_state(sem_context);
 
   // Processing table name.
-  RETURN_NOT_OK(relation_->Analyze(sem_context));
-
-  // We don't support redis keyspace and table name in YQL.
-  const client::YBTableName& table_name = relation_->ToTableName();
-  if (table_name.is_redis_keyspace_or_table()) {
-    return sem_context->Error(relation_->loc(),
-                              strings::Substitute("$0 and $1 are reserved names",
-                                                  common::kRedisKeyspaceName,
-                                                  common::kRedisTableName).c_str(),
-                              ErrorCode::INVALID_ARGUMENTS);
-  }
+  RETURN_NOT_OK(relation_->AnalyzeName(sem_context, OBJECT_TABLE));
 
   // Save context state, and set "this" as current column in the context.
   SymbolEntry cached_entry = *sem_context->current_processing_id();
@@ -184,12 +174,8 @@ CHECKED_STATUS PTCreateTable::CheckType(SemContext *sem_context,
   RETURN_NOT_OK(datatype->Analyze(sem_context));
 
   if (datatype->ql_type()->IsUserDefined()) {
-    string table_keyspace = sem_context->CurrentKeyspace(); // default
-    if (sem_context->current_create_table_stmt()->yb_table_name().has_namespace()) {
-      table_keyspace = sem_context->current_create_table_stmt()->yb_table_name().namespace_name();
-    }
-
-    if (table_keyspace != datatype->ql_type()->udtype_keyspace_name()) {
+    PTCreateTable *stmt = sem_context->current_create_table_stmt();
+    if (datatype->ql_type()->udtype_keyspace_name() != stmt->yb_table_name().namespace_name()) {
       return sem_context->Error(datatype,
           "User Defined Types can only be used in the same keyspace where they are defined",
           ErrorCode::INVALID_COLUMN_DEFINITION);

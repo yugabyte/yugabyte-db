@@ -181,12 +181,6 @@ Status Executor::ExecPTNode(const PTCreateType *tnode) {
 
   const std::string& type_name = yb_name.table_name();
   std::string keyspace_name = yb_name.namespace_name();
-  if (!yb_name.has_namespace()) {
-    if (exec_context_->CurrentKeyspace().empty()) {
-      return exec_context_->Error(tnode->type_name(), ErrorCode::NO_NAMESPACE_USED);
-    }
-    keyspace_name = exec_context_->CurrentKeyspace();
-  }
 
   std::vector<std::string> field_names;
   std::vector<std::shared_ptr<QLType>> field_types;
@@ -220,14 +214,6 @@ Status Executor::ExecPTNode(const PTCreateType *tnode) {
 
 Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   YBTableName table_name = tnode->yb_table_name();
-
-  if (!table_name.has_namespace()) {
-    if (exec_context_->CurrentKeyspace().empty()) {
-      return exec_context_->Error(tnode->table_name(), ErrorCode::NO_NAMESPACE_USED);
-    }
-
-    table_name.set_namespace_name(exec_context_->CurrentKeyspace());
-  }
 
   if (table_name.is_system() && client::FLAGS_yb_system_namespace_readonly) {
     return exec_context_->Error(tnode->table_name(), ErrorCode::SYSTEM_NAMESPACE_READONLY);
@@ -306,7 +292,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   }
 
   result_ = std::make_shared<SchemaChangeResult>(
-      "CREATED", "TABLE", table_name.resolved_namespace_name(), table_name.table_name());
+      "CREATED", "TABLE", table_name.namespace_name(), table_name.table_name());
   return Status::OK();
 }
 
@@ -314,14 +300,6 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
 
 Status Executor::ExecPTNode(const PTAlterTable *tnode) {
   YBTableName table_name = tnode->yb_table_name();
-
-  if (!table_name.has_namespace()) {
-    if (exec_context_->CurrentKeyspace().empty()) {
-      return exec_context_->Error(ErrorCode::NO_NAMESPACE_USED);
-    }
-
-    table_name.set_namespace_name(exec_context_->CurrentKeyspace());
-  }
 
   shared_ptr<YBTableAlterer> table_alterer(exec_context_->NewTableAlterer(table_name));
 
@@ -360,7 +338,7 @@ Status Executor::ExecPTNode(const PTAlterTable *tnode) {
   }
 
   result_ = std::make_shared<SchemaChangeResult>(
-      "UPDATED", "TABLE", table_name.resolved_namespace_name(), table_name.table_name());
+      "UPDATED", "TABLE", table_name.namespace_name(), table_name.table_name());
   return Status::OK();
 }
 
@@ -372,26 +350,18 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
 
   switch (tnode->drop_type()) {
     case OBJECT_TABLE: {
-      YBTableName table_name = tnode->yb_table_name();
-
-      if (!table_name.has_namespace()) {
-        if (exec_context_->CurrentKeyspace().empty()) {
-          return exec_context_->Error(tnode->name(), ErrorCode::NO_NAMESPACE_USED);
-        }
-
-        table_name.set_namespace_name(exec_context_->CurrentKeyspace());
-      }
       // Drop the table.
+      const YBTableName table_name = tnode->yb_table_name();
       s = exec_context_->DeleteTable(table_name);
       error_not_found = ErrorCode::TABLE_NOT_FOUND;
       result_ = std::make_shared<SchemaChangeResult>(
-          "DROPPED", "TABLE", table_name.resolved_namespace_name(), table_name.table_name());
+          "DROPPED", "TABLE", table_name.namespace_name(), table_name.table_name());
       break;
     }
 
     case OBJECT_SCHEMA: {
       // Drop the keyspace.
-      const string &keyspace_name(tnode->name()->last_name().c_str());
+      const string keyspace_name(tnode->name()->last_name().c_str());
       s = exec_context_->DeleteKeyspace(keyspace_name);
       error_not_found = ErrorCode::KEYSPACE_NOT_FOUND;
       result_ = std::make_shared<SchemaChangeResult>("DROPPED", "KEYSPACE", keyspace_name);
@@ -399,18 +369,9 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
     }
 
     case OBJECT_TYPE: {
-      const string& type_name(tnode->name()->last_name().c_str());
-      string namespace_name(tnode->name()->first_name().c_str());
-
-      // If name has no explicit keyspace use default
-      if (tnode->name()->IsSimpleName()) {
-        if (exec_context_->CurrentKeyspace().empty()) {
-          return exec_context_->Error(tnode->name(), ErrorCode::NO_NAMESPACE_USED);
-        }
-        namespace_name = exec_context_->CurrentKeyspace();
-      }
-
       // Drop the type.
+      const string type_name(tnode->name()->last_name().c_str());
+      const string namespace_name(tnode->name()->first_name().c_str());
       s = exec_context_->DeleteUDType(namespace_name, type_name);
       error_not_found = ErrorCode::TYPE_NOT_FOUND;
       result_ = std::make_shared<SchemaChangeResult>("DROPPED", "TYPE", namespace_name, type_name);

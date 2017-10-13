@@ -49,9 +49,8 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
 
   RETURN_NOT_OK(PTDmlStmt::Analyze(sem_context));
 
-  RETURN_NOT_OK(relation_->Analyze(sem_context));
-
   // Get table descriptor.
+  RETURN_NOT_OK(relation_->AnalyzeName(sem_context, OBJECT_TABLE));
   RETURN_NOT_OK(LookupTable(sem_context));
   if (table_->schema().table_properties().contain_counters()) {
     return sem_context->Error(relation_, ErrorCode::INSERT_TABLE_OF_COUNTERS);
@@ -83,6 +82,10 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
     // Mismatch between arguments and columns.
     MCList<PTExpr::SharedPtr>::const_iterator iter = exprs.begin();
     for (PTQualifiedName::SharedPtr name : names) {
+      if (!name->IsSimpleName()) {
+        return sem_context->Error(name, "Qualified name not allowed for column reference",
+                                  ErrorCode::SQL_STATEMENT_INVALID);
+      }
       const ColumnDesc *col_desc = sem_context->GetColumnDesc(name->last_name());
 
       // Check that the column exists.

@@ -230,7 +230,7 @@ CHECKED_STATUS PTTableRef::Analyze(SemContext *sem_context) {
   if (alias_ != nullptr) {
     return sem_context->Error(this, "Alias is not allowed", ErrorCode::CQL_STATEMENT_INVALID);
   }
-  return name_->Analyze(sem_context);
+  return name_->AnalyzeName(sem_context, OBJECT_TABLE);
 }
 
 //--------------------------------------------------------------------------------------------------

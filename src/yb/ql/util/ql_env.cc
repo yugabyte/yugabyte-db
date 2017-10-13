@@ -172,6 +172,10 @@ void QLEnv::ResumeCQLCall() {
 }
 
 shared_ptr<YBTable> QLEnv::GetTableDesc(const YBTableName& table_name, bool* cache_used) {
+  // Hide tables in system_redis keyspace.
+  if (table_name.is_redis_namespace()) {
+    return nullptr;
+  }
   shared_ptr<YBTable> yb_table;
   Status s = metadata_cache_->GetTable(table_name, &yb_table, cache_used);
 

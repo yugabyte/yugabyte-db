@@ -84,7 +84,7 @@ CHECKED_STATUS PTCreateType::Analyze(SemContext *sem_context) {
   SemState sem_state(sem_context);
 
   // Processing type name.
-  RETURN_NOT_OK(name_->Analyze(sem_context));
+  RETURN_NOT_OK(name_->AnalyzeName(sem_context, OBJECT_TYPE));
 
   // Save context state, and set "this" as current column in the context.
   SymbolEntry cached_entry = *sem_context->current_processing_id();

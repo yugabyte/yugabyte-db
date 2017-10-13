@@ -49,14 +49,6 @@ CHECKED_STATUS SemContext::LookupTable(YBTableName name, shared_ptr<YBTable>* ta
                                        MCVector<ColumnDesc>* table_columns,
                                        int* num_key_columns, int* num_hash_key_columns,
                                        bool* is_system, bool write_only, const YBLocation& loc) {
-  if (!name.has_namespace()) {
-    if (CurrentKeyspace().empty()) {
-      return Error(loc, ErrorCode::NO_NAMESPACE_USED);
-    }
-
-    name.set_namespace_name(CurrentKeyspace());
-  }
-
   *is_system = name.is_system();
   if (*is_system && write_only && client::FLAGS_yb_system_namespace_readonly) {
     return Error(loc, ErrorCode::SYSTEM_NAMESPACE_READONLY);
@@ -64,8 +56,7 @@ CHECKED_STATUS SemContext::LookupTable(YBTableName name, shared_ptr<YBTable>* ta
 
   VLOG(3) << "Loading table descriptor for " << name.ToString();
   *table = GetTableDesc(name);
-  if (*table == nullptr || name.is_redis_table()) {
-    // Hide redis table by return table not found error.
+  if (*table == nullptr) {
     return Error(loc, ErrorCode::TABLE_NOT_FOUND);
   }
   set_current_table(*table);

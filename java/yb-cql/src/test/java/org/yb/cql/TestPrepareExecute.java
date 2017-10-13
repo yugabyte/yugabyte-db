@@ -287,4 +287,37 @@ public class TestPrepareExecute extends BaseCQLTest {
     testInvalidPrepare("UPDATE test_pk_indices SET v = ? WHERE h1 = ?;");
     testInvalidPrepare("DELETE FROM test_pk_indices WHERE h2 = ? AND h1 = ?;");
   }
+
+  @Test
+  public void testDDLKeyspaceResolution() throws Exception {
+    // Create 2 test keyspaces.
+    session.execute("CREATE KEYSPACE test_k1;");
+    session.execute("CREATE KEYSPACE test_k2;");
+
+    // Prepare create DDLs in k1.
+    session.execute("USE test_k1;");
+    PreparedStatement createTable = session.prepare("CREATE TABLE test_table (h INT PRIMARY KEY);");
+    PreparedStatement createType = session.prepare("CREATE TYPE test_type (n INT);");
+
+    // Execute prepared DDLs in k2.
+    session.execute("USE test_k2;");
+    session.execute(createTable.bind());
+    session.execute(createType.bind());
+
+    // Verify that the objects are not created in k2.
+    runInvalidStmt("DROP TABLE test_k2.test_table;");
+    runInvalidStmt("DROP TYPE test_k2.test_type;");
+
+    // Prepare alter/drop DDLs in k1.
+    session.execute("USE test_k1;");
+    PreparedStatement alterTable = session.prepare("ALTER TABLE test_table ADD c INT;");
+    PreparedStatement dropTable = session.prepare("DROP TABLE test_table;");
+    PreparedStatement dropType = session.prepare("DROP TYPE test_type;");
+
+    // Execute prepared DDLs in k2.
+    session.execute("USE test_k2;");
+    session.execute(alterTable.bind());
+    session.execute(dropTable.bind());
+    session.execute(dropType.bind());
+  }
 }

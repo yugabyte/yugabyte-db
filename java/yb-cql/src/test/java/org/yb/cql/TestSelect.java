@@ -904,4 +904,16 @@ public class TestSelect extends BaseCQLTest {
     runInvalidStmt("SELECT FROM t;");
     runInvalidStmt("SELECT t;");
   }
+
+  @Test
+  public void testQualifiedColumnReference() throws Exception {
+
+    setupTable("test_select", 0);
+
+    // Verify qualified name for column reference is disallowed.
+    runInvalidStmt("SELECT t.h1 FROM test_select;");
+    runInvalidStmt("INSERT INTO test_select (t.h1) VALUES (1);");
+    runInvalidStmt("UPDATE test_select SET t.h1 = 1;");
+    runInvalidStmt("DELETE t.h1 FROM test_select;");
+  }
 }

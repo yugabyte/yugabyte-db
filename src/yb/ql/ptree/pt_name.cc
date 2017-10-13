@@ -111,5 +111,87 @@ CHECKED_STATUS PTQualifiedName::Analyze(SemContext *sem_context) {
   return Status::OK();
 }
 
+CHECKED_STATUS PTQualifiedName::AnalyzeName(SemContext *sem_context, const ObjectType object_type) {
+  switch (object_type) {
+    case OBJECT_SCHEMA:
+      if (ptnames_.size() != 1) {
+        return sem_context->Error(this, "Invalid keyspace name", ErrorCode::INVALID_ARGUMENTS);
+      }
+      if (ptnames_.front()->name() == common::kRedisKeyspaceName) {
+        return sem_context->Error(this,
+                                  strings::Substitute("$0 is a reserved keyspace name",
+                                                      common::kRedisKeyspaceName).c_str(),
+                                  ErrorCode::INVALID_ARGUMENTS);
+      }
+      return Status::OK();
+
+    case OBJECT_TABLE: FALLTHROUGH_INTENDED;
+    case OBJECT_TYPE:
+      if (ptnames_.size() > 2) {
+        return sem_context->Error(this, "Invalid table or type name",
+                                  ErrorCode::SQL_STATEMENT_INVALID);
+      }
+      if (ptnames_.size() == 1) {
+        const string current_keyspace = sem_context->CurrentKeyspace();
+        if (current_keyspace.empty()) {
+          return sem_context->Error(this, ErrorCode::NO_NAMESPACE_USED);
+        }
+        MemoryContext* memctx = sem_context->PSemMem();
+        Prepend(PTName::MakeShared(memctx, loc_,
+                                   MCMakeShared<MCString>(memctx, current_keyspace.c_str())));
+      }
+      if (ptnames_.front()->name() == common::kRedisKeyspaceName) {
+        return sem_context->Error(this,
+                                  strings::Substitute("$0 is a reserved keyspace name",
+                                                      common::kRedisKeyspaceName).c_str(),
+                                  ErrorCode::INVALID_ARGUMENTS);
+      }
+      return Status::OK();
+
+    case OBJECT_AGGREGATE: FALLTHROUGH_INTENDED;
+    case OBJECT_AMOP: FALLTHROUGH_INTENDED;
+    case OBJECT_AMPROC: FALLTHROUGH_INTENDED;
+    case OBJECT_ATTRIBUTE: FALLTHROUGH_INTENDED;
+    case OBJECT_CAST: FALLTHROUGH_INTENDED;
+    case OBJECT_COLUMN: FALLTHROUGH_INTENDED;
+    case OBJECT_COLLATION: FALLTHROUGH_INTENDED;
+    case OBJECT_CONVERSION: FALLTHROUGH_INTENDED;
+    case OBJECT_DATABASE: FALLTHROUGH_INTENDED;
+    case OBJECT_DEFAULT: FALLTHROUGH_INTENDED;
+    case OBJECT_DEFACL: FALLTHROUGH_INTENDED;
+    case OBJECT_DOMAIN: FALLTHROUGH_INTENDED;
+    case OBJECT_DOMCONSTRAINT: FALLTHROUGH_INTENDED;
+    case OBJECT_EVENT_TRIGGER: FALLTHROUGH_INTENDED;
+    case OBJECT_EXTENSION: FALLTHROUGH_INTENDED;
+    case OBJECT_FDW: FALLTHROUGH_INTENDED;
+    case OBJECT_FOREIGN_SERVER: FALLTHROUGH_INTENDED;
+    case OBJECT_FOREIGN_TABLE: FALLTHROUGH_INTENDED;
+    case OBJECT_FUNCTION: FALLTHROUGH_INTENDED;
+    case OBJECT_INDEX: FALLTHROUGH_INTENDED;
+    case OBJECT_LANGUAGE: FALLTHROUGH_INTENDED;
+    case OBJECT_LARGEOBJECT: FALLTHROUGH_INTENDED;
+    case OBJECT_MATVIEW: FALLTHROUGH_INTENDED;
+    case OBJECT_OPCLASS: FALLTHROUGH_INTENDED;
+    case OBJECT_OPERATOR: FALLTHROUGH_INTENDED;
+    case OBJECT_OPFAMILY: FALLTHROUGH_INTENDED;
+    case OBJECT_POLICY: FALLTHROUGH_INTENDED;
+    case OBJECT_ROLE: FALLTHROUGH_INTENDED;
+    case OBJECT_RULE: FALLTHROUGH_INTENDED;
+    case OBJECT_SEQUENCE: FALLTHROUGH_INTENDED;
+    case OBJECT_TABCONSTRAINT: FALLTHROUGH_INTENDED;
+    case OBJECT_TABLESPACE: FALLTHROUGH_INTENDED;
+    case OBJECT_TRANSFORM: FALLTHROUGH_INTENDED;
+    case OBJECT_TRIGGER: FALLTHROUGH_INTENDED;
+    case OBJECT_TSCONFIGURATION: FALLTHROUGH_INTENDED;
+    case OBJECT_TSDICTIONARY: FALLTHROUGH_INTENDED;
+    case OBJECT_TSPARSER: FALLTHROUGH_INTENDED;
+    case OBJECT_TSTEMPLATE: FALLTHROUGH_INTENDED;
+    case OBJECT_USER_MAPPING: FALLTHROUGH_INTENDED;
+    case OBJECT_VIEW:
+      return sem_context->Error(this, ErrorCode::FEATURE_NOT_SUPPORTED);
+  }
+  return Status::OK();
+}
+
 }  // namespace ql
 }  // namespace yb

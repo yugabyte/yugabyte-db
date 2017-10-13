@@ -42,33 +42,7 @@ CHECKED_STATUS PTDropStmt::Analyze(SemContext *sem_context) {
   }
 
   // Processing object name.
-  RETURN_NOT_OK(name()->Analyze(sem_context));
-
-  // We don't support redis keyspace and table name in YQL.
-  const client::YBTableName& table_name = name()->ToTableName();
-  switch (drop_type()) {
-    case OBJECT_TABLE:
-      if (table_name.is_redis_keyspace_or_table()) {
-        return sem_context->Error(name()->loc(),
-                                  strings::Substitute("$0 and $1 are reserved names",
-                                                      common::kRedisTableName,
-                                                      common::kRedisKeyspaceName).c_str(),
-                                  ErrorCode::INVALID_ARGUMENTS);
-      }
-      break;
-    case OBJECT_SCHEMA:
-      if (name()->last_name() == common::kRedisKeyspaceName) {
-        return sem_context->Error(name()->loc(),
-                                  strings::Substitute("$0 is a reserved name",
-                                                      common::kRedisKeyspaceName).c_str(),
-                                  ErrorCode::INVALID_ARGUMENTS);
-      }
-      break;
-
-    default: {}
-  }
-
-  return Status::OK();
+  return name()->AnalyzeName(sem_context, drop_type());
 }
 
 void PTDropStmt::PrintSemanticAnalysisResult(SemContext *sem_context) {

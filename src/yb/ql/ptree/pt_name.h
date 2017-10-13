@@ -139,11 +139,11 @@ class PTQualifiedName : public PTName {
     return ptnames_.back()->name_ptr();
   }
 
+  // Analyze this qualified name as an object name.
+  CHECKED_STATUS AnalyzeName(SemContext *sem_context, ObjectType object_type);
+
   client::YBTableName ToTableName() const {
-    // We support only names with 1 or 2 sub-names.
-    // See Analyze() implementation.
-    return (ptnames_.size() >= 2 ? client::YBTableName(first_name().c_str(), last_name().c_str())
-        : client::YBTableName(last_name().c_str()));
+    return client::YBTableName(first_name().c_str(), last_name().c_str());
   }
 
   virtual string QLName() const override {

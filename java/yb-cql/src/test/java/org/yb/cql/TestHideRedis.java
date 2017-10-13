@@ -41,10 +41,17 @@ public class TestHideRedis extends BaseCQLTest {
 
   @Test
   public void testHideRedis() throws Exception {
+    // system_redis keyspace is reserved.
     runInvalidQuery(String.format("CREATE KEYSPACE %s", YBClient.REDIS_KEYSPACE_NAME));
+    runInvalidQuery(String.format("CREATE TABLE %s.test (c1 int PRIMARY KEY)",
+      YBClient.REDIS_KEYSPACE_NAME));
+    runInvalidQuery(String.format("USE %s", YBClient.REDIS_KEYSPACE_NAME));
+
+    // "redis" can be used as a table name in user-defined keyspace.
     session.execute("CREATE KEYSPACE test");
-    runInvalidQuery(String.format("CREATE TABLE test.\"%s\" (c1 int PRIMARY KEY)",
+    session.execute(String.format("CREATE TABLE test.\"%s\" (c1 int PRIMARY KEY)",
       YBClient.REDIS_DEFAULT_TABLE_NAME));
+    session.execute(String.format("DROP TABLE test.\"%s\"", YBClient.REDIS_DEFAULT_TABLE_NAME));
 
     YBClient client = miniCluster.getClient();
     client.createRedisTable(YBClient.REDIS_DEFAULT_TABLE_NAME, 1);
@@ -82,8 +89,6 @@ public class TestHideRedis extends BaseCQLTest {
     } finally {
       client.deleteTable(YBClient.REDIS_DEFAULT_TABLE_NAME, YBClient.REDIS_KEYSPACE_NAME);
       runInvalidQuery(String.format("DROP KEYSPACE %s", YBClient.REDIS_KEYSPACE_NAME));
-      runInvalidQuery(String.format("DROP TABLE test.\"%s\"",
-        YBClient.REDIS_DEFAULT_TABLE_NAME));
       runInvalidQuery(String.format("DROP TABLE %s.\"%s\"",
         YBClient.REDIS_KEYSPACE_NAME, YBClient.REDIS_DEFAULT_TABLE_NAME));
     }

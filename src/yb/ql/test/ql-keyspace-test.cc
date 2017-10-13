@@ -334,7 +334,7 @@ TEST_F(TestQLKeyspace, TestQLUseKeyspaceWithTable) {
 
   // Invalid name 'keyspace.SOMETHING.table'.
   LOG(INFO) << "Exec SQL: " << CreateTableStmt(test_any_table4);
-  EXEC_INVALID_STMT_WITH_ERROR(CreateTableStmt(test_any_table4), "Feature Not Supported", "");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateTableStmt(test_any_table4), "Invalid table or type name", "");
 
   // Create the keyspace1.
   LOG(INFO) << "Exec SQL: " << CreateKeyspaceStmt(keyspace1);

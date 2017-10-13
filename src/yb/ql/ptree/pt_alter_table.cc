@@ -44,9 +44,8 @@ PTAlterTable::~PTAlterTable() {
 }
 
 CHECKED_STATUS PTAlterTable::Analyze(SemContext *sem_context) {
-  RETURN_NOT_OK(name_->Analyze(sem_context));
-
   // Populate internal table_ variable.
+  RETURN_NOT_OK(name_->AnalyzeName(sem_context, OBJECT_TABLE));
   YBTableName table_name = name_->ToTableName();
   RETURN_NOT_OK(sem_context->LookupTable(table_name, &table_, &table_columns_, &num_key_columns_,
                                          &num_hash_key_columns_, &is_system_,

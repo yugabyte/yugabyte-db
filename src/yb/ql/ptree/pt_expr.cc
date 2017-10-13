@@ -313,7 +313,8 @@ CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
                                     ErrorCode::INVALID_ARGUMENTS);
         }
         if (!field_ref->name()->IsSimpleName()) {
-          return sem_context->Error(this, "Qualified names not allowed for fields of user-defined",
+          return sem_context->Error(this,
+                                    "Qualified names not allowed for fields of user-defined types",
                                     ErrorCode::INVALID_ARGUMENTS);
         }
         string field_name(field_ref->name()->last_name().c_str());
@@ -321,7 +322,7 @@ CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
         // All keys must be existing field names from the UDT
         int field_idx = expected_type->GetUDTypeFieldIdxByName(field_name);
         if (field_idx < 0) {
-          return sem_context->Error(this, "Invalid field name found for user defined type instance",
+          return sem_context->Error(this, "Invalid field name found for user-defined type instance",
                                     ErrorCode::INVALID_ARGUMENTS);
         }
 
@@ -688,6 +689,10 @@ CHECKED_STATUS PTRef::AnalyzeOperator(SemContext *sem_context) {
 
   // Look for a column descriptor from symbol table.
   RETURN_NOT_OK(name_->Analyze(sem_context));
+  if (!name_->IsSimpleName()) {
+    return sem_context->Error(this, "Qualified name not allowed for column reference",
+                              ErrorCode::SQL_STATEMENT_INVALID);
+  }
   desc_ = sem_context->GetColumnDesc(name_->last_name());
   if (desc_ == nullptr) {
     return sem_context->Error(this, "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
