@@ -77,7 +77,7 @@ try:
                 if release.repo == "yugaware":
                     yugaware_package = os.path.join(download_folder, package_name)
                 elif release.repo == "yugabyte":
-                    download_folder = os.path.join(packages_folder, release.repo, release.version)
+                    download_folder = os.path.join(packages_folder, release.repo, release.get_release_name())
                     yugabyte_package = os.path.join(download_folder, package_name)
 
                 if not os.path.exists(download_folder):
