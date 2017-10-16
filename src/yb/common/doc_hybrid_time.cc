@@ -49,6 +49,12 @@ char* DocHybridTime::EncodedInDocDbFormat(char* dest) const {
   // the "YugaByte epoch" as a signed operation, so that we can still represent hybrid times earlier
   // than the YugaByte epoch.
   char* out = dest;
+
+  // Hybrid time generation number. This is currently always 0. In the future this can be used to
+  // reset hybrid time throughout the entire cluster back to a lower value if it gets stuck at some
+  // far-in-the-future point due to a temporary clock issue.
+  out = FastEncodeDescendingSignedVarInt(0, out);
+
   out = FastEncodeDescendingSignedVarInt(
       static_cast<int64_t>(hybrid_time_.GetPhysicalValueMicros() - kYugaByteMicrosecondEpoch),
       out);
@@ -79,6 +85,10 @@ char* DocHybridTime::EncodedInDocDbFormat(char* dest) const {
 Status DocHybridTime::DecodeFrom(Slice *slice) {
   const size_t previous_size = slice->size();
   {
+    // Currently we just ignore the generation number as it should always be 0.
+    int64_t ht_generation_number;
+    RETURN_NOT_OK(FastDecodeDescendingSignedVarInt(slice, &ht_generation_number));
+
     int64_t decoded_micros = 0;
     RETURN_NOT_OK(FastDecodeDescendingSignedVarInt(slice, &decoded_micros));
     decoded_micros += kYugaByteMicrosecondEpoch;

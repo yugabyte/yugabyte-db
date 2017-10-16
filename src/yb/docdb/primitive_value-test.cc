@@ -199,21 +199,21 @@ TEST(PrimitiveValueTest, TestEncoding) {
 
   // HybridTime encoding --------------------------------------------------------------------------
 
-  TestEncoding(R"#("#\xff\x05S\x1e\x85.\xbb52\x7fK")#",
+  TestEncoding(R"#("#\x80\xff\x05S\x1e\x85.\xbb52\x7fL")#",
                PrimitiveValue(HybridTime(1234567890123L, 3456)));
 
-  TestEncoding(R"#("#\x80\x80C")#",
+  TestEncoding(R"#("#\x80\x80\x80D")#",
                PrimitiveValue(HybridTime::FromMicros(kYugaByteMicrosecondEpoch)));
 
   // A little lower timestamp results in a little higher value that gets sorted later.
-  TestEncoding(R"#("#\x81\x80C")#",
+  TestEncoding(R"#("#\x80\x81\x80D")#",
                PrimitiveValue(HybridTime::FromMicros(kYugaByteMicrosecondEpoch - 1)));
 
   // On the other hand, with a higher timestamp, "~" is 0x7e, which is sorted earlier than 0x80.
-  TestEncoding(R"#("#~\x80C")#",
+  TestEncoding(R"#("#\x80~\x80D")#",
                PrimitiveValue(HybridTime::FromMicros(kYugaByteMicrosecondEpoch + 1)));
 
-  TestEncoding(R"#("#\xff\x05T=\xf7)\xbc\x18\x80J")#",
+  TestEncoding(R"#("#\x80\xff\x05T=\xf7)\xbc\x18\x80K")#",
                PrimitiveValue(HybridTime::FromMicros(1000)));
 
   // Float and Double size, 1 byte for value_type.

@@ -240,7 +240,7 @@ TEST(DocKeyTest, TestBasicSubDocKeyEncodingDecoding) {
                $sk1\x00\x00\
                $sk2\x00\x00\
                a\x8c\x94\xcc\xff\xfe\xff\xff\
-               #\xff\x05T=\xf7)\xbc\x18\x80J"
+               #\x80\xff\x05T=\xf7)\xbc\x18\x80K"
           )#"
       ),
       encoded_subdoc_key.ToString()

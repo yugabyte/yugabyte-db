@@ -114,52 +114,52 @@ TEST(DocHybridTimeTest, TestExactByteRepresentation) {
   using std::get;
 
   vector<TestDesc> test_descriptions{
-      TestDesc{ R"#("\x07\xc4e5\xff\x80G")#",
+      TestDesc{ R"#("\x80\x07\xc4e5\xff\x80H")#",
                 kYugaEpoch + 1000000000, 0, kMinWriteId },
 
-      TestDesc{ R"#("\x10\xbd\xbf;-\x03\xdf\xff\xff\xff\xeb")#",
+      TestDesc{ R"#("\x80\x10\xbd\xbf;-\x03\xdf\xff\xff\xff\xec")#",
                 kYugaEpoch + 1000000, 1234, 4294967295 },
 
-      TestDesc{ R"#("\x10\xbd\xbf;-F")#",
+      TestDesc{ R"#("\x80\x10\xbd\xbf;-G")#",
                 kYugaEpoch + 1000000, 1234, kMinWriteId },
 
-      TestDesc{ R"#("\x10\xbd\xbf\x80\x03\xdf\xff\xff\xff\xea")#",
+      TestDesc{ R"#("\x80\x10\xbd\xbf\x80\x03\xdf\xff\xff\xff\xeb")#",
                 kYugaEpoch + 1000000, 0, 4294967295 },
 
-      TestDesc{ R"#("\x10\xbd\xbf\x80E")#",
+      TestDesc{ R"#("\x80\x10\xbd\xbf\x80F")#",
                 kYugaEpoch + 1000000, 0, kMinWriteId },
 
-      TestDesc{ R"#("<\x17\x80D")#",
+      TestDesc{ R"#("\x80<\x17\x80E")#",
                 kYugaEpoch + 1000, 0, kMinWriteId },
 
-      TestDesc{ R"#("?\x0b=\xbfE")#",
+      TestDesc{ R"#("\x80?\x0b=\xbfF")#",
                 kYugaEpoch, 1000000, kMinWriteId },
 
-      TestDesc{ R"#("\x80<\x17D")#",
+      TestDesc{ R"#("\x80\x80<\x17E")#",
                 kYugaEpoch, 1000, kMinWriteId },
 
-      TestDesc{ R"#("\x80\x80\x0e\x17\xb7\xc6")#",
+      TestDesc{ R"#("\x80\x80\x80\x0e\x17\xb7\xc7")#",
                 kYugaEpoch, 0, 1000000 },
 
-      TestDesc{ R"#("\x80\x80\x1f\x82\xc5")#",
+      TestDesc{ R"#("\x80\x80\x80\x1f\x82\xc6")#",
                 kYugaEpoch, 0, 1000 },
 
-      TestDesc{ R"#("\x80\x80C")#",
+      TestDesc{ R"#("\x80\x80\x80D")#",
                 kYugaEpoch, 0, kMinWriteId },
 
-      TestDesc{ R"#("\xc3\xe8\x80D")#",
+      TestDesc{ R"#("\x80\xc3\xe8\x80E")#",
                 kYugaEpoch - 1000, 0, kMinWriteId },
 
-      TestDesc{ R"#("\xefB@\x80E")#",
+      TestDesc{ R"#("\x80\xefB@\x80F")#",
                 kYugaEpoch - 1000000, 0, kMinWriteId },
 
-      TestDesc{ R"#("\xf8;\x9a\xca\x00\x80G")#",
+      TestDesc{ R"#("\x80\xf8;\x9a\xca\x00\x80H")#",
                 kYugaEpoch - 1000000000, 0, kMinWriteId },
 
-      TestDesc{ R"#("\xff\x01\xc6\xbfRc@\x00\x80J")#",
+      TestDesc{ R"#("\x80\xff\x01\xc6\xbfRc@\x00\x80K")#",
                 1000000000000000LL, 0, kMinWriteId },
 
-      TestDesc{ R"#("\xff\x05T=\xf7)\xc0\x00\x80J")#",
+      TestDesc{ R"#("\x80\xff\x05T=\xf7)\xc0\x00\x80K")#",
                 kYugaEpoch - 1500000000000000, 0, kMinWriteId },
   };
 
