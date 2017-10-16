@@ -115,6 +115,8 @@
 #include "yb/rocksdb/util/thread_status_util.h"
 #include "yb/rocksdb/util/xfunc.h"
 
+#include "yb/util/debug-util.h"
+
 DEFINE_bool(dump_dbimpl_info, false, "Dump RocksDB info during constructor.");
 DEFINE_bool(flush_rocksdb_on_shutdown, true,
             "Safely flush RocksDB when instance is destroyed, disabled for crash tests.");
@@ -5423,15 +5425,17 @@ void DBImpl::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
 OpId DBImpl::GetFlushedOpId() {
   InstrumentedMutexLock l(&mutex_);
   auto result = versions_->FlushedOpId();
-  // Fallback to largest seqno
-  if (!result) {
+  if (yb::IsDebug() || !result) {
     std::vector<LiveFileMetaData> files;
     versions_->GetLiveFilesMetaData(&files);
-    for (auto& file : files) {
-      if (!file.imported && static_cast<int64_t>(file.largest.seqno) > result.index) {
-        result = OpId(OpId::kUnknownTerm, file.largest.seqno);
+    OpId last_op_id;
+    for (const auto& file : files) {
+      if (!file.imported) {
+        last_op_id.UpdateIfGreater(file.last_op_id);
       }
     }
+    DCHECK_LE(last_op_id.index, result.index) << "Live files meta data: " << ToString(files);
+    result = last_op_id;
   }
   return result;
 }

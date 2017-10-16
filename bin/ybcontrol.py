@@ -134,7 +134,7 @@ help_printer = None
 def error(message, print_help=True):
     global help_printer
     sys.stderr.write(message + "\n")
-    if print_help:
+    if print_help and help_printer:
         help_printer()
     sys.exit(1)
 
@@ -371,9 +371,9 @@ class YBControl:
         self.manager = None
         self.timeout = None
         self.commands = {}
+        help_printer = self.__print_help
         self.__fill_commands()
         self.__parse_arguments()
-        help_printer = self.__print_help
 
     def stop_services(self, services):
         procedures = []

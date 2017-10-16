@@ -3241,6 +3241,21 @@ void VersionSet::MarkFileNumberUsedDuringRecovery(uint64_t number) {
   }
 }
 
+namespace {
+
+CHECKED_STATUS AddEdit(const VersionEdit& edit, const DBOptions* db_options, log::Writer* log) {
+  std::string record;
+  if (!edit.EncodeTo(&record)) {
+    return STATUS(Corruption,
+        "Unable to Encode VersionEdit:" + edit.DebugString(true));
+  }
+  RLOG(InfoLogLevel::INFO_LEVEL, db_options->info_log,
+      "Writing version edit: %s\n", edit.DebugString().c_str());
+  return log->AddRecord(record);
+}
+
+} // namespace
+
 Status VersionSet::WriteSnapshot(log::Writer* log) {
   // TODO: Break up into multiple records to reduce memory usage on recovery?
 
@@ -3264,15 +3279,7 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
       }
       edit.SetComparatorName(
           cfd->internal_comparator().user_comparator()->Name());
-      std::string record;
-      if (!edit.EncodeTo(&record)) {
-        return STATUS(Corruption,
-            "Unable to Encode VersionEdit:" + edit.DebugString(true));
-      }
-      Status s = log->AddRecord(record);
-      if (!s.ok()) {
-        return s;
-      }
+      RETURN_NOT_OK(AddEdit(edit, db_options_, log));
     }
 
     {
@@ -3287,15 +3294,7 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
         }
       }
       edit.SetLogNumber(cfd->GetLogNumber());
-      std::string record;
-      if (!edit.EncodeTo(&record)) {
-        return STATUS(Corruption,
-            "Unable to Encode VersionEdit:" + edit.DebugString(true));
-      }
-      Status s = log->AddRecord(record);
-      if (!s.ok()) {
-        return s;
-      }
+      RETURN_NOT_OK(AddEdit(edit, db_options_, log));
     }
   }
 

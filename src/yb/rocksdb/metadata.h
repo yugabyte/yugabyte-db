@@ -18,8 +18,8 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_METADATA_H
-#define ROCKSDB_INCLUDE_ROCKSDB_METADATA_H
+#ifndef YB_ROCKSDB_METADATA_H
+#define YB_ROCKSDB_METADATA_H
 
 #include <stdint.h>
 
@@ -29,6 +29,7 @@
 
 #include <boost/container/small_vector.hpp>
 
+#include "yb/util/format.h"
 #include "yb/util/slice.h"
 
 #include "yb/rocksdb/types.h"
@@ -164,8 +165,15 @@ struct SstFileMetaData {
 struct LiveFileMetaData : SstFileMetaData {
   std::string column_family_name;  // Name of the column family
   int level;               // Level at which this file resides.
+
+  std::string ToString() const {
+    return Format("{ total_size: $0 base_size: $1 name: \"$2\" db_path: \"$3\" last_op_id: $4"
+                      " imported: $5 being_compacted: $6 column_family_name: $7 level: $8 }",
+                  total_size, base_size, name, db_path, last_op_id, imported, being_compacted,
+                  column_family_name, level);
+  }
 };
 
 }  // namespace rocksdb
 
-#endif  // ROCKSDB_INCLUDE_ROCKSDB_METADATA_H
+#endif  // YB_ROCKSDB_METADATA_H

@@ -182,6 +182,14 @@ class StackTrace {
   void* frames_[kMaxFrames];
 };
 
+constexpr bool IsDebug() {
+#ifdef NDEBUG
+  return false;
+#else
+  return true;
+#endif
+}
+
 } // namespace yb
 
 #endif  // YB_UTIL_DEBUG_UTIL_H

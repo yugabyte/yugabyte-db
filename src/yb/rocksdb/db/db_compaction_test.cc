@@ -26,6 +26,9 @@
 #include "yb/rocksdb/experimental.h"
 #include "yb/rocksdb/utilities/convenience.h"
 #include "yb/rocksdb/util/sync_point.h"
+
+DECLARE_bool(flush_rocksdb_on_shutdown);
+
 namespace rocksdb {
 
 // SYNC_POINT is not supported in released Windows mode.
@@ -228,6 +231,62 @@ TEST_P(DBCompactionTestWithParam, CompactionDeletionTrigger) {
     // must have much smaller db size.
     ASSERT_GT(db_size[0] / 3, db_size[1]);
   }
+}
+
+namespace {
+
+void TestFlushedOpId(bool compact, DBCompactionTest* test) {
+  Options options = test->CurrentOptions(Options());
+
+  options.compaction_style = kCompactionStyleUniversal;
+  options.num_levels = 1;
+  options.initial_seqno = 100500;
+
+  test->DestroyAndReopen(options);
+
+  OpId last_op_id;
+  const size_t kNumBatches = 4;
+  for (size_t i = 0; i != kNumBatches; ++i) {
+    WriteBatch batch;
+    last_op_id = OpId(1, 1 + i);
+    batch.SetUserOpId(last_op_id);
+    batch.Put(std::to_string(i), std::to_string(-i));
+
+    WriteOptions write_options;
+    write_options.disableWAL = true;
+    test->dbfull()->Write(write_options, &batch);
+    test->dbfull()->TEST_FlushMemTable(true);
+    ASSERT_EQ(last_op_id, test->dbfull()->GetFlushedOpId());
+  }
+
+  std::vector<LiveFileMetaData> files;
+  test->dbfull()->GetLiveFilesMetaData(&files);
+
+  ASSERT_EQ(kNumBatches, files.size());
+
+  if (compact) {
+    test->dbfull()->TEST_CompactRange(0, nullptr, nullptr);
+    test->dbfull()->TEST_WaitForCompact();
+
+    files.clear();
+    test->dbfull()->GetLiveFilesMetaData(&files);
+
+    ASSERT_EQ(1, files.size());
+  }
+
+  ASSERT_OK(test->TryReopen(options));
+
+  ASSERT_EQ(last_op_id, test->dbfull()->GetFlushedOpId());
+}
+
+} // namespace
+
+TEST_F(DBCompactionTest, LastFlushedOpId) {
+  TestFlushedOpId(false /* compact */, this);
+}
+
+TEST_F(DBCompactionTest, LastFlushedOpIdWithCompaction) {
+  TestFlushedOpId(true /* compact */, this);
 }
 
 TEST_F(DBCompactionTest, SkipStatsUpdateTest) {
