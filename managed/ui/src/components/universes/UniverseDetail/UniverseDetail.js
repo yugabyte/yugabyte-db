@@ -84,7 +84,7 @@ class UniverseDetail extends Component {
       return <GraphPanelContainer key={idx} type={type} width={width} nodePrefixes={nodePrefixes} />;
     });
     const tabElements = [
-      <Tab eventKey={"overview"} title="Overview" key="overview-tab">
+      <Tab eventKey={"overview"} title="Overview" key="overview-tab" mountOnEnter={true} unmountOnExit={true}>
         <UniverseAppsModal nodeDetails={currentUniverse.data.universeDetails.nodeDetailsSet}/>
         <UniverseResources resources={currentUniverse.data.resources} renderType={"Display"}/>
         <Row>
@@ -104,20 +104,20 @@ class UniverseDetail extends Component {
           </Col>
         </Row>
       </Tab>,
-      <Tab eventKey={"tables"} title="Tables" key="tables-tab">
+      <Tab eventKey={"tables"} title="Tables" key="tables-tab"mountOnEnter={true} unmountOnExit={true}>
         <ListTablesContainer/>
       </Tab>,
-      <Tab eventKey={"nodes"} title="Nodes" key="nodes-tab">
+      <Tab eventKey={"nodes"} title="Nodes" key="nodes-tab" mountOnEnter={true} unmountOnExit={true}>
         <NodeDetails {...this.props}/>
       </Tab>,
-      <Tab eventKey={"metrics"} title="Metrics" key="metrics-tab">
+      <Tab eventKey={"metrics"} title="Metrics" key="metrics-tab" mountOnEnter={true} unmountOnExit={true}>
         <div className="universe-detail-content-container">
           <GraphPanelHeaderContainer origin={"universe"}>
             {graphPanelContainers}
           </GraphPanelHeaderContainer>
         </div>
       </Tab>,
-      <Tab eventKey={"tasks"} title="Tasks" key="tasks-tab">
+      <Tab eventKey={"tasks"} title="Tasks" key="tasks-tab" mountOnEnter={true} unmountOnExit={true}>
         <UniverseTaskList universe={universe}/>
       </Tab>
     ];

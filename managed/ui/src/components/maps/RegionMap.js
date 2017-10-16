@@ -24,6 +24,16 @@ export default class RegionMap extends Component {
     showRegionLegend: true,
   }
 
+  constructor(props) {
+    super(props);
+    this.onMapZoomEnd = this.onMapZoomEnd.bind(this);
+    this.state = {loadMarkers: false};
+  }
+
+  onMapZoomEnd() {
+    this.setState({loadMarkers: true});
+  }
+
   render() {
     const { regions, type, showLabels, showRegionLabels, universe } = this.props;
     let regionMarkers = [];
@@ -37,17 +47,19 @@ export default class RegionMap extends Component {
       }
       const numChildren = region.zones.length;
       const extraMapMarkerProps = (type === "Region") ? {numChildren: numChildren} : {};
-      regionMarkers.push(
-        <MapMarker key={idx} latitude={region.latitude}
-                   longitude={region.longitude} type={markerType}
-                   {...extraMapMarkerProps} />
-      );
+      if (type !== "Universe") {
+        regionMarkers.push(
+          <MapMarker key={idx} latitude={region.latitude}
+                     longitude={region.longitude} type={markerType}
+                     {...extraMapMarkerProps} />
+        );
+      }
       return [region.latitude, region.longitude];
     });
     if (type === "All") {
       regionMarkers =  <MarkerClusterLayer newMarkerData={regions}/>;
     }
-    if (type === "Universe") {
+    if (type === "Universe" && this.state.loadMarkers) {
       regionMarkers = <UniverseRegionMarkerLayer universe={universe}/>;
     }
     if (isNonEmptyArray(regionLatLngs) && type !== "All") {
@@ -59,7 +71,8 @@ export default class RegionMap extends Component {
     const regionMap = (
       <Map bounds={bounds} center={[-1, 0]} zoom={1}
            zoomControl={false} className="yb-region-map" minZoom={1} maxZoom={5}
-           touchZoom={false} scrollWheelZoom={false} doubleClickZoom={false} draggable={false}>
+           touchZoom={false} scrollWheelZoom={false} doubleClickZoom={false}
+           draggable={false} onzoomend={this.onMapZoomEnd}>
         <TileLayer
             attribution={attribution}
             url={`${MAP_SERVER_URL}/{z}/{x}/{y}.png`}/>
