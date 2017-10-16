@@ -62,11 +62,54 @@ void RedisWriteOperation::GetDocPathsToLock(list<DocPath> *paths, IsolationLevel
   *level = IsolationLevel::SNAPSHOT_ISOLATION;
 }
 
+namespace {
+
+CHECKED_STATUS PrimitiveValueFromSubKey(const RedisKeyValueSubKeyPB &subkey_pb,
+                                        PrimitiveValue *primitive_value) {
+  switch (subkey_pb.subkey_case()) {
+    case RedisKeyValueSubKeyPB::SubkeyCase::kStringSubkey:
+      *primitive_value = PrimitiveValue(subkey_pb.string_subkey());
+      break;
+    case RedisKeyValueSubKeyPB::SubkeyCase::kTimestampSubkey:
+      // We use descending order for the timestamp in the timeseries type so that the latest
+      // value sorts on top.
+      *primitive_value = PrimitiveValue(subkey_pb.timestamp_subkey(), SortOrder::kDescending);
+      break;
+    default:
+      return STATUS_SUBSTITUTE(IllegalState, "Invalid enum value $0", subkey_pb.subkey_case());
+  }
+  return Status::OK();
+}
+
+// Stricter version of the above when we know the exact datatype to expect.
+CHECKED_STATUS PrimitiveValueFromSubKeyStrict(const RedisKeyValueSubKeyPB &subkey_pb,
+                                              const RedisDataType &data_type,
+                                              PrimitiveValue *primitive_value) {
+  switch (data_type) {
+    case REDIS_TYPE_HASH:
+      if (!subkey_pb.has_string_subkey()) {
+        return STATUS_SUBSTITUTE(InvalidArgument, "subkey: $0 should be of string type",
+                                 subkey_pb.ShortDebugString());
+      }
+      break;
+    case REDIS_TYPE_TIMESERIES:
+      if (!subkey_pb.has_timestamp_subkey()) {
+        return STATUS_SUBSTITUTE(InvalidArgument, "subkey: $0 should be of int64 type",
+                                 subkey_pb.ShortDebugString());
+      }
+      break;
+    default:
+      return STATUS_SUBSTITUTE(IllegalState, "Invalid enum value $0", data_type);
+  }
+  return PrimitiveValueFromSubKey(subkey_pb, primitive_value);
+}
+
 Status GetRedisValueType(
-    rocksdb::DB *rocksdb,
-    const HybridTime& hybrid_time,
+    rocksdb::DB* rocksdb,
+    const HybridTime &hybrid_time,
     const RedisKeyValuePB &key_value_pb,
     RedisDataType *type,
+    DocWriteBatch* doc_write_batch = nullptr,
     int subkey_index = -1) {
   if (!key_value_pb.has_key()) {
     return STATUS(Corruption, "Expected KeyValuePB");
@@ -77,17 +120,30 @@ Status GetRedisValueType(
   } else {
     if (subkey_index >= key_value_pb.subkey_size()) {
       return STATUS_SUBSTITUTE(InvalidArgument,
-          "Size of subkeys ($0) must be larger than subkey_index ($1)",
-          key_value_pb.subkey_size(), subkey_index);
+                               "Size of subkeys ($0) must be larger than subkey_index ($1)",
+                               key_value_pb.subkey_size(), subkey_index);
     }
+    PrimitiveValue subkey_primitive;
+    RETURN_NOT_OK(PrimitiveValueFromSubKey(key_value_pb.subkey(subkey_index), &subkey_primitive));
     subdoc_key = SubDocKey(DocKey::FromRedisKey(key_value_pb.hash_code(), key_value_pb.key()),
-        PrimitiveValue(key_value_pb.subkey(subkey_index)));
+                           subkey_primitive);
   }
   SubDocument doc;
   bool doc_found = false;
-  RETURN_NOT_OK(GetSubDocument(
-      rocksdb, subdoc_key, &doc, &doc_found, rocksdb::kDefaultQueryId, hybrid_time, Value::kMaxTtl,
-      /* return_type_only */ true));
+
+  // Use the cached entry if possible to determine the value type.
+  boost::optional<DocWriteBatchCache::Entry> cached_entry;
+  if (doc_write_batch) {
+    cached_entry = doc_write_batch->LookupCache(subdoc_key.Encode());
+  }
+  if (cached_entry) {
+    doc_found = true;
+    doc = SubDocument(cached_entry->second);
+  } else {
+    RETURN_NOT_OK(GetSubDocument(
+        rocksdb, subdoc_key, &doc, &doc_found, rocksdb::kDefaultQueryId,
+        hybrid_time, Value::kMaxTtl, /* return_type_only */ true));
+  }
 
   if (!doc_found) {
     *type = REDIS_TYPE_NONE;
@@ -105,6 +161,9 @@ Status GetRedisValueType(
     case ValueType::kRedisSet:
       *type = REDIS_TYPE_SET;
       return Status::OK();
+    case ValueType::kRedisTS:
+      *type = REDIS_TYPE_TIMESERIES;
+      return Status::OK();
     case ValueType::kNull: FALLTHROUGH_INTENDED; // This value is a set member.
     case ValueType::kString:
       *type = REDIS_TYPE_STRING;
@@ -114,7 +173,7 @@ Status GetRedisValueType(
   }
 }
 
-Status GetRedisValue(
+CHECKED_STATUS GetRedisValue(
     rocksdb::DB *rocksdb,
     HybridTime hybrid_time,
     const RedisKeyValuePB &key_value_pb,
@@ -129,10 +188,13 @@ Status GetRedisValue(
   if (!key_value_pb.subkey().empty()) {
     if (key_value_pb.subkey().size() != 1 && subkey_index == -1) {
       return STATUS_SUBSTITUTE(Corruption,
-          "Expected at most one subkey, got $0", key_value_pb.subkey().size());
+                               "Expected at most one subkey, got $0", key_value_pb.subkey().size());
     }
-    doc_key.AppendSubKeysAndMaybeHybridTime(
-        PrimitiveValue(key_value_pb.subkey(subkey_index == -1 ? 0 : subkey_index)));
+    PrimitiveValue subkey_primitive;
+    RETURN_NOT_OK(PrimitiveValueFromSubKey(
+        key_value_pb.subkey(subkey_index == -1 ? 0 : subkey_index),
+        &subkey_primitive));
+    doc_key.AppendSubKeysAndMaybeHybridTime(subkey_primitive);
   }
 
   SubDocument doc;
@@ -148,7 +210,20 @@ Status GetRedisValue(
   }
 
   if (!doc.IsPrimitive()) {
-    *type = REDIS_TYPE_HASH;
+    switch (doc.value_type()) {
+      case ValueType::kObject:
+        *type = REDIS_TYPE_HASH;
+        break;
+      case ValueType::kRedisTS:
+        *type = REDIS_TYPE_TIMESERIES;
+        break;
+      case ValueType::kRedisSet:
+        *type = REDIS_TYPE_SET;
+        break;
+      default:
+        return STATUS_SUBSTITUTE(IllegalState, "Invalid value type: $0",
+                                 static_cast<int>(doc.value_type()));
+    }
     return Status::OK();
   }
 
@@ -191,6 +266,8 @@ bool VerifyTypeAndSetCode(
   return true;
 }
 
+} // anonymous namespace
+
 Status RedisWriteOperation::Apply(
     DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) {
   switch (request_.request_case()) {
@@ -225,33 +302,48 @@ Status RedisWriteOperation::Apply(
 Status RedisWriteOperation::ApplySet(DocWriteBatch* doc_write_batch) {
   const RedisKeyValuePB& kv = request_.key_value();
   RedisDataType data_type;
-  RETURN_NOT_OK(GetRedisValueType(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &data_type));
+  RETURN_NOT_OK(GetRedisValueType(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &data_type,
+                                  doc_write_batch));
 
   const MonoDelta ttl = request_.set_request().has_ttl() ?
       MonoDelta::FromMilliseconds(request_.set_request().ttl()) : Value::kMaxTtl;
   DocPath doc_path = DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key());
   if (kv.subkey_size() > 0) {
     switch (kv.type()) {
+      case REDIS_TYPE_TIMESERIES: FALLTHROUGH_INTENDED;
       case REDIS_TYPE_HASH: {
-        if (data_type != REDIS_TYPE_HASH && data_type != REDIS_TYPE_NONE) {
+        if (data_type != kv.type() && data_type != REDIS_TYPE_NONE) {
           response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
           return Status::OK();
         }
-        SubDocument hash_set_entries = SubDocument();
+        SubDocument kv_entries = SubDocument();
         for (int i = 0; i < kv.subkey_size(); i++) {
-          hash_set_entries.SetChild(
-              PrimitiveValue(kv.subkey(i)), SubDocument(PrimitiveValue(kv.value(i))));
+          PrimitiveValue subkey_value;
+          RETURN_NOT_OK(PrimitiveValueFromSubKeyStrict(kv.subkey(i), kv.type(), &subkey_value));
+          kv_entries.SetChild(subkey_value,
+                              SubDocument(PrimitiveValue(kv.value(i))));
         }
+
+        if (kv.type() == REDIS_TYPE_TIMESERIES) {
+          RETURN_NOT_OK(kv_entries.ConvertToRedisTS());
+        }
+
         if (kv.subkey_size() == 1 && FLAGS_emulate_redis_responses) {
           RedisDataType type;
           RETURN_NOT_OK(GetRedisValueType(
-              doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, 0));
-          // For HSET, we return 0 or 1 depending on if the key already existed.
+              doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, doc_write_batch, 0));
+          // For HSET/TSADD, we return 0 or 1 depending on if the key already existed.
           // If flag is false, no int response is returned.
           response_.set_int_response(type == REDIS_TYPE_NONE ? 1 : 0);
         }
-        RETURN_NOT_OK(doc_write_batch->ExtendSubDocument(
-            doc_path, hash_set_entries, InitMarkerBehavior::REQUIRED, ttl));
+        if (data_type == REDIS_TYPE_NONE && kv.type() == REDIS_TYPE_TIMESERIES) {
+          // Need to insert the document instead of extending it.
+          RETURN_NOT_OK(doc_write_batch->InsertSubDocument(
+              doc_path, kv_entries, InitMarkerBehavior::REQUIRED, ttl));
+        } else {
+          RETURN_NOT_OK(doc_write_batch->ExtendSubDocument(
+              doc_path, kv_entries, InitMarkerBehavior::REQUIRED, ttl));
+        }
         break;
       }
       case REDIS_TYPE_STRING: {
@@ -261,7 +353,7 @@ Status RedisWriteOperation::ApplySet(DocWriteBatch* doc_write_batch) {
         }
         for (int i = 0; i < kv.subkey_size(); i++) {
           DocPath subdoc_path = doc_path;
-          subdoc_path.AddSubKey(PrimitiveValue(kv.subkey(i)));
+          subdoc_path.AddSubKey(PrimitiveValue(kv.subkey(i).string_subkey()));
           RETURN_NOT_OK(doc_write_batch->SetPrimitive(
               subdoc_path, Value(PrimitiveValue(kv.value(i)), ttl)));
         }
@@ -341,7 +433,8 @@ Status RedisWriteOperation::ApplyAppend(DocWriteBatch* doc_write_batch) {
 Status RedisWriteOperation::ApplyDel(DocWriteBatch* doc_write_batch) {
   const RedisKeyValuePB& kv = request_.key_value();
   RedisDataType data_type;
-  RETURN_NOT_OK(GetRedisValueType(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &data_type));
+  RETURN_NOT_OK(GetRedisValueType(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &data_type,
+                                  doc_write_batch));
   if (data_type != REDIS_TYPE_NONE && data_type != kv.type() && kv.type() != REDIS_TYPE_NONE) {
     response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
     return Status::OK();
@@ -358,9 +451,10 @@ Status RedisWriteOperation::ApplyDel(DocWriteBatch* doc_write_batch) {
       for (int i = 0; i < kv.subkey_size(); i++) {
         RedisDataType type;
         RETURN_NOT_OK(GetRedisValueType(
-            doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, i));
+            doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, doc_write_batch, i));
         if (type == REDIS_TYPE_STRING) {
-          values.SetChild(PrimitiveValue(kv.subkey(i)), SubDocument(ValueType::kTombstone));
+          values.SetChild(PrimitiveValue(kv.subkey(i).string_subkey()),
+                          SubDocument(ValueType::kTombstone));
         } else {
           // If the key is absent, it doesn't contribute to the count of keys being deleted.
           num_keys--;
@@ -368,7 +462,8 @@ Status RedisWriteOperation::ApplyDel(DocWriteBatch* doc_write_batch) {
       }
     } else {
       for (int i = 0; i < kv.subkey_size(); i++) {
-        values.SetChild(PrimitiveValue(kv.subkey(i)), SubDocument(ValueType::kTombstone));
+        values.SetChild(PrimitiveValue(kv.subkey(i).string_subkey()),
+                        SubDocument(ValueType::kTombstone));
       }
     }
   }
@@ -464,7 +559,8 @@ Status RedisWriteOperation::ApplyAdd(DocWriteBatch* doc_write_batch) {
   const RedisKeyValuePB& kv = request_.key_value();
 
   RedisDataType data_type;
-  RETURN_NOT_OK(GetRedisValueType(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &data_type));
+  RETURN_NOT_OK(GetRedisValueType(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &data_type,
+                                  doc_write_batch));
 
   if (data_type != REDIS_TYPE_SET && data_type != REDIS_TYPE_NONE) {
     response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
@@ -485,14 +581,16 @@ Status RedisWriteOperation::ApplyAdd(DocWriteBatch* doc_write_batch) {
     if (FLAGS_emulate_redis_responses) {
       RedisDataType type;
       string value;
-      RETURN_NOT_OK(GetRedisValueType(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, i));
+      RETURN_NOT_OK(GetRedisValueType(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type,
+                                      doc_write_batch, i));
       if (type != REDIS_TYPE_NONE) {
         num_keys_found++;
       }
     }
 
     set_entries.SetChild(
-        PrimitiveValue(kv.subkey(i)), SubDocument(PrimitiveValue(ValueType::kNull)));
+        PrimitiveValue(kv.subkey(i).string_subkey()),
+        SubDocument(PrimitiveValue(ValueType::kNull)));
   }
 
   RETURN_NOT_OK(set_entries.ConvertToRedisSet());
@@ -591,6 +689,7 @@ Status RedisReadOperation::ExecuteGet(rocksdb::DB *rocksdb, HybridTime hybrid_ti
   const auto request_type = request_.get_request().request_type();
   switch (request_type) {
     case RedisGetRequestPB_GetRequestType_GET: FALLTHROUGH_INTENDED;
+    case RedisGetRequestPB_GetRequestType_TSGET: FALLTHROUGH_INTENDED;
     case RedisGetRequestPB_GetRequestType_HGET: {
       string value;
       RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value));
@@ -603,19 +702,22 @@ Status RedisReadOperation::ExecuteGet(rocksdb::DB *rocksdb, HybridTime hybrid_ti
     }
     case RedisGetRequestPB_GetRequestType_HEXISTS: FALLTHROUGH_INTENDED;
     case RedisGetRequestPB_GetRequestType_SISMEMBER: {
-      RETURN_NOT_OK(GetRedisValueType(rocksdb, hybrid_time, request_.key_value(), &type, -1));
+      RETURN_NOT_OK(GetRedisValueType(rocksdb, hybrid_time, request_.key_value(), &type, nullptr,
+                                      -1));
       if (VerifyTypeAndSetCode(
           (request_type == RedisGetRequestPB_GetRequestType_HEXISTS
               ? RedisDataType::REDIS_TYPE_HASH
               : RedisDataType::REDIS_TYPE_SET),
           type, &response_, true)) {
-        RETURN_NOT_OK(GetRedisValueType(rocksdb, hybrid_time, request_.key_value(), &type, 0));
+        RETURN_NOT_OK(GetRedisValueType(rocksdb, hybrid_time, request_.key_value(), &type,
+                                        nullptr, 0));
         response_.set_int_response((type == RedisDataType::REDIS_TYPE_NONE) ? 0 : 1);
       }
       return Status::OK();
     }
     case RedisGetRequestPB_GetRequestType_HSTRLEN: {
-      RETURN_NOT_OK(GetRedisValueType(rocksdb, hybrid_time, request_.key_value(), &type, -1));
+      RETURN_NOT_OK(GetRedisValueType(rocksdb, hybrid_time, request_.key_value(), &type,
+                                      nullptr, -1));
       if (VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_HASH, type, &response_, true)) {
         string value;
         RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value));
@@ -627,7 +729,7 @@ Status RedisReadOperation::ExecuteGet(rocksdb::DB *rocksdb, HybridTime hybrid_ti
       return STATUS(NotSupported, "MGET not yet supported");
     }
     case RedisGetRequestPB_GetRequestType_HMGET: {
-      RETURN_NOT_OK(GetRedisValueType(rocksdb, hybrid_time, request_.key_value(), &type));
+      RETURN_NOT_OK(GetRedisValueType(rocksdb, hybrid_time, request_.key_value(), &type, nullptr));
       if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_HASH, type, &response_, true)) {
           return Status::OK();
       }
@@ -685,15 +787,13 @@ Status RedisReadOperation::ExecuteExists(rocksdb::DB *rocksdb, HybridTime hybrid
 
   RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value));
 
-  if (type == REDIS_TYPE_STRING || type == REDIS_TYPE_HASH) {
+  if (type != REDIS_TYPE_NONE) {
     response_.set_code(RedisResponsePB_RedisStatusCode_OK);
     // We only support exist command with one argument currently.
     response_.set_int_response(1);
-  } else if (type == REDIS_TYPE_NONE) {
+  } else {
     response_.set_code(RedisResponsePB_RedisStatusCode_OK);
     response_.set_int_response(0);
-  } else {
-    response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
   }
   return Status::OK();
 }

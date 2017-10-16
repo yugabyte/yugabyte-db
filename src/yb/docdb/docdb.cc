@@ -173,8 +173,7 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
     // single-shard txn.)
     if (use_init_marker == InitMarkerBehavior::OPTIONAL || doc_iter->subdoc_exists()) {
       if (use_init_marker == InitMarkerBehavior::REQUIRED &&
-          doc_iter->subdoc_type() != ValueType::kObject &&
-          doc_iter->subdoc_type() != ValueType::kRedisSet) {
+          !IsObjectType(doc_iter->subdoc_type())) {
         // We raise this error only if init markers are mandatory.
         return STATUS_FORMAT(IllegalState, "Cannot set values inside a subdocument of type $0",
             doc_iter->subdoc_type());
@@ -286,7 +285,7 @@ Status DocWriteBatch::ExtendSubDocument(
     const SubDocument& value,
     InitMarkerBehavior use_init_marker,
     MonoDelta ttl) {
-  if (value.value_type() == ValueType::kObject || value.value_type() == ValueType::kRedisSet) {
+  if (IsObjectType(value.value_type())) {
     const auto& map = value.object_container();
     for (const auto& ent : map) {
       DocPath child_doc_path = doc_path;
@@ -688,9 +687,9 @@ Status FindLastWriteTime(
 
   if (iter->Valid()) {
     bool only_lacks_ht = false;
-        RETURN_NOT_OK(key_bytes.OnlyLacksHybridTimeFrom(iter->key(), &only_lacks_ht));
+    RETURN_NOT_OK(key_bytes.OnlyLacksHybridTimeFrom(iter->key(), &only_lacks_ht));
     if (only_lacks_ht) {
-          RETURN_NOT_OK(DecodeHybridTimeFromEndOfKey(iter->key(), hybrid_time));
+      RETURN_NOT_OK(DecodeHybridTimeFromEndOfKey(iter->key(), hybrid_time));
       // TODO when we support TTL on non-leaf nodes, we need to take that into account here.
       return Status::OK();
     }
@@ -787,16 +786,14 @@ yb::Status BuildSubDocument(
 
       // We have found some key that matches our entire subdocument_key, i.e. we didn't skip ahead
       // to a lower level key (with optional object init markers).
-      if (doc_value.value_type() == ValueType::kObject ||
+      if (IsObjectType(doc_value.value_type()) ||
           doc_value.value_type() == ValueType::kArray ||
-          doc_value.value_type() == ValueType::kRedisSet ||
           doc_value.value_type() == ValueType::kTombstone) {
         if (low_ts < write_time) {
           low_ts = write_time;
         }
-        if (doc_value.value_type() == ValueType::kObject ||
-            doc_value.value_type() == ValueType::kArray ||
-            doc_value.value_type() == ValueType::kRedisSet) {
+        if (IsObjectType(doc_value.value_type()) ||
+            doc_value.value_type() == ValueType::kArray) {
           *subdocument = SubDocument(doc_value.value_type());
         }
         SeekPastSubKey(found_key, iter);
@@ -834,8 +831,7 @@ yb::Status BuildSubDocument(
       // The document was not found in this level (maybe a tombstone was encountered).
       continue;
     }
-    if (subdocument->value_type() != ValueType::kObject &&
-        subdocument->value_type() != ValueType::kRedisSet) {
+    if (!IsObjectType(subdocument->value_type())) {
       *subdocument = SubDocument();
     }
 
@@ -928,6 +924,8 @@ yb::Status GetSubDocument(
     *doc_found = result->value_type() != ValueType::kInvalidValueType;
     if (*doc_found && doc_value.value_type() == ValueType::kRedisSet) {
       RETURN_NOT_OK(result->ConvertToRedisSet());
+    } else if (*doc_found && doc_value.value_type() == ValueType::kRedisTS) {
+      RETURN_NOT_OK(result->ConvertToRedisTS());
     }
     // TODO: Also could handle lists here.
 

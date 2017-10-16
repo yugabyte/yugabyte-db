@@ -61,6 +61,7 @@ enum RedisDataType {
   REDIS_TYPE_SET = 4;
   REDIS_TYPE_HASH = 5;
   REDIS_TYPE_SORTEDSET = 6;
+  REDIS_TYPE_TIMESERIES = 7;
 }
 
 // This enum is used to specify the side of a list (For LPOP or RPOP etc.).
@@ -81,6 +82,13 @@ enum RedisWriteMode {
   REDIS_WRITEMODE_UPDATE = 3;
 }
 
+message RedisKeyValueSubKeyPB {
+  oneof subkey {
+    bytes string_subkey = 1;
+    int64 timestamp_subkey = 2; // Timestamp used in the redis timeseries datatype.
+  }
+}
+
 // This is a common message that encapsulates 'key value' with additional options.
 
 // - Even if just a key is needed, or there are multiple values, this is used.
@@ -91,6 +99,8 @@ enum RedisWriteMode {
 //   - Set       : Set the key, and value (possibly multiple depending on the command).
 //   - Hash      : Set key, subkey, value.
 //   - SortedSet : Set key, subkey, value (value is interpreted as score).
+//   - Timeseries: Set key, subkey, value (timestamp_subkey in RedisKeyValueSubKeyPB is interpreted
+//                 as timestamp).
 // - Value is not present in case of an append, get, exists, etc. For multiple inserts into
 //   a container, the subkey and value fields have one or more items.
 message RedisKeyValuePB {
@@ -100,7 +110,8 @@ message RedisKeyValuePB {
   optional uint32 hash_code = 1;
   optional bytes key = 2;                   // Required
   optional RedisDataType type = 3 [ default = REDIS_TYPE_NONE ];
-  repeated bytes subkey = 4; // It is assumed that all subkeys are distinct for HMSET and SADD.
+  // It is assumed that all subkeys are distinct for HMSET and SADD.
+  repeated RedisKeyValueSubKeyPB subkey = 4;
   optional int32 index = 5;
   repeated bytes value = 6;
 }
@@ -129,6 +140,7 @@ message RedisGetRequestPB {
     SMEMBERS = 6;
     SISMEMBER = 12;
     SCARD = 13;
+    TSGET = 14;
     UNKNOWN = 99;
   }
 

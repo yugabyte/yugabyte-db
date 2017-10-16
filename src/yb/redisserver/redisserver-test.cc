@@ -843,6 +843,65 @@ TEST_F(TestRedisService, TestDummyLocal) {
   VerifyCallbacks();
 }
 
+TEST_F(TestRedisService, TestTimeSeries) {
+  // The default value is true, but we explicitly set this here for clarity.
+  FLAGS_emulate_redis_responses = true;
+
+  // Need an int for timeseries as a score.
+  DoRedisTestExpectError(__LINE__, {"TSADD", "ts_key", "42.0", "42"});
+  DoRedisTestExpectError(__LINE__, {"TSADD", "ts_key", "12.0", "42"});
+  DoRedisTestExpectError(__LINE__, {"TSADD", "ts_key", "subkey1", "42"});
+  DoRedisTestExpectError(__LINE__, {"TSADD", "ts_key", "subkey2", "12"});
+  DoRedisTestExpectError(__LINE__, {"TSGET", "ts_key", "subkey1"});
+  DoRedisTestExpectError(__LINE__, {"TSGET", "ts_key", "subkey2"});
+
+  // Incorrect number of arguments.
+  DoRedisTestExpectError(__LINE__, {"TSADD", "ts_key", "subkey1"});
+  DoRedisTestExpectError(__LINE__, {"TSADD", "ts_key", "subkey2"});
+  DoRedisTestExpectError(__LINE__, {"TSGET", "ts_key"});
+  DoRedisTestExpectError(__LINE__, {"TSGET", "ts_key"});
+
+  // Valid statements.
+  DoRedisTestInt(__LINE__, {"TSADD", "ts_key", "-10", "value1"}, 1);
+  DoRedisTestInt(__LINE__, {"TSADD", "ts_key", "-20", "value2"}, 1);
+  DoRedisTestInt(__LINE__, {"TSADD", "ts_key", "-30", "value3"}, 1);
+  DoRedisTestInt(__LINE__, {"TSADD", "ts_key", "10", "value1"}, 1);
+  DoRedisTestInt(__LINE__, {"TSADD", "ts_key", "20", "value2"}, 1);
+  DoRedisTestInt(__LINE__, {"TSADD", "ts_key", "30", "value3"}, 1);
+  DoRedisTestInt(__LINE__, {"TSADD", "ts_key",
+      strings::Substitute("$0", std::numeric_limits<int64_t>::max()), "valuemax"}, 1);
+  DoRedisTestInt(__LINE__, {"TSADD", "ts_key",
+      strings::Substitute("$0", std::numeric_limits<int64_t>::min()), "valuemin"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"TSADD", "ts_key", "30", "value4"}, 0);
+  SyncClient();
+
+  // Ensure we retrieve appropriate results.
+  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key", "-10"}, "value1");
+  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key", "-20"}, "value2");
+  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key", "-30"}, "value3");
+  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key", "10"}, "value1");
+  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key", "20"}, "value2");
+  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key", "30"}, "value4");
+  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key",
+      strings::Substitute("$0", std::numeric_limits<int64_t>::max())}, "valuemax");
+  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key",
+      strings::Substitute("$0", std::numeric_limits<int64_t>::min())}, "valuemin");
+
+  // Keys that are not present.
+  DoRedisTestNull(__LINE__, {"TSGET", "ts_key", "40"});
+  DoRedisTestNull(__LINE__, {"TSGET", "abc", "30"});
+
+  // HGET/SISMEMBER/GET should not work with this.
+  DoRedisTestNull(__LINE__, {"HGET", "ts_key", "30"});
+  DoRedisTestExpectError(__LINE__, {"SISMEMBER", "ts_key", "30"});
+  DoRedisTestExpectError(__LINE__, {"HEXISTS", "ts_key", "30"});
+  DoRedisTestExpectError(__LINE__, {"GET", "ts_key"});
+
+  SyncClient();
+  VerifyCallbacks();
+}
+
 TEST_F(TestRedisService, TestAdditionalCommands) {
 
   // The default value is true, but we explicitly set this here for clarity.
@@ -1023,7 +1082,7 @@ TEST_F(TestRedisService, TestDel) {
   FLAGS_emulate_redis_responses = true;
 
   DoRedisTestOk(__LINE__, {"SET", "key", "value"});
-  DoRedisTestInt(__LINE__, {"DEL", "key"}, 0);
+  DoRedisTestInt(__LINE__, {"DEL", "key"}, 1);
   DoRedisTestInt(__LINE__, {"DEL", "key"}, 0);
   DoRedisTestInt(__LINE__, {"DEL", "non_existent"}, 0);
   SyncClient();
@@ -1043,6 +1102,19 @@ TEST_F(TestRedisService, TestHDel) {
   DoRedisTestInt(__LINE__, {"HDEL", "map_key", "non_existent_1", "non_existent_2"}, 0);
   SyncClient();
   DoRedisTestInt(__LINE__, {"HDEL", "map_key", "non_existent_1", "non_existent_1"}, 0);
+  SyncClient();
+  VerifyCallbacks();
+}
+
+TEST_F(TestRedisService, TestSADDBatch) {
+  DoRedisTestInt(__LINE__, {"SADD", "set1", "10"}, 1);
+  DoRedisTestInt(__LINE__, {"SADD", "set1", "20"}, 1);
+  DoRedisTestInt(__LINE__, {"SADD", "set1", "30"}, 1);
+  DoRedisTestInt(__LINE__, {"SADD", "set1", "30"}, 0);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"SISMEMBER", "set1", "10"}, 1);
+  DoRedisTestInt(__LINE__, {"SISMEMBER", "set1", "20"}, 1);
+  DoRedisTestInt(__LINE__, {"SISMEMBER", "set1", "30"}, 1);
   SyncClient();
   VerifyCallbacks();
 }

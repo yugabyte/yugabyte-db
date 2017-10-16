@@ -49,6 +49,7 @@ using yb::util::FastDecodeSignedVarInt;
     case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED; \
     case ValueType::kObject: FALLTHROUGH_INTENDED; \
     case ValueType::kRedisSet: FALLTHROUGH_INTENDED; \
+    case ValueType::kRedisTS: FALLTHROUGH_INTENDED; \
     case ValueType::kTtl: FALLTHROUGH_INTENDED; \
     case ValueType::kTombstone: \
       break
@@ -150,6 +151,8 @@ string PrimitiveValue::ToString() const {
       return "{}";
     case ValueType::kRedisSet:
       return "()";
+    case ValueType::kRedisTS:
+      return "<>";
     case ValueType::kTombstone:
       return "DEL";
     case ValueType::kArray:
@@ -317,6 +320,7 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kTombstone: FALLTHROUGH_INTENDED;
     case ValueType::kObject: FALLTHROUGH_INTENDED;
     case ValueType::kArray: FALLTHROUGH_INTENDED;
+    case ValueType::kRedisTS: FALLTHROUGH_INTENDED;
     case ValueType::kRedisSet: return result;
 
     case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
@@ -759,6 +763,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kObject: FALLTHROUGH_INTENDED;
     case ValueType::kArray: FALLTHROUGH_INTENDED;
     case ValueType::kRedisSet: FALLTHROUGH_INTENDED;
+    case ValueType::kRedisTS: FALLTHROUGH_INTENDED;
     case ValueType::kTombstone:
       type_ = value_type;
       complex_data_structure_ = nullptr;
@@ -1121,6 +1126,7 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
 // This is used to initialize kNull, kNullDescending, kTrue, kFalse constants.
 PrimitiveValue::PrimitiveValue(ValueType value_type)
     : type_(value_type) {
+  complex_data_structure_ = nullptr;
   if (value_type == ValueType::kString || value_type == ValueType::kStringDescending) {
     new(&str_val_) std::string();
   } else if (value_type == ValueType::kInetaddress

@@ -31,9 +31,7 @@ namespace yb {
 namespace docdb {
 
 SubDocument::SubDocument(ValueType value_type) : PrimitiveValue(value_type) {
-  complex_data_structure_ = nullptr;
-  if (value_type == ValueType::kObject ||
-      value_type == ValueType::kRedisSet ||
+  if (IsObjectType(value_type) ||
       value_type == ValueType::kArray) {
     EnsureContainerAllocated();
   }
@@ -42,6 +40,7 @@ SubDocument::SubDocument(ValueType value_type) : PrimitiveValue(value_type) {
 SubDocument::~SubDocument() {
   switch (type_) {
     case ValueType::kObject: FALLTHROUGH_INTENDED;
+    case ValueType::kRedisTS:
     case ValueType::kRedisSet:
       if (has_valid_container()) {
         delete &object_container();
@@ -118,7 +117,7 @@ bool SubDocument::operator ==(const SubDocument& other) const {
   return true;
 }
 
-Status SubDocument::ConvertToRedisSet() {
+Status SubDocument::ConvertToCollection(ValueType value_type) {
   if (type_ != ValueType::kObject) {
     return STATUS_FORMAT(
         InvalidArgument, "Expected kObject Subdocument, found $0", type_);
@@ -126,8 +125,16 @@ Status SubDocument::ConvertToRedisSet() {
   if (!has_valid_object_container()) {
     return STATUS(InvalidArgument, "Subdocument doesn't have valid object container");
   }
-  type_ = ValueType::kRedisSet;
+  type_ = value_type;
   return Status::OK();
+}
+
+Status SubDocument::ConvertToRedisTS() {
+  return ConvertToCollection(ValueType::kRedisTS);
+}
+
+Status SubDocument::ConvertToRedisSet() {
+  return ConvertToCollection(ValueType::kRedisSet);
 }
 
 Status SubDocument::ConvertToArray() {
@@ -278,20 +285,11 @@ void SubDocumentToStreamInternal(ostream& out,
       break;
     }
     case ValueType::kRedisSet: {
-      out << "(";
-      if (subdoc.container_allocated()) {
-        const auto& keys = subdoc.object_container();
-        for (auto iter = keys.begin(); iter != keys.end(); iter++) {
-          if (iter != keys.begin()) {
-            out << ",";
-          }
-          out << "\n" << string(indent + 2, ' ') << (*iter).first.ToString();
-        }
-        if (!keys.empty()) {
-          out << "\n" << string(indent, ' ');
-        }
-      }
-      out << ")";
+      SubDocCollectionToStreamInternal(out, subdoc, indent, "(", ")");
+      break;
+    }
+    case ValueType::kRedisTS: {
+      SubDocCollectionToStreamInternal(out, subdoc, indent, "<", ">");
       break;
     }
     default:
@@ -299,9 +297,30 @@ void SubDocumentToStreamInternal(ostream& out,
   }
 }
 
+void SubDocCollectionToStreamInternal(ostream& out,
+                                      const SubDocument& subdoc,
+                                      const int indent,
+                                      const string& begin_delim,
+                                      const string& end_delim) {
+  out << begin_delim;
+  if (subdoc.container_allocated()) {
+    const auto& keys = subdoc.object_container();
+    for (auto iter = keys.begin(); iter != keys.end(); iter++) {
+      if (iter != keys.begin()) {
+        out << ",";
+      }
+      out << "\n" << string(indent + 2, ' ') << (*iter).first.ToString();
+    }
+    if (!keys.empty()) {
+      out << "\n" << string(indent, ' ');
+    }
+  }
+  out << end_delim;
+}
+
 void SubDocument::EnsureContainerAllocated() {
   if (complex_data_structure_ == nullptr) {
-    if (type_ == ValueType::kObject || type_ == ValueType::kRedisSet) {
+    if (IsObjectType(type_)) {
       complex_data_structure_ = new ObjectContainer();
     } else if (type_ == ValueType::kArray) {
       complex_data_structure_ = new ArrayContainer();

@@ -20,42 +20,72 @@ namespace {
 
 // Custom stold with additional dummy parameter (base) to make the function pointer in the
 // template below work.
-long double custom_stold(const std::string& str, std::size_t* pos, int base = 10) {
-  return std::stold(str, pos);
+long double custom_stold(const char* str, char **str_end, int base = 10) {
+  return std::strtold(str, str_end);
+}
+
+CHECKED_STATUS IsFirstCharDigit(Slice slice) {
+  if (slice.empty() || isspace(*to_char_ptr(slice.data()))) {
+    // disable skip of spaces.
+    return STATUS_SUBSTITUTE(InvalidArgument, "$0 is not a valid number", slice.ToDebugString());
+  }
+  return Status::OK();
 }
 
 } // Anonymous namespace
 
 template <typename T>
-Status CheckedSton(const std::string& str, T (*F)(const std::string& , std::size_t*, int), T* val) {
-  try {
-    size_t pos;
-    *val = F(str, &pos, 10);
-    if (pos != str.size()) {
-      return STATUS_SUBSTITUTE(InvalidArgument, "$0 is not a valid integer", str);
-    }
-  } catch(std::exception& e) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "$0 is not a valid integer", str);
+Status CheckedSton(Slice slice, std::function<T(const char*, char **str_end, int)> StrToNum,
+                   T* val) {
+  RETURN_NOT_OK(IsFirstCharDigit(slice));
+  char* str_end;
+  errno = 0;
+  *val = StrToNum(to_char_ptr(slice.data()), &str_end, 10);
+  // Check errno.
+  if (errno != 0) {
+    return STATUS_SUBSTITUTE(InvalidArgument, "$0 is not a valid number: $1",
+                             slice.ToDebugString(), std::strerror(errno));
+  }
+
+  // Check that entire string was processed.
+  if (str_end != to_char_ptr(slice.end())) {
+    return STATUS_SUBSTITUTE(InvalidArgument, "$0 is not a valid number", slice.ToDebugString());
   }
   return Status::OK();
 }
 
 Status CheckedStoi(const string& str, int32_t* val) {
   if (sizeof(int) == 4) {
-    return CheckedSton(str, std::stoi, val);
+    // Need special handling for stoi since there is no equivalent strtoi.
+    RETURN_NOT_OK(IsFirstCharDigit(str));
+    try {
+      size_t pos;
+      *val = std::stoi(str, &pos);
+      if (pos != str.size()) {
+        return STATUS_SUBSTITUTE(InvalidArgument, "$0 is not a valid integer", str);
+      }
+    } catch(std::exception& e) {
+      return STATUS_SUBSTITUTE(InvalidArgument, "$0 is not a valid integer", str);
+    }
+    return Status::OK();
   } else if (sizeof(long) == 4) {
-    return CheckedSton(str, std::stol, reinterpret_cast<long*>(val));
+    return CheckedSton(str,
+                       std::function<long(const char*, char **str_end, int)>(std::strtol),
+                       reinterpret_cast<long*>(val));
   } else {
     return STATUS(IllegalState, "Could not find appropriate int datatype with 4 bytes");
   }
 }
 
-Status CheckedStoll(const string& str, int64_t* val) {
-  return CheckedSton(str, std::stoll, reinterpret_cast<long long*>(val));
+Status CheckedStoll(const Slice& slice, int64_t* val) {
+  return CheckedSton(slice, std::function<int64_t(const char*, char **str_end, int)>(std::strtoll),
+                     val);
 }
 
-Status CheckedStold(const string& str, long double* val) {
-  return CheckedSton(str, custom_stold, val);
+Status CheckedStold(const Slice& slice, long double* val) {
+  return CheckedSton(slice,
+                     std::function<long double(const char*, char **str_end, int)>(custom_stold),
+                     val);
 }
 
 } // namespace util

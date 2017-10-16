@@ -30,6 +30,7 @@
 
 #include "yb/util/split.h"
 #include "yb/util/status.h"
+#include "yb/util/stol_utils.h"
 
 namespace yb {
 namespace redisserver {
@@ -53,9 +54,9 @@ string to_lower_case(Slice slice) {
 }
 
 Result<int64_t> ParseInt64(const Slice& slice, const char* field) {
-  char* end = nullptr;
-  int64_t val = std::strtoll(slice.cdata(), &end, 10);
-  if (end != slice.cend()) {
+  int64_t val;
+  Status s = util::CheckedStoll(slice, &val);
+  if (!s.ok()) {
     return STATUS_SUBSTITUTE(InvalidArgument,
         "$0 field $1 is not parsable as a valid number", field, slice.ToDebugString());
   }
@@ -135,7 +136,22 @@ Status ParseHSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_set_request(new RedisSetRequestPB());
   op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
   op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_HASH);
-  op->mutable_request()->mutable_key_value()->add_subkey(subkey.cdata(), subkey.size());
+  op->mutable_request()->mutable_key_value()->add_subkey()->set_string_subkey(subkey.cdata(),
+                                                                              subkey.size());
+  op->mutable_request()->mutable_key_value()->add_value(value.cdata(), value.size());
+  return Status::OK();
+}
+
+Status ParseTsAdd(YBRedisWriteOp *op, const RedisClientCommand& args) {
+  const auto& key = args[1];
+  int64_t timestamp;
+  RETURN_NOT_OK(util::CheckedStoll(args[2], &timestamp));
+  const auto& value = args[3];
+  RETURN_NOT_OK(op->SetKey(key));
+  op->mutable_request()->set_allocated_set_request(new RedisSetRequestPB());
+  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_TIMESERIES);
+  op->mutable_request()->mutable_key_value()->add_subkey()->set_timestamp_subkey(timestamp);
   op->mutable_request()->mutable_key_value()->add_value(value.cdata(), value.size());
   return Status::OK();
 }
@@ -158,7 +174,7 @@ Status ParseHMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
         string(args[i + 1].cdata(), args[i + 1].size());
   }
   for (const auto& kv : kv_map) {
-    op->mutable_request()->mutable_key_value()->add_subkey(kv.first);
+    op->mutable_request()->mutable_key_value()->add_subkey()->set_string_subkey(kv.first);
     op->mutable_request()->mutable_key_value()->add_value(kv.second);
   }
   return Status::OK();
@@ -182,11 +198,12 @@ Status ParseCollection(YBRedisOp *op,
       subkey_set.insert(string(args[i].cdata(), args[i].size()));
     }
     for (const auto &val : subkey_set) {
-      op->mutable_request()->mutable_key_value()->add_subkey(val);
+      op->mutable_request()->mutable_key_value()->add_subkey()->set_string_subkey(val);
     }
   } else {
     for (size_t i = 2; i < args.size(); i++) {
-      op->mutable_request()->mutable_key_value()->add_subkey(args[i].cdata(), args[i].size());
+      op->mutable_request()->mutable_key_value()->add_subkey()->set_string_subkey(args[i].cdata(),
+                                                                                  args[i].size());
     }
   }
   return Status::OK();
@@ -293,6 +310,21 @@ Status ParseMGet(YBRedisReadOp* op, const RedisClientCommand& args) {
 
 Status ParseHGet(YBRedisReadOp* op, const RedisClientCommand& args) {
   return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_HGET);
+}
+
+Status ParseTsGet(YBRedisReadOp* op, const RedisClientCommand& args) {
+  op->mutable_request()->set_allocated_get_request(new RedisGetRequestPB());
+  op->mutable_request()->mutable_get_request()->set_request_type(
+      RedisGetRequestPB_GetRequestType_TSGET);
+
+  const auto& key = args[1];
+  RETURN_NOT_OK(op->SetKey(key));
+  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  int64_t timestamp;
+  RETURN_NOT_OK(util::CheckedStoll(args[2], &timestamp));
+  op->mutable_request()->mutable_key_value()->add_subkey()->set_timestamp_subkey(timestamp);
+
+  return Status::OK();
 }
 
 Status ParseHStrLen(YBRedisReadOp* op, const RedisClientCommand& args) {

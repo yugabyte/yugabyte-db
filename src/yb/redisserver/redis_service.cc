@@ -109,6 +109,7 @@ DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
     ((get, Get, 2, READ)) \
     ((mget, MGet, -2, READ)) \
     ((hget, HGet, 3, READ)) \
+    ((tsget, TsGet, 3, READ)) \
     ((hmget, HMGet, -3, READ)) \
     ((hgetall, HGetAll, 2, READ)) \
     ((hkeys, HKeys, 2, READ)) \
@@ -129,6 +130,7 @@ DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
     ((hdel, HDel, -3, WRITE)) \
     ((sadd, SAdd, -3, WRITE)) \
     ((srem, SRem, -3, WRITE)) \
+    ((tsadd, TsAdd, 4, WRITE)) \
     ((getset, GetSet, 3, WRITE)) \
     ((append, Append, 3, WRITE)) \
     ((del, Del, 2, WRITE)) \

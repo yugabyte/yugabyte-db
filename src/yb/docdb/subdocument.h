@@ -104,6 +104,10 @@ class SubDocument : public PrimitiveValue {
   // Assume current subdocument is of map type (kObject type)
   CHECKED_STATUS ConvertToRedisSet();
 
+  // Interpret the SubDocument as a RedisTS.
+  // Assume current subdocument is of map type (kObject type)
+  CHECKED_STATUS ConvertToRedisTS();
+
   // Interpret the SubDocument as an Array.
   // Assume current subdocument is of map type (kObject type)
   CHECKED_STATUS ConvertToArray();
@@ -182,6 +186,8 @@ class SubDocument : public PrimitiveValue {
 
  private:
 
+  CHECKED_STATUS ConvertToCollection(ValueType value_type);
+
   // Common code used by move constructor and move assignment.
   void MoveFrom(SubDocument* other) {
     if (this == other) {
@@ -207,8 +213,7 @@ class SubDocument : public PrimitiveValue {
   void EnsureContainerAllocated();
 
   bool container_allocated() const {
-    assert(
-        type_ == ValueType::kObject || type_ == ValueType::kRedisSet || type_ == ValueType::kArray);
+    CHECK(IsObjectType(type_) || type_ == ValueType::kArray);
     return complex_data_structure_ != nullptr;
   }
 
@@ -217,7 +222,7 @@ class SubDocument : public PrimitiveValue {
   }
 
   bool has_valid_object_container() const {
-    return (type_ == ValueType::kObject || type_ == ValueType::kRedisSet) && has_valid_container();
+    return (IsObjectType(type_)) && has_valid_container();
   }
 
   bool has_valid_array_container() const {
@@ -225,6 +230,11 @@ class SubDocument : public PrimitiveValue {
   }
 
   friend void SubDocumentToStreamInternal(ostream& out, const SubDocument& subdoc, int indent);
+  friend void SubDocCollectionToStreamInternal(ostream& out,
+                                        const SubDocument& subdoc,
+                                        const int indent,
+                                        const string& begin,
+                                        const string& end);
 
   // We use a SubDocument as the top-level map from encoded document keys to documents (also
   // represented as SubDocuments) in InMemDocDbState, and we need access to object_container()

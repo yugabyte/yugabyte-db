@@ -79,17 +79,17 @@ class RedisWriteOperation: public DocOperation {
   const RedisResponsePB &response();
 
  private:
-  Status ApplySet(DocWriteBatch *doc_write_batch);
-  Status ApplyGetSet(DocWriteBatch *doc_write_batch);
-  Status ApplyAppend(DocWriteBatch *doc_write_batch);
-  Status ApplyDel(DocWriteBatch *doc_write_batch);
-  Status ApplySetRange(DocWriteBatch *doc_write_batch);
-  Status ApplyIncr(DocWriteBatch *doc_write_batch, int64_t incr = 1);
-  Status ApplyPush(DocWriteBatch *doc_write_batch);
-  Status ApplyInsert(DocWriteBatch *doc_write_batch);
-  Status ApplyPop(DocWriteBatch *doc_write_batch);
-  Status ApplyAdd(DocWriteBatch *doc_write_batch);
-  Status ApplyRemove(DocWriteBatch *doc_write_batch);
+  CHECKED_STATUS ApplySet(DocWriteBatch *doc_write_batch);
+  CHECKED_STATUS ApplyGetSet(DocWriteBatch *doc_write_batch);
+  CHECKED_STATUS ApplyAppend(DocWriteBatch *doc_write_batch);
+  CHECKED_STATUS ApplyDel(DocWriteBatch *doc_write_batch);
+  CHECKED_STATUS ApplySetRange(DocWriteBatch *doc_write_batch);
+  CHECKED_STATUS ApplyIncr(DocWriteBatch *doc_write_batch, int64_t incr = 1);
+  CHECKED_STATUS ApplyPush(DocWriteBatch *doc_write_batch);
+  CHECKED_STATUS ApplyInsert(DocWriteBatch *doc_write_batch);
+  CHECKED_STATUS ApplyPop(DocWriteBatch *doc_write_batch);
+  CHECKED_STATUS ApplyAdd(DocWriteBatch *doc_write_batch);
+  CHECKED_STATUS ApplyRemove(DocWriteBatch *doc_write_batch);
 
   RedisWriteRequestPB request_;
   RedisResponsePB response_;
@@ -106,16 +106,16 @@ class RedisReadOperation {
 
  private:
   int ApplyIndex(int32_t index, const int32_t len);
-  Status ExecuteGet(rocksdb::DB *rocksdb, HybridTime hybrid_time);
+  CHECKED_STATUS ExecuteGet(rocksdb::DB *rocksdb, HybridTime hybrid_time);
   // Used to implement HGETALL, HKEYS, HVALS, SMEMBERS, HLEN, SCARD
-  Status ExecuteHGetAllLikeCommands(rocksdb::DB *rocksdb,
+  CHECKED_STATUS ExecuteHGetAllLikeCommands(rocksdb::DB *rocksdb,
                                     HybridTime hybrid_time,
                                     ValueType value_type,
                                     bool add_keys,
                                     bool add_values);
-  Status ExecuteStrLen(rocksdb::DB *rocksdb, HybridTime hybrid_time);
-  Status ExecuteExists(rocksdb::DB *rocksdb, HybridTime hybrid_time);
-  Status ExecuteGetRange(rocksdb::DB *rocksdb, HybridTime hybrid_time);
+  CHECKED_STATUS ExecuteStrLen(rocksdb::DB *rocksdb, HybridTime hybrid_time);
+  CHECKED_STATUS ExecuteExists(rocksdb::DB *rocksdb, HybridTime hybrid_time);
+  CHECKED_STATUS ExecuteGetRange(rocksdb::DB *rocksdb, HybridTime hybrid_time);
 
   const RedisReadRequestPB& request_;
   RedisResponsePB response_;

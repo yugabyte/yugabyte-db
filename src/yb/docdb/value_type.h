@@ -51,6 +51,9 @@ enum class ValueType : char {
   // Null must be lower than the other primitive types so that it compares as smaller than them.
   // It is used for frozen CQL user-defined types (which can contain null elements) on ASC columns.
   kNull = '$',  // ASCII code 36
+  kRedisSet = '(', // ASCII code 40
+  // This is the redis timeseries type.
+  kRedisTS = '+', // ASCII code 43
   kInetaddress = '-',  // ASCII code 45
   kInetaddressDescending = '.',  // ASCII code 46
   kFrozen = '<', // ASCII code 60
@@ -91,7 +94,6 @@ enum class ValueType : char {
   kTransactionId = 'x', // ASCII code 120
 
   kObject = '{',  // ASCII code 123
-  kRedisSet = '(', // ASCII code 40
 
   // Null desc must be higher than the other descending primitive types so that it compares as
   // bigger than them.
@@ -160,12 +162,17 @@ constexpr ValueType kMaxPrimitiveValueType = ValueType::kNullDescending;
 
 std::string ToString(ValueType value_type);
 
+// kArray is handled slightly differently and hence we only have kObject, kRedisTS and kRedisSet.
+constexpr inline bool IsObjectType(const ValueType value_type) {
+  return value_type == ValueType::kRedisTS || value_type == ValueType::kObject ||
+      value_type == ValueType::kRedisSet;
+}
+
 constexpr inline bool IsPrimitiveValueType(const ValueType value_type) {
   return kMinPrimitiveValueType <= value_type && value_type <= kMaxPrimitiveValueType &&
-         value_type != ValueType::kObject &&
+         !IsObjectType(value_type) &&
          value_type != ValueType::kArray &&
-         value_type != ValueType::kTombstone &&
-         value_type != ValueType::kRedisSet;
+         value_type != ValueType::kTombstone;
 }
 
 // Decode the first byte of the given slice as a ValueType.

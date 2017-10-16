@@ -20,14 +20,14 @@ namespace yb {
 namespace util {
 
 template <typename T>
-CHECKED_STATUS CheckedSton(const std::string& str, T* (*F)(const std::string& , std::size_t*, int),
+CHECKED_STATUS CheckedSton(Slice slice, std::function<T(const char*, char **str_end, int)> StrToNum,
                            T* val);
 
 CHECKED_STATUS CheckedStoi(const std::string& str, int32_t* val);
 
-CHECKED_STATUS CheckedStoll(const std::string& str, int64_t* val);
+CHECKED_STATUS CheckedStoll(const Slice& slice, int64_t* val);
 
-CHECKED_STATUS CheckedStold(const std::string& str, long double* val);
+CHECKED_STATUS CheckedStold(const Slice& slice, long double* val);
 
 } // namespace util
 } // namespace yb

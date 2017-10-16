@@ -260,8 +260,16 @@ class PrimitiveValue {
     return Slice(str_val_);
   }
 
+  bool IsString() const {
+    return ValueType::kString == type_ || ValueType::kStringDescending == type_;
+  }
+
+  bool IsDouble() const {
+    return ValueType::kDouble == type_ || ValueType::kDoubleDescending == type_;
+  }
+
   const std::string& GetString() const {
-    DCHECK(ValueType::kString == type_ || ValueType::kStringDescending == type_);
+    DCHECK(IsString());
     return str_val_;
   }
 
@@ -281,7 +289,7 @@ class PrimitiveValue {
   }
 
   double GetDouble() const {
-    DCHECK(ValueType::kDouble == type_ || ValueType::kDoubleDescending == type_);
+    DCHECK(IsDouble());
     return double_val_;
   }
 

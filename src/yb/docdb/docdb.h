@@ -185,6 +185,10 @@ class DocWriteBatch {
 
   rocksdb::DB* rocksdb() { return rocksdb_; }
 
+  boost::optional<DocWriteBatchCache::Entry> LookupCache(const KeyBytes& encoded_key_prefix) {
+    return cache_.Get(encoded_key_prefix);
+  }
+
  private:
   // This member function performs the necessary operations to set a primitive value for a given
   // docpath assuming the appropriate operations have been taken care of for subkeys with index <
