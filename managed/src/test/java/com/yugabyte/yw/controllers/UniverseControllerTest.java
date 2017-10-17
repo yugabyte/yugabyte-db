@@ -2,10 +2,8 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.PlacementInfoUtil.UNIVERSE_ALIVE_METRIC;
 import static com.yugabyte.yw.common.PlacementInfoUtil.getAzUuidToNumNodes;
-import static com.yugabyte.yw.common.PlacementInfoUtil.MASTER_METRIC;
-import static com.yugabyte.yw.common.PlacementInfoUtil.TSERVER_METRIC;
-import static com.yugabyte.yw.common.PlacementInfoUtil.NODE_METRIC;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -606,9 +604,7 @@ public class UniverseControllerTest extends WithApplication {
   @Test
   public void testUniverseStatusSuccess() {
     ObjectNode fakeReturn = Json.newObject();
-    fakeReturn.set(TSERVER_METRIC, Json.newObject());
-    fakeReturn.set(MASTER_METRIC, Json.newObject());
-    fakeReturn.set(NODE_METRIC, Json.newObject());
+    fakeReturn.set(UNIVERSE_ALIVE_METRIC, Json.newObject());
     when(mockMetricQueryHelper.query(anyList(), anyMap())).thenReturn(fakeReturn);
     UUID universeUUID = UUID.randomUUID();
     Universe.create("TestUniverse", universeUUID, customer.getCustomerId());

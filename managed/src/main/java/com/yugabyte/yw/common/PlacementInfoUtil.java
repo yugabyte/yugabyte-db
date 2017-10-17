@@ -44,6 +44,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import play.libs.Json;
 
+
 public class PlacementInfoUtil {
   public static final Logger LOG = LoggerFactory.getLogger(PlacementInfoUtil.class);
 
@@ -54,10 +55,8 @@ public class PlacementInfoUtil {
   // List of replication factors supported currently.
   private static final List<Integer> supportedRFs = ImmutableList.of(1, 3, 5, 7);
 
-  // Metrics used to determine tserver, master, and node liveness.
-  public static final String TSERVER_METRIC = "tserver_glog_info_messages";
-  public static final String MASTER_METRIC = "master_glog_info_messages";
-  public static final String NODE_METRIC = "node_up";
+  // Constants used to determine tserver, master, and node liveness.
+  public static final String UNIVERSE_ALIVE_METRIC = "node_up";
 
   // Mode of node distribution across the given AZ configuration.
   enum ConfigureNodesMode {
@@ -1252,8 +1251,6 @@ public class PlacementInfoUtil {
    * Given a node, return its tserver & master alive/not-alive status and detect if the node isn't running.
    *
    * @param nodeDetails The node to get the status of.
-   * @param tserverJson Metadata about all tservers in the node's universe.
-   * @param masterJson Metadata about all the masters in the node's universe.
    * @param nodeJson Metadata about all the nodes in the node's universe.
    * @return JsonNode with the following format:
    *  {
@@ -1262,53 +1259,46 @@ public class PlacementInfoUtil {
    *    node_status: <NodeDetails.NodeState>
    *  }
    */
-  private static ObjectNode getNodeAliveStatus(NodeDetails nodeDetails, JsonNode tserverJson,
-                                               JsonNode masterJson, JsonNode nodeJson) {
+  private static ObjectNode getNodeAliveStatus(NodeDetails nodeDetails, JsonNode nodeJson) {
+    boolean nodeAlive = false;
+    boolean tserverAlive = false;
+    boolean masterAlive = false;
 
-    ObjectNode result = Json.newObject();
-
-    // Add tserver status
-    if (tserverJson.get("data") == null) {
-      result.put("tserver_alive", false);
-    } else {
-      boolean tserverAlive = false;
-      for (JsonNode json : tserverJson.get("data")) {
-        tserverAlive = tserverAlive || json.get("name").asText().equals(nodeDetails.nodeName);
-      }
-      result.put("tserver_alive", tserverAlive);
-    }
-
-    // Add master status
-    if (masterJson.get("data") == null) {
-      result.put("master_alive", false);
-    } else {
-      boolean masterAlive = false;
-      for (JsonNode json : masterJson.get("data")) {
-        masterAlive = masterAlive || json.get("name").asText().equals(nodeDetails.nodeName);
-      }
-      result.put("master_alive", masterAlive);
-    }
-
-    // Add node status
-    if (nodeJson.get("data") == null) {
-      result.put("node_status", NodeDetails.NodeState.Unreachable.toString());
-    } else {
-      boolean nodeAlive = false;
-      String privateIp = nodeDetails.cloudInfo.private_ip;
+    if (nodeJson.get("data") != null) {
       for (JsonNode json : nodeJson.get("data")) {
-        if (json.get("name").asText().startsWith(privateIp)) {
-          for (JsonNode upData : json.get("y")) {
-            nodeAlive = nodeAlive || upData.asText().equals("1");
-          }
-          if (!nodeAlive && nodeDetails.isQueryable()) {
-            nodeDetails.state = NodeDetails.NodeState.Unreachable;
+        String[] name = json.get("name").asText().split(":", 2);
+        if (name.length == 2 && name[0].equals(nodeDetails.cloudInfo.private_ip)) {
+          switch (SwamperHelper.TargetType.createFromPort(Integer.valueOf(name[1]))) {
+            case NODE_EXPORT:
+              for (JsonNode upData : json.get("y")) {
+                nodeAlive = nodeAlive || upData.asText().equals("1");
+              }
+              if (!nodeAlive && nodeDetails.isQueryable()) {
+                nodeDetails.state = NodeDetails.NodeState.Unreachable;
+              }
+              break;
+            case TSERVER_EXPORT:
+              for (JsonNode upData : json.get("y")) {
+                tserverAlive = tserverAlive || upData.asText().equals("1");
+              }
+              break;
+            case MASTER_EXPORT:
+              for (JsonNode upData : json.get("y")) {
+                masterAlive = masterAlive || upData.asText().equals("1");
+              }
+              break;
+            default:
+              LOG.error("Invalid port " + name[1]);
+              break;
           }
         }
       }
-      result.put("node_status", nodeDetails.state.toString());
     }
 
-    return result;
+    return Json.newObject()
+        .put("tserver_alive", tserverAlive)
+        .put("master_alive", masterAlive)
+        .put("node_status", nodeDetails.state.toString());
   }
 
   /**
@@ -1332,11 +1322,9 @@ public class PlacementInfoUtil {
         response.put(nodeDetails.nodeName, result);
       }
     } else {
-      JsonNode tserverJson = metricQueryResult.get(TSERVER_METRIC);
-      JsonNode masterJson = metricQueryResult.get(MASTER_METRIC);
-      JsonNode nodeJson = metricQueryResult.get(NODE_METRIC);
+      JsonNode nodeJson = metricQueryResult.get(UNIVERSE_ALIVE_METRIC);
       for (NodeDetails nodeDetails : universe.getNodes()) {
-        ObjectNode result = getNodeAliveStatus(nodeDetails, tserverJson, masterJson, nodeJson);
+        ObjectNode result = getNodeAliveStatus(nodeDetails, nodeJson);
         response.put(nodeDetails.nodeName, result);
       }
     }
@@ -1356,10 +1344,9 @@ public class PlacementInfoUtil {
    */
   public static JsonNode getUniverseAliveStatus(Universe universe, MetricQueryHelper metricQueryHelper) {
 
-    List<String> metricKeys = ImmutableList.of(TSERVER_METRIC, MASTER_METRIC, NODE_METRIC);
+    List<String> metricKeys = ImmutableList.of(UNIVERSE_ALIVE_METRIC);
 
-    // Set up params. E.g. { start=1505739890, end=1505783090,
-    // filters={"node_prefix":"yb-1-jeff-test1"}, metrics[0]=tserver_rpcs_per_sec_by_universe }
+    // Set up params for metrics query.
     Map<String, String> params = new HashMap<>();
     DateTime now = DateTime.now();
     params.put("end", Long.toString(now.getMillis()/1000, 10));
