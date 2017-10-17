@@ -31,6 +31,11 @@ import static org.junit.Assert.assertEquals;
 
 public class TestInsert extends BaseCQLTest {
 
+  @Override
+  public int getTestMethodTimeoutSec() {
+    return 240;
+  }
+
   @Test
   public void testSimpleInsert() throws Exception {
     LOG.info("TEST SIMPLE INSERT - Start");

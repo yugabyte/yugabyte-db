@@ -36,7 +36,7 @@ public class BaseYBTest {
 
   @Rule
   public final Timeout METHOD_TIMEOUT = new Timeout(
-      getTestMethodTimeoutSec(), TimeUnit.SECONDS);
+      TestUtils.adjustTimeoutForBuildType(getTestMethodTimeoutSec()), TimeUnit.SECONDS);
 
   /** This allows to expect a particular exception to be thrown in a test. */
   @Rule
