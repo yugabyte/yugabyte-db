@@ -258,6 +258,37 @@ public class TestDescendingOrder extends BaseCQLTest {
   }
 
   @Test
+  public void testDoubleDesc() throws Exception {
+    LOG.info("TEST CQL DOUBLE DESCENDING ORDER - START");
+    // Create a unique list of random numbers.
+    double[] values = new Random().doubles(100, Double.MIN_VALUE, Double.MAX_VALUE).distinct()
+      .toArray();
+    Arrays.sort(values);
+
+    // Create a list of strings representing the integers in values.
+    List<String> stringValues =
+      Arrays.stream(values).mapToObj(value -> Double.toString(value)).collect(Collectors.toList());
+
+    ResultSet rs = createInsertAndSelectDesc("double", stringValues);
+    assertEquals(rs.getAvailableWithoutFetching(), values.length);
+
+    // Rows should come sorted by column r1 in descending order.
+    for (int i = values.length - 1; i >= 0; i--) {
+      Row row = rs.one();
+      assertEquals(1, row.getInt("h1"));
+      double r1 = row.getDouble("r1");
+      assertEquals(values[i], r1, Math.ulp(values[i]));
+      assertEquals("b", row.getString("r2"));
+
+      assertEquals(1, row.getInt("v1"));
+      assertEquals("c", row.getString("v2"));
+    }
+
+    dropTable();
+    LOG.info("TEST CQL DOUBLE DESCENDING ORDER - END");
+  }
+
+  @Test
   public void testInt8Desc() throws Exception {
     intDesc("tinyint", -128, 127);
   }

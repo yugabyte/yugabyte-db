@@ -149,6 +149,10 @@ class KeyBytes {
     AppendFloatToKey(x, &data_);
   }
 
+  void AppendDescendingDouble(double x) {
+    AppendDoubleToKey(x, &data_, /* descending */ true);
+  }
+
   void AppendDouble(double x) {
     AppendDoubleToKey(x, &data_);
   }

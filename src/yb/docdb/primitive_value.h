@@ -219,7 +219,7 @@ class PrimitiveValue {
   // encoding format. Expects the entire slice to be consumed and returns an error otherwise.
   CHECKED_STATUS DecodeFromValue(const rocksdb::Slice& rocksdb_slice);
 
-  static PrimitiveValue Double(double d);
+  static PrimitiveValue Double(double d, SortOrder sort_order = SortOrder::kAscending);
   static PrimitiveValue Float(float f);
   // decimal_str represents a human readable string representing the decimal number, e.g. "0.03".
   static PrimitiveValue Decimal(const std::string& decimal_str, SortOrder sort_order);
@@ -276,7 +276,7 @@ class PrimitiveValue {
   }
 
   double GetDouble() const {
-    DCHECK_EQ(ValueType::kDouble, type_);
+    DCHECK(ValueType::kDouble == type_ || ValueType::kDoubleDescending == type_);
     return double_val_;
   }
 

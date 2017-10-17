@@ -125,7 +125,7 @@ inline float DecodeFloatFromKey(const rocksdb::Slice& slice) {
   return *(reinterpret_cast<float*>(&v));
 }
 
-inline void AppendDoubleToKey(double val, std::string* dest) {
+inline void AppendDoubleToKey(double val, std::string* dest, bool descending = false) {
   char buf[sizeof(uint64_t)];
   uint64_t v = *(reinterpret_cast<uint64_t*>(&val));
   if (v >> 63) { // This is the sign bit: better than using val >= 0 (because -0, nulls denormals).
@@ -133,12 +133,22 @@ inline void AppendDoubleToKey(double val, std::string* dest) {
   } else {
     v ^= kInt64SignBitFlipMask;
   }
+
+  if (descending) {
+    // flip the bits to reverse the order.
+    v = ~v;
+  }
   BigEndian::Store64(buf, v);
   dest->append(buf, sizeof(buf));
 }
 
-inline double DecodeDoubleFromKey(const rocksdb::Slice& slice) {
+inline double DecodeDoubleFromKey(const rocksdb::Slice& slice, bool descending = false) {
   uint64_t v = BigEndian::Load64(slice.data());
+  if (descending) {
+    // Flip the bits.
+    v = ~v;
+  }
+
   if (v >> 63) { // This is the sign bit: better than using val >= 0 (because -0, nulls denormals).
     v ^= kInt64SignBitFlipMask;
   } else {

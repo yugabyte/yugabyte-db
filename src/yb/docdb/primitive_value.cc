@@ -97,6 +97,7 @@ string PrimitiveValue::ToString() const {
       return std::to_string(int64_val_);
     case ValueType::kFloat:
       return DoubleToString(float_val_);
+    case ValueType::kDoubleDescending: FALLTHROUGH_INTENDED;
     case ValueType::kDouble:
       return DoubleToString(double_val_);
     case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
@@ -188,6 +189,10 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
 
     case ValueType::kDouble:
       key_bytes->AppendDouble(double_val_);
+      return;
+
+    case ValueType::kDoubleDescending:
+      key_bytes->AppendDescendingDouble(double_val_);
       return;
 
     case ValueType::kFloat:
@@ -297,6 +302,7 @@ string PrimitiveValue::ToValue() const {
       LOG(FATAL) << "Array index cannot be stored in a value";
       return result;
 
+    case ValueType::kDoubleDescending: FALLTHROUGH_INTENDED;
     case ValueType::kDouble:
       static_assert(sizeof(double) == sizeof(uint64_t),
                     "Expected double to be the same size as uint64_t");
@@ -609,12 +615,17 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       type_ref = value_type;
       return Status::OK();
     }
+    case ValueType::kDoubleDescending: FALLTHROUGH_INTENDED;
     case ValueType::kDouble: {
       if (slice->size() < sizeof(double_t)) {
         return STATUS_FORMAT(Corruption, "Not enough bytes to decode a float: $0", slice->size());
       }
       if (out) {
-        out->double_val_ = DecodeDoubleFromKey(*slice);
+        if (value_type == ValueType::kDoubleDescending) {
+          out->double_val_ = DecodeDoubleFromKey(*slice, /* descending */ true);
+        } else {
+          out->double_val_ = DecodeDoubleFromKey(*slice);
+        }
       }
       slice->remove_prefix(sizeof(double_t));
       type_ref = value_type;
@@ -675,6 +686,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
     case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kArrayIndex: FALLTHROUGH_INTENDED;
+    case ValueType::kDoubleDescending: FALLTHROUGH_INTENDED;
     case ValueType::kDouble:
       if (slice.size() != sizeof(int64_t)) {
         return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
@@ -751,9 +763,13 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
   return Status::OK();
 }
 
-PrimitiveValue PrimitiveValue::Double(double d) {
+PrimitiveValue PrimitiveValue::Double(double d, SortOrder sort_order) {
   PrimitiveValue primitive_value;
-  primitive_value.type_ = ValueType::kDouble;
+  if (sort_order == SortOrder::kAscending) {
+    primitive_value.type_ = ValueType::kDouble;
+  } else {
+    primitive_value.type_ = ValueType::kDoubleDescending;
+  }
   primitive_value.double_val_ = d;
   return primitive_value;
 }
@@ -858,6 +874,7 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
       }
       return float_val_ == other.float_val_;
     }
+    case ValueType::kDoubleDescending: FALLTHROUGH_INTENDED;
     case ValueType::kDouble: {
       if (util::IsNanDouble(double_val_) && util::IsNanDouble(other.double_val_)) {
         return true;
@@ -910,6 +927,8 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
     case ValueType::kArrayIndex:
       return CompareUsingLessThan(int64_val_, other.int64_val_);
+    case ValueType::kDoubleDescending:
+      return CompareUsingLessThan(other.double_val_, double_val_);
     case ValueType::kDouble:
       return CompareUsingLessThan(double_val_, other.double_val_);
     case ValueType::kFloat:
@@ -1010,11 +1029,8 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
       return PrimitiveValue::Float(util::CanonicalizeFloat(f));
     }
     case QLValuePB::kDoubleValue: {
-      if (sort_order != SortOrder::kAscending) {
-        LOG(ERROR) << "Ignoring invalid sort order for DOUBLE. Using SortOrder::kAscending.";
-      }
       double d = QLValue::double_value(value);
-      return PrimitiveValue::Double(util::CanonicalizeDouble(d));
+      return PrimitiveValue::Double(util::CanonicalizeDouble(d), sort_order);
     }
     case QLValuePB::kDecimalValue:
       return PrimitiveValue::Decimal(QLValue::decimal_value(value), sort_order);

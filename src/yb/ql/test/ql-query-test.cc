@@ -613,6 +613,32 @@ TEST_F(TestQLQuery, TestPaginationWithDescSort) {
   }
 
   //------------------------------------------------------------------------------------------------
+  // Testing double type.
+  //------------------------------------------------------------------------------------------------
+  {
+    std::vector<double> values;
+    // Insert 100 rows of the same hash key into the table.
+    for (int i = 10; i <= 100; i++) {
+      values.push_back(i + .25);
+    }
+    std::vector<QLRow> rows;
+    auto rows_ptr = &rows;
+    RUN_PAGINATION_WITH_DESC_TEST(processor, "double", values, rows_ptr);
+    // Checking rows values -- expecting results in descending order except for min and max values.
+    CHECK_EQ(rows.size(), values.size() - 2);
+    // Results should start from second-largest value.
+    size_t curr_row_no = values.size() - 2;
+    for (auto &row : rows) {
+      CHECK_EQ(row.column(0).int32_value(), 1);
+      // Expecting results in descending order.
+      CHECK_EQ(row.column(1).double_value(), values[curr_row_no]);
+      CHECK_EQ(row.column(2).double_value(), values[curr_row_no]);
+      CHECK_EQ(row.column(3).int32_value(), 0);
+      curr_row_no--;
+    }
+  }
+
+  //------------------------------------------------------------------------------------------------
   // Testing string types.
   //------------------------------------------------------------------------------------------------
   {
