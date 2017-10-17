@@ -83,11 +83,13 @@ memory_usage:
 memory_usage_all:
   metric: "node_memory_MemFree"
   function: "avg"
-  group_by: "exported_instance"
   layout:
     title: "Memory Free (bytes)"
     xaxis:
       type: "date"
+    yaxis:
+      alias:
+        "node_memory_MemFree": "free"
 
 network_bytes:
   metric: ""
@@ -358,11 +360,13 @@ tserver_write_latency:
     server_type: "yb_tserver"
     service_type: "TabletServerService"
     service_method: "Write"
-  group_by: "exported_instance"
   layout:
     title: "YugaByte Write Latency"
     xaxis:
       type: "date"
+    yaxis:
+      alias:
+        rpc_latency.avg: "Write Latency"
 
 tserver_read_latency:
   metric: "rpc_latency.avg"
@@ -374,11 +378,13 @@ tserver_read_latency:
     server_type: "yb_tserver"
     service_type: "TabletServerService"
     service_method: "Read"
-  group_by: "exported_instance"
   layout:
     title: "YugaByte Read Latency"
     xaxis:
       type: "date"
+    yaxis:
+      alias:
+        rpc_latency.avg: "Read Latency"
 
 tserver_handler_latency:
   metric: "rpc_incoming_queue_time.avg|handler_latency_outbound_call_queue_time.avg|handler_latency_outbound_transfer.avg"
@@ -454,11 +460,13 @@ tserver_remote_bootstraps:
     server_type: "yb_consensus"
     service_type: "ConsensusService"
     service_method: "StartRemoteBootstrap"
-  group_by: "exported_instance"
   layout:
     title: "Remote Bootstraps"
     xaxis:
       type: "date"
+    yaxis:
+      alias:
+        rpc_latency_count: "remote bootstraps"
 
 tserver_consensus_rpcs_latency:
   metric: "rpc_latency.avg"
@@ -649,34 +657,6 @@ tserver_cache_reader_num_ops:
     yaxis:
       alias:
         "log_cache_num_ops": "Num Ops"
-
-tserver_glog_info_messages:
-  metric: "glog_info_messages"
-  function: "avg"
-  filters:
-    export_type: "tserver_export"
-  # group_by: "exported_instance"
-  layout:
-    title: "TServer GLog Info Messages"
-    xaxis:
-      type: "date"
-    yaxis:
-      alias:
-        "glog_info_messages": "GLog info messages"
-
-master_glog_info_messages:
-  metric: "glog_info_messages"
-  function: "avg"
-  filters:
-    export_type: "master_export"
-  # group_by: "exported_instance"
-  layout:
-    title: "Master GLog Info Messages"
-    xaxis:
-      type: "date"
-    yaxis:
-      alias:
-        "glog_info_messages": "GLog info messages"
 
 node_up:
   metric: "up"

@@ -65,7 +65,7 @@ public class SwamperHelperTest extends FakeDBApplication {
       }
 
       JsonNode targetsJson = Json.parse(sb.toString());
-      assertThat(targetsJson.size(), is(equalTo(4)));
+      assertThat(targetsJson.size(), is(equalTo(5)));
       List<String> targetTypes = new ArrayList<>();
       for (SwamperHelper.TargetType t : Arrays.asList(SwamperHelper.TargetType.values())) {
         targetTypes.add(t.toString());
