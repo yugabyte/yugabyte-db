@@ -13,9 +13,7 @@ import org.junit.Test;
 import java.util.*;
 
 import static com.yugabyte.yw.common.PlacementInfoUtil.removeNodeByName;
-import static com.yugabyte.yw.common.PlacementInfoUtil.MASTER_METRIC;
-import static com.yugabyte.yw.common.PlacementInfoUtil.NODE_METRIC;
-import static com.yugabyte.yw.common.PlacementInfoUtil.TSERVER_METRIC;
+import static com.yugabyte.yw.common.PlacementInfoUtil.UNIVERSE_ALIVE_METRIC;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Unreachable;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Running;
 import static org.junit.Assert.assertEquals;
@@ -534,34 +532,38 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   private JsonNode getPerNodeStatus(Universe u, Set<NodeDetails> deadTservers, Set<NodeDetails> deadMasters,
                                     Set<NodeDetails> deadNodes) {
     ObjectNode status = Json.newObject();
-    ArrayNode tserverDataArray = Json.newArray();
-    ArrayNode masterDataArray = Json.newArray();
-    ArrayNode nodeDataArray = Json.newArray();
+    ArrayNode dataArray = Json.newArray();
+    ArrayNode aliveArray = Json.newArray().add("1").add("1").add("1");
+    ArrayNode deadArray = Json.newArray().add("0").add("0").add("0");
 
     for (NodeDetails nodeDetails : u.getNodes()) {
+
       // Set up tserver status for node
+      ObjectNode tserverStatus = Json.newObject().put("name", nodeDetails.cloudInfo.private_ip + ":9000");
       if (deadTservers == null || !deadTservers.contains(nodeDetails)) {
-        tserverDataArray.add(Json.newObject().put("name", nodeDetails.nodeName));
+        dataArray.add(tserverStatus.set("y", aliveArray.deepCopy()));
+      } else {
+        dataArray.add(tserverStatus.set("y", deadArray.deepCopy()));
       }
 
       // Set up master status for node
+      ObjectNode masterStatus = Json.newObject().put("name", nodeDetails.cloudInfo.private_ip + ":7000");
       if (deadMasters == null || !deadMasters.contains(nodeDetails)) {
-        masterDataArray.add(Json.newObject().put("name", nodeDetails.nodeName));
+        dataArray.add(masterStatus.set("y", aliveArray.deepCopy()));
+      } else {
+        dataArray.add(masterStatus.set("y", deadArray.deepCopy()));
       }
 
       // Set up node running status for node
-      ArrayNode values = Json.newArray();
+      ObjectNode nodeStatus = Json.newObject().put("name", nodeDetails.cloudInfo.private_ip + ":9300");
       if (deadNodes == null || !deadNodes.contains(nodeDetails)) {
-        values.add("1").add("1").add("1");
+        dataArray.add(nodeStatus.set("y", aliveArray.deepCopy()));
       } else {
-        values.add("0").add("0").add("0");
+        dataArray.add(nodeStatus.set("y", deadArray.deepCopy()));
       }
-      nodeDataArray.add(Json.newObject().put("name", nodeDetails.cloudInfo.private_ip).set("y", values));
     }
 
-    status.set(TSERVER_METRIC, Json.newObject().set("data", tserverDataArray));
-    status.set(MASTER_METRIC, Json.newObject().set("data", masterDataArray));
-    status.set(NODE_METRIC, Json.newObject().set("data", nodeDataArray));
+    status.set(UNIVERSE_ALIVE_METRIC, Json.newObject().set("data", dataArray));
 
     MetricQueryHelper mockMetricQueryHelper = mock(MetricQueryHelper.class);
     when(mockMetricQueryHelper.query(anyList(), anyMap())).thenReturn(status);
@@ -579,7 +581,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       boolean masterAlive = deadMasters == null || !deadMasters.contains(nodeDetails);
       assertTrue(masterAlive == jsonNode.get("master_alive").asBoolean());
       NodeDetails.NodeState nodeState = deadNodes != null && deadNodes.contains(nodeDetails) ? Unreachable : Running;
-      assertEquals(jsonNode.get("node_status").asText(), nodeState.toString());
+      assertEquals(nodeState.toString(), jsonNode.get("node_status").asText());
     }
   }
 

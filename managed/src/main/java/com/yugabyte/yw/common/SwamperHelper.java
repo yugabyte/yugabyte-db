@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
@@ -50,11 +49,16 @@ public class SwamperHelper {
     MASTER_EXPORT(7000),
     TSERVER_EXPORT(9000),
     REDIS_EXPORT(11000),
-    CQL_EXPORT(12000);
+    CQL_EXPORT(12000),
+    INVALID_EXPORT(0);
 
     private int port;
     TargetType(int port) {
       this.port = port;
+    }
+
+    static TargetType createFromPort(int port) {
+      return Arrays.stream(TargetType.values()).filter(t -> t.port == port).findFirst().orElse(INVALID_EXPORT);
     }
   }
 
