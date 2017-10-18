@@ -78,9 +78,9 @@ an older/asynchronous copy of the data (which may not have all the changes to th
 ## YugaByte vs. Redis
 
 * YugaByte’s Redis is a persistent database rather than an in-memory cache. [While Redis has a
-check-pointing feature for persistence, but it is a highly inefficient operation that does a process
+check-pointing feature for persistence, it is a highly inefficient operation that does a process
 fork. It is also not an incremental operation; the entire memory state is written to disk causing
-serious overall performance impact.
+serious overall performance impact.]
 
 * YugaByte’s Redis is an auto sharded, clustered with built-in support for strongly consistent
 replication and multi-DC deployment flexibility. Operations such as add node, remove node are
