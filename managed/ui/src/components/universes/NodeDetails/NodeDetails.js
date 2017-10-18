@@ -13,9 +13,8 @@ export default class NodeDetails extends Component {
   constructor(props) {
     super(props);
     this.deleteNode = this.deleteNode.bind(this);
-    this.state = {
-      dimensions: {},
-    };
+    this.checkTasksForUniverseCreated = this.checkTasksForUniverseCreated.bind(this);
+    this.state = { universeCreated: false };
   }
 
 
@@ -26,11 +25,25 @@ export default class NodeDetails extends Component {
   }
 
   componentWillMount() {
+    const { universe: { universeMasterLeader } } = this.props;
     let uuid = this.props.uuid;
     if (typeof this.props.universeSelectionId !== "undefined") {
       uuid = this.props.universeUUID;
     }
+    if (this.checkTasksForUniverseCreated()) {
+      this.setState({universeCreated: true});
+      if (isDefinedNotNull(universeMasterLeader) && getPromiseState(universeMasterLeader).isInit()) {
+        this.props.getMasterLeader(uuid);
+      }
+    }
     this.props.getUniversePerNodeStatus(uuid);
+  }
+
+  checkTasksForUniverseCreated() {
+    const { universe: { universeTasks }, uuid } = this.props;
+    return universeTasks.data[uuid].find((task) => {
+      return task.type === 'Create' && task.target === 'Universe' && task.status === 'Success';
+    });
   }
 
   deleteNode(node) {
@@ -55,7 +68,8 @@ export default class NodeDetails extends Component {
 
     const nodeDetailRows = nodeDetails.map((nodeDetail) => {
       let nodeStatus = "-";
-      if (!inLoadingOrInitState && isDefinedNotNull(universePerNodeStatus.data)) {
+      if (!inLoadingOrInitState && isDefinedNotNull(universePerNodeStatus.data) &&
+          isDefinedNotNull(universePerNodeStatus.data[nodeDetail.nodeName])) {
         nodeStatus = insertSpacesFromCamelCase(universePerNodeStatus.data[nodeDetail.nodeName]["node_status"]);
       }
       return {
@@ -82,8 +96,8 @@ export default class NodeDetails extends Component {
         cell += " (Leader)";
       }
       const href = "http://" + row.privateIP + ":" + (isMaster ? row.masterPort : row.tserverPort);
-      let statusDisplay = inLoadingOrInitState ? loadingIcon : warningIcon;
-      if (isDefinedNotNull(currentUniverse.data) && !inLoadingOrInitState) {
+      let statusDisplay = (!self.state.universeCreated || inLoadingOrInitState) ? loadingIcon : warningIcon;
+      if (self.state.universeCreated && isDefinedNotNull(currentUniverse.data) && !inLoadingOrInitState) {
         if (isDefinedNotNull(universePerNodeStatus.data) &&
             universePerNodeStatus.data.universe_uuid === currentUniverse.data.universeUUID &&
             isDefinedNotNull(universePerNodeStatus.data[row.name]) &&

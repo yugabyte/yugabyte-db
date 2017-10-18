@@ -9,7 +9,7 @@ import { FETCH_UNIVERSE_INFO, RESET_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_RESPONSE,
   CONFIGURE_UNIVERSE_RESOURCES, CONFIGURE_UNIVERSE_RESOURCES_RESPONSE, ROLLING_UPGRADE,
   ROLLING_UPGRADE_RESPONSE, RESET_ROLLING_UPGRADE, SET_UNIVERSE_METRICS, SET_PLACEMENT_STATUS,
   RESET_UNIVERSE_CONFIGURATION, FETCH_UNIVERSE_METADATA, GET_UNIVERSE_PER_NODE_STATUS,
-  GET_UNIVERSE_PER_NODE_STATUS_RESPONSE, GET_MASTER_LEADER, GET_MASTER_LEADER_RESPONSE
+  GET_UNIVERSE_PER_NODE_STATUS_RESPONSE, GET_MASTER_LEADER, GET_MASTER_LEADER_RESPONSE, RESET_MASTER_LEADER
 } from '../actions/universe';
 import _ from 'lodash';
 import { getInitialState, setLoadingState, setPromiseResponse, setSuccessState } from 'utils/PromiseUtils.js';
@@ -30,7 +30,8 @@ const INITIAL_STATE = {
   currentPlacementStatus: null,
   fetchUniverseMetadata: false,
   universeTasks: getInitialState([]),
-  universePerNodeStatus: getInitialState({})
+  universePerNodeStatus: getInitialState({}),
+  universeMasterLeader: getInitialState({})
 };
 
 export default function(state = INITIAL_STATE, action) {
@@ -77,6 +78,8 @@ export default function(state = INITIAL_STATE, action) {
       return setLoadingState(state, "universeMasterLeader", {});
     case GET_MASTER_LEADER_RESPONSE:
       return setPromiseResponse(state, "universeMasterLeader", action);
+    case RESET_MASTER_LEADER:
+      return { ...state, universeMasterLeader: getInitialState({})};
 
     // Universe Tasks Operations
     case FETCH_UNIVERSE_TASKS:
