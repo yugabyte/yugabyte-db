@@ -35,6 +35,7 @@ class UniverseDetail extends Component {
   componentWillUnmount() {
     this.props.resetUniverseInfo();
     this.props.resetUniverseTasks();
+    this.props.resetMasterLeader();
   }
 
   componentWillMount() {
@@ -46,7 +47,6 @@ class UniverseDetail extends Component {
         uuid = this.props.universeUUID;
       }
       this.props.getUniverseInfo(uuid);
-      this.props.getMasterLeader(uuid);
       this.props.fetchUniverseTasks(uuid);
     }
   }

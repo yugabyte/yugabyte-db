@@ -33,6 +33,7 @@ export const DELETE_UNIVERSE_RESPONSE = 'DELETE_UNIVERSE_RESPONSE';
 // Get the Master Leader for a Universe
 export const GET_MASTER_LEADER = 'GET_MASTER_LEADER';
 export const GET_MASTER_LEADER_RESPONSE = 'GET_MASTER_LEADER_RESPONSE';
+export const RESET_MASTER_LEADER = 'RESET_MASTER_LEADER';
 
 // Commissioner Tasks for Universe
 export const FETCH_UNIVERSE_TASKS = 'FETCH_UNIVERSE_TASKS';
@@ -315,6 +316,12 @@ export function getMasterLeaderResponse(response) {
   return {
     type: GET_MASTER_LEADER_RESPONSE,
     payload: response
+  };
+}
+
+export function resetMasterLeader() {
+  return {
+    type: RESET_MASTER_LEADER
   };
 }
 
