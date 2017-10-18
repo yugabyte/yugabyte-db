@@ -149,6 +149,7 @@ Status ParseYBMessage(const Slice& buf,
   }
 
   CodedInputStream in(buf.data(), buf.size());
+  in.SetTotalBytesLimit(FLAGS_rpc_max_message_size, FLAGS_rpc_max_message_size*3/4);
 
   uint32_t header_len;
   if (PREDICT_FALSE(!in.ReadVarint32(&header_len))) {

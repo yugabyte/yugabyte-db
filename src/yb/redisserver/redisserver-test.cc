@@ -452,15 +452,43 @@ TEST_F(TestRedisService, SimpleCommandInline) {
 }
 
 TEST_F(TestRedisService, HugeCommandInline) {
-  const int kStringRepeats = 32 * 1024 * 1024;
+  const int kStringRepeats = 64 * 1024 * 1024;
   string value(kStringRepeats, 'T');
   DoRedisTestOk(__LINE__, {"SET", "foo", value});
+  SyncClient();
   DoRedisTestBulkString(__LINE__, {"GET", "foo"}, value);
+  SyncClient();
   DoRedisTestOk(__LINE__, {"SET", "foo", "Test"});
   DoRedisTestBulkString(__LINE__, {"GET", "foo"}, "Test");
   SyncClient();
-  VerifyCallbacks();
-  DoRedisTestExpectError(__LINE__, {"SET", "foo", value+value});
+  DoRedisTestExpectError(__LINE__, {"SET", "foo", "Too much" + value});
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"HSET", "map_key", "subkey1", value}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"HSET", "map_key", "subkey2", value}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"HSET", "map_key", "subkey3", value}, 1);
+  SyncClient();
+  DoRedisTestArray(__LINE__, {"HGETALL", "map_key"}, {"subkey1", value, "subkey2", value,
+      "subkey3", value});
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"HSET", "map_key", "subkey4", value}, 1);
+  DoRedisTestExpectError(__LINE__, {"HGETALL", "map_key"});
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"DEL", "map_key"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"DEL", "foo"}, 1);
+  SyncClient();
+  value[0]  = 'A';
+  DoRedisTestOk(__LINE__, {"HMSET", "map_key1", "subkey1", value, "subkey2", value,
+      "subkey3", value});
+  SyncClient();
+  DoRedisTestArray(__LINE__, {"HGETALL", "map_key1"}, {"subkey1", value, "subkey2", value,
+      "subkey3", value});
+  SyncClient();
+  value[0]  = 'B';
+  DoRedisTestExpectError(__LINE__, {"HMSET", "map_key1", "subkey1", value, "subkey2",
+      value, "subkey3", value, "subkey4", value});
   SyncClient();
   VerifyCallbacks();
 }

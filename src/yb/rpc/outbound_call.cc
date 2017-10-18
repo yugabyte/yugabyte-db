@@ -46,6 +46,7 @@
 #include "yb/rpc/serialization.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/kernel_stack_watchdog.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/trace.h"
 
 METRIC_DEFINE_histogram(
@@ -313,7 +314,7 @@ void OutboundCall::SetResponse(CallResponse&& resp) {
     // TODO: here we're deserializing the call response within the reactor thread,
     // which isn't great, since it would block processing of other RPCs in parallel.
     // Should look into a way to avoid this.
-    if (!response_->ParseFromArray(r.data(), r.size())) {
+    if (!pb_util::ParseFromArray(response_, r.data(), r.size()).IsOk()) {
       SetFailed(STATUS(IOError, "Invalid response, missing fields",
                                 response_->InitializationErrorString()));
       return;
@@ -324,7 +325,7 @@ void OutboundCall::SetResponse(CallResponse&& resp) {
   } else {
     // Error
     gscoped_ptr<ErrorStatusPB> err(new ErrorStatusPB());
-    if (!err->ParseFromArray(r.data(), r.size())) {
+    if (!pb_util::ParseFromArray(err.get(), r.data(), r.size()).IsOk()) {
       SetFailed(STATUS(IOError, "Was an RPC error but could not parse error response",
                                 err->InitializationErrorString()));
       return;

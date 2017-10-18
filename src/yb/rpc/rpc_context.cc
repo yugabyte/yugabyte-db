@@ -52,6 +52,7 @@
 #include "yb/util/pb_util.h"
 
 using google::protobuf::Message;
+DECLARE_int32(rpc_max_message_size);
 
 namespace yb {
 namespace rpc {
@@ -126,6 +127,10 @@ RpcContext::RpcContext(std::shared_ptr<LocalYBInboundCall> call,
 }
 
 void RpcContext::RespondSuccess() {
+  if (response_pb_->ByteSize() > FLAGS_rpc_max_message_size) {
+    RespondFailure(STATUS(InvalidArgument, "RPC message too long"));
+    return;
+  }
   call_->RecordHandlingCompleted(metrics_.handler_latency);
   TRACE_EVENT_ASYNC_END2("rpc_call", "RPC", this,
                          "response", TracePb(*response_pb_),

@@ -70,10 +70,12 @@
 
 using yb::operator"" _MB;
 
-// The maximum size of the protobuf is 64MB by default, and this limits the size of the rpc
-// Since we intend to support value sizes of 32MB, with the additional overhead we limit
-// the consensus batch size to 33 MB. An alternate value below 64MB would work.
-DEFINE_int32(consensus_max_batch_size_bytes, 33_MB,
+DECLARE_int32(rpc_max_message_size);
+
+// Since we intend to support three strings of sizes of up to 64MB,
+// with the additional overhead we limit the consensus batch size to 254 MB.
+// This gives us room for overhead in the rpc layer
+DEFINE_int32(consensus_max_batch_size_bytes, 254_MB,
              "The maximum per-tablet RPC batch size when updating peers.");
 TAG_FLAG(consensus_max_batch_size_bytes, advanced);
 

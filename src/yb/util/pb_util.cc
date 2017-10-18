@@ -187,7 +187,10 @@ bool ParseFromSequentialFile(MessageLite *msg, SequentialFile *rfile) {
 }
 
 Status ParseFromArray(MessageLite* msg, const uint8_t* data, uint32_t length) {
-  if (!msg->ParseFromArray(data, length)) {
+  CodedInputStream in(data, length);
+  in.SetTotalBytesLimit(511 * 1024 * 1024, -1);
+  // Parse data into protobuf message
+  if (!msg->ParseFromCodedStream(&in)) {
     return STATUS(Corruption, "Error parsing msg", InitializationErrorMessage("parse", *msg));
   }
   return Status::OK();

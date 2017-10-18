@@ -26,6 +26,14 @@
 #include "yb/util/decimal.h"
 #include "yb/util/enums.h"
 
+#include "yb/util/size_literals.h"
+
+using yb::operator"" _MB;
+
+// Maximumum value size is 64MB
+DEFINE_int32(yql_max_value_size, 64_MB,
+             "Maximum size of a value in the Yugabyte Query Layer");
+
 // The list of unsupported datypes to use in switch statements
 #define QL_UNSUPPORTED_TYPES_IN_SWITCH \
   case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED; \
@@ -402,6 +410,9 @@ Status QLValue::Deserialize(
   if (len == -1) {
     SetNull();
     return Status::OK();
+  }
+  if (len > FLAGS_yql_max_value_size) {
+    return STATUS(InvalidArgument, "YQL value too long");
   }
 
   switch (ql_type->main()) {

@@ -30,6 +30,7 @@ using yb::cqlserver::CQLMessage;
 using namespace std::literals; // NOLINT
 using namespace std::placeholders;
 using yb::operator"" _KB;
+using yb::operator"" _MB;
 
 DECLARE_bool(rpc_dump_all_traces);
 DECLARE_int32(rpc_slow_query_threshold_ms);
@@ -37,6 +38,17 @@ DEFINE_int32(rpcz_max_cql_query_dump_size, 4_KB,
              "The maximum size of the CQL query string in the RPCZ dump.");
 DEFINE_int32(rpcz_max_cql_batch_dump_count, 4_KB,
              "The maximum number of CQL batch elements in the RPCZ dump.");
+
+DECLARE_int32(rpc_max_message_size);
+
+// Max msg length for CQL.
+// Since yb_rpc limit is 255MB, we limit consensensus size to 254MB,
+// and hence max cql message length to 253MB
+// This length corresponds to 3 strings with size of 64MB along with any additional fields
+// and overheads
+DEFINE_int32(max_message_length, 254_MB,
+             "The maximum message length of the cql message.");
+
 
 namespace yb {
 namespace cqlserver {
@@ -59,12 +71,12 @@ Status CQLConnectionContext::ProcessCalls(const rpc::ConnectionPtr& connection,
     // Extract the body length field in buf_[5..8] and update the total length of the frame.
     size_t body_length = NetworkByteOrder::Load32(pos + CQLMessage::kHeaderPosLength);
     size_t total_length = CQLMessage::kMessageHeaderLength + body_length;
-    if (total_length > CQLMessage::kMaxMessageLength) {
+    if (total_length > FLAGS_max_message_length) {
       return STATUS_SUBSTITUTE(NetworkError,
           "the frame had a length of $0, but we only support "
               "messages up to $1 bytes long.",
           total_length,
-          CQLMessage::kMaxMessageLength);
+          FLAGS_max_message_length);
     }
 
     if (pos + total_length > end) {
@@ -83,7 +95,7 @@ Status CQLConnectionContext::ProcessCalls(const rpc::ConnectionPtr& connection,
 }
 
 size_t CQLConnectionContext::BufferLimit() {
-  return CQLMessage::kMaxMessageLength;
+  return FLAGS_max_message_length;
 }
 
 Status CQLConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& connection, Slice slice) {

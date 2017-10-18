@@ -45,8 +45,8 @@ public class TestInsert extends BaseCQLTest {
 
   @Test
   public void testLargeInsert() throws Exception {
-    final int STRING_SIZE = 32 * 1024 * 1024;
-    final String errorMessage = "Connection has been closed";
+    final int STRING_SIZE = 64 * 1024 * 1024;
+    final String errorMessage = "YQL value too long";
     String tableName = "test_large_insert";
     String create_stmt = String.format(
         "CREATE TABLE %s (h int PRIMARY KEY, c varchar);", tableName);
@@ -61,9 +61,9 @@ public class TestInsert extends BaseCQLTest {
     assertEquals(1, row.getInt(0));
     assertEquals(value, row.getString(1));
     try {
-      session.execute(ins_stmt, value+value);
+      session.execute(ins_stmt, value+"Too much");
     }
-    catch (TransportException e) {
+    catch (Exception e) {
       exceptionString = e.getCause().getMessage();
     }
     assertTrue(exceptionString.contains(errorMessage));

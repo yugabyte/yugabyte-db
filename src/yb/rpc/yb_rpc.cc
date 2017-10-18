@@ -15,6 +15,8 @@
 
 #include "yb/rpc/yb_rpc.h"
 
+#include <google/protobuf/io/coded_stream.h>
+
 #include "yb/gutil/endian.h"
 
 #include "yb/rpc/auth_store.h"
@@ -26,20 +28,22 @@
 #include "yb/rpc/sasl_server.h"
 #include "yb/rpc/serialization.h"
 
+#include "yb/util/flag_tags.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/memory/memory.h"
 
+using google::protobuf::io::CodedInputStream;
 using yb::operator"" _MB;
 
 DECLARE_bool(rpc_dump_all_traces);
 // Maximum size of RPC should be larger than size of consensus batch
 // At each layer, we embed the "message" from the previous layer.
-// In order to send a string of 32MB, the request from cql/redis will be larger
+// In order to send three strings of 64, the request from cql/redis will be larger
 // than that because we will have overheads from that layer.
-// Hence, we have a limit of 33MB at the consensus layer.
-// The rpc layer adds its own headers, so we limit the rpc message size to 34MB.
-DEFINE_int32(rpc_max_message_size, 34_MB,
+// Hence, we have a limit of 254MB at the consensus layer.
+// The rpc layer adds its own headers, so we limit the rpc message size to 255MB.
+DEFINE_int32(rpc_max_message_size, 255_MB,
              "The maximum size of a message of any RPC that the server will accept.");
 
 using std::placeholders::_1;
@@ -318,7 +322,9 @@ void YBInboundCall::Serialize(std::deque<RefCntBuffer>* output) const {
 
 Status YBInboundCall::ParseParam(google::protobuf::Message *message) {
   Slice param(serialized_request());
-  if (PREDICT_FALSE(!message->ParseFromArray(param.data(), param.size()))) {
+  CodedInputStream in(param.data(), param.size());
+  in.SetTotalBytesLimit(FLAGS_rpc_max_message_size, FLAGS_rpc_max_message_size*3/4);
+  if (PREDICT_FALSE(!message->ParseFromCodedStream(&in))) {
     string err = Format("Invalid parameter for call $0: $1",
                         remote_method_.ToString(),
                         message->InitializationErrorString().c_str());

@@ -47,7 +47,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 
-DEFINE_int64(tablet_operation_memory_limit_mb, 64,
+DEFINE_int64(tablet_operation_memory_limit_mb, 1024,
              "Maximum amount of memory that may be consumed by all in-flight "
              "operations belonging to a particular tablet. When this limit "
              "is reached, new operations will be rejected and clients will "

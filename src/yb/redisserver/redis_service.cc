@@ -99,9 +99,15 @@ constexpr int32_t kDefaultRedisServiceTimeoutMs = 60000;
 DEFINE_int32(redis_service_yb_client_timeout_millis, kDefaultRedisServiceTimeoutMs,
              "Timeout in milliseconds for RPC calls from Redis service to master/tserver");
 
-// In order to support 32MB strings, we add an overhead for the redis command for headers
-DEFINE_int32(redis_max_command_size, 33_MB,
+// In order to support up to three 64MB strings along with other strings,
+// we have the total size of a redis command at 253_MB, which is less than the consensus size
+// to account for the headers in the consensus layer.
+DEFINE_int32(redis_max_command_size, 253_MB,
              "Maximum size of the command in redis");
+
+// Maximumum value size is 64MB
+DEFINE_int32(redis_max_value_size, 64_MB,
+             "Maximum size of the value in redis");
 
 DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
 
@@ -653,6 +659,15 @@ class RedisServiceImpl::Impl {
     }
   }
 
+  bool CheckArgumentSizeOK(const RedisClientCommand& cmd_args) {
+    for (Slice arg : cmd_args) {
+      if (arg.size() > FLAGS_redis_max_value_size) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   void LocalCommand(
       const RedisCommandInfo& info,
       size_t idx,
@@ -889,6 +904,8 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
       YB_LOG_EVERY_N_SECS(ERROR, 60) << "Requested command " << c[0]
                                      << " has wrong number of arguments.";
       RespondWithFailure(call, idx, "Wrong number of arguments.");
+    } else if (!CheckArgumentSizeOK(c)) {
+      RespondWithFailure(call, idx, "Redis argument too long.");
     } else {
       // Handle the call.
       cmd_info->functor(*cmd_info, idx, context.get());
