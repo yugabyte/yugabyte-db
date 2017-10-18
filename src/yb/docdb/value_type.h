@@ -117,6 +117,26 @@ inline bool StrongIntent(IntentType intent) {
   return (static_cast<int>(intent) & kStrongIntentFlag) != 0;
 }
 
+inline bool WeakIntent(IntentType intent) {
+  return !StrongIntent(intent);
+}
+
+inline bool WriteIntent(IntentType intent) {
+  return (static_cast<int>(intent) & kWriteIntentFlag) != 0;
+}
+
+inline bool ReadIntent(IntentType intent) {
+  return !WriteIntent(intent);
+}
+
+inline bool SnapshotIntent(IntentType intent) {
+  return (static_cast<int>(intent) & kSnapshotIntentFlag) != 0;
+}
+
+inline bool SerializableIntent(IntentType intent) {
+  return !SnapshotIntent(intent);
+}
+
 // All primitive value types fall into this range, but not all value types in this range are
 // primitive (e.g. object and tombstone are not).
 

@@ -163,6 +163,8 @@ using yb::docdb::RedisWriteOperation;
 using yb::docdb::QLWriteOperation;
 using yb::docdb::DocDBCompactionFilterFactory;
 using yb::docdb::KuduWriteOperation;
+using yb::docdb::IntentKind;
+using yb::docdb::IntentTypePair;
 
 // Make sure RocksDB does not disappear while we're using it. This is used at the top level of
 // functions that perform RocksDB operations (directly or indirectly). Once a function is using
@@ -901,35 +903,6 @@ void AppendIntentKeySuffix(docdb::IntentType intent_type,
   AppendDocHybridTime(doc_ht, key);
 }
 
-enum class IntentKind {
-  kWeak,
-  kStrong
-};
-
-struct IntentTypePair {
-  docdb::IntentType strong;
-  docdb::IntentType weak;
-
-  docdb::IntentType operator[](IntentKind kind) {
-    return kind == IntentKind::kWeak ? weak : strong;
-  }
-};
-
-IntentTypePair WriteIntentsForIsolationLevel(
-    IsolationLevel level) {
-  switch(level) {
-  case IsolationLevel::SNAPSHOT_ISOLATION:
-    return { docdb::IntentType::kStrongSnapshotWrite,
-             docdb::IntentType::kWeakSnapshotWrite };
-  case IsolationLevel::SERIALIZABLE_ISOLATION:
-    return { docdb::IntentType::kStrongSerializableRead,
-             docdb::IntentType::kWeakSerializableWrite };
-  case IsolationLevel::NON_TRANSACTIONAL:
-    FATAL_INVALID_ENUM_VALUE(IsolationLevel, level);
-  }
-  FATAL_INVALID_ENUM_VALUE(IsolationLevel, level);
-}
-
 void AppendTransactionId(const TransactionId& id, std::string* value) {
   value->push_back(static_cast<char>(ValueType::kTransactionId));
   value->append(pointer_cast<const char*>(id.data), id.size());
@@ -997,7 +970,7 @@ void Tablet::PrepareTransactionWriteBatch(
       put_batch.transaction().transaction_id());
   CHECK_OK(transaction_id);
   auto isolation_level = transaction_participant()->IsolationLevel(rocksdb_.get(), *transaction_id);
-  auto intent_types = WriteIntentsForIsolationLevel(isolation_level);
+  auto intent_types = docdb::WriteIntentsForIsolationLevel(isolation_level);
 
   // TODO(dtxn) weak & strong intent in one batch
   std::unordered_set<std::string> weak_intents;
@@ -2651,7 +2624,7 @@ class TransactionConflictResolver {
       }
     }
 
-    intent_types_ = WriteIntentsForIsolationLevel(isolation_level);
+    intent_types_ = docdb::WriteIntentsForIsolationLevel(isolation_level);
 
     RETURN_NOT_OK(EnumerateIntents(
         write_batch_.kv_pairs(),

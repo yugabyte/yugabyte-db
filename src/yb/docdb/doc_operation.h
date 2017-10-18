@@ -41,7 +41,7 @@ class DocOperation {
   // QLWriteOperation for a DML with a "... IF <condition> ..." clause needs to read the row to
   // evaluate the condition before the write and needs a read snapshot for a consistent read.
   virtual bool RequireReadSnapshot() const = 0;
-  virtual std::list<DocPath> DocPathsToLock() const = 0;
+  virtual void GetDocPathsToLock(std::list<DocPath> *paths, IsolationLevel *level) const = 0;
   virtual CHECKED_STATUS Apply(
       DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) = 0;
 };
@@ -53,7 +53,7 @@ class KuduWriteOperation: public DocOperation {
 
   bool RequireReadSnapshot() const override { return false; }
 
-  std::list<DocPath> DocPathsToLock() const override;
+  void GetDocPathsToLock(std::list<DocPath> *paths, IsolationLevel *level) const override;
 
   CHECKED_STATUS Apply(
       DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) override;
@@ -74,7 +74,7 @@ class RedisWriteOperation: public DocOperation {
   CHECKED_STATUS Apply(
       DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) override;
 
-  std::list<DocPath> DocPathsToLock() const override;
+  void GetDocPathsToLock(std::list<DocPath> *paths, IsolationLevel *level) const override;
 
   const RedisResponsePB &response();
 
@@ -126,9 +126,9 @@ class QLWriteOperation : public DocOperation {
   // Construct a QLWriteOperation. Content of request will be swapped out by the constructor.
   QLWriteOperation(QLWriteRequestPB* request, const Schema& schema, QLResponsePB* response);
 
-  bool RequireReadSnapshot() const override;
+  bool RequireReadSnapshot() const override { return require_read_; }
 
-  std::list<DocPath> DocPathsToLock() const override;
+  void GetDocPathsToLock(std::list<DocPath> *paths, IsolationLevel *level) const override;
 
   CHECKED_STATUS Apply(
       DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) override;
@@ -178,6 +178,9 @@ class QLWriteOperation : public DocOperation {
   // plus the values of all columns referenced in the if-clause if the condition is not satisfied.
   std::unique_ptr<Schema> projection_;
   std::unique_ptr<QLRowBlock> rowblock_;
+
+  // Does this write operation require a read?
+  const bool require_read_;
 };
 
 class QLReadOperation {

@@ -57,6 +57,9 @@ class SharedLockManager {
     Unlock({ {std::move(key), lock_type} });
   }
 
+  // Combine two intents and return the strongest lock type that covers both.
+  static IntentType CombineIntents(IntentType i1, IntentType i2);
+
   // Whether or not the state is possible
   static bool VerifyState(const LockState& state);
   static std::string ToString(const LockState& state);

@@ -86,6 +86,28 @@ enum class ListExtendOrder {
   PREPEND = 1
 };
 
+enum class IntentKind {
+  kWeak,
+  kStrong
+};
+
+// A pair of weak/strong intent types for a given isolation level.
+struct IntentTypePair {
+  IntentType strong;
+  IntentType weak;
+
+  IntentType operator[](IntentKind kind) {
+    switch (kind) {
+      case IntentKind::kWeak: return weak;
+      case IntentKind::kStrong: return strong;
+    }
+    FATAL_INVALID_ENUM_VALUE(IntentKind, kind);
+  }
+};
+
+// Return a pair of weak/strong intent types for the isolation level.
+IntentTypePair WriteIntentsForIsolationLevel(IsolationLevel level);
+
 // The DocWriteBatch class is used to build a RocksDB write batch for a DocDB batch of operations
 // that may include a mix or write (set) or delete operations. It may read from RocksDB while
 // writing, and builds up an internal rocksdb::WriteBatch while handling the operations.

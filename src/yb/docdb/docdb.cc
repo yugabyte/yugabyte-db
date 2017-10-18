@@ -74,8 +74,28 @@ void SeekPastSubKey(const SubDocKey& sub_doc_key, rocksdb::Iterator* iter) {
   SeekForward(key_bytes, iter);
 }
 
+void ApplyIntent(LockBatch *keys_locked, const string& lock_string, const IntentType intent) {
+  auto itr = keys_locked->find(lock_string);
+  if (itr == keys_locked->end()) {
+    keys_locked->emplace(lock_string, intent);
+  } else {
+    itr->second = SharedLockManager::CombineIntents(itr->second, intent);
+  }
+}
+
 }  // namespace
 
+IntentTypePair WriteIntentsForIsolationLevel(const IsolationLevel level) {
+  switch (level) {
+    case IsolationLevel::SNAPSHOT_ISOLATION:
+      return { IntentType::kStrongSnapshotWrite, IntentType::kWeakSnapshotWrite };
+    case IsolationLevel::SERIALIZABLE_ISOLATION:
+      return { IntentType::kStrongSerializableWrite, IntentType::kWeakSerializableWrite };
+    case IsolationLevel::NON_TRANSACTIONAL:
+      FATAL_INVALID_ENUM_VALUE(IsolationLevel, level);
+  }
+  FATAL_INVALID_ENUM_VALUE(IsolationLevel, level);
+}
 
 void PrepareDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_ops,
                               SharedLockManager *lock_manager,
@@ -83,24 +103,20 @@ void PrepareDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_
                               bool *need_read_snapshot) {
   *need_read_snapshot = false;
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
-    const bool require_read_snapshot = doc_op->RequireReadSnapshot();
-    const list<DocPath> doc_paths = doc_op->DocPathsToLock();
-    // For each path to lock, acquire snapshot lock if the write operation requires read-snapshot.
-    // Otherwise, acquire serializable lock.
+    list<DocPath> doc_paths;
+    IsolationLevel level;
+    doc_op->GetDocPathsToLock(&doc_paths, &level);
+    const IntentTypePair intent_types = WriteIntentsForIsolationLevel(level);
+
     for (const auto& doc_path : doc_paths) {
       KeyBytes current_prefix = doc_path.encoded_doc_key();
       for (int i = 0; i < doc_path.num_subkeys(); i++) {
-        const string& lock_string = current_prefix.AsStringRef();
-        keys_locked->emplace(lock_string,
-                             require_read_snapshot ? IntentType::kWeakSnapshotWrite
-                                                   : IntentType::kWeakSerializableWrite);
+        ApplyIntent(keys_locked, current_prefix.AsStringRef(), intent_types.weak);
         doc_path.subkey(i).AppendToKey(&current_prefix);
       }
-      const string& lock_string = current_prefix.AsStringRef();
-      (*keys_locked)[lock_string] = require_read_snapshot ? IntentType::kStrongSnapshotWrite
-                                                          : IntentType::kStrongSerializableWrite;
+      ApplyIntent(keys_locked, current_prefix.AsStringRef(), intent_types.strong);
     }
-    if (require_read_snapshot) {
+    if (doc_op->RequireReadSnapshot()) {
       *need_read_snapshot = true;
     }
   }

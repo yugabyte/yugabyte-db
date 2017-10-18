@@ -115,6 +115,83 @@ std::string SharedLockManager::ToString(const LockState& state) {
   return result;
 }
 
+// Combine two intents and return the strongest lock type that covers both. The following rules
+// apply:
+// - strong > weak.
+// - snapshot isolation > serializable write
+// - snapshot isolation > serializable read
+// - serializable read + serializable write = snapshot isolation
+IntentType SharedLockManager::CombineIntents(const IntentType i1, const IntentType i2) {
+  switch (i1) {
+    case IntentType::kWeakSerializableRead:
+      switch (i2) {
+        case IntentType::kWeakSerializableRead:    return IntentType::kWeakSerializableRead;
+        case IntentType::kStrongSerializableRead:  return IntentType::kStrongSerializableRead;
+        case IntentType::kWeakSerializableWrite:   return IntentType::kWeakSnapshotWrite;
+        case IntentType::kStrongSerializableWrite: return IntentType::kStrongSnapshotWrite;
+        case IntentType::kWeakSnapshotWrite:       return IntentType::kWeakSnapshotWrite;
+        case IntentType::kStrongSnapshotWrite:     return IntentType::kStrongSnapshotWrite;
+      }
+      FATAL_INVALID_ENUM_VALUE(IntentType, i2);
+
+    case IntentType::kStrongSerializableRead:
+      switch (i2) {
+        case IntentType::kWeakSerializableRead:    return IntentType::kStrongSerializableRead;
+        case IntentType::kStrongSerializableRead:  return IntentType::kStrongSerializableRead;
+        case IntentType::kWeakSerializableWrite:   return IntentType::kStrongSnapshotWrite;
+        case IntentType::kStrongSerializableWrite: return IntentType::kStrongSnapshotWrite;
+        case IntentType::kWeakSnapshotWrite:       return IntentType::kStrongSnapshotWrite;
+        case IntentType::kStrongSnapshotWrite:     return IntentType::kStrongSnapshotWrite;
+      }
+      FATAL_INVALID_ENUM_VALUE(IntentType, i2);
+
+    case IntentType::kWeakSerializableWrite:
+      switch (i2) {
+        case IntentType::kWeakSerializableRead:    return IntentType::kWeakSnapshotWrite;
+        case IntentType::kStrongSerializableRead:  return IntentType::kStrongSnapshotWrite;
+        case IntentType::kWeakSerializableWrite:   return IntentType::kWeakSerializableWrite;
+        case IntentType::kStrongSerializableWrite: return IntentType::kStrongSerializableWrite;
+        case IntentType::kWeakSnapshotWrite:       return IntentType::kWeakSnapshotWrite;
+        case IntentType::kStrongSnapshotWrite:     return IntentType::kStrongSnapshotWrite;
+      }
+      FATAL_INVALID_ENUM_VALUE(IntentType, i2);
+
+    case IntentType::kStrongSerializableWrite:
+      switch (i2) {
+        case IntentType::kWeakSerializableRead:    return IntentType::kStrongSnapshotWrite;
+        case IntentType::kStrongSerializableRead:  return IntentType::kStrongSnapshotWrite;
+        case IntentType::kWeakSerializableWrite:   return IntentType::kStrongSerializableWrite;
+        case IntentType::kStrongSerializableWrite: return IntentType::kStrongSerializableWrite;
+        case IntentType::kWeakSnapshotWrite:       return IntentType::kStrongSnapshotWrite;
+        case IntentType::kStrongSnapshotWrite:     return IntentType::kStrongSnapshotWrite;
+      }
+      FATAL_INVALID_ENUM_VALUE(IntentType, i2);
+
+    case IntentType::kWeakSnapshotWrite:
+      switch (i2) {
+        case IntentType::kWeakSerializableRead:    return IntentType::kWeakSnapshotWrite;
+        case IntentType::kStrongSerializableRead:  return IntentType::kStrongSnapshotWrite;
+        case IntentType::kWeakSerializableWrite:   return IntentType::kWeakSnapshotWrite;
+        case IntentType::kStrongSerializableWrite: return IntentType::kStrongSnapshotWrite;
+        case IntentType::kWeakSnapshotWrite:       return IntentType::kWeakSnapshotWrite;
+        case IntentType::kStrongSnapshotWrite:     return IntentType::kStrongSnapshotWrite;
+      }
+      FATAL_INVALID_ENUM_VALUE(IntentType, i2);
+
+    case IntentType::kStrongSnapshotWrite:
+      switch (i2) {
+        case IntentType::kWeakSerializableRead:    return IntentType::kStrongSnapshotWrite;
+        case IntentType::kStrongSerializableRead:  return IntentType::kStrongSnapshotWrite;
+        case IntentType::kWeakSerializableWrite:   return IntentType::kStrongSnapshotWrite;
+        case IntentType::kStrongSerializableWrite: return IntentType::kStrongSnapshotWrite;
+        case IntentType::kWeakSnapshotWrite:       return IntentType::kStrongSnapshotWrite;
+        case IntentType::kStrongSnapshotWrite:     return IntentType::kStrongSnapshotWrite;
+      }
+      FATAL_INVALID_ENUM_VALUE(IntentType, i2);
+  }
+  FATAL_INVALID_ENUM_VALUE(IntentType, i1);
+}
+
 void SharedLockManager::LockEntry::Lock(IntentType lock_type) {
   // TODO(bojanserafimov): Implement CAS fast path. Only wait when CAS fails.
   int type_idx = static_cast<size_t>(lock_type);

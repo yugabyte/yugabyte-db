@@ -46,8 +46,9 @@ using std::set;
 using std::list;
 using strings::Substitute;
 
-list<DocPath> KuduWriteOperation::DocPathsToLock() const {
-  return { doc_path_ };
+void KuduWriteOperation::GetDocPathsToLock(list<DocPath> *paths, IsolationLevel *level) const {
+  paths->push_back(doc_path_);
+  *level = IsolationLevel::SNAPSHOT_ISOLATION;
 }
 
 Status KuduWriteOperation::Apply(
@@ -55,9 +56,10 @@ Status KuduWriteOperation::Apply(
   return doc_write_batch->SetPrimitive(doc_path_, value_, InitMarkerBehavior::OPTIONAL);
 }
 
-list<DocPath> RedisWriteOperation::DocPathsToLock() const {
-  return {
-    DocPath::DocPathFromRedisKey(request_.key_value().hash_code(), request_.key_value().key()) };
+void RedisWriteOperation::GetDocPathsToLock(list<DocPath> *paths, IsolationLevel *level) const {
+  paths->push_back(DocPath::DocPathFromRedisKey(request_.key_value().hash_code(),
+                                                request_.key_value().key()));
+  *level = IsolationLevel::SNAPSHOT_ISOLATION;
 }
 
 Status GetRedisValueType(
@@ -731,6 +733,17 @@ const RedisResponsePB& RedisReadOperation::response() {
 
 namespace {
 
+bool RequireRead(const QLWriteRequestPB& request) {
+  // A QLWriteOperation requires a read if it contains an IF clause or an UPDATE assignment that
+  // involves an expresion with a column reference. If the IF clause contains a condition that
+  // involves a column reference, the column will be included in "column_refs". However, we cannot
+  // rely on non-empty "column_ref" alone to decide if a read is required becaue "IF EXISTS" and
+  // "IF NOT EXISTS" do not involve a column reference explicitly.
+  return request.has_if_expr()
+      || request.has_column_refs() && (!request.column_refs().ids().empty() ||
+                                       !request.column_refs().static_ids().empty());
+}
+
 // Create projection schemas of static and non-static columns from a rowblock projection schema
 // (for read) and a WHERE / IF condition (for read / write). "schema" is the full table schema
 // and "rowblock_schema" is the selected columns from which we are splitting into static and
@@ -808,7 +821,7 @@ void JoinStaticRow(
 
 QLWriteOperation::QLWriteOperation(
     QLWriteRequestPB* request, const Schema& schema, QLResponsePB* response)
-    : schema_(schema), response_(response) {
+    : schema_(schema), response_(response), require_read_(RequireRead(*request)) {
   request_.Swap(request);
   // Determine if static / non-static columns are being written.
   bool write_static_columns = false;
@@ -867,23 +880,19 @@ Status QLWriteOperation::InitializeKeys(const bool hashed_key, const bool primar
   return Status::OK();
 }
 
-bool QLWriteOperation::RequireReadSnapshot() const {
-  // Because "IF EXISTS" and "IF NOT EXISTS" require reading primary key columns, we must require
-  // a snapshot. The "column_refs" only contains the IDs that QL statements refers to. This field
-  // does not contains columns that DocDB itself chooses to read.
-  return
-      request_.has_if_expr() ||
-      (request_.has_column_refs() && (!request_.column_refs().ids().empty() ||
-                                      !request_.column_refs().static_ids().empty()));
-}
-
-list<DocPath> QLWriteOperation::DocPathsToLock() const {
-  list<DocPath> paths;
+void QLWriteOperation::GetDocPathsToLock(list<DocPath> *paths, IsolationLevel *level) const {
   if (hashed_doc_path_ != nullptr)
-    paths.push_back(*hashed_doc_path_);
+    paths->push_back(*hashed_doc_path_);
   if (pk_doc_path_ != nullptr)
-    paths.push_back(*pk_doc_path_);
-  return paths;
+    paths->push_back(*pk_doc_path_);
+  // When this write operation requires a read, it requires a read snapshot so paths will be locked
+  // in snapshot isolation for consistency. Otherwise, pure writes will happen in serializable
+  // isolation so that they will serialize but do not conflict with one another.
+  //
+  // Currently, only keys that are being written are locked, no lock is taken on read at the
+  // snapshot isolation level.
+  *level = require_read_ ? IsolationLevel::SNAPSHOT_ISOLATION
+                         : IsolationLevel::SERIALIZABLE_ISOLATION;
 }
 
 Status QLWriteOperation::ReadColumns(rocksdb::DB *rocksdb,
@@ -989,7 +998,7 @@ Status QLWriteOperation::Apply(
                                        &rowblock_,
                                        &table_row,
                                        request_.query_id()));
-  } else if (RequireReadSnapshot()) {
+  } else if (require_read_) {
     RETURN_NOT_OK(ReadColumns(rocksdb, hybrid_time, nullptr, nullptr, &table_row,
                               request_.query_id()));
   }

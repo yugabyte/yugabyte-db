@@ -261,5 +261,75 @@ TEST_F(SharedLockManagerTest, RandomLockUnlockManyThreadsTest) {
   Run(2, 8);
 }
 
+namespace {
+
+// Returns true if c1 covers (is superset of) c2.
+inline bool Covers(const LockState& c1, const LockState& c2) {
+  return (c1 & c2) == c2;
+}
+
+} // namespace
+
+TEST_F(SharedLockManagerTest, CombineIntentsTest) {
+  // Verify the lock type returned from SharedLockManager::CombineIntents() that combines two
+  // intents satisfies the following rules:
+  // - strong > weak
+  // - snapshot isolation > serializable write
+  // - snapshot isolation > serializable read
+  // - serializable read + serializable write = snapshot isolation
+  for (const auto i1 : kIntentTypeList) {
+    for (const auto i2 : kIntentTypeList) {
+      const auto combined = SharedLockManager::CombineIntents(i1, i2);
+
+      // strong > weak:
+      //   If any of the input intents is strong intent, the combined intent must be strong.
+      //   Otherwise, it should be weak intent.
+      if (StrongIntent(i1) || StrongIntent(i2)) {
+        ASSERT_TRUE(StrongIntent(combined));
+      } else {
+        ASSERT_TRUE(WeakIntent(combined));
+      }
+
+      // snapshot isolation > serializable write
+      // snapshot isolation > serializable read:
+      //   If any of the inputs is snapshot isolation, the combined isolation must be snapshot also.
+      //   Otherwise, it can be serializable or snapshot isolation.
+      if (SnapshotIntent(i1) || SnapshotIntent(i1)) {
+        ASSERT_TRUE(SnapshotIntent(combined));
+      } else {
+        ASSERT_TRUE(SerializableIntent(combined) || SnapshotIntent(combined));
+      }
+
+      // serializable read + serializable write = snapshot isolation
+      if (SerializableIntent(i1) && SerializableIntent(i2) &&
+          (ReadIntent(i1) && WriteIntent(i2) || ReadIntent(i2) && WriteIntent(i1))) {
+        ASSERT_TRUE(SnapshotIntent(combined));
+      }
+
+      // If any of the input intent is write intent, combined intent must be write intent.
+      if (WriteIntent(i1) || WriteIntent(i2)) {
+        ASSERT_TRUE(WriteIntent(combined));
+      }
+
+      // Verify that the combined lock type covers the input intents' conflicts.
+      const LockState c1 = kIntentConflicts[static_cast<size_t>(i1)];
+      const LockState c2 = kIntentConflicts[static_cast<size_t>(i2)];
+      const LockState combined_conflicts = kIntentConflicts[static_cast<size_t>(combined)];
+      ASSERT_TRUE(Covers(combined_conflicts, c1)) << i1 << ", " << i2 << ", " << combined;
+      ASSERT_TRUE(Covers(combined_conflicts, c2)) << i1 << ", " << i2 << ", " << combined;
+
+      // Verify that the combined lock type's conflict set is the smallest among all matched
+      // lock types.
+      for (const auto i : kIntentTypeList) {
+        const LockState c = kIntentConflicts[static_cast<size_t>(i)];
+        if (Covers(c, c1) && Covers(c, c2)) {
+          ASSERT_LE(combined_conflicts.count(), kIntentConflicts[static_cast<size_t>(i)].count())
+              << i1 << ", " << i2 << ", " << combined;
+        }
+      }
+    }
+  }
+}
+
 } // namespace docdb
 } // namespace yb
