@@ -63,6 +63,7 @@ class UniverseForm extends Component {
     this.handleCancelButtonClick = this.handleCancelButtonClick.bind(this);
     this.handleSubmitButtonClick = this.handleSubmitButtonClick.bind(this);
     this.configureUniverseNodeList = this.configureUniverseNodeList.bind(this);
+    this.handleUniverseConfigure = this.handleUniverseConfigure.bind(this);
     this.getCurrentProvider = this.getCurrentProvider.bind(this);
     this.hasFieldChanged = this.hasFieldChanged.bind(this);
     this.getCurrentUserIntent = this.getCurrentUserIntent.bind(this);
@@ -167,24 +168,24 @@ class UniverseForm extends Component {
       spotPrice: currentState.spotPrice
     };
     if (isDefinedNotNull(currentState.instanceTypeSelected) && isNonEmptyArray(currentState.regionList)) {
-      this.props.cloud.providers.data.forEach(function (providerItem, idx) {
+      this.props.cloud.providers.data.forEach(function (providerItem) {
         if (providerItem.uuid === universeTaskParams.userIntent.provider) {
           universeTaskParams.userIntent.providerType = providerItem.code;
         }
       });
-      if (isNonEmptyArray(universeTaskParams.userIntent.regionList)) {
-        universeTaskParams.userIntent.regionList = formValues.regionList.map(function (item, idx) {
-          return item.value;
-        });
-      } else {
-        universeTaskParams.userIntent.regionList = [formValues.regionList.value];
-      }
-      if (isNonEmptyObject(currentUniverse.data)) {
-        if (!areIntentsEqual(currentUniverse.data.universeDetails.userIntent, universeTaskParams.userIntent)) {
-          this.props.submitConfigureUniverse(universeTaskParams);
-        } else {
-          this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
-        }
+      universeTaskParams.userIntent.regionList = formValues.regionList.map(item => item.value);
+      this.handleUniverseConfigure(universeTaskParams);
+    }
+  }
+
+  handleUniverseConfigure(universeTaskParams) {
+    const {universe: {currentUniverse}} = this.props;
+    if (isDefinedNotNull(this.state.instanceTypeSelected) && isNonEmptyArray(this.state.regionList) &&
+        (_.isEqual(this.state.spotPrice, normalizeToPositiveFloat(this.state.spotPrice)) ||
+        this.state.gettingSuggestedSpotPrice)) {
+      if (isNonEmptyObject(currentUniverse.data) &&
+        areIntentsEqual(currentUniverse.data.universeDetails.userIntent, universeTaskParams.userIntent)) {
+        this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
       } else {
         this.props.submitConfigureUniverse(universeTaskParams);
       }
@@ -422,8 +423,8 @@ class UniverseForm extends Component {
     }
   }
 
-  spotPriceChanged(val) {
-    this.setState({spotPrice: normalizeToPositiveFloat(val)});
+  spotPriceChanged(val, normalize) {
+    this.setState({spotPrice: normalize ? normalizeToPositiveFloat(val) : val});
   }
 
   componentWillReceiveProps(nextProps) {
@@ -698,9 +699,9 @@ class UniverseForm extends Component {
                  component={YBTextInputWithLabel}
                  label="Spot Price (Per Hour)"
                  isReadOnly={isFieldReadOnly || !this.state.useSpotPrice}
-                 normalizeOnBlur={normalizeToPositiveFloat}
+                 normalizeOnBlur={(val) => this.spotPriceChanged(val, true)}
                  initValue={this.state.spotPrice.toString()}
-                 onValueChanged={this.spotPriceChanged}/>
+                 onValueChanged={(val) => this.spotPriceChanged(val, false)}/>
         );
       }
       spotPriceToggle = (
