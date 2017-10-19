@@ -1,16 +1,10 @@
 body {
   margin-top: 0 !important; }
 
-@media (max-width: 1200px) {
-  .container {
-    width: 100%;
-  }
-}
-
 a.anchor {
   display: block;
-  height: 60px;
-  margin-top: -60px; }
+  height: 90px;
+  margin-top: -90px; }
 
 @media (min-width: 992px) {
   .container-fluid > .navbar-collapse {
@@ -24,6 +18,18 @@ a.anchor {
   @media screen and (max-width: 991px) {
     .nav-logo {
       height: 28px; } }
+
+@media screen and (max-width: 767px) {
+  .navbar-fixed-bottom .navbar-collapse, .navbar-fixed-top .navbar-collapse {
+    margin: 0 !important;
+    width: 100%;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.97);
+    max-height: 480px !important;
+    border: 0 !important;
+    border-radius: 12px; }
+    .navbar-fixed-bottom .navbar-collapse .navbar-text a, .navbar-fixed-top .navbar-collapse .navbar-text a {
+      color: #f75821 !important; } }
 
 .nav-bar {
   margin-bottom: 0 !important;
@@ -42,6 +48,11 @@ a.anchor {
       display: none !important; }
     .nav-bar.scrolled .navbar-text a {
       color: #f75821 !important; }
+    .nav-bar.scrolled .navbar-toggle {
+      border-color: #f75821 !important;
+      transform: scale(0.8, 0.8); }
+      .nav-bar.scrolled .navbar-toggle .icon-bar {
+        background-color: #f75821 !important; }
   .nav-bar .navbar-brand {
     height: 70px;
     padding: 15px; }
@@ -124,7 +135,7 @@ a.anchor {
         .nav-bar .navbar-text button.cta-button {
           font-size: 13px;
           font-weight: 500;
-          margin: -10px 0 -9px 0;
+          margin: -10px 0 -9px 6px;
           padding: 4px 12px 6px;
           border: none; } }
   .nav-bar .navbar-collapse {

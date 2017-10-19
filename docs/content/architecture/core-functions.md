@@ -1,6 +1,6 @@
 ---
 date: 2016-03-09T20:08:11+01:00
-title: Architecture - Core Functions
+title: Core Functions
 weight: 72
 ---
 

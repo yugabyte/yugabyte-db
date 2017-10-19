@@ -1,6 +1,6 @@
 ---
 date: 2016-03-09T00:11:02+01:00
-title: Enteprise Edition - Deploy Admin Console
+title: Deploy Admin Console
 weight: 30
 ---
 YugaByte Enterprise Edition is best fit for mission-critical deployments such as production or pre-production test. It starts out by first installing **YugaWare**, the YugaByte admin console, in a highly available mode and then spinning up YugaByte clusters on one or more datacenters (across public cloud and private on-premises datacenters).

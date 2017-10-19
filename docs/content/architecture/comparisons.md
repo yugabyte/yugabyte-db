@@ -1,6 +1,6 @@
 ---
 date: 2016-03-09T20:08:11+01:00
-title: Architecture - Comparisons with other DBs
+title: Comparisons with Other Databases
 weight: 74
 ---
 

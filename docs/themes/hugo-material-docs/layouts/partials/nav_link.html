@@ -5,7 +5,12 @@
   <a {{ if $isCurrent }}class="current"{{ end }} title="{{ $currentMenuEntry.Name }}" href="{{ $currentMenuEntry.URL | relURL}}">
   	{{ $currentMenuEntry.Pre }}
   	{{ $currentMenuEntry.Name }}
+    {{ $currentMenuEntry.Post }}
   </a>
 {{ else }}
-  <span class="section">{{ $currentMenuEntry.Name | title }}</span>
+  <span class="section">
+    {{ $currentMenuEntry.Pre }}
+    {{ $currentMenuEntry.Name | title }}
+    {{ $currentMenuEntry.Post }}
+  </span>
 {{ end }}

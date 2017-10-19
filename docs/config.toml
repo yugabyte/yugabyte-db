@@ -56,6 +56,7 @@ googleAnalytics = "UA-104956980-1"
 [[menu.main]]
 	name = "Community Edition"
 	identifier = "community-edition"
+	url = "community-edition/"
 	weight = 3
 
 [[menu.main]]
@@ -80,6 +81,7 @@ googleAnalytics = "UA-104956980-1"
 [[menu.main]]
 	name = "Enterprise Edition"
 	identifier = "enterprise-edition"
+	url = "enterprise-edition/"
 	weight = 40
 
 [[menu.main]]
@@ -97,6 +99,7 @@ googleAnalytics = "UA-104956980-1"
 [[menu.main]]
 	name   = "Architecture"
 	identifier = "architecture"
+	url = "architecture/"
 	weight = 70
 
 [[menu.main]]
@@ -132,6 +135,7 @@ googleAnalytics = "UA-104956980-1"
 [[menu.main]]
 	name   = "Client API Reference"
 	weight = 120
+	url = "api/"
 	identifier = "API"
 
 [[menu.main]]
@@ -553,6 +557,7 @@ googleAnalytics = "UA-104956980-1"
 [[menu.main]]
 	name   = "Admin Reference"
 	weight = 240
+	url = "admin/"
 	identifier = "admin"
 
 [[menu.main]]

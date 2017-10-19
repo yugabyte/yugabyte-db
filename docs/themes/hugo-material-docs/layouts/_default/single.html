@@ -22,6 +22,8 @@
 
 	<article class="article">
 		<div class="wrapper">
+      {{ partial "breadcrumbs" . }}
+
 			<h1>{{ .Title }} {{ if .IsDraft }} (Draft){{ end }}</h1>
 
 			{{ .TableOfContents }}

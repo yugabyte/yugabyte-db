@@ -1,6 +1,6 @@
 ---
 date: 2016-03-09T00:11:02+01:00
-title: Community Edition - Deploy 
+title: Deploy 
 weight: 30
 ---
 
