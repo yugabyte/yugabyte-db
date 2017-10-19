@@ -285,6 +285,10 @@ a {
   padding-right: 4px;
 }
 
+table code {
+  white-space: nowrap;
+}
+
 @media screen and (max-width: 959px) {
   .mobile-only {
     display: inline-block;
