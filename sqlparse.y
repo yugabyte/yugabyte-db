@@ -51,11 +51,6 @@ void orafce_sql_yyerror(List **result, const char *message);
 
 %}
 
-%code requires {
-
-#include "nodes/pg_list.h"
-
-}
 
 %name-prefix="orafce_sql_yy" 
 %locations
