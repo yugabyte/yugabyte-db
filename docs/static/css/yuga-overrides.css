@@ -144,6 +144,9 @@ a {
   background: #151838;
   white-space: pre !important;
 }
+.palette-primary-orange .article pre code .hljs-comment {
+  color: #afb5c7;
+}
 
 .palette-primary-orange .article .admonition {
   margin: 20px -24px 0 0;
