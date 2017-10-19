@@ -23,8 +23,13 @@ export default class TopNavBar extends Component {
   }
 
   render() {
-    const { customer: { yugawareVersion } } = this.props;
-    const version = getPromiseState(yugawareVersion).isSuccess() ? yugawareVersion.data.version : null;
+    const { customer: { yugawareVersion, currentCustomer } } = this.props;
+    const version = getPromiseState(yugawareVersion).isSuccess()
+        ? yugawareVersion.data.version
+        : null;
+    const customerEmail = getPromiseState(currentCustomer).isSuccess()
+        ? currentCustomer.data.email
+        : "";
 
     return (
       <Navbar fixedTop>
@@ -38,16 +43,16 @@ export default class TopNavBar extends Component {
           <NavDropdown eventKey="1" title={<i className="fa fa-list fa-fw"></i>} id="task-alert-dropdown">
             <TaskAlertsContainer eventKey="1"/>
           </NavDropdown>
-          <NavDropdown eventKey="2" title={<i className="fa fa-user fa-fw"></i>} id="profile-dropdown">
+          <NavDropdown  eventKey="2" title={<span>{customerEmail} <i className="fa fa-user fa-fw"></i></span>} id="profile-dropdown">
             <LinkContainer to="/profile">
               <MenuItem eventKey="2.1">
                 <i className="fa fa-user fa-fw"></i>Profile
-							</MenuItem>
+            </MenuItem>
             </LinkContainer>
             <LinkContainer to="/login">
               <MenuItem eventKey="2.2" id="logoutLink" onClick={this.handleLogout}>
                 <i className="fa fa-sign-out fa-fw"></i>Logout
-							</MenuItem>
+            </MenuItem>
             </LinkContainer>
           </NavDropdown>
         </Nav>
