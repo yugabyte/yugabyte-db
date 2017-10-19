@@ -261,11 +261,11 @@ public class TestDescendingOrder extends BaseCQLTest {
   public void testDoubleDesc() throws Exception {
     LOG.info("TEST CQL DOUBLE DESCENDING ORDER - START");
     // Create a unique list of random numbers.
-    double[] values = new Random().doubles(100, Double.MIN_VALUE, Double.MAX_VALUE).distinct()
-      .toArray();
+    double[] values = new Random().doubles(100, -Double.MAX_VALUE, Double.MAX_VALUE).distinct()
+        .toArray();
     Arrays.sort(values);
 
-    // Create a list of strings representing the integers in values.
+    // Create a list of strings representing the doubles in values.
     List<String> stringValues =
       Arrays.stream(values).mapToObj(value -> Double.toString(value)).collect(Collectors.toList());
 
@@ -287,6 +287,53 @@ public class TestDescendingOrder extends BaseCQLTest {
     dropTable();
     LOG.info("TEST CQL DOUBLE DESCENDING ORDER - END");
   }
+  
+  @Test
+  public void testFloatDesc() throws Exception {
+    LOG.info("TEST CQL FLOAT DESCENDING ORDER - START");
+    // Create a unique list of random numbers.
+    Random rand = new Random();
+    
+    // Cannot use the syntax for doubles since there is no similar interface
+    // to create a list of uniformly distributed floats.
+    float[] values = new float[100];
+    for (int i = 0; i < 100; i++) {
+      // Get float between 0.0 and 1.0.
+      float f = rand.nextFloat();
+      // Scale up to the desired range without overflow.
+      values[i] = f * Float.MAX_VALUE + (1 - f) * -Float.MAX_VALUE;
+    }
+    Arrays.sort(values);
+    
+    // Doing this instead of using mapToObj since java doesn't support float[] streams.
+    String[] string_values = new String[100];
+    for (int i = 0; i < 100; i++) {
+      string_values[i] = Float.toString(values[i]);
+    }
+
+   // Create a list of strings from the string array.
+   List<String> stringValues =
+      Arrays.stream(string_values).collect(Collectors.toList());
+
+    ResultSet rs = createInsertAndSelectDesc("float", stringValues);
+    assertEquals(rs.getAvailableWithoutFetching(), values.length);
+
+    // Rows should come sorted by column r1 in descending order.
+    for (int i = values.length - 1; i >= 0; i--) {
+      Row row = rs.one();
+      assertEquals(1, row.getInt("h1"));
+      float r1 = row.getFloat("r1");
+      assertEquals(values[i], r1, Math.ulp(values[i]));
+      assertEquals("b", row.getString("r2"));
+
+      assertEquals(1, row.getInt("v1"));
+      assertEquals("c", row.getString("v2"));
+    }
+
+    dropTable();
+    LOG.info("TEST CQL FLOAT DESCENDING ORDER - END");
+  }
+
 
   @Test
   public void testInt8Desc() throws Exception {

@@ -145,6 +145,10 @@ class KeyBytes {
     AppendColumnIdToKey(column_id, &data_);
   }
 
+   void AppendDescendingFloat(float x) {
+    AppendFloatToKey(x, &data_, /* descending */ true);
+  }
+
   void AppendFloat(float x) {
     AppendFloatToKey(x, &data_);
   }

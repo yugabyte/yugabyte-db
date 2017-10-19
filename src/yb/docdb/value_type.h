@@ -60,6 +60,7 @@ enum class ValueType : char {
   kSystemColumnId = 'J',  // ASCII code 74
   kColumnId = 'K',  // ASCII code 75
   kDoubleDescending = 'L',  // ASCII code 76
+  kFloatDescending = 'M', // ASCII code 77
   kNull = 'N',  // ASCII code 78
   kTrue = 'T',  // ASCII code 84
   kTombstone = 'X',  // ASCII code 88

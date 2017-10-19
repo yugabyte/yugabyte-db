@@ -37,6 +37,7 @@ string ToString(ValueType value_type) {
     case ValueType::kDouble: return "Double";
     case ValueType::kDoubleDescending: return "DoubleDescending";
     case ValueType::kFloat: return "Float";
+    case ValueType::kFloatDescending: return "FloatDescending";
     case ValueType::kDecimalDescending: return "DecimalDescending";
     case ValueType::kDecimal: return "Decimal";
     case ValueType::kTimestampDescending: return "TimestampDescending";

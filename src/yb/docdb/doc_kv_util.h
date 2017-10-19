@@ -102,7 +102,7 @@ inline void AppendUInt16ToKey(uint16_t val, std::string* dest) {
   dest->append(buf, sizeof(buf));
 }
 
-inline void AppendFloatToKey(float val, std::string* dest) {
+inline void AppendFloatToKey(float val, std::string* dest, bool descending = false) {
   char buf[sizeof(uint32_t)];
   uint32_t v = *(reinterpret_cast<uint32_t*>(&val));
   LOG(INFO) << "here " << val << ", " << v;
@@ -111,12 +111,22 @@ inline void AppendFloatToKey(float val, std::string* dest) {
   } else {
     v ^= kInt32SignBitFlipMask;
   }
+
+  if (descending) {
+    // flip the bits to reverse the order.
+    v = ~v;
+  }
   BigEndian::Store32(buf, v);
   dest->append(buf, sizeof(buf));
 }
 
-inline float DecodeFloatFromKey(const rocksdb::Slice& slice) {
+inline float DecodeFloatFromKey(const rocksdb::Slice& slice, bool descending = false) {
   uint32_t v = BigEndian::Load32(slice.data());
+  if (descending) {
+    // Flip the bits.
+    v = ~v;
+  }
+
   if (v >> 31) { // This is the sign bit: better than using val >= 0 (because -0, nulls denormals).
     v ^= kInt32SignBitFlipMask;
   } else {

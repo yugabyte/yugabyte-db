@@ -95,8 +95,9 @@ string PrimitiveValue::ToString() const {
     case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kInt64:
       return std::to_string(int64_val_);
+    case ValueType::kFloatDescending: FALLTHROUGH_INTENDED;
     case ValueType::kFloat:
-      return DoubleToString(float_val_);
+      return FloatToString(float_val_);
     case ValueType::kDoubleDescending: FALLTHROUGH_INTENDED;
     case ValueType::kDouble:
       return DoubleToString(double_val_);
@@ -197,6 +198,10 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
 
     case ValueType::kFloat:
       key_bytes->AppendFloat(float_val_);
+      return;
+
+    case ValueType::kFloatDescending:
+      key_bytes->AppendDescendingFloat(float_val_);
       return;
 
     case ValueType::kDecimal:
@@ -310,6 +315,7 @@ string PrimitiveValue::ToValue() const {
       AppendBigEndianUInt64(int64_val_, &result);
       return result;
 
+    case ValueType::kFloatDescending: FALLTHROUGH_INTENDED;
     case ValueType::kFloat:
       static_assert(sizeof(float) == sizeof(uint32_t),
                     "Expected float to be the same size as uint32_t");
@@ -604,12 +610,17 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       return Status::OK();
     }
 
+    case ValueType::kFloatDescending: FALLTHROUGH_INTENDED;
     case ValueType::kFloat: {
       if (slice->size() < sizeof(float_t)) {
         return STATUS_FORMAT(Corruption, "Not enough bytes to decode a float: $0", slice->size());
       }
       if (out) {
-        out->float_val_ = DecodeFloatFromKey(*slice);
+        if (value_type == ValueType::kFloatDescending) {
+          out->float_val_ = DecodeFloatFromKey(*slice, /* descending */ true);
+        } else {
+          out->float_val_ = DecodeFloatFromKey(*slice);
+        }
       }
       slice->remove_prefix(sizeof(float_t));
       type_ref = value_type;
@@ -674,6 +685,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
 
     case ValueType::kInt32: FALLTHROUGH_INTENDED;
     case ValueType::kInt32Descending: FALLTHROUGH_INTENDED;
+    case ValueType::kFloatDescending: FALLTHROUGH_INTENDED;
     case ValueType::kFloat:
       if (slice.size() != sizeof(int32_t)) {
         return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
@@ -774,9 +786,13 @@ PrimitiveValue PrimitiveValue::Double(double d, SortOrder sort_order) {
   return primitive_value;
 }
 
-PrimitiveValue PrimitiveValue::Float(float f) {
+PrimitiveValue PrimitiveValue::Float(float f, SortOrder sort_order) {
   PrimitiveValue primitive_value;
-  primitive_value.type_ = ValueType::kFloat;
+  if (sort_order == SortOrder::kAscending) {
+    primitive_value.type_ = ValueType::kFloat;
+  } else {
+    primitive_value.type_ = ValueType::kFloatDescending;
+  }
   primitive_value.float_val_ = f;
   return primitive_value;
 }
@@ -868,6 +884,7 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
     case ValueType::kArrayIndex: return int64_val_ == other.int64_val_;
 
+    case ValueType::kFloatDescending: FALLTHROUGH_INTENDED;
     case ValueType::kFloat: {
       if (util::IsNanFloat(float_val_) && util::IsNanFloat(other.float_val_)) {
         return true;
@@ -931,6 +948,8 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       return CompareUsingLessThan(other.double_val_, double_val_);
     case ValueType::kDouble:
       return CompareUsingLessThan(double_val_, other.double_val_);
+    case ValueType::kFloatDescending:
+      return CompareUsingLessThan(other.float_val_, float_val_);
     case ValueType::kFloat:
       return CompareUsingLessThan(float_val_, other.float_val_);
     case ValueType::kDecimalDescending:
@@ -1021,11 +1040,8 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
                                                                  sort_order);
     case QLValuePB::kInt64Value:   return PrimitiveValue(QLValue::int64_value(value), sort_order);
     case QLValuePB::kFloatValue: {
-      if (sort_order != SortOrder::kAscending) {
-        LOG(ERROR) << "Ignoring invalid sort order for FLOAT. Using SortOrder::kAscending.";
-      }
       float f = QLValue::float_value(value);
-      return PrimitiveValue::Float(util::CanonicalizeFloat(f));
+      return PrimitiveValue::Float(util::CanonicalizeFloat(f), sort_order);
     }
     case QLValuePB::kDoubleValue: {
       double d = QLValue::double_value(value);
