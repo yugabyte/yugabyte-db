@@ -6,10 +6,6 @@
   padding: 4px;
 }
 
-form a {
-  margin-left: 5px;
-}
-
 .form-field-grid {
   .row {
     margin: 6px 0 !important;
@@ -26,12 +22,15 @@ form a {
   .dark-form-heading {
     color: #fff;
     padding-bottom: 4px;
-
+    text-align: center;
+    .logo {
+      height: 50px;
+      margin: 0 auto 50px auto;
+      display: block;
+    }
     span {
       display: inline-block;
-      position: relative;
-      top: 10px;
-      left: 10px;
+      font-size: 0.8em;
     }
   }
 }
@@ -58,7 +57,7 @@ form a {
     display: table-cell;
     text-align: right;
     white-space: nowrap;
-    padding: 8px 10px 0 0;
+    padding: 11px 10px 0 0;
     vertical-align: top;
 
     * {
@@ -83,3 +82,46 @@ form a {
 .fade.in.yb-popover {
   opacity: 0.85;
 }
+.yb-field-group {
+  input {
+    line-height: 42px;
+  }
+  .Select-control {
+    height: 42px;
+    border-color: $YB_GRAY;
+    box-shadow: inset 0 1px 1px rgba(0, 0, 0, .075);
+  }
+  .Select-placeholder {
+    line-height: 40px;
+  }
+}
+
+
+
+
+  .form-group {
+    margin-bottom: 0px;
+  }
+
+  .form-control {
+    border-radius: 4px;
+    height: 42px;
+    padding: 0 12px;
+    border-color: $YB_GRAY;
+    &select:after {
+      content: '';
+      width: 2px;
+      height: 2px;
+      background: #000;
+    }
+    &:focus {
+      border-color: rgba($YB_ORANGE, .5);
+      box-shadow: inset 0 1px 1px rgba(0,0,0,.075), 0 0 8px rgba($YB_ORANGE, .2);
+    }
+  }
+
+  .form-item-label {
+    * {
+      display: inline;
+    }
+  }

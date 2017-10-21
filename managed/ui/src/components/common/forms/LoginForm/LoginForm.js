@@ -32,7 +32,7 @@ class LoginForm extends Component {
       <div className="container full-height dark-background flex-vertical-middle">
         <div className="col-sm-5 dark-form">
           <PageHeader bsClass="dark-form-heading">
-            <YBLogo />
+            <YBLogo size="full"/>
             <span>Admin Console</span>
           </PageHeader>
           <form onSubmit={handleSubmit(this.submitLogin)}>
@@ -40,13 +40,13 @@ class LoginForm extends Component {
               {<strong>{JSON.stringify(authToken.error)}</strong>}
             </div>
 
-            <div className="form-right-aligned-labels">
-              <Field name="email" type="text" component={YBInputField} label="Username" />
-              <Field name="password" type="password" component={YBInputField} label="Password" />
+            <div className="clearfix">
+              <Field name="email" placeholder="Enter email" type="text" component={YBInputField} label="Username" />
+              <Field name="password" placeholder="Your password" type="password" component={YBInputField} label="Password" />
             </div>
             <div className="clearfix">
               <YBButton btnType="submit" btnDisabled={submitting || getPromiseState(authToken).isLoading()}
-                        btnClass="btn btn-default bg-orange pull-right" btnText="Login"/>
+                        btnClass="btn btn-default bg-orange" btnText="Login"/>
             </div>
           </form>
         </div>

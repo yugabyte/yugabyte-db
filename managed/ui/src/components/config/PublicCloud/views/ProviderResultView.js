@@ -55,7 +55,7 @@ class ProviderResultView extends Component {
       <div className="provider-config-container">
         <Row className="config-section-header">
           <Col md={12}>
-            <span className="pull-right" title={deleteButtonTitle}>
+            <span className="pull-right buttons" title={deleteButtonTitle}>
               <YBButton btnText="Delete Configuration" disabled={deleteDisabled}
                         btnClass={deleteButtonClassName} onClick={this.showDeleteProviderModal}/>
               <YBButton btnText={refreshPricingLabel} btnClass={buttonBaseClassName} disabled={refreshing}

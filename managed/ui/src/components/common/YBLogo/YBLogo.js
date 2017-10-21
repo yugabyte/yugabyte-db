@@ -1,11 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
-import logo from './images/small-logo.png';
-import { Image } from 'react-bootstrap';
+import React from 'react';
+import LogoFull from './images/yb_yblogo_darkbg.svg';
+import LogoIcon from './images/yb_ybsymbol_original.svg';
 
-export default class YBLogo extends Component {
-  render() {
-    return <Image src={logo} className="yb-logo-img" />;
+function YBLogo(props) {
+  if(props.size==="full") {
+    return <object className="logo" data={LogoFull} type="image/svg+xml">Yugabyte Logo</object>;
   }
+  return <object className="logo" data={LogoIcon} type="image/svg+xml">Yugabyte Logo</object>;
 }
+
+export default YBLogo;

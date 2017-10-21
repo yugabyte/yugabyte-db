@@ -1,13 +1,47 @@
 /* Copyright (c) YugaByte, Inc. */
 
 @import "_style/colors.scss";
+@import "_style/mixins.scss";
+
+.btn {
+  display: inline-block;
+  padding: 10px 15px 12px;
+  margin-bottom: 0;
+  font-size: 14px;
+  border-radius: 4px;
+  z-index: 1 !important;
+}
 
 button, .btn {
   &.bg-orange {
     background: $YB_ORANGE;
-    border: 1px solid $YB_ORANGE;
+    border: 1px solid transparent;
     color: white;
     font-weight: 600;
+    @include transition(0.35s);
+    i {
+      color: #fff;
+      margin-left: 0;
+      @include transition(0.35s);
+    }
+    &:hover {
+      border: 1px solid transparent;
+      @include transition(0.125s);
+      background-color: $YB_ORANGE_HOVER;
+      i {
+        @include transition(0.125s);
+        color: rgba(white, 0.5);
+      }
+    }
+    &:active:focus, &:focus, &:active {
+      border: 1px solid transparent;
+      background-color: darken($YB_ORANGE_HOVER, 2%);
+      color: #fff;
+      box-shadow: none;
+      i {
+        color: rgba(white, 0.5);
+      }
+    }
   }
 
   .fa {
@@ -18,6 +52,63 @@ button, .btn {
 .btn-center {
   width: 33%;
   margin-left: 33%;
+}
+
+.btn-group {
+  &.open {
+    .btn-default, .btn-default:hover, .btn-default:focus {
+      color: $YB_TEXT_COLOR;
+      border-color: $YB_GRAY;
+      background-color: $YB_GRAY_HOVER;
+    }
+  }
+}
+
+.btn-default {
+  color: $YB_TEXT_COLOR;
+  background-color: #fff;
+  border-color: $YB_GRAY;
+  font-weight: 300;
+  @include transition(0.35s);
+  .caret {
+    border-top-color: #44518b;
+  }
+  i {
+    color: $YB_ORANGE;
+    font-size: 16px;
+  }
+  &:hover {
+    @include transition(0.125s);
+    border-color: $YB_GRAY_BORDER;
+    background-color: $YB_GRAY_HOVER;
+  }
+  &:active:focus, &:focus, &:active, &.active {
+    border-color: darken($YB_GRAY_BORDER, 2%);
+    background-color: darken($YB_GRAY, 2%);
+    box-shadow: none;
+  }
+}
+.open > .dropdown-toggle.btn-default {
+  &, &:hover, &:focus {
+    border-color: $YB_GRAY_BORDER;
+    background-color: $YB_GRAY_HOVER;
+    box-shadow: none;
+  }
+}
+
+.btn-disabled {
+  color: rgba($YB_TEXT_COLOR, 0.7) !important;
+  border-color: $YB_GRAY_BORDER;
+  background-color: $YB_GRAY_HOVER;
+}
+
+.btn-group {
+  & > .btn:last-child, & > *:last-child .btn {
+    border-left: none;
+  }
+  & > :not(.btn-group) > .btn:first-child, & > *:first-child .btn {
+    border-right: none;
+  }
 }
 
 .page-action-buttons {
@@ -34,7 +125,6 @@ button, .btn {
 }
 
 .header-row .btn-group div {
-  display: inline-block;
   float: left;
 }
 
@@ -59,5 +149,39 @@ button, .btn {
 
   input[type=radio] {
     margin-right: 5px;
+  }
+}
+
+.dropdown-menu {
+  padding: 0;
+  border: 0;
+  li {
+    a {
+      padding: 15px 20px;
+      height: 52px;
+      font-weight: 300;
+    }
+    i {
+      color: $YB_ORANGE;
+      vertical-align: middle;
+      margin-right: 10px;
+    }
+  }
+}
+
+.pagination{
+  li {
+    a, span {
+      color: $YB_VIOLET_TEXT;
+    }
+    &.active {
+      a, span {
+        &, &:hover, &:focus {
+          background: $YB_VIOLET_TEXT;
+          border-color: $YB_VIOLET_TEXT;
+          color: #fff;
+        }
+      }
+    }
   }
 }

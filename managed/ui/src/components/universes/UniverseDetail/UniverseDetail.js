@@ -85,8 +85,10 @@ class UniverseDetail extends Component {
     });
     const tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab" mountOnEnter={true} unmountOnExit={true}>
-        <UniverseAppsModal nodeDetails={currentUniverse.data.universeDetails.nodeDetailsSet}/>
-        <UniverseResources resources={currentUniverse.data.resources} renderType={"Display"}/>
+        <div className="universe-detail-flex-container">
+          <UniverseAppsModal nodeDetails={currentUniverse.data.universeDetails.nodeDetailsSet}/>
+          <UniverseResources resources={currentUniverse.data.resources} renderType={"Display"}/>
+        </div>
         <Row>
           <Col lg={5}>
             <UniverseInfoPanel universeInfo={currentUniverse.data}
@@ -124,12 +126,12 @@ class UniverseDetail extends Component {
     const currentBreadCrumb = (
       <div className="detail-label-small">
         <Link to="/universes">
-          <YBLabelWithIcon icon="fa fa-chevron-right fa-fw">
+          <YBLabelWithIcon>
             Universes
           </YBLabelWithIcon>
         </Link>
         <Link to={`/universes/${currentUniverse.data.universeUUID}`}>
-          <YBLabelWithIcon icon="fa fa-chevron-right fa-fw">
+          <YBLabelWithIcon icon="fa fa-angle-right fa-fw">
             {currentUniverse.data.name}
           </YBLabelWithIcon>
         </Link>
@@ -139,7 +141,7 @@ class UniverseDetail extends Component {
     return (
       <Grid id="page-wrapper" fluid={true}>
         <Row>
-          <Col lg={10}>
+          <Col lg={10} sm={8} xs={6}>
             {currentBreadCrumb}
             <div className="universe-detail-status-container">
               <h2>
@@ -148,7 +150,7 @@ class UniverseDetail extends Component {
               <UniverseStatusContainer currentUniverse={currentUniverse.data} showLabelText={true} />
             </div>
           </Col>
-          <Col lg={2} className="page-action-buttons">
+          <Col lg={2} sm={4}  xs={6} className="page-action-buttons">
             <ButtonGroup className="universe-detail-btn-group">
               <YBButton btnClass=" btn btn-default bg-orange"
                         btnText="Edit" btnIcon="fa fa-database" onClick={this.onEditUniverseButtonClick} />

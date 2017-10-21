@@ -7,7 +7,7 @@ import './MetricsPanel.scss';
 
 const Plotly = require('plotly.js/lib/core');
 
-const WIDTH_OFFSET = 5;
+const WIDTH_OFFSET = 22;
 const MAX_GRAPH_WIDTH_PX = 600;
 const GRAPH_GUTTER_WIDTH_PX = 15;
 

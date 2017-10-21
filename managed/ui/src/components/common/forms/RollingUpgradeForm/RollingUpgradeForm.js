@@ -46,7 +46,7 @@ class FlagItems extends Component {
         {
           gFlagsFieldList
         }
-        <YBButton btnClass="btn btn-sm universe-btn btn-default"
+        <YBButton btnClass="btn btn-sm universe-btn btn-default bg-orange"
                   btnText="Add" btnIcon="fa fa-plus"
                   onClick={addFlagItem} />
       </div>

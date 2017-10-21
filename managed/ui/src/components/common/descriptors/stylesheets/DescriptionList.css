@@ -1,9 +1,12 @@
-
+.dl-normal {
+    margin-top: 20px;
+    margin-bottom: 0px;
+}
 
 @media (min-width: 768px) {
     .dl-normal {
-        margin-top: 0px;
-        margin-bottom: 20px;
+        margin-top: 20px;
+        margin-bottom: 10px;
     }
 
     .dl-normal dt {
@@ -11,14 +14,15 @@
         overflow: hidden;
         clear: left;
         width: 120px;
-        text-align: right;
+        text-align: left;
         text-overflow: ellipsis;
         white-space: nowrap;
+        letter-spacing: -.03em;
     }
 
     .dl-normal dd {
         margin-left: 130px;
-        line-height: 20px;
+        line-height: 24px;
     }
 
     .dl-nested {

@@ -235,8 +235,8 @@ export default class AZSelectorTable extends Component {
       return (
         <div className={"az-table-container form-field-grid"}>
           <div className="az-selector-label">
-            <h4>Availability Zones</h4>
             <span className="az-selector-reset" onClick={this.resetAZSelectionConfig}>Reset Config</span>
+            <h4>Availability Zones</h4>
           </div>
           {azList}
         </div>

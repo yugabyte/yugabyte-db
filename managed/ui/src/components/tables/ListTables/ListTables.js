@@ -19,7 +19,7 @@ class TableTitle extends Component {
     return (
       <div className="table-container-title">
         <div className="pull-left">
-          Tables
+          <h3>Tables</h3>
           <div className="table-type-count">
             <Image src={cassandraLogo} className="table-type-logo"/>
             {numCassandraTables} <span>Apache Cassandra</span>

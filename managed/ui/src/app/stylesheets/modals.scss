@@ -1,5 +1,20 @@
 /* Copyright (c) YugaByte, Inc. */
 
+@import "_style/colors.scss";
+
+.modal-content {
+  border-radius: 0px;
+  .modal-header {
+    text-align: left;
+    button.close {
+      font-size: 32px;
+      line-height: 26px;
+      color: $YB_ORANGE;
+      opacity: 1;
+    }
+  }
+}
+
 .modal-body {
   max-height: calc(100% - 120px);
   overflow: auto;
@@ -9,8 +24,8 @@
   background-color: #f5f4f0;
 
   .btn {
-  min-width: 110px;
-  margin-left: 14px !important;
+    min-width: 110px;
+    margin-left: 14px !important;
   }
 }
 

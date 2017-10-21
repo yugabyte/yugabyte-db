@@ -1,6 +1,20 @@
 /* Copyright (c) YugaByte, Inc. */
 
 .graph-panel {
+  .filter-container {
+    margin-top: 10px;
+    margin-bottom: 10px;
+    float: left;
+    clear: both;
+    @media (min-width: 992px) {
+      clear: none;
+      margin-top: -7px;
+      margin-bottom: 0px;
+    }
+  }
+  #graph-filter-dropdown {
+    margin-top: -7px;
+  }
   h2 {
     display: inline-block;
     margin-top: 0;
@@ -9,13 +23,20 @@
   .universe-picker,
   .node-picker {
     float: left;
-    margin-left: 20px;
+    line-height: 42px;
+    vertical-align: middle;
+    @media (min-width: 992px) {
+      margin-left: 20px;
+    }
 
     .form-control {
       display: inline-block !important;
       width: auto !important;
       margin-left: 6px;
+      margin-right: 15px;
       min-width: 120px;
+      height: 42px;
+      -webkit-appearance: none;
     }
   }
 

@@ -63,25 +63,39 @@ class YBUniverseItem extends Component {
     return (
       <div className={"universe-list-item"}>
         <ListGroupItem >
-          <Row className={"universe-list-item-name-status"}>
-            <Col sm={6}>
-              <Link to={`/universes/${universe.universeUUID}`}><div className={"universe-name-cell"}>{universe.name}</div></Link>
-            </Col>
-            <Col sm={2} className="universe-create-date-container">
-              <div >Created: {moment(universe.creationDate).format("MM/DD/YYYY, hh:mm a")}</div>
-            </Col>
-            <Col sm={4} className={"list-universe-status-container"}>
-              <UniverseStatusContainer currentUniverse={universe} showLabelText={true}/>
-            </Col>
-          </Row>
-          <Row className={"universe-list-item-detail"}>
-            <Col sm={7}>
-              <CellLocationPanel {...this.props}/>
-            </Col>
-            <Col sm={5}>
-              <CellResourcesPanel {...this.props}/>
-            </Col>
-          </Row>
+          <Link to={`/universes/${universe.universeUUID}`}>
+            <div className={"universe-list-item-name-status universe-list-flex"}>
+              <Row>
+                <Col sm={6}>
+                  <div className={"universe-name-cell"}>{universe.name}</div>
+                </Col>
+                <Col sm={6} className="universe-create-date-container">
+                  <div >Created: </div>{moment(universe.creationDate).format("MMM Do YYYY, hh:mm a")}
+                </Col>
+              </Row>
+              <div className="list-universe-status-container">
+                <UniverseStatusContainer currentUniverse={universe} showLabelText={true}/>
+              </div>
+            </div>
+          </Link>
+
+          <div className={"universe-list-item-detail universe-list-flex"}>
+            <Row>
+              <Col sm={6}>
+                <CellLocationPanel {...this.props}/>
+              </Col>
+              <Col sm={6}>
+                <CellResourcesPanel {...this.props}/>
+              </Col>
+            </Row>
+
+            <div className="cell-cost">
+              <div className="cell-cost-value">
+                <YBCost value={this.props.universe.pricePerHour} multiplier="month"/>
+              </div>
+              /month
+            </div>
+          </div>
         </ListGroupItem>
       </div>
     );
@@ -98,14 +112,14 @@ class CellLocationPanel extends Component {
     return (
       <div >
         <Row className={"cell-position-detail"}>
-          <Col sm={2} className={"cell-num-nodes"}>{userIntent && userIntent.numNodes} Nodes</Col>
-          <Col sm={10}>
+          <Col sm={3} className={"cell-num-nodes"}>{userIntent && userIntent.numNodes} Nodes</Col>
+          <Col sm={9}>
             <span className={"cell-provider-name"}>{universe.provider && universe.provider.name}</span>
           </Col>
         </Row>
         <Row className={"cell-position-detail"}>
-          <Col sm={2} className={"cell-num-nodes"}>{userIntent.regionList.length} Regions</Col>
-          <Col sm={10}>{regionList}</Col>
+          <Col sm={3} className={"cell-num-nodes"}>{userIntent.regionList.length} Regions</Col>
+          <Col sm={9}>{regionList}</Col>
         </Row>
       </div>
     );
@@ -116,7 +130,7 @@ class CellResourcesPanel extends Component {
 
   render() {
 
-    const {universe: {universeUUID, pricePerHour, readData, writeData}} = this.props;
+    const {universe: {universeUUID, readData, writeData}} = this.props;
     let averageReadRate = Number(0).toFixed(2);
     let averageWriteRate = Number(0).toFixed(2);
     if (isNonEmptyObject(readData)) {
@@ -142,7 +156,7 @@ class CellResourcesPanel extends Component {
             <UniverseReadWriteMetrics {...this.props} graphIndex={`${universeUUID}-read`} readData={readData} writeData={writeData}/>
           </div>
         </Col>
-        <Col md={4} className="cell-read-write">
+        <Col md={7} className="cell-read-write">
           <div className="cell-read-write-row">
             <span className="legend-square read-color" />
             <span className="metric-label-type">Read </span>
@@ -161,13 +175,6 @@ class CellResourcesPanel extends Component {
               <span className="metric-value-label">&nbsp;avg</span>
             </span>
           </div>
-        </Col>
-
-        <Col md={3} className="cell-cost">
-          <div className="cell-cost-value">
-            <YBCost value={pricePerHour} multiplier="month"/>
-          </div>
-          /month
         </Col>
       </Row>
     );

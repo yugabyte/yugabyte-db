@@ -30,7 +30,7 @@
 }
 
 .task-list-heading {
-  padding: 0 10px 8px 40px;
+  padding: 0 10px 12px 44px;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 2px;
@@ -38,6 +38,7 @@
 
   .icon-hang-left {
     top: -6px;
+    text-indent: 2px;
 
     i {
       font-size: 14px !important;
@@ -52,26 +53,30 @@
 
 .task-cell {
   display: block;
-  padding: 8px 10px 8px 40px;
+  padding: 8px 10px 8px 44px;
   border-top: 1px solid #e6e4e2;
   text-align: left;
   cursor: pointer;
-  color: $YB_TEXT_COLOR;
   text-decoration: none;
   transition: background-color 0.3s;
 
   &:hover {
-    color: $YB_TEXT_COLOR;
     background-color: $YB_HOVER_BACKGROUND_COLOR;
     text-decoration: none;
   }
-
+  .task-name {
+    line-height: 15px;
+    padding: 7px 0;
+  }
   .icon-hang-left {
     top: 7px;
 
     i {
       font-size: 20px !important;
     }
+  }
+  &a {
+    color: $YB_ORANGE;
   }
 }
 

@@ -1,13 +1,18 @@
 /* Copyright (c) YugaByte, Inc. */
 
 @import "_style/colors.scss";
+@import "_style/mixins.scss";
+
 
 .universe-display-item-container {
-  height: 170px;
+  height: 178px;
   background-color: white;
-  margin-bottom: 10px;
+  margin-bottom: 16px;
   padding: 12px 14px;
-  border: $YB_GRAY_20 solid 1px;
+  border-radius: 3px;
+  box-shadow: 0 1px 1px rgba(35, 35, 41, 0.1);
+  color: $YB_TEXT_COLOR;
+  @include transition(0.125s);
 
   .universe-status {
     position: relative;
@@ -25,6 +30,16 @@
     overflow: hidden;
     text-overflow: ellipsis;
     padding-right: 22px;
+    color: $YB_VIOLET_TEXT;
+    position: relative;
+    height: 24px;
+  }
+  .provider-name {
+    font-size: 13px;
+    font-weight: 400;
+    color: $YB_TEXT_COLOR;
+    opacity: 0.4;
+    top: -6px;
   }
 
   .status-icon {
@@ -34,12 +49,12 @@
   }
 
   .description-item-list {
-    margin: 12px 0;
+    margin: 27px 0 10px 0;
   }
 
   .description-item {
-    margin: 6px 0;
-    line-height: 18px;
+    margin: 0;
+    line-height: 21px;
   }
 
   .description-item small {
@@ -60,7 +75,15 @@
     font-size: 12px;
   }
 }
-
+a:hover > .universe-display-item-container {
+  @include transition(0.125s);
+  transform: scale(1.02, 1.02);
+  transform-origin: 50% 50%;
+  box-shadow: 0 3px 7px rgba(35, 35, 41, 0.2);
+  .display-name {
+    color: $YB_ORANGE;
+  }
+}
 .universe-display-item-container,
 .checkbox-inline input[type="checkbox"] {
   position: relative !important;
@@ -72,19 +95,24 @@
   }
 
   .create-universe-button {
+    border-radius: 4px;
     height: 170px;
     margin-bottom: 10px;
-    padding: 25px 0 4px 0;
-    border: $YB_GRAY_20 solid 1px;
-    background-color: rgba(84, 84, 84, 0.05);
+    padding: 45px 0 4px 0;
+    border: 1px dashed desaturate(rgba($YB_VIOLET, 0.35), 20%);
     text-align: center;
+    @include transition(0.125s);
+    &:hover {
+      background: rgba(white, 0.5);
+      @include transition(0.35s);
+    }
   }
 
   .row {
-    margin: 0 -5px;
+    margin: 0 -8px;
 
     .col-lg-2, .col-md-3 {
-      padding: 0 5px;
+      padding: 0 8px;
     }
   }
 }
@@ -93,25 +121,42 @@
   cursor: pointer;
 
   .display-name {
-    font-weight: 500;
+    font-weight: 300;
     font-size: 1.2em;
-    color: #CD6500;
+    color: saturate(rgba($YB_TEXT_COLOR, 0.35), 60%);
     padding-top: 6px;
+    text-decoration: none;
+  }
+  .btn-icon {
+    position: relative;
+    display: inline-block;
+    background-color: $YB_ORANGE;
+    height: 49px;
+    width: 49px;
+    font-size: 37px;
+    font-weight: 200;
+    text-align: center;
+    color: white;
+    border-radius: 60px;
+    i {
+      line-height: 53px;
+      width: 51px;
+      height: 51px;
+      text-align: center;
+      vertical-align: middle;
+      margin-top: -13px;
+      transition: none;
+    }
+  }
+  &:hover {
+    .btn-icon i {
+      transform: rotate(90deg);
+      transform-origin: 50% 50%;
+      @include transition(0.35s);
+    }
   }
 }
 
-.btn-icon {
-  position: relative;
-  display: inline-block;
-  background-color: #CD6500;
-  height: 60px;
-  width: 60px;
-  font-size: 40px;
-  font-weight: 200;
-  text-align: center;
-  color: white;
-  border-radius: 6px;
-}
 
 .get-started-config {
   font-size: 14px;
