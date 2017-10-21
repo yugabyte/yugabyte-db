@@ -1,35 +1,74 @@
 /* Copyright (c) YugaByte, Inc. */
 
-.nav-tabs > li > a {
-  border: 1px solid #e2e2e1;
-  border-bottom: none;
-  border-radius: 0 !important;
-  min-width: 120px;
-  text-align: center;
-  padding: 6px 8px !important;
-  color: #555;
-  background-color: #f2f1f0;
-  margin-top: 4px;
-}
-.nav-tabs > li > a:hover {
-  border-color: #e1e1e0;
-  background-color: #f7f7f6;
-}
-.nav-tabs > li.active > a,
-.nav-tabs > li.active > a:hover,
-.nav-tabs > li.active > a:focus {
-  margin-top: 0;
-  padding: 8px !important;
-  background-color: #fdfdfc;
+@import "_style/colors.scss";
+@import "_style/mixins.scss";
+
+.nav-tabs {
+  > li {
+    > a {
+      border: 1px solid #e2e2e1;
+      border: none;
+      border-bottom: none;
+      min-width: 80px;
+      text-align: center;
+      padding: 10px !important;
+      color: #555;
+      border: 1px solid $YB_GRAY;
+      background-color: rgba($YB_GRAY_HOVER, .7);
+      margin-right: 7px;
+      @include transition(0.35s);
+      
+      &:first-child {
+        margin-left: -1px;
+      }
+      
+      @media (min-width: 768px) {
+        min-width: 116px;
+      }
+      &:hover {
+        border: 1px solid $YB_GRAY_BORDER;
+        background-color: $YB_GRAY_HOVER;
+        border-bottom-color: transparent;
+        @include transition(0.125s);
+      }
+    }
+    &.active {
+      > a {
+        &, &:focus, &:hover {
+          margin-top: 0;
+          padding: 10px !important;
+          background-color: white;
+          border: 1px solid $YB_GRAY_HOVER;
+          border-bottom-color: transparent;
+          z-index: 2;
+        }
+      }
+    }
+  }
 }
 
 .tab-content {
   position: relative;
   margin: 0;
   padding: 15px 20px;
-  border: 1px solid #ddd;
+  box-shadow: 0 1px 1px rgba($YB_DARK_GRAY_2, 0.25);
   border-top: none;
-  background-color: #fdfdfc;
+  background-color: #fff;
   min-height: 500px;
   height: 100%;
+  .x_title {
+    margin-top: 6px;
+    margin-bottom: 20px;
+  }
+  h2 {
+    font-size: 21px;
+  }
+  .content-panel {
+    box-shadow: none;
+    padding-left: 0;
+    padding-right: 0;
+    .react-bs-table-search-form .form-control {
+      right: 0;
+    }
+  }
 }

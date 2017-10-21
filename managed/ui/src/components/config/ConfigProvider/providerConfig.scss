@@ -108,23 +108,24 @@
 
 .delete-btn {
   background-color: $YB_FAIL_COLOR;
+  border-color: transparent;
   color: white;
+  i{
+    color: $YB_FAIL_COLOR_ICON;
+  }
+  &:hover{
+    color: white;
+    background-color: darken($YB_FAIL_COLOR, 5%) !important;
+    border-color: transparent;
+    i{
+      color: $YB_FAIL_COLOR_DARK;
+    }
+  }
 }
 
 .provider-config-container {
-  .save-btn, .cancel-btn, .delete-btn {
-    width: 120px;
-    height: 36px;
-    padding: 0;
-    margin: 0px 6px;
-  }
   .save-btn, .delete-btn {
     font-weight: 600;
-  }
-  .manage-provider-btn {
-    width: 160px;
-    height: 36px;
-    margin: 0px 6px;
   }
 }
 
@@ -141,7 +142,7 @@
 .host-current-file-container {
   font-size: 18px;
   font-weight: 500;
-  color: $YB_DARK_GREY;
+  color: $YB_DARK_GRAY;
   margin-top: 6px;
   padding: 2px 14px;
 }
@@ -153,7 +154,7 @@
 .config-tabs .nav-tabs {
   > li > a {
     min-width: 180px;
-    min-height: 65px;
+    min-height: 72px;
 
     img {
       height: 50px;
@@ -168,7 +169,6 @@
       line-height: 1;
 
       i {
-        display: inline-block;
         float: left;
         font-size: 36px;
         padding-right: 8px;
@@ -178,10 +178,6 @@
   }
 
   > li.active > a {
-    min-height: 70px;
+    min-height: 72px;
   }
-}
-
-.create-provider-label-text {
-  font-size: 16px;
 }

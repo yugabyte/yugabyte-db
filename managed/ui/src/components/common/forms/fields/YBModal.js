@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Modal } from 'react-bootstrap';
 import YBButton from './YBButton';
-import './stylesheets/YBModal.css';
+import './stylesheets/YBModal.scss';
 
 export default class YBModal extends Component {
 

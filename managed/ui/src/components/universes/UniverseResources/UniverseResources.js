@@ -31,16 +31,14 @@ export default class UniverseResources extends Component {
     }
     
     return (
-      <div className={"universe-resources "}>
-        <span className={(empty ? 'empty' : '')}>
-          {universeNodes}
-          <YBResourceCount size={numCores || 0} kind="Core" pluralizeKind />
-          <YBResourceCount size={memSizeGB || 0} unit="GB" kind="Memory" />
-          <YBResourceCount size={volumeSizeGB || 0} unit="GB" kind="Storage" />
-          <YBResourceCount size={volumeCount || 0} kind="Volume" pluralizeKind />
-          <YBResourceCount size={costPerDay} kind="/day" />
-          <YBResourceCount size={costPerMonth} kind="/month" />
-        </span>
+      <div className={(empty ? "universe-resources empty" : "universe-resources ")}>
+        {universeNodes}
+        <YBResourceCount size={numCores || 0} kind="Core" pluralizeKind />
+        <YBResourceCount size={memSizeGB || 0} unit="GB" kind="Memory" />
+        <YBResourceCount size={volumeSizeGB || 0} unit="GB" kind="Storage" />
+        <YBResourceCount size={volumeCount || 0} kind="Volume" pluralizeKind />
+        <YBResourceCount size={costPerDay} kind="/day" />
+        <YBResourceCount size={costPerMonth} kind="/month" />
         {this.props.children}
       </div>
     );

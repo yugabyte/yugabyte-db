@@ -1,7 +1,30 @@
 /* Copyright (c) YugaByte, Inc. */
 
+@import "_style/colors.scss";
+
+
+.navbar .container {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  width: 100%;
+  .navbar-header {
+    margin: 0;
+  }
+  & > *:first-child {
+    flex: 0 0 90px;
+  }
+  & > *:not(:first-child):not(:last-child) {
+    flex: 1;
+  }
+  & > *:last-child {
+    flex: 0 0 144px;
+  }
+}
+
 #ybPortal {
-    background-color: #f8f8f8;
+  background-color: #f3f3f6;
+  background-color: $YB_BACKGROUND;
 }
 
 .yb-nav-bar .navbar {
@@ -36,7 +59,6 @@
   float: right;
 }
 .top_nav .navbar-right li {
-  display: inline-block;
   float: right;
   position: static;
 }
@@ -54,14 +76,70 @@
   width: 100%;
 }
 
+
 .navbar-nav {
+  margin: 0;
+  .dropdown {
+    float: left;
+    width: 72px;
+    .dropdown-toggle i, .task-list-heading i {
+      color: $YB_VIOLET_TEXT;
+    }
+    &.open .dropdown-toggle {
+      background-color: $YB_BACKGROUND !important;
+    }
+    #profile-dropdown + ul {
+      padding: 0;
+      border: 0;
+      li {
+        a {
+          padding: 15px 20px;
+          height: 52px;
+          font-weight: 300;
+        }
+        i {
+          color: $YB_ORANGE;
+          vertical-align: middle;
+          margin-right: 10px;
+        }
+      }
+    }
+  }
   i {
-    font-size: 18px
+    font-size: 22px;
   }
 
   .caret {
     position: relative;
-    top: -3px;
+    top: -5px;
+    border-top-color: $YB_VIOLET;
+  }
+}
+
+
+.dropdown-menu{
+  > li {
+    > a {
+      &:hover, &:focus {
+        color: $YB_TEXT_COLOR;
+        text-decoration: none;
+        background-color: $YB_BACKGROUND !important;
+      }
+    }
+  }
+  > .active {
+    > a {
+      background-color: inherit;
+      color: $YB_TEXT_COLOR;
+      &:hover, &:focus {
+        background-color: inherit;
+        color: $YB_TEXT_COLOR;
+      }
+    }
+  }
+  > .divider {
+    margin-top: 0;
+    margin-bottom: 0;
   }
 }
 
@@ -77,6 +155,8 @@
   color: #ECF0F1 !important;
   margin-left: 0 !important;
   line-height: 32px;
+  padding-top: 17px;
+  padding-bottom: 15px;
 }
 
 .nav.navbar-nav>li>a {
@@ -87,13 +167,14 @@
   position: absolute;
   background: #fff;
   margin-top: 0;
-  border: 1px solid #D9DEE4;
+  border: none;
+  border-top: 1px solid rgba(#656A70, 0.2);
   background-color: #fbfbfa;
   -webkit-box-shadow: none;
   right: 0;
   left: auto;
   width: 220px;
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2),;
 }
 .navbar-nav .open .dropdown-menu.msg_list {
   width: 300px;

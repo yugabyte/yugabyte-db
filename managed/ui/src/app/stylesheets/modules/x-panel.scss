@@ -18,8 +18,7 @@
 }
 
 .x_title {
-  padding: 1px 5px 6px 0;
-  margin-bottom: 10px;
+  margin-bottom: 15px;
 
   .filter {
     width: 40%;
@@ -60,10 +59,6 @@
 
 // TODO: Are we still using these?  What is their purpose?
 @media (max-width: 1200px) {
-  .x_title h2 {
-  width: 62%;
-  font-size: 17px;
-  }
   .tile, .graph {
   zoom: 85%;
   height: inherit;

@@ -1,13 +1,20 @@
 /* Copyright (c) YugaByte, Inc. */
 
+@import "_style/colors.scss";
+
 .container {
   width: 100%;
-  padding: 0
+  padding: 0;
+}
+
+.navbar-default {
+  background: #fff;    
+  border-color: transparent;
+  box-shadow: 0 0px 1px rgba($YB_DARK_GRAY_2, 0.35);
 }
 
 .container-body {
-  margin: 90px 25px 0 115px;
-  overflow-x: hidden;
+  margin: 90px 25px 25px 115px;
 
   h1, h2 {
     &:first-child {
@@ -58,4 +65,14 @@ legend {
 
 .no-bottom-margin {
   margin-bottom: 0 !important;
+}
+
+.content-panel {
+  position: relative;
+  margin: 0;
+  padding: 15px 20px;
+  box-shadow: 0 1px 1px rgba($YB_DARK_GRAY_2, 0.25);
+  border: none;
+  background-color: #fff;
+  min-height: 500px;
 }

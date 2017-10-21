@@ -3,9 +3,23 @@
 @import "_style/colors.scss";
 
 .detail-label-small {
-  margin:0 0 6px 6px;
-  color: $YB_DARK_GREY;
-  padding-left: 4px;
+  margin:0 0 12px 0px;
+  color: $YB_DARK_GRAY;
+  padding-left: 0px;
+  a{
+    i{
+      color: $YB_DARK_GRAY;
+    }
+  }
+}
+
+#universe-tab-panel-pane-tasks {
+  padding-top: 6px;
+}
+
+#universe-tab-panel-pane-nodes .x_title {
+  margin-bottom: 0px;
+  margin-top: 26px;
 }
 
 .universe-detail-btn-group .dropdown {
@@ -14,8 +28,31 @@
 
 .universe-detail-status-container {
   h2 {
-    display: inline;
     float: left;
+  }
+}
+.universe-detail-info {
+  padding: 15px 0;
+}
+.universe-detail-flex-container {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  width: 100%;
+  padding-bottom: 6px;
+  border-bottom: 1px solid $YB_GRAY_BORDER;
+  & > *{
+    flex: 1 100%;
+  }
+  @media (min-width: 992px) {
+    flex-wrap: nowrap;
+    & > *:first-child {
+      flex: 1 auto;
+    }
+    & > *:last-child {
+      padding-top: 12px;
+      flex: 0 0 150px;
+    }
   }
 }
 .universe-detail-status-container {
@@ -29,13 +66,6 @@
   .status-pending {
     margin-top: 0px;
   }
-}
-
-.universe-detail .universe-resources {
-  padding: 2px 0 2px 14px;
-  border-bottom: 1px solid #ddd;
-  margin-bottom: 2px;
-  text-align: center;
 }
 
 .node-action-text {

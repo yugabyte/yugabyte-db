@@ -147,12 +147,12 @@ class OnPremSuccess extends Component {
     const universeExistsForProvider = (universeList.data || []).some(universe => universe.provider && (universe.provider.uuid === currentProvider.uuid));
     const buttons = (
       <span className="buttons pull-right">
-        <YBButton btnText="Manage Instances" disabled={false} btnIcon="fa fa-server"
-                  btnClass={"btn btn-default yb-button"} onClick={this.handleManageNodesClick} />
+        <YBButton btnText="Delete Provider" disabled={universeExistsForProvider} btnIcon="fa fa-trash"
+                btnClass={"btn btn-default yb-button delete-btn"} onClick={this.props.showDeleteProviderModal} />
         <YBButton btnText="Edit Provider" disabled={false} btnIcon="fa fa-pencil"
                   btnClass={"btn btn-default yb-button"} onClick={this.props.showEditProviderForm} />
-        <YBButton btnText="Delete Provider" disabled={universeExistsForProvider} btnIcon="fa fa-trash"
-                  btnClass={"btn btn-default yb-button"} onClick={this.props.showDeleteProviderModal} />
+        <YBButton btnText="Manage Instances" disabled={false} btnIcon="fa fa-server"
+                  btnClass={"btn btn-default yb-button"} onClick={this.handleManageNodesClick} />
         <YBConfirmModal name="delete-aws-provider" title={"Confirm Delete"}
                         onConfirm={this.deleteProvider.bind(this, currentProvider.uuid)}
                         currentModal="deleteOnPremProvider" visibleModal={this.props.visibleModal}

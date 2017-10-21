@@ -21,10 +21,10 @@ export default class ListUniverse extends Component {
     return (
       <div id="page-wrapper">
         <Row className="header-row">
-          <Col lg={9}>
+          <Col xs={6}>
             <h2>Universes</h2>
           </Col>
-          <Col lg={3} className="universe-table-header-action">
+          <Col xs={6} className="universe-table-header-action">
             <YBButton btnClass="universe-button btn btn-default btn-lg bg-orange"
                            btnText="Create Universe" btnIcon="fa fa-pencil"
                            onClick={this.createNewUniverse} />

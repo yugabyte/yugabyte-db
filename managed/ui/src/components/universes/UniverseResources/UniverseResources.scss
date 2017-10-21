@@ -1,11 +1,18 @@
 /* Copyright (c) YugaByte, Inc. */
 
 .universe-resources {
-  .empty {
-    opacity: 0.5;
+  text-align: center;
+  display: flex;
+  flex-flow: row wrap;
+  padding: 10px 0;
+  justify-content: space-evenly;
+  @media (min-width: 768px) {
+    flex-wrap: nowrap;
   }
-
-  .yb-resource-count {
-    padding: 0 14px;
+  @media (min-width: 1200px) {
+    justify-content: center;
+  }
+  &.empty {
+    opacity: 0.5;
   }
 }

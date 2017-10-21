@@ -1,23 +1,35 @@
 /* Copyright (c) YugaByte, Inc. */
 
-$YB_TEXT_COLOR: #333;
 
-$YB_ORANGE: #CD6500;
+@import "./mixins.scss";
+
+$YB_TEXT_COLOR: #232329;
+
+// Oranges : 
+$YB_ORANGE: #ef5824;
+$YB_ORANGE_HOVER: #dc4e1d;
+$YB_VIOLET: #151838;
+$YB_VIOLET_DARK: desaturate(darken($YB_VIOLET, 4%), 0%);
+$YB_VIOLET_TEXT: #44518b;
+$YB_VIOLET_TEXT_LIGHT: #8994c5;
+$YB_SIDEBAR_VIOLET_LIGHT: #293569;
+$YB_SIDEBAR_VIOLET_LIGHT_HOVER: desaturate(lighten($YB_SIDEBAR_VIOLET_LIGHT, 20%), 7.5%);
+$YB_SIDEBAR_VIOLET_TEXT: #344077;
 
 $YB_HOVER_BACKGROUND_COLOR: #fff;
 
-$YB_SUCCESS_COLOR: #2a0;
+$YB_SUCCESS_COLOR: #48ab52; 
 $YB_PENDING_COLOR: $YB_ORANGE;
-$YB_FAIL_COLOR: #c20;
+$YB_FAIL_COLOR: #e73e3e;
+$YB_FAIL_COLOR_ICON: darken($YB_FAIL_COLOR, 20%);
+$YB_FAIL_COLOR_DARK: darken($YB_FAIL_COLOR, 30%);
 
-$YB_GRAY_5: #f7f6f6;
-$YB_GRAY_8: #f1f1f0;
-$YB_GRAY_10: #eeedec;
-$YB_GRAY_15: #e6e4e3;
-$YB_GRAY_20: #dddbd9;
-
-$YB_DARK_GREY: #A9A9A9;
-$YB_SIDEBAR_GRAY: #333;
+$YB_DARK_GRAY: #9F9EA7;
+$YB_BACKGROUND:#f7f7f7;
+$YB_GRAY: #dedee0;
+$YB_GRAY_HOVER: #e5e5e9;
+$YB_GRAY_BORDER: #cfcfd8;
+$YB_DARK_GRAY_2: #232329;
 
 $YB_HELP_BLUE: #0068cd;
 
@@ -52,32 +64,47 @@ $YB_HELP_BLUE: #0068cd;
 
 .dark-background {
   color: #fff;
-  background: $YB_SIDEBAR_GRAY;
-
+  background: $YB_VIOLET;
+  .form-item-label {
+    color: $YB_VIOLET_TEXT;
+  }
+  .yb-field-group {
+    padding-bottom: 5px;
+  }
   .form-control {
-    border: 2px solid #777;
-    background-color: #393939;
+    border: 0.5px solid rgba($YB_ORANGE, 0);
+    background-color: $YB_VIOLET_DARK;
     color: #fff;
+    box-shadow: none;
+    @include transition(0.35s);
 
     &:focus {
-      border: 2px solid #888;
-      background-color: #444;
+      border: 0.5px solid rgba($YB_ORANGE, .8);
+      box-shadow: none;
     }
+  }
+
+  .btn {
+    width: 160px;
+    margin: 20px auto 0px auto;
+    display: block;
   }
 
   .has-error {
     .form-control {
-      border-color: $YB_FAIL_COLOR !important;
+      border-color: rgba($YB_FAIL_COLOR, 0.6) !important;
       color: $YB_FAIL_COLOR !important;
     }
     .help-block {
       display: inline-block;
       background-color: $YB_FAIL_COLOR;
       color: #fff !important;
-      font-weight: 600;
-      padding: 0 6px 1px 6px;
+      font-weight: 300;
+      font-size: 12px;
+      padding: 2px 6px 3px 6px;
       margin-top: 0;
-      border-radius: 2px;
+      margin-bottom: 0;
+      border-radius: 0 0 4px 4px;
     }
   }
 }

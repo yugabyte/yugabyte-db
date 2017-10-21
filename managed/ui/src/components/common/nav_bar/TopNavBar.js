@@ -35,9 +35,12 @@ export default class TopNavBar extends Component {
       <Navbar fixedTop>
         <Navbar.Header>
           <Link to="/" className="col-md-3 left_col text-center">
-            <YBLogo />
+            <YBLogo size="icon"/>
           </Link>
         </Navbar.Header>
+
+        <HighlightedStatsPanelContainer />
+        
         <Nav pullRight>
           { version && <NavItem eventKey={3} disabled>Version: {version}</NavItem> }
           <NavDropdown eventKey="1" title={<i className="fa fa-list fa-fw"></i>} id="task-alert-dropdown">
@@ -56,8 +59,6 @@ export default class TopNavBar extends Component {
             </LinkContainer>
           </NavDropdown>
         </Nav>
-
-        <HighlightedStatsPanelContainer />
       </Navbar>
     );
   }
