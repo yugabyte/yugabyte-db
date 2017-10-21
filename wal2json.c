@@ -47,6 +47,7 @@ typedef struct
 	bool		include_timestamp;	/* include transaction timestamp */
 	bool		include_schemas;	/* qualify tables */
 	bool		include_types;		/* include data types */
+	bool		include_typmod;		/* include typmod in types */
 
 	bool		pretty_print;		/* pretty-print JSON? */
 	bool		write_in_chunks;	/* write in chunks? */
@@ -116,6 +117,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 	data->include_timestamp = false;
 	data->include_schemas = true;
 	data->include_types = true;
+	data->include_typmod = true;
 	data->pretty_print = false;
 	data->write_in_chunks = false;
 	data->include_lsn = false;
@@ -180,6 +182,19 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 				data->include_types = true;
 			}
 			else if (!parse_bool(strVal(elem->arg), &data->include_types))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
+							 strVal(elem->arg), elem->defname)));
+		}
+		else if (strcmp(elem->defname, "include-typmod") == 0)
+		{
+			if (elem->arg == NULL)
+			{
+				elog(LOG, "include-typmod argument is null");
+				data->include_typmod = true;
+			}
+			else if (!parse_bool(strVal(elem->arg), &data->include_typmod))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
@@ -451,7 +466,6 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 		Form_pg_attribute	attr;		/* the attribute itself */
 		Oid					typid;		/* type of current attribute */
 		HeapTuple			type_tuple;	/* information about a type */
-		Form_pg_type		type_form;
 		Oid					typoutput;	/* output function */
 		bool				typisvarlena;
 		Datum				origval;	/* possibly toasted Datum */
@@ -490,7 +504,6 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 		type_tuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typid));
 		if (!HeapTupleIsValid(type_tuple))
 			elog(ERROR, "cache lookup failed for type %u", typid);
-		type_form = (Form_pg_type) GETSTRUCT(type_tuple);
 
 		/* Get information needed for printing values of a type */
 		getTypeOutputInfo(typid, &typoutput, &typisvarlena);
@@ -513,7 +526,21 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 		appendStringInfo(&colnames, "%s\"%s\"", comma, NameStr(attr->attname));
 
 		if (data->include_types)
-			appendStringInfo(&coltypes, "%s\"%s\"", comma, NameStr(type_form->typname));
+		{
+			if (data->include_typmod)
+			{
+				char	*type_str;
+
+				type_str = TextDatumGetCString(DirectFunctionCall2(format_type, attr->atttypid, attr->atttypmod));
+				appendStringInfo(&coltypes, "%s\"%s\"", comma, type_str);
+				pfree(type_str);
+			}
+			else
+			{
+				Form_pg_type type_form = (Form_pg_type) GETSTRUCT(type_tuple);
+				appendStringInfo(&coltypes, "%s\"%s\"", comma, NameStr(type_form->typname));
+			}
+		}
 
 		ReleaseSysCache(type_tuple);
 

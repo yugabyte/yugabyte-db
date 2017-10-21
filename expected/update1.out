@@ -78,7 +78,7 @@ UPDATE table_with_pk SET f = -f WHERE b = 1;
 UPDATE table_with_pk SET b = -b WHERE b = 1;
 -- UPDATE: unique
 UPDATE table_with_unique SET n = false WHERE b = 1;
-SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1');
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1', 'include-typmod', '0');
 WARNING:  table "table_without_pk" without primary key or replica identity is nothing
 WARNING:  table "table_with_unique" without primary key or replica identity is nothing
                                                                                                               data                                                                                                              

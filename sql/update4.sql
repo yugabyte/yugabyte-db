@@ -38,5 +38,5 @@ UPDATE table_with_unique SET c = -c WHERE b = 1;
 UPDATE table_with_unique SET g = -g WHERE n = true;
 ALTER TABLE table_with_unique REPLICA IDENTITY DEFAULT;
 
-SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1');
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1', 'include-typmod', '0');
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');

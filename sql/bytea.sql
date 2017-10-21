@@ -18,5 +18,5 @@ INSERT INTO xpto (bincol) SELECT decode(string_agg(to_char(round(g.i * random())
 UPDATE xpto SET rand1 = 123.456 WHERE id = 1;
 DELETE FROM xpto WHERE id = 1;
 
-SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1');
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1', 'include-typmod', '0');
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');

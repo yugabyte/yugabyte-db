@@ -85,5 +85,5 @@ UPDATE table_with_pk SET b = -b WHERE b = 1;
 -- UPDATE: unique
 UPDATE table_with_unique SET n = false WHERE b = 1;
 
-SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1');
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1', 'include-typmod', '0');
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
