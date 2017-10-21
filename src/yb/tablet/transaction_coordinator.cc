@@ -53,7 +53,7 @@
 DECLARE_uint64(transaction_heartbeat_usec);
 DEFINE_uint64(transaction_timeout_usec, 1500000, "Transaction expiration timeout in usec.");
 DEFINE_uint64(transaction_check_interval_usec, 500000, "Transaction check interval in usec.");
-DEFINE_double(transaction_ignore_appying_probability_in_tests, 0,
+DEFINE_double(transaction_ignore_applying_probability_in_tests, 0,
               "Probability to ignore APPLYING update in tests.");
 
 using namespace std::placeholders;
@@ -63,13 +63,28 @@ namespace tablet {
 
 namespace {
 
+void InvokeAbortCallback(const TransactionAbortCallback& callback,
+                         tserver::TransactionStatus status,
+                         HybridTime time = HybridTime::kInvalidHybridTime) {
+  DCHECK((!time.is_valid()) ||
+         (status == tserver::TransactionStatus::COMMITTED))
+      << "Status: " << tserver::TransactionStatus_Name(status) << ", time: " << time;
+  callback(TransactionStatusResult{status, time});
+}
+
+struct NotifyApplyingData {
+  TabletId tablet;
+  TransactionId transaction;
+  HybridTime commit_time;
+};
+
 // Context for transaction state. I.e. access to external facilities required by
 // transaction state to do its job.
 class TransactionStateContext {
  public:
   virtual TransactionCoordinatorContext& coordinator_context() = 0;
 
-  virtual void NotifyApplying(const TabletId& id, const TransactionId& transaction) = 0;
+  virtual void NotifyApplying(NotifyApplyingData data) = 0;
 
   // Submits update transaction to the RAFT log. Returns false if was not able to submit.
   virtual MUST_USE_RESULT bool SubmitUpdateTransaction(
@@ -189,10 +204,10 @@ class TransactionState {
   void Abort(TransactionAbortCallback callback, std::unique_lock<std::mutex>* lock) {
     if (ShouldBeCommitted()) {
       lock->unlock();
-      callback(tserver::TransactionStatus::COMMITTED);
+      InvokeAbortCallback(callback, tserver::TransactionStatus::COMMITTED);
     } else if (status_ == tserver::TransactionStatus::ABORTED) {
       lock->unlock();
-      callback(tserver::TransactionStatus::ABORTED);
+      InvokeAbortCallback(callback, tserver::TransactionStatus::ABORTED);
     } else {
       CHECK_EQ(tserver::TransactionStatus::PENDING, status_);
       abort_waiters_.emplace_back(std::move(callback));
@@ -238,7 +253,7 @@ class TransactionState {
       DCHECK(!unnotified_tablets_.empty() ||
              ShouldBeInStatus(tserver::TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS));
       for (auto& tablet : unnotified_tablets_) {
-        context_.NotifyApplying(tablet, id_);
+        context_.NotifyApplying({tablet, id_, commit_time_});
       }
     }
   }
@@ -354,7 +369,7 @@ class TransactionState {
     status_ = tserver::TransactionStatus::ABORTED;
     first_entry_raft_index_ = data.op_id.index();
     for (auto& waiter : abort_waiters_) {
-      waiter(status_);
+      InvokeAbortCallback(waiter, status_);
     }
     abort_waiters_.clear();
     return Status::OK();
@@ -367,7 +382,7 @@ class TransactionState {
     status_ = tserver::TransactionStatus::COMMITTED;
     unnotified_tablets_.insert(data.state.tablets().begin(), data.state.tablets().end());
     for (const auto& tablet : unnotified_tablets_) {
-      context_.NotifyApplying(tablet, id_);
+      context_.NotifyApplying({tablet, id_, commit_time_});
     }
     first_entry_raft_index_ = data.op_id.index();
     return Status::OK();
@@ -429,7 +444,7 @@ struct PostponedLeaderActions {
   bool leader = false;
   // List of tablets with transaction id, that should be notified that this transaction
   // is applying.
-  std::vector<std::pair<TabletId, TransactionId>> notify_applying;
+  std::vector<NotifyApplyingData> notify_applying;
   // List of update transaction records, that should be replicated via RAFT.
   std::vector<std::unique_ptr<UpdateTxnOperationState>> updates;
 
@@ -469,7 +484,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
 
   CHECKED_STATUS GetStatus(const std::string& transaction_id,
                            tserver::GetTransactionStatusResponsePB* response) {
-    auto id = MakeTransactionIdFromBinaryRepresentation(transaction_id);
+    auto id = DecodeTransactionId(transaction_id);
     if (!id.ok()) {
       return std::move(id.status());
     }
@@ -484,7 +499,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   }
 
   void Abort(const std::string& transaction_id, TransactionAbortCallback callback) {
-    auto id = MakeTransactionIdFromBinaryRepresentation(transaction_id);
+    auto id = DecodeTransactionId(transaction_id);
     if (!id.ok()) {
       callback(id.status());
       return;
@@ -496,7 +511,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       auto it = managed_transactions_.find(*id);
       if (it == managed_transactions_.end()) {
         lock.unlock();
-        callback(tserver::TransactionStatus::ABORTED);
+        InvokeAbortCallback(callback, tserver::TransactionStatus::ABORTED);
         return;
       }
       postponed_leader_actions_.leader = true;
@@ -516,7 +531,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   }
 
   CHECKED_STATUS ProcessReplicated(const ReplicatedData& data) {
-    auto id = MakeTransactionIdFromBinaryRepresentation(data.state.transaction_id());
+    auto id = DecodeTransactionId(data.state.transaction_id());
     if (!id.ok()) {
       return std::move(id.status());
     }
@@ -527,8 +542,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     if (data.state.status() == tserver::TransactionStatus::APPLYING) {
       // data.state.tablets contains only status tablet.
       DCHECK_EQ(data.state.tablets_size(), 1);
+      HybridTime commit_time(data.state.commit_hybrid_time());
       return transaction_participant_.ProcessApply(
-          { data.mode, data.applier, *id, data.op_id, data.hybrid_time, data.state.tablets(0) });
+          { data.mode, data.applier, *id, data.op_id, commit_time, data.state.tablets(0) });
     }
 
     PostponedLeaderActions actions;
@@ -572,12 +588,12 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
 
   void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request) {
     auto& state = *request->request();
-    auto id = MakeTransactionIdFromBinaryRepresentation(state.transaction_id());
+    auto id = DecodeTransactionId(state.transaction_id());
     CHECK_OK(id);
 
     if (state.status() == tserver::TransactionStatus::APPLYING) {
       std::atomic<double>& atomic_flag = *pointer_cast<std::atomic<double>*>(
-          &FLAGS_transaction_ignore_appying_probability_in_tests);
+          &FLAGS_transaction_ignore_applying_probability_in_tests);
       if (RandomActWithProbability(atomic_flag.load())) {
         request->completion_callback()->CompleteWithStatus(Status::OK());
         return;
@@ -655,11 +671,12 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       auto deadline = MonoTime::FineNow() + MonoDelta::FromSeconds(5); // TODO(dtxn)
       for (const auto& p : actions->notify_applying) {
         tserver::UpdateTransactionRequestPB req;
-        req.set_tablet_id(p.first);
+        req.set_tablet_id(p.tablet);
         auto& state = *req.mutable_state();
-        state.set_transaction_id(p.second.begin(), p.second.size());
+        state.set_transaction_id(p.transaction.begin(), p.transaction.size());
         state.set_status(tserver::TransactionStatus::APPLYING);
         state.add_tablets(context_.tablet_id());
+        state.set_commit_hybrid_time(p.commit_time.ToUint64());
 
         auto handle = rpcs_.Prepare();
         *handle = UpdateTransaction(
@@ -697,8 +714,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     return context_;
   }
 
-  void NotifyApplying(const TabletId& tablet, const TransactionId& transaction) override {
-    postponed_leader_actions_.notify_applying.emplace_back(tablet, transaction);
+  void NotifyApplying(NotifyApplyingData data) override {
+    postponed_leader_actions_.notify_applying.push_back(std::move(data));
   }
 
   MUST_USE_RESULT bool SubmitUpdateTransaction(

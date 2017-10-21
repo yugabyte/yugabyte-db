@@ -617,9 +617,12 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
   auto context_ptr = std::make_shared<rpc::RpcContext>(std::move(context));
   tablet_peer->tablet()->transaction_coordinator()->Abort(
       req->transaction_id(),
-      [resp, context_ptr](Result<TransactionStatus> result) {
+      [resp, context_ptr](Result<tablet::TransactionStatusResult> result) {
         if (result.ok()) {
-          resp->set_status(*result);
+          resp->set_status(result->status);
+          if (result->status_time.is_valid()) {
+            resp->set_status_hybrid_time(result->status_time.ToUint64());
+          }
           context_ptr->RespondSuccess();
         } else {
           SetupErrorAndRespond(resp->mutable_error(),

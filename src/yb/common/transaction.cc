@@ -17,7 +17,7 @@
 
 namespace yb {
 
-Result<TransactionId> MakeTransactionIdFromBinaryRepresentation(
+Result<TransactionId> DecodeTransactionId(
   Slice binary_representation_of_transaction_id) {
   if (binary_representation_of_transaction_id.size() != TransactionId::static_size()) {
     return STATUS_FORMAT(Corruption,

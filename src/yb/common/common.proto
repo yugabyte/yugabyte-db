@@ -372,6 +372,7 @@ message TransactionMetadataPB {
   optional IsolationLevel isolation = 2 [default=NON_TRANSACTIONAL];
   optional string status_tablet = 3;
   optional fixed64 priority = 4;
+  optional fixed64 start_hybrid_time = 5;
 }
 
 enum YBConsistencyLevel {

@@ -74,7 +74,8 @@ class TransactionCoordinatorContext {
   ~TransactionCoordinatorContext() {}
 };
 
-typedef std::function<void(Result<tserver::TransactionStatus>)> TransactionAbortCallback;
+struct TransactionStatusResult;
+typedef std::function<void(Result<TransactionStatusResult>)> TransactionAbortCallback;
 
 // Coordinates all transactions managed by specific tablet, i.e. all transactions
 // that selected this tablet as status tablet for it.

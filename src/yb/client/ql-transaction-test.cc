@@ -37,7 +37,7 @@ DECLARE_uint64(transaction_table_default_num_tablets);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_bool(transaction_disable_heartbeat_in_tests);
-DECLARE_double(transaction_ignore_appying_probability_in_tests);
+DECLARE_double(transaction_ignore_applying_probability_in_tests);
 DECLARE_uint64(transaction_check_interval_usec);
 
 namespace yb {
@@ -51,6 +51,10 @@ int32_t KeyForTransactionAndIndex(size_t transaction, size_t index) {
 
 int32_t ValueForTransactionAndIndex(size_t transaction, size_t index) {
   return static_cast<int32_t>(transaction * 10 + index + 2);
+}
+
+void SetIgnoreApplyingProbability(double value) {
+  SetAtomicFlag(value, &FLAGS_transaction_ignore_applying_probability_in_tests);
 }
 
 class QLTransactionTest : public QLDmlTestBase {
@@ -67,7 +71,9 @@ class QLTransactionTest : public QLDmlTestBase {
     FLAGS_transaction_table_default_num_tablets = 1;
     FLAGS_log_segment_size_bytes = 128;
     FLAGS_log_min_seconds_to_retain = 5;
-    transaction_manager_.emplace(client_);
+    scoped_refptr<server::Clock> clock(new server::HybridClock);
+    ASSERT_OK(clock->Init());
+    transaction_manager_.emplace(client_, [clock]() { return clock->Now(); });
   }
 
   // Insert a full, single row, equivalent to the insert statement below. Return a YB write op that
@@ -162,6 +168,18 @@ TEST_F(QLTransactionTest, Simple) {
   CHECK_OK(cluster_->RestartSync());
 }
 
+TEST_F(QLTransactionTest, InsertUpdate) {
+  google::FlagSaver flag_saver;
+
+  SetIgnoreApplyingProbability(1.0);
+  WriteData(); // Add data
+  WriteData(); // Update data
+  SetIgnoreApplyingProbability(0.0);
+  std::this_thread::sleep_for(5s); // TODO(dtxn) Wait for intents to apply
+  VerifyData();
+  CHECK_OK(cluster_->RestartSync());
+}
+
 TEST_F(QLTransactionTest, Cleanup) {
   WriteData();
   std::this_thread::sleep_for(1s); // TODO(dtxn)
@@ -237,15 +255,13 @@ TEST_F(QLTransactionTest, PreserveLogs) {
 
 TEST_F(QLTransactionTest, ResendApplying) {
   google::FlagSaver flag_saver;
-  std::atomic<double>& atomic_flag = *pointer_cast<std::atomic<double>*>(
-      &FLAGS_transaction_ignore_appying_probability_in_tests);
 
-  atomic_flag.store(1.0);
+  SetIgnoreApplyingProbability(1.0);
   WriteData();
   std::this_thread::sleep_for(5s); // Transaction should not be applied here.
   ASSERT_NE(0, CountTransactions());
 
-  atomic_flag.store(0.0);
+  SetIgnoreApplyingProbability(0.0);
   std::this_thread::sleep_for(1s); // Wait long enough for transaction to be applied.
   ASSERT_EQ(0, CountTransactions());
   VerifyData();

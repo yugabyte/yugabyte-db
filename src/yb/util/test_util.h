@@ -176,6 +176,11 @@ class MockHybridClock : public server::HybridClock {
 };
 #endif // !defined(__APPLE__)
 
+template <class T>
+void SetAtomicFlag(T value, T* flag) {
+  std::atomic<T>& atomic_flag = *pointer_cast<std::atomic<T>*>(flag);
+  atomic_flag.store(value);
+}
 
 } // namespace yb
 

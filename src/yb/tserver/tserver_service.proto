@@ -146,6 +146,7 @@ message GetTransactionStatusResponsePB {
   optional TabletServerErrorPB error = 1;
 
   optional TransactionStatus status = 2;
+  // For description of status_hybrid_time see comment in TransactionStatusResult.
   optional fixed64 status_hybrid_time = 3;
 }
 
@@ -159,4 +160,6 @@ message AbortTransactionResponsePB {
   optional TabletServerErrorPB error = 1;
 
   optional TransactionStatus status = 2;
+  // For description of status_hybrid_time see comment in TransactionStatusResult.
+  optional fixed64 status_hybrid_time = 3;
 }

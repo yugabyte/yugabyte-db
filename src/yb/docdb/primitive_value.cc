@@ -59,14 +59,12 @@ namespace docdb {
 namespace {
 
 template <class T>
-string DoubleToString(T val) {
+string RealToString(T val) {
   string s = std::to_string(val);
   // Remove trailing zeros.
-  if (s.find(".") != string::npos) {
-    s.erase(s.find_last_not_of('0') + 1, string::npos);
-  }
-  if (!s.empty() && s.back() == '.') {
-    s += '0';
+  auto dot_pos = s.find('.');
+  if (dot_pos != string::npos) {
+    s.erase(std::max(dot_pos + 1, s.find_last_not_of('0')) + 1, string::npos);
   }
   if (s == "0.0" && val != 0.0) {
     // Use the exponential notation for small numbers that would otherwise look like a zero.
@@ -99,7 +97,7 @@ string PrimitiveValue::ToString() const {
       return std::to_string(int64_val_);
     case ValueType::kFloatDescending: FALLTHROUGH_INTENDED;
     case ValueType::kFloat:
-      return FloatToString(float_val_);
+      return RealToString(float_val_);
     case ValueType::kDoubleDescending: FALLTHROUGH_INTENDED;
     case ValueType::kFrozenDescending: FALLTHROUGH_INTENDED;
     case ValueType::kFrozen: {
@@ -118,7 +116,7 @@ string PrimitiveValue::ToString() const {
       return ss.str();
     }
     case ValueType::kDouble:
-      return DoubleToString(double_val_);
+      return RealToString(double_val_);
     case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
     case ValueType::kDecimal: {
       util::Decimal decimal;

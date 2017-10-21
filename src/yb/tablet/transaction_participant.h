@@ -18,6 +18,8 @@
 
 #include <memory>
 
+#include <boost/optional/optional.hpp>
+
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/entity_ids.h"
@@ -50,7 +52,36 @@ class KeyBytes;
 
 namespace tablet {
 
-typedef std::function<void(Result<tserver::TransactionStatus>)> TransactionStatusCallback;
+struct TransactionMetadata {
+  TransactionId transaction_id; // 16 byte uuid
+  IsolationLevel isolation = IsolationLevel::NON_TRANSACTIONAL;
+  TabletId status_tablet;
+  uint64_t priority;
+  HybridTime start_time;
+
+  static Result<TransactionMetadata> FromPB(const TransactionMetadataPB& source);
+};
+
+bool operator==(const TransactionMetadata& lhs, const TransactionMetadata& rhs);
+
+inline bool operator!=(const TransactionMetadata& lhs, const TransactionMetadata& rhs) {
+  return !(lhs == rhs);
+}
+
+std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata);
+
+struct TransactionStatusResult {
+  tserver::TransactionStatus status;
+
+  // Meaning of status_time is related to status value.
+  // PENDING - status_time reflects maximal guaranteed PENDING time, i.e. transaction cannot be
+  // committed before this time.
+  // COMMITTED - status_time is a commit time.
+  // ABORTED - not used.
+  HybridTime status_time;
+};
+
+typedef std::function<void(Result<TransactionStatusResult>)> TransactionStatusCallback;
 
 class TransactionIntentApplier;
 
@@ -60,7 +91,7 @@ struct TransactionApplyData {
   TransactionIntentApplier* applier;
   TransactionId transaction_id;
   consensus::OpId op_id;
-  HybridTime hybrid_time;
+  HybridTime commit_time;
   TabletId status_tablet;
 };
 
@@ -93,10 +124,9 @@ class TransactionParticipant {
   // Adds new running transaction.
   void Add(const TransactionMetadataPB& data, rocksdb::WriteBatch *write_batch);
 
-  yb::IsolationLevel IsolationLevel(rocksdb::DB* db, const TransactionId& id);
-  uint64_t Priority(rocksdb::DB* db, const TransactionId& id);
+  boost::optional<TransactionMetadata> Metadata(rocksdb::DB* db, const TransactionId& id);
 
-  bool CommittedLocally(const TransactionId& id);
+  HybridTime LocalCommitTime(const TransactionId& id);
 
   void RequestStatusAt(const TransactionId& id,
                        HybridTime time,

@@ -58,6 +58,7 @@ class YBTransaction::Impl final {
         isolation_(isolation),
         priority_(RandomUniformInt<uint64_t>()),
         id_(Uuid::Generate()),
+        start_time_(manager->Now()),
         log_prefix_(Format("$0: ", to_string(id_))),
         heartbeat_handle_(manager->rpcs().InvalidHandle()),
         commit_handle_(manager->rpcs().InvalidHandle()) {
@@ -101,6 +102,7 @@ class YBTransaction::Impl final {
       metadata->set_isolation(isolation_);
       metadata->set_priority(priority_);
       metadata->set_status_tablet(status_tablet_->tablet_id());
+      metadata->set_start_hybrid_time(start_time_.ToUint64());
     }
     return true;
   }
@@ -306,6 +308,10 @@ class YBTransaction::Impl final {
   const IsolationLevel isolation_;
   const uint64_t priority_;
   const TransactionId id_;
+
+  // Used for snapshot isolation (as read time and for conflict resolution).
+  HybridTime start_time_;
+
   const std::string log_prefix_;
   bool requested_status_tablet_ = false;
   internal::RemoteTabletPtr status_tablet_;

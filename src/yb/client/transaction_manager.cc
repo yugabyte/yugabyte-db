@@ -121,8 +121,9 @@ constexpr size_t kMaxWorkers = 50;
 
 class TransactionManager::Impl {
  public:
-  explicit Impl(const YBClientPtr& client)
+  explicit Impl(const YBClientPtr& client, NowFunctor now)
       : client_(client),
+        now_(std::move(now)),
         thread_pool_("TransactionManager", kQueueLimit, kMaxWorkers),
         tasks_pool_(kQueueLimit) {}
 
@@ -140,8 +141,13 @@ class TransactionManager::Impl {
     return rpcs_;
   }
 
+  HybridTime Now() const {
+    return now_();
+  }
+
  private:
   YBClientPtr client_;
+  NowFunctor now_;
   std::atomic<bool> status_table_exists_{false};
   std::atomic<bool> closed_{false};
   yb::rpc::ThreadPool thread_pool_; // TODO async operations instead of pool
@@ -149,8 +155,8 @@ class TransactionManager::Impl {
   yb::rpc::Rpcs rpcs_;
 };
 
-TransactionManager::TransactionManager(const YBClientPtr& client)
-    : impl_(new Impl(client)) {}
+TransactionManager::TransactionManager(const YBClientPtr& client, NowFunctor now)
+    : impl_(new Impl(client, std::move(now))) {}
 
 TransactionManager::~TransactionManager() {
 }
@@ -165,6 +171,10 @@ const YBClientPtr& TransactionManager::client() const {
 
 rpc::Rpcs& TransactionManager::rpcs() {
   return impl_->rpcs();
+}
+
+HybridTime TransactionManager::Now() const {
+  return impl_->Now();
 }
 
 } // namespace client

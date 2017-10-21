@@ -460,7 +460,10 @@ message TransactionStatePB {
 
   // tablets has different meaning, depending on status:
   // COMMITTED - list of involved tablets
-  // APPLY - single entry, status tablet of this transaction
+  // APPLYING - single entry, status tablet of this transaction
   // APPLIED - single entry, tablet that applied this transaction
   repeated bytes tablets = 3;
+
+  // Relevant only in APPLYING state.
+  optional fixed64 commit_hybrid_time = 4;
 }

@@ -31,17 +31,20 @@ namespace yb {
 namespace client {
 
 typedef std::function<void(const Result<std::string>&)> PickStatusTabletCallback;
+typedef std::function<HybridTime()> NowFunctor;
 
 // TransactionManager manages multiple transactions.
 class TransactionManager {
  public:
-  explicit TransactionManager(const YBClientPtr& client);
+  TransactionManager(const YBClientPtr& client, NowFunctor now);
   ~TransactionManager();
 
   void PickStatusTablet(PickStatusTabletCallback callback);
-  rpc::Rpcs& rpcs();
 
+  rpc::Rpcs& rpcs();
   const YBClientPtr& client() const;
+
+  HybridTime Now() const;
 
  private:
   class Impl;
