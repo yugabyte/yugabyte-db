@@ -47,33 +47,38 @@ class UniverseDisplayItem extends Component {
     const universeCreationDate = moment(universe.creationDate ).format("MM/DD/YYYY") || "";
     return (
       <Col sm={4} md={3} lg={2}>
-        <div className="universe-display-item-container">
-          <div className="status-icon">
-            <UniverseStatusContainer currentUniverse={universe} />
-          </div>
-          <div className="display-name">
-            <Link to={"/universes/" + universe.universeUUID}>
+        <Link to={"/universes/" + universe.universeUUID}>
+          <div className="universe-display-item-container">
+            <div className="status-icon">
+              <UniverseStatusContainer currentUniverse={universe} />
+            </div>
+            <div className="display-name">
               {universe.name}
-            </Link>
+              {/* <div className="base">{universe.name}</div>
+              <div className="overlay">{universe.name}</div> */}
+            </div>
+            <div className="provider-name">
+              {universeProvider}
+            </div>
+            <div className="description-item-list">
+              {/* <DescriptionItem title="Provider">
+                <span>{universeProvider}</span>
+              </DescriptionItem> */}
+              <DescriptionItem title="Nodes">
+                <span>{numNodes}</span>
+              </DescriptionItem>
+              <DescriptionItem title="Replication Factor">
+                <span>{replicationFactor}</span>
+              </DescriptionItem>
+              <DescriptionItem title="Monthly Cost">
+                <span>{costPerMonth}</span>
+              </DescriptionItem>
+              <DescriptionItem title="Created">
+                <span>{universeCreationDate}</span>
+              </DescriptionItem>
+            </div>
           </div>
-          <div className="description-item-list">
-            <DescriptionItem title="Provider">
-              <span>{universeProvider}</span>
-            </DescriptionItem>
-            <DescriptionItem title="Nodes">
-              <span>{numNodes}</span>
-            </DescriptionItem>
-            <DescriptionItem title="Replication Factor">
-              <span>{replicationFactor}</span>
-            </DescriptionItem>
-            <DescriptionItem title="Monthly Cost">
-              <span>{costPerMonth}</span>
-            </DescriptionItem>
-            <DescriptionItem title="Created">
-              <span className="universe-create-date">{universeCreationDate}</span>
-            </DescriptionItem>
-          </div>
-        </div>
+        </Link>
       </Col>
     );
   }

@@ -1,5 +1,7 @@
 /* Copyright (c) YugaByte, Inc. */
 
+@import "_style/colors.scss";
+
 .highlighted-stats-panel {
   margin-top: 10px;
 }
@@ -36,6 +38,7 @@
   font-size: 22px;
   line-height: 22px;
   font-weight: 600;
+  color: $YB_VIOLET_TEXT;
 }
 @media (min-width:768px) {
   .tile_count .tile_stats_count .count, .tile_count .tile_stats_count .count span {

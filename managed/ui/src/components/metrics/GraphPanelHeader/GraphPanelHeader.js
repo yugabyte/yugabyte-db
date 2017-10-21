@@ -304,11 +304,13 @@ class GraphPanelHeader extends Component {
             </div>
 
             <h2>Metrics</h2>
-            {universePicker}
-            <NodePicker {...this.props} nodeItemChanged={this.nodeItemChanged}
-                        selectedUniverse={this.state.currentSelectedUniverse}
-                        selectedNode={this.state.currentSelectedNode}/>
-            <YBButton btnIcon="fa fa-refresh" btnClass="btn btn-default refresh-btn" onClick={this.refreshGraphQuery}/>
+            <div className="filter-container">
+              {universePicker}
+              <NodePicker {...this.props} nodeItemChanged={this.nodeItemChanged}
+                          selectedUniverse={this.state.currentSelectedUniverse}
+                          selectedNode={this.state.currentSelectedNode}/>
+              <YBButton btnIcon="fa fa-refresh" btnClass="btn btn-default refresh-btn" onClick={this.refreshGraphQuery}/>
+            </div>
           </Col>
         </Row>
         <Row>

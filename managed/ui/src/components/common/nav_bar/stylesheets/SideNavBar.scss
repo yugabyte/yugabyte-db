@@ -1,6 +1,7 @@
 /* Copyright (c) YugaByte, Inc. */
 
 @import "_style/colors.scss";
+@import "_style/mixins.scss";
 
 .side-nav-container {
   position: relative;
@@ -21,7 +22,7 @@
 }
 
 .left_col {
-  background: $YB_SIDEBAR_GRAY;
+  background: $YB_VIOLET;
 }
 
 .left_col .mCSB_scrollTools {
@@ -73,48 +74,65 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-.nav.side-menu > li {
-  position: relative;
-  display: block;
-  cursor: pointer;
-}
-.nav.side-menu > li > a {
-  margin-bottom: 6px;
-}
-.nav.side-menu > li > a:hover {
-  color: #ddd;
-  background-color: #404040 !important;
-  i {
-    color: #ccc;
-  }
-}
-.nav > li > a:focus,
-.nav.side-menu > li > a:hover {
-  text-decoration: none;
-  background: transparent;
+.nav.side-menu {
+  & > li {
+    position: relative;
+    display: block;
+    cursor: pointer;
+    a {
+      & {
+        color: #ddd;
+        font-weight: 500;
+
+        i {
+          color: $YB_VIOLET_TEXT;
+        }
+      }
+      &, &:focus {
+        padding: 3px 0;
+        @include transition(0.35s);
+        background: transparent;
+        i, span {
+          transition: inherit;
+        }
+      }
+      &:hover {
+        transition: none;
+        background: $YB_VIOLET_DARK;
+        text-decoration: none;
+        i, span {
+          transition: inherit;
+        }
+        i {
+          color: $YB_SIDEBAR_VIOLET_LIGHT_HOVER;
+        }
+      }
+    }
+    &.active {
+      a {
+        &, &:hover {
+          text-shadow: rgba(0, 0, 0, 0.25) 0 -1px 0;
+          color: #fff;
+          background: $YB_SIDEBAR_VIOLET_LIGHT;
+          i {
+            color: #fff;
+          }
+        }
+      }
+    }
+  }   
 }
 
-.nav.side-menu > li > a,
+.nav > li > a:focus {
+  text-decoration: none;
+}
+
 .nav.child_menu > li > a {
   color: #ddd;
   font-weight: 500;
 
   i {
-    color: #999;
-  }
-}
-
-.nav.side-menu > li.active > a,
-.nav.side-menu > li.active > a:hover {
-  text-shadow: rgba(0, 0, 0, 0.25) 0 -1px 0;
-  color: #fff;
-  background: #444;
-  -webkit-box-shadow: rgba(0, 0, 0, 0.25) 0 -1px 0, inset rgba(255, 255, 255, 0.16) 0 -1px 0;
-  -moz-box-shadow: rgba(0, 0, 0, 0.25) 0 -1px 0, inset rgba(255, 255, 255, 0.16) 0 -1px 0;
-  box-shadow: rgba(0, 0, 0, 0.25) 0 -1px 0, inset rgba(255, 255, 255, 0.16) 0 -1px 0;
-
-  i {
-    color: #eee;
+    color: $YB_VIOLET_TEXT;
   }
 }
 
@@ -148,4 +166,24 @@
   position: absolute;
   bottom: 0;
   width: 100%;
+}
+.nav.side-menu.position-bottom > li > a{
+  i {
+    width: 24px;
+    height: 24px;
+    font-size: 22px !important;
+    line-height: 24px;
+    color: #fff;
+    display: block;
+    border-radius: 18px;
+    margin: 0 auto;
+    background-color: $YB_ORANGE;
+    
+    @media screen and ( max-height: 460px ) {
+      width: 20px;
+      height: 20px;
+      font-size: 18px !important;
+      line-height: 22px;
+    }
+  }
 }

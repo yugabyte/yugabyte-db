@@ -77,33 +77,35 @@ export default class TaskListTable extends Component {
     return (
       <div id="page-wrapper" className="dashboard-widget-container">
         <h2 className="task-list-header">{title}</h2>
-        <BootstrapTable data={taskList} bodyStyle={tableBodyContainer} pagination={true}
-                        search multiColumnSearch searchPlaceholder='Search by Name or Type'>
-          <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
-          <TableHeaderColumn dataField="type" dataFormat={typeFormatter}
-                             columnClassName="no-border name-column" className="no-border">
-            Type
-          </TableHeaderColumn>
-          <TableHeaderColumn dataField="title" dataFormat={nameFormatter} dataSort
-                             columnClassName="no-border name-column" className="no-border">
-            Name
-          </TableHeaderColumn>
-          <TableHeaderColumn dataField="percentComplete" dataSort
-                             columnClassName="no-border name-column" className="no-border"
-                             dataFormat={successStringFormatter}>
-            Status
-          </TableHeaderColumn>
-          <TableHeaderColumn dataField="createTime" dataFormat={timeFormatter} dataSort
-                             columnClassName="no-border " className="no-border"
-                             dataAlign="left">
-            Start Time
-          </TableHeaderColumn>
-          <TableHeaderColumn dataField="completionTime" dataFormat={timeFormatter} dataSort
-                             columnClassName="no-border name-column" className="no-border">
-            End Time
-          </TableHeaderColumn>
-          <TableHeaderColumn dataField="id" dataFormat={taskDetailLinkFormatter} dataSort/>
-        </BootstrapTable>
+        <div className="content-panel">
+          <BootstrapTable data={taskList} bodyStyle={tableBodyContainer} pagination={true}
+                          search multiColumnSearch searchPlaceholder='Search by Name or Type'>
+            <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
+            <TableHeaderColumn dataField="type" dataFormat={typeFormatter}
+                              columnClassName="no-border name-column" className="no-border">
+              Type
+            </TableHeaderColumn>
+            <TableHeaderColumn dataField="title" dataFormat={nameFormatter} dataSort
+                              columnClassName="no-border name-column" className="no-border">
+              Name
+            </TableHeaderColumn>
+            <TableHeaderColumn dataField="percentComplete" dataSort
+                              columnClassName="no-border name-column" className="no-border"
+                              dataFormat={successStringFormatter}>
+              Status
+            </TableHeaderColumn>
+            <TableHeaderColumn dataField="createTime" dataFormat={timeFormatter} dataSort
+                              columnClassName="no-border " className="no-border"
+                              dataAlign="left">
+              Start Time
+            </TableHeaderColumn>
+            <TableHeaderColumn dataField="completionTime" dataFormat={timeFormatter} dataSort
+                              columnClassName="no-border name-column" className="no-border">
+              End Time
+            </TableHeaderColumn>
+            <TableHeaderColumn dataField="id" dataFormat={taskDetailLinkFormatter} dataSort/>
+          </BootstrapTable>
+        </div>
       </div>
     );
   }

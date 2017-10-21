@@ -1,6 +1,7 @@
 /* Copyright (c) YugaByte, Inc. */
 
 @import "_style/colors.scss";
+@import "_style/mixins.scss";
 
 .graph-panel-container {
   margin-top: 4px;
@@ -12,35 +13,66 @@
   margin: 0 2px;
 }
 
+
 .graph-panel .metrics-container {
   margin: 0px;
   border: none !important;
-  background: none !important;
-  box-shadow: none !important;
+  box-shadow: 0 1px 1px rgba($YB_DARK_GRAY_2, 0.25);
+  border-top: none;
+  background-color: #fff;
+  border-radius: 0;
 
   .panel-heading {
-    background: $YB_GRAY_10;
     padding: 0 !important;
-    border-bottom: 1px solid $YB_GRAY_20;
+    border: none;
+    border-radius: 0;
 
     a {
-      display: block;
-      padding: 10px;
+      background-color: $YB_VIOLET_TEXT;
+      color: #fff;
+      &.collapsed {
+        background-color: $YB_GRAY_HOVER;
+        color: $YB_VIOLET_TEXT;
 
+        &:after {
+          top: 10px;
+          left: 14px;
+          color: $YB_VIOLET;
+        }
+        &:hover {
+          background-color: $YB_GRAY;
+          color: $YB_VIOLET_TEXT;
+        }
+      }
+      display: block;
+      padding: 10px 35px;
+      position: relative;
+      @include transition(0.35s);
+      &:after {
+        position: absolute;
+        color: $YB_VIOLET_TEXT_LIGHT;
+        top: 8px;
+        left: 12px;
+      }
       &:hover {
-        background: $YB_GRAY_8;
+        background-color: darken($YB_VIOLET_TEXT, 2%);
+        color: #fff;
         text-decoration: none;
+        @include transition(0.125s);
       }
 
       &:active {
-        background: $YB_GRAY_15;
+        background-color: darken($YB_VIOLET_TEXT, 10%);
       }
     }
   }
 
+  .panel-collapse {
+    padding: 0 7.5px;
+  }
   .panel-body {
     border: none !important;
-    padding: 10px 0 !important;
+    padding: 10px 0px !important;
   }
 }
 

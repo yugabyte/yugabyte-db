@@ -6,13 +6,13 @@ import moment from 'moment';
 import { DescriptionItem, YBFormattedNumber } from '../../common/descriptors';
 import { getPromiseState } from 'utils/PromiseUtils';
 import {YBLoadingIcon} from '../../common/indicators';
-import './HighlightedStatsPanel.css';
+import './HighlightedStatsPanel.scss';
 
 class StatsPanelComponent extends Component {
   render() {
     const {value, label} = this.props;
     return (
-      <Col sm={4} className="tile_stats_count text-center">
+      <Col xs={4} className="tile_stats_count text-center">
         <DescriptionItem>
           <div className="count">
             {value}
@@ -48,7 +48,7 @@ export default class HighlightedStatsPanel extends Component {
     );
     return (
       <div className="row tile_count highlighted-stats-panel">
-        <Col sm={6} smOffset={3}>
+        <Col xs={12} sm={8} smOffset={3} md={6}>
           <StatsPanelComponent value={universeList.data.length} label={"Universes"}/>
           <StatsPanelComponent value={numNodes} label={"Nodes"}/>
           <StatsPanelComponent value={formattedCost} label={"Per Month"}/>

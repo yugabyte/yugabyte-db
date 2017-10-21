@@ -1,8 +1,15 @@
 /* Copyright (c) YugaByte, Inc. */
 .universe-apps-modal {
+  text-align: center;
+  *{
+    text-align: left;
+  }
+  @media (min-width: 992px) {
+    text-align: right;
+  }
   .open-modal-btn {
-    float: right;
     margin-top: 4px;
+    margin-bottom: 10px;
   }
   .modal-content {
     width: 100%;

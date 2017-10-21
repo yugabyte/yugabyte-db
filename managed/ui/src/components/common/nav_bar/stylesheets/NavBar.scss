@@ -22,6 +22,11 @@
       left:0;
       position: absolute;
 
+      .logo {
+        height: 39px;
+        margin: 10px auto;
+      }
+
       &.menu_fixed {
         position: fixed;
         height: 100%;
@@ -63,15 +68,17 @@
   }
   .nav.side-menu li a {
     text-align: center !important;
-    font-weight: 400;
-    font-size: 10px;
+    font-weight: 300;
+    font-size: 11px;
     padding: 10px 5px;
-
+    cursor: pointer;
+    letter-spacing: -0.01em;
     i {
-      font-size: 25px !important;
+      font-size: 25px;
       text-align: center;
-      width: 100% !important;
       margin-bottom: 5px;
+      display: block;
+      margin: 0 auto 5px auto;
 
       &.toggle-up {
         display: none !important;
@@ -89,7 +96,7 @@
 
       i {
         font-size: 18px;
-        margin: 0 !important;
+        margin: 0 auto !important;
       }
     }
   }
