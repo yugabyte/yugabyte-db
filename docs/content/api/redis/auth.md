@@ -1,5 +1,6 @@
 ---
 title: AUTH
+weight: 202
 ---
 Early Releases: Not supported. All `AUTH` requests with any password would be accepted as valid.
 

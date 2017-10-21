@@ -1,6 +1,7 @@
 ---
 title: Integer Types
 summary: Signed integers of different ranges
+weight: 142
 ---
 
 ## Synopsis

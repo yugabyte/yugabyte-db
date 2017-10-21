@@ -1,7 +1,7 @@
 ---
 title: TEXT Type
-summary: String of Unicode characters.
-toc: false
+summary: String of Unicode characters
+weight: 144
 ---
 
 ## Synopsis

@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T20:08:11+01:00
 title: Comparisons with Other Databases
-weight: 74
+weight: 110
 ---
 
 ## YugaByte vs. Apache Cassandra

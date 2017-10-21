@@ -1,6 +1,7 @@
 ---
 title: CREATE TYPE
 summary: Create a new datatype
+weight: 125
 ---
 
 ## Synopsis

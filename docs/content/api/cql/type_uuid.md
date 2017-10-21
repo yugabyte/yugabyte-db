@@ -1,7 +1,7 @@
 ---
 title: UUID and TIMEUUID
-summary: UUID types.
-toc: false
+summary: UUID types
+weight: 146
 ---
 
 ## Synopsis

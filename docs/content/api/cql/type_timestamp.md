@@ -1,7 +1,7 @@
 ---
 title: DateTime Types
-summary: DATE, TIME and TIMESTAMP.
-toc: false
+summary: DATE, TIME and TIMESTAMP
+weight: 145
 ---
 
 ## Synopsis

@@ -1,6 +1,7 @@
 ---
 title: Apache Cassandra Query Language (CQL)
-summary: CQL features.
+summary: CQL features
+weight: 130
 ---
 
 ## Introduction

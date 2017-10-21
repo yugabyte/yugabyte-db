@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T00:11:02+01:00
-title: yb-master Reference
-weight: 15
+title: yb-master
+weight: 243
 ---
 
 `yb-master`, located in the bin directory of YugaByte home, is the [YB-Master] (/architecture/concepts/#yb-master) binary.
@@ -25,7 +25,6 @@ Flag | Mandatory | Default | Description
 `--rpc_bind_addresses`| N |`0.0.0.0:7100` | Comma-separated list of addresses to bind to for RPC connections.
 `--webserver_port`| N | `7000` | Monitoring web server port
 `--webserver_doc_root`| N | The `www` directory in the YugaByte home directory | Monitoring web server home
-`--create_cluster`| N | N/A | Set this flag only when starting the `yb-master` for the very first time.
 `--replication_factor`| N |`3`  | Number of replicas to store for each tablet in the universe.
 `--flagfile`| N | N/A  | Load flags from the specified file.
 `--version` | N | N/A | Show version and build info

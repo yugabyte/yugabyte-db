@@ -1,7 +1,7 @@
 ---
 title: FROZEN Datatypes
 summary: Binary format for complex datatypes.
-toc: false
+weight: 140
 ---
 
 ## Synopsis

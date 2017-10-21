@@ -1,7 +1,7 @@
 ---
 title: Builtin Function Call
 summary: Combination of one or more values.
-toc: false
+weight: 133
 ---
 
 ## Synopsis

@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T20:08:11+01:00
 title: Frequently Asked Questions
-weight: 70
+weight: 3
 ---
 
 ## Architecture
@@ -78,7 +78,7 @@ You would need:
 
 Typically you can saturate a database machine (or three in case of replication factor 3) with just one large enough test machine running a synthetic load tester that has a light usage pattern. YugaByte ships some synthetic load-testers with the product which can simulate a few different workloads. For example, one load tester simulates a timeseries/IoT style workload and another does stock-ticker like workload. But if you have a load tester that emulates your planned usage pattern, nothing like it!
 
-### Can we control the properties of the machines Yugaware is spinning up? For instance, the VPC/network to spawn machines into, if it has dedicated IOPS, the tenancy of the machine (to prevent "noisy neighbor" problem), etc?
+### Can we control the properties (such as VPC, IOPS, tenancy etc.) of the machines Yugaware is spinning up? 
 
 Yes, you can control what Yugaware is spinning up. For example: 
 
@@ -86,8 +86,7 @@ Yes, you can control what Yugaware is spinning up. For example:
 
 - You to choose dedicated IOPs EBS drives on AWS and specify the number of dedicated IOPS you need.  
 
-In general, we are be able to fill the gaps quickly if we are missing some features. But as a catch all, Yugaware will allow creating these machines out of band and import these as "on-premise" install.  
-
+In general, we are be able to fill the gaps quickly if we are missing some features. But as a catch all, Yugaware allows creating these machines out of band and import these as "on-premise" install.  
 
 ## Comparisons
 
@@ -107,19 +106,17 @@ See [YugaByte vs. Apache HBase](/architecture/comparisons/#yugabyte-vs-apache-hb
 
 Independent cache and database clusters should be avoided for multiple reasons.
 
-#### Development and operational complexity
+- Development and operational complexity
 
 Sharding has to be implemented at two tiers. Scale out (expanding/shrinking the cluster) has to be re-implemented twice - once at the Redis layer and again for the sharded SQL layer. You need to also worry about resharding the data in the Redis layer. The application has to be aware of two tiers, move data between them, deal with consistency issues, etc. It has to write to Redis and sharded SQL, read from Redis, deal with staleness of data, etc.
 
-#### Higher cost
+- Higher cost
 
 Typically not all the data needs to be cached, and the cache has to adapt to the query pattern. Most people deploying Redis this way end up caching all the data. Some queries need to be answered with low latency from the cache, and others are longer running queries that should not pollute the cache. This is hard to achieve if two systems deal with different access patterns for the same data.
 
-#### Cross-DC administration complexity
+- Cross-DC administration complexity
 
-- With sync or async replicas - you need to solve all the failover and failback issues at to layers.
-
-- All the latency/consistency/throughput tracking needs to be done at two levels, which makes the app deployment architecture very complicated.
+You need to solve all the failover and failback issues at two layers especially when both sync and async replicas are needed. Additionally, the latency/consistency/throughput tracking needs to be done at two levels, which makes the app deployment architecture very complicated.
 
 
 ## Apache CQL

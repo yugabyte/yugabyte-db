@@ -1,7 +1,7 @@
 ---
 title: CREATE TABLE
-summary: Create a new table in a keyspace.
-toc: false
+summary: Create a new table in a keyspace
+weight: 124
 ---
 
 ## Synopsis

@@ -1,5 +1,6 @@
 ---
 title: EXISTS
+weight: 206
 ---
 Early Releases: Single-key request only. Requests with multiple keys are not yet supported.
 

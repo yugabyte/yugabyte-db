@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T19:56:50+01:00
-title: Administer YugaByte
-weight: 40
+title: Administer YugaByte DB
+weight: 60
 ---
 
 This section details how to administer YugaByte using the YugaWare admin console.

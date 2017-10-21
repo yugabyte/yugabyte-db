@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T00:11:02+01:00
-title: Deploy 
-weight: 30
+title: Deploy
+weight: 20
 ---
 
 Multi-node clusters of YugaByte Community Edition can be manually deployed on any cloud provider of choice including major public cloud platforms and private on-premises datacenters.
@@ -64,18 +64,15 @@ Execute the following steps on each of the instances.
 ```sh
 $ ./bin/yb-master \
 --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
---fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
---create_cluster &
+--fs_data_dirs "/home/centos/disk1,/home/centos/disk2" &
 ```
 
-Remove the `--create_cluster` flag when restarting the `yb-master` on an existing cluster.
 
 - Alternatively, you can also create a `master.conf` file with the following flags and then run the `yb-master` with the `--flagfile` option as shown below.
 
 ```sh
 --master_addresses=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
---fs_data_dirs=/home/centos/disk1,/home/centos/disk2
---create_cluster
+--fs_data_dirs=/home/centos/disk1,/home/centos/disk2 &
 ```
 
 ```sh
@@ -175,11 +172,11 @@ The above deployment uses the various default ports listed below.
 Service | Type | Port 
 --------|------| -------
 `yb-master` | rpc | 7100
-`yb-master` | monitoring web server | 7000
+`yb-master` | admin web server | 7000
 `yb-tserver` | rpc | 9100
-`yb-tserver` | monitoring web server | 9000
+`yb-tserver` | admin web server | 9000
 `cql` | rpc | 9042
-`cql` | monitoring web server | 12000
+`cql` | admin web server | 12000
 `redis` | rpc | 6379
-`redis` | monitoring web server | 11000
+`redis` | admin web server | 11000
 

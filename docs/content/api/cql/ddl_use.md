@@ -1,6 +1,7 @@
 ---
 title: USE
-summary: Create a new database. 
+summary: Create a new database
+weight: 129
 ---
 
 ## Synopsis

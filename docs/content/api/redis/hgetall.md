@@ -1,5 +1,6 @@
 ---
 title: HGETALL
+weight: 213
 ---
 
 ## SYNOPSIS

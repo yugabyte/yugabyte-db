@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T00:11:02+01:00
-title: yb-ctl Reference
-weight: 15
+title: yb-ctl
+weight: 241
 ---
 
 `yb-ctl`, located in the bin directory of YugaByte home, is a simple command line interface for administering local clusters. It invokes the [`yb-master`] (/admin/yb-master/) and [`yb-tserver`] (/admin/yb-tserver/) binaries to perform the necessary administration.
@@ -52,30 +52,29 @@ Optional Argument | Default | Description
 
 ## Create cluster
 
-Create a 3 node local cluster with replication factor 3. 
+- Create a 3 node local cluster with replication factor 3. 
 
 Each of these initial nodes run a `yb-tserver` process and a `yb-master` process. Note that the number of yb-masters in a cluster has to equal to the replication factor for the cluster to be considered as operating normally and the number of yb-tservers is equal to be the number of nodes.
 
 ```sh
 $ ./bin/yb-ctl create
-2017-09-18 23:10:16,290 INFO: Starting master with:
-/home/vagrant/yugabyte/bin/yb-master --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-1,/tmp/yugabyte-local-cluster/disk2/node-1" --webserver_port 7000 --rpc_bind_addresses 127.0.0.1:7100 --use_hybrid_clock=False --placement_cloud cloud --placement_region region --placement_zone zone --webserver_doc_root "/home/vagrant/yugabyte/www" --create_cluster=true --replication_factor=3 --master_addresses 127.0.0.1:7100,127.0.0.1:7101,127.0.0.1:7102 >"/tmp/yugabyte-local-cluster/disk1/node-1/master.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-1/master.err" &
-2017-09-18 23:10:16,308 INFO: Starting master with:
-/home/vagrant/yugabyte/bin/yb-master --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-2,/tmp/yugabyte-local-cluster/disk2/node-2" --webserver_port 7001 --rpc_bind_addresses 127.0.0.1:7101 --use_hybrid_clock=False --placement_cloud cloud --placement_region region --placement_zone zone --webserver_doc_root "/home/vagrant/yugabyte/www" --create_cluster=true --replication_factor=3 --master_addresses 127.0.0.1:7100,127.0.0.1:7101,127.0.0.1:7102 >"/tmp/yugabyte-local-cluster/disk1/node-2/master.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-2/master.err" &
-2017-09-18 23:10:16,340 INFO: Starting master with:
-/home/vagrant/yugabyte/bin/yb-master --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-3,/tmp/yugabyte-local-cluster/disk2/node-3" --webserver_port 7002 --rpc_bind_addresses 127.0.0.1:7102 --use_hybrid_clock=False --placement_cloud cloud --placement_region region --placement_zone zone --webserver_doc_root "/home/vagrant/yugabyte/www" --create_cluster=true --replication_factor=3 --master_addresses 127.0.0.1:7100,127.0.0.1:7101,127.0.0.1:7102 >"/tmp/yugabyte-local-cluster/disk1/node-3/master.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-3/master.err" &
-2017-09-18 23:10:16,391 INFO: Starting tserver with:
-/home/vagrant/yugabyte/bin/yb-tserver --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-1,/tmp/yugabyte-local-cluster/disk2/node-1" --webserver_port 9000 --rpc_bind_addresses 127.0.0.1:9100 --use_hybrid_clock=False --placement_cloud cloud --placement_region region --placement_zone zone --webserver_doc_root "/home/vagrant/yugabyte/www" --tserver_master_addrs 127.0.0.1:7100,127.0.0.1:7101,127.0.0.1:7102 --memory_limit_hard_bytes 1073741824 --redis_proxy_webserver_port 11000 --redis_proxy_bind_address 127.0.0.1:6379 --cql_proxy_webserver_port 12000 --cql_proxy_bind_address 127.0.0.1:9042 --local_ip_for_outbound_sockets 127.0.0.1 >"/tmp/yugabyte-local-cluster/disk1/node-1/tserver.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-1/tserver.err" &
-2017-09-18 23:10:16,471 INFO: Starting tserver with:
-/home/vagrant/yugabyte/bin/yb-tserver --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-2,/tmp/yugabyte-local-cluster/disk2/node-2" --webserver_port 9001 --rpc_bind_addresses 127.0.0.1:9101 --use_hybrid_clock=False --placement_cloud cloud --placement_region region --placement_zone zone --webserver_doc_root "/home/vagrant/yugabyte/www" --tserver_master_addrs 127.0.0.1:7100,127.0.0.1:7101,127.0.0.1:7102 --memory_limit_hard_bytes 1073741824 --redis_proxy_webserver_port 11001 --redis_proxy_bind_address 127.0.0.1:6380 --cql_proxy_webserver_port 12001 --cql_proxy_bind_address 127.0.0.1:9043 --local_ip_for_outbound_sockets 127.0.0.1 >"/tmp/yugabyte-local-cluster/disk1/node-2/tserver.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-2/tserver.err" &
-2017-09-18 23:10:16,559 INFO: Starting tserver with:
-/home/vagrant/yugabyte/bin/yb-tserver --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-3,/tmp/yugabyte-local-cluster/disk2/node-3" --webserver_port 9002 --rpc_bind_addresses 127.0.0.1:9102 --use_hybrid_clock=False --placement_cloud cloud --placement_region region --placement_zone zone --webserver_doc_root "/home/vagrant/yugabyte/www" --tserver_master_addrs 127.0.0.1:7100,127.0.0.1:7101,127.0.0.1:7102 --memory_limit_hard_bytes 1073741824 --redis_proxy_webserver_port 11002 --redis_proxy_bind_address 127.0.0.1:6381 --cql_proxy_webserver_port 12002 --cql_proxy_bind_address 127.0.0.1:9044 --local_ip_for_outbound_sockets 127.0.0.1 >"/tmp/yugabyte-local-cluster/disk1/node-3/tserver.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-3/tserver.err" &
-
+2017-10-16 21:46:52,558 INFO: Starting master with:
+/home/vagrant/yugabyte/bin/yb-master --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-1,/tmp/yugabyte-local-cluster/disk2/node-1" --webserver_interface 127.0.0.1 --rpc_bind_addresses 127.0.0.1 --webserver_doc_root "/home/vagrant/yugabyte/www" --replication_factor=3 --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 >"/tmp/yugabyte-local-cluster/disk1/node-1/master.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-1/master.err" &
+2017-10-16 21:46:52,567 INFO: Starting master with:
+/home/vagrant/yugabyte/bin/yb-master --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-2,/tmp/yugabyte-local-cluster/disk2/node-2" --webserver_interface 127.0.0.2 --rpc_bind_addresses 127.0.0.2 --webserver_doc_root "/home/vagrant/yugabyte/www" --replication_factor=3 --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 >"/tmp/yugabyte-local-cluster/disk1/node-2/master.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-2/master.err" &
+2017-10-16 21:46:52,588 INFO: Starting master with:
+/home/vagrant/yugabyte/bin/yb-master --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-3,/tmp/yugabyte-local-cluster/disk2/node-3" --webserver_interface 127.0.0.3 --rpc_bind_addresses 127.0.0.3 --webserver_doc_root "/home/vagrant/yugabyte/www" --replication_factor=3 --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 >"/tmp/yugabyte-local-cluster/disk1/node-3/master.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-3/master.err" &
+2017-10-16 21:46:52,594 INFO: Starting tserver with:
+/home/vagrant/yugabyte/bin/yb-tserver --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-1,/tmp/yugabyte-local-cluster/disk2/node-1" --webserver_interface 127.0.0.1 --rpc_bind_addresses 127.0.0.1 --webserver_doc_root "/home/vagrant/yugabyte/www" --tserver_master_addrs 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 --memory_limit_hard_bytes 1073741824 --redis_proxy_bind_address 127.0.0.1 --cql_proxy_bind_address 127.0.0.1 --local_ip_for_outbound_sockets 127.0.0.1 >"/tmp/yugabyte-local-cluster/disk1/node-1/tserver.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-1/tserver.err" &
+2017-10-16 21:46:52,601 INFO: Starting tserver with:
+/home/vagrant/yugabyte/bin/yb-tserver --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-2,/tmp/yugabyte-local-cluster/disk2/node-2" --webserver_interface 127.0.0.2 --rpc_bind_addresses 127.0.0.2 --webserver_doc_root "/home/vagrant/yugabyte/www" --tserver_master_addrs 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 --memory_limit_hard_bytes 1073741824 --redis_proxy_bind_address 127.0.0.2 --cql_proxy_bind_address 127.0.0.2 --local_ip_for_outbound_sockets 127.0.0.2 >"/tmp/yugabyte-local-cluster/disk1/node-2/tserver.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-2/tserver.err" &
+2017-10-16 21:46:52,609 INFO: Starting tserver with:
+/home/vagrant/yugabyte/bin/yb-tserver --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-3,/tmp/yugabyte-local-cluster/disk2/node-3" --webserver_interface 127.0.0.3 --rpc_bind_addresses 127.0.0.3 --webserver_doc_root "/home/vagrant/yugabyte/www" --tserver_master_addrs 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 --memory_limit_hard_bytes 1073741824 --redis_proxy_bind_address 127.0.0.3 --cql_proxy_bind_address 127.0.0.3 --local_ip_for_outbound_sockets 127.0.0.3 >"/tmp/yugabyte-local-cluster/disk1/node-3/tserver.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-3/tserver.err" &
 ```
 
-Create a 5 node local cluster with replication factor 5. 
+- Create a 5 node local cluster with replication factor 5. 
 
-The number of nodes created with the initial create command is always equal to the replication factor in order to ensure that all the replicas for a given tablet can be placed on different nodes. With the [add_node](/community-edition/cli-reference/#add-a-node) and [remove_node](/community-edition/cli-reference/#remove-a-node) commands the size of the cluster can thereafter be expanded or shrinked as necessary. 
+The number of nodes created with the initial create command is always equal to the replication factor in order to ensure that all the replicas for a given tablet can be placed on different nodes. With the [add_node](/admin/yb-ctl/#add-a-node) and [remove_node](/admin/yb-ctl/#remove-a-node) commands the size of the cluster can thereafter be expanded or shrinked as necessary. 
 
 ```sh
 $ ./bin/yb-ctl --rf 5 create
@@ -87,12 +86,12 @@ Get the status of the local cluster including the URLs for the admin UIs for the
 
 ```sh
 $ ./bin/yb-ctl status
-2017-09-06 22:53:40,871 INFO: Server is running: type=master, node_id=1, PID=28494, URL=127.0.0.1:7000
-2017-09-06 22:53:40,876 INFO: Server is running: type=master, node_id=2, PID=28504, URL=127.0.0.1:7001
-2017-09-06 22:53:40,881 INFO: Server is running: type=master, node_id=3, PID=28507, URL=127.0.0.1:7002
-2017-09-06 22:53:40,885 INFO: Server is running: type=tserver, node_id=1, PID=28512, URL=127.0.0.1:9000, cql port=9042, redis port=6379
-2017-09-06 22:53:40,890 INFO: Server is running: type=tserver, node_id=2, PID=28516, URL=127.0.0.1:9001, cql port=9043, redis port=6380
-2017-09-06 22:53:40,894 INFO: Server is running: type=tserver, node_id=3, PID=28519, URL=127.0.0.1:9002, cql port=9044, redis port=6381
+2017-10-16 21:47:32,937 INFO: Server is running: type=master, node_id=1, PID=27942, admin service=127.0.0.1:7000
+2017-10-16 21:47:32,942 INFO: Server is running: type=master, node_id=2, PID=27945, admin service=127.0.0.2:7000
+2017-10-16 21:47:32,947 INFO: Server is running: type=master, node_id=3, PID=27948, admin service=127.0.0.3:7000
+2017-10-16 21:47:32,952 INFO: Server is running: type=tserver, node_id=1, PID=27951, admin service=127.0.0.1:9000, cql service=127.0.0.1:9042, redis service=127.0.0.1:6379
+2017-10-16 21:47:32,957 INFO: Server is running: type=tserver, node_id=2, PID=27954, admin service=127.0.0.2:9000, cql service=127.0.0.2:9042, redis service=127.0.0.2:6379
+2017-10-16 21:47:32,961 INFO: Server is running: type=tserver, node_id=3, PID=27957, admin service=127.0.0.3:9000, cql service=127.0.0.3:9042, redis service=127.0.0.3:6379
 ```
 
 ## Setup Redis
@@ -121,23 +120,18 @@ I0918 22:48:21.376237 12246 yb-admin.cc:580] Table 'redis_keyspace..redis' creat
 Add a new node to the cluster. This will start a new yb-tserver process and give it a new `node_id` for tracking purposes.
 
 ```sh
-$ $ ./bin/yb-ctl add_node
-2017-09-06 22:54:20,687 INFO: Starting tserver with:
+$ ./bin/yb-ctl add_node
+2017-10-16 22:05:31,517 INFO: Starting tserver with:
 /home/vagrant/yugabyte/bin/yb-tserver 
---fs_data_dirs "/tmp/yugabyte-local-cluster/tserver-4/data1,/tmp/yugabyte-local-cluster/tserver-4/data2" 
---fs_wal_dirs "/tmp/yugabyte-local-cluster/tserver-4/wal1,/tmp/yugabyte-local-cluster/tserver-4/wal2" 
---log_dir "/tmp/yugabyte-local-cluster/tserver-4/logs" 
---webserver_port 9003 
---rpc_bind_addresses 127.0.0.1:9103 
---use_hybrid_clock=False 
---placement_cloud cloud --placement_region region --placement_zone zone 
---webserver_doc_root "/home/vagrant/yugabyte/www" 
---tserver_master_addrs 127.0.0.1:7100,127.0.0.1:7101,127.0.0.1:7102 
+--fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-4,/tmp/yugabyte-local-cluster/disk2/node-4" 
+--webserver_interface 127.0.0.4 
+--rpc_bind_addresses 127.0.0.4 
+--tserver_master_addrs 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 
 --memory_limit_hard_bytes 1073741824 
---redis_proxy_webserver_port 11003 --redis_proxy_bind_address 127.0.0.1:6382 
---cql_proxy_webserver_port 12003 --cql_proxy_bind_address 127.0.0.1:9045 
---local_ip_for_outbound_sockets 127.0.0.1 
->"/tmp/yugabyte-local-cluster/tserver-4/tserver.out" 2>"/tmp/yugabyte-local-cluster/tserver-4/tserver.err" &
+--redis_proxy_bind_address 127.0.0.4 
+--cql_proxy_bind_address 127.0.0.4 
+--local_ip_for_outbound_sockets 127.0.0.4 
+>"/tmp/yugabyte-local-cluster/disk1/node-4/tserver.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-4/tserver.err" &
 ```
 
 ## Remove a node

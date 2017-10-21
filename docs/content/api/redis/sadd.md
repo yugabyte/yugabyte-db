@@ -1,5 +1,6 @@
 ---
 title: SADD
+weight: 225
 ---
 ## SYNOPSIS
 <b>`SADD key value [value ...]`</b><br>

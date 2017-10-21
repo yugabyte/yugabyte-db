@@ -1,6 +1,7 @@
 ---
 title: DROP KEYSPACE
-summary: Removes a keyspace and all of its database objects.
+summary: Removes a keyspace and all of its database objects
+weight: 126
 ---
 
 ## Synopsis

@@ -1,7 +1,7 @@
 ---
 title: BOOLEAN Type
-summary: Boolean values of false or true.
-toc: false
+summary: Boolean values of false or true
+weight: 138
 ---
 
 ## Synopsis

@@ -1,5 +1,6 @@
 ---
 title: STRLEN
+weight: 232
 ---
 
 ## SYNOPSIS

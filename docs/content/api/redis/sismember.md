@@ -1,5 +1,6 @@
 ---
 title: SISMEMBER
+weight: 229
 ---
 ## SYNOPSIS
 <b>`SISMEMBER key member_value`</b><br>

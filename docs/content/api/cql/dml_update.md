@@ -1,6 +1,7 @@
 ---
 title: UPDATE
-summary: Change values of a row in a table.
+summary: Change values of a row in a table
+weight: 132
 ---
 
 ## Synopsis

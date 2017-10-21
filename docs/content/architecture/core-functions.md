@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T20:08:11+01:00
 title: Core Functions
-weight: 72
+weight: 90
 ---
 
 This section describes the internal workings of YugaByte DB in the context of the core functions such as write IO path and read IO path.

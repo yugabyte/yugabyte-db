@@ -1,6 +1,7 @@
 ---
 title: BLOB Type
-summary: Binary strings of variable length.
+summary: Binary strings of variable length
+weight: 137
 ---
 
 ## Synopsis

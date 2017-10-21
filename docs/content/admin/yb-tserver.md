@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T00:11:02+01:00
-title: yb-tserver Reference
-weight: 15
+title: yb-tserver 
+weight: 244
 ---
 
 `yb-tserver`, located in the bin directory of YugaByte home, is the [YB-TServer](/architecture/concepts/#yb-tserver) binary.

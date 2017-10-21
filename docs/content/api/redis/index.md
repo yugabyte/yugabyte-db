@@ -1,6 +1,7 @@
 ---
 title: Redis
-summary: Redis overview and commands.
+summary: Redis overview and commands
+weight: 200
 ---
 
 ## Introduction

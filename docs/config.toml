@@ -44,9 +44,8 @@ googleAnalytics = "UA-104956980-1"
 
 [[menu.main]]
 	name   = "Introduction"
-	url    = "/"
+	url    = "introduction/"
 	weight = 1
-
 
 [[menu.main]]
 	name   = "FAQs"
@@ -64,10 +63,41 @@ googleAnalytics = "UA-104956980-1"
 	identifier = "community-quick-start"
 	parent = "community-edition"
 	url = "community-edition/quick-start/"
+	weight = 4
+
+[[menu.main]]
+	name = "From Binary"
+	parent = "community-quick-start"
+	url = "community-edition/quick-start/binary/"
 	weight = 5
 
 [[menu.main]]
-	name   = "Develop"
+	name = "Using Docker"
+	parent = "community-quick-start"
+	url = "community-edition/quick-start/docker/"
+	weight = 6
+
+[[menu.main]]
+	name = "Explore Core Features"
+	identifier = "community-explore"
+	parent = "community-edition"
+	url = "community-edition/explore/"
+	weight = 7
+
+[[menu.main]]
+	name = "Fault Tolerance"
+	parent = "community-explore"
+	url = "community-edition/explore/fault-tolerance/"
+	weight = 8
+
+[[menu.main]]
+	name = "Auto Rebalancing"
+	parent = "community-explore"
+	url = "community-edition/explore/auto-rebalancing/"
+	weight = 9
+
+[[menu.main]]
+	name   = "Develop Apps"
 	parent = "community-edition"
 	url    = "community-edition/develop/"
 	weight = 10
@@ -568,15 +598,22 @@ googleAnalytics = "UA-104956980-1"
 	url = "admin/yb-ctl/"
 
 [[menu.main]]
-	name = "yb-master"
+	name = "yb-docker-ctl"
 	weight = 242
+	identifier = "yb-docker-ctl"
+	parent = "admin"
+	url = "admin/yb-docker-ctl/"
+
+[[menu.main]]
+	name = "yb-master"
+	weight = 243
 	identifier = "yb-master"
 	parent = "admin"
 	url = "admin/yb-master/"
 
 [[menu.main]]
 	name = "yb-tserver"
-	weight = 243
+	weight = 244
 	identifier = "yb-tserver"
 	parent = "admin"
 	url = "admin/yb-tserver/"

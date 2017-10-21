@@ -1,6 +1,7 @@
 ---
 title: DROP TYPE
-summary: Drop a user-defined ddatatype
+summary: Drop a user-defined datatype
+weight: 128
 ---
 
 ## Synopsis

@@ -1,44 +1,26 @@
 ---
 date: 2016-03-08T21:07:13+01:00
 title: Introduction
-type: index
-weight: 1
+weight: 2
 ---
 
 ## Overview
 
-### What is YugaByte?
+### What is YugaByte DB?
 
-YugaByte is an open source, cloud-native database for mission-critical enterprise applications. It is meant to be a system-of-record/authoritative database that applications can rely on for correctness and availability. It allows applications to easily scale up and scale down in the cloud, on-premises or across hybrid environments without creating operational complexity or increasing the risk of outages.
+YugaByte DB is an open source, cloud-native database for mission-critical enterprise applications. It is meant to be a system-of-record/authoritative database that applications can rely on for correctness and availability. It allows applications to easily scale up and scale down in the cloud, on-premises or across hybrid environments without creating operational complexity or increasing the risk of outages.
 
 In terms of data model and APIs, YugaByte currently supports **Apache Cassandra Query Language** & its client drivers natively. In addition, it also supports an automatically sharded, clustered & elastic **Redis-as-a-Database** in a Redis driver compatible manner. **Distributed transactions** to support **strongly consistent secondary indexes**, multi-table/row ACID operations and SQL support is on the roadmap.
 
-### What makes YugaByte unique?
+### What makes YugaByte DB unique?
 
-Mission-critical applications are typically composed of microservices with diverse access patterns
-such as key/value, flexible schema, graph or relational.
+Mission-critical applications are typically composed of microservices with diverse workloads such as key/value, flexible schema, graph or relational. The access patterns vary as well. SaaS services or mobile/web applications keeping customer records, order history or messages need zero-data loss, geo-replication, low-latency reads/writes and a consistent customer experience. While fast data infrastructure use cases (such as IoT, finance, timeseries data) need near real-time & high-volume ingest, low-latency reads, and native integration with analytics frameworks like Apache Spark.
 
-The workload requirements vary as well. SaaS services or mobile/web applications keeping customer
-records, order history or messages really care about zero-data loss, geo-replication, low-latency
-reads/writes and a consistent customer experience. While fast data infrastructure use cases (such as
-IOT, finance, timeseries data) care about near real-time & high-volume ingest, low-latency reads,
-and native integration with analytics frameworks like Apache Spark.
+YugaByte offers polyglot persistence to power these diverse workloads and access patterns in a unified database, while providing strong correctness guarantees and high availability. You are no longer forced to create infrastructure silos for each workload or choose between different flavors SQL and NoSQL databases. YugaByte breaks down the barrier between SQL and NoSQL by offering both.
 
-YugaByte offers polyglot persistence to power these diverse data access patterns and requirements
-in a unified database, while providing strong correctness guarantees and high availability. You are
-no longer forced to create infrastructure silos for each access pattern or choose between different
-flavors SQL and NoSQL databases. YugaByte breaks down the barrier between SQL and NoSQL by offering
-both.
+Another theme common across these microservices is the move to a cloud-native architecture, be it on the public cloud, on-premises or hybrid environment. The primary driver for this move is making the infrastructure agile, scalable, re-configurabile with zero downtime, geo-distributed and portable across clouds. While the container ecosystem led by Docker & Kubernetes has enabled enterprises to realize this vision for the stateless tier, the data tier has remained a big challenge.  YugaByte is purpose-built to address these challenges, but for the data tier, and serves as the stateful complement to containers.
 
-Another theme common across these microservices is the move to a cloud-native architecture, be it on
-the public cloud, on-premises or hybrid environment. The primary driver for this move is making the
-infrastructure agile, scalable, re-configurabile with zero downtime, geo-distributed and portable
-across clouds. While the container ecosystem led by Docker & Kubernetes has enabled enterprises to
-realize this vision for the stateless tier, the data tier has remained a big challenge.  YugaByte is
-purpose-built to address these challenges, but for the data tier, and serves as the stateful
-complement to containers.
-
-## Key features
+## Core features
 
 ### Linear scalability
 
@@ -50,7 +32,7 @@ Each node runs on top of a instance that provides a Linux-based compute and a se
 
 Shards of tables, also known as Tablets, are automatically created and managed via the YB-TServer. Application clients connect to the YB-TServer using either [Apache Cassandra Query Language (CQL)] (https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html) or the [Redis API] (https://redis.io/commands). The YB-Masters manage the metadata of these shards and can be configured to run on nodes different than the Tablet Server. Tablets are stored in DocDB, YugaByte's own Log Structured Merge (LSM) based transactional data store that has been purpose-built for mission-critical use cases. Finally, data for each tablet is consistently replicated onto other nodes using the [Raft distributed consensus algorithm] (https://raft.github.io/raft.pdf).
 
-### Decentralized
+### Decentralized, no single point of failure
 
 All nodes in the universe are identical from a client perspective since all nodes run the YB-TServer. Some nodes additionally run the YB-Master but these servers do not participate in the critical path unless there has been a configuration change (resulting from nodes getting added/removed or underlying infrastructure failures) in the universe. At that time, the client collects the new metadata from the YB-Master leader just once and caches the metadata for future use.
 
@@ -76,7 +58,7 @@ Given the use of distributed consensus where reads are either served only by one
 YugaByte can be easily deployed across multiple datacenters with sync replication for primary data (where replicas act as voting members) and async replication for timeline consistent data (where replicas act as non-voting/observing members). Note that async replication is a feature restricted to [YugaByte Enterprise Edition](/#product-editions).
 
 ### Multi-API
-YugaByte currently supports 2 popular APIs namely [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html) and [Redis] (https://redis.io/commands) command library. SQL support is on the roadmap.
+YugaByte currently supports 2 popular APIs namely [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html) and [Redis] (https://redis.io/commands) command library. SQL support is in the works.
 
 ### Multi-model
 YugaByte can be used to model multiple different data workloads such as flexible schema, time-series, key-value. The first 2 models are best built using CQL while the last one lends itself to the Redis command library.
@@ -97,7 +79,7 @@ YugaByte is inspired by [Google Cloud Spanner](https://cloud.google.com/spanner/
 
 - **Simple scalability**: Linear, fast & reliable scalability from 1 to 1000s nodes with automatic sharding and re-balancing
 - **Zero downtime and zero data loss operations**: Highly available under any unplanned infrastructure failure or any planned software/hardware upgrade
-- **Multi-datacenter deployments simplified**: 1-click geo-redundant deployments across multiple availability zones & regions on public/private/hybrid clouds as well as across multiple on-premises data centers 
+- **Multi-datacenter/multi-cloud deployments simplified**: 1-click geo-redundant deployments across multiple availability zones & regions on public/private/hybrid clouds as well as across multiple on-premises data centers 
 - **Online cross-cloud mobility**: move across cloud infrastructure providers without any lock-in
 - **Hardware flexibility**: seamlessly move from one type of compute and storage to another for cost and performance reasons
 

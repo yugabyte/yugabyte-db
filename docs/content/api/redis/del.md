@@ -1,5 +1,6 @@
 ---
 title: DEL
+weight: 204
 ---
 Early Releases: Single-key request only. Requests with multiple keys are not yet supported.
 
