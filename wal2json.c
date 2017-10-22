@@ -12,28 +12,16 @@
  */
 #include "postgres.h"
 
-#include "access/sysattr.h"
-
-#include "catalog/pg_class.h"
 #include "catalog/pg_type.h"
-#include "catalog/index.h"
 
-#include "nodes/parsenodes.h"
-
-#include "replication/output_plugin.h"
 #include "replication/logical.h"
-#if	PG_VERSION_NUM >= 90600
-#include "replication/message.h"
-#endif
 
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/pg_lsn.h"
 #include "utils/rel.h"
-#include "utils/relcache.h"
 #include "utils/syscache.h"
-#include "utils/typcache.h"
 
 PG_MODULE_MAGIC;
 
