@@ -1,0 +1,3 @@
+{{ $includePath := (.Get 0) | printf "./content/%s" }}
+{{ readFile $includePath | markdownify }}
+{{ .Inner }}

@@ -6,13 +6,27 @@ weight: 4
 
  The easiest way to get started with the YugaByte Community Edition is to create a multi-node **local cluster** on your laptop or desktop. There are two options available.
 
-<a class="section-link" href="/community-edition/quick-start/binary">
-  Local Cluster - Binary
-</a>
+<ul class="nav nav-tabs">
+  <li class="active">
+    <a data-toggle="tab" href="#binary">
+      Local Cluster - Binary
+    </a>
+  </li>
+  <li>
+    <a data-toggle="tab" href="#docker">
+      Local Cluster - Docker
+    </a>
+  </li>
+</ul>
 
-<a class="section-link" href="/community-edition/quick-start/docker">
-  Local Cluster - Docker
- </a>
+<div class="tab-content">
+  <div id="binary" class="tab-pane fade in active">
+    {{% includeMarkdown "community-edition/quick-start/binary.md" /%}}
+  </div>
+  <div id="docker" class="tab-pane fade">
+    {{% includeMarkdown "community-edition/quick-start/docker.md" /%}}
+  </div>
+</div>
 
 
 {{< note title="Note" >}}

@@ -1,9 +1,3 @@
----
-date: 2016-03-09T00:11:02+01:00
-title: Local Cluster - Docker
-weight: 6
----
-
 ## Prerequisites
 
 You must have the Docker runtime installed on your localhost. Follow the links below to download and install Docker if you have not done so already.

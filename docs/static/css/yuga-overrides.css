@@ -34,7 +34,12 @@ a {
 }
 
 .drawer {
-  margin-bottom: 120px;
+  position: fixed !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  overflow: auto;
+  margin-bottom: 0;
+  padding-bottom: 120px;
 }
 .drawer h3 {
   margin: 29px 23px 15px;
@@ -48,6 +53,10 @@ a {
 
 .drawer .toc {
   padding-left: 5px;
+}
+.drawer .toc ul {
+  margin-bottom: 0 !important;
+  padding-bottom: 6px;
 }
 .drawer .toc > ul > li {
   margin-bottom: 8px;

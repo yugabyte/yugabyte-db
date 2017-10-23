@@ -66,18 +66,6 @@ googleAnalytics = "UA-104956980-1"
 	weight = 4
 
 [[menu.main]]
-	name = "From Binary"
-	parent = "community-quick-start"
-	url = "community-edition/quick-start/binary/"
-	weight = 5
-
-[[menu.main]]
-	name = "Using Docker"
-	parent = "community-quick-start"
-	url = "community-edition/quick-start/docker/"
-	weight = 6
-
-[[menu.main]]
 	name = "Explore Core Features"
 	identifier = "community-explore"
 	parent = "community-edition"

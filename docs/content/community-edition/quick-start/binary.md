@@ -1,8 +1,3 @@
----
-title: Local Cluster - Binary
-weight: 5
----
-
 ## Prerequisites
 
 Operating systems supported for local clusters are
